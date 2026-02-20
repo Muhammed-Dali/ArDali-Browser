@@ -191,11 +191,239 @@ const SFX = {
     }
 }
 
+// Video oynatma kararlılığı için güvenli mod:
+// Efektler sekmesindeki ağır animasyonları kapatır.
+const SFX_ANIM_SAFE_MODE = false;
+
 // RAM öncelikli mod: sekme değişince eski panel DOM'unu boşalt
-const RAM_PRIORITY_MODE = true;
+const RAM_PRIORITY_MODE = false;
+
+// 32-band EQ ağır görsellerini düşük yük modunda çalıştır.
+// Video oynarken pause/freeze etkisini azaltmak için animasyonları sadeleştirir.
+const SFX_LOW_LOAD_EQ32 = false;
 
 // EQ debug loglarını kapat/aç
 const DEBUG_EQ = false;
+
+const SFX_EMBEDDED_MODE = (() => {
+    try {
+        return new URLSearchParams(window.location.search).get('embedded') === '1';
+    } catch {
+        return false;
+    }
+})();
+
+const EMBED_VIDEO_SFX_SETTINGS_KEY = 'aurivo_video_sfx_settings_v1';
+let SFX_RUNTIME_ANIMS_ACTIVE = true;
+let SFX_APPLIED_LANG = '';
+
+function postEmbeddedVideoUpdate(payload) {
+    try {
+        if (!SFX_EMBEDDED_MODE) return;
+        window.parent?.postMessage({ type: 'sfx:videoUpdate', payload }, '*');
+    } catch {
+        // ignore
+    }
+}
+
+function installEmbeddedVideoBridge() {
+    if (!SFX_EMBEDDED_MODE) return;
+
+    const safeLoad = async () => {
+        try {
+            const raw = localStorage.getItem(EMBED_VIDEO_SFX_SETTINGS_KEY);
+            return raw ? JSON.parse(raw) : {};
+        } catch {
+            return {};
+        }
+    };
+    const safeSave = async (next) => {
+        try {
+            localStorage.setItem(EMBED_VIDEO_SFX_SETTINGS_KEY, JSON.stringify(next || {}));
+            return true;
+        } catch {
+            return false;
+        }
+    };
+
+    const bridgeAudio = {
+        isNativeAvailable: () => true,
+        on: () => true,
+        setEffectsEnabled: (enabled) => {
+            postEmbeddedVideoUpdate({ type: 'dspEnabled', enabled: !!enabled });
+            return true;
+        },
+        setDSPEnabled: (enabled) => {
+            postEmbeddedVideoUpdate({ type: 'dspEnabled', enabled: !!enabled });
+            return true;
+        },
+        setBalance: (value) => {
+            postEmbeddedVideoUpdate({ type: 'balance', balance: Number(value) || 0 });
+            return true;
+        },
+        setBass: () => true,
+        setMid: () => true,
+        setTreble: () => true,
+        setStereoExpander: () => true,
+        preamp: {
+            set: (gainDB) => {
+                postEmbeddedVideoUpdate({ type: 'preamp', gainDB: Number(gainDB) || 0 });
+                return true;
+            },
+            get: async () => 0
+        },
+        balance: {
+            set: (value) => {
+                postEmbeddedVideoUpdate({ type: 'balance', balance: Number(value) || 0 });
+                return true;
+            },
+            get: async () => 0
+        },
+        eq: {
+            setBand: (band, gainDB) => {
+                postEmbeddedVideoUpdate({ type: 'eqBand', band: Number(band) || 0, gainDB: Number(gainDB) || 0 });
+                return true;
+            },
+            setAllBands: (bands) => {
+                postEmbeddedVideoUpdate({ type: 'eqBands', bands: Array.isArray(bands) ? bands : [] });
+                return true;
+            },
+            resetBands: () => {
+                postEmbeddedVideoUpdate({ type: 'eqBands', bands: new Array(32).fill(0) });
+                return true;
+            },
+            getAllBands: async () => new Array(32).fill(0)
+        }
+    };
+
+    const makeNoopProxy = (path = []) => new Proxy(() => true, {
+        get(_t, prop) {
+            if (prop === 'then') return undefined;
+            return makeNoopProxy(path.concat(String(prop)));
+        },
+        apply(_t, _thisArg, args) {
+            const p = path.join('.');
+            // Route the few controls that video WebAudio graph currently supports.
+            if (p === 'eq.setBand' || p === 'ipcAudio.eq.setBand') {
+                postEmbeddedVideoUpdate({ type: 'eqBand', band: Number(args[0]) || 0, gainDB: Number(args[1]) || 0 });
+                return Promise.resolve(true);
+            }
+            if (p === 'eq.setAllBands' || p === 'ipcAudio.eq.setAllBands') {
+                postEmbeddedVideoUpdate({ type: 'eqBands', bands: Array.isArray(args[0]) ? args[0] : [] });
+                return Promise.resolve(true);
+            }
+            if (p === 'ipcAudio.eq.resetBands' || p === 'eq.resetBands') {
+                postEmbeddedVideoUpdate({ type: 'eqReset' });
+                return Promise.resolve(true);
+            }
+            if (p === 'balance.set' || p === 'ipcAudio.balance.set') {
+                postEmbeddedVideoUpdate({ type: 'balance', balance: Number(args[0]) || 0 });
+                return Promise.resolve(true);
+            }
+            if (p === 'preamp.set') {
+                postEmbeddedVideoUpdate({ type: 'preamp', gainDB: Number(args[0]) || 0 });
+                return Promise.resolve(true);
+            }
+            if (p === 'setEffectsEnabled' || p === 'setDSPEnabled' || p === 'ipcAudio.setDSPEnabled') {
+                postEmbeddedVideoUpdate({ type: 'dspEnabled', enabled: !!args[0] });
+                return Promise.resolve(true);
+            }
+            if (p.endsWith('.getAllBands')) return Promise.resolve(new Array(32).fill(0));
+            if (p.endsWith('.getParams')) return Promise.resolve({});
+            if (p.endsWith('.getMeter')) return Promise.resolve({ inPeak: -120, outPeak: -120, gainReduction: 0, clipped: 0 });
+            if (p.endsWith('.getGainReduction') || p.endsWith('.getReduction')) return Promise.resolve(0);
+            return Promise.resolve(true);
+        }
+    });
+
+    try {
+        if (!window.aurivo) window.aurivo = {};
+        window.aurivo.loadSettings = safeLoad;
+        window.aurivo.saveSettings = safeSave;
+        window.aurivo.audio = bridgeAudio;
+        window.aurivo.ipcAudio = makeNoopProxy(['ipcAudio']);
+    } catch {
+        // ignore
+    }
+}
+
+installEmbeddedVideoBridge();
+
+function currentLangCode() {
+    try {
+        return String(window.i18n?.getLanguage?.() || window.i18n?.locale || '').trim();
+    } catch {
+        return '';
+    }
+}
+
+async function applyEmbeddedLanguage(lang, { forceRefresh = false } = {}) {
+    const nextLang = String(lang || '').trim();
+    if (!nextLang) return;
+
+    if (!forceRefresh && SFX_APPLIED_LANG && SFX_APPLIED_LANG === nextLang) {
+        return;
+    }
+
+    try {
+        if (window.i18n?.setLanguage) {
+            await window.i18n.setLanguage(nextLang, { skipPersist: true });
+        } else if (window.i18n?.setLanguagePreference) {
+            await window.i18n.setLanguagePreference(nextLang);
+            window.i18n?.translatePage?.();
+        }
+    } catch {
+        // ignore
+    }
+
+    const resolved = currentLangCode() || nextLang;
+    const langChanged = SFX_APPLIED_LANG !== resolved;
+    SFX_APPLIED_LANG = resolved;
+
+    if (langChanged || forceRefresh) {
+        refreshLocalizedRuntimeUi();
+    }
+}
+
+async function syncEmbeddedLanguageFromParent() {
+    if (!SFX_EMBEDDED_MODE) return;
+    try {
+        const parentLang = String(window.parent?.i18n?.getLanguage?.() || window.parent?.i18n?.locale || '').trim();
+        if (!parentLang) return;
+        await applyEmbeddedLanguage(parentLang, { forceRefresh: true });
+    } catch {
+        // ignore
+    }
+}
+
+function syncMeterLoops() {
+    if (!SFX_RUNTIME_ANIMS_ACTIVE) {
+        stopTruePeakMeter();
+        stopAutoGainMeter();
+        stopCompressorMeter();
+        stopLimiterMeter();
+        return;
+    }
+    if (SFX.currentEffect === 'truepeak') startTruePeakMeter(); else stopTruePeakMeter();
+    if (SFX.currentEffect === 'autogain') startAutoGainMeter(); else stopAutoGainMeter();
+    if (SFX.currentEffect === 'compressor') startCompressorMeter(); else stopCompressorMeter();
+    if (SFX.currentEffect === 'limiter') startLimiterMeter(); else stopLimiterMeter();
+}
+
+function setRuntimeAnimationsActive(active) {
+    const next = !!active;
+    if (SFX_RUNTIME_ANIMS_ACTIVE === next) return;
+    SFX_RUNTIME_ANIMS_ACTIVE = next;
+
+    if (!next) {
+        pauseAllEffectAnimations();
+        syncMeterLoops();
+        return;
+    }
+
+    if (!SFX_ANIM_SAFE_MODE) setEffectAnimationsActive(SFX.currentEffect, true);
+    syncMeterLoops();
+}
 
 function dbgEq(...args) {
     if (DEBUG_EQ) console.log(...args);
@@ -350,6 +578,7 @@ document.addEventListener('DOMContentLoaded', () => {
             
             if (window.i18n?.init) {
                 await window.i18n.init();
+                await syncEmbeddedLanguageFromParent();
                 try {
                     document.title = await window.i18n.t('sfx.windowTitle');
                 } catch {
@@ -430,7 +659,8 @@ function setupEventListeners() {
         document.getElementById('tabEffects').classList.add('active');
         document.getElementById('tabPresets').classList.remove('active');
         document.getElementById('effectsSidebar').style.display = 'block';
-        setEffectAnimationsActive(SFX.currentEffect, true);
+        if (SFX_ANIM_SAFE_MODE) pauseAllEffectAnimations();
+        else if (SFX_RUNTIME_ANIMS_ACTIVE) setEffectAnimationsActive(SFX.currentEffect, true);
     });
 
     document.getElementById('tabPresets')?.addEventListener('click', () => {
@@ -441,12 +671,39 @@ function setupEventListeners() {
     });
 
     document.addEventListener('visibilitychange', () => {
-        if (document.hidden) pauseAllEffectAnimations();
-        else setEffectAnimationsActive(SFX.currentEffect, true);
+        setRuntimeAnimationsActive(!document.hidden);
+    });
+
+    window.addEventListener('blur', () => {
+        setRuntimeAnimationsActive(false);
+    });
+    window.addEventListener('focus', () => {
+        if (!document.hidden) setRuntimeAnimationsActive(true);
+    });
+
+    window.addEventListener('message', (e) => {
+        const t = String(e?.data?.type || '');
+        if (t === 'sfx:animControl') {
+            const action = String(e?.data?.action || '');
+            if (action === 'pause') setRuntimeAnimationsActive(false);
+            if (action === 'resume') setRuntimeAnimationsActive(!document.hidden);
+            return;
+        }
+        if (t === 'sfx:setLanguage') {
+            const lang = String(e?.data?.lang || '').trim();
+            if (!lang) return;
+            Promise.resolve().then(async () => {
+                await applyEmbeddedLanguage(lang);
+            });
+        }
     });
 
     // Window controls (frameless pencere için)
     document.getElementById('closeBtn')?.addEventListener('click', () => {
+        if (SFX_EMBEDDED_MODE) {
+            try { window.parent?.postMessage({ type: 'sfx:closeEmbedded' }, '*'); } catch { }
+            return;
+        }
         if (window.aurivo?.electronAPI) {
             window.aurivo.electronAPI.closeWindow();
         } else {
@@ -455,12 +712,14 @@ function setupEventListeners() {
     });
 
     document.getElementById('minimizeBtn')?.addEventListener('click', () => {
+        if (SFX_EMBEDDED_MODE) return;
         if (window.aurivo?.electronAPI) {
             window.aurivo.electronAPI.minimizeWindow();
         }
     });
 
     document.getElementById('maximizeBtn')?.addEventListener('click', async () => {
+        if (SFX_EMBEDDED_MODE) return;
         if (window.aurivo?.electronAPI) {
             const isMaximized = await window.aurivo.electronAPI.maximizeWindow();
             const btn = document.getElementById('maximizeBtn');
@@ -470,6 +729,32 @@ function setupEventListeners() {
             }
         }
     });
+}
+
+function refreshLocalizedRuntimeUi() {
+    try {
+        const title = tSync('sfx.windowTitle');
+        if (title && title !== 'sfx.windowTitle') document.title = title;
+    } catch {
+        // ignore
+    }
+
+    // data-i18n alanlarını güncelle
+    try {
+        window.i18n?.translatePage?.();
+    } catch {
+        // ignore
+    }
+
+    const currentEffect = SFX.currentEffect || 'eq32';
+    try {
+        unloadEffectPanel(currentEffect);
+    } catch {
+        // ignore
+    }
+    showEffect(currentEffect);
+    updateEqPresetButtonLabel();
+    updateDSPStatus();
 }
 
 // ============================================
@@ -633,33 +918,11 @@ function showEffect(effectName) {
         }
     });
 
-    // True Peak ise meter loop başlat
-    if (effectName === 'truepeak') {
-        startTruePeakMeter();
-    } else {
-        stopTruePeakMeter();
-    }
+    // Aktif efekti önce güncelle ki loop senkronu doğru efekte göre çalışsın.
+    SFX.currentEffect = effectName;
 
-    // Auto Gain ise gain reduction meter loop başlat (varsa)
-    if (effectName === 'autogain') {
-        startAutoGainMeter();
-    } else {
-        stopAutoGainMeter();
-    }
-
-    // Compressor gain reduction meter
-    if (effectName === 'compressor') {
-        startCompressorMeter();
-    } else {
-        stopCompressorMeter();
-    }
-
-    // Limiter reduction meter
-    if (effectName === 'limiter') {
-        startLimiterMeter();
-    } else {
-        stopLimiterMeter();
-    }
+    // Meter loop'ları yalnızca aktif efekt + aktif pencere durumunda çalıştır
+    syncMeterLoops();
 
     // PEQ filter type event listeners
     if (effectName === 'peq') {
@@ -668,9 +931,9 @@ function showEffect(effectName) {
 
     // Yalnız aktif efektin ışık/animasyon döngüsü çalışsın
     pauseAllEffectAnimations();
-    setEffectAnimationsActive(effectName, true);
-
-    SFX.currentEffect = effectName;
+    if (!SFX_ANIM_SAFE_MODE && SFX_RUNTIME_ANIMS_ACTIVE) {
+        setEffectAnimationsActive(effectName, true);
+    }
 
     // RAM öncelikli: önceki paneli boşalt
     if (RAM_PRIORITY_MODE && prevEffect && prevEffect !== effectName) {
@@ -2803,9 +3066,14 @@ function initEQSliders() {
     const analyzerCanvas = document.getElementById('barAnalyzerCanvas');
     if (analyzerCanvas) {
         SFX.barAnalyzer = new BarAnalyzer(analyzerCanvas);
+        const minFrameMs = SFX_LOW_LOAD_EQ32 ? 100 : 33;
+        let lastDrawAt = 0;
         // Demo Loop / Data Connector (Main app sends data)
         if (window.aurivo?.audio) {
             window.aurivo.audio.on('frequencyData', (data) => {
+                const now = performance.now();
+                if ((now - lastDrawAt) < minFrameMs) return;
+                lastDrawAt = now;
                 if (SFX.barAnalyzer) SFX.barAnalyzer.draw(data);
             });
         }
@@ -2814,7 +3082,7 @@ function initEQSliders() {
     // 2. Initialize EQResponse
     const eqCurveCanvas = document.getElementById('eqResponseCanvas');
     if (eqCurveCanvas) {
-        SFX.eqResponse = new EQResponse(eqCurveCanvas);
+        SFX.eqResponse = new EQResponse(eqCurveCanvas, { animated: !SFX_LOW_LOAD_EQ32 });
         SFX.eqResponse.setBandValues(settings.bands || new Array(32).fill(0));
     }
 
@@ -2827,7 +3095,8 @@ function initEQSliders() {
             maxValue: 12,
             stepSize: 0.1,
             value: settings.bands[band] || 0,
-            frequency: freq
+            frequency: freq,
+            animatedHue: !SFX_LOW_LOAD_EQ32
         });
 
         slider.onChange((value) => {
@@ -3897,6 +4166,10 @@ function resetEffect(effectName) {
             window.aurivo.ipcAudio.eq.resetBands();
         } else {
             applyEffect('eq32');
+        }
+
+        if (SFX_EMBEDDED_MODE) {
+            postEmbeddedVideoUpdate({ type: 'videoHardReset' });
         }
     } else if (effectName === 'peq') {
         // PEQ Özel Sıfırlama - 6 bant + filter type
@@ -5158,5 +5431,3 @@ window.updateBitDitherSelect = function (param, value) {
 // EXPORT
 // ============================================
 window.SFX = SFX;
-
-

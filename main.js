@@ -1931,10 +1931,39 @@ let soundEffectsWindow = null;
 // ============================================
 let eqPresetsWindow = null;
 
+function sendSoundEffectsVisibility(open) {
+    try {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send('soundEffects:visibility', { open: !!open });
+        }
+    } catch {
+        // best effort
+    }
+}
+
+function sendSoundEffectsHeartbeat(reason) {
+    try {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send('soundEffects:heartbeat', { reason: String(reason || 'tick') });
+        }
+    } catch {
+        // best effort
+    }
+}
+
 function createSoundEffectsWindow() {
     // Pencere zaten açıksa, önne getir
     if (soundEffectsWindow && !soundEffectsWindow.isDestroyed()) {
-        soundEffectsWindow.focus();
+        try {
+            if (soundEffectsWindow.isMinimized()) soundEffectsWindow.restore();
+            if (!soundEffectsWindow.isVisible()) {
+                if (typeof soundEffectsWindow.showInactive === 'function') soundEffectsWindow.showInactive();
+                else soundEffectsWindow.show();
+            }
+        } catch {
+            // ignore
+        }
+        sendSoundEffectsVisibility(true);
         return;
     }
 
@@ -1951,7 +1980,8 @@ function createSoundEffectsWindow() {
             preload: path.join(__dirname, 'preload.js'),
             nodeIntegration: false,
             contextIsolation: true,
-            sandbox: false
+            sandbox: false,
+            backgroundThrottling: false
         },
         frame: false, // Özel başlık çubuğu için çerçevesiz
         title: 'Ses Efektleri — Aurivo Medya Player',
@@ -1966,10 +1996,20 @@ function createSoundEffectsWindow() {
 
     // Pencere hazır olduğunda göster
     soundEffectsWindow.once('ready-to-show', () => {
-        soundEffectsWindow.show();
+        // İlk açılışta ana pencerenin fokusunu çalmayalım; video pause tetiklenmesini önler.
+        if (typeof soundEffectsWindow.showInactive === 'function') soundEffectsWindow.showInactive();
+        else soundEffectsWindow.show();
+        sendSoundEffectsVisibility(true);
+        sendSoundEffectsHeartbeat('ready-to-show');
     });
 
+    soundEffectsWindow.on('focus', () => sendSoundEffectsHeartbeat('focus'));
+    soundEffectsWindow.on('show', () => sendSoundEffectsHeartbeat('show'));
+    soundEffectsWindow.on('move', () => sendSoundEffectsHeartbeat('move'));
+    soundEffectsWindow.on('restore', () => sendSoundEffectsHeartbeat('restore'));
+
     soundEffectsWindow.on('closed', () => {
+        sendSoundEffectsVisibility(false);
         soundEffectsWindow = null;
     });
 }
@@ -2010,7 +2050,8 @@ function createEQPresetsWindow() {
             preload: path.join(__dirname, 'preload.js'),
             nodeIntegration: false,
             contextIsolation: true,
-            sandbox: false
+            sandbox: false,
+            backgroundThrottling: false
         },
         frame: true,
         title: 'Aurivo Hazır Ayarlar — Aurivo Medya Player',
@@ -2146,7 +2187,8 @@ function startVisualizerFeed() {
         return;
     }
 
-    const requestedFramesPerChannel = 1024;
+    // Daha düşük gecikme için paket boyutunu küçült (daha sık, daha küçük PCM push).
+    const requestedFramesPerChannel = 512;
     visualizerFeedStats = {
         startedAt: Date.now(),
         lastLogAt: 0,
@@ -2158,6 +2200,7 @@ function startVisualizerFeed() {
         firstWriteOk: false
     };
 
+    // 60Hz civarı feed: görsel tepkiyi hızlandırır.
     visualizerFeedTimer = setInterval(() => {
         try {
             if (!visualizerProc || visualizerProc.killed || !visualizerProc.stdin || visualizerProc.stdin.destroyed) {
@@ -2233,7 +2276,7 @@ function startVisualizerFeed() {
                 });
             }
         }
-    }, 33);
+    }, 16);
 }
 
 function isDevMode() {
@@ -2325,8 +2368,28 @@ function getVisualizerExecutablePath() {
     // Geliştirici kolaylığı: varsa yeni CMake çıktısını tercih et.
     // Bu, native-dist'e kopyalamayı unutunca oluşan "derlemede çalışıyor ama uygulamada çalışmıyor" sorunlarını önler.
     if (isDevMode()) {
+        const hasRequiredDllsNearExe = (exePath) => {
+            if (process.platform !== 'win32') return true;
+            let dir = '';
+            try { dir = path.dirname(exePath); } catch { return false; }
+            const required = [
+                'SDL2.dll',
+                'SDL2_image.dll',
+                'glew32.dll',
+                'libgcc_s_seh-1.dll',
+                'libstdc++-6.dll',
+                'libwinpthread-1.dll',
+                'libprojectM-4-4.dll'
+            ];
+            return required.every((n) => {
+                try { return fs.existsSync(path.join(dir, n)); } catch { return false; }
+            });
+        };
+
         for (const p of devCandidates) {
-            if (fs.existsSync(p)) return p;
+            if (!fs.existsSync(p)) continue;
+            if (hasRequiredDllsNearExe(p)) return p;
+            console.warn('[Visualizer] build-visualizer bulundu ama DLL eksik, atlanıyor:', p);
         }
         return basePick || ((baseCandidates && baseCandidates[0]) ? baseCandidates[0] : '');
     }
@@ -2532,7 +2595,8 @@ function startVisualizer() {
             try {
                 if (wasStopRequested) return;
                 const livedMs = Date.now() - startedAt;
-                if (livedMs < 2000) {
+                const exitedWithError = !(Number(code) === 0 || code === null) || !!signal;
+                if (livedMs < 2000 && exitedWithError) {
                     const missingDllExit = process.platform === 'win32' && Number(code) === 3221225781; // 0xC0000135
                     let extraDetail = '';
                     if (missingDllExit) {
@@ -4431,6 +4495,51 @@ ipcMain.handle('audio:setPreamp', (event, gainDB) => {
         audioEngine.setPreamp(gainDB);
     }
     broadcastSfxUpdate({ type: 'preamp', gainDB });
+});
+
+ipcMain.handle('audio:getPreamp', () => {
+    try {
+        if (!audioEngine || !isNativeAudioAvailable) return 0;
+        if (typeof audioEngine.getPreamp === 'function') return audioEngine.getPreamp();
+        return 0;
+    } catch {
+        return 0;
+    }
+});
+
+ipcMain.handle('audio:getBalance', () => {
+    try {
+        if (!audioEngine || !isNativeAudioAvailable) return 0;
+        if (typeof audioEngine.getBalance === 'function') return audioEngine.getBalance();
+        return 0;
+    } catch {
+        return 0;
+    }
+});
+
+ipcMain.handle('audio:getEQBand', (_event, band) => {
+    try {
+        if (!audioEngine || !isNativeAudioAvailable) return 0;
+        if (typeof audioEngine.getEQBand !== 'function') return 0;
+        return audioEngine.getEQBand(Number(band) || 0);
+    } catch {
+        return 0;
+    }
+});
+
+ipcMain.handle('audio:getAllEQBands', () => {
+    try {
+        if (!audioEngine || !isNativeAudioAvailable) return new Array(32).fill(0);
+        if (typeof audioEngine.getAllEQBands === 'function') return audioEngine.getAllEQBands();
+        if (typeof audioEngine.getEQBand === 'function') {
+            return Array.from({ length: 32 }, (_, i) => {
+                try { return Number(audioEngine.getEQBand(i)) || 0; } catch { return 0; }
+            });
+        }
+        return new Array(32).fill(0);
+    } catch {
+        return new Array(32).fill(0);
+    }
 });
 
 // New Effects Handlers

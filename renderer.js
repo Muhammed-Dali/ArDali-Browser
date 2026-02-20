@@ -359,10 +359,27 @@ document.addEventListener('DOMContentLoaded', async () => {
                     handleSfxUpdateForVideo(payload);
                 } catch { }
             });
+            window.aurivo.audio.on('soundEffects:visibility', (payload) => {
+                try {
+                    setSoundEffectsWindowOpen(!!payload?.open);
+                } catch { }
+            });
+            window.aurivo.audio.on('soundEffects:heartbeat', () => {
+                try {
+                    if (shouldKeepVideoAliveForSfx()) {
+                        resumeVideoAfterAuxWindowOpen();
+                    }
+                    if ((Date.now() < sfxOpenForceResumeUntil || Date.now() < sfxOpenGuardUntil) && state.activeMedia === 'video' && elements.videoPlayer) {
+                        const p = elements.videoPlayer.play();
+                        if (p && typeof p.catch === 'function') p.catch(() => { });
+                    }
+                } catch { }
+            });
         }
     } catch {
         // ignore
     }
+    try { await syncVideoSfxStateFromEngine(); } catch { }
 
     // "Open with" / ikinci instance: disaridan acilan dosyalari mevcut instance'a ekle ve cal.
     try {
@@ -709,6 +726,9 @@ function cacheElements() {
     elements.settingsPage = document.getElementById('settingsPage');
     elements.securityPage = document.getElementById('securityPage');
     elements.pages = document.querySelectorAll('.page');
+    elements.videoSfxModal = document.getElementById('videoSfxModal');
+    elements.videoSfxFrame = document.getElementById('videoSfxFrame');
+    elements.videoSfxCloseBtn = document.getElementById('videoSfxCloseBtn');
 
     // Çalma Listesi
     elements.playlist = document.getElementById('playlist');
@@ -822,18 +842,32 @@ async function loadSettings() {
         }
         state.webDrawerCollapsed = !!state.settings.webUi.drawerCollapsed;
 
-        // Çalma ayarları için varsayılanlar (eksikse)
-        if (!state.settings.playback) {
-            state.settings.playback = {
-                crossfadeStopEnabled: true,
-                crossfadeManualEnabled: true,
-                crossfadeAutoEnabled: false,
-                sameAlbumNoCrossfade: true,
-                crossfadeMs: 2000,
-                fadeOnPauseResume: false,
-                pauseFadeMs: 250
-            };
-        }
+        // Çalma ayarları: eski sürümlerle geriye dönük uyumlu normalize.
+        const pb = state.settings.playback || {};
+        const normalizedCrossfadeMs = (() => {
+            const raw = Number(
+                pb.crossfadeMs ??
+                pb.crossfadeDurationMs ??
+                pb.crossfadeDuration ??
+                2000
+            );
+            if (!Number.isFinite(raw)) return 2000;
+            return Math.max(0, Math.min(15000, Math.round(raw)));
+        })();
+        const normalizedPauseFadeMs = (() => {
+            const raw = Number(pb.pauseFadeMs ?? pb.pauseFade ?? 250);
+            if (!Number.isFinite(raw)) return 250;
+            return Math.max(0, Math.min(3000, Math.round(raw)));
+        })();
+        state.settings.playback = {
+            crossfadeStopEnabled: !!(pb.crossfadeStopEnabled ?? pb.crossfadeStop ?? true),
+            crossfadeManualEnabled: !!(pb.crossfadeManualEnabled ?? pb.crossfadeManual ?? true),
+            crossfadeAutoEnabled: !!(pb.crossfadeAutoEnabled ?? pb.crossfadeAuto ?? true),
+            sameAlbumNoCrossfade: !!(pb.sameAlbumNoCrossfade ?? pb.sameAlbumNo ?? false),
+            crossfadeMs: normalizedCrossfadeMs,
+            fadeOnPauseResume: !!(pb.fadeOnPauseResume ?? pb.fadeOnPause ?? false),
+            pauseFadeMs: normalizedPauseFadeMs
+        };
 
         // Tam ekran video ayarları için varsayılanlar
         if (!state.settings.videoFullscreen) {
@@ -940,6 +974,33 @@ function setupEventListeners() {
     if (elements.updateActionBtn) {
         elements.updateActionBtn.addEventListener('click', handlePrimaryUpdateAction);
     }
+
+    // Video içi embedded SFX paneli
+    if (elements.videoSfxCloseBtn) {
+        elements.videoSfxCloseBtn.addEventListener('click', () => closeEmbeddedVideoSfxPanel());
+    }
+    if (elements.videoSfxModal) {
+        elements.videoSfxModal.addEventListener('click', (e) => {
+            if (e.target === elements.videoSfxModal) closeEmbeddedVideoSfxPanel();
+        });
+    }
+    if (elements.videoSfxFrame) {
+        elements.videoSfxFrame.addEventListener('load', () => {
+            postEmbeddedVideoSfxLanguage(currentUiLanguage());
+            if (elements.videoSfxModal && !elements.videoSfxModal.classList.contains('hidden')) {
+                postEmbeddedVideoSfxAnimControl('resume');
+            } else {
+                postEmbeddedVideoSfxAnimControl('pause');
+            }
+        });
+    }
+    window.addEventListener('message', (e) => {
+        const t = String(e?.data?.type || '');
+        if (t === 'sfx:closeEmbedded') closeEmbeddedVideoSfxPanel();
+        if (t === 'sfx:videoUpdate') {
+            try { handleSfxUpdateForVideo(e?.data?.payload || {}); } catch { }
+        }
+    });
 
     // Yeniden başlatma modalı (dil)
     if (elements.restartModalClose) elements.restartModalClose.addEventListener('click', closeRestartModal);
@@ -2619,6 +2680,18 @@ function setupVideoPlayerEvents() {
         }
     });
 
+    video.addEventListener('waiting', () => {
+        if (state.activeMedia === 'video') {
+            console.warn('[SFX-VID] video waiting', { readyState: video.readyState, networkState: video.networkState });
+        }
+    });
+
+    video.addEventListener('stalled', () => {
+        if (state.activeMedia === 'video') {
+            console.warn('[SFX-VID] video stalled', { readyState: video.readyState, networkState: video.networkState });
+        }
+    });
+
     // Video bittiğinde
     video.addEventListener('ended', () => {
         if (state.activeMedia === 'video') {
@@ -2644,10 +2717,45 @@ function setupVideoPlayerEvents() {
 
     video.addEventListener('pause', () => {
         if (state.activeMedia === 'video') {
+            if (shouldKeepVideoAliveForSfx()) {
+                console.warn('[SFX-VID] pause intercepted -> auto-resume', {
+                    sfxOpen: soundEffectsWindowOpen,
+                    force: forceVideoPlaybackForSfx,
+                    manual: videoManualPauseByUser,
+                    guard: Date.now() < videoPauseGuardUntil,
+                    openGuard: Date.now() < sfxOpenGuardUntil,
+                    hidden: document.hidden
+                });
+                setTimeout(() => {
+                    try {
+                        if (state.activeMedia === 'video' && elements.videoPlayer?.paused) {
+                            elements.videoPlayer.play().catch(() => { });
+                        }
+                    } catch { }
+                }, 60);
+                return;
+            }
             state.isPlaying = false;
             updatePlayPauseIcon(false);
             updateTrayState();
             updateMPRISMetadata();
+        }
+    });
+
+    // Some systems pause HTML5 video when focus changes between app windows.
+    window.addEventListener('blur', () => {
+        if (shouldKeepVideoAliveForSfx()) {
+            setTimeout(() => { try { resumeVideoAfterAuxWindowOpen(); } catch { } }, 80);
+        }
+    });
+    document.addEventListener('visibilitychange', () => {
+        if (document.hidden) {
+            postEmbeddedVideoSfxAnimControl('pause');
+        } else if (elements.videoSfxModal && !elements.videoSfxModal.classList.contains('hidden')) {
+            postEmbeddedVideoSfxAnimControl('resume');
+        }
+        if (shouldKeepVideoAliveForSfx()) {
+            setTimeout(() => { try { resumeVideoAfterAuxWindowOpen(); } catch { } }, 80);
         }
     });
 }
@@ -4071,6 +4179,7 @@ function switchPage(pageName) {
     // Yardımcı buttons should not stay active when switching main pages
     if (elements.settingsBtn) elements.settingsBtn.classList.remove('active');
     if (elements.securityBtn) elements.securityBtn.classList.remove('active');
+    if (pageName !== 'video') closeEmbeddedVideoSfxPanel();
 
     elements.pages.forEach(p => {
         p.classList.remove('active');
@@ -5621,6 +5730,26 @@ let videoSfxState = {
     balance: 0,
     bands: new Array(32).fill(0)
 };
+let videoPauseGuardUntil = 0;
+let videoKeepAliveTimer = null;
+let soundEffectsWindowOpen = false;
+let forceVideoPlaybackForSfx = false;
+let videoManualPauseByUser = false;
+let sfxOpenForceResumeUntil = 0;
+let sfxOpenGuardUntil = 0;
+let videoKeepAliveLastTime = 0;
+let videoKeepAliveLastClock = 0;
+
+function shouldKeepVideoAliveForSfx() {
+    if (videoManualPauseByUser) return false;
+    if (soundEffectsWindowOpen && state.activeMedia === 'video') return true;
+    return (
+        (soundEffectsWindowOpen && forceVideoPlaybackForSfx) ||
+        Date.now() < videoPauseGuardUntil ||
+        Date.now() < sfxOpenForceResumeUntil ||
+        Date.now() < sfxOpenGuardUntil
+    );
+}
 
 function dbToGain(db) {
     const d = Number(db) || 0;
@@ -5633,6 +5762,40 @@ function normalizeBalanceToPan(balance) {
     // Accept -1..1 or -100..100.
     if (Math.abs(b) <= 1.001) return Math.max(-1, Math.min(1, b));
     return Math.max(-1, Math.min(1, b / 100));
+}
+
+async function syncVideoSfxStateFromEngine() {
+    const audioApi = window.aurivo?.audio;
+    if (!audioApi) return;
+
+    try {
+        if (audioApi.preamp?.get) {
+            try {
+                const pre = await audioApi.preamp.get();
+                if (Number.isFinite(Number(pre))) videoSfxState.preampDb = Number(pre);
+            } catch { }
+        }
+
+        if (audioApi.balance?.get) {
+            try {
+                const bal = await audioApi.balance.get();
+                if (Number.isFinite(Number(bal))) videoSfxState.balance = Number(bal);
+            } catch { }
+        }
+
+        if (audioApi.eq?.getAllBands) {
+            try {
+                const bands = await audioApi.eq.getAllBands();
+                if (Array.isArray(bands) && bands.length) {
+                    const next = new Array(32).fill(0);
+                    for (let i = 0; i < 32; i++) next[i] = Number(bands[i]) || 0;
+                    videoSfxState.bands = next;
+                }
+            } catch { }
+        }
+    } finally {
+        applyVideoSfxState();
+    }
 }
 
 function ensureVideoSfxGraph() {
@@ -5687,7 +5850,10 @@ function ensureVideoSfxGraph() {
 }
 
 function applyVideoSfxState() {
-    if (!videoSfxGraph) return;
+    if (!videoSfxGraph) {
+        ensureVideoSfxGraph();
+        if (!videoSfxGraph) return;
+    }
     try {
         const enabled = !!videoSfxState.enabled;
         const bands = Array.isArray(videoSfxState.bands) ? videoSfxState.bands : [];
@@ -5712,10 +5878,160 @@ function applyVideoSfxState() {
     }
 }
 
+async function resumeVideoAfterAuxWindowOpen() {
+    try {
+        if (state.activeMedia !== 'video' || !elements.videoPlayer) return;
+        if (videoManualPauseByUser) return;
+
+        ensureVideoSfxGraph();
+        try { if (videoSfxGraph?.ctx?.state === 'suspended') await videoSfxGraph.ctx.resume(); } catch { }
+
+        if (elements.videoPlayer.paused) {
+            console.log('[SFX-VID] resume attempt: video is paused -> play()');
+            const p = elements.videoPlayer.play();
+            if (p && typeof p.then === 'function') await p;
+            console.log('[SFX-VID] resume success');
+        }
+    } catch (e) {
+        console.warn('[SFX-VID] resume failed:', e?.message || e);
+    }
+}
+
+function armVideoKeepAlive(ms = 5000) {
+    videoPauseGuardUntil = Date.now() + Math.max(1000, Number(ms) || 5000);
+
+    if (videoKeepAliveTimer) {
+        clearInterval(videoKeepAliveTimer);
+        videoKeepAliveTimer = null;
+    }
+
+    videoKeepAliveTimer = setInterval(() => {
+        try {
+            if (Date.now() >= videoPauseGuardUntil) {
+                clearInterval(videoKeepAliveTimer);
+                videoKeepAliveTimer = null;
+                return;
+            }
+            if (state.activeMedia !== 'video' || !elements.videoPlayer) return;
+            if (videoManualPauseByUser) return;
+            const now = Date.now();
+            const t = Number(elements.videoPlayer.currentTime || 0);
+
+            // If paused, always try to resume while guard is active.
+            if (elements.videoPlayer.paused) {
+                resumeVideoAfterAuxWindowOpen();
+            } else if (videoKeepAliveLastClock > 0) {
+                // If playback time is stuck while SFX window is active, poke play again.
+                const dtMs = now - videoKeepAliveLastClock;
+                const dPos = Math.abs(t - videoKeepAliveLastTime);
+                if (dtMs > 700 && dPos < 0.01) {
+                    resumeVideoAfterAuxWindowOpen();
+                }
+            }
+
+            videoKeepAliveLastClock = now;
+            videoKeepAliveLastTime = t;
+        } catch { }
+    }, 200);
+}
+
+function setSoundEffectsWindowOpen(open) {
+    soundEffectsWindowOpen = !!open;
+    console.log('[SFX-VID] soundEffectsWindowOpen =', soundEffectsWindowOpen);
+
+    if (!soundEffectsWindowOpen) {
+        forceVideoPlaybackForSfx = false;
+        videoManualPauseByUser = false;
+        sfxOpenForceResumeUntil = 0;
+        sfxOpenGuardUntil = 0;
+        videoPauseGuardUntil = 0;
+        videoKeepAliveLastClock = 0;
+        videoKeepAliveLastTime = 0;
+        if (videoKeepAliveTimer) {
+            clearInterval(videoKeepAliveTimer);
+            videoKeepAliveTimer = null;
+        }
+        return;
+    }
+
+    if (forceVideoPlaybackForSfx) {
+        sfxOpenGuardUntil = Math.max(sfxOpenGuardUntil, Date.now() + 15000);
+        armVideoKeepAlive(60 * 60 * 1000); // Keep alive while SFX window stays open.
+        setTimeout(() => { try { resumeVideoAfterAuxWindowOpen(); } catch { } }, 40);
+    }
+}
+
+function postEmbeddedVideoSfxAnimControl(action) {
+    try {
+        const a = String(action || '');
+        if (!a || !elements.videoSfxFrame?.contentWindow) return;
+        elements.videoSfxFrame.contentWindow.postMessage({ type: 'sfx:animControl', action: a }, '*');
+    } catch {
+        // ignore
+    }
+}
+
+function currentUiLanguage() {
+    try {
+        const lang = String(window.i18n?.getLanguage?.() || window.i18n?.locale || '').trim();
+        return lang;
+    } catch {
+        return '';
+    }
+}
+
+function postEmbeddedVideoSfxLanguage(lang) {
+    try {
+        const l = String(lang || '').trim();
+        if (!l || !elements.videoSfxFrame?.contentWindow) return;
+        elements.videoSfxFrame.contentWindow.postMessage({ type: 'sfx:setLanguage', lang: l }, '*');
+    } catch {
+        // ignore
+    }
+}
+
+function openEmbeddedVideoSfxPanel() {
+    if (!elements.videoSfxModal || !elements.videoSfxFrame) return;
+
+    // Keep video alive while the embedded panel is open.
+    videoManualPauseByUser = false;
+    forceVideoPlaybackForSfx = true;
+    setSoundEffectsWindowOpen(true);
+    armVideoKeepAlive(60 * 60 * 1000);
+
+    if (!elements.videoSfxFrame.src || elements.videoSfxFrame.src === 'about:blank') {
+        elements.videoSfxFrame.src = 'soundEffects.html?embedded=1';
+    }
+
+    // Dil güncellemesini görünür olmadan önce gönder; açılışta "gidip-gelme" hissini azaltır.
+    postEmbeddedVideoSfxLanguage(currentUiLanguage());
+    elements.videoSfxModal.classList.remove('hidden');
+    elements.videoSfxModal.setAttribute('aria-hidden', 'false');
+    postEmbeddedVideoSfxAnimControl('resume');
+    setTimeout(() => { try { resumeVideoAfterAuxWindowOpen(); } catch { } }, 60);
+}
+
+function closeEmbeddedVideoSfxPanel() {
+    if (!elements.videoSfxModal) return;
+    postEmbeddedVideoSfxAnimControl('pause');
+    elements.videoSfxModal.classList.add('hidden');
+    elements.videoSfxModal.setAttribute('aria-hidden', 'true');
+    setSoundEffectsWindowOpen(false);
+}
+
 function handleSfxUpdateForVideo(payload) {
     try {
         const p = payload || {};
         const t = String(p.type || '');
+        ensureVideoSfxGraph();
+        if (t === 'videoHardReset') {
+            videoSfxState.enabled = true;
+            videoSfxState.preampDb = 0;
+            videoSfxState.balance = 0;
+            videoSfxState.bands = new Array(32).fill(0);
+            applyVideoSfxState();
+            return;
+        }
         if (t === 'dspEnabled') {
             videoSfxState.enabled = !!p.enabled;
             applyVideoSfxState();
@@ -5747,7 +6063,7 @@ function handleSfxUpdateForVideo(payload) {
             return;
         }
         if (t === 'eqBands') {
-            const g = Array.isArray(p.gains) ? p.gains : [];
+            const g = Array.isArray(p.gains) ? p.gains : (Array.isArray(p.bands) ? p.bands : []);
             if (!g.length) return;
             const bands = new Array(32).fill(0);
             for (let i = 0; i < 32; i++) bands[i] = Number(g[i]) || 0;
@@ -5799,6 +6115,7 @@ function playVideo(videoPath) {
     // Ensure video audio can receive sound effects while playing.
     // (WebAudio graph; controlled via main-process sfx updates.)
     ensureVideoSfxGraph();
+    syncVideoSfxStateFromEngine();
 
     // Video ses seviyesini ayarla (kaydedilen seviye)
     elements.videoPlayer.volume = state.volume / 100;
@@ -6385,6 +6702,7 @@ function handleNativePlaybackEnd() {
             }
         } else {
             state.isPlaying = false;
+            resetSeekUiToStart();
             updatePlayPauseIcon(false);
         }
     }
@@ -6471,6 +6789,33 @@ function updateCoverArt(imageData, mediaType) {
 function togglePlayPause() {
     const activePlayer = getActiveAudioPlayer();
 
+    // Video için state.isPlaying yerine gerçek video durumunu kullan.
+    // Böylece SFX keep-alive açıkken de Play/Pause butonu her zaman çalışır.
+    if (state.activeMedia === 'video' && elements.videoPlayer) {
+        const currentlyPlaying = !elements.videoPlayer.paused;
+        if (currentlyPlaying) {
+            videoManualPauseByUser = true;
+            forceVideoPlaybackForSfx = false;
+            elements.videoPlayer.pause();
+            state.isPlaying = false;
+            updatePlayPauseIcon(false);
+            updateTrayState();
+            updateMPRISMetadata();
+        } else {
+            videoManualPauseByUser = false;
+            elements.videoPlayer.play();
+            if (soundEffectsWindowOpen) {
+                forceVideoPlaybackForSfx = true;
+                armVideoKeepAlive(60 * 60 * 1000);
+            }
+            state.isPlaying = true;
+            updatePlayPauseIcon(true);
+            updateTrayState();
+            updateMPRISMetadata();
+        }
+        return;
+    }
+
     if (state.isPlaying) {
         // Duraklatma
         if (state.activeMedia === 'audio') {
@@ -6510,8 +6855,6 @@ function togglePlayPause() {
                     activePlayer.pause();
                 }
             }
-        } else if (state.activeMedia === 'video') {
-            elements.videoPlayer.pause();
         }
         // FIX: Web Pause handling added
         else if (state.activeMedia === 'web' && elements.webView) {
@@ -6584,12 +6927,6 @@ function togglePlayPause() {
         } else if (state.activeMedia === 'audio' && state.currentIndex === -1 && state.playlist.length > 0) {
             // Hiç şarkı çalmıyorsa ilk şarkıyı başlat
             playIndex(0);
-        } else if (state.activeMedia === 'video') {
-            elements.videoPlayer.play();
-            state.isPlaying = true;
-            updatePlayPauseIcon(true);
-            updateTrayState();
-            updateMPRISMetadata();
         }
     }
 }
@@ -6951,6 +7288,7 @@ try {
         if (window.aurivo?.dawlod?.setLocale) {
             window.aurivo.dawlod.setLocale(lang);
         }
+        postEmbeddedVideoSfxLanguage(lang);
     });
 } catch {
     // ignore
@@ -7048,6 +7386,7 @@ function handleTrackEnded() {
     if (state.stopAfterCurrent) {
         state.stopAfterCurrent = false; // Tek seferlik
         state.isPlaying = false;
+        resetSeekUiToStart();
         updatePlayPauseIcon(false);
         updateTrayState();
         return;
@@ -7067,6 +7406,7 @@ function handleTrackEnded() {
             // Liste bitti
             console.log('[PLAYBACK] Playlist finished');
             state.isPlaying = false;
+            resetSeekUiToStart();
             updatePlayPauseIcon(false);
             updateTrayState();
         }
@@ -7244,6 +7584,16 @@ function updateTimeDisplay() {
     if (currentSecInt !== state.lastMPRISPosition && currentSecInt % 2 === 0) {
         state.lastMPRISPosition = currentSecInt;
         updateMPRISMetadata();
+    }
+}
+
+function resetSeekUiToStart() {
+    if (elements.seekSlider) {
+        elements.seekSlider.value = 0;
+        updateRainbowSlider(elements.seekSlider, 0);
+    }
+    if (elements.currentTime) {
+        elements.currentTime.textContent = '00:00';
     }
 }
 
@@ -7501,14 +7851,17 @@ function loadSettingsToUI() {
 function applySettings() {
     if (!state.settings) return;
 
+    const crossfadeMs = Math.max(0, Math.min(15000, parseInt(document.getElementById('crossfadeMs').value, 10) || 0));
+    const pauseFadeMs = Math.max(0, Math.min(3000, parseInt(document.getElementById('pauseFadeMs').value, 10) || 0));
+
     state.settings.playback = {
         crossfadeStopEnabled: document.getElementById('crossfadeStop').checked,
         crossfadeManualEnabled: document.getElementById('crossfadeManual').checked,
         crossfadeAutoEnabled: document.getElementById('crossfadeAuto').checked,
         sameAlbumNoCrossfade: document.getElementById('sameAlbumNoCrossfade').checked,
-        crossfadeMs: parseInt(document.getElementById('crossfadeMs').value),
+        crossfadeMs,
         fadeOnPauseResume: document.getElementById('fadeOnPause').checked,
-        pauseFadeMs: parseInt(document.getElementById('pauseFadeMs').value)
+        pauseFadeMs
     };
 
     saveSettings();
@@ -7517,9 +7870,9 @@ function applySettings() {
 function resetPlaybackDefaults() {
     document.getElementById('crossfadeStop').checked = true;
     document.getElementById('crossfadeManual').checked = true;
-    document.getElementById('crossfadeAuto').checked = false;
-    document.getElementById('sameAlbumNoCrossfade').checked = true;
-    document.getElementById('sameAlbumNoCrossfade').disabled = true;
+    document.getElementById('crossfadeAuto').checked = true;
+    document.getElementById('sameAlbumNoCrossfade').checked = false;
+    document.getElementById('sameAlbumNoCrossfade').disabled = false;
     document.getElementById('crossfadeMs').value = 2000;
     document.getElementById('fadeOnPause').checked = false;
     document.getElementById('pauseFadeMs').value = 250;
@@ -7550,6 +7903,14 @@ function closeAboutModal() {
 // KEYBOARD SHORTCUTS
 // ============================================
 function handleKeyboard(e) {
+    if (elements.videoSfxModal && !elements.videoSfxModal.classList.contains('hidden')) {
+        if (e.code === 'Escape') {
+            e.preventDefault();
+            closeEmbeddedVideoSfxPanel();
+        }
+        return;
+    }
+
     // About modal açıksa önce onu kapat
     if (isAboutModalOpen()) {
         if (e.code === 'Escape') {
@@ -9453,7 +9814,7 @@ const EQController = {
         this.elements.bassKnobContainer = document.getElementById('bassBoostKnob');
         this.elements.bassKnobCanvas = document.getElementById('bassBoostCanvas');
         this.elements.bassKnobValue = document.getElementById('bassBoostValue');
-        this.elements.eqButton = document.querySelector('.eq-btn-player');
+        this.elements.eqButton = document.getElementById('eqBtn');
 
         // Preset yöneticisi elemanları
         this.elements.savePresetModal = document.getElementById('savePresetModal');
@@ -9585,11 +9946,50 @@ const EQController = {
     setupEventListeners() {
         // EQ button to open Sound Effects window
         if (this.elements.eqButton) {
-            this.elements.eqButton.addEventListener('click', () => {
+            this.elements.eqButton.addEventListener('click', async (e) => {
+                try {
+                    e.preventDefault();
+                    e.stopPropagation();
+                } catch { }
+
+                const videoWasPlaying = !!(state.activeMedia === 'video' && elements.videoPlayer && !elements.videoPlayer.paused);
+                console.log('[SFX-VID] EQ button click', { videoWasPlaying, activeMedia: state.activeMedia });
+
+                // Video için ayrı panel: tam soundEffects.html'i uygulama içinde embed aç.
+                if (state.activeMedia === 'video') {
+                    openEmbeddedVideoSfxPanel();
+                    return;
+                }
+
                 // Yeni Ses Efektleri penceresini aç
                 if (window.aurivo && window.aurivo.soundEffects) {
-                    window.aurivo.soundEffects.openWindow();
+                    if (videoWasPlaying) {
+                        // Important: arm guard BEFORE window open to catch immediate focus-change pause events.
+                        videoManualPauseByUser = false;
+                        forceVideoPlaybackForSfx = true;
+                        sfxOpenForceResumeUntil = Date.now() + 8000; // first-open stabilization window
+                        sfxOpenGuardUntil = Date.now() + 15000; // extra guard for delayed focus/occlusion pauses
+                        armVideoKeepAlive(60 * 60 * 1000);
+                        setSoundEffectsWindowOpen(true);
+                    }
+
+                    try { await syncVideoSfxStateFromEngine(); } catch { }
+                    await window.aurivo.soundEffects.openWindow();
                     console.log('🎛️ Ses Efektleri penceresi açılıyor...');
+
+                    if (videoWasPlaying) {
+                        setTimeout(() => { try { resumeVideoAfterAuxWindowOpen(); } catch { } }, 80);
+                        setTimeout(() => { try { resumeVideoAfterAuxWindowOpen(); } catch { } }, 320);
+                        setTimeout(() => { try { resumeVideoAfterAuxWindowOpen(); } catch { } }, 900);
+                        setTimeout(() => {
+                            try {
+                                if (state.activeMedia === 'video' && elements.videoPlayer?.paused && !videoManualPauseByUser) {
+                                    const p = elements.videoPlayer.play();
+                                    if (p && typeof p.catch === 'function') p.catch(() => { });
+                                }
+                            } catch { }
+                        }, 1800);
+                    }
                 } else {
                     // Fallback: Eski modal'ı aç
                     this.toggleModal();
@@ -10115,10 +10515,11 @@ const EQController = {
     },
 
     // Modal aç
-    openModal() {
+    openModal(opts = {}) {
         if (this.elements.modal) {
             this.elements.modal.classList.remove('hidden');
             this.elements.modal.classList.add('active');
+            this.elements.modal.classList.toggle('video-sfx-modal', !!opts.videoMode);
             // Başlat knob with current value
             if (this.elements.bassKnobCanvas) {
                 const ctx = this.elements.bassKnobCanvas.getContext('2d');
@@ -10131,6 +10532,7 @@ const EQController = {
     closeModal() {
         if (this.elements.modal) {
             this.elements.modal.classList.remove('active');
+            this.elements.modal.classList.remove('video-sfx-modal');
             this.elements.modal.classList.add('hidden');
         }
     },

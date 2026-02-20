@@ -10,6 +10,7 @@ class RainbowSlider {
         this.stepSize = config.stepSize !== undefined ? config.stepSize : 0.1;
         this.wheelStep = config.wheelStep || 0.5;
         this.frequency = config.frequency;
+        this.animatedHue = config.animatedHue !== false;
 
         // State variables matching C++ implementation
         this.shift = 0;
@@ -28,8 +29,29 @@ class RainbowSlider {
         // Start animation loop
         this.lastTime = performance.now();
         this._running = false;
-        this._rafId = null;
-        this.startAnimation();
+        if (this.animatedHue) this.startAnimation();
+        else this.draw();
+    }
+
+    static _runningInstances = new Set();
+    static _sharedRafId = null;
+    static _sharedTick = (timestamp) => {
+        let hasRunning = false;
+        RainbowSlider._runningInstances.forEach((inst) => {
+            if (!inst || !inst._running) return;
+            hasRunning = true;
+            inst.animate(timestamp);
+        });
+        if (hasRunning) {
+            RainbowSlider._sharedRafId = requestAnimationFrame(RainbowSlider._sharedTick);
+        } else {
+            RainbowSlider._sharedRafId = null;
+        }
+    };
+
+    static _ensureSharedLoop() {
+        if (RainbowSlider._sharedRafId !== null) return;
+        RainbowSlider._sharedRafId = requestAnimationFrame(RainbowSlider._sharedTick);
     }
 
     setRange(min, max) {
@@ -48,10 +70,20 @@ class RainbowSlider {
         
         this.targetValue = clamped;
 
+        const shouldNotify = opts?.notify !== false;
+
         // Programmatic updates (UI hydration, preset apply) should not trigger onChange
         // via the animation loop. "immediate" snaps value to target and avoids notify.
         if (opts && opts.immediate) {
             this.value = this.targetValue;
+            this.draw();
+            return;
+        }
+
+        if (!this.animatedHue) {
+            this.value = this.targetValue;
+            this.draw();
+            if (shouldNotify) this.notifyListeners();
             return;
         }
         
@@ -97,11 +129,17 @@ class RainbowSlider {
             let step = this.wheelStep;
             if (e.shiftKey) step *= 0.25;
             
-            this.setValue(this.value + stepDirection * step);
+            this.setValue(this.value + stepDirection * step, { notify: true });
         });
 
-        this.canvas.addEventListener('mouseenter', () => { this.isHovered = true; });
-        this.canvas.addEventListener('mouseleave', () => { this.isHovered = false; });
+        this.canvas.addEventListener('mouseenter', () => {
+            this.isHovered = true;
+            if (!this.animatedHue) this.draw();
+        });
+        this.canvas.addEventListener('mouseleave', () => {
+            this.isHovered = false;
+            if (!this.animatedHue) this.draw();
+        });
     }
     
     handleWindowMouseMove = (e) => {
@@ -160,25 +198,25 @@ class RainbowSlider {
         */
         
         let target = this.minValue + t * (this.maxValue - this.minValue);
-        this.setValue(target);
+        this.setValue(target, { notify: true });
     }
     
     startAnimation() {
+        if (!this.animatedHue) return;
         if (this._running) return;
         this._running = true;
         this.lastTime = performance.now();
-        this._rafId = requestAnimationFrame((t) => this.animate(t));
+        RainbowSlider._runningInstances.add(this);
+        RainbowSlider._ensureSharedLoop();
     }
 
     stopAnimation() {
         this._running = false;
-        if (this._rafId !== null) {
-            cancelAnimationFrame(this._rafId);
-            this._rafId = null;
-        }
+        RainbowSlider._runningInstances.delete(this);
     }
 
     setActive(active) {
+        if (!this.animatedHue) return;
         if (active) this.startAnimation();
         else this.stopAnimation();
     }
@@ -217,7 +255,6 @@ class RainbowSlider {
         this.lastTime = timestamp;
         this.draw();
         
-        this._rafId = requestAnimationFrame((t) => this.animate(t));
     }
     
     hsvToRgb(h, s, v, a = 255) {

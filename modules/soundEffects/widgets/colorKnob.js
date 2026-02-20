@@ -33,8 +33,29 @@ class ColorKnob {
         // Start animation loop
         this.lastTime = performance.now();
         this._running = false;
-        this._rafId = null;
         this.startAnimation();
+    }
+    
+    static _runningInstances = new Set();
+    static _sharedRafId = null;
+    static _sharedTick = (timestamp) => {
+        let hasRunning = false;
+        ColorKnob._runningInstances.forEach((inst) => {
+            if (!inst || !inst._running) return;
+            hasRunning = true;
+            inst.animate(timestamp);
+        });
+
+        if (hasRunning) {
+            ColorKnob._sharedRafId = requestAnimationFrame(ColorKnob._sharedTick);
+        } else {
+            ColorKnob._sharedRafId = null;
+        }
+    };
+
+    static _ensureSharedLoop() {
+        if (ColorKnob._sharedRafId !== null) return;
+        ColorKnob._sharedRafId = requestAnimationFrame(ColorKnob._sharedTick);
     }
 
     setRange(min, max) {
@@ -229,15 +250,13 @@ class ColorKnob {
         if (this._running) return;
         this._running = true;
         this.lastTime = performance.now();
-        this._rafId = requestAnimationFrame((t) => this.animate(t));
+        ColorKnob._runningInstances.add(this);
+        ColorKnob._ensureSharedLoop();
     }
 
     stopAnimation() {
         this._running = false;
-        if (this._rafId !== null) {
-            cancelAnimationFrame(this._rafId);
-            this._rafId = null;
-        }
+        ColorKnob._runningInstances.delete(this);
     }
 
     setActive(active) {
@@ -281,7 +300,6 @@ class ColorKnob {
         
         this.draw();
         
-        this._rafId = requestAnimationFrame((t) => this.animate(t));
     }
     
     // Qt HSV to CSS RGB Helper

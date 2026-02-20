@@ -53,6 +53,15 @@ body {
     height: 100vh;
 }
 
+html.embedded-sfx .minimize-btn,
+html.embedded-sfx .maximize-btn {
+    display: none !important;
+}
+
+html.embedded-sfx .sfx-container {
+    height: 100vh;
+}
+
 /* RTL / Arabic readability */
 body.rtl {
     font-family: "Noto Sans Arabic", "Noto Naskh Arabic", "Noto Kufi Arabic", "Cairo", "Tajawal", "Amiri",

@@ -1101,10 +1101,26 @@ static void pumpPcmFromStdin() {
     }
 #endif
 
-    // Mümkün olduğunca çok tam paketi ayrıştır.
+    // Güvenlik: anlık tıkanmalarda kuyruk çok büyürse en yeni veriyi koruyup eskileri at.
+    // Bu, görsel tepkinin "geriden gelmesini" engeller.
+    constexpr size_t kMaxBufferedBytes = 2 * 1024 * 1024; // 2 MB
+    constexpr size_t kKeepTailBytes = 512 * 1024;         // son 512 KB
+    if (g.pcmInBuf.size() > kMaxBufferedBytes) {
+        g.pcmInBuf.erase(g.pcmInBuf.begin(), g.pcmInBuf.begin() + (ptrdiff_t)(g.pcmInBuf.size() - kKeepTailBytes));
+    }
+
+    // Gecikmeyi düşürmek için: kuyruktaki tam paketlerden SADECE en yenisini işle.
+    // Böylece eski paketler render thread'ini geriden takip ettirmez.
+    size_t offset = 0;
+    bool hasComplete = false;
+    size_t latestPacketOffset = 0;
+    size_t latestPacketBytes = 0;
+    uint32_t latestChannels = 0;
+    uint32_t latestCountPerChannel = 0;
+
     for (;;) {
-        if (g.pcmInBuf.size() < 8) return;
-        const uint8_t* p = g.pcmInBuf.data();
+        if (g.pcmInBuf.size() - offset < 8) break;
+        const uint8_t* p = g.pcmInBuf.data() + offset;
         uint32_t channels = readU32LE(p + 0);
         uint32_t countPerChannel = readU32LE(p + 4);
 
@@ -1117,32 +1133,46 @@ static void pumpPcmFromStdin() {
         const size_t floatCount = (size_t)channels * (size_t)countPerChannel;
         const size_t payloadBytes = floatCount * sizeof(float);
         const size_t packetBytes = 8 + payloadBytes;
-        if (g.pcmInBuf.size() < packetBytes) return;
+        if (g.pcmInBuf.size() - offset < packetBytes) break;
 
-        // Yükü hizalı float tamponuna kopyala.
-        g.pcmTmp.resize(floatCount);
-        std::memcpy(g.pcmTmp.data(), p + 8, payloadBytes);
+        hasComplete = true;
+        latestPacketOffset = offset;
+        latestPacketBytes = packetBytes;
+        latestChannels = channels;
+        latestCountPerChannel = countPerChannel;
+        offset += packetBytes;
+    }
 
-        if (g.pm) {
-            const unsigned int maxN = g.pmMaxSamplesPerChannel;
-            projectm_channels ch = (channels == 2) ? PROJECTM_STEREO : PROJECTM_MONO;
-            const float* samplesPtr = g.pcmTmp.data();
-            unsigned int n = (unsigned int)countPerChannel;
+    if (!hasComplete) return;
 
-            // projectM kanal başına en fazla örnek saklar. "kalanlar atıldı" belirsizliğini önlemek için,
-            // paketler iç tamponu aştığında açıkça yalnızca en yeni örnekleri besle.
-            if (maxN > 0 && n > maxN) {
-                const size_t skipFrames = (size_t)(n - maxN);
-                samplesPtr = g.pcmTmp.data() + skipFrames * (size_t)channels;
-                n = maxN;
-            }
+    const uint8_t* latestPacket = g.pcmInBuf.data() + latestPacketOffset;
+    const size_t latestFloatCount = (size_t)latestChannels * (size_t)latestCountPerChannel;
+    const size_t latestPayloadBytes = latestFloatCount * sizeof(float);
 
-            projectm_pcm_add_float(g.pm, samplesPtr, n, ch);
-            g.lastPcmMs = nowMs();
+    // Yükü hizalı float tamponuna kopyala.
+    g.pcmTmp.resize(latestFloatCount);
+    std::memcpy(g.pcmTmp.data(), latestPacket + 8, latestPayloadBytes);
+
+    if (g.pm) {
+        const unsigned int maxN = g.pmMaxSamplesPerChannel;
+        projectm_channels ch = (latestChannels == 2) ? PROJECTM_STEREO : PROJECTM_MONO;
+        const float* samplesPtr = g.pcmTmp.data();
+        unsigned int n = (unsigned int)latestCountPerChannel;
+
+        // projectM kanal başına en fazla örnek saklar. Paketler büyükse en yeni kısmı besle.
+        if (maxN > 0 && n > maxN) {
+            const size_t skipFrames = (size_t)(n - maxN);
+            samplesPtr = g.pcmTmp.data() + skipFrames * (size_t)latestChannels;
+            n = maxN;
         }
 
-        // Paketi tüket.
-        g.pcmInBuf.erase(g.pcmInBuf.begin(), g.pcmInBuf.begin() + (ptrdiff_t)packetBytes);
+        projectm_pcm_add_float(g.pm, samplesPtr, n, ch);
+        g.lastPcmMs = nowMs();
+    }
+
+    // Tüm tam paketleri tüket; yalnızca son yarım paket (varsa) tutulur.
+    if (offset > 0) {
+        g.pcmInBuf.erase(g.pcmInBuf.begin(), g.pcmInBuf.begin() + (ptrdiff_t)offset);
     }
 }
 
@@ -1243,7 +1273,8 @@ static bool applyPresetByIndexNow(int idx) {
     if (idx < 0 || idx >= (int)g.presets.size()) return false;
     g.currentPreset = idx;
     const auto& p = g.presets[idx];
-    projectm_load_preset_file(g.pm, p.path.c_str(), true);
+    // Preset geçişindeki kısa takılmaları azaltmak için yumuşak geçişi kapat.
+    projectm_load_preset_file(g.pm, p.path.c_str(), false);
     return true;
 }
 

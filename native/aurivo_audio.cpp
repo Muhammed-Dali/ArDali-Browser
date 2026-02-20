@@ -631,7 +631,24 @@ public:
         
         // Format plugins'ini yükle
         // AAC/M4A support için bass_aac plugin
-        HPLUGIN aacPlugin = BASS_PluginLoad("libbass_aac.so", 0);
+#if defined(_WIN32)
+        const char *bassAacPlugin = "bass_aac.dll";
+        const char *bassFlacPlugin = "bassflac.dll";
+        const char *bassApePlugin = "bassape.dll";
+        const char *bassWvPlugin = "basswv.dll";
+#elif defined(__APPLE__)
+        const char *bassAacPlugin = "libbass_aac.dylib";
+        const char *bassFlacPlugin = "libbassflac.dylib";
+        const char *bassApePlugin = "libbassape.dylib";
+        const char *bassWvPlugin = "libbasswv.dylib";
+#else
+        const char *bassAacPlugin = "libbass_aac.so";
+        const char *bassFlacPlugin = "libbassflac.so";
+        const char *bassApePlugin = "libbassape.so";
+        const char *bassWvPlugin = "libbasswv.so";
+#endif
+
+        HPLUGIN aacPlugin = BASS_PluginLoad(bassAacPlugin, 0);
         if (aacPlugin) {
             printf("✓ BASS AAC Plugin loaded (M4A/AAC support enabled)\n");
         } else {
@@ -639,19 +656,19 @@ public:
         }
         
         // FLAC support için bassflac plugin  
-        HPLUGIN flacPlugin = BASS_PluginLoad("libbassflac.so", 0);
+        HPLUGIN flacPlugin = BASS_PluginLoad(bassFlacPlugin, 0);
         if (flacPlugin) {
             printf("✓ BASS FLAC Plugin loaded\n");
         }
         
         // APE support için bassape plugin
-        HPLUGIN apePlugin = BASS_PluginLoad("libbassape.so", 0);
+        HPLUGIN apePlugin = BASS_PluginLoad(bassApePlugin, 0);
         if (apePlugin) {
             printf("✓ BASS APE Plugin loaded\n");
         }
         
         // WavePack support için basswv plugin
-        HPLUGIN wvPlugin = BASS_PluginLoad("libbasswv.so", 0);
+        HPLUGIN wvPlugin = BASS_PluginLoad(bassWvPlugin, 0);
         if (wvPlugin) {
             printf("✓ BASS WavePack Plugin loaded\n");
         }

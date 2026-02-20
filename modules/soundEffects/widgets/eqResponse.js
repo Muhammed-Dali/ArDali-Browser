@@ -1,8 +1,9 @@
 
 class EQResponse {
-    constructor(canvas) {
+    constructor(canvas, options = {}) {
         this.canvas = canvas;
         this.ctx = this.canvas.getContext('2d');
+        this.animated = options.animated !== false;
         
         this.bandValues = new Array(32).fill(0);
         this.bandPositions = []; // X coordinates of slider centers
@@ -13,7 +14,8 @@ class EQResponse {
         this.resize();
         window.addEventListener('resize', () => this.resize());
         
-        this.startAnimation();
+        if (this.animated) this.startAnimation();
+        else this.draw();
     }
     
     resize() {
@@ -31,7 +33,7 @@ class EQResponse {
     
     setBandValues(values) {
         this.bandValues = values;
-        // We don't force redraw here, animation loop handles it
+        if (!this.animated || !this.animationId) this.draw();
     }
     
     startAnimation() {
@@ -55,6 +57,10 @@ class EQResponse {
     }
 
     setActive(active) {
+        if (!this.animated) {
+            this.draw();
+            return;
+        }
         if (active) this.startAnimation();
         else this.stopAnimation();
     }
