@@ -277,23 +277,6 @@ function refreshTrayMenu() {
 			},
 		},
 		{
-			label: i18n("pasteVideoLink"),
-			click: async () => {
-				const text = clipboard.readText();
-				appState.mainWindow?.show();
-				if (app.dock) app.dock.show();
-				if (appState.indexPageIsOpen) {
-					appState.mainWindow.webContents.send("link", text);
-				} else {
-					await appState.mainWindow.loadFile("html/index.html");
-					appState.indexPageIsOpen = true;
-					appState.mainWindow.webContents.once("did-finish-load", () => {
-						appState.mainWindow.webContents.send("link", text);
-					});
-				}
-			},
-		},
-		{
 			label: i18n("downloadPlaylistButton"),
 			click: () => {
 				appState.indexPageIsOpen = false;

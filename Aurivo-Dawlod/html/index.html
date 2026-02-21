@@ -96,15 +96,6 @@
         </select>
     </div>
 
-
-    <button id="pasteUrl">
-        <span id="pasteText" data-translate="pasteText">Click to paste video link from clipboard</span>
-        <span class="paste-keys">
-            <span class="key" id="pasteCtrlKey">Ctrl</span><span class="key">V</span>
-        </span>
-    </button>
-
-
     <div id="loadingWrapper">
         <span id="processing" data-translate="processing">Loading </span>
         <svg version="1.1" id="L4" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" x="0px"
@@ -260,14 +251,6 @@
     <button class="blueBtn" id="clearBtn" data-translate="clearDownloads">Clear Downloads</button>
 
     <div id="goToTop"></div>
-
-    <script>
-        const os = require("os")
-
-        if (os.platform() === "darwin") {
-            document.getElementById("pasteCtrlKey").textContent = "⌘";
-        }
-    </script>
 
     <div id="popupContainer" class="popup-container"></div>
 

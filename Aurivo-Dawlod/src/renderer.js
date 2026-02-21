@@ -13,7 +13,6 @@ const {
 const CONSTANTS = {
 	DOM_IDS: {
 		// Main UI
-		PASTE_URL_BTN: "pasteUrl",
 		LOADING_WRAPPER: "loadingWrapper",
 		INCORRECT_MSG: "incorrectMsg",
 		ERROR_BTN: "errorBtn",
@@ -176,7 +175,6 @@ class AurivoDawlodApp {
 		} catch (error) {
 			console.error("Initialization failed:", error);
 			$(CONSTANTS.DOM_IDS.INCORRECT_MSG).textContent = error.message;
-			$(CONSTANTS.DOM_IDS.PASTE_URL_BTN).style.display = "none";
 		} finally {
 			this._hideStartupSplash();
 		}
@@ -271,11 +269,6 @@ class AurivoDawlodApp {
 	}
 
 	_ensureCoreUiResponsive() {
-		const pasteBtn = $(CONSTANTS.DOM_IDS.PASTE_URL_BTN);
-		if (pasteBtn && typeof pasteBtn.onclick !== "function") {
-			pasteBtn.onclick = () => this.pasteAndGetInfo();
-		}
-
 		const routeToSecondary = (id, fileName) => {
 			const el = $(id);
 			if (!el || typeof el.onclick === "function") return;
@@ -803,30 +796,6 @@ class AurivoDawlodApp {
 	 * Attaches all necessary event listeners for the UI.
 	 */
 	_addEventListeners() {
-		$(CONSTANTS.DOM_IDS.PASTE_URL_BTN).addEventListener("click", () =>
-			this.pasteAndGetInfo()
-		);
-		document.addEventListener("keydown", (event) => {
-			if (
-				((event.ctrlKey && event.key === "v") ||
-					(event.metaKey &&
-						event.key === "v" &&
-						platform() === "darwin")) &&
-				document.activeElement.tagName !== "INPUT" &&
-				document.activeElement.tagName !== "TEXTAREA"
-			) {
-				$(CONSTANTS.DOM_IDS.PASTE_URL_BTN).classList.add("active");
-
-				setTimeout(() => {
-					$(CONSTANTS.DOM_IDS.PASTE_URL_BTN).classList.remove(
-						"active"
-					);
-				}, 150);
-
-				this.pasteAndGetInfo();
-			}
-		});
-
 		// Download buttons
 		$(CONSTANTS.DOM_IDS.VIDEO_DOWNLOAD_BTN).addEventListener("click", () =>
 			this.handleDownloadRequest("video")
@@ -967,13 +936,6 @@ class AurivoDawlodApp {
 	}
 
 	// --- Public Methods ---
-
-	/**
-	 * Pastes URL from clipboard and initiates fetching video info.
-	 */
-	pasteAndGetInfo() {
-		this.getInfo(clipboard.readText());
-	}
 
 	/**
 	 * Fetches video metadata from a given URL.
