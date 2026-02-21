@@ -160,10 +160,13 @@ class AurivoAudioEngine {
 
         try {
             const result = nativeAudio.loadFile(filePath);
-            if (result) {
+            const ok = (result === true) || (result && typeof result === 'object' && result.success === true);
+            if (ok) {
                 console.log('✓ Dosya yüklendi:', path.basename(filePath));
+            } else if (result && typeof result === 'object' && result.error) {
+                console.warn('⚠ Dosya yüklenemedi:', result.error, '|', path.basename(filePath));
             }
-            return result;
+            return ok;
         } catch (error) {
             console.error('Dosya yükleme hatası:', error);
             return false;
@@ -1885,7 +1888,8 @@ class AurivoAudioEngine {
             }
 
             // Şarkı bitti mi kontrol et
-            if (!this.isPlaying() && this.getPosition() >= this.getDuration() - 100) {
+            const dur = this.getDuration();
+            if (dur > 250 && !this.isPlaying() && this.getPosition() >= dur - 100) {
                 if (this.callbacks.onPlaybackEnd) {
                     this.callbacks.onPlaybackEnd();
                 }

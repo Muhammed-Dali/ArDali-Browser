@@ -74,6 +74,8 @@ const state = {
     nativeIpcBound: false,
     nativeIpcActive: false,
     nativeIpcLastAt: 0,
+    // Manuel crossfade sırasında eski track pozisyon tick'leri seek bar'ı geri çekmesin.
+    manualCrossfadeUiLock: null,
     // MPRIS takibi
     lastMPRISPosition: -1,
     // Sekme bazlı konum hafızası
@@ -95,7 +97,9 @@ const state = {
     playlistSortOrder: 'asc', // auto sort default: A-Z
     missingFileWatchTimer: null,
     missingFileWatchKey: null,
-    missingFileWarned: new Set()
+    missingFileWarned: new Set(),
+    // Orijinal dosya yolu -> native engine tarafından oynatılabilen yol (örn. transcoded flac cache)
+    nativePlayablePathBySource: new Map()
 };
 
 // Web player <-> uygulama ses senkronu (sonsuz döngü/jitter önleme)
@@ -241,6 +245,18 @@ function recreateWebView(reason = '') {
 
 function attachWebViewEvents(webviewEl) {
     if (!webviewEl) return;
+
+    // Web fullscreen sırasında üst uygulama menüsünü gizle/göster.
+    webviewEl.addEventListener('enter-html-full-screen', () => {
+        try {
+            window.aurivo?.electronAPI?.setMenuBarVisible?.(false);
+        } catch { }
+    });
+    webviewEl.addEventListener('leave-html-full-screen', () => {
+        try {
+            window.aurivo?.electronAPI?.setMenuBarVisible?.(true);
+        } catch { }
+    });
 
     webviewEl.addEventListener('did-fail-load', (e) => {
         try {
@@ -1210,7 +1226,24 @@ function setupEventListeners() {
 
     // Video oynatıcı çift tıklama - tam ekran
     if (elements.videoPlayer) {
-        elements.videoPlayer.addEventListener('dblclick', toggleVideoFullscreen);
+        // Video elementi üstünde çift tıkta fullscreen.
+        // stopPropagation ile page-level fallback'in ikinci kez tetiklemesini engeller.
+        elements.videoPlayer.addEventListener('dblclick', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            console.log('[VIDEO-FS] dblclick on videoPlayer');
+            toggleVideoFullscreen();
+        });
+    }
+    if (elements.videoPage) {
+        // Fallback: video üstündeki overlay/katman değişimlerinde de çift tık kaçmasın.
+        elements.videoPage.addEventListener('dblclick', (e) => {
+            if (!isVideoFullscreenEligible()) return;
+            if (e.target?.closest('.video-fs-controls')) return;
+            e.preventDefault();
+            console.log('[VIDEO-FS] dblclick on videoPage');
+            toggleVideoFullscreen();
+        });
     }
 
     // TAM EKRAN VIDEO KONTROL PANELİ - Olay Dinleyicileri
@@ -1241,6 +1274,11 @@ function setupEventListeners() {
 
     // Klavye Kısayolları
     document.addEventListener('keydown', handleKeyboard);
+    try {
+        window.aurivo?.electronAPI?.onF11Hotkey?.(() => {
+            handleF11Shortcut();
+        });
+    } catch { }
 
     // Sürükle & Bırak - geliştirilmiş
     setupDragAndDrop();
@@ -2761,28 +2799,133 @@ function setupVideoPlayerEvents() {
 }
 
 // Video tam ekran geçişi
-function toggleVideoFullscreen() {
-    const videoPage = document.getElementById('videoPage');
-
-    if (!document.fullscreenElement) {
-        // Tam ekrana geç
-        if (videoPage.requestFullscreen) {
-            videoPage.requestFullscreen();
-        } else if (videoPage.webkitRequestFullscreen) {
-            videoPage.webkitRequestFullscreen();
-        } else if (videoPage.mozRequestFullScreen) {
-            videoPage.mozRequestFullScreen();
-        }
-    } else {
-        // Tam ekrandan çık
-        if (document.exitFullscreen) {
-            document.exitFullscreen();
-        } else if (document.webkitExitFullscreen) {
-            document.webkitExitFullscreen();
-        } else if (document.mozCancelFullScreen) {
-            document.mozCancelFullScreen();
-        }
+async function setWindowVideoFullscreen(enabled) {
+    try {
+        const api = window.aurivo?.electronAPI;
+        if (!api || typeof api.setFullscreen !== 'function') return false;
+        console.log('[VIDEO-FS] setWindowVideoFullscreen request:', !!enabled);
+        const result = await api.setFullscreen(!!enabled);
+        try {
+            if (typeof api.setMenuBarVisible === 'function') {
+                await api.setMenuBarVisible(!enabled);
+            }
+        } catch { }
+        console.log('[VIDEO-FS] setWindowVideoFullscreen result:', result);
+        return !!result;
+    } catch {
+        console.warn('[VIDEO-FS] setWindowVideoFullscreen error');
+        return false;
     }
+}
+
+async function setWindowAppFullscreen(enabled) {
+    try {
+        const api = window.aurivo?.electronAPI;
+        if (!api || typeof api.setFullscreen !== 'function') return false;
+        const result = await api.setFullscreen(!!enabled);
+        try {
+            if (typeof api.setMenuBarVisible === 'function') {
+                await api.setMenuBarVisible(!enabled);
+            }
+        } catch { }
+        return !!result;
+    } catch {
+        return false;
+    }
+}
+
+function isWebFullscreenEligible() {
+    try {
+        if (!elements.webView) return false;
+        if (!isPageVisible(elements.webPage)) return false;
+        return state.currentPage === 'web' || state.currentPanel === 'web' || state.activeMedia === 'web';
+    } catch {
+        return false;
+    }
+}
+
+async function toggleWebFullscreen() {
+    try {
+        const webview = elements.webView;
+        if (!webview || typeof webview.executeJavaScript !== 'function') return;
+        await webview.executeJavaScript(`
+            (() => {
+                try {
+                    const doc = document;
+                    const fsEl = doc.fullscreenElement || doc.webkitFullscreenElement;
+                    if (fsEl) {
+                        if (doc.exitFullscreen) {
+                            doc.exitFullscreen();
+                            return true;
+                        }
+                        if (doc.webkitExitFullscreen) {
+                            doc.webkitExitFullscreen();
+                            return true;
+                        }
+                    }
+
+                    const ytBtn = doc.querySelector('.ytp-fullscreen-button');
+                    if (ytBtn) {
+                        ytBtn.click();
+                        return true;
+                    }
+
+                    const v = doc.querySelector('video');
+                    const target = (v && v.parentElement) ? v.parentElement : v;
+                    if (target && target.requestFullscreen) {
+                        target.requestFullscreen();
+                        return true;
+                    }
+                    return false;
+                } catch {
+                    return false;
+                }
+            })();
+        `);
+    } catch {
+        // ignore
+    }
+}
+
+// Video tam ekran geçişi
+async function toggleVideoFullscreen() {
+    const now = Date.now();
+    if (now < fsToggleGuardUntil) {
+        console.log('[VIDEO-FS] toggle ignored by guard');
+        return;
+    }
+    fsToggleGuardUntil = now + 450;
+
+    const videoPage = document.getElementById('videoPage');
+    if (!videoPage) return;
+    const eligible = isVideoFullscreenEligible();
+    console.log('[VIDEO-FS] toggle requested', {
+        eligible,
+        activeMedia: state.activeMedia,
+        currentPage: state.currentPage,
+        hidden: !!videoPage.classList.contains('hidden')
+    });
+    if (!eligible) return;
+
+    const winFsActive = videoPage.classList.contains('fs-fallback-active');
+
+    if (winFsActive) {
+        console.log('[VIDEO-FS] exiting BrowserWindow fullscreen path');
+        await exitVideoFullscreen();
+        return;
+    }
+
+    // Gerçek ekran fullscreen için sadece BrowserWindow fullscreen kullan.
+    console.log('[VIDEO-FS] trying BrowserWindow fullscreen enter');
+    const winOk = await setWindowVideoFullscreen(true);
+    if (winOk) {
+        videoPage.classList.add('fs-fallback-active');
+        handleFullscreenChange();
+        console.log('[VIDEO-FS] BrowserWindow fullscreen entered');
+        return;
+    }
+
+    console.warn('[VIDEO] BrowserWindow fullscreen enter failed.');
 }
 
 // ============================================
@@ -2808,6 +2951,7 @@ const fsHudState = {
     volumeTimer: null,
     brightnessTimer: null
 };
+let fsToggleGuardUntil = 0;
 
 function fsT(key, fallback, vars) {
     try {
@@ -2827,6 +2971,19 @@ function uiT(key, fallback, vars) {
         // yoksay
     }
     return fallback ?? String(key);
+}
+
+function isVideoFullscreenEligible() {
+    try {
+        const page = elements.videoPage || document.getElementById('videoPage');
+        const video = elements.videoPlayer || document.getElementById('videoPlayer');
+        if (!page || page.classList.contains('hidden')) return false;
+        if (!video) return false;
+        const src = String(video.currentSrc || video.src || '').trim();
+        return !!src;
+    } catch {
+        return false;
+    }
 }
 
 function getFsOnOffLabel(enabled) {
@@ -2875,15 +3032,8 @@ function syncFsMenuOpenState() {
 function isVideoFullscreenActive() {
     const videoPage = document.getElementById('videoPage');
     if (!videoPage) return false;
-
-    const activeEl =
-        document.fullscreenElement ||
-        document.webkitFullscreenElement ||
-        document.mozFullScreenElement;
-
-    // Bazı sistemlerde tam ekran video elementinde/child node'da açılabiliyor.
-    // Bu durumda da video sayfası tam ekran kabul edilsin.
-    return !!activeEl && (activeEl === videoPage || videoPage.contains(activeEl));
+    if (videoPage.classList.contains('fs-fallback-active')) return true;
+    return false;
 }
 
 function isFsSettingsButtonHit(e, pad = 10) {
@@ -3314,6 +3464,7 @@ function handleFullscreenChange() {
     } else {
         // Tam ekrandan çıktı
         videoPage?.classList.remove('fs-active');
+        videoPage?.classList.remove('hide-cursor');
         stopFsHideTimer();
 
         setFsMenuVisible(document.getElementById('fsSettingsMenu'), false);
@@ -3664,13 +3815,22 @@ function handleFsSettingsClick(e) {
     }
 }
 
-function exitVideoFullscreen() {
-    if (document.exitFullscreen) {
-        document.exitFullscreen();
-    } else if (document.webkitExitFullscreen) {
-        document.webkitExitFullscreen();
-    } else if (document.mozCancelFullScreen) {
-        document.mozCancelFullScreen();
+async function exitVideoFullscreen() {
+    const videoPage = document.getElementById('videoPage');
+    if (!videoPage) return;
+
+    if (videoPage.classList.contains('fs-fallback-active')) {
+        await setWindowVideoFullscreen(false);
+        videoPage.classList.remove('fs-fallback-active');
+        handleFullscreenChange();
+        return;
+    }
+
+    // Sınıf senkronu kaymış olursa da pencere fullscreen'den çıkmayı dene.
+    const winClosed = await setWindowVideoFullscreen(false);
+    if (winClosed) {
+        videoPage.classList.remove('fs-fallback-active');
+        handleFullscreenChange();
     }
 }
 
@@ -4252,30 +4412,30 @@ async function handlePlatformClick(btn) {
                 elements.webView.setUserAgent(getEmbeddedDesktopUserAgent());
             } catch { }
             const nextUrl = parsed.toString();
+            const currentUrl = getWebViewUrlSafe();
+            const currentHost = parseHttpUrl(currentUrl)?.hostname?.toLowerCase?.() || '';
+            const nextHost = parsed.hostname?.toLowerCase?.() || '';
+            const isYouTubeFamilySwitch =
+                currentHost.endsWith('youtube.com') &&
+                nextHost.endsWith('youtube.com') &&
+                currentHost !== nextHost;
+
             webRuntime.lastRequestedUrl = nextUrl;
             resetWebRuntime();
-            // Bazı durumlarda loadURL sessiz fail edebiliyor; src fallback ile zorla.
-            try {
-                const maybePromise = elements.webView.loadURL(nextUrl);
-                if (maybePromise && typeof maybePromise.then === 'function') {
-                    maybePromise.catch(() => { });
-                }
-            } catch {
-                // fall through
+
+            // YouTube Music <-> YouTube geçişinde bazen guest mevcut route'ta takılı kalabiliyor.
+            // Kısa bir about:blank flush sonrası zorla hedef URL yüklemek geçişi kararlı yapar.
+            if (isYouTubeFamilySwitch) {
+                try { elements.webView.stop(); } catch { }
+                try { elements.webView.loadURL('about:blank'); } catch { }
+                setTimeout(() => {
+                    safeLoadWebUrl(nextUrl, { reason: 'platform-click:yt-family-switch', force: true });
+                }, 90);
+            } else {
+                safeLoadWebUrl(nextUrl, { reason: 'platform-click', force: true });
             }
-            try {
-                const cur = getWebViewUrlSafe();
-                if (!cur || cur === 'about:blank' || cur === nextUrl) {
-                    // no-op
-                } else {
-                    // If we are stuck, force by setting src.
-                    // (loadURL may be blocked before guest is ready in some Electron builds)
-                }
-            } catch { }
-            try {
-                // Always set src too; Chromium will ignore if already on same URL.
-                elements.webView.setAttribute('src', nextUrl);
-            } catch { }
+
+            try { elements.webView.focus(); } catch { }
             try { updateNavButtons(); } catch { }
         } catch (e) {
             // Webview yükleme hatası - yoksay
@@ -4303,6 +4463,7 @@ async function handlePlatformClick(btn) {
 function updatePlatformCover(platform) {
     const platformCovers = {
         'youtube': 'icons/youtube_modern.svg',
+        'ytmusic': 'icons/youtube_music.svg',
         'soundcloud': 'icons/soundcloud.svg',
         'deezer': 'icons/deezer.svg',
         'facebook': 'icons/facebook.svg',
@@ -6322,6 +6483,10 @@ async function playIndex(index) {
             console.log('🔥 BASS Audio Engine hatası:', result.error);
         }
         if (result === true || (result && result.success)) {
+            try {
+                const pathUsed = (result && typeof result === 'object' && result.pathUsed) ? String(result.pathUsed) : String(item.path);
+                state.nativePlayablePathBySource.set(String(item.path), pathUsed);
+            } catch { }
             window.aurivo.audio.setVolume((state.volume || 0) / 100);
             console.log('🎵 window.aurivo.audio.play() çağrılıyor...');
             window.aurivo.audio.play();
@@ -6374,7 +6539,7 @@ function playWithHTML5Audio(item) {
 }
 
 // Native engine ile "yumuşak/çapraz" geçiş (overlap yok: fade-out -> track switch -> fade-in)
-async function startNativeTransitionToIndex(index, ms) {
+async function startNativeTransitionToIndex(index, ms, options = {}) {
     if (state.crossfadeInProgress) return;
 
     if (state.crossfadeInProgress) return;
@@ -6387,18 +6552,56 @@ async function startNativeTransitionToIndex(index, ms) {
     const fromIndex = state.currentIndex;
     const fromItem = fromIndex >= 0 ? state.playlist[fromIndex] : null;
     const toItem = state.playlist[index];
+    const fromPlayablePath = fromItem ? (state.nativePlayablePathBySource.get(String(fromItem.path)) || fromItem.path) : null;
+    const toPlayablePath = state.nativePlayablePathBySource.get(String(toItem.path)) || toItem.path;
+    const immediateUi = !!options.immediateUi;
+    const skipOverlapTry = !!options.skipOverlapTry;
+    const totalMs = Math.max(0, Number(ms) || 0);
+    const outMs = Math.max(80, Math.floor(totalMs * 0.5));
+    const inMs = Math.max(80, totalMs - outMs);
+
+    const armManualUiLock = () => {
+        if (!immediateUi) return;
+        const now = Date.now();
+        state.manualCrossfadeUiLock = {
+            active: true,
+            targetIndex: index,
+            startedAt: now,
+            // Crossfade bitişini beklemeden yeni stream tick'i gelene kadar kısa kilit.
+            unlockAt: now + Math.max(700, Math.min(totalMs + 350, 3500))
+        };
+    };
+
+    const applyTargetUiNow = () => {
+        state.currentIndex = index;
+        state.isPlaying = true;
+        updatePlayPauseIcon(true);
+        elements.nowPlayingLabel.textContent = `${uiT('nowPlaying.prefix', 'Now Playing')}: ${toItem.name}`;
+        renderPlaylist();
+        extractAlbumArt(toItem.path);
+        resetSeekUiToStart();
+        armManualUiLock();
+    };
+
+    const restoreSourceUi = () => {
+        if (fromIndex < 0 || !fromItem) return;
+        state.manualCrossfadeUiLock = null;
+        state.currentIndex = fromIndex;
+        state.isPlaying = true;
+        updatePlayPauseIcon(true);
+        elements.nowPlayingLabel.textContent = `${uiT('nowPlaying.prefix', 'Now Playing')}: ${fromItem.name}`;
+        renderPlaylist();
+        extractAlbumArt(fromItem.path);
+    };
 
     state.crossfadeInProgress = true;
     state.autoCrossfadeTriggered = false;
     state.trackAboutToEnd = false;
 
-    const totalMs = Math.max(0, Number(ms) || 0);
-    const outMs = Math.max(80, Math.floor(totalMs * 0.5));
-    const inMs = Math.max(80, totalMs - outMs);
     const targetVol = Math.max(0, Math.min(1, (state.volume || 0) / 100));
 
     // Native true overlap crossfade (iki parça üst üste)
-    if (totalMs > 0 && typeof window.aurivo.audio.crossfadeTo === 'function') {
+    if (!skipOverlapTry && totalMs > 0 && typeof window.aurivo.audio.crossfadeTo === 'function') {
         state.crossfadeInProgress = true;
         state.autoCrossfadeTriggered = false;
         state.trackAboutToEnd = false;
@@ -6412,8 +6615,12 @@ async function startNativeTransitionToIndex(index, ms) {
                 switchPage('music');
             }
 
+            if (immediateUi) {
+                applyTargetUiNow();
+            }
+
             // Crossfade'i başlat (native tarafında: prev fade-out, new fade-in)
-            const result = await window.aurivo.audio.crossfadeTo(toItem.path, totalMs);
+            const result = await window.aurivo.audio.crossfadeTo(toPlayablePath, totalMs);
             const ok = (result === true) || (result && result.success);
             if (!ok) {
                 console.warn('[CROSSFADE] Native overlap crossfade failed, fallback to non-overlap', result);
@@ -6421,12 +6628,9 @@ async function startNativeTransitionToIndex(index, ms) {
             }
 
             // UI update: yeni parça ana parça gibi görünsün
-            state.currentIndex = index;
-            state.isPlaying = true;
-            updatePlayPauseIcon(true);
-            elements.nowPlayingLabel.textContent = `${uiT('nowPlaying.prefix', 'Now Playing')}: ${toItem.name}`;
-            renderPlaylist();
-            extractAlbumArt(toItem.path);
+            if (!immediateUi) {
+                applyTargetUiNow();
+            }
 
             if (state._nativeOverlapCrossfadeTimer) {
                 clearTimeout(state._nativeOverlapCrossfadeTimer);
@@ -6454,8 +6658,12 @@ async function startNativeTransitionToIndex(index, ms) {
                 updatePlayPauseIcon(true);
                 return;
             }
-            const res = await window.aurivo.audio.loadFile(fromItem.path);
+            const res = await window.aurivo.audio.loadFile(fromPlayablePath || fromItem.path);
             if (res === true || (res && res.success)) {
+                try {
+                    const used = (res && typeof res === 'object' && res.pathUsed) ? String(res.pathUsed) : String(fromPlayablePath || fromItem.path);
+                    state.nativePlayablePathBySource.set(String(fromItem.path), used);
+                } catch { }
                 await window.aurivo.audio.setVolume?.(0);
                 await window.aurivo.audio.play?.();
                 startNativePositionUpdates();
@@ -6467,6 +6675,7 @@ async function startNativeTransitionToIndex(index, ms) {
                     await window.aurivo.audio.setVolume?.(targetVol);
                 }
             }
+            if (immediateUi) restoreSourceUi();
         } catch (e) {
             console.error('[CROSSFADE] recoverOldTrack error:', e);
         }
@@ -6494,17 +6703,24 @@ async function startNativeTransitionToIndex(index, ms) {
             switchPage('music');
         }
 
+        if (immediateUi) {
+            applyTargetUiNow();
+        }
+
         // Yeni dosyayı yükle
-        const result = await window.aurivo.audio.loadFile(toItem.path);
+        const result = await window.aurivo.audio.loadFile(toPlayablePath);
         console.log('[CROSSFADE] native loadFile result:', result);
         if (!(result === true || (result && result.success))) {
             console.error('[CROSSFADE] Native transition: loadFile failed', result);
             await recoverOldTrack();
             return;
         }
+        try {
+            const used = (result && typeof result === 'object' && result.pathUsed) ? String(result.pathUsed) : String(toPlayablePath);
+            state.nativePlayablePathBySource.set(String(toItem.path), used);
+        } catch { }
 
         // Başlat
-        state.currentIndex = index;
         await window.aurivo.audio.setVolume?.(0);
         await window.aurivo.audio.play?.();
         // Bazı durumlarda play çağrısı ilk seferde başlamayabiliyor -> kısa kontrol + retry
@@ -6523,11 +6739,9 @@ async function startNativeTransitionToIndex(index, ms) {
         startNativePositionUpdates();
 
         // UI update
-        state.isPlaying = true;
-        updatePlayPauseIcon(true);
-        elements.nowPlayingLabel.textContent = `${uiT('nowPlaying.prefix', 'Now Playing')}: ${toItem.name}`;
-        renderPlaylist();
-        extractAlbumArt(toItem.path);
+        if (!immediateUi) {
+            applyTargetUiNow();
+        }
 
         // Fade in
         if (totalMs > 0 && typeof window.aurivo.audio.fadeVolumeTo === 'function') {
@@ -6620,6 +6834,25 @@ function handleNativePositionTick(positionMs, durationMs, isPlaying) {
     state.nativePositionMs = Number(positionMs) || 0;
     state.nativeDurationSec = durationSec;
 
+    // Manuel crossfade'de UI anında yeni parçaya alınır.
+    // Bu sırada birkaç eski tick gelirse seek bar geri zıplamasın.
+    const lock = state.manualCrossfadeUiLock;
+    if (lock?.active && state.crossfadeInProgress) {
+        const now = Date.now();
+        const looksLikeNewTrack = positionMs <= 1800; // ~0-1.8s yeni track başlangıcı
+        if (looksLikeNewTrack || now >= lock.unlockAt) {
+            state.manualCrossfadeUiLock = null;
+        } else {
+            if (elements.currentTime) elements.currentTime.textContent = '00:00';
+            if (durationSec > 0 && elements.durationTime) elements.durationTime.textContent = formatTime(durationSec);
+            if (elements.seekSlider) {
+                elements.seekSlider.value = 0;
+                updateRainbowSlider(elements.seekSlider, 0);
+            }
+            return;
+        }
+    }
+
     // UI update
     if (elements.currentTime) elements.currentTime.textContent = formatTime(positionSec);
     if (elements.durationTime) elements.durationTime.textContent = formatTime(durationSec);
@@ -6654,7 +6887,7 @@ function handleNativePositionTick(positionMs, durationMs, isPlaying) {
             const nextIdx = computeNextIndex();
             if (nextIdx >= 0) {
                 state.autoCrossfadeTriggered = true;
-                startNativeTransitionToIndex(nextIdx, crossfadeMs).catch((e) => {
+                startNativeTransitionToIndex(nextIdx, crossfadeMs, { skipOverlapTry: true }).catch((e) => {
                     console.error('[CROSSFADE] Native auto transition error:', e);
                     playIndex(nextIdx);
                 });
@@ -6680,6 +6913,7 @@ function stopNativePositionUpdates() {
 }
 
 function handleNativePlaybackEnd() {
+    state.manualCrossfadeUiLock = null;
     stopNativePositionUpdates();
     console.log('[NATIVE] Playback ended');
 
@@ -6693,7 +6927,7 @@ function handleNativePlaybackEnd() {
 
         if (nextIdx >= 0) {
             if (state.settings?.playback?.crossfadeAutoEnabled) {
-                startNativeTransitionToIndex(nextIdx, state.settings.playback.crossfadeMs || 2000).catch((e) => {
+                startNativeTransitionToIndex(nextIdx, state.settings.playback.crossfadeMs || 2000, { skipOverlapTry: true }).catch((e) => {
                     console.error('[CROSSFADE] Native end transition error:', e);
                     playIndex(nextIdx);
                 });
@@ -7055,7 +7289,7 @@ function computePrevIndex() {
 }
 
 // Crossfade ile parça değiştir
-function startCrossfadeToIndex(index, ms) {
+function startCrossfadeToIndex(index, ms, options = {}) {
     if (!canCrossfadeNow() || index < 0 || index >= state.playlist.length) {
         // Crossfade yapılamıyorsa normal geçiş
         playIndex(index);
@@ -7064,7 +7298,11 @@ function startCrossfadeToIndex(index, ms) {
 
     // Native engine aktifse: fade-out -> track switch -> fade-in
     if (useNativeAudio && state.activeMedia === 'audio') {
-        startNativeTransitionToIndex(index, ms || (state.settings?.playback?.crossfadeMs || 2000))
+        startNativeTransitionToIndex(
+            index,
+            ms || (state.settings?.playback?.crossfadeMs || 2000),
+            { skipOverlapTry: true, ...options }
+        )
             .catch((e) => {
                 console.error('[CROSSFADE] Native transition promise rejected:', e);
                 playIndex(index);
@@ -7307,7 +7545,7 @@ function playNextWithCrossfade() {
     // Elle çapraz geçiş aktif mi?
     if (state.settings?.playback?.crossfadeManualEnabled && canCrossfadeNow()) {
         const crossfadeMs = state.settings.playback.crossfadeMs || 2000;
-        startCrossfadeToIndex(nextIndex, crossfadeMs);
+        startCrossfadeToIndex(nextIndex, crossfadeMs, { immediateUi: true });
     } else {
         playIndex(nextIndex);
     }
@@ -7327,7 +7565,7 @@ function playPreviousWithCrossfade() {
     // Elle çapraz geçiş aktif mi?
     if (state.settings?.playback?.crossfadeManualEnabled && canCrossfadeNow()) {
         const crossfadeMs = state.settings.playback.crossfadeMs || 2000;
-        startCrossfadeToIndex(prevIndex, crossfadeMs);
+        startCrossfadeToIndex(prevIndex, crossfadeMs, { immediateUi: true });
     } else {
         playIndex(prevIndex);
     }
@@ -7932,8 +8170,15 @@ function handleKeyboard(e) {
     // Utility sayfalar açıkken klavye kısayollarını devre dışı bırak
     if (isPageVisible(elements.settingsPage) || isPageVisible(elements.securityPage)) return;
 
+    if (e.code === 'F11') {
+        e.preventDefault();
+        e.stopPropagation();
+        handleF11Shortcut();
+        return;
+    }
+
     // TAM EKRAN VİDEO KLAVİYE KISAYOLLARI
-    if (document.fullscreenElement && state.activeMedia === 'video') {
+    if (isVideoFullscreenActive() && isVideoFullscreenEligible()) {
         switch (e.code) {
             case 'Space':
                 e.preventDefault();
@@ -7968,7 +8213,6 @@ function handleKeyboard(e) {
                 handleFsMute();
                 return;
             case 'KeyF':
-            case 'F11':
                 e.preventDefault();
                 exitVideoFullscreen();
                 return;
@@ -8005,13 +8249,6 @@ function handleKeyboard(e) {
         }
     }
 
-    // F11 - Tam ekran toggle (video sayfasında)
-    if (e.code === 'F11' && state.currentPage === 'video') {
-        e.preventDefault();
-        toggleVideoFullscreen();
-        return;
-    }
-
     switch (e.code) {
         case 'Space':
             e.preventDefault();
@@ -8040,6 +8277,16 @@ function handleKeyboard(e) {
         case 'KeyR':
             toggleRepeat();
             break;
+    }
+}
+
+function handleF11Shortcut() {
+    if (isVideoFullscreenEligible()) {
+        toggleVideoFullscreen();
+        return;
+    }
+    if (isWebFullscreenEligible()) {
+        toggleWebFullscreen();
     }
 }
 
@@ -11461,3 +11708,4 @@ document.addEventListener('DOMContentLoaded', () => {
         AGCController.init();
     }, 100);
 });
+

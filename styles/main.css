@@ -795,6 +795,16 @@ body:not(.web-mode) #webDrawerToggleBtn {
     height: 100%;
 }
 
+/* Native Fullscreen API bazı sistemlerde reddedilirse app içi tam ekran fallback */
+#videoPage.fs-fallback-active {
+    position: fixed !important;
+    inset: 0 !important;
+    width: 100vw !important;
+    height: 100vh !important;
+    z-index: 2147483000 !important;
+    background: #000 !important;
+}
+
 #videoPlayer {
     width: 100%;
     height: 100%;
@@ -908,6 +918,14 @@ body:not(.web-mode) #webDrawerToggleBtn {
 
 /* Fullscreen video elementte açılsa bile (fs-active) kontroller görünür olsun */
 #videoPage.fs-active .video-fs-controls {
+    display: flex !important;
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+}
+
+#videoPage.fs-fallback-active .video-fs-controls {
     display: flex !important;
     position: fixed;
     left: 0;
@@ -1698,7 +1716,15 @@ body .yt-settings-submenu,
     cursor: default;
 }
 
+#videoPage.fs-fallback-active {
+    cursor: default;
+}
+
 #videoPage:fullscreen.hide-cursor {
+    cursor: none;
+}
+
+#videoPage.fs-fallback-active.hide-cursor {
     cursor: none;
 }
 

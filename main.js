@@ -1338,7 +1338,24 @@ function installAppMenu() {
                 { role: 'zoomIn', label: tMainSync('appMenu.zoomIn') },
                 { role: 'zoomOut', label: tMainSync('appMenu.zoomOut') },
                 { type: 'separator' },
-                { role: 'togglefullscreen', label: tMainSync('appMenu.toggleFullscreen') }
+                {
+                    label: tMainSync('appMenu.toggleFullscreen'),
+                    click: () => {
+                        try {
+                            if (!mainWindow || mainWindow.isDestroyed()) return;
+                            const next = !mainWindow.isFullScreen();
+                            mainWindow.setFullScreen(next);
+                            if (typeof mainWindow.setMenuBarVisibility === 'function') {
+                                mainWindow.setMenuBarVisibility(!next);
+                            }
+                            if (typeof mainWindow.setAutoHideMenuBar === 'function') {
+                                mainWindow.setAutoHideMenuBar(next);
+                            }
+                        } catch (err) {
+                            console.warn('[WINDOW] menu fullscreen toggle failed:', err?.message || err);
+                        }
+                    }
+                }
             ]
         },
         {
@@ -1515,6 +1532,37 @@ function createWindow() {
         } catch (e) {
             console.warn('[SECURITY] will-attach-webview hardening error:', e?.message || e);
             event.preventDefault();
+        }
+    });
+
+    let lastWebF11At = 0;
+    const relayF11HotkeyToRenderer = () => {
+        if (!mainWindow || mainWindow.isDestroyed()) return;
+        const now = Date.now();
+        if (now - lastWebF11At < 220) return;
+        lastWebF11At = now;
+        try {
+            mainWindow.webContents.send('hotkey:f11');
+        } catch (err) {
+            console.warn('[WEBVIEW] F11 relay failed:', err?.message || err);
+        }
+    };
+
+    // WebView odaktayken F11 host renderer'a düşmeyebilir.
+    // Guest WebContents seviyesinde yakalayıp renderer'a relay et.
+    mainWindow.webContents.on('did-attach-webview', (_event, guestWebContents) => {
+        try {
+            if (!guestWebContents || typeof guestWebContents.on !== 'function') return;
+            guestWebContents.on('before-input-event', (e, input) => {
+                const key = String(input?.key || '').toUpperCase();
+                const code = String(input?.code || '').toUpperCase();
+                if (key !== 'F11' && code !== 'F11') return;
+
+                e.preventDefault();
+                relayF11HotkeyToRenderer();
+            });
+        } catch (err) {
+            console.warn('[WEBVIEW] did-attach-webview hook failed:', err?.message || err);
         }
     });
 
@@ -2844,6 +2892,37 @@ ipcMain.handle('window:isMaximized', (event) => {
     return win ? win.isMaximized() : false;
 });
 
+ipcMain.handle('window:setFullscreen', (event, enabled) => {
+    const win = BrowserWindow.fromWebContents(event.sender);
+    if (!win) return false;
+    try {
+        win.setFullScreen(!!enabled);
+    } catch (e) {
+        console.warn('[window:setFullscreen] failed:', e?.message || e);
+    }
+    return win.isFullScreen();
+});
+
+ipcMain.handle('window:isFullscreen', (event) => {
+    const win = BrowserWindow.fromWebContents(event.sender);
+    return win ? win.isFullScreen() : false;
+});
+
+ipcMain.handle('window:setMenuBarVisible', (event, visible) => {
+    const win = BrowserWindow.fromWebContents(event.sender);
+    if (!win) return false;
+    const v = !!visible;
+    try {
+        // Windows/Linux: menü çubuğu görünürlüğü
+        if (typeof win.setMenuBarVisibility === 'function') win.setMenuBarVisibility(v);
+        // Alt ile menü açılma davranışı
+        if (typeof win.setAutoHideMenuBar === 'function') win.setAutoHideMenuBar(!v);
+    } catch (e) {
+        console.warn('[window:setMenuBarVisible] failed:', e?.message || e);
+    }
+    return true;
+});
+
 function installWebviewHardening() {
     // Permission defaults: deny sensitive requests for embedded web content.
     try {
@@ -3791,6 +3870,10 @@ ipcMain.handle('audio:isNativeAvailable', () => {
 
 // Dosya yükle
 ipcMain.handle('audio:loadFile', async (event, filePath) => {
+    const isOkResult = (value) => {
+        return (value === true) || (!!value && typeof value === 'object' && value.success === true);
+    };
+
     if (!audioEngine || !isNativeAudioAvailable) {
         try { initNativeAudioEngineSafe(); } catch { }
     }
@@ -3807,8 +3890,9 @@ ipcMain.handle('audio:loadFile', async (event, filePath) => {
         try {
             const cached = await transcodeAudioToFlacCached(src);
             if (cached) {
-                const okOpus = audioEngine.loadFile(cached);
-                console.log('[MAIN] loadFile (opus->flac):', okOpus ? 'ok' : 'fail', cached);
+                const rawOpus = audioEngine.loadFile(cached);
+                const okOpus = isOkResult(rawOpus);
+                console.log('[MAIN] loadFile (opus->flac):', okOpus ? 'ok' : 'fail', cached, rawOpus);
                 if (okOpus) {
                     applyPersistedEq32SfxFromSettings().catch(() => { /* yoksay */ });
                     return { success: true, pathUsed: cached, transcodedFrom: src };
@@ -3819,8 +3903,9 @@ ipcMain.handle('audio:loadFile', async (event, filePath) => {
         }
     }
 
-    const ok = audioEngine.loadFile(src);
-    console.log('[MAIN] loadFile:', ok ? 'ok' : 'fail', src);
+    const raw = audioEngine.loadFile(src);
+    const ok = isOkResult(raw);
+    console.log('[MAIN] loadFile:', ok ? 'ok' : 'fail', src, raw);
     if (ok) {
         // Some formats can return "ok" but still have an unusable duration (0) because decoder/plugin is missing.
         // For .opus, treat this as a failure and fall back to transcode.
@@ -3847,8 +3932,9 @@ ipcMain.handle('audio:loadFile', async (event, filePath) => {
     try {
         const cached = await transcodeAudioToFlacCached(src);
         if (cached) {
-            const ok2 = audioEngine.loadFile(cached);
-            console.log('[MAIN] loadFile (transcoded):', ok2 ? 'ok' : 'fail', cached);
+            const raw2 = audioEngine.loadFile(cached);
+            const ok2 = isOkResult(raw2);
+            console.log('[MAIN] loadFile (transcoded):', ok2 ? 'ok' : 'fail', cached, raw2);
             if (ok2) {
                 applyPersistedEq32SfxFromSettings().catch(() => { /* yoksay */ });
                 return { success: true, pathUsed: cached, transcodedFrom: src };

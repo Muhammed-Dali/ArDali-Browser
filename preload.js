@@ -697,7 +697,16 @@ const aurivoAPI = {
         minimizeWindow: () => ipcRenderer.invoke('window:minimize'),
         maximizeWindow: () => ipcRenderer.invoke('window:maximize'),
         closeWindow: () => ipcRenderer.invoke('window:close'),
-        isMaximized: () => ipcRenderer.invoke('window:isMaximized')
+        isMaximized: () => ipcRenderer.invoke('window:isMaximized'),
+        setFullscreen: (enabled) => ipcRenderer.invoke('window:setFullscreen', !!enabled),
+        isFullscreen: () => ipcRenderer.invoke('window:isFullscreen'),
+        setMenuBarVisible: (visible) => ipcRenderer.invoke('window:setMenuBarVisible', !!visible),
+        onF11Hotkey: (callback) => {
+            if (typeof callback !== 'function') return;
+            ipcRenderer.on('hotkey:f11', () => {
+                try { callback(); } catch { }
+            });
+        }
     },
 
     // APP CONTROL
