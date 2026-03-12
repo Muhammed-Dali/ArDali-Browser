@@ -184,10 +184,13 @@
     ],
     "files": [
       "**/*",
+      "!.cache/**",
+      "!**/.cache/**",
       "!**/*.md",
       "!**/.vscode/**",
       "!**/__pycache__/**",
       "!**/*.ipynb",
+      "!bin/ffmpeg.exe",
       "!dist/**",
       "!build/**",
       "!build-flatpak/**",

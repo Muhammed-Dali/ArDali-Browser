@@ -8,6 +8,7 @@ node_modules/
 /dist4/
 /dist5/
 /out/
+/build/
 
 # Native
 /native/build/
@@ -15,6 +16,7 @@ node_modules/
 
 # Local cache
 npm-debug.log*
+.cache/
 
 # OS
 .DS_Store
@@ -27,6 +29,7 @@ Thumbs.db
 .vscode/
 
 # Generated
+/bin/ffmpeg.exe
 native-dist/*
 !native-dist/.gitkeep
 !native-dist/windows/

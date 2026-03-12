@@ -1,4 +1,0 @@
-C:/Users/muhan/Desktop/Aurivo-Medya-Player-windows/build/CMakeFiles/aurivo_audio.dir
-C:/Users/muhan/Desktop/Aurivo-Medya-Player-windows/build/CMakeFiles/INSTALL.dir
-C:/Users/muhan/Desktop/Aurivo-Medya-Player-windows/build/CMakeFiles/ALL_BUILD.dir
-C:/Users/muhan/Desktop/Aurivo-Medya-Player-windows/build/CMakeFiles/ZERO_CHECK.dir
