@@ -17,6 +17,7 @@ permissions:
 
 jobs:
   build-linux:
+    if: ${{ github.event_name != 'push' || github.ref != 'refs/heads/main' || !startsWith(github.event.head_commit.message, 'release: bump version') }}
     # PR builds use ubuntu-22.04 to reduce GitHub runner queue time.
     # Release builds (tags) use ubuntu-20.04 in `.github/workflows/release.yml` for wider glibc compatibility.
     runs-on: ubuntu-22.04
