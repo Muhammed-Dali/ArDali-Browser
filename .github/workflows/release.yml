@@ -36,13 +36,24 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: "20"
           cache: "npm"
+
+      - name: Validate release tag matches package version
+        run: |
+          set -euo pipefail
+          PKG_VERSION="$(node -p "require('./package.json').version")"
+          EXPECTED_TAG="v${PKG_VERSION}"
+          if [ "${GITHUB_REF_NAME}" != "${EXPECTED_TAG}" ]; then
+            echo "Tag/version mismatch: expected ${EXPECTED_TAG}, got ${GITHUB_REF_NAME}"
+            exit 1
+          fi
+          echo "Release tag matches package version: ${EXPECTED_TAG}"
 
       - name: Install system dependencies
         run: |
@@ -125,7 +136,7 @@ jobs:
         run: npm run -s build:linux:appimage -- --publish=never
 
       - name: Upload build artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: linux-dist
           path: |
@@ -139,7 +150,7 @@ jobs:
 
     steps:
       - name: Download artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           path: release-artifacts
 
