@@ -1,0 +1,1032 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: https:;">
+    <title>Tercihler</title>
+    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet">
+    <link rel="stylesheet" href="styles/main.css">
+</head>
+<body class="settings-window-mode">
+    <div class="app-container">
+        <main class="main-content">
+            <div class="content-stack">
+                <div class="page utility-page active" id="settingsPage">
+                    <div class="utility-page-wrapper">
+                        <div class="modal-content settings-page-content">
+                            <div class="modal-header">
+                                <h2 data-i18n="settings.title">Tercihler</h2>
+                            </div>
+                            <div class="modal-body">
+                                <div class="settings-sidebar">
+                                    <button class="settings-tab active" data-tab="playback">
+                                        <span class="settings-tab-icon material-symbols-rounded" aria-hidden="true">play_circle</span>
+                                        <span class="settings-tab-label" data-i18n="settings.tabs.playback">Oynat</span>
+                                    </button>
+                                    <button class="settings-tab" data-tab="listen">
+                                        <span class="settings-tab-icon material-symbols-rounded" aria-hidden="true">graphic_eq</span>
+                                        <span class="settings-tab-label" data-i18n="settings.tabs.listen">Dinle</span>
+                                    </button>
+                                    <button class="settings-tab" data-tab="behavior">
+                                        <span class="settings-tab-icon material-symbols-rounded" aria-hidden="true">tune</span>
+                                        <span class="settings-tab-label" data-i18n="settings.tabs.behavior">Davranış</span>
+                                    </button>
+                                    <button class="settings-tab" data-tab="security">
+                                        <span class="settings-tab-icon material-symbols-rounded" aria-hidden="true">shield</span>
+                                        <span class="settings-tab-label" data-i18n="securityPage.title">Güvenlik</span>
+                                    </button>
+                                    <button class="settings-tab" data-tab="library">
+                                        <span class="settings-tab-icon material-symbols-rounded" aria-hidden="true">library_music</span>
+                                        <span class="settings-tab-label" data-i18n="settings.tabs.library">Müzik Kütüphanesi</span>
+                                    </button>
+                                    <button class="settings-tab" data-tab="audio">
+                                        <span class="settings-tab-icon material-symbols-rounded" aria-hidden="true">headphones</span>
+                                        <span class="settings-tab-label" data-i18n="settings.tabs.audio">Ses Çıkışı</span>
+                                    </button>
+                                    <button class="settings-tab" data-tab="adblock">
+                                        <span class="settings-tab-icon material-symbols-rounded" aria-hidden="true">shield</span>
+                                        <span class="settings-tab-label" data-i18n="settings.tabs.adblock">DeliBlock</span>
+                                    </button>
+                                </div>
+                                <div class="settings-content">
+                                    <div class="settings-page active" id="playbackSettings">
+                                        <h3 data-i18n="playback.title">Oynat</h3>
+                                        <div class="settings-group">
+                                            <h4 data-i18n="playback.crossfade.title">Yumuşak geçiş</h4>
+                                            <label class="checkbox-label">
+                                                <input type="checkbox" id="crossfadeStop" checked>
+                                                <span data-i18n="playback.crossfade.stop">Bir parça durdurulurken yumuşak geç</span>
+                                            </label>
+                                            <label class="checkbox-label">
+                                                <input type="checkbox" id="crossfadeManual" checked>
+                                                <span data-i18n="playback.crossfade.manual">Parça değiştirirken elle çapraz geçiş yap</span>
+                                            </label>
+                                            <label class="checkbox-label">
+                                                <input type="checkbox" id="crossfadeAuto">
+                                                <span data-i18n="playback.crossfade.auto">Parça değiştirirken otomatik olarak çapraz geçiş yap</span>
+                                            </label>
+                                            <label class="checkbox-label indent">
+                                                <input type="checkbox" id="sameAlbumNoCrossfade" checked disabled>
+                                                <span data-i18n="playback.crossfade.sameAlbumExcept">Aynı albümde veya aynı CUE dosyasında bulunan parçalar hariç</span>
+                                            </label>
+                                            <div class="setting-row">
+                                                <span data-i18n="playback.crossfade.duration">Yumuşak geçiş süresi</span>
+                                                <input type="number" id="crossfadeMs" value="2000" min="0" max="15000" step="100"> ms
+                                            </div>
+                                            <label class="checkbox-label">
+                                                <input type="checkbox" id="fadeOnPause">
+                                                <span data-i18n="playback.crossfade.fadeOnPause">Fade out on pause / fade in on resume</span>
+                                            </label>
+                                            <div class="setting-row">
+                                                <span data-i18n="playback.crossfade.pauseFadeDuration">Fade süresi</span>
+                                                <input type="number" id="pauseFadeMs" value="250" min="0" max="5000" step="50"> ms
+                                            </div>
+                                            <label class="checkbox-label">
+                                                <input type="checkbox" id="crossfadeSkipShortTracks" checked>
+                                                <span data-i18n="playback.crossfade.skipShortTracks">Kısa parçalarda çapraz geçişi atla</span>
+                                            </label>
+                                            <div class="setting-row">
+                                                <span data-i18n="playback.crossfade.safetyPadding">Güvenlik payı</span>
+                                                <input type="number" id="crossfadeSafetyPaddingMs" value="300" min="0" max="5000" step="50"> ms
+                                            </div>
+                                            <div class="setting-row">
+                                                <span data-i18n="playback.seekStep">İleri / geri sarma adımı</span>
+                                                <input type="number" id="seekStepSeconds" value="10" min="1" max="60" step="1"> <span data-i18n="unit.secondsShort">sn</span>
+                                            </div>
+                                        </div>
+                                        <div class="settings-group">
+                                            <h4 data-i18n="playback.startup.title">Başlangıç</h4>
+                                            <label class="checkbox-label">
+                                                <input type="checkbox" id="restoreLastTrackOnStartup" checked>
+                                                <span data-i18n="playback.startup.restoreLastTrack">Açılışta son parçayı geri yükle</span>
+                                            </label>
+                                            <label class="checkbox-label indent">
+                                                <input type="checkbox" id="autoplayLastTrackOnStartup">
+                                                <span data-i18n="playback.startup.autoplayLastTrack">Açılışta son parçayı otomatik başlat</span>
+                                            </label>
+                                            <label class="checkbox-label indent">
+                                                <input type="checkbox" id="resumePositionOnStartup" checked>
+                                                <span data-i18n="playback.startup.resumePosition">Son parçayı kaldığı pozisyondan devam ettir</span>
+                                            </label>
+                                        </div>
+                                        <div class="settings-group">
+                                            <h4 data-i18n="playback.endWarning.title">Parça Sonu Uyarısı</h4>
+                                            <label class="checkbox-label">
+                                                <input type="checkbox" id="endWarningEnabled">
+                                                <span data-i18n="playback.endWarning.enabled">Parça bitmeden önce bildirim göster</span>
+                                            </label>
+                                            <div class="setting-row">
+                                                <span data-i18n="playback.endWarning.seconds">Uyarı süresi</span>
+                                                <input type="number" id="endWarningSeconds" value="10" min="3" max="60" step="1"> <span data-i18n="unit.secondsShort">sn</span>
+                                            </div>
+                                        </div>
+                                        <div class="settings-group">
+                                            <h4 data-i18n="playback.leveling.title">Ses Dengeleme</h4>
+                                            <label class="checkbox-label">
+                                                <input type="checkbox" id="smartVolumeLevelingEnabled">
+                                                <span data-i18n="playback.leveling.enabled">Akıllı ses seviye dengeleme (Auto-Gain)</span>
+                                            </label>
+                                            <div class="setting-row">
+                                                <span data-i18n="playback.leveling.mode">Dengeleme profili</span>
+                                                <select id="smartVolumeLevelingMode" class="settings-select">
+                                                    <option value="gentle" data-i18n="playback.leveling.mode.gentle">Yumuşak</option>
+                                                    <option value="balanced" selected data-i18n="playback.leveling.mode.balanced">Dengeli</option>
+                                                    <option value="strong" data-i18n="playback.leveling.mode.strong">Güçlü</option>
+                                                </select>
+                                            </div>
+                                            <button class="reset-btn" id="resetPlayback" data-i18n="settings.buttons.resetDefaults">↻ Varsayılan Ayarlar</button>
+                                        </div>
+                                    </div>
+                                    <div class="settings-page hidden" id="listenSettings">
+                                        <h3 data-i18n="settings.tabs.listen">Dinle</h3>
+                                        <div class="settings-group">
+                                            <h4 data-i18n="listen.quick.title">Aurivo-Pulse Hızlı Dinleme</h4>
+                                            <div class="settings-row">
+                                                <div class="settings-row-left">
+                                                    <div class="settings-label" data-i18n="listen.quick.toastDuration.label">Dinleme bildirim süresi</div>
+                                                    <div class="settings-sub" data-i18n="listen.quick.toastDuration.hint">Ses algılanamadı bildiriminin ekranda ne kadar kalacağını belirler.</div>
+                                                </div>
+                                                <select class="settings-select" id="pulseNoSignalHintSec" aria-label="Dinleme bildirim süresi" data-i18n-aria-label="listen.quick.toastDuration.label">
+                                                    <option value="4" data-i18n="listen.quick.toastDuration.options.4s">4 sn</option>
+                                                    <option value="6" selected data-i18n="listen.quick.toastDuration.options.6s">6 sn</option>
+                                                    <option value="8" data-i18n="listen.quick.toastDuration.options.8s">8 sn</option>
+                                                </select>
+                                            </div>
+                                            <div class="settings-row">
+                                                <div class="settings-row-left">
+                                                    <div class="settings-label" data-i18n="listen.quick.mode.label">Dinleme modu</div>
+                                                    <div class="settings-sub" data-i18n="listen.quick.mode.hint">Hız, fon müzik odağı ve doğruluk dengesini belirler.</div>
+                                                </div>
+                                                <div class="listen-mode-grid" id="pulseQuickModeGrid" role="radiogroup" aria-label="Dinleme modu">
+                                                    <button type="button" class="listen-mode-card" data-pulse-quick-mode="normal">
+                                                        <strong data-i18n="listen.quick.mode.options.normal">Normal Dinleme</strong>
+                                                        <span data-i18n="listen.quick.mode.card.normal">Temiz müzik ve hızlı günlük kullanım.</span>
+                                                    </button>
+                                                    <button type="button" class="listen-mode-card" data-pulse-quick-mode="background">
+                                                        <strong data-i18n="listen.quick.mode.options.background">Fon Müzik Odakli</strong>
+                                                        <span data-i18n="listen.quick.mode.card.background">Konuşma arkasındaki müzikler için dengeli seçim.</span>
+                                                    </button>
+                                                    <button type="button" class="listen-mode-card" data-pulse-quick-mode="max">
+                                                        <strong data-i18n="listen.quick.mode.options.max">Maksimum Dogruluk</strong>
+                                                        <span data-i18n="listen.quick.mode.card.max">Zor videolar, cover ve düşük sesli fon müzikler.</span>
+                                                    </button>
+                                                </div>
+                                                <select class="settings-select listen-mode-native-select" id="pulseQuickMode" aria-label="Dinleme modu" data-i18n-aria-label="listen.quick.mode.label">
+                                                    <option value="normal" data-i18n="listen.quick.mode.options.normal">Normal Dinleme</option>
+                                                    <option value="background" selected data-i18n="listen.quick.mode.options.background">Fon Müzik Odakli</option>
+                                                    <option value="max" data-i18n="listen.quick.mode.options.max">Maksimum Dogruluk</option>
+                                                </select>
+                                            </div>
+                                            <div class="settings-sub" id="pulseQuickModeDetails" aria-live="polite"></div>
+                                            <button class="reset-btn" id="resetListen" data-i18n="listen.buttons.resetDefaults">↻ Dinle Varsayılanları</button>
+                                        </div>
+                                        <div class="settings-group">
+                                            <h4 data-i18n="listen.preferences.title">Aurivo-Pulse Tercihleri</h4>
+                                            <label class="checkbox-label">
+                                                <input type="checkbox" id="pulseEnableNotifications">
+                                                <span data-i18n="listen.preferences.notifications.label">Bildirimleri göster</span>
+                                            </label>
+                                            <div class="settings-sub" data-i18n="listen.preferences.notifications.hint">Şarkı bulunduğunda, ağ hatası olduğunda ve cihaz otomatik değiştiğinde bildirim gösterir.</div>
+                                            <label class="checkbox-label">
+                                                <input type="checkbox" id="pulseEnableMpris">
+                                                <span data-i18n="listen.preferences.mpris.label">MPRIS'i etkinleştir</span>
+                                            </label>
+                                            <div class="settings-sub" data-i18n="listen.preferences.mpris.hint">Linux medya panelinde tanınan parçayı gösterebilir. Şarkı bulma kalitesini etkilemez.</div>
+                                            <label class="checkbox-label">
+                                                <input type="checkbox" id="pulseEnableSystray">
+                                                <span data-i18n="listen.preferences.systray.label">Sistem tepsisine küçült</span>
+                                            </label>
+                                            <div class="settings-sub" data-i18n="listen.preferences.systray.hint">Dinle penceresini kapatınca tamamen çıkmak yerine sistem tepsisinde açık tutar.</div>
+                                            <label class="checkbox-label">
+                                                <input type="checkbox" id="pulseNoDuplicates">
+                                                <span data-i18n="listen.preferences.noDuplicates.label">Geçmişte tekrar olmasın</span>
+                                            </label>
+                                            <div class="settings-sub" data-i18n="listen.preferences.noDuplicates.hint">Aynı şarkı tekrar bulunursa geçmişte yeni satır açmak yerine eski kaydı günceller.</div>
+                                            <div class="setting-row">
+                                                <div class="settings-row-left">
+                                                    <div class="settings-label" data-i18n="listen.preferences.requestInterval.label">Shazam istek aralığı</div>
+                                                    <div class="settings-sub" data-i18n="listen.preferences.requestInterval.hint">Rate-limit yaşarsanız yükseltin.</div>
+                                                </div>
+                                                <input type="number" id="pulseRequestInterval" value="2" min="1" max="120" step="1"> sn
+                                            </div>
+                                            <div class="setting-row">
+                                                <div class="settings-row-left">
+                                                    <div class="settings-label" data-i18n="listen.preferences.bufferSize.label">Shazam arabellek boyutu</div>
+                                                    <div class="settings-sub" data-i18n="listen.preferences.bufferSize.hint">Daha uzun örnek daha kararlı olabilir ama biraz daha yavaştır.</div>
+                                                </div>
+                                                <input type="number" id="pulseBufferSize" value="5" min="4" max="30" step="1"> sn
+                                            </div>
+                                            <div class="setting-row">
+                                                <div class="settings-row-left">
+                                                    <div class="settings-label">Tanıma motoru</div>
+                                                    <div class="settings-sub">SongRec/AcoustID çalışma şeklini belirler.</div>
+                                                </div>
+                                                <select class="settings-select" id="pulseRecognitionEngine" aria-label="Tanıma motoru">
+                                                    <option value="hybrid">Hibrit (SongRec + AcoustID)</option>
+                                                    <option value="songrec_only">Sadece SongRec</option>
+                                                    <option value="acoustid_only">Sadece AcoustID</option>
+                                                </select>
+                                            </div>
+                                            <div class="setting-row">
+                                                <div class="settings-row-left">
+                                                    <div class="settings-label">AcoustID API Key</div>
+                                                    <div class="settings-sub" id="pulseAcoustidHint">Opsiyonel. Boş bırakılırsa hibrit mod SongRec ile çalışır.</div>
+                                                    <div class="settings-sub hidden" id="pulseAcoustidWarning" aria-live="polite">Sadece AcoustID modunda API key zorunludur. Anahtar yoksa tanıma yapılamaz.</div>
+                                                </div>
+                                                <input type="text" id="pulseAcoustidApiKey" class="settings-input" placeholder="AcoustID API key">
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="settings-page hidden" id="behaviorSettings">
+                                        <h3 data-i18n="settings.tabs.behavior">Davranış</h3>
+                                        <div class="settings-group">
+                                            <h4 data-i18n="ui.languageSelection.title">Dil Seçimi</h4>
+                                            <div class="settings-row">
+                                                <div class="settings-row-left">
+                                                    <div class="settings-label" data-i18n="ui.languageSelection.label">Dil</div>
+                                                    <div class="settings-sub" data-i18n="ui.languageSelection.hint">Değişiklikler için yeniden başlatma gerekir.</div>
+                                                    <div class="settings-sub hidden" id="languageRestartHint" data-i18n="ui.languageSelection.restartHint">Seçtiğiniz dil bir sonraki açılışta uygulanacak.</div>
+                                                </div>
+                                                <select class="settings-select" id="languageSelect" aria-label="Language">
+                                                    <option value="tr-TR">🇹🇷 Türkçe</option>
+                                                    <option value="en-US">🇺🇸 English</option>
+                                                    <option value="ar-SA">🇸🇦 العربية</option>
+                                                    <option value="bn-BD">🇧🇩 বাংলা</option>
+                                                    <option value="el-GR">🇬🇷 Ελληνικά</option>
+                                                    <option value="fr-FR">🇫🇷 Français</option>
+                                                    <option value="de-DE">🇩🇪 Deutsch</option>
+                                                    <option value="es-ES">🇪🇸 Español</option>
+                                                    <option value="fa-IR">🇮🇷 فارسی</option>
+                                                    <option value="fi-FI">🇫🇮 Suomi</option>
+                                                    <option value="hi-IN">🇮🇳 हिन्दी</option>
+                                                    <option value="hu-HU">🇭🇺 Magyar</option>
+                                                    <option value="it-IT">🇮🇹 Italiano</option>
+                                                    <option value="ja-JP">🇯🇵 Japonca</option>
+                                                    <option value="ne-NP">🇳🇵 नेपाली</option>
+                                                    <option value="pl-PL">🇵🇱 Polski</option>
+                                                    <option value="pt-BR">🇧🇷 Português (Brasil)</option>
+                                                    <option value="ru-RU">🇷🇺 Русский</option>
+                                                    <option value="uk-UA">🇺🇦 Українська</option>
+                                                    <option value="vi-VN">🇻🇳 Tiếng Việt</option>
+                                                    <option value="zh-CN">🇨🇳 Çince (Basitleştirilmiş)</option>
+                                                    <option value="zh-TW">🇹🇼 Çince (Geleneksel)</option>
+                                                </select>
+                                            </div>
+                                            <div class="settings-row">
+                                                <div class="settings-row-left">
+                                                    <div class="settings-label" data-i18n="ui.theme.label">Tema</div>
+                                                    <div class="settings-sub" data-i18n="ui.theme.hint">Uygulama renklerini anında değiştirir.</div>
+                                                    <div class="settings-sub hidden" id="themeSystemHint" data-i18n="ui.theme.followSystem.hint">Açıkken tema seçimi sistem temasına göre otomatik uygulanır.</div>
+                                                </div>
+                                                <select class="settings-select" id="themeSelect" aria-label="Theme">
+                                                    <option value="aur-renk-efektleri">Aurivo Medya Player</option>
+                                                    <option value="neon-night">Neon Night</option>
+                                                    <option value="retro-amber">Retro Amber</option>
+                                                    <option value="deep-ocean">Deep Ocean</option>
+                                                    <option value="forest-mint">Forest Mint</option>
+                                                    <option value="graphite-blue">Graphite Blue</option>
+                                                    <option value="midnight-titanium-premium">Midnight Titanium</option>
+                                                    <option value="emerald-luxe-premium">Emerald Luxe</option>
+                                                    <option value="sunset-copper">Sunset Copper</option>
+                                                </select>
+                                            </div>
+                                            <div class="settings-row">
+                                                <div class="settings-row-left">
+                                                    <div class="settings-label" data-i18n="ui.theme.followSystem.label">Sistem temasını takip et</div>
+                                                    <div class="settings-sub" data-i18n="ui.theme.followSystem.hint">Açıkken tema seçimi sistem temasına göre otomatik uygulanır.</div>
+                                                </div>
+                                                <label class="settings-master-toggle" title="Sistem temasına göre otomatik geçiş">
+                                                    <input type="checkbox" id="uiFollowSystemThemeToggle">
+                                                    <span class="settings-master-toggle-slider"></span>
+                                                    <span class="settings-master-toggle-label" data-i18n="ui.theme.followSystem.toggle">Sistemle eşitle</span>
+                                                </label>
+                                            </div>
+                                            <div class="settings-row">
+                                                <div class="settings-row-left">
+                                                    <div class="settings-label" data-i18n="ui.effectsMode.label">Görsel Efekt Modu</div>
+                                                    <div class="settings-sub" data-i18n="ui.effectsMode.hint">Glow/blur performansını ayarlar. Otomatik mod düşük sistemde kendisi azaltır.</div>
+                                                </div>
+                                                <select class="settings-select" id="uiVisualModeSelect" aria-label="Visual mode">
+                                                    <option value="full" data-i18n="ui.visualMode.options.full">Tam</option>
+                                                    <option value="balanced" data-i18n="ui.visualMode.options.balanced">Dengeli</option>
+                                                    <option value="minimal" data-i18n="ui.visualMode.options.minimal">Minimum</option>
+                                                </select>
+                                            </div>
+                                            <div class="settings-row">
+                                                <div class="settings-row-left">
+                                                    <div class="settings-label" data-i18n="ui.reduceMotion.label">Azaltılmış Hareket</div>
+                                                    <div class="settings-sub" data-i18n="ui.reduceMotion.hint">Animasyon ve geçişleri azaltarak daha sakin bir arayüz sunar.</div>
+                                                </div>
+                                                <label class="fx-toggle-container" title="Animasyon yoğunluğunu azalt">
+                                                    <span class="fx-toggle-label" data-i18n="ui.reduceMotion.toggle">Azaltılmış Hareket</span>
+                                                    <span class="fx-toggle-switch">
+                                                        <input type="checkbox" id="uiReduceMotionToggle">
+                                                        <span class="fx-toggle-slider"></span>
+                                                    </span>
+                                                </label>
+                                            </div>
+                                            <div class="settings-row">
+                                                <div class="settings-row-left">
+                                                    <div class="settings-label" data-i18n="ui.sliderFx.label">Süre/Ses Çubuk Renkleri</div>
+                                                    <div class="settings-sub" data-i18n="ui.sliderFx.hint">Ana oynatıcı ve tam ekrandaki süre/ses çubuklarının renk döngüsünü açar veya kapatır.</div>
+                                                </div>
+                                                <label class="settings-master-toggle" title="Süre ve ses çubuğu renklerini aç/kapat">
+                                                    <input type="checkbox" id="sliderFxToggle" checked>
+                                                    <span class="settings-master-toggle-slider"></span>
+                                                    <span class="settings-master-toggle-label" data-i18n="ui.sliderFx.enable">Süre/Ses Çubuk Renkleri</span>
+                                                    <span class="settings-master-toggle-state" id="sliderFxToggleState" data-i18n="ui.sliderFx.state.on">Açık</span>
+                                                </label>
+                                            </div>
+                                            <div class="settings-row">
+                                                <div class="settings-row-left">
+                                                    <div class="settings-label" data-i18n="ui.sfxLights.label">Ses Efekt Işıkları</div>
+                                                    <div class="settings-sub" data-i18n="ui.sfxLights.hint">Müzik tarafındaki ses efekt ekranında ışık/parlama efektlerini açar veya kapatır.</div>
+                                                </div>
+                                                <label class="settings-master-toggle" title="Ses efekt ışıklarını aç/kapat">
+                                                    <input type="checkbox" id="sfxLightsToggle" checked>
+                                                    <span class="settings-master-toggle-slider"></span>
+                                                    <span class="settings-master-toggle-label" data-i18n="ui.sfxLights.enable">Ses Efekt Işıkları</span>
+                                                    <span class="settings-master-toggle-state" id="sfxLightsToggleState" data-i18n="ui.sfxLights.state.on">Açık</span>
+                                                </label>
+                                            </div>
+                                        </div>
+                                        <div class="settings-group">
+                                            <h4 data-i18n="ui.startup.title">Başlangıç Davranışı</h4>
+                                            <label class="checkbox-label">
+                                                <input type="checkbox" id="behaviorRememberLastSection" checked>
+                                                <span data-i18n="ui.startup.rememberLastSection">Son açık ana bölümü hatırla</span>
+                                            </label>
+                                            <div class="setting-row">
+                                                <span data-i18n="ui.startup.startupPage">Varsayılan açılış bölümü</span>
+                                                <select class="settings-select" id="behaviorStartupPage">
+                                                    <option value="music" data-i18n="settings.library.startupPage.options.music">Müzik</option>
+                                                    <option value="video" data-i18n="settings.library.startupPage.options.video">Video</option>
+                                                    <option value="web" data-i18n="settings.library.startupPage.options.web">Web</option>
+                                                </select>
+                                            </div>
+                                            <label class="checkbox-label">
+                                                <input type="checkbox" id="behaviorCloseToTray" checked>
+                                                <span data-i18n="ui.startup.closeToTray">Pencereyi kapatınca sistem tepsisine küçült</span>
+                                            </label>
+                                            <div class="settings-sub" data-i18n="ui.startup.closeToTrayHint">Kapalıysa pencere kapatma uygulamadan çıkış olarak davranır.</div>
+                                        </div>
+                                    </div>
+                                    <div class="settings-page hidden" id="securitySettings">
+                                        <h3 data-i18n="securityPage.title">Güvenlik</h3>
+                                        <div class="security-body">
+                                            <div class="security-hero">
+                                                <div class="security-hero-icon">
+                                                    <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm0 10.99h7c-.53 4.12-3.28 7.79-7 8.94V12H5V6.3l7-3.11v8.8z"/></svg>
+                                                </div>
+                                                <div class="security-hero-text">
+                                                    <div class="security-hero-title" data-i18n="securityPage.heroTitle">Aurivo Güvenli İnternet</div>
+                                                    <div class="security-hero-sub" data-i18n="securityPage.heroSub">Web sekmesini daha güvenli ve kontrollü kullan.</div>
+                                                </div>
+                                            </div>
+                                            <div class="security-section">
+                                                <div class="security-section-title" data-i18n="securityPage.sections.currentSite">Mevcut Site</div>
+                                                <div class="security-row">
+                                                    <div class="security-row-left">
+                                                        <div class="security-label" id="securityConnStatus">Bağlantı: -</div>
+                                                        <div class="security-sub" id="securityVpnStatus" data-i18n="securityPage.dynamic.vpnUnknown">VPN: -</div>
+                                                        <div class="security-sub" id="securityCurrentUrl">URL: about:blank</div>
+                                                    </div>
+                                                    <div class="security-actions">
+                                                        <button class="btn security-btn-small" id="securityCopyUrlBtn" data-i18n="securityPage.buttons.copy">Kopyala</button>
+                                                        <button class="btn security-btn-small" id="securityOpenInBrowserBtn" data-i18n="securityPage.buttons.openInBrowser">Tarayıcıda aç</button>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="security-section">
+                                                <div class="security-section-title" data-i18n="securityPage.sections.controls">Kontroller</div>
+                                                <label class="checkbox-label">
+                                                    <input type="checkbox" id="securityAllowPopups" checked>
+                                                    <span data-i18n="securityPage.allowPopups">Pop-up pencerelerine izin ver (bazı girişler için gerekli olabilir)</span>
+                                                </label>
+                                                <label class="checkbox-label">
+                                                    <input type="checkbox" id="securityStrictVpnBlock">
+                                                    <span data-i18n="securityPage.vpnPolicyLabel">VPN tespit edildiğinde Web erişimini engelle</span>
+                                                </label>
+                                                <div class="security-hint" data-i18n="securityPage.vpnPolicyHint">Öneri: Kapalı bırakın. VPN’de sadece uyarı verilir; izinli platformlar dışı siteler zaten engellenir.</div>
+                                                <div class="security-hint" data-i18n="securityPage.allowPopupsHint">Not: Pop-up kapalıyken bazı sitelerde giriş/hesap bağlantıları açılmayabilir.</div>
+                                            </div>
+                                            <div class="security-section">
+                                                <div class="security-section-title" data-i18n="securityPage.sections.cleanup">Temizlik</div>
+                                                <div class="security-grid">
+                                                    <button class="btn" id="securityClearCookiesBtn" data-i18n="securityPage.buttons.clearCookies">Çerezleri temizle</button>
+                                                    <button class="btn" id="securityClearCacheBtn" data-i18n="securityPage.buttons.clearCache">Önbelleği temizle</button>
+                                                    <button class="btn" id="securityClearAllBtn" data-i18n="securityPage.buttons.clearAll">Her şeyi temizle</button>
+                                                    <button class="btn" id="securityResetWebBtn" data-i18n="securityPage.buttons.resetWeb">Web’i sıfırla</button>
+                                                </div>
+                                                <div class="security-hint" data-i18n="securityPage.cleanupHint">Çerez/önbellek temizlemek bazı sitelerden çıkış yapabilir.</div>
+                                            </div>
+                                            <div class="security-section">
+                                                <div class="security-section-title" data-i18n="securityPage.sections.allowedPlatforms">İzinli Platformlar</div>
+                                                <div class="security-sub" data-i18n="securityPage.allowedPlatformsHint">Aurivo, Web sekmesinde aşağıdaki platformları hedefler (CSP/frame-src):</div>
+                                                <ul class="security-list">
+                                                    <li>YouTube / YouTube Music</li>
+                                                    <li>Deezer</li>
+                                                    <li>SoundCloud</li>
+                                                    <li>Facebook</li>
+                                                    <li>Instagram</li>
+                                                    <li>TikTok</li>
+                                                    <li>X / Twitter</li>
+                                                    <li>Reddit</li>
+                                                    <li>Twitch</li>
+                                                </ul>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="settings-page hidden library-settings-page" id="librarySettings">
+                                        <h3 data-i18n="settings.tabs.library">Müzik Kütüphanesi</h3>
+                                        <div class="library-hero-card">
+                                            <div class="library-hero-copy">
+                                                <div class="library-hero-kicker" data-i18n="settings.library.hero.kicker">Akıllı kütüphane özeti</div>
+                                                <h4 data-i18n="settings.library.hero.title">Arşiv, tarama ve bakım kontrolleri tek yerde</h4>
+                                                <p class="settings-sub" data-i18n="settings.library.hero.subtitle">Kütüphane klasörlerini yönetin, taramayı başlatın ve arşiv durumunu tek bakışta görün.</p>
+                                                <div class="library-hero-chip-row">
+                                                    <span class="settings-chip settings-chip-accent" data-i18n="settings.library.hero.chip.archive">Arşiv</span>
+                                                    <span class="settings-chip settings-chip-success" data-i18n="settings.library.hero.chip.scan">Tarama</span>
+                                                    <span class="settings-chip settings-chip-neutral" data-i18n="settings.library.hero.chip.maintenance">Bakım</span>
+                                                </div>
+                                                <div class="library-hero-actions">
+                                                    <button class="btn settings-action-btn settings-action-btn-primary" id="libraryHeroRescanBtn" data-i18n="settings.library.folders.rescanAll">Şimdi tara</button>
+                                                    <button class="btn settings-action-btn settings-action-btn-secondary" id="libraryHeroAddFolderBtn" data-i18n="libraryActions.addToLibrary">Kütüphaneye ekle</button>
+                                                </div>
+                                            </div>
+                                            <div class="library-hero-insight">
+                                                <div class="library-hero-insight-head">
+                                                    <span class="library-hero-insight-icon">♪</span>
+                                                    <div class="library-hero-insight-copy">
+                                                        <div class="library-hero-insight-eyebrow" data-i18n="settings.library.hero.insight.eyebrow">Kütüphane merkezi</div>
+                                                        <div class="library-hero-insight-title" data-i18n="settings.library.hero.insight.title">Canlı arşiv görünümü</div>
+                                                        <div class="library-hero-insight-subtitle" data-i18n="settings.library.hero.insight.subtitle">Temel kütüphane sinyalleri ve son tarama bilgisi burada toplanır.</div>
+                                                    </div>
+                                                </div>
+                                                <div class="library-hero-stats">
+                                                    <div class="library-hero-stat">
+                                                        <span data-i18n="settings.library.stats.totalSongs">Toplam şarkı</span>
+                                                        <strong id="libraryHeroTotalSongs">-</strong>
+                                                    </div>
+                                                    <div class="library-hero-stat">
+                                                        <span data-i18n="settings.library.stats.totalDuration">Toplam süre</span>
+                                                        <strong id="libraryHeroTotalDuration">-</strong>
+                                                    </div>
+                                                    <div class="library-hero-stat">
+                                                        <span data-i18n="settings.library.hero.activeFolders">Aktif klasörler</span>
+                                                        <strong id="libraryHeroFolderCount">0</strong>
+                                                    </div>
+                                                    <div class="library-hero-stat">
+                                                        <span data-i18n="settings.library.hero.lastScan">Son tarama</span>
+                                                        <strong id="libraryHeroLastScan">-</strong>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div class="library-settings-shell">
+                                        <div class="settings-group library-group-startup">
+                                            <h4 data-i18n="settings.library.startup.title">Kütüphane Başlangıcı</h4>
+                                            <label class="checkbox-label">
+                                                <input type="checkbox" id="libraryRememberSection" checked>
+                                                <span data-i18n="settings.library.rememberSection">Son açık ana bölümü hatırla</span>
+                                            </label>
+                                            <label class="checkbox-label">
+                                                <input type="checkbox" id="libraryRestoreLastFolder" checked>
+                                                <span data-i18n="settings.library.startup.restoreFolder">Açılışta son klasöre dön</span>
+                                            </label>
+                                            <label class="checkbox-label">
+                                                <input type="checkbox" id="libraryRestoreLastPlaylist" checked>
+                                                <span data-i18n="settings.library.startup.restorePlaylist">Açılışta son çalma listesini yükle</span>
+                                            </label>
+                                            <label class="checkbox-label">
+                                                <input type="checkbox" id="libraryRememberTreeSelection" checked>
+                                                <span data-i18n="settings.library.startup.rememberTree">Son seçili ağaç öğesini hatırla</span>
+                                            </label>
+                                            <div class="setting-row">
+                                                <span data-i18n="settings.library.startupPage">Varsayılan açılış bölümü</span>
+                                                <select class="settings-select" id="libraryStartupPage">
+                                                    <option value="music" data-i18n="settings.library.startupPage.options.music">Müzik</option>
+                                                    <option value="video" data-i18n="settings.library.startupPage.options.video">Video</option>
+                                                    <option value="web" data-i18n="settings.library.startupPage.options.web">Web</option>
+                                                </select>
+                                            </div>
+                                            <div class="settings-sub" data-i18n="settings.library.startupHint">Son bölüm hatırlama kapalıysa uygulama bu bölümle açılır.</div>
+                                        </div>
+                                        <div class="settings-group library-group-folders">
+                                            <h4 data-i18n="settings.library.folders.title">Müzik Klasörleri Yönetimi</h4>
+                                            <div class="settings-sub" data-i18n="settings.library.folders.hint">Birden fazla müzik klasörü ekleyebilir, kaldırabilir ve kütüphaneyi yeniden tarayabilirsiniz.</div>
+                                            <label class="checkbox-label">
+                                                <input type="checkbox" id="libraryScanOnStartup" checked>
+                                                <span data-i18n="settings.library.scanOnStartup">Uygulama açılışında kütüphaneyi tara</span>
+                                            </label>
+                                            <label class="checkbox-label">
+                                                <input type="checkbox" id="libraryAutoRescanOnFolderChange" checked>
+                                                <span data-i18n="settings.library.autoRescanOnFolderChange">Klasör listesi değişince otomatik tara</span>
+                                            </label>
+                                            <label class="checkbox-label">
+                                                <input type="checkbox" id="libraryWatchFolders" checked>
+                                                <span data-i18n="settings.library.watchFolders">Dosya değişikliklerini izle ve otomatik güncelle</span>
+                                            </label>
+                                            <div class="library-folder-toolbar">
+                                                <button class="btn btn-small" id="libraryAddMusicFolder" data-i18n="settings.library.folders.add">Klasör ekle</button>
+                                                <button class="btn btn-small" id="libraryRescanMusicFolders" data-i18n="settings.library.folders.rescanAll">Şimdi tara</button>
+                                            </div>
+                                            <div class="library-folder-summary" id="libraryManagedFoldersSummary"></div>
+                                            <div class="library-folder-list" id="libraryManagedFoldersList"></div>
+                                            <div class="settings-sub" id="libraryWatchStatus" data-i18n="settings.library.watchStatus.idle">İzleme beklemede.</div>
+                                        </div>
+                                        <div class="settings-group library-group-exclude">
+                                            <h4 data-i18n="settings.library.exclude.title">Hariç Tutulan Klasörler</h4>
+                                            <div class="settings-sub" data-i18n="settings.library.exclude.hint">Downloads, Temp veya Voice Notes gibi klasörleri tarama, metadata ve izleme dışında bırakın.</div>
+                                            <div class="library-folder-toolbar">
+                                                <button class="btn btn-small" id="libraryAddExcludedFolder" data-i18n="settings.library.exclude.add">Hariç tutulacak klasör ekle</button>
+                                            </div>
+                                            <div class="library-folder-list" id="libraryExcludedFoldersList"></div>
+                                        </div>
+                                        <div class="settings-group library-group-extensions">
+                                            <h4 data-i18n="settings.library.extensions.title">Desteklenen Uzantılar</h4>
+                                            <div class="settings-sub" data-i18n="settings.library.extensions.hint">Kütüphaneye alınacak ses ve video uzantılarını virgülle ayırarak belirleyin.</div>
+                                            <div class="form-group">
+                                                <label for="libraryAudioExtensions" data-i18n="settings.library.extensions.audio">Ses uzantıları</label>
+                                                <input type="text" class="settings-input" id="libraryAudioExtensions" placeholder="mp3, flac, wav, m4a, ogg">
+                                            </div>
+                                            <div class="form-group">
+                                                <label for="libraryVideoExtensions" data-i18n="settings.library.extensions.video">Video uzantıları</label>
+                                                <input type="text" class="settings-input" id="libraryVideoExtensions" placeholder="mp4, mkv, webm, avi">
+                                            </div>
+                                            <div class="library-folder-toolbar">
+                                                <button class="btn btn-small" id="libraryResetExtensions" data-i18n="settings.library.extensions.reset">Varsayılan uzantılara dön</button>
+                                            </div>
+                                        </div>
+                                        <div class="settings-group library-group-cleanup">
+                                            <h4 data-i18n="settings.library.cleanup.title">Hızlı Temizlik Araçları</h4>
+                                            <div class="settings-sub" data-i18n="settings.library.cleanup.hint">Eksik dosyaları kaldırın, kopya kayıtları temizleyin ve boş klasör referanslarını silin.</div>
+                                            <div class="library-folder-toolbar library-tool-surface">
+                                                <button class="btn btn-small" id="libraryCleanupMissingBtn" data-i18n="settings.library.cleanup.missing">Eksik dosyaları kaldır</button>
+                                                <button class="btn btn-small" id="libraryCleanupDuplicatesBtn" data-i18n="settings.library.cleanup.duplicates">Kopya kayıtları temizle</button>
+                                                <button class="btn btn-small" id="libraryCleanupEmptyFoldersBtn" data-i18n="settings.library.cleanup.emptyFolders">Boş klasör referanslarını sil</button>
+                                            </div>
+                                            <div class="settings-sub" id="libraryCleanupStatus">-</div>
+                                        </div>
+                                        <div class="settings-group library-group-flows">
+                                            <h4 data-i18n="settings.library.flows.title">Favori / Son Eklenen / En Çok Çalınan</h4>
+                                            <div class="settings-sub" data-i18n="settings.library.flows.hint">Akıllı müzik akışlarını etkinleştirin ve playlist içinde rozetlerle görünür yapın.</div>
+                                            <label class="checkbox-label">
+                                                <input type="checkbox" id="libraryFlowFavoritesEnabled" checked>
+                                                <span data-i18n="settings.library.flows.favorites">Favori akışını etkinleştir</span>
+                                            </label>
+                                            <label class="checkbox-label">
+                                                <input type="checkbox" id="libraryFlowRecentEnabled" checked>
+                                                <span data-i18n="settings.library.flows.recent">Son eklenen akışını etkinleştir</span>
+                                            </label>
+                                            <label class="checkbox-label">
+                                                <input type="checkbox" id="libraryFlowMostPlayedEnabled" checked>
+                                                <span data-i18n="settings.library.flows.mostPlayed">En çok çalınan akışını etkinleştir</span>
+                                            </label>
+                                            <div class="setting-row">
+                                                <span data-i18n="settings.library.flows.recentLimit">Son eklenen limit</span>
+                                                <select class="settings-select" id="libraryFlowRecentLimit">
+                                                    <option value="10">10</option>
+                                                    <option value="25">25</option>
+                                                    <option value="50">50</option>
+                                                </select>
+                                            </div>
+                                            <div class="setting-row">
+                                                <span data-i18n="settings.library.flows.mostPlayedLimit">En çok çalınan limit</span>
+                                                <select class="settings-select" id="libraryFlowMostPlayedLimit">
+                                                    <option value="10">10</option>
+                                                    <option value="25">25</option>
+                                                    <option value="50">50</option>
+                                                </select>
+                                            </div>
+                                            <div class="settings-sub" id="libraryFlowsStatus">-</div>
+                                        </div>
+                                        <div class="settings-group library-group-transfer">
+                                            <h4 data-i18n="settings.library.transfer.title">İçe / Dışa Aktar</h4>
+                                            <div class="settings-sub" data-i18n="settings.library.transfer.hint">Kütüphane ayarlarını, indeks verisini ve playlist durumunu JSON paket olarak dışa aktarın veya geri yükleyin.</div>
+                                            <div class="library-folder-toolbar library-tool-surface">
+                                                <button class="btn btn-small" id="libraryExportBundleBtn" data-i18n="settings.library.transfer.export">Kütüphaneyi dışa aktar</button>
+                                                <button class="btn btn-small" id="libraryImportBundleBtn" data-i18n="settings.library.transfer.import">Kütüphane paketi içe aktar</button>
+                                            </div>
+                                            <div class="settings-sub" id="libraryTransferStatus">-</div>
+                                        </div>
+                                        <div class="settings-group library-group-performance">
+                                            <h4 data-i18n="settings.library.performance.title">Performans Ayarları</h4>
+                                            <div class="settings-sub" data-i18n="settings.library.performance.hint">Büyük kütüphaneler için hızlı tarama, kapak önbelleği limiti ve düşük sistemler için hafif mod ayarları.</div>
+                                            <label class="checkbox-label">
+                                                <input type="checkbox" id="libraryFastScan" checked>
+                                                <span data-i18n="settings.library.performance.fastScan">Hızlı tarama modunu kullan</span>
+                                            </label>
+                                            <label class="checkbox-label">
+                                                <input type="checkbox" id="libraryLightweightMode">
+                                                <span data-i18n="settings.library.performance.lightweight">Hafif modu etkinleştir</span>
+                                            </label>
+                                            <div class="setting-row">
+                                                <span data-i18n="settings.library.performance.coverCache">Kapak önbellek limiti</span>
+                                                <select class="settings-select" id="libraryCoverCacheLimitMb">
+                                                    <option value="32">32 MB</option>
+                                                    <option value="64">64 MB</option>
+                                                    <option value="128">128 MB</option>
+                                                    <option value="256">256 MB</option>
+                                                </select>
+                                            </div>
+                                            <div class="settings-sub" id="libraryPerformanceStatus">-</div>
+                                        </div>
+                                        <div class="settings-group library-group-diagnostics">
+                                            <h4 data-i18n="settings.library.diagnostics.title">Tanılama</h4>
+                                            <div class="settings-sub" data-i18n="settings.library.diagnostics.hint">Son tarama zamanı, süre, tarama hataları ve okunamayan dosyalar burada görünür.</div>
+                                            <div class="library-diagnostics-grid">
+                                                <div class="settings-sub" id="libraryDiagnosticsLastScan">-</div>
+                                                <div class="settings-sub" id="libraryDiagnosticsLastDuration">-</div>
+                                                <div class="settings-sub" id="libraryDiagnosticsErrors">-</div>
+                                                <div class="settings-sub" id="libraryDiagnosticsUnreadable">-</div>
+                                            </div>
+                                        </div>
+                                        <div class="settings-group library-group-metadata">
+                                            <h4 data-i18n="settings.library.metadata.title">Metadata Temizleme ve Yenileme</h4>
+                                            <div class="settings-sub" data-i18n="settings.library.metadata.hint">Tag bilgilerini yeniden oku, bozuk karakterleri temizle ve dosya adına göre eksik alanları tahmin et.</div>
+                                            <div class="library-folder-toolbar library-tool-surface">
+                                                <button class="btn btn-small" id="libraryRefreshMetadataBtn" data-i18n="settings.library.metadata.refresh">Tag'leri yeniden oku</button>
+                                                <button class="btn btn-small" id="libraryCleanMetadataBtn" data-i18n="settings.library.metadata.clean">Bozuk karakterleri temizle</button>
+                                                <button class="btn btn-small" id="libraryInferMetadataBtn" data-i18n="settings.library.metadata.infer">Dosya adına göre tahmin et</button>
+                                            </div>
+                                            <div class="settings-sub" id="libraryMetadataStatus">-</div>
+                                        </div>
+                                        <div class="settings-group library-group-cover">
+                                            <h4 data-i18n="settings.library.cover.title">Kapak Resmi Yönetimi</h4>
+                                            <label class="checkbox-label">
+                                                <input type="checkbox" id="libraryPreferEmbeddedCover" checked>
+                                                <span data-i18n="settings.library.cover.preferEmbedded">Gömülü kapakları önce kullan</span>
+                                            </label>
+                                            <label class="checkbox-label">
+                                                <input type="checkbox" id="libraryScanFolderCover" checked>
+                                                <span data-i18n="settings.library.cover.scanFolder">Klasördeki cover/folder görsellerini tara</span>
+                                            </label>
+                                            <label class="checkbox-label">
+                                                <input type="checkbox" id="libraryMarkMissingCovers" checked>
+                                                <span data-i18n="settings.library.cover.markMissing">Eksik kapakları işaretle</span>
+                                            </label>
+                                            <div class="settings-sub" data-i18n="settings.library.cover.hint">Kapak bulunamazsa oynatıcı varsayılan görseli kullanır. İşaretleme açıkken çalma listesinde kapaksız parçalar etiketlenir.</div>
+                                        </div>
+                                        <div class="settings-group library-group-view">
+                                            <h4 data-i18n="settings.library.view.title">Kütüphane Görünüm Tercihleri</h4>
+                                            <div class="settings-sub" data-i18n="settings.library.view.hint">Çalma listesini kütüphane görünümü gibi sunar; sıralama, gruplama ve görünüm modu burada belirlenir.</div>
+                                            <div class="setting-row">
+                                                <span data-i18n="settings.library.view.sort">Varsayılan sıralama</span>
+                                                <select class="settings-select" id="libraryViewSort">
+                                                    <option value="title" data-i18n="settings.library.view.sort.options.title">Parça adına göre</option>
+                                                    <option value="artist" data-i18n="settings.library.view.sort.options.artist">Sanatçıya göre</option>
+                                                    <option value="album" data-i18n="settings.library.view.sort.options.album">Albüme göre</option>
+                                                    <option value="added" data-i18n="settings.library.view.sort.options.added">Eklenme sırasına göre</option>
+                                                </select>
+                                            </div>
+                                            <div class="setting-row">
+                                                <span data-i18n="settings.library.view.group">Gruplama</span>
+                                                <select class="settings-select" id="libraryViewGroup">
+                                                    <option value="none" data-i18n="settings.library.view.group.options.none">Gruplama yok</option>
+                                                    <option value="artist" data-i18n="settings.library.view.group.options.artist">Sanatçıya göre</option>
+                                                    <option value="album" data-i18n="settings.library.view.group.options.album">Albüme göre</option>
+                                                </select>
+                                            </div>
+                                            <div class="setting-row">
+                                                <span data-i18n="settings.library.view.mode">Görünüm modu</span>
+                                                <select class="settings-select" id="libraryViewMode">
+                                                    <option value="list" data-i18n="settings.library.view.mode.options.list">Liste</option>
+                                                    <option value="compact" data-i18n="settings.library.view.mode.options.compact">Kompakt</option>
+                                                    <option value="comfortable" data-i18n="settings.library.view.mode.options.comfortable">Rahat</option>
+                                                    <option value="cards" data-i18n="settings.library.view.mode.options.cards">Kart</option>
+                                                </select>
+                                            </div>
+                                        </div>
+                                        <div class="settings-group library-group-saved">
+                                            <h4 data-i18n="settings.library.savedData.title">Kayıtlı Kütüphane Verileri</h4>
+                                            <div class="library-stats-grid">
+                                                <div class="library-stat-card">
+                                                    <span data-i18n="settings.library.stats.totalSongs">Toplam şarkı</span>
+                                                    <strong id="libraryStatsTotalSongs">-</strong>
+                                                </div>
+                                                <div class="library-stat-card">
+                                                    <span data-i18n="settings.library.stats.totalArtists">Toplam sanatçı</span>
+                                                    <strong id="libraryStatsTotalArtists">-</strong>
+                                                </div>
+                                                <div class="library-stat-card">
+                                                    <span data-i18n="settings.library.stats.totalAlbums">Toplam albüm</span>
+                                                    <strong id="libraryStatsTotalAlbums">-</strong>
+                                                </div>
+                                                <div class="library-stat-card">
+                                                    <span data-i18n="settings.library.stats.totalDuration">Toplam süre</span>
+                                                    <strong id="libraryStatsTotalDuration">-</strong>
+                                                </div>
+                                                <div class="library-stat-card">
+                                                    <span data-i18n="settings.library.stats.missingMetadata">Eksik metadata</span>
+                                                    <strong id="libraryStatsMissingMetadata">-</strong>
+                                                </div>
+                                                <div class="library-stat-card">
+                                                    <span data-i18n="settings.library.stats.missingCover">Eksik kapak</span>
+                                                    <strong id="libraryStatsMissingCover">-</strong>
+                                                </div>
+                                            </div>
+                                            <div class="library-saved-meta-grid">
+                                                <div class="setting-row">
+                                                    <span data-i18n="settings.library.videoCount">Kaydedilmiş video sayısı</span>
+                                                    <strong id="libraryVideoCount">0</strong>
+                                                </div>
+                                                <div class="library-path-stack">
+                                                    <div class="settings-sub" id="libraryMusicPathInfo" data-i18n="settings.library.musicPath">Müzik klasörü: -</div>
+                                                    <div class="settings-sub" id="libraryVideoPathInfo" data-i18n="settings.library.videoPath">Video klasörü: -</div>
+                                                </div>
+                                            </div>
+                                            <button class="reset-btn" id="libraryClearVideoLibrary" data-i18n="settings.library.clearVideoLibrary">Kayıtlı video listesini temizle</button>
+                                        </div>
+                                        </div>
+                                    </div>
+                                    <div class="settings-page hidden" id="audioSettings">
+                                        <h3 data-i18n="settings.tabs.audio">Ses Çıkışı</h3>
+                                        <div class="settings-group">
+                                            <h4 data-i18n="settings.audio.main.title">Ana Ses Çıkışı</h4>
+                                            <div class="setting-row">
+                                                <span data-i18n="settings.audio.currentDevice">Geçerli çıkış cihazı</span>
+                                                <div style="display:flex; align-items:center; gap:10px; justify-content:flex-end; flex-wrap:wrap;">
+                                                    <strong id="audioCurrentOutputName">-</strong>
+                                                    <span class="settings-chip" id="audioCurrentOutputBadge">-</span>
+                                                    <button class="btn settings-action-btn settings-action-btn-secondary" id="audioRefreshState" data-i18n="settings.audio.refresh">Sistemden yenile</button>
+                                                </div>
+                                            </div>
+                                            <div class="settings-audio-meter-card" id="audioOutputMeterCard">
+                                                <div class="settings-audio-meter-head">
+                                                    <div class="settings-audio-meter-title" data-i18n="settings.audio.meter.title">Canlı çıkış seviyesi</div>
+                                                    <div class="settings-audio-meter-status">
+                                                        <span class="settings-chip settings-chip-neutral" id="audioOutputMeterState" data-i18n="settings.audio.meter.waiting">Bekliyor</span>
+                                                        <span class="settings-audio-clip-led" id="audioOutputClipLed" data-i18n="settings.audio.meter.clipShort">CLIP</span>
+                                                    </div>
+                                                </div>
+                                                <div class="settings-audio-meter-row">
+                                                    <span class="settings-audio-meter-label">L</span>
+                                                    <div class="settings-audio-meter-bar"><span id="audioOutputLevelLeft"></span></div>
+                                                    <strong id="audioOutputLevelLeftValue">0%</strong>
+                                                </div>
+                                                <div class="settings-audio-meter-row">
+                                                    <span class="settings-audio-meter-label">R</span>
+                                                    <div class="settings-audio-meter-bar"><span id="audioOutputLevelRight"></span></div>
+                                                    <strong id="audioOutputLevelRightValue">0%</strong>
+                                                </div>
+                                            </div>
+                                            <div class="setting-row">
+                                                <span data-i18n="settings.audio.outputSelect">Çıkış cihazı seç</span>
+                                                <div style="display:flex; align-items:center; gap:12px; min-width:260px;">
+                                                    <select id="audioOutputSelect" class="settings-select" style="flex:1;">
+                                                        <option value="">Sistem çıkışları yükleniyor...</option>
+                                                    </select>
+                                                </div>
+                                            </div>
+                                            <div class="settings-sub" id="audioOutputSelectHint" data-i18n="settings.audio.outputSelect.hint">Buradan seçilen cihaz sistemin varsayılan çıkışı yapılır.</div>
+                                            <div class="settings-audio-device-card" id="audioDeviceInsightCard">
+                                                <div class="settings-audio-device-card-head">
+                                                    <span class="settings-audio-device-icon" id="audioDeviceInsightIcon">🎧</span>
+                                                    <div class="settings-audio-device-copy">
+                                                        <div class="settings-audio-device-eyebrow" data-i18n="settings.audio.deviceCard.title">Bağlı ses cihazı</div>
+                                                        <div class="settings-audio-device-title" id="audioDeviceInsightTitle">-</div>
+                                                        <div class="settings-audio-device-subtitle" id="audioDeviceInsightSubtitle">-</div>
+                                                    </div>
+                                                </div>
+                                                <div class="settings-audio-device-chip-row" id="audioDeviceInsightMeta"></div>
+                                            </div>
+                                            <div class="settings-sub" data-i18n="settings.audio.quickOutputs.title">Hızlı çıkış seçimi</div>
+                                            <div class="settings-audio-quick-grid" id="audioQuickOutputGrid"></div>
+                                            <label class="checkbox-label">
+                                                <input type="checkbox" id="audioFollowSystemVolume" checked>
+                                                <span data-i18n="settings.audio.followSystem">Sistem sesini takip et</span>
+                                            </label>
+                                            <div class="settings-sub" id="audioSystemAudioHint" data-i18n="settings.audio.followSystem.hint">Linux'ta varsayılan çıkış sesini izler ve sliderı onunla senkron tutar.</div>
+                                            <div class="setting-row">
+                                                <span data-i18n="settings.audio.allow150">Sesi sonuna kadar aç (150%)</span>
+                                                <button class="btn settings-audio-toggle-btn" id="audioAllowOverdrive150" type="button" aria-pressed="false">150%</button>
+                                            </div>
+                                            <div class="settings-sub" data-i18n="settings.audio.allow150.hint">Linux'ta varsayılan çıkışı 100% üstüne kadar zorlar. Diğer platformlarda yalnızca uygulama içi ayar olarak saklanır.</div>
+                                            <div class="setting-row">
+                                                <span data-i18n="settings.audio.defaultVolume">Varsayılan ses seviyesi</span>
+                                                <div style="display:flex; align-items:center; gap:12px; min-width:260px;">
+                                                    <input type="range" id="audioDefaultVolume" min="0" max="100" step="1" style="flex:1;">
+                                                    <strong id="audioDefaultVolumeValue">40%</strong>
+                                                </div>
+                                            </div>
+                                            <div class="settings-sub" data-i18n="settings.audio.defaultVolume.hint">Uygulama açıldığında ve ses motoru yüklendiğinde kullanılacak ana ses seviyesi.</div>
+                                            <div class="setting-row" style="margin-top:16px;">
+                                                <span data-i18n="settings.audio.appVolume">Aurivo uygulama sesi</span>
+                                                <div style="display:flex; align-items:center; gap:12px; min-width:260px;">
+                                                    <input type="range" id="audioAppVolume" min="0" max="100" step="1" style="flex:1;">
+                                                    <strong id="audioAppVolumeValue">40%</strong>
+                                                </div>
+                                            </div>
+                                            <div class="settings-sub" data-i18n="settings.audio.appVolume.hint">Sistem sesinden bağımsız olarak yalnızca Aurivo oynatma sesini anlık kontrol eder.</div>
+                                        </div>
+                                        <div class="settings-group">
+                                            <h4 data-i18n="settings.audio.limiter.title">Anti-clipping koruması</h4>
+                                            <label class="checkbox-label">
+                                                <input type="checkbox" id="audioLimiterEnabled">
+                                                <span data-i18n="settings.audio.limiter.enabled">Limiter koruması</span>
+                                            </label>
+                                            <div class="settings-sub" data-i18n="settings.audio.limiter.enabled.hint">Yüksek ses, boost ve 150% kullanımında clipping ve patlamayı azaltır.</div>
+                                            <div class="setting-row" style="margin-top: 12px;">
+                                                <span data-i18n="settings.audio.limiter.mode">Koruma seviyesi</span>
+                                                <div style="display:flex; align-items:center; gap:12px; min-width:260px;">
+                                                    <select id="audioLimiterMode" class="settings-select" style="flex:1;">
+                                                        <option value="soft" data-i18n="settings.audio.limiter.mode.soft">Yumuşak</option>
+                                                        <option value="balanced" data-i18n="settings.audio.limiter.mode.balanced">Dengeli</option>
+                                                        <option value="strict" data-i18n="settings.audio.limiter.mode.strict">Sıkı</option>
+                                                    </select>
+                                                </div>
+                                            </div>
+                                            <div class="settings-sub" id="audioLimiterHint" data-i18n="settings.audio.limiter.mode.hint">Dengeli mod çoğu kullanım için en güvenli seçimdir.</div>
+                                        </div>
+                                        <div class="settings-group">
+                                            <h4 data-i18n="settings.audio.night.title">Gece modu</h4>
+                                            <label class="checkbox-label">
+                                                <input type="checkbox" id="audioNightModeEnabled">
+                                                <span data-i18n="settings.audio.night.enabled">Gece modu koruması</span>
+                                            </label>
+                                            <div class="settings-sub" data-i18n="settings.audio.night.enabled.hint">Ani yüksek sesleri bastırır, daha sakin ve ev ortamına uygun bir dinleme sağlar.</div>
+                                            <div class="setting-row" style="margin-top: 12px;">
+                                                <span data-i18n="settings.audio.night.mode">Koruma seviyesi</span>
+                                                <div style="display:flex; align-items:center; gap:12px; min-width:260px;">
+                                                    <select id="audioNightModeLevel" class="settings-select" style="flex:1;">
+                                                        <option value="light" data-i18n="settings.audio.night.mode.light">Hafif</option>
+                                                        <option value="balanced" data-i18n="settings.audio.night.mode.balanced">Dengeli</option>
+                                                        <option value="strong" data-i18n="settings.audio.night.mode.strong">Güçlü</option>
+                                                    </select>
+                                                </div>
+                                            </div>
+                                            <div class="settings-sub" id="audioNightModeHint" data-i18n="settings.audio.night.mode.hint">Dengeli mod film, video ve gece kullanımında en güvenli başlangıçtır.</div>
+                                        </div>
+                                        <div class="settings-group">
+                                            <h4 data-i18n="settings.audio.profiles.title">Ses profilleri</h4>
+                                            <div class="settings-audio-profile-grid" id="audioProfileGrid">
+                                                <button type="button" class="settings-audio-profile-card" data-audio-profile="music">
+                                                    <strong data-i18n="settings.audio.profile.music">Müzik</strong>
+                                                    <span data-i18n="settings.audio.profile.music.hint">Dengeli ve doğal günlük dinleme.</span>
+                                                </button>
+                                                <button type="button" class="settings-audio-profile-card" data-audio-profile="movie">
+                                                    <strong data-i18n="settings.audio.profile.movie">Film</strong>
+                                                    <span data-i18n="settings.audio.profile.movie.hint">Ani ses farklarını azaltır, video için uygundur.</span>
+                                                </button>
+                                                <button type="button" class="settings-audio-profile-card" data-audio-profile="headphones">
+                                                    <strong data-i18n="settings.audio.profile.headphones">Kulaklık</strong>
+                                                    <span data-i18n="settings.audio.profile.headphones.hint">Kulaklıkta daha dolu ve yakın his verir.</span>
+                                                </button>
+                                                <button type="button" class="settings-audio-profile-card" data-audio-profile="night">
+                                                    <strong data-i18n="settings.audio.profile.night">Gece</strong>
+                                                    <span data-i18n="settings.audio.profile.night.hint">Daha sakin ve kontrollü gece kullanımı.</span>
+                                                </button>
+                                                <button type="button" class="settings-audio-profile-card" data-audio-profile="loud">
+                                                    <strong data-i18n="settings.audio.profile.loud">Yüksek ses</strong>
+                                                    <span data-i18n="settings.audio.profile.loud.hint">Daha güçlü çıkış ve agresif ses hissi.</span>
+                                                </button>
+                                            </div>
+                                            <div class="settings-sub" id="audioProfileHint" data-i18n="settings.audio.profile.hint">Profil seçimi ses çıkışı ve video ses tercihlerini birlikte ayarlar.</div>
+                                        </div>
+                                        <div class="settings-group">
+                                            <h4 data-i18n="settings.audio.spatial.title">Kanal modu</h4>
+                                            <div class="settings-audio-profile-grid" id="audioSpatialGrid">
+                                                <button type="button" class="settings-audio-profile-card" data-audio-spatial="mono">
+                                                    <strong data-i18n="settings.audio.spatial.mono">Mono</strong>
+                                                    <span data-i18n="settings.audio.spatial.mono.hint">Tek kanala yakın, eski kayıt ve tek kulak için daha güvenli.</span>
+                                                </button>
+                                                <button type="button" class="settings-audio-profile-card" data-audio-spatial="stereo">
+                                                    <strong data-i18n="settings.audio.spatial.stereo">Stereo</strong>
+                                                    <span data-i18n="settings.audio.spatial.stereo.hint">Doğal ve dengeli standart sahne.</span>
+                                                </button>
+                                                <button type="button" class="settings-audio-profile-card" data-audio-spatial="spatial">
+                                                    <strong data-i18n="settings.audio.spatial.spatial">Spatial</strong>
+                                                    <span data-i18n="settings.audio.spatial.spatial.hint">Kulaklıkta daha geniş ve çevresel his verir.</span>
+                                                </button>
+                                            </div>
+                                            <div class="settings-sub" id="audioSpatialHint" data-i18n="settings.audio.spatial.hint">Yerel müzik motorunda stereo genişliği ve kulaklık sahnesini birlikte ayarlar.</div>
+                                        </div>
+                                        <div class="settings-group">
+                                            <h4 data-i18n="settings.audio.sync.title">Video ses senkronu</h4>
+                                            <div class="setting-row">
+                                                <span data-i18n="settings.audio.sync.delay">Yerel video ses gecikmesi</span>
+                                                <div style="display:flex; align-items:center; gap:12px; min-width:320px;">
+                                                    <input type="range" id="audioVideoDelay" min="0" max="500" step="10" style="flex:1;">
+                                                    <strong id="audioVideoDelayValue">0 ms</strong>
+                                                    <button class="btn settings-action-btn settings-action-btn-secondary" id="audioVideoDelayReset" data-i18n="settings.audio.sync.reset">Sıfırla</button>
+                                                </div>
+                                            </div>
+                                            <div class="settings-sub" id="audioVideoDelayHint" data-i18n="settings.audio.sync.hint">Yerel video oynatımında sesi en fazla 500 ms geciktirir. Özellikle HDMI, Bluetooth ve bazı USB çıkışlarda senkron düzeltmek için kullanılır.</div>
+                                        </div>
+                                        <div class="settings-group">
+                                            <h4 data-i18n="settings.audio.fullscreen.title">Tam Ekran Video Ses Tercihleri</h4>
+                                            <label class="checkbox-label">
+                                                <input type="checkbox" id="audioStableVolume">
+                                                <span data-i18n="settings.audio.stableVolume">Sabit ses</span>
+                                            </label>
+                                            <div class="settings-sub" data-i18n="settings.audio.stableVolume.hint">Video izlerken ani ses farklarını azaltmak için sabit ses tercih edilir.</div>
+                                            <label class="checkbox-label">
+                                                <input type="checkbox" id="audioVolumeBoost">
+                                                <span data-i18n="settings.audio.volumeBoost">Ses artırma</span>
+                                            </label>
+                                            <div class="settings-sub" data-i18n="settings.audio.volumeBoost.hint">Düşük sesli videolarda sesi daha güçlü hissettirmek için ek kazanç uygular.</div>
+                                        </div>
+                                    </div>
+                                    <div class="settings-page hidden" id="adblockSettings">
+                                        <h3 data-i18n="settings.adblock.title">DeliBlock (Web Reklam Engelleyici)</h3>
+                                        <div class="settings-group">
+                                            <h4>Filtreleme Modu</h4>
+                                            <p class="security-hint">Mod arttıkça daha fazla reklam/öğe temizlenir; bazı sitelerde uyumluluk düşebilir.</p>
+                                            <div class="adblock-mode-grid" id="adblockModeGrid">
+                                                <button type="button" class="adblock-mode-card" data-adblock-mode="basic">
+                                                    <strong>Temel</strong>
+                                                    <span>Sadece güvenli ağ engelleme, minimum müdahale.</span>
+                                                </button>
+                                                <button type="button" class="adblock-mode-card" data-adblock-mode="ideal">
+                                                    <strong>İdeal</strong>
+                                                    <span>Ağ + YouTube arayüz temizliği, önerilen mod.</span>
+                                                </button>
+                                                <button type="button" class="adblock-mode-card" data-adblock-mode="aggressive">
+                                                    <strong>Kapsamlı</strong>
+                                                    <span>Daha sert filtreleme, daha fazla müdahale.</span>
+                                                </button>
+                                            </div>
+                                        </div>
+                                        <div class="settings-group">
+                                            <h4>Davranış</h4>
+                                            <label class="checkbox-label">
+                                                <input type="checkbox" id="adblockShowBlockedCount" checked>
+                                                <span>Engellenen istek sayısını üst çubukta göster</span>
+                                            </label>
+                                            <label class="checkbox-label">
+                                                <input type="checkbox" id="adblockAutoRefreshOnModeChange">
+                                                <span>Mod değişince web sayfasını otomatik yenile</span>
+                                            </label>
+                                        </div>
+                                        <div class="settings-group">
+                                            <h4>Canlı Durum</h4>
+                                            <div class="setting-row">
+                                                <span>Engellenen istek</span>
+                                                <strong id="adblockBlockedCount">0</strong>
+                                            </div>
+                                            <div class="setting-row">
+                                                <span>Toplam istek</span>
+                                                <strong id="adblockTotalCount">0</strong>
+                                            </div>
+                                            <div class="setting-row">
+                                                <span>Yüklenen ruleset</span>
+                                                <strong id="adblockRulesetCount">-</strong>
+                                            </div>
+                                            <div class="setting-row">
+                                                <span>Aktif alan adı kuralı</span>
+                                                <strong id="adblockDomainRuleCount">-</strong>
+                                            </div>
+                                        </div>
+                                        <div class="settings-group">
+                                            <h4>Not</h4>
+                                            <p class="security-hint">Domain izin listesi ve gelişmiş engelleme yönetimi doğrudan uBlock Origin Lite panelinden yapılır.</p>
+                                            <div class="setting-row">
+                                                <button class="btn btn-small" id="adblockOpenDashboardBtn">uBO Lite Panelini Aç</button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="modal-footer">
+                                <button class="btn settings-action-btn settings-action-btn-secondary settings-action-btn-reset" id="settingsResetCurrentTab" data-i18n="settings.buttons.resetCurrentTab">Varsayılana döndür</button>
+                                <button class="btn settings-action-btn settings-action-btn-ghost" id="settingsCancel" data-i18n="settings.buttons.cancel">İptal</button>
+                                <button class="btn settings-action-btn settings-action-btn-primary" id="settingsOk" data-i18n="settings.buttons.save">Kaydet</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <div class="modal-overlay hidden" id="restartModalOverlay" role="presentation">
+        <div class="restart-modal glass-card" role="dialog" aria-modal="true" aria-labelledby="restartModalTitle">
+            <div class="restart-header">
+                <div class="restart-title" id="restartModalTitle" data-i18n="restart.title">Yeniden başlatma gerekli</div>
+                <button class="modal-close" id="restartModalClose" aria-label="Close">&times;</button>
+            </div>
+            <div class="restart-body">
+                <div class="restart-text" data-i18n="restart.message">
+                    Dil değişikliğinin uygulanması için uygulamanın yeniden başlatılması gerekiyor. Şimdi yeniden başlatılsın mı?
+                </div>
+            </div>
+            <div class="restart-actions">
+                <button class="btn" id="restartModalNo" data-i18n="restart.no">Hayır</button>
+                <button class="btn primary" id="restartModalYes" data-i18n="restart.yes">Evet</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="notificationContainer" class="notification-container" aria-live="polite" aria-atomic="false"></div>
+
+    <script src="modules/i18n.js"></script>
+    <script src="modules/listen-settings.js"></script>
+    <script src="modules/adblock-settings.js"></script>
+    <script src="modules/security-settings.js"></script>
+    <script src="modules/settings-shared.js"></script>
+    <script src="modules/settings-window.js"></script>
+    <script src="renderer.js"></script>
+</body>
+</html>

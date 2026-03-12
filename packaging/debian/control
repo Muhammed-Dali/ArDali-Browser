@@ -1,0 +1,14 @@
+Package: aurivo-media-player
+Version: 0.0.0
+Section: sound
+Priority: optional
+Architecture: amd64
+Maintainer: Aurivo <support@aurivo.app>
+Homepage: https://aurivo.app
+Depends: libasound2, libx11-6, libxss1, libgtk-3-0, libnss3, libatk1.0-0, libxkbcommon0
+Description: Aurivo Media Player (Electron)
+ Aurivo Media Player; Electron tabanlı gelişmiş bir medya oynatıcıdır.
+ .
+ Not: Projede CI ile üretilen resmi .deb paketi electron-builder tarafından
+ oluşturulur. Bu kontrol dosyası referans/alternatif paketleme içindir.
+

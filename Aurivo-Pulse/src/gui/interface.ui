@@ -1,0 +1,943 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<!-- Created with Cambalache 0.96.3 -->
+<interface>
+  <!-- interface-name interface.ui -->
+  <requires lib="gio" version="2.44"/>
+  <requires lib="gtk" version="4.14"/>
+  <requires lib="libadwaita" version="1.5"/>
+  <object class="AdwApplicationWindow" id="main_window">
+    <property name="accessible-role">application</property>
+    <property name="content">
+      <object class="AdwNavigationView" id="main_window_pages">
+        <child>
+          <object class="AdwNavigationPage" id="main_page">
+            <property name="child">
+              <object class="AdwToolbarView">
+                <property name="content">
+                  <object class="GtkScrolledWindow" id="main_scrollview">
+                    <property name="child">
+                      <object class="GtkBox" id="layout_box">
+                        <property name="homogeneous">True</property>
+                        <property name="margin-bottom">15</property>
+                        <property name="margin-end">15</property>
+                        <property name="margin-start">15</property>
+                        <property name="margin-top">15</property>
+                        <property name="spacing">15</property>
+                        <child type="primary">
+                          <object class="GtkBox" id="left_column">
+                            <property name="orientation">vertical</property>
+                            <property name="spacing">15</property>
+                            <child>
+                              <object class="AdwPreferencesGroup" id="identify_section">
+                                <property name="title" translatable="yes">Recognize songs</property>
+                                <child>
+                                  <object class="AdwActionRow" id="recognize_file_row">
+                                    <property name="activatable">True</property>
+                                    <property name="activatable-widget">recognize_file_button</property>
+                                    <property name="selectable">False</property>
+                                    <property name="title" translatable="yes">Recognize from file</property>
+                                    <child>
+                                      <object class="GtkButton" id="recognize_file_button">
+                                        <property name="action-name">win.recognize-file</property>
+                                        <property name="child">
+                                          <object class="AdwButtonContent">
+                                            <property name="icon-name">folder-new-symbolic</property>
+                                            <property name="label" translatable="yes">Pick a file...</property>
+                                          </object>
+                                        </property>
+                                      </object>
+                                    </child>
+                                  </object>
+                                </child>
+                                <child>
+                                  <object class="AdwPreferencesRow" id="spinner_row">
+                                    <property name="activatable">False</property>
+                                    <property name="margin-end">7</property>
+                                    <property name="margin-start">7</property>
+                                    <property name="margin-top">7</property>
+                                    <property name="selectable">False</property>
+                                    <property name="visible">False</property>
+                                    <child>
+                                      <object class="GtkSpinner">
+                                        <property name="margin-bottom">7</property>
+                                        <property name="spinning">True</property>
+                                      </object>
+                                    </child>
+                                  </object>
+                                </child>
+                                <child>
+                                  <object class="AdwSwitchRow" id="microphone_switch">
+                                    <property name="activatable">True</property>
+                                    <property name="selectable">False</property>
+                                    <property name="title" translatable="yes">Recognize from microphone</property>
+                                    <property name="visible">False</property>
+                                    <signal name="notify::active" handler="microphone_option_switched"/>
+                                  </object>
+                                </child>
+                                <child>
+                                  <object class="AdwSwitchRow" id="loopback_switch">
+                                    <property name="activatable">True</property>
+                                    <property name="selectable">False</property>
+                                    <property name="title" translatable="yes">Recognize from my speakers</property>
+                                    <property name="visible">False</property>
+                                    <signal name="notify::active" handler="loopback_options_switched"/>
+                                  </object>
+                                </child>
+                                <child>
+                                  <object class="GtkLabel" id="no_network_message">
+                                    <property name="label" translatable="yes">Shazam servers are not reachable, are you connected?</property>
+                                    <property name="margin-top">5</property>
+                                    <property name="visible">False</property>
+                                    <attributes>
+                                      <attribute name="weight" value="medium"/>
+                                      <attribute name="foreground" value="#a4a400000000"/>
+                                    </attributes>
+                                  </object>
+                                </child>
+                                <child>
+                                  <object class="GtkLabel" id="rate_limited_message">
+                                    <property name="label" translatable="yes">ERROR: Your IP has been rate-limited</property>
+                                    <property name="margin-top">5</property>
+                                    <property name="visible">False</property>
+                                    <attributes>
+                                      <attribute name="weight" value="bold"/>
+                                      <attribute name="foreground" value="#a4a400000000"/>
+                                    </attributes>
+                                  </object>
+                                </child>
+                              </object>
+                            </child>
+                            <child>
+                              <object class="AdwPreferencesGroup" id="quick_device_section">
+                                <property name="title" translatable="yes">Hizli cihaz secimi</property>
+                                <property name="visible">False</property>
+                                <child>
+                                  <object class="AdwPreferencesRow" id="quick_device_row">
+                                    <property name="activatable">False</property>
+                                    <property name="selectable">False</property>
+                                    <child>
+                                      <object class="GtkBox" id="quick_device_buttons_box">
+                                        <property name="margin-bottom">8</property>
+                                        <property name="margin-end">8</property>
+                                        <property name="margin-start">8</property>
+                                        <property name="margin-top">8</property>
+                                        <property name="orientation">vertical</property>
+                                        <property name="spacing">8</property>
+                                      </object>
+                                    </child>
+                                  </object>
+                                </child>
+                              </object>
+                            </child>
+                            <child>
+                              <object class="AdwPreferencesGroup" id="results_section">
+                                <property name="title" translatable="yes">Tanima sonucu</property>
+                                <property name="visible">False</property>
+                                <child>
+                                  <object class="AdwPreferencesRow" id="results_row">
+                                    <property name="activatable">False</property>
+                                    <property name="selectable">False</property>
+                                    <child>
+                                      <object class="GtkBox" id="results_card">
+                                        <property name="margin-bottom">12</property>
+                                        <property name="margin-end">12</property>
+                                        <property name="margin-start">12</property>
+                                        <property name="margin-top">12</property>
+                                        <property name="orientation">vertical</property>
+                                        <property name="spacing">12</property>
+                                        <child>
+                                          <object class="GtkLabel" id="results_label">
+                                            <property name="css-classes">results-title</property>
+                                            <property name="ellipsize">end</property>
+                                            <property name="label">Artist - Song name</property>
+                                            <property name="natural-wrap-mode">word</property>
+                                            <property name="selectable">True</property>
+                                            <property name="wrap">True</property>
+                                            <property name="xalign">0</property>
+                                            <attributes>
+                                              <attribute name="weight" value="bold"/>
+                                            </attributes>
+                                          </object>
+                                        </child>
+                                        <child>
+                                          <object class="GtkBox" id="results_cover_shell">
+                                            <property name="halign">center</property>
+                                            <property name="valign">center</property>
+                                            <child>
+                                              <object class="GtkImage" id="results_image">
+                                                <property name="css-classes">results-cover</property>
+                                                <property name="pixel-size">176</property>
+                                              </object>
+                                            </child>
+                                          </object>
+                                        </child>
+                                      </object>
+                                    </child>
+                                  </object>
+                                </child>
+                                <child>
+                                  <object class="AdwActionRow" id="search_youtube_row">
+                                    <property name="activatable">True</property>
+                                    <property name="activatable-widget">search_youtube_button</property>
+                                    <property name="css-classes">results-search-row</property>
+                                    <property name="selectable">False</property>
+                                    <property name="title" translatable="yes">YouTube'da ara</property>
+                                    <child>
+                                      <object class="GtkButton" id="search_youtube_button">
+                                        <property name="action-name">win.search-youtube</property>
+                                        <property name="css-classes">pill accent</property>
+                                        <property name="child">
+                                          <object class="AdwButtonContent">
+                                            <property name="icon-name">search-symbolic</property>
+                                            <property name="label" translatable="yes">Ara...</property>
+                                          </object>
+                                        </property>
+                                      </object>
+                                    </child>
+                                  </object>
+                                </child>
+                              </object>
+                            </child>
+                          </object>
+                        </child>
+                        <child type="secondary">
+                          <object class="GtkBox" id="right_column">
+                            <property name="orientation">vertical</property>
+                            <property name="spacing">15</property>
+                            <child>
+                              <object class="AdwPreferencesGroup" id="input_device_section">
+                                <property name="header-suffix">
+                                  <object class="GtkButton" id="refresh_devices">
+                                    <property name="action-name">win.refresh-devices</property>
+                                    <property name="icon-name">view-refresh-symbolic</property>
+                                    <property name="tooltip-text" translatable="yes">Refresh available devices</property>
+                                  </object>
+                                </property>
+                                <property name="title" translatable="yes">Audio input</property>
+                                <property name="visible">False</property>
+                                <child>
+                                  <object class="AdwComboRow" id="audio_inputs">
+                                    <property name="factory">
+                                      <object class="GtkBuilderListItemFactory" id="audio_inputs_factory">
+                                        <property name="bytes"><![CDATA[<interface>
+  <template class="GtkListItem">
+    <property name="child">
+      <object class="GtkBox">
+        <property name="spacing">8</property>
+        <child>
+          <object class="GtkLabel">
+            <property name="use-markup">True</property>
+            <property name="xalign">0</property>
+            <binding name="label">
+              <lookup name="indicator_markup" type="ListedDevice">
+                <lookup name="item">GtkListItem</lookup>
+              </lookup>
+            </binding>
+          </object>
+        </child>
+        <child>
+          <object class="GtkLabel">
+            <property name="xalign">0</property>
+            <property name="hexpand">True</property>
+            <property name="ellipsize">PANGO_ELLIPSIZE_END</property>
+            <binding name="label">
+              <lookup name="display_name" type="ListedDevice">
+                <lookup name="item">GtkListItem</lookup>
+              </lookup>
+            </binding>
+          </object>
+        </child>
+      </object>
+    </property>
+  </template>
+</interface>]]></property>
+                                      </object>
+                                    </property>
+                                    <property name="model">
+                                      <object class="GListStore" id="audio_inputs_model"/>
+                                    </property>
+                                    <property name="title" translatable="yes">Device</property>
+                                    <property name="title-lines">1</property>
+                                    <signal name="notify::selected-item" handler="input_device_switched"/>
+                                  </object>
+                                </child>
+                                <child>
+                                  <object class="AdwPreferencesRow" id="volume_row">
+                                    <property name="activatable">False</property>
+                                    <property name="selectable">False</property>
+                                    <child>
+                                      <object class="GtkBox">
+                                        <property name="margin-bottom">15</property>
+                                        <property name="margin-end">15</property>
+                                        <property name="margin-start">15</property>
+                                        <property name="margin-top">15</property>
+                                        <property name="spacing">6</property>
+                                        <child>
+                                          <object class="GtkLabel" id="volume_label">
+                                            <property name="label" translatable="yes">Volume:</property>
+                                          </object>
+                                        </child>
+                                        <child>
+                                          <object class="GtkProgressBar" id="volume_gauge">
+                                            <property name="valign">center</property>
+                                          </object>
+                                        </child>
+                                      </object>
+                                    </child>
+                                  </object>
+                                </child>
+                              </object>
+                            </child>
+                            <child>
+                              <object class="AdwPreferencesGroup" id="history_section">
+                                <property name="header-suffix">
+                                  <object class="GtkMenuButton" id="history_params">
+                                    <property name="has-tooltip">True</property>
+                                    <property name="icon-name">preferences-system</property>
+                                    <property name="menu-model">history_menu_model</property>
+                                    <property name="tooltip-text" translatable="yes">History options...</property>
+                                  </object>
+                                </property>
+                                <property name="title" translatable="yes">Recognition history</property>
+                                <child>
+                                  <object class="AdwPreferencesRow" id="history_row">
+                                    <property name="child">
+                                      <object class="GtkScrolledWindow">
+                                        <property name="child">history_view</property>
+                                        <child>
+                                          <object class="GtkColumnView" id="history_view">
+                                            <property name="accessible-role">list</property>
+                                            <property name="model">
+                                              <object class="GtkSingleSelection" id="history_selection">
+                                                <property name="autoselect">False</property>
+                                                <property name="can-unselect">True</property>
+                                              </object>
+                                            </property>
+                                            <property name="show-column-separators">True</property>
+                                            <property name="show-row-separators">True</property>
+                                            <property name="single-click-activate">True</property>
+                                            <child>
+                                              <object class="GtkColumnViewColumn" id="history_song_column">
+                                                <property name="factory">
+                                                  <object class="GtkBuilderListItemFactory">
+                                                    <property name="bytes"><![CDATA[<interface>
+  <template class="GtkColumnViewCell">
+    <property name="child">
+      <object class="GtkLabel">
+        <property name="xalign">0</property>
+        <property name="name">table_cell</property>
+        <binding name="label">
+          <lookup name="song_name" type="HistoryEntry">
+            <lookup name="item">GtkColumnViewCell</lookup>
+          </lookup>
+        </binding>
+      </object>
+    </property>
+  </template>
+</interface>]]></property>
+                                                  </object>
+                                                </property>
+                                                <property name="id">song_name</property>
+                                                <property name="resizable">True</property>
+                                                <property name="title" translatable="yes">Song name</property>
+                                              </object>
+                                            </child>
+                                            <child>
+                                              <object class="GtkColumnViewColumn" id="history_album_column">
+                                                <property name="factory">
+                                                  <object class="GtkBuilderListItemFactory">
+                                                    <property name="bytes"><![CDATA[<interface>
+  <template class="GtkColumnViewCell">
+    <property name="child">
+      <object class="GtkLabel">
+        <property name="xalign">0</property>
+        <property name="name">table_cell</property>
+        <binding name="label">
+          <lookup name="album" type="HistoryEntry">
+            <lookup name="item">GtkColumnViewCell</lookup>
+          </lookup>
+        </binding>
+      </object>
+    </property>
+  </template>
+</interface>]]></property>
+                                                  </object>
+                                                </property>
+                                                <property name="id">album</property>
+                                                <property name="resizable">True</property>
+                                                <property name="title" translatable="yes">Album</property>
+                                              </object>
+                                            </child>
+                                            <child>
+                                              <object class="GtkColumnViewColumn" id="history_date_column">
+                                                <property name="expand">True</property>
+                                                <property name="factory">
+                                                  <object class="GtkBuilderListItemFactory">
+                                                    <property name="bytes"><![CDATA[<interface>
+  <template class="GtkColumnViewCell">
+    <property name="child">
+      <object class="GtkLabel">
+        <property name="xalign">0</property>
+        <property name="name">table_cell</property>
+        <binding name="label">
+          <lookup name="recognition_date" type="HistoryEntry">
+            <lookup name="item">GtkColumnViewCell</lookup>
+          </lookup>
+        </binding>
+      </object>
+    </property>
+  </template>
+</interface>]]></property>
+                                                  </object>
+                                                </property>
+                                                <property name="id">recognition_date</property>
+                                                <property name="resizable">True</property>
+                                                <property name="title" translatable="yes">Recognition date</property>
+                                              </object>
+                                            </child>
+                                          </object>
+                                        </child>
+                                      </object>
+                                    </property>
+                                    <property name="height-request">200</property>
+                                  </object>
+                                </child>
+                                <child>
+                                  <object class="AdwPreferencesRow" id="favorites_button">
+                                    <property name="accessible-role">button</property>
+                                    <property name="action-name">navigation.push</property>
+                                    <property name="action-target">'favorites_tag'</property>
+                                    <property name="child">
+                                      <object class="GtkLabel">
+                                        <property name="label" translatable="yes">View favorites</property>
+                                        <property name="margin-bottom">10</property>
+                                        <property name="margin-top">10</property>
+                                        <attributes>
+                                          <attribute name="weight" value="medium"/>
+                                        </attributes>
+                                      </object>
+                                    </property>
+                                  </object>
+                                </child>
+                              </object>
+                            </child>
+                          </object>
+                        </child>
+                      </object>
+                    </property>
+                  </object>
+                </property>
+                <child type="top">
+                  <object class="AdwHeaderBar" id="title_bar">
+                    <child type="end">
+                      <object class="GtkMenuButton" id="menu_button">
+                        <property name="accessible-role">menu</property>
+                        <property name="has-tooltip">True</property>
+                        <property name="icon-name">open-menu-symbolic</property>
+                        <property name="menu-model">main_menu_model</property>
+                        <property name="primary">True</property>
+                        <property name="tooltip-text" translatable="yes">Application menu</property>
+                      </object>
+                    </child>
+                  </object>
+                </child>
+              </object>
+            </property>
+            <property name="title">Aurivo-Pulse</property>
+          </object>
+        </child>
+        <child>
+          <object class="AdwNavigationPage" id="favorites_page">
+            <property name="child">
+              <object class="AdwToolbarView">
+                <property name="content">
+                  <object class="GtkScrolledWindow">
+                    <property name="child">favorites_view</property>
+                    <child>
+                      <object class="GtkColumnView" id="favorites_view">
+                        <property name="accessible-role">list</property>
+                        <property name="model">
+                          <object class="GtkSingleSelection" id="favorites_selection">
+                            <property name="autoselect">False</property>
+                            <property name="can-unselect">True</property>
+                          </object>
+                        </property>
+                        <property name="show-column-separators">True</property>
+                        <property name="show-row-separators">True</property>
+                        <property name="single-click-activate">True</property>
+                        <child>
+                          <object class="GtkColumnViewColumn" id="favorites_song_column">
+                            <property name="factory">
+                              <object class="GtkBuilderListItemFactory">
+                                <property name="bytes"><![CDATA[<interface>
+  <template class="GtkColumnViewCell">
+    <property name="child">
+      <object class="GtkLabel">
+        <property name="xalign">0</property>
+        <binding name="label">
+          <lookup name="song_name" type="HistoryEntry">
+            <lookup name="item">GtkColumnViewCell</lookup>
+          </lookup>
+        </binding>
+      </object>
+    </property>
+  </template>
+</interface>]]></property>
+                              </object>
+                            </property>
+                            <property name="resizable">True</property>
+                            <property name="title" translatable="yes">Song name</property>
+                          </object>
+                        </child>
+                        <child>
+                          <object class="GtkColumnViewColumn" id="favorites_album_column">
+                            <property name="factory">
+                              <object class="GtkBuilderListItemFactory">
+                                <property name="bytes"><![CDATA[<interface>
+  <template class="GtkColumnViewCell">
+    <property name="child">
+      <object class="GtkLabel">
+        <property name="xalign">0</property>
+        <binding name="label">
+          <lookup name="album" type="HistoryEntry">
+            <lookup name="item">GtkColumnViewCell</lookup>
+          </lookup>
+        </binding>
+      </object>
+    </property>
+  </template>
+</interface>]]></property>
+                              </object>
+                            </property>
+                            <property name="id">album</property>
+                            <property name="resizable">True</property>
+                            <property name="title" translatable="yes">Album</property>
+                          </object>
+                        </child>
+                        <child>
+                          <object class="GtkColumnViewColumn" id="favorites_date_column">
+                            <property name="expand">True</property>
+                            <property name="factory">
+                              <object class="GtkBuilderListItemFactory">
+                                <property name="bytes"><![CDATA[<interface>
+  <template class="GtkColumnViewCell">
+    <property name="child">
+      <object class="GtkLabel">
+        <property name="xalign">0</property>
+        <binding name="label">
+          <lookup name="recognition_date" type="HistoryEntry">
+            <lookup name="item">GtkColumnViewCell</lookup>
+          </lookup>
+        </binding>
+      </object>
+    </property>
+  </template>
+</interface>]]></property>
+                              </object>
+                            </property>
+                            <property name="id">recognition_date</property>
+                            <property name="resizable">True</property>
+                            <property name="title" translatable="yes">Recognition date</property>
+                          </object>
+                        </child>
+                      </object>
+                    </child>
+                  </object>
+                </property>
+                <child type="top">
+                  <object class="AdwHeaderBar" id="favorites_titlebar"/>
+                </child>
+                <child type="bottom">
+                  <object class="GtkActionBar" id="favorites_actions">
+                    <child>
+                      <object class="GtkButton" id="favorites_export_csv">
+                        <property name="action-name">win.export-favorites-to-csv</property>
+                        <child>
+                          <object class="AdwButtonContent" id="favorites_export_content">
+                            <property name="icon-name">x-office-spreadsheet-symbolic</property>
+                            <property name="label" translatable="yes">Export to CSV</property>
+                          </object>
+                        </child>
+                      </object>
+                    </child>
+                  </object>
+                </child>
+              </object>
+            </property>
+            <property name="tag">favorites_tag</property>
+            <property name="title" translatable="yes">Favorites</property>
+          </object>
+        </child>
+        <child>
+          <object class="AdwNavigationPage" id="settings_page">
+            <property name="child">
+              <object class="AdwToolbarView">
+                <property name="content">
+                  <object class="AdwPreferencesPage">
+                    <child>
+                      <object class="AdwPreferencesGroup" id="general_preferences">
+                        <property name="title" translatable="yes">General preferences</property>
+                        <child>
+                          <object class="AdwSwitchRow" id="notification_setting">
+                            <property name="action-name">win.notification-setting</property>
+                            <property name="subtitle" translatable="yes">Notify when a new song is recognized or network error is encountered</property>
+                            <property name="title" translatable="yes">Show notifications</property>
+                          </object>
+                        </child>
+                        <child>
+                          <object class="AdwSwitchRow" id="mpris_setting">
+                            <property name="action-name">win.mpris-setting</property>
+                            <property name="has-tooltip">True</property>
+                            <property name="subtitle" translatable="yes">MPRIS will display information about recognized songs in places like the GNOME or KDE control panel</property>
+                            <property name="title" translatable="yes">Enable MPRIS</property>
+                          </object>
+                        </child>
+                        <child>
+                          <object class="AdwSwitchRow" id="systray_setting">
+                            <property name="action-name">win.systray-setting</property>
+                            <property name="subtitle" translatable="yes">When closing the window, minimize to system tray using KSNI instead of closing the app. Please note that you may have to increase the "request interval" setting when leaving Aurivo-Pulse running in the background to reduce your changes of getting rate-limited.</property>
+                            <property name="title" translatable="yes">Minimize to system tray</property>
+                            <property name="visible">False</property>
+                          </object>
+                        </child>
+                        <child>
+                          <object class="AdwSwitchRow" id="no_dupes_setting">
+                            <property name="action-name">win.no-dupes-setting</property>
+                            <property name="subtitle" translatable="yes">Bump a song to the top of the history list and remove the former entry when the same song is detected multiple times</property>
+                            <property name="title" translatable="yes">No duplicates in history</property>
+                          </object>
+                        </child>
+                      </object>
+                    </child>
+                    <child>
+                      <object class="AdwPreferencesGroup" id="network_preferences">
+                        <property name="title" translatable="yes">Network preferences</property>
+                        <child>
+                          <object class="AdwSpinRow" id="interval_setting">
+                            <property name="adjustment">
+                              <object class="GtkAdjustment" id="interval_value">
+                                <property name="lower">1.0</property>
+                                <property name="page-increment">1.0</property>
+                                <property name="page-size">1.0</property>
+                                <property name="step-increment">1.0</property>
+                                <property name="upper">513.0</property>
+                                <property name="value">10.0</property>
+                                <signal name="value-changed" handler="interval_changed"/>
+                              </object>
+                            </property>
+                            <property name="climb-rate">1.0</property>
+                            <property name="numeric">True</property>
+                            <property name="snap-to-ticks">True</property>
+                            <property name="subtitle" translatable="yes">By default 8, increase if you are rate-limited</property>
+                            <property name="title" translatable="yes">Shazam interval between requests in seconds</property>
+                            <property name="update-policy">if-valid</property>
+                          </object>
+                        </child>
+                        <child>
+                          <object class="AdwSpinRow" id="buffer_size_setting">
+                            <property name="adjustment">
+                              <object class="GtkAdjustment" id="buffer_size_value">
+                                <property name="lower">1.0</property>
+                                <property name="page-increment">1.0</property>
+                                <property name="page-size">1.0</property>
+                                <property name="step-increment">1.0</property>
+                                <property name="upper">513.0</property>
+                                <property name="value">12.0</property>
+                                <signal name="value-changed" handler="buffer_size_changed"/>
+                              </object>
+                            </property>
+                            <property name="climb-rate">1.0</property>
+                            <property name="numeric">True</property>
+                            <property name="snap-to-ticks">True</property>
+                            <property name="subtitle" translatable="yes">By default the last 12 seconds of music are fingerprinted and sent to Shazam. Editing may have an impact on reliability</property>
+                            <property name="title" translatable="yes">Shazam buffer size in seconds</property>
+                            <property name="update-policy">if-valid</property>
+                          </object>
+                        </child>
+                      </object>
+                    </child>
+                    <child>
+                      <object class="AdwPreferencesGroup" id="recognition_preferences">
+                        <property name="title" translatable="yes">Recognition Engine</property>
+                        <child>
+                          <object class="AdwComboRow" id="recognition_engine_setting">
+                            <property name="model">
+                              <object class="GtkStringList" id="recognition_engine_model">
+                                <items>
+                                  <item translatable="yes">Hybrid (SongRec + AcoustID)</item>
+                                  <item translatable="yes">SongRec only</item>
+                                  <item translatable="yes">AcoustID only</item>
+                                </items>
+                              </object>
+                            </property>
+                            <property name="selected">0</property>
+                            <property name="subtitle" translatable="yes">Choose how tracks are recognized.</property>
+                            <property name="title" translatable="yes">Recognition mode</property>
+                            <signal name="notify::selected-item" handler="recognition_engine_changed"/>
+                          </object>
+                        </child>
+                        <child>
+                          <object class="AdwEntryRow" id="acoustid_api_key_setting">
+                            <property name="show-apply-button">False</property>
+                            <property name="subtitle" translatable="yes">Used when Hybrid or AcoustID-only mode is active.</property>
+                            <property name="title" translatable="yes">AcoustID API Key</property>
+                            <signal name="notify::text" handler="acoustid_api_key_changed"/>
+                          </object>
+                        </child>
+                        <child>
+                          <object class="AdwActionRow" id="acoustid_status_row">
+                            <property name="activatable">False</property>
+                            <property name="selectable">False</property>
+                            <property name="title" translatable="yes">AcoustID status</property>
+                            <property name="subtitle" translatable="yes">Checking...</property>
+                          </object>
+                        </child>
+                      </object>
+                    </child>
+                    <child>
+                      <object class="AdwPreferencesGroup" id="recognition_benchmark_group">
+                        <property name="title" translatable="yes">Recognition Benchmark</property>
+                        <property name="header-suffix">
+                          <object class="GtkButton" id="benchmark_reset_button">
+                            <property name="action-name">win.reset-benchmark</property>
+                            <property name="label" translatable="yes">Sıfırla</property>
+                          </object>
+                        </property>
+                        <child>
+                          <object class="AdwActionRow" id="benchmark_summary_row">
+                            <property name="activatable">False</property>
+                            <property name="selectable">False</property>
+                            <property name="title" translatable="yes">Summary</property>
+                            <property name="subtitle" translatable="yes">Attempts: 0 | Success: 0 (0%)</property>
+                          </object>
+                        </child>
+                        <child>
+                          <object class="AdwActionRow" id="benchmark_engine_row">
+                            <property name="activatable">False</property>
+                            <property name="selectable">False</property>
+                            <property name="title" translatable="yes">Engine distribution</property>
+                            <property name="subtitle" translatable="yes">SongRec: 0 | AcoustID: 0</property>
+                          </object>
+                        </child>
+                        <child>
+                          <object class="AdwActionRow" id="benchmark_latency_row">
+                            <property name="activatable">False</property>
+                            <property name="selectable">False</property>
+                            <property name="title" translatable="yes">Latency</property>
+                            <property name="subtitle" translatable="yes">Avg: 0 ms | Last: 0 ms</property>
+                          </object>
+                        </child>
+                        <child>
+                          <object class="AdwActionRow" id="benchmark_last_row">
+                            <property name="activatable">False</property>
+                            <property name="selectable">False</property>
+                            <property name="title" translatable="yes">Last recognition</property>
+                            <property name="subtitle" translatable="yes">Engine: - | Outcome: -</property>
+                          </object>
+                        </child>
+                      </object>
+                    </child>
+                  </object>
+                </property>
+                <child type="top">
+                  <object class="AdwHeaderBar"/>
+                </child>
+              </object>
+            </property>
+            <property name="tag">settings_tag</property>
+            <property name="title" translatable="yes">Settings</property>
+          </object>
+        </child>
+      </object>
+    </property>
+    <property name="default-height">570</property>
+    <property name="default-width">977</property>
+    <property name="height-request">570</property>
+    <property name="icon-name">aurivo-media-player</property>
+    <property name="startup-id">aurivo-media-player</property>
+    <property name="title">Aurivo-Pulse</property>
+    <property name="visible">True</property>
+    <property name="width-request">977</property>
+    <child>
+      <object class="AdwBreakpoint" id="main_page_breakpoint">
+        <!-- Custom object fragments -->
+        <condition>max-width: 800px</condition>
+        <setter object="layout_box" property="orientation">vertical</setter>
+        <setter object="layout_box" property="homogeneous">false</setter>
+      </object>
+    </child>
+  </object>
+  <menu id="main_menu_model">
+    <section id="menu_section">
+      <item>
+        <attribute name="action">win.notification-setting</attribute>
+        <attribute name="label" translatable="yes">Show notifications</attribute>
+      </item>
+    </section>
+    <section>
+      <item>
+        <attribute name="action">win.show-about</attribute>
+        <attribute name="label" translatable="yes">About...</attribute>
+      </item>
+    </section>
+  </menu>
+  <object class="AdwAboutDialog" id="about_dialog">
+    <property name="application-icon">custom_icon</property>
+    <property name="application-name">Aurivo-Pulse</property>
+    <property name="developer-name">Kodlayan Muhammet Dli</property>
+    <property name="developers">Muhammet Dli https://github.com/muhammed-aurivo-dev
+Aurivo Medya Player Linux https://github.com/muhammed-aurivo-dev/Aurivo-Medya-Player-Linux</property>
+    <property name="issue-url">https://github.com/muhammed-aurivo-dev/Aurivo-Medya-Player-Linux/issues</property>
+    <property name="license-type">gpl-3-0</property>
+    <property name="support-url">https://github.com/muhammed-aurivo-dev/Aurivo-Medya-Player-Linux</property>
+    <property name="translator-credits">Bildirim ve hata raporlari icin: https://github.com/muhammed-aurivo-dev/Aurivo-Medya-Player-Linux</property>
+    <property name="version">2.0.5</property>
+    <property name="visible">False</property>
+    <property name="website">https://github.com/muhammed-aurivo-dev/Aurivo-Medya-Player-Linux</property>
+    <signal name="closed" handler="about_dialog_closed"/>
+  </object>
+  <menu id="history_menu_model">
+    <item>
+      <attribute name="action">win.export-to-csv</attribute>
+      <attribute name="label" translatable="yes">Export to CSV</attribute>
+    </item>
+    <item>
+      <attribute name="action">win.wipe-history</attribute>
+      <attribute name="label" translatable="yes">Delete history</attribute>
+    </item>
+  </menu>
+  <object class="GtkFileDialog" id="file_picker">
+    <property name="title" translatable="yes">Select a file to recognize</property>
+  </object>
+  <object class="GtkPopoverMenu" id="history_context_menu">
+    <property name="menu-model">history_context_model</property>
+  </object>
+  <menu id="history_context_model">
+    <section>
+      <item>
+        <attribute name="action">history-menu.copy-artist-track</attribute>
+        <attribute name="icon">edit-copy-symbolic</attribute>
+        <attribute name="label" translatable="yes">Copy artist and track</attribute>
+      </item>
+      <item>
+        <attribute name="action">history-menu.copy-artist</attribute>
+        <attribute name="icon">edit-copy-symbolic</attribute>
+        <attribute name="label" translatable="yes">Copy artist</attribute>
+      </item>
+      <item>
+        <attribute name="action">history-menu.copy-track-name</attribute>
+        <attribute name="icon">edit-copy-symbolic</attribute>
+        <attribute name="label" translatable="yes">Copy track name</attribute>
+      </item>
+      <item>
+        <attribute name="action">history-menu.copy-album</attribute>
+        <attribute name="icon">edit-copy-symbolic</attribute>
+        <attribute name="label" translatable="yes">Copy album</attribute>
+      </item>
+    </section>
+    <section>
+      <item>
+        <attribute name="action">history-menu.search-on-youtube</attribute>
+        <attribute name="icon">category-search-symbolic</attribute>
+        <attribute name="label" translatable="yes">Search on YouTube</attribute>
+      </item>
+    </section>
+    <section>
+      <item>
+        <attribute name="action">history-menu.remove-from-history</attribute>
+        <attribute name="icon">edit-delete-symbolic</attribute>
+        <attribute name="label" translatable="yes">Delete from History</attribute>
+      </item>
+      <item>
+        <attribute name="action">history-menu.add-to-favorites</attribute>
+        <attribute name="icon">favorite-new-symbolic</attribute>
+        <attribute name="label" translatable="yes">Add to Favorites</attribute>
+      </item>
+    </section>
+  </menu>
+  <menu id="history_context_model_faved">
+    <section>
+      <item>
+        <attribute name="action">history-menu.copy-artist-track</attribute>
+        <attribute name="icon">edit-copy-symbolic</attribute>
+        <attribute name="label" translatable="yes">Copy artist and track</attribute>
+      </item>
+      <item>
+        <attribute name="action">history-menu.copy-artist</attribute>
+        <attribute name="icon">edit-copy-symbolic</attribute>
+        <attribute name="label" translatable="yes">Copy artist</attribute>
+      </item>
+      <item>
+        <attribute name="action">history-menu.copy-track-name</attribute>
+        <attribute name="icon">edit-copy-symbolic</attribute>
+        <attribute name="label" translatable="yes">Copy track name</attribute>
+      </item>
+      <item>
+        <attribute name="action">history-menu.copy-album</attribute>
+        <attribute name="icon">edit-copy-symbolic</attribute>
+        <attribute name="label" translatable="yes">Copy album</attribute>
+      </item>
+    </section>
+    <section>
+      <item>
+        <attribute name="action">history-menu.search-on-youtube</attribute>
+        <attribute name="icon">search-symbolic</attribute>
+        <attribute name="label" translatable="yes">Search on YouTube</attribute>
+      </item>
+    </section>
+    <section>
+      <item>
+        <attribute name="action">history-menu.remove-from-favorites</attribute>
+        <attribute name="icon">edit-delete-symbolic</attribute>
+        <attribute name="label" translatable="yes">Remove from Favorites</attribute>
+      </item>
+    </section>
+  </menu>
+  <object class="GtkShortcutsWindow" id="shortcuts_window">
+    <property name="child">
+      <object class="GtkShortcutsSection">
+        <property name="title">shortcuts</property>
+        <child>
+          <object class="GtkShortcutsGroup">
+            <property name="title" translatable="yes" context="&quot;General&quot; section in the Shortcuts window">General</property>
+            <child>
+              <object class="GtkShortcutsShortcut">
+                <property name="accelerator">&lt;Ctrl&gt;Q</property>
+                <property name="action-name">win.close</property>
+                <property name="title" translatable="yes" context="In the shortcuts window">Close the application</property>
+              </object>
+            </child>
+            <child>
+              <object class="GtkShortcutsShortcut">
+                <property name="accelerator">&lt;Ctrl&gt;O</property>
+                <property name="action-name">win.recognize-file</property>
+                <property name="title" translatable="yes" context="In the shortcuts window">Recognize from a file</property>
+              </object>
+            </child>
+            <child>
+              <object class="GtkShortcutsShortcut">
+                <property name="accelerator">&lt;Primary&gt;question</property>
+                <property name="action-name">win.display-shortcuts</property>
+                <property name="title" translatable="yes" context="In the shortcuts window">Display shortcuts</property>
+              </object>
+            </child>
+            <child>
+              <object class="GtkShortcutsShortcut">
+                <property name="accelerator">F10</property>
+                <property name="action-name">win.show-menu</property>
+                <property name="title" translatable="yes" context="win.show-menu">Show menu</property>
+              </object>
+            </child>
+          </object>
+        </child>
+      </object>
+    </property>
+    <property name="destroy-with-parent">True</property>
+    <property name="focus-visible">False</property>
+    <property name="hide-on-close">True</property>
+    <property name="modal">True</property>
+    <property name="transient-for">main_window</property>
+  </object>
+  <object class="GListStore" id="history_list_store"/>
+  <object class="GListStore" id="favorites_list_store"/>
+</interface>

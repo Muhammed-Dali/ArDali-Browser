@@ -1,0 +1,703 @@
+(function attachAurivoSettingsShared() {
+    function normalizeVisualMode(value) {
+        const normalized = String(value || '').trim().toLowerCase();
+        if (['full', 'balanced', 'minimal'].includes(normalized)) return normalized;
+        return 'full';
+    }
+
+    function visualModePreset(mode) {
+        const normalized = normalizeVisualMode(mode);
+        if (normalized === 'balanced') {
+            return { visualMode: 'balanced', uiFxEnabled: true, reduceMotion: true };
+        }
+        if (normalized === 'minimal') {
+            return { visualMode: 'minimal', uiFxEnabled: false, reduceMotion: true };
+        }
+        return { visualMode: 'full', uiFxEnabled: true, reduceMotion: false };
+    }
+
+    function getButtonToggleState(element) {
+        if (!element) return false;
+        if (element.tagName === 'BUTTON') {
+            return element.dataset.active === 'true' || element.getAttribute('aria-pressed') === 'true';
+        }
+        return !!element.checked;
+    }
+
+    function setButtonToggleState(element, active) {
+        if (!element) return;
+        if (element.tagName === 'BUTTON') {
+            element.dataset.active = active ? 'true' : 'false';
+            element.setAttribute('aria-pressed', active ? 'true' : 'false');
+            element.classList.toggle('active', !!active);
+            return;
+        }
+        element.checked = !!active;
+    }
+
+    function switchSettingsTab({ tab, elements, updateSecurityUI, updateAdblockModeUI, refreshAdblockStats }) {
+        if (!tab || !elements?.settingsTabs || !elements?.settingsPages) return;
+        const tabName = tab.dataset.tab;
+
+        elements.settingsTabs.forEach((t) => t.classList.remove('active'));
+        tab.classList.add('active');
+
+        elements.settingsPages.forEach((p) => {
+            p.classList.add('hidden');
+            p.classList.remove('active');
+        });
+
+        const targetPage = document.getElementById(`${tabName}Settings`);
+        if (targetPage) {
+            targetPage.classList.remove('hidden');
+            targetPage.classList.add('active');
+        }
+
+        if (tabName === 'security') {
+            updateSecurityUI?.();
+        }
+
+        if (tabName === 'adblock') {
+            updateAdblockModeUI?.();
+            refreshAdblockStats?.(false);
+        }
+    }
+
+    function updatePulseQuickModeUi({ elements, mode, defaultMode, getLabel, getDetail }) {
+        if (!elements?.pulseQuickMode) return;
+        const normalizedMode = String(mode || defaultMode || 'background').trim().toLowerCase();
+        const label = getLabel(normalizedMode);
+        const detail = getDetail(normalizedMode);
+        elements.pulseQuickMode.title = `${label} - ${detail}`;
+
+        if (elements.pulseQuickModeCards?.length) {
+            elements.pulseQuickModeCards.forEach((card) => {
+                const cardMode = String(card.dataset.pulseQuickMode || '').trim().toLowerCase();
+                const active = cardMode === normalizedMode;
+                card.classList.toggle('active', active);
+                card.setAttribute('aria-checked', active ? 'true' : 'false');
+            });
+        }
+
+        if (elements.pulseQuickModeDetails) {
+            elements.pulseQuickModeDetails.textContent = detail;
+        }
+    }
+
+    function loadSettingsToUI({
+        state,
+        elements,
+        specialPaths,
+        ensureAdblockSettings,
+        normalizePulsePreferenceState,
+        getPulseQuickModeConfig,
+        updatePulseQuickModeUi,
+        updateAdblockModeUI,
+        updateAdblockBadge,
+        blockedCount,
+        noSignalDefaultSec,
+        translate
+    }) {
+        if (!state?.settings) return;
+
+        const pb = state.settings.playback || {};
+        ensureAdblockSettings?.();
+
+        const crossfadeStop = document.getElementById('crossfadeStop');
+        const crossfadeManual = document.getElementById('crossfadeManual');
+        const crossfadeAuto = document.getElementById('crossfadeAuto');
+        const sameAlbumNoCrossfade = document.getElementById('sameAlbumNoCrossfade');
+        const crossfadeMs = document.getElementById('crossfadeMs');
+        const fadeOnPause = document.getElementById('fadeOnPause');
+        const pauseFadeMs = document.getElementById('pauseFadeMs');
+        const crossfadeSkipShortTracks = document.getElementById('crossfadeSkipShortTracks');
+        const crossfadeSafetyPaddingMs = document.getElementById('crossfadeSafetyPaddingMs');
+        const seekStepSeconds = document.getElementById('seekStepSeconds');
+        const restoreLastTrackOnStartup = document.getElementById('restoreLastTrackOnStartup');
+        const autoplayLastTrackOnStartup = document.getElementById('autoplayLastTrackOnStartup');
+        const resumePositionOnStartup = document.getElementById('resumePositionOnStartup');
+        const endWarningEnabled = document.getElementById('endWarningEnabled');
+        const endWarningSeconds = document.getElementById('endWarningSeconds');
+        const smartVolumeLevelingEnabled = document.getElementById('smartVolumeLevelingEnabled');
+        const smartVolumeLevelingMode = document.getElementById('smartVolumeLevelingMode');
+
+        if (crossfadeStop) crossfadeStop.checked = !!pb.crossfadeStopEnabled;
+        if (crossfadeManual) crossfadeManual.checked = !!pb.crossfadeManualEnabled;
+        if (crossfadeAuto) crossfadeAuto.checked = !!pb.crossfadeAutoEnabled;
+        if (sameAlbumNoCrossfade) {
+            sameAlbumNoCrossfade.checked = !!pb.sameAlbumNoCrossfade;
+            sameAlbumNoCrossfade.disabled = !pb.crossfadeAutoEnabled;
+        }
+        if (crossfadeMs) crossfadeMs.value = String(Math.max(0, Math.min(15000, Number(pb.crossfadeMs) || 2000)));
+        if (fadeOnPause) fadeOnPause.checked = !!pb.fadeOnPauseResume;
+        if (pauseFadeMs) pauseFadeMs.value = String(Math.max(0, Math.min(5000, Number(pb.pauseFadeMs) || 250)));
+        if (crossfadeSkipShortTracks) crossfadeSkipShortTracks.checked = pb.crossfadeSkipShortTracks !== false;
+        if (crossfadeSafetyPaddingMs) crossfadeSafetyPaddingMs.value = String(Math.max(0, Math.min(5000, Number(pb.crossfadeSafetyPaddingMs) || 300)));
+        if (seekStepSeconds) seekStepSeconds.value = String(Math.max(1, Math.min(60, Number(pb.seekStepSeconds) || 10)));
+        if (restoreLastTrackOnStartup) restoreLastTrackOnStartup.checked = pb.restoreLastTrackOnStartup !== false;
+        if (autoplayLastTrackOnStartup) autoplayLastTrackOnStartup.checked = !!pb.autoplayLastTrackOnStartup;
+        if (resumePositionOnStartup) resumePositionOnStartup.checked = pb.resumePositionOnStartup !== false;
+        if (endWarningEnabled) endWarningEnabled.checked = !!pb.endWarningEnabled;
+        if (endWarningSeconds) endWarningSeconds.value = String(Math.max(3, Math.min(60, Number(pb.endWarningSeconds) || 10)));
+        if (smartVolumeLevelingEnabled) smartVolumeLevelingEnabled.checked = !!pb.smartVolumeLevelingEnabled;
+        if (smartVolumeLevelingMode) {
+            const mode = String(pb.smartVolumeLevelingMode || 'balanced').toLowerCase();
+            smartVolumeLevelingMode.value = ['gentle', 'balanced', 'strong'].includes(mode) ? mode : 'balanced';
+        }
+
+        if (elements.pulseNoSignalHintSec) {
+            const sec = Number(state.settings?.pulseQuick?.noSignalHintSec);
+            elements.pulseNoSignalHintSec.value = String([4, 6, 8].includes(sec) ? sec : noSignalDefaultSec);
+        }
+
+        if (elements.pulseQuickMode) {
+            elements.pulseQuickMode.value = getPulseQuickModeConfig().mode;
+            updatePulseQuickModeUi?.();
+        }
+
+        const pulsePrefs = normalizePulsePreferenceState(state.settings?.pulsePreferences);
+        state.settings.pulsePreferences = pulsePrefs;
+        if (elements.pulseEnableNotifications) elements.pulseEnableNotifications.checked = !!pulsePrefs.enable_notifications;
+        if (elements.pulseEnableMpris) elements.pulseEnableMpris.checked = !!pulsePrefs.enable_mpris;
+        if (elements.pulseEnableSystray) elements.pulseEnableSystray.checked = !!pulsePrefs.enable_systray;
+        if (elements.pulseNoDuplicates) elements.pulseNoDuplicates.checked = !!pulsePrefs.no_duplicates;
+        if (elements.pulseRequestInterval) elements.pulseRequestInterval.value = String(pulsePrefs.request_interval_secs_v3);
+        if (elements.pulseBufferSize) elements.pulseBufferSize.value = String(pulsePrefs.buffer_size_secs);
+        if (elements.pulseRecognitionEngine) elements.pulseRecognitionEngine.value = String(pulsePrefs.recognition_engine || 'hybrid');
+        if (elements.pulseAcoustidApiKey) elements.pulseAcoustidApiKey.value = String(pulsePrefs.acoustid_api_key || '');
+
+        if (elements.libraryRememberSection) {
+            elements.libraryRememberSection.checked = state.settings?.ui?.rememberLastSection !== false;
+        }
+        if (elements.behaviorRememberLastSection) {
+            elements.behaviorRememberLastSection.checked = state.settings?.ui?.rememberLastSection !== false;
+        }
+        if (elements.libraryRestoreLastFolder) {
+            elements.libraryRestoreLastFolder.checked = state.settings?.library?.restoreLastFolder !== false;
+        }
+        if (elements.libraryRestoreLastPlaylist) {
+            elements.libraryRestoreLastPlaylist.checked = state.settings?.library?.restoreLastPlaylist !== false;
+        }
+        if (elements.libraryRememberTreeSelection) {
+            elements.libraryRememberTreeSelection.checked = state.settings?.library?.rememberTreeSelection !== false;
+        }
+        if (elements.libraryStartupPage) {
+            elements.libraryStartupPage.value = String(state.settings?.ui?.startupPage || 'music').toLowerCase();
+        }
+        if (elements.behaviorStartupPage) {
+            elements.behaviorStartupPage.value = String(state.settings?.ui?.startupPage || 'music').toLowerCase();
+        }
+        if (elements.behaviorCloseToTray) {
+            elements.behaviorCloseToTray.checked = state.settings?.ui?.closeToTray !== false;
+        }
+        if (elements.libraryScanOnStartup) {
+            elements.libraryScanOnStartup.checked = state.settings?.library?.scanOnStartup !== false;
+        }
+        if (elements.libraryAutoRescanOnFolderChange) {
+            elements.libraryAutoRescanOnFolderChange.checked = state.settings?.library?.autoRescanOnFolderChange !== false;
+        }
+        if (elements.libraryWatchFolders) {
+            elements.libraryWatchFolders.checked = state.settings?.library?.watchFolders !== false;
+        }
+        if (elements.libraryPreferEmbeddedCover) {
+            elements.libraryPreferEmbeddedCover.checked = state.settings?.library?.preferEmbeddedCover !== false;
+        }
+        if (elements.libraryScanFolderCover) {
+            elements.libraryScanFolderCover.checked = state.settings?.library?.scanFolderCover !== false;
+        }
+        if (elements.libraryMarkMissingCovers) {
+            elements.libraryMarkMissingCovers.checked = state.settings?.library?.markMissingCovers !== false;
+        }
+        if (elements.libraryViewSort) {
+            elements.libraryViewSort.value = String(state.settings?.library?.viewSort || 'title').toLowerCase();
+        }
+        if (elements.libraryViewGroup) {
+            elements.libraryViewGroup.value = String(state.settings?.library?.viewGroup || 'none').toLowerCase();
+        }
+        if (elements.libraryViewMode) {
+            elements.libraryViewMode.value = String(state.settings?.library?.viewMode || 'list').toLowerCase();
+        }
+        if (elements.libraryAudioExtensions) {
+            elements.libraryAudioExtensions.value = Array.isArray(state.settings?.library?.audioExtensions)
+                ? state.settings.library.audioExtensions.join(', ')
+                : '';
+        }
+        if (elements.libraryVideoExtensions) {
+            elements.libraryVideoExtensions.value = Array.isArray(state.settings?.library?.videoExtensions)
+                ? state.settings.library.videoExtensions.join(', ')
+                : '';
+        }
+        if (elements.libraryFlowFavoritesEnabled) {
+            elements.libraryFlowFavoritesEnabled.checked = state.settings?.library?.smartFlows?.favoritesEnabled !== false;
+        }
+        if (elements.libraryFlowRecentEnabled) {
+            elements.libraryFlowRecentEnabled.checked = state.settings?.library?.smartFlows?.recentEnabled !== false;
+        }
+        if (elements.libraryFlowMostPlayedEnabled) {
+            elements.libraryFlowMostPlayedEnabled.checked = state.settings?.library?.smartFlows?.mostPlayedEnabled !== false;
+        }
+        if (elements.libraryFlowRecentLimit) {
+            elements.libraryFlowRecentLimit.value = String(state.settings?.library?.smartFlows?.recentLimit || 25);
+        }
+        if (elements.libraryFlowMostPlayedLimit) {
+            elements.libraryFlowMostPlayedLimit.value = String(state.settings?.library?.smartFlows?.mostPlayedLimit || 25);
+        }
+        if (elements.libraryFastScan) {
+            elements.libraryFastScan.checked = state.settings?.library?.performance?.fastScan !== false;
+        }
+        if (elements.libraryLightweightMode) {
+            elements.libraryLightweightMode.checked = !!state.settings?.library?.performance?.lightweightMode;
+        }
+        if (elements.libraryCoverCacheLimitMb) {
+            elements.libraryCoverCacheLimitMb.value = String(state.settings?.library?.performance?.coverCacheLimitMb || 64);
+        }
+        if (elements.libraryVideoCount) {
+            elements.libraryVideoCount.textContent = String(Array.isArray(state.videoFiles) ? state.videoFiles.length : 0);
+        }
+        if (elements.libraryMusicPathInfo) {
+            elements.libraryMusicPathInfo.textContent = translate?.(
+                'settings.library.musicPath.dynamic',
+                'Music folder: {path}',
+                { path: specialPaths?.music || '-' }
+            ) || `Music folder: ${specialPaths?.music || '-'}`;
+        }
+        if (elements.libraryVideoPathInfo) {
+            elements.libraryVideoPathInfo.textContent = translate?.(
+                'settings.library.videoPath.dynamic',
+                'Video folder: {path}',
+                { path: specialPaths?.videos || '-' }
+            ) || `Video folder: ${specialPaths?.videos || '-'}`;
+        }
+
+        if (elements.languageSelect) {
+            elements.languageSelect.value = String(
+                state.settings?.ui?.language
+                || state.settings?.lang
+                || navigator.language
+                || 'tr-TR'
+            );
+        }
+        if (elements.themeSelect) {
+            elements.themeSelect.value = String(state.settings?.appearance?.theme || 'aur-renk-efektleri');
+        }
+        const modePreset = visualModePreset(state.settings?.appearance?.visualMode || 'full');
+        if (elements.uiVisualModeSelect) {
+            elements.uiVisualModeSelect.value = modePreset.visualMode;
+        }
+        if (elements.uiFollowSystemThemeToggle) {
+            elements.uiFollowSystemThemeToggle.checked = !!state.settings?.appearance?.followSystemTheme;
+        }
+        if (elements.uiFxEnabledToggle) {
+            elements.uiFxEnabledToggle.checked = modePreset.uiFxEnabled;
+        }
+        if (elements.uiReduceMotionToggle) {
+            elements.uiReduceMotionToggle.checked = modePreset.reduceMotion;
+        }
+        if (elements.sliderFxToggle) {
+            elements.sliderFxToggle.checked = state.settings?.appearance?.sliderFxEnabled !== false;
+        }
+        if (elements.sfxLightsToggle) {
+            elements.sfxLightsToggle.checked = state.settings?.appearance?.sfxLights !== false;
+        }
+        if (elements.securityAllowPopups) {
+            elements.securityAllowPopups.checked = state.settings?.security?.allowPopups !== false;
+        }
+
+        if (elements.audioDefaultVolume) {
+            const allow150 = !!state.settings?.audioOutput?.allowOverdrive150;
+            const volume = Math.max(0, Math.min(allow150 ? 150 : 100, Number(state.settings?.audioOutput?.defaultVolume ?? 40)));
+            elements.audioDefaultVolume.value = String(volume);
+            if (elements.audioDefaultVolumeValue) elements.audioDefaultVolumeValue.textContent = `${volume}%`;
+        }
+        if (elements.audioAppVolume) {
+            const appVolume = Math.max(0, Math.min(100, Number(state.settings?.volume ?? state.volume ?? 40)));
+            elements.audioAppVolume.value = String(appVolume);
+            if (elements.audioAppVolumeValue) elements.audioAppVolumeValue.textContent = `${appVolume}%`;
+        }
+        if (elements.audioFollowSystemVolume) {
+            elements.audioFollowSystemVolume.checked = state.settings?.audioOutput?.followSystemVolume !== false;
+        }
+        if (elements.audioAllowOverdrive150) {
+            setButtonToggleState(elements.audioAllowOverdrive150, !!state.settings?.audioOutput?.allowOverdrive150);
+        }
+        if (elements.audioLoudnessEnabled) {
+            elements.audioLoudnessEnabled.checked = !!state.settings?.audioOutput?.loudnessEnabled;
+        }
+        if (elements.audioLoudnessMode) {
+            const loudnessMode = String(state.settings?.audioOutput?.loudnessMode || 'balanced').toLowerCase();
+            elements.audioLoudnessMode.value = ['gentle', 'balanced', 'strong'].includes(loudnessMode) ? loudnessMode : 'balanced';
+        }
+        if (elements.audioLimiterEnabled) {
+            elements.audioLimiterEnabled.checked = !!state.settings?.audioOutput?.limiterEnabled;
+        }
+        if (elements.audioLimiterMode) {
+            const limiterMode = String(state.settings?.audioOutput?.limiterMode || 'balanced').toLowerCase();
+            elements.audioLimiterMode.value = ['soft', 'balanced', 'strict'].includes(limiterMode) ? limiterMode : 'balanced';
+        }
+        if (elements.audioNightModeEnabled) {
+            elements.audioNightModeEnabled.checked = !!state.settings?.audioOutput?.nightModeEnabled;
+        }
+        if (elements.audioNightModeLevel) {
+            const nightModeLevel = String(state.settings?.audioOutput?.nightModeLevel || 'balanced').toLowerCase();
+            elements.audioNightModeLevel.value = ['light', 'balanced', 'strong'].includes(nightModeLevel) ? nightModeLevel : 'balanced';
+        }
+        if (elements.audioProfileCards?.length) {
+            const profile = String(state.settings?.audioOutput?.profile || 'music').toLowerCase();
+            elements.audioProfileCards.forEach((card) => {
+                card.classList.toggle('is-active', String(card.dataset.audioProfile || '').toLowerCase() === profile);
+            });
+        }
+        if (elements.audioSpatialCards?.length) {
+            const spatialMode = String(state.settings?.audioOutput?.spatialMode || 'stereo').toLowerCase();
+            elements.audioSpatialCards.forEach((card) => {
+                card.classList.toggle('is-active', String(card.dataset.audioSpatial || '').toLowerCase() === spatialMode);
+            });
+        }
+        if (elements.audioVideoDelay) {
+            const audioDelayMs = Math.max(0, Math.min(500, Number(state.settings?.videoFullscreen?.audioDelayMs || 0)));
+            elements.audioVideoDelay.value = String(audioDelayMs);
+            if (elements.audioVideoDelayValue) elements.audioVideoDelayValue.textContent = `${audioDelayMs} ms`;
+        }
+        if (elements.audioStableVolume) {
+            elements.audioStableVolume.checked = !!state.settings?.videoFullscreen?.stableVolume;
+        }
+        if (elements.audioVolumeBoost) {
+            elements.audioVolumeBoost.checked = !!state.settings?.videoFullscreen?.volumeBoost;
+        }
+
+        updateAdblockModeUI?.();
+        updateAdblockBadge?.(blockedCount);
+    }
+
+    async function applySettings({
+        state,
+        elements,
+        ensureAdblockSettings,
+        readAdblockSettingsFromUI,
+        applyAdblockRuntimeConfig,
+        updateAdblockBadge,
+        blockedCount,
+        normalizeAdblockMode,
+        saveSettings,
+        normalizePulsePreferenceState,
+        pulseDefaultSec,
+        pulseDefaultMode,
+        savePulsePreferences,
+        notifyPulseSaveError
+    }) {
+        if (!state?.settings) return;
+
+        const prevAdblock = {
+            ...ensureAdblockSettings()
+        };
+
+        const crossfadeStop = document.getElementById('crossfadeStop');
+        const crossfadeManual = document.getElementById('crossfadeManual');
+        const crossfadeAuto = document.getElementById('crossfadeAuto');
+        const sameAlbumNoCrossfade = document.getElementById('sameAlbumNoCrossfade');
+        const crossfadeMs = document.getElementById('crossfadeMs');
+        const fadeOnPause = document.getElementById('fadeOnPause');
+        const pauseFadeMs = document.getElementById('pauseFadeMs');
+        const crossfadeSkipShortTracks = document.getElementById('crossfadeSkipShortTracks');
+        const crossfadeSafetyPaddingMs = document.getElementById('crossfadeSafetyPaddingMs');
+        const seekStepSeconds = document.getElementById('seekStepSeconds');
+        const restoreLastTrackOnStartup = document.getElementById('restoreLastTrackOnStartup');
+        const autoplayLastTrackOnStartup = document.getElementById('autoplayLastTrackOnStartup');
+        const resumePositionOnStartup = document.getElementById('resumePositionOnStartup');
+        const endWarningEnabled = document.getElementById('endWarningEnabled');
+        const endWarningSeconds = document.getElementById('endWarningSeconds');
+        const smartVolumeLevelingEnabled = document.getElementById('smartVolumeLevelingEnabled');
+        const smartVolumeLevelingMode = document.getElementById('smartVolumeLevelingMode');
+        const crossfadeMsValue = Math.max(0, Math.min(15000, parseInt(crossfadeMs?.value || '2000', 10) || 2000));
+        const pauseFadeMsValue = Math.max(0, Math.min(5000, parseInt(pauseFadeMs?.value || '250', 10) || 250));
+        const crossfadeSafetyPaddingMsValue = Math.max(0, Math.min(5000, parseInt(crossfadeSafetyPaddingMs?.value || '300', 10) || 300));
+        const seekStepSecondsValue = Math.max(1, Math.min(60, parseInt(seekStepSeconds?.value || '10', 10) || 10));
+        const endWarningSecondsValue = Math.max(3, Math.min(60, parseInt(endWarningSeconds?.value || '10', 10) || 10));
+        const smartVolumeLevelingModeValue = String(smartVolumeLevelingMode?.value || 'balanced').toLowerCase();
+
+        state.settings.playback = {
+            crossfadeStopEnabled: !!crossfadeStop?.checked,
+            crossfadeManualEnabled: !!crossfadeManual?.checked,
+            crossfadeAutoEnabled: !!crossfadeAuto?.checked,
+            sameAlbumNoCrossfade: !!sameAlbumNoCrossfade?.checked,
+            crossfadeMs: crossfadeMsValue,
+            fadeOnPauseResume: !!fadeOnPause?.checked,
+            pauseFadeMs: pauseFadeMsValue,
+            crossfadeSkipShortTracks: crossfadeSkipShortTracks?.checked !== false,
+            crossfadeSafetyPaddingMs: crossfadeSafetyPaddingMsValue,
+            seekStepSeconds: seekStepSecondsValue,
+            restoreLastTrackOnStartup: restoreLastTrackOnStartup?.checked !== false,
+            autoplayLastTrackOnStartup: !!autoplayLastTrackOnStartup?.checked,
+            resumePositionOnStartup: resumePositionOnStartup?.checked !== false,
+            endWarningEnabled: !!endWarningEnabled?.checked,
+            endWarningSeconds: endWarningSecondsValue,
+            smartVolumeLevelingEnabled: !!smartVolumeLevelingEnabled?.checked,
+            smartVolumeLevelingMode: ['gentle', 'balanced', 'strong'].includes(smartVolumeLevelingModeValue)
+                ? smartVolumeLevelingModeValue
+                : 'balanced',
+            startupState: state.settings?.playback?.startupState && typeof state.settings.playback.startupState === 'object'
+                ? state.settings.playback.startupState
+                : {}
+        };
+
+        if (!state.settings.pulseQuick || typeof state.settings.pulseQuick !== 'object') {
+            state.settings.pulseQuick = {};
+        }
+
+        const sec = Number(elements.pulseNoSignalHintSec?.value);
+        state.settings.pulseQuick.noSignalHintSec = [4, 6, 8].includes(sec) ? sec : pulseDefaultSec;
+        const mode = String(elements.pulseQuickMode?.value || pulseDefaultMode).trim().toLowerCase();
+        state.settings.pulseQuick.mode = ['normal', 'background', 'max'].includes(mode) ? mode : pulseDefaultMode;
+
+        state.settings.pulsePreferences = normalizePulsePreferenceState({
+            enable_notifications: !!elements.pulseEnableNotifications?.checked,
+            enable_mpris: !!elements.pulseEnableMpris?.checked,
+            enable_systray: !!elements.pulseEnableSystray?.checked,
+            no_duplicates: !!elements.pulseNoDuplicates?.checked,
+            request_interval_secs_v3: Number(elements.pulseRequestInterval?.value),
+            buffer_size_secs: Number(elements.pulseBufferSize?.value),
+            current_device_name: state.settings?.pulsePreferences?.current_device_name || '',
+            recognition_engine: String(elements.pulseRecognitionEngine?.value || state.settings?.pulsePreferences?.recognition_engine || 'hybrid'),
+            acoustid_api_key: String(elements.pulseAcoustidApiKey?.value || '')
+        });
+
+        if (!state.settings.ui || typeof state.settings.ui !== 'object') state.settings.ui = {};
+        const nextLanguage = String(
+            elements.languageSelect?.value
+            || state.settings.ui.language
+            || state.settings.lang
+            || navigator.language
+            || 'tr-TR'
+        );
+        state.settings.ui.language = nextLanguage;
+        state.settings.lang = nextLanguage;
+        if (!state.settings.appearance || typeof state.settings.appearance !== 'object') state.settings.appearance = {};
+        const modePresetForApply = visualModePreset(elements.uiVisualModeSelect?.value || state.settings.appearance.visualMode || 'full');
+        state.settings.appearance.theme = String(elements.themeSelect?.value || state.settings.appearance.theme || 'aur-renk-efektleri');
+        state.settings.appearance.followSystemTheme = !!elements.uiFollowSystemThemeToggle?.checked;
+        state.settings.appearance.visualMode = modePresetForApply.visualMode;
+        state.settings.appearance.uiFxEnabled = modePresetForApply.uiFxEnabled;
+        state.settings.appearance.sliderFxEnabled = !!elements.sliderFxToggle?.checked;
+        state.settings.appearance.reduceMotion = modePresetForApply.reduceMotion;
+        state.settings.appearance.sfxLights = !!elements.sfxLightsToggle?.checked;
+        const rememberLastSectionValue =
+            (typeof elements.behaviorRememberLastSection?.checked === 'boolean')
+                ? !!elements.behaviorRememberLastSection.checked
+                : !!elements.libraryRememberSection?.checked;
+        state.settings.ui.rememberLastSection = rememberLastSectionValue;
+        const startupPage = String(
+            elements.behaviorStartupPage?.value
+            || elements.libraryStartupPage?.value
+            || 'music'
+        ).toLowerCase();
+        state.settings.ui.startupPage = ['music', 'video', 'web'].includes(startupPage) ? startupPage : 'music';
+        state.settings.ui.closeToTray =
+            (typeof elements.behaviorCloseToTray?.checked === 'boolean')
+                ? !!elements.behaviorCloseToTray.checked
+                : true;
+        if (!state.settings.security || typeof state.settings.security !== 'object') state.settings.security = {};
+        state.settings.security.allowPopups = !!elements.securityAllowPopups?.checked;
+        if (!state.settings.library || typeof state.settings.library !== 'object') state.settings.library = {};
+        state.settings.library.restoreLastFolder = !!elements.libraryRestoreLastFolder?.checked;
+        state.settings.library.restoreLastPlaylist = !!elements.libraryRestoreLastPlaylist?.checked;
+        state.settings.library.rememberTreeSelection = !!elements.libraryRememberTreeSelection?.checked;
+        state.settings.library.scanOnStartup = !!elements.libraryScanOnStartup?.checked;
+        state.settings.library.autoRescanOnFolderChange = !!elements.libraryAutoRescanOnFolderChange?.checked;
+        state.settings.library.watchFolders = !!elements.libraryWatchFolders?.checked;
+        state.settings.library.preferEmbeddedCover = !!elements.libraryPreferEmbeddedCover?.checked;
+        state.settings.library.scanFolderCover = !!elements.libraryScanFolderCover?.checked;
+        state.settings.library.markMissingCovers = !!elements.libraryMarkMissingCovers?.checked;
+        const libraryViewSortValue = String(elements.libraryViewSort?.value || '').toLowerCase();
+        state.settings.library.viewSort = ['title', 'artist', 'album', 'added'].includes(libraryViewSortValue)
+            ? libraryViewSortValue
+            : 'title';
+        const libraryViewGroupValue = String(elements.libraryViewGroup?.value || '').toLowerCase();
+        state.settings.library.viewGroup = ['none', 'artist', 'album'].includes(libraryViewGroupValue)
+            ? libraryViewGroupValue
+            : 'none';
+        const libraryViewModeValue = String(elements.libraryViewMode?.value || '').toLowerCase();
+        state.settings.library.viewMode = ['list', 'compact', 'comfortable', 'cards'].includes(libraryViewModeValue)
+            ? libraryViewModeValue
+            : 'list';
+        state.settings.library.audioExtensions = String(elements.libraryAudioExtensions?.value || '')
+            .split(',')
+            .map((value) => value.trim().replace(/^\./, '').toLowerCase())
+            .filter(Boolean);
+        state.settings.library.videoExtensions = String(elements.libraryVideoExtensions?.value || '')
+            .split(',')
+            .map((value) => value.trim().replace(/^\./, '').toLowerCase())
+            .filter(Boolean);
+        if (!state.settings.library.smartFlows || typeof state.settings.library.smartFlows !== 'object') {
+            state.settings.library.smartFlows = {};
+        }
+        state.settings.library.smartFlows.favoritesEnabled = !!elements.libraryFlowFavoritesEnabled?.checked;
+        state.settings.library.smartFlows.recentEnabled = !!elements.libraryFlowRecentEnabled?.checked;
+        state.settings.library.smartFlows.mostPlayedEnabled = !!elements.libraryFlowMostPlayedEnabled?.checked;
+        const recentLimitValue = Number(elements.libraryFlowRecentLimit?.value);
+        state.settings.library.smartFlows.recentLimit = [10, 25, 50].includes(recentLimitValue)
+            ? recentLimitValue
+            : 25;
+        const mostPlayedLimitValue = Number(elements.libraryFlowMostPlayedLimit?.value);
+        state.settings.library.smartFlows.mostPlayedLimit = [10, 25, 50].includes(mostPlayedLimitValue)
+            ? mostPlayedLimitValue
+            : 25;
+        if (!state.settings.library.performance || typeof state.settings.library.performance !== 'object') {
+            state.settings.library.performance = {};
+        }
+        state.settings.library.performance.fastScan = !!elements.libraryFastScan?.checked;
+        state.settings.library.performance.lightweightMode = !!elements.libraryLightweightMode?.checked;
+        const coverCacheLimitValue = Number(elements.libraryCoverCacheLimitMb?.value);
+        state.settings.library.performance.coverCacheLimitMb = [32, 64, 128, 256].includes(coverCacheLimitValue)
+            ? coverCacheLimitValue
+            : 64;
+
+        state.settings.volume = Math.max(0, Math.min(100, Number(elements.audioAppVolume?.value || state.settings.volume || 40)));
+        if (!state.settings.audioOutput || typeof state.settings.audioOutput !== 'object') {
+            state.settings.audioOutput = {};
+        }
+        state.settings.audioOutput.defaultVolume = Math.max(
+            0,
+            Math.min(
+                getButtonToggleState(elements.audioAllowOverdrive150) ? 150 : 100,
+                Number(elements.audioDefaultVolume?.value || state.settings.audioOutput.defaultVolume || 40)
+            )
+        );
+        state.settings.audioOutput.followSystemVolume = !!elements.audioFollowSystemVolume?.checked;
+        state.settings.audioOutput.allowOverdrive150 = getButtonToggleState(elements.audioAllowOverdrive150);
+        state.settings.audioOutput.loudnessEnabled = !!elements.audioLoudnessEnabled?.checked;
+        const audioLoudnessModeValue = String(elements.audioLoudnessMode?.value || '').toLowerCase();
+        state.settings.audioOutput.loudnessMode = ['gentle', 'balanced', 'strong'].includes(audioLoudnessModeValue)
+            ? audioLoudnessModeValue
+            : 'balanced';
+        state.settings.audioOutput.limiterEnabled = !!elements.audioLimiterEnabled?.checked;
+        const audioLimiterModeValue = String(elements.audioLimiterMode?.value || '').toLowerCase();
+        state.settings.audioOutput.limiterMode = ['soft', 'balanced', 'strict'].includes(audioLimiterModeValue)
+            ? audioLimiterModeValue
+            : 'balanced';
+        state.settings.audioOutput.nightModeEnabled = !!elements.audioNightModeEnabled?.checked;
+        const audioNightModeLevelValue = String(elements.audioNightModeLevel?.value || '').toLowerCase();
+        state.settings.audioOutput.nightModeLevel = ['light', 'balanced', 'strong'].includes(audioNightModeLevelValue)
+            ? audioNightModeLevelValue
+            : 'balanced';
+        if (elements.audioSpatialCards?.length) {
+            const activeSpatial = Array.from(elements.audioSpatialCards).find((card) => card.classList.contains('is-active'));
+            state.settings.audioOutput.spatialMode = ['mono', 'stereo', 'spatial'].includes(String(activeSpatial?.dataset.audioSpatial || '').toLowerCase())
+                ? String(activeSpatial.dataset.audioSpatial).toLowerCase()
+                : 'stereo';
+        } else {
+            state.settings.audioOutput.spatialMode = String(state.settings.audioOutput.spatialMode || 'stereo').toLowerCase();
+        }
+        if (elements.audioProfileCards?.length) {
+            const activeProfile = Array.from(elements.audioProfileCards).find((card) => card.classList.contains('is-active'));
+            state.settings.audioOutput.profile = String(activeProfile?.dataset.audioProfile || state.settings.audioOutput.profile || 'music').toLowerCase();
+        } else {
+            state.settings.audioOutput.profile = String(state.settings.audioOutput.profile || 'music').toLowerCase();
+        }
+        if (!state.settings.videoFullscreen || typeof state.settings.videoFullscreen !== 'object') {
+            state.settings.videoFullscreen = {};
+        }
+        state.settings.videoFullscreen.audioDelayMs = Math.max(0, Math.min(500, Number(elements.audioVideoDelay?.value || state.settings.videoFullscreen.audioDelayMs || 0)));
+        state.settings.videoFullscreen.stableVolume = !!elements.audioStableVolume?.checked;
+        state.settings.videoFullscreen.volumeBoost = !!elements.audioVolumeBoost?.checked;
+
+        state.settings.adblock = readAdblockSettingsFromUI();
+        applyAdblockRuntimeConfig?.();
+        updateAdblockBadge?.(blockedCount);
+
+        const nextMode = normalizeAdblockMode(state.settings.adblock?.mode);
+        const prevMode = normalizeAdblockMode(prevAdblock.mode);
+        await Promise.resolve(saveSettings?.());
+        try {
+            await Promise.resolve(savePulsePreferences?.(state.settings.pulsePreferences));
+        } catch (error) {
+            notifyPulseSaveError?.(error);
+        }
+
+        return { nextMode, prevMode };
+    }
+
+    function resetPlaybackDefaults() {
+        const crossfadeStop = document.getElementById('crossfadeStop');
+        const crossfadeManual = document.getElementById('crossfadeManual');
+        const crossfadeAuto = document.getElementById('crossfadeAuto');
+        const sameAlbumNoCrossfade = document.getElementById('sameAlbumNoCrossfade');
+        const crossfadeMs = document.getElementById('crossfadeMs');
+        const fadeOnPause = document.getElementById('fadeOnPause');
+        const pauseFadeMs = document.getElementById('pauseFadeMs');
+        const crossfadeSkipShortTracks = document.getElementById('crossfadeSkipShortTracks');
+        const crossfadeSafetyPaddingMs = document.getElementById('crossfadeSafetyPaddingMs');
+        const seekStepSeconds = document.getElementById('seekStepSeconds');
+        const restoreLastTrackOnStartup = document.getElementById('restoreLastTrackOnStartup');
+        const autoplayLastTrackOnStartup = document.getElementById('autoplayLastTrackOnStartup');
+        const resumePositionOnStartup = document.getElementById('resumePositionOnStartup');
+        const endWarningEnabled = document.getElementById('endWarningEnabled');
+        const endWarningSeconds = document.getElementById('endWarningSeconds');
+        const smartVolumeLevelingEnabled = document.getElementById('smartVolumeLevelingEnabled');
+        const smartVolumeLevelingMode = document.getElementById('smartVolumeLevelingMode');
+
+        if (crossfadeStop) crossfadeStop.checked = true;
+        if (crossfadeManual) crossfadeManual.checked = true;
+        if (crossfadeAuto) crossfadeAuto.checked = false;
+        if (sameAlbumNoCrossfade) {
+            sameAlbumNoCrossfade.checked = true;
+            sameAlbumNoCrossfade.disabled = true;
+        }
+        if (crossfadeMs) crossfadeMs.value = '2000';
+        if (fadeOnPause) fadeOnPause.checked = false;
+        if (pauseFadeMs) pauseFadeMs.value = '250';
+        if (crossfadeSkipShortTracks) crossfadeSkipShortTracks.checked = true;
+        if (crossfadeSafetyPaddingMs) crossfadeSafetyPaddingMs.value = '300';
+        if (seekStepSeconds) seekStepSeconds.value = '10';
+        if (restoreLastTrackOnStartup) restoreLastTrackOnStartup.checked = true;
+        if (autoplayLastTrackOnStartup) autoplayLastTrackOnStartup.checked = false;
+        if (resumePositionOnStartup) resumePositionOnStartup.checked = true;
+        if (endWarningEnabled) endWarningEnabled.checked = false;
+        if (endWarningSeconds) endWarningSeconds.value = '10';
+        if (smartVolumeLevelingEnabled) smartVolumeLevelingEnabled.checked = false;
+        if (smartVolumeLevelingMode) smartVolumeLevelingMode.value = 'balanced';
+    }
+
+    function resetListenDefaults({ elements, defaultSec, defaultMode, updatePulseQuickModeUi }) {
+        if (elements.pulseNoSignalHintSec) {
+            elements.pulseNoSignalHintSec.value = String(defaultSec);
+        }
+        if (elements.pulseQuickMode) {
+            elements.pulseQuickMode.value = defaultMode;
+            updatePulseQuickModeUi?.();
+        }
+        if (elements.pulseEnableNotifications) elements.pulseEnableNotifications.checked = true;
+        if (elements.pulseEnableMpris) elements.pulseEnableMpris.checked = false;
+        if (elements.pulseEnableSystray) elements.pulseEnableSystray.checked = false;
+        if (elements.pulseNoDuplicates) elements.pulseNoDuplicates.checked = false;
+        if (elements.pulseRequestInterval) elements.pulseRequestInterval.value = '2';
+        if (elements.pulseBufferSize) elements.pulseBufferSize.value = '5';
+        if (elements.pulseRecognitionEngine) elements.pulseRecognitionEngine.value = 'hybrid';
+        if (elements.pulseAcoustidApiKey) elements.pulseAcoustidApiKey.value = '';
+    }
+
+    function updateAudioSettingsVolumeLabel(elements) {
+        if (!elements?.audioDefaultVolume || !elements?.audioDefaultVolumeValue) return;
+        const sliderMax = Math.max(100, Number(elements.audioDefaultVolume.max) || 100);
+        const value = Math.max(0, Math.min(sliderMax, Number(elements.audioDefaultVolume.value) || 0));
+        elements.audioDefaultVolumeValue.textContent = `${value}%`;
+    }
+
+    function updateAudioAppVolumeLabel(elements) {
+        if (!elements?.audioAppVolume || !elements?.audioAppVolumeValue) return;
+        const value = Math.max(0, Math.min(100, Number(elements.audioAppVolume.value) || 0));
+        elements.audioAppVolumeValue.textContent = `${value}%`;
+    }
+
+    window.AurivoSettingsShared = {
+        switchSettingsTab,
+        updatePulseQuickModeUi,
+        loadSettingsToUI,
+        applySettings,
+        getButtonToggleState,
+        setButtonToggleState,
+        resetPlaybackDefaults,
+        resetListenDefaults,
+        updateAudioSettingsVolumeLabel,
+        updateAudioAppVolumeLabel
+    };
+})();

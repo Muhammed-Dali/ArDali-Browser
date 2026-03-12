@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Backward-compat / requested filename.
+  The canonical AppStream ID used by the project is: com.aurivo.mediaplayer
+-->
+<component type="desktop">
+  <id>com.aurivo.mediaplayer</id>
+  <name>Aurivo Media Player</name>
+  <summary>Electron tabanlı gelişmiş medya oynatıcı</summary>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MIT</project_license>
+  <developer_name>Muhammet Dali</developer_name>
+  <categories>
+    <category>AudioVideo</category>
+  </categories>
+  <url type="homepage">https://aurivo.app</url>
+  <launchable type="desktop-id">com.aurivo.mediaplayer.desktop</launchable>
+</component>
+

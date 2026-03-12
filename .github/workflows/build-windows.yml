@@ -4,7 +4,15 @@ on:
   workflow_dispatch:
   push:
     branches: [ "main" ]
+    tags: [ "v*" ]
   pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
 
 jobs:
   build-windows:
@@ -13,17 +21,18 @@ jobs:
     env:
       # Keep these in sync with package.json build.electronVersion
       ELECTRON_VERSION: "28.3.3"
-      # ProjectM visualizer now included in Windows build
-      # AURIVO_SKIP_VISUALIZER disabled - visualizer executable is in native-dist/
 
       # Force node-gyp to build against Electron headers (not the host Node.js)
       npm_config_runtime: "electron"
       npm_config_target: "28.3.3"
       npm_config_disturl: "https://electronjs.org/headers"
       npm_config_build_from_source: "true"
-      
+
       # GitHub token for Electron Builder
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # Fail fast if we can't bundle/verify visualizer runtime DLLs.
+      AURIVO_REQUIRE_VISUALIZER_DLLS: "1"
 
     steps:
       - name: Checkout
@@ -32,141 +41,112 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: "18"
+          node-version: "20"
           cache: "npm"
 
-      - name: Install dependencies
-        run: npm ci
+      - name: Setup MSYS2 (MinGW64)
+        id: msys2
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: true
+          install: >-
+            mingw-w64-x86_64-toolchain
+            mingw-w64-x86_64-cmake
+            mingw-w64-x86_64-ninja
+            mingw-w64-x86_64-pkgconf
+            mingw-w64-x86_64-SDL2
+            mingw-w64-x86_64-SDL2_image
+            mingw-w64-x86_64-glew
+            mingw-w64-x86_64-glm
+            mingw-w64-x86_64-freetype
+            mingw-w64-x86_64-harfbuzz
+            mingw-w64-x86_64-brotli
+            mingw-w64-x86_64-bzip2
+            mingw-w64-x86_64-libiconv
+            mingw-w64-x86_64-gettext
+            mingw-w64-x86_64-libpng
+            mingw-w64-x86_64-libjpeg-turbo
 
-      - name: Verify required Windows link libs exist
+      - name: Resolve MSYS2 DLL directory
         shell: pwsh
         run: |
-          $missing = @()
-          if (!(Test-Path "libs\\windows\\bass.lib")) { $missing += "libs/windows/bass.lib" }
-          if (!(Test-Path "libs\\windows\\bass_fx.lib")) { $missing += "libs/windows/bass_fx.lib" }
-          if ($missing.Count -gt 0) {
-            Write-Host "Missing required import libraries for MSVC linking:"
-            $missing | ForEach-Object { Write-Host "- $_" }
-            Write-Host ""
-            Write-Host "Çözüm: BASS SDK (Windows) içinden `bass.lib` ve `bass_fx.lib` dosyalarını `libs/windows/` içine koyup commit/push yapın."
-            exit 1
-          }
-
-      - name: Build native audio addon (aurivo_audio.node)
-        id: native_build
-        continue-on-error: true
-        working-directory: native
-        shell: pwsh
-        run: |
-          function Assert-Ok([string]$label) {
-            if ($LASTEXITCODE -ne 0) {
-              Write-Host "$label failed with exit code $LASTEXITCODE"
-              exit $LASTEXITCODE
+          $msys = "${{ steps.msys2.outputs.msys2-location }}"
+          if (-not $msys -or -not (Test-Path $msys)) {
+            foreach ($c in @("C:\\msys64","C:\\msys2")) {
+              if (Test-Path $c) { $msys = $c; break }
             }
           }
-
-          # In PowerShell, non-zero exit codes from external commands don't stop execution.
-          # Make failures explicit so the workflow doesn't continue with missing artifacts.
-          npm ci --ignore-scripts
-          Assert-Ok "npm ci"
-
-          $stdoutLog = "node-gyp-stdout.log"
-          $stderrLog = "node-gyp-stderr.log"
-          $nodeGypLog = "node-gyp-windows.log"
-          if (Test-Path $stdoutLog) { Remove-Item $stdoutLog -Force }
-          if (Test-Path $stderrLog) { Remove-Item $stderrLog -Force }
-          if (Test-Path $nodeGypLog) { Remove-Item $nodeGypLog -Force }
-
-          $proc = Start-Process -FilePath "npm" -NoNewWindow -Wait -PassThru `
-            -ArgumentList @("exec","--","node-gyp","rebuild","--release","--verbose") `
-            -RedirectStandardOutput $stdoutLog -RedirectStandardError $stderrLog
-
-          "# node-gyp stdout" | Set-Content $nodeGypLog
-          if (Test-Path $stdoutLog) { Get-Content $stdoutLog | Add-Content $nodeGypLog }
-          "" | Add-Content $nodeGypLog
-          "# node-gyp stderr" | Add-Content $nodeGypLog
-          if (Test-Path $stderrLog) { Get-Content $stderrLog | Add-Content $nodeGypLog }
-
-          Write-Host "==== tail($nodeGypLog)"
-          if (Test-Path $nodeGypLog) { Get-Content $nodeGypLog -Tail 800 }
-
-          if ($proc.ExitCode -ne 0) {
-            Write-Host "node-gyp rebuild failed with exit code $($proc.ExitCode)"
-            exit $proc.ExitCode
+          if (-not $msys -or -not (Test-Path $msys)) {
+            throw "MSYS2 root not found (steps.msys2.outputs.msys2-location was '$(${{ steps.msys2.outputs.msys2-location }})')"
           }
 
-          npm run copy-libs
-          Assert-Ok "npm run copy-libs"
-
-          if (!(Test-Path "build\Release\aurivo_audio.node")) {
-            Write-Host "build\Release\aurivo_audio.node not found; dumping build folders..."
-            if (Test-Path "build") { Get-ChildItem "build" -Recurse -Depth 3 | Select-Object FullName,Length | Format-Table -AutoSize }
-            exit 1
+          $dll = Join-Path $msys "mingw64\\bin"
+          "MSYS2_ROOT=$msys" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "MSYS2_LOCATION=$msys" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "AURIVO_VISUALIZER_DLL_DIR=$dll" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          Write-Host "MSYS2_ROOT=$msys"
+          Write-Host "AURIVO_VISUALIZER_DLL_DIR=$dll"
+          $probe = @("SDL2.dll","SDL2_image.dll","glew32.dll","libstdc++-6.dll","libgcc_s_seh-1.dll","libwinpthread-1.dll","libprojectM-4-4.dll")
+          foreach ($f in $probe) {
+            $p = Join-Path $dll $f
+            Write-Host ("probe {0}: {1}" -f $f, (Test-Path $p))
           }
 
-      - name: Dump native build logs (on failure)
-        if: steps.native_build.outcome == 'failure'
-        shell: pwsh
+      - name: Install projectM (MSYS2) or build from source
+        shell: msys2 {0}
         run: |
-          Write-Host "native build failed; dumping npm logs..."
-          if (Test-Path "C:\npm\cache\_logs") {
-            Get-ChildItem "C:\npm\cache\_logs\*.log" |
-              Sort-Object LastWriteTime -Descending |
-              Select-Object -First 5 |
-              ForEach-Object {
-                Write-Host "==== $($_.FullName)"
-                Get-Content $_.FullName -Tail 250
-              }
-          } else {
-            Write-Host "C:\npm\cache\_logs not found"
-          }
+          set -euo pipefail
+          # Package name differs across MSYS2 snapshots. Try common names first.
+          if pacman -S --noconfirm --needed mingw-w64-x86_64-libprojectm; then
+            echo "Installed mingw-w64-x86_64-libprojectm"
+            exit 0
+          fi
+          if pacman -S --noconfirm --needed mingw-w64-x86_64-projectm; then
+            echo "Installed mingw-w64-x86_64-projectm"
+            exit 0
+          fi
 
-          if (Test-Path "native\build\config.gypi") {
-            Write-Host "==== native/build/config.gypi (tail)"
-            Get-Content "native\build\config.gypi" -Tail 120
-          }
+          echo "projectM package not found in MSYS2 repos; building libprojectM v4 from source..."
+          PROJECTM_VER="4.1.6"
+          curl -fsSL -o /tmp/libprojectM-${PROJECTM_VER}.tar.gz \
+            "https://sourceforge.net/projects/projectm.mirror/files/v${PROJECTM_VER}/libprojectM-${PROJECTM_VER}.tar.gz/download"
+          tar -xzf /tmp/libprojectM-${PROJECTM_VER}.tar.gz -C /tmp
 
-          if (Test-Path "native\node-gyp-windows.log") {
-            Write-Host "==== native/node-gyp-windows.log (tail)"
-            Get-Content "native\node-gyp-windows.log" -Tail 1200
-          }
+          cmake -S "/tmp/libprojectM-${PROJECTM_VER}" -B /tmp/build-projectm -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DBUILD_SHARED_LIBS=ON \
+            -DBUILD_TESTING=OFF \
+            -DCMAKE_INSTALL_PREFIX=/mingw64
+          cmake --build /tmp/build-projectm
+          cmake --install /tmp/build-projectm
 
-          if (Test-Path "native\node-gyp-stdout.log") {
-            Write-Host "==== native/node-gyp-stdout.log (tail)"
-            Get-Content "native\node-gyp-stdout.log" -Tail 400
-          }
+      - name: Install JS dependencies
+        run: npm ci
 
-          if (Test-Path "native\node-gyp-stderr.log") {
-            Write-Host "==== native/node-gyp-stderr.log (tail)"
-            Get-Content "native\node-gyp-stderr.log" -Tail 400
-          }
+      - name: Build native audio addon (aurivo_audio.node)
+        run: npm --prefix native ci
 
-      - name: Upload native build logs (on failure)
-        if: steps.native_build.outcome == 'failure'
+      - name: Build projectM visualizer (aurivo-projectm-visualizer.exe)
+        shell: msys2 {0}
+        run: |
+          set -euo pipefail
+          cmake -S visualizer -B build-visualizer -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH=/mingw64
+          cmake --build build-visualizer
+          mkdir -p native-dist/windows
+          cp -f build-visualizer/aurivo-projectm-visualizer.exe native-dist/windows/aurivo-projectm-visualizer.exe
+
+      - name: Prepare Windows resources (ffmpeg + visualizer DLLs)
+        run: npm run -s prepare:win:resources
+
+      - name: Build Windows installer (NSIS)
+        run: npm run -s build:win
+
+      - name: Upload dist artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: windows-native-build-logs-${{ github.run_id }}
+          name: windows-dist-${{ github.run_id }}
           path: |
-            native/node-gyp-windows.log
-            native/node-gyp-stdout.log
-            native/node-gyp-stderr.log
-            native/build/config.gypi
-
-      - name: Fail workflow if native build failed
-        if: steps.native_build.outcome == 'failure'
-        run: exit 1
-
-      - name: Prepare Windows resources (ffmpeg.exe + DLL copy)
-        run: npm run prepare:win:resources
-
-      - name: Verify Windows artifacts (MZ checks)
-        run: npm run verify:win:artifacts
-
-      - name: Build Windows installer (NSIS) + portable zip
-        run: npm run build:win
-
-      - name: Upload artifacts (dist)
-        uses: actions/upload-artifact@v4
-        with:
-          name: Aurivo-Windows-${{ github.sha }}
-          path: dist/*
+            dist/*.exe
+            dist/*.zip
+            dist/*.yml

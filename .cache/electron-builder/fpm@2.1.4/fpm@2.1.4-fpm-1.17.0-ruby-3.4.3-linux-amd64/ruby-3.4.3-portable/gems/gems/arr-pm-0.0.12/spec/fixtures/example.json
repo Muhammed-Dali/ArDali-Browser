@@ -1,0 +1,55 @@
+{
+  "NAME": "example",
+  "VERSION": "1.0",
+  "RELEASE": "1",
+  "SUMMARY": "no description given",
+  "DESCRIPTION": "no description given",
+  "BUILDTIME": [
+    1466326707
+  ],
+  "BUILDHOST": "localhost",
+  "SIZE": [
+    0
+  ],
+  "VENDOR": "none",
+  "LICENSE": "unknown",
+  "PACKAGER": "<jls@localhost.localdomain>",
+  "GROUP": "default",
+  "URL": "http://example.com/no-uri-given",
+  "OS": "linux",
+  "ARCH": "x86_64",
+  "SOURCERPM": "example-1.0-1.src.rpm",
+  "PROVIDENAME": [
+    "example",
+    "example(x86-64)"
+  ],
+  "REQUIREFLAGS": [
+    16777226,
+    16777226
+  ],
+  "REQUIRENAME": [
+    "rpmlib(CompressedFileNames)",
+    "rpmlib(PayloadFilesHavePrefix)"
+  ],
+  "REQUIREVERSION": [
+    "3.0.4-1",
+    "4.0-1"
+  ],
+  "RPMVERSION": "4.13.0-rc1",
+  "PREFIXES": [
+    "/"
+  ],
+  "PROVIDEFLAGS": [
+    8,
+    8
+  ],
+  "PROVIDEVERSION": [
+    "1.0-1",
+    "1.0-1"
+  ],
+  "PAYLOADFORMAT": "cpio",
+  "PAYLOADCOMPRESSOR": "gzip",
+  "PAYLOADFLAGS": "9",
+  "PLATFORM": "x86_64-redhat-linux-gnu",
+  "ENCODING": "utf-8"
+}

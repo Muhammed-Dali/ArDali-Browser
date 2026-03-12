@@ -93,7 +93,29 @@ struct Biquad {
 
   void reset() { x1 = x2 = y1 = y2 = 0; }
 
+  void setIdentity() {
+    b0 = 1.0f;
+    b1 = 0.0f;
+    b2 = 0.0f;
+    a1 = 0.0f;
+    a2 = 0.0f;
+    reset();
+  }
+
+  bool coeffsFinite() const {
+    return std::isfinite(b0) && std::isfinite(b1) && std::isfinite(b2) && std::isfinite(a1) &&
+           std::isfinite(a2);
+  }
+
+  static inline float clampFreq(float freq) {
+    return clampf(freq, 10.0f, gSampleRate * 0.45f);
+  }
+
+  static inline float clampQ(float q) { return clampf(q, 0.1f, 18.0f); }
+
   void setPeakingEQ(float centerFreq, float Q, float gaindB) {
+    centerFreq = clampFreq(centerFreq);
+    Q = clampQ(Q);
     float A = std::pow(10.0f, gaindB / 40.0f);
     float omega = 2.0f * (float)M_PI * centerFreq / gSampleRate;
     float sn = std::sin(omega);
@@ -112,9 +134,12 @@ struct Biquad {
     b2 = b2_tmp / a0_tmp;
     a1 = a1_tmp / a0_tmp;
     a2 = a2_tmp / a0_tmp;
+
+    if (!coeffsFinite()) setIdentity();
   }
 
   void setLowShelf(float cutoffFreq, float gaindB) {
+    cutoffFreq = clampFreq(cutoffFreq);
     float A = std::pow(10.0f, gaindB / 40.0f);
     float omega = 2.0f * (float)M_PI * cutoffFreq / gSampleRate;
     float sn = std::sin(omega);
@@ -133,9 +158,12 @@ struct Biquad {
     b2 = b2_tmp / a0_tmp;
     a1 = a1_tmp / a0_tmp;
     a2 = a2_tmp / a0_tmp;
+
+    if (!coeffsFinite()) setIdentity();
   }
 
   void setHighShelf(float cutoffFreq, float gaindB) {
+    cutoffFreq = clampFreq(cutoffFreq);
     float A = std::pow(10.0f, gaindB / 40.0f);
     float omega = 2.0f * (float)M_PI * cutoffFreq / gSampleRate;
     float sn = std::sin(omega);
@@ -154,6 +182,8 @@ struct Biquad {
     b2 = b2_tmp / a0_tmp;
     a1 = a1_tmp / a0_tmp;
     a2 = a2_tmp / a0_tmp;
+
+    if (!coeffsFinite()) setIdentity();
   }
 
   void setLowPass(float cutoffFreq, float Q) {
@@ -1024,6 +1054,31 @@ public:
       return x;
     };
 
+    // Update EQ gains + coefficients once per buffer to avoid zipper noise and potential IIR instability.
+    const float blockAlpha = 1.0f - std::pow(1.0f - invSmoothing, (float)numFrames);
+    activeBandCount = 0;
+    for (int b = 0; b < NUM_BANDS; ++b) {
+      float diff = targetGains[b] - currentGains[b];
+      if (std::abs(diff) > smoothThreshold) {
+        currentGains[b] += diff * blockAlpha;
+      } else if (diff != 0.0f) {
+        currentGains[b] = targetGains[b];
+      }
+
+      if (b == 0) {
+        filtersLeft[b].setLowShelf(CENTER_FREQUENCIES[b], currentGains[b]);
+        filtersRight[b].setLowShelf(CENTER_FREQUENCIES[b], currentGains[b]);
+      } else if (b == NUM_BANDS - 1) {
+        filtersLeft[b].setHighShelf(CENTER_FREQUENCIES[b], currentGains[b]);
+        filtersRight[b].setHighShelf(CENTER_FREQUENCIES[b], currentGains[b]);
+      } else {
+        filtersLeft[b].setPeakingEQ(CENTER_FREQUENCIES[b], Q, currentGains[b]);
+        filtersRight[b].setPeakingEQ(CENTER_FREQUENCIES[b], Q, currentGains[b]);
+      }
+
+      if (std::abs(currentGains[b]) > 1e-5f) activeBands[activeBandCount++] = b;
+    }
+
     for (int i = 0; i < numFrames * 2; i += 2) {
       float &L = buffer[i];
       float &R = buffer[i + 1];
@@ -1050,23 +1105,6 @@ public:
 
       currentPreGain += (targetPreGain - currentPreGain) * invSmoothing;
       currentStereoWidth += (targetStereoWidth - currentStereoWidth) * invSmoothing;
-
-      activeBandCount = 0;
-      for (int b = 0; b < NUM_BANDS; ++b) {
-        float diff = targetGains[b] - currentGains[b];
-        if (std::abs(diff) > smoothThreshold) {
-          currentGains[b] += diff * invSmoothing;
-          if (b == 0) { filtersLeft[b].setLowShelf(CENTER_FREQUENCIES[b], currentGains[b]); filtersRight[b].setLowShelf(CENTER_FREQUENCIES[b], currentGains[b]); } 
-          else if (b == NUM_BANDS - 1) { filtersLeft[b].setHighShelf(CENTER_FREQUENCIES[b], currentGains[b]); filtersRight[b].setHighShelf(CENTER_FREQUENCIES[b], currentGains[b]); }
-          else { filtersLeft[b].setPeakingEQ(CENTER_FREQUENCIES[b], Q, currentGains[b]); filtersRight[b].setPeakingEQ(CENTER_FREQUENCIES[b], Q, currentGains[b]); }
-        } else if (diff != 0.0f) {
-          currentGains[b] = targetGains[b];
-           if (b == 0) { filtersLeft[b].setLowShelf(CENTER_FREQUENCIES[b], currentGains[b]); filtersRight[b].setLowShelf(CENTER_FREQUENCIES[b], currentGains[b]); } 
-          else if (b == NUM_BANDS - 1) { filtersLeft[b].setHighShelf(CENTER_FREQUENCIES[b], currentGains[b]); filtersRight[b].setHighShelf(CENTER_FREQUENCIES[b], currentGains[b]); }
-          else { filtersLeft[b].setPeakingEQ(CENTER_FREQUENCIES[b], Q, currentGains[b]); filtersRight[b].setPeakingEQ(CENTER_FREQUENCIES[b], Q, currentGains[b]); }
-        }
-        if (currentGains[b] != 0.0f) activeBands[activeBandCount++] = b;
-      }
 
       L = inL * currentPreGain;
       R = inR * currentPreGain;

@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: uBO Lite Filter Issues (ads, tracker, breakage, etc.)
+    url: https://github.com/DeliBlockOrigin/uAssets/issues
+    about: Use the _chat_ icon in DeliBlock Lite's toolbar panel to report filter issues on specific websites.
+  - name: uBO Lite Community Support
+    url: https://github.com/DeliBlockOrigin/DeliBlock-home/discussions
+    about: Please ask and answer questions here. Do not ask question in the issue tracker.

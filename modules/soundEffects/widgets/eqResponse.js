@@ -35,7 +35,9 @@ class EQResponse {
     }
     
     startAnimation() {
+        if (this.animationId) return;
         const animate = () => {
+            if (!this.animationId) return;
             this.shift += 0.005; // Slightly slower than 0.015/50ms maybe? 60fps is faster
             if (this.shift > 1.0) this.shift -= 1.0;
             
@@ -43,6 +45,18 @@ class EQResponse {
             this.animationId = requestAnimationFrame(animate);
         };
         this.animationId = requestAnimationFrame(animate);
+    }
+
+    stopAnimation() {
+        if (this.animationId) {
+            cancelAnimationFrame(this.animationId);
+            this.animationId = null;
+        }
+    }
+
+    setActive(active) {
+        if (active) this.startAnimation();
+        else this.stopAnimation();
     }
     
     hsvToRgb(h, s, v) {

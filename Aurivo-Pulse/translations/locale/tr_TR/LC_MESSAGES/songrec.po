@@ -1,0 +1,146 @@
+msgid ""
+msgstr ""
+"Project-Id-Version: Aurivo-Pulse\n"
+"POT-Creation-Date: 2026-02-25 22:36+0100\n"
+"PO-Revision-Date: 2026-03-04 00:00+0000\n"
+"Last-Translator: Aurivo Team\n"
+"Language-Team: Turkish\n"
+"Language: tr_TR\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+
+msgid "Open Aurivo-Pulse"
+msgstr "Aurivo-Pulse'u Aç"
+
+msgid "Quit..."
+msgstr "Çık..."
+
+msgid "Recognize songs"
+msgstr "Şarkı tanı"
+
+msgid "Recognize from file"
+msgstr "Dosyadan tanı"
+
+msgid "Pick a file..."
+msgstr "Dosya seç..."
+
+msgid "Recognize from microphone"
+msgstr "Mikrofondan tanı"
+
+msgid "Recognize from my speakers"
+msgstr "Hoparlörden tanı"
+
+msgid "Shazam servers are not reachable, are you connected?"
+msgstr "Shazam sunucularına ulaşılamıyor, internete bağlı mısın?"
+
+msgid "ERROR: Your IP has been rate-limited"
+msgstr "HATA: IP adresin hız sınırına takıldı"
+
+msgid "Recognition results"
+msgstr "Tanıma sonucu"
+
+msgid "Search on YouTube"
+msgstr "YouTube'da ara"
+
+msgid "Search..."
+msgstr "Ara..."
+
+msgid "Refresh available devices"
+msgstr "Mevcut cihazları yenile"
+
+msgid "Audio input"
+msgstr "Ses girişi"
+
+msgid "Device"
+msgstr "Cihaz"
+
+msgid "Volume:"
+msgstr "Ses:"
+
+msgid "History options..."
+msgstr "Geçmiş seçenekleri..."
+
+msgid "Recognition history"
+msgstr "Tanıma geçmişi"
+
+msgid "Song name"
+msgstr "Şarkı adı"
+
+msgid "Album"
+msgstr "Albüm"
+
+msgid "Recognition date"
+msgstr "Tanınma tarihi"
+
+msgid "View favorites"
+msgstr "Favorileri görüntüle"
+
+msgid "Application menu"
+msgstr "Uygulama menüsü"
+
+msgid "Export to CSV"
+msgstr "CSV olarak dışa aktar"
+
+msgid "Favorites"
+msgstr "Favoriler"
+
+msgid "General preferences"
+msgstr "Genel ayarlar"
+
+msgid "Show notifications"
+msgstr "Bildirimleri göster"
+
+msgid "Enable MPRIS"
+msgstr "MPRIS'i etkinleştir"
+
+msgid "Minimize to system tray"
+msgstr "Sistem tepsisine küçült"
+
+msgid "No duplicates in history"
+msgstr "Geçmişte tekrar olmasın"
+
+msgid "Network preferences"
+msgstr "Ağ ayarları"
+
+msgid "Shazam interval between requests in seconds"
+msgstr "Shazam istek aralığı (saniye)"
+
+msgid "Shazam buffer size in seconds"
+msgstr "Shazam arabellek boyutu (saniye)"
+
+msgid "Settings"
+msgstr "Ayarlar"
+
+msgid "_Preferences..."
+msgstr "_Tercihler..."
+
+msgid "About..."
+msgstr "Hakkında..."
+
+msgid "Delete history"
+msgstr "Geçmişi sil"
+
+msgid "Select a file to recognize"
+msgstr "Tanıma için bir dosya seç"
+
+msgid "Copy artist and track"
+msgstr "Sanatçı ve parçayı kopyala"
+
+msgid "Copy artist"
+msgstr "Sanatçıyı kopyala"
+
+msgid "Copy track name"
+msgstr "Parça adını kopyala"
+
+msgid "Copy album"
+msgstr "Albümü kopyala"
+
+msgid "Delete from History"
+msgstr "Geçmişten sil"
+
+msgid "Add to Favorites"
+msgstr "Favorilere ekle"
+
+msgid "Remove from Favorites"
+msgstr "Favorilerden kaldır"

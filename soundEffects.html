@@ -8,6 +8,29 @@
         content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline';">
     <title>Ses Efektleri — Aurivo Medya Player</title>
     <link rel="stylesheet" href="styles/soundEffects.css">
+    <script>
+        (function () {
+            try {
+                const embedded = new URLSearchParams(window.location.search).get('embedded') === '1';
+                if (!embedded) return;
+                document.documentElement.classList.add('embedded-sfx');
+                // IMPORTANT: never share the parent's aurivo object by reference in embedded mode.
+                // Otherwise video-side effect changes can leak into music/native engine state.
+                window.aurivo = {};
+                if (!window.i18n) {
+                    try {
+                        if (window.parent && window.parent !== window && window.parent.i18n) {
+                            window.i18n = window.parent.i18n;
+                        }
+                    } catch {
+                        // ignore
+                    }
+                }
+            } catch {
+                // ignore
+            }
+        })();
+    </script>
 </head>
 
 <body>
@@ -16,10 +39,6 @@
         <header class="sfx-header">
             <div class="header-left">
                 <img src="icons/aurivo_256.png" alt="Aurivo" class="header-logo" onerror="this.style.display='none'">
-                <div class="header-tabs">
-                    <button class="header-tab active" id="tabEffects" data-i18n="sfx.tabs.effects">Efektler</button>
-                    <button class="header-tab" id="tabPresets" data-i18n="sfx.tabs.presets">Ön Ayarlar</button>
-                </div>
                 <label class="master-toggle">
                     <input type="checkbox" id="masterEffectsToggle" checked>
                     <span class="toggle-slider"></span>
@@ -78,6 +97,10 @@
                         <span class="effect-icon">🔁</span>
                         <span class="effect-name" data-i18n="sfx.effects.echo">Echo (Yankı)</span>
                     </div>
+                    <div class="effect-item" data-effect="softecho">
+                        <span class="effect-icon">🫧</span>
+                        <span class="effect-name" data-i18n="sfx.effects.softecho">Saf Echo (Soft)</span>
+                    </div>
                     <div class="effect-item" data-effect="convreverb">
                         <span class="effect-icon">🎪</span>
                         <span class="effect-name" data-i18n="sfx.effects.convreverb">Konvolüsyon Reverb (IR)</span>
@@ -97,6 +120,10 @@
                     <div class="effect-item" data-effect="crossfeed">
                         <span class="effect-icon">🎧</span>
                         <span class="effect-name" data-i18n="sfx.effects.crossfeed">Crossfeed (Kulaklık)</span>
+                    </div>
+                    <div class="effect-item" data-effect="surround">
+                        <span class="effect-icon">🛰️</span>
+                        <span class="effect-name" data-i18n="sfx.effects.surround">Surround (5.1/7.1)</span>
                     </div>
                     <div class="effect-item" data-effect="bassmono">
                         <span class="effect-icon">🔉</span>
@@ -133,7 +160,6 @@
     <script src="modules/soundEffects/widgets/colorKnob.js"></script>
     <script src="modules/soundEffects/widgets/rainbowSlider.js"></script>
     <script src="modules/soundEffects/widgets/barAnalyzer.js"></script>
-    <script src="modules/soundEffects/widgets/eqResponse.js"></script>
     <script src="soundEffectsRenderer.js"></script>
 </body>
 

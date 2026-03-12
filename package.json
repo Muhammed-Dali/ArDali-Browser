@@ -1,28 +1,42 @@
 {
   "name": "aurivo-media-player",
-  "version": "4.0.14",
+  "version": "2.0.0",
   "description": "Aurivo Media Player - Electron App",
   "main": "main.js",
   "scripts": {
-    "start": "electron .",
-    "dev": "npm run dev:win",
+    "start": "npm run dev:linux",
+    "dev": "node scripts/dev-platform.js",
     "install:desktop:linux": "bash scripts/install-desktop-linux.sh",
     "gen:icon:transparent": "bash scripts/generate-transparent-icon.sh",
     "gen:win:ico": "node scripts/generate-windows-ico.js",
     "rebuild-native": "npm --prefix native ci && npm --prefix native run rebuild",
     "verify:libs": "node native/verify-libs.js",
     "prepare:win:resources": "node scripts/prepare-win-resources.js",
+    "locale:coverage": "node scripts/generate-locale-coverage.js",
+    "verify:i18n": "node --check modules/i18n.js && node --check renderer.js && node --check scripts/generate-locale-coverage.js && node --check scripts/verify-i18n.js && node scripts/verify-i18n.js && npm run -s locale:coverage",
     "build": "node native/copy-libs.js && electron-builder",
     "build:linux": "node native/copy-libs.js linux && node scripts/verify-linux-artifacts.js && electron-builder --linux",
+    "build:linux:appimage": "node native/copy-libs.js linux && node scripts/verify-linux-artifacts.js && electron-builder --linux AppImage",
     "verify:win:artifacts": "node scripts/verify-win-artifacts.js",
     "build:win": "node native/copy-libs.js win32 && npm run -s prepare:win:resources && npm run -s verify:win:artifacts && electron-builder --win",
+    "build:win:publish": "node native/copy-libs.js win32 && npm run -s prepare:win:resources && npm run -s verify:win:artifacts && electron-builder --win --publish=always",
     "build:win:zip": "node native/copy-libs.js win32 && npm run -s prepare:win:resources && npm run -s verify:win:artifacts && electron-builder --win zip",
     "build:mac": "node native/copy-libs.js darwin && electron-builder --mac",
-    "dist": "npm run build:win",
-    "dev:win": "cmd /c \"chcp 65001>nul && set AURIVO_DEV=1&& set PATH=C:\\msys64\\mingw64\\bin;C:\\Users\\muhan\\Desktop\\Aurivo-Medya-Player-windows\\native-dist;C:\\Users\\muhan\\Desktop\\Aurivo-Medya-Player-windows\\native\\build\\Release;C:\\Users\\muhan\\Desktop\\Aurivo-Medya-Player-windows\\bin;%PATH%&& electron . --enable-logging\""
+    "dist": "npm run build:linux",
+    "dev:linux": "ELECTRON_RUN_AS_NODE= AURIVO_DEV=1 PATH=\"$(pwd)/native-dist:$(pwd)/native/build/Release:$(pwd)/bin:$PATH\" electron . --enable-logging",
+    "profile:linux": "ELECTRON_RUN_AS_NODE= AURIVO_DEV=1 AURIVO_PERF_MONITOR=1 PATH=\"$(pwd)/native-dist:$(pwd)/native/build/Release:$(pwd)/bin:$PATH\" electron . --enable-logging",
+    "dev:win": "cmd /c \"chcp 65001>nul && set ELECTRON_RUN_AS_NODE=&& set AURIVO_DEV=1&& set PATH=C:\\msys64\\mingw64\\bin;C:\\Users\\muhan\\Desktop\\Aurivo-Medya-Player-windows\\native-dist\\windows;C:\\Users\\muhan\\Desktop\\Aurivo-Medya-Player-windows\\native-dist;C:\\Users\\muhan\\Desktop\\Aurivo-Medya-Player-windows\\native\\build\\Release;C:\\Users\\muhan\\Desktop\\Aurivo-Medya-Player-windows\\bin;%PATH%&& electron . --enable-logging\"",
+    "adblock:build": "node uDALİ-weman-home/scripts/buildBlocklist.cjs",
+    "adblock:sync": "node uDALİ-weman-home/scripts/syncBlocklistToApp.cjs",
+    "adblock:rebuild": "npm run -s adblock:build && npm run -s adblock:sync"
   },
   "author": "Muhammet Dali",
   "homepage": "https://aurivo.app",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/muhammed-aurivo-dev/Aurivo-Medya-Player-Linux.git"
+  },
+  "packageManager": "bun@1.1.0",
   "license": "MIT",
   "build": {
     "appId": "com.aurivo.mediaplayer",
@@ -30,6 +44,15 @@
     "electronVersion": "28.3.3",
     "icon": "icons/aurivo.ico",
     "artifactName": "Aurivo-${version}-${os}-${arch}.${ext}",
+    "directories": {
+      "buildResources": "build-resources"
+    },
+    "publish": {
+      "provider": "github",
+      "owner": "muhammed-aurivo-dev",
+      "repo": "Aurivo-Medya-Player-Linux",
+      "private": false
+    },
     "protocols": [
       {
         "name": "Aurivo Media Player",
@@ -44,39 +67,120 @@
         "description": "Aurivo Media Player Audio",
         "role": "Viewer",
         "icon": "icons/aurivo.ico",
-        "ext": [
-          "mp3",
-          "wav",
-          "flac",
-          "aac",
-          "ogg",
-          "m4a",
-          "opus",
-          "aiff",
-          "wma"
-        ]
+        "ext": "mp3"
+      },
+      {
+        "name": "Aurivo Audio",
+        "description": "Aurivo Media Player Audio",
+        "role": "Viewer",
+        "icon": "icons/aurivo.ico",
+        "ext": "wav"
+      },
+      {
+        "name": "Aurivo Audio",
+        "description": "Aurivo Media Player Audio",
+        "role": "Viewer",
+        "icon": "icons/aurivo.ico",
+        "ext": "flac"
+      },
+      {
+        "name": "Aurivo Audio",
+        "description": "Aurivo Media Player Audio",
+        "role": "Viewer",
+        "icon": "icons/aurivo.ico",
+        "ext": "aac"
+      },
+      {
+        "name": "Aurivo Audio",
+        "description": "Aurivo Media Player Audio",
+        "role": "Viewer",
+        "icon": "icons/aurivo.ico",
+        "ext": "ogg"
+      },
+      {
+        "name": "Aurivo Audio",
+        "description": "Aurivo Media Player Audio",
+        "role": "Viewer",
+        "icon": "icons/aurivo.ico",
+        "ext": "m4a"
+      },
+      {
+        "name": "Aurivo Audio",
+        "description": "Aurivo Media Player Audio",
+        "role": "Viewer",
+        "icon": "icons/aurivo.ico",
+        "ext": "opus"
+      },
+      {
+        "name": "Aurivo Audio",
+        "description": "Aurivo Media Player Audio",
+        "role": "Viewer",
+        "icon": "icons/aurivo.ico",
+        "ext": "aiff"
+      },
+      {
+        "name": "Aurivo Audio",
+        "description": "Aurivo Media Player Audio",
+        "role": "Viewer",
+        "icon": "icons/aurivo.ico",
+        "ext": "wma"
       },
       {
         "name": "Aurivo Video",
         "description": "Aurivo Media Player Video",
         "role": "Viewer",
         "icon": "icons/aurivo.ico",
-        "ext": [
-          "mp4",
-          "mkv",
-          "avi",
-          "mov",
-          "wmv",
-          "webm",
-          "m4v"
-        ]
+        "ext": "mp4"
+      },
+      {
+        "name": "Aurivo Video",
+        "description": "Aurivo Media Player Video",
+        "role": "Viewer",
+        "icon": "icons/aurivo.ico",
+        "ext": "mkv"
+      },
+      {
+        "name": "Aurivo Video",
+        "description": "Aurivo Media Player Video",
+        "role": "Viewer",
+        "icon": "icons/aurivo.ico",
+        "ext": "avi"
+      },
+      {
+        "name": "Aurivo Video",
+        "description": "Aurivo Media Player Video",
+        "role": "Viewer",
+        "icon": "icons/aurivo.ico",
+        "ext": "mov"
+      },
+      {
+        "name": "Aurivo Video",
+        "description": "Aurivo Media Player Video",
+        "role": "Viewer",
+        "icon": "icons/aurivo.ico",
+        "ext": "wmv"
+      },
+      {
+        "name": "Aurivo Video",
+        "description": "Aurivo Media Player Video",
+        "role": "Viewer",
+        "icon": "icons/aurivo.ico",
+        "ext": "webm"
+      },
+      {
+        "name": "Aurivo Video",
+        "description": "Aurivo Media Player Video",
+        "role": "Viewer",
+        "icon": "icons/aurivo.ico",
+        "ext": "m4v"
       }
     ],
     "asarUnpack": [
       "**/*.node",
       "**/*.dll",
       "**/*.so",
-      "**/*.dylib"
+      "**/*.dylib",
+      "uDALİ-weman-home/chromium/**"
     ],
     "files": [
       "**/*",
@@ -86,7 +190,10 @@
       "!**/*.ipynb",
       "!dist/**",
       "!build/**",
+      "!build-flatpak/**",
       "!build-visualizer/**",
+      "!.flatpak-builder/**",
+      "!repo/**",
       "!screenshots/**",
       "!venv/**",
       "!.venv/**",
@@ -106,11 +213,21 @@
     ],
     "linux": {
       "target": [
-        "AppImage"
+        "AppImage",
+        "deb",
+        "rpm"
       ],
       "maintainer": "Aurivo <support@aurivo.app>",
       "category": "AudioVideo",
       "executableName": "aurivo",
+      "desktop": {
+        "entry": {
+          "Name": "Aurivo Media Player",
+          "Comment": "Electron tabanlı gelişmiş medya oynatıcı",
+          "Categories": "AudioVideo;Player;",
+          "Keywords": "Music;Audio;Video;Player;Aurivo;"
+        }
+      },
       "icon": "icons/aurivo_512.png",
       "extraResources": [
         {
@@ -136,8 +253,13 @@
           ]
         },
         {
-          "from": "native-dist/aurivo-projectm-visualizer",
-          "to": "resources/native-dist/aurivo-projectm-visualizer"
+          "from": "native-dist/linux",
+          "to": "resources/native-dist/linux",
+          "filter": [
+            "aurivo-projectm-visualizer",
+            "libprojectM-4.so*",
+            "libprojectM-4-playlist.so*"
+          ]
         },
         {
           "from": "third_party/projectm/presets",
@@ -150,6 +272,10 @@
         {
           "from": "icons/aurivo_logo.bmp",
           "to": "resources/icons/aurivo_logo.bmp"
+        },
+        {
+          "from": "packaging/appstream/com.aurivo.mediaplayer.metainfo.xml",
+          "to": "usr/share/metainfo/com.aurivo.mediaplayer.metainfo.xml"
         }
       ]
     },
@@ -170,8 +296,8 @@
           ]
         },
         {
-          "from": "native-dist",
-          "to": "native-dist",
+          "from": "native-dist/windows",
+          "to": "native-dist/windows",
           "filter": [
             "aurivo-projectm-visualizer.exe",
             "*.dll"
@@ -189,14 +315,14 @@
           "from": "icons/aurivo.ico",
           "to": "icons/aurivo.ico"
         },
-          {
-            "from": "icons/aurivo_256.png",
-            "to": "icons/aurivo_256.png"
-          },
-          {
-            "from": "icons/aurivo_512.png",
-            "to": "icons/aurivo_512.png"
-          },
+        {
+          "from": "icons/aurivo_256.png",
+          "to": "icons/aurivo_256.png"
+        },
+        {
+          "from": "icons/aurivo_512.png",
+          "to": "icons/aurivo_512.png"
+        },
         {
           "from": "icons/aurivo_logo.bmp",
           "to": "icons/aurivo_logo.bmp"
@@ -234,27 +360,35 @@
         }
       ]
     },
-      "nsis": {
-        "oneClick": false,
-        "perMachine": false,
-        "allowToChangeInstallationDirectory": true,
-        "createDesktopShortcut": true,
-        "createStartMenuShortcut": true,
-        "shortcutName": "Aurivo",
-        "installerIcon": "icons/aurivo.ico",
-        "uninstallerIcon": "icons/aurivo.ico",
-        "installerHeaderIcon": "icons/aurivo.ico"
-      }
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "multiLanguageInstaller": true,
+      "installerLanguages": [
+        "tr_TR",
+        "en_US",
+        "ar_SA"
+      ],
+      "include": "installer.nsh",
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Aurivo",
+      "installerIcon": "icons/aurivo.ico",
+      "uninstallerIcon": "icons/aurivo.ico",
+      "installerHeaderIcon": "icons/aurivo.ico"
+    }
   },
   "devDependencies": {
-    "electron": "^28.3.3",
-    "electron-builder": "^24.13.3",
+    "electron": "^40.6.1",
+    "electron-builder": "^26.8.1",
     "png-to-ico": "^3.0.1"
   },
   "dependencies": {
+    "electron-updater": "^6.7.3",
     "mpris-service": "^2.1.2",
-    "node-id3": "^0.2.9"
+    "node-id3": "^0.2.9",
+    "systeminformation": "^5.25.11",
+    "yt-dlp-wrap-plus": "^2.4.3"
   }
 }
-
-

@@ -1,0 +1,5 @@
+<%= name %> (<%= "#{epoch}:" if epoch %><%= version %><%= "-" + iteration.to_s if iteration %>) <%= distribution %>; urgency=medium
+
+  * Package created with FPM.
+
+ -- <%= maintainer %>  <%= (if attributes[:source_date_epoch].nil? then Time.now() else Time.at(attributes[:source_date_epoch].to_i) end).strftime("%a, %d %b %Y %T %z") %>

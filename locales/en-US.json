@@ -1,0 +1,802 @@
+{
+  "app": {
+    "title": "Aurivo Media Player"
+  },
+  "sidebar": {
+    "files": "Files",
+    "videos": "Videos",
+    "music": "Music",
+    "web": "Web",
+    "security": "Security",
+    "download": "Download",
+    "settings": "Settings",
+    "about": "About"
+  },
+  "panel": {
+    "library": "LIBRARY",
+    "internet": "INTERNET",
+    "loading": "Loading..."
+  },
+  "libraryActions": {
+    "addFolder": "Add Folder",
+    "addFiles": "Add Files",
+    "openVideo": "Open Video"
+  },
+  "nowPlaying": {
+    "prefix": "Now Playing",
+    "ready": "Now Playing: Aurivo Player - Ready",
+    "none": "No Track",
+    "unknownTrack": "Unknown Track",
+    "unknownArtist": "Unknown Artist"
+  },
+  "web": {
+    "media": "Web Media"
+  },
+  "common": {
+    "ok": "OK"
+  },
+  "settings": {
+    "title": "Preferences",
+    "tabs": {
+      "playback": "Playback",
+      "listen": "Listen",
+      "behavior": "Behavior",
+      "library": "Music Library",
+      "audio": "Audio Output",
+      "download": "Download"
+    },
+    "buttons": {
+      "ok": "OK",
+      "apply": "Apply",
+      "cancel": "Cancel",
+      "resetDefaults": "Reset to defaults"
+    }
+  },
+  "ui": {
+    "languageSelection": {
+      "title": "Language Selection",
+      "label": "Language",
+      "hint": "Restart required to apply changes.",
+      "restartHint": "Your selected language will apply on next launch."
+    },
+    "theme": {
+      "label": "Theme",
+      "hint": "Changes application colors instantly.",
+      "followSystem": {
+        "label": "Follow system theme",
+        "hint": "When enabled, theme selection is applied automatically based on system theme.",
+        "toggle": "Sync with system"
+      }
+    },
+    "effectsMode": {
+      "label": "Visual Effect Mode",
+      "hint": "Controls glow/blur performance. Automatic mode reduces itself on low-end systems.",
+      "toggle": "Color Effects"
+    },
+    "reduceMotion": {
+      "label": "Reduced Motion",
+      "hint": "Uses fewer animations and transitions for a calmer interface.",
+      "toggle": "Reduced Motion"
+    },
+    "sfxLights": {
+      "label": "Sound Effect Lights",
+      "hint": "Turns light/glow effects on or off in the sound effects screen.",
+      "toggle": "Sound Effect Lights",
+      "enable": "Enable Sound Effects",
+      "state": {
+        "on": "Enabled",
+        "off": "Disabled"
+      },
+      "run": "Run",
+      "stop": "Stop"
+    },
+    "sliderFx": {
+      "label": "Timeline/Volume Color Effects",
+      "hint": "Turns color cycling on or off for the main and fullscreen timeline/volume sliders.",
+      "enable": "Timeline/Volume Colors",
+      "state": {
+        "on": "On",
+        "off": "Off"
+      }
+    },
+    "startup": {
+      "title": "Startup Behavior",
+      "rememberLastSection": "Remember last open main section",
+      "startupPage": "Default startup section",
+      "closeToTray": "Minimize to system tray when closing window",
+      "closeToTrayHint": "If disabled, closing the window exits the app."
+    },
+    "visualMode": {
+      "hint": "Full: all effects, Balanced: reduced motion, Minimal: lightest visuals.",
+      "options": {
+        "full": "Full",
+        "balanced": "Balanced",
+        "minimal": "Minimal"
+      },
+      "hintFull": "Full mode: all animations and visual effects are active.",
+      "hintBalanced": "Balanced mode: animations are toned down for steadier performance.",
+      "hintMinimal": "Minimal mode: lightest visuals with minimum effects.",
+      "perf": {
+        "high": "Performance: High GPU",
+        "medium": "Performance: Medium",
+        "low": "Performance: Low"
+      }
+    }
+  },
+  "listen": {
+    "quick": {
+      "title": "Aurivo-Pulse Quick Listen",
+      "toastDuration": {
+        "label": "Listen notification duration",
+        "hint": "Controls how long the no-signal hint stays on screen.",
+        "options": {
+          "4s": "4 sec",
+          "6s": "6 sec",
+          "8s": "8 sec"
+        }
+      },
+      "mode": {
+        "label": "Listen mode",
+        "hint": "Balances speed, background-music focus and accuracy.",
+        "options": {
+          "normal": "Normal Listening",
+          "background": "Background Music Focus",
+          "max": "Maximum Accuracy"
+        },
+        "card": {
+          "normal": "Clear music and fast everyday listening.",
+          "background": "Balanced choice for music hidden behind speech and ambience.",
+          "max": "Best for hard videos, covers and very low background music."
+        },
+        "detail": {
+          "normal": "Normal Listening: Best for clear music, official tracks and fast everyday recognition.",
+          "background": "Background Music Focus: Better for videos where music stays behind speech, ambience or effects.",
+          "max": "Maximum Accuracy: Uses denser sampling and waits longer. Best for hard cases like cover, live, remix or low-volume background music."
+        }
+      }
+    },
+    "buttons": {
+      "resetDefaults": "Reset Listen Defaults"
+    },
+    "preferences": {
+      "title": "Aurivo-Pulse Preferences",
+      "notifications": {
+        "label": "Show notifications",
+        "hint": "Shows notifications when a song is found, when a network error occurs, and when the audio device changes automatically."
+      },
+      "mpris": {
+        "label": "Enable MPRIS",
+        "hint": "Can expose recognized tracks in the Linux media panel. It does not affect recognition quality."
+      },
+      "systray": {
+        "label": "Minimize to system tray",
+        "hint": "Keeps the listen window running in the system tray instead of closing fully."
+      },
+      "noDuplicates": {
+        "label": "Avoid duplicates in history",
+        "hint": "Updates the previous history item instead of adding a new row when the same song is recognized again."
+      },
+      "requestInterval": {
+        "label": "Shazam request interval",
+        "hint": "Increase this if you hit rate limits."
+      },
+      "bufferSize": {
+        "label": "Shazam buffer size",
+        "hint": "Longer samples can be more stable but slightly slower."
+      }
+    }
+  },
+  "restart": {
+    "title": "Restart required",
+    "message": "To apply the language change, the app needs to restart. Restart now?",
+    "yes": "Yes",
+    "no": "No"
+  },
+  "videoFs": {
+    "titles": {
+      "playbackSpeed": "Playback Speed",
+      "targetFps": "Target FPS",
+      "settings": "Settings",
+      "exitFullscreen": "Exit (ESC)"
+    },
+    "fps": {
+      "auto": "Auto"
+    },
+    "settings": {
+      "stableVolume": "Stable volume",
+      "volumeBoost": "Volume boost",
+      "cinematicLighting": "Cinematic lighting",
+      "annotations": "Annotations",
+      "subtitles": "Subtitles (1)",
+      "subtitlesTitle": "Subtitles",
+      "sleepTimer": "Sleep timer",
+      "playbackSpeed": "Playback speed",
+      "quality": "Quality"
+    },
+    "state": {
+      "on": "On",
+      "off": "Off",
+      "soon": "Soon"
+    },
+    "sleep": {
+      "minutesShort": "min"
+    },
+    "speed": {
+      "normal": "Normal"
+    },
+    "quality": {
+      "auto": "Auto",
+      "autoWith": "Auto ({res})"
+    },
+    "notify": {
+      "subtitlesSoon": "Subtitles will be added soon.",
+      "stableVolume": "Stable volume: {state}",
+      "volumeBoost": "Volume boost: {state}",
+      "annotationsSoon": "Annotations: coming soon.",
+      "sleepTimerOff": "Sleep timer: Off",
+      "sleepTimerSet": "Sleep timer: {minutes} {unit}",
+      "sleepTimerPaused": "Sleep timer: Video paused."
+    }
+  },
+  "appMenu": {
+    "file": "File",
+    "edit": "Edit",
+    "view": "View",
+    "window": "Window",
+    "help": "Help",
+    "quit": "Quit",
+    "close": "Close",
+    "minimize": "Minimize",
+    "reload": "Reload",
+    "toggleDevTools": "Toggle Developer Tools",
+    "resetZoom": "Reset Zoom",
+    "zoomIn": "Zoom In",
+    "zoomOut": "Zoom Out",
+    "toggleFullscreen": "Toggle Full Screen",
+    "undo": "Undo",
+    "redo": "Redo",
+    "cut": "Cut",
+    "copy": "Copy",
+    "paste": "Paste",
+    "selectAll": "Select All"
+  },
+  "playback": {
+    "title": "Playback",
+    "crossfade": {
+      "title": "Smooth transition",
+      "stop": "Fade when stopping a track",
+      "manual": "Manual crossfade when switching tracks",
+      "auto": "Auto crossfade when switching tracks",
+      "sameAlbumExcept": "Except tracks from the same album / CUE file",
+      "duration": "Crossfade duration",
+      "fadeOnPause": "Fade out on pause / fade in on resume",
+      "pauseFadeDuration": "Fade duration",
+      "skipShortTracks": "Skip crossfade for short tracks",
+      "safetyPadding": "Safety padding"
+    },
+    "seekStep": "Seek step",
+    "startup": {
+      "title": "Startup",
+      "restoreLastTrack": "Restore last track on startup",
+      "autoplayLastTrack": "Autoplay restored track on startup",
+      "resumePosition": "Resume restored track from last position"
+    },
+    "endWarning": {
+      "title": "Track End Warning",
+      "enabled": "Show warning before track ends",
+      "seconds": "Warning time"
+    },
+    "leveling": {
+      "title": "Volume Leveling",
+      "enabled": "Smart volume leveling (Auto-Gain)",
+      "mode": {
+        "gentle": "Gentle",
+        "balanced": "Balanced",
+        "strong": "Strong"
+      }
+    }
+  },
+  "controls": {
+    "prev": "Previous",
+    "next": "Next",
+    "rewind10": "Rewind 10s",
+    "forward10": "Forward 10s",
+    "playPause": "Play/Pause",
+    "shuffle": "Shuffle",
+    "repeat": "Repeat",
+    "volume": "Volume",
+    "visual": "Visualizer",
+    "eq": "Sound Effects (EQ)",
+    "clearPlaylist": "Clear playlist"
+  },
+  "nav": {
+    "back": "Back",
+    "forward": "Forward",
+    "reload": "Reload"
+  },
+  "visualizerMenu": {
+    "framerate": "Frame rate",
+    "framerateLow": "Low (20 fps)",
+    "framerateMedium": "Medium (25 fps)",
+    "framerateHigh": "High (30 fps)",
+    "framerateUltra": "Very high (60 fps)",
+    "analyzers": {
+      "bar": "Bar analyzer",
+      "block": "Block analyzer",
+      "boom": "Boom analyzer",
+      "sonogram": "Sonogram",
+      "turbine": "Turbine",
+      "nyanalyzer": "Nyanalyzer Cat",
+      "rainbow": "Rainbow Dash",
+      "none": "No analyzer"
+    },
+    "psychedelic": "Use Psychedelic Colors",
+    "visuals": "Visuals",
+    "effects": {
+      "glow": "Glow effect",
+      "reflection": "Reflection"
+    }
+  },
+  "about": {
+    "title": "Aurivo Media Player",
+    "version": "Version: 2.0.0 - Stable Release",
+    "founderLabel": "Founder & Lead Developer",
+    "featuresTitle": "Features",
+    "features": {
+      "dsp": "Advanced DSP & Equalizer Control",
+      "web": "Integrated YouTube Music & Video Engine",
+      "visualizer": "Dynamic Audio Visualizer (Spectrum)",
+      "electron": "Ultra-fast Electron-based UI"
+    },
+    "github": "View on GitHub",
+    "githubTitle": "View on GitHub",
+    "footer": "© 2026 Muhammet Dali. Licensed under MIT.",
+    "close": "Close"
+  },
+  "confirm": {
+    "deletePreset": "Are you sure you want to delete the preset \"{name}\"?"
+  },
+  "notifications": {
+    "presetDeleted": "Preset \"{name}\" deleted."
+  },
+  "errors": {
+    "presetsWindowOpenFailed": "Could not open presets window (presets API missing)."
+  },
+  "dialog": {
+    "selectMusicFolder": "Select Music Folder",
+    "selectMusicFiles": "Select Music Files",
+    "filters": {
+      "audioFiles": "Audio Files",
+      "videoFiles": "Video Files",
+      "allFiles": "All Files",
+      "musicFiles": "Music Files"
+    }
+  },
+  "visualizer": {
+    "notFoundTitle": "Visualizer not found",
+    "notFoundBody": "Executable not found:\n{path}\n\nLinux:\n- cmake --build build-visualizer\n- cp build-visualizer/aurivo-projectm-visualizer native-dist/aurivo-projectm-visualizer\n\nIn development mode (npm run dev), build-visualizer output is preferred automatically."
+  },
+  "sfx": {
+    "windowTitle": "Sound Effects — Aurivo Media Player",
+    "tabs": {
+      "effects": "Effects",
+      "presets": "Presets"
+    },
+    "masterToggle": "Enable Sound Effects",
+    "dspStatusInitial": "DSP: On • PY: On • Active: 0",
+    "dspStatus": "DSP: {dsp} • PY: {py} • Active: {active}",
+    "on": "On",
+    "off": "Off",
+    "window": {
+      "minimize": "Minimize",
+      "maximize": "Maximize/Restore",
+      "maximizeOnly": "Maximize",
+      "restore": "Restore",
+      "close": "Close"
+    },
+    "ui": {
+      "enable": "Enable",
+      "reset": "Reset",
+      "resetModule": "Reset Module",
+      "presets": "Presets",
+      "presetFallback": "Preset",
+      "notImplemented": "This effect is not implemented yet."
+    },
+    "balance": {
+      "title": "Balance (L ↔ R)",
+      "center": "Center ({pct}%)",
+      "left": "Left ({pct}%)",
+      "right": "Right ({pct}%)"
+    },
+    "eq32": {
+      "title": "Professional 32‑Band Equalizer",
+      "description": "Shape your sound with precise frequency control.",
+      "moduleTitle": "Aurivo Module",
+      "acousticSpace": {
+        "label": "Acoustic Space:",
+        "off": "Off",
+        "small": "Small Room",
+        "medium": "Medium Room",
+        "large": "Large Room",
+        "hall": "Concert Hall"
+      }
+    },
+    "reverb": {
+      "description": "Professional room simulation using BASS_FX_DX8_REVERB.",
+      "presets": {
+        "smallRoom": "Small Room",
+        "largeRoom": "Large Room",
+        "concertHall": "Concert Hall",
+        "cathedral": "Cathedral"
+      }
+    },
+    "compressor": {
+      "title": "Dynamic Compressor",
+      "description": "Controls dynamic range by reducing loud parts."
+    },
+    "bassboost": {
+      "title": "Bass Enhancer",
+      "description": "Enriches low frequencies with harmonics."
+    },
+    "descriptions": {
+      "limiter": "Limits maximum level to prevent clipping.",
+      "noisegate": "Cuts audio below a threshold.",
+      "deesser": "Softens harsh “s” sounds.",
+      "exciter": "Adds harmonic content to brighten audio.",
+      "stereowidener": "Expands stereo width and depth.",
+      "echo": "Delay-based echo effect.",
+      "softecho": "Natural and smooth echo profile without metallic double-voice feel.",
+      "convreverb": "Reverb using real impulse responses.",
+      "autogain": "Automatic loudness normalization.",
+      "truepeak": "Professional true-peak limiting and stereo metering.",
+      "crossfeed": "Simulates speaker-like listening on headphones by blending channels.",
+      "surround": "Cinematic stage simulation with center/surround/LFE balance for stereo sources.",
+      "bassmono": "Makes low frequencies mono for better translation and vinyl/club compatibility.",
+      "dynamiceq": "Automatically adjusts EQ based on band dynamics.",
+      "tapesat": "Adds analog tape warmth and harmonic saturation.",
+      "bitdither": "Bit reduction and dither for lo-fi character or professional format conversion."
+    },
+    "noisegate": {
+      "gateStatusLabel": "Gate status:"
+    },
+    "crossfeed": {
+      "statusChecking": "DSP status: checking…",
+      "attached": "Attached",
+      "detached": "Detached",
+      "errorLabel": "Error",
+      "statusLine": "DSP status: {attached} | Callback: {count}{errText}",
+      "statusUnreadable": "DSP status: unreadable",
+      "autoHeadphones": "Auto enable/disable crossfeed according to headphone connection",
+      "outputUnknown": "Unknown output",
+      "device": {
+        "loading": "Output device is being checked...",
+        "headphones": "✓ {outputName} detected as headphones. Crossfeed is suitable.",
+        "usbHeadset": "✓ {outputName} detected as USB headset (output + related mic). Crossfeed is suitable.",
+        "speakers": "ℹ {outputName} detected as speaker/line output. Crossfeed is usually unnecessary.",
+        "unreadable": "ℹ Output info could not be read. Crossfeed remains in manual mode."
+      },
+      "presetDescriptions": {
+        "0": "🎧 Natural: Speaker-like stereo experience (Recommended)",
+        "1": "🎵 Mild: Light crossfeed, minimal fatigue reduction",
+        "2": "💪 Strong: Strong crossfeed, pronounced speaker feel",
+        "3": "🌌 Wide: Wider stage, more spacious feel",
+        "4": "⚙️ Custom: Your manual settings"
+      }
+    },
+    "effects": {
+      "eq32": "Equalizer (32-Band)",
+      "reverb": "Reverb (BASS FX)",
+      "compressor": "Dynamic Compressor",
+      "limiter": "Limiter",
+      "bassboost": "Bass Enhancer",
+      "noisegate": "Smart Noise Gate",
+      "deesser": "De-esser",
+      "exciter": "Exciter",
+      "stereowidener": "Stereo Widener v2",
+      "echo": "Echo",
+      "softecho": "Soft Echo",
+      "convreverb": "Convolution Reverb (IR)",
+      "peq": "Parametric EQ (PEQ)",
+      "autogain": "Auto Gain / Normalize",
+      "truepeak": "True Peak Limiter + Meter",
+      "crossfeed": "Crossfeed (Headphones)",
+      "surround": "Surround (5.1/7.1)",
+      "bassmono": "Bass Mono",
+      "dynamiceq": "Dynamic EQ",
+      "tapesat": "Tape Saturation",
+      "bitdither": "Bit-depth / Dither"
+    },
+    "softecho": {
+      "stereoPingPong": "Stereo (Ping-Pong)",
+      "presets": {
+        "title": "Soft Echo Presets",
+        "natural": "Natural",
+        "velvet": "Velvet",
+        "tape": "Tape Glow",
+        "vocal": "Vocal Soft",
+        "wide": "Wide Air",
+        "cinema": "Cinema Tail"
+      }
+    },
+    "surround": {
+      "autoMultichannel": "Auto enable/disable surround on multichannel outputs (>2 channels)",
+      "outputUnknown": "Unknown output",
+      "hint": {
+        "loading": "Reading output info...",
+        "multi": "✓ {outputName} • {channels} channels detected. Surround mode is recommended.",
+        "stereo": "ℹ {outputName} • {channels} channels detected. This mode simulates virtual surround for stereo content.",
+        "unreadable": "ℹ Output info could not be read. Surround mode works as virtual simulation on stereo sources."
+      },
+      "presets": {
+        "title": "Surround Presets",
+        "movie": "Movie",
+        "music": "Music",
+        "game": "Game",
+        "voice": "Voice+",
+        "night": "Night"
+      }
+    },
+    "footer": {
+      "engineInfo": "Aurivo DSP Engine v3.0 • 48kHz / 32-bit Float Processing"
+    },
+    "nativeUnavailable": "⚠️ Sound Effects unavailable: Native Audio Engine is not loaded. Basic playback is still available.",
+    "tapesat": {
+      "statusLabel": "DSP Status:",
+      "statusAttached": "Attached (Mastering Priority 12)",
+      "presets": {
+        "subtle": "Subtle Warmth",
+        "glue": "Mastering Glue",
+        "crisp": "Crisp Tape",
+        "lofi": "Lo-fi Tape"
+      }
+    },
+    "truepeak": {
+      "clipping": "Clipping:",
+      "gainReduction": "GR:",
+      "oversampling": "Oversampling:",
+      "presetDescriptions": {
+        "soft": "🌿 Soft: Transparent and light protection with minimal compression feel.",
+        "balanced": "⚖️ Balanced: Well-rounded limiter behavior for daily listening.",
+        "loud": "🔥 Loud: More aggressive limiting for a louder perception.",
+        "spotify": "🎵 Spotify: Safe peak control tuned for platform delivery.",
+        "youtube": "📺 YouTube: Stream-friendly peak control with medium compression.",
+        "cd": "💿 CD Master: Cleaner master approach with minimal peak margin.",
+        "broadcast": "📡 Broadcast: Tighter and safer limiting for broadcast standards."
+      }
+    },
+    "convreverb": {
+      "irPresets": "IR Presets",
+      "presets": {
+        "hall": "Concert Hall",
+        "church": "Church",
+        "room": "Room",
+        "plate": "Plate"
+      }
+    },
+    "bassmono": {
+      "presets": {
+        "vinyl": "Vinyl Safe",
+        "club": "Club System",
+        "mastering": "Mastering",
+        "dj": "DJ Mix",
+        "sub": "Sub Only"
+      }
+    },
+    "dynamiceq": {
+      "presets": {
+        "deharsh": "De-Harsh (3-5kHz)",
+        "demud": "De-Mud (200-400Hz)",
+        "vocal": "Vocal Presence",
+        "deesser": "Dynamic De-esser",
+        "basstighten": "Bass Tighten",
+        "air": "Air Sparkle",
+        "drumsnap": "Drum Snap",
+        "warmth": "Analog Warmth"
+      }
+    },
+    "bitdither": {
+      "presets": {
+        "cd16": "CD Mastering (16-bit)",
+        "retro12": "Retro 12-bit",
+        "game8": "8-bit Gaming",
+        "vinyl": "Lo-fi Vinyl",
+        "crunch": "Subtle Crunch"
+      }
+    }
+  },
+  "eqPresets": {
+    "windowTitle": "Presets — Aurivo Media Player",
+    "title": "Presets",
+    "searchPlaceholder": "Search presets... (e.g., bass, v-shape, vocal)",
+    "groupLabel": "Preset group",
+    "listLabel": "Preset list",
+    "status": "Shown: {shown} / {total} • Group: {group}",
+    "noResults": "No results found.",
+    "apiMissing": "Preset API not found.",
+    "loading": "Loading AutoEQ presets...",
+    "loadFailed": "Presets could not be loaded.",
+    "loadError": "AutoEQ could not be loaded (see logs).",
+    "flatName": "Flat",
+    "flatDesc": "All bands 0.0 dB",
+    "groups": {
+      "all": "All",
+      "bass": "Bass",
+      "treble": "Treble",
+      "vocal": "Vocal",
+      "jazz": "Jazz",
+      "classical": "Classical",
+      "electronic": "Electronic",
+      "pop": "Pop",
+      "rock": "Rock",
+      "vshape": "V-Shape",
+      "flat": "Flat",
+      "other": "Other"
+    }
+  },
+  "downloadUi": {
+    "title": "Download - Select Format",
+    "tabs": {
+      "video": "Video",
+      "audio": "Audio"
+    },
+    "view": {
+      "basic": "Basic",
+      "advanced": "Advanced"
+    },
+    "back": "Back",
+    "fields": {
+      "titleLabel": "Title:",
+      "titlePlaceholder": "Enter a title... (optional)",
+      "selectFormat": "Select format"
+    },
+    "quality": {
+      "autoBest": "Auto (Best) - Recommended"
+    },
+    "cardMode": {
+      "video": "Download Video",
+      "audio": "Extract Audio"
+    },
+    "audioQuality": {
+      "normal": "Normal (192kbps)",
+      "high": "High (320kbps)",
+      "low": "Low (128kbps)"
+    },
+    "normalizeAudio": "Audio normalization (louder)",
+    "advanced": {
+      "title": "Aurivo - Advanced Settings",
+      "urlLabel": "URL",
+      "urlPlaceholder": "Video/Audio URL (YouTube, SoundCloud, etc.)",
+      "pasteBtn": "Paste",
+      "pasteTitle": "Paste copied URL",
+      "folderLabel": "Folder",
+      "folderPlaceholder": "Download folder",
+      "selectBtn": "Select",
+      "videoCodecLabel": "Video codec",
+      "auto": "Auto",
+      "cookiesBrowserLabel": "Cookies (browser)",
+      "none": "None",
+      "cookiesFileLabel": "Cookies file",
+      "cookiesFilePlaceholder": "cookies.txt (optional)",
+      "proxyLabel": "Proxy",
+      "proxyPlaceholder": "http://localhost:8080 or socks5://127.0.0.1:1080",
+      "useConfig": "Use config file",
+      "configPlaceholder": "yt-dlp config file (optional)",
+      "moreFormats": "More formats (custom -f)",
+      "formatOverridePlaceholder": "e.g. bestvideo[height<=1080][vcodec^=avc1]+bestaudio/best or format id (251)",
+      "playlist": "Download playlist",
+      "playlistFilename": "Playlist filename format",
+      "playlistFoldername": "Playlist folder name format",
+      "customArgsLabel": "Custom yt-dlp arguments",
+      "customArgsPlaceholder": "e.g. --sponsorblock-remove all"
+    },
+    "progress": {
+      "ready": "Ready",
+      "starting": "Starting...",
+      "downloading": "Downloading...",
+      "done": "Download complete",
+      "error": "Download error"
+    },
+    "buttons": {
+      "details": "Details",
+      "start": "Download",
+      "more": "More settings",
+      "stop": "Stop",
+      "cancel": "Cancel",
+      "close": "Close",
+      "hide": "Hide"
+    },
+    "dialog": {
+      "selectFolderTitle": "Select Download Folder"
+    },
+    "notify": {
+      "apiMissing": "Download API not found (window.aurivo.download.start)",
+      "enterUrl": "Please enter a URL.",
+      "folderNotSelected": "No download folder selected.",
+      "folderSelectFailed": "Couldn't select folder: {error}",
+      "startFailed": "Couldn't start download: {error}"
+    }
+  },
+  "securityPage": {
+    "title": "Security",
+    "heroTitle": "Aurivo Secure Internet",
+    "heroSub": "Use the Web tab more safely and in a controlled way.",
+    "sections": {
+      "currentSite": "Current Site",
+      "controls": "Controls",
+      "cleanup": "Cleanup",
+      "allowedPlatforms": "Allowed Platforms"
+    },
+    "buttons": {
+      "copy": "Copy",
+      "openInBrowser": "Open in browser",
+      "clearCookies": "Clear cookies",
+      "clearCache": "Clear cache",
+      "clearAll": "Clear all",
+      "resetWeb": "Reset Web"
+    },
+    "allowPopups": "Allow pop-up windows (may be required for some logins)",
+    "allowPopupsHint": "Note: When pop-ups are disabled, some login/account links may not open.",
+    "cleanupHint": "Clearing cookies/cache may sign you out of some sites.",
+    "allowedPlatformsHint": "Aurivo targets the following platforms in the Web tab (CSP/frame-src):",
+    "vpnPolicyLabel": "Block Web access when VPN is detected",
+    "vpnPolicyHint": "Recommended: keep this off. With VPN, app will warn only; non-approved websites are already blocked.",
+    "dynamic": {
+      "urlLine": "URL: {url}",
+      "connSecure": "Connection: Secure (HTTPS)",
+      "connInsecure": "Connection: Insecure (HTTP)",
+      "connUnknown": "Connection: -",
+      "vpnUnknown": "VPN: -",
+      "vpnNotDetected": "VPN: Not detected"
+    },
+    "notify": {
+      "urlCopied": "URL copied.",
+      "urlCopyFailed": "Couldn't copy URL: {error}",
+      "openInBrowserFailed": "Couldn't open in browser.",
+      "openInBrowserError": "Couldn't open in browser: {error}",
+      "clearFailed": "Clearing failed.",
+      "clearError": "Clearing error: {error}",
+      "cookiesCleared": "Cookies cleared.",
+      "cacheCleared": "Cache cleared.",
+      "allCleared": "Web data cleared.",
+      "webResetOk": "Web has been reset.",
+      "webResetFailed": "Couldn't reset Web: {error}",
+      "invalidExternalUrl": "Open a valid web page first (http/https).",
+      "vpnBlocked": "VPN detected. Web tab is temporarily blocked for security.",
+      "vpnWarning": "VPN detected. For security, only approved platforms will be allowed.",
+      "urlBlocked": "This address is blocked by security policy."
+    }
+  },
+  "about.featuresTitle": "Features & Transparency",
+  "about.sections.app.title": "App Features",
+  "about.sections.app.item1": "Combines music, video, web and download workflows in one interface.",
+  "about.sections.app.item2": "Includes Aurivo-Pulse listening mode for fast song recognition.",
+  "about.sections.app.item3": "Offers modern media controls with multi-language and system language support.",
+  "about.sections.web.title": "Web Features",
+  "about.sections.web.item1": "Provides secure media access for YouTube, Deezer, SoundCloud and social platforms.",
+  "about.sections.web.item2": "Sessions are kept in a secure web partition (persist partition).",
+  "about.sections.web.item3": "Navigation works only with allowed and validated URL rules.",
+  "about.sections.security.title": "Security & Privacy",
+  "about.sections.security.item1": "Sensitive data like email/password/token is not stored in app settings.",
+  "about.sections.security.item2": "Web view is protected with sandbox, permission controls and domain restrictions.",
+  "about.sections.security.item3": "Open in external browser is enabled only for valid http/https URLs.",
+  "about.sections.sfx.title": "Sound Effects Features",
+  "about.sections.sfx.item1": "Includes native C++ DSP modules: 32-band EQ, compressor, limiter, reverb, crossfeed and more.",
+  "about.sections.sfx.item2": "Provides presets, real-time knob controls and persistent effect settings.",
+  "about.sections.sfx.item3": "Optimized for low latency and balanced CPU usage during playback.",
+  "about.sections.visual.title": "Visualization Features",
+  "about.sections.visual.item1": "Runs projectM-based visualizer modes with configurable performance profiles.",
+  "about.sections.visual.item2": "Gives full control over FPS, effect intensity and visual style.",
+  "about.sections.visual.item3": "Generates low-latency live visuals synced with audio output.",
+  "settings.library.hero.chip.archive": "Archive",
+  "settings.library.hero.chip.scan": "Scan",
+  "settings.library.hero.chip.maintenance": "Maintenance",
+  "settings.library.hero.insight.eyebrow": "Library hub",
+  "settings.library.hero.insight.title": "Live archive view",
+  "settings.library.hero.insight.subtitle": "Core library signals and latest scan details are collected here.",
+  "settings.library.root.savedFolders": "Saved folders",
+  "settings.library.root.manualTracks": "Manually added tracks",
+  "settings.library.root.manualTracksHint": "Manually added tracks appear in the playlist. Detailed management is available in Settings > Music Library.",
+  "unit": {
+    "secondsShort": "sec"
+  }
+}

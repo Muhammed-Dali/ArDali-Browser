@@ -1,0 +1,379 @@
+songrec (0.6.4) bionic; urgency=low
+
+  * Add an UI button to refresh the PulseAudio device list
+  * Add a status icon through the KSNI rust crate
+  * Add a no duplicate entries setting (issue #198)
+  * Set the default request interval to a tunable 8 seconds
+  * Don't try to fingerprint empty audio buffers
+  * Fix a display glitch
+
+ -- Marin <marin-m@users.noreply.github.com>  Tue, 19 Feb 2026 08:02:09 +0100
+
+songrec (0.6.3) bionic; urgency=low
+
+  * Reduce song history load time when the history is large (issue #224)
+  * Drop reqwest for libsoup for network requests, this will make the binary and the compile time smaller
+  * Make the network code asynchronous (issue #223)
+  * Increase the default request interval from 4 to 10 seconds to decrease the odds of rate-limiting, and make it fully configurable (issues #222, #154, #164, #218)
+  * Try a colorful icon
+  * Implement more standard shortcuts for GNOME Circle criteria compliance
+  * Add Snapcraft compatibility
+  * Move command line output to the new fern-based logging system
+  * Add a --list-devices flag for CLI commands like "listen" and "recognize"
+  * Add a --request-interval flag for CLI commands like "listen" and "recognize"
+  * Avoid to spam the debugging output with huge raw song cover data
+
+ -- Marin <marin-m@users.noreply.github.com>  Wed, 18 Feb 2026 18:16:33 +0100
+
+songrec (0.6.2+1) bionic; urgency=low
+
+  * Prune .gitmodules out of the Debian build directory in order to avoid checksum issues
+
+ -- Marin <marin-m@users.noreply.github.com>  Sun, 15 Feb 2026 10:30:12 +0100
+
+songrec (0.6.2) bionic; urgency=low
+
+  * Avoid stack overflow when compiling in debug mode on Linux
+  * Add support building the GTK 4 nativaly for Ubuntu 24.04 LTS in addition to 25.04, 25.10 and Flatpak
+  * Use a steel icon matching the recommended bounds for a Flathub icon
+  * Synchronize Czech, Brazilian and French translations (thanks to @Fjuro and @marcelocripe)
+  * Add copiable debug information in the About panel
+  * Add UI settings for the amp.shazam buffer size and recognition interval (see issues #154, #164, #81)
+  * Notify users about the rate limit status
+
+ -- Marin <marin-m@users.noreply.github.com>  Sun, 15 Feb 2026 09:56:47 +0100
+
+ssongrec (0.6.1.1) bionic; urgency=low
+
+  * Use a flat-looking icon consistent with both the previous releases of
+    Aurivo-Pulse and the GNOME UI guidelines
+
+ -- Marin <marin-m@users.noreply.github.com>  Sat, 14 Feb 2026 17:12:37 +0100
+
+songrec (0.6.1+6) bionic; urgency=low
+
+  * Fix typo, again
+
+ -- Marin <marin-m@users.noreply.github.com>  Sat, 14 Feb 2026 11:57:11 +0100
+
+songrec (0.6.1+5) bionic; urgency=low
+
+  * Remove insidious non-breaking spaces
+
+ -- Marin <marin-m@users.noreply.github.com>  Sat, 14 Feb 2026 11:46:57 +0100
+
+songrec (0.6.1+4) bionic; urgency=low
+
+  * Attempt to fix the build process on 24.04
+
+ -- Marin <marin-m@users.noreply.github.com>  Sat, 14 Feb 2026 11:42:21 +0100
+
+songrec (0.6.1+3) bionic; urgency=low
+
+  * Explicitly try to install a recent rustc on 24.04
+
+ -- Marin <marin-m@users.noreply.github.com>  Sat, 14 Feb 2026 11:32:23 +0100
+
+songrec (0.6.1+2) bionic; urgency=low
+
+  * Fix the building process on 24.04
+
+ -- Marin <marin-m@users.noreply.github.com>  Sat, 14 Feb 2026 11:20:07 +0100
+
+songrec (0.6.1+1) bionic; urgency=low
+
+  * Use rustup when building on 24.04
+
+ -- Marin <marin-m@users.noreply.github.com>  Sat, 14 Feb 2026 11:09:28 +0100
+
+songrec (0.6.1) bionic; urgency=low
+
+  * Improve accessibility
+  * Update metainfo.xml to better fit the GNOME Circle and Flathub guidelines
+  * Move translations to Weblate (https://weblate.fossplant.re/)
+  * Auto-generate manpage files
+  * Add CI and DOAP files
+
+ -- Marin <marin-m@users.noreply.github.com>  Sat, 14 Feb 2026 09:11:43 +0100
+
+songrec (0.6.0+5) bionic; urgency=low
+
+  * Add missing build dependencies over libdbus
+
+ -- Marin <marin-m@users.noreply.github.com>  Fri, 13 Feb 2026 08:53:23 +0100
+
+songrec (0.6.0+4) bionic; urgency=low
+
+  * Fix the Debian package build process (fourt attempt, filter out .mailmap files from the checksum list too)
+
+ -- Marin <marin-m@users.noreply.github.com>  Fri, 13 Feb 2026 08:40:31 +0100
+
+songrec (0.6.0+3) bionic; urgency=low
+
+  * Fix the Debian package build process (third attempt, filter out *.a files from the checksum list too)
+
+ -- Marin <marin-m@users.noreply.github.com>  Fri, 13 Feb 2026 08:34:29 +0100
+
+songrec (0.6.0+2) bionic; urgency=low
+
+  * Fix the Debian package build process (second attempt)
+
+ -- Marin <marin-m@users.noreply.github.com>  Fri, 13 Feb 2026 08:06:24 +0100
+
+songrec (0.6.0+1) bionic; urgency=low
+
+  * Fix the Debian package build process, see https://bugs.launchpad.net/bugs/2141645
+
+ -- Marin <marin-m@users.noreply.github.com>  Thu, 12 Feb 2026 13:53:54 +0100
+
+songrec (0.6.0) bionic; urgency=low
+
+  * Update interface to GTK 4 (issue #206)
+  * Fix using MPRIS over Flatpak (issue #214)
+  * Add advanced logs using the -v command line flag
+  * Update upstream translations (Czech by @Fjuro, Brazilian by @marcelocripe)
+
+ -- Marin <marin-m@users.noreply.github.com>  Thu, 12 Feb 2026 09:19:34 +0100
+
+songrec (0.5.0+2) bionic; urgency=low
+
+  * Use Cargo.lock version 3 instead of 4 in order still to build under older Ubuntu versions.
+
+ -- Marin <marin-m@users.noreply.github.com>  Wed, 21 Jan 2026 18:00:06 +0100
+
+songrec (0.5.0+1) bionic; urgency=low
+
+  * Update the metainfo.xml file in order to include "replace" and "provides" tags.
+
+ -- Marin <marin-m@users.noreply.github.com>  Wed, 21 Jan 2026 13:15:00 +0100
+
+songrec (0.5.0) bionic; urgency=low
+
+  * Packaging: Change the translations path to /usr/share/locale instead of /usr/share/songrec/translations (this may require action from distribution package maintainers)
+  * Packaging: Change the package name to re.fossplant.songrec instead of com.github.marinm.songrec so that the application can be correctly verified on Flathub
+  * Branding: Update the Flathub landing page to comply with style guidelines
+  * Branding: Change the project homepage URL
+  * Wrap the name of long microphone devices names in the GUI
+  * Handle network-related variables correctly (PR #191 thanks to @losynix)
+  * Fix the chronological order when displaying songs onto the UI (PR #192 thanks to @nt8r)
+  * Add Russian translation (PR #193 thanks to @AlexanderShad)
+  * Rectify the window icon under Wayland (PR #203 thanks to @Integral-Tech)
+  * Add the recognition date to favorites window, and made all columns sortable (PR #208 thanks to @damonhayhurst)
+  * Fix MPRIS cover art display under certain platforms (PR #210 thanks to @micahlt)
+
+ -- Marin <marin-m@users.noreply.github.com>  Wed, 21 Jan 2026 08:56:48 +0100
+
+songrec (0.4.3) bionic; urgency=low
+
+  * Prevent mission application icon when running (PR #163 thanks to @heldderarbeit)
+  * Quit the application when doing Ctrl+Q (issue #181)
+  * Change the Flatpak permission from --device=dri to --device=all, because --device=dri made it impossible to change the audio input source to monitor mode on certain recent Flatpak/PipeWire combinations (issue #177)
+  * Fix usage of the Context menu in the Favourites window (PR #179 from @damonhayhurst and issue #178)
+  * Minor code refactoring (PR #153 from @dotX12) and bug fixes, including with building in --debug mode (issue #159)
+  * Remove the "Play Shazam lure" button, as it is no more functional with recent Shazam versions (issue #170)
+  * Update Slovak translation from issue #23 (thanks to @dodog)
+  * Update Portuguese translation from PR #172 (thanks to @marcelocripe)
+  * Update the `rodio` crate dependency to drop the requirement on the `minimp3` library, that prevented building on certain platforms
+
+ -- Marin <marin-m@users.noreply.github.com>  Sun, 29 Sep 2024 14:38:07 +0200
+
+songrec (0.4.2) bionic; urgency=low
+
+  * Add a Catalan translation (thanks to @pgiuli in issue #23)
+  * Make the UI more clear so that it is visible that we are toggling the recognition from the speakers rather than the microphone when the monitor mode is on (see issue #149)
+  * Fix a bug that had certain strings to be mistakenly copied at the bad places in the internationalized versions of the application, due to the fuzzy mode of msgmerge/gettext
+  * Update the Dutch translation (thanks to @Vistaus in PR #150)
+  * Update compilation instructions in the README.md file
+  * Allow to compile the app with the libpulse and MPRIS module enabled on non-Linux UNIX systems such as BSD (see issue #152)
+  * Possibly improve the compatibility of the recognize-from-speakers feature
+
+ -- Marin <marin-m@users.noreply.github.com>  Mon, 22 Jan 2024 13:52:00 +0100
+
+songrec (0.4.1) bionic; urgency=low
+
+  * Add a Korean translation (thanks to @MarongHappy in PR #146)
+  * Re-integrate MPRIS compatibility code in the default builds, with an opt-in GUI option
+  * Add a simple preference window and an about dialog
+
+ -- Marin <marin-m@users.noreply.github.com>  Sun, 14 Jan 2024 14:32:00 +0100
+
+songrec (0.4.0+2) bionic; urgency=low
+
+  * Fix the `libpulse` dependency into `libpulse0` in the Debian package specification.
+
+ -- Marin <marin-m@users.noreply.github.com>  Sun, 24 Dec 2023 18:21:00 +0100
+
+songrec (0.4.0+1) bionic; urgency=low
+
+  * Add the missing `libpulse` dependency in the Debian package specificaiton.
+
+ -- Marin <marin-m@users.noreply.github.com>  Sun, 24 Dec 2023 09:30:00 +0100
+
+songrec (0.4.0) bionic; urgency=low
+
+  * Use `libpulse` (when available) for displaying the list of selectable audio input devices by default, instead of `alsalib` for listing audio inputs and `pactl` for switching to a monitor mode device, so that the list of devices displays correct values on PipeWire/PulseAudio-based systems.
+  * Make the dependencies over `libpulse` and DBus MPRIS fully optional, through Cargo features.
+  * Disable MPRIS signalling in default builds, as it may interfer inopportunely with media keys control from other media players (as submitted in issue #89)
+  * Fix build issues on non-Linux platforms (thanks to pull request #144 from @dotX12)
+
+ -- Marin <marin-m@users.noreply.github.com>  Sun, 24 Dec 2023 08:24:00 +0100
+
+songrec (0.3.3) bionic; urgency=low
+
+  * Add a Favourite songs list in the interface (thanks to pull request #123 from @damonhayhurst)
+  * Add a Spanish UI translation (as submitted by @Swyter in issue #23)
+  * Add a German UI translation (as submitted in issue #23)
+  * Update the Italian UI translation (thanks to pull request #133 from @M0Rf30)
+
+ -- Marin <marin-m@users.noreply.github.com>  Sun, 15 Oct 2023 14:41:23 +0200
+
+songrec (0.3.2+4) bionic; urgency=low
+
+  * Additionally build the package for the any architecture supported by recent Ubuntu releases (try to build for all supported architectures on Launchpad PPA).
+
+ -- Marin <marin-m@users.noreply.github.com>  Wed, 7 Sep 2022 15:15:00 +0200
+
+songrec (0.3.2+3) bionic; urgency=low
+
+  * Additionally build the package for the any architecture supported by recent Ubuntu releases.
+
+ -- Marin <marin-m@users.noreply.github.com>  Wed, 7 Sep 2022 13:18:00 +0200
+
+songrec (0.3.2+2) bionic; urgency=low
+
+  * Additionally build the package for the AMD64/AArch64 architecture.
+
+ -- Marin <marin-m@users.noreply.github.com>  Wed, 7 Sep 2022 09:22:00 +0200
+
+songrec (0.3.2+1) bionic; urgency=low
+
+  * Accept depending of the `libssl3` package instead of `libssl1.1`, in order to ensure packaging compatibility with Ubuntu 22.04 LTS and above.
+
+ -- Marin <marin-m@users.noreply.github.com>  Fri, 1 Jul 2022 19:57:00 +0200
+
+songrec (0.3.2) bionic; urgency=low
+
+  * Add a checkbox into the graphical interface in order to disable or enable system notifications whenever recognizing a song (thanks to @damonhayhurst).
+  * Fix the bug that previously caused the Firefox user interface menus to blink on Linux after the "Search on YouTube" feature has been used (thanks to @ducaton).
+  * Update the French translation.
+  * Add safety checks in order to prevent potential crashes when handling corrupt configuration files or invalid audio devices.
+  * Change the path of the files saving user interface-related preferences in order to update a deprecated Rust crate (this may create a symbolic link from `~/.local/share/songrec` towards an preexisting `~/.local/share/Aurivo-Pulse` directory under Linux).
+
+ -- Marin <marin-m@users.noreply.github.com>  Tue, 26 May 2022 12:17:00 +0200
+
+songrec (0.3.1) bionic; urgency=low
+
+  * Fix the behavior of the new `recognize` command, when recognizing from a file.
+  * Add album artwork, if it exists, to the desktop notification when a song is recognized (thanks to @damonhayhurst).
+  * Update the Dutch translation (thanks to @Vistaus).
+
+ -- Marin <marin-m@users.noreply.github.com>  Fri, 22 Apr 2022 09:02:00 +0200
+
+songrec (0.3.0) bionic; urgency=low
+
+  * Introduce a new command-line interface allowing to use microphone recognition from the command line, with the `recognize` and `listen` commands (thanks to @Hummer12007), keeping older command backwards compatibility.
+  * Update the CSV export format in order to introduce new "`track_key`", "`release_year`" and "`genre`" columns (thanks to @tyd), where `track_key` is an identifier internal to the Shazam database.
+  * Allow exposing song metadata through the standard DBus MPRIS interface (thanks to @Hummer12007).
+  * Improve source code structure in order to split the dual CLI/GUI parts from the core thread communication and fingerprinting parts and from other platform-dependant utility code.
+  * Update certain dependent crates to more recent minor versions, among other possible things in order to accept a higher LibreSSL version.
+  * Add the program version without the program help output (see the `-h` or `-V`, `--version` options).
+  * Add a Polish translation (thanks to @qarmin).
+  * Update the French translation according to recent changes.
+
+ -- Marin <marin-m@users.noreply.github.com>  Sun, 26 Dec 2021 16:26:00 +0100
+
+songrec (0.2.1) bionic; urgency=low
+
+  * Don't crash when there is no input device available on the host machine.
+  * Update the Dutch translation.
+
+ -- Marin <marin-m@users.noreply.github.com>  Mon, 04 Oct 2021 07:12:00 +0200
+
+songrec (0.2.0) bionic; urgency=low
+
+  * Add Japanese and Italian translations.
+  * Fix PipeWire compatibility.
+  * Add support for a possible XDG action for recognizing from a file.
+
+ -- Marin <marin-m@users.noreply.github.com>  Fri, 27 Aug 2021 09:37:00 +0200
+ 
+songrec (0.1.9) bionic; urgency=low
+
+  * Add French and Dutch translations.
+  * Ensure that only one window of Aurivo-Pulse is present.
+  * Avoid to display "No match for this song" when multiple instances of Aurivo-Pulse would be displayed and one would be closed.
+
+ -- Marin <marin-m@users.noreply.github.com>  Fri, 20 Aug 2021 07:17:00 +0200
+ 
+songrec (0.1.8) bionic; urgency=low
+
+  * Include a "Cargo.lock" file in the project so that it can be accepted in certain packaging systems that require freezing Rust dependencies to a known subversion.
+  * Change the locale sent in HTTP requests to avoid to display internationalized song titles, in certain cases.
+  * Fix a minor typo in the algorithm implementation that shouldn't impact recognition.
+  * Improve portability.
+
+ -- Marin <marin-m@users.noreply.github.com>  Fri, 01 Jun 2021 14:38:00 +0200
+
+songrec (0.1.7) bionic; urgency=low
+
+  * Display a clean "Shazam servers are not reachable, are you connected?" message on the GUI when the computer has been offline, rather than showing low-level errors.
+  * Improve cross-platform support.
+
+ -- Marin <marin-m@users.noreply.github.com>  Fri, 09 Apr 2021 07:15:00 +0200
+
+songrec (0.1.6) bionic; urgency=low
+
+  * Try to decode input files with FFMpeg when it is available on the target system, in order to support more audio and video formats when recognizing from a file.
+
+ -- Marin <marin-m@users.noreply.github.com>  Tue, 30 Mar 2021 09:46:00 +0200
+
+songrec (0.1.5) bionic; urgency=low
+
+  * The song recognition history now has a right-click context menu that allows to copy the name of the songs, artists, tracks or albums, or to search previously recognized songs on YouTube.
+  * It is now possible to select the name of the last recognized song so that it can be copy-pasted somewhere easily.
+
+ -- Marin <marin-m@users.noreply.github.com>  Fri, 26 Mar 2021 14:35:00 +0100
+
+songrec (0.1.4) bionic; urgency=low
+
+  * Add the ability to recognize songs from your speakers rather than your microphone, through a checkbox that will be visible when the functionality is available, on compatible PulseAudio setups.
+
+ -- Marin <marin-m@users.noreply.github.com>  Tue, 23 Feb 2021 18:37:00 +0100
+
+songrec (0.1.3) bionic; urgency=low
+
+  * Make the application fully responsive for mobile devices using GtkFlowBox, thanks to @a33k.
+
+ -- Marin <marin-m@users.noreply.github.com>  Thu, 11 Feb 2021 04:01:00 +0100
+
+songrec (0.1.2~3) bionic; urgency=low
+
+  * Correct Debian packaging for upload on Launchpad (make it x86_64-only).
+
+ -- Marin <marin-m@users.noreply.github.com>  Sat, 07 Nov 2020 08:55:00 +0100
+
+songrec (0.1.2~2) bionic; urgency=low
+
+  * Correct Debian packaging for upload on Launchpad.
+
+ -- Marin <marin-m@users.noreply.github.com>  Sat, 07 Nov 2020 08:24:00 +0100
+
+songrec (0.1.2) bionic; urgency=low
+
+  * Use GtkFileChooserNative so that the application is able to graphically pick files through Flatpak without requiring further file system permissions.
+
+ -- Marin <marin-m@users.noreply.github.com>  Mon, 02 Nov 2020 14:20:00 +0100
+
+songrec (0.1.2) bionic; urgency=low
+
+  * Add Flatpak packaging scripts and assets.
+  * Ensure that generated song lures don't last too long enough in certain cases.
+  * Remove the dash in the long application ID as it was incompatible with Flatpak.
+
+ -- Marin <marin-m@users.noreply.github.com>  Sun, 01 Nov 2020 21:21:00 +0100
+
+songrec (0.1.0) bionic; urgency=medium
+
+  * Initial crates.io release
+
+ -- Marin <marin-m@users.noreply.github.com>  Wed, 07 Oct 2020 13:23:00 +0200

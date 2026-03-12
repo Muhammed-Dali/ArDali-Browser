@@ -1,0 +1,469 @@
+# SOME DESCRIPTIVE TITLE.
+# Copyright (C) YEAR THE PACKAGE'S COPYRIGHT HOLDER
+# This file is distributed under the same license as the PACKAGE package.
+# Mu7ammed Basha <dash-unbeaten-five@duck.com>, 2026.
+# Mu7ammed Basha <mu7basha@users.noreply.weblate.fossplant.re>, 2026.
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2026-02-25 22:36+0100\n"
+"PO-Revision-Date: 2026-02-25 21:32+0000\n"
+"Last-Translator: Mu7ammed Basha "
+"<mu7basha@users.noreply.weblate.fossplant.re>\n"
+"Language-Team: Arabic <https://weblate.fossplant.re/projects/songrec/songrec/"
+"ar/>\n"
+"Language: ar\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=6; plural=n==0 ? 0 : n==1 ? 1 : n==2 ? 2 : n%100>=3 "
+"&& n%100<=10 ? 3 : n%100>=11 ? 4 : 5;\n"
+"X-Generator: Weblate 5.15.2\n"
+
+#: src/cli_main.rs:118
+msgid "Available device:"
+msgstr "الجهاز المتاح:"
+
+#: src/cli_main.rs:136
+msgid "Exiting: audio device not found"
+msgstr "جارٍ المغادرة: لم يُعثر على جهاز صوت"
+
+#: src/cli_main.rs:142
+msgid "Exiting: no audio devices found!"
+msgstr "جارٍ المغادرة: لم يُعثر على أجهزة صوت!"
+
+#: src/cli_main.rs:147
+msgid "Using device"
+msgstr "الجهاز المُستخدَم"
+
+#: src/cli_main.rs:170
+msgid "Error: Network unreachable"
+msgstr "خطأ: تعذر الاتصال بالشبكة"
+
+#: src/cli_main.rs:173
+msgid "Warning: Network unreachable"
+msgstr "تحذير: تعذر الاتصال بالشبكة"
+
+#: src/cli_main.rs:178 src/core/http_task.rs:54 src/core/http_task.rs:64
+#: src/core/http_task.rs:77 src/core/http_task.rs:121
+#: src/gui/main_window.rs:726 src/gui/main_window.rs:733
+msgid "No match for this song"
+msgstr "لم يُعثر على أغنية مُطابِقة"
+
+#: src/cli_main.rs:180
+msgid "Error:"
+msgstr "خطأ:"
+
+#: src/cli_main.rs:188
+msgid "Recording started!"
+msgstr "بدأ التسجيل!"
+
+#: src/main.rs:76
+msgid "An open-source Shazam client for Linux, written in Rust."
+msgstr "عميل Shazam مفتوح المصدر على لينكس، مكتوب بلغة Rust."
+
+#: src/main.rs:96
+#, fuzzy
+msgid ""
+"-v: Set the log level to DEBUG instead of INFO for Aurivo-Pulse-related messages\n"
+"-vv: Set the log level to DEBUG for Aurivo-Pulse-related messages and INFO for "
+"library-related messages\n"
+"-vvv: Set the log level to TRACE"
+msgstr ""
+"(v-): عيّن مستوى السجل إلى DEBUG بدلًا من INFO لرسائل Aurivo-Pulse ذات صلة\n"
+"(vv-): عيّن مستوى السجل إلى DEBUG لرسائل Aurivo-Pulse ذات صلة وINFO للرسائل "
+"المتعلقة بالمكتبة\n"
+"(vvv-): عيّن مستوى السجل إلى TRACE"
+
+#: src/main.rs:102
+msgid ""
+"Run as a command-line program listening the microphone and printing "
+"recognized songs to stdout, exposing current song info via MPRIS"
+msgstr ""
+"شغّل كبرنامج سطر أوامر يستمع للميكروفون ويطبع الأغاني التي تم التعرف عليها "
+"إلى stdout، واعرض الأغنية الحالية عبر MPRIS"
+
+#: src/main.rs:108 src/main.rs:154 src/main.rs:209
+msgid "List available audio devices and quit"
+msgstr "أنشئ قائمة بأجهزة الصوت الحالية ثم غادر"
+
+#: src/main.rs:114 src/main.rs:161 src/main.rs:215
+msgid "Specify the audio device to use"
+msgstr "حدد جهاز صوت لإستخدامه"
+
+#: src/main.rs:122 src/main.rs:169 src/main.rs:223
+msgid ""
+"Shazam interval between requests in seconds (increase if you are rate-"
+"limited)"
+msgstr "الفاصل الزمني بين طلبات Shazam بالثواني (زود إن تم تقييد استخدامك)"
+
+#: src/main.rs:130 src/main.rs:177
+msgid "Enable printing full song info in JSON"
+msgstr "تفعيل طباعة المعلومات الكاملة للأغنية لملف JSON"
+
+#: src/main.rs:137 src/main.rs:184
+msgid "Enable printing full song info in the CSV format"
+msgstr "تفعيل طباعة معلومات الأغنية كاملة في ملف CSV"
+
+#: src/main.rs:143 src/main.rs:263 src/main.rs:278
+msgid "Disable MPRIS support"
+msgstr "تعطيل دعم MPRIS"
+
+#: src/main.rs:148
+msgid "Recognize one song from a sound file or microphone and print its info."
+msgstr "تعرف على أغنية واحدة من ملف صوت أو عبر الميكروفون ثم اطبع معلوماتها."
+
+#: src/main.rs:189
+msgid "Recognize a file instead of using mic input"
+msgstr "تعرف على ملف بدل استخدام إدخال الميكروفون"
+
+#: src/main.rs:194
+msgid ""
+"Generate a Shazam fingerprint from a sound file, perform song recognition "
+"towards Shazam's servers and print obtained information to the standard "
+"output."
+msgstr ""
+"ولِّد بصمة Shazam من ملف صوت، نفذ التعرف على الأغاني عبر خوادم Shazam واطبع "
+"المعلومات التي تم الحصول عليها إلى إخراج اعتيادي."
+
+#: src/main.rs:198
+msgid "The audio file to recognize."
+msgstr "ملف الصوت المستخدم للتعرف."
+
+#: src/main.rs:203
+msgid ""
+"Recognize a currently playing song using the microphone and print obtained "
+"information to the standard output"
+msgstr ""
+"تعرف على الأغنية المُشغَّلة حاليًا باستخدام الميكروفون واطبع المعلومات التي تم "
+"الحصول عليها لإخراج اعتيادي"
+
+#: src/main.rs:228
+msgid ""
+"Generate a Shazam fingerprint from a sound file, and print it to the "
+"standard output."
+msgstr "ولِّد بصمة Shazam من ملف صوت، واطبعه إلى إخراج اعتيادي."
+
+#: src/main.rs:232
+msgid "The .WAV or .MP3 file to generate an audio fingerprint for."
+msgstr "ملف WAV. أو MP3. المستخدم لتوليد بصمة الصوت."
+
+#: src/main.rs:237
+msgid ""
+"Take a data-URI Shazam fingerprint, perform song recognition towards "
+"Shazam's servers and print obtained information to the standard output."
+msgstr ""
+"خذ رابط بيانات بصمة Shazam، نفذ التعرف على الأغاني عبر خوادم Shazam واطبع "
+"المعلومات التي تم الحصول عليها لإخراج اعتيادي."
+
+#: src/main.rs:241
+msgid "The data-URI Shazam fingerprint to recognize."
+msgstr "رابط بيانات بصمة Shazam المستخدم للتعرف."
+
+#: src/main.rs:253
+msgid "The default action. Display a GUI."
+msgstr "الإجراء الافتراضي. عرض واجهة مستخدم رسومية."
+
+#: src/main.rs:257 src/main.rs:272
+msgid "An optional audio file to recognize on the launch of the application."
+msgstr "ملف صوت اختياري للتعرف عليه عند تشغيل التطبيق."
+
+#: src/main.rs:268
+msgid ""
+"Launch the GUI, but don't recognize audio through the microphone as soon as "
+"it is launched (rather than expecting the user to click on a button)."
+msgstr ""
+"شغّل واجهة المستخدم الرسومية، لكن لا تتعرف على الصوتيات عبر الميكروفون مباشرةً "
+"بعد التشغيل (بدلًا من ذلك توقع من المستخدم أن يضغط زرًا)."
+
+#: src/core/http_task.rs:128 src/fingerprinting/communication.rs:66
+msgid "Your IP has been rate-limited"
+msgstr "تم تقييد استخدام عنوان IP خاصتك"
+
+#: src/core/microphone_thread.rs:63
+msgid "Audio error:"
+msgstr "خطأ في الصوت:"
+
+#: src/fingerprinting/signature_format.rs:97
+msgid "Invalid sample rate in decoded Shazam packet"
+msgstr "معدل العينة غير صالح في فك ترميز حزمة Shazam"
+
+#: src/fingerprinting/signature_format.rs:139
+msgid "Invalid frequency band in decoded Shazam packet"
+msgstr "نطاق التردد غير صالح في فك ترميز حزمة Shazam"
+
+#: src/fingerprinting/signature_format.rs:220
+msgid "Invalid sample rate passed when encoding Shazam packet"
+msgstr "عبَر معدل عينة غير صالح أثناء ترميز حزمة Shazam"
+
+#: src/gui/main_window.rs:250
+msgid "Application error"
+msgstr "خطأ في التطبيق"
+
+#: src/gui/main_window.rs:271
+msgid "Network error"
+msgstr "خطأ في الشبكة"
+
+#: src/gui/main_window.rs:311
+msgid "Unable to enable notification icon"
+msgstr "تعذر تفعيل أيقونة الإشعار"
+
+#: src/gui/main_window.rs:646 src/gui/main_window.rs:719
+msgid "Unable to enable MPRIS support"
+msgstr "تعذر تفعيل دعم MPRIS"
+
+#: src/gui/main_window.rs:803
+msgid "Song recognized"
+msgstr "الأغنية عُرِفت"
+
+#: src/gui/main_window.rs:961
+msgid "Are you sure you want to wipe history?"
+msgstr "هل ترغب في محو السجل؟"
+
+#: src/gui/main_window.rs:962
+msgid "_Yes"
+msgstr "_نعم"
+
+#: src/gui/main_window.rs:962
+msgid "_No"
+msgstr "_لا"
+
+#: src/gui/preferences.rs:82
+msgid "When parsing the preferences file:"
+msgstr "عند تحليل ملف التفضيلات:"
+
+#: src/gui/preferences.rs:151
+msgid "When saving the preferences file:"
+msgstr "عند حفظ ملف التفضيلات:"
+
+#: src/gui/song_history_interface.rs:94
+msgid "Error when reading the song history on the disk:"
+msgstr "حدث خطأ أثناء قراءة سجل الأغاني على القرص:"
+
+#: src/gui/song_history_interface.rs:169
+msgid "Error when reading the favorites on the disk:"
+msgstr "حدث خطأ أثناء قراءة المفضلات على القرص:"
+
+#: src/plugins/ksni.rs:23
+msgid "Open Aurivo-Pulse"
+msgstr "فتح Aurivo-Pulse"
+
+#: src/plugins/ksni.rs:31
+msgid "Quit..."
+msgstr "مغادرة..."
+
+#: translations/interface.ui.h:1
+msgid "Recognize songs"
+msgstr "التعرف على الأغاني"
+
+#: translations/interface.ui.h:2
+msgid "Recognize from file"
+msgstr "التعرف من ملف"
+
+#: translations/interface.ui.h:3
+msgid "Pick a file..."
+msgstr "اختر ملفًا..."
+
+#: translations/interface.ui.h:4
+msgid "Recognize from microphone"
+msgstr "التعرف عبر الميكروفون"
+
+#: translations/interface.ui.h:5
+msgid "Recognize from my speakers"
+msgstr "التعرف عبر السماعات"
+
+#: translations/interface.ui.h:6
+msgid "Shazam servers are not reachable, are you connected?"
+msgstr "تعذر الوصول لخوادم Shazam، هل أنت متصل بالشبكة؟"
+
+#: translations/interface.ui.h:7
+msgid "ERROR: Your IP has been rate-limited"
+msgstr "خطأ: تم تقييد استخدام عنوان IP خاصتك"
+
+#: translations/interface.ui.h:8
+msgid "Recognition results"
+msgstr "نتائج التعرف"
+
+#: translations/interface.ui.h:9
+msgid "Search on YouTube"
+msgstr "ابحث على YouTube"
+
+#: translations/interface.ui.h:10
+msgid "Search..."
+msgstr "ابحث..."
+
+#: translations/interface.ui.h:11
+msgid "Refresh available devices"
+msgstr "إنعاش قائمة الأجهزة المتوفرة"
+
+#: translations/interface.ui.h:12
+msgid "Audio input"
+msgstr "إدخال الصوت"
+
+#: translations/interface.ui.h:13
+msgid "Device"
+msgstr "الجهاز"
+
+#: translations/interface.ui.h:14
+msgid "Volume:"
+msgstr "مستوى الصوت:"
+
+#: translations/interface.ui.h:15
+msgid "History options..."
+msgstr "خيارات السجل..."
+
+#: translations/interface.ui.h:16
+msgid "Recognition history"
+msgstr "سجل التعرف"
+
+#: translations/interface.ui.h:17
+msgid "Song name"
+msgstr "اسم الأغنية"
+
+#: translations/interface.ui.h:18
+msgid "Album"
+msgstr "الألبوم"
+
+#: translations/interface.ui.h:19
+msgid "Recognition date"
+msgstr "تاريخ التعرف"
+
+#: translations/interface.ui.h:20
+msgid "View favorites"
+msgstr "عرض المفضلات"
+
+#: translations/interface.ui.h:21
+msgid "Application menu"
+msgstr "قائمة التطبيق"
+
+#: translations/interface.ui.h:22
+msgid "Export to CSV"
+msgstr "تصدير إلى ملف CSV"
+
+#: translations/interface.ui.h:23
+msgid "Favorites"
+msgstr "المفضلات"
+
+#: translations/interface.ui.h:24
+msgid "General preferences"
+msgstr "التفضيلات العامة"
+
+#: translations/interface.ui.h:25
+msgid "Notify when a new song is recognized or network error is encountered"
+msgstr "نبهني عند التعرف على أغنية جديدة أو عند حدوث خطأ في الاتصال"
+
+#: translations/interface.ui.h:26
+msgid "Show notifications"
+msgstr "إرسال الإشعارات"
+
+#: translations/interface.ui.h:27
+msgid ""
+"MPRIS will display information about recognized songs in places like the "
+"GNOME or KDE control panel"
+msgstr ""
+"سيعرض MPRIS معلومات حول الأغاني التي تم التعرف عليها في أماكن مثل قائمة "
+"الإشعارات في جنوم أو كِيدِي"
+
+#: translations/interface.ui.h:28
+msgid "Enable MPRIS"
+msgstr "تفعيل MPRIS"
+
+#: translations/interface.ui.h:29
+msgid ""
+"When closing the window, minimize to system tray using KSNI instead of "
+"closing the app. Please note that you may have to increase the \"request "
+"interval\" setting when leaving Aurivo-Pulse running in the background to reduce "
+"your changes of getting rate-limited."
+msgstr ""
+"عند إغلاق النافذة، صغِّرها إلى لوحة النظام بإستحدام KSNI بدلًا من إغلاق التطبيق "
+"بالكامل. خذ في الاعتبار زيادة إعداد «الفاصل الزمني بين الطلبات» عند تشغيل "
+"Aurivo-Pulse في الخلفية؛ لتقليل احتمالية تقييد استخدامك."
+
+#: translations/interface.ui.h:30
+msgid "Minimize to system tray"
+msgstr "تصغير إلى لوحة النظام"
+
+#: translations/interface.ui.h:31
+msgid ""
+"Bump a song to the top of the history list and remove the former entry when "
+"the same song is detected multiple times"
+msgstr ""
+"ضع أغنيةً أعلى قائمة السجل واحذف العنصر السابق عند العثور على نفس الأغنية "
+"لعدة مرات"
+
+#: translations/interface.ui.h:32
+msgid "No duplicates in history"
+msgstr "لا تطابقات في السجل"
+
+#: translations/interface.ui.h:33
+msgid "Network preferences"
+msgstr "تفضيلات الشبكة"
+
+#: translations/interface.ui.h:34
+msgid "By default 8, increase if you are rate-limited"
+msgstr "القيمة الإفتراضية 8، زودها أن تم تقييد استخدامك"
+
+#: translations/interface.ui.h:35
+msgid "Shazam interval between requests in seconds"
+msgstr "الفاصل الزمني بين طلبات Shazam بالثواني"
+
+#: translations/interface.ui.h:36
+msgid ""
+"By default the last 12 seconds of music are fingerprinted and sent to "
+"Shazam. Editing may have an impact on reliability"
+msgstr ""
+"إفتراضيًا تبصم أخر 12 ثانية من الأغنية ثم تُرسَل إلى Shazam. التعديل قد يؤثر "
+"على جودة التعرف"
+
+#: translations/interface.ui.h:37
+msgid "Shazam buffer size in seconds"
+msgstr "حجم الذاكرة المؤقتة لـShazam بالثواني"
+
+#: translations/interface.ui.h:38
+msgid "Settings"
+msgstr "الإعدادات"
+
+#: translations/interface.ui.h:39
+msgid "_Preferences..."
+msgstr "ال_تفضيلات..."
+
+#: translations/interface.ui.h:40
+msgid "About..."
+msgstr "_حول..."
+
+#: translations/interface.ui.h:41
+msgid "Delete history"
+msgstr "محو السجل"
+
+#: translations/interface.ui.h:42
+msgid "Select a file to recognize"
+msgstr "اختر ملفًا لبدء التعرف"
+
+#: translations/interface.ui.h:43
+msgid "Copy artist and track"
+msgstr "انسخ اسم الفنان والألبوم"
+
+#: translations/interface.ui.h:44
+msgid "Copy artist"
+msgstr "انسخ اسم الفنان"
+
+#: translations/interface.ui.h:45
+msgid "Copy track name"
+msgstr "انسخ اسم المسار"
+
+#: translations/interface.ui.h:46
+msgid "Copy album"
+msgstr "انسخ اسم الألبوم"
+
+#: translations/interface.ui.h:47
+msgid "Delete from History"
+msgstr "محو من السجل"
+
+#: translations/interface.ui.h:48
+msgid "Add to Favorites"
+msgstr "إضافة للمفضلات"
+
+#: translations/interface.ui.h:49
+msgid "Remove from Favorites"
+msgstr "محو من المفضلات"

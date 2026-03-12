@@ -1,0 +1,145 @@
+name: Build (Linux)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ "main" ]
+    tags: [ "v*" ]
+  pull_request:
+
+# Avoid multiple queued runs for the same PR/branch.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# Required for electron-builder to create/update GitHub Releases and upload assets (on tag builds).
+permissions:
+  contents: write
+
+jobs:
+  build-linux:
+    # PR builds use ubuntu-22.04 to reduce GitHub runner queue time.
+    # Release builds (tags) use ubuntu-20.04 in `.github/workflows/release.yml` for wider glibc compatibility.
+    runs-on: ubuntu-22.04
+
+    env:
+      # Keep these in sync with package.json build.electronVersion
+      ELECTRON_VERSION: "28.3.3"
+
+      # electron-builder uses hard links by default on CI; linking from /usr/bin (e.g. ffmpeg)
+      # can fail on GitHub runners due to hardlink protections. Force file copies instead.
+      USE_HARD_LINKS: "false"
+
+      # Force node-gyp to build against Electron headers (not the host Node.js)
+      npm_config_runtime: "electron"
+      npm_config_target: "28.3.3"
+      npm_config_disturl: "https://electronjs.org/headers"
+      npm_config_build_from_source: "true"
+      
+      # GitHub token for Electron Builder
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install system dependencies
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y \
+            binutils \
+            build-essential \
+            cmake \
+            curl \
+            ffmpeg \
+            libfreetype6-dev \
+            libgl1-mesa-dev \
+            libglu1-mesa-dev \
+            libfuse2 \
+            libglm-dev \
+            libglew-dev \
+            libjpeg-dev \
+            libpng-dev \
+            libsdl2-dev \
+            libsdl2-image-dev \
+            ninja-build \
+            pkg-config \
+            python3 \
+            rpm \
+            zlib1g-dev
+
+      # Ubuntu 20.04/22.04 ship an older libprojectM (v2.x/3.x) which doesn't provide the v4 C-API
+      # used by our visualizer (projectm_create/projectm_destroy/...).
+      # Build and install libprojectM v4 from source to get the required headers + libraries.
+      - name: Build + install libprojectM v4
+        run: |
+          set -euo pipefail
+          PROJECTM_VER="4.1.6"
+          echo "Downloading libprojectM v${PROJECTM_VER}..."
+          curl -fsSL -o /tmp/libprojectM-${PROJECTM_VER}.tar.gz \
+            "https://sourceforge.net/projects/projectm.mirror/files/v${PROJECTM_VER}/libprojectM-${PROJECTM_VER}.tar.gz/download"
+          tar -xzf /tmp/libprojectM-${PROJECTM_VER}.tar.gz -C /tmp
+
+          echo "Building libprojectM..."
+          cmake -S "/tmp/libprojectM-${PROJECTM_VER}" -B /tmp/build-projectm -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DBUILD_SHARED_LIBS=ON \
+            -DBUILD_TESTING=OFF
+          cmake --build /tmp/build-projectm
+          sudo cmake --install /tmp/build-projectm
+          sudo ldconfig
+
+          # Make sure pkg-config can see /usr/local installs.
+          echo "PKG_CONFIG_PATH=/usr/local/lib/pkgconfig:/usr/local/lib/x86_64-linux-gnu/pkgconfig:${PKG_CONFIG_PATH:-}" >> "$GITHUB_ENV"
+
+      - name: Install JS dependencies
+        run: npm ci
+
+      - name: Build native audio addon (aurivo_audio.node)
+        run: npm --prefix native ci
+
+      - name: Build projectM visualizer (aurivo-projectm-visualizer)
+        run: |
+          set -euo pipefail
+          cmake -S visualizer -B build-visualizer -G Ninja -DCMAKE_BUILD_TYPE=Release
+          cmake --build build-visualizer
+          mkdir -p native-dist/linux
+          cp -f build-visualizer/aurivo-projectm-visualizer native-dist/linux/aurivo-projectm-visualizer
+          # Bundle libprojectM v4 runtime next to the visualizer so it works on distros
+          # that don't ship projectM v4 (Arch/Fedora usually do, Ubuntu 22.04 doesn't).
+          for lib in libprojectM-4.so.4 libprojectM-4-playlist.so.4; do
+            if [ -f "/usr/local/lib/$lib" ]; then
+              cp -Lf "/usr/local/lib/$lib" "native-dist/linux/$lib"
+            elif [ -f "/usr/local/lib/x86_64-linux-gnu/$lib" ]; then
+              cp -Lf "/usr/local/lib/x86_64-linux-gnu/$lib" "native-dist/linux/$lib"
+            else
+              echo "Missing runtime library: $lib (expected under /usr/local/lib)"
+              exit 1
+            fi
+          done
+          test -f native-dist/linux/aurivo-projectm-visualizer
+          chmod +x native-dist/linux/aurivo-projectm-visualizer
+
+      - name: Build Linux packages (AppImage/deb/rpm)
+        if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
+        run: npm run -s build:linux:appimage
+
+      - name: Build + Publish (GitHub Release) on tag
+        if: ${{ startsWith(github.ref, 'refs/tags/v') }}
+        run: npm run -s build:linux:appimage -- --publish=always
+
+      - name: Upload dist artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-dist-${{ github.run_id }}
+          path: |
+            dist/*.AppImage
+            dist/*.AppImage.blockmap
+            dist/*.yml

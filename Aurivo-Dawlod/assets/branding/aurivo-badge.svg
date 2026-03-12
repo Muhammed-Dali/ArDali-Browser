@@ -1,0 +1,12 @@
+<svg width="720" height="180" viewBox="0 0 720 180" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Aurivo badge">
+  <defs>
+    <linearGradient id="badgeBg" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#155e75"/>
+      <stop offset="45%" stop-color="#1d4ed8"/>
+      <stop offset="100%" stop-color="#0f172a"/>
+    </linearGradient>
+  </defs>
+  <rect x="4" y="4" width="712" height="172" rx="34" fill="url(#badgeBg)" stroke="#7dd3fc" stroke-opacity="0.4"/>
+  <text x="42" y="88" font-family="Inter, Ubuntu, sans-serif" font-size="44" font-weight="700" fill="#e2e8f0">Aurivo-Dawlod</text>
+  <text x="42" y="128" font-family="Ubuntu, sans-serif" font-size="22" fill="#bfdbfe">Audio & Video Download Studio</text>
+</svg>

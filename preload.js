@@ -4,14 +4,30 @@
 // Sürüm 2.1 - Tüm Ses Main Process IPC üzerinden
 // ============================================
 
-console.log('[PRELOAD] Script başlıyor...');
+const AURIVO_VERBOSE_LOGS =
+    typeof process !== 'undefined' &&
+    process?.env &&
+    process.env.AURIVO_VERBOSE_LOGS === '1';
+
+const preloadLog = (...args) => {
+    if (AURIVO_VERBOSE_LOGS) console.log(...args);
+};
+
+preloadLog('[PRELOAD] Script basliyor...');
 
 const { contextBridge, ipcRenderer, clipboard } = require('electron');
+const preloadArgv = Array.isArray(process?.argv) ? process.argv : [];
+const preloadStandaloneView = String(
+    preloadArgv.find((arg) => String(arg).startsWith('--aurivo-view=')) || ''
+).split('=').slice(1).join('=').trim().toLowerCase();
+const preloadStandaloneTab = String(
+    preloadArgv.find((arg) => String(arg).startsWith('--aurivo-settings-tab=')) || ''
+).split('=').slice(1).join('=').trim().toLowerCase();
 const path = require('path');
 const os = require('os');
 const { pathToFileURL } = require('url');
 
-console.log('[PRELOAD] Electron modülleri yüklendi');
+preloadLog('[PRELOAD] Electron modulleri yuklendi');
 
 // ============================================
 // Native Audio artık SADECE Main Process'te!
@@ -159,6 +175,16 @@ const createIPCAudioAPI = () => {
             set: (enabled, delay, feedback, mix) =>
                 ipcRenderer.invoke('audio:setEcho', enabled, delay, feedback, mix)
         },
+        softEcho: {
+            enable: (enabled) => ipcRenderer.invoke('audio:enableSoftEchoEffect', enabled),
+            setDelay: (delayMs) => ipcRenderer.invoke('audio:setSoftEchoDelay', delayMs),
+            setFeedback: (feedback) => ipcRenderer.invoke('audio:setSoftEchoFeedback', feedback),
+            setWetMix: (wetMix) => ipcRenderer.invoke('audio:setSoftEchoWetMix', wetMix),
+            setDryMix: (dryMix) => ipcRenderer.invoke('audio:setSoftEchoDryMix', dryMix),
+            setStereoMode: (stereo) => ipcRenderer.invoke('audio:setSoftEchoStereoMode', stereo),
+            setHighCut: (freq) => ipcRenderer.invoke('audio:setSoftEchoHighCut', freq),
+            reset: () => ipcRenderer.invoke('audio:resetSoftEchoEffect')
+        },
         convolutionReverb: {
             enable: (enabled) => ipcRenderer.invoke('audio:enableConvolutionReverb', enabled),
             loadIR: (filepath) => ipcRenderer.invoke('audio:loadIRFile', filepath),
@@ -181,6 +207,16 @@ const createIPCAudioAPI = () => {
             setPreset: (preset) => ipcRenderer.invoke('audio:setCrossfeedPreset', preset),
             getParams: () => ipcRenderer.invoke('audio:getCrossfeedParams'),
             reset: () => ipcRenderer.invoke('audio:resetCrossfeed')
+        },
+        surround: {
+            enable: (enabled) => ipcRenderer.invoke('audio:enableSurroundVirtualizer', enabled),
+            setCenter: (dB) => ipcRenderer.invoke('audio:setSurroundCenterLevel', dB),
+            setSurround: (dB) => ipcRenderer.invoke('audio:setSurroundSideLevel', dB),
+            setLfe: (dB) => ipcRenderer.invoke('audio:setSurroundLfeLevel', dB),
+            setCrossover: (hz) => ipcRenderer.invoke('audio:setSurroundCrossover', hz),
+            setDelay: (ms) => ipcRenderer.invoke('audio:setSurroundRearDelay', ms),
+            setMix: (percent) => ipcRenderer.invoke('audio:setSurroundMix', percent),
+            reset: () => ipcRenderer.invoke('audio:resetSurroundVirtualizer')
         },
         bassBoostDsp: {
             set: (enabled, gain, freq) =>
@@ -313,6 +349,7 @@ const createAudioAPI = () => {
             setCeiling: (dBFS) => ipcRenderer.invoke('audio:setTruePeakCeiling', dBFS),
             setRelease: (ms) => ipcRenderer.invoke('audio:setTruePeakRelease', ms),
             setLookahead: (ms) => ipcRenderer.invoke('audio:setTruePeakLookahead', ms),
+            setInputGain: (dB) => ipcRenderer.invoke('audio:setTruePeakInputGain', dB),
             setOversampling: (rate) => ipcRenderer.invoke('audio:setTruePeakOversampling', rate),
             setLinkChannels: (link) => ipcRenderer.invoke('audio:setTruePeakLinkChannels', link),
             getMeter: () => ipcRenderer.invoke('audio:getTruePeakMeter'),
@@ -472,6 +509,16 @@ const createAudioAPI = () => {
             set: (enabled, delay, feedback, mix) =>
                 ipcRenderer.invoke('audio:setEcho', enabled, delay, feedback, mix)
         },
+        softEcho: {
+            enable: (enabled) => ipcRenderer.invoke('audio:enableSoftEchoEffect', enabled),
+            setDelay: (delayMs) => ipcRenderer.invoke('audio:setSoftEchoDelay', delayMs),
+            setFeedback: (feedback) => ipcRenderer.invoke('audio:setSoftEchoFeedback', feedback),
+            setWetMix: (wetMix) => ipcRenderer.invoke('audio:setSoftEchoWetMix', wetMix),
+            setDryMix: (dryMix) => ipcRenderer.invoke('audio:setSoftEchoDryMix', dryMix),
+            setStereoMode: (stereo) => ipcRenderer.invoke('audio:setSoftEchoStereoMode', stereo),
+            setHighCut: (freq) => ipcRenderer.invoke('audio:setSoftEchoHighCut', freq),
+            reset: () => ipcRenderer.invoke('audio:resetSoftEchoEffect')
+        },
 
         // Convolution Reverb
         convolutionReverb: {
@@ -498,6 +545,16 @@ const createAudioAPI = () => {
             setPreset: (preset) => ipcRenderer.invoke('audio:setCrossfeedPreset', preset),
             getParams: () => ipcRenderer.invoke('audio:getCrossfeedParams'),
             reset: () => ipcRenderer.invoke('audio:resetCrossfeed')
+        },
+        surround: {
+            enable: (enabled) => ipcRenderer.invoke('audio:enableSurroundVirtualizer', enabled),
+            setCenter: (dB) => ipcRenderer.invoke('audio:setSurroundCenterLevel', dB),
+            setSurround: (dB) => ipcRenderer.invoke('audio:setSurroundSideLevel', dB),
+            setLfe: (dB) => ipcRenderer.invoke('audio:setSurroundLfeLevel', dB),
+            setCrossover: (hz) => ipcRenderer.invoke('audio:setSurroundCrossover', hz),
+            setDelay: (ms) => ipcRenderer.invoke('audio:setSurroundRearDelay', ms),
+            setMix: (percent) => ipcRenderer.invoke('audio:setSurroundMix', percent),
+            reset: () => ipcRenderer.invoke('audio:resetSurroundVirtualizer')
         },
 
         // Bass Mono (Low Frequency Mono Summing)
@@ -576,18 +633,56 @@ const aurivoAPI = {
     // Dosya Sistemi
     openFile: () => ipcRenderer.invoke('dialog:openFile'),
     openFolder: (opts) => ipcRenderer.invoke('dialog:openFolder', opts),
+    saveFile: (opts) => ipcRenderer.invoke('dialog:saveFile', opts),
     readDirectory: (dirPath) => ipcRenderer.invoke('fs:readDirectory', dirPath),
     getSpecialPaths: () => ipcRenderer.invoke('fs:getSpecialPaths'),
     fileExists: (filePath) => ipcRenderer.invoke('fs:exists', filePath),
     getFileInfo: (filePath) => ipcRenderer.invoke('fs:getFileInfo', filePath),
+    readTextFile: (filePath) => ipcRenderer.invoke('fs:readText', filePath),
+    writeTextFile: (filePath, text) => ipcRenderer.invoke('fs:writeText', filePath, text),
 
     // Medya Metadata
     getAlbumArt: (filePath) => ipcRenderer.invoke('media:getAlbumArt', filePath),
+    getBestAlbumArt: (filePath, options) => ipcRenderer.invoke('media:getBestAlbumArt', filePath, options),
     getVideoThumbnail: (filePath) => ipcRenderer.invoke('media:getVideoThumbnail', filePath),
+    library: {
+        getStats: (folders, metadataCache, excludedFolders, audioExtensions, performanceOptions) => ipcRenderer.invoke('library:getStats', folders, metadataCache, excludedFolders, audioExtensions, performanceOptions),
+        getStatsComposite: (folders, extraFiles, metadataCache, excludedFolders, audioExtensions, performanceOptions) => ipcRenderer.invoke('library:getStatsComposite', folders, extraFiles, metadataCache, excludedFolders, audioExtensions, performanceOptions),
+        refreshMetadata: (folders, options, excludedFolders, audioExtensions, performanceOptions) => ipcRenderer.invoke('library:refreshMetadata', folders, options, excludedFolders, audioExtensions, performanceOptions),
+        startWatch: (folders, excludedFolders) => ipcRenderer.invoke('library:startWatch', folders, excludedFolders),
+        stopWatch: () => ipcRenderer.invoke('library:stopWatch'),
+        onWatchEvent: (callback) => {
+            const handler = (_event, payload) => callback(payload);
+            ipcRenderer.on('library:watch-event', handler);
+            return () => ipcRenderer.removeListener('library:watch-event', handler);
+        }
+    },
 
     // Ayarlar
     saveSettings: (settings) => ipcRenderer.invoke('settings:save', settings),
     loadSettings: () => ipcRenderer.invoke('settings:load'),
+    openSettingsWindow: (defaultTab) => ipcRenderer.invoke('settings:openWindow', defaultTab),
+    launchContext: {
+        view: preloadStandaloneView,
+        tab: preloadStandaloneTab,
+        perfMonitor: process?.env?.AURIVO_PERF_MONITOR === '1'
+    },
+    onSettingsReload: (callback) => {
+        const handler = (_event, payload) => callback(payload);
+        ipcRenderer.on('settings:reloaded', handler);
+        return () => ipcRenderer.removeListener('settings:reloaded', handler);
+    },
+    onSettingsNavigate: (callback) => {
+        const handler = (_event, payload) => callback(payload);
+        ipcRenderer.on('settings:navigate', handler);
+        return () => ipcRenderer.removeListener('settings:navigate', handler);
+    },
+    onSettingsCloseRequest: (callback) => {
+        const handler = () => callback();
+        ipcRenderer.on('settings:requestClose', handler);
+        return () => ipcRenderer.removeListener('settings:requestClose', handler);
+    },
+    confirmSettingsClose: () => ipcRenderer.invoke('settings:confirmClose'),
 
     // Playlist
     savePlaylist: (playlist) => ipcRenderer.invoke('playlist:save', playlist),
@@ -596,7 +691,8 @@ const aurivoAPI = {
     // Dialog API
     dialog: {
         openFolder: (opts) => ipcRenderer.invoke('dialog:openFolder', opts),
-        openFiles: (filters) => ipcRenderer.invoke('dialog:openFiles', filters)
+        openFiles: (filters) => ipcRenderer.invoke('dialog:openFiles', filters),
+        confirm: (opts) => ipcRenderer.invoke('dialog:confirm', opts)
     },
 
     // Clipboard API (URL otomatik yapıştırma için)
@@ -609,31 +705,68 @@ const aurivoAPI = {
         }
     },
 
-    // Download API (Aurivo-Dawlod / yt-dlp)
-    download: {
-        start: (options) => ipcRenderer.invoke('download:start', options),
-        cancel: (id) => ipcRenderer.invoke('download:cancel', id),
-        onLog: (callback) => {
+    // Aurivo-Dawlod downloader window
+    dawlod: {
+        openWindow: (options) => ipcRenderer.invoke('dawlod:openWindow', options)
+    },
+
+    // Aurivo-Pulse (Aurivo-Pulse tabanlı şarkı tanıma)
+    pulse: {
+        openWindow: () => ipcRenderer.invoke('pulse:openWindow'),
+        listDevices: () => ipcRenderer.invoke('pulse:listDevices'),
+        getStatus: () => ipcRenderer.invoke('pulse:getStatus'),
+        getPreferredDevice: () => ipcRenderer.invoke('pulse:getPreferredDevice'),
+        getPreferences: () => ipcRenderer.invoke('pulse:getPreferences'),
+        savePreferences: (update) => ipcRenderer.invoke('pulse:savePreferences', update),
+        startListening: (options) => ipcRenderer.invoke('pulse:startListening', options),
+        stopListening: () => ipcRenderer.invoke('pulse:stopListening'),
+        recognizeSample: (options) => ipcRenderer.invoke('pulse:recognizeSample', options),
+        onState: (callback) => {
             const handler = (_event, payload) => callback(payload);
-            ipcRenderer.on('download:log', handler);
-            return () => ipcRenderer.removeListener('download:log', handler);
+            ipcRenderer.on('pulse:state', handler);
+            return () => ipcRenderer.removeListener('pulse:state', handler);
         },
-        onProgress: (callback) => {
+        onResult: (callback) => {
             const handler = (_event, payload) => callback(payload);
-            ipcRenderer.on('download:progress', handler);
-            return () => ipcRenderer.removeListener('download:progress', handler);
+            ipcRenderer.on('pulse:result', handler);
+            return () => ipcRenderer.removeListener('pulse:result', handler);
         },
-        onDone: (callback) => {
+        onUncertain: (callback) => {
             const handler = (_event, payload) => callback(payload);
-            ipcRenderer.on('download:done', handler);
-            return () => ipcRenderer.removeListener('download:done', handler);
+            ipcRenderer.on('pulse:uncertain', handler);
+            return () => ipcRenderer.removeListener('pulse:uncertain', handler);
+        },
+        onOpenQuery: (callback) => {
+            const handler = (_event, payload) => callback(payload);
+            ipcRenderer.on('pulse:open-query', handler);
+            return () => ipcRenderer.removeListener('pulse:open-query', handler);
         }
+    },
+
+    systemAudio: {
+        getState: () => ipcRenderer.invoke('systemAudio:getState'),
+        setVolume: (percent) => ipcRenderer.invoke('systemAudio:setVolume', percent),
+        setAllowOverdrive: (enabled) => ipcRenderer.invoke('systemAudio:setAllowOverdrive', enabled),
+        setOutput: (outputId) => ipcRenderer.invoke('systemAudio:setOutput', outputId)
     },
 
     // Web Security / Privacy helpers
     webSecurity: {
         openExternal: (url) => ipcRenderer.invoke('web:openExternal', url),
-        clearData: (options) => ipcRenderer.invoke('web:clearData', options)
+        clearData: (options) => ipcRenderer.invoke('web:clearData', options),
+        getSecurityState: () => ipcRenderer.invoke('web:getSecurityState')
+    },
+
+    adblock: {
+        getStats: () => ipcRenderer.invoke('adblock:getStats'),
+        allowDomain: (domain) => ipcRenderer.invoke('adblock:allowDomain', domain),
+        getConfig: () => ipcRenderer.invoke('adblock:getConfig'),
+        setConfig: (config) => ipcRenderer.invoke('adblock:setConfig', config),
+        openDashboard: () => ipcRenderer.invoke('adblock:openDashboard')
+    },
+
+    diagnostics: {
+        getPerformanceSnapshot: () => ipcRenderer.invoke('diagnostics:getPerformanceSnapshot')
     },
 
     // C++ AUDIO ENGINE API (IPC-Based)
@@ -677,7 +810,8 @@ const aurivoAPI = {
 
     // I18N
     i18n: {
-        loadLocale: (lang) => ipcRenderer.invoke('i18n:loadLocale', lang)
+        loadLocale: (lang) => ipcRenderer.invoke('i18n:loadLocale', lang),
+        getSystemLocale: () => ipcRenderer.invoke('get-system-locale')
     },
 
     // SYSTEM TRAY MEDIA CONTROL LISTENER
@@ -726,13 +860,13 @@ const aurivoAPI = {
     }
 };
 
-console.log('[PRELOAD] aurivoAPI objesi oluşturuldu');
-console.log('[PRELOAD] API anahtarları:', Object.keys(aurivoAPI));
+preloadLog('[PRELOAD] aurivoAPI objesi olusturuldu');
+preloadLog('[PRELOAD] API anahtarlari:', Object.keys(aurivoAPI));
 
 // Global fallback
 try {
     globalThis.aurivo = aurivoAPI;
-    console.log('[PRELOAD] globalThis.aurivo atandı');
+    preloadLog('[PRELOAD] globalThis.aurivo atandi');
 } catch (e) {
     console.error('[PRELOAD] globalThis hata:', e.message);
 }
@@ -740,7 +874,7 @@ try {
 // contextBridge ile güvenli expose
 try {
     contextBridge.exposeInMainWorld('aurivo', aurivoAPI);
-    console.log('[PRELOAD] ✓ contextBridge.exposeInMainWorld başarılı');
+    preloadLog('[PRELOAD] contextBridge.exposeInMainWorld basarili');
 } catch (e) {
     console.error('[PRELOAD] contextBridge hata:', e.message);
 }
@@ -754,22 +888,17 @@ const appAPI = {
 
 try {
     globalThis.app = appAPI;
-    console.log('[PRELOAD] globalThis.app atandı');
+    preloadLog('[PRELOAD] globalThis.app atandi');
 } catch (e) {
     console.error('[PRELOAD] globalThis.app hata:', e.message);
 }
 
 try {
     contextBridge.exposeInMainWorld('app', appAPI);
-    console.log('[PRELOAD] ✓ contextBridge.exposeInMainWorld (app) başarılı');
+    preloadLog('[PRELOAD] contextBridge.exposeInMainWorld (app) basarili');
 } catch (e) {
     console.error('[PRELOAD] contextBridge (app) hata:', e.message);
 }
 
-// Başlangıç Logu
-console.log('═══════════════════════════════════════');
-console.log('  AURIVO MEDIA PLAYER - Preload v2.1');
-console.log('  ✓ IPC-Based Audio (Main Process)');
-console.log('═══════════════════════════════════════');
-console.log(`  Platform: ${process.platform}`);
-console.log('═══════════════════════════════════════');
+// Başlangıç logu (sade)
+console.log(`[PRELOAD] ready | platform=${process.platform}`);

@@ -1,0 +1,5 @@
+#!/bin/bash -e
+# Portable Ruby environment setup
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/ruby.env"
+
+exec "$GEM_HOME/bin/fpm" "$@"

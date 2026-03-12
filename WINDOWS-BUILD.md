@@ -9,6 +9,9 @@
 
 ## Ortam
 - MSYS2 PATH: C:\msys64\mingw64\bin
+  - Not: `npm run prepare:win:resources` ve `npm run build:win` artık `AURIVO_VISUALIZER_DLL_DIR` verilmemişse
+    varsayılan olarak `C:\msys64\mingw64\bin` / `C:\msys2\mingw64\bin` yollarını dener.
+  - İsterseniz açıkça ayarlayın: `setx AURIVO_VISUALIZER_DLL_DIR "C:\msys64\mingw64\bin"`
 
 ## Adimlar
 1. npm ci
@@ -26,3 +29,8 @@
 - app.asar silinemiyor: uygulama veya electron process kapali olmali.
 - ffmpeg.exe placeholder: gercek ffmpeg.exe ile degistir.
 - Visualizer acilip kapanirsa: gerekli DLL'ler native-dist icinde olmali.
+
+## (Opsiyonel) Arch Linux'ta hızlı Windows Visualizer build + Wine testi
+> Not: Bu adım sadece `aurivo-projectm-visualizer.exe` içindir. Tam Windows kurulum çıktısı için yine Windows/MSYS2 veya GitHub Actions önerilir.
+
+- `scripts/build-visualizer-win-mingw.sh --clean --run-wine`

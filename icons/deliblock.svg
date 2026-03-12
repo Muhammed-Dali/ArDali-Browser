@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="DeliBlock">
+  <defs>
+    <linearGradient id="dbG" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#19d18a"/>
+      <stop offset="100%" stop-color="#24a8ff"/>
+    </linearGradient>
+  </defs>
+  <path d="M32 4 10 12v16c0 15.4 9.5 27.2 22 32 12.5-4.8 22-16.6 22-32V12L32 4Z" fill="url(#dbG)"/>
+  <path d="M24 20h9.2c8.9 0 14.8 5.7 14.8 12.1 0 7.1-5.7 11.9-14.3 11.9H24V20Zm8.7 18.9c4.6 0 7.7-2.6 7.7-6.8 0-3.9-3-6.9-8-6.9h-1.6v13.7h1.9Z" fill="#0f1420"/>
+</svg>

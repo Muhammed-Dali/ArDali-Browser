@@ -1,8 +1,20 @@
-const { app, BrowserWindow, ipcMain, dialog, nativeImage, Tray, Menu, shell, session } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, nativeImage, Tray, Menu, shell, session, screen } = require('electron');
+const os = require('os');
+const readline = require('readline');
 const { spawn } = require('child_process');
 const path = require('path');
 const fs = require('fs');
-const os = require('os');
+const http = require('http');
+const { registerDawlodIpc } = require('./modules/dawlodHost');
+const {
+    initAdBlocker,
+    getStats: getAdBlockerStats,
+    allowDomain,
+    getConfig: getAdBlockerConfig,
+    setConfig: setAdBlockerConfig,
+    getDashboardUrl: getAdBlockerDashboardUrl,
+    getDashboardLaunchInfo: getAdBlockerDashboardLaunchInfo,
+} = require('./modules/adBlocker');
 
 // MPRIS (Linux Medya Oynatıcı Uzaktan Arayüz Spesifikasyonu)
 let Player = null;
@@ -54,16 +66,28 @@ if (app && app.commandLine) {
     if (process.platform === 'linux') {
         app.commandLine.appendSwitch('class', LINUX_WM_CLASS);
     }
+    app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
 
     // DÜZELTME: WebView'larda çift medya oynatıcıyı önlemek için Chromium MediaSessionService devre dışı
-    app.commandLine.appendSwitch('disable-features', 'HardwareMediaKeyHandling,MediaSessionService');
+    const disabledFeatures = ['HardwareMediaKeyHandling', 'MediaSessionService'];
+    // Windows'ta bazı ortamlarda Chromium built-in cert verifier, sistemde güvenilen
+    // sertifikaları görmeyip net::ERR_CERT_AUTHORITY_INVALID (-202) üretebiliyor.
+    // Sistem doğrulayıcıya dönerek tarayıcı ile davranışı hizala.
+    if (process.platform === 'win32') {
+        disabledFeatures.push('CertVerifierBuiltinFeature');
+    }
+    app.commandLine.appendSwitch('disable-features', disabledFeatures.join(','));
 } else {
     console.warn('[Startup] app.commandLine not available');
 }
 
 // Windows 10/11: taskbar/dock ikon eşleştirmesi ve gruplama
 if (process.platform === 'win32') {
-    app.setAppUserModelId('com.aurivo.mediaplayer');
+    if (app && typeof app.setAppUserModelId === 'function') {
+        app.setAppUserModelId('com.aurivo.mediaplayer');
+    } else {
+        console.warn('[Startup] setAppUserModelId unavailable');
+    }
 }
 
 function prependToProcessPath(dir) {
@@ -84,18 +108,58 @@ function ensureWindowsRuntimePaths() {
             prependToProcessPath(path.join(process.resourcesPath, 'bin'));
             prependToProcessPath(path.join(process.resourcesPath, 'native', 'build', 'Release'));
             prependToProcessPath(path.join(process.resourcesPath, 'native-dist'));
+            prependToProcessPath(path.join(process.resourcesPath, 'native-dist', 'windows'));
         }
 
         // Geliştirici yedekleri
         prependToProcessPath(path.join(__dirname, 'third_party', 'ffmpeg'));
         prependToProcessPath(path.join(__dirname, 'native', 'build', 'Release'));
         prependToProcessPath(path.join(__dirname, 'native-dist'));
+        prependToProcessPath(path.join(__dirname, 'native-dist', 'windows'));
     } catch (e) {
         console.warn('[WIN] PATH prep failed:', e?.message || e);
     }
 }
 
 ensureWindowsRuntimePaths();
+
+function prependToEnvList(envName, dir) {
+    if (!dir) return;
+    const delimiter = path.delimiter || (process.platform === 'win32' ? ';' : ':');
+    const cur = process.env[envName] || '';
+    const parts = cur.split(delimiter).filter(Boolean);
+    if (parts.includes(dir)) return;
+    process.env[envName] = cur ? `${dir}${delimiter}${cur}` : dir;
+}
+
+function ensureUnixRuntimePaths() {
+    if (process.platform === 'win32') return;
+
+    const platformDir = process.platform === 'darwin' ? 'darwin' : 'linux';
+    try {
+        if (process.resourcesPath) {
+            const nativeDist = path.join(process.resourcesPath, 'native-dist');
+            const nativeDistPlatform = path.join(nativeDist, platformDir);
+            prependToProcessPath(nativeDist);
+            prependToProcessPath(nativeDistPlatform);
+            prependToEnvList(process.platform === 'darwin' ? 'DYLD_LIBRARY_PATH' : 'LD_LIBRARY_PATH', nativeDist);
+            prependToEnvList(process.platform === 'darwin' ? 'DYLD_LIBRARY_PATH' : 'LD_LIBRARY_PATH', nativeDistPlatform);
+        }
+
+        const devNativeDist = path.join(__dirname, 'native-dist');
+        const devNativeDistPlatform = path.join(devNativeDist, platformDir);
+        prependToProcessPath(devNativeDist);
+        prependToProcessPath(devNativeDistPlatform);
+        prependToEnvList(process.platform === 'darwin' ? 'DYLD_LIBRARY_PATH' : 'LD_LIBRARY_PATH', devNativeDist);
+        prependToEnvList(process.platform === 'darwin' ? 'DYLD_LIBRARY_PATH' : 'LD_LIBRARY_PATH', devNativeDistPlatform);
+    } catch (e) {
+        console.warn('[UNIX] runtime path prep failed:', e?.message || e);
+    }
+}
+
+ensureUnixRuntimePaths();
+
+// (removed) WebView2 host support
 
 let winRuntimeDepsLogged = false;
 function logWindowsRuntimeDepsOnce(context = '') {
@@ -156,6 +220,7 @@ function detectDisplayServer() {
     const xdgSessionType = process.env.XDG_SESSION_TYPE;
     const display = process.env.DISPLAY;
     const ozoneHint = process.env.ELECTRON_OZONE_PLATFORM_HINT;
+    const displayBackendOverride = String(process.env.AURIVO_DISPLAY_BACKEND || '').trim().toLowerCase();
 
     const appendCsvSwitch = (name, csv) => {
         if (!app?.commandLine || !csv) return;
@@ -178,27 +243,42 @@ function detectDisplayServer() {
     const forceSoftware = process.env.AURIVO_SOFTWARE_RENDER === '1' || process.env.AURIVO_SOFTWARE_RENDER === 'true';
     const forceGpu = process.env.AURIVO_FORCE_GPU === '1' || process.env.AURIVO_FORCE_GPU === 'true';
 
-    const wantWayland =
-        ozoneHint === 'wayland' ||
+    const sessionLooksWayland =
         (xdgSessionType && String(xdgSessionType).toLowerCase() === 'wayland') ||
         !!waylandDisplay;
-    const wantX11 =
-        ozoneHint === 'x11' ||
+    const sessionLooksX11 =
         (xdgSessionType && String(xdgSessionType).toLowerCase() === 'x11') ||
-        (!!display && !wantWayland);
+        (!!display && !sessionLooksWayland);
 
-    if (wantWayland) {
+    let selectedBackend = 'auto';
+    if (displayBackendOverride === 'wayland' || displayBackendOverride === 'x11' || displayBackendOverride === 'auto') {
+        selectedBackend = displayBackendOverride;
+    } else if (sessionLooksWayland) {
+        selectedBackend = 'wayland';
+    } else if (sessionLooksX11) {
+        selectedBackend = 'x11';
+    }
+
+    if (selectedBackend === 'wayland') {
         console.log('💻 Display Server: Wayland');
         app.commandLine.appendSwitch('ozone-platform-hint', 'wayland');
         appendCsvSwitch('enable-features', 'UseOzonePlatform,WaylandWindowDecorations,VaapiVideoDecoder');
-    } else if (wantX11) {
+    } else if (selectedBackend === 'x11') {
         console.log('💻 Display Server: X11');
         app.commandLine.appendSwitch('ozone-platform-hint', 'x11');
         appendCsvSwitch('enable-features', 'VaapiVideoDecoder');
     } else {
         console.log('💻 Display Server: auto');
         app.commandLine.appendSwitch('ozone-platform-hint', 'auto');
-        appendCsvSwitch('enable-features', 'VaapiVideoDecoder');
+        // auto modunda bile Wayland secilebilir; ozone feature'i acik olsun.
+        appendCsvSwitch('enable-features', 'UseOzonePlatform,VaapiVideoDecoder');
+    }
+
+    if (ozoneHint && !displayBackendOverride) {
+        console.log(`[Display] ELECTRON_OZONE_PLATFORM_HINT=${ozoneHint} (session-based auto mode takes precedence)`);
+    }
+    if (displayBackendOverride) {
+        console.log(`[Display] AURIVO_DISPLAY_BACKEND override active: ${displayBackendOverride}`);
     }
 
     if (!forceSoftware) {
@@ -314,20 +394,1565 @@ function initNativeAudioEngineSafe({ force = false } = {}) {
 }
 
 let mainWindow;
+let settingsWindow = null;
+let adblockDashboardWindow = null;
+const libraryWatchSessions = new Map();
 let tray = null;
+let mainWindowCloseToTray = true;
+let lastTrayState = { isPlaying: false, currentTrack: 'Aurivo Media Player', isMuted: false, stopAfterCurrent: false };
 let mprisPlayer = null;
+let aurivoPulseProc = null;
+let aurivoPulseGuiProc = null;
+let aurivoPulseGuiLang = '';
+let aurivoPulseStatus = {
+    running: false,
+    startedAt: null,
+    command: '',
+    source: '',
+    lastError: ''
+};
+let aurivoPulseLastRecognition = {
+    fingerprint: '',
+    ts: 0
+};
+let aurivoPulseRecentRecognitions = [];
+let pulseBridgeServer = null;
+let pulseBridgePort = 0;
+const PULSE_BRIDGE_HOST = '127.0.0.1';
+const PULSE_BRIDGE_PATH = '/pulse/open';
+const PULSE_BRIDGE_FALLBACK_PORT = 38947;
 
-// İndirme durumu (Aurivo-Dawlod / yt-dlp)
-let downloadSeq = 0;
-const activeDownloads = new Map(); // id -> { proc, killTimer }
+async function getPerformanceSnapshot() {
+    const snapshot = {
+        timestamp: Date.now(),
+        platform: process.platform,
+        pid: process.pid,
+        metrics: [],
+        windows: {},
+        gpu: {}
+    };
+
+    try {
+        const appMetrics = app.getAppMetrics();
+        snapshot.metrics = Array.isArray(appMetrics)
+            ? appMetrics.map((metric) => ({
+                pid: metric?.pid ?? null,
+                type: metric?.type || 'unknown',
+                serviceName: metric?.serviceName || '',
+                name: metric?.name || '',
+                cpu: Number(metric?.cpu?.percentCPUUsage || 0),
+                idleWakeupsPerSecond: Number(metric?.cpu?.idleWakeupsPerSecond || 0),
+                memoryWorkingSetKb: Number(metric?.memory?.workingSetSize || 0),
+                memoryPrivateKb: Number(metric?.memory?.privateBytes || 0),
+                memorySharedKb: Number(metric?.memory?.sharedBytes || 0)
+            }))
+            : [];
+    } catch (error) {
+        snapshot.metricsError = error?.message || String(error);
+    }
+
+    try {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+            const wc = mainWindow.webContents;
+            snapshot.windows.main = {
+                title: mainWindow.getTitle(),
+                visible: mainWindow.isVisible(),
+                focused: mainWindow.isFocused(),
+                minimized: mainWindow.isMinimized(),
+                osPid: typeof wc.getOSProcessId === 'function' ? wc.getOSProcessId() : null
+            };
+            if (typeof wc.getProcessMemoryInfo === 'function') {
+                try {
+                    snapshot.windows.main.memory = await wc.getProcessMemoryInfo();
+                } catch (error) {
+                    snapshot.windows.main.memoryError = error?.message || String(error);
+                }
+            }
+        }
+    } catch (error) {
+        snapshot.windows.mainError = error?.message || String(error);
+    }
+
+    try {
+        snapshot.gpu.featureStatus = app.getGPUFeatureStatus();
+    } catch (error) {
+        snapshot.gpu.featureStatusError = error?.message || String(error);
+    }
+
+    return snapshot;
+}
+
+function getPulseBridgeUrl() {
+    const port = Number(pulseBridgePort) || PULSE_BRIDGE_FALLBACK_PORT;
+    return `http://${PULSE_BRIDGE_HOST}:${port}${PULSE_BRIDGE_PATH}`;
+}
+
+function startPulseBridgeServer() {
+    if (pulseBridgeServer) return;
+    const handler = (req, res) => {
+        try {
+            const method = String(req?.method || '').toUpperCase();
+            const rawUrl = String(req?.url || '/');
+            const u = new URL(rawUrl, `http://${PULSE_BRIDGE_HOST}`);
+            if (method !== 'GET' || u.pathname !== PULSE_BRIDGE_PATH) {
+                res.statusCode = 404;
+                res.end('Not Found');
+                return;
+            }
+            const query = String(u.searchParams.get('query') || u.searchParams.get('q') || '').trim();
+            const platform = String(u.searchParams.get('platform') || '').trim().toLowerCase();
+            if (query) {
+                emitPulseEvent('pulse:open-query', { query, platform, source: 'aurivo-pulse-gui' });
+            }
+            res.statusCode = 200;
+            res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+            res.end('OK');
+        } catch (e) {
+            res.statusCode = 500;
+            res.end('ERR');
+        }
+    };
+    pulseBridgeServer = http.createServer(handler);
+    pulseBridgeServer.on('error', (e) => {
+        console.warn('[PULSE] bridge server error:', e?.message || e);
+    });
+    pulseBridgeServer.listen(PULSE_BRIDGE_FALLBACK_PORT, PULSE_BRIDGE_HOST, () => {
+        const addr = pulseBridgeServer?.address?.();
+        if (addr && typeof addr === 'object' && Number(addr.port) > 0) {
+            pulseBridgePort = Number(addr.port);
+        } else {
+            pulseBridgePort = PULSE_BRIDGE_FALLBACK_PORT;
+        }
+    });
+}
+
+function stopPulseBridgeServer() {
+    if (!pulseBridgeServer) return;
+    try {
+        pulseBridgeServer.close();
+    } catch {
+        // best-effort
+    }
+    pulseBridgeServer = null;
+    pulseBridgePort = 0;
+}
+
+function stopAurivoPulseGuiWindow() {
+    const child = aurivoPulseGuiProc;
+    aurivoPulseGuiProc = null;
+    aurivoPulseGuiLang = '';
+    if (!child) return;
+    try {
+        if (!child.killed) child.kill('SIGTERM');
+    } catch {
+        // best-effort
+    }
+}
+
+function getLinuxMainWindowXid() {
+    try {
+        if (process.platform !== 'linux') return '';
+        if (!mainWindow || mainWindow.isDestroyed()) return '';
+        const handle = mainWindow.getNativeWindowHandle();
+        if (!handle || !handle.length) return '';
+        // X11'de handle çoğunlukla unsigned long (LE) olarak gelir.
+        const id32 = handle.readUInt32LE(0);
+        if (id32 > 0) return `0x${id32.toString(16)}`;
+        if (handle.length >= 8) {
+            const id64 = Number(handle.readBigUInt64LE(0));
+            if (Number.isFinite(id64) && id64 > 0) return `0x${id64.toString(16)}`;
+        }
+    } catch {
+        // yoksay
+    }
+    return '';
+}
+
+async function applyPulseLinuxWindowHints(childPid) {
+    try {
+        if (process.platform !== 'linux') return;
+        const pid = Number(childPid || 0);
+        if (!Number.isFinite(pid) || pid <= 0) return;
+
+        const xdotool = findExecutable('xdotool', ['/usr/bin', '/usr/local/bin', '/bin']);
+        const wmctrl = findExecutable('wmctrl', ['/usr/bin', '/usr/local/bin', '/bin']);
+        if (!xdotool && !wmctrl) return;
+
+        let childWid = '';
+        if (xdotool) {
+            // Pencerenin map olmasını bekle (kısa timeout ile).
+            const lookup = await execCollect(
+                xdotool,
+                ['search', '--onlyvisible', '--pid', String(pid), '--name', '.*'],
+                4500
+            );
+            if (lookup?.success && lookup?.output) {
+                const lines = String(lookup.output).split(/\r?\n/).map((s) => s.trim()).filter(Boolean);
+                childWid = lines.length ? lines[lines.length - 1] : '';
+            }
+        }
+        if (!childWid) return;
+
+        // Taskbar grouping için sınıf adı ana uygulamayla hizalanır.
+        if (xdotool) {
+            await execCollect(xdotool, ['set_window', '--class', 'aurivo-media-player', '--classname', 'aurivo-media-player', childWid], 1500);
+        }
+
+        // Ayrı ikon oluşmasını engellemek için taskbar'dan gizle.
+        if (wmctrl) {
+            await execCollect(wmctrl, ['-i', '-r', childWid, '-b', 'add,skip_taskbar'], 1500);
+            await execCollect(wmctrl, ['-i', '-r', childWid, '-b', 'remove,skip_pager'], 1500);
+        }
+
+        // Mümkünse ana pencereye transient ilişki ver (X11 ortamlarında bazı shell'ler bunu dikkate alır).
+        const parentXid = getLinuxMainWindowXid();
+        if (xdotool && parentXid) {
+            await execCollect(xdotool, ['set_window', '--name', 'Aurivo-Pulse', childWid], 800);
+            // Not: xdotool transient API sunmadığı için burada best-effort bırakıyoruz.
+        }
+    } catch (e) {
+        console.warn('[PULSE] Linux window hints apply failed:', e?.message || e);
+    }
+}
+
+function emitPulseEvent(channel, payload) {
+    try {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send(channel, payload);
+        }
+    } catch (e) {
+        console.warn('[PULSE] emit event failed:', e?.message || e);
+    }
+}
+
+function getAurivoPulseRoot() {
+    const candidates = [
+        path.join(__dirname, 'Aurivo-Pulse'),
+        path.join(process.resourcesPath || '', 'Aurivo-Pulse')
+    ];
+    for (const p of candidates) {
+        try {
+            if (p && fs.existsSync(p) && fs.existsSync(path.join(p, 'Cargo.toml'))) {
+                return p;
+            }
+        } catch {
+            // yoksay
+        }
+    }
+    return '';
+}
+
+function resolveSafePulseCwd(preferredRoot = '') {
+    const candidates = [
+        preferredRoot,
+        __dirname,
+        app?.getAppPath?.(),
+        process.resourcesPath,
+        process.cwd()
+    ].filter(Boolean);
+    for (const p of candidates) {
+        try {
+            const st = fs.statSync(p);
+            if (st.isDirectory()) return p;
+        } catch {
+            // continue
+        }
+    }
+    return process.cwd();
+}
+
+function findExecutable(cmdName, extraDirs = []) {
+    const raw = String(cmdName || '').trim();
+    if (!raw) return '';
+    if (raw.includes(path.sep)) {
+        return fs.existsSync(raw) ? raw : '';
+    }
+
+    const dirs = [
+        ...(String(process.env.PATH || '').split(path.delimiter).filter(Boolean)),
+        ...extraDirs
+    ];
+    const uniqDirs = [...new Set(dirs)];
+    for (const dir of uniqDirs) {
+        try {
+            const candidate = path.join(dir, raw);
+            fs.accessSync(candidate, fs.constants.X_OK);
+            return candidate;
+        } catch {
+            // devam
+        }
+    }
+    return '';
+}
+
+function resolveAurivoPulseLaunch() {
+    const root = getAurivoPulseRoot();
+    const safeCwd = resolveSafePulseCwd(root);
+    const exeName = process.platform === 'win32' ? 'aurivo-pulse.exe' : 'aurivo-pulse';
+    const binCandidates = [
+        path.join(root, 'target', 'release', exeName),
+        path.join(root, 'target', 'debug', exeName),
+        path.join(__dirname, 'Aurivo-Pulse', 'target', 'release', exeName),
+        path.join(process.resourcesPath || '', 'Aurivo-Pulse', 'target', 'release', exeName),
+        path.join(process.resourcesPath || '', 'Aurivo-Pulse', exeName)
+    ].filter(Boolean);
+
+    for (const bin of binCandidates) {
+        if (bin && fs.existsSync(bin)) {
+            return {
+                command: bin,
+                args: ['listen', '--json'],
+                cwd: safeCwd,
+                source: 'bundled-binary'
+            };
+        }
+    }
+
+    const systemSongrec = findExecutable('songrec', ['/usr/bin', '/usr/local/bin', '/bin']);
+    return {
+        command: systemSongrec || 'songrec',
+        args: ['listen', '--json'],
+        cwd: safeCwd,
+        source: 'system-aurivo-pulse'
+    };
+}
+
+function resolveAurivoPulseGuiLaunch() {
+    const root = getAurivoPulseRoot();
+    const safeCwd = resolveSafePulseCwd(root);
+    const isWin = process.platform === 'win32';
+    const exeNames = isWin
+        ? ['aurivo-pulse.exe', 'songrec.exe']
+        : ['aurivo-pulse', 'songrec'];
+
+    const pathCandidates = [];
+    for (const exeName of exeNames) {
+        pathCandidates.push(
+            path.join(root, 'target', 'release', exeName),
+            path.join(root, 'target', 'debug', exeName),
+            path.join(__dirname, 'Aurivo-Pulse', 'target', 'release', exeName),
+            path.join(__dirname, 'Aurivo-Pulse', 'target', 'debug', exeName),
+            path.join(process.resourcesPath || '', 'Aurivo-Pulse', 'target', 'release', exeName),
+            path.join(process.resourcesPath || '', 'Aurivo-Pulse', exeName)
+        );
+    }
+
+    for (const bin of pathCandidates.filter(Boolean)) {
+        try {
+            if (bin && fs.existsSync(bin)) {
+                return { command: bin, args: [], cwd: safeCwd, source: 'bundled-gui-binary' };
+            }
+        } catch {
+            // yoksay
+        }
+    }
+
+    // Repo içi kaynak varsa, sistemdeki eski SongRec yerine proje sürümünü çalıştır.
+    const cargoToml = path.join(root, 'Cargo.toml');
+    const cargoBin = findExecutable('cargo', ['/usr/bin', '/usr/local/bin', '/bin']);
+    if (fs.existsSync(cargoToml) && cargoBin) {
+        return {
+            command: cargoBin,
+            args: ['run', '--quiet', '--', 'gui'],
+            cwd: root,
+            source: 'cargo-run-gui'
+        };
+    }
+
+    const systemAurivoPulse = findExecutable('aurivo-pulse', ['/usr/bin', '/usr/local/bin', '/bin']);
+    if (systemAurivoPulse) {
+        return { command: systemAurivoPulse, args: [], cwd: safeCwd, source: 'system-aurivo-pulse' };
+    }
+    const systemSongrec = findExecutable('songrec', ['/usr/bin', '/usr/local/bin', '/bin']);
+    if (systemSongrec) {
+        return { command: systemSongrec, args: [], cwd: safeCwd, source: 'system-songrec' };
+    }
+
+    return null;
+}
+
+function parsePulseDeviceLines(text) {
+    const out = [];
+    const seen = new Set();
+    const lines = String(text || '').split(/\r?\n/);
+    for (const ln of lines) {
+        const line = String(ln || '').trim();
+        if (!line) continue;
+        // Aurivo-Pulse CLI formatı: "<localized prefix> <inner_name> (<display_name>)"
+        // Örnek: "Available device: alsa_output.xxx.monitor (Monitor of Built-in Audio)"
+        // Çıktı dil bağımsız parse edilmelidir.
+        let left = '';
+        let right = '';
+        const parenMatch = line.match(/^(.*?)(?:\s*\(([^()]*)\)\s*)$/);
+        if (parenMatch) {
+            left = String(parenMatch[1] || '').trim();
+            right = String(parenMatch[2] || '').trim();
+            const colonIdx = left.lastIndexOf(':');
+            if (colonIdx >= 0) left = left.slice(colonIdx + 1).trim();
+        } else {
+            // Fallback: "(...)" yoksa satırın son bölümünü cihaz adı kabul et
+            const colonIdx = line.lastIndexOf(':');
+            left = (colonIdx >= 0 ? line.slice(colonIdx + 1) : line).trim();
+            right = '';
+        }
+        if (!left && !right) continue;
+
+        // Heuristik: teknik görünen değer id, okunabilir görünen değer label olsun.
+        const looksTechnical = (s) => /[:._-]/.test(String(s || ''));
+        let id = left;
+        let label = right || left;
+        if (!looksTechnical(left) && looksTechnical(right)) {
+            id = right;
+            label = left || right;
+        }
+
+        id = String(id || '').trim();
+        label = String(label || '').trim() || id;
+        if (!id || seen.has(id)) continue;
+        seen.add(id);
+        out.push({ id, label });
+    }
+    return out;
+}
+
+function dedupeAudioDevices(devices) {
+    const out = [];
+    const seen = new Set();
+    for (const dev of Array.isArray(devices) ? devices : []) {
+        const id = String(dev?.id || '').trim();
+        const label = String(dev?.label || id).trim();
+        if (!id) continue;
+        if (/^(alsa:)?null$/i.test(id)) continue;
+        if (!id || seen.has(id)) continue;
+        seen.add(id);
+        out.push({ id, label: label || id });
+    }
+    return out;
+}
+
+function ensureCommonLinuxAudioEngines(devices) {
+    const merged = dedupeAudioDevices(devices);
+    const has = (id) => merged.some((d) => String(d.id || '').toLowerCase() === id.toLowerCase());
+    const common = [
+        { id: 'alsa:pipewire', label: 'alsa:pipewire' },
+        { id: 'alsa:default', label: 'alsa:default' },
+        { id: 'pulse', label: 'pulse' }
+    ];
+    for (const c of common) {
+        if (!has(c.id)) merged.push(c);
+    }
+    return dedupeAudioDevices(merged);
+}
+
+function parsePactlShortSources(text) {
+    const out = [];
+    const lines = String(text || '').split(/\r?\n/);
+    for (const ln of lines) {
+        const line = String(ln || '').trim();
+        if (!line) continue;
+        // pactl list short sources: "<index>\t<name>\t<driver>\t<state>"
+        const cols = line.split(/\t+/).map((s) => String(s || '').trim());
+        if (cols.length < 2) continue;
+        const name = cols[1];
+        if (!name) continue;
+        out.push({ id: name, label: name });
+    }
+    return out;
+}
+
+function parseArecordList(text) {
+    const out = [];
+    const lines = String(text || '').split(/\r?\n/);
+    for (const ln of lines) {
+        const line = String(ln || '').trim();
+        if (!line || line.startsWith('#')) continue;
+        if (/^null$/i.test(line)) continue;
+        const normalizedId = /^alsa:/i.test(line) ? line : `alsa:${line}`;
+        out.push({ id: normalizedId, label: normalizedId });
+    }
+    return out;
+}
+
+async function execCollect(command, args = [], timeoutMs = 3500) {
+    return await new Promise((resolve) => {
+        let combined = '';
+        let timedOut = false;
+        const resolvedCommand = findExecutable(command, ['/usr/bin', '/usr/local/bin', '/bin', '/usr/sbin', '/sbin']) || command;
+        const child = spawn(resolvedCommand, args, {
+            env: {
+                ...process.env,
+                LANG: 'C',
+                LC_ALL: 'C'
+            }
+        });
+        const timer = setTimeout(() => {
+            timedOut = true;
+            try { child.kill('SIGTERM'); } catch { }
+        }, timeoutMs);
+        child.stdout.on('data', (d) => { combined += String(d || ''); });
+        child.stderr.on('data', (d) => { combined += String(d || ''); });
+        child.once('error', () => {
+            clearTimeout(timer);
+            resolve({ success: false, output: '' });
+        });
+        child.once('close', () => {
+            clearTimeout(timer);
+            resolve({ success: !timedOut, output: combined });
+        });
+    });
+}
+
+async function listSystemAudioDevicesFallback() {
+    const merged = [];
+
+    // PulseAudio/PipeWire (Pulse uyumluluk katmanı)
+    const pactl = await execCollect('pactl', ['list', 'short', 'sources']);
+    if (pactl.success && pactl.output) {
+        merged.push(...parsePactlShortSources(pactl.output));
+    }
+
+    // ALSA fallback
+    const arecord = await execCollect('arecord', ['-L']);
+    if (arecord.success && arecord.output) {
+        merged.push(...parseArecordList(arecord.output));
+    }
+
+    if (merged.length === 0) {
+        merged.push({ id: 'alsa:default', label: 'alsa:default' });
+    }
+    return ensureCommonLinuxAudioEngines(merged);
+}
+
+function parsePactlInfoDefaultSink(text) {
+    const match = String(text || '').match(/^\s*Default Sink:\s*(.+)\s*$/mi);
+    return match ? String(match[1] || '').trim() : '';
+}
+
+function parsePactlSinksDetailed(text) {
+    const blocks = String(text || '')
+        .split(/\n(?=Sink #\d+)/g)
+        .map((block) => String(block || '').trim())
+        .filter(Boolean);
+    const out = [];
+    for (const block of blocks) {
+        const name = String(block.match(/^\s*Name:\s*(.+)\s*$/mi)?.[1] || '').trim();
+        if (!name) continue;
+        const description = String(block.match(/^\s*Description:\s*(.+)\s*$/mi)?.[1] || '').trim();
+        const activePort = String(block.match(/^\s*Active Port:\s*(.+)\s*$/mi)?.[1] || '').trim();
+        const sampleSpec = String(block.match(/^\s*Sample Specification:\s*(.+)\s*$/mi)?.[1] || '').trim();
+        const muteRaw = String(block.match(/^\s*Mute:\s*(yes|no)\s*$/mi)?.[1] || '').trim().toLowerCase();
+        const volLine = String(block.match(/^\s*Volume:.*$/mi)?.[0] || '').trim();
+        const percent = Number(volLine.match(/(\d+)%/)?.[1] || 0);
+        const sampleRateHz = Number(sampleSpec.match(/(\d+)\s*Hz/i)?.[1] || 0);
+        const channelCount = Number(sampleSpec.match(/(\d+)\s*ch/i)?.[1] || 0);
+        const sampleFormat = String(sampleSpec.match(/^([A-Za-z0-9]+)\b/)?.[1] || '').trim();
+        out.push({
+            name,
+            description: description || name,
+            activePort,
+            sampleSpec,
+            sampleRateHz: Number.isFinite(sampleRateHz) ? sampleRateHz : 0,
+            channelCount: Number.isFinite(channelCount) ? channelCount : 0,
+            sampleFormat,
+            muted: muteRaw === 'yes',
+            volumePercent: Number.isFinite(percent) ? percent : 0
+        });
+    }
+    return out;
+}
+
+function parsePactlSourcesDetailed(text) {
+    const blocks = String(text || '')
+        .split(/\n(?=Source #\d+)/g)
+        .map((block) => String(block || '').trim())
+        .filter(Boolean);
+    const out = [];
+    for (const block of blocks) {
+        const name = String(block.match(/^\s*Name:\s*(.+)\s*$/mi)?.[1] || '').trim();
+        if (!name) continue;
+        const description = String(block.match(/^\s*Description:\s*(.+)\s*$/mi)?.[1] || '').trim();
+        const activePort = String(block.match(/^\s*Active Port:\s*(.+)\s*$/mi)?.[1] || '').trim();
+        const sampleSpec = String(block.match(/^\s*Sample Specification:\s*(.+)\s*$/mi)?.[1] || '').trim();
+        const muteRaw = String(block.match(/^\s*Mute:\s*(yes|no)\s*$/mi)?.[1] || '').trim().toLowerCase();
+        const sampleRateHz = Number(sampleSpec.match(/(\d+)\s*Hz/i)?.[1] || 0);
+        const channelCount = Number(sampleSpec.match(/(\d+)\s*ch/i)?.[1] || 0);
+        const sampleFormat = String(sampleSpec.match(/^([A-Za-z0-9]+)\b/)?.[1] || '').trim();
+        out.push({
+            name,
+            description: description || name,
+            activePort,
+            sampleSpec,
+            sampleRateHz: Number.isFinite(sampleRateHz) ? sampleRateHz : 0,
+            channelCount: Number.isFinite(channelCount) ? channelCount : 0,
+            sampleFormat,
+            muted: muteRaw === 'yes'
+        });
+    }
+    return out;
+}
+
+function normalizeAudioDeviceFamily(value) {
+    return String(value || '')
+        .toLowerCase()
+        .replace(/\b(monitor of|monitor|analog stereo|digital stereo|mono|stereo|input|output|source|sink|device|port|microphone|mikrofon|headset|headphones|speaker|hoparlor|hoparlör|tek kanalli|tek kanallı|analog|usb audio|audio)\b/g, ' ')
+        .replace(/[._\-:/()[\]]+/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
+function getAudioDeviceFamilyTokens(device) {
+    return Array.from(new Set(
+        normalizeAudioDeviceFamily([
+            device?.description,
+            device?.name,
+            device?.activePort
+        ].join(' '))
+            .split(' ')
+            .map((token) => token.trim())
+            .filter((token) => token.length >= 3)
+    ));
+}
+
+function findRelatedLinuxInputForSink(sink, sources) {
+    const candidateSources = Array.isArray(sources)
+        ? sources.filter((source) => !/monitor/i.test(String(source?.name || '')) && !/monitor/i.test(String(source?.description || '')))
+        : [];
+    if (!sink || !candidateSources.length) return null;
+    const sinkTokens = getAudioDeviceFamilyTokens(sink);
+    if (!sinkTokens.length) return null;
+
+    let best = null;
+    let bestScore = 0;
+    for (const source of candidateSources) {
+        const sourceTokens = getAudioDeviceFamilyTokens(source);
+        if (!sourceTokens.length) continue;
+        const overlap = sinkTokens.filter((token) => sourceTokens.includes(token));
+        const score = overlap.length;
+        if (score > bestScore) {
+            bestScore = score;
+            best = source;
+        }
+    }
+    return bestScore >= 1 ? best : null;
+}
+
+function parsePactlShortSinks(text) {
+    const out = [];
+    const lines = String(text || '').split(/\r?\n/);
+    for (const ln of lines) {
+        const line = String(ln || '').trim();
+        if (!line) continue;
+        const cols = line.split(/\t+/).map((s) => String(s || '').trim());
+        if (cols.length < 2) continue;
+        const name = cols[1];
+        if (!name) continue;
+        out.push({ id: name, label: name });
+    }
+    return out;
+}
+
+function classifySystemOutputDevice(device) {
+    const haystack = [
+        device?.description,
+        device?.activePort,
+        device?.name
+    ].join(' ').toLowerCase();
+
+    if (/headphone|headset|earbud|airpods|buds|analog-output-headphones/.test(haystack)) {
+        return { kind: 'headphones', isHeadphones: true, badge: 'Kulaklık' };
+    }
+    if (/bluetooth|bluez|a2dp/.test(haystack)) {
+        return { kind: 'bluetooth', isHeadphones: false, badge: 'Bluetooth' };
+    }
+    if (/hdmi|displayport|dp-output/.test(haystack)) {
+        return { kind: 'display', isHeadphones: false, badge: 'HDMI / Display' };
+    }
+    if (/usb/.test(haystack)) {
+        return { kind: 'usb', isHeadphones: false, badge: 'USB Ses' };
+    }
+    return { kind: 'speakers', isHeadphones: false, badge: 'Hoparlör' };
+}
+
+function getLinuxRaiseMaximumVolumeSetting() {
+    if (process.platform !== 'linux') return false;
+    try {
+        const cfgPath = path.join(os.homedir(), '.config', 'plasmaparc');
+        const text = fs.readFileSync(cfgPath, 'utf8');
+        const sectionMatch = text.match(/\[General\]([\s\S]*?)(?:\n\[|$)/i);
+        const body = sectionMatch ? sectionMatch[1] : text;
+        const raw = String(body.match(/^\s*RaiseMaximumVolume\s*=\s*(.+)\s*$/mi)?.[1] || '').trim().toLowerCase();
+        return raw === 'true' || raw === '1' || raw === 'yes';
+    } catch {
+        return false;
+    }
+}
+
+function setLinuxRaiseMaximumVolumeSetting(enabled) {
+    if (process.platform !== 'linux') return false;
+    try {
+        const cfgPath = path.join(os.homedir(), '.config', 'plasmaparc');
+        const nextValue = enabled ? 'true' : 'false';
+        let text = '';
+        try {
+            text = fs.readFileSync(cfgPath, 'utf8');
+        } catch {
+            text = '';
+        }
+
+        if (!/\[General\]/i.test(text)) {
+            text = `${text.trim()}\n[General]\nRaiseMaximumVolume=${nextValue}\n`.trim() + '\n';
+        } else if (/^\s*RaiseMaximumVolume\s*=.*$/mi.test(text)) {
+            text = text.replace(/^\s*RaiseMaximumVolume\s*=.*$/mi, `RaiseMaximumVolume=${nextValue}`);
+        } else {
+            text = text.replace(/\[General\]\s*/i, `[General]\nRaiseMaximumVolume=${nextValue}\n`);
+        }
+
+        fs.writeFileSync(cfgPath, text, 'utf8');
+        return true;
+    } catch {
+        return false;
+    }
+}
+
+async function getLinuxSystemAudioState() {
+    const pactlInfo = await execCollect('pactl', ['info']);
+    const defaultSink = parsePactlInfoDefaultSink(pactlInfo.output);
+    const pactlSinks = await execCollect('pactl', ['list', 'sinks']);
+    const sinks = parsePactlSinksDetailed(pactlSinks.output);
+    const pactlSources = await execCollect('pactl', ['list', 'sources']);
+    const sources = parsePactlSourcesDetailed(pactlSources.output);
+    const current = sinks.find((sink) => sink.name === defaultSink) || sinks[0];
+    const raiseMaximumVolumeEnabled = getLinuxRaiseMaximumVolumeSetting();
+
+    if (!current) {
+        return {
+            success: false,
+            supported: false,
+            platform: process.platform,
+            error: 'Varsayılan ses çıkışı bulunamadı'
+        };
+    }
+
+    const classified = classifySystemOutputDevice(current);
+    const relatedInput = findRelatedLinuxInputForSink(current, sources);
+    return {
+        success: true,
+        supported: true,
+        platform: process.platform,
+        volumePercent: Math.max(0, Math.min(150, Number(current.volumePercent) || 0)),
+        muted: !!current.muted,
+        currentOutputName: String(current.description || current.name || '').trim() || 'Bilinmeyen çıkış',
+        currentOutputId: String(current.name || '').trim(),
+        currentOutputPort: String(current.activePort || '').trim(),
+        currentOutputKind: classified.kind,
+        currentOutputBadge: classified.badge,
+        isHeadphones: !!classified.isHeadphones,
+        sampleSpec: String(current.sampleSpec || '').trim(),
+        sampleRateHz: Number(current.sampleRateHz) || 0,
+        channelCount: Number(current.channelCount) || 0,
+        sampleFormat: String(current.sampleFormat || '').trim(),
+        hasRelatedInput: !!relatedInput,
+        relatedInputName: String(relatedInput?.description || relatedInput?.name || '').trim(),
+        raiseMaximumVolumeEnabled,
+        canBoostOver100: true,
+        maxVolumePercent: 150
+    };
+}
+
+async function listLinuxSystemAudioOutputs() {
+    const pactlSinks = await execCollect('pactl', ['list', 'sinks']);
+    const detailed = parsePactlSinksDetailed(pactlSinks.output);
+    if (detailed.length) {
+        return detailed.map((sink) => {
+            const classified = classifySystemOutputDevice(sink);
+            return {
+                id: String(sink.name || '').trim(),
+                name: String(sink.name || '').trim(),
+                label: String(sink.description || sink.name || '').trim(),
+                badge: classified.badge,
+                kind: classified.kind,
+                isHeadphones: !!classified.isHeadphones
+            };
+        }).filter((item) => item.id);
+    }
+
+    const short = await execCollect('pactl', ['list', 'short', 'sinks']);
+    return parsePactlShortSinks(short.output).map((sink) => ({
+        id: sink.id,
+        name: sink.id,
+        label: sink.label,
+        badge: 'Ses Çıkışı',
+        kind: 'unknown',
+        isHeadphones: false
+    }));
+}
+
+async function listSystemAudioOutputs() {
+    if (process.platform === 'linux') {
+        return {
+            success: true,
+            supported: true,
+            platform: process.platform,
+            outputs: await listLinuxSystemAudioOutputs()
+        };
+    }
+    return {
+        success: true,
+        supported: false,
+        platform: process.platform,
+        outputs: []
+    };
+}
+
+async function getSystemAudioState() {
+    if (process.platform === 'linux') {
+        return await getLinuxSystemAudioState();
+    }
+    return {
+        success: true,
+        supported: false,
+        platform: process.platform,
+        volumePercent: null,
+        muted: false,
+        currentOutputName: process.platform === 'win32' ? 'Windows varsayılan çıkış' : 'Sistem varsayılan çıkışı',
+        currentOutputId: '',
+        currentOutputPort: '',
+        currentOutputKind: 'unknown',
+        currentOutputBadge: process.platform === 'win32' ? 'Windows' : 'Sistem',
+        isHeadphones: false,
+        sampleSpec: '',
+        sampleRateHz: 0,
+        channelCount: 0,
+        sampleFormat: '',
+        hasRelatedInput: false,
+        relatedInputName: '',
+        canBoostOver100: false,
+        maxVolumePercent: 100
+    };
+}
+
+async function setLinuxSystemAudioVolume(percent) {
+    const safePercent = Math.max(0, Math.min(150, Number(percent) || 0));
+    if (safePercent > 100) {
+        setLinuxRaiseMaximumVolumeSetting(true);
+    }
+    const result = await execCollect('pactl', ['set-sink-volume', '@DEFAULT_SINK@', `${safePercent}%`], 3500);
+    if (!result.success) {
+        return { success: false, error: 'Sistem ses seviyesi ayarlanamadı' };
+    }
+    const state = await getLinuxSystemAudioState();
+    return { success: !!state.success, state };
+}
+
+async function setSystemAudioAllowOverdrive(enabled) {
+    if (process.platform === 'linux') {
+        const ok = setLinuxRaiseMaximumVolumeSetting(!!enabled);
+        const state = await getLinuxSystemAudioState();
+        return { success: ok && !!state.success, state };
+    }
+    return { success: false, error: 'Bu platformda 150% ses izni desteklenmiyor' };
+}
+
+async function setLinuxSystemAudioOutput(outputId) {
+    const safeId = String(outputId || '').trim();
+    if (!safeId) return { success: false, error: 'Çıkış cihazı belirtilmedi' };
+    const result = await execCollect('pactl', ['set-default-sink', safeId], 3500);
+    if (!result.success) {
+        return { success: false, error: 'Varsayılan ses çıkışı değiştirilemedi' };
+    }
+    const state = await getLinuxSystemAudioState();
+    return { success: !!state.success, state };
+}
+
+async function setSystemAudioOutput(outputId) {
+    if (process.platform === 'linux') {
+        return await setLinuxSystemAudioOutput(outputId);
+    }
+    return { success: false, error: 'Bu platformda çıkış cihazı değişimi desteklenmiyor' };
+}
+
+async function setSystemAudioVolume(percent) {
+    if (process.platform === 'linux') {
+        return await setLinuxSystemAudioVolume(percent);
+    }
+    return { success: false, error: 'Bu platformda sistem ses ayarı desteklenmiyor' };
+}
+
+async function listAurivoPulseDevices() {
+    const launch = resolveAurivoPulseLaunch();
+    return await new Promise((resolve) => {
+        let combined = '';
+        const child = spawn(launch.command, ['listen', '--list-devices'], {
+            cwd: launch.cwd,
+            env: {
+                ...process.env,
+                AURIVO_PULSE_NO_GUI: '1',
+                // Parse tutarlılığı için CLI çıktısını sabitle
+                LANG: 'C',
+                LC_ALL: 'C'
+            }
+        });
+        child.stdout.on('data', (d) => { combined += String(d || ''); });
+        child.stderr.on('data', (d) => { combined += String(d || ''); });
+        child.once('error', async (e) => {
+            const fallbackDevices = await listSystemAudioDevicesFallback();
+            resolve({
+                success: true,
+                devices: fallbackDevices,
+                warning: e?.message || String(e)
+            });
+        });
+        child.once('close', async () => {
+            let devices = dedupeAudioDevices(parsePulseDeviceLines(combined));
+            if (!devices.length || (devices.length === 1 && String(devices[0]?.id || '').toLowerCase() === 'alsa:default')) {
+                const fallbackDevices = await listSystemAudioDevicesFallback();
+                if (fallbackDevices.length) {
+                    devices = dedupeAudioDevices([...devices, ...fallbackDevices]);
+                }
+            }
+            devices = ensureCommonLinuxAudioEngines(devices);
+            resolve({ success: true, devices });
+        });
+    });
+}
+
+function parsePulseResultLine(line) {
+    const raw = String(line || '').trim();
+    if (!raw) return null;
+
+    try {
+        const parsed = JSON.parse(raw);
+        const candidates = Array.isArray(parsed?.matches)
+            ? parsed.matches
+                .map((entry) => ({
+                    title: String(entry?.track?.title || '').trim(),
+                    artist: String(entry?.track?.subtitle || '').trim(),
+                    trackKey: String(entry?.track?.key || '').trim()
+                }))
+                .filter((entry) => entry.title || entry.artist)
+                .slice(0, 3)
+            : [];
+        const title =
+            parsed?.track?.title ||
+            parsed?.title ||
+            parsed?.song?.title ||
+            parsed?.matches?.[0]?.track?.title ||
+            '';
+        const artist =
+            parsed?.track?.subtitle ||
+            parsed?.subtitle ||
+            parsed?.artist ||
+            parsed?.song?.artist ||
+            parsed?.matches?.[0]?.track?.subtitle ||
+            '';
+        const trackKey =
+            parsed?.track?.key ||
+            parsed?.track?.track_key ||
+            parsed?.track?.hub?.track_key ||
+            parsed?.matches?.[0]?.track?.key ||
+            '';
+
+        return {
+            raw,
+            parsed,
+            title: String(title || '').trim(),
+            artist: String(artist || '').trim(),
+            trackKey: String(trackKey || '').trim(),
+            candidates,
+            ts: Date.now()
+        };
+    } catch {
+        return {
+            raw,
+            parsed: null,
+            title: '',
+            artist: '',
+            trackKey: '',
+            candidates: [],
+            ts: Date.now()
+        };
+    }
+}
+
+function makePulseRecognitionFingerprint(result) {
+    const trackKey = String(result?.trackKey || '').trim().toLowerCase();
+    if (trackKey) return `k:${trackKey}`;
+    const title = String(result?.title || '').trim().toLowerCase();
+    const artist = String(result?.artist || '').trim().toLowerCase();
+    const raw = String(result?.raw || '').trim().toLowerCase();
+    if (title || artist) return `s:${artist} - ${title}`;
+    return `r:${raw}`;
+}
+
+function resetAurivoPulseRecognitionState() {
+    aurivoPulseLastRecognition = { fingerprint: '', ts: 0 };
+    aurivoPulseRecentRecognitions = [];
+}
+
+function shouldEmitStablePulseResult(result) {
+    const now = Date.now();
+    const fp = makePulseRecognitionFingerprint(result);
+    if (!fp) return false;
+    const candidateCount = Array.isArray(result?.candidates) ? result.candidates.length : 0;
+    const hasTrackKey = !!String(result?.trackKey || '').trim();
+    const hasTitle = !!String(result?.title || '').trim();
+    const hasArtist = !!String(result?.artist || '').trim();
+    const hasConfidentDirectTrack = !!(
+        hasTitle &&
+        hasArtist &&
+        hasTrackKey &&
+        candidateCount <= 1 &&
+        (
+            result?.parsed?.track?.title ||
+            result?.parsed?.matches?.[0]?.track?.title
+        )
+    );
+
+    if (hasConfidentDirectTrack) {
+        if (
+            aurivoPulseLastRecognition.fingerprint === fp &&
+            (now - Number(aurivoPulseLastRecognition.ts || 0)) < 90000
+        ) {
+            return false;
+        }
+        aurivoPulseLastRecognition = { fingerprint: fp, ts: now };
+        aurivoPulseRecentRecognitions = [{ fingerprint: fp, ts: now, result }];
+        return true;
+    }
+
+    aurivoPulseRecentRecognitions = aurivoPulseRecentRecognitions
+        .filter((entry) => entry && (now - Number(entry.ts || 0)) <= 28000);
+    aurivoPulseRecentRecognitions.push({ fingerprint: fp, ts: now, result });
+    if (aurivoPulseRecentRecognitions.length > 5) {
+        aurivoPulseRecentRecognitions = aurivoPulseRecentRecognitions.slice(-5);
+    }
+
+    const matching = aurivoPulseRecentRecognitions.filter((entry) => entry.fingerprint === fp);
+    if (matching.length < 2) {
+        return false;
+    }
+
+    if (
+        aurivoPulseLastRecognition.fingerprint === fp &&
+        (now - Number(aurivoPulseLastRecognition.ts || 0)) < 90000
+    ) {
+        return false;
+    }
+
+    aurivoPulseLastRecognition = { fingerprint: fp, ts: now };
+    aurivoPulseRecentRecognitions = aurivoPulseRecentRecognitions.filter((entry) => entry.fingerprint === fp);
+    return true;
+}
+
+function maybeEmitUncertainPulseResult(result) {
+    const now = Date.now();
+    if (aurivoPulseRecentRecognitions.length < 3) return;
+    const counts = new Map();
+    for (const entry of aurivoPulseRecentRecognitions) {
+        const cur = counts.get(entry.fingerprint) || 0;
+        counts.set(entry.fingerprint, cur + 1);
+    }
+    const strongest = Math.max(0, ...Array.from(counts.values()));
+    if (strongest >= 2) return;
+    if ((now - Number(aurivoPulseLastRecognition.ts || 0)) < 12000) return;
+    const candidates = Array.isArray(result?.candidates) ? result.candidates : [];
+    if (!candidates.length) return;
+    emitPulseEvent('pulse:uncertain', {
+        ts: now,
+        candidates
+    });
+    aurivoPulseLastRecognition = { fingerprint: `uncertain:${now}`, ts: now };
+}
+
+function getAurivoPulsePreferencePaths() {
+    const home = os.homedir();
+    const xdgConfigHome = String(process.env.XDG_CONFIG_HOME || '').trim();
+    const candidates = [
+        xdgConfigHome ? path.join(xdgConfigHome, 'aurivo-pulse', 'preferences.toml') : '',
+        xdgConfigHome ? path.join(xdgConfigHome, 'Aurivo-Pulse', 'preferences.toml') : '',
+        home ? path.join(home, '.config', 'aurivo-pulse', 'preferences.toml') : '',
+        home ? path.join(home, '.config', 'Aurivo-Pulse', 'preferences.toml') : '',
+        home ? path.join(home, '.var', 'app', 're.fossplant.songrec', 'config', 'aurivo-pulse', 'preferences.toml') : '',
+        home ? path.join(home, '.var', 'app', 're.fossplant.songrec', 'config', 'Aurivo-Pulse', 'preferences.toml') : ''
+    ];
+    return [...new Set(candidates.filter(Boolean))];
+}
+
+function parseAurivoPulsePreferredDevice(text) {
+    const raw = String(text || '');
+    if (!raw) return '';
+    const match = raw.match(/^\s*current_device_name\s*=\s*"((?:[^"\\]|\\.)*)"/m);
+    if (!match) return '';
+    return String(match[1] || '')
+        .replace(/\\"/g, '"')
+        .replace(/\\\\/g, '\\')
+        .trim();
+}
+
+function parseAurivoPulseStringPref(text, key) {
+    const raw = String(text || '');
+    const match = raw.match(new RegExp(`^\\s*${key}\\s*=\\s*"((?:[^"\\\\]|\\\\.)*)"`, 'm'));
+    if (!match) return '';
+    return String(match[1] || '')
+        .replace(/\\"/g, '"')
+        .replace(/\\\\/g, '\\')
+        .trim();
+}
+
+function parseAurivoPulseBoolPref(text, key, fallback = false) {
+    const raw = String(text || '');
+    const match = raw.match(new RegExp(`^\\s*${key}\\s*=\\s*(true|false)\\s*$`, 'mi'));
+    if (!match) return !!fallback;
+    return String(match[1]).toLowerCase() === 'true';
+}
+
+function parseAurivoPulseIntPref(text, key, fallback = 0) {
+    const raw = String(text || '');
+    const match = raw.match(new RegExp(`^\\s*${key}\\s*=\\s*(\\d+)\\s*$`, 'm'));
+    if (!match) return Number(fallback) || 0;
+    const num = Number(match[1]);
+    return Number.isFinite(num) ? num : (Number(fallback) || 0);
+}
+
+function getDefaultAurivoPulsePreferences() {
+    return {
+        enable_notifications: true,
+        enable_mpris: false,
+        enable_systray: false,
+        no_duplicates: false,
+        request_interval_secs_v3: 2,
+        buffer_size_secs: 5,
+        current_device_name: '',
+        recognition_engine: 'hybrid',
+        acoustid_api_key: ''
+    };
+}
+
+async function migrateLegacyAurivoPulsePerformancePrefsIfNeeded() {
+    const current = readAurivoPulsePreferences();
+    const preferences = current?.preferences || {};
+    const requestInterval = Number(preferences.request_interval_secs_v3) || 0;
+    const bufferSize = Number(preferences.buffer_size_secs) || 0;
+    // Eski varsayilanlar (8/12) yeni hizli varsayilana geciriliyor.
+    if (requestInterval === 8 && bufferSize === 12) {
+        await saveAurivoPulsePreferences({
+            request_interval_secs_v3: getDefaultAurivoPulsePreferences().request_interval_secs_v3,
+            buffer_size_secs: getDefaultAurivoPulsePreferences().buffer_size_secs
+        });
+    }
+}
+
+function readAurivoPulsePreferences() {
+    const defaults = getDefaultAurivoPulsePreferences();
+    const candidates = getAurivoPulsePreferencePaths();
+    const parsed = [];
+
+    for (const prefPath of candidates) {
+        try {
+            if (!fs.existsSync(prefPath)) continue;
+            const stat = fs.statSync(prefPath);
+            const mtimeMs = Number(stat?.mtimeMs || 0);
+            const text = fs.readFileSync(prefPath, 'utf8');
+            parsed.push({
+                path: prefPath,
+                mtimeMs,
+                preferences: {
+                    enable_notifications: parseAurivoPulseBoolPref(text, 'enable_notifications', defaults.enable_notifications),
+                    enable_mpris: parseAurivoPulseBoolPref(text, 'enable_mpris', defaults.enable_mpris),
+                    enable_systray: parseAurivoPulseBoolPref(text, 'enable_systray', defaults.enable_systray),
+                    no_duplicates: parseAurivoPulseBoolPref(text, 'no_duplicates', defaults.no_duplicates),
+                    request_interval_secs_v3: parseAurivoPulseIntPref(text, 'request_interval_secs_v3', defaults.request_interval_secs_v3),
+                    buffer_size_secs: parseAurivoPulseIntPref(text, 'buffer_size_secs', defaults.buffer_size_secs),
+                    current_device_name: parseAurivoPulseStringPref(text, 'current_device_name') || defaults.current_device_name,
+                    recognition_engine: parseAurivoPulseStringPref(text, 'recognition_engine') || '',
+                    acoustid_api_key: parseAurivoPulseStringPref(text, 'acoustid_api_key') || ''
+                }
+            });
+        } catch (e) {
+            console.warn('[PULSE] preferences read/stat error:', prefPath, e?.message || e);
+        }
+    }
+
+    if (!parsed.length) {
+        return { success: true, source: candidates[0] || '', preferences: defaults };
+    }
+
+    parsed.sort((a, b) => b.mtimeMs - a.mtimeMs);
+    const selected = parsed[0];
+    const fallbackWithKey = parsed.find((entry) => String(entry?.preferences?.acoustid_api_key || '').trim().length > 0);
+
+    const recognitionEngine = ['hybrid', 'songrec_only', 'acoustid_only'].includes(
+        String(selected.preferences.recognition_engine || '').trim().toLowerCase()
+    )
+        ? String(selected.preferences.recognition_engine).trim().toLowerCase()
+        : (fallbackWithKey?.preferences?.recognition_engine || defaults.recognition_engine);
+
+    const acoustidApiKey = String(selected.preferences.acoustid_api_key || '').trim()
+        || String(fallbackWithKey?.preferences?.acoustid_api_key || '').trim()
+        || defaults.acoustid_api_key;
+
+    return {
+        success: true,
+        source: selected.path,
+        preferences: {
+            ...selected.preferences,
+            recognition_engine: recognitionEngine,
+            acoustid_api_key: acoustidApiKey
+        }
+    };
+}
+
+function upsertAurivoPulsePref(text, key, value) {
+    const raw = String(text || '');
+    const escapedKey = key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    let serialized = '';
+    if (typeof value === 'boolean') {
+        serialized = value ? 'true' : 'false';
+    } else if (typeof value === 'number') {
+        serialized = String(Math.max(0, Math.round(value)));
+    } else {
+        const escaped = String(value || '')
+            .replace(/\\/g, '\\\\')
+            .replace(/"/g, '\\"');
+        serialized = `"${escaped}"`;
+    }
+    const line = `${key} = ${serialized}`;
+    const pattern = new RegExp(`^\\s*${escapedKey}\\s*=.*$`, 'm');
+    if (pattern.test(raw)) {
+        return raw.replace(pattern, line);
+    }
+    return `${raw.trimEnd()}\n${line}\n`;
+}
+
+async function saveAurivoPulsePreferences(update = {}) {
+    const current = readAurivoPulsePreferences();
+    const candidatePaths = getAurivoPulsePreferencePaths();
+    const next = {
+        ...getDefaultAurivoPulsePreferences(),
+        ...(current?.preferences || {}),
+        ...(update && typeof update === 'object' ? update : {})
+    };
+    const prefPath = current?.source || candidatePaths[0];
+    if (!prefPath) {
+        throw new Error('Aurivo-Pulse preference path bulunamadi');
+    }
+    await fs.promises.mkdir(path.dirname(prefPath), { recursive: true });
+    let text = '';
+    try {
+        text = await fs.promises.readFile(prefPath, 'utf8');
+    } catch {
+        text = '';
+    }
+    text = upsertAurivoPulsePref(text, 'enable_notifications', !!next.enable_notifications);
+    text = upsertAurivoPulsePref(text, 'enable_mpris', !!next.enable_mpris);
+    text = upsertAurivoPulsePref(text, 'enable_systray', !!next.enable_systray);
+    text = upsertAurivoPulsePref(text, 'no_duplicates', !!next.no_duplicates);
+    text = upsertAurivoPulsePref(
+        text,
+        'request_interval_secs_v3',
+        Number(next.request_interval_secs_v3) || getDefaultAurivoPulsePreferences().request_interval_secs_v3
+    );
+    text = upsertAurivoPulsePref(
+        text,
+        'buffer_size_secs',
+        Number(next.buffer_size_secs) || getDefaultAurivoPulsePreferences().buffer_size_secs
+    );
+    text = upsertAurivoPulsePref(text, 'current_device_name', String(next.current_device_name || ''));
+    text = upsertAurivoPulsePref(text, 'recognition_engine', String(next.recognition_engine || 'hybrid'));
+    text = upsertAurivoPulsePref(text, 'acoustid_api_key', String(next.acoustid_api_key || ''));
+    await fs.promises.writeFile(prefPath, text, 'utf8');
+
+    // Keep lowercase/uppercase config directories synchronized to avoid split settings.
+    for (const mirrorPath of candidatePaths) {
+        if (!mirrorPath || mirrorPath === prefPath) continue;
+        try {
+            await fs.promises.mkdir(path.dirname(mirrorPath), { recursive: true });
+            await fs.promises.writeFile(mirrorPath, text, 'utf8');
+        } catch (e) {
+            console.warn('[PULSE] preferences mirror write error:', mirrorPath, e?.message || e);
+        }
+    }
+
+    return { success: true, source: prefPath, preferences: next };
+}
+
+function getAurivoPulsePreferredDevice() {
+    for (const prefPath of getAurivoPulsePreferencePaths()) {
+        try {
+            if (!fs.existsSync(prefPath)) continue;
+            const text = fs.readFileSync(prefPath, 'utf8');
+            const audioDevice = parseAurivoPulsePreferredDevice(text);
+            if (audioDevice) {
+                return {
+                    success: true,
+                    audioDevice,
+                    source: prefPath
+                };
+            }
+        } catch (e) {
+            console.warn('[PULSE] preference read error:', e?.message || e);
+        }
+    }
+    return { success: true, audioDevice: '', source: '' };
+}
+
+function stopAurivoPulseListening() {
+    if (!aurivoPulseProc) {
+        aurivoPulseStatus.running = false;
+        return { success: true, running: false };
+    }
+
+    try {
+        aurivoPulseProc.kill('SIGTERM');
+    } catch (e) {
+        console.warn('[PULSE] kill error:', e?.message || e);
+    }
+
+    aurivoPulseProc = null;
+    aurivoPulseStatus.running = false;
+    aurivoPulseStatus.startedAt = null;
+    resetAurivoPulseRecognitionState();
+    emitPulseEvent('pulse:state', { running: false, reason: 'stopped', ...aurivoPulseStatus });
+    return { success: true, running: false };
+}
+
+function startAurivoPulseListening(options = {}) {
+    const requestedAudioDevice = String(options?.audioDevice || '').trim();
+    const requestedDisableMpris = !!options?.disableMpris;
+    const requestedBackgroundMode = !!options?.backgroundMode;
+    const requestedProfile = String(options?.profile || '').trim().toLowerCase();
+    const requestedIntervalRaw = Number(options?.requestInterval);
+    const requestedInterval = Number.isFinite(requestedIntervalRaw) && requestedIntervalRaw > 0
+        ? Math.max(1, Math.floor(requestedIntervalRaw))
+        : null;
+
+    if (aurivoPulseProc) {
+        const activeDevice = String(aurivoPulseStatus?.audioDevice || '').trim();
+        const activeDisableMpris = !!aurivoPulseStatus?.disableMpris;
+        const activeBackgroundMode = !!aurivoPulseStatus?.backgroundMode;
+        const activeProfile = String(aurivoPulseStatus?.profile || '').trim().toLowerCase();
+        const activeInterval = Number(aurivoPulseStatus?.requestInterval || 10);
+
+        const deviceChanged = !!requestedAudioDevice && requestedAudioDevice !== activeDevice;
+        const mprisChanged = requestedDisableMpris !== activeDisableMpris;
+        const backgroundModeChanged = requestedBackgroundMode !== activeBackgroundMode;
+        const profileChanged = requestedProfile !== activeProfile;
+        const intervalChanged = requestedInterval !== null && requestedInterval !== activeInterval;
+        const forceRestart = !!options?.forceRestart;
+
+        if (forceRestart || deviceChanged || mprisChanged || backgroundModeChanged || profileChanged || intervalChanged) {
+            stopAurivoPulseListening();
+        } else {
+            return { success: true, running: true, alreadyRunning: true, ...aurivoPulseStatus };
+        }
+    }
+
+    const launch = resolveAurivoPulseLaunch();
+    const args = ['listen', '--json'];
+    const audioDevice = requestedAudioDevice;
+    if (audioDevice) {
+        args.push('-d', audioDevice);
+    }
+    if (requestedDisableMpris) {
+        args.push('--disable-mpris');
+    }
+    if (requestedInterval !== null) {
+        args.push('-i', String(requestedInterval));
+    }
+    const child = spawn(launch.command, args, {
+        cwd: launch.cwd,
+        env: {
+            ...process.env,
+            AURIVO_PULSE_NO_GUI: '1',
+            AURIVO_PULSE_BACKGROUND_MODE: requestedBackgroundMode ? '1' : '0',
+            AURIVO_PULSE_BACKGROUND_PROFILE: requestedProfile || (requestedBackgroundMode ? 'background' : 'normal')
+        }
+    });
+
+    aurivoPulseProc = child;
+    aurivoPulseStatus = {
+        running: true,
+        startedAt: Date.now(),
+        command: `${launch.command} ${args.join(' ')}`,
+        source: launch.source,
+        audioDevice: audioDevice || '',
+        disableMpris: requestedDisableMpris,
+        backgroundMode: requestedBackgroundMode,
+        profile: requestedProfile || (requestedBackgroundMode ? 'background' : 'normal'),
+        requestInterval: requestedInterval !== null ? requestedInterval : 10,
+        lastError: ''
+    };
+    resetAurivoPulseRecognitionState();
+
+    const onStdoutLine = (line) => {
+        const result = parsePulseResultLine(line);
+        if (!result) return;
+        if (!shouldEmitStablePulseResult(result)) {
+            maybeEmitUncertainPulseResult(result);
+            return;
+        }
+        emitPulseEvent('pulse:result', result);
+    };
+    const onStderrLine = (line) => {
+        const text = String(line || '').trim();
+        if (!text) return;
+        aurivoPulseStatus.lastError = text;
+        emitPulseEvent('pulse:state', { running: true, warning: text, ...aurivoPulseStatus });
+    };
+
+    readline.createInterface({ input: child.stdout }).on('line', onStdoutLine);
+    readline.createInterface({ input: child.stderr }).on('line', onStderrLine);
+
+    child.once('error', (err) => {
+        // Eski bir process'in geç gelen olayı yeni oturumu bozmasın.
+        if (aurivoPulseProc !== child) return;
+        const message = err?.message || String(err || 'Aurivo-Pulse başlatılamadı');
+        aurivoPulseProc = null;
+        aurivoPulseStatus.running = false;
+        aurivoPulseStatus.startedAt = null;
+        aurivoPulseStatus.lastError = message;
+        emitPulseEvent('pulse:state', { running: false, error: message, ...aurivoPulseStatus });
+    });
+
+    child.once('close', (code, signal) => {
+        // stop->start sırasında eski process kapanışı yeni süreci "stopped" yapmamalı.
+        if (aurivoPulseProc !== child) return;
+        aurivoPulseProc = null;
+        aurivoPulseStatus.running = false;
+        aurivoPulseStatus.startedAt = null;
+        if (typeof code === 'number' && code !== 0) {
+            aurivoPulseStatus.lastError = `Aurivo-Pulse process exited with code ${code}`;
+        }
+        emitPulseEvent('pulse:state', {
+            running: false,
+            code,
+            signal,
+            ...aurivoPulseStatus
+        });
+    });
+
+    emitPulseEvent('pulse:state', { running: true, ...aurivoPulseStatus });
+    return { success: true, running: true, ...aurivoPulseStatus };
+}
+
+async function recognizeSongFromFileWithPulse(filePath) {
+    const input = String(filePath || '').trim();
+    if (!input) return { success: false, error: 'Geçersiz dosya yolu' };
+    if (!fs.existsSync(input)) return { success: false, error: 'Dosya bulunamadı' };
+
+    const launch = resolveAurivoPulseLaunch();
+    return await new Promise((resolve) => {
+        let out = '';
+        let err = '';
+        const child = spawn(launch.command, ['recognize', '--json', input], {
+            cwd: launch.cwd,
+            env: { ...process.env, AURIVO_PULSE_NO_GUI: '1' }
+        });
+
+        const timeout = setTimeout(() => {
+            try { child.kill('SIGTERM'); } catch { }
+            resolve({ success: false, error: 'Tanıma zaman aşımına uğradı' });
+        }, 60000);
+
+        child.stdout.on('data', (d) => { out += String(d || ''); });
+        child.stderr.on('data', (d) => { err += String(d || ''); });
+        child.once('error', (e) => {
+            clearTimeout(timeout);
+            resolve({ success: false, error: e?.message || String(e) });
+        });
+        child.once('close', () => {
+            clearTimeout(timeout);
+            const raw = String(out || '').trim();
+            if (!raw) {
+                resolve({ success: false, error: String(err || 'Tanıma sonucu alınamadı').trim() });
+                return;
+            }
+
+            const parsedResult = parsePulseResultLine(raw);
+            resolve({
+                success: true,
+                result: parsedResult
+            });
+        });
+    });
+}
+
+async function captureMonitorSampleAndRecognizeWithPulse(options = {}) {
+    if (process.platform !== 'linux') {
+        return { success: false, error: 'Bu fallback şu anda Linux ile sınırlı' };
+    }
+
+    const audioDevice = String(options?.audioDevice || '').trim();
+    if (!audioDevice) return { success: false, error: 'Ses cihazı gerekli' };
+    if (!/monitor/i.test(audioDevice)) {
+        return { success: false, error: 'Fallback için monitor cihazı gerekli' };
+    }
+
+    const durationSec = Math.max(6, Math.min(18, Number(options?.durationSec) || 10));
+    const ffmpegPath = getFfmpegPathForEnv();
+    const samplePath = path.join(app.getPath('temp'), `aurivo-pulse-sample-${Date.now()}.wav`);
+
+    const captureOk = await new Promise((resolve) => {
+        let err = '';
+        const child = spawn(ffmpegPath, [
+            '-y',
+            '-f', 'pulse',
+            '-i', audioDevice,
+            '-t', String(durationSec),
+            '-ac', '1',
+            '-ar', '16000',
+            '-vn',
+            samplePath
+        ], {
+            env: { ...process.env, AURIVO_PULSE_NO_GUI: '1' }
+        });
+
+        const timeout = setTimeout(() => {
+            try { child.kill('SIGTERM'); } catch { }
+            resolve({ success: false, error: 'Örnek kayıt zaman aşımına uğradı' });
+        }, (durationSec + 8) * 1000);
+
+        child.stderr.on('data', (d) => { err += String(d || ''); });
+        child.once('error', (e) => {
+            clearTimeout(timeout);
+            resolve({ success: false, error: e?.message || String(e) });
+        });
+        child.once('close', (code) => {
+            clearTimeout(timeout);
+            if (code === 0 && fs.existsSync(samplePath)) {
+                resolve({ success: true });
+                return;
+            }
+            resolve({ success: false, error: String(err || `ffmpeg exited with code ${code}`).trim() });
+        });
+    });
+
+    if (!captureOk?.success) {
+        try { fs.unlinkSync(samplePath); } catch { }
+        return captureOk;
+    }
+
+    try {
+        return await recognizeSongFromFileWithPulse(samplePath);
+    } finally {
+        try { fs.unlinkSync(samplePath); } catch { }
+    }
+}
 
 function getResourcePath(relPath) {
     // Dev: doğrudan repo içinden
-    // Prod: app.asar/index -> resources/
-    if (app.isPackaged) {
-        return path.join(process.resourcesPath, relPath);
+    if (!app.isPackaged) {
+        return path.join(__dirname, relPath);
     }
-    return path.join(__dirname, relPath);
+
+    // Prod: bazı dosyalar resources/, bazıları app.asar içinde kalır.
+    // Önce resources/ kontrol edilir, yoksa app.asar kökünden çözülür.
+    const resourcePath = path.join(process.resourcesPath, relPath);
+    if (fs.existsSync(resourcePath)) {
+        return resourcePath;
+    }
+
+    return path.join(app.getAppPath(), relPath);
 }
 
 function getAppFilePath(relPath) {
@@ -337,7 +1962,7 @@ function getAppFilePath(relPath) {
 }
 
 function getLocaleCandidatePaths(lang) {
-    const normalized = normalizeUiLang(lang) || 'en';
+    const normalized = normalizeUiLang(lang) || 'en-US';
     const filename = `${normalized}.json`;
 
     // Tercih: app.asar (paket) / proje kökü (dev)
@@ -378,69 +2003,6 @@ async function readFirstJson(paths) {
     return null;
 }
 
-function getDownloaderCliPath() {
-    return getResourcePath(path.join('Aurivo-Dawlod', 'aurivo_download_cli.py'));
-}
-
-function getPythonCandidates() {
-    const out = [];
-
-    const envPython = process.env.AURIVO_PYTHON;
-    if (envPython) out.push(envPython);
-
-    // Dev: önce repo-yerel venv
-    if (!app.isPackaged) {
-        if (process.platform === 'win32') {
-            out.push(path.join(__dirname, '.venv', 'Scripts', 'python.exe'));
-        } else {
-            out.push(path.join(__dirname, '.venv', 'bin', 'python'));
-        }
-    }
-
-    if (process.platform !== 'win32') out.push('python3');
-    out.push('python');
-
-    return [...new Set(out)].filter(Boolean);
-}
-
-function spawnPythonWithFallback(args, spawnOpts) {
-    const candidates = getPythonCandidates();
-    let idx = 0;
-
-    return new Promise((resolve, reject) => {
-        const tryNext = (lastErr) => {
-            if (idx >= candidates.length) {
-                reject(lastErr || new Error('Python bulunamadı (AURIVO_PYTHON ayarlayabilir veya python3/python kurabilirsiniz).'));
-                return;
-            }
-
-            const py = candidates[idx++];
-            let child = null;
-            try {
-                child = spawn(py, args, {
-                    ...spawnOpts,
-                    stdio: ['ignore', 'pipe', 'pipe']
-                });
-            } catch (e) {
-                tryNext(e);
-                return;
-            }
-
-            child.once('error', (err) => {
-                if (err && err.code === 'ENOENT') {
-                    tryNext(err);
-                    return;
-                }
-                reject(err);
-            });
-
-            resolve(child);
-        };
-
-        tryNext(null);
-    });
-}
-
 function getAppIconPath() {
     if (process.platform === 'win32') {
         return getResourcePath(path.join('icons', 'aurivo.ico'));
@@ -461,18 +2023,298 @@ function getSettingsPath() {
     return path.join(app.getPath('userData'), 'settings.json');
 }
 
+async function readSettingsFileSafe() {
+    try {
+        const data = await fs.promises.readFile(getSettingsPath(), 'utf8');
+        return JSON.parse(data);
+    } catch {
+        return {};
+    }
+}
+
+function deriveMainWindowCloseToTray(settings) {
+    const ui = (settings?.ui && typeof settings.ui === 'object') ? settings.ui : {};
+    return ui.closeToTray !== false;
+}
+
+function refreshMainWindowBehaviorSettingsSync() {
+    try {
+        const data = fs.readFileSync(getSettingsPath(), 'utf8');
+        const parsed = JSON.parse(data);
+        mainWindowCloseToTray = deriveMainWindowCloseToTray(parsed);
+    } catch {
+        mainWindowCloseToTray = true;
+    }
+}
+
+function clampSettingsWindowBounds(rawBounds) {
+    if (!rawBounds || typeof rawBounds !== 'object') return null;
+
+    const width = Math.max(980, Math.min(1800, Number(rawBounds.width) || 1180));
+    const height = Math.max(720, Math.min(1400, Number(rawBounds.height) || 860));
+    const x = Number(rawBounds.x);
+    const y = Number(rawBounds.y);
+
+    const display = screen.getDisplayMatching({
+        x: Number.isFinite(x) ? x : 0,
+        y: Number.isFinite(y) ? y : 0,
+        width,
+        height
+    }) || screen.getPrimaryDisplay();
+    const workArea = display?.workArea || { x: 0, y: 0, width: 1920, height: 1080 };
+
+    const nextX = Number.isFinite(x)
+        ? Math.min(Math.max(x, workArea.x), workArea.x + Math.max(0, workArea.width - width))
+        : undefined;
+    const nextY = Number.isFinite(y)
+        ? Math.min(Math.max(y, workArea.y), workArea.y + Math.max(0, workArea.height - height))
+        : undefined;
+
+    return {
+        width,
+        height,
+        ...(Number.isFinite(nextX) ? { x: nextX } : {}),
+        ...(Number.isFinite(nextY) ? { y: nextY } : {})
+    };
+}
+
+async function getSettingsWindowState() {
+    const settings = await readSettingsFileSafe();
+    const ui = (settings?.ui && typeof settings.ui === 'object') ? settings.ui : {};
+    const stored = (ui.settingsWindow && typeof ui.settingsWindow === 'object') ? ui.settingsWindow : {};
+    return {
+        bounds: clampSettingsWindowBounds(stored.bounds),
+        maximized: stored.maximized === true
+    };
+}
+
+async function persistSettingsWindowState(win) {
+    if (!win || win.isDestroyed()) return;
+    try {
+        const settings = await readSettingsFileSafe();
+        if (!settings.ui || typeof settings.ui !== 'object') settings.ui = {};
+        settings.ui.settingsWindow = {
+            bounds: clampSettingsWindowBounds(win.getBounds()),
+            maximized: win.isMaximized()
+        };
+        await writeJsonFileAtomic(getSettingsPath(), sanitizeSensitiveSettings(settings));
+    } catch (error) {
+        console.error('[SETTINGS] persist window state error:', error);
+    }
+}
+
+const WEBVIEW_PARTITION = 'persist:aurivo-web';
+
+function getWebSessions() {
+    const out = [];
+    const seen = new Set();
+    const add = (ses) => {
+        if (!ses) return;
+        const key = ses.id || ses.partition || Math.random().toString(36);
+        if (seen.has(key)) return;
+        seen.add(key);
+        out.push(ses);
+    };
+    try { add(session.fromPartition(WEBVIEW_PARTITION)); } catch { }
+    try { add(session.defaultSession); } catch { }
+    return out;
+}
+
+const WEB_ALLOWED_HOSTS_MAIN = new Set([
+    'google.com',
+    'www.google.com',
+    'youtube.com',
+    'www.youtube.com',
+    'm.youtube.com',
+    'music.youtube.com',
+    'youtu.be',
+    'accounts.google.com',
+    'www.deezer.com',
+    'deezer.com',
+    'soundcloud.com',
+    'www.soundcloud.com',
+    'facebook.com',
+    'www.facebook.com',
+    'm.facebook.com',
+    'instagram.com',
+    'www.instagram.com',
+    'tiktok.com',
+    'www.tiktok.com',
+    'm.tiktok.com',
+    'x.com',
+    'www.x.com',
+    'twitter.com',
+    'www.twitter.com',
+    'reddit.com',
+    'www.reddit.com',
+    'old.reddit.com',
+    'twitch.tv',
+    'www.twitch.tv'
+]);
+
+const WEB_ALLOWED_SUFFIXES_MAIN = [
+    '.youtube.com',
+    '.google.com',
+    '.googleusercontent.com',
+    '.deezer.com',
+    '.soundcloud.com',
+    '.facebook.com',
+    '.instagram.com',
+    '.tiktok.com',
+    '.x.com',
+    '.twitter.com',
+    '.reddit.com',
+    '.twitch.tv'
+];
+
+function parseHttpUrlMain(raw) {
+    try {
+        const u = new URL(String(raw || '').trim());
+        if (!/^https?:$/i.test(u.protocol)) return null;
+        return u;
+    } catch {
+        return null;
+    }
+}
+
+function isAllowedWebUrlMain(raw) {
+    const parsed = parseHttpUrlMain(raw);
+    if (!parsed) return false;
+    const host = String(parsed.hostname || '').toLowerCase();
+    if (WEB_ALLOWED_HOSTS_MAIN.has(host)) return true;
+    return WEB_ALLOWED_SUFFIXES_MAIN.some((suffix) => host.endsWith(suffix));
+}
+
+function isAllowedWebHostMain(hostname) {
+    const host = String(hostname || '').trim().toLowerCase();
+    if (!host) return false;
+    if (WEB_ALLOWED_HOSTS_MAIN.has(host)) return true;
+    return WEB_ALLOWED_SUFFIXES_MAIN.some((suffix) => host.endsWith(suffix));
+}
+
+// Cert doğrulama için platformların kullandığı CDN hostları.
+// Not: Bu liste gezinme allowlist'i değildir; yalnızca -202 TLS zinciri sorununda kullanılır.
+const WEB_CERT_TRUST_SUFFIXES_MAIN = [
+    '.sndcdn.com',
+    '.googlevideo.com',
+    '.gvt1.com'
+];
+
+function isTrustedWebCertHostMain(hostname) {
+    const host = String(hostname || '').trim().toLowerCase();
+    if (!host) return false;
+    if (isAllowedWebHostMain(host)) return true;
+    return WEB_CERT_TRUST_SUFFIXES_MAIN.some((suffix) => host.endsWith(suffix));
+}
+
+function isTrustedWebCertUrlMain(raw) {
+    try {
+        const u = new URL(String(raw || '').trim());
+        return isTrustedWebCertHostMain(u.hostname);
+    } catch {
+        return false;
+    }
+}
+
+function sanitizeSensitiveSettings(input) {
+    const source = (input && typeof input === 'object') ? input : {};
+    const clone = JSON.parse(JSON.stringify(source));
+
+    const sensitiveKeyPattern = /(^|_|\.)((pass(word)?)|(email)|(token)|(cookie)|(session)|(auth)|(credential))/i;
+
+    const walk = (obj) => {
+        if (!obj || typeof obj !== 'object') return;
+        for (const key of Object.keys(obj)) {
+            const value = obj[key];
+            if (sensitiveKeyPattern.test(key)) {
+                delete obj[key];
+                continue;
+            }
+            if (value && typeof value === 'object') {
+                walk(value);
+            }
+        }
+    };
+
+    walk(clone);
+
+    // Explicit deny-list for potential future fields.
+    if (clone.web && typeof clone.web === 'object') {
+        delete clone.web.credentials;
+        delete clone.web.cookies;
+        delete clone.web.auth;
+    }
+
+    return clone;
+}
+
 // ============================================================
 // UI I18N (Ana İşlem)
 // - Renderer seçilen dili settings.json'a yazar: ui.language
 // - Yedek: app.getLocale(), sonra İngilizce
 // ============================================================
-const UI_SUPPORTED_LANGS = new Set(['tr', 'en', 'ar', 'fr', 'de', 'es', 'hi']);
+const UI_SUPPORTED_LANGS = new Set([
+    'ar-SA',
+    'bn-BD',
+    'de-DE',
+    'el-GR',
+    'en-US',
+    'es-ES',
+    'fa-IR',
+    'fi-FI',
+    'fr-FR',
+    'hi-IN',
+    'hu-HU',
+    'it-IT',
+    'ja-JP',
+    'ne-NP',
+    'pl-PL',
+    'pt-BR',
+    'ru-RU',
+    'tr-TR',
+    'uk-UA',
+    'vi-VN',
+    'zh-CN',
+    'zh-TW'
+]);
+const UI_DEFAULT_BY_BASE = {
+    ar: 'ar-SA',
+    bn: 'bn-BD',
+    de: 'de-DE',
+    el: 'el-GR',
+    en: 'en-US',
+    es: 'es-ES',
+    fa: 'fa-IR',
+    fi: 'fi-FI',
+    fr: 'fr-FR',
+    hi: 'hi-IN',
+    hu: 'hu-HU',
+    it: 'it-IT',
+    ja: 'ja-JP',
+    ne: 'ne-NP',
+    pl: 'pl-PL',
+    pt: 'pt-BR',
+    ru: 'ru-RU',
+    tr: 'tr-TR',
+    uk: 'uk-UA',
+    vi: 'vi-VN',
+    zh: 'zh-CN'
+};
 const uiMessagesCache = new Map(); // lang -> messages
 
 function normalizeUiLang(lang) {
     if (!lang) return null;
-    const base = String(lang).trim().toLowerCase().split(/[-_]/)[0];
-    return UI_SUPPORTED_LANGS.has(base) ? base : null;
+    const raw = String(lang).trim().replace('_', '-');
+    const [basePart, regionPart] = raw.split('-');
+    const base = String(basePart || '').toLowerCase();
+    const region = regionPart ? String(regionPart).toUpperCase() : '';
+
+    if (base && region) {
+        const full = `${base}-${region}`;
+        if (UI_SUPPORTED_LANGS.has(full)) return full;
+    }
+
+    return UI_DEFAULT_BY_BASE[base] || null;
 }
 
 function deepGet(obj, pathStr) {
@@ -504,21 +2346,226 @@ function getUiLanguageSync() {
         // yoksay
     }
 
-    return normalizeUiLang(app.getLocale()) || 'en';
+    return normalizeUiLang(app.getLocale()) || 'en-US';
+}
+
+function uiLangToPosixLocale(lang) {
+    const normalized = normalizeUiLang(lang) || 'en-US';
+    const parts = normalized.split('-');
+    const base = String(parts[0] || 'en').toLowerCase();
+    const region = String(parts[1] || 'US').toUpperCase();
+    return `${base}_${region}.UTF-8`;
+}
+
+function uiLangToLocaleChain(lang) {
+    const normalized = normalizeUiLang(lang) || 'en-US';
+    const parts = normalized.split('-');
+    const base = String(parts[0] || 'en').toLowerCase();
+    const region = String(parts[1] || 'US').toUpperCase();
+    return `${base}_${region}:${base}:en_US:en`;
+}
+
+function resolveLinuxDesktopFileHint() {
+    if (process.platform !== 'linux') return '';
+    const home = app?.getPath?.('home') || process.env.HOME || '';
+    const candidates = [
+        path.join(home, '.local', 'share', 'applications', 'aurivo-media-player.desktop'),
+        path.join(home, '.local', 'share', 'applications', 'com.aurivo.mediaplayer.desktop'),
+        path.join('/usr/local/share/applications', 'aurivo-media-player.desktop'),
+        path.join('/usr/local/share/applications', 'com.aurivo.mediaplayer.desktop'),
+        path.join('/usr/share/applications', 'aurivo-media-player.desktop'),
+        path.join('/usr/share/applications', 'com.aurivo.mediaplayer.desktop')
+    ];
+    for (const p of candidates) {
+        try {
+            if (p && fs.existsSync(p)) return p;
+        } catch {
+            // yoksay
+        }
+    }
+    return '';
+}
+
+function buildPulseGuiEnv() {
+    const uiLang = getUiLanguageSync();
+    const posixLocale = uiLangToPosixLocale(uiLang);
+    const localeChain = uiLangToLocaleChain(uiLang);
+    const env = {
+        ...process.env,
+        AURIVO_PULSE_NO_GUI: '0',
+        AURIVO_LANG: uiLang,
+        LANG: posixLocale,
+        LC_ALL: posixLocale,
+        LANGUAGE: localeChain,
+        AURIVO_PULSE_BRIDGE_URL: getPulseBridgeUrl()
+    };
+
+    // Linux'ta masaüstü eşleştirme ipucu ver (GNOME/KDE panel grouping için).
+    if (process.platform === 'linux') {
+        const desktopHint = resolveLinuxDesktopFileHint();
+        if (desktopHint) {
+            env.BAMF_DESKTOP_FILE_HINT = desktopHint;
+            env.GIO_LAUNCHED_DESKTOP_FILE = desktopHint;
+        }
+        // Ayrı kimlik yerine ana uygulama kimliği.
+        env.AURIVO_APP_ID = 'aurivo-media-player';
+    }
+
+    return env;
+}
+
+function applyUiLocaleOverrides(lang, messages) {
+    const normalized = normalizeUiLang(lang) || 'en-US';
+    const out = (messages && typeof messages === 'object') ? { ...messages } : {};
+    const deepSet = (obj, pathStr, value) => {
+        const parts = String(pathStr).split('.').filter(Boolean);
+        if (!parts.length) return;
+        let cur = obj;
+        for (let i = 0; i < parts.length - 1; i++) {
+            const p = parts[i];
+            if (!cur[p] || typeof cur[p] !== 'object') cur[p] = {};
+            cur = cur[p];
+        }
+        cur[parts[parts.length - 1]] = value;
+    };
+    const deepEnsure = (key, value) => {
+        if (deepGet(out, key) === undefined) deepSet(out, key, value);
+    };
+
+    deepEnsure('trayMedia.previous', 'Previous track');
+    deepEnsure('trayMedia.play', 'Play');
+    deepEnsure('trayMedia.pause', 'Pause');
+    deepEnsure('trayMedia.stop', 'Stop');
+    deepEnsure('trayMedia.stopAfterCurrent', 'Stop after current track');
+    deepEnsure('trayMedia.next', 'Next track');
+    deepEnsure('trayMedia.mute', 'Mute');
+    deepEnsure('trayMedia.unmute', 'Unmute');
+    deepEnsure('trayMedia.like', 'Like');
+    deepEnsure('trayMedia.show', 'Show');
+    deepEnsure('trayMedia.exit', 'Exit');
+
+    if (normalized === 'tr-TR') {
+        deepEnsure('appMenu.file', 'Dosya');
+        deepEnsure('appMenu.edit', 'Düzen');
+        deepEnsure('appMenu.view', 'Görünüm');
+        deepEnsure('appMenu.window', 'Pencere');
+        deepEnsure('appMenu.help', 'Yardım');
+        deepEnsure('appMenu.quit', 'Çıkış');
+        deepEnsure('appMenu.close', 'Kapat');
+        deepEnsure('appMenu.minimize', 'Küçült');
+        deepEnsure('appMenu.reload', 'Yenile');
+        deepEnsure('appMenu.toggleDevTools', 'Geliştirici araçları');
+        deepEnsure('appMenu.resetZoom', 'Yakınlaştırmayı sıfırla');
+        deepEnsure('appMenu.zoomIn', 'Yakınlaştır');
+        deepEnsure('appMenu.zoomOut', 'Uzaklaştır');
+        deepEnsure('appMenu.toggleFullscreen', 'Tam ekran');
+        deepEnsure('appMenu.undo', 'Geri al');
+        deepEnsure('appMenu.redo', 'Yinele');
+        deepEnsure('appMenu.cut', 'Kes');
+        deepEnsure('appMenu.copy', 'Kopyala');
+        deepEnsure('appMenu.paste', 'Yapıştır');
+        deepEnsure('appMenu.selectAll', 'Tümünü seç');
+        deepEnsure('trayMedia.previous', 'Önceki parça');
+        deepEnsure('trayMedia.play', 'Oynat');
+        deepEnsure('trayMedia.pause', 'Duraklat');
+        deepEnsure('trayMedia.stop', 'Durdur');
+        deepEnsure('trayMedia.stopAfterCurrent', 'Bu parçadan sonra durdur');
+        deepEnsure('trayMedia.next', 'Sonraki parça');
+        deepEnsure('trayMedia.mute', 'Sessiz');
+        deepEnsure('trayMedia.unmute', 'Sesi aç');
+        deepEnsure('trayMedia.like', 'Beğen');
+        deepEnsure('trayMedia.show', 'Göster');
+        deepEnsure('trayMedia.exit', 'Çık');
+    }
+    if (normalized === 'ar-SA') {
+        deepEnsure('appMenu.file', 'ملف');
+        deepEnsure('appMenu.edit', 'تحرير');
+        deepEnsure('appMenu.view', 'عرض');
+        deepEnsure('appMenu.window', 'نافذة');
+        deepEnsure('appMenu.help', 'مساعدة');
+        deepEnsure('appMenu.quit', 'خروج');
+        deepEnsure('appMenu.close', 'إغلاق');
+        deepEnsure('appMenu.minimize', 'تصغير');
+        deepEnsure('appMenu.reload', 'إعادة تحميل');
+        deepEnsure('appMenu.toggleDevTools', 'أدوات المطور');
+        deepEnsure('appMenu.resetZoom', 'إعادة تعيين التكبير');
+        deepEnsure('appMenu.zoomIn', 'تكبير');
+        deepEnsure('appMenu.zoomOut', 'تصغير التكبير');
+        deepEnsure('appMenu.toggleFullscreen', 'ملء الشاشة');
+        deepEnsure('appMenu.undo', 'تراجع');
+        deepEnsure('appMenu.redo', 'إعادة');
+        deepEnsure('appMenu.cut', 'قص');
+        deepEnsure('appMenu.copy', 'نسخ');
+        deepEnsure('appMenu.paste', 'لصق');
+        deepEnsure('appMenu.selectAll', 'تحديد الكل');
+        deepEnsure('trayMedia.previous', 'المقطع السابق');
+        deepEnsure('trayMedia.play', 'تشغيل');
+        deepEnsure('trayMedia.pause', 'إيقاف مؤقت');
+        deepEnsure('trayMedia.stop', 'إيقاف');
+        deepEnsure('trayMedia.stopAfterCurrent', 'إيقاف بعد المقطع الحالي');
+        deepEnsure('trayMedia.next', 'المقطع التالي');
+        deepEnsure('trayMedia.mute', 'كتم');
+        deepEnsure('trayMedia.unmute', 'إلغاء الكتم');
+        deepEnsure('trayMedia.like', 'إعجاب');
+        deepEnsure('trayMedia.show', 'إظهار');
+        deepEnsure('trayMedia.exit', 'خروج');
+    }
+
+    return out;
+}
+
+const UI_LEGACY_KEY_MAP = {
+    'settings.title': ['preferences'],
+    'settings.tabs.download': ['download'],
+    'settings.tabs.audio': ['audio'],
+    'about.title': ['about'],
+    'appMenu.quit': ['quit'],
+    'appMenu.close': ['close']
+};
+
+function tFromMessagesWithLegacy(messages, lang, key, vars) {
+    let raw = deepGet(messages, key);
+    if (typeof raw !== 'string') {
+        const legacy = UI_LEGACY_KEY_MAP[key];
+        if (Array.isArray(legacy)) {
+            for (const lk of legacy) {
+                raw = deepGet(messages, lk);
+                if (typeof raw === 'string') break;
+            }
+        }
+    }
+
+    if (typeof raw !== 'string' && lang !== 'en-US') {
+        const en = loadUiMessagesSync('en-US');
+        raw = deepGet(en, key);
+        if (typeof raw !== 'string') {
+            const legacy = UI_LEGACY_KEY_MAP[key];
+            if (Array.isArray(legacy)) {
+                for (const lk of legacy) {
+                    raw = deepGet(en, lk);
+                    if (typeof raw === 'string') break;
+                }
+            }
+        }
+    }
+
+    if (typeof raw !== 'string') return String(key);
+    return formatTemplate(raw, vars);
 }
 
 function loadUiMessagesSync(lang) {
-    const normalized = normalizeUiLang(lang) || 'en';
+    const normalized = normalizeUiLang(lang) || 'en-US';
     if (uiMessagesCache.has(normalized)) return uiMessagesCache.get(normalized);
     try {
         const json = readFirstJsonSync(getLocaleCandidatePaths(normalized));
         if (json) {
-            uiMessagesCache.set(normalized, json || {});
-            return json || {};
+            const patched = applyUiLocaleOverrides(normalized, json || {});
+            uiMessagesCache.set(normalized, patched);
+            return patched;
         }
     } catch {
-        if (normalized !== 'en') return loadUiMessagesSync('en');
-        uiMessagesCache.set('en', {});
+        if (normalized !== 'en-US') return loadUiMessagesSync('en-US');
+        uiMessagesCache.set('en-US', {});
         return {};
     }
 }
@@ -526,12 +2573,7 @@ function loadUiMessagesSync(lang) {
 function tMainSync(key, vars) {
     const lang = getUiLanguageSync();
     const messages = loadUiMessagesSync(lang);
-    let raw = deepGet(messages, key);
-    if (typeof raw !== 'string' && lang !== 'en') {
-        raw = deepGet(loadUiMessagesSync('en'), key);
-    }
-    if (typeof raw !== 'string') return String(key);
-    return formatTemplate(raw, vars);
+    return tFromMessagesWithLegacy(messages, lang, key, vars);
 }
 
 function installAppMenu() {
@@ -616,7 +2658,7 @@ async function writeJsonFileAtomic(filePath, obj) {
         // yoksay
     }
 
-    const tmpPath = `${filePath}.tmp`;
+    const tmpPath = `${filePath}.${process.pid}.${Date.now()}.${Math.random().toString(16).slice(2)}.tmp`;
     const json = JSON.stringify(obj ?? {}, null, 2);
     await fs.promises.writeFile(tmpPath, json, 'utf8');
 
@@ -630,6 +2672,8 @@ async function writeJsonFileAtomic(filePath, obj) {
             return;
         }
         throw e;
+    } finally {
+        await fs.promises.unlink(tmpPath).catch(() => { /* yoksay */ });
     }
 }
 
@@ -707,11 +2751,11 @@ async function updateEq32SettingsInFile(patch) {
 }
 
 function createWindow() {
+    refreshMainWindowBehaviorSettingsSync();
+
     mainWindow = new BrowserWindow({
         width: 1500,
         height: 900,
-        minWidth: 1200,
-        minHeight: 720,
         backgroundColor: '#121212',
         icon: getAppIconImage(),
         webPreferences: {
@@ -720,6 +2764,7 @@ function createWindow() {
             contextIsolation: true,
             sandbox: false,  // Preload'da Node.js modülleri için gerekli
             webviewTag: true,  // WebView desteği
+            plugins: true, // DRM/CDM tabanlı web oynatıcılar için gerekli olabilir
             spellcheck: false
         },
         frame: true,
@@ -732,6 +2777,31 @@ function createWindow() {
     if (process.platform === 'linux' && typeof mainWindow.setIcon === 'function') {
         mainWindow.setIcon(getAppIconImage());
     }
+
+    // WebView attach hardening: force isolated guest settings and block preload injection.
+    mainWindow.webContents.on('will-attach-webview', (event, webPreferences, params) => {
+        try {
+            webPreferences.nodeIntegration = false;
+            webPreferences.contextIsolation = true;
+            // Bazı web platformlarda sandbox=true bazı akışlarda oynatmayı engelleyebiliyor.
+            webPreferences.sandbox = false;
+            webPreferences.webSecurity = true;
+            webPreferences.enableRemoteModule = false;
+            webPreferences.allowRunningInsecureContent = false;
+            webPreferences.plugins = true;
+            // Guest preload disallow: no bridge in third-party pages.
+            delete webPreferences.preload;
+
+            const targetUrl = String(params?.src || '').trim();
+            // Initial webview src is often about:blank; block only non-blank external URLs.
+            if (targetUrl && targetUrl !== 'about:blank' && !isAllowedWebUrlMain(targetUrl)) {
+                event.preventDefault();
+            }
+        } catch (e) {
+            console.warn('[SECURITY] will-attach-webview hardening error:', e?.message || e);
+            event.preventDefault();
+        }
+    });
 
     mainWindow.loadFile(path.join(__dirname, 'index.html'));
 
@@ -833,9 +2903,14 @@ function createWindow() {
     // Pencere kapatma davranışı: tray'e minimize et
     mainWindow.on('close', (event) => {
         if (!app.isQuitting) {
-            event.preventDefault();
-            mainWindow.hide();
-            return false;
+            if (mainWindowCloseToTray) {
+                event.preventDefault();
+                // Ana uygulama arka plana alınırken dinle penceresi açık kalmamalı.
+                stopAurivoPulseGuiWindow();
+                mainWindow.hide();
+                return false;
+            }
+            app.isQuitting = true;
         }
     });
 
@@ -848,12 +2923,114 @@ function createWindow() {
     });
 }
 
-function createTray() {
-    const iconPath = process.platform === 'win32'
-        ? getResourcePath(path.join('icons', 'aurivo_512.png'))
-        : getResourcePath(path.join('icons', 'aurivo_512.png'));
+async function createSettingsWindow(defaultTab = 'playback') {
+    const tab = String(defaultTab || 'playback').trim() || 'playback';
 
-    tray = new Tray(nativeImage.createFromPath(iconPath));
+    if (settingsWindow && !settingsWindow.isDestroyed()) {
+        try {
+            settingsWindow.webContents.send('settings:navigate', { tab });
+        } catch (e) {
+            console.error('[SETTINGS] navigate existing window error:', e);
+        }
+        settingsWindow.show();
+        settingsWindow.focus();
+        return settingsWindow;
+    }
+
+    const windowState = await getSettingsWindowState();
+    const windowBounds = windowState.bounds || { width: 1180, height: 860 };
+
+    let allowSettingsWindowClose = false;
+
+    settingsWindow = new BrowserWindow({
+        ...windowBounds,
+        minWidth: 980,
+        minHeight: 720,
+        backgroundColor: '#121212',
+        icon: getAppIconImage(),
+        parent: mainWindow && !mainWindow.isDestroyed() ? mainWindow : undefined,
+        modal: false,
+        show: false,
+        title: 'Aurivo Ayarlar',
+        autoHideMenuBar: true,
+        webPreferences: {
+            preload: path.join(__dirname, 'preload.js'),
+            additionalArguments: [`--aurivo-view=settings`, `--aurivo-settings-tab=${tab}`],
+            nodeIntegration: false,
+            contextIsolation: true,
+            sandbox: false,
+            webviewTag: true,
+            plugins: true,
+            spellcheck: false
+        }
+    });
+
+    if (process.platform === 'linux' && typeof settingsWindow.setIcon === 'function') {
+        settingsWindow.setIcon(getAppIconImage());
+    }
+
+    settingsWindow.loadFile(path.join(__dirname, 'settings.html'));
+
+    settingsWindow.once('ready-to-show', () => {
+        if (!settingsWindow || settingsWindow.isDestroyed()) return;
+        if (windowState.maximized) {
+            settingsWindow.maximize();
+        }
+        settingsWindow.show();
+        settingsWindow.focus();
+    });
+
+    let persistTimer = null;
+    const queuePersist = () => {
+        if (!settingsWindow || settingsWindow.isDestroyed()) return;
+        clearTimeout(persistTimer);
+        persistTimer = setTimeout(() => {
+            persistSettingsWindowState(settingsWindow);
+        }, 180);
+    };
+
+    settingsWindow.on('resize', queuePersist);
+    settingsWindow.on('move', queuePersist);
+    settingsWindow.on('maximize', queuePersist);
+    settingsWindow.on('unmaximize', queuePersist);
+
+    settingsWindow.on('close', (event) => {
+        if (allowSettingsWindowClose) return;
+        event.preventDefault();
+        try {
+            settingsWindow.webContents.send('settings:requestClose');
+        } catch (error) {
+            console.error('[SETTINGS] requestClose send error:', error);
+            allowSettingsWindowClose = true;
+            settingsWindow.close();
+        }
+    });
+
+    settingsWindow.on('closed', () => {
+        clearTimeout(persistTimer);
+        settingsWindow = null;
+    });
+
+    settingsWindow.webContents.on('destroyed', () => {
+        clearTimeout(persistTimer);
+    });
+
+    settingsWindow.__allowClose = () => {
+        allowSettingsWindowClose = true;
+    };
+
+    return settingsWindow;
+}
+
+function createTray() {
+    const trayIconName = process.platform === 'linux' ? 'aurivo_24.png' : 'aurivo_512.png';
+    const iconPath = getResourcePath(path.join('icons', trayIconName));
+    let trayIcon = nativeImage.createFromPath(iconPath);
+    if (process.platform === 'linux' && trayIcon && !trayIcon.isEmpty()) {
+        trayIcon = trayIcon.resize({ width: 24, height: 24 });
+    }
+
+    tray = new Tray(trayIcon);
 
     updateTrayMenu({ isPlaying: false, currentTrack: 'Aurivo Media Player' });
 
@@ -882,10 +3059,21 @@ function createMPRIS() {
     }
 
     try {
+        const desktopEntryCandidates = ['aurivo', 'com.aurivo.mediaplayer', 'aurivo-media-player'];
+        const desktopEntry = desktopEntryCandidates.find((entry) => {
+            const file = `${entry}.desktop`;
+            const paths = [
+                path.join('/usr/share/applications', file),
+                path.join('/usr/local/share/applications', file),
+                path.join(app.getPath('home'), '.local/share/applications', file)
+            ];
+            return paths.some((p) => fs.existsSync(p));
+        }) || 'aurivo';
+
         mprisPlayer = Player({
             name: 'aurivo',
             identity: 'Aurivo Media Player',
-            desktopEntry: 'aurivo-media-player', // KDE/GNOME eşleşmesi için gerekli
+            desktopEntry, // KDE/GNOME sistem panelinde uygulama ikonunu eşleştirir
             supportedUriSchemes: ['file'],
             supportedMimeTypes: ['audio/mpeg', 'audio/flac', 'audio/x-wav', 'audio/ogg'],
             supportedInterfaces: ['player']
@@ -896,44 +3084,68 @@ function createMPRIS() {
         mprisPlayer.canControl = true;
         mprisPlayer.canPlay = true;
         mprisPlayer.canPause = true;
+        mprisPlayer.canStop = true;
+        mprisPlayer.canRaise = true;
+        mprisPlayer.canQuit = true;
         mprisPlayer.canGoNext = true;
         mprisPlayer.canGoPrevious = true;
 
-        // Oynatma kontrollerini bağla
+        // Oynatma kontrollerini bağla (toggle yerine explicit komutlar)
         mprisPlayer.on('play', () => {
+            console.log('[MPRIS] play');
             if (mainWindow && !mainWindow.isDestroyed()) {
-                mainWindow.webContents.send('media-control', 'play-pause');
+                mainWindow.webContents.send('media-control', 'play');
             }
         });
 
         mprisPlayer.on('pause', () => {
+            console.log('[MPRIS] pause');
             if (mainWindow && !mainWindow.isDestroyed()) {
-                mainWindow.webContents.send('media-control', 'play-pause');
+                mainWindow.webContents.send('media-control', 'pause');
             }
         });
 
         mprisPlayer.on('playpause', () => {
+            console.log('[MPRIS] playpause');
             if (mainWindow && !mainWindow.isDestroyed()) {
                 mainWindow.webContents.send('media-control', 'play-pause');
             }
         });
 
         mprisPlayer.on('stop', () => {
+            console.log('[MPRIS] stop');
             if (mainWindow && !mainWindow.isDestroyed()) {
                 mainWindow.webContents.send('media-control', 'stop');
             }
         });
 
         mprisPlayer.on('next', () => {
+            console.log('[MPRIS] next');
             if (mainWindow && !mainWindow.isDestroyed()) {
                 mainWindow.webContents.send('media-control', 'next');
             }
         });
 
         mprisPlayer.on('previous', () => {
+            console.log('[MPRIS] previous');
             if (mainWindow && !mainWindow.isDestroyed()) {
                 mainWindow.webContents.send('media-control', 'previous');
             }
+        });
+
+        // Sistem medya menüsündeki "Aç / Çık" için
+        mprisPlayer.on('raise', () => {
+            console.log('[MPRIS] raise');
+            if (mainWindow && !mainWindow.isDestroyed()) {
+                mainWindow.show();
+                mainWindow.focus();
+            }
+        });
+
+        mprisPlayer.on('quit', () => {
+            console.log('[MPRIS] quit');
+            app.isQuitting = true;
+            app.quit();
         });
 
         mprisPlayer.on('seek', (offset) => {
@@ -961,7 +3173,7 @@ function createMPRIS() {
             return mprisPlayer.position || 0;
         };
 
-        console.log('✓ MPRIS player başlatıldı');
+        console.log('✓ MPRIS player başlatıldı (desktopEntry:', desktopEntry + ')');
     } catch (e) {
         // MPRIS başlatma hatalarını sessizce yoksay
         console.log('MPRIS başlatma atlandı:', e.message);
@@ -1016,17 +3228,27 @@ function updateMPRISMetadata(metadata) {
 function updateTrayMenu(state) {
     if (!tray) return;
 
-    const { isPlaying = false, currentTrack = 'Aurivo Media Player', isMuted = false, stopAfterCurrent = false } = state;
+    const safeState = (state && typeof state === 'object') ? state : {};
+    const mergedState = {
+        ...lastTrayState,
+        ...safeState
+    };
+    lastTrayState = mergedState;
 
-    // İkonları yükle
+    const { isPlaying = false, currentTrack = 'Aurivo Media Player', isMuted = false, stopAfterCurrent = false } = mergedState;
+
+    // İkonları küçük ve tutarlı boyutta yükle
     const iconPath = (name) => {
         const p = getResourcePath(path.join('icons', name));
-        return nativeImage.createFromPath(p);
+        const img = nativeImage.createFromPath(p);
+        if (!img || img.isEmpty()) return undefined;
+        const menuIconSize = process.platform === 'linux' ? 18 : 16;
+        return img.resize({ width: menuIconSize, height: menuIconSize });
     };
 
     const contextMenu = Menu.buildFromTemplate([
         {
-            label: 'Önceki parça',
+            label: tMainSync('trayMedia.previous'),
             icon: iconPath('tray-previous.png'),
             click: () => {
                 if (mainWindow && !mainWindow.isDestroyed()) {
@@ -1035,7 +3257,7 @@ function updateTrayMenu(state) {
             }
         },
         {
-            label: isPlaying ? 'Duraklat' : 'Oynat',
+            label: isPlaying ? tMainSync('trayMedia.pause') : tMainSync('trayMedia.play'),
             icon: iconPath(isPlaying ? 'tray-pause.png' : 'tray-play.png'),
             click: () => {
                 if (mainWindow && !mainWindow.isDestroyed()) {
@@ -1044,7 +3266,7 @@ function updateTrayMenu(state) {
             }
         },
         {
-            label: 'Durdur',
+            label: tMainSync('trayMedia.stop'),
             icon: iconPath('tray-stop.png'),
             click: () => {
                 if (mainWindow && !mainWindow.isDestroyed()) {
@@ -1053,7 +3275,7 @@ function updateTrayMenu(state) {
             }
         },
         {
-            label: 'Bu parçadan sonra durdur',
+            label: tMainSync('trayMedia.stopAfterCurrent'),
             type: 'checkbox',
             checked: stopAfterCurrent,
             click: () => {
@@ -1063,7 +3285,7 @@ function updateTrayMenu(state) {
             }
         },
         {
-            label: 'Sonraki parça',
+            label: tMainSync('trayMedia.next'),
             icon: iconPath('tray-next.png'),
             click: () => {
                 if (mainWindow && !mainWindow.isDestroyed()) {
@@ -1073,7 +3295,7 @@ function updateTrayMenu(state) {
         },
         { type: 'separator' },
         {
-            label: isMuted ? 'Sesi aç' : 'Sessiz',
+            label: isMuted ? tMainSync('trayMedia.unmute') : tMainSync('trayMedia.mute'),
             icon: iconPath(isMuted ? 'tray-volume.png' : 'tray-mute.png'),
             click: () => {
                 if (mainWindow && !mainWindow.isDestroyed()) {
@@ -1082,7 +3304,7 @@ function updateTrayMenu(state) {
             }
         },
         {
-            label: 'Beğen',
+            label: tMainSync('trayMedia.like'),
             icon: iconPath('tray-like.png'),
             click: () => {
                 if (mainWindow && !mainWindow.isDestroyed()) {
@@ -1092,7 +3314,7 @@ function updateTrayMenu(state) {
         },
         { type: 'separator' },
         {
-            label: 'Göster',
+            label: tMainSync('trayMedia.show'),
             icon: iconPath('tray-show.png'),
             click: () => {
                 if (mainWindow) {
@@ -1102,7 +3324,7 @@ function updateTrayMenu(state) {
             }
         },
         {
-            label: 'Çık',
+            label: tMainSync('trayMedia.exit'),
             icon: iconPath('tray-exit.png'),
             click: () => {
                 app.isQuitting = true;
@@ -1424,10 +3646,14 @@ function getProjectMPresetsPath() {
 
 function getVisualizerExecutableCandidates() {
     const out = [];
+    const platformSubdir = process.platform === 'win32'
+        ? 'windows'
+        : (process.platform === 'darwin' ? 'darwin' : 'linux');
 
     // Paketlenmiş (Windows): native-dist tercih edilir; gerekirse taşınmış third_party'ye düş (binary içeriyorsa)
     if (app.isPackaged && process.platform === 'win32') {
         out.push(path.join(process.resourcesPath, 'native-dist', 'aurivo-projectm-visualizer.exe'));
+        out.push(path.join(process.resourcesPath, 'native-dist', 'windows', 'aurivo-projectm-visualizer.exe'));
         out.push(path.join(process.resourcesPath, 'third_party', 'projectm', 'aurivo-projectm-visualizer.exe'));
         out.push(path.join(process.resourcesPath, 'third_party', 'projectm', 'bin', 'aurivo-projectm-visualizer.exe'));
         return out;
@@ -1440,6 +3666,7 @@ function getVisualizerExecutableCandidates() {
     // Paketlenmiş (Linux/Mac): resources/native-dist (extraResources)
     if (app.isPackaged) {
         out.push(path.join(process.resourcesPath, 'native-dist', exeName));
+        out.push(path.join(process.resourcesPath, 'native-dist', platformSubdir, exeName));
         // third_party taşınmış ve binary içeriyorsa isteğe bağlı yedek
         out.push(path.join(process.resourcesPath, 'third_party', 'projectm', exeName));
         out.push(path.join(process.resourcesPath, 'third_party', 'projectm', 'bin', exeName));
@@ -1448,6 +3675,7 @@ function getVisualizerExecutableCandidates() {
 
     // Dev: mevcut davranışı koru (distPath + build-visualizer adayları aşağıda)
     out.push(getResourcePath(path.join('native-dist', exeName)));
+    out.push(getResourcePath(path.join('native-dist', platformSubdir, exeName)));
     return out;
 }
 
@@ -1646,18 +3874,22 @@ ipcMain.handle('visualizer:toggle', () => {
     return { running: started };
 });
 
+ipcMain.handle('diagnostics:getPerformanceSnapshot', async () => {
+    return await getPerformanceSnapshot();
+});
+
 // ============================================
 // I18N (LOCALE'LER)
 // ============================================
 ipcMain.handle('i18n:loadLocale', async (_event, lang) => {
-    const normalized = normalizeUiLang(lang) || 'en';
+    const normalized = normalizeUiLang(lang) || 'en-US';
     try {
         const json = await readFirstJson(getLocaleCandidatePaths(normalized));
         if (json) return json;
     } catch (e) {
-        if (normalized !== 'en') {
+        if (normalized !== 'en-US') {
             try {
-                const json = await readFirstJson(getLocaleCandidatePaths('en'));
+                const json = await readFirstJson(getLocaleCandidatePaths('en-US'));
                 if (json) return json;
             } catch {
                 return {};
@@ -1666,11 +3898,25 @@ ipcMain.handle('i18n:loadLocale', async (_event, lang) => {
         return {};
     }
     // Yedek
-    if (normalized !== 'en') {
-        const json = await readFirstJson(getLocaleCandidatePaths('en'));
+    if (normalized !== 'en-US') {
+        const json = await readFirstJson(getLocaleCandidatePaths('en-US'));
         if (json) return json;
     }
     return {};
+});
+
+ipcMain.handle('get-system-locale', async () => {
+    try {
+        if (app && typeof app.getSystemLocale === 'function') {
+            return app.getSystemLocale();
+        }
+        if (app && typeof app.getLocale === 'function') {
+            return app.getLocale();
+        }
+    } catch {
+        // ignore
+    }
+    return 'en-US';
 });
 
 // ============================================
@@ -1731,12 +3977,163 @@ ipcMain.handle('window:isMaximized', (event) => {
     return win ? win.isMaximized() : false;
 });
 
+function installWebviewHardening() {
+    const isLocalAppPageUrl = (rawUrl) => {
+        try {
+            const u = new URL(String(rawUrl || '').trim());
+            if (u.protocol !== 'file:') return false;
+            const decodedPath = decodeURIComponent(String(u.pathname || ''));
+            const normalizedPath = process.platform === 'win32' && /^\/[A-Za-z]:/.test(decodedPath)
+                ? decodedPath.slice(1)
+                : decodedPath;
+            const absPath = path.resolve(normalizedPath);
+            const appRoots = [
+                path.resolve(__dirname),
+                path.resolve(app?.getAppPath?.() || '')
+            ].filter(Boolean);
+            return appRoots.some((root) => absPath === root || absPath.startsWith(`${root}${path.sep}`));
+        } catch {
+            return false;
+        }
+    };
+
+    // Permission defaults: deny sensitive requests for embedded web content.
+    try {
+        const webSessions = getWebSessions();
+        for (const ses of webSessions) {
+            if (ses && typeof ses.setPermissionRequestHandler === 'function') {
+                ses.setPermissionRequestHandler((webContents, permission, callback, details) => {
+                    const wcType = webContents?.getType?.();
+                    const requestedPermission = String(permission || '').trim();
+                    const currentUrl = String(webContents?.getURL?.() || '').trim();
+                    const originUrl = String(details?.requestingOrigin || '').trim();
+
+                    if (wcType === 'webview') {
+                        // Web platformlarda (allowlist) kullanıcı akışını bozmayacak şekilde
+                        // izinleri host bazlı değerlendir.
+                        const trustedContext =
+                            isAllowedWebUrlMain(currentUrl) ||
+                            isAllowedWebUrlMain(originUrl);
+                        callback(!!trustedContext);
+                        return;
+                    }
+
+                    // Uygulamanın kendi local sayfaları (pulseWindow vb.) için
+                    // gerçek giriş ölçümü gereken ses/video yakalama izinlerini aç.
+                    const isInternalPage = isLocalAppPageUrl(currentUrl) || isLocalAppPageUrl(originUrl);
+                    const isCapturePermission = requestedPermission === 'media' ||
+                        requestedPermission === 'audioCapture' ||
+                        requestedPermission === 'videoCapture' ||
+                        requestedPermission === 'display-capture';
+                    if (isInternalPage && isCapturePermission) {
+                        callback(true);
+                        return;
+                    }
+
+                    callback(false);
+                });
+            }
+
+            // Kurumsal MITM/yerel güvenlik yazılımı olan sistemlerde Electron
+            // bazen -202 (CERT_AUTHORITY_INVALID) üretip web platform çalmayı kesiyor.
+            // Sadece izinli platform hostları için bu spesifik hatayı yumuşat.
+            if (ses && typeof ses.setCertificateVerifyProc === 'function') {
+                ses.setCertificateVerifyProc((request, callback) => {
+                    try {
+                        const code = Number(request?.errorCode);
+                        const host = String(request?.hostname || '').toLowerCase();
+                        if (code === -202 && isTrustedWebCertHostMain(host)) {
+                            callback(0); // trust
+                            return;
+                        }
+                    } catch {
+                        // fall through
+                    }
+                    callback(-3); // use default verification
+                });
+            }
+        }
+    } catch (e) {
+        console.warn('[SECURITY] setPermissionRequestHandler failed:', e?.message || e);
+    }
+
+    // Harden all webviews created in this app.
+    app.on('web-contents-created', (_event, contents) => {
+        const type = contents.getType?.();
+        if (type !== 'webview') return;
+
+        // Block opening arbitrary external windows from embedded web content.
+        if (typeof contents.setWindowOpenHandler === 'function') {
+            contents.setWindowOpenHandler(({ url }) => {
+                const popupUrl = String(url || '').trim();
+                // OAuth flows often open an empty popup first, then navigate.
+                if (!popupUrl || popupUrl === 'about:blank') {
+                    return {
+                        action: 'allow',
+                        overrideBrowserWindowOptions: {
+                            icon: getAppIconImage(),
+                            title: 'Aurivo Medya Player',
+                            autoHideMenuBar: false
+                        }
+                    };
+                }
+                if (isAllowedWebUrlMain(popupUrl)) {
+                    return {
+                        action: 'allow',
+                        overrideBrowserWindowOptions: {
+                            icon: getAppIconImage(),
+                            title: 'Aurivo Medya Player',
+                            autoHideMenuBar: false
+                        }
+                    };
+                }
+                return { action: 'deny' };
+            });
+        }
+
+        contents.on('will-navigate', (event, url) => {
+            if (!isAllowedWebUrlMain(url)) {
+                event.preventDefault();
+            }
+        });
+
+        contents.on('will-redirect', (event, url) => {
+            if (!isAllowedWebUrlMain(url)) {
+                event.preventDefault();
+            }
+        });
+    });
+}
+
+function installTlsCompatibilityForWebPlatforms() {
+    // Bazı sistemlerde HTTPS trafiği yerel sertifika ile MITM edildiğinde
+    // Electron webview'da -202 (CERT_AUTHORITY_INVALID) oluşabiliyor.
+    // Yalnızca izinli web platformları için bu hatayı kontrollü şekilde bypass et.
+    app.on('certificate-error', (event, _webContents, url, error, _certificate, callback) => {
+        try {
+            if (String(error || '') === 'net::ERR_CERT_AUTHORITY_INVALID' && isTrustedWebCertUrlMain(url)) {
+                event.preventDefault();
+                callback(true);
+                return;
+            }
+        } catch {
+            // fall through
+        }
+        callback(false);
+    });
+}
+
 app.whenReady().then(async () => {
     // GPU ayarları burada uygula
     app.commandLine.appendSwitch('enable-gpu-rasterization');
     app.commandLine.appendSwitch('enable-zero-copy');
 
+    try { installWebviewHardening(); } catch (e) { console.error('[APP] installWebviewHardening error:', e); }
+    try { installTlsCompatibilityForWebPlatforms(); } catch (e) { console.error('[APP] installTlsCompatibilityForWebPlatforms error:', e); }
     try { installAppMenu(); } catch (e) { console.error('[APP] installAppMenu error:', e); }
+    try { registerDawlodIpc({ ipcMain, app, dialog, shell, BrowserWindow }); } catch (e) { console.error('[APP] registerDawlodIpc error:', e); }
+    try { await initAdBlocker(session, { app, webviewPartition: WEBVIEW_PARTITION, preferUbol: true }); } catch (e) { console.error('[APP] initAdBlocker error:', e); }
+    try { startPulseBridgeServer(); } catch (e) { console.error('[APP] startPulseBridgeServer error:', e); }
     try { createWindow(); } catch (e) { console.error('[APP] createWindow error:', e); }
     try { createTray(); } catch (e) { console.error('[APP] createTray error:', e); }
     try { createMPRIS(); } catch (e) { console.error('[APP] createMPRIS error:', e); }
@@ -1764,12 +4161,95 @@ app.on('window-all-closed', () => {
 });
 
 app.on('before-quit', () => {
+    stopPulseBridgeServer();
     stopVisualizer();
+    stopAurivoPulseListening();
+    stopAurivoPulseGuiWindow();
 });
 
 // ============================================
 // IPC HANDLERS
 // ============================================
+
+ipcMain.handle('pulse:openWindow', async () => {
+    await migrateLegacyAurivoPulsePerformancePrefsIfNeeded();
+    const launch = resolveAurivoPulseGuiLaunch();
+    if (!launch?.command) {
+        throw new Error('Aurivo-Pulse GUI çalıştırılabilir dosyası bulunamadı');
+    }
+    const nextUiLang = getUiLanguageSync();
+
+    if (aurivoPulseGuiProc && !aurivoPulseGuiProc.killed) {
+        if (aurivoPulseGuiLang === nextUiLang) {
+            return { success: true, source: 'existing-gui-process', command: launch.command };
+        }
+        stopAurivoPulseGuiWindow();
+    }
+
+    const child = spawn(launch.command, launch.args || [], {
+        cwd: launch.cwd,
+        env: buildPulseGuiEnv(),
+        detached: false,
+        stdio: 'ignore'
+    });
+
+    aurivoPulseGuiProc = child;
+    aurivoPulseGuiLang = nextUiLang;
+    child.once('close', () => {
+        if (aurivoPulseGuiProc === child) {
+            aurivoPulseGuiProc = null;
+            aurivoPulseGuiLang = '';
+        }
+    });
+    child.once('error', () => {
+        if (aurivoPulseGuiProc === child) {
+            aurivoPulseGuiProc = null;
+            aurivoPulseGuiLang = '';
+        }
+    });
+
+    // Linux'ta ayrı uygulama gibi görünmeyi azaltmak için pencere hintlerini uygula.
+    applyPulseLinuxWindowHints(child.pid);
+
+    return { success: true, source: launch.source, command: launch.command };
+});
+
+ipcMain.handle('pulse:listDevices', async () => {
+    return await listAurivoPulseDevices();
+});
+
+ipcMain.handle('pulse:getStatus', async () => {
+    return { success: true, status: { ...aurivoPulseStatus } };
+});
+
+ipcMain.handle('pulse:getPreferredDevice', async () => {
+    return getAurivoPulsePreferredDevice();
+});
+
+ipcMain.handle('pulse:getPreferences', async () => {
+    return readAurivoPulsePreferences();
+});
+
+ipcMain.handle('pulse:savePreferences', async (_event, update) => {
+    try {
+        return await saveAurivoPulsePreferences(update);
+    } catch (error) {
+        console.error('[PULSE] save preferences error:', error);
+        return { success: false, error: error?.message || String(error) };
+    }
+});
+
+ipcMain.handle('pulse:startListening', async (_event, options) => {
+    return startAurivoPulseListening(options || {});
+});
+
+ipcMain.handle('pulse:stopListening', async () => {
+    return stopAurivoPulseListening();
+});
+
+ipcMain.handle('pulse:recognizeSample', async (_event, options) => {
+    return captureMonitorSampleAndRecognizeWithPulse(options || {});
+});
 
 // Dosya/Klasör Seçimi
 ipcMain.handle('dialog:openFile', async () => {
@@ -1840,12 +4320,63 @@ ipcMain.handle('dialog:openFiles', async (event, filtersOrOpts) => {
     }));
 });
 
+ipcMain.handle('dialog:confirm', async (event, opts) => {
+    const parentWindow = BrowserWindow.fromWebContents(event.sender)
+        || (settingsWindow && !settingsWindow.isDestroyed() ? settingsWindow : null)
+        || (mainWindow && !mainWindow.isDestroyed() ? mainWindow : null);
+    const title = (opts && typeof opts.title === 'string' && opts.title.trim())
+        ? opts.title.trim()
+        : app.getName();
+    const message = (opts && typeof opts.message === 'string' && opts.message.trim())
+        ? opts.message.trim()
+        : title;
+    const detail = (opts && typeof opts.detail === 'string')
+        ? opts.detail
+        : '';
+    const okLabel = (opts && typeof opts.okLabel === 'string' && opts.okLabel.trim())
+        ? opts.okLabel.trim()
+        : 'Tamam';
+    const cancelLabel = (opts && typeof opts.cancelLabel === 'string' && opts.cancelLabel.trim())
+        ? opts.cancelLabel.trim()
+        : 'İptal';
+
+    const result = await dialog.showMessageBox(parentWindow, {
+        type: 'question',
+        buttons: [okLabel, cancelLabel],
+        defaultId: 0,
+        cancelId: 1,
+        noLink: true,
+        title,
+        message,
+        detail
+    });
+
+    return result.response === 0;
+});
+
+ipcMain.handle('dialog:saveFile', async (_event, opts) => {
+    const title = (opts && typeof opts === 'object' && opts.title) ? String(opts.title) : 'Save file';
+    const defaultPath = (opts && typeof opts === 'object' && opts.defaultPath) ? String(opts.defaultPath) : undefined;
+    const filters = Array.isArray(opts?.filters) ? opts.filters : undefined;
+    const result = await dialog.showSaveDialog(mainWindow, {
+        title,
+        defaultPath,
+        filters
+    });
+    if (result.canceled || !result.filePath) return null;
+    return {
+        path: result.filePath,
+        name: path.basename(result.filePath)
+    };
+});
+
 // ============================================================
 // WEB GÜVENLİĞİ / GİZLİLİK
 // ============================================================
 ipcMain.handle('web:openExternal', async (_event, url) => {
     const u = String(url || '').trim();
     if (!u) return false;
+    if (!isAllowedWebUrlMain(u)) return false;
     try {
         await shell.openExternal(u);
         return true;
@@ -1855,10 +4386,122 @@ ipcMain.handle('web:openExternal', async (_event, url) => {
     }
 });
 
+function detectVpnInterfaces() {
+    try {
+        const ifaces = os.networkInterfaces() || {};
+        const suspiciousName = /(wintun|wireguard|openvpn|tap|tun|ppp|pptp|l2tp|ikev2|zerotier|tailscale|hamachi)/i;
+        const hits = [];
+        for (const [name, entries] of Object.entries(ifaces)) {
+            const n = String(name || '');
+            const hasNet = Array.isArray(entries) && entries.some((e) => e && e.internal === false);
+            if (hasNet && suspiciousName.test(n)) hits.push(n);
+        }
+        return { detected: hits.length > 0, interfaces: hits };
+    } catch {
+        return { detected: false, interfaces: [] };
+    }
+}
+
+ipcMain.handle('web:getSecurityState', async () => {
+    const vpn = detectVpnInterfaces();
+    return { vpnDetected: vpn.detected, vpnInterfaces: vpn.interfaces };
+});
+
+// ─── Ad Blocker IPC ────────────────────────────────────────────────────
+ipcMain.handle('adblock:getStats', () => {
+    try { return getAdBlockerStats(); } catch { return null; }
+});
+
+ipcMain.handle('adblock:allowDomain', (_event, domain) => {
+    try { allowDomain(domain); return true; } catch { return false; }
+});
+
+ipcMain.handle('adblock:getConfig', () => {
+    try { return getAdBlockerConfig(); } catch { return null; }
+});
+
+ipcMain.handle('adblock:setConfig', (_event, config) => {
+    try { return setAdBlockerConfig(config || {}); } catch { return null; }
+});
+
+ipcMain.handle('adblock:openDashboard', async () => {
+    try {
+        const launchInfo = getAdBlockerDashboardLaunchInfo?.() || {};
+        const dashboardUrl = String(launchInfo.url || getAdBlockerDashboardUrl() || '').trim();
+        const targetPartition = String(launchInfo.partition || WEBVIEW_PARTITION).trim();
+        if (!dashboardUrl) return false;
+
+        const currentPartition = String(
+            adblockDashboardWindow?.webContents?.session?.partition || ''
+        ).trim();
+        const needsRecreate =
+            adblockDashboardWindow &&
+            !adblockDashboardWindow.isDestroyed() &&
+            currentPartition &&
+            targetPartition &&
+            currentPartition !== targetPartition;
+
+        if (needsRecreate) {
+            try { adblockDashboardWindow.close(); } catch { }
+            adblockDashboardWindow = null;
+        }
+
+        if (adblockDashboardWindow && !adblockDashboardWindow.isDestroyed()) {
+            adblockDashboardWindow.show();
+            adblockDashboardWindow.focus();
+            try { await adblockDashboardWindow.loadURL(dashboardUrl); } catch { }
+            return true;
+        }
+
+        adblockDashboardWindow = new BrowserWindow({
+            width: 1200,
+            height: 860,
+            minWidth: 980,
+            minHeight: 700,
+            title: 'uBO Lite - Kontrol Paneli',
+            icon: getAppIconImage(),
+            autoHideMenuBar: false,
+            parent: mainWindow && !mainWindow.isDestroyed() ? mainWindow : undefined,
+            webPreferences: {
+                partition: targetPartition || WEBVIEW_PARTITION,
+                nodeIntegration: false,
+                contextIsolation: true,
+                sandbox: false,
+                webSecurity: true
+            }
+        });
+
+        adblockDashboardWindow.on('closed', () => {
+            adblockDashboardWindow = null;
+        });
+        adblockDashboardWindow.webContents.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL) => {
+            console.error('[ADBLOCK] dashboard did-fail-load:', { errorCode, errorDescription, validatedURL });
+        });
+        adblockDashboardWindow.webContents.on('console-message', (_event, level, message, line, sourceId) => {
+            if (level >= 2) {
+                console.warn('[ADBLOCK][dashboard][console]', { message, line, sourceId });
+            }
+        });
+
+        try {
+            await adblockDashboardWindow.loadURL(dashboardUrl);
+        } catch {
+            const fallbackUrl = dashboardUrl.replace('/dashboard.html', '/popup.html');
+            await adblockDashboardWindow.loadURL(fallbackUrl);
+        }
+        adblockDashboardWindow.show();
+        adblockDashboardWindow.focus();
+        return true;
+    } catch (e) {
+        console.error('[ADBLOCK] openDashboard error:', e);
+        return false;
+    }
+});
+
 ipcMain.handle('web:clearData', async (_event, options) => {
     const opts = (options && typeof options === 'object') ? options : {};
-    const ses = session.defaultSession;
-    if (!ses) return false;
+    const sessions = getWebSessions();
+    if (!sessions.length) return false;
 
     const wantsAll = opts.all === true;
     const wantsCookies = wantsAll || opts.cookies === true;
@@ -1866,177 +4509,25 @@ ipcMain.handle('web:clearData', async (_event, options) => {
     const wantsStorage = wantsAll || opts.storage === true;
 
     try {
-        if (wantsCache) {
-            await ses.clearCache();
-        }
+        for (const ses of sessions) {
+            if (wantsCache) {
+                await ses.clearCache();
+            }
 
-        const storages = [];
-        if (wantsCookies) storages.push('cookies');
-        if (wantsStorage) {
-            storages.push('localstorage', 'indexdb', 'cachestorage', 'serviceworkers');
-        }
+            const storages = [];
+            if (wantsCookies) storages.push('cookies');
+            if (wantsStorage) {
+                storages.push('localstorage', 'indexdb', 'cachestorage', 'serviceworkers');
+            }
 
-        if (storages.length) {
-            await ses.clearStorageData({ storages });
+            if (storages.length) {
+                await ses.clearStorageData({ storages });
+            }
         }
 
         return true;
     } catch (e) {
         console.error('[WEB] clearData error:', e);
-        return false;
-    }
-});
-
-// ============================================================
-// İNDİRME (Python CLI ile Aurivo-Dawlod / yt-dlp)
-// ============================================================
-ipcMain.handle('download:start', async (_event, options) => {
-    const url = String(options?.url || '').trim();
-    if (!url) throw new Error('URL boş');
-
-    const mode = options?.mode === 'audio' ? 'audio' : 'video';
-    const outputDirRaw = String(options?.outputDir || '').trim();
-    const outputDir = outputDirRaw || app.getPath('downloads');
-
-    const scriptPath = getDownloaderCliPath();
-    if (!fs.existsSync(scriptPath)) {
-        throw new Error(`Downloader script bulunamadı: ${scriptPath}`);
-    }
-
-    const args = [
-        scriptPath,
-        '--url', url,
-        '--mode', mode,
-        '--output', outputDir
-    ];
-
-    if (mode === 'video') {
-        const hRaw = String(options?.videoHeight || 'auto').trim();
-        if (hRaw && hRaw !== 'auto' && /^\d+$/.test(hRaw)) {
-            args.push('--video-height', hRaw);
-        }
-        const vcodec = String(options?.videoCodec || '').trim();
-        if (vcodec) args.push('--video-codec', vcodec);
-    } else {
-        const audioFormat = String(options?.audioFormat || 'mp3');
-        const audioQuality = String(options?.audioQuality || '192');
-        args.push('--audio-format', audioFormat, '--audio-quality', audioQuality);
-        if (options?.normalizeAudio === true) {
-            args.push('--normalize-audio');
-        }
-    }
-
-    // Gelişmiş seçenekler (tüm modlar)
-    const cookiesFromBrowser = String(options?.cookiesFromBrowser || '').trim();
-    if (cookiesFromBrowser) args.push('--cookies-from-browser', cookiesFromBrowser);
-
-    const cookiesFile = String(options?.cookiesFile || '').trim();
-    if (cookiesFile) args.push('--cookies', cookiesFile);
-
-    const proxy = String(options?.proxy || '').trim();
-    if (proxy) args.push('--proxy', proxy);
-
-    if (options?.useConfig === true) {
-        const configFile = String(options?.configFile || '').trim();
-        if (configFile) args.push('--config', configFile);
-    }
-
-    if (options?.showMoreFormats === true) {
-        const formatOverride = String(options?.formatOverride || '').trim();
-        if (formatOverride) args.push('--format-override', formatOverride);
-    }
-
-    if (options?.playlist === true) {
-        args.push('--playlist');
-        const pf = String(options?.playlistFilenameFormat || '').trim();
-        const pd = String(options?.playlistFoldernameFormat || '').trim();
-        if (pf) args.push('--playlist-filename-format', pf);
-        if (pd) args.push('--playlist-foldername-format', pd);
-    }
-
-    const customArgs = String(options?.customArgs || '').trim();
-    if (customArgs) args.push('--custom-args', customArgs);
-
-    const id = ++downloadSeq;
-    const send = (channel, payload) => {
-        if (!mainWindow || mainWindow.isDestroyed()) return;
-        mainWindow.webContents.send(channel, payload);
-    };
-
-    const proc = await spawnPythonWithFallback(args, { cwd: app.isPackaged ? process.resourcesPath : __dirname });
-    const tail = [];
-    const tailMax = 40;
-    activeDownloads.set(id, { proc, killTimer: null, tail });
-
-    let lastPercent = -1;
-    const percentRegex = /\[download\]\s+(\d+(?:\.\d+)?)%/i;
-
-    const handleLine = (line) => {
-        const s = String(line || '').trimEnd();
-        if (!s) return;
-
-        try {
-            tail.push(s);
-            if (tail.length > tailMax) tail.splice(0, tail.length - tailMax);
-        } catch { }
-
-        send('download:log', { id, line: s });
-
-        const m = percentRegex.exec(s);
-        if (m) {
-            const val = Math.max(0, Math.min(100, Math.floor(Number(m[1]))));
-            if (Number.isFinite(val) && val !== lastPercent) {
-                lastPercent = val;
-                send('download:progress', { id, percent: val });
-            }
-        }
-    };
-
-    const attachStream = (stream) => {
-        if (!stream) return;
-        let buf = '';
-        stream.on('data', (chunk) => {
-            buf += chunk.toString();
-            const parts = buf.split(/\r?\n/);
-            buf = parts.pop() || '';
-            for (const p of parts) handleLine(p);
-        });
-        stream.on('end', () => {
-            if (buf) handleLine(buf);
-            buf = '';
-        });
-    };
-
-    attachStream(proc.stdout);
-    attachStream(proc.stderr);
-
-    proc.on('close', (code) => {
-        const entry = activeDownloads.get(id);
-        if (entry?.killTimer) clearTimeout(entry.killTimer);
-        activeDownloads.delete(id);
-        const success = code === 0;
-        const lastLine = Array.isArray(entry?.tail) && entry.tail.length ? entry.tail[entry.tail.length - 1] : '';
-        send('download:done', { id, success, code, message: lastLine || '', tail: entry?.tail || [] });
-    });
-
-    return { id };
-});
-
-ipcMain.handle('download:cancel', async (_event, id) => {
-    const entry = activeDownloads.get(Number(id));
-    if (!entry?.proc) return false;
-
-    try {
-        if (entry.proc.killed) return true;
-        entry.proc.kill('SIGTERM');
-        entry.killTimer = setTimeout(() => {
-            try {
-                if (!entry.proc.killed) entry.proc.kill('SIGKILL');
-            } catch { }
-        }, 2000);
-        return true;
-    } catch (e) {
-        console.error('[DOWNLOAD] cancel error:', e);
         return false;
     }
 });
@@ -2096,6 +4587,86 @@ ipcMain.handle('fs:readDirectory', async (event, dirPath) => {
     }
 });
 
+ipcMain.handle('library:getStats', async (_event, folders, metadataCache, excludedFolders, audioExtensions, performanceOptions) => {
+    try {
+        return await buildLibraryStatsFromFolders(folders, metadataCache, excludedFolders, audioExtensions, performanceOptions);
+    } catch (error) {
+        console.error('[LIBRARY] stats error:', error);
+        return {
+            totalSongs: 0,
+            totalArtists: 0,
+            totalAlbums: 0,
+            totalDurationSec: 0,
+            missingMetadataCount: 0,
+            missingCoverCount: 0,
+            scannedFolderCount: 0,
+            generatedAt: Date.now(),
+            error: String(error?.message || error || 'unknown')
+        };
+    }
+});
+
+ipcMain.handle('library:getStatsComposite', async (_event, folders, extraFiles, metadataCache, excludedFolders, audioExtensions, performanceOptions) => {
+    try {
+        return await buildLibraryStatsComposite(folders, extraFiles, metadataCache, excludedFolders, audioExtensions, performanceOptions);
+    } catch (error) {
+        console.error('[LIBRARY] composite stats error:', error);
+        return {
+            totalSongs: 0,
+            totalArtists: 0,
+            totalAlbums: 0,
+            totalDurationSec: 0,
+            missingMetadataCount: 0,
+            missingCoverCount: 0,
+            scannedFolderCount: 0,
+            generatedAt: Date.now(),
+            error: String(error?.message || error || 'unknown')
+        };
+    }
+});
+
+ipcMain.handle('library:refreshMetadata', async (_event, folders, options, excludedFolders, audioExtensions, performanceOptions) => {
+    try {
+        return await buildLibraryMetadataCacheFromFolders(folders, options, excludedFolders, audioExtensions, performanceOptions);
+    } catch (error) {
+        console.error('[LIBRARY] metadata refresh error:', error);
+        return {
+            items: {},
+            summary: {
+                refreshedCount: 0,
+                inferredCount: 0,
+                cleanedCount: 0,
+                generatedAt: Date.now(),
+                error: String(error?.message || error || 'unknown')
+            }
+        };
+    }
+});
+
+ipcMain.handle('library:startWatch', async (event, folders, excludedFolders) => {
+    try {
+        return await startLibraryWatchSession(event.sender, folders, excludedFolders);
+    } catch (error) {
+        console.error('[LIBRARY] start watch error:', error);
+        return {
+            watching: false,
+            watchedFolders: 0,
+            watchedDirectories: 0,
+            error: String(error?.message || error || 'unknown')
+        };
+    }
+});
+
+ipcMain.handle('library:stopWatch', async (event) => {
+    try {
+        disposeLibraryWatchSession(event.sender.id);
+        return true;
+    } catch (error) {
+        console.error('[LIBRARY] stop watch error:', error);
+        return false;
+    }
+});
+
 // Özel Klasörler (Linux için Türkçe klasör isimleri de desteklenir)
 ipcMain.handle('fs:getSpecialPaths', async () => {
     const home = os.homedir();
@@ -2152,9 +4723,27 @@ ipcMain.handle('fs:getFileInfo', async (event, filePath) => {
     }
 });
 
+ipcMain.handle('fs:readText', async (_event, filePath) => {
+    try {
+        return await fs.promises.readFile(String(filePath || ''), 'utf8');
+    } catch (error) {
+        return null;
+    }
+});
+
+ipcMain.handle('fs:writeText', async (_event, filePath, text) => {
+    try {
+        await fs.promises.writeFile(String(filePath || ''), String(text ?? ''), 'utf8');
+        return true;
+    } catch (error) {
+        console.error('[FS] writeText error:', error);
+        return false;
+    }
+});
+
 ipcMain.handle('settings:save', async (event, settings) => {
     try {
-        const incoming = (settings && typeof settings === 'object') ? settings : {};
+        const incoming = sanitizeSensitiveSettings(settings);
 
         const deepMerge = (base, patch) => {
             const out = (base && typeof base === 'object' && !Array.isArray(base)) ? { ...base } : {};
@@ -2179,7 +4768,19 @@ ipcMain.handle('settings:save', async (event, settings) => {
 
         // Merge to preserve keys written by other windows (e.g. sfx.eq32.lastPreset)
         const merged = deepMerge(existing, incoming);
-        await writeJsonFileAtomic(getSettingsPath(), merged);
+        const sanitizedMerged = sanitizeSensitiveSettings(merged);
+        mainWindowCloseToTray = deriveMainWindowCloseToTray(sanitizedMerged);
+        await writeJsonFileAtomic(getSettingsPath(), sanitizedMerged);
+
+        for (const targetWindow of [mainWindow, settingsWindow, soundEffectsWindow]) {
+            if (!targetWindow || targetWindow.isDestroyed()) continue;
+            try {
+                targetWindow.webContents.send('settings:reloaded', sanitizedMerged);
+            } catch (e) {
+                console.error('[SETTINGS] reload broadcast error:', e);
+            }
+        }
+
         return true;
     } catch (error) {
         console.error('Settings save error:', error);
@@ -2196,7 +4797,29 @@ ipcMain.handle('settings:load', async () => {
             sameAlbumNoCrossfade: true,
             crossfadeMs: 2000,
             fadeOnPauseResume: false,
-            pauseFadeMs: 250
+            pauseFadeMs: 250,
+            crossfadeSkipShortTracks: true,
+            crossfadeSafetyPaddingMs: 300,
+            seekStepSeconds: 10,
+            restoreLastTrackOnStartup: true,
+            autoplayLastTrackOnStartup: false,
+            resumePositionOnStartup: true,
+            endWarningEnabled: false,
+            endWarningSeconds: 10,
+            smartVolumeLevelingEnabled: false,
+            smartVolumeLevelingMode: 'balanced',
+            startupState: {
+                lastTrackPath: '',
+                lastTrackIndex: -1,
+                lastPositionMs: 0,
+                lastWasPlaying: false,
+                updatedAt: 0
+            }
+        },
+        adblock: {
+            mode: 'ideal',
+            showBlockedCount: true,
+            autoRefreshOnModeChange: false
         },
         volume: 40,
         shuffle: false,
@@ -2207,17 +4830,101 @@ ipcMain.handle('settings:load', async () => {
     for (let attempt = 0; attempt < 3; attempt++) {
         try {
             const data = await fs.promises.readFile(getSettingsPath(), 'utf8');
-            return JSON.parse(data);
+            const parsed = JSON.parse(data);
+            const sanitized = sanitizeSensitiveSettings(parsed);
+            mainWindowCloseToTray = deriveMainWindowCloseToTray(sanitized);
+            if (JSON.stringify(parsed) !== JSON.stringify(sanitized)) {
+                await writeJsonFileAtomic(getSettingsPath(), sanitized);
+            }
+            return sanitized;
         } catch (error) {
             if (attempt < 2) {
                 await new Promise(r => setTimeout(r, 40));
                 continue;
             }
+            mainWindowCloseToTray = true;
             return defaultSettings;
         }
     }
 
+    mainWindowCloseToTray = true;
     return defaultSettings;
+});
+
+ipcMain.handle('settings:openWindow', async (_event, defaultTab) => {
+    try {
+        await createSettingsWindow(defaultTab);
+        return true;
+    } catch (error) {
+        console.error('[SETTINGS] openWindow error:', error);
+        return false;
+    }
+});
+
+ipcMain.handle('settings:confirmClose', () => {
+    try {
+        if (settingsWindow && !settingsWindow.isDestroyed()) {
+            if (typeof settingsWindow.__allowClose === 'function') {
+                settingsWindow.__allowClose();
+            }
+            settingsWindow.close();
+            return true;
+        }
+    } catch (error) {
+        console.error('[SETTINGS] confirmClose error:', error);
+    }
+    return false;
+});
+
+ipcMain.handle('systemAudio:getState', async () => {
+    try {
+        const state = await getSystemAudioState();
+        const outputs = await listSystemAudioOutputs();
+        return {
+            ...state,
+            outputs: Array.isArray(outputs?.outputs) ? outputs.outputs : []
+        };
+    } catch (error) {
+        return {
+            success: false,
+            supported: false,
+            platform: process.platform,
+            error: error?.message || String(error)
+        };
+    }
+});
+
+ipcMain.handle('systemAudio:setVolume', async (_event, percent) => {
+    try {
+        return await setSystemAudioVolume(percent);
+    } catch (error) {
+        return {
+            success: false,
+            error: error?.message || String(error)
+        };
+    }
+});
+
+ipcMain.handle('systemAudio:setAllowOverdrive', async (_event, enabled) => {
+    try {
+        return await setSystemAudioAllowOverdrive(enabled);
+    } catch (error) {
+        return {
+            success: false,
+            error: error?.message || String(error)
+        };
+    }
+});
+
+ipcMain.handle('systemAudio:setOutput', async (_event, outputId) => {
+    try {
+        return await setSystemAudioOutput(outputId);
+    } catch (error) {
+        return {
+            success: false,
+            error: error?.message || String(error)
+        };
+    }
 });
 
 // Playlist Kaydet/Yükle
@@ -2296,6 +5003,34 @@ ipcMain.handle('media:getAlbumArt', async (event, filePath) => {
     }
 });
 
+ipcMain.handle('media:getBestAlbumArt', async (_event, filePath, options) => {
+    try {
+        const prefs = (options && typeof options === 'object') ? options : {};
+        const preferEmbedded = prefs.preferEmbedded !== false;
+        const allowFolderCover = prefs.allowFolderCover !== false;
+
+        if (preferEmbedded) {
+            const embedded = await extractEmbeddedCover(filePath);
+            if (embedded) return embedded;
+        }
+
+        if (allowFolderCover) {
+            const folderCover = await readFolderCoverImage(filePath);
+            if (folderCover) return folderCover;
+        }
+
+        if (!preferEmbedded) {
+            const embedded = await extractEmbeddedCover(filePath);
+            if (embedded) return embedded;
+        }
+
+        return null;
+    } catch (error) {
+        console.log('En uygun kapak bulunamadı:', error?.message || error);
+        return null;
+    }
+});
+
 // Video küçük resmi çıkarma (ffmpeg ile 1 kare al)
 ipcMain.handle('media:getVideoThumbnail', async (_event, filePath) => {
     try {
@@ -2326,17 +5061,584 @@ function getFfmpegPathForEnv() {
     return ffmpegPath;
 }
 
+function normalizeExcludedPaths(excludedFolders = []) {
+    return Array.isArray(excludedFolders)
+        ? excludedFolders
+            .map((folder) => String(folder?.path || folder || '').trim())
+            .filter(Boolean)
+            .map((folderPath) => path.resolve(folderPath))
+        : [];
+}
+
+function isPathExcluded(targetPath, excludedPaths = []) {
+    const normalizedTarget = String(targetPath || '').trim();
+    if (!normalizedTarget) return false;
+    const resolvedTarget = path.resolve(normalizedTarget);
+    return excludedPaths.some((excludedPath) => {
+        const resolvedExcluded = path.resolve(String(excludedPath || '').trim());
+        return resolvedTarget === resolvedExcluded || resolvedTarget.startsWith(`${resolvedExcluded}${path.sep}`);
+    });
+}
+
+function normalizeAudioExtensions(extensions = []) {
+    const fallback = ['mp3', 'wav', 'flac', 'ogg', 'm4a', 'aac', 'wma', 'aiff', 'opus', 'ape', 'wv'];
+    const normalized = Array.isArray(extensions)
+        ? Array.from(new Set(extensions.map((value) => String(value || '').trim().replace(/^\./, '').toLowerCase()).filter(Boolean)))
+        : [];
+    return normalized.length ? normalized : fallback;
+}
+
+async function collectAudioFilesRecursive(rootDir, out = [], excludedPaths = [], audioExtensions = [], diagnostics = null) {
+    const AUDIO_SET = new Set(normalizeAudioExtensions(audioExtensions));
+    if (isPathExcluded(rootDir, excludedPaths)) {
+        return out;
+    }
+    let entries = [];
+    try {
+        entries = await fs.promises.readdir(rootDir, { withFileTypes: true });
+    } catch (error) {
+        if (diagnostics) {
+            diagnostics.scanErrors.push({
+                path: rootDir,
+                error: String(error?.message || error || 'directory-read-failed')
+            });
+        }
+        return out;
+    }
+
+    for (const entry of entries) {
+        const fullPath = path.join(rootDir, entry.name);
+        try {
+            if (entry.isDirectory()) {
+                if (!isPathExcluded(fullPath, excludedPaths)) {
+                    await collectAudioFilesRecursive(fullPath, out, excludedPaths, audioExtensions, diagnostics);
+                }
+                continue;
+            }
+            if (!entry.isFile()) continue;
+        } catch (error) {
+            if (diagnostics) {
+                diagnostics.scanErrors.push({
+                    path: fullPath,
+                    error: String(error?.message || error || 'entry-read-failed')
+                });
+            }
+            continue;
+        }
+
+        const ext = path.extname(entry.name || '').slice(1).toLowerCase();
+        if (AUDIO_SET.has(ext)) {
+            out.push(fullPath);
+        }
+    }
+    return out;
+}
+
+function parseMediaDurationWithFfmpeg(filePath) {
+    return new Promise((resolve) => {
+        const ffmpegPath = getFfmpegPathForEnv();
+        const child = spawn(ffmpegPath, ['-i', filePath], { windowsHide: true });
+        let stderr = '';
+
+        child.stderr.on('data', (chunk) => {
+            stderr += chunk.toString();
+        });
+        child.on('error', () => resolve(0));
+        child.on('close', () => {
+            const match = stderr.match(/Duration:\s*(\d{2}):(\d{2}):(\d{2}(?:\.\d+)?)/i);
+            if (!match) {
+                resolve(0);
+                return;
+            }
+            const hours = Number(match[1] || 0);
+            const minutes = Number(match[2] || 0);
+            const seconds = Number(match[3] || 0);
+            resolve((hours * 3600) + (minutes * 60) + seconds);
+        });
+    });
+}
+
+async function hasFolderCoverImage(filePath) {
+    const dir = path.dirname(filePath);
+    const candidates = [
+        'cover.jpg', 'cover.jpeg', 'cover.png',
+        'folder.jpg', 'folder.jpeg', 'folder.png'
+    ];
+    for (const name of candidates) {
+        try {
+            await fs.promises.access(path.join(dir, name), fs.constants.F_OK);
+            return true;
+        } catch {
+            // yoksay
+        }
+    }
+    return false;
+}
+
+async function readFolderCoverImage(filePath) {
+    const dir = path.dirname(filePath);
+    const candidates = [
+        ['cover.jpg', 'image/jpeg'],
+        ['cover.jpeg', 'image/jpeg'],
+        ['cover.png', 'image/png'],
+        ['folder.jpg', 'image/jpeg'],
+        ['folder.jpeg', 'image/jpeg'],
+        ['folder.png', 'image/png']
+    ];
+    for (const [name, mime] of candidates) {
+        try {
+            const buffer = await fs.promises.readFile(path.join(dir, name));
+            if (buffer?.length) {
+                return `data:${mime};base64,${buffer.toString('base64')}`;
+            }
+        } catch {
+            // yoksay
+        }
+    }
+    return null;
+}
+
+async function collectDirectoriesRecursive(rootDir, out = [], excludedPaths = []) {
+    if (isPathExcluded(rootDir, excludedPaths)) {
+        return out;
+    }
+    let entries = [];
+    try {
+        entries = await fs.promises.readdir(rootDir, { withFileTypes: true });
+    } catch {
+        return out;
+    }
+
+    for (const entry of entries) {
+        if (!entry.isDirectory()) continue;
+        const fullPath = path.join(rootDir, entry.name);
+        if (isPathExcluded(fullPath, excludedPaths)) continue;
+        out.push(fullPath);
+        await collectDirectoriesRecursive(fullPath, out, excludedPaths);
+    }
+    return out;
+}
+
+function disposeLibraryWatchSession(senderId) {
+    const session = libraryWatchSessions.get(senderId);
+    if (!session) return;
+    if (session.refreshTimer) clearTimeout(session.refreshTimer);
+    if (session.eventTimer) clearTimeout(session.eventTimer);
+    for (const watcher of session.watchers || []) {
+        try {
+            watcher.close();
+        } catch {
+            // yoksay
+        }
+    }
+    libraryWatchSessions.delete(senderId);
+}
+
+async function startLibraryWatchSession(webContents, folders, excludedFolders = []) {
+    const senderId = webContents.id;
+    disposeLibraryWatchSession(senderId);
+
+    const normalizedFolders = Array.isArray(folders)
+        ? folders
+            .map((folder) => String(folder?.path || folder || '').trim())
+            .filter(Boolean)
+        : [];
+    const excludedPaths = normalizeExcludedPaths(excludedFolders);
+
+    if (!normalizedFolders.length) {
+        return {
+            watching: false,
+            watchedFolders: 0,
+            watchedDirectories: 0
+        };
+    }
+
+    const uniqueDirectories = new Set();
+    for (const rootDir of normalizedFolders) {
+        if (isPathExcluded(rootDir, excludedPaths)) continue;
+        uniqueDirectories.add(rootDir);
+        const subdirs = [];
+        await collectDirectoriesRecursive(rootDir, subdirs, excludedPaths);
+        for (const dir of subdirs) uniqueDirectories.add(dir);
+    }
+
+    const session = {
+        senderId,
+        webContents,
+        roots: normalizedFolders,
+        excludedPaths,
+        watchers: [],
+        refreshTimer: null,
+        eventTimer: null,
+        eventCount: 0
+    };
+    libraryWatchSessions.set(senderId, session);
+
+    const scheduleRefresh = async (changePath = '', reason = 'change') => {
+        if (session.refreshTimer) clearTimeout(session.refreshTimer);
+        if (session.eventTimer) clearTimeout(session.eventTimer);
+        session.eventTimer = setTimeout(() => {
+            if (!webContents.isDestroyed()) {
+                webContents.send('library:watch-event', {
+                    type: 'detected',
+                    changePath,
+                    reason,
+                    watchedFolders: session.roots.length,
+                    watchedDirectories: session.watchers.length,
+                    timestamp: Date.now()
+                });
+            }
+        }, 20);
+        session.refreshTimer = setTimeout(async () => {
+            try {
+                await startLibraryWatchSession(webContents, session.roots, session.excludedPaths);
+                if (!webContents.isDestroyed()) {
+                    webContents.send('library:watch-event', {
+                        type: 'resynced',
+                        changePath,
+                        reason,
+                        watchedFolders: session.roots.length,
+                        watchedDirectories: libraryWatchSessions.get(senderId)?.watchers?.length || 0,
+                        timestamp: Date.now()
+                    });
+                }
+            } catch (error) {
+                if (!webContents.isDestroyed()) {
+                    webContents.send('library:watch-event', {
+                        type: 'error',
+                        changePath,
+                        reason,
+                        error: String(error?.message || error || 'unknown'),
+                        timestamp: Date.now()
+                    });
+                }
+            }
+        }, 900);
+    };
+
+    for (const dirPath of uniqueDirectories) {
+        try {
+            const watcher = fs.watch(dirPath, { persistent: false }, (_eventType, filename) => {
+                const nextPath = filename ? path.join(dirPath, String(filename)) : dirPath;
+                scheduleRefresh(nextPath, 'fs-change').catch(() => {});
+            });
+            session.watchers.push(watcher);
+            watcher.on('error', (error) => {
+                if (!webContents.isDestroyed()) {
+                    webContents.send('library:watch-event', {
+                        type: 'error',
+                        changePath: dirPath,
+                        reason: 'watch-error',
+                        error: String(error?.message || error || 'unknown'),
+                        timestamp: Date.now()
+                    });
+                }
+            });
+        } catch {
+            // erişilemeyen klasörleri yoksay
+        }
+    }
+
+    webContents.once('destroyed', () => {
+        disposeLibraryWatchSession(senderId);
+    });
+
+    return {
+        watching: session.watchers.length > 0,
+        watchedFolders: normalizedFolders.length,
+        watchedDirectories: session.watchers.length
+    };
+}
+
+function readAudioTagMetadata(filePath) {
+    if (!NodeID3) {
+        return { title: '', artist: '', album: '', hasEmbeddedCover: false, error: 'id3-unavailable' };
+    }
+    try {
+        const tags = NodeID3.read(filePath) || {};
+        return {
+            title: String(tags.title || '').trim(),
+            artist: String(tags.artist || tags.performerInfo || '').trim(),
+            album: String(tags.album || '').trim(),
+            hasEmbeddedCover: !!tags.image,
+            error: ''
+        };
+    } catch (error) {
+        return {
+            title: '',
+            artist: '',
+            album: '',
+            hasEmbeddedCover: false,
+            error: String(error?.message || error || 'metadata-read-failed')
+        };
+    }
+}
+
+function sanitizeMetadataString(value) {
+    return String(value || '')
+        .replace(/\uFFFD/g, '')
+        .replace(/[“”]/g, '"')
+        .replace(/[‘’]/g, "'")
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
+function inferMetadataFromFilename(filePath) {
+    const base = path.basename(filePath, path.extname(filePath));
+    const clean = sanitizeMetadataString(base);
+    const parts = clean.split(' - ').map((part) => sanitizeMetadataString(part)).filter(Boolean);
+    if (parts.length >= 2) {
+        return {
+            artist: parts[0],
+            title: parts.slice(1).join(' - '),
+            album: ''
+        };
+    }
+    return {
+        artist: '',
+        title: clean,
+        album: ''
+    };
+}
+
+async function buildLibraryMetadataCacheFromFolders(folders, options = {}, excludedFolders = [], audioExtensions = [], performanceOptions = {}) {
+    const normalizedFolders = Array.isArray(folders)
+        ? folders
+            .map((folder) => ({
+                path: String(folder?.path || '').trim(),
+                name: String(folder?.name || '').trim()
+            }))
+            .filter((folder) => folder.path)
+        : [];
+    const cleanBrokenChars = options?.cleanBrokenChars !== false;
+    const inferFromFilename = !!options?.inferFromFilename;
+    const excludedPaths = normalizeExcludedPaths(excludedFolders);
+    const fastScan = performanceOptions?.fastScan !== false;
+    const lightweightMode = !!performanceOptions?.lightweightMode;
+    const diagnostics = {
+        scanErrors: [],
+        unreadableFiles: []
+    };
+
+    const allFiles = [];
+    for (const folder of normalizedFolders) {
+        await collectAudioFilesRecursive(folder.path, allFiles, excludedPaths, audioExtensions, diagnostics);
+    }
+
+    const items = {};
+    let refreshedCount = 0;
+    let inferredCount = 0;
+    let cleanedCount = 0;
+
+    for (const filePath of Array.from(new Set(allFiles))) {
+        const raw = readAudioTagMetadata(filePath);
+        if (raw.error) {
+            diagnostics.unreadableFiles.push({
+                path: filePath,
+                error: raw.error
+            });
+        }
+        const before = {
+            title: String(raw.title || ''),
+            artist: String(raw.artist || ''),
+            album: String(raw.album || '')
+        };
+        const next = { ...before };
+
+        if (cleanBrokenChars) {
+            next.title = sanitizeMetadataString(next.title);
+            next.artist = sanitizeMetadataString(next.artist);
+            next.album = sanitizeMetadataString(next.album);
+            if (next.title !== before.title || next.artist !== before.artist || next.album !== before.album) {
+                cleanedCount += 1;
+            }
+        }
+
+        if (inferFromFilename && (!next.title || !next.artist)) {
+            const inferred = inferMetadataFromFilename(filePath);
+            if (!next.title && inferred.title) next.title = inferred.title;
+            if (!next.artist && inferred.artist) next.artist = inferred.artist;
+            if (!next.album && inferred.album) next.album = inferred.album;
+            if (inferred.title || inferred.artist || inferred.album) {
+                inferredCount += 1;
+            }
+        }
+
+        const hasFolderCover = (fastScan || lightweightMode) ? false : await hasFolderCoverImage(filePath);
+        items[filePath] = {
+            title: next.title,
+            artist: next.artist,
+            album: next.album,
+            hasEmbeddedCover: !!raw.hasEmbeddedCover,
+            hasFolderCover,
+            hasCover: !!raw.hasEmbeddedCover || hasFolderCover
+        };
+        refreshedCount += 1;
+    }
+
+    return {
+        items,
+        summary: {
+            refreshedCount,
+            inferredCount,
+            cleanedCount,
+            generatedAt: Date.now(),
+            scanErrors: diagnostics.scanErrors.slice(0, 20),
+            unreadableFiles: diagnostics.unreadableFiles.slice(0, 20)
+        }
+    };
+}
+
+async function buildLibraryStatsFromFolders(folders, metadataCache = {}, excludedFolders = [], audioExtensions = [], performanceOptions = {}) {
+    const normalizedFolders = Array.isArray(folders)
+        ? folders
+            .map((folder) => ({
+                path: String(folder?.path || '').trim(),
+                name: String(folder?.name || '').trim()
+            }))
+            .filter((folder) => folder.path)
+        : [];
+
+    const excludedPaths = normalizeExcludedPaths(excludedFolders);
+    const fastScan = performanceOptions?.fastScan !== false;
+    const lightweightMode = !!performanceOptions?.lightweightMode;
+    const diagnostics = {
+        scanErrors: [],
+        unreadableFiles: []
+    };
+    const allFiles = [];
+    for (const folder of normalizedFolders) {
+        await collectAudioFilesRecursive(folder.path, allFiles, excludedPaths, audioExtensions, diagnostics);
+    }
+
+    const uniqueFiles = Array.from(new Set(allFiles));
+    return buildLibraryStatsFromFileList(uniqueFiles, metadataCache, performanceOptions, normalizedFolders.length, diagnostics);
+}
+
+async function buildLibraryStatsFromFileList(filePaths, metadataCache = {}, performanceOptions = {}, scannedFolderCount = 0, diagnostics = null) {
+    const uniqueFiles = Array.isArray(filePaths)
+        ? Array.from(new Set(filePaths.map((value) => String(value || '').trim()).filter(Boolean)))
+        : [];
+    const fastScan = performanceOptions?.fastScan !== false;
+    const lightweightMode = !!performanceOptions?.lightweightMode;
+    const artists = new Set();
+    const albums = new Set();
+    let totalDurationSec = 0;
+    let missingMetadataCount = 0;
+    let missingCoverCount = 0;
+    const nextDiagnostics = diagnostics || {
+        scanErrors: [],
+        unreadableFiles: []
+    };
+
+    for (const filePath of uniqueFiles) {
+        const rawMeta = readAudioTagMetadata(filePath);
+        if (rawMeta.error) {
+            nextDiagnostics.unreadableFiles.push({
+                path: filePath,
+                error: rawMeta.error
+            });
+        }
+        const override = metadataCache && typeof metadataCache === 'object' ? metadataCache[filePath] || {} : {};
+        const meta = {
+            title: sanitizeMetadataString(override.title || rawMeta.title || ''),
+            artist: sanitizeMetadataString(override.artist || rawMeta.artist || ''),
+            album: sanitizeMetadataString(override.album || rawMeta.album || ''),
+            hasEmbeddedCover: rawMeta.hasEmbeddedCover
+        };
+        if (meta.artist) artists.add(meta.artist.toLowerCase());
+        if (meta.album) albums.add(meta.album.toLowerCase());
+
+        if (!meta.title || !meta.artist || !meta.album) {
+            missingMetadataCount += 1;
+        }
+
+        const hasCover = meta.hasEmbeddedCover || (!(fastScan || lightweightMode) && await hasFolderCoverImage(filePath));
+        if (!hasCover) {
+            missingCoverCount += 1;
+        }
+
+        if (!(fastScan || lightweightMode)) {
+            totalDurationSec += await parseMediaDurationWithFfmpeg(filePath);
+        }
+    }
+
+    return {
+        totalSongs: uniqueFiles.length,
+        totalArtists: artists.size,
+        totalAlbums: albums.size,
+        totalDurationSec: Math.round(totalDurationSec),
+        missingMetadataCount,
+        missingCoverCount,
+        scannedFolderCount,
+        generatedAt: Date.now(),
+        scanErrors: nextDiagnostics.scanErrors.slice(0, 20),
+        unreadableFiles: nextDiagnostics.unreadableFiles.slice(0, 20)
+    };
+}
+
+async function buildLibraryStatsComposite(folders, extraFiles = [], metadataCache = {}, excludedFolders = [], audioExtensions = [], performanceOptions = {}) {
+    const normalizedFolders = Array.isArray(folders)
+        ? folders
+            .map((folder) => ({
+                path: String(folder?.path || '').trim(),
+                name: String(folder?.name || '').trim()
+            }))
+            .filter((folder) => folder.path)
+        : [];
+    const excludedPaths = normalizeExcludedPaths(excludedFolders);
+    const diagnostics = {
+        scanErrors: [],
+        unreadableFiles: []
+    };
+    const allFiles = [];
+    for (const folder of normalizedFolders) {
+        await collectAudioFilesRecursive(folder.path, allFiles, excludedPaths, audioExtensions, diagnostics);
+    }
+    const mergedFiles = [
+        ...allFiles,
+        ...(Array.isArray(extraFiles) ? extraFiles : [])
+    ];
+    return buildLibraryStatsFromFileList(
+        mergedFiles,
+        metadataCache,
+        performanceOptions,
+        normalizedFolders.length,
+        diagnostics
+    );
+}
+
 // Albüm kapağı çıkarma - ID3v2 veya ffmpeg kullan
 async function extractEmbeddedCover(filePath) {
     try {
-        const ext = path.extname(filePath).toLowerCase();
-
-        // M4A/MP4 dosyaları için ffmpeg kullan
-        if (ext === '.m4a' || ext === '.mp4' || ext === '.aac') {
-            return await extractCoverWithFFmpeg(filePath);
+        // 1) Önce node-id3 dene (MP3/ID3 etiketli dosyalarda daha güvenilir)
+        if (NodeID3) {
+            try {
+                const tags = NodeID3.read(filePath) || {};
+                const img = tags?.image;
+                if (img) {
+                    let imageBuffer = null;
+                    let mimeType = 'image/jpeg';
+                    if (img.imageBuffer && Buffer.isBuffer(img.imageBuffer)) {
+                        imageBuffer = img.imageBuffer;
+                        mimeType = String(img.mime || mimeType);
+                    } else if (Buffer.isBuffer(img)) {
+                        imageBuffer = img;
+                    }
+                    if (imageBuffer && imageBuffer.length > 100) {
+                        return `data:${mimeType};base64,${imageBuffer.toString('base64')}`;
+                    }
+                }
+            } catch {
+                // yoksay, fallback'lere geç
+            }
         }
 
-        // Diğer formatlar için manuel ID3 okuma
+        // 2) ffmpeg ile attached picture dene (m4a/mp3/flac dahil)
+        const ffmpegCover = await extractCoverWithFFmpeg(filePath);
+        if (ffmpegCover) return ffmpegCover;
+
+        // 3) Son çare: manuel ID3 okuma
         return await extractID3Cover(filePath);
 
     } catch (error) {
@@ -2372,12 +5674,15 @@ async function extractCoverWithFFmpeg(filePath) {
 
         // ffmpeg ile embedded image'ı pipe'la al
         const ffmpeg = spawn(ffmpegPath, [
+            '-hide_banner',
+            '-loglevel', 'error',
             '-i', filePath,
-            '-an',           // Ses akış yok say
-            '-vcodec', 'copy', // Video codec'i copy et (attached_pic için)
-            '-f', 'image2pipe', // Pipe formatı
-            '-vframes', '1',   // Sadece 1 kare
-            'pipe:1'          // stdout'a yaz
+            '-map', '0:v:0?',
+            '-an',
+            '-frames:v', '1',
+            '-c:v', 'mjpeg',
+            '-f', 'image2pipe',
+            'pipe:1'
         ]);
 
         const chunks = [];
@@ -2921,6 +6226,12 @@ ipcMain.handle('audio:setAutoGainEnabled', (event, enabled) => {
         }
         if (typeof audioEngine.setAutoGainEnabled === 'function') {
             audioEngine.setAutoGainEnabled(enabled);
+            // Native tarafta AGC kapatılırken ses 1.0'a dönebilen sürümler için
+            // mevcut master volume'u tekrar uygula.
+            if (!enabled && typeof audioEngine.getVolume === 'function' && typeof audioEngine.setVolume === 'function') {
+                const current = Math.max(0, Math.min(1, Number(audioEngine.getVolume()) || 0));
+                audioEngine.setVolume(current);
+            }
             console.log('[MAIN] setAutoGainEnabled success');
             return { success: true };
         }
@@ -3012,6 +6323,23 @@ ipcMain.handle('audio:getPeakLevel', () => {
     return -96;
 });
 
+ipcMain.handle('audio:getChannelLevels', () => {
+    if (audioEngine && isNativeAudioAvailable && typeof audioEngine.getChannelLevels === 'function') {
+        try {
+            const levels = audioEngine.getChannelLevels();
+            const left = Number(Array.isArray(levels) ? levels[0] : levels?.left) || 0;
+            const right = Number(Array.isArray(levels) ? levels[1] : levels?.right) || 0;
+            return {
+                left: Math.max(0, Math.min(1, left)),
+                right: Math.max(0, Math.min(1, right))
+            };
+        } catch {
+            // yoksay
+        }
+    }
+    return { left: 0, right: 0 };
+});
+
 ipcMain.handle('audio:getGainReduction', () => {
     if (audioEngine && isNativeAudioAvailable && typeof audioEngine.getAutoGainReduction === 'function') {
         return audioEngine.getAutoGainReduction();
@@ -3050,6 +6378,14 @@ ipcMain.handle('audio:setTruePeakRelease', (event, release) => {
 ipcMain.handle('audio:setTruePeakLookahead', (event, lookahead) => {
     if (audioEngine && isNativeAudioAvailable && typeof audioEngine.setTruePeakLookahead === 'function') {
         audioEngine.setTruePeakLookahead(lookahead);
+        return { success: true };
+    }
+    return { success: false };
+});
+
+ipcMain.handle('audio:setTruePeakInputGain', (event, gain) => {
+    if (audioEngine && isNativeAudioAvailable && typeof audioEngine.setTruePeakInputGain === 'function') {
+        audioEngine.setTruePeakInputGain(gain);
         return { success: true };
     }
     return { success: false };
@@ -3711,6 +7047,63 @@ ipcMain.handle('audio:resetEchoEffect', (event) => {
     return false;
 });
 
+// ============== SOFT ECHO EFFECT IPC HANDLERS ==============
+ipcMain.handle('audio:enableSoftEchoEffect', (event, enabled) => {
+    if (audioEngine && isNativeAudioAvailable && typeof audioEngine.EnableSoftEchoEffect === 'function') {
+        return audioEngine.EnableSoftEchoEffect(enabled);
+    }
+    return false;
+});
+
+ipcMain.handle('audio:setSoftEchoDelay', (event, delayMs) => {
+    if (audioEngine && isNativeAudioAvailable && typeof audioEngine.SetSoftEchoDelayTime === 'function') {
+        return audioEngine.SetSoftEchoDelayTime(delayMs);
+    }
+    return false;
+});
+
+ipcMain.handle('audio:setSoftEchoFeedback', (event, feedback) => {
+    if (audioEngine && isNativeAudioAvailable && typeof audioEngine.SetSoftEchoFeedback === 'function') {
+        return audioEngine.SetSoftEchoFeedback(feedback);
+    }
+    return false;
+});
+
+ipcMain.handle('audio:setSoftEchoWetMix', (event, wetMix) => {
+    if (audioEngine && isNativeAudioAvailable && typeof audioEngine.SetSoftEchoWetMix === 'function') {
+        return audioEngine.SetSoftEchoWetMix(wetMix);
+    }
+    return false;
+});
+
+ipcMain.handle('audio:setSoftEchoDryMix', (event, dryMix) => {
+    if (audioEngine && isNativeAudioAvailable && typeof audioEngine.SetSoftEchoDryMix === 'function') {
+        return audioEngine.SetSoftEchoDryMix(dryMix);
+    }
+    return false;
+});
+
+ipcMain.handle('audio:setSoftEchoStereoMode', (event, stereo) => {
+    if (audioEngine && isNativeAudioAvailable && typeof audioEngine.SetSoftEchoStereoMode === 'function') {
+        return audioEngine.SetSoftEchoStereoMode(stereo);
+    }
+    return false;
+});
+
+ipcMain.handle('audio:setSoftEchoHighCut', (event, freq) => {
+    if (audioEngine && isNativeAudioAvailable && typeof audioEngine.SetSoftEchoHighCut === 'function') {
+        return audioEngine.SetSoftEchoHighCut(freq);
+    }
+    return false;
+});
+
+ipcMain.handle('audio:resetSoftEchoEffect', (event) => {
+    if (audioEngine && isNativeAudioAvailable && typeof audioEngine.ResetSoftEchoEffect === 'function') {
+        return audioEngine.ResetSoftEchoEffect();
+    }
+    return false;
+});
+
 // ============== CONVOLUTION REVERB IPC İŞLEYİCİLERİ ==============
 
 ipcMain.handle('audio:enableConvolutionReverb', (event, enabled) => {
@@ -3845,6 +7238,65 @@ ipcMain.handle('audio:getCrossfeedParams', (event) => {
 ipcMain.handle('audio:resetCrossfeed', (event) => {
     if (audioEngine && isNativeAudioAvailable) {
         return audioEngine.resetCrossfeed();
+    }
+    return false;
+});
+
+// ============================================
+// SURROUND VIRTUALIZER (5.1/7.1 Simülasyon)
+// ============================================
+ipcMain.handle('audio:enableSurroundVirtualizer', (event, enabled) => {
+    if (audioEngine && isNativeAudioAvailable && typeof audioEngine.EnableSurroundVirtualizer === 'function') {
+        return audioEngine.EnableSurroundVirtualizer(enabled);
+    }
+    return false;
+});
+
+ipcMain.handle('audio:setSurroundCenterLevel', (event, dB) => {
+    if (audioEngine && isNativeAudioAvailable && typeof audioEngine.SetSurroundCenterLevel === 'function') {
+        return audioEngine.SetSurroundCenterLevel(dB);
+    }
+    return false;
+});
+
+ipcMain.handle('audio:setSurroundSideLevel', (event, dB) => {
+    if (audioEngine && isNativeAudioAvailable && typeof audioEngine.SetSurroundSideLevel === 'function') {
+        return audioEngine.SetSurroundSideLevel(dB);
+    }
+    return false;
+});
+
+ipcMain.handle('audio:setSurroundLfeLevel', (event, dB) => {
+    if (audioEngine && isNativeAudioAvailable && typeof audioEngine.SetSurroundLfeLevel === 'function') {
+        return audioEngine.SetSurroundLfeLevel(dB);
+    }
+    return false;
+});
+
+ipcMain.handle('audio:setSurroundCrossover', (event, hz) => {
+    if (audioEngine && isNativeAudioAvailable && typeof audioEngine.SetSurroundCrossover === 'function') {
+        return audioEngine.SetSurroundCrossover(hz);
+    }
+    return false;
+});
+
+ipcMain.handle('audio:setSurroundRearDelay', (event, ms) => {
+    if (audioEngine && isNativeAudioAvailable && typeof audioEngine.SetSurroundRearDelay === 'function') {
+        return audioEngine.SetSurroundRearDelay(ms);
+    }
+    return false;
+});
+
+ipcMain.handle('audio:setSurroundMix', (event, percent) => {
+    if (audioEngine && isNativeAudioAvailable && typeof audioEngine.SetSurroundMix === 'function') {
+        return audioEngine.SetSurroundMix(percent);
+    }
+    return false;
+});
+
+ipcMain.handle('audio:resetSurroundVirtualizer', (event) => {
+    if (audioEngine && isNativeAudioAvailable && typeof audioEngine.ResetSurroundVirtualizer === 'function') {
+        return audioEngine.ResetSurroundVirtualizer();
     }
     return false;
 });

@@ -1,14 +1,20 @@
 
 class BarAnalyzer {
-    constructor(canvas) {
+    constructor(canvas, options = {}) {
         this.canvas = canvas;
         this.ctx = this.canvas.getContext('2d', { alpha: false });
+        this.options = options || {};
         
         // Constants
-        this.COLUMN_WIDTH = 4;
-        this.SPACING = 1;
-        this.ROOF_HOLD = 32;
-        this.FALL_DIVISOR = 20;
+        this.COLUMN_WIDTH = Number.isFinite(this.options.columnWidth) ? this.options.columnWidth : 4;
+        this.SPACING = Number.isFinite(this.options.spacing) ? this.options.spacing : 1;
+        this.ROOF_HOLD = Number.isFinite(this.options.roofHold) ? this.options.roofHold : 32;
+        this.FALL_DIVISOR = Number.isFinite(this.options.fallDivisor) ? this.options.fallDivisor : 20;
+        this.backgroundColor = String(this.options.backgroundColor || '#12121a');
+        this.rainbow = !!this.options.rainbow;
+        this.fixedBands = Number.isFinite(this.options.fixedBands)
+            ? Math.max(8, Math.floor(this.options.fixedBands))
+            : 0;
         
         // State
         this.bars = [];
@@ -35,9 +41,13 @@ class BarAnalyzer {
     }
     
     init() {
-        // Calculate number of bands that fit
-        this.bandCount = Math.floor(this.width / (this.COLUMN_WIDTH + this.SPACING));
-        if (this.bandCount < 1) this.bandCount = 1;
+        // Calculate number of bands that fit (or use fixed)
+        if (this.fixedBands > 0) {
+            this.bandCount = this.fixedBands;
+        } else {
+            this.bandCount = Math.floor(this.width / (this.COLUMN_WIDTH + this.SPACING));
+            if (this.bandCount < 1) this.bandCount = 1;
+        }
         
         // Reset state arrays
         this.bars = new Float32Array(this.bandCount).fill(0);
@@ -61,6 +71,22 @@ class BarAnalyzer {
         this.baseColor = { r, g, b };
         this.createGradient();
     }
+
+    isSfxLightsOff() {
+        try {
+            return document?.documentElement?.dataset?.sfxLights === 'off';
+        } catch {
+            return false;
+        }
+    }
+
+    getBandColor(index) {
+        if (this.isSfxLightsOff()) return '#22d3ee';
+        if (!this.rainbow || this.bandCount <= 1) return this.gradient;
+        const t = index / (this.bandCount - 1);
+        const hue = 180 + (140 * t); // cyan -> magenta
+        return `hsl(${hue.toFixed(1)}, 92%, 56%)`;
+    }
     
     /**
      * Draw the frame
@@ -68,24 +94,23 @@ class BarAnalyzer {
      */
     draw(frequencyData) {
         // Clear background
-        this.ctx.fillStyle = '#12121a'; // Match --bg-medium
+        this.ctx.fillStyle = this.backgroundColor; // Match theme background
         this.ctx.fillRect(0, 0, this.width, this.height);
         
         if (!frequencyData) return;
         
-        // Interpolation step could go here if data length != bandCount
-        // For now, simple sampling
-        const step = Math.floor(frequencyData.length / this.bandCount);
-        
         // Physics Loop
         const maxBarHeight = this.height - 2; // Leave room for roof
+        const slot = this.width / this.bandCount;
+        const barW = Math.max(2, Math.floor(slot - this.SPACING));
         
         for (let i = 0; i < this.bandCount; i++) {
-            // Get data value (simple average or peak sample)
+            // Ratio-based sampling: avoids right-side zeros when barCount > data length
+            const from = Math.floor((i / this.bandCount) * frequencyData.length);
+            const to = Math.max(from + 1, Math.floor(((i + 1) / this.bandCount) * frequencyData.length));
             let val = 0;
-            // Sampling strategy: Peak in range
-            for (let j = 0; j < step; j++) {
-                const sample = frequencyData[i * step + j] || 0;
+            for (let j = from; j < to; j++) {
+                const sample = frequencyData[j] || 0;
                 if (sample > val) val = sample;
             }
             
@@ -116,27 +141,27 @@ class BarAnalyzer {
             }
             
             // Drawing
-            const x = i * (this.COLUMN_WIDTH + this.SPACING);
+            const x = Math.floor(i * slot);
             
             // Draw Bar
             if (this.bars[i] > 0) {
-                this.ctx.fillStyle = this.gradient;
+                this.ctx.fillStyle = this.getBandColor(i);
                 this.ctx.fillRect(
                     x, 
                     this.height - this.bars[i], 
-                    this.COLUMN_WIDTH, 
+                    barW, 
                     this.bars[i]
                 );
             }
             
             // Draw Roof
             if (this.roofs[i] > 0) {
-                this.ctx.fillStyle = '#ffffff';
+                this.ctx.fillStyle = this.isSfxLightsOff() ? '#7dd3fc' : (this.rainbow ? this.getBandColor(i) : '#ffffff');
                 // Roof is a single pixel line or small block
                 this.ctx.fillRect(
                     x,
                     this.height - this.roofs[i] - 2,
-                    this.COLUMN_WIDTH,
+                    barW,
                     1
                 );
             }

@@ -390,10 +390,15 @@ function ensureSelectedNotFilteredOut() {
     const inFiltered = state.filtered.some(p => p?.filename === state.selected);
     if (inFiltered) return;
 
-    // Seçili preset grup filtresi nedeniyle gizliyse "tümü"ne dön
-    state.selectedGroup = 'all';
-    const groupSel = document.getElementById('presetGroup');
-    if (groupSel) groupSel.value = 'all';
+    // Seçili preset grup filtresi nedeniyle görünmüyorsa:
+    // Filtreyi bozmadan (dropdown'u "Tümü"ne geri almadan) listeden ilk preset'i seç.
+    const first = (state.filtered || []).find(p => p?.filename) || null;
+    if (!first) {
+        state.selected = null;
+        return;
+    }
+    state.selected = first.filename;
+    try { selectPreset(state.selected); } catch { }
 }
 
 function renderList(presets) {

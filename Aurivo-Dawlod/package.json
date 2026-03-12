@@ -1,0 +1,125 @@
+{
+	"dependencies": {
+		"electron-updater": "^6.6.2",
+		"systeminformation": "^5.25.11",
+		"yt-dlp-wrap-plus": "^2.4.3"
+	},
+	"name": "aurivo-dawlod",
+	"version": "3.20.2",
+	"main": "main.js",
+	"scripts": {
+		"start": "electron .",
+		"dist": "electron-builder",
+		"debug": "electron --inspect=5858 .",
+		"windows": "electron-builder -w",
+		"linux": "electron-builder -l",
+		"mac": "electron-builder -m",
+		"gh-windows": "electron-builder -w --publish=always",
+		"gh-linux": "electron-builder -l --publish=always",
+		"gh-mac": "electron-builder -m --publish=always"
+	},
+	"author": {
+		"name": "Andrew",
+		"email": "aandrew.me@pm.me"
+	},
+	"publish": {
+		"provider": "github",
+		"owner": "aandrew-me",
+		"repo": "Aurivo-Dawlod",
+		"private": false
+	},
+	"license": "GPL-3.0",
+	"description": "Aurivo-Dawlod: download video and audio from many supported sites",
+	"devDependencies": {
+		"electron": "^30.0.0",
+		"electron-builder": "^26.0.12",
+		"typescript": "^5.3.3"
+	},
+	"build": {
+		"productName": "Aurivo-Dawlod",
+		"appId": "io.github.aandrew_me.ytdn",
+		"artifactName": "${productName}.${ext}",
+		"files": [
+			"./resources/**/*",
+			"main.js",
+			"./html/**/*",
+			"./resources/**/*",
+			"./public/**/*",
+			"package.json",
+			"./assets/**/*",
+			"./src/*.js",
+			"./ffmpeg/**/*",
+			"!ffmpeg.patch",
+			"translations",
+			"node*"
+		],
+		"electronLanguages": [
+			"en-US"
+		],
+		"mac": {
+			"category": "Utility",
+			"icon": "resources/icon.png",
+			"target": [
+				"zip",
+				"dmg"
+			],
+			"artifactName": "${productName}_Mac_${arch}.${ext}"
+		},
+		"dmg": {
+			"contents": [
+				{
+					"x": 130,
+					"y": 220
+				},
+				{
+					"x": 410,
+					"y": 220,
+					"type": "link",
+					"path": "/Applications"
+				}
+			],
+			"sign": false
+		},
+		"asar": false,
+		"directories": {
+			"buildResources": "resources",
+			"output": "release"
+		},
+		"linux": {
+			"icon": "resources/icon.png",
+			"target": [
+				"Appimage",
+				"snap",
+				"rpm",
+				"zip",
+				"deb"
+			],
+			"category": "Utility",
+			"artifactName": "${productName}_Linux.${ext}"
+		},
+		"snap": {
+			"grade": "stable",
+			"base": "core22"
+		},
+		"win": {
+			"icon": "resources/icon.ico",
+			"target": [
+				"nsis",
+				"msi",
+				"zip"
+			],
+			"artifactName": "${productName}_Win.${ext}"
+		},
+		"nsis": {
+			"allowToChangeInstallationDirectory": true,
+			"oneClick": false,
+			"deleteAppDataOnUninstall": true
+		},
+		"msi": {
+			"oneClick": true,
+			"createDesktopShortcut": true,
+			"createStartMenuShortcut": true,
+			"shortcutName": "Aurivo-Dawlod"
+		}
+	}
+}

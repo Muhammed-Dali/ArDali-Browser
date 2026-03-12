@@ -44,6 +44,15 @@ function prependToWindowsPath(dir) {
     process.env.PATH = `${dir};${cur}`;
 }
 
+function prependToEnvList(envName, dir) {
+    if (!dir) return;
+    const delimiter = process.platform === 'win32' ? ';' : ':';
+    const cur = process.env[envName] || '';
+    const parts = cur.split(delimiter).filter(Boolean);
+    if (parts.includes(dir)) return;
+    process.env[envName] = cur ? `${dir}${delimiter}${cur}` : dir;
+}
+
 function tryLoadNativeAddon() {
     if (nativeAudio) return true;
     lastNativeLoadError = null;
@@ -67,6 +76,28 @@ function tryLoadNativeAddon() {
                     prependToWindowsPath(path.join(__dirname, 'native', 'build', 'Release'));
                     prependToWindowsPath(path.join(__dirname, 'native-dist'));
                     prependToWindowsPath(path.join(__dirname, 'bin'));
+                } catch {
+                    // ignore
+                }
+            } else {
+                // Linux/macOS: native bağımlılıklar için runtime lookup path'lerini güçlendir
+                try {
+                    const addonDir = path.dirname(addonPath);
+                    const nativeDistDir = path.join(__dirname, 'native-dist');
+                    const platformDir = process.platform === 'darwin' ? 'darwin' : 'linux';
+                    const nativeDistPlatformDir = path.join(nativeDistDir, platformDir);
+                    const libsPlatformDir = path.join(__dirname, 'libs', platformDir);
+
+                    prependToEnvList('PATH', addonDir);
+                    prependToEnvList('PATH', nativeDistDir);
+                    prependToEnvList('PATH', nativeDistPlatformDir);
+                    prependToEnvList('PATH', libsPlatformDir);
+
+                    const libPathVar = process.platform === 'darwin' ? 'DYLD_LIBRARY_PATH' : 'LD_LIBRARY_PATH';
+                    prependToEnvList(libPathVar, addonDir);
+                    prependToEnvList(libPathVar, nativeDistDir);
+                    prependToEnvList(libPathVar, nativeDistPlatformDir);
+                    prependToEnvList(libPathVar, libsPlatformDir);
                 } catch {
                     // ignore
                 }
@@ -160,10 +191,13 @@ class AurivoAudioEngine {
 
         try {
             const result = nativeAudio.loadFile(filePath);
-            if (result) {
+            const ok = (result === true) || (result && typeof result === 'object' && result.success === true);
+            if (ok) {
                 console.log('✓ Dosya yüklendi:', path.basename(filePath));
+            } else if (result && typeof result === 'object' && result.error) {
+                console.warn('⚠ Dosya yüklenemedi:', result.error, '|', path.basename(filePath));
             }
-            return result;
+            return ok;
         } catch (error) {
             console.error('Dosya yükleme hatası:', error);
             return false;
@@ -185,7 +219,13 @@ class AurivoAudioEngine {
             if (typeof nativeAudio.crossfadeTo !== 'function') {
                 return false;
             }
-            return nativeAudio.crossfadeTo(filePath, durationMs);
+            const res = nativeAudio.crossfadeTo(filePath, durationMs);
+            const ok = (res === true) || (res && res.success);
+            if (ok) {
+                // Ensure position updates keep flowing after crossfadeTo (native side may already be playing).
+                this.startPositionUpdates();
+            }
+            return res;
         } catch (error) {
             console.error('Crossfade hatası:', error);
             return false;
@@ -270,6 +310,10 @@ class AurivoAudioEngine {
         if (!isNativeAvailable || !this.initialized) return;
 
         const clamped = Math.max(0, Math.min(1, volume));
+        if (typeof nativeAudio.setMasterVolume === 'function') {
+            nativeAudio.setMasterVolume(clamped * 100);
+            return;
+        }
         nativeAudio.setVolume(clamped);
     }
 
@@ -280,7 +324,13 @@ class AurivoAudioEngine {
     getVolume() {
         if (!isNativeAvailable || !this.initialized) return 1;
 
-        return nativeAudio.getVolume();
+        const raw = typeof nativeAudio.getMasterVolume === 'function'
+            ? Number(nativeAudio.getMasterVolume())
+            : Number(nativeAudio.getVolume());
+        if (!Number.isFinite(raw)) return 1;
+        return typeof nativeAudio.getMasterVolume === 'function'
+            ? Math.max(0, Math.min(1, raw / 100))
+            : Math.max(0, Math.min(1, raw));
     }
 
     // ============================================
@@ -647,6 +697,70 @@ class AurivoAudioEngine {
         if (!isNativeAvailable || !this.initialized) return false;
         if (typeof nativeAudio.ResetCrossfeed === 'function') {
             return nativeAudio.ResetCrossfeed();
+        }
+        return false;
+    }
+
+    EnableSurroundVirtualizer(enabled) {
+        if (!isNativeAvailable || !this.initialized) return false;
+        if (typeof nativeAudio.EnableSurroundVirtualizer === 'function') {
+            return nativeAudio.EnableSurroundVirtualizer(enabled);
+        }
+        return false;
+    }
+
+    SetSurroundCenterLevel(dB) {
+        if (!isNativeAvailable || !this.initialized) return false;
+        if (typeof nativeAudio.SetSurroundCenterLevel === 'function') {
+            return nativeAudio.SetSurroundCenterLevel(dB);
+        }
+        return false;
+    }
+
+    SetSurroundSideLevel(dB) {
+        if (!isNativeAvailable || !this.initialized) return false;
+        if (typeof nativeAudio.SetSurroundSideLevel === 'function') {
+            return nativeAudio.SetSurroundSideLevel(dB);
+        }
+        return false;
+    }
+
+    SetSurroundLfeLevel(dB) {
+        if (!isNativeAvailable || !this.initialized) return false;
+        if (typeof nativeAudio.SetSurroundLfeLevel === 'function') {
+            return nativeAudio.SetSurroundLfeLevel(dB);
+        }
+        return false;
+    }
+
+    SetSurroundCrossover(hz) {
+        if (!isNativeAvailable || !this.initialized) return false;
+        if (typeof nativeAudio.SetSurroundCrossover === 'function') {
+            return nativeAudio.SetSurroundCrossover(hz);
+        }
+        return false;
+    }
+
+    SetSurroundRearDelay(ms) {
+        if (!isNativeAvailable || !this.initialized) return false;
+        if (typeof nativeAudio.SetSurroundRearDelay === 'function') {
+            return nativeAudio.SetSurroundRearDelay(ms);
+        }
+        return false;
+    }
+
+    SetSurroundMix(percent) {
+        if (!isNativeAvailable || !this.initialized) return false;
+        if (typeof nativeAudio.SetSurroundMix === 'function') {
+            return nativeAudio.SetSurroundMix(percent);
+        }
+        return false;
+    }
+
+    ResetSurroundVirtualizer() {
+        if (!isNativeAvailable || !this.initialized) return false;
+        if (typeof nativeAudio.ResetSurroundVirtualizer === 'function') {
+            return nativeAudio.ResetSurroundVirtualizer();
         }
         return false;
     }
@@ -1089,6 +1203,71 @@ class AurivoAudioEngine {
         return false;
     }
 
+    // ============== SOFT ECHO EFFECT ==============
+    EnableSoftEchoEffect(enabled) {
+        if (!isNativeAvailable || !this.initialized) return false;
+        if (typeof nativeAudio.EnableSoftEchoEffect === 'function') {
+            return nativeAudio.EnableSoftEchoEffect(enabled);
+        }
+        return false;
+    }
+
+    SetSoftEchoDelayTime(delayMs) {
+        if (!isNativeAvailable || !this.initialized) return false;
+        if (typeof nativeAudio.SetSoftEchoDelayTime === 'function') {
+            return nativeAudio.SetSoftEchoDelayTime(delayMs);
+        }
+        return false;
+    }
+
+    SetSoftEchoFeedback(feedback) {
+        if (!isNativeAvailable || !this.initialized) return false;
+        if (typeof nativeAudio.SetSoftEchoFeedback === 'function') {
+            return nativeAudio.SetSoftEchoFeedback(feedback);
+        }
+        return false;
+    }
+
+    SetSoftEchoWetMix(wetMix) {
+        if (!isNativeAvailable || !this.initialized) return false;
+        if (typeof nativeAudio.SetSoftEchoWetMix === 'function') {
+            return nativeAudio.SetSoftEchoWetMix(wetMix);
+        }
+        return false;
+    }
+
+    SetSoftEchoDryMix(dryMix) {
+        if (!isNativeAvailable || !this.initialized) return false;
+        if (typeof nativeAudio.SetSoftEchoDryMix === 'function') {
+            return nativeAudio.SetSoftEchoDryMix(dryMix);
+        }
+        return false;
+    }
+
+    SetSoftEchoStereoMode(stereo) {
+        if (!isNativeAvailable || !this.initialized) return false;
+        if (typeof nativeAudio.SetSoftEchoStereoMode === 'function') {
+            return nativeAudio.SetSoftEchoStereoMode(stereo);
+        }
+        return false;
+    }
+
+    SetSoftEchoHighCut(freq) {
+        if (!isNativeAvailable || !this.initialized) return false;
+        if (typeof nativeAudio.SetSoftEchoHighCut === 'function') {
+            return nativeAudio.SetSoftEchoHighCut(freq);
+        }
+        return false;
+    }
+
+    ResetSoftEchoEffect() {
+        if (!isNativeAvailable || !this.initialized) return false;
+        if (typeof nativeAudio.ResetSoftEchoEffect === 'function') {
+            return nativeAudio.ResetSoftEchoEffect();
+        }
+        return false;
+    }
+
     // ============== CONVOLUTION REVERB ==============
 
     /**
@@ -1391,6 +1570,13 @@ class AurivoAudioEngine {
         if (!isNativeAvailable || !this.initialized) return;
         if (typeof nativeAudio.setTruePeakLookahead === 'function') {
             nativeAudio.setTruePeakLookahead(lookahead);
+        }
+    }
+
+    setTruePeakInputGain(gain) {
+        if (!isNativeAvailable || !this.initialized) return;
+        if (typeof nativeAudio.setTruePeakInputGain === 'function') {
+            nativeAudio.setTruePeakInputGain(gain);
         }
     }
 
@@ -1879,7 +2065,8 @@ class AurivoAudioEngine {
             }
 
             // Şarkı bitti mi kontrol et
-            if (!this.isPlaying() && this.getPosition() >= this.getDuration() - 100) {
+            const dur = this.getDuration();
+            if (dur > 250 && !this.isPlaying() && this.getPosition() >= dur - 100) {
                 if (this.callbacks.onPlaybackEnd) {
                     this.callbacks.onPlaybackEnd();
                 }

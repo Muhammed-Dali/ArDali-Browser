@@ -1,0 +1,6 @@
+[submodule "DeliBlock"]
+	path = DeliBlock
+	url = https://github.com/gorhill/DeliBlock.git
+[submodule "publish-extension"]
+	path = publish-extension
+	url = https://github.com/gorhill/publish-extension.git

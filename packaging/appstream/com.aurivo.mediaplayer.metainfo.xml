@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop">
+  <id>com.aurivo.mediaplayer</id>
+  <name>Aurivo Media Player</name>
+  <summary>Electron tabanlı gelişmiş medya oynatıcı</summary>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MIT</project_license>
+  <developer_name>Muhammet Dali</developer_name>
+  <categories>
+    <category>AudioVideo</category>
+  </categories>
+  <url type="homepage">https://aurivo.app</url>
+  <url type="bugtracker">https://github.com/muhammed-aurivo-dev/Aurivo-Medya-Player/issues</url>
+  <launchable type="desktop-id">com.aurivo.mediaplayer.desktop</launchable>
+  <description>
+    <p>Aurivo Media Player; müzik ve video dosyalarını yönetmek ve oynatmak için tasarlanmış, Electron tabanlı bir medya oynatıcıdır.</p>
+    <p>Öne çıkanlar:</p>
+    <ul>
+      <li>Ses/video oynatma ve playlist yönetimi</li>
+      <li>projectM görselleştirici (native)</li>
+      <li>MPRIS entegrasyonu</li>
+    </ul>
+  </description>
+  <provides>
+    <binary>aurivo</binary>
+  </provides>
+</component>
+

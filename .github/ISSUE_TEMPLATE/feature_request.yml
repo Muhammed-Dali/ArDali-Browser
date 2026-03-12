@@ -1,0 +1,20 @@
+name: Feature request
+description: Yeni özellik öner
+title: "[Feature]: "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: idea
+    attributes:
+      label: Öneri
+      description: Ne eklenmesini istersiniz?
+      placeholder: Detay verin...
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: Kullanım senaryosu
+      description: Hangi problemi çözer?
+    validations:
+      required: false

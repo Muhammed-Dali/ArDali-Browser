@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title id="title" data-translate="preferences">Preferences</title>
+    <link rel="stylesheet" href="../assets/css/extra.css">
+
+    <script src="../translations/i18n-init.js" defer></script>
+    <script src="../src/preferences.js" defer></script>
+</head>
+
+<body>
+    <div id="top">
+        <a id="restart" data-translate="restartApp">Restart app</a>
+        <a id="back" data-translate="homepage">Homepage</a>
+    </div>
+
+    <h1 id="preferences" data-translate="preferences">Preferences</h1>
+    <br><br>
+
+    <div class="prefBox" style="border: none;">
+        <strong id="dlText" data-translate="downloadLocation">Download location</strong>
+    </div>
+
+    <div class="prefBox">
+        <span id="clText" data-translate="currentDownloadLocation">Current download location - </span><span
+            id="path"></span>
+    </div>
+
+    <button id="selectLocation" class="greenBtn" data-translate="selectDownloadLocation">Select Download
+        Location</button>
+
+    <p id="msg">
+    </p>
+
+    <!-- Video Quality -->
+    <div class="prefBox">
+        <span id="preferredVideoTxt" data-translate="preferredVideoQuality">Preferred video quality</span>
+        <select id="preferredVideoQuality">
+            <option value="144">144p</option>
+            <option value="240">240p</option>
+            <option value="360">360p</option>
+            <option value="480">480p</option>
+            <option value="720">720p (HD)</option>
+            <option value="1080">1080p (FHD)</option>
+            <option value="1440">1440p</option>
+            <option value="2160">2160p (4k)</option>
+        </select>
+
+    </div>
+
+    <!-- Video Codec -->
+    <div class="prefBox">
+        <span id="preferredVideoCodecTxt" data-translate="preferredVideoCodec">Preferred video codec</span>
+        <select id="preferredVideoCodec">
+            <option value="avc1">AVC1</option>
+            <option value="av01">AV1</option>
+            <option value="vp9">VP9</option>
+            <option value="mp4v">MP4V</option>
+        </select>
+
+    </div>
+
+    <!-- Audio format -->
+    <div class="prefBox">
+        <span id="preferredAudioTxt" data-translate="preferredAudioFormat">Preferred audio format</span>
+        <select id="preferredAudioQuality">
+            <option value="mp3">Mp3</option>
+            <option value="aac">Aac</option>
+            <option value="m4a">M4a</option>
+            <option value="opus">Opus</option>
+            <option value="wav">Wav</option>
+            <option value="alac">Alac</option>
+            <option value="flac">Flac</option>
+        </select>
+
+    </div>
+
+    <p id="flatpakTxt" data-translate="flatsealPermissionWarning"></p>
+    <div class="prefBox">
+        <div>
+            <span id="browserTxt" data-translate="selectBrowserForCookies">Select browser to use cookies from</span>
+            <span id="browserInfo" data-translate-title="cookiesWarning"> &#9432;</span>
+        </div>
+        <select id="browser">
+            <option value="" id="none" data-translate="none">None</option>
+            <option value="chrome">Chrome</option>
+            <option value="firefox">Firefox</option>
+            <option value="brave">Brave</option>
+            <option value="opera">Opera Mini</option>
+            <option value="edge">Edge</option>
+            <option value="chromium">Chromium</option>
+            <option value="safari">Safari</option>
+            <option value="vivaldi">Vivaldi</option>
+        </select>
+    </div>
+
+    <div class="prefBox">
+        <span id="proxyTitle" data-translate="proxy">Proxy</span>
+        <input type="text" id="proxyTxt" placeholder="http://localhost:8080"
+            pattern="^(http:\/\/|https:\/\/|socks5:\/\/)?[a-zA-Z0-9.]+:[\d]+$">
+    </div>
+
+    <div id="ytDlpArgBox">
+        <p>
+            <span data-translate="customArgsTxt">Set custom yt-dlp arguments.</span>
+            <a data-translate="learnMore" id="learnMoreLink">Learn more</a>
+        </p>
+        <textarea spellcheck="false" id="customArgsInput" placeholder="--sponsorblock-remove all"></textarea>
+    </div>
+
+    <div id="pathConfig">
+
+        <div class="configBox">
+            <span id="configTxt" data-translate="useConfigFile">Use configuration file</span>
+            <input type="checkbox" class="cb" id="configCheck">
+        </div>
+
+        <div id="configOpts">
+            <br>
+            <button class="greenBtn" id="configBtn" data-translate="selectConfigFile">Select config file</button>
+            <br>
+            <strong id="configPathTxt" data-translate="path">Path:</strong>
+            <span id="configPath"></span>
+        </div>
+    </div>
+
+    <div class="prefBox">
+        <span id="showMoreFormatsTxt" data-translate="showMoreFormatOptions">Show more format options</span>
+        <input type="checkbox" class="cb" id="showMoreFormats">
+    </div>
+
+    <div class="prefBox">
+        <span id="fileFormatTxt" data-translate="playlistFilenameFormat">Filename format for playlists</span>
+        <input type="text" id="filenameFormat" placeholder="yt-dlp format style"
+            value="%(playlist_index)s.%(title)s.%(ext)s">
+        <button class="redBtn" id="resetFilenameFormat" data-translate="resetToDefault">Reset to default</button>
+    </div>
+
+    <div class="prefBox">
+        <span id="dirFormatTxt" data-translate="playlistFolderNameFormat">Folder name format for playlists</span>
+        <input type="text" id="foldernameFormat" value="%(playlist_title)s" placeholder="yt-dlp format style">
+        <button class="redBtn" id="resetFoldernameFormat" data-translate="resetToDefault">Reset to default</button>
+    </div>
+
+
+    <div class="prefBox">
+        <span id="maxTxt" data-translate="maxActiveDownloads">Maximum number of active downloads</span>
+        <input type="number" min="1" class="input" id="maxDownloads" value="5">
+    </div>
+
+
+    <div class="prefBox">
+        <span id="trayTxt" data-translate="closeAppToTray">Close to system tray</span>
+        <input type="checkbox" class="cb" id="closeToTray">
+    </div>
+
+    <div class="prefBox" id="autoUpdatesBox">
+        <span id="autoUpdateTxt" data-translate="disableAutoUpdates">Disable auto updates</span>
+        <input type="checkbox" class="cb" id="autoUpdateDisabled">
+    </div>
+</body>
+
+</html>

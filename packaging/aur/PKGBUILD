@@ -1,0 +1,41 @@
+# Maintainer: Aurivo <support@aurivo.app>
+#
+# This PKGBUILD is intended for Arch-based distros (Arch/CachyOS/EndeavourOS/Manjaro/Garuda).
+# It installs the prebuilt AppImage from GitHub Releases.
+
+pkgname=aurivo-media-player-bin
+pkgver=0.0.0
+pkgrel=1
+pkgdesc="Aurivo Media Player (AppImage, prebuilt)"
+arch=('x86_64')
+url="https://aurivo.app"
+license=('MIT')
+depends=('fuse2' 'zlib' 'glibc')
+provides=('aurivo-media-player')
+conflicts=('aurivo-media-player')
+
+_owner="muhammed-aurivo-dev"
+_repo="Aurivo-Medya-Player"
+
+source=(
+  "Aurivo-${pkgver}-linux-x64.AppImage::https://github.com/${_owner}/${_repo}/releases/download/v${pkgver}/Aurivo-${pkgver}-linux-x64.AppImage"
+  "com.aurivo.mediaplayer.desktop"
+  "com.aurivo.mediaplayer.metainfo.xml"
+)
+sha256sums=('SKIP' 'SKIP' 'SKIP')
+
+prepare() {
+  cp -f "${srcdir}/com.aurivo.mediaplayer.desktop" "${srcdir}/aurivo.desktop"
+}
+
+package() {
+  install -Dm755 "Aurivo-${pkgver}-linux-x64.AppImage" "${pkgdir}/opt/aurivo/aurivo.AppImage"
+  install -Dm755 /dev/stdin "${pkgdir}/usr/bin/aurivo" <<'EOF'
+#!/usr/bin/env bash
+exec /opt/aurivo/aurivo.AppImage "$@"
+EOF
+
+  install -Dm644 "${srcdir}/aurivo.desktop" "${pkgdir}/usr/share/applications/com.aurivo.mediaplayer.desktop"
+  install -Dm644 "${srcdir}/com.aurivo.mediaplayer.metainfo.xml" "${pkgdir}/usr/share/metainfo/com.aurivo.mediaplayer.metainfo.xml"
+}
+

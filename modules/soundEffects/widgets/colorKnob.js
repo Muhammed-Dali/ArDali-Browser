@@ -32,7 +32,30 @@ class ColorKnob {
         
         // Start animation loop
         this.lastTime = performance.now();
-        requestAnimationFrame((t) => this.animate(t));
+        this._running = false;
+        this.startAnimation();
+    }
+    
+    static _runningInstances = new Set();
+    static _sharedRafId = null;
+    static _sharedTick = (timestamp) => {
+        let hasRunning = false;
+        ColorKnob._runningInstances.forEach((inst) => {
+            if (!inst || !inst._running) return;
+            hasRunning = true;
+            inst.animate(timestamp);
+        });
+
+        if (hasRunning) {
+            ColorKnob._sharedRafId = requestAnimationFrame(ColorKnob._sharedTick);
+        } else {
+            ColorKnob._sharedRafId = null;
+        }
+    };
+
+    static _ensureSharedLoop() {
+        if (ColorKnob._sharedRafId !== null) return;
+        ColorKnob._sharedRafId = requestAnimationFrame(ColorKnob._sharedTick);
     }
 
     setRange(min, max) {
@@ -223,13 +246,40 @@ class ColorKnob {
         this.canvas.addEventListener('mouseleave', () => this.isHovered = false);
     }
     
+    startAnimation() {
+        if (this._running) return;
+        this._running = true;
+        this.lastTime = performance.now();
+        ColorKnob._runningInstances.add(this);
+        ColorKnob._ensureSharedLoop();
+    }
+
+    stopAnimation() {
+        this._running = false;
+        ColorKnob._runningInstances.delete(this);
+    }
+
+    setActive(active) {
+        if (active) this.startAnimation();
+        else this.stopAnimation();
+    }
+
+    destroy() {
+        this.stopAnimation();
+        window.removeEventListener('mousemove', this.handleWindowMouseMove);
+        window.removeEventListener('mouseup', this.handleWindowMouseUp);
+    }
+
     animate(timestamp) {
+        if (!this._running) return;
         // Calculate delta time
         const dt = timestamp - this.lastTime;
         
         // 1. Color Shift Animation
-        this.shift += 0.0004 * dt;
-        if (this.shift > 1.0) this.shift -= 1.0;
+        if (!this.isSfxLightsOff()) {
+            this.shift += 0.0004 * dt;
+            if (this.shift > 1.0) this.shift -= 1.0;
+        }
         
         // 2. Value Smoothing (Inertia)
         const diff = this.targetValue - this.value;
@@ -252,7 +302,6 @@ class ColorKnob {
         
         this.draw();
         
-        requestAnimationFrame((t) => this.animate(t));
     }
     
     // Qt HSV to CSS RGB Helper
@@ -282,9 +331,20 @@ class ColorKnob {
     
     rainbowColor(t, alpha, sat, val) {
         t = Math.max(0, Math.min(t, 1));
+        if (this.isSfxLightsOff()) {
+            return this.hsvToRgb(195, sat, val, alpha);
+        }
         // float hue = fmod(m_shift * 360.0f + t * 300.0f, 360.0f);
         let hue = (this.shift * 360 + t * 300) % 360;
         return this.hsvToRgb(hue, sat, val, alpha);
+    }
+
+    isSfxLightsOff() {
+        try {
+            return document?.documentElement?.dataset?.sfxLights === 'off';
+        } catch {
+            return false;
+        }
     }
 
     draw() {

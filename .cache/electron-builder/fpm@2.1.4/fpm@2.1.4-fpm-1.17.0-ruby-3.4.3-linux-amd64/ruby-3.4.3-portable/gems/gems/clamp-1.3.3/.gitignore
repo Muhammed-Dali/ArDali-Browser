@@ -1,0 +1,9 @@
+*.gem
+.bundle
+.markdownlint*
+.rvmrc
+.ruby-version
+.yardoc
+doc
+pkg/*
+Gemfile.lock

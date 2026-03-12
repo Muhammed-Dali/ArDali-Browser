@@ -1,0 +1,44 @@
+name: Bug report
+description: Bir hata bildir
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Hata raporu için teşekkürler. Lütfen mümkün olduğunca detay verin.
+  - type: textarea
+    id: what_happened
+    attributes:
+      label: Ne oldu?
+      description: Ne bekliyordunuz, ne oldu?
+      placeholder: Adım adım yazın...
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Log / Konsol çıktısı
+      description: Varsa ilgili logları yapıştırın.
+      render: shell
+    validations:
+      required: false
+  - type: dropdown
+    id: os
+    attributes:
+      label: İşletim sistemi
+      options:
+        - Windows
+        - Linux (Arch tabanlı)
+        - Linux (Debian/Ubuntu tabanlı)
+        - Linux (Fedora tabanlı)
+        - Linux (openSUSE)
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Sürüm
+      placeholder: "Örn: 1.0.5"
+    validations:
+      required: true

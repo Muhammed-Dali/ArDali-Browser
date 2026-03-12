@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: https:; media-src 'self' file:; frame-src https://music.youtube.com https://www.youtube.com https://open.spotify.com https://www.deezer.com https://soundcloud.com https://www.mixcloud.com;">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: https:; media-src 'self' file:; frame-src 'self' https://music.youtube.com https://www.youtube.com https://www.youtube-nocookie.com https://youtube-nocookie.com https://www.deezer.com https://soundcloud.com https://www.facebook.com https://www.instagram.com https://www.tiktok.com https://x.com https://twitter.com https://www.reddit.com https://www.twitch.tv https://accounts.google.com https://*.google.com https://*.googleusercontent.com;">
     <title>Aurivo Media Player</title>
     <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet">
     <link rel="stylesheet" href="styles/main.css">
@@ -25,21 +25,22 @@
                 <button class="sidebar-btn" data-page="web" data-panel="web" title="Web" data-i18n-title="sidebar.web">
                     <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/></svg>
                 </button>
+                <button class="sidebar-btn" data-page="download" data-panel="download" title="İndir" data-i18n-title="sidebar.download">
+                    <img class="sidebar-icon-img" src="Aurivo-Dawlod/resources/icon.png" alt="Aurivo-Dawlod">
+                </button>
+                <button class="sidebar-btn" data-page="pulse" data-panel="pulse" title="Aurivo Pulse Dinleme Modu">
+                    <img class="sidebar-icon-img" src="Aurivo-Pulse/src/gui/custom_icon.png" alt="Aurivo-Pulse">
+                </button>
 	            </div>
 	            <div class="sidebar-bottom">
-	                <button class="sidebar-btn" id="securityBtn" title="Güvenlik" data-i18n-title="sidebar.security">
-	                    <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm0 10.99h7c-.53 4.12-3.28 7.79-7 8.94V12H5V6.3l7-3.11v8.8z"/></svg>
-	                </button>
-	                <button class="sidebar-btn" id="downloadBtn" title="İndir" data-i18n-title="sidebar.download">
-	                    <svg viewBox="0 0 24 24" fill="currentColor"><path d="M5 20h14v-2H5v2zm7-18l-5.5 5.5 1.41 1.41L11 6.83V16h2V6.83l3.09 3.09 1.41-1.41L12 2z"/></svg>
-	                </button>
-	                <button class="sidebar-btn" id="settingsBtn" title="Ayarlar" data-i18n-title="sidebar.settings">
+<button class="sidebar-btn" id="settingsBtn" title="Ayarlar" data-i18n-title="sidebar.settings">
 	                    <svg viewBox="0 0 24 24" fill="currentColor"><path d="M19.14 12.94c.04-.31.06-.63.06-.94 0-.31-.02-.63-.06-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.04.31-.06.63-.06.94s.02.63.06.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/></svg>
 	                </button>
-	                <button class="sidebar-btn" id="infoBtn" title="Hakkında" data-i18n-title="sidebar.about">
-	                    <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/></svg>
-	                </button>
-	            </div>
+                <button class="sidebar-btn" id="infoBtn" title="Hakkında" data-i18n-title="sidebar.about">
+                    <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/></svg>
+                    <span class="sidebar-badge hidden" id="infoUpdateBadge" aria-label="Güncelleme var"></span>
+                </button>
+            </div>
 	        </nav>
 
         <!-- Sol Panel Stack -->
@@ -51,17 +52,17 @@
                 </div>
                 <div class="panel-actions" id="libraryActions">
                     <div class="panel-actions-row" id="libraryActionsAudio">
-                        <button class="btn btn-small" id="musicAddFolderBtn">Klasör Ekle</button>
-                        <button class="btn btn-small" id="musicAddFilesBtn">Dosya Ekle</button>
+                        <button class="btn btn-small" id="musicAddFilesBtn">
+                            <span class="library-add-btn-label" data-i18n="libraryActions.addToLibrary">Kütüphaneye ekle</span>
+                            <span class="library-add-btn-context" id="musicAddFilesBtnContext">Kök kütüphane</span>
+                        </button>
+                        <button class="btn btn-small hidden" id="musicSortPlaylistBtn" title="A-Z">A-Z</button>
                     </div>
                     <div class="panel-actions-row hidden" id="libraryActionsVideo">
-                        <button class="btn btn-small" id="videoAddFolderBtn">Klasör Ekle</button>
-                        <button class="btn btn-small" id="videoAddFilesBtn">Video Aç</button>
+                        <button class="btn btn-small" id="videoAddFilesBtn" data-i18n="libraryActions.openVideo">Video Aç</button>
                     </div>
                 </div>
-                <div class="file-tree" id="fileTree">
-                    <div class="tree-loading" data-i18n="panel.loading">Yükleniyor...</div>
-                </div>
+                <div class="file-tree" id="fileTree"></div>
             </div>
 
             <!-- Web Platformları Paneli -->
@@ -70,17 +71,13 @@
 	                    <span class="panel-title" data-i18n="panel.internet">İNTERNET</span>
 	                </div>
 	                <div class="web-platforms">
-	                    <button class="platform-btn" data-url="https://music.youtube.com/" data-platform="youtube">
+	                    <button class="platform-btn" data-url="https://music.youtube.com/" data-platform="ytmusic">
 	                        <img src="icons/youtube_music.svg" alt="YT Music">
 	                        <span>YouTube Music</span>
                     </button>
                     <button class="platform-btn" data-url="https://www.youtube.com/" data-platform="youtube">
                         <img src="icons/youtube_modern.svg" alt="YouTube">
                         <span>YouTube</span>
-                    </button>
-                    <button class="platform-btn" data-url="https://open.spotify.com/" data-platform="spotify">
-                        <img src="icons/spotify.svg" alt="Spotify">
-                        <span>Spotify</span>
                     </button>
                     <button class="platform-btn" data-url="https://www.deezer.com/" data-platform="deezer">
                         <img src="icons/deezer.svg" alt="Deezer">
@@ -90,10 +87,34 @@
                         <img src="icons/soundcloud.svg" alt="SoundCloud">
                         <span>SoundCloud</span>
                     </button>
-                    <button class="platform-btn" data-url="https://www.mixcloud.com/" data-platform="mixcloud">
-                        <img src="icons/mixcloud.svg" alt="Mixcloud">
-                        <span>Mixcloud</span>
+                    <button class="platform-btn" data-url="https://www.facebook.com/" data-platform="facebook">
+                        <img src="icons/facebook.svg" alt="Facebook">
+                        <span>Facebook</span>
                     </button>
+                    <button class="platform-btn" data-url="https://www.instagram.com/" data-platform="instagram">
+                        <img src="icons/instagram.svg" alt="Instagram">
+                        <span>Instagram</span>
+                    </button>
+                    <button class="platform-btn" data-url="https://www.tiktok.com/" data-platform="tiktok">
+                        <img src="icons/tiktok.svg" alt="TikTok">
+                        <span>TikTok</span>
+                    </button>
+                    <button class="platform-btn" data-url="https://x.com/" data-platform="x">
+                        <img src="icons/x.svg" alt="X">
+                        <span>X</span>
+                    </button>
+                    <button class="platform-btn" data-url="https://www.reddit.com/" data-platform="reddit">
+                        <img src="icons/reddit.svg" alt="Reddit">
+                        <span>Reddit</span>
+                    </button>
+                    <button class="platform-btn" data-url="https://www.twitch.tv/" data-platform="twitch">
+                        <img src="icons/twitch.svg" alt="Twitch">
+                        <span>Twitch</span>
+                    </button>
+                    <div class="pulse-found-section hidden" id="pulseFoundSection">
+                        <div class="pulse-found-title">Aurivo-Pulse Bulunanlar</div>
+                        <div class="pulse-found-list" id="pulseFoundList"></div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -102,20 +123,48 @@
         <main class="main-content">
             <!-- Üst Gezinme Çubuğu -->
             <div class="nav-bar">
-                <button class="nav-btn" id="backBtn" title="Geri">
+                <button class="nav-btn" id="webDrawerToggleBtn" title="Çekmece">
+                    <svg viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M3 5h18v14H3V5zm6 2H5v10h4V7zm2 0h10v10H11V7z"/>
+                    </svg>
+                </button>
+                <button class="nav-btn" id="backBtn" title="Geri" data-i18n-title="nav.back">
                     <svg viewBox="0 0 24 24" fill="currentColor"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/></svg>
                 </button>
-                <button class="nav-btn" id="forwardBtn" title="İleri">
+                <button class="nav-btn" id="forwardBtn" title="İleri" data-i18n-title="nav.forward">
                     <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 4l-1.41 1.41L16.17 11H4v2h12.17l-5.58 5.59L12 20l8-8z"/></svg>
                 </button>
-                <button class="nav-btn" id="refreshBtn" title="Yenile">
+                <button class="nav-btn" id="refreshBtn" title="Yenile" data-i18n-title="nav.reload">
                     <svg viewBox="0 0 24 24" fill="currentColor"><path d="M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/></svg>
                 </button>
+                <button class="nav-btn" id="pulseQuickListenBtn" title="Aurivo-Pulse Dinle">
+                    <svg class="pulse-quick-icon" viewBox="0 0 24 24" aria-hidden="true">
+                        <rect x="3" y="10" width="3" height="10" rx="1.2" fill="currentColor"/>
+                        <rect x="8" y="6" width="3" height="14" rx="1.2" fill="currentColor"/>
+                        <rect x="13" y="3" width="3" height="17" rx="1.2" fill="currentColor"/>
+                        <rect x="18" y="8" width="3" height="12" rx="1.2" fill="currentColor"/>
+                    </svg>
+                </button>
+                <button class="nav-btn" id="adblockBtn" title="uBO Lite Kontrol Panelini Aç">
+                    <img class="nav-icon-img" src="icons/deliblock.svg" alt="DeliBlock">
+                    <span class="nav-badge hidden" id="adblockBlockedBadge">0</span>
+                </button>
+                <span class="adblock-status-text" id="adblockStatusText" role="button" tabindex="0" title="uBO Lite Kontrol Panelini Aç">0 reklam engellendi</span>
+            </div>
+
+            <!-- Update Banner (non-intrusive) -->
+            <div class="update-banner hidden" id="updateBanner" role="status" aria-live="polite">
+                <div class="update-banner-text" id="updateBannerText">Güncelleme kontrol ediliyor...</div>
+                <div class="update-banner-actions">
+                    <button class="btn btn-small" id="updateBannerDetailsBtn" type="button">Detaylar</button>
+                    <button class="btn btn-small primary" id="updateBannerUpdateBtn" type="button">Güncelle</button>
+                    <button class="btn btn-small" id="updateBannerDismissBtn" type="button" title="Kapat" aria-label="Kapat">×</button>
+                </div>
             </div>
 
             <!-- Şu An Çalınan Barı -->
             <div class="now-playing-bar">
-                <span id="nowPlayingLabel">Şu An Çalınan: Aurivo Player - Hazır</span>
+                <span id="nowPlayingLabel" data-i18n="nowPlaying.ready">Şu An Çalınan: Aurivo Player - Hazır</span>
             </div>
 
             <!-- İçerik Stack -->
@@ -412,305 +461,59 @@
 
                 <!-- Web Sayfası -->
                 <div class="page hidden" id="webPage">
-                    <webview id="webView" src="about:blank" allowpopups></webview>
+                    <webview id="webView" src="about:blank" allowpopups partition="persist:aurivo-web"></webview>
+                    <div class="web-loading-overlay hidden" id="webLoadingOverlay" aria-live="polite">
+                        <div class="web-loading-card">
+                            <div class="web-loading-brand">
+                                <img src="icons/deliblock.svg" alt="DeliBlock">
+                                <span>DeliBlock Shield</span>
+                            </div>
+                            <div class="web-loading-spinner-wrap" aria-hidden="true">
+                                <div class="web-loading-spinner"></div>
+                                <div class="web-loading-pulse"></div>
+                            </div>
+                            <div class="web-loading-text">DeliBlock içerik hazırlanıyor...</div>
+                            <div class="web-loading-sub">Reklam katmanlari taraniyor ve platform optimize ediliyor.</div>
+                        </div>
+                    </div>
                 </div>
-
-	                <!-- İndirme Sayfası (Uygulama İçi) -->
-	                <div class="page hidden utility-page" id="downloadPage">
-	                    <div class="utility-page-wrapper">
-		                        <div class="download-modal-content">
-		                            <div class="modal-header">
-		                                <h2 data-i18n="downloadUi.title">İndir - Format Seç</h2>
-		                                <button class="modal-close" id="closeDownload">&times;</button>
-		                            </div>
-		                            <div class="download-top-controls">
-		                                <div class="download-tabs-pill" role="tablist" aria-label="Download mode">
-		                                    <button class="download-tab-v2 active" data-mode="video" id="downloadTabVideo" data-i18n="downloadUi.tabs.video" role="tab" aria-selected="true">Video</button>
-		                                    <button class="download-tab-v2" data-mode="audio" id="downloadTabAudio" data-i18n="downloadUi.tabs.audio" role="tab" aria-selected="false">Ses</button>
-		                                </div>
-
-		                                <div class="download-view-bar">
-		                                    <div class="download-view-title" id="downloadViewTitle" data-i18n="downloadUi.view.basic">Basit</div>
-		                                    <button class="download-view-btn hidden" id="downloadViewBackBtn"><span aria-hidden="true">←</span> <span data-i18n="downloadUi.back">Geri</span></button>
-		                                </div>
-		                            </div>
-
-		                            <div class="download-body-v2">
-
-	                                <div class="download-page" id="downloadPageBasic">
-		                                    <div class="download-title-row">
-		                                        <label for="downloadTitle" data-i18n="downloadUi.fields.titleLabel">Başlık :</label>
-	                                        <input type="text" id="downloadTitle" class="download-input-v2" placeholder="Örn: Kalmaz - YouTube"
-	                                               data-i18n-placeholder="downloadUi.fields.titlePlaceholder">
-	                                    </div>
-
-                                    <div class="download-card">
-	                                        <div class="download-card-brand">Aurivo Player</div>
-	                                        <div class="download-card-mode" id="downloadCardModeTitle" data-i18n="downloadUi.cardMode.video">Video İndir</div>
-
-                                        <div class="download-card-fields">
-	                                            <div class="download-card-field" id="downloadOptionsVideo">
-	                                                <div class="download-card-field-label" data-i18n="downloadUi.fields.selectFormat">Format seçin</div>
-	                                                <select id="downloadVideoQuality" class="download-select-v2">
-	                                                    <option value="auto" data-i18n="downloadUi.quality.autoBest">Otomatik (En İyi) - Önerilen</option>
-	                                                    <option value="144">144p</option>
-	                                                    <option value="240">240p</option>
-	                                                    <option value="360">360p</option>
-                                                    <option value="480">480p</option>
-                                                    <option value="720">720p (HD)</option>
-                                                    <option value="1080">1080p (FHD)</option>
-                                                    <option value="1440">1440p</option>
-                                                    <option value="2160">2160p (4K)</option>
-                                                </select>
-                                            </div>
-
-	                                            <div class="download-card-field hidden" id="downloadOptionsAudio">
-	                                                <div class="download-card-field-label" data-i18n="downloadUi.fields.selectFormat">Format seçin</div>
-	                                                <div class="download-audio-grid">
-                                                    <select id="downloadAudioFormat" class="download-select-v2">
-                                                        <option value="mp3">MP3</option>
-                                                        <option value="aac">AAC</option>
-                                                        <option value="m4a">M4A</option>
-                                                        <option value="opus">OPUS</option>
-                                                        <option value="wav">WAV</option>
-                                                        <option value="alac">ALAC</option>
-                                                        <option value="flac">FLAC</option>
-                                                    </select>
-	                                                    <select id="downloadAudioQuality" class="download-select-v2">
-	                                                        <option value="192" data-i18n="downloadUi.audioQuality.normal">Normal (192kbps)</option>
-	                                                        <option value="320" data-i18n="downloadUi.audioQuality.high">Yüksek (320kbps)</option>
-	                                                        <option value="128" data-i18n="downloadUi.audioQuality.low">Düşük (128kbps)</option>
-	                                                    </select>
-	                                                </div>
-	                                                <label class="download-check">
-	                                                    <input type="checkbox" id="downloadNormalizeAudio" checked>
-	                                                    <span data-i18n="downloadUi.normalizeAudio">Ses normalizasyonu (daha yüksek ses)</span>
-	                                                </label>
-	                                            </div>
-                                        </div>
-
-	                                        <div class="download-card-actions">
-	                                            <button class="download-action-primary" id="downloadStartBtn" data-i18n="downloadUi.buttons.start">İndir</button>
-	                                            <button class="download-action-secondary" id="downloadMoreBtn" data-i18n="downloadUi.buttons.more">Daha fazla ayar</button>
-	                                            <button class="download-action-danger hidden" id="downloadStopBtn" data-i18n="downloadUi.buttons.stop">Durdur</button>
-	                                        </div>
-                                    </div>
-                                </div>
-
-	                                <div class="download-page hidden" id="downloadPageAdvanced">
-	                                    <div class="download-advanced-title" data-i18n="downloadUi.advanced.title">Aurivo - Gelişmiş Ayarlar</div>
-	                                    <div class="download-advanced-row">
-	                                        <label for="downloadUrl" data-i18n="downloadUi.advanced.urlLabel">URL</label>
-	                                        <div class="download-advanced-inline">
-	                                            <input type="text" id="downloadUrl" class="download-input-v2" placeholder="Video/Ses URL (YouTube, SoundCloud vb.)"
-	                                                   data-i18n-placeholder="downloadUi.advanced.urlPlaceholder">
-	                                            <button class="btn download-advanced-btn" id="downloadPasteUrl" title="Kopyalanan URL'yi yapıştır"
-	                                                    data-i18n="downloadUi.advanced.pasteBtn"
-	                                                    data-i18n-title="downloadUi.advanced.pasteTitle">Yapıştır</button>
-	                                        </div>
-	                                    </div>
-	                                    <div class="download-advanced-row">
-	                                        <label for="downloadFolder" data-i18n="downloadUi.advanced.folderLabel">Klasör</label>
-	                                        <div class="download-advanced-inline">
-	                                            <input type="text" id="downloadFolder" class="download-input-v2" placeholder="İndirme klasörü"
-	                                                   data-i18n-placeholder="downloadUi.advanced.folderPlaceholder">
-	                                            <button class="btn download-advanced-btn" id="downloadBrowseFolder" data-i18n="downloadUi.advanced.selectBtn">Seç</button>
-	                                        </div>
-	                                    </div>
-
-	                                    <div class="download-advanced-row" id="downloadVideoCodecRow">
-	                                        <label for="downloadVideoCodec" data-i18n="downloadUi.advanced.videoCodecLabel">Video codec</label>
-	                                        <select id="downloadVideoCodec" class="download-input-v2">
-	                                            <option value="" data-i18n="downloadUi.advanced.auto">Otomatik</option>
-	                                            <option value="avc1">AVC1</option>
-	                                            <option value="av01">AV1</option>
-	                                            <option value="vp9">VP9</option>
-	                                            <option value="mp4v">MP4V</option>
-	                                        </select>
-	                                    </div>
-
-	                                    <div class="download-advanced-row">
-	                                        <label for="downloadCookiesBrowser" data-i18n="downloadUi.advanced.cookiesBrowserLabel">Cookies (tarayıcı)</label>
-	                                        <select id="downloadCookiesBrowser" class="download-input-v2">
-	                                            <option value="" data-i18n="downloadUi.advanced.none">Yok</option>
-	                                            <option value="chrome">Chrome</option>
-	                                            <option value="firefox">Firefox</option>
-	                                            <option value="brave">Brave</option>
-                                            <option value="opera">Opera</option>
-                                            <option value="edge">Edge</option>
-                                            <option value="chromium">Chromium</option>
-                                            <option value="safari">Safari</option>
-                                            <option value="vivaldi">Vivaldi</option>
-                                        </select>
-	                                    </div>
-
-	                                    <div class="download-advanced-row">
-	                                        <label for="downloadCookiesFile" data-i18n="downloadUi.advanced.cookiesFileLabel">Cookies dosyası</label>
-	                                        <div class="download-advanced-inline">
-	                                            <input type="text" id="downloadCookiesFile" class="download-input-v2" placeholder="cookies.txt (opsiyonel)"
-	                                                   data-i18n-placeholder="downloadUi.advanced.cookiesFilePlaceholder">
-	                                            <button class="btn download-advanced-btn" id="downloadBrowseCookiesFile" data-i18n="downloadUi.advanced.selectBtn">Seç</button>
-	                                        </div>
-	                                    </div>
-
-	                                    <div class="download-advanced-row">
-	                                        <label for="downloadProxy" data-i18n="downloadUi.advanced.proxyLabel">Proxy</label>
-	                                        <input type="text" id="downloadProxy" class="download-input-v2" placeholder="http://localhost:8080 veya socks5://127.0.0.1:1080"
-	                                               data-i18n-placeholder="downloadUi.advanced.proxyPlaceholder">
-	                                    </div>
-
-	                                    <div class="download-advanced-row">
-	                                        <label class="download-check download-check-dark">
-	                                            <input type="checkbox" id="downloadUseConfig">
-	                                            <span data-i18n="downloadUi.advanced.useConfig">Config dosyası kullan</span>
-	                                        </label>
-	                                        <div class="download-advanced-inline" id="downloadConfigRow">
-	                                            <input type="text" id="downloadConfigFile" class="download-input-v2" placeholder="yt-dlp config dosyası (opsiyonel)"
-	                                                   data-i18n-placeholder="downloadUi.advanced.configPlaceholder">
-	                                            <button class="btn download-advanced-btn" id="downloadBrowseConfigFile" data-i18n="downloadUi.advanced.selectBtn">Seç</button>
-	                                        </div>
-	                                    </div>
-
-	                                    <div class="download-advanced-row">
-	                                        <label class="download-check download-check-dark">
-	                                            <input type="checkbox" id="downloadShowMoreFormats">
-	                                            <span data-i18n="downloadUi.advanced.moreFormats">Daha fazla format (özel -f)</span>
-	                                        </label>
-	                                        <input type="text" id="downloadFormatOverride" class="download-input-v2 hidden"
-	                                               placeholder="Örn: bestvideo[height<=1080][vcodec^=avc1]+bestaudio/best veya fmt id (251)"
-	                                               data-i18n-placeholder="downloadUi.advanced.formatOverridePlaceholder">
-	                                    </div>
-
-	                                    <div class="download-advanced-row">
-	                                        <label class="download-check download-check-dark">
-	                                            <input type="checkbox" id="downloadPlaylist">
-	                                            <span data-i18n="downloadUi.advanced.playlist">Playlist indir</span>
-	                                        </label>
-	                                    </div>
-
-	                                    <div class="download-advanced-row" id="downloadPlaylistFormats">
-	                                        <label for="downloadPlaylistFilenameFormat" data-i18n="downloadUi.advanced.playlistFilename">Playlist dosya adı formatı</label>
-	                                        <input type="text" id="downloadPlaylistFilenameFormat" class="download-input-v2"
-	                                               value="%(playlist_index)s.%(title)s.%(ext)s" placeholder="yt-dlp format style">
-	                                        <label for="downloadPlaylistFoldernameFormat" style="margin-top:10px;" data-i18n="downloadUi.advanced.playlistFoldername">Playlist klasör adı formatı</label>
-	                                        <input type="text" id="downloadPlaylistFoldernameFormat" class="download-input-v2"
-	                                               value="%(playlist_title)s" placeholder="yt-dlp format style">
-	                                    </div>
-
-	                                    <div class="download-advanced-row">
-	                                        <label for="downloadCustomArgs" data-i18n="downloadUi.advanced.customArgsLabel">Özel yt-dlp argümanları</label>
-	                                        <textarea id="downloadCustomArgs" class="download-textarea" spellcheck="false"
-	                                                  placeholder="Örn: --sponsorblock-remove all"
-	                                                  data-i18n-placeholder="downloadUi.advanced.customArgsPlaceholder"></textarea>
-	                                    </div>
-                                </div>
-
-		                                <div class="download-progress hidden" id="downloadProgressBox">
-		                                    <div class="download-progress-row">
-		                                        <div class="download-progress-label" id="downloadProgressLabel" data-i18n="downloadUi.progress.ready">Hazır</div>
-		                                        <div class="download-progress-percent" id="downloadProgressPercent">0%</div>
-		                                    </div>
-                                    <div class="download-progress-bar">
-                                        <div class="download-progress-fill" id="downloadProgressFill" style="width: 0%"></div>
-                                    </div>
-		                                    <div class="download-progress-actions">
-		                                        <button class="download-details-btn hidden" id="downloadDetailsBtn" data-i18n="downloadUi.buttons.details">Detay</button>
-		                                        <button class="download-cancel-btn hidden" id="downloadCancelActiveBtn" data-i18n="downloadUi.buttons.cancel">İptal</button>
-		                                    </div>
-	                                    <pre class="download-details hidden" id="downloadDetails"></pre>
-	                                </div>
-		                            </div>
-		                            <div class="modal-footer">
-		                                <button class="btn" id="downloadCancelBtn" data-i18n="downloadUi.buttons.close">Kapat</button>
-		                            </div>
-		                        </div>
-		                    </div>
-		                </div>
-
-	                <!-- Güvenlik Sayfası (Uygulama İçi) -->
-		                <div class="page hidden utility-page" id="securityPage">
-		                    <div class="utility-page-wrapper">
-		                        <div class="modal-content security-page-content">
-		                            <div class="modal-header">
-		                                <h2 data-i18n="securityPage.title">Güvenlik</h2>
-		                                <button class="modal-close" id="closeSecurity">&times;</button>
-		                            </div>
-		                            <div class="security-body">
-		                                <div class="security-hero">
-	                                    <div class="security-hero-icon">
-	                                        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm0 10.99h7c-.53 4.12-3.28 7.79-7 8.94V12H5V6.3l7-3.11v8.8z"/></svg>
-		                                    </div>
-		                                    <div class="security-hero-text">
-		                                        <div class="security-hero-title" data-i18n="securityPage.heroTitle">Aurivo Güvenli İnternet</div>
-		                                        <div class="security-hero-sub" data-i18n="securityPage.heroSub">Web sekmesini daha güvenli ve kontrollü kullan.</div>
-		                                    </div>
-		                                </div>
-
-		                                <div class="security-section">
-		                                    <div class="security-section-title" data-i18n="securityPage.sections.currentSite">Mevcut Site</div>
-		                                    <div class="security-row">
-		                                        <div class="security-row-left">
-		                                            <div class="security-label" id="securityConnStatus">Bağlantı: -</div>
-		                                            <div class="security-sub" id="securityCurrentUrl">URL: about:blank</div>
-		                                        </div>
-		                                        <div class="security-actions">
-		                                            <button class="btn security-btn-small" id="securityCopyUrlBtn" data-i18n="securityPage.buttons.copy">Kopyala</button>
-		                                            <button class="btn security-btn-small" id="securityOpenInBrowserBtn" data-i18n="securityPage.buttons.openInBrowser">Tarayıcıda aç</button>
-		                                        </div>
-		                                    </div>
-		                                </div>
-
-		                                <div class="security-section">
-		                                    <div class="security-section-title" data-i18n="securityPage.sections.controls">Kontroller</div>
-		                                    <label class="checkbox-label">
-		                                        <input type="checkbox" id="securityAllowPopups" checked>
-		                                        <span data-i18n="securityPage.allowPopups">Pop-up pencerelerine izin ver (bazı girişler için gerekli olabilir)</span>
-		                                    </label>
-		                                    <div class="security-hint" data-i18n="securityPage.allowPopupsHint">Not: Pop-up kapalıyken bazı sitelerde giriş/hesap bağlantıları açılmayabilir.</div>
-		                                </div>
-
-		                                <div class="security-section">
-		                                    <div class="security-section-title" data-i18n="securityPage.sections.cleanup">Temizlik</div>
-		                                    <div class="security-grid">
-		                                        <button class="btn" id="securityClearCookiesBtn" data-i18n="securityPage.buttons.clearCookies">Çerezleri temizle</button>
-		                                        <button class="btn" id="securityClearCacheBtn" data-i18n="securityPage.buttons.clearCache">Önbelleği temizle</button>
-		                                        <button class="btn" id="securityClearAllBtn" data-i18n="securityPage.buttons.clearAll">Her şeyi temizle</button>
-		                                        <button class="btn" id="securityResetWebBtn" data-i18n="securityPage.buttons.resetWeb">Web’i sıfırla</button>
-		                                    </div>
-		                                    <div class="security-hint" data-i18n="securityPage.cleanupHint">Çerez/önbellek temizlemek bazı sitelerden çıkış yapabilir.</div>
-		                                </div>
-
-		                                <div class="security-section">
-		                                    <div class="security-section-title" data-i18n="securityPage.sections.allowedPlatforms">İzinli Platformlar</div>
-		                                    <div class="security-sub" data-i18n="securityPage.allowedPlatformsHint">Aurivo, Web sekmesinde aşağıdaki platformları hedefler (CSP/frame-src):</div>
-		                                    <ul class="security-list">
-		                                        <li>YouTube / YouTube Music</li>
-		                                        <li>Spotify Web</li>
-	                                        <li>Deezer</li>
-	                                        <li>SoundCloud</li>
-	                                        <li>Mixcloud</li>
-	                                    </ul>
-	                                </div>
-	                            </div>
-	                        </div>
-	                    </div>
-	                </div>
-
 	                <!-- Ayarlar Sayfası (Uygulama İçi) -->
 	                <div class="page hidden utility-page" id="settingsPage">
 	                    <div class="utility-page-wrapper">
 	                        <div class="modal-content settings-page-content">
                             <div class="modal-header">
                                 <h2 data-i18n="settings.title">Tercihler</h2>
-                                <button class="modal-close" id="closeSettings">&times;</button>
                             </div>
                             <div class="modal-body">
                                 <div class="settings-sidebar">
-                                    <button class="settings-tab active" data-tab="playback" data-i18n="settings.tabs.playback">Oynat</button>
-                                    <button class="settings-tab" data-tab="behavior" data-i18n="settings.tabs.behavior">Davranış</button>
-                                    <button class="settings-tab" data-tab="library" data-i18n="settings.tabs.library">Müzik Kütüphanesi</button>
-                                    <button class="settings-tab" data-tab="audio" data-i18n="settings.tabs.audio">Ses Çıkışı</button>
-                                    <button class="settings-tab" data-tab="download" data-i18n="settings.tabs.download">İndirme</button>
+                                    <button class="settings-tab active" data-tab="playback">
+                                        <span class="settings-tab-icon material-symbols-rounded" aria-hidden="true">play_circle</span>
+                                        <span class="settings-tab-label" data-i18n="settings.tabs.playback">Oynat</span>
+                                    </button>
+                                    <button class="settings-tab" data-tab="listen">
+                                        <span class="settings-tab-icon material-symbols-rounded" aria-hidden="true">graphic_eq</span>
+                                        <span class="settings-tab-label" data-i18n="settings.tabs.listen">Dinle</span>
+                                    </button>
+                                    <button class="settings-tab" data-tab="behavior">
+                                        <span class="settings-tab-icon material-symbols-rounded" aria-hidden="true">tune</span>
+                                        <span class="settings-tab-label" data-i18n="settings.tabs.behavior">Davranış</span>
+                                    </button>
+                                    <button class="settings-tab" data-tab="security">
+                                        <span class="settings-tab-icon material-symbols-rounded" aria-hidden="true">shield</span>
+                                        <span class="settings-tab-label" data-i18n="securityPage.title">Güvenlik</span>
+                                    </button>
+                                    <button class="settings-tab" data-tab="library">
+                                        <span class="settings-tab-icon material-symbols-rounded" aria-hidden="true">library_music</span>
+                                        <span class="settings-tab-label" data-i18n="settings.tabs.library">Müzik Kütüphanesi</span>
+                                    </button>
+                                    <button class="settings-tab" data-tab="audio">
+                                        <span class="settings-tab-icon material-symbols-rounded" aria-hidden="true">headphones</span>
+                                        <span class="settings-tab-label" data-i18n="settings.tabs.audio">Ses Çıkışı</span>
+                                    </button>
+                                    <button class="settings-tab" data-tab="adblock">
+                                        <span class="settings-tab-icon material-symbols-rounded" aria-hidden="true">shield</span>
+                                        <span class="settings-tab-label">DeliBlock</span>
+                                    </button>
                                 </div>
                                 <div class="settings-content">
                                     <div class="settings-page active" id="playbackSettings">
@@ -748,6 +551,106 @@
                                             <button class="reset-btn" id="resetPlayback" data-i18n="settings.buttons.resetDefaults">↻ Varsayılan Ayarlar</button>
                                         </div>
                                     </div>
+                                    <div class="settings-page hidden" id="listenSettings">
+                                        <h3 data-i18n="settings.tabs.listen">Dinle</h3>
+                                        <div class="settings-group">
+                                            <h4 data-i18n="listen.quick.title">Aurivo-Pulse Hızlı Dinleme</h4>
+                                            <div class="settings-row">
+                                                <div class="settings-row-left">
+                                                    <div class="settings-label" data-i18n="listen.quick.toastDuration.label">Dinleme bildirim süresi</div>
+                                                    <div class="settings-sub" data-i18n="listen.quick.toastDuration.hint">Ses algılanamadı bildiriminin ekranda ne kadar kalacağını belirler.</div>
+                                                </div>
+                                                <select class="settings-select" id="pulseNoSignalHintSec" aria-label="Dinleme bildirim süresi" data-i18n-aria-label="listen.quick.toastDuration.label">
+                                                    <option value="4" data-i18n="listen.quick.toastDuration.options.4s">4 sn</option>
+                                                    <option value="6" selected data-i18n="listen.quick.toastDuration.options.6s">6 sn</option>
+                                                    <option value="8" data-i18n="listen.quick.toastDuration.options.8s">8 sn</option>
+                                                </select>
+                                            </div>
+                                            <div class="settings-row">
+                                                <div class="settings-row-left">
+                                                    <div class="settings-label" data-i18n="listen.quick.mode.label">Dinleme modu</div>
+                                                    <div class="settings-sub" data-i18n="listen.quick.mode.hint">Hız, fon müzik odağı ve doğruluk dengesini belirler.</div>
+                                                </div>
+                                                <div class="listen-mode-grid" id="pulseQuickModeGrid" role="radiogroup" aria-label="Dinleme modu">
+                                                    <button type="button" class="listen-mode-card" data-pulse-quick-mode="normal">
+                                                        <strong data-i18n="listen.quick.mode.options.normal">Normal Dinleme</strong>
+                                                        <span data-i18n="listen.quick.mode.card.normal">Temiz müzik ve hızlı günlük kullanım.</span>
+                                                    </button>
+                                                    <button type="button" class="listen-mode-card" data-pulse-quick-mode="background">
+                                                        <strong data-i18n="listen.quick.mode.options.background">Fon Müzik Odakli</strong>
+                                                        <span data-i18n="listen.quick.mode.card.background">Konuşma arkasındaki müzikler için dengeli seçim.</span>
+                                                    </button>
+                                                    <button type="button" class="listen-mode-card" data-pulse-quick-mode="max">
+                                                        <strong data-i18n="listen.quick.mode.options.max">Maksimum Dogruluk</strong>
+                                                        <span data-i18n="listen.quick.mode.card.max">Zor videolar, cover ve düşük sesli fon müzikler.</span>
+                                                    </button>
+                                                </div>
+                                                <select class="settings-select listen-mode-native-select" id="pulseQuickMode" aria-label="Dinleme modu" data-i18n-aria-label="listen.quick.mode.label">
+                                                    <option value="normal" data-i18n="listen.quick.mode.options.normal">Normal Dinleme</option>
+                                                    <option value="background" selected data-i18n="listen.quick.mode.options.background">Fon Müzik Odakli</option>
+                                                    <option value="max" data-i18n="listen.quick.mode.options.max">Maksimum Dogruluk</option>
+                                                </select>
+                                            </div>
+                                            <div class="settings-sub" id="pulseQuickModeDetails" aria-live="polite"></div>
+                                            <button class="reset-btn" id="resetListen" data-i18n="listen.buttons.resetDefaults">↻ Dinle Varsayılanları</button>
+                                        </div>
+                                        <div class="settings-group">
+                                            <h4 data-i18n="listen.preferences.title">Aurivo-Pulse Tercihleri</h4>
+                                            <label class="checkbox-label">
+                                                <input type="checkbox" id="pulseEnableNotifications">
+                                                <span data-i18n="listen.preferences.notifications.label">Bildirimleri göster</span>
+                                            </label>
+                                            <div class="settings-sub" data-i18n="listen.preferences.notifications.hint">Şarkı bulunduğunda, ağ hatası olduğunda ve cihaz otomatik değiştiğinde bildirim gösterir.</div>
+                                            <label class="checkbox-label">
+                                                <input type="checkbox" id="pulseEnableMpris">
+                                                <span data-i18n="listen.preferences.mpris.label">MPRIS'i etkinleştir</span>
+                                            </label>
+                                            <div class="settings-sub" data-i18n="listen.preferences.mpris.hint">Linux medya panelinde tanınan parçayı gösterebilir. Şarkı bulma kalitesini etkilemez.</div>
+                                            <label class="checkbox-label">
+                                                <input type="checkbox" id="pulseEnableSystray">
+                                                <span data-i18n="listen.preferences.systray.label">Sistem tepsisine küçült</span>
+                                            </label>
+                                            <div class="settings-sub" data-i18n="listen.preferences.systray.hint">Dinle penceresini kapatınca tamamen çıkmak yerine sistem tepsisinde açık tutar.</div>
+                                            <label class="checkbox-label">
+                                                <input type="checkbox" id="pulseNoDuplicates">
+                                                <span data-i18n="listen.preferences.noDuplicates.label">Geçmişte tekrar olmasın</span>
+                                            </label>
+                                            <div class="settings-sub" data-i18n="listen.preferences.noDuplicates.hint">Aynı şarkı tekrar bulunursa geçmişte yeni satır açmak yerine eski kaydı günceller.</div>
+                                            <div class="setting-row">
+                                                <div class="settings-row-left">
+                                                    <div class="settings-label" data-i18n="listen.preferences.requestInterval.label">Shazam istek aralığı</div>
+                                                    <div class="settings-sub" data-i18n="listen.preferences.requestInterval.hint">Rate-limit yaşarsanız yükseltin.</div>
+                                                </div>
+                                                <input type="number" id="pulseRequestInterval" value="2" min="1" max="120" step="1"> sn
+                                            </div>
+                                            <div class="setting-row">
+                                                <div class="settings-row-left">
+                                                    <div class="settings-label" data-i18n="listen.preferences.bufferSize.label">Shazam arabellek boyutu</div>
+                                                    <div class="settings-sub" data-i18n="listen.preferences.bufferSize.hint">Daha uzun örnek daha kararlı olabilir ama biraz daha yavaştır.</div>
+                                                </div>
+                                                <input type="number" id="pulseBufferSize" value="5" min="4" max="30" step="1"> sn
+                                            </div>
+                                            <div class="setting-row">
+                                                <div class="settings-row-left">
+                                                    <div class="settings-label">Tanıma motoru</div>
+                                                    <div class="settings-sub">SongRec/AcoustID çalışma şeklini belirler.</div>
+                                                </div>
+                                                <select class="settings-select" id="pulseRecognitionEngine" aria-label="Tanıma motoru">
+                                                    <option value="hybrid">Hibrit (SongRec + AcoustID)</option>
+                                                    <option value="songrec_only">Sadece SongRec</option>
+                                                    <option value="acoustid_only">Sadece AcoustID</option>
+                                                </select>
+                                            </div>
+                                            <div class="setting-row">
+                                                <div class="settings-row-left">
+                                                    <div class="settings-label">AcoustID API Key</div>
+                                                    <div class="settings-sub" id="pulseAcoustidHint">Opsiyonel. Boş bırakılırsa hibrit mod SongRec ile çalışır.</div>
+                                                    <div class="settings-sub hidden" id="pulseAcoustidWarning" aria-live="polite">Sadece AcoustID modunda API key zorunludur. Anahtar yoksa tanıma yapılamaz.</div>
+                                                </div>
+                                                <input type="text" id="pulseAcoustidApiKey" class="settings-input" placeholder="AcoustID API key">
+                                            </div>
+                                        </div>
+                                    </div>
                                     <div class="settings-page hidden" id="behaviorSettings">
                                         <h3 data-i18n="settings.tabs.behavior">Davranış</h3>
                                         <div class="settings-group">
@@ -759,169 +662,746 @@
                                                     <div class="settings-sub hidden" id="languageRestartHint" data-i18n="ui.languageSelection.restartHint">Seçtiğiniz dil bir sonraki açılışta uygulanacak.</div>
                                                 </div>
                                                 <select class="settings-select" id="languageSelect" aria-label="Language">
-                                                    <option value="tr">Türkçe</option>
-                                                    <option value="en">English</option>
-                                                    <option value="ar">العربية</option>
-                                                    <option value="fr">Français</option>
-                                                    <option value="de">Deutsch</option>
-                                                    <option value="es">Español</option>
-                                                    <option value="hi">हिन्दी</option>
+                                                    <option value="tr-TR">Türkçe</option>
+                                                    <option value="en-US">English</option>
+                                                    <option value="ar-SA">العربية</option>
+                                                    <option value="bn-BD">বাংলা</option>
+                                                    <option value="el-GR">Ελληνικά</option>
+                                                    <option value="fr-FR">Français</option>
+                                                    <option value="de-DE">Deutsch</option>
+                                                    <option value="es-ES">Español</option>
+                                                    <option value="fa-IR">فارسی</option>
+                                                    <option value="fi-FI">Suomi</option>
+                                                    <option value="hi-IN">हिन्दी</option>
+                                                    <option value="hu-HU">Magyar</option>
+                                                    <option value="it-IT">Italiano</option>
+                                                    <option value="ja-JP">日本語</option>
+                                                    <option value="ne-NP">नेपाली</option>
+                                                    <option value="pl-PL">Polski</option>
+                                                    <option value="pt-BR">Português (Brasil)</option>
+                                                    <option value="ru-RU">Русский</option>
+                                                    <option value="uk-UA">Українська</option>
+                                                    <option value="vi-VN">Tiếng Việt</option>
+                                                    <option value="zh-CN">简体中文</option>
+                                                    <option value="zh-TW">繁體中文</option>
                                                 </select>
+                                            </div>
+                                            <div class="settings-row">
+                                                <div class="settings-row-left">
+                                                    <div class="settings-label" data-i18n="ui.theme.label">Tema</div>
+                                                    <div class="settings-sub" data-i18n="ui.theme.hint">Uygulama renklerini anında değiştirir.</div>
+                                                    <div class="settings-sub hidden" id="themeSystemHint" data-i18n="ui.theme.followSystem.hint">Açıkken tema seçimi sistem temasına göre otomatik uygulanır.</div>
+                                                </div>
+                                                <select class="settings-select" id="themeSelect" aria-label="Theme">
+                                                    <option value="aur-renk-efektleri">Aurivo Medya Player</option>
+                                                    <option value="neon-night">Neon Night</option>
+                                                    <option value="retro-amber">Retro Amber</option>
+                                                    <option value="deep-ocean">Deep Ocean</option>
+                                                    <option value="forest-mint">Forest Mint</option>
+                                                    <option value="graphite-blue">Graphite Blue</option>
+                                                    <option value="midnight-titanium-premium">Midnight Titanium</option>
+                                                    <option value="emerald-luxe-premium">Emerald Luxe</option>
+                                                    <option value="sunset-copper">Sunset Copper</option>
+                                                </select>
+                                            </div>
+                                            <div class="settings-row">
+                                                <div class="settings-row-left">
+                                                    <div class="settings-label" data-i18n="ui.theme.followSystem.label">Sistem temasını takip et</div>
+                                                    <div class="settings-sub" data-i18n="ui.theme.followSystem.hint">Açıkken tema seçimi sistem temasına göre otomatik uygulanır.</div>
+                                                </div>
+                                                <label class="settings-master-toggle" title="Sistem temasına göre otomatik geçiş">
+                                                    <input type="checkbox" id="uiFollowSystemThemeToggle">
+                                                    <span class="settings-master-toggle-slider"></span>
+                                                    <span class="settings-master-toggle-label" data-i18n="ui.theme.followSystem.toggle">Sistemle eşitle</span>
+                                                </label>
+                                            </div>
+                                            <div class="settings-row">
+                                                <div class="settings-row-left">
+                                                    <div class="settings-label" data-i18n="ui.effectsMode.label">Görsel Efekt Modu</div>
+                                                    <div class="settings-sub" data-i18n="ui.effectsMode.hint">Glow/blur performansını ayarlar. Otomatik mod düşük sistemde kendisi azaltır.</div>
+                                                </div>
+                                                <select class="settings-select" id="uiVisualModeSelect" aria-label="Visual mode">
+                                                    <option value="full" data-i18n="ui.visualMode.options.full">Tam</option>
+                                                    <option value="balanced" data-i18n="ui.visualMode.options.balanced">Dengeli</option>
+                                                    <option value="minimal" data-i18n="ui.visualMode.options.minimal">Minimum</option>
+                                                </select>
+                                            </div>
+                                            <div class="settings-row">
+                                                <div class="settings-row-left">
+                                                    <div class="settings-label" data-i18n="ui.reduceMotion.label">Azaltılmış Hareket</div>
+                                                    <div class="settings-sub" data-i18n="ui.reduceMotion.hint">Animasyon ve geçişleri azaltarak daha sakin bir arayüz sunar.</div>
+                                                </div>
+                                                <label class="fx-toggle-container" title="Animasyon yoğunluğunu azalt">
+                                                    <span class="fx-toggle-label" data-i18n="ui.reduceMotion.toggle">Azaltılmış Hareket</span>
+                                                    <span class="fx-toggle-switch">
+                                                        <input type="checkbox" id="uiReduceMotionToggle">
+                                                        <span class="fx-toggle-slider"></span>
+                                                    </span>
+                                                </label>
+                                            </div>
+                                            <div class="settings-row">
+                                                <div class="settings-row-left">
+                                                    <div class="settings-label" data-i18n="ui.sliderFx.label">Süre/Ses Çubuk Renkleri</div>
+                                                    <div class="settings-sub" data-i18n="ui.sliderFx.hint">Ana oynatıcı ve tam ekrandaki süre/ses çubuklarının renk döngüsünü açar veya kapatır.</div>
+                                                </div>
+                                                <label class="settings-master-toggle" title="Süre ve ses çubuğu renklerini aç/kapat">
+                                                    <input type="checkbox" id="sliderFxToggle" checked>
+                                                    <span class="settings-master-toggle-slider"></span>
+                                                    <span class="settings-master-toggle-label" data-i18n="ui.sliderFx.enable">Süre/Ses Çubuk Renkleri</span>
+                                                    <span class="settings-master-toggle-state" id="sliderFxToggleState" data-i18n="ui.sliderFx.state.on">Açık</span>
+                                                </label>
+                                            </div>
+                                            <div class="settings-row">
+                                                <div class="settings-row-left">
+                                                    <div class="settings-label" data-i18n="ui.sfxLights.label">Ses Efekt Işıkları</div>
+                                                    <div class="settings-sub" data-i18n="ui.sfxLights.hint">Müzik tarafındaki ses efekt ekranında ışık/parlama efektlerini açar veya kapatır.</div>
+                                                </div>
+                                                <label class="settings-master-toggle" title="Ses efekt ışıklarını aç/kapat">
+                                                    <input type="checkbox" id="sfxLightsToggle" checked>
+                                                    <span class="settings-master-toggle-slider"></span>
+                                                    <span class="settings-master-toggle-label" data-i18n="ui.sfxLights.enable">Ses Efekt Işıkları</span>
+                                                    <span class="settings-master-toggle-state" id="sfxLightsToggleState" data-i18n="ui.sfxLights.state.on">Açık</span>
+                                                </label>
+                                            </div>
+                                        </div>
+                                        <div class="settings-group">
+                                            <h4 data-i18n="ui.startup.title">Başlangıç Davranışı</h4>
+                                            <label class="checkbox-label">
+                                                <input type="checkbox" id="behaviorRememberLastSection" checked>
+                                                <span data-i18n="ui.startup.rememberLastSection">Son açık ana bölümü hatırla</span>
+                                            </label>
+                                            <div class="setting-row">
+                                                <span data-i18n="ui.startup.startupPage">Varsayılan açılış bölümü</span>
+                                                <select class="settings-select" id="behaviorStartupPage">
+                                                    <option value="music" data-i18n="settings.library.startupPage.options.music">Müzik</option>
+                                                    <option value="video" data-i18n="settings.library.startupPage.options.video">Video</option>
+                                                    <option value="web" data-i18n="settings.library.startupPage.options.web">Web</option>
+                                                </select>
+                                            </div>
+                                            <label class="checkbox-label">
+                                                <input type="checkbox" id="behaviorCloseToTray" checked>
+                                                <span data-i18n="ui.startup.closeToTray">Pencereyi kapatınca sistem tepsisine küçült</span>
+                                            </label>
+                                            <div class="settings-sub" data-i18n="ui.startup.closeToTrayHint">Kapalıysa pencere kapatma uygulamadan çıkış olarak davranır.</div>
+                                        </div>
+                                    </div>
+                                    <div class="settings-page hidden" id="securitySettings">
+                                        <h3 data-i18n="securityPage.title">Güvenlik</h3>
+                                        <div class="security-body">
+                                            <div class="security-hero">
+                                                <div class="security-hero-icon">
+                                                    <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm0 10.99h7c-.53 4.12-3.28 7.79-7 8.94V12H5V6.3l7-3.11v8.8z"/></svg>
+                                                </div>
+                                                <div class="security-hero-text">
+                                                    <div class="security-hero-title" data-i18n="securityPage.heroTitle">Aurivo Güvenli İnternet</div>
+                                                    <div class="security-hero-sub" data-i18n="securityPage.heroSub">Web sekmesini daha güvenli ve kontrollü kullan.</div>
+                                                </div>
+                                            </div>
+
+                                            <div class="security-section">
+                                                <div class="security-section-title" data-i18n="securityPage.sections.currentSite">Mevcut Site</div>
+                                                <div class="security-row">
+                                                    <div class="security-row-left">
+                                                        <div class="security-label" id="securityConnStatus">Bağlantı: -</div>
+                                                        <div class="security-sub" id="securityVpnStatus" data-i18n="securityPage.dynamic.vpnUnknown">VPN: -</div>
+                                                        <div class="security-sub" id="securityCurrentUrl">URL: about:blank</div>
+                                                    </div>
+                                                    <div class="security-actions">
+                                                        <button class="btn security-btn-small" id="securityCopyUrlBtn" data-i18n="securityPage.buttons.copy">Kopyala</button>
+                                                        <button class="btn security-btn-small" id="securityOpenInBrowserBtn" data-i18n="securityPage.buttons.openInBrowser">Tarayıcıda aç</button>
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <div class="security-section">
+                                                <div class="security-section-title" data-i18n="securityPage.sections.controls">Kontroller</div>
+                                                <label class="checkbox-label">
+                                                    <input type="checkbox" id="securityAllowPopups" checked>
+                                                    <span data-i18n="securityPage.allowPopups">Pop-up pencerelerine izin ver (bazı girişler için gerekli olabilir)</span>
+                                                </label>
+                                                <label class="checkbox-label">
+                                                    <input type="checkbox" id="securityStrictVpnBlock">
+                                                    <span data-i18n="securityPage.vpnPolicyLabel">VPN tespit edildiğinde Web erişimini engelle</span>
+                                                </label>
+                                                <div class="security-hint" data-i18n="securityPage.vpnPolicyHint">Öneri: Kapalı bırakın. VPN’de sadece uyarı verilir; izinli platformlar dışı siteler zaten engellenir.</div>
+                                                <div class="security-hint" data-i18n="securityPage.allowPopupsHint">Not: Pop-up kapalıyken bazı sitelerde giriş/hesap bağlantıları açılmayabilir.</div>
+                                            </div>
+
+                                            <div class="security-section">
+                                                <div class="security-section-title" data-i18n="securityPage.sections.cleanup">Temizlik</div>
+                                                <div class="security-grid">
+                                                    <button class="btn" id="securityClearCookiesBtn" data-i18n="securityPage.buttons.clearCookies">Çerezleri temizle</button>
+                                                    <button class="btn" id="securityClearCacheBtn" data-i18n="securityPage.buttons.clearCache">Önbelleği temizle</button>
+                                                    <button class="btn" id="securityClearAllBtn" data-i18n="securityPage.buttons.clearAll">Her şeyi temizle</button>
+                                                    <button class="btn" id="securityResetWebBtn" data-i18n="securityPage.buttons.resetWeb">Web’i sıfırla</button>
+                                                </div>
+                                                <div class="security-hint" data-i18n="securityPage.cleanupHint">Çerez/önbellek temizlemek bazı sitelerden çıkış yapabilir.</div>
+                                            </div>
+
+                                            <div class="security-section">
+                                                <div class="security-section-title" data-i18n="securityPage.sections.allowedPlatforms">İzinli Platformlar</div>
+                                                <div class="security-sub" data-i18n="securityPage.allowedPlatformsHint">Aurivo, Web sekmesinde aşağıdaki platformları hedefler (CSP/frame-src):</div>
+                                                <ul class="security-list">
+                                                    <li>YouTube / YouTube Music</li>
+                                                    <li>Deezer</li>
+                                                    <li>SoundCloud</li>
+                                                    <li>Facebook</li>
+                                                    <li>Instagram</li>
+                                                    <li>TikTok</li>
+                                                    <li>X / Twitter</li>
+                                                    <li>Reddit</li>
+                                                    <li>Twitch</li>
+                                                </ul>
                                             </div>
                                         </div>
                                     </div>
-                                    <div class="settings-page hidden" id="librarySettings">
+                                    <div class="settings-page hidden library-settings-page" id="librarySettings">
                                         <h3 data-i18n="settings.tabs.library">Müzik Kütüphanesi</h3>
-                                        <p>Kütüphane ayarları buraya eklenecek...</p>
+                                        <div class="library-hero-card">
+                                            <div class="library-hero-copy">
+                                                <div class="library-hero-kicker" data-i18n="settings.library.hero.kicker">Akıllı kütüphane özeti</div>
+                                                <h4 data-i18n="settings.library.hero.title">Arşiv, tarama ve bakım kontrolleri tek yerde</h4>
+                                                <p class="settings-sub" data-i18n="settings.library.hero.subtitle">Kütüphane klasörlerini yönetin, taramayı başlatın ve arşiv durumunu tek bakışta görün.</p>
+                                                <div class="library-hero-actions">
+                                                    <button class="btn settings-action-btn settings-action-btn-primary" id="libraryHeroRescanBtn" data-i18n="settings.library.folders.rescanAll">Şimdi tara</button>
+                                                    <button class="btn settings-action-btn settings-action-btn-secondary" id="libraryHeroAddFolderBtn" data-i18n="libraryActions.addToLibrary">Kütüphaneye ekle</button>
+                                                </div>
+                                            </div>
+                                            <div class="library-hero-stats">
+                                                <div class="library-hero-stat">
+                                                    <span data-i18n="settings.library.stats.totalSongs">Toplam şarkı</span>
+                                                    <strong id="libraryHeroTotalSongs">-</strong>
+                                                </div>
+                                                <div class="library-hero-stat">
+                                                    <span data-i18n="settings.library.stats.totalDuration">Toplam süre</span>
+                                                    <strong id="libraryHeroTotalDuration">-</strong>
+                                                </div>
+                                                <div class="library-hero-stat">
+                                                    <span data-i18n="settings.library.hero.activeFolders">Aktif klasörler</span>
+                                                    <strong id="libraryHeroFolderCount">0</strong>
+                                                </div>
+                                                <div class="library-hero-stat">
+                                                    <span data-i18n="settings.library.hero.lastScan">Son tarama</span>
+                                                    <strong id="libraryHeroLastScan">-</strong>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div class="library-settings-shell">
+                                        <div class="settings-group library-group-startup">
+                                            <h4 data-i18n="settings.library.startup.title">Kütüphane Başlangıcı</h4>
+                                            <label class="checkbox-label">
+                                                <input type="checkbox" id="libraryRememberSection" checked>
+                                                <span data-i18n="settings.library.rememberSection">Son açık ana bölümü hatırla</span>
+                                            </label>
+                                            <label class="checkbox-label">
+                                                <input type="checkbox" id="libraryRestoreLastFolder" checked>
+                                                <span data-i18n="settings.library.startup.restoreFolder">Açılışta son klasöre dön</span>
+                                            </label>
+                                            <label class="checkbox-label">
+                                                <input type="checkbox" id="libraryRestoreLastPlaylist" checked>
+                                                <span data-i18n="settings.library.startup.restorePlaylist">Açılışta son çalma listesini yükle</span>
+                                            </label>
+                                            <label class="checkbox-label">
+                                                <input type="checkbox" id="libraryRememberTreeSelection" checked>
+                                                <span data-i18n="settings.library.startup.rememberTree">Son seçili ağaç öğesini hatırla</span>
+                                            </label>
+                                            <div class="setting-row">
+                                                <span data-i18n="settings.library.startupPage">Varsayılan açılış bölümü</span>
+                                                <select class="settings-select" id="libraryStartupPage">
+                                                    <option value="music" data-i18n="settings.library.startupPage.options.music">Müzik</option>
+                                                    <option value="video" data-i18n="settings.library.startupPage.options.video">Video</option>
+                                                    <option value="web" data-i18n="settings.library.startupPage.options.web">Web</option>
+                                                </select>
+                                            </div>
+                                            <div class="settings-sub" data-i18n="settings.library.startupHint">Son bölüm hatırlama kapalıysa uygulama bu bölümle açılır.</div>
+                                        </div>
+                                        <div class="settings-group library-group-folders">
+                                            <h4 data-i18n="settings.library.folders.title">Müzik Klasörleri Yönetimi</h4>
+                                            <div class="settings-sub" data-i18n="settings.library.folders.hint">Birden fazla müzik klasörü ekleyebilir, kaldırabilir ve kütüphaneyi yeniden tarayabilirsiniz.</div>
+                                            <label class="checkbox-label">
+                                                <input type="checkbox" id="libraryScanOnStartup" checked>
+                                                <span data-i18n="settings.library.scanOnStartup">Uygulama açılışında kütüphaneyi tara</span>
+                                            </label>
+                                            <label class="checkbox-label">
+                                                <input type="checkbox" id="libraryAutoRescanOnFolderChange" checked>
+                                                <span data-i18n="settings.library.autoRescanOnFolderChange">Klasör listesi değişince otomatik tara</span>
+                                            </label>
+                                            <label class="checkbox-label">
+                                                <input type="checkbox" id="libraryWatchFolders" checked>
+                                                <span data-i18n="settings.library.watchFolders">Dosya değişikliklerini izle ve otomatik güncelle</span>
+                                            </label>
+                                            <div class="library-folder-toolbar">
+                                                <button class="btn btn-small" id="libraryAddMusicFolder" data-i18n="settings.library.folders.add">Klasör ekle</button>
+                                                <button class="btn btn-small" id="libraryRescanMusicFolders" data-i18n="settings.library.folders.rescanAll">Şimdi tara</button>
+                                            </div>
+                                            <div class="library-folder-summary" id="libraryManagedFoldersSummary"></div>
+                                            <div class="library-folder-list" id="libraryManagedFoldersList"></div>
+                                            <div class="settings-sub" id="libraryWatchStatus" data-i18n="settings.library.watchStatus.idle">İzleme beklemede.</div>
+                                        </div>
+                                        <div class="settings-group library-group-exclude">
+                                            <h4 data-i18n="settings.library.exclude.title">Hariç Tutulan Klasörler</h4>
+                                            <div class="settings-sub" data-i18n="settings.library.exclude.hint">Downloads, Temp veya Voice Notes gibi klasörleri tarama, metadata ve izleme dışında bırakın.</div>
+                                            <div class="library-folder-toolbar">
+                                                <button class="btn btn-small" id="libraryAddExcludedFolder" data-i18n="settings.library.exclude.add">Hariç tutulacak klasör ekle</button>
+                                            </div>
+                                            <div class="library-folder-list" id="libraryExcludedFoldersList"></div>
+                                        </div>
+                                        <div class="settings-group library-group-extensions">
+                                            <h4 data-i18n="settings.library.extensions.title">Desteklenen Uzantılar</h4>
+                                            <div class="settings-sub" data-i18n="settings.library.extensions.hint">Kütüphaneye alınacak ses ve video uzantılarını virgülle ayırarak belirleyin.</div>
+                                            <div class="form-group">
+                                                <label for="libraryAudioExtensions" data-i18n="settings.library.extensions.audio">Ses uzantıları</label>
+                                                <input type="text" class="settings-input" id="libraryAudioExtensions" placeholder="mp3, flac, wav, m4a, ogg">
+                                            </div>
+                                            <div class="form-group">
+                                                <label for="libraryVideoExtensions" data-i18n="settings.library.extensions.video">Video uzantıları</label>
+                                                <input type="text" class="settings-input" id="libraryVideoExtensions" placeholder="mp4, mkv, webm, avi">
+                                            </div>
+                                            <div class="library-folder-toolbar">
+                                                <button class="btn btn-small" id="libraryResetExtensions" data-i18n="settings.library.extensions.reset">Varsayılan uzantılara dön</button>
+                                            </div>
+                                        </div>
+                                        <div class="settings-group library-group-cleanup">
+                                            <h4 data-i18n="settings.library.cleanup.title">Hızlı Temizlik Araçları</h4>
+                                            <div class="settings-sub" data-i18n="settings.library.cleanup.hint">Eksik dosyaları kaldırın, kopya kayıtları temizleyin ve boş klasör referanslarını silin.</div>
+                                            <div class="library-folder-toolbar library-tool-surface">
+                                                <button class="btn btn-small" id="libraryCleanupMissingBtn" data-i18n="settings.library.cleanup.missing">Eksik dosyaları kaldır</button>
+                                                <button class="btn btn-small" id="libraryCleanupDuplicatesBtn" data-i18n="settings.library.cleanup.duplicates">Kopya kayıtları temizle</button>
+                                                <button class="btn btn-small" id="libraryCleanupEmptyFoldersBtn" data-i18n="settings.library.cleanup.emptyFolders">Boş klasör referanslarını sil</button>
+                                            </div>
+                                            <div class="settings-sub" id="libraryCleanupStatus">-</div>
+                                        </div>
+                                        <div class="settings-group library-group-flows">
+                                            <h4 data-i18n="settings.library.flows.title">Favori / Son Eklenen / En Çok Çalınan</h4>
+                                            <div class="settings-sub" data-i18n="settings.library.flows.hint">Akıllı müzik akışlarını etkinleştirin ve playlist içinde rozetlerle görünür yapın.</div>
+                                            <label class="checkbox-label">
+                                                <input type="checkbox" id="libraryFlowFavoritesEnabled" checked>
+                                                <span data-i18n="settings.library.flows.favorites">Favori akışını etkinleştir</span>
+                                            </label>
+                                            <label class="checkbox-label">
+                                                <input type="checkbox" id="libraryFlowRecentEnabled" checked>
+                                                <span data-i18n="settings.library.flows.recent">Son eklenen akışını etkinleştir</span>
+                                            </label>
+                                            <label class="checkbox-label">
+                                                <input type="checkbox" id="libraryFlowMostPlayedEnabled" checked>
+                                                <span data-i18n="settings.library.flows.mostPlayed">En çok çalınan akışını etkinleştir</span>
+                                            </label>
+                                            <div class="setting-row">
+                                                <span data-i18n="settings.library.flows.recentLimit">Son eklenen limit</span>
+                                                <select class="settings-select" id="libraryFlowRecentLimit">
+                                                    <option value="10">10</option>
+                                                    <option value="25">25</option>
+                                                    <option value="50">50</option>
+                                                </select>
+                                            </div>
+                                            <div class="setting-row">
+                                                <span data-i18n="settings.library.flows.mostPlayedLimit">En çok çalınan limit</span>
+                                                <select class="settings-select" id="libraryFlowMostPlayedLimit">
+                                                    <option value="10">10</option>
+                                                    <option value="25">25</option>
+                                                    <option value="50">50</option>
+                                                </select>
+                                            </div>
+                                            <div class="settings-sub" id="libraryFlowsStatus">-</div>
+                                        </div>
+                                        <div class="settings-group library-group-transfer">
+                                            <h4 data-i18n="settings.library.transfer.title">İçe / Dışa Aktar</h4>
+                                            <div class="settings-sub" data-i18n="settings.library.transfer.hint">Kütüphane ayarlarını, indeks verisini ve playlist durumunu JSON paket olarak dışa aktarın veya geri yükleyin.</div>
+                                            <div class="library-folder-toolbar library-tool-surface">
+                                                <button class="btn btn-small" id="libraryExportBundleBtn" data-i18n="settings.library.transfer.export">Kütüphaneyi dışa aktar</button>
+                                                <button class="btn btn-small" id="libraryImportBundleBtn" data-i18n="settings.library.transfer.import">Kütüphane paketi içe aktar</button>
+                                            </div>
+                                            <div class="settings-sub" id="libraryTransferStatus">-</div>
+                                        </div>
+                                        <div class="settings-group library-group-performance">
+                                            <h4 data-i18n="settings.library.performance.title">Performans Ayarları</h4>
+                                            <div class="settings-sub" data-i18n="settings.library.performance.hint">Büyük kütüphaneler için hızlı tarama, kapak önbelleği limiti ve düşük sistemler için hafif mod ayarları.</div>
+                                            <label class="checkbox-label">
+                                                <input type="checkbox" id="libraryFastScan" checked>
+                                                <span data-i18n="settings.library.performance.fastScan">Hızlı tarama modunu kullan</span>
+                                            </label>
+                                            <label class="checkbox-label">
+                                                <input type="checkbox" id="libraryLightweightMode">
+                                                <span data-i18n="settings.library.performance.lightweight">Hafif modu etkinleştir</span>
+                                            </label>
+                                            <div class="setting-row">
+                                                <span data-i18n="settings.library.performance.coverCache">Kapak önbellek limiti</span>
+                                                <select class="settings-select" id="libraryCoverCacheLimitMb">
+                                                    <option value="32">32 MB</option>
+                                                    <option value="64">64 MB</option>
+                                                    <option value="128">128 MB</option>
+                                                    <option value="256">256 MB</option>
+                                                </select>
+                                            </div>
+                                            <div class="settings-sub" id="libraryPerformanceStatus">-</div>
+                                        </div>
+                                        <div class="settings-group library-group-diagnostics">
+                                            <h4 data-i18n="settings.library.diagnostics.title">Tanılama</h4>
+                                            <div class="settings-sub" data-i18n="settings.library.diagnostics.hint">Son tarama zamanı, süre, tarama hataları ve okunamayan dosyalar burada görünür.</div>
+                                            <div class="library-diagnostics-grid">
+                                                <div class="settings-sub" id="libraryDiagnosticsLastScan">-</div>
+                                                <div class="settings-sub" id="libraryDiagnosticsLastDuration">-</div>
+                                                <div class="settings-sub" id="libraryDiagnosticsErrors">-</div>
+                                                <div class="settings-sub" id="libraryDiagnosticsUnreadable">-</div>
+                                            </div>
+                                        </div>
+                                        <div class="settings-group library-group-metadata">
+                                            <h4 data-i18n="settings.library.metadata.title">Metadata Temizleme ve Yenileme</h4>
+                                            <div class="settings-sub" data-i18n="settings.library.metadata.hint">Tag bilgilerini yeniden oku, bozuk karakterleri temizle ve dosya adına göre eksik alanları tahmin et.</div>
+                                            <div class="library-folder-toolbar library-tool-surface">
+                                                <button class="btn btn-small" id="libraryRefreshMetadataBtn" data-i18n="settings.library.metadata.refresh">Tag'leri yeniden oku</button>
+                                                <button class="btn btn-small" id="libraryCleanMetadataBtn" data-i18n="settings.library.metadata.clean">Bozuk karakterleri temizle</button>
+                                                <button class="btn btn-small" id="libraryInferMetadataBtn" data-i18n="settings.library.metadata.infer">Dosya adına göre tahmin et</button>
+                                            </div>
+                                            <div class="settings-sub" id="libraryMetadataStatus">-</div>
+                                        </div>
+                                        <div class="settings-group library-group-cover">
+                                            <h4 data-i18n="settings.library.cover.title">Kapak Resmi Yönetimi</h4>
+                                            <label class="checkbox-label">
+                                                <input type="checkbox" id="libraryPreferEmbeddedCover" checked>
+                                                <span data-i18n="settings.library.cover.preferEmbedded">Gömülü kapakları önce kullan</span>
+                                            </label>
+                                            <label class="checkbox-label">
+                                                <input type="checkbox" id="libraryScanFolderCover" checked>
+                                                <span data-i18n="settings.library.cover.scanFolder">Klasördeki cover/folder görsellerini tara</span>
+                                            </label>
+                                            <label class="checkbox-label">
+                                                <input type="checkbox" id="libraryMarkMissingCovers" checked>
+                                                <span data-i18n="settings.library.cover.markMissing">Eksik kapakları işaretle</span>
+                                            </label>
+                                            <div class="settings-sub" data-i18n="settings.library.cover.hint">Kapak bulunamazsa oynatıcı varsayılan görseli kullanır. İşaretleme açıkken çalma listesinde kapaksız parçalar etiketlenir.</div>
+                                        </div>
+                                        <div class="settings-group library-group-view">
+                                            <h4 data-i18n="settings.library.view.title">Kütüphane Görünüm Tercihleri</h4>
+                                            <div class="settings-sub" data-i18n="settings.library.view.hint">Çalma listesini kütüphane görünümü gibi sunar; sıralama, gruplama ve görünüm modu burada belirlenir.</div>
+                                            <div class="setting-row">
+                                                <span data-i18n="settings.library.view.sort">Varsayılan sıralama</span>
+                                                <select class="settings-select" id="libraryViewSort">
+                                                    <option value="title" data-i18n="settings.library.view.sort.options.title">Parça adına göre</option>
+                                                    <option value="artist" data-i18n="settings.library.view.sort.options.artist">Sanatçıya göre</option>
+                                                    <option value="album" data-i18n="settings.library.view.sort.options.album">Albüme göre</option>
+                                                    <option value="added" data-i18n="settings.library.view.sort.options.added">Eklenme sırasına göre</option>
+                                                </select>
+                                            </div>
+                                            <div class="setting-row">
+                                                <span data-i18n="settings.library.view.group">Gruplama</span>
+                                                <select class="settings-select" id="libraryViewGroup">
+                                                    <option value="none" data-i18n="settings.library.view.group.options.none">Gruplama yok</option>
+                                                    <option value="artist" data-i18n="settings.library.view.group.options.artist">Sanatçıya göre</option>
+                                                    <option value="album" data-i18n="settings.library.view.group.options.album">Albüme göre</option>
+                                                </select>
+                                            </div>
+                                            <div class="setting-row">
+                                                <span data-i18n="settings.library.view.mode">Görünüm modu</span>
+                                                <select class="settings-select" id="libraryViewMode">
+                                                    <option value="list" data-i18n="settings.library.view.mode.options.list">Liste</option>
+                                                    <option value="cards" data-i18n="settings.library.view.mode.options.cards">Kart</option>
+                                                </select>
+                                            </div>
+                                        </div>
+                                        <div class="settings-group library-group-saved">
+                                            <h4 data-i18n="settings.library.savedData.title">Kayıtlı Kütüphane Verileri</h4>
+                                            <div class="library-stats-grid">
+                                                <div class="library-stat-card">
+                                                    <span data-i18n="settings.library.stats.totalSongs">Toplam şarkı</span>
+                                                    <strong id="libraryStatsTotalSongs">-</strong>
+                                                </div>
+                                                <div class="library-stat-card">
+                                                    <span data-i18n="settings.library.stats.totalArtists">Toplam sanatçı</span>
+                                                    <strong id="libraryStatsTotalArtists">-</strong>
+                                                </div>
+                                                <div class="library-stat-card">
+                                                    <span data-i18n="settings.library.stats.totalAlbums">Toplam albüm</span>
+                                                    <strong id="libraryStatsTotalAlbums">-</strong>
+                                                </div>
+                                                <div class="library-stat-card">
+                                                    <span data-i18n="settings.library.stats.totalDuration">Toplam süre</span>
+                                                    <strong id="libraryStatsTotalDuration">-</strong>
+                                                </div>
+                                                <div class="library-stat-card">
+                                                    <span data-i18n="settings.library.stats.missingMetadata">Eksik metadata</span>
+                                                    <strong id="libraryStatsMissingMetadata">-</strong>
+                                                </div>
+                                                <div class="library-stat-card">
+                                                    <span data-i18n="settings.library.stats.missingCover">Eksik kapak</span>
+                                                    <strong id="libraryStatsMissingCover">-</strong>
+                                                </div>
+                                            </div>
+                                            <div class="setting-row">
+                                                <span data-i18n="settings.library.videoCount">Kaydedilmiş video sayısı</span>
+                                                <strong id="libraryVideoCount">0</strong>
+                                            </div>
+                                            <div class="settings-sub" id="libraryMusicPathInfo" data-i18n="settings.library.musicPath">Müzik klasörü: -</div>
+                                            <div class="settings-sub" id="libraryVideoPathInfo" data-i18n="settings.library.videoPath">Video klasörü: -</div>
+                                            <button class="reset-btn" id="libraryClearVideoLibrary" data-i18n="settings.library.clearVideoLibrary">Kayıtlı video listesini temizle</button>
+                                        </div>
+                                        </div>
                                     </div>
                                     <div class="settings-page hidden" id="audioSettings">
                                         <h3 data-i18n="settings.tabs.audio">Ses Çıkışı</h3>
-                                        <p>Ses çıkış ayarları buraya eklenecek...</p>
-                                    </div>
-                                    <div class="settings-page hidden" id="downloadSettings">
-                                        <h3 data-i18n="settings.tabs.download">İndirme</h3>
                                         <div class="settings-group">
-                                            <h4>Aurivo</h4>
-
-                                            <div class="settings-row">
-                                                <div class="settings-row-left">
-                                                    <div class="settings-label">İndirme dizini</div>
-                                                    <div class="settings-sub" id="downloadPrefDirPath">-</div>
-                                                </div>
-                                                <button class="btn settings-btn" id="downloadPrefSelectDir">İndirme dizinini seç</button>
-                                            </div>
-
-                                            <div class="settings-row">
-                                                <div class="settings-label">Tercih edilen video kalitesi</div>
-                                                <select class="settings-select" id="downloadPrefVideoQuality">
-                                                    <option value="auto">Otomatik</option>
-                                                    <option value="144">144p</option>
-                                                    <option value="240">240p</option>
-                                                    <option value="360">360p</option>
-                                                    <option value="480">480p</option>
-                                                    <option value="720">720p (HD)</option>
-                                                    <option value="1080">1080p (FHD)</option>
-                                                    <option value="1440">1440p</option>
-                                                    <option value="2160">2160p (4K)</option>
-                                                </select>
-                                            </div>
-
-                                            <div class="settings-row">
-                                                <div class="settings-label">Tercih edilen video kodeği</div>
-                                                <select class="settings-select" id="downloadPrefVideoCodec">
-                                                    <option value="">Otomatik</option>
-                                                    <option value="avc1">AVC1</option>
-                                                    <option value="av01">AV1</option>
-                                                    <option value="vp9">VP9</option>
-                                                    <option value="mp4v">MP4V</option>
-                                                </select>
-                                            </div>
-
-                                            <div class="settings-row">
-                                                <div class="settings-label">Tercih edilen ses formatı</div>
-                                                <select class="settings-select" id="downloadPrefAudioFormat">
-                                                    <option value="mp3">MP3</option>
-                                                    <option value="aac">AAC</option>
-                                                    <option value="m4a">M4A</option>
-                                                    <option value="opus">OPUS</option>
-                                                    <option value="wav">WAV</option>
-                                                    <option value="alac">ALAC</option>
-                                                    <option value="flac">FLAC</option>
-                                                </select>
-                                            </div>
-
-                                            <div class="settings-row">
-                                                <div class="settings-label">Tercih edilen ses kalitesi</div>
-                                                <select class="settings-select" id="downloadPrefAudioQuality">
-                                                    <option value="192">Normal (192kbps)</option>
-                                                    <option value="320">Yüksek (320kbps)</option>
-                                                    <option value="128">Düşük (128kbps)</option>
-                                                </select>
-                                            </div>
-
-                                            <label class="checkbox-label">
-                                                <input type="checkbox" id="downloadPrefNormalizeAudio" checked>
-                                                <span>Ses normalizasyonu (daha yüksek ses)</span>
-                                            </label>
-
-                                            <div class="settings-row">
-                                                <div class="settings-label">Cookies (tarayıcı)</div>
-                                                <select class="settings-select" id="downloadPrefCookiesBrowser">
-                                                    <option value="">Yok</option>
-                                                    <option value="chrome">Chrome</option>
-                                                    <option value="firefox">Firefox</option>
-                                                    <option value="brave">Brave</option>
-                                                    <option value="opera">Opera</option>
-                                                    <option value="edge">Edge</option>
-                                                    <option value="chromium">Chromium</option>
-                                                    <option value="safari">Safari</option>
-                                                    <option value="vivaldi">Vivaldi</option>
-                                                </select>
-                                            </div>
-
-                                            <div class="settings-row">
-                                                <div class="settings-label">Cookies dosyası</div>
-                                                <div class="settings-inline">
-                                                    <input class="settings-input" id="downloadPrefCookiesFile" placeholder="cookies.txt (opsiyonel)">
-                                                    <button class="btn settings-btn" id="downloadPrefSelectCookiesFile">Seç</button>
+                                            <h4 data-i18n="settings.audio.main.title">Ana Ses Çıkışı</h4>
+                                            <div class="setting-row">
+                                                <span data-i18n="settings.audio.currentDevice">Geçerli çıkış cihazı</span>
+                                                <div style="display:flex; align-items:center; gap:10px; justify-content:flex-end; flex-wrap:wrap;">
+                                                    <strong id="audioCurrentOutputName">-</strong>
+                                                    <span class="settings-chip" id="audioCurrentOutputBadge">-</span>
+                                                    <button class="btn settings-action-btn settings-action-btn-secondary" id="audioRefreshState" data-i18n="settings.audio.refresh">Sistemden yenile</button>
                                                 </div>
                                             </div>
-
-                                            <div class="settings-row">
-                                                <div class="settings-label">Proxy</div>
-                                                <input class="settings-input" id="downloadPrefProxy" placeholder="http://localhost:8080 veya socks5://127.0.0.1:1080">
-                                            </div>
-
-                                            <label class="checkbox-label">
-                                                <input type="checkbox" id="downloadPrefUseConfig">
-                                                <span>Config dosyası kullan</span>
-                                            </label>
-                                            <div class="settings-row" id="downloadPrefConfigRow">
-                                                <div class="settings-label">Config dosyası</div>
-                                                <div class="settings-inline">
-                                                    <input class="settings-input" id="downloadPrefConfigFile" placeholder="yt-dlp config (opsiyonel)">
-                                                    <button class="btn settings-btn" id="downloadPrefSelectConfigFile">Seç</button>
+                                            <div class="settings-audio-meter-card" id="audioOutputMeterCard">
+                                                <div class="settings-audio-meter-head">
+                                                    <div class="settings-audio-meter-title" data-i18n="settings.audio.meter.title">Canlı çıkış seviyesi</div>
+                                                    <div class="settings-audio-meter-status">
+                                                        <span class="settings-chip settings-chip-neutral" id="audioOutputMeterState" data-i18n="settings.audio.meter.waiting">Bekliyor</span>
+                                                        <span class="settings-audio-clip-led" id="audioOutputClipLed">CLIP</span>
+                                                    </div>
+                                                </div>
+                                                <div class="settings-audio-meter-row">
+                                                    <span class="settings-audio-meter-label">L</span>
+                                                    <div class="settings-audio-meter-bar"><span id="audioOutputLevelLeft"></span></div>
+                                                    <strong id="audioOutputLevelLeftValue">0%</strong>
+                                                </div>
+                                                <div class="settings-audio-meter-row">
+                                                    <span class="settings-audio-meter-label">R</span>
+                                                    <div class="settings-audio-meter-bar"><span id="audioOutputLevelRight"></span></div>
+                                                    <strong id="audioOutputLevelRightValue">0%</strong>
                                                 </div>
                                             </div>
-
-                                            <label class="checkbox-label">
-                                                <input type="checkbox" id="downloadPrefShowMoreFormats">
-                                                <span>Daha fazla format (özel -f)</span>
-                                            </label>
-                                            <div class="settings-row" id="downloadPrefFormatOverrideRow">
-                                                <div class="settings-label">Format override</div>
-                                                <input class="settings-input" id="downloadPrefFormatOverride"
-                                                       placeholder="Örn: bestvideo[height<=1080][vcodec^=avc1]+bestaudio/best veya 251">
-                                            </div>
-
-                                            <label class="checkbox-label">
-                                                <input type="checkbox" id="downloadPrefPlaylist">
-                                                <span>Playlist indir</span>
-                                            </label>
-                                            <div class="settings-row" id="downloadPrefPlaylistFormats">
-                                                <div class="settings-label">Playlist dosya formatları</div>
-                                                <div class="settings-stack">
-                                                    <input class="settings-input" id="downloadPrefPlaylistFilenameFormat"
-                                                           value="%(playlist_index)s.%(title)s.%(ext)s">
-                                                    <input class="settings-input" id="downloadPrefPlaylistFoldernameFormat"
-                                                           value="%(playlist_title)s">
+                                            <div class="setting-row">
+                                                <span data-i18n="settings.audio.outputSelect">Çıkış cihazı seç</span>
+                                                <div style="display:flex; align-items:center; gap:12px; min-width:260px;">
+                                                    <select id="audioOutputSelect" class="settings-select" style="flex:1;">
+                                                        <option value="">Sistem çıkışları yükleniyor...</option>
+                                                    </select>
                                                 </div>
                                             </div>
-
-                                            <div class="settings-row">
-                                                <div class="settings-label">Özel yt-dlp argümanları</div>
-                                                <textarea class="settings-textarea" id="downloadPrefCustomArgs" spellcheck="false"
-                                                          placeholder="Örn: --sponsorblock-remove all"></textarea>
-	                        </div>
-	                    </div>
-	                </div>
-
+                                            <div class="settings-sub" id="audioOutputSelectHint" data-i18n="settings.audio.outputSelect.hint">Buradan seçilen cihaz sistemin varsayılan çıkışı yapılır.</div>
+                                            <div class="settings-audio-device-card" id="audioDeviceInsightCard">
+                                                <div class="settings-audio-device-card-head">
+                                                    <span class="settings-audio-device-icon" id="audioDeviceInsightIcon">🎧</span>
+                                                    <div class="settings-audio-device-copy">
+                                                        <div class="settings-audio-device-eyebrow" data-i18n="settings.audio.deviceCard.title">Bağlı ses cihazı</div>
+                                                        <div class="settings-audio-device-title" id="audioDeviceInsightTitle">-</div>
+                                                        <div class="settings-audio-device-subtitle" id="audioDeviceInsightSubtitle">-</div>
+                                                    </div>
+                                                </div>
+                                                <div class="settings-audio-device-chip-row" id="audioDeviceInsightMeta"></div>
+                                            </div>
+                                            <div class="settings-sub" data-i18n="settings.audio.quickOutputs.title">Hızlı çıkış seçimi</div>
+                                            <div class="settings-audio-quick-grid" id="audioQuickOutputGrid"></div>
+                                            <label class="checkbox-label">
+                                                <input type="checkbox" id="audioFollowSystemVolume" checked>
+                                                <span data-i18n="settings.audio.followSystem">Sistem sesini takip et</span>
+                                            </label>
+                                            <div class="settings-sub" id="audioSystemAudioHint" data-i18n="settings.audio.followSystem.hint">Linux'ta varsayılan çıkış sesini izler ve sliderı onunla senkron tutar.</div>
+                                            <div class="setting-row">
+                                                <span data-i18n="settings.audio.allow150">Sesi sonuna kadar aç (150%)</span>
+                                                <button class="btn settings-audio-toggle-btn" id="audioAllowOverdrive150" type="button" aria-pressed="false">150%</button>
+                                            </div>
+                                            <div class="settings-sub" data-i18n="settings.audio.allow150.hint">Linux'ta varsayılan çıkışı 100% üstüne kadar zorlar. Diğer platformlarda yalnızca uygulama içi ayar olarak saklanır.</div>
+                                            <div class="setting-row">
+                                                <span data-i18n="settings.audio.defaultVolume">Varsayılan ses seviyesi</span>
+                                                <div style="display:flex; align-items:center; gap:12px; min-width:260px;">
+                                                    <input type="range" id="audioDefaultVolume" min="0" max="100" step="1" style="flex:1;">
+                                                    <strong id="audioDefaultVolumeValue">40%</strong>
+                                                </div>
+                                            </div>
+                                            <div class="settings-sub" data-i18n="settings.audio.defaultVolume.hint">Uygulama açıldığında ve ses motoru yüklendiğinde kullanılacak ana ses seviyesi.</div>
+                                            <div class="setting-row" style="margin-top:16px;">
+                                                <span data-i18n="settings.audio.appVolume">Aurivo uygulama sesi</span>
+                                                <div style="display:flex; align-items:center; gap:12px; min-width:260px;">
+                                                    <input type="range" id="audioAppVolume" min="0" max="100" step="1" style="flex:1;">
+                                                    <strong id="audioAppVolumeValue">40%</strong>
+                                                </div>
+                                            </div>
+                                            <div class="settings-sub" data-i18n="settings.audio.appVolume.hint">Sistem sesinden bağımsız olarak yalnızca Aurivo oynatma sesini anlık kontrol eder.</div>
+                                        </div>
+                                        <div class="settings-group">
+                                            <h4 data-i18n="settings.audio.limiter.title">Anti-clipping koruması</h4>
+                                            <label class="checkbox-label">
+                                                <input type="checkbox" id="audioLimiterEnabled">
+                                                <span data-i18n="settings.audio.limiter.enabled">Limiter koruması</span>
+                                            </label>
+                                            <div class="settings-sub" data-i18n="settings.audio.limiter.enabled.hint">Yüksek ses, boost ve 150% kullanımında clipping ve patlamayı azaltır.</div>
+                                            <div class="setting-row" style="margin-top: 12px;">
+                                                <span data-i18n="settings.audio.limiter.mode">Koruma seviyesi</span>
+                                                <div style="display:flex; align-items:center; gap:12px; min-width:260px;">
+                                                    <select id="audioLimiterMode" class="settings-select" style="flex:1;">
+                                                        <option value="soft" data-i18n="settings.audio.limiter.mode.soft">Yumuşak</option>
+                                                        <option value="balanced" data-i18n="settings.audio.limiter.mode.balanced">Dengeli</option>
+                                                        <option value="strict" data-i18n="settings.audio.limiter.mode.strict">Sıkı</option>
+                                                    </select>
+                                                </div>
+                                            </div>
+                                            <div class="settings-sub" id="audioLimiterHint" data-i18n="settings.audio.limiter.mode.hint">Dengeli mod çoğu kullanım için en güvenli seçimdir.</div>
+                                        </div>
+                                        <div class="settings-group">
+                                            <h4 data-i18n="settings.audio.night.title">Gece modu</h4>
+                                            <label class="checkbox-label">
+                                                <input type="checkbox" id="audioNightModeEnabled">
+                                                <span data-i18n="settings.audio.night.enabled">Gece modu koruması</span>
+                                            </label>
+                                            <div class="settings-sub" data-i18n="settings.audio.night.enabled.hint">Ani yüksek sesleri bastırır, daha sakin ve ev ortamına uygun bir dinleme sağlar.</div>
+                                            <div class="setting-row" style="margin-top: 12px;">
+                                                <span data-i18n="settings.audio.night.mode">Koruma seviyesi</span>
+                                                <div style="display:flex; align-items:center; gap:12px; min-width:260px;">
+                                                    <select id="audioNightModeLevel" class="settings-select" style="flex:1;">
+                                                        <option value="light" data-i18n="settings.audio.night.mode.light">Hafif</option>
+                                                        <option value="balanced" data-i18n="settings.audio.night.mode.balanced">Dengeli</option>
+                                                        <option value="strong" data-i18n="settings.audio.night.mode.strong">Güçlü</option>
+                                                    </select>
+                                                </div>
+                                            </div>
+                                            <div class="settings-sub" id="audioNightModeHint" data-i18n="settings.audio.night.mode.hint">Dengeli mod film, video ve gece kullanımında en güvenli başlangıçtır.</div>
+                                        </div>
+                                        <div class="settings-group">
+                                            <h4 data-i18n="settings.audio.profiles.title">Ses profilleri</h4>
+                                            <div class="settings-audio-profile-grid" id="audioProfileGrid">
+                                                <button type="button" class="settings-audio-profile-card" data-audio-profile="music">
+                                                    <strong data-i18n="settings.audio.profile.music">Müzik</strong>
+                                                    <span data-i18n="settings.audio.profile.music.hint">Dengeli ve doğal günlük dinleme.</span>
+                                                </button>
+                                                <button type="button" class="settings-audio-profile-card" data-audio-profile="movie">
+                                                    <strong data-i18n="settings.audio.profile.movie">Film</strong>
+                                                    <span data-i18n="settings.audio.profile.movie.hint">Ani ses farklarını azaltır, video için uygundur.</span>
+                                                </button>
+                                                <button type="button" class="settings-audio-profile-card" data-audio-profile="headphones">
+                                                    <strong data-i18n="settings.audio.profile.headphones">Kulaklık</strong>
+                                                    <span data-i18n="settings.audio.profile.headphones.hint">Kulaklıkta daha dolu ve yakın his verir.</span>
+                                                </button>
+                                                <button type="button" class="settings-audio-profile-card" data-audio-profile="night">
+                                                    <strong data-i18n="settings.audio.profile.night">Gece</strong>
+                                                    <span data-i18n="settings.audio.profile.night.hint">Daha sakin ve kontrollü gece kullanımı.</span>
+                                                </button>
+                                                <button type="button" class="settings-audio-profile-card" data-audio-profile="loud">
+                                                    <strong data-i18n="settings.audio.profile.loud">Yüksek ses</strong>
+                                                    <span data-i18n="settings.audio.profile.loud.hint">Daha güçlü çıkış ve agresif ses hissi.</span>
+                                                </button>
+                                            </div>
+                                            <div class="settings-sub" id="audioProfileHint" data-i18n="settings.audio.profile.hint">Profil seçimi ses çıkışı ve video ses tercihlerini birlikte ayarlar.</div>
+                                        </div>
+                                        <div class="settings-group">
+                                            <h4 data-i18n="settings.audio.spatial.title">Kanal modu</h4>
+                                            <div class="settings-audio-profile-grid" id="audioSpatialGrid">
+                                                <button type="button" class="settings-audio-profile-card" data-audio-spatial="mono">
+                                                    <strong data-i18n="settings.audio.spatial.mono">Mono</strong>
+                                                    <span data-i18n="settings.audio.spatial.mono.hint">Tek kanala yakın, eski kayıt ve tek kulak için daha güvenli.</span>
+                                                </button>
+                                                <button type="button" class="settings-audio-profile-card" data-audio-spatial="stereo">
+                                                    <strong data-i18n="settings.audio.spatial.stereo">Stereo</strong>
+                                                    <span data-i18n="settings.audio.spatial.stereo.hint">Doğal ve dengeli standart sahne.</span>
+                                                </button>
+                                                <button type="button" class="settings-audio-profile-card" data-audio-spatial="spatial">
+                                                    <strong data-i18n="settings.audio.spatial.spatial">Spatial</strong>
+                                                    <span data-i18n="settings.audio.spatial.spatial.hint">Kulaklıkta daha geniş ve çevresel his verir.</span>
+                                                </button>
+                                            </div>
+                                            <div class="settings-sub" id="audioSpatialHint" data-i18n="settings.audio.spatial.hint">Yerel müzik motorunda stereo genişliği ve kulaklık sahnesini birlikte ayarlar.</div>
+                                        </div>
+                                        <div class="settings-group">
+                                            <h4 data-i18n="settings.audio.sync.title">Video ses senkronu</h4>
+                                            <div class="setting-row">
+                                                <span data-i18n="settings.audio.sync.delay">Yerel video ses gecikmesi</span>
+                                                <div style="display:flex; align-items:center; gap:12px; min-width:320px;">
+                                                    <input type="range" id="audioVideoDelay" min="0" max="500" step="10" style="flex:1;">
+                                                    <strong id="audioVideoDelayValue">0 ms</strong>
+                                                    <button class="btn settings-action-btn settings-action-btn-secondary" id="audioVideoDelayReset" data-i18n="settings.audio.sync.reset">Sıfırla</button>
+                                                </div>
+                                            </div>
+                                            <div class="settings-sub" id="audioVideoDelayHint" data-i18n="settings.audio.sync.hint">Yerel video oynatımında sesi en fazla 500 ms geciktirir. Özellikle HDMI, Bluetooth ve bazı USB çıkışlarda senkron düzeltmek için kullanılır.</div>
+                                        </div>
+                                        <div class="settings-group">
+                                            <h4 data-i18n="settings.audio.fullscreen.title">Tam Ekran Video Ses Tercihleri</h4>
+                                            <label class="checkbox-label">
+                                                <input type="checkbox" id="audioStableVolume">
+                                                <span data-i18n="settings.audio.stableVolume">Sabit ses</span>
+                                            </label>
+                                            <div class="settings-sub" data-i18n="settings.audio.stableVolume.hint">Video izlerken ani ses farklarını azaltmak için sabit ses tercih edilir.</div>
+                                            <label class="checkbox-label">
+                                                <input type="checkbox" id="audioVolumeBoost">
+                                                <span data-i18n="settings.audio.volumeBoost">Ses artırma</span>
+                                            </label>
+                                            <div class="settings-sub" data-i18n="settings.audio.volumeBoost.hint">Düşük sesli videolarda sesi daha güçlü hissettirmek için ek kazanç uygular.</div>
+                                        </div>
+                                    </div>
+                                    <div class="settings-page hidden" id="adblockSettings">
+                                        <h3>DeliBlock (Web Reklam Engelleyici)</h3>
+                                        <div class="settings-group">
+                                            <h4>Filtreleme Modu</h4>
+                                            <p class="security-hint">Mod arttıkça daha fazla reklam/öğe temizlenir; bazı sitelerde uyumluluk düşebilir.</p>
+                                            <div class="adblock-mode-grid" id="adblockModeGrid">
+                                                <button type="button" class="adblock-mode-card" data-adblock-mode="basic">
+                                                    <strong>Temel</strong>
+                                                    <span>Sadece güvenli ağ engelleme, minimum müdahale.</span>
+                                                </button>
+                                                <button type="button" class="adblock-mode-card" data-adblock-mode="ideal">
+                                                    <strong>İdeal</strong>
+                                                    <span>Ağ + YouTube arayüz temizliği, önerilen mod.</span>
+                                                </button>
+                                                <button type="button" class="adblock-mode-card" data-adblock-mode="aggressive">
+                                                    <strong>Kapsamlı</strong>
+                                                    <span>Daha sert filtreleme, daha fazla müdahale.</span>
+                                                </button>
+                                            </div>
+                                        </div>
+                                        <div class="settings-group">
+                                            <h4>Davranış</h4>
+                                            <label class="checkbox-label">
+                                                <input type="checkbox" id="adblockShowBlockedCount" checked>
+                                                <span>Engellenen istek sayısını üst çubukta göster</span>
+                                            </label>
+                                            <label class="checkbox-label">
+                                                <input type="checkbox" id="adblockStrictBlock" checked>
+                                                <span>Sıkı engellemeyi etkinleştir</span>
+                                            </label>
+                                            <label class="checkbox-label">
+                                                <input type="checkbox" id="adblockAutoRefreshOnModeChange">
+                                                <span>Mod değişince web sayfasını otomatik yenile</span>
+                                            </label>
+                                            <label class="checkbox-label">
+                                                <input type="checkbox" id="adblockDeveloperMode">
+                                                <span>Geliştirici modu (detaylı log)</span>
+                                            </label>
+                                        </div>
+                                        <div class="settings-group">
+                                            <h4>Canlı Durum</h4>
+                                            <div class="setting-row">
+                                                <span>Engellenen istek</span>
+                                                <strong id="adblockBlockedCount">0</strong>
+                                            </div>
+                                            <div class="setting-row">
+                                                <span>Toplam istek</span>
+                                                <strong id="adblockTotalCount">0</strong>
+                                            </div>
+                                            <div class="setting-row">
+                                                <span>Yüklenen ruleset</span>
+                                                <strong id="adblockRulesetCount">-</strong>
+                                            </div>
+                                            <div class="setting-row">
+                                                <span>Aktif alan adı kuralı</span>
+                                                <strong id="adblockDomainRuleCount">-</strong>
+                                            </div>
+                                        </div>
+                                        <div class="settings-group">
+                                            <h4>İzin Ver (Allowlist)</h4>
+                                            <div class="setting-row">
+                                                <input type="text" id="adblockAllowDomainInput" placeholder="ornek.com" style="flex:1;">
+                                                <button class="btn btn-small" id="adblockAllowDomainBtn">Domain Ekle</button>
+                                            </div>
+                                            <div class="setting-row">
+                                                <button class="btn btn-small" id="adblockAllowCurrentBtn">Açık Siteyi İzinliye Ekle</button>
+                                                <button class="btn btn-small" id="adblockRefreshStatsBtn">İstatistik Yenile</button>
+                                            </div>
+                                            <p class="security-hint">Not: Bu panel, uygulama içi <code>uDALİ-weman-home</code> blocklist altyapısını kullanır.</p>
+                                        </div>
+                                    </div>
 	            </div>
                             </div>
                             <div class="modal-footer">
-                                <button class="btn" id="settingsOk" data-i18n="settings.buttons.ok">✓ Tamam</button>
-                                <button class="btn" id="settingsApply" data-i18n="settings.buttons.apply">✓ Uygula</button>
-                                <button class="btn" id="settingsCancel" data-i18n="settings.buttons.cancel">⟲ İptal</button>
+                                <button class="btn settings-action-btn settings-action-btn-secondary settings-action-btn-reset" id="settingsResetCurrentTab" data-i18n="settings.buttons.resetCurrentTab">Varsayılana döndür</button>
+                                <button class="btn settings-action-btn settings-action-btn-ghost" id="settingsCancel" data-i18n="settings.buttons.cancel">İptal</button>
+                                <button class="btn settings-action-btn settings-action-btn-primary" id="settingsOk" data-i18n="settings.buttons.save">Kaydet</button>
                             </div>
                         </div>
                     </div>
@@ -942,7 +1422,7 @@
                 <!-- Kontroller -->
                 <div class="controls-row">
                     <div class="controls-center">
-                        <button class="control-btn" id="clearPlaylistBtn" title="Listeyi Temizle">
+                        <button class="control-btn" id="clearPlaylistBtn" title="Listeyi Temizle" data-i18n-title="controls.clearPlaylist">
                             <img src="icons/edit-clear-list.png" alt="Clear playlist">
                         </button>
                         <button class="control-btn glow-btn" id="shuffleBtn" title="Karıştır" data-i18n-title="controls.shuffle">
@@ -1003,207 +1483,16 @@
         </main>
     </div>
 
-    <!-- Ayarlar Modal kaldırıldı (settingsPage içine taşındı) -->
-    <!-- İndirme Modal -->
-    <!-- LEGACY DOWNLOAD MODAL (disabled - downloadPage kullanılıyor) -->
-    <!--
-    <div class="modal hidden" id="downloadModal">
-        <div class="modal-content download-modal-content">
-            <div class="modal-header">
-                <h2>İndir - Format Seç</h2>
-                <button class="modal-close" id="closeDownload">&times;</button>
-            </div>
-            <div class="download-body-v2">
-                <div class="download-tabs-pill">
-                    <button class="download-tab-v2 active" data-mode="video" id="downloadTabVideo">Video</button>
-                    <button class="download-tab-v2" data-mode="audio" id="downloadTabAudio">Ses</button>
-                </div>
-
-                <div class="download-view-bar">
-                    <div class="download-view-title" id="downloadViewTitle">Basit</div>
-                    <button class="download-view-btn hidden" id="downloadViewBackBtn">← Geri</button>
-                </div>
-
-                <div class="download-page" id="downloadPageBasic">
-                    <div class="download-title-row">
-                        <label for="downloadTitle">Başlık :</label>
-                        <input type="text" id="downloadTitle" class="download-input-v2" placeholder="Örn: Kalmaz - YouTube">
-                    </div>
-
-                    <div class="download-card">
-                        <div class="download-card-brand">Aurivo Player</div>
-                        <div class="download-card-mode" id="downloadCardModeTitle">Video İndir</div>
-
-                        <div class="download-card-fields">
-                            <div class="download-card-field" id="downloadOptionsVideo">
-                                <div class="download-card-field-label">Format seçin</div>
-                                <select id="downloadVideoQuality" class="download-select-v2">
-                                    <option value="auto">Otomatik (En İyi) - Önerilen</option>
-                                    <option value="144">144p</option>
-                                    <option value="240">240p</option>
-                                    <option value="360">360p</option>
-                                    <option value="480">480p</option>
-                                    <option value="720">720p (HD)</option>
-                                    <option value="1080">1080p (FHD)</option>
-                                    <option value="1440">1440p</option>
-                                    <option value="2160">2160p (4K)</option>
-                                </select>
-                            </div>
-
-                            <div class="download-card-field hidden" id="downloadOptionsAudio">
-                                <div class="download-card-field-label">Format seçin</div>
-                                <div class="download-audio-grid">
-                                    <select id="downloadAudioFormat" class="download-select-v2">
-                                        <option value="mp3">MP3</option>
-                                        <option value="aac">AAC</option>
-                                        <option value="m4a">M4A</option>
-                                        <option value="opus">OPUS</option>
-                                        <option value="wav">WAV</option>
-                                        <option value="alac">ALAC</option>
-                                        <option value="flac">FLAC</option>
-                                    </select>
-                                    <select id="downloadAudioQuality" class="download-select-v2">
-                                        <option value="192">Normal (192kbps)</option>
-                                        <option value="320">Yüksek (320kbps)</option>
-                                        <option value="128">Düşük (128kbps)</option>
-                                    </select>
-                                </div>
-                                <label class="download-check">
-                                    <input type="checkbox" id="downloadNormalizeAudio" checked>
-                                    <span>Ses normalizasyonu (daha yüksek ses)</span>
-                                </label>
-                            </div>
-                        </div>
-
-                        <div class="download-card-actions">
-                            <button class="download-action-primary" id="downloadStartBtn">İndir</button>
-                            <button class="download-action-secondary" id="downloadMoreBtn">Daha fazla ayar</button>
-                            <button class="download-action-danger hidden" id="downloadStopBtn">Durdur</button>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="download-page hidden" id="downloadPageAdvanced">
-                    <div class="download-advanced-row">
-                        <label for="downloadUrl">URL</label>
-                        <div class="download-advanced-inline">
-                            <input type="text" id="downloadUrl" class="download-input-v2" placeholder="Video/Ses URL (YouTube, SoundCloud vb.)">
-                            <button class="btn download-advanced-btn" id="downloadPasteUrl" title="Kopyalanan URL'yi yapıştır">Yapıştır</button>
-                        </div>
-                    </div>
-                    <div class="download-advanced-row">
-                        <label for="downloadFolder">Klasör</label>
-                        <div class="download-advanced-inline">
-                            <input type="text" id="downloadFolder" class="download-input-v2" placeholder="İndirme klasörü">
-                            <button class="btn download-advanced-btn" id="downloadBrowseFolder">Seç</button>
-                        </div>
-                    </div>
-
-                    <div class="download-advanced-row" id="downloadVideoCodecRow">
-                        <label for="downloadVideoCodec">Video codec</label>
-                        <select id="downloadVideoCodec" class="download-input-v2">
-                            <option value="">Otomatik</option>
-                            <option value="avc1">AVC1</option>
-                            <option value="av01">AV1</option>
-                            <option value="vp9">VP9</option>
-                            <option value="mp4v">MP4V</option>
-                        </select>
-                    </div>
-
-                    <div class="download-advanced-row">
-                        <label for="downloadCookiesBrowser">Cookies (tarayıcı)</label>
-                        <select id="downloadCookiesBrowser" class="download-input-v2">
-                            <option value="">Yok</option>
-                            <option value="chrome">Chrome</option>
-                            <option value="firefox">Firefox</option>
-                            <option value="brave">Brave</option>
-                            <option value="opera">Opera</option>
-                            <option value="edge">Edge</option>
-                            <option value="chromium">Chromium</option>
-                            <option value="safari">Safari</option>
-                            <option value="vivaldi">Vivaldi</option>
-                        </select>
-                    </div>
-
-                    <div class="download-advanced-row">
-                        <label for="downloadCookiesFile">Cookies dosyası</label>
-                        <div class="download-advanced-inline">
-                            <input type="text" id="downloadCookiesFile" class="download-input-v2" placeholder="cookies.txt (opsiyonel)">
-                            <button class="btn download-advanced-btn" id="downloadBrowseCookiesFile">Seç</button>
-                        </div>
-                    </div>
-
-                    <div class="download-advanced-row">
-                        <label for="downloadProxy">Proxy</label>
-                        <input type="text" id="downloadProxy" class="download-input-v2" placeholder="http://localhost:8080 veya socks5://127.0.0.1:1080">
-                    </div>
-
-                    <div class="download-advanced-row">
-                        <label class="download-check download-check-dark">
-                            <input type="checkbox" id="downloadUseConfig">
-                            <span>Config dosyası kullan</span>
-                        </label>
-                        <div class="download-advanced-inline" id="downloadConfigRow">
-                            <input type="text" id="downloadConfigFile" class="download-input-v2" placeholder="yt-dlp config dosyası (opsiyonel)">
-                            <button class="btn download-advanced-btn" id="downloadBrowseConfigFile">Seç</button>
-                        </div>
-                    </div>
-
-                    <div class="download-advanced-row">
-                        <label class="download-check download-check-dark">
-                            <input type="checkbox" id="downloadShowMoreFormats">
-                            <span>Daha fazla format (özel -f)</span>
-                        </label>
-                        <input type="text" id="downloadFormatOverride" class="download-input-v2 hidden"
-                               placeholder="Örn: bestvideo[height<=1080][vcodec^=avc1]+bestaudio/best veya fmt id (251)">
-                    </div>
-
-                    <div class="download-advanced-row">
-                        <label class="download-check download-check-dark">
-                            <input type="checkbox" id="downloadPlaylist">
-                            <span>Playlist indir</span>
-                        </label>
-                    </div>
-
-                    <div class="download-advanced-row" id="downloadPlaylistFormats">
-                        <label for="downloadPlaylistFilenameFormat">Playlist dosya adı formatı</label>
-                        <input type="text" id="downloadPlaylistFilenameFormat" class="download-input-v2"
-                               value="%(playlist_index)s.%(title)s.%(ext)s" placeholder="yt-dlp format style">
-                        <label for="downloadPlaylistFoldernameFormat" style="margin-top:10px;">Playlist klasör adı formatı</label>
-                        <input type="text" id="downloadPlaylistFoldernameFormat" class="download-input-v2"
-                               value="%(playlist_title)s" placeholder="yt-dlp format style">
-                    </div>
-
-                    <div class="download-advanced-row">
-                        <label for="downloadCustomArgs">Özel yt-dlp argümanları</label>
-                        <textarea id="downloadCustomArgs" class="download-textarea" spellcheck="false"
-                                  placeholder="Örn: --sponsorblock-remove all"></textarea>
-                    </div>
-                </div>
-
-                <div class="download-progress hidden" id="downloadProgressBox">
-                    <div class="download-progress-row">
-                        <div class="download-progress-label" id="downloadProgressLabel">Hazır</div>
-                        <div class="download-progress-percent" id="downloadProgressPercent">0%</div>
-                    </div>
-                    <div class="download-progress-bar">
-                        <div class="download-progress-fill" id="downloadProgressFill" style="width: 0%"></div>
-                    </div>
-                    <div class="download-progress-actions">
-                        <button class="download-details-btn hidden" id="downloadDetailsBtn">Detay</button>
-                        <button class="download-cancel-btn hidden" id="downloadCancelActiveBtn">İptal</button>
-                    </div>
-                    <pre class="download-details hidden" id="downloadDetails"></pre>
-                </div>
-            </div>
-            <div class="modal-footer">
-                <button class="btn" id="downloadCancelBtn">Kapat</button>
-            </div>
+    <!-- Video içi tam Ses Efektleri paneli (embedded soundEffects.html) -->
+    <div class="video-sfx-overlay hidden" id="videoSfxModal" aria-hidden="true">
+        <div class="video-sfx-shell">
+            <iframe id="videoSfxFrame" title="Video Ses Efektleri" src="about:blank"></iframe>
         </div>
     </div>
-    -->
 
-    <!-- ============================================
+    <!-- Ayarlar Modal kaldırıldı (settingsPage içine taşındı) -->
+    <!-- İndirme Modal -->
+<!-- ============================================
          EQ & SOUND EFFECTS PANEL
          ============================================ -->
     <div class="modal hidden" id="eqModal">
@@ -1473,67 +1762,87 @@
         </div>
     </div>
 
-    <!-- EQ Button (Player Bar'a eklenecek) -->
-    
-    <!-- Visualizer Context Menu -->
-    <div class="context-menu hidden" id="visualizerContextMenu">
-        <!-- Framerate Submenu -->
-        <div class="context-menu-item has-submenu" id="framerateMenuItem">
-            Kare oranı
-            <span class="submenu-arrow">›</span>
-            <div class="context-submenu" id="framerateSubmenu">
-                <div class="context-menu-item" data-framerate="20">Düşük (20 fps)</div>
-                <div class="context-menu-item" data-framerate="25">Orta (25 fps)</div>
-                <div class="context-menu-item" data-framerate="30">Yüksek (30 fps)</div>
-                <div class="context-menu-item" data-framerate="60">Çok yüksek (60 fps)</div>
-            </div>
-        </div>
-        <div class="context-menu-separator"></div>
-        <!-- Analyzer Types -->
-        <div class="context-menu-item" data-analyzer="bar">
-            <span class="menu-radio"></span> Bar çözümleyici
-        </div>
-        <div class="context-menu-item" data-analyzer="block">
-            <span class="menu-radio"></span> Blok çözümleyici
-        </div>
-        <div class="context-menu-item" data-analyzer="boom">
-            <span class="menu-radio"></span> Boom çözümleyici
-        </div>
-        <div class="context-menu-item" data-analyzer="sonogram">
-            <span class="menu-radio"></span> Sonogram
-        </div>
-        <div class="context-menu-item" data-analyzer="turbine">
-            <span class="menu-radio"></span> Türbin
-        </div>
-        <div class="context-menu-item" data-analyzer="nyanalyzer">
-            <span class="menu-radio"></span> Nyanalyzer Cat
-        </div>
-        <div class="context-menu-item" data-analyzer="rainbow">
-            <span class="menu-radio"></span> Rainbow Dash
-        </div>
-        <div class="context-menu-item" data-analyzer="none">
-            <span class="menu-radio"></span> Çözümleyici yok
-        </div>
-        <div class="context-menu-separator"></div>
-        <!-- Psychedelic Mode -->
-        <div class="context-menu-item" id="psychedelicToggle">
-            <span class="menu-checkbox"></span> Use Psychedelic Colors
-        </div>
-        <div class="context-menu-separator"></div>
-        <!-- Görseller Submenu -->
-        <div class="context-menu-item has-submenu" id="visualsMenuItem">
-            Görseller
-            <span class="submenu-arrow">›</span>
-            <div class="context-submenu" id="visualsSubmenu">
-                <div class="context-menu-item" data-visual="glow">
-                    <span class="menu-checkbox"></span> Parıltı efekti
-                </div>
-                <div class="context-menu-item" data-visual="reflection">
-                    <span class="menu-checkbox"></span> Yansıma
-                </div>
-            </div>
-        </div>
-    </div>
+	    <!-- EQ Button (Player Bar'a eklenecek) -->
+	    
+	    <!-- Visualizer Context Menu -->
+	    <div class="context-menu hidden" id="visualizerContextMenu">
+	        <!-- projectM Visualizer -->
+	        <div class="context-menu-item" id="projectmToggle">
+	            <span class="menu-checkbox"></span> Aurivo Görselleştirici
+	        </div>
+		        <div class="context-menu-separator"></div>
+		        <!-- Framerate Submenu -->
+		        <div class="context-menu-item has-submenu" id="framerateMenuItem">
+		            <span class="menu-label" data-i18n="visualizerMenu.framerate">Kare oranı</span>
+		            <span class="submenu-arrow">›</span>
+		            <div class="context-submenu" id="framerateSubmenu">
+		                <div class="context-menu-item" data-framerate="20" data-i18n="visualizerMenu.framerateLow">Düşük (20 fps)</div>
+		                <div class="context-menu-item" data-framerate="25" data-i18n="visualizerMenu.framerateMedium">Orta (25 fps)</div>
+		                <div class="context-menu-item" data-framerate="30" data-i18n="visualizerMenu.framerateHigh">Yüksek (30 fps)</div>
+		                <div class="context-menu-item" data-framerate="60" data-i18n="visualizerMenu.framerateUltra">Çok yüksek (60 fps)</div>
+		            </div>
+		        </div>
+		        <div class="context-menu-separator"></div>
+		        <!-- Analyzer Types -->
+		        <div class="context-menu-item" data-analyzer="bar">
+		            <span class="menu-radio"></span>
+		            <span class="menu-label" data-i18n="visualizerMenu.analyzers.bar">Bar çözümleyici</span>
+		        </div>
+		        <div class="context-menu-item" data-analyzer="block">
+		            <span class="menu-radio"></span>
+		            <span class="menu-label" data-i18n="visualizerMenu.analyzers.block">Blok çözümleyici</span>
+		        </div>
+		        <div class="context-menu-item" data-analyzer="boom">
+		            <span class="menu-radio"></span>
+		            <span class="menu-label" data-i18n="visualizerMenu.analyzers.boom">Boom çözümleyici</span>
+		        </div>
+		        <div class="context-menu-item" data-analyzer="boom_noline">
+		            <span class="menu-radio"></span>
+		            <span class="menu-label">Boom çözümleyici (çizgisiz)</span>
+		        </div>
+		        <div class="context-menu-item" data-analyzer="sonogram">
+		            <span class="menu-radio"></span>
+		            <span class="menu-label" data-i18n="visualizerMenu.analyzers.sonogram">Sonogram</span>
+		        </div>
+		        <div class="context-menu-item" data-analyzer="turbine">
+		            <span class="menu-radio"></span>
+		            <span class="menu-label" data-i18n="visualizerMenu.analyzers.turbine">Türbin</span>
+		        </div>
+		        <div class="context-menu-item" data-analyzer="nyanalyzer">
+		            <span class="menu-radio"></span>
+		            <span class="menu-label" data-i18n="visualizerMenu.analyzers.nyanalyzer">Nyanalyzer Cat</span>
+		        </div>
+		        <div class="context-menu-item" data-analyzer="rainbow">
+		            <span class="menu-radio"></span>
+		            <span class="menu-label" data-i18n="visualizerMenu.analyzers.rainbow">Rainbow Dash</span>
+		        </div>
+		        <div class="context-menu-item" data-analyzer="none">
+		            <span class="menu-radio"></span>
+		            <span class="menu-label" data-i18n="visualizerMenu.analyzers.none">Çözümleyici yok</span>
+		        </div>
+		        <div class="context-menu-separator"></div>
+		        <!-- Psychedelic Mode -->
+		        <div class="context-menu-item" id="psychedelicToggle">
+		            <span class="menu-checkbox"></span>
+		            <span class="menu-label" data-i18n="visualizerMenu.psychedelic">Psikedelik renkleri kullan</span>
+	        </div>
+	        <div class="context-menu-separator"></div>
+	        <!-- Görseller Submenu -->
+	        <div class="context-menu-item has-submenu" id="visualsMenuItem">
+	            <span class="menu-label" data-i18n="visualizerMenu.visuals">Görseller</span>
+	            <span class="submenu-arrow">›</span>
+	            <div class="context-submenu" id="visualsSubmenu">
+	                <div class="context-menu-item" data-visual="glow">
+	                    <span class="menu-checkbox"></span>
+	                    <span class="menu-label" data-i18n="visualizerMenu.effects.glow">Parıltı efekti</span>
+	                </div>
+	                <div class="context-menu-item" data-visual="reflection">
+	                    <span class="menu-checkbox"></span>
+	                    <span class="menu-label" data-i18n="visualizerMenu.effects.reflection">Yansıma</span>
+	                </div>
+	            </div>
+	        </div>
+	    </div>
 
     <!-- About (Hakkında) Modal -->
     <div class="modal-overlay hidden" id="aboutModalOverlay" role="presentation">
@@ -1542,7 +1851,7 @@
                 <img class="about-logo" src="icons/aurivo_256.png" alt="Aurivo" onerror="this.style.display='none'">
                 <div class="about-title-wrap">
                     <div class="about-title" id="aboutTitle" data-i18n="about.title">Aurivo Medya Player</div>
-                    <div class="about-subtitle" data-i18n="about.version">Versiyon: 1.0.0 - Kararlı Sürüm</div>
+                    <div class="about-subtitle" data-i18n="about.version">Versiyon: 2.0.0 - Kararlı Sürüm</div>
                 </div>
             </div>
 
@@ -1553,16 +1862,57 @@
                         <span class="about-badge-value">Muhammet Dali</span>
                     </div>
                 </div>
+                <div class="about-features-title" data-i18n="about.featuresTitle">Özellikler ve Şeffaflık</div>
+                <div class="about-sections">
+                    <section class="about-section">
+                        <h4 data-i18n="about.sections.app.title">Uygulama Özellikleri</h4>
+                        <ul class="about-list">
+                            <li data-i18n="about.sections.app.item1">Müzik, video, web ve indirme akışını tek arayüzde birleştirir.</li>
+                            <li data-i18n="about.sections.app.item2">Aurivo-Pulse dinleme modu ile hızlı şarkı tanıma sunar.</li>
+                            <li data-i18n="about.sections.app.item3">Modern medya kontrolleri, çoklu dil desteği ve sistem dili algılama içerir.</li>
+                        </ul>
+                    </section>
 
-                <div class="about-features-title" data-i18n="about.featuresTitle">Özellikler</div>
-                <ul class="about-features">
-                    <li><span class="about-feature-icon">🎧</span><span data-i18n="about.features.dsp">Gelişmiş DSP &amp; Ekolayzır Kontrolü</span></li>
-                    <li><span class="about-feature-icon">📺</span><span data-i18n="about.features.web">Entegre YouTube Müzik &amp; Video Motoru</span></li>
-                    <li><span class="about-feature-icon">🌈</span><span data-i18n="about.features.visualizer">Dinamik Ses Görselleştirici (Spectrum)</span></li>
-                    <li><span class="about-feature-icon">⚡</span><span data-i18n="about.features.electron">Electron Tabanlı Ultra Hızlı Arayüz</span></li>
-                </ul>
+                    <section class="about-section">
+                        <h4 data-i18n="about.sections.web.title">Web Özellikleri</h4>
+                        <ul class="about-list">
+                            <li data-i18n="about.sections.web.item1">YouTube, Deezer, SoundCloud ve sosyal platformlar için güvenli web medya erişimi sağlar.</li>
+                            <li data-i18n="about.sections.web.item2">Oturumlar güvenli web bölmesinde (persist partition) korunur.</li>
+                            <li data-i18n="about.sections.web.item3">Gezinme yalnızca izinli ve doğrulanan URL kurallarıyla çalışır.</li>
+                        </ul>
+                    </section>
 
-                <div class="about-links">
+                    <section class="about-section about-section-security">
+                        <h4 data-i18n="about.sections.security.title">Güvenlik ve Gizlilik</h4>
+                        <ul class="about-list">
+                            <li data-i18n="about.sections.security.item1">Uygulama ayarlarına e-posta/şifre/token gibi hassas bilgiler kaydedilmez.</li>
+                            <li data-i18n="about.sections.security.item2">Web görünümü sandbox, izin kontrolü ve alan adı kısıtlarıyla korunur.</li>
+                            <li data-i18n="about.sections.security.item3">Harici tarayıcı açma yalnızca geçerli http/https adreslerinde etkinleşir.</li>
+                        </ul>
+                    </section>
+
+                    <section class="about-section">
+                        <h4 data-i18n="about.sections.sfx.title">Ses Efektleri Özellikleri</h4>
+                        <ul class="about-list">
+                            <li data-i18n="about.sections.sfx.item1">Native C++ DSP altyapısında 32-band EQ, kompresör, limiter, reverb, crossfeed ve ek modüller içerir.</li>
+                            <li data-i18n="about.sections.sfx.item2">Hazır ayarlar, gerçek zamanlı tekerlek kontrolü ve kalıcı efekt ayarları sunar.</li>
+                            <li data-i18n="about.sections.sfx.item3">Çalma sırasında düşük gecikme ve dengeli CPU kullanımı için optimize edilmiştir.</li>
+                        </ul>
+                    </section>
+
+                    <section class="about-section">
+                        <h4 data-i18n="about.sections.visual.title">Görselleştirme Özellikleri</h4>
+                        <ul class="about-list">
+                            <li data-i18n="about.sections.visual.item1">projectM tabanlı görselleştirme modları ve performans profilleri sunar.</li>
+                            <li data-i18n="about.sections.visual.item2">FPS, efekt yoğunluğu ve görsel stil ayarları tamamen kullanıcı kontrolündedir.</li>
+                            <li data-i18n="about.sections.visual.item3">Ses çıkışıyla senkron, düşük gecikmeli canlı görsel geri bildirim üretir.</li>
+                        </ul>
+                    </section>
+                </div>
+<div class="about-links">
+                    <button class="btn" id="aboutCheckUpdateBtn" type="button" title="Güncelleme Denetle">
+                        <span>Güncelleme Denetle</span>
+                    </button>
                     <button class="btn github-btn" id="aboutGithubBtn" type="button" title="GitHub'da Görüntüle" data-i18n-title="about.githubTitle">
                         <svg class="github-icon" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
                             <path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/>
@@ -1575,6 +1925,36 @@
             <div class="about-actions">
                 <div class="about-footer" data-i18n="about.footer">© 2026 Muhammet Dali. MIT Lisansı ile korunmaktadır.</div>
                 <button class="btn primary about-close-btn" id="aboutCloseBtn" type="button" data-i18n="about.close">Kapat</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Update Modal -->
+    <div class="modal-overlay hidden" id="updateModalOverlay" role="presentation">
+        <div class="update-modal glass-card" role="dialog" aria-modal="true" aria-labelledby="updateModalTitle">
+            <div class="update-header">
+                <div class="update-title" id="updateModalTitle">Güncelleme</div>
+                <button class="modal-close" id="updateModalClose" aria-label="Close">&times;</button>
+            </div>
+            <div class="update-body">
+                <div class="update-meta">
+                    <div class="update-line"><span class="update-label">Durum:</span> <span id="updateStatusText">Hazır</span></div>
+                    <div class="update-line"><span class="update-label">Yeni sürüm:</span> <span id="updateVersionText">-</span></div>
+                </div>
+                <div class="update-progress hidden" id="updateProgressWrap" aria-label="İndirme ilerlemesi">
+                    <div class="update-progress-bar">
+                        <div class="update-progress-fill" id="updateProgressFill" style="width: 0%"></div>
+                    </div>
+                    <div class="update-progress-text" id="updateProgressText">0%</div>
+                </div>
+                <div class="update-notes-wrap">
+                    <div class="update-notes-title" id="updateNotesTitle">Yapılan iyileştirmeler</div>
+                    <pre class="update-notes" id="updateNotesText">-</pre>
+                </div>
+            </div>
+            <div class="update-actions">
+                <button class="btn" id="updateActionBtn" type="button">Güncelle</button>
+                <button class="btn primary" id="updateCloseBtn" type="button">Kapat</button>
             </div>
         </div>
     </div>
@@ -1598,7 +1978,14 @@
         </div>
     </div>
 
+    <!-- Notifications -->
+    <div id="notificationContainer" class="notification-container" aria-live="polite" aria-atomic="false"></div>
+
     <script src="modules/i18n.js"></script>
+    <script src="modules/listen-settings.js"></script>
+    <script src="modules/adblock-settings.js"></script>
+    <script src="modules/security-settings.js"></script>
+    <script src="modules/settings-shared.js"></script>
     <script src="renderer.js"></script>
 </body>
 </html>

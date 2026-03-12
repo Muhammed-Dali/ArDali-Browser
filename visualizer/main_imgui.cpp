@@ -28,6 +28,10 @@
 #include <vector>
 
 #include <SDL2/SDL.h>
+#include <SDL2/SDL_version.h>
+#ifdef _WIN32
+#include <SDL2/SDL_syswm.h>
+#endif
 
 #ifdef SDL_IMAGE_MAJOR_VERSION
 #include <SDL2/SDL_image.h>
@@ -35,6 +39,7 @@
 
 #ifdef _WIN32
 #include <windows.h>
+#include <dwmapi.h>
 #include <io.h>
 #include <GL/glew.h>
 #endif
@@ -45,9 +50,81 @@
 #include <unistd.h>
 #endif
 
-#include <projectM-4/projectM.h>
-#include <projectM-4/audio.h>
-#include <projectM-4/types.h>
+// projectM headers differ by distro/package/version.
+// Some distros ship a "projectM.h" umbrella header; others require including individual API headers.
+// Include the umbrella if present, then explicitly include the C-API headers we rely on.
+#if __has_include(<projectM-4/projectM.h>)
+  #include <projectM-4/projectM.h>
+#elif __has_include(<projectM/projectM.h>)
+  #include <projectM/projectM.h>
+#elif __has_include(<libprojectM/projectM.h>)
+  #include <libprojectM/projectM.h>
+#elif __has_include(<projectM.h>)
+  #include <projectM.h>
+#else
+  #error "projectM headers not found. Install libprojectm-dev (and playlist dev package if required) or adjust include paths."
+#endif
+
+// Ensure types + the specific APIs used in this file are declared (some umbrellas don't include everything).
+#if __has_include(<projectM-4/types.h>)
+  #include <projectM-4/types.h>
+  #include <projectM-4/audio.h>
+  #include <projectM-4/core.h>
+  #include <projectM-4/parameters.h>
+  #include <projectM-4/render_opengl.h>
+  #include <projectM-4/version.h>
+#elif __has_include(<projectM/types.h>)
+  #include <projectM/types.h>
+  #if __has_include(<projectM/audio.h>)
+    #include <projectM/audio.h>
+  #endif
+  #if __has_include(<projectM/core.h>)
+    #include <projectM/core.h>
+  #endif
+  #if __has_include(<projectM/parameters.h>)
+    #include <projectM/parameters.h>
+  #endif
+  #if __has_include(<projectM/render_opengl.h>)
+    #include <projectM/render_opengl.h>
+  #endif
+  #if __has_include(<projectM/version.h>)
+    #include <projectM/version.h>
+  #endif
+#elif __has_include(<libprojectM/types.h>)
+  #include <libprojectM/types.h>
+  #if __has_include(<libprojectM/audio.h>)
+    #include <libprojectM/audio.h>
+  #endif
+  #if __has_include(<libprojectM/core.h>)
+    #include <libprojectM/core.h>
+  #endif
+  #if __has_include(<libprojectM/parameters.h>)
+    #include <libprojectM/parameters.h>
+  #endif
+  #if __has_include(<libprojectM/render_opengl.h>)
+    #include <libprojectM/render_opengl.h>
+  #endif
+  #if __has_include(<libprojectM/version.h>)
+    #include <libprojectM/version.h>
+  #endif
+#elif __has_include(<types.h>)
+  #include <types.h>
+  #if __has_include(<audio.h>)
+    #include <audio.h>
+  #endif
+  #if __has_include(<core.h>)
+    #include <core.h>
+  #endif
+  #if __has_include(<parameters.h>)
+    #include <parameters.h>
+  #endif
+  #if __has_include(<render_opengl.h>)
+    #include <render_opengl.h>
+  #endif
+  #if __has_include(<version.h>)
+    #include <version.h>
+  #endif
+#endif
 
 #include "gl_loader.h"
 
@@ -56,6 +133,116 @@
 #include "backends/imgui_impl_sdl2.h"
 
 namespace fs = std::filesystem;
+
+static void setSdlWindowIconFromEnv(SDL_Window* w) {
+    if (!w) return;
+
+#ifdef _WIN32
+    auto applyWindowsTitlebarTheme = [&](HWND hwnd) {
+        if (!hwnd) return;
+        // Windows 10/11: prefer dark caption so titlebar is not bright white.
+        BOOL dark = TRUE;
+        constexpr DWORD DWMWA_USE_IMMERSIVE_DARK_MODE_20 = 20;
+        constexpr DWORD DWMWA_USE_IMMERSIVE_DARK_MODE_19 = 19;
+        HRESULT hr = DwmSetWindowAttribute(hwnd, DWMWA_USE_IMMERSIVE_DARK_MODE_20, &dark, sizeof(dark));
+        if (FAILED(hr)) {
+            (void)DwmSetWindowAttribute(hwnd, DWMWA_USE_IMMERSIVE_DARK_MODE_19, &dark, sizeof(dark));
+        }
+        // Optional explicit caption/text colors (supported on newer Windows builds).
+        constexpr DWORD DWMWA_CAPTION_COLOR = 35;
+        constexpr DWORD DWMWA_TEXT_COLOR = 36;
+        COLORREF caption = RGB(24, 24, 24);
+        COLORREF text = RGB(236, 236, 236);
+        (void)DwmSetWindowAttribute(hwnd, DWMWA_CAPTION_COLOR, &caption, sizeof(caption));
+        (void)DwmSetWindowAttribute(hwnd, DWMWA_TEXT_COLOR, &text, sizeof(text));
+    };
+
+    // Windows titlebar (sol ust) ikonu: WM_SETICON ile .ico yuklemek daha guvenilir.
+    if (const char* icoPath = std::getenv("AURIVO_VISUALIZER_ICON_ICO")) {
+        if (icoPath && *icoPath) {
+            SDL_SysWMinfo wmInfo;
+            SDL_VERSION(&wmInfo.version);
+            if (SDL_GetWindowWMInfo(w, &wmInfo) == SDL_TRUE) {
+                HWND hwnd = wmInfo.info.win.window;
+                applyWindowsTitlebarTheme(hwnd);
+
+                auto utf8ToWide = [](const char* s) -> std::wstring {
+                    if (!s) return L"";
+                    int len = MultiByteToWideChar(CP_UTF8, 0, s, -1, nullptr, 0);
+                    if (len <= 0) return L"";
+                    std::wstring out;
+                    out.resize((size_t)len);
+                    MultiByteToWideChar(CP_UTF8, 0, s, -1, out.data(), len);
+                    if (!out.empty() && out.back() == L'\0') out.pop_back();
+                    return out;
+                };
+
+                static HICON gIcoBig = nullptr;
+                static HICON gIcoSmall = nullptr;
+
+                std::wstring wpath = utf8ToWide(icoPath);
+                if (!wpath.empty()) {
+                    if (!gIcoBig) {
+                        gIcoBig = (HICON)LoadImageW(nullptr, wpath.c_str(), IMAGE_ICON, 256, 256,
+                                                   LR_LOADFROMFILE | LR_DEFAULTCOLOR);
+                    }
+                    if (!gIcoSmall) {
+                        gIcoSmall = (HICON)LoadImageW(nullptr, wpath.c_str(), IMAGE_ICON, 32, 32,
+                                                     LR_LOADFROMFILE | LR_DEFAULTCOLOR);
+                    }
+                    if (gIcoBig) SendMessageW(hwnd, WM_SETICON, ICON_BIG, (LPARAM)gIcoBig);
+                    if (gIcoSmall) SendMessageW(hwnd, WM_SETICON, ICON_SMALL, (LPARAM)gIcoSmall);
+                    if (gIcoBig) SetClassLongPtrW(hwnd, GCLP_HICON, (LONG_PTR)gIcoBig);
+                    if (gIcoSmall) SetClassLongPtrW(hwnd, GCLP_HICONSM, (LONG_PTR)gIcoSmall);
+
+                    // Eger ikon ayarlandiysa, BMP fallback'e gecmeye gerek yok.
+                    if (gIcoBig || gIcoSmall) return;
+                }
+            }
+        }
+    }
+
+    // Even if ico env is missing, still try to apply dark titlebar.
+    SDL_SysWMinfo wmInfo;
+    SDL_VERSION(&wmInfo.version);
+    if (SDL_GetWindowWMInfo(w, &wmInfo) == SDL_TRUE) {
+        applyWindowsTitlebarTheme(wmInfo.info.win.window);
+    }
+#endif
+
+    const char* iconPath = std::getenv("AURIVO_VISUALIZER_ICON");
+    if (!iconPath || !*iconPath) return;
+
+    SDL_Surface* iconSurf = nullptr;
+#ifdef SDL_IMAGE_MAJOR_VERSION
+    iconSurf = IMG_Load(iconPath);
+#else
+    // SDL_LoadBMP PNG okuyamaz; bu yüzden ana süreçten BMP yolunu geçiyoruz.
+    iconSurf = SDL_LoadBMP(iconPath);
+#endif
+    if (!iconSurf) {
+        std::cerr << "[Icon] failed to load: " << iconPath << " (" << SDL_GetError() << ")" << std::endl;
+        return;
+    }
+
+    SDL_SetWindowIcon(w, iconSurf);
+    SDL_FreeSurface(iconSurf);
+}
+
+#ifdef _WIN32
+static void setWindowsAppUserModelId() {
+    // Group visualizer with the main Aurivo app on taskbar.
+    // Must be called before top-level windows are created.
+    using SetAppIdFn = HRESULT (WINAPI*)(PCWSTR);
+    HMODULE shell32 = LoadLibraryW(L"shell32.dll");
+    if (!shell32) return;
+    auto setAppId = reinterpret_cast<SetAppIdFn>(GetProcAddress(shell32, "SetCurrentProcessExplicitAppUserModelID"));
+    if (setAppId) {
+        (void)setAppId(L"com.aurivo.mediaplayer");
+    }
+    FreeLibrary(shell32);
+}
+#endif
 
 enum class UiLang {
     EN,
@@ -417,8 +604,18 @@ static const char* L7Raw(const char* en, const char* tr, const char* ar, const c
     }
 }
 
+static const char* visEnvText(const char* key, const char* fallback) {
+    const char* val = std::getenv(key);
+    if (val && *val) return val;
+    return fallback;
+}
+
 static uint64_t nowMs() {
+#if SDL_VERSION_ATLEAST(2, 0, 18)
     return SDL_GetTicks64();
+#else
+    return (uint64_t)SDL_GetTicks();
+#endif
 }
 
 static void scheduleNextAutoSwitch();
@@ -664,6 +861,23 @@ struct AppState {
 
 static AppState g;
 
+static void ensureDllSearchPathFromExeDir() {
+#ifdef _WIN32
+    wchar_t exePath[MAX_PATH] = {0};
+    const DWORD n = GetModuleFileNameW(NULL, exePath, MAX_PATH);
+    if (!n || n >= MAX_PATH) return;
+    for (int i = (int)n - 1; i >= 0; --i) {
+        if (exePath[i] == L'\\' || exePath[i] == L'/') {
+            exePath[i] = 0;
+            break;
+        }
+    }
+    // Prefer loading DLL dependencies from the visualizer directory (native-dist)
+    // instead of relying on PATH on end-user systems.
+    SetDllDirectoryW(exePath);
+#endif
+}
+
 static void loadPresetPickerSettings() {
     fs::path cfg = getPresetPickerSettingsPath();
     std::error_code ec;
@@ -893,10 +1107,26 @@ static void pumpPcmFromStdin() {
     }
 #endif
 
-    // Mümkün olduğunca çok tam paketi ayrıştır.
+    // Güvenlik: anlık tıkanmalarda kuyruk çok büyürse en yeni veriyi koruyup eskileri at.
+    // Bu, görsel tepkinin "geriden gelmesini" engeller.
+    constexpr size_t kMaxBufferedBytes = 2 * 1024 * 1024; // 2 MB
+    constexpr size_t kKeepTailBytes = 512 * 1024;         // son 512 KB
+    if (g.pcmInBuf.size() > kMaxBufferedBytes) {
+        g.pcmInBuf.erase(g.pcmInBuf.begin(), g.pcmInBuf.begin() + (ptrdiff_t)(g.pcmInBuf.size() - kKeepTailBytes));
+    }
+
+    // Gecikmeyi düşürmek için: kuyruktaki tam paketlerden SADECE en yenisini işle.
+    // Böylece eski paketler render thread'ini geriden takip ettirmez.
+    size_t offset = 0;
+    bool hasComplete = false;
+    size_t latestPacketOffset = 0;
+    size_t latestPacketBytes = 0;
+    uint32_t latestChannels = 0;
+    uint32_t latestCountPerChannel = 0;
+
     for (;;) {
-        if (g.pcmInBuf.size() < 8) return;
-        const uint8_t* p = g.pcmInBuf.data();
+        if (g.pcmInBuf.size() - offset < 8) break;
+        const uint8_t* p = g.pcmInBuf.data() + offset;
         uint32_t channels = readU32LE(p + 0);
         uint32_t countPerChannel = readU32LE(p + 4);
 
@@ -909,32 +1139,46 @@ static void pumpPcmFromStdin() {
         const size_t floatCount = (size_t)channels * (size_t)countPerChannel;
         const size_t payloadBytes = floatCount * sizeof(float);
         const size_t packetBytes = 8 + payloadBytes;
-        if (g.pcmInBuf.size() < packetBytes) return;
+        if (g.pcmInBuf.size() - offset < packetBytes) break;
 
-        // Yükü hizalı float tamponuna kopyala.
-        g.pcmTmp.resize(floatCount);
-        std::memcpy(g.pcmTmp.data(), p + 8, payloadBytes);
+        hasComplete = true;
+        latestPacketOffset = offset;
+        latestPacketBytes = packetBytes;
+        latestChannels = channels;
+        latestCountPerChannel = countPerChannel;
+        offset += packetBytes;
+    }
 
-        if (g.pm) {
-            const unsigned int maxN = g.pmMaxSamplesPerChannel;
-            projectm_channels ch = (channels == 2) ? PROJECTM_STEREO : PROJECTM_MONO;
-            const float* samplesPtr = g.pcmTmp.data();
-            unsigned int n = (unsigned int)countPerChannel;
+    if (!hasComplete) return;
 
-            // projectM kanal başına en fazla örnek saklar. "kalanlar atıldı" belirsizliğini önlemek için,
-            // paketler iç tamponu aştığında açıkça yalnızca en yeni örnekleri besle.
-            if (maxN > 0 && n > maxN) {
-                const size_t skipFrames = (size_t)(n - maxN);
-                samplesPtr = g.pcmTmp.data() + skipFrames * (size_t)channels;
-                n = maxN;
-            }
+    const uint8_t* latestPacket = g.pcmInBuf.data() + latestPacketOffset;
+    const size_t latestFloatCount = (size_t)latestChannels * (size_t)latestCountPerChannel;
+    const size_t latestPayloadBytes = latestFloatCount * sizeof(float);
 
-            projectm_pcm_add_float(g.pm, samplesPtr, n, ch);
-            g.lastPcmMs = nowMs();
+    // Yükü hizalı float tamponuna kopyala.
+    g.pcmTmp.resize(latestFloatCount);
+    std::memcpy(g.pcmTmp.data(), latestPacket + 8, latestPayloadBytes);
+
+    if (g.pm) {
+        const unsigned int maxN = g.pmMaxSamplesPerChannel;
+        projectm_channels ch = (latestChannels == 2) ? PROJECTM_STEREO : PROJECTM_MONO;
+        const float* samplesPtr = g.pcmTmp.data();
+        unsigned int n = (unsigned int)latestCountPerChannel;
+
+        // projectM kanal başına en fazla örnek saklar. Paketler büyükse en yeni kısmı besle.
+        if (maxN > 0 && n > maxN) {
+            const size_t skipFrames = (size_t)(n - maxN);
+            samplesPtr = g.pcmTmp.data() + skipFrames * (size_t)latestChannels;
+            n = maxN;
         }
 
-        // Paketi tüket.
-        g.pcmInBuf.erase(g.pcmInBuf.begin(), g.pcmInBuf.begin() + (ptrdiff_t)packetBytes);
+        projectm_pcm_add_float(g.pm, samplesPtr, n, ch);
+        g.lastPcmMs = nowMs();
+    }
+
+    // Tüm tam paketleri tüket; yalnızca son yarım paket (varsa) tutulur.
+    if (offset > 0) {
+        g.pcmInBuf.erase(g.pcmInBuf.begin(), g.pcmInBuf.begin() + (ptrdiff_t)offset);
     }
 }
 
@@ -1035,7 +1279,8 @@ static bool applyPresetByIndexNow(int idx) {
     if (idx < 0 || idx >= (int)g.presets.size()) return false;
     g.currentPreset = idx;
     const auto& p = g.presets[idx];
-    projectm_load_preset_file(g.pm, p.path.c_str(), true);
+    // Preset geçişindeki kısa takılmaları azaltmak için yumuşak geçişi kapat.
+    projectm_load_preset_file(g.pm, p.path.c_str(), false);
     return true;
 }
 
@@ -1494,7 +1739,7 @@ static void drawPresetPicker() {
     ImGui::Begin("##AurivoPickerRoot", nullptr, rootFlags);
 
 	    // OS pencere başlığını istemci alanda tekrar ederek çoğaltma.
-		    ImGui::TextDisabled(L7(
+		    ImGui::TextDisabled("%s", visEnvText("AURIVO_VIS_PICKER_HINT", L7(
 		        "Select visuals for auto-switch",
 		        "Otomatik ge\u00E7i\u015F i\u00E7in g\u00F6rselleri i\u015Faretleyin",
 		        "Ø­Ø¯Ø¯ Ø§Ù„Ù…Ø±Ø¦ÙŠØ§Øª Ù„Ù„ØªØ¨Ø¯ÙŠÙ„ Ø§Ù„ØªÙ„Ù‚Ø§Ø¦ÙŠ",
@@ -1502,13 +1747,13 @@ static void drawPresetPicker() {
 		        "Visuals fÃ¼r automatischen Wechsel auswÃ¤hlen",
 		        "Selecciona visuales para cambio automÃ¡tico",
 		        "à¤‘à¤Ÿà¥‹-à¤¸à¥à¤µà¤¿à¤š à¤•à¥‡ à¤²à¤¿à¤ à¤µà¤¿à¤œà¤¼à¥à¤…à¤² à¤šà¥à¤¨à¥‡à¤‚"
-		    ));
+		    )));
 	    ImGui::Separator();
 
-		    ImGui::TextUnformatted(L7("Preset directory:", "Preset dizini:", "Ù…Ø¬Ù„Ø¯ Ø§Ù„Ø¥Ø¹Ø¯Ø§Ø¯Ø§Øª:", "Dossier des prÃ©rÃ©glages :", "Preset-Ordner:", "Carpeta de presets:", "à¤ªà¥à¤°à¥€à¤¸à¥‡à¤Ÿ à¤«à¤¼à¥‹à¤²à¥à¤¡à¤°:"));
+		    ImGui::TextUnformatted(visEnvText("AURIVO_VIS_PICKER_PRESET_DIR", L7("Preset directory:", "Preset dizini:", "Ù…Ø¬Ù„Ø¯ Ø§Ù„Ø¥Ø¹Ø¯Ø§Ø¯Ø§Øª:", "Dossier des prÃ©rÃ©glages :", "Preset-Ordner:", "Carpeta de presets:", "à¤ªà¥à¤°à¥€à¤¸à¥‡à¤Ÿ à¤«à¤¼à¥‹à¤²à¥à¤¡à¤°:")));
 	    ImGui::SameLine();
 	    ImGui::TextDisabled(
-	        L7("(%d presets)", "(%d preset)", "(%d Ø¥Ø¹Ø¯Ø§Ø¯Ø§Øª)", "(%d prÃ©rÃ©glages)", "(%d Presets)", "(%d preajustes)", "(%d à¤ªà¥à¤°à¥€à¤¸à¥‡à¤Ÿ)"),
+	        visEnvText("AURIVO_VIS_PICKER_PRESETS_FMT", L7("(%d presets)", "(%d preset)", "(%d Ø¥Ø¹Ø¯Ø§Ø¯Ø§Øª)", "(%d prÃ©rÃ©glages)", "(%d Presets)", "(%d preajustes)", "(%d à¤ªà¥à¤°à¥€à¤¸à¥‡à¤Ÿ)")),
 	        (int)g.presets.size()
 	    );
 
@@ -1542,7 +1787,7 @@ static void drawPresetPicker() {
     const float scale = (g.pickerWindow ? g.pickerDpiScale : g.dpiScale);
 	    {
 	        ImDrawList* dl = ImGui::GetWindowDrawList();
-	        const char* label = L7("Delay (s)", "Gecikme (sn)", "Ø§Ù„ØªØ£Ø®ÙŠØ± (Ø«)", "DÃ©lai (s)", "VerzÃ¶gerung (s)", "Retraso (s)", "à¤¦à¥‡à¤°à¥€ (s)");
+	        const char* label = visEnvText("AURIVO_VIS_PICKER_DELAY", L7("Delay (s)", "Gecikme (sn)", "Ø§Ù„ØªØ£Ø®ÙŠØ± (Ø«)", "DÃ©lai (s)", "VerzÃ¶gerung (s)", "Retraso (s)", "à¤¦à¥‡à¤°à¥€ (s)"));
 	        float labelW = ImGui::CalcTextSize(label).x;
 	        float availW = ImGui::GetContentRegionAvail().x;
 	        float gap = std::max(10.0f, 14.0f * scale);
@@ -1771,16 +2016,16 @@ static void drawPresetPicker() {
     ImGui::Separator();
 
 	    // Alt düğmeler
-	    if (ImGui::Button(L7("All", "Hepsi", "Ø§Ù„ÙƒÙ„", "Tout", "Alle", "Todo", "à¤¸à¤­à¥€"))) {
+	    if (ImGui::Button(visEnvText("AURIVO_VIS_PICKER_ALL", L7("All", "Hepsi", "Ø§Ù„ÙƒÙ„", "Tout", "Alle", "Todo", "à¤¸à¤­à¥€")))) {
 	        for (auto& p : g.presets) p.enabled = true;
 	    }
 	    ImGui::SameLine();
-        if (ImGui::Button(L7("None", "Hi\u00E7biri", "Ù„Ø§ Ø´ÙŠØ¡", "Aucun", "Keine", "Ninguno", "à¤•à¥‹à¤ˆ à¤¨à¤¹à¥€à¤‚"))) {
+        if (ImGui::Button(visEnvText("AURIVO_VIS_PICKER_NONE", L7("None", "Hi\u00E7biri", "Ù„Ø§ Ø´ÙŠØ¡", "Aucun", "Keine", "Ninguno", "à¤•à¥‹à¤ˆ à¤¨à¤¹à¥€à¤‚")))) {
 	        for (auto& p : g.presets) p.enabled = false;
 	    }
 
 	    // "Tamam"ı sağa hizala
-	    const char* okText = L7("OK", "Tamam", "Ù…ÙˆØ§ÙÙ‚", "OK", "OK", "OK", "à¤ à¥€à¤•");
+	    const char* okText = visEnvText("AURIVO_VIS_PICKER_OK", L7("OK", "Tamam", "Ù…ÙˆØ§ÙÙ‚", "OK", "OK", "OK", "à¤ à¥€à¤•"));
 	    float btnW = ImGui::CalcTextSize(okText).x + ImGui::GetStyle().FramePadding.x * 2;
 	    float rightX = ImGui::GetCursorPosX() + (ImGui::GetContentRegionAvail().x - btnW);
 	    rightX = std::max(ImGui::GetCursorPosX(), rightX);
@@ -1853,26 +2098,31 @@ static bool ensurePickerWindow() {
         desiredH = std::clamp(desiredH, 360, 1080);
     }
 
+    Uint32 pickerFlags = SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI;
+
 		    g.pickerWindow = SDL_CreateWindow(
-		        L7Raw(
-		            "Select Visuals â€” Aurivo",
-            "Aurivo G\u00F6rselleri Se\u00E7",
-		            "Ø§Ø®ØªÙŠØ§Ø± Ø§Ù„Ù…Ø±Ø¦ÙŠØ§Øª â€” Ø£ÙˆØ±ÙŠÙÙˆ",
-		            "SÃ©lectionner des visuels â€” Aurivo",
-		            "Visuals auswÃ¤hlen â€” Aurivo",
-		            "Seleccionar visuales â€” Aurivo",
-		            "à¤µà¤¿à¤œà¤¼à¥à¤…à¤² à¤šà¥à¤¨à¥‡à¤‚ â€” Aurivo"
-		        ),
+		        visEnvText("AURIVO_VIS_PICKER_TITLE", L7Raw(
+		            "Aurivo Visuals",
+            "Aurivo G\u00F6rseller",
+		            "Ù…Ø±Ø¦ÙŠØ§Øª Aurivo",
+		            "Visuels Aurivo",
+		            "Aurivo Visuals",
+		            "Visuales de Aurivo",
+		            "Aurivo Visuals"
+		        )),
 	        wx + ww + 18,
 	        wy + 42,
 	        desiredW,
         desiredH,
-        SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI
+        pickerFlags
     );
     if (!g.pickerWindow) {
         std::cerr << "Failed to create picker window: " << SDL_GetError() << std::endl;
         return false;
     }
+
+    // Preset secici pencere ikonunu da ayarla (Windows titlebar sol ust simge)
+    setSdlWindowIconFromEnv(g.pickerWindow);
 
     // Bazı WM'ler önceki boyutu geri yükleyebilir; istenen boyutu zorla.
     SDL_SetWindowSize(g.pickerWindow, desiredW, desiredH);
@@ -1973,16 +2223,21 @@ static void destroyPickerWindow() {
 }
 
 static bool initSDLVideo() {
+    // WM_CLASS / Wayland app_id: görev çubuğu/dock gruplaması için ana uygulamayla eşleştir.
+    // Bu hint'ler pencere oluşturulmadan önce, güvenli tarafta kalmak için SDL_Init öncesi set edilir.
+    const char* wmclass = std::getenv("AURIVO_VIS_WMCLASS");
+    if (!wmclass || !*wmclass) wmclass = "aurivo-media-player";
+    const char* desktopEntry = std::getenv("AURIVO_VIS_DESKTOP_ENTRY");
+    if (!desktopEntry || !*desktopEntry) desktopEntry = wmclass;
+    SDL_SetHint("SDL_VIDEO_X11_WMCLASS", wmclass);
+    SDL_SetHint("SDL_VIDEO_X11_WMCLASS_NAME", wmclass);
+    SDL_SetHint("SDL_VIDEO_WAYLAND_WMCLASS", wmclass);
+    SDL_SetHint("SDL_APP_ID", desktopEntry);
+
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS | SDL_INIT_TIMER) != 0) {
         std::cerr << "SDL_Init failed: " << SDL_GetError() << std::endl;
         return false;
     }
-
-    // WM_CLASS / Wayland app_id: görev çubuğu/dock gruplaması için ana uygulamayla eşleştir
-    const char* wmclass = std::getenv("AURIVO_VIS_WMCLASS");
-    if (!wmclass || !*wmclass) wmclass = "aurivo-media-player";
-    SDL_SetHint("SDL_VIDEO_X11_WMCLASS", wmclass);
-    SDL_SetHint("SDL_VIDEO_WAYLAND_WMCLASS", wmclass);
 
     const char* driver = SDL_GetCurrentVideoDriver();
     std::cout << "Video driver: " << (driver ? driver : "unknown") << std::endl;
@@ -2027,6 +2282,8 @@ static bool initMainWindowAndGL() {
         desiredH = std::clamp(desiredH, 480, (int)(usable.h * 0.95f));
     }
 
+    Uint32 mainFlags = SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI;
+
 	    g.window = SDL_CreateWindow(
 	        L7Raw(
 	            "Aurivo Visualizer",
@@ -2041,7 +2298,7 @@ static bool initMainWindowAndGL() {
 	        SDL_WINDOWPOS_CENTERED,
 	        desiredW,
         desiredH,
-        SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI
+        mainFlags
     );
     if (!g.window) {
         std::cerr << "Failed to create window: " << SDL_GetError() << std::endl;
@@ -2058,20 +2315,7 @@ static bool initMainWindowAndGL() {
     g.mainEnforceUntilMs = nowMs() + 1500ULL;
 
     // Pencere ikonunu env'den ayarla (ana süreç tarafından geçirilir)
-    if (const char* iconPath = std::getenv("AURIVO_VISUALIZER_ICON")) {
-        SDL_Surface* iconSurf = nullptr;
-#ifdef SDL_IMAGE_MAJOR_VERSION
-        iconSurf = IMG_Load(iconPath);
-#else
-        iconSurf = SDL_LoadBMP(iconPath);
-#endif
-        if (iconSurf) {
-            SDL_SetWindowIcon(g.window, iconSurf);
-            SDL_FreeSurface(iconSurf);
-        } else {
-            std::cerr << "[Icon] failed to load: " << iconPath << " (" << SDL_GetError() << ")" << std::endl;
-        }
-    }
+    setSdlWindowIconFromEnv(g.window);
 
     // Önce GL 3.3 core dene.
     if (!tryCreateContext(3, 3)) {
@@ -2179,7 +2423,13 @@ static bool initProjectM() {
     }
 
     std::cout << "[projectM] create ok" << std::endl;
+    // projectM v4 C-API provides this query; older/packaged variants might not.
+    // Fall back to a safe default buffer size (512 samples/channel) if unavailable.
+#if defined(PROJECTM_VERSION_MAJOR) && (PROJECTM_VERSION_MAJOR >= 4)
     g.pmMaxSamplesPerChannel = projectm_pcm_get_max_samples();
+#else
+    g.pmMaxSamplesPerChannel = 512;
+#endif
     std::cout << "[Audio] projectM max samples/channel: " << g.pmMaxSamplesPerChannel << std::endl;
 
     applyQuality(g.quality);
@@ -2277,7 +2527,11 @@ static Uint32 getEventWindowId(const SDL_Event& e) {
 }
 
 int main(int argc, char* argv[]) {
+    ensureDllSearchPathFromExeDir();
     srand((unsigned)time(nullptr));
+#ifdef _WIN32
+    setWindowsAppUserModelId();
+#endif
 
     std::string presetsRoot = getPresetsPath(argc, argv);
     std::cout << "Presets root: " << presetsRoot << std::endl;
@@ -2558,11 +2812,3 @@ int main(int argc, char* argv[]) {
     shutdownAll();
     return 0;
 }
-
-
-
-
-
-
-
-

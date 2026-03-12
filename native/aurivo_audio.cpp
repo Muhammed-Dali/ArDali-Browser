@@ -200,6 +200,18 @@ struct EchoParams {
 
 static EchoParams g_echo;
 
+struct SoftEchoParams {
+    float delay = 220.0f;       // ms
+    float feedback = 22.0f;     // %
+    float wetMix = 18.0f;       // %
+    float dryMix = 100.0f;      // %
+    bool stereo = false;        // ping-pong
+    float highCut = 7000.0f;    // Hz (UI alignment/future use)
+    bool enabled = false;
+};
+
+static SoftEchoParams g_softEcho;
+
 // Convolution Reverb parametreleri
 struct ConvolutionReverbParams {
     char irFilePath[512] = "";  // IR dosya yolu
@@ -241,6 +253,7 @@ struct TruePeakLimiterParams {
     float ceiling = -0.1f;          // dBFS (maksimum çıkış)
     float release = 50.0f;          // ms (release time)
     float lookahead = 5.0f;         // ms (lookahead time)
+    float inputGain = 0.0f;         // dB (limiter öncesi sürüş)
     int oversamplingRate = 4;       // 2x, 4x, 8x
     bool linkChannels = true;       // Stereo link
     bool enabled = false;
@@ -306,6 +319,28 @@ struct CrossfeedParams {
 };
 
 static CrossfeedParams g_crossfeed;
+
+// ============================================
+// SURROUND VIRTUALIZER (Stereo tabanlı 5.1/7.1 simülasyon)
+// ============================================
+struct SurroundVirtualizerParams {
+    float centerLevel = 0.0f;   // dB
+    float sideLevel = 0.0f;     // dB
+    float lfeLevel = 0.0f;      // dB
+    float crossover = 110.0f;   // Hz
+    float rearDelay = 8.0f;     // ms
+    float mix = 75.0f;          // %
+    bool enabled = false;
+};
+
+struct SurroundVirtualizerState {
+    std::vector<float> sideDelayBuffer;
+    size_t writePos = 0;
+    float lfeLowpass = 0.0f;
+};
+
+static SurroundVirtualizerParams g_surround;
+static SurroundVirtualizerState g_surroundState;
 
 // ============================================
 // BASS MONO PARAMETRELERİ
@@ -482,6 +517,7 @@ private:
     // Overlap crossfade (previous stream fades out while new stream fades in)
     HSTREAM m_prevStream;
     HSTREAM m_prevAnalysisStream;
+    std::string m_currentFilePath;
     
     // Effect handles - SADECE 32 BANT EQ + PREAMP + REVERB
     HFX m_eqFx[NUM_EQ_BANDS];
@@ -515,6 +551,7 @@ private:
     
     // Ses parameters
     float m_masterVolume;      // 0-100
+    float m_programVolumeMul;  // Master volume disindaki gain carpani
     float m_preampGain;        // -12dB to +12dB
     float m_eqGains[NUM_EQ_BANDS];  // -15dB to +15dB per band
     float m_bassBoost;         // 0-100
@@ -555,6 +592,7 @@ public:
         , m_analysisStream(0)
         , m_prevStream(0)
         , m_prevAnalysisStream(0)
+        , m_currentFilePath()
         , m_preampFx(0)
         , m_reverbFx(0)
         , m_prevPreampFx(0)
@@ -564,6 +602,7 @@ public:
         , m_prevAurivoDSP(nullptr)
         , m_prevDspHandle(0)
         , m_masterVolume(100.0f)
+        , m_programVolumeMul(1.0f)
         , m_preampGain(0.0f)
         , m_bassBoost(0.0f)
         , m_balance(0.0f)
@@ -631,7 +670,24 @@ public:
         
         // Format plugins'ini yükle
         // AAC/M4A support için bass_aac plugin
-        HPLUGIN aacPlugin = BASS_PluginLoad("libbass_aac.so", 0);
+#if defined(_WIN32)
+        const char *bassAacPlugin = "bass_aac.dll";
+        const char *bassFlacPlugin = "bassflac.dll";
+        const char *bassApePlugin = "bassape.dll";
+        const char *bassWvPlugin = "basswv.dll";
+#elif defined(__APPLE__)
+        const char *bassAacPlugin = "libbass_aac.dylib";
+        const char *bassFlacPlugin = "libbassflac.dylib";
+        const char *bassApePlugin = "libbassape.dylib";
+        const char *bassWvPlugin = "libbasswv.dylib";
+#else
+        const char *bassAacPlugin = "libbass_aac.so";
+        const char *bassFlacPlugin = "libbassflac.so";
+        const char *bassApePlugin = "libbassape.so";
+        const char *bassWvPlugin = "libbasswv.so";
+#endif
+
+        HPLUGIN aacPlugin = BASS_PluginLoad(bassAacPlugin, 0);
         if (aacPlugin) {
             printf("✓ BASS AAC Plugin loaded (M4A/AAC support enabled)\n");
         } else {
@@ -639,19 +695,19 @@ public:
         }
         
         // FLAC support için bassflac plugin  
-        HPLUGIN flacPlugin = BASS_PluginLoad("libbassflac.so", 0);
+        HPLUGIN flacPlugin = BASS_PluginLoad(bassFlacPlugin, 0);
         if (flacPlugin) {
             printf("✓ BASS FLAC Plugin loaded\n");
         }
         
         // APE support için bassape plugin
-        HPLUGIN apePlugin = BASS_PluginLoad("libbassape.so", 0);
+        HPLUGIN apePlugin = BASS_PluginLoad(bassApePlugin, 0);
         if (apePlugin) {
             printf("✓ BASS APE Plugin loaded\n");
         }
         
         // WavePack support için basswv plugin
-        HPLUGIN wvPlugin = BASS_PluginLoad("libbasswv.so", 0);
+        HPLUGIN wvPlugin = BASS_PluginLoad(bassWvPlugin, 0);
         if (wvPlugin) {
             printf("✓ BASS WavePack Plugin loaded\n");
         }
@@ -660,6 +716,14 @@ public:
         BASS_SetConfig(BASS_CONFIG_FLOATDSP, TRUE);  // Float DSP processing
         BASS_SetConfig(BASS_CONFIG_BUFFER, 500);      // 500ms buffer
         BASS_SetConfig(BASS_CONFIG_UPDATEPERIOD, 10); // 10ms update
+        // Output device route değişimlerinde stream'in düşmesini azalt
+        // (kulaklık tak/çıkar, varsayılan sink değişimi vb.)
+#ifdef BASS_CONFIG_DEV_DEFAULT
+        BASS_SetConfig(BASS_CONFIG_DEV_DEFAULT, TRUE);
+#endif
+#ifdef BASS_CONFIG_DEV_NONSTOP
+        BASS_SetConfig(BASS_CONFIG_DEV_NONSTOP, TRUE);
+#endif
         
         m_initialized = true;
         return true;
@@ -689,6 +753,7 @@ public:
             BASS_StreamFree(m_analysisStream);
             m_analysisStream = 0;
         }
+        m_currentFilePath.clear();
 
         if (m_prevAnalysisStream) {
             BASS_StreamFree(m_prevAnalysisStream);
@@ -799,6 +864,11 @@ public:
             0, 0,
             BASS_STREAM_DECODE | BASS_SAMPLE_FLOAT
         );
+        if (m_analysisStream) {
+            // Analiz akışı her zaman ham/pre-volume kalsın.
+            BASS_ChannelSetAttribute(m_analysisStream, BASS_ATTRIB_VOL, 1.0f);
+        }
+        m_currentFilePath = filePath;
         
         // Tüm FX'leri kur
         setupAllFx();
@@ -881,6 +951,7 @@ public:
 
         m_stream = newStream;
         m_analysisStream = newAnalysis;
+        m_currentFilePath = filePath;
 
         setupAllFx();
 
@@ -1120,9 +1191,8 @@ public:
         if (!enabled) {
             // Devre dışı bırakıldığında gain'i sıfırla
             g_autoGain.currentGain = 0.0f;
-            if (m_stream) {
-                BASS_ChannelSetAttribute(m_stream, BASS_ATTRIB_VOL, 1.0f);
-            }
+            m_programVolumeMul = 1.0f;
+            applyMasterVolume();
         }
         
         printf("[AUTO GAIN] %s\n", enabled ? "Etkinleştirildi" : "Devre dışı");
@@ -1240,7 +1310,8 @@ public:
         
         // Gain'i volume olarak uygula
         float volumeMultiplier = std::pow(10.0f, g_autoGain.currentGain / 20.0f);
-        BASS_ChannelSetAttribute(m_stream, BASS_ATTRIB_VOL, volumeMultiplier);
+        m_programVolumeMul = volumeMultiplier;
+        applyMasterVolume();
         
         // Debug (her 10 çağrıda bir)
         static int updateCounter = 0;
@@ -1266,7 +1337,8 @@ public:
         
         // Gain'i uygula
         float volumeMultiplier = std::pow(10.0f, normalizeGain / 20.0f);
-        BASS_ChannelSetAttribute(m_stream, BASS_ATTRIB_VOL, volumeMultiplier);
+        m_programVolumeMul = volumeMultiplier;
+        applyMasterVolume();
         
         printf("[AUTO GAIN] Normalize: Peak %.1f dB → Target %.1f dB (Gain: %.1f dB)\n",
                peak, targetDB, normalizeGain);
@@ -1282,10 +1354,8 @@ public:
         g_autoGain.releaseTime = 500.0f;
         g_autoGain.mode = 1;
         g_autoGain.currentGain = 0.0f;
-        
-        if (m_stream) {
-            BASS_ChannelSetAttribute(m_stream, BASS_ATTRIB_VOL, 1.0f);
-        }
+        m_programVolumeMul = 1.0f;
+        applyMasterVolume();
         
         printf("[AUTO GAIN] Reset to defaults\n");
     }
@@ -1297,8 +1367,8 @@ public:
     void applyTruePeakLimiterParams() {
         // DSP callback içinde parametreler doğrudan kullanılıyor
         // Bu fonksiyon sadece log için
-        printf("[TRUE PEAK] Ayarlar güncellendi: Ceiling=%.2f dB, Release=%.0f ms, Lookahead=%.1f ms\n",
-               g_truePeakLimiter.ceiling, g_truePeakLimiter.release, g_truePeakLimiter.lookahead);
+        printf("[TRUE PEAK] Ayarlar güncellendi: Ceiling=%.2f dB, Release=%.0f ms, Lookahead=%.1f ms, Drive=%.1f dB\n",
+               g_truePeakLimiter.ceiling, g_truePeakLimiter.release, g_truePeakLimiter.lookahead, g_truePeakLimiter.inputGain);
     }
     
     void setTruePeakEnabled(bool enabled) {
@@ -1347,6 +1417,12 @@ public:
         std::lock_guard<std::mutex> lock(m_mutex);
         g_truePeakLimiter.lookahead = clampf(lookahead, 0.0f, 20.0f);
         printf("[TRUE PEAK] Lookahead: %.1f ms\n", g_truePeakLimiter.lookahead);
+    }
+
+    void setTruePeakInputGain(float gain) {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        g_truePeakLimiter.inputGain = clampf(gain, -24.0f, 24.0f);
+        printf("[TRUE PEAK] Drive: %.1f dB\n", g_truePeakLimiter.inputGain);
     }
     
     void setTruePeakOversampling(int rate) {
@@ -1476,6 +1552,7 @@ public:
         g_truePeakLimiter.ceiling = -0.1f;
         g_truePeakLimiter.release = 50.0f;
         g_truePeakLimiter.lookahead = 5.0f;
+        g_truePeakLimiter.inputGain = 0.0f;
         g_truePeakLimiter.oversamplingRate = 4;
         g_truePeakLimiter.linkChannels = true;
         
@@ -1537,14 +1614,15 @@ public:
     // FFT / SPECTRUM
     // ============================================
     std::vector<float> getFFTData() {
+        std::lock_guard<std::mutex> lock(m_mutex);
         std::vector<float> data(FFT_SIZE / 2, 0.0f);
         if (!m_stream) return data;
-        
+
+        ensureAnalysisStreamUnlocked();
         float fft[FFT_SIZE];
         HSTREAM source = m_analysisStream ? m_analysisStream : m_stream;
-        if (m_analysisStream) {
-            QWORD pos = BASS_ChannelGetPosition(m_stream, BASS_POS_BYTE);
-            BASS_ChannelSetPosition(m_analysisStream, pos, BASS_POS_BYTE);
+        if (source == m_analysisStream) {
+            syncAnalysisToPlaybackUnlocked();
         }
         if (BASS_ChannelGetData(source, fft, BASS_DATA_FFT2048) != (DWORD)-1) {
             for (int i = 0; i < FFT_SIZE / 2; ++i) {
@@ -1555,14 +1633,15 @@ public:
     }
     
     std::vector<float> getSpectrumBands(int numBands) {
+        std::lock_guard<std::mutex> lock(m_mutex);
         std::vector<float> bands(numBands, 0.0f);
         if (!m_stream) return bands;
-        
+
+        ensureAnalysisStreamUnlocked();
         float fft[FFT_SIZE];
         HSTREAM source = m_analysisStream ? m_analysisStream : m_stream;
-        if (m_analysisStream) {
-            QWORD pos = BASS_ChannelGetPosition(m_stream, BASS_POS_BYTE);
-            BASS_ChannelSetPosition(m_analysisStream, pos, BASS_POS_BYTE);
+        if (source == m_analysisStream) {
+            syncAnalysisToPlaybackUnlocked();
         }
         if (BASS_ChannelGetData(source, fft, BASS_DATA_FFT2048) == (DWORD)-1) {
             return bands;
@@ -1596,13 +1675,14 @@ public:
     }
 
     std::vector<float> getPCMData(int framesPerChannel, int* outChannels) {
+        std::lock_guard<std::mutex> lock(m_mutex);
         if (outChannels) *outChannels = 0;
         if (!m_stream || framesPerChannel <= 0) return {};
 
+        ensureAnalysisStreamUnlocked();
         HSTREAM source = m_analysisStream ? m_analysisStream : m_stream;
-        if (m_analysisStream) {
-            QWORD pos = BASS_ChannelGetPosition(m_stream, BASS_POS_BYTE);
-            BASS_ChannelSetPosition(m_analysisStream, pos, BASS_POS_BYTE);
+        if (source == m_analysisStream) {
+            syncAnalysisToPlaybackUnlocked();
         }
 
         BASS_CHANNELINFO info;
@@ -1658,9 +1738,13 @@ private:
         return std::pow(m_masterVolume / 100.0f, 2.0f);
     }
 
+    float computeEffectiveVolume() const {
+        return computeLinearMasterVolume() * std::max(0.0f, m_programVolumeMul);
+    }
+
     void applyMasterVolumeToStream(HSTREAM stream) {
         if (!stream) return;
-        BASS_ChannelSetAttribute(stream, BASS_ATTRIB_VOL, computeLinearMasterVolume());
+        BASS_ChannelSetAttribute(stream, BASS_ATTRIB_VOL, computeEffectiveVolume());
     }
 
     void updatePreampFxHandle(HFX fxHandle) {
@@ -1789,6 +1873,33 @@ private:
         }
     }
 
+    void ensureAnalysisStreamUnlocked() {
+        if (m_analysisStream || m_currentFilePath.empty()) return;
+        m_analysisStream = BASS_StreamCreateFile(
+            FALSE,
+            m_currentFilePath.c_str(),
+            0, 0,
+            BASS_STREAM_DECODE | BASS_SAMPLE_FLOAT
+        );
+        if (m_analysisStream) {
+            BASS_ChannelSetAttribute(m_analysisStream, BASS_ATTRIB_VOL, 1.0f);
+        }
+    }
+
+    void syncAnalysisToPlaybackUnlocked() {
+        if (!m_stream || !m_analysisStream) return;
+
+        const QWORD playPos = BASS_ChannelGetPosition(m_stream, BASS_POS_BYTE);
+        if (playPos == (QWORD)-1) return;
+
+        const double sec = BASS_ChannelBytes2Seconds(m_stream, playPos);
+        if (!std::isfinite(sec) || sec < 0.0) return;
+
+        const QWORD analysisPos = BASS_ChannelSeconds2Bytes(m_analysisStream, sec);
+        if (analysisPos == (QWORD)-1) return;
+        BASS_ChannelSetPosition(m_analysisStream, analysisPos, BASS_POS_BYTE);
+    }
+
     bool createPlaybackStreams(const std::string& filePath, HSTREAM& outStream, HSTREAM& outAnalysisStream) {
         outStream = 0;
         outAnalysisStream = 0;
@@ -1813,6 +1924,9 @@ private:
             0, 0,
             BASS_STREAM_DECODE | BASS_SAMPLE_FLOAT
         );
+        if (outAnalysisStream) {
+            BASS_ChannelSetAttribute(outAnalysisStream, BASS_ATTRIB_VOL, 1.0f);
+        }
 
         outStream = tempoStream;
         return true;
@@ -2748,8 +2862,25 @@ public:
                g_echo.stereo ? "Ping-Pong" : "Normal");
     }
 
+    void applySoftEchoToDSP() {
+        if (!m_aurivoDSP) return;
+
+        // Daha "saf/yumuşak" karakter için geri-besleme ve wet oranını biraz yumuşat.
+        float feedbackNorm = (g_softEcho.feedback / 100.0f) * 0.82f;
+        float mixNorm = (g_softEcho.wetMix / 100.0f) * 0.92f;
+        float delayMs = clampf(g_softEcho.delay, 40.0f, 900.0f);
+
+        set_echo_params(m_aurivoDSP, g_softEcho.enabled ? 1 : 0,
+                        delayMs, clampf(feedbackNorm, 0.0f, 0.95f), clampf(mixNorm, 0.0f, 1.0f));
+
+        printf("[SOFT ECHO] Applied - Delay: %.0f ms, Feedback: %.0f%%, Wet: %.0f%%, Stereo: %s\n",
+               g_softEcho.delay, g_softEcho.feedback, g_softEcho.wetMix,
+               g_softEcho.stereo ? "Ping-Pong" : "Normal");
+    }
+
     void enableEcho(bool enable) {
         std::lock_guard<std::mutex> lock(m_mutex);
+        if (enable) g_softEcho.enabled = false;
         g_echo.enabled = enable;
         
         if (enable) {
@@ -2761,6 +2892,20 @@ public:
                 set_echo_params(m_aurivoDSP, 0, 0, 0, 0);
             }
             printf("[ECHO] Disabled\n");
+        }
+    }
+
+    void enableSoftEcho(bool enable) {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        if (enable) g_echo.enabled = false;
+        g_softEcho.enabled = enable;
+        if (enable) {
+            applySoftEchoToDSP();
+            printf("[SOFT ECHO] Enabled\n");
+        } else {
+            if (g_echo.enabled) applyEchoToDSP();
+            else if (m_aurivoDSP) set_echo_params(m_aurivoDSP, 0, 0, 0, 0);
+            printf("[SOFT ECHO] Disabled\n");
         }
     }
 
@@ -2864,6 +3009,60 @@ public:
         if (g_echo.enabled) applyEchoToDSP();
         
         printf("[ECHO] Reset to defaults\n");
+    }
+
+    void setSoftEchoDelay(float delay) {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        g_softEcho.delay = clampf(delay, 40.0f, 900.0f);
+        if (g_softEcho.enabled) applySoftEchoToDSP();
+        printf("[SOFT ECHO] Delay: %.0f ms\n", g_softEcho.delay);
+    }
+
+    void setSoftEchoFeedback(float feedback) {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        g_softEcho.feedback = clampf(feedback, 0.0f, 60.0f);
+        if (g_softEcho.enabled) applySoftEchoToDSP();
+        printf("[SOFT ECHO] Feedback: %.0f%%\n", g_softEcho.feedback);
+    }
+
+    void setSoftEchoWetMix(float wetMix) {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        g_softEcho.wetMix = clampf(wetMix, 0.0f, 55.0f);
+        if (g_softEcho.enabled) applySoftEchoToDSP();
+        printf("[SOFT ECHO] Wet mix: %.0f%%\n", g_softEcho.wetMix);
+    }
+
+    void setSoftEchoDryMix(float dryMix) {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        g_softEcho.dryMix = clampf(dryMix, 0.0f, 100.0f);
+        if (g_softEcho.enabled) applySoftEchoToDSP();
+        printf("[SOFT ECHO] Dry mix: %.0f%%\n", g_softEcho.dryMix);
+    }
+
+    void setSoftEchoStereoMode(bool stereo) {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        g_softEcho.stereo = stereo;
+        if (g_softEcho.enabled) applySoftEchoToDSP();
+        printf("[SOFT ECHO] Stereo mode: %s\n", stereo ? "Ping-Pong" : "Normal");
+    }
+
+    void setSoftEchoHighCut(float highCut) {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        g_softEcho.highCut = clampf(highCut, 2000.0f, 16000.0f);
+        if (g_softEcho.enabled) applySoftEchoToDSP();
+        printf("[SOFT ECHO] High cut: %.0f Hz\n", g_softEcho.highCut);
+    }
+
+    void resetSoftEcho() {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        g_softEcho.delay = 220.0f;
+        g_softEcho.feedback = 22.0f;
+        g_softEcho.wetMix = 18.0f;
+        g_softEcho.dryMix = 100.0f;
+        g_softEcho.stereo = false;
+        g_softEcho.highCut = 7000.0f;
+        if (g_softEcho.enabled) applySoftEchoToDSP();
+        printf("[SOFT ECHO] Reset to defaults\n");
     }
 
     // ============== CONVOLUTION REVERB ==============
@@ -3240,10 +3439,66 @@ public:
 
         if (logNow) printf("[DSP CALLBACK] Processing %d frames...\n", frameCount);
         process_dsp(dsp, samples, frameCount, 2);
+
+        // Surround Virtualizer (stereo kaynakta center/surround/LFE sahne simülasyonu)
+        if (g_surround.enabled) {
+            const float sr = (float)SAMPLE_RATE;
+            const float centerGain = dBToLinear(clampf(g_surround.centerLevel, -12.0f, 12.0f));
+            const float sideGain = dBToLinear(clampf(g_surround.sideLevel, -12.0f, 12.0f));
+            const float lfeGain = dBToLinear(clampf(g_surround.lfeLevel, -12.0f, 12.0f));
+            const float mix = clampf(g_surround.mix, 0.0f, 100.0f) / 100.0f;
+            const float delayMs = clampf(g_surround.rearDelay, 0.0f, 30.0f);
+            const int delaySamples = std::max(1, (int)std::lround((delayMs * sr) / 1000.0f));
+            const size_t neededSize = (size_t)std::max(delaySamples + 2, 64);
+
+            if (g_surroundState.sideDelayBuffer.size() != neededSize) {
+                g_surroundState.sideDelayBuffer.assign(neededSize, 0.0f);
+                g_surroundState.writePos = 0;
+            }
+
+            const float crossoverHz = clampf(g_surround.crossover, 40.0f, 220.0f);
+            const float rc = 1.0f / (2.0f * (float)M_PI * crossoverHz);
+            const float dt = 1.0f / sr;
+            const float alpha = clampf(dt / (rc + dt), 0.0001f, 0.99f);
+
+            const size_t delaySize = g_surroundState.sideDelayBuffer.size();
+            size_t writePos = g_surroundState.writePos;
+            float lfeState = g_surroundState.lfeLowpass;
+
+            for (int i = 0; i < frameCount; ++i) {
+                const float dryL = samples[i * 2];
+                const float dryR = samples[i * 2 + 1];
+
+                const float mid = 0.5f * (dryL + dryR);
+                const float side = 0.5f * (dryL - dryR);
+
+                g_surroundState.sideDelayBuffer[writePos] = side;
+                const size_t readPos = (writePos + delaySize - (size_t)delaySamples) % delaySize;
+                const float delayedSide = g_surroundState.sideDelayBuffer[readPos];
+                writePos = (writePos + 1) % delaySize;
+
+                lfeState += alpha * (mid - lfeState);
+                const float lfe = lfeState * lfeGain * 0.55f;
+                const float center = mid * centerGain;
+                const float surround = delayedSide * sideGain;
+
+                const float wetL = center + surround + lfe;
+                const float wetR = center - surround + lfe;
+
+                float outL = dryL * (1.0f - mix) + wetL * mix;
+                float outR = dryR * (1.0f - mix) + wetR * mix;
+                samples[i * 2] = clampf(outL, -1.0f, 1.0f);
+                samples[i * 2 + 1] = clampf(outR, -1.0f, 1.0f);
+            }
+
+            g_surroundState.writePos = writePos;
+            g_surroundState.lfeLowpass = lfeState;
+        }
         
         // True Peak Limiter (DSP zincirinin en sonunda)
         if (g_truePeakLimiter.enabled) {
             float ceiling = powf(10.0f, g_truePeakLimiter.ceiling / 20.0f);  // dB -> linear
+            float driveLinear = powf(10.0f, g_truePeakLimiter.inputGain / 20.0f);
             
             // Per-stream smoothing state
             float& gainL = limiterState->gainL;
@@ -3255,8 +3510,8 @@ public:
             float rawPeakL = 0.0f;
             float rawPeakR = 0.0f;
             for (int i = 0; i < frameCount; i++) {
-                float absL = fabsf(samples[i * 2]);
-                float absR = fabsf(samples[i * 2 + 1]);
+                float absL = fabsf(samples[i * 2] * driveLinear);
+                float absR = fabsf(samples[i * 2 + 1] * driveLinear);
                 if (absL > rawPeakL) rawPeakL = absL;
                 if (absR > rawPeakR) rawPeakR = absR;
             }
@@ -3280,8 +3535,8 @@ public:
             float releaseCoef = expf(-1.0f / (g_truePeakLimiter.release * 44.1f));
             
             for (int i = 0; i < frameCount; i++) {
-                float sampleL = samples[i * 2];
-                float sampleR = samples[i * 2 + 1];
+                float sampleL = samples[i * 2] * driveLinear;
+                float sampleR = samples[i * 2 + 1] * driveLinear;
                 
                 // Peak detection
                 float absL = fabsf(sampleL);
@@ -3994,6 +4249,15 @@ Napi::Value SetTruePeakLookahead(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
     if (g_engine && info.Length() > 0 && info[0].IsNumber()) {
         g_engine->setTruePeakLookahead(info[0].As<Napi::Number>().FloatValue());
+        return Napi::Boolean::New(env, true);
+    }
+    return Napi::Boolean::New(env, false);
+}
+
+Napi::Value SetTruePeakInputGain(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+    if (g_engine && info.Length() > 0 && info[0].IsNumber()) {
+        g_engine->setTruePeakInputGain(info[0].As<Napi::Number>().FloatValue());
         return Napi::Boolean::New(env, true);
     }
     return Napi::Boolean::New(env, false);
@@ -5155,6 +5419,86 @@ Napi::Value ResetEchoEffect(const Napi::CallbackInfo& info) {
     return Napi::Boolean::New(env, true);
 }
 
+// ============================================
+// SOFT ECHO N-API WRAPPERS
+// ============================================
+Napi::Value EnableSoftEchoEffect(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+    if (info.Length() < 1 || !info[0].IsBoolean()) {
+        Napi::TypeError::New(env, "Boolean expected").ThrowAsJavaScriptException();
+        return env.Null();
+    }
+    bool enabled = info[0].As<Napi::Boolean>().Value();
+    if (g_engine) g_engine->enableSoftEcho(enabled);
+    return Napi::Boolean::New(env, true);
+}
+
+Napi::Value SetSoftEchoDelayTime(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+    if (info.Length() < 1 || !info[0].IsNumber()) {
+        Napi::TypeError::New(env, "Number expected").ThrowAsJavaScriptException();
+        return env.Null();
+    }
+    if (g_engine) g_engine->setSoftEchoDelay(info[0].As<Napi::Number>().FloatValue());
+    return Napi::Boolean::New(env, true);
+}
+
+Napi::Value SetSoftEchoFeedback(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+    if (info.Length() < 1 || !info[0].IsNumber()) {
+        Napi::TypeError::New(env, "Number expected").ThrowAsJavaScriptException();
+        return env.Null();
+    }
+    if (g_engine) g_engine->setSoftEchoFeedback(info[0].As<Napi::Number>().FloatValue());
+    return Napi::Boolean::New(env, true);
+}
+
+Napi::Value SetSoftEchoWetMix(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+    if (info.Length() < 1 || !info[0].IsNumber()) {
+        Napi::TypeError::New(env, "Number expected").ThrowAsJavaScriptException();
+        return env.Null();
+    }
+    if (g_engine) g_engine->setSoftEchoWetMix(info[0].As<Napi::Number>().FloatValue());
+    return Napi::Boolean::New(env, true);
+}
+
+Napi::Value SetSoftEchoDryMix(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+    if (info.Length() < 1 || !info[0].IsNumber()) {
+        Napi::TypeError::New(env, "Number expected").ThrowAsJavaScriptException();
+        return env.Null();
+    }
+    if (g_engine) g_engine->setSoftEchoDryMix(info[0].As<Napi::Number>().FloatValue());
+    return Napi::Boolean::New(env, true);
+}
+
+Napi::Value SetSoftEchoStereoMode(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+    if (info.Length() < 1 || !info[0].IsBoolean()) {
+        Napi::TypeError::New(env, "Boolean expected").ThrowAsJavaScriptException();
+        return env.Null();
+    }
+    if (g_engine) g_engine->setSoftEchoStereoMode(info[0].As<Napi::Boolean>().Value());
+    return Napi::Boolean::New(env, true);
+}
+
+Napi::Value SetSoftEchoHighCut(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+    if (info.Length() < 1 || !info[0].IsNumber()) {
+        Napi::TypeError::New(env, "Number expected").ThrowAsJavaScriptException();
+        return env.Null();
+    }
+    if (g_engine) g_engine->setSoftEchoHighCut(info[0].As<Napi::Number>().FloatValue());
+    return Napi::Boolean::New(env, true);
+}
+
+Napi::Value ResetSoftEchoEffect(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+    if (g_engine) g_engine->resetSoftEcho();
+    return Napi::Boolean::New(env, true);
+}
+
 // ============== CONVOLUTION REVERB N-API WRAPPERS ==============
 
 Napi::Value EnableConvolutionReverb(const Napi::CallbackInfo& info) {
@@ -5492,6 +5836,74 @@ Napi::Value ResetCrossfeed(const Napi::CallbackInfo& info) {
     
     printf("[CROSSFEED] Varsayılan ayarlara döndürüldü\n");
     
+    return Napi::Boolean::New(env, true);
+}
+
+// ============================================
+// SURROUND VIRTUALIZER FUNCTIONS
+// ============================================
+Napi::Value EnableSurroundVirtualizer(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+    if (info.Length() < 1 || !info[0].IsBoolean()) return Napi::Boolean::New(env, false);
+    g_surround.enabled = info[0].As<Napi::Boolean>().Value();
+    printf("[SURROUND] %s\n", g_surround.enabled ? "Etkin" : "Devre dışı");
+    return Napi::Boolean::New(env, true);
+}
+
+Napi::Value SetSurroundCenterLevel(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+    if (info.Length() < 1 || !info[0].IsNumber()) return Napi::Boolean::New(env, false);
+    g_surround.centerLevel = clampf(info[0].As<Napi::Number>().FloatValue(), -12.0f, 12.0f);
+    return Napi::Boolean::New(env, true);
+}
+
+Napi::Value SetSurroundSideLevel(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+    if (info.Length() < 1 || !info[0].IsNumber()) return Napi::Boolean::New(env, false);
+    g_surround.sideLevel = clampf(info[0].As<Napi::Number>().FloatValue(), -12.0f, 12.0f);
+    return Napi::Boolean::New(env, true);
+}
+
+Napi::Value SetSurroundLfeLevel(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+    if (info.Length() < 1 || !info[0].IsNumber()) return Napi::Boolean::New(env, false);
+    g_surround.lfeLevel = clampf(info[0].As<Napi::Number>().FloatValue(), -12.0f, 12.0f);
+    return Napi::Boolean::New(env, true);
+}
+
+Napi::Value SetSurroundCrossover(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+    if (info.Length() < 1 || !info[0].IsNumber()) return Napi::Boolean::New(env, false);
+    g_surround.crossover = clampf(info[0].As<Napi::Number>().FloatValue(), 40.0f, 220.0f);
+    return Napi::Boolean::New(env, true);
+}
+
+Napi::Value SetSurroundRearDelay(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+    if (info.Length() < 1 || !info[0].IsNumber()) return Napi::Boolean::New(env, false);
+    g_surround.rearDelay = clampf(info[0].As<Napi::Number>().FloatValue(), 0.0f, 30.0f);
+    return Napi::Boolean::New(env, true);
+}
+
+Napi::Value SetSurroundMix(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+    if (info.Length() < 1 || !info[0].IsNumber()) return Napi::Boolean::New(env, false);
+    g_surround.mix = clampf(info[0].As<Napi::Number>().FloatValue(), 0.0f, 100.0f);
+    return Napi::Boolean::New(env, true);
+}
+
+Napi::Value ResetSurroundVirtualizer(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+    g_surround.centerLevel = 0.0f;
+    g_surround.sideLevel = 0.0f;
+    g_surround.lfeLevel = 0.0f;
+    g_surround.crossover = 110.0f;
+    g_surround.rearDelay = 8.0f;
+    g_surround.mix = 75.0f;
+    g_surround.enabled = false;
+    g_surroundState.sideDelayBuffer.clear();
+    g_surroundState.writePos = 0;
+    g_surroundState.lfeLowpass = 0.0f;
     return Napi::Boolean::New(env, true);
 }
 
@@ -6029,6 +6441,7 @@ Napi::Object Init(Napi::Env env, Napi::Object exports) {
     exports.Set("setTruePeakCeiling", Napi::Function::New(env, SetTruePeakCeiling));
     exports.Set("setTruePeakRelease", Napi::Function::New(env, SetTruePeakRelease));
     exports.Set("setTruePeakLookahead", Napi::Function::New(env, SetTruePeakLookahead));
+    exports.Set("setTruePeakInputGain", Napi::Function::New(env, SetTruePeakInputGain));
     exports.Set("setTruePeakOversampling", Napi::Function::New(env, SetTruePeakOversampling));
     exports.Set("setTruePeakLinkChannels", Napi::Function::New(env, SetTruePeakLinkChannels));
     exports.Set("getTruePeakMeter", Napi::Function::New(env, GetTruePeakMeter));
@@ -6177,6 +6590,14 @@ Napi::Object Init(Napi::Env env, Napi::Object exports) {
     exports.Set("SetEchoHighCut", Napi::Function::New(env, SetEchoHighCut));
     exports.Set("SetEchoTempo", Napi::Function::New(env, SetEchoTempo));
     exports.Set("ResetEchoEffect", Napi::Function::New(env, ResetEchoEffect));
+    exports.Set("EnableSoftEchoEffect", Napi::Function::New(env, EnableSoftEchoEffect));
+    exports.Set("SetSoftEchoDelayTime", Napi::Function::New(env, SetSoftEchoDelayTime));
+    exports.Set("SetSoftEchoFeedback", Napi::Function::New(env, SetSoftEchoFeedback));
+    exports.Set("SetSoftEchoWetMix", Napi::Function::New(env, SetSoftEchoWetMix));
+    exports.Set("SetSoftEchoDryMix", Napi::Function::New(env, SetSoftEchoDryMix));
+    exports.Set("SetSoftEchoStereoMode", Napi::Function::New(env, SetSoftEchoStereoMode));
+    exports.Set("SetSoftEchoHighCut", Napi::Function::New(env, SetSoftEchoHighCut));
+    exports.Set("ResetSoftEchoEffect", Napi::Function::New(env, ResetSoftEchoEffect));
 
     // Convolution Reverb
     exports.Set("EnableConvolutionReverb", Napi::Function::New(env, EnableConvolutionReverb));
@@ -6200,6 +6621,16 @@ Napi::Object Init(Napi::Env env, Napi::Object exports) {
     exports.Set("SetCrossfeedPreset", Napi::Function::New(env, SetCrossfeedPreset));
     exports.Set("GetCrossfeedParams", Napi::Function::New(env, GetCrossfeedParams));
     exports.Set("ResetCrossfeed", Napi::Function::New(env, ResetCrossfeed));
+
+    // Surround Virtualizer
+    exports.Set("EnableSurroundVirtualizer", Napi::Function::New(env, EnableSurroundVirtualizer));
+    exports.Set("SetSurroundCenterLevel", Napi::Function::New(env, SetSurroundCenterLevel));
+    exports.Set("SetSurroundSideLevel", Napi::Function::New(env, SetSurroundSideLevel));
+    exports.Set("SetSurroundLfeLevel", Napi::Function::New(env, SetSurroundLfeLevel));
+    exports.Set("SetSurroundCrossover", Napi::Function::New(env, SetSurroundCrossover));
+    exports.Set("SetSurroundRearDelay", Napi::Function::New(env, SetSurroundRearDelay));
+    exports.Set("SetSurroundMix", Napi::Function::New(env, SetSurroundMix));
+    exports.Set("ResetSurroundVirtualizer", Napi::Function::New(env, ResetSurroundVirtualizer));
 
     // Bass Mono
     exports.Set("EnableBassMono", Napi::Function::New(env, EnableBassMono));

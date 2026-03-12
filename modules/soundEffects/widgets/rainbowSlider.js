@@ -10,6 +10,7 @@ class RainbowSlider {
         this.stepSize = config.stepSize !== undefined ? config.stepSize : 0.1;
         this.wheelStep = config.wheelStep || 0.5;
         this.frequency = config.frequency;
+        this.animatedHue = config.animatedHue !== false;
 
         // State variables matching C++ implementation
         this.shift = 0;
@@ -27,7 +28,30 @@ class RainbowSlider {
         
         // Start animation loop
         this.lastTime = performance.now();
-        requestAnimationFrame((t) => this.animate(t));
+        this._running = false;
+        if (this.animatedHue) this.startAnimation();
+        else this.draw();
+    }
+
+    static _runningInstances = new Set();
+    static _sharedRafId = null;
+    static _sharedTick = (timestamp) => {
+        let hasRunning = false;
+        RainbowSlider._runningInstances.forEach((inst) => {
+            if (!inst || !inst._running) return;
+            hasRunning = true;
+            inst.animate(timestamp);
+        });
+        if (hasRunning) {
+            RainbowSlider._sharedRafId = requestAnimationFrame(RainbowSlider._sharedTick);
+        } else {
+            RainbowSlider._sharedRafId = null;
+        }
+    };
+
+    static _ensureSharedLoop() {
+        if (RainbowSlider._sharedRafId !== null) return;
+        RainbowSlider._sharedRafId = requestAnimationFrame(RainbowSlider._sharedTick);
     }
 
     setRange(min, max) {
@@ -46,10 +70,20 @@ class RainbowSlider {
         
         this.targetValue = clamped;
 
+        const shouldNotify = opts?.notify !== false;
+
         // Programmatic updates (UI hydration, preset apply) should not trigger onChange
         // via the animation loop. "immediate" snaps value to target and avoids notify.
         if (opts && opts.immediate) {
             this.value = this.targetValue;
+            this.draw();
+            return;
+        }
+
+        if (!this.animatedHue) {
+            this.value = this.targetValue;
+            this.draw();
+            if (shouldNotify) this.notifyListeners();
             return;
         }
         
@@ -95,11 +129,17 @@ class RainbowSlider {
             let step = this.wheelStep;
             if (e.shiftKey) step *= 0.25;
             
-            this.setValue(this.value + stepDirection * step);
+            this.setValue(this.value + stepDirection * step, { notify: true });
         });
 
-        this.canvas.addEventListener('mouseenter', () => { this.isHovered = true; });
-        this.canvas.addEventListener('mouseleave', () => { this.isHovered = false; });
+        this.canvas.addEventListener('mouseenter', () => {
+            this.isHovered = true;
+            if (!this.animatedHue) this.draw();
+        });
+        this.canvas.addEventListener('mouseleave', () => {
+            this.isHovered = false;
+            if (!this.animatedHue) this.draw();
+        });
     }
     
     handleWindowMouseMove = (e) => {
@@ -158,16 +198,45 @@ class RainbowSlider {
         */
         
         let target = this.minValue + t * (this.maxValue - this.minValue);
-        this.setValue(target);
+        this.setValue(target, { notify: true });
     }
     
+    startAnimation() {
+        if (!this.animatedHue) return;
+        if (this._running) return;
+        this._running = true;
+        this.lastTime = performance.now();
+        RainbowSlider._runningInstances.add(this);
+        RainbowSlider._ensureSharedLoop();
+    }
+
+    stopAnimation() {
+        this._running = false;
+        RainbowSlider._runningInstances.delete(this);
+    }
+
+    setActive(active) {
+        if (!this.animatedHue) return;
+        if (active) this.startAnimation();
+        else this.stopAnimation();
+    }
+
+    destroy() {
+        this.stopAnimation();
+        window.removeEventListener('mousemove', this.handleWindowMouseMove);
+        window.removeEventListener('mouseup', this.handleWindowMouseUp);
+    }
+
     animate(timestamp) {
+        if (!this._running) return;
         const dt = timestamp - this.lastTime;
         
         // C++: Every 50ms, shift += 0.02.
         // Rate: 0.02 / 50ms = 0.0004 per ms.
-        this.shift += 0.0004 * dt;
-        if (this.shift > 1.0) this.shift -= 1.0;
+        if (!this.isSfxLightsOff()) {
+            this.shift += 0.0004 * dt;
+            if (this.shift > 1.0) this.shift -= 1.0;
+        }
         
         // Value Smoothing (Inertia)
         const diff = this.targetValue - this.value;
@@ -188,7 +257,6 @@ class RainbowSlider {
         this.lastTime = timestamp;
         this.draw();
         
-        requestAnimationFrame((t) => this.animate(t));
     }
     
     hsvToRgb(h, s, v, a = 255) {
@@ -230,8 +298,19 @@ class RainbowSlider {
     }
     
     colorAtRatio(r, alpha = 255, s = 220, v = 255) {
+        if (this.isSfxLightsOff()) {
+            return this.hsvToRgb(195, 220, 255, alpha);
+        }
         let hue = (this.shift * 360.0 + Math.max(0, Math.min(r, 1)) * 300.0) % 360.0;
         return this.hsvToRgb(hue, s, v, alpha);
+    }
+
+    isSfxLightsOff() {
+        try {
+            return document?.documentElement?.dataset?.sfxLights === 'off';
+        } catch {
+            return false;
+        }
     }
 
     draw() {
@@ -252,14 +331,19 @@ class RainbowSlider {
         const trackW = 8;
         const trackH = h - 16;
         
-        // Draw track base (dim rainbow)
+        // Draw track base (dim rainbow / fixed cyan when lights off)
         // Gradient: BottomLeft to TopLeft
         const grad = ctx.createLinearGradient(trackX, trackY + trackH, trackX, trackY);
         const steps = 28;
-        for (let i = 0; i <= steps; ++i) {
-            let t = i / steps;
-            let hue = (this.shift * 360.0 + t * 300.0) % 360.0;
-            grad.addColorStop(t, this.hsvToRgb(hue, 210, 255, 90));
+        if (this.isSfxLightsOff()) {
+            grad.addColorStop(0, this.hsvToRgb(195, 200, 205, 92));
+            grad.addColorStop(1, this.hsvToRgb(195, 235, 255, 132));
+        } else {
+            for (let i = 0; i <= steps; ++i) {
+                let t = i / steps;
+                let hue = (this.shift * 360.0 + t * 300.0) % 360.0;
+                grad.addColorStop(t, this.hsvToRgb(hue, 210, 255, 90));
+            }
         }
         
         ctx.fillStyle = grad;
@@ -284,10 +368,15 @@ class RainbowSlider {
         
         if (filledH > 0.5) {
              const brightGrad = ctx.createLinearGradient(trackX, trackY + trackH, trackX, trackY);
-             for (let i = 0; i <= steps; ++i) {
-                let t = i / steps;
-                let hue = (this.shift * 360.0 + t * 300.0) % 360.0;
-                brightGrad.addColorStop(t, this.hsvToRgb(hue, 235, 255, 220));
+             if (this.isSfxLightsOff()) {
+                brightGrad.addColorStop(0, this.hsvToRgb(195, 215, 230, 190));
+                brightGrad.addColorStop(1, this.hsvToRgb(195, 245, 255, 240));
+             } else {
+                for (let i = 0; i <= steps; ++i) {
+                    let t = i / steps;
+                    let hue = (this.shift * 360.0 + t * 300.0) % 360.0;
+                    brightGrad.addColorStop(t, this.hsvToRgb(hue, 235, 255, 220));
+                }
              }
              
              ctx.save();

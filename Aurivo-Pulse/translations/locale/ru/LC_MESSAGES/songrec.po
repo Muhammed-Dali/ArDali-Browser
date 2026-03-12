@@ -1,0 +1,538 @@
+# SOME DESCRIPTIVE TITLE.
+# Copyright (C) YEAR THE PACKAGE'S COPYRIGHT HOLDER
+# This file is distributed under the same license as the PACKAGE package.
+# Aleksandr Shamaraev shad@altlinux.org, 2025.
+#
+#, fuzzy
+msgid ""
+msgstr ""
+"Project-Id-Version: \n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2026-02-25 22:36+0100\n"
+"PO-Revision-Date: 2026-02-25 15:34+1100\n"
+"Last-Translator: Aleksandr Shamaraev <shad@altlinux.org>\n"
+"Language-Team: shad@altlinux.org\n"
+"Language: ru\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"X-Generator: Poedit 3.8\n"
+
+#: src/cli_main.rs:118
+msgid "Available device:"
+msgstr "Доступное устройство:"
+
+#: src/cli_main.rs:136
+msgid "Exiting: audio device not found"
+msgstr "Выход: аудиоустройство не найдено"
+
+#: src/cli_main.rs:142
+msgid "Exiting: no audio devices found!"
+msgstr "Выход: аудиоустройства не найдены!"
+
+#: src/cli_main.rs:147
+msgid "Using device"
+msgstr "Используется устройство"
+
+#: src/cli_main.rs:170
+msgid "Error: Network unreachable"
+msgstr "Ошибка: Сеть недоступна"
+
+#: src/cli_main.rs:173
+msgid "Warning: Network unreachable"
+msgstr "Предупреждение: сеть недоступна"
+
+#: src/cli_main.rs:178 src/core/http_task.rs:54 src/core/http_task.rs:64
+#: src/core/http_task.rs:77 src/core/http_task.rs:121
+#: src/gui/main_window.rs:726 src/gui/main_window.rs:733
+msgid "No match for this song"
+msgstr "Нет совпадений для этой песни"
+
+#: src/cli_main.rs:180
+msgid "Error:"
+msgstr "Ошибка:"
+
+#: src/cli_main.rs:188
+msgid "Recording started!"
+msgstr "Запись началась!"
+
+#: src/main.rs:76
+msgid "An open-source Shazam client for Linux, written in Rust."
+msgstr "Клиент Shazam с открытым исходным кодом для Linux, написанный на Rust."
+
+#: src/main.rs:96
+msgid ""
+"-v: Set the log level to DEBUG instead of INFO for Aurivo-Pulse-related messages\n"
+"-vv: Set the log level to DEBUG for Aurivo-Pulse-related messages and INFO for "
+"library-related messages\n"
+"-vvv: Set the log level to TRACE"
+msgstr ""
+"-v: Установить уровень логирования DEBUG вместо INFO для сообщений, "
+"связанных с Aurivo-Pulse\n"
+"-vv: Установить уровень логирования DEBUG для сообщений, связанных с "
+"Aurivo-Pulse, и INFO для сообщений, связанных с библиотекой\n"
+"-vvv: Установить уровень логирования TRACE"
+
+#: src/main.rs:102
+msgid ""
+"Run as a command-line program listening the microphone and printing "
+"recognized songs to stdout, exposing current song info via MPRIS"
+msgstr ""
+"Запускается в консоли, прослушивающая микрофон и выводящая распознанные "
+"песни в стандартный вывод, предоставляя текущую информацию о песне через "
+"MPRIS"
+
+#: src/main.rs:108 src/main.rs:154 src/main.rs:209
+msgid "List available audio devices and quit"
+msgstr "Отобразить список доступных аудиоустройств и выйти"
+
+#: src/main.rs:114 src/main.rs:161 src/main.rs:215
+msgid "Specify the audio device to use"
+msgstr "Укажите аудиоустройство для использования"
+
+#: src/main.rs:122 src/main.rs:169 src/main.rs:223
+msgid ""
+"Shazam interval between requests in seconds (increase if you are rate-"
+"limited)"
+msgstr ""
+"Интервал между запросами Shazam в секундах (увеличьте, если у вас "
+"установлено ограничение на количество запросов)"
+
+#: src/main.rs:130 src/main.rs:177
+msgid "Enable printing full song info in JSON"
+msgstr "Включить печать полной информации о песне в формате JSON"
+
+#: src/main.rs:137 src/main.rs:184
+msgid "Enable printing full song info in the CSV format"
+msgstr "Включить печать полной информации о песне в формате CSV"
+
+#: src/main.rs:143 src/main.rs:263 src/main.rs:278
+msgid "Disable MPRIS support"
+msgstr "Отключить поддержку MPRIS"
+
+#: src/main.rs:148
+msgid "Recognize one song from a sound file or microphone and print its info."
+msgstr ""
+"Распознать одну песню из звукового файла или микрофона и вывести информацию "
+"о ней."
+
+#: src/main.rs:189
+msgid "Recognize a file instead of using mic input"
+msgstr "Распознавать файл вместо использования микрофонного ввода"
+
+#: src/main.rs:194
+msgid ""
+"Generate a Shazam fingerprint from a sound file, perform song recognition "
+"towards Shazam's servers and print obtained information to the standard "
+"output."
+msgstr ""
+"Сгенерировать отпечаток Shazam из звукового файла, выполнить распознавание "
+"песни на серверах Shazam и вывести полученную информацию на стандартный "
+"вывод."
+
+#: src/main.rs:198
+msgid "The audio file to recognize."
+msgstr "Аудиофайл для распознавания."
+
+#: src/main.rs:203
+msgid ""
+"Recognize a currently playing song using the microphone and print obtained "
+"information to the standard output"
+msgstr ""
+"Распознать воспроизводимую в данный момент песню с помощью микрофона и "
+"вывести полученную информацию на стандартный вывод"
+
+#: src/main.rs:228
+msgid ""
+"Generate a Shazam fingerprint from a sound file, and print it to the "
+"standard output."
+msgstr ""
+"Сгенерировать отпечаток Shazam из звукового файла и вывести его на "
+"стандартный вывод."
+
+#: src/main.rs:232
+msgid "The .WAV or .MP3 file to generate an audio fingerprint for."
+msgstr "Файл .WAV или .MP3, для которого необходимо создать аудиоотпечаток."
+
+#: src/main.rs:237
+msgid ""
+"Take a data-URI Shazam fingerprint, perform song recognition towards "
+"Shazam's servers and print obtained information to the standard output."
+msgstr ""
+"Взять отпечаток URI-данных Shazam, выполнить распознавание песни на серверах "
+"Shazam и вывести полученную информацию на стандартный вывод."
+
+#: src/main.rs:241
+msgid "The data-URI Shazam fingerprint to recognize."
+msgstr "Отпечаток данных URI Shazam для распознавания."
+
+#: src/main.rs:253
+msgid "The default action. Display a GUI."
+msgstr "Действие по умолчанию. Отображение графического интерфейса."
+
+#: src/main.rs:257 src/main.rs:272
+msgid "An optional audio file to recognize on the launch of the application."
+msgstr "Дополнительный аудиофайл для распознавания при запуске приложения."
+
+#: src/main.rs:268
+msgid ""
+"Launch the GUI, but don't recognize audio through the microphone as soon as "
+"it is launched (rather than expecting the user to click on a button)."
+msgstr ""
+"Запустить графический интерфейс, но не распознавать звук через микрофон "
+"сразу после запуска (ожидать, что пользователь нажмет кнопку)."
+
+#: src/core/http_task.rs:128 src/fingerprinting/communication.rs:66
+msgid "Your IP has been rate-limited"
+msgstr "Для вашего IP-адреса установлено ограничение скорости запросов"
+
+#: src/core/microphone_thread.rs:63
+msgid "Audio error:"
+msgstr "Аудиоошибка:"
+
+#: src/fingerprinting/signature_format.rs:97
+msgid "Invalid sample rate in decoded Shazam packet"
+msgstr "Неверная частота дискретизации в декодированном пакете Shazam"
+
+#: src/fingerprinting/signature_format.rs:139
+msgid "Invalid frequency band in decoded Shazam packet"
+msgstr "Неверный диапазон частот в декодированном пакете Shazam"
+
+#: src/fingerprinting/signature_format.rs:220
+msgid "Invalid sample rate passed when encoding Shazam packet"
+msgstr "При кодировании пакета Shazam передана неверная частота дискретизации"
+
+#: src/gui/main_window.rs:250
+msgid "Application error"
+msgstr "Ошибка приложения"
+
+#: src/gui/main_window.rs:271
+msgid "Network error"
+msgstr "Сетевая ошибка"
+
+#: src/gui/main_window.rs:311
+msgid "Unable to enable notification icon"
+msgstr "Не удаётся включить значок уведомления"
+
+#: src/gui/main_window.rs:646 src/gui/main_window.rs:719
+msgid "Unable to enable MPRIS support"
+msgstr "Невозможно включить поддержку MPRIS"
+
+#: src/gui/main_window.rs:803
+msgid "Song recognized"
+msgstr "Песня распознана"
+
+#: src/gui/main_window.rs:961
+msgid "Are you sure you want to wipe history?"
+msgstr "Вы уверены, что хотите стереть историю?"
+
+#: src/gui/main_window.rs:962
+msgid "_Yes"
+msgstr "_Да"
+
+#: src/gui/main_window.rs:962
+msgid "_No"
+msgstr "_Нет"
+
+#: src/gui/preferences.rs:82
+msgid "When parsing the preferences file:"
+msgstr "При анализе файла настроек:"
+
+#: src/gui/preferences.rs:151
+msgid "When saving the preferences file:"
+msgstr "При сохранении файла настроек:"
+
+#: src/gui/song_history_interface.rs:94
+msgid "Error when reading the song history on the disk:"
+msgstr "Ошибка при чтении истории песен на диске:"
+
+#: src/gui/song_history_interface.rs:169
+msgid "Error when reading the favorites on the disk:"
+msgstr "Ошибка при чтении избранного на диске:"
+
+#: src/plugins/ksni.rs:23
+msgid "Open Aurivo-Pulse"
+msgstr "Открыть Aurivo-Pulse"
+
+#: src/plugins/ksni.rs:31
+msgid "Quit..."
+msgstr "Выход..."
+
+#: translations/interface.ui.h:1
+msgid "Recognize songs"
+msgstr "Распознавание песен"
+
+#: translations/interface.ui.h:2
+msgid "Recognize from file"
+msgstr "Распознать из файла"
+
+#: translations/interface.ui.h:3
+msgid "Pick a file..."
+msgstr "Выберите файл..."
+
+#: translations/interface.ui.h:4
+msgid "Recognize from microphone"
+msgstr "Распознать с микрофона"
+
+#: translations/interface.ui.h:5
+msgid "Recognize from my speakers"
+msgstr "Распознать с колонок"
+
+#: translations/interface.ui.h:6
+msgid "Shazam servers are not reachable, are you connected?"
+msgstr "Серверы Shazam недоступны, Вы подключены к Интернету?"
+
+#: translations/interface.ui.h:7
+msgid "ERROR: Your IP has been rate-limited"
+msgstr "ОШИБКА: Ваш IP-адрес ограничен по количеству запросов"
+
+#: translations/interface.ui.h:8
+msgid "Recognition results"
+msgstr "Результаты распознавания"
+
+#: translations/interface.ui.h:9
+msgid "Search on YouTube"
+msgstr "Поиск на YouTube"
+
+#: translations/interface.ui.h:10
+msgid "Search..."
+msgstr "Поиск..."
+
+#: translations/interface.ui.h:11
+msgid "Refresh available devices"
+msgstr "Обновить список доступных устройств"
+
+#: translations/interface.ui.h:12
+msgid "Audio input"
+msgstr "Аудиовход"
+
+#: translations/interface.ui.h:13
+msgid "Device"
+msgstr "Устройство"
+
+#: translations/interface.ui.h:14
+msgid "Volume:"
+msgstr "Громкость:"
+
+#: translations/interface.ui.h:15
+msgid "History options..."
+msgstr "Опции истории..."
+
+#: translations/interface.ui.h:16
+msgid "Recognition history"
+msgstr "История распознавания"
+
+#: translations/interface.ui.h:17
+msgid "Song name"
+msgstr "Название песни"
+
+#: translations/interface.ui.h:18
+msgid "Album"
+msgstr "Альбом"
+
+#: translations/interface.ui.h:19
+msgid "Recognition date"
+msgstr "Дата распознавания"
+
+#: translations/interface.ui.h:20
+msgid "View favorites"
+msgstr "Посмотреть избранное"
+
+#: translations/interface.ui.h:21
+msgid "Application menu"
+msgstr "Меню приложения"
+
+#: translations/interface.ui.h:22
+msgid "Export to CSV"
+msgstr "Экспорт в CSV"
+
+#: translations/interface.ui.h:23
+msgid "Favorites"
+msgstr "Избранное"
+
+#: translations/interface.ui.h:24
+msgid "General preferences"
+msgstr "Общие предпочтения"
+
+#: translations/interface.ui.h:25
+msgid "Notify when a new song is recognized or network error is encountered"
+msgstr "Уведомлять о появлении новой песни или возникновении сетевой ошибки"
+
+#: translations/interface.ui.h:26
+msgid "Show notifications"
+msgstr "Показывать уведомления"
+
+#: translations/interface.ui.h:27
+msgid ""
+"MPRIS will display information about recognized songs in places like the "
+"GNOME or KDE control panel"
+msgstr ""
+"MPRIS будет отображать информацию об распознанных песнях в таких местах, как "
+"панель управления GNOME или KDE"
+
+#: translations/interface.ui.h:28
+msgid "Enable MPRIS"
+msgstr "Включить MPRIS"
+
+#: translations/interface.ui.h:29
+msgid ""
+"When closing the window, minimize to system tray using KSNI instead of "
+"closing the app. Please note that you may have to increase the \"request "
+"interval\" setting when leaving Aurivo-Pulse running in the background to reduce "
+"your changes of getting rate-limited."
+msgstr ""
+"При закрытии окна сворачивайте его в системный трей с помощью KSNI вместо "
+"закрытия приложения. Обратите внимание, что при работе Aurivo-Pulse в фоновом "
+"режиме может потребоваться увеличить параметр «интервал запросов», чтобы "
+"снизить вероятность ограничения скорости запросов."
+
+#: translations/interface.ui.h:30
+msgid "Minimize to system tray"
+msgstr "Свернуть в системный трей"
+
+#: translations/interface.ui.h:31
+msgid ""
+"Bump a song to the top of the history list and remove the former entry when "
+"the same song is detected multiple times"
+msgstr ""
+"Переместить песню в начало списка истории и удалить предыдущую запись, если "
+"одна и та же песня обнаружена несколько раз."
+
+#: translations/interface.ui.h:32
+msgid "No duplicates in history"
+msgstr "Без дубликатов в истории"
+
+#: translations/interface.ui.h:33
+msgid "Network preferences"
+msgstr "Сетевые настройки"
+
+#: translations/interface.ui.h:34
+msgid "By default 8, increase if you are rate-limited"
+msgstr ""
+"По умолчанию установлено значение 8; увеличьте его, если у вас установлено "
+"ограничение на количество запросов"
+
+#: translations/interface.ui.h:35
+msgid "Shazam interval between requests in seconds"
+msgstr "Интервал между запросами Shazam в секундах"
+
+#: translations/interface.ui.h:36
+msgid ""
+"By default the last 12 seconds of music are fingerprinted and sent to "
+"Shazam. Editing may have an impact on reliability"
+msgstr ""
+"По умолчанию последние 12 секунд музыки маркируются и отправляются в Shazam. "
+"Редактирование может повлиять на надежность распознавания."
+
+#: translations/interface.ui.h:37
+msgid "Shazam buffer size in seconds"
+msgstr "Размер буфера Shazam в секундах"
+
+#: translations/interface.ui.h:38
+msgid "Settings"
+msgstr "Настройки"
+
+#: translations/interface.ui.h:39
+msgid "_Preferences..."
+msgstr "_Настройки..."
+
+#: translations/interface.ui.h:40
+msgid "About..."
+msgstr "О Aurivo-Pulse..."
+
+#: translations/interface.ui.h:41
+msgid "Delete history"
+msgstr "Удалить историю"
+
+#: translations/interface.ui.h:42
+msgid "Select a file to recognize"
+msgstr "Выберите файл для распознавания"
+
+#: translations/interface.ui.h:43
+msgid "Copy artist and track"
+msgstr "Копировать исполнителя и трек"
+
+#: translations/interface.ui.h:44
+msgid "Copy artist"
+msgstr "Копировать исполнителя"
+
+#: translations/interface.ui.h:45
+msgid "Copy track name"
+msgstr "Копировать название трека"
+
+#: translations/interface.ui.h:46
+msgid "Copy album"
+msgstr "Копировать альбом"
+
+#: translations/interface.ui.h:47
+msgid "Delete from History"
+msgstr "Удалить из истории"
+
+#: translations/interface.ui.h:48
+msgid "Add to Favorites"
+msgstr "Добавить в Избранное"
+
+#: translations/interface.ui.h:49
+msgid "Remove from Favorites"
+msgstr "Удалить из Избранного"
+
+#~ msgid "Microphone error:"
+#~ msgstr "Ошибка микрофона:"
+
+#~ msgid "Failed to get default input config"
+#~ msgstr "Не удалось получить конфигурацию ввода по умолчанию"
+
+#~ msgid "Application::new failed"
+#~ msgstr "Не удалось запустить Application::new"
+
+#~ msgid "Turn on speakers recognition"
+#~ msgstr "Включить распознавание динамиков"
+
+#~ msgid "Turn off speakers recognition"
+#~ msgstr "Отключить распознавание динамиков"
+
+#~ msgid "Turn on microphone recognition"
+#~ msgstr "Включить распознавание микрофона"
+
+#~ msgid "Turn off microphone recognition"
+#~ msgstr "Отключить распознавание микрофона"
+
+#~ msgid "_Open"
+#~ msgstr "_Открыть"
+
+#~ msgid "_Cancel"
+#~ msgstr "_Отменить"
+
+#~ msgid "Couldn't get filename"
+#~ msgstr "Не удалось получить имя файла"
+
+#~ msgid "Preferences"
+#~ msgstr "Предпочтения"
+
+#~ msgid ""
+#~ "Enable MPRIS (display playing song information in the GNOME control panel)"
+#~ msgstr ""
+#~ "Включить MPRIS (отображение информации о воспроизводимой песне на панели "
+#~ "управления GNOME)"
+
+#~ msgid "About"
+#~ msgstr "О"
+
+#~ msgid ""
+#~ "Help translating https://github.com/marin-m/Aurivo-Pulse/tree/master/"
+#~ "translations#readme"
+#~ msgstr ""
+#~ "Помочь с переводом https://github.com/marin-m/Aurivo-Pulse/tree/master/"
+#~ "translations#readme"
+
+#~ msgid "Enable notifications"
+#~ msgstr "Включить уведомления"
+
+#~ msgid "Recognize from my speakers instead of microphone"
+#~ msgstr "Распознавать через динамики вместо микрофона"
+
+#~ msgid "Current volume:"
+#~ msgstr "Текущая громкость:"
+
+#~ msgid "Wipe history"
+#~ msgstr "Стереть историю"

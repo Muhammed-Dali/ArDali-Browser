@@ -1,0 +1,93 @@
+/// The application uses a simple CSV format in order to store the list of the
+/// songs discovered by the user that are displayed in the multi-column list
+/// view. The CSV columns bear the same name as the GUI list view columns (in
+/// snake case).
+///
+/// A difference is that entries are stored in chronological order in the CSV
+/// file, while antichronological order is used on the GUI list view.
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Serialize, Deserialize, Hash, PartialEq, Eq, Clone)]
+pub struct SongHistoryRecord {
+    pub song_name: String,
+    #[serde(default)]
+    pub album: Option<String>,
+
+    // The following fields have been added in version 0.3.0
+    #[serde(default)]
+    pub track_key: Option<String>,
+    #[serde(default)]
+    pub release_year: Option<String>,
+    #[serde(default)]
+    pub genre: Option<String>,
+    pub recognition_date: String,
+}
+
+#[derive(Debug, PartialEq, Eq, Clone, Hash)]
+pub struct Song {
+    pub song_name: String,
+    pub album: Option<String>,
+
+    // The following fields have been added in version 0.3.0
+    pub track_key: Option<String>,
+    pub release_year: Option<String>,
+    pub genre: Option<String>,
+}
+
+pub trait HasSong {
+    fn get_song(self) -> Song;
+}
+
+impl HasSong for Song {
+    fn get_song(self) -> Song {
+        return self;
+    }
+}
+
+impl HasSong for SongHistoryRecord {
+    fn get_song(self) -> Song {
+        return Song {
+            song_name: self.song_name,
+            album: match self.album {
+                Some(val) => {
+                    if &val == "" {
+                        None
+                    } else {
+                        Some(val)
+                    }
+                }
+                None => None,
+            },
+            track_key: match self.track_key {
+                Some(val) => {
+                    if &val == "" {
+                        None
+                    } else {
+                        Some(val)
+                    }
+                }
+                None => None,
+            },
+            release_year: match self.release_year {
+                Some(val) => {
+                    if &val == "" {
+                        None
+                    } else {
+                        Some(val)
+                    }
+                }
+                None => None,
+            },
+            genre: match self.genre {
+                Some(val) => {
+                    if &val == "" {
+                        None
+                    } else {
+                        Some(val)
+                    }
+                }
+                None => None,
+            },
+        };
+    }
+}
