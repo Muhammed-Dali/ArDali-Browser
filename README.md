@@ -35,6 +35,10 @@
   </a>
 </p>
 
+## Linux Kurulum
+- AppImage / `.deb` / `.rpm`: [Latest Release](https://github.com/muhammed-aurivo-dev/Aurivo-Medya-Player-Linux/releases/latest)
+- Arch Linux (AUR): `yay -S aurivo-bin`
+
 ## Aurivo Nedir?
 Aurivo, klasik bir medya oynatıcıdan daha fazlasını hedefler:
 - Yerel müzik/video oynatma

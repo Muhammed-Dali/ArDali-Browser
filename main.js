@@ -5158,43 +5158,63 @@ function parseMediaDurationWithFfmpeg(filePath) {
     });
 }
 
-async function hasFolderCoverImage(filePath) {
+function getImageMimeTypeFromFileName(fileName = '') {
+    const ext = path.extname(String(fileName || '')).toLowerCase();
+    if (ext === '.jpg' || ext === '.jpeg') return 'image/jpeg';
+    if (ext === '.png') return 'image/png';
+    if (ext === '.webp') return 'image/webp';
+    return null;
+}
+
+async function findBestFolderCoverPath(filePath) {
     const dir = path.dirname(filePath);
+    const trackBaseName = path.basename(filePath, path.extname(filePath || '')).toLowerCase();
+    let entries = [];
+    try {
+        entries = await fs.promises.readdir(dir);
+    } catch {
+        return null;
+    }
+
+    // case-insensitive lookup map: "cover.jpg" -> "Cover.JPG"
+    const entryMap = new Map(entries.map((name) => [String(name).toLowerCase(), String(name)]));
     const candidates = [
-        'cover.jpg', 'cover.jpeg', 'cover.png',
-        'folder.jpg', 'folder.jpeg', 'folder.png'
+        'cover.jpg', 'cover.jpeg', 'cover.png', 'cover.webp',
+        'folder.jpg', 'folder.jpeg', 'folder.png', 'folder.webp',
+        'front.jpg', 'front.jpeg', 'front.png', 'front.webp',
+        'albumart.jpg', 'albumart.jpeg', 'albumart.png', 'albumart.webp',
+        'artwork.jpg', 'artwork.jpeg', 'artwork.png', 'artwork.webp',
+        `${trackBaseName}.jpg`, `${trackBaseName}.jpeg`, `${trackBaseName}.png`, `${trackBaseName}.webp`
     ];
-    for (const name of candidates) {
-        try {
-            await fs.promises.access(path.join(dir, name), fs.constants.F_OK);
-            return true;
-        } catch {
-            // yoksay
+
+    for (const lowerCandidate of candidates) {
+        const realName = entryMap.get(lowerCandidate);
+        if (realName) {
+            return path.join(dir, realName);
         }
     }
-    return false;
+
+    return null;
+}
+
+async function hasFolderCoverImage(filePath) {
+    return !!(await findBestFolderCoverPath(filePath));
 }
 
 async function readFolderCoverImage(filePath) {
-    const dir = path.dirname(filePath);
-    const candidates = [
-        ['cover.jpg', 'image/jpeg'],
-        ['cover.jpeg', 'image/jpeg'],
-        ['cover.png', 'image/png'],
-        ['folder.jpg', 'image/jpeg'],
-        ['folder.jpeg', 'image/jpeg'],
-        ['folder.png', 'image/png']
-    ];
-    for (const [name, mime] of candidates) {
-        try {
-            const buffer = await fs.promises.readFile(path.join(dir, name));
-            if (buffer?.length) {
-                return `data:${mime};base64,${buffer.toString('base64')}`;
-            }
-        } catch {
-            // yoksay
+    const coverPath = await findBestFolderCoverPath(filePath);
+    if (!coverPath) return null;
+
+    try {
+        const buffer = await fs.promises.readFile(coverPath);
+        const mime = getImageMimeTypeFromFileName(coverPath) || 'image/jpeg';
+        if (buffer?.length) {
+            return `data:${mime};base64,${buffer.toString('base64')}`;
         }
+    } catch {
+        // yoksay
     }
+
     return null;
 }
 
