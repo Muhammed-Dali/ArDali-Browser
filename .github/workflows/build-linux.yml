@@ -64,6 +64,7 @@ jobs:
             cmake \
             curl \
             ffmpeg \
+            libchromaprint-dev \
             libfreetype6-dev \
             libglib2.0-dev \
             libgl1-mesa-dev \
