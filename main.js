@@ -4560,10 +4560,24 @@ async function applyAdblockDashboardBranding(win, uiLang = 'en-US') {
                     };
                     const applyMessages = (messages) => {
                         if (!messages || typeof messages !== 'object') return;
+                        const setPreservedText = (el, msg) => {
+                            if (!el || typeof msg !== 'string' || !msg) return;
+                            const hasStructuredChildren = el.childElementCount > 0;
+                            if (!hasStructuredChildren) {
+                                el.textContent = msg;
+                                return;
+                            }
+                            const textNodes = Array.from(el.childNodes || []).filter((n) => n && n.nodeType === Node.TEXT_NODE);
+                            if (textNodes.length) {
+                                textNodes[textNodes.length - 1].textContent = msg;
+                                return;
+                            }
+                            el.appendChild(document.createTextNode(msg));
+                        };
                         for (const el of document.querySelectorAll('[data-i18n]')) {
                             const key = el.getAttribute('data-i18n');
                             const msg = pickMessage(messages, key);
-                            if (msg) el.textContent = msg;
+                            if (msg) setPreservedText(el, msg);
                         }
                         for (const el of document.querySelectorAll('[data-i18n-title]')) {
                             const key = el.getAttribute('data-i18n-title');
