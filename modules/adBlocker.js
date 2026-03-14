@@ -29,6 +29,7 @@ let blockerProvider = {
 };
 
 const loadedSessionKeys = new Set();
+const statsBoundSessions = new WeakSet();
 
 function normalizeMode(mode) {
     const value = String(mode || '').trim().toLowerCase();
@@ -181,6 +182,47 @@ function resetStats() {
     stats.startTime = Date.now();
 }
 
+function shouldCountRequest(details = {}) {
+    const url = String(details?.url || '');
+    if (!url) return false;
+    if (!/^https?:\/\//i.test(url)) return false;
+    return true;
+}
+
+function bindStatsTrackingForSession(ses) {
+    if (!ses || statsBoundSessions.has(ses)) return;
+    statsBoundSessions.add(ses);
+
+    try {
+        ses.webRequest.onErrorOccurred((details) => {
+            try {
+                if (!shouldCountRequest(details)) return;
+                const err = String(details?.error || '').toUpperCase();
+                if (err.includes('ERR_BLOCKED_BY_CLIENT')) {
+                    stats.blocked += 1;
+                }
+            } catch {
+                // no-op
+            }
+        });
+    } catch {
+        // no-op
+    }
+
+    try {
+        ses.webRequest.onCompleted((details) => {
+            try {
+                if (!shouldCountRequest(details)) return;
+                stats.allowed += 1;
+            } catch {
+                // no-op
+            }
+        });
+    } catch {
+        // no-op
+    }
+}
+
 function getConfig() {
     return {
         mode: normalizeMode(runtimeConfig.mode),
@@ -255,6 +297,7 @@ async function initAdBlocker(electronSession, options = {}) {
 
     for (const target of targets) {
         try {
+            bindStatsTrackingForSession(target.ses);
             await loadUbolIntoSession(target.ses, target.label, extensionPath);
         } catch (e) {
             blockerProvider.ubol.error = e?.message || String(e);
@@ -268,6 +311,7 @@ async function initAdBlocker(electronSession, options = {}) {
     if (app && typeof app.on === 'function') {
         app.on('session-created', async (createdSession) => {
             try {
+                bindStatsTrackingForSession(createdSession);
                 await loadUbolIntoSession(createdSession, 'session-created', extensionPath);
                 blockerProvider.ubol.enabled = blockerProvider.ubol.sessions.length > 0;
                 blockerProvider.active = blockerProvider.ubol.enabled ? 'uBOL' : 'error';
