@@ -697,9 +697,8 @@ function ensureAdblockSettings() {
     state.settings.adblock.mode = normalizeAdblockMode(
         state.settings.adblock.mode || ADBLOCK_DEFAULT_SETTINGS.mode
     );
-    if (typeof state.settings.adblock.showBlockedCount !== 'boolean') {
-        state.settings.adblock.showBlockedCount = ADBLOCK_DEFAULT_SETTINGS.showBlockedCount;
-    }
+    // In-app adblock settings tab was removed; keep badge/count always visible.
+    state.settings.adblock.showBlockedCount = true;
     if (typeof state.settings.adblock.autoRefreshOnModeChange !== 'boolean') {
         state.settings.adblock.autoRefreshOnModeChange = ADBLOCK_DEFAULT_SETTINGS.autoRefreshOnModeChange;
     }
@@ -5339,7 +5338,7 @@ function updateAdblockBadge(blockedCount) {
     window.AurivoAdblockSettings?.updateBadge?.({
         elements,
         blockedCount,
-        showCount: !!ensureAdblockSettings().showBlockedCount
+        showCount: true
     });
 }
 
