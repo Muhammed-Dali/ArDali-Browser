@@ -4,21 +4,21 @@
 # It installs the prebuilt AppImage from GitHub Releases.
 
 pkgname=aurivo-media-player-bin
-pkgver=0.0.0
+pkgver=2.0.4
 pkgrel=1
 pkgdesc="Aurivo Media Player (AppImage, prebuilt)"
 arch=('x86_64')
 url="https://aurivo.app"
 license=('MIT')
-depends=('fuse2' 'zlib' 'glibc')
+depends=('fuse2' 'zlib' 'glibc' 'ffmpeg')
 provides=('aurivo-media-player')
 conflicts=('aurivo-media-player')
 
 _owner="muhammed-aurivo-dev"
-_repo="Aurivo-Medya-Player"
+_repo="Aurivo-Medya-Player-Linux"
 
 source=(
-  "Aurivo-${pkgver}-linux-x64.AppImage::https://github.com/${_owner}/${_repo}/releases/download/v${pkgver}/Aurivo-${pkgver}-linux-x64.AppImage"
+  "Aurivo-${pkgver}-linux-x86_64.AppImage::https://github.com/${_owner}/${_repo}/releases/download/v${pkgver}/Aurivo-${pkgver}-linux-x86_64.AppImage"
   "com.aurivo.mediaplayer.desktop"
   "com.aurivo.mediaplayer.metainfo.xml"
 )
@@ -29,7 +29,7 @@ prepare() {
 }
 
 package() {
-  install -Dm755 "Aurivo-${pkgver}-linux-x64.AppImage" "${pkgdir}/opt/aurivo/aurivo.AppImage"
+  install -Dm755 "Aurivo-${pkgver}-linux-x86_64.AppImage" "${pkgdir}/opt/aurivo/aurivo.AppImage"
   install -Dm755 /dev/stdin "${pkgdir}/usr/bin/aurivo" <<'EOF'
 #!/usr/bin/env bash
 exec /opt/aurivo/aurivo.AppImage "$@"
@@ -38,4 +38,3 @@ EOF
   install -Dm644 "${srcdir}/aurivo.desktop" "${pkgdir}/usr/share/applications/com.aurivo.mediaplayer.desktop"
   install -Dm644 "${srcdir}/com.aurivo.mediaplayer.metainfo.xml" "${pkgdir}/usr/share/metainfo/com.aurivo.mediaplayer.metainfo.xml"
 }
-
