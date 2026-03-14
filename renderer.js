@@ -3310,14 +3310,12 @@ function setupEventListeners() {
     if (elements.infoBtn) elements.infoBtn.addEventListener('click', showAbout);
     if (elements.adblockBtn) {
         elements.adblockBtn.addEventListener('click', async () => {
-            const opened = await openAdblockDashboardPanel();
-            if (!opened) openSettings('adblock');
+            await openAdblockDashboardPanel();
         });
     }
     if (elements.adblockStatusText) {
         const openAdblockPanelFromStatus = async () => {
-            const opened = await openAdblockDashboardPanel();
-            if (!opened) openSettings('adblock');
+            await openAdblockDashboardPanel();
         };
         elements.adblockStatusText.addEventListener('click', openAdblockPanelFromStatus);
         elements.adblockStatusText.addEventListener('keydown', (e) => {

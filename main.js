@@ -625,6 +625,33 @@ function emitPulseEvent(channel, payload) {
     }
 }
 
+function isAsarPath(targetPath = '') {
+    const normalized = String(targetPath || '').replace(/\\/g, '/');
+    return normalized.includes('.asar/');
+}
+
+function isRealDirectory(targetPath = '') {
+    if (!targetPath || isAsarPath(targetPath)) return false;
+    try {
+        return fs.statSync(targetPath).isDirectory();
+    } catch {
+        return false;
+    }
+}
+
+function isSpawnableBinary(targetPath = '') {
+    if (!targetPath || isAsarPath(targetPath)) return false;
+    try {
+        const st = fs.statSync(targetPath);
+        if (!st.isFile()) return false;
+        const mode = process.platform === 'win32' ? fs.constants.F_OK : fs.constants.X_OK;
+        fs.accessSync(targetPath, mode);
+        return true;
+    } catch {
+        return false;
+    }
+}
+
 function getAurivoPulseRoot() {
     const candidates = [
         path.join(__dirname, 'Aurivo-Pulse'),
@@ -632,7 +659,7 @@ function getAurivoPulseRoot() {
     ];
     for (const p of candidates) {
         try {
-            if (p && fs.existsSync(p) && fs.existsSync(path.join(p, 'Cargo.toml'))) {
+            if (isRealDirectory(p) && !isAsarPath(path.join(p, 'Cargo.toml')) && fs.existsSync(path.join(p, 'Cargo.toml'))) {
                 return p;
             }
         } catch {
@@ -651,12 +678,7 @@ function resolveSafePulseCwd(preferredRoot = '') {
         process.cwd()
     ].filter(Boolean);
     for (const p of candidates) {
-        try {
-            const st = fs.statSync(p);
-            if (st.isDirectory()) return p;
-        } catch {
-            // continue
-        }
+        if (isRealDirectory(p)) return p;
     }
     return process.cwd();
 }
@@ -665,7 +687,7 @@ function findExecutable(cmdName, extraDirs = []) {
     const raw = String(cmdName || '').trim();
     if (!raw) return '';
     if (raw.includes(path.sep)) {
-        return fs.existsSync(raw) ? raw : '';
+        return isSpawnableBinary(raw) ? raw : '';
     }
 
     const dirs = [
@@ -701,7 +723,7 @@ function resolveAurivoPulseLaunch() {
     ].filter(Boolean);
 
     for (const bin of binCandidates) {
-        if (bin && fs.existsSync(bin)) {
+        if (isSpawnableBinary(bin)) {
             return {
                 command: bin,
                 args: ['listen', '--json'],
@@ -746,12 +768,8 @@ function resolveAurivoPulseGuiLaunch() {
     }
 
     for (const bin of pathCandidates.filter(Boolean)) {
-        try {
-            if (bin && fs.existsSync(bin)) {
-                return { command: bin, args: [], cwd: safeCwd, source: 'bundled-gui-binary' };
-            }
-        } catch {
-            // yoksay
+        if (isSpawnableBinary(bin)) {
+            return { command: bin, args: [], cwd: safeCwd, source: 'bundled-gui-binary' };
         }
     }
 
