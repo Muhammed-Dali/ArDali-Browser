@@ -147,6 +147,21 @@ jobs:
       - name: Build Linux packages (AppImage/deb/rpm)
         run: npm run -s build:linux:appimage -- --publish=never
 
+      - name: Verify AppImage contains pulse + adblock resources
+        run: |
+          set -euo pipefail
+          appimage="$(ls -1 dist/*.AppImage | head -n1)"
+          test -n "${appimage}"
+          chmod +x "${appimage}"
+          tmpdir="$(mktemp -d)"
+          (
+            cd "${tmpdir}"
+            "${GITHUB_WORKSPACE}/${appimage}" --appimage-extract >/dev/null
+          )
+          test -f "${tmpdir}/squashfs-root/resources/native-dist/linux/aurivo-pulse"
+          test -f "${tmpdir}/squashfs-root/resources/uDALİ-weman-home/chromium/manifest.json"
+          echo "AppImage resource check OK: aurivo-pulse + uDALİ-weman-home/chromium"
+
       - name: List release files
         run: |
           set -euo pipefail
