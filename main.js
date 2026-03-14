@@ -4494,13 +4494,72 @@ ipcMain.handle('adblock:setConfig', (_event, config) => {
     try { return setAdBlockerConfig(config || {}); } catch { return null; }
 });
 
-async function applyAdblockDashboardBranding(win) {
+function mapUiLangToAdblockLocale(uiLang = '') {
+    const normalized = normalizeUiLang(uiLang) || 'en-US';
+    const lower = normalized.toLowerCase();
+    if (lower.startsWith('pt-br')) return 'pt_BR';
+    if (lower.startsWith('zh-cn')) return 'zh_CN';
+    if (lower.startsWith('zh-tw')) return 'zh_TW';
+    const base = lower.split('-')[0];
+    return base || 'en';
+}
+
+async function applyAdblockDashboardBranding(win, uiLang = 'en-US') {
     try {
         if (!win || win.isDestroyed()) return;
         win.setTitle('Aurivo');
+        const targetLocale = mapUiLangToAdblockLocale(uiLang);
         await win.webContents.executeJavaScript(`
             try {
                 document.title = 'Aurivo';
+                document.documentElement.lang = ${JSON.stringify(targetLocale)}.replace('_', '-');
+
+                const applyLocale = async () => {
+                    const pickMessage = (messages, key) => {
+                        const entry = messages?.[key];
+                        return entry && typeof entry.message === 'string' ? entry.message : '';
+                    };
+                    const applyMessages = (messages) => {
+                        if (!messages || typeof messages !== 'object') return;
+                        for (const el of document.querySelectorAll('[data-i18n]')) {
+                            const key = el.getAttribute('data-i18n');
+                            const msg = pickMessage(messages, key);
+                            if (msg) el.textContent = msg;
+                        }
+                        for (const el of document.querySelectorAll('[data-i18n-title]')) {
+                            const key = el.getAttribute('data-i18n-title');
+                            const msg = pickMessage(messages, key);
+                            if (msg) el.setAttribute('title', msg);
+                        }
+                        for (const el of document.querySelectorAll('[data-i18n-label]')) {
+                            const key = el.getAttribute('data-i18n-label');
+                            const msg = pickMessage(messages, key);
+                            if (msg) el.setAttribute('label', msg);
+                        }
+                        for (const el of document.querySelectorAll('[placeholder]')) {
+                            const key = String(el.getAttribute('placeholder') || '').trim();
+                            const msg = pickMessage(messages, key);
+                            if (msg) el.setAttribute('placeholder', msg);
+                        }
+                    };
+                    const loadMessages = async (locale) => {
+                        try {
+                            const url = chrome?.runtime?.getURL?.('_locales/' + locale + '/messages.json');
+                            if (!url) return null;
+                            const res = await fetch(url);
+                            if (!res.ok) return null;
+                            return await res.json();
+                        } catch {
+                            return null;
+                        }
+                    };
+
+                    const primary = await loadMessages(${JSON.stringify(targetLocale)});
+                    const fallback = await loadMessages('en');
+                    applyMessages(primary || fallback);
+                };
+                applyLocale().catch(() => {});
+
                 if (!document.getElementById('aurivo-dashboard-premium-style')) {
                     const style = document.createElement('style');
                     style.id = 'aurivo-dashboard-premium-style';
@@ -4539,8 +4598,30 @@ async function applyAdblockDashboardBranding(win) {
                         a, .link {
                             color: #7fe6ff !important;
                         }
+                        #dashboard-nav .logo {
+                            display: inline-flex;
+                            align-items: center;
+                            justify-content: center;
+                            width: 30px;
+                            height: 30px;
+                            margin-inline-end: 6px;
+                            border-radius: 8px;
+                            background: linear-gradient(145deg, rgba(49,208,255,0.24), rgba(78,240,183,0.14));
+                            border: 1px solid rgba(109, 218, 255, 0.35);
+                            box-shadow: 0 6px 18px rgba(5, 13, 33, 0.45);
+                        }
+                        #aurivo-logo-shield {
+                            font-size: 15px;
+                            line-height: 1;
+                            filter: drop-shadow(0 0 6px rgba(49,208,255,0.55));
+                        }
                     \`;
                     document.head.appendChild(style);
+                }
+                const logo = document.querySelector('#dashboard-nav .logo');
+                if (logo && !logo.querySelector('#aurivo-logo-shield')) {
+                    logo.innerHTML = '<span id="aurivo-logo-shield" aria-hidden="true">🛡</span>';
+                    logo.setAttribute('title', 'Aurivo');
                 }
                 const brandTargets = Array.from(document.querySelectorAll('h1, h2, .title, .brand, [data-i18n], [data-l10n-id]'));
                 for (const el of brandTargets) {
@@ -4561,6 +4642,7 @@ ipcMain.handle('adblock:openDashboard', async () => {
         const launchInfo = getAdBlockerDashboardLaunchInfo?.() || {};
         const dashboardUrl = String(launchInfo.url || getAdBlockerDashboardUrl() || '').trim();
         const targetPartition = String(launchInfo.partition || WEBVIEW_PARTITION).trim();
+        const uiLang = getUiLanguageSync();
         if (!dashboardUrl) return false;
 
         const currentPartition = String(
@@ -4582,7 +4664,12 @@ ipcMain.handle('adblock:openDashboard', async () => {
             adblockDashboardWindow.show();
             adblockDashboardWindow.focus();
             try { await adblockDashboardWindow.loadURL(dashboardUrl); } catch { }
-            await applyAdblockDashboardBranding(adblockDashboardWindow);
+            try {
+                adblockDashboardWindow.setAutoHideMenuBar(true);
+                adblockDashboardWindow.setMenuBarVisibility(false);
+                adblockDashboardWindow.setMenu(null);
+            } catch { }
+            await applyAdblockDashboardBranding(adblockDashboardWindow, uiLang);
             return true;
         }
 
@@ -4593,7 +4680,7 @@ ipcMain.handle('adblock:openDashboard', async () => {
             minHeight: 700,
             title: 'Aurivo',
             icon: getAppIconImage(),
-            autoHideMenuBar: false,
+            autoHideMenuBar: true,
             parent: mainWindow && !mainWindow.isDestroyed() ? mainWindow : undefined,
             webPreferences: {
                 partition: targetPartition || WEBVIEW_PARTITION,
@@ -4607,6 +4694,10 @@ ipcMain.handle('adblock:openDashboard', async () => {
         adblockDashboardWindow.on('closed', () => {
             adblockDashboardWindow = null;
         });
+        try {
+            adblockDashboardWindow.setMenuBarVisibility(false);
+            adblockDashboardWindow.setMenu(null);
+        } catch { }
         adblockDashboardWindow.webContents.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL) => {
             console.error('[ADBLOCK] dashboard did-fail-load:', { errorCode, errorDescription, validatedURL });
         });
@@ -4620,7 +4711,11 @@ ipcMain.handle('adblock:openDashboard', async () => {
             try { adblockDashboardWindow.setTitle('Aurivo'); } catch { }
         });
         adblockDashboardWindow.webContents.on('did-finish-load', () => {
-            applyAdblockDashboardBranding(adblockDashboardWindow).catch(() => {});
+            try {
+                adblockDashboardWindow.setMenuBarVisibility(false);
+                adblockDashboardWindow.setMenu(null);
+            } catch { }
+            applyAdblockDashboardBranding(adblockDashboardWindow, uiLang).catch(() => {});
         });
 
         try {
@@ -4629,7 +4724,7 @@ ipcMain.handle('adblock:openDashboard', async () => {
             const fallbackUrl = dashboardUrl.replace('/dashboard.html', '/popup.html');
             await adblockDashboardWindow.loadURL(fallbackUrl);
         }
-        await applyAdblockDashboardBranding(adblockDashboardWindow);
+        await applyAdblockDashboardBranding(adblockDashboardWindow, uiLang);
         adblockDashboardWindow.show();
         adblockDashboardWindow.focus();
         return true;
