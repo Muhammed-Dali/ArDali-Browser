@@ -79,12 +79,12 @@ jobs:
             libadwaita-1-dev \
             libasound2-dev \
             libpulse-dev \
+            libsoup-3.0-dev \
             libsdl2-dev \
             libsdl2-image-dev \
             ninja-build \
             pkg-config \
             python3 \
-            python3-pip \
             rpm \
             zlib1g-dev
           update-ca-certificates || true
@@ -93,9 +93,6 @@ jobs:
       - name: Build + install libprojectM v4
         run: |
           set -euo pipefail
-          # Container ortamında güncel CMake garanti edelim.
-          python3 -m pip install --no-cache-dir -U pip "cmake>=3.21"
-          hash -r || true
           cmake --version
 
           PROJECTM_VER="4.1.6"

@@ -77,6 +77,7 @@ jobs:
             libadwaita-1-dev \
             libasound2-dev \
             libpulse-dev \
+            libsoup-3.0-dev \
             libsdl2-dev \
             libsdl2-image-dev \
             ninja-build \
