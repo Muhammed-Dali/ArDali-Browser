@@ -701,7 +701,7 @@ impl App {
         about_dialog.set_issue_url("https://github.com/muhammed-aurivo-dev/Aurivo-Medya-Player-Linux/issues");
         about_dialog.set_support_url("https://github.com/muhammed-aurivo-dev/Aurivo-Medya-Player-Linux");
         about_dialog.set_website("https://github.com/muhammed-aurivo-dev/Aurivo-Medya-Player-Linux");
-        about_dialog.set_version("2.0.5");
+        about_dialog.set_version("2.0.4");
     }
 
     fn try_open_search_inside_aurivo(query: &str, platform: &str) -> bool {

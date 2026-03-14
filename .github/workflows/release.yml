@@ -15,9 +15,9 @@ permissions:
 
 jobs:
   build-linux:
-    # Build in Ubuntu 22.04 so GTK4/libadwaita tabanlı Aurivo-Pulse derlenebilir.
-    runs-on: ubuntu-22.04
-    container: ubuntu:22.04
+    # Build in Ubuntu 24.04 so GTK4/libadwaita requirements are available.
+    runs-on: ubuntu-24.04
+    container: ubuntu:24.04
     defaults:
       run:
         shell: bash
