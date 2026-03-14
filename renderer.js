@@ -5361,7 +5361,7 @@ async function openAdblockDashboardPanel() {
     } catch (e) {
         console.warn('[ADBLOCK] openDashboard error:', e?.message || e);
     }
-    safeNotify('uBO Lite paneli açılamadı', 'error', 2000);
+    safeNotify('Aurivo paneli açılamadı', 'error', 2000);
     return false;
 }
 

@@ -4494,6 +4494,27 @@ ipcMain.handle('adblock:setConfig', (_event, config) => {
     try { return setAdBlockerConfig(config || {}); } catch { return null; }
 });
 
+async function applyAdblockDashboardBranding(win) {
+    try {
+        if (!win || win.isDestroyed()) return;
+        win.setTitle('Aurivo');
+        await win.webContents.executeJavaScript(`
+            try {
+                document.title = 'Aurivo';
+                const brandTargets = Array.from(document.querySelectorAll('h1, h2, .title, .brand, [data-i18n], [data-l10n-id]'));
+                for (const el of brandTargets) {
+                    if (!el || typeof el.textContent !== 'string') continue;
+                    if (/uBO\\s*Lite/i.test(el.textContent)) {
+                        el.textContent = el.textContent.replace(/uBO\\s*Lite/gi, 'Aurivo');
+                    }
+                }
+            } catch {}
+        `, true);
+    } catch {
+        // dashboard CSP/içerik kısıtları nedeniyle başarısız olabilir; en azından pencere başlığı set edilir.
+    }
+}
+
 ipcMain.handle('adblock:openDashboard', async () => {
     try {
         const launchInfo = getAdBlockerDashboardLaunchInfo?.() || {};
@@ -4520,6 +4541,7 @@ ipcMain.handle('adblock:openDashboard', async () => {
             adblockDashboardWindow.show();
             adblockDashboardWindow.focus();
             try { await adblockDashboardWindow.loadURL(dashboardUrl); } catch { }
+            await applyAdblockDashboardBranding(adblockDashboardWindow);
             return true;
         }
 
@@ -4528,7 +4550,7 @@ ipcMain.handle('adblock:openDashboard', async () => {
             height: 860,
             minWidth: 980,
             minHeight: 700,
-            title: 'uBO Lite - Kontrol Paneli',
+            title: 'Aurivo',
             icon: getAppIconImage(),
             autoHideMenuBar: false,
             parent: mainWindow && !mainWindow.isDestroyed() ? mainWindow : undefined,
@@ -4552,6 +4574,13 @@ ipcMain.handle('adblock:openDashboard', async () => {
                 console.warn('[ADBLOCK][dashboard][console]', { message, line, sourceId });
             }
         });
+        adblockDashboardWindow.webContents.on('page-title-updated', (event) => {
+            event.preventDefault();
+            try { adblockDashboardWindow.setTitle('Aurivo'); } catch { }
+        });
+        adblockDashboardWindow.webContents.on('did-finish-load', () => {
+            applyAdblockDashboardBranding(adblockDashboardWindow).catch(() => {});
+        });
 
         try {
             await adblockDashboardWindow.loadURL(dashboardUrl);
@@ -4559,6 +4588,7 @@ ipcMain.handle('adblock:openDashboard', async () => {
             const fallbackUrl = dashboardUrl.replace('/dashboard.html', '/popup.html');
             await adblockDashboardWindow.loadURL(fallbackUrl);
         }
+        await applyAdblockDashboardBranding(adblockDashboardWindow);
         adblockDashboardWindow.show();
         adblockDashboardWindow.focus();
         return true;
