@@ -46,7 +46,7 @@
     function updateBadge({ elements, blockedCount, showCount }) {
         const blocked = Number(blockedCount) || 0;
         if (elements?.adblockBlockedBadge) {
-            if (!showCount || blocked <= 0) {
+            if (!showCount) {
                 elements.adblockBlockedBadge.classList.add('hidden');
                 elements.adblockBlockedBadge.textContent = '0';
             } else {
