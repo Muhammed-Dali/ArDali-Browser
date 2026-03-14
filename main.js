@@ -4504,6 +4504,45 @@ function mapUiLangToAdblockLocale(uiLang = '') {
     return base || 'en';
 }
 
+function mapAdblockModeToUbolLevel(mode = '') {
+    const normalized = String(mode || '').trim().toLowerCase();
+    if (normalized === 'basic') return 1;
+    if (normalized === 'aggressive') return 3;
+    return 2;
+}
+
+async function syncAdblockConfigToDashboard(win) {
+    try {
+        if (!win || win.isDestroyed()) return;
+        const cfg = getAdBlockerConfig?.() || {};
+        const modeLevel = mapAdblockModeToUbolLevel(cfg.mode);
+        const payload = {
+            autoReload: !!cfg.autoReload,
+            showBlockedCount: !!cfg.showBlockedCount,
+            strictBlock: !!cfg.strictBlock,
+            developerMode: !!cfg.developerMode,
+            modeLevel
+        };
+        await win.webContents.executeJavaScript(`
+            try {
+                const send = (what, state) => {
+                    try { chrome.runtime.sendMessage({ what, state }); } catch {}
+                };
+                const cfg = ${JSON.stringify(payload)};
+                try {
+                    chrome.runtime.sendMessage({ what: 'setDefaultFilteringMode', level: Number(cfg.modeLevel) || 2 });
+                } catch {}
+                send('setAutoReload', cfg.autoReload);
+                send('setShowBlockedCount', cfg.showBlockedCount);
+                send('setStrictBlockMode', cfg.strictBlock);
+                send('setDeveloperMode', cfg.developerMode);
+            } catch {}
+        `, true);
+    } catch {
+        // yoksay
+    }
+}
+
 async function applyAdblockDashboardBranding(win, uiLang = 'en-US') {
     try {
         if (!win || win.isDestroyed()) return;
@@ -4670,6 +4709,7 @@ ipcMain.handle('adblock:openDashboard', async () => {
                 adblockDashboardWindow.setMenu(null);
             } catch { }
             await applyAdblockDashboardBranding(adblockDashboardWindow, uiLang);
+            await syncAdblockConfigToDashboard(adblockDashboardWindow);
             return true;
         }
 
@@ -4716,6 +4756,7 @@ ipcMain.handle('adblock:openDashboard', async () => {
                 adblockDashboardWindow.setMenu(null);
             } catch { }
             applyAdblockDashboardBranding(adblockDashboardWindow, uiLang).catch(() => {});
+            syncAdblockConfigToDashboard(adblockDashboardWindow).catch(() => {});
         });
 
         try {
@@ -4725,6 +4766,7 @@ ipcMain.handle('adblock:openDashboard', async () => {
             await adblockDashboardWindow.loadURL(fallbackUrl);
         }
         await applyAdblockDashboardBranding(adblockDashboardWindow, uiLang);
+        await syncAdblockConfigToDashboard(adblockDashboardWindow);
         adblockDashboardWindow.show();
         adblockDashboardWindow.focus();
         return true;

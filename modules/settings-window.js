@@ -16,6 +16,7 @@
             refreshAdblockStats,
             setAdblockMode,
             readAdblockSettingsFromUI,
+            applyAdblockRuntimeConfig,
             updateAdblockBadge,
             handleKeyboard,
             setupSecurityUI,
@@ -124,6 +125,18 @@
         if (elements.adblockAutoRefreshOnModeChange) {
             elements.adblockAutoRefreshOnModeChange.addEventListener('change', () => {
                 readAdblockSettingsFromUI();
+            });
+        }
+        if (elements.adblockStrictBlock) {
+            elements.adblockStrictBlock.addEventListener('change', () => {
+                readAdblockSettingsFromUI();
+                applyAdblockRuntimeConfig?.();
+            });
+        }
+        if (elements.adblockDeveloperMode) {
+            elements.adblockDeveloperMode.addEventListener('change', () => {
+                readAdblockSettingsFromUI();
+                applyAdblockRuntimeConfig?.();
             });
         }
         if (elements.adblockOpenDashboardBtn) {

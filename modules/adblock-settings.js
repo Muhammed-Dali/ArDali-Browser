@@ -18,6 +18,12 @@
         if (elements.adblockAutoRefreshOnModeChange) {
             elements.adblockAutoRefreshOnModeChange.checked = !!adblock?.autoRefreshOnModeChange;
         }
+        if (elements.adblockStrictBlock) {
+            elements.adblockStrictBlock.checked = !!adblock?.strictBlock;
+        }
+        if (elements.adblockDeveloperMode) {
+            elements.adblockDeveloperMode.checked = !!adblock?.developerMode;
+        }
     }
 
     function readSettingsFromUI({ elements, adblock }) {
@@ -27,6 +33,12 @@
         }
         if (elements.adblockAutoRefreshOnModeChange) {
             adblock.autoRefreshOnModeChange = !!elements.adblockAutoRefreshOnModeChange.checked;
+        }
+        if (elements.adblockStrictBlock) {
+            adblock.strictBlock = !!elements.adblockStrictBlock.checked;
+        }
+        if (elements.adblockDeveloperMode) {
+            adblock.developerMode = !!elements.adblockDeveloperMode.checked;
         }
         return adblock;
     }

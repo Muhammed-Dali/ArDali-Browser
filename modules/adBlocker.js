@@ -7,6 +7,8 @@ const UBOL_RELATIVE_PATH = path.join('uDALİ-weman-home', 'chromium');
 
 const DEFAULT_CONFIG = {
     mode: 'ideal', // basic | ideal | aggressive
+    autoReload: false,
+    showBlockedCount: true,
     strictBlock: false,
     developerMode: false,
 };
@@ -226,6 +228,8 @@ function bindStatsTrackingForSession(ses) {
 function getConfig() {
     return {
         mode: normalizeMode(runtimeConfig.mode),
+        autoReload: !!runtimeConfig.autoReload,
+        showBlockedCount: !!runtimeConfig.showBlockedCount,
         strictBlock: !!runtimeConfig.strictBlock,
         developerMode: !!runtimeConfig.developerMode,
         provider: blockerProvider.active,
@@ -236,6 +240,8 @@ function setConfig(next = {}) {
     const patch = (next && typeof next === 'object') ? next : {};
     runtimeConfig = {
         mode: normalizeMode(patch.mode ?? runtimeConfig.mode ?? DEFAULT_CONFIG.mode),
+        autoReload: patch.autoReload === undefined ? !!runtimeConfig.autoReload : !!patch.autoReload,
+        showBlockedCount: patch.showBlockedCount === undefined ? !!runtimeConfig.showBlockedCount : !!patch.showBlockedCount,
         strictBlock: patch.strictBlock === undefined ? !!runtimeConfig.strictBlock : !!patch.strictBlock,
         developerMode: patch.developerMode === undefined ? !!runtimeConfig.developerMode : !!patch.developerMode,
     };

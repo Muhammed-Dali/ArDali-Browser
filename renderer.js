@@ -678,7 +678,9 @@ const pulseQuickRuntime = {
 const ADBLOCK_DEFAULT_SETTINGS = {
     mode: 'ideal',
     showBlockedCount: true,
-    autoRefreshOnModeChange: false
+    autoRefreshOnModeChange: false,
+    strictBlock: false,
+    developerMode: false
 };
 
 function normalizeAdblockMode(mode) {
@@ -697,10 +699,17 @@ function ensureAdblockSettings() {
     state.settings.adblock.mode = normalizeAdblockMode(
         state.settings.adblock.mode || ADBLOCK_DEFAULT_SETTINGS.mode
     );
-    // In-app adblock settings tab was removed; keep badge/count always visible.
-    state.settings.adblock.showBlockedCount = true;
+    if (typeof state.settings.adblock.showBlockedCount !== 'boolean') {
+        state.settings.adblock.showBlockedCount = ADBLOCK_DEFAULT_SETTINGS.showBlockedCount;
+    }
     if (typeof state.settings.adblock.autoRefreshOnModeChange !== 'boolean') {
         state.settings.adblock.autoRefreshOnModeChange = ADBLOCK_DEFAULT_SETTINGS.autoRefreshOnModeChange;
+    }
+    if (typeof state.settings.adblock.strictBlock !== 'boolean') {
+        state.settings.adblock.strictBlock = ADBLOCK_DEFAULT_SETTINGS.strictBlock;
+    }
+    if (typeof state.settings.adblock.developerMode !== 'boolean') {
+        state.settings.adblock.developerMode = ADBLOCK_DEFAULT_SETTINGS.developerMode;
     }
 
     return state.settings.adblock;
@@ -709,7 +718,11 @@ function ensureAdblockSettings() {
 function getAdblockBridgeConfig() {
     const adblock = ensureAdblockSettings();
     return {
-        mode: normalizeAdblockMode(adblock.mode)
+        mode: normalizeAdblockMode(adblock.mode),
+        autoReload: !!adblock.autoRefreshOnModeChange,
+        showBlockedCount: !!adblock.showBlockedCount,
+        strictBlock: !!adblock.strictBlock,
+        developerMode: !!adblock.developerMode
     };
 }
 
@@ -1385,6 +1398,8 @@ function cacheElements() {
     elements.adblockModeCards = document.querySelectorAll('.adblock-mode-card[data-adblock-mode]');
     elements.adblockShowBlockedCount = document.getElementById('adblockShowBlockedCount');
     elements.adblockAutoRefreshOnModeChange = document.getElementById('adblockAutoRefreshOnModeChange');
+    elements.adblockStrictBlock = document.getElementById('adblockStrictBlock');
+    elements.adblockDeveloperMode = document.getElementById('adblockDeveloperMode');
     elements.languageSelect = document.getElementById('languageSelect');
     elements.themeSelect = document.getElementById('themeSelect');
     elements.themeSystemHint = document.getElementById('themeSystemHint');
@@ -3117,6 +3132,7 @@ function setupStandaloneSettingsEventListeners() {
         refreshAdblockStats,
         setAdblockMode,
         readAdblockSettingsFromUI,
+        applyAdblockRuntimeConfig,
         updateAdblockBadge,
         handleKeyboard,
         setupSecurityUI,
@@ -3846,6 +3862,18 @@ function setupEventListeners() {
     if (elements.adblockAutoRefreshOnModeChange) {
         elements.adblockAutoRefreshOnModeChange.addEventListener('change', () => {
             readAdblockSettingsFromUI();
+        });
+    }
+    if (elements.adblockStrictBlock) {
+        elements.adblockStrictBlock.addEventListener('change', () => {
+            readAdblockSettingsFromUI();
+            applyAdblockRuntimeConfig();
+        });
+    }
+    if (elements.adblockDeveloperMode) {
+        elements.adblockDeveloperMode.addEventListener('change', () => {
+            readAdblockSettingsFromUI();
+            applyAdblockRuntimeConfig();
         });
     }
     if (elements.adblockOpenDashboardBtn) {
@@ -5338,7 +5366,7 @@ function updateAdblockBadge(blockedCount) {
     window.AurivoAdblockSettings?.updateBadge?.({
         elements,
         blockedCount,
-        showCount: true
+        showCount: !!ensureAdblockSettings().showBlockedCount
     });
 }
 
@@ -13664,6 +13692,8 @@ function resetAdblockDefaults() {
     }
     if (elements.adblockShowBlockedCount) elements.adblockShowBlockedCount.checked = !!ADBLOCK_DEFAULT_SETTINGS.showBlockedCount;
     if (elements.adblockAutoRefreshOnModeChange) elements.adblockAutoRefreshOnModeChange.checked = !!ADBLOCK_DEFAULT_SETTINGS.autoRefreshOnModeChange;
+    if (elements.adblockStrictBlock) elements.adblockStrictBlock.checked = !!ADBLOCK_DEFAULT_SETTINGS.strictBlock;
+    if (elements.adblockDeveloperMode) elements.adblockDeveloperMode.checked = !!ADBLOCK_DEFAULT_SETTINGS.developerMode;
 }
 
 function resetCurrentSettingsTab() {
