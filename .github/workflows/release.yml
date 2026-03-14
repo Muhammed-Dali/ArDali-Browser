@@ -67,6 +67,7 @@ jobs:
             ffmpeg \
             git \
             libfreetype6-dev \
+            libglib2.0-dev \
             libgl1-mesa-dev \
             libglu1-mesa-dev \
             libgtk-4-dev \
