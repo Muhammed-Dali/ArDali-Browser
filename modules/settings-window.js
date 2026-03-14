@@ -6,6 +6,7 @@
             confirmAndRelaunchApp,
             closeSettings,
             applySettings,
+            saveSettings,
             resetPlaybackDefaults,
             resetListenDefaults,
             resetCurrentSettingsTab,
@@ -113,30 +114,37 @@
 
         if (elements.adblockModeCards?.length) {
             elements.adblockModeCards.forEach((card) => {
-                card.addEventListener('click', () => setAdblockMode(card.dataset.adblockMode));
+                card.addEventListener('click', () => {
+                    setAdblockMode(card.dataset.adblockMode);
+                    saveSettings?.().catch?.(() => {});
+                });
             });
         }
         if (elements.adblockShowBlockedCount) {
             elements.adblockShowBlockedCount.addEventListener('change', () => {
                 readAdblockSettingsFromUI();
                 updateAdblockBadge(deps.getBlockedCount());
+                saveSettings?.().catch?.(() => {});
             });
         }
         if (elements.adblockAutoRefreshOnModeChange) {
             elements.adblockAutoRefreshOnModeChange.addEventListener('change', () => {
                 readAdblockSettingsFromUI();
+                saveSettings?.().catch?.(() => {});
             });
         }
         if (elements.adblockStrictBlock) {
             elements.adblockStrictBlock.addEventListener('change', () => {
                 readAdblockSettingsFromUI();
                 applyAdblockRuntimeConfig?.();
+                saveSettings?.().catch?.(() => {});
             });
         }
         if (elements.adblockDeveloperMode) {
             elements.adblockDeveloperMode.addEventListener('change', () => {
                 readAdblockSettingsFromUI();
                 applyAdblockRuntimeConfig?.();
+                saveSettings?.().catch?.(() => {});
             });
         }
         if (elements.adblockOpenDashboardBtn) {

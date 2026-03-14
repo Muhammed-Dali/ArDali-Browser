@@ -4491,7 +4491,13 @@ ipcMain.handle('adblock:getConfig', () => {
 });
 
 ipcMain.handle('adblock:setConfig', (_event, config) => {
-    try { return setAdBlockerConfig(config || {}); } catch { return null; }
+    try {
+        const next = setAdBlockerConfig(config || {});
+        if (adblockDashboardWindow && !adblockDashboardWindow.isDestroyed()) {
+            syncAdblockConfigToDashboard(adblockDashboardWindow).catch(() => {});
+        }
+        return next;
+    } catch { return null; }
 });
 
 function mapUiLangToAdblockLocale(uiLang = '') {
@@ -4723,7 +4729,6 @@ ipcMain.handle('adblock:openDashboard', async () => {
                 adblockDashboardWindow.setMenu(null);
             } catch { }
             await applyAdblockDashboardBranding(adblockDashboardWindow, uiLang);
-            await syncAdblockConfigToDashboard(adblockDashboardWindow);
             return true;
         }
 
@@ -4770,7 +4775,6 @@ ipcMain.handle('adblock:openDashboard', async () => {
                 adblockDashboardWindow.setMenu(null);
             } catch { }
             applyAdblockDashboardBranding(adblockDashboardWindow, uiLang).catch(() => {});
-            syncAdblockConfigToDashboard(adblockDashboardWindow).catch(() => {});
         });
 
         try {
@@ -4780,7 +4784,6 @@ ipcMain.handle('adblock:openDashboard', async () => {
             await adblockDashboardWindow.loadURL(fallbackUrl);
         }
         await applyAdblockDashboardBranding(adblockDashboardWindow, uiLang);
-        await syncAdblockConfigToDashboard(adblockDashboardWindow);
         adblockDashboardWindow.show();
         adblockDashboardWindow.focus();
         return true;
