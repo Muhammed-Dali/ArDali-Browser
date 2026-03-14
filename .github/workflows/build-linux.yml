@@ -67,11 +67,15 @@ jobs:
             libfreetype6-dev \
             libgl1-mesa-dev \
             libglu1-mesa-dev \
+            libgtk-4-dev \
             libfuse2 \
             libglm-dev \
             libglew-dev \
             libjpeg-dev \
             libpng-dev \
+            libadwaita-1-dev \
+            libasound2-dev \
+            libpulse-dev \
             libsdl2-dev \
             libsdl2-image-dev \
             ninja-build \
@@ -109,6 +113,17 @@ jobs:
 
       - name: Build native audio addon (aurivo_audio.node)
         run: npm --prefix native ci
+
+      - name: Setup Rust toolchain (for Aurivo-Pulse)
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Build Aurivo-Pulse binary
+        run: |
+          set -euo pipefail
+          cargo build --release --manifest-path Aurivo-Pulse/Cargo.toml
+          mkdir -p native-dist/linux
+          cp -f Aurivo-Pulse/target/release/aurivo-pulse native-dist/linux/aurivo-pulse
+          chmod +x native-dist/linux/aurivo-pulse
 
       - name: Build projectM visualizer (aurivo-projectm-visualizer)
         run: |

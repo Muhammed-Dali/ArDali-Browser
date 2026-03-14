@@ -1,6 +1,6 @@
 {
   "name": "aurivo-media-player",
-  "version": "2.0.3",
+  "version": "2.0.4",
   "description": "Aurivo Media Player - Electron App",
   "main": "main.js",
   "scripts": {
@@ -238,6 +238,10 @@
           "to": "bin/ffmpeg"
         },
         {
+          "from": "uDALİ-weman-home/chromium",
+          "to": "uDALİ-weman-home/chromium"
+        },
+        {
           "from": "native/build/Release",
           "to": "native/build/Release",
           "filter": [
@@ -259,6 +263,7 @@
           "from": "native-dist/linux",
           "to": "resources/native-dist/linux",
           "filter": [
+            "aurivo-pulse",
             "aurivo-projectm-visualizer",
             "libprojectM-4.so*",
             "libprojectM-4-playlist.so*"

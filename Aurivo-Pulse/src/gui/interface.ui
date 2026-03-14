@@ -679,7 +679,6 @@
                         <child>
                           <object class="AdwEntryRow" id="acoustid_api_key_setting">
                             <property name="show-apply-button">False</property>
-                            <property name="subtitle" translatable="yes">Used when Hybrid or AcoustID-only mode is active.</property>
                             <property name="title" translatable="yes">AcoustID API Key</property>
                             <signal name="notify::text" handler="acoustid_api_key_changed"/>
                           </object>

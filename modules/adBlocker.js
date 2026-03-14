@@ -45,10 +45,31 @@ function hasFile(p) {
 }
 
 function resolveUbolExtensionPath() {
+    const discovered = [];
+    const scanRoots = [
+        path.join(__dirname, '..'),
+        process.resourcesPath || '',
+        path.join(process.resourcesPath || '', 'app.asar.unpacked'),
+    ].filter(Boolean);
+    for (const root of scanRoots) {
+        try {
+            const entries = fs.readdirSync(root, { withFileTypes: true });
+            for (const entry of entries) {
+                if (!entry?.isDirectory?.()) continue;
+                const name = String(entry.name || '').toLowerCase();
+                if (!name.includes('weman-home')) continue;
+                discovered.push(path.join(root, entry.name, 'chromium'));
+            }
+        } catch {
+            // yoksay
+        }
+    }
+
     const candidates = [
         path.join(__dirname, '..', UBOL_RELATIVE_PATH),
         path.join(process.resourcesPath || '', UBOL_RELATIVE_PATH),
         path.join(process.resourcesPath || '', 'app.asar.unpacked', UBOL_RELATIVE_PATH),
+        ...discovered,
     ];
 
     for (const candidate of candidates) {

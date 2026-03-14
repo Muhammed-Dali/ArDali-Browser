@@ -689,12 +689,15 @@ function resolveAurivoPulseLaunch() {
     const root = getAurivoPulseRoot();
     const safeCwd = resolveSafePulseCwd(root);
     const exeName = process.platform === 'win32' ? 'aurivo-pulse.exe' : 'aurivo-pulse';
+    const platformSubdir = process.platform === 'win32' ? 'windows' : (process.platform === 'linux' ? 'linux' : process.platform);
     const binCandidates = [
         path.join(root, 'target', 'release', exeName),
         path.join(root, 'target', 'debug', exeName),
         path.join(__dirname, 'Aurivo-Pulse', 'target', 'release', exeName),
         path.join(process.resourcesPath || '', 'Aurivo-Pulse', 'target', 'release', exeName),
-        path.join(process.resourcesPath || '', 'Aurivo-Pulse', exeName)
+        path.join(process.resourcesPath || '', 'Aurivo-Pulse', exeName),
+        path.join(process.resourcesPath || '', 'native-dist', exeName),
+        path.join(process.resourcesPath || '', 'native-dist', platformSubdir, exeName)
     ].filter(Boolean);
 
     for (const bin of binCandidates) {
@@ -720,7 +723,10 @@ function resolveAurivoPulseLaunch() {
 function resolveAurivoPulseGuiLaunch() {
     const root = getAurivoPulseRoot();
     const safeCwd = resolveSafePulseCwd(root);
+    const hasLocalPulseSource = !!(root && fs.existsSync(path.join(root, 'Cargo.toml')));
     const isWin = process.platform === 'win32';
+    const isPackaged = !!app?.isPackaged;
+    const platformSubdir = isWin ? 'windows' : (process.platform === 'linux' ? 'linux' : process.platform);
     const exeNames = isWin
         ? ['aurivo-pulse.exe', 'songrec.exe']
         : ['aurivo-pulse', 'songrec'];
@@ -733,7 +739,9 @@ function resolveAurivoPulseGuiLaunch() {
             path.join(__dirname, 'Aurivo-Pulse', 'target', 'release', exeName),
             path.join(__dirname, 'Aurivo-Pulse', 'target', 'debug', exeName),
             path.join(process.resourcesPath || '', 'Aurivo-Pulse', 'target', 'release', exeName),
-            path.join(process.resourcesPath || '', 'Aurivo-Pulse', exeName)
+            path.join(process.resourcesPath || '', 'Aurivo-Pulse', exeName),
+            path.join(process.resourcesPath || '', 'native-dist', exeName),
+            path.join(process.resourcesPath || '', 'native-dist', platformSubdir, exeName)
         );
     }
 
@@ -757,6 +765,11 @@ function resolveAurivoPulseGuiLaunch() {
             cwd: root,
             source: 'cargo-run-gui'
         };
+    }
+
+    // Yerel Aurivo-Pulse kaynak kodu varsa, sistemdeki farklı aurivo-pulse/songrec binary'sine düşme.
+    if (hasLocalPulseSource && !isPackaged) {
+        return null;
     }
 
     const systemAurivoPulse = findExecutable('aurivo-pulse', ['/usr/bin', '/usr/local/bin', '/bin']);
@@ -4190,11 +4203,50 @@ ipcMain.handle('pulse:openWindow', async () => {
         cwd: launch.cwd,
         env: buildPulseGuiEnv(),
         detached: false,
-        stdio: 'ignore'
+        stdio: ['ignore', 'pipe', 'pipe']
     });
 
     aurivoPulseGuiProc = child;
     aurivoPulseGuiLang = nextUiLang;
+    let startupStderr = '';
+    child.stderr?.on('data', (chunk) => {
+        startupStderr += String(chunk || '');
+        if (startupStderr.length > 4000) {
+            startupStderr = startupStderr.slice(-4000);
+        }
+    });
+    child.stdout?.on('data', () => { /* başlangıçta sadece alive kontrolü için pipe açık */ });
+
+    const startupResult = await new Promise((resolve) => {
+        let settled = false;
+        const settle = (payload) => {
+            if (settled) return;
+            settled = true;
+            resolve(payload);
+        };
+        const timer = setTimeout(() => settle({ ok: true }), 1400);
+        child.once('error', (err) => {
+            clearTimeout(timer);
+            settle({ ok: false, error: err?.message || String(err || 'spawn error') });
+        });
+        child.once('close', (code) => {
+            clearTimeout(timer);
+            settle({
+                ok: false,
+                error: `Aurivo-Pulse erken kapandı (exit code ${code ?? 'unknown'})`
+            });
+        });
+    });
+    if (!startupResult?.ok) {
+        if (aurivoPulseGuiProc === child) {
+            aurivoPulseGuiProc = null;
+            aurivoPulseGuiLang = '';
+        }
+        const stderrShort = String(startupStderr || '').trim();
+        const extra = stderrShort ? ` | stderr: ${stderrShort.split('\n').slice(-2).join(' ')}` : '';
+        throw new Error(`${startupResult?.error || 'Aurivo-Pulse GUI başlatılamadı'}${extra}`);
+    }
+
     child.once('close', () => {
         if (aurivoPulseGuiProc === child) {
             aurivoPulseGuiProc = null;
@@ -5049,16 +5101,28 @@ ipcMain.handle('media:getVideoThumbnail', async (_event, filePath) => {
 });
 
 function getFfmpegPathForEnv() {
-    // Prod sürümde paketlenmiş ffmpeg'i kullan, geliştirmede sistem ffmpeg
-    let ffmpegPath = 'ffmpeg';
+    // Önce paketlenmiş ffmpeg, bulunamazsa sistem ffmpeg'e düş.
+    const candidates = [];
     if (app.isPackaged) {
-        if (process.platform === 'win32') {
-            ffmpegPath = path.join(process.resourcesPath, 'bin', 'ffmpeg.exe');
-        } else {
-            ffmpegPath = path.join(process.resourcesPath, 'bin', 'ffmpeg');
+        const packed = process.platform === 'win32'
+            ? path.join(process.resourcesPath, 'bin', 'ffmpeg.exe')
+            : path.join(process.resourcesPath, 'bin', 'ffmpeg');
+        candidates.push(packed);
+    }
+    candidates.push(findExecutable('ffmpeg', ['/usr/bin', '/usr/local/bin', '/bin']) || 'ffmpeg');
+
+    for (const candidate of candidates) {
+        const value = String(candidate || '').trim();
+        if (!value) continue;
+        if (value === 'ffmpeg') return value;
+        try {
+            fs.accessSync(value, fs.constants.X_OK);
+            return value;
+        } catch {
+            // sonraki adayı dene
         }
     }
-    return ffmpegPath;
+    return 'ffmpeg';
 }
 
 function normalizeExcludedPaths(excludedFolders = []) {
@@ -6133,6 +6197,19 @@ ipcMain.handle('audio:getFFTData', () => {
 ipcMain.handle('audio:getSpectrumBands', (event, numBands) => {
     if (!audioEngine || !isNativeAudioAvailable) return [];
     return audioEngine.getSpectrumBands(numBands || 64);
+});
+
+// Ham PCM verisi (visualizer fallback için)
+ipcMain.handle('audio:getPCMData', (event, framesPerChannel) => {
+    if (!audioEngine || !isNativeAudioAvailable || typeof audioEngine.getPCMData !== 'function') {
+        return { channels: 0, data: new Float32Array(0) };
+    }
+    try {
+        const frames = Math.max(128, Math.min(4096, Number(framesPerChannel) || 1024));
+        return audioEngine.getPCMData(frames);
+    } catch {
+        return { channels: 0, data: new Float32Array(0) };
+    }
 });
 
 // Reverb parametreleri (destekleniyorsa)

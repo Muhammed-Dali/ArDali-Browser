@@ -1178,11 +1178,12 @@ body:not(.web-mode) #webDrawerToggleBtn {
     display: none;
 }
 
+/* DeliBlock kalkanı her sayfada görünür kalsın; Web dışındayken sadece pasif göster */
 body:not(.web-mode) #adblockBtn {
-    display: none;
+    opacity: 0.72;
 }
 body:not(.web-mode) #adblockStatusText {
-    display: none;
+    opacity: 0.72;
 }
 
 .nav-badge {

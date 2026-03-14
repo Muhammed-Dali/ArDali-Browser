@@ -361,7 +361,8 @@ const createAudioAPI = () => {
         spectrum: {
             getFFT: () => ipcRenderer.invoke('audio:getFFTData'),
             getBands: (numBands) => ipcRenderer.invoke('audio:getSpectrumBands', numBands || 64),
-            getLevels: () => ipcRenderer.invoke('audio:getChannelLevels')
+            getLevels: () => ipcRenderer.invoke('audio:getChannelLevels'),
+            getPCM: (framesPerChannel) => ipcRenderer.invoke('audio:getPCMData', framesPerChannel || 1024)
         },
 
         // Balance

@@ -1859,19 +1859,21 @@ function setAppMasterVolume(value, options = {}) {
         window.aurivo.audio.setVolume(safeValue / 100);
     }
 
+    const useWebAudioGainPath = !useNativeAudio && state.activeMedia === 'audio' && !!webAudioOutputGainNode;
     const activePlayer = getActiveAudioPlayer();
     if (!state.crossfadeInProgress && activePlayer) {
-        activePlayer.volume = safeValue / 100;
-        activePlayer.muted = state.isMuted;
+        activePlayer.volume = useWebAudioGainPath ? 1 : (safeValue / 100);
+        activePlayer.muted = useWebAudioGainPath ? false : state.isMuted;
     }
     if (elements.videoPlayer) {
         elements.videoPlayer.volume = safeValue / 100;
         elements.videoPlayer.muted = state.isMuted;
     }
     if (elements.audio) {
-        elements.audio.volume = safeValue / 100;
-        elements.audio.muted = state.isMuted;
+        elements.audio.volume = useWebAudioGainPath ? 1 : (safeValue / 100);
+        elements.audio.muted = useWebAudioGainPath ? false : state.isMuted;
     }
+    setWebAudioOutputGainFromState();
 
     if (syncMainSlider && elements.volumeSlider) {
         elements.volumeSlider.value = safeValue;
@@ -3073,7 +3075,10 @@ async function restorePlaybackStartupState() {
                     const activePlayer = getActiveAudioPlayer();
                     if (activePlayer) {
                         activePlayer.src = toLocalFileUrl(item.path);
-                        activePlayer.volume = (state.volume || 0) / 100;
+                        const useWebAudioGainPath = !useNativeAudio && !!webAudioOutputGainNode;
+                        activePlayer.volume = useWebAudioGainPath ? 1 : ((state.volume || 0) / 100);
+                        activePlayer.muted = useWebAudioGainPath ? false : state.isMuted;
+                        setWebAudioOutputGainFromState();
                     }
                 }
             }
@@ -7553,6 +7558,11 @@ function handleSidebarClick(btn) {
     if (page === 'pulse') {
         const prevActive = document.querySelector('.sidebar-btn[data-page].active');
         Promise.resolve(window.aurivo?.pulse?.openWindow?.())
+            .then((result) => {
+                if (result?.success) {
+                    safeNotify('Aurivo-Pulse penceresi açıldı.', 'info', 1400);
+                }
+            })
             .catch((e) => {
                 safeNotify(`Aurivo-Pulse penceresi açılamadı: ${e?.message || e}`, 'error', 3200);
             })
@@ -11435,7 +11445,10 @@ function playWithHTML5Audio(item) {
     const activePlayer = getActiveAudioPlayer();
     const encodedPath = toLocalFileUrl(item.path);
     activePlayer.src = encodedPath;
-    activePlayer.volume = state.volume / 100;
+    const useWebAudioGainPath = !useNativeAudio && !!webAudioOutputGainNode;
+    activePlayer.volume = useWebAudioGainPath ? 1 : (state.volume / 100);
+    activePlayer.muted = useWebAudioGainPath ? false : state.isMuted;
+    setWebAudioOutputGainFromState();
     activePlayer.play();
 }
 
@@ -13830,6 +13843,7 @@ function handleKeyboard(e) {
 let audioContext, analyser, dataArray;
 let htmlAudioSourceNodeA = null;
 let htmlAudioSourceNodeB = null;
+let webAudioOutputGainNode = null;
 let visualizerTimerId = null;
 let visualizerInFlight = false;
 let visualizerIsNative = false;
@@ -13844,6 +13858,21 @@ function getVisualizerReleaseDropMultiplier() {
     if (state.activeMedia !== 'audio') return 1;
     if (state.isPlaying) return 1;
     return 2.1;
+}
+
+function setWebAudioOutputGainFromState() {
+    if (useNativeAudio) return;
+    if (!audioContext || !webAudioOutputGainNode) return;
+    const gain = Math.max(0, Math.min(1, (Number(state.volume) || 0) / 100));
+    try {
+        if (typeof webAudioOutputGainNode.gain.setTargetAtTime === 'function') {
+            webAudioOutputGainNode.gain.setTargetAtTime(gain, audioContext.currentTime || 0, 0.015);
+        } else {
+            webAudioOutputGainNode.gain.value = gain;
+        }
+    } catch {
+        webAudioOutputGainNode.gain.value = gain;
+    }
 }
 
 // Görselleştirici Ayarları
@@ -15287,13 +15316,16 @@ function setupVisualizer() {
             analyser = audioContext.createAnalyser();
             analyser.fftSize = 256;
             analyser.smoothingTimeConstant = 0.8;
+            webAudioOutputGainNode = audioContext.createGain();
 
             if (!htmlAudioSourceNodeA) htmlAudioSourceNodeA = audioContext.createMediaElementSource(elements.audioA);
             if (!htmlAudioSourceNodeB) htmlAudioSourceNodeB = audioContext.createMediaElementSource(elements.audioB);
 
             htmlAudioSourceNodeA.connect(analyser);
             htmlAudioSourceNodeB.connect(analyser);
-            analyser.connect(audioContext.destination);
+            analyser.connect(webAudioOutputGainNode);
+            webAudioOutputGainNode.connect(audioContext.destination);
+            setWebAudioOutputGainFromState();
 
             dataArray = new Uint8Array(analyser.frequencyBinCount);
             visualizerIsNative = false;
@@ -15301,6 +15333,7 @@ function setupVisualizer() {
             console.log('Visualizer başlatılamadı:', e);
             visualizerIsNative = false;
             analyser = null;
+            webAudioOutputGainNode = null;
         }
     }
 
