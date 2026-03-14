@@ -4501,6 +4501,47 @@ async function applyAdblockDashboardBranding(win) {
         await win.webContents.executeJavaScript(`
             try {
                 document.title = 'Aurivo';
+                if (!document.getElementById('aurivo-dashboard-premium-style')) {
+                    const style = document.createElement('style');
+                    style.id = 'aurivo-dashboard-premium-style';
+                    style.textContent = \`
+                        :root {
+                            --aurivo-accent: #31d0ff;
+                            --aurivo-accent-2: #4ef0b7;
+                            --aurivo-bg-1: #090f1e;
+                            --aurivo-bg-2: #0f1b35;
+                            --aurivo-card: rgba(17, 28, 56, 0.72);
+                        }
+                        html, body {
+                            background:
+                                radial-gradient(1200px 420px at 0% -10%, rgba(49,208,255,0.22), transparent 58%),
+                                radial-gradient(900px 380px at 100% 0%, rgba(78,240,183,0.18), transparent 62%),
+                                linear-gradient(180deg, var(--aurivo-bg-2) 0%, var(--aurivo-bg-1) 100%) !important;
+                            color: #e9f6ff !important;
+                        }
+                        .body, .pane, .card, .panel, .box, section, main {
+                            border-radius: 14px !important;
+                        }
+                        .card, .panel, .box, section {
+                            background: var(--aurivo-card) !important;
+                            border: 1px solid rgba(103, 182, 255, 0.25) !important;
+                            box-shadow: 0 12px 30px rgba(0, 0, 0, 0.28) !important;
+                            backdrop-filter: blur(10px);
+                        }
+                        button, .button, input, select {
+                            border-radius: 10px !important;
+                        }
+                        .active, [aria-selected="true"], [aria-checked="true"], [data-selected="true"] {
+                            outline-color: var(--aurivo-accent) !important;
+                            border-color: var(--aurivo-accent) !important;
+                            box-shadow: 0 0 0 1px rgba(49, 208, 255, 0.28), 0 0 0 6px rgba(49, 208, 255, 0.08) !important;
+                        }
+                        a, .link {
+                            color: #7fe6ff !important;
+                        }
+                    \`;
+                    document.head.appendChild(style);
+                }
                 const brandTargets = Array.from(document.querySelectorAll('h1, h2, .title, .brand, [data-i18n], [data-l10n-id]'));
                 for (const el of brandTargets) {
                     if (!el || typeof el.textContent !== 'string') continue;

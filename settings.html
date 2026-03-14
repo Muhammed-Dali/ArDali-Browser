@@ -44,10 +44,6 @@
                                         <span class="settings-tab-icon material-symbols-rounded" aria-hidden="true">headphones</span>
                                         <span class="settings-tab-label" data-i18n="settings.tabs.audio">Ses Çıkışı</span>
                                     </button>
-                                    <button class="settings-tab" data-tab="adblock">
-                                        <span class="settings-tab-icon material-symbols-rounded" aria-hidden="true">shield</span>
-                                        <span class="settings-tab-label" data-i18n="settings.tabs.adblock">DeliBlock</span>
-                                    </button>
                                 </div>
                                 <div class="settings-content">
                                     <div class="settings-page active" id="playbackSettings">
@@ -927,64 +923,6 @@
                                                 <span data-i18n="settings.audio.volumeBoost">Ses artırma</span>
                                             </label>
                                             <div class="settings-sub" data-i18n="settings.audio.volumeBoost.hint">Düşük sesli videolarda sesi daha güçlü hissettirmek için ek kazanç uygular.</div>
-                                        </div>
-                                    </div>
-                                    <div class="settings-page hidden" id="adblockSettings">
-                                        <h3 data-i18n="settings.adblock.title">DeliBlock (Web Reklam Engelleyici)</h3>
-                                        <div class="settings-group">
-                                            <h4>Filtreleme Modu</h4>
-                                            <p class="security-hint">Mod arttıkça daha fazla reklam/öğe temizlenir; bazı sitelerde uyumluluk düşebilir.</p>
-                                            <div class="adblock-mode-grid" id="adblockModeGrid">
-                                                <button type="button" class="adblock-mode-card" data-adblock-mode="basic">
-                                                    <strong>Temel</strong>
-                                                    <span>Sadece güvenli ağ engelleme, minimum müdahale.</span>
-                                                </button>
-                                                <button type="button" class="adblock-mode-card" data-adblock-mode="ideal">
-                                                    <strong>İdeal</strong>
-                                                    <span>Ağ + YouTube arayüz temizliği, önerilen mod.</span>
-                                                </button>
-                                                <button type="button" class="adblock-mode-card" data-adblock-mode="aggressive">
-                                                    <strong>Kapsamlı</strong>
-                                                    <span>Daha sert filtreleme, daha fazla müdahale.</span>
-                                                </button>
-                                            </div>
-                                        </div>
-                                        <div class="settings-group">
-                                            <h4>Davranış</h4>
-                                            <label class="checkbox-label">
-                                                <input type="checkbox" id="adblockShowBlockedCount" checked>
-                                                <span>Engellenen istek sayısını üst çubukta göster</span>
-                                            </label>
-                                            <label class="checkbox-label">
-                                                <input type="checkbox" id="adblockAutoRefreshOnModeChange">
-                                                <span>Mod değişince web sayfasını otomatik yenile</span>
-                                            </label>
-                                        </div>
-                                        <div class="settings-group">
-                                            <h4>Canlı Durum</h4>
-                                            <div class="setting-row">
-                                                <span>Engellenen istek</span>
-                                                <strong id="adblockBlockedCount">0</strong>
-                                            </div>
-                                            <div class="setting-row">
-                                                <span>Toplam istek</span>
-                                                <strong id="adblockTotalCount">0</strong>
-                                            </div>
-                                            <div class="setting-row">
-                                                <span>Yüklenen ruleset</span>
-                                                <strong id="adblockRulesetCount">-</strong>
-                                            </div>
-                                            <div class="setting-row">
-                                                <span>Aktif alan adı kuralı</span>
-                                                <strong id="adblockDomainRuleCount">-</strong>
-                                            </div>
-                                        </div>
-                                        <div class="settings-group">
-                                            <h4>Not</h4>
-                                            <p class="security-hint">Domain izin listesi ve gelişmiş engelleme yönetimi doğrudan uBlock Origin Lite panelinden yapılır.</p>
-                                            <div class="setting-row">
-                                                <button class="btn btn-small" id="adblockOpenDashboardBtn">Aurivo Panelini Aç</button>
-                                            </div>
                                         </div>
                                     </div>
                                 </div>

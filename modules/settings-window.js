@@ -175,7 +175,9 @@
 
         document.addEventListener('keydown', handleKeyboard);
         setupSecurityUI();
-        startAdblockStatsPolling();
+        if (elements.adblockOpenDashboardBtn || elements.adblockModeCards?.length) {
+            startAdblockStatsPolling();
+        }
     }
 
     window.AurivoSettingsWindow = {
