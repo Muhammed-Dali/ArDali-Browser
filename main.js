@@ -4776,10 +4776,23 @@ async function applyAdblockDashboardBranding(win, uiLang = 'en-US') {
 }
 
 function resolveAdblockDashboardUrlFallback(preferredPartition = '') {
+    const getSessionExtensionsApiMain = (ses) => {
+        return (ses && typeof ses === 'object' && ses.extensions && typeof ses.extensions === 'object')
+            ? ses.extensions
+            : null;
+    };
+    const getAllExtensionsMain = (ses) => {
+        const extApi = getSessionExtensionsApiMain(ses);
+        if (extApi && typeof extApi.getAllExtensions === 'function') {
+            return extApi.getAllExtensions();
+        }
+        return {};
+    };
+
     const pickFromSession = (ses, partitionLabel = '') => {
         try {
-            if (!ses || typeof ses.getAllExtensions !== 'function') return { url: '', partition: '' };
-            const all = ses.getAllExtensions();
+            if (!ses) return { url: '', partition: '' };
+            const all = getAllExtensionsMain(ses);
             const list = Array.isArray(all) ? all : Object.values(all || {});
             const ext = list.find((item) => /uBlock Origin Lite|uBO Lite/i.test(String(item?.name || '')));
             const extId = String(ext?.id || '').trim();
@@ -4855,6 +4868,26 @@ function resolveBundledUbolExtensionPathForDashboard() {
 }
 
 async function ensureAdblockDashboardLaunchInfo(preferredPartition = '') {
+    const getSessionExtensionsApiMain = (ses) => {
+        return (ses && typeof ses === 'object' && ses.extensions && typeof ses.extensions === 'object')
+            ? ses.extensions
+            : null;
+    };
+    const getAllExtensionsMain = (ses) => {
+        const extApi = getSessionExtensionsApiMain(ses);
+        if (extApi && typeof extApi.getAllExtensions === 'function') {
+            return extApi.getAllExtensions();
+        }
+        return {};
+    };
+    const loadExtensionMain = async (ses, extensionPath) => {
+        const extApi = getSessionExtensionsApiMain(ses);
+        if (extApi && typeof extApi.loadExtension === 'function') {
+            return await extApi.loadExtension(extensionPath, { allowFileAccess: true });
+        }
+        throw new Error('Session extension loader unavailable');
+    };
+
     const initial = resolveAdblockDashboardUrlFallback(preferredPartition);
     if (initial.url) return initial;
 
@@ -4870,7 +4903,7 @@ async function ensureAdblockDashboardLaunchInfo(preferredPartition = '') {
         const ses = target?.ses;
         if (!ses) continue;
         try {
-            const all = typeof ses.getAllExtensions === 'function' ? ses.getAllExtensions() : {};
+            const all = getAllExtensionsMain(ses);
             const list = Array.isArray(all) ? all : Object.values(all || {});
             const existing = list.find((item) => /uBlock Origin Lite|uBO Lite/i.test(String(item?.name || '')));
             const existingId = String(existing?.id || '').trim();
@@ -4884,7 +4917,7 @@ async function ensureAdblockDashboardLaunchInfo(preferredPartition = '') {
             // yoksay
         }
         try {
-            const loaded = await ses.loadExtension(extensionPath, { allowFileAccess: true });
+            const loaded = await loadExtensionMain(ses, extensionPath);
             const loadedId = String(loaded?.id || '').trim();
             if (loadedId) {
                 return {

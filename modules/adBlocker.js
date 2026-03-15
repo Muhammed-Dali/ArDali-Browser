@@ -165,20 +165,50 @@ function getExistingExtensionMeta(extensions, extensionPath) {
     return null;
 }
 
+function getSessionExtensionsApi(ses) {
+    return (ses && typeof ses === 'object' && ses.extensions && typeof ses.extensions === 'object')
+        ? ses.extensions
+        : null;
+}
+
+function getAllExtensionsFromSession(ses) {
+    const extApi = getSessionExtensionsApi(ses);
+    if (extApi && typeof extApi.getAllExtensions === 'function') {
+        return extApi.getAllExtensions();
+    }
+    return {};
+}
+
+async function loadExtensionIntoSession(ses, extensionPath) {
+    const extApi = getSessionExtensionsApi(ses);
+    if (extApi && typeof extApi.loadExtension === 'function') {
+        return await extApi.loadExtension(extensionPath, { allowFileAccess: true });
+    }
+    throw new Error('Session extension loader is unavailable');
+}
+
+function removeExtensionFromSession(ses, extensionId) {
+    if (!extensionId) return;
+    const extApi = getSessionExtensionsApi(ses);
+    if (extApi && typeof extApi.removeExtension === 'function') {
+        extApi.removeExtension(extensionId);
+    }
+}
+
 async function loadUbolIntoSession(ses, label, extensionPath) {
-    if (!ses || typeof ses.loadExtension !== 'function') return false;
+    if (!ses) return false;
+    const extApi = getSessionExtensionsApi(ses);
+    if (!extApi && typeof ses.loadExtension !== 'function') return false;
 
     const key = getSessionKey(ses, label);
     if (loadedSessionKeys.has(key)) return true;
 
-    const all = typeof ses.getAllExtensions === 'function' ? ses.getAllExtensions() : {};
+    const all = getAllExtensionsFromSession(ses);
     const existing = getExistingExtensionMeta(all, extensionPath);
 
     if (existing) {
         try {
-            if (typeof ses.removeExtension === 'function' && existing.id) {
-                ses.removeExtension(existing.id);
-            }
+            removeExtensionFromSession(ses, existing.id);
         } catch {
             // En iyi çaba: kaldırma başarısız olursa alttaki existing kaydı kullan.
             loadedSessionKeys.add(key);
@@ -194,7 +224,7 @@ async function loadUbolIntoSession(ses, label, extensionPath) {
         }
     }
 
-    const loaded = await ses.loadExtension(extensionPath, { allowFileAccess: true });
+    const loaded = await loadExtensionIntoSession(ses, extensionPath);
     loadedSessionKeys.add(key);
     blockerProvider.ubol.sessions.push({
         label,
@@ -209,12 +239,10 @@ async function loadUbolIntoSession(ses, label, extensionPath) {
 
 function unloadUbolFromSession(ses, extensionPath) {
     try {
-        if (!ses || typeof ses.getAllExtensions !== 'function' || typeof ses.removeExtension !== 'function') return;
-        const all = ses.getAllExtensions();
+        if (!ses) return;
+        const all = getAllExtensionsFromSession(ses);
         const existing = getExistingExtensionMeta(all, extensionPath);
-        if (existing?.id) {
-            ses.removeExtension(existing.id);
-        }
+        removeExtensionFromSession(ses, existing?.id);
     } catch {
         // yoksay
     }
