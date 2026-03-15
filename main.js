@@ -4239,72 +4239,124 @@ ipcMain.handle('pulse:openWindow', async () => {
         }
         stopAurivoPulseGuiWindow();
     }
-
-    const child = spawn(launch.command, launch.args || [], {
-        cwd: launch.cwd,
-        env: buildPulseGuiEnv(),
-        detached: false,
-        stdio: ['ignore', 'pipe', 'pipe']
-    });
-
-    aurivoPulseGuiProc = child;
-    aurivoPulseGuiLang = nextUiLang;
-    let startupStderr = '';
-    child.stderr?.on('data', (chunk) => {
-        startupStderr += String(chunk || '');
-        if (startupStderr.length > 4000) {
-            startupStderr = startupStderr.slice(-4000);
-        }
-    });
-    child.stdout?.on('data', () => { /* başlangıçta sadece alive kontrolü için pipe açık */ });
-
-    const startupResult = await new Promise((resolve) => {
-        let settled = false;
-        const settle = (payload) => {
-            if (settled) return;
-            settled = true;
-            resolve(payload);
-        };
-        const timer = setTimeout(() => settle({ ok: true }), 1400);
-        child.once('error', (err) => {
-            clearTimeout(timer);
-            settle({ ok: false, error: err?.message || String(err || 'spawn error') });
+    const attempts = [];
+    const seenAttempt = new Set();
+    const pushAttempt = (candidate) => {
+        if (!candidate?.command) return;
+        const command = String(candidate.command || '').trim();
+        if (!command) return;
+        const args = Array.isArray(candidate.args) ? candidate.args : [];
+        const cwd = resolveSafePulseCwd(candidate.cwd || '');
+        const key = `${command}__${cwd}__${args.join(' ')}`;
+        if (seenAttempt.has(key)) return;
+        seenAttempt.add(key);
+        attempts.push({
+            command,
+            args,
+            cwd,
+            source: candidate.source || launch.source || 'unknown'
         });
-        child.once('close', (code) => {
-            clearTimeout(timer);
-            settle({
-                ok: false,
-                error: `Aurivo-Pulse erken kapandı (exit code ${code ?? 'unknown'})`
-            });
+    };
+
+    pushAttempt(launch);
+
+    const platformSubdir = process.platform === 'win32' ? 'windows' : (process.platform === 'linux' ? 'linux' : process.platform);
+    const extraBins = [
+        path.join(process.resourcesPath || '', 'native-dist', platformSubdir, process.platform === 'win32' ? 'aurivo-pulse.exe' : 'aurivo-pulse'),
+        path.join(process.resourcesPath || '', 'native-dist', process.platform === 'win32' ? 'aurivo-pulse.exe' : 'aurivo-pulse'),
+        path.join(__dirname, 'native-dist', platformSubdir, process.platform === 'win32' ? 'aurivo-pulse.exe' : 'aurivo-pulse'),
+        path.join(__dirname, 'native-dist', process.platform === 'win32' ? 'aurivo-pulse.exe' : 'aurivo-pulse'),
+        findExecutable(process.platform === 'win32' ? 'aurivo-pulse.exe' : 'aurivo-pulse', ['/usr/bin', '/usr/local/bin', '/bin']),
+        findExecutable(process.platform === 'win32' ? 'songrec.exe' : 'songrec', ['/usr/bin', '/usr/local/bin', '/bin'])
+    ].filter(Boolean);
+
+    for (const candidateCmd of extraBins) {
+        if (candidateCmd.includes(path.sep) && !isSpawnableBinary(candidateCmd)) continue;
+        pushAttempt({
+            command: candidateCmd,
+            args: [],
+            cwd: resolveSafePulseCwd(''),
+            source: 'pulse-fallback'
         });
-    });
-    if (!startupResult?.ok) {
-        if (aurivoPulseGuiProc === child) {
-            aurivoPulseGuiProc = null;
-            aurivoPulseGuiLang = '';
-        }
-        const stderrShort = String(startupStderr || '').trim();
-        const extra = stderrShort ? ` | stderr: ${stderrShort.split('\n').slice(-2).join(' ')}` : '';
-        throw new Error(`${startupResult?.error || 'Aurivo-Pulse GUI başlatılamadı'}${extra}`);
     }
 
-    child.once('close', () => {
-        if (aurivoPulseGuiProc === child) {
-            aurivoPulseGuiProc = null;
-            aurivoPulseGuiLang = '';
+    let lastError = '';
+    for (const attempt of attempts) {
+        let child = null;
+        let startupStderr = '';
+        try {
+            child = spawn(attempt.command, attempt.args || [], {
+                cwd: attempt.cwd,
+                env: buildPulseGuiEnv(),
+                detached: false,
+                stdio: ['ignore', 'pipe', 'pipe']
+            });
+        } catch (spawnError) {
+            lastError = `spawn ${attempt.command} failed: ${spawnError?.message || spawnError}`;
+            continue;
         }
-    });
-    child.once('error', () => {
-        if (aurivoPulseGuiProc === child) {
-            aurivoPulseGuiProc = null;
-            aurivoPulseGuiLang = '';
+
+        aurivoPulseGuiProc = child;
+        aurivoPulseGuiLang = nextUiLang;
+        child.stderr?.on('data', (chunk) => {
+            startupStderr += String(chunk || '');
+            if (startupStderr.length > 4000) {
+                startupStderr = startupStderr.slice(-4000);
+            }
+        });
+        child.stdout?.on('data', () => { /* başlangıçta sadece alive kontrolü için pipe açık */ });
+
+        const startupResult = await new Promise((resolve) => {
+            let settled = false;
+            const settle = (payload) => {
+                if (settled) return;
+                settled = true;
+                resolve(payload);
+            };
+            const timer = setTimeout(() => settle({ ok: true }), 1400);
+            child.once('error', (err) => {
+                clearTimeout(timer);
+                settle({ ok: false, error: err?.message || String(err || 'spawn error') });
+            });
+            child.once('close', (code) => {
+                clearTimeout(timer);
+                settle({
+                    ok: false,
+                    error: `Aurivo-Pulse erken kapandı (exit code ${code ?? 'unknown'})`
+                });
+            });
+        });
+
+        if (!startupResult?.ok) {
+            if (aurivoPulseGuiProc === child) {
+                aurivoPulseGuiProc = null;
+                aurivoPulseGuiLang = '';
+            }
+            const stderrShort = String(startupStderr || '').trim();
+            const extra = stderrShort ? ` | stderr: ${stderrShort.split('\n').slice(-2).join(' ')}` : '';
+            lastError = `${startupResult?.error || 'Aurivo-Pulse GUI başlatılamadı'}${extra}`;
+            continue;
         }
-    });
 
-    // Linux'ta ayrı uygulama gibi görünmeyi azaltmak için pencere hintlerini uygula.
-    applyPulseLinuxWindowHints(child.pid);
+        child.once('close', () => {
+            if (aurivoPulseGuiProc === child) {
+                aurivoPulseGuiProc = null;
+                aurivoPulseGuiLang = '';
+            }
+        });
+        child.once('error', () => {
+            if (aurivoPulseGuiProc === child) {
+                aurivoPulseGuiProc = null;
+                aurivoPulseGuiLang = '';
+            }
+        });
 
-    return { success: true, source: launch.source, command: launch.command };
+        // Linux'ta ayrı uygulama gibi görünmeyi azaltmak için pencere hintlerini uygula.
+        applyPulseLinuxWindowHints(child.pid);
+        return { success: true, source: attempt.source, command: attempt.command };
+    }
+
+    throw new Error(lastError || 'Aurivo-Pulse GUI başlatılamadı');
 });
 
 ipcMain.handle('pulse:listDevices', async () => {
@@ -4719,12 +4771,55 @@ async function applyAdblockDashboardBranding(win, uiLang = 'en-US') {
     }
 }
 
+function resolveAdblockDashboardUrlFallback(preferredPartition = '') {
+    const pickFromSession = (ses, partitionLabel = '') => {
+        try {
+            if (!ses || typeof ses.getAllExtensions !== 'function') return { url: '', partition: '' };
+            const all = ses.getAllExtensions();
+            const list = Array.isArray(all) ? all : Object.values(all || {});
+            const ext = list.find((item) => /uBlock Origin Lite|uBO Lite/i.test(String(item?.name || '')));
+            const extId = String(ext?.id || '').trim();
+            if (!extId) return { url: '', partition: '' };
+            return { url: `chrome-extension://${extId}/dashboard.html`, partition: String(partitionLabel || '') };
+        } catch {
+            return { url: '', partition: '' };
+        }
+    };
+
+    if (preferredPartition) {
+        try {
+            const byPreferred = pickFromSession(session.fromPartition(preferredPartition), preferredPartition);
+            if (byPreferred.url) return byPreferred;
+        } catch {
+            // yoksay
+        }
+    }
+    try {
+        const byWebview = pickFromSession(session.fromPartition(WEBVIEW_PARTITION), WEBVIEW_PARTITION);
+        if (byWebview.url) return byWebview;
+    } catch {
+        // yoksay
+    }
+    try {
+        const byDefault = pickFromSession(session.defaultSession, '');
+        if (byDefault.url) return byDefault;
+    } catch {
+        // yoksay
+    }
+    return { url: '', partition: preferredPartition || WEBVIEW_PARTITION };
+}
+
 ipcMain.handle('adblock:openDashboard', async () => {
     try {
         const launchInfo = getAdBlockerDashboardLaunchInfo?.() || {};
-        const dashboardUrl = String(launchInfo.url || getAdBlockerDashboardUrl() || '').trim();
-        const targetPartition = String(launchInfo.partition || WEBVIEW_PARTITION).trim();
+        let dashboardUrl = String(launchInfo.url || getAdBlockerDashboardUrl() || '').trim();
+        let targetPartition = String(launchInfo.partition || WEBVIEW_PARTITION).trim();
         const uiLang = getUiLanguageSync();
+        if (!dashboardUrl) {
+            const fallback = resolveAdblockDashboardUrlFallback(targetPartition);
+            dashboardUrl = String(fallback.url || '').trim();
+            targetPartition = String(fallback.partition || targetPartition || WEBVIEW_PARTITION).trim();
+        }
         if (!dashboardUrl) return false;
 
         const currentPartition = String(
