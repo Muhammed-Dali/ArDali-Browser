@@ -7726,11 +7726,7 @@ function handleSidebarClick(btn) {
     if (page === 'pulse') {
         const prevActive = document.querySelector('.sidebar-btn[data-page].active');
         Promise.resolve(window.aurivo?.pulse?.openWindow?.())
-            .then((result) => {
-                if (result?.success) {
-                    safeNotify('Aurivo-Pulse penceresi açıldı.', 'info', 1400);
-                }
-            })
+            .then(() => {})
             .catch((e) => {
                 safeNotify(`Aurivo-Pulse penceresi açılamadı: ${e?.message || e}`, 'error', 3200);
             })

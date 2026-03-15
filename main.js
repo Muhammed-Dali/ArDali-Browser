@@ -4813,6 +4813,93 @@ function resolveAdblockDashboardUrlFallback(preferredPartition = '') {
     return { url: '', partition: preferredPartition || WEBVIEW_PARTITION };
 }
 
+function resolveBundledUbolExtensionPathForDashboard() {
+    const roots = [
+        path.join(process.resourcesPath || '', 'uDALİ-weman-home', 'chromium'),
+        path.join(process.resourcesPath || '', 'app.asar.unpacked', 'uDALİ-weman-home', 'chromium'),
+        path.join(__dirname, 'uDALİ-weman-home', 'chromium'),
+        path.join(__dirname, '..', 'uDALİ-weman-home', 'chromium'),
+    ];
+
+    for (const candidate of roots) {
+        if (!candidate) continue;
+        if (!isRealDirectory(candidate)) continue;
+        if (fs.existsSync(path.join(candidate, 'manifest.json'))) {
+            return candidate;
+        }
+    }
+
+    const scanRoots = [
+        process.resourcesPath || '',
+        path.join(process.resourcesPath || '', 'app.asar.unpacked'),
+        __dirname
+    ].filter(Boolean);
+    for (const root of scanRoots) {
+        if (!isRealDirectory(root)) continue;
+        try {
+            const entries = fs.readdirSync(root, { withFileTypes: true });
+            for (const entry of entries) {
+                if (!entry?.isDirectory?.()) continue;
+                const name = String(entry.name || '').toLowerCase();
+                if (!name.includes('weman-home')) continue;
+                const candidate = path.join(root, entry.name, 'chromium');
+                if (isRealDirectory(candidate) && fs.existsSync(path.join(candidate, 'manifest.json'))) {
+                    return candidate;
+                }
+            }
+        } catch {
+            // yoksay
+        }
+    }
+    return '';
+}
+
+async function ensureAdblockDashboardLaunchInfo(preferredPartition = '') {
+    const initial = resolveAdblockDashboardUrlFallback(preferredPartition);
+    if (initial.url) return initial;
+
+    const extensionPath = resolveBundledUbolExtensionPathForDashboard();
+    if (!extensionPath) return initial;
+
+    const partitionToTry = String(preferredPartition || WEBVIEW_PARTITION).trim() || WEBVIEW_PARTITION;
+    const targets = [];
+    try { targets.push({ ses: session.fromPartition(partitionToTry), partition: partitionToTry }); } catch { }
+    try { targets.push({ ses: session.defaultSession, partition: '' }); } catch { }
+
+    for (const target of targets) {
+        const ses = target?.ses;
+        if (!ses) continue;
+        try {
+            const all = typeof ses.getAllExtensions === 'function' ? ses.getAllExtensions() : {};
+            const list = Array.isArray(all) ? all : Object.values(all || {});
+            const existing = list.find((item) => /uBlock Origin Lite|uBO Lite/i.test(String(item?.name || '')));
+            const existingId = String(existing?.id || '').trim();
+            if (existingId) {
+                return {
+                    url: `chrome-extension://${existingId}/dashboard.html`,
+                    partition: target.partition
+                };
+            }
+        } catch {
+            // yoksay
+        }
+        try {
+            const loaded = await ses.loadExtension(extensionPath, { allowFileAccess: true });
+            const loadedId = String(loaded?.id || '').trim();
+            if (loadedId) {
+                return {
+                    url: `chrome-extension://${loadedId}/dashboard.html`,
+                    partition: target.partition
+                };
+            }
+        } catch {
+            // yoksay
+        }
+    }
+
+    return resolveAdblockDashboardUrlFallback(partitionToTry);
+}
+
 ipcMain.handle('adblock:openDashboard', async () => {
     try {
         const launchInfo = getAdBlockerDashboardLaunchInfo?.() || {};
@@ -4820,7 +4907,7 @@ ipcMain.handle('adblock:openDashboard', async () => {
         let targetPartition = String(launchInfo.partition || WEBVIEW_PARTITION).trim();
         const uiLang = getUiLanguageSync();
         if (!dashboardUrl) {
-            const fallback = resolveAdblockDashboardUrlFallback(targetPartition);
+            const fallback = await ensureAdblockDashboardLaunchInfo(targetPartition);
             dashboardUrl = String(fallback.url || '').trim();
             targetPartition = String(fallback.partition || targetPartition || WEBVIEW_PARTITION).trim();
         }
