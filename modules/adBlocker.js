@@ -76,12 +76,27 @@ function hasFile(p) {
     }
 }
 
+function isLoadableExtensionDir(dirPath) {
+    try {
+        const p = String(dirPath || '');
+        if (!p) return false;
+        // Chromium extension loader gerçek dosya sistemi dizini ister; asar içi sanal yol desteklenmez.
+        if (p.includes('.asar/')) return false;
+        if (p.endsWith('.asar')) return false;
+        const st = fs.statSync(p);
+        if (!st.isDirectory()) return false;
+        return fs.existsSync(path.join(p, 'manifest.json'));
+    } catch {
+        return false;
+    }
+}
+
 function resolveUbolExtensionPath() {
     const discovered = [];
     const scanRoots = [
-        path.join(__dirname, '..'),
         process.resourcesPath || '',
         path.join(process.resourcesPath || '', 'app.asar.unpacked'),
+        path.join(__dirname, '..'),
     ].filter(Boolean);
     for (const root of scanRoots) {
         try {
@@ -98,14 +113,14 @@ function resolveUbolExtensionPath() {
     }
 
     const candidates = [
-        path.join(__dirname, '..', UBOL_RELATIVE_PATH),
         path.join(process.resourcesPath || '', UBOL_RELATIVE_PATH),
         path.join(process.resourcesPath || '', 'app.asar.unpacked', UBOL_RELATIVE_PATH),
+        path.join(__dirname, '..', UBOL_RELATIVE_PATH),
         ...discovered,
     ];
 
     for (const candidate of candidates) {
-        if (hasFile(path.join(candidate, 'manifest.json'))) {
+        if (isLoadableExtensionDir(candidate)) {
             return candidate;
         }
     }
@@ -176,6 +191,9 @@ function getAllExtensionsFromSession(ses) {
     if (extApi && typeof extApi.getAllExtensions === 'function') {
         return extApi.getAllExtensions();
     }
+    if (ses && typeof ses.getAllExtensions === 'function') {
+        return ses.getAllExtensions();
+    }
     return {};
 }
 
@@ -183,6 +201,9 @@ async function loadExtensionIntoSession(ses, extensionPath) {
     const extApi = getSessionExtensionsApi(ses);
     if (extApi && typeof extApi.loadExtension === 'function') {
         return await extApi.loadExtension(extensionPath, { allowFileAccess: true });
+    }
+    if (ses && typeof ses.loadExtension === 'function') {
+        return await ses.loadExtension(extensionPath, { allowFileAccess: true });
     }
     throw new Error('Session extension loader is unavailable');
 }
@@ -192,6 +213,10 @@ function removeExtensionFromSession(ses, extensionId) {
     const extApi = getSessionExtensionsApi(ses);
     if (extApi && typeof extApi.removeExtension === 'function') {
         extApi.removeExtension(extensionId);
+        return;
+    }
+    if (ses && typeof ses.removeExtension === 'function') {
+        ses.removeExtension(extensionId);
     }
 }
 
@@ -563,7 +588,14 @@ async function initAdBlocker(electronSession, options = {}) {
     }
 
     blockerProvider.ubol.enabled = blockerProvider.ubol.sessions.length > 0;
-    blockerProvider.active = blockerProvider.ubol.enabled ? 'uBOL' : 'error';
+    if (blockerProvider.ubol.enabled) {
+        blockerProvider.active = 'uBOL';
+    } else {
+        // Paketli ortamlarda extension loader erişilemezse built-in filtreye düş.
+        builtinBlockingEnabled = true;
+        blockerProvider.active = 'builtin';
+        blockerProvider.ubol.error = blockerProvider.ubol.error || 'uBOL loader unavailable, switched to built-in mode';
+    }
 
     if (app && typeof app.on === 'function') {
         app.on('session-created', async (createdSession) => {
@@ -585,7 +617,7 @@ async function initAdBlocker(electronSession, options = {}) {
             sessions: blockerProvider.ubol.sessions,
         });
     } else {
-        console.error('[AdBlocker] uBOL hiçbir session için yüklenemedi');
+        console.warn('[AdBlocker] uBOL hiçbir session için yüklenemedi, built-in engelleyiciye düşüldü');
     }
 }
 
@@ -601,7 +633,13 @@ function blockDomain(_domain) {
 
 function getDashboardUrl() {
     const sessions = blockerProvider?.ubol?.sessions;
-    if (!Array.isArray(sessions) || sessions.length === 0) return '';
+    if (!Array.isArray(sessions) || sessions.length === 0) {
+        const extensionPath = String(blockerProvider?.ubol?.extensionPath || '').trim();
+        if (extensionPath && hasFile(path.join(extensionPath, 'dashboard.html'))) {
+            return `file://${path.join(extensionPath, 'dashboard.html')}`;
+        }
+        return '';
+    }
 
     const preferred =
         sessions.find((s) => String(s?.label || '').startsWith('partition:')) ||
@@ -614,7 +652,16 @@ function getDashboardUrl() {
 
 function getDashboardLaunchInfo() {
     const sessions = Array.isArray(blockerProvider?.ubol?.sessions) ? blockerProvider.ubol.sessions : [];
-    if (!sessions.length) return { url: '', partition: '' };
+    if (!sessions.length) {
+        const extensionPath = String(blockerProvider?.ubol?.extensionPath || '').trim();
+        if (extensionPath && hasFile(path.join(extensionPath, 'dashboard.html'))) {
+            return {
+                url: `file://${path.join(extensionPath, 'dashboard.html')}`,
+                partition: '',
+            };
+        }
+        return { url: '', partition: '' };
+    }
 
     const preferred =
         sessions.find((s) => String(s?.label || '').startsWith('partition:') && String(s?.id || '').trim()) ||

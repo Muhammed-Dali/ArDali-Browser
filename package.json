@@ -15,8 +15,9 @@
     "locale:coverage": "node scripts/generate-locale-coverage.js",
     "verify:i18n": "node --check modules/i18n.js && node --check renderer.js && node --check scripts/generate-locale-coverage.js && node --check scripts/verify-i18n.js && node scripts/verify-i18n.js && npm run -s locale:coverage",
     "build": "node native/copy-libs.js && electron-builder",
-    "build:linux": "node native/copy-libs.js linux && node scripts/verify-linux-artifacts.js && electron-builder --linux",
-    "build:linux:appimage": "node native/copy-libs.js linux && node scripts/verify-linux-artifacts.js && electron-builder --linux AppImage",
+    "rebuild:electron:linux": "cd node_modules/abstract-socket && npx node-gyp rebuild --target=40.6.1 --dist-url=https://electronjs.org/headers --arch=x64",
+    "build:linux": "node native/copy-libs.js linux && node scripts/verify-linux-artifacts.js && npm run -s rebuild:electron:linux && electron-builder --linux -c.npmRebuild=false",
+    "build:linux:appimage": "node native/copy-libs.js linux && node scripts/verify-linux-artifacts.js && npm run -s rebuild:electron:linux && electron-builder --linux AppImage -c.npmRebuild=false",
     "verify:win:artifacts": "node scripts/verify-win-artifacts.js",
     "build:win": "node native/copy-libs.js win32 && npm run -s prepare:win:resources && npm run -s verify:win:artifacts && electron-builder --win",
     "build:win:publish": "node native/copy-libs.js win32 && npm run -s prepare:win:resources && npm run -s verify:win:artifacts && electron-builder --win --publish=always",
@@ -41,7 +42,7 @@
   "build": {
     "appId": "com.aurivo.mediaplayer",
     "productName": "Aurivo Media Player",
-    "electronVersion": "28.3.3",
+    "electronVersion": "40.6.1",
     "icon": "icons/aurivo.ico",
     "artifactName": "Aurivo-${version}-${os}-${arch}.${ext}",
     "directories": {

@@ -23,11 +23,11 @@ jobs:
         shell: bash
 
     env:
-      ELECTRON_VERSION: "28.3.3"
+      ELECTRON_VERSION: "40.6.1"
       USE_HARD_LINKS: "false"
 
       npm_config_runtime: "electron"
-      npm_config_target: "28.3.3"
+      npm_config_target: "40.6.1"
       npm_config_disturl: "https://electronjs.org/headers"
       npm_config_build_from_source: "true"
 

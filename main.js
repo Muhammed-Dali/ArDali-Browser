@@ -4786,6 +4786,9 @@ function resolveAdblockDashboardUrlFallback(preferredPartition = '') {
         if (extApi && typeof extApi.getAllExtensions === 'function') {
             return extApi.getAllExtensions();
         }
+        if (ses && typeof ses.getAllExtensions === 'function') {
+            return ses.getAllExtensions();
+        }
         return {};
     };
 
@@ -4822,6 +4825,11 @@ function resolveAdblockDashboardUrlFallback(preferredPartition = '') {
         if (byDefault.url) return byDefault;
     } catch {
         // yoksay
+    }
+    const extensionPath = resolveBundledUbolExtensionPathForDashboard();
+    const dashboardFile = extensionPath ? path.join(extensionPath, 'dashboard.html') : '';
+    if (dashboardFile && fs.existsSync(dashboardFile)) {
+        return { url: `file://${dashboardFile}`, partition: '' };
     }
     return { url: '', partition: preferredPartition || WEBVIEW_PARTITION };
 }
@@ -4878,12 +4886,18 @@ async function ensureAdblockDashboardLaunchInfo(preferredPartition = '') {
         if (extApi && typeof extApi.getAllExtensions === 'function') {
             return extApi.getAllExtensions();
         }
+        if (ses && typeof ses.getAllExtensions === 'function') {
+            return ses.getAllExtensions();
+        }
         return {};
     };
     const loadExtensionMain = async (ses, extensionPath) => {
         const extApi = getSessionExtensionsApiMain(ses);
         if (extApi && typeof extApi.loadExtension === 'function') {
             return await extApi.loadExtension(extensionPath, { allowFileAccess: true });
+        }
+        if (ses && typeof ses.loadExtension === 'function') {
+            return await ses.loadExtension(extensionPath, { allowFileAccess: true });
         }
         throw new Error('Session extension loader unavailable');
     };
