@@ -627,7 +627,11 @@ function emitPulseEvent(channel, payload) {
 
 function isAsarPath(targetPath = '') {
     const normalized = String(targetPath || '').replace(/\\/g, '/');
-    return normalized.includes('.asar/');
+    if (!normalized) return false;
+    // Hem "app.asar" arşivinin kendisini hem de içindeki sanal yolları yakala.
+    // Electron fs API'si .asar'ı dizin gibi gösterebildiği için spawn/cwd için
+    // kullanılmaları ENOTDIR ile sonuçlanabiliyor.
+    return /(^|\/)[^/]+\.asar(?:\/|$)/.test(normalized);
 }
 
 function isRealDirectory(targetPath = '') {
