@@ -123,6 +123,7 @@
         if (elements.adblockShowBlockedCount) {
             elements.adblockShowBlockedCount.addEventListener('change', () => {
                 readAdblockSettingsFromUI();
+                applyAdblockRuntimeConfig?.();
                 updateAdblockBadge(deps.getBlockedCount());
                 saveSettings?.().catch?.(() => {});
             });
@@ -130,6 +131,7 @@
         if (elements.adblockAutoRefreshOnModeChange) {
             elements.adblockAutoRefreshOnModeChange.addEventListener('change', () => {
                 readAdblockSettingsFromUI();
+                applyAdblockRuntimeConfig?.();
                 saveSettings?.().catch?.(() => {});
             });
         }

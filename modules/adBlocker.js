@@ -32,6 +32,35 @@ let blockerProvider = {
 
 const loadedSessionKeys = new Set();
 const statsBoundSessions = new WeakSet();
+const blockedRequestSeen = new Set();
+const WEB_REQUEST_FILTER = { urls: ['*://*/*'] };
+const pendingAdCandidates = new Map();
+let pendingSweepTimer = null;
+const PENDING_BLOCK_CONFIRM_MS = 900;
+let builtinBlockingEnabled = false;
+const AD_HOST_KEYWORDS = [
+    'doubleclick.net',
+    'googlesyndication.com',
+    'googleadservices.com',
+    'adservice.google.',
+    'adsystem',
+    'adnxs.com',
+    'taboola.com',
+    'outbrain.com',
+    'criteo.com',
+    'scorecardresearch.com',
+    'zedo.com',
+    'adform.net',
+    'tracking',
+    'analytics',
+];
+const AGGRESSIVE_EXTRA_KEYWORDS = [
+    'pixel',
+    '/beacon',
+    'telemetry',
+    'metrics',
+    'collect?',
+];
 
 function normalizeMode(mode) {
     const value = String(mode || '').trim().toLowerCase();
@@ -178,10 +207,25 @@ async function loadUbolIntoSession(ses, label, extensionPath) {
     return true;
 }
 
+function unloadUbolFromSession(ses, extensionPath) {
+    try {
+        if (!ses || typeof ses.getAllExtensions !== 'function' || typeof ses.removeExtension !== 'function') return;
+        const all = ses.getAllExtensions();
+        const existing = getExistingExtensionMeta(all, extensionPath);
+        if (existing?.id) {
+            ses.removeExtension(existing.id);
+        }
+    } catch {
+        // yoksay
+    }
+}
+
 function resetStats() {
     stats.blocked = 0;
     stats.allowed = 0;
     stats.startTime = Date.now();
+    blockedRequestSeen.clear();
+    pendingAdCandidates.clear();
 }
 
 function shouldCountRequest(details = {}) {
@@ -191,17 +235,152 @@ function shouldCountRequest(details = {}) {
     return true;
 }
 
+function getRequestFingerprint(details = {}) {
+    const requestId = String(details?.id ?? '');
+    const webContentsId = String(details?.webContentsId ?? '');
+    if (!requestId && !webContentsId) return '';
+    return `${webContentsId}:${requestId}`;
+}
+
+function markBlockedOnce(details = {}) {
+    const key = getRequestFingerprint(details);
+    if (!key) return;
+    markBlockedByKey(key);
+}
+
+function markBlockedByKey(key = '') {
+    if (!key) return;
+    if (blockedRequestSeen.has(key)) return;
+    blockedRequestSeen.add(key);
+    stats.blocked += 1;
+}
+
+function isLikelyUbolRedirect(redirectUrl = '') {
+    const url = String(redirectUrl || '');
+    if (!url) return false;
+    if (!/^chrome-extension:\/\//i.test(url)) return false;
+    if (url.includes('/web_accessible_resources/')) return true;
+    if (url.includes('/strictblock.html')) return true;
+    return false;
+}
+
+function isLikelyAdOrTrackerURL(rawUrl = '') {
+    const url = String(rawUrl || '').toLowerCase();
+    if (!url.startsWith('http://') && !url.startsWith('https://')) return false;
+    return (
+        url.includes('doubleclick.net') ||
+        url.includes('googlesyndication.com') ||
+        url.includes('googleadservices.com') ||
+        url.includes('adservice.google.') ||
+        url.includes('adsystem') ||
+        url.includes('/ads?') ||
+        url.includes('/adserver') ||
+        url.includes('/adservice') ||
+        url.includes('/pagead/') ||
+        url.includes('/ptracking') ||
+        url.includes('taboola.com') ||
+        url.includes('outbrain.com')
+    );
+}
+
+function shouldBlockRequestByMode(details = {}) {
+    const mode = normalizeMode(runtimeConfig.mode);
+    if (mode === 'basic') return false;
+    const url = String(details?.url || '').toLowerCase();
+    if (!url.startsWith('http://') && !url.startsWith('https://')) return false;
+    const rtype = String(details?.resourceType || '').toLowerCase();
+    if (rtype === 'mainframe') return false;
+
+    const hitsBase = AD_HOST_KEYWORDS.some((key) => url.includes(key));
+    if (hitsBase) return true;
+
+    if (mode === 'aggressive') {
+        if (AGGRESSIVE_EXTRA_KEYWORDS.some((key) => url.includes(key))) return true;
+        if (rtype === 'xhr' || rtype === 'fetch' || rtype === 'ping' || rtype === 'image') {
+            if (url.includes('/ads') || url.includes('ad_') || url.includes('utm_')) return true;
+        }
+    }
+    return false;
+}
+
+function rememberPendingAdCandidate(details = {}) {
+    const key = getRequestFingerprint(details);
+    if (!key) return;
+    const rtype = String(details?.resourceType || '').toLowerCase();
+    if (rtype === 'mainframe') return;
+    if (!isLikelyAdOrTrackerURL(details?.url)) return;
+    pendingAdCandidates.set(key, { createdAt: Date.now() });
+}
+
+function clearPendingAdCandidate(details = {}) {
+    const key = getRequestFingerprint(details);
+    if (!key) return;
+    pendingAdCandidates.delete(key);
+}
+
+function startPendingSweepLoop() {
+    if (pendingSweepTimer) return;
+    pendingSweepTimer = setInterval(() => {
+        const now = Date.now();
+        for (const [key, meta] of pendingAdCandidates.entries()) {
+            if ((now - Number(meta?.createdAt || 0)) < PENDING_BLOCK_CONFIRM_MS) continue;
+            markBlockedByKey(key);
+            pendingAdCandidates.delete(key);
+        }
+    }, 250);
+}
+
 function bindStatsTrackingForSession(ses) {
     if (!ses || statsBoundSessions.has(ses)) return;
     statsBoundSessions.add(ses);
+    startPendingSweepLoop();
 
     try {
-        ses.webRequest.onErrorOccurred((details) => {
+        ses.webRequest.onBeforeRequest(WEB_REQUEST_FILTER, (details, callback) => {
+            try {
+                if (!shouldCountRequest(details)) {
+                    callback?.({});
+                    return;
+                }
+                rememberPendingAdCandidate(details);
+                if (builtinBlockingEnabled && shouldBlockRequestByMode(details)) {
+                    markBlockedOnce(details);
+                    clearPendingAdCandidate(details);
+                    callback?.({ cancel: true });
+                    return;
+                }
+            } catch {
+                // no-op
+            }
+            callback?.({});
+        });
+    } catch {
+        // no-op
+    }
+
+    try {
+        ses.webRequest.onErrorOccurred(WEB_REQUEST_FILTER, (details) => {
             try {
                 if (!shouldCountRequest(details)) return;
                 const err = String(details?.error || '').toUpperCase();
+                const rtype = String(details?.resourceType || '').toLowerCase();
                 if (err.includes('ERR_BLOCKED_BY_CLIENT')) {
-                    stats.blocked += 1;
+                    markBlockedOnce(details);
+                    clearPendingAdCandidate(details);
+                    return;
+                }
+                // Electron'da DNR/uBOL engellemeleri bazı isteklerde ERR_ABORTED olarak görülebiliyor.
+                // Ana sayfa gezinmesini saymamak için main_frame haricini dikkate al.
+                if (err.includes('ERR_ABORTED') && rtype !== 'mainframe') {
+                    markBlockedOnce(details);
+                    clearPendingAdCandidate(details);
+                    return;
+                }
+                // Bazı ortamlarda reklam/tracker engellemeleri ERR_FAILED koduna düşebiliyor.
+                // Yanlış sayımı azaltmak için yalnızca tipik ad/tracker URL'lerinde say.
+                if (err.includes('ERR_FAILED') && isLikelyAdOrTrackerURL(details?.url)) {
+                    markBlockedOnce(details);
+                    clearPendingAdCandidate(details);
                 }
             } catch {
                 // no-op
@@ -212,9 +391,27 @@ function bindStatsTrackingForSession(ses) {
     }
 
     try {
-        ses.webRequest.onCompleted((details) => {
+        ses.webRequest.onBeforeRedirect(WEB_REQUEST_FILTER, (details) => {
             try {
                 if (!shouldCountRequest(details)) return;
+                const redirectURL = String(details?.redirectURL || '');
+                if (isLikelyUbolRedirect(redirectURL)) {
+                    markBlockedOnce(details);
+                    clearPendingAdCandidate(details);
+                }
+            } catch {
+                // no-op
+            }
+        });
+    } catch {
+        // no-op
+    }
+
+    try {
+        ses.webRequest.onCompleted(WEB_REQUEST_FILTER, (details) => {
+            try {
+                if (!shouldCountRequest(details)) return;
+                clearPendingAdCandidate(details);
                 stats.allowed += 1;
             } catch {
                 // no-op
@@ -265,7 +462,9 @@ async function initAdBlocker(electronSession, options = {}) {
     const {
         app,
         webviewPartition = 'persist:aurivo-web',
+        includeDefaultSession = false,
         enabled = true,
+        useExtension = true,
     } = options;
 
     blockerProvider = {
@@ -279,27 +478,51 @@ async function initAdBlocker(electronSession, options = {}) {
     };
     loadedSessionKeys.clear();
     resetStats();
+    builtinBlockingEnabled = false;
+
+    const targets = [];
+    try { targets.push({ ses: electronSession.fromPartition(webviewPartition), label: `partition:${webviewPartition}` }); } catch { }
+    if (includeDefaultSession) {
+        try { targets.push({ ses: electronSession.defaultSession, label: 'defaultSession' }); } catch { }
+    }
+
+    const bindTargets = () => {
+        for (const target of targets) {
+            try { bindStatsTrackingForSession(target.ses); } catch { }
+        }
+    };
 
     if (!enabled) {
+        bindTargets();
         blockerProvider.active = 'disabled';
         blockerProvider.ubol.error = 'AdBlocker devre dışı';
         console.log('[AdBlocker] Devre dışı bırakıldı (settings)');
         return;
     }
 
+    if (!useExtension) {
+        builtinBlockingEnabled = true;
+        bindTargets();
+        blockerProvider.active = 'builtin';
+        blockerProvider.ubol.enabled = false;
+        blockerProvider.ubol.error = 'Built-in mode (extension disabled)';
+        console.log('[AdBlocker] Built-in engelleyici aktif (uBOL uzantısı kapalı)');
+        return;
+    }
+
     const extensionPath = resolveUbolExtensionPath();
     if (!extensionPath) {
-        blockerProvider.active = 'error';
-        blockerProvider.ubol.error = 'uBOL uzantı yolu bulunamadı (manifest.json yok)';
-        console.error('[AdBlocker] uBOL başlatılamadı:', blockerProvider.ubol.error);
+        bindTargets();
+        blockerProvider.active = 'builtin';
+        blockerProvider.ubol.error = 'uBOL uzantı yolu bulunamadı, built-in moda düşüldü';
+        console.warn('[AdBlocker] uBOL bulunamadı, built-in engelleyiciye düşüldü');
         return;
     }
 
     blockerProvider.ubol.extensionPath = extensionPath;
-
-    const targets = [];
-    try { targets.push({ ses: electronSession.fromPartition(webviewPartition), label: `partition:${webviewPartition}` }); } catch { }
-    try { targets.push({ ses: electronSession.defaultSession, label: 'defaultSession' }); } catch { }
+    if (!includeDefaultSession) {
+        try { unloadUbolFromSession(electronSession.defaultSession, extensionPath); } catch { }
+    }
 
     for (const target of targets) {
         try {

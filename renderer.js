@@ -32,7 +32,12 @@ const STANDALONE_VIEW = String(STARTUP_QUERY.get('view') || '').trim().toLowerCa
 const STANDALONE_SETTINGS_DEFAULT_TAB = String(STARTUP_QUERY.get('tab') || 'playback').trim().toLowerCase();
 const STANDALONE_ARG_VIEW = String(PRELOAD_LAUNCH_CONTEXT.view || '').trim().toLowerCase();
 const STANDALONE_ARG_TAB = String(PRELOAD_LAUNCH_CONTEXT.tab || '').trim().toLowerCase();
-let forcedStandaloneSettingsMode = IS_SETTINGS_DOCUMENT || STANDALONE_VIEW === 'settings' || STANDALONE_ARG_VIEW === 'settings';
+let forcedStandaloneSettingsMode =
+    IS_SETTINGS_DOCUMENT ||
+    // Query param ile sadece settings dokümanı açıldığında standalone mod aktif olsun.
+    (IS_SETTINGS_DOCUMENT && STANDALONE_VIEW === 'settings') ||
+    // additionalArguments ana pencereye sızarsa index.html yanlışlıkla gizlenmesin.
+    (IS_SETTINGS_DOCUMENT && STANDALONE_ARG_VIEW === 'settings');
 let fileTreeRenderGeneration = 0;
 let systemThemeMediaQuery = null;
 let systemThemeChangeListenerBound = false;
@@ -77,6 +82,11 @@ function setupSystemThemePreferenceListener() {
 }
 
 async function enterStandaloneSettingsMode(defaultTab = 'playback') {
+    if (!IS_SETTINGS_DOCUMENT) {
+        forcedStandaloneSettingsMode = false;
+        document.body.classList.remove('settings-window-mode');
+        return;
+    }
     forcedStandaloneSettingsMode = true;
     document.body.classList.add('settings-window-mode');
     try {
@@ -613,12 +623,18 @@ const securityRuntime = {
 const webLoadRuntime = {
     retryMap: new Map(), // key=url, value=retry count
     overlayTimer: null,
-    navToken: 0
+    navToken: 0,
+    lastRequestedUrl: '',
+    lastRequestedAt: 0
 };
 const adblockRuntime = {
     pollTimer: null,
     lastBlocked: 0,
-    pendingModeChange: false
+    pendingModeChange: false,
+    navBurstTimer: null,
+    lastAbsoluteBlocked: 0,
+    currentCounterKey: '',
+    counterBaseByKey: new Map()
 };
 const audioOutputRuntime = {
     pollTimer: null,
@@ -652,7 +668,6 @@ const webPlatformRuntime = {
     lastSwitchAt: 0,
     lastSwitchKey: '',
     switching: false,
-    queuedBtn: null,
     switchTimer: null
 };
 const pulseQuickRuntime = {
@@ -857,7 +872,41 @@ async function refreshMainLibraryFromSettingsReload() {
 // ============================================
 // BAŞLATMA
 // ============================================
+function ensureMainShellVisible() {
+    if (IS_SETTINGS_DOCUMENT) return;
+    try {
+        const shell = document.querySelector('.app-container');
+        if (shell) {
+            shell.classList.remove('hidden');
+            shell.style.display = 'flex';
+        }
+        const mustShowSelectors = [
+            '.sidebar',
+            '.left-panel',
+            '.main-content',
+            '.nav-bar',
+            '.content-stack'
+        ];
+        for (const selector of mustShowSelectors) {
+            const el = document.querySelector(selector);
+            if (!el) continue;
+            el.classList.remove('hidden');
+            el.style.removeProperty('display');
+            el.style.removeProperty('visibility');
+            el.style.removeProperty('opacity');
+        }
+        const overlays = document.querySelectorAll('.modal-overlay, .web-loading-overlay');
+        overlays.forEach((el) => {
+            if (!el) return;
+            el.classList.add('hidden');
+        });
+    } catch {
+        // yoksay
+    }
+}
+
 document.addEventListener('DOMContentLoaded', async () => {
+    ensureMainShellVisible();
     cacheElements();
     if (AURIVO_PERF_MONITOR_ENABLED) {
         PerfMonitor.start(5000);
@@ -3435,10 +3484,6 @@ function setupEventListeners() {
 
     // Web Platformları
     elements.platformBtns.forEach(btn => {
-        btn.addEventListener('pointerdown', (e) => {
-            e.preventDefault();
-            requestPlatformSwitch(btn);
-        });
         btn.addEventListener('click', (e) => {
             e.preventDefault();
             requestPlatformSwitch(btn);
@@ -3860,6 +3905,7 @@ function setupEventListeners() {
     if (elements.adblockShowBlockedCount) {
         elements.adblockShowBlockedCount.addEventListener('change', () => {
             readAdblockSettingsFromUI();
+            applyAdblockRuntimeConfig();
             updateAdblockBadge(adblockRuntime.lastBlocked);
             saveSettings().catch(() => { });
         });
@@ -3867,6 +3913,7 @@ function setupEventListeners() {
     if (elements.adblockAutoRefreshOnModeChange) {
         elements.adblockAutoRefreshOnModeChange.addEventListener('change', () => {
             readAdblockSettingsFromUI();
+            applyAdblockRuntimeConfig();
             saveSettings().catch(() => { });
         });
     }
@@ -3945,15 +3992,18 @@ function setupEventListeners() {
     if (elements.webView) {
         elements.webView.addEventListener('did-start-loading', () => {
             showWebLoadingOverlay('Sayfa yükleniyor...');
+            triggerAdblockNavBurstRefresh();
             // Yeni yükleme başladığında eski retry sayacını temizle
             const u = getWebViewUrlSafe();
             if (u && u !== 'about:blank') webLoadRuntime.retryMap.delete(u);
         });
         elements.webView.addEventListener('did-stop-loading', () => {
             hideWebLoadingOverlay();
+            triggerAdblockNavBurstRefresh();
         });
         elements.webView.addEventListener('did-finish-load', () => {
             hideWebLoadingOverlay();
+            triggerAdblockNavBurstRefresh();
         });
 
         elements.webView.addEventListener('did-navigate', handleWebNavigation);
@@ -3969,7 +4019,7 @@ function setupEventListeners() {
                 if (!isMainFrame || !url || url === 'about:blank') return;
                 if (code === -3) return; // ERR_ABORTED
 
-                const transientCodes = new Set([-2, -6, -7, -21, -105, -106, -118, -137, -202]);
+                const transientCodes = new Set([-6, -7, -21, -105, -106, -118, -137, -202]);
                 const retryCount = Number(webLoadRuntime.retryMap.get(url) || 0);
 
                 console.warn('[WEBVIEW] did-fail-load:', { code, desc, url, retryCount });
@@ -5098,14 +5148,28 @@ function webUrlLooksLikeTarget(currentUrl, targetUrl, platform = '') {
 
 function safeNavigateWebView(url) {
     if (!elements.webView || !url) return false;
+    const target = String(url);
+    if (!target) return false;
+    const now = Date.now();
+    if (target === webLoadRuntime.lastRequestedUrl && (now - webLoadRuntime.lastRequestedAt) < 700) {
+        return true;
+    }
+    webLoadRuntime.lastRequestedUrl = target;
+    webLoadRuntime.lastRequestedAt = now;
     try {
-        elements.webView.setAttribute('src', String(url));
+        elements.webView.src = target;
         return true;
     } catch {
         // yoksay
     }
     try {
-        const maybe = elements.webView.loadURL(String(url));
+        elements.webView.setAttribute('src', target);
+        return true;
+    } catch {
+        // yoksay
+    }
+    try {
+        const maybe = elements.webView.loadURL(target);
         if (maybe && typeof maybe.catch === 'function') maybe.catch(() => { });
         return true;
     } catch {
@@ -5378,12 +5442,51 @@ function updateAdblockBadge(blockedCount) {
     });
 }
 
+function getActiveAdblockCounterKey() {
+    const inWeb = state.currentPage === 'web' || state.currentPanel === 'web' || state.activeMedia === 'web';
+    if (!inWeb) return '';
+    const activeBtn = document.querySelector('.platform-btn.active');
+    const key = String(activeBtn?.dataset?.platform || '').trim().toLowerCase();
+    return key || 'web';
+}
+
+function resetAdblockVisibleCounter() {
+    const key = getActiveAdblockCounterKey();
+    if (key) {
+        adblockRuntime.currentCounterKey = key;
+        adblockRuntime.counterBaseByKey.set(key, Number(adblockRuntime.lastAbsoluteBlocked || 0));
+    }
+    adblockRuntime.lastBlocked = 0;
+    updateAdblockBadge(0);
+}
+
 async function refreshAdblockStats(showToast = false) {
+    const inWeb = state.currentPage === 'web' || state.currentPanel === 'web' || state.activeMedia === 'web';
+    const key = getActiveAdblockCounterKey();
     return window.AurivoAdblockSettings?.refreshStats?.({
         getStats: () => window.aurivo?.adblock?.getStats?.(),
         elements,
         updateBadge: updateAdblockBadge,
-        setBlockedCount: (value) => { adblockRuntime.lastBlocked = value; },
+        setBlockedCount: (value) => {
+            const absoluteBlocked = Number(value) || 0;
+            adblockRuntime.lastAbsoluteBlocked = absoluteBlocked;
+
+            if (!inWeb || !key) {
+                adblockRuntime.lastBlocked = 0;
+                updateAdblockBadge(0);
+                return;
+            }
+
+            if (!adblockRuntime.counterBaseByKey.has(key)) {
+                adblockRuntime.counterBaseByKey.set(key, absoluteBlocked);
+            }
+
+            const base = Number(adblockRuntime.counterBaseByKey.get(key) || 0);
+            const visible = Math.max(0, absoluteBlocked - base);
+            adblockRuntime.currentCounterKey = key;
+            adblockRuntime.lastBlocked = visible;
+            updateAdblockBadge(visible);
+        },
         notify: safeNotify,
         showToast
     });
@@ -5412,13 +5515,34 @@ function startAdblockStatsPolling() {
         if (inWeb || settingsOpen) {
             refreshAdblockStats(false);
         }
-    }, 7000);
+    }, 1200);
+}
+
+function triggerAdblockNavBurstRefresh() {
+    refreshAdblockStats(false);
+    let remaining = 4;
+    if (adblockRuntime.navBurstTimer) {
+        clearInterval(adblockRuntime.navBurstTimer);
+        adblockRuntime.navBurstTimer = null;
+    }
+    adblockRuntime.navBurstTimer = setInterval(() => {
+        refreshAdblockStats(false);
+        remaining -= 1;
+        if (remaining <= 0) {
+            clearInterval(adblockRuntime.navBurstTimer);
+            adblockRuntime.navBurstTimer = null;
+        }
+    }, 450);
 }
 
 function stopAdblockStatsPolling() {
     if (!adblockRuntime.pollTimer) return;
     clearInterval(adblockRuntime.pollTimer);
     adblockRuntime.pollTimer = null;
+    if (adblockRuntime.navBurstTimer) {
+        clearInterval(adblockRuntime.navBurstTimer);
+        adblockRuntime.navBurstTimer = null;
+    }
 }
 
 function stopSettingsBackgroundWork() {
@@ -5757,8 +5881,10 @@ function updateTrayState() {
 }
 
 // Web/YouTube gezintisinde MPRIS'i sıfırla
-async function handleWebNavigation() {
-    const currentUrl = getWebViewUrlSafe();
+async function handleWebNavigation(event) {
+    triggerAdblockNavBurstRefresh();
+    const eventUrl = String(event?.url || '').trim();
+    const currentUrl = eventUrl || getWebViewUrlSafe();
     if (state.activeMedia === 'web') {
         const sec = await getSecurityStateSafe();
         if (sec.vpnDetected) {
@@ -5775,16 +5901,28 @@ async function handleWebNavigation() {
         } else {
             securityRuntime.vpnWarned = false;
         }
-        if (currentUrl !== 'about:blank' && !isAllowedWebUrl(currentUrl)) {
-            safeNavigateWebView('about:blank');
-            safeNotify(uiT('securityPage.notify.urlBlocked', 'Bu adres güvenlik politikası nedeniyle engellendi.'), 'error');
-            if (isSecuritySettingsVisible()) updateSecurityUI();
-            return;
+        // Geçiş anında URL kısa süreli boş olabilir; bu durumda sayfayı zorla sıfırlama.
+        // Yalnızca gerçek http/https URL'leri allowlist ile doğrula.
+        if (currentUrl && currentUrl !== 'about:blank') {
+            const parsedCurrent = parseHttpUrl(currentUrl);
+            if (parsedCurrent && !isAllowedWebUrl(parsedCurrent.toString())) {
+                safeNavigateWebView('about:blank');
+                safeNotify(uiT('securityPage.notify.urlBlocked', 'Bu adres güvenlik politikası nedeniyle engellendi.'), 'error');
+                if (isSecuritySettingsVisible()) updateSecurityUI();
+                return;
+            }
         }
     }
 
     if (state.activeMedia === 'web') {
         syncActivePlatformButtonByUrl(currentUrl);
+        const key = getActiveAdblockCounterKey();
+        if (key && key !== adblockRuntime.currentCounterKey) {
+            adblockRuntime.currentCounterKey = key;
+            adblockRuntime.counterBaseByKey.set(key, Number(adblockRuntime.lastAbsoluteBlocked || 0));
+            adblockRuntime.lastBlocked = 0;
+            updateAdblockBadge(0);
+        }
         console.log('[WEB] Navigation detected, resetting MPRIS position');
         state.webTrackId++; // Yeni bir ID atayarak sistemin "yeni parça" algılamasını sağla
         state.webPosition = 0;
@@ -7512,11 +7650,8 @@ function setWebDrawerCollapsed(collapsed) {
 
 function requestPlatformSwitch(btn) {
     if (!btn) return;
-    if (webPlatformRuntime.switching) {
-        webPlatformRuntime.queuedBtn = btn;
-        return;
-    }
     const key = String(btn.dataset.platform || btn.dataset.url || '').trim();
+    if (webPlatformRuntime.switching) return;
     const now = Date.now();
 
     if (key && key === webPlatformRuntime.lastSwitchKey && (now - webPlatformRuntime.lastSwitchAt) < 350) {
@@ -7636,6 +7771,9 @@ function handleSidebarClick(btn) {
 
     // *** SEKMELERİ İZOLE ET - DİĞER MEDYALARI KAPAT ***
     isolateMediaSection(page);
+    if (page !== 'web') {
+        resetAdblockVisibleCounter();
+    }
 
     // Panel değiştir
     if (panel === 'library') {
@@ -7782,7 +7920,6 @@ function stopWeb() {
         // WebView'ı durdur (RAM temizliği)
         try {
             hardStopWebPlayback();
-            elements.webView.stop();
             // Sessiz sayfa yükle - about:blank kullan (data URL yerine)
             elements.webView.setAttribute('src', 'about:blank');
         } catch (e) {
@@ -7870,54 +8007,25 @@ async function handlePlatformClick(btn) {
         switchPage('web');
         applyWebUiClasses();
         persistCurrentMainSection();
+        adblockRuntime.currentCounterKey = String(platform || 'web').trim().toLowerCase() || 'web';
+        adblockRuntime.counterBaseByKey.set(adblockRuntime.currentCounterKey, Number(adblockRuntime.lastAbsoluteBlocked || 0));
+        adblockRuntime.lastBlocked = 0;
+        updateAdblockBadge(0);
 
         // Web sayfası aktif olduktan sonra URL yükle (race condition azaltır)
         if (elements.webView) {
             const requestedUrl = parsed.toString();
             const nextUrl = resolveWebPlatformPrimaryUrl(platform, requestedUrl);
-            const fallbackUrl = resolveWebPlatformFallbackUrl(platform, requestedUrl);
-            const navToken = ++webLoadRuntime.navToken;
-            showWebLoadingOverlay('uDaliBlock on kontrolden geciriyor...');
             try {
-                try {
-                    elements.webView.setUserAgent(getEmbeddedDesktopUserAgent());
-                } catch { }
-                try {
-                    hardStopWebPlayback();
-                } catch { }
-
                 if (webPlatformRuntime.switchTimer) {
                     clearTimeout(webPlatformRuntime.switchTimer);
                     webPlatformRuntime.switchTimer = null;
                 }
-                safeNavigateWebView('about:blank');
-                webPlatformRuntime.switchTimer = setTimeout(() => {
-                    if (navToken !== webLoadRuntime.navToken) return;
-                    safeNavigateWebView(nextUrl);
-                }, 120);
-
-                // Doğrulama + fallback: bazı sistemlerde ilk geçiş iptal olabiliyor.
-                setTimeout(() => {
-                    try {
-                        if (navToken !== webLoadRuntime.navToken) return;
-                        const cur = getWebViewUrlSafe();
-                        if (!cur || cur === 'about:blank' || !webUrlLooksLikeTarget(cur, nextUrl, platform)) {
-                            safeNavigateWebView(fallbackUrl);
-                        }
-                    } catch { }
-                }, 1200);
-                setTimeout(() => {
-                    try {
-                        if (navToken !== webLoadRuntime.navToken) return;
-                        const cur = getWebViewUrlSafe();
-                        if (!cur || cur === 'about:blank' || !webUrlLooksLikeTarget(cur, nextUrl, platform)) {
-                            safeNavigateWebView(fallbackUrl);
-                        }
-                    } catch { }
-                }, 2300);
+                hideWebLoadingOverlay();
+                safeNavigateWebView(nextUrl);
             } catch (e) {
                 console.warn('WebView URL yükleme hatası:', e?.message || e);
-                safeNavigateWebView(fallbackUrl);
+                safeNavigateWebView(nextUrl);
             }
         }
 
@@ -7933,11 +8041,6 @@ async function handlePlatformClick(btn) {
         updateMPRISMetadata();
     } finally {
         webPlatformRuntime.switching = false;
-        if (webPlatformRuntime.queuedBtn) {
-            const queued = webPlatformRuntime.queuedBtn;
-            webPlatformRuntime.queuedBtn = null;
-            requestPlatformSwitch(queued);
-        }
     }
 }
 
@@ -13117,7 +13220,8 @@ function openSettings(defaultTab = 'playback') {
     showUtilityPage(elements.settingsPage, elements.settingsBtn);
     loadSettingsToUI();
     activateSettingsTab(defaultTab);
-    if (defaultTab === 'adblock') {
+    const hasAdblockTab = !!document.querySelector('.settings-tab[data-tab="adblock"]');
+    if (defaultTab === 'adblock' && hasAdblockTab) {
         refreshAdblockStats(true);
     }
 }

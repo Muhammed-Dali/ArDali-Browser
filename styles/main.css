@@ -1182,17 +1182,24 @@ body:not(.web-mode) #webDrawerToggleBtn {
 body:not(.web-mode) #adblockBtn {
     opacity: 0.72;
 }
-body:not(.web-mode) #adblockStatusText {
-    opacity: 0.72;
+
+#adblockBtn {
+    width: 36px;
+    height: 36px;
+}
+
+#adblockBtn .nav-icon-img {
+    width: 21px;
+    height: 21px;
 }
 
 .nav-badge {
     position: absolute;
-    top: -4px;
-    right: -4px;
-    min-width: 16px;
-    height: 16px;
-    padding: 0 4px;
+    top: -6px;
+    right: -6px;
+    min-width: 17px;
+    height: 17px;
+    padding: 0 5px;
     border-radius: 999px;
     font-size: 10px;
     font-weight: 700;
@@ -1202,6 +1209,7 @@ body:not(.web-mode) #adblockStatusText {
     color: #fff;
     background: #c94141;
     border: 1px solid rgba(255, 255, 255, 0.35);
+    pointer-events: none;
 }
 .adblock-status-text {
     align-self: center;

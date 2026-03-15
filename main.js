@@ -2784,6 +2784,7 @@ async function updateEq32SettingsInFile(patch) {
 function createWindow() {
     refreshMainWindowBehaviorSettingsSync();
 
+    let rendererRecoveryAttempts = 0;
     mainWindow = new BrowserWindow({
         width: 1500,
         height: 900,
@@ -2838,10 +2839,29 @@ function createWindow() {
 
     mainWindow.webContents.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL) => {
         console.error('[WEB] did-fail-load:', { errorCode, errorDescription, validatedURL });
+        try {
+            const url = String(validatedURL || '');
+            const isMainDoc = url.startsWith('file:') || url === '' || url === 'about:blank';
+            if (isMainDoc && rendererRecoveryAttempts < 2) {
+                rendererRecoveryAttempts += 1;
+                setTimeout(() => {
+                    if (!mainWindow || mainWindow.isDestroyed()) return;
+                    mainWindow.loadFile(path.join(__dirname, 'index.html')).catch(() => {});
+                }, 450);
+            }
+        } catch {
+            // yoksay
+        }
     });
 
     mainWindow.webContents.on('render-process-gone', (_event, details) => {
         console.error('[WEB] render-process-gone:', details);
+        if (rendererRecoveryAttempts >= 2) return;
+        rendererRecoveryAttempts += 1;
+        setTimeout(() => {
+            if (!mainWindow || mainWindow.isDestroyed()) return;
+            mainWindow.loadFile(path.join(__dirname, 'index.html')).catch(() => {});
+        }, 500);
     });
 
     mainWindow.webContents.on('unresponsive', () => {
@@ -2873,6 +2893,7 @@ function createWindow() {
 
     // Wayland/GPU sorunlarında ready-to-show tetiklenmezse yedek
     mainWindow.webContents.once('did-finish-load', () => {
+        rendererRecoveryAttempts = 0;
         if (!mainWindow.isVisible()) {
             mainWindow.show();
             mainWindow.focus();
@@ -4108,7 +4129,7 @@ function installWebviewHardening() {
                         }
                     };
                 }
-                if (isAllowedWebUrlMain(popupUrl)) {
+                if (parseHttpUrlMain(popupUrl)) {
                     return {
                         action: 'allow',
                         overrideBrowserWindowOptions: {
@@ -4123,13 +4144,15 @@ function installWebviewHardening() {
         }
 
         contents.on('will-navigate', (event, url) => {
-            if (!isAllowedWebUrlMain(url)) {
+            // WebView içinde https/http gezinmeye izin ver; tehlikeli şemaları engelle.
+            if (!parseHttpUrlMain(url)) {
                 event.preventDefault();
             }
         });
 
         contents.on('will-redirect', (event, url) => {
-            if (!isAllowedWebUrlMain(url)) {
+            // Web platformları sıkça farklı hostlara redirect eder; yalnızca şema bazlı kısıtla.
+            if (!parseHttpUrlMain(url)) {
                 event.preventDefault();
             }
         });
@@ -4163,7 +4186,7 @@ app.whenReady().then(async () => {
     try { installTlsCompatibilityForWebPlatforms(); } catch (e) { console.error('[APP] installTlsCompatibilityForWebPlatforms error:', e); }
     try { installAppMenu(); } catch (e) { console.error('[APP] installAppMenu error:', e); }
     try { registerDawlodIpc({ ipcMain, app, dialog, shell, BrowserWindow }); } catch (e) { console.error('[APP] registerDawlodIpc error:', e); }
-    try { await initAdBlocker(session, { app, webviewPartition: WEBVIEW_PARTITION, preferUbol: true }); } catch (e) { console.error('[APP] initAdBlocker error:', e); }
+    try { await initAdBlocker(session, { app, webviewPartition: WEBVIEW_PARTITION, includeDefaultSession: true, preferUbol: true, enabled: true, useExtension: true }); } catch (e) { console.error('[APP] initAdBlocker error:', e); }
     try { startPulseBridgeServer(); } catch (e) { console.error('[APP] startPulseBridgeServer error:', e); }
     try { createWindow(); } catch (e) { console.error('[APP] createWindow error:', e); }
     try { createTray(); } catch (e) { console.error('[APP] createTray error:', e); }
