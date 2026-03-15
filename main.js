@@ -4794,7 +4794,7 @@ function resolveAdblockDashboardUrlFallback(preferredPartition = '') {
             if (!ses) return { url: '', partition: '' };
             const all = getAllExtensionsMain(ses);
             const list = Array.isArray(all) ? all : Object.values(all || {});
-            const ext = list.find((item) => /uBlock Origin Lite|uBO Lite/i.test(String(item?.name || '')));
+            const ext = list.find((item) => /uBlock(?:\s+Origin)?\s+Lite|uBO\s+Lite/i.test(String(item?.name || '')));
             const extId = String(ext?.id || '').trim();
             if (!extId) return { url: '', partition: '' };
             return { url: `chrome-extension://${extId}/dashboard.html`, partition: String(partitionLabel || '') };
@@ -4905,7 +4905,7 @@ async function ensureAdblockDashboardLaunchInfo(preferredPartition = '') {
         try {
             const all = getAllExtensionsMain(ses);
             const list = Array.isArray(all) ? all : Object.values(all || {});
-            const existing = list.find((item) => /uBlock Origin Lite|uBO Lite/i.test(String(item?.name || '')));
+            const existing = list.find((item) => /uBlock(?:\s+Origin)?\s+Lite|uBO\s+Lite/i.test(String(item?.name || '')));
             const existingId = String(existing?.id || '').trim();
             if (existingId) {
                 return {

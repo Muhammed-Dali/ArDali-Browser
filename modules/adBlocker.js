@@ -153,7 +153,7 @@ function getExistingExtensionMeta(extensions, extensionPath) {
         : Object.entries(extensions);
     for (const [fallbackId, ext] of list) {
         if (!ext) continue;
-        if (ext.path === extensionPath || /uBlock Origin Lite|uBO Lite/i.test(String(ext.name || ''))) {
+        if (ext.path === extensionPath || /uBlock(?:\s+Origin)?\s+Lite|uBO\s+Lite/i.test(String(ext.name || ''))) {
             const extId = String(ext.id || fallbackId || '').trim();
             return {
                 id: extId,

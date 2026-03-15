@@ -1,6 +1,6 @@
 {
   "name": "aurivo-media-player",
-  "version": "2.0.10",
+  "version": "2.0.11",
   "description": "Aurivo Media Player - Electron App",
   "main": "main.js",
   "scripts": {
@@ -184,12 +184,18 @@
     ],
     "files": [
       "**/*",
+      "!.git/**",
       "!.cache/**",
       "!**/.cache/**",
       "!**/*.md",
       "!**/.vscode/**",
       "!**/__pycache__/**",
       "!**/*.ipynb",
+      "!**/*.AppImage",
+      "!**/*.pkg.tar.zst",
+      "!aurivo-bin/**",
+      "!packaging/**",
+      "!Aurivo-Pulse/target/**",
       "!bin/ffmpeg.exe",
       "!dist/**",
       "!build/**",
