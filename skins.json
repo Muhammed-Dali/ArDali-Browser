@@ -43,28 +43,90 @@
         "fontFamily": "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif"
       },
       "palette": {
-        "bgDarkest": "#0d0d0d",
-        "bgDark": "#121212",
-        "bgMedium": "#181818",
-        "bgLight": "#1a1a1a",
-        "bgLighter": "#1e1e1e",
-        "bgHover": "#222222",
-        "bgActive": "#282828",
-        "borderDark": "#1a1a1a",
-        "borderMedium": "#2a2a2a",
-        "borderLight": "#333333",
-        "textPrimary": "#ffffff",
-        "textSecondary": "#eeeeee",
-        "textMuted": "#b3b3b3",
-        "textDimmed": "#888888",
-        "accentPrimary": "#00d9ff",
-        "accentSecondary": "#40c4ff",
-        "accentGreen": "#1db954",
-        "accentYellow": "#ffeb3b"
+        "bgDarkest": "#080710",
+        "bgDark": "#100d1e",
+        "bgMedium": "#1a1430",
+        "bgLight": "#231b42",
+        "bgLighter": "#2d2354",
+        "bgHover": "#3a2d6c",
+        "bgActive": "#483a86",
+        "borderDark": "#261c42",
+        "borderMedium": "#3b2b61",
+        "borderLight": "#544085",
+        "textPrimary": "#f7f2ff",
+        "textSecondary": "#e8dcff",
+        "textMuted": "#bfa9e8",
+        "textDimmed": "#9c88c9",
+        "accentPrimary": "#ff45d4",
+        "accentSecondary": "#41e2ff",
+        "accentGreen": "#45f0b8",
+        "accentYellow": "#ffe66d"
       },
       "buttons": {
-        "primary": "#40c4ff",
-        "secondary": "#00d9ff"
+        "primary": "#41e2ff",
+        "secondary": "#ff45d4"
+      }
+    },
+    {
+      "id": "performance-lite",
+      "name": "Low Hardware Stable",
+      "typography": {
+        "fontFamily": "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif"
+      },
+      "palette": {
+        "bgDarkest": "#0d0f12",
+        "bgDark": "#111418",
+        "bgMedium": "#161b22",
+        "bgLight": "#1a2029",
+        "bgLighter": "#1f2732",
+        "bgHover": "#242f3d",
+        "bgActive": "#2a3748",
+        "borderDark": "#1a2027",
+        "borderMedium": "#283241",
+        "borderLight": "#344456",
+        "textPrimary": "#ecf3ff",
+        "textSecondary": "#d7e5f5",
+        "textMuted": "#9cb1c7",
+        "textDimmed": "#74879c",
+        "accentPrimary": "#30c8ff",
+        "accentSecondary": "#4ca3ff",
+        "accentGreen": "#35d48f",
+        "accentYellow": "#f0cc55"
+      },
+      "buttons": {
+        "primary": "#4ca3ff",
+        "secondary": "#30c8ff"
+      }
+    },
+    {
+      "id": "performance-balanced",
+      "name": "Balanced Flow",
+      "typography": {
+        "fontFamily": "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif"
+      },
+      "palette": {
+        "bgDarkest": "#0d1014",
+        "bgDark": "#121821",
+        "bgMedium": "#172131",
+        "bgLight": "#1c2a3c",
+        "bgLighter": "#213349",
+        "bgHover": "#2a3f59",
+        "bgActive": "#335073",
+        "borderDark": "#1c2b40",
+        "borderMedium": "#294262",
+        "borderLight": "#3a5b85",
+        "textPrimary": "#eef6ff",
+        "textSecondary": "#d7e8fb",
+        "textMuted": "#9db7d4",
+        "textDimmed": "#7391b2",
+        "accentPrimary": "#00e8ff",
+        "accentSecondary": "#57a8ff",
+        "accentGreen": "#44dca0",
+        "accentYellow": "#f1d26b"
+      },
+      "buttons": {
+        "primary": "#57a8ff",
+        "secondary": "#00e8ff"
       }
     },
     {
@@ -74,28 +136,28 @@
         "fontFamily": "'Trebuchet MS', 'Segoe UI', Tahoma, sans-serif"
       },
       "palette": {
-        "bgDarkest": "#140f08",
-        "bgDark": "#1c140b",
-        "bgMedium": "#261a0d",
-        "bgLight": "#2f2112",
-        "bgLighter": "#3a2916",
-        "bgHover": "#4b3219",
-        "bgActive": "#5c3c1d",
-        "borderDark": "#3f2913",
-        "borderMedium": "#5c3c1d",
-        "borderLight": "#7a5128",
-        "textPrimary": "#ffe6bf",
-        "textSecondary": "#ffd59a",
-        "textMuted": "#d9ad6a",
-        "textDimmed": "#9b6c3a",
-        "accentPrimary": "#ff9f1a",
-        "accentSecondary": "#ffb347",
-        "accentGreen": "#d08b2f",
-        "accentYellow": "#ffd26f"
+        "bgDarkest": "#140d07",
+        "bgDark": "#1f140c",
+        "bgMedium": "#2a1a10",
+        "bgLight": "#342116",
+        "bgLighter": "#402a1b",
+        "bgHover": "#523521",
+        "bgActive": "#664126",
+        "borderDark": "#311d10",
+        "borderMedium": "#4a2c18",
+        "borderLight": "#633b1f",
+        "textPrimary": "#ffe6c1",
+        "textSecondary": "#ffd39a",
+        "textMuted": "#cfaa76",
+        "textDimmed": "#9f7a4f",
+        "accentPrimary": "#ff8a24",
+        "accentSecondary": "#ffc14d",
+        "accentGreen": "#e1a438",
+        "accentYellow": "#ffdc78"
       },
       "buttons": {
-        "primary": "#ff9f1a",
-        "secondary": "#ffb347"
+        "primary": "#ff8a24",
+        "secondary": "#ffc14d"
       }
     },
     {
@@ -105,28 +167,28 @@
         "fontFamily": "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif"
       },
       "palette": {
-        "bgDarkest": "#08111c",
-        "bgDark": "#0d1a2a",
-        "bgMedium": "#13233a",
-        "bgLight": "#1a2d49",
-        "bgLighter": "#223b60",
-        "bgHover": "#294873",
-        "bgActive": "#31568a",
-        "borderDark": "#1b2f4a",
-        "borderMedium": "#2a456a",
-        "borderLight": "#3e6291",
-        "textPrimary": "#f2f8ff",
-        "textSecondary": "#d8e8ff",
-        "textMuted": "#9fb7d7",
-        "textDimmed": "#738dac",
-        "accentPrimary": "#29c6ff",
-        "accentSecondary": "#4d8dff",
-        "accentGreen": "#41efb4",
-        "accentYellow": "#ffe27a"
+        "bgDarkest": "#02131a",
+        "bgDark": "#05202b",
+        "bgMedium": "#083040",
+        "bgLight": "#0d3f53",
+        "bgLighter": "#12506a",
+        "bgHover": "#186383",
+        "bgActive": "#1f7aa3",
+        "borderDark": "#0b3645",
+        "borderMedium": "#0f4a5f",
+        "borderLight": "#156480",
+        "textPrimary": "#e7fcff",
+        "textSecondary": "#c2f1f7",
+        "textMuted": "#8ecbd7",
+        "textDimmed": "#61a2af",
+        "accentPrimary": "#00d1d8",
+        "accentSecondary": "#4ab9ff",
+        "accentGreen": "#36e1b9",
+        "accentYellow": "#f2e27a"
       },
       "buttons": {
-        "primary": "#4d8dff",
-        "secondary": "#29c6ff"
+        "primary": "#4ab9ff",
+        "secondary": "#00d1d8"
       }
     },
     {
@@ -158,99 +220,6 @@
       "buttons": {
         "primary": "#34caa2",
         "secondary": "#2ee6b8"
-      }
-    },
-    {
-      "id": "graphite-blue",
-      "name": "Graphite Blue",
-      "typography": {
-        "fontFamily": "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif"
-      },
-      "palette": {
-        "bgDarkest": "#0d0f14",
-        "bgDark": "#141922",
-        "bgMedium": "#1c2330",
-        "bgLight": "#242d3d",
-        "bgLighter": "#2d384c",
-        "bgHover": "#37445c",
-        "bgActive": "#42516e",
-        "borderDark": "#202938",
-        "borderMedium": "#30405a",
-        "borderLight": "#455c7d",
-        "textPrimary": "#f4f7ff",
-        "textSecondary": "#dde5f5",
-        "textMuted": "#aab8d1",
-        "textDimmed": "#7a8ca8",
-        "accentPrimary": "#7db6ff",
-        "accentSecondary": "#58a0ff",
-        "accentGreen": "#71efb6",
-        "accentYellow": "#ffe08a"
-      },
-      "buttons": {
-        "primary": "#58a0ff",
-        "secondary": "#7db6ff"
-      }
-    },
-    {
-      "id": "midnight-titanium-premium",
-      "name": "Midnight Titanium",
-      "typography": {
-        "fontFamily": "'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif"
-      },
-      "palette": {
-        "bgDarkest": "#0b0d12",
-        "bgDark": "#10141c",
-        "bgMedium": "#161d28",
-        "bgLight": "#1d2634",
-        "bgLighter": "#263244",
-        "bgHover": "#2c3b52",
-        "bgActive": "#354663",
-        "borderDark": "#1b2433",
-        "borderMedium": "#2a3a52",
-        "borderLight": "#3c5272",
-        "textPrimary": "#f6f9ff",
-        "textSecondary": "#dfe7f4",
-        "textMuted": "#a7b6cb",
-        "textDimmed": "#7486a0",
-        "accentPrimary": "#7ee0ff",
-        "accentSecondary": "#4ca7ff",
-        "accentGreen": "#7bf3b5",
-        "accentYellow": "#ffd875"
-      },
-      "buttons": {
-        "primary": "#4ca7ff",
-        "secondary": "#7ee0ff"
-      }
-    },
-    {
-      "id": "emerald-luxe-premium",
-      "name": "Emerald Luxe",
-      "typography": {
-        "fontFamily": "'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif"
-      },
-      "palette": {
-        "bgDarkest": "#0a1411",
-        "bgDark": "#10201a",
-        "bgMedium": "#152a23",
-        "bgLight": "#1c352d",
-        "bgLighter": "#254539",
-        "bgHover": "#2e5648",
-        "bgActive": "#396a5a",
-        "borderDark": "#1b322a",
-        "borderMedium": "#2a4a3e",
-        "borderLight": "#3f6a59",
-        "textPrimary": "#eefcf6",
-        "textSecondary": "#d4efe2",
-        "textMuted": "#9bc2b0",
-        "textDimmed": "#6e9484",
-        "accentPrimary": "#2df0b4",
-        "accentSecondary": "#28c7a0",
-        "accentGreen": "#62ff95",
-        "accentYellow": "#f5e67f"
-      },
-      "buttons": {
-        "primary": "#28c7a0",
-        "secondary": "#2df0b4"
       }
     }
   ]

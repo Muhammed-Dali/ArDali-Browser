@@ -399,5 +399,260 @@
   "sfx.truepeak.presetDescriptions.spotify": "🎵 Spotify: تحكم آمن بالقمم ومناسب للنشر على المنصات.",
   "sfx.truepeak.presetDescriptions.youtube": "📺 YouTube: تحكم مناسب للبث مع ضغط متوسط.",
   "sfx.truepeak.presetDescriptions.cd": "💿 CD Master: نهج أنظف للماستر مع هامش قمم منخفض.",
-  "sfx.truepeak.presetDescriptions.broadcast": "📡 Broadcast: تحديد أكثر إحكامًا وأمانًا لمعايير البث."
+  "sfx.truepeak.presetDescriptions.broadcast": "📡 Broadcast: تحديد أكثر إحكامًا وأمانًا لمعايير البث.",
+  "sfx.crossfeed.ab.start": "مقارنة A/B",
+  "sfx.crossfeed.ab.stop": "إيقاف A/B",
+  "sfx.crossfeed.ab.phaseOn": "التأثير يعمل",
+  "sfx.crossfeed.ab.phaseOff": "التأثير متوقف",
+  "sfx.crossfeed.ab.phaseCompare": "جارٍ المقارنة",
+  "sfx.crossfeed.ab.statusOn": "A/B: نشط ({phase}) • السرعة {speed}",
+  "sfx.crossfeed.ab.statusOff": "A/B: متوقف • السرعة {speed}",
+  "playback.shortcuts.quickAccess.title": "وصول سريع للاختصارات",
+  "playback.shortcuts.quickAccess.hint": "استخدم الزر أدناه للانتقال بسرعة إلى تعيينات مفاتيح الاختصار.",
+  "playback.shortcuts.quickAccess.jump": "الانتقال إلى اختصارات لوحة المفاتيح",
+  "playback.shortcuts.title": "اختصارات لوحة المفاتيح",
+  "playback.shortcuts.search.hint": "بحث: اعثر بسرعة على الاختصار الذي تريده (مثال: youtube, web, play).",
+  "playback.shortcuts.search.placeholder": "ابحث عن اختصار...",
+  "playback.shortcuts.sections.media": "مفاتيح الوسائط",
+  "playback.shortcuts.sections.tabs": "مفاتيح تبديل التبويب",
+  "playback.shortcuts.sections.platforms": "مفاتيح منصات الويب",
+  "playback.shortcuts.media.autoDetect": "اكتشاف مفاتيح الوسائط تلقائيًا (تشغيل/إيقاف، السابق، التالي)",
+  "playback.shortcuts.media.autoDetectHint": "في العديد من لوحات المفاتيح تعمل مفاتيح الوسائط أو Fn + مفاتيح الوسائط تلقائيًا.",
+  "playback.shortcuts.media.previous": "الانتقال إلى المقطع السابق",
+  "playback.shortcuts.media.playPause": "تشغيل / إيقاف مؤقت",
+  "playback.shortcuts.media.next": "الانتقال إلى المقطع التالي",
+  "playback.shortcuts.assign.hint": "اضغط على \"تعيين\" ثم اضغط الاختصار من لوحة المفاتيح. استخدم \"مسح\" لإعادة الضبط.",
+  "playback.shortcuts.tabs.music": "تبويب الموسيقى",
+  "playback.shortcuts.tabs.video": "تبويب الفيديو",
+  "playback.shortcuts.tabs.web": "تبويب الويب",
+  "playback.shortcuts.actions.assign": "تعيين",
+  "playback.shortcuts.actions.clear": "مسح",
+  "playback.shortcuts.actions.waiting": "بانتظار المفتاح...",
+  "playback.shortcuts.unassigned": "غير معيّن",
+  "sfx": {
+    "bitdither": {
+      "presets": {
+        "podcast": "بودكاست نقي",
+        "radio": "راديو كلاسيكي",
+        "hardcrush": "تشويه قوي"
+      },
+      "labels": {
+        "bitDepth": "عمق البت",
+        "ditherType": "نوع Dither",
+        "noiseShaping": "تشكيل الضوضاء",
+        "downsample": "تقليل المعدل"
+      },
+      "options": {
+        "bit24": "24-بت (جودة استوديو)",
+        "bit16": "16-بت (جودة CD)",
+        "bit12": "12-بت (سامبلر كلاسيكي)",
+        "bit8": "8-بت (حوسبة ريترو)",
+        "bit6": "6-بت (تحطيم قوي)",
+        "bit4": "4-بت (تشويه شديد)",
+        "dither0": "بدون (تكميم حاد)",
+        "dither1": "RPDF (مستطيل)",
+        "dither2": "TPDF (مثلث - قياسي)",
+        "shaping0": "إيقاف (نظيف)",
+        "shaping1": "خفيف (توزيع HF)",
+        "down1": "إيقاف (1x)",
+        "down2": "2x",
+        "down4": "4x",
+        "down8": "8x",
+        "down16": "16x"
+      }
+    },
+    "dynamiceq": {
+      "presets": {
+        "testhear": "اختبار (اسمعه)"
+      },
+      "info": {
+        "title": "ما هو Dynamic EQ؟",
+        "body": "عند تجاوز نطاق التردد المحدد للعتبة، يتم تطبيق EQ تلقائياً. استخدم كسباً سالباً لتخفيف الحدة وكسباً موجباً للتعزيز الديناميكي."
+      },
+      "grLabel": "خفض كسب Dynamic EQ",
+      "triggerCount": "المحفزات",
+      "statusDisabled": "Dynamic EQ معطل.",
+      "statusIdle": "بانتظار تجاوز العتبة...",
+      "statusActiveLight": "Dynamic EQ نشط (خفيف).",
+      "statusActiveMedium": "Dynamic EQ نشط (متوسط).",
+      "statusActiveStrong": "Dynamic EQ نشط (قوي)."
+    },
+    "knob": {
+      "param": {
+        "frequency": "التردد",
+        "amount": "الكمية",
+        "mix": "المزج",
+        "drive": "الدفع",
+        "tone": "النغمة",
+        "output": "الخروج",
+        "tapeHiss": "هسيس الشريط",
+        "wetMix": "مزج Wet",
+        "toneHighCut": "النغمة (قص عالي)",
+        "surroundLevel": "مستوى المحيطي",
+        "lfeLevel": "مستوى LFE",
+        "crossover": "تردد التقاطع",
+        "rearDelay": "تأخير الخلفي"
+      }
+    },
+    "crossfeed": {
+      "visualTitle": "محاكاة المجال الستيريو",
+      "presets": {
+        "natural": "طبيعي",
+        "mild": "خفيف",
+        "strong": "قوي",
+        "wide": "واسع",
+        "custom": "مخصص"
+      },
+      "device": {
+        "loading": "جارٍ فحص جهاز الخرج...",
+        "speakers": "تم اكتشاف خرج مكبر/Line-out. غالباً لا حاجة لـ Crossfeed.",
+        "unreadable": "تعذرت قراءة معلومات الخرج. يبقى Crossfeed في الوضع اليدوي."
+      },
+      "autoHeadphones": "تفعيل/تعطيل Crossfeed تلقائياً حسب توصيل السماعات",
+      "outputUnknown": "خرج غير معروف"
+    },
+    "tapesat": {
+      "modeTitle": "طابع الشريط (وضع الشريط)",
+      "modes": {
+        "classic": "شريط كلاسيكي",
+        "warm": "أنبوب دافئ",
+        "hot": "تشبع قوي"
+      }
+    },
+    "exciter": {
+      "presets": {
+        "oddair": "هواء فردي",
+        "smoothair": "هواء ناعم",
+        "brightair": "هواء لامع",
+        "softair": "هواء خفيف"
+      }
+    },
+    "softecho": {
+      "presetDesc": {
+        "canyon": "صدى بعيد يشبه الجبال مع انعكاسات قليلة.",
+        "cave": "نغمة داكنة مع ذيل كهفي طويل.",
+        "room": "إحساس غرفة فارغة قصير وخفيف.",
+        "studio": "انعكاسات استوديو قصيرة ونظيفة ومتحكم بها.",
+        "puresoft": "صدى ناعم ونقي ومريح للاستماع.",
+        "vocal": "صدى قصير وواضح يبرز الغناء.",
+        "cinema": "ذيل صدى أوسع بطابع سينمائي.",
+        "natural": "صدى يومي طبيعي ومتوازن."
+      },
+      "presets": {
+        "title": "إعدادات الصدى الناعم",
+        "canyon": "صدى الوادي",
+        "cave": "صدى الكهف",
+        "room": "صدى الغرفة",
+        "studio": "صدى الاستوديو",
+        "puresoft": "ناعم نقي",
+        "vocal": "صدى صوتي",
+        "cinema": "ذيل سينمائي"
+      },
+      "stereoPingPong": "ستيريو (Ping-Pong)"
+    },
+    "dynamicEq": {
+      "triggerCount": "عدد التفعيل",
+      "statusDisabled": "Dynamic EQ معطل.",
+      "statusIdle": "بانتظار تجاوز العتبة...",
+      "statusActiveLight": "Dynamic EQ نشط (خفيف).",
+      "statusActiveMedium": "Dynamic EQ نشط (متوسط).",
+      "statusActiveStrong": "Dynamic EQ نشط (قوي).",
+      "grLabel": "خفض كسب Dynamic EQ"
+    },
+    "reverb": {
+      "presets": {
+        "studioPlate": "لوح استوديو",
+        "arena": "قاعة كبيرة",
+        "vocalRoom": "غرفة صوت",
+        "ambientWash": "جو محيطي",
+        "slapback": "ارتداد سريع",
+        "dreamVox": "صوت حالم"
+      }
+    },
+    "bassboost": {
+      "presets": {
+        "deep": "عميق"
+      }
+    },
+    "noisegate": {
+      "presets": {
+        "stable": "مستقر",
+        "demo": "تجريبي"
+      }
+    },
+    "deesser": {
+      "presets": {
+        "smooth": "ناعم",
+        "demo": "تجريبي"
+      }
+    },
+    "stereowidener": {
+      "presets": {
+        "balanced": "متوازن",
+        "wide": "واسع",
+        "focus": "تركيز"
+      }
+    },
+    "echo": {
+      "presets": {
+        "clean": "نظيف",
+        "vocal": "صوتي",
+        "space": "فضائي"
+      }
+    },
+    "effects": {
+      "softecho": "صدى ناعم",
+      "surround": "محيطي (5.1/7.1)"
+    },
+    "descriptions": {
+      "softecho": "بروفايل صدى طبيعي وناعم بدون إحساس الصوت المعدني المزدوج.",
+      "surround": "محاكاة مشهد سينمائي مع توازن المركز/المحيط/LFE للمصادر الستيريو."
+    },
+    "convreverb": {
+      "presets": {
+        "small": "غرفة صغيرة",
+        "large": "غرفة كبيرة",
+        "spring": "زنبركي",
+        "chamber": "حجرة"
+      }
+    },
+    "peq": {
+      "presets": {
+        "title": "إعدادات PEQ السريعة",
+        "balanced": "متوازن",
+        "bass": "باس أقوى",
+        "vocal": "وضوح صوتي",
+        "clarity": "وضوح ساطع",
+        "warm": "نغمة دافئة",
+        "air": "هواء مفتوح"
+      }
+    },
+    "autogain": {
+      "presets": {
+        "title": "إعدادات الكسب التلقائي السريعة",
+        "balanced": "متوازن",
+        "night": "هدوء ليلي",
+        "loud": "طاقة عالية",
+        "speech": "وضوح الكلام"
+      }
+    },
+    "surround": {
+      "presets": {
+        "title": "إعدادات المحيطي",
+        "movie": "أفلام",
+        "music": "موسيقى",
+        "game": "ألعاب",
+        "voice": "صوت+",
+        "night": "ليلي"
+      },
+      "hint": {
+        "loading": "جارٍ قراءة معلومات الخرج...",
+        "multi": "تم اكتشاف خرج متعدد القنوات. يُنصح بوضع المحيطي.",
+        "stereo": "تم اكتشاف خرج ستيريو. وضع المحاكاة المحيطية الافتراضية مفعل.",
+        "unreadable": "تعذرت قراءة معلومات الخرج. يعمل الوضع كمحاكاة محيطية افتراضية لمصادر الستيريو."
+      },
+      "autoMultichannel": "تفعيل/تعطيل المحيطي تلقائياً عند مخارج متعددة القنوات (>2)",
+      "outputUnknown": "خرج غير معروف"
+    }
+  }
 }

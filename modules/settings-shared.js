@@ -5,6 +5,53 @@
         return 'full';
     }
 
+    function normalizeMotionProfile(value) {
+        const normalized = String(value || '').trim().toLowerCase();
+        if (['fast', 'balanced', 'calm'].includes(normalized)) return normalized;
+        return 'balanced';
+    }
+
+    function normalizeSfxIconSize(value) {
+        const normalized = String(value || '').trim().toLowerCase();
+        if (['compact', 'medium', 'large'].includes(normalized)) return normalized;
+        return 'medium';
+    }
+
+    const PLAYBACK_SHORTCUT_CODES = new Set([
+        'none',
+        'F1', 'F2', 'F3', 'F4', 'F5', 'F6',
+        'F7', 'F8', 'F9', 'F10', 'F11', 'F12',
+        'MediaPlayPause', 'MediaPreviousTrack', 'MediaNextTrack',
+        'MediaTrackPrevious', 'MediaTrackNext'
+    ]);
+    const NAVIGATION_SHORTCUT_FIELD_MAP = {
+        tabMusic: 'shortcutTabMusic',
+        tabVideo: 'shortcutTabVideo',
+        tabWeb: 'shortcutTabWeb',
+        platformYtmusic: 'shortcutPlatformYtmusic',
+        platformYoutube: 'shortcutPlatformYoutube',
+        platformDeezer: 'shortcutPlatformDeezer',
+        platformSoundcloud: 'shortcutPlatformSoundcloud',
+        platformFacebook: 'shortcutPlatformFacebook',
+        platformInstagram: 'shortcutPlatformInstagram',
+        platformTiktok: 'shortcutPlatformTiktok',
+        platformX: 'shortcutPlatformX',
+        platformReddit: 'shortcutPlatformReddit',
+        platformTwitch: 'shortcutPlatformTwitch'
+    };
+
+    function normalizePlaybackShortcutCode(value, fallback) {
+        const normalized = String(value || '').trim();
+        if (!PLAYBACK_SHORTCUT_CODES.has(normalized)) return fallback;
+        if (normalized === 'MediaTrackPrevious') return 'MediaPreviousTrack';
+        if (normalized === 'MediaTrackNext') return 'MediaNextTrack';
+        return normalized;
+    }
+
+    function normalizeNavigationShortcut(value) {
+        return String(value || '').trim();
+    }
+
     function visualModePreset(mode) {
         const normalized = normalizeVisualMode(mode);
         if (normalized === 'balanced') {
@@ -120,6 +167,10 @@
         const endWarningSeconds = document.getElementById('endWarningSeconds');
         const smartVolumeLevelingEnabled = document.getElementById('smartVolumeLevelingEnabled');
         const smartVolumeLevelingMode = document.getElementById('smartVolumeLevelingMode');
+        const mediaKeyAutoDetect = document.getElementById('mediaKeyAutoDetect');
+        const shortcutPrevious = document.getElementById('shortcutPrevious');
+        const shortcutPlayPause = document.getElementById('shortcutPlayPause');
+        const shortcutNext = document.getElementById('shortcutNext');
 
         if (crossfadeStop) crossfadeStop.checked = !!pb.crossfadeStopEnabled;
         if (crossfadeManual) crossfadeManual.checked = !!pb.crossfadeManualEnabled;
@@ -144,6 +195,18 @@
             const mode = String(pb.smartVolumeLevelingMode || 'balanced').toLowerCase();
             smartVolumeLevelingMode.value = ['gentle', 'balanced', 'strong'].includes(mode) ? mode : 'balanced';
         }
+        if (mediaKeyAutoDetect) mediaKeyAutoDetect.checked = pb.mediaKeyAutoDetect !== false;
+        if (shortcutPrevious) shortcutPrevious.value = normalizePlaybackShortcutCode(pb?.customHotkeys?.previous, 'F2');
+        if (shortcutPlayPause) shortcutPlayPause.value = normalizePlaybackShortcutCode(pb?.customHotkeys?.playPause, 'F3');
+        if (shortcutNext) shortcutNext.value = normalizePlaybackShortcutCode(pb?.customHotkeys?.next, 'F4');
+        const navigationShortcuts = (pb?.navigationShortcuts && typeof pb.navigationShortcuts === 'object')
+            ? pb.navigationShortcuts
+            : {};
+        Object.entries(NAVIGATION_SHORTCUT_FIELD_MAP).forEach(([key, fieldId]) => {
+            const input = document.getElementById(fieldId);
+            if (!input) return;
+            input.value = normalizeNavigationShortcut(navigationShortcuts[key]);
+        });
 
         if (elements.pulseNoSignalHintSec) {
             const sec = Number(state.settings?.pulseQuick?.noSignalHintSec);
@@ -284,6 +347,9 @@
         if (elements.uiVisualModeSelect) {
             elements.uiVisualModeSelect.value = modePreset.visualMode;
         }
+        if (elements.uiMotionProfileSelect) {
+            elements.uiMotionProfileSelect.value = normalizeMotionProfile(state.settings?.appearance?.motionProfile);
+        }
         if (elements.uiFollowSystemThemeToggle) {
             elements.uiFollowSystemThemeToggle.checked = !!state.settings?.appearance?.followSystemTheme;
         }
@@ -299,8 +365,17 @@
         if (elements.sfxLightsToggle) {
             elements.sfxLightsToggle.checked = state.settings?.appearance?.sfxLights !== false;
         }
+        if (elements.uiSfxIconSizeSelect) {
+            elements.uiSfxIconSizeSelect.value = normalizeSfxIconSize(state.settings?.appearance?.sfxSidebarIconSize);
+        }
+        if (elements.uiAutoHardwareProfileToggle) {
+            elements.uiAutoHardwareProfileToggle.checked = state.settings?.appearance?.autoHardwareProfile !== false;
+        }
         if (elements.securityAllowPopups) {
             elements.securityAllowPopups.checked = state.settings?.security?.allowPopups !== false;
+        }
+        if (elements.securityEnforceAllowlist) {
+            elements.securityEnforceAllowlist.checked = !!state.settings?.security?.enforceAllowlist;
         }
 
         if (elements.audioDefaultVolume) {
@@ -408,6 +483,15 @@
         const endWarningSeconds = document.getElementById('endWarningSeconds');
         const smartVolumeLevelingEnabled = document.getElementById('smartVolumeLevelingEnabled');
         const smartVolumeLevelingMode = document.getElementById('smartVolumeLevelingMode');
+        const mediaKeyAutoDetect = document.getElementById('mediaKeyAutoDetect');
+        const shortcutPrevious = document.getElementById('shortcutPrevious');
+        const shortcutPlayPause = document.getElementById('shortcutPlayPause');
+        const shortcutNext = document.getElementById('shortcutNext');
+        const navigationShortcuts = Object.entries(NAVIGATION_SHORTCUT_FIELD_MAP).reduce((acc, [key, fieldId]) => {
+            const input = document.getElementById(fieldId);
+            acc[key] = normalizeNavigationShortcut(input?.value);
+            return acc;
+        }, {});
         const crossfadeMsValue = Math.max(0, Math.min(15000, parseInt(crossfadeMs?.value || '2000', 10) || 2000));
         const pauseFadeMsValue = Math.max(0, Math.min(5000, parseInt(pauseFadeMs?.value || '250', 10) || 250));
         const crossfadeSafetyPaddingMsValue = Math.max(0, Math.min(5000, parseInt(crossfadeSafetyPaddingMs?.value || '300', 10) || 300));
@@ -435,6 +519,13 @@
             smartVolumeLevelingMode: ['gentle', 'balanced', 'strong'].includes(smartVolumeLevelingModeValue)
                 ? smartVolumeLevelingModeValue
                 : 'balanced',
+            mediaKeyAutoDetect: mediaKeyAutoDetect?.checked !== false,
+            customHotkeys: {
+                previous: normalizePlaybackShortcutCode(shortcutPrevious?.value, 'F2'),
+                playPause: normalizePlaybackShortcutCode(shortcutPlayPause?.value, 'F3'),
+                next: normalizePlaybackShortcutCode(shortcutNext?.value, 'F4')
+            },
+            navigationShortcuts,
             startupState: state.settings?.playback?.startupState && typeof state.settings.playback.startupState === 'object'
                 ? state.settings.playback.startupState
                 : {}
@@ -472,14 +563,30 @@
         state.settings.ui.language = nextLanguage;
         state.settings.lang = nextLanguage;
         if (!state.settings.appearance || typeof state.settings.appearance !== 'object') state.settings.appearance = {};
+        const prevAutoHardwareProfile = state.settings.appearance.autoHardwareProfile !== false;
+        const nextAutoHardwareProfile = !!elements.uiAutoHardwareProfileToggle?.checked;
         const modePresetForApply = visualModePreset(elements.uiVisualModeSelect?.value || state.settings.appearance.visualMode || 'full');
         state.settings.appearance.theme = String(elements.themeSelect?.value || state.settings.appearance.theme || 'aur-renk-efektleri');
         state.settings.appearance.followSystemTheme = !!elements.uiFollowSystemThemeToggle?.checked;
         state.settings.appearance.visualMode = modePresetForApply.visualMode;
+        state.settings.appearance.motionProfile = normalizeMotionProfile(
+            elements.uiMotionProfileSelect?.value || state.settings.appearance.motionProfile || 'balanced'
+        );
         state.settings.appearance.uiFxEnabled = modePresetForApply.uiFxEnabled;
         state.settings.appearance.sliderFxEnabled = !!elements.sliderFxToggle?.checked;
         state.settings.appearance.reduceMotion = modePresetForApply.reduceMotion;
         state.settings.appearance.sfxLights = !!elements.sfxLightsToggle?.checked;
+        state.settings.appearance.sfxSidebarIconSize = normalizeSfxIconSize(
+            elements.uiSfxIconSizeSelect?.value || state.settings.appearance.sfxSidebarIconSize || 'medium'
+        );
+        state.settings.appearance.autoHardwareProfile = nextAutoHardwareProfile;
+        if (prevAutoHardwareProfile && !nextAutoHardwareProfile) {
+            // Auto optimize kapatılırken tam güç varsayılanını kayda da kesin yansıt.
+            state.settings.appearance.sliderFxEnabled = true;
+            state.settings.appearance.sfxLights = true;
+            if (elements.sliderFxToggle) elements.sliderFxToggle.checked = true;
+            if (elements.sfxLightsToggle) elements.sfxLightsToggle.checked = true;
+        }
         const rememberLastSectionValue =
             (typeof elements.behaviorRememberLastSection?.checked === 'boolean')
                 ? !!elements.behaviorRememberLastSection.checked
@@ -497,6 +604,7 @@
                 : true;
         if (!state.settings.security || typeof state.settings.security !== 'object') state.settings.security = {};
         state.settings.security.allowPopups = !!elements.securityAllowPopups?.checked;
+        state.settings.security.enforceAllowlist = !!elements.securityEnforceAllowlist?.checked;
         if (!state.settings.library || typeof state.settings.library !== 'object') state.settings.library = {};
         state.settings.library.restoreLastFolder = !!elements.libraryRestoreLastFolder?.checked;
         state.settings.library.restoreLastPlaylist = !!elements.libraryRestoreLastPlaylist?.checked;
@@ -634,6 +742,10 @@
         const endWarningSeconds = document.getElementById('endWarningSeconds');
         const smartVolumeLevelingEnabled = document.getElementById('smartVolumeLevelingEnabled');
         const smartVolumeLevelingMode = document.getElementById('smartVolumeLevelingMode');
+        const mediaKeyAutoDetect = document.getElementById('mediaKeyAutoDetect');
+        const shortcutPrevious = document.getElementById('shortcutPrevious');
+        const shortcutPlayPause = document.getElementById('shortcutPlayPause');
+        const shortcutNext = document.getElementById('shortcutNext');
 
         if (crossfadeStop) crossfadeStop.checked = true;
         if (crossfadeManual) crossfadeManual.checked = true;
@@ -655,6 +767,14 @@
         if (endWarningSeconds) endWarningSeconds.value = '10';
         if (smartVolumeLevelingEnabled) smartVolumeLevelingEnabled.checked = false;
         if (smartVolumeLevelingMode) smartVolumeLevelingMode.value = 'balanced';
+        if (mediaKeyAutoDetect) mediaKeyAutoDetect.checked = true;
+        if (shortcutPrevious) shortcutPrevious.value = 'F2';
+        if (shortcutPlayPause) shortcutPlayPause.value = 'F3';
+        if (shortcutNext) shortcutNext.value = 'F4';
+        Object.values(NAVIGATION_SHORTCUT_FIELD_MAP).forEach((fieldId) => {
+            const input = document.getElementById(fieldId);
+            if (input) input.value = '';
+        });
     }
 
     function resetListenDefaults({ elements, defaultSec, defaultMode, updatePulseQuickModeUi }) {

@@ -263,5 +263,260 @@
   "sfx.truepeak.presetDescriptions.spotify": "🎵 Spotify: प्लेटफ़ॉर्म डिलीवरी के लिए सुरक्षित peak control।",
   "sfx.truepeak.presetDescriptions.youtube": "📺 YouTube: स्ट्रीम-फ्रेंडली peak control, मध्यम कंप्रेशन के साथ।",
   "sfx.truepeak.presetDescriptions.cd": "💿 CD Master: न्यूनतम peak margin के साथ अधिक साफ़ master दृष्टिकोण।",
-  "sfx.truepeak.presetDescriptions.broadcast": "📡 Broadcast: प्रसारण मानकों के लिए अधिक सख्त और सुरक्षित limiting।"
+  "sfx.truepeak.presetDescriptions.broadcast": "📡 Broadcast: प्रसारण मानकों के लिए अधिक सख्त और सुरक्षित limiting।",
+  "playback.shortcuts.quickAccess.title": "शॉर्टकट क्विक एक्सेस",
+  "playback.shortcuts.quickAccess.hint": "कीबोर्ड शॉर्टकट असाइनमेंट पर जल्दी जाने के लिए नीचे का बटन उपयोग करें।",
+  "playback.shortcuts.quickAccess.jump": "कीबोर्ड शॉर्टकट पर जाएँ",
+  "playback.shortcuts.title": "कीबोर्ड शॉर्टकट",
+  "playback.shortcuts.search.hint": "खोज: अपना मनचाहा शॉर्टकट जल्दी पाएँ।",
+  "playback.shortcuts.search.placeholder": "शॉर्टकट खोजें...",
+  "playback.shortcuts.sections.media": "मीडिया कुंजियाँ",
+  "playback.shortcuts.sections.tabs": "टैब बदलने की कुंजियाँ",
+  "playback.shortcuts.sections.platforms": "वेब प्लेटफॉर्म कुंजियाँ",
+  "playback.shortcuts.media.autoDetect": "मीडिया कुंजियों को स्वतः पहचानें",
+  "playback.shortcuts.media.autoDetectHint": "कई कीबोर्ड में मीडिया कुंजियाँ या Fn + मीडिया कुंजियाँ स्वतः काम करती हैं।",
+  "playback.shortcuts.media.previous": "पिछले ट्रैक पर जाएँ",
+  "playback.shortcuts.media.playPause": "चलाएँ / रोकें",
+  "playback.shortcuts.media.next": "अगले ट्रैक पर जाएँ",
+  "playback.shortcuts.assign.hint": "Assign दबाएँ, फिर शॉर्टकट दबाएँ। Clear से रीसेट करें।",
+  "playback.shortcuts.tabs.music": "म्यूज़िक टैब",
+  "playback.shortcuts.tabs.video": "वीडियो टैब",
+  "playback.shortcuts.tabs.web": "वेब टैब",
+  "playback.shortcuts.actions.assign": "Assign",
+  "playback.shortcuts.actions.clear": "Clear",
+  "playback.shortcuts.actions.waiting": "कुंजी की प्रतीक्षा...",
+  "playback.shortcuts.unassigned": "असाइन नहीं",
+  "sfx.crossfeed.ab.start": "A/B तुलना",
+  "sfx.crossfeed.ab.stop": "A/B रोकें",
+  "sfx.crossfeed.ab.phaseOn": "इफ़ेक्ट चालू",
+  "sfx.crossfeed.ab.phaseOff": "इफ़ेक्ट बंद",
+  "sfx.crossfeed.ab.phaseCompare": "तुलना जारी",
+  "sfx.crossfeed.ab.statusOn": "A/B: सक्रिय ({phase}) • गति {speed}",
+  "sfx.crossfeed.ab.statusOff": "A/B: बंद • गति {speed}",
+  "sfx": {
+    "bitdither": {
+      "presets": {
+        "podcast": "पॉडकास्ट क्लीन",
+        "radio": "विंटेज रेडियो",
+        "hardcrush": "हार्ड क्रश"
+      },
+      "labels": {
+        "bitDepth": "Bit Depth",
+        "ditherType": "Dither Type",
+        "noiseShaping": "Noise Shaping",
+        "downsample": "Downsample"
+      },
+      "options": {
+        "bit24": "24-bit (Studio Grade)",
+        "bit16": "16-bit (CD Quality)",
+        "bit12": "12-bit (Vintage Sampler)",
+        "bit8": "8-bit (Retro Computing)",
+        "bit6": "6-bit (Aggressive Crush)",
+        "bit4": "4-bit (Extreme Distortion)",
+        "dither0": "None (Hard Quantization)",
+        "dither1": "RPDF (Rectangular)",
+        "dither2": "TPDF (Triangular - Industry Std)",
+        "shaping0": "Off (Clean)",
+        "shaping1": "Light (HF Distribution)",
+        "down1": "Off (1x)",
+        "down2": "2x",
+        "down4": "4x",
+        "down8": "8x",
+        "down16": "16x"
+      }
+    },
+    "dynamiceq": {
+      "presets": {
+        "testhear": "Test (Hear It)"
+      },
+      "info": {
+        "title": "What is Dynamic EQ?",
+        "body": "When the selected frequency band exceeds the threshold, EQ is applied automatically. Use negative gain for de-harshing and positive gain for dynamic boost."
+      },
+      "grLabel": "Dynamic EQ Gain Reduction",
+      "triggerCount": "Triggers",
+      "statusDisabled": "Dynamic EQ is disabled.",
+      "statusIdle": "Waiting for threshold crossing...",
+      "statusActiveLight": "Dynamic EQ active (light).",
+      "statusActiveMedium": "Dynamic EQ active (medium).",
+      "statusActiveStrong": "Dynamic EQ active (strong)."
+    },
+    "knob": {
+      "param": {
+        "frequency": "Frequency",
+        "amount": "Amount",
+        "mix": "Mix",
+        "drive": "Drive",
+        "tone": "Tone",
+        "output": "Output",
+        "tapeHiss": "Tape Hiss",
+        "wetMix": "Wet Mix",
+        "toneHighCut": "Tone (High Cut)",
+        "surroundLevel": "Surround Level",
+        "lfeLevel": "LFE Level",
+        "crossover": "Crossover",
+        "rearDelay": "Rear Delay"
+      }
+    },
+    "crossfeed": {
+      "visualTitle": "Stereo Field Simulation",
+      "presets": {
+        "natural": "Natural",
+        "mild": "Mild",
+        "strong": "Strong",
+        "wide": "Wide",
+        "custom": "Custom"
+      },
+      "device": {
+        "loading": "Output device is being checked...",
+        "speakers": "Output detected as speaker/line-out. Crossfeed is usually unnecessary.",
+        "unreadable": "Output info could not be read. Crossfeed remains in manual mode."
+      },
+      "autoHeadphones": "Auto enable/disable crossfeed according to headphone connection",
+      "outputUnknown": "Unknown output"
+    },
+    "tapesat": {
+      "modeTitle": "Tape Character (Tape Mode)",
+      "modes": {
+        "classic": "Classic Tape",
+        "warm": "Warm Tube",
+        "hot": "Hot Saturation"
+      }
+    },
+    "exciter": {
+      "presets": {
+        "oddair": "Odd Air",
+        "smoothair": "Smooth Air",
+        "brightair": "Bright Air",
+        "softair": "Soft Air"
+      }
+    },
+    "softecho": {
+      "presetDesc": {
+        "canyon": "Distant mountain-like echoes with sparse reflections.",
+        "cave": "Dark tone with long cave-style tail.",
+        "room": "Short and subtle empty-room ambience.",
+        "studio": "Short, clean, and controlled studio reflections.",
+        "puresoft": "Pure, smooth, and fatigue-free soft echo.",
+        "vocal": "Short and clear echo emphasizing vocals.",
+        "cinema": "Wider cinematic echo tail.",
+        "natural": "Natural and balanced daily echo profile."
+      },
+      "presets": {
+        "title": "Soft Echo Presets",
+        "canyon": "Canyon Echo",
+        "cave": "Cave Echo",
+        "room": "Room Echo",
+        "studio": "Studio Echo",
+        "puresoft": "Pure Soft",
+        "vocal": "Vocal Soft",
+        "cinema": "Cinema Tail"
+      },
+      "stereoPingPong": "Stereo (Ping-Pong)"
+    },
+    "dynamicEq": {
+      "triggerCount": "Triggers",
+      "statusDisabled": "Dynamic EQ is disabled.",
+      "statusIdle": "Waiting for threshold crossing...",
+      "statusActiveLight": "Dynamic EQ active (light).",
+      "statusActiveMedium": "Dynamic EQ active (medium).",
+      "statusActiveStrong": "Dynamic EQ active (strong).",
+      "grLabel": "Dynamic EQ Gain Reduction"
+    },
+    "reverb": {
+      "presets": {
+        "studioPlate": "Studio Plate",
+        "arena": "Arena",
+        "vocalRoom": "Vocal Room",
+        "ambientWash": "Ambient Wash",
+        "slapback": "Slapback",
+        "dreamVox": "Dream Vox"
+      }
+    },
+    "bassboost": {
+      "presets": {
+        "deep": "Deep"
+      }
+    },
+    "noisegate": {
+      "presets": {
+        "stable": "Stable",
+        "demo": "Demo"
+      }
+    },
+    "deesser": {
+      "presets": {
+        "smooth": "Smooth",
+        "demo": "Demo"
+      }
+    },
+    "stereowidener": {
+      "presets": {
+        "balanced": "Balanced",
+        "wide": "Wide",
+        "focus": "Focus"
+      }
+    },
+    "echo": {
+      "presets": {
+        "clean": "Clean",
+        "vocal": "Vocal",
+        "space": "Space"
+      }
+    },
+    "effects": {
+      "softecho": "Soft Echo",
+      "surround": "Surround (5.1/7.1)"
+    },
+    "descriptions": {
+      "softecho": "Natural and smooth echo profile without metallic double-voice feel.",
+      "surround": "Cinematic stage simulation with center/surround/LFE balance for stereo sources."
+    },
+    "convreverb": {
+      "presets": {
+        "small": "Small Room",
+        "large": "Large Room",
+        "spring": "Spring",
+        "chamber": "Chamber"
+      }
+    },
+    "peq": {
+      "presets": {
+        "title": "PEQ Quick Presets",
+        "balanced": "Balanced",
+        "bass": "Bass Boosted",
+        "vocal": "Vocal Clear",
+        "clarity": "Bright Clarity",
+        "warm": "Warm Tone",
+        "air": "Air Open"
+      }
+    },
+    "autogain": {
+      "presets": {
+        "title": "Auto Gain Quick Presets",
+        "balanced": "Balanced",
+        "night": "Night Quiet",
+        "loud": "High Energy",
+        "speech": "Speech Clear"
+      }
+    },
+    "surround": {
+      "presets": {
+        "title": "Surround Presets",
+        "movie": "Movie",
+        "music": "Music",
+        "game": "Game",
+        "voice": "Voice+",
+        "night": "Night"
+      },
+      "hint": {
+        "loading": "Reading output info...",
+        "multi": "Multichannel output detected. Surround mode is recommended.",
+        "stereo": "Stereo output detected. Virtual surround simulation mode is active.",
+        "unreadable": "Output info could not be read. Surround mode works as virtual simulation on stereo sources."
+      },
+      "autoMultichannel": "Auto enable/disable surround on multichannel outputs (>2 channels)",
+      "outputUnknown": "Unknown output"
+    }
+  }
 }

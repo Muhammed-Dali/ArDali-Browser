@@ -41,6 +41,7 @@ let forcedStandaloneSettingsMode =
 let fileTreeRenderGeneration = 0;
 let systemThemeMediaQuery = null;
 let systemThemeChangeListenerBound = false;
+let cachedHardwareProfile = null;
 
 function isStandaloneSettingsMode() {
     return forcedStandaloneSettingsMode;
@@ -585,6 +586,7 @@ const state = {
     webDuration: 0,
     webPosition: 0,
     webTitle: '',
+    webPendingTitle: '',
     webArtist: '',
     webAlbum: '',
     specialPaths: null,
@@ -617,12 +619,14 @@ const state = {
 const webVolumeSync = {
     ignoreIncomingUntil: 0
 };
+const handledExternalDropEvents = new WeakSet();
 const securityRuntime = {
     vpnWarned: false
 };
 const webLoadRuntime = {
     retryMap: new Map(), // key=url, value=retry count
     overlayTimer: null,
+    overlayShowTimer: null,
     navToken: 0,
     lastRequestedUrl: '',
     lastRequestedAt: 0
@@ -747,20 +751,26 @@ function getAdblockWebModeProfile() {
         return {
             tickIntervalMs: 350,
             uiScrubLevel: 0,
-            deepSponsoredScan: false
+            deepSponsoredScan: false,
+            adSignalLevel: 0,
+            forceSeekAds: false
         };
     }
     if (mode === 'aggressive') {
         return {
-            tickIntervalMs: 80,
+            tickIntervalMs: 55,
             uiScrubLevel: 2,
-            deepSponsoredScan: true
+            deepSponsoredScan: true,
+            adSignalLevel: 2,
+            forceSeekAds: true
         };
     }
     return {
-        tickIntervalMs: 150,
+        tickIntervalMs: 120,
         uiScrubLevel: 1,
-        deepSponsoredScan: true
+        deepSponsoredScan: true,
+        adSignalLevel: 1,
+        forceSeekAds: false
     };
 }
 
@@ -933,6 +943,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (isStandaloneSettingsMode() || isPageVisible(elements.settingsPage)) {
             loadSettingsToUI();
             activateSettingsTab(activeSettingsTab);
+        }
+        if (state.currentPage === 'web' || state.activeMedia === 'web') {
+            scheduleApplyWebDaliEngine('settings-reload', 120);
         }
     });
     window.aurivo?.onSettingsNavigate?.(({ tab }) => {
@@ -1181,7 +1194,7 @@ async function loadAndApplyEQSettings() {
 
         console.log('[MAIN WINDOW] Kayıtlı EQ ayarları yükleniyor...');
         const settings = await window.aurivo.loadSettings();
-        const eq32 = settings?.sfx?.eq32;
+        const eq32 = settings?.sfxScopes?.music?.eq32 || settings?.sfx?.eq32;
 
         if (!eq32 || !Array.isArray(eq32.bands)) {
             console.log('[MAIN WINDOW] Kayıtlı EQ yok, varsayılan kullanılıyor');
@@ -1452,13 +1465,19 @@ function cacheElements() {
     elements.languageSelect = document.getElementById('languageSelect');
     elements.themeSelect = document.getElementById('themeSelect');
     elements.themeSystemHint = document.getElementById('themeSystemHint');
+    elements.themeModeStatus = document.getElementById('themeModeStatus');
     elements.uiFollowSystemThemeToggle = document.getElementById('uiFollowSystemThemeToggle');
     elements.behaviorRememberLastSection = document.getElementById('behaviorRememberLastSection');
     elements.behaviorStartupPage = document.getElementById('behaviorStartupPage');
     elements.behaviorCloseToTray = document.getElementById('behaviorCloseToTray');
     elements.uiVisualModeSelect = document.getElementById('uiVisualModeSelect');
+    elements.uiMotionProfileSelect = document.getElementById('uiMotionProfileSelect');
+    elements.uiSfxPerfModeSelect = document.getElementById('uiSfxPerfModeSelect');
+    elements.uiSfxIconSizeSelect = document.getElementById('uiSfxIconSizeSelect');
     elements.uiVisualModeHint = document.getElementById('uiVisualModeHint');
     elements.uiVisualModePerfBadge = document.getElementById('uiVisualModePerfBadge');
+    elements.uiAutoHardwareProfileToggle = document.getElementById('uiAutoHardwareProfileToggle');
+    elements.uiHardwareProfileStatus = document.getElementById('uiHardwareProfileStatus');
     elements.uiFxEnabledToggle = document.getElementById('uiFxEnabledToggle');
     elements.uiReduceMotionToggle = document.getElementById('uiReduceMotionToggle');
     elements.sliderFxToggle = document.getElementById('sliderFxToggle');
@@ -1474,6 +1493,7 @@ function cacheElements() {
     elements.securityCurrentUrl = document.getElementById('securityCurrentUrl');
     elements.securityAllowPopups = document.getElementById('securityAllowPopups');
     elements.securityStrictVpnBlock = document.getElementById('securityStrictVpnBlock');
+    elements.securityEnforceAllowlist = document.getElementById('securityEnforceAllowlist');
     elements.securityCopyUrlBtn = document.getElementById('securityCopyUrlBtn');
     elements.securityOpenInBrowserBtn = document.getElementById('securityOpenInBrowserBtn');
     elements.securityClearCookiesBtn = document.getElementById('securityClearCookiesBtn');
@@ -1552,6 +1572,27 @@ async function loadSettings() {
                 endWarningSeconds: 10,
                 smartVolumeLevelingEnabled: false,
                 smartVolumeLevelingMode: 'balanced',
+                mediaKeyAutoDetect: true,
+                customHotkeys: {
+                    previous: 'F2',
+                    playPause: 'F3',
+                    next: 'F4'
+                },
+                navigationShortcuts: {
+                    tabMusic: '',
+                    tabVideo: '',
+                    tabWeb: '',
+                    platformYtmusic: '',
+                    platformYoutube: '',
+                    platformDeezer: '',
+                    platformSoundcloud: '',
+                    platformFacebook: '',
+                    platformInstagram: '',
+                    platformTiktok: '',
+                    platformX: '',
+                    platformReddit: '',
+                    platformTwitch: ''
+                },
                 startupState: {
                     lastTrackPath: '',
                     lastTrackIndex: -1,
@@ -1581,6 +1622,39 @@ async function loadSettings() {
             playback.smartVolumeLevelingMode = ['gentle', 'balanced', 'strong'].includes(String(playback.smartVolumeLevelingMode || '').toLowerCase())
                 ? String(playback.smartVolumeLevelingMode).toLowerCase()
                 : 'balanced';
+            playback.mediaKeyAutoDetect = playback.mediaKeyAutoDetect !== false;
+            if (!playback.customHotkeys || typeof playback.customHotkeys !== 'object') {
+                playback.customHotkeys = {};
+            }
+            const normalizeShortcutCode = (value, fallback) => {
+                const normalized = String(value || '').trim();
+                const allowed = new Set([
+                    'none',
+                    'F1', 'F2', 'F3', 'F4', 'F5', 'F6',
+                    'F7', 'F8', 'F9', 'F10', 'F11', 'F12',
+                    'MediaPlayPause', 'MediaPreviousTrack', 'MediaNextTrack',
+                    'MediaTrackPrevious', 'MediaTrackNext'
+                ]);
+                if (!allowed.has(normalized)) return fallback;
+                if (normalized === 'MediaTrackPrevious') return 'MediaPreviousTrack';
+                if (normalized === 'MediaTrackNext') return 'MediaNextTrack';
+                return normalized;
+            };
+            playback.customHotkeys.previous = normalizeShortcutCode(playback.customHotkeys.previous, 'F2');
+            playback.customHotkeys.playPause = normalizeShortcutCode(playback.customHotkeys.playPause, 'F3');
+            playback.customHotkeys.next = normalizeShortcutCode(playback.customHotkeys.next, 'F4');
+            if (!playback.navigationShortcuts || typeof playback.navigationShortcuts !== 'object') {
+                playback.navigationShortcuts = {};
+            }
+            const navKeys = [
+                'tabMusic', 'tabVideo', 'tabWeb',
+                'platformYtmusic', 'platformYoutube', 'platformDeezer', 'platformSoundcloud',
+                'platformFacebook', 'platformInstagram', 'platformTiktok', 'platformX',
+                'platformReddit', 'platformTwitch'
+            ];
+            navKeys.forEach((key) => {
+                playback.navigationShortcuts[key] = String(playback.navigationShortcuts[key] || '').trim();
+            });
             if (!playback.startupState || typeof playback.startupState !== 'object') {
                 playback.startupState = {};
             }
@@ -1633,24 +1707,42 @@ async function loadSettings() {
         if (!state.settings.security || typeof state.settings.security !== 'object') {
             state.settings.security = {
                 strictVpnBlock: false,
-                allowPopups: true
+                allowPopups: true,
+                enforceAllowlist: false
             };
         }
         if (typeof state.settings.security.allowPopups !== 'boolean') {
             state.settings.security.allowPopups = true;
+        }
+        if (typeof state.settings.security.enforceAllowlist !== 'boolean') {
+            state.settings.security.enforceAllowlist = false;
         }
         if (!state.settings.appearance || typeof state.settings.appearance !== 'object') {
             state.settings.appearance = {
                 theme: 'aur-renk-efektleri',
                 followSystemTheme: false,
                 visualMode: 'full',
+                motionProfile: 'balanced',
                 uiFxEnabled: true,
                 sliderFxEnabled: true,
                 reduceMotion: false,
-                sfxLights: true
+                sfxLights: true,
+                autoHardwareProfile: true,
+                sfxPerfMode: 'auto',
+                sfxSidebarIconSize: 'medium'
             };
         }
-        if (typeof state.settings.appearance.theme !== 'string' || !state.settings.appearance.theme.trim()) {
+        const allowedThemeIds = new Set([
+            'aur-renk-efektleri',
+            'performance-balanced',
+            'performance-lite',
+            'neon-night',
+            'retro-amber',
+            'deep-ocean',
+            'forest-mint'
+        ]);
+        const savedTheme = String(state.settings.appearance.theme || '').trim();
+        if (!savedTheme || !allowedThemeIds.has(savedTheme)) {
             state.settings.appearance.theme = 'aur-renk-efektleri';
         }
         if (typeof state.settings.appearance.followSystemTheme !== 'boolean') {
@@ -1667,6 +1759,9 @@ async function loadSettings() {
                 state.settings.appearance.visualMode = 'full';
             }
         }
+        if (!['fast', 'balanced', 'calm'].includes(String(state.settings.appearance.motionProfile || '').toLowerCase())) {
+            state.settings.appearance.motionProfile = 'balanced';
+        }
         if (typeof state.settings.appearance.uiFxEnabled !== 'boolean') {
             state.settings.appearance.uiFxEnabled = true;
         }
@@ -1679,7 +1774,18 @@ async function loadSettings() {
         if (typeof state.settings.appearance.sfxLights !== 'boolean') {
             state.settings.appearance.sfxLights = true;
         }
+        if (typeof state.settings.appearance.autoHardwareProfile !== 'boolean') {
+            state.settings.appearance.autoHardwareProfile = true;
+        }
+        if (!['auto', 'lite', 'full'].includes(String(state.settings.appearance.sfxPerfMode || '').toLowerCase())) {
+            state.settings.appearance.sfxPerfMode = 'auto';
+        }
+        if (!['compact', 'medium', 'large'].includes(String(state.settings.appearance.sfxSidebarIconSize || '').toLowerCase())) {
+            state.settings.appearance.sfxSidebarIconSize = 'medium';
+        }
+        await applyAutoHardwareAppearanceIfNeeded({ persist: false });
         syncSfxLightsShadowStorage(state.settings.appearance.sfxLights !== false);
+        syncSfxIconSizeShadowStorage(state.settings.appearance.sfxSidebarIconSize || 'medium');
         ensureAdblockSettings();
         if (!state.settings.ui || typeof state.settings.ui !== 'object') {
             state.settings.ui = {
@@ -1749,6 +1855,7 @@ async function saveSettings() {
         state.settings.shuffle = state.isShuffle;
         state.settings.repeat = state.isRepeat;
         syncSfxLightsShadowStorage(state.settings?.appearance?.sfxLights !== false);
+        syncSfxIconSizeShadowStorage(state.settings?.appearance?.sfxSidebarIconSize || 'medium');
         suppressSettingsReloadUiUntil = Date.now() + 700;
         await window.aurivo.saveSettings(state.settings);
     }
@@ -3192,6 +3299,7 @@ function setupStandaloneSettingsEventListeners() {
         clearVideoLibrary: clearSavedVideoLibraryFromSettings
     });
 
+    setupPlaybackShortcutUiBindings();
     bindLibrarySettingsEventListeners();
 }
 
@@ -3362,6 +3470,155 @@ function scheduleLibraryStatsRefresh(options = {}) {
     }, Math.max(0, Number(delayMs) || 0));
 }
 
+function getPlaybackShortcutSearchEntries() {
+    const entries = [];
+    const pushEntry = (inputId, aliases = '') => {
+        const el = document.getElementById(inputId);
+        if (!el) return;
+        const row = el.closest('.setting-row, .settings-row, .checkbox-label');
+        if (!row) return;
+        entries.push({
+            row,
+            keywords: `${String(row.textContent || '')} ${String(aliases || '')}`.trim()
+        });
+    };
+
+    pushEntry('mediaKeyAutoDetect', 'media play pause previous next');
+    pushEntry('shortcutPrevious', 'previous prev');
+    pushEntry('shortcutPlayPause', 'play pause');
+    pushEntry('shortcutNext', 'next');
+
+    pushEntry('shortcutTabMusic', 'music tab');
+    pushEntry('shortcutTabVideo', 'video tab');
+    pushEntry('shortcutTabWeb', 'web internet tab');
+
+    pushEntry('shortcutPlatformYtmusic', 'youtube music ytmusic');
+    pushEntry('shortcutPlatformYoutube', 'youtube');
+    pushEntry('shortcutPlatformDeezer', 'deezer');
+    pushEntry('shortcutPlatformSoundcloud', 'soundcloud');
+    pushEntry('shortcutPlatformFacebook', 'facebook');
+    pushEntry('shortcutPlatformInstagram', 'instagram');
+    pushEntry('shortcutPlatformTiktok', 'tiktok');
+    pushEntry('shortcutPlatformX', 'x twitter');
+    pushEntry('shortcutPlatformReddit', 'reddit');
+    pushEntry('shortcutPlatformTwitch', 'twitch');
+
+    return entries;
+}
+
+function normalizeShortcutSearchText(text) {
+    return String(text || '')
+        .toLocaleLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/ı/g, 'i')
+        .replace(/[^a-z0-9\u0400-\u04ff\u0600-\u06ff\u0900-\u097f\u4e00-\u9fff\s]/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
+function applyPlaybackShortcutSearchFilter(rawQuery) {
+    const query = normalizeShortcutSearchText(rawQuery);
+    const entries = getPlaybackShortcutSearchEntries();
+    entries.forEach(({ row, keywords }) => {
+        const haystack = normalizeShortcutSearchText(keywords);
+        const shouldHide = query && !haystack.includes(query);
+        row.classList.toggle('shortcut-hidden-by-search', !!shouldHide);
+    });
+}
+
+function decoratePlaybackShortcutLabelsWithIcons() {
+    const iconMap = {
+        shortcutPrevious: { icon: 'skip_previous', tone: 'media' },
+        shortcutPlayPause: { icon: 'play_pause', tone: 'media' },
+        shortcutNext: { icon: 'skip_next', tone: 'media' },
+        shortcutTabMusic: { icon: 'library_music', tone: 'tab' },
+        shortcutTabVideo: { icon: 'movie', tone: 'tab' },
+        shortcutTabWeb: { icon: 'language', tone: 'tab' },
+        shortcutPlatformYtmusic: { icon: 'album', tone: 'ytmusic' },
+        shortcutPlatformYoutube: { icon: 'smart_display', tone: 'youtube' },
+        shortcutPlatformDeezer: { icon: 'equalizer', tone: 'deezer' },
+        shortcutPlatformSoundcloud: { icon: 'cloud', tone: 'soundcloud' },
+        shortcutPlatformFacebook: { icon: 'public', tone: 'facebook' },
+        shortcutPlatformInstagram: { icon: 'photo_camera', tone: 'instagram' },
+        shortcutPlatformTiktok: { icon: 'music_note', tone: 'tiktok' },
+        shortcutPlatformX: { icon: 'alternate_email', tone: 'x' },
+        shortcutPlatformReddit: { icon: 'forum', tone: 'reddit' },
+        shortcutPlatformTwitch: { icon: 'live_tv', tone: 'twitch' }
+    };
+
+    Object.entries(iconMap).forEach(([inputId, cfg]) => {
+        const input = document.getElementById(inputId);
+        const row = input?.closest('.settings-row');
+        const label = row?.querySelector('.settings-label');
+        if (!label || label.querySelector('.shortcut-label-icon')) return;
+        label.classList.add('shortcut-label-with-icon');
+
+        const icon = document.createElement('span');
+        icon.className = `shortcut-label-icon shortcut-icon-tone-${cfg.tone} material-symbols-rounded`;
+        icon.setAttribute('aria-hidden', 'true');
+        icon.textContent = cfg.icon;
+        label.prepend(icon);
+    });
+}
+
+function setupPlaybackShortcutUiBindings() {
+    if (document.body?.dataset?.playbackShortcutUiBound === 'true') return;
+    document.body.dataset.playbackShortcutUiBound = 'true';
+    decoratePlaybackShortcutLabelsWithIcons();
+
+    const jumpToPlaybackShortcuts = document.getElementById('jumpToPlaybackShortcuts');
+    if (jumpToPlaybackShortcuts) {
+        jumpToPlaybackShortcuts.addEventListener('click', () => {
+            const target = document.getElementById('playbackShortcutSection');
+            if (!target) return;
+            target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            target.classList.add('shortcut-focus-flash');
+            setTimeout(() => target.classList.remove('shortcut-focus-flash'), 900);
+            const searchInput = document.getElementById('playbackShortcutSearch');
+            if (searchInput) {
+                searchInput.focus();
+                searchInput.select();
+            }
+        });
+    }
+
+    const playbackShortcutSearch = document.getElementById('playbackShortcutSearch');
+    if (playbackShortcutSearch) {
+        const onShortcutSearchInput = () => applyPlaybackShortcutSearchFilter(playbackShortcutSearch.value);
+        playbackShortcutSearch.addEventListener('input', onShortcutSearchInput);
+        playbackShortcutSearch.addEventListener('change', onShortcutSearchInput);
+        window.addEventListener('aurivo:languageChanged', onShortcutSearchInput);
+        applyPlaybackShortcutSearchFilter(playbackShortcutSearch.value);
+    }
+
+    const captureButtons = Array.from(document.querySelectorAll('.shortcut-capture-btn[data-shortcut-target]'));
+    captureButtons.forEach((btn) => {
+        if (btn.dataset.directBound === 'true') return;
+        btn.dataset.directBound = 'true';
+        btn.addEventListener('click', () => {
+            const inputId = String(btn.dataset.shortcutTarget || '').trim();
+            beginShortcutCapture(inputId, btn);
+            btn.classList.add('shortcut-btn-press');
+            setTimeout(() => btn.classList.remove('shortcut-btn-press'), 180);
+        });
+    });
+
+    const clearButtons = Array.from(document.querySelectorAll('.shortcut-clear-btn[data-shortcut-target]'));
+    clearButtons.forEach((btn) => {
+        if (btn.dataset.directBound === 'true') return;
+        btn.dataset.directBound = 'true';
+        btn.addEventListener('click', () => {
+            const inputId = String(btn.dataset.shortcutTarget || '').trim();
+            clearShortcutInputValue(inputId);
+            btn.classList.add('shortcut-btn-press');
+            setTimeout(() => btn.classList.remove('shortcut-btn-press'), 180);
+        });
+    });
+
+    bindNavigationShortcutCaptureHandlers();
+}
+
 // ============================================
 // OLAY DİNLEYİCİLERİ
 // ============================================
@@ -3429,23 +3686,52 @@ function setupEventListeners() {
             if (e.target === elements.restartModalOverlay) closeRestartModal();
         });
     }
-    if (elements.uiVisualModeSelect) elements.uiVisualModeSelect.addEventListener('change', previewAppearanceSettingsFromUI);
-    if (elements.uiFollowSystemThemeToggle) elements.uiFollowSystemThemeToggle.addEventListener('change', previewAppearanceSettingsFromUI);
-    if (elements.themeSelect) {
-        elements.themeSelect.addEventListener('change', () => {
-            if (elements.uiFollowSystemThemeToggle?.checked) {
-                // Sistem teması takibi açıkken manuel tema seçimini engelle.
-                const lockedTheme = String(
-                    state.settings?.appearance?.theme
-                    || elements.themeSelect?.value
-                    || 'aur-renk-efektleri'
-                );
-                elements.themeSelect.value = lockedTheme;
-                updateThemeFollowSystemUi();
-                return;
-            }
+    if (elements.uiVisualModeSelect) {
+        elements.uiVisualModeSelect.addEventListener('change', () => {
+            syncThemeWithVisualMode();
             previewAppearanceSettingsFromUI();
         });
+    }
+    if (elements.uiMotionProfileSelect) {
+        elements.uiMotionProfileSelect.addEventListener('change', () => {
+            previewAppearanceSettingsFromUI();
+            markSettingsDirty();
+        });
+    }
+    if (elements.uiSfxPerfModeSelect) {
+        elements.uiSfxPerfModeSelect.addEventListener('change', () => {
+            previewAppearanceSettingsFromUI();
+            markSettingsDirty();
+        });
+    }
+    if (elements.uiSfxIconSizeSelect) {
+        elements.uiSfxIconSizeSelect.addEventListener('change', () => {
+            previewAppearanceSettingsFromUI();
+            markSettingsDirty();
+        });
+    }
+    if (elements.uiAutoHardwareProfileToggle) {
+        elements.uiAutoHardwareProfileToggle.addEventListener('change', async () => {
+            if (!state.settings.appearance || typeof state.settings.appearance !== 'object') {
+                state.settings.appearance = {};
+            }
+            state.settings.appearance.autoHardwareProfile = !!elements.uiAutoHardwareProfileToggle.checked;
+            if (elements.uiAutoHardwareProfileToggle.checked) {
+                await applyAutoHardwareAppearanceIfNeeded({ persist: false });
+            } else {
+                applyFullPowerAppearancePresetToUi();
+                if (elements.uiFollowSystemThemeToggle) {
+                    elements.uiFollowSystemThemeToggle.disabled = false;
+                    elements.uiFollowSystemThemeToggle.setAttribute('aria-disabled', 'false');
+                }
+                previewAppearanceSettingsFromUI();
+            }
+            markSettingsDirty();
+        });
+    }
+    if (elements.uiFollowSystemThemeToggle) elements.uiFollowSystemThemeToggle.addEventListener('change', previewAppearanceSettingsFromUI);
+    if (elements.themeSelect) {
+        elements.themeSelect.addEventListener('change', previewAppearanceSettingsFromUI);
     }
     if (elements.uiFxEnabledToggle) elements.uiFxEnabledToggle.addEventListener('change', previewAppearanceSettingsFromUI);
     if (elements.uiReduceMotionToggle) elements.uiReduceMotionToggle.addEventListener('change', previewAppearanceSettingsFromUI);
@@ -3689,6 +3975,7 @@ function setupEventListeners() {
             }
         });
     }
+    setupPlaybackShortcutUiBindings();
 
     if (!state.__libraryAddMenuBindings) {
         state.__libraryAddMenuBindings = true;
@@ -3718,6 +4005,7 @@ function setupEventListeners() {
 
     if (elements.resetPlayback) elements.resetPlayback.addEventListener('click', resetPlaybackDefaults);
     if (elements.resetListen) elements.resetListen.addEventListener('click', resetListenDefaults);
+    bindNavigationShortcutCaptureHandlers();
     if (elements.pulseQuickMode) elements.pulseQuickMode.addEventListener('change', updatePulseQuickModeUi);
     if (elements.pulseRecognitionEngine) elements.pulseRecognitionEngine.addEventListener('change', updateRecognitionEngineUi);
     if (elements.pulseAcoustidApiKey) elements.pulseAcoustidApiKey.addEventListener('input', updateRecognitionEngineUi);
@@ -3991,7 +4279,7 @@ function setupEventListeners() {
     // WebView Gezinti Olayları (YouTube parça değişimi tespiti)
     if (elements.webView) {
         elements.webView.addEventListener('did-start-loading', () => {
-            showWebLoadingOverlay('Sayfa yükleniyor...');
+            showWebLoadingOverlay();
             triggerAdblockNavBurstRefresh();
             // Yeni yükleme başladığında eski retry sayacını temizle
             const u = getWebViewUrlSafe();
@@ -4004,6 +4292,15 @@ function setupEventListeners() {
         elements.webView.addEventListener('did-finish-load', () => {
             hideWebLoadingOverlay();
             triggerAdblockNavBurstRefresh();
+        });
+        elements.webView.addEventListener('did-frame-finish-load', (e) => {
+            if (e?.isMainFrame !== false) {
+                hideWebLoadingOverlay();
+            }
+        });
+        elements.webView.addEventListener('media-started-playing', () => {
+            hideWebLoadingOverlay();
+            scheduleApplyWebDaliEngine('media-started', 80);
         });
 
         elements.webView.addEventListener('did-navigate', handleWebNavigation);
@@ -4024,7 +4321,7 @@ function setupEventListeners() {
 
                 console.warn('[WEBVIEW] did-fail-load:', { code, desc, url, retryCount });
 
-                if (transientCodes.has(code) && retryCount < 1 && isAllowedWebUrl(url)) {
+                if (transientCodes.has(code) && retryCount < 1 && (!isWebAllowlistEnforced() || isAllowedWebUrl(url))) {
                     webLoadRuntime.retryMap.set(url, retryCount + 1);
                     setTimeout(() => {
                         safeNavigateWebView(url);
@@ -4042,7 +4339,7 @@ function setupEventListeners() {
             const target = e?.url;
             const parsed = parseHttpUrl(target);
             if (!parsed) return;
-            if (!isAllowedWebUrl(parsed.toString())) return;
+            if (isWebAllowlistEnforced() && !isAllowedWebUrl(parsed.toString())) return;
 
             // OAuth/login akışları popup ile çalışır; popup izni açıksa pencereyi engelleme.
             const popupsEnabled = !!elements.webView?.hasAttribute?.('allowpopups');
@@ -4067,6 +4364,7 @@ function setupEventListeners() {
         // Not: Bazı Chromium sürümlerinde navigator.mediaSession override edilemez (non-configurable).
         // Bu yüzden "disable" yerine güvenli polling + event dinleme ile AURIVO_SYNC mesajları üretiyoruz.
         elements.webView.addEventListener('dom-ready', () => {
+            hideWebLoadingOverlay();
             try {
                 elements.webView.setUserAgent(getEmbeddedDesktopUserAgent());
             } catch { }
@@ -4084,6 +4382,151 @@ function setupEventListeners() {
                         const send = (payload) => {
                             try { console.log('AURIVO_SYNC:' + JSON.stringify(payload)); } catch(e) {}
                         };
+                        const cleanTitle = (raw) => String(raw || '')
+                            .replace(/\\s+/g, ' ')
+                            .trim();
+                        let lastPendingTitle = '';
+                        let lastPendingAt = 0;
+                        let lastPageTitleProbeAt = 0;
+                        const emitPendingTitle = (rawTitle) => {
+                            try {
+                                const title = cleanTitle(rawTitle);
+                                if (!title || title.length < 3) return;
+                                const now = Date.now();
+                                if (title === lastPendingTitle && (now - lastPendingAt) < 1200) return;
+                                lastPendingTitle = title;
+                                lastPendingAt = now;
+                                send({ type: 'pending-title', title });
+                            } catch {}
+                        };
+                        const getEventPath = (ev) => {
+                            try {
+                                if (typeof ev?.composedPath === 'function') {
+                                    const p = ev.composedPath();
+                                    if (Array.isArray(p) && p.length) return p;
+                                }
+                            } catch {}
+                            const out = [];
+                            let cur = ev?.target || null;
+                            while (cur) {
+                                out.push(cur);
+                                cur = cur.parentNode || cur.host || null;
+                            }
+                            return out;
+                        };
+                        const findAnchorFromPath = (pathArr) => {
+                            try {
+                                for (const node of pathArr || []) {
+                                    if (!node || typeof node.matches !== 'function') continue;
+                                    if (node.matches('a[href]')) return node;
+                                    if (typeof node.closest === 'function') {
+                                        const a = node.closest('a[href]');
+                                        if (a) return a;
+                                    }
+                                }
+                            } catch {}
+                            return null;
+                        };
+                        const normalizeLikelyTitle = (raw) => {
+                            const t = cleanTitle(raw);
+                            if (!t) return '';
+                            const low = t.toLowerCase();
+                            if (low === 'youtube' || low === 'youtube music' || low === 'music') return '';
+                            return t;
+                        };
+                        const extractClickTitle = (anchor) => {
+                            try {
+                                if (!anchor) return '';
+                                const direct = cleanTitle(
+                                    anchor.getAttribute('title') ||
+                                    anchor.getAttribute('aria-label') ||
+                                    anchor.textContent
+                                );
+                                if (direct.length >= 3) return direct;
+                                const card = anchor.closest?.(
+                                    'ytd-rich-item-renderer, ytd-video-renderer, ytd-grid-video-renderer, ytd-compact-video-renderer, ytd-playlist-video-renderer, article, .video-card, .card, .item'
+                                );
+                                if (!card) return direct;
+                                const candidate = card.querySelector?.(
+                                    '#video-title, a[title], [title], [aria-label], h1, h2, h3, .title, .name'
+                                );
+                                return cleanTitle(
+                                    candidate?.getAttribute?.('title') ||
+                                    candidate?.getAttribute?.('aria-label') ||
+                                    candidate?.textContent ||
+                                    direct
+                                );
+                            } catch {
+                                return '';
+                            }
+                        };
+                        const extractTitleFromPath = (pathArr) => {
+                            try {
+                                for (const node of pathArr || []) {
+                                    if (!node || node.nodeType !== 1) continue;
+                                    const t = normalizeLikelyTitle(
+                                        node.getAttribute?.('title') ||
+                                        node.getAttribute?.('aria-label') ||
+                                        (node.id === 'video-title' ? node.textContent : '')
+                                    );
+                                    if (t && t.length >= 3) return t;
+                                }
+                            } catch {}
+                            return '';
+                        };
+                        const extractTitleFromTarget = (target) => {
+                            try {
+                                if (!target || !target.closest) return '';
+                                const anchor = target.closest('a[href]');
+                                const fromAnchor = extractClickTitle(anchor);
+                                if (fromAnchor && fromAnchor.length >= 3) return fromAnchor;
+                                const card = target.closest(
+                                    'ytd-rich-item-renderer, ytd-video-renderer, ytd-grid-video-renderer, ytd-compact-video-renderer, ytd-playlist-video-renderer, article, .video-card, .card, .item'
+                                );
+                                if (!card) return '';
+                                const candidate = card.querySelector(
+                                    '#video-title, [id*="title"], [title], [aria-label], h1, h2, h3, .title, .name'
+                                );
+                                return cleanTitle(
+                                    candidate?.getAttribute?.('title') ||
+                                    candidate?.getAttribute?.('aria-label') ||
+                                    candidate?.textContent ||
+                                    ''
+                                );
+                            } catch {
+                                return '';
+                            }
+                        };
+                        const extractNowPlayingTitleFromPage = () => {
+                            try {
+                                // YouTube watch page
+                                const yt = document.querySelector(
+                                    'h1.ytd-watch-metadata yt-formatted-string, ytd-watch-metadata h1 yt-formatted-string, #title h1 yt-formatted-string, h1.title yt-formatted-string'
+                                );
+                                const ytTitle = normalizeLikelyTitle(yt?.textContent || '');
+                                if (ytTitle && ytTitle.length >= 3) return ytTitle;
+
+                                // YouTube Music
+                                const ytm = document.querySelector(
+                                    'ytmusic-player-bar .title, ytmusic-player-bar .title.style-scope, ytmusic-player-bar yt-formatted-string.title'
+                                );
+                                const ytmTitle = normalizeLikelyTitle(ytm?.textContent || ytm?.getAttribute?.('title') || '');
+                                if (ytmTitle && ytmTitle.length >= 3) return ytmTitle;
+                            } catch {}
+                            return '';
+                        };
+                        const maybeEmitPageTitleHint = () => {
+                            try {
+                                if (!isYouTubeHost()) return;
+                                const now = Date.now();
+                                if ((now - lastPageTitleProbeAt) < 650) return;
+                                lastPageTitleProbeAt = now;
+                                const p = String(location.pathname || '');
+                                const isWatchLike = p.includes('/watch') || p.includes('/shorts') || p.includes('/playlist') || location.hostname === 'music.youtube.com';
+                                if (!isWatchLike) return;
+                                emitPendingTitle(extractNowPlayingTitleFromPage());
+                            } catch {}
+                        };
 
                         let lastMetaKey = '';
                         let lastTimeKey = '';
@@ -4091,6 +4534,11 @@ function setupEventListeners() {
                         let lastMedia = null;
                         let ytAdStyleInjected = false;
                         let adShieldEl = null;
+                        let adDetectedSince = 0;
+                        let adAudioGuardActive = false;
+                        let adAudioGuardMuted = false;
+                        let adAudioGuardVolume = 1;
+                        let adAudioGuardPlaybackRate = 1;
 
                         function isYouTubeHost() {
                             try {
@@ -4107,14 +4555,11 @@ function setupEventListeners() {
                                 '.ytp-ad-overlay-container, .ytp-ad-overlay-slot { display: none !important; }',
                                 '.ytd-display-ad-renderer, ytd-promoted-sparkles-web-renderer, ytd-player-legacy-desktop-watch-ads-renderer { display: none !important; }',
                                 'ytd-promoted-video-renderer, ytd-ad-slot-renderer, ytd-in-feed-ad-layout-renderer, ytd-video-masthead-ad-v3-renderer, ytd-banner-promo-renderer, ytd-companion-slot-renderer { display: none !important; }',
+                                '.ytp-ad-survey, .ytp-ad-preview-text, .ytp-ad-simple-ad-badge, .ytp-ad-button, .ytp-featured-product, ytd-engagement-panel-section-list-renderer[target-id^="engagement-panel-ads"] { display:none !important; }',
                                 '#player-ads, .ytp-ad-player-overlay, .ytp-ad-module { display: none !important; }',
-                                '#movie_player.ad-showing video.html5-main-video, #movie_player.ad-interrupting video.html5-main-video { visibility: hidden !important; }',
                                 '#movie_player.ad-showing .ytp-chrome-bottom, #movie_player.ad-showing .ytp-progress-bar-container, #movie_player.ad-showing .ytp-scrubber-container, #movie_player.ad-showing .ytp-cued-thumbnail-overlay-image, #movie_player.ad-showing .ytp-ad-player-overlay-progress-bar, #movie_player.ad-showing .ytp-ad-progress { visibility: hidden !important; opacity: 0 !important; }',
-                                '#aurivo-deliblock-adshield { position:absolute; inset:0; display:none; z-index:2147483646; align-items:center; justify-content:center; pointer-events:none; background:radial-gradient(circle at 50% 42%, rgba(7,24,38,.84), rgba(3,10,20,.94)); color:#dff4ff; font:600 13px sans-serif; }',
-                                '#aurivo-deliblock-adshield .panel { min-width:220px; max-width:320px; border-radius:14px; border:1px solid rgba(108,200,255,.32); background:linear-gradient(140deg, rgba(8,25,40,.88), rgba(8,18,30,.9)); box-shadow:0 12px 28px rgba(0,0,0,.45), inset 0 0 0 1px rgba(31,102,160,.22); padding:12px 14px; display:flex; align-items:center; gap:10px; }',
-                                '#aurivo-deliblock-adshield .spin { width:22px; height:22px; border:2px solid rgba(120,205,255,.35); border-top-color:rgba(120,205,255,.98); border-radius:50%; animation:aurivoShieldSpin .8s linear infinite; flex:0 0 auto; }',
-                                '#aurivo-deliblock-adshield .title { font-weight:700; font-size:13px; color:#e7f6ff; }',
-                                '#aurivo-deliblock-adshield .sub { font-size:11px; color:rgba(170,212,236,.92); margin-top:2px; }',
+                                '#aurivo-deliblock-adshield { position:absolute; inset:0; display:none; z-index:2147483646; align-items:center; justify-content:center; pointer-events:none; background:transparent; }',
+                                '#aurivo-deliblock-adshield .spin { width:40px; height:40px; border:4px solid rgba(255,255,255,.32); border-top-color:#ffffff; border-radius:50%; animation:aurivoShieldSpin .78s linear infinite; }',
                                 '@keyframes aurivoShieldSpin { to { transform: rotate(360deg);} }'
                             ].join('\\n');
                             (document.head || document.documentElement).appendChild(style);
@@ -4122,12 +4567,28 @@ function setupEventListeners() {
                         }
 
                         function ensurePlayerShield(movie) {
-                            if (!movie || adShieldEl) return;
-                            adShieldEl = document.createElement('div');
-                            adShieldEl.id = 'aurivo-deliblock-adshield';
-                            adShieldEl.innerHTML = '<div class="panel"><div class="spin"></div><div><div class="title">uDaliBlock on kontrol</div><div class="sub">Reklam istekleri taraniyor, icerik hazirlaniyor...</div></div></div>';
-                            movie.style.position = movie.style.position || 'relative';
-                            movie.appendChild(adShieldEl);
+                            if (!movie) return;
+                            const existing = document.getElementById('aurivo-deliblock-adshield');
+                            if (existing) {
+                                adShieldEl = existing;
+                            } else {
+                                adShieldEl = document.createElement('div');
+                                adShieldEl.id = 'aurivo-deliblock-adshield';
+                                movie.style.position = movie.style.position || 'relative';
+                                movie.appendChild(adShieldEl);
+                            }
+
+                            // Eski panel/metinli yapıyı zorla sade spinner'a çevir.
+                            if (!adShieldEl.querySelector('.spin') || adShieldEl.querySelector('.panel')) {
+                                const spinner = document.createElement('div');
+                                spinner.className = 'spin';
+                                spinner.setAttribute('aria-hidden', 'true');
+                                if (typeof adShieldEl.replaceChildren === 'function') adShieldEl.replaceChildren(spinner);
+                                else {
+                                    while (adShieldEl.firstChild) adShieldEl.removeChild(adShieldEl.firstChild);
+                                    adShieldEl.appendChild(spinner);
+                                }
+                            }
                         }
 
                         function isPulseSearchBypassActive() {
@@ -4151,25 +4612,24 @@ function setupEventListeners() {
                             window.__aurivoPreflightGuardInstalled = true;
                             document.addEventListener('click', (ev) => {
                                 try {
-                                    const target = ev && ev.target;
-                                    if (!target || !target.closest) return;
-                                    const link = target.closest('a[href*="/watch"], a[href^="/watch"], a[href*="youtu.be/"]');
+                                    const pathArr = getEventPath(ev);
+                                    const anchor = findAnchorFromPath(pathArr);
+                                    const link = anchor && (
+                                        (typeof anchor.matches === 'function' && anchor.matches('a[href*="/watch"], a[href^="/watch"], a[href*="youtu.be/"]'))
+                                            ? anchor
+                                            : (anchor.closest?.('a[href*="/watch"], a[href^="/watch"], a[href*="youtu.be/"]') || null)
+                                    );
                                     if (!link) return;
                                     if (isPulseSearchBypassActive()) return;
                                     const href = String(link.getAttribute('href') || '');
                                     if (!href) return;
                                     if (href.startsWith('#')) return;
                                     if (ev.ctrlKey || ev.metaKey || ev.shiftKey || ev.altKey) return;
+                                    emitPendingTitle(extractClickTitle(link) || extractTitleFromPath(pathArr));
                                     const movie = document.getElementById('movie_player');
                                     if (!movie) return;
 
                                     ensurePlayerShield(movie);
-                                    if (adShieldEl) {
-                                        const title = adShieldEl.querySelector('.title');
-                                        const sub = adShieldEl.querySelector('.sub');
-                                        if (title) title.textContent = 'uDaliBlock on kontrol';
-                                        if (sub) sub.textContent = 'Video acilmadan reklam istekleri taraniyor...';
-                                    }
                                     setPlayerShieldVisible(true);
 
                                     ev.preventDefault();
@@ -4180,6 +4640,30 @@ function setupEventListeners() {
                                     }, 140);
                                 } catch {}
                             }, true);
+                        }
+
+                        function installGenericPendingTitleHint() {
+                            if (window.__aurivoPendingTitleHintInstalled) return;
+                            window.__aurivoPendingTitleHintInstalled = true;
+                            const onIntent = (ev) => {
+                                try {
+                                    const pathArr = getEventPath(ev);
+                                    const target = ev && ev.target;
+                                    if (!target || !target.closest) return;
+                                    const link = findAnchorFromPath(pathArr) || target.closest('a[href], ytd-thumbnail, ytd-rich-grid-media, ytd-compact-video-renderer');
+                                    if (!link) return;
+                                    const hrefNode = link.closest?.('a[href]') || link;
+                                    const href = String(hrefNode?.getAttribute?.('href') || '');
+                                    if (href && (href.startsWith('#') || href.startsWith('javascript:'))) return;
+                                    emitPendingTitle(
+                                        extractTitleFromPath(pathArr) ||
+                                        extractTitleFromTarget(target) ||
+                                        extractClickTitle(hrefNode)
+                                    );
+                                } catch {}
+                            };
+                            document.addEventListener('pointerdown', onIntent, true);
+                            document.addEventListener('click', onIntent, true);
                         }
 
                         function hideContainer(node) {
@@ -4221,7 +4705,48 @@ function setupEventListeners() {
                             });
                         }
 
+                        function scrubGenericAdUi() {
+                            if (!DELIBLOCK || (DELIBLOCK.uiScrubLevel | 0) <= 0) return;
+                            const adLikeNodes = document.querySelectorAll(
+                                'iframe[src*="doubleclick"], iframe[src*="googlesyndication"], iframe[src*="adservice"], iframe[src*="taboola"], iframe[src*="outbrain"], .adsbygoogle, [data-ad-client], [data-ad-slot], [data-google-query-id], .ad-slot, .ad-container, .sponsored-post, [aria-label="Sponsored"], [aria-label="Sponsorlu"]'
+                            );
+                            adLikeNodes.forEach((node) => {
+                                try {
+                                    if (!node || node === document.body || node === document.documentElement) return;
+                                    const rect = typeof node.getBoundingClientRect === 'function' ? node.getBoundingClientRect() : null;
+                                    const tooLarge = !!(
+                                        rect &&
+                                        rect.width > (window.innerWidth * 0.85) &&
+                                        rect.height > (window.innerHeight * 0.75)
+                                    );
+                                    // Yanlış pozitifleri azalt: çok büyük ana içerik bloklarını dokunma.
+                                    if (tooLarge && String(node.tagName || '').toLowerCase() !== 'iframe') return;
+                                    if (node.style) {
+                                        node.style.setProperty('display', 'none', 'important');
+                                        node.style.setProperty('visibility', 'hidden', 'important');
+                                        node.style.setProperty('opacity', '0', 'important');
+                                    }
+                                } catch {}
+                            });
+
+                            if ((DELIBLOCK.uiScrubLevel | 0) >= 2) {
+                                const maybeAdCloseButtons = document.querySelectorAll(
+                                    'button[aria-label*="Close"], button[aria-label*="Kapat"], button[aria-label*="Skip"], [data-testid*="close"]'
+                                );
+                                maybeAdCloseButtons.forEach((btn) => {
+                                    try {
+                                        const host = btn.closest?.('[data-ad], [id*="ad"], [class*="ad"], [class*="sponsor"], .ytp-ad-module, .video-ads');
+                                        if (!host) return;
+                                        if (typeof btn.click === 'function') btn.click();
+                                    } catch {}
+                                });
+                            }
+                        }
+
                         function tickYouTubeAdSkip() {
+                            maybeEmitPageTitleHint();
+                            installGenericPendingTitleHint();
+                            scrubGenericAdUi();
                             if (!isYouTubeHost()) return;
                             ensureYouTubeAdCss();
                             installYouTubePreflightClickGuard();
@@ -4233,25 +4758,210 @@ function setupEventListeners() {
                                     document.querySelector('.ad-showing, .ad-interrupting') ||
                                     (movie && movie.classList && (movie.classList.contains('ad-showing') || movie.classList.contains('ad-interrupting')))
                                 );
-                                setPlayerShieldVisible(isPulseSearchBypassActive() ? false : adShowing);
+                                const adUiSignals = !!document.querySelector(
+                                    '.ytp-ad-player-overlay, .ytp-ad-skip-button, .ytp-ad-skip-button-modern, .ytp-ad-preview-container, .ytp-ad-text, .video-ads, .ytp-ad-message-container'
+                                );
+                                const adUiVisible = (() => {
+                                    try {
+                                        const nodes = document.querySelectorAll(
+                                            '.ytp-ad-player-overlay, .ytp-ad-skip-button, .ytp-ad-skip-button-modern, .ytp-ad-preview-container, .ytp-ad-text, .video-ads, .ytp-ad-message-container'
+                                        );
+                                        for (const n of nodes) {
+                                            if (!n) continue;
+                                            const st = window.getComputedStyle ? window.getComputedStyle(n) : null;
+                                            if (st && (st.display === 'none' || st.visibility === 'hidden' || Number(st.opacity || '1') === 0)) continue;
+                                            const r = typeof n.getBoundingClientRect === 'function' ? n.getBoundingClientRect() : null;
+                                            if (r && r.width < 2 && r.height < 2) continue;
+                                            return true;
+                                        }
+                                    } catch {}
+                                    return false;
+                                })();
+                                const media = document.querySelector('video.html5-main-video, video');
+                                const mediaSrc = String(media?.currentSrc || media?.src || '').toLowerCase();
+                                const adNetworkSignal =
+                                    mediaSrc.includes('googlevideo.com/videoplayback') &&
+                                    (mediaSrc.includes('oad=') || mediaSrc.includes('adformat=') || mediaSrc.includes('ad_type=') || mediaSrc.includes('ctier='));
+                                const mediaRunning = !!(
+                                    media &&
+                                    Number.isFinite(media.readyState) &&
+                                    media.readyState >= 2 &&
+                                    !media.paused &&
+                                    !media.ended
+                                );
+                                const waitingForContent = !!(
+                                    media &&
+                                    !media.ended &&
+                                    Number.isFinite(media.readyState) &&
+                                    media.readyState < 2 &&
+                                    (media.currentTime < 0.5 || !Number.isFinite(media.duration) || media.duration <= 0)
+                                );
+                                const playerState = (() => {
+                                    try { return Number(movie?.getPlayerState?.()); } catch { return NaN; }
+                                })();
+                                const ytBufferingLike = playerState === 3 || playerState === -1 || playerState === 5;
+                                const startupStall = !!(
+                                    ytBufferingLike &&
+                                    !mediaRunning &&
+                                    (
+                                        !media ||
+                                        (
+                                            Number(media.currentTime || 0) < 0.8 &&
+                                            (!Number.isFinite(media.duration) || media.duration <= 0 || Number(media.readyState || 0) < 3)
+                                        )
+                                    )
+                                );
+                                const signalLevel = Math.max(0, Number(DELIBLOCK?.adSignalLevel) || 0);
+                                const adDetected = adShowing ||
+                                    (signalLevel >= 1 && adUiSignals && adUiVisible) ||
+                                    (signalLevel >= 2 && adNetworkSignal);
+                                const nowTs = Date.now();
+                                if (adDetected) {
+                                    if (!adDetectedSince) adDetectedSince = nowTs;
+                                } else {
+                                    adDetectedSince = 0;
+                                }
+                                setPlayerShieldVisible(
+                                    isPulseSearchBypassActive()
+                                        ? false
+                                        : ((adDetected || waitingForContent || startupStall) && !mediaRunning)
+                                );
 
                                 const skipBtn = document.querySelector(
-                                    '.ytp-ad-skip-button, .ytp-ad-skip-button-modern, button.ytp-ad-skip-button-modern, .videoAdUiSkipButton'
+                                    '.ytp-ad-skip-button, .ytp-ad-skip-button-modern, button.ytp-ad-skip-button-modern, .videoAdUiSkipButton, .ytp-skip-ad-button'
                                 );
                                 if (skipBtn && typeof skipBtn.click === 'function') skipBtn.click();
                                 if (movie && typeof movie.skipAd === 'function') movie.skipAd();
                                 if (movie && typeof movie.skipVideo === 'function') movie.skipVideo();
 
-                                const closeBtn = document.querySelector('.ytp-ad-overlay-close-button, .ytp-ad-image-overlay-close-button');
+                                const closeBtn = document.querySelector(
+                                    '.ytp-ad-overlay-close-button, .ytp-ad-image-overlay-close-button, .ytp-ad-overlay-slot button[aria-label*="Close"], .ytp-ad-overlay-slot button[aria-label*="Kapat"]'
+                                );
                                 if (closeBtn && typeof closeBtn.click === 'function') closeBtn.click();
 
-                                if (adShowing) {
-                                    const media = document.querySelector('video.html5-main-video, video');
-                                    if (media && Number.isFinite(media.duration) && media.duration > 0) {
-                                        media.currentTime = Math.max(0, media.duration - 0.05);
+                                if (adDetected && media) {
+                                    if (!adAudioGuardActive) {
+                                        adAudioGuardMuted = !!media.muted;
+                                        adAudioGuardVolume = Number.isFinite(media.volume) ? media.volume : 1;
+                                        adAudioGuardPlaybackRate = Number.isFinite(media.playbackRate) ? media.playbackRate : 1;
+                                        adAudioGuardActive = true;
+                                    }
+                                    media.muted = true;
+                                    if (Number.isFinite(media.volume) && media.volume > 0) media.volume = 0;
+                                }
+
+                                if (adDetected && DELIBLOCK?.forceSeekAds) {
+                                    if (media) {
+                                        if (Number.isFinite(media.duration) && media.duration > 0) {
+                                            media.currentTime = Math.max(0, media.duration - 0.05);
+                                        }
+                                        if (Number.isFinite(media.playbackRate) && media.playbackRate < 8) {
+                                            media.playbackRate = 16;
+                                        }
+                                    }
+                                    if (movie && typeof movie.getDuration === 'function' && typeof movie.seekTo === 'function') {
+                                        const d = Number(movie.getDuration());
+                                        if (Number.isFinite(d) && d > 0) {
+                                            movie.seekTo(Math.max(0, d - 0.05), true);
+                                        }
+                                    }
+                                    // Uzun süren takılmalarda atlama çağrılarını tekrarla.
+                                    if (adDetectedSince && (nowTs - adDetectedSince) > 1800) {
+                                        if (movie && typeof movie.skipAd === 'function') movie.skipAd();
+                                        if (movie && typeof movie.skipVideo === 'function') movie.skipVideo();
                                     }
                                 }
+
+                                if (!adDetected && adAudioGuardActive && media) {
+                                    media.muted = !!adAudioGuardMuted;
+                                    if (Number.isFinite(adAudioGuardVolume)) media.volume = adAudioGuardVolume;
+                                    if (Number.isFinite(adAudioGuardPlaybackRate) && adAudioGuardPlaybackRate > 0) {
+                                        media.playbackRate = adAudioGuardPlaybackRate;
+                                    }
+                                    adAudioGuardActive = false;
+                                }
                             } catch {}
+                        }
+
+                        function isLikelyAdArtworkUrl(raw) {
+                            try {
+                                const u = String(raw || '').toLowerCase();
+                                if (!u) return false;
+                                return (
+                                    u.includes('doubleclick') ||
+                                    u.includes('googlesyndication') ||
+                                    u.includes('googleadservices') ||
+                                    u.includes('adservice') ||
+                                    u.includes('adsystem') ||
+                                    u.includes('adnxs') ||
+                                    u.includes('taboola') ||
+                                    u.includes('outbrain') ||
+                                    u.includes('/ads') ||
+                                    u.includes('ad_')
+                                );
+                            } catch {
+                                return false;
+                            }
+                        }
+
+                        function getYoutubeVideoIdFromUrl() {
+                            try {
+                                const url = new URL(location.href);
+                                const host = String(url.hostname || '').toLowerCase();
+                                if (host === 'youtu.be') {
+                                    const seg = String(url.pathname || '').split('/').filter(Boolean)[0] || '';
+                                    return seg || '';
+                                }
+                                const fromQuery = String(url.searchParams.get('v') || '').trim();
+                                if (fromQuery) return fromQuery;
+                                const m = String(url.pathname || '').match(/\\/shorts\\/([a-zA-Z0-9_-]{6,})/);
+                                return m?.[1] || '';
+                            } catch {
+                                return '';
+                            }
+                        }
+
+                        function getDomArtworkUrl() {
+                            try {
+                                if (isYouTubeHost()) {
+                                    // YouTube Music: player bar kapak görseli (en güvenilir)
+                                    if (String(location.hostname || '').toLowerCase() === 'music.youtube.com') {
+                                        const ytmImg = document.querySelector(
+                                            'ytmusic-player-bar img#img, ytmusic-player-bar img#thumbnail, ytmusic-player-bar .thumbnail-image-wrapper img, ytmusic-player-bar img'
+                                        );
+                                        const ytmUrl = String(
+                                            ytmImg?.currentSrc ||
+                                            ytmImg?.src ||
+                                            ytmImg?.getAttribute?.('src') ||
+                                            ''
+                                        ).trim();
+                                        if (ytmUrl && !isLikelyAdArtworkUrl(ytmUrl)) return ytmUrl;
+                                    }
+
+                                    // YouTube: URL'deki aktif video ID'den doğrudan kapak üret (yan panel/reklam görselini önler)
+                                    const videoId = getYoutubeVideoIdFromUrl();
+                                    if (videoId) {
+                                        return 'https://i.ytimg.com/vi/' + encodeURIComponent(videoId) + '/hqdefault.jpg';
+                                    }
+
+                                    // YouTube player response fallback
+                                    try {
+                                        const pr = window?.ytInitialPlayerResponse;
+                                        const thumbs = pr?.videoDetails?.thumbnail?.thumbnails;
+                                        if (Array.isArray(thumbs) && thumbs.length) {
+                                            const last = thumbs[thumbs.length - 1];
+                                            const src = String(last?.url || '').trim();
+                                            if (src && !isLikelyAdArtworkUrl(src)) return src;
+                                        }
+                                    } catch {}
+                                }
+
+                                // Generic fallback: og:image çoğu platformda mevcut olur.
+                                const og = document.querySelector('meta[property="og:image"], meta[name="og:image"]');
+                                const ogUrl = String(og?.getAttribute?.('content') || '').trim();
+                                if (ogUrl && !isLikelyAdArtworkUrl(ogUrl)) return ogUrl;
+                            } catch {}
+                            return '';
                         }
 
                         function getArtworkUrl(md) {
@@ -4259,8 +4969,10 @@ function setupEventListeners() {
                                 const art = md && md.artwork;
                                 if (!Array.isArray(art) || art.length === 0) return '';
                                 const last = art[art.length - 1];
-                                return (last && last.src) ? String(last.src) : '';
-                            } catch { return ''; }
+                                const fromMediaSession = (last && last.src) ? String(last.src) : '';
+                                if (fromMediaSession) return fromMediaSession;
+                            } catch {}
+                            return getDomArtworkUrl();
                         }
 
                         function emitMetadata(force) {
@@ -4274,7 +4986,7 @@ function setupEventListeners() {
                                 const key = [title, artist, album, artwork].join('|');
                                 if (!force && key === lastMetaKey) return;
                                 lastMetaKey = key;
-                                if (!title && !artist && !album) return;
+                                if (!title && !artist && !album && !artwork) return;
                                 send({ type: 'metadata', title, artist, album, artwork });
                             } catch(e) {}
                         }
@@ -4368,6 +5080,7 @@ function setupEventListeners() {
             `);
             setTimeout(() => {
                 pushAppVolumeToWeb();
+                scheduleApplyWebDaliEngine('dom-ready', 120);
             }, 120);
         });
     }
@@ -4382,6 +5095,5715 @@ function getWebViewUrlSafe() {
     } catch {
         return 'about:blank';
     }
+}
+
+const DALI_WEB_EQ_FREQUENCIES = Object.freeze([
+    20, 25, 31, 40, 50, 63, 80, 100,
+    125, 160, 200, 250, 315, 400, 500, 630,
+    800, 1000, 1300, 1600, 2000, 2500, 3200, 4000,
+    5000, 6300, 8000, 10000, 12500, 16000, 20000, 22000
+]);
+const DALI_WEB_EQ_PRESET_RELATIVE_PATH = Object.freeze([
+    'dali-lang',
+    'examples',
+    'web-eq32-reference.dl.generated.js'
+]);
+const DALI_WEB_BASS_PRESET_RELATIVE_PATH = Object.freeze([
+    'dali-lang',
+    'examples',
+    'web-bass-enhancer.dl.generated.js'
+]);
+
+let webDaliApplyTimer = null;
+let webDaliApplyInFlight = false;
+let webDaliLastApplySignature = '';
+const webDaliPresetRuntime = {
+    sourceText: '',
+    sourcePath: '',
+    stages: null,
+    loadPromise: null
+};
+const webDaliBassPresetRuntime = {
+    sourceText: '',
+    sourcePath: '',
+    stages: null,
+    loadPromise: null
+};
+
+function getRendererDocumentDir() {
+    try {
+        const pathname = decodeURIComponent(String(window.location.pathname || ''));
+        if (!pathname) return '';
+        return String(window.aurivo?.path?.dirname?.(pathname) || '').trim();
+    } catch {
+        return '';
+    }
+}
+
+async function loadWebDaliPresetSource() {
+    if (webDaliPresetRuntime.sourceText) return webDaliPresetRuntime.sourceText;
+    if (webDaliPresetRuntime.loadPromise) return webDaliPresetRuntime.loadPromise;
+
+    webDaliPresetRuntime.loadPromise = (async () => {
+        const baseDir = getRendererDocumentDir();
+        if (!baseDir || !window.aurivo?.path?.join || !window.aurivo?.readTextFile) {
+            throw new Error('DALI preset kaynagi icin gerekli yol/okuma API bulunamadi');
+        }
+        const presetPath = window.aurivo.path.join(baseDir, ...DALI_WEB_EQ_PRESET_RELATIVE_PATH);
+        const sourceText = await window.aurivo.readTextFile(presetPath);
+        const safeText = String(sourceText || '').trim();
+        if (!safeText.includes('buildGraph')) {
+            throw new Error(`Gecersiz DALI preset cikti dosyasi: ${presetPath}`);
+        }
+        webDaliPresetRuntime.sourcePath = presetPath;
+        webDaliPresetRuntime.sourceText = safeText;
+        return safeText;
+    })();
+
+    try {
+        return await webDaliPresetRuntime.loadPromise;
+    } finally {
+        webDaliPresetRuntime.loadPromise = null;
+    }
+}
+
+async function loadWebDaliBassPresetSource() {
+    if (webDaliBassPresetRuntime.sourceText) return webDaliBassPresetRuntime.sourceText;
+    if (webDaliBassPresetRuntime.loadPromise) return webDaliBassPresetRuntime.loadPromise;
+
+    webDaliBassPresetRuntime.loadPromise = (async () => {
+        const baseDir = getRendererDocumentDir();
+        if (!baseDir || !window.aurivo?.path?.join || !window.aurivo?.readTextFile) {
+            throw new Error('DALI bass preset kaynagi icin gerekli yol/okuma API bulunamadi');
+        }
+        const presetPath = window.aurivo.path.join(baseDir, ...DALI_WEB_BASS_PRESET_RELATIVE_PATH);
+        const sourceText = await window.aurivo.readTextFile(presetPath);
+        const safeText = String(sourceText || '').trim();
+        if (!safeText.includes('buildGraph')) {
+            throw new Error(`Gecersiz DALI bass preset cikti dosyasi: ${presetPath}`);
+        }
+        webDaliBassPresetRuntime.sourcePath = presetPath;
+        webDaliBassPresetRuntime.sourceText = safeText;
+        return safeText;
+    })();
+
+    try {
+        return await webDaliBassPresetRuntime.loadPromise;
+    } finally {
+        webDaliBassPresetRuntime.loadPromise = null;
+    }
+}
+
+function parseWebDaliPresetStages(sourceText) {
+    const text = String(sourceText || '');
+    const stages = [];
+    const gainMatch = text.match(/new GainNode\(audioContext, \{ gain: ([^ }]+) \}\)/);
+    if (gainMatch) {
+        const gain = Number(gainMatch[1]);
+        if (Number.isFinite(gain)) {
+            stages.push({ kind: 'gain', gain });
+        }
+    }
+
+    const biquadRe = /new BiquadFilterNode\(audioContext, \{ type: '([^']+)', frequency: ([^,]+), gain: ([^,]+), Q: ([^ }]+) \}\)/g;
+    let biquadMatch;
+    while ((biquadMatch = biquadRe.exec(text)) !== null) {
+        const type = String(biquadMatch[1] || '').trim();
+        const frequency = Number(biquadMatch[2]);
+        const gain = Number(biquadMatch[3]);
+        const q = Number(biquadMatch[4]);
+        if (!Number.isFinite(frequency) || !Number.isFinite(gain) || !Number.isFinite(q)) continue;
+        stages.push({
+            kind: 'biquad',
+            biquadType: type,
+            freq: frequency,
+            gainDb: gain,
+            q
+        });
+    }
+
+    const compressorMatch = text.match(/new DynamicsCompressorNode\(audioContext, \{ threshold: ([^,]+), ratio: ([^,]+), attack: ([^,]+), release: ([^,]+), knee: ([^ }]+) \}\)/);
+    if (compressorMatch) {
+        const threshold = Number(compressorMatch[1]);
+        const ratio = Number(compressorMatch[2]);
+        const attack = Number(compressorMatch[3]);
+        const release = Number(compressorMatch[4]);
+        const knee = Number(compressorMatch[5]);
+        if ([threshold, ratio, attack, release, knee].every(Number.isFinite)) {
+            stages.push({
+                kind: 'compressor',
+                threshold,
+                ratio,
+                attack,
+                release,
+                knee
+            });
+        }
+    }
+
+    return stages;
+}
+
+async function loadWebDaliPresetStages() {
+    if (Array.isArray(webDaliPresetRuntime.stages) && webDaliPresetRuntime.stages.length) {
+        return webDaliPresetRuntime.stages;
+    }
+    const sourceText = await loadWebDaliPresetSource();
+    const stages = parseWebDaliPresetStages(sourceText);
+    if (!stages.length) {
+        throw new Error(`DALI preset stage verisi ayriştirılamadı: ${webDaliPresetRuntime.sourcePath || 'bilinmiyor'}`);
+    }
+    webDaliPresetRuntime.stages = stages;
+    return stages;
+}
+
+async function loadWebDaliBassPresetStages() {
+    if (Array.isArray(webDaliBassPresetRuntime.stages) && webDaliBassPresetRuntime.stages.length) {
+        return webDaliBassPresetRuntime.stages;
+    }
+    const sourceText = await loadWebDaliBassPresetSource();
+    const stages = parseWebDaliPresetStages(sourceText);
+    if (!stages.length) {
+        throw new Error(`DALI bass preset stage verisi ayriştirılamadı: ${webDaliBassPresetRuntime.sourcePath || 'bilinmiyor'}`);
+    }
+    webDaliBassPresetRuntime.stages = stages;
+    return stages;
+}
+
+function getWebDaliEq32Settings() {
+    const eq32 = state?.settings?.sfxScopes?.web?.eq32 || {};
+    const bassboost = state?.settings?.sfxScopes?.web?.bassboost || {};
+    const reverb = state?.settings?.sfxScopes?.web?.reverb || {};
+    const noisegate = state?.settings?.sfxScopes?.web?.noisegate || {};
+    const deesser = state?.settings?.sfxScopes?.web?.deesser || {};
+    const exciter = state?.settings?.sfxScopes?.web?.exciter || {};
+    const echo = state?.settings?.sfxScopes?.web?.echo || {};
+    const softecho = state?.settings?.sfxScopes?.web?.softecho || {};
+    const convreverb = state?.settings?.sfxScopes?.web?.convreverb || {};
+    const peq = state?.settings?.sfxScopes?.web?.peq || {};
+    const stereowidener = state?.settings?.sfxScopes?.web?.stereowidener || {};
+    const crossfeed = state?.settings?.sfxScopes?.web?.crossfeed || {};
+    const surround = state?.settings?.sfxScopes?.web?.surround || {};
+    const bassmono = state?.settings?.sfxScopes?.web?.bassmono || {};
+    const dynamiceq = state?.settings?.sfxScopes?.web?.dynamiceq || {};
+    const tapesat = state?.settings?.sfxScopes?.web?.tapesat || {};
+    const bitdither = state?.settings?.sfxScopes?.web?.bitdither || {};
+    const autogain = state?.settings?.sfxScopes?.web?.autogain || {};
+    const truepeak = state?.settings?.sfxScopes?.web?.truepeak || {};
+    const master = state?.settings?.sfxScopes?.web?.master || {};
+    const compressor = state?.settings?.sfxScopes?.web?.compressor || {};
+    const limiter = state?.settings?.sfxScopes?.web?.limiter || {};
+    const rawBands = Array.isArray(eq32?.bands) ? eq32.bands : [];
+    const bands = DALI_WEB_EQ_FREQUENCIES.map((_, i) => {
+        const n = Number(rawBands[i]);
+        return Number.isFinite(n) ? Math.max(-12, Math.min(12, n)) : 0;
+    });
+    const asNum = (v, min, max, fallback) => {
+        const n = Number(v);
+        if (!Number.isFinite(n)) return fallback;
+        return Math.max(min, Math.min(max, n));
+    };
+    const bass = asNum(eq32?.bass, -12, 12, 0);
+    const mid = asNum(eq32?.mid, -12, 12, 0);
+    const treble = asNum(eq32?.treble, -12, 12, 0);
+    const lowBandEnergy = bands
+        .slice(0, 10)
+        .reduce((sum, value) => sum + Math.max(0, value), 0);
+    const totalPositiveBands = bands.reduce((sum, value) => sum + Math.max(0, value), 0);
+    const safetyHeadroomDb = Math.min(
+        18,
+        Math.max(0, bass) * 0.55 +
+        lowBandEnergy * 0.22 +
+        Math.max(0, mid) * 0.10 +
+        Math.max(0, treble) * 0.08 +
+        totalPositiveBands * 0.03
+    );
+
+    return {
+        masterEnabled: master?.enabled !== false,
+        bands,
+        bass,
+        mid,
+        treble,
+        balance: asNum(eq32?.balance, -100, 100, 0),
+        preampGain: Math.pow(10, (-safetyHeadroomDb / 20)),
+        bassboost: {
+            enabled: !!bassboost?.enabled,
+            frequency: asNum(bassboost?.frequency, 20, 200, 80),
+            gain: asNum(bassboost?.gain, 0, 18, 6),
+            harmonics: asNum(bassboost?.harmonics, 0, 100, 50),
+            width: asNum(bassboost?.width, 0.5, 3, 1.5),
+            mix: asNum(bassboost?.mix, 0, 100, 50),
+            kernel: ['auto', 'wasm', 'js'].includes(String(bassboost?.kernel || '').toLowerCase())
+                ? String(bassboost?.kernel).toLowerCase()
+                : 'auto'
+        },
+        reverb: {
+            enabled: !!reverb?.enabled,
+            roomSize: asNum(reverb?.roomSize, 100, 6000, 1000),
+            damping: asNum(reverb?.damping, 0, 1, 0.5),
+            wetDry: asNum(reverb?.wetDry, -40, 6, -10),
+            hfRatio: asNum(reverb?.hfRatio, 0, 1, 0.7),
+            inputGain: asNum(reverb?.inputGain, -24, 24, 0),
+            kernel: ['auto', 'wasm', 'js'].includes(String(reverb?.kernel || '').toLowerCase())
+                ? String(reverb?.kernel).toLowerCase()
+                : 'auto'
+        },
+        noisegate: {
+            enabled: !!noisegate?.enabled,
+            threshold: asNum(noisegate?.threshold, -80, 0, -40),
+            attack: asNum(noisegate?.attack, 1, 200, 5),
+            hold: asNum(noisegate?.hold, 0, 1000, 100),
+            release: asNum(noisegate?.release, 10, 2000, 150),
+            range: asNum(noisegate?.range, -80, -6, -80),
+            kernel: ['auto', 'wasm', 'js'].includes(String(noisegate?.kernel || '').toLowerCase())
+                ? String(noisegate?.kernel).toLowerCase()
+                : 'auto'
+        },
+        deesser: {
+            enabled: !!deesser?.enabled,
+            frequency: asNum(deesser?.frequency, 2000, 12000, 7000),
+            threshold: asNum(deesser?.threshold, -60, 0, -30),
+            ratio: asNum(deesser?.ratio, 1, 10, 4),
+            range: asNum(deesser?.range, -24, 0, -12),
+            listenMode: !!deesser?.listenMode,
+            kernel: ['auto', 'wasm', 'js'].includes(String(deesser?.kernel || '').toLowerCase())
+                ? String(deesser?.kernel).toLowerCase()
+                : 'auto'
+        },
+        exciter: {
+            enabled: !!exciter?.enabled,
+            frequency: asNum(exciter?.frequency, 1000, 8000, 3000),
+            amount: asNum(exciter?.amount, 0, 100, 50),
+            harmonics: ['odd', 'even', 'tape', 'tube'].includes(String(exciter?.harmonics || '').toLowerCase())
+                ? String(exciter?.harmonics).toLowerCase()
+                : 'odd',
+            mix: asNum(exciter?.mix, 0, 100, 30),
+            kernel: ['auto', 'wasm', 'js'].includes(String(exciter?.kernel || '').toLowerCase())
+                ? String(exciter?.kernel).toLowerCase()
+                : 'auto'
+        },
+        echo: {
+            enabled: !!echo?.enabled,
+            delay: asNum(echo?.delay, 10, 1000, 250),
+            feedback: asNum(echo?.feedback, 0, 95, 40),
+            wetDry: asNum(echo?.wetDry, 0, 100, 30),
+            highCut: asNum(echo?.highCut, 1000, 20000, 8000),
+            kernel: ['auto', 'wasm', 'js'].includes(String(echo?.kernel || '').toLowerCase())
+                ? String(echo?.kernel).toLowerCase()
+                : 'auto'
+        },
+        softecho: {
+            enabled: !!softecho?.enabled,
+            delay: asNum(softecho?.delay, 60, 650, 220),
+            feedback: asNum(softecho?.feedback, 5, 45, 22),
+            wetMix: asNum(softecho?.wetMix, 5, 40, 18),
+            highCut: asNum(softecho?.highCut, 2500, 12000, 7000),
+            stereo: !!softecho?.stereo,
+            kernel: ['auto', 'wasm', 'js'].includes(String(softecho?.kernel || '').toLowerCase())
+                ? String(softecho?.kernel).toLowerCase()
+                : 'auto'
+        },
+        convreverb: {
+            enabled: !!convreverb?.enabled,
+            preset: ['hall', 'church', 'room', 'plate', 'small', 'large', 'spring', 'chamber']
+                .includes(String(convreverb?.preset || '').toLowerCase())
+                ? String(convreverb?.preset).toLowerCase()
+                : 'hall',
+            mix: asNum(convreverb?.mix, 0, 100, 30),
+            predelay: asNum(convreverb?.predelay, 0, 250, 20),
+            kernel: ['auto', 'wasm', 'js'].includes(String(convreverb?.kernel || '').toLowerCase())
+                ? String(convreverb?.kernel).toLowerCase()
+                : 'auto'
+        },
+        peq: {
+            enabled: !!peq?.enabled,
+            bands: Array.from({ length: 6 }).map((_, i) => {
+                const b = Array.isArray(peq?.bands) ? (peq.bands[i] || {}) : {};
+                const defaults = [60, 150, 400, 1500, 5000, 12000];
+                return {
+                    freq: asNum(b.freq, 20, 20000, defaults[i]),
+                    gain: asNum(b.gain, -15, 15, 0),
+                    q: asNum(b.q, 0.1, 10, 1.0),
+                    filterType: Math.max(0, Math.min(6, Math.round(Number(b.filterType) || 0)))
+                };
+            }),
+            kernel: ['auto', 'wasm', 'js'].includes(String(peq?.kernel || '').toLowerCase())
+                ? String(peq?.kernel).toLowerCase()
+                : 'auto'
+        },
+        stereowidener: {
+            enabled: !!stereowidener?.enabled,
+            width: asNum(stereowidener?.width, 0, 200, 100),
+            centerLevel: asNum(stereowidener?.centerLevel, -12, 12, 0),
+            sideLevel: asNum(stereowidener?.sideLevel, -12, 12, 0),
+            bassToMono: asNum(stereowidener?.bassToMono, 0, 500, 200),
+            kernel: ['auto', 'wasm', 'js'].includes(String(stereowidener?.kernel || '').toLowerCase())
+                ? String(stereowidener?.kernel).toLowerCase()
+                : 'auto'
+        },
+        crossfeed: {
+            enabled: !!crossfeed?.enabled,
+            level: asNum(crossfeed?.level, 0, 100, 30),
+            delay: asNum(crossfeed?.delay, 0.1, 2.0, 0.3),
+            lowCut: asNum(crossfeed?.lowCut, 20, 5000, 700),
+            highCut: asNum(crossfeed?.highCut, 1000, 20000, 4000),
+            kernel: ['auto', 'wasm', 'js'].includes(String(crossfeed?.kernel || '').toLowerCase())
+                ? String(crossfeed?.kernel).toLowerCase()
+                : 'auto'
+        },
+        surround: {
+            enabled: !!surround?.enabled,
+            center: asNum(surround?.center, -12, 12, 0),
+            surround: asNum(surround?.surround, -12, 12, 0),
+            lfe: asNum(surround?.lfe, -12, 12, 0),
+            crossover: asNum(surround?.crossover, 40, 200, 110),
+            delay: asNum(surround?.delay, 0, 30, 8),
+            mix: asNum(surround?.mix, 0, 100, 75),
+            kernel: ['auto', 'wasm', 'js'].includes(String(surround?.kernel || '').toLowerCase())
+                ? String(surround?.kernel).toLowerCase()
+                : 'auto'
+        },
+        bassmono: {
+            enabled: !!bassmono?.enabled,
+            cutoff: asNum(bassmono?.cutoff, 40, 300, 120),
+            slope: [12, 24, 48].includes(Number(bassmono?.slope)) ? Number(bassmono?.slope) : 24,
+            stereoWidth: asNum(bassmono?.stereoWidth, 0, 200, 100),
+            kernel: ['auto', 'wasm', 'js'].includes(String(bassmono?.kernel || '').toLowerCase())
+                ? String(bassmono?.kernel).toLowerCase()
+                : 'auto'
+        },
+        dynamiceq: {
+            enabled: !!dynamiceq?.enabled,
+            frequency: asNum(dynamiceq?.frequency, 20, 20000, 3500),
+            q: asNum(dynamiceq?.q, 0.1, 10, 2.0),
+            threshold: asNum(dynamiceq?.threshold, -60, 0, -40),
+            gain: asNum(dynamiceq?.gain, -24, 24, -6),
+            range: asNum(dynamiceq?.range, 0, 24, 12),
+            attack: asNum(dynamiceq?.attack, 0.1, 100, 5),
+            release: asNum(dynamiceq?.release, 1, 500, 120),
+            kernel: ['auto', 'wasm', 'js'].includes(String(dynamiceq?.kernel || '').toLowerCase())
+                ? String(dynamiceq?.kernel).toLowerCase()
+                : 'auto'
+        },
+        tapesat: {
+            enabled: !!tapesat?.enabled,
+            driveDb: asNum(tapesat?.driveDb, 0, 24, 6),
+            mix: asNum(tapesat?.mix, 0, 100, 50),
+            tone: asNum(tapesat?.tone, 0, 100, 50),
+            outputDb: asNum(tapesat?.outputDb, -12, 12, -1),
+            mode: Math.max(0, Math.min(2, Math.round(Number(tapesat?.mode) || 0))),
+            hiss: asNum(tapesat?.hiss, 0, 100, 0),
+            kernel: ['auto', 'wasm', 'js'].includes(String(tapesat?.kernel || '').toLowerCase())
+                ? String(tapesat?.kernel).toLowerCase()
+                : 'auto'
+        },
+        bitdither: {
+            enabled: !!bitdither?.enabled,
+            bitDepth: Math.max(4, Math.min(24, Math.round(Number(bitdither?.bitDepth) || 16))),
+            dither: Math.max(0, Math.min(2, Math.round(Number(bitdither?.dither) || 2))),
+            shaping: Math.max(0, Math.min(2, Math.round(Number(bitdither?.shaping) || 1))),
+            downsample: [1, 2, 4, 8, 16].includes(Number(bitdither?.downsample)) ? Number(bitdither?.downsample) : 1,
+            mix: asNum(bitdither?.mix, 0, 100, 100),
+            outputDb: asNum(bitdither?.outputDb, -24, 24, 0),
+            kernel: ['auto', 'wasm', 'js'].includes(String(bitdither?.kernel || '').toLowerCase())
+                ? String(bitdither?.kernel).toLowerCase()
+                : 'auto'
+        },
+        autogain: {
+            enabled: !!autogain?.enabled,
+            targetLevel: asNum(autogain?.targetLevel, -24, 0, -14),
+            maxGain: asNum(autogain?.maxGain, 0, 24, 12),
+            speed: ['slow', 'medium', 'fast'].includes(String(autogain?.speed || '').toLowerCase())
+                ? String(autogain?.speed).toLowerCase()
+                : 'medium',
+            kernel: ['auto', 'wasm', 'js'].includes(String(autogain?.kernel || '').toLowerCase())
+                ? String(autogain?.kernel).toLowerCase()
+                : 'auto'
+        },
+        truepeak: {
+            enabled: !!truepeak?.enabled,
+            ceiling: asNum(truepeak?.ceiling, -18, 0, -0.1),
+            release: asNum(truepeak?.release, 10, 500, 50),
+            lookahead: asNum(truepeak?.lookahead, 0, 20, 5),
+            drive: asNum(truepeak?.drive, -12, 24, 0),
+            kernel: ['auto', 'wasm', 'js'].includes(String(truepeak?.kernel || '').toLowerCase())
+                ? String(truepeak?.kernel).toLowerCase()
+                : 'auto',
+            oversampling: [2, 4, 8].includes(Number(truepeak?.oversampling)) ? Number(truepeak?.oversampling) : 4,
+            linkChannels: truepeak?.linkChannels !== false
+        },
+        compressor: {
+            enabled: !!compressor?.enabled,
+            threshold: asNum(compressor?.threshold, -60, 0, -20),
+            ratio: asNum(compressor?.ratio, 1, 20, 4),
+            attack: asNum(compressor?.attack, 1, 200, 10),
+            release: asNum(compressor?.release, 10, 1000, 100),
+            makeupGain: asNum(compressor?.makeupGain, -24, 24, 0),
+            knee: asNum(compressor?.knee, 0, 24, 3),
+            kernel: ['auto', 'wasm', 'js'].includes(String(compressor?.kernel || '').toLowerCase())
+                ? String(compressor?.kernel).toLowerCase()
+                : 'auto'
+        },
+        limiter: {
+            enabled: !!limiter?.enabled,
+            ceiling: asNum(limiter?.ceiling, -18, 0, -0.3),
+            release: asNum(limiter?.release, 1, 1000, 50),
+            lookahead: asNum(limiter?.lookahead, 0, 25, 5),
+            gain: asNum(limiter?.gain, -24, 24, 0),
+            kernel: ['auto', 'wasm', 'js'].includes(String(limiter?.kernel || '').toLowerCase())
+                ? String(limiter?.kernel).toLowerCase()
+                : 'auto'
+        }
+    };
+}
+
+function createWebDaliInjectScript(payload, presetStages, bassPresetStages) {
+    const cfg = JSON.stringify(payload);
+    const stages = JSON.stringify(Array.isArray(presetStages) ? presetStages : []);
+    const bassStages = JSON.stringify(Array.isArray(bassPresetStages) ? bassPresetStages : []);
+    return `
+        (async function () {
+            try {
+                const cfg = ${cfg};
+                const presetStages = ${stages};
+                const bassPresetStages = ${bassStages};
+                const root = (window.__AURIVO_DALI_WEB__ = window.__AURIVO_DALI_WEB__ || {});
+                root.cfg = cfg;
+                root.buildConfigKey = function buildConfigKey(nextCfg) {
+                    // Limiter parametrelerini configKey'e dahil etmiyoruz.
+                    // Böylece Limiter slider değişiminde grafik yeniden kurulmaz,
+                    // sadece mevcut node parametreleri applyPostCfg ile güncellenir.
+                    return JSON.stringify({
+                        preampGain: Number(nextCfg?.preampGain) || 1,
+                        bass: Number(nextCfg?.bass) || 0,
+                        mid: Number(nextCfg?.mid) || 0,
+                        treble: Number(nextCfg?.treble) || 0,
+                        balance: Number(nextCfg?.balance) || 0
+                    });
+                };
+                root.clamp = function clamp(value, min, max, fallback) {
+                    const n = Number(value);
+                    if (!Number.isFinite(n)) return fallback;
+                    return Math.max(min, Math.min(max, n));
+                };
+                root.dbToLinear = function dbToLinear(dbValue) {
+                    return Math.pow(10, (Number(dbValue) || 0) / 20);
+                };
+                root.makeSaturationCurve = function makeSaturationCurve(amountPercent) {
+                    const amount = root.clamp(amountPercent, 0, 100, 0);
+                    const norm = amount / 100;
+                    const k = 1 + (amount * 0.45);
+                    const n = 1024;
+                    const curve = new Float32Array(n);
+                    for (let i = 0; i < n; i += 1) {
+                        const x = (i * 2 / (n - 1)) - 1;
+                        const soft = Math.tanh(k * x) / Math.tanh(k);
+                        const blend = 0.02 + (norm * 0.12);
+                        curve[i] = (x * (1 - blend)) + (soft * blend);
+                    }
+                    return curve;
+                };
+                root.makeExciterCurve = function makeExciterCurve(mode, amountPercent) {
+                    const amount = root.clamp(amountPercent, 0, 100, 0);
+                    const norm = amount / 100;
+                    const n = 1024;
+                    const curve = new Float32Array(n);
+                    const kBase = 1 + (norm * 5.0);
+                    for (let i = 0; i < n; i += 1) {
+                        const x = (i * 2 / (n - 1)) - 1;
+                        const absX = Math.abs(x);
+                        let y = x;
+                        if (mode === 'even') {
+                            const evenComp = (x * (1 - (0.12 + (norm * 0.55)))) + ((x * x) * Math.sign(x) * (0.12 + (norm * 0.55)));
+                            y = evenComp;
+                        } else if (mode === 'tube') {
+                            y = Math.tanh((kBase * 0.85) * x) / Math.tanh(kBase * 0.85);
+                        } else if (mode === 'tape') {
+                            const soft = Math.tanh((kBase * 0.55) * x) / Math.tanh(kBase * 0.55);
+                            const comp = x / (1 + (absX * (0.25 + (norm * 0.65))));
+                            y = (soft * 0.65) + (comp * 0.35);
+                        } else {
+                            const oddComp = Math.tanh(kBase * x) / Math.tanh(kBase);
+                            y = oddComp;
+                        }
+                        const blend = 0.02 + (norm * 0.20);
+                        curve[i] = (x * (1 - blend)) + (y * blend);
+                    }
+                    return curve;
+                };
+                root.makeBitCrusherCurve = function makeBitCrusherCurve(bitDepth, ditherType, shapingType) {
+                    const bits = Math.max(4, Math.min(24, Math.round(Number(bitDepth) || 16)));
+                    const dither = Math.max(0, Math.min(2, Math.round(Number(ditherType) || 0)));
+                    const shaping = Math.max(0, Math.min(2, Math.round(Number(shapingType) || 0)));
+                    const n = 2048;
+                    const curve = new Float32Array(n);
+                    const levels = Math.max(16, Math.pow(2, bits - Math.min(6, dither)));
+                    const step = 2 / (levels - 1);
+                    const shapingTilt = shaping === 2 ? 0.11 : (shaping === 1 ? 0.06 : 0);
+                    for (let i = 0; i < n; i += 1) {
+                        const x = (i * 2 / (n - 1)) - 1;
+                        const quantized = Math.round((x + 1) / step) * step - 1;
+                        const tilt = x + (x * Math.abs(x) * shapingTilt);
+                        curve[i] = Math.max(-1, Math.min(1, (quantized * 0.92) + (tilt * 0.08)));
+                    }
+                    return curve;
+                };
+                root.computeAutoCompDb = function computeAutoCompDb(nextCfg) {
+                    try {
+                        const cfgObj = nextCfg || {};
+                        let pressure = 0;
+                        const bands = Array.isArray(cfgObj.bands) ? cfgObj.bands : [];
+                        if (bands.length) {
+                            let sumPos = 0;
+                            for (let i = 0; i < bands.length; i += 1) {
+                                const g = Number(bands[i]) || 0;
+                                if (g > 0) sumPos += g;
+                            }
+                            pressure += Math.min(4.0, sumPos * 0.035);
+                        }
+                        const bb = cfgObj.bassboost || {};
+                        if (bb.enabled) {
+                            const mix = root.clamp(bb.mix, 0, 100, 50) / 100;
+                            const g = root.clamp(bb.gain, 0, 18, 6);
+                            const h = root.clamp(bb.harmonics, 0, 100, 50);
+                            pressure += Math.min(6.0, (g * 0.34 * mix) + (h * 0.018 * mix));
+                        }
+                        const ex = cfgObj.exciter || {};
+                        if (ex.enabled) {
+                            const amt = root.clamp(ex.amount, 0, 100, 50);
+                            const mix = root.clamp(ex.mix, 0, 100, 30) / 100;
+                            pressure += Math.min(3.2, amt * 0.028 * mix);
+                        }
+                        const ts = cfgObj.tapesat || {};
+                        if (ts.enabled) {
+                            const drive = root.clamp(ts.driveDb, 0, 24, 6);
+                            const mix = root.clamp(ts.mix, 0, 100, 50) / 100;
+                            const tone = root.clamp(ts.tone, 0, 100, 50);
+                            pressure += Math.min(7.0, (drive * 0.26 * mix) + (Math.max(0, 50 - tone) * 0.018));
+                        }
+                        const sp = cfgObj.surround || {};
+                        if (sp.enabled) {
+                            const mix = root.clamp(sp.mix, 0, 100, 75) / 100;
+                            const lfe = root.clamp(sp.lfe, -12, 24, 0);
+                            const side = root.clamp(sp.surround, -12, 24, 0);
+                            pressure += Math.max(0, (lfe * 0.30 + side * 0.16) * mix);
+                        }
+                        const tp = cfgObj.truepeak || {};
+                        if (tp.enabled) {
+                            const drive = root.clamp(tp.drive, -12, 24, 0);
+                            pressure += Math.max(0, drive * 0.22);
+                        }
+                        const lm = cfgObj.limiter || {};
+                        if (lm.enabled) {
+                            const gain = root.clamp(lm.gain, -24, 24, 0);
+                            pressure += Math.max(0, gain * 0.32);
+                        }
+                        const compDb = -Math.min(12, pressure * 0.88);
+                        return Number.isFinite(compDb) ? compDb : 0;
+                    } catch (_) {
+                        return 0;
+                    }
+                };
+                root.smoothParam = function smoothParam(audioParam, nextValue, ctx, rampMs) {
+                    if (!audioParam || !ctx) return;
+                    const target = Number(nextValue);
+                    if (!Number.isFinite(target)) return;
+                    const now = Number(ctx.currentTime) || 0;
+                    const safeRampSec = Math.max(0.004, (Number(rampMs) || 12) / 1000);
+                    try {
+                        const current = Number(audioParam.value);
+                        audioParam.cancelScheduledValues(now);
+                        audioParam.setValueAtTime(Number.isFinite(current) ? current : target, now);
+                        audioParam.linearRampToValueAtTime(target, now + safeRampSec);
+                    } catch (_) {
+                        try { audioParam.value = target; } catch (_) {}
+                    }
+                };
+                root.smoothingProfilesMs = Object.freeze({
+                    instant: 4,
+                    switch: 7,
+                    detector: 10,
+                    musical: 14,
+                    eqband: 20,
+                    dynamics: 16
+                });
+                root.getSmoothingMs = function getSmoothingMs(profileName, fallbackMs) {
+                    const key = String(profileName || '').trim().toLowerCase();
+                    const table = root.smoothingProfilesMs || {};
+                    const hit = Number(table[key]);
+                    if (Number.isFinite(hit) && hit > 0) return hit;
+                    const fb = Number(fallbackMs);
+                    if (Number.isFinite(fb) && fb > 0) return fb;
+                    return Number(table.musical) || 14;
+                };
+                root.controlRateProfiles = Object.freeze({
+                    deesserMs: 24,
+                    noisegateMs: 24,
+                    autogainMs: 60,
+                    dynamiceqMs: 24,
+                    truepeakMs: 50,
+                    epsilonLinear: 0.0006,
+                    epsilonDb: 0.04
+                });
+                root.ensureWasmKernels = function ensureWasmKernels() {
+                    root.__aurivoWasmKernels = (root && root.__aurivoWasmKernels && typeof root.__aurivoWasmKernels === 'object')
+                        ? root.__aurivoWasmKernels
+                        : {};
+                    const reg = root.__aurivoWasmKernels;
+                    if (reg.__dynamicEqInitAttempted) return reg;
+                    reg.__dynamicEqInitAttempted = true;
+                    try {
+                        if (typeof WebAssembly === 'undefined' || typeof WebAssembly.Module !== 'function') {
+                            reg.__dynamicEqInitError = 'webassembly-unavailable';
+                            return reg;
+                        }
+                        // Tiny WASM kernel:
+                        // f64 step(f64 current, f64 target, f64 coeff) => current + (target-current)*coeff
+                        const wasmBytes = new Uint8Array([
+                            0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00,
+                            0x01, 0x08, 0x01, 0x60, 0x03, 0x7c, 0x7c, 0x7c, 0x01, 0x7c,
+                            0x03, 0x02, 0x01, 0x00,
+                            0x07, 0x08, 0x01, 0x04, 0x73, 0x74, 0x65, 0x70, 0x00, 0x00,
+                            0x0a, 0x0f, 0x01, 0x0d, 0x00, 0x20, 0x00, 0x20, 0x01, 0x20, 0x00, 0xa1, 0x20, 0x02, 0xa2, 0xa0, 0x0b
+                        ]);
+                        const mod = new WebAssembly.Module(wasmBytes);
+                        const inst = new WebAssembly.Instance(mod, {});
+                        const step = inst?.exports?.step;
+                        if (typeof step !== 'function') {
+                            reg.__dynamicEqInitError = 'wasm-step-export-missing';
+                            return reg;
+                        }
+                        reg.dynamicEqCompute = function dynamicEqComputeWasm(input) {
+                            const bandDb = Number(input?.bandDb);
+                            const currentGainDb = Number(input?.currentGainDb);
+                            const envDb = Number(input?.envDb);
+                            const thresholdDb = Number(input?.thresholdDb);
+                            const maxGainDb = Number(input?.maxGainDb);
+                            const rangeDb = Number(input?.rangeDb);
+                            const attackMs = Number(input?.attackMs);
+                            const releaseMs = Number(input?.releaseMs);
+                            const stepMs = Math.max(5, Number(input?.stepMs) || 20);
+                            const safeBandDb = Number.isFinite(bandDb) ? bandDb : -120;
+                            const safeEnvDb = Number.isFinite(envDb) ? envDb : safeBandDb;
+                            const safeCurrentGainDb = Number.isFinite(currentGainDb) ? currentGainDb : 0;
+                            const safeThresholdDb = Number.isFinite(thresholdDb) ? thresholdDb : -40;
+                            const safeMaxGainDb = Number.isFinite(maxGainDb) ? maxGainDb : -6;
+                            const safeRangeDb = Math.max(0.1, Math.abs(Number.isFinite(rangeDb) ? rangeDb : 12));
+                            const safeAttackMs = Math.max(0.1, Number.isFinite(attackMs) ? attackMs : 5);
+                            const safeReleaseMs = Math.max(1, Number.isFinite(releaseMs) ? releaseMs : 120);
+                            const envRiseMs = 8;
+                            const envFallMs = 140;
+                            const envTauSec = Math.max(0.003, ((safeBandDb > safeEnvDb) ? envRiseMs : envFallMs) / 1000);
+                            const envCoeff = 1 - Math.exp(-(stepMs / 1000) / envTauSec);
+                            const nextEnvDb = Number(step(safeEnvDb, safeBandDb, Math.max(0, Math.min(1, envCoeff))));
+                            const overDb = Math.max(0, nextEnvDb - safeThresholdDb);
+                            const strength = Math.max(0, Math.min(1, overDb / Math.max(1, safeRangeDb)));
+                            const unclampedTarget = safeMaxGainDb * strength;
+                            const targetGainDb = Math.max(-safeRangeDb, Math.min(safeRangeDb, unclampedTarget));
+                            const gainTauSec = Math.max(
+                                0.001,
+                                ((targetGainDb > safeCurrentGainDb) ? safeAttackMs : safeReleaseMs) / 1000
+                            );
+                            const gainCoeff = 1 - Math.exp(-(stepMs / 1000) / gainTauSec);
+                            const nextGainDb = Number(step(safeCurrentGainDb, targetGainDb, Math.max(0, Math.min(1, gainCoeff))));
+                            const clampedGainDb = Math.max(-24, Math.min(24, nextGainDb));
+                            return {
+                                currentGainDb: clampedGainDb,
+                                gainReductionDb: clampedGainDb,
+                                envDb: Number.isFinite(nextEnvDb) ? nextEnvDb : safeEnvDb
+                            };
+                        };
+                        reg.autoGainCompute = function autoGainComputeWasm(input) {
+                            const inputDb = Number(input?.inputDb);
+                            const currentGainDb = Number(input?.currentGainDb);
+                            const envDb = Number(input?.envDb);
+                            const targetLevel = Number(input?.targetLevel);
+                            const maxGainDb = Number(input?.maxGainDb);
+                            const speedRaw = String(input?.speed || 'medium').trim().toLowerCase();
+                            const speed = (speedRaw === 'slow' || speedRaw === 'fast') ? speedRaw : 'medium';
+                            const stepMs = Math.max(10, Number(input?.stepMs) || 50);
+                            const safeInputDb = Number.isFinite(inputDb) ? inputDb : -120;
+                            const safeEnvDb = Number.isFinite(envDb) ? envDb : safeInputDb;
+                            const safeCurrentGainDb = Number.isFinite(currentGainDb) ? currentGainDb : 0;
+                            const safeTargetLevel = Number.isFinite(targetLevel) ? targetLevel : -14;
+                            const safeMaxGainDb = Math.max(0, Number.isFinite(maxGainDb) ? maxGainDb : 12);
+                            const envRiseMs = 35;
+                            const envFallMs = 240;
+                            const envTauSec = Math.max(0.01, ((safeInputDb > safeEnvDb) ? envRiseMs : envFallMs) / 1000);
+                            const envCoeff = 1 - Math.exp(-(stepMs / 1000) / envTauSec);
+                            const nextEnvDb = Number(step(safeEnvDb, safeInputDb, Math.max(0, Math.min(1, envCoeff))));
+                            const rawNeedDb = safeTargetLevel - nextEnvDb;
+                            const targetGainDb = Math.max(-12, Math.min(safeMaxGainDb, rawNeedDb));
+                            const attackMs = speed === 'fast' ? 45 : (speed === 'slow' ? 180 : 95);
+                            const releaseMs = speed === 'fast' ? 220 : (speed === 'slow' ? 520 : 340);
+                            const gainTauSec = Math.max(0.01, ((targetGainDb > safeCurrentGainDb) ? attackMs : releaseMs) / 1000);
+                            const gainCoeff = 1 - Math.exp(-(stepMs / 1000) / gainTauSec);
+                            const nextGainDb = Number(step(safeCurrentGainDb, targetGainDb, Math.max(0, Math.min(1, gainCoeff))));
+                            const clampedGainDb = Math.max(-12, Math.min(safeMaxGainDb, nextGainDb));
+                            return {
+                                currentGainDb: clampedGainDb,
+                                envDb: Number.isFinite(nextEnvDb) ? nextEnvDb : safeEnvDb
+                            };
+                        };
+                        reg.noiseGateCompute = function noiseGateComputeWasm(input) {
+                            const rawLevelDb = Number(input?.rawLevelDb);
+                            const envDb = Number(input?.envDb);
+                            const currentGain = Number(input?.currentGain);
+                            const targetGain = Number(input?.targetGain);
+                            const attackMs = Number(input?.attackMs);
+                            const releaseMs = Number(input?.releaseMs);
+                            const stepMs = Math.max(10, Number(input?.stepMs) || 20);
+                            const safeRaw = Number.isFinite(rawLevelDb) ? rawLevelDb : -120;
+                            const safeEnv = Number.isFinite(envDb) ? envDb : safeRaw;
+                            const safeCurrent = Number.isFinite(currentGain) ? currentGain : 1;
+                            const safeTarget = Number.isFinite(targetGain) ? targetGain : 1;
+                            const safeAttackMs = Math.max(1, Number.isFinite(attackMs) ? attackMs : 5);
+                            const safeReleaseMs = Math.max(10, Number.isFinite(releaseMs) ? releaseMs : 150);
+                            const detectorRiseMs = 12;
+                            const detectorFallMs = 120;
+                            const detectorTauSec = Math.max(0.004, ((safeRaw > safeEnv) ? detectorRiseMs : detectorFallMs) / 1000);
+                            const detectorCoeff = 1 - Math.exp(-(stepMs / 1000) / detectorTauSec);
+                            const nextEnvDb = Number(step(safeEnv, safeRaw, Math.max(0, Math.min(1, detectorCoeff))));
+                            const gainTauSec = Math.max(0.001, ((safeTarget > safeCurrent) ? safeAttackMs : safeReleaseMs) / 1000);
+                            const gainCoeff = 1 - Math.exp(-(stepMs / 1000) / gainTauSec);
+                            const nextGain = Number(step(safeCurrent, safeTarget, Math.max(0, Math.min(1, gainCoeff))));
+                            return {
+                                envDb: Number.isFinite(nextEnvDb) ? nextEnvDb : safeEnv,
+                                currentGain: Math.max(0.0001, Math.min(1, Number.isFinite(nextGain) ? nextGain : safeCurrent))
+                            };
+                        };
+                        reg.deEsserCompute = function deEsserComputeWasm(input) {
+                            const rawLevelDb = Number(input?.rawLevelDb);
+                            const envDb = Number(input?.envDb);
+                            const currentHighGain = Number(input?.currentHighGain);
+                            const thresholdDb = Number(input?.thresholdDb);
+                            const ratio = Number(input?.ratio);
+                            const maxReductionDb = Number(input?.maxReductionDb);
+                            const stepMs = Math.max(10, Number(input?.stepMs) || 20);
+                            const safeRaw = Number.isFinite(rawLevelDb) ? rawLevelDb : -120;
+                            const safeEnv = Number.isFinite(envDb) ? envDb : safeRaw;
+                            const safeCurrent = Number.isFinite(currentHighGain) ? currentHighGain : 1;
+                            const safeThreshold = Number.isFinite(thresholdDb) ? thresholdDb : -30;
+                            const safeRatio = Math.max(1, Number.isFinite(ratio) ? ratio : 4);
+                            const safeMaxReductionDb = Math.max(0, Number.isFinite(maxReductionDb) ? maxReductionDb : 12);
+                            const detectorRiseMs = 6;
+                            const detectorFallMs = 120;
+                            const detectorTauSec = Math.max(0.003, ((safeRaw > safeEnv) ? detectorRiseMs : detectorFallMs) / 1000);
+                            const detectorCoeff = 1 - Math.exp(-(stepMs / 1000) / detectorTauSec);
+                            const nextEnvDb = Number(step(safeEnv, safeRaw, Math.max(0, Math.min(1, detectorCoeff))));
+                            const overDb = Math.max(0, nextEnvDb - safeThreshold);
+                            const ratioAmount = 1 - (1 / safeRatio);
+                            const reductionDb = Math.min(safeMaxReductionDb, overDb * ratioAmount);
+                            const targetHighGain = Math.pow(10, (-reductionDb / 20));
+                            const attackMs = 8;
+                            const releaseMs = 160;
+                            const gainTauSec = Math.max(0.001, ((targetHighGain < safeCurrent) ? attackMs : releaseMs) / 1000);
+                            const gainCoeff = 1 - Math.exp(-(stepMs / 1000) / gainTauSec);
+                            const nextHighGain = Number(step(safeCurrent, targetHighGain, Math.max(0, Math.min(1, gainCoeff))));
+                            return {
+                                envDb: Number.isFinite(nextEnvDb) ? nextEnvDb : safeEnv,
+                                currentHighGain: Math.max(0.05, Math.min(1, Number.isFinite(nextHighGain) ? nextHighGain : safeCurrent))
+                            };
+                        };
+                        reg.truePeakCompute = function truePeakComputeWasm(input) {
+                            const enabled = !!input?.enabled;
+                            const peakDb = Number(input?.peakDb);
+                            const ceilingDb = Number(input?.ceilingDb);
+                            const holdL = Number(input?.holdL);
+                            const holdR = Number(input?.holdR);
+                            const clippingCount = Number(input?.clippingCount);
+                            const gainReduction = Number(input?.gainReduction);
+                            const clipGuardEnabled = !!input?.clipGuardEnabled;
+                            const clipGuardCeilingDb = Number(input?.clipGuardCeilingDb);
+                            const clipGuardCurrentDb = Number(input?.clipGuardCurrentDb);
+                            const clipGuardTargetDb = Number(input?.clipGuardTargetDb);
+                            const recoverMarginDb = Number(input?.recoverMarginDb);
+                            const stepMs = Math.max(20, Number(input?.stepMs) || 40);
+                            const safePeakDb = Number.isFinite(peakDb) ? peakDb : -96;
+                            const safeCeilingDb = Number.isFinite(ceilingDb) ? ceilingDb : -1.0;
+                            const holdDecayPer40ms = 0.45;
+                            const holdDecay = holdDecayPer40ms * (stepMs / 40);
+                            const nextTruePeakL = enabled ? safePeakDb : -96;
+                            const nextTruePeakR = enabled ? safePeakDb : -96;
+                            const nextHoldL = enabled
+                                ? Math.max(safePeakDb, (Number.isFinite(holdL) ? holdL : -96) - holdDecay)
+                                : -96;
+                            const nextHoldR = enabled
+                                ? Math.max(safePeakDb, (Number.isFinite(holdR) ? holdR : -96) - holdDecay)
+                                : -96;
+                            let nextClipCount = Math.max(0, Math.round(Number.isFinite(clippingCount) ? clippingCount : 0));
+                            if (enabled && safePeakDb > (safeCeilingDb + 0.05)) {
+                                nextClipCount += 1;
+                            }
+                            if (!enabled) {
+                                nextClipCount = 0;
+                            }
+                            const nextGainReduction = Number.isFinite(gainReduction) ? gainReduction : 0;
+                            let nextGuardCurrentDb = Number.isFinite(clipGuardCurrentDb) ? clipGuardCurrentDb : 0;
+                            let nextGuardTargetDb = Number.isFinite(clipGuardTargetDb) ? clipGuardTargetDb : 0;
+                            if (clipGuardEnabled) {
+                                const guardCeiling = Number.isFinite(clipGuardCeilingDb) ? clipGuardCeilingDb : -1.0;
+                                const safeRecoverMargin = Math.max(0.5, Number.isFinite(recoverMarginDb) ? recoverMarginDb : 2.2);
+                                const overDb = safePeakDb - guardCeiling;
+                                if (overDb > 0.05) {
+                                    nextGuardTargetDb = -Math.min(12, (overDb * 1.15) + 0.35);
+                                } else if (safePeakDb < (guardCeiling - safeRecoverMargin)) {
+                                    nextGuardTargetDb = 0;
+                                }
+                                const attackMs = 70;
+                                const releaseMs = 700;
+                                const tauSec = Math.max(0.01, ((nextGuardTargetDb < nextGuardCurrentDb) ? attackMs : releaseMs) / 1000);
+                                const coeff = 1 - Math.exp(-(stepMs / 1000) / tauSec);
+                                nextGuardCurrentDb = Number(step(nextGuardCurrentDb, nextGuardTargetDb, Math.max(0, Math.min(1, coeff))));
+                                nextGuardCurrentDb = Math.max(-12, Math.min(0, nextGuardCurrentDb));
+                            } else {
+                                nextGuardCurrentDb = 0;
+                                nextGuardTargetDb = 0;
+                            }
+                            return {
+                                truePeakL: nextTruePeakL,
+                                truePeakR: nextTruePeakR,
+                                holdL: nextHoldL,
+                                holdR: nextHoldR,
+                                clippingCount: nextClipCount,
+                                gainReduction: nextGainReduction,
+                                clipGuardCurrentDb: nextGuardCurrentDb,
+                                clipGuardTargetDb: nextGuardTargetDb
+                            };
+                        };
+                        reg.tapeSatCompute = function tapeSatComputeWasm(input) {
+                            const enabled = !!input?.enabled;
+                            const driveDb = Number(input?.driveDb);
+                            const mixNorm = Number(input?.mixNorm);
+                            const toneNorm = Number(input?.toneNorm);
+                            const outputDb = Number(input?.outputDb);
+                            const mode = Math.max(0, Math.min(2, Math.round(Number(input?.mode) || 0)));
+                            const hissNorm = Number(input?.hissNorm);
+                            const prevCurveAmount = Number(input?.prevCurveAmount);
+                            const modeDriveMul = [0.90, 1.00, 1.08];
+                            const modeCurveBoost = [0, 8, 12];
+                            const safeDriveDb = Number.isFinite(driveDb) ? driveDb : 6;
+                            const safeMixNorm = Math.max(0, Math.min(1, Number.isFinite(mixNorm) ? mixNorm : 0.5));
+                            const safeToneNorm = Math.max(0, Math.min(1, Number.isFinite(toneNorm) ? toneNorm : 0.5));
+                            const safeOutputDb = Number.isFinite(outputDb) ? outputDb : -1;
+                            const safeHissNorm = Math.max(0, Math.min(1, Number.isFinite(hissNorm) ? hissNorm : 0));
+                            const dryGain = enabled ? Math.max(0.15, 1 - (safeMixNorm * 0.85)) : 1;
+                            const wetGain = enabled ? Math.min(1.0, safeMixNorm * 1.05) : 0;
+                            const inputCompDb = enabled ? -Math.min(10.0, (safeDriveDb * 0.35) + (safeMixNorm * 2.0)) : 0;
+                            const driveGain = enabled ? Math.pow(10, ((safeDriveDb * modeDriveMul[mode]) / 20)) : 1;
+                            const toneGainDb = enabled ? ((safeToneNorm - 0.5) * 12) : 0;
+                            const toneFreqHz = enabled ? (1800 + (safeToneNorm * 7000)) : 4000;
+                            const hissShelfDb = enabled ? (safeHissNorm * 2.0) : 0;
+                            const targetCurveAmount = enabled
+                                ? Math.max(0, Math.min(100, (safeDriveDb * 2.4) + (safeMixNorm * 24) + modeCurveBoost[mode] + (safeHissNorm * 6)))
+                                : 0;
+                            const safePrevCurve = Number.isFinite(prevCurveAmount) ? prevCurveAmount : 0;
+                            const curveCoeff = 1 - Math.exp(-0.22);
+                            const curveAmount = Number(step(safePrevCurve, targetCurveAmount, Math.max(0, Math.min(1, curveCoeff))));
+                            return {
+                                inputCompDb,
+                                dryGain,
+                                wetGain,
+                                driveGain,
+                                toneGainDb,
+                                toneFreqHz,
+                                hissShelfDb,
+                                outputGain: enabled ? Math.pow(10, (safeOutputDb / 20)) : 1,
+                                curveAmount: Math.max(0, Math.min(100, Number.isFinite(curveAmount) ? curveAmount : targetCurveAmount))
+                            };
+                        };
+                        reg.bitDitherCompute = function bitDitherComputeWasm(input) {
+                            const enabled = !!input?.enabled;
+                            const bitDepth = Math.max(4, Math.min(24, Math.round(Number(input?.bitDepth) || 16)));
+                            const dither = Math.max(0, Math.min(2, Math.round(Number(input?.dither) || 2)));
+                            const shaping = Math.max(0, Math.min(2, Math.round(Number(input?.shaping) || 1)));
+                            const downsample = [1, 2, 4, 8, 16].includes(Number(input?.downsample)) ? Number(input?.downsample) : 1;
+                            const mixNorm = Math.max(0, Math.min(1, Number(input?.mixNorm) || 1));
+                            const outputDb = Number.isFinite(Number(input?.outputDb)) ? Number(input.outputDb) : 0;
+                            const dryGain = enabled ? Math.max(0, 1 - mixNorm) : 1;
+                            const wetGain = enabled ? mixNorm : 0;
+                            const downsampleLpMap = { 1: 20000, 2: 12000, 4: 7200, 8: 3800, 16: 1900 };
+                            const lpHz = enabled ? (downsampleLpMap[downsample] || 20000) : 20000;
+                            const driveDb = enabled ? Math.max(0, (16 - bitDepth) * 0.22) : 0;
+                            const curveKey = String(bitDepth) + ':' + String(dither) + ':' + String(shaping);
+                            return {
+                                dryGain,
+                                wetGain,
+                                lpHz,
+                                driveDb,
+                                curveKey,
+                                outputGain: enabled ? Math.pow(10, (outputDb / 20)) : 1
+                            };
+                        };
+                        reg.stereoWidenerCompute = function stereoWidenerComputeWasm(input) {
+                            const enabled = !!input?.enabled;
+                            const widthNorm = Math.max(0, Math.min(2, Number(input?.widthNorm) || 1));
+                            const centerLevelDb = Number(input?.centerLevelDb);
+                            const sideLevelDb = Number(input?.sideLevelDb);
+                            const bassToMonoHz = Number(input?.bassToMonoHz);
+                            const safeCenterLevelDb = Number.isFinite(centerLevelDb) ? centerLevelDb : 0;
+                            const safeSideLevelDb = Number.isFinite(sideLevelDb) ? sideLevelDb : 0;
+                            const safeBassToMonoHz = Math.max(0, Math.min(500, Number.isFinite(bassToMonoHz) ? bassToMonoHz : 200));
+                            const centerGain = enabled ? Math.pow(10, (safeCenterLevelDb / 20)) : 1;
+                            const sideGain = enabled ? (widthNorm * Math.pow(10, (safeSideLevelDb / 20))) : 1;
+                            const monoLowEnabled = enabled && safeBassToMonoHz >= 20;
+                            const monoCutoffHz = monoLowEnabled ? Math.max(40, safeBassToMonoHz) : 20;
+                            return {
+                                centerGain,
+                                sideGain,
+                                monoCutoffHz,
+                                monoLowGain: monoLowEnabled ? 1 : 0
+                            };
+                        };
+                        reg.exciterCompute = function exciterComputeWasm(input) {
+                            const enabled = !!input?.enabled;
+                            const frequency = Math.max(1000, Math.min(8000, Number(input?.frequency) || 3000));
+                            const amount = Math.max(0, Math.min(100, Number(input?.amount) || 50));
+                            const mix = Math.max(0, Math.min(1, Number(input?.mixNorm) || 0.3));
+                            const modeRaw = String(input?.mode || 'odd').trim().toLowerCase();
+                            const mode = ['odd', 'even', 'tape', 'tube'].includes(modeRaw) ? modeRaw : 'odd';
+                            const dryGain = enabled ? Math.max(0.55, 1 - (mix * 0.70)) : 1;
+                            const wetGain = enabled ? Math.min(0.70, mix * 0.85) : 0;
+                            const driveGain = enabled ? (1 + ((amount / 100) * 2.0)) : 1;
+                            const toneFreq = enabled ? Math.max(2200, Math.min(14000, frequency * 1.9)) : 12000;
+                            return {
+                                dryGain,
+                                wetGain,
+                                driveGain,
+                                toneFreq,
+                                curveMode: mode,
+                                curveAmount: enabled ? amount : 0
+                            };
+                        };
+                        reg.echoCompute = function echoComputeWasm(input) {
+                            const enabled = !!input?.enabled;
+                            const delayMs = Math.max(10, Math.min(1000, Number(input?.delayMs) || 250));
+                            const feedbackNorm = Math.max(0, Math.min(1, Number(input?.feedbackNorm) || 0.4));
+                            const wetNorm = Math.max(0, Math.min(1, Number(input?.wetNorm) || 0.3));
+                            const highCutHz = Math.max(1000, Math.min(20000, Number(input?.highCutHz) || 8000));
+                            const delaySec = Math.max(0.01, Math.min(1.0, delayMs / 1000));
+                            const feedbackGain = enabled ? Math.max(0, Math.min(0.86, feedbackNorm * 0.88)) : 0;
+                            const wetGain = enabled ? Math.max(0, Math.min(0.9, wetNorm * 0.92)) : 0;
+                            const dryGain = enabled ? Math.max(0.6, Math.min(1, 1 - (wetNorm * 0.45))) : 1;
+                            return {
+                                delaySec,
+                                highCutHz,
+                                feedbackGain,
+                                wetGain,
+                                dryGain
+                            };
+                        };
+                        reg.softEchoCompute = function softEchoComputeWasm(input) {
+                            const enabled = !!input?.enabled;
+                            const delayMs = Math.max(60, Math.min(650, Number(input?.delayMs) || 220));
+                            const feedbackNorm = Math.max(0.05, Math.min(0.45, Number(input?.feedbackNorm) || 0.22));
+                            const wetNorm = Math.max(0.05, Math.min(0.40, Number(input?.wetNorm) || 0.18));
+                            const highCutHz = Math.max(2500, Math.min(12000, Number(input?.highCutHz) || 7000));
+                            const stereo = !!input?.stereo;
+                            const delayL = Math.max(0.02, Math.min(1.0, delayMs / 1000));
+                            const delayR = stereo
+                                ? Math.max(0.02, Math.min(1.0, (delayMs * 1.22) / 1000))
+                                : delayL;
+                            const feedback = enabled ? Math.max(0, Math.min(0.74, 0.08 + (feedbackNorm * 1.22))) : 0;
+                            const wetBase = enabled ? Math.max(0, Math.min(0.90, 0.04 + (wetNorm * 1.85))) : 0;
+                            const wetGainL = enabled ? Math.max(0, Math.min(0.90, wetBase * (stereo ? 0.92 : 1.0))) : 0;
+                            const wetGainR = enabled ? Math.max(0, Math.min(0.90, wetBase * (stereo ? 1.00 : 1.0))) : 0;
+                            const dryGain = enabled ? Math.max(0.20, Math.min(1.0, 1 - (wetNorm * 1.35))) : 1;
+                            return {
+                                delayL,
+                                delayR,
+                                highCutHz,
+                                feedback,
+                                wetGainL,
+                                wetGainR,
+                                dryGain
+                            };
+                        };
+                        reg.reverbCompute = function reverbComputeWasm(input) {
+                            const convEnabled = !!input?.convEnabled;
+                            const convPreset = String(input?.convPreset || 'hall').toLowerCase();
+                            const convMix = Math.max(0, Math.min(100, Number(input?.convMix) || 30));
+                            const convPreDelayMs = Math.max(0, Math.min(250, Number(input?.convPreDelayMs) || 20));
+                            const rvbEnabled = !!input?.rvbEnabled;
+                            const rvbRoomMs = Number(input?.rvbRoomMs);
+                            const rvbDamping = Number(input?.rvbDamping);
+                            const rvbWetDryDb = Number(input?.rvbWetDryDb);
+                            const rvbHfRatio = Number(input?.rvbHfRatio);
+                            const rvbInputGainDb = Number(input?.rvbInputGainDb);
+                            const convProfiles = {
+                                hall: { roomMs: 2400, damping: 0.46, hfRatio: 0.50, inDb: -1.2 },
+                                church: { roomMs: 4200, damping: 0.30, hfRatio: 0.36, inDb: -2.4 },
+                                room: { roomMs: 780, damping: 0.62, hfRatio: 0.66, inDb: 0.1 },
+                                plate: { roomMs: 1250, damping: 0.48, hfRatio: 0.72, inDb: -0.7 },
+                                small: { roomMs: 520, damping: 0.68, hfRatio: 0.78, inDb: 0.2 },
+                                large: { roomMs: 3100, damping: 0.38, hfRatio: 0.52, inDb: -1.4 },
+                                spring: { roomMs: 980, damping: 0.58, hfRatio: 0.80, inDb: -1.0 },
+                                chamber: { roomMs: 1650, damping: 0.50, hfRatio: 0.60, inDb: -0.9 }
+                            };
+                            const cp = convProfiles[convPreset] || convProfiles.hall;
+                            const enabled = convEnabled || rvbEnabled;
+                            const roomMs = convEnabled
+                                ? Math.max(100, Math.min(6000, cp.roomMs + (convPreDelayMs * 2.2)))
+                                : Math.max(100, Math.min(6000, Number.isFinite(rvbRoomMs) ? rvbRoomMs : 1000));
+                            const damping = convEnabled
+                                ? cp.damping
+                                : Math.max(0, Math.min(1, Number.isFinite(rvbDamping) ? rvbDamping : 0.5));
+                            const wetDryDb = convEnabled
+                                ? (-26 + (convMix * 0.30))
+                                : Math.max(-40, Math.min(6, Number.isFinite(rvbWetDryDb) ? rvbWetDryDb : -10));
+                            const hfRatio = convEnabled
+                                ? cp.hfRatio
+                                : Math.max(0, Math.min(1, Number.isFinite(rvbHfRatio) ? rvbHfRatio : 0.7));
+                            const inputGainDb = convEnabled
+                                ? cp.inDb
+                                : Math.max(-24, Math.min(24, Number.isFinite(rvbInputGainDb) ? rvbInputGainDb : 0));
+                            const delaySec = Math.max(0.01, Math.min(0.28, (roomMs / 1000) * 0.09));
+                            const feedback = enabled ? Math.max(0.15, Math.min(0.78, 0.18 + ((1 - damping) * 0.55))) : 0.05;
+                            const lowpassHz = enabled ? Math.max(900, Math.min(18000, 900 + (hfRatio * 12000))) : 18000;
+                            const wetGain = enabled ? Math.pow(10, (wetDryDb / 20)) : 0;
+                            const dryGain = enabled ? Math.max(0.55, Math.min(1, 1 - (wetGain * 0.35))) : 1;
+                            const inputGain = enabled ? Math.pow(10, (inputGainDb / 20)) : 1;
+                            return {
+                                inputGain,
+                                dryGain,
+                                wetGain,
+                                feedback,
+                                delaySec,
+                                lowpassHz
+                            };
+                        };
+                        reg.bassBoostCompute = function bassBoostComputeWasm(input) {
+                            const enabled = !!input?.enabled;
+                            const freq = Math.max(35, Math.min(110, Number(input?.freq) || 68));
+                            const gainDb = Math.max(0, Math.min(18, Number(input?.gainDb) || 6));
+                            const harmonics = Math.max(0, Math.min(100, Number(input?.harmonics) || 50));
+                            const width = Math.max(0.5, Math.min(3.0, Number(input?.width) || 1.4));
+                            const mix = Math.max(0, Math.min(1, Number(input?.mix) || 0.5));
+                            const lowShelfGain = Number(input?.lowShelfGain);
+                            const subPeakGain = Number(input?.subPeakGain);
+                            const subPeakFreq = Number(input?.subPeakFreq);
+                            const subPeakQ = Number(input?.subPeakQ);
+                            const upperPeakFreq = Number(input?.upperPeakFreq);
+                            const upperPeakGain = Number(input?.upperPeakGain);
+                            const upperPeakQ = Number(input?.upperPeakQ);
+                            const limiterCeilingDb = Number(input?.limiterCeilingDb);
+                            const preampGainLinear = Number(input?.preampGainLinear);
+                            const harmNorm = harmonics / 100;
+                            const mixFactor = (0.65 + (mix * 0.55));
+                            const shelfBaseGain = Number.isFinite(lowShelfGain) ? lowShelfGain : 5.5;
+                            const subBaseGain = Number.isFinite(subPeakGain) ? subPeakGain : 2.0;
+                            const shelfGain = enabled ? Math.min(12.5, (shelfBaseGain * 0.82) + (gainDb * mixFactor * (1 - (harmNorm * 0.12)))) : 0;
+                            const subBaseFreq = Number.isFinite(subPeakFreq) ? subPeakFreq : 120;
+                            const subFreq = enabled ? Math.max(34, Math.min(96, Math.min(subBaseFreq, freq * 0.70))) : 56;
+                            const subGain = enabled ? (Math.min(10.5, (subBaseGain * 1.15) + (gainDb * 0.46 * mixFactor))) : 0;
+                            const subBaseQ = Number.isFinite(subPeakQ) ? subPeakQ : 0.95;
+                            const subQ = enabled ? Math.max(0.55, Math.min(1.45, subBaseQ * (0.86 + ((width - 0.5) * 0.24)))) : 0.75;
+                            const presenceBaseFreq = Number.isFinite(upperPeakFreq) ? upperPeakFreq : 145;
+                            const presenceBaseGain = Number.isFinite(upperPeakGain) ? upperPeakGain : 2.2;
+                            const presenceBaseQ = Number.isFinite(upperPeakQ) ? upperPeakQ : 1.05;
+                            const presenceFreq = enabled ? Math.max(95, Math.min(170, Math.min(presenceBaseFreq, subFreq * 1.85))) : 118;
+                            const presenceGain = enabled ? Math.min(3.2, presenceBaseGain + (gainDb * 0.08) + (mix * 0.7)) : 0;
+                            const presenceQ = enabled ? Math.max(0.7, Math.min(1.45, presenceBaseQ * (0.9 + ((width - 1.0) * 0.2)))) : 0.95;
+                            const wetGain = enabled ? Math.min(0.035, mix * (0.001 + (harmNorm * 0.015))) : 0;
+                            const dryGain = enabled ? Math.max(0.86, 0.98 - (mix * 0.08)) : 1.0;
+                            const harmonicCutoff = enabled ? Math.max(120, Math.min(220, freq * 1.15)) : 170;
+                            const harmonicDrive = enabled ? (1 + (harmNorm * 0.02)) : 1;
+                            const dipFreq = enabled ? Math.max(180, Math.min(380, freq * 2.6)) : 260;
+                            const dipGain = enabled ? -Math.min(0.8, gainDb * mix * 0.035) : 0;
+                            const dipQ = enabled ? Math.max(0.55, Math.min(1.25, 0.8 + ((width - 1.0) * 0.16))) : 0.8;
+                            const safeLimiterCeilingDb = Number.isFinite(limiterCeilingDb) ? limiterCeilingDb : -1.2;
+                            const safePreampGainLinear = Math.max(0.1, Number.isFinite(preampGainLinear) ? preampGainLinear : 1);
+                            const preampCompDb = 20 * Math.log10(safePreampGainLinear);
+                            const inputCompDb = enabled ? (preampCompDb - Math.min(2.6, (mix * 1.2) + (gainDb * 0.05))) : 0;
+                            const outputTrimDb = enabled ? Math.max(safeLimiterCeilingDb - 0.2, -Math.min(2.8, (shelfGain * 0.07) + (subGain * 0.09) + (presenceGain * 0.02) + (wetGain * 4.5))) : 0;
+                            return {
+                                inputGain: Math.pow(10, (inputCompDb / 20)),
+                                shelfGain,
+                                width,
+                                subFreq,
+                                subGain,
+                                subQ,
+                                presenceFreq,
+                                presenceGain,
+                                presenceQ,
+                                harmonicCutoff,
+                                harmonicDrive,
+                                wetGain,
+                                dryGain,
+                                dipFreq,
+                                dipGain,
+                                dipQ,
+                                outputGain: Math.pow(10, (outputTrimDb / 20)),
+                                curveAmount: enabled ? harmonics : 0
+                            };
+                        };
+                        reg.peqCompute = function peqComputeWasm(input) {
+                            const enabled = !!input?.enabled;
+                            const defaults = [60, 150, 400, 1500, 5000, 12000];
+                            const rawBands = Array.isArray(input?.bands) ? input.bands : [];
+                            const bands = defaults.map((defaultFreq, i) => {
+                                const b = rawBands[i] || {};
+                                return {
+                                    freq: enabled ? Math.max(20, Math.min(20000, Number(b.freq) || defaultFreq)) : defaultFreq,
+                                    q: enabled ? Math.max(0.1, Math.min(10, Number(b.q) || 1.0)) : 1.0,
+                                    gain: enabled ? Math.max(-15, Math.min(15, Number(b.gain) || 0)) : 0,
+                                    filterType: enabled ? Math.max(0, Math.min(6, Math.round(Number(b.filterType) || 0))) : 0
+                                };
+                            });
+                            return { enabled, bands };
+                        };
+                        reg.compressorCompute = function compressorComputeWasm(input) {
+                            const enabled = !!input?.enabled;
+                            const threshold = Math.max(-60, Math.min(0, Number(input?.threshold) || -20));
+                            const ratio = Math.max(1, Math.min(20, Number(input?.ratio) || 4));
+                            const attackMs = Math.max(1, Math.min(200, Number(input?.attackMs) || 10));
+                            const releaseMs = Math.max(10, Math.min(1000, Number(input?.releaseMs) || 100));
+                            const knee = Math.max(0, Math.min(24, Number(input?.knee) || 3));
+                            const makeupGainDb = Math.max(-24, Math.min(24, Number(input?.makeupGainDb) || 0));
+                            return {
+                                threshold: enabled ? threshold : 0,
+                                ratio: enabled ? ratio : 1,
+                                attackSec: enabled ? Math.max(0.001, attackMs / 1000) : 0.003,
+                                releaseSec: enabled ? Math.max(0.01, releaseMs / 1000) : 0.05,
+                                knee: enabled ? knee : 30,
+                                makeupGain: enabled ? Math.pow(10, (makeupGainDb / 20)) : 1
+                            };
+                        };
+                        reg.limiterCompute = function limiterComputeWasm(input) {
+                            const enabled = !!input?.enabled;
+                            const releaseMs = Math.max(1, Math.min(1000, Number(input?.releaseMs) || 50));
+                            const lookaheadMs = Math.max(0, Math.min(25, Number(input?.lookaheadMs) || 5));
+                            const ceilingDb = Math.max(-18, Math.min(0, Number(input?.ceilingDb) || -0.3));
+                            const gainDb = Math.max(-24, Math.min(24, Number(input?.gainDb) || 0));
+                            return {
+                                postGain: enabled ? Math.pow(10, (gainDb / 20)) : 1,
+                                threshold: enabled ? ceilingDb : 0,
+                                ratio: enabled ? 20 : 1,
+                                knee: enabled ? 0 : 30,
+                                attackSec: enabled ? Math.max(0.0005, lookaheadMs / 1000) : 0.003,
+                                releaseSec: enabled ? Math.max(0.005, releaseMs / 1000) : 0.05
+                            };
+                        };
+                        reg.crossfeedCompute = function crossfeedComputeWasm(input) {
+                            const enabled = !!input?.enabled;
+                            const levelNorm = Math.max(0, Math.min(1, Number(input?.levelNorm) || 0.3));
+                            const delayMs = Math.max(0.1, Math.min(2.0, Number(input?.delayMs) || 0.3));
+                            let lowCutHz = Math.max(20, Math.min(5000, Number(input?.lowCutHz) || 700));
+                            let highCutHz = Math.max(1000, Math.min(20000, Number(input?.highCutHz) || 4000));
+                            if (highCutHz <= (lowCutHz + 120)) {
+                                highCutHz = Math.min(20000, lowCutHz + 120);
+                                if (highCutHz <= (lowCutHz + 20)) {
+                                    lowCutHz = Math.max(20, highCutHz - 120);
+                                }
+                            }
+                            const bandWidth = Math.max(120, highCutHz - lowCutHz);
+                            const bandNorm = Math.max(0, Math.min(1, (bandWidth - 120) / 4880));
+                            const crossGain = enabled
+                                ? Math.max(0, Math.min(1.05, (levelNorm * 0.55) + (levelNorm * bandNorm * 0.55)))
+                                : 0;
+                            const dryGain = enabled
+                                ? Math.max(0.58, Math.min(1, 1 - (crossGain * 0.42)))
+                                : 1;
+                            const delaySec = Math.max(0.0001, Math.min(0.01, delayMs / 1000));
+                            return {
+                                delaySec,
+                                lowCutHz,
+                                highCutHz,
+                                crossGain,
+                                dryGain
+                            };
+                        };
+                        reg.surroundCompute = function surroundComputeWasm(input) {
+                            const enabled = !!input?.enabled;
+                            const centerDb = Number(input?.centerDb);
+                            const surroundDb = Number(input?.surroundDb);
+                            const lfeDb = Number(input?.lfeDb);
+                            const crossoverHz = Number(input?.crossoverHz);
+                            const delayMs = Number(input?.delayMs);
+                            const mixNorm = Number(input?.mixNorm);
+                            const safeCenterDb = Number.isFinite(centerDb) ? centerDb : 0;
+                            const safeSurroundDb = Number.isFinite(surroundDb) ? surroundDb : 0;
+                            const safeLfeDb = Number.isFinite(lfeDb) ? lfeDb : 0;
+                            const safeCrossoverHz = Math.max(40, Math.min(200, Number.isFinite(crossoverHz) ? crossoverHz : 110));
+                            const safeDelayMs = Math.max(0, Math.min(30, Number.isFinite(delayMs) ? delayMs : 8));
+                            const safeMixNorm = Math.max(0, Math.min(1, Number.isFinite(mixNorm) ? mixNorm : 0.75));
+                            const wet = enabled ? safeMixNorm : 0;
+                            const dry = enabled ? Math.max(0.35, Math.min(1, 1 - (wet * 0.65))) : 1;
+                            const centerGain = enabled ? (Math.pow(10, (safeCenterDb / 20)) * wet * 0.55) : 0;
+                            const rearGain = enabled ? (Math.pow(10, (safeSurroundDb / 20)) * wet * 0.50) : 0;
+                            const lfeGain = enabled ? (Math.pow(10, (safeLfeDb / 20)) * wet * 0.35) : 0;
+                            const delaySec = enabled ? Math.max(0, Math.min(0.08, safeDelayMs / 1000)) : 0;
+                            const rearLowpassHz = enabled ? Math.max(1200, Math.min(12000, safeCrossoverHz * 42)) : 12000;
+                            return {
+                                dry,
+                                centerGain,
+                                rearGain,
+                                lfeGain,
+                                delaySec,
+                                crossoverHz: safeCrossoverHz,
+                                rearLowpassHz
+                            };
+                        };
+                        reg.bassMonoCompute = function bassMonoComputeWasm(input) {
+                            const enabled = !!input?.enabled;
+                            const cutoffHz = Math.max(40, Math.min(300, Number(input?.cutoffHz) || 120));
+                            const stereoWidthNorm = Math.max(0, Math.min(2, Number(input?.stereoWidthNorm) || 1));
+                            const slopeRaw = Number(input?.slope);
+                            const slope = [12, 24, 48].includes(slopeRaw) ? slopeRaw : 24;
+                            const qMap = { 12: 0.55, 24: 0.707, 48: 1.15 };
+                            const qVal = qMap[slope] || 0.707;
+                            const dryGain = enabled ? 0 : 1;
+                            const lowMonoOut = enabled ? 0.5 : 0;
+                            const highMidIn = enabled ? 0.5 : 0;
+                            const highSideL = enabled ? 0.5 : 0;
+                            const highSideRInv = enabled ? -0.5 : 0;
+                            const widthGain = enabled ? stereoWidthNorm : 1;
+                            return {
+                                cutoffHz,
+                                qVal,
+                                dryGain,
+                                lowMonoOut,
+                                highMidIn,
+                                highSideL,
+                                highSideRInv,
+                                widthGain
+                            };
+                        };
+                        reg.__dynamicEqInitMode = 'wasm-microkernel';
+                    } catch (err) {
+                        reg.__dynamicEqInitError = err && err.message ? String(err.message) : 'wasm-init-error';
+                    }
+                    return reg;
+                };
+                root.resolveDynamicEqKernel = function resolveDynamicEqKernel(graph) {
+                    if (!graph) return { mode: 'js', reason: 'missing-graph', compute: null };
+                    const prefRaw = String(graph?.dynamicEqState?.kernelPreference || 'auto').trim().toLowerCase();
+                    const pref = (prefRaw === 'js' || prefRaw === 'wasm') ? prefRaw : 'auto';
+                    const kernelRegistry = root.ensureWasmKernels();
+                    const candidate = (pref !== 'js' && typeof kernelRegistry.dynamicEqCompute === 'function')
+                        ? kernelRegistry.dynamicEqCompute
+                        : null;
+                    const mode = candidate ? 'wasm' : 'js';
+                    const reason = candidate ? '' : (
+                        pref === 'wasm'
+                            ? (String(kernelRegistry.__dynamicEqInitError || 'wasm-kernel-unavailable'))
+                            : (String(kernelRegistry.__dynamicEqInitError || 'fallback-js-default'))
+                    );
+                    graph.dynamicEqKernelState = {
+                        preferred: pref,
+                        mode,
+                        reason,
+                        resolvedAt: Date.now(),
+                        wasmCompute: candidate,
+                        wasmKernel: String(kernelRegistry.__dynamicEqInitMode || '')
+                    };
+                    return graph.dynamicEqKernelState;
+                };
+                root.computeDynamicEqJsStep = function computeDynamicEqJsStep(st, bandDb, stepMs) {
+                    const safeStepMs = Math.max(5, Number(stepMs) || 20);
+                    if (!Number.isFinite(st.envDb)) st.envDb = Number.isFinite(bandDb) ? bandDb : -120;
+                    const envRiseMs = 8;
+                    const envFallMs = 140;
+                    const envTau = Math.max(0.003, ((bandDb > st.envDb) ? envRiseMs : envFallMs) / 1000);
+                    const envAlpha = 1 - Math.exp(-(safeStepMs / 1000) / envTau);
+                    st.envDb += (bandDb - st.envDb) * envAlpha;
+                    const overDb = Math.max(0, st.envDb - st.thresholdDb);
+                    const strength = Math.max(0, Math.min(1, overDb / Math.max(1, st.rangeDb)));
+                    const unclampedTarget = st.maxGainDb * strength;
+                    const targetGainDb = Math.max(-Math.abs(st.rangeDb), Math.min(Math.abs(st.rangeDb), unclampedTarget));
+                    const tau = Math.max(0.001, ((targetGainDb > st.currentGainDb) ? st.attackMs : st.releaseMs) / 1000);
+                    const alpha = 1 - Math.exp(-(safeStepMs / 1000) / tau);
+                    st.currentGainDb += (targetGainDb - st.currentGainDb) * alpha;
+                    st.currentGainDb = Math.max(-24, Math.min(24, st.currentGainDb));
+                    st.gainReductionDb = st.currentGainDb;
+                    return {
+                        currentGainDb: st.currentGainDb,
+                        gainReductionDb: st.gainReductionDb,
+                        envDb: st.envDb
+                    };
+                };
+                root.resolveAutoGainKernel = function resolveAutoGainKernel(graph) {
+                    if (!graph) return { mode: 'js', reason: 'missing-graph', compute: null };
+                    const prefRaw = String(graph?.autoGainState?.kernelPreference || 'auto').trim().toLowerCase();
+                    const pref = (prefRaw === 'js' || prefRaw === 'wasm') ? prefRaw : 'auto';
+                    const kernelRegistry = root.ensureWasmKernels();
+                    const candidate = (pref !== 'js' && typeof kernelRegistry.autoGainCompute === 'function')
+                        ? kernelRegistry.autoGainCompute
+                        : null;
+                    const mode = candidate ? 'wasm' : 'js';
+                    const reason = candidate ? '' : (
+                        pref === 'wasm'
+                            ? (String(kernelRegistry.__dynamicEqInitError || 'wasm-kernel-unavailable'))
+                            : (String(kernelRegistry.__dynamicEqInitError || 'fallback-js-default'))
+                    );
+                    graph.autoGainKernelState = {
+                        preferred: pref,
+                        mode,
+                        reason,
+                        resolvedAt: Date.now(),
+                        wasmCompute: candidate,
+                        wasmKernel: String(kernelRegistry.__dynamicEqInitMode || '')
+                    };
+                    return graph.autoGainKernelState;
+                };
+                root.computeAutoGainJsStep = function computeAutoGainJsStep(st, inputDb, stepMs) {
+                    const safeStepMs = Math.max(10, Number(stepMs) || 50);
+                    if (!Number.isFinite(st.envDb)) st.envDb = Number.isFinite(inputDb) ? inputDb : -120;
+                    const envRiseMs = 35;
+                    const envFallMs = 240;
+                    const envTau = Math.max(0.01, ((inputDb > st.envDb) ? envRiseMs : envFallMs) / 1000);
+                    const envAlpha = 1 - Math.exp(-(safeStepMs / 1000) / envTau);
+                    st.envDb += (inputDb - st.envDb) * envAlpha;
+                    const rawNeedDb = st.targetLevel - st.envDb;
+                    const targetGainDb = Math.max(-12, Math.min(st.maxGainDb, rawNeedDb));
+                    const attackMs = st.speed === 'fast' ? 45 : (st.speed === 'slow' ? 180 : 95);
+                    const releaseMs = st.speed === 'fast' ? 220 : (st.speed === 'slow' ? 520 : 340);
+                    const tau = Math.max(0.01, (targetGainDb > st.currentGainDb ? attackMs : releaseMs) / 1000);
+                    const alpha = 1 - Math.exp(-(safeStepMs / 1000) / tau);
+                    st.currentGainDb += (targetGainDb - st.currentGainDb) * alpha;
+                    st.currentGainDb = Math.max(-12, Math.min(st.maxGainDb, st.currentGainDb));
+                    return {
+                        currentGainDb: st.currentGainDb,
+                        envDb: st.envDb
+                    };
+                };
+                root.resolveNoiseGateKernel = function resolveNoiseGateKernel(graph) {
+                    if (!graph) return { mode: 'js', reason: 'missing-graph', compute: null };
+                    const prefRaw = String(graph?.noiseGateState?.kernelPreference || 'auto').trim().toLowerCase();
+                    const pref = (prefRaw === 'js' || prefRaw === 'wasm') ? prefRaw : 'auto';
+                    const kernelRegistry = root.ensureWasmKernels();
+                    const candidate = (pref !== 'js' && typeof kernelRegistry.noiseGateCompute === 'function')
+                        ? kernelRegistry.noiseGateCompute
+                        : null;
+                    const mode = candidate ? 'wasm' : 'js';
+                    const reason = candidate ? '' : (
+                        pref === 'wasm'
+                            ? (String(kernelRegistry.__dynamicEqInitError || 'wasm-kernel-unavailable'))
+                            : (String(kernelRegistry.__dynamicEqInitError || 'fallback-js-default'))
+                    );
+                    graph.noiseGateKernelState = {
+                        preferred: pref,
+                        mode,
+                        reason,
+                        resolvedAt: Date.now(),
+                        wasmCompute: candidate,
+                        wasmKernel: String(kernelRegistry.__dynamicEqInitMode || '')
+                    };
+                    return graph.noiseGateKernelState;
+                };
+                root.computeNoiseGateJsStep = function computeNoiseGateJsStep(st, rawLevelDb, targetGain, stepMs) {
+                    const safeStepMs = Math.max(10, Number(stepMs) || 20);
+                    if (!Number.isFinite(st.envDb)) st.envDb = rawLevelDb;
+                    const detectorRiseMs = 12;
+                    const detectorFallMs = 120;
+                    const detectorTau = Math.max(0.004, (rawLevelDb > st.envDb ? detectorRiseMs : detectorFallMs) / 1000);
+                    const detectorAlpha = 1 - Math.exp(-(safeStepMs / 1000) / detectorTau);
+                    st.envDb += (rawLevelDb - st.envDb) * detectorAlpha;
+                    const tau = Math.max(0.001, ((targetGain > st.currentGain) ? st.attackMs : st.releaseMs) / 1000);
+                    const alpha = 1 - Math.exp(-(safeStepMs / 1000) / tau);
+                    st.currentGain += (targetGain - st.currentGain) * alpha;
+                    st.currentGain = Math.max(0.0001, Math.min(1, st.currentGain));
+                    return {
+                        envDb: st.envDb,
+                        currentGain: st.currentGain
+                    };
+                };
+                root.resolveDeEsserKernel = function resolveDeEsserKernel(graph) {
+                    if (!graph) return { mode: 'js', reason: 'missing-graph', compute: null };
+                    const prefRaw = String(graph?.deEsserState?.kernelPreference || 'auto').trim().toLowerCase();
+                    const pref = (prefRaw === 'js' || prefRaw === 'wasm') ? prefRaw : 'auto';
+                    const kernelRegistry = root.ensureWasmKernels();
+                    const candidate = (pref !== 'js' && typeof kernelRegistry.deEsserCompute === 'function')
+                        ? kernelRegistry.deEsserCompute
+                        : null;
+                    const mode = candidate ? 'wasm' : 'js';
+                    const reason = candidate ? '' : (
+                        pref === 'wasm'
+                            ? (String(kernelRegistry.__dynamicEqInitError || 'wasm-kernel-unavailable'))
+                            : (String(kernelRegistry.__dynamicEqInitError || 'fallback-js-default'))
+                    );
+                    graph.deEsserKernelState = {
+                        preferred: pref,
+                        mode,
+                        reason,
+                        resolvedAt: Date.now(),
+                        wasmCompute: candidate,
+                        wasmKernel: String(kernelRegistry.__dynamicEqInitMode || '')
+                    };
+                    return graph.deEsserKernelState;
+                };
+                root.computeDeEsserJsStep = function computeDeEsserJsStep(st, rawLevelDb, stepMs) {
+                    const safeStepMs = Math.max(10, Number(stepMs) || 20);
+                    if (!Number.isFinite(st.envDb)) st.envDb = rawLevelDb;
+                    const detectorRiseMs = 6;
+                    const detectorFallMs = 120;
+                    const detectorTau = Math.max(0.003, (rawLevelDb > st.envDb ? detectorRiseMs : detectorFallMs) / 1000);
+                    const detectorAlpha = 1 - Math.exp(-(safeStepMs / 1000) / detectorTau);
+                    st.envDb += (rawLevelDb - st.envDb) * detectorAlpha;
+                    const overDb = Math.max(0, st.envDb - st.thresholdDb);
+                    const ratioAmount = 1 - (1 / Math.max(1, st.ratio));
+                    const reductionDb = Math.min(st.maxReductionDb, overDb * ratioAmount);
+                    const targetHighGain = root.dbToLinear(-reductionDb);
+                    const attackMs = 8;
+                    const releaseMs = 160;
+                    const tau = Math.max(0.001, ((targetHighGain < st.currentHighGain) ? attackMs : releaseMs) / 1000);
+                    const alpha = 1 - Math.exp(-(safeStepMs / 1000) / tau);
+                    st.currentHighGain += (targetHighGain - st.currentHighGain) * alpha;
+                    st.currentHighGain = Math.max(0.05, Math.min(1, st.currentHighGain));
+                    return {
+                        envDb: st.envDb,
+                        currentHighGain: st.currentHighGain
+                    };
+                };
+                root.resolveTruePeakKernel = function resolveTruePeakKernel(graph) {
+                    if (!graph) return { mode: 'js', reason: 'missing-graph', compute: null };
+                    const prefRaw = String(graph?.truePeakState?.kernelPreference || 'auto').trim().toLowerCase();
+                    const pref = (prefRaw === 'js' || prefRaw === 'wasm') ? prefRaw : 'auto';
+                    const kernelRegistry = root.ensureWasmKernels();
+                    const candidate = (pref !== 'js' && typeof kernelRegistry.truePeakCompute === 'function')
+                        ? kernelRegistry.truePeakCompute
+                        : null;
+                    const mode = candidate ? 'wasm' : 'js';
+                    const reason = candidate ? '' : (
+                        pref === 'wasm'
+                            ? (String(kernelRegistry.__dynamicEqInitError || 'wasm-kernel-unavailable'))
+                            : (String(kernelRegistry.__dynamicEqInitError || 'fallback-js-default'))
+                    );
+                    graph.truePeakKernelState = {
+                        preferred: pref,
+                        mode,
+                        reason,
+                        resolvedAt: Date.now(),
+                        wasmCompute: candidate,
+                        wasmKernel: String(kernelRegistry.__dynamicEqInitMode || '')
+                    };
+                    return graph.truePeakKernelState;
+                };
+                root.computeTruePeakJsStep = function computeTruePeakJsStep(st, cg, peakDb, stepMs, limiterReductionDb) {
+                    const safeStepMs = Math.max(20, Number(stepMs) || 40);
+                    const safePeakDb = Number.isFinite(Number(peakDb)) ? Number(peakDb) : -96;
+                    const holdDecayPer40ms = 0.45;
+                    const holdDecay = holdDecayPer40ms * (safeStepMs / 40);
+                    if (st.enabled) {
+                        st.truePeakL = safePeakDb;
+                        st.truePeakR = safePeakDb;
+                        st.holdL = Math.max(safePeakDb, (Number(st.holdL) || -96) - holdDecay);
+                        st.holdR = Math.max(safePeakDb, (Number(st.holdR) || -96) - holdDecay);
+                        if (safePeakDb > (st.ceilingDb + 0.05)) {
+                            st.clippingCount = (Number(st.clippingCount) || 0) + 1;
+                        }
+                    } else {
+                        st.truePeakL = -96;
+                        st.truePeakR = -96;
+                        st.holdL = -96;
+                        st.holdR = -96;
+                        st.clippingCount = 0;
+                    }
+                    st.gainReduction = Number.isFinite(Number(limiterReductionDb)) ? Number(limiterReductionDb) : 0;
+                    if (!cg?.enabled) {
+                        cg.currentGainDb = 0;
+                        cg.targetGainDb = 0;
+                        return;
+                    }
+                    const guardCeilingDb = Number.isFinite(Number(cg.ceilingDb)) ? Number(cg.ceilingDb) : -1.0;
+                    const overDb = safePeakDb - guardCeilingDb;
+                    let targetGuardDb = Number(cg.targetGainDb);
+                    if (!Number.isFinite(targetGuardDb)) targetGuardDb = 0;
+                    if (overDb > 0.05) {
+                        targetGuardDb = -Math.min(12, (overDb * 1.15) + 0.35);
+                    } else if (safePeakDb < (guardCeilingDb - Math.max(1, Number(cg.recoverMarginDb) || 2.2))) {
+                        targetGuardDb = 0;
+                    }
+                    const currentDb = Number(cg.currentGainDb);
+                    const safeCurrentDb = Number.isFinite(currentDb) ? currentDb : 0;
+                    const attackMs = 70;
+                    const releaseMs = 700;
+                    const tau = Math.max(0.01, (targetGuardDb < safeCurrentDb ? attackMs : releaseMs) / 1000);
+                    const alpha = 1 - Math.exp(-(safeStepMs / 1000) / tau);
+                    cg.targetGainDb = targetGuardDb;
+                    cg.currentGainDb = safeCurrentDb + ((targetGuardDb - safeCurrentDb) * alpha);
+                    cg.currentGainDb = Math.max(-12, Math.min(0, cg.currentGainDb));
+                };
+                root.resolveTapeSatKernel = function resolveTapeSatKernel(graph) {
+                    if (!graph) return { mode: 'js', reason: 'missing-graph', compute: null };
+                    const prefRaw = String(graph?.tapeSatState?.kernelPreference || 'auto').trim().toLowerCase();
+                    const pref = (prefRaw === 'js' || prefRaw === 'wasm') ? prefRaw : 'auto';
+                    const kernelRegistry = root.ensureWasmKernels();
+                    const candidate = (pref !== 'js' && typeof kernelRegistry.tapeSatCompute === 'function')
+                        ? kernelRegistry.tapeSatCompute
+                        : null;
+                    const mode = candidate ? 'wasm' : 'js';
+                    const reason = candidate ? '' : (
+                        pref === 'wasm'
+                            ? (String(kernelRegistry.__dynamicEqInitError || 'wasm-kernel-unavailable'))
+                            : (String(kernelRegistry.__dynamicEqInitError || 'fallback-js-default'))
+                    );
+                    graph.tapeSatKernelState = {
+                        preferred: pref,
+                        mode,
+                        reason,
+                        resolvedAt: Date.now(),
+                        wasmCompute: candidate,
+                        wasmKernel: String(kernelRegistry.__dynamicEqInitMode || '')
+                    };
+                    return graph.tapeSatKernelState;
+                };
+                root.computeTapeSatJsParams = function computeTapeSatJsParams(input) {
+                    const enabled = !!input?.enabled;
+                    const driveDb = Number.isFinite(Number(input?.driveDb)) ? Number(input.driveDb) : 6;
+                    const mixNorm = Math.max(0, Math.min(1, Number(input?.mixNorm) || 0.5));
+                    const toneNorm = Math.max(0, Math.min(1, Number(input?.toneNorm) || 0.5));
+                    const outputDb = Number.isFinite(Number(input?.outputDb)) ? Number(input.outputDb) : -1;
+                    const mode = Math.max(0, Math.min(2, Math.round(Number(input?.mode) || 0)));
+                    const hissNorm = Math.max(0, Math.min(1, Number(input?.hissNorm) || 0));
+                    const prevCurveAmount = Number.isFinite(Number(input?.prevCurveAmount)) ? Number(input.prevCurveAmount) : 0;
+                    const modeDriveMul = [0.90, 1.00, 1.08];
+                    const modeCurveBoost = [0, 8, 12];
+                    const dryGain = enabled ? Math.max(0.15, 1 - (mixNorm * 0.85)) : 1;
+                    const wetGain = enabled ? Math.min(1.0, mixNorm * 1.05) : 0;
+                    const inputCompDb = enabled ? -Math.min(10.0, (driveDb * 0.35) + (mixNorm * 2.0)) : 0;
+                    const driveGain = enabled ? root.dbToLinear(driveDb * modeDriveMul[mode]) : 1;
+                    const toneGainDb = enabled ? ((toneNorm - 0.5) * 12) : 0;
+                    const toneFreqHz = enabled ? (1800 + (toneNorm * 7000)) : 4000;
+                    const hissShelfDb = enabled ? (hissNorm * 2.0) : 0;
+                    const targetCurveAmount = enabled
+                        ? root.clamp((driveDb * 2.4) + (mixNorm * 24) + modeCurveBoost[mode] + (hissNorm * 6), 0, 100, 0)
+                        : 0;
+                    const curveCoeff = 1 - Math.exp(-0.22);
+                    const curveAmount = prevCurveAmount + ((targetCurveAmount - prevCurveAmount) * curveCoeff);
+                    return {
+                        inputCompDb,
+                        dryGain,
+                        wetGain,
+                        driveGain,
+                        toneGainDb,
+                        toneFreqHz,
+                        hissShelfDb,
+                        outputGain: enabled ? root.dbToLinear(outputDb) : 1,
+                        curveAmount: root.clamp(curveAmount, 0, 100, targetCurveAmount)
+                    };
+                };
+                root.resolveBitDitherKernel = function resolveBitDitherKernel(graph) {
+                    if (!graph) return { mode: 'js', reason: 'missing-graph', compute: null };
+                    const prefRaw = String(graph?.bitDitherState?.kernelPreference || 'auto').trim().toLowerCase();
+                    const pref = (prefRaw === 'js' || prefRaw === 'wasm') ? prefRaw : 'auto';
+                    const kernelRegistry = root.ensureWasmKernels();
+                    const candidate = (pref !== 'js' && typeof kernelRegistry.bitDitherCompute === 'function')
+                        ? kernelRegistry.bitDitherCompute
+                        : null;
+                    const mode = candidate ? 'wasm' : 'js';
+                    const reason = candidate ? '' : (
+                        pref === 'wasm'
+                            ? (String(kernelRegistry.__dynamicEqInitError || 'wasm-kernel-unavailable'))
+                            : (String(kernelRegistry.__dynamicEqInitError || 'fallback-js-default'))
+                    );
+                    graph.bitDitherKernelState = {
+                        preferred: pref,
+                        mode,
+                        reason,
+                        resolvedAt: Date.now(),
+                        wasmCompute: candidate,
+                        wasmKernel: String(kernelRegistry.__dynamicEqInitMode || '')
+                    };
+                    return graph.bitDitherKernelState;
+                };
+                root.computeBitDitherJsParams = function computeBitDitherJsParams(input) {
+                    const enabled = !!input?.enabled;
+                    const bitDepth = Math.max(4, Math.min(24, Math.round(Number(input?.bitDepth) || 16)));
+                    const dither = Math.max(0, Math.min(2, Math.round(Number(input?.dither) || 2)));
+                    const shaping = Math.max(0, Math.min(2, Math.round(Number(input?.shaping) || 1)));
+                    const downsample = [1, 2, 4, 8, 16].includes(Number(input?.downsample)) ? Number(input?.downsample) : 1;
+                    const mixNorm = Math.max(0, Math.min(1, Number(input?.mixNorm) || 1));
+                    const outputDb = Number.isFinite(Number(input?.outputDb)) ? Number(input.outputDb) : 0;
+                    const dryGain = enabled ? Math.max(0, 1 - mixNorm) : 1;
+                    const wetGain = enabled ? mixNorm : 0;
+                    const downsampleLpMap = { 1: 20000, 2: 12000, 4: 7200, 8: 3800, 16: 1900 };
+                    const lpHz = enabled ? (downsampleLpMap[downsample] || 20000) : 20000;
+                    const driveDb = enabled ? Math.max(0, (16 - bitDepth) * 0.22) : 0;
+                    const curveKey = String(bitDepth) + ':' + String(dither) + ':' + String(shaping);
+                    return {
+                        dryGain,
+                        wetGain,
+                        lpHz,
+                        driveDb,
+                        curveKey,
+                        outputGain: enabled ? root.dbToLinear(outputDb) : 1
+                    };
+                };
+                root.resolveBassBoostKernel = function resolveBassBoostKernel(graph) {
+                    if (!graph) return { mode: 'js', reason: 'missing-graph', compute: null };
+                    const prefRaw = String(graph?.bassBoostState?.kernelPreference || 'auto').trim().toLowerCase();
+                    const pref = (prefRaw === 'js' || prefRaw === 'wasm') ? prefRaw : 'auto';
+                    const kernelRegistry = root.ensureWasmKernels();
+                    const candidate = (pref !== 'js' && typeof kernelRegistry.bassBoostCompute === 'function')
+                        ? kernelRegistry.bassBoostCompute
+                        : null;
+                    const mode = candidate ? 'wasm' : 'js';
+                    const reason = candidate ? '' : (
+                        pref === 'wasm'
+                            ? (String(kernelRegistry.__dynamicEqInitError || 'wasm-kernel-unavailable'))
+                            : (String(kernelRegistry.__dynamicEqInitError || 'fallback-js-default'))
+                    );
+                    graph.bassBoostKernelState = {
+                        preferred: pref,
+                        mode,
+                        reason,
+                        resolvedAt: Date.now(),
+                        wasmCompute: candidate,
+                        wasmKernel: String(kernelRegistry.__dynamicEqInitMode || '')
+                    };
+                    return graph.bassBoostKernelState;
+                };
+                root.computeBassBoostJsParams = function computeBassBoostJsParams(input) {
+                    const enabled = !!input?.enabled;
+                    const freq = root.clamp(input?.freq, 35, 110, 68);
+                    const gainDb = root.clamp(input?.gainDb, 0, 18, 6);
+                    const harmonics = root.clamp(input?.harmonics, 0, 100, 50);
+                    const width = root.clamp(input?.width, 0.5, 3.0, 1.4);
+                    const mix = root.clamp(input?.mix, 0, 1, 0.5);
+                    const lowShelfGain = Number.isFinite(Number(input?.lowShelfGain)) ? Number(input.lowShelfGain) : 5.5;
+                    const subPeakGain = Number.isFinite(Number(input?.subPeakGain)) ? Number(input.subPeakGain) : 2.0;
+                    const subPeakFreq = Number.isFinite(Number(input?.subPeakFreq)) ? Number(input.subPeakFreq) : 120;
+                    const subPeakQ = Number.isFinite(Number(input?.subPeakQ)) ? Number(input.subPeakQ) : 0.95;
+                    const upperPeakFreq = Number.isFinite(Number(input?.upperPeakFreq)) ? Number(input.upperPeakFreq) : 145;
+                    const upperPeakGain = Number.isFinite(Number(input?.upperPeakGain)) ? Number(input.upperPeakGain) : 2.2;
+                    const upperPeakQ = Number.isFinite(Number(input?.upperPeakQ)) ? Number(input.upperPeakQ) : 1.05;
+                    const limiterCeilingDb = Number.isFinite(Number(input?.limiterCeilingDb)) ? Number(input.limiterCeilingDb) : -1.2;
+                    const preampGainLinear = Math.max(0.1, Number.isFinite(Number(input?.preampGainLinear)) ? Number(input.preampGainLinear) : 1);
+                    const harmNorm = harmonics / 100;
+                    const mixFactor = (0.65 + (mix * 0.55));
+                    const shelfGain = enabled ? Math.min(12.5, (lowShelfGain * 0.82) + (gainDb * mixFactor * (1 - (harmNorm * 0.12)))) : 0;
+                    const subFreq = enabled ? Math.max(34, Math.min(96, Math.min(subPeakFreq, freq * 0.70))) : 56;
+                    const subGain = enabled ? (Math.min(10.5, (subPeakGain * 1.15) + (gainDb * 0.46 * mixFactor))) : 0;
+                    const subQ = enabled ? Math.max(0.55, Math.min(1.45, subPeakQ * (0.86 + ((width - 0.5) * 0.24)))) : 0.75;
+                    const presenceFreq = enabled ? Math.max(95, Math.min(170, Math.min(upperPeakFreq, subFreq * 1.85))) : 118;
+                    const presenceGain = enabled ? Math.min(3.2, upperPeakGain + (gainDb * 0.08) + (mix * 0.7)) : 0;
+                    const presenceQ = enabled ? Math.max(0.7, Math.min(1.45, upperPeakQ * (0.9 + ((width - 1.0) * 0.2)))) : 0.95;
+                    const wetGain = enabled ? Math.min(0.035, mix * (0.001 + (harmNorm * 0.015))) : 0;
+                    const dryGain = enabled ? Math.max(0.86, 0.98 - (mix * 0.08)) : 1.0;
+                    const harmonicCutoff = enabled ? Math.max(120, Math.min(220, freq * 1.15)) : 170;
+                    const harmonicDrive = enabled ? (1 + (harmNorm * 0.02)) : 1;
+                    const dipFreq = enabled ? Math.max(180, Math.min(380, freq * 2.6)) : 260;
+                    const dipGain = enabled ? -Math.min(0.8, gainDb * mix * 0.035) : 0;
+                    const dipQ = enabled ? Math.max(0.55, Math.min(1.25, 0.8 + ((width - 1.0) * 0.16))) : 0.8;
+                    const preampCompDb = 20 * Math.log10(preampGainLinear);
+                    const inputCompDb = enabled ? (preampCompDb - Math.min(2.6, (mix * 1.2) + (gainDb * 0.05))) : 0;
+                    const outputTrimDb = enabled ? Math.max(limiterCeilingDb - 0.2, -Math.min(2.8, (shelfGain * 0.07) + (subGain * 0.09) + (presenceGain * 0.02) + (wetGain * 4.5))) : 0;
+                    return {
+                        inputGain: root.dbToLinear(inputCompDb),
+                        shelfGain,
+                        width,
+                        subFreq,
+                        subGain,
+                        subQ,
+                        presenceFreq,
+                        presenceGain,
+                        presenceQ,
+                        harmonicCutoff,
+                        harmonicDrive,
+                        wetGain,
+                        dryGain,
+                        dipFreq,
+                        dipGain,
+                        dipQ,
+                        outputGain: root.dbToLinear(outputTrimDb),
+                        curveAmount: enabled ? harmonics : 0
+                    };
+                };
+                root.resolvePeqKernel = function resolvePeqKernel(graph) {
+                    if (!graph) return { mode: 'js', reason: 'missing-graph', compute: null };
+                    const prefRaw = String(graph?.peqState?.kernelPreference || 'auto').trim().toLowerCase();
+                    const pref = (prefRaw === 'js' || prefRaw === 'wasm') ? prefRaw : 'auto';
+                    const kernelRegistry = root.ensureWasmKernels();
+                    const candidate = (pref !== 'js' && typeof kernelRegistry.peqCompute === 'function')
+                        ? kernelRegistry.peqCompute
+                        : null;
+                    const mode = candidate ? 'wasm' : 'js';
+                    const reason = candidate ? '' : (
+                        pref === 'wasm'
+                            ? (String(kernelRegistry.__dynamicEqInitError || 'wasm-kernel-unavailable'))
+                            : (String(kernelRegistry.__dynamicEqInitError || 'fallback-js-default'))
+                    );
+                    graph.peqKernelState = {
+                        preferred: pref,
+                        mode,
+                        reason,
+                        resolvedAt: Date.now(),
+                        wasmCompute: candidate,
+                        wasmKernel: String(kernelRegistry.__dynamicEqInitMode || '')
+                    };
+                    return graph.peqKernelState;
+                };
+                root.computePeqJsParams = function computePeqJsParams(input) {
+                    const enabled = !!input?.enabled;
+                    const defaults = [60, 150, 400, 1500, 5000, 12000];
+                    const rawBands = Array.isArray(input?.bands) ? input.bands : [];
+                    const bands = defaults.map((defaultFreq, i) => {
+                        const b = rawBands[i] || {};
+                        return {
+                            freq: enabled ? root.clamp(b.freq, 20, 20000, defaultFreq) : defaultFreq,
+                            q: enabled ? root.clamp(b.q, 0.1, 10, 1.0) : 1.0,
+                            gain: enabled ? root.clamp(b.gain, -15, 15, 0) : 0,
+                            filterType: enabled ? Math.max(0, Math.min(6, Math.round(Number(b.filterType) || 0))) : 0
+                        };
+                    });
+                    return { enabled, bands };
+                };
+                root.resolveCompressorKernel = function resolveCompressorKernel(graph) {
+                    if (!graph) return { mode: 'js', reason: 'missing-graph', compute: null };
+                    const prefRaw = String(graph?.compressorState?.kernelPreference || 'auto').trim().toLowerCase();
+                    const pref = (prefRaw === 'js' || prefRaw === 'wasm') ? prefRaw : 'auto';
+                    const kernelRegistry = root.ensureWasmKernels();
+                    const candidate = (pref !== 'js' && typeof kernelRegistry.compressorCompute === 'function')
+                        ? kernelRegistry.compressorCompute
+                        : null;
+                    const mode = candidate ? 'wasm' : 'js';
+                    const reason = candidate ? '' : (
+                        pref === 'wasm'
+                            ? (String(kernelRegistry.__dynamicEqInitError || 'wasm-kernel-unavailable'))
+                            : (String(kernelRegistry.__dynamicEqInitError || 'fallback-js-default'))
+                    );
+                    graph.compressorKernelState = {
+                        preferred: pref,
+                        mode,
+                        reason,
+                        resolvedAt: Date.now(),
+                        wasmCompute: candidate,
+                        wasmKernel: String(kernelRegistry.__dynamicEqInitMode || '')
+                    };
+                    return graph.compressorKernelState;
+                };
+                root.computeCompressorJsParams = function computeCompressorJsParams(input) {
+                    const enabled = !!input?.enabled;
+                    const threshold = root.clamp(input?.threshold, -60, 0, -20);
+                    const ratio = root.clamp(input?.ratio, 1, 20, 4);
+                    const attackMs = root.clamp(input?.attackMs, 1, 200, 10);
+                    const releaseMs = root.clamp(input?.releaseMs, 10, 1000, 100);
+                    const knee = root.clamp(input?.knee, 0, 24, 3);
+                    const makeupGainDb = root.clamp(input?.makeupGainDb, -24, 24, 0);
+                    return {
+                        threshold: enabled ? threshold : 0,
+                        ratio: enabled ? ratio : 1,
+                        attackSec: enabled ? Math.max(0.001, attackMs / 1000) : 0.003,
+                        releaseSec: enabled ? Math.max(0.01, releaseMs / 1000) : 0.05,
+                        knee: enabled ? knee : 30,
+                        makeupGain: enabled ? root.dbToLinear(makeupGainDb) : 1
+                    };
+                };
+                root.resolveLimiterKernel = function resolveLimiterKernel(graph) {
+                    if (!graph) return { mode: 'js', reason: 'missing-graph', compute: null };
+                    const prefRaw = String(graph?.limiterState?.kernelPreference || 'auto').trim().toLowerCase();
+                    const pref = (prefRaw === 'js' || prefRaw === 'wasm') ? prefRaw : 'auto';
+                    const kernelRegistry = root.ensureWasmKernels();
+                    const candidate = (pref !== 'js' && typeof kernelRegistry.limiterCompute === 'function')
+                        ? kernelRegistry.limiterCompute
+                        : null;
+                    const mode = candidate ? 'wasm' : 'js';
+                    const reason = candidate ? '' : (
+                        pref === 'wasm'
+                            ? (String(kernelRegistry.__dynamicEqInitError || 'wasm-kernel-unavailable'))
+                            : (String(kernelRegistry.__dynamicEqInitError || 'fallback-js-default'))
+                    );
+                    graph.limiterKernelState = {
+                        preferred: pref,
+                        mode,
+                        reason,
+                        resolvedAt: Date.now(),
+                        wasmCompute: candidate,
+                        wasmKernel: String(kernelRegistry.__dynamicEqInitMode || '')
+                    };
+                    return graph.limiterKernelState;
+                };
+                root.computeLimiterJsParams = function computeLimiterJsParams(input) {
+                    const enabled = !!input?.enabled;
+                    const releaseMs = root.clamp(input?.releaseMs, 1, 1000, 50);
+                    const lookaheadMs = root.clamp(input?.lookaheadMs, 0, 25, 5);
+                    const ceilingDb = root.clamp(input?.ceilingDb, -18, 0, -0.3);
+                    const gainDb = root.clamp(input?.gainDb, -24, 24, 0);
+                    return {
+                        postGain: enabled ? root.dbToLinear(gainDb) : 1,
+                        threshold: enabled ? ceilingDb : 0,
+                        ratio: enabled ? 20 : 1,
+                        knee: enabled ? 0 : 30,
+                        attackSec: enabled ? Math.max(0.0005, lookaheadMs / 1000) : 0.003,
+                        releaseSec: enabled ? Math.max(0.005, releaseMs / 1000) : 0.05
+                    };
+                };
+                root.resolveEchoKernel = function resolveEchoKernel(graph) {
+                    if (!graph) return { mode: 'js', reason: 'missing-graph', compute: null };
+                    const prefRaw = String(graph?.echoState?.kernelPreference || 'auto').trim().toLowerCase();
+                    const pref = (prefRaw === 'js' || prefRaw === 'wasm') ? prefRaw : 'auto';
+                    const kernelRegistry = root.ensureWasmKernels();
+                    const candidate = (pref !== 'js' && typeof kernelRegistry.echoCompute === 'function')
+                        ? kernelRegistry.echoCompute
+                        : null;
+                    const mode = candidate ? 'wasm' : 'js';
+                    const reason = candidate ? '' : (
+                        pref === 'wasm'
+                            ? (String(kernelRegistry.__dynamicEqInitError || 'wasm-kernel-unavailable'))
+                            : (String(kernelRegistry.__dynamicEqInitError || 'fallback-js-default'))
+                    );
+                    graph.echoKernelState = {
+                        preferred: pref,
+                        mode,
+                        reason,
+                        resolvedAt: Date.now(),
+                        wasmCompute: candidate,
+                        wasmKernel: String(kernelRegistry.__dynamicEqInitMode || '')
+                    };
+                    return graph.echoKernelState;
+                };
+                root.computeEchoJsParams = function computeEchoJsParams(input) {
+                    const enabled = !!input?.enabled;
+                    const delayMs = root.clamp(input?.delayMs, 10, 1000, 250);
+                    const feedbackNorm = Math.max(0, Math.min(1, Number(input?.feedbackNorm) || 0.4));
+                    const wetNorm = Math.max(0, Math.min(1, Number(input?.wetNorm) || 0.3));
+                    const highCutHz = root.clamp(input?.highCutHz, 1000, 20000, 8000);
+                    const delaySec = Math.max(0.01, Math.min(1.0, delayMs / 1000));
+                    const feedbackGain = enabled ? Math.max(0, Math.min(0.86, feedbackNorm * 0.88)) : 0;
+                    const wetGain = enabled ? Math.max(0, Math.min(0.9, wetNorm * 0.92)) : 0;
+                    const dryGain = enabled ? Math.max(0.6, Math.min(1, 1 - (wetNorm * 0.45))) : 1;
+                    return {
+                        delaySec,
+                        highCutHz,
+                        feedbackGain,
+                        wetGain,
+                        dryGain
+                    };
+                };
+                root.resolveSoftEchoKernel = function resolveSoftEchoKernel(graph) {
+                    if (!graph) return { mode: 'js', reason: 'missing-graph', compute: null };
+                    const prefRaw = String(graph?.softEchoState?.kernelPreference || 'auto').trim().toLowerCase();
+                    const pref = (prefRaw === 'js' || prefRaw === 'wasm') ? prefRaw : 'auto';
+                    const kernelRegistry = root.ensureWasmKernels();
+                    const candidate = (pref !== 'js' && typeof kernelRegistry.softEchoCompute === 'function')
+                        ? kernelRegistry.softEchoCompute
+                        : null;
+                    const mode = candidate ? 'wasm' : 'js';
+                    const reason = candidate ? '' : (
+                        pref === 'wasm'
+                            ? (String(kernelRegistry.__dynamicEqInitError || 'wasm-kernel-unavailable'))
+                            : (String(kernelRegistry.__dynamicEqInitError || 'fallback-js-default'))
+                    );
+                    graph.softEchoKernelState = {
+                        preferred: pref,
+                        mode,
+                        reason,
+                        resolvedAt: Date.now(),
+                        wasmCompute: candidate,
+                        wasmKernel: String(kernelRegistry.__dynamicEqInitMode || '')
+                    };
+                    return graph.softEchoKernelState;
+                };
+                root.computeSoftEchoJsParams = function computeSoftEchoJsParams(input) {
+                    const enabled = !!input?.enabled;
+                    const delayMs = root.clamp(input?.delayMs, 60, 650, 220);
+                    const feedbackNorm = root.clamp(input?.feedbackNorm, 0.05, 0.45, 0.22);
+                    const wetNorm = root.clamp(input?.wetNorm, 0.05, 0.40, 0.18);
+                    const highCutHz = root.clamp(input?.highCutHz, 2500, 12000, 7000);
+                    const stereo = !!input?.stereo;
+                    const delayL = Math.max(0.02, Math.min(1.0, delayMs / 1000));
+                    const delayR = stereo
+                        ? Math.max(0.02, Math.min(1.0, (delayMs * 1.22) / 1000))
+                        : delayL;
+                    const feedback = enabled ? Math.max(0, Math.min(0.74, 0.08 + (feedbackNorm * 1.22))) : 0;
+                    const wetBase = enabled ? Math.max(0, Math.min(0.90, 0.04 + (wetNorm * 1.85))) : 0;
+                    const wetGainL = enabled ? Math.max(0, Math.min(0.90, wetBase * (stereo ? 0.92 : 1.0))) : 0;
+                    const wetGainR = enabled ? Math.max(0, Math.min(0.90, wetBase * (stereo ? 1.00 : 1.0))) : 0;
+                    const dryGain = enabled ? Math.max(0.20, Math.min(1.0, 1 - (wetNorm * 1.35))) : 1;
+                    return {
+                        delayL,
+                        delayR,
+                        highCutHz,
+                        feedback,
+                        wetGainL,
+                        wetGainR,
+                        dryGain
+                    };
+                };
+                root.resolveReverbKernel = function resolveReverbKernel(graph) {
+                    if (!graph) return { mode: 'js', reason: 'missing-graph', compute: null };
+                    const prefRaw = String(graph?.reverbState?.kernelPreference || 'auto').trim().toLowerCase();
+                    const pref = (prefRaw === 'js' || prefRaw === 'wasm') ? prefRaw : 'auto';
+                    const kernelRegistry = root.ensureWasmKernels();
+                    const candidate = (pref !== 'js' && typeof kernelRegistry.reverbCompute === 'function')
+                        ? kernelRegistry.reverbCompute
+                        : null;
+                    const mode = candidate ? 'wasm' : 'js';
+                    const reason = candidate ? '' : (
+                        pref === 'wasm'
+                            ? (String(kernelRegistry.__dynamicEqInitError || 'wasm-kernel-unavailable'))
+                            : (String(kernelRegistry.__dynamicEqInitError || 'fallback-js-default'))
+                    );
+                    graph.reverbKernelState = {
+                        preferred: pref,
+                        mode,
+                        reason,
+                        resolvedAt: Date.now(),
+                        wasmCompute: candidate,
+                        wasmKernel: String(kernelRegistry.__dynamicEqInitMode || '')
+                    };
+                    return graph.reverbKernelState;
+                };
+                root.computeReverbJsParams = function computeReverbJsParams(input) {
+                    const convEnabled = !!input?.convEnabled;
+                    const convPreset = String(input?.convPreset || 'hall').toLowerCase();
+                    const convMix = root.clamp(input?.convMix, 0, 100, 30);
+                    const convPreDelayMs = root.clamp(input?.convPreDelayMs, 0, 250, 20);
+                    const rvbEnabled = !!input?.rvbEnabled;
+                    const rvbRoomMs = root.clamp(input?.rvbRoomMs, 100, 6000, 1000);
+                    const rvbDamping = root.clamp(input?.rvbDamping, 0, 1, 0.5);
+                    const rvbWetDryDb = root.clamp(input?.rvbWetDryDb, -40, 6, -10);
+                    const rvbHfRatio = root.clamp(input?.rvbHfRatio, 0, 1, 0.7);
+                    const rvbInputGainDb = root.clamp(input?.rvbInputGainDb, -24, 24, 0);
+                    const convProfiles = {
+                        hall: { roomMs: 2400, damping: 0.46, hfRatio: 0.50, inDb: -1.2 },
+                        church: { roomMs: 4200, damping: 0.30, hfRatio: 0.36, inDb: -2.4 },
+                        room: { roomMs: 780, damping: 0.62, hfRatio: 0.66, inDb: 0.1 },
+                        plate: { roomMs: 1250, damping: 0.48, hfRatio: 0.72, inDb: -0.7 },
+                        small: { roomMs: 520, damping: 0.68, hfRatio: 0.78, inDb: 0.2 },
+                        large: { roomMs: 3100, damping: 0.38, hfRatio: 0.52, inDb: -1.4 },
+                        spring: { roomMs: 980, damping: 0.58, hfRatio: 0.80, inDb: -1.0 },
+                        chamber: { roomMs: 1650, damping: 0.50, hfRatio: 0.60, inDb: -0.9 }
+                    };
+                    const cp = convProfiles[convPreset] || convProfiles.hall;
+                    const enabled = convEnabled || rvbEnabled;
+                    const roomMs = convEnabled
+                        ? Math.max(100, Math.min(6000, cp.roomMs + (convPreDelayMs * 2.2)))
+                        : rvbRoomMs;
+                    const damping = convEnabled ? cp.damping : rvbDamping;
+                    const wetDryDb = convEnabled ? (-26 + (convMix * 0.30)) : rvbWetDryDb;
+                    const hfRatio = convEnabled ? cp.hfRatio : rvbHfRatio;
+                    const inputGainDb = convEnabled ? cp.inDb : rvbInputGainDb;
+                    const delaySec = Math.max(0.01, Math.min(0.28, (roomMs / 1000) * 0.09));
+                    const feedback = enabled ? Math.max(0.15, Math.min(0.78, 0.18 + ((1 - damping) * 0.55))) : 0.05;
+                    const lowpassHz = enabled ? Math.max(900, Math.min(18000, 900 + (hfRatio * 12000))) : 18000;
+                    const wetGain = enabled ? root.dbToLinear(wetDryDb) : 0;
+                    const dryGain = enabled ? Math.max(0.55, Math.min(1, 1 - (wetGain * 0.35))) : 1;
+                    const inputGain = enabled ? root.dbToLinear(inputGainDb) : 1;
+                    return {
+                        inputGain,
+                        dryGain,
+                        wetGain,
+                        feedback,
+                        delaySec,
+                        lowpassHz
+                    };
+                };
+                root.resolveExciterKernel = function resolveExciterKernel(graph) {
+                    if (!graph) return { mode: 'js', reason: 'missing-graph', compute: null };
+                    const prefRaw = String(graph?.exciterState?.kernelPreference || 'auto').trim().toLowerCase();
+                    const pref = (prefRaw === 'js' || prefRaw === 'wasm') ? prefRaw : 'auto';
+                    const kernelRegistry = root.ensureWasmKernels();
+                    const candidate = (pref !== 'js' && typeof kernelRegistry.exciterCompute === 'function')
+                        ? kernelRegistry.exciterCompute
+                        : null;
+                    const mode = candidate ? 'wasm' : 'js';
+                    const reason = candidate ? '' : (
+                        pref === 'wasm'
+                            ? (String(kernelRegistry.__dynamicEqInitError || 'wasm-kernel-unavailable'))
+                            : (String(kernelRegistry.__dynamicEqInitError || 'fallback-js-default'))
+                    );
+                    graph.exciterKernelState = {
+                        preferred: pref,
+                        mode,
+                        reason,
+                        resolvedAt: Date.now(),
+                        wasmCompute: candidate,
+                        wasmKernel: String(kernelRegistry.__dynamicEqInitMode || '')
+                    };
+                    return graph.exciterKernelState;
+                };
+                root.computeExciterJsParams = function computeExciterJsParams(input) {
+                    const enabled = !!input?.enabled;
+                    const frequency = root.clamp(input?.frequency, 1000, 8000, 3000);
+                    const amount = root.clamp(input?.amount, 0, 100, 50);
+                    const mix = Math.max(0, Math.min(1, Number(input?.mixNorm) || 0.3));
+                    const modeRaw = String(input?.mode || '').trim().toLowerCase();
+                    const mode = ['odd', 'even', 'tape', 'tube'].includes(modeRaw) ? modeRaw : 'odd';
+                    const dryGain = enabled ? Math.max(0.55, 1 - (mix * 0.70)) : 1;
+                    const wetGain = enabled ? Math.min(0.70, mix * 0.85) : 0;
+                    const driveGain = enabled ? (1 + ((amount / 100) * 2.0)) : 1;
+                    const toneFreq = enabled ? Math.max(2200, Math.min(14000, frequency * 1.9)) : 12000;
+                    return {
+                        dryGain,
+                        wetGain,
+                        driveGain,
+                        toneFreq,
+                        curveMode: mode,
+                        curveAmount: enabled ? amount : 0,
+                        baseFrequency: frequency
+                    };
+                };
+                root.resolveStereoWidenerKernel = function resolveStereoWidenerKernel(graph) {
+                    if (!graph) return { mode: 'js', reason: 'missing-graph', compute: null };
+                    const prefRaw = String(graph?.stereoWidenerState?.kernelPreference || 'auto').trim().toLowerCase();
+                    const pref = (prefRaw === 'js' || prefRaw === 'wasm') ? prefRaw : 'auto';
+                    const kernelRegistry = root.ensureWasmKernels();
+                    const candidate = (pref !== 'js' && typeof kernelRegistry.stereoWidenerCompute === 'function')
+                        ? kernelRegistry.stereoWidenerCompute
+                        : null;
+                    const mode = candidate ? 'wasm' : 'js';
+                    const reason = candidate ? '' : (
+                        pref === 'wasm'
+                            ? (String(kernelRegistry.__dynamicEqInitError || 'wasm-kernel-unavailable'))
+                            : (String(kernelRegistry.__dynamicEqInitError || 'fallback-js-default'))
+                    );
+                    graph.stereoWidenerKernelState = {
+                        preferred: pref,
+                        mode,
+                        reason,
+                        resolvedAt: Date.now(),
+                        wasmCompute: candidate,
+                        wasmKernel: String(kernelRegistry.__dynamicEqInitMode || '')
+                    };
+                    return graph.stereoWidenerKernelState;
+                };
+                root.computeStereoWidenerJsParams = function computeStereoWidenerJsParams(input) {
+                    const enabled = !!input?.enabled;
+                    const widthNorm = Math.max(0, Math.min(2, Number(input?.widthNorm) || 1));
+                    const centerLevelDb = root.clamp(input?.centerLevelDb, -12, 12, 0);
+                    const sideLevelDb = root.clamp(input?.sideLevelDb, -12, 12, 0);
+                    const bassToMonoHz = root.clamp(input?.bassToMonoHz, 0, 500, 200);
+                    const centerGain = enabled ? root.dbToLinear(centerLevelDb) : 1;
+                    const sideGain = enabled ? (widthNorm * root.dbToLinear(sideLevelDb)) : 1;
+                    const monoLowEnabled = enabled && bassToMonoHz >= 20;
+                    const monoCutoffHz = monoLowEnabled ? Math.max(40, bassToMonoHz) : 20;
+                    return {
+                        centerGain,
+                        sideGain,
+                        monoCutoffHz,
+                        monoLowGain: monoLowEnabled ? 1 : 0
+                    };
+                };
+                root.resolveCrossfeedKernel = function resolveCrossfeedKernel(graph) {
+                    if (!graph) return { mode: 'js', reason: 'missing-graph', compute: null };
+                    const prefRaw = String(graph?.crossfeedState?.kernelPreference || 'auto').trim().toLowerCase();
+                    const pref = (prefRaw === 'js' || prefRaw === 'wasm') ? prefRaw : 'auto';
+                    const kernelRegistry = root.ensureWasmKernels();
+                    const candidate = (pref !== 'js' && typeof kernelRegistry.crossfeedCompute === 'function')
+                        ? kernelRegistry.crossfeedCompute
+                        : null;
+                    const mode = candidate ? 'wasm' : 'js';
+                    const reason = candidate ? '' : (
+                        pref === 'wasm'
+                            ? (String(kernelRegistry.__dynamicEqInitError || 'wasm-kernel-unavailable'))
+                            : (String(kernelRegistry.__dynamicEqInitError || 'fallback-js-default'))
+                    );
+                    graph.crossfeedKernelState = {
+                        preferred: pref,
+                        mode,
+                        reason,
+                        resolvedAt: Date.now(),
+                        wasmCompute: candidate,
+                        wasmKernel: String(kernelRegistry.__dynamicEqInitMode || '')
+                    };
+                    return graph.crossfeedKernelState;
+                };
+                root.computeCrossfeedJsParams = function computeCrossfeedJsParams(input) {
+                    const enabled = !!input?.enabled;
+                    const levelNorm = Math.max(0, Math.min(1, Number(input?.levelNorm) || 0.3));
+                    const delayMs = root.clamp(input?.delayMs, 0.1, 2.0, 0.3);
+                    let lowCutHz = root.clamp(input?.lowCutHz, 20, 5000, 700);
+                    let highCutHz = root.clamp(input?.highCutHz, 1000, 20000, 4000);
+                    if (highCutHz <= (lowCutHz + 120)) {
+                        highCutHz = Math.min(20000, lowCutHz + 120);
+                        if (highCutHz <= (lowCutHz + 20)) {
+                            lowCutHz = Math.max(20, highCutHz - 120);
+                        }
+                    }
+                    const bandWidth = Math.max(120, highCutHz - lowCutHz);
+                    const bandNorm = Math.max(0, Math.min(1, (bandWidth - 120) / 4880));
+                    const crossGain = enabled
+                        ? Math.max(0, Math.min(1.05, (levelNorm * 0.55) + (levelNorm * bandNorm * 0.55)))
+                        : 0;
+                    const dryGain = enabled
+                        ? Math.max(0.58, Math.min(1, 1 - (crossGain * 0.42)))
+                        : 1;
+                    const delaySec = Math.max(0.0001, Math.min(0.01, delayMs / 1000));
+                    return {
+                        delaySec,
+                        lowCutHz,
+                        highCutHz,
+                        crossGain,
+                        dryGain
+                    };
+                };
+                root.resolveBassMonoKernel = function resolveBassMonoKernel(graph) {
+                    if (!graph) return { mode: 'js', reason: 'missing-graph', compute: null };
+                    const prefRaw = String(graph?.bassMonoState?.kernelPreference || 'auto').trim().toLowerCase();
+                    const pref = (prefRaw === 'js' || prefRaw === 'wasm') ? prefRaw : 'auto';
+                    const kernelRegistry = root.ensureWasmKernels();
+                    const candidate = (pref !== 'js' && typeof kernelRegistry.bassMonoCompute === 'function')
+                        ? kernelRegistry.bassMonoCompute
+                        : null;
+                    const mode = candidate ? 'wasm' : 'js';
+                    const reason = candidate ? '' : (
+                        pref === 'wasm'
+                            ? (String(kernelRegistry.__dynamicEqInitError || 'wasm-kernel-unavailable'))
+                            : (String(kernelRegistry.__dynamicEqInitError || 'fallback-js-default'))
+                    );
+                    graph.bassMonoKernelState = {
+                        preferred: pref,
+                        mode,
+                        reason,
+                        resolvedAt: Date.now(),
+                        wasmCompute: candidate,
+                        wasmKernel: String(kernelRegistry.__dynamicEqInitMode || '')
+                    };
+                    return graph.bassMonoKernelState;
+                };
+                root.computeBassMonoJsParams = function computeBassMonoJsParams(input) {
+                    const enabled = !!input?.enabled;
+                    const cutoffHz = root.clamp(input?.cutoffHz, 40, 300, 120);
+                    const stereoWidthNorm = Math.max(0, Math.min(2, Number(input?.stereoWidthNorm) || 1));
+                    const slope = [12, 24, 48].includes(Number(input?.slope)) ? Number(input.slope) : 24;
+                    const qMap = { 12: 0.55, 24: 0.707, 48: 1.15 };
+                    const qVal = qMap[slope] || 0.707;
+                    const dryGain = enabled ? 0 : 1;
+                    const lowMonoOut = enabled ? 0.5 : 0;
+                    const highMidIn = enabled ? 0.5 : 0;
+                    const highSideL = enabled ? 0.5 : 0;
+                    const highSideRInv = enabled ? -0.5 : 0;
+                    const widthGain = enabled ? stereoWidthNorm : 1;
+                    return {
+                        cutoffHz,
+                        qVal,
+                        dryGain,
+                        lowMonoOut,
+                        highMidIn,
+                        highSideL,
+                        highSideRInv,
+                        widthGain
+                    };
+                };
+                root.resolveSurroundKernel = function resolveSurroundKernel(graph) {
+                    if (!graph) return { mode: 'js', reason: 'missing-graph', compute: null };
+                    const prefRaw = String(graph?.surroundState?.kernelPreference || 'auto').trim().toLowerCase();
+                    const pref = (prefRaw === 'js' || prefRaw === 'wasm') ? prefRaw : 'auto';
+                    const kernelRegistry = root.ensureWasmKernels();
+                    const candidate = (pref !== 'js' && typeof kernelRegistry.surroundCompute === 'function')
+                        ? kernelRegistry.surroundCompute
+                        : null;
+                    const mode = candidate ? 'wasm' : 'js';
+                    const reason = candidate ? '' : (
+                        pref === 'wasm'
+                            ? (String(kernelRegistry.__dynamicEqInitError || 'wasm-kernel-unavailable'))
+                            : (String(kernelRegistry.__dynamicEqInitError || 'fallback-js-default'))
+                    );
+                    graph.surroundKernelState = {
+                        preferred: pref,
+                        mode,
+                        reason,
+                        resolvedAt: Date.now(),
+                        wasmCompute: candidate,
+                        wasmKernel: String(kernelRegistry.__dynamicEqInitMode || '')
+                    };
+                    return graph.surroundKernelState;
+                };
+                root.computeSurroundJsParams = function computeSurroundJsParams(input) {
+                    const enabled = !!input?.enabled;
+                    const centerDb = Number.isFinite(Number(input?.centerDb)) ? Number(input.centerDb) : 0;
+                    const surroundDb = Number.isFinite(Number(input?.surroundDb)) ? Number(input.surroundDb) : 0;
+                    const lfeDb = Number.isFinite(Number(input?.lfeDb)) ? Number(input.lfeDb) : 0;
+                    const crossoverHz = root.clamp(input?.crossoverHz, 40, 200, 110);
+                    const delayMs = root.clamp(input?.delayMs, 0, 30, 8);
+                    const mixNorm = Math.max(0, Math.min(1, Number(input?.mixNorm) || 0.75));
+                    const wet = enabled ? mixNorm : 0;
+                    const dry = enabled ? Math.max(0.35, Math.min(1, 1 - (wet * 0.65))) : 1;
+                    const centerGain = enabled ? (root.dbToLinear(centerDb) * wet * 0.55) : 0;
+                    const rearGain = enabled ? (root.dbToLinear(surroundDb) * wet * 0.50) : 0;
+                    const lfeGain = enabled ? (root.dbToLinear(lfeDb) * wet * 0.35) : 0;
+                    const delaySec = enabled ? Math.max(0, Math.min(0.08, delayMs / 1000)) : 0;
+                    const rearLowpassHz = enabled ? Math.max(1200, Math.min(12000, crossoverHz * 42)) : 12000;
+                    return {
+                        dry,
+                        centerGain,
+                        rearGain,
+                        lfeGain,
+                        delaySec,
+                        crossoverHz,
+                        rearLowpassHz
+                    };
+                };
+                root.needsUpdate = function needsUpdate(lastValue, nextValue, epsilon) {
+                    const a = Number(lastValue);
+                    const b = Number(nextValue);
+                    const eps = Math.max(0.0000001, Number(epsilon) || 0.0001);
+                    if (!Number.isFinite(a) || !Number.isFinite(b)) return true;
+                    return Math.abs(a - b) > eps;
+                };
+                root.applyClipGuardCfg = function applyClipGuardCfg(graph, nextCfg) {
+                    if (!graph || !graph.clipGuardState) return;
+                    const st = graph.clipGuardState;
+                    const tp = nextCfg?.truepeak || {};
+                    const lm = nextCfg?.limiter || {};
+                    const masterOn = nextCfg?.masterEnabled !== false;
+                    st.enabled = !!masterOn;
+                    const tpCeiling = root.clamp(tp.ceiling, -18, 0, -1.0);
+                    const lmCeiling = root.clamp(lm.ceiling, -18, 0, -0.3);
+                    st.ceilingDb = tp.enabled ? tpCeiling : (lm.enabled ? lmCeiling : -1.0);
+                    st.recoverMarginDb = 2.2;
+                };
+                root.perfNow = function perfNow() {
+                    try {
+                        if (typeof performance !== 'undefined' && performance && typeof performance.now === 'function') {
+                            return Number(performance.now()) || Date.now();
+                        }
+                    } catch (_) {}
+                    return Date.now();
+                };
+                root.createPerfState = function createPerfState() {
+                    return {
+                        startedAt: Date.now(),
+                        build: { count: 0, lastMs: 0, emaMs: 0, maxMs: 0, rebuildCount: 0 },
+                        apply: { count: 0, lastMs: 0, emaMs: 0, maxMs: 0 },
+                        loops: {},
+                        totalGlitches: 0
+                    };
+                };
+                root.recordPerfBuild = function recordPerfBuild(perfState, ms, rebuilt) {
+                    if (!perfState || !perfState.build) return;
+                    const b = perfState.build;
+                    const v = Math.max(0, Number(ms) || 0);
+                    b.count += 1;
+                    b.lastMs = v;
+                    b.maxMs = Math.max(b.maxMs || 0, v);
+                    b.emaMs = b.emaMs > 0 ? (b.emaMs * 0.84) + (v * 0.16) : v;
+                    if (rebuilt) b.rebuildCount = Math.max(0, Number(b.rebuildCount) || 0) + 1;
+                };
+                root.recordPerfApply = function recordPerfApply(perfState, ms) {
+                    if (!perfState || !perfState.apply) return;
+                    const a = perfState.apply;
+                    const v = Math.max(0, Number(ms) || 0);
+                    a.count += 1;
+                    a.lastMs = v;
+                    a.maxMs = Math.max(a.maxMs || 0, v);
+                    a.emaMs = a.emaMs > 0 ? (a.emaMs * 0.82) + (v * 0.18) : v;
+                };
+                root.wrapPerfLoop = function wrapPerfLoop(perfState, key, intervalMs, fn) {
+                    const safeInterval = Math.max(10, Number(intervalMs) || 20);
+                    if (!perfState.loops[key]) {
+                        perfState.loops[key] = {
+                            intervalMs: safeInterval,
+                            ticks: 0,
+                            lastMs: 0,
+                            avgMs: 0,
+                            maxMs: 0,
+                            jitterMs: 0,
+                            maxJitterMs: 0,
+                            glitches: 0
+                        };
+                    }
+                    let expectedAt = root.perfNow() + safeInterval;
+                    return setInterval(function wrappedPerfLoop() {
+                        const start = root.perfNow();
+                        const jitterMs = Math.max(0, start - expectedAt);
+                        expectedAt = start + safeInterval;
+                        const loopPerf = perfState.loops[key];
+                        try {
+                            fn();
+                        } finally {
+                            const durationMs = Math.max(0, root.perfNow() - start);
+                            loopPerf.ticks += 1;
+                            loopPerf.lastMs = durationMs;
+                            loopPerf.maxMs = Math.max(loopPerf.maxMs || 0, durationMs);
+                            loopPerf.avgMs = loopPerf.avgMs > 0 ? (loopPerf.avgMs * 0.86) + (durationMs * 0.14) : durationMs;
+                            loopPerf.jitterMs = loopPerf.jitterMs > 0 ? (loopPerf.jitterMs * 0.88) + (jitterMs * 0.12) : jitterMs;
+                            loopPerf.maxJitterMs = Math.max(loopPerf.maxJitterMs || 0, jitterMs);
+                            if (jitterMs > (safeInterval * 1.25) || durationMs > (safeInterval * 0.95)) {
+                                loopPerf.glitches = Math.max(0, Number(loopPerf.glitches) || 0) + 1;
+                                perfState.totalGlitches = Math.max(0, Number(perfState.totalGlitches) || 0) + 1;
+                            }
+                        }
+                    }, safeInterval);
+                };
+                root.optimizeDaliStages = function optimizeDaliStages(stages) {
+                    const src = Array.isArray(stages) ? stages : [];
+                    const out = [];
+                    let removedNoOpGain = 0;
+                    let fusedGainPairs = 0;
+                    for (let i = 0; i < src.length; i += 1) {
+                        const st = src[i];
+                        if (!st || typeof st !== 'object') continue;
+                        if (st.kind !== 'gain') {
+                            out.push({ ...st });
+                            continue;
+                        }
+                        const gainValue = Number(st.gain);
+                        const safeGain = Number.isFinite(gainValue) ? gainValue : 1;
+                        if (Math.abs(safeGain - 1) <= 0.0001) {
+                            removedNoOpGain += 1;
+                            continue;
+                        }
+                        const prev = out.length > 0 ? out[out.length - 1] : null;
+                        if (prev && prev.kind === 'gain') {
+                            const prevGain = Number(prev.gain);
+                            const safePrev = Number.isFinite(prevGain) ? prevGain : 1;
+                            prev.gain = safePrev * safeGain;
+                            fusedGainPairs += 1;
+                            continue;
+                        }
+                        out.push({ ...st, gain: safeGain });
+                    }
+                    root.__daliOptimizeStats = {
+                        inputStages: src.length,
+                        outputStages: out.length,
+                        removedNoOpGain,
+                        fusedGainPairs
+                    };
+                    return out;
+                };
+                root.buildDaliStages = function buildDaliStages(nextCfg) {
+                    const bands = Array.isArray(nextCfg?.bands) ? nextCfg.bands : [];
+                    let bandIndex = 0;
+                    const mapped = presetStages.map((stage) => {
+                        if (stage?.kind !== 'biquad') return { ...stage };
+                        if (stage.biquadType !== 'peaking') return { ...stage };
+                        const nextGain = bandIndex < bands.length ? (Number(bands[bandIndex]) || 0) : (Number(stage.gainDb) || 0);
+                        bandIndex += 1;
+                        return { ...stage, gainDb: nextGain };
+                    });
+                    return root.optimizeDaliStages(mapped);
+                };
+                root.getBassPresetProfile = function getBassPresetProfile() {
+                    if (root.__bassPresetProfile) return root.__bassPresetProfile;
+                    const profile = {
+                        preampGainLinear: 0.84,
+                        lowShelfFreq: 58,
+                        lowShelfGain: 9.0,
+                        lowShelfQ: 0.72,
+                        subPeakFreq: 86,
+                        subPeakGain: 5.0,
+                        subPeakQ: 0.95,
+                        upperPeakFreq: 145,
+                        upperPeakGain: 2.2,
+                        upperPeakQ: 1.05,
+                        compThreshold: -18,
+                        compRatio: 2.4,
+                        limiterCeilingDb: -1.2
+                    };
+                    let peakingIndex = 0;
+                    for (const st of (Array.isArray(bassPresetStages) ? bassPresetStages : [])) {
+                        if (st?.kind === 'gain') {
+                            const g = Number(st.gain);
+                            if (Number.isFinite(g) && g > 0) profile.preampGainLinear = g;
+                        } else if (st?.kind === 'biquad' && st.biquadType === 'lowshelf') {
+                            if (Number.isFinite(Number(st.freq))) profile.lowShelfFreq = Number(st.freq);
+                            if (Number.isFinite(Number(st.gainDb))) profile.lowShelfGain = Number(st.gainDb);
+                            if (Number.isFinite(Number(st.q))) profile.lowShelfQ = Number(st.q);
+                        } else if (st?.kind === 'biquad' && st.biquadType === 'peaking') {
+                            const pf = Number(st.freq);
+                            const pg = Number(st.gainDb);
+                            const pq = Number(st.q);
+                            if (peakingIndex === 0) {
+                                if (Number.isFinite(pf)) profile.subPeakFreq = pf;
+                                if (Number.isFinite(pg)) profile.subPeakGain = pg;
+                                if (Number.isFinite(pq)) profile.subPeakQ = pq;
+                            } else if (peakingIndex === 1) {
+                                if (Number.isFinite(pf)) profile.upperPeakFreq = pf;
+                                if (Number.isFinite(pg)) profile.upperPeakGain = pg;
+                                if (Number.isFinite(pq)) profile.upperPeakQ = pq;
+                            }
+                            peakingIndex += 1;
+                        } else if (st?.kind === 'compressor') {
+                            if (Number.isFinite(Number(st.threshold))) profile.compThreshold = Number(st.threshold);
+                            if (Number.isFinite(Number(st.ratio))) profile.compRatio = Number(st.ratio);
+                        } else if (st?.kind === 'limiter') {
+                            const cDb = Number(st.ceilingDb);
+                            if (Number.isFinite(cDb)) profile.limiterCeilingDb = cDb;
+                        }
+                    }
+                    root.__bassPresetProfile = profile;
+                    return profile;
+                };
+                root.createDaliChain = function createDaliChain(ctx, inputNode, outputNode, nextCfg) {
+                    const stages = root.buildDaliStages(nextCfg);
+                    const nodes = [];
+                    const bandNodes = [];
+                    const compressorNodes = [];
+                    let prev = inputNode;
+                    for (const stage of stages) {
+                        let node = null;
+                        if (stage.kind === 'gain') {
+                            node = new GainNode(ctx, { gain: Number(stage.gain) || 1.0 });
+                        } else if (stage.kind === 'biquad') {
+                            node = new BiquadFilterNode(ctx, {
+                                type: String(stage.biquadType || 'peaking'),
+                                frequency: Number(stage.freq) || 1000,
+                                gain: Number(stage.gainDb) || 0,
+                                Q: Number(stage.q) || 1.0
+                            });
+                        } else if (stage.kind === 'compressor') {
+                            node = new DynamicsCompressorNode(ctx, {
+                                threshold: Number(stage.threshold) || -1,
+                                ratio: Number(stage.ratio) || 20,
+                                attack: Number(stage.attack) || 0.002,
+                                release: Number(stage.release) || 0.06,
+                                knee: Number(stage.knee) || 0
+                            });
+                        }
+                        if (!node) continue;
+                        prev.connect(node);
+                        nodes.push(node);
+                        if (stage.kind === 'biquad' && stage.biquadType === 'peaking') {
+                            bandNodes.push(node);
+                        } else if (stage.kind === 'compressor') {
+                            compressorNodes.push(node);
+                        }
+                        prev = node;
+                    }
+                    prev.connect(outputNode);
+                    return {
+                        nodes,
+                        bandNodes,
+                        compressorNodes,
+                        stageCount: stages.length
+                    };
+                };
+                root.disconnectGraph = function disconnectGraph(graph) {
+                    if (!graph) return;
+                    if (graph.noiseGateTimer) {
+                        try { clearInterval(graph.noiseGateTimer); } catch (_) {}
+                        graph.noiseGateTimer = null;
+                    }
+                    if (graph.deEsserTimer) {
+                        try { clearInterval(graph.deEsserTimer); } catch (_) {}
+                        graph.deEsserTimer = null;
+                    }
+                    if (graph.autoGainTimer) {
+                        try { clearInterval(graph.autoGainTimer); } catch (_) {}
+                        graph.autoGainTimer = null;
+                    }
+                    if (graph.truePeakTimer) {
+                        try { clearInterval(graph.truePeakTimer); } catch (_) {}
+                        graph.truePeakTimer = null;
+                    }
+                    if (graph.dynamicEqTimer) {
+                        try { clearInterval(graph.dynamicEqTimer); } catch (_) {}
+                        graph.dynamicEqTimer = null;
+                    }
+                    try { graph.source?.disconnect?.(); } catch (_) {}
+                    const nodes = [
+                        graph.analyser,
+                        graph.inputGain,
+                        ...(Array.isArray(graph.daliNodes) ? graph.daliNodes : []),
+                        graph.daliOutput,
+                        graph.bass,
+                        graph.mid,
+                        graph.treble,
+                        ...(Array.isArray(graph.peqNodes) ? graph.peqNodes : []),
+                        graph.bassBoostInputGain,
+                        graph.bassBoostDryGain,
+                        graph.bassBoostFilter,
+                        graph.bassBoostSubPeak,
+                        graph.bassBoostPresencePeak,
+                        graph.bassBoostHarmonicLowpass,
+                        graph.bassBoostHarmonicsDrive,
+                        graph.bassBoostSaturator,
+                        graph.bassBoostWetGain,
+                        graph.bassBoostSum,
+                        graph.bassBoostBodyDip,
+                        graph.bassBoostOutputTrim,
+                        graph.exciterInputGain,
+                        graph.exciterDryGain,
+                        graph.exciterHighpass,
+                        graph.exciterDrive,
+                        graph.exciterShaper,
+                        graph.exciterTone,
+                        graph.exciterWetGain,
+                        graph.exciterSum,
+                        graph.deEsserInputGain,
+                        graph.deEsserLowpass,
+                        graph.deEsserHighpass,
+                        graph.deEsserHighGain,
+                        graph.deEsserOutputGain,
+                        graph.deEsserDetector,
+                        graph.reverbInputGain,
+                        graph.echoInputGain,
+                        graph.echoDryGain,
+                        graph.echoDelay,
+                        graph.echoHighCut,
+                        graph.echoFeedbackGain,
+                        graph.echoWetGain,
+                        graph.echoSum,
+                        graph.softEchoInputGain,
+                        graph.softEchoDryGain,
+                        graph.softEchoSplit,
+                        graph.softEchoDelayL,
+                        graph.softEchoDelayR,
+                        graph.softEchoHighCutL,
+                        graph.softEchoHighCutR,
+                        graph.softEchoFeedbackL,
+                        graph.softEchoFeedbackR,
+                        graph.softEchoWetGainL,
+                        graph.softEchoWetGainR,
+                        graph.softEchoMerge,
+                        graph.reverbDryGain,
+                        graph.reverbDelay,
+                        graph.reverbLowpass,
+                        graph.reverbFeedbackGain,
+                        graph.reverbWetGain,
+                        graph.reverbSum,
+                        graph.stereoSplit,
+                        graph.stereoMidL,
+                        graph.stereoMidR,
+                        graph.stereoMidSum,
+                        graph.stereoSideL,
+                        graph.stereoSideRInv,
+                        graph.stereoSideSum,
+                        graph.stereoSideWidth,
+                        graph.stereoMidToLeft,
+                        graph.stereoMidToRight,
+                        graph.stereoSideToLeft,
+                        graph.stereoSideToRight,
+                        graph.stereoMerge,
+                        graph.stereoPostSplit,
+                        graph.stereoLowL,
+                        graph.stereoLowR,
+                        graph.stereoHighL,
+                        graph.stereoHighR,
+                        graph.stereoMonoLowSum,
+                        graph.stereoMonoToLeft,
+                        graph.stereoMonoToRight,
+                        graph.stereoFinalLeft,
+                        graph.stereoFinalRight,
+                        graph.stereoFinalMerge,
+                        graph.crossfeedSplit,
+                        graph.crossfeedDryL,
+                        graph.crossfeedDryR,
+                        graph.crossfeedDelayL,
+                        graph.crossfeedDelayR,
+                        graph.crossfeedHPFL,
+                        graph.crossfeedHPFR,
+                        graph.crossfeedLPFL,
+                        graph.crossfeedLPFR,
+                        graph.crossfeedGainToL,
+                        graph.crossfeedGainToR,
+                        graph.crossfeedMerge,
+                        graph.surroundSplit,
+                        graph.surroundDryL,
+                        graph.surroundDryR,
+                        graph.surroundCenterSum,
+                        graph.surroundCenterL,
+                        graph.surroundCenterR,
+                        graph.surroundSideLPos,
+                        graph.surroundSideLNeg,
+                        graph.surroundSideLSum,
+                        graph.surroundSideRPos,
+                        graph.surroundSideRNeg,
+                        graph.surroundSideRSum,
+                        graph.surroundRearDelayL,
+                        graph.surroundRearDelayR,
+                        graph.surroundRearLPFL,
+                        graph.surroundRearLPFR,
+                        graph.surroundRearGainL,
+                        graph.surroundRearGainR,
+                        graph.surroundLfeLPFL,
+                        graph.surroundLfeLPFR,
+                        graph.surroundLfeGainL,
+                        graph.surroundLfeGainR,
+                        graph.surroundMerge,
+                        graph.bassMonoSplit,
+                        graph.bassMonoDryL,
+                        graph.bassMonoDryR,
+                        graph.bassMonoLowL,
+                        graph.bassMonoLowR,
+                        graph.bassMonoLowSum,
+                        graph.bassMonoLowToL,
+                        graph.bassMonoLowToR,
+                        graph.bassMonoHighL,
+                        graph.bassMonoHighR,
+                        graph.bassMonoHighMidL,
+                        graph.bassMonoHighMidR,
+                        graph.bassMonoHighMidSum,
+                        graph.bassMonoHighSideL,
+                        graph.bassMonoHighSideRInv,
+                        graph.bassMonoHighSideSum,
+                        graph.bassMonoHighSideWidth,
+                        graph.bassMonoHighMidToL,
+                        graph.bassMonoHighMidToR,
+                        graph.bassMonoHighSideToL,
+                        graph.bassMonoHighSideToR,
+                        graph.bassMonoMerge,
+                        graph.dynamicEqSplit,
+                        graph.dynamicEqPeakL,
+                        graph.dynamicEqPeakR,
+                        graph.dynamicEqMerge,
+                        graph.dynamicEqDetectBandL,
+                        graph.dynamicEqDetectBandR,
+                        graph.dynamicEqDetectSum,
+                        graph.dynamicEqDetector,
+                        graph.tapeSatInputGain,
+                        graph.tapeSatDryGain,
+                        graph.tapeSatTone,
+                        graph.tapeSatHissShelf,
+                        graph.tapeSatDrive,
+                        graph.tapeSatShaper,
+                        graph.tapeSatWetGain,
+                        graph.tapeSatOutputTrim,
+                        graph.tapeSatSum,
+                        graph.bitDitherInputGain,
+                        graph.bitDitherDryGain,
+                        graph.bitDitherShaper,
+                        graph.bitDitherPostLPF,
+                        graph.bitDitherWetGain,
+                        graph.bitDitherOutputTrim,
+                        graph.bitDitherSum,
+                        graph.noiseGateDetector,
+                        graph.noiseGateGain,
+                        graph.compressorMakeupGain,
+                        graph.autoGainNode,
+                        graph.limiterInputGain,
+                        graph.limiterComp,
+                        graph.clipGuardGain,
+                        graph.truePeakMeterAnalyser,
+                        graph.pan
+                    ];
+                    for (const node of nodes) {
+                        try { node?.disconnect?.(); } catch (_) {}
+                    }
+                };
+                root.getSpectrumSnapshot = function getSpectrumSnapshot(targetCount) {
+                    const requested = Math.max(64, Number(targetCount) || 128);
+                    const mediaElements = Array.from(document.querySelectorAll('video, audio'));
+                    const graphs = mediaElements
+                        .map((media) => media && media.__aurivoDaliGraph)
+                        .filter((graph) => graph && graph.analyser);
+                    if (!graphs.length) return [];
+                    const activeGraph = graphs.find((graph) => graph.media && !graph.media.paused) || graphs[0];
+                    if (!activeGraph?.analyser) return [];
+                    const analyser = activeGraph.analyser;
+                    const src = new Uint8Array(analyser.frequencyBinCount);
+                    analyser.getByteFrequencyData(src);
+                    const nyquist = Math.max(12000, (activeGraph.ctx?.sampleRate || 48000) * 0.5);
+                    const minHz = 20;
+                    const maxHz = Math.max(minHz * 2, Math.min(22000, nyquist));
+                    const ratio = maxHz / minHz;
+                    const out = new Array(requested).fill(0);
+                    const freqToIndex = (freq) => {
+                        const norm = Math.max(0, Math.min(0.999999, freq / nyquist));
+                        return Math.max(0, Math.min(src.length - 1, Math.floor(norm * src.length)));
+                    };
+                    for (let i = 0; i < requested; i += 1) {
+                        const startHz = minHz * Math.pow(ratio, i / requested);
+                        const endHz = minHz * Math.pow(ratio, (i + 1) / requested);
+                        const start = freqToIndex(startHz);
+                        const end = Math.max(start + 1, freqToIndex(endHz));
+                        let peak = 0;
+                        let sum = 0;
+                        let count = 0;
+                        for (let j = start; j < end; j += 1) {
+                            const v = Number(src[j]) || 0;
+                            if (v > peak) peak = v;
+                            sum += v;
+                            count += 1;
+                        }
+                        const avg = count > 0 ? (sum / count) : peak;
+                        const mixed = (peak * 0.68) + (avg * 0.32);
+                        const tilt = Math.pow(Math.max(1, startHz / minHz), 0.09);
+                        out[i] = Math.max(0, Math.min(1, (mixed / 255) * tilt));
+                    }
+                    return out;
+                };
+                root.getNoiseGateStatus = function getNoiseGateStatus() {
+                    const mediaElements = Array.from(document.querySelectorAll('video, audio'));
+                    const graphs = mediaElements
+                        .map((media) => media && media.__aurivoDaliGraph)
+                        .filter((graph) => graph && graph.noiseGateState);
+                    if (!graphs.length) {
+                        return {
+                            ok: false,
+                            enabled: false,
+                            open: true,
+                            gain: 1,
+                            envDb: -120,
+                            thresholdDb: -40
+                        };
+                    }
+                    const activeGraph = graphs.find((graph) => graph.media && !graph.media.paused) || graphs[0];
+                    const st = activeGraph?.noiseGateState || {};
+                    const ks = activeGraph?.noiseGateKernelState || {};
+                    const gain = Number(st.currentGain);
+                    const resolvedGain = Number.isFinite(gain) ? gain : 1;
+                    const envDb = Number(st.envDb);
+                    return {
+                        ok: true,
+                        enabled: !!st.enabled,
+                        open: !!(st.isOpen || resolvedGain > ((Number(st.closedGain) || 0.0001) * 1.08)),
+                        gain: Math.max(0, Math.min(1, resolvedGain)),
+                        envDb: Number.isFinite(envDb) ? envDb : -120,
+                        thresholdDb: Number.isFinite(Number(st.thresholdDb)) ? Number(st.thresholdDb) : -40,
+                        kernelMode: String(ks.mode || 'js'),
+                        kernelPreferred: String(ks.preferred || st.kernelPreference || 'auto'),
+                        kernelReason: String(ks.reason || '')
+                    };
+                };
+                root.getTruePeakStatus = function getTruePeakStatus() {
+                    const mediaElements = Array.from(document.querySelectorAll('video, audio'));
+                    const graphs = mediaElements
+                        .map((media) => media && media.__aurivoDaliGraph)
+                        .filter((graph) => graph && graph.truePeakState);
+                    if (!graphs.length) {
+                        return { ok: false, truePeakL: -96, truePeakR: -96, holdL: -96, holdR: -96, clippingCount: 0, gainReduction: 0 };
+                    }
+                    const activeGraph = graphs.find((graph) => graph.media && !graph.media.paused) || graphs[0];
+                    const st = activeGraph?.truePeakState || {};
+                    const ks = activeGraph?.truePeakKernelState || {};
+                    return {
+                        ok: true,
+                        truePeakL: Number.isFinite(Number(st.truePeakL)) ? Number(st.truePeakL) : -96,
+                        truePeakR: Number.isFinite(Number(st.truePeakR)) ? Number(st.truePeakR) : -96,
+                        holdL: Number.isFinite(Number(st.holdL)) ? Number(st.holdL) : -96,
+                        holdR: Number.isFinite(Number(st.holdR)) ? Number(st.holdR) : -96,
+                        clippingCount: Math.max(0, Math.round(Number(st.clippingCount) || 0)),
+                        gainReduction: Number.isFinite(Number(st.gainReduction)) ? Number(st.gainReduction) : 0,
+                        kernelMode: String(ks.mode || 'js'),
+                        kernelPreferred: String(ks.preferred || st.kernelPreference || 'auto'),
+                        kernelReason: String(ks.reason || '')
+                    };
+                };
+                root.getDynamicEqStatus = function getDynamicEqStatus() {
+                    const mediaElements = Array.from(document.querySelectorAll('video, audio'));
+                    const graphs = mediaElements
+                        .map((media) => media && media.__aurivoDaliGraph)
+                        .filter((graph) => graph && graph.dynamicEqState);
+                    if (!graphs.length) {
+                        return {
+                            ok: false,
+                            enabled: false,
+                            currentGainDb: 0,
+                            gainReductionDb: 0,
+                            envDb: -120,
+                            thresholdDb: -40,
+                            triggered: false,
+                            triggerCount: 0
+                        };
+                    }
+                    const activeGraph = graphs.find((graph) => graph.media && !graph.media.paused) || graphs[0];
+                    const st = activeGraph?.dynamicEqState || {};
+                    const ks = activeGraph?.dynamicEqKernelState || {};
+                    const currentGainDb = Number(st.currentGainDb);
+                    const gainReductionDb = Number(st.gainReductionDb);
+                    const envDb = Number(st.envDb);
+                    const thresholdDb = Number(st.thresholdDb);
+                    return {
+                        ok: true,
+                        enabled: !!st.enabled,
+                        currentGainDb: Number.isFinite(currentGainDb) ? currentGainDb : 0,
+                        gainReductionDb: Number.isFinite(gainReductionDb) ? gainReductionDb : (Number.isFinite(currentGainDb) ? currentGainDb : 0),
+                        envDb: Number.isFinite(envDb) ? envDb : -120,
+                        thresholdDb: Number.isFinite(thresholdDb) ? thresholdDb : -40,
+                        kernelMode: String(ks.mode || 'js'),
+                        kernelPreferred: String(ks.preferred || st.kernelPreference || 'auto'),
+                        kernelReason: String(ks.reason || ''),
+                        triggered: !!st.triggered,
+                        triggerCount: Math.max(0, Math.round(Number(st.triggerCount) || 0))
+                    };
+                };
+                root.getPerfStatus = function getPerfStatus() {
+                    const mediaElements = Array.from(document.querySelectorAll('video, audio'));
+                    const graphs = mediaElements
+                        .map((media) => media && media.__aurivoDaliGraph)
+                        .filter((graph) => graph && graph.perfState);
+                    if (!graphs.length) {
+                        return {
+                            ok: false,
+                            loops: {},
+                            build: { count: 0, lastMs: 0, avgMs: 0, maxMs: 0, rebuildCount: 0 },
+                            apply: { count: 0, lastMs: 0, avgMs: 0, maxMs: 0 },
+                            autoCompDb: 0,
+                            clipGuard: { enabled: false, ceilingDb: -1, gainDb: 0, targetGainDb: 0, recoverMarginDb: 2.2 },
+                            noiseGateKernel: { preferred: 'auto', mode: 'js', reason: 'no-active-graph' },
+                            deEsserKernel: { preferred: 'auto', mode: 'js', reason: 'no-active-graph' },
+                            exciterKernel: { preferred: 'auto', mode: 'js', reason: 'no-active-graph' },
+                            echoKernel: { preferred: 'auto', mode: 'js', reason: 'no-active-graph' },
+                            softEchoKernel: { preferred: 'auto', mode: 'js', reason: 'no-active-graph' },
+                            reverbKernel: { preferred: 'auto', mode: 'js', reason: 'no-active-graph' },
+                            bassBoostKernel: { preferred: 'auto', mode: 'js', reason: 'no-active-graph' },
+                            truePeakKernel: { preferred: 'auto', mode: 'js', reason: 'no-active-graph' },
+                            tapeSatKernel: { preferred: 'auto', mode: 'js', reason: 'no-active-graph' },
+                            bitDitherKernel: { preferred: 'auto', mode: 'js', reason: 'no-active-graph' },
+                            stereoWidenerKernel: { preferred: 'auto', mode: 'js', reason: 'no-active-graph' },
+                            crossfeedKernel: { preferred: 'auto', mode: 'js', reason: 'no-active-graph' },
+                            surroundKernel: { preferred: 'auto', mode: 'js', reason: 'no-active-graph' },
+                            bassMonoKernel: { preferred: 'auto', mode: 'js', reason: 'no-active-graph' },
+                            peqKernel: { preferred: 'auto', mode: 'js', reason: 'no-active-graph' },
+                            compressorKernel: { preferred: 'auto', mode: 'js', reason: 'no-active-graph' },
+                            limiterKernel: { preferred: 'auto', mode: 'js', reason: 'no-active-graph' },
+                            dynamicEqKernel: { preferred: 'auto', mode: 'js', reason: 'no-active-graph' },
+                            autoGainKernel: { preferred: 'auto', mode: 'js', reason: 'no-active-graph' },
+                            totalGlitches: 0,
+                            uptimeSec: 0
+                        };
+                    }
+                    const activeGraph = graphs.find((graph) => graph.media && !graph.media.paused) || graphs[0];
+                    const perf = activeGraph?.perfState || {};
+                    const clipGuard = activeGraph?.clipGuardState || {};
+                    const noiseGateKernelState = activeGraph?.noiseGateKernelState || {};
+                    const deEsserKernelState = activeGraph?.deEsserKernelState || {};
+                    const exciterKernelState = activeGraph?.exciterKernelState || {};
+                    const echoKernelState = activeGraph?.echoKernelState || {};
+                    const softEchoKernelState = activeGraph?.softEchoKernelState || {};
+                    const reverbKernelState = activeGraph?.reverbKernelState || {};
+                    const bassBoostKernelState = activeGraph?.bassBoostKernelState || {};
+                    const truePeakKernelState = activeGraph?.truePeakKernelState || {};
+                    const tapeSatKernelState = activeGraph?.tapeSatKernelState || {};
+                    const bitDitherKernelState = activeGraph?.bitDitherKernelState || {};
+                    const stereoWidenerKernelState = activeGraph?.stereoWidenerKernelState || {};
+                    const crossfeedKernelState = activeGraph?.crossfeedKernelState || {};
+                    const surroundKernelState = activeGraph?.surroundKernelState || {};
+                    const bassMonoKernelState = activeGraph?.bassMonoKernelState || {};
+                    const peqKernelState = activeGraph?.peqKernelState || {};
+                    const compressorKernelState = activeGraph?.compressorKernelState || {};
+                    const limiterKernelState = activeGraph?.limiterKernelState || {};
+                    const dynamicEqKernelState = activeGraph?.dynamicEqKernelState || {};
+                    const autoGainKernelState = activeGraph?.autoGainKernelState || {};
+                    const opt = activeGraph?.daliStageStats || {};
+                    const loops = {};
+                    for (const [key, loop] of Object.entries(perf.loops || {})) {
+                        loops[key] = {
+                            intervalMs: Math.max(0, Number(loop.intervalMs) || 0),
+                            ticks: Math.max(0, Number(loop.ticks) || 0),
+                            lastMs: Number(loop.lastMs) || 0,
+                            avgMs: Number(loop.avgMs) || 0,
+                            maxMs: Number(loop.maxMs) || 0,
+                            jitterMs: Number(loop.jitterMs) || 0,
+                            maxJitterMs: Number(loop.maxJitterMs) || 0,
+                            glitches: Math.max(0, Number(loop.glitches) || 0)
+                        };
+                    }
+                    const build = perf.build || {};
+                    const apply = perf.apply || {};
+                    const startedAt = Number(perf.startedAt) || Date.now();
+                    return {
+                        ok: true,
+                        loops,
+                        build: {
+                            count: Math.max(0, Number(build.count) || 0),
+                            lastMs: Number(build.lastMs) || 0,
+                            avgMs: Number(build.emaMs) || 0,
+                            maxMs: Number(build.maxMs) || 0,
+                            rebuildCount: Math.max(0, Number(build.rebuildCount) || 0)
+                        },
+                        apply: {
+                            count: Math.max(0, Number(apply.count) || 0),
+                            lastMs: Number(apply.lastMs) || 0,
+                            avgMs: Number(apply.emaMs) || 0,
+                            maxMs: Number(apply.maxMs) || 0
+                        },
+                        autoCompDb: Number.isFinite(Number(activeGraph?.autoCompDb)) ? Number(activeGraph.autoCompDb) : 0,
+                        clipGuard: {
+                            enabled: !!clipGuard.enabled,
+                            ceilingDb: Number.isFinite(Number(clipGuard.ceilingDb)) ? Number(clipGuard.ceilingDb) : -1,
+                            gainDb: Number.isFinite(Number(clipGuard.currentGainDb)) ? Number(clipGuard.currentGainDb) : 0,
+                            targetGainDb: Number.isFinite(Number(clipGuard.targetGainDb)) ? Number(clipGuard.targetGainDb) : 0,
+                            recoverMarginDb: Number.isFinite(Number(clipGuard.recoverMarginDb)) ? Number(clipGuard.recoverMarginDb) : 2.2
+                        },
+                        noiseGateKernel: {
+                            preferred: String(noiseGateKernelState.preferred || 'auto'),
+                            mode: String(noiseGateKernelState.mode || 'js'),
+                            reason: String(noiseGateKernelState.reason || '')
+                        },
+                        deEsserKernel: {
+                            preferred: String(deEsserKernelState.preferred || 'auto'),
+                            mode: String(deEsserKernelState.mode || 'js'),
+                            reason: String(deEsserKernelState.reason || '')
+                        },
+                        exciterKernel: {
+                            preferred: String(exciterKernelState.preferred || 'auto'),
+                            mode: String(exciterKernelState.mode || 'js'),
+                            reason: String(exciterKernelState.reason || '')
+                        },
+                        echoKernel: {
+                            preferred: String(echoKernelState.preferred || 'auto'),
+                            mode: String(echoKernelState.mode || 'js'),
+                            reason: String(echoKernelState.reason || '')
+                        },
+                        softEchoKernel: {
+                            preferred: String(softEchoKernelState.preferred || 'auto'),
+                            mode: String(softEchoKernelState.mode || 'js'),
+                            reason: String(softEchoKernelState.reason || '')
+                        },
+                        reverbKernel: {
+                            preferred: String(reverbKernelState.preferred || 'auto'),
+                            mode: String(reverbKernelState.mode || 'js'),
+                            reason: String(reverbKernelState.reason || '')
+                        },
+                        bassBoostKernel: {
+                            preferred: String(bassBoostKernelState.preferred || 'auto'),
+                            mode: String(bassBoostKernelState.mode || 'js'),
+                            reason: String(bassBoostKernelState.reason || '')
+                        },
+                        truePeakKernel: {
+                            preferred: String(truePeakKernelState.preferred || 'auto'),
+                            mode: String(truePeakKernelState.mode || 'js'),
+                            reason: String(truePeakKernelState.reason || '')
+                        },
+                        tapeSatKernel: {
+                            preferred: String(tapeSatKernelState.preferred || 'auto'),
+                            mode: String(tapeSatKernelState.mode || 'js'),
+                            reason: String(tapeSatKernelState.reason || '')
+                        },
+                        bitDitherKernel: {
+                            preferred: String(bitDitherKernelState.preferred || 'auto'),
+                            mode: String(bitDitherKernelState.mode || 'js'),
+                            reason: String(bitDitherKernelState.reason || '')
+                        },
+                        stereoWidenerKernel: {
+                            preferred: String(stereoWidenerKernelState.preferred || 'auto'),
+                            mode: String(stereoWidenerKernelState.mode || 'js'),
+                            reason: String(stereoWidenerKernelState.reason || '')
+                        },
+                        crossfeedKernel: {
+                            preferred: String(crossfeedKernelState.preferred || 'auto'),
+                            mode: String(crossfeedKernelState.mode || 'js'),
+                            reason: String(crossfeedKernelState.reason || '')
+                        },
+                        surroundKernel: {
+                            preferred: String(surroundKernelState.preferred || 'auto'),
+                            mode: String(surroundKernelState.mode || 'js'),
+                            reason: String(surroundKernelState.reason || '')
+                        },
+                        bassMonoKernel: {
+                            preferred: String(bassMonoKernelState.preferred || 'auto'),
+                            mode: String(bassMonoKernelState.mode || 'js'),
+                            reason: String(bassMonoKernelState.reason || '')
+                        },
+                        peqKernel: {
+                            preferred: String(peqKernelState.preferred || 'auto'),
+                            mode: String(peqKernelState.mode || 'js'),
+                            reason: String(peqKernelState.reason || '')
+                        },
+                        compressorKernel: {
+                            preferred: String(compressorKernelState.preferred || 'auto'),
+                            mode: String(compressorKernelState.mode || 'js'),
+                            reason: String(compressorKernelState.reason || '')
+                        },
+                        limiterKernel: {
+                            preferred: String(limiterKernelState.preferred || 'auto'),
+                            mode: String(limiterKernelState.mode || 'js'),
+                            reason: String(limiterKernelState.reason || '')
+                        },
+                        dynamicEqKernel: {
+                            preferred: String(dynamicEqKernelState.preferred || 'auto'),
+                            mode: String(dynamicEqKernelState.mode || 'js'),
+                            reason: String(dynamicEqKernelState.reason || '')
+                        },
+                        autoGainKernel: {
+                            preferred: String(autoGainKernelState.preferred || 'auto'),
+                            mode: String(autoGainKernelState.mode || 'js'),
+                            reason: String(autoGainKernelState.reason || '')
+                        },
+                        optimizer: {
+                            inputStages: Math.max(0, Number(opt.inputStages) || 0),
+                            outputStages: Math.max(0, Number(opt.outputStages) || 0),
+                            removedNoOpGain: Math.max(0, Number(opt.removedNoOpGain) || 0),
+                            fusedGainPairs: Math.max(0, Number(opt.fusedGainPairs) || 0),
+                            graphNodeCount: Math.max(0, Number(activeGraph?.daliNodeCount) || 0)
+                        },
+                        totalGlitches: Math.max(0, Number(perf.totalGlitches) || 0),
+                        uptimeSec: Math.max(0, Math.round((Date.now() - startedAt) / 1000))
+                    };
+                };
+                root.applyPostCfg = function applyPostCfg(graph, nextCfg) {
+                    if (!graph) return;
+                    const perfState = graph.perfState || null;
+                    const applyStartedAt = root.perfNow();
+                    const masterEnabled = nextCfg?.masterEnabled !== false;
+                    const disabledCfg = {
+                        ...nextCfg,
+                        masterEnabled: false,
+                        preampGain: 1,
+                        bass: 0,
+                        mid: 0,
+                        treble: 0,
+                        balance: 0,
+                        bands: Array.isArray(nextCfg?.bands) ? nextCfg.bands.map(() => 0) : [],
+                        bassboost: { ...(nextCfg?.bassboost || {}), enabled: false },
+                        peq: { ...(nextCfg?.peq || {}), enabled: false },
+                        exciter: { ...(nextCfg?.exciter || {}), enabled: false },
+                        deesser: { ...(nextCfg?.deesser || {}), enabled: false },
+                        echo: { ...(nextCfg?.echo || {}), enabled: false },
+                        softecho: { ...(nextCfg?.softecho || {}), enabled: false },
+                        reverb: { ...(nextCfg?.reverb || {}), enabled: false },
+                        convreverb: { ...(nextCfg?.convreverb || {}), enabled: false },
+                        stereowidener: { ...(nextCfg?.stereowidener || {}), enabled: false },
+                        crossfeed: { ...(nextCfg?.crossfeed || {}), enabled: false },
+                        surround: { ...(nextCfg?.surround || {}), enabled: false },
+                        bassmono: { ...(nextCfg?.bassmono || {}), enabled: false },
+                        dynamiceq: { ...(nextCfg?.dynamiceq || {}), enabled: false },
+                        tapesat: { ...(nextCfg?.tapesat || {}), enabled: false },
+                        bitdither: { ...(nextCfg?.bitdither || {}), enabled: false },
+                        noisegate: { ...(nextCfg?.noisegate || {}), enabled: false },
+                        compressor: { ...(nextCfg?.compressor || {}), enabled: false },
+                        autogain: { ...(nextCfg?.autogain || {}), enabled: false },
+                        truepeak: { ...(nextCfg?.truepeak || {}), enabled: false },
+                        limiter: { ...(nextCfg?.limiter || {}), enabled: false }
+                    };
+                    try {
+                        const cfg = masterEnabled ? nextCfg : disabledCfg;
+                        graph.cfg = cfg;
+                        const ctx = graph.ctx;
+                        const preampGainLin = Number(cfg?.preampGain) || 1.0;
+                        const autoCompDb = root.computeAutoCompDb(cfg);
+                        graph.autoCompDb = autoCompDb;
+                        const compensatedInputGain = preampGainLin * root.dbToLinear(autoCompDb);
+                        root.smoothParam(graph.inputGain?.gain, compensatedInputGain, ctx, root.getSmoothingMs('musical', 14));
+                        root.smoothParam(graph.bass?.gain, Number(cfg?.bass) || 0, ctx, root.getSmoothingMs('musical', 18));
+                        root.smoothParam(graph.mid?.gain, Number(cfg?.mid) || 0, ctx, root.getSmoothingMs('musical', 18));
+                        root.smoothParam(graph.treble?.gain, Number(cfg?.treble) || 0, ctx, root.getSmoothingMs('musical', 18));
+                        if (graph.pan) {
+                            root.smoothParam(
+                                graph.pan.pan,
+                                Math.max(-1, Math.min(1, (Number(cfg?.balance) || 0) / 100)),
+                                ctx,
+                                root.getSmoothingMs('musical', 12)
+                            );
+                        }
+                        const bands = Array.isArray(cfg?.bands) ? cfg.bands : [];
+                        const bandNodes = Array.isArray(graph.daliBandNodes) ? graph.daliBandNodes : [];
+                        for (let i = 0; i < bandNodes.length; i += 1) {
+                            root.smoothParam(bandNodes[i]?.gain, Number(bands[i]) || 0, ctx, root.getSmoothingMs('eqband', 20));
+                        }
+                        root.applyPeqCfg(graph, cfg);
+                        root.applyBassBoostCfg(graph, cfg);
+                        root.applyExciterCfg(graph, cfg);
+                        root.applyDeEsserCfg(graph, cfg);
+                        root.applyEchoCfg(graph, cfg);
+                        root.applySoftEchoCfg(graph, cfg);
+                        root.applyReverbCfg(graph, cfg);
+                        root.applyStereoWidenerCfg(graph, cfg);
+                        root.applyCrossfeedCfg(graph, cfg);
+                        root.applySurroundCfg(graph, cfg);
+                        root.applyBassMonoCfg(graph, cfg);
+                        root.applyDynamicEqCfg(graph, cfg);
+                        root.applyTapeSatCfg(graph, cfg);
+                        root.applyBitDitherCfg(graph, cfg);
+                        root.applyNoiseGateCfg(graph, cfg);
+                        root.applyCompressorCfg(graph, cfg);
+                        root.applyAutoGainCfg(graph, cfg);
+                        root.applyLimiterCfg(graph, cfg);
+                        root.applyClipGuardCfg(graph, cfg);
+                    } finally {
+                        root.recordPerfApply(perfState, root.perfNow() - applyStartedAt);
+                    }
+                };
+                root.applyBassBoostCfg = function applyBassBoostCfg(graph, nextCfg) {
+                    if (!graph || !graph.ctx) return;
+                    const bp = root.getBassPresetProfile();
+                    const bb = nextCfg?.bassboost || {};
+                    const enabled = !!bb.enabled;
+                    const kernelRaw = String(bb.kernel || 'auto').trim().toLowerCase();
+                    const kernelPreference = (kernelRaw === 'js' || kernelRaw === 'wasm') ? kernelRaw : 'auto';
+                    const freq = root.clamp(bb.frequency, 35, 110, 68);
+                    const gainDb = root.clamp(bb.gain, 0, 18, 6);
+                    const harmonics = root.clamp(bb.harmonics, 0, 100, 50);
+                    const width = root.clamp(bb.width, 0.5, 3.0, 1.4);
+                    const mix = root.clamp(bb.mix, 0, 100, 50) / 100;
+                    graph.bassBoostState = graph.bassBoostState || { kernelPreference: 'auto', curveAmount: -1 };
+                    graph.bassBoostState.kernelPreference = kernelPreference;
+                    const kernelState = graph.bassBoostKernelState || {};
+                    if (kernelState.preferred !== kernelPreference) {
+                        root.resolveBassBoostKernel(graph);
+                    }
+                    const activeKernelState = graph.bassBoostKernelState || kernelState || {};
+                    let params = null;
+                    if (activeKernelState?.mode === 'wasm' && typeof activeKernelState.wasmCompute === 'function') {
+                        try {
+                            params = activeKernelState.wasmCompute({
+                                enabled,
+                                freq,
+                                gainDb,
+                                harmonics,
+                                width,
+                                mix,
+                                lowShelfGain: bp.lowShelfGain,
+                                subPeakGain: bp.subPeakGain,
+                                subPeakFreq: bp.subPeakFreq,
+                                subPeakQ: bp.subPeakQ,
+                                upperPeakFreq: bp.upperPeakFreq,
+                                upperPeakGain: bp.upperPeakGain,
+                                upperPeakQ: bp.upperPeakQ,
+                                limiterCeilingDb: bp.limiterCeilingDb,
+                                preampGainLinear: bp.preampGainLinear
+                            });
+                        } catch (_) {
+                            graph.bassBoostKernelState = {
+                                ...(activeKernelState || {}),
+                                mode: 'js',
+                                reason: 'wasm-kernel-runtime-error',
+                                wasmCompute: null,
+                                resolvedAt: Date.now()
+                            };
+                            params = null;
+                        }
+                    }
+                    if (!params || !Number.isFinite(Number(params.subFreq))) {
+                        params = root.computeBassBoostJsParams({
+                            enabled,
+                            freq,
+                            gainDb,
+                            harmonics,
+                            width,
+                            mix,
+                            lowShelfGain: bp.lowShelfGain,
+                            subPeakGain: bp.subPeakGain,
+                            subPeakFreq: bp.subPeakFreq,
+                            subPeakQ: bp.subPeakQ,
+                            upperPeakFreq: bp.upperPeakFreq,
+                            upperPeakGain: bp.upperPeakGain,
+                            upperPeakQ: bp.upperPeakQ,
+                            limiterCeilingDb: bp.limiterCeilingDb,
+                            preampGainLinear: bp.preampGainLinear
+                        });
+                    }
+                    root.smoothParam(graph.bassBoostInputGain?.gain, Number(params.inputGain) || 1, graph.ctx, 12);
+                    root.smoothParam(graph.bassBoostFilter?.frequency, freq, graph.ctx, 14);
+                    root.smoothParam(graph.bassBoostFilter?.gain, Number(params.shelfGain) || 0, graph.ctx, 14);
+                    root.smoothParam(graph.bassBoostFilter?.Q, Number(params.width) || width, graph.ctx, 14);
+                    root.smoothParam(graph.bassBoostSubPeak?.frequency, Number(params.subFreq) || 56, graph.ctx, 14);
+                    root.smoothParam(graph.bassBoostSubPeak?.gain, Number(params.subGain) || 0, graph.ctx, 14);
+                    root.smoothParam(graph.bassBoostSubPeak?.Q, Number(params.subQ) || 0.75, graph.ctx, 14);
+                    root.smoothParam(graph.bassBoostPresencePeak?.frequency, Number(params.presenceFreq) || 118, graph.ctx, 14);
+                    root.smoothParam(graph.bassBoostPresencePeak?.gain, Number(params.presenceGain) || 0, graph.ctx, 14);
+                    root.smoothParam(graph.bassBoostPresencePeak?.Q, Number(params.presenceQ) || 0.95, graph.ctx, 14);
+                    root.smoothParam(graph.bassBoostHarmonicLowpass?.frequency, Number(params.harmonicCutoff) || 170, graph.ctx, 14);
+                    root.smoothParam(graph.bassBoostHarmonicsDrive?.gain, Number(params.harmonicDrive) || 1, graph.ctx, 12);
+                    root.smoothParam(graph.bassBoostWetGain?.gain, Number(params.wetGain) || 0, graph.ctx, 12);
+                    root.smoothParam(graph.bassBoostDryGain?.gain, Number(params.dryGain) || 1, graph.ctx, 12);
+                    root.smoothParam(graph.bassBoostBodyDip?.frequency, Number(params.dipFreq) || 260, graph.ctx, 14);
+                    root.smoothParam(graph.bassBoostBodyDip?.gain, Number(params.dipGain) || 0, graph.ctx, 14);
+                    root.smoothParam(graph.bassBoostBodyDip?.Q, Number(params.dipQ) || 0.8, graph.ctx, 14);
+                    root.smoothParam(graph.bassBoostOutputTrim?.gain, Number(params.outputGain) || 1, graph.ctx, 12);
+                    const curveAmount = Number.isFinite(Number(params.curveAmount)) ? Number(params.curveAmount) : (enabled ? harmonics : 0);
+                    if (graph.bassBoostSaturator) {
+                        if (Math.abs((graph.bassBoostState.curveAmount || 0) - curveAmount) > 0.5) {
+                            try {
+                                graph.bassBoostSaturator.curve = root.makeSaturationCurve(curveAmount);
+                                graph.bassBoostState.curveAmount = curveAmount;
+                            } catch (_) {}
+                        }
+                    }
+                };
+                root.applyReverbCfg = function applyReverbCfg(graph, nextCfg) {
+                    if (!graph || !graph.ctx) return;
+                    const rvb = nextCfg?.reverb || {};
+                    const cv = nextCfg?.convreverb || {};
+                    const rvbKernelRaw = String(rvb.kernel || '').trim().toLowerCase();
+                    const cvKernelRaw = String(cv.kernel || '').trim().toLowerCase();
+                    const kernelRaw = rvbKernelRaw || cvKernelRaw || 'auto';
+                    const kernelPreference = (kernelRaw === 'js' || kernelRaw === 'wasm') ? kernelRaw : 'auto';
+                    const convEnabled = !!cv.enabled;
+                    const convPreset = String(cv.preset || 'hall').toLowerCase();
+                    const convMix = root.clamp(cv.mix, 0, 100, 30);
+                    const convPreDelayMs = root.clamp(cv.predelay, 0, 250, 20);
+                    const rvbEnabled = !!rvb.enabled;
+                    const rvbRoomMs = root.clamp(rvb.roomSize, 100, 6000, 1000);
+                    const rvbDamping = root.clamp(rvb.damping, 0, 1, 0.5);
+                    const rvbWetDryDb = root.clamp(rvb.wetDry, -40, 6, -10);
+                    const rvbHfRatio = root.clamp(rvb.hfRatio, 0, 1, 0.7);
+                    const rvbInputGainDb = root.clamp(rvb.inputGain, -24, 24, 0);
+                    graph.reverbState = graph.reverbState || { kernelPreference: 'auto' };
+                    graph.reverbState.kernelPreference = kernelPreference;
+                    const kernelState = graph.reverbKernelState || {};
+                    if (kernelState.preferred !== kernelPreference) {
+                        root.resolveReverbKernel(graph);
+                    }
+                    const activeKernelState = graph.reverbKernelState || kernelState || {};
+                    let params = null;
+                    if (activeKernelState?.mode === 'wasm' && typeof activeKernelState.wasmCompute === 'function') {
+                        try {
+                            params = activeKernelState.wasmCompute({
+                                convEnabled,
+                                convPreset,
+                                convMix,
+                                convPreDelayMs,
+                                rvbEnabled,
+                                rvbRoomMs,
+                                rvbDamping,
+                                rvbWetDryDb,
+                                rvbHfRatio,
+                                rvbInputGainDb
+                            });
+                        } catch (_) {
+                            graph.reverbKernelState = {
+                                ...(activeKernelState || {}),
+                                mode: 'js',
+                                reason: 'wasm-kernel-runtime-error',
+                                wasmCompute: null,
+                                resolvedAt: Date.now()
+                            };
+                            params = null;
+                        }
+                    }
+                    if (!params || !Number.isFinite(Number(params.delaySec))) {
+                        params = root.computeReverbJsParams({
+                            convEnabled,
+                            convPreset,
+                            convMix,
+                            convPreDelayMs,
+                            rvbEnabled,
+                            rvbRoomMs,
+                            rvbDamping,
+                            rvbWetDryDb,
+                            rvbHfRatio,
+                            rvbInputGainDb
+                        });
+                    }
+                    root.smoothParam(graph.reverbInputGain?.gain, Number(params.inputGain) || 1, graph.ctx, 12);
+                    root.smoothParam(graph.reverbDryGain?.gain, Number(params.dryGain) || 1, graph.ctx, 12);
+                    root.smoothParam(graph.reverbWetGain?.gain, Number(params.wetGain) || 0, graph.ctx, 12);
+                    root.smoothParam(graph.reverbFeedbackGain?.gain, Number(params.feedback) || 0.05, graph.ctx, 14);
+                    root.smoothParam(graph.reverbDelay?.delayTime, Number(params.delaySec) || 0.09, graph.ctx, 14);
+                    root.smoothParam(graph.reverbLowpass?.frequency, Number(params.lowpassHz) || 18000, graph.ctx, 16);
+                };
+                root.applyExciterCfg = function applyExciterCfg(graph, nextCfg) {
+                    if (!graph || !graph.ctx) return;
+                    const ex = nextCfg?.exciter || {};
+                    const enabled = !!ex.enabled;
+                    const kernelRaw = String(ex.kernel || 'auto').trim().toLowerCase();
+                    const kernelPreference = (kernelRaw === 'js' || kernelRaw === 'wasm') ? kernelRaw : 'auto';
+                    const frequency = root.clamp(ex.frequency, 1000, 8000, 3000);
+                    const amount = root.clamp(ex.amount, 0, 100, 50);
+                    const mixNorm = root.clamp(ex.mix, 0, 100, 30) / 100;
+                    const modeRaw = String(ex.harmonics || '').trim().toLowerCase();
+                    const mode = ['odd', 'even', 'tape', 'tube'].includes(modeRaw) ? modeRaw : 'odd';
+                    graph.exciterState = graph.exciterState || { kernelPreference: 'auto', curveKey: '' };
+                    graph.exciterState.kernelPreference = kernelPreference;
+                    const kernelState = graph.exciterKernelState || {};
+                    if (kernelState.preferred !== kernelPreference) {
+                        root.resolveExciterKernel(graph);
+                    }
+                    const activeKernelState = graph.exciterKernelState || kernelState || {};
+                    let params = null;
+                    if (activeKernelState?.mode === 'wasm' && typeof activeKernelState.wasmCompute === 'function') {
+                        try {
+                            params = activeKernelState.wasmCompute({
+                                enabled,
+                                frequency,
+                                amount,
+                                mixNorm,
+                                mode
+                            });
+                        } catch (_) {
+                            graph.exciterKernelState = {
+                                ...(activeKernelState || {}),
+                                mode: 'js',
+                                reason: 'wasm-kernel-runtime-error',
+                                wasmCompute: null,
+                                resolvedAt: Date.now()
+                            };
+                            params = null;
+                        }
+                    }
+                    if (!params || !Number.isFinite(Number(params.toneFreq))) {
+                        params = root.computeExciterJsParams({
+                            enabled,
+                            frequency,
+                            amount,
+                            mixNorm,
+                            mode
+                        });
+                    }
+                    root.smoothParam(graph.exciterHighpass?.frequency, Number(params.baseFrequency) || frequency, graph.ctx, 12);
+                    root.smoothParam(graph.exciterDrive?.gain, Number(params.driveGain) || 1, graph.ctx, 10);
+                    root.smoothParam(graph.exciterTone?.frequency, Number(params.toneFreq) || 12000, graph.ctx, 14);
+                    root.smoothParam(graph.exciterDryGain?.gain, Number(params.dryGain) || 1, graph.ctx, 12);
+                    root.smoothParam(graph.exciterWetGain?.gain, Number(params.wetGain) || 0, graph.ctx, 12);
+                    const curveMode = String(params.curveMode || mode);
+                    const curveAmount = Number(params.curveAmount);
+                    const curveKey = curveMode + ':' + String(Number.isFinite(curveAmount) ? curveAmount.toFixed(2) : '0');
+                    if (graph.exciterShaper) {
+                        if (graph.exciterState.curveKey !== curveKey) {
+                            try {
+                                graph.exciterShaper.curve = root.makeExciterCurve(curveMode, Number.isFinite(curveAmount) ? curveAmount : 0);
+                                graph.exciterState.curveKey = curveKey;
+                            } catch (_) {}
+                        }
+                    }
+                };
+                root.applyStereoWidenerCfg = function applyStereoWidenerCfg(graph, nextCfg) {
+                    if (!graph || !graph.ctx) return;
+                    const sw = nextCfg?.stereowidener || {};
+                    const enabled = !!sw.enabled;
+                    const kernelRaw = String(sw.kernel || 'auto').trim().toLowerCase();
+                    const kernelPreference = (kernelRaw === 'js' || kernelRaw === 'wasm') ? kernelRaw : 'auto';
+                    const widthNorm = root.clamp(sw.width, 0, 200, 100) / 100;
+                    const centerLevelDb = root.clamp(sw.centerLevel, -12, 12, 0);
+                    const sideLevelDb = root.clamp(sw.sideLevel, -12, 12, 0);
+                    const bassToMonoHz = root.clamp(sw.bassToMono, 0, 500, 200);
+                    graph.stereoWidenerState = graph.stereoWidenerState || { kernelPreference: 'auto' };
+                    graph.stereoWidenerState.kernelPreference = kernelPreference;
+                    const kernelState = graph.stereoWidenerKernelState || {};
+                    if (kernelState.preferred !== kernelPreference) {
+                        root.resolveStereoWidenerKernel(graph);
+                    }
+                    const activeKernelState = graph.stereoWidenerKernelState || kernelState || {};
+                    let params = null;
+                    if (activeKernelState?.mode === 'wasm' && typeof activeKernelState.wasmCompute === 'function') {
+                        try {
+                            params = activeKernelState.wasmCompute({
+                                enabled,
+                                widthNorm,
+                                centerLevelDb,
+                                sideLevelDb,
+                                bassToMonoHz
+                            });
+                        } catch (_) {
+                            graph.stereoWidenerKernelState = {
+                                ...(activeKernelState || {}),
+                                mode: 'js',
+                                reason: 'wasm-kernel-runtime-error',
+                                wasmCompute: null,
+                                resolvedAt: Date.now()
+                            };
+                            params = null;
+                        }
+                    }
+                    if (!params || !Number.isFinite(Number(params.monoCutoffHz))) {
+                        params = root.computeStereoWidenerJsParams({
+                            enabled,
+                            widthNorm,
+                            centerLevelDb,
+                            sideLevelDb,
+                            bassToMonoHz
+                        });
+                    }
+                    const centerGain = Number(params.centerGain) || 1;
+                    const sideGain = Number(params.sideGain) || 1;
+                    const monoCutoffHz = Number(params.monoCutoffHz) || 20;
+                    const monoLowGain = Number(params.monoLowGain) || 0;
+                    root.smoothParam(graph.stereoMidToLeft?.gain, centerGain, graph.ctx, 12);
+                    root.smoothParam(graph.stereoMidToRight?.gain, centerGain, graph.ctx, 12);
+                    root.smoothParam(graph.stereoSideToLeft?.gain, sideGain, graph.ctx, 12);
+                    root.smoothParam(graph.stereoSideToRight?.gain, -sideGain, graph.ctx, 12);
+                    root.smoothParam(graph.stereoLowL?.frequency, monoCutoffHz, graph.ctx, 14);
+                    root.smoothParam(graph.stereoLowR?.frequency, monoCutoffHz, graph.ctx, 14);
+                    root.smoothParam(graph.stereoHighL?.frequency, monoCutoffHz, graph.ctx, 14);
+                    root.smoothParam(graph.stereoHighR?.frequency, monoCutoffHz, graph.ctx, 14);
+                    root.smoothParam(graph.stereoMonoToLeft?.gain, monoLowGain, graph.ctx, 12);
+                    root.smoothParam(graph.stereoMonoToRight?.gain, monoLowGain, graph.ctx, 12);
+                };
+                root.applyCrossfeedCfg = function applyCrossfeedCfg(graph, nextCfg) {
+                    if (!graph || !graph.ctx) return;
+                    const cf = nextCfg?.crossfeed || {};
+                    const enabled = !!cf.enabled;
+                    const kernelRaw = String(cf.kernel || 'auto').trim().toLowerCase();
+                    const kernelPreference = (kernelRaw === 'js' || kernelRaw === 'wasm') ? kernelRaw : 'auto';
+                    const levelNorm = root.clamp(cf.level, 0, 100, 30) / 100;
+                    const delayMs = root.clamp(cf.delay, 0.1, 2.0, 0.3);
+                    const lowCutHz = root.clamp(cf.lowCut, 20, 5000, 700);
+                    const highCutHz = root.clamp(cf.highCut, 1000, 20000, 4000);
+                    graph.crossfeedState = graph.crossfeedState || { kernelPreference: 'auto' };
+                    graph.crossfeedState.kernelPreference = kernelPreference;
+                    const kernelState = graph.crossfeedKernelState || {};
+                    if (kernelState.preferred !== kernelPreference) {
+                        root.resolveCrossfeedKernel(graph);
+                    }
+                    const activeKernelState = graph.crossfeedKernelState || kernelState || {};
+                    let params = null;
+                    if (activeKernelState?.mode === 'wasm' && typeof activeKernelState.wasmCompute === 'function') {
+                        try {
+                            params = activeKernelState.wasmCompute({
+                                enabled,
+                                levelNorm,
+                                delayMs,
+                                lowCutHz,
+                                highCutHz
+                            });
+                        } catch (_) {
+                            graph.crossfeedKernelState = {
+                                ...(activeKernelState || {}),
+                                mode: 'js',
+                                reason: 'wasm-kernel-runtime-error',
+                                wasmCompute: null,
+                                resolvedAt: Date.now()
+                            };
+                            params = null;
+                        }
+                    }
+                    if (!params || !Number.isFinite(Number(params.delaySec))) {
+                        params = root.computeCrossfeedJsParams({
+                            enabled,
+                            levelNorm,
+                            delayMs,
+                            lowCutHz,
+                            highCutHz
+                        });
+                    }
+                    root.smoothParam(graph.crossfeedDelayL?.delayTime, Number(params.delaySec) || 0.0001, graph.ctx, 10);
+                    root.smoothParam(graph.crossfeedDelayR?.delayTime, Number(params.delaySec) || 0.0001, graph.ctx, 10);
+                    root.smoothParam(graph.crossfeedHPFL?.frequency, Number(params.lowCutHz) || 700, graph.ctx, 12);
+                    root.smoothParam(graph.crossfeedHPFR?.frequency, Number(params.lowCutHz) || 700, graph.ctx, 12);
+                    root.smoothParam(graph.crossfeedLPFL?.frequency, Number(params.highCutHz) || 4000, graph.ctx, 12);
+                    root.smoothParam(graph.crossfeedLPFR?.frequency, Number(params.highCutHz) || 4000, graph.ctx, 12);
+                    root.smoothParam(graph.crossfeedGainToL?.gain, Number(params.crossGain) || 0, graph.ctx, 10);
+                    root.smoothParam(graph.crossfeedGainToR?.gain, Number(params.crossGain) || 0, graph.ctx, 10);
+                    root.smoothParam(graph.crossfeedDryL?.gain, Number(params.dryGain) || 1, graph.ctx, 10);
+                    root.smoothParam(graph.crossfeedDryR?.gain, Number(params.dryGain) || 1, graph.ctx, 10);
+                };
+                root.applySurroundCfg = function applySurroundCfg(graph, nextCfg) {
+                    if (!graph || !graph.ctx) return;
+                    const sv = nextCfg?.surround || {};
+                    const enabled = !!sv.enabled;
+                    const kernelRaw = String(sv.kernel || 'auto').trim().toLowerCase();
+                    const kernelPreference = (kernelRaw === 'js' || kernelRaw === 'wasm') ? kernelRaw : 'auto';
+                    const centerDb = root.clamp(sv.center, -12, 12, 0);
+                    const surroundDb = root.clamp(sv.surround, -12, 12, 0);
+                    const lfeDb = root.clamp(sv.lfe, -12, 12, 0);
+                    const crossoverHz = root.clamp(sv.crossover, 40, 200, 110);
+                    const delayMs = root.clamp(sv.delay, 0, 30, 8);
+                    const mixNorm = root.clamp(sv.mix, 0, 100, 75) / 100;
+                    graph.surroundState = graph.surroundState || { kernelPreference: 'auto' };
+                    graph.surroundState.kernelPreference = kernelPreference;
+                    const kernelState = graph.surroundKernelState || {};
+                    if (kernelState.preferred !== kernelPreference) {
+                        root.resolveSurroundKernel(graph);
+                    }
+                    const activeKernelState = graph.surroundKernelState || kernelState || {};
+                    let params = null;
+                    if (activeKernelState?.mode === 'wasm' && typeof activeKernelState.wasmCompute === 'function') {
+                        try {
+                            params = activeKernelState.wasmCompute({
+                                enabled,
+                                centerDb,
+                                surroundDb,
+                                lfeDb,
+                                crossoverHz,
+                                delayMs,
+                                mixNorm
+                            });
+                        } catch (_) {
+                            graph.surroundKernelState = {
+                                ...(activeKernelState || {}),
+                                mode: 'js',
+                                reason: 'wasm-kernel-runtime-error',
+                                wasmCompute: null,
+                                resolvedAt: Date.now()
+                            };
+                            params = null;
+                        }
+                    }
+                    if (!params || !Number.isFinite(Number(params.crossoverHz))) {
+                        params = root.computeSurroundJsParams({
+                            enabled,
+                            centerDb,
+                            surroundDb,
+                            lfeDb,
+                            crossoverHz,
+                            delayMs,
+                            mixNorm
+                        });
+                    }
+                    root.smoothParam(graph.surroundDryL?.gain, Number(params.dry) || 1, graph.ctx, 12);
+                    root.smoothParam(graph.surroundDryR?.gain, Number(params.dry) || 1, graph.ctx, 12);
+                    root.smoothParam(graph.surroundCenterL?.gain, Number(params.centerGain) || 0, graph.ctx, 12);
+                    root.smoothParam(graph.surroundCenterR?.gain, Number(params.centerGain) || 0, graph.ctx, 12);
+                    root.smoothParam(graph.surroundRearDelayL?.delayTime, Number(params.delaySec) || 0, graph.ctx, 12);
+                    root.smoothParam(graph.surroundRearDelayR?.delayTime, Number(params.delaySec) || 0, graph.ctx, 12);
+                    root.smoothParam(graph.surroundRearLPFL?.frequency, Number(params.rearLowpassHz) || 12000, graph.ctx, 14);
+                    root.smoothParam(graph.surroundRearLPFR?.frequency, Number(params.rearLowpassHz) || 12000, graph.ctx, 14);
+                    root.smoothParam(graph.surroundRearGainL?.gain, Number(params.rearGain) || 0, graph.ctx, 12);
+                    root.smoothParam(graph.surroundRearGainR?.gain, Number(params.rearGain) || 0, graph.ctx, 12);
+                    root.smoothParam(graph.surroundLfeLPFL?.frequency, Number(params.crossoverHz) || 110, graph.ctx, 14);
+                    root.smoothParam(graph.surroundLfeLPFR?.frequency, Number(params.crossoverHz) || 110, graph.ctx, 14);
+                    root.smoothParam(graph.surroundLfeGainL?.gain, Number(params.lfeGain) || 0, graph.ctx, 12);
+                    root.smoothParam(graph.surroundLfeGainR?.gain, Number(params.lfeGain) || 0, graph.ctx, 12);
+                };
+                root.applyBassMonoCfg = function applyBassMonoCfg(graph, nextCfg) {
+                    if (!graph || !graph.ctx) return;
+                    const bm = nextCfg?.bassmono || {};
+                    const enabled = !!bm.enabled;
+                    const kernelRaw = String(bm.kernel || 'auto').trim().toLowerCase();
+                    const kernelPreference = (kernelRaw === 'js' || kernelRaw === 'wasm') ? kernelRaw : 'auto';
+                    const cutoffHz = root.clamp(bm.cutoff, 40, 300, 120);
+                    const stereoWidthNorm = root.clamp(bm.stereoWidth, 0, 200, 100) / 100;
+                    const slope = [12, 24, 48].includes(Number(bm.slope)) ? Number(bm.slope) : 24;
+                    graph.bassMonoState = graph.bassMonoState || { kernelPreference: 'auto' };
+                    graph.bassMonoState.kernelPreference = kernelPreference;
+                    const kernelState = graph.bassMonoKernelState || {};
+                    if (kernelState.preferred !== kernelPreference) {
+                        root.resolveBassMonoKernel(graph);
+                    }
+                    const activeKernelState = graph.bassMonoKernelState || kernelState || {};
+                    let params = null;
+                    if (activeKernelState?.mode === 'wasm' && typeof activeKernelState.wasmCompute === 'function') {
+                        try {
+                            params = activeKernelState.wasmCompute({
+                                enabled,
+                                cutoffHz,
+                                stereoWidthNorm,
+                                slope
+                            });
+                        } catch (_) {
+                            graph.bassMonoKernelState = {
+                                ...(activeKernelState || {}),
+                                mode: 'js',
+                                reason: 'wasm-kernel-runtime-error',
+                                wasmCompute: null,
+                                resolvedAt: Date.now()
+                            };
+                            params = null;
+                        }
+                    }
+                    if (!params || !Number.isFinite(Number(params.qVal))) {
+                        params = root.computeBassMonoJsParams({
+                            enabled,
+                            cutoffHz,
+                            stereoWidthNorm,
+                            slope
+                        });
+                    }
+                    root.smoothParam(graph.bassMonoDryL?.gain, Number(params.dryGain) || 1, graph.ctx, 12);
+                    root.smoothParam(graph.bassMonoDryR?.gain, Number(params.dryGain) || 1, graph.ctx, 12);
+                    root.smoothParam(graph.bassMonoLowL?.frequency, Number(params.cutoffHz) || 120, graph.ctx, 14);
+                    root.smoothParam(graph.bassMonoLowR?.frequency, Number(params.cutoffHz) || 120, graph.ctx, 14);
+                    root.smoothParam(graph.bassMonoHighL?.frequency, Number(params.cutoffHz) || 120, graph.ctx, 14);
+                    root.smoothParam(graph.bassMonoHighR?.frequency, Number(params.cutoffHz) || 120, graph.ctx, 14);
+                    root.smoothParam(graph.bassMonoLowL?.Q, Number(params.qVal) || 0.707, graph.ctx, 12);
+                    root.smoothParam(graph.bassMonoLowR?.Q, Number(params.qVal) || 0.707, graph.ctx, 12);
+                    root.smoothParam(graph.bassMonoHighL?.Q, Number(params.qVal) || 0.707, graph.ctx, 12);
+                    root.smoothParam(graph.bassMonoHighR?.Q, Number(params.qVal) || 0.707, graph.ctx, 12);
+                    root.smoothParam(graph.bassMonoLowToL?.gain, Number(params.lowMonoOut) || 0, graph.ctx, 12);
+                    root.smoothParam(graph.bassMonoLowToR?.gain, Number(params.lowMonoOut) || 0, graph.ctx, 12);
+                    root.smoothParam(graph.bassMonoHighMidL?.gain, Number(params.highMidIn) || 0, graph.ctx, 12);
+                    root.smoothParam(graph.bassMonoHighMidR?.gain, Number(params.highMidIn) || 0, graph.ctx, 12);
+                    root.smoothParam(graph.bassMonoHighSideL?.gain, Number(params.highSideL) || 0, graph.ctx, 12);
+                    root.smoothParam(graph.bassMonoHighSideRInv?.gain, Number(params.highSideRInv) || 0, graph.ctx, 12);
+                    root.smoothParam(graph.bassMonoHighSideWidth?.gain, Number(params.widthGain) || 1, graph.ctx, 12);
+                };
+                root.applyDynamicEqCfg = function applyDynamicEqCfg(graph, nextCfg) {
+                    if (!graph || !graph.ctx) return;
+                    const dq = nextCfg?.dynamiceq || {};
+                    const enabled = !!dq.enabled;
+                    const kernelRaw = String(dq.kernel || 'auto').trim().toLowerCase();
+                    const kernelPreference = (kernelRaw === 'js' || kernelRaw === 'wasm') ? kernelRaw : 'auto';
+                    const frequency = root.clamp(dq.frequency, 20, 20000, 3500);
+                    const q = root.clamp(dq.q, 0.1, 10, 2.0);
+                    const threshold = root.clamp(dq.threshold, -60, 0, -40);
+                    const maxGainDb = root.clamp(dq.gain, -24, 24, -6);
+                    const rangeDb = root.clamp(dq.range, 0, 24, 12);
+                    const attackMs = root.clamp(dq.attack, 0.1, 100, 5);
+                    const releaseMs = root.clamp(dq.release, 1, 500, 120);
+                    graph.dynamicEqState = graph.dynamicEqState || {
+                        enabled: false,
+                        frequency: 3500,
+                        q: 2.0,
+                        thresholdDb: -40,
+                        maxGainDb: -6,
+                        rangeDb: 12,
+                        attackMs: 5,
+                        releaseMs: 120,
+                        currentGainDb: 0,
+                        envDb: -120,
+                        triggerCount: 0
+                    };
+                    graph.dynamicEqState.enabled = enabled;
+                    graph.dynamicEqState.frequency = frequency;
+                    graph.dynamicEqState.q = q;
+                    graph.dynamicEqState.thresholdDb = threshold;
+                    graph.dynamicEqState.maxGainDb = maxGainDb;
+                    graph.dynamicEqState.rangeDb = rangeDb;
+                    graph.dynamicEqState.attackMs = attackMs;
+                    graph.dynamicEqState.releaseMs = releaseMs;
+                    graph.dynamicEqState.kernelPreference = kernelPreference;
+                    const kernelState = graph.dynamicEqKernelState || {};
+                    if (kernelState.preferred !== kernelPreference) {
+                        root.resolveDynamicEqKernel(graph);
+                    }
+                    root.smoothParam(graph.dynamicEqPeakL?.frequency, frequency, graph.ctx, 12);
+                    root.smoothParam(graph.dynamicEqPeakR?.frequency, frequency, graph.ctx, 12);
+                    root.smoothParam(graph.dynamicEqPeakL?.Q, q, graph.ctx, 12);
+                    root.smoothParam(graph.dynamicEqPeakR?.Q, q, graph.ctx, 12);
+                    root.smoothParam(graph.dynamicEqDetectBandL?.frequency, frequency, graph.ctx, 12);
+                    root.smoothParam(graph.dynamicEqDetectBandR?.frequency, frequency, graph.ctx, 12);
+                    root.smoothParam(graph.dynamicEqDetectBandL?.Q, Math.max(0.3, Math.min(14, q * 1.2)), graph.ctx, 12);
+                    root.smoothParam(graph.dynamicEqDetectBandR?.Q, Math.max(0.3, Math.min(14, q * 1.2)), graph.ctx, 12);
+                    if (!enabled) {
+                        graph.dynamicEqState.currentGainDb = 0;
+                        graph.dynamicEqState.envDb = -120;
+                        root.smoothParam(graph.dynamicEqPeakL?.gain, 0, graph.ctx, 10);
+                        root.smoothParam(graph.dynamicEqPeakR?.gain, 0, graph.ctx, 10);
+                    }
+                };
+                root.applyTapeSatCfg = function applyTapeSatCfg(graph, nextCfg) {
+                    if (!graph || !graph.ctx) return;
+                    const ts = nextCfg?.tapesat || {};
+                    const enabled = !!ts.enabled;
+                    const kernelRaw = String(ts.kernel || 'auto').trim().toLowerCase();
+                    const kernelPreference = (kernelRaw === 'js' || kernelRaw === 'wasm') ? kernelRaw : 'auto';
+                    const driveDb = root.clamp(ts.driveDb, 0, 24, 6);
+                    const mixNorm = root.clamp(ts.mix, 0, 100, 50) / 100;
+                    const toneNorm = root.clamp(ts.tone, 0, 100, 50) / 100;
+                    const outputDb = root.clamp(ts.outputDb, -12, 12, -1);
+                    const mode = Math.max(0, Math.min(2, Math.round(Number(ts.mode) || 0)));
+                    const hissNorm = root.clamp(ts.hiss, 0, 100, 0) / 100;
+                    graph.tapeSatState = graph.tapeSatState || { curveAmount: -1, kernelPreference: 'auto' };
+                    graph.tapeSatState.kernelPreference = kernelPreference;
+                    const kernelState = graph.tapeSatKernelState || {};
+                    if (kernelState.preferred !== kernelPreference) {
+                        root.resolveTapeSatKernel(graph);
+                    }
+                    const activeKernelState = graph.tapeSatKernelState || kernelState || {};
+                    const prevCurveAmount = Number.isFinite(Number(graph.tapeSatState.curveAmount))
+                        ? Number(graph.tapeSatState.curveAmount)
+                        : 0;
+                    let params = null;
+                    if (activeKernelState?.mode === 'wasm' && typeof activeKernelState.wasmCompute === 'function') {
+                        try {
+                            params = activeKernelState.wasmCompute({
+                                enabled,
+                                driveDb,
+                                mixNorm,
+                                toneNorm,
+                                outputDb,
+                                mode,
+                                hissNorm,
+                                prevCurveAmount
+                            });
+                        } catch (_) {
+                            graph.tapeSatKernelState = {
+                                ...(activeKernelState || {}),
+                                mode: 'js',
+                                reason: 'wasm-kernel-runtime-error',
+                                wasmCompute: null,
+                                resolvedAt: Date.now()
+                            };
+                            params = null;
+                        }
+                    }
+                    if (!params || !Number.isFinite(Number(params.curveAmount))) {
+                        params = root.computeTapeSatJsParams({
+                            enabled,
+                            driveDb,
+                            mixNorm,
+                            toneNorm,
+                            outputDb,
+                            mode,
+                            hissNorm,
+                            prevCurveAmount
+                        });
+                    }
+                    const curveAmount = Number(params.curveAmount);
+                    if (Math.abs((graph.tapeSatState.curveAmount || 0) - curveAmount) > 0.8) {
+                        try { graph.tapeSatShaper.curve = root.makeSaturationCurve(curveAmount); } catch (_) {}
+                        graph.tapeSatState.curveAmount = curveAmount;
+                    }
+                    root.smoothParam(graph.tapeSatInputGain?.gain, root.dbToLinear(Number(params.inputCompDb) || 0), graph.ctx, 10);
+                    root.smoothParam(graph.tapeSatDryGain?.gain, Number(params.dryGain) || 1, graph.ctx, 12);
+                    root.smoothParam(graph.tapeSatTone?.frequency, Number(params.toneFreqHz) || 4000, graph.ctx, 14);
+                    root.smoothParam(graph.tapeSatTone?.gain, Number(params.toneGainDb) || 0, graph.ctx, 14);
+                    root.smoothParam(graph.tapeSatHissShelf?.gain, Number(params.hissShelfDb) || 0, graph.ctx, 14);
+                    root.smoothParam(graph.tapeSatDrive?.gain, Number(params.driveGain) || 1, graph.ctx, 12);
+                    root.smoothParam(graph.tapeSatWetGain?.gain, Number(params.wetGain) || 0, graph.ctx, 12);
+                    root.smoothParam(graph.tapeSatOutputTrim?.gain, Number(params.outputGain) || 1, graph.ctx, 12);
+                };
+                root.applyBitDitherCfg = function applyBitDitherCfg(graph, nextCfg) {
+                    if (!graph || !graph.ctx) return;
+                    const bd = nextCfg?.bitdither || {};
+                    const enabled = !!bd.enabled;
+                    const kernelRaw = String(bd.kernel || 'auto').trim().toLowerCase();
+                    const kernelPreference = (kernelRaw === 'js' || kernelRaw === 'wasm') ? kernelRaw : 'auto';
+                    const bitDepth = Math.max(4, Math.min(24, Math.round(Number(bd.bitDepth) || 16)));
+                    const dither = Math.max(0, Math.min(2, Math.round(Number(bd.dither) || 2)));
+                    const shaping = Math.max(0, Math.min(2, Math.round(Number(bd.shaping) || 1)));
+                    const downsample = [1, 2, 4, 8, 16].includes(Number(bd.downsample)) ? Number(bd.downsample) : 1;
+                    const mixNorm = root.clamp(bd.mix, 0, 100, 100) / 100;
+                    const outputDb = root.clamp(bd.outputDb, -24, 24, 0);
+                    graph.bitDitherState = graph.bitDitherState || { curveKey: '', kernelPreference: 'auto' };
+                    graph.bitDitherState.kernelPreference = kernelPreference;
+                    const kernelState = graph.bitDitherKernelState || {};
+                    if (kernelState.preferred !== kernelPreference) {
+                        root.resolveBitDitherKernel(graph);
+                    }
+                    const activeKernelState = graph.bitDitherKernelState || kernelState || {};
+                    let params = null;
+                    if (activeKernelState?.mode === 'wasm' && typeof activeKernelState.wasmCompute === 'function') {
+                        try {
+                            params = activeKernelState.wasmCompute({
+                                enabled,
+                                bitDepth,
+                                dither,
+                                shaping,
+                                downsample,
+                                mixNorm,
+                                outputDb
+                            });
+                        } catch (_) {
+                            graph.bitDitherKernelState = {
+                                ...(activeKernelState || {}),
+                                mode: 'js',
+                                reason: 'wasm-kernel-runtime-error',
+                                wasmCompute: null,
+                                resolvedAt: Date.now()
+                            };
+                            params = null;
+                        }
+                    }
+                    if (!params || !Number.isFinite(Number(params.lpHz))) {
+                        params = root.computeBitDitherJsParams({
+                            enabled,
+                            bitDepth,
+                            dither,
+                            shaping,
+                            downsample,
+                            mixNorm,
+                            outputDb
+                        });
+                    }
+                    const curveKey = String(params.curveKey || (String(bitDepth) + ':' + String(dither) + ':' + String(shaping)));
+                    if (graph.bitDitherState.curveKey !== curveKey) {
+                        try { graph.bitDitherShaper.curve = root.makeBitCrusherCurve(bitDepth, dither, shaping); } catch (_) {}
+                        graph.bitDitherState.curveKey = curveKey;
+                    }
+                    root.smoothParam(graph.bitDitherInputGain?.gain, root.dbToLinear(Number(params.driveDb) || 0), graph.ctx, 10);
+                    root.smoothParam(graph.bitDitherDryGain?.gain, Number(params.dryGain) || 1, graph.ctx, 10);
+                    root.smoothParam(graph.bitDitherPostLPF?.frequency, Number(params.lpHz) || 20000, graph.ctx, 12);
+                    root.smoothParam(graph.bitDitherWetGain?.gain, Number(params.wetGain) || 0, graph.ctx, 10);
+                    root.smoothParam(graph.bitDitherOutputTrim?.gain, Number(params.outputGain) || 1, graph.ctx, 10);
+                };
+                root.applyDeEsserCfg = function applyDeEsserCfg(graph, nextCfg) {
+                    if (!graph || !graph.ctx) return;
+                    const ds = nextCfg?.deesser || {};
+                    const enabled = !!ds.enabled;
+                    const kernelRaw = String(ds.kernel || 'auto').trim().toLowerCase();
+                    const kernelPreference = (kernelRaw === 'js' || kernelRaw === 'wasm') ? kernelRaw : 'auto';
+                    const frequency = root.clamp(ds.frequency, 2000, 12000, 7000);
+                    const thresholdDb = root.clamp(ds.threshold, -60, 0, -30);
+                    const ratio = root.clamp(ds.ratio, 1, 10, 4);
+                    const rangeDb = root.clamp(ds.range, -24, 0, -12);
+                    const listenMode = !!ds.listenMode;
+                    graph.deEsserState = graph.deEsserState || {
+                        enabled: false,
+                        frequency: 7000,
+                        thresholdDb: -30,
+                        ratio: 4,
+                        maxReductionDb: 12,
+                        listenMode: false,
+                        currentHighGain: 1,
+                        envDb: -120
+                    };
+                    graph.deEsserState.enabled = enabled;
+                    graph.deEsserState.frequency = frequency;
+                    graph.deEsserState.thresholdDb = thresholdDb;
+                    graph.deEsserState.ratio = ratio;
+                    graph.deEsserState.maxReductionDb = Math.abs(rangeDb);
+                    graph.deEsserState.listenMode = listenMode;
+                    graph.deEsserState.kernelPreference = kernelPreference;
+                    const kernelState = graph.deEsserKernelState || {};
+                    if (kernelState.preferred !== kernelPreference) {
+                        root.resolveDeEsserKernel(graph);
+                    }
+                    if (!enabled) {
+                        graph.deEsserState.currentHighGain = 1;
+                        graph.deEsserState.envDb = -120;
+                        root.smoothParam(graph.deEsserHighGain?.gain, 1, graph.ctx, 10);
+                        root.smoothParam(graph.deEsserOutputGain?.gain, 1, graph.ctx, 10);
+                    }
+                    root.smoothParam(graph.deEsserLowpass?.frequency, frequency, graph.ctx, 12);
+                    root.smoothParam(graph.deEsserHighpass?.frequency, frequency, graph.ctx, 12);
+                    root.smoothParam(graph.deEsserOutputGain?.gain, (enabled && listenMode) ? 0 : 1, graph.ctx, 10);
+                };
+                root.applyEchoCfg = function applyEchoCfg(graph, nextCfg) {
+                    if (!graph || !graph.ctx) return;
+                    const ec = nextCfg?.echo || {};
+                    const enabled = !!ec.enabled;
+                    const kernelRaw = String(ec.kernel || 'auto').trim().toLowerCase();
+                    const kernelPreference = (kernelRaw === 'js' || kernelRaw === 'wasm') ? kernelRaw : 'auto';
+                    const delayMs = root.clamp(ec.delay, 10, 1000, 250);
+                    const feedbackNorm = root.clamp(ec.feedback, 0, 95, 40) / 100;
+                    const wetNorm = root.clamp(ec.wetDry, 0, 100, 30) / 100;
+                    const highCutHz = root.clamp(ec.highCut, 1000, 20000, 8000);
+                    graph.echoState = graph.echoState || { kernelPreference: 'auto' };
+                    graph.echoState.kernelPreference = kernelPreference;
+                    const kernelState = graph.echoKernelState || {};
+                    if (kernelState.preferred !== kernelPreference) {
+                        root.resolveEchoKernel(graph);
+                    }
+                    const activeKernelState = graph.echoKernelState || kernelState || {};
+                    let params = null;
+                    if (activeKernelState?.mode === 'wasm' && typeof activeKernelState.wasmCompute === 'function') {
+                        try {
+                            params = activeKernelState.wasmCompute({
+                                enabled,
+                                delayMs,
+                                feedbackNorm,
+                                wetNorm,
+                                highCutHz
+                            });
+                        } catch (_) {
+                            graph.echoKernelState = {
+                                ...(activeKernelState || {}),
+                                mode: 'js',
+                                reason: 'wasm-kernel-runtime-error',
+                                wasmCompute: null,
+                                resolvedAt: Date.now()
+                            };
+                            params = null;
+                        }
+                    }
+                    if (!params || !Number.isFinite(Number(params.delaySec))) {
+                        params = root.computeEchoJsParams({
+                            enabled,
+                            delayMs,
+                            feedbackNorm,
+                            wetNorm,
+                            highCutHz
+                        });
+                    }
+                    root.smoothParam(graph.echoDelay?.delayTime, Number(params.delaySec) || 0.01, graph.ctx, 12);
+                    root.smoothParam(graph.echoHighCut?.frequency, Number(params.highCutHz) || 8000, graph.ctx, 14);
+                    root.smoothParam(graph.echoFeedbackGain?.gain, Number(params.feedbackGain) || 0, graph.ctx, 12);
+                    root.smoothParam(graph.echoWetGain?.gain, Number(params.wetGain) || 0, graph.ctx, 12);
+                    root.smoothParam(graph.echoDryGain?.gain, Number(params.dryGain) || 1, graph.ctx, 12);
+                };
+                root.applySoftEchoCfg = function applySoftEchoCfg(graph, nextCfg) {
+                    if (!graph || !graph.ctx) return;
+                    const sec = nextCfg?.softecho || {};
+                    const enabled = !!sec.enabled;
+                    const kernelRaw = String(sec.kernel || 'auto').trim().toLowerCase();
+                    const kernelPreference = (kernelRaw === 'js' || kernelRaw === 'wasm') ? kernelRaw : 'auto';
+                    const delayMs = root.clamp(sec.delay, 60, 650, 220);
+                    const feedbackNorm = root.clamp(sec.feedback, 5, 45, 22) / 100;
+                    const wetNorm = root.clamp(sec.wetMix, 5, 40, 18) / 100;
+                    const highCutHz = root.clamp(sec.highCut, 2500, 12000, 7000);
+                    const stereo = !!sec.stereo;
+                    graph.softEchoState = graph.softEchoState || { kernelPreference: 'auto' };
+                    graph.softEchoState.kernelPreference = kernelPreference;
+                    const kernelState = graph.softEchoKernelState || {};
+                    if (kernelState.preferred !== kernelPreference) {
+                        root.resolveSoftEchoKernel(graph);
+                    }
+                    const activeKernelState = graph.softEchoKernelState || kernelState || {};
+                    let params = null;
+                    if (activeKernelState?.mode === 'wasm' && typeof activeKernelState.wasmCompute === 'function') {
+                        try {
+                            params = activeKernelState.wasmCompute({
+                                enabled,
+                                delayMs,
+                                feedbackNorm,
+                                wetNorm,
+                                highCutHz,
+                                stereo
+                            });
+                        } catch (_) {
+                            graph.softEchoKernelState = {
+                                ...(activeKernelState || {}),
+                                mode: 'js',
+                                reason: 'wasm-kernel-runtime-error',
+                                wasmCompute: null,
+                                resolvedAt: Date.now()
+                            };
+                            params = null;
+                        }
+                    }
+                    if (!params || !Number.isFinite(Number(params.delayL))) {
+                        params = root.computeSoftEchoJsParams({
+                            enabled,
+                            delayMs,
+                            feedbackNorm,
+                            wetNorm,
+                            highCutHz,
+                            stereo
+                        });
+                    }
+                    root.smoothParam(graph.softEchoDelayL?.delayTime, Number(params.delayL) || 0.22, graph.ctx, 12);
+                    root.smoothParam(graph.softEchoDelayR?.delayTime, Number(params.delayR) || 0.22, graph.ctx, 12);
+                    root.smoothParam(graph.softEchoHighCutL?.frequency, Number(params.highCutHz) || 7000, graph.ctx, 14);
+                    root.smoothParam(graph.softEchoHighCutR?.frequency, Number(params.highCutHz) || 7000, graph.ctx, 14);
+                    root.smoothParam(graph.softEchoFeedbackL?.gain, Number(params.feedback) || 0, graph.ctx, 12);
+                    root.smoothParam(graph.softEchoFeedbackR?.gain, Number(params.feedback) || 0, graph.ctx, 12);
+                    root.smoothParam(graph.softEchoWetGainL?.gain, Number(params.wetGainL) || 0, graph.ctx, 12);
+                    root.smoothParam(graph.softEchoWetGainR?.gain, Number(params.wetGainR) || 0, graph.ctx, 12);
+                    root.smoothParam(graph.softEchoDryGain?.gain, Number(params.dryGain) || 1, graph.ctx, 12);
+                };
+                root.applyPeqCfg = function applyPeqCfg(graph, nextCfg) {
+                    if (!graph || !graph.ctx) return;
+                    const peqCfg = nextCfg?.peq || {};
+                    const enabled = !!peqCfg.enabled;
+                    const kernelRaw = String(peqCfg.kernel || 'auto').trim().toLowerCase();
+                    const kernelPreference = (kernelRaw === 'js' || kernelRaw === 'wasm') ? kernelRaw : 'auto';
+                    const nodes = Array.isArray(graph.peqNodes) ? graph.peqNodes : [];
+                    graph.peqState = graph.peqState || { kernelPreference: 'auto' };
+                    graph.peqState.kernelPreference = kernelPreference;
+                    const kernelState = graph.peqKernelState || {};
+                    if (kernelState.preferred !== kernelPreference) {
+                        root.resolvePeqKernel(graph);
+                    }
+                    const activeKernelState = graph.peqKernelState || kernelState || {};
+                    let params = null;
+                    if (activeKernelState?.mode === 'wasm' && typeof activeKernelState.wasmCompute === 'function') {
+                        try {
+                            params = activeKernelState.wasmCompute({
+                                enabled,
+                                bands: Array.isArray(peqCfg.bands) ? peqCfg.bands : []
+                            });
+                        } catch (_) {
+                            graph.peqKernelState = {
+                                ...(activeKernelState || {}),
+                                mode: 'js',
+                                reason: 'wasm-kernel-runtime-error',
+                                wasmCompute: null,
+                                resolvedAt: Date.now()
+                            };
+                            params = null;
+                        }
+                    }
+                    if (!params || !Array.isArray(params.bands)) {
+                        params = root.computePeqJsParams({
+                            enabled,
+                            bands: Array.isArray(peqCfg.bands) ? peqCfg.bands : []
+                        });
+                    }
+                    const bands = Array.isArray(params.bands) ? params.bands : [];
+                    const mapType = function mapType(filterType) {
+                        switch (Math.max(0, Math.min(6, Math.round(Number(filterType) || 0)))) {
+                            case 1: return 'lowshelf';
+                            case 2: return 'highshelf';
+                            case 3: return 'lowpass';
+                            case 4: return 'highpass';
+                            case 5: return 'notch';
+                            case 6: return 'bandpass';
+                            default: return 'peaking';
+                        }
+                    };
+                    for (let i = 0; i < nodes.length; i += 1) {
+                        const node = nodes[i];
+                        const band = bands[i] || {};
+                        const freq = root.clamp(band.freq, 20, 20000, [60, 150, 400, 1500, 5000, 12000][i] || 1000);
+                        const q = root.clamp(band.q, 0.1, 10, 1.0);
+                        const gain = root.clamp(band.gain, -15, 15, 0);
+                        const type = mapType(band.filterType);
+                        try { node.type = type; } catch (_) {}
+                        root.smoothParam(node?.frequency, freq, graph.ctx, 14);
+                        root.smoothParam(node?.Q, q, graph.ctx, 14);
+                        root.smoothParam(node?.gain, gain, graph.ctx, 14);
+                    }
+                };
+                root.applyNoiseGateCfg = function applyNoiseGateCfg(graph, nextCfg) {
+                    if (!graph || !graph.ctx) return;
+                    const gateCfg = nextCfg?.noisegate || {};
+                    const enabled = !!gateCfg.enabled;
+                    const kernelRaw = String(gateCfg.kernel || 'auto').trim().toLowerCase();
+                    const kernelPreference = (kernelRaw === 'js' || kernelRaw === 'wasm') ? kernelRaw : 'auto';
+                    const thresholdDb = root.clamp(gateCfg.threshold, -80, 0, -40);
+                    const attackMs = root.clamp(gateCfg.attack, 1, 200, 5);
+                    const holdMs = root.clamp(gateCfg.hold, 0, 1000, 100);
+                    const releaseMs = root.clamp(gateCfg.release, 10, 2000, 150);
+                    const rangeDb = root.clamp(gateCfg.range, -80, -6, -80);
+                    graph.noiseGateState = graph.noiseGateState || {
+                        enabled: false,
+                        thresholdDb: -40,
+                        attackMs: 5,
+                        holdMs: 100,
+                        releaseMs: 150,
+                        closedGain: root.dbToLinear(-80),
+                        currentGain: 1,
+                        gateOpenUntil: 0
+                    };
+                    graph.noiseGateState.enabled = enabled;
+                    graph.noiseGateState.thresholdDb = thresholdDb;
+                    graph.noiseGateState.openThresholdDb = thresholdDb + 1.5;
+                    graph.noiseGateState.closeThresholdDb = thresholdDb - 4.0;
+                    graph.noiseGateState.attackMs = attackMs;
+                    graph.noiseGateState.holdMs = holdMs;
+                    graph.noiseGateState.releaseMs = releaseMs;
+                    graph.noiseGateState.closedGain = root.dbToLinear(rangeDb);
+                    graph.noiseGateState.kernelPreference = kernelPreference;
+                    const kernelState = graph.noiseGateKernelState || {};
+                    if (kernelState.preferred !== kernelPreference) {
+                        root.resolveNoiseGateKernel(graph);
+                    }
+                    if (!enabled) {
+                        graph.noiseGateState.currentGain = 1;
+                        graph.noiseGateState.gateOpenUntil = 0;
+                        graph.noiseGateState.isOpen = true;
+                        graph.noiseGateState.envDb = -120;
+                        root.smoothParam(graph.noiseGateGain?.gain, 1, graph.ctx, 12);
+                    }
+                };
+                root.applyCompressorCfg = function applyCompressorCfg(graph, nextCfg) {
+                    if (!graph || !graph.ctx) return;
+                    const compCfg = nextCfg?.compressor || {};
+                    const enabled = !!compCfg.enabled;
+                    const kernelRaw = String(compCfg.kernel || 'auto').trim().toLowerCase();
+                    const kernelPreference = (kernelRaw === 'js' || kernelRaw === 'wasm') ? kernelRaw : 'auto';
+                    const threshold = root.clamp(compCfg.threshold, -60, 0, -20);
+                    const ratio = root.clamp(compCfg.ratio, 1, 20, 4);
+                    const attackMs = root.clamp(compCfg.attack, 1, 200, 10);
+                    const releaseMs = root.clamp(compCfg.release, 10, 1000, 100);
+                    const knee = root.clamp(compCfg.knee, 0, 24, 3);
+                    const makeupGainDb = root.clamp(compCfg.makeupGain, -24, 24, 0);
+                    graph.compressorState = graph.compressorState || { kernelPreference: 'auto' };
+                    graph.compressorState.kernelPreference = kernelPreference;
+                    const kernelState = graph.compressorKernelState || {};
+                    if (kernelState.preferred !== kernelPreference) {
+                        root.resolveCompressorKernel(graph);
+                    }
+                    const activeKernelState = graph.compressorKernelState || kernelState || {};
+                    let params = null;
+                    if (activeKernelState?.mode === 'wasm' && typeof activeKernelState.wasmCompute === 'function') {
+                        try {
+                            params = activeKernelState.wasmCompute({
+                                enabled,
+                                threshold,
+                                ratio,
+                                attackMs,
+                                releaseMs,
+                                knee,
+                                makeupGainDb
+                            });
+                        } catch (_) {
+                            graph.compressorKernelState = {
+                                ...(activeKernelState || {}),
+                                mode: 'js',
+                                reason: 'wasm-kernel-runtime-error',
+                                wasmCompute: null,
+                                resolvedAt: Date.now()
+                            };
+                            params = null;
+                        }
+                    }
+                    if (!params || !Number.isFinite(Number(params.attackSec))) {
+                        params = root.computeCompressorJsParams({
+                            enabled,
+                            threshold,
+                            ratio,
+                            attackMs,
+                            releaseMs,
+                            knee,
+                            makeupGainDb
+                        });
+                    }
+                    const compressorNodes = Array.isArray(graph.daliCompressorNodes) ? graph.daliCompressorNodes : [];
+                    for (let i = 0; i < compressorNodes.length; i += 1) {
+                        const node = compressorNodes[i];
+                        root.smoothParam(node?.threshold, Number(params.threshold) || 0, graph.ctx, 10);
+                        root.smoothParam(node?.ratio, Number(params.ratio) || 1, graph.ctx, 10);
+                        root.smoothParam(node?.attack, Number(params.attackSec) || 0.003, graph.ctx, 8);
+                        root.smoothParam(node?.release, Number(params.releaseSec) || 0.05, graph.ctx, 12);
+                        root.smoothParam(node?.knee, Number(params.knee) || 30, graph.ctx, 10);
+                    }
+                    root.smoothParam(graph.compressorMakeupGain?.gain, Number(params.makeupGain) || 1, graph.ctx, 12);
+                };
+                root.applyAutoGainCfg = function applyAutoGainCfg(graph, nextCfg) {
+                    if (!graph || !graph.ctx) return;
+                    const ag = nextCfg?.autogain || {};
+                    const enabled = !!ag.enabled;
+                    const kernelRaw = String(ag.kernel || 'auto').trim().toLowerCase();
+                    const kernelPreference = (kernelRaw === 'js' || kernelRaw === 'wasm') ? kernelRaw : 'auto';
+                    const targetLevel = root.clamp(ag.targetLevel, -24, 0, -14);
+                    const maxGainDb = root.clamp(ag.maxGain, 0, 24, 12);
+                    const speed = ['slow', 'medium', 'fast'].includes(String(ag.speed || '').toLowerCase())
+                        ? String(ag.speed).toLowerCase()
+                        : 'medium';
+                    graph.autoGainState = graph.autoGainState || {
+                        enabled: false,
+                        targetLevel: -14,
+                        maxGainDb: 12,
+                        speed: 'medium',
+                        currentGainDb: 0,
+                        envDb: -120
+                    };
+                    graph.autoGainState.enabled = enabled;
+                    graph.autoGainState.targetLevel = targetLevel;
+                    graph.autoGainState.maxGainDb = maxGainDb;
+                    graph.autoGainState.speed = speed;
+                    graph.autoGainState.kernelPreference = kernelPreference;
+                    const kernelState = graph.autoGainKernelState || {};
+                    if (kernelState.preferred !== kernelPreference) {
+                        root.resolveAutoGainKernel(graph);
+                    }
+                    if (!enabled) {
+                        graph.autoGainState.currentGainDb = 0;
+                        graph.autoGainState.envDb = -120;
+                        root.smoothParam(graph.autoGainNode?.gain, 1.0, graph.ctx, 14);
+                    }
+                };
+                root.applyLimiterCfg = function applyLimiterCfg(graph, nextCfg) {
+                    if (!graph || !graph.ctx) return;
+                    const limiterCfg = nextCfg?.limiter || {};
+                    const tpCfg = nextCfg?.truepeak || {};
+                    const tpEnabled = !!tpCfg.enabled;
+                    const limiterKernelRaw = String(limiterCfg.kernel || 'auto').trim().toLowerCase();
+                    const limiterKernelPreference = (limiterKernelRaw === 'js' || limiterKernelRaw === 'wasm') ? limiterKernelRaw : 'auto';
+                    const tpKernelRaw = String(tpCfg.kernel || 'auto').trim().toLowerCase();
+                    const tpKernelPreference = (tpKernelRaw === 'js' || tpKernelRaw === 'wasm') ? tpKernelRaw : 'auto';
+                    const enabled = tpEnabled || !!limiterCfg.enabled;
+                    const releaseMs = tpEnabled
+                        ? root.clamp(tpCfg.release, 10, 500, 50)
+                        : root.clamp(limiterCfg.release, 1, 1000, 50);
+                    const lookaheadMs = tpEnabled
+                        ? root.clamp(tpCfg.lookahead, 0, 20, 5)
+                        : root.clamp(limiterCfg.lookahead, 0, 25, 5);
+                    const ceilingDb = tpEnabled
+                        ? root.clamp(tpCfg.ceiling, -18, 0, -0.1)
+                        : root.clamp(limiterCfg.ceiling, -18, 0, -0.3);
+                    const gainDb = tpEnabled
+                        ? root.clamp(tpCfg.drive, -12, 24, 0)
+                        : root.clamp(limiterCfg.gain, -24, 24, 0);
+                    graph.limiterState = graph.limiterState || { kernelPreference: 'auto' };
+                    graph.limiterState.kernelPreference = limiterKernelPreference;
+                    const kernelState = graph.limiterKernelState || {};
+                    if (kernelState.preferred !== limiterKernelPreference) {
+                        root.resolveLimiterKernel(graph);
+                    }
+                    const activeKernelState = graph.limiterKernelState || kernelState || {};
+                    let params = null;
+                    if (activeKernelState?.mode === 'wasm' && typeof activeKernelState.wasmCompute === 'function') {
+                        try {
+                            params = activeKernelState.wasmCompute({
+                                enabled,
+                                releaseMs,
+                                lookaheadMs,
+                                ceilingDb,
+                                gainDb
+                            });
+                        } catch (_) {
+                            graph.limiterKernelState = {
+                                ...(activeKernelState || {}),
+                                mode: 'js',
+                                reason: 'wasm-kernel-runtime-error',
+                                wasmCompute: null,
+                                resolvedAt: Date.now()
+                            };
+                            params = null;
+                        }
+                    }
+                    if (!params || !Number.isFinite(Number(params.attackSec))) {
+                        params = root.computeLimiterJsParams({
+                            enabled,
+                            releaseMs,
+                            lookaheadMs,
+                            ceilingDb,
+                            gainDb
+                        });
+                    }
+                    root.smoothParam(graph.limiterInputGain?.gain, Number(params.postGain) || 1, graph.ctx, 12);
+                    root.smoothParam(graph.limiterComp?.threshold, Number(params.threshold) || 0, graph.ctx, 10);
+                    root.smoothParam(graph.limiterComp?.ratio, Number(params.ratio) || 1, graph.ctx, 10);
+                    root.smoothParam(graph.limiterComp?.knee, Number(params.knee) || 30, graph.ctx, 10);
+                    root.smoothParam(graph.limiterComp?.attack, Number(params.attackSec) || 0.003, graph.ctx, 8);
+                    root.smoothParam(graph.limiterComp?.release, Number(params.releaseSec) || 0.05, graph.ctx, 14);
+                    if (graph.truePeakState) {
+                        graph.truePeakState.kernelPreference = tpKernelPreference;
+                        const kernelState = graph.truePeakKernelState || {};
+                        if (kernelState.preferred !== tpKernelPreference) {
+                            root.resolveTruePeakKernel(graph);
+                        }
+                    }
+                };
+                root.ensureGraph = async function ensureGraph(media) {
+                    if (!media) return null;
+                    const buildStartedAt = root.perfNow();
+                    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+                    if (!AudioCtx) return null;
+                    if (!root.ctx) root.ctx = new AudioCtx();
+                    const ctx = root.ctx;
+                    try { if (ctx.state === 'suspended') ctx.resume(); } catch (_) {}
+                    const configKey = root.buildConfigKey(cfg);
+                    let graph = media.__aurivoDaliGraph || null;
+                    if (!graph) {
+                        graph = {
+                            ctx,
+                            source: ctx.createMediaElementSource(media),
+                            configKey: '',
+                            perfState: root.createPerfState()
+                        };
+                        media.__aurivoDaliGraph = graph;
+                        media.addEventListener('play', function () {
+                            try { if (ctx.state === 'suspended') ctx.resume(); } catch (_) {}
+                        }, { passive: true });
+                    }
+                    if (!graph.perfState) graph.perfState = root.createPerfState();
+                    if (graph.configKey === configKey) {
+                        root.applyPostCfg(graph, cfg);
+                        root.recordPerfBuild(graph.perfState, root.perfNow() - buildStartedAt, false);
+                        return graph;
+                    }
+                    root.disconnectGraph(graph);
+                    const inputGain = new GainNode(ctx, { gain: Number(cfg.preampGain) || 1.0 });
+                    const analyser = new AnalyserNode(ctx, {
+                        fftSize: 2048,
+                        smoothingTimeConstant: 0.58,
+                        minDecibels: -96,
+                        maxDecibels: -12
+                    });
+                    const daliOutput = new GainNode(ctx, { gain: 1.0 });
+                    const bass = new BiquadFilterNode(ctx, { type: 'lowshelf', frequency: 72, gain: Number(cfg.bass) || 0, Q: 0.55 });
+                    const mid = new BiquadFilterNode(ctx, { type: 'peaking', frequency: 1200, gain: Number(cfg.mid) || 0, Q: 1.0 });
+                    const treble = new BiquadFilterNode(ctx, { type: 'highshelf', frequency: 10000, gain: Number(cfg.treble) || 0, Q: 0.707 });
+                    const peqNodes = Array.from({ length: 6 }).map((_, i) => (
+                        new BiquadFilterNode(ctx, {
+                            type: 'peaking',
+                            frequency: [60, 150, 400, 1500, 5000, 12000][i],
+                            gain: 0,
+                            Q: 1.0
+                        })
+                    ));
+                    const bassBoostInputGain = new GainNode(ctx, { gain: 1.0 });
+                    const bassBoostDryGain = new GainNode(ctx, { gain: 1.0 });
+                    const bassBoostFilter = new BiquadFilterNode(ctx, { type: 'lowshelf', frequency: 80, gain: 0, Q: 1.2 });
+                    const bassBoostSubPeak = new BiquadFilterNode(ctx, { type: 'peaking', frequency: 60, gain: 0, Q: 0.65 });
+                    const bassBoostPresencePeak = new BiquadFilterNode(ctx, { type: 'peaking', frequency: 118, gain: 0, Q: 0.95 });
+                    const bassBoostHarmonicLowpass = new BiquadFilterNode(ctx, { type: 'lowpass', frequency: 180, Q: 0.707 });
+                    const bassBoostHarmonicsDrive = new GainNode(ctx, { gain: 1.0 });
+                    const bassBoostSaturator = new WaveShaperNode(ctx, { curve: root.makeSaturationCurve(0), oversample: '4x' });
+                    const bassBoostWetGain = new GainNode(ctx, { gain: 0 });
+                    const bassBoostSum = new GainNode(ctx, { gain: 1.0 });
+                    const bassBoostBodyDip = new BiquadFilterNode(ctx, { type: 'peaking', frequency: 260, gain: 0, Q: 0.8 });
+                    const bassBoostOutputTrim = new GainNode(ctx, { gain: 1.0 });
+                    const exciterInputGain = new GainNode(ctx, { gain: 1.0 });
+                    const exciterDryGain = new GainNode(ctx, { gain: 1.0 });
+                    const exciterHighpass = new BiquadFilterNode(ctx, { type: 'highpass', frequency: 3000, Q: 0.8 });
+                    const exciterDrive = new GainNode(ctx, { gain: 1.0 });
+                    const exciterShaper = new WaveShaperNode(ctx, { curve: root.makeExciterCurve('odd', 0), oversample: '4x' });
+                    const exciterTone = new BiquadFilterNode(ctx, { type: 'lowpass', frequency: 9000, Q: 0.707 });
+                    const exciterWetGain = new GainNode(ctx, { gain: 0 });
+                    const exciterSum = new GainNode(ctx, { gain: 1.0 });
+                    const deEsserInputGain = new GainNode(ctx, { gain: 1.0 });
+                    const deEsserLowpass = new BiquadFilterNode(ctx, { type: 'lowpass', frequency: 7000, Q: 0.707 });
+                    const deEsserHighpass = new BiquadFilterNode(ctx, { type: 'highpass', frequency: 7000, Q: 0.707 });
+                    const deEsserHighGain = new GainNode(ctx, { gain: 1.0 });
+                    const deEsserOutputGain = new GainNode(ctx, { gain: 1.0 });
+                    const deEsserDetector = new AnalyserNode(ctx, {
+                        fftSize: 512,
+                        smoothingTimeConstant: 0.2,
+                        minDecibels: -96,
+                        maxDecibels: -12
+                    });
+                    const echoInputGain = new GainNode(ctx, { gain: 1.0 });
+                    const echoDryGain = new GainNode(ctx, { gain: 1.0 });
+                    const echoDelay = new DelayNode(ctx, { maxDelayTime: 1.0, delayTime: 0.25 });
+                    const echoHighCut = new BiquadFilterNode(ctx, { type: 'lowpass', frequency: 8000, Q: 0.707 });
+                    const echoFeedbackGain = new GainNode(ctx, { gain: 0.35 });
+                    const echoWetGain = new GainNode(ctx, { gain: 0.22 });
+                    const echoSum = new GainNode(ctx, { gain: 1.0 });
+                    const softEchoInputGain = new GainNode(ctx, { gain: 1.0 });
+                    const softEchoDryGain = new GainNode(ctx, { gain: 1.0 });
+                    const softEchoSplit = new ChannelSplitterNode(ctx, { numberOfOutputs: 2 });
+                    const softEchoDelayL = new DelayNode(ctx, { maxDelayTime: 1.0, delayTime: 0.22 });
+                    const softEchoDelayR = new DelayNode(ctx, { maxDelayTime: 1.0, delayTime: 0.22 });
+                    const softEchoHighCutL = new BiquadFilterNode(ctx, { type: 'lowpass', frequency: 7000, Q: 0.707 });
+                    const softEchoHighCutR = new BiquadFilterNode(ctx, { type: 'lowpass', frequency: 7000, Q: 0.707 });
+                    const softEchoFeedbackL = new GainNode(ctx, { gain: 0.16 });
+                    const softEchoFeedbackR = new GainNode(ctx, { gain: 0.16 });
+                    const softEchoWetGainL = new GainNode(ctx, { gain: 0.12 });
+                    const softEchoWetGainR = new GainNode(ctx, { gain: 0.12 });
+                    const softEchoMerge = new ChannelMergerNode(ctx, { numberOfInputs: 2 });
+                    const reverbInputGain = new GainNode(ctx, { gain: 1.0 });
+                    const reverbDryGain = new GainNode(ctx, { gain: 1.0 });
+                    const reverbDelay = new DelayNode(ctx, { maxDelayTime: 0.35, delayTime: 0.09 });
+                    const reverbLowpass = new BiquadFilterNode(ctx, { type: 'lowpass', frequency: 9000, Q: 0.707 });
+                    const reverbFeedbackGain = new GainNode(ctx, { gain: 0.42 });
+                    const reverbWetGain = new GainNode(ctx, { gain: 0.22 });
+                    const reverbSum = new GainNode(ctx, { gain: 1.0 });
+                    const stereoSplit = new ChannelSplitterNode(ctx, { numberOfOutputs: 2 });
+                    const stereoMidL = new GainNode(ctx, { gain: 0.5 });
+                    const stereoMidR = new GainNode(ctx, { gain: 0.5 });
+                    const stereoMidSum = new GainNode(ctx, { gain: 1.0 });
+                    const stereoSideL = new GainNode(ctx, { gain: 0.5 });
+                    const stereoSideRInv = new GainNode(ctx, { gain: -0.5 });
+                    const stereoSideSum = new GainNode(ctx, { gain: 1.0 });
+                    const stereoSideWidth = new GainNode(ctx, { gain: 1.0 });
+                    const stereoMidToLeft = new GainNode(ctx, { gain: 1.0 });
+                    const stereoMidToRight = new GainNode(ctx, { gain: 1.0 });
+                    const stereoSideToLeft = new GainNode(ctx, { gain: 1.0 });
+                    const stereoSideToRight = new GainNode(ctx, { gain: -1.0 });
+                    const stereoMerge = new ChannelMergerNode(ctx, { numberOfInputs: 2 });
+                    const stereoPostSplit = new ChannelSplitterNode(ctx, { numberOfOutputs: 2 });
+                    const stereoLowL = new BiquadFilterNode(ctx, { type: 'lowpass', frequency: 200, Q: 0.707 });
+                    const stereoLowR = new BiquadFilterNode(ctx, { type: 'lowpass', frequency: 200, Q: 0.707 });
+                    const stereoHighL = new BiquadFilterNode(ctx, { type: 'highpass', frequency: 200, Q: 0.707 });
+                    const stereoHighR = new BiquadFilterNode(ctx, { type: 'highpass', frequency: 200, Q: 0.707 });
+                    const stereoMonoLowSum = new GainNode(ctx, { gain: 1.0 });
+                    const stereoMonoToLeft = new GainNode(ctx, { gain: 1.0 });
+                    const stereoMonoToRight = new GainNode(ctx, { gain: 1.0 });
+                    const stereoFinalLeft = new GainNode(ctx, { gain: 1.0 });
+                    const stereoFinalRight = new GainNode(ctx, { gain: 1.0 });
+                    const stereoFinalMerge = new ChannelMergerNode(ctx, { numberOfInputs: 2 });
+                    const crossfeedSplit = new ChannelSplitterNode(ctx, { numberOfOutputs: 2 });
+                    const crossfeedDryL = new GainNode(ctx, { gain: 1.0 });
+                    const crossfeedDryR = new GainNode(ctx, { gain: 1.0 });
+                    const crossfeedDelayL = new DelayNode(ctx, { maxDelayTime: 0.05, delayTime: 0.0003 });
+                    const crossfeedDelayR = new DelayNode(ctx, { maxDelayTime: 0.05, delayTime: 0.0003 });
+                    const crossfeedHPFL = new BiquadFilterNode(ctx, { type: 'highpass', frequency: 700, Q: 0.707 });
+                    const crossfeedHPFR = new BiquadFilterNode(ctx, { type: 'highpass', frequency: 700, Q: 0.707 });
+                    const crossfeedLPFL = new BiquadFilterNode(ctx, { type: 'lowpass', frequency: 4000, Q: 0.707 });
+                    const crossfeedLPFR = new BiquadFilterNode(ctx, { type: 'lowpass', frequency: 4000, Q: 0.707 });
+                    const crossfeedGainToL = new GainNode(ctx, { gain: 0.0 });
+                    const crossfeedGainToR = new GainNode(ctx, { gain: 0.0 });
+                    const crossfeedMerge = new ChannelMergerNode(ctx, { numberOfInputs: 2 });
+                    const surroundSplit = new ChannelSplitterNode(ctx, { numberOfOutputs: 2 });
+                    const surroundDryL = new GainNode(ctx, { gain: 1.0 });
+                    const surroundDryR = new GainNode(ctx, { gain: 1.0 });
+                    const surroundCenterSum = new GainNode(ctx, { gain: 1.0 });
+                    const surroundCenterL = new GainNode(ctx, { gain: 0.0 });
+                    const surroundCenterR = new GainNode(ctx, { gain: 0.0 });
+                    const surroundSideLPos = new GainNode(ctx, { gain: 1.0 });
+                    const surroundSideLNeg = new GainNode(ctx, { gain: -1.0 });
+                    const surroundSideLSum = new GainNode(ctx, { gain: 1.0 });
+                    const surroundSideRPos = new GainNode(ctx, { gain: 1.0 });
+                    const surroundSideRNeg = new GainNode(ctx, { gain: -1.0 });
+                    const surroundSideRSum = new GainNode(ctx, { gain: 1.0 });
+                    const surroundRearDelayL = new DelayNode(ctx, { maxDelayTime: 0.08, delayTime: 0.008 });
+                    const surroundRearDelayR = new DelayNode(ctx, { maxDelayTime: 0.08, delayTime: 0.008 });
+                    const surroundRearLPFL = new BiquadFilterNode(ctx, { type: 'lowpass', frequency: 9000, Q: 0.707 });
+                    const surroundRearLPFR = new BiquadFilterNode(ctx, { type: 'lowpass', frequency: 9000, Q: 0.707 });
+                    const surroundRearGainL = new GainNode(ctx, { gain: 0.0 });
+                    const surroundRearGainR = new GainNode(ctx, { gain: 0.0 });
+                    const surroundLfeLPFL = new BiquadFilterNode(ctx, { type: 'lowpass', frequency: 110, Q: 0.707 });
+                    const surroundLfeLPFR = new BiquadFilterNode(ctx, { type: 'lowpass', frequency: 110, Q: 0.707 });
+                    const surroundLfeGainL = new GainNode(ctx, { gain: 0.0 });
+                    const surroundLfeGainR = new GainNode(ctx, { gain: 0.0 });
+                    const surroundMerge = new ChannelMergerNode(ctx, { numberOfInputs: 2 });
+                    const bassMonoSplit = new ChannelSplitterNode(ctx, { numberOfOutputs: 2 });
+                    const bassMonoDryL = new GainNode(ctx, { gain: 1.0 });
+                    const bassMonoDryR = new GainNode(ctx, { gain: 1.0 });
+                    const bassMonoLowL = new BiquadFilterNode(ctx, { type: 'lowpass', frequency: 120, Q: 0.707 });
+                    const bassMonoLowR = new BiquadFilterNode(ctx, { type: 'lowpass', frequency: 120, Q: 0.707 });
+                    const bassMonoLowSum = new GainNode(ctx, { gain: 1.0 });
+                    const bassMonoLowToL = new GainNode(ctx, { gain: 0.0 });
+                    const bassMonoLowToR = new GainNode(ctx, { gain: 0.0 });
+                    const bassMonoHighL = new BiquadFilterNode(ctx, { type: 'highpass', frequency: 120, Q: 0.707 });
+                    const bassMonoHighR = new BiquadFilterNode(ctx, { type: 'highpass', frequency: 120, Q: 0.707 });
+                    const bassMonoHighMidL = new GainNode(ctx, { gain: 0.0 });
+                    const bassMonoHighMidR = new GainNode(ctx, { gain: 0.0 });
+                    const bassMonoHighMidSum = new GainNode(ctx, { gain: 1.0 });
+                    const bassMonoHighSideL = new GainNode(ctx, { gain: 0.0 });
+                    const bassMonoHighSideRInv = new GainNode(ctx, { gain: 0.0 });
+                    const bassMonoHighSideSum = new GainNode(ctx, { gain: 1.0 });
+                    const bassMonoHighSideWidth = new GainNode(ctx, { gain: 1.0 });
+                    const bassMonoHighMidToL = new GainNode(ctx, { gain: 1.0 });
+                    const bassMonoHighMidToR = new GainNode(ctx, { gain: 1.0 });
+                    const bassMonoHighSideToL = new GainNode(ctx, { gain: 1.0 });
+                    const bassMonoHighSideToR = new GainNode(ctx, { gain: -1.0 });
+                    const bassMonoMerge = new ChannelMergerNode(ctx, { numberOfInputs: 2 });
+                    const dynamicEqSplit = new ChannelSplitterNode(ctx, { numberOfOutputs: 2 });
+                    const dynamicEqPeakL = new BiquadFilterNode(ctx, { type: 'peaking', frequency: 3500, Q: 2.0, gain: 0 });
+                    const dynamicEqPeakR = new BiquadFilterNode(ctx, { type: 'peaking', frequency: 3500, Q: 2.0, gain: 0 });
+                    const dynamicEqMerge = new ChannelMergerNode(ctx, { numberOfInputs: 2 });
+                    const dynamicEqDetectBandL = new BiquadFilterNode(ctx, { type: 'bandpass', frequency: 3500, Q: 2.4 });
+                    const dynamicEqDetectBandR = new BiquadFilterNode(ctx, { type: 'bandpass', frequency: 3500, Q: 2.4 });
+                    const dynamicEqDetectSum = new GainNode(ctx, { gain: 1.0 });
+                    const dynamicEqDetector = new AnalyserNode(ctx, {
+                        fftSize: 512,
+                        smoothingTimeConstant: 0.10,
+                        minDecibels: -96,
+                        maxDecibels: -12
+                    });
+                    const tapeSatInputGain = new GainNode(ctx, { gain: 1.0 });
+                    const tapeSatDryGain = new GainNode(ctx, { gain: 1.0 });
+                    const tapeSatTone = new BiquadFilterNode(ctx, { type: 'highshelf', frequency: 4000, gain: 0, Q: 0.707 });
+                    const tapeSatHissShelf = new BiquadFilterNode(ctx, { type: 'highshelf', frequency: 6500, gain: 0, Q: 0.707 });
+                    const tapeSatDrive = new GainNode(ctx, { gain: 1.0 });
+                    const tapeSatShaper = new WaveShaperNode(ctx, { curve: root.makeSaturationCurve(0), oversample: '4x' });
+                    const tapeSatWetGain = new GainNode(ctx, { gain: 0.0 });
+                    const tapeSatOutputTrim = new GainNode(ctx, { gain: 1.0 });
+                    const tapeSatSum = new GainNode(ctx, { gain: 1.0 });
+                    const bitDitherInputGain = new GainNode(ctx, { gain: 1.0 });
+                    const bitDitherDryGain = new GainNode(ctx, { gain: 1.0 });
+                    const bitDitherShaper = new WaveShaperNode(ctx, { curve: root.makeBitCrusherCurve(16, 2, 1), oversample: '2x' });
+                    const bitDitherPostLPF = new BiquadFilterNode(ctx, { type: 'lowpass', frequency: 20000, Q: 0.707 });
+                    const bitDitherWetGain = new GainNode(ctx, { gain: 0.0 });
+                    const bitDitherOutputTrim = new GainNode(ctx, { gain: 1.0 });
+                    const bitDitherSum = new GainNode(ctx, { gain: 1.0 });
+                    const noiseGateDetector = new AnalyserNode(ctx, {
+                        fftSize: 512,
+                        smoothingTimeConstant: 0.12,
+                        minDecibels: -96,
+                        maxDecibels: -12
+                    });
+                    const noiseGateGain = new GainNode(ctx, { gain: 1.0 });
+                    const compressorMakeupGain = new GainNode(ctx, { gain: 1.0 });
+                    const autoGainNode = new GainNode(ctx, { gain: 1.0 });
+                    const limiterInputGain = new GainNode(ctx, { gain: 1.0 });
+                    const limiterComp = new DynamicsCompressorNode(ctx, { threshold: 0, ratio: 1, attack: 0.003, release: 0.05, knee: 30 });
+                    const clipGuardGain = new GainNode(ctx, { gain: 1.0 });
+                    const truePeakMeterAnalyser = new AnalyserNode(ctx, {
+                        fftSize: 1024,
+                        smoothingTimeConstant: 0.08,
+                        minDecibels: -96,
+                        maxDecibels: 0
+                    });
+                    const pan = new StereoPannerNode(ctx, { pan: Math.max(-1, Math.min(1, (Number(cfg.balance) || 0) / 100)) });
+                    graph.source.connect(analyser);
+                    graph.source.connect(inputGain);
+                    const daliChain = root.createDaliChain(ctx, inputGain, daliOutput, cfg);
+                    daliOutput.connect(bass);
+                    bass.connect(mid);
+                    mid.connect(treble);
+                    let peqPrev = treble;
+                    for (let i = 0; i < peqNodes.length; i += 1) {
+                        peqPrev.connect(peqNodes[i]);
+                        peqPrev = peqNodes[i];
+                    }
+                    peqPrev.connect(bassBoostInputGain);
+                    bassBoostInputGain.connect(bassBoostFilter);
+                    bassBoostFilter.connect(bassBoostSubPeak);
+                    bassBoostSubPeak.connect(bassBoostPresencePeak);
+                    bassBoostPresencePeak.connect(bassBoostDryGain);
+                    bassBoostDryGain.connect(bassBoostSum);
+                    bassBoostPresencePeak.connect(bassBoostHarmonicLowpass);
+                    bassBoostHarmonicLowpass.connect(bassBoostHarmonicsDrive);
+                    bassBoostHarmonicsDrive.connect(bassBoostSaturator);
+                    bassBoostSaturator.connect(bassBoostWetGain);
+                    bassBoostWetGain.connect(bassBoostSum);
+                    bassBoostSum.connect(bassBoostBodyDip);
+                    bassBoostBodyDip.connect(bassBoostOutputTrim);
+                    bassBoostOutputTrim.connect(exciterInputGain);
+                    exciterInputGain.connect(exciterDryGain);
+                    exciterDryGain.connect(exciterSum);
+                    exciterInputGain.connect(exciterHighpass);
+                    exciterHighpass.connect(exciterDrive);
+                    exciterDrive.connect(exciterShaper);
+                    exciterShaper.connect(exciterTone);
+                    exciterTone.connect(exciterWetGain);
+                    exciterWetGain.connect(exciterSum);
+                    exciterSum.connect(deEsserInputGain);
+                    deEsserInputGain.connect(deEsserLowpass);
+                    deEsserInputGain.connect(deEsserHighpass);
+                    deEsserHighpass.connect(deEsserDetector);
+                    deEsserHighpass.connect(deEsserHighGain);
+                    deEsserLowpass.connect(deEsserOutputGain);
+                    deEsserOutputGain.connect(noiseGateGain);
+                    deEsserOutputGain.connect(noiseGateDetector);
+                    deEsserHighGain.connect(noiseGateGain);
+                    deEsserHighGain.connect(noiseGateDetector);
+                    noiseGateGain.connect(echoInputGain);
+                    echoInputGain.connect(echoDryGain);
+                    echoDryGain.connect(echoSum);
+                    echoInputGain.connect(echoDelay);
+                    echoDelay.connect(echoHighCut);
+                    echoHighCut.connect(echoWetGain);
+                    echoWetGain.connect(echoSum);
+                    echoHighCut.connect(echoFeedbackGain);
+                    echoFeedbackGain.connect(echoDelay);
+                    echoSum.connect(softEchoInputGain);
+                    softEchoInputGain.connect(softEchoDryGain);
+                    softEchoDryGain.connect(reverbInputGain);
+                    softEchoInputGain.connect(softEchoSplit);
+                    softEchoSplit.connect(softEchoDelayL, 0);
+                    softEchoSplit.connect(softEchoDelayR, 1);
+                    softEchoDelayL.connect(softEchoHighCutL);
+                    softEchoDelayR.connect(softEchoHighCutR);
+                    softEchoHighCutL.connect(softEchoWetGainL);
+                    softEchoHighCutR.connect(softEchoWetGainR);
+                    softEchoWetGainL.connect(softEchoMerge, 0, 0);
+                    softEchoWetGainR.connect(softEchoMerge, 0, 1);
+                    softEchoMerge.connect(reverbInputGain);
+                    softEchoHighCutL.connect(softEchoFeedbackL);
+                    softEchoFeedbackL.connect(softEchoDelayL);
+                    softEchoHighCutR.connect(softEchoFeedbackR);
+                    softEchoFeedbackR.connect(softEchoDelayR);
+                    reverbInputGain.connect(reverbDryGain);
+                    reverbDryGain.connect(reverbSum);
+                    reverbInputGain.connect(reverbDelay);
+                    reverbDelay.connect(reverbLowpass);
+                    reverbLowpass.connect(reverbWetGain);
+                    reverbWetGain.connect(reverbSum);
+                    reverbLowpass.connect(reverbFeedbackGain);
+                    reverbFeedbackGain.connect(reverbDelay);
+                    reverbSum.connect(stereoSplit);
+                    stereoSplit.connect(stereoMidL, 0);
+                    stereoSplit.connect(stereoMidR, 1);
+                    stereoMidL.connect(stereoMidSum);
+                    stereoMidR.connect(stereoMidSum);
+                    stereoSplit.connect(stereoSideL, 0);
+                    stereoSplit.connect(stereoSideRInv, 1);
+                    stereoSideL.connect(stereoSideSum);
+                    stereoSideRInv.connect(stereoSideSum);
+                    stereoSideSum.connect(stereoSideWidth);
+                    stereoMidSum.connect(stereoMidToLeft);
+                    stereoMidSum.connect(stereoMidToRight);
+                    stereoSideWidth.connect(stereoSideToLeft);
+                    stereoSideWidth.connect(stereoSideToRight);
+                    stereoMidToLeft.connect(stereoMerge, 0, 0);
+                    stereoSideToLeft.connect(stereoMerge, 0, 0);
+                    stereoMidToRight.connect(stereoMerge, 0, 1);
+                    stereoSideToRight.connect(stereoMerge, 0, 1);
+                    stereoMerge.connect(stereoPostSplit);
+                    stereoPostSplit.connect(stereoLowL, 0);
+                    stereoPostSplit.connect(stereoLowR, 1);
+                    stereoPostSplit.connect(stereoHighL, 0);
+                    stereoPostSplit.connect(stereoHighR, 1);
+                    stereoLowL.connect(stereoMonoLowSum);
+                    stereoLowR.connect(stereoMonoLowSum);
+                    stereoMonoLowSum.connect(stereoMonoToLeft);
+                    stereoMonoLowSum.connect(stereoMonoToRight);
+                    stereoHighL.connect(stereoFinalLeft);
+                    stereoMonoToLeft.connect(stereoFinalLeft);
+                    stereoHighR.connect(stereoFinalRight);
+                    stereoMonoToRight.connect(stereoFinalRight);
+                    stereoFinalLeft.connect(stereoFinalMerge, 0, 0);
+                    stereoFinalRight.connect(stereoFinalMerge, 0, 1);
+                    stereoFinalMerge.connect(crossfeedSplit);
+                    crossfeedSplit.connect(crossfeedDryL, 0);
+                    crossfeedSplit.connect(crossfeedDryR, 1);
+                    crossfeedDryL.connect(crossfeedMerge, 0, 0);
+                    crossfeedDryR.connect(crossfeedMerge, 0, 1);
+                    crossfeedSplit.connect(crossfeedDelayR, 1);
+                    crossfeedDelayR.connect(crossfeedHPFL);
+                    crossfeedHPFL.connect(crossfeedLPFL);
+                    crossfeedLPFL.connect(crossfeedGainToL);
+                    crossfeedGainToL.connect(crossfeedMerge, 0, 0);
+                    crossfeedSplit.connect(crossfeedDelayL, 0);
+                    crossfeedDelayL.connect(crossfeedHPFR);
+                    crossfeedHPFR.connect(crossfeedLPFR);
+                    crossfeedLPFR.connect(crossfeedGainToR);
+                    crossfeedGainToR.connect(crossfeedMerge, 0, 1);
+                    crossfeedMerge.connect(surroundSplit);
+                    surroundSplit.connect(surroundDryL, 0);
+                    surroundSplit.connect(surroundDryR, 1);
+                    surroundDryL.connect(surroundMerge, 0, 0);
+                    surroundDryR.connect(surroundMerge, 0, 1);
+                    surroundSplit.connect(surroundCenterSum, 0);
+                    surroundSplit.connect(surroundCenterSum, 1);
+                    surroundCenterSum.connect(surroundCenterL);
+                    surroundCenterSum.connect(surroundCenterR);
+                    surroundCenterL.connect(surroundMerge, 0, 0);
+                    surroundCenterR.connect(surroundMerge, 0, 1);
+                    surroundSplit.connect(surroundSideLPos, 0);
+                    surroundSplit.connect(surroundSideLNeg, 1);
+                    surroundSideLPos.connect(surroundSideLSum);
+                    surroundSideLNeg.connect(surroundSideLSum);
+                    surroundSideLSum.connect(surroundRearDelayL);
+                    surroundRearDelayL.connect(surroundRearLPFL);
+                    surroundRearLPFL.connect(surroundRearGainL);
+                    surroundRearGainL.connect(surroundMerge, 0, 1);
+                    surroundSplit.connect(surroundSideRPos, 1);
+                    surroundSplit.connect(surroundSideRNeg, 0);
+                    surroundSideRPos.connect(surroundSideRSum);
+                    surroundSideRNeg.connect(surroundSideRSum);
+                    surroundSideRSum.connect(surroundRearDelayR);
+                    surroundRearDelayR.connect(surroundRearLPFR);
+                    surroundRearLPFR.connect(surroundRearGainR);
+                    surroundRearGainR.connect(surroundMerge, 0, 0);
+                    surroundSplit.connect(surroundLfeLPFL, 0);
+                    surroundSplit.connect(surroundLfeLPFR, 1);
+                    surroundLfeLPFL.connect(surroundLfeGainL);
+                    surroundLfeLPFR.connect(surroundLfeGainR);
+                    surroundLfeGainL.connect(surroundMerge, 0, 0);
+                    surroundLfeGainR.connect(surroundMerge, 0, 1);
+                    surroundMerge.connect(bassMonoSplit);
+                    bassMonoSplit.connect(bassMonoDryL, 0);
+                    bassMonoSplit.connect(bassMonoDryR, 1);
+                    bassMonoDryL.connect(bassMonoMerge, 0, 0);
+                    bassMonoDryR.connect(bassMonoMerge, 0, 1);
+                    bassMonoSplit.connect(bassMonoLowL, 0);
+                    bassMonoSplit.connect(bassMonoLowR, 1);
+                    bassMonoLowL.connect(bassMonoLowSum);
+                    bassMonoLowR.connect(bassMonoLowSum);
+                    bassMonoLowSum.connect(bassMonoLowToL);
+                    bassMonoLowSum.connect(bassMonoLowToR);
+                    bassMonoLowToL.connect(bassMonoMerge, 0, 0);
+                    bassMonoLowToR.connect(bassMonoMerge, 0, 1);
+                    bassMonoSplit.connect(bassMonoHighL, 0);
+                    bassMonoSplit.connect(bassMonoHighR, 1);
+                    bassMonoHighL.connect(bassMonoHighMidL);
+                    bassMonoHighR.connect(bassMonoHighMidR);
+                    bassMonoHighMidL.connect(bassMonoHighMidSum);
+                    bassMonoHighMidR.connect(bassMonoHighMidSum);
+                    bassMonoHighL.connect(bassMonoHighSideL);
+                    bassMonoHighR.connect(bassMonoHighSideRInv);
+                    bassMonoHighSideL.connect(bassMonoHighSideSum);
+                    bassMonoHighSideRInv.connect(bassMonoHighSideSum);
+                    bassMonoHighSideSum.connect(bassMonoHighSideWidth);
+                    bassMonoHighMidSum.connect(bassMonoHighMidToL);
+                    bassMonoHighMidSum.connect(bassMonoHighMidToR);
+                    bassMonoHighSideWidth.connect(bassMonoHighSideToL);
+                    bassMonoHighSideWidth.connect(bassMonoHighSideToR);
+                    bassMonoHighMidToL.connect(bassMonoMerge, 0, 0);
+                    bassMonoHighSideToL.connect(bassMonoMerge, 0, 0);
+                    bassMonoHighMidToR.connect(bassMonoMerge, 0, 1);
+                    bassMonoHighSideToR.connect(bassMonoMerge, 0, 1);
+                    bassMonoMerge.connect(dynamicEqSplit);
+                    dynamicEqSplit.connect(dynamicEqPeakL, 0);
+                    dynamicEqSplit.connect(dynamicEqPeakR, 1);
+                    dynamicEqPeakL.connect(dynamicEqMerge, 0, 0);
+                    dynamicEqPeakR.connect(dynamicEqMerge, 0, 1);
+                    dynamicEqSplit.connect(dynamicEqDetectBandL, 0);
+                    dynamicEqSplit.connect(dynamicEqDetectBandR, 1);
+                    dynamicEqDetectBandL.connect(dynamicEqDetectSum);
+                    dynamicEqDetectBandR.connect(dynamicEqDetectSum);
+                    dynamicEqDetectSum.connect(dynamicEqDetector);
+                    dynamicEqMerge.connect(tapeSatInputGain);
+                    tapeSatInputGain.connect(tapeSatDryGain);
+                    tapeSatDryGain.connect(tapeSatSum);
+                    tapeSatInputGain.connect(tapeSatTone);
+                    tapeSatTone.connect(tapeSatHissShelf);
+                    tapeSatHissShelf.connect(tapeSatDrive);
+                    tapeSatDrive.connect(tapeSatShaper);
+                    tapeSatShaper.connect(tapeSatWetGain);
+                    tapeSatWetGain.connect(tapeSatOutputTrim);
+                    tapeSatOutputTrim.connect(tapeSatSum);
+                    tapeSatSum.connect(bitDitherInputGain);
+                    bitDitherInputGain.connect(bitDitherDryGain);
+                    bitDitherDryGain.connect(bitDitherSum);
+                    bitDitherInputGain.connect(bitDitherShaper);
+                    bitDitherShaper.connect(bitDitherPostLPF);
+                    bitDitherPostLPF.connect(bitDitherWetGain);
+                    bitDitherWetGain.connect(bitDitherOutputTrim);
+                    bitDitherOutputTrim.connect(bitDitherSum);
+                    bitDitherSum.connect(compressorMakeupGain);
+                    compressorMakeupGain.connect(autoGainNode);
+                    autoGainNode.connect(limiterInputGain);
+                    limiterInputGain.connect(limiterComp);
+                    limiterComp.connect(clipGuardGain);
+                    clipGuardGain.connect(truePeakMeterAnalyser);
+                    truePeakMeterAnalyser.connect(pan);
+                    pan.connect(ctx.destination);
+                    const noiseGateState = {
+                        enabled: false,
+                        thresholdDb: -40,
+                        openThresholdDb: -38.5,
+                        closeThresholdDb: -44.0,
+                        attackMs: 5,
+                        holdMs: 100,
+                        releaseMs: 150,
+                        kernelPreference: 'auto',
+                        closedGain: root.dbToLinear(-80),
+                        currentGain: 1,
+                        gateOpenUntil: 0,
+                        isOpen: true,
+                        envDb: -120,
+                        lastAppliedGain: 1
+                    };
+                    const noiseGateKernelState = root.resolveNoiseGateKernel({
+                        noiseGateState
+                    });
+                    const detectorBuffer = new Uint8Array(noiseGateDetector.fftSize);
+                    const deEsserDetectorBuffer = new Uint8Array(deEsserDetector.fftSize);
+                    const deEsserState = {
+                        enabled: false,
+                        frequency: 7000,
+                        thresholdDb: -30,
+                        ratio: 4,
+                        maxReductionDb: 12,
+                        listenMode: false,
+                        kernelPreference: 'auto',
+                        currentHighGain: 1,
+                        envDb: -120,
+                        lastAppliedGain: 1
+                    };
+                    const deEsserKernelState = root.resolveDeEsserKernel({
+                        deEsserState
+                    });
+                    const bassBoostState = {
+                        kernelPreference: 'auto',
+                        curveAmount: -1
+                    };
+                    const bassBoostKernelState = root.resolveBassBoostKernel({
+                        bassBoostState
+                    });
+                    const peqState = {
+                        kernelPreference: 'auto'
+                    };
+                    const peqKernelState = root.resolvePeqKernel({
+                        peqState
+                    });
+                    const compressorState = {
+                        kernelPreference: 'auto'
+                    };
+                    const compressorKernelState = root.resolveCompressorKernel({
+                        compressorState
+                    });
+                    const limiterState = {
+                        kernelPreference: 'auto'
+                    };
+                    const limiterKernelState = root.resolveLimiterKernel({
+                        limiterState
+                    });
+                    const exciterState = {
+                        kernelPreference: 'auto',
+                        curveKey: ''
+                    };
+                    const exciterKernelState = root.resolveExciterKernel({
+                        exciterState
+                    });
+                    const echoState = {
+                        kernelPreference: 'auto'
+                    };
+                    const echoKernelState = root.resolveEchoKernel({
+                        echoState
+                    });
+                    const softEchoState = {
+                        kernelPreference: 'auto'
+                    };
+                    const softEchoKernelState = root.resolveSoftEchoKernel({
+                        softEchoState
+                    });
+                    const reverbState = {
+                        kernelPreference: 'auto'
+                    };
+                    const reverbKernelState = root.resolveReverbKernel({
+                        reverbState
+                    });
+                    const autoGainState = {
+                        enabled: false,
+                        targetLevel: -14,
+                        maxGainDb: 12,
+                        speed: 'medium',
+                        kernelPreference: 'auto',
+                        currentGainDb: 0,
+                        envDb: -120,
+                        lastAppliedGainDb: 0
+                    };
+                    const autoGainKernelState = root.resolveAutoGainKernel({
+                        autoGainState
+                    });
+                    const dynamicEqState = {
+                        enabled: false,
+                        frequency: 3500,
+                        q: 2.0,
+                        thresholdDb: -40,
+                        maxGainDb: -6,
+                        rangeDb: 12,
+                        attackMs: 5,
+                        releaseMs: 120,
+                        kernelPreference: 'auto',
+                        currentGainDb: 0,
+                        envDb: -120,
+                        gainReductionDb: 0,
+                        triggered: false,
+                        triggerCount: 0,
+                        lastAppliedGainDb: 0
+                    };
+                    const dynamicEqKernelState = root.resolveDynamicEqKernel({
+                        dynamicEqState
+                    });
+                    const truePeakState = {
+                        enabled: false,
+                        ceilingDb: -1.0,
+                        kernelPreference: 'auto',
+                        truePeakL: -96,
+                        truePeakR: -96,
+                        holdL: -96,
+                        holdR: -96,
+                        clippingCount: 0,
+                        gainReduction: 0
+                    };
+                    const truePeakKernelState = root.resolveTruePeakKernel({
+                        truePeakState
+                    });
+                    const clipGuardState = {
+                        enabled: true,
+                        ceilingDb: -1.0,
+                        currentGainDb: 0,
+                        targetGainDb: 0,
+                        recoverMarginDb: 2.2,
+                        lastAppliedGainDb: 0
+                    };
+                    const tapeSatState = {
+                        curveAmount: -1,
+                        kernelPreference: 'auto'
+                    };
+                    const tapeSatKernelState = root.resolveTapeSatKernel({
+                        tapeSatState
+                    });
+                    const bitDitherState = {
+                        curveKey: '',
+                        kernelPreference: 'auto'
+                    };
+                    const bitDitherKernelState = root.resolveBitDitherKernel({
+                        bitDitherState
+                    });
+                    const stereoWidenerState = {
+                        kernelPreference: 'auto'
+                    };
+                    const stereoWidenerKernelState = root.resolveStereoWidenerKernel({
+                        stereoWidenerState
+                    });
+                    const crossfeedState = {
+                        kernelPreference: 'auto'
+                    };
+                    const crossfeedKernelState = root.resolveCrossfeedKernel({
+                        crossfeedState
+                    });
+                    const bassMonoState = {
+                        kernelPreference: 'auto'
+                    };
+                    const bassMonoKernelState = root.resolveBassMonoKernel({
+                        bassMonoState
+                    });
+                    const surroundState = {
+                        kernelPreference: 'auto'
+                    };
+                    const surroundKernelState = root.resolveSurroundKernel({
+                        surroundState
+                    });
+                    const perfState = graph.perfState || root.createPerfState();
+                    graph.perfState = perfState;
+                    const smoothSwitchMs = root.getSmoothingMs('switch', 7);
+                    const smoothDetectorMs = root.getSmoothingMs('detector', 10);
+                    const smoothDynamicsMs = root.getSmoothingMs('dynamics', 16);
+                    const getRmsDb = function getRmsDb() {
+                        try {
+                            noiseGateDetector.getByteTimeDomainData(detectorBuffer);
+                        } catch (_) {
+                            return -120;
+                        }
+                        let sumSq = 0;
+                        for (let i = 0; i < detectorBuffer.length; i += 1) {
+                            const centered = (detectorBuffer[i] - 128) / 128;
+                            sumSq += centered * centered;
+                        }
+                        const rms = Math.sqrt(sumSq / Math.max(1, detectorBuffer.length));
+                        return 20 * Math.log10(Math.max(1e-6, rms));
+                    };
+                    const getDeEsserRmsDb = function getDeEsserRmsDb() {
+                        try {
+                            deEsserDetector.getByteTimeDomainData(deEsserDetectorBuffer);
+                        } catch (_) {
+                            return -120;
+                        }
+                        let sumSq = 0;
+                        for (let i = 0; i < deEsserDetectorBuffer.length; i += 1) {
+                            const centered = (deEsserDetectorBuffer[i] - 128) / 128;
+                            sumSq += centered * centered;
+                        }
+                        const rms = Math.sqrt(sumSq / Math.max(1, deEsserDetectorBuffer.length));
+                        return 20 * Math.log10(Math.max(1e-6, rms));
+                    };
+                    const autoGainBuffer = new Uint8Array(analyser.fftSize || 2048);
+                    const getAutoGainInputDb = function getAutoGainInputDb() {
+                        try {
+                            analyser.getByteTimeDomainData(autoGainBuffer);
+                        } catch (_) {
+                            return -120;
+                        }
+                        let sumSq = 0;
+                        for (let i = 0; i < autoGainBuffer.length; i += 1) {
+                            const centered = (autoGainBuffer[i] - 128) / 128;
+                            sumSq += centered * centered;
+                        }
+                        const rms = Math.sqrt(sumSq / Math.max(1, autoGainBuffer.length));
+                        return 20 * Math.log10(Math.max(1e-6, rms));
+                    };
+                    const dynamicEqDetectorBuffer = new Uint8Array(dynamicEqDetector.fftSize || 1024);
+                    const getDynamicEqBandDb = function getDynamicEqBandDb() {
+                        try {
+                            dynamicEqDetector.getByteTimeDomainData(dynamicEqDetectorBuffer);
+                        } catch (_) {
+                            return -120;
+                        }
+                        let sumSq = 0;
+                        for (let i = 0; i < dynamicEqDetectorBuffer.length; i += 1) {
+                            const centered = (dynamicEqDetectorBuffer[i] - 128) / 128;
+                            sumSq += centered * centered;
+                        }
+                        const rms = Math.sqrt(sumSq / Math.max(1, dynamicEqDetectorBuffer.length));
+                        return 20 * Math.log10(Math.max(1e-6, rms));
+                    };
+                    const truePeakBuffer = new Uint8Array(truePeakMeterAnalyser.fftSize || 2048);
+                    const controlRate = root.controlRateProfiles || {};
+                    const deEsserIntervalMs = Math.max(10, Number(controlRate.deesserMs) || 24);
+                    const noiseGateIntervalMs = Math.max(10, Number(controlRate.noisegateMs) || 24);
+                    const autoGainIntervalMs = Math.max(20, Number(controlRate.autogainMs) || 60);
+                    const dynamicEqIntervalMs = Math.max(10, Number(controlRate.dynamiceqMs) || 24);
+                    const truePeakIntervalMs = Math.max(20, Number(controlRate.truepeakMs) || 50);
+                    const epsLinear = Math.max(0.00001, Number(controlRate.epsilonLinear) || 0.0006);
+                    const epsDb = Math.max(0.0001, Number(controlRate.epsilonDb) || 0.04);
+                    const deEsserTimer = root.wrapPerfLoop(perfState, 'deesser', deEsserIntervalMs, function () {
+                        const st = media.__aurivoDaliGraph?.deEsserState || deEsserState;
+                        const kernelState = media.__aurivoDaliGraph?.deEsserKernelState || deEsserKernelState || {};
+                        if (!st?.enabled) {
+                            st.currentHighGain = 1;
+                            st.envDb = -120;
+                            if (root.needsUpdate(st.lastAppliedGain, 1, epsLinear)) {
+                                root.smoothParam(deEsserHighGain?.gain, 1, ctx, smoothSwitchMs);
+                                st.lastAppliedGain = 1;
+                            }
+                            return;
+                        }
+                        const rawLevelDb = getDeEsserRmsDb();
+                        let calcResult = null;
+                        if (kernelState?.mode === 'wasm' && typeof kernelState.wasmCompute === 'function') {
+                            try {
+                                calcResult = kernelState.wasmCompute({
+                                    rawLevelDb,
+                                    envDb: st.envDb,
+                                    currentHighGain: st.currentHighGain,
+                                    thresholdDb: st.thresholdDb,
+                                    ratio: st.ratio,
+                                    maxReductionDb: st.maxReductionDb,
+                                    stepMs: deEsserIntervalMs
+                                });
+                            } catch (_) {
+                                if (media.__aurivoDaliGraph) {
+                                    media.__aurivoDaliGraph.deEsserKernelState = {
+                                        ...(kernelState || {}),
+                                        mode: 'js',
+                                        reason: 'wasm-kernel-runtime-error',
+                                        wasmCompute: null,
+                                        resolvedAt: Date.now()
+                                    };
+                                }
+                                calcResult = null;
+                            }
+                        }
+                        if (!calcResult || !Number.isFinite(Number(calcResult.currentHighGain))) {
+                            calcResult = root.computeDeEsserJsStep(st, rawLevelDb, deEsserIntervalMs);
+                        } else {
+                            st.envDb = Number.isFinite(Number(calcResult.envDb)) ? Number(calcResult.envDb) : st.envDb;
+                            st.currentHighGain = Math.max(0.05, Math.min(1, Number(calcResult.currentHighGain)));
+                        }
+                        if (root.needsUpdate(st.lastAppliedGain, st.currentHighGain, epsLinear)) {
+                            root.smoothParam(deEsserHighGain?.gain, st.currentHighGain, ctx, smoothDetectorMs);
+                            st.lastAppliedGain = st.currentHighGain;
+                        }
+                    });
+                    const noiseGateTimer = root.wrapPerfLoop(perfState, 'noisegate', noiseGateIntervalMs, function () {
+                        const st = media.__aurivoDaliGraph?.noiseGateState || noiseGateState;
+                        const kernelState = media.__aurivoDaliGraph?.noiseGateKernelState || noiseGateKernelState || {};
+                        if (!st?.enabled) {
+                            st.currentGain = 1;
+                            st.isOpen = true;
+                            st.envDb = -120;
+                            if (root.needsUpdate(st.lastAppliedGain, 1, epsLinear)) {
+                                root.smoothParam(noiseGateGain?.gain, 1, ctx, smoothSwitchMs);
+                                st.lastAppliedGain = 1;
+                            }
+                            return;
+                        }
+                        const nowMs = Date.now();
+                        const rawLevelDb = getRmsDb();
+                        if (!Number.isFinite(st.envDb)) st.envDb = rawLevelDb;
+                        const detectorRiseMs = 12;
+                        const detectorFallMs = 120;
+                        const detectorTau = Math.max(0.004, (rawLevelDb > st.envDb ? detectorRiseMs : detectorFallMs) / 1000);
+                        const detectorAlpha = 1 - Math.exp(-0.02 / detectorTau);
+                        st.envDb += (rawLevelDb - st.envDb) * detectorAlpha;
+                        const openTrigger = st.envDb >= st.openThresholdDb;
+                        const closeTrigger = st.envDb <= st.closeThresholdDb;
+                        if (openTrigger) {
+                            st.isOpen = true;
+                            st.gateOpenUntil = nowMs + st.holdMs;
+                        } else if (closeTrigger && nowMs >= (st.gateOpenUntil || 0)) {
+                            st.isOpen = false;
+                        }
+                        const shouldStayOpen = st.isOpen || (nowMs < (st.gateOpenUntil || 0));
+                        const targetGain = shouldStayOpen ? 1 : st.closedGain;
+                        let calcResult = null;
+                        if (kernelState?.mode === 'wasm' && typeof kernelState.wasmCompute === 'function') {
+                            try {
+                                calcResult = kernelState.wasmCompute({
+                                    rawLevelDb,
+                                    envDb: st.envDb,
+                                    currentGain: st.currentGain,
+                                    targetGain,
+                                    attackMs: st.attackMs,
+                                    releaseMs: st.releaseMs,
+                                    stepMs: noiseGateIntervalMs
+                                });
+                            } catch (_) {
+                                if (media.__aurivoDaliGraph) {
+                                    media.__aurivoDaliGraph.noiseGateKernelState = {
+                                        ...(kernelState || {}),
+                                        mode: 'js',
+                                        reason: 'wasm-kernel-runtime-error',
+                                        wasmCompute: null,
+                                        resolvedAt: Date.now()
+                                    };
+                                }
+                                calcResult = null;
+                            }
+                        }
+                        if (!calcResult || !Number.isFinite(Number(calcResult.currentGain))) {
+                            calcResult = root.computeNoiseGateJsStep(st, rawLevelDb, targetGain, noiseGateIntervalMs);
+                        } else {
+                            st.envDb = Number.isFinite(Number(calcResult.envDb)) ? Number(calcResult.envDb) : st.envDb;
+                            st.currentGain = Math.max(0.0001, Math.min(1, Number(calcResult.currentGain)));
+                        }
+                        st.open = !!shouldStayOpen;
+                        if (root.needsUpdate(st.lastAppliedGain, st.currentGain, epsLinear)) {
+                            root.smoothParam(noiseGateGain?.gain, st.currentGain, ctx, smoothDetectorMs);
+                            st.lastAppliedGain = st.currentGain;
+                        }
+                    });
+                    const autoGainTimer = root.wrapPerfLoop(perfState, 'autogain', autoGainIntervalMs, function () {
+                        const st = media.__aurivoDaliGraph?.autoGainState || autoGainState;
+                        const kernelState = media.__aurivoDaliGraph?.autoGainKernelState || autoGainKernelState || {};
+                        if (!st?.enabled) {
+                            st.currentGainDb = 0;
+                            st.envDb = -120;
+                            if (root.needsUpdate(st.lastAppliedGainDb, 0, epsDb)) {
+                                root.smoothParam(autoGainNode?.gain, 1, ctx, smoothSwitchMs);
+                                st.lastAppliedGainDb = 0;
+                            }
+                            return;
+                        }
+                        const inputDb = getAutoGainInputDb();
+                        let calcResult = null;
+                        if (kernelState?.mode === 'wasm' && typeof kernelState.wasmCompute === 'function') {
+                            try {
+                                calcResult = kernelState.wasmCompute({
+                                    inputDb,
+                                    currentGainDb: st.currentGainDb,
+                                    envDb: st.envDb,
+                                    targetLevel: st.targetLevel,
+                                    maxGainDb: st.maxGainDb,
+                                    speed: st.speed,
+                                    stepMs: autoGainIntervalMs
+                                });
+                            } catch (_) {
+                                if (media.__aurivoDaliGraph) {
+                                    media.__aurivoDaliGraph.autoGainKernelState = {
+                                        ...(kernelState || {}),
+                                        mode: 'js',
+                                        reason: 'wasm-kernel-runtime-error',
+                                        wasmCompute: null,
+                                        resolvedAt: Date.now()
+                                    };
+                                }
+                                calcResult = null;
+                            }
+                        }
+                        if (!calcResult || !Number.isFinite(Number(calcResult.currentGainDb))) {
+                            calcResult = root.computeAutoGainJsStep(st, inputDb, autoGainIntervalMs);
+                        } else {
+                            st.currentGainDb = Number(calcResult.currentGainDb);
+                            st.envDb = Number.isFinite(Number(calcResult.envDb))
+                                ? Number(calcResult.envDb)
+                                : st.envDb;
+                        }
+                        if (root.needsUpdate(st.lastAppliedGainDb, st.currentGainDb, epsDb)) {
+                            root.smoothParam(autoGainNode?.gain, root.dbToLinear(st.currentGainDb), ctx, smoothDynamicsMs);
+                            st.lastAppliedGainDb = st.currentGainDb;
+                        }
+                    });
+                    const dynamicEqTimer = root.wrapPerfLoop(perfState, 'dynamiceq', dynamicEqIntervalMs, function () {
+                        const st = media.__aurivoDaliGraph?.dynamicEqState || dynamicEqState;
+                        const kernelState = media.__aurivoDaliGraph?.dynamicEqKernelState || dynamicEqKernelState || {};
+                        if (!st?.enabled) {
+                            st.currentGainDb = 0;
+                            st.envDb = -120;
+                            st.gainReductionDb = 0;
+                            st.triggered = false;
+                            if (root.needsUpdate(st.lastAppliedGainDb, 0, epsDb)) {
+                                root.smoothParam(dynamicEqPeakL?.gain, 0, ctx, smoothSwitchMs);
+                                root.smoothParam(dynamicEqPeakR?.gain, 0, ctx, smoothSwitchMs);
+                                st.lastAppliedGainDb = 0;
+                            }
+                            return;
+                        }
+                        const bandDb = getDynamicEqBandDb();
+                        let calcResult = null;
+                        if (kernelState?.mode === 'wasm' && typeof kernelState.wasmCompute === 'function') {
+                            try {
+                                calcResult = kernelState.wasmCompute({
+                                    bandDb,
+                                    currentGainDb: st.currentGainDb,
+                                    envDb: st.envDb,
+                                    thresholdDb: st.thresholdDb,
+                                    maxGainDb: st.maxGainDb,
+                                    rangeDb: st.rangeDb,
+                                    attackMs: st.attackMs,
+                                    releaseMs: st.releaseMs,
+                                    stepMs: dynamicEqIntervalMs
+                                });
+                            } catch (_) {
+                                if (media.__aurivoDaliGraph) {
+                                    media.__aurivoDaliGraph.dynamicEqKernelState = {
+                                        ...(kernelState || {}),
+                                        mode: 'js',
+                                        reason: 'wasm-kernel-runtime-error',
+                                        wasmCompute: null,
+                                        resolvedAt: Date.now()
+                                    };
+                                }
+                                calcResult = null;
+                            }
+                        }
+                        if (!calcResult || !Number.isFinite(Number(calcResult.currentGainDb))) {
+                            calcResult = root.computeDynamicEqJsStep(st, bandDb, dynamicEqIntervalMs);
+                        } else {
+                            st.currentGainDb = Number(calcResult.currentGainDb);
+                            st.gainReductionDb = Number.isFinite(Number(calcResult.gainReductionDb))
+                                ? Number(calcResult.gainReductionDb)
+                                : st.currentGainDb;
+                            st.envDb = Number.isFinite(Number(calcResult.envDb))
+                                ? Number(calcResult.envDb)
+                                : st.envDb;
+                        }
+                        const nowTriggered = Math.abs(st.currentGainDb) >= 0.2;
+                        if (nowTriggered && !st.triggered) {
+                            st.triggerCount = Math.max(0, Math.round(Number(st.triggerCount) || 0)) + 1;
+                        }
+                        st.triggered = nowTriggered;
+                        if (root.needsUpdate(st.lastAppliedGainDb, st.currentGainDb, epsDb)) {
+                            root.smoothParam(dynamicEqPeakL?.gain, st.currentGainDb, ctx, smoothDetectorMs);
+                            root.smoothParam(dynamicEqPeakR?.gain, st.currentGainDb, ctx, smoothDetectorMs);
+                            st.lastAppliedGainDb = st.currentGainDb;
+                        }
+                    });
+                    const truePeakTimer = root.wrapPerfLoop(perfState, 'truepeak', truePeakIntervalMs, function () {
+                        const st = media.__aurivoDaliGraph?.truePeakState || truePeakState;
+                        const kernelState = media.__aurivoDaliGraph?.truePeakKernelState || truePeakKernelState || {};
+                        const cg = media.__aurivoDaliGraph?.clipGuardState || clipGuardState;
+                        const tpCfg = media.__aurivoDaliGraph?.cfg?.truepeak || {};
+                        st.enabled = !!tpCfg.enabled;
+                        st.ceilingDb = root.clamp(tpCfg.ceiling, -18, 0, -1.0);
+                        let peakDb = -96;
+                        try {
+                            truePeakMeterAnalyser.getByteTimeDomainData(truePeakBuffer);
+                            let peakAbs = 0;
+                            for (let i = 0; i < truePeakBuffer.length; i += 1) {
+                                const x = Math.abs((truePeakBuffer[i] - 128) / 128);
+                                if (x > peakAbs) peakAbs = x;
+                            }
+                            peakDb = 20 * Math.log10(Math.max(1e-6, peakAbs));
+                        } catch (_) {
+                            peakDb = -96;
+                        }
+                        const gr = Number(limiterComp?.reduction);
+                        let calcResult = null;
+                        if (kernelState?.mode === 'wasm' && typeof kernelState.wasmCompute === 'function') {
+                            try {
+                                calcResult = kernelState.wasmCompute({
+                                    enabled: st.enabled,
+                                    peakDb,
+                                    ceilingDb: st.ceilingDb,
+                                    holdL: st.holdL,
+                                    holdR: st.holdR,
+                                    clippingCount: st.clippingCount,
+                                    gainReduction: Number.isFinite(gr) ? gr : 0,
+                                    clipGuardEnabled: !!cg?.enabled,
+                                    clipGuardCeilingDb: cg?.ceilingDb,
+                                    clipGuardCurrentDb: cg?.currentGainDb,
+                                    clipGuardTargetDb: cg?.targetGainDb,
+                                    recoverMarginDb: cg?.recoverMarginDb,
+                                    stepMs: 40
+                                });
+                            } catch (_) {
+                                if (media.__aurivoDaliGraph) {
+                                    media.__aurivoDaliGraph.truePeakKernelState = {
+                                        ...(kernelState || {}),
+                                        mode: 'js',
+                                        reason: 'wasm-kernel-runtime-error',
+                                        wasmCompute: null,
+                                        resolvedAt: Date.now()
+                                    };
+                                }
+                                calcResult = null;
+                            }
+                        }
+                        if (!calcResult || !Number.isFinite(Number(calcResult.truePeakL))) {
+                            root.computeTruePeakJsStep(st, cg, peakDb, 40, Number.isFinite(gr) ? gr : 0);
+                        } else {
+                            st.truePeakL = Number(calcResult.truePeakL);
+                            st.truePeakR = Number(calcResult.truePeakR);
+                            st.holdL = Number(calcResult.holdL);
+                            st.holdR = Number(calcResult.holdR);
+                            st.clippingCount = Math.max(0, Math.round(Number(calcResult.clippingCount) || 0));
+                            st.gainReduction = Number(calcResult.gainReduction);
+                            cg.currentGainDb = Math.max(-12, Math.min(0, Number(calcResult.clipGuardCurrentDb)));
+                            cg.targetGainDb = Math.max(-12, Math.min(0, Number(calcResult.clipGuardTargetDb)));
+                        }
+                        if (root.needsUpdate(cg.lastAppliedGainDb, cg.currentGainDb, epsDb)) {
+                            root.smoothParam(clipGuardGain?.gain, root.dbToLinear(cg.currentGainDb), ctx, smoothDynamicsMs);
+                            cg.lastAppliedGainDb = cg.currentGainDb;
+                        }
+                    });
+                    media.__aurivoDaliGraph = {
+                        ctx,
+                        media,
+                        source: graph.source,
+                        analyser,
+                        configKey,
+                        daliStageStats: { ...(root.__daliOptimizeStats || {}) },
+                        daliNodeCount: Math.max(0, Number(daliChain?.stageCount) || 0),
+                        inputGain,
+                        daliOutput,
+                        daliNodes: Array.isArray(daliChain?.nodes) ? daliChain.nodes : [],
+                        daliBandNodes: Array.isArray(daliChain?.bandNodes) ? daliChain.bandNodes : [],
+                        daliCompressorNodes: Array.isArray(daliChain?.compressorNodes) ? daliChain.compressorNodes : [],
+                        bass,
+                        mid,
+                        treble,
+                        peqNodes,
+                        peqState,
+                        peqKernelState,
+                        compressorState,
+                        compressorKernelState,
+                        limiterState,
+                        limiterKernelState,
+                        bassBoostInputGain,
+                        bassBoostDryGain,
+                        bassBoostFilter,
+                        bassBoostSubPeak,
+                        bassBoostPresencePeak,
+                        bassBoostHarmonicLowpass,
+                        bassBoostHarmonicsDrive,
+                        bassBoostSaturator,
+                        bassBoostWetGain,
+                        bassBoostSum,
+                        bassBoostBodyDip,
+                        bassBoostOutputTrim,
+                        bassBoostState,
+                        bassBoostKernelState,
+                        exciterInputGain,
+                        exciterDryGain,
+                        exciterHighpass,
+                        exciterDrive,
+                        exciterShaper,
+                        exciterTone,
+                        exciterWetGain,
+                        exciterSum,
+                        exciterState,
+                        exciterKernelState,
+                        echoState,
+                        echoKernelState,
+                        softEchoState,
+                        softEchoKernelState,
+                        reverbState,
+                        reverbKernelState,
+                        deEsserInputGain,
+                        deEsserLowpass,
+                        deEsserHighpass,
+                        deEsserHighGain,
+                        deEsserOutputGain,
+                        deEsserDetector,
+                        deEsserState,
+                        deEsserKernelState,
+                        deEsserTimer,
+                        dynamicEqState,
+                        dynamicEqKernelState,
+                        dynamicEqTimer,
+                        autoGainState,
+                        autoGainKernelState,
+                        autoGainTimer,
+                        truePeakState,
+                        truePeakKernelState,
+                        truePeakTimer,
+                        tapeSatState,
+                        tapeSatKernelState,
+                        bitDitherState,
+                        bitDitherKernelState,
+                        stereoWidenerState,
+                        stereoWidenerKernelState,
+                        crossfeedState,
+                        crossfeedKernelState,
+                        bassMonoState,
+                        bassMonoKernelState,
+                        surroundState,
+                        surroundKernelState,
+                        echoInputGain,
+                        echoDryGain,
+                        echoDelay,
+                        echoHighCut,
+                        echoFeedbackGain,
+                        echoWetGain,
+                        echoSum,
+                        softEchoInputGain,
+                        softEchoDryGain,
+                        softEchoSplit,
+                        softEchoDelayL,
+                        softEchoDelayR,
+                        softEchoHighCutL,
+                        softEchoHighCutR,
+                        softEchoFeedbackL,
+                        softEchoFeedbackR,
+                        softEchoWetGainL,
+                        softEchoWetGainR,
+                        softEchoMerge,
+                        reverbInputGain,
+                        reverbDryGain,
+                        reverbDelay,
+                        reverbLowpass,
+                        reverbFeedbackGain,
+                        reverbWetGain,
+                        reverbSum,
+                        stereoSplit,
+                        stereoMidL,
+                        stereoMidR,
+                        stereoMidSum,
+                        stereoSideL,
+                        stereoSideRInv,
+                        stereoSideSum,
+                        stereoSideWidth,
+                        stereoMidToLeft,
+                        stereoMidToRight,
+                        stereoSideToLeft,
+                        stereoSideToRight,
+                        stereoMerge,
+                        stereoPostSplit,
+                        stereoLowL,
+                        stereoLowR,
+                        stereoHighL,
+                        stereoHighR,
+                        stereoMonoLowSum,
+                        stereoMonoToLeft,
+                        stereoMonoToRight,
+                        stereoFinalLeft,
+                        stereoFinalRight,
+                        stereoFinalMerge,
+                        crossfeedSplit,
+                        crossfeedDryL,
+                        crossfeedDryR,
+                        crossfeedDelayL,
+                        crossfeedDelayR,
+                        crossfeedHPFL,
+                        crossfeedHPFR,
+                        crossfeedLPFL,
+                        crossfeedLPFR,
+                        crossfeedGainToL,
+                        crossfeedGainToR,
+                        crossfeedMerge,
+                        surroundSplit,
+                        surroundDryL,
+                        surroundDryR,
+                        surroundCenterSum,
+                        surroundCenterL,
+                        surroundCenterR,
+                        surroundSideLPos,
+                        surroundSideLNeg,
+                        surroundSideLSum,
+                        surroundSideRPos,
+                        surroundSideRNeg,
+                        surroundSideRSum,
+                        surroundRearDelayL,
+                        surroundRearDelayR,
+                        surroundRearLPFL,
+                        surroundRearLPFR,
+                        surroundRearGainL,
+                        surroundRearGainR,
+                        surroundLfeLPFL,
+                        surroundLfeLPFR,
+                        surroundLfeGainL,
+                        surroundLfeGainR,
+                        surroundMerge,
+                        bassMonoSplit,
+                        bassMonoDryL,
+                        bassMonoDryR,
+                        bassMonoLowL,
+                        bassMonoLowR,
+                        bassMonoLowSum,
+                        bassMonoLowToL,
+                        bassMonoLowToR,
+                        bassMonoHighL,
+                        bassMonoHighR,
+                        bassMonoHighMidL,
+                        bassMonoHighMidR,
+                        bassMonoHighMidSum,
+                        bassMonoHighSideL,
+                        bassMonoHighSideRInv,
+                        bassMonoHighSideSum,
+                        bassMonoHighSideWidth,
+                        bassMonoHighMidToL,
+                        bassMonoHighMidToR,
+                        bassMonoHighSideToL,
+                        bassMonoHighSideToR,
+                        bassMonoMerge,
+                        dynamicEqSplit,
+                        dynamicEqPeakL,
+                        dynamicEqPeakR,
+                        dynamicEqMerge,
+                        dynamicEqDetectBandL,
+                        dynamicEqDetectBandR,
+                        dynamicEqDetectSum,
+                        dynamicEqDetector,
+                        tapeSatInputGain,
+                        tapeSatDryGain,
+                        tapeSatTone,
+                        tapeSatHissShelf,
+                        tapeSatDrive,
+                        tapeSatShaper,
+                        tapeSatWetGain,
+                        tapeSatOutputTrim,
+                        tapeSatSum,
+                        bitDitherInputGain,
+                        bitDitherDryGain,
+                        bitDitherShaper,
+                        bitDitherPostLPF,
+                        bitDitherWetGain,
+                        bitDitherOutputTrim,
+                        bitDitherSum,
+                        noiseGateDetector,
+                        noiseGateGain,
+                        noiseGateState,
+                        noiseGateKernelState,
+                        noiseGateTimer,
+                        compressorMakeupGain,
+                        autoGainNode,
+                        limiterInputGain,
+                        limiterComp,
+                        clipGuardGain,
+                        truePeakMeterAnalyser,
+                        pan,
+                        clipGuardState,
+                        autoCompDb: 0,
+                        perfState
+                    };
+                    root.applyPostCfg(media.__aurivoDaliGraph, cfg);
+                    root.recordPerfBuild(perfState, root.perfNow() - buildStartedAt, true);
+                    return media.__aurivoDaliGraph;
+                };
+                const mediaElements = Array.from(document.querySelectorAll('video, audio'));
+                let connected = 0;
+                for (const m of mediaElements) {
+                    const graph = await root.ensureGraph(m);
+                    if (!graph) continue;
+                    connected += 1;
+                    root.applyPostCfg(graph, cfg);
+                }
+                return { ok: true, connected, mode: 'dali-web-generated-eq32' };
+            } catch (err) {
+                return { ok: false, error: String(err && err.message ? err.message : err) };
+            }
+        })();
+    `;
+}
+
+async function applyWebDaliEngineNow(reason = 'runtime') {
+    if (!elements.webView || typeof elements.webView.executeJavaScript !== 'function') return false;
+    if (!(state.currentPage === 'web' || state.activeMedia === 'web')) return false;
+    const currentUrl = getWebViewUrlSafe();
+    if (!shouldInjectWebSync(currentUrl)) return false;
+    if (webDaliApplyInFlight) return false;
+
+    webDaliApplyInFlight = true;
+    try {
+        const payload = getWebDaliEq32Settings();
+        const presetStages = await loadWebDaliPresetStages();
+        let bassPresetStages = [];
+        try {
+            bassPresetStages = await loadWebDaliBassPresetStages();
+        } catch (bassLoadError) {
+            console.warn('[DALI WEB] bass preset fallback:', bassLoadError?.message || bassLoadError);
+            bassPresetStages = [];
+        }
+        const skipCacheReasons = new Set(['dom-ready', 'navigate', 'media-started']);
+        const applySignature = JSON.stringify({
+            scope: 'web',
+            url: currentUrl,
+            payload,
+            presetLen: Array.isArray(presetStages) ? presetStages.length : 0,
+            bassPresetLen: Array.isArray(bassPresetStages) ? bassPresetStages.length : 0
+        });
+        if (!skipCacheReasons.has(String(reason || '').toLowerCase()) && applySignature === webDaliLastApplySignature) {
+            if (AURIVO_VERBOSE_LOGS) {
+                console.log('[DALI WEB] apply skipped (unchanged):', reason);
+            }
+            return true;
+        }
+        const result = await elements.webView.executeJavaScript(createWebDaliInjectScript(payload, presetStages, bassPresetStages), true);
+        if (AURIVO_VERBOSE_LOGS) {
+            console.log('[DALI WEB] apply:', reason, result);
+        }
+        const ok = !!(result && result.ok);
+        if (ok) webDaliLastApplySignature = applySignature;
+        return ok;
+    } catch (error) {
+        console.warn('[DALI WEB] apply error:', error?.message || error);
+        return false;
+    } finally {
+        webDaliApplyInFlight = false;
+    }
+}
+
+async function getWebDaliSpectrumBands(numBands = 128) {
+    if (!elements.webView || typeof elements.webView.executeJavaScript !== 'function') return [];
+    const currentUrl = getWebViewUrlSafe();
+    if (!shouldInjectWebSync(currentUrl)) return [];
+    const safeBands = Math.max(64, Math.min(512, Number(numBands) || 128));
+    try {
+        const result = await elements.webView.executeJavaScript(`
+            (function () {
+                try {
+                    const root = window.__AURIVO_DALI_WEB__;
+                    if (!root || typeof root.getSpectrumSnapshot !== 'function') return [];
+                    return root.getSpectrumSnapshot(${safeBands});
+                } catch (_) {
+                    return [];
+                }
+            })();
+        `, true);
+        return Array.isArray(result) ? result : [];
+    } catch {
+        return [];
+    }
+}
+
+async function getWebDaliNoiseGateStatus() {
+    if (!elements.webView || typeof elements.webView.executeJavaScript !== 'function') {
+        return { ok: false, enabled: false, open: true, gain: 1, envDb: -120, thresholdDb: -40 };
+    }
+    const currentUrl = getWebViewUrlSafe();
+    if (!shouldInjectWebSync(currentUrl)) {
+        return { ok: false, enabled: false, open: true, gain: 1, envDb: -120, thresholdDb: -40 };
+    }
+    try {
+        const result = await elements.webView.executeJavaScript(`
+            (function () {
+                try {
+                    const root = window.__AURIVO_DALI_WEB__;
+                    if (!root || typeof root.getNoiseGateStatus !== 'function') {
+                        return { ok: false, enabled: false, open: true, gain: 1, envDb: -120, thresholdDb: -40 };
+                    }
+                    return root.getNoiseGateStatus();
+                } catch (_) {
+                    return { ok: false, enabled: false, open: true, gain: 1, envDb: -120, thresholdDb: -40 };
+                }
+            })();
+        `, true);
+        return result && typeof result === 'object'
+            ? result
+            : { ok: false, enabled: false, open: true, gain: 1, envDb: -120, thresholdDb: -40 };
+    } catch {
+        return { ok: false, enabled: false, open: true, gain: 1, envDb: -120, thresholdDb: -40 };
+    }
+}
+
+async function getWebDaliTruePeakStatus() {
+    if (!elements.webView || typeof elements.webView.executeJavaScript !== 'function') {
+        return { ok: false, truePeakL: -96, truePeakR: -96, holdL: -96, holdR: -96, clippingCount: 0, gainReduction: 0 };
+    }
+    const currentUrl = getWebViewUrlSafe();
+    if (!shouldInjectWebSync(currentUrl)) {
+        return { ok: false, truePeakL: -96, truePeakR: -96, holdL: -96, holdR: -96, clippingCount: 0, gainReduction: 0 };
+    }
+    try {
+        const result = await elements.webView.executeJavaScript(`
+            (function () {
+                try {
+                    const root = window.__AURIVO_DALI_WEB__;
+                    if (!root || typeof root.getTruePeakStatus !== 'function') {
+                        return { ok: false, truePeakL: -96, truePeakR: -96, holdL: -96, holdR: -96, clippingCount: 0, gainReduction: 0 };
+                    }
+                    return root.getTruePeakStatus();
+                } catch (_) {
+                    return { ok: false, truePeakL: -96, truePeakR: -96, holdL: -96, holdR: -96, clippingCount: 0, gainReduction: 0 };
+                }
+            })();
+        `, true);
+        return result && typeof result === 'object'
+            ? result
+            : { ok: false, truePeakL: -96, truePeakR: -96, holdL: -96, holdR: -96, clippingCount: 0, gainReduction: 0 };
+    } catch {
+        return { ok: false, truePeakL: -96, truePeakR: -96, holdL: -96, holdR: -96, clippingCount: 0, gainReduction: 0 };
+    }
+}
+
+async function getWebDaliDynamicEqStatus() {
+    if (!elements.webView || typeof elements.webView.executeJavaScript !== 'function') {
+        return { ok: false, enabled: false, currentGainDb: 0, gainReductionDb: 0, envDb: -120, thresholdDb: -40, triggered: false };
+    }
+    const currentUrl = getWebViewUrlSafe();
+    if (!shouldInjectWebSync(currentUrl)) {
+        return { ok: false, enabled: false, currentGainDb: 0, gainReductionDb: 0, envDb: -120, thresholdDb: -40, triggered: false };
+    }
+    try {
+        const result = await elements.webView.executeJavaScript(`
+            (function () {
+                try {
+                    const root = window.__AURIVO_DALI_WEB__;
+                    if (!root || typeof root.getDynamicEqStatus !== 'function') {
+                        return { ok: false, enabled: false, currentGainDb: 0, gainReductionDb: 0, envDb: -120, thresholdDb: -40, triggered: false };
+                    }
+                    return root.getDynamicEqStatus();
+                } catch (_) {
+                    return { ok: false, enabled: false, currentGainDb: 0, gainReductionDb: 0, envDb: -120, thresholdDb: -40, triggered: false };
+                }
+            })();
+        `, true);
+        return (result && typeof result === 'object')
+            ? result
+            : { ok: false, enabled: false, currentGainDb: 0, gainReductionDb: 0, envDb: -120, thresholdDb: -40, triggered: false };
+    } catch {
+        return { ok: false, enabled: false, currentGainDb: 0, gainReductionDb: 0, envDb: -120, thresholdDb: -40, triggered: false };
+    }
+}
+
+async function getWebDaliPerfStatus() {
+    if (!elements.webView || typeof elements.webView.executeJavaScript !== 'function') {
+        return {
+            ok: false,
+            loops: {},
+            build: { count: 0, lastMs: 0, avgMs: 0, maxMs: 0, rebuildCount: 0 },
+            apply: { count: 0, lastMs: 0, avgMs: 0, maxMs: 0 },
+            totalGlitches: 0,
+            uptimeSec: 0
+        };
+    }
+    const currentUrl = getWebViewUrlSafe();
+    if (!shouldInjectWebSync(currentUrl)) {
+        return {
+            ok: false,
+            loops: {},
+            build: { count: 0, lastMs: 0, avgMs: 0, maxMs: 0, rebuildCount: 0 },
+            apply: { count: 0, lastMs: 0, avgMs: 0, maxMs: 0 },
+            totalGlitches: 0,
+            uptimeSec: 0
+        };
+    }
+    try {
+        const result = await elements.webView.executeJavaScript(`
+            (function () {
+                try {
+                    const root = window.__AURIVO_DALI_WEB__;
+                    if (!root || typeof root.getPerfStatus !== 'function') {
+                        return {
+                            ok: false,
+                            loops: {},
+                            build: { count: 0, lastMs: 0, avgMs: 0, maxMs: 0, rebuildCount: 0 },
+                            apply: { count: 0, lastMs: 0, avgMs: 0, maxMs: 0 },
+                            totalGlitches: 0,
+                            uptimeSec: 0
+                        };
+                    }
+                    return root.getPerfStatus();
+                } catch (_) {
+                    return {
+                        ok: false,
+                        loops: {},
+                        build: { count: 0, lastMs: 0, avgMs: 0, maxMs: 0, rebuildCount: 0 },
+                        apply: { count: 0, lastMs: 0, avgMs: 0, maxMs: 0 },
+                        totalGlitches: 0,
+                        uptimeSec: 0
+                    };
+                }
+            })();
+        `, true);
+        return (result && typeof result === 'object')
+            ? result
+            : {
+                ok: false,
+                loops: {},
+                build: { count: 0, lastMs: 0, avgMs: 0, maxMs: 0, rebuildCount: 0 },
+                apply: { count: 0, lastMs: 0, avgMs: 0, maxMs: 0 },
+                totalGlitches: 0,
+                uptimeSec: 0
+            };
+    } catch {
+        return {
+            ok: false,
+            loops: {},
+            build: { count: 0, lastMs: 0, avgMs: 0, maxMs: 0, rebuildCount: 0 },
+            apply: { count: 0, lastMs: 0, avgMs: 0, maxMs: 0 },
+            totalGlitches: 0,
+            uptimeSec: 0
+        };
+    }
+}
+
+try {
+    window.__aurivoGetWebSpectrum = getWebDaliSpectrumBands;
+    window.__aurivoGetWebNoiseGateStatus = getWebDaliNoiseGateStatus;
+    window.__aurivoGetWebTruePeakStatus = getWebDaliTruePeakStatus;
+    window.__aurivoGetWebDynamicEqStatus = getWebDaliDynamicEqStatus;
+    window.__aurivoGetWebPerfStatus = getWebDaliPerfStatus;
+} catch {
+    // ignore
+}
+
+function scheduleApplyWebDaliEngine(reason = 'runtime', delayMs = 180) {
+    if (webDaliApplyTimer) clearTimeout(webDaliApplyTimer);
+    webDaliApplyTimer = setTimeout(() => {
+        applyWebDaliEngineNow(reason).catch(() => {});
+    }, Math.max(0, Number(delayMs) || 0));
 }
 
 function updatePulseQuickBtnUi() {
@@ -5206,22 +11628,32 @@ function hardStopWebPlayback() {
     }
 }
 
-function showWebLoadingOverlay(message = '') {
+function showWebLoadingOverlay() {
     if (!elements.webLoadingOverlay) return;
-    const textEl = elements.webLoadingOverlay.querySelector('.web-loading-text');
-    if (textEl) {
-        textEl.textContent = message || 'uDaliBlock on kontrolden geciriyor...';
+    if (webLoadRuntime.overlayShowTimer) {
+        clearTimeout(webLoadRuntime.overlayShowTimer);
+        webLoadRuntime.overlayShowTimer = null;
     }
-    elements.webLoadingOverlay.classList.remove('hidden');
     if (webLoadRuntime.overlayTimer) {
         clearTimeout(webLoadRuntime.overlayTimer);
     }
+    // Kisa yuklemelerde flicker/black-screen hissini engellemek icin gecikmeli ac.
+    if (elements.webLoadingOverlay.classList.contains('hidden')) {
+        webLoadRuntime.overlayShowTimer = setTimeout(() => {
+            elements.webLoadingOverlay.classList.remove('hidden');
+            webLoadRuntime.overlayShowTimer = null;
+        }, 320);
+    }
     webLoadRuntime.overlayTimer = setTimeout(() => {
         hideWebLoadingOverlay();
-    }, 12000);
+    }, 7000);
 }
 
 function hideWebLoadingOverlay() {
+    if (webLoadRuntime.overlayShowTimer) {
+        clearTimeout(webLoadRuntime.overlayShowTimer);
+        webLoadRuntime.overlayShowTimer = null;
+    }
     if (webLoadRuntime.overlayTimer) {
         clearTimeout(webLoadRuntime.overlayTimer);
         webLoadRuntime.overlayTimer = null;
@@ -5332,10 +11764,55 @@ function detectPlatformFromUrl(raw) {
     return '';
 }
 
+function getYoutubeVideoIdFromUrl(raw) {
+    try {
+        const parsed = parseHttpUrl(raw);
+        if (!parsed) return '';
+        const host = String(parsed.hostname || '').toLowerCase();
+        if (host === 'youtu.be') {
+            return String(parsed.pathname || '').split('/').filter(Boolean)[0] || '';
+        }
+        const v = String(parsed.searchParams.get('v') || '').trim();
+        if (v) return v;
+        const shorts = String(parsed.pathname || '').match(/\/shorts\/([a-zA-Z0-9_-]{6,})/);
+        if (shorts?.[1]) return shorts[1];
+    } catch {
+        // yoksay
+    }
+    return '';
+}
+
+function getWebCoverFallbackByUrl(raw) {
+    const parsed = parseHttpUrl(raw);
+    if (!parsed) return '';
+    const host = String(parsed.hostname || '').toLowerCase();
+    const isYoutube =
+        host === 'youtu.be' ||
+        host === 'youtube.com' ||
+        host === 'www.youtube.com' ||
+        host === 'm.youtube.com' ||
+        host.endsWith('.youtube.com');
+    if (!isYoutube) return '';
+    const videoId = getYoutubeVideoIdFromUrl(parsed.toString());
+    if (!videoId) return '';
+    return `https://i.ytimg.com/vi/${encodeURIComponent(videoId)}/hqdefault.jpg`;
+}
+
 function syncActivePlatformButtonByUrl(rawUrl) {
     if (!elements.platformBtns || !elements.platformBtns.length) return;
     const detected = detectPlatformFromUrl(rawUrl);
     if (!detected) return;
+    const activeBefore = document.querySelector('.platform-btn.active');
+    const activeBeforeKey = String(activeBefore?.dataset?.platform || '').toLowerCase();
+    // Aynı platform içinde (örn. YouTube video <-> YouTube ana sayfa) gezinirken
+    // platform kartı/kapak art tekrar güncellenmesin.
+    if (activeBeforeKey && activeBeforeKey === detected) {
+        const quickTitle = String(state.webTitle || state.webPendingTitle || '').trim();
+        if (quickTitle && elements.nowPlayingLabel) {
+            elements.nowPlayingLabel.textContent = `${uiT('nowPlaying.prefix', 'Now Playing')}: ${quickTitle}`;
+        }
+        return;
+    }
     let matchedBtn = null;
     elements.platformBtns.forEach((btn) => {
         const key = String(btn.dataset.platform || '').toLowerCase();
@@ -5346,7 +11823,8 @@ function syncActivePlatformButtonByUrl(rawUrl) {
     if (matchedBtn) {
         const platformName = matchedBtn.querySelector('span')?.textContent?.trim();
         if (platformName && elements.nowPlayingLabel) {
-            elements.nowPlayingLabel.textContent = `${uiT('nowPlaying.prefix', 'Now Playing')}: ${platformName}`;
+            const quickTitle = String(state.webTitle || state.webPendingTitle || '').trim();
+            elements.nowPlayingLabel.textContent = `${uiT('nowPlaying.prefix', 'Now Playing')}: ${quickTitle || platformName}`;
         }
         updatePlatformCover(detected);
     }
@@ -5379,9 +11857,9 @@ function getEmbeddedDesktopUserAgent() {
 function shouldInjectWebSync(url) {
     const parsed = parseHttpUrl(url);
     if (!parsed) return false;
-    const host = String(parsed.hostname || '').toLowerCase();
-    if (WEB_SYNC_ALLOWED_HOSTS.has(host)) return true;
-    return host.endsWith('.youtube.com');
+    // Web ses efektlerini yalnızca allowlist ile sınırlama:
+    // Geçerli http/https URL olan tüm platformlarda DALI zinciri uygulanabilsin.
+    return true;
 }
 
 async function getSecurityStateSafe() {
@@ -5398,6 +11876,10 @@ async function getSecurityStateSafe() {
 
 function isStrictVpnBlockEnabled() {
     return !!state.settings?.security?.strictVpnBlock;
+}
+
+function isWebAllowlistEnforced() {
+    return !!state.settings?.security?.enforceAllowlist;
 }
 
 function updateAdblockModeUI() {
@@ -5588,7 +12070,8 @@ async function updateSecurityUIAsync() {
         parseHttpUrl,
         getSecurityState: getSecurityStateSafe,
         translate: uiT,
-        strictVpnBlock: !!state.settings?.security?.strictVpnBlock
+        strictVpnBlock: !!state.settings?.security?.strictVpnBlock,
+        enforceAllowlist: !!state.settings?.security?.enforceAllowlist
     });
 }
 
@@ -5613,6 +12096,18 @@ function setupSecurityUI() {
                 state.settings.security = {};
             }
             state.settings.security.strictVpnBlock = !!elements.securityStrictVpnBlock.checked;
+            await saveSettings();
+            updateSecurityUI();
+        });
+    }
+
+    if (elements.securityEnforceAllowlist) {
+        elements.securityEnforceAllowlist.addEventListener('change', async () => {
+            if (!state.settings) state.settings = {};
+            if (!state.settings.security || typeof state.settings.security !== 'object') {
+                state.settings.security = {};
+            }
+            state.settings.security.enforceAllowlist = !!elements.securityEnforceAllowlist.checked;
             await saveSettings();
             updateSecurityUI();
         });
@@ -5691,6 +12186,60 @@ function setupSecurityUI() {
 // ============================================
 // SİSTEM TEPSİSİ MEDYA KONTROLÜ
 // ============================================
+function executeMediaControlAction(action) {
+    switch (action) {
+        case 'play':
+            if (!state.isPlaying) togglePlayPause();
+            break;
+        case 'pause':
+            if (state.isPlaying) togglePlayPause();
+            break;
+        case 'play-pause':
+            togglePlayPause();
+            break;
+        case 'stop':
+            if (state.activeMedia === 'video') {
+                stopVideo();
+            } else if (state.activeMedia === 'web') {
+                stopWeb();
+            } else {
+                stopAudioWithPlaybackFade();
+            }
+            state.isPlaying = false;
+            updatePlayPauseIcon(false);
+            break;
+        case 'previous':
+            if (state.activeMedia === 'video') {
+                if (state.videoFiles.length > 1 && state.currentVideoIndex > 0) {
+                    playPreviousVideo();
+                }
+            } else if (state.activeMedia === 'audio' || state.activeMedia === 'web') {
+                playPreviousWithCrossfade();
+            }
+            break;
+        case 'next':
+            if (state.activeMedia === 'video') {
+                if (state.videoFiles.length > 1 && state.currentVideoIndex >= 0 && state.currentVideoIndex < state.videoFiles.length - 1) {
+                    playNextVideo();
+                }
+            } else if (state.activeMedia === 'audio' || state.activeMedia === 'web') {
+                playNextWithCrossfade();
+            }
+            break;
+        case 'mute-toggle':
+            toggleMute();
+            break;
+        case 'stop-after-current':
+            state.stopAfterCurrent = !state.stopAfterCurrent;
+            console.log('Stop after current:', state.stopAfterCurrent);
+            break;
+        case 'like':
+            // TODO: Beğen özelliği (favorilere ekle/çıkar)
+            console.log('Like feature not implemented yet');
+            break;
+    }
+}
+
 function setupSystemTrayControl() {
     if (!window.aurivo || !window.aurivo.onMediaControl) {
         console.warn('System tray API yok');
@@ -5700,59 +12249,7 @@ function setupSystemTrayControl() {
     // Ana süreçten gelen medya kontrol komutlarını dinle
     window.aurivo.onMediaControl((action) => {
         console.log('System tray media control:', action);
-
-        switch (action) {
-            case 'play':
-                if (!state.isPlaying) togglePlayPause();
-                break;
-            case 'pause':
-                if (state.isPlaying) togglePlayPause();
-                break;
-            case 'play-pause':
-                togglePlayPause();
-                break;
-            case 'stop':
-                if (state.activeMedia === 'video') {
-                    stopVideo();
-                } else if (state.activeMedia === 'web') {
-                    stopWeb();
-                } else {
-                    stopAudioWithPlaybackFade();
-                }
-                state.isPlaying = false;
-                updatePlayPauseIcon(false);
-                break;
-            case 'previous':
-                if (state.activeMedia === 'video') {
-                    if (state.videoFiles.length > 1 && state.currentVideoIndex > 0) {
-                        playPreviousVideo();
-                    }
-                } else if (state.activeMedia === 'audio' || state.activeMedia === 'web') {
-                    playPreviousWithCrossfade();
-                }
-                break;
-            case 'next':
-                if (state.activeMedia === 'video') {
-                    if (state.videoFiles.length > 1 && state.currentVideoIndex >= 0 && state.currentVideoIndex < state.videoFiles.length - 1) {
-                        playNextVideo();
-                    }
-                } else if (state.activeMedia === 'audio' || state.activeMedia === 'web') {
-                    playNextWithCrossfade();
-                }
-                break;
-            case 'mute-toggle':
-                toggleMute();
-                break;
-            case 'stop-after-current':
-                state.stopAfterCurrent = !state.stopAfterCurrent;
-                console.log('Stop after current:', state.stopAfterCurrent);
-                updateTrayState(); // Tepsi menüsünü güncelle
-                break;
-            case 'like':
-                // TODO: Beğen özelliği (favorilere ekle/çıkar)
-                console.log('Like feature not implemented yet');
-                break;
-        }
+        executeMediaControlAction(action);
 
         // Her medya kontrolden sonra tepsi durumunu güncelle
         updateTrayState();
@@ -5866,7 +12363,7 @@ function updateTrayState() {
             ? (window.aurivo?.path?.basename?.(state.currentVideoPath) || String(state.currentVideoPath).split('/').pop() || 'Video')
             : 'Video';
     } else if (state.activeMedia === 'web') {
-        trackName = state.webTitle || elements.nowPlayingLabel?.textContent?.replace(`${uiT('nowPlaying.prefix', 'Now Playing')}: `, '') || 'Web';
+        trackName = state.webTitle || state.webPendingTitle || elements.nowPlayingLabel?.textContent?.replace(`${uiT('nowPlaying.prefix', 'Now Playing')}: `, '') || 'Web';
     } else {
         const currentTrack = state.playlist[state.currentIndex];
         trackName = currentTrack ? (currentTrack.title || currentTrack.name || uiT('nowPlaying.unknownTrack', 'Unknown Track')) : uiT('nowPlaying.none', 'No Track');
@@ -5903,7 +12400,7 @@ async function handleWebNavigation(event) {
         }
         // Geçiş anında URL kısa süreli boş olabilir; bu durumda sayfayı zorla sıfırlama.
         // Yalnızca gerçek http/https URL'leri allowlist ile doğrula.
-        if (currentUrl && currentUrl !== 'about:blank') {
+        if (isWebAllowlistEnforced() && currentUrl && currentUrl !== 'about:blank') {
             const parsedCurrent = parseHttpUrl(currentUrl);
             if (parsedCurrent && !isAllowedWebUrl(parsedCurrent.toString())) {
                 safeNavigateWebView('about:blank');
@@ -5916,6 +12413,10 @@ async function handleWebNavigation(event) {
 
     if (state.activeMedia === 'web') {
         syncActivePlatformButtonByUrl(currentUrl);
+        const fallbackCover = getWebCoverFallbackByUrl(currentUrl);
+        if (fallbackCover) {
+            updateCoverArt(fallbackCover, 'web');
+        }
         const key = getActiveAdblockCounterKey();
         if (key && key !== adblockRuntime.currentCounterKey) {
             adblockRuntime.currentCounterKey = key;
@@ -5928,10 +12429,12 @@ async function handleWebNavigation(event) {
         state.webPosition = 0;
         state.webDuration = 0;
         state.webTitle = '';
+        state.webPendingTitle = '';
         state.webArtist = '';
         state.webAlbum = '';
         // Metadata güncellemesi ile süreyi 0'a çek
         updateMPRISMetadata();
+        scheduleApplyWebDaliEngine('navigate', 220);
     }
 
     // Güvenlik sayfası URL farkındadır
@@ -6007,7 +12510,7 @@ async function updateMPRISMetadata() {
         canGoNext = state.playlist.length > 0 && state.currentIndex < state.playlist.length - 1;
         canGoPrevious = state.playlist.length > 0 && state.currentIndex > 0;
     } else if (state.activeMedia === 'web') {
-        title = state.webTitle || elements.nowPlayingLabel.textContent.replace(`${uiT('nowPlaying.prefix', 'Now Playing')}: `, '') || uiT('web.media', 'Web Media');
+        title = state.webTitle || state.webPendingTitle || elements.nowPlayingLabel.textContent.replace(`${uiT('nowPlaying.prefix', 'Now Playing')}: `, '') || uiT('web.media', 'Web Media');
         artist = state.webArtist || 'Aurivo Web';
         album = state.webAlbum || 'Online';
         trackId = `web_${state.webTrackId}`; // DÜZELTME: Daha güvenli DBus yolu için tire alt çizgiyle değiştirildi
@@ -6038,13 +12541,35 @@ async function updateMPRISMetadata() {
 function handleWebSync(data) {
     if (state.activeMedia !== 'web') return;
 
+    if (data.type === 'pending-title') {
+        const hint = String(data.title || '').trim();
+        if (hint) {
+            state.webPendingTitle = hint;
+            if (elements.nowPlayingLabel) {
+                elements.nowPlayingLabel.textContent = `${uiT('nowPlaying.prefix', 'Now Playing')}: ${hint}`;
+            }
+            updateTrayState();
+            updateMPRISMetadata();
+        }
+        return;
+    }
+
     if (data.type === 'metadata') {
         state.webTitle = data.title || '';
+        if (state.webTitle) state.webPendingTitle = '';
         state.webArtist = data.artist || '';
         state.webAlbum = data.album || '';
 
         if (state.webTitle) elements.nowPlayingLabel.textContent = `${uiT('nowPlaying.prefix', 'Now Playing')}: ${state.webTitle}`;
-        if (data.artwork) updateCoverArt(data.artwork, 'web');
+        const currentUrl = getWebViewUrlSafe();
+        const ytFallbackCover = getWebCoverFallbackByUrl(currentUrl);
+        // YouTube'da mediaSession artwork bazen reklam/yan akış görseli döndürebilir.
+        // Aktif video URL'sinden üretilen kapak önceliklidir.
+        if (ytFallbackCover) {
+            updateCoverArt(ytFallbackCover, 'web');
+        } else if (data.artwork) {
+            updateCoverArt(data.artwork, 'web');
+        }
 
         updateTrayState();
         updateMPRISMetadata();
@@ -6167,29 +12692,53 @@ function applyWebVolumeToUi(rawVolume, rawMuted) {
 
 function setupDragAndDrop() {
     const dropZone = elements.playlist;
-    const appDropZone = document.body;
+    const appDropTargets = [
+        window,
+        document,
+        document.documentElement,
+        document.body,
+        document.querySelector('.main-content'),
+        document.querySelector('.content-stack'),
+        elements.musicPage
+    ].filter(Boolean);
+
+    const addDropListener = (target, eventName, handler, options) => {
+        try {
+            target.addEventListener(eventName, handler, options);
+        } catch {
+            target.addEventListener(eventName, handler, !!(options && options.capture));
+        }
+    };
 
     // Varsayılan sürükleme davranışlarını engelle
     ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
-        dropZone.addEventListener(eventName, preventDefaults, false);
-        appDropZone.addEventListener(eventName, preventDefaults, false);
+        if (dropZone) dropZone.addEventListener(eventName, preventDefaults, false);
+        appDropTargets.forEach((target) => {
+            addDropListener(target, eventName, preventDefaults, { capture: true, passive: false });
+        });
     });
 
     // Öğe üzerine sürüklendiğinde bırakma alanını vurgula
     ['dragenter', 'dragover'].forEach(eventName => {
-        dropZone.addEventListener(eventName, () => {
-            dropZone.classList.add('drag-over');
-        }, false);
+        if (dropZone) {
+            dropZone.addEventListener(eventName, () => {
+                dropZone.classList.add('drag-over');
+            }, false);
+        }
     });
 
     ['dragleave', 'drop'].forEach(eventName => {
-        dropZone.addEventListener(eventName, () => {
-            dropZone.classList.remove('drag-over');
-        }, false);
+        if (dropZone) {
+            dropZone.addEventListener(eventName, () => {
+                dropZone.classList.remove('drag-over');
+            }, false);
+        }
     });
 
-    // Bırakılan dosyaları tek noktadan yakala; çift tetiklenmeyi önle
-    appDropZone.addEventListener('drop', handleFileDrop, false);
+    // Bırakılan dosyaları uygulama genelinde yakala (orta alan dahil)
+    appDropTargets.forEach((target) => {
+        addDropListener(target, 'drop', handleFileDrop, { capture: true, passive: false });
+    });
 }
 
 // Ağaç öğesi sürükleme başlangıcı
@@ -7977,7 +14526,7 @@ async function handlePlatformClick(btn) {
                 safeNotify(uiT('securityPage.notify.vpnWarning', 'VPN algılandı. Güvenlik için yalnızca izinli platformlar açılacaktır.'), 'info');
             }
         }
-        if (!isAllowedWebUrl(url)) {
+        if (isWebAllowlistEnforced() && !isAllowedWebUrl(url)) {
             safeNotify(uiT('securityPage.notify.urlBlocked', 'Bu adres güvenlik politikası nedeniyle engellendi.'), 'error');
             return;
         }
@@ -7990,6 +14539,7 @@ async function handlePlatformClick(btn) {
         stopVideo();
         state.activeMedia = 'web';
         state.webTitle = '';
+        state.webPendingTitle = '';
         state.webArtist = '';
         state.webAlbum = '';
 
@@ -11282,16 +17832,47 @@ function clearPlaylistAll() {
 }
 
 async function handleFileDrop(e) {
+    if (handledExternalDropEvents.has(e)) return;
+    handledExternalDropEvents.add(e);
+
     e.preventDefault();
     e.stopPropagation();
     const dropped = [];
+
+    const pushDroppedFile = (pathValue, nameValue = '') => {
+        const safePath = String(pathValue || '').trim();
+        if (!safePath) return;
+        const safeName = String(nameValue || '').trim()
+            || window.aurivo?.path?.basename?.(safePath)
+            || safePath.split(/[\\/]/).pop()
+            || '';
+        dropped.push({ path: safePath, name: safeName });
+    };
+
+    const parseUriListToPaths = (raw) => {
+        const lines = String(raw || '')
+            .split(/\r?\n/)
+            .map((line) => line.trim())
+            .filter((line) => line && !line.startsWith('#'));
+        const paths = [];
+        lines.forEach((line) => {
+            if (!line.startsWith('file://')) return;
+            try {
+                const url = new URL(line);
+                paths.push(decodeURIComponent(url.pathname || ''));
+            } catch {
+                // yoksay
+            }
+        });
+        return paths;
+    };
 
     // Önce Aurivo internal sürüklemesini kontrol et (file tree'den)
     const aurivoData = e.dataTransfer.getData('text/aurivo-files');
     if (aurivoData) {
         try {
             const files = JSON.parse(aurivoData);
-            files.forEach(file => dropped.push({ path: file.path, name: file.name }));
+            files.forEach(file => pushDroppedFile(file?.path, file?.name));
         } catch (err) {
             console.error('Aurivo dosya verisi işlenemedi:', err);
         }
@@ -11300,11 +17881,32 @@ async function handleFileDrop(e) {
         const files = e.dataTransfer.files;
         for (let i = 0; i < files.length; i++) {
             const file = files[i];
-            dropped.push({ path: file.path, name: file.name });
+            const fallbackPath = window.aurivo?.path?.getPathForFile?.(file) || '';
+            pushDroppedFile(file?.path || fallbackPath, file?.name);
+        }
+
+        // Bazı Linux dosya yöneticileri path'i files yerine text/uri-list içinde verir.
+        if (!dropped.length) {
+            const uriList = e.dataTransfer.getData('text/uri-list');
+            const uriPaths = parseUriListToPaths(uriList);
+            uriPaths.forEach((filePath) => pushDroppedFile(filePath));
+        }
+
+        // Bazı ortamlarda yol text/plain olarak gelebilir.
+        if (!dropped.length) {
+            const plainText = String(e.dataTransfer.getData('text/plain') || '').trim();
+            const plainPaths = parseUriListToPaths(plainText);
+            if (plainPaths.length) {
+                plainPaths.forEach((filePath) => pushDroppedFile(filePath));
+            } else if (plainText && (/^\//.test(plainText) || /^[a-zA-Z]:[\\/]/.test(plainText))) {
+                pushDroppedFile(plainText);
+            }
         }
     }
 
-    const firstMedia = dropped.find(f => isAudioFile(f.name) || isVideoFile(f.name));
+    const firstMedia = dropped.find((f) => (
+        isAudioFile(f.name || f.path) || isVideoFile(f.name || f.path)
+    ));
     if (!firstMedia) return;
 
     // İmleçte "kopyala" yerine "taşı" davranışı gösterelim (gerçekte dosya kopyalanmaz).
@@ -12669,8 +19271,8 @@ function sendWebTransportCommand(command) {
                 }
 
                 // Fallback: media key
-                if (cmd === 'next') dispatchMediaKey('MediaTrackNext');
-                if (cmd === 'previous') dispatchMediaKey('MediaTrackPrevious');
+                if (cmd === 'next') dispatchMediaKey('MediaNextTrack');
+                if (cmd === 'previous') dispatchMediaKey('MediaPreviousTrack');
             } catch (e) {}
         })();
     `;
@@ -13287,8 +19889,19 @@ function loadSettingsToUI() {
     });
     updateSliderFxToggleStateUi();
     updateSfxLightsToggleStateUi();
+    if (elements.uiSfxPerfModeSelect) {
+        elements.uiSfxPerfModeSelect.value = String(state.settings?.appearance?.sfxPerfMode || 'auto').toLowerCase();
+    }
+    if (elements.uiSfxIconSizeSelect) {
+        const size = String(state.settings?.appearance?.sfxSidebarIconSize || 'medium').toLowerCase();
+        elements.uiSfxIconSizeSelect.value = ['compact', 'medium', 'large'].includes(size) ? size : 'medium';
+    }
     updateVisualModeUi();
     updateThemeFollowSystemUi();
+    updateAutoHardwareProfileUi();
+    detectHardwareProfile().then(renderHardwareProfileStatus).catch(() => {
+        renderHardwareProfileStatus(null);
+    });
     renderLibraryFolderSettings();
     updateLibraryMetadataStatusUi();
     if (elements.libraryPreferEmbeddedCover) elements.libraryPreferEmbeddedCover.checked = getCoverPreferenceState().preferEmbedded;
@@ -13340,6 +19953,7 @@ function loadSettingsToUI() {
 async function applySettings() {
     settingsWindowRuntime.saving = true;
     let result;
+    const prevAutoHardwareProfile = state.settings?.appearance?.autoHardwareProfile !== false;
     try {
         result = await window.AurivoSettingsShared?.applySettings?.({
             state,
@@ -13366,13 +19980,39 @@ async function applySettings() {
     if (!result) return;
 
     const { nextMode, prevMode } = result;
+    const nextAutoHardwareProfile = !!elements.uiAutoHardwareProfileToggle?.checked;
     if (!state.settings.appearance || typeof state.settings.appearance !== 'object') {
         state.settings.appearance = {};
     }
+    if (prevAutoHardwareProfile && !nextAutoHardwareProfile) {
+        // Kaydet'e basildigi anda UI'nin aninda dogru konuma oturmasini garanti et.
+        if (elements.sliderFxToggle) elements.sliderFxToggle.checked = true;
+        if (elements.sfxLightsToggle) elements.sfxLightsToggle.checked = true;
+        if (elements.uiVisualModeSelect) elements.uiVisualModeSelect.value = 'full';
+        if (elements.uiMotionProfileSelect) elements.uiMotionProfileSelect.value = 'fast';
+        if (elements.themeSelect) elements.themeSelect.value = 'aur-renk-efektleri';
+        if (elements.uiFollowSystemThemeToggle) {
+            elements.uiFollowSystemThemeToggle.disabled = false;
+            elements.uiFollowSystemThemeToggle.setAttribute('aria-disabled', 'false');
+        }
+        state.settings.appearance.visualMode = 'full';
+        state.settings.appearance.motionProfile = 'fast';
+        state.settings.appearance.theme = 'aur-renk-efektleri';
+        state.settings.appearance.uiFxEnabled = true;
+        state.settings.appearance.reduceMotion = false;
+    }
     // Save aninda toggle degeri kesin uygulanir.
     state.settings.appearance.sliderFxEnabled = getSliderFxToggleChecked();
+    state.settings.appearance.sfxLights = !!elements.sfxLightsToggle?.checked;
+    state.settings.appearance.sfxPerfMode = String(elements.uiSfxPerfModeSelect?.value || 'auto').toLowerCase();
+    state.settings.appearance.sfxSidebarIconSize = ['compact', 'medium', 'large'].includes(String(elements.uiSfxIconSizeSelect?.value || '').toLowerCase())
+        ? String(elements.uiSfxIconSizeSelect.value).toLowerCase()
+        : 'medium';
+    syncSfxIconSizeShadowStorage(state.settings.appearance.sfxSidebarIconSize);
     updateSliderFxToggleStateUi();
+    updateSfxLightsToggleStateUi();
     updateThemeFollowSystemUi();
+    updateAutoHardwareProfileUi();
     state.volume = Math.max(0, Math.min(100, Number(state.settings?.volume) || 40));
     if (elements.volumeSlider) elements.volumeSlider.value = state.volume;
     if (elements.volumeLabel) elements.volumeLabel.textContent = `${state.volume}%`;
@@ -13391,6 +20031,7 @@ async function applySettings() {
     applyAppearanceSettingsToRuntime();
     // Kaydet sonrası tema secici kilit/acik durumu aninda UI'ye yansisin.
     updateThemeFollowSystemUi();
+    updateAutoHardwareProfileUi();
     applySecuritySettingsToRuntime();
     await applyPlaybackVolumeLevelingToEngine();
     updateLibraryPerformanceStatusUi();
@@ -13496,12 +20137,20 @@ function applyAppearanceSettingsToRuntime(appearanceOverride = null) {
         ? appearanceOverride
         : (state.settings?.appearance || {});
     const visualMode = String(appearance.visualMode || 'full').trim().toLowerCase();
+    const motionProfile = normalizeMotionProfile(appearance.motionProfile || 'balanced');
     const theme = String(appearance.theme || 'aur-renk-efektleri').trim() || 'aur-renk-efektleri';
+    const sfxSidebarIconSize = ['compact', 'medium', 'large'].includes(String(appearance.sfxSidebarIconSize || '').toLowerCase())
+        ? String(appearance.sfxSidebarIconSize).toLowerCase()
+        : 'medium';
     const followSystemTheme = appearance.followSystemTheme === true;
     const systemPrefersDark = getSystemPrefersDark();
     document.documentElement.dataset.aurivoTheme = theme;
+    document.documentElement.dataset.aurivoMotionProfile = motionProfile;
+    document.documentElement.dataset.sfxIconSize = sfxSidebarIconSize;
     document.body?.setAttribute?.('data-aurivo-theme', theme);
+    document.body?.setAttribute?.('data-aurivo-motion-profile', motionProfile);
     document.body?.classList?.toggle('aurivo-system-light', followSystemTheme && !systemPrefersDark);
+    document.body?.classList?.toggle('aurivo-system-dark', followSystemTheme && systemPrefersDark);
     document.body?.classList?.toggle('aurivo-visual-balanced', visualMode === 'balanced');
     document.body?.classList?.toggle('aurivo-ui-fx-disabled', appearance.uiFxEnabled === false);
     document.body?.classList?.toggle('aurivo-slider-fx-disabled', appearance.sliderFxEnabled === false);
@@ -13523,19 +20172,53 @@ function syncSfxLightsShadowStorage(enabled) {
     }
 }
 
+function syncSfxIconSizeShadowStorage(size) {
+    try {
+        const normalized = ['compact', 'medium', 'large'].includes(String(size || '').toLowerCase())
+            ? String(size).toLowerCase()
+            : 'medium';
+        localStorage.setItem('aurivo_ui_sfx_icon_size', normalized);
+    } catch {
+        // ignore
+    }
+}
+
 function updateThemeFollowSystemUi() {
     const followSystemTheme = !!elements.uiFollowSystemThemeToggle?.checked;
     if (elements.themeSelect) {
-        elements.themeSelect.disabled = followSystemTheme;
-        elements.themeSelect.setAttribute('aria-disabled', followSystemTheme ? 'true' : 'false');
-        elements.themeSelect.style.pointerEvents = followSystemTheme ? 'none' : '';
-        elements.themeSelect.tabIndex = followSystemTheme ? -1 : 0;
-        if (followSystemTheme && document.activeElement === elements.themeSelect) {
-            elements.themeSelect.blur();
-        }
+        elements.themeSelect.disabled = false;
+        elements.themeSelect.setAttribute('aria-disabled', 'false');
+        elements.themeSelect.style.pointerEvents = '';
+        elements.themeSelect.tabIndex = 0;
     }
     if (elements.themeSystemHint) {
         elements.themeSystemHint.classList.toggle('hidden', !followSystemTheme);
+    }
+    if (elements.themeModeStatus) {
+        if (followSystemTheme) {
+            elements.themeModeStatus.textContent = 'Tema sistemden yonetiliyor.';
+            elements.themeModeStatus.classList.remove('hidden');
+        } else {
+            elements.themeModeStatus.classList.add('hidden');
+        }
+    }
+}
+
+function updateAutoHardwareProfileUi() {
+    const autoHardwareProfile = !!elements.uiAutoHardwareProfileToggle?.checked;
+    if (elements.uiVisualModeSelect) {
+        elements.uiVisualModeSelect.disabled = autoHardwareProfile;
+        elements.uiVisualModeSelect.setAttribute('aria-disabled', autoHardwareProfile ? 'true' : 'false');
+    }
+    if (elements.uiMotionProfileSelect) {
+        elements.uiMotionProfileSelect.disabled = autoHardwareProfile;
+        elements.uiMotionProfileSelect.setAttribute('aria-disabled', autoHardwareProfile ? 'true' : 'false');
+    }
+    if (elements.sliderFxToggle) {
+        elements.sliderFxToggle.disabled = autoHardwareProfile;
+    }
+    if (elements.sfxLightsToggle) {
+        elements.sfxLightsToggle.disabled = autoHardwareProfile;
     }
 }
 
@@ -13561,6 +20244,177 @@ function updateSliderFxToggleStateUi() {
     stateEl.classList.toggle('is-off', !isOn);
 }
 
+function normalizeHardwareTier(value) {
+    const tier = String(value || '').trim().toLowerCase();
+    if (tier === 'low' || tier === 'medium' || tier === 'high') return tier;
+    return 'medium';
+}
+
+function detectGpuTierHint(rendererName) {
+    const renderer = String(rendererName || '').trim().toLowerCase();
+    if (!renderer) return 'unknown';
+    if (
+        renderer.includes('swiftshader') ||
+        renderer.includes('llvmpipe') ||
+        renderer.includes('software') ||
+        renderer.includes('virtio')
+    ) {
+        return 'low';
+    }
+    if (
+        renderer.includes('intel') ||
+        renderer.includes('uhd') ||
+        renderer.includes('hd graphics') ||
+        renderer.includes('vega 3') ||
+        renderer.includes('vega 6') ||
+        renderer.includes('vega 8')
+    ) {
+        return 'medium';
+    }
+    return 'high';
+}
+
+async function detectHardwareProfile() {
+    if (cachedHardwareProfile) return cachedHardwareProfile;
+    let ramGiB = 0;
+    let cpuCores = Number(navigator.hardwareConcurrency) || 0;
+    let gpuRenderer = '';
+
+    try {
+        const hints = await window.aurivo?.system?.getHardwareHints?.();
+        ramGiB = Number(hints?.ramGiB) || 0;
+        cpuCores = Number(hints?.cpuCores) || cpuCores;
+        gpuRenderer = String(hints?.gpuRenderer || '').trim();
+    } catch {
+        // yoksay
+    }
+
+    if (!ramGiB) {
+        const memHint = Number(navigator.deviceMemory) || 0;
+        if (memHint > 0) ramGiB = memHint;
+    }
+
+    const gpuTier = detectGpuTierHint(gpuRenderer);
+    let score = 0;
+    if (ramGiB > 0) {
+        if (ramGiB <= 4) score -= 3;
+        else if (ramGiB <= 8) score -= 1;
+        else if (ramGiB >= 16) score += 1;
+    }
+    if (cpuCores > 0) {
+        if (cpuCores <= 4) score -= 2;
+        else if (cpuCores <= 6) score -= 1;
+        else if (cpuCores >= 12) score += 1;
+    }
+    if (gpuTier === 'low') score -= 3;
+    else if (gpuTier === 'medium') score -= 1;
+    else if (gpuTier === 'high') score += 1;
+
+    let tier = 'medium';
+    if (score <= -3) tier = 'low';
+    else if (score >= 2) tier = 'high';
+
+    cachedHardwareProfile = {
+        tier,
+        ramGiB: ramGiB > 0 ? Math.round(ramGiB) : 0,
+        cpuCores: cpuCores > 0 ? Math.round(cpuCores) : 0,
+        gpuRenderer
+    };
+    return cachedHardwareProfile;
+}
+
+function getAppearancePresetForHardwareTier(tierValue) {
+    const tier = normalizeHardwareTier(tierValue);
+    if (tier === 'low') {
+        return {
+            visualMode: 'minimal',
+            theme: 'performance-lite',
+            motionProfile: 'calm',
+            uiFxEnabled: false,
+            reduceMotion: true,
+            sliderFxEnabled: false,
+            sfxLights: false
+        };
+    }
+    if (tier === 'high') {
+        return {
+            visualMode: 'full',
+            theme: 'aur-renk-efektleri',
+            motionProfile: 'balanced',
+            uiFxEnabled: true,
+            reduceMotion: false,
+            sliderFxEnabled: false,
+            sfxLights: false
+        };
+    }
+    return {
+        visualMode: 'balanced',
+        theme: 'performance-balanced',
+        motionProfile: 'balanced',
+        uiFxEnabled: true,
+        reduceMotion: true,
+        sliderFxEnabled: false,
+        sfxLights: false
+    };
+}
+
+function applyFullPowerAppearancePresetToUi() {
+    if (elements.uiVisualModeSelect) elements.uiVisualModeSelect.value = 'full';
+    if (elements.uiMotionProfileSelect) elements.uiMotionProfileSelect.value = 'fast';
+    if (elements.themeSelect) elements.themeSelect.value = 'aur-renk-efektleri';
+    if (elements.sliderFxToggle) elements.sliderFxToggle.checked = true;
+    if (elements.sfxLightsToggle) elements.sfxLightsToggle.checked = true;
+    if (elements.uiFxEnabledToggle) elements.uiFxEnabledToggle.checked = true;
+    if (elements.uiReduceMotionToggle) elements.uiReduceMotionToggle.checked = false;
+}
+
+function renderHardwareProfileStatus(profile) {
+    if (!elements.uiHardwareProfileStatus) return;
+    if (!profile || typeof profile !== 'object') {
+        elements.uiHardwareProfileStatus.textContent = 'Donanım profili: tespit edilemedi';
+        return;
+    }
+    const tierMap = {
+        low: 'Dusuk',
+        medium: 'Orta',
+        high: 'Yuksek'
+    };
+    const tierLabel = tierMap[normalizeHardwareTier(profile.tier)] || 'Orta';
+    const ramText = profile.ramGiB ? `${profile.ramGiB} GB RAM` : 'RAM ?';
+    const cpuText = profile.cpuCores ? `${profile.cpuCores} cekirdek` : 'CPU ?';
+    elements.uiHardwareProfileStatus.textContent = `Donanım profili: ${tierLabel} (${ramText}, ${cpuText})`;
+}
+
+async function applyAutoHardwareAppearanceIfNeeded({ persist = false } = {}) {
+    const appearance = state.settings?.appearance || {};
+    if (appearance.autoHardwareProfile !== true) return false;
+    const profile = await detectHardwareProfile();
+    const preset = getAppearancePresetForHardwareTier(profile.tier);
+
+    state.settings.appearance = {
+        ...appearance,
+        ...preset
+    };
+
+    if (elements.uiVisualModeSelect) elements.uiVisualModeSelect.value = preset.visualMode;
+    if (elements.uiMotionProfileSelect) elements.uiMotionProfileSelect.value = normalizeMotionProfile(preset.motionProfile);
+    if (elements.themeSelect) elements.themeSelect.value = preset.theme;
+    if (elements.sliderFxToggle) elements.sliderFxToggle.checked = preset.sliderFxEnabled;
+    if (elements.sfxLightsToggle) elements.sfxLightsToggle.checked = preset.sfxLights;
+    updateVisualModeUi();
+    updateThemeFollowSystemUi();
+    updateAutoHardwareProfileUi();
+    updateSliderFxToggleStateUi();
+    updateSfxLightsToggleStateUi();
+    renderHardwareProfileStatus(profile);
+    applyAppearanceSettingsToRuntime(state.settings.appearance);
+
+    if (persist) {
+        await saveSettings();
+    }
+    return true;
+}
+
 function getVisualModePreset(mode) {
     const normalized = String(mode || 'full').trim().toLowerCase();
     if (normalized === 'balanced') {
@@ -13570,6 +20424,12 @@ function getVisualModePreset(mode) {
         return { visualMode: 'minimal', uiFxEnabled: false, reduceMotion: true };
     }
     return { visualMode: 'full', uiFxEnabled: true, reduceMotion: false };
+}
+
+function normalizeMotionProfile(value) {
+    const normalized = String(value || '').trim().toLowerCase();
+    if (normalized === 'fast' || normalized === 'balanced' || normalized === 'calm') return normalized;
+    return 'balanced';
 }
 
 function updateVisualModeUi() {
@@ -13614,29 +20474,70 @@ function updateVisualModeUi() {
     }
 }
 
+function getRecommendedThemeForVisualMode(mode) {
+    const normalized = String(mode || 'full').trim().toLowerCase();
+    if (normalized === 'balanced') {
+        return 'performance-balanced';
+    }
+    if (normalized === 'minimal') {
+        return 'performance-lite';
+    }
+    return 'aur-renk-efektleri';
+}
+
+function syncThemeWithVisualMode() {
+    if (!elements.themeSelect) return;
+    if (elements.uiFollowSystemThemeToggle?.checked) return;
+    if (elements.uiAutoHardwareProfileToggle?.checked) return;
+    const visualMode = String(elements.uiVisualModeSelect?.value || 'full').trim().toLowerCase();
+    elements.themeSelect.value = getRecommendedThemeForVisualMode(visualMode);
+}
+
 function previewAppearanceSettingsFromUI() {
     const current = state.settings?.appearance || {};
+    const autoHardwareProfile = !!elements.uiAutoHardwareProfileToggle?.checked;
+    if (autoHardwareProfile) {
+        const autoPreset = getAppearancePresetForHardwareTier(cachedHardwareProfile?.tier || 'medium');
+        if (elements.uiVisualModeSelect) elements.uiVisualModeSelect.value = autoPreset.visualMode;
+        if (elements.uiMotionProfileSelect) elements.uiMotionProfileSelect.value = normalizeMotionProfile(autoPreset.motionProfile);
+        if (elements.themeSelect) elements.themeSelect.value = autoPreset.theme;
+        if (elements.sliderFxToggle) elements.sliderFxToggle.checked = autoPreset.sliderFxEnabled;
+        if (elements.sfxLightsToggle) elements.sfxLightsToggle.checked = autoPreset.sfxLights;
+    }
     const sfxLightsEnabled = !!elements.sfxLightsToggle?.checked;
     const sliderFxEnabled = getSliderFxToggleChecked();
     const followSystemTheme = !!elements.uiFollowSystemThemeToggle?.checked;
-    const selectedTheme = followSystemTheme
-        ? String(current.theme || 'aur-renk-efektleri')
-        : String(elements.themeSelect?.value || current.theme || 'aur-renk-efektleri');
+    const selectedTheme = String(elements.themeSelect?.value || current.theme || 'aur-renk-efektleri');
+    const selectedMotionProfile = normalizeMotionProfile(
+        elements.uiMotionProfileSelect?.value || current.motionProfile || 'balanced'
+    );
+    const selectedSfxPerfMode = ['auto', 'lite', 'full'].includes(String(elements.uiSfxPerfModeSelect?.value || '').toLowerCase())
+        ? String(elements.uiSfxPerfModeSelect.value).toLowerCase()
+        : String(current.sfxPerfMode || 'auto').toLowerCase();
+    const selectedSfxIconSize = ['compact', 'medium', 'large'].includes(String(elements.uiSfxIconSizeSelect?.value || '').toLowerCase())
+        ? String(elements.uiSfxIconSizeSelect.value).toLowerCase()
+        : String(current.sfxSidebarIconSize || 'medium').toLowerCase();
     const preset = getVisualModePreset(elements.uiVisualModeSelect?.value || current.visualMode || 'full');
     updateVisualModeUi();
     updateThemeFollowSystemUi();
+    updateAutoHardwareProfileUi();
     updateSliderFxToggleStateUi();
     updateSfxLightsToggleStateUi();
     syncSfxLightsShadowStorage(sfxLightsEnabled);
+    syncSfxIconSizeShadowStorage(selectedSfxIconSize);
     applyAppearanceSettingsToRuntime({
         ...current,
         theme: selectedTheme,
+        motionProfile: selectedMotionProfile,
         followSystemTheme,
         visualMode: preset.visualMode,
         uiFxEnabled: preset.uiFxEnabled,
         sliderFxEnabled,
         reduceMotion: preset.reduceMotion,
-        sfxLights: sfxLightsEnabled
+        sfxLights: sfxLightsEnabled,
+        sfxPerfMode: selectedSfxPerfMode,
+        sfxSidebarIconSize: selectedSfxIconSize,
+        autoHardwareProfile
     });
 }
 
@@ -13650,6 +20551,9 @@ function applySecuritySettingsToRuntime() {
     }
     if (elements.securityAllowPopups) {
         elements.securityAllowPopups.checked = allowPopups;
+    }
+    if (elements.securityEnforceAllowlist) {
+        elements.securityEnforceAllowlist.checked = !!state.settings?.security?.enforceAllowlist;
     }
 }
 
@@ -13675,6 +20579,7 @@ function getSettingsTabLabel(tabName) {
     const normalized = String(tabName || '').trim().toLowerCase();
     const keyMap = {
         playback: 'settings.tabs.playback',
+        shortcuts: 'playback.shortcuts.title',
         listen: 'settings.tabs.listen',
         behavior: 'settings.tabs.behavior',
         security: 'securityPage.title',
@@ -13684,6 +20589,7 @@ function getSettingsTabLabel(tabName) {
     };
     const fallbackMap = {
         playback: 'Oynat',
+        shortcuts: 'Klavye Kısayolları',
         listen: 'Dinle',
         behavior: 'Davranış',
         security: 'Güvenlik',
@@ -13708,6 +20614,10 @@ function resetBehaviorDefaults() {
     const uiFollowSystemThemeToggle = document.getElementById('uiFollowSystemThemeToggle');
     if (uiFollowSystemThemeToggle) uiFollowSystemThemeToggle.checked = false;
     if (elements.uiVisualModeSelect) elements.uiVisualModeSelect.value = 'full';
+    if (elements.uiMotionProfileSelect) elements.uiMotionProfileSelect.value = 'balanced';
+    if (elements.uiSfxPerfModeSelect) elements.uiSfxPerfModeSelect.value = 'auto';
+    if (elements.uiSfxIconSizeSelect) elements.uiSfxIconSizeSelect.value = 'medium';
+    if (elements.uiAutoHardwareProfileToggle) elements.uiAutoHardwareProfileToggle.checked = true;
     const uiFxEnabledToggle = document.getElementById('uiFxEnabledToggle');
     if (uiFxEnabledToggle) uiFxEnabledToggle.checked = true;
     const uiReduceMotionToggle = document.getElementById('uiReduceMotionToggle');
@@ -13727,6 +20637,7 @@ function resetBehaviorDefaults() {
 function resetSecurityDefaults() {
     if (elements.securityAllowPopups) elements.securityAllowPopups.checked = true;
     if (elements.securityStrictVpnBlock) elements.securityStrictVpnBlock.checked = false;
+    if (elements.securityEnforceAllowlist) elements.securityEnforceAllowlist.checked = false;
 }
 
 function resetLibraryDefaults() {
@@ -13807,6 +20718,7 @@ function resetAdblockDefaults() {
 function resetCurrentSettingsTab() {
     const activeTab = getActiveSettingsTabName();
     if (activeTab === 'playback') resetPlaybackDefaults();
+    else if (activeTab === 'shortcuts') resetPlaybackDefaults();
     else if (activeTab === 'listen') resetListenDefaults();
     else if (activeTab === 'behavior') resetBehaviorDefaults();
     else if (activeTab === 'security') resetSecurityDefaults();
@@ -13847,6 +20759,303 @@ function closeAboutModal() {
 // ============================================
 // KEYBOARD SHORTCUTS
 // ============================================
+const NAV_SHORTCUT_INPUT_TO_SETTING_KEY = {
+    shortcutTabMusic: 'tabMusic',
+    shortcutTabVideo: 'tabVideo',
+    shortcutTabWeb: 'tabWeb',
+    shortcutPlatformYtmusic: 'platformYtmusic',
+    shortcutPlatformYoutube: 'platformYoutube',
+    shortcutPlatformDeezer: 'platformDeezer',
+    shortcutPlatformSoundcloud: 'platformSoundcloud',
+    shortcutPlatformFacebook: 'platformFacebook',
+    shortcutPlatformInstagram: 'platformInstagram',
+    shortcutPlatformTiktok: 'platformTiktok',
+    shortcutPlatformX: 'platformX',
+    shortcutPlatformReddit: 'platformReddit',
+    shortcutPlatformTwitch: 'platformTwitch'
+};
+const NAV_SHORTCUT_ACTIONS = {
+    tabMusic: { type: 'tab', target: 'music' },
+    tabVideo: { type: 'tab', target: 'video' },
+    tabWeb: { type: 'tab', target: 'web' },
+    platformYtmusic: { type: 'platform', target: 'ytmusic' },
+    platformYoutube: { type: 'platform', target: 'youtube' },
+    platformDeezer: { type: 'platform', target: 'deezer' },
+    platformSoundcloud: { type: 'platform', target: 'soundcloud' },
+    platformFacebook: { type: 'platform', target: 'facebook' },
+    platformInstagram: { type: 'platform', target: 'instagram' },
+    platformTiktok: { type: 'platform', target: 'tiktok' },
+    platformX: { type: 'platform', target: 'x' },
+    platformReddit: { type: 'platform', target: 'reddit' },
+    platformTwitch: { type: 'platform', target: 'twitch' }
+};
+let activeShortcutCaptureInputId = '';
+let activeShortcutCaptureButton = null;
+
+function normalizeShortcutComboString(raw) {
+    const text = String(raw || '').trim();
+    if (!text) return '';
+    const tokens = text.split('+').map((part) => part.trim()).filter(Boolean);
+    if (!tokens.length) return '';
+
+    const mods = {
+        ctrl: false,
+        alt: false,
+        shift: false,
+        meta: false
+    };
+    let key = '';
+
+    tokens.forEach((token) => {
+        const lower = token.toLowerCase();
+        if (['ctrl', 'control', 'ctl'].includes(lower)) {
+            mods.ctrl = true;
+            return;
+        }
+        if (['alt', 'option'].includes(lower)) {
+            mods.alt = true;
+            return;
+        }
+        if (['shift'].includes(lower)) {
+            mods.shift = true;
+            return;
+        }
+        if (['meta', 'super', 'win', 'cmd', 'command'].includes(lower)) {
+            mods.meta = true;
+            return;
+        }
+        key = token;
+    });
+
+    if (!key) return '';
+    let normalizedKey = String(key).trim();
+    if (/^f\d{1,2}$/i.test(normalizedKey)) {
+        normalizedKey = normalizedKey.toUpperCase();
+    } else if (/^arrow/i.test(normalizedKey)) {
+        normalizedKey = `Arrow${normalizedKey.replace(/^arrow/i, '')}`;
+    } else if (normalizedKey.length === 1) {
+        normalizedKey = normalizedKey.toUpperCase();
+    } else {
+        normalizedKey = normalizedKey.charAt(0).toUpperCase() + normalizedKey.slice(1);
+    }
+
+    const ordered = [];
+    if (mods.ctrl) ordered.push('Ctrl');
+    if (mods.alt) ordered.push('Alt');
+    if (mods.shift) ordered.push('Shift');
+    if (mods.meta) ordered.push('Meta');
+    ordered.push(normalizedKey);
+    return ordered.join('+');
+}
+
+function getShortcutKeyFromEvent(e) {
+    const code = String(e?.code || '').trim();
+    const key = String(e?.key || '').trim();
+    if (/^F\d{1,2}$/.test(code)) return code;
+    if (code.startsWith('Key')) return code.slice(3).toUpperCase();
+    if (code.startsWith('Digit')) return code.slice(5);
+    if (code.startsWith('Numpad')) return `Num${code.slice(6)}`;
+    const codeMap = {
+        Space: 'Space',
+        Enter: 'Enter',
+        Tab: 'Tab',
+        Escape: 'Escape',
+        Backspace: 'Backspace',
+        Delete: 'Delete',
+        Insert: 'Insert',
+        Home: 'Home',
+        End: 'End',
+        PageUp: 'PageUp',
+        PageDown: 'PageDown',
+        ArrowUp: 'ArrowUp',
+        ArrowDown: 'ArrowDown',
+        ArrowLeft: 'ArrowLeft',
+        ArrowRight: 'ArrowRight'
+    };
+    if (codeMap[code]) return codeMap[code];
+    if (key && key.length === 1) return key.toUpperCase();
+    if (key && /^F\d{1,2}$/i.test(key)) return key.toUpperCase();
+    return '';
+}
+
+function getShortcutComboFromEvent(e) {
+    const key = getShortcutKeyFromEvent(e);
+    if (!key) return '';
+    const parts = [];
+    if (e.ctrlKey) parts.push('Ctrl');
+    if (e.altKey) parts.push('Alt');
+    if (e.shiftKey) parts.push('Shift');
+    if (e.metaKey) parts.push('Meta');
+    parts.push(key);
+    return parts.join('+');
+}
+
+function setShortcutCaptureButtonState(btn, capturing) {
+    if (!btn) return;
+    if (capturing) {
+        btn.dataset.capturing = 'true';
+        btn.textContent = uiT('playback.shortcuts.actions.waiting', 'Key waiting...');
+        return;
+    }
+    delete btn.dataset.capturing;
+    btn.textContent = uiT('playback.shortcuts.actions.assign', 'Assign');
+}
+
+function stopShortcutCapture() {
+    if (activeShortcutCaptureButton) {
+        setShortcutCaptureButtonState(activeShortcutCaptureButton, false);
+    }
+    activeShortcutCaptureButton = null;
+    activeShortcutCaptureInputId = '';
+}
+
+function beginShortcutCapture(inputId, triggerBtn) {
+    if (!inputId) return;
+    if (activeShortcutCaptureInputId === inputId) {
+        stopShortcutCapture();
+        return;
+    }
+    stopShortcutCapture();
+    activeShortcutCaptureInputId = inputId;
+    activeShortcutCaptureButton = triggerBtn || null;
+    if (triggerBtn) setShortcutCaptureButtonState(triggerBtn, true);
+}
+
+function clearShortcutInputValue(inputId) {
+    if (!inputId) return;
+    const input = document.getElementById(inputId);
+    if (!input) return;
+    input.value = '';
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+    if (activeShortcutCaptureInputId === inputId) {
+        stopShortcutCapture();
+    }
+    markSettingsDirty();
+}
+
+function isKeyboardEditableTarget(target) {
+    if (!(target instanceof Element)) return false;
+    return !!target.closest('input, textarea, select, [contenteditable="true"], [contenteditable=""]');
+}
+
+function bindNavigationShortcutCaptureHandlers() {
+    if (document.body?.dataset?.shortcutCaptureBound === 'true') return;
+    if (!isStandaloneSettingsMode() && !elements.settingsPage) return;
+    document.body.dataset.shortcutCaptureBound = 'true';
+    document.addEventListener('click', (event) => {
+        const captureBtn = event.target?.closest?.('.shortcut-capture-btn[data-shortcut-target]');
+        if (captureBtn) {
+            const inputId = String(captureBtn.dataset.shortcutTarget || '').trim();
+            beginShortcutCapture(inputId, captureBtn);
+            return;
+        }
+
+        const clearBtn = event.target?.closest?.('.shortcut-clear-btn[data-shortcut-target]');
+        if (clearBtn) {
+            const inputId = String(clearBtn.dataset.shortcutTarget || '').trim();
+            clearShortcutInputValue(inputId);
+        }
+    }, true);
+
+    document.addEventListener('keydown', (e) => {
+        if (!activeShortcutCaptureInputId) return;
+        e.preventDefault();
+        e.stopPropagation();
+
+        if (e.code === 'Escape') {
+            stopShortcutCapture();
+            return;
+        }
+
+        const input = document.getElementById(activeShortcutCaptureInputId);
+        if (!input) {
+            stopShortcutCapture();
+            return;
+        }
+
+        if (e.code === 'Backspace' || e.code === 'Delete') {
+            input.value = '';
+            stopShortcutCapture();
+            markSettingsDirty();
+            return;
+        }
+
+        const combo = normalizeShortcutComboString(getShortcutComboFromEvent(e));
+        if (!combo) return;
+        input.value = combo;
+        stopShortcutCapture();
+        markSettingsDirty();
+    }, true);
+}
+
+function getPlaybackCustomHotkeys() {
+    const playback = state.settings?.playback || {};
+    const custom = playback.customHotkeys || {};
+    return {
+        previous: String(custom.previous || 'F2').trim(),
+        playPause: String(custom.playPause || 'F3').trim(),
+        next: String(custom.next || 'F4').trim()
+    };
+}
+
+function detectMediaKeyActionFromEvent(e) {
+    const code = String(e?.code || '').trim();
+    const key = String(e?.key || '').trim();
+    const token = code || key;
+    const map = {
+        MediaTrackPrevious: 'previous',
+        MediaPreviousTrack: 'previous',
+        XF86AudioPrev: 'previous',
+        MediaPlayPause: 'play-pause',
+        XF86AudioPlay: 'play-pause',
+        XF86AudioPause: 'play-pause',
+        MediaTrackNext: 'next',
+        MediaNextTrack: 'next',
+        XF86AudioNext: 'next'
+    };
+    return map[token] || '';
+}
+
+function detectCustomPlaybackShortcutAction(e) {
+    const code = String(e?.code || '').trim();
+    if (!code) return '';
+    const custom = getPlaybackCustomHotkeys();
+    if (custom.previous !== 'none' && code === custom.previous) return 'previous';
+    if (custom.playPause !== 'none' && code === custom.playPause) return 'play-pause';
+    if (custom.next !== 'none' && code === custom.next) return 'next';
+    return '';
+}
+
+function detectNavigationShortcutAction(e) {
+    const combo = normalizeShortcutComboString(getShortcutComboFromEvent(e));
+    if (!combo) return null;
+    const navigation = state.settings?.playback?.navigationShortcuts || {};
+    const key = Object.keys(NAV_SHORTCUT_ACTIONS).find((shortcutKey) => {
+        const stored = normalizeShortcutComboString(navigation[shortcutKey]);
+        return stored && stored === combo;
+    });
+    if (!key) return null;
+    return NAV_SHORTCUT_ACTIONS[key] || null;
+}
+
+function executeNavigationShortcutAction(action) {
+    if (!action || !action.type || !action.target) return;
+    if (action.type === 'tab') {
+        const tabBtn = document.querySelector(`.sidebar-btn[data-page="${action.target}"]`);
+        if (tabBtn) handleSidebarClick(tabBtn);
+        return;
+    }
+    if (action.type === 'platform') {
+        const webBtn = document.querySelector('.sidebar-btn[data-page="web"]');
+        if (webBtn && state.currentPage !== 'web') {
+            handleSidebarClick(webBtn);
+        }
+        const platformBtn = document.querySelector(`.platform-btn[data-platform="${action.target}"]`);
+        if (platformBtn) requestPlatformSwitch(platformBtn);
+    }
+}
+
 function handleKeyboard(e) {
     // About modal açıksa önce onu kapat
     if (isAboutModalOpen()) {
@@ -13859,6 +21068,30 @@ function handleKeyboard(e) {
 
     // Utility sayfalar açıkken klavye kısayollarını devre dışı bırak
     if (isPageVisible(elements.settingsPage)) return;
+
+    // Oynatma kısayolları: kullanıcı tanımlı + otomatik medya tuşları.
+    if (!e.repeat) {
+        const customAction = detectCustomPlaybackShortcutAction(e);
+        const mediaAction = (state.settings?.playback?.mediaKeyAutoDetect !== false)
+            ? detectMediaKeyActionFromEvent(e)
+            : '';
+        const action = customAction || mediaAction;
+        if (action) {
+            e.preventDefault();
+            executeMediaControlAction(action);
+            updateTrayState();
+            return;
+        }
+
+        if (!isKeyboardEditableTarget(e.target)) {
+            const navAction = detectNavigationShortcutAction(e);
+            if (navAction) {
+                e.preventDefault();
+                executeNavigationShortcutAction(navAction);
+                return;
+            }
+        }
+    }
 
     // TAM EKRAN VİDEO KLAVİYE KISAYOLLARI
     if (document.fullscreenElement && state.activeMedia === 'video') {
@@ -16217,15 +23450,16 @@ const EQController = {
     setupEventListeners() {
         // EQ button to open Sound Effects window
         if (this.elements.eqButton) {
-            this.elements.eqButton.addEventListener('click', () => {
-                // Yeni Ses Efektleri penceresini aç
+            this.elements.eqButton.addEventListener('click', async () => {
+                // Web/Müzik/Video için daima ayrı Ses Efektleri penceresi aç.
                 if (window.aurivo && window.aurivo.soundEffects) {
-                    window.aurivo.soundEffects.openWindow();
-                    console.log('🎛️ Ses Efektleri penceresi açılıyor...');
-                } else {
-                    // Fallback: Eski modal'ı aç
-                    this.toggleModal();
+                    const page = String(state.currentPage || '').toLowerCase();
+                    const scope = page === 'web' ? 'web' : (page === 'video' ? 'video' : 'music');
+                    await window.aurivo.soundEffects.openWindow({ scope });
+                    console.log('🎛️ Ses Efektleri penceresi açılıyor...', { scope });
+                    return;
                 }
+                console.warn('[SFX] soundEffects API bulunamadı, pencere açılamadı');
             });
         }
 
@@ -16353,7 +23587,11 @@ const EQController = {
             }
             if (e.key === 'e' && e.ctrlKey) {
                 e.preventDefault();
-                this.toggleModal();
+                const page = String(state.currentPage || '').toLowerCase();
+                const scope = page === 'web' ? 'web' : (page === 'video' ? 'video' : 'music');
+                if (window.aurivo?.soundEffects?.openWindow) {
+                    window.aurivo.soundEffects.openWindow({ scope }).catch(() => {});
+                }
             }
         });
     },

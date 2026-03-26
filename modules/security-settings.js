@@ -15,7 +15,8 @@
         parseHttpUrl,
         getSecurityState,
         translate,
-        strictVpnBlock
+        strictVpnBlock,
+        enforceAllowlist
     }) {
         const url = getUrl();
         const isHttps = url.startsWith('https://');
@@ -37,6 +38,9 @@
         }
         if (elements.securityStrictVpnBlock) {
             elements.securityStrictVpnBlock.checked = !!strictVpnBlock;
+        }
+        if (elements.securityEnforceAllowlist) {
+            elements.securityEnforceAllowlist.checked = !!enforceAllowlist;
         }
 
         const vpnEl = document.getElementById('securityVpnStatus');

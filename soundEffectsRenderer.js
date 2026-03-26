@@ -17,11 +17,17 @@ const SFX = {
     suppressEq32SliderEvents: false,
     eq32PersistTimer: null,
     eq32PersistInFlight: false,
+    scopedPersistTimers: {},
     crossfeedStatusInterval: null,
     crossfeedDeviceInterval: null,
     crossfeedAutoForcedBySystem: false,
+    crossfeedAbTimer: null,
+    crossfeedAbRunning: false,
+    crossfeedAbOriginalEnabled: false,
+    crossfeedAbCurrentEnabled: false,
     surroundStatusInterval: null,
     surroundAutoForcedBySystem: false,
+    noiseGateStatusInterval: null,
     eqTopViz: {
         running: false,
         frameId: 0,
@@ -83,7 +89,8 @@ const SFX = {
             gain: 6,
             harmonics: 50,
             width: 1.5,
-            mix: 50
+            mix: 50,
+            lastPreset: null
         },
         noisegate: {
             enabled: false,
@@ -99,7 +106,8 @@ const SFX = {
             threshold: -30,
             ratio: 4,
             range: -12,
-            listenMode: false
+            listenMode: false,
+            lastPreset: null
         },
         exciter: {
             enabled: false,
@@ -113,23 +121,25 @@ const SFX = {
             width: 100,
             centerLevel: 0,
             sideLevel: 0,
-            bassToMono: 200
+            bassToMono: 200,
+            lastPreset: 'balanced'
         },
         echo: {
             enabled: false,
             delay: 250,
             feedback: 40,
             wetDry: 30,
-            highCut: 8000
+            highCut: 8000,
+            lastPreset: 'clean'
         },
         softecho: {
             enabled: false,
-            delay: 220,
-            feedback: 22,
-            wetMix: 18,
-            highCut: 7000,
+            delay: 520,
+            feedback: 8,
+            wetMix: 28,
+            highCut: 4200,
             stereo: false,
-            lastPreset: 'natural'
+            lastPreset: 'canyon'
         },
         convreverb: {
             enabled: false,
@@ -145,13 +155,15 @@ const SFX = {
                 { freq: 1000, gain: 0, q: 1.0 },
                 { freq: 4000, gain: 0, q: 1.0 },
                 { freq: 10000, gain: 0, q: 1.0 }
-            ]
+            ],
+            lastPreset: 'balanced'
         },
         autogain: {
             enabled: false,
             targetLevel: -14,
             maxGain: 12,
-            speed: 'medium'
+            speed: 'medium',
+            lastPreset: 'balanced'
         },
         truepeak: {
             enabled: false,
@@ -170,7 +182,8 @@ const SFX = {
             lowCut: 700,
             highCut: 4000,
             preset: 0,
-            autoHeadphones: true
+            autoHeadphones: true,
+            abSpeedMs: 1000
         },
         surround: {
             enabled: false,
@@ -234,25 +247,122 @@ const SFX = {
 
 // Video oynatma kararlılığı için güvenli mod:
 // Efektler sekmesindeki ağır animasyonları kapatır.
-const SFX_ANIM_SAFE_MODE = false;
+let SFX_ANIM_SAFE_MODE = false;
 
 // RAM öncelikli mod: sekme değişince eski panel DOM'unu boşalt
-const RAM_PRIORITY_MODE = false;
+let RAM_PRIORITY_MODE = false;
 
 // 32-band EQ ağır görsellerini düşük yük modunda çalıştır.
 // Video oynarken pause/freeze etkisini azaltmak için animasyonları sadeleştirir.
-const SFX_LOW_LOAD_EQ32 = false;
+let SFX_LOW_LOAD_EQ32 = false;
 
 // EQ debug loglarını kapat/aç
 const DEBUG_EQ = false;
 
-const SFX_EMBEDDED_MODE = (() => {
+const SFX_QUERY_PARAMS = (() => {
     try {
-        return new URLSearchParams(window.location.search).get('embedded') === '1';
+        return new URLSearchParams(window.location.search);
     } catch {
-        return false;
+        return new URLSearchParams('');
     }
 })();
+
+function normalizeSfxScope(rawScope) {
+    const scope = String(rawScope || '').trim().toLowerCase();
+    if (scope === 'web' || scope === 'video' || scope === 'music') return scope;
+    return 'music';
+}
+
+const SFX_SCOPE = normalizeSfxScope(SFX_QUERY_PARAMS.get('scope'));
+const SFX_EMBEDDED_MODE = SFX_QUERY_PARAMS.get('embedded') === '1';
+const SFX_PERF = {
+    lowPower: false,
+    pollScale: 1,
+    reason: 'default'
+};
+
+function getPerfScaledMs(baseMs, { min = 20, max = 10000 } = {}) {
+    const base = Math.max(1, Number(baseMs) || 1);
+    const scaled = Math.round(base * (Number(SFX_PERF.pollScale) || 1));
+    return Math.max(min, Math.min(max, scaled));
+}
+
+function parsePositiveNumber(value) {
+    const n = Number(value);
+    return Number.isFinite(n) && n > 0 ? n : 0;
+}
+
+function shouldUseLowPowerSfxProfile(appSettings, hardwareHints) {
+    const qPerf = String(SFX_QUERY_PARAMS.get('perf') || '').trim().toLowerCase();
+    if (qPerf === 'lite' || qPerf === 'low') return { lowPower: true, reason: 'query' };
+    if (qPerf === 'full' || qPerf === 'high') return { lowPower: false, reason: 'query' };
+
+    const appearance = appSettings?.appearance || {};
+    const libraryPerf = appSettings?.library?.performance || {};
+    const sfxPerfMode = String(appearance.sfxPerfMode || 'auto').trim().toLowerCase();
+    if (sfxPerfMode === 'lite') return { lowPower: true, reason: 'setting-lite' };
+    if (sfxPerfMode === 'full') return { lowPower: false, reason: 'setting-full' };
+    const autoHardwareProfile = appearance.autoHardwareProfile !== false;
+    const visualMode = String(appearance.visualMode || '').trim().toLowerCase();
+    const reducedMotion = appearance.reduceMotion === true;
+    const uiFxDisabled = appearance.uiFxEnabled === false;
+    const sliderFxDisabled = appearance.sliderFxEnabled === false;
+    const sfxLightsDisabled = appearance.sfxLights === false;
+    const lightweightLibrary = libraryPerf.lightweightMode === true;
+    if (visualMode === 'minimal' || lightweightLibrary) {
+        return { lowPower: true, reason: visualMode === 'minimal' ? 'appearance-minimal' : 'library-lightweight' };
+    }
+
+    if (autoHardwareProfile) {
+        const ramGiB = parsePositiveNumber(hardwareHints?.ramGiB) || parsePositiveNumber(navigator.deviceMemory);
+        const cpuCores = parsePositiveNumber(hardwareHints?.cpuCores) || parsePositiveNumber(navigator.hardwareConcurrency);
+        const lowHardware = (ramGiB > 0 && ramGiB <= 4) || (cpuCores > 0 && cpuCores <= 4);
+        if (lowHardware) return { lowPower: true, reason: 'hardware-low' };
+    }
+
+    if (reducedMotion && uiFxDisabled && (sliderFxDisabled || sfxLightsDisabled)) {
+        return { lowPower: true, reason: 'appearance-reduced-motion' };
+    }
+    return { lowPower: false, reason: 'normal' };
+}
+
+async function applySfxRuntimePerformanceProfile(appSettings = null) {
+    let settings = appSettings;
+    if (!settings && window.aurivo?.loadSettings) {
+        try {
+            settings = await window.aurivo.loadSettings();
+        } catch {
+            settings = null;
+        }
+    }
+    let hardwareHints = null;
+    try {
+        hardwareHints = await window.aurivo?.system?.getHardwareHints?.();
+    } catch {
+        hardwareHints = null;
+    }
+
+    const decision = shouldUseLowPowerSfxProfile(settings || {}, hardwareHints || {});
+    const lowPower = !!decision.lowPower;
+    SFX_PERF.lowPower = lowPower;
+    SFX_PERF.pollScale = lowPower ? 2.0 : 1.0;
+    SFX_PERF.reason = String(decision.reason || (lowPower ? 'low' : 'normal'));
+    SFX_ANIM_SAFE_MODE = lowPower;
+    RAM_PRIORITY_MODE = lowPower;
+    SFX_LOW_LOAD_EQ32 = lowPower;
+
+    document.documentElement.dataset.sfxPerf = lowPower ? 'lite' : 'normal';
+    console.log(`[SFX PERF] mode=${lowPower ? 'lite' : 'normal'} reason=${SFX_PERF.reason}`);
+}
+
+function getScopedSettingsStorageKey(effectName) {
+    return `aurivo_sfx_${SFX_SCOPE}_${effectName}`;
+}
+
+function getScopedWindowTitle(baseTitle) {
+    const scopeLabel = SFX_SCOPE === 'web' ? 'Web' : (SFX_SCOPE === 'video' ? 'Video' : 'Müzik');
+    return `${baseTitle} • ${scopeLabel}`;
+}
 
 const EMBED_VIDEO_SFX_SETTINGS_KEY = 'aurivo_video_sfx_settings_v1';
 let SFX_RUNTIME_ANIMS_ACTIVE = true;
@@ -262,11 +372,28 @@ function normalizeSfxLightsEnabled(value) {
     return value !== false;
 }
 
+function normalizeSfxIconSize(value) {
+    const normalized = String(value || '').trim().toLowerCase();
+    if (normalized === 'compact' || normalized === 'medium' || normalized === 'large') return normalized;
+    return 'medium';
+}
+
 function getSfxLightsFromShadowStorage() {
     try {
         const raw = localStorage.getItem('aurivo_ui_sfx_lights_enabled');
         if (raw === '0') return false;
         if (raw === '1') return true;
+    } catch {
+        // ignore
+    }
+    return null;
+}
+
+function getSfxIconSizeFromShadowStorage() {
+    try {
+        const raw = localStorage.getItem('aurivo_ui_sfx_icon_size');
+        if (!raw) return null;
+        return normalizeSfxIconSize(raw);
     } catch {
         // ignore
     }
@@ -288,6 +415,25 @@ async function applySfxLightsFromAppSettings() {
         document.documentElement.dataset.sfxLights = enabled ? 'on' : 'off';
     } catch {
         document.documentElement.dataset.sfxLights = 'on';
+    }
+}
+
+async function applySfxIconSizeFromAppSettings() {
+    try {
+        const shadow = getSfxIconSizeFromShadowStorage();
+        if (shadow) {
+            document.documentElement.dataset.sfxIconSize = shadow;
+            return;
+        }
+        if (!window.aurivo?.loadSettings) {
+            document.documentElement.dataset.sfxIconSize = 'medium';
+            return;
+        }
+        const appSettings = await window.aurivo.loadSettings();
+        const size = normalizeSfxIconSize(appSettings?.appearance?.sfxSidebarIconSize);
+        document.documentElement.dataset.sfxIconSize = size;
+    } catch {
+        document.documentElement.dataset.sfxIconSize = 'medium';
     }
 }
 
@@ -476,14 +622,19 @@ function syncMeterLoops() {
         stopAutoGainMeter();
         stopCompressorMeter();
         stopLimiterMeter();
+        stopNoiseGateStatusMeter();
         stopEqTopVisualizer();
         return;
     }
-    if (SFX.currentEffect === 'truepeak') startTruePeakMeter(); else stopTruePeakMeter();
-    if (SFX.currentEffect === 'autogain') startAutoGainMeter(); else stopAutoGainMeter();
-    if (SFX.currentEffect === 'compressor') startCompressorMeter(); else stopCompressorMeter();
-    if (SFX.currentEffect === 'limiter') startLimiterMeter(); else stopLimiterMeter();
-    if (SFX.currentEffect === 'eq32') startEqTopVisualizer(); else stopEqTopVisualizer();
+    const tpEnabled = !!getSettings('truepeak')?.enabled;
+    const masterOn = !!SFX.masterEnabled;
+    if (masterOn && SFX.currentEffect === 'truepeak' && tpEnabled) startTruePeakMeter(); else stopTruePeakMeter();
+    if (masterOn && SFX.currentEffect === 'autogain') startAutoGainMeter(); else stopAutoGainMeter();
+    if (masterOn && SFX.currentEffect === 'compressor') startCompressorMeter(); else stopCompressorMeter();
+    if (masterOn && SFX.currentEffect === 'limiter') startLimiterMeter(); else stopLimiterMeter();
+    if (masterOn && SFX.currentEffect === 'noisegate') startNoiseGateStatusMeter(); else stopNoiseGateStatusMeter();
+    if (masterOn && SFX.currentEffect === 'dynamiceq') startDynamicEqStatusMeter(); else stopDynamicEqStatusMeter();
+    if (masterOn && SFX.currentEffect === 'eq32') startEqTopVisualizer(); else stopEqTopVisualizer();
 }
 
 function setRuntimeAnimationsActive(active) {
@@ -585,6 +736,67 @@ function getPresetIconSvg(iconName) {
     return icons[iconName] || icons.target;
 }
 
+function getEffectNavIconSvg(effectName) {
+    const icons = {
+        eq32: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 4v16M12 4v16M18 4v16"/><circle cx="6" cy="9" r="2"/><circle cx="12" cy="14" r="2"/><circle cx="18" cy="7" r="2"/></svg>',
+        reverb: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h2m2 0h2m2 0h2m2 0h2m2 0h2"/><path d="M7 7c1.8 0 3 1.4 3 3s-1.2 3-3 3m10-6c1.8 0 3 1.4 3 3s-1.2 3-3 3"/></svg>',
+        compressor: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 18V6l6 6 4-4 6 6"/><path d="M4 20h16"/></svg>',
+        limiter: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 20V4"/><path d="M7 12h10"/><path d="M17 8v8"/></svg>',
+        bassboost: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 16V8l5-2v12l-5-2Z"/><path d="M13 10c2 1 3 3 3 5m2-8c3 2 4 5 4 8"/></svg>',
+        noisegate: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 15h4l2-6 4 10 2-6h4"/><path d="M14 4v6h6"/></svg>',
+        deesser: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 16c1.5 1.6 3.2 2.4 5 2.4 2.2 0 4-1.2 4-2.8 0-3.4-8-1.8-8-5 0-1.8 1.7-3 4.3-3 1.5 0 3 .4 4.7 1.4"/><path d="M17 9l2 2 2-2"/></svg>',
+        exciter: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 4 1.8 4.2L18 10l-4.2 1.8L12 16l-1.8-4.2L6 10l4.2-1.8Z"/></svg>',
+        stereowidener: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h16"/><path d="m8 8-4 4 4 4"/><path d="m16 8 4 4-4 4"/></svg>',
+        echo: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h6"/><path d="M13 8h6M13 12h6M13 16h6"/><path d="M7 9 4 12l3 3"/></svg>',
+        softecho: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12c2.5-3 5.5-3 8 0s5.5 3 8 0"/><path d="M7 16c1.8-2 3.8-2 5.6 0"/></svg>',
+        convreverb: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16v10H4z"/><path d="M7 10h2m3 0h2m3 0h2m-9 4h4"/></svg>',
+        peq: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 16c3-6 6-6 9 0s4 6 7 0"/></svg>',
+        autogain: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 18V8"/><path d="m3 11 3-3 3 3"/><path d="M14 6v10"/><path d="m11 13 3 3 3-3"/></svg>',
+        truepeak: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 18h16"/><path d="M7 18V9"/><path d="M12 18V6"/><path d="M17 18v-4"/></svg>',
+        crossfeed: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 13v3"/><path d="M20 13v3"/><path d="M4 13a8 8 0 0 1 16 0"/><rect x="3" y="12" width="4" height="7" rx="2"/><rect x="17" y="12" width="4" height="7" rx="2"/><path d="M9 15c1.2-1 2.8-1 4 0"/></svg>',
+        surround: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 6v12"/><path d="M6 9v6"/><path d="M18 9v6"/><path d="M3.5 12h1M19.5 12h1"/></svg>',
+        bassmono: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 16V8l4-2v12l-4-2Z"/><path d="M11 9c3 1.5 3 4.5 0 6"/><path d="M14 8c4 2 4 6 0 8"/></svg>',
+        dynamiceq: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 17c2.5-7 5-7 7.5 0S16.5 24 20 10"/><path d="M4 20h16"/></svg>',
+        tapesat: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="6" width="16" height="12" rx="2"/><circle cx="9" cy="12" r="2.2"/><circle cx="15" cy="12" r="2.2"/></svg>',
+        bitdither: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8h3m2 0h3m2 0h3m2 0h1"/><path d="M4 16h1m2 0h3m2 0h3m2 0h3"/></svg>'
+    };
+    return icons[effectName] || icons.eq32;
+}
+
+function enhanceEffectsSidebar() {
+    document.querySelectorAll('.effect-item').forEach((item) => {
+        const effectName = String(item.dataset.effect || '').trim();
+        const iconEl = item.querySelector('.effect-icon');
+        if (iconEl) iconEl.innerHTML = getEffectNavIconSvg(effectName);
+    });
+}
+
+function normalizeEffectTitleText(rawText) {
+    const text = String(rawText || '');
+    // Template başlıklarındaki eski emoji prefix'lerini temizle.
+    const stripped = text.replace(/^\s*[\u{1F300}-\u{1FAFF}\u2600-\u27BF\uFE0F\u200D]+\s*/u, '').trim();
+    return stripped || text.trim();
+}
+
+function enhanceEffectHeaderIcon(effectName, wrapper) {
+    const host = wrapper || document.querySelector(`.effect-panel-wrapper[data-effect="${effectName}"]`);
+    if (!host) return;
+    const titleEl = host.querySelector('.effect-title');
+    if (!titleEl) return;
+
+    const titleText = normalizeEffectTitleText(titleEl.textContent);
+    const iconEl = document.createElement('span');
+    iconEl.className = 'effect-title-nav-icon';
+    iconEl.setAttribute('aria-hidden', 'true');
+    iconEl.innerHTML = getEffectNavIconSvg(effectName);
+
+    const textEl = document.createElement('span');
+    textEl.className = 'effect-title-text';
+    textEl.textContent = titleText;
+
+    titleEl.replaceChildren(iconEl, textEl);
+}
+
 function renderModernPresetButton({ panelId, preset, label, icon, active = false, extraClass = '' }) {
     const panelAttr = panelId ? ` data-panel="${panelId}"` : '';
     const safeLabel = escapeHtml(label);
@@ -607,6 +819,21 @@ function getLocalizedPresetName(lastPreset) {
 
     if (looksFlat && hasFlatLocalized) return flatLocalized;
     return name || '';
+}
+
+function getSoftEchoPresetDescription(presetName) {
+    const key = String(presetName || '').trim().toLowerCase();
+    const map = {
+        canyon: tOr('sfx.softecho.presetDesc.canyon', 'Uzak ve tek yansımalı dağ yankısı.'),
+        cave: tOr('sfx.softecho.presetDesc.cave', 'Koyu tonlu, uzun mağara yankısı.'),
+        room: tOr('sfx.softecho.presetDesc.room', 'Kısa ve hafif boş oda hissi.'),
+        studio: tOr('sfx.softecho.presetDesc.studio', 'Kısa, temiz ve kontrollü stüdyo yansıması.'),
+        puresoft: tOr('sfx.softecho.presetDesc.puresoft', 'Saf, akıcı ve yormayan yumuşak echo.'),
+        vocal: tOr('sfx.softecho.presetDesc.vocal', 'Vokali öne çıkaran kısa ve net yankı.'),
+        cinema: tOr('sfx.softecho.presetDesc.cinema', 'Daha geniş ve sinematik kuyruklu yankı.'),
+        natural: tOr('sfx.softecho.presetDesc.natural', 'Doğal ve dengeli günlük echo ayarı.')
+    };
+    return map[key] || map.natural;
 }
 
 function safeNormalizeEq32Settings(settings) {
@@ -715,12 +942,402 @@ function schedulePersistEq32ToAppSettings(eq32Settings) {
     }, 250);
 }
 
+function sanitizeScopedEffectForApp(effectName, settings) {
+    const src = settings && typeof settings === 'object' ? settings : {};
+    if (effectName === 'bassboost') {
+        const toNum = (value, min, max, fallback) => {
+            const n = Number(value);
+            if (!Number.isFinite(n)) return fallback;
+            return Math.max(min, Math.min(max, n));
+        };
+        const freqMax = SFX_SCOPE === 'web' ? 120 : 200;
+        return {
+            enabled: !!src.enabled,
+            frequency: toNum(src.frequency, 20, freqMax, 80),
+            gain: toNum(src.gain, 0, 18, 6),
+            harmonics: toNum(src.harmonics, 0, 100, 50),
+            width: toNum(src.width, 0.5, 3, 1.5),
+            mix: toNum(src.mix, 0, 100, 50)
+        };
+    }
+    if (effectName === 'reverb') {
+        const toNum = (value, min, max, fallback) => {
+            const n = Number(value);
+            if (!Number.isFinite(n)) return fallback;
+            return Math.max(min, Math.min(max, n));
+        };
+        return {
+            enabled: !!src.enabled,
+            roomSize: toNum(src.roomSize, 100, 6000, 1000),
+            damping: toNum(src.damping, 0, 1, 0.5),
+            wetDry: toNum(src.wetDry, -40, 6, -10),
+            hfRatio: toNum(src.hfRatio, 0, 1, 0.7),
+            inputGain: toNum(src.inputGain, -24, 24, 0)
+        };
+    }
+    if (effectName === 'compressor') {
+        const toNum = (value, min, max, fallback) => {
+            const n = Number(value);
+            if (!Number.isFinite(n)) return fallback;
+            return Math.max(min, Math.min(max, n));
+        };
+        return {
+            enabled: !!src.enabled,
+            threshold: toNum(src.threshold, -60, 0, -20),
+            ratio: toNum(src.ratio, 1, 20, 4),
+            attack: toNum(src.attack, 1, 200, 10),
+            release: toNum(src.release, 10, 1000, 100),
+            makeupGain: toNum(src.makeupGain, -24, 24, 0),
+            knee: toNum(src.knee, 0, 24, 3)
+        };
+    }
+    if (effectName === 'noisegate') {
+        const toNum = (value, min, max, fallback) => {
+            const n = Number(value);
+            if (!Number.isFinite(n)) return fallback;
+            return Math.max(min, Math.min(max, n));
+        };
+        return {
+            enabled: !!src.enabled,
+            threshold: toNum(src.threshold, -80, 0, -40),
+            attack: toNum(src.attack, 1, 200, 5),
+            hold: toNum(src.hold, 0, 1000, 100),
+            release: toNum(src.release, 10, 2000, 150),
+            range: toNum(src.range, -80, -6, -80)
+        };
+    }
+    if (effectName === 'deesser') {
+        const toNum = (value, min, max, fallback) => {
+            const n = Number(value);
+            if (!Number.isFinite(n)) return fallback;
+            return Math.max(min, Math.min(max, n));
+        };
+        return {
+            enabled: !!src.enabled,
+            frequency: toNum(src.frequency, 2000, 12000, 7000),
+            threshold: toNum(src.threshold, -60, 0, -30),
+            ratio: toNum(src.ratio, 1, 10, 4),
+            range: toNum(src.range, -24, 0, -12),
+            listenMode: !!src.listenMode
+        };
+    }
+    if (effectName === 'exciter') {
+        const toNum = (value, min, max, fallback) => {
+            const n = Number(value);
+            if (!Number.isFinite(n)) return fallback;
+            return Math.max(min, Math.min(max, n));
+        };
+        const allowedHarmonics = new Set(['odd', 'even', 'tape', 'tube']);
+        const harmonics = String(src.harmonics || '').trim().toLowerCase();
+        return {
+            enabled: !!src.enabled,
+            frequency: toNum(src.frequency, 1000, 8000, 3000),
+            amount: toNum(src.amount, 0, 100, 50),
+            harmonics: allowedHarmonics.has(harmonics) ? harmonics : 'odd',
+            mix: toNum(src.mix, 0, 100, 30)
+        };
+    }
+    if (effectName === 'echo') {
+        const toNum = (value, min, max, fallback) => {
+            const n = Number(value);
+            if (!Number.isFinite(n)) return fallback;
+            return Math.max(min, Math.min(max, n));
+        };
+        return {
+            enabled: !!src.enabled,
+            delay: toNum(src.delay, 10, 1000, 250),
+            feedback: toNum(src.feedback, 0, 95, 40),
+            wetDry: toNum(src.wetDry, 0, 100, 30),
+            highCut: toNum(src.highCut, 1000, 20000, 8000)
+        };
+    }
+    if (effectName === 'softecho') {
+        const toNum = (value, min, max, fallback) => {
+            const n = Number(value);
+            if (!Number.isFinite(n)) return fallback;
+            return Math.max(min, Math.min(max, n));
+        };
+        return {
+            enabled: !!src.enabled,
+            delay: toNum(src.delay, 60, 650, 220),
+            feedback: toNum(src.feedback, 5, 45, 22),
+            wetMix: toNum(src.wetMix, 5, 40, 18),
+            highCut: toNum(src.highCut, 2500, 12000, 7000),
+            stereo: !!src.stereo
+        };
+    }
+    if (effectName === 'convreverb') {
+        const toNum = (value, min, max, fallback) => {
+            const n = Number(value);
+            if (!Number.isFinite(n)) return fallback;
+            return Math.max(min, Math.min(max, n));
+        };
+        const allowedPresets = new Set(['hall', 'church', 'room', 'plate', 'small', 'large', 'spring', 'chamber']);
+        const preset = String(src.preset || '').trim().toLowerCase();
+        return {
+            enabled: !!src.enabled,
+            preset: allowedPresets.has(preset) ? preset : 'hall',
+            mix: toNum(src.mix, 0, 100, 30),
+            predelay: toNum(src.predelay, 0, 250, 20)
+        };
+    }
+    if (effectName === 'stereowidener') {
+        const toNum = (value, min, max, fallback) => {
+            const n = Number(value);
+            if (!Number.isFinite(n)) return fallback;
+            return Math.max(min, Math.min(max, n));
+        };
+        return {
+            enabled: !!src.enabled,
+            width: toNum(src.width, 0, 200, 100),
+            centerLevel: toNum(src.centerLevel, -12, 12, 0),
+            sideLevel: toNum(src.sideLevel, -12, 12, 0),
+            bassToMono: toNum(src.bassToMono, 0, 500, 200)
+        };
+    }
+    if (effectName === 'crossfeed') {
+        const toNum = (value, min, max, fallback) => {
+            const n = Number(value);
+            if (!Number.isFinite(n)) return fallback;
+            return Math.max(min, Math.min(max, n));
+        };
+        const abSpeedRaw = Math.round(Number(src.abSpeedMs) || 1000);
+        const abSpeedMs = [500, 1000, 2000, 3000].includes(abSpeedRaw) ? abSpeedRaw : 1000;
+        return {
+            enabled: !!src.enabled,
+            level: toNum(src.level, 0, 100, 30),
+            delay: toNum(src.delay, 0.1, 2.0, 0.3),
+            lowCut: toNum(src.lowCut, 20, 5000, 700),
+            highCut: toNum(src.highCut, 1000, 20000, 4000),
+            autoHeadphones: src.autoHeadphones !== false,
+            preset: Math.max(0, Math.min(4, Math.round(Number(src.preset) || 0))),
+            abSpeedMs
+        };
+    }
+    if (effectName === 'surround') {
+        const toNum = (value, min, max, fallback) => {
+            const n = Number(value);
+            if (!Number.isFinite(n)) return fallback;
+            return Math.max(min, Math.min(max, n));
+        };
+        const presetRaw = String(src.lastPreset || '').trim().toLowerCase();
+        const lastPreset = ['movie', 'music', 'game', 'voice', 'night'].includes(presetRaw) ? presetRaw : 'movie';
+        return {
+            enabled: !!src.enabled,
+            center: toNum(src.center, -12, 12, 0),
+            surround: toNum(src.surround, -12, 12, 0),
+            lfe: toNum(src.lfe, -12, 12, 0),
+            crossover: toNum(src.crossover, 40, 200, 110),
+            delay: toNum(src.delay, 0, 30, 8),
+            mix: toNum(src.mix, 0, 100, 75),
+            autoMultichannel: !!src.autoMultichannel,
+            lastPreset
+        };
+    }
+    if (effectName === 'bassmono') {
+        const toNum = (value, min, max, fallback) => {
+            const n = Number(value);
+            if (!Number.isFinite(n)) return fallback;
+            return Math.max(min, Math.min(max, n));
+        };
+        const slopeRaw = Math.round(Number(src.slope) || 24);
+        const slope = [12, 24, 48].includes(slopeRaw) ? slopeRaw : 24;
+        const presetRaw = String(src.lastPreset || '').trim().toLowerCase();
+        const lastPreset = ['vinyl', 'club', 'mastering', 'dj', 'sub'].includes(presetRaw) ? presetRaw : 'vinyl';
+        return {
+            enabled: !!src.enabled,
+            cutoff: toNum(src.cutoff, 40, 300, 120),
+            slope,
+            stereoWidth: toNum(src.stereoWidth, 0, 200, 100),
+            lastPreset
+        };
+    }
+    if (effectName === 'dynamiceq') {
+        const toNum = (value, min, max, fallback) => {
+            const n = Number(value);
+            if (!Number.isFinite(n)) return fallback;
+            return Math.max(min, Math.min(max, n));
+        };
+        const presetRaw = String(src.lastPreset || '').trim().toLowerCase();
+        const lastPreset = ['deharsh', 'demud', 'vocal', 'deesser', 'basstighten', 'air', 'drumsnap', 'warmth', 'testhear']
+            .includes(presetRaw) ? presetRaw : 'deharsh';
+        return {
+            enabled: !!src.enabled,
+            frequency: toNum(src.frequency, 20, 20000, 3500),
+            q: toNum(src.q, 0.1, 10, 2.0),
+            threshold: toNum(src.threshold, -60, 0, -40),
+            gain: toNum(src.gain, -24, 24, -6),
+            range: toNum(src.range, 0, 24, 12),
+            attack: toNum(src.attack, 0.1, 100, 5),
+            release: toNum(src.release, 1, 500, 120),
+            lastPreset
+        };
+    }
+    if (effectName === 'peq') {
+        const toNum = (value, min, max, fallback) => {
+            const n = Number(value);
+            if (!Number.isFinite(n)) return fallback;
+            return Math.max(min, Math.min(max, n));
+        };
+        const rawBands = Array.isArray(src.bands) ? src.bands : [];
+        const defaults = [60, 150, 400, 1500, 5000, 12000];
+        return {
+            enabled: !!src.enabled,
+            bands: Array.from({ length: 6 }).map((_, i) => {
+                const b = rawBands[i] || {};
+                return {
+                    freq: toNum(b.freq, 20, 20000, defaults[i]),
+                    gain: toNum(b.gain, -15, 15, 0),
+                    q: toNum(b.q, 0.1, 10, 1.0),
+                    filterType: Math.max(0, Math.min(6, Math.round(Number(b.filterType) || 0)))
+                };
+            })
+        };
+    }
+    if (effectName === 'autogain') {
+        const toNum = (value, min, max, fallback) => {
+            const n = Number(value);
+            if (!Number.isFinite(n)) return fallback;
+            return Math.max(min, Math.min(max, n));
+        };
+        return {
+            enabled: !!src.enabled,
+            targetLevel: toNum(src.targetLevel, -24, 0, -14),
+            maxGain: toNum(src.maxGain, 0, 24, 12),
+            speed: ['slow', 'medium', 'fast'].includes(String(src.speed || '').toLowerCase())
+                ? String(src.speed).toLowerCase()
+                : 'medium',
+            lastPreset: String(src.lastPreset || 'balanced')
+        };
+    }
+    if (effectName === 'truepeak') {
+        const toNum = (value, min, max, fallback) => {
+            const n = Number(value);
+            if (!Number.isFinite(n)) return fallback;
+            return Math.max(min, Math.min(max, n));
+        };
+        return {
+            enabled: !!src.enabled,
+            ceiling: toNum(src.ceiling, -18, 0, -0.1),
+            release: toNum(src.release, 10, 500, 50),
+            lookahead: toNum(src.lookahead, 0, 20, 5),
+            drive: toNum(src.drive, -12, 24, 0),
+            oversampling: [2, 4, 8].includes(Number(src.oversampling)) ? Number(src.oversampling) : 4,
+            linkChannels: src.linkChannels !== false,
+            lastPreset: String(src.lastPreset || 'balanced')
+        };
+    }
+    if (effectName === 'tapesat') {
+        const toNum = (value, min, max, fallback) => {
+            const n = Number(value);
+            if (!Number.isFinite(n)) return fallback;
+            return Math.max(min, Math.min(max, n));
+        };
+        return {
+            enabled: !!src.enabled,
+            driveDb: toNum(src.driveDb, 0, 24, 6),
+            mix: toNum(src.mix, 0, 100, 50),
+            tone: toNum(src.tone, 0, 100, 50),
+            outputDb: toNum(src.outputDb, -12, 12, -1),
+            mode: Math.max(0, Math.min(2, Math.round(Number(src.mode) || 0))),
+            hiss: toNum(src.hiss, 0, 100, 0),
+            lastPreset: String(src.lastPreset || 'subtle')
+        };
+    }
+    if (effectName === 'bitdither') {
+        const toNum = (value, min, max, fallback) => {
+            const n = Number(value);
+            if (!Number.isFinite(n)) return fallback;
+            return Math.max(min, Math.min(max, n));
+        };
+        const bitDepth = Math.max(4, Math.min(24, Math.round(Number(src.bitDepth) || 16)));
+        const dither = Math.max(0, Math.min(2, Math.round(Number(src.dither) || 2)));
+        const shaping = Math.max(0, Math.min(2, Math.round(Number(src.shaping) || 1)));
+        const downsampleOptions = new Set([1, 2, 4, 8, 16]);
+        const downsample = downsampleOptions.has(Number(src.downsample)) ? Number(src.downsample) : 1;
+        return {
+            enabled: !!src.enabled,
+            bitDepth,
+            dither,
+            shaping,
+            downsample,
+            mix: toNum(src.mix, 0, 100, 100),
+            outputDb: toNum(src.outputDb, -24, 24, 0),
+            lastPreset: String(src.lastPreset || 'cd16')
+        };
+    }
+    if (effectName === 'master') {
+        return { enabled: src.enabled !== false };
+    }
+    if (effectName !== 'limiter') return { ...src };
+    const toNum = (value, min, max, fallback) => {
+        const n = Number(value);
+        if (!Number.isFinite(n)) return fallback;
+        return Math.max(min, Math.min(max, n));
+    };
+    return {
+        enabled: !!src.enabled,
+        ceiling: toNum(src.ceiling, -18, 0, -0.3),
+        release: toNum(src.release, 1, 1000, 50),
+        lookahead: toNum(src.lookahead, 0, 25, 5),
+        gain: toNum(src.gain, -24, 24, 0)
+    };
+}
+
+async function persistScopedEffectToAppSettings(effectName, effectSettings) {
+    if (!window.aurivo?.loadSettings || !window.aurivo?.saveSettings) return false;
+    const safeEffectName = String(effectName || '').trim().toLowerCase();
+    if (!safeEffectName) return false;
+    const current = await window.aurivo.loadSettings();
+    const sanitizedNext = sanitizeScopedEffectForApp(safeEffectName, effectSettings);
+    const scopedCurrent = sanitizeScopedEffectForApp(
+        safeEffectName,
+        current?.sfxScopes?.[SFX_SCOPE]?.[safeEffectName] || {}
+    );
+    const scopedUnchanged = JSON.stringify(scopedCurrent) === JSON.stringify(sanitizedNext);
+    if (SFX_SCOPE === 'music') {
+        const musicCurrent = sanitizeScopedEffectForApp(safeEffectName, current?.sfx?.[safeEffectName] || {});
+        const musicUnchanged = JSON.stringify(musicCurrent) === JSON.stringify(sanitizedNext);
+        if (scopedUnchanged && musicUnchanged) return false;
+    } else if (scopedUnchanged) {
+        return false;
+    }
+
+    const next = { ...(current || {}) };
+    next.sfxScopes = { ...(current?.sfxScopes || {}) };
+    next.sfxScopes[SFX_SCOPE] = { ...(current?.sfxScopes?.[SFX_SCOPE] || {}) };
+    next.sfxScopes[SFX_SCOPE][safeEffectName] = sanitizedNext;
+    if (SFX_SCOPE === 'music') {
+        next.sfx = { ...(current?.sfx || {}) };
+        next.sfx[safeEffectName] = { ...sanitizedNext };
+    }
+    return !!(await window.aurivo.saveSettings(next));
+}
+
+function schedulePersistScopedEffectToAppSettings(effectName, settings, delayMs = 120) {
+    if (!window.aurivo?.loadSettings || !window.aurivo?.saveSettings) return;
+    const key = String(effectName || '').trim().toLowerCase();
+    if (!key) return;
+    if (SFX.scopedPersistTimers[key]) clearTimeout(SFX.scopedPersistTimers[key]);
+    SFX.scopedPersistTimers[key] = setTimeout(async () => {
+        try {
+            const saved = await persistScopedEffectToAppSettings(key, settings);
+            console.log(`[SFX ROUTE] source=${SFX_SCOPE} route=web_dali effect=${key} action=${saved ? 'persist' : 'persist-skip'}`);
+        } catch (e) {
+            console.warn(`[SFX ROUTE] source=${SFX_SCOPE} route=web_dali effect=${key} persist-failed:`, e?.message || e);
+        } finally {
+            delete SFX.scopedPersistTimers[key];
+        }
+    }, Math.max(0, Number(delayMs) || 0));
+}
+
 // ============================================
 // INITIALIZATION
 // ============================================
 document.addEventListener('DOMContentLoaded', () => {
     (async () => {
         try {
+            document.documentElement.setAttribute('data-sfx-scope', SFX_SCOPE);
             // Uyarı: Native audio engine mevcut değilse ses efektleri çalışmayacak
             const isNativeAudioAvailable = window.aurivo?.audio?.isNativeAvailable?.();
             if (!isNativeAudioAvailable) {
@@ -748,7 +1365,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 await window.i18n.init();
                 await syncEmbeddedLanguageFromParent();
                 try {
-                    document.title = await window.i18n.t('sfx.windowTitle');
+                    const baseTitle = await window.i18n.t('sfx.windowTitle');
+                    document.title = getScopedWindowTitle(baseTitle);
                 } catch {
                     // ignore
                 }
@@ -758,6 +1376,8 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         await applySfxLightsFromAppSettings();
+        await applySfxIconSizeFromAppSettings();
+        await applySfxRuntimePerformanceProfile();
         initEffects();
         setupEventListeners();
         setupEQPresetListener();
@@ -796,6 +1416,7 @@ function setupEQPresetListener() {
 
 function initEffects() {
     console.log('🎛️ Ses Efektleri penceresi başlatılıyor...');
+    enhanceEffectsSidebar();
 
     // Tüm efekt panellerini başlangıçta oluştur (DOM'da kalıcı olacak)
     createAllEffectPanels();
@@ -805,6 +1426,12 @@ function setupEventListeners() {
     // Sidebar efekt seçimi
     document.querySelectorAll('.effect-item').forEach(item => {
         item.addEventListener('click', () => {
+            const effectName = item.dataset.effect;
+            showEffect(effectName);
+        });
+        item.addEventListener('keydown', (e) => {
+            if (e.key !== 'Enter' && e.key !== ' ') return;
+            e.preventDefault();
             const effectName = item.dataset.effect;
             showEffect(effectName);
         });
@@ -820,6 +1447,10 @@ function setupEventListeners() {
             if (window.aurivo?.audio) {
                 window.aurivo?.audio.setEffectsEnabled(SFX.masterEnabled);
             }
+            if (SFX_SCOPE === 'web') {
+                schedulePersistScopedEffectToAppSettings('master', { enabled: SFX.masterEnabled }, 40);
+            }
+            syncMeterLoops();
         });
     }
 
@@ -848,17 +1479,27 @@ function setupEventListeners() {
             setRuntimeAnimationsActive(true);
         }
         applySfxLightsFromAppSettings().catch(() => { });
+        applySfxIconSizeFromAppSettings().catch(() => { });
     });
     window.addEventListener('storage', (e) => {
-        if (e.key !== 'aurivo_ui_sfx_lights_enabled') return;
-        const enabled = e.newValue !== '0';
-        document.documentElement.dataset.sfxLights = enabled ? 'on' : 'off';
+        if (e.key === 'aurivo_ui_sfx_lights_enabled') {
+            const enabled = e.newValue !== '0';
+            document.documentElement.dataset.sfxLights = enabled ? 'on' : 'off';
+            return;
+        }
+        if (e.key === 'aurivo_ui_sfx_icon_size') {
+            document.documentElement.dataset.sfxIconSize = normalizeSfxIconSize(e.newValue || 'medium');
+        }
     });
     window.aurivo?.onSettingsReload?.((nextSettings) => {
         const enabled = normalizeSfxLightsEnabled(
             nextSettings?.appearance?.sfxLights ?? nextSettings?.ui?.sfxLightsEnabled
         );
         document.documentElement.dataset.sfxLights = enabled ? 'on' : 'off';
+        document.documentElement.dataset.sfxIconSize = normalizeSfxIconSize(nextSettings?.appearance?.sfxSidebarIconSize);
+        Promise.resolve(applySfxRuntimePerformanceProfile(nextSettings)).then(() => {
+            setRuntimeAnimationsActive(!document.hidden);
+        }).catch(() => { });
     });
 
     window.addEventListener('message', (e) => {
@@ -914,7 +1555,7 @@ function setupEventListeners() {
 function refreshLocalizedRuntimeUi() {
     try {
         const title = tSync('sfx.windowTitle');
-        if (title && title !== 'sfx.windowTitle') document.title = title;
+        if (title && title !== 'sfx.windowTitle') document.title = getScopedWindowTitle(title);
     } catch {
         // ignore
     }
@@ -1002,6 +1643,7 @@ function ensureEffectPanelRendered(effectName) {
 
     const template = getEffectTemplate(effectName);
     wrapper.innerHTML = template;
+    enhanceEffectHeaderIcon(effectName, wrapper);
     wrapper.dataset.rendered = 'true';
 
     initEffectControls(effectName);
@@ -1017,8 +1659,22 @@ function unloadEffectPanel(effectName) {
     if (effectName === 'compressor') stopCompressorMeter();
     if (effectName === 'limiter') stopLimiterMeter();
     if (effectName === 'autogain') stopAutoGainMeter();
+    if (effectName === 'noisegate') stopNoiseGateStatusMeter();
+    if (effectName === 'dynamiceq') stopDynamicEqStatusMeter();
 
     if (effectName === 'crossfeed') {
+        if (SFX.crossfeedAbTimer) {
+            clearInterval(SFX.crossfeedAbTimer);
+            SFX.crossfeedAbTimer = null;
+        }
+        if (SFX.crossfeedAbRunning) {
+            SFX.crossfeedAbRunning = false;
+            const settings = getSettings('crossfeed');
+            settings.enabled = !!SFX.crossfeedAbOriginalEnabled;
+            saveSettings('crossfeed', settings);
+            applyEffect('crossfeed');
+            updateCrossfeedVisual();
+        }
         if (SFX.crossfeedStatusInterval) {
             clearInterval(SFX.crossfeedStatusInterval);
             SFX.crossfeedStatusInterval = null;
@@ -1150,6 +1806,10 @@ function setupPEQFilterTypeListeners() {
                     saveSettings('peq', settings);
                 }
 
+                if (SFX_SCOPE === 'web') {
+                    applyEffect('peq');
+                }
+
                 // Native modüle gönder
                 if (ipcAudio?.peq?.setFilterType) {
                     const result = await ipcAudio.peq.setFilterType(bandIndex, filterType);
@@ -1181,10 +1841,45 @@ function startTruePeakMeter() {
 
     // Veri çekme - daha seyrek ama non-blocking
     const fetchMeterData = async () => {
-        if (!window.aurivo?.ipcAudio?.truePeakLimiter) return;
-
+        if (!SFX_RUNTIME_ANIMS_ACTIVE || SFX.currentEffect !== 'truepeak') return;
+        if (!SFX.masterEnabled) {
+            lastMeterData = {
+                truePeakL: -96,
+                truePeakR: -96,
+                holdL: -96,
+                holdR: -96,
+                clippingCount: 0,
+                gainReduction: 0
+            };
+            truePeakTargetL = 0;
+            truePeakTargetR = 0;
+            truePeakHoldTargetL = 0;
+            truePeakHoldTargetR = 0;
+            return;
+        }
+        const settings = getSettings('truepeak');
+        if (!settings?.enabled) {
+            lastMeterData = {
+                truePeakL: -96,
+                truePeakR: -96,
+                holdL: -96,
+                holdR: -96,
+                clippingCount: 0,
+                gainReduction: 0
+            };
+            truePeakTargetL = 0;
+            truePeakTargetR = 0;
+            truePeakHoldTargetL = 0;
+            truePeakHoldTargetR = 0;
+            return;
+        }
         try {
-            const meter = await window.aurivo.ipcAudio.truePeakLimiter.getMeter();
+            let meter = null;
+            if (SFX_SCOPE === 'web' && window.aurivo?.soundEffects?.getWebTruePeakStatus) {
+                meter = await window.aurivo.soundEffects.getWebTruePeakStatus();
+            } else if (window.aurivo?.ipcAudio?.truePeakLimiter?.getMeter) {
+                meter = await window.aurivo.ipcAudio.truePeakLimiter.getMeter();
+            }
             if (meter) {
                 lastMeterData = meter;
 
@@ -1200,11 +1895,16 @@ function startTruePeakMeter() {
     };
 
     // Veri çekmeyi başlat
-    truePeakTimer = setInterval(fetchMeterData, 30);  // 30ms veri çekme
+    const meterPollMs = getPerfScaledMs(SFX_SCOPE === 'web' ? 90 : 30, { min: 24, max: 500 });
+    truePeakTimer = setInterval(fetchMeterData, meterPollMs);
     fetchMeterData();  // İlk veriyi hemen al
 
     // Smooth animasyon için requestAnimationFrame loop'u
     function animateTruePeakMeters() {
+        if (!SFX_RUNTIME_ANIMS_ACTIVE || SFX.currentEffect !== 'truepeak') {
+            truePeakAnimFrame = null;
+            return;
+        }
         const meterL = document.getElementById('truePeakMeterL');
         const meterR = document.getElementById('truePeakMeterR');
         const holdL = document.getElementById('truePeakHoldL');
@@ -1331,8 +2031,20 @@ function stopTruePeakMeter() {
     // Reset meter displays
     const meterL = document.getElementById('truePeakMeterL');
     const meterR = document.getElementById('truePeakMeterR');
+    const holdL = document.getElementById('truePeakHoldL');
+    const holdR = document.getElementById('truePeakHoldR');
+    const valueL = document.getElementById('truePeakValueL');
+    const valueR = document.getElementById('truePeakValueR');
+    const clipCount = document.getElementById('truepeakClipCount');
+    const grDisplay = document.getElementById('truepeakGainReduction');
     if (meterL) meterL.style.width = '0%';
     if (meterR) meterR.style.width = '0%';
+    if (holdL) holdL.style.left = '0%';
+    if (holdR) holdR.style.left = '0%';
+    if (valueL) valueL.textContent = '-96.0 dBTP';
+    if (valueR) valueR.textContent = '-96.0 dBTP';
+    if (clipCount) clipCount.textContent = '0';
+    if (grDisplay) grDisplay.textContent = '0.0 dB';
 }
 
 let compressorTimer = null;
@@ -1342,6 +2054,7 @@ function startCompressorMeter() {
     if (!meterFill) return;
 
     compressorTimer = setInterval(async () => {
+        if (!SFX_RUNTIME_ANIMS_ACTIVE || SFX.currentEffect !== 'compressor') return;
         if (!window.aurivo?.ipcAudio?.compressor?.getGainReduction) return;
         const reduction = await window.aurivo.ipcAudio.compressor.getGainReduction();
         const reductionAbs = Math.min(Math.abs(reduction || 0), 24);
@@ -1356,7 +2069,7 @@ function startCompressorMeter() {
         } else {
             meterFill.style.backgroundColor = '#f44336';
         }
-    }, 100);
+    }, getPerfScaledMs(100, { min: 60, max: 400 }));
 }
 
 function stopCompressorMeter() {
@@ -1374,6 +2087,7 @@ function startLimiterMeter() {
     if (!meterFill) return;
 
     limiterTimer = setInterval(async () => {
+        if (!SFX_RUNTIME_ANIMS_ACTIVE || SFX.currentEffect !== 'limiter') return;
         if (!window.aurivo?.ipcAudio?.limiter?.getReduction) return;
         const reduction = await window.aurivo.ipcAudio.limiter.getReduction();
         const reductionAbs = Math.min(Math.abs(reduction || 0), 20);
@@ -1388,7 +2102,7 @@ function startLimiterMeter() {
         } else {
             meterFill.style.backgroundColor = '#f44336';
         }
-    }, 50);
+    }, getPerfScaledMs(50, { min: 40, max: 240 }));
 }
 
 function stopLimiterMeter() {
@@ -1409,6 +2123,155 @@ function stopAutoGainMeter() {
         clearInterval(autoGainTimer);
         autoGainTimer = null;
     }
+}
+
+function updateNoiseGateStatusUI(status) {
+    const led = document.getElementById('gateStatusLed');
+    const text = document.getElementById('gateStatusText');
+    if (!led || !text) return;
+    const onText = tSync('sfx.on') === 'sfx.on' ? 'Açık' : tSync('sfx.on');
+    const offText = tSync('sfx.off') === 'sfx.off' ? 'Kapalı' : tSync('sfx.off');
+    const enabled = !!status?.enabled;
+    const open = !!status?.open;
+    led.classList.remove('active', 'warning', 'danger');
+    if (!enabled) {
+        text.textContent = offText;
+        return;
+    }
+    if (open) {
+        led.classList.add('active');
+        text.textContent = onText;
+        return;
+    }
+    led.classList.add('warning');
+    text.textContent = offText;
+}
+
+let noiseGateStatusBusy = false;
+function startNoiseGateStatusMeter() {
+    stopNoiseGateStatusMeter();
+    const poll = async () => {
+        if (!SFX_RUNTIME_ANIMS_ACTIVE || SFX.currentEffect !== 'noisegate') return;
+        if (noiseGateStatusBusy) return;
+        noiseGateStatusBusy = true;
+        try {
+            let status = null;
+            if (SFX_SCOPE === 'web' && window.aurivo?.soundEffects?.getWebNoiseGateStatus) {
+                status = await window.aurivo.soundEffects.getWebNoiseGateStatus();
+            } else if (window.aurivo?.ipcAudio?.noiseGate?.getStatus) {
+                status = await window.aurivo.ipcAudio.noiseGate.getStatus();
+            }
+            if (status && typeof status === 'object') {
+                updateNoiseGateStatusUI(status);
+            } else {
+                updateNoiseGateStatusUI({ enabled: false, open: false });
+            }
+        } catch {
+            updateNoiseGateStatusUI({ enabled: false, open: false });
+        } finally {
+            noiseGateStatusBusy = false;
+        }
+    };
+    const pollMs = getPerfScaledMs(SFX_SCOPE === 'web' ? 180 : 90, { min: 80, max: 1000 });
+    SFX.noiseGateStatusInterval = setInterval(poll, pollMs);
+    poll();
+}
+
+function stopNoiseGateStatusMeter() {
+    if (SFX.noiseGateStatusInterval) {
+        clearInterval(SFX.noiseGateStatusInterval);
+        SFX.noiseGateStatusInterval = null;
+    }
+    noiseGateStatusBusy = false;
+}
+
+let dynamicEqStatusBusy = false;
+function updateDynamicEqStatusUI(status) {
+    const bar = document.getElementById('dynamicEqGrBar');
+    const valueEl = document.getElementById('dynamicEqGrValue');
+    const textEl = document.getElementById('dynamicEqStatusText');
+    const countEl = document.getElementById('dynamicEqTriggerCount');
+    if (!bar || !valueEl || !textEl) return;
+
+    const enabled = !!status?.enabled;
+    const triggerCount = Math.max(0, Math.round(Number(status?.triggerCount) || 0));
+    if (countEl) {
+        countEl.textContent = `${tOr('sfx.dynamicEq.triggerCount', 'Triggers')}: ${triggerCount}`;
+    }
+    const grDb = Number(status?.gainReductionDb);
+    const safeGr = Number.isFinite(grDb) ? grDb : 0;
+    const absGr = Math.abs(safeGr);
+    const pct = Math.max(0, Math.min(100, (absGr / 24) * 100));
+    bar.style.width = `${pct}%`;
+
+    if (!enabled) {
+        bar.style.background = 'linear-gradient(90deg, #607d8b, #90a4ae)';
+        valueEl.textContent = '0.0 dB';
+        valueEl.style.color = '#9aa9c0';
+        textEl.textContent = tOr('sfx.dynamicEq.statusDisabled', 'Dynamic EQ is disabled.');
+        textEl.style.color = '#9aa9c0';
+        return;
+    }
+
+    valueEl.textContent = `${safeGr.toFixed(1)} dB`;
+    if (absGr < 0.2) {
+        bar.style.background = 'linear-gradient(90deg, #00d4ff, #00ff9c)';
+        valueEl.style.color = '#8be3ff';
+        textEl.textContent = tOr('sfx.dynamicEq.statusIdle', 'Waiting for threshold crossing...');
+        textEl.style.color = '#9aa9c0';
+    } else if (absGr < 4) {
+        bar.style.background = 'linear-gradient(90deg, #00d4ff, #00ff9c)';
+        valueEl.style.color = '#5df5ba';
+        textEl.textContent = tOr('sfx.dynamicEq.statusActiveLight', 'Dynamic EQ active (light).');
+        textEl.style.color = '#6ee7b7';
+    } else if (absGr < 9) {
+        bar.style.background = 'linear-gradient(90deg, #22c55e, #facc15)';
+        valueEl.style.color = '#facc15';
+        textEl.textContent = tOr('sfx.dynamicEq.statusActiveMedium', 'Dynamic EQ active (medium).');
+        textEl.style.color = '#facc15';
+    } else {
+        bar.style.background = 'linear-gradient(90deg, #f59e0b, #ef4444)';
+        valueEl.style.color = '#ff8a80';
+        textEl.textContent = tOr('sfx.dynamicEq.statusActiveStrong', 'Dynamic EQ active (strong).');
+        textEl.style.color = '#ff8a80';
+    }
+}
+
+function startDynamicEqStatusMeter() {
+    stopDynamicEqStatusMeter();
+    const poll = async () => {
+        if (!SFX_RUNTIME_ANIMS_ACTIVE || SFX.currentEffect !== 'dynamiceq') return;
+        if (dynamicEqStatusBusy) return;
+        dynamicEqStatusBusy = true;
+        try {
+            let status = null;
+            if (SFX_SCOPE === 'web' && window.aurivo?.soundEffects?.getWebDynamicEqStatus) {
+                status = await window.aurivo.soundEffects.getWebDynamicEqStatus();
+            } else if (window.aurivo?.ipcAudio?.dynamicEQ?.getStatus) {
+                status = await window.aurivo.ipcAudio.dynamicEQ.getStatus();
+            }
+            if (status && typeof status === 'object') {
+                updateDynamicEqStatusUI(status);
+            } else {
+                updateDynamicEqStatusUI({ enabled: false, gainReductionDb: 0 });
+            }
+        } catch {
+            updateDynamicEqStatusUI({ enabled: false, gainReductionDb: 0 });
+        } finally {
+            dynamicEqStatusBusy = false;
+        }
+    };
+    const pollMs = getPerfScaledMs(SFX_SCOPE === 'web' ? 120 : 90, { min: 80, max: 900 });
+    SFX.dynamicEqStatusInterval = setInterval(poll, pollMs);
+    poll();
+}
+
+function stopDynamicEqStatusMeter() {
+    if (SFX.dynamicEqStatusInterval) {
+        clearInterval(SFX.dynamicEqStatusInterval);
+        SFX.dynamicEqStatusInterval = null;
+    }
+    dynamicEqStatusBusy = false;
 }
 
 // ============================================
@@ -1808,6 +2671,11 @@ function getLimiterTemplate() {
 // --- Bass Boost Template ---
 function getBassBoostTemplate() {
     const settings = getSettings('bassboost');
+    const selectedPreset = String(settings?.lastPreset || '').trim().toLowerCase();
+    const isWebScope = SFX_SCOPE === 'web';
+    const freqMin = 20;
+    const freqMax = isWebScope ? 120 : 200;
+    const freqValue = Math.max(freqMin, Math.min(freqMax, Number(settings.frequency) || 80));
 
 	    return `
 	        <div class="effect-panel" id="bassboostPanel">
@@ -1831,8 +2699,8 @@ function getBassBoostTemplate() {
                         width="130" height="170"
                         data-param="frequency" 
                         data-label="Frequency (Frekans)"
-                        data-min="20" data-max="200" 
-                        data-value="${settings.frequency}" 
+                        data-min="${freqMin}" data-max="${freqMax}" 
+                        data-value="${freqValue}" 
                         data-unit=" Hz"></canvas>
                 </div>
                 <div class="knob-wrapper">
@@ -1873,6 +2741,17 @@ function getBassBoostTemplate() {
                         data-unit="%"></canvas>
                 </div>
             </div>
+
+            <div class="presets-buttons modern-presets-grid">
+                ${renderModernPresetButton({
+                    panelId: 'bassboostPanel',
+                    preset: 'deep',
+                    label: tOr('sfx.bassboost.presets.deep', 'Deep'),
+                    icon: 'sub',
+                    active: selectedPreset === 'deep',
+                    extraClass: 'bassboost-preset-btn'
+                })}
+            </div>
 	            
 	            <div style="display: flex; justify-content: flex-end; margin-top: 16px;">
 	                <button class="action-btn danger" id="bassboostResetBtn">${tSync('sfx.ui.reset')}</button>
@@ -1884,6 +2763,7 @@ function getBassBoostTemplate() {
 // --- Noise Gate Template ---
 function getNoiseGateTemplate() {
     const settings = getSettings('noisegate');
+    const selectedPreset = String(settings.lastPreset || '').trim().toLowerCase();
 
     return `
         <div class="effect-panel" id="noisegatePanel">
@@ -1948,6 +2828,25 @@ function getNoiseGateTemplate() {
                         data-unit=" dB"></canvas>
                 </div>
             </div>
+
+            <div class="presets-buttons modern-presets-grid">
+                ${renderModernPresetButton({
+                    panelId: 'noisegatePanel',
+                    preset: 'stable',
+                    label: tOr('sfx.noisegate.presets.stable', 'Stable'),
+                    icon: 'target',
+                    active: selectedPreset === 'stable',
+                    extraClass: 'noisegate-preset-btn'
+                })}
+                ${renderModernPresetButton({
+                    panelId: 'noisegatePanel',
+                    preset: 'demo',
+                    label: tOr('sfx.noisegate.presets.demo', 'Demo'),
+                    icon: 'burst',
+                    active: selectedPreset === 'demo',
+                    extraClass: 'noisegate-preset-btn'
+                })}
+            </div>
             
             <div class="led-indicator">
                 <div class="led" id="gateStatusLed"></div>
@@ -1963,43 +2862,383 @@ function getNoiseGateTemplate() {
 
 // --- Diğer Template'ler (basitleştirilmiş) ---
 function getDeesserTemplate() {
-    return getGenericEffectTemplate('deesser', `🎤 ${tSync('sfx.effects.deesser')}`, tSync('sfx.descriptions.deesser'), [
-        { id: 'frequency', label: 'Frequency', min: 2000, max: 12000, unit: 'Hz' },
-        { id: 'threshold', label: 'Threshold', min: -60, max: 0, unit: 'dB' },
-        { id: 'ratio', label: 'Ratio', min: 1, max: 10, unit: ':1' },
-        { id: 'range', label: 'Range', min: -24, max: 0, unit: 'dB' }
-    ]);
+    const settings = getSettings('deesser');
+    const selectedPreset = String(settings.lastPreset || '').trim().toLowerCase();
+    return `
+        <div class="effect-panel" id="deesserPanel">
+            <div class="effect-header">
+                <div class="effect-title-section">
+                    <h2 class="effect-title">🎤 ${tSync('sfx.effects.deesser')}</h2>
+                    <p class="effect-description">${tSync('sfx.descriptions.deesser')}</p>
+                </div>
+                <div class="effect-actions">
+                    <label class="enable-toggle">
+                        <input type="checkbox" id="deesserEnabled" ${settings.enabled ? 'checked' : ''}>
+                        <span class="toggle-slider"></span>
+                        <span class="enable-label">${tSync('sfx.ui.enable')}</span>
+                    </label>
+                </div>
+            </div>
+            
+            <div class="knobs-container">
+                <div class="knob-wrapper">
+                    <canvas class="aurivo-knob-canvas" id="deesserfrequencyCanvas" 
+                        width="130" height="170"
+                        data-param="frequency" 
+                        data-label="Frequency"
+                        data-min="2000" 
+                        data-max="12000" 
+                        data-value="${settings.frequency}"
+                        data-unit="Hz"></canvas>
+                </div>
+                <div class="knob-wrapper">
+                    <canvas class="aurivo-knob-canvas" id="deesserthresholdCanvas" 
+                        width="130" height="170"
+                        data-param="threshold" 
+                        data-label="Threshold"
+                        data-min="-60" 
+                        data-max="0" 
+                        data-value="${settings.threshold}"
+                        data-unit="dB"></canvas>
+                </div>
+                <div class="knob-wrapper">
+                    <canvas class="aurivo-knob-canvas" id="deesserratioCanvas" 
+                        width="130" height="170"
+                        data-param="ratio" 
+                        data-label="Ratio"
+                        data-min="1" 
+                        data-max="10" 
+                        data-value="${settings.ratio}"
+                        data-unit=":1"></canvas>
+                </div>
+                <div class="knob-wrapper">
+                    <canvas class="aurivo-knob-canvas" id="deesserrangeCanvas" 
+                        width="130" height="170"
+                        data-param="range" 
+                        data-label="Range"
+                        data-min="-24" 
+                        data-max="0" 
+                        data-value="${settings.range}"
+                        data-unit="dB"></canvas>
+                </div>
+            </div>
+
+            <div class="presets-buttons modern-presets-grid">
+                ${renderModernPresetButton({
+                    panelId: 'deesserPanel',
+                    preset: 'smooth',
+                    label: tOr('sfx.deesser.presets.smooth', 'Smooth'),
+                    icon: 'vocal',
+                    active: selectedPreset === 'smooth',
+                    extraClass: 'deesser-preset-btn'
+                })}
+                ${renderModernPresetButton({
+                    panelId: 'deesserPanel',
+                    preset: 'demo',
+                    label: tOr('sfx.deesser.presets.demo', 'Demo'),
+                    icon: 'burst',
+                    active: selectedPreset === 'demo',
+                    extraClass: 'deesser-preset-btn'
+                })}
+            </div>
+            
+            <div style="display: flex; justify-content: flex-end; margin-top: 16px;">
+                <button class="action-btn danger" id="deesserResetBtn">${tSync('sfx.ui.reset')}</button>
+            </div>
+        </div>
+    `;
 }
 
 function getExciterTemplate() {
-    return getGenericEffectTemplate('exciter', `✨ ${tSync('sfx.effects.exciter')}`, tSync('sfx.descriptions.exciter'), [
-        { id: 'frequency', label: 'Frequency', min: 1000, max: 8000, unit: 'Hz' },
-        { id: 'amount', label: 'Amount', min: 0, max: 100, unit: '%' },
-        { id: 'mix', label: 'Mix', min: 0, max: 100, unit: '%' }
-    ]);
+    const settings = getSettings('exciter');
+    const selectedPreset = String(settings.lastPreset || '');
+    return `
+        <div class="effect-panel" id="exciterPanel">
+            <div class="effect-header">
+                <div class="effect-title-section">
+                    <h2 class="effect-title">✨ ${tSync('sfx.effects.exciter')}</h2>
+                    <p class="effect-description">${tSync('sfx.descriptions.exciter')}</p>
+                </div>
+                <div class="effect-actions">
+                    <label class="enable-toggle">
+                        <input type="checkbox" id="exciterEnabled" ${settings.enabled ? 'checked' : ''}>
+                        <span class="toggle-slider"></span>
+                        <span class="enable-label">${tSync('sfx.ui.enable')}</span>
+                    </label>
+                </div>
+            </div>
+
+            <div class="knobs-container">
+                <div class="knob-wrapper">
+                    <canvas class="aurivo-knob-canvas" id="exciterfrequencyCanvas"
+                        width="130" height="170"
+                        data-param="frequency"
+                        data-label="${tOr('sfx.knob.param.frequency', 'Frequency')}"
+                        data-min="1000"
+                        data-max="8000"
+                        data-value="${settings.frequency}"
+                        data-unit="Hz"></canvas>
+                </div>
+                <div class="knob-wrapper">
+                    <canvas class="aurivo-knob-canvas" id="exciteramountCanvas"
+                        width="130" height="170"
+                        data-param="amount"
+                        data-label="${tOr('sfx.knob.param.amount', 'Amount')}"
+                        data-min="0"
+                        data-max="100"
+                        data-value="${settings.amount}"
+                        data-unit="%"></canvas>
+                </div>
+                <div class="knob-wrapper">
+                    <canvas class="aurivo-knob-canvas" id="excitermixCanvas"
+                        width="130" height="170"
+                        data-param="mix"
+                        data-label="${tOr('sfx.knob.param.mix', 'Mix')}"
+                        data-min="0"
+                        data-max="100"
+                        data-value="${settings.mix}"
+                        data-unit="%"></canvas>
+                </div>
+            </div>
+
+            <div class="presets-buttons modern-presets-grid">
+                ${renderModernPresetButton({
+                    panelId: 'exciterPanel',
+                    preset: 'oddair',
+                    label: tOr('sfx.exciter.presets.oddair', 'Odd Air'),
+                    icon: 'sparkle',
+                    active: selectedPreset === 'oddair',
+                    extraClass: 'exciter-preset-btn'
+                })}
+                ${renderModernPresetButton({
+                    panelId: 'exciterPanel',
+                    preset: 'smoothair',
+                    label: tOr('sfx.exciter.presets.smoothair', 'Smooth Air'),
+                    icon: 'air',
+                    active: selectedPreset === 'smoothair',
+                    extraClass: 'exciter-preset-btn'
+                })}
+                ${renderModernPresetButton({
+                    panelId: 'exciterPanel',
+                    preset: 'brightair',
+                    label: tOr('sfx.exciter.presets.brightair', 'Bright Air'),
+                    icon: 'burst',
+                    active: selectedPreset === 'brightair',
+                    extraClass: 'exciter-preset-btn'
+                })}
+                ${renderModernPresetButton({
+                    panelId: 'exciterPanel',
+                    preset: 'softair',
+                    label: tOr('sfx.exciter.presets.softair', 'Soft Air'),
+                    icon: 'natural',
+                    active: selectedPreset === 'softair',
+                    extraClass: 'exciter-preset-btn'
+                })}
+            </div>
+
+            <div style="display: flex; justify-content: flex-end; margin-top: 16px;">
+                <button class="action-btn danger" id="exciterResetBtn">${tSync('sfx.ui.reset')}</button>
+            </div>
+        </div>
+    `;
 }
 
 function getStereoWidenerTemplate() {
-    return getGenericEffectTemplate('stereowidener', `🔀 ${tSync('sfx.effects.stereowidener')}`, tSync('sfx.descriptions.stereowidener'), [
-        { id: 'width', label: 'Width', min: 0, max: 200, unit: '%' },
-        { id: 'centerLevel', label: 'Center Level', min: -12, max: 12, unit: 'dB' },
-        { id: 'sideLevel', label: 'Side Level', min: -12, max: 12, unit: 'dB' },
-        { id: 'bassToMono', label: 'Bass to Mono', min: 0, max: 500, unit: 'Hz' }
-    ]);
+    const settings = getSettings('stereowidener');
+    const selectedPreset = String(settings.lastPreset || 'balanced').trim().toLowerCase();
+    return `
+        <div class="effect-panel" id="stereowidenerPanel">
+            <div class="effect-header">
+                <div class="effect-title-section">
+                    <h2 class="effect-title">🔀 ${tSync('sfx.effects.stereowidener')}</h2>
+                    <p class="effect-description">${tSync('sfx.descriptions.stereowidener')}</p>
+                </div>
+                <div class="effect-actions">
+                    <label class="enable-toggle">
+                        <input type="checkbox" id="stereowidenerEnabled" ${settings.enabled ? 'checked' : ''}>
+                        <span class="toggle-slider"></span>
+                        <span class="enable-label">${tSync('sfx.ui.enable')}</span>
+                    </label>
+                </div>
+            </div>
+
+            <div class="knobs-container">
+                <div class="knob-wrapper">
+                    <canvas class="aurivo-knob-canvas" id="stereowidenerwidthCanvas"
+                        width="130" height="170"
+                        data-param="width"
+                        data-label="Width"
+                        data-min="0"
+                        data-max="200"
+                        data-value="${settings.width}"
+                        data-unit="%"></canvas>
+                </div>
+                <div class="knob-wrapper">
+                    <canvas class="aurivo-knob-canvas" id="stereowidenercenterLevelCanvas"
+                        width="130" height="170"
+                        data-param="centerLevel"
+                        data-label="Center Level"
+                        data-min="-12"
+                        data-max="12"
+                        data-value="${settings.centerLevel}"
+                        data-unit="dB"></canvas>
+                </div>
+                <div class="knob-wrapper">
+                    <canvas class="aurivo-knob-canvas" id="stereowidenersideLevelCanvas"
+                        width="130" height="170"
+                        data-param="sideLevel"
+                        data-label="Side Level"
+                        data-min="-12"
+                        data-max="12"
+                        data-value="${settings.sideLevel}"
+                        data-unit="dB"></canvas>
+                </div>
+                <div class="knob-wrapper">
+                    <canvas class="aurivo-knob-canvas" id="stereowidenerbassToMonoCanvas"
+                        width="130" height="170"
+                        data-param="bassToMono"
+                        data-label="Bass to Mono"
+                        data-min="0"
+                        data-max="500"
+                        data-value="${settings.bassToMono}"
+                        data-unit="Hz"></canvas>
+                </div>
+            </div>
+
+            <div class="presets-buttons modern-presets-grid">
+                ${renderModernPresetButton({
+                    panelId: 'stereowidenerPanel',
+                    preset: 'balanced',
+                    label: tOr('sfx.stereowidener.presets.balanced', 'Balanced'),
+                    icon: 'target',
+                    active: selectedPreset === 'balanced',
+                    extraClass: 'stereowidener-preset-btn'
+                })}
+                ${renderModernPresetButton({
+                    panelId: 'stereowidenerPanel',
+                    preset: 'wide',
+                    label: tOr('sfx.stereowidener.presets.wide', 'Wide'),
+                    icon: 'wide',
+                    active: selectedPreset === 'wide',
+                    extraClass: 'stereowidener-preset-btn'
+                })}
+                ${renderModernPresetButton({
+                    panelId: 'stereowidenerPanel',
+                    preset: 'focus',
+                    label: tOr('sfx.stereowidener.presets.focus', 'Focus'),
+                    icon: 'vocal',
+                    active: selectedPreset === 'focus',
+                    extraClass: 'stereowidener-preset-btn'
+                })}
+            </div>
+
+            <div style="display: flex; justify-content: flex-end; margin-top: 16px;">
+                <button class="action-btn danger" id="stereowidenerResetBtn">${tSync('sfx.ui.reset')}</button>
+            </div>
+        </div>
+    `;
 }
 
 function getEchoTemplate() {
-    return getGenericEffectTemplate('echo', `🔁 ${tSync('sfx.effects.echo')}`, tSync('sfx.descriptions.echo'), [
-        { id: 'delay', label: 'Delay', min: 10, max: 1000, unit: 'ms' },
-        { id: 'feedback', label: 'Feedback', min: 0, max: 95, unit: '%' },
-        { id: 'wetDry', label: 'Wet/Dry', min: 0, max: 100, unit: '%' },
-        { id: 'highCut', label: 'High Cut', min: 1000, max: 20000, unit: 'Hz' }
-    ]);
+    const settings = getSettings('echo');
+    const selectedPreset = String(settings.lastPreset || 'clean').trim().toLowerCase();
+    return `
+        <div class="effect-panel" id="echoPanel">
+            <div class="effect-header">
+                <div class="effect-title-section">
+                    <h2 class="effect-title">🔁 ${tSync('sfx.effects.echo')}</h2>
+                    <p class="effect-description">${tSync('sfx.descriptions.echo')}</p>
+                </div>
+                <div class="effect-actions">
+                    <label class="enable-toggle">
+                        <input type="checkbox" id="echoEnabled" ${settings.enabled ? 'checked' : ''}>
+                        <span class="toggle-slider"></span>
+                        <span class="enable-label">${tSync('sfx.ui.enable')}</span>
+                    </label>
+                </div>
+            </div>
+
+            <div class="knobs-container">
+                <div class="knob-wrapper">
+                    <canvas class="aurivo-knob-canvas" id="echodelayCanvas"
+                        width="130" height="170"
+                        data-param="delay"
+                        data-label="Delay"
+                        data-min="10"
+                        data-max="1000"
+                        data-value="${settings.delay}"
+                        data-unit="ms"></canvas>
+                </div>
+                <div class="knob-wrapper">
+                    <canvas class="aurivo-knob-canvas" id="echofeedbackCanvas"
+                        width="130" height="170"
+                        data-param="feedback"
+                        data-label="Feedback"
+                        data-min="0"
+                        data-max="95"
+                        data-value="${settings.feedback}"
+                        data-unit="%"></canvas>
+                </div>
+                <div class="knob-wrapper">
+                    <canvas class="aurivo-knob-canvas" id="echowetDryCanvas"
+                        width="130" height="170"
+                        data-param="wetDry"
+                        data-label="Wet/Dry"
+                        data-min="0"
+                        data-max="100"
+                        data-value="${settings.wetDry}"
+                        data-unit="%"></canvas>
+                </div>
+                <div class="knob-wrapper">
+                    <canvas class="aurivo-knob-canvas" id="echohighCutCanvas"
+                        width="130" height="170"
+                        data-param="highCut"
+                        data-label="High Cut"
+                        data-min="1000"
+                        data-max="20000"
+                        data-value="${settings.highCut}"
+                        data-unit="Hz"></canvas>
+                </div>
+            </div>
+
+            <div class="presets-buttons modern-presets-grid">
+                ${renderModernPresetButton({
+                    panelId: 'echoPanel',
+                    preset: 'clean',
+                    label: tOr('sfx.echo.presets.clean', 'Clean'),
+                    icon: 'natural',
+                    active: selectedPreset === 'clean',
+                    extraClass: 'echo-preset-btn'
+                })}
+                ${renderModernPresetButton({
+                    panelId: 'echoPanel',
+                    preset: 'vocal',
+                    label: tOr('sfx.echo.presets.vocal', 'Vocal'),
+                    icon: 'vocal',
+                    active: selectedPreset === 'vocal',
+                    extraClass: 'echo-preset-btn'
+                })}
+                ${renderModernPresetButton({
+                    panelId: 'echoPanel',
+                    preset: 'space',
+                    label: tOr('sfx.echo.presets.space', 'Space'),
+                    icon: 'hall',
+                    active: selectedPreset === 'space',
+                    extraClass: 'echo-preset-btn'
+                })}
+            </div>
+
+            <div style="display: flex; justify-content: flex-end; margin-top: 16px;">
+                <button class="action-btn danger" id="echoResetBtn">${tSync('sfx.ui.reset')}</button>
+            </div>
+        </div>
+    `;
 }
 
 function getSoftEchoTemplate() {
     const settings = getSettings('softecho');
-    const selectedPreset = String(settings.lastPreset || 'natural');
+    const selectedPreset = String(settings.lastPreset || 'canyon');
+    const selectedPresetDesc = getSoftEchoPresetDescription(selectedPreset);
     return `
         <div class="effect-panel" id="softechoPanel">
             <div class="effect-header">
@@ -2058,12 +3297,16 @@ function getSoftEchoTemplate() {
             <div class="presets-section">
                 <div class="presets-title">🎛️ ${tOr('sfx.softecho.presets.title', 'Soft Echo Presets')}</div>
                 <div class="presets-buttons">
-                    ${renderModernPresetButton({ panelId: 'softechoPanel', preset: 'natural', label: tOr('sfx.softecho.presets.natural', 'Natural'), icon: 'natural', active: selectedPreset === 'natural', extraClass: 'softecho-preset-btn' })}
-                    ${renderModernPresetButton({ panelId: 'softechoPanel', preset: 'velvet', label: tOr('sfx.softecho.presets.velvet', 'Velvet'), icon: 'air', active: selectedPreset === 'velvet', extraClass: 'softecho-preset-btn' })}
-                    ${renderModernPresetButton({ panelId: 'softechoPanel', preset: 'tape', label: tOr('sfx.softecho.presets.tape', 'Tape Glow'), icon: 'tape', active: selectedPreset === 'tape', extraClass: 'softecho-preset-btn' })}
+                    ${renderModernPresetButton({ panelId: 'softechoPanel', preset: 'canyon', label: tOr('sfx.softecho.presets.canyon', 'Dağ Yankısı'), icon: 'hall', active: selectedPreset === 'canyon', extraClass: 'softecho-preset-btn' })}
+                    ${renderModernPresetButton({ panelId: 'softechoPanel', preset: 'cave', label: tOr('sfx.softecho.presets.cave', 'Mağara Yankısı'), icon: 'church', active: selectedPreset === 'cave', extraClass: 'softecho-preset-btn' })}
+                    ${renderModernPresetButton({ panelId: 'softechoPanel', preset: 'room', label: tOr('sfx.softecho.presets.room', 'Boş Oda Yankısı'), icon: 'room', active: selectedPreset === 'room', extraClass: 'softecho-preset-btn' })}
+                    ${renderModernPresetButton({ panelId: 'softechoPanel', preset: 'studio', label: tOr('sfx.softecho.presets.studio', 'Şarkı Stüdyosu'), icon: 'plate', active: selectedPreset === 'studio', extraClass: 'softecho-preset-btn' })}
+                    ${renderModernPresetButton({ panelId: 'softechoPanel', preset: 'puresoft', label: tOr('sfx.softecho.presets.puresoft', 'Pure Soft'), icon: 'sparkle', active: selectedPreset === 'puresoft', extraClass: 'softecho-preset-btn' })}
                     ${renderModernPresetButton({ panelId: 'softechoPanel', preset: 'vocal', label: tOr('sfx.softecho.presets.vocal', 'Vocal Soft'), icon: 'vocal', active: selectedPreset === 'vocal', extraClass: 'softecho-preset-btn' })}
-                    ${renderModernPresetButton({ panelId: 'softechoPanel', preset: 'wide', label: tOr('sfx.softecho.presets.wide', 'Wide Air'), icon: 'wide', active: selectedPreset === 'wide', extraClass: 'softecho-preset-btn' })}
                     ${renderModernPresetButton({ panelId: 'softechoPanel', preset: 'cinema', label: tOr('sfx.softecho.presets.cinema', 'Cinema Tail'), icon: 'hall', active: selectedPreset === 'cinema', extraClass: 'softecho-preset-btn' })}
+                </div>
+                <div id="softechoPresetHint" style="margin-top:10px; color:#9fb0c8; font-size:12px; line-height:1.35;">
+                    ${selectedPresetDesc}
                 </div>
             </div>
 
@@ -2141,6 +3384,9 @@ function getConvReverbTemplate() {
 
 function getPEQTemplate() {
     const settings = getSettings('peq');
+    const allowedPresets = new Set(['balanced', 'bass', 'vocal', 'clarity', 'warm', 'air']);
+    const selectedPresetRaw = String(settings.lastPreset || 'balanced');
+    const selectedPreset = allowedPresets.has(selectedPresetRaw) ? selectedPresetRaw : 'balanced';
     // Default 6 bands with filter types
     if (!settings.bands || settings.bands.length < 6) {
         settings.bands = [
@@ -2169,20 +3415,20 @@ function getPEQTemplate() {
         const filterType = band.filterType || 0;
 
         return `
-            <div class="peq-band-group" style="background: rgba(255,255,255,0.03); border-radius: 12px; padding: 16px; min-width: 160px;">
-                <div class="peq-band-title" style="text-align: center; font-weight: 600; color: #fff; margin-bottom: 10px; font-size: 14px;">${label}</div>
+            <div class="peq-band-group" style="background: rgba(255,255,255,0.03); border-radius: 14px; padding: clamp(14px, 1.2vw, 20px); min-width: clamp(180px, 17vw, 250px); flex: 1 1 clamp(180px, 17vw, 250px);">
+                <div class="peq-band-title" style="text-align: center; font-weight: 600; color: #fff; margin-bottom: 10px; font-size: clamp(14px, 0.85vw, 16px);">${label}</div>
                 
                 <!-- Filter Type Selector -->
                 <div style="margin-bottom: 12px;">
-                    <select id="peqBand${index}Type" class="peq-filter-select" data-band="${index}" style="width: 100%; padding: 8px 10px; background: #1a1a1a; border: 1px solid #333; border-radius: 6px; color: #fff; font-size: 12px; cursor: pointer;">
+                    <select id="peqBand${index}Type" class="peq-filter-select" data-band="${index}" style="width: 100%; padding: clamp(8px, 0.6vw, 11px) clamp(10px, 0.8vw, 12px); background: #1a1a1a; border: 1px solid #333; border-radius: 8px; color: #fff; font-size: clamp(12px, 0.75vw, 14px); cursor: pointer;">
                         ${filterTypeOptions.replace(`value="${filterType}"`, `value="${filterType}" selected`)}
                     </select>
                 </div>
                 
-                <div class="knobs-container compact" style="flex-direction: column; gap: 6px;">
+                <div class="knobs-container compact" style="flex-direction: column; gap: clamp(6px, 0.5vw, 10px);">
                     <div class="knob-wrapper small">
                         <canvas class="aurivo-knob-canvas" id="peqBand${index}FreqCanvas" 
-                            width="110" height="145"
+                            width="128" height="168"
                             data-param="band${index}_freq" 
                             data-label="Freq"
                             data-min="${freqMin}" data-max="${freqMax}" 
@@ -2191,7 +3437,7 @@ function getPEQTemplate() {
                     </div>
                     <div class="knob-wrapper small">
                         <canvas class="aurivo-knob-canvas" id="peqBand${index}GainCanvas" 
-                            width="110" height="145"
+                            width="128" height="168"
                             data-param="band${index}_gain" 
                             data-label="Gain"
                             data-min="-15" data-max="15" 
@@ -2200,7 +3446,7 @@ function getPEQTemplate() {
                     </div>
                     <div class="knob-wrapper small">
                         <canvas class="aurivo-knob-canvas" id="peqBand${index}QCanvas" 
-                            width="110" height="145"
+                            width="128" height="168"
                             data-param="band${index}_q" 
                             data-label="Q"
                             data-min="0.1" data-max="10" 
@@ -2228,8 +3474,20 @@ function getPEQTemplate() {
 	                    </label>
 	                </div>
 	            </div>
+
+            <div class="presets-section" style="margin-top: 12px;">
+                <div class="presets-title">🎚️ ${tOr('sfx.peq.presets.title', 'PEQ Hızlı Ayarlar')}</div>
+                <div class="presets-buttons" style="display:flex; flex-wrap:wrap; gap:8px;">
+                    ${renderModernPresetButton({ panelId: 'peqPanel', preset: 'balanced', label: tOr('sfx.peq.presets.balanced', 'Dengeli'), icon: 'natural', active: selectedPreset === 'balanced', extraClass: 'peq-preset-btn' })}
+                    ${renderModernPresetButton({ panelId: 'peqPanel', preset: 'bass', label: tOr('sfx.peq.presets.bass', 'Bass Güçlü'), icon: 'guitar', active: selectedPreset === 'bass', extraClass: 'peq-preset-btn' })}
+                    ${renderModernPresetButton({ panelId: 'peqPanel', preset: 'vocal', label: tOr('sfx.peq.presets.vocal', 'Vokal Net'), icon: 'vocal', active: selectedPreset === 'vocal', extraClass: 'peq-preset-btn' })}
+                    ${renderModernPresetButton({ panelId: 'peqPanel', preset: 'clarity', label: tOr('sfx.peq.presets.clarity', 'Parlak Netlik'), icon: 'sparkle', active: selectedPreset === 'clarity', extraClass: 'peq-preset-btn' })}
+                    ${renderModernPresetButton({ panelId: 'peqPanel', preset: 'warm', label: tOr('sfx.peq.presets.warm', 'Sıcak Ton'), icon: 'flame', active: selectedPreset === 'warm', extraClass: 'peq-preset-btn' })}
+                    ${renderModernPresetButton({ panelId: 'peqPanel', preset: 'air', label: tOr('sfx.peq.presets.air', 'Air Açık'), icon: 'air', active: selectedPreset === 'air', extraClass: 'peq-preset-btn' })}
+                </div>
+            </div>
             
-            <div class="peq-bands-container" style="display:flex; flex-wrap:wrap; gap:12px; justify-content:center; margin-top: 16px;">
+            <div class="peq-bands-container" style="display:flex; flex-wrap:wrap; gap:clamp(10px, 0.8vw, 16px); justify-content:center; margin-top: 16px; align-items: stretch;">
                 ${generateBandKnobs(0, tSync('sfx.peq.bands.subBass'), 20, 200, 60)}
                 ${generateBandKnobs(1, tSync('sfx.peq.bands.bass'), 50, 500, 150)}
                 ${generateBandKnobs(2, tSync('sfx.peq.bands.lowMid'), 200, 2000, 400)}
@@ -2247,6 +3505,9 @@ function getPEQTemplate() {
 
 function getAutoGainTemplate() {
     const settings = getSettings('autogain');
+    const allowedPresets = new Set(['balanced', 'night', 'loud', 'speech']);
+    const selectedPresetRaw = String(settings.lastPreset || 'balanced');
+    const selectedPreset = allowedPresets.has(selectedPresetRaw) ? selectedPresetRaw : 'balanced';
     return `
         <div class="effect-panel" id="autogainPanel">
             <div class="effect-header">
@@ -2281,6 +3542,16 @@ function getAutoGainTemplate() {
                         data-min="0" data-max="24" 
                         data-value="${settings.maxGain !== undefined ? settings.maxGain : 12}" 
                         data-unit=" dB"></canvas>
+                </div>
+            </div>
+
+            <div class="presets-section" style="margin-top: 12px;">
+                <div class="presets-title">🎚️ ${tOr('sfx.autogain.presets.title', 'Auto Gain Hızlı Ayarlar')}</div>
+                <div class="presets-buttons">
+                    ${renderModernPresetButton({ panelId: 'autogainPanel', preset: 'balanced', label: tOr('sfx.autogain.presets.balanced', 'Dengeli'), icon: 'natural', active: selectedPreset === 'balanced', extraClass: 'autogain-preset-btn' })}
+                    ${renderModernPresetButton({ panelId: 'autogainPanel', preset: 'night', label: tOr('sfx.autogain.presets.night', 'Gece Sessiz'), icon: 'mild', active: selectedPreset === 'night', extraClass: 'autogain-preset-btn' })}
+                    ${renderModernPresetButton({ panelId: 'autogainPanel', preset: 'loud', label: tOr('sfx.autogain.presets.loud', 'Yüksek Enerji'), icon: 'burst', active: selectedPreset === 'loud', extraClass: 'autogain-preset-btn' })}
+                    ${renderModernPresetButton({ panelId: 'autogainPanel', preset: 'speech', label: tOr('sfx.autogain.presets.speech', 'Konuşma Net'), icon: 'vocal', active: selectedPreset === 'speech', extraClass: 'autogain-preset-btn' })}
                 </div>
             </div>
             
@@ -2471,7 +3742,7 @@ function getCrossfeedTemplate() {
             
             <!-- Crossfeed Visualization -->
             <div class="crossfeed-visual-panel" style="margin: 20px 0; padding: 20px; background: #0a0a0a; border-radius: 12px; border: 1px solid #333;">
-                <h3 style="color: #00d4ff; margin-bottom: 10px; font-size: 14px;">Stereo Field Simulation</h3>
+                <h3 style="color: #00d4ff; margin-bottom: 10px; font-size: 14px;">${tOr('sfx.crossfeed.visualTitle', 'Stereo Field Simulation')}</h3>
                 <canvas id="crossfeed-canvas" width="400" height="200" style="width: 100%; max-width: 400px; display: block; margin: 0 auto;"></canvas>
             </div>
             <div id="crossfeed-status" style="margin-top: -8px; margin-bottom: 12px; color: #888; font-size: 12px;">
@@ -2489,13 +3760,23 @@ function getCrossfeedTemplate() {
             <div class="crossfeed-presets" style="margin: 20px 0;">
                 <h3 style="color: #aaa; margin-bottom: 12px; font-size: 14px;">${tSync('sfx.ui.presets')}</h3>
                 <div class="preset-buttons" style="display: flex; gap: 10px; flex-wrap: wrap;">
-                    ${renderModernPresetButton({ panelId: 'crossfeedPanel', preset: '0', label: 'Natural', icon: 'natural', active: settings.preset === 0, extraClass: 'crossfeed-preset-btn' })}
-                    ${renderModernPresetButton({ panelId: 'crossfeedPanel', preset: '1', label: 'Mild', icon: 'mild', active: settings.preset === 1, extraClass: 'crossfeed-preset-btn' })}
-                    ${renderModernPresetButton({ panelId: 'crossfeedPanel', preset: '2', label: 'Strong', icon: 'strong', active: settings.preset === 2, extraClass: 'crossfeed-preset-btn' })}
-                    ${renderModernPresetButton({ panelId: 'crossfeedPanel', preset: '3', label: 'Wide', icon: 'wide', active: settings.preset === 3, extraClass: 'crossfeed-preset-btn' })}
-                    ${renderModernPresetButton({ panelId: 'crossfeedPanel', preset: '4', label: 'Custom', icon: 'custom', active: settings.preset === 4, extraClass: 'crossfeed-preset-btn' })}
-                    <button class="action-btn danger" id="crossfeedResetBtn" style="margin-left: auto; padding: 10px 16px;">🔄 ${tSync('sfx.ui.reset')}</button>
+                    ${renderModernPresetButton({ panelId: 'crossfeedPanel', preset: '0', label: tOr('sfx.crossfeed.presets.natural', 'Natural'), icon: 'natural', active: settings.preset === 0, extraClass: 'crossfeed-preset-btn' })}
+                    ${renderModernPresetButton({ panelId: 'crossfeedPanel', preset: '1', label: tOr('sfx.crossfeed.presets.mild', 'Mild'), icon: 'mild', active: settings.preset === 1, extraClass: 'crossfeed-preset-btn' })}
+                    ${renderModernPresetButton({ panelId: 'crossfeedPanel', preset: '2', label: tOr('sfx.crossfeed.presets.strong', 'Strong'), icon: 'strong', active: settings.preset === 2, extraClass: 'crossfeed-preset-btn' })}
+                    ${renderModernPresetButton({ panelId: 'crossfeedPanel', preset: '3', label: tOr('sfx.crossfeed.presets.wide', 'Wide'), icon: 'wide', active: settings.preset === 3, extraClass: 'crossfeed-preset-btn' })}
+                    ${renderModernPresetButton({ panelId: 'crossfeedPanel', preset: '4', label: tOr('sfx.crossfeed.presets.custom', 'Custom'), icon: 'custom', active: settings.preset === 4, extraClass: 'crossfeed-preset-btn' })}
+                    <button class="action-btn" id="crossfeedAbBtn" style="margin-left: auto; padding: 10px 16px; background: rgba(0, 153, 255, 0.15); border: 1px solid rgba(0, 153, 255, 0.45); color: #8fc8ff;">${tOr('sfx.crossfeed.ab.start', 'A/B Compare')}</button>
+                    <button class="action-btn danger" id="crossfeedResetBtn" style="padding: 10px 16px;">🔄 ${tSync('sfx.ui.reset')}</button>
                 </div>
+                <div id="crossfeed-ab-speed-group" style="display: flex; gap: 8px; margin-top: 8px;">
+                    <button class="action-btn crossfeed-ab-speed-btn" data-speed-ms="500" style="padding: 6px 10px;">0.5s</button>
+                    <button class="action-btn crossfeed-ab-speed-btn" data-speed-ms="1000" style="padding: 6px 10px;">1s</button>
+                    <button class="action-btn crossfeed-ab-speed-btn" data-speed-ms="2000" style="padding: 6px 10px;">2s</button>
+                    <button class="action-btn crossfeed-ab-speed-btn" data-speed-ms="3000" style="padding: 6px 10px;">3s</button>
+                </div>
+                <p id="crossfeed-ab-status" style="color: #6f7d91; font-size: 12px; margin-top: 8px;">
+                    ${tOr('sfx.crossfeed.ab.statusOff', 'A/B: Off • Speed {speed}').replace('{speed}', '1s')}
+                </p>
                 <p id="crossfeed-preset-description" style="color: #888; font-size: 12px; margin-top: 10px; padding: 8px; background: rgba(0,212,255,0.05); border-radius: 6px;">
                     ${presetDescriptions[settings.preset]}
                 </p>
@@ -2692,9 +3973,16 @@ function getBassMonoTemplate() {
             </div>
 
             <!-- Visualization -->
-            <div class="bass-mono-visual-panel" style="margin: 20px 0; padding: 20px; background: #0a0a0a; border-radius: 12px; border: 1px solid #333;">
-                <h3 style="color: #ff0080; margin-bottom: 10px; font-size: 14px;">Frequency Split Visualization</h3>
-                <canvas id="bass-mono-canvas" width="600" height="250" style="width: 100%; height: auto; display: block;"></canvas>
+            <div class="bass-mono-visual-panel" style="margin: 16px 0; padding: 14px; background: linear-gradient(180deg, rgba(14,18,28,0.96), rgba(8,10,16,0.98)); border-radius: 12px; border: 1px solid rgba(130,155,190,0.22); box-shadow: inset 0 0 0 1px rgba(255,255,255,0.03);">
+                <div style="display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:10px; flex-wrap:wrap;">
+                    <h3 style="color:#d9e4ff; margin:0; font-size:13px; letter-spacing:0.2px;">${tSync('sfx.effects.bassmono')}</h3>
+                    <div style="display:flex; gap:6px; flex-wrap:wrap;">
+                        <span id="bassmonoCutoffBadge" style="padding:4px 8px; border-radius:999px; background:rgba(255,0,128,0.14); border:1px solid rgba(255,0,128,0.35); color:#ff7ac1; font-size:11px;">${tSync('sfx.knob.param.cutoff')} ${Math.round(settings.cutoff)} Hz</span>
+                        <span id="bassmonoSlopeBadge" style="padding:4px 8px; border-radius:999px; background:rgba(255,196,0,0.10); border:1px solid rgba(255,196,0,0.28); color:#ffd44d; font-size:11px;">${tSync('sfx.bassmono.slopeLabel')} ${Math.round(settings.slope)} dB/oct</span>
+                        <span id="bassmonoWidthBadge" style="padding:4px 8px; border-radius:999px; background:rgba(0,212,255,0.14); border:1px solid rgba(0,212,255,0.35); color:#74e7ff; font-size:11px;">${tSync('sfx.knob.param.stereoWidth')} ${Math.round(settings.stereoWidth)}%</span>
+                    </div>
+                </div>
+                <canvas id="bass-mono-canvas" width="940" height="210" style="width:100%; height:clamp(170px, 24vh, 230px); display:block; border:1px solid rgba(255,255,255,0.16); border-radius:10px;"></canvas>
             </div>
 
             <!-- Presets -->
@@ -2710,7 +3998,7 @@ function getBassMonoTemplate() {
             </div>
 
             <!-- Knobs -->
-            <div class="knob-grid" style="display: flex; justify-content: center; gap: 30px; flex-wrap: wrap; margin: 20px 0;">
+            <div class="knob-grid" style="display: flex; justify-content: center; align-items: flex-start; gap: 24px; flex-wrap: wrap; margin: 16px 0 10px 0;">
                 <div class="knob-wrapper">
                     <canvas class="aurivo-knob-canvas bass-mono-knob" id="bassmonoCutoffCanvas" 
                         width="130" height="170"
@@ -2787,6 +4075,7 @@ function getDynamicEQTemplate() {
                     ${renderModernPresetButton({ panelId: 'dynamiceqPanel', preset: 'air', label: tSync('sfx.dynamiceq.presets.air'), icon: 'air', active: settings.lastPreset === 'air', extraClass: 'dynamiceq-preset-btn' })}
                     ${renderModernPresetButton({ panelId: 'dynamiceqPanel', preset: 'drumsnap', label: tSync('sfx.dynamiceq.presets.drumsnap'), icon: 'drum', active: settings.lastPreset === 'drumsnap', extraClass: 'dynamiceq-preset-btn' })}
                     ${renderModernPresetButton({ panelId: 'dynamiceqPanel', preset: 'warmth', label: tSync('sfx.dynamiceq.presets.warmth'), icon: 'flame', active: settings.lastPreset === 'warmth', extraClass: 'dynamiceq-preset-btn' })}
+                    ${renderModernPresetButton({ panelId: 'dynamiceqPanel', preset: 'testhear', label: tOr('sfx.dynamiceq.presets.testhear', 'Test (Hear It)'), icon: 'zap', active: settings.lastPreset === 'testhear', extraClass: 'dynamiceq-preset-btn' })}
                 </div>
             </div>
 
@@ -2870,6 +4159,20 @@ function getDynamicEQTemplate() {
                 </div>
             </div>
 
+            <div id="dynamicEqStatusPanel" style="margin-top: 8px; padding: 10px 12px; background: rgba(0, 120, 255, 0.08); border: 1px solid rgba(0, 120, 255, 0.24); border-radius: 10px;">
+                <div style="display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap;">
+                    <strong style="color:#7ec8ff; font-size:12px;">${tOr('sfx.dynamicEq.grLabel', 'Dynamic EQ Gain Reduction')}</strong>
+                    <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+                        <span id="dynamicEqTriggerCount" style="color:#a9b7d0; font-size:12px;">${tOr('sfx.dynamicEq.triggerCount', 'Triggers')}: 0</span>
+                        <span id="dynamicEqGrValue" style="color:#9be7ff; font-size:12px;">0.0 dB</span>
+                    </div>
+                </div>
+                <div style="position:relative; width:100%; height:10px; border-radius:999px; background: rgba(255,255,255,0.10); overflow:hidden; margin-top:8px;">
+                    <div id="dynamicEqGrBar" style="height:100%; width:0%; background: linear-gradient(90deg, #00d4ff, #00ff9c); transition: width 90ms linear, background 120ms ease;"></div>
+                </div>
+                <div id="dynamicEqStatusText" style="margin-top:6px; color:#9aa9c0; font-size:11px;">${tOr('sfx.dynamicEq.statusIdle', 'Waiting for threshold crossing...')}</div>
+            </div>
+
             <!-- Info Panel -->
             <div class="dynamiceq-info-panel" style="margin-top: 20px; padding: 15px; background: rgba(0, 128, 255, 0.05); border: 1px solid rgba(0, 128, 255, 0.2); border-radius: 8px;">
                 <h3 style="color: #0080ff; font-size: 14px; margin-bottom: 5px;">${tSync('sfx.dynamiceq.info.title')}</h3>
@@ -2914,11 +4217,11 @@ function getTapeSatTemplate() {
 
             <!-- Tape Mode Selector -->
             <div class="mode-selector" style="margin-bottom: 20px; background: rgba(0,0,0,0.2); padding: 15px; border-radius: 8px;">
-                <h3 style="color: #aaa; margin-bottom: 10px; font-size: 14px;">Kaset Karakteri (Tape Mode)</h3>
+                <h3 style="color: #aaa; margin-bottom: 10px; font-size: 14px;">${tOr('sfx.tapesat.modeTitle', 'Tape Character (Tape Mode)')}</h3>
                 <div style="display: flex; gap: 10px;">
-                    <button class="mode-btn ${settings.mode === 0 ? 'active' : ''}" data-mode="0" onclick="setTapeModeUI(0)" style="flex: 1; padding: 10px; background: #1a1a1a; border: 1px solid #333; color: #ccc; border-radius: 4px; cursor: pointer;">Classic Tape</button>
-                    <button class="mode-btn ${settings.mode === 1 ? 'active' : ''}" data-mode="1" onclick="setTapeModeUI(1)" style="flex: 1; padding: 10px; background: #1a1a1a; border: 1px solid #333; color: #ccc; border-radius: 4px; cursor: pointer;">Warm Tube</button>
-                    <button class="mode-btn ${settings.mode === 2 ? 'active' : ''}" data-mode="2" onclick="setTapeModeUI(2)" style="flex: 1; padding: 10px; background: #1a1a1a; border: 1px solid #333; color: #ccc; border-radius: 4px; cursor: pointer;">Hot Saturation</button>
+                    <button class="mode-btn ${settings.mode === 0 ? 'active' : ''}" data-mode="0" onclick="setTapeModeUI(0)" style="flex: 1; padding: 10px; background: #1a1a1a; border: 1px solid #333; color: #ccc; border-radius: 4px; cursor: pointer;">${tOr('sfx.tapesat.modes.classic', 'Classic Tape')}</button>
+                    <button class="mode-btn ${settings.mode === 1 ? 'active' : ''}" data-mode="1" onclick="setTapeModeUI(1)" style="flex: 1; padding: 10px; background: #1a1a1a; border: 1px solid #333; color: #ccc; border-radius: 4px; cursor: pointer;">${tOr('sfx.tapesat.modes.warm', 'Warm Tube')}</button>
+                    <button class="mode-btn ${settings.mode === 2 ? 'active' : ''}" data-mode="2" onclick="setTapeModeUI(2)" style="flex: 1; padding: 10px; background: #1a1a1a; border: 1px solid #333; color: #ccc; border-radius: 4px; cursor: pointer;">${tOr('sfx.tapesat.modes.hot', 'Hot Saturation')}</button>
                 </div>
             </div>
 
@@ -2928,7 +4231,7 @@ function getTapeSatTemplate() {
                     <canvas class="aurivo-knob-canvas tapesat-knob" id="tapesatDriveDbCanvas" 
                         width="130" height="170"
                         data-param="driveDb" 
-                        data-label="Drive"
+                        data-label="${tOr('sfx.knob.param.drive', 'Drive')}"
                         data-min="0" 
                         data-max="24" 
                         data-value="${settings.driveDb}"
@@ -2939,7 +4242,7 @@ function getTapeSatTemplate() {
                     <canvas class="aurivo-knob-canvas tapesat-knob" id="tapesatMixCanvas" 
                         width="130" height="170"
                         data-param="mix" 
-                        data-label="Mix"
+                        data-label="${tOr('sfx.knob.param.mix', 'Mix')}"
                         data-min="0" 
                         data-max="100" 
                         data-value="${settings.mix}"
@@ -2950,7 +4253,7 @@ function getTapeSatTemplate() {
                     <canvas class="aurivo-knob-canvas tapesat-knob" id="tapesatToneCanvas" 
                         width="130" height="170"
                         data-param="tone" 
-                        data-label="Tone"
+                        data-label="${tOr('sfx.knob.param.tone', 'Tone')}"
                         data-min="0" 
                         data-max="100" 
                         data-value="${settings.tone}"
@@ -2961,7 +4264,7 @@ function getTapeSatTemplate() {
                     <canvas class="aurivo-knob-canvas tapesat-knob" id="tapesatOutputDbCanvas" 
                         width="130" height="170"
                         data-param="outputDb" 
-                        data-label="Output"
+                        data-label="${tOr('sfx.knob.param.output', 'Output')}"
                         data-min="-12" 
                         data-max="12" 
                         data-value="${settings.outputDb}"
@@ -2972,7 +4275,7 @@ function getTapeSatTemplate() {
                     <canvas class="aurivo-knob-canvas tapesat-knob" id="tapesatHissCanvas" 
                         width="130" height="170"
                         data-param="hiss" 
-                        data-label="Tape Hiss"
+                        data-label="${tOr('sfx.knob.param.tapeHiss', 'Tape Hiss')}"
                         data-min="0" 
                         data-max="100" 
                         data-value="${settings.hiss}"
@@ -3020,6 +4323,9 @@ function getBitDitherTemplate() {
                     ${renderModernPresetButton({ panelId: 'bitditherPanel', preset: 'game8', label: tSync('sfx.bitdither.presets.game8'), icon: 'game', active: settings.lastPreset === 'game8', extraClass: 'bitdither-preset-btn' })}
                     ${renderModernPresetButton({ panelId: 'bitditherPanel', preset: 'vinyl', label: tSync('sfx.bitdither.presets.vinyl'), icon: 'tape', active: settings.lastPreset === 'vinyl', extraClass: 'bitdither-preset-btn' })}
                     ${renderModernPresetButton({ panelId: 'bitditherPanel', preset: 'crunch', label: tSync('sfx.bitdither.presets.crunch'), icon: 'burst', active: settings.lastPreset === 'crunch', extraClass: 'bitdither-preset-btn' })}
+                    ${renderModernPresetButton({ panelId: 'bitditherPanel', preset: 'podcast', label: tSync('sfx.bitdither.presets.podcast'), icon: 'mic', active: settings.lastPreset === 'podcast', extraClass: 'bitdither-preset-btn' })}
+                    ${renderModernPresetButton({ panelId: 'bitditherPanel', preset: 'radio', label: tSync('sfx.bitdither.presets.radio'), icon: 'wave', active: settings.lastPreset === 'radio', extraClass: 'bitdither-preset-btn' })}
+                    ${renderModernPresetButton({ panelId: 'bitditherPanel', preset: 'hardcrush', label: tSync('sfx.bitdither.presets.hardcrush'), icon: 'burst', active: settings.lastPreset === 'hardcrush', extraClass: 'bitdither-preset-btn' })}
                 </div>
             </div>
 
@@ -3027,42 +4333,42 @@ function getBitDitherTemplate() {
             <div class="selectors-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-bottom: 25px; background: rgba(0,0,0,0.2); padding: 20px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.05);">
                 
                 <div class="selector-item">
-                    <label style="display: block; color: #888; font-size: 11px; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 1px;">Bit Depth (Çözünürlük)</label>
+                    <label style="display: block; color: #888; font-size: 11px; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 1px;">${tOr('sfx.bitdither.labels.bitDepth', 'Bit Depth')}</label>
                     <select class="action-btn secondary" id="bitditherBitDepth" style="width: 100%; text-align: left;" onchange="updateBitDitherSelect('bitDepth', this.value)">
-                        <option value="24" ${settings.bitDepth === 24 ? 'selected' : ''}>24-bit (Studio Grade)</option>
-                        <option value="16" ${settings.bitDepth === 16 ? 'selected' : ''}>16-bit (CD Quality)</option>
-                        <option value="12" ${settings.bitDepth === 12 ? 'selected' : ''}>12-bit (Vintage Sampler)</option>
-                        <option value="8" ${settings.bitDepth === 8 ? 'selected' : ''}>8-bit (Retro Computing)</option>
-                        <option value="6" ${settings.bitDepth === 6 ? 'selected' : ''}>6-bit (Aggressive Crush)</option>
-                        <option value="4" ${settings.bitDepth === 4 ? 'selected' : ''}>4-bit (Extreme Distortion)</option>
+                        <option value="24" ${settings.bitDepth === 24 ? 'selected' : ''}>${tOr('sfx.bitdither.options.bit24', '24-bit (Studio Grade)')}</option>
+                        <option value="16" ${settings.bitDepth === 16 ? 'selected' : ''}>${tOr('sfx.bitdither.options.bit16', '16-bit (CD Quality)')}</option>
+                        <option value="12" ${settings.bitDepth === 12 ? 'selected' : ''}>${tOr('sfx.bitdither.options.bit12', '12-bit (Vintage Sampler)')}</option>
+                        <option value="8" ${settings.bitDepth === 8 ? 'selected' : ''}>${tOr('sfx.bitdither.options.bit8', '8-bit (Retro Computing)')}</option>
+                        <option value="6" ${settings.bitDepth === 6 ? 'selected' : ''}>${tOr('sfx.bitdither.options.bit6', '6-bit (Aggressive Crush)')}</option>
+                        <option value="4" ${settings.bitDepth === 4 ? 'selected' : ''}>${tOr('sfx.bitdither.options.bit4', '4-bit (Extreme Distortion)')}</option>
                     </select>
                 </div>
 
                 <div class="selector-item">
-                    <label style="display: block; color: #888; font-size: 11px; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 1px;">Dither Type</label>
+                    <label style="display: block; color: #888; font-size: 11px; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 1px;">${tOr('sfx.bitdither.labels.ditherType', 'Dither Type')}</label>
                     <select class="action-btn secondary" id="bitditherDither" style="width: 100%; text-align: left;" onchange="updateBitDitherSelect('dither', this.value)">
-                        <option value="0" ${settings.dither === 0 ? 'selected' : ''}>None (Hard Quantization)</option>
-                        <option value="1" ${settings.dither === 1 ? 'selected' : ''}>RPDF (Rectangular)</option>
-                        <option value="2" ${settings.dither === 2 ? 'selected' : ''}>TPDF (Triangular - Industry Std)</option>
+                        <option value="0" ${settings.dither === 0 ? 'selected' : ''}>${tOr('sfx.bitdither.options.dither0', 'None (Hard Quantization)')}</option>
+                        <option value="1" ${settings.dither === 1 ? 'selected' : ''}>${tOr('sfx.bitdither.options.dither1', 'RPDF (Rectangular)')}</option>
+                        <option value="2" ${settings.dither === 2 ? 'selected' : ''}>${tOr('sfx.bitdither.options.dither2', 'TPDF (Triangular - Industry Std)')}</option>
                     </select>
                 </div>
 
                 <div class="selector-item">
-                    <label style="display: block; color: #888; font-size: 11px; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 1px;">Noise Shaping</label>
+                    <label style="display: block; color: #888; font-size: 11px; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 1px;">${tOr('sfx.bitdither.labels.noiseShaping', 'Noise Shaping')}</label>
                     <select class="action-btn secondary" id="bitditherShaping" style="width: 100%; text-align: left;" onchange="updateBitDitherSelect('shaping', this.value)">
-                        <option value="0" ${settings.shaping === 0 ? 'selected' : ''}>Off (Clean)</option>
-                        <option value="1" ${settings.shaping === 1 ? 'selected' : ''}>Light (HF Distribution)</option>
+                        <option value="0" ${settings.shaping === 0 ? 'selected' : ''}>${tOr('sfx.bitdither.options.shaping0', 'Off (Clean)')}</option>
+                        <option value="1" ${settings.shaping === 1 ? 'selected' : ''}>${tOr('sfx.bitdither.options.shaping1', 'Light (HF Distribution)')}</option>
                     </select>
                 </div>
 
                 <div class="selector-item">
-                    <label style="display: block; color: #888; font-size: 11px; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 1px;">Downsample (Sample Hold)</label>
+                    <label style="display: block; color: #888; font-size: 11px; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 1px;">${tOr('sfx.bitdither.labels.downsample', 'Downsample')}</label>
                     <select class="action-btn secondary" id="bitditherDownsample" style="width: 100%; text-align: left;" onchange="updateBitDitherSelect('downsample', this.value)">
-                        <option value="1" ${settings.downsample === 1 ? 'selected' : ''}>Off (1x)</option>
-                        <option value="2" ${settings.downsample === 2 ? 'selected' : ''}>2x (24kHz aliasing)</option>
-                        <option value="4" ${settings.downsample === 4 ? 'selected' : ''}>4x (12kHz aliasing)</option>
-                        <option value="8" ${settings.downsample === 8 ? 'selected' : ''}>8x (6kHz aliasing)</option>
-                        <option value="16" ${settings.downsample === 16 ? 'selected' : ''}>16x (Extreme Lo-fi)</option>
+                        <option value="1" ${settings.downsample === 1 ? 'selected' : ''}>${tOr('sfx.bitdither.options.down1', 'Off (1x)')}</option>
+                        <option value="2" ${settings.downsample === 2 ? 'selected' : ''}>${tOr('sfx.bitdither.options.down2', '2x')}</option>
+                        <option value="4" ${settings.downsample === 4 ? 'selected' : ''}>${tOr('sfx.bitdither.options.down4', '4x')}</option>
+                        <option value="8" ${settings.downsample === 8 ? 'selected' : ''}>${tOr('sfx.bitdither.options.down8', '8x')}</option>
+                        <option value="16" ${settings.downsample === 16 ? 'selected' : ''}>${tOr('sfx.bitdither.options.down16', '16x')}</option>
                     </select>
                 </div>
             </div>
@@ -3073,7 +4379,7 @@ function getBitDitherTemplate() {
                     <canvas class="aurivo-knob-canvas bitdither-knob" id="bitditherMixCanvas" 
                         width="130" height="170"
                         data-param="mix" 
-                        data-label="Mix"
+                        data-label="${tOr('sfx.knob.param.mix', 'Mix')}"
                         data-min="0" 
                         data-max="100" 
                         data-value="${settings.mix}"
@@ -3084,7 +4390,7 @@ function getBitDitherTemplate() {
                     <canvas class="aurivo-knob-canvas bitdither-knob" id="bitditherOutputDbCanvas" 
                         width="130" height="170"
                         data-param="outputDb" 
-                        data-label="Output"
+                        data-label="${tOr('sfx.knob.param.output', 'Output')}"
                         data-min="-12" 
                         data-max="12" 
                         data-value="${settings.outputDb}"
@@ -3207,6 +4513,9 @@ function initEffectControls(effectName) {
                 console.log(`[DEBUG] Calling applyEffect for ${effectName}`);
                 applyEffect(effectName);
             }
+            if (effectName === 'truepeak') {
+                syncMeterLoops();
+            }
         });
     } else {
         console.warn(`[DEBUG] enableToggle not found for ${effectName}!`);
@@ -3225,6 +4534,62 @@ function initEffectControls(effectName) {
         const panel = document.getElementById('convreverbPanel');
         panel?.querySelectorAll('.ir-preset-btn')?.forEach((btn) => {
             btn.addEventListener('click', () => selectIRPreset(btn.dataset.preset));
+        });
+    }
+
+    if (effectName === 'bassboost') {
+        const panel = document.getElementById('bassboostPanel');
+        panel?.querySelectorAll('.bassboost-preset-btn')?.forEach((btn) => {
+            btn.addEventListener('click', () => applyBassBoostPreset(btn.dataset.preset));
+        });
+    }
+
+    if (effectName === 'noisegate') {
+        const panel = document.getElementById('noisegatePanel');
+        panel?.querySelectorAll('.noisegate-preset-btn')?.forEach((btn) => {
+            btn.addEventListener('click', () => applyNoiseGatePreset(btn.dataset.preset));
+        });
+    }
+
+    if (effectName === 'deesser') {
+        const panel = document.getElementById('deesserPanel');
+        panel?.querySelectorAll('.deesser-preset-btn')?.forEach((btn) => {
+            btn.addEventListener('click', () => applyDeEsserPreset(btn.dataset.preset));
+        });
+    }
+
+    if (effectName === 'peq') {
+        const panel = document.getElementById('peqPanel');
+        panel?.querySelectorAll('.peq-preset-btn')?.forEach((btn) => {
+            btn.addEventListener('click', () => applyPeqPreset(btn.dataset.preset));
+        });
+    }
+
+    if (effectName === 'exciter') {
+        const panel = document.getElementById('exciterPanel');
+        panel?.querySelectorAll('.exciter-preset-btn')?.forEach((btn) => {
+            btn.addEventListener('click', () => applyExciterPreset(btn.dataset.preset));
+        });
+    }
+
+    if (effectName === 'stereowidener') {
+        const panel = document.getElementById('stereowidenerPanel');
+        panel?.querySelectorAll('.stereowidener-preset-btn')?.forEach((btn) => {
+            btn.addEventListener('click', () => applyStereoWidenerPreset(btn.dataset.preset));
+        });
+    }
+
+    if (effectName === 'echo') {
+        const panel = document.getElementById('echoPanel');
+        panel?.querySelectorAll('.echo-preset-btn')?.forEach((btn) => {
+            btn.addEventListener('click', () => applyEchoPreset(btn.dataset.preset));
+        });
+    }
+
+    if (effectName === 'autogain') {
+        const panel = document.getElementById('autogainPanel');
+        panel?.querySelectorAll('.autogain-preset-btn')?.forEach((btn) => {
+            btn.addEventListener('click', () => applyAutoGainPreset(btn.dataset.preset));
         });
     }
 
@@ -3266,6 +4631,9 @@ function initEffectControls(effectName) {
                 if (window.aurivo?.ipcAudio?.truePeakLimiter?.setOversampling) {
                     window.aurivo.ipcAudio.truePeakLimiter.setOversampling(rate);
                 }
+                if (SFX_SCOPE === 'web') {
+                    applyEffect('truepeak');
+                }
 
                 console.log(`[TRUE PEAK] ${tSync('sfx.truepeak.oversampling')} ${rate}x`);
             });
@@ -3281,6 +4649,9 @@ function initEffectControls(effectName) {
 
                 if (window.aurivo?.ipcAudio?.truePeakLimiter?.setLinkChannels) {
                     window.aurivo.ipcAudio.truePeakLimiter.setLinkChannels(e.target.checked);
+                }
+                if (SFX_SCOPE === 'web') {
+                    applyEffect('truepeak');
                 }
 
                 console.log(`[TRUE PEAK] Link channels: ${e.target.checked ? 'ON' : 'OFF'}`);
@@ -3589,6 +4960,11 @@ function computeEqTopBars(rawBands, targetCount) {
     const minHz = EQ_TOP_MIN_HZ;
     const maxHz = EQ_TOP_MAX_HZ;
     const ratio = maxHz / minHz;
+    const isWebScope = SFX_SCOPE === 'web';
+    const eqInfluence = isWebScope ? 0.12 : 0.28;
+    const moduleInfluence = isWebScope ? 0.11 : 0.24;
+    const freqCompExp = isWebScope ? 0.07 : 0.16;
+    const outputTrim = isWebScope ? 0.64 : 0.90;
     let rawPeak = 0;
 
     for (let i = 0; i < count; i++) {
@@ -3606,25 +4982,25 @@ function computeEqTopBars(rawBands, targetCount) {
         const t = count <= 1 ? 0 : (i / (count - 1));
         const freq = minHz * Math.pow(ratio, t);
         const eqDb = eqGainAtFreq(freq, settings);
-        const eqWeight = Math.max(0.45, Math.min(3.2, Math.pow(10, eqDb / 20)));
-        const moduleWeight = eqModuleWeightAtFreq(freq, settings);
-        const freqComp = Math.pow(freq / minHz, 0.22); // High-frequency visibility compensation
+        const eqWeight = lerp(1, Math.max(0.7, Math.min(1.6, Math.pow(10, eqDb / 20))), eqInfluence);
+        const moduleWeight = lerp(1, eqModuleWeightAtFreq(freq, settings), moduleInfluence);
+        const freqComp = Math.pow(freq / minHz, freqCompExp); // High-frequency visibility compensation
 
         // Normalize using raw (pre-EQ-weighted) level so EQ boost/cut stays visible.
-        const rawBase = e / Math.max(1e-6, SFX.eqTopViz.rawNorm);
+        const rawBase = Math.min(isWebScope ? 1.45 : 1.8, e / Math.max(1e-6, SFX.eqTopViz.rawNorm));
         const weighted = rawBase * eqWeight * moduleWeight * freqComp;
         const prev = SFX.eqTopViz.smooth[i] || 0;
-        const alpha = weighted >= prev ? 0.62 : 0.34; // fast attack, controlled release
+        const alpha = weighted >= prev ? (isWebScope ? 0.42 : 0.50) : (isWebScope ? 0.22 : 0.26); // calmer attack/release for visual stability
         const sm = lerp(prev, weighted, alpha);
         SFX.eqTopViz.smooth[i] = sm;
     }
 
-    if (rawPeak > SFX.eqTopViz.rawNorm) SFX.eqTopViz.rawNorm = lerp(SFX.eqTopViz.rawNorm, rawPeak, 0.28);
-    else SFX.eqTopViz.rawNorm = lerp(SFX.eqTopViz.rawNorm, rawPeak, 0.08);
+    if (rawPeak > SFX.eqTopViz.rawNorm) SFX.eqTopViz.rawNorm = lerp(SFX.eqTopViz.rawNorm, rawPeak, 0.20);
+    else SFX.eqTopViz.rawNorm = lerp(SFX.eqTopViz.rawNorm, rawPeak, 0.06);
 
     for (let i = 0; i < count; i++) {
-        const n = clamp01(SFX.eqTopViz.smooth[i] || 0);
-        const curved = Math.pow(n, 0.62);
+        const n = clamp01((SFX.eqTopViz.smooth[i] || 0) * outputTrim);
+        const curved = Math.pow(n, isWebScope ? 0.92 : 0.82);
         out[i] = Math.round(curved * 255);
     }
     return out;
@@ -3644,8 +5020,14 @@ function startEqTopVisualizer() {
     if (SFX.currentEffect !== 'eq32') return;
     const canvas = document.getElementById('barAnalyzerCanvas');
     if (!canvas || !SFX.barAnalyzer) return;
-    const spectrumApi = window.aurivo?.audio?.spectrum;
-    if (!spectrumApi || typeof spectrumApi.getBands !== 'function') return;
+    const nativeSpectrumApi = window.aurivo?.audio?.spectrum;
+    const webSpectrumGetter = window.aurivo?.soundEffects?.getWebSpectrum;
+    const getSpectrumBands = (SFX_SCOPE === 'web' && typeof webSpectrumGetter === 'function')
+        ? ((count) => webSpectrumGetter(count))
+        : (nativeSpectrumApi && typeof nativeSpectrumApi.getBands === 'function'
+            ? ((count) => nativeSpectrumApi.getBands(count))
+            : null);
+    if (typeof getSpectrumBands !== 'function') return;
 
     SFX.eqTopViz.running = true;
     SFX.eqTopViz.lastFetchAt = 0;
@@ -3660,14 +5042,18 @@ function startEqTopVisualizer() {
         }
 
         const now = Number(ts) || performance.now();
-        const needsFetch = (now - SFX.eqTopViz.lastFetchAt) >= (SFX_LOW_LOAD_EQ32 ? 34 : EQ_TOP_FRAME_MS);
+        const fetchMs = getPerfScaledMs(SFX_LOW_LOAD_EQ32 ? 34 : EQ_TOP_FRAME_MS, { min: 16, max: 120 });
+        const needsFetch = (now - SFX.eqTopViz.lastFetchAt) >= fetchMs;
 
         if (needsFetch && !SFX.eqTopViz.busy) {
             SFX.eqTopViz.busy = true;
             SFX.eqTopViz.lastFetchAt = now;
-            const target = Math.max(48, Math.min(112, Number(SFX.barAnalyzer.bandCount) || EQ_TOP_FIXED_BANDS));
-            const requestBands = Math.max(128, target * 2);
-            spectrumApi.getBands(requestBands)
+            const baseBandCount = Number(SFX.barAnalyzer.bandCount) || EQ_TOP_FIXED_BANDS;
+            const target = SFX_LOW_LOAD_EQ32
+                ? Math.max(40, Math.min(72, baseBandCount))
+                : Math.max(48, Math.min(112, baseBandCount));
+            const requestBands = SFX_LOW_LOAD_EQ32 ? 96 : Math.max(128, target * 2);
+            getSpectrumBands(requestBands)
                 .then((bands) => {
                     if (!SFX.eqTopViz.running) return;
                     SFX.eqTopViz.bars = computeEqTopBars(bands, target);
@@ -3860,7 +5246,9 @@ function getSettings(effectName) {
     if (!SFX.settings[effectName]) {
         // localStorage'dan yükle veya varsayılan kullan
         try {
-            const saved = localStorage.getItem(`aurivo_sfx_${effectName}`);
+            const scopedKey = getScopedSettingsStorageKey(effectName);
+            const legacyKey = `aurivo_sfx_${effectName}`;
+            const saved = localStorage.getItem(scopedKey) || localStorage.getItem(legacyKey);
             SFX.settings[effectName] = saved ? JSON.parse(saved) : { ...SFX.defaults[effectName] };
         } catch (e) {
             SFX.settings[effectName] = { ...SFX.defaults[effectName] };
@@ -3876,7 +5264,7 @@ function getSettings(effectName) {
 function saveSettings(effectName, settings) {
     SFX.settings[effectName] = settings;
     try {
-        localStorage.setItem(`aurivo_sfx_${effectName}`, JSON.stringify(settings));
+        localStorage.setItem(getScopedSettingsStorageKey(effectName), JSON.stringify(settings));
     } catch (e) {
         console.error('Ayarlar kaydedilemedi:', e);
     }
@@ -3925,8 +5313,29 @@ function updateEffectParam(effectName, param, value) {
 
     saveSettings(effectName, settings);
 
+    if (SFX_SCOPE === 'web') {
+        if (effectName === 'eq32') {
+            schedulePersistEq32ToAppSettings(settings);
+            return;
+        }
+        const webDaliPersistEffects = new Set([
+            'bassboost', 'reverb', 'compressor', 'noisegate', 'deesser', 'exciter',
+            'echo', 'softecho', 'convreverb', 'peq', 'autogain', 'truepeak',
+            'stereowidener', 'crossfeed', 'surround', 'bassmono', 'dynamiceq', 'tapesat', 'bitdither', 'limiter'
+        ]);
+        if (webDaliPersistEffects.has(effectName)) {
+            schedulePersistScopedEffectToAppSettings(effectName, settings, 220);
+            return;
+        }
+    }
+
     if (effectName === 'eq32') {
         schedulePersistEq32ToAppSettings(settings);
+    }
+
+    if (SFX_SCOPE === 'web' && effectName === 'autogain') {
+        schedulePersistScopedEffectToAppSettings('autogain', settings, 220);
+        return;
     }
 
     const ipcAudio = window.aurivo?.ipcAudio;
@@ -3952,6 +5361,10 @@ function updateEffectParam(effectName, param, value) {
                 break;
         }
     } else if (effectName === 'compressor') {
+        if (SFX_SCOPE === 'web') {
+            schedulePersistScopedEffectToAppSettings('compressor', settings, 220);
+            return;
+        }
         const comp = ipcAudio.compressor;
         if (comp) {
             if (param === 'threshold' && typeof comp.setThreshold === 'function') {
@@ -3985,6 +5398,10 @@ function updateEffectParam(effectName, param, value) {
         // IPC tarafında henüz tam destek yoksa genele bırak
         applyEffect(effectName);
     } else if (effectName === 'peq') {
+        if (SFX_SCOPE === 'web') {
+            schedulePersistScopedEffectToAppSettings('peq', settings, 220);
+            return;
+        }
         // PEQ band parametreleri için anlık güncelleme
         if (param.startsWith('band')) {
             const parts = param.split('_'); // ["band0", "freq"]
@@ -4012,6 +5429,10 @@ function updateEffectParam(effectName, param, value) {
             }
         }
     } else if (effectName === 'softecho') {
+        if (SFX_SCOPE === 'web') {
+            applyEffect('softecho');
+            return;
+        }
         if (ipcAudio.softEcho) {
             if (!settings.enabled && param !== 'enabled') {
                 settings.enabled = true;
@@ -4187,6 +5608,117 @@ function updateEffectParam(effectName, param, value) {
 function applyEffect(effectName) {
     const settings = getSettings(effectName);
     const ipcAudio = window.aurivo?.ipcAudio;
+
+    if (SFX_SCOPE === 'web' && effectName === 'bassboost') {
+        schedulePersistScopedEffectToAppSettings('bassboost', settings, 220);
+        return;
+    }
+
+    if (SFX_SCOPE === 'web' && effectName === 'reverb') {
+        schedulePersistScopedEffectToAppSettings('reverb', settings, 220);
+        return;
+    }
+
+    if (SFX_SCOPE === 'web' && effectName === 'compressor') {
+        schedulePersistScopedEffectToAppSettings('compressor', settings, 220);
+        return;
+    }
+
+    if (SFX_SCOPE === 'web' && effectName === 'noisegate') {
+        schedulePersistScopedEffectToAppSettings('noisegate', settings, 220);
+        return;
+    }
+
+    if (SFX_SCOPE === 'web' && effectName === 'deesser') {
+        schedulePersistScopedEffectToAppSettings('deesser', settings, 220);
+        return;
+    }
+
+    if (SFX_SCOPE === 'web' && effectName === 'exciter') {
+        schedulePersistScopedEffectToAppSettings('exciter', settings, 220);
+        return;
+    }
+
+    if (SFX_SCOPE === 'web' && effectName === 'echo') {
+        schedulePersistScopedEffectToAppSettings('echo', settings, 220);
+        return;
+    }
+
+    if (SFX_SCOPE === 'web' && effectName === 'softecho') {
+        if (settings.enabled) {
+            const echoSettings = getSettings('echo');
+            if (echoSettings.enabled) {
+                echoSettings.enabled = false;
+                saveSettings('echo', echoSettings);
+                schedulePersistScopedEffectToAppSettings('echo', echoSettings, 120);
+                const echoCb = document.getElementById('echoEnabled');
+                if (echoCb) echoCb.checked = false;
+            }
+        }
+        schedulePersistScopedEffectToAppSettings('softecho', settings, 220);
+        return;
+    }
+
+    if (SFX_SCOPE === 'web' && effectName === 'convreverb') {
+        schedulePersistScopedEffectToAppSettings('convreverb', settings, 220);
+        return;
+    }
+
+    if (SFX_SCOPE === 'web' && effectName === 'peq') {
+        schedulePersistScopedEffectToAppSettings('peq', settings, 220);
+        return;
+    }
+
+    if (SFX_SCOPE === 'web' && effectName === 'autogain') {
+        schedulePersistScopedEffectToAppSettings('autogain', settings, 220);
+        return;
+    }
+
+    if (SFX_SCOPE === 'web' && effectName === 'truepeak') {
+        schedulePersistScopedEffectToAppSettings('truepeak', settings, 220);
+        return;
+    }
+
+    if (SFX_SCOPE === 'web' && effectName === 'stereowidener') {
+        schedulePersistScopedEffectToAppSettings('stereowidener', settings, 220);
+        return;
+    }
+
+    if (SFX_SCOPE === 'web' && effectName === 'crossfeed') {
+        schedulePersistScopedEffectToAppSettings('crossfeed', settings, 220);
+        return;
+    }
+
+    if (SFX_SCOPE === 'web' && effectName === 'surround') {
+        schedulePersistScopedEffectToAppSettings('surround', settings, 120);
+        return;
+    }
+
+    if (SFX_SCOPE === 'web' && effectName === 'bassmono') {
+        schedulePersistScopedEffectToAppSettings('bassmono', settings, 120);
+        return;
+    }
+
+    if (SFX_SCOPE === 'web' && effectName === 'dynamiceq') {
+        schedulePersistScopedEffectToAppSettings('dynamiceq', settings, 140);
+        return;
+    }
+
+    if (SFX_SCOPE === 'web' && effectName === 'limiter') {
+        // Web tarafında sık save/reload döngüsünü azaltıp akıcılığı koru.
+        schedulePersistScopedEffectToAppSettings('limiter', settings, 220);
+        return;
+    }
+
+    if (SFX_SCOPE === 'web' && effectName === 'tapesat') {
+        schedulePersistScopedEffectToAppSettings('tapesat', settings, 180);
+        return;
+    }
+
+    if (SFX_SCOPE === 'web' && effectName === 'bitdither') {
+        schedulePersistScopedEffectToAppSettings('bitdither', settings, 180);
+        return;
+    }
 
     if (!ipcAudio) {
         console.warn('IPC Audio API mevcut değil');
@@ -4576,7 +6108,7 @@ function applyEffect(effectName) {
                         if (ipcAudio.autoGain && typeof ipcAudio.autoGain.update === 'function') {
                             ipcAudio.autoGain.update();
                         }
-                    }, 100);
+                    }, getPerfScaledMs(100, { min: 70, max: 500 }));
 
                     console.log('[AUTO GAIN] Timer started - Target:', settings.targetLevel, 'MaxGain:', settings.maxGain);
                 } else {
@@ -4932,6 +6464,7 @@ function resetEffect(effectName) {
         // PEQ Özel Sıfırlama - 6 bant + filter type
         const defaults = {
             enabled: false,
+            lastPreset: 'balanced',
             bands: [
                 { freq: 60, gain: 0, q: 1.0, filterType: 1 },     // Low Shelf
                 { freq: 150, gain: 0, q: 1.0, filterType: 0 },    // Bell
@@ -4961,6 +6494,11 @@ function resetEffect(effectName) {
                 const filterSelect = document.getElementById(`peqBand${index}Type`);
                 if (filterSelect) filterSelect.value = band.filterType;
             });
+            panel.querySelectorAll('.peq-preset-btn').forEach((btn) => {
+                const active = btn.dataset.preset === 'balanced';
+                btn.classList.toggle('active', active);
+                btn.setAttribute('aria-pressed', active ? 'true' : 'false');
+            });
         }
 
         // Apply (Disable and reset gains)
@@ -4989,7 +6527,9 @@ function resetEffect(effectName) {
         const defaults = {
             enabled: false,
             targetLevel: -14,
-            maxGain: 12
+            maxGain: 12,
+            speed: 'medium',
+            lastPreset: 'balanced'
         };
         saveSettings('autogain', defaults);
 
@@ -5003,12 +6543,18 @@ function resetEffect(effectName) {
             const kMaxGain = SFX.knobInstances['autogain_maxGain'];
             if (kTarget) kTarget.setValue(defaults.targetLevel);
             if (kMaxGain) kMaxGain.setValue(defaults.maxGain);
+            panel.querySelectorAll('.autogain-preset-btn').forEach((btn) => {
+                const active = btn.dataset.preset === 'balanced';
+                btn.classList.toggle('active', active);
+                btn.setAttribute('aria-pressed', active ? 'true' : 'false');
+            });
         }
 
         // Apply reset
         if (window.aurivo?.ipcAudio?.autoGain?.reset) {
             window.aurivo.ipcAudio.autoGain.reset();
         }
+        applyEffect('autogain');
 
         console.log('🔄 Auto Gain sıfırlandı');
     } else if (effectName === 'truepeak') {
@@ -5074,14 +6620,7 @@ function resetEffect(effectName) {
         console.log('🔄 True Peak Limiter sıfırlandı');
     } else if (effectName === 'crossfeed') {
         // Crossfeed Özel Sıfırlama
-        const defaults = {
-            enabled: false,
-            level: 30,
-            delay: 0.3,
-            lowCut: 700,
-            highCut: 4000,
-            preset: 0
-        };
+        const defaults = { ...SFX.defaults.crossfeed };
         saveSettings('crossfeed', defaults);
 
         // UI Update
@@ -5110,6 +6649,23 @@ function resetEffect(effectName) {
             // Açıklamayı güncelle
             const descEl = document.getElementById('crossfeed-preset-description');
             if (descEl) descEl.textContent = tSync('sfx.crossfeed.presetDescriptions.0');
+
+            panel.querySelectorAll('.crossfeed-ab-speed-btn').forEach((b) => {
+                const speedMs = Math.round(Number(b.dataset.speedMs) || 1000);
+                const active = speedMs === Math.round(Number(defaults.abSpeedMs) || 1000);
+                b.classList.toggle('active', active);
+                b.setAttribute('aria-pressed', active ? 'true' : 'false');
+                b.style.background = active ? 'rgba(0, 153, 255, 0.25)' : 'rgba(255,255,255,0.04)';
+                b.style.borderColor = active ? 'rgba(0, 153, 255, 0.55)' : 'rgba(255,255,255,0.14)';
+                b.style.color = active ? '#9ad6ff' : '#8f9db2';
+            });
+            const abStatus = document.getElementById('crossfeed-ab-status');
+            if (abStatus) {
+                const speedMs = Math.round(Number(defaults.abSpeedMs) || 1000);
+                const speedLabel = speedMs === 500 ? '0.5s' : (speedMs === 2000 ? '2s' : (speedMs === 3000 ? '3s' : '1s'));
+                abStatus.textContent = tOr('sfx.crossfeed.ab.statusOff', 'A/B: Off • Speed {speed}')
+                    .replace('{speed}', speedLabel);
+            }
         }
 
         // Apply reset
@@ -5208,6 +6764,8 @@ function resetEffect(effectName) {
                 btn.classList.toggle('active', active);
                 btn.setAttribute('aria-pressed', active ? 'true' : 'false');
             });
+            const hint = document.getElementById('softechoPresetHint');
+            if (hint) hint.textContent = getSoftEchoPresetDescription(defaults.lastPreset);
         }
         applyEffect('softecho');
         console.log('🔄 Soft Echo sıfırlandı');
@@ -5393,14 +6951,392 @@ function applyReverbPreset(presetName) {
     });
 }
 
+function setBassBoostKnobValue(param, value) {
+    const key = `bassboost_${param}`;
+    const mappedKnob = SFX.knobInstances[key];
+    if (mappedKnob && typeof mappedKnob.setValue === 'function') {
+        mappedKnob.setValue(value);
+        return;
+    }
+    const panel = document.getElementById('bassboostPanel');
+    const canvas = panel?.querySelector(`.aurivo-knob-canvas[data-param="${param}"]`);
+    const canvasKnob = canvas?._knobInstance;
+    if (canvasKnob && typeof canvasKnob.setValue === 'function') {
+        canvasKnob.setValue(value);
+    }
+}
+
+function applyBassBoostPreset(presetName) {
+    const presets = {
+        deep: {
+            frequency: 68,
+            gain: 17.5,
+            harmonics: 14,
+            width: 1.2,
+            mix: 82
+        }
+    };
+    const presetKey = String(presetName || '').trim().toLowerCase();
+    const preset = presets[presetKey];
+    if (!preset) return;
+
+    const settings = getSettings('bassboost');
+    Object.assign(settings, preset);
+    settings.enabled = true;
+    settings.lastPreset = presetKey;
+    saveSettings('bassboost', settings);
+
+    setBassBoostKnobValue('frequency', settings.frequency);
+    setBassBoostKnobValue('gain', settings.gain);
+    setBassBoostKnobValue('harmonics', settings.harmonics);
+    setBassBoostKnobValue('width', settings.width);
+    setBassBoostKnobValue('mix', settings.mix);
+
+    const enabledCb = document.getElementById('bassboostEnabled');
+    if (enabledCb) enabledCb.checked = true;
+
+    const panel = document.getElementById('bassboostPanel');
+    panel?.querySelectorAll('.bassboost-preset-btn')?.forEach((btn) => {
+        const active = String(btn.dataset.preset || '').trim().toLowerCase() === presetKey;
+        btn.classList.toggle('active', active);
+        btn.setAttribute('aria-pressed', active ? 'true' : 'false');
+    });
+
+    applyEffect('bassboost');
+}
+
+function setNoiseGateKnobValue(param, value) {
+    const key = `noisegate_${param}`;
+    const mappedKnob = SFX.knobInstances[key];
+    if (mappedKnob && typeof mappedKnob.setValue === 'function') {
+        mappedKnob.setValue(value);
+        return;
+    }
+    const panel = document.getElementById('noisegatePanel');
+    const canvas = panel?.querySelector(`.aurivo-knob-canvas[data-param="${param}"]`);
+    const canvasKnob = canvas?._knobInstance;
+    if (canvasKnob && typeof canvasKnob.setValue === 'function') {
+        canvasKnob.setValue(value);
+    }
+}
+
+function applyNoiseGatePreset(presetName) {
+    const presets = {
+        stable: {
+            threshold: -44,
+            attack: 12,
+            hold: 160,
+            release: 260,
+            range: -42
+        },
+        demo: {
+            threshold: -32,
+            attack: 1,
+            hold: 20,
+            release: 700,
+            range: -96
+        }
+    };
+    const presetKey = String(presetName || '').trim().toLowerCase();
+    const preset = presets[presetKey];
+    if (!preset) return;
+
+    const settings = getSettings('noisegate');
+    Object.assign(settings, preset);
+    settings.enabled = true;
+    settings.lastPreset = presetKey;
+    saveSettings('noisegate', settings);
+
+    setNoiseGateKnobValue('threshold', settings.threshold);
+    setNoiseGateKnobValue('attack', settings.attack);
+    setNoiseGateKnobValue('hold', settings.hold);
+    setNoiseGateKnobValue('release', settings.release);
+    setNoiseGateKnobValue('range', settings.range);
+
+    const enabledCb = document.getElementById('noisegateEnabled');
+    if (enabledCb) enabledCb.checked = true;
+
+    const panel = document.getElementById('noisegatePanel');
+    panel?.querySelectorAll('.noisegate-preset-btn')?.forEach((btn) => {
+        const active = String(btn.dataset.preset || '').trim().toLowerCase() === presetKey;
+        btn.classList.toggle('active', active);
+        btn.setAttribute('aria-pressed', active ? 'true' : 'false');
+    });
+
+    applyEffect('noisegate');
+}
+
+function setDeEsserKnobValue(param, value) {
+    const key = `deesser_${param}`;
+    const mappedKnob = SFX.knobInstances[key];
+    if (mappedKnob && typeof mappedKnob.setValue === 'function') {
+        mappedKnob.setValue(value);
+        return;
+    }
+    const panel = document.getElementById('deesserPanel');
+    const canvas = panel?.querySelector(`.aurivo-knob-canvas[data-param="${param}"]`);
+    const canvasKnob = canvas?._knobInstance;
+    if (canvasKnob && typeof canvasKnob.setValue === 'function') {
+        canvasKnob.setValue(value);
+    }
+}
+
+function applyDeEsserPreset(presetName) {
+    const presets = {
+        smooth: {
+            frequency: 7200,
+            threshold: -36,
+            ratio: 6.0,
+            range: -14
+        },
+        demo: {
+            frequency: 8400,
+            threshold: -48,
+            ratio: 9.0,
+            range: -24
+        }
+    };
+    const presetKey = String(presetName || '').trim().toLowerCase();
+    const preset = presets[presetKey];
+    if (!preset) return;
+
+    const settings = getSettings('deesser');
+    Object.assign(settings, preset);
+    settings.enabled = true;
+    settings.lastPreset = presetKey;
+    saveSettings('deesser', settings);
+
+    setDeEsserKnobValue('frequency', settings.frequency);
+    setDeEsserKnobValue('threshold', settings.threshold);
+    setDeEsserKnobValue('ratio', settings.ratio);
+    setDeEsserKnobValue('range', settings.range);
+
+    const enabledCb = document.getElementById('deesserEnabled');
+    if (enabledCb) enabledCb.checked = true;
+
+    const panel = document.getElementById('deesserPanel');
+    panel?.querySelectorAll('.deesser-preset-btn')?.forEach((btn) => {
+        const active = String(btn.dataset.preset || '').trim().toLowerCase() === presetKey;
+        btn.classList.toggle('active', active);
+        btn.setAttribute('aria-pressed', active ? 'true' : 'false');
+    });
+
+    applyEffect('deesser');
+}
+
+function setExciterKnobValue(param, value) {
+    const key = `exciter_${param}`;
+    const mappedKnob = SFX.knobInstances[key];
+    if (mappedKnob && typeof mappedKnob.setValue === 'function') {
+        mappedKnob.setValue(value);
+        return;
+    }
+    const panel = document.getElementById('exciterPanel');
+    const canvas = panel?.querySelector(`.aurivo-knob-canvas[data-param="${param}"]`);
+    const canvasKnob = canvas?._knobInstance;
+    if (canvasKnob && typeof canvasKnob.setValue === 'function') {
+        canvasKnob.setValue(value);
+    }
+}
+
+function applyExciterPreset(presetName) {
+    const presets = {
+        oddair: {
+            frequency: 3200,
+            amount: 65,
+            harmonics: 'odd',
+            mix: 45
+        },
+        smoothair: {
+            frequency: 2900,
+            amount: 52,
+            harmonics: 'odd',
+            mix: 40
+        },
+        brightair: {
+            frequency: 3600,
+            amount: 58,
+            harmonics: 'odd',
+            mix: 48
+        },
+        softair: {
+            frequency: 2500,
+            amount: 36,
+            harmonics: 'odd',
+            mix: 30
+        }
+    };
+
+    const presetKey = String(presetName || '').trim().toLowerCase();
+    const preset = presets[presetKey];
+    if (!preset) return;
+
+    const settings = getSettings('exciter');
+    Object.assign(settings, preset);
+    settings.enabled = true;
+    settings.lastPreset = presetKey;
+    saveSettings('exciter', settings);
+
+    setExciterKnobValue('frequency', settings.frequency);
+    setExciterKnobValue('amount', settings.amount);
+    setExciterKnobValue('mix', settings.mix);
+
+    const enabledCb = document.getElementById('exciterEnabled');
+    if (enabledCb) enabledCb.checked = true;
+
+    const panel = document.getElementById('exciterPanel');
+    panel?.querySelectorAll('.exciter-preset-btn')?.forEach((btn) => {
+        const active = String(btn.dataset.preset || '').trim().toLowerCase() === presetKey;
+        btn.classList.toggle('active', active);
+        btn.setAttribute('aria-pressed', active ? 'true' : 'false');
+    });
+
+    applyEffect('exciter');
+}
+
+function setStereoWidenerKnobValue(param, value) {
+    const key = `stereowidener_${param}`;
+    const mappedKnob = SFX.knobInstances[key];
+    if (mappedKnob && typeof mappedKnob.setValue === 'function') {
+        mappedKnob.setValue(value);
+        return;
+    }
+    const panel = document.getElementById('stereowidenerPanel');
+    const canvas = panel?.querySelector(`.aurivo-knob-canvas[data-param="${param}"]`);
+    const canvasKnob = canvas?._knobInstance;
+    if (canvasKnob && typeof canvasKnob.setValue === 'function') {
+        canvasKnob.setValue(value);
+    }
+}
+
+function applyStereoWidenerPreset(presetName) {
+    const presets = {
+        balanced: {
+            width: 124,
+            centerLevel: 1.0,
+            sideLevel: 1.8,
+            bassToMono: 180
+        },
+        wide: {
+            width: 156,
+            centerLevel: -1.2,
+            sideLevel: 3.4,
+            bassToMono: 220
+        },
+        focus: {
+            width: 110,
+            centerLevel: 2.2,
+            sideLevel: 0.6,
+            bassToMono: 160
+        }
+    };
+
+    const presetKey = String(presetName || '').trim().toLowerCase();
+    const preset = presets[presetKey];
+    if (!preset) return;
+
+    const settings = getSettings('stereowidener');
+    Object.assign(settings, preset);
+    settings.enabled = true;
+    settings.lastPreset = presetKey;
+    saveSettings('stereowidener', settings);
+
+    setStereoWidenerKnobValue('width', settings.width);
+    setStereoWidenerKnobValue('centerLevel', settings.centerLevel);
+    setStereoWidenerKnobValue('sideLevel', settings.sideLevel);
+    setStereoWidenerKnobValue('bassToMono', settings.bassToMono);
+
+    const enabledCb = document.getElementById('stereowidenerEnabled');
+    if (enabledCb) enabledCb.checked = true;
+
+    const panel = document.getElementById('stereowidenerPanel');
+    panel?.querySelectorAll('.stereowidener-preset-btn')?.forEach((btn) => {
+        const active = String(btn.dataset.preset || '').trim().toLowerCase() === presetKey;
+        btn.classList.toggle('active', active);
+        btn.setAttribute('aria-pressed', active ? 'true' : 'false');
+    });
+
+    applyEffect('stereowidener');
+}
+
+function setEchoKnobValue(param, value) {
+    const key = `echo_${param}`;
+    const mappedKnob = SFX.knobInstances[key];
+    if (mappedKnob && typeof mappedKnob.setValue === 'function') {
+        mappedKnob.setValue(value);
+        return;
+    }
+    const panel = document.getElementById('echoPanel');
+    const canvas = panel?.querySelector(`.aurivo-knob-canvas[data-param="${param}"]`);
+    const canvasKnob = canvas?._knobInstance;
+    if (canvasKnob && typeof canvasKnob.setValue === 'function') {
+        canvasKnob.setValue(value);
+    }
+}
+
+function applyEchoPreset(presetName) {
+    const presets = {
+        clean: {
+            delay: 210,
+            feedback: 22,
+            wetDry: 24,
+            highCut: 7800
+        },
+        vocal: {
+            delay: 140,
+            feedback: 28,
+            wetDry: 20,
+            highCut: 9500
+        },
+        space: {
+            delay: 360,
+            feedback: 36,
+            wetDry: 34,
+            highCut: 6200
+        }
+    };
+
+    const presetKey = String(presetName || '').trim().toLowerCase();
+    const preset = presets[presetKey];
+    if (!preset) return;
+
+    const settings = getSettings('echo');
+    Object.assign(settings, preset);
+    settings.enabled = true;
+    settings.lastPreset = presetKey;
+    saveSettings('echo', settings);
+
+    setEchoKnobValue('delay', settings.delay);
+    setEchoKnobValue('feedback', settings.feedback);
+    setEchoKnobValue('wetDry', settings.wetDry);
+    setEchoKnobValue('highCut', settings.highCut);
+
+    const enabledCb = document.getElementById('echoEnabled');
+    if (enabledCb) enabledCb.checked = true;
+
+    const panel = document.getElementById('echoPanel');
+    panel?.querySelectorAll('.echo-preset-btn')?.forEach((btn) => {
+        const active = String(btn.dataset.preset || '').trim().toLowerCase() === presetKey;
+        btn.classList.toggle('active', active);
+        btn.setAttribute('aria-pressed', active ? 'true' : 'false');
+    });
+
+    applyEffect('echo');
+}
+
 function applySoftEchoPreset(presetName) {
     const presets = {
-        natural: { delay: 220, feedback: 22, wetMix: 18, highCut: 7000, stereo: false },
+        canyon: { delay: 520, feedback: 8, wetMix: 28, highCut: 4200, stereo: false },
+        cave: { delay: 460, feedback: 18, wetMix: 26, highCut: 3800, stereo: false },
+        room: { delay: 190, feedback: 12, wetMix: 18, highCut: 6200, stereo: false },
+        studio: { delay: 140, feedback: 10, wetMix: 14, highCut: 9200, stereo: false },
+        puresoft: { delay: 340, feedback: 14, wetMix: 24, highCut: 4600, stereo: false },
+        natural: { delay: 220, feedback: 22, wetMix: 24, highCut: 7000, stereo: false },
         velvet: { delay: 280, feedback: 18, wetMix: 16, highCut: 6200, stereo: false },
         tape: { delay: 340, feedback: 26, wetMix: 22, highCut: 5400, stereo: false },
         vocal: { delay: 180, feedback: 16, wetMix: 14, highCut: 8200, stereo: false },
         wide: { delay: 310, feedback: 24, wetMix: 20, highCut: 7600, stereo: true },
-        cinema: { delay: 420, feedback: 30, wetMix: 24, highCut: 6000, stereo: true }
+        cinema: { delay: 420, feedback: 34, wetMix: 24, highCut: 6000, stereo: true }
     };
     const preset = presets[presetName];
     if (!preset) return;
@@ -5427,11 +7363,26 @@ function applySoftEchoPreset(presetName) {
     const enabledCb = document.getElementById('softechoEnabled');
     if (enabledCb) enabledCb.checked = true;
 
+    // Saf Echo açıkken klasik Echo'yu kapat (çift yankı/tatatat etkisini engeller)
+    const echoSettings = getSettings('echo');
+    if (echoSettings.enabled) {
+        echoSettings.enabled = false;
+        saveSettings('echo', echoSettings);
+        const echoCb = document.getElementById('echoEnabled');
+        if (echoCb) echoCb.checked = false;
+        if (SFX_SCOPE === 'web') {
+            schedulePersistScopedEffectToAppSettings('echo', echoSettings, 120);
+        }
+    }
+
     document.querySelectorAll('#softechoPanel .softecho-preset-btn').forEach((btn) => {
         const active = btn.dataset.preset === presetName;
         btn.classList.toggle('active', active);
         btn.setAttribute('aria-pressed', active ? 'true' : 'false');
     });
+
+    const hint = document.getElementById('softechoPresetHint');
+    if (hint) hint.textContent = getSoftEchoPresetDescription(presetName);
 
     applyEffect('softecho');
 }
@@ -5566,6 +7517,117 @@ function applyTruePeakPreset(presetName) {
 function initCrossfeedControls() {
     const panel = document.getElementById('crossfeedPanel');
     if (!panel) return;
+    const AB_SPEED_OPTIONS_MS = [500, 1000, 2000, 3000];
+    const tf = (key, fallback, vars = {}) => {
+        let text = tOr(key, fallback);
+        Object.entries(vars || {}).forEach(([name, value]) => {
+            text = text.replaceAll(`{${name}}`, String(value));
+        });
+        return text;
+    };
+    const getNormalizedAbSpeedMs = (raw) => {
+        const n = Math.round(Number(raw) || 1000);
+        return AB_SPEED_OPTIONS_MS.includes(n) ? n : 1000;
+    };
+    const getAbSpeedLabel = (ms) => {
+        if (ms === 500) return '0.5s';
+        if (ms === 2000) return '2s';
+        if (ms === 3000) return '3s';
+        return '1s';
+    };
+    const saveAbSpeedMs = (rawMs) => {
+        const settings = getSettings('crossfeed');
+        settings.abSpeedMs = getNormalizedAbSpeedMs(rawMs);
+        saveSettings('crossfeed', settings);
+        return settings.abSpeedMs;
+    };
+    const updateAbSpeedButtonsUi = (selectedMs) => {
+        const safeMs = getNormalizedAbSpeedMs(selectedMs);
+        panel.querySelectorAll('.crossfeed-ab-speed-btn').forEach((btn) => {
+            const btnMs = getNormalizedAbSpeedMs(btn.dataset.speedMs);
+            const active = btnMs === safeMs;
+            btn.classList.toggle('active', active);
+            btn.setAttribute('aria-pressed', active ? 'true' : 'false');
+            btn.style.background = active ? 'rgba(0, 153, 255, 0.25)' : 'rgba(255,255,255,0.04)';
+            btn.style.borderColor = active ? 'rgba(0, 153, 255, 0.55)' : 'rgba(255,255,255,0.14)';
+            btn.style.color = active ? '#9ad6ff' : '#8f9db2';
+        });
+    };
+
+    const setCrossfeedAbUiState = (running, phaseText = '') => {
+        const abBtn = document.getElementById('crossfeedAbBtn');
+        const abStatus = document.getElementById('crossfeed-ab-status');
+        const abSpeedMs = getNormalizedAbSpeedMs(getSettings('crossfeed').abSpeedMs);
+        const speedLabel = getAbSpeedLabel(abSpeedMs);
+        if (abBtn) {
+            abBtn.textContent = running
+                ? tf('sfx.crossfeed.ab.stop', 'Stop A/B')
+                : tf('sfx.crossfeed.ab.start', 'A/B Compare');
+            abBtn.style.background = running ? 'rgba(245, 166, 35, 0.20)' : 'rgba(0, 153, 255, 0.15)';
+            abBtn.style.borderColor = running ? 'rgba(245, 166, 35, 0.55)' : 'rgba(0, 153, 255, 0.45)';
+            abBtn.style.color = running ? '#ffd08a' : '#8fc8ff';
+        }
+        if (abStatus) {
+            abStatus.textContent = running
+                ? tf('sfx.crossfeed.ab.statusOn', 'A/B: Active ({phase}) • Speed {speed}', {
+                    phase: phaseText || tf('sfx.crossfeed.ab.phaseCompare', 'Comparing'),
+                    speed: speedLabel
+                })
+                : tf('sfx.crossfeed.ab.statusOff', 'A/B: Off • Speed {speed}', { speed: speedLabel });
+            abStatus.style.color = running ? '#ffd08a' : '#6f7d91';
+        }
+    };
+
+    const applyCrossfeedEnabledState = (enabled) => {
+        const settings = getSettings('crossfeed');
+        settings.enabled = !!enabled;
+        saveSettings('crossfeed', settings);
+        const enabledCb = document.getElementById('crossfeedEnabled');
+        if (enabledCb) enabledCb.checked = !!enabled;
+        applyEffect('crossfeed');
+        updateCrossfeedVisual();
+    };
+
+    const stopCrossfeedAb = (restoreOriginal = true) => {
+        if (SFX.crossfeedAbTimer) {
+            clearInterval(SFX.crossfeedAbTimer);
+            SFX.crossfeedAbTimer = null;
+        }
+        const wasRunning = SFX.crossfeedAbRunning;
+        SFX.crossfeedAbRunning = false;
+        if (restoreOriginal && wasRunning) {
+            applyCrossfeedEnabledState(!!SFX.crossfeedAbOriginalEnabled);
+        }
+        setCrossfeedAbUiState(false);
+    };
+    const startCrossfeedAbLoop = () => {
+        if (SFX.crossfeedAbTimer) {
+            clearInterval(SFX.crossfeedAbTimer);
+            SFX.crossfeedAbTimer = null;
+        }
+        const intervalMs = getNormalizedAbSpeedMs(getSettings('crossfeed').abSpeedMs);
+        SFX.crossfeedAbTimer = setInterval(() => {
+            if (!SFX.crossfeedAbRunning) return;
+            SFX.crossfeedAbCurrentEnabled = !SFX.crossfeedAbCurrentEnabled;
+            applyCrossfeedEnabledState(SFX.crossfeedAbCurrentEnabled);
+            setCrossfeedAbUiState(
+                true,
+                SFX.crossfeedAbCurrentEnabled
+                    ? tf('sfx.crossfeed.ab.phaseOn', 'Effect ON')
+                    : tf('sfx.crossfeed.ab.phaseOff', 'Effect OFF')
+            );
+        }, intervalMs);
+    };
+
+    const startCrossfeedAb = () => {
+        stopCrossfeedAb(false);
+        SFX.crossfeedAbOriginalEnabled = !!getSettings('crossfeed').enabled;
+        SFX.crossfeedAbRunning = true;
+        SFX.crossfeedAbCurrentEnabled = true;
+        applyCrossfeedEnabledState(true);
+        setCrossfeedAbUiState(true, tf('sfx.crossfeed.ab.phaseOn', 'Effect ON'));
+        startCrossfeedAbLoop();
+    };
 
     const presetDescriptions = {
         0: tSync('sfx.crossfeed.presetDescriptions.0'),
@@ -5585,6 +7647,7 @@ function initCrossfeedControls() {
     // Preset butonları
     panel.querySelectorAll('.crossfeed-preset-btn').forEach(btn => {
         btn.addEventListener('click', () => {
+            if (SFX.crossfeedAbRunning) stopCrossfeedAb(true);
             const preset = parseInt(btn.dataset.preset);
 
             // Tüm butonları güncelle
@@ -5631,6 +7694,7 @@ function initCrossfeedControls() {
 
             // Visualization güncelle
             updateCrossfeedVisual();
+            applyEffect('crossfeed');
 
             console.log(`[CROSSFEED] Preset: ${preset}`);
         });
@@ -5640,6 +7704,7 @@ function initCrossfeedControls() {
     const enabledToggle = document.getElementById('crossfeedEnabled');
     if (enabledToggle) {
         enabledToggle.addEventListener('change', (e) => {
+            if (SFX.crossfeedAbRunning) stopCrossfeedAb(false);
             const settings = getSettings('crossfeed');
             settings.enabled = e.target.checked;
             saveSettings('crossfeed', settings);
@@ -5664,6 +7729,25 @@ function initCrossfeedControls() {
             }
         });
     }
+
+    const initialSpeedMs = saveAbSpeedMs(getSettings('crossfeed').abSpeedMs);
+    updateAbSpeedButtonsUi(initialSpeedMs);
+    panel.querySelectorAll('.crossfeed-ab-speed-btn').forEach((btn) => {
+        btn.addEventListener('click', () => {
+            const nextSpeedMs = saveAbSpeedMs(btn.dataset.speedMs);
+            updateAbSpeedButtonsUi(nextSpeedMs);
+            if (SFX.crossfeedAbRunning) {
+                startCrossfeedAbLoop();
+            }
+            setCrossfeedAbUiState(
+                SFX.crossfeedAbRunning,
+                SFX.crossfeedAbCurrentEnabled
+                    ? tf('sfx.crossfeed.ab.phaseOn', 'Effect ON')
+                    : tf('sfx.crossfeed.ab.phaseOff', 'Effect OFF')
+            );
+        });
+    });
+
     // Başlangıçta enable durumunu senkronize et
     if (window.aurivo?.ipcAudio?.crossfeed?.enable) {
         window.aurivo.ipcAudio.crossfeed.enable(getSettings('crossfeed').enabled);
@@ -5673,6 +7757,7 @@ function initCrossfeedControls() {
     const resetBtn = document.getElementById('crossfeedResetBtn');
     if (resetBtn) {
         resetBtn.addEventListener('click', () => {
+            if (SFX.crossfeedAbRunning) stopCrossfeedAb(false);
             resetEffect('crossfeed');
 
             // Preset butonlarını Natural'a güncelle
@@ -5690,6 +7775,19 @@ function initCrossfeedControls() {
         });
     }
 
+    const abBtn = document.getElementById('crossfeedAbBtn');
+    if (abBtn) {
+        abBtn.addEventListener('click', () => {
+            if (SFX.crossfeedAbRunning) {
+                stopCrossfeedAb(true);
+            } else {
+                startCrossfeedAb();
+            }
+        });
+    }
+    updateAbSpeedButtonsUi(getSettings('crossfeed').abSpeedMs);
+    setCrossfeedAbUiState(SFX.crossfeedAbRunning);
+
     // İlk visualization çiz
     setTimeout(() => {
         updateCrossfeedVisual();
@@ -5698,6 +7796,7 @@ function initCrossfeedControls() {
     // DSP status güncelle
     const statusEl = document.getElementById('crossfeed-status');
     const updateStatus = async () => {
+        if (!SFX_RUNTIME_ANIMS_ACTIVE || SFX.currentEffect !== 'crossfeed') return;
         if (!statusEl || !window.aurivo?.ipcAudio?.crossfeed?.getParams) return;
         try {
             const params = await window.aurivo.ipcAudio.crossfeed.getParams();
@@ -5715,10 +7814,11 @@ function initCrossfeedControls() {
         clearInterval(SFX.crossfeedStatusInterval);
         SFX.crossfeedStatusInterval = null;
     }
-    SFX.crossfeedStatusInterval = setInterval(updateStatus, 1000);
+    SFX.crossfeedStatusInterval = setInterval(updateStatus, getPerfScaledMs(1000, { min: 600, max: 4000 }));
 
     const deviceHintEl = document.getElementById('crossfeedDeviceHint');
     const updateDeviceState = async () => {
+        if (!SFX_RUNTIME_ANIMS_ACTIVE || SFX.currentEffect !== 'crossfeed') return;
         if (!deviceHintEl) return;
         try {
             const st = await window.aurivo?.systemAudio?.getState?.();
@@ -5748,6 +7848,7 @@ function initCrossfeedControls() {
             }
 
             if (settings.autoHeadphones !== false) {
+                if (SFX.crossfeedAbRunning) return;
                 if (isHeadphones && !settings.enabled) {
                     settings.enabled = true;
                     saveSettings('crossfeed', settings);
@@ -5775,7 +7876,7 @@ function initCrossfeedControls() {
         clearInterval(SFX.crossfeedDeviceInterval);
         SFX.crossfeedDeviceInterval = null;
     }
-    SFX.crossfeedDeviceInterval = setInterval(updateDeviceState, 2000);
+    SFX.crossfeedDeviceInterval = setInterval(updateDeviceState, getPerfScaledMs(2000, { min: 1200, max: 6000 }));
 }
 
 function applySurroundPreset(presetName) {
@@ -5836,6 +7937,7 @@ function initSurroundControls() {
 
     const hintEl = document.getElementById('surroundDeviceHint');
     const updateDeviceHint = async () => {
+        if (!SFX_RUNTIME_ANIMS_ACTIVE || SFX.currentEffect !== 'surround') return;
         if (!hintEl) return;
         try {
             const st = await window.aurivo?.systemAudio?.getState?.();
@@ -5886,7 +7988,7 @@ function initSurroundControls() {
 
     updateDeviceHint();
     if (SFX.surroundStatusInterval) clearInterval(SFX.surroundStatusInterval);
-    SFX.surroundStatusInterval = setInterval(updateDeviceHint, 2000);
+    SFX.surroundStatusInterval = setInterval(updateDeviceHint, getPerfScaledMs(2000, { min: 1200, max: 6000 }));
 }
 
 // Crossfeed Visualization güncelleme
@@ -5908,6 +8010,9 @@ function updateCrossfeedVisual() {
     // Temizle
     ctx.fillStyle = '#0a0a0a';
     ctx.fillRect(0, 0, width, height);
+    ctx.strokeStyle = 'rgba(255,255,255,0.20)';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(0.5, 0.5, width - 1, height - 1);
 
     // Kafa çiz (üstten bakış)
     ctx.strokeStyle = '#444';
@@ -6087,14 +8192,22 @@ async function persistEq32ToAppSettings(eq32Settings) {
     const next = { ...(current || {}) };
     next.sfx = { ...(current?.sfx || {}) };
     next.sfx.eq32 = { ...(current?.sfx?.eq32 || {}) };
+    next.sfxScopes = { ...(current?.sfxScopes || {}) };
+    next.sfxScopes[SFX_SCOPE] = { ...(current?.sfxScopes?.[SFX_SCOPE] || {}) };
+    next.sfxScopes[SFX_SCOPE].eq32 = { ...(current?.sfxScopes?.[SFX_SCOPE]?.eq32 || {}) };
 
-    next.sfx.eq32.bands = normalize32Bands(eq32Settings?.bands);
-    next.sfx.eq32.balance = Number.isFinite(eq32Settings?.balance) ? eq32Settings.balance : 0;
-    next.sfx.eq32.bass = Number.isFinite(eq32Settings?.bass) ? eq32Settings.bass : 0;
-    next.sfx.eq32.mid = Number.isFinite(eq32Settings?.mid) ? eq32Settings.mid : 0;
-    next.sfx.eq32.treble = Number.isFinite(eq32Settings?.treble) ? eq32Settings.treble : 0;
-    next.sfx.eq32.stereoExpander = Number.isFinite(eq32Settings?.stereoExpander) ? eq32Settings.stereoExpander : 100;
-    next.sfx.eq32.lastPreset = eq32Settings?.lastPreset || null;
+    const scopedEq32 = next.sfxScopes[SFX_SCOPE].eq32;
+    scopedEq32.bands = normalize32Bands(eq32Settings?.bands);
+    scopedEq32.balance = Number.isFinite(eq32Settings?.balance) ? eq32Settings.balance : 0;
+    scopedEq32.bass = Number.isFinite(eq32Settings?.bass) ? eq32Settings.bass : 0;
+    scopedEq32.mid = Number.isFinite(eq32Settings?.mid) ? eq32Settings.mid : 0;
+    scopedEq32.treble = Number.isFinite(eq32Settings?.treble) ? eq32Settings.treble : 0;
+    scopedEq32.stereoExpander = Number.isFinite(eq32Settings?.stereoExpander) ? eq32Settings.stereoExpander : 100;
+    scopedEq32.lastPreset = eq32Settings?.lastPreset || null;
+
+    if (SFX_SCOPE === 'music') {
+        next.sfx.eq32 = { ...scopedEq32 };
+    }
 
     const result = await window.aurivo.saveSettings(next);
     dbgEq('[PERSIST EQ32] ✓ Kayıt sonucu:', result);
@@ -6108,7 +8221,9 @@ async function hydrateEq32FromAppSettings() {
     try {
         dbgEq('[EQ32 HYDRATE] Kayıtlı ayarlar yükleniyor...');
         const appSettings = await window.aurivo.loadSettings();
-        const sfxEq32 = appSettings?.sfx?.eq32;
+        const sfxEq32 =
+            appSettings?.sfxScopes?.[SFX_SCOPE]?.eq32 ||
+            (SFX_SCOPE === 'music' ? appSettings?.sfx?.eq32 : null);
         if (!sfxEq32) {
             dbgEq('[EQ32 HYDRATE] Kayıtlı ayar yok, varsayılan kullanılacak');
             return;
@@ -6154,14 +8269,14 @@ function updateDSPStatus() {
 // IR PRESET SELECTION (Convolution Reverb)
 // ============================================
 const CONV_REVERB_PRESET_PROFILES = {
-    hall: { roomType: 3, mix: 32, predelay: 22, roomSize: 74, decay: 2.2, damping: 0.42 },
-    church: { roomType: 4, mix: 38, predelay: 35, roomSize: 90, decay: 3.1, damping: 0.34 },
-    room: { roomType: 1, mix: 24, predelay: 12, roomSize: 48, decay: 1.2, damping: 0.58 },
-    plate: { roomType: 5, mix: 28, predelay: 18, roomSize: 62, decay: 1.8, damping: 0.50 },
-    small: { roomType: 0, mix: 20, predelay: 8, roomSize: 36, decay: 0.9, damping: 0.65 },
-    large: { roomType: 2, mix: 35, predelay: 26, roomSize: 82, decay: 2.6, damping: 0.40 },
-    spring: { roomType: 6, mix: 26, predelay: 9, roomSize: 44, decay: 1.5, damping: 0.62 },
-    chamber: { roomType: 7, mix: 30, predelay: 16, roomSize: 58, decay: 1.9, damping: 0.52 }
+    hall: { roomType: 3, mix: 34, predelay: 24, roomSize: 78, decay: 2.6, damping: 0.46 },
+    church: { roomType: 4, mix: 42, predelay: 38, roomSize: 94, decay: 4.4, damping: 0.30 },
+    room: { roomType: 1, mix: 18, predelay: 10, roomSize: 42, decay: 1.0, damping: 0.62 },
+    plate: { roomType: 5, mix: 26, predelay: 16, roomSize: 58, decay: 1.7, damping: 0.48 },
+    small: { roomType: 0, mix: 14, predelay: 6, roomSize: 30, decay: 0.7, damping: 0.68 },
+    large: { roomType: 2, mix: 36, predelay: 30, roomSize: 86, decay: 3.0, damping: 0.38 },
+    spring: { roomType: 6, mix: 22, predelay: 11, roomSize: 46, decay: 1.4, damping: 0.58 },
+    chamber: { roomType: 7, mix: 28, predelay: 18, roomSize: 64, decay: 2.0, damping: 0.50 }
 };
 
 function selectIRPreset(presetName) {
@@ -6206,6 +8321,138 @@ function selectIRPreset(presetName) {
     console.log('[IR PRESET] Preset uygulandı:', presetName, profile);
 }
 
+function applyPeqPreset(presetName) {
+    const presets = {
+        balanced: {
+            bands: [
+                { freq: 60, gain: 1.5, q: 0.9, filterType: 1 },
+                { freq: 150, gain: 0.8, q: 1.0, filterType: 0 },
+                { freq: 400, gain: -0.8, q: 1.0, filterType: 0 },
+                { freq: 1500, gain: 0.6, q: 1.0, filterType: 0 },
+                { freq: 5000, gain: 1.4, q: 0.9, filterType: 0 },
+                { freq: 12000, gain: 1.2, q: 0.8, filterType: 2 }
+            ]
+        },
+        bass: {
+            bands: [
+                { freq: 48, gain: 7.4, q: 0.68, filterType: 1 },
+                { freq: 82, gain: 5.6, q: 0.82, filterType: 0 },
+                { freq: 230, gain: -3.2, q: 1.35, filterType: 0 },
+                { freq: 950, gain: -1.6, q: 1.02, filterType: 0 },
+                { freq: 3200, gain: 0.4, q: 0.95, filterType: 0 },
+                { freq: 9000, gain: 0.0, q: 0.80, filterType: 2 }
+            ]
+        },
+        vocal: {
+            bands: [
+                { freq: 75, gain: -1.0, q: 0.9, filterType: 1 },
+                { freq: 180, gain: -0.8, q: 1.0, filterType: 0 },
+                { freq: 420, gain: -1.6, q: 1.1, filterType: 0 },
+                { freq: 2500, gain: 2.8, q: 1.2, filterType: 0 },
+                { freq: 5200, gain: 2.0, q: 1.1, filterType: 0 },
+                { freq: 12000, gain: 1.4, q: 0.85, filterType: 2 }
+            ]
+        },
+        clarity: {
+            bands: [
+                { freq: 70, gain: -1.2, q: 1.0, filterType: 1 },
+                { freq: 200, gain: -1.5, q: 1.1, filterType: 0 },
+                { freq: 600, gain: -0.8, q: 1.1, filterType: 0 },
+                { freq: 1800, gain: 1.5, q: 1.1, filterType: 0 },
+                { freq: 6500, gain: 2.8, q: 1.0, filterType: 0 },
+                { freq: 13500, gain: 2.2, q: 0.9, filterType: 2 }
+            ]
+        },
+        warm: {
+            bands: [
+                { freq: 70, gain: 2.2, q: 0.85, filterType: 1 },
+                { freq: 180, gain: 1.3, q: 1.0, filterType: 0 },
+                { freq: 450, gain: 0.5, q: 1.0, filterType: 0 },
+                { freq: 2000, gain: -0.8, q: 1.0, filterType: 0 },
+                { freq: 5500, gain: -0.9, q: 1.0, filterType: 0 },
+                { freq: 11000, gain: -0.4, q: 0.8, filterType: 2 }
+            ]
+        },
+        air: {
+            bands: [
+                { freq: 60, gain: -0.6, q: 0.9, filterType: 1 },
+                { freq: 160, gain: -0.4, q: 1.0, filterType: 0 },
+                { freq: 500, gain: -0.6, q: 1.0, filterType: 0 },
+                { freq: 2200, gain: 0.9, q: 1.0, filterType: 0 },
+                { freq: 7000, gain: 1.9, q: 1.0, filterType: 0 },
+                { freq: 14500, gain: 3.4, q: 0.7, filterType: 2 }
+            ]
+        }
+    };
+
+    const p = presets[presetName];
+    if (!p) return;
+
+    const settings = getSettings('peq');
+    settings.enabled = true;
+    settings.lastPreset = presetName;
+    settings.bands = p.bands.map((b) => ({ ...b }));
+    saveSettings('peq', settings);
+
+    const enabledCb = document.getElementById('peqEnabled');
+    if (enabledCb) enabledCb.checked = true;
+
+    settings.bands.forEach((band, index) => {
+        const kFreq = SFX.knobInstances[`peq_band${index}_freq`];
+        const kGain = SFX.knobInstances[`peq_band${index}_gain`];
+        const kQ = SFX.knobInstances[`peq_band${index}_q`];
+        if (kFreq) kFreq.setValue(band.freq);
+        if (kGain) kGain.setValue(band.gain);
+        if (kQ) kQ.setValue(band.q);
+        const filterSelect = document.getElementById(`peqBand${index}Type`);
+        if (filterSelect) filterSelect.value = String(band.filterType);
+    });
+
+    document.querySelectorAll('#peqPanel .peq-preset-btn').forEach((btn) => {
+        const active = btn.dataset.preset === presetName;
+        btn.classList.toggle('active', active);
+        btn.setAttribute('aria-pressed', active ? 'true' : 'false');
+    });
+
+    applyEffect('peq');
+    console.log(`[PEQ] Preset uygulandı: ${presetName}`);
+}
+
+function applyAutoGainPreset(presetName) {
+    const presets = {
+        balanced: { targetLevel: -15, maxGain: 10, speed: 'medium' },
+        night: { targetLevel: -20, maxGain: 16, speed: 'slow' },
+        loud: { targetLevel: -12, maxGain: 8, speed: 'fast' },
+        speech: { targetLevel: -14, maxGain: 14, speed: 'medium' }
+    };
+    const p = presets[presetName];
+    if (!p) return;
+
+    const settings = getSettings('autogain');
+    settings.enabled = true;
+    settings.targetLevel = p.targetLevel;
+    settings.maxGain = p.maxGain;
+    settings.speed = p.speed;
+    settings.lastPreset = presetName;
+    saveSettings('autogain', settings);
+
+    const enabledCb = document.getElementById('autogainEnabled');
+    if (enabledCb) enabledCb.checked = true;
+    const kTarget = SFX.knobInstances['autogain_targetLevel'];
+    const kMaxGain = SFX.knobInstances['autogain_maxGain'];
+    if (kTarget) kTarget.setValue(settings.targetLevel);
+    if (kMaxGain) kMaxGain.setValue(settings.maxGain);
+
+    document.querySelectorAll('#autogainPanel .autogain-preset-btn').forEach((btn) => {
+        const active = btn.dataset.preset === presetName;
+        btn.classList.toggle('active', active);
+        btn.setAttribute('aria-pressed', active ? 'true' : 'false');
+    });
+
+    applyEffect('autogain');
+    console.log(`[AUTO GAIN] Preset uygulandı: ${presetName}`);
+}
+
 
 // ============================================
 // BASS MONO CONTROLS
@@ -6231,12 +8478,7 @@ function initBassMonoControls() {
             const settings = getSettings('bassmono');
             settings.slope = slope;
             saveSettings('bassmono', settings);
-
-            // Native'e gönder
-            if (window.aurivo?.audio?.bassMono?.setSlope) {
-                window.aurivo.audio.bassMono.setSlope(slope);
-            }
-
+            applyEffect('bassmono');
             updateBassMonoVisual();
         });
     });
@@ -6253,6 +8495,15 @@ function initBassMonoControls() {
 
     // İlk çizim
     setTimeout(updateBassMonoVisual, 100);
+
+    if (!window.__bassMonoVisualResizeBound) {
+        window.addEventListener('resize', () => {
+            if (document.getElementById('bassmonoPanel')) {
+                updateBassMonoVisual();
+            }
+        });
+        window.__bassMonoVisualResizeBound = true;
+    }
 }
 
 function updateBassMonoVisual() {
@@ -6260,105 +8511,158 @@ function updateBassMonoVisual() {
     if (!canvas) return;
 
     const ctx = canvas.getContext('2d');
-    const width = canvas.width;
-    const height = canvas.height;
+    if (!ctx) return;
 
     // Settings al
     const settings = getSettings('bassmono');
     const cutoff = settings.cutoff;
     const slope = settings.slope;
-    const stereoWidth = settings.stereoWidth / 100;
+    const stereoWidthPercent = Math.max(0, Math.min(200, Number(settings.stereoWidth) || 100));
 
-    // Temizle
-    ctx.fillStyle = '#0a0a0a';
+    const badgeCutoff = document.getElementById('bassmonoCutoffBadge');
+    const badgeSlope = document.getElementById('bassmonoSlopeBadge');
+    const badgeWidth = document.getElementById('bassmonoWidthBadge');
+    const cutoffLabel = tSync('sfx.knob.param.cutoff');
+    const slopeLabel = tSync('sfx.bassmono.slopeLabel');
+    const stereoWidthLabel = tSync('sfx.knob.param.stereoWidth');
+    const monoLabel = tSync('settings.audio.deviceCard.channel.mono');
+    const stereoLabel = tSync('settings.audio.deviceCard.channel.stereo');
+
+    if (badgeCutoff) badgeCutoff.textContent = `${cutoffLabel} ${Math.round(cutoff)} Hz`;
+    if (badgeSlope) badgeSlope.textContent = `${slopeLabel} ${Math.round(slope)} dB/oct`;
+    if (badgeWidth) badgeWidth.textContent = `${stereoWidthLabel} ${Math.round(stereoWidthPercent)}%`;
+
+    const cssWidth = Math.max(320, Math.floor(canvas.clientWidth || 940));
+    const cssHeight = Math.max(170, Math.min(230, Math.floor(cssWidth * 0.23)));
+    if (canvas.width !== cssWidth || canvas.height !== cssHeight) {
+        canvas.width = cssWidth;
+        canvas.height = cssHeight;
+    }
+
+    const width = canvas.width;
+    const height = canvas.height;
+    const padX = 14;
+    const padTop = 16;
+    const padBottom = 24;
+    const graphHeight = height - padTop - padBottom;
+
+    // Arkaplan
+    const bg = ctx.createLinearGradient(0, 0, 0, height);
+    bg.addColorStop(0, '#0a1220');
+    bg.addColorStop(1, '#070b13');
+    ctx.fillStyle = bg;
     ctx.fillRect(0, 0, width, height);
+    ctx.strokeStyle = 'rgba(255,255,255,0.20)';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(0.5, 0.5, width - 1, height - 1);
 
     // Grid
-    ctx.strokeStyle = '#222';
+    ctx.strokeStyle = 'rgba(120,140,170,0.16)';
     ctx.lineWidth = 1;
-    ctx.font = '10px sans-serif';
-    ctx.fillStyle = '#666';
+    ctx.font = '11px sans-serif';
+    ctx.fillStyle = 'rgba(188,203,230,0.44)';
 
     const freqs = [20, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000];
+    const majorFreqs = new Set([20, 100, 500, 1000, 5000, 10000]);
     const minFreq = 20;
     const maxFreq = 20000;
 
-    const freqToX = (f) => (Math.log(f / minFreq) / Math.log(maxFreq / minFreq)) * width;
-    const xToFreq = (x) => minFreq * Math.pow(maxFreq / minFreq, x / width);
+    const freqToX = (f) => padX + (Math.log(f / minFreq) / Math.log(maxFreq / minFreq)) * (width - padX * 2);
+    const xToFreq = (x) => minFreq * Math.pow(maxFreq / minFreq, (x - padX) / Math.max(1, (width - padX * 2)));
 
-    // Draw Grid
+    // Dikey grid
     freqs.forEach(f => {
         const x = freqToX(f);
+        ctx.globalAlpha = majorFreqs.has(f) ? 1 : 0.45;
         ctx.beginPath();
-        ctx.moveTo(x, 0);
-        ctx.lineTo(x, height);
+        ctx.moveTo(x, padTop);
+        ctx.lineTo(x, height - padBottom);
         ctx.stroke();
-        ctx.fillText(`${f >= 1000 ? f / 1000 + 'k' : f}`, x + 2, height - 5);
+        if (majorFreqs.has(f)) {
+            ctx.fillText(`${f >= 1000 ? `${f / 1000}k` : f}`, x + 2, height - 6);
+        }
     });
+    ctx.globalAlpha = 1;
+
+    // Yatay referans çizgileri
+    for (let i = 1; i <= 3; i += 1) {
+        const y = padTop + (graphHeight / 4) * i;
+        ctx.beginPath();
+        ctx.moveTo(padX, y);
+        ctx.lineTo(width - padX, y);
+        ctx.stroke();
+    }
 
     const cutoffX = freqToX(cutoff);
 
     // MONO BÖLGESİ (cutoff altı)
-    ctx.fillStyle = 'rgba(255, 0, 128, 0.15)';
-    ctx.fillRect(0, 0, cutoffX, height);
-    ctx.fillStyle = '#ff0080';
-    ctx.fillText('MONO', 10, height / 2);
+    const monoGrad = ctx.createLinearGradient(0, 0, cutoffX, 0);
+    monoGrad.addColorStop(0, 'rgba(255, 0, 128, 0.20)');
+    monoGrad.addColorStop(1, 'rgba(255, 0, 128, 0.06)');
+    ctx.fillStyle = monoGrad;
+    ctx.fillRect(padX, padTop, Math.max(0, cutoffX - padX), graphHeight);
+    ctx.fillStyle = 'rgba(255, 114, 190, 0.90)';
+    ctx.fillText(monoLabel, padX + 8, padTop + 14);
 
     // STEREO BÖLGESİ (cutoff üstü)
-    ctx.fillStyle = 'rgba(0, 212, 255, 0.1)';
-    ctx.fillRect(cutoffX, 0, width - cutoffX, height);
-    ctx.fillStyle = '#00d4ff';
-    ctx.fillText('STEREO', width - 50, height / 2);
+    const stereoGrad = ctx.createLinearGradient(cutoffX, 0, width, 0);
+    stereoGrad.addColorStop(0, 'rgba(0, 212, 255, 0.07)');
+    stereoGrad.addColorStop(1, 'rgba(0, 212, 255, 0.13)');
+    ctx.fillStyle = stereoGrad;
+    ctx.fillRect(cutoffX, padTop, Math.max(0, width - padX - cutoffX), graphHeight);
+    ctx.fillStyle = 'rgba(115,230,255,0.90)';
+    const stereoTextW = ctx.measureText(stereoLabel).width;
+    ctx.fillText(stereoLabel, Math.max(padX + 8, width - padX - stereoTextW - 8), padTop + 14);
 
     // Cutoff Çizgisi
-    ctx.strokeStyle = '#ffeb3b';
-    ctx.lineWidth = 2;
+    ctx.strokeStyle = '#ffd84d';
+    ctx.lineWidth = 1.8;
     ctx.setLineDash([5, 5]);
     ctx.beginPath();
-    ctx.moveTo(cutoffX, 0);
-    ctx.lineTo(cutoffX, height);
+    ctx.moveTo(cutoffX, padTop);
+    ctx.lineTo(cutoffX, height - padBottom);
     ctx.stroke();
     ctx.setLineDash([]);
-    ctx.fillStyle = '#ffeb3b';
-    ctx.fillText(`${cutoff} Hz`, cutoffX + 5, 20);
+    ctx.fillStyle = '#ffe57d';
+    ctx.fillText(`${Math.round(cutoff)} Hz`, cutoffX + 6, padTop + 14);
 
-    // Response curve (Slope visual)
-    ctx.strokeStyle = '#ff0080';
-    ctx.lineWidth = 3;
-    ctx.shadowBlur = 10;
-    ctx.shadowColor = '#ff0080';
+    // Crossover curve
+    ctx.strokeStyle = '#ff0a9d';
+    ctx.lineWidth = 2.5;
+    ctx.shadowBlur = 8;
+    ctx.shadowColor = '#ff1499';
     ctx.beginPath();
 
-    for (let x = 0; x < width; x += 2) {
+    const slopeShape = slope === 12 ? 1.2 : slope === 24 ? 1.8 : 2.5;
+    for (let x = padX; x <= width - padX; x += 2) {
         const f = xToFreq(x);
-        let response = 0; // Mono amount (1.0 = fully mono, 0.0 = stereo)
-
-        // Basit crossover simulasyon
-        // Lowpass magnitude response
-        const w = 2 * Math.PI * f;
-        const wc = 2 * Math.PI * cutoff;
-        const n = slope / 6; // order approx
-        const mag = 1 / Math.sqrt(1 + Math.pow(w / wc, 2 * n));
-
-        const y = height - (mag * (height * 0.8)) - 20;
-
-        if (x === 0) ctx.moveTo(x, y);
+        const ratio = Math.max(0.0001, f / cutoff);
+        const mag = 1 / (1 + Math.pow(ratio, slopeShape * 2));
+        const y = padTop + (1 - mag) * graphHeight;
+        if (x === padX) ctx.moveTo(x, y);
         else ctx.lineTo(x, y);
     }
     ctx.stroke();
     ctx.shadowBlur = 0;
 
-    // Stereo Width visual (> Cutoff)
-    ctx.strokeStyle = '#00d4ff';
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    for (let x = cutoffX; x < width; x += 5) {
-        const y = height / 2;
-        const wVal = stereoWidth * 40; // Scale for visual
-        ctx.moveTo(x, y - wVal);
-        ctx.lineTo(x, y + wVal);
-    }
-    ctx.stroke();
+    // Stereo width göstergesi
+    const meterW = 160;
+    const meterH = 10;
+    const meterX = width - meterW - 18;
+    const meterY = height - meterH - 10;
+    const fillNorm = Math.max(0, Math.min(1, stereoWidthPercent / 200));
+    const fillW = meterW * fillNorm;
+    ctx.fillStyle = 'rgba(255,255,255,0.14)';
+    ctx.fillRect(meterX, meterY, meterW, meterH);
+    const meterGrad = ctx.createLinearGradient(meterX, meterY, meterX + meterW, meterY);
+    meterGrad.addColorStop(0, '#2fd8ff');
+    meterGrad.addColorStop(1, '#00ffd5');
+    ctx.fillStyle = meterGrad;
+    ctx.fillRect(meterX, meterY, fillW, meterH);
+    ctx.strokeStyle = 'rgba(255,255,255,0.24)';
+    ctx.strokeRect(meterX + 0.5, meterY + 0.5, meterW - 1, meterH - 1);
+    ctx.fillStyle = 'rgba(196, 232, 255, 0.90)';
+    ctx.fillText(`${stereoWidthLabel} ${Math.round(stereoWidthPercent)}%`, meterX, meterY - 4);
 }
 
 // Global scope expose for onclick
@@ -6380,6 +8684,7 @@ window.applyBassMonoPreset = function (presetName) {
     settings.slope = p.slope;
     settings.stereoWidth = p.stereoWidth;
     settings.lastPreset = presetName;
+    settings.enabled = true;
     saveSettings('bassmono', settings);
 
     // Update UI Knobs
@@ -6398,13 +8703,9 @@ window.applyBassMonoPreset = function (presetName) {
         btn.setAttribute('aria-pressed', active ? 'true' : 'false');
     });
 
-    // Send to Native
-    // Knob onChange handles cutoff/width
-    // Slope needs manual send
-    if (window.aurivo?.audio?.bassMono?.setSlope) {
-        window.aurivo.audio.bassMono.setSlope(p.slope);
-    }
-
+    const enabledCb = document.getElementById('bassmonoEnabled');
+    if (enabledCb) enabledCb.checked = true;
+    applyEffect('bassmono');
     updateBassMonoVisual();
     console.log(`[BassMono] Preset applied: ${presetName}`);
 };
@@ -6419,7 +8720,8 @@ window.applyDynamicEQPreset = function (presetName) {
         basstighten: { frequency: 80, q: 2.5, threshold: -35, gain: -8, range: 12, attack: 10, release: 200 },
         air: { frequency: 12000, q: 0.7, threshold: -45, gain: 6, range: 10, attack: 5, release: 100 },
         drumsnap: { frequency: 5000, q: 2.0, threshold: -40, gain: 8, range: 12, attack: 1, release: 50 },
-        warmth: { frequency: 250, q: 1.2, threshold: -42, gain: 5, range: 10, attack: 15, release: 150 }
+        warmth: { frequency: 250, q: 1.2, threshold: -42, gain: 5, range: 10, attack: 15, release: 150 },
+        testhear: { frequency: 1800, q: 0.8, threshold: -55, gain: -16, range: 24, attack: 1, release: 60 }
     };
 
     const p = presets[presetName];
@@ -6434,6 +8736,7 @@ window.applyDynamicEQPreset = function (presetName) {
     settings.attack = p.attack;
     settings.release = p.release;
     settings.lastPreset = presetName;
+    settings.enabled = true;
     saveSettings('dynamiceq', settings);
 
     // Update knob instances directly
@@ -6445,6 +8748,8 @@ window.applyDynamicEQPreset = function (presetName) {
     });
 
     applyEffect('dynamiceq');
+    const enabledCb = document.getElementById('dynamiceqEnabled');
+    if (enabledCb) enabledCb.checked = true;
     document.querySelectorAll('#dynamiceqPanel .dynamiceq-preset-btn').forEach((btn) => {
         const active = btn.dataset.preset === presetName;
         btn.classList.toggle('active', active);
@@ -6460,7 +8765,7 @@ window.applyDynamicEQPreset = function (presetName) {
 function applyTapeSatPreset(presetName) {
     const presets = {
         subtle: { driveDb: 4, mix: 35, tone: 45, outputDb: 0, mode: 1, hiss: 0 },
-        lofi: { driveDb: 12, mix: 70, tone: 25, outputDb: -2, mode: 2, hiss: 20 },
+        lofi: { driveDb: 8, mix: 45, tone: 35, outputDb: -3, mode: 2, hiss: 6 },
         glue: { driveDb: 6, mix: 40, tone: 55, outputDb: -1, mode: 0, hiss: 0 },
         crisp: { driveDb: 5, mix: 35, tone: 70, outputDb: 0, mode: 0, hiss: 0 }
     };
@@ -6471,6 +8776,7 @@ function applyTapeSatPreset(presetName) {
     // Update settings
     const settings = getSettings('tapesat');
     Object.assign(settings, p);
+    settings.enabled = true;
     settings.lastPreset = presetName;
     saveSettings('tapesat', settings);
 
@@ -6501,6 +8807,8 @@ function applyTapeSatPreset(presetName) {
 
     // Apply to native
     applyEffect('tapesat');
+    const toggle = document.getElementById('tapesatEnabled');
+    if (toggle) toggle.checked = true;
     document.querySelectorAll('#tapesatPanel .tapesat-modern-preset-btn').forEach((btn) => {
         const active = btn.dataset.preset === presetName;
         btn.classList.toggle('active', active);
@@ -6519,7 +8827,10 @@ function applyBitDitherPreset(presetName) {
         'retro12': { bitDepth: 12, dither: 2, shaping: 0, downsample: 2, mix: 100, outputDb: -1 },
         'game8': { bitDepth: 8, dither: 1, shaping: 0, downsample: 8, mix: 100, outputDb: -2 },
         'vinyl': { bitDepth: 12, dither: 2, shaping: 0, downsample: 4, mix: 70, outputDb: 0 },
-        'crunch': { bitDepth: 16, dither: 0, shaping: 0, downsample: 1, mix: 25, outputDb: 0 }
+        'crunch': { bitDepth: 16, dither: 0, shaping: 0, downsample: 1, mix: 25, outputDb: 0 },
+        'podcast': { bitDepth: 24, dither: 2, shaping: 1, downsample: 1, mix: 35, outputDb: 0 },
+        'radio': { bitDepth: 10, dither: 2, shaping: 2, downsample: 4, mix: 65, outputDb: -2 },
+        'hardcrush': { bitDepth: 6, dither: 0, shaping: 0, downsample: 8, mix: 100, outputDb: -4 }
     };
 
     const p = presets[presetName];
@@ -6527,6 +8838,7 @@ function applyBitDitherPreset(presetName) {
 
     const settings = getSettings('bitdither');
     Object.assign(settings, p);
+    settings.enabled = true;
     settings.lastPreset = presetName;
     saveSettings('bitdither', settings);
 
@@ -6547,6 +8859,8 @@ function applyBitDitherPreset(presetName) {
     }
 
     applyEffect('bitdither');
+    const toggle = document.getElementById('bitditherEnabled');
+    if (toggle) toggle.checked = true;
     document.querySelectorAll('#bitditherPanel .bitdither-preset-btn').forEach((btn) => {
         const active = btn.dataset.preset === presetName;
         btn.classList.toggle('active', active);

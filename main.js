@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, dialog, nativeImage, Tray, Menu, shell, session, screen } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, nativeImage, Tray, Menu, shell, session, screen, globalShortcut } = require('electron');
 const os = require('os');
 const readline = require('readline');
 const { spawn } = require('child_process');
@@ -396,10 +396,30 @@ function initNativeAudioEngineSafe({ force = false } = {}) {
 let mainWindow;
 let settingsWindow = null;
 let adblockDashboardWindow = null;
+const ADBLOCK_DASHBOARD_WINDOW_SIZE = Object.freeze({
+    width: 1120,
+    height: 820,
+});
+const AURIVO_ADBLOCK_DEFAULT_COMPLETE_HOSTS = Object.freeze([
+    'youtube.com',
+    'music.youtube.com',
+    'm.youtube.com',
+    'youtu.be',
+    'soundcloud.com',
+    'm.soundcloud.com',
+    'reddit.com',
+    'old.reddit.com',
+]);
 const libraryWatchSessions = new Map();
 let tray = null;
 let mainWindowCloseToTray = true;
 let lastTrayState = { isPlaying: false, currentTrack: 'Aurivo Media Player', isMuted: false, stopAfterCurrent: false };
+let mediaShortcutsRegistered = false;
+const GLOBAL_MEDIA_SHORTCUTS = Object.freeze([
+    ['MediaPlayPause', 'play-pause'],
+    ['MediaNextTrack', 'next'],
+    ['MediaPreviousTrack', 'previous']
+]);
 let mprisPlayer = null;
 let aurivoPulseProc = null;
 let aurivoPulseGuiProc = null;
@@ -2067,6 +2087,60 @@ async function readSettingsFileSafe() {
     }
 }
 
+function isMediaKeyAutoDetectEnabled(settings) {
+    return settings?.playback?.mediaKeyAutoDetect !== false;
+}
+
+function dispatchMediaShortcutAction(action) {
+    try {
+        if (!mainWindow || mainWindow.isDestroyed()) return;
+        mainWindow.webContents.send('media-control', action);
+    } catch (error) {
+        console.warn('[SHORTCUT] media action dispatch failed:', error?.message || error);
+    }
+}
+
+function unregisterGlobalMediaShortcuts() {
+    if (!mediaShortcutsRegistered) return;
+    try {
+        for (const [accelerator] of GLOBAL_MEDIA_SHORTCUTS) {
+            if (globalShortcut.isRegistered(accelerator)) {
+                globalShortcut.unregister(accelerator);
+            }
+        }
+    } catch (error) {
+        console.warn('[SHORTCUT] unregister failed:', error?.message || error);
+    } finally {
+        mediaShortcutsRegistered = false;
+    }
+}
+
+function registerGlobalMediaShortcuts() {
+    if (mediaShortcutsRegistered) return;
+    let registeredAny = false;
+    for (const [accelerator, action] of GLOBAL_MEDIA_SHORTCUTS) {
+        try {
+            const ok = globalShortcut.register(accelerator, () => {
+                dispatchMediaShortcutAction(action);
+            });
+            if (ok) registeredAny = true;
+            else console.warn(`[SHORTCUT] register failed (in use?): ${accelerator}`);
+        } catch (error) {
+            console.warn(`[SHORTCUT] register error: ${accelerator}`, error?.message || error);
+        }
+    }
+    mediaShortcutsRegistered = registeredAny;
+}
+
+function refreshGlobalMediaShortcuts(settings) {
+    if (!app.isReady()) return;
+    if (isMediaKeyAutoDetectEnabled(settings)) {
+        registerGlobalMediaShortcuts();
+    } else {
+        unregisterGlobalMediaShortcuts();
+    }
+}
+
 function deriveMainWindowCloseToTray(settings) {
     const ui = (settings?.ui && typeof settings.ui === 'object') ? settings.ui : {};
     return ui.closeToTray !== false;
@@ -2728,7 +2802,7 @@ async function applyPersistedEq32SfxFromSettings() {
     try {
         const data = await fs.promises.readFile(getSettingsPath(), 'utf8');
         const settings = JSON.parse(data);
-        const eq32 = settings?.sfx?.eq32;
+        const eq32 = settings?.sfxScopes?.music?.eq32 || settings?.sfx?.eq32;
         if (!eq32) return;
 
         const bands = normalizeEq32BandsForEngine(eq32.bands);
@@ -2774,8 +2848,12 @@ async function updateEq32SettingsInFile(patch) {
         const next = { ...(current || {}) };
         next.sfx = { ...(next.sfx || {}) };
         next.sfx.eq32 = { ...(next.sfx.eq32 || {}) };
+        next.sfxScopes = { ...(next.sfxScopes || {}) };
+        next.sfxScopes.music = { ...(next.sfxScopes.music || {}) };
+        next.sfxScopes.music.eq32 = { ...(next.sfxScopes.music.eq32 || {}) };
 
         Object.assign(next.sfx.eq32, patch || {});
+        Object.assign(next.sfxScopes.music.eq32, patch || {});
 
         await writeJsonFileAtomic(getSettingsPath(), next);
         return next;
@@ -3396,19 +3474,45 @@ function updateTrayMenu(state) {
 // SES EFEKTLERİ PENCERESİ
 // ============================================
 let soundEffectsWindow = null;
+let soundEffectsWindowScope = 'music';
 
 // ============================================
 // EQ HAZIR AYARLAR (AUTOEQ) PENCERESİ
 // ============================================
 let eqPresetsWindow = null;
 
-function createSoundEffectsWindow() {
+function normalizeSoundEffectsScope(rawScope) {
+    const scope = String(rawScope || '').trim().toLowerCase();
+    if (scope === 'web' || scope === 'video' || scope === 'music') return scope;
+    return 'music';
+}
+
+function getSoundEffectsWindowTitle(scope) {
+    const normalized = normalizeSoundEffectsScope(scope);
+    if (normalized === 'web') return 'Ses Efektleri (Web) — Aurivo Medya Player';
+    if (normalized === 'video') return 'Ses Efektleri (Video) — Aurivo Medya Player';
+    return 'Ses Efektleri (Müzik) — Aurivo Medya Player';
+}
+
+function createSoundEffectsWindow(rawScope = 'music') {
+    const scope = normalizeSoundEffectsScope(rawScope);
+    const htmlPath = path.join(__dirname, 'soundEffects.html');
+
     // Pencere zaten açıksa, önne getir
     if (soundEffectsWindow && !soundEffectsWindow.isDestroyed()) {
+        const shouldReloadForScope = soundEffectsWindowScope !== scope;
+        soundEffectsWindowScope = scope;
+        soundEffectsWindow.setTitle(getSoundEffectsWindowTitle(scope));
+        if (shouldReloadForScope) {
+            soundEffectsWindow.loadFile(htmlPath, { query: { scope } }).catch((err) => {
+                console.error('[SFX] scope reload error:', err);
+            });
+        }
         soundEffectsWindow.focus();
         return;
     }
 
+    soundEffectsWindowScope = scope;
     soundEffectsWindow = new BrowserWindow({
         width: 1300,
         height: 800,
@@ -3425,7 +3529,7 @@ function createSoundEffectsWindow() {
             sandbox: false
         },
         frame: false, // Özel başlık çubuğu için çerçevesiz
-        title: 'Ses Efektleri — Aurivo Medya Player',
+        title: getSoundEffectsWindowTitle(scope),
         show: false
     });
 
@@ -3433,7 +3537,7 @@ function createSoundEffectsWindow() {
         soundEffectsWindow.setIcon(getAppIconImage());
     }
 
-    soundEffectsWindow.loadFile(path.join(__dirname, 'soundEffects.html'));
+    soundEffectsWindow.loadFile(htmlPath, { query: { scope } });
 
     // Pencere hazır olduğunda göster
     soundEffectsWindow.once('ready-to-show', () => {
@@ -3442,6 +3546,7 @@ function createSoundEffectsWindow() {
 
     soundEffectsWindow.on('closed', () => {
         soundEffectsWindow = null;
+        soundEffectsWindowScope = 'music';
     });
 }
 
@@ -3518,8 +3623,10 @@ function createEQPresetsWindow() {
 }
 
 // Ses Efektleri Penceresini Aç
-ipcMain.handle('soundEffects:openWindow', () => {
-    createSoundEffectsWindow();
+ipcMain.handle('soundEffects:openWindow', (_event, options) => {
+    const rawScope = typeof options === 'string' ? options : options?.scope;
+    const scope = normalizeSoundEffectsScope(rawScope);
+    createSoundEffectsWindow(scope);
     return true;
 });
 
@@ -3529,6 +3636,109 @@ ipcMain.handle('soundEffects:closeWindow', () => {
         soundEffectsWindow.close();
     }
     return true;
+});
+
+ipcMain.handle('soundEffects:getWebSpectrum', async (_event, numBands) => {
+    try {
+        if (!mainWindow || mainWindow.isDestroyed()) return [];
+        const safeBands = Math.max(64, Math.min(512, Number(numBands) || 128));
+        const result = await mainWindow.webContents.executeJavaScript(
+            `window.__aurivoGetWebSpectrum ? window.__aurivoGetWebSpectrum(${safeBands}) : []`,
+            true
+        );
+        return Array.isArray(result) ? result : [];
+    } catch {
+        return [];
+    }
+});
+
+ipcMain.handle('soundEffects:getWebNoiseGateStatus', async () => {
+    try {
+        if (!mainWindow || mainWindow.isDestroyed()) {
+            return { ok: false, enabled: false, open: true, gain: 1, envDb: -120, thresholdDb: -40 };
+        }
+        const result = await mainWindow.webContents.executeJavaScript(
+            'window.__aurivoGetWebNoiseGateStatus ? window.__aurivoGetWebNoiseGateStatus() : ({ ok: false, enabled: false, open: true, gain: 1, envDb: -120, thresholdDb: -40 })',
+            true
+        );
+        return (result && typeof result === 'object')
+            ? result
+            : { ok: false, enabled: false, open: true, gain: 1, envDb: -120, thresholdDb: -40 };
+    } catch {
+        return { ok: false, enabled: false, open: true, gain: 1, envDb: -120, thresholdDb: -40 };
+    }
+});
+
+ipcMain.handle('soundEffects:getWebTruePeakStatus', async () => {
+    try {
+        if (!mainWindow || mainWindow.isDestroyed()) {
+            return { ok: false, truePeakL: -96, truePeakR: -96, holdL: -96, holdR: -96, clippingCount: 0, gainReduction: 0 };
+        }
+        const result = await mainWindow.webContents.executeJavaScript(
+            'window.__aurivoGetWebTruePeakStatus ? window.__aurivoGetWebTruePeakStatus() : ({ ok: false, truePeakL: -96, truePeakR: -96, holdL: -96, holdR: -96, clippingCount: 0, gainReduction: 0 })',
+            true
+        );
+        return (result && typeof result === 'object')
+            ? result
+            : { ok: false, truePeakL: -96, truePeakR: -96, holdL: -96, holdR: -96, clippingCount: 0, gainReduction: 0 };
+    } catch {
+        return { ok: false, truePeakL: -96, truePeakR: -96, holdL: -96, holdR: -96, clippingCount: 0, gainReduction: 0 };
+    }
+});
+
+ipcMain.handle('soundEffects:getWebDynamicEqStatus', async () => {
+    try {
+        if (!mainWindow || mainWindow.isDestroyed()) {
+            return { ok: false, enabled: false, currentGainDb: 0, gainReductionDb: 0, envDb: -120, thresholdDb: -40, triggered: false };
+        }
+        const result = await mainWindow.webContents.executeJavaScript(
+            'window.__aurivoGetWebDynamicEqStatus ? window.__aurivoGetWebDynamicEqStatus() : ({ ok: false, enabled: false, currentGainDb: 0, gainReductionDb: 0, envDb: -120, thresholdDb: -40, triggered: false })',
+            true
+        );
+        return (result && typeof result === 'object')
+            ? result
+            : { ok: false, enabled: false, currentGainDb: 0, gainReductionDb: 0, envDb: -120, thresholdDb: -40, triggered: false };
+    } catch {
+        return { ok: false, enabled: false, currentGainDb: 0, gainReductionDb: 0, envDb: -120, thresholdDb: -40, triggered: false };
+    }
+});
+
+ipcMain.handle('soundEffects:getWebPerfStatus', async () => {
+    try {
+        if (!mainWindow || mainWindow.isDestroyed()) {
+            return {
+                ok: false,
+                loops: {},
+                build: { count: 0, lastMs: 0, avgMs: 0, maxMs: 0, rebuildCount: 0 },
+                apply: { count: 0, lastMs: 0, avgMs: 0, maxMs: 0 },
+                totalGlitches: 0,
+                uptimeSec: 0
+            };
+        }
+        const result = await mainWindow.webContents.executeJavaScript(
+            'window.__aurivoGetWebPerfStatus ? window.__aurivoGetWebPerfStatus() : ({ ok: false, loops: {}, build: { count: 0, lastMs: 0, avgMs: 0, maxMs: 0, rebuildCount: 0 }, apply: { count: 0, lastMs: 0, avgMs: 0, maxMs: 0 }, totalGlitches: 0, uptimeSec: 0 })',
+            true
+        );
+        return (result && typeof result === 'object')
+            ? result
+            : {
+                ok: false,
+                loops: {},
+                build: { count: 0, lastMs: 0, avgMs: 0, maxMs: 0, rebuildCount: 0 },
+                apply: { count: 0, lastMs: 0, avgMs: 0, maxMs: 0 },
+                totalGlitches: 0,
+                uptimeSec: 0
+            };
+    } catch {
+        return {
+            ok: false,
+            loops: {},
+            build: { count: 0, lastMs: 0, avgMs: 0, maxMs: 0, rebuildCount: 0 },
+            apply: { count: 0, lastMs: 0, avgMs: 0, maxMs: 0 },
+            totalGlitches: 0,
+            uptimeSec: 0
+        };
+    }
 });
 
 // EQ Hazır Ayarlar Penceresini Aç
@@ -4195,6 +4405,7 @@ app.whenReady().then(async () => {
     try { createWindow(); } catch (e) { console.error('[APP] createWindow error:', e); }
     try { createTray(); } catch (e) { console.error('[APP] createTray error:', e); }
     try { createMPRIS(); } catch (e) { console.error('[APP] createMPRIS error:', e); }
+    try { refreshGlobalMediaShortcuts(await readSettingsFileSafe()); } catch (e) { console.error('[APP] media shortcut init error:', e); }
 
     // Kayıtlı EQ32 presetini açılışta uygula
     try { await applyPersistedEq32SfxFromSettings(); } catch (e) { console.error('[SFX] applyPersistedEq32SfxFromSettings error:', e); }
@@ -4223,6 +4434,7 @@ app.on('before-quit', () => {
     stopVisualizer();
     stopAurivoPulseListening();
     stopAurivoPulseGuiWindow();
+    unregisterGlobalMediaShortcuts();
 });
 
 // ============================================
@@ -4628,6 +4840,79 @@ async function syncAdblockConfigToDashboard(win) {
     }
 }
 
+async function ensureAdblockDefaultFilteringDetails(win) {
+    try {
+        if (!win || win.isDestroyed()) return;
+        await win.webContents.executeJavaScript(`
+            (async () => {
+                try {
+                    const defaults = ${JSON.stringify(AURIVO_ADBLOCK_DEFAULT_COMPLETE_HOSTS)};
+                    const getModes = async () => {
+                        try {
+                            return await chrome.runtime.sendMessage({ what: 'getFilteringModeDetails' });
+                        } catch {
+                            return null;
+                        }
+                    };
+                    const setModes = async (modes) => {
+                        try {
+                            return await chrome.runtime.sendMessage({ what: 'setFilteringModeDetails', modes });
+                        } catch {
+                            return null;
+                        }
+                    };
+
+                    const modes = await getModes();
+                    if (!modes || typeof modes !== 'object') return;
+
+                    const next = {
+                        none: Array.isArray(modes.none) ? Array.from(new Set(modes.none.map(v => String(v || '').trim()).filter(Boolean))) : [],
+                        basic: Array.isArray(modes.basic) ? Array.from(new Set(modes.basic.map(v => String(v || '').trim()).filter(Boolean))) : [],
+                        optimal: Array.isArray(modes.optimal) ? Array.from(new Set(modes.optimal.map(v => String(v || '').trim()).filter(Boolean))) : [],
+                        complete: Array.isArray(modes.complete) ? Array.from(new Set(modes.complete.map(v => String(v || '').trim()).filter(Boolean))) : [],
+                    };
+
+                    if (!next.optimal.includes('all-urls')) {
+                        next.optimal.push('all-urls');
+                    }
+
+                    let changed = false;
+                    const completeSet = new Set(next.complete);
+                    for (const host of defaults) {
+                        if (!completeSet.has(host)) {
+                            completeSet.add(host);
+                            changed = true;
+                        }
+                    }
+                    next.complete = Array.from(completeSet);
+
+                    // Eğer all-urls complete/basic/none içine kaçtıysa varsayılan optimal dengesi korunur.
+                    for (const bucket of ['none', 'basic', 'complete']) {
+                        if (next[bucket].includes('all-urls')) {
+                            next[bucket] = next[bucket].filter(v => v !== 'all-urls');
+                            changed = true;
+                        }
+                    }
+                    if (!Array.isArray(modes.optimal) || !modes.optimal.includes('all-urls')) {
+                        changed = true;
+                    }
+
+                    if (changed) {
+                        await setModes(next);
+                        try {
+                            const bc = new BroadcastChannel('uBOL');
+                            bc.postMessage({ filteringModeDetails: next });
+                            bc.close();
+                        } catch {}
+                    }
+                } catch {}
+            })();
+        `, true);
+    } catch {
+        // yoksay
+    }
+}
+
 async function applyAdblockDashboardBranding(win, uiLang = 'en-US') {
     try {
         if (!win || win.isDestroyed()) return;
@@ -4705,16 +4990,27 @@ async function applyAdblockDashboardBranding(win, uiLang = 'en-US') {
                         :root {
                             --aurivo-accent: #31d0ff;
                             --aurivo-accent-2: #4ef0b7;
-                            --aurivo-bg-1: #090f1e;
-                            --aurivo-bg-2: #0f1b35;
-                            --aurivo-card: rgba(17, 28, 56, 0.72);
+                            --aurivo-bg-1: #000000;
+                            --aurivo-bg-2: #000000;
+                            --aurivo-card: rgba(0, 0, 0, 0.92);
                         }
                         html, body {
-                            background:
-                                radial-gradient(1200px 420px at 0% -10%, rgba(49,208,255,0.22), transparent 58%),
-                                radial-gradient(900px 380px at 100% 0%, rgba(78,240,183,0.18), transparent 62%),
-                                linear-gradient(180deg, var(--aurivo-bg-2) 0%, var(--aurivo-bg-1) 100%) !important;
+                            background: #000000 !important;
                             color: #e9f6ff !important;
+                        }
+                        body {
+                            align-items: stretch !important;
+                            padding-inline: 12px !important;
+                        }
+                        body > *,
+                        body > section,
+                        body > header,
+                        body [data-pane-related] {
+                            width: 100% !important;
+                            max-width: none !important;
+                        }
+                        section[data-pane] {
+                            padding-inline: 2px !important;
                         }
                         .body, .pane, .card, .panel, .box, section, main {
                             border-radius: 14px !important;
@@ -4723,7 +5019,7 @@ async function applyAdblockDashboardBranding(win, uiLang = 'en-US') {
                             background: var(--aurivo-card) !important;
                             border: 1px solid rgba(103, 182, 255, 0.25) !important;
                             box-shadow: 0 12px 30px rgba(0, 0, 0, 0.28) !important;
-                            backdrop-filter: blur(10px);
+                            backdrop-filter: none !important;
                         }
                         button, .button, input, select {
                             border-radius: 10px !important;
@@ -4758,7 +5054,15 @@ async function applyAdblockDashboardBranding(win, uiLang = 'en-US') {
                 }
                 const logo = document.querySelector('#dashboard-nav .logo');
                 if (logo && !logo.querySelector('#aurivo-logo-shield')) {
-                    logo.innerHTML = '<span id="aurivo-logo-shield" aria-hidden="true">🛡</span>';
+                    const shield = document.createElement('span');
+                    shield.id = 'aurivo-logo-shield';
+                    shield.setAttribute('aria-hidden', 'true');
+                    shield.textContent = '🛡';
+                    if (typeof logo.replaceChildren === 'function') logo.replaceChildren(shield);
+                    else {
+                        while (logo.firstChild) logo.removeChild(logo.firstChild);
+                        logo.appendChild(shield);
+                    }
                     logo.setAttribute('title', 'Aurivo');
                 }
                 const brandTargets = Array.from(document.querySelectorAll('h1, h2, .title, .brand, [data-i18n], [data-l10n-id]'));
@@ -4985,14 +5289,15 @@ ipcMain.handle('adblock:openDashboard', async () => {
                 adblockDashboardWindow.setMenu(null);
             } catch { }
             await applyAdblockDashboardBranding(adblockDashboardWindow, uiLang);
+            await ensureAdblockDefaultFilteringDetails(adblockDashboardWindow);
             return true;
         }
 
         adblockDashboardWindow = new BrowserWindow({
-            width: 1200,
-            height: 860,
-            minWidth: 980,
-            minHeight: 700,
+            width: ADBLOCK_DASHBOARD_WINDOW_SIZE.width,
+            height: ADBLOCK_DASHBOARD_WINDOW_SIZE.height,
+            minWidth: ADBLOCK_DASHBOARD_WINDOW_SIZE.width,
+            minHeight: ADBLOCK_DASHBOARD_WINDOW_SIZE.height,
             title: 'Aurivo',
             icon: getAppIconImage(),
             autoHideMenuBar: true,
@@ -5031,6 +5336,7 @@ ipcMain.handle('adblock:openDashboard', async () => {
                 adblockDashboardWindow.setMenu(null);
             } catch { }
             applyAdblockDashboardBranding(adblockDashboardWindow, uiLang).catch(() => {});
+            ensureAdblockDefaultFilteringDetails(adblockDashboardWindow).catch(() => {});
         });
 
         try {
@@ -5040,6 +5346,7 @@ ipcMain.handle('adblock:openDashboard', async () => {
             await adblockDashboardWindow.loadURL(fallbackUrl);
         }
         await applyAdblockDashboardBranding(adblockDashboardWindow, uiLang);
+        await ensureAdblockDefaultFilteringDetails(adblockDashboardWindow);
         adblockDashboardWindow.show();
         adblockDashboardWindow.focus();
         return true;
@@ -5292,6 +5599,26 @@ ipcMain.handle('fs:writeText', async (_event, filePath, text) => {
     }
 });
 
+ipcMain.handle('system:getHardwareHints', async () => {
+    const ramGiB = Math.max(1, Math.round(Number(os.totalmem?.() || 0) / (1024 ** 3)));
+    const cpuCores = Array.isArray(os.cpus?.()) ? os.cpus().length : 0;
+    let gpuRenderer = '';
+    try {
+        const gpuInfo = await app.getGPUInfo('basic');
+        const firstGpu = Array.isArray(gpuInfo?.gpuDevice) ? gpuInfo.gpuDevice[0] : null;
+        gpuRenderer = String(
+            firstGpu?.deviceString
+            || firstGpu?.driverVendor
+            || firstGpu?.vendorString
+            || gpuInfo?.auxAttributes?.gl_renderer
+            || ''
+        ).trim();
+    } catch {
+        gpuRenderer = '';
+    }
+    return { ramGiB, cpuCores, gpuRenderer };
+});
+
 ipcMain.handle('settings:save', async (event, settings) => {
     try {
         const incoming = sanitizeSensitiveSettings(settings);
@@ -5322,6 +5649,7 @@ ipcMain.handle('settings:save', async (event, settings) => {
         const sanitizedMerged = sanitizeSensitiveSettings(merged);
         mainWindowCloseToTray = deriveMainWindowCloseToTray(sanitizedMerged);
         await writeJsonFileAtomic(getSettingsPath(), sanitizedMerged);
+        refreshGlobalMediaShortcuts(sanitizedMerged);
 
         for (const targetWindow of [mainWindow, settingsWindow, soundEffectsWindow]) {
             if (!targetWindow || targetWindow.isDestroyed()) continue;
@@ -5359,6 +5687,12 @@ ipcMain.handle('settings:load', async () => {
             endWarningSeconds: 10,
             smartVolumeLevelingEnabled: false,
             smartVolumeLevelingMode: 'balanced',
+            mediaKeyAutoDetect: true,
+            customHotkeys: {
+                previous: 'F2',
+                playPause: 'F3',
+                next: 'F4'
+            },
             startupState: {
                 lastTrackPath: '',
                 lastTrackIndex: -1,

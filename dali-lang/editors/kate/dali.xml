@@ -1,0 +1,89 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE language SYSTEM "language.dtd">
+<language
+    name="Dali DSL"
+    version="1"
+    kateversion="5.0"
+    section="Other"
+    extensions="*.dali;*.dl"
+    mimetype="application/x-dali"
+    license="MIT"
+    author="Aurivo Team">
+
+  <highlighting>
+    <list name="keywords">
+      <item>preset</item>
+      <item>engine</item>
+      <item>chain</item>
+      <item>quality</item>
+      <item>input</item>
+      <item>output</item>
+      <item>safety</item>
+      <item>profile</item>
+      <item>strict</item>
+      <item>realtime</item>
+      <item>on</item>
+      <item>off</item>
+    </list>
+
+    <list name="effects">
+      <item>preamp</item>
+      <item>eq32</item>
+      <item>band</item>
+      <item>peaking</item>
+      <item>limiter</item>
+      <item>compressor</item>
+      <item>low_shelf</item>
+      <item>high_shelf</item>
+    </list>
+
+    <list name="targets">
+      <item>web</item>
+      <item>speakers</item>
+    </list>
+
+    <contexts>
+      <context name="Normal" attribute="Normal Text" lineEndContext="#stay">
+        <Detect2Chars attribute="Comment" context="Comment" char="/" char1="/"/>
+        <DetectChar attribute="String" context="String" char="&quot;"/>
+
+        <keyword attribute="Keyword" context="#stay" String="keywords"/>
+        <keyword attribute="Function" context="#stay" String="effects"/>
+        <keyword attribute="Type" context="#stay" String="targets"/>
+
+        <RegExpr attribute="Decimal" context="#stay" String="\b-?(?:\d+\.\d+|\d+)(?:hz|ms|db|x)?\b"/>
+        <RegExpr attribute="Variable" context="#stay" String="\b[a-z_][a-z0-9_]*\b(?=\s*:)"/>
+        <RegExpr attribute="Identifier" context="#stay" String="\b[a-z_][a-z0-9_]*\b"/>
+
+        <AnyChar attribute="Operator" context="#stay" String="=:.(),;{}"/>
+      </context>
+
+      <context name="String" attribute="String" lineEndContext="#stay">
+        <DetectChar attribute="String" context="#pop" char="&quot;"/>
+        <HlCStringChar attribute="Char" context="#stay"/>
+      </context>
+
+      <context name="Comment" attribute="Comment" lineEndContext="#pop"/>
+    </contexts>
+
+    <itemDatas>
+      <itemData name="Normal Text" defStyleNum="dsNormal"/>
+      <itemData name="Keyword" defStyleNum="dsKeyword"/>
+      <itemData name="Function" defStyleNum="dsFunction"/>
+      <itemData name="Type" defStyleNum="dsDataType"/>
+      <itemData name="Variable" defStyleNum="dsVariable"/>
+      <itemData name="Identifier" defStyleNum="dsNormal"/>
+      <itemData name="Decimal" defStyleNum="dsDecVal"/>
+      <itemData name="Operator" defStyleNum="dsOperator"/>
+      <itemData name="String" defStyleNum="dsString"/>
+      <itemData name="Char" defStyleNum="dsChar"/>
+      <itemData name="Comment" defStyleNum="dsComment"/>
+    </itemDatas>
+  </highlighting>
+
+  <general>
+    <comments>
+      <comment name="singleLine" start="//"/>
+    </comments>
+  </general>
+</language>

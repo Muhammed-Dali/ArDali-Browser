@@ -215,5 +215,260 @@
   "sfx.truepeak.presetDescriptions.spotify": "🎵 Spotify: 面向平台发布的安全峰值控制。",
   "sfx.truepeak.presetDescriptions.youtube": "📺 YouTube: 适合流媒体的峰值控制，中等压缩。",
   "sfx.truepeak.presetDescriptions.cd": "💿 CD Master: 更干净的母带取向，保留最小峰值余量。",
-  "sfx.truepeak.presetDescriptions.broadcast": "📡 Broadcast: 面向广播标准的更严格、更安全 limiting。"
+  "sfx.truepeak.presetDescriptions.broadcast": "📡 Broadcast: 面向广播标准的更严格、更安全 limiting。",
+  "playback.shortcuts.quickAccess.title": "快捷键快速入口",
+  "playback.shortcuts.quickAccess.hint": "使用下方按钮可快速跳转到键位分配。",
+  "playback.shortcuts.quickAccess.jump": "前往键盘快捷键",
+  "playback.shortcuts.title": "键盘快捷键",
+  "playback.shortcuts.search.hint": "搜索：快速找到你需要的快捷键。",
+  "playback.shortcuts.search.placeholder": "搜索快捷键...",
+  "playback.shortcuts.sections.media": "媒体按键",
+  "playback.shortcuts.sections.tabs": "标签切换按键",
+  "playback.shortcuts.sections.platforms": "网页平台按键",
+  "playback.shortcuts.media.autoDetect": "自动识别媒体按键",
+  "playback.shortcuts.media.autoDetectHint": "很多键盘上的媒体键或 Fn + 媒体键可自动工作。",
+  "playback.shortcuts.media.previous": "上一首",
+  "playback.shortcuts.media.playPause": "播放 / 暂停",
+  "playback.shortcuts.media.next": "下一首",
+  "playback.shortcuts.assign.hint": "点击“分配”，然后按下快捷键。点击“清除”可重置。",
+  "playback.shortcuts.tabs.music": "音乐标签",
+  "playback.shortcuts.tabs.video": "视频标签",
+  "playback.shortcuts.tabs.web": "网页标签",
+  "playback.shortcuts.actions.assign": "分配",
+  "playback.shortcuts.actions.clear": "清除",
+  "playback.shortcuts.actions.waiting": "等待按键...",
+  "playback.shortcuts.unassigned": "未分配",
+  "sfx.crossfeed.ab.start": "A/B 对比",
+  "sfx.crossfeed.ab.stop": "停止 A/B",
+  "sfx.crossfeed.ab.phaseOn": "效果 开启",
+  "sfx.crossfeed.ab.phaseOff": "效果 关闭",
+  "sfx.crossfeed.ab.phaseCompare": "对比中",
+  "sfx.crossfeed.ab.statusOn": "A/B：已启用（{phase}）• 速度 {speed}",
+  "sfx.crossfeed.ab.statusOff": "A/B：已关闭 • 速度 {speed}",
+  "sfx": {
+    "bitdither": {
+      "presets": {
+        "podcast": "播客清晰",
+        "radio": "复古收音机",
+        "hardcrush": "强烈压碎"
+      },
+      "labels": {
+        "bitDepth": "Bit Depth",
+        "ditherType": "Dither Type",
+        "noiseShaping": "Noise Shaping",
+        "downsample": "Downsample"
+      },
+      "options": {
+        "bit24": "24-bit (Studio Grade)",
+        "bit16": "16-bit (CD Quality)",
+        "bit12": "12-bit (Vintage Sampler)",
+        "bit8": "8-bit (Retro Computing)",
+        "bit6": "6-bit (Aggressive Crush)",
+        "bit4": "4-bit (Extreme Distortion)",
+        "dither0": "None (Hard Quantization)",
+        "dither1": "RPDF (Rectangular)",
+        "dither2": "TPDF (Triangular - Industry Std)",
+        "shaping0": "Off (Clean)",
+        "shaping1": "Light (HF Distribution)",
+        "down1": "Off (1x)",
+        "down2": "2x",
+        "down4": "4x",
+        "down8": "8x",
+        "down16": "16x"
+      }
+    },
+    "dynamiceq": {
+      "presets": {
+        "testhear": "Test (Hear It)"
+      },
+      "info": {
+        "title": "What is Dynamic EQ?",
+        "body": "When the selected frequency band exceeds the threshold, EQ is applied automatically. Use negative gain for de-harshing and positive gain for dynamic boost."
+      },
+      "grLabel": "Dynamic EQ Gain Reduction",
+      "triggerCount": "Triggers",
+      "statusDisabled": "Dynamic EQ is disabled.",
+      "statusIdle": "Waiting for threshold crossing...",
+      "statusActiveLight": "Dynamic EQ active (light).",
+      "statusActiveMedium": "Dynamic EQ active (medium).",
+      "statusActiveStrong": "Dynamic EQ active (strong)."
+    },
+    "knob": {
+      "param": {
+        "frequency": "Frequency",
+        "amount": "Amount",
+        "mix": "Mix",
+        "drive": "Drive",
+        "tone": "Tone",
+        "output": "Output",
+        "tapeHiss": "Tape Hiss",
+        "wetMix": "Wet Mix",
+        "toneHighCut": "Tone (High Cut)",
+        "surroundLevel": "Surround Level",
+        "lfeLevel": "LFE Level",
+        "crossover": "Crossover",
+        "rearDelay": "Rear Delay"
+      }
+    },
+    "crossfeed": {
+      "visualTitle": "Stereo Field Simulation",
+      "presets": {
+        "natural": "Natural",
+        "mild": "Mild",
+        "strong": "Strong",
+        "wide": "Wide",
+        "custom": "Custom"
+      },
+      "device": {
+        "loading": "Output device is being checked...",
+        "speakers": "Output detected as speaker/line-out. Crossfeed is usually unnecessary.",
+        "unreadable": "Output info could not be read. Crossfeed remains in manual mode."
+      },
+      "autoHeadphones": "Auto enable/disable crossfeed according to headphone connection",
+      "outputUnknown": "Unknown output"
+    },
+    "tapesat": {
+      "modeTitle": "Tape Character (Tape Mode)",
+      "modes": {
+        "classic": "Classic Tape",
+        "warm": "Warm Tube",
+        "hot": "Hot Saturation"
+      }
+    },
+    "exciter": {
+      "presets": {
+        "oddair": "Odd Air",
+        "smoothair": "Smooth Air",
+        "brightair": "Bright Air",
+        "softair": "Soft Air"
+      }
+    },
+    "softecho": {
+      "presetDesc": {
+        "canyon": "Distant mountain-like echoes with sparse reflections.",
+        "cave": "Dark tone with long cave-style tail.",
+        "room": "Short and subtle empty-room ambience.",
+        "studio": "Short, clean, and controlled studio reflections.",
+        "puresoft": "Pure, smooth, and fatigue-free soft echo.",
+        "vocal": "Short and clear echo emphasizing vocals.",
+        "cinema": "Wider cinematic echo tail.",
+        "natural": "Natural and balanced daily echo profile."
+      },
+      "presets": {
+        "title": "Soft Echo Presets",
+        "canyon": "Canyon Echo",
+        "cave": "Cave Echo",
+        "room": "Room Echo",
+        "studio": "Studio Echo",
+        "puresoft": "Pure Soft",
+        "vocal": "Vocal Soft",
+        "cinema": "Cinema Tail"
+      },
+      "stereoPingPong": "Stereo (Ping-Pong)"
+    },
+    "dynamicEq": {
+      "triggerCount": "Triggers",
+      "statusDisabled": "Dynamic EQ is disabled.",
+      "statusIdle": "Waiting for threshold crossing...",
+      "statusActiveLight": "Dynamic EQ active (light).",
+      "statusActiveMedium": "Dynamic EQ active (medium).",
+      "statusActiveStrong": "Dynamic EQ active (strong).",
+      "grLabel": "Dynamic EQ Gain Reduction"
+    },
+    "reverb": {
+      "presets": {
+        "studioPlate": "Studio Plate",
+        "arena": "Arena",
+        "vocalRoom": "Vocal Room",
+        "ambientWash": "Ambient Wash",
+        "slapback": "Slapback",
+        "dreamVox": "Dream Vox"
+      }
+    },
+    "bassboost": {
+      "presets": {
+        "deep": "Deep"
+      }
+    },
+    "noisegate": {
+      "presets": {
+        "stable": "Stable",
+        "demo": "Demo"
+      }
+    },
+    "deesser": {
+      "presets": {
+        "smooth": "Smooth",
+        "demo": "Demo"
+      }
+    },
+    "stereowidener": {
+      "presets": {
+        "balanced": "Balanced",
+        "wide": "Wide",
+        "focus": "Focus"
+      }
+    },
+    "echo": {
+      "presets": {
+        "clean": "Clean",
+        "vocal": "Vocal",
+        "space": "Space"
+      }
+    },
+    "effects": {
+      "softecho": "Soft Echo",
+      "surround": "Surround (5.1/7.1)"
+    },
+    "descriptions": {
+      "softecho": "Natural and smooth echo profile without metallic double-voice feel.",
+      "surround": "Cinematic stage simulation with center/surround/LFE balance for stereo sources."
+    },
+    "convreverb": {
+      "presets": {
+        "small": "Small Room",
+        "large": "Large Room",
+        "spring": "Spring",
+        "chamber": "Chamber"
+      }
+    },
+    "peq": {
+      "presets": {
+        "title": "PEQ Quick Presets",
+        "balanced": "Balanced",
+        "bass": "Bass Boosted",
+        "vocal": "Vocal Clear",
+        "clarity": "Bright Clarity",
+        "warm": "Warm Tone",
+        "air": "Air Open"
+      }
+    },
+    "autogain": {
+      "presets": {
+        "title": "Auto Gain Quick Presets",
+        "balanced": "Balanced",
+        "night": "Night Quiet",
+        "loud": "High Energy",
+        "speech": "Speech Clear"
+      }
+    },
+    "surround": {
+      "presets": {
+        "title": "Surround Presets",
+        "movie": "Movie",
+        "music": "Music",
+        "game": "Game",
+        "voice": "Voice+",
+        "night": "Night"
+      },
+      "hint": {
+        "loading": "Reading output info...",
+        "multi": "Multichannel output detected. Surround mode is recommended.",
+        "stereo": "Stereo output detected. Virtual surround simulation mode is active.",
+        "unreadable": "Output info could not be read. Surround mode works as virtual simulation on stereo sources."
+      },
+      "autoMultichannel": "Auto enable/disable surround on multichannel outputs (>2 channels)",
+      "outputUnknown": "Unknown output"
+    }
+  }
 }

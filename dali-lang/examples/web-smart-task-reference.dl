@@ -1,0 +1,43 @@
+preset "Web Smart Task Reference" {
+  engine {
+    input: web;
+    output: speakers;
+    safety: strict;
+    backend: audioworklet;
+  }
+
+  permissions {
+    allow: media.analyze;
+    allow: media.transcode;
+    deny: shell.exec;
+    deny: net.raw;
+  }
+
+  chain {
+    preamp { gain: -1.5db; }
+    eq32 {
+      band(80hz) = 1.5db;
+      band(125hz) = 2.0db;
+      band(250hz) = 0.8db;
+    }
+    limiter { ceiling: -0.8db; }
+  }
+
+  task "web-track" {
+    source {
+      provider: youtube;
+      url: "https://www.youtube.com/watch?v=dQw4w9WgXcQ";
+      mode: metadata_only;
+    }
+    process {
+      preamp { gain: -1.0db; }
+      peaking { freq: 80hz; gain: 1.8db; q: 1.0; }
+      peaking { freq: 125hz; gain: 1.2db; q: 1.0; }
+      limiter { ceiling: -0.8db; }
+    }
+    output {
+      profile: music;
+      max_latency_ms: 15;
+    }
+  }
+}

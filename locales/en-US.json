@@ -427,7 +427,13 @@
         "smallRoom": "Small Room",
         "largeRoom": "Large Room",
         "concertHall": "Concert Hall",
-        "cathedral": "Cathedral"
+        "cathedral": "Cathedral",
+        "studioPlate": "Studio Plate",
+        "arena": "Arena",
+        "vocalRoom": "Vocal Room",
+        "ambientWash": "Ambient Wash",
+        "slapback": "Slapback",
+        "dreamVox": "Dream Vox"
       }
     },
     "compressor": {
@@ -436,7 +442,10 @@
     },
     "bassboost": {
       "title": "Bass Enhancer",
-      "description": "Enriches low frequencies with harmonics."
+      "description": "Enriches low frequencies with harmonics.",
+      "presets": {
+        "deep": "Deep"
+      }
     },
     "descriptions": {
       "limiter": "Limits maximum level to prevent clipping.",
@@ -457,7 +466,11 @@
       "bitdither": "Bit reduction and dither for lo-fi character or professional format conversion."
     },
     "noisegate": {
-      "gateStatusLabel": "Gate status:"
+      "gateStatusLabel": "Gate status:",
+      "presets": {
+        "stable": "Stable",
+        "demo": "Demo"
+      }
     },
     "crossfeed": {
       "statusChecking": "DSP status: checking…",
@@ -481,6 +494,23 @@
         "2": "💪 Strong: Strong crossfeed, pronounced speaker feel",
         "3": "🌌 Wide: Wider stage, more spacious feel",
         "4": "⚙️ Custom: Your manual settings"
+      },
+      "ab": {
+        "start": "A/B Compare",
+        "stop": "Stop A/B",
+        "phaseOn": "Effect ON",
+        "phaseOff": "Effect OFF",
+        "phaseCompare": "Comparing",
+        "statusOn": "A/B: Active ({phase}) • Speed {speed}",
+        "statusOff": "A/B: Off • Speed {speed}"
+      },
+      "visualTitle": "Stereo Field Simulation",
+      "presets": {
+        "natural": "Natural",
+        "mild": "Mild",
+        "strong": "Strong",
+        "wide": "Wide",
+        "custom": "Custom"
       }
     },
     "effects": {
@@ -515,7 +545,22 @@
         "tape": "Tape Glow",
         "vocal": "Vocal Soft",
         "wide": "Wide Air",
-        "cinema": "Cinema Tail"
+        "cinema": "Cinema Tail",
+        "canyon": "Canyon Echo",
+        "cave": "Cave Echo",
+        "room": "Room Echo",
+        "studio": "Studio Echo",
+        "puresoft": "Pure Soft"
+      },
+      "presetDesc": {
+        "canyon": "Distant mountain-like echoes with sparse reflections.",
+        "cave": "Dark tone with long cave-style tail.",
+        "room": "Short and subtle empty-room ambience.",
+        "studio": "Short, clean, and controlled studio reflections.",
+        "puresoft": "Pure, smooth, and fatigue-free soft echo.",
+        "vocal": "Short and clear echo emphasizing vocals.",
+        "cinema": "Wider cinematic echo tail.",
+        "natural": "Natural and balanced daily echo profile."
       }
     },
     "surround": {
@@ -548,6 +593,12 @@
         "glue": "Mastering Glue",
         "crisp": "Crisp Tape",
         "lofi": "Lo-fi Tape"
+      },
+      "modeTitle": "Tape Character (Tape Mode)",
+      "modes": {
+        "classic": "Classic Tape",
+        "warm": "Warm Tube",
+        "hot": "Hot Saturation"
       }
     },
     "truepeak": {
@@ -570,7 +621,11 @@
         "hall": "Concert Hall",
         "church": "Church",
         "room": "Room",
-        "plate": "Plate"
+        "plate": "Plate",
+        "small": "Small Room",
+        "large": "Large Room",
+        "spring": "Spring",
+        "chamber": "Chamber"
       }
     },
     "bassmono": {
@@ -591,8 +646,20 @@
         "basstighten": "Bass Tighten",
         "air": "Air Sparkle",
         "drumsnap": "Drum Snap",
-        "warmth": "Analog Warmth"
-      }
+        "warmth": "Analog Warmth",
+        "testhear": "Test (Hear It)"
+      },
+      "info": {
+        "title": "What is Dynamic EQ?",
+        "body": "When the selected frequency band exceeds the threshold, EQ is applied automatically. Use negative gain for de-harshing and positive gain for dynamic boost."
+      },
+      "grLabel": "Dynamic EQ Gain Reduction",
+      "triggerCount": "Triggers",
+      "statusDisabled": "Dynamic EQ is disabled.",
+      "statusIdle": "Waiting for threshold crossing...",
+      "statusActiveLight": "Dynamic EQ active (light).",
+      "statusActiveMedium": "Dynamic EQ active (medium).",
+      "statusActiveStrong": "Dynamic EQ active (strong)."
     },
     "bitdither": {
       "presets": {
@@ -600,7 +667,108 @@
         "retro12": "Retro 12-bit",
         "game8": "8-bit Gaming",
         "vinyl": "Lo-fi Vinyl",
-        "crunch": "Subtle Crunch"
+        "crunch": "Subtle Crunch",
+        "podcast": "Podcast Clean",
+        "radio": "Vintage Radio",
+        "hardcrush": "Hard Crush"
+      },
+      "labels": {
+        "bitDepth": "Bit Depth",
+        "ditherType": "Dither Type",
+        "noiseShaping": "Noise Shaping",
+        "downsample": "Downsample"
+      },
+      "options": {
+        "bit24": "24-bit (Studio Grade)",
+        "bit16": "16-bit (CD Quality)",
+        "bit12": "12-bit (Vintage Sampler)",
+        "bit8": "8-bit (Retro Computing)",
+        "bit6": "6-bit (Aggressive Crush)",
+        "bit4": "4-bit (Extreme Distortion)",
+        "dither0": "None (Hard Quantization)",
+        "dither1": "RPDF (Rectangular)",
+        "dither2": "TPDF (Triangular - Industry Std)",
+        "shaping0": "Off (Clean)",
+        "shaping1": "Light (HF Distribution)",
+        "down1": "Off (1x)",
+        "down2": "2x",
+        "down4": "4x",
+        "down8": "8x",
+        "down16": "16x"
+      }
+    },
+    "knob": {
+      "param": {
+        "frequency": "Frequency",
+        "amount": "Amount",
+        "mix": "Mix",
+        "drive": "Drive",
+        "tone": "Tone",
+        "output": "Output",
+        "tapeHiss": "Tape Hiss",
+        "wetMix": "Wet Mix",
+        "toneHighCut": "Tone (High Cut)",
+        "surroundLevel": "Surround Level",
+        "lfeLevel": "LFE Level",
+        "crossover": "Crossover",
+        "rearDelay": "Rear Delay"
+      }
+    },
+    "exciter": {
+      "presets": {
+        "oddair": "Odd Air",
+        "smoothair": "Smooth Air",
+        "brightair": "Bright Air",
+        "softair": "Soft Air"
+      }
+    },
+    "dynamicEq": {
+      "triggerCount": "Triggers",
+      "statusDisabled": "Dynamic EQ is disabled.",
+      "statusIdle": "Waiting for threshold crossing...",
+      "statusActiveLight": "Dynamic EQ active (light).",
+      "statusActiveMedium": "Dynamic EQ active (medium).",
+      "statusActiveStrong": "Dynamic EQ active (strong).",
+      "grLabel": "Dynamic EQ Gain Reduction"
+    },
+    "deesser": {
+      "presets": {
+        "smooth": "Smooth",
+        "demo": "Demo"
+      }
+    },
+    "stereowidener": {
+      "presets": {
+        "balanced": "Balanced",
+        "wide": "Wide",
+        "focus": "Focus"
+      }
+    },
+    "echo": {
+      "presets": {
+        "clean": "Clean",
+        "vocal": "Vocal",
+        "space": "Space"
+      }
+    },
+    "peq": {
+      "presets": {
+        "title": "PEQ Quick Presets",
+        "balanced": "Balanced",
+        "bass": "Bass Boosted",
+        "vocal": "Vocal Clear",
+        "clarity": "Bright Clarity",
+        "warm": "Warm Tone",
+        "air": "Air Open"
+      }
+    },
+    "autogain": {
+      "presets": {
+        "title": "Auto Gain Quick Presets",
+        "balanced": "Balanced",
+        "night": "Night Quiet",
+        "loud": "High Energy",
+        "speech": "Speech Clear"
       }
     }
   },
@@ -796,7 +964,36 @@
   "settings.library.root.savedFolders": "Saved folders",
   "settings.library.root.manualTracks": "Manually added tracks",
   "settings.library.root.manualTracksHint": "Manually added tracks appear in the playlist. Detailed management is available in Settings > Music Library.",
+  "playback.shortcuts.quickAccess.title": "Shortcut Quick Access",
+  "playback.shortcuts.quickAccess.hint": "Use the button below to quickly jump to keyboard key assignments.",
+  "playback.shortcuts.quickAccess.jump": "Go to Keyboard Shortcuts",
+  "playback.shortcuts.title": "Keyboard Shortcuts",
+  "playback.shortcuts.search.hint": "Search: quickly find the shortcut you want (e.g. youtube, web, play).",
+  "playback.shortcuts.search.placeholder": "Search shortcut...",
+  "playback.shortcuts.sections.media": "Media Keys",
+  "playback.shortcuts.sections.tabs": "Tab Switch Keys",
+  "playback.shortcuts.sections.platforms": "Web Platform Keys",
+  "playback.shortcuts.media.autoDetect": "Auto-detect keyboard media keys (Play/Pause, Previous, Next)",
+  "playback.shortcuts.media.autoDetectHint": "On many keyboards, media keys or Fn + media keys work automatically this way.",
+  "playback.shortcuts.media.previous": "Go to previous track",
+  "playback.shortcuts.media.playPause": "Play / Pause",
+  "playback.shortcuts.media.next": "Go to next track",
+  "playback.shortcuts.assign.hint": "Click Assign, then press the shortcut on your keyboard. Use Clear to reset.",
+  "playback.shortcuts.tabs.music": "Music tab",
+  "playback.shortcuts.tabs.video": "Video tab",
+  "playback.shortcuts.tabs.web": "Web tab",
+  "playback.shortcuts.actions.assign": "Assign",
+  "playback.shortcuts.actions.clear": "Clear",
+  "playback.shortcuts.actions.waiting": "Waiting for key...",
+  "playback.shortcuts.unassigned": "Unassigned",
   "unit": {
     "secondsShort": "sec"
-  }
+  },
+  "sfx.crossfeed.ab.start": "A/B Compare",
+  "sfx.crossfeed.ab.stop": "Stop A/B",
+  "sfx.crossfeed.ab.phaseOn": "Effect ON",
+  "sfx.crossfeed.ab.phaseOff": "Effect OFF",
+  "sfx.crossfeed.ab.phaseCompare": "Comparing",
+  "sfx.crossfeed.ab.statusOn": "A/B: Active ({phase}) • Speed {speed}",
+  "sfx.crossfeed.ab.statusOff": "A/B: Off • Speed {speed}"
 }

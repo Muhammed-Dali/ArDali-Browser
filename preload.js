@@ -15,7 +15,7 @@ const preloadLog = (...args) => {
 
 preloadLog('[PRELOAD] Script basliyor...');
 
-const { contextBridge, ipcRenderer, clipboard } = require('electron');
+const { contextBridge, ipcRenderer, clipboard, webUtils } = require('electron');
 const preloadArgv = Array.isArray(process?.argv) ? process.argv : [];
 const preloadStandaloneView = String(
     preloadArgv.find((arg) => String(arg).startsWith('--aurivo-view=')) || ''
@@ -751,6 +751,10 @@ const aurivoAPI = {
         setOutput: (outputId) => ipcRenderer.invoke('systemAudio:setOutput', outputId)
     },
 
+    system: {
+        getHardwareHints: () => ipcRenderer.invoke('system:getHardwareHints')
+    },
+
     // Web Security / Privacy helpers
     webSecurity: {
         openExternal: (url) => ipcRenderer.invoke('web:openExternal', url),
@@ -792,8 +796,21 @@ const aurivoAPI = {
 
     // SES EFEKTLERİ PENCERESİ API
     soundEffects: {
-        openWindow: () => ipcRenderer.invoke('soundEffects:openWindow'),
-        closeWindow: () => ipcRenderer.invoke('soundEffects:closeWindow')
+        openWindow: (scopeOrOptions) => {
+            const rawScope = typeof scopeOrOptions === 'string'
+                ? scopeOrOptions
+                : (scopeOrOptions && typeof scopeOrOptions === 'object' ? scopeOrOptions.scope : undefined);
+            const normalizedScope = ['music', 'video', 'web'].includes(String(rawScope || '').toLowerCase())
+                ? String(rawScope).toLowerCase()
+                : 'music';
+            return ipcRenderer.invoke('soundEffects:openWindow', { scope: normalizedScope });
+        },
+        closeWindow: () => ipcRenderer.invoke('soundEffects:closeWindow'),
+        getWebSpectrum: (numBands) => ipcRenderer.invoke('soundEffects:getWebSpectrum', numBands || 128),
+        getWebNoiseGateStatus: () => ipcRenderer.invoke('soundEffects:getWebNoiseGateStatus'),
+        getWebTruePeakStatus: () => ipcRenderer.invoke('soundEffects:getWebTruePeakStatus'),
+        getWebDynamicEqStatus: () => ipcRenderer.invoke('soundEffects:getWebDynamicEqStatus'),
+        getWebPerfStatus: () => ipcRenderer.invoke('soundEffects:getWebPerfStatus')
     },
 
     // ELECTRON PENCERE KONTROL API
@@ -851,6 +868,21 @@ const aurivoAPI = {
         basename: (p) => path.basename(p),
         dirname: (p) => path.dirname(p),
         resolve: (...args) => path.resolve(...args),
+        getPathForFile: (file) => {
+            try {
+                if (!file) return '';
+                if (typeof file.path === 'string' && file.path.trim()) {
+                    return file.path.trim();
+                }
+                if (webUtils && typeof webUtils.getPathForFile === 'function') {
+                    const resolved = webUtils.getPathForFile(file);
+                    return String(resolved || '').trim();
+                }
+            } catch {
+                // yoksay
+            }
+            return '';
+        },
         toFileUrl: (p) => {
             try {
                 return pathToFileURL(String(p || '')).toString();

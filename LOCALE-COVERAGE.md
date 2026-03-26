@@ -1,6 +1,6 @@
 # Locale Coverage
 
-Updated: 2026-03-08
+Updated: 2026-03-17
 
 This report summarizes the active UI locale coverage for the main `Aurivo Medya Player` application.
 
@@ -31,7 +31,7 @@ These were not part of the active main-app loading path.
 
 ## Summary
 
-- Total used keys: `468`
+- Total used keys: `515`
 - Supported locales checked: `22`
 - Effective missing keys across all supported locales: `0`
 
@@ -45,28 +45,28 @@ That means:
 
 | Locale | Raw Present | Raw Missing | Effective Missing | Override |
 | --- | ---: | ---: | ---: | --- |
-| `ar-SA` | 20 | 448 | 0 | yes |
-| `bn-BD` | 65 | 403 | 0 | yes |
-| `de-DE` | 65 | 403 | 0 | yes |
-| `el-GR` | 65 | 403 | 0 | yes |
-| `en-US` | 202 | 266 | 0 | yes |
-| `es-ES` | 20 | 448 | 0 | yes |
-| `fa-IR` | 65 | 403 | 0 | yes |
-| `fi-FI` | 65 | 403 | 0 | yes |
-| `fr-FR` | 20 | 448 | 0 | yes |
-| `hi-IN` | 65 | 403 | 0 | yes |
-| `hu-HU` | 65 | 403 | 0 | yes |
-| `it-IT` | 65 | 403 | 0 | yes |
-| `ja-JP` | 65 | 403 | 0 | yes |
-| `ne-NP` | 65 | 403 | 0 | yes |
-| `pl-PL` | 65 | 403 | 0 | yes |
-| `pt-BR` | 65 | 403 | 0 | yes |
-| `ru-RU` | 65 | 403 | 0 | yes |
-| `tr-TR` | 127 | 341 | 0 | yes |
-| `uk-UA` | 65 | 403 | 0 | yes |
-| `vi-VN` | 65 | 403 | 0 | yes |
-| `zh-CN` | 20 | 448 | 0 | yes |
-| `zh-TW` | 20 | 448 | 0 | yes |
+| `ar-SA` | 223 | 292 | 0 | yes |
+| `bn-BD` | 89 | 426 | 0 | yes |
+| `de-DE` | 89 | 426 | 0 | yes |
+| `el-GR` | 89 | 426 | 0 | yes |
+| `en-US` | 253 | 262 | 0 | yes |
+| `es-ES` | 46 | 469 | 0 | yes |
+| `fa-IR` | 89 | 426 | 0 | yes |
+| `fi-FI` | 89 | 426 | 0 | yes |
+| `fr-FR` | 46 | 469 | 0 | yes |
+| `hi-IN` | 89 | 426 | 0 | yes |
+| `hu-HU` | 89 | 426 | 0 | yes |
+| `it-IT` | 89 | 426 | 0 | yes |
+| `ja-JP` | 89 | 426 | 0 | yes |
+| `ne-NP` | 89 | 426 | 0 | yes |
+| `pl-PL` | 89 | 426 | 0 | yes |
+| `pt-BR` | 89 | 426 | 0 | yes |
+| `ru-RU` | 89 | 426 | 0 | yes |
+| `tr-TR` | 172 | 343 | 0 | yes |
+| `uk-UA` | 89 | 426 | 0 | yes |
+| `vi-VN` | 89 | 426 | 0 | yes |
+| `zh-CN` | 46 | 469 | 0 | yes |
+| `zh-TW` | 46 | 469 | 0 | yes |
 
 ## Interpretation
 

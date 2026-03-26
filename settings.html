@@ -24,6 +24,10 @@
                                         <span class="settings-tab-icon material-symbols-rounded" aria-hidden="true">play_circle</span>
                                         <span class="settings-tab-label" data-i18n="settings.tabs.playback">Oynat</span>
                                     </button>
+                                    <button class="settings-tab" data-tab="shortcuts">
+                                        <span class="settings-tab-icon material-symbols-rounded" aria-hidden="true">keyboard</span>
+                                        <span class="settings-tab-label" data-i18n="playback.shortcuts.title">Klavye Kısayolları</span>
+                                    </button>
                                     <button class="settings-tab" data-tab="listen">
                                         <span class="settings-tab-icon material-symbols-rounded" aria-hidden="true">graphic_eq</span>
                                         <span class="settings-tab-label" data-i18n="settings.tabs.listen">Dinle</span>
@@ -132,6 +136,43 @@
                                                 </select>
                                             </div>
                                             <button class="reset-btn" id="resetPlayback" data-i18n="settings.buttons.resetDefaults">↻ Varsayılan Ayarlar</button>
+                                        </div>
+                                    </div>
+                                    <div class="settings-page hidden" id="shortcutsSettings">
+                                        <h3 data-i18n="playback.shortcuts.title">Klavye Kısayolları</h3>
+                                        <div class="settings-group" id="playbackShortcutSection">
+                                            <h4 data-i18n="playback.shortcuts.title">Klavye Kısayolları</h4>
+                                            <div class="settings-row">
+                                                <div class="settings-row-left">
+                                                    <div class="settings-label" data-i18n="playback.shortcuts.search.hint">Ara: İstediğin kısayolu hızlıca bul.</div>
+                                                </div>
+                                                <input type="text" id="playbackShortcutSearch" class="settings-input" data-i18n-placeholder="playback.shortcuts.search.placeholder" placeholder="Kısayol ara...">
+                                            </div>
+                                            <div class="settings-subtitle" data-i18n="playback.shortcuts.sections.media">Medya Tuşları</div>
+                                            <label class="checkbox-label">
+                                                <input type="checkbox" id="mediaKeyAutoDetect" checked>
+                                                <span data-i18n="playback.shortcuts.media.autoDetect">Klavye medya tuşlarını otomatik algıla (Play/Pause, Önceki, Sonraki)</span>
+                                            </label>
+                                            <div class="settings-sub" data-i18n="playback.shortcuts.media.autoDetectHint">Birçok klavyede medya tuşları veya Fn + medya tuşları bu şekilde otomatik çalışır.</div>
+                                            <div class="settings-row"><div class="settings-row-left"><div class="settings-label" data-i18n="playback.shortcuts.media.previous">Önceki parçaya geç</div></div><div class="settings-inline"><input type="text" id="shortcutPrevious" class="settings-input" autocomplete="off" autocapitalize="off" spellcheck="false"><button type="button" class="settings-btn shortcut-capture-btn" data-shortcut-target="shortcutPrevious" data-i18n="playback.shortcuts.actions.assign">Ata</button><button type="button" class="settings-btn shortcut-clear-btn" data-shortcut-target="shortcutPrevious" data-i18n="playback.shortcuts.actions.clear">Temizle</button></div></div>
+                                            <div class="settings-row"><div class="settings-row-left"><div class="settings-label" data-i18n="playback.shortcuts.media.playPause">Oynat / Duraklat</div></div><div class="settings-inline"><input type="text" id="shortcutPlayPause" class="settings-input" autocomplete="off" autocapitalize="off" spellcheck="false"><button type="button" class="settings-btn shortcut-capture-btn" data-shortcut-target="shortcutPlayPause" data-i18n="playback.shortcuts.actions.assign">Ata</button><button type="button" class="settings-btn shortcut-clear-btn" data-shortcut-target="shortcutPlayPause" data-i18n="playback.shortcuts.actions.clear">Temizle</button></div></div>
+                                            <div class="settings-row"><div class="settings-row-left"><div class="settings-label" data-i18n="playback.shortcuts.media.next">Sonraki parçaya geç</div></div><div class="settings-inline"><input type="text" id="shortcutNext" class="settings-input" autocomplete="off" autocapitalize="off" spellcheck="false"><button type="button" class="settings-btn shortcut-capture-btn" data-shortcut-target="shortcutNext" data-i18n="playback.shortcuts.actions.assign">Ata</button><button type="button" class="settings-btn shortcut-clear-btn" data-shortcut-target="shortcutNext" data-i18n="playback.shortcuts.actions.clear">Temizle</button></div></div>
+                                            <div class="settings-sub" data-i18n="playback.shortcuts.assign.hint">Ata butonuna tıkla, sonra klavyede kısayolu bas. Temizle ile sıfırlayabilirsin.</div>
+                                            <div class="settings-subtitle" data-i18n="playback.shortcuts.sections.tabs">Sekme Geçiş Tuşları</div>
+                                            <div class="settings-row"><div class="settings-row-left"><div class="settings-label" data-i18n="playback.shortcuts.tabs.music">Müzik sekmesi</div></div><div class="settings-inline"><input type="text" id="shortcutTabMusic" class="settings-input" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="-"><button type="button" class="settings-btn shortcut-capture-btn" data-shortcut-target="shortcutTabMusic" data-i18n="playback.shortcuts.actions.assign">Ata</button><button type="button" class="settings-btn shortcut-clear-btn" data-shortcut-target="shortcutTabMusic" data-i18n="playback.shortcuts.actions.clear">Temizle</button></div></div>
+                                            <div class="settings-row"><div class="settings-row-left"><div class="settings-label" data-i18n="playback.shortcuts.tabs.video">Video sekmesi</div></div><div class="settings-inline"><input type="text" id="shortcutTabVideo" class="settings-input" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="-"><button type="button" class="settings-btn shortcut-capture-btn" data-shortcut-target="shortcutTabVideo" data-i18n="playback.shortcuts.actions.assign">Ata</button><button type="button" class="settings-btn shortcut-clear-btn" data-shortcut-target="shortcutTabVideo" data-i18n="playback.shortcuts.actions.clear">Temizle</button></div></div>
+                                            <div class="settings-row"><div class="settings-row-left"><div class="settings-label" data-i18n="playback.shortcuts.tabs.web">Web sekmesi</div></div><div class="settings-inline"><input type="text" id="shortcutTabWeb" class="settings-input" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="-"><button type="button" class="settings-btn shortcut-capture-btn" data-shortcut-target="shortcutTabWeb" data-i18n="playback.shortcuts.actions.assign">Ata</button><button type="button" class="settings-btn shortcut-clear-btn" data-shortcut-target="shortcutTabWeb" data-i18n="playback.shortcuts.actions.clear">Temizle</button></div></div>
+                                            <div class="settings-subtitle" data-i18n="playback.shortcuts.sections.platforms">Web Platform Tuşları</div>
+                                            <div class="settings-row"><div class="settings-row-left"><div class="settings-label">YouTube Music</div></div><div class="settings-inline"><input type="text" id="shortcutPlatformYtmusic" class="settings-input" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="-"><button type="button" class="settings-btn shortcut-capture-btn" data-shortcut-target="shortcutPlatformYtmusic" data-i18n="playback.shortcuts.actions.assign">Ata</button><button type="button" class="settings-btn shortcut-clear-btn" data-shortcut-target="shortcutPlatformYtmusic" data-i18n="playback.shortcuts.actions.clear">Temizle</button></div></div>
+                                            <div class="settings-row"><div class="settings-row-left"><div class="settings-label">YouTube</div></div><div class="settings-inline"><input type="text" id="shortcutPlatformYoutube" class="settings-input" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="-"><button type="button" class="settings-btn shortcut-capture-btn" data-shortcut-target="shortcutPlatformYoutube" data-i18n="playback.shortcuts.actions.assign">Ata</button><button type="button" class="settings-btn shortcut-clear-btn" data-shortcut-target="shortcutPlatformYoutube" data-i18n="playback.shortcuts.actions.clear">Temizle</button></div></div>
+                                            <div class="settings-row"><div class="settings-row-left"><div class="settings-label">Deezer</div></div><div class="settings-inline"><input type="text" id="shortcutPlatformDeezer" class="settings-input" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="-"><button type="button" class="settings-btn shortcut-capture-btn" data-shortcut-target="shortcutPlatformDeezer" data-i18n="playback.shortcuts.actions.assign">Ata</button><button type="button" class="settings-btn shortcut-clear-btn" data-shortcut-target="shortcutPlatformDeezer" data-i18n="playback.shortcuts.actions.clear">Temizle</button></div></div>
+                                            <div class="settings-row"><div class="settings-row-left"><div class="settings-label">SoundCloud</div></div><div class="settings-inline"><input type="text" id="shortcutPlatformSoundcloud" class="settings-input" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="-"><button type="button" class="settings-btn shortcut-capture-btn" data-shortcut-target="shortcutPlatformSoundcloud" data-i18n="playback.shortcuts.actions.assign">Ata</button><button type="button" class="settings-btn shortcut-clear-btn" data-shortcut-target="shortcutPlatformSoundcloud" data-i18n="playback.shortcuts.actions.clear">Temizle</button></div></div>
+                                            <div class="settings-row"><div class="settings-row-left"><div class="settings-label">Facebook</div></div><div class="settings-inline"><input type="text" id="shortcutPlatformFacebook" class="settings-input" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="-"><button type="button" class="settings-btn shortcut-capture-btn" data-shortcut-target="shortcutPlatformFacebook" data-i18n="playback.shortcuts.actions.assign">Ata</button><button type="button" class="settings-btn shortcut-clear-btn" data-shortcut-target="shortcutPlatformFacebook" data-i18n="playback.shortcuts.actions.clear">Temizle</button></div></div>
+                                            <div class="settings-row"><div class="settings-row-left"><div class="settings-label">Instagram</div></div><div class="settings-inline"><input type="text" id="shortcutPlatformInstagram" class="settings-input" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="-"><button type="button" class="settings-btn shortcut-capture-btn" data-shortcut-target="shortcutPlatformInstagram" data-i18n="playback.shortcuts.actions.assign">Ata</button><button type="button" class="settings-btn shortcut-clear-btn" data-shortcut-target="shortcutPlatformInstagram" data-i18n="playback.shortcuts.actions.clear">Temizle</button></div></div>
+                                            <div class="settings-row"><div class="settings-row-left"><div class="settings-label">TikTok</div></div><div class="settings-inline"><input type="text" id="shortcutPlatformTiktok" class="settings-input" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="-"><button type="button" class="settings-btn shortcut-capture-btn" data-shortcut-target="shortcutPlatformTiktok" data-i18n="playback.shortcuts.actions.assign">Ata</button><button type="button" class="settings-btn shortcut-clear-btn" data-shortcut-target="shortcutPlatformTiktok" data-i18n="playback.shortcuts.actions.clear">Temizle</button></div></div>
+                                            <div class="settings-row"><div class="settings-row-left"><div class="settings-label">X</div></div><div class="settings-inline"><input type="text" id="shortcutPlatformX" class="settings-input" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="-"><button type="button" class="settings-btn shortcut-capture-btn" data-shortcut-target="shortcutPlatformX" data-i18n="playback.shortcuts.actions.assign">Ata</button><button type="button" class="settings-btn shortcut-clear-btn" data-shortcut-target="shortcutPlatformX" data-i18n="playback.shortcuts.actions.clear">Temizle</button></div></div>
+                                            <div class="settings-row"><div class="settings-row-left"><div class="settings-label">Reddit</div></div><div class="settings-inline"><input type="text" id="shortcutPlatformReddit" class="settings-input" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="-"><button type="button" class="settings-btn shortcut-capture-btn" data-shortcut-target="shortcutPlatformReddit" data-i18n="playback.shortcuts.actions.assign">Ata</button><button type="button" class="settings-btn shortcut-clear-btn" data-shortcut-target="shortcutPlatformReddit" data-i18n="playback.shortcuts.actions.clear">Temizle</button></div></div>
+                                            <div class="settings-row"><div class="settings-row-left"><div class="settings-label">Twitch</div></div><div class="settings-inline"><input type="text" id="shortcutPlatformTwitch" class="settings-input" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="-"><button type="button" class="settings-btn shortcut-capture-btn" data-shortcut-target="shortcutPlatformTwitch" data-i18n="playback.shortcuts.actions.assign">Ata</button><button type="button" class="settings-btn shortcut-clear-btn" data-shortcut-target="shortcutPlatformTwitch" data-i18n="playback.shortcuts.actions.clear">Temizle</button></div></div>
                                         </div>
                                     </div>
                                     <div class="settings-page hidden" id="listenSettings">
@@ -277,20 +318,19 @@
                                                 </div>
                                                 <select class="settings-select" id="themeSelect" aria-label="Theme">
                                                     <option value="aur-renk-efektleri">Aurivo Medya Player</option>
+                                                    <option value="performance-balanced">Balanced Flow</option>
+                                                    <option value="performance-lite">Low Hardware Stable</option>
                                                     <option value="neon-night">Neon Night</option>
                                                     <option value="retro-amber">Retro Amber</option>
                                                     <option value="deep-ocean">Deep Ocean</option>
                                                     <option value="forest-mint">Forest Mint</option>
-                                                    <option value="graphite-blue">Graphite Blue</option>
-                                                    <option value="midnight-titanium-premium">Midnight Titanium</option>
-                                                    <option value="emerald-luxe-premium">Emerald Luxe</option>
-                                                    <option value="sunset-copper">Sunset Copper</option>
                                                 </select>
                                             </div>
                                             <div class="settings-row">
                                                 <div class="settings-row-left">
                                                     <div class="settings-label" data-i18n="ui.theme.followSystem.label">Sistem temasını takip et</div>
                                                     <div class="settings-sub" data-i18n="ui.theme.followSystem.hint">Açıkken tema seçimi sistem temasına göre otomatik uygulanır.</div>
+                                                    <div class="settings-sub hidden" id="themeModeStatus">Tema sistemden yönetiliyor.</div>
                                                 </div>
                                                 <label class="settings-master-toggle" title="Sistem temasına göre otomatik geçiş">
                                                     <input type="checkbox" id="uiFollowSystemThemeToggle">
@@ -307,6 +347,51 @@
                                                     <option value="full" data-i18n="ui.visualMode.options.full">Tam</option>
                                                     <option value="balanced" data-i18n="ui.visualMode.options.balanced">Dengeli</option>
                                                     <option value="minimal" data-i18n="ui.visualMode.options.minimal">Minimum</option>
+                                                </select>
+                                            </div>
+                                            <div class="settings-row">
+                                                <div class="settings-row-left">
+                                                    <div class="settings-label">Animasyon Hızı</div>
+                                                    <div class="settings-sub">Geçiş ve efekt hızını belirler: Hızlı, Dengeli veya Sakin.</div>
+                                                </div>
+                                                <select class="settings-select" id="uiMotionProfileSelect" aria-label="Animation speed">
+                                                    <option value="fast">Hızlı</option>
+                                                    <option value="balanced">Dengeli</option>
+                                                    <option value="calm">Sakin</option>
+                                                </select>
+                                            </div>
+                                            <div class="settings-row">
+                                                <div class="settings-row-left">
+                                                    <div class="settings-label">Donanıma göre otomatik optimize et</div>
+                                                    <div class="settings-sub">RAM/GPU zayıfsa arayüzü otomatik hafifletir. İstersen kapatıp manuel ayarlayabilirsin.</div>
+                                                    <div class="settings-sub" id="uiHardwareProfileStatus">Donanım profili: tespit bekleniyor...</div>
+                                                </div>
+                                                <label class="settings-master-toggle" title="Donanıma göre otomatik performans optimizasyonu">
+                                                    <input type="checkbox" id="uiAutoHardwareProfileToggle" checked>
+                                                    <span class="settings-master-toggle-slider"></span>
+                                                    <span class="settings-master-toggle-label">Otomatik optimize</span>
+                                                </label>
+                                            </div>
+                                            <div class="settings-row">
+                                                <div class="settings-row-left">
+                                                    <div class="settings-label">Ses Efekti Performans Modu</div>
+                                                    <div class="settings-sub">Sadece ses efekt penceresinin performans profilini belirler. Auto önerilir.</div>
+                                                </div>
+                                                <select class="settings-select" id="uiSfxPerfModeSelect" aria-label="SFX performance mode">
+                                                    <option value="auto">Auto (Önerilen)</option>
+                                                    <option value="lite">Lite (Düşük sistem)</option>
+                                                    <option value="full">Full (Maksimum kalite)</option>
+                                                </select>
+                                            </div>
+                                            <div class="settings-row">
+                                                <div class="settings-row-left">
+                                                    <div class="settings-label">Ses Efekt Sekme İkon Boyutu</div>
+                                                    <div class="settings-sub">Müzik, Video ve Web ses efektlerinde sol menü ikon boyutunu birlikte ayarlar.</div>
+                                                </div>
+                                                <select class="settings-select" id="uiSfxIconSizeSelect" aria-label="SFX sidebar icon size">
+                                                    <option value="compact">Kompakt</option>
+                                                    <option value="medium">Orta (Önerilen)</option>
+                                                    <option value="large">Büyük</option>
                                                 </select>
                                             </div>
                                             <div class="settings-row">
@@ -404,7 +489,12 @@
                                                     <input type="checkbox" id="securityStrictVpnBlock">
                                                     <span data-i18n="securityPage.vpnPolicyLabel">VPN tespit edildiğinde Web erişimini engelle</span>
                                                 </label>
+                                                <label class="checkbox-label">
+                                                    <input type="checkbox" id="securityEnforceAllowlist">
+                                                    <span>Yalnız izinli platformları aç (allowlist)</span>
+                                                </label>
                                                 <div class="security-hint" data-i18n="securityPage.vpnPolicyHint">Öneri: Kapalı bırakın. VPN’de sadece uyarı verilir; izinli platformlar dışı siteler zaten engellenir.</div>
+                                                <div class="security-hint">Kapalıyken Web sekmesinde tüm geçerli http/https siteleri açabilirsiniz.</div>
                                                 <div class="security-hint" data-i18n="securityPage.allowPopupsHint">Not: Pop-up kapalıyken bazı sitelerde giriş/hesap bağlantıları açılmayabilir.</div>
                                             </div>
                                             <div class="security-section">

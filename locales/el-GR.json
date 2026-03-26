@@ -263,5 +263,260 @@
   "sfx.truepeak.presetDescriptions.spotify": "🎵 Spotify: Ασφαλής έλεγχος peak, προσαρμοσμένος για πλατφόρμες.",
   "sfx.truepeak.presetDescriptions.youtube": "📺 YouTube: Φιλικός για streaming έλεγχος peak με μέτρια συμπίεση.",
   "sfx.truepeak.presetDescriptions.cd": "💿 CD Master: Πιο καθαρή προσέγγιση mastering με ελάχιστο περιθώριο peak.",
-  "sfx.truepeak.presetDescriptions.broadcast": "📡 Broadcast: Πιο αυστηρό και ασφαλές limiting για πρότυπα μετάδοσης."
+  "sfx.truepeak.presetDescriptions.broadcast": "📡 Broadcast: Πιο αυστηρό και ασφαλές limiting για πρότυπα μετάδοσης.",
+  "playback.shortcuts.quickAccess.title": "Γρήγορη πρόσβαση συντομεύσεων",
+  "playback.shortcuts.quickAccess.hint": "Χρησιμοποίησε το κουμπί για γρήγορη μετάβαση στις αντιστοιχίσεις πλήκτρων.",
+  "playback.shortcuts.quickAccess.jump": "Μετάβαση στις συντομεύσεις πληκτρολογίου",
+  "playback.shortcuts.title": "Συντομεύσεις πληκτρολογίου",
+  "playback.shortcuts.search.hint": "Αναζήτηση: βρες γρήγορα τη συντόμευση που θέλεις.",
+  "playback.shortcuts.search.placeholder": "Αναζήτηση συντόμευσης...",
+  "playback.shortcuts.sections.media": "Πλήκτρα πολυμέσων",
+  "playback.shortcuts.sections.tabs": "Πλήκτρα αλλαγής καρτέλας",
+  "playback.shortcuts.sections.platforms": "Πλήκτρα web πλατφορμών",
+  "playback.shortcuts.media.autoDetect": "Αυτόματη ανίχνευση πλήκτρων πολυμέσων",
+  "playback.shortcuts.media.autoDetectHint": "Σε πολλά πληκτρολόγια λειτουργούν αυτόματα πλήκτρα πολυμέσων ή Fn + πολυμέσα.",
+  "playback.shortcuts.media.previous": "Μετάβαση στο προηγούμενο κομμάτι",
+  "playback.shortcuts.media.playPause": "Αναπαραγωγή / Παύση",
+  "playback.shortcuts.media.next": "Μετάβαση στο επόμενο κομμάτι",
+  "playback.shortcuts.assign.hint": "Πάτησε Assign και μετά τον συνδυασμό. Με Clear γίνεται επαναφορά.",
+  "playback.shortcuts.tabs.music": "Καρτέλα μουσικής",
+  "playback.shortcuts.tabs.video": "Καρτέλα βίντεο",
+  "playback.shortcuts.tabs.web": "Καρτέλα web",
+  "playback.shortcuts.actions.assign": "Assign",
+  "playback.shortcuts.actions.clear": "Clear",
+  "playback.shortcuts.actions.waiting": "Αναμονή πλήκτρου...",
+  "playback.shortcuts.unassigned": "Μη εκχωρημένο",
+  "sfx.crossfeed.ab.start": "Σύγκριση A/B",
+  "sfx.crossfeed.ab.stop": "Διακοπή A/B",
+  "sfx.crossfeed.ab.phaseOn": "Εφέ ΕΝΕΡΓΟ",
+  "sfx.crossfeed.ab.phaseOff": "Εφέ ΑΝΕΝΕΡΓΟ",
+  "sfx.crossfeed.ab.phaseCompare": "Σε σύγκριση",
+  "sfx.crossfeed.ab.statusOn": "A/B: Ενεργό ({phase}) • Ταχύτητα {speed}",
+  "sfx.crossfeed.ab.statusOff": "A/B: Ανενεργό • Ταχύτητα {speed}",
+  "sfx": {
+    "bitdither": {
+      "presets": {
+        "podcast": "Καθαρό Podcast",
+        "radio": "Ρετρό Ραδιόφωνο",
+        "hardcrush": "Σκληρό Crush"
+      },
+      "labels": {
+        "bitDepth": "Bit Depth",
+        "ditherType": "Dither Type",
+        "noiseShaping": "Noise Shaping",
+        "downsample": "Downsample"
+      },
+      "options": {
+        "bit24": "24-bit (Studio Grade)",
+        "bit16": "16-bit (CD Quality)",
+        "bit12": "12-bit (Vintage Sampler)",
+        "bit8": "8-bit (Retro Computing)",
+        "bit6": "6-bit (Aggressive Crush)",
+        "bit4": "4-bit (Extreme Distortion)",
+        "dither0": "None (Hard Quantization)",
+        "dither1": "RPDF (Rectangular)",
+        "dither2": "TPDF (Triangular - Industry Std)",
+        "shaping0": "Off (Clean)",
+        "shaping1": "Light (HF Distribution)",
+        "down1": "Off (1x)",
+        "down2": "2x",
+        "down4": "4x",
+        "down8": "8x",
+        "down16": "16x"
+      }
+    },
+    "dynamiceq": {
+      "presets": {
+        "testhear": "Test (Hear It)"
+      },
+      "info": {
+        "title": "What is Dynamic EQ?",
+        "body": "When the selected frequency band exceeds the threshold, EQ is applied automatically. Use negative gain for de-harshing and positive gain for dynamic boost."
+      },
+      "grLabel": "Dynamic EQ Gain Reduction",
+      "triggerCount": "Triggers",
+      "statusDisabled": "Dynamic EQ is disabled.",
+      "statusIdle": "Waiting for threshold crossing...",
+      "statusActiveLight": "Dynamic EQ active (light).",
+      "statusActiveMedium": "Dynamic EQ active (medium).",
+      "statusActiveStrong": "Dynamic EQ active (strong)."
+    },
+    "knob": {
+      "param": {
+        "frequency": "Frequency",
+        "amount": "Amount",
+        "mix": "Mix",
+        "drive": "Drive",
+        "tone": "Tone",
+        "output": "Output",
+        "tapeHiss": "Tape Hiss",
+        "wetMix": "Wet Mix",
+        "toneHighCut": "Tone (High Cut)",
+        "surroundLevel": "Surround Level",
+        "lfeLevel": "LFE Level",
+        "crossover": "Crossover",
+        "rearDelay": "Rear Delay"
+      }
+    },
+    "crossfeed": {
+      "visualTitle": "Stereo Field Simulation",
+      "presets": {
+        "natural": "Natural",
+        "mild": "Mild",
+        "strong": "Strong",
+        "wide": "Wide",
+        "custom": "Custom"
+      },
+      "device": {
+        "loading": "Output device is being checked...",
+        "speakers": "Output detected as speaker/line-out. Crossfeed is usually unnecessary.",
+        "unreadable": "Output info could not be read. Crossfeed remains in manual mode."
+      },
+      "autoHeadphones": "Auto enable/disable crossfeed according to headphone connection",
+      "outputUnknown": "Unknown output"
+    },
+    "tapesat": {
+      "modeTitle": "Tape Character (Tape Mode)",
+      "modes": {
+        "classic": "Classic Tape",
+        "warm": "Warm Tube",
+        "hot": "Hot Saturation"
+      }
+    },
+    "exciter": {
+      "presets": {
+        "oddair": "Odd Air",
+        "smoothair": "Smooth Air",
+        "brightair": "Bright Air",
+        "softair": "Soft Air"
+      }
+    },
+    "softecho": {
+      "presetDesc": {
+        "canyon": "Distant mountain-like echoes with sparse reflections.",
+        "cave": "Dark tone with long cave-style tail.",
+        "room": "Short and subtle empty-room ambience.",
+        "studio": "Short, clean, and controlled studio reflections.",
+        "puresoft": "Pure, smooth, and fatigue-free soft echo.",
+        "vocal": "Short and clear echo emphasizing vocals.",
+        "cinema": "Wider cinematic echo tail.",
+        "natural": "Natural and balanced daily echo profile."
+      },
+      "presets": {
+        "title": "Soft Echo Presets",
+        "canyon": "Canyon Echo",
+        "cave": "Cave Echo",
+        "room": "Room Echo",
+        "studio": "Studio Echo",
+        "puresoft": "Pure Soft",
+        "vocal": "Vocal Soft",
+        "cinema": "Cinema Tail"
+      },
+      "stereoPingPong": "Stereo (Ping-Pong)"
+    },
+    "dynamicEq": {
+      "triggerCount": "Triggers",
+      "statusDisabled": "Dynamic EQ is disabled.",
+      "statusIdle": "Waiting for threshold crossing...",
+      "statusActiveLight": "Dynamic EQ active (light).",
+      "statusActiveMedium": "Dynamic EQ active (medium).",
+      "statusActiveStrong": "Dynamic EQ active (strong).",
+      "grLabel": "Dynamic EQ Gain Reduction"
+    },
+    "reverb": {
+      "presets": {
+        "studioPlate": "Studio Plate",
+        "arena": "Arena",
+        "vocalRoom": "Vocal Room",
+        "ambientWash": "Ambient Wash",
+        "slapback": "Slapback",
+        "dreamVox": "Dream Vox"
+      }
+    },
+    "bassboost": {
+      "presets": {
+        "deep": "Deep"
+      }
+    },
+    "noisegate": {
+      "presets": {
+        "stable": "Stable",
+        "demo": "Demo"
+      }
+    },
+    "deesser": {
+      "presets": {
+        "smooth": "Smooth",
+        "demo": "Demo"
+      }
+    },
+    "stereowidener": {
+      "presets": {
+        "balanced": "Balanced",
+        "wide": "Wide",
+        "focus": "Focus"
+      }
+    },
+    "echo": {
+      "presets": {
+        "clean": "Clean",
+        "vocal": "Vocal",
+        "space": "Space"
+      }
+    },
+    "effects": {
+      "softecho": "Soft Echo",
+      "surround": "Surround (5.1/7.1)"
+    },
+    "descriptions": {
+      "softecho": "Natural and smooth echo profile without metallic double-voice feel.",
+      "surround": "Cinematic stage simulation with center/surround/LFE balance for stereo sources."
+    },
+    "convreverb": {
+      "presets": {
+        "small": "Small Room",
+        "large": "Large Room",
+        "spring": "Spring",
+        "chamber": "Chamber"
+      }
+    },
+    "peq": {
+      "presets": {
+        "title": "PEQ Quick Presets",
+        "balanced": "Balanced",
+        "bass": "Bass Boosted",
+        "vocal": "Vocal Clear",
+        "clarity": "Bright Clarity",
+        "warm": "Warm Tone",
+        "air": "Air Open"
+      }
+    },
+    "autogain": {
+      "presets": {
+        "title": "Auto Gain Quick Presets",
+        "balanced": "Balanced",
+        "night": "Night Quiet",
+        "loud": "High Energy",
+        "speech": "Speech Clear"
+      }
+    },
+    "surround": {
+      "presets": {
+        "title": "Surround Presets",
+        "movie": "Movie",
+        "music": "Music",
+        "game": "Game",
+        "voice": "Voice+",
+        "night": "Night"
+      },
+      "hint": {
+        "loading": "Reading output info...",
+        "multi": "Multichannel output detected. Surround mode is recommended.",
+        "stereo": "Stereo output detected. Virtual surround simulation mode is active.",
+        "unreadable": "Output info could not be read. Surround mode works as virtual simulation on stereo sources."
+      },
+      "autoMultichannel": "Auto enable/disable surround on multichannel outputs (>2 channels)",
+      "outputUnknown": "Unknown output"
+    }
+  }
 }

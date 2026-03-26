@@ -360,6 +360,13 @@
   "sfx.crossfeed.device.usbHeadset": "✓ {outputName} USB kulaklık olarak algılandı (çıkış + ilişkili mikrofon). Crossfeed kullanımı uygundur.",
   "sfx.crossfeed.device.speakers": "ℹ {outputName} hoparlör/line-out olarak algılandı. Crossfeed çoğu durumda gerekmez.",
   "sfx.crossfeed.device.unreadable": "ℹ Çıkış bilgisi okunamadı. Crossfeed manuel modda kalır.",
+  "sfx.crossfeed.ab.start": "A/B Karşılaştır",
+  "sfx.crossfeed.ab.stop": "A/B Durdur",
+  "sfx.crossfeed.ab.phaseOn": "Efekt AÇIK",
+  "sfx.crossfeed.ab.phaseOff": "Efekt KAPALI",
+  "sfx.crossfeed.ab.phaseCompare": "Karşılaştırılıyor",
+  "sfx.crossfeed.ab.statusOn": "A/B: Aktif ({phase}) • Hız {speed}",
+  "sfx.crossfeed.ab.statusOff": "A/B: Kapalı • Hız {speed}",
   "sfx.descriptions.autogain": "Otomatik ses seviyesi normalizasyonu.",
   "sfx.descriptions.bassmono": "Düşük frekansları mono yaparak sahne/klüp/vinyl uyumluluğunu artırır.",
   "sfx.descriptions.bitdither": "Lo-fi karakter veya profesyonel format dönüşümü için bit azaltma ve dither.",
@@ -594,5 +601,210 @@
   "playback.leveling.mode.gentle": "Yumuşak",
   "playback.leveling.mode.balanced": "Dengeli",
   "playback.leveling.mode.strong": "Güçlü",
-  "unit.secondsShort": "sn"
+  "playback.shortcuts.quickAccess.title": "Kısayol Hızlı Erişim",
+  "playback.shortcuts.quickAccess.hint": "Klavye tuş atamalarına hızlı gitmek için aşağıdaki butonu kullan.",
+  "playback.shortcuts.quickAccess.jump": "Klavye Kısayollarına Git",
+  "playback.shortcuts.title": "Klavye Kısayolları",
+  "playback.shortcuts.search.hint": "Arama: istediğin kısayolu hızlı bul (örn. youtube, web, oynat).",
+  "playback.shortcuts.search.placeholder": "Kısayol ara...",
+  "playback.shortcuts.sections.media": "Medya Tuşları",
+  "playback.shortcuts.sections.tabs": "Sekme Geçiş Tuşları",
+  "playback.shortcuts.sections.platforms": "Web Platform Tuşları",
+  "playback.shortcuts.media.autoDetect": "Klavye medya tuşlarını otomatik algıla (Play/Pause, Önceki, Sonraki)",
+  "playback.shortcuts.media.autoDetectHint": "Birçok klavyede medya tuşları veya Fn + medya tuşları bu şekilde otomatik çalışır.",
+  "playback.shortcuts.media.previous": "Önceki parçaya geç",
+  "playback.shortcuts.media.playPause": "Oynat / Duraklat",
+  "playback.shortcuts.media.next": "Sonraki parçaya geç",
+  "playback.shortcuts.assign.hint": "Ata butonuna tıkla, sonra klavyede kısayolu bas. Temizle ile sıfırlayabilirsin.",
+  "playback.shortcuts.tabs.music": "Müzik sekmesi",
+  "playback.shortcuts.tabs.video": "Video sekmesi",
+  "playback.shortcuts.tabs.web": "Web sekmesi",
+  "playback.shortcuts.actions.assign": "Ata",
+  "playback.shortcuts.actions.clear": "Temizle",
+  "playback.shortcuts.actions.waiting": "Tuş bekleniyor...",
+  "playback.shortcuts.unassigned": "Atanmamış",
+  "unit.secondsShort": "sn",
+  "sfx": {
+    "bitdither": {
+      "presets": {
+        "podcast": "Podcast Temiz",
+        "radio": "Nostaljik Radyo",
+        "hardcrush": "Sert Kırpma"
+      },
+      "labels": {
+        "bitDepth": "Bit Derinliği",
+        "ditherType": "Dither Türü",
+        "noiseShaping": "Gürültü Şekillendirme",
+        "downsample": "Downsample"
+      },
+      "options": {
+        "bit24": "24-bit (Stüdyo Kalitesi)",
+        "bit16": "16-bit (CD Kalitesi)",
+        "bit12": "12-bit (Vintage Sampler)",
+        "bit8": "8-bit (Retro Bilgisayar)",
+        "bit6": "6-bit (Agresif Crush)",
+        "bit4": "4-bit (Aşırı Distortion)",
+        "dither0": "Yok (Sert Quantization)",
+        "dither1": "RPDF (Dikdörtgen)",
+        "dither2": "TPDF (Üçgen - Endüstri)",
+        "shaping0": "Kapalı (Temiz)",
+        "shaping1": "Hafif (HF Dağılım)",
+        "down1": "Kapalı (1x)",
+        "down2": "2x",
+        "down4": "4x",
+        "down8": "8x",
+        "down16": "16x"
+      }
+    },
+    "dynamiceq": {
+      "presets": {
+        "testhear": "Test (Duy)"
+      },
+      "info": {
+        "title": "Dynamic EQ Nedir?",
+        "body": "Seçilen frekans bandı eşiği aştığında EQ otomatik uygulanır. Sertliği azaltmak için negatif gain, dinamik güçlendirme için pozitif gain kullanın."
+      },
+      "grLabel": "Dynamic EQ Kazanç Azaltımı",
+      "triggerCount": "Tetikleme",
+      "statusDisabled": "Dynamic EQ devre dışı.",
+      "statusIdle": "Eşik aşımı bekleniyor...",
+      "statusActiveLight": "Dynamic EQ aktif (hafif).",
+      "statusActiveMedium": "Dynamic EQ aktif (orta).",
+      "statusActiveStrong": "Dynamic EQ aktif (güçlü)."
+    },
+    "knob": {
+      "param": {
+        "frequency": "Frekans",
+        "amount": "Miktar",
+        "mix": "Karışım",
+        "drive": "Sürüş",
+        "tone": "Ton",
+        "output": "Çıkış",
+        "tapeHiss": "Bant Gürültüsü"
+      }
+    },
+    "crossfeed": {
+      "visualTitle": "Stereo Alan Simülasyonu",
+      "presets": {
+        "natural": "Doğal",
+        "mild": "Yumuşak",
+        "strong": "Güçlü",
+        "wide": "Geniş",
+        "custom": "Özel"
+      }
+    },
+    "tapesat": {
+      "modeTitle": "Kaset Karakteri (Bant Modu)",
+      "modes": {
+        "classic": "Klasik Kaset",
+        "warm": "Sıcak Tüp",
+        "hot": "Yoğun Saturation"
+      }
+    },
+    "exciter": {
+      "presets": {
+        "oddair": "Tek Harmonik Hava",
+        "smoothair": "Yumuşak Hava",
+        "brightair": "Parlak Hava",
+        "softair": "Nazik Hava"
+      }
+    },
+    "softecho": {
+      "presetDesc": {
+        "canyon": "Distant mountain-like echoes with sparse reflections.",
+        "cave": "Dark tone with long cave-style tail.",
+        "room": "Short and subtle empty-room ambience.",
+        "studio": "Short, clean, and controlled studio reflections.",
+        "puresoft": "Pure, smooth, and fatigue-free soft echo.",
+        "vocal": "Short and clear echo emphasizing vocals.",
+        "cinema": "Wider cinematic echo tail.",
+        "natural": "Natural and balanced daily echo profile."
+      },
+      "presets": {
+        "canyon": "Canyon Echo",
+        "cave": "Cave Echo",
+        "room": "Room Echo",
+        "studio": "Studio Echo",
+        "puresoft": "Pure Soft"
+      }
+    },
+    "dynamicEq": {
+      "triggerCount": "Triggers",
+      "statusDisabled": "Dynamic EQ is disabled.",
+      "statusIdle": "Waiting for threshold crossing...",
+      "statusActiveLight": "Dynamic EQ active (light).",
+      "statusActiveMedium": "Dynamic EQ active (medium).",
+      "statusActiveStrong": "Dynamic EQ active (strong).",
+      "grLabel": "Dynamic EQ Gain Reduction"
+    },
+    "reverb": {
+      "presets": {
+        "studioPlate": "Studio Plate",
+        "arena": "Arena",
+        "vocalRoom": "Vocal Room",
+        "ambientWash": "Ambient Wash",
+        "slapback": "Slapback",
+        "dreamVox": "Dream Vox"
+      }
+    },
+    "bassboost": {
+      "presets": {
+        "deep": "Deep"
+      }
+    },
+    "noisegate": {
+      "presets": {
+        "stable": "Stable",
+        "demo": "Demo"
+      }
+    },
+    "deesser": {
+      "presets": {
+        "smooth": "Smooth",
+        "demo": "Demo"
+      }
+    },
+    "stereowidener": {
+      "presets": {
+        "balanced": "Balanced",
+        "wide": "Wide",
+        "focus": "Focus"
+      }
+    },
+    "echo": {
+      "presets": {
+        "clean": "Clean",
+        "vocal": "Vocal",
+        "space": "Space"
+      }
+    },
+    "convreverb": {
+      "presets": {
+        "small": "Small Room",
+        "large": "Large Room",
+        "spring": "Spring",
+        "chamber": "Chamber"
+      }
+    },
+    "peq": {
+      "presets": {
+        "title": "PEQ Quick Presets",
+        "balanced": "Balanced",
+        "bass": "Bass Boosted",
+        "vocal": "Vocal Clear",
+        "clarity": "Bright Clarity",
+        "warm": "Warm Tone",
+        "air": "Air Open"
+      }
+    },
+    "autogain": {
+      "presets": {
+        "title": "Auto Gain Quick Presets",
+        "balanced": "Balanced",
+        "night": "Night Quiet",
+        "loud": "High Energy",
+        "speech": "Speech Clear"
+      }
+    }
+  }
 }

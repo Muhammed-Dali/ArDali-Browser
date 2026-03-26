@@ -51,8 +51,6 @@ const AD_HOST_KEYWORDS = [
     'scorecardresearch.com',
     'zedo.com',
     'adform.net',
-    'tracking',
-    'analytics',
 ];
 const AGGRESSIVE_EXTRA_KEYWORDS = [
     'pixel',
@@ -60,6 +58,14 @@ const AGGRESSIVE_EXTRA_KEYWORDS = [
     'telemetry',
     'metrics',
     'collect?',
+];
+const IDEAL_EXTRA_KEYWORDS = [
+    '/ads/',
+    'gampad',
+    'adsystem',
+    'adbreak',
+    'preroll',
+    'vast',
 ];
 
 function normalizeMode(mode) {
@@ -347,11 +353,21 @@ function shouldBlockRequestByMode(details = {}) {
     const hitsBase = AD_HOST_KEYWORDS.some((key) => url.includes(key));
     if (hitsBase) return true;
 
+    const hitsIdeal = IDEAL_EXTRA_KEYWORDS.some((key) => url.includes(key));
+    if (mode === 'ideal' && hitsIdeal) return true;
+
+    const youtubeAdStreamSignal =
+        url.includes('googlevideo.com/videoplayback') &&
+        (url.includes('oad=') || url.includes('adformat=') || url.includes('ad_type=') || url.includes('ctier='));
+    if (mode === 'ideal' && youtubeAdStreamSignal) return true;
+
     if (mode === 'aggressive') {
+        if (hitsIdeal) return true;
         if (AGGRESSIVE_EXTRA_KEYWORDS.some((key) => url.includes(key))) return true;
         if (rtype === 'xhr' || rtype === 'fetch' || rtype === 'ping' || rtype === 'image') {
             if (url.includes('/ads') || url.includes('ad_') || url.includes('utm_')) return true;
         }
+        if (youtubeAdStreamSignal) return true;
     }
     return false;
 }
@@ -588,6 +604,9 @@ async function initAdBlocker(electronSession, options = {}) {
     }
 
     blockerProvider.ubol.enabled = blockerProvider.ubol.sessions.length > 0;
+    // uBOL aktif olsa bile ek heuristik katmanı açık tut:
+    // mode=basic iken zaten shouldBlockRequestByMode false döner.
+    builtinBlockingEnabled = true;
     if (blockerProvider.ubol.enabled) {
         blockerProvider.active = 'uBOL';
     } else {
