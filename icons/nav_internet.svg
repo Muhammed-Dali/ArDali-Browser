@@ -1,5 +1,18 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
-  <circle cx="12" cy="12" r="8" fill="none" stroke="#e6e6e6" stroke-width="1.6"/>
-  <ellipse cx="12" cy="12" rx="4" ry="8" fill="none" stroke="#e6e6e6" stroke-width="1.4"/>
-  <path d="M4 12h16" fill="none" stroke="#e6e6e6" stroke-width="1.6" stroke-linecap="round"/>
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" role="img" aria-label="Internet">
+  <defs>
+    <linearGradient id="internetRing" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#71efff"/>
+      <stop offset="100%" stop-color="#5b8dff"/>
+    </linearGradient>
+    <linearGradient id="internetGlow" x1="25%" y1="15%" x2="75%" y2="85%">
+      <stop offset="0%" stop-color="#eaf8ff"/>
+      <stop offset="100%" stop-color="#b9d7ff"/>
+    </linearGradient>
+  </defs>
+
+  <circle cx="12" cy="12" r="8" fill="none" stroke="url(#internetRing)" stroke-width="1.7"/>
+  <ellipse cx="12" cy="12" rx="4.2" ry="8" fill="none" stroke="url(#internetGlow)" stroke-width="1.45"/>
+  <path d="M4 12h16" fill="none" stroke="url(#internetGlow)" stroke-width="1.65" stroke-linecap="round"/>
+  <path d="M6.6 8.2c1.7 1 3.6 1.4 5.4 1.4s3.7-.4 5.4-1.4" fill="none" stroke="#9dd8ff" stroke-width="1.25" stroke-linecap="round" opacity=".85"/>
+  <path d="M6.6 15.8c1.7-1 3.6-1.4 5.4-1.4s3.7.4 5.4 1.4" fill="none" stroke="#9dd8ff" stroke-width="1.25" stroke-linecap="round" opacity=".85"/>
 </svg>

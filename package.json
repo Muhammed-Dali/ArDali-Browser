@@ -1,6 +1,6 @@
 {
   "name": "aurivo-media-player",
-  "version": "2.0.13",
+  "version": "2.0.14",
   "description": "Aurivo Media Player - Electron App",
   "main": "main.js",
   "scripts": {

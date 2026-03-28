@@ -401,6 +401,9 @@
         if (elements.uiAutoHardwareProfileToggle) {
             elements.uiAutoHardwareProfileToggle.checked = state.settings?.appearance?.autoHardwareProfile !== false;
         }
+        if (elements.uiLowHardwareModeToggle) {
+            elements.uiLowHardwareModeToggle.checked = !!state.settings?.appearance?.lowHardwareMode;
+        }
         if (elements.securityAllowPopups) {
             elements.securityAllowPopups.checked = state.settings?.security?.allowPopups !== false;
         }
@@ -611,6 +614,7 @@
             elements.uiSfxIconSizeSelect?.value || state.settings.appearance.sfxSidebarIconSize || 'medium'
         );
         state.settings.appearance.autoHardwareProfile = nextAutoHardwareProfile;
+        state.settings.appearance.lowHardwareMode = !!elements.uiLowHardwareModeToggle?.checked;
         if (prevAutoHardwareProfile && !nextAutoHardwareProfile) {
             // Auto optimize kapatılırken tam güç varsayılanını kayda da kesin yansıt.
             state.settings.appearance.sliderFxEnabled = true;
@@ -695,6 +699,17 @@
         state.settings.library.performance.coverCacheLimitMb = [32, 64, 128, 256].includes(coverCacheLimitValue)
             ? coverCacheLimitValue
             : 64;
+
+        if (state.settings.appearance.lowHardwareMode) {
+            state.settings.ui.webStartupLazyDelayMs = 2000;
+            state.settings.library.watchFolders = false;
+            state.settings.library.autoRescanOnFolderChange = false;
+            state.settings.library.performance.lightweightMode = true;
+            state.settings.library.performance.coverCacheLimitMb = 32;
+            state.settings.library.smartFlows.favoritesEnabled = false;
+            state.settings.library.smartFlows.recentEnabled = false;
+            state.settings.library.smartFlows.mostPlayedEnabled = false;
+        }
 
         state.settings.volume = Math.max(0, Math.min(100, Number(elements.audioAppVolume?.value || state.settings.volume || 40)));
         if (!state.settings.audioOutput || typeof state.settings.audioOutput !== 'object') {

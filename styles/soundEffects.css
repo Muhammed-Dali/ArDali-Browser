@@ -259,6 +259,16 @@ body.rtl .action-btn .preset-name {
     border: 1px solid var(--border-medium);
 }
 
+.sfx-lights-toggle {
+    padding: 5px 10px;
+    border-radius: 18px;
+}
+
+.sfx-lights-toggle .toggle-label {
+    font-size: 11px;
+    color: var(--text-muted);
+}
+
 .master-toggle input {
     display: none;
 }

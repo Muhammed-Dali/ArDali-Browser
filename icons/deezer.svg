@@ -1,10 +1,16 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" width="48" height="48">
-  <rect x="8" y="32" width="6" height="6" fill="#FF0092"/>
-  <rect x="16" y="28" width="6" height="10" fill="#FF0092"/>
-  <rect x="24" y="24" width="6" height="14" fill="#FF0092"/>
-  <rect x="32" y="18" width="6" height="20" fill="#FF0092"/>
-  <rect x="8" y="24" width="6" height="6" fill="#FEAA2D"/>
-  <rect x="16" y="20" width="6" height="6" fill="#FEAA2D"/>
-  <rect x="24" y="16" width="6" height="6" fill="#FEAA2D"/>
-  <rect x="32" y="10" width="6" height="6" fill="#FEAA2D"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" role="img" aria-label="Deezer">
+  <defs>
+    <linearGradient id="dz1" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#ff9a3a"/>
+      <stop offset="100%" stop-color="#ff5ca0"/>
+    </linearGradient>
+    <linearGradient id="dz2" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#ffd84a"/>
+      <stop offset="100%" stop-color="#8b5cff"/>
+    </linearGradient>
+  </defs>
+  <rect x="4" y="13" width="3" height="7" rx="1" fill="url(#dz1)"/>
+  <rect x="8" y="11" width="3" height="9" rx="1" fill="url(#dz2)"/>
+  <rect x="12" y="9" width="3" height="11" rx="1" fill="url(#dz1)"/>
+  <rect x="16" y="6" width="3" height="14" rx="1" fill="url(#dz2)"/>
 </svg>

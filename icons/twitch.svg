@@ -1,6 +1,12 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" aria-hidden="true">
-  <path fill="#9146FF" d="M4 4h16v10l-4 4h-3l-2.2 2.2H8V18H4z"/>
-  <path fill="#fff" d="M6.2 6.2v9.6h2.6V18l2.2-2.2h3.6l3-3V6.2z"/>
-  <rect x="11.2" y="8.4" width="1.6" height="3.8" fill="#9146FF"/>
-  <rect x="14.4" y="8.4" width="1.6" height="3.8" fill="#9146FF"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" role="img" aria-label="Twitch">
+  <defs>
+    <linearGradient id="twBg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#a779ff"/>
+      <stop offset="100%" stop-color="#7b41ff"/>
+    </linearGradient>
+  </defs>
+  <path fill="url(#twBg)" d="M4 3.8h16v10.1L16.1 18h-3l-2.2 2.2H8.5V18H4z"/>
+  <path fill="#fff" d="M6.2 5.9v9.5h2.6v2l2.1-2h3.5l2.9-2.9V5.9z"/>
+  <rect x="11" y="8.2" width="1.6" height="3.8" fill="#7b41ff"/>
+  <rect x="14.1" y="8.2" width="1.6" height="3.8" fill="#7b41ff"/>
 </svg>

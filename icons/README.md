@@ -15,7 +15,6 @@ Bu dosya, `icons/` icindeki varliklari 3 grupta takip etmek icin tutulur.
 - `reddit.svg`
 - `twitch.svg`
 - `deliblock.svg`
-- `edit-clear-list.png`
 - `nav_internet.svg`
 - `nav_video.svg`
 - `tray-play.png`

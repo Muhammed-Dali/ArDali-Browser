@@ -712,12 +712,19 @@ const aurivoAPI = {
 
     // Aurivo-Dawlod downloader window
     dawlod: {
-        openWindow: (options) => ipcRenderer.invoke('dawlod:openWindow', options)
+        openWindow: (options) => ipcRenderer.invoke('dawlod:openWindow', options),
+        getWindowState: () => ipcRenderer.invoke('dawlod:getWindowState'),
+        onWindowState: (callback) => {
+            const handler = (_event, payload) => callback(payload);
+            ipcRenderer.on('dawlod:window-state', handler);
+            return () => ipcRenderer.removeListener('dawlod:window-state', handler);
+        }
     },
 
     // Aurivo-Pulse (Aurivo-Pulse tabanlı şarkı tanıma)
     pulse: {
         openWindow: () => ipcRenderer.invoke('pulse:openWindow'),
+        getWindowState: () => ipcRenderer.invoke('pulse:getWindowState'),
         listDevices: () => ipcRenderer.invoke('pulse:listDevices'),
         getStatus: () => ipcRenderer.invoke('pulse:getStatus'),
         getPreferredDevice: () => ipcRenderer.invoke('pulse:getPreferredDevice'),
@@ -745,6 +752,11 @@ const aurivoAPI = {
             const handler = (_event, payload) => callback(payload);
             ipcRenderer.on('pulse:open-query', handler);
             return () => ipcRenderer.removeListener('pulse:open-query', handler);
+        },
+        onWindowState: (callback) => {
+            const handler = (_event, payload) => callback(payload);
+            ipcRenderer.on('pulse:window-state', handler);
+            return () => ipcRenderer.removeListener('pulse:window-state', handler);
         }
     },
 

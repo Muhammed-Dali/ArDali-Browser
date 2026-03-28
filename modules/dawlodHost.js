@@ -13,6 +13,7 @@ let desiredDawlodLocale = null;
 let lastAutoPasted = null;
 let dawlodReadyForLinks = false;
 let pendingLinkToPaste = null;
+let dawlodWindowIsOpen = false;
 
 function parseHttpUrl(raw) {
     try {
@@ -48,14 +49,15 @@ function exists(p) {
 }
 
 function resolveDawlodIconPath(app) {
-    const root = getDawlodRoot(app);
     const candidates = [
-        path.join(root, 'resources', 'icon.ico'),
-        path.join(root, 'resources', 'icon.png'),
+        // Always prefer Aurivo app icon so Linux/Wayland titlebar/task entries stay consistent.
         path.join(app.getAppPath(), 'icons', 'aurivo_512.png'),
         path.join(app.getAppPath(), 'icons', 'aurivo.png'),
         process.resourcesPath ? path.join(process.resourcesPath, 'icons', 'aurivo_512.png') : null,
-        process.resourcesPath ? path.join(process.resourcesPath, 'icons', 'aurivo.png') : null
+        process.resourcesPath ? path.join(process.resourcesPath, 'icons', 'aurivo.png') : null,
+        // Fallbacks (legacy Dawlod resources)
+        path.join(getDawlodRoot(app), 'resources', 'icon.png'),
+        path.join(getDawlodRoot(app), 'resources', 'icon.ico')
     ].filter(Boolean);
 
     for (const p of candidates) {
@@ -90,9 +92,11 @@ function revealDawlodWindow(win, activate = true) {
     }
 }
 
-function openDawlodWindow({ app, BrowserWindow, activate = true }) {
+function openDawlodWindow({ app, BrowserWindow, activate = true, emitState }) {
     if (dawlodWindow && !dawlodWindow.isDestroyed()) {
         revealDawlodWindow(dawlodWindow, activate);
+        dawlodWindowIsOpen = true;
+        try { emitState?.(true); } catch { }
         return dawlodWindow;
     }
 
@@ -132,6 +136,8 @@ function openDawlodWindow({ app, BrowserWindow, activate = true }) {
     if (process.platform === 'linux' && icon && !icon.isEmpty() && typeof dawlodWindow.setIcon === 'function') {
         dawlodWindow.setIcon(icon);
     }
+    dawlodWindowIsOpen = true;
+    try { emitState?.(true); } catch { }
 
     dawlodWindow.loadFile(html);
 
@@ -184,12 +190,14 @@ function openDawlodWindow({ app, BrowserWindow, activate = true }) {
         lastAutoPasted = null;
         dawlodReadyForLinks = false;
         pendingLinkToPaste = null;
+        dawlodWindowIsOpen = false;
+        try { emitState?.(false); } catch { }
     });
 
     return dawlodWindow;
 }
 
-function registerDawlodIpc({ ipcMain, app, dialog, shell, BrowserWindow }) {
+function registerDawlodIpc({ ipcMain, app, dialog, shell, BrowserWindow, getMainWindow }) {
     const DownloadHistory = require(path.join(getDawlodRoot(app), 'src', 'history.js'));
     const history = new DownloadHistory();
 
@@ -197,11 +205,21 @@ function registerDawlodIpc({ ipcMain, app, dialog, shell, BrowserWindow }) {
         if (!dawlodWindow || dawlodWindow.isDestroyed()) return;
         dawlodWindow.webContents.send(channel, payload);
     };
+    const emitDawlodWindowState = (open) => {
+        dawlodWindowIsOpen = !!open;
+        const main = typeof getMainWindow === 'function' ? getMainWindow() : null;
+        if (!main || main.isDestroyed()) return;
+        try {
+            main.webContents.send('dawlod:window-state', { open: dawlodWindowIsOpen });
+        } catch {
+            // best-effort
+        }
+    };
 
     // window management (called from Aurivo proper via preload)
     ipcMain.handle('dawlod:openWindow', async (_event, options) => {
         const shouldActivate = !(options && typeof options === 'object' && options.activate === false);
-        const win = openDawlodWindow({ app, BrowserWindow, activate: shouldActivate });
+        const win = openDawlodWindow({ app, BrowserWindow, activate: shouldActivate, emitState: emitDawlodWindowState });
         // Always try to paste the current clipboard URL when user explicitly opens Dawlod.
         try {
             const preferred = options && typeof options === 'object' ? options.url : null;
@@ -218,6 +236,9 @@ function registerDawlodIpc({ ipcMain, app, dialog, shell, BrowserWindow }) {
             // ignore
         }
         return true;
+    });
+    ipcMain.handle('dawlod:getWindowState', async () => {
+        return { open: !!(dawlodWindowIsOpen && dawlodWindow && !dawlodWindow.isDestroyed()) };
     });
 
     ipcMain.handle('dawlod:setLocale', async (_event, lang) => {

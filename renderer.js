@@ -1018,6 +1018,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
     setupEventListeners();
     setupPulseQuickListeners();
+    setupUtilityWindowIndicators();
     window.addEventListener('beforeunload', () => {
         try {
             rememberPlaybackStartupState({ persist: true });
@@ -1489,6 +1490,7 @@ function cacheElements() {
     elements.uiVisualModeHint = document.getElementById('uiVisualModeHint');
     elements.uiVisualModePerfBadge = document.getElementById('uiVisualModePerfBadge');
     elements.uiAutoHardwareProfileToggle = document.getElementById('uiAutoHardwareProfileToggle');
+    elements.uiLowHardwareModeToggle = document.getElementById('uiLowHardwareModeToggle');
     elements.uiHardwareProfileStatus = document.getElementById('uiHardwareProfileStatus');
     elements.uiFxEnabledToggle = document.getElementById('uiFxEnabledToggle');
     elements.uiReduceMotionToggle = document.getElementById('uiReduceMotionToggle');
@@ -1740,6 +1742,7 @@ async function loadSettings() {
                 reduceMotion: false,
                 sfxLights: true,
                 autoHardwareProfile: true,
+                lowHardwareMode: false,
                 sfxPerfMode: 'auto',
                 sfxSidebarIconSize: 'medium'
             };
@@ -1789,6 +1792,9 @@ async function loadSettings() {
         if (typeof state.settings.appearance.autoHardwareProfile !== 'boolean') {
             state.settings.appearance.autoHardwareProfile = true;
         }
+        if (typeof state.settings.appearance.lowHardwareMode !== 'boolean') {
+            state.settings.appearance.lowHardwareMode = false;
+        }
         if (!['auto', 'lite', 'full'].includes(String(state.settings.appearance.sfxPerfMode || '').toLowerCase())) {
             state.settings.appearance.sfxPerfMode = 'auto';
         }
@@ -1803,6 +1809,7 @@ async function loadSettings() {
             state.settings.ui = {
                 lastPage: 'music',
                 lastPanel: 'library',
+                lastWebPlatform: '',
                 rememberLastSection: true,
                 startupPage: 'music',
                 webStartupLazyDelayMs: WEB_STARTUP_LAZY_DELAY_DEFAULT_MS,
@@ -1822,6 +1829,11 @@ async function loadSettings() {
         }
         if (typeof state.settings.ui.closeToTray !== 'boolean') {
             state.settings.ui.closeToTray = true;
+        }
+        if (typeof state.settings.ui.lastWebPlatform !== 'string') {
+            state.settings.ui.lastWebPlatform = '';
+        } else {
+            state.settings.ui.lastWebPlatform = String(state.settings.ui.lastWebPlatform).trim().toLowerCase();
         }
         if (!['music', 'video', 'web'].includes(String(state.settings.ui.startupPage || '').toLowerCase())) {
             state.settings.ui.startupPage = 'music';
@@ -3100,13 +3112,28 @@ function getWebStartupLazyDelayMs() {
     return normalizeWebStartupLazyDelayMs(state.settings?.ui?.webStartupLazyDelayMs);
 }
 
+function getStartupWebPlatformBtn() {
+    const remember = state.settings?.ui?.rememberLastSection !== false;
+    const startup = String(state.settings?.ui?.startupPage || 'music').toLowerCase();
+    const savedPage = String(state.settings?.ui?.lastPage || '').toLowerCase();
+    const shouldOpenWeb = remember ? savedPage === 'web' : startup === 'web';
+    if (!shouldOpenWeb) return null;
+    if (!remember) return null;
+
+    // Kullanıcı tıklaması olmadan varsayılan platforma düşme hissini önlemek için:
+    // sadece gerçekten daha önce seçilmiş bir platform varsa otomatik aç.
+    const savedPlatform = String(state.settings?.ui?.lastWebPlatform || '').trim().toLowerCase();
+    if (!savedPlatform) return null;
+    return getWebPlatformBtnByName(savedPlatform);
+}
+
 function scheduleStartupLazyWebLoad() {
     cancelStartupLazyWebLoad();
     if (String(state.currentPage || '') !== 'web') return false;
     const currentUrl = String(getWebViewUrlSafe() || '').trim().toLowerCase();
     if (currentUrl && currentUrl !== 'about:blank') return false;
 
-    const preferredBtn = getPreferredWebPlatformBtn();
+    const preferredBtn = getStartupWebPlatformBtn();
     if (!preferredBtn) return false;
 
     const delayMs = getWebStartupLazyDelayMs();
@@ -3777,6 +3804,18 @@ function setupEventListeners() {
                     elements.uiFollowSystemThemeToggle.setAttribute('aria-disabled', 'false');
                 }
                 previewAppearanceSettingsFromUI();
+            }
+            markSettingsDirty();
+        });
+    }
+    if (elements.uiLowHardwareModeToggle) {
+        elements.uiLowHardwareModeToggle.addEventListener('change', () => {
+            if (!state.settings.appearance || typeof state.settings.appearance !== 'object') {
+                state.settings.appearance = {};
+            }
+            state.settings.appearance.lowHardwareMode = !!elements.uiLowHardwareModeToggle.checked;
+            if (elements.uiLowHardwareModeToggle.checked) {
+                applyLowHardwareModeToStateAndUi();
             }
             markSettingsDirty();
         });
@@ -14292,6 +14331,41 @@ function restoreSidebarSelectionAfterUtilityAction(prevActiveBtn) {
     }
 }
 
+function getUtilitySidebarBtn(page) {
+    return document.querySelector(`.sidebar-btn[data-page="${String(page || '').trim()}"]`);
+}
+
+function setUtilityRunningState(page, isOpen) {
+    const btn = getUtilitySidebarBtn(page);
+    if (!btn) return;
+    btn.classList.toggle('running', !!isOpen);
+    btn.setAttribute('aria-pressed', isOpen ? 'true' : 'false');
+}
+
+function setupUtilityWindowIndicators() {
+    try {
+        window.aurivo?.dawlod?.onWindowState?.((payload) => {
+            setUtilityRunningState('download', !!payload?.open);
+        });
+    } catch {
+        // yoksay
+    }
+    try {
+        window.aurivo?.pulse?.onWindowState?.((payload) => {
+            setUtilityRunningState('pulse', !!payload?.open);
+        });
+    } catch {
+        // yoksay
+    }
+
+    Promise.resolve(window.aurivo?.dawlod?.getWindowState?.())
+        .then((payload) => setUtilityRunningState('download', !!payload?.open))
+        .catch(() => setUtilityRunningState('download', false));
+    Promise.resolve(window.aurivo?.pulse?.getWindowState?.())
+        .then((payload) => setUtilityRunningState('pulse', !!payload?.open))
+        .catch(() => setUtilityRunningState('pulse', false));
+}
+
 function handleSidebarClick(btn) {
     const page = btn.dataset.page;
     const panel = btn.dataset.panel;
@@ -14328,10 +14402,12 @@ function handleSidebarClick(btn) {
                     }
                 }
                 window.aurivo.dawlod.openWindow(url ? { url } : undefined);
+                setUtilityRunningState('download', true);
             } else {
                 safeNotify('İndirme modülü bulunamadı (Aurivo-Dawlod).', 'error');
             }
         } catch (e) {
+            setUtilityRunningState('download', false);
             safeNotify('İndirme penceresi açılamadı: ' + (e?.message || e), 'error');
         }
         // Active state'i eski sekmeye geri al
@@ -14343,8 +14419,11 @@ function handleSidebarClick(btn) {
     if (page === 'pulse') {
         const prevActive = document.querySelector('.sidebar-btn[data-page].active');
         Promise.resolve(window.aurivo?.pulse?.openWindow?.())
-            .then(() => {})
+            .then(() => {
+                setUtilityRunningState('pulse', true);
+            })
             .catch((e) => {
+                setUtilityRunningState('pulse', false);
                 safeNotify(`Aurivo-Pulse penceresi açılamadı: ${e?.message || e}`, 'error', 3200);
             })
             .finally(() => restoreSidebarSelectionAfterUtilityAction(prevActive));
@@ -14620,6 +14699,9 @@ async function handlePlatformClick(btn) {
         state.currentPanel = 'web';
         switchPage('web');
         applyWebUiClasses();
+        if (state.settings?.ui) {
+            state.settings.ui.lastWebPlatform = String(platform || '').trim().toLowerCase();
+        }
         persistCurrentMainSection();
         adblockRuntime.currentCounterKey = String(platform || 'web').trim().toLowerCase() || 'web';
         adblockRuntime.counterBaseByKey.set(adblockRuntime.currentCounterKey, Number(adblockRuntime.lastAbsoluteBlocked || 0));
@@ -15038,6 +15120,8 @@ function renderUnifiedAudioLibraryRoot(savedFolders = loadSavedFolders('audio'),
     const fallbackSongCount = Number.isFinite(Number(libraryIndex?.allTracks?.length))
         ? libraryIndex.allTracks.length
         : (state.playlist || []).filter((item) => item?.path && isAudioFile(item.path)).length;
+    const totalSongsCount = Number(stats.totalSongs ?? fallbackSongCount ?? 0);
+    const hasSongsInLibrary = totalSongsCount > 0;
     console.log('[LIBRARY] render root -> folders:', folders.length, 'manualTracks:', playlistOnlyEntries.length, 'recentFlow:', 0);
 
     if (!folders.length && !playlistOnlyEntries.length) {
@@ -15055,23 +15139,27 @@ function renderUnifiedAudioLibraryRoot(savedFolders = loadSavedFolders('audio'),
 
     const overview = document.createElement('div');
     overview.className = 'library-root-overview';
+    if (hasSongsInLibrary) {
+        overview.classList.add('compact');
+    }
     overview.innerHTML = `
+        ${hasSongsInLibrary ? '' : `
         <div class="library-root-overview-copy">
             <strong>${escapeHtml(uiT('settings.tabs.library', 'Müzik Kütüphanesi'))}</strong>
             <span>${escapeHtml(uiT('settings.library.hero.subtitle', 'Klasörlerini ayarlardan yönetebilir, burada sadece gezinme görünür.'))}</span>
         </div>
         <div class="library-root-overview-stats">
             <span class="library-root-stat-pill">${escapeHtml(uiT('settings.library.folders.summary.count', 'Ekli müzik klasörleri'))}: <strong>${escapeHtml(String(folders.length))}</strong></span>
-            <span class="library-root-stat-pill">${escapeHtml(uiT('settings.library.stats.totalSongs', 'Toplam şarkı'))}: <strong>${escapeHtml(String(stats.totalSongs ?? fallbackSongCount ?? '-'))}</strong></span>
+            <span class="library-root-stat-pill">${escapeHtml(uiT('settings.library.stats.totalSongs', 'Toplam şarkı'))}: <strong>${escapeHtml(String(totalSongsCount))}</strong></span>
             ${playlistOnlyEntries.length ? `<span class="library-root-stat-pill">${escapeHtml(uiT('settings.library.root.manualTracks', 'Manuel eklenen parçalar'))}: <strong>${escapeHtml(String(playlistOnlyEntries.length))}</strong></span>` : ''}
-        </div>
+        </div>`}
         <button type="button" class="library-root-settings-btn">${escapeHtml(uiT('settings.tabs.library', 'Müzik Kütüphanesi'))}</button>
     `;
     overview.querySelector('.library-root-settings-btn')?.addEventListener('click', () => openSettings('library'));
     if (!isActiveFileTreeRender(renderToken)) return;
     shell.appendChild(overview);
 
-    if (playlistOnlyEntries.length) {
+    if (!hasSongsInLibrary && playlistOnlyEntries.length) {
         const note = document.createElement('div');
         note.className = 'library-root-note';
         note.textContent = uiT('settings.library.root.manualTracksHint', 'Manuel eklenen parçalar çalma listesinde görünür. Ayrıntılı yönetim Ayarlar > Müzik Kütüphanesi bölümündedir.');
@@ -19988,6 +20076,12 @@ function loadSettingsToUI() {
     updateVisualModeUi();
     updateThemeFollowSystemUi();
     updateAutoHardwareProfileUi();
+    if (elements.uiLowHardwareModeToggle) {
+        elements.uiLowHardwareModeToggle.checked = !!state.settings?.appearance?.lowHardwareMode;
+    }
+    if (state.settings?.appearance?.lowHardwareMode) {
+        applyLowHardwareModeToStateAndUi();
+    }
     detectHardwareProfile().then(renderHardwareProfileStatus).catch(() => {
         renderHardwareProfileStatus(null);
     });
@@ -20070,6 +20164,7 @@ async function applySettings() {
 
     const { nextMode, prevMode } = result;
     const nextAutoHardwareProfile = !!elements.uiAutoHardwareProfileToggle?.checked;
+    const nextLowHardwareMode = !!elements.uiLowHardwareModeToggle?.checked;
     if (!state.settings.appearance || typeof state.settings.appearance !== 'object') {
         state.settings.appearance = {};
     }
@@ -20097,6 +20192,10 @@ async function applySettings() {
     state.settings.appearance.sfxSidebarIconSize = ['compact', 'medium', 'large'].includes(String(elements.uiSfxIconSizeSelect?.value || '').toLowerCase())
         ? String(elements.uiSfxIconSizeSelect.value).toLowerCase()
         : 'medium';
+    state.settings.appearance.lowHardwareMode = nextLowHardwareMode;
+    if (nextLowHardwareMode) {
+        applyLowHardwareModeToStateAndUi();
+    }
     syncSfxIconSizeShadowStorage(state.settings.appearance.sfxSidebarIconSize);
     updateSliderFxToggleStateUi();
     updateSfxLightsToggleStateUi();
@@ -20447,6 +20546,66 @@ function getAppearancePresetForHardwareTier(tierValue) {
     };
 }
 
+function getLowHardwareSystemPreset() {
+    return {
+        webStartupLazyDelayMs: 2000,
+        watchFolders: false,
+        autoRescanOnFolderChange: false,
+        lightweightMode: true,
+        coverCacheLimitMb: 32,
+        flowFavoritesEnabled: false,
+        flowRecentEnabled: false,
+        flowMostPlayedEnabled: false
+    };
+}
+
+function applyLowHardwareModeToStateAndUi() {
+    const preset = getLowHardwareSystemPreset();
+    if (!state.settings.ui || typeof state.settings.ui !== 'object') state.settings.ui = {};
+    const library = ensureLibrarySettings();
+    if (!library.performance || typeof library.performance !== 'object') library.performance = {};
+    if (!library.smartFlows || typeof library.smartFlows !== 'object') library.smartFlows = {};
+
+    state.settings.ui.webStartupLazyDelayMs = normalizeWebStartupLazyDelayMs(preset.webStartupLazyDelayMs);
+    library.watchFolders = !!preset.watchFolders;
+    library.autoRescanOnFolderChange = !!preset.autoRescanOnFolderChange;
+    library.performance.lightweightMode = !!preset.lightweightMode;
+    library.performance.coverCacheLimitMb = [32, 64, 128, 256].includes(Number(preset.coverCacheLimitMb))
+        ? Number(preset.coverCacheLimitMb)
+        : 64;
+    library.smartFlows.favoritesEnabled = !!preset.flowFavoritesEnabled;
+    library.smartFlows.recentEnabled = !!preset.flowRecentEnabled;
+    library.smartFlows.mostPlayedEnabled = !!preset.flowMostPlayedEnabled;
+
+    if (elements.behaviorWebStartupDelay) {
+        elements.behaviorWebStartupDelay.value = String(state.settings.ui.webStartupLazyDelayMs);
+    }
+    if (elements.libraryWebStartupDelay) {
+        elements.libraryWebStartupDelay.value = String(state.settings.ui.webStartupLazyDelayMs);
+    }
+    if (elements.libraryWatchFolders) elements.libraryWatchFolders.checked = library.watchFolders !== false;
+    if (elements.libraryAutoRescanOnFolderChange) {
+        elements.libraryAutoRescanOnFolderChange.checked = library.autoRescanOnFolderChange !== false;
+    }
+    if (elements.libraryLightweightMode) {
+        elements.libraryLightweightMode.checked = !!library.performance.lightweightMode;
+    }
+    if (elements.libraryCoverCacheLimitMb) {
+        elements.libraryCoverCacheLimitMb.value = String(library.performance.coverCacheLimitMb || 64);
+    }
+    if (elements.libraryFlowFavoritesEnabled) {
+        elements.libraryFlowFavoritesEnabled.checked = !!library.smartFlows.favoritesEnabled;
+    }
+    if (elements.libraryFlowRecentEnabled) {
+        elements.libraryFlowRecentEnabled.checked = !!library.smartFlows.recentEnabled;
+    }
+    if (elements.libraryFlowMostPlayedEnabled) {
+        elements.libraryFlowMostPlayedEnabled.checked = !!library.smartFlows.mostPlayedEnabled;
+    }
+    updateLibraryPerformanceStatusUi();
+    updateLibraryFlowsStatusUi();
+}
+
 function applyFullPowerAppearancePresetToUi() {
     if (elements.uiVisualModeSelect) elements.uiVisualModeSelect.value = 'full';
     if (elements.uiMotionProfileSelect) elements.uiMotionProfileSelect.value = 'fast';
@@ -20471,7 +20630,10 @@ function renderHardwareProfileStatus(profile) {
     const tierLabel = tierMap[normalizeHardwareTier(profile.tier)] || 'Orta';
     const ramText = profile.ramGiB ? `${profile.ramGiB} GB RAM` : 'RAM ?';
     const cpuText = profile.cpuCores ? `${profile.cpuCores} cekirdek` : 'CPU ?';
-    elements.uiHardwareProfileStatus.textContent = `Donanım profili: ${tierLabel} (${ramText}, ${cpuText})`;
+    const lowModeHint = (normalizeHardwareTier(profile.tier) === 'low' && !state.settings?.appearance?.lowHardwareMode)
+        ? ' | Oneri: Dusuk Donanim Modu ac'
+        : '';
+    elements.uiHardwareProfileStatus.textContent = `Donanım profili: ${tierLabel} (${ramText}, ${cpuText})${lowModeHint}`;
 }
 
 async function applyAutoHardwareAppearanceIfNeeded({ persist = false } = {}) {
@@ -20707,6 +20869,7 @@ function resetBehaviorDefaults() {
     if (elements.uiSfxPerfModeSelect) elements.uiSfxPerfModeSelect.value = 'auto';
     if (elements.uiSfxIconSizeSelect) elements.uiSfxIconSizeSelect.value = 'medium';
     if (elements.uiAutoHardwareProfileToggle) elements.uiAutoHardwareProfileToggle.checked = true;
+    if (elements.uiLowHardwareModeToggle) elements.uiLowHardwareModeToggle.checked = false;
     const uiFxEnabledToggle = document.getElementById('uiFxEnabledToggle');
     if (uiFxEnabledToggle) uiFxEnabledToggle.checked = true;
     const uiReduceMotionToggle = document.getElementById('uiReduceMotionToggle');

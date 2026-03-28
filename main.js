@@ -562,6 +562,7 @@ function stopAurivoPulseGuiWindow() {
     const child = aurivoPulseGuiProc;
     aurivoPulseGuiProc = null;
     aurivoPulseGuiLang = '';
+    emitPulseGuiWindowState(false);
     if (!child) return;
     try {
         if (!child.killed) child.kill('SIGTERM');
@@ -643,6 +644,16 @@ function emitPulseEvent(channel, payload) {
         }
     } catch (e) {
         console.warn('[PULSE] emit event failed:', e?.message || e);
+    }
+}
+
+function emitPulseGuiWindowState(open) {
+    try {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send('pulse:window-state', { open: !!open });
+        }
+    } catch (e) {
+        console.warn('[PULSE] emit window-state failed:', e?.message || e);
     }
 }
 
@@ -4411,7 +4422,7 @@ app.whenReady().then(async () => {
     try { installWebviewHardening(); } catch (e) { console.error('[APP] installWebviewHardening error:', e); }
     try { installTlsCompatibilityForWebPlatforms(); } catch (e) { console.error('[APP] installTlsCompatibilityForWebPlatforms error:', e); }
     try { installAppMenu(); } catch (e) { console.error('[APP] installAppMenu error:', e); }
-    try { registerDawlodIpc({ ipcMain, app, dialog, shell, BrowserWindow }); } catch (e) { console.error('[APP] registerDawlodIpc error:', e); }
+    try { registerDawlodIpc({ ipcMain, app, dialog, shell, BrowserWindow, getMainWindow: () => mainWindow }); } catch (e) { console.error('[APP] registerDawlodIpc error:', e); }
     try { await initAdBlocker(session, { app, webviewPartition: WEBVIEW_PARTITION, includeDefaultSession: true, preferUbol: true, enabled: true, useExtension: true }); } catch (e) { console.error('[APP] initAdBlocker error:', e); }
     try { startPulseBridgeServer(); } catch (e) { console.error('[APP] startPulseBridgeServer error:', e); }
     try { createWindow(); } catch (e) { console.error('[APP] createWindow error:', e); }
@@ -4463,6 +4474,7 @@ ipcMain.handle('pulse:openWindow', async () => {
 
     if (aurivoPulseGuiProc && !aurivoPulseGuiProc.killed) {
         if (aurivoPulseGuiLang === nextUiLang) {
+            emitPulseGuiWindowState(true);
             return { success: true, source: 'existing-gui-process', command: launch.command };
         }
         stopAurivoPulseGuiWindow();
@@ -4526,6 +4538,7 @@ ipcMain.handle('pulse:openWindow', async () => {
 
         aurivoPulseGuiProc = child;
         aurivoPulseGuiLang = nextUiLang;
+        emitPulseGuiWindowState(true);
         child.stderr?.on('data', (chunk) => {
             startupStderr += String(chunk || '');
             if (startupStderr.length > 4000) {
@@ -4559,6 +4572,7 @@ ipcMain.handle('pulse:openWindow', async () => {
             if (aurivoPulseGuiProc === child) {
                 aurivoPulseGuiProc = null;
                 aurivoPulseGuiLang = '';
+                emitPulseGuiWindowState(false);
             }
             const stderrShort = String(startupStderr || '').trim();
             const extra = stderrShort ? ` | stderr: ${stderrShort.split('\n').slice(-2).join(' ')}` : '';
@@ -4570,12 +4584,14 @@ ipcMain.handle('pulse:openWindow', async () => {
             if (aurivoPulseGuiProc === child) {
                 aurivoPulseGuiProc = null;
                 aurivoPulseGuiLang = '';
+                emitPulseGuiWindowState(false);
             }
         });
         child.once('error', () => {
             if (aurivoPulseGuiProc === child) {
                 aurivoPulseGuiProc = null;
                 aurivoPulseGuiLang = '';
+                emitPulseGuiWindowState(false);
             }
         });
 
@@ -4585,6 +4601,10 @@ ipcMain.handle('pulse:openWindow', async () => {
     }
 
     throw new Error(lastError || 'Aurivo-Pulse GUI başlatılamadı');
+});
+
+ipcMain.handle('pulse:getWindowState', async () => {
+    return { open: !!(aurivoPulseGuiProc && !aurivoPulseGuiProc.killed) };
 });
 
 ipcMain.handle('pulse:listDevices', async () => {
@@ -6306,15 +6326,33 @@ ipcMain.handle('media:getVideoThumbnail', async (_event, filePath) => {
 });
 
 function getFfmpegPathForEnv() {
-    // Önce paketlenmiş ffmpeg, bulunamazsa sistem ffmpeg'e düş.
+    // Linux/macOS'ta sistem ffmpeg genelde daha güncel codec desteği sunduğu için
+    // önce sistemi dene; paketlenmiş sürümü fallback olarak kullan.
+    // Windows'ta bundle önceliğini koru.
     const candidates = [];
+
+    const preferSystemFirst =
+        process.platform !== 'win32' ||
+        process.env.AURIVO_FFMPEG_PREFER_SYSTEM === '1' ||
+        process.env.AURIVO_FFMPEG_PREFER_SYSTEM === 'true';
+
+    const systemCandidate = findExecutable('ffmpeg', ['/usr/bin', '/usr/local/bin', '/bin']);
+    if (preferSystemFirst) {
+        if (systemCandidate) candidates.push(systemCandidate);
+    }
+
     if (app.isPackaged) {
         const packed = process.platform === 'win32'
             ? path.join(process.resourcesPath, 'bin', 'ffmpeg.exe')
             : path.join(process.resourcesPath, 'bin', 'ffmpeg');
         candidates.push(packed);
     }
-    candidates.push(findExecutable('ffmpeg', ['/usr/bin', '/usr/local/bin', '/bin']) || 'ffmpeg');
+
+    if (!preferSystemFirst) {
+        if (systemCandidate) candidates.push(systemCandidate);
+    }
+
+    candidates.push('ffmpeg');
 
     for (const candidate of candidates) {
         const value = String(candidate || '').trim();

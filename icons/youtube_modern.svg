@@ -1,4 +1,10 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
-  <rect x="6" y="14" width="52" height="36" rx="10" ry="10" fill="#ff2d2d"/>
-  <polygon points="28,22 28,42 44,32" fill="#ffffff"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" role="img" aria-label="YouTube">
+  <defs>
+    <linearGradient id="ytBg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#ff4e57"/>
+      <stop offset="100%" stop-color="#ff1634"/>
+    </linearGradient>
+  </defs>
+  <rect x="2.2" y="5.3" width="19.6" height="13.4" rx="4.8" fill="url(#ytBg)"/>
+  <path d="M10.2 8.8 15.9 12l-5.7 3.2z" fill="#fff"/>
 </svg>
