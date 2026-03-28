@@ -518,5 +518,12 @@
       "autoMultichannel": "Auto enable/disable surround on multichannel outputs (>2 channels)",
       "outputUnknown": "Unknown output"
     }
-  }
+  },
+  "listen.quick.sharedNote.line1": "تنظیمات بخش شنیدن بین پنل شنیدن و شنیدن سریع مشترک است.",
+  "listen.quick.sharedNote.line2": "شنیدن سریع اولین نتیجهٔ تأییدشده را به‌صورت خودکار در پلتفرم وب باز می‌کند.",
+  "ui.startup.webStartupDelay": "تاخیر بارگذاری شروع وب",
+  "ui.startup.webStartupDelay.options.instant": "فوری (۰ ثانیه)",
+  "ui.startup.webStartupDelay.options.fast": "سریع (۰.۸ ثانیه)",
+  "ui.startup.webStartupDelay.options.balanced": "متعادل (۱.۴ ثانیه)",
+  "ui.startup.webStartupDelay.options.calm": "آرام (۲.۰ ثانیه)"
 }

@@ -518,5 +518,12 @@
       "autoMultichannel": "Auto enable/disable surround on multichannel outputs (>2 channels)",
       "outputUnknown": "Unknown output"
     }
-  }
+  },
+  "listen.quick.sharedNote.line1": "Ustawienia karty Słuchaj są współdzielone przez panel Słuchaj i Szybkie słuchanie.",
+  "listen.quick.sharedNote.line2": "Szybkie słuchanie automatycznie otwiera pierwszy zweryfikowany wynik na platformie webowej.",
+  "ui.startup.webStartupDelay": "Opóźnienie ładowania przy starcie Web",
+  "ui.startup.webStartupDelay.options.instant": "Natychmiast (0 s)",
+  "ui.startup.webStartupDelay.options.fast": "Szybko (0,8 s)",
+  "ui.startup.webStartupDelay.options.balanced": "Zrównoważone (1,4 s)",
+  "ui.startup.webStartupDelay.options.calm": "Łagodne (2,0 s)"
 }

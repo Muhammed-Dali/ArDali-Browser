@@ -5,7 +5,7 @@ use log::{debug, error, info, trace};
 #[cfg(feature = "mpris")]
 use mpris_player::PlaybackStatus;
 use percent_encoding::{utf8_percent_encode, NON_ALPHANUMERIC};
-use serde_json::json;
+use serde_json::{json, Value};
 use std::cell::RefCell;
 use std::error::Error;
 use std::io::{Read, Write};
@@ -96,6 +96,67 @@ fn current_pulse_ui_lang() -> String {
         }
     }
     "en-us".to_string()
+}
+
+fn pulse_app_id() -> String {
+    let env_id = std::env::var("AURIVO_APP_ID").unwrap_or_default();
+    let normalized = env_id.trim().to_string();
+    if !normalized.is_empty() {
+        return normalized;
+    }
+    "aurivo-media-player".to_string()
+}
+
+fn compact_text(input: &str, max_chars: usize) -> String {
+    let text = input.trim();
+    if text.chars().count() <= max_chars {
+        return text.to_string();
+    }
+    let clipped: String = text.chars().take(max_chars).collect();
+    format!("{}...", clipped.trim())
+}
+
+fn extract_secondary_candidate_from_shazam(
+    shazam_json: &str,
+    primary_track_key: &str,
+) -> Option<String> {
+    let parsed: Value = serde_json::from_str(shazam_json).ok()?;
+    let matches = parsed.get("matches")?.as_array()?;
+    for entry in matches {
+        let track = entry.get("track")?;
+        let track_key = track
+            .get("key")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .trim();
+        if !primary_track_key.trim().is_empty() && track_key == primary_track_key.trim() {
+            continue;
+        }
+
+        let title = track
+            .get("title")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .trim();
+        let artist = track
+            .get("subtitle")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .trim();
+        if title.is_empty() && artist.is_empty() {
+            continue;
+        }
+
+        let label = if !artist.is_empty() && !title.is_empty() {
+            format!("{} - {}", artist, title)
+        } else if !artist.is_empty() {
+            artist.to_string()
+        } else {
+            title.to_string()
+        };
+        return Some(compact_text(&label, 72));
+    }
+    None
 }
 
 fn pulse_ui_strings() -> PulseUiStrings {
@@ -897,16 +958,9 @@ impl App {
     }
 
     fn run(self, set_recording: bool, enable_mpris_cli: bool, input_file: Option<String>) {
+        let app_id = pulse_app_id();
         let application = adw::Application::new(
-            // We're using a different DBus ID over Snap
-            // per request of the Snapcraft team
-            // (they don't want to allocate us the one
-            // that we had to switch to in order to
-            // get verified on Flathub)
-            Some(match std::env::var("SNAP_NAME") {
-                Ok(_) => "aurivo-media-player",
-                _ => "aurivo-media-player",
-            }),
+            Some(app_id.as_str()),
             gio::ApplicationFlags::HANDLES_OPEN,
         );
 
@@ -1571,8 +1625,17 @@ impl App {
                                 Some("songrec") => "SongRec",
                                 _ => "Hybrid",
                             };
-                            search_youtube_row
-                                .set_subtitle(&format!("Tanıma motoru: {}", engine_label));
+                            let secondary_candidate = extract_secondary_candidate_from_shazam(
+                                &message.shazam_json,
+                                &message.track_key,
+                            );
+                            let subtitle = match secondary_candidate {
+                                Some(candidate) => {
+                                    format!("Tanıma motoru: {} | Alternatif: {}", engine_label, candidate)
+                                }
+                                None => format!("Tanıma motoru: {}", engine_label),
+                            };
+                            search_youtube_row.set_subtitle(&subtitle);
                             info!("Recognized via {}", engine_label);
                             let song_changed = results_label.text().as_str() != &song_name;
 

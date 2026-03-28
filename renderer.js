@@ -117,8 +117,8 @@ function normalizePulsePreferenceState(input) {
         enable_mpris: typeof prefs.enable_mpris === 'boolean' ? prefs.enable_mpris : false,
         enable_systray: typeof prefs.enable_systray === 'boolean' ? prefs.enable_systray : false,
         no_duplicates: typeof prefs.no_duplicates === 'boolean' ? prefs.no_duplicates : false,
-        request_interval_secs_v3: Math.max(1, Math.min(120, Number(prefs.request_interval_secs_v3) || 2)),
-        buffer_size_secs: Math.max(4, Math.min(30, Number(prefs.buffer_size_secs) || 5)),
+        request_interval_secs_v3: Math.max(1, Math.min(120, Number(prefs.request_interval_secs_v3) || 4)),
+        buffer_size_secs: Math.max(4, Math.min(30, Number(prefs.buffer_size_secs) || 8)),
         current_device_name: typeof prefs.current_device_name === 'string' ? prefs.current_device_name : '',
         recognition_engine: recognitionEngine,
         acoustid_api_key: typeof prefs.acoustid_api_key === 'string' ? prefs.acoustid_api_key : ''
@@ -665,6 +665,8 @@ const libraryStatsRuntime = {
     lastComputedAt: 0,
     lastSignature: ''
 };
+const WEB_STARTUP_LAZY_DELAY_OPTIONS = [0, 800, 1400, 2000];
+const WEB_STARTUP_LAZY_DELAY_DEFAULT_MS = 1400;
 
 let appVolumePersistTimer = null;
 let suppressSettingsReloadUiUntil = 0;
@@ -672,7 +674,9 @@ const webPlatformRuntime = {
     lastSwitchAt: 0,
     lastSwitchKey: '',
     switching: false,
-    switchTimer: null
+    switchTimer: null,
+    startupLazyTimer: null,
+    startupLazyArmed: false
 };
 const pulseQuickRuntime = {
     running: false,
@@ -706,6 +710,11 @@ function normalizeAdblockMode(mode) {
     const value = String(mode || '').trim().toLowerCase();
     if (value === 'basic' || value === 'aggressive') return value;
     return 'ideal';
+}
+
+function normalizeWebStartupLazyDelayMs(value) {
+    const num = Number(value);
+    return WEB_STARTUP_LAZY_DELAY_OPTIONS.includes(num) ? num : WEB_STARTUP_LAZY_DELAY_DEFAULT_MS;
 }
 
 function ensureAdblockSettings() {
@@ -835,6 +844,7 @@ function getLibrarySettingsSyncSignature(settings = state.settings) {
         restoreLastPlaylist: library.restoreLastPlaylist !== false,
         rememberTreeSelection: library.rememberTreeSelection !== false,
         startupPage: String(ui.startupPage || 'music').toLowerCase(),
+        webStartupLazyDelayMs: normalizeWebStartupLazyDelayMs(ui.webStartupLazyDelayMs),
         rememberLastSection: ui.rememberLastSection !== false,
         viewSort: String(library.viewSort || 'title').toLowerCase(),
         viewGroup: String(library.viewGroup || 'none').toLowerCase(),
@@ -1018,9 +1028,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     restoreLastMainSection();
     await restoreLibraryStartupState();
     await restorePlaybackStartupState();
-    runStartupLibraryScanIfNeeded().catch((error) => {
-        console.error('[LIBRARY] startup scan error:', error);
-    });
+    // Başlangıçta UI'yı hızlı göstermek için ağır kütüphane taramasını gecikmeli başlat.
+    // İlk açılışta CPU sıçramasını ve takılma hissini azaltır.
+    scheduleStartupLibraryScan();
     await syncLibraryWatchState();
     applyWebUiClasses();
     setupVisualizer();
@@ -1346,6 +1356,7 @@ function cacheElements() {
     elements.libraryRestoreLastPlaylist = document.getElementById('libraryRestoreLastPlaylist');
     elements.libraryRememberTreeSelection = document.getElementById('libraryRememberTreeSelection');
     elements.libraryStartupPage = document.getElementById('libraryStartupPage');
+    elements.libraryWebStartupDelay = document.getElementById('libraryWebStartupDelay');
     elements.libraryHeroRescanBtn = document.getElementById('libraryHeroRescanBtn');
     elements.libraryHeroAddFolderBtn = document.getElementById('libraryHeroAddFolderBtn');
     elements.libraryHeroTotalSongs = document.getElementById('libraryHeroTotalSongs');
@@ -1469,6 +1480,7 @@ function cacheElements() {
     elements.uiFollowSystemThemeToggle = document.getElementById('uiFollowSystemThemeToggle');
     elements.behaviorRememberLastSection = document.getElementById('behaviorRememberLastSection');
     elements.behaviorStartupPage = document.getElementById('behaviorStartupPage');
+    elements.behaviorWebStartupDelay = document.getElementById('behaviorWebStartupDelay');
     elements.behaviorCloseToTray = document.getElementById('behaviorCloseToTray');
     elements.uiVisualModeSelect = document.getElementById('uiVisualModeSelect');
     elements.uiMotionProfileSelect = document.getElementById('uiMotionProfileSelect');
@@ -1793,6 +1805,7 @@ async function loadSettings() {
                 lastPanel: 'library',
                 rememberLastSection: true,
                 startupPage: 'music',
+                webStartupLazyDelayMs: WEB_STARTUP_LAZY_DELAY_DEFAULT_MS,
                 closeToTray: true,
                 language: ''
             };
@@ -1813,6 +1826,7 @@ async function loadSettings() {
         if (!['music', 'video', 'web'].includes(String(state.settings.ui.startupPage || '').toLowerCase())) {
             state.settings.ui.startupPage = 'music';
         }
+        state.settings.ui.webStartupLazyDelayMs = normalizeWebStartupLazyDelayMs(state.settings.ui.webStartupLazyDelayMs);
         if (!state.settings.videoLibrary || typeof state.settings.videoLibrary !== 'object') {
             state.settings.videoLibrary = {
                 items: []
@@ -3074,6 +3088,39 @@ function persistCurrentMainSection() {
     saveSettings().catch(() => { });
 }
 
+function cancelStartupLazyWebLoad() {
+    if (webPlatformRuntime.startupLazyTimer) {
+        clearTimeout(webPlatformRuntime.startupLazyTimer);
+        webPlatformRuntime.startupLazyTimer = null;
+    }
+    webPlatformRuntime.startupLazyArmed = false;
+}
+
+function getWebStartupLazyDelayMs() {
+    return normalizeWebStartupLazyDelayMs(state.settings?.ui?.webStartupLazyDelayMs);
+}
+
+function scheduleStartupLazyWebLoad() {
+    cancelStartupLazyWebLoad();
+    if (String(state.currentPage || '') !== 'web') return false;
+    const currentUrl = String(getWebViewUrlSafe() || '').trim().toLowerCase();
+    if (currentUrl && currentUrl !== 'about:blank') return false;
+
+    const preferredBtn = getPreferredWebPlatformBtn();
+    if (!preferredBtn) return false;
+
+    const delayMs = getWebStartupLazyDelayMs();
+    webPlatformRuntime.startupLazyArmed = true;
+    webPlatformRuntime.startupLazyTimer = setTimeout(() => {
+        webPlatformRuntime.startupLazyTimer = null;
+        if (!webPlatformRuntime.startupLazyArmed) return;
+        webPlatformRuntime.startupLazyArmed = false;
+        if (String(state.currentPage || '') !== 'web') return;
+        requestPlatformSwitch(preferredBtn);
+    }, delayMs);
+    return true;
+}
+
 function restoreLastMainSection() {
     const remember = state.settings?.ui?.rememberLastSection !== false;
     const startup = String(state.settings?.ui?.startupPage || 'music').toLowerCase();
@@ -3097,6 +3144,11 @@ function restoreLastMainSection() {
         document.querySelector('.sidebar-btn[data-page="music"]');
     if (!btn) return;
     handleSidebarClick(btn);
+    if (page === 'web') {
+        scheduleStartupLazyWebLoad();
+    } else {
+        cancelStartupLazyWebLoad();
+    }
 }
 
 async function restoreLibraryStartupState() {
@@ -3767,6 +3819,14 @@ function setupEventListeners() {
             elements.behaviorStartupPage.value = String(elements.libraryStartupPage.value || 'music');
         });
     }
+    if (elements.behaviorWebStartupDelay && elements.libraryWebStartupDelay) {
+        elements.behaviorWebStartupDelay.addEventListener('change', () => {
+            elements.libraryWebStartupDelay.value = String(elements.behaviorWebStartupDelay.value || WEB_STARTUP_LAZY_DELAY_DEFAULT_MS);
+        });
+        elements.libraryWebStartupDelay.addEventListener('change', () => {
+            elements.behaviorWebStartupDelay.value = String(elements.libraryWebStartupDelay.value || WEB_STARTUP_LAZY_DELAY_DEFAULT_MS);
+        });
+    }
 
     // Web Platformları
     elements.platformBtns.forEach(btn => {
@@ -3944,7 +4004,11 @@ function setupEventListeners() {
     // Ayarlar (uygulama içi sayfa)
     if (elements.closeSettings) elements.closeSettings.addEventListener('click', closeSettings);
     if (elements.settingsCancel) elements.settingsCancel.addEventListener('click', closeSettings);
-    if (elements.settingsResetCurrentTab) elements.settingsResetCurrentTab.addEventListener('click', resetCurrentSettingsTab);
+    if (elements.settingsResetCurrentTab) {
+        elements.settingsResetCurrentTab.addEventListener('click', async () => {
+            await resetCurrentSettingsTab();
+        });
+    }
     if (elements.settingsOk) {
         elements.settingsOk.addEventListener('click', async () => {
             try {
@@ -10950,7 +11014,7 @@ function getPulseQuickModeConfig() {
         1,
         Math.min(
             120,
-            Number(state.settings?.pulsePreferences?.request_interval_secs_v3) || 2
+            Number(state.settings?.pulsePreferences?.request_interval_secs_v3) || 4
         )
     );
     if (mode === 'normal') return { mode, backgroundMode: false, requestInterval: runtimeInterval, noSignalDelayMs: 22000 };
@@ -14199,6 +14263,7 @@ function setWebDrawerCollapsed(collapsed) {
 
 function requestPlatformSwitch(btn) {
     if (!btn) return;
+    cancelStartupLazyWebLoad();
     const key = String(btn.dataset.platform || btn.dataset.url || '').trim();
     if (webPlatformRuntime.switching) return;
     const now = Date.now();
@@ -14230,6 +14295,9 @@ function restoreSidebarSelectionAfterUtilityAction(prevActiveBtn) {
 function handleSidebarClick(btn) {
     const page = btn.dataset.page;
     const panel = btn.dataset.panel;
+    if (page !== 'web') {
+        cancelStartupLazyWebLoad();
+    }
 
     // Yardımcı pages should not remain open when switching tabs
     closeAllUtilityPages();
@@ -16524,6 +16592,27 @@ async function runStartupLibraryScanIfNeeded() {
     if (!loadSavedFolders('audio').length) return;
     await rescanMusicFolders('', { notify: false, reason: 'startup', preserveCurrentPath: true });
     console.log('[LIBRARY] startup scan completed');
+}
+
+const STARTUP_LIBRARY_SCAN_DELAY_MS = 2500;
+let startupLibraryScanTimer = null;
+
+function scheduleStartupLibraryScan(delayMs = STARTUP_LIBRARY_SCAN_DELAY_MS) {
+    try {
+        if (startupLibraryScanTimer) {
+            clearTimeout(startupLibraryScanTimer);
+            startupLibraryScanTimer = null;
+        }
+    } catch {
+        // yoksay
+    }
+    const delay = Math.max(0, Number(delayMs) || 0);
+    startupLibraryScanTimer = setTimeout(() => {
+        startupLibraryScanTimer = null;
+        runStartupLibraryScanIfNeeded().catch((error) => {
+            console.error('[LIBRARY] startup scan error:', error);
+        });
+    }, delay);
 }
 
 function updateLibraryWatchStatus(kind = 'idle', payload = {}) {
@@ -20628,6 +20717,8 @@ function resetBehaviorDefaults() {
     if (elements.libraryRememberSection) elements.libraryRememberSection.checked = true;
     if (elements.behaviorStartupPage) elements.behaviorStartupPage.value = 'music';
     if (elements.libraryStartupPage) elements.libraryStartupPage.value = 'music';
+    if (elements.behaviorWebStartupDelay) elements.behaviorWebStartupDelay.value = String(WEB_STARTUP_LAZY_DELAY_DEFAULT_MS);
+    if (elements.libraryWebStartupDelay) elements.libraryWebStartupDelay.value = String(WEB_STARTUP_LAZY_DELAY_DEFAULT_MS);
     if (elements.behaviorCloseToTray) elements.behaviorCloseToTray.checked = true;
     updateVisualModeUi();
     updateThemeFollowSystemUi();
@@ -20646,6 +20737,8 @@ function resetLibraryDefaults() {
     if (elements.libraryRestoreLastPlaylist) elements.libraryRestoreLastPlaylist.checked = true;
     if (elements.libraryRememberTreeSelection) elements.libraryRememberTreeSelection.checked = true;
     if (elements.libraryStartupPage) elements.libraryStartupPage.value = 'music';
+    if (elements.libraryWebStartupDelay) elements.libraryWebStartupDelay.value = String(WEB_STARTUP_LAZY_DELAY_DEFAULT_MS);
+    if (elements.behaviorWebStartupDelay) elements.behaviorWebStartupDelay.value = String(WEB_STARTUP_LAZY_DELAY_DEFAULT_MS);
     if (elements.libraryScanOnStartup) elements.libraryScanOnStartup.checked = true;
     if (elements.libraryAutoRescanOnFolderChange) elements.libraryAutoRescanOnFolderChange.checked = true;
     if (elements.libraryWatchFolders) elements.libraryWatchFolders.checked = true;
@@ -20715,7 +20808,7 @@ function resetAdblockDefaults() {
     if (elements.adblockDeveloperMode) elements.adblockDeveloperMode.checked = !!ADBLOCK_DEFAULT_SETTINGS.developerMode;
 }
 
-function resetCurrentSettingsTab() {
+async function resetCurrentSettingsTab() {
     const activeTab = getActiveSettingsTabName();
     if (activeTab === 'playback') resetPlaybackDefaults();
     else if (activeTab === 'shortcuts') resetPlaybackDefaults();
@@ -20726,13 +20819,8 @@ function resetCurrentSettingsTab() {
     else if (activeTab === 'audio') resetAudioDefaults();
     else if (activeTab === 'adblock') resetAdblockDefaults();
 
-    safeNotify(
-        uiT('settings.notify.resetCurrentTabNamed', '{tab} varsayılan değerlere döndürüldü. Kaydet ile kalıcı olur.', {
-            tab: getSettingsTabLabel(activeTab)
-        }),
-        'info',
-        1800
-    );
+    await applySettings();
+    safeNotify(`${getSettingsTabLabel(activeTab)} varsayılan değerlere döndürüldü ve kaydedildi.`, 'success', 2100);
 }
 
 function showAbout() {

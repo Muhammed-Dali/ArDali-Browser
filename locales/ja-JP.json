@@ -518,5 +518,12 @@
       "autoMultichannel": "Auto enable/disable surround on multichannel outputs (>2 channels)",
       "outputUnknown": "Unknown output"
     }
-  }
+  },
+  "listen.quick.sharedNote.line1": "「聴く」タブの設定は、聴くパネルとクイック聴取の両方で共通です。",
+  "listen.quick.sharedNote.line2": "クイック聴取は、最初に検証された結果をWebプラットフォームで自動的に開きます。",
+  "ui.startup.webStartupDelay": "Web起動時の読み込み遅延",
+  "ui.startup.webStartupDelay.options.instant": "即時 (0秒)",
+  "ui.startup.webStartupDelay.options.fast": "高速 (0.8秒)",
+  "ui.startup.webStartupDelay.options.balanced": "バランス (1.4秒)",
+  "ui.startup.webStartupDelay.options.calm": "穏やか (2.0秒)"
 }

@@ -518,5 +518,12 @@
       "autoMultichannel": "Auto enable/disable surround on multichannel outputs (>2 channels)",
       "outputUnknown": "Unknown output"
     }
-  }
+  },
+  "listen.quick.sharedNote.line1": "Le impostazioni della scheda Ascolto sono condivise tra il pannello Ascolto e Ascolto rapido.",
+  "listen.quick.sharedNote.line2": "Ascolto rapido apre automaticamente il primo risultato verificato sulla piattaforma Web.",
+  "ui.startup.webStartupDelay": "Ritardo caricamento avvio Web",
+  "ui.startup.webStartupDelay.options.instant": "Immediato (0 s)",
+  "ui.startup.webStartupDelay.options.fast": "Rapido (0,8 s)",
+  "ui.startup.webStartupDelay.options.balanced": "Bilanciato (1,4 s)",
+  "ui.startup.webStartupDelay.options.calm": "Morbido (2,0 s)"
 }

@@ -24,33 +24,6 @@ import { deepEquals } from './utils.js';
 export const webext = self.browser || self.chrome;
 export const dnr = webext.declarativeNetRequest || {};
 
-// Electron'un extension API kapsamı Chromium'dan daha dar olabiliyor.
-// uBOL tarafındaki permissions çağrılarının patlamaması için güvenli fallbackler.
-if ( webext.permissions instanceof Object === false ) {
-    webext.permissions = {};
-}
-if ( typeof webext.permissions.getAll !== 'function' ) {
-    webext.permissions.getAll = async ( ) => ({
-        permissions: [],
-        origins: [ '<all_urls>', '*://*/*' ],
-    });
-}
-if ( typeof webext.permissions.request !== 'function' ) {
-    webext.permissions.request = async ( ) => true;
-}
-if ( typeof webext.permissions.contains !== 'function' ) {
-    webext.permissions.contains = async ( ) => true;
-}
-if ( typeof webext.permissions.remove !== 'function' ) {
-    webext.permissions.remove = async ( ) => true;
-}
-if ( webext.permissions.onRemoved instanceof Object === false ) {
-    webext.permissions.onRemoved = { addListener() {}, removeListener() {} };
-}
-if ( webext.permissions.onAdded instanceof Object === false ) {
-    webext.permissions.onAdded = { addListener() {}, removeListener() {} };
-}
-
 /******************************************************************************/
 
 export function normalizeDNRRules(rules, ruleIds) {

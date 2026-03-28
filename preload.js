@@ -23,6 +23,9 @@ const preloadStandaloneView = String(
 const preloadStandaloneTab = String(
     preloadArgv.find((arg) => String(arg).startsWith('--aurivo-settings-tab=')) || ''
 ).split('=').slice(1).join('=').trim().toLowerCase();
+const preloadStandaloneScope = String(
+    preloadArgv.find((arg) => String(arg).startsWith('--aurivo-settings-scope=')) || ''
+).split('=').slice(1).join('=').trim().toLowerCase();
 const path = require('path');
 const os = require('os');
 const { pathToFileURL } = require('url');
@@ -666,6 +669,7 @@ const aurivoAPI = {
     launchContext: {
         view: preloadStandaloneView,
         tab: preloadStandaloneTab,
+        scope: preloadStandaloneScope,
         perfMonitor: process?.env?.AURIVO_PERF_MONITOR === '1'
     },
     onSettingsReload: (callback) => {

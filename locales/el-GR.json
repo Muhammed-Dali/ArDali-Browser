@@ -518,5 +518,12 @@
       "autoMultichannel": "Auto enable/disable surround on multichannel outputs (>2 channels)",
       "outputUnknown": "Unknown output"
     }
-  }
+  },
+  "listen.quick.sharedNote.line1": "Οι ρυθμίσεις της καρτέλας Ακρόαση ισχύουν τόσο για το πάνελ Ακρόασης όσο και για τη Γρήγορη Ακρόαση.",
+  "listen.quick.sharedNote.line2": "Η Γρήγορη Ακρόαση ανοίγει αυτόματα το πρώτο επαληθευμένο αποτέλεσμα στην πλατφόρμα Web.",
+  "ui.startup.webStartupDelay": "Καθυστέρηση φόρτωσης εκκίνησης Web",
+  "ui.startup.webStartupDelay.options.instant": "Άμεσο (0 δευτ.)",
+  "ui.startup.webStartupDelay.options.fast": "Γρήγορο (0,8 δευτ.)",
+  "ui.startup.webStartupDelay.options.balanced": "Ισορροπημένο (1,4 δευτ.)",
+  "ui.startup.webStartupDelay.options.calm": "Ήπιο (2,0 δευτ.)"
 }

@@ -518,5 +518,12 @@
       "autoMultichannel": "Auto enable/disable surround on multichannel outputs (>2 channels)",
       "outputUnknown": "Unknown output"
     }
-  }
+  },
+  "listen.quick.sharedNote.line1": "सुन्नु ट्याबका सेटिङहरू Listen प्यानल र Quick Listen दुवैमा साझा हुन्छन्।",
+  "listen.quick.sharedNote.line2": "Quick Listen ले पहिलो प्रमाणित नतिजा वेब प्लेटफर्ममा स्वतः खोल्छ।",
+  "ui.startup.webStartupDelay": "वेब सुरु लोड ढिलाइ",
+  "ui.startup.webStartupDelay.options.instant": "तुरुन्त (0 सेकेन्ड)",
+  "ui.startup.webStartupDelay.options.fast": "छिटो (0.8 सेकेन्ड)",
+  "ui.startup.webStartupDelay.options.balanced": "सन्तुलित (1.4 सेकेन्ड)",
+  "ui.startup.webStartupDelay.options.calm": "शान्त (2.0 सेकेन्ड)"
 }

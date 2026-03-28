@@ -923,6 +923,15 @@
                                                     <option value="web" data-i18n="settings.library.startupPage.options.web">Web</option>
                                                 </select>
                                             </div>
+                                            <div class="setting-row">
+                                                <span data-i18n="ui.startup.webStartupDelay">Web başlangıç yükleme gecikmesi</span>
+                                                <select class="settings-select" id="behaviorWebStartupDelay">
+                                                    <option value="0" data-i18n="ui.startup.webStartupDelay.options.instant">Anında (0 sn)</option>
+                                                    <option value="800" data-i18n="ui.startup.webStartupDelay.options.fast">Hızlı (0.8 sn)</option>
+                                                    <option value="1400" data-i18n="ui.startup.webStartupDelay.options.balanced">Dengeli (1.4 sn)</option>
+                                                    <option value="2000" data-i18n="ui.startup.webStartupDelay.options.calm">Sakin (2.0 sn)</option>
+                                                </select>
+                                            </div>
                                             <label class="checkbox-label">
                                                 <input type="checkbox" id="behaviorCloseToTray" checked>
                                                 <span data-i18n="ui.startup.closeToTray">Pencereyi kapatınca sistem tepsisine küçült</span>
@@ -1056,6 +1065,15 @@
                                                     <option value="music" data-i18n="settings.library.startupPage.options.music">Müzik</option>
                                                     <option value="video" data-i18n="settings.library.startupPage.options.video">Video</option>
                                                     <option value="web" data-i18n="settings.library.startupPage.options.web">Web</option>
+                                                </select>
+                                            </div>
+                                            <div class="setting-row">
+                                                <span data-i18n="ui.startup.webStartupDelay">Web başlangıç yükleme gecikmesi</span>
+                                                <select class="settings-select" id="libraryWebStartupDelay">
+                                                    <option value="0" data-i18n="ui.startup.webStartupDelay.options.instant">Anında (0 sn)</option>
+                                                    <option value="800" data-i18n="ui.startup.webStartupDelay.options.fast">Hızlı (0.8 sn)</option>
+                                                    <option value="1400" data-i18n="ui.startup.webStartupDelay.options.balanced">Dengeli (1.4 sn)</option>
+                                                    <option value="2000" data-i18n="ui.startup.webStartupDelay.options.calm">Sakin (2.0 sn)</option>
                                                 </select>
                                             </div>
                                             <div class="settings-sub" data-i18n="settings.library.startupHint">Son bölüm hatırlama kapalıysa uygulama bu bölümle açılır.</div>
@@ -1473,8 +1491,8 @@
 	            </div>
                             </div>
                             <div class="modal-footer">
-                                <button class="btn settings-action-btn settings-action-btn-secondary settings-action-btn-reset" id="settingsResetCurrentTab" data-i18n="settings.buttons.resetCurrentTab">Varsayılana döndür</button>
                                 <button class="btn settings-action-btn settings-action-btn-ghost" id="settingsCancel" data-i18n="settings.buttons.cancel">İptal</button>
+                                <button class="btn settings-action-btn settings-action-btn-secondary settings-action-btn-reset" id="settingsResetCurrentTab" data-i18n="settings.buttons.resetCurrentTab">Varsayılana döndür</button>
                                 <button class="btn settings-action-btn settings-action-btn-primary" id="settingsOk" data-i18n="settings.buttons.save">Kaydet</button>
                             </div>
                         </div>

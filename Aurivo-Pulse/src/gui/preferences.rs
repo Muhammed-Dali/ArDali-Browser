@@ -42,7 +42,8 @@ impl Preferences {
     }
 
     pub fn with_interval(interval: u64) -> Self {
-        let buffer_size_secs = if interval <= 4 { 5 } else { 8 };
+        // Daha uzun pencere, tanima kalitesini artirir.
+        let buffer_size_secs = if interval <= 4 { 8 } else { 12 };
         Preferences {
             enable_notifications: Some(true),
             enable_systray: Some(false),
@@ -77,10 +78,10 @@ impl Default for Preferences {
             enable_systray: Some(false),
             enable_mpris: Some(false),
             no_duplicates: Some(false),
-            buffer_size_secs: Some(5),
+            buffer_size_secs: Some(8),
             request_interval_secs: None,
             request_interval_secs_v2: None,
-            request_interval_secs_v3: Some(2),
+            request_interval_secs_v3: Some(4),
             current_device_name: None,
             recognition_engine: Some("hybrid".to_string()),
             acoustid_api_key: Some(String::new()),

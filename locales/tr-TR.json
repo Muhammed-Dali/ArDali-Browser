@@ -806,5 +806,12 @@
         "speech": "Speech Clear"
       }
     }
-  }
+  },
+  "listen.quick.sharedNote.line1": "Dinle sekmesindeki ayarlar, hem Dinle paneli hem de Hızlı Dinle için ortaktır.",
+  "listen.quick.sharedNote.line2": "Hızlı Dinle, ilk doğrulanan sonucu otomatik olarak Web platformunda açar.",
+  "ui.startup.webStartupDelay": "Web başlangıç yükleme gecikmesi",
+  "ui.startup.webStartupDelay.options.instant": "Anında (0 sn)",
+  "ui.startup.webStartupDelay.options.fast": "Hızlı (0.8 sn)",
+  "ui.startup.webStartupDelay.options.balanced": "Dengeli (1.4 sn)",
+  "ui.startup.webStartupDelay.options.calm": "Sakin (2.0 sn)"
 }

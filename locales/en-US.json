@@ -995,5 +995,12 @@
   "sfx.crossfeed.ab.phaseOff": "Effect OFF",
   "sfx.crossfeed.ab.phaseCompare": "Comparing",
   "sfx.crossfeed.ab.statusOn": "A/B: Active ({phase}) • Speed {speed}",
-  "sfx.crossfeed.ab.statusOff": "A/B: Off • Speed {speed}"
+  "sfx.crossfeed.ab.statusOff": "A/B: Off • Speed {speed}",
+  "listen.quick.sharedNote.line1": "Listen tab settings are shared by both the Listen panel and Quick Listen.",
+  "listen.quick.sharedNote.line2": "Quick Listen automatically opens the first verified result on the Web platform.",
+  "ui.startup.webStartupDelay": "Web startup load delay",
+  "ui.startup.webStartupDelay.options.instant": "Instant (0 sec)",
+  "ui.startup.webStartupDelay.options.fast": "Fast (0.8 sec)",
+  "ui.startup.webStartupDelay.options.balanced": "Balanced (1.4 sec)",
+  "ui.startup.webStartupDelay.options.calm": "Calm (2.0 sec)"
 }

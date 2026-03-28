@@ -17,23 +17,60 @@
         </div>
 
         <div class="preset-search">
-            <input id="presetSearch" class="preset-search-input" type="text"
-                placeholder="Hazır ayar ara... (örn. bass, v-shape, vocal)" autocomplete="off" spellcheck="false"
-                data-i18n-placeholder="eqPresets.searchPlaceholder" />
-            <select id="presetGroup" class="preset-group" aria-label="Hazır ayar grubu" data-i18n-aria-label="eqPresets.groupLabel">
-                <option value="all" selected data-i18n="eqPresets.groups.all">Tümü</option>
-                <option value="bass" data-i18n="eqPresets.groups.bass">Bas</option>
-                <option value="treble" data-i18n="eqPresets.groups.treble">Tiz</option>
-                <option value="vocal" data-i18n="eqPresets.groups.vocal">Vokal</option>
-                <option value="jazz" data-i18n="eqPresets.groups.jazz">Caz</option>
-                <option value="classical" data-i18n="eqPresets.groups.classical">Klasik</option>
-                <option value="electronic" data-i18n="eqPresets.groups.electronic">Elektronik</option>
-                <option value="pop" data-i18n="eqPresets.groups.pop">Pop</option>
-                <option value="rock" data-i18n="eqPresets.groups.rock">Rock</option>
-                <option value="vshape" data-i18n="eqPresets.groups.vshape">V-Shape</option>
-                <option value="flat" data-i18n="eqPresets.groups.flat">Düz</option>
-                <option value="other" data-i18n="eqPresets.groups.other">Diğer</option>
-            </select>
+            <div class="preset-search-field">
+                <svg class="preset-search-icon" viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M21 21l-4.35-4.35m1.85-5.15a7 7 0 11-14 0 7 7 0 0114 0z" />
+                </svg>
+                <input id="presetSearch" class="preset-search-input" type="text"
+                    placeholder="Hazır ayar ara... (örn. bass, v-shape, vocal)" autocomplete="off" spellcheck="false"
+                    data-i18n-placeholder="eqPresets.searchPlaceholder" />
+            </div>
+        </div>
+        <div id="presetProfileRow" class="preset-profile-row" role="radiogroup" aria-label="Çizgi profil seçimi">
+            <button id="presetProfileQualityBtn" type="button" class="preset-profile-chip" data-profile="quality" aria-checked="false" role="radio">Kalite</button>
+            <button id="presetProfileBalancedBtn" type="button" class="preset-profile-chip is-active" data-profile="balanced" aria-checked="true" role="radio">Dengeli</button>
+            <button id="presetProfilePerformanceBtn" type="button" class="preset-profile-chip" data-profile="performance" aria-checked="false" role="radio">Performans</button>
+        </div>
+        <div id="presetProfileHint" class="preset-profile-hint" aria-live="polite"></div>
+        <div class="preset-group-chips-wrap">
+            <div id="presetGroupChips" class="preset-group-chips" role="tablist" aria-label="Hazır ayar grubu" data-i18n-aria-label="eqPresets.groupLabel">
+                <button type="button" class="preset-group-chip is-active" data-group="all" role="tab" aria-selected="true">
+                    <span data-i18n="eqPresets.groups.all">Tümü</span>
+                </button>
+                <button type="button" class="preset-group-chip" data-group="bass" role="tab" aria-selected="false">
+                    <span data-i18n="eqPresets.groups.bass">Bas</span>
+                </button>
+                <button type="button" class="preset-group-chip" data-group="treble" role="tab" aria-selected="false">
+                    <span data-i18n="eqPresets.groups.treble">Tiz</span>
+                </button>
+                <button type="button" class="preset-group-chip" data-group="vocal" role="tab" aria-selected="false">
+                    <span data-i18n="eqPresets.groups.vocal">Vokal</span>
+                </button>
+                <button type="button" class="preset-group-chip" data-group="jazz" role="tab" aria-selected="false">
+                    <span data-i18n="eqPresets.groups.jazz">Caz</span>
+                </button>
+                <button type="button" class="preset-group-chip" data-group="classical" role="tab" aria-selected="false">
+                    <span data-i18n="eqPresets.groups.classical">Klasik</span>
+                </button>
+                <button type="button" class="preset-group-chip" data-group="electronic" role="tab" aria-selected="false">
+                    <span data-i18n="eqPresets.groups.electronic">Elektronik</span>
+                </button>
+                <button type="button" class="preset-group-chip" data-group="pop" role="tab" aria-selected="false">
+                    <span data-i18n="eqPresets.groups.pop">Pop</span>
+                </button>
+                <button type="button" class="preset-group-chip" data-group="rock" role="tab" aria-selected="false">
+                    <span data-i18n="eqPresets.groups.rock">Rock</span>
+                </button>
+                <button type="button" class="preset-group-chip" data-group="vshape" role="tab" aria-selected="false">
+                    <span data-i18n="eqPresets.groups.vshape">V-Shape</span>
+                </button>
+                <button type="button" class="preset-group-chip" data-group="flat" role="tab" aria-selected="false">
+                    <span data-i18n="eqPresets.groups.flat">Düz</span>
+                </button>
+                <button type="button" class="preset-group-chip" data-group="other" role="tab" aria-selected="false">
+                    <span data-i18n="eqPresets.groups.other">Diğer</span>
+                </button>
+            </div>
         </div>
 
         <div id="presetStatus" class="preset-status" aria-live="polite"></div>

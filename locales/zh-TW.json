@@ -470,5 +470,12 @@
       "autoMultichannel": "Auto enable/disable surround on multichannel outputs (>2 channels)",
       "outputUnknown": "Unknown output"
     }
-  }
+  },
+  "listen.quick.sharedNote.line1": "「聆聽」分頁的設定會同時套用於聆聽面板與快速聆聽。",
+  "listen.quick.sharedNote.line2": "快速聆聽會自動在網頁平台開啟第一個已驗證結果。",
+  "ui.startup.webStartupDelay": "Web 啟動載入延遲",
+  "ui.startup.webStartupDelay.options.instant": "即時（0 秒）",
+  "ui.startup.webStartupDelay.options.fast": "快速（0.8 秒）",
+  "ui.startup.webStartupDelay.options.balanced": "平衡（1.4 秒）",
+  "ui.startup.webStartupDelay.options.calm": "平順（2.0 秒）"
 }

@@ -82,6 +82,7 @@ import {
     getEffectiveDynamicRules,
     getEffectiveSessionRules,
     getEffectiveUserRules,
+    getEnabledRulesetsDetails,
     getRulesetDetails,
     patchDefaultRulesets,
     setStrictBlockMode,
@@ -356,8 +357,17 @@ function onMessage(request, sender, callback) {
                 adminRulesets,
                 disabledFeatures,
             ] = results;
+            let hasPermissionsApi = false;
+            try {
+                hasPermissionsApi = browser?.permissions?.getAll instanceof Function;
+            } catch {
+                hasPermissionsApi = false;
+            }
+            const effectiveHasOmnipotence = hasPermissionsApi
+                ? Boolean(hasOmnipotence)
+                : true;
             callback({
-                hasOmnipotence,
+                hasOmnipotence: effectiveHasOmnipotence,
                 defaultFilteringMode,
                 enabledRulesets,
                 adminRulesets,
@@ -385,6 +395,12 @@ function onMessage(request, sender, callback) {
     case 'getRulesetDetails':
         getRulesetDetails().then(rulesetDetails => {
             callback(Array.from(rulesetDetails.values()));
+        });
+        return true;
+
+    case 'getEnabledRulesetsDetails':
+        getEnabledRulesetsDetails().then(rulesetDetails => {
+            callback(rulesetDetails);
         });
         return true;
 
@@ -769,7 +785,14 @@ runtime.onMessage.addListener((request, sender, callback) => {
     return true;
 });
 
-if ( browser?.permissions?.onRemoved?.addListener ) {
+let permissionsAPI;
+try {
+    permissionsAPI = browser && browser.permissions;
+} catch {
+    permissionsAPI = undefined;
+}
+
+if ( permissionsAPI?.onRemoved?.addListener instanceof Function ) {
     browser.permissions.onRemoved.addListener((...args) => {
         isFullyInitialized.then(( ) => {
             onPermissionsChanged('removed', ...args);
@@ -777,7 +800,7 @@ if ( browser?.permissions?.onRemoved?.addListener ) {
     });
 }
 
-if ( browser?.permissions?.onAdded?.addListener ) {
+if ( permissionsAPI?.onAdded?.addListener instanceof Function ) {
     browser.permissions.onAdded.addListener((...args) => {
         isFullyInitialized.then(( ) => {
             onPermissionsChanged('added', ...args);
@@ -785,7 +808,7 @@ if ( browser?.permissions?.onAdded?.addListener ) {
     });
 }
 
-if ( browser?.commands?.onCommand?.addListener ) {
+if ( browser?.commands?.onCommand?.addListener instanceof Function ) {
     browser.commands.onCommand.addListener((...args) => {
         isFullyInitialized.then(( ) => {
             onCommand(...args);

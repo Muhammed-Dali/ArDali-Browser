@@ -1255,15 +1255,15 @@ function shouldDebug(details) {
 const scriptletGlobals = {}; // eslint-disable-line
 
 const $scriptletFunctions$ = /* 10 */
-[abortCurrentScript,preventAddEventListener,abortOnPropertyRead,adjustSetInterval,preventFetch,preventXhr,noEvalIf,preventSetTimeout,noWindowOpenIf,abortOnPropertyWrite];
+[abortOnPropertyRead,abortOnPropertyWrite,abortCurrentScript,preventAddEventListener,adjustSetInterval,preventFetch,preventXhr,noEvalIf,preventSetTimeout,noWindowOpenIf];
 
-const $scriptletArgs$ = /* 26 */ ["document.addEventListener","popup","getComputedStyle","","cpm","click","linkOpened","load","/adblock/i","scroll","kgSticky","$.magnificPopup.open","LieDetector","popup_custom_data","ads.google.com","adsbygoogle","clarity.ms","trafficbass.com","googlesyndication","/chp_?ad/","console","location.href","3000","MutationObserver","SGPB_POPUP_PARAMS","chp_ads_blocker_detector"];
+const $scriptletArgs$ = /* 24 */ ["SGPB_POPUP_PARAMS","MutationObserver","chp_ads_blocker_detector","getComputedStyle","","cpm","click","linkOpened","load","/adblock/i","scroll","kgSticky","$.magnificPopup.open","LieDetector","popup_custom_data","ads.google.com","adsbygoogle","clarity.ms","trafficbass.com","googlesyndication","/chp_?ad/","console","location.href","3000"];
 
-const $scriptletArglists$ = /* 21 */ "0,0,1;0,2,3,4;1,5,6;1,7,8;1,9,10;2,11;2,12;2,13;3;4,14;4,15;4,16;4,17;5,18;6,19;7,20;7,21,22;8;9,23;2,24;0,25";
+const $scriptletArglists$ = /* 20 */ "0,0;1,1;2,2;2,3,4,5;3,6,7;3,8,9;3,10,11;0,12;0,13;0,14;4;5,15;5,16;5,17;5,18;6,19;7,20;8,21;8,22,23;9";
 
-const $scriptletArglistRefs$ = /* 41 */ "11,15;9;1;17;0;19;17;17;17;4;20;17;17;17;13;17;12;17;17;14;18;14;8,14;17;14;3;16;6;17;2;7;14;5;17;17;13,17;8;10;17;2;8,10";
+const $scriptletArglistRefs$ = /* 38 */ "13,17;11;3;19;0;19;19;19;6;2;19;19;19;15;19;14;19;19;16;1;16;10,16;19;16;5;18;8;19;4;9;16;7;19;19;15,19;10;12;19";
 
-const $scriptletHostnames$ = /* 41 */ ["netq.me","mudah.my","doroni.me","kiryuu.id","onnano.tv","dicrotin.*","igodesu.tv","indobo.com","kiryuu.org","kompas.com","lk21semi.*","nimegami.*","njavtv.com","sukasex.tv","tutwuri.id","anichin.top","moenime.com","sukasex.net","westmanga.*","5.253.86.213","animekompi.*","igobokep.cam","jenismac.com","kiryuu01.com","ainzscans.net","moutogami.com","moviekhhd.biz","3gpterbaru.com","animekompi.vip","info.vebma.com","sk21.sob4t.xyz","193.142.147.230","juraganfilm.ink","kimcilonly.site","komikcast02.com","jurnalistekno.id","bahasteknologi.com","thejakartapost.com","kisahterlarang.site","info.mapsaddress.com","cloud.majalahhewan.com"];
+const $scriptletHostnames$ = /* 38 */ ["netq.me","mudah.my","doroni.me","kiryuu.id","dicrotin.*","igodesu.tv","indobo.com","kiryuu.org","kompas.com","lk21semi.*","nimegami.*","njavtv.com","sukasex.tv","tutwuri.id","anichin.top","moenime.com","sukasex.net","westmanga.*","5.253.86.213","animekompi.*","igobokep.cam","jenismac.com","kiryuu01.com","ainzscans.net","moutogami.com","moviekhhd.biz","3gpterbaru.com","animekompi.vip","info.vebma.com","sk21.sob4t.xyz","193.142.147.230","juraganfilm.ink","kimcilonly.site","komikcast02.com","jurnalistekno.id","bahasteknologi.com","thejakartapost.com","kisahterlarang.site"];
 
 const $scriptletFromRegexes$ = /* 0 */ [];
 

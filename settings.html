@@ -179,6 +179,8 @@
                                         <h3 data-i18n="settings.tabs.listen">Dinle</h3>
                                         <div class="settings-group">
                                             <h4 data-i18n="listen.quick.title">Aurivo-Pulse Hızlı Dinleme</h4>
+                                            <div class="settings-sub" data-i18n="listen.quick.sharedNote.line1">Dinle sekmesindeki ayarlar, hem Dinle paneli hem de Hızlı Dinle için ortaktır.</div>
+                                            <div class="settings-sub" data-i18n="listen.quick.sharedNote.line2">Hızlı Dinle, ilk doğrulanan sonucu otomatik olarak Web platformunda açar.</div>
                                             <div class="settings-row">
                                                 <div class="settings-row-left">
                                                     <div class="settings-label" data-i18n="listen.quick.toastDuration.label">Dinleme bildirim süresi</div>
@@ -216,6 +218,8 @@
                                                 </select>
                                             </div>
                                             <div class="settings-sub" id="pulseQuickModeDetails" aria-live="polite"></div>
+                                            <div class="settings-sub listen-quick-detected-device" id="pulseQuickDetectedDeviceStatus" aria-live="polite"></div>
+                                            <button class="reset-btn" id="pulseUltraFastPreset">⚡ Ultra Hızlı (3/5)</button>
                                             <button class="reset-btn" id="resetListen" data-i18n="listen.buttons.resetDefaults">↻ Dinle Varsayılanları</button>
                                         </div>
                                         <div class="settings-group">
@@ -245,14 +249,14 @@
                                                     <div class="settings-label" data-i18n="listen.preferences.requestInterval.label">Shazam istek aralığı</div>
                                                     <div class="settings-sub" data-i18n="listen.preferences.requestInterval.hint">Rate-limit yaşarsanız yükseltin.</div>
                                                 </div>
-                                                <input type="number" id="pulseRequestInterval" value="2" min="1" max="120" step="1"> sn
+                                                <input type="number" id="pulseRequestInterval" value="4" min="1" max="120" step="1"> sn
                                             </div>
                                             <div class="setting-row">
                                                 <div class="settings-row-left">
                                                     <div class="settings-label" data-i18n="listen.preferences.bufferSize.label">Shazam arabellek boyutu</div>
                                                     <div class="settings-sub" data-i18n="listen.preferences.bufferSize.hint">Daha uzun örnek daha kararlı olabilir ama biraz daha yavaştır.</div>
                                                 </div>
-                                                <input type="number" id="pulseBufferSize" value="5" min="4" max="30" step="1"> sn
+                                                <input type="number" id="pulseBufferSize" value="6" min="4" max="30" step="1"> sn
                                             </div>
                                             <div class="setting-row">
                                                 <div class="settings-row-left">
@@ -267,11 +271,11 @@
                                             </div>
                                             <div class="setting-row">
                                                 <div class="settings-row-left">
-                                                    <div class="settings-label">AcoustID API Key</div>
+                                                    <div class="settings-label">AcoustID API Anahtarı</div>
                                                     <div class="settings-sub" id="pulseAcoustidHint">Opsiyonel. Boş bırakılırsa hibrit mod SongRec ile çalışır.</div>
-                                                    <div class="settings-sub hidden" id="pulseAcoustidWarning" aria-live="polite">Sadece AcoustID modunda API key zorunludur. Anahtar yoksa tanıma yapılamaz.</div>
+                                                    <div class="settings-sub hidden" id="pulseAcoustidWarning" aria-live="polite">Sadece AcoustID modunda API anahtarı zorunludur. Anahtar yoksa tanıma yapılamaz.</div>
                                                 </div>
-                                                <input type="text" id="pulseAcoustidApiKey" class="settings-input" placeholder="AcoustID API key">
+                                                <input type="text" id="pulseAcoustidApiKey" class="settings-input" placeholder="AcoustID API anahtarı">
                                             </div>
                                         </div>
                                     </div>
@@ -446,6 +450,15 @@
                                                     <option value="web" data-i18n="settings.library.startupPage.options.web">Web</option>
                                                 </select>
                                             </div>
+                                            <div class="setting-row">
+                                                <span data-i18n="ui.startup.webStartupDelay">Web başlangıç yükleme gecikmesi</span>
+                                                <select class="settings-select" id="behaviorWebStartupDelay">
+                                                    <option value="0" data-i18n="ui.startup.webStartupDelay.options.instant">Anında (0 sn)</option>
+                                                    <option value="800" data-i18n="ui.startup.webStartupDelay.options.fast">Hızlı (0.8 sn)</option>
+                                                    <option value="1400" data-i18n="ui.startup.webStartupDelay.options.balanced">Dengeli (1.4 sn)</option>
+                                                    <option value="2000" data-i18n="ui.startup.webStartupDelay.options.calm">Sakin (2.0 sn)</option>
+                                                </select>
+                                            </div>
                                             <label class="checkbox-label">
                                                 <input type="checkbox" id="behaviorCloseToTray" checked>
                                                 <span data-i18n="ui.startup.closeToTray">Pencereyi kapatınca sistem tepsisine küçült</span>
@@ -595,6 +608,15 @@
                                                     <option value="music" data-i18n="settings.library.startupPage.options.music">Müzik</option>
                                                     <option value="video" data-i18n="settings.library.startupPage.options.video">Video</option>
                                                     <option value="web" data-i18n="settings.library.startupPage.options.web">Web</option>
+                                                </select>
+                                            </div>
+                                            <div class="setting-row">
+                                                <span data-i18n="ui.startup.webStartupDelay">Web başlangıç yükleme gecikmesi</span>
+                                                <select class="settings-select" id="libraryWebStartupDelay">
+                                                    <option value="0" data-i18n="ui.startup.webStartupDelay.options.instant">Anında (0 sn)</option>
+                                                    <option value="800" data-i18n="ui.startup.webStartupDelay.options.fast">Hızlı (0.8 sn)</option>
+                                                    <option value="1400" data-i18n="ui.startup.webStartupDelay.options.balanced">Dengeli (1.4 sn)</option>
+                                                    <option value="2000" data-i18n="ui.startup.webStartupDelay.options.calm">Sakin (2.0 sn)</option>
                                                 </select>
                                             </div>
                                             <div class="settings-sub" data-i18n="settings.library.startupHint">Son bölüm hatırlama kapalıysa uygulama bu bölümle açılır.</div>
@@ -1018,8 +1040,8 @@
                                 </div>
                             </div>
                             <div class="modal-footer">
-                                <button class="btn settings-action-btn settings-action-btn-secondary settings-action-btn-reset" id="settingsResetCurrentTab" data-i18n="settings.buttons.resetCurrentTab">Varsayılana döndür</button>
                                 <button class="btn settings-action-btn settings-action-btn-ghost" id="settingsCancel" data-i18n="settings.buttons.cancel">İptal</button>
+                                <button class="btn settings-action-btn settings-action-btn-secondary settings-action-btn-reset" id="settingsResetCurrentTab" data-i18n="settings.buttons.resetCurrentTab">Varsayılana döndür</button>
                                 <button class="btn settings-action-btn settings-action-btn-primary" id="settingsOk" data-i18n="settings.buttons.save">Kaydet</button>
                             </div>
                         </div>

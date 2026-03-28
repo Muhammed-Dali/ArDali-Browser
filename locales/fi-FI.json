@@ -518,5 +518,12 @@
       "autoMultichannel": "Auto enable/disable surround on multichannel outputs (>2 channels)",
       "outputUnknown": "Unknown output"
     }
-  }
+  },
+  "listen.quick.sharedNote.line1": "Kuuntele-välilehden asetukset ovat yhteiset sekä Kuuntele-paneelille että Pikakuuntelulle.",
+  "listen.quick.sharedNote.line2": "Pikakuuntelu avaa automaattisesti ensimmäisen varmennetun tuloksen verkkopalvelussa.",
+  "ui.startup.webStartupDelay": "Verkon käynnistyslatauksen viive",
+  "ui.startup.webStartupDelay.options.instant": "Välitön (0 s)",
+  "ui.startup.webStartupDelay.options.fast": "Nopea (0,8 s)",
+  "ui.startup.webStartupDelay.options.balanced": "Tasapainoinen (1,4 s)",
+  "ui.startup.webStartupDelay.options.calm": "Rauhallinen (2,0 s)"
 }

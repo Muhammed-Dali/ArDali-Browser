@@ -518,5 +518,12 @@
       "autoMultichannel": "Auto enable/disable surround on multichannel outputs (>2 channels)",
       "outputUnknown": "Unknown output"
     }
-  }
+  },
+  "listen.quick.sharedNote.line1": "A Hallgatás fül beállításai közösek a Hallgatás panel és a Gyors hallgatás között.",
+  "listen.quick.sharedNote.line2": "A Gyors hallgatás automatikusan megnyitja az első ellenőrzött találatot a webes platformon.",
+  "ui.startup.webStartupDelay": "Webes indulási betöltési késleltetés",
+  "ui.startup.webStartupDelay.options.instant": "Azonnali (0 mp)",
+  "ui.startup.webStartupDelay.options.fast": "Gyors (0,8 mp)",
+  "ui.startup.webStartupDelay.options.balanced": "Kiegyensúlyozott (1,4 mp)",
+  "ui.startup.webStartupDelay.options.calm": "Nyugodt (2,0 mp)"
 }

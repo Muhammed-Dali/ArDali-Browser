@@ -470,5 +470,12 @@
       "autoMultichannel": "Auto enable/disable surround on multichannel outputs (>2 channels)",
       "outputUnknown": "Unknown output"
     }
-  }
+  },
+  "listen.quick.sharedNote.line1": "“听歌”选项卡的设置由“听歌面板”和“快速听歌”共同使用。",
+  "listen.quick.sharedNote.line2": "快速听歌会自动在网页平台打开第一个已验证结果。",
+  "ui.startup.webStartupDelay": "Web 启动加载延迟",
+  "ui.startup.webStartupDelay.options.instant": "即时（0 秒）",
+  "ui.startup.webStartupDelay.options.fast": "快速（0.8 秒）",
+  "ui.startup.webStartupDelay.options.balanced": "平衡（1.4 秒）",
+  "ui.startup.webStartupDelay.options.calm": "平稳（2.0 秒）"
 }

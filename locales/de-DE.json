@@ -518,5 +518,12 @@
       "autoMultichannel": "Auto enable/disable surround on multichannel outputs (>2 channels)",
       "outputUnknown": "Unknown output"
     }
-  }
+  },
+  "listen.quick.sharedNote.line1": "Die Einstellungen im Reiter \"Hören\" gelten sowohl für das Hören-Panel als auch für Schnellhören.",
+  "listen.quick.sharedNote.line2": "Schnellhören öffnet das erste verifizierte Ergebnis automatisch auf der Web-Plattform.",
+  "ui.startup.webStartupDelay": "Web-Startladeverzögerung",
+  "ui.startup.webStartupDelay.options.instant": "Sofort (0 Sek.)",
+  "ui.startup.webStartupDelay.options.fast": "Schnell (0,8 Sek.)",
+  "ui.startup.webStartupDelay.options.balanced": "Ausgewogen (1,4 Sek.)",
+  "ui.startup.webStartupDelay.options.calm": "Sanft (2,0 Sek.)"
 }

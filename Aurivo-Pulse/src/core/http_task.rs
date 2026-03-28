@@ -224,7 +224,9 @@ pub async fn http_task(
     session.set_timeout(20);
     session.set_idle_timeout(2);
 
-    const REQUIRED_STABLE_HITS: u8 = 2;
+    // SongRec'e yakın davranış için ilk güçlü eşleşmede sonucu yayınla.
+    // 2 olduğunda bazı cihazlarda tespit görünür şekilde gecikebiliyor.
+    const REQUIRED_STABLE_HITS: u8 = 1;
     const STABLE_HIT_WINDOW: Duration = Duration::from_secs(45);
     let mut pending_track_key: String = String::new();
     let mut pending_track_hits: u8 = 0;

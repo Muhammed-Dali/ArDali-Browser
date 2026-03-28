@@ -396,6 +396,7 @@ function initNativeAudioEngineSafe({ force = false } = {}) {
 let mainWindow;
 let settingsWindow = null;
 let adblockDashboardWindow = null;
+let adblockDashboardAutoSyncTimer = null;
 const ADBLOCK_DASHBOARD_WINDOW_SIZE = Object.freeze({
     width: 1120,
     height: 820,
@@ -1575,8 +1576,9 @@ function getDefaultAurivoPulsePreferences() {
         enable_mpris: false,
         enable_systray: false,
         no_duplicates: false,
-        request_interval_secs_v3: 2,
-        buffer_size_secs: 5,
+        // Dengeli kalite/hiz: hizli (2/5) profile gore daha guvenilir sonuc verir.
+        request_interval_secs_v3: 4,
+        buffer_size_secs: 8,
         current_device_name: '',
         recognition_engine: 'hybrid',
         acoustid_api_key: ''
@@ -1588,8 +1590,10 @@ async function migrateLegacyAurivoPulsePerformancePrefsIfNeeded() {
     const preferences = current?.preferences || {};
     const requestInterval = Number(preferences.request_interval_secs_v3) || 0;
     const bufferSize = Number(preferences.buffer_size_secs) || 0;
-    // Eski varsayilanlar (8/12) yeni hizli varsayilana geciriliyor.
-    if (requestInterval === 8 && bufferSize === 12) {
+    // Eski profilleri dengeli varsayilana getir:
+    // - cok hizli: 2/5
+    // - eski SongRec varsayilani: 8/12
+    if ((requestInterval === 2 && bufferSize === 5) || (requestInterval === 8 && bufferSize === 12)) {
         await saveAurivoPulsePreferences({
             request_interval_secs_v3: getDefaultAurivoPulsePreferences().request_interval_secs_v3,
             buffer_size_secs: getDefaultAurivoPulsePreferences().buffer_size_secs
@@ -2516,7 +2520,7 @@ function buildPulseGuiEnv() {
             env.BAMF_DESKTOP_FILE_HINT = desktopHint;
             env.GIO_LAUNCHED_DESKTOP_FILE = desktopHint;
         }
-        // Ayrı kimlik yerine ana uygulama kimliği.
+        // Eski (gruplama çalışan) kimliği koru.
         env.AURIVO_APP_ID = 'aurivo-media-player';
     }
 
@@ -3574,14 +3578,15 @@ function createEQPresetsWindow() {
 
     console.log('[createEQPresetsWindow] BrowserWindow oluşturuluyor...');
     eqPresetsWindow = new BrowserWindow({
-        width: 560,
-        height: 720,
-        minWidth: 520,
-        minHeight: 640,
+        width: 980,
+        height: 820,
+        minWidth: 980,
+        minHeight: 820,
         backgroundColor: '#111115',
         icon: getAppIconImage(),
         parent: parentWindow,
         modal: false,
+        autoHideMenuBar: true,
         webPreferences: {
             preload: path.join(__dirname, 'preload.js'),
             nodeIntegration: false,
@@ -3592,6 +3597,13 @@ function createEQPresetsWindow() {
         title: 'Aurivo Hazır Ayarlar — Aurivo Medya Player',
         show: false
     });
+
+    try {
+        eqPresetsWindow.setMenuBarVisibility(false);
+        if (typeof eqPresetsWindow.removeMenu === 'function') {
+            eqPresetsWindow.removeMenu();
+        }
+    } catch { }
 
     let hasEverBeenShown = false;
 
@@ -4801,11 +4813,202 @@ function mapUiLangToAdblockLocale(uiLang = '') {
     return base || 'en';
 }
 
+function getAdblockSavedToastText(uiLang = '') {
+    const normalized = normalizeUiLang(uiLang) || 'en-US';
+    const base = String(normalized).split('-')[0].toLowerCase();
+    if (base === 'tr') return 'Kaydedildi';
+    if (base === 'ar') return 'تم الحفظ';
+    if (base === 'fr') return 'Enregistre';
+    if (base === 'es') return 'Guardado';
+    if (base === 'de') return 'Gespeichert';
+    if (base === 'ru') return 'Сохранено';
+    if (base === 'zh') return '已保存';
+    return 'Saved';
+}
+
 function mapAdblockModeToUbolLevel(mode = '') {
     const normalized = String(mode || '').trim().toLowerCase();
     if (normalized === 'basic') return 1;
     if (normalized === 'aggressive') return 3;
     return 2;
+}
+
+function mapUbolLevelToAdblockMode(level) {
+    const n = Number(level);
+    if (n === 1) return 'basic';
+    if (n === 3) return 'aggressive';
+    return 'ideal';
+}
+
+async function updateAdblockSettingsInFile(patch = {}) {
+    try {
+        let current = {};
+        try {
+            const data = await fs.promises.readFile(getSettingsPath(), 'utf8');
+            current = JSON.parse(data);
+        } catch {
+            current = {};
+        }
+
+        const next = { ...(current || {}) };
+        next.adblock = { ...(next.adblock || {}) };
+        Object.assign(next.adblock, patch || {});
+
+        const sanitized = sanitizeSensitiveSettings(next);
+        await writeJsonFileAtomic(getSettingsPath(), sanitized);
+
+        for (const targetWindow of [mainWindow, settingsWindow, soundEffectsWindow]) {
+            if (!targetWindow || targetWindow.isDestroyed()) continue;
+            try {
+                targetWindow.webContents.send('settings:reloaded', sanitized);
+            } catch {
+                // yoksay
+            }
+        }
+
+        return sanitized;
+    } catch (e) {
+        console.error('[ADBLOCK] settings file update error:', e);
+        return null;
+    }
+}
+
+async function readAdblockStateFromDashboard(win) {
+    try {
+        if (!win || win.isDestroyed()) {
+            return {
+                mode: '',
+                autoReload: undefined,
+                showBlockedCount: undefined,
+                strictBlock: undefined,
+                developerMode: undefined,
+            };
+        }
+        const state = await win.webContents.executeJavaScript(`
+            (async () => {
+                const out = {};
+                try {
+                    const normalize = (v) => {
+                        const n = Number(v);
+                        if (n === 1) return 'basic';
+                        if (n === 3) return 'aggressive';
+                        return 'ideal';
+                    };
+
+                    try {
+                        const options = await chrome.runtime.sendMessage({ what: 'getOptionsPageData' });
+                        if (options && typeof options === 'object') {
+                            if (typeof options.defaultFilteringMode !== 'undefined') {
+                                out.mode = normalize(options.defaultFilteringMode);
+                            }
+                            if (typeof options.autoReload === 'boolean') {
+                                out.autoReload = options.autoReload;
+                            }
+                            if (typeof options.showBlockedCount === 'boolean') {
+                                out.showBlockedCount = options.showBlockedCount;
+                            }
+                            if (typeof options.strictBlockMode === 'boolean') {
+                                out.strictBlock = options.strictBlockMode;
+                            }
+                            if (typeof options.developerMode === 'boolean') {
+                                out.developerMode = options.developerMode;
+                            }
+                        }
+                    } catch {}
+
+                    try {
+                        const levelRes = await chrome.runtime.sendMessage({ what: 'getDefaultFilteringMode' });
+                        if (typeof levelRes === 'number') out.mode = normalize(levelRes);
+                        if (levelRes && typeof levelRes === 'object' && typeof levelRes.level !== 'undefined') {
+                            out.mode = normalize(levelRes.level);
+                        }
+                    } catch {}
+
+                    try {
+                        const modes = await chrome.runtime.sendMessage({ what: 'getFilteringModeDetails' });
+                        if (modes && typeof modes === 'object') {
+                            const hasAll = (arr) => Array.isArray(arr) && arr.includes('all-urls');
+                            if (hasAll(modes.complete)) out.mode = 'aggressive';
+                            else if (hasAll(modes.basic)) out.mode = 'basic';
+                            else out.mode = 'ideal';
+                        }
+                    } catch {}
+                } catch {}
+                return out;
+            })();
+        `, true);
+
+        const next = (state && typeof state === 'object') ? state : {};
+        const normalizedMode = String(next.mode || '').trim().toLowerCase();
+        return {
+            mode: (normalizedMode === 'basic' || normalizedMode === 'ideal' || normalizedMode === 'aggressive')
+                ? normalizedMode
+                : '',
+            autoReload: typeof next.autoReload === 'boolean' ? next.autoReload : undefined,
+            showBlockedCount: typeof next.showBlockedCount === 'boolean' ? next.showBlockedCount : undefined,
+            strictBlock: typeof next.strictBlock === 'boolean' ? next.strictBlock : undefined,
+            developerMode: typeof next.developerMode === 'boolean' ? next.developerMode : undefined,
+        };
+    } catch {
+        return {
+            mode: '',
+            autoReload: undefined,
+            showBlockedCount: undefined,
+            strictBlock: undefined,
+            developerMode: undefined,
+        };
+    }
+}
+
+async function syncAdblockStateFromDashboardToApp(win) {
+    const dashboardState = await readAdblockStateFromDashboard(win);
+    if (!dashboardState || typeof dashboardState !== 'object') return false;
+
+    const currentCfg = getAdBlockerConfig?.() || {};
+    const currentMode = String(currentCfg.mode || '').trim().toLowerCase();
+    const patch = {};
+
+    if (dashboardState.mode && currentMode !== dashboardState.mode) {
+        patch.mode = dashboardState.mode;
+    }
+    if (typeof dashboardState.autoReload === 'boolean' && !!currentCfg.autoReload !== dashboardState.autoReload) {
+        patch.autoReload = dashboardState.autoReload;
+    }
+    if (typeof dashboardState.showBlockedCount === 'boolean' && !!currentCfg.showBlockedCount !== dashboardState.showBlockedCount) {
+        patch.showBlockedCount = dashboardState.showBlockedCount;
+    }
+    if (typeof dashboardState.strictBlock === 'boolean' && !!currentCfg.strictBlock !== dashboardState.strictBlock) {
+        patch.strictBlock = dashboardState.strictBlock;
+    }
+    if (typeof dashboardState.developerMode === 'boolean' && !!currentCfg.developerMode !== dashboardState.developerMode) {
+        patch.developerMode = dashboardState.developerMode;
+    }
+
+    if (Object.keys(patch).length === 0) return true;
+
+    const updatedCfg = setAdBlockerConfig(patch) || {};
+    await updateAdblockSettingsInFile({
+        mode: String(updatedCfg.mode || dashboardState.mode || currentMode || 'ideal'),
+        showBlockedCount: !!updatedCfg.showBlockedCount,
+        autoRefreshOnModeChange: !!updatedCfg.autoReload,
+        strictBlock: !!updatedCfg.strictBlock,
+        developerMode: !!updatedCfg.developerMode
+    });
+
+    try {
+        if (win && !win.isDestroyed()) {
+            await win.webContents.executeJavaScript(`
+                try {
+                    if (typeof window.__aurivoShowSavedToast === 'function') {
+                        window.__aurivoShowSavedToast();
+                    }
+                } catch {}
+            `, true);
+        }
+    } catch {
+        // yoksay
+    }
+    return true;
 }
 
 async function syncAdblockConfigToDashboard(win) {
@@ -4816,8 +5019,6 @@ async function syncAdblockConfigToDashboard(win) {
         const payload = {
             autoReload: !!cfg.autoReload,
             showBlockedCount: !!cfg.showBlockedCount,
-            strictBlock: !!cfg.strictBlock,
-            developerMode: !!cfg.developerMode,
             modeLevel
         };
         await win.webContents.executeJavaScript(`
@@ -4831,8 +5032,6 @@ async function syncAdblockConfigToDashboard(win) {
                 } catch {}
                 send('setAutoReload', cfg.autoReload);
                 send('setShowBlockedCount', cfg.showBlockedCount);
-                send('setStrictBlockMode', cfg.strictBlock);
-                send('setDeveloperMode', cfg.developerMode);
             } catch {}
         `, true);
     } catch {
@@ -4872,10 +5071,6 @@ async function ensureAdblockDefaultFilteringDetails(win) {
                         complete: Array.isArray(modes.complete) ? Array.from(new Set(modes.complete.map(v => String(v || '').trim()).filter(Boolean))) : [],
                     };
 
-                    if (!next.optimal.includes('all-urls')) {
-                        next.optimal.push('all-urls');
-                    }
-
                     let changed = false;
                     const completeSet = new Set(next.complete);
                     for (const host of defaults) {
@@ -4885,17 +5080,6 @@ async function ensureAdblockDefaultFilteringDetails(win) {
                         }
                     }
                     next.complete = Array.from(completeSet);
-
-                    // Eğer all-urls complete/basic/none içine kaçtıysa varsayılan optimal dengesi korunur.
-                    for (const bucket of ['none', 'basic', 'complete']) {
-                        if (next[bucket].includes('all-urls')) {
-                            next[bucket] = next[bucket].filter(v => v !== 'all-urls');
-                            changed = true;
-                        }
-                    }
-                    if (!Array.isArray(modes.optimal) || !modes.optimal.includes('all-urls')) {
-                        changed = true;
-                    }
 
                     if (changed) {
                         await setModes(next);
@@ -4913,11 +5097,40 @@ async function ensureAdblockDefaultFilteringDetails(win) {
     }
 }
 
+function startAdblockDashboardAutoSync(win) {
+    try {
+        if (adblockDashboardAutoSyncTimer) {
+            clearInterval(adblockDashboardAutoSyncTimer);
+            adblockDashboardAutoSyncTimer = null;
+        }
+    } catch {
+        // yoksay
+    }
+
+    if (!win || win.isDestroyed()) return;
+
+    adblockDashboardAutoSyncTimer = setInterval(() => {
+        syncAdblockStateFromDashboardToApp(win).catch(() => {});
+    }, 1200);
+}
+
+function stopAdblockDashboardAutoSync() {
+    try {
+        if (adblockDashboardAutoSyncTimer) {
+            clearInterval(adblockDashboardAutoSyncTimer);
+            adblockDashboardAutoSyncTimer = null;
+        }
+    } catch {
+        // yoksay
+    }
+}
+
 async function applyAdblockDashboardBranding(win, uiLang = 'en-US') {
     try {
         if (!win || win.isDestroyed()) return;
         win.setTitle('Aurivo');
         const targetLocale = mapUiLangToAdblockLocale(uiLang);
+        const savedToastText = getAdblockSavedToastText(uiLang);
         await win.webContents.executeJavaScript(`
             try {
                 document.title = 'Aurivo';
@@ -5049,9 +5262,72 @@ async function applyAdblockDashboardBranding(win, uiLang = 'en-US') {
                             line-height: 1;
                             filter: drop-shadow(0 0 6px rgba(49,208,255,0.55));
                         }
+                        #aurivo-save-toast {
+                            position: fixed;
+                            left: 50%;
+                            bottom: max(80px, env(safe-area-inset-bottom, 0px) + 16px);
+                            z-index: 2147483647;
+                            display: inline-flex;
+                            align-items: center;
+                            justify-content: center;
+                            padding: 7px 11px;
+                            min-height: 32px;
+                            max-width: min(92vw, 520px);
+                            border-radius: 9px;
+                            border: 1px solid rgba(76, 234, 185, 0.55);
+                            background: rgba(5, 16, 28, 0.92);
+                            color: #d8fff2;
+                            font-size: 12px;
+                            font-weight: 700;
+                            letter-spacing: 0.01em;
+                            white-space: nowrap;
+                            text-overflow: ellipsis;
+                            overflow: hidden;
+                            opacity: 0;
+                            transform: translate(-50%, 6px);
+                            pointer-events: none;
+                            transition: opacity .15s ease, transform .15s ease;
+                            box-shadow: 0 10px 24px rgba(0,0,0,0.4);
+                        }
+                        #aurivo-save-toast.show {
+                            opacity: 1;
+                            transform: translate(-50%, 0);
+                        }
                     \`;
                     document.head.appendChild(style);
                 }
+                if (!window.__aurivoSaveToastInit) {
+                    window.__aurivoSaveToastInit = true;
+                    window.__aurivoShowSavedToast = () => {
+                        try {
+                            let el = document.getElementById('aurivo-save-toast');
+                            if (!el) {
+                                el = document.createElement('div');
+                                el.id = 'aurivo-save-toast';
+                                (document.documentElement || document.body).appendChild(el);
+                            }
+                            el.textContent = window.__aurivoSaveToastText || 'Saved';
+                            el.classList.add('show');
+                            clearTimeout(window.__aurivoSaveToastTimer);
+                            window.__aurivoSaveToastTimer = setTimeout(() => {
+                                try { el.classList.remove('show'); } catch {}
+                            }, 1100);
+                        } catch {}
+                    };
+                    const onUiMutate = (event) => {
+                        try {
+                            const target = event && event.target;
+                            if (!target || !(target instanceof Element)) return;
+                            if (target.closest('#defaultFilteringMode, #autoReload, #showBlockedCount, #strictBlockMode, #developerMode')) {
+                                if (typeof window.__aurivoShowSavedToast === 'function') {
+                                    window.__aurivoShowSavedToast();
+                                }
+                            }
+                        } catch {}
+                    };
+                    document.addEventListener('change', onUiMutate, true);
+                }
+                window.__aurivoSaveToastText = ${JSON.stringify(savedToastText)};
                 const logo = document.querySelector('#dashboard-nav .logo');
                 if (logo && !logo.querySelector('#aurivo-logo-shield')) {
                     const shield = document.createElement('span');
@@ -5076,6 +5352,40 @@ async function applyAdblockDashboardBranding(win, uiLang = 'en-US') {
         `, true);
     } catch {
         // dashboard CSP/içerik kısıtları nedeniyle başarısız olabilir; en azından pencere başlığı set edilir.
+    }
+}
+
+async function ensureAdblockDashboardVisibleContent(win) {
+    try {
+        if (!win || win.isDestroyed()) return;
+        const wc = win.webContents;
+        if (!wc || wc.isDestroyed()) return;
+        const currentUrl = String(wc.getURL() || '');
+        if (!/\/dashboard\.html(?:[#?]|$)/i.test(currentUrl)) return;
+        const probe = await wc.executeJavaScript(`
+            (() => {
+                try {
+                    const hasDashboardUi = !!document.querySelector(
+                        '#dashboard-nav, #defaultFilteringMode, .filteringModeCard, .dashboard'
+                    );
+                    const hasPopupUi = !!document.querySelector(
+                        '#moreButton, .popupPanel, .filteringModeSlider'
+                    );
+                    const textLen = String(document.body?.innerText || '').trim().length;
+                    return { hasDashboardUi, hasPopupUi, textLen };
+                } catch {
+                    return { hasDashboardUi: false, hasPopupUi: false, textLen: 0 };
+                }
+            })();
+        `, true);
+        const hasUi = !!(probe && (probe.hasDashboardUi || probe.hasPopupUi));
+        const textLen = Number(probe?.textLen || 0);
+        if (!hasUi && textLen === 0) {
+            const fallbackUrl = currentUrl.replace('/dashboard.html', '/popup.html');
+            await wc.loadURL(fallbackUrl);
+        }
+    } catch {
+        // yoksay
     }
 }
 
@@ -5207,7 +5517,11 @@ async function ensureAdblockDashboardLaunchInfo(preferredPartition = '') {
     };
 
     const initial = resolveAdblockDashboardUrlFallback(preferredPartition);
-    if (initial.url) return initial;
+    // file://dashboard.html uzantı bağlamı olmadan siyah/boş pencere verebilir.
+    // Bu yüzden önce extension'ı session'a yüklemeyi dene; yalnızca chrome-extension://
+    // zaten mevcutsa doğrudan dönebiliriz.
+    const initialUrl = String(initial?.url || '').trim().toLowerCase();
+    if (initialUrl.startsWith('chrome-extension://')) return initial;
 
     const extensionPath = resolveBundledUbolExtensionPathForDashboard();
     if (!extensionPath) return initial;
@@ -5257,10 +5571,20 @@ ipcMain.handle('adblock:openDashboard', async () => {
         let dashboardUrl = String(launchInfo.url || getAdBlockerDashboardUrl() || '').trim();
         let targetPartition = String(launchInfo.partition || WEBVIEW_PARTITION).trim();
         const uiLang = getUiLanguageSync();
-        if (!dashboardUrl) {
-            const fallback = await ensureAdblockDashboardLaunchInfo(targetPartition);
-            dashboardUrl = String(fallback.url || '').trim();
-            targetPartition = String(fallback.partition || targetPartition || WEBVIEW_PARTITION).trim();
+        // Modül içindeki saklı launch bilgisi (id/partition) güncel olmayabilir.
+        // Her açılışta canlı session'lardan yeniden çözerek siyah/boş dashboard penceresini önle.
+        const resolved = await ensureAdblockDashboardLaunchInfo(targetPartition);
+        if (resolved && resolved.url) {
+            dashboardUrl = String(resolved.url || '').trim();
+            targetPartition = String(resolved.partition || targetPartition || WEBVIEW_PARTITION).trim();
+        }
+        if (dashboardUrl.toLowerCase().startsWith('file://')) {
+            const secondTry = resolveAdblockDashboardUrlFallback(targetPartition);
+            const secondUrl = String(secondTry?.url || '').trim();
+            if (secondUrl.toLowerCase().startsWith('chrome-extension://')) {
+                dashboardUrl = secondUrl;
+                targetPartition = String(secondTry.partition || targetPartition || WEBVIEW_PARTITION).trim();
+            }
         }
         if (!dashboardUrl) return false;
 
@@ -5280,9 +5604,15 @@ ipcMain.handle('adblock:openDashboard', async () => {
         }
 
         if (adblockDashboardWindow && !adblockDashboardWindow.isDestroyed()) {
+            await syncAdblockStateFromDashboardToApp(adblockDashboardWindow);
             adblockDashboardWindow.show();
             adblockDashboardWindow.focus();
-            try { await adblockDashboardWindow.loadURL(dashboardUrl); } catch { }
+            try {
+                const currentUrl = String(adblockDashboardWindow.webContents?.getURL?.() || '').trim();
+                if (!currentUrl) {
+                    await adblockDashboardWindow.loadURL(dashboardUrl);
+                }
+            } catch { }
             try {
                 adblockDashboardWindow.setAutoHideMenuBar(true);
                 adblockDashboardWindow.setMenuBarVisibility(false);
@@ -5290,8 +5620,12 @@ ipcMain.handle('adblock:openDashboard', async () => {
             } catch { }
             await applyAdblockDashboardBranding(adblockDashboardWindow, uiLang);
             await ensureAdblockDefaultFilteringDetails(adblockDashboardWindow);
+            await syncAdblockStateFromDashboardToApp(adblockDashboardWindow);
+            startAdblockDashboardAutoSync(adblockDashboardWindow);
             return true;
         }
+
+        let adblockDashboardCloseSyncInProgress = false;
 
         adblockDashboardWindow = new BrowserWindow({
             width: ADBLOCK_DASHBOARD_WINDOW_SIZE.width,
@@ -5301,6 +5635,8 @@ ipcMain.handle('adblock:openDashboard', async () => {
             title: 'Aurivo',
             icon: getAppIconImage(),
             autoHideMenuBar: true,
+            show: false,
+            backgroundColor: '#0f0f0f',
             parent: mainWindow && !mainWindow.isDestroyed() ? mainWindow : undefined,
             webPreferences: {
                 partition: targetPartition || WEBVIEW_PARTITION,
@@ -5311,7 +5647,25 @@ ipcMain.handle('adblock:openDashboard', async () => {
             }
         });
 
+        adblockDashboardWindow.on('close', (event) => {
+            if (adblockDashboardCloseSyncInProgress) return;
+            event.preventDefault();
+            adblockDashboardCloseSyncInProgress = true;
+            syncAdblockStateFromDashboardToApp(adblockDashboardWindow)
+                .catch(() => {})
+                .finally(() => {
+                    try {
+                        if (adblockDashboardWindow && !adblockDashboardWindow.isDestroyed()) {
+                            adblockDashboardWindow.destroy();
+                        }
+                    } catch {
+                        // yoksay
+                    }
+                });
+        });
+
         adblockDashboardWindow.on('closed', () => {
+            stopAdblockDashboardAutoSync();
             adblockDashboardWindow = null;
         });
         try {
@@ -5335,8 +5689,23 @@ ipcMain.handle('adblock:openDashboard', async () => {
                 adblockDashboardWindow.setMenuBarVisibility(false);
                 adblockDashboardWindow.setMenu(null);
             } catch { }
+            ensureAdblockDashboardVisibleContent(adblockDashboardWindow).catch(() => {});
             applyAdblockDashboardBranding(adblockDashboardWindow, uiLang).catch(() => {});
             ensureAdblockDefaultFilteringDetails(adblockDashboardWindow).catch(() => {});
+            syncAdblockStateFromDashboardToApp(adblockDashboardWindow).catch(() => {});
+            startAdblockDashboardAutoSync(adblockDashboardWindow);
+            try {
+                if (!adblockDashboardWindow.isVisible()) {
+                    adblockDashboardWindow.show();
+                }
+            } catch { }
+        });
+        adblockDashboardWindow.once('ready-to-show', () => {
+            try {
+                if (!adblockDashboardWindow.isVisible()) {
+                    adblockDashboardWindow.show();
+                }
+            } catch { }
         });
 
         try {
@@ -5345,9 +5714,12 @@ ipcMain.handle('adblock:openDashboard', async () => {
             const fallbackUrl = dashboardUrl.replace('/dashboard.html', '/popup.html');
             await adblockDashboardWindow.loadURL(fallbackUrl);
         }
+        await ensureAdblockDashboardVisibleContent(adblockDashboardWindow);
         await applyAdblockDashboardBranding(adblockDashboardWindow, uiLang);
         await ensureAdblockDefaultFilteringDetails(adblockDashboardWindow);
-        adblockDashboardWindow.show();
+        await syncAdblockStateFromDashboardToApp(adblockDashboardWindow);
+        startAdblockDashboardAutoSync(adblockDashboardWindow);
+        if (!adblockDashboardWindow.isVisible()) adblockDashboardWindow.show();
         adblockDashboardWindow.focus();
         return true;
     } catch (e) {
@@ -7147,22 +7519,26 @@ ipcMain.handle('audio:setStereoExpander', (event, percent) => {
 // ============================================
 // AUTO GAIN / NORMALIZE IPC İŞLEYİCİLERİ
 // ============================================
+let lastAutoGainEnabledState = null;
 ipcMain.handle('audio:setAutoGainEnabled', (event, enabled) => {
-    console.log('[MAIN] audio:setAutoGainEnabled called with:', enabled);
+    const nextEnabled = enabled === true;
     try {
         if (!audioEngine || !isNativeAudioAvailable) {
             console.log('[MAIN] Native audio not available');
             return { success: false, error: 'Native audio yok' };
         }
+        if (lastAutoGainEnabledState === nextEnabled) {
+            return { success: true, skipped: true };
+        }
         if (typeof audioEngine.setAutoGainEnabled === 'function') {
-            audioEngine.setAutoGainEnabled(enabled);
+            audioEngine.setAutoGainEnabled(nextEnabled);
             // Native tarafta AGC kapatılırken ses 1.0'a dönebilen sürümler için
             // mevcut master volume'u tekrar uygula.
-            if (!enabled && typeof audioEngine.getVolume === 'function' && typeof audioEngine.setVolume === 'function') {
+            if (!nextEnabled && typeof audioEngine.getVolume === 'function' && typeof audioEngine.setVolume === 'function') {
                 const current = Math.max(0, Math.min(1, Number(audioEngine.getVolume()) || 0));
                 audioEngine.setVolume(current);
             }
-            console.log('[MAIN] setAutoGainEnabled success');
+            lastAutoGainEnabledState = nextEnabled;
             return { success: true };
         }
         console.log('[MAIN] setAutoGainEnabled function not found');

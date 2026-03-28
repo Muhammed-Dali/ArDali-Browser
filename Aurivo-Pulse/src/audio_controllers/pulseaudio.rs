@@ -175,11 +175,15 @@ impl AudioBackend for PulseBackend {
                     continue;
                 }
                 let name_match = device
-                    .name()
+                    .description()
                     .ok()
-                    .map(|name| {
-                        let n = name.to_lowercase();
-                        n == needle || n.contains(&needle) || needle.contains(&n)
+                    .map(|desc| {
+                        let n = desc.name().to_lowercase();
+                        let full = desc.to_string().to_lowercase();
+                        n == needle
+                            || n.contains(&needle)
+                            || needle.contains(&n)
+                            || full.contains(&needle)
                     })
                     .unwrap_or(false);
                 if name_match {

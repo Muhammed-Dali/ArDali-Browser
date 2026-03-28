@@ -76,9 +76,11 @@ async function commitFilteringMode() {
         }
         let granted = false;
         try {
-            granted = await browser.permissions.request({
-                origins: [ `*://*.${targetHostname}/*` ],
-            });
+            granted = (browser?.permissions?.request instanceof Function)
+                ? await browser.permissions.request({
+                    origins: [ `*://*.${targetHostname}/*` ],
+                })
+                : true;
         } catch {
         }
         if ( granted !== true ) {
@@ -359,4 +361,3 @@ async function tryInit() {
 tryInit();
 
 /******************************************************************************/
-

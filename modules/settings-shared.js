@@ -1,4 +1,21 @@
 (function attachAurivoSettingsShared() {
+    const WEB_STARTUP_LAZY_DELAY_OPTIONS = [0, 800, 1400, 2000];
+    const WEB_STARTUP_LAZY_DELAY_DEFAULT_MS = 1400;
+
+    function normalizeWebStartupLazyDelayMs(value) {
+        const num = Number(value);
+        return WEB_STARTUP_LAZY_DELAY_OPTIONS.includes(num) ? num : WEB_STARTUP_LAZY_DELAY_DEFAULT_MS;
+    }
+
+    function getPulseQuickPreset(mode) {
+        const key = String(mode || '').trim().toLowerCase();
+        // Hızlı / Dengeli / Hassas profilleri:
+        // normal=2/5, background=4/8, max=8/12
+        if (key === 'normal') return { requestInterval: 2, bufferSize: 5 };
+        if (key === 'max') return { requestInterval: 8, bufferSize: 12 };
+        return { requestInterval: 4, bufferSize: 8 };
+    }
+
     function normalizeVisualMode(value) {
         const normalized = String(value || '').trim().toLowerCase();
         if (['full', 'balanced', 'minimal'].includes(normalized)) return normalized;
@@ -220,12 +237,18 @@
 
         const pulsePrefs = normalizePulsePreferenceState(state.settings?.pulsePreferences);
         state.settings.pulsePreferences = pulsePrefs;
+        const pulseModeForPreset = String(
+            elements.pulseQuickMode?.value
+            || state.settings?.pulseQuick?.mode
+            || 'background'
+        ).trim().toLowerCase();
+        const pulsePreset = getPulseQuickPreset(pulseModeForPreset);
         if (elements.pulseEnableNotifications) elements.pulseEnableNotifications.checked = !!pulsePrefs.enable_notifications;
         if (elements.pulseEnableMpris) elements.pulseEnableMpris.checked = !!pulsePrefs.enable_mpris;
         if (elements.pulseEnableSystray) elements.pulseEnableSystray.checked = !!pulsePrefs.enable_systray;
         if (elements.pulseNoDuplicates) elements.pulseNoDuplicates.checked = !!pulsePrefs.no_duplicates;
-        if (elements.pulseRequestInterval) elements.pulseRequestInterval.value = String(pulsePrefs.request_interval_secs_v3);
-        if (elements.pulseBufferSize) elements.pulseBufferSize.value = String(pulsePrefs.buffer_size_secs);
+        if (elements.pulseRequestInterval) elements.pulseRequestInterval.value = String(pulsePreset.requestInterval);
+        if (elements.pulseBufferSize) elements.pulseBufferSize.value = String(pulsePreset.bufferSize);
         if (elements.pulseRecognitionEngine) elements.pulseRecognitionEngine.value = String(pulsePrefs.recognition_engine || 'hybrid');
         if (elements.pulseAcoustidApiKey) elements.pulseAcoustidApiKey.value = String(pulsePrefs.acoustid_api_key || '');
 
@@ -249,6 +272,13 @@
         }
         if (elements.behaviorStartupPage) {
             elements.behaviorStartupPage.value = String(state.settings?.ui?.startupPage || 'music').toLowerCase();
+        }
+        const webStartupDelayValue = String(normalizeWebStartupLazyDelayMs(state.settings?.ui?.webStartupLazyDelayMs));
+        if (elements.libraryWebStartupDelay) {
+            elements.libraryWebStartupDelay.value = webStartupDelayValue;
+        }
+        if (elements.behaviorWebStartupDelay) {
+            elements.behaviorWebStartupDelay.value = webStartupDelayValue;
         }
         if (elements.behaviorCloseToTray) {
             elements.behaviorCloseToTray.checked = state.settings?.ui?.closeToTray !== false;
@@ -539,14 +569,15 @@
         state.settings.pulseQuick.noSignalHintSec = [4, 6, 8].includes(sec) ? sec : pulseDefaultSec;
         const mode = String(elements.pulseQuickMode?.value || pulseDefaultMode).trim().toLowerCase();
         state.settings.pulseQuick.mode = ['normal', 'background', 'max'].includes(mode) ? mode : pulseDefaultMode;
+        const pulsePreset = getPulseQuickPreset(state.settings.pulseQuick.mode);
 
         state.settings.pulsePreferences = normalizePulsePreferenceState({
             enable_notifications: !!elements.pulseEnableNotifications?.checked,
             enable_mpris: !!elements.pulseEnableMpris?.checked,
             enable_systray: !!elements.pulseEnableSystray?.checked,
             no_duplicates: !!elements.pulseNoDuplicates?.checked,
-            request_interval_secs_v3: Number(elements.pulseRequestInterval?.value),
-            buffer_size_secs: Number(elements.pulseBufferSize?.value),
+            request_interval_secs_v3: pulsePreset.requestInterval,
+            buffer_size_secs: pulsePreset.bufferSize,
             current_device_name: state.settings?.pulsePreferences?.current_device_name || '',
             recognition_engine: String(elements.pulseRecognitionEngine?.value || state.settings?.pulsePreferences?.recognition_engine || 'hybrid'),
             acoustid_api_key: String(elements.pulseAcoustidApiKey?.value || '')
@@ -598,6 +629,12 @@
             || 'music'
         ).toLowerCase();
         state.settings.ui.startupPage = ['music', 'video', 'web'].includes(startupPage) ? startupPage : 'music';
+        const webStartupLazyDelayMs = normalizeWebStartupLazyDelayMs(
+            elements.behaviorWebStartupDelay?.value
+            || elements.libraryWebStartupDelay?.value
+            || state.settings.ui.webStartupLazyDelayMs
+        );
+        state.settings.ui.webStartupLazyDelayMs = webStartupLazyDelayMs;
         state.settings.ui.closeToTray =
             (typeof elements.behaviorCloseToTray?.checked === 'boolean')
                 ? !!elements.behaviorCloseToTray.checked
@@ -789,8 +826,8 @@
         if (elements.pulseEnableMpris) elements.pulseEnableMpris.checked = false;
         if (elements.pulseEnableSystray) elements.pulseEnableSystray.checked = false;
         if (elements.pulseNoDuplicates) elements.pulseNoDuplicates.checked = false;
-        if (elements.pulseRequestInterval) elements.pulseRequestInterval.value = '2';
-        if (elements.pulseBufferSize) elements.pulseBufferSize.value = '5';
+        if (elements.pulseRequestInterval) elements.pulseRequestInterval.value = '4';
+        if (elements.pulseBufferSize) elements.pulseBufferSize.value = '6';
         if (elements.pulseRecognitionEngine) elements.pulseRecognitionEngine.value = 'hybrid';
         if (elements.pulseAcoustidApiKey) elements.pulseAcoustidApiKey.value = '';
     }

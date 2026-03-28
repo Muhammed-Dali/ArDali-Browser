@@ -518,5 +518,12 @@
       "autoMultichannel": "Auto enable/disable surround on multichannel outputs (>2 channels)",
       "outputUnknown": "Unknown output"
     }
-  }
+  },
+  "listen.quick.sharedNote.line1": "শোনা ট্যাবের সেটিংস Listen প্যানেল এবং Quick Listen - দুটিতেই শেয়ার করা হয়।",
+  "listen.quick.sharedNote.line2": "Quick Listen প্রথম যাচাইকৃত ফলাফলটি স্বয়ংক্রিয়ভাবে ওয়েব প্ল্যাটফর্মে খুলে দেয়।",
+  "ui.startup.webStartupDelay": "ওয়েব শুরুর লোড বিলম্ব",
+  "ui.startup.webStartupDelay.options.instant": "তাৎক্ষণিক (০ সেকেন্ড)",
+  "ui.startup.webStartupDelay.options.fast": "দ্রুত (০.৮ সেকেন্ড)",
+  "ui.startup.webStartupDelay.options.balanced": "সামঞ্জস্যপূর্ণ (১.৪ সেকেন্ড)",
+  "ui.startup.webStartupDelay.options.calm": "শান্ত (২.০ সেকেন্ড)"
 }

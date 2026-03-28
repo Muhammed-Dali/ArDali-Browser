@@ -518,5 +518,12 @@
       "autoMultichannel": "Auto enable/disable surround on multichannel outputs (>2 channels)",
       "outputUnknown": "Unknown output"
     }
-  }
+  },
+  "listen.quick.sharedNote.line1": "Cài đặt ở tab Nghe được dùng chung cho cả bảng Nghe và Nghe nhanh.",
+  "listen.quick.sharedNote.line2": "Nghe nhanh sẽ tự động mở kết quả đã xác minh đầu tiên trên nền tảng Web.",
+  "ui.startup.webStartupDelay": "Độ trễ tải Web khi khởi động",
+  "ui.startup.webStartupDelay.options.instant": "Ngay lập tức (0 giây)",
+  "ui.startup.webStartupDelay.options.fast": "Nhanh (0,8 giây)",
+  "ui.startup.webStartupDelay.options.balanced": "Cân bằng (1,4 giây)",
+  "ui.startup.webStartupDelay.options.calm": "Êm (2,0 giây)"
 }

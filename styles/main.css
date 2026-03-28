@@ -1709,12 +1709,7 @@ body.settings-window-mode #settingsPage .settings-action-btn {
 }
 
 body.settings-window-mode #settingsPage .settings-action-btn-reset {
-    margin-right: auto;
-}
-
-html[dir="rtl"] body.settings-window-mode #settingsPage .settings-action-btn-reset {
     margin-right: 0;
-    margin-left: auto;
 }
 
 body.settings-window-mode #settingsPage .settings-action-btn-ghost {

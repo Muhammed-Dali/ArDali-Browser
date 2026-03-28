@@ -103,9 +103,11 @@ async function onFilteringModeChange(ev) {
     }
     case 2:
     case 3: {
-        const granted = await browser.permissions.request({
-            origins: [ '<all_urls>' ],
-        });
+        const granted = (browser?.permissions?.request instanceof Function)
+            ? await browser.permissions.request({
+                origins: [ '<all_urls>' ],
+            }).catch(( ) => false)
+            : true;
         if ( granted ) {
             const actualLevel = await sendMessage({
                 what: 'setDefaultFilteringMode',

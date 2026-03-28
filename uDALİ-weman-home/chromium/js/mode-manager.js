@@ -340,8 +340,16 @@ export function setDefaultFilteringMode(afterLevel) {
 
 export async function persistHostPermissions(iter) {
     if ( iter === undefined ) {
-        const permissions = await browser.permissions.getAll();
-        iter = hostnamesFromMatches(permissions.origins) || [];
+        let permissionsAPI;
+        try {
+            permissionsAPI = browser && browser.permissions;
+        } catch {
+            permissionsAPI = undefined;
+        }
+        const permissions = (permissionsAPI?.getAll instanceof Function)
+            ? await permissionsAPI.getAll().catch(( ) => ({ origins: [] }))
+            : { origins: [ '<all_urls>' ] };
+        iter = hostnamesFromMatches(permissions?.origins || []) || [];
     }
     const hostnames = Array.from(iter);
     return hostnames.length !== 0
@@ -352,13 +360,21 @@ export async function persistHostPermissions(iter) {
 /******************************************************************************/
 
 export async function syncWithBrowserPermissions() {
+    let permissionsAPI;
+    try {
+        permissionsAPI = browser && browser.permissions;
+    } catch {
+        permissionsAPI = undefined;
+    }
     const [
         beforePermissions,
         afterPermissions,
         beforeMode,
     ] = await Promise.all([
         localRead('permissions.hostnames'),
-        browser.permissions.getAll(),
+        (permissionsAPI?.getAll instanceof Function)
+            ? permissionsAPI.getAll().catch(( ) => ({ origins: [] }))
+            : Promise.resolve({ origins: [ '<all_urls>' ] }),
         getDefaultFilteringMode(),
     ]);
     const beforeAllowedHostnames = new Set(beforePermissions);

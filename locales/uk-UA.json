@@ -518,5 +518,12 @@
       "autoMultichannel": "Auto enable/disable surround on multichannel outputs (>2 channels)",
       "outputUnknown": "Unknown output"
     }
-  }
+  },
+  "listen.quick.sharedNote.line1": "Налаштування вкладки «Слухати» спільні для панелі «Слухати» та Швидкого прослуховування.",
+  "listen.quick.sharedNote.line2": "Швидке прослуховування автоматично відкриває перший підтверджений результат на веб-платформі.",
+  "ui.startup.webStartupDelay": "Затримка завантаження Web під час запуску",
+  "ui.startup.webStartupDelay.options.instant": "Миттєво (0 с)",
+  "ui.startup.webStartupDelay.options.fast": "Швидко (0,8 с)",
+  "ui.startup.webStartupDelay.options.balanced": "Збалансовано (1,4 с)",
+  "ui.startup.webStartupDelay.options.calm": "Плавно (2,0 с)"
 }
