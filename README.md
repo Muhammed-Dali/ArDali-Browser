@@ -38,7 +38,6 @@
 ## Linux Kurulum
 - AppImage / `.deb` / `.rpm`: [Latest Release](https://github.com/muhammed-aurivo-dev/Aurivo-Medya-Player-Linux/releases/latest)
 - Arch Linux (AUR): `yay -S aurivo-bin`
-- Release signing key (PGP): [`packaging/keys/aurivo-release-signing.asc`](packaging/keys/aurivo-release-signing.asc)
 
 ## Aurivo Nedir?
 Aurivo, klasik bir medya oynatıcıdan daha fazlasını hedefler:
