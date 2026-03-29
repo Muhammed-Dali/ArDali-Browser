@@ -367,6 +367,9 @@ function getScopedWindowTitle(baseTitle) {
 const EMBED_VIDEO_SFX_SETTINGS_KEY = 'aurivo_video_sfx_settings_v1';
 let SFX_RUNTIME_ANIMS_ACTIVE = true;
 let SFX_APPLIED_LANG = '';
+const appearanceSyncChannel = typeof BroadcastChannel === 'function'
+    ? new BroadcastChannel('aurivo-ui-appearance-sync')
+    : null;
 
 function normalizeSfxLightsEnabled(value) {
     return value !== false;
@@ -414,6 +417,72 @@ function syncSfxLightsShadowStorage(enabled) {
     }
 }
 
+function refreshSfxStaticVisualState() {
+    try {
+        const eq32 = getSettings('eq32');
+        if (Array.isArray(SFX.eqSliders) && SFX.eqSliders.length) {
+            SFX.eqSliders.forEach((slider, index) => {
+                if (!slider || typeof slider.setValue !== 'function') return;
+                slider.setValue(Number(eq32?.bands?.[index]) || 0, { immediate: true });
+            });
+        }
+        if (SFX.currentEffect === 'eq32' && SFX.barAnalyzer && typeof SFX.barAnalyzer.draw === 'function') {
+            const bars = new Uint8Array(Math.max(48, Number(SFX.barAnalyzer.bandCount) || EQ_TOP_FIXED_BANDS)).fill(0);
+            SFX.barAnalyzer.draw(bars);
+        }
+
+        Object.entries(SFX.knobInstances || {}).forEach(([key, inst]) => {
+            if (!inst || typeof inst.setValue !== 'function') return;
+            if (['bass', 'mid', 'treble', 'stereoExpander'].includes(key)) {
+                inst.setValue(Number(eq32?.[key]) || 0);
+                return;
+            }
+            const separatorIndex = key.indexOf('_');
+            if (separatorIndex <= 0) return;
+            const effectName = key.slice(0, separatorIndex);
+            const param = key.slice(separatorIndex + 1);
+            const settings = getSettings(effectName);
+            if (!settings || settings[param] === undefined) return;
+            inst.setValue(settings[param]);
+        });
+    } catch {
+        // ignore
+    }
+}
+
+function rerenderCurrentEffectPanel() {
+    const effectName = String(SFX.currentEffect || 'eq32').trim() || 'eq32';
+    const activeTab = document.getElementById('tabEffects');
+    if (activeTab && !activeTab.classList.contains('active')) return;
+    requestAnimationFrame(() => {
+        try {
+            showEffect(effectName);
+        } catch {
+            // ignore
+        }
+    });
+}
+
+function applySfxLightsRuntimeState(enabled) {
+    const next = !!enabled;
+    document.documentElement.dataset.sfxLights = next ? 'on' : 'off';
+    setSfxLightsHeaderToggle(next);
+
+    if (!next) {
+        pauseAllEffectAnimations();
+        syncMeterLoops();
+        refreshSfxStaticVisualState();
+        rerenderCurrentEffectPanel();
+        return;
+    }
+
+    if (!SFX_ANIM_SAFE_MODE && SFX_RUNTIME_ANIMS_ACTIVE) {
+        setEffectAnimationsActive(SFX.currentEffect, true);
+    }
+    syncMeterLoops();
+    rerenderCurrentEffectPanel();
+}
+
 async function persistSfxLightsToAppSettings(enabled) {
     if (!window.aurivo?.loadSettings || !window.aurivo?.saveSettings) return false;
     try {
@@ -437,23 +506,20 @@ async function applySfxLightsFromAppSettings() {
     try {
         const shadow = getSfxLightsFromShadowStorage();
         if (typeof shadow === 'boolean') {
-            document.documentElement.dataset.sfxLights = shadow ? 'on' : 'off';
-            setSfxLightsHeaderToggle(shadow);
+            applySfxLightsRuntimeState(shadow);
             return;
         }
         if (!window.aurivo?.loadSettings) {
-            setSfxLightsHeaderToggle(true);
+            applySfxLightsRuntimeState(true);
             return;
         }
         const appSettings = await window.aurivo.loadSettings();
         const enabled = normalizeSfxLightsEnabled(
             appSettings?.appearance?.sfxLights ?? appSettings?.ui?.sfxLightsEnabled
         );
-        document.documentElement.dataset.sfxLights = enabled ? 'on' : 'off';
-        setSfxLightsHeaderToggle(enabled);
+        applySfxLightsRuntimeState(enabled);
     } catch {
-        document.documentElement.dataset.sfxLights = 'on';
-        setSfxLightsHeaderToggle(true);
+        applySfxLightsRuntimeState(true);
     }
 }
 
@@ -1428,6 +1494,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // İlk efekti göster (paneli lazy-load eder)
         showEffect('eq32');
+        await applySfxLightsFromAppSettings();
         updateEqPresetButtonLabel();
     })().catch((e) => {
         console.warn('[SFX INIT] Başlatma hatası (devam ediliyor):', e?.message || e);
@@ -1498,8 +1565,9 @@ function setupEventListeners() {
     if (sfxLightsToggle) {
         sfxLightsToggle.addEventListener('change', (e) => {
             const enabled = !!e?.target?.checked;
-            document.documentElement.dataset.sfxLights = enabled ? 'on' : 'off';
+            applySfxLightsRuntimeState(enabled);
             syncSfxLightsShadowStorage(enabled);
+            appearanceSyncChannel?.postMessage({ type: 'sfx-lights', enabled });
             Promise.resolve(persistSfxLightsToAppSettings(enabled)).catch(() => { });
         });
     }
@@ -1534,20 +1602,22 @@ function setupEventListeners() {
     window.addEventListener('storage', (e) => {
         if (e.key === 'aurivo_ui_sfx_lights_enabled') {
             const enabled = e.newValue !== '0';
-            document.documentElement.dataset.sfxLights = enabled ? 'on' : 'off';
-            setSfxLightsHeaderToggle(enabled);
+            applySfxLightsRuntimeState(enabled);
             return;
         }
         if (e.key === 'aurivo_ui_sfx_icon_size') {
             document.documentElement.dataset.sfxIconSize = normalizeSfxIconSize(e.newValue || 'medium');
         }
     });
+    appearanceSyncChannel?.addEventListener('message', (event) => {
+        if (String(event?.data?.type || '').trim().toLowerCase() !== 'sfx-lights') return;
+        applySfxLightsRuntimeState(event?.data?.enabled !== false);
+    });
     window.aurivo?.onSettingsReload?.((nextSettings) => {
         const enabled = normalizeSfxLightsEnabled(
             nextSettings?.appearance?.sfxLights ?? nextSettings?.ui?.sfxLightsEnabled
         );
-        document.documentElement.dataset.sfxLights = enabled ? 'on' : 'off';
-        setSfxLightsHeaderToggle(enabled);
+        applySfxLightsRuntimeState(enabled);
         document.documentElement.dataset.sfxIconSize = normalizeSfxIconSize(nextSettings?.appearance?.sfxSidebarIconSize);
         Promise.resolve(applySfxRuntimePerformanceProfile(nextSettings)).then(() => {
             setRuntimeAnimationsActive(!document.hidden);

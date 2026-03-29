@@ -384,10 +384,10 @@
             elements.uiFollowSystemThemeToggle.checked = !!state.settings?.appearance?.followSystemTheme;
         }
         if (elements.uiFxEnabledToggle) {
-            elements.uiFxEnabledToggle.checked = modePreset.uiFxEnabled;
+            elements.uiFxEnabledToggle.checked = state.settings?.appearance?.uiFxEnabled !== false;
         }
         if (elements.uiReduceMotionToggle) {
-            elements.uiReduceMotionToggle.checked = modePreset.reduceMotion;
+            elements.uiReduceMotionToggle.checked = !!state.settings?.appearance?.reduceMotion;
         }
         if (elements.sliderFxToggle) {
             elements.sliderFxToggle.checked = state.settings?.appearance?.sliderFxEnabled !== false;
@@ -606,9 +606,9 @@
         state.settings.appearance.motionProfile = normalizeMotionProfile(
             elements.uiMotionProfileSelect?.value || state.settings.appearance.motionProfile || 'balanced'
         );
-        state.settings.appearance.uiFxEnabled = modePresetForApply.uiFxEnabled;
+        state.settings.appearance.uiFxEnabled = !!elements.uiFxEnabledToggle?.checked;
         state.settings.appearance.sliderFxEnabled = !!elements.sliderFxToggle?.checked;
-        state.settings.appearance.reduceMotion = modePresetForApply.reduceMotion;
+        state.settings.appearance.reduceMotion = !!elements.uiReduceMotionToggle?.checked;
         state.settings.appearance.sfxLights = !!elements.sfxLightsToggle?.checked;
         state.settings.appearance.sfxSidebarIconSize = normalizeSfxIconSize(
             elements.uiSfxIconSizeSelect?.value || state.settings.appearance.sfxSidebarIconSize || 'medium'

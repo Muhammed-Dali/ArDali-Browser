@@ -42,6 +42,9 @@ let fileTreeRenderGeneration = 0;
 let systemThemeMediaQuery = null;
 let systemThemeChangeListenerBound = false;
 let cachedHardwareProfile = null;
+const appearanceSyncChannel = typeof BroadcastChannel === 'function'
+    ? new BroadcastChannel('aurivo-ui-appearance-sync')
+    : null;
 
 function isStandaloneSettingsMode() {
     return forcedStandaloneSettingsMode;
@@ -929,8 +932,23 @@ document.addEventListener('DOMContentLoaded', async () => {
     ensureMainShellVisible();
     cacheElements();
     window.addEventListener('storage', (event) => {
-        if (event.key !== 'aurivo_ui_sfx_lights_enabled') return;
-        applySfxLightsShadowState(event.newValue !== '0');
+        if (event.key === 'aurivo_ui_sfx_lights_enabled') {
+            applySfxLightsShadowState(event.newValue !== '0');
+            return;
+        }
+        if (event.key === 'aurivo_ui_slider_fx_enabled') {
+            applySliderFxShadowState(event.newValue !== '0');
+        }
+    });
+    appearanceSyncChannel?.addEventListener('message', (event) => {
+        const type = String(event?.data?.type || '').trim().toLowerCase();
+        if (type === 'sfx-lights') {
+            applySfxLightsShadowState(event?.data?.enabled !== false);
+            return;
+        }
+        if (type === 'slider-fx') {
+            applySliderFxShadowState(event?.data?.enabled !== false);
+        }
     });
     if (AURIVO_PERF_MONITOR_ENABLED) {
         PerfMonitor.start(5000);
@@ -3834,6 +3852,7 @@ function setupEventListeners() {
         const onSliderFxToggleChanged = () => {
             updateSliderFxToggleStateUi();
             previewAppearanceSettingsFromUI();
+            appearanceSyncChannel?.postMessage({ type: 'slider-fx', enabled: !!elements.sliderFxToggle?.checked });
             markSettingsDirty();
         };
         elements.sliderFxToggle.addEventListener('change', onSliderFxToggleChanged);
@@ -3843,6 +3862,7 @@ function setupEventListeners() {
         elements.sfxLightsToggle.addEventListener('change', () => {
             updateSfxLightsToggleStateUi();
             previewAppearanceSettingsFromUI();
+            appearanceSyncChannel?.postMessage({ type: 'sfx-lights', enabled: !!elements.sfxLightsToggle?.checked });
             markSettingsDirty();
         });
     }
@@ -20190,6 +20210,8 @@ async function applySettings() {
         state.settings.appearance.reduceMotion = false;
     }
     // Save aninda toggle degeri kesin uygulanir.
+    state.settings.appearance.uiFxEnabled = !!elements.uiFxEnabledToggle?.checked;
+    state.settings.appearance.reduceMotion = !!elements.uiReduceMotionToggle?.checked;
     state.settings.appearance.sliderFxEnabled = getSliderFxToggleChecked();
     state.settings.appearance.sfxLights = !!elements.sfxLightsToggle?.checked;
     state.settings.appearance.sfxPerfMode = String(elements.uiSfxPerfModeSelect?.value || 'auto').toLowerCase();
@@ -20378,6 +20400,28 @@ function applySfxLightsShadowState(enabled) {
     applyAppearanceSettingsToRuntime();
 }
 
+function syncSliderFxShadowStorage(enabled) {
+    try {
+        localStorage.setItem('aurivo_ui_slider_fx_enabled', enabled ? '1' : '0');
+    } catch {
+        // ignore
+    }
+}
+
+function applySliderFxShadowState(enabled) {
+    const normalized = !!enabled;
+    if (!state.settings || typeof state.settings !== 'object') state.settings = {};
+    if (!state.settings.appearance || typeof state.settings.appearance !== 'object') {
+        state.settings.appearance = {};
+    }
+    state.settings.appearance.sliderFxEnabled = normalized;
+    if (elements.sliderFxToggle) {
+        elements.sliderFxToggle.checked = normalized;
+    }
+    updateSliderFxToggleStateUi();
+    applyAppearanceSettingsToRuntime();
+}
+
 function syncSfxIconSizeShadowStorage(size) {
     try {
         const normalized = ['compact', 'medium', 'large'].includes(String(size || '').toLowerCase())
@@ -20420,12 +20464,8 @@ function updateAutoHardwareProfileUi() {
         elements.uiMotionProfileSelect.disabled = autoHardwareProfile;
         elements.uiMotionProfileSelect.setAttribute('aria-disabled', autoHardwareProfile ? 'true' : 'false');
     }
-    if (elements.sliderFxToggle) {
-        elements.sliderFxToggle.disabled = autoHardwareProfile;
-    }
-    if (elements.sfxLightsToggle) {
-        elements.sfxLightsToggle.disabled = autoHardwareProfile;
-    }
+    if (elements.sliderFxToggle) elements.sliderFxToggle.disabled = false;
+    if (elements.sfxLightsToggle) elements.sfxLightsToggle.disabled = false;
 }
 
 function updateSfxLightsToggleStateUi() {
@@ -20537,9 +20577,7 @@ function getAppearancePresetForHardwareTier(tierValue) {
             theme: 'performance-lite',
             motionProfile: 'calm',
             uiFxEnabled: false,
-            reduceMotion: true,
-            sliderFxEnabled: false,
-            sfxLights: false
+            reduceMotion: true
         };
     }
     if (tier === 'high') {
@@ -20548,9 +20586,7 @@ function getAppearancePresetForHardwareTier(tierValue) {
             theme: 'aur-renk-efektleri',
             motionProfile: 'balanced',
             uiFxEnabled: true,
-            reduceMotion: false,
-            sliderFxEnabled: false,
-            sfxLights: false
+            reduceMotion: false
         };
     }
     return {
@@ -20558,9 +20594,7 @@ function getAppearancePresetForHardwareTier(tierValue) {
         theme: 'performance-balanced',
         motionProfile: 'balanced',
         uiFxEnabled: true,
-        reduceMotion: true,
-        sliderFxEnabled: false,
-        sfxLights: false
+        reduceMotion: true
     };
 }
 
@@ -20668,8 +20702,6 @@ async function applyAutoHardwareAppearanceIfNeeded({ persist = false } = {}) {
     if (elements.uiVisualModeSelect) elements.uiVisualModeSelect.value = preset.visualMode;
     if (elements.uiMotionProfileSelect) elements.uiMotionProfileSelect.value = normalizeMotionProfile(preset.motionProfile);
     if (elements.themeSelect) elements.themeSelect.value = preset.theme;
-    if (elements.sliderFxToggle) elements.sliderFxToggle.checked = preset.sliderFxEnabled;
-    if (elements.sfxLightsToggle) elements.sfxLightsToggle.checked = preset.sfxLights;
     updateVisualModeUi();
     updateThemeFollowSystemUi();
     updateAutoHardwareProfileUi();
@@ -20705,12 +20737,10 @@ function updateVisualModeUi() {
     const mode = String(elements.uiVisualModeSelect?.value || 'full').trim().toLowerCase();
     const preset = getVisualModePreset(mode);
     if (elements.uiFxEnabledToggle) {
-        elements.uiFxEnabledToggle.checked = preset.uiFxEnabled;
-        elements.uiFxEnabledToggle.disabled = true;
+        elements.uiFxEnabledToggle.disabled = false;
     }
     if (elements.uiReduceMotionToggle) {
-        elements.uiReduceMotionToggle.checked = preset.reduceMotion;
-        elements.uiReduceMotionToggle.disabled = true;
+        elements.uiReduceMotionToggle.disabled = false;
     }
     if (elements.uiVisualModeHint) {
         const hintMap = {
@@ -20770,11 +20800,15 @@ function previewAppearanceSettingsFromUI() {
         if (elements.uiVisualModeSelect) elements.uiVisualModeSelect.value = autoPreset.visualMode;
         if (elements.uiMotionProfileSelect) elements.uiMotionProfileSelect.value = normalizeMotionProfile(autoPreset.motionProfile);
         if (elements.themeSelect) elements.themeSelect.value = autoPreset.theme;
-        if (elements.sliderFxToggle) elements.sliderFxToggle.checked = autoPreset.sliderFxEnabled;
-        if (elements.sfxLightsToggle) elements.sfxLightsToggle.checked = autoPreset.sfxLights;
     }
     const sfxLightsEnabled = !!elements.sfxLightsToggle?.checked;
     const sliderFxEnabled = getSliderFxToggleChecked();
+    const uiFxEnabled = typeof elements.uiFxEnabledToggle?.checked === 'boolean'
+        ? !!elements.uiFxEnabledToggle.checked
+        : (current.uiFxEnabled !== false);
+    const reduceMotionEnabled = typeof elements.uiReduceMotionToggle?.checked === 'boolean'
+        ? !!elements.uiReduceMotionToggle.checked
+        : !!current.reduceMotion;
     const followSystemTheme = !!elements.uiFollowSystemThemeToggle?.checked;
     const selectedTheme = String(elements.themeSelect?.value || current.theme || 'aur-renk-efektleri');
     const selectedMotionProfile = normalizeMotionProfile(
@@ -20792,6 +20826,7 @@ function previewAppearanceSettingsFromUI() {
     updateAutoHardwareProfileUi();
     updateSliderFxToggleStateUi();
     updateSfxLightsToggleStateUi();
+    syncSliderFxShadowStorage(sliderFxEnabled);
     syncSfxLightsShadowStorage(sfxLightsEnabled);
     syncSfxIconSizeShadowStorage(selectedSfxIconSize);
     applyAppearanceSettingsToRuntime({
@@ -20800,9 +20835,9 @@ function previewAppearanceSettingsFromUI() {
         motionProfile: selectedMotionProfile,
         followSystemTheme,
         visualMode: preset.visualMode,
-        uiFxEnabled: preset.uiFxEnabled,
+        uiFxEnabled,
         sliderFxEnabled,
-        reduceMotion: preset.reduceMotion,
+        reduceMotion: reduceMotionEnabled,
         sfxLights: sfxLightsEnabled,
         sfxPerfMode: selectedSfxPerfMode,
         sfxSidebarIconSize: selectedSfxIconSize,
