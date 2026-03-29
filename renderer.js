@@ -1755,13 +1755,13 @@ async function loadSettings() {
         }
         if (!state.settings.appearance || typeof state.settings.appearance !== 'object') {
             state.settings.appearance = {
-                theme: 'aur-renk-efektleri',
+                theme: 'performance-balanced',
                 followSystemTheme: false,
-                visualMode: 'full',
+                visualMode: 'balanced',
                 motionProfile: 'balanced',
                 uiFxEnabled: true,
                 sliderFxEnabled: true,
-                reduceMotion: false,
+                reduceMotion: true,
                 sfxLights: true,
                 autoHardwareProfile: true,
                 lowHardwareMode: false,
@@ -1793,7 +1793,7 @@ async function loadSettings() {
             } else if (legacyReduceMotion) {
                 state.settings.appearance.visualMode = 'balanced';
             } else {
-                state.settings.appearance.visualMode = 'full';
+                state.settings.appearance.visualMode = 'balanced';
             }
         }
         if (!['fast', 'balanced', 'calm'].includes(String(state.settings.appearance.motionProfile || '').toLowerCase())) {
@@ -1806,7 +1806,7 @@ async function loadSettings() {
             state.settings.appearance.sliderFxEnabled = true;
         }
         if (typeof state.settings.appearance.reduceMotion !== 'boolean') {
-            state.settings.appearance.reduceMotion = false;
+            state.settings.appearance.reduceMotion = true;
         }
         if (typeof state.settings.appearance.sfxLights !== 'boolean') {
             state.settings.appearance.sfxLights = true;
@@ -20578,15 +20578,6 @@ function getAppearancePresetForHardwareTier(tierValue) {
             motionProfile: 'calm',
             uiFxEnabled: false,
             reduceMotion: true
-        };
-    }
-    if (tier === 'high') {
-        return {
-            visualMode: 'full',
-            theme: 'aur-renk-efektleri',
-            motionProfile: 'balanced',
-            uiFxEnabled: true,
-            reduceMotion: false
         };
     }
     return {
