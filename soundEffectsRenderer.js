@@ -406,6 +406,14 @@ function setSfxLightsHeaderToggle(enabled) {
     toggle.checked = !!enabled;
 }
 
+function syncSfxLightsShadowStorage(enabled) {
+    try {
+        localStorage.setItem('aurivo_ui_sfx_lights_enabled', enabled ? '1' : '0');
+    } catch {
+        // ignore
+    }
+}
+
 async function persistSfxLightsToAppSettings(enabled) {
     if (!window.aurivo?.loadSettings || !window.aurivo?.saveSettings) return false;
     try {
@@ -1491,7 +1499,7 @@ function setupEventListeners() {
         sfxLightsToggle.addEventListener('change', (e) => {
             const enabled = !!e?.target?.checked;
             document.documentElement.dataset.sfxLights = enabled ? 'on' : 'off';
-            try { localStorage.setItem('aurivo_ui_sfx_lights_enabled', enabled ? '1' : '0'); } catch { }
+            syncSfxLightsShadowStorage(enabled);
             Promise.resolve(persistSfxLightsToAppSettings(enabled)).catch(() => { });
         });
     }

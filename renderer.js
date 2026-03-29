@@ -928,6 +928,10 @@ function ensureMainShellVisible() {
 document.addEventListener('DOMContentLoaded', async () => {
     ensureMainShellVisible();
     cacheElements();
+    window.addEventListener('storage', (event) => {
+        if (event.key !== 'aurivo_ui_sfx_lights_enabled') return;
+        applySfxLightsShadowState(event.newValue !== '0');
+    });
     if (AURIVO_PERF_MONITOR_ENABLED) {
         PerfMonitor.start(5000);
     }
@@ -20358,6 +20362,20 @@ function syncSfxLightsShadowStorage(enabled) {
     } catch {
         // ignore
     }
+}
+
+function applySfxLightsShadowState(enabled) {
+    const normalized = !!enabled;
+    if (!state.settings || typeof state.settings !== 'object') state.settings = {};
+    if (!state.settings.appearance || typeof state.settings.appearance !== 'object') {
+        state.settings.appearance = {};
+    }
+    state.settings.appearance.sfxLights = normalized;
+    if (elements.sfxLightsToggle) {
+        elements.sfxLightsToggle.checked = normalized;
+    }
+    updateSfxLightsToggleStateUi();
+    applyAppearanceSettingsToRuntime();
 }
 
 function syncSfxIconSizeShadowStorage(size) {
