@@ -37,6 +37,7 @@
 
 ## Linux Kurulum
 - AppImage / `.deb` / `.rpm`: [Latest Release](https://github.com/muhammed-aurivo-dev/Aurivo-Medya-Player-Linux/releases/latest)
+- Yayın kontrol listesi: [RELEASE-CHECKLIST.md](RELEASE-CHECKLIST.md)
 
 ### Hızlı Arch Kurulum
 

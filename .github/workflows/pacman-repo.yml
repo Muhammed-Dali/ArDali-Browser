@@ -3,7 +3,7 @@ name: Publish Pacman Repo
 on:
   workflow_dispatch:
   workflow_run:
-    workflows: ["Release"]
+    workflows: ["Release", "Build (Linux)"]
     types: [completed]
 
 permissions:
@@ -14,7 +14,14 @@ jobs:
     if: >-
       ${{
         github.event_name == 'workflow_dispatch' ||
-        github.event.workflow_run.conclusion == 'success'
+        (
+          github.event.workflow_run.conclusion == 'success' &&
+          github.event.workflow_run.event == 'push' &&
+          (
+            github.event.workflow_run.head_branch == 'main' ||
+            startsWith(github.event.workflow_run.head_branch, 'v')
+          )
+        )
       }}
     runs-on: ubuntu-24.04
     container:
