@@ -1,0 +1,61 @@
+name: Publish Pacman Repo
+
+on:
+  workflow_dispatch:
+  workflow_run:
+    workflows: ["Release"]
+    types: [completed]
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    if: >-
+      ${{
+        github.event_name == 'workflow_dispatch' ||
+        github.event.workflow_run.conclusion == 'success'
+      }}
+    runs-on: ubuntu-24.04
+    container:
+      image: archlinux:latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.ref }}
+
+      - name: Install build tools
+        run: |
+          set -euo pipefail
+          pacman -Syu --noconfirm
+          pacman -S --noconfirm --needed base-devel git curl pacman-contrib
+
+      - name: Build aurivo-bin package
+        run: |
+          set -euo pipefail
+          useradd -m builder
+          chown -R builder:builder "${GITHUB_WORKSPACE}"
+          su builder -c 'cd "${GITHUB_WORKSPACE}/packaging/aur/aurivo-bin" && makepkg -f --noconfirm'
+
+      - name: Generate pacman repo database
+        run: |
+          set -euo pipefail
+          out_dir="${GITHUB_WORKSPACE}/pacman-repo/x86_64"
+          mkdir -p "${out_dir}"
+
+          pkg_path="$(find "${GITHUB_WORKSPACE}/packaging/aur/aurivo-bin" -maxdepth 1 -type f -name "aurivo-bin-*.pkg.tar.zst" | head -n1)"
+          test -n "${pkg_path}"
+          cp -f "${pkg_path}" "${out_dir}/"
+
+          repo-add "${out_dir}/aurivo.db.tar.gz" "${out_dir}"/*.pkg.tar.zst
+
+      - name: Publish to gh-pages
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./pacman-repo
+          publish_branch: gh-pages
+          force_orphan: false
+          enable_jekyll: false

@@ -38,6 +38,15 @@
 ## Linux Kurulum
 - AppImage / `.deb` / `.rpm`: [Latest Release](https://github.com/muhammed-aurivo-dev/Aurivo-Medya-Player-Linux/releases/latest)
 - Arch Linux (AUR): `yay -S aurivo-bin`
+- Arch Linux (Pacman Repo):
+  1. `/etc/pacman.conf` içine ekleyin:
+     ```ini
+     [aurivo]
+     SigLevel = Optional TrustAll
+     Server = https://muhammed-aurivo-dev.github.io/Aurivo-Medya-Player-Linux/$arch
+     ```
+  2. Veritabanını yenileyin: `sudo pacman -Sy`
+  3. Kurun/Güncelleyin: `sudo pacman -S aurivo-bin`
 
 ## Aurivo Nedir?
 Aurivo, klasik bir medya oynatıcıdan daha fazlasını hedefler:
