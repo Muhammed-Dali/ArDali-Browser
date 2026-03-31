@@ -1587,6 +1587,21 @@ static std::optional<std::string> findFirstExistingFontPath(const std::vector<fs
     return std::nullopt;
 }
 
+static std::optional<std::string> findLinuxUiFontPath() {
+#ifdef _WIN32
+    return std::nullopt;
+#else
+    const std::vector<fs::path> candidates = {
+        fs::path("/usr/share/fonts/noto/NotoSans-Regular.ttf"),
+        fs::path("/usr/share/fonts/noto/NotoSansUI-Regular.ttf"),
+        fs::path("/usr/share/fonts/TTF/DejaVuSans.ttf"),
+        fs::path("/usr/share/fonts/TTF/LiberationSans-Regular.ttf"),
+        fs::path("/usr/share/fonts/liberation/LiberationSans-Regular.ttf"),
+    };
+    return findFirstExistingFontPath(candidates);
+#endif
+}
+
 static std::optional<std::string> findArabicFontPath() {
     const std::vector<fs::path> candidates = {
         fs::path("assets/fonts/NotoSansArabic-Regular.ttf"),
@@ -2599,7 +2614,7 @@ static bool initSDLVideo() {
     const char* desktopEntry = std::getenv("AURIVO_VIS_DESKTOP_ENTRY");
     // Wayland app_id tercihen desktop dosyasının kimliğiyle aynı olmalı;
     // aksi halde başlık çubuğunda uygulama yerine varsayılan compositor ikonu görünebilir.
-    if (!desktopEntry || !*desktopEntry) desktopEntry = "com.aurivo.mediaplayer";
+    if (!desktopEntry || !*desktopEntry) desktopEntry = "aurivo";
     SDL_SetHint("SDL_VIDEO_X11_WMCLASS", wmclass);
     SDL_SetHint("SDL_VIDEO_X11_WMCLASS_NAME", wmclass);
     // Wayland tarafında app_id desktop dosyası kimliğiyle birebir eşleşmeli.
@@ -2836,6 +2851,7 @@ static bool initImGui() {
     if (!fp) {
         // Windows'ta tam glif kapsamı sağlamak için sistem UI fontlarına yedekle.
         auto sys = findWindowsUiFontPath();
+        if (!sys) sys = findLinuxUiFontPath();
         if (sys) {
             std::cout << "[Font] Inter-Regular.ttf not found; using system font: " << *sys << std::endl;
             g.fontPath = *sys;

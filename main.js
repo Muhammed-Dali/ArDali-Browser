@@ -4217,7 +4217,7 @@ function startVisualizer() {
         PROJECTM_PRESETS_PATH: presetsPath,
         AURIVO_VISUALIZER_ICON: visualizerIconPath,
         // Linux window grouping + icon lookup (Wayland app_id / X11 WM_CLASS)
-        AURIVO_VIS_DESKTOP_ENTRY: process.env.AURIVO_VIS_DESKTOP_ENTRY || 'com.aurivo.mediaplayer',
+        AURIVO_VIS_DESKTOP_ENTRY: process.env.AURIVO_VIS_DESKTOP_ENTRY || 'aurivo',
         AURIVO_VIS_WMCLASS: process.env.AURIVO_VIS_WMCLASS || 'aurivo-media-player',
         // Native görselleştirici için UI dili (SDL2/ImGui)
         AURIVO_LANG: uiLang,
