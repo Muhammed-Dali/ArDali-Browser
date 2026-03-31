@@ -43,7 +43,7 @@
      ```ini
      [aurivo]
      SigLevel = Optional TrustAll
-     Server = https://muhammed-aurivo-dev.github.io/Aurivo-Medya-Player-Linux/$arch
+     Server = https://github.com/muhammed-aurivo-dev/Aurivo-Medya-Player-Linux/releases/download/pacman-repo
      ```
   2. Veritabanını yenileyin: `sudo pacman -Sy`
   3. Kurun/Güncelleyin: `sudo pacman -S aurivo-bin`

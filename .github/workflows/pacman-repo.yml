@@ -30,7 +30,7 @@ jobs:
         run: |
           set -euo pipefail
           pacman -Syu --noconfirm
-          pacman -S --noconfirm --needed base-devel git curl pacman-contrib ffmpeg fuse2
+          pacman -S --noconfirm --needed base-devel git curl pacman-contrib ffmpeg fuse2 github-cli
 
       - name: Build aurivo-bin package
         run: |
@@ -50,12 +50,29 @@ jobs:
           cp -f "${pkg_path}" "${out_dir}/"
 
           repo-add "${out_dir}/aurivo.db.tar.gz" "${out_dir}"/*.pkg.tar.zst
+          # pacman clients may request either .tar.gz or extensionless db/files
+          cp -f "${out_dir}/aurivo.db.tar.gz" "${out_dir}/aurivo.db"
+          cp -f "${out_dir}/aurivo.files.tar.gz" "${out_dir}/aurivo.files"
 
-      - name: Publish to gh-pages
-        uses: peaceiris/actions-gh-pages@v4
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: ./pacman-repo
-          publish_branch: gh-pages
-          force_orphan: false
-          enable_jekyll: false
+      - name: Publish as release assets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          out_dir="${GITHUB_WORKSPACE}/pacman-repo/x86_64"
+          test -d "${out_dir}"
+
+          if ! gh release view pacman-repo >/dev/null 2>&1; then
+            gh release create pacman-repo \
+              --title "Aurivo Pacman Repo" \
+              --notes "Pacman repository assets (aurivo.db + aurivo-bin package)."
+          fi
+
+          gh release upload pacman-repo \
+            "${out_dir}/aurivo.db.tar.gz" \
+            "${out_dir}/aurivo.db" \
+            "${out_dir}/aurivo.files.tar.gz" \
+            "${out_dir}/aurivo.files" \
+            "${out_dir}"/aurivo-bin-*.pkg.tar.zst \
+            --clobber
