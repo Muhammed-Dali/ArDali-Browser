@@ -128,29 +128,28 @@ Detay: [LOCALE-COVERAGE.md](LOCALE-COVERAGE.md)
 ## Ekran Görüntüleri
 
 ### Ana Arayüz
-<img src="screenshots/shot-2026-02-15-003111.png" alt="Aurivo Main UI" width="1000"/>
+<img src="screenshots/shot-20260331-222556.png" alt="Aurivo Main UI" width="1000"/>
 
 ### Ses Efektleri (DSP)
-<img src="screenshots/shot-2026-02-15-003343.png" alt="Aurivo Sound Effects" width="1000"/>
+<img src="screenshots/shot-20260331-222611.png" alt="Aurivo Sound Effects" width="1000"/>
 
 ### Dinleyerek Şarkı Bulma / Modüler Arayüz
-<img src="screenshots/shot-2026-02-15-003658.png" alt="Aurivo Listen Mode" width="1000"/>
+<img src="screenshots/shot-20260331-222650.png" alt="Aurivo Listen Mode" width="1000"/>
 
 ### projectM Görselleştirici
-<img src="screenshots/shot-2026-02-15-004004.png" alt="Aurivo projectM Visualizer" width="1000"/>
+<img src="screenshots/shot-20260331-222722.png" alt="Aurivo projectM Visualizer" width="1000"/>
 
 ### İndirme Modülü
-<img src="screenshots/shot-2026-02-15-003512.png" alt="Aurivo Dawlod" width="1000"/>
+<img src="screenshots/shot-20260331-222758.png" alt="Aurivo Dawlod" width="1000"/>
 
 <details>
 <summary>Daha fazla ekran görüntüsü</summary>
 
-- ![Shot 1](screenshots/shot-2026-02-15-003235.png)
-- ![Shot 2](screenshots/shot-2026-02-15-003411.png)
-- ![Shot 3](screenshots/shot-2026-02-15-003459.png)
-- ![Shot 4](screenshots/shot-2026-02-15-004524.png)
-- ![Shot 5](screenshots/shot-2026-02-15-004600.png)
-- ![Shot 6](screenshots/shot-2026-02-15-004840.png)
+- ![Shot 1](screenshots/shot-20260331-222924.png)
+- ![Shot 2](screenshots/shot-20260331-222959.png)
+- ![Shot 3](screenshots/shot-20260331-223316.png)
+- ![Shot 4](screenshots/shot-20260331-223431.png)
+- ![Shot 5](screenshots/shot-20260331-223728.png)
 
 </details>
 
