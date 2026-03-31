@@ -50,9 +50,6 @@ jobs:
           cp -f "${pkg_path}" "${out_dir}/"
 
           repo-add "${out_dir}/aurivo.db.tar.gz" "${out_dir}"/*.pkg.tar.zst
-          # pacman clients may request either .tar.gz or extensionless db/files
-          cp -f "${out_dir}/aurivo.db.tar.gz" "${out_dir}/aurivo.db"
-          cp -f "${out_dir}/aurivo.files.tar.gz" "${out_dir}/aurivo.files"
 
       - name: Publish as release assets
         env:
