@@ -274,6 +274,7 @@ function normalizeSfxScope(rawScope) {
 }
 
 const SFX_SCOPE = normalizeSfxScope(SFX_QUERY_PARAMS.get('scope'));
+const SFX_IS_SCOPED_DALI = SFX_SCOPE === 'web' || SFX_SCOPE === 'video';
 const SFX_EMBEDDED_MODE = SFX_QUERY_PARAMS.get('embedded') === '1';
 const SFX_PERF = {
     lowPower: false,
@@ -1445,7 +1446,7 @@ document.addEventListener('DOMContentLoaded', () => {
             document.documentElement.setAttribute('data-sfx-scope', SFX_SCOPE);
             // Uyarı: Native audio engine mevcut değilse ses efektleri çalışmayacak
             const isNativeAudioAvailable = window.aurivo?.audio?.isNativeAvailable?.();
-            if (!isNativeAudioAvailable) {
+            if (SFX_SCOPE === 'music' && !isNativeAudioAvailable) {
                 const warningDiv = document.createElement('div');
                 warningDiv.style.cssText = `
                     position: fixed;
@@ -1550,10 +1551,10 @@ function setupEventListeners() {
             SFX.masterEnabled = e.target.checked;
             updateDSPStatus();
             // Ana uygulamaya bildir
-            if (window.aurivo?.audio) {
+            if (SFX_SCOPE === 'music' && window.aurivo?.audio) {
                 window.aurivo?.audio.setEffectsEnabled(SFX.masterEnabled);
             }
-            if (SFX_SCOPE === 'web') {
+            if (SFX_IS_SCOPED_DALI) {
                 schedulePersistScopedEffectToAppSettings('master', { enabled: SFX.masterEnabled }, 40);
             }
             syncMeterLoops();
@@ -1928,7 +1929,7 @@ function setupPEQFilterTypeListeners() {
                     saveSettings('peq', settings);
                 }
 
-                if (SFX_SCOPE === 'web') {
+                if (SFX_IS_SCOPED_DALI) {
                     applyEffect('peq');
                 }
 
@@ -4753,7 +4754,7 @@ function initEffectControls(effectName) {
                 if (window.aurivo?.ipcAudio?.truePeakLimiter?.setOversampling) {
                     window.aurivo.ipcAudio.truePeakLimiter.setOversampling(rate);
                 }
-                if (SFX_SCOPE === 'web') {
+                if (SFX_IS_SCOPED_DALI) {
                     applyEffect('truepeak');
                 }
 
@@ -4772,7 +4773,7 @@ function initEffectControls(effectName) {
                 if (window.aurivo?.ipcAudio?.truePeakLimiter?.setLinkChannels) {
                     window.aurivo.ipcAudio.truePeakLimiter.setLinkChannels(e.target.checked);
                 }
-                if (SFX_SCOPE === 'web') {
+                if (SFX_IS_SCOPED_DALI) {
                     applyEffect('truepeak');
                 }
 
@@ -5082,11 +5083,11 @@ function computeEqTopBars(rawBands, targetCount) {
     const minHz = EQ_TOP_MIN_HZ;
     const maxHz = EQ_TOP_MAX_HZ;
     const ratio = maxHz / minHz;
-    const isWebScope = SFX_SCOPE === 'web';
-    const eqInfluence = isWebScope ? 0.12 : 0.28;
-    const moduleInfluence = isWebScope ? 0.11 : 0.24;
-    const freqCompExp = isWebScope ? 0.07 : 0.16;
-    const outputTrim = isWebScope ? 0.64 : 0.90;
+    const isDaliScope = SFX_IS_SCOPED_DALI;
+    const eqInfluence = isDaliScope ? 0.12 : 0.28;
+    const moduleInfluence = isDaliScope ? 0.11 : 0.24;
+    const freqCompExp = isDaliScope ? 0.07 : 0.16;
+    const outputTrim = isDaliScope ? 0.64 : 0.90;
     let rawPeak = 0;
 
     for (let i = 0; i < count; i++) {
@@ -5109,10 +5110,10 @@ function computeEqTopBars(rawBands, targetCount) {
         const freqComp = Math.pow(freq / minHz, freqCompExp); // High-frequency visibility compensation
 
         // Normalize using raw (pre-EQ-weighted) level so EQ boost/cut stays visible.
-        const rawBase = Math.min(isWebScope ? 1.45 : 1.8, e / Math.max(1e-6, SFX.eqTopViz.rawNorm));
+        const rawBase = Math.min(isDaliScope ? 1.45 : 1.8, e / Math.max(1e-6, SFX.eqTopViz.rawNorm));
         const weighted = rawBase * eqWeight * moduleWeight * freqComp;
         const prev = SFX.eqTopViz.smooth[i] || 0;
-        const alpha = weighted >= prev ? (isWebScope ? 0.42 : 0.50) : (isWebScope ? 0.22 : 0.26); // calmer attack/release for visual stability
+        const alpha = weighted >= prev ? (isDaliScope ? 0.42 : 0.50) : (isDaliScope ? 0.22 : 0.26); // calmer attack/release for visual stability
         const sm = lerp(prev, weighted, alpha);
         SFX.eqTopViz.smooth[i] = sm;
     }
@@ -5122,7 +5123,7 @@ function computeEqTopBars(rawBands, targetCount) {
 
     for (let i = 0; i < count; i++) {
         const n = clamp01((SFX.eqTopViz.smooth[i] || 0) * outputTrim);
-        const curved = Math.pow(n, isWebScope ? 0.92 : 0.82);
+        const curved = Math.pow(n, isDaliScope ? 0.92 : 0.82);
         out[i] = Math.round(curved * 255);
     }
     return out;
@@ -5144,7 +5145,7 @@ function startEqTopVisualizer() {
     if (!canvas || !SFX.barAnalyzer) return;
     const nativeSpectrumApi = window.aurivo?.audio?.spectrum;
     const webSpectrumGetter = window.aurivo?.soundEffects?.getWebSpectrum;
-    const getSpectrumBands = (SFX_SCOPE === 'web' && typeof webSpectrumGetter === 'function')
+    const getSpectrumBands = (SFX_IS_SCOPED_DALI && typeof webSpectrumGetter === 'function')
         ? ((count) => webSpectrumGetter(count))
         : (nativeSpectrumApi && typeof nativeSpectrumApi.getBands === 'function'
             ? ((count) => nativeSpectrumApi.getBands(count))
@@ -5259,7 +5260,7 @@ function initEQSliders() {
             saveSettings('eq32', currentSettings);
 
             if (window.aurivo?.ipcAudio?.eq) {
-                window.aurivo.ipcAudio.eq.setBand(band, value).catch(console.error);
+                dispatchRealtimeParam('eq32', `band${band}`, () => window.aurivo.ipcAudio.eq.setBand(band, value), 16);
             }
 
             // Kalıcı kayıt (debounce)
@@ -5349,7 +5350,7 @@ function initBalanceSlider() {
 
             // IPC Audio API'ye gönder (main process'e)
             if (window.aurivo?.ipcAudio?.balance) {
-                window.aurivo.ipcAudio.balance.set(value);
+                dispatchRealtimeParam('eq32', 'balance', () => window.aurivo.ipcAudio.balance.set(value), 18);
             }
         });
     }
@@ -5364,13 +5365,73 @@ function getBalanceText(value) {
 // ============================================
 // SETTINGS MANAGEMENT
 // ============================================
+const REALTIME_IPC_MIN_INTERVAL_MS = 28;
+const realtimeIpcUpdateState = new Map();
+
+function scheduleRealtimeIpcUpdate(updateKey, applyFn, minIntervalMs = REALTIME_IPC_MIN_INTERVAL_MS) {
+    if (typeof applyFn !== 'function') return;
+    const key = String(updateKey || '').trim();
+    const runApply = (fn) => {
+        try {
+            const maybePromise = fn();
+            if (maybePromise && typeof maybePromise.catch === 'function') {
+                maybePromise.catch(() => {});
+            }
+        } catch {
+            // ignore
+        }
+    };
+    if (!key) {
+        runApply(applyFn);
+        return;
+    }
+    const now = (typeof performance !== 'undefined' && typeof performance.now === 'function')
+        ? performance.now()
+        : Date.now();
+    const intervalMs = Math.max(8, Number(minIntervalMs) || REALTIME_IPC_MIN_INTERVAL_MS);
+    const state = realtimeIpcUpdateState.get(key) || { lastAt: 0, timer: null, pending: null };
+    if (!state.timer && (now - state.lastAt) >= intervalMs) {
+        state.lastAt = now;
+        runApply(applyFn);
+        realtimeIpcUpdateState.set(key, state);
+        return;
+    }
+    state.pending = applyFn;
+    if (!state.timer) {
+        const elapsed = Math.max(0, now - state.lastAt);
+        const waitMs = Math.max(0, intervalMs - elapsed);
+        state.timer = setTimeout(() => {
+            state.timer = null;
+            const pendingApply = state.pending;
+            state.pending = null;
+            state.lastAt = (typeof performance !== 'undefined' && typeof performance.now === 'function')
+                ? performance.now()
+                : Date.now();
+            if (typeof pendingApply === 'function') runApply(pendingApply);
+            realtimeIpcUpdateState.set(key, state);
+        }, waitMs);
+    }
+    realtimeIpcUpdateState.set(key, state);
+}
+
+function dispatchRealtimeParam(effectName, paramName, applyFn, minIntervalMs = REALTIME_IPC_MIN_INTERVAL_MS) {
+    const effectKey = String(effectName || '').trim().toLowerCase();
+    const paramKey = String(paramName || '').trim().toLowerCase();
+    const key = effectKey && paramKey ? `${effectKey}:${paramKey}` : `${effectKey || 'effect'}:${Date.now()}`;
+    scheduleRealtimeIpcUpdate(key, applyFn, minIntervalMs);
+}
+
 function getSettings(effectName) {
     if (!SFX.settings[effectName]) {
         // localStorage'dan yükle veya varsayılan kullan
         try {
             const scopedKey = getScopedSettingsStorageKey(effectName);
             const legacyKey = `aurivo_sfx_${effectName}`;
-            const saved = localStorage.getItem(scopedKey) || localStorage.getItem(legacyKey);
+            const scopedSaved = localStorage.getItem(scopedKey);
+            // Legacy anahtar sadece music scope için geri-uyumluluk amacıyla okunur.
+            // Video/Web scope'ları kesinlikle birbirinden izole kalmalıdır.
+            const legacySaved = SFX_SCOPE === 'music' ? localStorage.getItem(legacyKey) : null;
+            const saved = scopedSaved || legacySaved;
             SFX.settings[effectName] = saved ? JSON.parse(saved) : { ...SFX.defaults[effectName] };
         } catch (e) {
             SFX.settings[effectName] = { ...SFX.defaults[effectName] };
@@ -5435,7 +5496,7 @@ function updateEffectParam(effectName, param, value) {
 
     saveSettings(effectName, settings);
 
-    if (SFX_SCOPE === 'web') {
+    if (SFX_IS_SCOPED_DALI) {
         if (effectName === 'eq32') {
             schedulePersistEq32ToAppSettings(settings);
             return;
@@ -5455,7 +5516,7 @@ function updateEffectParam(effectName, param, value) {
         schedulePersistEq32ToAppSettings(settings);
     }
 
-    if (SFX_SCOPE === 'web' && effectName === 'autogain') {
+    if (SFX_IS_SCOPED_DALI && effectName === 'autogain') {
         schedulePersistScopedEffectToAppSettings('autogain', settings, 220);
         return;
     }
@@ -5467,50 +5528,50 @@ function updateEffectParam(effectName, param, value) {
     if (effectName === 'eq32') {
         switch (param) {
             case 'bass':
-                ipcAudio.module?.setBass(value);
+                dispatchRealtimeParam('eq32', 'bass', () => ipcAudio.module?.setBass(value), 18);
                 break;
             case 'mid':
-                ipcAudio.module?.setMid(value);
+                dispatchRealtimeParam('eq32', 'mid', () => ipcAudio.module?.setMid(value), 18);
                 break;
             case 'treble':
-                ipcAudio.module?.setTreble(value);
+                dispatchRealtimeParam('eq32', 'treble', () => ipcAudio.module?.setTreble(value), 18);
                 break;
             case 'stereoExpander':
-                ipcAudio.module?.setStereoExpander(value);
+                dispatchRealtimeParam('eq32', 'stereoExpander', () => ipcAudio.module?.setStereoExpander(value), 18);
                 break;
             case 'balance': // balance slider
-                ipcAudio.balance.set(value);
+                dispatchRealtimeParam('eq32', 'balance', () => ipcAudio.balance.set(value), 18);
                 break;
         }
     } else if (effectName === 'compressor') {
-        if (SFX_SCOPE === 'web') {
+        if (SFX_IS_SCOPED_DALI) {
             schedulePersistScopedEffectToAppSettings('compressor', settings, 220);
             return;
         }
         const comp = ipcAudio.compressor;
         if (comp) {
             if (param === 'threshold' && typeof comp.setThreshold === 'function') {
-                comp.setThreshold(value);
+                dispatchRealtimeParam('compressor', 'threshold', () => comp.setThreshold(value));
                 return;
             }
             if (param === 'ratio' && typeof comp.setRatio === 'function') {
-                comp.setRatio(value);
+                dispatchRealtimeParam('compressor', 'ratio', () => comp.setRatio(value));
                 return;
             }
             if (param === 'attack' && typeof comp.setAttack === 'function') {
-                comp.setAttack(value);
+                dispatchRealtimeParam('compressor', 'attack', () => comp.setAttack(value));
                 return;
             }
             if (param === 'release' && typeof comp.setRelease === 'function') {
-                comp.setRelease(value);
+                dispatchRealtimeParam('compressor', 'release', () => comp.setRelease(value));
                 return;
             }
             if (param === 'makeupGain' && typeof comp.setMakeupGain === 'function') {
-                comp.setMakeupGain(value);
+                dispatchRealtimeParam('compressor', 'makeupGain', () => comp.setMakeupGain(value));
                 return;
             }
             if (param === 'knee' && typeof comp.setKnee === 'function') {
-                comp.setKnee(value);
+                dispatchRealtimeParam('compressor', 'knee', () => comp.setKnee(value));
                 return;
             }
         }
@@ -5520,7 +5581,7 @@ function updateEffectParam(effectName, param, value) {
         // IPC tarafında henüz tam destek yoksa genele bırak
         applyEffect(effectName);
     } else if (effectName === 'peq') {
-        if (SFX_SCOPE === 'web') {
+        if (SFX_IS_SCOPED_DALI) {
             schedulePersistScopedEffectToAppSettings('peq', settings, 220);
             return;
         }
@@ -5532,7 +5593,7 @@ function updateEffectParam(effectName, param, value) {
 
             if (band && ipcAudio.peq) {
                 // Her knob değişiminde bandı güncelle
-                ipcAudio.peq.setBand(bandIndex, band.freq, band.gain, band.q, settings.enabled);
+                dispatchRealtimeParam('peq', `band${bandIndex}`, () => ipcAudio.peq.setBand(bandIndex, band.freq, band.gain, band.q, settings.enabled), 18);
                 console.log(`[PEQ] Band ${bandIndex + 1} güncellendi:`, band);
             }
         }
@@ -5541,17 +5602,17 @@ function updateEffectParam(effectName, param, value) {
         if (ipcAudio.autoGain) {
             switch (param) {
                 case 'targetLevel':
-                    ipcAudio.autoGain.setTarget?.(value);
+                    dispatchRealtimeParam('autogain', 'targetLevel', () => ipcAudio.autoGain.setTarget?.(value));
                     console.log(`[AUTO GAIN] Target Level: ${value} dBFS`);
                     break;
                 case 'maxGain':
-                    ipcAudio.autoGain.setMaxGain?.(value);
+                    dispatchRealtimeParam('autogain', 'maxGain', () => ipcAudio.autoGain.setMaxGain?.(value));
                     console.log(`[AUTO GAIN] Max Gain: ${value} dB`);
                     break;
             }
         }
     } else if (effectName === 'softecho') {
-        if (SFX_SCOPE === 'web') {
+        if (SFX_IS_SCOPED_DALI) {
             applyEffect('softecho');
             return;
         }
@@ -5565,16 +5626,16 @@ function updateEffectParam(effectName, param, value) {
             }
             switch (param) {
                 case 'delay':
-                    ipcAudio.softEcho.setDelay?.(value);
+                    dispatchRealtimeParam('softecho', 'delay', () => ipcAudio.softEcho.setDelay?.(value));
                     break;
                 case 'feedback':
-                    ipcAudio.softEcho.setFeedback?.(value);
+                    dispatchRealtimeParam('softecho', 'feedback', () => ipcAudio.softEcho.setFeedback?.(value));
                     break;
                 case 'wetMix':
-                    ipcAudio.softEcho.setWetMix?.(value);
+                    dispatchRealtimeParam('softecho', 'wetMix', () => ipcAudio.softEcho.setWetMix?.(value));
                     break;
                 case 'highCut':
-                    ipcAudio.softEcho.setHighCut?.(value);
+                    dispatchRealtimeParam('softecho', 'highCut', () => ipcAudio.softEcho.setHighCut?.(value));
                     break;
             }
         }
@@ -5583,19 +5644,19 @@ function updateEffectParam(effectName, param, value) {
         if (ipcAudio.truePeakLimiter) {
             switch (param) {
                 case 'ceiling':
-                    ipcAudio.truePeakLimiter.setCeiling?.(value);
+                    dispatchRealtimeParam('truepeak', 'ceiling', () => ipcAudio.truePeakLimiter.setCeiling?.(value));
                     console.log(`[TRUE PEAK] Ceiling: ${value} dBTP`);
                     break;
                 case 'release':
-                    ipcAudio.truePeakLimiter.setRelease?.(value);
+                    dispatchRealtimeParam('truepeak', 'release', () => ipcAudio.truePeakLimiter.setRelease?.(value));
                     console.log(`[TRUE PEAK] Release: ${value} ms`);
                     break;
                 case 'lookahead':
-                    ipcAudio.truePeakLimiter.setLookahead?.(value);
+                    dispatchRealtimeParam('truepeak', 'lookahead', () => ipcAudio.truePeakLimiter.setLookahead?.(value));
                     console.log(`[TRUE PEAK] Lookahead: ${value} ms`);
                     break;
                 case 'drive':
-                    ipcAudio.truePeakLimiter.setInputGain?.(value);
+                    dispatchRealtimeParam('truepeak', 'drive', () => ipcAudio.truePeakLimiter.setInputGain?.(value));
                     console.log(`[TRUE PEAK] Drive: ${value} dB`);
                     break;
             }
@@ -5612,21 +5673,21 @@ function updateEffectParam(effectName, param, value) {
             }
             switch (param) {
                 case 'level':
-                    ipcAudio.crossfeed.setLevel?.(value);
+                    dispatchRealtimeParam('crossfeed', 'level', () => ipcAudio.crossfeed.setLevel?.(value));
                     console.log(`[CROSSFEED] Level: ${value}%`);
                     updateCrossfeedVisual();
                     break;
                 case 'delay':
-                    ipcAudio.crossfeed.setDelay?.(value);
+                    dispatchRealtimeParam('crossfeed', 'delay', () => ipcAudio.crossfeed.setDelay?.(value));
                     console.log(`[CROSSFEED] Delay: ${value} ms`);
                     updateCrossfeedVisual();
                     break;
                 case 'lowCut':
-                    ipcAudio.crossfeed.setLowCut?.(value);
+                    dispatchRealtimeParam('crossfeed', 'lowCut', () => ipcAudio.crossfeed.setLowCut?.(value));
                     console.log(`[CROSSFEED] Low Cut: ${value} Hz`);
                     break;
                 case 'highCut':
-                    ipcAudio.crossfeed.setHighCut?.(value);
+                    dispatchRealtimeParam('crossfeed', 'highCut', () => ipcAudio.crossfeed.setHighCut?.(value));
                     console.log(`[CROSSFEED] High Cut: ${value} Hz`);
                     break;
             }
@@ -5642,22 +5703,22 @@ function updateEffectParam(effectName, param, value) {
             }
             switch (param) {
                 case 'center':
-                    ipcAudio.surround.setCenter?.(value);
+                    dispatchRealtimeParam('surround', 'center', () => ipcAudio.surround.setCenter?.(value));
                     break;
                 case 'surround':
-                    ipcAudio.surround.setSurround?.(value);
+                    dispatchRealtimeParam('surround', 'surround', () => ipcAudio.surround.setSurround?.(value));
                     break;
                 case 'lfe':
-                    ipcAudio.surround.setLfe?.(value);
+                    dispatchRealtimeParam('surround', 'lfe', () => ipcAudio.surround.setLfe?.(value));
                     break;
                 case 'crossover':
-                    ipcAudio.surround.setCrossover?.(value);
+                    dispatchRealtimeParam('surround', 'crossover', () => ipcAudio.surround.setCrossover?.(value));
                     break;
                 case 'delay':
-                    ipcAudio.surround.setDelay?.(value);
+                    dispatchRealtimeParam('surround', 'delay', () => ipcAudio.surround.setDelay?.(value));
                     break;
                 case 'mix':
-                    ipcAudio.surround.setMix?.(value);
+                    dispatchRealtimeParam('surround', 'mix', () => ipcAudio.surround.setMix?.(value));
                     break;
             }
         }
@@ -5673,25 +5734,25 @@ function updateEffectParam(effectName, param, value) {
             }
             switch (param) {
                 case 'frequency':
-                    ipcAudio.dynamicEQ.setFrequency?.(value);
+                    dispatchRealtimeParam('dynamiceq', 'frequency', () => ipcAudio.dynamicEQ.setFrequency?.(value));
                     break;
                 case 'q':
-                    ipcAudio.dynamicEQ.setQ?.(value);
+                    dispatchRealtimeParam('dynamiceq', 'q', () => ipcAudio.dynamicEQ.setQ?.(value));
                     break;
                 case 'threshold':
-                    ipcAudio.dynamicEQ.setThreshold?.(value);
+                    dispatchRealtimeParam('dynamiceq', 'threshold', () => ipcAudio.dynamicEQ.setThreshold?.(value));
                     break;
                 case 'gain':
-                    ipcAudio.dynamicEQ.setGain?.(value); // Note: param is 'gain' in JS, calling setGain
+                    dispatchRealtimeParam('dynamiceq', 'gain', () => ipcAudio.dynamicEQ.setGain?.(value)); // Note: param is 'gain' in JS, calling setGain
                     break;
                 case 'range':
-                    ipcAudio.dynamicEQ.setRange?.(value);
+                    dispatchRealtimeParam('dynamiceq', 'range', () => ipcAudio.dynamicEQ.setRange?.(value));
                     break;
                 case 'attack':
-                    ipcAudio.dynamicEQ.setAttack?.(value);
+                    dispatchRealtimeParam('dynamiceq', 'attack', () => ipcAudio.dynamicEQ.setAttack?.(value));
                     break;
                 case 'release':
-                    ipcAudio.dynamicEQ.setRelease?.(value);
+                    dispatchRealtimeParam('dynamiceq', 'release', () => ipcAudio.dynamicEQ.setRelease?.(value));
                     break;
             }
             console.log(`[DYNAMIC EQ] ${param}: ${value}`);
@@ -5708,11 +5769,11 @@ function updateEffectParam(effectName, param, value) {
             }
             switch (param) {
                 case 'cutoff':
-                    ipcAudio.bassMono.setCutoff?.(value);
+                    dispatchRealtimeParam('bassmono', 'cutoff', () => ipcAudio.bassMono.setCutoff?.(value));
                     console.log(`[BASS MONO] Cutoff: ${value} Hz`);
                     break;
                 case 'stereoWidth':
-                    ipcAudio.bassMono.setStereoWidth?.(value);
+                    dispatchRealtimeParam('bassmono', 'stereoWidth', () => ipcAudio.bassMono.setStereoWidth?.(value));
                     console.log(`[BASS MONO] Stereo Width: ${value}%`);
                     break;
             }
@@ -5731,42 +5792,47 @@ function applyEffect(effectName) {
     const settings = getSettings(effectName);
     const ipcAudio = window.aurivo?.ipcAudio;
 
-    if (SFX_SCOPE === 'web' && effectName === 'bassboost') {
+    if (SFX_IS_SCOPED_DALI && effectName === 'eq32') {
+        schedulePersistEq32ToAppSettings(settings);
+        return;
+    }
+
+    if (SFX_IS_SCOPED_DALI && effectName === 'bassboost') {
         schedulePersistScopedEffectToAppSettings('bassboost', settings, 220);
         return;
     }
 
-    if (SFX_SCOPE === 'web' && effectName === 'reverb') {
+    if (SFX_IS_SCOPED_DALI && effectName === 'reverb') {
         schedulePersistScopedEffectToAppSettings('reverb', settings, 220);
         return;
     }
 
-    if (SFX_SCOPE === 'web' && effectName === 'compressor') {
+    if (SFX_IS_SCOPED_DALI && effectName === 'compressor') {
         schedulePersistScopedEffectToAppSettings('compressor', settings, 220);
         return;
     }
 
-    if (SFX_SCOPE === 'web' && effectName === 'noisegate') {
+    if (SFX_IS_SCOPED_DALI && effectName === 'noisegate') {
         schedulePersistScopedEffectToAppSettings('noisegate', settings, 220);
         return;
     }
 
-    if (SFX_SCOPE === 'web' && effectName === 'deesser') {
+    if (SFX_IS_SCOPED_DALI && effectName === 'deesser') {
         schedulePersistScopedEffectToAppSettings('deesser', settings, 220);
         return;
     }
 
-    if (SFX_SCOPE === 'web' && effectName === 'exciter') {
+    if (SFX_IS_SCOPED_DALI && effectName === 'exciter') {
         schedulePersistScopedEffectToAppSettings('exciter', settings, 220);
         return;
     }
 
-    if (SFX_SCOPE === 'web' && effectName === 'echo') {
+    if (SFX_IS_SCOPED_DALI && effectName === 'echo') {
         schedulePersistScopedEffectToAppSettings('echo', settings, 220);
         return;
     }
 
-    if (SFX_SCOPE === 'web' && effectName === 'softecho') {
+    if (SFX_IS_SCOPED_DALI && effectName === 'softecho') {
         if (settings.enabled) {
             const echoSettings = getSettings('echo');
             if (echoSettings.enabled) {
@@ -5781,63 +5847,63 @@ function applyEffect(effectName) {
         return;
     }
 
-    if (SFX_SCOPE === 'web' && effectName === 'convreverb') {
+    if (SFX_IS_SCOPED_DALI && effectName === 'convreverb') {
         schedulePersistScopedEffectToAppSettings('convreverb', settings, 220);
         return;
     }
 
-    if (SFX_SCOPE === 'web' && effectName === 'peq') {
+    if (SFX_IS_SCOPED_DALI && effectName === 'peq') {
         schedulePersistScopedEffectToAppSettings('peq', settings, 220);
         return;
     }
 
-    if (SFX_SCOPE === 'web' && effectName === 'autogain') {
+    if (SFX_IS_SCOPED_DALI && effectName === 'autogain') {
         schedulePersistScopedEffectToAppSettings('autogain', settings, 220);
         return;
     }
 
-    if (SFX_SCOPE === 'web' && effectName === 'truepeak') {
+    if (SFX_IS_SCOPED_DALI && effectName === 'truepeak') {
         schedulePersistScopedEffectToAppSettings('truepeak', settings, 220);
         return;
     }
 
-    if (SFX_SCOPE === 'web' && effectName === 'stereowidener') {
+    if (SFX_IS_SCOPED_DALI && effectName === 'stereowidener') {
         schedulePersistScopedEffectToAppSettings('stereowidener', settings, 220);
         return;
     }
 
-    if (SFX_SCOPE === 'web' && effectName === 'crossfeed') {
+    if (SFX_IS_SCOPED_DALI && effectName === 'crossfeed') {
         schedulePersistScopedEffectToAppSettings('crossfeed', settings, 220);
         return;
     }
 
-    if (SFX_SCOPE === 'web' && effectName === 'surround') {
+    if (SFX_IS_SCOPED_DALI && effectName === 'surround') {
         schedulePersistScopedEffectToAppSettings('surround', settings, 120);
         return;
     }
 
-    if (SFX_SCOPE === 'web' && effectName === 'bassmono') {
+    if (SFX_IS_SCOPED_DALI && effectName === 'bassmono') {
         schedulePersistScopedEffectToAppSettings('bassmono', settings, 120);
         return;
     }
 
-    if (SFX_SCOPE === 'web' && effectName === 'dynamiceq') {
+    if (SFX_IS_SCOPED_DALI && effectName === 'dynamiceq') {
         schedulePersistScopedEffectToAppSettings('dynamiceq', settings, 140);
         return;
     }
 
-    if (SFX_SCOPE === 'web' && effectName === 'limiter') {
+    if (SFX_IS_SCOPED_DALI && effectName === 'limiter') {
         // Web tarafında sık save/reload döngüsünü azaltıp akıcılığı koru.
         schedulePersistScopedEffectToAppSettings('limiter', settings, 220);
         return;
     }
 
-    if (SFX_SCOPE === 'web' && effectName === 'tapesat') {
+    if (SFX_IS_SCOPED_DALI && effectName === 'tapesat') {
         schedulePersistScopedEffectToAppSettings('tapesat', settings, 180);
         return;
     }
 
-    if (SFX_SCOPE === 'web' && effectName === 'bitdither') {
+    if (SFX_IS_SCOPED_DALI && effectName === 'bitdither') {
         schedulePersistScopedEffectToAppSettings('bitdither', settings, 180);
         return;
     }
@@ -7492,7 +7558,7 @@ function applySoftEchoPreset(presetName) {
         saveSettings('echo', echoSettings);
         const echoCb = document.getElementById('echoEnabled');
         if (echoCb) echoCb.checked = false;
-        if (SFX_SCOPE === 'web') {
+        if (SFX_IS_SCOPED_DALI) {
             schedulePersistScopedEffectToAppSettings('echo', echoSettings, 120);
         }
     }

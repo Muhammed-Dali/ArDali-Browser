@@ -686,6 +686,23 @@ static std::string trimAscii(const std::string& s) {
     return s.substr(b, e - b);
 }
 
+static std::string initialsFromPresetName(const std::string& name) {
+    std::string out;
+    bool takeNext = true;
+    for (char ch : name) {
+        const unsigned char uc = (unsigned char)ch;
+        if (std::isalnum(uc)) {
+            if (takeNext) out.push_back((char)std::toupper(uc));
+            takeNext = false;
+        } else {
+            takeNext = true;
+        }
+        if (out.size() >= 2) break;
+    }
+    if (out.empty()) out = "PR";
+    return out;
+}
+
 static bool findPresetsRecursive(const std::string& rootPath, std::vector<PresetItem>& out) {
     out.clear();
     if (!fs::exists(rootPath) || !fs::is_directory(rootPath)) {
@@ -742,6 +759,70 @@ enum class TextureQuality {
     Q1024,
     Q2048,
 };
+
+enum class ClarityMode {
+    Soft,
+    Balanced,
+    Sharp,
+    SharpPlus,
+};
+
+static const char* fpsModeToString(QualityFpsMode m) {
+    switch (m) {
+        case QualityFpsMode::LOW_15: return "low15";
+        case QualityFpsMode::MID_25: return "mid25";
+        case QualityFpsMode::HIGH_35: return "high35";
+        case QualityFpsMode::SUPER_60: return "super60";
+        default: return "super60";
+    }
+}
+
+static QualityFpsMode fpsModeFromString(const std::string& s) {
+    const std::string v = toLowerAscii(trimAscii(s));
+    if (v == "low15" || v == "15") return QualityFpsMode::LOW_15;
+    if (v == "mid25" || v == "25") return QualityFpsMode::MID_25;
+    if (v == "high35" || v == "35") return QualityFpsMode::HIGH_35;
+    if (v == "super60" || v == "60") return QualityFpsMode::SUPER_60;
+    return QualityFpsMode::SUPER_60;
+}
+
+static const char* textureQualityToString(TextureQuality q) {
+    switch (q) {
+        case TextureQuality::Q256: return "q256";
+        case TextureQuality::Q512: return "q512";
+        case TextureQuality::Q1024: return "q1024";
+        case TextureQuality::Q2048: return "q2048";
+        default: return "q1024";
+    }
+}
+
+static TextureQuality textureQualityFromString(const std::string& s) {
+    const std::string v = toLowerAscii(trimAscii(s));
+    if (v == "q256" || v == "256") return TextureQuality::Q256;
+    if (v == "q512" || v == "512") return TextureQuality::Q512;
+    if (v == "q1024" || v == "1024") return TextureQuality::Q1024;
+    if (v == "q2048" || v == "2048") return TextureQuality::Q2048;
+    return TextureQuality::Q1024;
+}
+
+static const char* clarityModeToString(ClarityMode m) {
+    switch (m) {
+        case ClarityMode::Soft: return "soft";
+        case ClarityMode::Balanced: return "balanced";
+        case ClarityMode::Sharp: return "sharp";
+        case ClarityMode::SharpPlus: return "sharpplus";
+        default: return "balanced";
+    }
+}
+
+static ClarityMode clarityModeFromString(const std::string& s) {
+    const std::string v = toLowerAscii(trimAscii(s));
+    if (v == "soft" || v == "yumusak") return ClarityMode::Soft;
+    if (v == "balanced" || v == "dengeli") return ClarityMode::Balanced;
+    if (v == "sharp" || v == "keskin") return ClarityMode::Sharp;
+    if (v == "sharpplus" || v == "sharp+" || v == "keskin+") return ClarityMode::SharpPlus;
+    return ClarityMode::Balanced;
+}
 
 struct ViewportRect {
     int x = 0;
@@ -832,6 +913,7 @@ struct AppState {
 
     QualityFpsMode fpsMode = QualityFpsMode::SUPER_60;
     TextureQuality textureQuality = TextureQuality::Q1024;
+    ClarityMode clarityMode = ClarityMode::Balanced;
     int targetFps = 60;
 
     // Ses beslemesi: SADECE stdin üzerinden uygulama PCM'i (Electron float32 interleaved pipe eder).
@@ -854,6 +936,8 @@ struct AppState {
 
     int pickerNavIndex = 0;
     bool pickerNavScrollTo = false;
+    std::array<char, 160> pickerSearchBuf{};
+    bool pickerCompactMode = true;
 
     ImGuiStyle baseStyle;
     std::string fontPath;
@@ -938,6 +1022,12 @@ static void loadPresetPickerSettings() {
             if (!val.empty()) enabledPaths.insert(val);
         } else if (key == "lastPreset") {
             lastPresetPath = val;
+        } else if (key == "fpsMode") {
+            g.fpsMode = fpsModeFromString(val);
+        } else if (key == "textureQuality") {
+            g.textureQuality = textureQualityFromString(val);
+        } else if (key == "clarityMode") {
+            g.clarityMode = clarityModeFromString(val);
         }
     }
 
@@ -983,6 +1073,9 @@ static void savePresetPickerSettings() {
     out << "pickerWinH=" << g.pickerWinH << "\n";
     out << "mainWinW=" << g.mainPrefW << "\n";
     out << "mainWinH=" << g.mainPrefH << "\n";
+    out << "fpsMode=" << fpsModeToString(g.fpsMode) << "\n";
+    out << "textureQuality=" << textureQualityToString(g.textureQuality) << "\n";
+    out << "clarityMode=" << clarityModeToString(g.clarityMode) << "\n";
     if (g.currentPreset >= 0 && g.currentPreset < (int)g.presets.size()) {
         out << "lastPreset=" << g.presets[g.currentPreset].path << "\n";
     }
@@ -1222,19 +1315,74 @@ static void updateDrawablePicker() {
     g.pickerDpiScale = (g.pickerWinW > 0) ? ((float)g.pickerFbW / (float)g.pickerWinW) : 1.0f;
 }
 
+static void applyRenderTuning() {
+    if (!g.pm) return;
+
+    TextureQuality effectiveQuality = g.textureQuality;
+    if (g.clarityMode == ClarityMode::Sharp && effectiveQuality == TextureQuality::Q256) {
+        effectiveQuality = TextureQuality::Q512;
+    } else if (g.clarityMode == ClarityMode::SharpPlus) {
+        if (effectiveQuality == TextureQuality::Q256 || effectiveQuality == TextureQuality::Q512) {
+            effectiveQuality = TextureQuality::Q1024;
+        }
+    }
+
+    int meshX = 128;
+    int meshY = 96;
+    switch (effectiveQuality) {
+        case TextureQuality::Q256:  meshX = 64;  meshY = 48;  break;
+        case TextureQuality::Q512:  meshX = 104; meshY = 78;  break;
+        case TextureQuality::Q1024: meshX = 168; meshY = 126; break;
+        case TextureQuality::Q2048: meshX = 252; meshY = 190; break;
+        default: break;
+    }
+
+    float clarityMul = 1.0f;
+    switch (g.clarityMode) {
+        case ClarityMode::Soft:      clarityMul = 0.42f; break;
+        case ClarityMode::Balanced:  clarityMul = 1.00f; break;
+        case ClarityMode::Sharp:     clarityMul = 2.80f; break;
+        case ClarityMode::SharpPlus: clarityMul = 4.60f; break;
+        default: break;
+    }
+
+    meshX = std::clamp((int)std::lround((float)meshX * clarityMul), 32, 960);
+    meshY = std::clamp((int)std::lround((float)meshY * clarityMul), 24, 720);
+    projectm_set_mesh_size(g.pm, meshX, meshY);
+
+    int qualitySize = 1024;
+    switch (effectiveQuality) {
+        case TextureQuality::Q256: qualitySize = 256; break;
+        case TextureQuality::Q512: qualitySize = 512; break;
+        case TextureQuality::Q1024: qualitySize = 1024; break;
+        case TextureQuality::Q2048: qualitySize = 2048; break;
+        default: break;
+    }
+
+    std::cout << "[UI] tuning => mesh " << meshX << "x" << meshY
+              << " | clarity=" << (g.clarityMode == ClarityMode::Soft ? "soft"
+                                 : g.clarityMode == ClarityMode::Sharp ? "sharp"
+                                 : g.clarityMode == ClarityMode::SharpPlus ? "sharp+"
+                                 : "balanced")
+              << " | quality=" << qualitySize
+              << std::endl;
+}
+
 static void applyQuality(QualityMode q) {
+    g.quality = q;
     if (!g.pm) return;
     switch (q) {
         case QualityMode::Low:
-            projectm_set_mesh_size(g.pm, 48, 36);
+            g.textureQuality = TextureQuality::Q256;
             break;
         case QualityMode::Medium:
-            projectm_set_mesh_size(g.pm, 80, 60);
+            g.textureQuality = TextureQuality::Q512;
             break;
         case QualityMode::High:
-            projectm_set_mesh_size(g.pm, 128, 96);
+            g.textureQuality = TextureQuality::Q1024;
             break;
     }
+    applyRenderTuning();
 }
 
 static int fpsFromMode(QualityFpsMode m) {
@@ -1254,6 +1402,7 @@ static void applyFpsMode(QualityFpsMode m) {
         projectm_set_fps(g.pm, g.targetFps);
     }
     std::cout << "[UI] target fps set to " << g.targetFps << " (vsync may cap actual fps)" << std::endl;
+    savePresetPickerSettings();
 }
 
 static int textureSizeFromMode(TextureQuality q) {
@@ -1268,10 +1417,21 @@ static int textureSizeFromMode(TextureQuality q) {
 
 static void applyTextureQuality(TextureQuality q) {
     g.textureQuality = q;
-    int size = textureSizeFromMode(q);
-    // projectM C API bu derlemede doğrudan doku boyutu ayarlayıcısı sunmayabilir.
-    // Durumu ve logu tut; bağlama, texture/FBO ayrılan yerde eklenebilir.
-    std::cout << "[UI] quality set to " << size << std::endl;
+    applyRenderTuning();
+    const int size = textureSizeFromMode(q);
+    std::cout << "[UI] quality set to " << size << " + clarity profile" << std::endl;
+    savePresetPickerSettings();
+}
+
+static void applyClarityMode(ClarityMode m) {
+    g.clarityMode = m;
+    applyRenderTuning();
+    const char* name = "balanced";
+    if (m == ClarityMode::Soft) name = "soft";
+    else if (m == ClarityMode::Sharp) name = "sharp";
+    else if (m == ClarityMode::SharpPlus) name = "sharp+";
+    std::cout << "[UI] clarity mode set to " << name << std::endl;
+    savePresetPickerSettings();
 }
 
 static bool applyPresetByIndexNow(int idx) {
@@ -1329,13 +1489,9 @@ static void pumpAutoPresetSwitch() {
 
     if (enabledCount <= 0) return;
 
-    // Tam olarak bir preset etkinse onda kal (ama mevcut o değilse toparla).
-    if (enabledCount == 1) {
-        if (firstEnabled >= 0 && g.currentPreset != firstEnabled) {
-            requestPresetPreview(firstEnabled);
-        }
-        return;
-    }
+    // Tam olarak bir preset etkinse otomatik döngü yapma.
+    // Kullanıcı yine de listeden başka presetleri manuel olarak önizleyebilmeli.
+    if (enabledCount == 1) return;
 
     uint64_t t = nowMs();
     if (g.nextAutoSwitchMs == 0) scheduleNextAutoSwitch();
@@ -1625,10 +1781,43 @@ static std::string truncateToFit(const std::string& text, float maxWidth, bool* 
     return text.substr(0, lo) + dots;
 }
 
+static bool stringContainsCaseInsensitiveAscii(const std::string& haystack, const char* needle) {
+    if (!needle || !*needle) return true;
+    const std::string h = toLowerAscii(haystack);
+    const std::string n = toLowerAscii(std::string(needle));
+    return h.find(n) != std::string::npos;
+}
+
 static void renderContextMenuContents() {
+        const char* ctxDisplay = visEnvText("AURIVO_VIS_CTX_DISPLAY", L7("Display", "Görüntü", "العرض", "Affichage", "Anzeige", "Pantalla", "डिस्प्ले"));
+        const char* ctxRendering = visEnvText("AURIVO_VIS_CTX_RENDERING", L7("Rendering", "İşleme", "العرض المرئي", "Rendu", "Rendering", "Renderizado", "रेंडरिंग"));
+        const char* ctxPresets = visEnvText("AURIVO_VIS_CTX_PRESETS", L7("Presets", "Presetler", "الإعدادات", "Presets", "Presets", "Presets", "प्रीसेट"));
+        const char* ctxToggleFullscreen = visEnvText("AURIVO_VIS_CTX_TOGGLE_FULLSCREEN", L7("Toggle fullscreen", "Tam ekran göster/gizle", "تبديل ملء الشاشة", "Basculer plein écran", "Vollbild umschalten", "Alternar pantalla completa", "फुलस्क्रीन टॉगल करें"));
+        const char* ctxFrameRate = visEnvText("AURIVO_VIS_CTX_FRAME_RATE", L7("Frame rate", "Kare oranı", "معدل الإطارات", "Fréquence d’images", "Bildrate", "Velocidad de fotogramas", "फ़्रेम दर"));
+        const char* ctxQuality = visEnvText("AURIVO_VIS_CTX_QUALITY", L7("Quality", "Kalite", "الجودة", "Qualité", "Qualität", "Calidad", "गुणवत्ता"));
+        const char* ctxClarity = visEnvText("AURIVO_VIS_CTX_CLARITY", L7("Clarity", "Netlik", "الوضوح", "Netteté", "Klarheit", "Nitidez", "स्पष्टता"));
+        const char* ctxSelectVisuals = visEnvText("AURIVO_VIS_CTX_SELECT_VISUALS", L7("Select visualizations...", "Görselleştirmeleri seç...", "اختيار المرئيات...", "Sélectionner des visuels...", "Visuals auswählen...", "Seleccionar visuales...", "विज़ुअल चुनें..."));
+        const char* ctxClose = visEnvText("AURIVO_VIS_CTX_CLOSE", L7("Close visualization", "Görselleştirmeyi kapat", "إغلاق المرئيات", "Fermer le visualiseur", "Visualizer schließen", "Cerrar visualizador", "विज़ुअलाइज़र बंद करें"));
+        const char* ctxFpsLow = visEnvText("AURIVO_VIS_CTX_FPS_LOW", L7("Low (15 fps)", "Düşük (15 fps)", "منخفض (١٥)", "Faible (15 fps)", "Niedrig (15 fps)", "Bajo (15 fps)", "कम (15 fps)"));
+        const char* ctxFpsMedium = visEnvText("AURIVO_VIS_CTX_FPS_MEDIUM", L7("Medium (25 fps)", "Orta (25 fps)", "متوسط (٢٥)", "Moyen (25 fps)", "Mittel (25 fps)", "Medio (25 fps)", "मध्यम (25 fps)"));
+        const char* ctxFpsHigh = visEnvText("AURIVO_VIS_CTX_FPS_HIGH", L7("High (35 fps)", "Yüksek (35 fps)", "مرتفع (٣٥)", "Élevé (35 fps)", "Hoch (35 fps)", "Alto (35 fps)", "उच्च (35 fps)"));
+        const char* ctxFpsSuper = visEnvText("AURIVO_VIS_CTX_FPS_SUPER", L7("Super high (60 fps)", "Süper yüksek (60 fps)", "فائق (٦٠)", "Très élevé (60 fps)", "Sehr hoch (60 fps)", "Muy alto (60 fps)", "बहुत उच्च (60 fps)"));
+        const char* ctxQualityLow = visEnvText("AURIVO_VIS_CTX_QUALITY_LOW", L7("Low (256x256)", "Düşük (256x256)", "منخفض (٢٥٦×٢٥٦)", "Faible (256×256)", "Niedrig (256×256)", "Bajo (256×256)", "कम (256×256)"));
+        const char* ctxQualityMedium = visEnvText("AURIVO_VIS_CTX_QUALITY_MEDIUM", L7("Medium (512x512)", "Orta (512x512)", "متوسط (٥١٢×٥١٢)", "Moyen (512×512)", "Mittel (512×512)", "Medio (512×512)", "मध्यम (512×512)"));
+        const char* ctxQualityHigh = visEnvText("AURIVO_VIS_CTX_QUALITY_HIGH", L7("High (1024x1024)", "Yüksek (1024x1024)", "مرتفع (١٠٢٤×١٠٢٤)", "Élevé (1024×1024)", "Hoch (1024×1024)", "Alto (1024×1024)", "उच्च (1024×1024)"));
+        const char* ctxQualitySuper = visEnvText("AURIVO_VIS_CTX_QUALITY_SUPER", L7("Super high (2048x2048)", "Süper yüksek (2048x2048)", "فائق (٢٠٤٨×٢٠٤٨)", "Très élevé (2048×2048)", "Sehr hoch (2048×2048)", "Muy alto (2048×2048)", "बहुत उच्च (2048×2048)"));
+        const char* ctxClaritySoft = visEnvText("AURIVO_VIS_CTX_CLARITY_SOFT", L7("Soft", "Yumuşak", "ناعم", "Doux", "Weich", "Suave", "नरम"));
+        const char* ctxClarityBalanced = visEnvText("AURIVO_VIS_CTX_CLARITY_BALANCED", L7("Balanced", "Dengeli", "متوازن", "Équilibré", "Ausgewogen", "Equilibrado", "संतुलित"));
+        const char* ctxClaritySharp = visEnvText("AURIVO_VIS_CTX_CLARITY_SHARP", L7("Sharp", "Keskin", "حاد", "Net", "Scharf", "Nítido", "तीक्ष्ण"));
+        const char* ctxClaritySharpPlus = visEnvText("AURIVO_VIS_CTX_CLARITY_SHARP_PLUS", L7("Sharp+", "Keskin+", "حاد+", "Net+", "Scharf+", "Nítido+", "तीक्ष्ण+"));
+
+        ImGui::PushStyleColor(ImGuiCol_TextDisabled, ImVec4(0.58f, 0.66f, 0.76f, 1.0f));
+        ImGui::TextUnformatted(ctxDisplay);
+        ImGui::PopStyleColor();
+
 	        // 1) Tam ekran göster/gizle
 		        if (ImGui::MenuItem(
-                L7("Toggle fullscreen", "Tam ekran g\u00F6ster/gizle", "ØªØ¨Ø¯ÙŠÙ„ Ù…Ù„Ø¡ Ø§Ù„Ø´Ø§Ø´Ø©", "Basculer plein Ã©cran", "Vollbild umschalten", "Alternar pantalla completa", "à¤«à¥à¤²à¤¸à¥à¤•à¥à¤°à¥€à¤¨ à¤Ÿà¥‰à¤—à¤² à¤•à¤°à¥‡à¤‚"),
+                ctxToggleFullscreen,
 		                "F",
 		                g.fullscreen
 		            )) {
@@ -1638,58 +1827,90 @@ static void renderContextMenuContents() {
 
 	        // 2) Kare oranı >  (FPS alt menüsü)
 		        ImGui::SetNextWindowSizeConstraints(ImVec2(220, 0), ImVec2(FLT_MAX, FLT_MAX));
-        if (ImGui::BeginMenu(L7("Frame rate", "Kare oran\u0131", "Ù…Ø¹Ø¯Ù„ Ø§Ù„Ø¥Ø·Ø§Ø±Ø§Øª", "FrÃ©quence dâ€™images", "Bildrate", "Velocidad de fotogramas", "à¤«à¤¼à¥à¤°à¥‡à¤® à¤¦à¤°"))) {
-            if (ImGui::RadioButton(L7("Low (15 fps)", "D\u00FC\u015F\u00FCk (15 fps)", "Ù…Ù†Ø®ÙØ¶ (Ù¡Ù¥)", "Faible (15 fps)", "Niedrig (15 fps)", "Bajo (15 fps)", "à¤•à¤® (15 fps)"), g.fpsMode == QualityFpsMode::LOW_15)) {
+        if (ImGui::BeginMenu(ctxFrameRate)) {
+            if (ImGui::RadioButton(ctxFpsLow, g.fpsMode == QualityFpsMode::LOW_15)) {
 		                applyFpsMode(QualityFpsMode::LOW_15);
 		                ImGui::CloseCurrentPopup();
 		            }
-		            if (ImGui::RadioButton(L7("Medium (25 fps)", "Orta (25 fps)", "Ù…ØªÙˆØ³Ø· (Ù¢Ù¥)", "Moyen (25 fps)", "Mittel (25 fps)", "Medio (25 fps)", "à¤®à¤§à¥à¤¯à¤® (25 fps)"), g.fpsMode == QualityFpsMode::MID_25)) {
+		            if (ImGui::RadioButton(ctxFpsMedium, g.fpsMode == QualityFpsMode::MID_25)) {
 		                applyFpsMode(QualityFpsMode::MID_25);
 		                ImGui::CloseCurrentPopup();
 		            }
-            if (ImGui::RadioButton(L7("High (35 fps)", "Y\u00FCksek (35 fps)", "Ù…Ø±ØªÙØ¹ (Ù£Ù¥)", "Ã‰levÃ© (35 fps)", "Hoch (35 fps)", "Alto (35 fps)", "à¤‰à¤šà¥à¤š (35 fps)"), g.fpsMode == QualityFpsMode::HIGH_35)) {
+            if (ImGui::RadioButton(ctxFpsHigh, g.fpsMode == QualityFpsMode::HIGH_35)) {
 		                applyFpsMode(QualityFpsMode::HIGH_35);
 		                ImGui::CloseCurrentPopup();
 		            }
-            if (ImGui::RadioButton(L7("Super high (60 fps)", "S\u00FCper y\u00FCksek (60 fps)", "ÙØ§Ø¦Ù‚ (Ù¦Ù )", "TrÃ¨s Ã©levÃ© (60 fps)", "Sehr hoch (60 fps)", "Muy alto (60 fps)", "à¤¬à¤¹à¥à¤¤ à¤‰à¤šà¥à¤š (60 fps)"), g.fpsMode == QualityFpsMode::SUPER_60)) {
+            if (ImGui::RadioButton(ctxFpsSuper, g.fpsMode == QualityFpsMode::SUPER_60)) {
 		                applyFpsMode(QualityFpsMode::SUPER_60);
 		                ImGui::CloseCurrentPopup();
 		            }
 		            ImGui::EndMenu();
 		        }
 
+        ImGui::Spacing();
+        ImGui::PushStyleColor(ImGuiCol_TextDisabled, ImVec4(0.58f, 0.66f, 0.76f, 1.0f));
+        ImGui::TextUnformatted(ctxRendering);
+        ImGui::PopStyleColor();
+
 	        // 3) Kalite > (doku kalite radyo alt menüsü olarak istenen)
 		        ImGui::SetNextWindowSizeConstraints(ImVec2(260, 0), ImVec2(FLT_MAX, FLT_MAX));
-		        if (ImGui::BeginMenu(L7("Quality", "Kalite", "Ø§Ù„Ø¬ÙˆØ¯Ø©", "QualitÃ©", "QualitÃ¤t", "Calidad", "à¤—à¥à¤£à¤µà¤¤à¥à¤¤à¤¾"))) {
-            if (ImGui::RadioButton(L7("Low (256x256)", "D\u00FC\u015F\u00FCk (256x256)", "Ù…Ù†Ø®ÙØ¶ (Ù¢Ù¥Ù¦Ã—Ù¢Ù¥Ù¦)", "Faible (256Ã—256)", "Niedrig (256Ã—256)", "Bajo (256Ã—256)", "à¤•à¤® (256Ã—256)"), g.textureQuality == TextureQuality::Q256)) {
+		        if (ImGui::BeginMenu(ctxQuality)) {
+            if (ImGui::RadioButton(ctxQualityLow, g.textureQuality == TextureQuality::Q256)) {
 		                applyTextureQuality(TextureQuality::Q256);
 		                ImGui::CloseCurrentPopup();
 		            }
-		            if (ImGui::RadioButton(L7("Medium (512x512)", "Orta (512x512)", "Ù…ØªÙˆØ³Ø· (Ù¥Ù¡Ù¢Ã—Ù¥Ù¡Ù¢)", "Moyen (512Ã—512)", "Mittel (512Ã—512)", "Medio (512Ã—512)", "à¤®à¤§à¥à¤¯à¤® (512Ã—512)"), g.textureQuality == TextureQuality::Q512)) {
+		            if (ImGui::RadioButton(ctxQualityMedium, g.textureQuality == TextureQuality::Q512)) {
 		                applyTextureQuality(TextureQuality::Q512);
 		                ImGui::CloseCurrentPopup();
 		            }
-            if (ImGui::RadioButton(L7("High (1024x1024)", "Y\u00FCksek (1024x1024)", "Ù…Ø±ØªÙØ¹ (Ù¡Ù Ù¢Ù¤Ã—Ù¡Ù Ù¢Ù¤)", "Ã‰levÃ© (1024Ã—1024)", "Hoch (1024Ã—1024)", "Alto (1024Ã—1024)", "à¤‰à¤šà¥à¤š (1024Ã—1024)"), g.textureQuality == TextureQuality::Q1024)) {
+            if (ImGui::RadioButton(ctxQualityHigh, g.textureQuality == TextureQuality::Q1024)) {
 		                applyTextureQuality(TextureQuality::Q1024);
 		                ImGui::CloseCurrentPopup();
 		            }
-            if (ImGui::RadioButton(L7("Super high (2048x2048)", "S\u00FCper y\u00FCksek (2048x2048)", "ÙØ§Ø¦Ù‚ (Ù¢Ù Ù¤Ù¨Ã—Ù¢Ù Ù¤Ù¨)", "TrÃ¨s Ã©levÃ© (2048Ã—2048)", "Sehr hoch (2048Ã—2048)", "Muy alto (2048Ã—2048)", "à¤¬à¤¹à¥à¤¤ à¤‰à¤šà¥à¤š (2048Ã—2048)"), g.textureQuality == TextureQuality::Q2048)) {
+            if (ImGui::RadioButton(ctxQualitySuper, g.textureQuality == TextureQuality::Q2048)) {
 		                applyTextureQuality(TextureQuality::Q2048);
 		                ImGui::CloseCurrentPopup();
 		            }
 		            ImGui::EndMenu();
 		        }
 
-		        // 4) Görselleştirmeleri seç...
-        if (ImGui::MenuItem(L7("Select visualizations...", "G\u00F6rselle\u015Ftirmeleri se\u00E7...", "Ø§Ø®ØªÙŠØ§Ø± Ø§Ù„Ù…Ø±Ø¦ÙŠØ§Øª...", "SÃ©lectionner des visuels...", "Visuals auswÃ¤hlen...", "Seleccionar visuales...", "à¤µà¤¿à¤œà¤¼à¥à¤…à¤² à¤šà¥à¤¨à¥‡à¤‚..."))) {
+	        // 4) Netlik > (gercek keskinlik/ayrisim profili)
+		        ImGui::SetNextWindowSizeConstraints(ImVec2(240, 0), ImVec2(FLT_MAX, FLT_MAX));
+		        if (ImGui::BeginMenu(ctxClarity)) {
+            if (ImGui::RadioButton(ctxClaritySoft, g.clarityMode == ClarityMode::Soft)) {
+		                applyClarityMode(ClarityMode::Soft);
+		                ImGui::CloseCurrentPopup();
+		            }
+		            if (ImGui::RadioButton(ctxClarityBalanced, g.clarityMode == ClarityMode::Balanced)) {
+		                applyClarityMode(ClarityMode::Balanced);
+		                ImGui::CloseCurrentPopup();
+		            }
+            if (ImGui::RadioButton(ctxClaritySharp, g.clarityMode == ClarityMode::Sharp)) {
+		                applyClarityMode(ClarityMode::Sharp);
+		                ImGui::CloseCurrentPopup();
+		            }
+            if (ImGui::RadioButton(ctxClaritySharpPlus, g.clarityMode == ClarityMode::SharpPlus)) {
+		                applyClarityMode(ClarityMode::SharpPlus);
+		                ImGui::CloseCurrentPopup();
+		            }
+		            ImGui::EndMenu();
+		        }
+
+        ImGui::Separator();
+        ImGui::PushStyleColor(ImGuiCol_TextDisabled, ImVec4(0.58f, 0.66f, 0.76f, 1.0f));
+        ImGui::TextUnformatted(ctxPresets);
+        ImGui::PopStyleColor();
+
+		        // 5) Görselleştirmeleri seç...
+        if (ImGui::MenuItem(ctxSelectVisuals)) {
 		            g.showPresetPicker = true;
 		        }
 
         ImGui::Separator();
 
-	        // 5) Görselleştirmeyi kapat
+	        // 6) Görselleştirmeyi kapat
 	        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.85f, 0.25f, 0.20f, 1.0f));
-        if (ImGui::MenuItem(L7("Close visualization", "G\u00F6rselle\u015Ftirmeyi kapat", "Ø¥ØºÙ„Ø§Ù‚ Ø§Ù„Ù…Ø±Ø¦ÙŠØ§Øª", "Fermer le visualiseur", "Visualizer schlieÃŸen", "Cerrar visualizador", "à¤µà¤¿à¤œà¤¼à¥à¤…à¤²à¤¾à¤‡à¤œà¤¼à¤° à¤¬à¤‚à¤¦ à¤•à¤°à¥‡à¤‚"), nullptr)) {
+        if (ImGui::MenuItem(ctxClose, nullptr)) {
 	            g.running = false;
 	        }
 	        ImGui::PopStyleColor();
@@ -1719,18 +1940,41 @@ static void drawContextMenuHost() {
         ImGui::OpenPopup("AurivoContextMenu");
     }
 
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(14.0f, 12.0f));
+    ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(10.0f, 8.0f));
+    ImGui::PushStyleVar(ImGuiStyleVar_PopupRounding, 14.0f);
+    ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 9.0f);
+    ImGui::PushStyleVar(ImGuiStyleVar_PopupBorderSize, 1.0f);
+    ImGui::PushStyleColor(ImGuiCol_PopupBg, ImVec4(0.07f, 0.09f, 0.13f, 0.97f));
+    ImGui::PushStyleColor(ImGuiCol_Border, ImVec4(0.28f, 0.42f, 0.55f, 0.42f));
+    ImGui::PushStyleColor(ImGuiCol_Header, ImVec4(0.17f, 0.24f, 0.33f, 0.58f));
+    ImGui::PushStyleColor(ImGuiCol_HeaderHovered, ImVec4(0.22f, 0.33f, 0.45f, 0.72f));
+    ImGui::PushStyleColor(ImGuiCol_HeaderActive, ImVec4(0.25f, 0.40f, 0.54f, 0.84f));
+    ImGui::PushStyleColor(ImGuiCol_Separator, ImVec4(0.35f, 0.46f, 0.58f, 0.35f));
+
     if (ImGui::BeginPopup("AurivoContextMenu")) {
+        ImDrawList* dl = ImGui::GetWindowDrawList();
+        const ImVec2 p = ImGui::GetWindowPos();
+        const ImVec2 s = ImGui::GetWindowSize();
+        dl->AddRectFilledMultiColor(
+            p,
+            ImVec2(p.x + s.x, p.y + 5.0f),
+            IM_COL32(90, 182, 255, 205),
+            IM_COL32(82, 236, 197, 165),
+            IM_COL32(82, 236, 197, 165),
+            IM_COL32(90, 182, 255, 205)
+        );
         renderContextMenuContents();
         ImGui::EndPopup();
     }
+    ImGui::PopStyleColor(6);
+    ImGui::PopStyleVar(5);
     ImGui::End();
 }
 
 static void drawPresetPicker() {
     if (!g.showPresetPicker) return;
 
-    // Tek pencereli UI: OS düzeyindeki SDL penceresinde zaten başlık çubuğu var.
-    // Süslemeler olmadan tek, tam istemci alanlı ImGui penceresi çiz.
     ImGuiIO& io = ImGui::GetIO();
     ImGui::SetNextWindowPos(ImVec2(0, 0));
     ImGui::SetNextWindowSize(io.DisplaySize);
@@ -1738,38 +1982,112 @@ static void drawPresetPicker() {
                                  ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoBringToFrontOnFocus;
     ImGui::Begin("##AurivoPickerRoot", nullptr, rootFlags);
 
-	    // OS pencere başlığını istemci alanda tekrar ederek çoğaltma.
-		    ImGui::TextDisabled("%s", visEnvText("AURIVO_VIS_PICKER_HINT", L7(
-		        "Select visuals for auto-switch",
-		        "Otomatik ge\u00E7i\u015F i\u00E7in g\u00F6rselleri i\u015Faretleyin",
-		        "Ø­Ø¯Ø¯ Ø§Ù„Ù…Ø±Ø¦ÙŠØ§Øª Ù„Ù„ØªØ¨Ø¯ÙŠÙ„ Ø§Ù„ØªÙ„Ù‚Ø§Ø¦ÙŠ",
-		        "SÃ©lectionnez des visuels pour le changement automatique",
-		        "Visuals fÃ¼r automatischen Wechsel auswÃ¤hlen",
-		        "Selecciona visuales para cambio automÃ¡tico",
-		        "à¤‘à¤Ÿà¥‹-à¤¸à¥à¤µà¤¿à¤š à¤•à¥‡ à¤²à¤¿à¤ à¤µà¤¿à¤œà¤¼à¥à¤…à¤² à¤šà¥à¤¨à¥‡à¤‚"
-		    )));
-	    ImGui::Separator();
+    const float scale = (g.pickerWindow ? g.pickerDpiScale : g.dpiScale);
+    ImDrawList* rootDl = ImGui::GetWindowDrawList();
+    const ImVec2 rootPos = ImGui::GetWindowPos();
+    const ImVec2 rootSize = ImGui::GetWindowSize();
 
-		    ImGui::TextUnformatted(visEnvText("AURIVO_VIS_PICKER_PRESET_DIR", L7("Preset directory:", "Preset dizini:", "Ù…Ø¬Ù„Ø¯ Ø§Ù„Ø¥Ø¹Ø¯Ø§Ø¯Ø§Øª:", "Dossier des prÃ©rÃ©glages :", "Preset-Ordner:", "Carpeta de presets:", "à¤ªà¥à¤°à¥€à¤¸à¥‡à¤Ÿ à¤«à¤¼à¥‹à¤²à¥à¤¡à¤°:")));
-	    ImGui::SameLine();
-	    ImGui::TextDisabled(
-	        visEnvText("AURIVO_VIS_PICKER_PRESETS_FMT", L7("(%d presets)", "(%d preset)", "(%d Ø¥Ø¹Ø¯Ø§Ø¯Ø§Øª)", "(%d prÃ©rÃ©glages)", "(%d Presets)", "(%d preajustes)", "(%d à¤ªà¥à¤°à¥€à¤¸à¥‡à¤Ÿ)")),
-	        (int)g.presets.size()
-	    );
+    rootDl->AddRectFilled(rootPos, ImVec2(rootPos.x + rootSize.x, rootPos.y + rootSize.y), IM_COL32(10, 14, 22, 255));
+    rootDl->AddRectFilledMultiColor(
+        rootPos,
+        ImVec2(rootPos.x + rootSize.x, rootPos.y + rootSize.y * 0.48f),
+        IM_COL32(28, 96, 146, 118),
+        IM_COL32(18, 34, 62, 64),
+        IM_COL32(6, 12, 18, 0),
+        IM_COL32(12, 28, 46, 82)
+    );
 
-    // Klavye gezintisi (Yukarı/Aşağı, fare tıklamasıyla gelen aynı mavi seçimi hareket ettirir)
+    const bool compactMode = g.pickerCompactMode;
+    const float outerPad = compactMode ? std::max(12.0f, 16.0f * scale) : std::max(16.0f, 22.0f * scale);
+    const float blockGap = compactMode ? std::max(8.0f, 10.0f * scale) : std::max(12.0f, 14.0f * scale);
+    const float heroH = compactMode ? std::max(64.0f, 72.0f * scale) : std::max(84.0f, 96.0f * scale);
+    const float footerH = compactMode ? std::max(40.0f, 50.0f * scale) : std::max(46.0f, 58.0f * scale);
+
+    const char* heroTitle = visEnvText("AURIVO_VIS_PICKER_HERO_TITLE", L7("Curate the visual atmosphere", "Görsel atmosferi küratör gibi seçin", "Ù†Ø³Ù‚ Ø§Ù„Ø£Ø¬ÙˆØ§Ø¡ Ø§Ù„Ø¨ØµØ±ÙŠØ©", "Composez une atmosphère visuelle", "Gestalte die visuelle Stimmung", "Cura la atmósfera visual", "à¤µà¤¿à¤œà¤¼à¥à¤…à¤² à¤®à¤¾à¤¹à¥Œà¤² à¤šà¥à¤¨à¥‡à¤‚"));
+    const char* heroHint = visEnvText("AURIVO_VIS_PICKER_HINT", L7(
+        "Choose the presets included in the premium-style auto switch flow.",
+        "Otomatik geçiş akışına dahil olacak presetleri daha seçkin bir düzenle yönetin.",
+        "Ø­Ø¯Ø¯ Ø§Ù„Ù…Ø±Ø¦ÙŠØ§Øª Ø§Ù„ØªÙŠ Ø³ØªØ¯Ø®Ù„ ÙÙŠ Ø§Ù„ØªØ¨Ø¯ÙŠÙ„ Ø§Ù„ØªÙ„Ù‚Ø§Ø¦ÙŠ.",
+        "Choisissez les presets inclus dans la rotation automatique.",
+        "Wähle die Presets für den automatischen Wechsel aus.",
+        "Elige los presets incluidos en el cambio automático.",
+        "à¤‘à¤Ÿà¥‹ à¤¸à¥à¤µà¤¿à¤š à¤®à¥‡à¤‚ à¤¶à¤¾à¤®à¤¿à¤² à¤¹à¥‹à¤¨à¥‡ à¤µà¤¾à¤²à¥‡ à¤ªà¥à¤°à¥€à¤¸à¥‡à¤Ÿ à¤šà¥à¤¨à¥‡à¤‚।"
+    ));
+    const char* dirLabel = visEnvText("AURIVO_VIS_PICKER_PRESET_DIR", L7("Preset directory", "Preset dizini", "Ù…Ø¬Ù„Ø¯ Ø§Ù„Ø¥Ø¹Ø¯Ø§Ø¯Ø§Øª", "Dossier des préréglages", "Preset-Ordner", "Carpeta de presets", "à¤ªà¥à¤°à¥€à¤¸à¥‡à¤Ÿ à¤«à¤¼à¥‹à¤²à¥à¤¡à¤°"));
+    const char* searchHint = visEnvText("AURIVO_VIS_PICKER_SEARCH", L7("Search presets...", "Preset ara...", "Ø§Ø¨Ø­Ø« Ø¹Ù† preset...", "Rechercher un preset...", "Preset suchen...", "Buscar preset...", "à¤ªà¥à¤°à¥€à¤¸à¥‡à¤Ÿ à¤–à¥‹à¤œà¥‡à¤‚..."));
+    const char* delayLabel = visEnvText("AURIVO_VIS_PICKER_DELAY", L7("Switch delay", "Geçiş gecikmesi", "ØªØ£Ø®ÙŠØ± Ø§Ù„ØªØ¨Ø¯ÙŠÙ„", "Délai de rotation", "Wechselverzögerung", "Retraso de cambio", "à¤¸à¥à¤µà¤¿à¤š à¤¡à¥‡à¤²à¥‡"));
+    const char* compactLabel = visEnvText("AURIVO_VIS_PICKER_COMPACT", L7("Compact", "Kompakt", "Ù…Ø¯Ù…Ø¬", "Compact", "Kompakt", "Compacto", "à¤•à¥‰à¤®à¥à¤ªà¥ˆà¤•à¥à¤Ÿ"));
+    const char* enabledLabel = visEnvText("AURIVO_VIS_PICKER_ENABLED", L7("Enabled", "Etkin", "Ù…ÙÙØ¹Ù„", "Actif", "Aktiv", "Activo", "à¤¸à¤•à¥à¤°à¤¿à¤¯"));
+    const char* filterActiveLabel = visEnvText("AURIVO_VIS_PICKER_FILTER_ACTIVE", L7("Filter active:", "Filtre aktif:", "Ø§Ù„ÙÙ„ØªØ± Ù†Ø´Ø·:", "Filtre actif :", "Filter aktiv:", "Filtro activo:", "à¤«à¤¿à¤²à¥à¤Ÿà¤° à¤¸à¤•à¥à¤°à¤¿à¤¯:"));
+    const char* galleryLabel = visEnvText("AURIVO_VIS_PICKER_GALLERY", L7("Preset gallery", "Preset galerisi", "Ù…Ø¹Ø±Ø¶ preset", "Galerie de presets", "Preset-Galerie", "Galería de presets", "à¤ªà¥à¤°à¥€à¤¸à¥‡à¤Ÿ à¤—à¥ˆà¤²à¤°à¥€"));
+    const char* noMatchLabel = visEnvText("AURIVO_VIS_PICKER_NO_MATCH", L7("No preset matched your search.", "Aramanızla eşleşen preset bulunamadı.", "Ù„Ù… ÙŠÙØ¹Ø«Ø± Ø¹Ù„Ù‰ preset Ù…Ø·Ø§Ø¨Ù‚.", "Aucun preset ne correspond.", "Kein passendes Preset gefunden.", "No hay coincidencias.", "à¤•à¥‹à¤ˆ à¤®à¤¿à¤²à¤¾à¤¨ à¤¨à¤¹à¥€à¤‚ à¤®à¤¿à¤²à¤¾।"));
+    const char* inRotationLabel = visEnvText("AURIVO_VIS_PICKER_IN_ROTATION", L7("In rotation", "Döngüde", "ÙÙŠ Ø§Ù„Ø¯ÙˆØ±Ø§Ù†", "Dans la rotation", "In Rotation", "En rotación", "à¤°à¥‹à¤Ÿà¥‡à¤¶à¤¨ à¤®à¥‡à¤‚"));
+    const char* manualOnlyLabel = visEnvText("AURIVO_VIS_PICKER_MANUAL_ONLY", L7("Manual only", "Sadece manuel", "ÙŠØ¯ÙˆÙŠ ÙÙ‚Ø·", "Manuel uniquement", "Nur manuell", "Solo manual", "à¤¸à¤¿à¤°à¥à¤« à¤®à¥ˆà¤¨à¥à¤…à¤²"));
+    const char* includedTipLabel = visEnvText("AURIVO_VIS_PICKER_INCLUDED", L7("Included in auto-switch", "Otomatik geçişe dahil", "Ù…Ø¶Ù…Ù† ÙÙŠ Ø§Ù„ØªØ¨Ø¯ÙŠÙ„ Ø§Ù„ØªÙ„Ù‚Ø§Ø¦ÙŠ", "Inclus dans la rotation auto", "Im Auto-Wechsel enthalten", "Incluido en auto-cambio", "à¤‘à¤Ÿà¥‹ à¤¸à¥à¤µà¤¿à¤š à¤®à¥‡à¤‚ à¤¶à¤¾à¤®à¤¿à¤²"));
+    static uint64_t pickerAppearMs = 0;
     if (ImGui::IsWindowAppearing()) {
-        g.pickerNavIndex = std::clamp(g.currentPreset, 0, (int)g.presets.size() - 1);
+        pickerAppearMs = nowMs();
+    }
+    float appearNorm = std::clamp((float)(nowMs() - pickerAppearMs) / 420.0f, 0.0f, 1.0f);
+    float appearEase = 1.0f - (1.0f - appearNorm) * (1.0f - appearNorm);
+
+    int enabledCount = 0;
+    for (const auto& p : g.presets) {
+        if (p.enabled) enabledCount++;
+    }
+
+    std::vector<int> visibleIndices;
+    visibleIndices.reserve(g.presets.size());
+    for (int i = 0; i < (int)g.presets.size(); i++) {
+        if (stringContainsCaseInsensitiveAscii(g.presets[i].displayName, g.pickerSearchBuf.data())) {
+            visibleIndices.push_back(i);
+        }
+    }
+
+    auto setNavToVisible = [&](int desiredIndex) {
+        if (visibleIndices.empty()) {
+            g.pickerNavIndex = -1;
+            return;
+        }
+        int chosen = visibleIndices.front();
+        for (int idx : visibleIndices) {
+            if (idx >= desiredIndex) {
+                chosen = idx;
+                break;
+            }
+            chosen = idx;
+        }
+        g.pickerNavIndex = chosen;
+    };
+
+    auto visiblePositionOf = [&](int presetIndex) -> int {
+        for (int i = 0; i < (int)visibleIndices.size(); i++) {
+            if (visibleIndices[i] == presetIndex) return i;
+        }
+        return -1;
+    };
+
+    if (ImGui::IsWindowAppearing()) {
+        setNavToVisible(std::clamp(g.currentPreset, 0, (int)g.presets.size() - 1));
+        g.pickerNavScrollTo = true;
+    } else if (!visibleIndices.empty() && visiblePositionOf(g.pickerNavIndex) < 0) {
+        setNavToVisible(g.currentPreset);
         g.pickerNavScrollTo = true;
     }
-    if (ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows) && !ImGui::IsAnyItemActive()) {
+
+    if (ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows) && !ImGui::IsAnyItemActive() && !visibleIndices.empty()) {
+        int visiblePos = visiblePositionOf(g.pickerNavIndex);
+        if (visiblePos < 0) visiblePos = 0;
+
         if (ImGui::IsKeyPressed(ImGuiKey_UpArrow)) {
-            g.pickerNavIndex = std::max(0, g.pickerNavIndex - 1);
+            visiblePos = std::max(0, visiblePos - 1);
+            g.pickerNavIndex = visibleIndices[visiblePos];
             g.pickerNavScrollTo = true;
             g.currentPreset = g.pickerNavIndex;
             requestPresetPreview(g.pickerNavIndex);
         } else if (ImGui::IsKeyPressed(ImGuiKey_DownArrow)) {
-            g.pickerNavIndex = std::min((int)g.presets.size() - 1, g.pickerNavIndex + 1);
+            visiblePos = std::min((int)visibleIndices.size() - 1, visiblePos + 1);
+            g.pickerNavIndex = visibleIndices[visiblePos];
             g.pickerNavScrollTo = true;
             g.currentPreset = g.pickerNavIndex;
             requestPresetPreview(g.pickerNavIndex);
@@ -1783,257 +2101,308 @@ static void drawPresetPicker() {
         }
     }
 
-    // Gecikme kontrolü: ince "zaman çubuğu" stili.
-    const float scale = (g.pickerWindow ? g.pickerDpiScale : g.dpiScale);
-	    {
-	        ImDrawList* dl = ImGui::GetWindowDrawList();
-	        const char* label = visEnvText("AURIVO_VIS_PICKER_DELAY", L7("Delay (s)", "Gecikme (sn)", "Ø§Ù„ØªØ£Ø®ÙŠØ± (Ø«)", "DÃ©lai (s)", "VerzÃ¶gerung (s)", "Retraso (s)", "à¤¦à¥‡à¤°à¥€ (s)"));
-	        float labelW = ImGui::CalcTextSize(label).x;
-	        float availW = ImGui::GetContentRegionAvail().x;
-	        float gap = std::max(10.0f, 14.0f * scale);
+    ImGui::SetCursorPos(ImVec2(outerPad, outerPad));
+    ImGui::BeginGroup();
+    {
+        ImVec2 heroPos = ImGui::GetCursorScreenPos();
+        ImVec2 heroSize(ImGui::GetContentRegionAvail().x, heroH);
+        rootDl->AddRectFilled(heroPos, ImVec2(heroPos.x + heroSize.x, heroPos.y + heroSize.y), IM_COL32(17, 24, 34, 214), 16.0f * scale);
+        rootDl->AddRectFilledMultiColor(
+            heroPos,
+            ImVec2(heroPos.x + heroSize.x, heroPos.y + heroSize.y),
+            IM_COL32(58, 168, 255, 30),
+            IM_COL32(95, 230, 194, 14),
+            IM_COL32(8, 12, 18, 2),
+            IM_COL32(10, 14, 22, 8)
+        );
+        rootDl->AddCircleFilled(ImVec2(heroPos.x + heroSize.x - 44.0f * scale, heroPos.y + 34.0f * scale), 32.0f * scale, IM_COL32(70, 160, 255, 18), 36);
 
-        float barW = std::max(160.0f, availW - labelW - gap);
-        float barH = std::max(8.0f, 10.0f * scale);
-        float knobR = std::max(5.0f, 7.0f * scale);
-        float borderR = std::max(3.0f, 5.0f * scale);
+        ImGui::Dummy(heroSize);
+        ImGui::SetCursorScreenPos(ImVec2(heroPos.x + 16.0f * scale, heroPos.y + (compactMode ? 8.0f : 12.0f) * scale));
+        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.93f, 0.97f, 1.0f, 1.0f));
+        ImGui::TextUnformatted(heroTitle);
+        ImGui::PopStyleColor();
 
-        ImVec2 barPos = ImGui::GetCursorScreenPos();
-        ImGui::InvisibleButton("##delay_bar", ImVec2(barW, barH + std::max(6.0f, 8.0f * scale)));
-        bool hovered = ImGui::IsItemHovered();
-        bool active = ImGui::IsItemActive();
-
-        int delay = g.delaySeconds;
-        int minV = 5;
-        int maxV = 120;
-        float t = (maxV > minV) ? (float)(delay - minV) / (float)(maxV - minV) : 0.0f;
-        t = std::clamp(t, 0.0f, 1.0f);
-
-        if (active) {
-            float mx = ImGui::GetIO().MousePos.x;
-            float newT = (barW > 1.0f) ? (mx - barPos.x) / barW : 0.0f;
-            newT = std::clamp(newT, 0.0f, 1.0f);
-            int newDelay = (int)std::lround(minV + newT * (float)(maxV - minV));
-            if (newDelay != delay) {
-                g.delaySeconds = newDelay;
-                scheduleNextAutoSwitch();
-                delay = newDelay;
-                t = newT;
-            }
+        if (!compactMode) {
+            ImGui::SetCursorScreenPos(ImVec2(heroPos.x + 16.0f * scale, heroPos.y + 36.0f * scale));
+            ImGui::PushTextWrapPos(heroPos.x + heroSize.x - 120.0f * scale);
+            ImGui::TextDisabled("%s", heroHint);
+            ImGui::PopTextWrapPos();
         }
 
-        // Renkler: animasyonlu ton kayması (ana uygulamanın ilerleme çubuğu gibi renk döngüsü)
-        float timeS = (float)nowMs() / 1000.0f;
-        float pulse = 0.5f + 0.5f * std::sin(timeS * 2.2f);
-        float hue = std::fmod(timeS * 0.15f, 1.0f); // Yavaş gökkuşağı döngüsü
-        
-        auto hsvToRgb = [](float h, float s, float v) -> ImVec4 {
-            float c = v * s;
-            float x = c * (1.0f - std::fabs(std::fmod(h * 6.0f, 2.0f) - 1.0f));
-            float m = v - c;
-            float r = 0, g = 0, b = 0;
-            if (h < 1.0f/6.0f) { r = c; g = x; }
-            else if (h < 2.0f/6.0f) { r = x; g = c; }
-            else if (h < 3.0f/6.0f) { g = c; b = x; }
-            else if (h < 4.0f/6.0f) { g = x; b = c; }
-            else if (h < 5.0f/6.0f) { r = x; b = c; }
-            else { r = c; b = x; }
-            return ImVec4(r + m, g + m, b + m, 1.0f);
-        };
-        
-        ImVec4 fillColor = hsvToRgb(hue, 0.75f, 0.95f);
-        ImVec4 glowColor = hsvToRgb(hue, 0.6f, 0.8f);
-        ImVec4 knobColor = hsvToRgb(hue, 0.85f, 1.0f);
-        
-        ImU32 bg = IM_COL32(28, 28, 28, 255);
-        ImU32 track = IM_COL32(60, 60, 60, 255);
-        ImU32 fill = IM_COL32((int)(fillColor.x * 255), (int)(fillColor.y * 255), (int)(fillColor.z * 255), 220);
-        ImU32 glow = IM_COL32((int)(glowColor.x * 255), (int)(glowColor.y * 255), (int)(glowColor.z * 255), (int)(40 + pulse * 80));
-        ImU32 knob = IM_COL32(245, 245, 245, 230);
-        ImU32 knobFill = IM_COL32((int)(knobColor.x * 255), (int)(knobColor.y * 255), (int)(knobColor.z * 255), 255);
-
-        ImVec2 p0(barPos.x, barPos.y + std::max(3.0f, 4.0f * scale));
-        ImVec2 p1(barPos.x + barW, p0.y + barH);
-        dl->AddRectFilled(p0, p1, bg, borderR);
-        dl->AddRect(p0, p1, hovered ? IM_COL32(120, 120, 120, 255) : track, borderR, 0, 1.0f);
-
-        ImVec2 fill1(p0.x + barW * t, p1.y);
-        dl->AddRectFilled(p0, fill1, fill, borderR);
-        if (hovered || active) {
-            dl->AddRect(ImVec2(p0.x - 1, p0.y - 1), ImVec2(p1.x + 1, p1.y + 1), glow, borderR + 1.0f, 0, 2.0f);
-        }
-
-        float knobX = p0.x + barW * t;
-        float knobY = (p0.y + p1.y) * 0.5f;
-        dl->AddCircleFilled(ImVec2(knobX, knobY), knobR + 1.2f, hovered ? knobFill : fill);
-        dl->AddCircleFilled(ImVec2(knobX, knobY), knobR, knob);
-
-        // Değer metni çubuğun ortasında
-        char buf[32];
-        std::snprintf(buf, sizeof(buf), "%d", g.delaySeconds);
-        ImVec2 tw = ImGui::CalcTextSize(buf);
-        ImVec2 tc((p0.x + p1.x - tw.x) * 0.5f, (p0.y + p1.y - tw.y) * 0.5f);
-        dl->AddText(tc, IM_COL32(235, 235, 235, 230), buf);
-
-        // Etiket sağda, aynı satır
+        ImGui::SetCursorScreenPos(ImVec2(heroPos.x + 16.0f * scale, heroPos.y + heroSize.y - (compactMode ? 22.0f : 24.0f) * scale));
+        ImGui::TextDisabled("%s:", dirLabel);
         ImGui::SameLine();
-        ImGui::SetCursorPosX(ImGui::GetCursorPosX() + gap);
-        ImGui::TextUnformatted(label);
+        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.70f, 0.87f, 1.0f, 1.0f));
+        ImGui::Text("%d", (int)g.presets.size());
+        ImGui::PopStyleColor();
+        ImGui::SameLine();
+        ImGui::TextDisabled("|");
+        ImGui::SameLine();
+        ImGui::TextDisabled("%s:", enabledLabel);
+        ImGui::SameLine();
+        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.62f, 0.90f, 0.78f, 1.0f));
+        ImGui::Text("%d", enabledCount);
+        ImGui::PopStyleColor();
     }
 
-    ImGui::Separator();
+    ImGui::Dummy(ImVec2(0, compactMode ? std::max(6.0f, 8.0f * scale) : std::max(8.0f, 10.0f * scale)));
+    {
+        ImVec2 controlPos = ImGui::GetCursorScreenPos();
+        ImVec2 controlSize(ImGui::GetContentRegionAvail().x, (compactMode ? 50.0f : 58.0f) * scale);
+        rootDl->AddRectFilled(controlPos, ImVec2(controlPos.x + controlSize.x, controlPos.y + controlSize.y), IM_COL32(15, 20, 28, 220), 14.0f * scale);
+        rootDl->AddRect(controlPos, ImVec2(controlPos.x + controlSize.x, controlPos.y + controlSize.y), IM_COL32(255, 255, 255, 18), 14.0f * scale, 0, 1.0f);
+        ImGui::Dummy(controlSize);
 
-    // Kaydırılabilir liste alanı (alt düğmeler için yer bırak)
-    const float rowH = std::max(18.0f, 26.0f * scale);
-    const float padX = std::max(4.0f, 8.0f * scale);
-    const float gap = std::max(6.0f, 10.0f * scale);
-    const float cbSize = std::clamp(16.0f * scale, 14.0f, 22.0f);
-    const float cbBorder = std::max(1.0f, 1.5f * scale);
-    const float listFooterH = ImGui::GetFrameHeightWithSpacing() + ImGui::GetStyle().ItemSpacing.y;
-    const float listH = std::max(160.0f, ImGui::GetContentRegionAvail().y - listFooterH);
+        float delayBlockW = std::max(230.0f, 240.0f * scale);
+        float compactBtnW = std::max(88.0f, 94.0f * scale);
+        float searchW = std::max(120.0f, controlSize.x - delayBlockW - compactBtnW - 34.0f * scale);
 
-    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0, 0));
-    bool childOk = ImGui::BeginChild("##preset_list", ImVec2(0, listH), true, ImGuiWindowFlags_NoNav);
-    ImGui::PopStyleVar();
-    if (childOk) {
-        ImDrawList* dl = ImGui::GetWindowDrawList();
+        ImGui::SetCursorScreenPos(ImVec2(controlPos.x + 12.0f * scale, controlPos.y + (compactMode ? 8.0f : 10.0f) * scale));
+        ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 10.0f * scale);
+        ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(12.0f * scale, (compactMode ? 7.0f : 9.0f) * scale));
+        ImGui::PushStyleColor(ImGuiCol_FrameBg, ImVec4(0.09f, 0.12f, 0.17f, 0.98f));
+        ImGui::PushStyleColor(ImGuiCol_FrameBgHovered, ImVec4(0.12f, 0.17f, 0.24f, 1.0f));
+        ImGui::PushStyleColor(ImGuiCol_FrameBgActive, ImVec4(0.13f, 0.20f, 0.29f, 1.0f));
+        ImGui::SetNextItemWidth(searchW);
+        if (ImGui::InputTextWithHint("##picker_search", searchHint, g.pickerSearchBuf.data(), g.pickerSearchBuf.size())) {
+            setNavToVisible(g.currentPreset);
+            g.pickerNavScrollTo = true;
+        }
+        ImGui::PopStyleColor(3);
+        ImGui::PopStyleVar(2);
 
-        const ImU32 hoverCol = IM_COL32(60, 160, 220, 120);
-        const ImU32 currentCol = IM_COL32(40, 120, 200, 200);
-        const ImU32 textCurrentCol = IM_COL32(245, 245, 245, 255);
+        ImGui::SetCursorScreenPos(ImVec2(controlPos.x + 16.0f * scale + searchW, controlPos.y + (compactMode ? 8.0f : 10.0f) * scale));
+        if (ImGui::Button(compactLabel, ImVec2(compactBtnW, (compactMode ? 30.0f : 34.0f) * scale))) {
+            g.pickerCompactMode = !g.pickerCompactMode;
+        }
 
-        ImGuiListClipper clipper;
-        clipper.Begin((int)g.presets.size(), rowH);
-        while (clipper.Step()) {
-            for (int i = clipper.DisplayStart; i < clipper.DisplayEnd; i++) {
-                PresetItem& p = g.presets[i];
-                const bool isCurrent = (i == g.currentPreset);
-                const bool isNav = (i == g.pickerNavIndex);
-
-                ImGui::PushID(i);
-
-                // Ekran uzayında satır dikdörtgeni
-                ImVec2 rowMin = ImGui::GetCursorScreenPos();
-                float rowW = ImGui::GetContentRegionAvail().x;
-                ImVec2 rowMax(rowMin.x + rowW, rowMin.y + rowH);
-
-                // Mevcut/seçili arka plan
-                if (isCurrent) {
-                    dl->AddRectFilled(rowMin, rowMax, currentCol, 0.0f);
-                }
-
-                // Onay kutusu hitbox'ı (A)
-                ImVec2 cbPos(rowMin.x + padX, rowMin.y + (rowH - cbSize) * 0.5f);
-                ImGui::SetCursorScreenPos(cbPos);
-                ImGui::InvisibleButton("##chk", ImVec2(cbSize, cbSize));
-                bool cbClicked = ImGui::IsItemClicked(ImGuiMouseButton_Left);
-                bool cbHovered = ImGui::IsItemHovered();
-                if (cbClicked) {
-                    p.enabled = !p.enabled;
-                }
-
-                // Özel onay kutusu görseli
-                ImVec2 cbMin = ImGui::GetItemRectMin();
-                ImVec2 cbMax = ImGui::GetItemRectMax();
-                const ImU32 cbBg = p.enabled ? IM_COL32(60, 160, 220, 220) : IM_COL32(35, 35, 35, 255);
-                const ImU32 cbBorderCol = IM_COL32(150, 150, 150, 255);
-                dl->AddRectFilled(cbMin, cbMax, cbBg, 3.0f * scale);
-                dl->AddRect(cbMin, cbMax, cbBorderCol, 3.0f * scale, 0, cbBorder);
-                if (p.enabled) {
-                    // Beyaz onay işareti çiz
-                    float x0 = cbMin.x + cbSize * 0.22f;
-                    float y0 = cbMin.y + cbSize * 0.55f;
-                    float x1 = cbMin.x + cbSize * 0.42f;
-                    float y1 = cbMin.y + cbSize * 0.74f;
-                    float x2 = cbMin.x + cbSize * 0.78f;
-                    float y2 = cbMin.y + cbSize * 0.28f;
-                    dl->AddLine(ImVec2(x0, y0), ImVec2(x1, y1), IM_COL32(255, 255, 255, 255), std::max(1.5f, 2.2f * scale));
-                    dl->AddLine(ImVec2(x1, y1), ImVec2(x2, y2), IM_COL32(255, 255, 255, 255), std::max(1.5f, 2.2f * scale));
-                }
-
-	                if (cbHovered) {
-		                    ImGui::SetTooltip("%s", L7(
-		                        "Included in auto-switch",
-		                        "Otomatik ge\u00E7i\u015Fe dahil",
-		                        "Ù…Ø¶Ù…Ù† ÙÙŠ Ø§Ù„ØªØ¨Ø¯ÙŠÙ„ Ø§Ù„ØªÙ„Ù‚Ø§Ø¦ÙŠ",
-		                        "Inclus dans le changement auto",
-		                        "Im Auto-Wechsel enthalten",
-		                        "Incluido en cambio automÃ¡tico",
-		                        "à¤‘à¤Ÿà¥‹-à¤¸à¥à¤µà¤¿à¤š à¤®à¥‡à¤‚ à¤¶à¤¾à¤®à¤¿à¤²"
-		                    ));
-	                }
-
-                // Seçilebilir/metin hitbox'ı (B) - onay kutusu bölgesini hariç tutar
-                float selX = rowMin.x + padX + cbSize + gap;
-                float selW = std::max(0.0f, rowMax.x - padX - selX);
-                ImVec2 selMin(selX, rowMin.y);
-                ImVec2 selMax(selX + selW, rowMax.y);
-                ImGui::SetCursorScreenPos(selMin);
-                ImGui::InvisibleButton("##row", ImVec2(selW, rowH));
-                bool rowHovered = ImGui::IsItemHovered();
-                bool rowClicked = ImGui::IsItemClicked(ImGuiMouseButton_Left);
-
-                // Hover vurgusu (bağımsız)
-                if (rowHovered) {
-                    dl->AddRectFilled(rowMin, rowMax, hoverCol, 0.0f);
-                }
-
-                if (rowClicked) {
-                    // Metin bölgesinde tek tık: yalnızca önizleme/mevcut preset değiştiğinde.
-                    g.pickerNavIndex = i;
-                    g.pickerNavScrollTo = true;
-                    g.currentPreset = i;
-                    requestPresetPreview(i);
-                }
-
-                // Metin (üç nokta + tooltip)
-                ImVec2 textPos(selMin.x, rowMin.y + (rowH - ImGui::GetTextLineHeight()) * 0.5f);
-                ImGui::SetCursorScreenPos(textPos);
-
-                bool truncated = false;
-                std::string shown = truncateToFit(p.displayName, selW, &truncated);
-                ImU32 textCol = isCurrent ? textCurrentCol : ImGui::GetColorU32(ImGuiCol_Text);
-                dl->AddText(textPos, textCol, shown.c_str());
-                if (truncated && rowHovered && ImGui::IsMouseHoveringRect(selMin, selMax, false)) {
-                    ImGui::SetTooltip("%s", p.displayName.c_str());
-                }
-
-                // Hafif satır ayırıcı
-                dl->AddLine(ImVec2(rowMin.x, rowMax.y - 1.0f), ImVec2(rowMax.x, rowMax.y - 1.0f), IM_COL32(255, 255, 255, 18), 1.0f);
-
-                // İmleci sonraki satıra ilerlet
-                ImGui::SetCursorScreenPos(ImVec2(rowMin.x, rowMax.y));
-
-                if (isNav && g.pickerNavScrollTo) {
-                    ImGui::SetScrollHereY(0.35f);
-                    g.pickerNavScrollTo = false;
-                }
-                ImGui::PopID();
+        auto applyDelay = [&](int v) {
+            int clamped = std::clamp(v, 5, 120);
+            if (clamped != g.delaySeconds) {
+                g.delaySeconds = clamped;
+                scheduleNextAutoSwitch();
             }
+        };
+
+        float delayX = controlPos.x + controlSize.x - delayBlockW + 10.0f * scale;
+        ImGui::SetCursorScreenPos(ImVec2(delayX, controlPos.y + (compactMode ? 5.0f : 7.0f) * scale));
+        ImGui::TextDisabled("%s", delayLabel);
+        ImGui::SetCursorScreenPos(ImVec2(delayX + 106.0f * scale, controlPos.y + (compactMode ? 2.0f : 4.0f) * scale));
+        char delayDigits[16];
+        std::snprintf(delayDigits, sizeof(delayDigits), "%d", g.delaySeconds);
+        const float valueW = std::max(38.0f * scale, ImGui::CalcTextSize(delayDigits).x + 20.0f * scale);
+        if (ImGui::ArrowButton("##delay_minus", ImGuiDir_Left)) {
+            applyDelay(g.delaySeconds - 5);
+        }
+        ImGui::SameLine(0, 6.0f * scale);
+        int delayTmp = g.delaySeconds;
+        ImGui::PushItemWidth(valueW);
+        if (ImGui::InputInt("##delay_compact", &delayTmp, 0, 0)) {
+            applyDelay(delayTmp);
+        }
+        ImGui::PopItemWidth();
+        ImGui::SameLine(0, 4.0f * scale);
+        ImGui::TextDisabled("s");
+        ImGui::SameLine(0, 6.0f * scale);
+        if (ImGui::ArrowButton("##delay_plus", ImGuiDir_Right)) {
+            applyDelay(g.delaySeconds + 5);
         }
     }
-    ImGui::EndChild();
 
-    ImGui::Separator();
+    std::string activeSearch = trimAscii(g.pickerSearchBuf.data());
+    if (!activeSearch.empty()) {
+        ImGui::Dummy(ImVec2(0, 8.0f * scale));
+        ImVec2 filterPos = ImGui::GetCursorScreenPos();
+        const std::string filterText = std::string(filterActiveLabel) + std::string(" ") + activeSearch;
+        const float filterW = ImGui::CalcTextSize(filterText.c_str()).x + 26.0f * scale;
+        const float filterH = 24.0f * scale;
+            rootDl->AddRectFilled(filterPos, ImVec2(filterPos.x + filterW, filterPos.y + filterH), IM_COL32(34, 63, 94, 232), 12.0f * scale);
+            rootDl->AddRect(filterPos, ImVec2(filterPos.x + filterW, filterPos.y + filterH), IM_COL32(124, 196, 255, 110), 12.0f * scale, 0, 1.0f);
+            ImGui::Dummy(ImVec2(filterW, filterH));
+            ImGui::SetCursorScreenPos(ImVec2(filterPos.x + 11.0f * scale, filterPos.y + 5.0f * scale));
+            ImGui::TextUnformatted(filterText.c_str());
+    }
 
-	    // Alt düğmeler
-	    if (ImGui::Button(visEnvText("AURIVO_VIS_PICKER_ALL", L7("All", "Hepsi", "Ø§Ù„ÙƒÙ„", "Tout", "Alle", "Todo", "à¤¸à¤­à¥€")))) {
-	        for (auto& p : g.presets) p.enabled = true;
-	    }
-	    ImGui::SameLine();
-        if (ImGui::Button(visEnvText("AURIVO_VIS_PICKER_NONE", L7("None", "Hi\u00E7biri", "Ù„Ø§ Ø´ÙŠØ¡", "Aucun", "Keine", "Ninguno", "à¤•à¥‹à¤ˆ à¤¨à¤¹à¥€à¤‚")))) {
-	        for (auto& p : g.presets) p.enabled = false;
-	    }
+    ImGui::Dummy(ImVec2(0, blockGap));
 
-	    // "Tamam"ı sağa hizala
-	    const char* okText = visEnvText("AURIVO_VIS_PICKER_OK", L7("OK", "Tamam", "Ù…ÙˆØ§ÙÙ‚", "OK", "OK", "OK", "à¤ à¥€à¤•"));
-	    float btnW = ImGui::CalcTextSize(okText).x + ImGui::GetStyle().FramePadding.x * 2;
-	    float rightX = ImGui::GetCursorPosX() + (ImGui::GetContentRegionAvail().x - btnW);
-	    rightX = std::max(ImGui::GetCursorPosX(), rightX);
-	    ImGui::SameLine();
-	    ImGui::SetCursorPosX(rightX);
-	    if (ImGui::Button(okText)) {
-	        g.showPresetPicker = false;
-	    }
+    const float listHeaderH = (compactMode ? 26.0f : 32.0f) * scale;
+    const float listFooterReserve = footerH + blockGap;
+    const float listH = std::max(170.0f, ImGui::GetContentRegionAvail().y - listFooterReserve);
+    {
+        ImVec2 listPos = ImGui::GetCursorScreenPos();
+        ImVec2 listSize(ImGui::GetContentRegionAvail().x, listH);
+        rootDl->AddRectFilled(listPos, ImVec2(listPos.x + listSize.x, listPos.y + listSize.y), IM_COL32(14, 18, 25, 220), 18.0f * scale);
+        rootDl->AddRect(listPos, ImVec2(listPos.x + listSize.x, listPos.y + listSize.y), IM_COL32(255, 255, 255, 18), 18.0f * scale, 0, 1.0f);
+
+        ImGui::SetCursorScreenPos(ImVec2(listPos.x + 16.0f * scale, listPos.y + 10.0f * scale));
+        ImGui::TextDisabled("%s", galleryLabel);
+        ImGui::SetCursorScreenPos(ImVec2(listPos.x, listPos.y + listHeaderH));
+
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(10.0f * scale, 8.0f * scale));
+        bool childOk = ImGui::BeginChild("##preset_list", ImVec2(listSize.x, listSize.y - listHeaderH), false, ImGuiWindowFlags_NoNav);
+        ImGui::PopStyleVar();
+        if (childOk) {
+            if (visibleIndices.empty()) {
+                ImGui::Dummy(ImVec2(0, 18.0f * scale));
+                ImGui::TextDisabled("%s", noMatchLabel);
+            } else {
+                ImDrawList* listDl = ImGui::GetWindowDrawList();
+                const float rowH = compactMode ? std::max(42.0f, 46.0f * scale) : std::max(52.0f, 58.0f * scale);
+                const float cardGap = compactMode ? std::max(5.0f, 6.0f * scale) : std::max(8.0f, 10.0f * scale);
+                const float cbSize = compactMode ? std::clamp(16.0f * scale, 14.0f, 20.0f) : std::clamp(18.0f * scale, 16.0f, 24.0f);
+
+                ImGuiListClipper clipper;
+                clipper.Begin((int)visibleIndices.size(), rowH + cardGap);
+                while (clipper.Step()) {
+                    for (int visibleRow = clipper.DisplayStart; visibleRow < clipper.DisplayEnd; visibleRow++) {
+                        const int i = visibleIndices[visibleRow];
+                        PresetItem& p = g.presets[i];
+                        const bool isCurrent = (i == g.currentPreset);
+                        const bool isNav = (i == g.pickerNavIndex);
+                        float rowAnimT = 1.0f;
+                        if (appearNorm < 0.995f) {
+                            rowAnimT = std::clamp((appearEase - visibleRow * 0.035f) / 0.65f, 0.0f, 1.0f);
+                        }
+                        const float rowYOffset = (1.0f - rowAnimT) * 14.0f * scale;
+                        const int rowAlpha = (int)std::lround(255.0f * rowAnimT);
+                        const uint32_t seed = (uint32_t)std::hash<std::string>{}(p.path);
+                        const int baseR = 56 + (int)(seed & 0x3F);
+                        const int baseG = 90 + (int)((seed >> 6) & 0x5F);
+                        const int baseB = 118 + (int)((seed >> 13) & 0x4F);
+                        std::string initials = initialsFromPresetName(p.displayName);
+
+                        ImGui::PushID(i);
+                        ImVec2 rowMin = ImGui::GetCursorScreenPos();
+                        rowMin.y += rowYOffset;
+                        float rowW = ImGui::GetContentRegionAvail().x;
+                        ImVec2 rowMax(rowMin.x + rowW, rowMin.y + rowH);
+
+                        const ImU32 bgCol = isCurrent ? IM_COL32(22, 64, 100, rowAlpha) : IM_COL32(18, 24, 34, rowAlpha);
+                        const ImU32 borderCol = isNav ? IM_COL32(108, 208, 255, std::min(220, rowAlpha)) : IM_COL32(255, 255, 255, std::min(36, rowAlpha));
+                        listDl->AddRectFilled(rowMin, rowMax, bgCol, 14.0f * scale);
+                        listDl->AddRect(rowMin, rowMax, borderCol, 14.0f * scale, 0, isNav ? 1.5f : 1.0f);
+                        if (p.enabled) {
+                            listDl->AddRectFilled(ImVec2(rowMin.x + 8.0f * scale, rowMin.y + 8.0f * scale), ImVec2(rowMin.x + 12.0f * scale, rowMax.y - 8.0f * scale), IM_COL32(88, 220, 176, std::min(255, rowAlpha)), 8.0f * scale);
+                        }
+
+                        ImGui::SetCursorScreenPos(rowMin);
+                        ImGui::InvisibleButton("##row_hit", ImVec2(rowW, rowH));
+                        bool rowHovered = ImGui::IsItemHovered();
+                        bool rowClicked = ImGui::IsItemClicked(ImGuiMouseButton_Left);
+
+                        ImVec2 cbMin(rowMin.x + 20.0f * scale, rowMin.y + (rowH - cbSize) * 0.5f);
+                        ImVec2 cbMax(cbMin.x + cbSize, cbMin.y + cbSize);
+                        bool cbHovered = ImGui::IsMouseHoveringRect(cbMin, cbMax, true);
+                        listDl->AddRectFilled(cbMin, cbMax, p.enabled ? IM_COL32(88, 220, 176, std::min(235, rowAlpha)) : IM_COL32(30, 36, 46, std::min(255, rowAlpha)), 6.0f * scale);
+                        listDl->AddRect(cbMin, cbMax, p.enabled ? IM_COL32(122, 245, 205, std::min(255, rowAlpha)) : IM_COL32(122, 132, 148, std::min(170, rowAlpha)), 6.0f * scale, 0, 1.2f);
+                        if (p.enabled) {
+                            listDl->AddLine(ImVec2(cbMin.x + cbSize * 0.24f, cbMin.y + cbSize * 0.55f), ImVec2(cbMin.x + cbSize * 0.43f, cbMin.y + cbSize * 0.74f), IM_COL32(9, 18, 22, std::min(255, rowAlpha)), std::max(1.6f, 2.2f * scale));
+                            listDl->AddLine(ImVec2(cbMin.x + cbSize * 0.43f, cbMin.y + cbSize * 0.74f), ImVec2(cbMin.x + cbSize * 0.76f, cbMin.y + cbSize * 0.30f), IM_COL32(9, 18, 22, std::min(255, rowAlpha)), std::max(1.6f, 2.2f * scale));
+                        }
+                        if (cbHovered) {
+                            ImGui::SetTooltip("%s", includedTipLabel);
+                        }
+
+                        const float coverW = compactMode ? std::max(40.0f, 46.0f * scale) : std::max(54.0f, 66.0f * scale);
+                        const float coverH = rowH - (compactMode ? 10.0f : 14.0f) * scale;
+                        ImVec2 coverMin(cbMax.x + 12.0f * scale, rowMin.y + (rowH - coverH) * 0.5f);
+                        ImVec2 coverMax(coverMin.x + coverW, coverMin.y + coverH);
+                        listDl->AddRectFilled(coverMin, coverMax, IM_COL32(baseR / 2, baseG / 2, baseB / 2, std::min(255, rowAlpha)), 10.0f * scale);
+                        listDl->AddRectFilledMultiColor(
+                            coverMin,
+                            coverMax,
+                            IM_COL32(baseR, baseG, baseB, std::min(220, rowAlpha)),
+                            IM_COL32(std::min(255, baseR + 30), std::min(255, baseG + 20), std::min(255, baseB + 42), std::min(190, rowAlpha)),
+                            IM_COL32(18, 25, 34, std::min(180, rowAlpha)),
+                            IM_COL32(34, 58, 78, std::min(210, rowAlpha))
+                        );
+                        listDl->AddRect(coverMin, coverMax, IM_COL32(255, 255, 255, std::min(48, rowAlpha)), 10.0f * scale, 0, 1.0f);
+                        listDl->AddCircleFilled(ImVec2(coverMax.x - 10.0f * scale, coverMin.y + 10.0f * scale), 5.0f * scale, IM_COL32(255, 255, 255, std::min(85, rowAlpha)), 18);
+                        listDl->AddText(ImVec2(coverMin.x + 8.0f * scale, coverMin.y + 8.0f * scale), IM_COL32(248, 252, 255, std::min(255, rowAlpha)), initials.c_str());
+
+                        float contentX = coverMax.x + 12.0f * scale;
+                        float actionW = compactMode ? 48.0f * scale : 60.0f * scale;
+                        float textW = std::max(80.0f, rowW - (contentX - rowMin.x) - actionW - 16.0f * scale);
+                        ImVec2 actionPos(rowMax.x - actionW, rowMin.y + 11.0f * scale);
+                        ImVec2 actionMax(actionPos.x + (compactMode ? 32.0f : 40.0f) * scale, actionPos.y + 28.0f * scale);
+                        ImVec2 textPos(contentX, compactMode ? (rowMin.y + (rowH - ImGui::GetTextLineHeight()) * 0.5f - 1.0f * scale) : (rowMin.y + 10.0f * scale));
+                        if (rowHovered && !isCurrent) {
+                            listDl->AddRectFilled(rowMin, rowMax, IM_COL32(72, 158, 222, std::min(64, rowAlpha)), 14.0f * scale);
+                        }
+                        bool actionHovered = ImGui::IsMouseHoveringRect(actionPos, actionMax, true);
+                        if (rowClicked && cbHovered) {
+                            p.enabled = !p.enabled;
+                        } else if (rowClicked) {
+                            g.pickerNavIndex = i;
+                            g.pickerNavScrollTo = false;
+                            g.currentPreset = i;
+                            requestPresetPreview(i);
+                        }
+
+                        bool truncated = false;
+                        std::string shown = truncateToFit(p.displayName, textW, &truncated);
+                        listDl->AddText(textPos, isCurrent ? IM_COL32(244, 249, 255, std::min(255, rowAlpha)) : IM_COL32(220, 228, 238, std::min(255, rowAlpha)), shown.c_str());
+                        if (!compactMode) {
+                            listDl->AddText(ImVec2(textPos.x, textPos.y + 22.0f * scale), IM_COL32(134, 149, 170, std::min(255, rowAlpha)), p.enabled ? inRotationLabel : manualOnlyLabel);
+                        }
+                        if (truncated && rowHovered) {
+                            ImGui::SetTooltip("%s", p.displayName.c_str());
+                        }
+
+                        listDl->AddRectFilled(actionPos, actionMax,
+                                              isCurrent ? IM_COL32(94, 184, 255, std::min(255, rowAlpha))
+                                                        : (actionHovered ? IM_COL32(64, 94, 132, std::min(255, rowAlpha)) : IM_COL32(37, 48, 63, std::min(255, rowAlpha))),
+                                              14.0f * scale);
+                        const ImVec2 dotC((actionPos.x + actionMax.x) * 0.5f, (actionPos.y + actionMax.y) * 0.5f);
+                        listDl->AddCircleFilled(dotC, 5.0f * scale, isCurrent ? IM_COL32(9, 22, 36, std::min(255, rowAlpha)) : IM_COL32(176, 196, 220, std::min(240, rowAlpha)), 20);
+
+                        ImGui::SetCursorScreenPos(ImVec2(rowMin.x, rowMax.y + cardGap));
+                        if (isNav && g.pickerNavScrollTo) {
+                            ImGui::SetScrollHereY(0.35f);
+                            g.pickerNavScrollTo = false;
+                        }
+                        ImGui::PopID();
+                    }
+                }
+            }
+        }
+        ImGui::EndChild();
+    }
+
+    ImGui::Dummy(ImVec2(0, blockGap));
+
+    ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 12.0f * scale);
+    ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(16.0f * scale, 10.0f * scale));
+    ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.11f, 0.15f, 0.21f, 1.0f));
+    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.14f, 0.20f, 0.28f, 1.0f));
+    ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.16f, 0.24f, 0.33f, 1.0f));
+
+    if (ImGui::Button(visEnvText("AURIVO_VIS_PICKER_ALL", L7("Select all", "Tümünü seç", "ØªØ­Ø¯ÙŠØ¯ Ø§Ù„ÙƒÙ„", "Tout sélectionner", "Alle wählen", "Seleccionar todo", "à¤¸à¤­à¥€ à¤šà¥à¤¨à¥‡à¤‚")))) {
+        for (auto& p : g.presets) p.enabled = true;
+    }
+    ImGui::SameLine();
+    if (ImGui::Button(visEnvText("AURIVO_VIS_PICKER_NONE", L7("Clear all", "Tümünü temizle", "Ù…Ø³Ø­ Ø§Ù„ÙƒÙ„", "Tout effacer", "Alles leeren", "Limpiar todo", "à¤¸à¤­à¥€ à¤¹à¤Ÿà¤¾à¤à¤")))) {
+        for (auto& p : g.presets) p.enabled = false;
+    }
+
+    const char* okText = visEnvText("AURIVO_VIS_PICKER_OK", L7("Done", "Tamam", "ØªÙ…", "Terminer", "Fertig", "Listo", "à¤ªà¥‚à¤°à¤¾"));
+    float btnW = std::max(96.0f * scale, ImGui::CalcTextSize(okText).x + ImGui::GetStyle().FramePadding.x * 2.0f);
+    float rightX = ImGui::GetCursorPosX() + (ImGui::GetContentRegionAvail().x - btnW);
+    rightX = std::max(ImGui::GetCursorPosX(), rightX);
+    ImGui::SameLine();
+    ImGui::SetCursorPosX(rightX);
+    ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.31f, 0.69f, 1.0f, 0.95f));
+    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.39f, 0.75f, 1.0f, 1.0f));
+    ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.24f, 0.61f, 0.94f, 1.0f));
+    if (ImGui::Button(okText, ImVec2(btnW, 0))) {
+        g.showPresetPicker = false;
+    }
+    ImGui::PopStyleColor(3);
+
+    ImGui::PopStyleColor(3);
+    ImGui::PopStyleVar(2);
+    ImGui::EndGroup();
 
     ImGui::End();
 }
@@ -2228,10 +2597,13 @@ static bool initSDLVideo() {
     const char* wmclass = std::getenv("AURIVO_VIS_WMCLASS");
     if (!wmclass || !*wmclass) wmclass = "aurivo-media-player";
     const char* desktopEntry = std::getenv("AURIVO_VIS_DESKTOP_ENTRY");
-    if (!desktopEntry || !*desktopEntry) desktopEntry = wmclass;
+    // Wayland app_id tercihen desktop dosyasının kimliğiyle aynı olmalı;
+    // aksi halde başlık çubuğunda uygulama yerine varsayılan compositor ikonu görünebilir.
+    if (!desktopEntry || !*desktopEntry) desktopEntry = "com.aurivo.mediaplayer";
     SDL_SetHint("SDL_VIDEO_X11_WMCLASS", wmclass);
     SDL_SetHint("SDL_VIDEO_X11_WMCLASS_NAME", wmclass);
-    SDL_SetHint("SDL_VIDEO_WAYLAND_WMCLASS", wmclass);
+    // Wayland tarafında app_id desktop dosyası kimliğiyle birebir eşleşmeli.
+    SDL_SetHint("SDL_VIDEO_WAYLAND_WMCLASS", desktopEntry);
     SDL_SetHint("SDL_APP_ID", desktopEntry);
 
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS | SDL_INIT_TIMER) != 0) {
@@ -2809,6 +3181,7 @@ int main(int argc, char* argv[]) {
         }
     }
 
+    savePresetPickerSettings();
     shutdownAll();
     return 0;
 }

@@ -5,7 +5,7 @@
 const __daliIR = {
   "irVersion": 1,
   "language": "dali",
-  "generatedAt": "2026-03-26T03:22:52.902Z",
+  "generatedAt": "2026-03-30T20:01:19.952Z",
   "sourceLabel": "dali-lang/examples/web-bass-enhancer.dl",
   "presetCount": 1,
   "presets": [
@@ -244,7 +244,7 @@ module.exports = {
   target: 'wasm-hybrid',
   sourceLabel: "dali-lang/examples/web-bass-enhancer.dl",
   defaultFallbackModulePath: __DEFAULT_FALLBACK_MODULE,
-  irHash: "9ff8c08fc0b6ee04f851c92cf1b3aa0694698710d35da4433b3d3ab1cab40a58",
+  irHash: "472f98e47b007b2d5f88bd51dee2a1ce841d1c86917f8d2c29cb31beaf9f0687",
   ir: __daliIR,
   initWasmRuntime
 };

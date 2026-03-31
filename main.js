@@ -2981,6 +2981,19 @@ function createWindow() {
         safeStdoutLine(`[RENDERER] ${message} (${src}:${line})`);
     });
 
+    const broadcastWindowFullscreenState = () => {
+        if (!mainWindow || mainWindow.isDestroyed()) return;
+        try {
+            mainWindow.webContents.send('window:fullscreen-changed', {
+                fullscreen: mainWindow.isFullScreen()
+            });
+        } catch {
+            // yoksay
+        }
+    };
+    mainWindow.on('enter-full-screen', broadcastWindowFullscreenState);
+    mainWindow.on('leave-full-screen', broadcastWindowFullscreenState);
+
     // Pencere hazır olduğunda göster (flash önleme)
     mainWindow.once('ready-to-show', () => {
         mainWindow.show();
@@ -3661,6 +3674,19 @@ ipcMain.handle('soundEffects:closeWindow', () => {
     return true;
 });
 
+ipcMain.handle('soundEffects:applyInMainWindow', async (_event, script) => {
+    try {
+        if (!mainWindow || mainWindow.isDestroyed()) return { ok: false, error: 'main-window-missing' };
+        const js = String(script || '');
+        if (!js.trim()) return { ok: false, error: 'empty-script' };
+        if (js.length > 2_000_000) return { ok: false, error: 'script-too-large' };
+        const result = await mainWindow.webContents.executeJavaScript(js, true);
+        return (result && typeof result === 'object') ? result : { ok: !!result, result };
+    } catch (error) {
+        return { ok: false, error: String(error?.message || error) };
+    }
+});
+
 ipcMain.handle('soundEffects:getWebSpectrum', async (_event, numBands) => {
     try {
         if (!mainWindow || mainWindow.isDestroyed()) return [];
@@ -3792,12 +3818,108 @@ ipcMain.handle('eqPresets:getFeaturedList', () => {
 // PROJECTM GÖRSELLEŞTİRİCİ (NATIVE ÇALIŞTIRILABİLİR)
 // ============================================
 let visualizerProc = null;
+let visualizerLang = '';
 let visualizerFeedTimer = null;
 let visualizerFeedStats = null;
+let visualizerVideoSpectrumFrame = null;
+
+function clamp01(value) {
+    const n = Number(value);
+    if (!Number.isFinite(n)) return 0;
+    if (n <= 0) return 0;
+    if (n >= 1) return 1;
+    return n;
+}
+
+function updateVisualizerVideoSpectrum(payload) {
+    const source = payload && typeof payload === 'object' ? payload : {};
+    const input = Array.isArray(source.bands) ? source.bands : [];
+    const bands = input
+        .slice(0, 512)
+        .map((v) => clamp01(v))
+        .filter((v) => Number.isFinite(v));
+
+    visualizerVideoSpectrumFrame = {
+        updatedAt: Date.now(),
+        isPlaying: !!source.isPlaying,
+        targetFps: Math.max(20, Math.min(60, Number(source.targetFps) || 30)),
+        sourceMode: (() => {
+            const raw = String(source.sourceMode || '').trim().toLowerCase();
+            return (raw === 'video' || raw === 'web') ? raw : '';
+        })(),
+        bands,
+        phases: (visualizerVideoSpectrumFrame && Array.isArray(visualizerVideoSpectrumFrame.phases))
+            ? visualizerVideoSpectrumFrame.phases
+            : [],
+        smooth: (visualizerVideoSpectrumFrame && Array.isArray(visualizerVideoSpectrumFrame.smooth))
+            ? visualizerVideoSpectrumFrame.smooth
+            : []
+    };
+}
+
+function getVisualizerFeedIntervalMs() {
+    const fps = Math.max(20, Math.min(60, Number(visualizerVideoSpectrumFrame?.targetFps) || 30));
+    return Math.max(12, Math.min(60, Math.round(1000 / fps)));
+}
+
+function buildVisualizerVideoPcmFallback(framesPerChannel) {
+    const frame = visualizerVideoSpectrumFrame;
+    if (!frame || !Array.isArray(frame.bands) || frame.bands.length === 0) return null;
+    if (!frame.isPlaying) return null;
+    if (Date.now() - Number(frame.updatedAt || 0) > 700) return null;
+
+    const oscCount = Math.max(24, Math.min(64, frame.bands.length));
+    const sampleRate = 48000;
+    const channels = 2;
+    const countPerChannel = Math.max(128, Math.min(4096, Number(framesPerChannel) || 1024));
+
+    if (!Array.isArray(frame.phases) || frame.phases.length !== oscCount) {
+        frame.phases = Array.from({ length: oscCount }, () => Math.random() * Math.PI * 2);
+    }
+    if (!Array.isArray(frame.smooth) || frame.smooth.length !== oscCount) {
+        frame.smooth = Array.from({ length: oscCount }, () => 0);
+    }
+
+    const amps = new Array(oscCount);
+    const phaseIncs = new Array(oscCount);
+    const maxIdx = Math.max(1, frame.bands.length - 1);
+    const maxOsc = Math.max(1, oscCount - 1);
+
+    for (let i = 0; i < oscCount; i++) {
+        const t = i / maxOsc;
+        const bandIdx = Math.round(t * maxIdx);
+        const band = clamp01(frame.bands[bandIdx] || 0);
+        const target = Math.pow(band, 1.18);
+        const prev = Number(frame.smooth[i]) || 0;
+        const smoothed = prev * 0.72 + target * 0.28;
+        frame.smooth[i] = smoothed;
+
+        amps[i] = smoothed;
+        const freq = 35 * Math.pow(2, t * 8.5);
+        phaseIncs[i] = (2 * Math.PI * freq) / sampleRate;
+    }
+
+    const floatArray = new Float32Array(countPerChannel * channels);
+    const norm = 1 / Math.max(1, Math.sqrt(oscCount) * 1.25);
+
+    for (let s = 0; s < countPerChannel; s++) {
+        let mono = 0;
+        for (let i = 0; i < oscCount; i++) {
+            mono += Math.sin(frame.phases[i]) * amps[i];
+            frame.phases[i] += phaseIncs[i];
+            if (frame.phases[i] > Math.PI * 2) frame.phases[i] -= Math.PI * 2;
+        }
+        const soft = Math.tanh(mono * norm * 1.8) * 0.7;
+        floatArray[s * 2] = soft;
+        floatArray[s * 2 + 1] = soft;
+    }
+
+    return { channels, countPerChannel, data: floatArray };
+}
 
 function stopVisualizerFeed() {
     if (visualizerFeedTimer) {
-        clearInterval(visualizerFeedTimer);
+        clearTimeout(visualizerFeedTimer);
         visualizerFeedTimer = null;
     }
     visualizerFeedStats = null;
@@ -3823,7 +3945,7 @@ function startVisualizerFeed() {
         firstWriteOk: false
     };
 
-    visualizerFeedTimer = setInterval(() => {
+    const tick = () => {
         try {
             if (!visualizerProc || visualizerProc.killed || !visualizerProc.stdin || visualizerProc.stdin.destroyed) {
                 stopVisualizerFeed();
@@ -3834,11 +3956,26 @@ function startVisualizerFeed() {
                 return;
             }
 
-            // Native ses motorundan kanallar arası (interleaved) float PCM al
-            const pcmRes = audioEngine.getPCMData(requestedFramesPerChannel);
+            // Native ses motorundan kanallar arası (interleaved) float PCM al.
+            // Video/WebAudio yolunda veri yoksa, renderer'dan gelen spektrumdan fallback PCM üret.
+            const fallback = buildVisualizerVideoPcmFallback(requestedFramesPerChannel);
+            const fallbackFrame = visualizerVideoSpectrumFrame;
+            const shouldPreferFallback = !!(
+                fallback &&
+                fallbackFrame &&
+                (fallbackFrame.sourceMode === 'video' || fallbackFrame.sourceMode === 'web')
+            );
+
+            let pcmRes = shouldPreferFallback
+                ? fallback
+                : audioEngine.getPCMData(requestedFramesPerChannel);
             if (!pcmRes || !pcmRes.data || pcmRes.data.length === 0) {
-                if (visualizerFeedStats) visualizerFeedStats.noData++;
-                return;
+                if (fallback) {
+                    pcmRes = fallback;
+                } else {
+                    if (visualizerFeedStats) visualizerFeedStats.noData++;
+                    return;
+                }
             }
 
             let channels = Number(pcmRes.channels) || 0;
@@ -3898,7 +4035,12 @@ function startVisualizerFeed() {
                 });
             }
         }
-    }, 33);
+        if (visualizerProc && !visualizerProc.killed) {
+            visualizerFeedTimer = setTimeout(tick, getVisualizerFeedIntervalMs());
+        }
+    };
+
+    visualizerFeedTimer = setTimeout(tick, getVisualizerFeedIntervalMs());
 }
 
 function isDevMode() {
@@ -4063,13 +4205,61 @@ function startVisualizer() {
     }
 
     const visualizerIconPath = getResourcePath(path.join('icons', 'aurivo_512.png'));
+    const tVis = (key, fallback, vars) => {
+        const v = tMainSync(key, vars);
+        if (!v || v === key) return '';
+        return v;
+    };
 
+    const uiLang = getUiLanguageSync();
     const env = {
         ...process.env,
         PROJECTM_PRESETS_PATH: presetsPath,
         AURIVO_VISUALIZER_ICON: visualizerIconPath,
+        // Linux window grouping + icon lookup (Wayland app_id / X11 WM_CLASS)
+        AURIVO_VIS_DESKTOP_ENTRY: process.env.AURIVO_VIS_DESKTOP_ENTRY || 'com.aurivo.mediaplayer',
+        AURIVO_VIS_WMCLASS: process.env.AURIVO_VIS_WMCLASS || 'aurivo-media-player',
         // Native görselleştirici için UI dili (SDL2/ImGui)
-        AURIVO_LANG: getUiLanguageSync(),
+        AURIVO_LANG: uiLang,
+        // Native visualizer i18n strings (all app locales can override these keys over time)
+        AURIVO_VIS_CTX_DISPLAY: tVis('visualizerNative.context.display', 'Display'),
+        AURIVO_VIS_CTX_RENDERING: tVis('visualizerNative.context.rendering', 'Rendering'),
+        AURIVO_VIS_CTX_PRESETS: tVis('visualizerNative.context.presets', 'Presets'),
+        AURIVO_VIS_CTX_TOGGLE_FULLSCREEN: tVis('visualizerNative.context.toggleFullscreen', 'Toggle fullscreen'),
+        AURIVO_VIS_CTX_FRAME_RATE: tVis('visualizerNative.context.frameRate', 'Frame rate'),
+        AURIVO_VIS_CTX_QUALITY: tVis('visualizerNative.context.quality', 'Quality'),
+        AURIVO_VIS_CTX_CLARITY: tVis('visualizerNative.context.clarity', 'Clarity'),
+        AURIVO_VIS_CTX_SELECT_VISUALS: tVis('visualizerNative.context.selectVisuals', 'Select visualizations...'),
+        AURIVO_VIS_CTX_CLOSE: tVis('visualizerNative.context.close', 'Close visualization'),
+        AURIVO_VIS_CTX_FPS_LOW: tVis('visualizerNative.context.fpsLow', 'Low (15 fps)'),
+        AURIVO_VIS_CTX_FPS_MEDIUM: tVis('visualizerNative.context.fpsMedium', 'Medium (25 fps)'),
+        AURIVO_VIS_CTX_FPS_HIGH: tVis('visualizerNative.context.fpsHigh', 'High (35 fps)'),
+        AURIVO_VIS_CTX_FPS_SUPER: tVis('visualizerNative.context.fpsUltra', 'Super high (60 fps)'),
+        AURIVO_VIS_CTX_QUALITY_LOW: tVis('visualizerNative.context.qualityLow', 'Low (256x256)'),
+        AURIVO_VIS_CTX_QUALITY_MEDIUM: tVis('visualizerNative.context.qualityMedium', 'Medium (512x512)'),
+        AURIVO_VIS_CTX_QUALITY_HIGH: tVis('visualizerNative.context.qualityHigh', 'High (1024x1024)'),
+        AURIVO_VIS_CTX_QUALITY_SUPER: tVis('visualizerNative.context.qualityUltra', 'Super high (2048x2048)'),
+        AURIVO_VIS_CTX_CLARITY_SOFT: tVis('visualizerNative.context.claritySoft', 'Soft'),
+        AURIVO_VIS_CTX_CLARITY_BALANCED: tVis('visualizerNative.context.clarityBalanced', 'Balanced'),
+        AURIVO_VIS_CTX_CLARITY_SHARP: tVis('visualizerNative.context.claritySharp', 'Sharp'),
+        AURIVO_VIS_CTX_CLARITY_SHARP_PLUS: tVis('visualizerNative.context.claritySharpPlus', 'Sharp+'),
+        AURIVO_VIS_PICKER_TITLE: tVis('visualizerNative.picker.title', 'Aurivo Visuals'),
+        AURIVO_VIS_PICKER_HERO_TITLE: tVis('visualizerNative.picker.heroTitle', 'Curate the visual atmosphere'),
+        AURIVO_VIS_PICKER_HINT: tVis('visualizerNative.picker.heroHint', 'Choose the presets included in the premium-style auto switch flow.'),
+        AURIVO_VIS_PICKER_PRESET_DIR: tVis('visualizerNative.picker.presetDirectory', 'Preset directory'),
+        AURIVO_VIS_PICKER_SEARCH: tVis('visualizerNative.picker.search', 'Search presets...'),
+        AURIVO_VIS_PICKER_DELAY: tVis('visualizerNative.picker.delay', 'Switch delay'),
+        AURIVO_VIS_PICKER_ENABLED: tVis('visualizerNative.picker.enabled', 'Enabled'),
+        AURIVO_VIS_PICKER_COMPACT: tVis('visualizerNative.picker.compact', 'Compact'),
+        AURIVO_VIS_PICKER_FILTER_ACTIVE: tVis('visualizerNative.picker.filterActive', 'Filter active:'),
+        AURIVO_VIS_PICKER_GALLERY: tVis('visualizerNative.picker.gallery', 'Preset gallery'),
+        AURIVO_VIS_PICKER_NO_MATCH: tVis('visualizerNative.picker.noMatch', 'No preset matched your search.'),
+        AURIVO_VIS_PICKER_IN_ROTATION: tVis('visualizerNative.picker.inRotation', 'In rotation'),
+        AURIVO_VIS_PICKER_MANUAL_ONLY: tVis('visualizerNative.picker.manualOnly', 'Manual only'),
+        AURIVO_VIS_PICKER_INCLUDED: tVis('visualizerNative.picker.includedInAutoSwitch', 'Included in auto-switch'),
+        AURIVO_VIS_PICKER_ALL: tVis('visualizerNative.picker.selectAll', 'Select all'),
+        AURIVO_VIS_PICKER_NONE: tVis('visualizerNative.picker.clearAll', 'Clear all'),
+        AURIVO_VIS_PICKER_OK: tVis('visualizerNative.picker.done', 'Done'),
         // Varsayılan ana pencere boyutu (kullanıcı yeniden boyutlandırabilir; bir sonraki açılışta bu varsayılan kullanılır).
         AURIVO_VIS_MAIN_W: process.env.AURIVO_VIS_MAIN_W || '900',
         AURIVO_VIS_MAIN_H: process.env.AURIVO_VIS_MAIN_H || '650'
@@ -4100,6 +4290,7 @@ function startVisualizer() {
             stdio: ['pipe', 'inherit', 'inherit'], // Hata ayıklama için stdout/stderr her zaman inherit
             detached: true // Electron GL context çakışmalarını önlemek için ayrı process grubunda çalıştır
         });
+        visualizerLang = normalizeUiLang(uiLang) || uiLang || 'en-US';
 
         // Electron'ın görselleştiriciyi beklememesi için unref
         visualizerProc.unref();
@@ -4148,6 +4339,7 @@ function stopVisualizer() {
         // en iyi çaba
     }
     visualizerProc = null;
+    visualizerLang = '';
     return true;
 }
 
@@ -4161,6 +4353,10 @@ ipcMain.handle('visualizer:toggle', () => {
     console.log('[Visualizer] toggle -> start');
     const started = startVisualizer();
     return { running: started };
+});
+
+ipcMain.on('visualizer:videoSpectrum', (_event, payload) => {
+    updateVisualizerVideoSpectrum(payload);
 });
 
 ipcMain.handle('diagnostics:getPerformanceSnapshot', async () => {
@@ -4264,6 +4460,25 @@ ipcMain.handle('window:close', (event) => {
 ipcMain.handle('window:isMaximized', (event) => {
     const win = BrowserWindow.fromWebContents(event.sender);
     return win ? win.isMaximized() : false;
+});
+
+ipcMain.handle('window:isFullscreen', (event) => {
+    const win = BrowserWindow.fromWebContents(event.sender);
+    return win ? win.isFullScreen() : false;
+});
+
+ipcMain.handle('window:setFullscreen', (event, enabled) => {
+    const win = BrowserWindow.fromWebContents(event.sender);
+    if (!win) return false;
+    win.setFullScreen(Boolean(enabled));
+    return win.isFullScreen();
+});
+
+ipcMain.handle('window:toggleFullscreen', (event) => {
+    const win = BrowserWindow.fromWebContents(event.sender);
+    if (!win) return false;
+    win.setFullScreen(!win.isFullScreen());
+    return win.isFullScreen();
 });
 
 function installWebviewHardening() {
@@ -6035,10 +6250,12 @@ ipcMain.handle('settings:save', async (event, settings) => {
         } catch {
             existing = {};
         }
+        const prevUiLang = normalizeUiLang(existing?.ui?.language) || '';
 
         // Merge to preserve keys written by other windows (e.g. sfx.eq32.lastPreset)
         const merged = deepMerge(existing, incoming);
         const sanitizedMerged = sanitizeSensitiveSettings(merged);
+        const nextUiLang = normalizeUiLang(sanitizedMerged?.ui?.language) || '';
         mainWindowCloseToTray = deriveMainWindowCloseToTray(sanitizedMerged);
         await writeJsonFileAtomic(getSettingsPath(), sanitizedMerged);
         refreshGlobalMediaShortcuts(sanitizedMerged);
@@ -6049,6 +6266,17 @@ ipcMain.handle('settings:save', async (event, settings) => {
                 targetWindow.webContents.send('settings:reloaded', sanitizedMerged);
             } catch (e) {
                 console.error('[SETTINGS] reload broadcast error:', e);
+            }
+        }
+
+        // Dil değiştiyse, çalışan native görselleştiriciyi yeni locale ile yeniden başlat.
+        if (visualizerProc && !visualizerProc.killed && prevUiLang && nextUiLang && prevUiLang !== nextUiLang) {
+            try {
+                console.log(`[Visualizer] language changed (${prevUiLang} -> ${nextUiLang}), restarting...`);
+                stopVisualizer();
+                startVisualizer();
+            } catch (e) {
+                console.error('[Visualizer] failed to restart after language change:', e);
             }
         }
 

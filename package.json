@@ -1,6 +1,6 @@
 {
   "name": "aurivo-media-player",
-  "version": "2.0.15",
+  "version": "2.0.16",
   "description": "Aurivo Media Player - Electron App",
   "main": "main.js",
   "scripts": {
@@ -39,7 +39,9 @@
     "dev:win": "cmd /c \"chcp 65001>nul && set ELECTRON_RUN_AS_NODE=&& set AURIVO_DEV=1&& set PATH=C:\\msys64\\mingw64\\bin;C:\\Users\\muhan\\Desktop\\Aurivo-Medya-Player-windows\\native-dist\\windows;C:\\Users\\muhan\\Desktop\\Aurivo-Medya-Player-windows\\native-dist;C:\\Users\\muhan\\Desktop\\Aurivo-Medya-Player-windows\\native\\build\\Release;C:\\Users\\muhan\\Desktop\\Aurivo-Medya-Player-windows\\bin;%PATH%&& electron . --enable-logging\"",
     "adblock:build": "node uDALİ-weman-home/scripts/buildBlocklist.cjs",
     "adblock:sync": "node uDALİ-weman-home/scripts/syncBlocklistToApp.cjs",
-    "adblock:rebuild": "npm run -s adblock:build && npm run -s adblock:sync"
+    "adblock:rebuild": "npm run -s adblock:build && npm run -s adblock:sync",
+    "locale:sync:visualizer": "node scripts/sync-visualizer-native-locales.js",
+    "locale:sync:main": "node scripts/sync-main-process-locales.js"
   },
   "author": "Muhammet Dali",
   "homepage": "https://aurivo.app",

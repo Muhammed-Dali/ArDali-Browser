@@ -976,7 +976,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             loadSettingsToUI();
             activateSettingsTab(activeSettingsTab);
         }
-        if (state.currentPage === 'web' || state.activeMedia === 'web') {
+        if (state.currentPage === 'web' || state.activeMedia === 'web' || state.currentPage === 'video' || state.activeMedia === 'video') {
             scheduleApplyWebDaliEngine('settings-reload', 120);
         }
     });
@@ -1044,6 +1044,13 @@ document.addEventListener('DOMContentLoaded', async () => {
     window.addEventListener('beforeunload', () => {
         try {
             rememberPlaybackStartupState({ persist: true });
+        } catch {
+            // yoksay
+        }
+        try {
+            if (typeof fsWindowFullscreenUnsubscribe === 'function') {
+                fsWindowFullscreenUnsubscribe();
+            }
         } catch {
             // yoksay
         }
@@ -1933,6 +1940,21 @@ function sanitizeVideoLibraryItems(items) {
     return out;
 }
 
+function mergeVideoLibraryItems(existingItems, incomingItems) {
+    const merged = sanitizeVideoLibraryItems(existingItems);
+    const seen = new Set(
+        merged.map((item) => String(item?.path || '').trim().toLowerCase())
+    );
+    const incoming = sanitizeVideoLibraryItems(incomingItems);
+    for (const item of incoming) {
+        const key = String(item?.path || '').trim().toLowerCase();
+        if (!key || seen.has(key)) continue;
+        seen.add(key);
+        merged.push(item);
+    }
+    return merged;
+}
+
 function persistVideoLibrary() {
     if (!state.settings || typeof state.settings !== 'object') return;
     if (!state.settings.videoLibrary || typeof state.settings.videoLibrary !== 'object') {
@@ -2084,8 +2106,19 @@ function setAppMasterVolume(value, options = {}) {
         activePlayer.muted = useWebAudioGainPath ? false : state.isMuted;
     }
     if (elements.videoPlayer) {
-        elements.videoPlayer.volume = safeValue / 100;
-        elements.videoPlayer.muted = state.isMuted;
+        const daliScope = typeof getActiveDaliScope === 'function' ? getActiveDaliScope() : '';
+        const canUseVideoDaliMaster =
+            state.activeMedia === 'video' &&
+            daliScope === 'video' &&
+            setVideoDaliRuntimeMasterVolume(safeValue, state.isMuted);
+        if (canUseVideoDaliMaster) {
+            // Analyzer kaynağını volume/mute'dan bağımsız tutmak için media elementini sabit bırak.
+            elements.videoPlayer.volume = 1;
+            elements.videoPlayer.muted = false;
+        } else {
+            elements.videoPlayer.volume = safeValue / 100;
+            elements.videoPlayer.muted = state.isMuted;
+        }
     }
     if (elements.audio) {
         elements.audio.volume = useWebAudioGainPath ? 1 : (safeValue / 100);
@@ -4002,11 +4035,14 @@ function setupEventListeners() {
                 });
                 if (!files || !files.length) return;
 
-                state.videoFiles = files.map((f) => ({ name: f.name, path: f.path }));
+                state.videoFiles = mergeVideoLibraryItems(
+                    state.videoFiles,
+                    files.map((f) => ({ name: f.name, path: f.path }))
+                );
                 persistVideoLibrary();
                 state.currentPath = '';
                 renderVideoLibraryTree();
-                playVideo(state.videoFiles[0].path);
+                playVideo(files[0].path);
             } catch (e) {
                 safeNotify('Video seçilemedi: ' + (e?.message || e), 'error');
             }
@@ -4016,9 +4052,15 @@ function setupEventListeners() {
     // Görselleştirici (projectM)
     const visualizerBtn = document.getElementById('visualizer-btn');
     if (visualizerBtn) {
-        visualizerBtn.addEventListener('click', () => {
+        visualizerBtn.addEventListener('click', async () => {
             if (window.app && window.app.visualizer && typeof window.app.visualizer.toggle === 'function') {
-                window.app.visualizer.toggle();
+                try {
+                    const result = await window.app.visualizer.toggle();
+                    visualizerProjectMRunning = !!result?.running;
+                    updateContextMenuState();
+                } catch (error) {
+                    console.warn('[Visualizer] toggle failed:', error);
+                }
             } else {
                 console.warn('Visualizer API yok (window.app.visualizer.toggle)');
             }
@@ -4056,10 +4098,18 @@ function setupEventListeners() {
         videoMenuBtn.addEventListener('click', showVideoMenu);
     }
 
+    ensureWindowFullscreenBridge();
+
     // Video oynatıcı çift tıklama - tam ekran
     if (elements.videoPlayer) {
-        elements.videoPlayer.addEventListener('dblclick', toggleVideoFullscreen);
+        elements.videoPlayer.addEventListener('dblclick', handleVideoSurfaceDoubleClick, true);
     }
+    const videoPageEl = document.getElementById('videoPage');
+    if (videoPageEl) {
+        videoPageEl.addEventListener('dblclick', handleVideoSurfaceDoubleClick, true);
+        videoPageEl.addEventListener('mouseup', handleVideoSurfaceMouseUpFallback, true);
+    }
+    document.addEventListener('dblclick', handleGlobalVideoDoubleClickCapture, true);
 
     // TAM EKRAN VIDEO KONTROL PANELİ - Olay Dinleyicileri
     setupFullscreenVideoControls();
@@ -5397,29 +5447,32 @@ async function loadWebDaliBassPresetStages() {
     return stages;
 }
 
-function getWebDaliEq32Settings() {
-    const eq32 = state?.settings?.sfxScopes?.web?.eq32 || {};
-    const bassboost = state?.settings?.sfxScopes?.web?.bassboost || {};
-    const reverb = state?.settings?.sfxScopes?.web?.reverb || {};
-    const noisegate = state?.settings?.sfxScopes?.web?.noisegate || {};
-    const deesser = state?.settings?.sfxScopes?.web?.deesser || {};
-    const exciter = state?.settings?.sfxScopes?.web?.exciter || {};
-    const echo = state?.settings?.sfxScopes?.web?.echo || {};
-    const softecho = state?.settings?.sfxScopes?.web?.softecho || {};
-    const convreverb = state?.settings?.sfxScopes?.web?.convreverb || {};
-    const peq = state?.settings?.sfxScopes?.web?.peq || {};
-    const stereowidener = state?.settings?.sfxScopes?.web?.stereowidener || {};
-    const crossfeed = state?.settings?.sfxScopes?.web?.crossfeed || {};
-    const surround = state?.settings?.sfxScopes?.web?.surround || {};
-    const bassmono = state?.settings?.sfxScopes?.web?.bassmono || {};
-    const dynamiceq = state?.settings?.sfxScopes?.web?.dynamiceq || {};
-    const tapesat = state?.settings?.sfxScopes?.web?.tapesat || {};
-    const bitdither = state?.settings?.sfxScopes?.web?.bitdither || {};
-    const autogain = state?.settings?.sfxScopes?.web?.autogain || {};
-    const truepeak = state?.settings?.sfxScopes?.web?.truepeak || {};
-    const master = state?.settings?.sfxScopes?.web?.master || {};
-    const compressor = state?.settings?.sfxScopes?.web?.compressor || {};
-    const limiter = state?.settings?.sfxScopes?.web?.limiter || {};
+function getWebDaliEq32Settings(scope = 'web') {
+    const safeScope = String(scope || '').trim().toLowerCase() === 'video' ? 'video' : 'web';
+    const webProfile = safeScope === 'web';
+    const scopeSettings = state?.settings?.sfxScopes?.[safeScope] || {};
+    const eq32 = scopeSettings?.eq32 || {};
+    const bassboost = scopeSettings?.bassboost || {};
+    const reverb = scopeSettings?.reverb || {};
+    const noisegate = scopeSettings?.noisegate || {};
+    const deesser = scopeSettings?.deesser || {};
+    const exciter = scopeSettings?.exciter || {};
+    const echo = scopeSettings?.echo || {};
+    const softecho = scopeSettings?.softecho || {};
+    const convreverb = scopeSettings?.convreverb || {};
+    const peq = scopeSettings?.peq || {};
+    const stereowidener = scopeSettings?.stereowidener || {};
+    const crossfeed = scopeSettings?.crossfeed || {};
+    const surround = scopeSettings?.surround || {};
+    const bassmono = scopeSettings?.bassmono || {};
+    const dynamiceq = scopeSettings?.dynamiceq || {};
+    const tapesat = scopeSettings?.tapesat || {};
+    const bitdither = scopeSettings?.bitdither || {};
+    const autogain = scopeSettings?.autogain || {};
+    const truepeak = scopeSettings?.truepeak || {};
+    const master = scopeSettings?.master || {};
+    const compressor = scopeSettings?.compressor || {};
+    const limiter = scopeSettings?.limiter || {};
     const rawBands = Array.isArray(eq32?.bands) ? eq32.bands : [];
     const bands = DALI_WEB_EQ_FREQUENCIES.map((_, i) => {
         const n = Number(rawBands[i]);
@@ -5447,7 +5500,10 @@ function getWebDaliEq32Settings() {
     );
 
     return {
+        webProfile,
         masterEnabled: master?.enabled !== false,
+        masterVolume: Math.max(0, Math.min(1, (Number(state.volume) || 0) / 100)),
+        masterMuted: !!state.isMuted,
         bands,
         bass,
         mid,
@@ -5702,6 +5758,7 @@ function createWebDaliInjectScript(payload, presetStages, bassPresetStages) {
                     // Böylece Limiter slider değişiminde grafik yeniden kurulmaz,
                     // sadece mevcut node parametreleri applyPostCfg ile güncellenir.
                     return JSON.stringify({
+                        webProfile: !!nextCfg?.webProfile,
                         preampGain: Number(nextCfg?.preampGain) || 1,
                         bass: Number(nextCfg?.bass) || 0,
                         mid: Number(nextCfg?.mid) || 0,
@@ -5780,6 +5837,10 @@ function createWebDaliInjectScript(payload, presetStages, bassPresetStages) {
                     try {
                         const cfgObj = nextCfg || {};
                         let pressure = 0;
+                        const bassTone = Math.max(0, root.clamp(cfgObj.bass, -12, 12, 0));
+                        const midTone = Math.max(0, root.clamp(cfgObj.mid, -12, 12, 0));
+                        const trebleTone = Math.max(0, root.clamp(cfgObj.treble, -12, 12, 0));
+                        pressure += Math.min(4.8, (bassTone * 0.34) + (midTone * 0.16) + (trebleTone * 0.10));
                         const bands = Array.isArray(cfgObj.bands) ? cfgObj.bands : [];
                         if (bands.length) {
                             let sumPos = 0;
@@ -5837,11 +5898,15 @@ function createWebDaliInjectScript(payload, presetStages, bassPresetStages) {
                     const target = Number(nextValue);
                     if (!Number.isFinite(target)) return;
                     const now = Number(ctx.currentTime) || 0;
-                    const safeRampSec = Math.max(0.004, (Number(rampMs) || 12) / 1000);
+                    const safeRampSec = Math.max(0.006, (Number(rampMs) || 12) / 1000);
                     try {
-                        const current = Number(audioParam.value);
-                        audioParam.cancelScheduledValues(now);
-                        audioParam.setValueAtTime(Number.isFinite(current) ? current : target, now);
+                        if (typeof audioParam.cancelAndHoldAtTime === 'function') {
+                            audioParam.cancelAndHoldAtTime(now);
+                        } else {
+                            const current = Number(audioParam.value);
+                            audioParam.cancelScheduledValues(now);
+                            audioParam.setValueAtTime(Number.isFinite(current) ? current : target, now);
+                        }
                         audioParam.linearRampToValueAtTime(target, now + safeRampSec);
                     } catch (_) {
                         try { audioParam.value = target; } catch (_) {}
@@ -7886,7 +7951,11 @@ function createWebDaliInjectScript(payload, presetStages, bassPresetStages) {
                         graph.limiterComp,
                         graph.clipGuardGain,
                         graph.truePeakMeterAnalyser,
-                        graph.pan
+                        graph.balanceSplit,
+                        graph.balanceGainL,
+                        graph.balanceGainR,
+                        graph.balanceMerge,
+                        graph.masterGain
                     ];
                     for (const node of nodes) {
                         try { node?.disconnect?.(); } catch (_) {}
@@ -7928,11 +7997,52 @@ function createWebDaliInjectScript(payload, presetStages, bassPresetStages) {
                             count += 1;
                         }
                         const avg = count > 0 ? (sum / count) : peak;
-                        const mixed = (peak * 0.68) + (avg * 0.32);
-                        const tilt = Math.pow(Math.max(1, startHz / minHz), 0.09);
-                        out[i] = Math.max(0, Math.min(1, (mixed / 255) * tilt));
+                        const mixed = (peak * 0.80) + (avg * 0.20);
+                        const tilt = Math.pow(Math.max(1, startHz / minHz), 0.08);
+                        const freqNorm = Math.max(0, Math.min(1, i / Math.max(1, requested - 1)));
+                        const bassTame = 0.84 + (0.16 * Math.pow(freqNorm, 0.9));
+                        out[i] = Math.max(0, Math.min(1, (mixed / 255) * tilt * bassTame));
+                    }
+                    for (let i = 0; i < out.length; i += 1) {
+                        const prev2 = out[Math.max(0, i - 2)] || 0;
+                        const prev1 = out[Math.max(0, i - 1)] || 0;
+                        const next1 = out[Math.min(out.length - 1, i + 1)] || 0;
+                        const next2 = out[Math.min(out.length - 1, i + 2)] || 0;
+                        const localMean = (prev2 + prev1 + out[i] + next1 + next2) / 5;
+                        const detail = Math.max(0, out[i] - localMean);
+                        out[i] = Math.max(0, Math.min(1, (out[i] * 0.86) + (detail * 0.95)));
+                    }
+                    // Uç bantlar (sub ve en tiz) doğal olarak daha zayıf kalabilir.
+                    // Komşu enerjiyi kontrollü taşıyarak "donuk iki-üç bar" etkisini azalt.
+                    const edgeCount = Math.min(4, Math.floor(out.length / 10));
+                    for (let i = 0; i < edgeCount; i += 1) {
+                        const leftN1 = out[Math.min(out.length - 1, i + 1)] || 0;
+                        const leftN2 = out[Math.min(out.length - 1, i + 2)] || 0;
+                        const leftCarry = (leftN1 * 0.68) + (leftN2 * 0.32);
+                        out[i] = Math.max(out[i], leftCarry * (0.72 - (i * 0.07)));
+
+                        const r = out.length - 1 - i;
+                        const rightN1 = out[Math.max(0, r - 1)] || 0;
+                        const rightN2 = out[Math.max(0, r - 2)] || 0;
+                        const rightCarry = (rightN1 * 0.68) + (rightN2 * 0.32);
+                        out[r] = Math.max(out[r], rightCarry * (0.72 - (i * 0.07)));
                     }
                     return out;
+                };
+                root.setRuntimeMasterVolume = function setRuntimeMasterVolume(volume01, muted) {
+                    const level = root.clamp(volume01, 0, 1, 1);
+                    const target = muted ? 0 : level;
+                    const mediaElements = Array.from(document.querySelectorAll('video, audio'));
+                    const graphs = mediaElements
+                        .map((media) => media && media.__aurivoDaliGraph)
+                        .filter((graph) => graph && graph.masterGain && graph.ctx);
+                    if (!graphs.length) return false;
+                    for (const graph of graphs) {
+                        try {
+                            root.smoothParam(graph.masterGain.gain, target, graph.ctx, root.getSmoothingMs('musical', 8));
+                        } catch (_) {}
+                    }
+                    return true;
                 };
                 root.getNoiseGateStatus = function getNoiseGateStatus() {
                     const mediaElements = Array.from(document.querySelectorAll('video, audio'));
@@ -8281,13 +8391,17 @@ function createWebDaliInjectScript(payload, presetStages, bassPresetStages) {
                         root.smoothParam(graph.bass?.gain, Number(cfg?.bass) || 0, ctx, root.getSmoothingMs('musical', 18));
                         root.smoothParam(graph.mid?.gain, Number(cfg?.mid) || 0, ctx, root.getSmoothingMs('musical', 18));
                         root.smoothParam(graph.treble?.gain, Number(cfg?.treble) || 0, ctx, root.getSmoothingMs('musical', 18));
-                        if (graph.pan) {
-                            root.smoothParam(
-                                graph.pan.pan,
-                                Math.max(-1, Math.min(1, (Number(cfg?.balance) || 0) / 100)),
-                                ctx,
-                                root.getSmoothingMs('musical', 12)
-                            );
+                        if (graph.balanceGainL && graph.balanceGainR) {
+                            const balNorm = Math.max(-1, Math.min(1, (Number(cfg?.balance) || 0) / 100));
+                            const leftGain = balNorm > 0 ? (1 - balNorm) : 1;
+                            const rightGain = balNorm < 0 ? (1 + balNorm) : 1;
+                            root.smoothParam(graph.balanceGainL.gain, leftGain, ctx, root.getSmoothingMs('musical', 12));
+                            root.smoothParam(graph.balanceGainR.gain, rightGain, ctx, root.getSmoothingMs('musical', 12));
+                        }
+                        if (graph.masterGain) {
+                            const masterVolume = root.clamp(cfg?.masterVolume, 0, 1, 1);
+                            const masterMuted = !!cfg?.masterMuted;
+                            root.smoothParam(graph.masterGain.gain, masterMuted ? 0 : masterVolume, ctx, root.getSmoothingMs('musical', 10));
                         }
                         const bands = Array.isArray(cfg?.bands) ? cfg.bands : [];
                         const bandNodes = Array.isArray(graph.daliBandNodes) ? graph.daliBandNodes : [];
@@ -9454,10 +9568,12 @@ function createWebDaliInjectScript(payload, presetStages, bassPresetStages) {
                     const inputGain = new GainNode(ctx, { gain: Number(cfg.preampGain) || 1.0 });
                     const analyser = new AnalyserNode(ctx, {
                         fftSize: 2048,
-                        smoothingTimeConstant: 0.58,
+                        smoothingTimeConstant: 0.22,
                         minDecibels: -96,
                         maxDecibels: -12
                     });
+                    const shaperOversample = cfg?.webProfile ? '2x' : '4x';
+                    const bitCrusherOversample = cfg?.webProfile ? 'none' : '2x';
                     const daliOutput = new GainNode(ctx, { gain: 1.0 });
                     const bass = new BiquadFilterNode(ctx, { type: 'lowshelf', frequency: 72, gain: Number(cfg.bass) || 0, Q: 0.55 });
                     const mid = new BiquadFilterNode(ctx, { type: 'peaking', frequency: 1200, gain: Number(cfg.mid) || 0, Q: 1.0 });
@@ -9477,7 +9593,7 @@ function createWebDaliInjectScript(payload, presetStages, bassPresetStages) {
                     const bassBoostPresencePeak = new BiquadFilterNode(ctx, { type: 'peaking', frequency: 118, gain: 0, Q: 0.95 });
                     const bassBoostHarmonicLowpass = new BiquadFilterNode(ctx, { type: 'lowpass', frequency: 180, Q: 0.707 });
                     const bassBoostHarmonicsDrive = new GainNode(ctx, { gain: 1.0 });
-                    const bassBoostSaturator = new WaveShaperNode(ctx, { curve: root.makeSaturationCurve(0), oversample: '4x' });
+                    const bassBoostSaturator = new WaveShaperNode(ctx, { curve: root.makeSaturationCurve(0), oversample: shaperOversample });
                     const bassBoostWetGain = new GainNode(ctx, { gain: 0 });
                     const bassBoostSum = new GainNode(ctx, { gain: 1.0 });
                     const bassBoostBodyDip = new BiquadFilterNode(ctx, { type: 'peaking', frequency: 260, gain: 0, Q: 0.8 });
@@ -9486,7 +9602,7 @@ function createWebDaliInjectScript(payload, presetStages, bassPresetStages) {
                     const exciterDryGain = new GainNode(ctx, { gain: 1.0 });
                     const exciterHighpass = new BiquadFilterNode(ctx, { type: 'highpass', frequency: 3000, Q: 0.8 });
                     const exciterDrive = new GainNode(ctx, { gain: 1.0 });
-                    const exciterShaper = new WaveShaperNode(ctx, { curve: root.makeExciterCurve('odd', 0), oversample: '4x' });
+                    const exciterShaper = new WaveShaperNode(ctx, { curve: root.makeExciterCurve('odd', 0), oversample: shaperOversample });
                     const exciterTone = new BiquadFilterNode(ctx, { type: 'lowpass', frequency: 9000, Q: 0.707 });
                     const exciterWetGain = new GainNode(ctx, { gain: 0 });
                     const exciterSum = new GainNode(ctx, { gain: 1.0 });
@@ -9626,13 +9742,13 @@ function createWebDaliInjectScript(payload, presetStages, bassPresetStages) {
                     const tapeSatTone = new BiquadFilterNode(ctx, { type: 'highshelf', frequency: 4000, gain: 0, Q: 0.707 });
                     const tapeSatHissShelf = new BiquadFilterNode(ctx, { type: 'highshelf', frequency: 6500, gain: 0, Q: 0.707 });
                     const tapeSatDrive = new GainNode(ctx, { gain: 1.0 });
-                    const tapeSatShaper = new WaveShaperNode(ctx, { curve: root.makeSaturationCurve(0), oversample: '4x' });
+                    const tapeSatShaper = new WaveShaperNode(ctx, { curve: root.makeSaturationCurve(0), oversample: shaperOversample });
                     const tapeSatWetGain = new GainNode(ctx, { gain: 0.0 });
                     const tapeSatOutputTrim = new GainNode(ctx, { gain: 1.0 });
                     const tapeSatSum = new GainNode(ctx, { gain: 1.0 });
                     const bitDitherInputGain = new GainNode(ctx, { gain: 1.0 });
                     const bitDitherDryGain = new GainNode(ctx, { gain: 1.0 });
-                    const bitDitherShaper = new WaveShaperNode(ctx, { curve: root.makeBitCrusherCurve(16, 2, 1), oversample: '2x' });
+                    const bitDitherShaper = new WaveShaperNode(ctx, { curve: root.makeBitCrusherCurve(16, 2, 1), oversample: bitCrusherOversample });
                     const bitDitherPostLPF = new BiquadFilterNode(ctx, { type: 'lowpass', frequency: 20000, Q: 0.707 });
                     const bitDitherWetGain = new GainNode(ctx, { gain: 0.0 });
                     const bitDitherOutputTrim = new GainNode(ctx, { gain: 1.0 });
@@ -9655,7 +9771,11 @@ function createWebDaliInjectScript(payload, presetStages, bassPresetStages) {
                         minDecibels: -96,
                         maxDecibels: 0
                     });
-                    const pan = new StereoPannerNode(ctx, { pan: Math.max(-1, Math.min(1, (Number(cfg.balance) || 0) / 100)) });
+                    const balanceSplit = new ChannelSplitterNode(ctx, { numberOfOutputs: 2 });
+                    const balanceGainL = new GainNode(ctx, { gain: 1.0 });
+                    const balanceGainR = new GainNode(ctx, { gain: 1.0 });
+                    const balanceMerge = new ChannelMergerNode(ctx, { numberOfInputs: 2 });
+                    const masterGain = new GainNode(ctx, { gain: 1.0 });
                     graph.source.connect(analyser);
                     graph.source.connect(inputGain);
                     const daliChain = root.createDaliChain(ctx, inputGain, daliOutput, cfg);
@@ -9880,8 +10000,13 @@ function createWebDaliInjectScript(payload, presetStages, bassPresetStages) {
                     limiterInputGain.connect(limiterComp);
                     limiterComp.connect(clipGuardGain);
                     clipGuardGain.connect(truePeakMeterAnalyser);
-                    truePeakMeterAnalyser.connect(pan);
-                    pan.connect(ctx.destination);
+                    truePeakMeterAnalyser.connect(balanceSplit);
+                    balanceSplit.connect(balanceGainL, 0);
+                    balanceSplit.connect(balanceGainR, 1);
+                    balanceGainL.connect(balanceMerge, 0, 0);
+                    balanceGainR.connect(balanceMerge, 0, 1);
+                    balanceMerge.connect(masterGain);
+                    masterGain.connect(ctx.destination);
                     const noiseGateState = {
                         enabled: false,
                         thresholdDb: -40,
@@ -10126,11 +10251,12 @@ function createWebDaliInjectScript(payload, presetStages, bassPresetStages) {
                     };
                     const truePeakBuffer = new Uint8Array(truePeakMeterAnalyser.fftSize || 2048);
                     const controlRate = root.controlRateProfiles || {};
-                    const deEsserIntervalMs = Math.max(10, Number(controlRate.deesserMs) || 24);
-                    const noiseGateIntervalMs = Math.max(10, Number(controlRate.noisegateMs) || 24);
-                    const autoGainIntervalMs = Math.max(20, Number(controlRate.autogainMs) || 60);
-                    const dynamicEqIntervalMs = Math.max(10, Number(controlRate.dynamiceqMs) || 24);
-                    const truePeakIntervalMs = Math.max(20, Number(controlRate.truepeakMs) || 50);
+                    const isWebProfile = !!cfg?.webProfile;
+                    const deEsserIntervalMs = Math.max(10, Number(controlRate.deesserMs) || 24) * (isWebProfile ? 2.0 : 1.0);
+                    const noiseGateIntervalMs = Math.max(10, Number(controlRate.noisegateMs) || 24) * (isWebProfile ? 2.0 : 1.0);
+                    const autoGainIntervalMs = Math.max(20, Number(controlRate.autogainMs) || 60) * (isWebProfile ? 2.0 : 1.0);
+                    const dynamicEqIntervalMs = Math.max(10, Number(controlRate.dynamiceqMs) || 24) * (isWebProfile ? 2.0 : 1.0);
+                    const truePeakIntervalMs = Math.max(20, Number(controlRate.truepeakMs) || 50) * (isWebProfile ? 2.0 : 1.0);
                     const epsLinear = Math.max(0.00001, Number(controlRate.epsilonLinear) || 0.0006);
                     const epsDb = Math.max(0.0001, Number(controlRate.epsilonDb) || 0.04);
                     const deEsserTimer = root.wrapPerfLoop(perfState, 'deesser', deEsserIntervalMs, function () {
@@ -10659,7 +10785,11 @@ function createWebDaliInjectScript(payload, presetStages, bassPresetStages) {
                         limiterComp,
                         clipGuardGain,
                         truePeakMeterAnalyser,
-                        pan,
+                        balanceSplit,
+                        balanceGainL,
+                        balanceGainR,
+                        balanceMerge,
+                        masterGain,
                         clipGuardState,
                         autoCompDb: 0,
                         perfState
@@ -10676,7 +10806,9 @@ function createWebDaliInjectScript(payload, presetStages, bassPresetStages) {
                     connected += 1;
                     root.applyPostCfg(graph, cfg);
                 }
-                return { ok: true, connected, mode: 'dali-web-generated-eq32' };
+                return connected > 0
+                    ? { ok: true, connected, mode: 'dali-web-generated-eq32' }
+                    : { ok: false, connected: 0, error: 'no-media-graph-connected', mode: 'dali-web-generated-eq32' };
             } catch (err) {
                 return { ok: false, error: String(err && err.message ? err.message : err) };
             }
@@ -10684,16 +10816,47 @@ function createWebDaliInjectScript(payload, presetStages, bassPresetStages) {
     `;
 }
 
+function getActiveDaliScope() {
+    const currentPage = String(state.currentPage || '').trim().toLowerCase();
+    const activeMedia = String(state.activeMedia || '').trim().toLowerCase();
+
+    const isVideoVisible = !!(elements.videoPage && elements.videoPage.classList.contains('active') && !elements.videoPage.classList.contains('hidden'));
+    const isWebVisible = !!(elements.webPage && elements.webPage.classList.contains('active') && !elements.webPage.classList.contains('hidden'));
+
+    // Görünen sayfayı birincil kaynak al; stale state nedeniyle scope kaymasını engelle.
+    if (isVideoVisible || currentPage === 'video') return 'video';
+    if (isWebVisible || currentPage === 'web') return 'web';
+
+    // Fallback: aktif medya türü.
+    if (activeMedia === 'video') return 'video';
+    if (activeMedia === 'web') return 'web';
+    return '';
+}
+
+function createVideoScopedDaliInjectScript(payload, presetStages, bassPresetStages) {
+    const baseScript = createWebDaliInjectScript(payload, presetStages, bassPresetStages);
+    // Video sekmesinde sadece video elementlerini hedefle; müzik elementlerine dokunma.
+    return String(baseScript).split("document.querySelectorAll('video, audio')").join("document.querySelectorAll('video')");
+}
+
 async function applyWebDaliEngineNow(reason = 'runtime') {
-    if (!elements.webView || typeof elements.webView.executeJavaScript !== 'function') return false;
-    if (!(state.currentPage === 'web' || state.activeMedia === 'web')) return false;
-    const currentUrl = getWebViewUrlSafe();
-    if (!shouldInjectWebSync(currentUrl)) return false;
+    const daliScope = getActiveDaliScope();
+    if (!daliScope) return false;
     if (webDaliApplyInFlight) return false;
+
+    if (daliScope === 'web') {
+        if (!elements.webView || typeof elements.webView.executeJavaScript !== 'function') return false;
+        const currentUrl = getWebViewUrlSafe();
+        if (!shouldInjectWebSync(currentUrl)) return false;
+    } else {
+        if (!elements.videoPlayer) return false;
+        // Eski fullscreen graph kilidi varsa kaldır; video elementi DALI tarafından sahiplenilebilsin.
+        teardownFsAudioGraph();
+    }
 
     webDaliApplyInFlight = true;
     try {
-        const payload = getWebDaliEq32Settings();
+        const payload = getWebDaliEq32Settings(daliScope);
         const presetStages = await loadWebDaliPresetStages();
         let bassPresetStages = [];
         try {
@@ -10704,23 +10867,41 @@ async function applyWebDaliEngineNow(reason = 'runtime') {
         }
         const skipCacheReasons = new Set(['dom-ready', 'navigate', 'media-started']);
         const applySignature = JSON.stringify({
-            scope: 'web',
-            url: currentUrl,
+            scope: daliScope,
+            url: daliScope === 'web' ? getWebViewUrlSafe() : String(state.currentVideoPath || ''),
             payload,
             presetLen: Array.isArray(presetStages) ? presetStages.length : 0,
             bassPresetLen: Array.isArray(bassPresetStages) ? bassPresetStages.length : 0
         });
         if (!skipCacheReasons.has(String(reason || '').toLowerCase()) && applySignature === webDaliLastApplySignature) {
             if (AURIVO_VERBOSE_LOGS) {
-                console.log('[DALI WEB] apply skipped (unchanged):', reason);
+                console.log('[DALI WEB] apply skipped (unchanged):', reason, daliScope);
             }
             return true;
         }
-        const result = await elements.webView.executeJavaScript(createWebDaliInjectScript(payload, presetStages, bassPresetStages), true);
+
+        let result = null;
+        if (daliScope === 'web') {
+            result = await elements.webView.executeJavaScript(createWebDaliInjectScript(payload, presetStages, bassPresetStages), true);
+        } else {
+            const script = createVideoScopedDaliInjectScript(payload, presetStages, bassPresetStages);
+            if (window.aurivo?.soundEffects?.applyInMainWindow) {
+                result = await window.aurivo.soundEffects.applyInMainWindow(script);
+            } else {
+                result = await (0, eval)(script);
+            }
+        }
+
         if (AURIVO_VERBOSE_LOGS) {
-            console.log('[DALI WEB] apply:', reason, result);
+            console.log('[DALI WEB] apply:', reason, daliScope, result);
         }
         const ok = !!(result && result.ok);
+        if (!ok) {
+            console.warn('[DALI WEB] apply failed:', reason, daliScope, result);
+        }
+        if (ok && daliScope === 'video') {
+            setVideoDaliRuntimeMasterVolume(state.volume, state.isMuted);
+        }
         if (ok) webDaliLastApplySignature = applySignature;
         return ok;
     } catch (error) {
@@ -10732,10 +10913,21 @@ async function applyWebDaliEngineNow(reason = 'runtime') {
 }
 
 async function getWebDaliSpectrumBands(numBands = 128) {
+    const safeBands = Math.max(64, Math.min(512, Number(numBands) || 128));
+    const daliScope = getActiveDaliScope();
+    if (daliScope === 'video') {
+        try {
+            const root = window.__AURIVO_DALI_WEB__;
+            if (!root || typeof root.getSpectrumSnapshot !== 'function') return [];
+            const result = root.getSpectrumSnapshot(safeBands);
+            return Array.isArray(result) ? result : [];
+        } catch {
+            return [];
+        }
+    }
     if (!elements.webView || typeof elements.webView.executeJavaScript !== 'function') return [];
     const currentUrl = getWebViewUrlSafe();
     if (!shouldInjectWebSync(currentUrl)) return [];
-    const safeBands = Math.max(64, Math.min(512, Number(numBands) || 128));
     try {
         const result = await elements.webView.executeJavaScript(`
             (function () {
@@ -10754,7 +10946,33 @@ async function getWebDaliSpectrumBands(numBands = 128) {
     }
 }
 
+function setVideoDaliRuntimeMasterVolume(volumePercent, muted) {
+    try {
+        const root = window.__AURIVO_DALI_WEB__;
+        if (!root || typeof root.setRuntimeMasterVolume !== 'function') return false;
+        const level = Math.max(0, Math.min(1, (Number(volumePercent) || 0) / 100));
+        return !!root.setRuntimeMasterVolume(level, !!muted);
+    } catch {
+        return false;
+    }
+}
+
 async function getWebDaliNoiseGateStatus() {
+    const daliScope = getActiveDaliScope();
+    if (daliScope === 'video') {
+        try {
+            const root = window.__AURIVO_DALI_WEB__;
+            if (!root || typeof root.getNoiseGateStatus !== 'function') {
+                return { ok: false, enabled: false, open: true, gain: 1, envDb: -120, thresholdDb: -40 };
+            }
+            const result = root.getNoiseGateStatus();
+            return (result && typeof result === 'object')
+                ? result
+                : { ok: false, enabled: false, open: true, gain: 1, envDb: -120, thresholdDb: -40 };
+        } catch {
+            return { ok: false, enabled: false, open: true, gain: 1, envDb: -120, thresholdDb: -40 };
+        }
+    }
     if (!elements.webView || typeof elements.webView.executeJavaScript !== 'function') {
         return { ok: false, enabled: false, open: true, gain: 1, envDb: -120, thresholdDb: -40 };
     }
@@ -10785,6 +11003,21 @@ async function getWebDaliNoiseGateStatus() {
 }
 
 async function getWebDaliTruePeakStatus() {
+    const daliScope = getActiveDaliScope();
+    if (daliScope === 'video') {
+        try {
+            const root = window.__AURIVO_DALI_WEB__;
+            if (!root || typeof root.getTruePeakStatus !== 'function') {
+                return { ok: false, truePeakL: -96, truePeakR: -96, holdL: -96, holdR: -96, clippingCount: 0, gainReduction: 0 };
+            }
+            const result = root.getTruePeakStatus();
+            return (result && typeof result === 'object')
+                ? result
+                : { ok: false, truePeakL: -96, truePeakR: -96, holdL: -96, holdR: -96, clippingCount: 0, gainReduction: 0 };
+        } catch {
+            return { ok: false, truePeakL: -96, truePeakR: -96, holdL: -96, holdR: -96, clippingCount: 0, gainReduction: 0 };
+        }
+    }
     if (!elements.webView || typeof elements.webView.executeJavaScript !== 'function') {
         return { ok: false, truePeakL: -96, truePeakR: -96, holdL: -96, holdR: -96, clippingCount: 0, gainReduction: 0 };
     }
@@ -10815,6 +11048,21 @@ async function getWebDaliTruePeakStatus() {
 }
 
 async function getWebDaliDynamicEqStatus() {
+    const daliScope = getActiveDaliScope();
+    if (daliScope === 'video') {
+        try {
+            const root = window.__AURIVO_DALI_WEB__;
+            if (!root || typeof root.getDynamicEqStatus !== 'function') {
+                return { ok: false, enabled: false, currentGainDb: 0, gainReductionDb: 0, envDb: -120, thresholdDb: -40, triggered: false };
+            }
+            const result = root.getDynamicEqStatus();
+            return (result && typeof result === 'object')
+                ? result
+                : { ok: false, enabled: false, currentGainDb: 0, gainReductionDb: 0, envDb: -120, thresholdDb: -40, triggered: false };
+        } catch {
+            return { ok: false, enabled: false, currentGainDb: 0, gainReductionDb: 0, envDb: -120, thresholdDb: -40, triggered: false };
+        }
+    }
     if (!elements.webView || typeof elements.webView.executeJavaScript !== 'function') {
         return { ok: false, enabled: false, currentGainDb: 0, gainReductionDb: 0, envDb: -120, thresholdDb: -40, triggered: false };
     }
@@ -10845,6 +11093,42 @@ async function getWebDaliDynamicEqStatus() {
 }
 
 async function getWebDaliPerfStatus() {
+    const daliScope = getActiveDaliScope();
+    if (daliScope === 'video') {
+        try {
+            const root = window.__AURIVO_DALI_WEB__;
+            if (!root || typeof root.getPerfStatus !== 'function') {
+                return {
+                    ok: false,
+                    loops: {},
+                    build: { count: 0, lastMs: 0, avgMs: 0, maxMs: 0, rebuildCount: 0 },
+                    apply: { count: 0, lastMs: 0, avgMs: 0, maxMs: 0 },
+                    totalGlitches: 0,
+                    uptimeSec: 0
+                };
+            }
+            const result = root.getPerfStatus();
+            return (result && typeof result === 'object')
+                ? result
+                : {
+                    ok: false,
+                    loops: {},
+                    build: { count: 0, lastMs: 0, avgMs: 0, maxMs: 0, rebuildCount: 0 },
+                    apply: { count: 0, lastMs: 0, avgMs: 0, maxMs: 0 },
+                    totalGlitches: 0,
+                    uptimeSec: 0
+                };
+        } catch {
+            return {
+                ok: false,
+                loops: {},
+                build: { count: 0, lastMs: 0, avgMs: 0, maxMs: 0, rebuildCount: 0 },
+                apply: { count: 0, lastMs: 0, avgMs: 0, maxMs: 0 },
+                totalGlitches: 0,
+                uptimeSec: 0
+            };
+        }
+    }
     if (!elements.webView || typeof elements.webView.executeJavaScript !== 'function') {
         return {
             ok: false,
@@ -12996,6 +13280,8 @@ function setupVideoPlayerEvents() {
         if (state.activeMedia === 'video') {
             updateTimeDisplay();
             updateMPRISMetadata();
+            // Video metadata hazır olduğunda DSP grafiğini güvenli şekilde uygula.
+            scheduleApplyWebDaliEngine('video-metadata', 40);
         }
     });
 
@@ -13021,6 +13307,8 @@ function setupVideoPlayerEvents() {
             renderVideoLibraryTree();
             updateTrayState();
             updateMPRISMetadata();
+            // Oynatma başladığında efekt zincirini aktif videoya yeniden uygula.
+            scheduleApplyWebDaliEngine('video-play', 20);
         }
     });
 
@@ -13035,29 +13323,269 @@ function setupVideoPlayerEvents() {
     });
 }
 
-// Video tam ekran geçişi
-function toggleVideoFullscreen() {
-    const videoPage = document.getElementById('videoPage');
-
-    if (!document.fullscreenElement) {
-        // Tam ekrana geç
-        if (videoPage.requestFullscreen) {
-            videoPage.requestFullscreen();
-        } else if (videoPage.webkitRequestFullscreen) {
-            videoPage.webkitRequestFullscreen();
-        } else if (videoPage.mozRequestFullScreen) {
-            videoPage.mozRequestFullScreen();
+async function requestFullscreenSafe(el) {
+    if (!el) return false;
+    try {
+        if (typeof el.requestFullscreen === 'function') {
+            await el.requestFullscreen();
+            return true;
         }
-    } else {
-        // Tam ekrandan çık
-        if (document.exitFullscreen) {
+    } catch { }
+    try {
+        if (typeof el.webkitRequestFullscreen === 'function') {
+            el.webkitRequestFullscreen();
+            return true;
+        }
+    } catch { }
+    try {
+        if (typeof el.mozRequestFullScreen === 'function') {
+            el.mozRequestFullScreen();
+            return true;
+        }
+    } catch { }
+    return false;
+}
+
+function exitFullscreenSafe() {
+    try {
+        if (typeof document.exitFullscreen === 'function') {
             document.exitFullscreen();
-        } else if (document.webkitExitFullscreen) {
+            return true;
+        }
+    } catch { }
+    try {
+        if (typeof document.webkitExitFullscreen === 'function') {
             document.webkitExitFullscreen();
-        } else if (document.mozCancelFullScreen) {
+            return true;
+        }
+    } catch { }
+    try {
+        if (typeof document.mozCancelFullScreen === 'function') {
             document.mozCancelFullScreen();
+            return true;
+        }
+    } catch { }
+    return false;
+}
+
+async function syncWindowFullscreenState() {
+    try {
+        const api = window.aurivo?.electronAPI;
+        if (api && typeof api.isFullscreen === 'function') {
+            fsWindowFullscreenActive = !!(await api.isFullscreen());
+        }
+    } catch {
+        // yoksay
+    }
+    return fsWindowFullscreenActive;
+}
+
+async function setWindowFullscreenSafe(enabled) {
+    try {
+        const api = window.aurivo?.electronAPI;
+        if (api && typeof api.setFullscreen === 'function') {
+            fsWindowFullscreenActive = !!(await api.setFullscreen(!!enabled));
+            return true;
+        }
+    } catch {
+        // yoksay
+    }
+    return false;
+}
+
+async function toggleWindowFullscreenSafe() {
+    try {
+        const api = window.aurivo?.electronAPI;
+        if (api && typeof api.toggleFullscreen === 'function') {
+            fsWindowFullscreenActive = !!(await api.toggleFullscreen());
+            return true;
+        }
+    } catch {
+        // yoksay
+    }
+    return false;
+}
+
+function ensureWindowFullscreenBridge() {
+    if (fsWindowFullscreenHooked) return;
+    const api = window.aurivo?.electronAPI;
+    if (!api || typeof api.onFullscreenChanged !== 'function') return;
+
+    fsWindowFullscreenUnsubscribe = api.onFullscreenChanged((isFullscreen) => {
+        fsWindowFullscreenActive = !!isFullscreen;
+        handleFullscreenChange();
+    });
+    fsWindowFullscreenHooked = true;
+    syncWindowFullscreenState()
+        .then(() => handleFullscreenChange())
+        .catch(() => { /* yoksay */ });
+}
+
+function getDomFullscreenElement() {
+    return (
+        document.fullscreenElement ||
+        document.webkitFullscreenElement ||
+        document.mozFullScreenElement
+    );
+}
+
+async function toggleVideoFullscreenCore(targetEnter, videoPage) {
+    if (targetEnter) {
+        // Electron penceresi için en kararlı yol.
+        await setWindowFullscreenSafe(true);
+        await syncWindowFullscreenState();
+        let ok = fsWindowFullscreenActive;
+
+        // WM/Platform farkları için DOM fullscreen fallback.
+        if (!ok) ok = await requestFullscreenSafe(videoPage);
+        if (!ok && elements.videoPlayer) ok = await requestFullscreenSafe(elements.videoPlayer);
+        if (!ok) {
+            await toggleWindowFullscreenSafe();
+            await syncWindowFullscreenState();
+        }
+        return;
+    }
+
+    const activeEl = getDomFullscreenElement();
+    if (activeEl) {
+        exitFullscreenSafe();
+    } else {
+        await setWindowFullscreenSafe(false);
+    }
+    await syncWindowFullscreenState();
+}
+
+async function toggleVideoFullscreenLegacy(targetEnter, videoPage) {
+    if (targetEnter) {
+        let ok = await requestFullscreenSafe(videoPage);
+        if (!ok && elements.videoPlayer) ok = await requestFullscreenSafe(elements.videoPlayer);
+        if (!ok) await setWindowFullscreenSafe(true);
+    } else {
+        const activeEl = getDomFullscreenElement();
+        if (activeEl) exitFullscreenSafe();
+        else await setWindowFullscreenSafe(false);
+    }
+    await syncWindowFullscreenState();
+}
+
+async function toggleVideoFullscreen() {
+    const now = Date.now();
+    if (videoFullscreenToggleInFlight) return;
+    if (now - videoFullscreenLastToggleAt < 160) return;
+    videoFullscreenToggleInFlight = true;
+
+    const videoPage = document.getElementById('videoPage');
+    if (!videoPage) {
+        videoFullscreenToggleInFlight = false;
+        return;
+    }
+
+    const wasFullscreen = isVideoFullscreenActive();
+    const targetEnter = !wasFullscreen;
+
+    try {
+        if (videoFullscreenFlowState.useLegacy) {
+            await toggleVideoFullscreenLegacy(targetEnter, videoPage);
+        } else {
+            await toggleVideoFullscreenCore(targetEnter, videoPage);
+        }
+
+        await syncWindowFullscreenState();
+        const nowFullscreen = isVideoFullscreenActive();
+        const reachedTarget = targetEnter ? nowFullscreen : !nowFullscreen;
+
+        if (!reachedTarget) {
+            videoFullscreenFlowState.consecutiveFailures += 1;
+            console.warn('[VIDEO-FS] toggle target not reached, retrying with legacy path');
+            await toggleVideoFullscreenLegacy(targetEnter, videoPage);
+            await syncWindowFullscreenState();
+
+            const afterLegacy = isVideoFullscreenActive();
+            const legacyReached = targetEnter ? afterLegacy : !afterLegacy;
+            if (!legacyReached) {
+                videoFullscreenFlowState.consecutiveFailures += 1;
+            } else {
+                videoFullscreenFlowState.consecutiveFailures = 0;
+            }
+        } else {
+            videoFullscreenFlowState.consecutiveFailures = 0;
+        }
+
+        if (!videoFullscreenFlowState.useLegacy && videoFullscreenFlowState.consecutiveFailures >= videoFullscreenFlowState.maxFailuresBeforeLegacy) {
+            videoFullscreenFlowState.useLegacy = true;
+            console.warn('[VIDEO-FS] switched to legacy fullscreen path');
+        }
+    } catch (e) {
+        videoFullscreenFlowState.consecutiveFailures += 1;
+        if (!videoFullscreenFlowState.useLegacy) {
+            try {
+                await toggleVideoFullscreenLegacy(targetEnter, videoPage);
+                await syncWindowFullscreenState();
+            } catch {
+                // yoksay
+            }
+        }
+        if (videoFullscreenFlowState.consecutiveFailures >= videoFullscreenFlowState.maxFailuresBeforeLegacy) {
+            videoFullscreenFlowState.useLegacy = true;
+        }
+        console.warn('[VIDEO-FS] toggle error:', e?.message || e);
+    } finally {
+        videoFullscreenLastToggleAt = Date.now();
+        videoFullscreenToggleInFlight = false;
+        syncWindowFullscreenLayoutState();
+    }
+}
+
+function isVideoSurfaceTarget(target) {
+    if (!target || !(target instanceof Element)) return false;
+    if (!target.closest('#videoPage, #videoPlayer')) return false;
+    if (target.closest('#videoFsControls, .context-menu, button, input, select, textarea, [role=\"button\"]')) return false;
+    return true;
+}
+
+function handleVideoSurfaceDoubleClick(e) {
+    if (e?.__aurivoVideoFsHandled) return;
+    if (e) e.__aurivoVideoFsHandled = true;
+    const target = e?.target;
+    if (!target || !(target instanceof Element)) {
+        toggleVideoFullscreen();
+        return;
+    }
+    if (!isVideoSurfaceTarget(target)) return;
+    toggleVideoFullscreen();
+}
+
+function handleGlobalVideoDoubleClickCapture(e) {
+    if (!isPageVisible(elements.videoPage)) return;
+    const target = e?.target;
+    if (isVideoSurfaceTarget(target)) {
+        handleVideoSurfaceDoubleClick(e);
+        return;
+    }
+
+    // Overlay/üst katman video üstünde ise target videoPage altında olmayabilir.
+    // Bu durumda koordinata göre video alanında çift tıkı kabul et.
+    const videoPage = document.getElementById('videoPage');
+    if (!videoPage) return;
+    if (typeof e?.clientX !== 'number' || typeof e?.clientY !== 'number') return;
+    const rect = videoPage.getBoundingClientRect();
+    const insideVideoRect =
+        e.clientX >= rect.left && e.clientX <= rect.right &&
+        e.clientY >= rect.top && e.clientY <= rect.bottom;
+    if (!insideVideoRect) return;
+
+    if (target instanceof Element) {
+        if (target.closest('#videoFsControls, .context-menu, .sidebar, .left-panel, .nav-bar, .player-bar, button, input, select, textarea, [role=\"button\"]')) {
+            return;
         }
     }
+    handleVideoSurfaceDoubleClick(e);
+}
+
+function handleVideoSurfaceMouseUpFallback(e) {
+    if ((e?.detail || 0) < 2) return;
+    if (!isVideoSurfaceTarget(e?.target)) return;
+    handleVideoSurfaceDoubleClick(e);
 }
 
 // ============================================
@@ -13166,6 +13694,16 @@ function getFsQualityLabel(quality) {
 }
 
 let fsSettingsCaptureBound = false;
+let fsWindowFullscreenActive = false;
+let fsWindowFullscreenHooked = false;
+let fsWindowFullscreenUnsubscribe = null;
+let videoFullscreenToggleInFlight = false;
+let videoFullscreenLastToggleAt = 0;
+const videoFullscreenFlowState = {
+    useLegacy: false,
+    consecutiveFailures: 0,
+    maxFailuresBeforeLegacy: 2
+};
 
 const fsMenuPortalMap = new WeakMap();
 
@@ -13195,7 +13733,25 @@ function isVideoFullscreenActive() {
 
     // Bazı sistemlerde tam ekran video elementinde/child node'da açılabiliyor.
     // Bu durumda da video sayfası tam ekran kabul edilsin.
-    return !!activeEl && (activeEl === videoPage || videoPage.contains(activeEl));
+    if (!!activeEl && (activeEl === videoPage || videoPage.contains(activeEl))) {
+        return true;
+    }
+
+    // DOM fullscreen çalışmazsa BrowserWindow fullscreen fallback'i kullanıyoruz.
+    return fsWindowFullscreenActive;
+}
+
+function syncWindowFullscreenLayoutState() {
+    const body = document.body;
+    const videoPage = document.getElementById('videoPage');
+    if (!body || !videoPage) return;
+
+    const active =
+        !!fsWindowFullscreenActive &&
+        isPageVisible(elements.videoPage) &&
+        String(state.currentPage || '') === 'video';
+    body.classList.toggle('video-window-fs-active', active);
+    videoPage.classList.toggle('fs-window-active', active);
 }
 
 function isFsSettingsButtonHit(e, pad = 10) {
@@ -13599,6 +14155,7 @@ function setupFullscreenVideoControls() {
 function handleFullscreenChange() {
     const videoPage = document.getElementById('videoPage');
     const fsControls = document.getElementById('videoFsControls');
+    syncWindowFullscreenLayoutState();
 
     if (isVideoFullscreenActive()) {
         // Tam ekrana girdi
@@ -13976,14 +14533,17 @@ function handleFsSettingsClick(e) {
     }
 }
 
-function exitVideoFullscreen() {
-    if (document.exitFullscreen) {
-        document.exitFullscreen();
-    } else if (document.webkitExitFullscreen) {
-        document.webkitExitFullscreen();
-    } else if (document.mozCancelFullScreen) {
-        document.mozCancelFullScreen();
+async function exitVideoFullscreen() {
+    const activeEl =
+        document.fullscreenElement ||
+        document.webkitFullscreenElement ||
+        document.mozFullScreenElement;
+    if (activeEl) {
+        exitFullscreenSafe();
+    } else {
+        await setWindowFullscreenSafe(false);
     }
+    await syncWindowFullscreenState();
 }
 
 function updateFsProgressBar() {
@@ -14001,6 +14561,8 @@ function updateFsProgressBar() {
     if (duration > 0) {
         const value = (currentTime / duration) * 1000;
         slider.value = value;
+        const percent = (value / (Number(slider.max) || 1000)) * 100;
+        updateRainbowSlider(slider, percent);
     }
 
     currentLabel.textContent = formatTime(currentTime);
@@ -14054,6 +14616,17 @@ let fsAudioCtx = null;
 let fsVideoSourceNode = null;
 let fsVideoDelayNode = null;
 let fsVideoGainNode = null;
+
+function teardownFsAudioGraph() {
+    try { fsVideoSourceNode?.disconnect?.(); } catch { /* ignore */ }
+    try { fsVideoDelayNode?.disconnect?.(); } catch { /* ignore */ }
+    try { fsVideoGainNode?.disconnect?.(); } catch { /* ignore */ }
+    try { fsAudioCtx?.close?.(); } catch { /* ignore */ }
+    fsVideoSourceNode = null;
+    fsVideoDelayNode = null;
+    fsVideoGainNode = null;
+    fsAudioCtx = null;
+}
 
 function getVideoAudioDelayMs() {
     const value = Number(state.settings?.videoFullscreen?.audioDelayMs);
@@ -14143,6 +14716,13 @@ function toggleFsSetting(settingKey) {
 }
 
 function ensureFsAudioGraph() {
+    // Video SFX (DALI) zinciri aktifken ikinci bir MediaElementSource oluşturma.
+    // Aksi halde video elementi tek kaynağa kilitlenip DALI efektleri devreye giremez.
+    const videoSfxMasterEnabled = state?.settings?.sfxScopes?.video?.master?.enabled !== false;
+    if (videoSfxMasterEnabled) {
+        teardownFsAudioGraph();
+        return false;
+    }
     if (fsAudioCtx && fsVideoGainNode) return true;
     try {
         const Ctx = window.AudioContext || window.webkitAudioContext;
@@ -14180,7 +14760,8 @@ function applyFsVolumeBoost(enabled) {
     try {
         if (fsAudioCtx && fsAudioCtx.state === 'suspended') fsAudioCtx.resume().catch(() => { /* ignore */ });
     } catch { }
-    fsVideoGainNode.gain.value = enabled ? 1.8 : 1.0;
+    // 1.8x bazı içeriklerde agresif/boğuk algılanıyordu; daha kontrollü boost.
+    fsVideoGainNode.gain.value = enabled ? 1.35 : 1.0;
 }
 
 function setFsSleepTimer(minutes) {
@@ -14657,22 +15238,29 @@ function switchPage(pageName) {
     });
 
     let targetPage;
+    let normalizedPage = 'music';
     switch (pageName) {
         case 'music':
             targetPage = elements.musicPage;
+            normalizedPage = 'music';
             break;
         case 'video':
             targetPage = elements.videoPage;
+            normalizedPage = 'video';
             break;
         case 'web':
             targetPage = elements.webPage;
+            normalizedPage = 'web';
             break;
         default:
             targetPage = elements.musicPage;
+            normalizedPage = 'music';
     }
 
+    state.currentPage = normalizedPage;
     targetPage.classList.remove('hidden');
     targetPage.classList.add('active');
+    syncWindowFullscreenLayoutState();
 }
 
 async function handlePlatformClick(btn) {
@@ -15992,13 +16580,19 @@ function getPlaylistPresentationEntries() {
     });
 
     if (prefs.groupBy === 'none') {
-        return normalizedItems.map((entry) => ({ type: 'item', ...entry }));
+        let visualOrder = 0;
+        return normalizedItems.map((entry) => ({
+            type: 'item',
+            visualOrder: visualOrder++,
+            ...entry
+        }));
     }
 
     const unknownLabel = prefs.groupBy === 'artist'
         ? uiT('settings.library.view.group.unknownArtist', 'Bilinmeyen sanatçı')
         : uiT('settings.library.view.group.unknownAlbum', 'Bilinmeyen albüm');
     const entries = [];
+    let visualOrder = 0;
     let currentHeader = '';
 
     normalizedItems.forEach((entry) => {
@@ -16011,10 +16605,17 @@ function getPlaylistPresentationEntries() {
                 label: groupLabel
             });
         }
-        entries.push({ type: 'item', ...entry });
+        entries.push({ type: 'item', visualOrder: visualOrder++, ...entry });
     });
 
     return entries;
+}
+
+function getSequentialPlaylistOrderIndices() {
+    return getPlaylistPresentationEntries()
+        .filter((entry) => entry && entry.type === 'item' && Number.isInteger(entry.originalIndex))
+        .map((entry) => entry.originalIndex)
+        .filter((idx) => idx >= 0 && idx < state.playlist.length);
 }
 
 function applyLibraryStatsToUi(stats = undefined) {
@@ -16555,11 +17156,14 @@ function showLibraryAddMenu(anchor, scope = 'audio') {
                             ]
                         });
                         if (!files || !files.length) return;
-                        state.videoFiles = files.map((f) => ({ name: f.name, path: f.path }));
+                        state.videoFiles = mergeVideoLibraryItems(
+                            state.videoFiles,
+                            files.map((f) => ({ name: f.name, path: f.path }))
+                        );
                         persistVideoLibrary();
                         state.currentPath = '';
                         renderVideoLibraryTree();
-                        playVideo(state.videoFiles[0].path);
+                        playVideo(files[0].path);
                     } catch (e) {
                         safeNotify(`${uiT('libraryActions.openVideo', 'Video Aç')}: ${e?.message || e}`, 'error', 2200);
                     }
@@ -17847,6 +18451,7 @@ function renderPlaylist() {
         }
 
         const { item, originalIndex: index, artist, album } = entry;
+        const visualOrder = Number.isInteger(entry.visualOrder) ? entry.visualOrder : index;
         const div = document.createElement('div');
         div.className = 'playlist-item';
         const isCurrent = index === state.currentIndex;
@@ -17862,7 +18467,7 @@ function renderPlaylist() {
         div.dataset.index = index;
 
         const icon = isVideoFile(item.name) ? '🎬' : '🎵';
-        const statusGlyph = isAudioCurrent ? (isTrackPlaying ? '❚❚' : '▶') : String(index + 1);
+        const statusGlyph = isAudioCurrent ? (isTrackPlaying ? '❚❚' : '▶') : String(visualOrder + 1);
         const statusClass = isAudioCurrent ? 'item-index playback-state' : 'item-index';
         const showMissingCover = !largePlaylistMode && getCoverPreferenceState().markMissing && item.hasCover === false;
         const metaParts = [artist, album].filter(Boolean);
@@ -18177,25 +18782,33 @@ function playVideo(videoPath) {
     let videoIndex = state.videoFiles.findIndex(v => v.path === videoPath);
     if (videoIndex === -1) {
         const fileName = window.aurivo?.path?.basename?.(videoPath) || String(videoPath || '').split('/').pop() || 'video';
-        state.videoFiles = [{ name: fileName, path: videoPath }];
-        videoIndex = 0;
+        state.videoFiles = mergeVideoLibraryItems(state.videoFiles, [{ name: fileName, path: videoPath }]);
+        videoIndex = state.videoFiles.findIndex(v => v.path === videoPath);
         persistVideoLibrary();
     }
 
     state.currentVideoIndex = videoIndex;
     state.currentVideoPath = videoPath;
     state.activeMedia = 'video';
+    state.currentPage = 'video';
 
     // Video sayfasına geç
     switchPage('video');
 
     // Video player'ı ayarla ve oynat
     elements.videoPlayer.src = toLocalFileUrl(videoPath);
+    // Yeni kaynağa geçildiğinde video scope efektlerini bekletmeden sırala.
+    scheduleApplyWebDaliEngine('video-src-set', 10);
 
     // Video ses seviyesini ayarla (kaydedilen seviye)
-    elements.videoPlayer.volume = state.volume / 100;
-    applyFsAudioDelay();
-    applyFsVolumeBoost(!!state.settings?.videoFullscreen?.volumeBoost);
+    const daliScope = typeof getActiveDaliScope === 'function' ? getActiveDaliScope() : '';
+    const usedVideoDaliMaster =
+        daliScope === 'video' &&
+        setVideoDaliRuntimeMasterVolume(state.volume, state.isMuted);
+    elements.videoPlayer.volume = usedVideoDaliMaster ? 1 : (state.volume / 100);
+    elements.videoPlayer.muted = usedVideoDaliMaster ? false : state.isMuted;
+    // Not: Video SFX DALI zinciri ile çakışmaması için burada FS audio graph'ı kurmuyoruz.
+    // Gecikme/boost kontrolleri DALI kapalıyken ilgili UI aksiyonlarında uygulanır.
 
     // Tam ekran ses kontrollerini başlat
     const fsVolumeSlider = document.getElementById('fsVolumeSlider');
@@ -18208,6 +18821,7 @@ function playVideo(videoPath) {
     }
 
     elements.videoPlayer.play();
+    scheduleApplyWebDaliEngine('video-play-request', 30);
 
     // Video kapağı (thumbnail) göster
     extractVideoCover(videoPath);
@@ -18226,9 +18840,54 @@ function playVideo(videoPath) {
     console.log('[PLAY VIDEO] Video başlatıldı, index:', videoIndex, 'toplam:', state.videoFiles.length);
 }
 
+async function ensureVideoQueueFromCurrentPath() {
+    const currentPath = String(state.currentVideoPath || '').trim();
+    if (!currentPath || !window.aurivo?.readDirectory || !window.aurivo?.path?.dirname) return false;
+
+    try {
+        const dirPath = window.aurivo.path.dirname(currentPath);
+        const entries = await window.aurivo.readDirectory(dirPath);
+        if (!Array.isArray(entries)) return false;
+
+        const videoExts = getConfiguredLibraryExtensions('video');
+        const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
+        const files = entries
+            .filter((i) => i?.isFile && i?.name && !String(i.name).startsWith('.'))
+            .filter((i) => {
+                const ext = String(i.name).split('.').pop().toLowerCase();
+                return videoExts.includes(ext);
+            })
+            .sort((a, b) => collator.compare(String(a?.name || ''), String(b?.name || '')));
+
+        if (!files.length) return false;
+
+        const normalizedCurrent = currentPath.replace(/\\/g, '/');
+        state.videoFiles = files.map((f) => ({ name: f.name, path: f.path }));
+        state.currentVideoIndex = state.videoFiles.findIndex((v) => String(v.path || '').replace(/\\/g, '/') === normalizedCurrent);
+
+        if (state.currentVideoIndex < 0) {
+            const currentName = window.aurivo?.path?.basename?.(currentPath) || normalizedCurrent.split('/').pop() || '';
+            state.videoFiles.push({ name: currentName, path: currentPath });
+            state.videoFiles.sort((a, b) => collator.compare(String(a?.name || ''), String(b?.name || '')));
+            state.currentVideoIndex = state.videoFiles.findIndex((v) => String(v.path || '').replace(/\\/g, '/') === normalizedCurrent);
+        }
+
+        persistVideoLibrary();
+        renderVideoLibraryTree();
+        return state.currentVideoIndex >= 0;
+    } catch (e) {
+        console.warn('[VIDEO QUEUE] restore failed:', e?.message || e);
+        return false;
+    }
+}
+
 // Sıradaki videoyu oynat
-function playNextVideo() {
-    if (state.videoFiles.length === 0) {
+async function playNextVideo() {
+    if (!Array.isArray(state.videoFiles) || state.videoFiles.length === 0 || state.currentVideoIndex < 0) {
+        await ensureVideoQueueFromCurrentPath();
+    }
+
+    if (!Array.isArray(state.videoFiles) || state.videoFiles.length === 0 || state.currentVideoIndex < 0) {
         console.log('[NEXT VIDEO] Video listesi boş');
         return;
     }
@@ -18249,8 +18908,12 @@ function playNextVideo() {
 }
 
 // Önceki videoyu oynat
-function playPreviousVideo() {
-    if (state.videoFiles.length === 0) {
+async function playPreviousVideo() {
+    if (!Array.isArray(state.videoFiles) || state.videoFiles.length === 0 || state.currentVideoIndex < 0) {
+        await ensureVideoQueueFromCurrentPath();
+    }
+
+    if (!Array.isArray(state.videoFiles) || state.videoFiles.length === 0 || state.currentVideoIndex < 0) {
         console.log('[PREV VIDEO] Video listesi boş');
         return;
     }
@@ -18828,6 +19491,26 @@ function updateCoverArt(imageData, mediaType) {
     updateMPRISMetadata();
 }
 
+function resolvePreferredVideoPathForPlay() {
+    const selectedItem = document.querySelector('.video-library-item.selected');
+    const selectedPath = String(selectedItem?.dataset?.path || '').trim();
+    if (selectedPath) return selectedPath;
+
+    const currentPath = String(state.currentVideoPath || '').trim();
+    if (currentPath) return currentPath;
+
+    if (Array.isArray(state.videoFiles) && state.currentVideoIndex >= 0 && state.currentVideoIndex < state.videoFiles.length) {
+        const indexedPath = String(state.videoFiles[state.currentVideoIndex]?.path || '').trim();
+        if (indexedPath) return indexedPath;
+    }
+
+    if (Array.isArray(state.videoFiles) && state.videoFiles.length > 0) {
+        return String(state.videoFiles[0]?.path || '').trim();
+    }
+
+    return '';
+}
+
 function togglePlayPause() {
     const activePlayer = getActiveAudioPlayer();
 
@@ -18947,7 +19630,17 @@ function togglePlayPause() {
             // Hiç şarkı çalmıyorsa ilk şarkıyı başlat
             playIndex(0);
         } else if (state.activeMedia === 'video') {
-            elements.videoPlayer.play();
+            const videoEl = elements.videoPlayer;
+            const hasLoadedSource = !!String(videoEl?.src || '').trim();
+            const preferredVideoPath = resolvePreferredVideoPathForPlay();
+
+            // Video henüz yüklenmemişse Play seçili (veya ilk) videoyu başlatsın.
+            if ((!hasLoadedSource || !state.currentVideoPath) && preferredVideoPath) {
+                playVideo(preferredVideoPath);
+                return;
+            }
+
+            videoEl.play();
             state.isPlaying = true;
             updatePlayPauseIcon(true);
             updateTrayState();
@@ -19199,7 +19892,10 @@ function computeNextIndex() {
     if (state.playlist.length <= 0) return -1;
 
     // Eğer geçerli bir şarkı çalmıyorsa (örn: durduruldu), ilk şarkıdan başla
-    if (state.currentIndex < 0) return 0;
+    if (state.currentIndex < 0) {
+        const ordered = getSequentialPlaylistOrderIndices();
+        return ordered.length ? ordered[0] : 0;
+    }
 
     if (state.isShuffle) {
         if (state.playlist.length <= 1) return state.currentIndex;
@@ -19210,11 +19906,20 @@ function computeNextIndex() {
         return idx;
     }
 
-    let nextIdx = state.currentIndex + 1;
-    if (nextIdx >= state.playlist.length) {
-        return state.isRepeat ? 0 : -1;
+    const ordered = getSequentialPlaylistOrderIndices();
+    const pos = ordered.indexOf(state.currentIndex);
+    if (pos === -1) {
+        let nextIdx = state.currentIndex + 1;
+        if (nextIdx >= state.playlist.length) {
+            return state.isRepeat ? 0 : -1;
+        }
+        return nextIdx;
     }
-    return nextIdx;
+    const nextPos = pos + 1;
+    if (nextPos >= ordered.length) {
+        return state.isRepeat ? (ordered[0] ?? -1) : -1;
+    }
+    return ordered[nextPos];
 }
 
 // Önceki index'i hesapla
@@ -19230,11 +19935,23 @@ function computePrevIndex() {
         return idx;
     }
 
-    let prevIdx = state.currentIndex - 1;
-    if (prevIdx < 0) {
-        return state.isRepeat ? state.playlist.length - 1 : -1;
+    const ordered = getSequentialPlaylistOrderIndices();
+    if (state.currentIndex < 0) {
+        return ordered.length ? ordered[0] : -1;
     }
-    return prevIdx;
+    const pos = ordered.indexOf(state.currentIndex);
+    if (pos === -1) {
+        let prevIdx = state.currentIndex - 1;
+        if (prevIdx < 0) {
+            return state.isRepeat ? state.playlist.length - 1 : -1;
+        }
+        return prevIdx;
+    }
+    const prevPos = pos - 1;
+    if (prevPos < 0) {
+        return state.isRepeat ? (ordered[ordered.length - 1] ?? -1) : -1;
+    }
+    return ordered[prevPos];
 }
 
 // Crossfade ile parça değiştir
@@ -19481,6 +20198,10 @@ function sendWebTransportCommand(command) {
 }
 
 function playNextWithCrossfade() {
+    if (state.activeMedia === 'video') {
+        playNextVideo();
+        return;
+    }
     if (state.activeMedia === 'web' && elements.webView) {
         sendWebTransportCommand('next');
         return;
@@ -19501,6 +20222,10 @@ function playNextWithCrossfade() {
 
 // Manuel crossfade ile önceki parça
 function playPreviousWithCrossfade() {
+    if (state.activeMedia === 'video') {
+        playPreviousVideo();
+        return;
+    }
     if (state.activeMedia === 'web' && elements.webView) {
         sendWebTransportCommand('previous');
         return;
@@ -19530,12 +20255,8 @@ function playNext() {
     // Müzik modunda sıradaki şarkıyı çal
     if (state.playlist.length === 0) return;
 
-    let nextIndex;
-    if (state.isShuffle) {
-        nextIndex = Math.floor(Math.random() * state.playlist.length);
-    } else {
-        nextIndex = (state.currentIndex + 1) % state.playlist.length;
-    }
+    const nextIndex = computeNextIndex();
+    if (nextIndex < 0) return;
     playIndex(nextIndex);
 }
 
@@ -19549,13 +20270,8 @@ function playPrevious() {
     // Müzik modunda önceki şarkıyı çal
     if (state.playlist.length === 0) return;
 
-    let prevIndex;
-    if (state.isShuffle) {
-        prevIndex = Math.floor(Math.random() * state.playlist.length);
-    } else {
-        prevIndex = state.currentIndex - 1;
-        if (prevIndex < 0) prevIndex = state.playlist.length - 1;
-    }
+    const prevIndex = computePrevIndex();
+    if (prevIndex < 0) return;
     playIndex(prevIndex);
 }
 
@@ -21515,12 +22231,65 @@ let visualizerCanvasRef = null;
 let visualizerLastRenderAt = 0;
 let visualizerReleaseFrame = null;
 let visualizerReleaseState = null;
+let audioVisualizerMildPrevBands = null;
+let videoVisualizerPrevBands = null;
+let visualizerProjectMFeedLastSentAt = 0;
+let visualizerProjectMRunning = false;
 
 function getVisualizerReleaseDropMultiplier() {
     if (!visualizerReleaseState) return 1;
-    if (state.activeMedia !== 'audio') return 1;
+    if (state.activeMedia !== 'audio' && state.activeMedia !== 'video' && state.activeMedia !== 'web') return 1;
     if (state.isPlaying) return 1;
     return 2.1;
+}
+
+function isVisualizerReactiveMediaMode() {
+    return state.activeMedia === 'audio' || state.activeMedia === 'video' || state.activeMedia === 'web';
+}
+
+function isVisualizerMediaPlayingNow() {
+    if (state.activeMedia === 'video') {
+        const video = elements.videoPlayer;
+        const videoIsPlaying = !!(video && !video.paused && !video.ended && video.readyState >= 2);
+        if (videoIsPlaying) return true;
+    } else if (state.activeMedia === 'web') {
+        if (state.isPlaying) return true;
+    } else if (state.activeMedia === 'audio') {
+        const player = getActiveAudioPlayer();
+        const audioIsPlaying = !!(player && !player.paused && !player.ended);
+        if (audioIsPlaying) return true;
+    }
+    return !!state.isPlaying;
+}
+
+function getVisualizerTransportFps() {
+    return Math.max(20, Math.min(60, Number(VisualizerSettings?.currentFramerate) || 30));
+}
+
+function pushVideoSpectrumToProjectM(spectrumData, isPlaying) {
+    if (!Array.isArray(spectrumData) || spectrumData.length === 0) return;
+    if (!window.app?.visualizer?.pushVideoSpectrum) return;
+
+    const now = performance.now();
+    const targetFps = getVisualizerTransportFps();
+    const minIntervalMs = 1000 / targetFps;
+    if (now - visualizerProjectMFeedLastSentAt < minIntervalMs) return;
+    visualizerProjectMFeedLastSentAt = now;
+
+    try {
+        const sensitivity = Math.max(0.6, Math.min(1.2, Number(VisualizerSettings?.inputSensitivity) || 0.86));
+        window.app.visualizer.pushVideoSpectrum(
+            spectrumData.map((v) => {
+                const n = Number(v);
+                if (!Number.isFinite(n)) return 0;
+                return Math.max(0, Math.min(1, n * sensitivity));
+            }),
+            !!isPlaying,
+            { targetFps, sourceMode: state.activeMedia === 'video' ? 'video' : (state.activeMedia === 'web' ? 'web' : 'audio') }
+        );
+    } catch {
+        // en iyi çaba
+    }
 }
 
 function setWebAudioOutputGainFromState() {
@@ -21542,6 +22311,8 @@ function setWebAudioOutputGainFromState() {
 const VisualizerSettings = {
     currentAnalyzer: 'bar',
     currentFramerate: 30,
+    sharpnessLevel: 1,
+    inputSensitivity: 0.86,
     psychedelicEnabled: true,
     glowEnabled: true,
     reflectionEnabled: false,
@@ -21571,7 +22342,11 @@ const VisualizerSettings = {
                 if (!Object.prototype.hasOwnProperty.call(this.analyzers, this.currentAnalyzer)) {
                     this.currentAnalyzer = 'bar';
                 }
-                this.currentFramerate = data.framerate || 30;
+                const parsedFps = Number(data.framerate);
+                this.currentFramerate = this.framerates.includes(parsedFps) ? parsedFps : 30;
+                const parsedSharpness = Number(data.sharpness);
+                this.sharpnessLevel = [0, 1, 2, 3].includes(parsedSharpness) ? parsedSharpness : 1;
+                this.inputSensitivity = Math.max(0.6, Math.min(1.2, Number(data.inputSensitivity) || 0.86));
                 this.psychedelicEnabled = data.psychedelic !== false;
                 this.glowEnabled = data.glow !== false;
                 this.reflectionEnabled = data.reflection || false;
@@ -21586,6 +22361,8 @@ const VisualizerSettings = {
             localStorage.setItem('aurivo_visualizer', JSON.stringify({
                 analyzer: this.currentAnalyzer,
                 framerate: this.currentFramerate,
+                sharpness: this.sharpnessLevel,
+                inputSensitivity: this.inputSensitivity,
                 psychedelic: this.psychedelicEnabled,
                 glow: this.glowEnabled,
                 reflection: this.reflectionEnabled
@@ -21870,9 +22647,14 @@ const BlockAnalyzer = {
         const interpolated = this.interpolateSpectrum(spectrumData, this.bandCount);
 
         for (let x = 0; x < this.bandCount; x++) {
-            const value = interpolated[x];
-            let targetRow = Math.floor(Math.max(0, Math.min(1, value)) * this.rows);
+            const value = Math.max(0, Math.min(1, Number(interpolated[x]) || 0));
+            // Block analyzer diger modlara gore dusuk kalmasin:
+            // hafif gain + gamma ile govde yuksekligi dengelenir.
+            const shaped = Math.pow(value, 0.76);
+            const gain = 1.36;
+            let targetRow = Math.floor(Math.min(1, shaped * gain) * this.rows);
             targetRow = Math.max(0, Math.min(this.rows, targetRow));
+            if (targetRow > 0) targetRow = Math.max(1, targetRow);
 
             // Smooth animation
             if (targetRow < this.bandInfo[x].row) {
@@ -22079,13 +22861,16 @@ function getEffectiveVisualizerFps() {
     if (document.hidden) return Math.min(configured, 8);
     // Focus kaybında FPS düşürme: kapatıldı.
     // Kullanıcının seçtiği FPS ayarlar penceresi açıkken de korunur.
-    if (state.activeMedia !== 'audio' || !state.isPlaying) return Math.min(configured, 12);
+    if (!isVisualizerReactiveMediaMode() || !isVisualizerMediaPlayingNow()) return Math.min(configured, 12);
     if (VisualizerSettings.currentAnalyzer === 'none') return 2;
     return configured;
 }
 
 function shouldRunVisualizer() {
     if (!visualizerCanvasRef || !visualizerCtx) return false;
+    if (state.activeMedia === 'video' && isVideoFullscreenActive()) {
+        return false;
+    }
     const rect = typeof visualizerCanvasRef.getBoundingClientRect === 'function'
         ? visualizerCanvasRef.getBoundingClientRect()
         : null;
@@ -22118,13 +22903,23 @@ async function runVisualizerTick() {
     }
 
     if (!shouldRunVisualizer()) {
+        if (state.activeMedia === 'video' && isVideoFullscreenActive()) {
+            visualizerReleaseFrame = null;
+            visualizerReleaseState = null;
+            videoVisualizerPrevBands = null;
+            AnalyzerContainer.analyze(null, false);
+            scheduleVisualizerTick(700);
+            return;
+        }
         scheduleVisualizerTick(250);
         return;
     }
 
     visualizerInFlight = true;
     try {
-        if (visualizerIsNative) {
+        if (state.activeMedia === 'video' || state.activeMedia === 'web') {
+            await drawNativeVisualizerFrame();
+        } else if (visualizerIsNative) {
             await drawNativeVisualizerFrame();
         } else if (analyser) {
             drawVisualizerFrame();
@@ -22838,6 +23633,32 @@ function setupVisualizerContextMenu() {
         });
     });
 
+    // Netlik seçimi
+    contextMenu.querySelectorAll('[data-sharpness]').forEach(item => {
+        item.addEventListener('click', () => {
+            const level = Number(item.dataset.sharpness);
+            VisualizerSettings.sharpnessLevel = [0, 1, 2, 3].includes(level) ? level : 1;
+            VisualizerSettings.save();
+            updateContextMenuState();
+            hideContextMenu();
+        });
+    });
+
+    // projectM aç/kapa
+    const projectmToggle = document.getElementById('projectmToggle');
+    if (projectmToggle) {
+        projectmToggle.addEventListener('click', async () => {
+            if (!window.app?.visualizer?.toggle) return;
+            try {
+                const result = await window.app.visualizer.toggle();
+                visualizerProjectMRunning = !!result?.running;
+                updateContextMenuState();
+            } catch (error) {
+                console.warn('[Visualizer] projectM toggle failed:', error);
+            }
+        });
+    }
+
     // Psikedelik aç/kapa
     const psychedelicToggle = document.getElementById('psychedelicToggle');
     if (psychedelicToggle) {
@@ -22918,6 +23739,21 @@ function updateContextMenuState() {
             item.classList.remove('active');
         }
     });
+
+    // Netlik seçimini güncelle
+    contextMenu.querySelectorAll('[data-sharpness]').forEach(item => {
+        if (Number(item.dataset.sharpness) === Number(VisualizerSettings.sharpnessLevel || 1)) {
+            item.classList.add('active');
+        } else {
+            item.classList.remove('active');
+        }
+    });
+
+    // projectM aç/kapa güncelle
+    const projectmToggle = document.getElementById('projectmToggle');
+    if (projectmToggle) {
+        projectmToggle.classList.toggle('checked', !!visualizerProjectMRunning);
+    }
 
     // Psikedelik aç/kapa güncelle
     const psychedelicToggle = document.getElementById('psychedelicToggle');
@@ -23009,20 +23845,42 @@ function setupVisualizer() {
 // C++ Audio Engine FFT verisi ile görselleştirici
 async function drawNativeVisualizerFrame() {
     try {
-        let nativeIsPlaying = false;
-        if (window.aurivo?.audio?.isPlaying) {
-            try { nativeIsPlaying = !!(await window.aurivo.audio.isPlaying()); } catch { }
+        const isVideoMode = state.activeMedia === 'video';
+        const isWebMode = state.activeMedia === 'web';
+        let shouldAnimateNow = false;
+        let spectrumData = [];
+
+        if (isVideoMode) {
+            // Video modunda uygulama içi DALI spektrumunu kullan.
+            spectrumData = await getWebDaliSpectrumBands(256);
+            const video = elements.videoPlayer;
+            const videoIsPlaying = !!(video && !video.paused && !video.ended && video.readyState >= 2);
+            shouldAnimateNow = videoIsPlaying || state.isPlaying;
+        } else if (isWebMode) {
+            // Web platform modunda (YouTube vb.) webview içinden DALI spektrumunu al.
+            spectrumData = await getWebDaliSpectrumBands(256);
+            shouldAnimateNow = !!state.isPlaying;
+        } else {
+            let nativeIsPlaying = false;
+            if (window.aurivo?.audio?.isPlaying) {
+                try { nativeIsPlaying = !!(await window.aurivo.audio.isPlaying()); } catch { }
+            }
+            // C++ engine'den ham spectrum verisini al (master volume'dan bağımsız analiz stream)
+            if (window.aurivo?.audio?.spectrum?.getBands) {
+                spectrumData = await window.aurivo.audio.spectrum.getBands(128);
+            }
+            shouldAnimateNow = nativeIsPlaying || state.isPlaying;
         }
 
-        // C++ engine'den ham spectrum verisini al (master volume'dan bağımsız analiz stream)
-        let spectrumData = [];
-        if (window.aurivo?.audio?.spectrum?.getBands) {
-            spectrumData = await window.aurivo.audio.spectrum.getBands(128);
-        }
         spectrumData = normalizeSpectrumData(spectrumData);
-        const isAudioMode = state.activeMedia === 'audio';
-        const shouldAnimateNow = isAudioMode && (nativeIsPlaying || state.isPlaying);
-        const releaseState = applyVisualizerReleaseFrame(spectrumData, shouldAnimateNow, isAudioMode);
+        if (isVideoMode || isWebMode) {
+            spectrumData = tuneVideoVisualizerSpectrum(spectrumData);
+            pushVideoSpectrumToProjectM(spectrumData, shouldAnimateNow);
+        } else {
+            spectrumData = tuneAudioVisualizerSpectrumMild(spectrumData);
+        }
+        const isReactiveMode = isVisualizerReactiveMediaMode();
+        const releaseState = applyVisualizerReleaseFrame(spectrumData, shouldAnimateNow, isReactiveMode);
 
         // Analyzer Container ile çiz
         AnalyzerContainer.analyze(releaseState.data, releaseState.animate);
@@ -23038,12 +23896,14 @@ function drawVisualizerFrame() {
     analyser.getByteFrequencyData(dataArray);
 
     // Uint8Array'i normalize diziye dönüştür
-    const normalizedData = normalizeSpectrumData(Array.from(dataArray).map(v => v / 255));
+    const normalizedData = tuneAudioVisualizerSpectrumMild(
+        normalizeSpectrumData(Array.from(dataArray).map(v => v / 255))
+    );
     const activePlayer = getActiveAudioPlayer();
     const mediaPlaying = !!(activePlayer && !activePlayer.paused && !activePlayer.ended);
-    const isAudioMode = state.activeMedia === 'audio';
-    const shouldAnimateNow = isAudioMode && (mediaPlaying || state.isPlaying);
-    const releaseState = applyVisualizerReleaseFrame(normalizedData, shouldAnimateNow, isAudioMode);
+    const isReactiveMode = isVisualizerReactiveMediaMode();
+    const shouldAnimateNow = isReactiveMode && (mediaPlaying || state.isPlaying);
+    const releaseState = applyVisualizerReleaseFrame(normalizedData, shouldAnimateNow, isReactiveMode);
     AnalyzerContainer.analyze(releaseState.data, releaseState.animate);
 }
 
@@ -23064,14 +23924,14 @@ function drawFallbackVisualizerFrame() {
         ? Array.from({ length: 64 }, (_, i) =>
             (Math.sin(Date.now() / 200 + i * 0.3) * 0.5 + 0.5) * 0.6)
         : null;
-    const isAudioMode = state.activeMedia === 'audio';
-    const shouldAnimateNow = isAudioMode && state.isPlaying;
-    const releaseState = applyVisualizerReleaseFrame(fakeData || [], shouldAnimateNow, isAudioMode);
+    const isReactiveMode = isVisualizerReactiveMediaMode();
+    const shouldAnimateNow = isReactiveMode && state.isPlaying;
+    const releaseState = applyVisualizerReleaseFrame(fakeData || [], shouldAnimateNow, isReactiveMode);
     AnalyzerContainer.analyze(releaseState.data, releaseState.animate);
 }
 
-function applyVisualizerReleaseFrame(sourceData, shouldAnimateNow, isAudioMode) {
-    if (!isAudioMode) {
+function applyVisualizerReleaseFrame(sourceData, shouldAnimateNow, isReactiveMode) {
+    if (!isReactiveMode) {
         visualizerReleaseFrame = null;
         visualizerReleaseState = null;
         return { data: null, animate: false };
@@ -23168,6 +24028,214 @@ function normalizeSpectrumData(spectrumData) {
         const boosted = Math.min(1, v * dynamicGain * hiTilt);
         return Math.pow(boosted, 0.85);
     });
+}
+
+function tuneAudioVisualizerSpectrumMild(normalizedData) {
+    if (!Array.isArray(normalizedData) || normalizedData.length === 0) {
+        audioVisualizerMildPrevBands = null;
+        return [];
+    }
+    const input = normalizedData.map((v) => {
+        const n = Number(v);
+        return Number.isFinite(n) ? Math.max(0, Math.min(1, n)) : 0;
+    });
+    const sharpnessLevel = Math.max(0, Math.min(3, Number(VisualizerSettings?.sharpnessLevel) || 1));
+    const isUltraSharp = sharpnessLevel >= 3;
+    const bodyGain = isUltraSharp ? 0.86 : (sharpnessLevel >= 2 ? 0.89 : (sharpnessLevel <= 0 ? 0.96 : 0.92));
+    const detailGain = isUltraSharp ? 0.34 : (sharpnessLevel >= 2 ? 0.26 : (sharpnessLevel <= 0 ? 0.10 : 0.18));
+    const microGain = isUltraSharp ? 0.30 : (sharpnessLevel >= 2 ? 0.22 : (sharpnessLevel <= 0 ? 0.09 : 0.14));
+    const len = input.length || 1;
+    const separated = input.map((v, i) => {
+        const freqNorm = i / (len - 1 || 1);
+        const left = input[Math.max(0, i - 1)] || 0;
+        const right = input[Math.min(len - 1, i + 1)] || 0;
+        const l2 = input[Math.max(0, i - 2)] || 0;
+        const r2 = input[Math.min(len - 1, i + 2)] || 0;
+        const localWide = (l2 + left + v + right + r2) / 5;
+        const localNarrow = (left + v + right) / 3;
+        const detail = Math.max(0, v - localWide);
+        const micro = Math.max(0, v - localNarrow);
+        const bassFocus = Math.pow(1 - freqNorm, 0.9);
+        const mixed = Math.min(
+            1,
+            (v * bodyGain) +
+            (detail * detailGain) +
+            (micro * (microGain + (bassFocus * 0.06)))
+        );
+        return Math.pow(mixed, 0.97);
+    });
+
+    if (!Array.isArray(audioVisualizerMildPrevBands) || audioVisualizerMildPrevBands.length !== separated.length) {
+        audioVisualizerMildPrevBands = separated.slice();
+        return separated;
+    }
+
+    const attack = isUltraSharp ? 0.86 : (sharpnessLevel >= 2 ? 0.74 : (sharpnessLevel <= 0 ? 0.52 : 0.64));
+    const release = isUltraSharp ? 0.66 : (sharpnessLevel >= 2 ? 0.54 : (sharpnessLevel <= 0 ? 0.36 : 0.46));
+    const out = separated.map((v, i) => {
+        const prev = Number(audioVisualizerMildPrevBands[i]) || 0;
+        const alpha = v > prev ? attack : release;
+        return prev + ((v - prev) * alpha);
+    });
+    let finalOut = out;
+    if (sharpnessLevel > 0) {
+        const n = out.length || 1;
+        const amount = isUltraSharp ? 0.30 : (sharpnessLevel >= 2 ? 0.20 : 0.10);
+        finalOut = out.map((v, i) => {
+            const left = out[Math.max(0, i - 1)] || v;
+            const right = out[Math.min(n - 1, i + 1)] || v;
+            const neighbor = (left + right) * 0.5;
+            return Math.max(0, Math.min(1, v + ((v - neighbor) * amount)));
+        });
+    }
+    audioVisualizerMildPrevBands = finalOut.slice();
+    return finalOut;
+}
+
+function tuneVideoVisualizerSpectrum(normalizedData) {
+    if (!Array.isArray(normalizedData) || normalizedData.length === 0) {
+        videoVisualizerPrevBands = null;
+        return [];
+    }
+    const input = normalizedData.map((v) => {
+        const n = Number(v);
+        return Number.isFinite(n) ? Math.max(0, Math.min(1, n)) : 0;
+    });
+    const sorted = [...input].sort((a, b) => a - b);
+    const p10 = sorted[Math.floor((sorted.length - 1) * 0.10)] || 0;
+    const p90 = sorted[Math.floor((sorted.length - 1) * 0.90)] || 0;
+
+    // Video akışında sabit tabanı temizle, ama tüm bantları birlikte bastırma.
+    const floor = Math.min(0.24, p10 * 0.88);
+    const gated = input.map((v) => Math.max(0, v - floor));
+
+    // Her karede "peak=1" normalizasyonu yapmak yerine yüzdelik tepeye göre yumuşak gain.
+    const gain = Math.max(0.55, Math.min(1.45, 0.42 / Math.max(0.09, p90 - floor)));
+    const leveled = gated.map((v) => Math.min(1, v * gain));
+
+    const len = leveled.length || 1;
+    const contrasted = leveled.map((v, i) => {
+        const l2 = leveled[Math.max(0, i - 2)] || 0;
+        const l1 = leveled[Math.max(0, i - 1)] || 0;
+        const r1 = leveled[Math.min(len - 1, i + 1)] || 0;
+        const r2 = leveled[Math.min(len - 1, i + 2)] || 0;
+        const local = (l2 + l1 + v + r1 + r2) / 5;
+        const detail = Math.max(0, v - local);
+
+        // Sadece uçlara değil, çubuğun tüm gövdesine ayrışım uygula.
+        const bodyRatio = Math.max(0.70, Math.min(1.45, v / (local + 0.035)));
+        const freqNorm = i / (len - 1 || 1);
+        const lowFocus = Math.pow(1 - freqNorm, 1.05);
+        const immediate = (l1 + v + r1) / 3;
+        let broad = 0;
+        let broadCount = 0;
+        for (let k = i - 5; k <= i + 5; k += 1) {
+            const idx = Math.max(0, Math.min(len - 1, k));
+            broad += leveled[idx] || 0;
+            broadCount += 1;
+        }
+        broad = broadCount > 0 ? (broad / broadCount) : v;
+        const microDetail = Math.max(0, v - immediate);
+        const macroDetail = Math.max(0, v - broad);
+        const slope = Math.abs(v - l1);
+        const lowDetailBoost = 1 + (lowFocus * 0.90);
+        const bodySeparated = Math.min(
+            1,
+            (v * (0.62 + (bodyRatio - 1) * 0.54))
+            + (microDetail * 0.78 * lowDetailBoost)
+            + (macroDetail * 0.92 * lowDetailBoost)
+            + (slope * 0.20 * lowFocus)
+        );
+
+        // Sol (bass) bantlar tizden geride kalmasın diye düşük frekanslara hafif enerji desteği.
+        const bassSoft = 0.98 + (Math.pow(1 - freqNorm, 0.92) * 0.13);
+        const tilt = 0.97 + (freqNorm * 0.12);
+        const mixed = Math.min(1, (bodySeparated * 0.82) + (detail * 0.62));
+        return Math.pow(Math.min(1, mixed * tilt), 0.98) * 0.74 * bassSoft;
+    });
+
+    // Tum bantlarda ayrisimi belirginlestir:
+    // Her bar'i genis komsu zarfindan ayirip (decouple) govdeye de uygula.
+    const decoupled = contrasted.map((v, i) => {
+        const freqNorm = i / (len - 1 || 1);
+        const lowFocus = Math.pow(1 - freqNorm, 1.0);
+        let wide = 0;
+        let cnt = 0;
+        const radius = Math.max(3, Math.min(7, Math.round(3 + (freqNorm * 4))));
+        for (let k = i - radius; k <= i + radius; k += 1) {
+            const idx = Math.max(0, Math.min(len - 1, k));
+            wide += contrasted[idx] || 0;
+            cnt += 1;
+        }
+        wide = cnt > 0 ? (wide / cnt) : v;
+        const rel = (v - wide) / (wide + 0.030);
+        const relPos = Math.max(0, rel);
+        const relNeg = Math.max(0, -rel);
+        const bassBoost = 1 + (lowFocus * 0.85);
+        const bodyLift = Math.min(1, v * (0.86 + (relPos * 0.90 * bassBoost)));
+        const diffLift = Math.max(0, v - wide) * (0.95 * bassBoost);
+        const valleyKeep = Math.max(0, v * (1 - (relNeg * 0.38)));
+        const mixed = Math.min(1, (bodyLift * 0.72) + (diffLift * 0.56) + (valleyKeep * 0.10));
+        return mixed;
+    });
+
+    if (!Array.isArray(videoVisualizerPrevBands) || videoVisualizerPrevBands.length !== decoupled.length) {
+        videoVisualizerPrevBands = decoupled.slice();
+        return decoupled;
+    }
+
+    // Toplu dalgalanma hissini azaltmak için bant bazlı attack/release.
+    const sharpnessLevel = Math.max(0, Math.min(3, Number(VisualizerSettings?.sharpnessLevel) || 1));
+    const isUltraSharp = sharpnessLevel >= 3;
+    const attack = isUltraSharp ? 0.93 : (sharpnessLevel >= 2 ? 0.88 : (sharpnessLevel <= 0 ? 0.74 : 0.82));
+    const release = isUltraSharp ? 0.42 : (sharpnessLevel >= 2 ? 0.34 : (sharpnessLevel <= 0 ? 0.22 : 0.28));
+    const out = decoupled.map((v, i) => {
+        const prev = Number(videoVisualizerPrevBands[i]) || 0;
+        const freqNorm = i / (decoupled.length - 1 || 1);
+        const lowFocus = Math.pow(1 - freqNorm, 1.05);
+        const bandAttack = Math.min(0.92, attack + (lowFocus * 0.10));
+        const bandRelease = Math.min(0.62, release + (lowFocus * 0.12));
+        const alpha = v > prev ? bandAttack : bandRelease;
+        const raw = prev + ((v - prev) * alpha);
+        const rise = Math.max(0, raw - prev);
+        const transientBoost = rise * (0.46 + (lowFocus * 0.34));
+        const capped = raw + transientBoost;
+        const headroomCap = Math.max(0.80, 0.84 + (lowFocus * 0.03));
+        return Math.min(headroomCap, capped);
+    });
+    const n = out.length || 1;
+    for (let i = 0; i < n; i += 1) {
+        const freqNorm = i / (n - 1 || 1);
+        const edgeNorm = Math.min(freqNorm, 1 - freqNorm);
+        const edgeBoost = edgeNorm < 0.10 ? ((0.10 - edgeNorm) / 0.10) : 0;
+        if (edgeBoost <= 0) continue;
+        const left = out[Math.max(0, i - 1)] || out[i] || 0;
+        const right = out[Math.min(n - 1, i + 1)] || out[i] || 0;
+        const neighbor = (left + right) * 0.5;
+        const carried = neighbor * (0.10 * edgeBoost);
+        out[i] = Math.min(0.88, Math.max(out[i], out[i] + carried));
+    }
+    // "Havada asili kalma" hissini azalt: adaptif taban seviyesini temizle.
+    const avgLevel = out.reduce((sum, v) => sum + (Number(v) || 0), 0) / (n || 1);
+    const hoverFloor = Math.min(0.22, Math.max(0.02, avgLevel * 0.42));
+    for (let i = 0; i < n; i += 1) {
+        const lifted = Math.max(0, (Number(out[i]) || 0) - hoverFloor);
+        out[i] = Math.min(0.88, lifted * 1.16);
+    }
+    let finalOut = out;
+    if (sharpnessLevel > 0) {
+        const amount = isUltraSharp ? 0.38 : (sharpnessLevel >= 2 ? 0.26 : 0.14);
+        finalOut = out.map((v, i) => {
+            const left = out[Math.max(0, i - 1)] || v;
+            const right = out[Math.min(n - 1, i + 1)] || v;
+            const neighbor = (left + right) * 0.5;
+            const sharpened = v + ((v - neighbor) * amount);
+            return Math.max(0, Math.min(0.92, sharpened));
+        });
+    }
+
+    videoVisualizerPrevBands = finalOut.slice();
+    return finalOut;
 }
 
 function renderVideoLibraryTree(renderToken = fileTreeRenderGeneration) {
@@ -23353,6 +24421,13 @@ function updateRainbowSlider(slider, percent) {
 function updateRainbowSliderColors(slider, percent) {
     if (!slider) return;
     const safePercent = Math.max(0, Math.min(100, Number(percent) || 0));
+    const isSeekSlider = slider.id === 'seekSlider' || slider.id === 'fsSeekSlider';
+    // Thumb merkezi ile renkli dolgunun daha iyi hizalanması için küçük ofset.
+    // Özellikle fullscreen seek bar'da "nokta önde, dolgu arkada" hissini azaltır.
+    const sliderWidth = Math.max(1, Number(slider.clientWidth) || 1);
+    const thumbHalfPx = isSeekSlider ? 8 : 0;
+    const offsetPercent = isSeekSlider ? (thumbHalfPx / sliderWidth) * 100 : 0;
+    const effectivePercent = Math.max(0, Math.min(100, safePercent + offsetPercent));
     const sliderFxOff = !isSliderFxEnabledRuntime();
     if (sliderFxOff) {
         const isRtl = document?.documentElement?.dir === 'rtl' || document?.body?.classList?.contains('rtl');
@@ -23362,8 +24437,8 @@ function updateRainbowSliderColors(slider, percent) {
         const gradientDir = isRtl ? 'to left' : 'to right';
         const trackBackground = `linear-gradient(${gradientDir},
             ${fixedBlue} 0%,
-            ${fixedBlueSoft} ${safePercent}%,
-            ${emptyColor} ${safePercent}%,
+            ${fixedBlueSoft} ${effectivePercent}%,
+            ${emptyColor} ${effectivePercent}%,
             ${emptyColor} 100%)`;
         slider.style.background = trackBackground;
         slider.style.setProperty('--slider-track', trackBackground);
@@ -23392,12 +24467,12 @@ function updateRainbowSliderColors(slider, percent) {
     const gradientDir = isRtl ? 'to left' : 'to right';
     const trackBackground = `linear-gradient(${gradientDir}, 
         ${colors[0]} 0%, 
-        ${colors[1]} ${safePercent * 0.2}%, 
-        ${colors[2]} ${safePercent * 0.4}%, 
-        ${colors[3]} ${safePercent * 0.6}%, 
-        ${colors[4]} ${safePercent * 0.8}%, 
-        ${colors[5]} ${safePercent}%, 
-        ${emptyColor} ${safePercent}%, 
+        ${colors[1]} ${effectivePercent * 0.2}%, 
+        ${colors[2]} ${effectivePercent * 0.4}%, 
+        ${colors[3]} ${effectivePercent * 0.6}%, 
+        ${colors[4]} ${effectivePercent * 0.8}%, 
+        ${colors[5]} ${effectivePercent}%, 
+        ${emptyColor} ${effectivePercent}%, 
         ${emptyColor} 100%)`;
 
     slider.style.background = trackBackground;

@@ -5,7 +5,7 @@
 const __daliIR = {
   "irVersion": 1,
   "language": "dali",
-  "generatedAt": "2026-03-26T03:22:53.031Z",
+  "generatedAt": "2026-03-30T20:01:20.047Z",
   "sourceLabel": "dali-lang/examples/web-smart-task-reference.dl",
   "presetCount": 1,
   "presets": [
@@ -300,7 +300,7 @@ module.exports = {
   target: 'wasm-hybrid',
   sourceLabel: "dali-lang/examples/web-smart-task-reference.dl",
   defaultFallbackModulePath: __DEFAULT_FALLBACK_MODULE,
-  irHash: "882355c71e32d9a1f4eed94cad2406f0dc9e01b77ccac801eb345a3d34f97af7",
+  irHash: "8b735c82ed1be311cca972aeb666827fd7267d63af0c9df78cfc490cace16a4b",
   ir: __daliIR,
   initWasmRuntime
 };

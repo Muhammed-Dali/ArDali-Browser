@@ -3598,6 +3598,67 @@ body .yt-settings-submenu,
     cursor: none;
 }
 
+/* BrowserWindow fullscreen fallback: tüm uygulama chrome'unu gizleyip
+   sadece video yüzeyini göster. */
+body.video-window-fs-active {
+    overflow: hidden;
+}
+
+body.video-window-fs-active .sidebar,
+body.video-window-fs-active .left-panel,
+body.video-window-fs-active .nav-bar,
+body.video-window-fs-active .now-playing-bar,
+body.video-window-fs-active .player-bar,
+body.video-window-fs-active .update-banner {
+    display: none !important;
+}
+
+body.video-window-fs-active .main-content {
+    width: 100vw;
+    height: 100vh;
+}
+
+body.video-window-fs-active .content-stack {
+    position: fixed;
+    inset: 0;
+    width: 100vw;
+    height: 100vh;
+    z-index: 2000000;
+    overflow: hidden;
+}
+
+body.video-window-fs-active #videoPage {
+    position: fixed;
+    inset: 0;
+    width: 100vw;
+    height: 100vh;
+    display: flex !important;
+    z-index: 2000001;
+}
+
+body.video-window-fs-active #videoPlayer,
+body.video-window-fs-active #videoPage.fs-active #videoPlayer {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 1 !important;
+    background: #000;
+    object-fit: contain;
+}
+
+body.video-window-fs-active #videoPage.fs-window-active.fs-cinematic::before {
+    display: none !important;
+}
+
+body.video-window-fs-active #videoPage .video-fs-controls {
+    z-index: 2000002 !important;
+}
+
+body.video-window-fs-active #videoPage.hide-cursor {
+    cursor: none;
+}
+
 /* ============================================
    RESPONSIVE - TAM EKRAN KONTROLLER
    ============================================ */

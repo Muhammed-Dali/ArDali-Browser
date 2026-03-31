@@ -822,6 +822,7 @@ const aurivoAPI = {
             return ipcRenderer.invoke('soundEffects:openWindow', { scope: normalizedScope });
         },
         closeWindow: () => ipcRenderer.invoke('soundEffects:closeWindow'),
+        applyInMainWindow: (script) => ipcRenderer.invoke('soundEffects:applyInMainWindow', String(script || '')),
         getWebSpectrum: (numBands) => ipcRenderer.invoke('soundEffects:getWebSpectrum', numBands || 128),
         getWebNoiseGateStatus: () => ipcRenderer.invoke('soundEffects:getWebNoiseGateStatus'),
         getWebTruePeakStatus: () => ipcRenderer.invoke('soundEffects:getWebTruePeakStatus'),
@@ -834,7 +835,18 @@ const aurivoAPI = {
         minimizeWindow: () => ipcRenderer.invoke('window:minimize'),
         maximizeWindow: () => ipcRenderer.invoke('window:maximize'),
         closeWindow: () => ipcRenderer.invoke('window:close'),
-        isMaximized: () => ipcRenderer.invoke('window:isMaximized')
+        isMaximized: () => ipcRenderer.invoke('window:isMaximized'),
+        isFullscreen: () => ipcRenderer.invoke('window:isFullscreen'),
+        setFullscreen: (enabled) => ipcRenderer.invoke('window:setFullscreen', !!enabled),
+        toggleFullscreen: () => ipcRenderer.invoke('window:toggleFullscreen'),
+        onFullscreenChanged: (callback) => {
+            if (typeof callback !== 'function') return () => {};
+            const handler = (_event, payload) => {
+                callback(payload?.fullscreen === true);
+            };
+            ipcRenderer.on('window:fullscreen-changed', handler);
+            return () => ipcRenderer.removeListener('window:fullscreen-changed', handler);
+        }
     },
 
     // APP CONTROL
@@ -931,7 +943,14 @@ try {
 // Görselleştirici API (projectM native çalıştırılabilir)
 const appAPI = {
     visualizer: {
-        toggle: () => ipcRenderer.invoke('visualizer:toggle')
+        toggle: () => ipcRenderer.invoke('visualizer:toggle'),
+        pushVideoSpectrum: (bands, isPlaying, options = {}) => ipcRenderer.send('visualizer:videoSpectrum', {
+            bands: Array.isArray(bands) ? bands : [],
+            isPlaying: !!isPlaying,
+            targetFps: Math.max(20, Math.min(60, Number(options?.targetFps) || 30)),
+            sourceMode: String(options?.sourceMode || '').trim().toLowerCase(),
+            ts: Date.now()
+        })
     }
 };
 

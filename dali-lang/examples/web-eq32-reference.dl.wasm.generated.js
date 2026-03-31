@@ -5,7 +5,7 @@
 const __daliIR = {
   "irVersion": 1,
   "language": "dali",
-  "generatedAt": "2026-03-26T03:22:52.970Z",
+  "generatedAt": "2026-03-30T20:01:20.002Z",
   "sourceLabel": "dali-lang/examples/web-eq32-reference.dl",
   "presetCount": 1,
   "presets": [
@@ -827,7 +827,7 @@ module.exports = {
   target: 'wasm-hybrid',
   sourceLabel: "dali-lang/examples/web-eq32-reference.dl",
   defaultFallbackModulePath: __DEFAULT_FALLBACK_MODULE,
-  irHash: "0f1154abfbc97b22ea8a08e077a5326e6881d6ff3953b08d602bdc1af8827872",
+  irHash: "64f582df3fdf95f9ae5b0cb2ec6805429fc5334985391e2fadf192353eca0228",
   ir: __daliIR,
   initWasmRuntime
 };

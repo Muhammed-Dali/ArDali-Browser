@@ -37,7 +37,8 @@ const state = {
     totalCount: 0,
     previewProfile: 'balanced',
     previewStyle: 'graphic',
-    previewDetail: 'sharp'
+    previewDetail: 'sharp',
+    previewHydrationObserver: null
 };
 
 function normalizeHaystack(preset) {
@@ -816,36 +817,46 @@ async function ensureBandsLoaded(filename) {
     }
 }
 
-function schedulePreviewHydration(container) {
-    const observer = new IntersectionObserver((entries) => {
-        entries.forEach(async (entry) => {
-            if (!entry.isIntersecting) return;
-            const row = entry.target;
-            observer.unobserve(row);
+async function hydratePresetPreviewRow(row) {
+    if (!row) return;
+    const filename = row.dataset.filename;
+    if (!filename) return;
 
-            const filename = row.dataset.filename;
-            if (!filename) return;
+    const canvas = row.querySelector('canvas.preset-preview');
+    const initialBands = bandsForPreview(filename);
+    const initialType = previewTypeFromBands(initialBands, filename);
+    setRowPreviewType(row, initialType);
+    if (canvas) drawMiniCurveIfNeeded(canvas, initialBands, initialType);
 
-            const canvas = row.querySelector('canvas.preset-preview');
-            // Cache'e düşmese bile satırın mevcut verisinden en az bir kez çiz.
-            const initialBands = bandsForPreview(filename);
-            const initialType = previewTypeFromBands(initialBands, filename);
-            setRowPreviewType(row, initialType);
-            if (canvas) drawMiniCurveIfNeeded(canvas, initialBands, initialType);
+    if (filename === '__flat__' || filename.startsWith('__aurivo_')) return;
 
-            if (filename === '__flat__' || filename.startsWith('__aurivo_')) return;
+    await ensureBandsLoaded(filename);
+    const hydratedBands = state.bandsCache.get(filename);
+    if (!hydratedBands) return;
 
-            await ensureBandsLoaded(filename);
-            const hydratedBands = state.bandsCache.get(filename);
-            if (!hydratedBands) return;
+    const type = previewTypeFromBands(hydratedBands, filename);
+    setRowPreviewType(row, type);
+    if (canvas) drawMiniCurveIfNeeded(canvas, hydratedBands, type);
+}
 
-            const type = previewTypeFromBands(hydratedBands, filename);
-            setRowPreviewType(row, type);
-            if (canvas) drawMiniCurveIfNeeded(canvas, hydratedBands, type);
-        });
-    }, { root: container, rootMargin: '120px' });
+function schedulePreviewHydration(container, rowsToObserve) {
+    if (!container) return;
+    if (!state.previewHydrationObserver) {
+        state.previewHydrationObserver = new IntersectionObserver((entries) => {
+            entries.forEach((entry) => {
+                if (!entry.isIntersecting) return;
+                const row = entry.target;
+                state.previewHydrationObserver?.unobserve(row);
+                hydratePresetPreviewRow(row).catch(() => { });
+            });
+        }, { root: container, rootMargin: '120px' });
+    }
 
-    container.querySelectorAll('.preset-item').forEach(row => observer.observe(row));
+    const observer = state.previewHydrationObserver;
+    const rows = Array.isArray(rowsToObserve) && rowsToObserve.length
+        ? rowsToObserve
+        : Array.from(container.querySelectorAll('.preset-item'));
+    rows.forEach((row) => observer.observe(row));
 }
 
 function renderNextPage() {
@@ -859,9 +870,11 @@ function renderNextPage() {
     }
 
     const frag = document.createDocumentFragment();
+    const appendedRows = [];
     next.forEach(preset => {
         const { row } = createItemRow(preset);
         frag.appendChild(row);
+        appendedRows.push(row);
     });
 
     list.appendChild(frag);
@@ -874,7 +887,7 @@ function renderNextPage() {
         selectPreset(state.selected);
     }
 
-    schedulePreviewHydration(list);
+    schedulePreviewHydration(list, appendedRows);
 }
 
 function focusSelected() {
@@ -928,6 +941,10 @@ function renderList(presets) {
     const list = document.getElementById('presetList');
     if (!list) return;
 
+    if (state.previewHydrationObserver) {
+        try { state.previewHydrationObserver.disconnect(); } catch { }
+        state.previewHydrationObserver = null;
+    }
     list.innerHTML = '';
     state.filtered = presets;
     state.renderedCount = 0;
