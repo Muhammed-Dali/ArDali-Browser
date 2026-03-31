@@ -30,7 +30,7 @@ jobs:
         run: |
           set -euo pipefail
           pacman -Syu --noconfirm
-          pacman -S --noconfirm --needed base-devel git curl pacman-contrib
+          pacman -S --noconfirm --needed base-devel git curl pacman-contrib ffmpeg fuse2
 
       - name: Build aurivo-bin package
         run: |
