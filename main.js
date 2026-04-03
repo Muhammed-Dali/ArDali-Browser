@@ -50,6 +50,18 @@ const updateRuntime = {
     lastError: ''
 };
 
+function isTruthyEnvFlag(name) {
+    const value = String(process.env?.[name] || '').trim().toLowerCase();
+    return value === '1' || value === 'true' || value === 'yes' || value === 'on';
+}
+
+function isPackagedLinuxConservativeGpuMode() {
+    if (process.platform !== 'linux') return false;
+    if (!app.isPackaged) return false;
+    // İsteyen ileri seviye kullanıcılar env ile mevcut agresif GPU ayarlarını geri açabilir.
+    return !isTruthyEnvFlag('AURIVO_FORCE_GPU_TUNING');
+}
+
 function commandExists(command) {
     try {
         const res = spawnSync('bash', ['-lc', `command -v ${String(command || '').trim()}`], {
@@ -570,6 +582,8 @@ function detectDisplayServer() {
     // Kullanıcı manuel olarak ayarladıysa kullan
     const forceSoftware = process.env.AURIVO_SOFTWARE_RENDER === '1' || process.env.AURIVO_SOFTWARE_RENDER === 'true';
     const forceGpu = process.env.AURIVO_FORCE_GPU === '1' || process.env.AURIVO_FORCE_GPU === 'true';
+    const enableVaapi = isTruthyEnvFlag('AURIVO_ENABLE_VAAPI');
+    const conservativeGpuMode = isPackagedLinuxConservativeGpuMode();
 
     const sessionLooksWayland =
         (xdgSessionType && String(xdgSessionType).toLowerCase() === 'wayland') ||
@@ -587,19 +601,29 @@ function detectDisplayServer() {
         selectedBackend = 'x11';
     }
 
+    // Paketli Linux sürümünde daha stabil varsayılan: Wayland yerine X11/auto.
+    if (conservativeGpuMode && !displayBackendOverride && selectedBackend === 'wayland') {
+        selectedBackend = display ? 'x11' : 'auto';
+        console.log(`[Display] conservative packaged mode -> backend fallback: ${selectedBackend}`);
+    }
+
     if (selectedBackend === 'wayland') {
         console.log('💻 Display Server: Wayland');
         app.commandLine.appendSwitch('ozone-platform-hint', 'wayland');
-        appendCsvSwitch('enable-features', 'UseOzonePlatform,WaylandWindowDecorations,VaapiVideoDecoder');
+        appendCsvSwitch('enable-features', enableVaapi
+            ? 'UseOzonePlatform,WaylandWindowDecorations,VaapiVideoDecoder'
+            : 'UseOzonePlatform,WaylandWindowDecorations');
     } else if (selectedBackend === 'x11') {
         console.log('💻 Display Server: X11');
         app.commandLine.appendSwitch('ozone-platform-hint', 'x11');
-        appendCsvSwitch('enable-features', 'VaapiVideoDecoder');
+        if (enableVaapi) {
+            appendCsvSwitch('enable-features', 'VaapiVideoDecoder');
+        }
     } else {
         console.log('💻 Display Server: auto');
         app.commandLine.appendSwitch('ozone-platform-hint', 'auto');
         // auto modunda bile Wayland secilebilir; ozone feature'i acik olsun.
-        appendCsvSwitch('enable-features', 'UseOzonePlatform,VaapiVideoDecoder');
+        appendCsvSwitch('enable-features', enableVaapi ? 'UseOzonePlatform,VaapiVideoDecoder' : 'UseOzonePlatform');
     }
 
     if (ozoneHint && !displayBackendOverride) {
@@ -625,8 +649,12 @@ function detectDisplayServer() {
 
     // Genel GPU ayarları (performans için) - uygulama hazır olduğunda uygula
     if (app && app.commandLine) {
-        app.commandLine.appendSwitch('enable-gpu-rasterization');
-        app.commandLine.appendSwitch('enable-zero-copy');
+        if (!conservativeGpuMode) {
+            app.commandLine.appendSwitch('enable-gpu-rasterization');
+            app.commandLine.appendSwitch('enable-zero-copy');
+        } else {
+            console.log('[GPU] conservative packaged mode: zero-copy/rasterization flags skipped');
+        }
 
         // Yazı tipi oluşturma iyileştirmeleri - Wayland/X11 uyumluluğu
         app.commandLine.appendSwitch('disable-font-subpixel-positioning');
@@ -634,7 +662,9 @@ function detectDisplayServer() {
         app.commandLine.appendSwitch('force-device-scale-factor', '1');
 
         // Bağlam menüsü düzeltmeleri
-        app.commandLine.appendSwitch('disable-gpu-sandbox');
+        if (isTruthyEnvFlag('AURIVO_DISABLE_GPU_SANDBOX')) {
+            app.commandLine.appendSwitch('disable-gpu-sandbox');
+        }
     }
 }
 
@@ -3405,8 +3435,36 @@ function createWindow() {
         }, 500);
     });
 
+    let unresponsiveRecoveryTriggered = false;
     mainWindow.webContents.on('unresponsive', () => {
         console.warn('[WEB] renderer unresponsive');
+        if (unresponsiveRecoveryTriggered) return;
+        unresponsiveRecoveryTriggered = true;
+
+        const alreadySoftware = process.env.AURIVO_SOFTWARE_RENDER === '1' || process.env.AURIVO_SOFTWARE_RENDER === 'true';
+        if (process.platform === 'linux' && app.isPackaged && !alreadySoftware) {
+            console.warn('[WEB] unresponsive -> relaunching with safe software mode');
+            app.relaunch({
+                env: {
+                    ...process.env,
+                    AURIVO_SOFTWARE_RENDER: '1',
+                    AURIVO_DISPLAY_BACKEND: process.env.DISPLAY ? 'x11' : (process.env.AURIVO_DISPLAY_BACKEND || 'auto'),
+                    AURIVO_FORCE_GPU_TUNING: '0'
+                }
+            });
+            app.exit(0);
+            return;
+        }
+
+        try {
+            if (mainWindow && !mainWindow.isDestroyed()) {
+                mainWindow.webContents.reloadIgnoringCache();
+            }
+        } catch {
+            // yoksay
+        } finally {
+            setTimeout(() => { unresponsiveRecoveryTriggered = false; }, 2500);
+        }
     });
 
     mainWindow.webContents.on('responsive', () => {
@@ -5174,8 +5232,12 @@ function installTlsCompatibilityForWebPlatforms() {
 app.whenReady().then(async () => {
     if (!gotSingleInstanceLock) return;
     // GPU ayarları burada uygula
-    app.commandLine.appendSwitch('enable-gpu-rasterization');
-    app.commandLine.appendSwitch('enable-zero-copy');
+    if (!isPackagedLinuxConservativeGpuMode()) {
+        app.commandLine.appendSwitch('enable-gpu-rasterization');
+        app.commandLine.appendSwitch('enable-zero-copy');
+    } else {
+        console.log('[GPU] startup conservative mode active (packaged linux)');
+    }
 
     try { installWebviewHardening(); } catch (e) { console.error('[APP] installWebviewHardening error:', e); }
     try { installTlsCompatibilityForWebPlatforms(); } catch (e) { console.error('[APP] installTlsCompatibilityForWebPlatforms error:', e); }
