@@ -357,17 +357,8 @@ function onMessage(request, sender, callback) {
                 adminRulesets,
                 disabledFeatures,
             ] = results;
-            let hasPermissionsApi = false;
-            try {
-                hasPermissionsApi = browser?.permissions?.getAll instanceof Function;
-            } catch {
-                hasPermissionsApi = false;
-            }
-            const effectiveHasOmnipotence = hasPermissionsApi
-                ? Boolean(hasOmnipotence)
-                : true;
             callback({
-                hasOmnipotence: effectiveHasOmnipotence,
+                hasOmnipotence,
                 defaultFilteringMode,
                 enabledRulesets,
                 adminRulesets,

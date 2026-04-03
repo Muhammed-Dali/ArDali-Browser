@@ -31,23 +31,15 @@ import {
 // most browsers treat host_permissions as optional."
 
 export async function hasBroadHostPermissions() {
-    let permissionsAPI;
-    try {
-        permissionsAPI = browser && browser.permissions;
-    } catch {
-        permissionsAPI = undefined;
-    }
-    // Electron/WebView ortamında permissions API her zaman mevcut olmayabilir.
-    // Bu uygulamada uzantı zaten gömülü ve tüm web içeriklerinde çalıştırılıyor,
-    // bu nedenle API yoksa geniş izin varsayımıyla devam ederek ayarların
-    // "tiklenip geri düşmesi" davranışını önlüyoruz.
-    if ( permissionsAPI?.getAll instanceof Function === false ) {
-        return true;
-    }
+    const permissionsAPI = browser?.permissions;
+    // Electron webview bağlamında permissions API her zaman mevcut olmayabilir.
+    // Bu durumda host-permission kontrolünü "izin var" kabul ederek UI kontrollerinin
+    // gereksiz yere kilitlenmesini önle.
+    if ( permissionsAPI?.getAll instanceof Function === false ) { return true; }
     return permissionsAPI.getAll().then(permissions =>
-        permissions?.origins?.includes('<all_urls>') ||
-        permissions?.origins?.includes('*://*/*')
-    ).catch(( ) => true);
+        permissions.origins.includes('<all_urls>') ||
+        permissions.origins.includes('*://*/*')
+    ).catch(( ) => false);
 }
 
 /******************************************************************************/

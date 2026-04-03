@@ -16,15 +16,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Clone repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           persist-credentials: false
           submodules: recursive
       - name: Locate uBO repo
         run: |
-          DeliBlock_REPO_DIR=$(pwd)
-          DeliBlock_REPO_DIR="$DeliBlock_REPO_DIR/DeliBlock"
-          echo "DeliBlock_REPO_DIR=$DeliBlock_REPO_DIR" >> $GITHUB_ENV
+          UBOL_REPO_DIR=$(pwd)
+          UBLOCK_REPO_DIR="$UBOL_REPO_DIR/uBlock"
+          echo "UBLOCK_REPO_DIR=$UBLOCK_REPO_DIR" >> $GITHUB_ENV
       # Version, time-based
       - name: Create unique time-based version
         run: |
@@ -32,53 +32,53 @@ jobs:
           echo "TAGNAME=$TAGNAME" >> $GITHUB_ENV
           echo "Version: $TAGNAME"
       # Chromium
-      - name: Build Chromium DeliBlockite
+      - name: Build Chromium uBOLite
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          DeliBlock_REPO_DIR=$(pwd)
-          cd $DeliBlock_REPO_DIR
-          tools/make-mv3.sh chromium ${{ env.TAGNAME }} before=$DeliBlock_REPO_DIR
-          echo "CHROMIUM_PACKAGE=DeliBlockite_${{ env.TAGNAME }}.chromium.zip" >> $GITHUB_ENV
+          UBOL_REPO_DIR=$(pwd)
+          cd $UBLOCK_REPO_DIR
+          tools/make-mv3.sh chromium ${{ env.TAGNAME }} before=$UBOL_REPO_DIR
+          echo "CHROMIUM_PACKAGE=uBOLite_${{ env.TAGNAME }}.chromium.zip" >> $GITHUB_ENV
           cd - > /dev/null
           rm -rf chromium
-          mv "$DeliBlock_REPO_DIR/dist/build/DeliBlockite.chromium" chromium
+          mv "$UBLOCK_REPO_DIR/dist/build/uBOLite.chromium" chromium
       # Edge
-      - name: Build Edge DeliBlockite
+      - name: Build Edge uBOLite
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          DeliBlock_REPO_DIR=$(pwd)
-          cd $DeliBlock_REPO_DIR
+          UBOL_REPO_DIR=$(pwd)
+          cd $UBLOCK_REPO_DIR
           tools/make-mv3.sh edge ${{ env.TAGNAME }}
-          echo "EDGE_PACKAGE=DeliBlockite_${{ env.TAGNAME }}.edge.zip" >> $GITHUB_ENV
+          echo "EDGE_PACKAGE=uBOLite_${{ env.TAGNAME }}.edge.zip" >> $GITHUB_ENV
           cd - > /dev/null
       # Firefox
-      - name: Build Firefox DeliBlockite
+      - name: Build Firefox uBOLite
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          DeliBlock_REPO_DIR=$(pwd)
-          cd $DeliBlock_REPO_DIR
+          UBOL_REPO_DIR=$(pwd)
+          cd $UBLOCK_REPO_DIR
           tools/make-mv3.sh firefox ${{ env.TAGNAME }}
-          echo "FIREFOX_PACKAGE=DeliBlockite_${{ env.TAGNAME }}.firefox.xpi" >> $GITHUB_ENV
+          echo "FIREFOX_PACKAGE=uBOLite_${{ env.TAGNAME }}.firefox.xpi" >> $GITHUB_ENV
           cd - > /dev/null
       # Safari
-      - name: Build Safari DeliBlockite
+      - name: Build Safari uBOLite
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          DeliBlock_REPO_DIR=$(pwd)
-          cd $DeliBlock_REPO_DIR
+          UBOL_REPO_DIR=$(pwd)
+          cd $UBLOCK_REPO_DIR
           tools/make-mv3.sh safari ${{ env.TAGNAME }}
-          echo "SAFARI_PACKAGE=DeliBlockite_${{ env.TAGNAME }}.safari.zip" >> $GITHUB_ENV
+          echo "SAFARI_PACKAGE=uBOLite_${{ env.TAGNAME }}.safari.zip" >> $GITHUB_ENV
           cd - > /dev/null
-      - name: Commit DeliBlockite MV3 package files
+      - name: Commit uBOLite MV3 package files
         # https://github.com/marketplace/actions/github-action-for-committing-changes-to-a-repository
         uses: devops-infra/action-commit-push@master
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          commit_message: "[workflow] Update DeliBlockite MV3 package files for ${{ env.TAGNAME }}"
+          commit_message: "[workflow] Update uBOLite MV3 package files for ${{ env.TAGNAME }}"
       - name: Assemble release text
         run: |
           sed -e 's/%tag%/${{ env.TAGNAME }}/g' .github/workflows/RELEASE_BODY.md > release_body0.txt
@@ -95,7 +95,7 @@ jobs:
           prerelease: true
           body_path: release_body.txt
           files: |
-            ${{ env.DeliBlock_REPO_DIR }}/dist/build/${{ env.CHROMIUM_PACKAGE }}
-            ${{ env.DeliBlock_REPO_DIR }}/dist/build/${{ env.EDGE_PACKAGE }}
-            ${{ env.DeliBlock_REPO_DIR }}/dist/build/${{ env.FIREFOX_PACKAGE }}
-            ${{ env.DeliBlock_REPO_DIR }}/dist/build/${{ env.SAFARI_PACKAGE }}
+            ${{ env.UBLOCK_REPO_DIR }}/dist/build/${{ env.CHROMIUM_PACKAGE }}
+            ${{ env.UBLOCK_REPO_DIR }}/dist/build/${{ env.EDGE_PACKAGE }}
+            ${{ env.UBLOCK_REPO_DIR }}/dist/build/${{ env.FIREFOX_PACKAGE }}
+            ${{ env.UBLOCK_REPO_DIR }}/dist/build/${{ env.SAFARI_PACKAGE }}

@@ -62,9 +62,10 @@ function renderWidgets() {
 
     {
         const input = qs$('#strictBlockMode input[type="checkbox"]');
-        const canStrictBlock = cachedRulesetData.hasOmnipotence;
-        input.checked = canStrictBlock && cachedRulesetData.strictBlockMode;
-        dom.attr(input, 'disabled', canStrictBlock ? null : '');
+        // Electron/webview ortamında host permission bilgisi dalgalanabiliyor;
+        // bu nedenle strict block kontrolünü UI'da kilitlemeyelim.
+        input.checked = !!cachedRulesetData.strictBlockMode;
+        dom.attr(input, 'disabled', null);
     }
 
     {

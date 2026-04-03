@@ -48,13 +48,26 @@ jobs.push(function bnf3() {
 
 // This just tests whether the filtering engine can deal with a very long URL
 jobs.push(function bnf4() {
-    const looongURL = `/${'a-'.repeat(16384)}bnf4.gif`;
+    const looongURL = `./${'a-'.repeat(16384)}bnf4.gif`;
     fetch(looongURL).then(response => response.text()).catch(( ) => { });
 });
 
 jobs.push(function bnf5() {
     if ( window.bnf5Sentinel === true ) { return; }
     hide('#bnf5 .fail');
+});
+
+jobs.push(function bnf6() {
+    fetch('./bnf6.txt', { method: 'get' }).then(response => {
+        if ( response.ok !== true ) { return; }
+        return response.text();
+    }).then(text => {
+        if ( typeof text !== 'string' ) { return; }
+        if ( text !== 'ok' ) { return; }
+        return fetch('./bnf6.txt', { method: 'head' })
+    }).catch(( ) => {
+        hide('#bnf6 .fail');
+    });
 });
 
 jobs.push(function anf1() {
@@ -131,6 +144,13 @@ jobs.push(function sf6() {
     if ( self.sf6Sentinel === undefined ) { return; }
     if ( self.sf6Sentinel.getElementsByTagName !== document.body.getElementsByTagName ) { return; }
     hide('#sf6 .fail');
+});
+
+jobs.push(function sf7() {
+    const elem = document.querySelector('#sf7 .fail');
+    elem.innerHTML = '<b></b>';
+    if ( elem.innerHTML === '<b></b>' ) { return; }
+    hide('#sf7 .fail');
 });
 
 jobs.push(async function x() {
