@@ -31,11 +31,12 @@ cat > "$DESKTOP_DIR/${APP_ID}.desktop" <<EOF
 Type=Application
 Name=Aurivo Media Player
 Comment=Aurivo Media Player (dev)
-Exec=${ROOT_DIR}/scripts/run-aurivo.sh
+Exec=${ROOT_DIR}/scripts/run-aurivo.sh %U
 Icon=${APP_ID}
 Terminal=false
-Categories=AudioVideo;
+Categories=AudioVideo;Player;
 StartupWMClass=${APP_ID}
+MimeType=audio/mpeg;audio/wav;audio/flac;audio/aac;audio/ogg;audio/mp4;audio/x-m4a;audio/opus;audio/aiff;audio/x-ms-wma;video/mp4;video/x-matroska;video/x-msvideo;video/quicktime;video/x-ms-wmv;video/webm;video/x-m4v;
 EOF
 
 # GNOME cache güncelle (varsa)

@@ -659,11 +659,29 @@ static std::string getPresetsPath(int argc, char* argv[]) {
 
 static std::string basenameUtf8(const std::string& path) {
     try {
-        return fs::path(path).filename().string();
+        const fs::path p(path);
+        std::string stem = p.stem().string();
+        if (!stem.empty()) return stem;
+        return p.filename().string();
     } catch (...) {
         const auto pos = path.find_last_of("/\\");
-        return (pos == std::string::npos) ? path : path.substr(pos + 1);
+        std::string file = (pos == std::string::npos) ? path : path.substr(pos + 1);
+        const auto dot = file.find_last_of('.');
+        if (dot != std::string::npos && dot > 0) {
+            return file.substr(0, dot);
+        }
+        return file;
     }
+}
+
+static std::string stripMilkExtension(std::string name) {
+    if (name.size() < 5) return name;
+    std::string lower = name;
+    std::transform(lower.begin(), lower.end(), lower.begin(), [](unsigned char c) { return (char)std::tolower(c); });
+    if (lower.size() >= 5 && lower.compare(lower.size() - 5, 5, ".milk") == 0) {
+        name.erase(name.size() - 5);
+    }
+    return name;
 }
 
 static bool iequalsExt(const fs::path& p, const std::string& extLower) {
@@ -716,7 +734,7 @@ static bool findPresetsRecursive(const std::string& rootPath, std::vector<Preset
             if (!iequalsExt(entry.path(), ".milk")) continue;
             PresetItem item;
             item.path = entry.path().string();
-            item.displayName = basenameUtf8(item.path);
+            item.displayName = stripMilkExtension(basenameUtf8(item.path));
             item.enabled = true;
             out.push_back(std::move(item));
         }
@@ -898,6 +916,11 @@ struct AppState {
     int pickerFbH = 640;
     float pickerDpiScale = 1.0f;
     float pickerLastDpiScale = 0.0f;
+    bool pickerDockAnimating = false;
+    uint64_t pickerDockAnimStartMs = 0;
+    int pickerDockFromX = 0;
+    int pickerDockToX = 0;
+    int pickerDockY = 0;
 
     bool running = true;
     bool fullscreen = false;
@@ -936,6 +959,7 @@ struct AppState {
 
     int pickerNavIndex = 0;
     bool pickerNavScrollTo = false;
+    int pickerNavScrollDir = 0; // -1: up, +1: down, 0: neutral
     std::array<char, 160> pickerSearchBuf{};
     bool pickerCompactMode = true;
 
@@ -944,6 +968,12 @@ struct AppState {
 };
 
 static AppState g;
+
+static inline float easeOutCubic(float t) {
+    t = std::clamp(t, 0.0f, 1.0f);
+    const float inv = 1.0f - t;
+    return 1.0f - (inv * inv * inv);
+}
 
 static void ensureDllSearchPathFromExeDir() {
 #ifdef _WIN32
@@ -1478,32 +1508,42 @@ static void pumpAutoPresetSwitch() {
     if (!g.pm) return;
     if (g.presets.empty()) return;
 
-    int enabledCount = 0;
-    int firstEnabled = -1;
-    for (int i = 0; i < (int)g.presets.size(); i++) {
-        if (g.presets[i].enabled) {
-            enabledCount++;
-            if (firstEnabled < 0) firstEnabled = i;
-        }
+    const std::vector<int> enabledIds = enabledPresetIndices();
+    const int enabledCount = (int)enabledIds.size();
+
+    if (enabledCount <= 0) {
+        g.nextAutoSwitchMs = 0;
+        return;
     }
-
-    if (enabledCount <= 0) return;
-
-    // Tam olarak bir preset etkinse otomatik döngü yapma.
-    // Kullanıcı yine de listeden başka presetleri manuel olarak önizleyebilmeli.
-    if (enabledCount == 1) return;
 
     uint64_t t = nowMs();
     if (g.nextAutoSwitchMs == 0) scheduleNextAutoSwitch();
     if (t < g.nextAutoSwitchMs) return;
 
-    int next = g.currentPreset;
-    for (int step = 0; step < (int)g.presets.size(); step++) {
-        next = (next + 1) % (int)g.presets.size();
-        if (g.presets[next].enabled) break;
+    // Tam olarak bir preset etkinse süre/otomatik geçiş tamamen devre dışı.
+    if (enabledCount == 1) {
+        g.nextAutoSwitchMs = 0;
+        return;
     }
 
-    if (next != g.currentPreset && g.presets[next].enabled) {
+    int next = enabledIds.front();
+    int currentEnabledPos = -1;
+    for (int i = 0; i < enabledCount; i++) {
+        if (enabledIds[i] == g.currentPreset) {
+            currentEnabledPos = i;
+            break;
+        }
+    }
+    if (currentEnabledPos >= 0) {
+        // Sıralı döngü: son presetten sonra tekrar ilk prese'e dön.
+        next = enabledIds[(currentEnabledPos + 1) % enabledCount];
+    }
+
+    if (next != g.currentPreset) {
+        // Otomatik döngüde de aktif satırı görünür alanda tut.
+        g.pickerNavIndex = next;
+        g.pickerNavScrollTo = true;
+        g.pickerNavScrollDir = (next >= g.currentPreset) ? 1 : -1;
         requestPresetPreview(next);
     }
     scheduleNextAutoSwitch();
@@ -2054,7 +2094,8 @@ static void drawPresetPicker() {
     std::vector<int> visibleIndices;
     visibleIndices.reserve(g.presets.size());
     for (int i = 0; i < (int)g.presets.size(); i++) {
-        if (stringContainsCaseInsensitiveAscii(g.presets[i].displayName, g.pickerSearchBuf.data())) {
+        const std::string searchableName = stripMilkExtension(g.presets[i].displayName);
+        if (stringContainsCaseInsensitiveAscii(searchableName, g.pickerSearchBuf.data())) {
             visibleIndices.push_back(i);
         }
     }
@@ -2085,9 +2126,11 @@ static void drawPresetPicker() {
     if (ImGui::IsWindowAppearing()) {
         setNavToVisible(std::clamp(g.currentPreset, 0, (int)g.presets.size() - 1));
         g.pickerNavScrollTo = true;
+        g.pickerNavScrollDir = 0;
     } else if (!visibleIndices.empty() && visiblePositionOf(g.pickerNavIndex) < 0) {
         setNavToVisible(g.currentPreset);
         g.pickerNavScrollTo = true;
+        g.pickerNavScrollDir = 0;
     }
 
     if (ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows) && !ImGui::IsAnyItemActive() && !visibleIndices.empty()) {
@@ -2098,12 +2141,14 @@ static void drawPresetPicker() {
             visiblePos = std::max(0, visiblePos - 1);
             g.pickerNavIndex = visibleIndices[visiblePos];
             g.pickerNavScrollTo = true;
+            g.pickerNavScrollDir = -1;
             g.currentPreset = g.pickerNavIndex;
             requestPresetPreview(g.pickerNavIndex);
         } else if (ImGui::IsKeyPressed(ImGuiKey_DownArrow)) {
             visiblePos = std::min((int)visibleIndices.size() - 1, visiblePos + 1);
             g.pickerNavIndex = visibleIndices[visiblePos];
             g.pickerNavScrollTo = true;
+            g.pickerNavScrollDir = 1;
             g.currentPreset = g.pickerNavIndex;
             requestPresetPreview(g.pickerNavIndex);
         } else if (ImGui::IsKeyPressed(ImGuiKey_Space)) {
@@ -2190,7 +2235,10 @@ static void drawPresetPicker() {
         ImGui::SetCursorScreenPos(ImVec2(controlPos.x + 16.0f * scale + searchW, controlPos.y + (compactMode ? 8.0f : 10.0f) * scale));
         if (ImGui::Button(compactLabel, ImVec2(compactBtnW, (compactMode ? 30.0f : 34.0f) * scale))) {
             g.pickerCompactMode = !g.pickerCompactMode;
+            savePresetPickerSettings();
         }
+
+        const bool delayControlEnabled = (enabledCount >= 2);
 
         auto applyDelay = [&](int v) {
             int clamped = std::clamp(v, 5, 120);
@@ -2207,6 +2255,7 @@ static void drawPresetPicker() {
         char delayDigits[16];
         std::snprintf(delayDigits, sizeof(delayDigits), "%d", g.delaySeconds);
         const float valueW = std::max(38.0f * scale, ImGui::CalcTextSize(delayDigits).x + 20.0f * scale);
+        ImGui::BeginDisabled(!delayControlEnabled);
         if (ImGui::ArrowButton("##delay_minus", ImGuiDir_Left)) {
             applyDelay(g.delaySeconds - 5);
         }
@@ -2223,6 +2272,7 @@ static void drawPresetPicker() {
         if (ImGui::ArrowButton("##delay_plus", ImGuiDir_Right)) {
             applyDelay(g.delaySeconds + 5);
         }
+        ImGui::EndDisabled();
     }
 
     std::string activeSearch = trimAscii(g.pickerSearchBuf.data());
@@ -2285,7 +2335,8 @@ static void drawPresetPicker() {
                         const int baseR = 56 + (int)(seed & 0x3F);
                         const int baseG = 90 + (int)((seed >> 6) & 0x5F);
                         const int baseB = 118 + (int)((seed >> 13) & 0x4F);
-                        std::string initials = initialsFromPresetName(p.displayName);
+                        const std::string cleanDisplayName = stripMilkExtension(p.displayName);
+                        std::string initials = initialsFromPresetName(cleanDisplayName);
 
                         ImGui::PushID(i);
                         ImVec2 rowMin = ImGui::GetCursorScreenPos();
@@ -2351,31 +2402,79 @@ static void drawPresetPicker() {
                         } else if (rowClicked) {
                             g.pickerNavIndex = i;
                             g.pickerNavScrollTo = false;
+                            g.pickerNavScrollDir = 0;
                             g.currentPreset = i;
                             requestPresetPreview(i);
                         }
 
+                        const int orderNumber = visibleRow + 1;
+                        char orderBuf[24];
+                        std::snprintf(orderBuf, sizeof(orderBuf), "%d.", orderNumber);
+                        const ImVec2 orderSize = ImGui::CalcTextSize(orderBuf);
+                        const float orderGap = 8.0f * scale;
+                        const float titleX = textPos.x + orderSize.x + orderGap;
+                        const float titleW = std::max(40.0f, textW - orderSize.x - orderGap);
+
+                        listDl->AddText(
+                            textPos,
+                            isCurrent ? IM_COL32(158, 214, 255, std::min(255, rowAlpha)) : IM_COL32(132, 166, 196, std::min(245, rowAlpha)),
+                            orderBuf
+                        );
+
                         bool truncated = false;
-                        std::string shown = truncateToFit(p.displayName, textW, &truncated);
-                        listDl->AddText(textPos, isCurrent ? IM_COL32(244, 249, 255, std::min(255, rowAlpha)) : IM_COL32(220, 228, 238, std::min(255, rowAlpha)), shown.c_str());
+                        std::string shown = truncateToFit(cleanDisplayName, titleW, &truncated);
+                        listDl->AddText(
+                            ImVec2(titleX, textPos.y),
+                            isCurrent ? IM_COL32(244, 249, 255, std::min(255, rowAlpha)) : IM_COL32(220, 228, 238, std::min(255, rowAlpha)),
+                            shown.c_str()
+                        );
                         if (!compactMode) {
-                            listDl->AddText(ImVec2(textPos.x, textPos.y + 22.0f * scale), IM_COL32(134, 149, 170, std::min(255, rowAlpha)), p.enabled ? inRotationLabel : manualOnlyLabel);
+                            listDl->AddText(ImVec2(titleX, textPos.y + 22.0f * scale), IM_COL32(134, 149, 170, std::min(255, rowAlpha)), p.enabled ? inRotationLabel : manualOnlyLabel);
                         }
                         if (truncated && rowHovered) {
-                            ImGui::SetTooltip("%s", p.displayName.c_str());
+                            ImGui::SetTooltip("%s", cleanDisplayName.c_str());
                         }
 
+                        const bool isActiveNow = (enabledCount > 0) && p.enabled && isCurrent;
                         listDl->AddRectFilled(actionPos, actionMax,
-                                              isCurrent ? IM_COL32(94, 184, 255, std::min(255, rowAlpha))
-                                                        : (actionHovered ? IM_COL32(64, 94, 132, std::min(255, rowAlpha)) : IM_COL32(37, 48, 63, std::min(255, rowAlpha))),
+                                              isActiveNow ? IM_COL32(94, 184, 255, std::min(255, rowAlpha))
+                                                          : (actionHovered ? IM_COL32(64, 94, 132, std::min(255, rowAlpha)) : IM_COL32(37, 48, 63, std::min(255, rowAlpha))),
                                               14.0f * scale);
                         const ImVec2 dotC((actionPos.x + actionMax.x) * 0.5f, (actionPos.y + actionMax.y) * 0.5f);
-                        listDl->AddCircleFilled(dotC, 5.0f * scale, isCurrent ? IM_COL32(9, 22, 36, std::min(255, rowAlpha)) : IM_COL32(176, 196, 220, std::min(240, rowAlpha)), 20);
+                        if (isActiveNow) {
+                            // Kontrastı artır: dış glow + halka + canlı yeşil çekirdek.
+                            listDl->AddCircleFilled(dotC, 8.5f * scale, IM_COL32(8, 20, 14, std::min(210, rowAlpha)), 24);
+                            listDl->AddCircleFilled(dotC, 6.0f * scale, IM_COL32(92, 255, 170, std::min(255, rowAlpha)), 24);
+                            listDl->AddCircle(dotC, 7.5f * scale, IM_COL32(226, 255, 240, std::min(245, rowAlpha)), 24, std::max(1.0f, 1.4f * scale));
+                        } else {
+                            listDl->AddCircleFilled(dotC, 4.5f * scale, IM_COL32(176, 196, 220, std::min(240, rowAlpha)), 20);
+                        }
 
                         ImGui::SetCursorScreenPos(ImVec2(rowMin.x, rowMax.y + cardGap));
                         if (isNav && g.pickerNavScrollTo) {
-                            ImGui::SetScrollHereY(0.35f);
+                            // Her adımda zorla kaydırmak listede "titreme" hissi veriyor.
+                            // Sadece satır görünür alan sınırına yaklaştığında kaydır.
+                            const float childTop = ImGui::GetWindowPos().y;
+                            const float childBottom = childTop + ImGui::GetWindowHeight();
+                            const float edgeMargin = rowH * 0.35f;
+
+                            bool needScroll = false;
+                            float scrollTarget = 0.35f;
+                            if (g.pickerNavScrollDir > 0) {
+                                needScroll = rowMax.y > (childBottom - edgeMargin);
+                                scrollTarget = 0.99f;
+                            } else if (g.pickerNavScrollDir < 0) {
+                                needScroll = rowMin.y < (childTop + edgeMargin);
+                                scrollTarget = 0.01f;
+                            } else {
+                                needScroll = true;
+                            }
+
+                            if (needScroll) {
+                                ImGui::SetScrollHereY(scrollTarget);
+                            }
                             g.pickerNavScrollTo = false;
+                            g.pickerNavScrollDir = 0;
                         }
                         ImGui::PopID();
                     }
@@ -2395,10 +2494,21 @@ static void drawPresetPicker() {
 
     if (ImGui::Button(visEnvText("AURIVO_VIS_PICKER_ALL", L7("Select all", "Tümünü seç", "ØªØ­Ø¯ÙŠØ¯ Ø§Ù„ÙƒÙ„", "Tout sélectionner", "Alle wählen", "Seleccionar todo", "à¤¸à¤­à¥€ à¤šà¥à¤¨à¥‡à¤‚")))) {
         for (auto& p : g.presets) p.enabled = true;
+        // Baştan başlat: ilk presetten devam et.
+        if (!g.presets.empty()) {
+            g.currentPreset = 0;
+            g.pickerNavIndex = 0;
+            g.pickerNavScrollTo = true;
+            g.pickerNavScrollDir = -1;
+            requestPresetPreview(0);
+            scheduleNextAutoSwitch();
+        }
     }
     ImGui::SameLine();
     if (ImGui::Button(visEnvText("AURIVO_VIS_PICKER_NONE", L7("Clear all", "Tümünü temizle", "Ù…Ø³Ø­ Ø§Ù„ÙƒÙ„", "Tout effacer", "Alles leeren", "Limpiar todo", "à¤¸à¤­à¥€ à¤¹à¤Ÿà¤¾à¤à¤")))) {
         for (auto& p : g.presets) p.enabled = false;
+        g.nextAutoSwitchMs = 0;
+        g.pickerNavIndex = -1;
     }
 
     const char* okText = visEnvText("AURIVO_VIS_PICKER_OK", L7("Done", "Tamam", "ØªÙ…", "Terminer", "Fertig", "Listo", "à¤ªà¥‚à¤°à¤¾"));
@@ -2482,9 +2592,19 @@ static bool ensurePickerWindow() {
         desiredH = std::clamp(desiredH, 360, 1080);
     }
 
+    // Picker penceresi daha uzunsa ana görselleştirici de aynı yükseklikte kalsın.
+    if (g.window && desiredH > g.mainPrefH) {
+        g.mainPrefH = desiredH;
+        SDL_SetWindowSize(g.window, g.mainPrefW, g.mainPrefH);
+    }
+
+    const int dockGap = 18;
+    const int targetX = wx + ww + dockGap;
+    const int targetY = wy + 42;
+
     Uint32 pickerFlags = SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI;
 
-		    g.pickerWindow = SDL_CreateWindow(
+			    g.pickerWindow = SDL_CreateWindow(
 		        visEnvText("AURIVO_VIS_PICKER_TITLE", L7Raw(
 		            "Aurivo Visuals",
             "Aurivo G\u00F6rseller",
@@ -2494,11 +2614,11 @@ static bool ensurePickerWindow() {
 		            "Visuales de Aurivo",
 		            "Aurivo Visuals"
 		        )),
-	        wx + ww + 18,
-	        wy + 42,
-	        desiredW,
-        desiredH,
-        pickerFlags
+		        targetX,
+		        targetY,
+		        desiredW,
+	        desiredH,
+	        pickerFlags
     );
     if (!g.pickerWindow) {
         std::cerr << "Failed to create picker window: " << SDL_GetError() << std::endl;
@@ -2510,6 +2630,14 @@ static bool ensurePickerWindow() {
 
     // Bazı WM'ler önceki boyutu geri yükleyebilir; istenen boyutu zorla.
     SDL_SetWindowSize(g.pickerWindow, desiredW, desiredH);
+    // Sağdan çekmece efekti: önce hedefin sağında başlat, sonra kaydır.
+    const int startX = targetX + desiredW + 12;
+    SDL_SetWindowPosition(g.pickerWindow, startX, targetY);
+    g.pickerDockAnimating = true;
+    g.pickerDockAnimStartMs = nowMs();
+    g.pickerDockFromX = startX;
+    g.pickerDockToX = targetX;
+    g.pickerDockY = targetY;
 
     if (!tryCreateContextForWindow(g.pickerWindow, g.pickerGL)) {
         if (backupWindow && backupContext) SDL_GL_MakeCurrent(backupWindow, backupContext);
@@ -2596,6 +2724,7 @@ static void destroyPickerWindow() {
     }
     SDL_DestroyWindow(g.pickerWindow);
     g.pickerWindow = nullptr;
+    g.pickerDockAnimating = false;
 
     // Ana pencere çalışırken ImGui'yi null mevcut context'te bırakma.
     if (g.mainImGui) {
@@ -2604,6 +2733,33 @@ static void destroyPickerWindow() {
 
     // Önceki GL context'i geri yükle (genelde ana pencere).
     if (backupWindow && backupContext) SDL_GL_MakeCurrent(backupWindow, backupContext);
+}
+
+static void updatePickerDockMotion() {
+    if (!g.pickerWindow || !g.window) return;
+
+    int wx = 0, wy = 0, ww = 0, wh = 0;
+    SDL_GetWindowPosition(g.window, &wx, &wy);
+    SDL_GetWindowSize(g.window, &ww, &wh);
+
+    const int dockGap = 18;
+    const int targetX = wx + ww + dockGap;
+    const int targetY = wy + 42;
+
+    if (g.pickerDockAnimating) {
+        const float t = (float)(nowMs() - g.pickerDockAnimStartMs) / 220.0f;
+        const float k = easeOutCubic(t);
+        const int curX = (int)std::lround((double)g.pickerDockFromX + (double)(g.pickerDockToX - g.pickerDockFromX) * (double)k);
+        SDL_SetWindowPosition(g.pickerWindow, curX, g.pickerDockY);
+        if (t >= 1.0f) {
+            g.pickerDockAnimating = false;
+            SDL_SetWindowPosition(g.pickerWindow, targetX, targetY);
+        }
+        return;
+    }
+
+    // Animasyon dışında da ana pencereye bitişik kalsın (çekmece hissi).
+    SDL_SetWindowPosition(g.pickerWindow, targetX, targetY);
 }
 
 static bool initSDLVideo() {
@@ -2662,7 +2818,7 @@ static bool initMainWindowAndGL() {
 
     // Mantıklı bir başlangıç boyutu seç (bazı WM'ler WM_CLASS'a göre geri yükle/maximize etmeye çalışabilir).
     int desiredW = g.mainPrefW;
-    int desiredH = g.mainPrefH;
+    int desiredH = std::max(g.mainPrefH, g.pickerWinH);
     SDL_Rect usable{0, 0, 0, 0};
     if (SDL_GetDisplayUsableBounds(0, &usable) == 0 && usable.w > 0 && usable.h > 0) {
         desiredW = std::clamp(desiredW, 640, (int)(usable.w * 0.95f));
@@ -3072,6 +3228,8 @@ int main(int argc, char* argv[]) {
             if (!ensurePickerWindow()) {
                 std::cerr << "Failed to open preset picker window." << std::endl;
                 g.showPresetPicker = false;
+            } else {
+                updatePickerDockMotion();
             }
         } else {
             if (g.pickerWindow) destroyPickerWindow();

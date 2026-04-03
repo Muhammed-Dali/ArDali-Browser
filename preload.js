@@ -851,7 +851,32 @@ const aurivoAPI = {
 
     // APP CONTROL
     app: {
-        relaunch: () => ipcRenderer.invoke('app:relaunch')
+        relaunch: () => ipcRenderer.invoke('app:relaunch'),
+        consumePendingOpenMediaFiles: () => ipcRenderer.invoke('app:consumePendingOpenMediaFiles'),
+        notifyMediaOpenReady: () => ipcRenderer.send('app:renderer-media-open-ready'),
+        getVersionInfo: () => ipcRenderer.invoke('app:getVersionInfo'),
+        updater: {
+            getState: () => ipcRenderer.invoke('app:update:getState'),
+            check: (options = {}) => ipcRenderer.invoke('app:update:check', options),
+            download: () => ipcRenderer.invoke('app:update:download'),
+            install: () => ipcRenderer.invoke('app:update:install'),
+            launchAurivoBinUpdate: () => ipcRenderer.invoke('app:update:launchAurivoBinUpdate'),
+            onStatus: (callback) => {
+                if (typeof callback !== 'function') return () => {};
+                const handler = (_event, payload) => callback(payload || {});
+                ipcRenderer.on('app:update-status', handler);
+                return () => ipcRenderer.removeListener('app:update-status', handler);
+            }
+        }
+    },
+
+    onOpenMediaFiles: (callback) => {
+        if (typeof callback !== 'function') return () => {};
+        const handler = (_event, payload) => {
+            callback(payload?.paths || []);
+        };
+        ipcRenderer.on('app:open-media-files', handler);
+        return () => ipcRenderer.removeListener('app:open-media-files', handler);
     },
 
     // I18N

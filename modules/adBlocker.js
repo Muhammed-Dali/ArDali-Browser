@@ -67,6 +67,9 @@ const IDEAL_EXTRA_KEYWORDS = [
     'preroll',
     'vast',
 ];
+const ADBLOCK_DEBUG = process.env.AURIVO_ADBLOCK_DEBUG === '1';
+const ADBLOCK_DEBUG_MAX_LOGS = 200;
+let adblockDebugLogCount = 0;
 
 function normalizeMode(mode) {
     const value = String(mode || '').trim().toLowerCase();
@@ -335,11 +338,76 @@ function isLikelyAdOrTrackerURL(rawUrl = '') {
         url.includes('/ads?') ||
         url.includes('/adserver') ||
         url.includes('/adservice') ||
+        url.includes('/api/stats/ads') ||
         url.includes('/pagead/') ||
         url.includes('/ptracking') ||
         url.includes('taboola.com') ||
         url.includes('outbrain.com')
     );
+}
+
+function isLikelyYouTubeAdURL(rawUrl = '') {
+    const url = String(rawUrl || '').toLowerCase();
+    if (!url.startsWith('http://') && !url.startsWith('https://')) return false;
+
+    const isYouTubeFamily =
+        url.includes('youtube.com') ||
+        url.includes('youtu.be') ||
+        url.includes('googlevideo.com') ||
+        url.includes('ytimg.com') ||
+        url.includes('doubleclick.net') ||
+        url.includes('googlesyndication.com') ||
+        url.includes('googleadservices.com');
+    if (!isYouTubeFamily) return false;
+
+    if (url.includes('/api/stats/ads')) return true;
+    if (url.includes('/pagead/')) return true;
+    if (url.includes('doubleclick.net')) return true;
+    if (url.includes('googlesyndication.com')) return true;
+    if (url.includes('googleadservices.com')) return true;
+
+    if (url.includes('googlevideo.com/videoplayback')) {
+        return (
+            url.includes('oad=') ||
+            url.includes('moad=') ||
+            url.includes('ctier=') ||
+            url.includes('adformat=') ||
+            url.includes('ad_type=') ||
+            url.includes('gct=')
+        );
+    }
+
+    return false;
+}
+
+function debugAdblock(stage, details = {}, extras = {}) {
+    if (!ADBLOCK_DEBUG) return;
+    if (adblockDebugLogCount >= ADBLOCK_DEBUG_MAX_LOGS) return;
+    const url = String(details?.url || '');
+    if (!url) return;
+    const lower = url.toLowerCase();
+    const isGoogleVideoPlayback = lower.includes('googlevideo.com/videoplayback');
+    if (!isGoogleVideoPlayback && !isLikelyYouTubeAdURL(url) && !isLikelyAdOrTrackerURL(url)) return;
+    adblockDebugLogCount += 1;
+    const rtype = String(details?.resourceType || '').toLowerCase();
+    const err = String(details?.error || '');
+    const googlevideoHints = isGoogleVideoPlayback ? {
+        oad: lower.includes('oad='),
+        moad: lower.includes('moad='),
+        ctier: lower.includes('ctier='),
+        adformat: lower.includes('adformat='),
+        ad_type: lower.includes('ad_type='),
+        gct: lower.includes('gct='),
+    } : undefined;
+    console.log('[AdBlocker][debug]', {
+        stage,
+        mode: normalizeMode(runtimeConfig.mode),
+        type: rtype,
+        error: err || undefined,
+        url,
+        googlevideoHints,
+        ...extras,
+    });
 }
 
 function shouldBlockRequestByMode(details = {}) {
@@ -356,9 +424,7 @@ function shouldBlockRequestByMode(details = {}) {
     const hitsIdeal = IDEAL_EXTRA_KEYWORDS.some((key) => url.includes(key));
     if (mode === 'ideal' && hitsIdeal) return true;
 
-    const youtubeAdStreamSignal =
-        url.includes('googlevideo.com/videoplayback') &&
-        (url.includes('oad=') || url.includes('adformat=') || url.includes('ad_type=') || url.includes('ctier='));
+    const youtubeAdStreamSignal = isLikelyYouTubeAdURL(url);
     if (mode === 'ideal' && youtubeAdStreamSignal) return true;
 
     if (mode === 'aggressive') {
@@ -377,7 +443,7 @@ function rememberPendingAdCandidate(details = {}) {
     if (!key) return;
     const rtype = String(details?.resourceType || '').toLowerCase();
     if (rtype === 'mainframe') return;
-    if (!isLikelyAdOrTrackerURL(details?.url)) return;
+    if (!isLikelyAdOrTrackerURL(details?.url) && !isLikelyYouTubeAdURL(details?.url)) return;
     pendingAdCandidates.set(key, { createdAt: Date.now() });
 }
 
@@ -412,9 +478,11 @@ function bindStatsTrackingForSession(ses) {
                     return;
                 }
                 rememberPendingAdCandidate(details);
+                debugAdblock('beforeRequest:seen', details);
                 if (builtinBlockingEnabled && shouldBlockRequestByMode(details)) {
                     markBlockedOnce(details);
                     clearPendingAdCandidate(details);
+                    debugAdblock('beforeRequest:blocked', details, { by: 'builtin' });
                     callback?.({ cancel: true });
                     return;
                 }
@@ -436,6 +504,7 @@ function bindStatsTrackingForSession(ses) {
                 if (err.includes('ERR_BLOCKED_BY_CLIENT')) {
                     markBlockedOnce(details);
                     clearPendingAdCandidate(details);
+                    debugAdblock('error:blockedByClient', details, { by: 'dnr_or_builtin' });
                     return;
                 }
                 // Electron'da DNR/uBOL engellemeleri bazı isteklerde ERR_ABORTED olarak görülebiliyor.
@@ -443,6 +512,7 @@ function bindStatsTrackingForSession(ses) {
                 if (err.includes('ERR_ABORTED') && rtype !== 'mainframe') {
                     markBlockedOnce(details);
                     clearPendingAdCandidate(details);
+                    debugAdblock('error:aborted', details);
                     return;
                 }
                 // Bazı ortamlarda reklam/tracker engellemeleri ERR_FAILED koduna düşebiliyor.
@@ -450,6 +520,7 @@ function bindStatsTrackingForSession(ses) {
                 if (err.includes('ERR_FAILED') && isLikelyAdOrTrackerURL(details?.url)) {
                     markBlockedOnce(details);
                     clearPendingAdCandidate(details);
+                    debugAdblock('error:failedLikelyAd', details);
                 }
             } catch {
                 // no-op
@@ -467,6 +538,7 @@ function bindStatsTrackingForSession(ses) {
                 if (isLikelyUbolRedirect(redirectURL)) {
                     markBlockedOnce(details);
                     clearPendingAdCandidate(details);
+                    debugAdblock('redirect:ubol', details, { redirectURL });
                 }
             } catch {
                 // no-op

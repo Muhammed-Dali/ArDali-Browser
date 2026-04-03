@@ -173,6 +173,8 @@
                                             <div class="settings-row"><div class="settings-row-left"><div class="settings-label">X</div></div><div class="settings-inline"><input type="text" id="shortcutPlatformX" class="settings-input" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="-"><button type="button" class="settings-btn shortcut-capture-btn" data-shortcut-target="shortcutPlatformX" data-i18n="playback.shortcuts.actions.assign">Ata</button><button type="button" class="settings-btn shortcut-clear-btn" data-shortcut-target="shortcutPlatformX" data-i18n="playback.shortcuts.actions.clear">Temizle</button></div></div>
                                             <div class="settings-row"><div class="settings-row-left"><div class="settings-label">Reddit</div></div><div class="settings-inline"><input type="text" id="shortcutPlatformReddit" class="settings-input" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="-"><button type="button" class="settings-btn shortcut-capture-btn" data-shortcut-target="shortcutPlatformReddit" data-i18n="playback.shortcuts.actions.assign">Ata</button><button type="button" class="settings-btn shortcut-clear-btn" data-shortcut-target="shortcutPlatformReddit" data-i18n="playback.shortcuts.actions.clear">Temizle</button></div></div>
                                             <div class="settings-row"><div class="settings-row-left"><div class="settings-label">Twitch</div></div><div class="settings-inline"><input type="text" id="shortcutPlatformTwitch" class="settings-input" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="-"><button type="button" class="settings-btn shortcut-capture-btn" data-shortcut-target="shortcutPlatformTwitch" data-i18n="playback.shortcuts.actions.assign">Ata</button><button type="button" class="settings-btn shortcut-clear-btn" data-shortcut-target="shortcutPlatformTwitch" data-i18n="playback.shortcuts.actions.clear">Temizle</button></div></div>
+                                            <div class="settings-row"><div class="settings-row-left"><div class="settings-label">WhatsApp</div></div><div class="settings-inline"><input type="text" id="shortcutPlatformWhatsapp" class="settings-input" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="-"><button type="button" class="settings-btn shortcut-capture-btn" data-shortcut-target="shortcutPlatformWhatsapp" data-i18n="playback.shortcuts.actions.assign">Ata</button><button type="button" class="settings-btn shortcut-clear-btn" data-shortcut-target="shortcutPlatformWhatsapp" data-i18n="playback.shortcuts.actions.clear">Temizle</button></div></div>
+                                            <div class="settings-row"><div class="settings-row-left"><div class="settings-label">Telegram</div></div><div class="settings-inline"><input type="text" id="shortcutPlatformTelegram" class="settings-input" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="-"><button type="button" class="settings-btn shortcut-capture-btn" data-shortcut-target="shortcutPlatformTelegram" data-i18n="playback.shortcuts.actions.assign">Ata</button><button type="button" class="settings-btn shortcut-clear-btn" data-shortcut-target="shortcutPlatformTelegram" data-i18n="playback.shortcuts.actions.clear">Temizle</button></div></div>
                                         </div>
                                     </div>
                                     <div class="settings-page hidden" id="listenSettings">
@@ -322,8 +324,8 @@
                                                 </div>
                                                 <select class="settings-select" id="themeSelect" aria-label="Theme">
                                                     <option value="aur-renk-efektleri">Aurivo Medya Player</option>
-                                                    <option value="performance-balanced">Balanced Flow</option>
-                                                    <option value="performance-lite">Low Hardware Stable</option>
+                                                    <option value="performance-balanced" data-i18n="ui.theme.options.performanceBalanced">Balanced Flow</option>
+                                                    <option value="performance-lite" data-i18n="ui.theme.options.performanceLite">Low Hardware Stable</option>
                                                     <option value="neon-night">Neon Night</option>
                                                     <option value="retro-amber">Retro Amber</option>
                                                     <option value="deep-ocean">Deep Ocean</option>
@@ -334,7 +336,7 @@
                                                 <div class="settings-row-left">
                                                     <div class="settings-label" data-i18n="ui.theme.followSystem.label">Sistem temasını takip et</div>
                                                     <div class="settings-sub" data-i18n="ui.theme.followSystem.hint">Açıkken tema seçimi sistem temasına göre otomatik uygulanır.</div>
-                                                    <div class="settings-sub hidden" id="themeModeStatus">Tema sistemden yönetiliyor.</div>
+                                                    <div class="settings-sub hidden" id="themeModeStatus" data-i18n="ui.theme.modeStatus">Tema sistemden yönetiliyor.</div>
                                                 </div>
                                                 <label class="settings-master-toggle" title="Sistem temasına göre otomatik geçiş">
                                                     <input type="checkbox" id="uiFollowSystemThemeToggle">
@@ -355,58 +357,58 @@
                                             </div>
                                             <div class="settings-row">
                                                 <div class="settings-row-left">
-                                                    <div class="settings-label">Animasyon Hızı</div>
-                                                    <div class="settings-sub">Geçiş ve efekt hızını belirler: Hızlı, Dengeli veya Sakin.</div>
+                                                    <div class="settings-label" data-i18n="ui.motionProfile.label">Animasyon Hızı</div>
+                                                    <div class="settings-sub" data-i18n="ui.motionProfile.hint">Geçiş ve efekt hızını belirler: Hızlı, Dengeli veya Sakin.</div>
                                                 </div>
                                                 <select class="settings-select" id="uiMotionProfileSelect" aria-label="Animation speed">
-                                                    <option value="fast">Hızlı</option>
-                                                    <option value="balanced">Dengeli</option>
-                                                    <option value="calm">Sakin</option>
+                                                    <option value="fast" data-i18n="ui.motionProfile.options.fast">Hızlı</option>
+                                                    <option value="balanced" data-i18n="ui.motionProfile.options.balanced">Dengeli</option>
+                                                    <option value="calm" data-i18n="ui.motionProfile.options.calm">Sakin</option>
                                                 </select>
                                             </div>
                                             <div class="settings-row">
                                                 <div class="settings-row-left">
-                                                    <div class="settings-label">Donanıma göre otomatik optimize et</div>
-                                                    <div class="settings-sub">RAM/GPU zayıfsa arayüzü otomatik hafifletir. İstersen kapatıp manuel ayarlayabilirsin.</div>
-                                                    <div class="settings-sub" id="uiHardwareProfileStatus">Donanım profili: tespit bekleniyor...</div>
+                                                    <div class="settings-label" data-i18n="ui.autoHardwareOptimize.label">Donanıma göre otomatik optimize et</div>
+                                                    <div class="settings-sub" data-i18n="ui.autoHardwareOptimize.hint">RAM/GPU zayıfsa arayüzü otomatik hafifletir. İstersen kapatıp manuel ayarlayabilirsin.</div>
+                                                    <div class="settings-sub" id="uiHardwareProfileStatus" data-i18n="ui.hardwareProfile.status.detecting">Donanım profili: tespit bekleniyor...</div>
                                                 </div>
                                                 <label class="settings-master-toggle" title="Donanıma göre otomatik performans optimizasyonu">
                                                     <input type="checkbox" id="uiAutoHardwareProfileToggle" checked>
                                                     <span class="settings-master-toggle-slider"></span>
-                                                    <span class="settings-master-toggle-label">Otomatik optimize</span>
+                                                    <span class="settings-master-toggle-label" data-i18n="ui.autoHardwareOptimize.toggle">Otomatik optimize</span>
                                                 </label>
                                             </div>
                                             <div class="settings-row">
                                                 <div class="settings-row-left">
-                                                    <div class="settings-label">Düşük Donanım Modu</div>
-                                                    <div class="settings-sub">Açıkken CPU/RAM için ağır özellikleri azaltır. Kapalıyken tüm özellikler manuel yönetilir.</div>
+                                                    <div class="settings-label" data-i18n="ui.lowHardwareMode.label">Düşük Donanım Modu</div>
+                                                    <div class="settings-sub" data-i18n="ui.lowHardwareMode.hint">Açıkken CPU/RAM için ağır özellikleri azaltır. Kapalıyken tüm özellikler manuel yönetilir.</div>
                                                 </div>
                                                 <label class="settings-master-toggle" title="Düşük donanım için performans modu">
                                                     <input type="checkbox" id="uiLowHardwareModeToggle">
                                                     <span class="settings-master-toggle-slider"></span>
-                                                    <span class="settings-master-toggle-label">Düşük Donanım Modu</span>
+                                                    <span class="settings-master-toggle-label" data-i18n="ui.lowHardwareMode.toggle">Düşük Donanım Modu</span>
                                                 </label>
                                             </div>
                                             <div class="settings-row">
                                                 <div class="settings-row-left">
-                                                    <div class="settings-label">Ses Efekti Performans Modu</div>
-                                                    <div class="settings-sub">Sadece ses efekt penceresinin performans profilini belirler. Auto önerilir.</div>
+                                                    <div class="settings-label" data-i18n="ui.sfxPerfMode.label">Ses Efekti Performans Modu</div>
+                                                    <div class="settings-sub" data-i18n="ui.sfxPerfMode.hint">Sadece ses efekt penceresinin performans profilini belirler. Auto önerilir.</div>
                                                 </div>
                                                 <select class="settings-select" id="uiSfxPerfModeSelect" aria-label="SFX performance mode">
-                                                    <option value="auto">Auto (Önerilen)</option>
-                                                    <option value="lite">Lite (Düşük sistem)</option>
-                                                    <option value="full">Full (Maksimum kalite)</option>
+                                                    <option value="auto" data-i18n="ui.sfxPerfMode.options.auto">Auto (Önerilen)</option>
+                                                    <option value="lite" data-i18n="ui.sfxPerfMode.options.lite">Lite (Düşük sistem)</option>
+                                                    <option value="full" data-i18n="ui.sfxPerfMode.options.full">Full (Maksimum kalite)</option>
                                                 </select>
                                             </div>
                                             <div class="settings-row">
                                                 <div class="settings-row-left">
-                                                    <div class="settings-label">Ses Efekt Sekme İkon Boyutu</div>
-                                                    <div class="settings-sub">Müzik, Video ve Web ses efektlerinde sol menü ikon boyutunu birlikte ayarlar.</div>
+                                                    <div class="settings-label" data-i18n="ui.sfxIconSize.label">Ses Efekt Sekme İkon Boyutu</div>
+                                                    <div class="settings-sub" data-i18n="ui.sfxIconSize.hint">Müzik, Video ve Web ses efektlerinde sol menü ikon boyutunu birlikte ayarlar.</div>
                                                 </div>
                                                 <select class="settings-select" id="uiSfxIconSizeSelect" aria-label="SFX sidebar icon size">
-                                                    <option value="compact">Kompakt</option>
-                                                    <option value="medium">Orta (Önerilen)</option>
-                                                    <option value="large">Büyük</option>
+                                                    <option value="compact" data-i18n="ui.sfxIconSize.options.compact">Kompakt</option>
+                                                    <option value="medium" data-i18n="ui.sfxIconSize.options.medium">Orta (Önerilen)</option>
+                                                    <option value="large" data-i18n="ui.sfxIconSize.options.large">Büyük</option>
                                                 </select>
                                             </div>
                                             <div class="settings-row">
@@ -470,6 +472,25 @@
                                                     <option value="2000" data-i18n="ui.startup.webStartupDelay.options.calm">Sakin (2.0 sn)</option>
                                                 </select>
                                             </div>
+                                            <div class="setting-row">
+                                                <span data-i18n="ui.startup.webAnimationMode.label">Web arayüz animasyonu</span>
+                                                <select class="settings-select" id="behaviorWebAnimationMode">
+                                                    <option value="compact" data-i18n="ui.startup.webAnimationMode.options.compact">Kompakt (mevcut)</option>
+                                                    <option value="dock" data-i18n="ui.startup.webAnimationMode.options.dock">Dock (hover büyütme)</option>
+                                                </select>
+                                            </div>
+                                            <div class="setting-row">
+                                                <span data-i18n="ui.startup.webMotionPreset.label">Web animasyon hızı</span>
+                                                <select class="settings-select" id="behaviorWebMotionPreset">
+                                                    <option value="calm" data-i18n="ui.startup.webMotionPreset.options.calm">Sakin</option>
+                                                    <option value="balanced" data-i18n="ui.startup.webMotionPreset.options.balanced">Dengeli</option>
+                                                    <option value="lively" data-i18n="ui.startup.webMotionPreset.options.lively">Canlı</option>
+                                                </select>
+                                            </div>
+                                            <label class="checkbox-label">
+                                                <input type="checkbox" id="behaviorWebLowPowerMode">
+                                                <span data-i18n="ui.startup.webLowPowerMode.label">Web animasyonları düşük sistem modu</span>
+                                            </label>
                                             <label class="checkbox-label">
                                                 <input type="checkbox" id="behaviorCloseToTray" checked>
                                                 <span data-i18n="ui.startup.closeToTray">Pencereyi kapatınca sistem tepsisine küçült</span>

@@ -3,13 +3,13 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: https:; media-src 'self' file:; frame-src 'self' https://music.youtube.com https://www.youtube.com https://www.youtube-nocookie.com https://youtube-nocookie.com https://www.deezer.com https://soundcloud.com https://www.facebook.com https://www.instagram.com https://www.tiktok.com https://x.com https://twitter.com https://www.reddit.com https://www.twitch.tv https://*.google.com https://*.googleusercontent.com;">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: https:; media-src 'self' file:; frame-src 'self' https://music.youtube.com https://www.youtube.com https://www.youtube-nocookie.com https://youtube-nocookie.com https://www.deezer.com https://soundcloud.com https://www.facebook.com https://www.instagram.com https://www.tiktok.com https://x.com https://twitter.com https://www.reddit.com https://www.twitch.tv https://web.whatsapp.com https://web.telegram.org https://*.google.com https://*.googleusercontent.com;">
     <title>Aurivo Media Player</title>
     <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet">
     <link rel="stylesheet" href="styles/main.css">
 </head>
 <body>
-    <div class="app-container">
+    <div class="app-container hidden">
         <!-- Sol Sidebar (İkonlar) -->
 	        <nav class="sidebar" id="sidebar">
 	            <div class="sidebar-top">
@@ -49,6 +49,7 @@
                         <path d="M5.2 7.6a8.1 8.1 0 0 1 13.6 0"/>
                     </svg>
                 </button>
+                <div class="sidebar-web-quick-actions" id="sidebarWebQuickActions" aria-label="Web hızlı kontroller"></div>
 	            </div>
 	            <div class="sidebar-bottom">
 <button class="sidebar-btn" id="settingsBtn" title="Ayarlar" data-i18n-title="sidebar.settings">
@@ -151,6 +152,14 @@
                         <img src="icons/twitch.svg" alt="Twitch">
                         <span>Twitch</span>
                     </button>
+                    <button class="platform-btn" data-url="https://web.whatsapp.com/" data-platform="whatsapp">
+                        <img src="icons/whatsapp.svg" alt="WhatsApp">
+                        <span>WhatsApp</span>
+                    </button>
+                    <button class="platform-btn" data-url="https://web.telegram.org/" data-platform="telegram">
+                        <img src="icons/telegram.svg" alt="Telegram">
+                        <span>Telegram</span>
+                    </button>
                     <div class="pulse-found-section hidden" id="pulseFoundSection">
                         <div class="pulse-found-title">Aurivo-Pulse Bulunanlar</div>
                         <div class="pulse-found-list" id="pulseFoundList"></div>
@@ -190,6 +199,9 @@
                     <img class="nav-icon-img" src="icons/deliblock.svg" alt="DeliBlock">
                     <span class="nav-badge hidden" id="adblockBlockedBadge">0</span>
                 </button>
+                <div class="nav-platform-strip" id="navPlatformStrip" aria-label="Web platform kısayolları">
+                    <div class="nav-platform-spotlight" id="navPlatformSpotlight" aria-hidden="true"></div>
+                </div>
             </div>
 
             <!-- Update Banner (non-intrusive) -->
@@ -727,6 +739,18 @@
                                                 <button type="button" class="btn btn-small shortcut-capture-btn" data-shortcut-target="shortcutPlatformTwitch" data-i18n="playback.shortcuts.actions.assign">Ata</button>
                                                 <button type="button" class="btn btn-small shortcut-clear-btn" data-shortcut-target="shortcutPlatformTwitch" data-i18n="playback.shortcuts.actions.clear">Temizle</button>
                                             </div>
+                                            <div class="setting-row">
+                                                <span>WhatsApp</span>
+                                                <input type="text" id="shortcutPlatformWhatsapp" class="settings-input" data-i18n-placeholder="playback.shortcuts.unassigned" placeholder="Atanmamış" readonly>
+                                                <button type="button" class="btn btn-small shortcut-capture-btn" data-shortcut-target="shortcutPlatformWhatsapp" data-i18n="playback.shortcuts.actions.assign">Ata</button>
+                                                <button type="button" class="btn btn-small shortcut-clear-btn" data-shortcut-target="shortcutPlatformWhatsapp" data-i18n="playback.shortcuts.actions.clear">Temizle</button>
+                                            </div>
+                                            <div class="setting-row">
+                                                <span>Telegram</span>
+                                                <input type="text" id="shortcutPlatformTelegram" class="settings-input" data-i18n-placeholder="playback.shortcuts.unassigned" placeholder="Atanmamış" readonly>
+                                                <button type="button" class="btn btn-small shortcut-capture-btn" data-shortcut-target="shortcutPlatformTelegram" data-i18n="playback.shortcuts.actions.assign">Ata</button>
+                                                <button type="button" class="btn btn-small shortcut-clear-btn" data-shortcut-target="shortcutPlatformTelegram" data-i18n="playback.shortcuts.actions.clear">Temizle</button>
+                                            </div>
                                             <button class="reset-btn" id="resetPlayback" data-i18n="settings.buttons.resetDefaults">↻ Varsayılan Ayarlar</button>
                                         </div>
                                     </div>
@@ -903,13 +927,13 @@
                                             </div>
                                             <div class="settings-row">
                                                 <div class="settings-row-left">
-                                                    <div class="settings-label">Animasyon Hızı</div>
-                                                    <div class="settings-sub">Geçiş ve efekt hızını belirler: Hızlı, Dengeli veya Sakin.</div>
+                                                    <div class="settings-label" data-i18n="ui.motionProfile.label">Animasyon Hızı</div>
+                                                    <div class="settings-sub" data-i18n="ui.motionProfile.hint">Geçiş ve efekt hızını belirler: Hızlı, Dengeli veya Sakin.</div>
                                                 </div>
                                                 <select class="settings-select" id="uiMotionProfileSelect" aria-label="Animation speed">
-                                                    <option value="fast">Hızlı</option>
-                                                    <option value="balanced">Dengeli</option>
-                                                    <option value="calm">Sakin</option>
+                                                    <option value="fast" data-i18n="ui.motionProfile.options.fast">Hızlı</option>
+                                                    <option value="balanced" data-i18n="ui.motionProfile.options.balanced">Dengeli</option>
+                                                    <option value="calm" data-i18n="ui.motionProfile.options.calm">Sakin</option>
                                                 </select>
                                             </div>
                                             <div class="settings-row">
@@ -973,6 +997,25 @@
                                                     <option value="2000" data-i18n="ui.startup.webStartupDelay.options.calm">Sakin (2.0 sn)</option>
                                                 </select>
                                             </div>
+                                            <div class="setting-row">
+                                                <span data-i18n="ui.startup.webAnimationMode.label">Web arayüz animasyonu</span>
+                                                <select class="settings-select" id="behaviorWebAnimationMode">
+                                                    <option value="compact" data-i18n="ui.startup.webAnimationMode.options.compact">Kompakt (mevcut)</option>
+                                                    <option value="dock" data-i18n="ui.startup.webAnimationMode.options.dock">Dock (hover büyütme)</option>
+                                                </select>
+                                            </div>
+                                            <div class="setting-row">
+                                                <span data-i18n="ui.startup.webMotionPreset.label">Web animasyon hızı</span>
+                                                <select class="settings-select" id="behaviorWebMotionPreset">
+                                                    <option value="calm" data-i18n="ui.startup.webMotionPreset.options.calm">Sakin</option>
+                                                    <option value="balanced" data-i18n="ui.startup.webMotionPreset.options.balanced">Dengeli</option>
+                                                    <option value="lively" data-i18n="ui.startup.webMotionPreset.options.lively">Canlı</option>
+                                                </select>
+                                            </div>
+                                            <label class="checkbox-label">
+                                                <input type="checkbox" id="behaviorWebLowPowerMode">
+                                                <span data-i18n="ui.startup.webLowPowerMode.label">Web animasyonları düşük sistem modu</span>
+                                            </label>
                                             <label class="checkbox-label">
                                                 <input type="checkbox" id="behaviorCloseToTray" checked>
                                                 <span data-i18n="ui.startup.closeToTray">Pencereyi kapatınca sistem tepsisine küçült</span>
@@ -1586,18 +1629,20 @@
                             <svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 7h10v3l4-4-4-4v3H5v6h2V7zm10 10H7v-3l-4 4 4 4v-3h12v-6h-2v4z"/></svg>
                         </button>
                     </div>
-                    <div class="controls-right">
-                        <button class="control-btn eq-btn-player" id="eqBtn" title="Ses Efektleri (EQ)" data-i18n-title="controls.eq">
-                            <svg viewBox="0 0 24 24" fill="currentColor">
-                                <path d="M3 17v2h6v-2H3zM3 5v2h10V5H3zm10 16v-2h8v-2h-8v-2h-2v6h2zM7 9v2H3v2h4v2h2V9H7zm14 4v-2H11v2h10zm-6-4h2V7h4V5h-4V3h-2v6z"/>
-                            </svg>
-                        </button>
-                        <button class="control-btn eq-btn-player" id="visualizer-btn" title="Görsel" data-i18n-title="controls.visual">
-                            <svg viewBox="0 0 24 24" fill="currentColor">
-                                <path d="M4 19h2V5H4v14zm4 0h2V9H8v10zm4 0h2V3h-2v16zm4 0h2V7h-2v12z"/>
-                            </svg>
-                            <span class="visually-hidden" data-i18n="controls.visual">Görsel</span>
-                        </button>
+                    <div class="controls-right" id="playerControlsRight">
+                        <div class="web-utility-actions-home" id="webUtilityActionsHome">
+                            <button class="control-btn eq-btn-player" id="eqBtn" title="Ses Efektleri (EQ)" data-i18n-title="controls.eq">
+                                <svg viewBox="0 0 24 24" fill="currentColor">
+                                    <path d="M3 17v2h6v-2H3zM3 5v2h10V5H3zm10 16v-2h8v-2h-8v-2h-2v6h2zM7 9v2H3v2h4v2h2V9H7zm14 4v-2H11v2h10zm-6-4h2V7h4V5h-4V3h-2v6z"/>
+                                </svg>
+                            </button>
+                            <button class="control-btn eq-btn-player" id="visualizer-btn" title="Görsel" data-i18n-title="controls.visual">
+                                <svg viewBox="0 0 24 24" fill="currentColor">
+                                    <path d="M4 19h2V5H4v14zm4 0h2V9H8v10zm4 0h2V3h-2v16zm4 0h2V7h-2v12z"/>
+                                </svg>
+                                <span class="visually-hidden" data-i18n="controls.visual">Görsel</span>
+                            </button>
+                        </div>
                         <button class="control-btn" id="volumeBtn" title="Ses" data-i18n-title="controls.volume">
                             <svg viewBox="0 0 24 24" fill="currentColor" id="volumeIcon"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/></svg>
                         </button>
@@ -2010,9 +2055,35 @@
                         <span class="about-badge-label" data-i18n="about.founderLabel">Kurucu &amp; Baş Geliştirici</span>
                         <span class="about-badge-value">Muhammet Dali</span>
                     </div>
+                    <div class="about-badge subtle">
+                        <span class="about-badge-label" data-i18n="about.badges.appVersion">Uygulama Sürümü</span>
+                        <span class="about-badge-value" id="aboutAppVersionValue">-</span>
+                    </div>
+                    <div class="about-badge subtle">
+                        <span class="about-badge-label" data-i18n="about.badges.electron">Electron</span>
+                        <span class="about-badge-value" id="aboutElectronVersionValue">-</span>
+                    </div>
+                    <div class="about-badge subtle">
+                        <span class="about-badge-label" data-i18n="about.badges.chromium">Chromium</span>
+                        <span class="about-badge-value" id="aboutChromiumVersionValue">-</span>
+                    </div>
+                    <div class="about-badge subtle">
+                        <span class="about-badge-label" data-i18n="about.badges.lastUpdateCheck">Son Güncelleme Kontrolü</span>
+                        <span class="about-badge-value" id="aboutLastUpdateCheckValue">-</span>
+                    </div>
                 </div>
                 <div class="about-features-title" data-i18n="about.featuresTitle">Özellikler ve Şeffaflık</div>
                 <div class="about-sections">
+                    <section class="about-section about-section-updates">
+                        <h4 data-i18n="about.sections.updates.title">Sürüm ve Güncelleme</h4>
+                        <ul class="about-list">
+                            <li data-i18n="about.sections.updates.item1">Uygulama sürümü, Electron ve Chromium sürümü bu pencerede canlı görüntülenir.</li>
+                            <li data-i18n="about.sections.updates.item2">Açılışta güncelleme kontrolü yapılır; yeni sürüm varsa üstte bildirim görünür.</li>
+                            <li data-i18n-html="about.sections.updates.item3">Linux + AUR (aurivo-bin) kurulumunda güncelleme butonu terminal açıp <code>yay -Syu aurivo-bin</code> komutunu çalıştırır.</li>
+                            <li data-i18n="about.sections.updates.item4">Güncelleme başlatıldığında çakışma olmaması için uygulama kapanır.</li>
+                        </ul>
+                    </section>
+
                     <section class="about-section">
                         <h4 data-i18n="about.sections.app.title">Uygulama Özellikleri</h4>
                         <ul class="about-list">

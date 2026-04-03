@@ -1,7 +1,7 @@
 const { app, BrowserWindow, ipcMain, dialog, nativeImage, Tray, Menu, shell, session, screen, globalShortcut } = require('electron');
 const os = require('os');
 const readline = require('readline');
-const { spawn } = require('child_process');
+const { spawn, spawnSync } = require('child_process');
 const path = require('path');
 const fs = require('fs');
 const http = require('http');
@@ -15,6 +15,327 @@ const {
     getDashboardUrl: getAdBlockerDashboardUrl,
     getDashboardLaunchInfo: getAdBlockerDashboardLaunchInfo,
 } = require('./modules/adBlocker');
+let autoUpdater = null;
+try {
+    ({ autoUpdater } = require('electron-updater'));
+} catch (e) {
+    console.warn('[UPDATER] electron-updater yüklenemedi:', e?.message || e);
+}
+
+function getEmbeddedDesktopUserAgentMain() {
+    let osToken = 'X11; Linux x86_64';
+    if (process.platform === 'win32') osToken = 'Windows NT 10.0; Win64; x64';
+    if (process.platform === 'darwin') osToken = 'Macintosh; Intel Mac OS X 10_15_7';
+    // WhatsApp Web için Electron kimliğini gizleyen, modern masaüstü UA.
+    return `Mozilla/5.0 (${osToken}) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36`;
+}
+
+const EMBEDDED_WEBVIEW_UA = getEmbeddedDesktopUserAgentMain();
+const webUaHookedSessions = new WeakSet();
+const appVersionInfo = Object.freeze({
+    appVersion: app.getVersion(),
+    electronVersion: process.versions.electron || '',
+    chromiumVersion: process.versions.chrome || process.versions.chromium || ''
+});
+
+const updateRuntime = {
+    initialized: false,
+    supported: !!autoUpdater,
+    status: 'idle', // idle|checking|available|not-available|downloading|downloaded|error|unsupported
+    currentVersion: appVersionInfo.appVersion,
+    targetVersion: '',
+    releaseNotes: '',
+    progress: 0,
+    checkedAt: 0,
+    lastError: ''
+};
+
+function commandExists(command) {
+    try {
+        const res = spawnSync('bash', ['-lc', `command -v ${String(command || '').trim()}`], {
+            encoding: 'utf8',
+            timeout: 1200
+        });
+        return res.status === 0;
+    } catch {
+        return false;
+    }
+}
+
+function isAurivoBinInstalledViaPacman() {
+    if (process.platform !== 'linux') return false;
+    if (!commandExists('pacman')) return false;
+    try {
+        const res = spawnSync('bash', ['-lc', 'pacman -Q aurivo-bin'], {
+            encoding: 'utf8',
+            timeout: 1800
+        });
+        return res.status === 0;
+    } catch {
+        return false;
+    }
+}
+
+function getLinuxAurUpdateCapabilities() {
+    if (process.platform !== 'linux') {
+        return {
+            aurUpdateSupported: false,
+            aurPackageInstalled: false,
+            hasYay: false
+        };
+    }
+    const hasYay = commandExists('yay');
+    const aurPackageInstalled = hasYay && isAurivoBinInstalledViaPacman();
+    return {
+        aurUpdateSupported: hasYay,
+        aurPackageInstalled,
+        hasYay
+    };
+}
+
+function trySpawnDetached(command, args) {
+    try {
+        const child = spawn(command, args, {
+            detached: true,
+            stdio: 'ignore'
+        });
+        child.unref();
+        return true;
+    } catch {
+        return false;
+    }
+}
+
+function launchAurivoBinUpdateTerminal() {
+    if (process.platform !== 'linux') {
+        return { ok: false, reason: 'unsupported-platform' };
+    }
+    if (!commandExists('yay')) {
+        return { ok: false, reason: 'yay-not-found' };
+    }
+
+    const updateScript = [
+        'printf "\\nAurivo (AUR) guncelleme baslatiliyor...\\n\\n"',
+        'sleep 0.8',
+        'yay -Syu aurivo-bin',
+        'exit_code=$?',
+        'printf "\\nIslem tamamlandi (kod: %s).\\n" "$exit_code"',
+        'printf "Kapatmak icin Enter...\\n"',
+        'read -r _'
+    ].join('; ');
+
+    const attempts = [
+        ['x-terminal-emulator', ['-e', 'bash', '-lc', updateScript]],
+        ['gnome-terminal', ['--', 'bash', '-lc', updateScript]],
+        ['konsole', ['-e', 'bash', '-lc', updateScript]],
+        ['xfce4-terminal', ['--command', `bash -lc '${updateScript.replace(/'/g, `'\\''`)}'`]],
+        ['kitty', ['bash', '-lc', updateScript]],
+        ['alacritty', ['-e', 'bash', '-lc', updateScript]],
+        ['xterm', ['-e', 'bash', '-lc', updateScript]]
+    ];
+
+    for (const [cmd, args] of attempts) {
+        if (!commandExists(cmd)) continue;
+        if (trySpawnDetached(cmd, args)) {
+            return { ok: true, terminal: cmd };
+        }
+    }
+
+    return { ok: false, reason: 'terminal-not-found' };
+}
+
+function snapshotUpdateState() {
+    return {
+        supported: updateRuntime.supported,
+        status: updateRuntime.status,
+        currentVersion: updateRuntime.currentVersion,
+        targetVersion: updateRuntime.targetVersion,
+        releaseNotes: updateRuntime.releaseNotes,
+        progress: updateRuntime.progress,
+        checkedAt: updateRuntime.checkedAt,
+        lastError: updateRuntime.lastError
+    };
+}
+
+function parseReleaseNotesToText(rawNotes) {
+    if (Array.isArray(rawNotes)) {
+        return rawNotes
+            .map((entry) => String(entry?.note || entry?.version || '').trim())
+            .filter(Boolean)
+            .join('\n\n');
+    }
+    if (typeof rawNotes === 'string') return rawNotes.trim();
+    return '';
+}
+
+function broadcastUpdateState(extra = {}) {
+    const payload = {
+        ...snapshotUpdateState(),
+        ...extra,
+        ts: Date.now()
+    };
+    const windows = BrowserWindow.getAllWindows();
+    windows.forEach((win) => {
+        try {
+            if (!win || win.isDestroyed()) return;
+            win.webContents.send('app:update-status', payload);
+        } catch {
+            // yoksay
+        }
+    });
+}
+
+function setUpdateStatus(status, patch = {}) {
+    updateRuntime.status = String(status || updateRuntime.status || 'idle');
+    if (Object.prototype.hasOwnProperty.call(patch, 'targetVersion')) {
+        updateRuntime.targetVersion = String(patch.targetVersion || '').trim();
+    }
+    if (Object.prototype.hasOwnProperty.call(patch, 'releaseNotes')) {
+        updateRuntime.releaseNotes = String(patch.releaseNotes || '').trim();
+    }
+    if (Object.prototype.hasOwnProperty.call(patch, 'progress')) {
+        updateRuntime.progress = Math.max(0, Math.min(100, Number(patch.progress) || 0));
+    }
+    if (Object.prototype.hasOwnProperty.call(patch, 'checkedAt')) {
+        updateRuntime.checkedAt = Number(patch.checkedAt) || 0;
+    }
+    if (Object.prototype.hasOwnProperty.call(patch, 'lastError')) {
+        updateRuntime.lastError = String(patch.lastError || '').trim();
+    }
+    broadcastUpdateState();
+}
+
+function initAutoUpdaterBridge() {
+    if (updateRuntime.initialized) return;
+    updateRuntime.initialized = true;
+
+    if (!autoUpdater) {
+        setUpdateStatus('unsupported', { lastError: 'electron-updater unavailable' });
+        return;
+    }
+
+    try {
+        autoUpdater.autoDownload = false;
+        autoUpdater.autoInstallOnAppQuit = true;
+        autoUpdater.allowDowngrade = false;
+        autoUpdater.logger = console;
+    } catch {
+        // yoksay
+    }
+
+    autoUpdater.on('checking-for-update', () => {
+        setUpdateStatus('checking', {
+            checkedAt: Date.now(),
+            lastError: '',
+            progress: 0
+        });
+    });
+
+    autoUpdater.on('update-available', (info) => {
+        setUpdateStatus('available', {
+            checkedAt: Date.now(),
+            targetVersion: String(info?.version || '').trim(),
+            releaseNotes: parseReleaseNotesToText(info?.releaseNotes),
+            progress: 0,
+            lastError: ''
+        });
+    });
+
+    autoUpdater.on('update-not-available', () => {
+        setUpdateStatus('not-available', {
+            checkedAt: Date.now(),
+            targetVersion: '',
+            releaseNotes: '',
+            progress: 0,
+            lastError: ''
+        });
+    });
+
+    autoUpdater.on('error', (error) => {
+        setUpdateStatus('error', {
+            checkedAt: Date.now(),
+            lastError: String(error?.message || error || 'Unknown updater error').trim()
+        });
+    });
+
+    autoUpdater.on('download-progress', (progressObj) => {
+        setUpdateStatus('downloading', {
+            progress: Number(progressObj?.percent) || 0
+        });
+    });
+
+    autoUpdater.on('update-downloaded', (info) => {
+        setUpdateStatus('downloaded', {
+            targetVersion: String(info?.version || updateRuntime.targetVersion || '').trim(),
+            releaseNotes: parseReleaseNotesToText(info?.releaseNotes) || updateRuntime.releaseNotes,
+            progress: 100
+        });
+    });
+}
+
+async function checkForAppUpdates({ manual = false } = {}) {
+    if (!autoUpdater) {
+        setUpdateStatus('unsupported', {
+            checkedAt: Date.now(),
+            lastError: 'electron-updater unavailable'
+        });
+        return snapshotUpdateState();
+    }
+    if (!app.isPackaged) {
+        setUpdateStatus('unsupported', {
+            checkedAt: Date.now(),
+            lastError: 'Update checks are only available in packaged builds.'
+        });
+        return snapshotUpdateState();
+    }
+    try {
+        if (manual && updateRuntime.status === 'downloading') {
+            return snapshotUpdateState();
+        }
+        await autoUpdater.checkForUpdates();
+        return snapshotUpdateState();
+    } catch (error) {
+        setUpdateStatus('error', {
+            checkedAt: Date.now(),
+            lastError: String(error?.message || error || 'checkForUpdates failed').trim()
+        });
+        return snapshotUpdateState();
+    }
+}
+
+async function downloadAppUpdate() {
+    if (!autoUpdater) {
+        setUpdateStatus('unsupported', { lastError: 'electron-updater unavailable' });
+        return snapshotUpdateState();
+    }
+    if (!app.isPackaged) {
+        setUpdateStatus('unsupported', { lastError: 'Download is only available in packaged builds.' });
+        return snapshotUpdateState();
+    }
+    try {
+        await autoUpdater.downloadUpdate();
+        return snapshotUpdateState();
+    } catch (error) {
+        setUpdateStatus('error', {
+            lastError: String(error?.message || error || 'downloadUpdate failed').trim()
+        });
+        return snapshotUpdateState();
+    }
+}
+
+function installDownloadedUpdate() {
+    if (!autoUpdater) return false;
+    if (updateRuntime.status !== 'downloaded') return false;
+    try {
+        autoUpdater.quitAndInstall(false, true);
+        return true;
+    } catch (error) {
+        setUpdateStatus('error', {
+            lastError: String(error?.message || error || 'quitAndInstall failed').trim()
+        });
+        return false;
+    }
+}
 
 // MPRIS (Linux Medya Oynatıcı Uzaktan Arayüz Spesifikasyonu)
 let Player = null;
@@ -67,6 +388,7 @@ if (app && app.commandLine) {
         app.commandLine.appendSwitch('class', LINUX_WM_CLASS);
     }
     app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
+    app.commandLine.appendSwitch('disable-background-timer-throttling');
 
     // DÜZELTME: WebView'larda çift medya oynatıcıyı önlemek için Chromium MediaSessionService devre dışı
     const disabledFeatures = ['HardwareMediaKeyHandling', 'MediaSessionService'];
@@ -79,6 +401,12 @@ if (app && app.commandLine) {
     app.commandLine.appendSwitch('disable-features', disabledFeatures.join(','));
 } else {
     console.warn('[Startup] app.commandLine not available');
+}
+
+try {
+    app.userAgentFallback = EMBEDDED_WEBVIEW_UA;
+} catch {
+    // yoksay
 }
 
 // Windows 10/11: taskbar/dock ikon eşleştirmesi ve gruplama
@@ -397,6 +725,7 @@ let mainWindow;
 let settingsWindow = null;
 let adblockDashboardWindow = null;
 let adblockDashboardAutoSyncTimer = null;
+let adblockConfigBackgroundSyncTimer = null;
 const ADBLOCK_DASHBOARD_WINDOW_SIZE = Object.freeze({
     width: 1120,
     height: 820,
@@ -442,6 +771,107 @@ let pulseBridgePort = 0;
 const PULSE_BRIDGE_HOST = '127.0.0.1';
 const PULSE_BRIDGE_PATH = '/pulse/open';
 const PULSE_BRIDGE_FALLBACK_PORT = 38947;
+let pendingOpenMediaFiles = [];
+let rendererMediaOpenReady = false;
+
+function normalizeLaunchFilePath(rawPath) {
+    const value = String(rawPath || '').trim();
+    if (!value) return '';
+    if (value.startsWith('--')) return '';
+    if (/^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//.test(value) && !value.startsWith('file://')) return '';
+
+    let decoded = value;
+    if (decoded.startsWith('file://')) {
+        try {
+            decoded = decodeURIComponent(new URL(decoded).pathname || '');
+        } catch {
+            decoded = '';
+        }
+    }
+    if (!decoded) return '';
+
+    const resolvedPath = path.resolve(decoded);
+    try {
+        if (!fs.existsSync(resolvedPath)) return '';
+        const stat = fs.statSync(resolvedPath);
+        if (!stat?.isFile?.()) return '';
+        return resolvedPath;
+    } catch {
+        return '';
+    }
+}
+
+function extractMediaPathsFromArgv(argv) {
+    if (!Array.isArray(argv) || !argv.length) return [];
+    const out = [];
+    argv.forEach((arg, index) => {
+        // İlk argüman çoğunlukla executable yoludur.
+        if (index === 0) return;
+        const normalized = normalizeLaunchFilePath(arg);
+        if (normalized && !out.includes(normalized)) out.push(normalized);
+    });
+    return out;
+}
+
+function queuePendingOpenMediaFiles(paths) {
+    const list = Array.isArray(paths) ? paths : [];
+    list.forEach((item) => {
+        const normalized = normalizeLaunchFilePath(item);
+        if (!normalized) return;
+        if (!pendingOpenMediaFiles.includes(normalized)) {
+            pendingOpenMediaFiles.push(normalized);
+        }
+    });
+}
+
+function focusMainWindow() {
+    if (!mainWindow || mainWindow.isDestroyed()) return;
+    try {
+        if (mainWindow.isMinimized()) mainWindow.restore();
+        mainWindow.show();
+        mainWindow.focus();
+    } catch {
+        // yoksay
+    }
+}
+
+function dispatchPendingOpenMediaFiles() {
+    if (!rendererMediaOpenReady) return false;
+    if (!mainWindow || mainWindow.isDestroyed()) return false;
+    if (!pendingOpenMediaFiles.length) return false;
+    try {
+        const payload = pendingOpenMediaFiles.slice();
+        pendingOpenMediaFiles = [];
+        mainWindow.webContents.send('app:open-media-files', { paths: payload });
+        return true;
+    } catch (e) {
+        console.warn('[OPEN_MEDIA] dispatch error:', e?.message || e);
+        return false;
+    }
+}
+
+const gotSingleInstanceLock = app.requestSingleInstanceLock();
+if (!gotSingleInstanceLock) {
+    app.exit(0);
+}
+
+app.on('second-instance', (_event, argv) => {
+    const paths = extractMediaPathsFromArgv(argv);
+    if (paths.length) {
+        queuePendingOpenMediaFiles(paths);
+        dispatchPendingOpenMediaFiles();
+    }
+    focusMainWindow();
+});
+
+app.on('open-file', (event, filePath) => {
+    event.preventDefault();
+    queuePendingOpenMediaFiles([filePath]);
+    dispatchPendingOpenMediaFiles();
+    focusMainWindow();
+});
+
+queuePendingOpenMediaFiles(extractMediaPathsFromArgv(process.argv));
 
 async function getPerformanceSnapshot() {
     const snapshot = {
@@ -2273,7 +2703,15 @@ const WEB_ALLOWED_HOSTS_MAIN = new Set([
     'www.reddit.com',
     'old.reddit.com',
     'twitch.tv',
-    'www.twitch.tv'
+    'www.twitch.tv',
+    'whatsapp.com',
+    'www.whatsapp.com',
+    'web.whatsapp.com',
+    'telegram.org',
+    'www.telegram.org',
+    'web.telegram.org',
+    't.me',
+    'www.t.me'
 ]);
 
 const WEB_ALLOWED_SUFFIXES_MAIN = [
@@ -2288,7 +2726,9 @@ const WEB_ALLOWED_SUFFIXES_MAIN = [
     '.x.com',
     '.twitter.com',
     '.reddit.com',
-    '.twitch.tv'
+    '.twitch.tv',
+    '.whatsapp.com',
+    '.telegram.org'
 ];
 
 function parseHttpUrlMain(raw) {
@@ -2880,6 +3320,7 @@ async function updateEq32SettingsInFile(patch) {
 
 function createWindow() {
     refreshMainWindowBehaviorSettingsSync();
+    rendererMediaOpenReady = false;
 
     let rendererRecoveryAttempts = 0;
     mainWindow = new BrowserWindow({
@@ -2892,6 +3333,9 @@ function createWindow() {
             nodeIntegration: false,
             contextIsolation: true,
             sandbox: false,  // Preload'da Node.js modülleri için gerekli
+            // Medya oynatım zamanlayıcıları arka planda da akıcı çalışsın.
+            // Aksi halde track-end / next-track akışı gizli pencerede gecikebiliyor.
+            backgroundThrottling: false,
             webviewTag: true,  // WebView desteği
             plugins: true, // DRM/CDM tabanlı web oynatıcılar için gerekli olabilir
             spellcheck: false
@@ -3946,73 +4390,82 @@ function startVisualizerFeed() {
     };
 
     const tick = () => {
+        let shouldStop = false;
         try {
             if (!visualizerProc || visualizerProc.killed || !visualizerProc.stdin || visualizerProc.stdin.destroyed) {
-                stopVisualizerFeed();
-                return;
+                shouldStop = true;
             }
-            if (!visualizerProc.stdin.writable) {
-                stopVisualizerFeed();
-                return;
+            if (!shouldStop && !visualizerProc.stdin.writable) {
+                shouldStop = true;
             }
+            if (!shouldStop) {
+                let skipWrite = false;
 
-            // Native ses motorundan kanallar arası (interleaved) float PCM al.
-            // Video/WebAudio yolunda veri yoksa, renderer'dan gelen spektrumdan fallback PCM üret.
-            const fallback = buildVisualizerVideoPcmFallback(requestedFramesPerChannel);
-            const fallbackFrame = visualizerVideoSpectrumFrame;
-            const shouldPreferFallback = !!(
-                fallback &&
-                fallbackFrame &&
-                (fallbackFrame.sourceMode === 'video' || fallbackFrame.sourceMode === 'web')
-            );
+                // Native ses motorundan kanallar arası (interleaved) float PCM al.
+                // Video/WebAudio yolunda veri yoksa, renderer'dan gelen spektrumdan fallback PCM üret.
+                const fallback = buildVisualizerVideoPcmFallback(requestedFramesPerChannel);
+                const fallbackFrame = visualizerVideoSpectrumFrame;
+                const shouldPreferFallback = !!(
+                    fallback &&
+                    fallbackFrame &&
+                    (fallbackFrame.sourceMode === 'video' || fallbackFrame.sourceMode === 'web')
+                );
 
-            let pcmRes = shouldPreferFallback
-                ? fallback
-                : audioEngine.getPCMData(requestedFramesPerChannel);
-            if (!pcmRes || !pcmRes.data || pcmRes.data.length === 0) {
-                if (fallback) {
-                    pcmRes = fallback;
-                } else {
-                    if (visualizerFeedStats) visualizerFeedStats.noData++;
-                    return;
+                let pcmRes = shouldPreferFallback
+                    ? fallback
+                    : audioEngine.getPCMData(requestedFramesPerChannel);
+                if (!pcmRes || !pcmRes.data || pcmRes.data.length === 0) {
+                    if (fallback) {
+                        pcmRes = fallback;
+                    } else {
+                        if (visualizerFeedStats) visualizerFeedStats.noData++;
+                        skipWrite = true;
+                    }
                 }
-            }
 
-            let channels = Number(pcmRes.channels) || 0;
-            if (channels <= 0) return;
-            if (channels > 2) channels = 2;
+                if (!skipWrite) {
+                    let channels = Number(pcmRes.channels) || 0;
+                    if (channels <= 0) {
+                        if (visualizerFeedStats) visualizerFeedStats.noData++;
+                        skipWrite = true;
+                    } else {
+                        if (channels > 2) channels = 2;
 
-            let floatArray = (pcmRes.data instanceof Float32Array) ? pcmRes.data : Float32Array.from(pcmRes.data);
-            const countPerChannel = Math.floor(floatArray.length / channels);
-            if (countPerChannel <= 0) {
-                if (visualizerFeedStats) visualizerFeedStats.noData++;
-                return;
-            }
-            const floatCount = countPerChannel * channels;
-            if (floatCount !== floatArray.length) {
-                floatArray = floatArray.subarray(0, floatCount);
-            }
+                        let floatArray = (pcmRes.data instanceof Float32Array) ? pcmRes.data : Float32Array.from(pcmRes.data);
+                        const countPerChannel = Math.floor(floatArray.length / channels);
+                        if (countPerChannel <= 0) {
+                            if (visualizerFeedStats) visualizerFeedStats.noData++;
+                            skipWrite = true;
+                        } else {
+                            const floatCount = countPerChannel * channels;
+                            if (floatCount !== floatArray.length) {
+                                floatArray = floatArray.subarray(0, floatCount);
+                            }
 
-            // Protokol v2: [u32 channels][u32 countPerChannel][float32 * (channels*countPerChannel)]
-            const header = Buffer.allocUnsafe(8);
-            header.writeUInt32LE(channels, 0);
-            header.writeUInt32LE(countPerChannel, 4);
+                            // Protokol v2: [u32 channels][u32 countPerChannel][float32 * (channels*countPerChannel)]
+                            const header = Buffer.allocUnsafe(8);
+                            header.writeUInt32LE(channels, 0);
+                            header.writeUInt32LE(countPerChannel, 4);
 
-            const payload = Buffer.from(floatArray.buffer, floatArray.byteOffset, floatCount * 4);
+                            const payload = Buffer.from(floatArray.buffer, floatArray.byteOffset, floatCount * 4);
 
-            // Geri basınç olursa kare atla.
-            const ok1 = visualizerProc.stdin.write(header);
-            const ok2 = visualizerProc.stdin.write(payload);
-            if (!ok1 || !ok2) {
-                // Drain beklemeyelim; bir sonraki tick'te tekrar deneriz.
-                if (visualizerFeedStats) visualizerFeedStats.backpressure++;
-            }
-            if (visualizerFeedStats) {
-                visualizerFeedStats.packets++;
-                visualizerFeedStats.bytes += header.length + payload.length;
-                if (!visualizerFeedStats.firstWriteOk) {
-                    visualizerFeedStats.firstWriteOk = true;
-                    console.log('[Visualizer] PCM pipe active (first write ok)');
+                            // Geri basınç olursa kare atla.
+                            const ok1 = visualizerProc.stdin.write(header);
+                            const ok2 = visualizerProc.stdin.write(payload);
+                            if (!ok1 || !ok2) {
+                                // Drain beklemeyelim; bir sonraki tick'te tekrar deneriz.
+                                if (visualizerFeedStats) visualizerFeedStats.backpressure++;
+                            }
+                            if (visualizerFeedStats) {
+                                visualizerFeedStats.packets++;
+                                visualizerFeedStats.bytes += header.length + payload.length;
+                                if (!visualizerFeedStats.firstWriteOk) {
+                                    visualizerFeedStats.firstWriteOk = true;
+                                    console.log('[Visualizer] PCM pipe active (first write ok)');
+                                }
+                            }
+                        }
+                    }
                 }
             }
         } catch (e) {
@@ -4034,6 +4487,10 @@ function startVisualizerFeed() {
                     drops: visualizerFeedStats.drops
                 });
             }
+        }
+        if (shouldStop) {
+            stopVisualizerFeed();
+            return;
         }
         if (visualizerProc && !visualizerProc.killed) {
             visualizerFeedTimer = setTimeout(tick, getVisualizerFeedIntervalMs());
@@ -4426,6 +4883,63 @@ ipcMain.handle('app:relaunch', async () => {
     }
 });
 
+ipcMain.handle('app:consumePendingOpenMediaFiles', async () => {
+    const payload = pendingOpenMediaFiles.slice();
+    pendingOpenMediaFiles = [];
+    return payload;
+});
+
+ipcMain.on('app:renderer-media-open-ready', () => {
+    rendererMediaOpenReady = true;
+    dispatchPendingOpenMediaFiles();
+});
+
+ipcMain.handle('app:getVersionInfo', async () => {
+    const aur = getLinuxAurUpdateCapabilities();
+    return {
+        ...appVersionInfo,
+        update: snapshotUpdateState(),
+        aur
+    };
+});
+
+ipcMain.handle('app:update:getState', async () => {
+    return snapshotUpdateState();
+});
+
+ipcMain.handle('app:update:check', async (_event, options) => {
+    const manual = options?.manual !== false;
+    return checkForAppUpdates({ manual });
+});
+
+ipcMain.handle('app:update:download', async () => {
+    return downloadAppUpdate();
+});
+
+ipcMain.handle('app:update:install', async () => {
+    return installDownloadedUpdate();
+});
+
+ipcMain.handle('app:update:launchAurivoBinUpdate', async () => {
+    const result = launchAurivoBinUpdateTerminal();
+    if (!result?.ok) {
+        return result;
+    }
+    try {
+        // Terminal açıldıktan sonra uygulamayı tamamen kapat.
+        stopVisualizer();
+    } catch {
+        // yoksay
+    }
+    setTimeout(() => {
+        try { app.quit(); } catch { }
+        setTimeout(() => {
+            try { app.exit(0); } catch { }
+        }, 700);
+    }, 220);
+    return result;
+});
+
 // ============================================
 // PENCERE KONTROL IPC HANDLERS
 // ============================================
@@ -4505,6 +5019,29 @@ function installWebviewHardening() {
     try {
         const webSessions = getWebSessions();
         for (const ses of webSessions) {
+            if (ses && !webUaHookedSessions.has(ses) && ses.webRequest && typeof ses.webRequest.onBeforeSendHeaders === 'function') {
+                try {
+                    ses.webRequest.onBeforeSendHeaders(
+                        {
+                            urls: [
+                                'https://web.whatsapp.com/*',
+                                'https://*.whatsapp.com/*',
+                                'https://web.telegram.org/*',
+                                'https://*.telegram.org/*'
+                            ]
+                        },
+                        (details, callback) => {
+                            const requestHeaders = { ...(details?.requestHeaders || {}) };
+                            requestHeaders['User-Agent'] = EMBEDDED_WEBVIEW_UA;
+                            requestHeaders['user-agent'] = EMBEDDED_WEBVIEW_UA;
+                            callback({ requestHeaders });
+                        }
+                    );
+                    webUaHookedSessions.add(ses);
+                } catch {
+                    // yoksay
+                }
+            }
             if (ses && typeof ses.setPermissionRequestHandler === 'function') {
                 ses.setPermissionRequestHandler((webContents, permission, callback, details) => {
                     const wcType = webContents?.getType?.();
@@ -4565,6 +5102,11 @@ function installWebviewHardening() {
     app.on('web-contents-created', (_event, contents) => {
         const type = contents.getType?.();
         if (type !== 'webview') return;
+        try {
+            contents.setUserAgent(EMBEDDED_WEBVIEW_UA);
+        } catch {
+            // yoksay
+        }
 
         // Block opening arbitrary external windows from embedded web content.
         if (typeof contents.setWindowOpenHandler === 'function') {
@@ -4630,19 +5172,29 @@ function installTlsCompatibilityForWebPlatforms() {
 }
 
 app.whenReady().then(async () => {
+    if (!gotSingleInstanceLock) return;
     // GPU ayarları burada uygula
     app.commandLine.appendSwitch('enable-gpu-rasterization');
     app.commandLine.appendSwitch('enable-zero-copy');
 
     try { installWebviewHardening(); } catch (e) { console.error('[APP] installWebviewHardening error:', e); }
     try { installTlsCompatibilityForWebPlatforms(); } catch (e) { console.error('[APP] installTlsCompatibilityForWebPlatforms error:', e); }
+    try { initAutoUpdaterBridge(); } catch (e) { console.error('[APP] initAutoUpdaterBridge error:', e); }
     try { installAppMenu(); } catch (e) { console.error('[APP] installAppMenu error:', e); }
     try { registerDawlodIpc({ ipcMain, app, dialog, shell, BrowserWindow, getMainWindow: () => mainWindow }); } catch (e) { console.error('[APP] registerDawlodIpc error:', e); }
     try { await initAdBlocker(session, { app, webviewPartition: WEBVIEW_PARTITION, includeDefaultSession: true, preferUbol: true, enabled: true, useExtension: true }); } catch (e) { console.error('[APP] initAdBlocker error:', e); }
+    try { scheduleAdblockConfigBackgroundSync(WEBVIEW_PARTITION); } catch (e) { console.error('[APP] scheduleAdblockConfigBackgroundSync error:', e); }
     try { startPulseBridgeServer(); } catch (e) { console.error('[APP] startPulseBridgeServer error:', e); }
     try { createWindow(); } catch (e) { console.error('[APP] createWindow error:', e); }
     try { createTray(); } catch (e) { console.error('[APP] createTray error:', e); }
     try { createMPRIS(); } catch (e) { console.error('[APP] createMPRIS error:', e); }
+    try {
+        setTimeout(() => {
+            checkForAppUpdates({ manual: false }).catch(() => {});
+        }, 3200);
+    } catch (e) {
+        console.error('[APP] startup update check error:', e);
+    }
     try { refreshGlobalMediaShortcuts(await readSettingsFileSafe()); } catch (e) { console.error('[APP] media shortcut init error:', e); }
 
     // Kayıtlı EQ32 presetini açılışta uygula
@@ -5033,6 +5585,9 @@ ipcMain.handle('adblock:setConfig', (_event, config) => {
         const next = setAdBlockerConfig(config || {});
         if (adblockDashboardWindow && !adblockDashboardWindow.isDestroyed()) {
             syncAdblockConfigToDashboard(adblockDashboardWindow).catch(() => {});
+            ensureAdblockDefaultFilteringDetails(adblockDashboardWindow).catch(() => {});
+        } else {
+            scheduleAdblockConfigBackgroundSync();
         }
         return next;
     } catch { return null; }
@@ -5624,6 +6179,40 @@ async function ensureAdblockDashboardVisibleContent(win) {
     }
 }
 
+async function waitForAdblockDashboardUiReady(win, timeoutMs = 2500) {
+    const startedAt = Date.now();
+    while ((Date.now() - startedAt) < timeoutMs) {
+        try {
+            if (!win || win.isDestroyed()) return false;
+            const wc = win.webContents;
+            if (!wc || wc.isDestroyed()) return false;
+            const probe = await wc.executeJavaScript(`
+                (() => {
+                    try {
+                        const hasDashboardUi = !!document.querySelector(
+                            '#dashboard-nav, #defaultFilteringMode, .filteringModeCard, .dashboard'
+                        );
+                        const hasPopupUi = !!document.querySelector(
+                            '#moreButton, .popupPanel, .filteringModeSlider'
+                        );
+                        const textLen = String(document.body?.innerText || '').trim().length;
+                        return { hasDashboardUi, hasPopupUi, textLen };
+                    } catch {
+                        return { hasDashboardUi: false, hasPopupUi: false, textLen: 0 };
+                    }
+                })();
+            `, true);
+            if (probe?.hasDashboardUi || probe?.hasPopupUi || Number(probe?.textLen || 0) > 0) {
+                return true;
+            }
+        } catch {
+            // yoksay
+        }
+        await new Promise((resolve) => setTimeout(resolve, 120));
+    }
+    return false;
+}
+
 function resolveAdblockDashboardUrlFallback(preferredPartition = '') {
     const getSessionExtensionsApiMain = (ses) => {
         return (ses && typeof ses === 'object' && ses.extensions && typeof ses.extensions === 'object')
@@ -5800,6 +6389,77 @@ async function ensureAdblockDashboardLaunchInfo(preferredPartition = '') {
     return resolveAdblockDashboardUrlFallback(partitionToTry);
 }
 
+async function syncAdblockConfigInBackground(preferredPartition = '') {
+    try {
+        if (adblockDashboardWindow && !adblockDashboardWindow.isDestroyed()) {
+            await syncAdblockConfigToDashboard(adblockDashboardWindow);
+            await ensureAdblockDefaultFilteringDetails(adblockDashboardWindow);
+            return true;
+        }
+
+        const launchInfo = await ensureAdblockDashboardLaunchInfo(preferredPartition || WEBVIEW_PARTITION);
+        const dashboardUrl = String(launchInfo?.url || '').trim();
+        const targetPartition = String(launchInfo?.partition || preferredPartition || WEBVIEW_PARTITION).trim() || WEBVIEW_PARTITION;
+        if (!dashboardUrl) return false;
+
+        const backgroundWin = new BrowserWindow({
+            width: 860,
+            height: 680,
+            show: false,
+            focusable: false,
+            skipTaskbar: true,
+            autoHideMenuBar: true,
+            backgroundColor: '#0f0f0f',
+            webPreferences: {
+                partition: targetPartition,
+                nodeIntegration: false,
+                contextIsolation: true,
+                sandbox: false,
+                webSecurity: true
+            }
+        });
+
+        try {
+            backgroundWin.setMenuBarVisibility(false);
+            backgroundWin.setMenu(null);
+        } catch { }
+
+        try {
+            try {
+                await backgroundWin.loadURL(dashboardUrl);
+            } catch {
+                const fallbackUrl = dashboardUrl.replace('/dashboard.html', '/popup.html');
+                await backgroundWin.loadURL(fallbackUrl);
+            }
+            await ensureAdblockDashboardVisibleContent(backgroundWin);
+            await syncAdblockConfigToDashboard(backgroundWin);
+            await ensureAdblockDefaultFilteringDetails(backgroundWin);
+            return true;
+        } finally {
+            try {
+                if (!backgroundWin.isDestroyed()) {
+                    backgroundWin.destroy();
+                }
+            } catch { }
+        }
+    } catch {
+        return false;
+    }
+}
+
+function scheduleAdblockConfigBackgroundSync(preferredPartition = '') {
+    try {
+        if (adblockConfigBackgroundSyncTimer) {
+            clearTimeout(adblockConfigBackgroundSyncTimer);
+            adblockConfigBackgroundSyncTimer = null;
+        }
+    } catch { }
+    adblockConfigBackgroundSyncTimer = setTimeout(() => {
+        adblockConfigBackgroundSyncTimer = null;
+        syncAdblockConfigInBackground(preferredPartition).catch(() => {});
+    }, 180);
+}
+
 ipcMain.handle('adblock:openDashboard', async () => {
     try {
         const launchInfo = getAdBlockerDashboardLaunchInfo?.() || {};
@@ -5919,28 +6579,46 @@ ipcMain.handle('adblock:openDashboard', async () => {
             event.preventDefault();
             try { adblockDashboardWindow.setTitle('Aurivo'); } catch { }
         });
+        let adblockDashboardShowInProgress = false;
+        const finalizeAndShowAdblockDashboard = async () => {
+            if (adblockDashboardShowInProgress) return;
+            adblockDashboardShowInProgress = true;
+            try {
+                if (!adblockDashboardWindow || adblockDashboardWindow.isDestroyed()) return;
+                try {
+                    adblockDashboardWindow.setMenuBarVisibility(false);
+                    adblockDashboardWindow.setMenu(null);
+                } catch { }
+                await ensureAdblockDashboardVisibleContent(adblockDashboardWindow);
+                const uiReady = await waitForAdblockDashboardUiReady(adblockDashboardWindow, 2600);
+                if (!uiReady) {
+                    try {
+                        const currentUrl = String(adblockDashboardWindow.webContents?.getURL?.() || '').trim();
+                        if (/\/dashboard\.html(?:[#?]|$)/i.test(currentUrl)) {
+                            await adblockDashboardWindow.loadURL(currentUrl.replace('/dashboard.html', '/popup.html'));
+                            await waitForAdblockDashboardUiReady(adblockDashboardWindow, 1200);
+                        }
+                    } catch { }
+                }
+                await applyAdblockDashboardBranding(adblockDashboardWindow, uiLang);
+                await ensureAdblockDefaultFilteringDetails(adblockDashboardWindow);
+                await syncAdblockStateFromDashboardToApp(adblockDashboardWindow);
+                startAdblockDashboardAutoSync(adblockDashboardWindow);
+                if (!adblockDashboardWindow.isVisible()) adblockDashboardWindow.show();
+                adblockDashboardWindow.focus();
+            } catch {
+                // yoksay
+            } finally {
+                adblockDashboardShowInProgress = false;
+            }
+        };
+
         adblockDashboardWindow.webContents.on('did-finish-load', () => {
             try {
                 adblockDashboardWindow.setMenuBarVisibility(false);
                 adblockDashboardWindow.setMenu(null);
             } catch { }
-            ensureAdblockDashboardVisibleContent(adblockDashboardWindow).catch(() => {});
-            applyAdblockDashboardBranding(adblockDashboardWindow, uiLang).catch(() => {});
-            ensureAdblockDefaultFilteringDetails(adblockDashboardWindow).catch(() => {});
-            syncAdblockStateFromDashboardToApp(adblockDashboardWindow).catch(() => {});
-            startAdblockDashboardAutoSync(adblockDashboardWindow);
-            try {
-                if (!adblockDashboardWindow.isVisible()) {
-                    adblockDashboardWindow.show();
-                }
-            } catch { }
-        });
-        adblockDashboardWindow.once('ready-to-show', () => {
-            try {
-                if (!adblockDashboardWindow.isVisible()) {
-                    adblockDashboardWindow.show();
-                }
-            } catch { }
+            finalizeAndShowAdblockDashboard().catch(() => {});
         });
 
         try {
@@ -5949,13 +6627,7 @@ ipcMain.handle('adblock:openDashboard', async () => {
             const fallbackUrl = dashboardUrl.replace('/dashboard.html', '/popup.html');
             await adblockDashboardWindow.loadURL(fallbackUrl);
         }
-        await ensureAdblockDashboardVisibleContent(adblockDashboardWindow);
-        await applyAdblockDashboardBranding(adblockDashboardWindow, uiLang);
-        await ensureAdblockDefaultFilteringDetails(adblockDashboardWindow);
-        await syncAdblockStateFromDashboardToApp(adblockDashboardWindow);
-        startAdblockDashboardAutoSync(adblockDashboardWindow);
-        if (!adblockDashboardWindow.isVisible()) adblockDashboardWindow.show();
-        adblockDashboardWindow.focus();
+        await finalizeAndShowAdblockDashboard();
         return true;
     } catch (e) {
         console.error('[ADBLOCK] openDashboard error:', e);

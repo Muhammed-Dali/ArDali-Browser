@@ -45,6 +45,9 @@ let cachedHardwareProfile = null;
 const appearanceSyncChannel = typeof BroadcastChannel === 'function'
     ? new BroadcastChannel('aurivo-ui-appearance-sync')
     : null;
+const externalMediaRecentOpenMap = new Map();
+const externalMediaOpenQueue = [];
+let externalMediaOpenDrainActive = false;
 
 function isStandaloneSettingsMode() {
     return forcedStandaloneSettingsMode;
@@ -547,7 +550,7 @@ let useNativeAudio = false;
 const state = {
     currentPage: 'files',
     currentPanel: 'library',
-    webDrawerCollapsed: false,
+    webDrawerCollapsed: true,
     playlist: [],
     currentIndex: -1,
     isPlaying: false,
@@ -575,6 +578,9 @@ const state = {
     // Native ses durumu
     nativePositionTimer: null,
     nativePositionGeneration: 0,
+    nativeLastPosMs: 0,
+    nativeLastAdvanceAt: 0,
+    nativeTailStallSince: 0,
     // MPRIS takibi
     lastMPRISPosition: -1,
     // Sekme bazlı konum hafızası
@@ -681,6 +687,33 @@ const webPlatformRuntime = {
     startupLazyTimer: null,
     startupLazyArmed: false
 };
+const webPlatformLayoutRuntime = {
+    dockedToNav: false
+};
+const webSidebarActionsRuntime = {
+    dockedToSidebar: false
+};
+const webPlatformDockRuntime = {
+    rafId: 0,
+    lastClientX: NaN,
+    hovering: false,
+    spotlightVisible: false
+};
+const appUpdateRuntime = {
+    status: 'idle',
+    targetVersion: '',
+    releaseNotes: '',
+    progress: 0,
+    checkedAt: 0,
+    lastError: '',
+    currentVersion: '',
+    electronVersion: '',
+    chromiumVersion: '',
+    supported: false,
+    aurUpdateSupported: false,
+    aurPackageInstalled: false,
+    unsubStatus: null
+};
 const pulseQuickRuntime = {
     running: false,
     searching: false,
@@ -778,11 +811,11 @@ function getAdblockWebModeProfile() {
         };
     }
     return {
-        tickIntervalMs: 120,
+        tickIntervalMs: 75,
         uiScrubLevel: 1,
         deepSponsoredScan: true,
-        adSignalLevel: 1,
-        forceSeekAds: false
+        adSignalLevel: 2,
+        forceSeekAds: true
     };
 }
 
@@ -929,8 +962,13 @@ function ensureMainShellVisible() {
 }
 
 document.addEventListener('DOMContentLoaded', async () => {
-    ensureMainShellVisible();
     cacheElements();
+    initAppUpdateUi().catch(() => {});
+    window.aurivo?.onOpenMediaFiles?.((paths) => {
+        enqueueExternalMediaOpen(paths).catch((e) => {
+            console.warn('[OPEN_MEDIA] live open error:', e?.message || e);
+        });
+    });
     window.addEventListener('storage', (event) => {
         if (event.key === 'aurivo_ui_sfx_lights_enabled') {
             applySfxLightsShadowState(event.newValue !== '0');
@@ -958,6 +996,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     window.aurivo?.onSettingsReload?.(async (nextSettings) => {
         if (!nextSettings || typeof nextSettings !== 'object') return;
         const prevLibrarySignature = getLibrarySettingsSyncSignature(state.settings);
+        const prevAdblockSnapshot = {
+            mode: normalizeAdblockMode(state.settings?.adblock?.mode),
+            autoRefreshOnModeChange: !!state.settings?.adblock?.autoRefreshOnModeChange,
+            strictBlock: !!state.settings?.adblock?.strictBlock,
+            developerMode: !!state.settings?.adblock?.developerMode
+        };
         state.settings = nextSettings;
         if (Date.now() < suppressSettingsReloadUiUntil) {
             return;
@@ -967,6 +1011,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         // Ayarlar farklı pencereden kaydedildiğinde ana pencerede görünümü anında uygula.
         applyAppearanceSettingsToRuntime();
         applySecuritySettingsToRuntime();
+        applyWebUiClasses();
         await syncLibraryWatchState();
         const nextLibrarySignature = getLibrarySettingsSyncSignature(state.settings);
         if (prevLibrarySignature !== nextLibrarySignature) {
@@ -975,6 +1020,26 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (isStandaloneSettingsMode() || isPageVisible(elements.settingsPage)) {
             loadSettingsToUI();
             activateSettingsTab(activeSettingsTab);
+        }
+        const nextAdblockSnapshot = {
+            mode: normalizeAdblockMode(state.settings?.adblock?.mode),
+            autoRefreshOnModeChange: !!state.settings?.adblock?.autoRefreshOnModeChange,
+            strictBlock: !!state.settings?.adblock?.strictBlock,
+            developerMode: !!state.settings?.adblock?.developerMode
+        };
+        const adblockModeChanged = prevAdblockSnapshot.mode !== nextAdblockSnapshot.mode;
+        const adblockRuntimeChanged =
+            adblockModeChanged ||
+            prevAdblockSnapshot.strictBlock !== nextAdblockSnapshot.strictBlock ||
+            prevAdblockSnapshot.developerMode !== nextAdblockSnapshot.developerMode;
+        const isWebActive = state.currentPage === 'web' || state.activeMedia === 'web';
+        if (adblockRuntimeChanged && nextAdblockSnapshot.autoRefreshOnModeChange && isWebActive && elements.webView) {
+            reloadWebViewForAdblock('settings:reloaded', {
+                prevMode: prevAdblockSnapshot.mode,
+                nextMode: nextAdblockSnapshot.mode,
+                strictBlock: nextAdblockSnapshot.strictBlock,
+                developerMode: nextAdblockSnapshot.developerMode
+            });
         }
         if (state.currentPage === 'web' || state.activeMedia === 'web' || state.currentPage === 'video' || state.activeMedia === 'video') {
             scheduleApplyWebDaliEngine('settings-reload', 120);
@@ -1008,6 +1073,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
         setupStandaloneSettingsEventListeners();
         await enterStandaloneSettingsMode(STANDALONE_ARG_TAB || STANDALONE_SETTINGS_DEFAULT_TAB || 'playback');
+        ensureMainShellVisible();
         resumeSettingsBackgroundWork();
         return;
     }
@@ -1056,8 +1122,18 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     });
     restoreLastMainSection();
+    preloadLastWebPlatformOnStartup();
+    // Son kapatılan sekme geri yüklendikten sonra ana kabuğu göster:
+    // açılışta anlık "yanlış sekme" parlamasını engeller.
+    ensureMainShellVisible();
     await restoreLibraryStartupState();
-    await restorePlaybackStartupState();
+    const openedByStartupMedia = await enqueueExternalMediaOpen(
+        await window.aurivo?.app?.consumePendingOpenMediaFiles?.() || []
+    );
+    if (!openedByStartupMedia) {
+        await restorePlaybackStartupState();
+    }
+    window.aurivo?.app?.notifyMediaOpenReady?.();
     // Başlangıçta UI'yı hızlı göstermek için ağır kütüphane taramasını gecikmeli başlat.
     // İlk açılışta CPU sıçramasını ve takılma hissini azaltır.
     scheduleStartupLibraryScan();
@@ -1286,6 +1362,26 @@ function cacheElements() {
     elements.aboutModalOverlay = document.getElementById('aboutModalOverlay');
     elements.aboutCloseBtn = document.getElementById('aboutCloseBtn');
     elements.aboutGithubBtn = document.getElementById('aboutGithubBtn');
+    elements.aboutCheckUpdateBtn = document.getElementById('aboutCheckUpdateBtn');
+    elements.aboutAppVersionValue = document.getElementById('aboutAppVersionValue');
+    elements.aboutElectronVersionValue = document.getElementById('aboutElectronVersionValue');
+    elements.aboutChromiumVersionValue = document.getElementById('aboutChromiumVersionValue');
+    elements.aboutLastUpdateCheckValue = document.getElementById('aboutLastUpdateCheckValue');
+    elements.updateModalOverlay = document.getElementById('updateModalOverlay');
+    elements.updateModalClose = document.getElementById('updateModalClose');
+    elements.updateCloseBtn = document.getElementById('updateCloseBtn');
+    elements.updateActionBtn = document.getElementById('updateActionBtn');
+    elements.updateStatusText = document.getElementById('updateStatusText');
+    elements.updateVersionText = document.getElementById('updateVersionText');
+    elements.updateProgressWrap = document.getElementById('updateProgressWrap');
+    elements.updateProgressFill = document.getElementById('updateProgressFill');
+    elements.updateProgressText = document.getElementById('updateProgressText');
+    elements.updateNotesText = document.getElementById('updateNotesText');
+    elements.updateBanner = document.getElementById('updateBanner');
+    elements.updateBannerText = document.getElementById('updateBannerText');
+    elements.updateBannerDetailsBtn = document.getElementById('updateBannerDetailsBtn');
+    elements.updateBannerUpdateBtn = document.getElementById('updateBannerUpdateBtn');
+    elements.updateBannerDismissBtn = document.getElementById('updateBannerDismissBtn');
 
     // Paneller
     elements.leftPanel = document.getElementById('leftPanel');
@@ -1302,6 +1398,17 @@ function cacheElements() {
 
     // Web Platformları
     elements.platformBtns = document.querySelectorAll('.platform-btn');
+    elements.platformBtns.forEach((btn) => {
+        const label = btn.querySelector('span')?.textContent?.trim() || String(btn.dataset.platform || 'Platform');
+        btn.dataset.platformLabel = label;
+        btn.setAttribute('aria-label', label);
+        btn.setAttribute('title', label);
+    });
+    elements.webPlatformsContainer = document.querySelector('#webPanel .web-platforms');
+    elements.navPlatformStrip = document.getElementById('navPlatformStrip');
+    elements.sidebarWebQuickActions = document.getElementById('sidebarWebQuickActions');
+    elements.webUtilityActionsHome = document.getElementById('webUtilityActionsHome');
+    elements.playerControlsRight = document.getElementById('playerControlsRight');
 
     // Gezinti
     elements.backBtn = document.getElementById('backBtn');
@@ -1511,6 +1618,9 @@ function cacheElements() {
     elements.behaviorRememberLastSection = document.getElementById('behaviorRememberLastSection');
     elements.behaviorStartupPage = document.getElementById('behaviorStartupPage');
     elements.behaviorWebStartupDelay = document.getElementById('behaviorWebStartupDelay');
+    elements.behaviorWebAnimationMode = document.getElementById('behaviorWebAnimationMode');
+    elements.behaviorWebMotionPreset = document.getElementById('behaviorWebMotionPreset');
+    elements.behaviorWebLowPowerMode = document.getElementById('behaviorWebLowPowerMode');
     elements.behaviorCloseToTray = document.getElementById('behaviorCloseToTray');
     elements.uiVisualModeSelect = document.getElementById('uiVisualModeSelect');
     elements.uiMotionProfileSelect = document.getElementById('uiMotionProfileSelect');
@@ -1589,11 +1699,20 @@ async function loadSettings() {
         // Web UI (çekmece)
         if (!state.settings.webUi || typeof state.settings.webUi !== 'object') {
             state.settings.webUi = {
-                drawerCollapsed: false,
-                autoCollapseOnPlatformOpen: false
+                drawerCollapsed: true,
+                autoCollapseOnPlatformOpen: false,
+                animationMode: 'compact',
+                motionPreset: 'balanced',
+                lowPowerMode: false
             };
         }
-        state.webDrawerCollapsed = !!state.settings.webUi.drawerCollapsed;
+        if (typeof state.settings.webUi.drawerCollapsed !== 'boolean') {
+            state.settings.webUi.drawerCollapsed = true;
+        }
+        state.settings.webUi.animationMode = normalizeWebUiAnimationMode(state.settings.webUi.animationMode || 'compact');
+        state.settings.webUi.motionPreset = normalizeWebUiMotionPreset(state.settings.webUi.motionPreset || 'balanced');
+        state.settings.webUi.lowPowerMode = !!state.settings.webUi.lowPowerMode;
+        state.webDrawerCollapsed = state.settings.webUi.drawerCollapsed !== false;
 
         // Çalma ayarları için varsayılanlar (eksikse)
         if (!state.settings.playback) {
@@ -1634,7 +1753,9 @@ async function loadSettings() {
                     platformTiktok: '',
                     platformX: '',
                     platformReddit: '',
-                    platformTwitch: ''
+                    platformTwitch: '',
+                    platformWhatsapp: '',
+                    platformTelegram: ''
                 },
                 startupState: {
                     lastTrackPath: '',
@@ -1693,7 +1814,7 @@ async function loadSettings() {
                 'tabMusic', 'tabVideo', 'tabWeb',
                 'platformYtmusic', 'platformYoutube', 'platformDeezer', 'platformSoundcloud',
                 'platformFacebook', 'platformInstagram', 'platformTiktok', 'platformX',
-                'platformReddit', 'platformTwitch'
+                'platformReddit', 'platformTwitch', 'platformWhatsapp', 'platformTelegram'
             ];
             navKeys.forEach((key) => {
                 playback.navigationShortcuts[key] = String(playback.navigationShortcuts[key] || '').trim();
@@ -3203,6 +3324,20 @@ function scheduleStartupLazyWebLoad() {
     return true;
 }
 
+function preloadLastWebPlatformOnStartup() {
+    if (String(state.currentPage || '') !== 'web') return false;
+    const currentUrl = String(getWebViewUrlSafe() || '').trim().toLowerCase();
+    if (currentUrl && currentUrl !== 'about:blank') return false;
+
+    const preferredBtn = getStartupWebPlatformBtn();
+    if (!preferredBtn) return false;
+
+    // İlk açılışta boş web panelini bekletmemek için son platformu hemen yükle.
+    cancelStartupLazyWebLoad();
+    requestPlatformSwitch(preferredBtn);
+    return true;
+}
+
 function restoreLastMainSection() {
     const remember = state.settings?.ui?.rememberLastSection !== false;
     const startup = String(state.settings?.ui?.startupPage || 'music').toLowerCase();
@@ -3636,6 +3771,8 @@ function getPlaybackShortcutSearchEntries() {
     pushEntry('shortcutPlatformX', 'x twitter');
     pushEntry('shortcutPlatformReddit', 'reddit');
     pushEntry('shortcutPlatformTwitch', 'twitch');
+    pushEntry('shortcutPlatformWhatsapp', 'whatsapp whats app');
+    pushEntry('shortcutPlatformTelegram', 'telegram');
 
     return entries;
 }
@@ -3678,7 +3815,9 @@ function decoratePlaybackShortcutLabelsWithIcons() {
         shortcutPlatformTiktok: { icon: 'music_note', tone: 'tiktok' },
         shortcutPlatformX: { icon: 'alternate_email', tone: 'x' },
         shortcutPlatformReddit: { icon: 'forum', tone: 'reddit' },
-        shortcutPlatformTwitch: { icon: 'live_tv', tone: 'twitch' }
+        shortcutPlatformTwitch: { icon: 'live_tv', tone: 'twitch' },
+        shortcutPlatformWhatsapp: { icon: 'chat', tone: 'whatsapp' },
+        shortcutPlatformTelegram: { icon: 'send', tone: 'telegram' }
     };
 
     Object.entries(iconMap).forEach(([inputId, cfg]) => {
@@ -3803,9 +3942,42 @@ function setupEventListeners() {
             }
         });
     }
+    if (elements.aboutCheckUpdateBtn) {
+        elements.aboutCheckUpdateBtn.addEventListener('click', async () => {
+            openUpdateModal();
+            await runUpdatePrimaryAction();
+        });
+    }
     if (elements.aboutModalOverlay) {
         elements.aboutModalOverlay.addEventListener('click', (e) => {
             if (e.target === elements.aboutModalOverlay) closeAboutModal();
+        });
+    }
+    if (elements.updateModalClose) elements.updateModalClose.addEventListener('click', closeUpdateModal);
+    if (elements.updateCloseBtn) elements.updateCloseBtn.addEventListener('click', closeUpdateModal);
+    if (elements.updateModalOverlay) {
+        elements.updateModalOverlay.addEventListener('click', (e) => {
+            if (e.target === elements.updateModalOverlay) closeUpdateModal();
+        });
+    }
+    if (elements.updateActionBtn) {
+        elements.updateActionBtn.addEventListener('click', async () => {
+            await runUpdatePrimaryAction();
+        });
+    }
+    if (elements.updateBannerDetailsBtn) {
+        elements.updateBannerDetailsBtn.addEventListener('click', () => {
+            openUpdateModal();
+        });
+    }
+    if (elements.updateBannerUpdateBtn) {
+        elements.updateBannerUpdateBtn.addEventListener('click', async () => {
+            await runUpdatePrimaryAction();
+        });
+    }
+    if (elements.updateBannerDismissBtn) {
+        elements.updateBannerDismissBtn.addEventListener('click', () => {
+            setUpdateBannerVisible(false);
         });
     }
 
@@ -3923,11 +4095,39 @@ function setupEventListeners() {
             elements.behaviorWebStartupDelay.value = String(elements.libraryWebStartupDelay.value || WEB_STARTUP_LAZY_DELAY_DEFAULT_MS);
         });
     }
+    if (elements.behaviorWebAnimationMode) {
+        elements.behaviorWebAnimationMode.addEventListener('change', () => {
+            if (!state.settings || typeof state.settings !== 'object') state.settings = {};
+            if (!state.settings.webUi || typeof state.settings.webUi !== 'object') state.settings.webUi = {};
+            state.settings.webUi.animationMode = normalizeWebUiAnimationMode(elements.behaviorWebAnimationMode.value);
+            applyWebUiClasses();
+        });
+    }
+    if (elements.behaviorWebMotionPreset) {
+        elements.behaviorWebMotionPreset.addEventListener('change', () => {
+            if (!state.settings || typeof state.settings !== 'object') state.settings = {};
+            if (!state.settings.webUi || typeof state.settings.webUi !== 'object') state.settings.webUi = {};
+            state.settings.webUi.motionPreset = normalizeWebUiMotionPreset(elements.behaviorWebMotionPreset.value);
+            applyWebUiClasses();
+        });
+    }
+    if (elements.behaviorWebLowPowerMode) {
+        elements.behaviorWebLowPowerMode.addEventListener('change', () => {
+            if (!state.settings || typeof state.settings !== 'object') state.settings = {};
+            if (!state.settings.webUi || typeof state.settings.webUi !== 'object') state.settings.webUi = {};
+            state.settings.webUi.lowPowerMode = !!elements.behaviorWebLowPowerMode.checked;
+            applyWebUiClasses();
+        });
+    }
 
     // Web Platformları
     elements.platformBtns.forEach(btn => {
         btn.addEventListener('click', (e) => {
             e.preventDefault();
+            btn.classList.remove('platform-click-spring');
+            // Reflow ile ardışık tıklamalarda animasyonu tekrar başlat.
+            void btn.offsetWidth;
+            btn.classList.add('platform-click-spring');
             requestPlatformSwitch(btn);
         });
     });
@@ -3969,6 +4169,34 @@ function setupEventListeners() {
         elements.webDrawerToggleBtn.addEventListener('click', () => {
             if (!isPageVisible(elements.webPage)) return;
             setWebDrawerCollapsed(!state.webDrawerCollapsed);
+        });
+    }
+    if (elements.navPlatformStrip) {
+        elements.navPlatformStrip.addEventListener('mousemove', (event) => {
+            webPlatformDockRuntime.hovering = true;
+            scheduleWebPlatformDockHoverEffect(event.clientX);
+        });
+        elements.navPlatformStrip.addEventListener('wheel', (event) => {
+            // Bar üzerinde teker hareketi ana pencere/web içeriğe akmasın.
+            // Bu sayede ikonlar "pencere içi scroll" hissi vermez.
+            if (!(state.webDrawerCollapsed && (state.currentPage === 'web' || state.currentPanel === 'web'))) return;
+            event.preventDefault();
+            event.stopPropagation();
+            const dominantDelta = Math.abs(event.deltaX) > Math.abs(event.deltaY) ? event.deltaX : event.deltaY;
+            if (Math.abs(dominantDelta) > 0.01) {
+                elements.navPlatformStrip.scrollLeft += dominantDelta;
+            }
+            scheduleWebPlatformDockHoverEffect(event.clientX);
+        }, { passive: false });
+        elements.navPlatformStrip.addEventListener('mouseleave', () => {
+            webPlatformDockRuntime.hovering = false;
+            scheduleWebPlatformDockHoverEffect(null);
+        });
+        elements.navPlatformStrip.addEventListener('animationend', (event) => {
+            const target = event.target;
+            if (target instanceof HTMLElement && target.classList.contains('platform-click-spring')) {
+                target.classList.remove('platform-click-spring');
+            }
         });
     }
 
@@ -4724,6 +4952,65 @@ function setupEventListeners() {
                             } catch { return false; }
                         }
 
+                        function isYouTubeWatchLikeContext() {
+                            try {
+                                const host = String(location.hostname || '').toLowerCase();
+                                if (host === 'music.youtube.com') return true;
+                                if (host === 'youtu.be') return true;
+                                const p = String(location.pathname || '');
+                                if (p.includes('/watch') || p.includes('/shorts') || p.includes('/live')) return true;
+                                if (p.includes('/playlist') && String(location.search || '').includes('list=')) return true;
+                                return false;
+                            } catch {
+                                return false;
+                            }
+                        }
+
+                        function isLikelyAdMediaSrc(raw) {
+                            const src = String(raw || '').toLowerCase();
+                            if (!src) return false;
+                            if (!src.includes('googlevideo.com/videoplayback')) return false;
+                            return (
+                                src.includes('oad=') ||
+                                src.includes('moad=') ||
+                                src.includes('ctier=') ||
+                                src.includes('adformat=') ||
+                                src.includes('ad_type=') ||
+                                src.includes('gct=')
+                            );
+                        }
+
+                        function isWebSyncEligible(media) {
+                            if (!isYouTubeHost()) return true;
+                            if (!isYouTubeWatchLikeContext()) return false;
+                            if (!media) return false;
+                            try {
+                                const movie = document.getElementById('movie_player');
+                                const inMovie = !!(movie && (movie === media || movie.contains(media)));
+                                const isMainVideo = media.classList?.contains?.('html5-main-video');
+                                const src = String(media.currentSrc || media.src || '');
+                                if (isLikelyAdMediaSrc(src)) return false;
+                                return inMovie || isMainVideo;
+                            } catch {
+                                return false;
+                            }
+                        }
+
+                        function enforceYouTubeNonWatchMute() {
+                            if (!isYouTubeHost()) return;
+                            const shouldMuteAll = !isYouTubeWatchLikeContext();
+                            const medias = document.querySelectorAll('video, audio');
+                            medias.forEach((m) => {
+                                try {
+                                    if (!m) return;
+                                    if (shouldMuteAll) {
+                                        m.muted = true;
+                                        if (Number.isFinite(m.volume) && m.volume > 0) m.volume = 0;
+                                    }
+                                } catch {}
+                            });
+                        }
+
                         function ensureYouTubeAdCss() {
                             if (!isYouTubeHost() || ytAdStyleInjected) return;
                             const style = document.createElement('style');
@@ -4990,8 +5277,8 @@ function setupEventListeners() {
                                 );
                                 const signalLevel = Math.max(0, Number(DELIBLOCK?.adSignalLevel) || 0);
                                 const adDetected = adShowing ||
-                                    (signalLevel >= 1 && adUiSignals && adUiVisible) ||
-                                    (signalLevel >= 2 && adNetworkSignal);
+                                    (signalLevel >= 1 && adUiSignals) ||
+                                    (signalLevel >= 2 && (adUiVisible || adNetworkSignal));
                                 const nowTs = Date.now();
                                 if (adDetected) {
                                     if (!adDetectedSince) adDetectedSince = nowTs;
@@ -5169,9 +5456,11 @@ function setupEventListeners() {
                         }
 
                         function emitTime(force) {
-                            const media = document.querySelector('video, audio');
+                            const media = document.querySelector('video.html5-main-video, #movie_player video, #movie_player audio, video, audio');
                             if (!media) return;
                             try {
+                                const syncEligible = isWebSyncEligible(media);
+                                if (!syncEligible) return;
                                 const ct = Number(media.currentTime) || 0;
                                 const dur = Number(media.duration) || 0;
                                 const paused = !!media.paused;
@@ -5179,7 +5468,7 @@ function setupEventListeners() {
                                 const key = [Math.floor(ct * 2) / 2, Math.floor(dur), paused].join('|');
                                 if (!force && key === lastTimeKey) return;
                                 lastTimeKey = key;
-                                send({ type: 'timeupdate', currentTime: ct, duration: dur, paused });
+                                send({ type: 'timeupdate', currentTime: ct, duration: dur, paused, syncEligible: true });
                             } catch(e) {}
                         }
 
@@ -5214,7 +5503,13 @@ function setupEventListeners() {
 
                             const sendUpdate = (type) => {
                                 try {
-                                    send({ type, currentTime: media.currentTime, duration: media.duration, paused: media.paused });
+                                    send({
+                                        type,
+                                        currentTime: media.currentTime,
+                                        duration: media.duration,
+                                        paused: media.paused,
+                                        syncEligible: isWebSyncEligible(media)
+                                    });
                                 } catch(e) {}
                             };
 
@@ -5235,6 +5530,7 @@ function setupEventListeners() {
                             if (media) attachEvents(media);
                             emitMetadata(false);
                             tickYouTubeAdSkip();
+                            enforceYouTubeNonWatchMute();
                         });
                         observer.observe(document.documentElement || document.body, { childList: true, subtree: true });
 
@@ -5246,12 +5542,14 @@ function setupEventListeners() {
                             emitTime(false);
                             emitVolume(false);
                             tickYouTubeAdSkip();
+                            enforceYouTubeNonWatchMute();
                         }, Math.max(80, Number(DELIBLOCK && DELIBLOCK.tickIntervalMs) || 150));
 
                         emitMetadata(true);
                         emitTime(true);
                         emitVolume(true);
                         tickYouTubeAdSkip();
+                        enforceYouTubeNonWatchMute();
                     })();
                 } catch(e) { console.error("AURIVO_SYNC error:", e); }
             `);
@@ -11951,6 +12249,8 @@ function resolveWebPlatformPrimaryUrl(platform, requestedUrl) {
     const p = String(platform || '').toLowerCase();
     if (p === 'youtube') return 'https://www.youtube.com/';
     if (p === 'ytmusic') return 'https://music.youtube.com/';
+    if (p === 'whatsapp') return 'https://web.whatsapp.com/';
+    if (p === 'telegram') return 'https://web.telegram.org/';
     return requestedUrl;
 }
 
@@ -11958,6 +12258,8 @@ function resolveWebPlatformFallbackUrl(platform, requestedUrl) {
     const p = String(platform || '').toLowerCase();
     if (p === 'youtube') return 'https://m.youtube.com/';
     if (p === 'ytmusic') return 'https://music.youtube.com/';
+    if (p === 'whatsapp') return 'https://web.whatsapp.com/';
+    if (p === 'telegram') return 'https://web.telegram.org/';
     return requestedUrl;
 }
 
@@ -11983,6 +12285,13 @@ function safeNavigateWebView(url) {
     if (!elements.webView || !url) return false;
     const target = String(url);
     if (!target) return false;
+    try {
+        // WhatsApp gibi servisler ilk istekte gelen UA'ya göre engelleme yapabiliyor.
+        // Bu yüzden navigasyondan hemen önce UA'yı uygula.
+        elements.webView.setUserAgent(getEmbeddedDesktopUserAgent());
+    } catch {
+        // yoksay
+    }
     const now = Date.now();
     if (target === webLoadRuntime.lastRequestedUrl && (now - webLoadRuntime.lastRequestedAt) < 700) {
         return true;
@@ -12104,7 +12413,15 @@ const WEB_ALLOWED_HOSTS = new Set([
     'www.reddit.com',
     'old.reddit.com',
     'twitch.tv',
-    'www.twitch.tv'
+    'www.twitch.tv',
+    'whatsapp.com',
+    'www.whatsapp.com',
+    'web.whatsapp.com',
+    'telegram.org',
+    'www.telegram.org',
+    'web.telegram.org',
+    't.me',
+    'www.t.me'
 ]);
 
 const WEB_ALLOWED_SUFFIXES = [
@@ -12120,7 +12437,9 @@ const WEB_ALLOWED_SUFFIXES = [
     '.x.com',
     '.twitter.com',
     '.reddit.com',
-    '.twitch.tv'
+    '.twitch.tv',
+    '.whatsapp.com',
+    '.telegram.org'
 ];
 
 const WEB_SYNC_ALLOWED_HOSTS = new Set([
@@ -12136,7 +12455,9 @@ const WEB_SYNC_ALLOWED_HOSTS = new Set([
     'mixcloud.com',
     'www.mixcloud.com',
     'twitch.tv',
-    'www.twitch.tv'
+    'www.twitch.tv',
+    'web.whatsapp.com',
+    'web.telegram.org'
 ]);
 
 function parseHttpUrl(raw) {
@@ -12171,6 +12492,8 @@ function detectPlatformFromUrl(raw) {
     if (host === 'x.com' || host === 'www.x.com' || host === 'twitter.com' || host === 'www.twitter.com' || host.endsWith('.x.com') || host.endsWith('.twitter.com')) return 'x';
     if (host === 'reddit.com' || host === 'www.reddit.com' || host === 'old.reddit.com' || host.endsWith('.reddit.com')) return 'reddit';
     if (host === 'twitch.tv' || host === 'www.twitch.tv' || host.endsWith('.twitch.tv')) return 'twitch';
+    if (host === 'web.whatsapp.com' || host === 'whatsapp.com' || host === 'www.whatsapp.com' || host.endsWith('.whatsapp.com')) return 'whatsapp';
+    if (host === 'web.telegram.org' || host === 'telegram.org' || host === 'www.telegram.org' || host === 't.me' || host === 'www.t.me' || host.endsWith('.telegram.org')) return 'telegram';
     if (host === 'mixcloud.com' || host === 'www.mixcloud.com' || host.endsWith('.mixcloud.com')) return 'mixcloud';
     return '';
 }
@@ -12232,6 +12555,10 @@ function syncActivePlatformButtonByUrl(rawUrl) {
         if (isMatch) matchedBtn = btn;
     });
     if (matchedBtn) {
+        state.webCurrentPlatform = detected;
+        if (!state.settings || typeof state.settings !== 'object') state.settings = {};
+        if (!state.settings.ui || typeof state.settings.ui !== 'object') state.settings.ui = {};
+        state.settings.ui.lastWebPlatform = detected;
         const platformName = matchedBtn.querySelector('span')?.textContent?.trim();
         if (platformName && elements.nowPlayingLabel) {
             const quickTitle = String(state.webTitle || state.webPendingTitle || '').trim();
@@ -12308,6 +12635,26 @@ function readAdblockSettingsFromUI() {
     return window.AurivoAdblockSettings?.readSettingsFromUI?.({ elements, adblock }) || adblock;
 }
 
+function reloadWebViewForAdblock(reason = 'unknown', details = {}) {
+    if (!elements.webView) return false;
+    try {
+        const url = getWebViewUrlSafe();
+        console.log('[ADBLOCK] platform reload by settings change', {
+            reason: String(reason || 'unknown'),
+            url,
+            ...details
+        });
+        elements.webView.reload();
+        return true;
+    } catch (e) {
+        console.warn('[ADBLOCK] platform reload failed', {
+            reason: String(reason || 'unknown'),
+            error: e?.message || String(e || '')
+        });
+        return false;
+    }
+}
+
 function setAdblockMode(mode) {
     const nextMode = normalizeAdblockMode(mode);
     const adblock = ensureAdblockSettings();
@@ -12318,12 +12665,11 @@ function setAdblockMode(mode) {
     applyAdblockRuntimeConfig();
 
     if (nextMode !== prevMode && adblock.autoRefreshOnModeChange && elements.webView) {
-        try {
-            elements.webView.reload();
-            adblockRuntime.pendingModeChange = false;
-        } catch {
-            // yoksay
-        }
+        const reloaded = reloadWebViewForAdblock('setAdblockMode', {
+            prevMode,
+            nextMode
+        });
+        if (reloaded) adblockRuntime.pendingModeChange = false;
     }
 }
 
@@ -12951,6 +13297,7 @@ async function updateMPRISMetadata() {
 // Web/YouTube senkronizasyon işleyicisi
 function handleWebSync(data) {
     if (state.activeMedia !== 'web') return;
+    const syncEligible = data?.syncEligible !== false;
 
     if (data.type === 'pending-title') {
         const hint = String(data.title || '').trim();
@@ -12966,6 +13313,7 @@ function handleWebSync(data) {
     }
 
     if (data.type === 'metadata') {
+        if (!syncEligible) return;
         state.webTitle = data.title || '';
         if (state.webTitle) state.webPendingTitle = '';
         state.webArtist = data.artist || '';
@@ -12991,6 +13339,8 @@ function handleWebSync(data) {
         applyWebVolumeToUi(data.volume, data.muted);
         return;
     }
+
+    if (!syncEligible) return;
 
     state.webPosition = data.currentTime || 0;
     state.webDuration = data.duration || 0;
@@ -14891,6 +15241,266 @@ function applyWebUiClasses() {
         elements.adblockBtn.classList.toggle('active', !!isWeb);
         elements.adblockBtn.setAttribute('aria-pressed', isWeb ? 'true' : 'false');
     }
+    applyWebPlatformAnimationModeClass();
+    updateWebPlatformSpotlight(null);
+    updateWebPlatformDockHoverEffect(null);
+    syncWebPlatformButtonsLayout(isWeb && !!state.webDrawerCollapsed);
+    if (isWeb) restoreActiveWebPlatformIndicator();
+    syncWebUtilityButtonsLayout(isWeb && !!state.webDrawerCollapsed);
+}
+
+function restoreActiveWebPlatformIndicator() {
+    if (!elements.platformBtns?.length) return;
+
+    const detectedFromUrl = detectPlatformFromUrl(getWebViewUrlSafe());
+    const runtimeRemembered = String(state.webCurrentPlatform || '').trim().toLowerCase();
+    const remembered = String(state.settings?.ui?.lastWebPlatform || '').trim().toLowerCase();
+    const activeNow = String(document.querySelector('.platform-btn.active')?.dataset?.platform || '').trim().toLowerCase();
+    const targetKey = detectedFromUrl || runtimeRemembered || remembered || activeNow;
+    if (!targetKey) {
+        const fallbackBtn = getPreferredWebPlatformBtn();
+        if (fallbackBtn) {
+            elements.platformBtns.forEach((btn) => btn.classList.remove('active'));
+            fallbackBtn.classList.add('active');
+            const fallbackKey = String(fallbackBtn.dataset.platform || '').trim().toLowerCase();
+            if (!state.settings || typeof state.settings !== 'object') state.settings = {};
+            if (!state.settings.ui || typeof state.settings.ui !== 'object') state.settings.ui = {};
+            state.settings.ui.lastWebPlatform = fallbackKey;
+            state.webCurrentPlatform = fallbackKey;
+        }
+        return;
+    }
+
+    let matched = false;
+    elements.platformBtns.forEach((btn) => {
+        const key = String(btn.dataset.platform || '').trim().toLowerCase();
+        const isMatch = key === targetKey;
+        btn.classList.toggle('active', isMatch);
+        if (isMatch) matched = true;
+    });
+
+    if (!matched) return;
+    if (!state.settings || typeof state.settings !== 'object') state.settings = {};
+    if (!state.settings.ui || typeof state.settings.ui !== 'object') state.settings.ui = {};
+    state.settings.ui.lastWebPlatform = targetKey;
+    state.webCurrentPlatform = targetKey;
+}
+
+function normalizeWebUiAnimationMode(value) {
+    return String(value || '').trim().toLowerCase() === 'dock' ? 'dock' : 'compact';
+}
+
+function normalizeWebUiMotionPreset(value) {
+    const key = String(value || '').trim().toLowerCase();
+    if (key === 'calm' || key === 'lively') return key;
+    return 'balanced';
+}
+
+function getWebUiAnimationMode() {
+    return normalizeWebUiAnimationMode(state.settings?.webUi?.animationMode || 'compact');
+}
+
+function getWebUiMotionPreset() {
+    return normalizeWebUiMotionPreset(state.settings?.webUi?.motionPreset || 'balanced');
+}
+
+function isWebUiLowPowerMode() {
+    return !!state.settings?.webUi?.lowPowerMode;
+}
+
+function isWebUiForceMotionEnabled() {
+    return getWebUiAnimationMode() === 'dock' && !isWebUiLowPowerMode();
+}
+
+function isWebPlatformReducedMotion() {
+    if (isWebUiForceMotionEnabled()) return false;
+    if (document.body.classList.contains('aurivo-reduced-motion')) return true;
+    try {
+        return !!window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches;
+    } catch {
+        return false;
+    }
+}
+
+function applyWebPlatformAnimationModeClass() {
+    document.body.classList.toggle('web-platform-anim-dock', getWebUiAnimationMode() === 'dock');
+    document.body.classList.toggle('web-platform-force-motion', isWebUiForceMotionEnabled());
+    const motionPreset = getWebUiMotionPreset();
+    document.body.classList.toggle('web-platform-motion-calm', motionPreset === 'calm');
+    document.body.classList.toggle('web-platform-motion-balanced', motionPreset === 'balanced');
+    document.body.classList.toggle('web-platform-motion-lively', motionPreset === 'lively');
+    document.body.classList.toggle('web-platform-low-power', isWebUiLowPowerMode());
+}
+
+function updateWebPlatformSpotlight(clientX = null) {
+    if (!elements.navPlatformStrip) return;
+    const canShow =
+        state.webDrawerCollapsed &&
+        (state.currentPage === 'web' || state.currentPanel === 'web') &&
+        !isWebPlatformReducedMotion();
+
+    if (!canShow || clientX == null || !Number.isFinite(clientX)) {
+        elements.navPlatformStrip.classList.remove('spotlight-active');
+        elements.navPlatformStrip.style.removeProperty('--web-spotlight-x');
+        webPlatformDockRuntime.spotlightVisible = false;
+        return;
+    }
+
+    const rect = elements.navPlatformStrip.getBoundingClientRect();
+    const relativeX = clientX - rect.left;
+    elements.navPlatformStrip.style.setProperty('--web-spotlight-x', `${relativeX.toFixed(2)}px`);
+    if (!webPlatformDockRuntime.spotlightVisible) {
+        elements.navPlatformStrip.classList.add('spotlight-active');
+        webPlatformDockRuntime.spotlightVisible = true;
+    }
+}
+
+function updateWebPlatformDockHoverEffect(clientX = null) {
+    const buttons = Array.from(elements.navPlatformStrip?.querySelectorAll?.('.platform-btn.platform-btn-docked') || []);
+    if (!buttons.length) return;
+    const isDockMode = getWebUiAnimationMode() === 'dock';
+    const motionPreset = getWebUiMotionPreset();
+    const lowPowerMode = isWebUiLowPowerMode();
+    const reducedMotion = isWebPlatformReducedMotion();
+    const canAnimate = isDockMode
+        && state.webDrawerCollapsed
+        && (state.currentPage === 'web' || state.currentPanel === 'web')
+        && !reducedMotion;
+    if (!canAnimate || clientX == null || !Number.isFinite(clientX)) {
+        buttons.forEach((btn) => {
+            btn.style.setProperty('--dock-icon-scale', '1');
+            btn.style.setProperty('--dock-icon-lift', '0px');
+            btn.style.setProperty('--dock-btn-scale', '1');
+            btn.style.setProperty('--dock-btn-lift', '0px');
+        });
+        return;
+    }
+
+    const motionTuning = {
+        calm: { maxDist: 128, sigma: 52, iconBoost: 0.6, iconLift: 6.4, btnBoost: 0.08, btnLift: 2.2 },
+        balanced: { maxDist: 150, sigma: 44, iconBoost: 0.95, iconLift: 8.2, btnBoost: 0.14, btnLift: 2.8 },
+        lively: { maxDist: 174, sigma: 40, iconBoost: 1.12, iconLift: 9.2, btnBoost: 0.2, btnLift: 3.1 }
+    };
+    const base = motionTuning[motionPreset] || motionTuning.balanced;
+    const perfMul = lowPowerMode ? 0.72 : 1;
+    const MAX_DIST = base.maxDist * perfMul;
+    const SIGMA = Math.max(30, base.sigma * (lowPowerMode ? 1.08 : 1));
+    const MAX_ICON_SCALE_BOOST = base.iconBoost * perfMul;
+    const MAX_ICON_LIFT_PX = base.iconLift * perfMul;
+    const MAX_BTN_SCALE_BOOST = base.btnBoost * perfMul;
+    const MAX_BTN_LIFT_PX = base.btnLift * perfMul;
+    buttons.forEach((btn) => {
+        const rect = btn.getBoundingClientRect();
+        const centerX = rect.left + (rect.width / 2);
+        const dist = Math.abs(clientX - centerX);
+        const eased = dist > MAX_DIST ? 0 : Math.exp(-(dist * dist) / (2 * SIGMA * SIGMA));
+        const iconScale = 1 + (eased * MAX_ICON_SCALE_BOOST);
+        const iconLift = eased * MAX_ICON_LIFT_PX;
+        const btnScale = 1 + (eased * MAX_BTN_SCALE_BOOST);
+        const btnLift = eased * MAX_BTN_LIFT_PX;
+        btn.style.setProperty('--dock-icon-scale', iconScale.toFixed(3));
+        btn.style.setProperty('--dock-icon-lift', `${iconLift.toFixed(2)}px`);
+        btn.style.setProperty('--dock-btn-scale', btnScale.toFixed(3));
+        btn.style.setProperty('--dock-btn-lift', `${btnLift.toFixed(2)}px`);
+    });
+}
+
+function scheduleWebPlatformDockHoverEffect(clientX = null) {
+    webPlatformDockRuntime.lastClientX = Number.isFinite(clientX) ? clientX : NaN;
+    if (webPlatformDockRuntime.rafId) return;
+    webPlatformDockRuntime.rafId = requestAnimationFrame(() => {
+        webPlatformDockRuntime.rafId = 0;
+        updateWebPlatformSpotlight(webPlatformDockRuntime.lastClientX);
+        updateWebPlatformDockHoverEffect(webPlatformDockRuntime.lastClientX);
+    });
+}
+
+function syncWebPlatformButtonsLayout(shouldDockToNav) {
+    if (!elements.platformBtns?.length || !elements.webPlatformsContainer || !elements.navPlatformStrip) return;
+    const shouldDock = !!shouldDockToNav;
+    const navDockedCount = elements.navPlatformStrip.querySelectorAll('.platform-btn.platform-btn-docked').length;
+    const panelCount = elements.webPlatformsContainer.querySelectorAll('.platform-btn').length;
+    const layoutAlreadyMatches =
+        (shouldDock && navDockedCount > 0 && panelCount === 0)
+        || (!shouldDock && navDockedCount === 0 && panelCount > 0);
+
+    if (webPlatformLayoutRuntime.dockedToNav === shouldDock && layoutAlreadyMatches) {
+        // Layout aynı görünse bile aktif çizgi işaretleri eksik kalmış olabilir.
+        if (shouldDock) {
+            const docked = Array.from(elements.navPlatformStrip.querySelectorAll('.platform-btn.platform-btn-docked'));
+            docked.forEach((btn) => {
+                if (!btn.querySelector('.platform-active-line')) {
+                    const indicator = document.createElement('i');
+                    indicator.className = 'platform-active-line';
+                    indicator.setAttribute('aria-hidden', 'true');
+                    btn.appendChild(indicator);
+                }
+                btn.querySelectorAll('.platform-live-dot').forEach((node) => node.remove());
+            });
+        }
+        return;
+    }
+
+    const buttons = Array.from(elements.platformBtns);
+    if (shouldDock) {
+        buttons.forEach((btn, index) => {
+            const label = btn.querySelector('span')?.textContent?.trim() || String(btn.dataset.platform || 'Platform');
+            btn.dataset.platformLabel = label;
+            btn.setAttribute('aria-label', label);
+            btn.setAttribute('title', label);
+            if (!btn.querySelector('.platform-active-line')) {
+                const indicator = document.createElement('i');
+                indicator.className = 'platform-active-line';
+                indicator.setAttribute('aria-hidden', 'true');
+                btn.appendChild(indicator);
+            }
+            btn.querySelectorAll('.platform-live-dot').forEach((node) => node.remove());
+            btn.style.setProperty('--platform-index', String(index));
+            btn.style.setProperty('--dock-icon-scale', '1');
+            btn.style.setProperty('--dock-icon-lift', '0px');
+            btn.style.setProperty('--dock-btn-scale', '1');
+            btn.style.setProperty('--dock-btn-lift', '0px');
+            btn.classList.add('platform-btn-docked');
+            btn.classList.remove('platform-click-spring');
+            elements.navPlatformStrip.appendChild(btn);
+        });
+        webPlatformLayoutRuntime.dockedToNav = true;
+        scheduleWebPlatformDockHoverEffect(null);
+        return;
+    }
+
+    const anchor = elements.webPlatformsContainer.querySelector('.pulse-found-section');
+    buttons.forEach((btn) => {
+        btn.classList.remove('platform-btn-docked');
+        btn.style.removeProperty('--platform-index');
+        btn.style.removeProperty('--dock-icon-scale');
+        btn.style.removeProperty('--dock-icon-lift');
+        btn.style.removeProperty('--dock-btn-scale');
+        btn.style.removeProperty('--dock-btn-lift');
+        btn.classList.remove('platform-click-spring');
+        elements.webPlatformsContainer.insertBefore(btn, anchor || null);
+    });
+    webPlatformLayoutRuntime.dockedToNav = false;
+}
+
+function syncWebUtilityButtonsLayout(shouldDockToSidebar) {
+    if (!elements.webUtilityActionsHome || !elements.sidebarWebQuickActions || !elements.playerControlsRight) return;
+    const shouldDock = !!shouldDockToSidebar;
+    if (webSidebarActionsRuntime.dockedToSidebar === shouldDock) return;
+
+    if (shouldDock) {
+        elements.sidebarWebQuickActions.appendChild(elements.webUtilityActionsHome);
+        webSidebarActionsRuntime.dockedToSidebar = true;
+        return;
+    }
+
+    const volumeBtn = elements.playerControlsRight.querySelector('#volumeBtn');
+    if (volumeBtn) {
+        elements.playerControlsRight.insertBefore(elements.webUtilityActionsHome, volumeBtn);
+    } else {
+        elements.playerControlsRight.appendChild(elements.webUtilityActionsHome);
+    }
+    webSidebarActionsRuntime.dockedToSidebar = false;
 }
 
 function setWebDrawerCollapsed(collapsed) {
@@ -15224,8 +15834,6 @@ function stopWeb() {
         }
     }
     hideWebLoadingOverlay();
-    // Platform butonlarından active kaldır
-    elements.platformBtns.forEach(b => b.classList.remove('active'));
 }
 
 function switchPage(pageName) {
@@ -15314,6 +15922,7 @@ async function handlePlatformClick(btn) {
         if (state.settings?.ui) {
             state.settings.ui.lastWebPlatform = String(platform || '').trim().toLowerCase();
         }
+        state.webCurrentPlatform = String(platform || '').trim().toLowerCase();
         persistCurrentMainSection();
         adblockRuntime.currentCounterKey = String(platform || 'web').trim().toLowerCase() || 'web';
         adblockRuntime.counterBaseByKey.set(adblockRuntime.currentCounterKey, Number(adblockRuntime.lastAbsoluteBlocked || 0));
@@ -15364,6 +15973,8 @@ function updatePlatformCover(platform) {
         'x': 'icons/x.svg',
         'reddit': 'icons/reddit.svg',
         'twitch': 'icons/twitch.svg',
+        'whatsapp': 'icons/whatsapp.svg',
+        'telegram': 'icons/telegram.svg',
         'tidal': 'icons/nav_internet.svg',
         'mixcloud': 'icons/nav_internet.svg',
         'web': 'icons/nav_internet.svg'
@@ -18382,6 +18993,103 @@ function isAudioFile(filename) {
     return getConfiguredLibraryExtensions('audio').includes(ext);
 }
 
+function normalizeExternalMediaPath(input) {
+    return String(input || '').trim();
+}
+
+function sweepExternalMediaOpenHistory() {
+    const now = Date.now();
+    const ttlMs = 120000;
+    for (const [key, ts] of externalMediaRecentOpenMap.entries()) {
+        if ((now - Number(ts || 0)) > ttlMs) {
+            externalMediaRecentOpenMap.delete(key);
+        }
+    }
+}
+
+function markExternalMediaPathHandled(filePath) {
+    const key = normalizeExternalMediaPath(filePath);
+    if (!key) return;
+    sweepExternalMediaOpenHistory();
+    externalMediaRecentOpenMap.set(key, Date.now());
+}
+
+function wasExternalMediaPathHandledRecently(filePath) {
+    const key = normalizeExternalMediaPath(filePath);
+    if (!key) return false;
+    sweepExternalMediaOpenHistory();
+    return externalMediaRecentOpenMap.has(key);
+}
+
+async function openFromExternalMediaPaths(paths) {
+    const candidates = Array.isArray(paths) ? paths : [];
+    for (const rawPath of candidates) {
+        const mediaPath = normalizeExternalMediaPath(rawPath);
+        if (!mediaPath) continue;
+        if (wasExternalMediaPathHandledRecently(mediaPath)) continue;
+
+        try {
+            if (window.aurivo?.fileExists) {
+                const exists = await window.aurivo.fileExists(mediaPath);
+                if (!exists) continue;
+            }
+        } catch {
+            // yoksay
+        }
+
+        const fileName = window.aurivo?.path?.basename?.(mediaPath) || mediaPath;
+        if (isVideoFile(fileName)) {
+            markExternalMediaPathHandled(mediaPath);
+            setActiveSidebarByPage('video');
+            state.currentPage = 'video';
+            state.currentPanel = 'library';
+            switchPage('video');
+            await playMediaFromFolder(mediaPath, 'video');
+            return true;
+        }
+
+        if (isAudioFile(fileName)) {
+            markExternalMediaPathHandled(mediaPath);
+            setActiveSidebarByPage('music');
+            state.currentPage = 'music';
+            state.currentPanel = 'library';
+            switchPage('music');
+            await playMediaFromFolder(mediaPath, 'audio');
+            return true;
+        }
+    }
+    return false;
+}
+
+async function drainExternalMediaOpenQueue() {
+    if (externalMediaOpenDrainActive) return false;
+    externalMediaOpenDrainActive = true;
+    let openedAny = false;
+    try {
+        while (externalMediaOpenQueue.length > 0) {
+            const batch = externalMediaOpenQueue.shift();
+            try {
+                const opened = await openFromExternalMediaPaths(batch);
+                openedAny = openedAny || opened;
+            } catch (e) {
+                console.warn('[OPEN_MEDIA] open batch error:', e?.message || e);
+            }
+        }
+    } finally {
+        externalMediaOpenDrainActive = false;
+    }
+    return openedAny;
+}
+
+async function enqueueExternalMediaOpen(paths) {
+    const normalized = (Array.isArray(paths) ? paths : [])
+        .map((item) => normalizeExternalMediaPath(item))
+        .filter(Boolean);
+    if (!normalized.length) return false;
+    externalMediaOpenQueue.push(normalized);
+    return await drainExternalMediaOpenQueue();
+}
+
 // ============================================
 // PLAYLIST
 // ============================================
@@ -19233,6 +19941,9 @@ function startNativePositionUpdates() {
     stopNativePositionUpdates();
 
     console.log('Position update başlatıldı');
+    state.nativeLastPosMs = 0;
+    state.nativeLastAdvanceAt = Date.now();
+    state.nativeTailStallSince = 0;
 
     const myGen = ++state.nativePositionGeneration;
 
@@ -19251,6 +19962,7 @@ function startNativePositionUpdates() {
             const positionMs = await window.aurivo.audio.getPosition(); // milisaniye
             const durationSec = await window.aurivo.audio.getDuration(); // saniye
             const isPlaying = await window.aurivo.audio.isPlaying();
+            const nowMs = Date.now();
 
             // Bu tick sırasında stop/restart olduysa hiçbir şey yapma
             if (myGen !== state.nativePositionGeneration) return;
@@ -19285,6 +19997,30 @@ function startNativePositionUpdates() {
 
             // Şarkı bitti mi kontrol et
             const durationMs = durationSec * 1000;
+            const cachedDurationMs = Math.max(0, Number(state.nativeDurationSec || 0) * 1000);
+            const effectiveDurationMs = durationMs > 0 ? durationMs : cachedDurationMs;
+
+            // Sona yakın "takılma" tespiti: bazı parçalarda engine isPlaying=true kalıp next tetiklenmeyebiliyor.
+            const deltaPosMs = Number(positionMs || 0) - Number(state.nativeLastPosMs || 0);
+            if (deltaPosMs > 40) {
+                state.nativeLastAdvanceAt = nowMs;
+                state.nativeTailStallSince = 0;
+            } else if (effectiveDurationMs > 0) {
+                const nearTail = positionMs >= Math.max(0, effectiveDurationMs - 450);
+                const stalledLong = (nowMs - Number(state.nativeLastAdvanceAt || nowMs)) >= 1800;
+                if (nearTail && stalledLong) {
+                    if (!state.nativeTailStallSince) state.nativeTailStallSince = nowMs;
+                    const stallHoldMs = nowMs - Number(state.nativeTailStallSince || nowMs);
+                    if (stallHoldMs >= 900 && !state.autoCrossfadeTriggered && !state.crossfadeInProgress) {
+                        console.warn('[NATIVE] Tail stall detected -> forcing next track transition');
+                        handleNativePlaybackEnd();
+                        return;
+                    }
+                } else {
+                    state.nativeTailStallSince = 0;
+                }
+            }
+            state.nativeLastPosMs = Number(positionMs || 0);
 
             // Çıkış cihazı değişimi gibi durumlarda native engine geçici olarak "not playing" dönebilir.
             // Parça sonuna gelinmemişse kısa bir otomatik resume denemesi yap.
@@ -19352,8 +20088,9 @@ function startNativePositionUpdates() {
             // Bazı formatlarda (özellikle yüklemenin hemen ardından) duration geçici olarak 0 dönebiliyor.
             // Bu durumda "parça bitti" algısı yanlış tetiklenip anında next/crossfade zinciri başlatabiliyor.
             const inOutputSwitchGrace = (Date.now() - Number(audioOutputRuntime.lastOutputChangeAt || 0)) < 2800;
-            if (durationMs > 0 && !isPlaying && positionMs >= durationMs - 100 && !inOutputSwitchGrace) {
+            if (effectiveDurationMs > 0 && !isPlaying && positionMs >= effectiveDurationMs - 100 && !inOutputSwitchGrace) {
                 handleNativePlaybackEnd();
+                return;
             }
         } catch (e) {
             console.error('Native position update error:', e);
@@ -19366,6 +20103,7 @@ function stopNativePositionUpdates() {
         clearInterval(state.nativePositionTimer);
         state.nativePositionTimer = null;
     }
+    state.nativeTailStallSince = 0;
 
     // Interval callback'leri async olduğu için, clearInterval sonrası da bir tick
     // çalışmaya devam edebilir. Generation artırarak bu tick'leri etkisizleştiriyoruz.
@@ -20950,11 +21688,11 @@ async function applySettings() {
     applySystemAudioStateToUi();
     const modeChanged = nextMode !== prevMode || adblockRuntime.pendingModeChange;
     if (modeChanged && state.settings.adblock?.autoRefreshOnModeChange && elements.webView) {
-        try {
-            elements.webView.reload();
-        } catch {
-            // yoksay
-        }
+        reloadWebViewForAdblock('applySettings', {
+            prevMode,
+            nextMode,
+            pendingModeChange: !!adblockRuntime.pendingModeChange
+        });
     }
     adblockRuntime.pendingModeChange = false;
     trimAlbumArtCache();
@@ -20963,6 +21701,7 @@ async function applySettings() {
     updateThemeFollowSystemUi();
     updateAutoHardwareProfileUi();
     applySecuritySettingsToRuntime();
+    applyWebUiClasses();
     await applyPlaybackVolumeLevelingToEngine();
     updateLibraryPerformanceStatusUi();
     updateLibraryDiagnosticsUi();
@@ -21162,7 +21901,7 @@ function updateThemeFollowSystemUi() {
     }
     if (elements.themeModeStatus) {
         if (followSystemTheme) {
-            elements.themeModeStatus.textContent = 'Tema sistemden yonetiliyor.';
+            elements.themeModeStatus.textContent = uiT('ui.theme.modeStatus', 'Theme is controlled by system.');
             elements.themeModeStatus.classList.remove('hidden');
         } else {
             elements.themeModeStatus.classList.add('hidden');
@@ -21378,21 +22117,27 @@ function applyFullPowerAppearancePresetToUi() {
 function renderHardwareProfileStatus(profile) {
     if (!elements.uiHardwareProfileStatus) return;
     if (!profile || typeof profile !== 'object') {
-        elements.uiHardwareProfileStatus.textContent = 'Donanım profili: tespit edilemedi';
+        elements.uiHardwareProfileStatus.textContent = uiT('ui.hardwareProfile.status.unknown', 'Hardware profile: could not detect');
         return;
     }
     const tierMap = {
-        low: 'Dusuk',
-        medium: 'Orta',
-        high: 'Yuksek'
+        low: uiT('ui.hardwareProfile.tier.low', 'Low'),
+        medium: uiT('ui.hardwareProfile.tier.medium', 'Medium'),
+        high: uiT('ui.hardwareProfile.tier.high', 'High')
     };
-    const tierLabel = tierMap[normalizeHardwareTier(profile.tier)] || 'Orta';
-    const ramText = profile.ramGiB ? `${profile.ramGiB} GB RAM` : 'RAM ?';
-    const cpuText = profile.cpuCores ? `${profile.cpuCores} cekirdek` : 'CPU ?';
+    const tierLabel = tierMap[normalizeHardwareTier(profile.tier)] || uiT('ui.hardwareProfile.tier.medium', 'Medium');
+    const ramText = profile.ramGiB ? `${profile.ramGiB} GB RAM` : uiT('ui.hardwareProfile.status.ramUnknown', 'RAM ?');
+    const cpuText = profile.cpuCores
+        ? uiT('ui.hardwareProfile.status.cpuCores', `${profile.cpuCores} cores`, { count: profile.cpuCores })
+        : uiT('ui.hardwareProfile.status.cpuUnknown', 'CPU ?');
     const lowModeHint = (normalizeHardwareTier(profile.tier) === 'low' && !state.settings?.appearance?.lowHardwareMode)
-        ? ' | Oneri: Dusuk Donanim Modu ac'
+        ? uiT('ui.hardwareProfile.status.lowHint', ' | Suggestion: enable Low Hardware Mode')
         : '';
-    elements.uiHardwareProfileStatus.textContent = `Donanım profili: ${tierLabel} (${ramText}, ${cpuText})${lowModeHint}`;
+    elements.uiHardwareProfileStatus.textContent = uiT(
+        'ui.hardwareProfile.status.detail',
+        `Hardware profile: ${tierLabel} (${ramText}, ${cpuText})${lowModeHint}`,
+        { tier: tierLabel, ram: ramText, cpu: cpuText, hint: lowModeHint }
+    );
 }
 
 async function applyAutoHardwareAppearanceIfNeeded({ persist = false } = {}) {
@@ -21642,10 +22387,14 @@ function resetBehaviorDefaults() {
     if (elements.libraryStartupPage) elements.libraryStartupPage.value = 'music';
     if (elements.behaviorWebStartupDelay) elements.behaviorWebStartupDelay.value = String(WEB_STARTUP_LAZY_DELAY_DEFAULT_MS);
     if (elements.libraryWebStartupDelay) elements.libraryWebStartupDelay.value = String(WEB_STARTUP_LAZY_DELAY_DEFAULT_MS);
+    if (elements.behaviorWebAnimationMode) elements.behaviorWebAnimationMode.value = 'compact';
+    if (elements.behaviorWebMotionPreset) elements.behaviorWebMotionPreset.value = 'balanced';
+    if (elements.behaviorWebLowPowerMode) elements.behaviorWebLowPowerMode.checked = false;
     if (elements.behaviorCloseToTray) elements.behaviorCloseToTray.checked = true;
     updateVisualModeUi();
     updateThemeFollowSystemUi();
     previewAppearanceSettingsFromUI();
+    applyWebUiClasses();
 }
 
 function resetSecurityDefaults() {
@@ -21746,7 +22495,242 @@ async function resetCurrentSettingsTab() {
     safeNotify(`${getSettingsTabLabel(activeTab)} varsayılan değerlere döndürüldü ve kaydedildi.`, 'success', 2100);
 }
 
+function formatUpdateCheckedAt(ts) {
+    const n = Number(ts) || 0;
+    if (!n) return '-';
+    try {
+        return new Intl.DateTimeFormat('tr-TR', {
+            day: '2-digit',
+            month: '2-digit',
+            year: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit'
+        }).format(new Date(n));
+    } catch {
+        return String(new Date(n).toLocaleString());
+    }
+}
+
+function syncAboutVersionInfoUi() {
+    if (elements.aboutAppVersionValue) {
+        elements.aboutAppVersionValue.textContent = appUpdateRuntime.currentVersion || window.aurivo?.version || '-';
+    }
+    if (elements.aboutElectronVersionValue) {
+        elements.aboutElectronVersionValue.textContent = appUpdateRuntime.electronVersion || '-';
+    }
+    if (elements.aboutChromiumVersionValue) {
+        elements.aboutChromiumVersionValue.textContent = appUpdateRuntime.chromiumVersion || '-';
+    }
+    if (elements.aboutLastUpdateCheckValue) {
+        const fallback = Number(localStorage.getItem('aurivo_last_update_check_at') || 0);
+        elements.aboutLastUpdateCheckValue.textContent = formatUpdateCheckedAt(appUpdateRuntime.checkedAt || fallback);
+    }
+}
+
+function setUpdateBannerVisible(visible) {
+    if (!elements.updateBanner) return;
+    elements.updateBanner.classList.toggle('hidden', !visible);
+}
+
+function openUpdateModal() {
+    if (!elements.updateModalOverlay) return;
+    elements.updateModalOverlay.classList.remove('hidden');
+    requestAnimationFrame(() => {
+        elements.updateActionBtn?.focus?.();
+    });
+}
+
+function closeUpdateModal() {
+    if (!elements.updateModalOverlay) return;
+    elements.updateModalOverlay.classList.add('hidden');
+}
+
+function updateActionButtonState() {
+    if (!elements.updateActionBtn) return;
+    const useAurUpdateFlow = window.aurivo?.platform === 'linux' && appUpdateRuntime.aurUpdateSupported && appUpdateRuntime.aurPackageInstalled;
+    if (useAurUpdateFlow) {
+        elements.updateActionBtn.textContent = 'AUR ile Güncelle';
+        elements.updateActionBtn.disabled = false;
+        return;
+    }
+    const status = String(appUpdateRuntime.status || '').toLowerCase();
+    if (status === 'available') {
+        elements.updateActionBtn.textContent = 'İndir';
+        elements.updateActionBtn.disabled = false;
+        return;
+    }
+    if (status === 'downloading') {
+        elements.updateActionBtn.textContent = 'İndiriliyor...';
+        elements.updateActionBtn.disabled = true;
+        return;
+    }
+    if (status === 'downloaded') {
+        elements.updateActionBtn.textContent = 'Yeniden Başlat ve Kur';
+        elements.updateActionBtn.disabled = false;
+        return;
+    }
+    if (status === 'checking') {
+        elements.updateActionBtn.textContent = 'Kontrol ediliyor...';
+        elements.updateActionBtn.disabled = true;
+        return;
+    }
+    elements.updateActionBtn.textContent = 'Güncelleme Denetle';
+    elements.updateActionBtn.disabled = !window.aurivo?.app?.updater;
+}
+
+function applyAppUpdateStateToUi(payload = {}) {
+    appUpdateRuntime.supported = payload.supported !== false;
+    appUpdateRuntime.status = String(payload.status || appUpdateRuntime.status || 'idle').toLowerCase();
+    appUpdateRuntime.targetVersion = String(payload.targetVersion || appUpdateRuntime.targetVersion || '').trim();
+    appUpdateRuntime.releaseNotes = String(payload.releaseNotes || appUpdateRuntime.releaseNotes || '').trim();
+    appUpdateRuntime.progress = Math.max(0, Math.min(100, Number(payload.progress ?? appUpdateRuntime.progress) || 0));
+    appUpdateRuntime.checkedAt = Number(payload.checkedAt || appUpdateRuntime.checkedAt || 0);
+    appUpdateRuntime.lastError = String(payload.lastError || appUpdateRuntime.lastError || '').trim();
+    if (payload.currentVersion != null) appUpdateRuntime.currentVersion = String(payload.currentVersion || '').trim();
+    if (payload.electronVersion != null) appUpdateRuntime.electronVersion = String(payload.electronVersion || '').trim();
+    if (payload.chromiumVersion != null) appUpdateRuntime.chromiumVersion = String(payload.chromiumVersion || '').trim();
+
+    if (appUpdateRuntime.checkedAt > 0) {
+        localStorage.setItem('aurivo_last_update_check_at', String(appUpdateRuntime.checkedAt));
+    }
+
+    if (elements.updateStatusText) {
+        const status = appUpdateRuntime.status;
+        let statusText = 'Hazır';
+        if (status === 'checking') statusText = 'Güncelleme kontrol ediliyor';
+        else if (status === 'available') statusText = 'Yeni sürüm bulundu';
+        else if (status === 'not-available') statusText = 'Uygulama güncel';
+        else if (status === 'downloading') statusText = 'Güncelleme indiriliyor';
+        else if (status === 'downloaded') statusText = 'Kuruluma hazır';
+        else if (status === 'error') statusText = 'Güncelleme hatası';
+        else if (status === 'unsupported') statusText = 'Bu yapıda güncelleme desteği yok';
+        elements.updateStatusText.textContent = statusText;
+    }
+    if (elements.updateVersionText) {
+        elements.updateVersionText.textContent = appUpdateRuntime.targetVersion || '-';
+    }
+    if (elements.updateNotesText) {
+        elements.updateNotesText.textContent = appUpdateRuntime.releaseNotes || '-';
+    }
+    if (elements.updateProgressWrap) {
+        const showProgress = appUpdateRuntime.status === 'downloading' || appUpdateRuntime.status === 'downloaded';
+        elements.updateProgressWrap.classList.toggle('hidden', !showProgress);
+    }
+    if (elements.updateProgressFill) {
+        elements.updateProgressFill.style.width = `${Math.round(appUpdateRuntime.progress)}%`;
+    }
+    if (elements.updateProgressText) {
+        elements.updateProgressText.textContent = `${Math.round(appUpdateRuntime.progress)}%`;
+    }
+
+    if (elements.updateBannerText) {
+        if (appUpdateRuntime.status === 'available') {
+            elements.updateBannerText.textContent = `Yeni sürüm hazır: ${appUpdateRuntime.targetVersion || ''}`.trim();
+        } else if (appUpdateRuntime.status === 'downloading') {
+            elements.updateBannerText.textContent = `Güncelleme indiriliyor: %${Math.round(appUpdateRuntime.progress)}`;
+        } else if (appUpdateRuntime.status === 'downloaded') {
+            elements.updateBannerText.textContent = 'Güncelleme indirildi. Kurulum için yeniden başlat.';
+        } else if (appUpdateRuntime.status === 'error') {
+            elements.updateBannerText.textContent = `Güncelleme hatası: ${appUpdateRuntime.lastError || 'Bilinmeyen hata'}`;
+        } else if (appUpdateRuntime.status === 'not-available') {
+            elements.updateBannerText.textContent = 'Uygulama güncel.';
+        } else if (appUpdateRuntime.status === 'checking') {
+            elements.updateBannerText.textContent = 'Güncelleme kontrol ediliyor...';
+        } else {
+            elements.updateBannerText.textContent = 'Güncelleme kontrol ediliyor...';
+        }
+    }
+
+    if (elements.updateBannerUpdateBtn) {
+        const useAurUpdateFlow = window.aurivo?.platform === 'linux' && appUpdateRuntime.aurUpdateSupported && appUpdateRuntime.aurPackageInstalled;
+        elements.updateBannerUpdateBtn.textContent = useAurUpdateFlow
+            ? 'AUR Güncelle'
+            : (appUpdateRuntime.status === 'downloaded'
+                ? 'Kur'
+                : (appUpdateRuntime.status === 'available' ? 'İndir' : 'Güncelle'));
+        elements.updateBannerUpdateBtn.disabled = appUpdateRuntime.status === 'checking' || appUpdateRuntime.status === 'downloading';
+    }
+
+    const shouldShowBanner =
+        appUpdateRuntime.status === 'available' ||
+        appUpdateRuntime.status === 'downloading' ||
+        appUpdateRuntime.status === 'downloaded' ||
+        appUpdateRuntime.status === 'error';
+    setUpdateBannerVisible(shouldShowBanner);
+    updateActionButtonState();
+    syncAboutVersionInfoUi();
+}
+
+async function runUpdatePrimaryAction() {
+    const useAurUpdateFlow = window.aurivo?.platform === 'linux' && appUpdateRuntime.aurUpdateSupported && appUpdateRuntime.aurPackageInstalled;
+    if (useAurUpdateFlow) {
+        const approved = window.confirm('Terminal açılacak, uygulama kapanacak ve "yay -Syu aurivo-bin" çalıştırılacak. Devam edilsin mi?');
+        if (!approved) return;
+        const result = await window.aurivo?.app?.updater?.launchAurivoBinUpdate?.();
+        if (!result?.ok) {
+            if (result?.reason === 'yay-not-found') {
+                safeNotify('yay bulunamadı. Lütfen önce yay kur.', 'warning', 2600);
+                return;
+            }
+            if (result?.reason === 'terminal-not-found') {
+                safeNotify('Terminal uygulaması bulunamadı.', 'warning', 2600);
+                return;
+            }
+            safeNotify('AUR güncelleme başlatılamadı.', 'error', 2600);
+        }
+        return;
+    }
+
+    const updater = window.aurivo?.app?.updater;
+    if (!updater) {
+        safeNotify('Güncelleme desteği bu yapıda aktif değil.', 'info', 2200);
+        return;
+    }
+    const status = String(appUpdateRuntime.status || '').toLowerCase();
+    if (status === 'available') {
+        await updater.download();
+        return;
+    }
+    if (status === 'downloaded') {
+        await updater.install();
+        return;
+    }
+    await updater.check({ manual: true });
+}
+
+async function initAppUpdateUi() {
+    try {
+        const versionInfo = await window.aurivo?.app?.getVersionInfo?.();
+        if (versionInfo && typeof versionInfo === 'object') {
+            appUpdateRuntime.currentVersion = String(versionInfo.appVersion || appUpdateRuntime.currentVersion || '').trim();
+            appUpdateRuntime.electronVersion = String(versionInfo.electronVersion || '').trim();
+            appUpdateRuntime.chromiumVersion = String(versionInfo.chromiumVersion || '').trim();
+            appUpdateRuntime.aurUpdateSupported = !!versionInfo?.aur?.aurUpdateSupported;
+            appUpdateRuntime.aurPackageInstalled = !!versionInfo?.aur?.aurPackageInstalled;
+            if (versionInfo.update && typeof versionInfo.update === 'object') {
+                applyAppUpdateStateToUi(versionInfo.update);
+            }
+        }
+        const state = await window.aurivo?.app?.updater?.getState?.();
+        if (state && typeof state === 'object') {
+            applyAppUpdateStateToUi(state);
+        }
+        if (typeof appUpdateRuntime.unsubStatus === 'function') {
+            appUpdateRuntime.unsubStatus();
+            appUpdateRuntime.unsubStatus = null;
+        }
+        appUpdateRuntime.unsubStatus = window.aurivo?.app?.updater?.onStatus?.((payload) => {
+            applyAppUpdateStateToUi(payload || {});
+        }) || null;
+    } catch (error) {
+        console.warn('[UPDATE] init failed:', error?.message || error);
+    }
+    syncAboutVersionInfoUi();
+    updateActionButtonState();
+}
+
 function showAbout() {
+    syncAboutVersionInfoUi();
     openAboutModal();
 }
 
@@ -21783,7 +22767,9 @@ const NAV_SHORTCUT_INPUT_TO_SETTING_KEY = {
     shortcutPlatformTiktok: 'platformTiktok',
     shortcutPlatformX: 'platformX',
     shortcutPlatformReddit: 'platformReddit',
-    shortcutPlatformTwitch: 'platformTwitch'
+    shortcutPlatformTwitch: 'platformTwitch',
+    shortcutPlatformWhatsapp: 'platformWhatsapp',
+    shortcutPlatformTelegram: 'platformTelegram'
 };
 const NAV_SHORTCUT_ACTIONS = {
     tabMusic: { type: 'tab', target: 'music' },
@@ -21798,7 +22784,9 @@ const NAV_SHORTCUT_ACTIONS = {
     platformTiktok: { type: 'platform', target: 'tiktok' },
     platformX: { type: 'platform', target: 'x' },
     platformReddit: { type: 'platform', target: 'reddit' },
-    platformTwitch: { type: 'platform', target: 'twitch' }
+    platformTwitch: { type: 'platform', target: 'twitch' },
+    platformWhatsapp: { type: 'platform', target: 'whatsapp' },
+    platformTelegram: { type: 'platform', target: 'telegram' }
 };
 let activeShortcutCaptureInputId = '';
 let activeShortcutCaptureButton = null;
@@ -24421,13 +25409,8 @@ function updateRainbowSlider(slider, percent) {
 function updateRainbowSliderColors(slider, percent) {
     if (!slider) return;
     const safePercent = Math.max(0, Math.min(100, Number(percent) || 0));
-    const isSeekSlider = slider.id === 'seekSlider' || slider.id === 'fsSeekSlider';
-    // Thumb merkezi ile renkli dolgunun daha iyi hizalanması için küçük ofset.
-    // Özellikle fullscreen seek bar'da "nokta önde, dolgu arkada" hissini azaltır.
-    const sliderWidth = Math.max(1, Number(slider.clientWidth) || 1);
-    const thumbHalfPx = isSeekSlider ? 8 : 0;
-    const offsetPercent = isSeekSlider ? (thumbHalfPx / sliderWidth) * 100 : 0;
-    const effectivePercent = Math.max(0, Math.min(100, safePercent + offsetPercent));
+    // İlerleme çizgisi thumb noktasını geçmesin: yüzdeyi doğrudan slider değerinden kullan.
+    const effectivePercent = safePercent;
     const sliderFxOff = !isSliderFxEnabledRuntime();
     if (sliderFxOff) {
         const isRtl = document?.documentElement?.dir === 'rtl' || document?.body?.classList?.contains('rtl');

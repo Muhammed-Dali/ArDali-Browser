@@ -28,6 +28,12 @@
         return 'balanced';
     }
 
+    function normalizeWebMotionPreset(value) {
+        const normalized = String(value || '').trim().toLowerCase();
+        if (['calm', 'balanced', 'lively'].includes(normalized)) return normalized;
+        return 'balanced';
+    }
+
     function normalizeSfxIconSize(value) {
         const normalized = String(value || '').trim().toLowerCase();
         if (['compact', 'medium', 'large'].includes(normalized)) return normalized;
@@ -54,7 +60,9 @@
         platformTiktok: 'shortcutPlatformTiktok',
         platformX: 'shortcutPlatformX',
         platformReddit: 'shortcutPlatformReddit',
-        platformTwitch: 'shortcutPlatformTwitch'
+        platformTwitch: 'shortcutPlatformTwitch',
+        platformWhatsapp: 'shortcutPlatformWhatsapp',
+        platformTelegram: 'shortcutPlatformTelegram'
     };
 
     function normalizePlaybackShortcutCode(value, fallback) {
@@ -279,6 +287,16 @@
         }
         if (elements.behaviorWebStartupDelay) {
             elements.behaviorWebStartupDelay.value = webStartupDelayValue;
+        }
+        if (elements.behaviorWebAnimationMode) {
+            const webAnimMode = String(state.settings?.webUi?.animationMode || 'compact').toLowerCase();
+            elements.behaviorWebAnimationMode.value = (webAnimMode === 'dock') ? 'dock' : 'compact';
+        }
+        if (elements.behaviorWebMotionPreset) {
+            elements.behaviorWebMotionPreset.value = normalizeWebMotionPreset(state.settings?.webUi?.motionPreset || 'balanced');
+        }
+        if (elements.behaviorWebLowPowerMode) {
+            elements.behaviorWebLowPowerMode.checked = !!state.settings?.webUi?.lowPowerMode;
         }
         if (elements.behaviorCloseToTray) {
             elements.behaviorCloseToTray.checked = state.settings?.ui?.closeToTray !== false;
@@ -643,6 +661,19 @@
             (typeof elements.behaviorCloseToTray?.checked === 'boolean')
                 ? !!elements.behaviorCloseToTray.checked
                 : true;
+        if (!state.settings.webUi || typeof state.settings.webUi !== 'object') {
+            state.settings.webUi = {};
+        }
+        state.settings.webUi.animationMode =
+            String(elements.behaviorWebAnimationMode?.value || state.settings.webUi.animationMode || 'compact').toLowerCase() === 'dock'
+                ? 'dock'
+                : 'compact';
+        state.settings.webUi.motionPreset = normalizeWebMotionPreset(
+            elements.behaviorWebMotionPreset?.value
+            || state.settings.webUi.motionPreset
+            || 'balanced'
+        );
+        state.settings.webUi.lowPowerMode = !!elements.behaviorWebLowPowerMode?.checked;
         if (!state.settings.security || typeof state.settings.security !== 'object') state.settings.security = {};
         state.settings.security.allowPopups = !!elements.securityAllowPopups?.checked;
         state.settings.security.enforceAllowlist = !!elements.securityEnforceAllowlist?.checked;

@@ -15,4 +15,4 @@ if [[ -z "${ELECTRON_OZONE_PLATFORM_HINT:-}" ]]; then
   fi
 fi
 
-exec npm start
+exec npm start -- "$@"
