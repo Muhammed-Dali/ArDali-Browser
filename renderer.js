@@ -627,7 +627,9 @@ const state = {
 // Web player <-> uygulama ses senkronu (sonsuz döngü/jitter önleme)
 const webVolumeSync = {
     ignoreIncomingUntil: 0,
-    lastPushAt: 0
+    lastPushAt: 0,
+    lastPushedPercent: 0,
+    lastPushedMuted: false
 };
 const handledExternalDropEvents = new WeakSet();
 const securityRuntime = {
@@ -3330,10 +3332,8 @@ function isPackagedLinuxRuntimeRenderer() {
 }
 
 function shouldAutoLoadWebOnStartup() {
-    // Paketli Linux'ta webview + extension + service worker zinciri bazı sistemlerde
-    // kararsız davranabildiği için, otomatik yüklemeyi kapatıyoruz.
-    // Kullanıcı web sekmesine tıkladığında platform normal şekilde açılır.
-    if (isPackagedLinuxRuntimeRenderer()) return false;
+    // Donma riskini azaltmak için "anlık preload" yerine güvenli gecikmeli yükleme uygulanır.
+    // Paketli Linux'ta da otomatik platform geri yükleme aktiftir.
     return true;
 }
 
@@ -3367,7 +3367,10 @@ function scheduleStartupLazyWebLoad() {
     const preferredBtn = getStartupWebPlatformBtn();
     if (!preferredBtn) return false;
 
-    const delayMs = getWebStartupLazyDelayMs();
+    let delayMs = getWebStartupLazyDelayMs();
+    if (isPackagedLinuxRuntimeRenderer() && delayMs < 800) {
+        delayMs = 800;
+    }
     webPlatformRuntime.startupLazyArmed = true;
     webPlatformRuntime.startupLazyTimer = setTimeout(() => {
         webPlatformRuntime.startupLazyTimer = null;
@@ -3381,6 +3384,9 @@ function scheduleStartupLazyWebLoad() {
 
 function preloadLastWebPlatformOnStartup() {
     if (!shouldAutoLoadWebOnStartup()) return false;
+    // Paketli Linux'ta anlık preload bazı sistemlerde başlangıç yükünü artırabiliyor.
+    // Bu nedenle burada sadece scheduleStartupLazyWebLoad akışını kullan.
+    if (isPackagedLinuxRuntimeRenderer()) return false;
     if (String(state.currentPage || '') !== 'web') return false;
     const currentUrl = String(getWebViewUrlSafe() || '').trim().toLowerCase();
     if (currentUrl && currentUrl !== 'about:blank') return false;
@@ -13453,7 +13459,9 @@ function pushAppVolumeToWeb() {
 
     const now = Date.now();
     webVolumeSync.lastPushAt = now;
-    webVolumeSync.ignoreIncomingUntil = now + 250;
+    webVolumeSync.lastPushedPercent = vol;
+    webVolumeSync.lastPushedMuted = muted;
+    webVolumeSync.ignoreIncomingUntil = now + 850;
     elements.webView.executeJavaScript(`
         (function() {
             const volPct = ${vol};
@@ -13489,10 +13497,20 @@ function shouldAcceptIncomingWebVolume(percent, muted) {
     if (now < Number(webVolumeSync.ignoreIncomingUntil || 0)) return false;
 
     const current = Math.max(0, Math.min(100, Number(state.volume) || 0));
-    const recentAppPush = (now - Number(webVolumeSync.lastPushAt || 0)) < 1500;
+    const recentAppPush = (now - Number(webVolumeSync.lastPushAt || 0)) < 2200;
+    const expectedPercent = Math.max(0, Math.min(100, Number(webVolumeSync.lastPushedPercent) || current));
+    const expectedMuted = !!webVolumeSync.lastPushedMuted;
 
-    if (recentAppPush) return true;
-    if (safePercent <= current + 8) return true;
+    if (recentAppPush) {
+        const nearExpected = Math.abs(safePercent - expectedPercent) <= 3;
+        if (nearExpected && (!!muted === expectedMuted || safePercent === 0)) return true;
+        if (safePercent > (expectedPercent + 3)) return false;
+        if (safePercent < (expectedPercent - 10)) return false;
+        if (!!muted !== expectedMuted && safePercent > 0) return false;
+        return true;
+    }
+
+    if (safePercent <= current + 6) return true;
     if (muted || safePercent === 0) return true;
 
     return false;
@@ -13506,7 +13524,7 @@ function applyWebVolumeToUi(rawVolume, rawMuted) {
         // Ani yükselmede uygulama sesini koru ve web tarafına geri uygula.
         setTimeout(() => {
             pushAppVolumeToWeb();
-        }, 40);
+        }, 90);
         return;
     }
 
