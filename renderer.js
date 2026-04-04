@@ -713,6 +713,7 @@ const appUpdateRuntime = {
     supported: false,
     aurUpdateSupported: false,
     aurPackageInstalled: false,
+    lastNotifiedVersion: '',
     unsubStatus: null
 };
 const pulseQuickRuntime = {
@@ -22626,6 +22627,65 @@ function closeUpdateModal() {
     elements.updateModalOverlay.classList.add('hidden');
 }
 
+function openUpdateCenterFromInteractiveNotice() {
+    showAbout();
+    openUpdateModal();
+}
+
+function tryShowDesktopUpdateNotification(versionText) {
+    if (typeof Notification !== 'function') return false;
+    const title = 'Aurivo güncellemesi hazır';
+    const body = `Yeni sürüm bulundu: ${versionText}. Açmak için tıkla.`;
+    const show = () => {
+        try {
+            const notif = new Notification(title, {
+                body,
+                tag: 'aurivo-update-available',
+                silent: false
+            });
+            notif.onclick = () => {
+                try { window.focus(); } catch { }
+                openUpdateCenterFromInteractiveNotice();
+                try { notif.close(); } catch { }
+            };
+            return true;
+        } catch {
+            return false;
+        }
+    };
+
+    if (Notification.permission === 'granted') {
+        return show();
+    }
+    if (Notification.permission === 'default' && typeof Notification.requestPermission === 'function') {
+        Notification.requestPermission().then((perm) => {
+            if (perm === 'granted') show();
+        }).catch(() => { });
+    }
+    return false;
+}
+
+function maybeNotifyUpdateAvailable(previousStatus, previousTargetVersion) {
+    const status = String(appUpdateRuntime.status || '').toLowerCase();
+    const targetVersion = String(appUpdateRuntime.targetVersion || '').trim();
+    if (status !== 'available' || !targetVersion) return;
+    if (previousStatus === 'available' && previousTargetVersion === targetVersion) return;
+    if (appUpdateRuntime.lastNotifiedVersion === targetVersion) return;
+
+    const seenKey = `aurivo_update_notice_seen_${targetVersion}`;
+    if (localStorage.getItem(seenKey) === '1') {
+        appUpdateRuntime.lastNotifiedVersion = targetVersion;
+        return;
+    }
+
+    appUpdateRuntime.lastNotifiedVersion = targetVersion;
+    localStorage.setItem(seenKey, '1');
+    const desktopShown = tryShowDesktopUpdateNotification(targetVersion);
+    if (!desktopShown) {
+        safeNotify(`Yeni sürüm bulundu: ${targetVersion}. Hakkında > Güncelleme bölümünden devam et.`, 'info', 4600);
+    }
+}
+
 function updateActionButtonState() {
     if (!elements.updateActionBtn) return;
     const useAurUpdateFlow = window.aurivo?.platform === 'linux' && appUpdateRuntime.aurUpdateSupported && appUpdateRuntime.aurPackageInstalled;
@@ -22660,6 +22720,9 @@ function updateActionButtonState() {
 }
 
 function applyAppUpdateStateToUi(payload = {}) {
+    const previousStatus = String(appUpdateRuntime.status || '').toLowerCase();
+    const previousTargetVersion = String(appUpdateRuntime.targetVersion || '').trim();
+
     appUpdateRuntime.supported = payload.supported !== false;
     appUpdateRuntime.status = String(payload.status || appUpdateRuntime.status || 'idle').toLowerCase();
     appUpdateRuntime.targetVersion = String(payload.targetVersion || appUpdateRuntime.targetVersion || '').trim();
@@ -22738,6 +22801,7 @@ function applyAppUpdateStateToUi(payload = {}) {
         appUpdateRuntime.status === 'downloaded' ||
         appUpdateRuntime.status === 'error';
     setUpdateBannerVisible(shouldShowBanner);
+    maybeNotifyUpdateAvailable(previousStatus, previousTargetVersion);
     updateActionButtonState();
     syncAboutVersionInfoUi();
 }

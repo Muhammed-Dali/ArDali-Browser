@@ -5,6 +5,7 @@ const { spawn, spawnSync } = require('child_process');
 const path = require('path');
 const fs = require('fs');
 const http = require('http');
+const https = require('https');
 const { registerDawlodIpc } = require('./modules/dawlodHost');
 const {
     initAdBlocker,
@@ -187,6 +188,105 @@ function snapshotUpdateState() {
     };
 }
 
+function parseSemverNumericParts(raw) {
+    const value = String(raw || '').trim().replace(/^v/i, '');
+    const core = value.split('-')[0].trim();
+    const parts = core.split('.').map((v) => Number(v) || 0);
+    while (parts.length < 3) parts.push(0);
+    return parts.slice(0, 3);
+}
+
+function compareSemverStrings(a, b) {
+    const pa = parseSemverNumericParts(a);
+    const pb = parseSemverNumericParts(b);
+    for (let i = 0; i < 3; i++) {
+        if (pa[i] > pb[i]) return 1;
+        if (pa[i] < pb[i]) return -1;
+    }
+    return 0;
+}
+
+function fetchJsonHttps(url, timeoutMs = 4500) {
+    return new Promise((resolve, reject) => {
+        const req = https.get(url, { timeout: timeoutMs }, (res) => {
+            const status = Number(res?.statusCode) || 0;
+            if (status < 200 || status >= 300) {
+                res.resume();
+                reject(new Error(`HTTP ${status}`));
+                return;
+            }
+            const chunks = [];
+            res.on('data', (chunk) => chunks.push(Buffer.from(chunk)));
+            res.on('end', () => {
+                try {
+                    const text = Buffer.concat(chunks).toString('utf8');
+                    resolve(JSON.parse(text));
+                } catch (e) {
+                    reject(e);
+                }
+            });
+        });
+        req.on('timeout', () => req.destroy(new Error('request-timeout')));
+        req.on('error', reject);
+    });
+}
+
+async function checkForAurivoBinUpdates() {
+    const caps = getLinuxAurUpdateCapabilities();
+    const checkedAt = Date.now();
+    if (!caps.aurUpdateSupported || !caps.aurPackageInstalled) {
+        setUpdateStatus('unsupported', {
+            checkedAt,
+            lastError: 'AUR update flow is unavailable on this runtime.'
+        });
+        return snapshotUpdateState();
+    }
+
+    try {
+        setUpdateStatus('checking', {
+            checkedAt,
+            lastError: '',
+            progress: 0
+        });
+
+        const rpcUrl = 'https://aur.archlinux.org/rpc/?v=5&type=info&arg[]=aurivo-bin';
+        const data = await fetchJsonHttps(rpcUrl, 5200);
+        const result = Array.isArray(data?.results) ? data.results[0] : null;
+        const aurVersionRaw = String(result?.Version || '').trim();
+        const aurVersion = aurVersionRaw.split('-')[0].trim();
+        const currentVersion = String(appVersionInfo.appVersion || '').trim();
+
+        if (!aurVersion) {
+            throw new Error('AUR version not found in RPC response');
+        }
+
+        if (compareSemverStrings(aurVersion, currentVersion) > 0) {
+            setUpdateStatus('available', {
+                checkedAt,
+                targetVersion: aurVersion,
+                releaseNotes: `AUR paketi güncel sürüm: ${aurVersionRaw}`,
+                progress: 0,
+                lastError: ''
+            });
+        } else {
+            setUpdateStatus('not-available', {
+                checkedAt,
+                targetVersion: '',
+                releaseNotes: '',
+                progress: 0,
+                lastError: ''
+            });
+        }
+        return snapshotUpdateState();
+    } catch (error) {
+        setUpdateStatus('error', {
+            checkedAt,
+            lastError: `AUR check failed: ${String(error?.message || error || 'unknown').trim()}`
+        });
+        return snapshotUpdateState();
+    }
+}
+
 function parseReleaseNotesToText(rawNotes) {
     if (Array.isArray(rawNotes)) {
         return rawNotes
@@ -339,6 +439,13 @@ async function checkForAppUpdates({ manual = false } = {}) {
         });
         return snapshotUpdateState();
     }
+}
+
+async function checkForRuntimeUpdates({ manual = false } = {}) {
+    if (process.platform === 'linux' && app.isPackaged && !shouldEnableElectronUpdaterOnThisRuntime()) {
+        return checkForAurivoBinUpdates();
+    }
+    return checkForAppUpdates({ manual });
 }
 
 async function downloadAppUpdate() {
@@ -5020,7 +5127,7 @@ ipcMain.handle('app:update:getState', async () => {
 
 ipcMain.handle('app:update:check', async (_event, options) => {
     const manual = options?.manual !== false;
-    return checkForAppUpdates({ manual });
+    return checkForRuntimeUpdates({ manual });
 });
 
 ipcMain.handle('app:update:download', async () => {
@@ -5321,9 +5428,7 @@ app.whenReady().then(async () => {
     try { createMPRIS(); } catch (e) { console.error('[APP] createMPRIS error:', e); }
     try {
         setTimeout(() => {
-            // unsupported iken startup check çağırmayalım.
-            if (updateRuntime.status === 'unsupported') return;
-            checkForAppUpdates({ manual: false }).catch(() => {});
+            checkForRuntimeUpdates({ manual: false }).catch(() => {});
         }, 3200);
     } catch (e) {
         console.error('[APP] startup update check error:', e);
