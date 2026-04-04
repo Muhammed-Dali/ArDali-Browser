@@ -25,7 +25,7 @@ source=(
   "com.aurivo.mediaplayer.png::https://raw.githubusercontent.com/${_owner}/${_repo}/main/icons/aurivo_512.png"
 )
 
-sha256sums=('fd3b4f048b5add5ce610a6b51de50cb3304107a0e58838874dd20df23fbd6e26'
+sha256sums=('fa089bd1631301b4cd368bc46fa13c1b82d44c750538080d6a9886b83ce07248'
             'da02e29b849870a9852e9020c0df9532a84ae81c53d3f073fa633d679d80b43f')
 
 package() {
