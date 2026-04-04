@@ -2988,6 +2988,9 @@ static bool initImGui() {
     g.mainImGui = ImGui::GetCurrentContext();
 
     ImGuiIO& io = ImGui::GetIO();
+    // Dear ImGui varsayılan olarak CWD altında "imgui.ini" oluşturur.
+    // Paketli sürümde HOME kökünü kirletmemek için otomatik ini yazımını kapat.
+    io.IniFilename = nullptr;
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
 
     ImGui::StyleColorsDark();

@@ -419,6 +419,31 @@ function safeStdoutLine(line) {
     }
 }
 
+const TRANSIENT_HOME_FILES = ['aurivo-freeze.log', 'imgui.ini'];
+
+function cleanupTransientHomeFiles(context = 'runtime') {
+    if (process.platform !== 'linux') return;
+    let homeDir = '';
+    try {
+        homeDir = app?.getPath?.('home') || os.homedir();
+    } catch {
+        homeDir = os.homedir();
+    }
+    if (!homeDir) return;
+
+    for (const name of TRANSIENT_HOME_FILES) {
+        const filePath = path.join(homeDir, name);
+        try {
+            if (fs.existsSync(filePath)) {
+                fs.unlinkSync(filePath);
+                console.log(`[Cleanup] removed ${name} (${context})`);
+            }
+        } catch (e) {
+            console.warn(`[Cleanup] failed to remove ${name} (${context}):`, e?.message || e);
+        }
+    }
+}
+
 // GNOME/Wayland üst bar & dock ikon eşleştirmesi için (desktop entry ile eşleşme)
 const LINUX_WM_CLASS = 'aurivo-media-player';
 if (app && app.commandLine) {
@@ -5266,6 +5291,7 @@ app.whenReady().then(async () => {
     } else {
         console.log('[GPU] startup conservative mode active (packaged linux)');
     }
+    cleanupTransientHomeFiles('startup');
 
     try { installWebviewHardening(); } catch (e) { console.error('[APP] installWebviewHardening error:', e); }
     try { installTlsCompatibilityForWebPlatforms(); } catch (e) { console.error('[APP] installTlsCompatibilityForWebPlatforms error:', e); }
@@ -5332,6 +5358,7 @@ app.on('before-quit', () => {
     stopAurivoPulseListening();
     stopAurivoPulseGuiWindow();
     unregisterGlobalMediaShortcuts();
+    cleanupTransientHomeFiles('before-quit');
 });
 
 // ============================================
