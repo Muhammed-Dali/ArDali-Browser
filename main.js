@@ -62,6 +62,24 @@ function isPackagedLinuxConservativeGpuMode() {
     return !isTruthyEnvFlag('AURIVO_FORCE_GPU_TUNING');
 }
 
+function shouldEnableElectronUpdaterOnThisRuntime() {
+    // Linux/AUR kurulumlarında electron-updater yerine paket yöneticisi (yay/pacman) akışı kullanılmalı.
+    // Bu akış bazı ortamlarda gereksiz crash riskini artırdığı için varsayılan kapalı.
+    if (process.platform === 'linux' && app.isPackaged) {
+        return isTruthyEnvFlag('AURIVO_ENABLE_ELECTRON_UPDATER');
+    }
+    return true;
+}
+
+function shouldUseAdblockExtensionOnThisRuntime() {
+    // Paketli Linux'ta extension tabanlı mod bazı sistemlerde kararsız davranabildiği için
+    // varsayılanı built-in moda çekiyoruz. Gelişmiş kullanıcı env ile tekrar açabilir.
+    if (process.platform === 'linux' && app.isPackaged) {
+        return isTruthyEnvFlag('AURIVO_ADBLOCK_EXTENSION');
+    }
+    return true;
+}
+
 function commandExists(command) {
     try {
         const res = spawnSync('bash', ['-lc', `command -v ${String(command || '').trim()}`], {
@@ -220,6 +238,14 @@ function setUpdateStatus(status, patch = {}) {
 function initAutoUpdaterBridge() {
     if (updateRuntime.initialized) return;
     updateRuntime.initialized = true;
+
+    if (!shouldEnableElectronUpdaterOnThisRuntime()) {
+        setUpdateStatus('unsupported', {
+            checkedAt: Date.now(),
+            lastError: 'Electron updater disabled on packaged Linux (use AUR/pacman updates).'
+        });
+        return;
+    }
 
     if (!autoUpdater) {
         setUpdateStatus('unsupported', { lastError: 'electron-updater unavailable' });
@@ -5244,7 +5270,22 @@ app.whenReady().then(async () => {
     try { initAutoUpdaterBridge(); } catch (e) { console.error('[APP] initAutoUpdaterBridge error:', e); }
     try { installAppMenu(); } catch (e) { console.error('[APP] installAppMenu error:', e); }
     try { registerDawlodIpc({ ipcMain, app, dialog, shell, BrowserWindow, getMainWindow: () => mainWindow }); } catch (e) { console.error('[APP] registerDawlodIpc error:', e); }
-    try { await initAdBlocker(session, { app, webviewPartition: WEBVIEW_PARTITION, includeDefaultSession: true, preferUbol: true, enabled: true, useExtension: true }); } catch (e) { console.error('[APP] initAdBlocker error:', e); }
+    try {
+        const useAdblockExtension = shouldUseAdblockExtensionOnThisRuntime();
+        if (!useAdblockExtension) {
+            console.log('[AdBlocker] packaged Linux safe mode -> built-in filtering (extension disabled)');
+        }
+        await initAdBlocker(session, {
+            app,
+            webviewPartition: WEBVIEW_PARTITION,
+            includeDefaultSession: true,
+            preferUbol: true,
+            enabled: true,
+            useExtension: useAdblockExtension
+        });
+    } catch (e) {
+        console.error('[APP] initAdBlocker error:', e);
+    }
     try { scheduleAdblockConfigBackgroundSync(WEBVIEW_PARTITION); } catch (e) { console.error('[APP] scheduleAdblockConfigBackgroundSync error:', e); }
     try { startPulseBridgeServer(); } catch (e) { console.error('[APP] startPulseBridgeServer error:', e); }
     try { createWindow(); } catch (e) { console.error('[APP] createWindow error:', e); }
@@ -5252,6 +5293,8 @@ app.whenReady().then(async () => {
     try { createMPRIS(); } catch (e) { console.error('[APP] createMPRIS error:', e); }
     try {
         setTimeout(() => {
+            // unsupported iken startup check çağırmayalım.
+            if (updateRuntime.status === 'unsupported') return;
             checkForAppUpdates({ manual: false }).catch(() => {});
         }, 3200);
     } catch (e) {

@@ -3284,11 +3284,31 @@ function cancelStartupLazyWebLoad() {
     webPlatformRuntime.startupLazyArmed = false;
 }
 
+function isPackagedLinuxRuntimeRenderer() {
+    const isLinux = String(window.aurivo?.platform || '').toLowerCase() === 'linux';
+    if (!isLinux) return false;
+    try {
+        const href = String(window.location?.href || '');
+        return href.includes('/app.asar/');
+    } catch {
+        return false;
+    }
+}
+
+function shouldAutoLoadWebOnStartup() {
+    // Paketli Linux'ta webview + extension + service worker zinciri bazı sistemlerde
+    // kararsız davranabildiği için, otomatik yüklemeyi kapatıyoruz.
+    // Kullanıcı web sekmesine tıkladığında platform normal şekilde açılır.
+    if (isPackagedLinuxRuntimeRenderer()) return false;
+    return true;
+}
+
 function getWebStartupLazyDelayMs() {
     return normalizeWebStartupLazyDelayMs(state.settings?.ui?.webStartupLazyDelayMs);
 }
 
 function getStartupWebPlatformBtn() {
+    if (!shouldAutoLoadWebOnStartup()) return null;
     const remember = state.settings?.ui?.rememberLastSection !== false;
     const startup = String(state.settings?.ui?.startupPage || 'music').toLowerCase();
     const savedPage = String(state.settings?.ui?.lastPage || '').toLowerCase();
@@ -3304,6 +3324,7 @@ function getStartupWebPlatformBtn() {
 }
 
 function scheduleStartupLazyWebLoad() {
+    if (!shouldAutoLoadWebOnStartup()) return false;
     cancelStartupLazyWebLoad();
     if (String(state.currentPage || '') !== 'web') return false;
     const currentUrl = String(getWebViewUrlSafe() || '').trim().toLowerCase();
@@ -3325,6 +3346,7 @@ function scheduleStartupLazyWebLoad() {
 }
 
 function preloadLastWebPlatformOnStartup() {
+    if (!shouldAutoLoadWebOnStartup()) return false;
     if (String(state.currentPage || '') !== 'web') return false;
     const currentUrl = String(getWebViewUrlSafe() || '').trim().toLowerCase();
     if (currentUrl && currentUrl !== 'about:blank') return false;
