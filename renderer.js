@@ -626,7 +626,8 @@ const state = {
 
 // Web player <-> uygulama ses senkronu (sonsuz döngü/jitter önleme)
 const webVolumeSync = {
-    ignoreIncomingUntil: 0
+    ignoreIncomingUntil: 0,
+    lastPushAt: 0
 };
 const handledExternalDropEvents = new WeakSet();
 const securityRuntime = {
@@ -791,7 +792,39 @@ function getAdblockBridgeConfig() {
 }
 
 function getAdblockWebModeProfile() {
+    const packagedLinuxSafeMode = isPackagedLinuxRuntimeRenderer() && ensureAdblockSettings().developerMode !== true;
     const mode = normalizeAdblockMode(ensureAdblockSettings().mode);
+
+    if (packagedLinuxSafeMode) {
+        // Paketli Linux'ta webview donmalarını azaltmak için daha hafif tarama profili.
+        // Özellikle DOM taraması ve sık tick döngüsü yavaş cihazlarda ana süreci kilitleyebiliyor.
+        if (mode === 'aggressive') {
+            return {
+                tickIntervalMs: 120,
+                uiScrubLevel: 1,
+                deepSponsoredScan: false,
+                adSignalLevel: 1,
+                forceSeekAds: true
+            };
+        }
+        if (mode === 'basic') {
+            return {
+                tickIntervalMs: 360,
+                uiScrubLevel: 0,
+                deepSponsoredScan: false,
+                adSignalLevel: 0,
+                forceSeekAds: false
+            };
+        }
+        return {
+            tickIntervalMs: 180,
+            uiScrubLevel: 0,
+            deepSponsoredScan: false,
+            adSignalLevel: 1,
+            forceSeekAds: false
+        };
+    }
+
     if (mode === 'basic') {
         return {
             tickIntervalMs: 350,
@@ -5577,7 +5610,11 @@ function setupEventListeners() {
             `);
             setTimeout(() => {
                 pushAppVolumeToWeb();
-                scheduleApplyWebDaliEngine('dom-ready', 120);
+                // Paketli Linux'ta dom-ready anında ağır DALI apply, bazı sistemlerde webview'i kilitleyebiliyor.
+                // Bu ortamda apply'i media-started / navigate tetiklerine bırakıyoruz.
+                if (!isPackagedLinuxRuntimeRenderer()) {
+                    scheduleApplyWebDaliEngine('dom-ready', 120);
+                }
             }, 120);
         });
     }
@@ -13413,7 +13450,9 @@ function pushAppVolumeToWeb() {
     const muted = !!state.isMuted || vol === 0;
     const target = Math.max(0, Math.min(1, vol / 100));
 
-    webVolumeSync.ignoreIncomingUntil = Date.now() + 250;
+    const now = Date.now();
+    webVolumeSync.lastPushAt = now;
+    webVolumeSync.ignoreIncomingUntil = now + 250;
     elements.webView.executeJavaScript(`
         (function() {
             const volPct = ${vol};
@@ -13443,12 +13482,32 @@ function pushAppVolumeToWeb() {
     });
 }
 
-function applyWebVolumeToUi(rawVolume, rawMuted) {
-    if (Date.now() < webVolumeSync.ignoreIncomingUntil) return;
+function shouldAcceptIncomingWebVolume(percent, muted) {
+    const safePercent = Math.max(0, Math.min(100, Number(percent) || 0));
+    const now = Date.now();
+    if (now < Number(webVolumeSync.ignoreIncomingUntil || 0)) return false;
 
+    const current = Math.max(0, Math.min(100, Number(state.volume) || 0));
+    const recentAppPush = (now - Number(webVolumeSync.lastPushAt || 0)) < 1500;
+
+    if (recentAppPush) return true;
+    if (safePercent <= current + 8) return true;
+    if (muted || safePercent === 0) return true;
+
+    return false;
+}
+
+function applyWebVolumeToUi(rawVolume, rawMuted) {
     const volume01 = Math.max(0, Math.min(1, Number(rawVolume) || 0));
     const percent = Math.round(volume01 * 100);
     const muted = !!rawMuted || percent === 0;
+    if (!shouldAcceptIncomingWebVolume(percent, muted)) {
+        // Ani yükselmede uygulama sesini koru ve web tarafına geri uygula.
+        setTimeout(() => {
+            pushAppVolumeToWeb();
+        }, 40);
+        return;
+    }
 
     state.volume = percent;
     state.isMuted = muted;

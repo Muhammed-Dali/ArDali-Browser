@@ -4393,8 +4393,9 @@ function getVisualizerFeedIntervalMs() {
 function buildVisualizerVideoPcmFallback(framesPerChannel) {
     const frame = visualizerVideoSpectrumFrame;
     if (!frame || !Array.isArray(frame.bands) || frame.bands.length === 0) return null;
-    if (!frame.isPlaying) return null;
     if (Date.now() - Number(frame.updatedAt || 0) > 700) return null;
+    const hasEnergy = frame.bands.some((v) => Number(v) > 0.0035);
+    if (!frame.isPlaying && !hasEnergy) return null;
 
     const oscCount = Math.max(24, Math.min(64, frame.bands.length));
     const sampleRate = 48000;
@@ -4429,6 +4430,7 @@ function buildVisualizerVideoPcmFallback(framesPerChannel) {
 
     const floatArray = new Float32Array(countPerChannel * channels);
     const norm = 1 / Math.max(1, Math.sqrt(oscCount) * 1.25);
+    const activityScale = frame.isPlaying ? 1 : 0.65;
 
     for (let s = 0; s < countPerChannel; s++) {
         let mono = 0;
@@ -4437,7 +4439,7 @@ function buildVisualizerVideoPcmFallback(framesPerChannel) {
             frame.phases[i] += phaseIncs[i];
             if (frame.phases[i] > Math.PI * 2) frame.phases[i] -= Math.PI * 2;
         }
-        const soft = Math.tanh(mono * norm * 1.8) * 0.7;
+        const soft = Math.tanh(mono * norm * 1.8) * 0.7 * activityScale;
         floatArray[s * 2] = soft;
         floatArray[s * 2 + 1] = soft;
     }
@@ -4456,9 +4458,9 @@ function stopVisualizerFeed() {
 function startVisualizerFeed() {
     stopVisualizerFeed();
     if (!visualizerProc || !visualizerProc.stdin) return;
-    if (!audioEngine || typeof audioEngine.getPCMData !== 'function') {
-        console.warn('[Visualizer] PCM feed yok: audioEngine.getPCMData bulunamadı');
-        return;
+    const hasNativePcm = !!(audioEngine && typeof audioEngine.getPCMData === 'function');
+    if (!hasNativePcm) {
+        console.warn('[Visualizer] Native PCM yok, web/video spectrum fallback feed aktif');
     }
 
     const requestedFramesPerChannel = 1024;
@@ -4497,7 +4499,7 @@ function startVisualizerFeed() {
 
                 let pcmRes = shouldPreferFallback
                     ? fallback
-                    : audioEngine.getPCMData(requestedFramesPerChannel);
+                    : (hasNativePcm ? audioEngine.getPCMData(requestedFramesPerChannel) : null);
                 if (!pcmRes || !pcmRes.data || pcmRes.data.length === 0) {
                     if (fallback) {
                         pcmRes = fallback;
