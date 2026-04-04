@@ -6062,6 +6062,8 @@ async function syncAdblockConfigToDashboard(win) {
         const payload = {
             autoReload: !!cfg.autoReload,
             showBlockedCount: !!cfg.showBlockedCount,
+            strictBlock: !!cfg.strictBlock,
+            developerMode: !!cfg.developerMode,
             modeLevel
         };
         await win.webContents.executeJavaScript(`
@@ -6075,6 +6077,24 @@ async function syncAdblockConfigToDashboard(win) {
                 } catch {}
                 send('setAutoReload', cfg.autoReload);
                 send('setShowBlockedCount', cfg.showBlockedCount);
+                // Bazı uBOL sürümlerinde anahtar adları farklı olabiliyor; tüm olası setter'ları dene.
+                send('setStrictBlockMode', cfg.strictBlock);
+                send('setStrictBlock', cfg.strictBlock);
+                send('setDeveloperMode', cfg.developerMode);
+
+                // Dashboard UI fallback: runtime message desteklenmese bile checkbox durumunu eşitle.
+                const setCheckbox = (selector, checked) => {
+                    try {
+                        const el = document.querySelector(selector);
+                        if (!el) return;
+                        if (!!el.checked === !!checked) return;
+                        el.checked = !!checked;
+                        el.dispatchEvent(new Event('change', { bubbles: true }));
+                        el.dispatchEvent(new Event('input', { bubbles: true }));
+                    } catch {}
+                };
+                setCheckbox('#strictBlockMode', !!cfg.strictBlock);
+                setCheckbox('#developerMode', !!cfg.developerMode);
             } catch {}
         `, true);
     } catch {
@@ -7249,7 +7269,9 @@ ipcMain.handle('settings:load', async () => {
         adblock: {
             mode: 'ideal',
             showBlockedCount: true,
-            autoRefreshOnModeChange: false
+            autoRefreshOnModeChange: false,
+            strictBlock: false,
+            developerMode: false
         },
         volume: 40,
         shuffle: false,

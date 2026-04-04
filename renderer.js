@@ -13452,24 +13452,9 @@ function shouldAcceptIncomingWebVolume(percent, muted) {
     const now = Date.now();
     if (now < Number(webVolumeSync.ignoreIncomingUntil || 0)) return false;
 
-    const current = Math.max(0, Math.min(100, Number(state.volume) || 0));
-    const recentAppPush = (now - Number(webVolumeSync.lastPushAt || 0)) < 2200;
-    const expectedPercent = Math.max(0, Math.min(100, Number(webVolumeSync.lastPushedPercent) || current));
-    const expectedMuted = !!webVolumeSync.lastPushedMuted;
-
-    if (recentAppPush) {
-        const nearExpected = Math.abs(safePercent - expectedPercent) <= 3;
-        if (nearExpected && (!!muted === expectedMuted || safePercent === 0)) return true;
-        if (safePercent > (expectedPercent + 3)) return false;
-        if (safePercent < (expectedPercent - 10)) return false;
-        if (!!muted !== expectedMuted && safePercent > 0) return false;
-        return true;
-    }
-
-    if (safePercent <= current + 6) return true;
-    if (muted || safePercent === 0) return true;
-
-    return false;
+    // Web tarafındaki kullanıcı etkileşimini (YouTube/diğer platform slider'ı)
+    // engellememek için yalnızca kısa "echo" penceresinde blokla.
+    return true;
 }
 
 function applyWebVolumeToUi(rawVolume, rawMuted) {
@@ -13477,10 +13462,7 @@ function applyWebVolumeToUi(rawVolume, rawMuted) {
     const percent = Math.round(volume01 * 100);
     const muted = !!rawMuted || percent === 0;
     if (!shouldAcceptIncomingWebVolume(percent, muted)) {
-        // Ani yükselmede uygulama sesini koru ve web tarafına geri uygula.
-        setTimeout(() => {
-            pushAppVolumeToWeb();
-        }, 90);
+        // App -> web echo penceresinde gelen geri bildirimleri yoksay.
         return;
     }
 
