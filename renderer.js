@@ -5002,10 +5002,6 @@ function setupEventListeners() {
                         let ytAdStyleInjected = false;
                         let adShieldEl = null;
                         let adDetectedSince = 0;
-                        let adAudioGuardActive = false;
-                        let adAudioGuardMuted = false;
-                        let adAudioGuardVolume = 1;
-                        let adAudioGuardPlaybackRate = 1;
 
                         function isYouTubeHost() {
                             try {
@@ -5056,21 +5052,6 @@ function setupEventListeners() {
                             } catch {
                                 return false;
                             }
-                        }
-
-                        function enforceYouTubeNonWatchMute() {
-                            if (!isYouTubeHost()) return;
-                            const shouldMuteAll = !isYouTubeWatchLikeContext();
-                            const medias = document.querySelectorAll('video, audio');
-                            medias.forEach((m) => {
-                                try {
-                                    if (!m) return;
-                                    if (shouldMuteAll) {
-                                        m.muted = true;
-                                        if (Number.isFinite(m.volume) && m.volume > 0) m.volume = 0;
-                                    }
-                                } catch {}
-                            });
                         }
 
                         function ensureYouTubeAdCss() {
@@ -5284,9 +5265,6 @@ function setupEventListeners() {
                                     document.querySelector('.ad-showing, .ad-interrupting') ||
                                     (movie && movie.classList && (movie.classList.contains('ad-showing') || movie.classList.contains('ad-interrupting')))
                                 );
-                                const adUiSignals = !!document.querySelector(
-                                    '.ytp-ad-player-overlay, .ytp-ad-skip-button, .ytp-ad-skip-button-modern, .ytp-ad-preview-container, .ytp-ad-text, .video-ads, .ytp-ad-message-container'
-                                );
                                 const adUiVisible = (() => {
                                     try {
                                         const nodes = document.querySelectorAll(
@@ -5339,8 +5317,8 @@ function setupEventListeners() {
                                 );
                                 const signalLevel = Math.max(0, Number(DELIBLOCK?.adSignalLevel) || 0);
                                 const adDetected = adShowing ||
-                                    (signalLevel >= 1 && adUiSignals) ||
-                                    (signalLevel >= 2 && (adUiVisible || adNetworkSignal));
+                                    (signalLevel >= 1 && adUiVisible) ||
+                                    (signalLevel >= 2 && adNetworkSignal);
                                 const nowTs = Date.now();
                                 if (adDetected) {
                                     if (!adDetectedSince) adDetectedSince = nowTs;
@@ -5365,17 +5343,6 @@ function setupEventListeners() {
                                 );
                                 if (closeBtn && typeof closeBtn.click === 'function') closeBtn.click();
 
-                                if (adDetected && media) {
-                                    if (!adAudioGuardActive) {
-                                        adAudioGuardMuted = !!media.muted;
-                                        adAudioGuardVolume = Number.isFinite(media.volume) ? media.volume : 1;
-                                        adAudioGuardPlaybackRate = Number.isFinite(media.playbackRate) ? media.playbackRate : 1;
-                                        adAudioGuardActive = true;
-                                    }
-                                    media.muted = true;
-                                    if (Number.isFinite(media.volume) && media.volume > 0) media.volume = 0;
-                                }
-
                                 if (adDetected && DELIBLOCK?.forceSeekAds) {
                                     if (media) {
                                         if (Number.isFinite(media.duration) && media.duration > 0) {
@@ -5398,14 +5365,6 @@ function setupEventListeners() {
                                     }
                                 }
 
-                                if (!adDetected && adAudioGuardActive && media) {
-                                    media.muted = !!adAudioGuardMuted;
-                                    if (Number.isFinite(adAudioGuardVolume)) media.volume = adAudioGuardVolume;
-                                    if (Number.isFinite(adAudioGuardPlaybackRate) && adAudioGuardPlaybackRate > 0) {
-                                        media.playbackRate = adAudioGuardPlaybackRate;
-                                    }
-                                    adAudioGuardActive = false;
-                                }
                             } catch {}
                         }
 
@@ -5592,7 +5551,6 @@ function setupEventListeners() {
                             if (media) attachEvents(media);
                             emitMetadata(false);
                             tickYouTubeAdSkip();
-                            enforceYouTubeNonWatchMute();
                         });
                         observer.observe(document.documentElement || document.body, { childList: true, subtree: true });
 
@@ -5604,14 +5562,12 @@ function setupEventListeners() {
                             emitTime(false);
                             emitVolume(false);
                             tickYouTubeAdSkip();
-                            enforceYouTubeNonWatchMute();
                         }, Math.max(80, Number(DELIBLOCK && DELIBLOCK.tickIntervalMs) || 150));
 
                         emitMetadata(true);
                         emitTime(true);
                         emitVolume(true);
                         tickYouTubeAdSkip();
-                        enforceYouTubeNonWatchMute();
                     })();
                 } catch(e) { console.error("AURIVO_SYNC error:", e); }
             `);
