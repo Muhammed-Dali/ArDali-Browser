@@ -231,7 +231,7 @@ function fetchJsonHttps(url, timeoutMs = 4500) {
     });
 }
 
-async function checkForAurivoBinUpdates() {
+async function checkForAurivoBinUpdates({ manual = false } = {}) {
     const caps = getLinuxAurUpdateCapabilities();
     const checkedAt = Date.now();
     if (!caps.aurUpdateSupported || !caps.aurPackageInstalled) {
@@ -279,9 +279,23 @@ async function checkForAurivoBinUpdates() {
         }
         return snapshotUpdateState();
     } catch (error) {
-        setUpdateStatus('error', {
+        const message = `AUR check failed: ${String(error?.message || error || 'unknown').trim()}`;
+        if (manual) {
+            setUpdateStatus('error', {
+                checkedAt,
+                lastError: message
+            });
+            return snapshotUpdateState();
+        }
+
+        // Otomatik (startup) kontrol hatalarında kullanıcıya hata banner'ı göstermeyelim.
+        // Son bilinen durumu koru; sadece check zamanını güncelle.
+        const keepStatus = String(updateRuntime.status || '').toLowerCase() === 'checking'
+            ? 'idle'
+            : (updateRuntime.status || 'idle');
+        setUpdateStatus(keepStatus, {
             checkedAt,
-            lastError: `AUR check failed: ${String(error?.message || error || 'unknown').trim()}`
+            lastError: ''
         });
         return snapshotUpdateState();
     }
@@ -443,7 +457,7 @@ async function checkForAppUpdates({ manual = false } = {}) {
 
 async function checkForRuntimeUpdates({ manual = false } = {}) {
     if (process.platform === 'linux' && app.isPackaged && !shouldEnableElectronUpdaterOnThisRuntime()) {
-        return checkForAurivoBinUpdates();
+        return checkForAurivoBinUpdates({ manual });
     }
     return checkForAppUpdates({ manual });
 }
