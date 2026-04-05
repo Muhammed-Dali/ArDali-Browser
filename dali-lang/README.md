@@ -7,7 +7,7 @@
 You can use `dali-lang` independently from the main app via npm:
 
 ```bash
-npm install @aurivo/dali-lang
+npm install aurivo-dali-lang
 ```
 
 CLI usage after install:
@@ -31,8 +31,8 @@ Automated publish (GitHub Actions):
 3. Create tag in format `dali-lang-v<version>` and push:
 
 ```bash
-git tag dali-lang-v0.1.0
-git push origin dali-lang-v0.1.0
+git tag dali-lang-v0.1.1
+git push origin dali-lang-v0.1.1
 ```
 
 Current scope:
