@@ -2,6 +2,39 @@
 
 `dali-lang` is the first foundation of the `.dali`/`.dl` audio DSL for web/Electron audio processing.
 
+## npm package
+
+You can use `dali-lang` independently from the main app via npm:
+
+```bash
+npm install @aurivo/dali-lang
+```
+
+CLI usage after install:
+
+```bash
+npx dali dali-lang/examples/web-bass-enhancer.dali /tmp/web-bass-enhancer.generated.js
+```
+
+Publish package:
+
+```bash
+cd dali-lang
+npm login
+npm publish --access public
+```
+
+Automated publish (GitHub Actions):
+
+1. Add repository secret: `NPM_TOKEN` (npm automation token).
+2. Bump `dali-lang/package.json` version.
+3. Create tag in format `dali-lang-v<version>` and push:
+
+```bash
+git tag dali-lang-v0.1.0
+git push origin dali-lang-v0.1.0
+```
+
 Current scope:
 - Parse `.dali` and `.dl` preset files.
 - Compile one preset into a JavaScript module that builds a Web Audio graph.
@@ -159,6 +192,13 @@ Install Kate syntax highlighting for `.dali`/`.dl`:
 
 ```bash
 npm run -s dali:install:kate:linux
+```
+
+Use VS Code syntax highlighting (local extension files):
+
+```bash
+# open this folder in VS Code and run Extension Development Host (F5)
+dali-lang/editors/vscode
 ```
 
 Full Linux runtime build (DALI + native addon + visualizer + runtime libs):

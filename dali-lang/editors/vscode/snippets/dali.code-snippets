@@ -1,0 +1,62 @@
+{
+  "DALI Preset v2": {
+    "scope": "dali",
+    "prefix": "dali-preset",
+    "body": [
+      "preset \"${1:My Preset}\" {",
+      "  engine {",
+      "    input: ${2:music};",
+      "    output: ${3:speakers};",
+      "    safety: strict;",
+      "    profile: realtime;",
+      "  }",
+      "",
+      "  chain {",
+      "    preamp {",
+      "      gain: ${4:-1.8db};",
+      "    }",
+      "  }",
+      "",
+      "  quality {",
+      "    sample_rate: ${5:48000};",
+      "    max_latency_ms: ${6:20};",
+      "    true_peak_protection: on;",
+      "  }",
+      "}"
+    ],
+    "description": "Create a v2 DALI preset skeleton."
+  },
+  "DALI EQ32 Block": {
+    "scope": "dali",
+    "prefix": "dali-eq32",
+    "body": [
+      "eq32 {",
+      "  band(${1:80hz}) = ${2:0.0db};",
+      "  band(${3:125hz}) = ${4:0.0db};",
+      "  band(${5:250hz}) = ${6:0.0db};",
+      "}"
+    ],
+    "description": "Insert an eq32 block with sample band points."
+  },
+  "DALI Limiter Block": {
+    "scope": "dali",
+    "prefix": "dali-limiter",
+    "body": [
+      "limiter {",
+      "  enabled: on;",
+      "  ceiling: ${1:-0.8db};",
+      "  release: ${2:60ms};",
+      "  gain: ${3:0db};",
+      "}"
+    ],
+    "description": "Insert limiter block with common parameters."
+  },
+  "DALI Legacy Effect Statement": {
+    "scope": "dali",
+    "prefix": "dali-legacy-fx",
+    "body": [
+      "${1:peaking} freq=${2:1000hz} gain=${3:0.0db} q=${4:1.0};"
+    ],
+    "description": "Insert legacy one-line effect statement."
+  }
+}

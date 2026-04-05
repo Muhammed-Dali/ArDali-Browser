@@ -1,0 +1,4 @@
+examples/**/*.generated.js
+examples/**/*.worklet.generated.js
+examples/**/*.wasm.generated.js
+examples/**/*.ir.json
