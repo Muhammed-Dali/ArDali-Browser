@@ -39,6 +39,17 @@
 - AppImage / `.deb` / `.rpm`: [Latest Release](https://github.com/muhammed-aurivo-dev/Aurivo-Medya-Player-Linux/releases/latest)
 - Yayın kontrol listesi: [RELEASE-CHECKLIST.md](RELEASE-CHECKLIST.md)
 
+## DALI npm Paketi
+- npm: [aurivo-dali-lang](https://www.npmjs.com/package/aurivo-dali-lang)
+- Kurulum:
+```bash
+npm install aurivo-dali-lang
+```
+- CLI örneği:
+```bash
+npx dali input.dali output.generated.js
+```
+
 ### Hızlı Arch Kurulum
 
 #### Seçenek 1: AUR (`yay`)
