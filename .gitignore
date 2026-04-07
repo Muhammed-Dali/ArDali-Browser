@@ -45,3 +45,6 @@ assets/fonts/Inter.ttf
 assets/fonts/JetBrainsMono-Regular.ttf
 assets/fonts/Ubuntu-Regular.ttf
 aurivo-bin/
+
+# VS Code extension packaged artifacts
+dali-lang/editors/vscode/*.vsix
