@@ -3,6 +3,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const { spawnSync } = require('child_process');
 const { parseDali } = require('./parser');
 const { compileToWebAudioModule } = require('./compiler-web-audio');
 const { compileToWasmModuleSkeleton } = require('./compiler-wasm');
@@ -22,6 +23,7 @@ function printUsage() {
   console.log('  node dali-lang/src/cli.js <input.dali|input.dl> [output.js] [--target js|wasm] [--backend webaudio|audioworklet] [--strict|--hardened] [--verify-signature --public-key <pub.pem> [--signature <file.sig.json>]]');
   console.log('  node dali-lang/src/cli.js run <input.dali|input.dl> [--dry-run|--no-dry-run --execute-stub] [--json]');
   console.log('  node dali-lang/src/cli.js ir <input.dali|input.dl> [output.ir.json] [--json] [--no-cache]');
+  console.log('  node dali-lang/src/cli.js setup [--editor vscode] [--skip-editor-install]');
 }
 
 function parseArgs(argv) {
@@ -37,6 +39,8 @@ function parseArgs(argv) {
     backend: '',
     securityMode: 'strict',
     target: 'js',
+    setupEditor: 'vscode',
+    skipEditorInstall: false,
     useCache: true,
     dryRun: true,
     executeStub: false
@@ -50,11 +54,17 @@ function parseArgs(argv) {
   } else if (first === 'ir') {
     options.mode = 'ir';
     startIndex = 1;
+  } else if (first === 'setup') {
+    options.mode = 'setup';
+    startIndex = 1;
   }
-  options.inputPathArg = String(args[startIndex] || '').trim();
+  if (options.mode !== 'setup') {
+    options.inputPathArg = String(args[startIndex] || '').trim();
+  }
 
   let posOutSet = false;
-  for (let i = startIndex + 1; i < args.length; i += 1) {
+  const optionScanStart = options.mode === 'setup' ? startIndex : startIndex + 1;
+  for (let i = optionScanStart; i < args.length; i += 1) {
     const arg = String(args[i] || '').trim();
     if (!arg) continue;
     if (!arg.startsWith('--') && !posOutSet) {
@@ -112,13 +122,53 @@ function parseArgs(argv) {
     }
     if (arg === '--no-cache') {
       options.useCache = false;
+      continue;
+    }
+    if (arg === '--editor') {
+      options.setupEditor = String(args[i + 1] || '').trim().toLowerCase();
+      i += 1;
+      continue;
+    }
+    if (arg === '--skip-editor-install') {
+      options.skipEditorInstall = true;
     }
   }
   return options;
 }
 
+function installVsCodeExtension() {
+  const extId = 'aurivo.dali-language';
+  const cmd = spawnSync('code', ['--install-extension', extId, '--force'], {
+    encoding: 'utf8'
+  });
+  if (cmd.error) {
+    throw new Error(`[DALI SETUP] failed to run 'code': ${cmd.error.message}`);
+  }
+  if (cmd.status !== 0) {
+    const stderr = String(cmd.stderr || '').trim();
+    const stdout = String(cmd.stdout || '').trim();
+    const details = stderr || stdout || 'unknown error';
+    throw new Error(`[DALI SETUP] VS Code extension install failed (${extId}): ${details}`);
+  }
+  console.log(`[dali-setup] VS Code extension installed: ${extId}`);
+}
+
 async function main() {
   const options = parseArgs(process.argv.slice(2));
+  if (options.mode === 'setup') {
+    const editor = String(options.setupEditor || 'vscode').trim().toLowerCase();
+    if (editor !== 'vscode') {
+      throw new Error(`[DALI SETUP] unsupported editor '${editor}'. Allowed: vscode`);
+    }
+    console.log('[dali-setup] starting setup for editor=vscode');
+    if (options.skipEditorInstall) {
+      console.log('[dali-setup] editor install skipped (--skip-editor-install)');
+      process.exit(0);
+    }
+    installVsCodeExtension();
+    process.exit(0);
+  }
+
   const inputPathArg = options.inputPathArg;
   const outputPathArg = options.outputPathArg;
   if (!inputPathArg) {

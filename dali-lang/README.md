@@ -17,6 +17,14 @@ npx dali dali-lang/examples/web-bass-enhancer.dali /tmp/web-bass-enhancer.genera
 npx dali dali-lang/examples/web-eq32-reference.dl /tmp/web-eq32-reference.generated.js --hardened
 ```
 
+One-step editor setup (VS Code syntax extension):
+
+```bash
+npx dali setup
+```
+
+This installs `aurivo.dali-language` for VS Code and enables `.dali/.dl` highlighting.
+
 Publish package:
 
 ```bash
