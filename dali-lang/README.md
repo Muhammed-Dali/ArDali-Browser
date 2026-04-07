@@ -2,6 +2,8 @@
 
 `dali-lang` is the first foundation of the `.dali`/`.dl` audio DSL for web/Electron audio processing.
 
+Workflow note: changes limited to `dali-lang/**` should not trigger the main Linux app build workflow.
+
 ## npm package
 
 You can use `dali-lang` independently from the main app via npm:
