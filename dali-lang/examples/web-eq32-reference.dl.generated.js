@@ -367,6 +367,14 @@ module.exports = {
   "true_peak_protection": {
     "type": "ident",
     "value": "on"
+  },
+  "safety": {
+    "type": "ident",
+    "value": "strict"
+  },
+  "profile": {
+    "type": "ident",
+    "value": "realtime"
   }
 },
   buildGraph: build_web_eq32_reference_v2,

@@ -2,24 +2,47 @@
 
 const crypto = require('crypto');
 
+function inferUnitKind(unit) {
+  const u = String(unit || '').toLowerCase();
+  if (u === 'hz') return 'frequency';
+  if (u === 'ms') return 'time';
+  if (u === 'db') return 'gain_db';
+  if (u === '%') return 'percent';
+  if (u === 'x') return 'multiplier';
+  return 'scalar';
+}
+
 function normalizeLiteral(literal) {
   if (!literal || typeof literal !== 'object') return { type: 'ident', value: '' };
   if (literal.type === 'number') {
+    const value = Number(literal.value);
+    const unit = String(literal.unit || '').toLowerCase();
     return {
       type: 'number',
-      value: Number(literal.value),
-      unit: String(literal.unit || '').toLowerCase()
+      value,
+      unit,
+      typed: {
+        kind: 'numeric',
+        unitKind: inferUnitKind(unit),
+        finite: Number.isFinite(value)
+      }
     };
   }
   if (literal.type === 'string' || literal.type === 'ident') {
     return {
       type: literal.type,
-      value: String(literal.value || '')
+      value: String(literal.value || ''),
+      typed: {
+        kind: literal.type === 'string' ? 'string' : 'identifier'
+      }
     };
   }
   return {
     type: String(literal.type || 'ident'),
-    value: String(literal.value || '')
+    value: String(literal.value || ''),
+    typed: {
+      kind: 'unknown'
+    }
   };
 }
 

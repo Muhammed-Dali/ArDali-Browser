@@ -455,7 +455,7 @@ function resolveBackend(preset, options = {}) {
 }
 
 function compileToWebAudioModule(ast, options = {}) {
-  validateProgramSecurity(ast);
+  validateProgramSecurity(ast, { mode: String(options.securityMode || 'strict').toLowerCase() });
   if (!ast.presets.length) throw new Error('No preset found in .dali source');
 
   const preset = ast.presets[0];

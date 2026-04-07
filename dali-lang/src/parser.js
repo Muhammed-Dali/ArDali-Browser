@@ -507,8 +507,16 @@ function parseDaliV2(source) {
     input: engine.values.input?.value || 'web',
     output: engine.values.output?.value || 'speakers',
     chain: parseChainV2(chainBody, Math.max(0, chainOffset), src),
-    quality: quality.values,
-    qualityLocs: quality.locs,
+    quality: {
+      ...quality.values,
+      ...(engine.values.safety ? { safety: engine.values.safety } : {}),
+      ...(engine.values.profile ? { profile: engine.values.profile } : {})
+    },
+    qualityLocs: {
+      ...quality.locs,
+      ...(engine.locs.safety ? { safety: engine.locs.safety } : {}),
+      ...(engine.locs.profile ? { profile: engine.locs.profile } : {})
+    },
     permissions,
     tasks
   };

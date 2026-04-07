@@ -19,7 +19,7 @@ const { formatDiagnosticWithSource, createDiagnostic, classifyDiagnostic } = req
 
 function printUsage() {
   console.log('Usage:');
-  console.log('  node dali-lang/src/cli.js <input.dali|input.dl> [output.js] [--target js|wasm] [--backend webaudio|audioworklet] [--verify-signature --public-key <pub.pem> [--signature <file.sig.json>]]');
+  console.log('  node dali-lang/src/cli.js <input.dali|input.dl> [output.js] [--target js|wasm] [--backend webaudio|audioworklet] [--strict|--hardened] [--verify-signature --public-key <pub.pem> [--signature <file.sig.json>]]');
   console.log('  node dali-lang/src/cli.js run <input.dali|input.dl> [--dry-run|--no-dry-run --execute-stub] [--json]');
   console.log('  node dali-lang/src/cli.js ir <input.dali|input.dl> [output.ir.json] [--json] [--no-cache]');
 }
@@ -35,6 +35,7 @@ function parseArgs(argv) {
     signaturePath: '',
     json: false,
     backend: '',
+    securityMode: 'strict',
     target: 'js',
     useCache: true,
     dryRun: true,
@@ -87,6 +88,14 @@ function parseArgs(argv) {
     if (arg === '--target') {
       options.target = String(args[i + 1] || '').trim().toLowerCase();
       i += 1;
+      continue;
+    }
+    if (arg === '--strict') {
+      options.securityMode = 'strict';
+      continue;
+    }
+    if (arg === '--hardened') {
+      options.securityMode = 'hardened';
       continue;
     }
     if (arg === '--dry-run') {
@@ -145,7 +154,7 @@ async function main() {
   const ast = parseDali(source);
 
   if (options.mode === 'ir') {
-    validateProgramSecurity(ast);
+    validateProgramSecurity(ast, { mode: options.securityMode });
     const cached = loadOrCreateCachedIR({
       sourceText: source,
       sourceLabel: path.relative(process.cwd(), inputPath),
@@ -186,7 +195,7 @@ async function main() {
   }
 
   if (options.mode === 'run') {
-    validateProgramSecurity(ast);
+    validateProgramSecurity(ast, { mode: options.securityMode });
     const result = await runProgramTasks(ast, {
       dryRun: options.dryRun !== false,
       executeStub: options.executeStub === true
@@ -206,9 +215,15 @@ async function main() {
   let compiled = '';
   const target = String(options.target || 'js').trim().toLowerCase();
   if (target === 'wasm') {
-    compiled = compileToWasmModuleSkeleton(ast, { sourceLabel: path.relative(process.cwd(), inputPath) });
+    compiled = compileToWasmModuleSkeleton(ast, {
+      sourceLabel: path.relative(process.cwd(), inputPath),
+      securityMode: options.securityMode
+    });
   } else {
-    compiled = compileToWebAudioModule(ast, { backend: options.backend });
+    compiled = compileToWebAudioModule(ast, {
+      backend: options.backend,
+      securityMode: options.securityMode
+    });
   }
 
   const outputPath = outputPathArg

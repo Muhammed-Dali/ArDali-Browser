@@ -9,7 +9,7 @@ function escapeJsString(value) {
 }
 
 function compileToWasmModuleSkeleton(ast, options = {}) {
-  validateProgramSecurity(ast);
+  validateProgramSecurity(ast, { mode: String(options.securityMode || 'strict').toLowerCase() });
   const ir = createProgramIR(ast, { sourceLabel: options.sourceLabel || '' });
   const irHash = hashIR(ir);
   const preset = Array.isArray(ast?.presets) && ast.presets[0] ? ast.presets[0] : null;

@@ -10,6 +10,7 @@
   "files": [
     "src",
     "spec/grammar.md",
+    "spec/capability-policy.json",
     "examples/**/*.dali",
     "examples/**/*.dl",
     "README.md"

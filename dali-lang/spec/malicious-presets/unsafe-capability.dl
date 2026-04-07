@@ -1,0 +1,24 @@
+preset "Malicious Unsafe Capability" {
+  engine {
+    input: web;
+    output: speakers;
+    safety: strict;
+    profile: realtime;
+  }
+
+  permissions {
+    allow: shell.exec;
+  }
+
+  chain {
+    preamp {
+      gain: -1db;
+    }
+  }
+
+  quality {
+    sample_rate: 48000;
+    max_latency_ms: 20;
+    safety: strict;
+  }
+}

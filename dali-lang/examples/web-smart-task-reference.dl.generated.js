@@ -118,7 +118,12 @@ module.exports = {
   isAsyncBuildGraph: false,
   inputTarget: "web",
   outputTarget: "speakers",
-  quality: {},
+  quality: {
+  "safety": {
+    "type": "ident",
+    "value": "strict"
+  }
+},
   buildGraph: build_web_smart_task_reference,
   buildGraphSafe: __dali_build_graph_safe
 };

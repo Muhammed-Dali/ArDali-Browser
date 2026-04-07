@@ -3,7 +3,7 @@
 const { parseDali } = require('./parser');
 const { compileToWebAudioModule } = require('./compiler-web-audio');
 const { compileToWasmModuleSkeleton } = require('./compiler-wasm');
-const { validateProgramSecurity, validateSourceLimits } = require('./security-validator');
+const { validateProgramSecurity, validateSourceLimits, CAPABILITY_POLICY, ALLOWED_UNITS } = require('./security-validator');
 const {
   signSourceText,
   verifySourceTextSignature,
@@ -25,6 +25,8 @@ module.exports = {
   compileToWasmModuleSkeleton,
   validateProgramSecurity,
   validateSourceLimits,
+  CAPABILITY_POLICY,
+  ALLOWED_UNITS,
   signSourceText,
   verifySourceTextSignature,
   defaultSignaturePathForSource,

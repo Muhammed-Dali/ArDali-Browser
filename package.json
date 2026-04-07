@@ -34,6 +34,7 @@
     "dali:compile:web:all": "npm run -s dali:compile:web && npm run -s dali:compile:web:wasm",
     "dali:test:regression": "node scripts/dali-web-regression.js",
     "dali:test:regression:update": "node scripts/dali-web-regression.js --update",
+    "dali:test:security": "node scripts/dali-security-suite.js",
     "dali:test:wasm": "npm run -s dali:compile:web:wasm && node scripts/dali-wasm-smoke.js",
     "profile:linux:dali": "npm run -s dali:compile:web && npm run -s profile:linux",
     "dev:win": "cmd /c \"chcp 65001>nul && set ELECTRON_RUN_AS_NODE=&& set AURIVO_DEV=1&& set PATH=C:\\msys64\\mingw64\\bin;C:\\Users\\muhan\\Desktop\\Aurivo-Medya-Player-windows\\native-dist\\windows;C:\\Users\\muhan\\Desktop\\Aurivo-Medya-Player-windows\\native-dist;C:\\Users\\muhan\\Desktop\\Aurivo-Medya-Player-windows\\native\\build\\Release;C:\\Users\\muhan\\Desktop\\Aurivo-Medya-Player-windows\\bin;%PATH%&& electron . --enable-logging\"",

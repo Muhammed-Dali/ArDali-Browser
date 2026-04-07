@@ -1,7 +1,9 @@
 'use strict';
+const fs = require('fs');
+const path = require('path');
 
 const ALLOWED_IO = Object.freeze({
-  input: new Set(['web']),
+  input: new Set(['web', 'music']),
   output: new Set(['speakers'])
 });
 
@@ -36,12 +38,35 @@ const COMPLEXITY_LIMITS = Object.freeze({
   maxTasksPerPreset: 12
 });
 
-const ALLOWED_CAPABILITIES = Object.freeze(new Set([
-  'media.analyze',
-  'media.transcode',
-  'shell.exec',
-  'net.raw'
-]));
+function loadCapabilityPolicy() {
+  const policyPath = path.resolve(__dirname, '..', 'spec', 'capability-policy.json');
+  const fallback = {
+    policyVersion: 1,
+    defaultMode: 'deny',
+    allowedCapabilities: ['media.analyze', 'media.transcode', 'shell.exec', 'net.raw'],
+    forbiddenAllow: ['shell.exec', 'net.raw']
+  };
+  try {
+    if (!fs.existsSync(policyPath)) return fallback;
+    const raw = JSON.parse(fs.readFileSync(policyPath, 'utf8'));
+    return {
+      ...fallback,
+      ...raw,
+      allowedCapabilities: Array.isArray(raw.allowedCapabilities) ? raw.allowedCapabilities : fallback.allowedCapabilities,
+      forbiddenAllow: Array.isArray(raw.forbiddenAllow) ? raw.forbiddenAllow : fallback.forbiddenAllow
+    };
+  } catch (_) {
+    return fallback;
+  }
+}
+
+const CAPABILITY_POLICY = Object.freeze(loadCapabilityPolicy());
+const ALLOWED_CAPABILITIES = Object.freeze(new Set(
+  CAPABILITY_POLICY.allowedCapabilities.map((x) => String(x || '').trim().toLowerCase())
+));
+const FORBIDDEN_ALLOW_CAPABILITIES = Object.freeze(new Set(
+  CAPABILITY_POLICY.forbiddenAllow.map((x) => String(x || '').trim().toLowerCase())
+));
 
 const ALLOWED_TASK_PROVIDERS = Object.freeze(new Set([
   'youtube',
@@ -92,6 +117,8 @@ const NUMERIC_RULES = Object.freeze({
   }
 });
 
+const ALLOWED_UNITS = Object.freeze(new Set(['', 'hz', 'ms', 'db', 'x', '%']));
+
 function literalToText(literal) {
   if (!literal || typeof literal !== 'object') return '';
   if (literal.type === 'ident' || literal.type === 'string') {
@@ -125,7 +152,10 @@ function validateNumericLiteral(contextLabel, literal, rule) {
   ensure(literal && literal.type === 'number', `${contextLabel} must be numeric`);
   const value = Number(literal.value);
   ensure(Number.isFinite(value), `${contextLabel} must be a finite number`);
+  ensure(!Object.is(value, -0), `${contextLabel} must not use negative zero`);
   const unit = String(literal.unit || '').toLowerCase();
+  ensure(ALLOWED_UNITS.has(unit), `${contextLabel} unit '${unit || '(none)'}' is not supported`);
+  ensure(Math.abs(value) <= 1e9, `${contextLabel} absolute value too large`);
   if (rule.units) {
     ensure(rule.units.has(unit), `${contextLabel} unit '${unit || '(none)'}' is not allowed`);
   }
@@ -134,6 +164,18 @@ function validateNumericLiteral(contextLabel, literal, rule) {
   }
   if (Number.isFinite(rule.max)) {
     ensure(value <= rule.max, `${contextLabel} must be <= ${rule.max}`);
+  }
+}
+
+function validateLiteralSafety(contextLabel, literal) {
+  if (!literal || typeof literal !== 'object') return;
+  if (literal.type === 'number') {
+    const value = Number(literal.value);
+    ensure(Number.isFinite(value), `${contextLabel} must be a finite number`);
+    ensure(!Object.is(value, -0), `${contextLabel} must not use negative zero`);
+    ensure(Math.abs(value) <= 1e9, `${contextLabel} absolute value too large`);
+    const unit = String(literal.unit || '').toLowerCase();
+    ensure(ALLOWED_UNITS.has(unit), `${contextLabel} unit '${unit || '(none)'}' is not supported`);
   }
 }
 
@@ -177,14 +219,14 @@ function validateQualityValue(key, literal, presetIndex, loc) {
   }
 }
 
-function validatePreset(preset, index) {
+function validatePreset(preset, index, mode = 'strict') {
   const idx = Number(index) + 1;
   ensure(preset && typeof preset === 'object', `Invalid preset object at index ${idx}`);
   ensure(String(preset.name || '').length <= COMPLEXITY_LIMITS.maxPresetNameLength, `Preset #${idx}: name too long`);
 
   const input = String(preset.input || '').trim().toLowerCase();
   const output = String(preset.output || '').trim().toLowerCase();
-  ensure(ALLOWED_IO.input.has(input), `Preset #${idx}: unsupported input '${preset.input}'. Allowed: web`);
+  ensure(ALLOWED_IO.input.has(input), `Preset #${idx}: unsupported input '${preset.input}'. Allowed: web,music`);
   ensure(ALLOWED_IO.output.has(output), `Preset #${idx}: unsupported output '${preset.output}'. Allowed: speakers`);
 
   ensure(Array.isArray(preset.chain), `Preset #${idx}: chain must be an array`);
@@ -204,6 +246,7 @@ function validatePreset(preset, index) {
       const paramLocSuffix = formatLocSuffix(fx?.paramLocs?.[key]);
       ensure(allowedParams.has(key), `Preset #${idx} effect '${effectName}': param '${key}' is not allowed${paramLocSuffix}`);
       ensure(String(key).length <= COMPLEXITY_LIMITS.maxIdentifierLength, `Preset #${idx} effect '${effectName}': param key too long`);
+      validateLiteralSafety(`Preset #${idx} effect '${effectName}.${key}'${paramLocSuffix}`, params[key]);
       validateEffectParamValue(effectName, key, params[key], idx, i + 1, fx?.paramLocs?.[key]);
     }
   }
@@ -215,6 +258,7 @@ function validatePreset(preset, index) {
     const qualityLocSuffix = formatLocSuffix(preset?.qualityLocs?.[key]);
     ensure(ALLOWED_QUALITY_KEYS.has(key), `Preset #${idx}: quality key '${key}' is not allowed${qualityLocSuffix}`);
     ensure(String(key).length <= COMPLEXITY_LIMITS.maxIdentifierLength, `Preset #${idx}: quality key too long`);
+    validateLiteralSafety(`Preset #${idx} quality '${key}'${qualityLocSuffix}`, quality[key]);
     validateQualityValue(key, quality[key], idx, preset?.qualityLocs?.[key]);
   }
 
@@ -231,7 +275,9 @@ function validatePreset(preset, index) {
     const c = String(cap || '').trim().toLowerCase();
     ensure(ALLOWED_CAPABILITIES.has(c), `Preset #${idx}: permissions.deny capability '${c}' is not allowed`);
   }
-  ensure(!allowNorm.includes('shell.exec') && !allowNorm.includes('net.raw'), `Preset #${idx}: unsafe capability cannot be allowed (shell.exec/net.raw)`);
+  for (const forbidden of FORBIDDEN_ALLOW_CAPABILITIES) {
+    ensure(!allowNorm.includes(forbidden), `Preset #${idx}: unsafe capability cannot be allowed (${forbidden})`);
+  }
 
   const tasks = Array.isArray(preset.tasks) ? preset.tasks : [];
   ensure(tasks.length <= COMPLEXITY_LIMITS.maxTasksPerPreset, `Preset #${idx}: too many tasks (${tasks.length} > ${COMPLEXITY_LIMITS.maxTasksPerPreset})`);
@@ -259,28 +305,54 @@ function validatePreset(preset, index) {
       const params = fx?.params && typeof fx.params === 'object' ? fx.params : {};
       for (const key of Object.keys(params)) {
         ensure(ALLOWED_EFFECT_PARAMS[effectName].has(key), `${tLabel}: effect '${effectName}' param '${key}' is not allowed`);
+        validateLiteralSafety(`${tLabel}: effect '${effectName}.${key}'`, params[key]);
         validateEffectParamValue(effectName, key, params[key], idx, ei + 1, fx?.paramLocs?.[key]);
       }
+    }
+    validateLiteralSafety(`${tLabel}: output.max_latency_ms`, task?.output?.max_latency_ms);
+  }
+
+  if (mode === 'hardened') {
+    const safety = literalToText(quality.safety || { type: 'ident', value: '' });
+    ensure(safety === 'strict', `Preset #${idx}: hardened mode requires quality.safety: strict`);
+    if (tasks.length > 0) {
+      ensure(allowNorm.length > 0, `Preset #${idx}: hardened mode requires explicit permissions.allow for task capabilities`);
+      for (const task of tasks) {
+        const provider = literalToText(task?.source?.provider);
+        const modeText = literalToText(task?.source?.mode);
+        const needsAnalyze = true;
+        const needsTranscode = provider === 'local' && modeText === 'analyze_only';
+        ensure(!needsAnalyze || allowNorm.includes('media.analyze'), `Preset #${idx}: hardened mode requires permissions.allow: media.analyze`);
+        ensure(!needsTranscode || allowNorm.includes('media.transcode'), `Preset #${idx}: hardened mode requires permissions.allow: media.transcode`);
+      }
+    }
+    const latency = Number(quality?.max_latency_ms?.value);
+    if (Number.isFinite(latency)) {
+      ensure(latency <= 80, `Preset #${idx}: hardened mode requires max_latency_ms <= 80`);
     }
   }
 }
 
-function validateProgramSecurity(ast) {
+function validateProgramSecurity(ast, options = {}) {
+  const mode = String(options.mode || 'strict').trim().toLowerCase();
+  ensure(mode === 'strict' || mode === 'hardened', `Unknown security mode '${mode}'`);
   ensure(ast && typeof ast === 'object', 'AST must be an object');
   ensure(Array.isArray(ast.presets), 'AST presets must be an array');
   ensure(ast.presets.length > 0, 'At least one preset is required');
   ensure(ast.presets.length <= COMPLEXITY_LIMITS.maxPresets, `Too many presets (${ast.presets.length} > ${COMPLEXITY_LIMITS.maxPresets})`);
   const totalEffects = ast.presets.reduce((acc, preset) => acc + (Array.isArray(preset?.chain) ? preset.chain.length : 0), 0);
   ensure(totalEffects <= COMPLEXITY_LIMITS.maxTotalEffects, `Too many total effects (${totalEffects} > ${COMPLEXITY_LIMITS.maxTotalEffects})`);
-  ast.presets.forEach((preset, index) => validatePreset(preset, index));
+  ast.presets.forEach((preset, index) => validatePreset(preset, index, mode));
   return true;
 }
 
 module.exports = {
   validateSourceLimits,
   validateProgramSecurity,
+  CAPABILITY_POLICY,
   ALLOWED_EFFECT_PARAMS,
   ALLOWED_QUALITY_KEYS,
   NUMERIC_RULES,
+  ALLOWED_UNITS,
   COMPLEXITY_LIMITS
 };

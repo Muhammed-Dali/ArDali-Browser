@@ -1,0 +1,14 @@
+{
+  "policyVersion": 1,
+  "defaultMode": "deny",
+  "allowedCapabilities": [
+    "media.analyze",
+    "media.transcode",
+    "shell.exec",
+    "net.raw"
+  ],
+  "forbiddenAllow": [
+    "shell.exec",
+    "net.raw"
+  ]
+}

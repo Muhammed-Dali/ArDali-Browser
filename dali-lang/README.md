@@ -14,6 +14,7 @@ CLI usage after install:
 
 ```bash
 npx dali dali-lang/examples/web-bass-enhancer.dali /tmp/web-bass-enhancer.generated.js
+npx dali dali-lang/examples/web-eq32-reference.dl /tmp/web-eq32-reference.generated.js --hardened
 ```
 
 Publish package:
@@ -34,6 +35,10 @@ Automated publish (GitHub Actions):
 git tag dali-lang-v0.1.1
 git push origin dali-lang-v0.1.1
 ```
+
+Capability policy file:
+- `dali-lang/spec/capability-policy.json`
+- Default model is deny-by-default capability enforcement.
 
 Current scope:
 - Parse `.dali` and `.dl` preset files.
@@ -174,6 +179,12 @@ Run automated security tests (malformed corpus + fuzz + signature tamper):
 
 ```bash
 npm run -s dali:test:security
+```
+
+Hardened compile mode:
+
+```bash
+node dali-lang/src/cli.js dali-lang/examples/web-eq32-reference.dl /tmp/out.generated.js --hardened
 ```
 
 Strict mode (fail on any compile error):
