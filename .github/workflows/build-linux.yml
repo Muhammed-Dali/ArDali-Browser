@@ -4,7 +4,19 @@ on:
   workflow_dispatch:
   push:
     branches: [ "main" ]
+    paths-ignore:
+      - "dali-lang/**"
+      - "scripts/dali-*.js"
+      - "scripts/install-dali-filetype-linux.sh"
+      - ".github/workflows/dali-*.yml"
+      - ".github/workflows/publish-dali-*.yml"
   pull_request:
+    paths-ignore:
+      - "dali-lang/**"
+      - "scripts/dali-*.js"
+      - "scripts/install-dali-filetype-linux.sh"
+      - ".github/workflows/dali-*.yml"
+      - ".github/workflows/publish-dali-*.yml"
 
 # Avoid multiple queued runs for the same PR/branch.
 concurrency:

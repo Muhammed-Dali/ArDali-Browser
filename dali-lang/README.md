@@ -40,8 +40,8 @@ Automated publish (GitHub Actions):
 3. Create tag in format `dali-lang-v<version>` and push:
 
 ```bash
-git tag dali-lang-v0.1.3
-git push origin dali-lang-v0.1.3
+git tag dali-lang-v0.1.4
+git push origin dali-lang-v0.1.4
 ```
 
 VS Code extension publish (GitHub Actions):
