@@ -27,6 +27,24 @@ const cases = [
     shouldPass: false
   },
   {
+    label: 'malicious-out-of-range-latency',
+    file: path.join(root, 'dali-lang', 'spec', 'malicious-presets', 'out-of-range-latency.dl'),
+    args: ['--strict'],
+    shouldPass: false
+  },
+  {
+    label: 'malicious-unsafe-http-task-url',
+    file: path.join(root, 'dali-lang', 'spec', 'malicious-presets', 'unsafe-http-task-url.dl'),
+    args: ['--strict'],
+    shouldPass: false
+  },
+  {
+    label: 'malicious-hardened-missing-capability',
+    file: path.join(root, 'dali-lang', 'spec', 'malicious-presets', 'hardened-missing-capability.dl'),
+    args: ['--hardened'],
+    shouldPass: false
+  },
+  {
     label: 'malicious-invalid-unit',
     args: ['--strict'],
     shouldPass: false,

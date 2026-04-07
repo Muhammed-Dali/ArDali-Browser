@@ -44,6 +44,38 @@ git tag dali-lang-v0.1.3
 git push origin dali-lang-v0.1.3
 ```
 
+VS Code extension publish (GitHub Actions):
+
+1. Add repository secret: `VSCE_PAT` (Visual Studio Marketplace personal access token).
+2. Bump `dali-lang/editors/vscode/package.json` version.
+3. Create tag in format `dali-vscode-v<version>` and push:
+
+```bash
+git tag dali-vscode-v0.1.4
+git push origin dali-vscode-v0.1.4
+```
+
+Quality gates for portability + setup:
+
+- `.github/workflows/dali-multi-arch-ci.yml`:
+  - native smoke: `ubuntu-24.04`, `macos-14`, `windows-2025`
+  - portable arch smoke: `linux/amd64` + `linux/arm64` (QEMU + Docker)
+- `.github/workflows/dali-setup-smoke.yml`:
+  - verifies `dali setup --skip-editor-install` across OS matrix
+- `scripts/dali-security-suite.js`:
+  - malicious corpus regression (unknown effect, unsafe capability, invalid unit, out-of-range latency, insecure task URL, hardened missing capability)
+
+Recommended merge flow to `main`:
+
+```bash
+git checkout release_v2_0_12_clean
+git pull --ff-only linux release_v2_0_12_clean
+git checkout main
+git pull --ff-only linux main
+git merge --no-ff release_v2_0_12_clean -m "chore(dali): integrate security+ci hardening"
+git push linux main
+```
+
 Capability policy file:
 - `dali-lang/spec/capability-policy.json`
 - Default model is deny-by-default capability enforcement.

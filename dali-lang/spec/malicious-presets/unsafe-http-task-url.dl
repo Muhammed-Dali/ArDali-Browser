@@ -1,0 +1,37 @@
+preset "Malicious HTTP Task URL" {
+  engine {
+    input: web;
+    output: speakers;
+    safety: strict;
+    profile: realtime;
+  }
+
+  permissions {
+    allow: media.analyze;
+  }
+
+  chain {
+    preamp { gain: -1db; }
+  }
+
+  task "http-task" {
+    source {
+      provider: youtube;
+      url: "http://example.com/insecure";
+      mode: metadata_only;
+    }
+    process {
+      preamp { gain: -1db; }
+    }
+    output {
+      profile: music;
+      max_latency_ms: 12;
+    }
+  }
+
+  quality {
+    sample_rate: 48000;
+    max_latency_ms: 20;
+    safety: strict;
+  }
+}

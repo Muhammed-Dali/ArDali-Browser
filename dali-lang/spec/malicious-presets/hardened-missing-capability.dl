@@ -1,0 +1,33 @@
+preset "Malicious Hardened Missing Capability" {
+  engine {
+    input: web;
+    output: speakers;
+    safety: strict;
+    profile: realtime;
+  }
+
+  chain {
+    preamp { gain: -1db; }
+  }
+
+  task "missing-allow" {
+    source {
+      provider: youtube;
+      url: "https://example.com/track";
+      mode: metadata_only;
+    }
+    process {
+      preamp { gain: -1db; }
+    }
+    output {
+      profile: music;
+      max_latency_ms: 20;
+    }
+  }
+
+  quality {
+    sample_rate: 48000;
+    max_latency_ms: 20;
+    safety: strict;
+  }
+}
