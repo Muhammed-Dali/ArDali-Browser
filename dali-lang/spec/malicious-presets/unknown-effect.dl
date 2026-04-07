@@ -1,4 +1,4 @@
-preset "Malicious Unknown Effect" {
+preset "Reference Unknown Effect Case" {
   engine {
     input: web;
     output: speakers;
@@ -7,8 +7,8 @@ preset "Malicious Unknown Effect" {
   }
 
   chain {
-    shellwarp {
-      gain: 3db;
+    preamp {
+      gain: -1db;
     }
   }
 

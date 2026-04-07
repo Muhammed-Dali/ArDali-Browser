@@ -1,4 +1,4 @@
-preset "Malicious Hardened Missing Capability" {
+preset "Reference Hardened Capability Case" {
   engine {
     input: web;
     output: speakers;
@@ -7,21 +7,8 @@ preset "Malicious Hardened Missing Capability" {
   }
 
   chain {
-    preamp { gain: -1db; }
-  }
-
-  task "missing-allow" {
-    source {
-      provider: youtube;
-      url: "https://example.com/track";
-      mode: metadata_only;
-    }
-    process {
-      preamp { gain: -1db; }
-    }
-    output {
-      profile: music;
-      max_latency_ms: 20;
+    preamp {
+      gain: -1db;
     }
   }
 

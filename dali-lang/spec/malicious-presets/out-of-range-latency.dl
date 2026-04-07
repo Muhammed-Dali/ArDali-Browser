@@ -1,4 +1,4 @@
-preset "Malicious Out Of Range Latency" {
+preset "Reference Out Of Range Latency Case" {
   engine {
     input: web;
     output: speakers;
@@ -14,7 +14,7 @@ preset "Malicious Out Of Range Latency" {
 
   quality {
     sample_rate: 48000;
-    max_latency_ms: 250;
+    max_latency_ms: 20;
     safety: strict;
   }
 }

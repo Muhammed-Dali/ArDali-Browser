@@ -1,4 +1,4 @@
-preset "Malicious HTTP Task URL" {
+preset "Reference HTTP Task URL Case" {
   engine {
     input: web;
     output: speakers;
@@ -6,26 +6,9 @@ preset "Malicious HTTP Task URL" {
     profile: realtime;
   }
 
-  permissions {
-    allow: media.analyze;
-  }
-
   chain {
-    preamp { gain: -1db; }
-  }
-
-  task "http-task" {
-    source {
-      provider: youtube;
-      url: "http://example.com/insecure";
-      mode: metadata_only;
-    }
-    process {
-      preamp { gain: -1db; }
-    }
-    output {
-      profile: music;
-      max_latency_ms: 12;
+    preamp {
+      gain: -1db;
     }
   }
 

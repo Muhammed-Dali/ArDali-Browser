@@ -1,13 +1,9 @@
-preset "Malicious Unsafe Capability" {
+preset "Reference Unsafe Capability Case" {
   engine {
     input: web;
     output: speakers;
     safety: strict;
     profile: realtime;
-  }
-
-  permissions {
-    allow: shell.exec;
   }
 
   chain {
