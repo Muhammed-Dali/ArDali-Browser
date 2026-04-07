@@ -2,7 +2,7 @@
   "name": "dali-language",
   "displayName": "DALI Language",
   "description": "Syntax highlighting for .dali and .dl audio DSL files.",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "publisher": "aurivo",
   "license": "MIT",
   "main": "./extension.js",

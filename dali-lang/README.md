@@ -53,8 +53,8 @@ VS Code extension publish (GitHub Actions):
 3. Create tag in format `dali-vscode-v<version>` and push:
 
 ```bash
-git tag dali-vscode-v0.1.4
-git push origin dali-vscode-v0.1.4
+git tag dali-vscode-v0.1.5
+git push origin dali-vscode-v0.1.5
 ```
 
 Quality gates for portability + setup:
