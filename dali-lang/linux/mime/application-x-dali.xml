@@ -2,8 +2,9 @@
 <mime-info xmlns='http://www.freedesktop.org/standards/shared-mime-info'>
   <mime-type type="application/x-dali">
     <comment>Dali Audio DSL Source</comment>
-    <glob pattern="*.dali"/>
-    <glob pattern="*.dl"/>
+    <glob pattern="*.dali" weight="90"/>
+    <glob pattern="*.dl" weight="90"/>
+    <alias type="text/x-dali"/>
     <sub-class-of type="text/plain"/>
     <icon name="application-x-dali"/>
     <generic-icon name="text-x-script"/>
