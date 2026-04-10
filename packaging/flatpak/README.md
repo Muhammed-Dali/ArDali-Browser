@@ -1,61 +1,60 @@
 
-# Flatpak (Flathub) hazirligi
+# Flatpak (Flathub) Hazirligi
 
-Bu klasor, `com.aurivo.mediaplayer` icin Flathub odakli baslangic manifestini icerir.
+Bu klasor, `com.aurivo.mediaplayer` uygulamasi icin Flatpak manifestini ve yardimci dosyalari icerir.
 
-## 1) Gereken araclar
+## Hizli Ozet
 
-```bash
-sudo pacman -S --needed flatpak flatpak-builder python-pip
-pip install --user flatpak-node-generator
-```
+1. Lokal Flatpak build testi yap.
+2. AppStream metadatasini dogrula.
+3. `flathub/flathub` reposuna `new-pr` tabanli PR ac.
+4. Review yorumlarina gore manifest izinlerini ve build adimlarini guncelle.
 
-## 2) Node kaynak kilidini uret
-
-Proje kokunde:
+## Gereken Araclar
 
 ```bash
-cd /home/muhammet-dali/Aurivo-Medya-Player-Linux-main
-~/.local/bin/flatpak-node-generator npm package-lock.json --output packaging/flatpak/generated-sources.json
+sudo pacman -S --needed flatpak flatpak-builder appstream
 ```
 
-Bu adim Flathub icin zorunludur (build sirasinda internet kapali oldugu icin).
-
-Build oncesi runtime kurulumu:
+Runtime/Sdk:
 
 ```bash
 flatpak install -y flathub org.freedesktop.Sdk//24.08 org.freedesktop.Platform//24.08
 ```
 
-## 3) Lokal Flatpak build testi
+## Lokal Build Testi
 
-Flatpak paketlemeden once host sistemde `linux-unpacked` cikisi uret:
+Manifest mevcut haliyle `dist/linux-unpacked/aurivo` bekler. Bu nedenle once:
 
 ```bash
-cd /home/muhammet-dali/Aurivo-Medya-Player-Linux-main
 npm run build:linux
 ```
 
-Ardindan Flatpak paketle:
+Ardindan:
 
 ```bash
-cd /home/muhammet-dali/Aurivo-Medya-Player-Linux-main
 flatpak-builder --user --install --force-clean build-flatpak packaging/flatpak/com.aurivo.mediaplayer.yml
 flatpak run com.aurivo.mediaplayer
 ```
 
-## 4) Flathub yayini (Discover icin)
+## AppStream Dogrulama
 
-1. `flathub/com.aurivo.mediaplayer` reposu olustur.
-2. Su dosyalari Flathub reposuna koy:
+```bash
+appstreamcli validate packaging/appstream/com.aurivo.mediaplayer.metainfo.xml
+```
+
+## Flathub'a Gonderim
+
+1. GitHub'da `flathub/flathub` reposunu forklayip clone et.
+2. Forkta `new-pr/com.aurivo.mediaplayer` dali ac.
+3. Asagidaki dosyalari `flathub` repo icinde `com.aurivo.mediaplayer/` klasorune koy:
    - `com.aurivo.mediaplayer.yml`
-   - `generated-sources.json`
-3. Flathub'a PR ac.
-4. Onaydan sonra KDE Discover / GNOME Software'da gorunur.
+   - `com.aurivo.mediaplayer.metainfo.xml` (gerekirse ayni adla)
+   - `com.aurivo.mediaplayer.desktop`
+4. Flathub'a PR ac.
+5. Bot ve reviewer geri bildirimlerini uygula.
 
-## Notlar
+## Onemli Not
 
-- Manifest su an Electron `linux-unpacked` cikisini Flatpak icine yerlestirir.
-- Manifest, `dist/linux-unpacked` hostta hazir oldugunu varsayar.
-- Bu surumde `Electron2.BaseApp` zorunlulugu kaldirildi; uygulama kendi Electron binary'si ile calisir.
-- `StartupWMClass=aurivo` secimi, Linux'ta pencere gruplamasini iyilestirmek icin ayarlanmistir.
+- Mevcut manifest prebuilt `linux-unpacked` kullaniyor. Flathub review'da kaynaklardan uretim talep edilebilir.
+- Izinleri minimum tutmak review hizini artirir.
