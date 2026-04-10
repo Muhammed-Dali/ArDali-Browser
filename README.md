@@ -8,6 +8,27 @@
   Müzik, video, web, indirici, dinleyerek şarkı bulma, projectM görselleştirme ve gelişmiş DSP ses efektlerini tek uygulamada birleştiren masaüstü medya platformu.
 </p>
 
+## Tek Cümlede Aurivo
+Aurivo, video oynatıcı + müzik çalar + web medya + indirme + dinleyerek şarkı bulma + gelişmiş ses efektlerini tek Linux uygulamasında birleştirir.
+
+## Kimler İçin?
+- Tek uygulamada kapsamlı medya deneyimi isteyen Linux kullanıcıları
+- Ses kalitesi ve DSP tarafında detaylı kontrol arayan kullanıcılar
+- Hem yerel medya hem web medya iş akışını birlikte kullananlar
+- Görselleştirici, indirici ve müzik keşfini aynı platformda isteyenler
+
+## 3 Adımda Kurulum
+1. [Latest Release](https://github.com/muhammed-aurivo-dev/Aurivo-Medya-Player-Linux/releases/latest) sayfasından sistemine uygun paketi indir (`AppImage`, `.deb`, `.rpm`).
+2. Paketi kur veya çalıştır:
+   - `AppImage`: dosyayı çalıştırılabilir yap (`chmod +x`) ve aç.
+   - `.deb`: `sudo apt install ./aurivo*.deb`
+   - `.rpm`: `sudo dnf install ./aurivo*.rpm`
+3. Aurivo'yu aç, medya klasörünü ekle ve çalmaya başla.
+
+## 30 Saniye Demo
+- Kısa tanıtım videosu: `README` içine YouTube/PeerTube linki ekleyebilirsin.
+- Öneri formatı: "0:00 arayüz, 0:10 ses efektleri, 0:20 web modu + indirici".
+
 <p align="center">
   <a href="https://github.com/muhammed-aurivo-dev/Aurivo-Medya-Player-Linux/releases/latest">
     <img alt="Latest release" src="https://img.shields.io/github/v/release/muhammed-aurivo-dev/Aurivo-Medya-Player-Linux?display_name=tag&sort=semver"/>
