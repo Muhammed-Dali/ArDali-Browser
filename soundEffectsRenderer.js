@@ -28,6 +28,10 @@ const SFX = {
     surroundStatusInterval: null,
     surroundAutoForcedBySystem: false,
     noiseGateStatusInterval: null,
+    activeAnimationEffect: null,
+    sfxLightsEnabled: null,
+    sfxLightsRefreshFrame: 0,
+    sfxLightsRefreshTimer: null,
     eqTopViz: {
         running: false,
         frameId: 0,
@@ -451,37 +455,190 @@ function refreshSfxStaticVisualState() {
     }
 }
 
-function rerenderCurrentEffectPanel() {
-    const effectName = String(SFX.currentEffect || 'eq32').trim() || 'eq32';
-    const activeTab = document.getElementById('tabEffects');
-    if (activeTab && !activeTab.classList.contains('active')) return;
+function refreshEq32AnimatedRegionForLights() {
+    const panel = document.getElementById('eq32Panel');
+    const eqSection = panel?.querySelector('.eq-section');
+    const bandsWrapper = document.getElementById('eqBandsWrapper');
+    if (!panel || !eqSection || !bandsWrapper) return;
+
+    stopEqTopVisualizer();
+
+    (SFX.eqSliders || []).forEach((slider) => {
+        if (slider && typeof slider.destroy === 'function') slider.destroy();
+        else if (slider && typeof slider.stopAnimation === 'function') slider.stopAnimation();
+    });
+    SFX.eqSliders = [];
+    SFX.barAnalyzer = null;
+
+    const settings = getSettings('eq32');
+    const previousMinHeight = eqSection.style.minHeight;
+    eqSection.style.minHeight = `${Math.max(eqSection.offsetHeight, 280)}px`;
+
+    const topViz = eqSection.querySelector('.eq-top-visualizer');
+    if (topViz) {
+        topViz.innerHTML = '<canvas id="barAnalyzerCanvas" class="eq-top-visualizer-canvas"></canvas>';
+    }
+    bandsWrapper.innerHTML = getEQ32BandsMarkup(settings);
+
     requestAnimationFrame(() => {
         try {
-            showEffect(effectName);
-        } catch {
-            // ignore
+            initEQSliders();
+            if (!SFX_ANIM_SAFE_MODE && SFX_RUNTIME_ANIMS_ACTIVE && SFX.currentEffect === 'eq32') {
+                setEffectAnimationsActive('eq32', true);
+            }
+            syncMeterLoops();
+        } catch (e) {
+            console.warn('[SFX] eq32 animated region refresh error:', e?.message || e);
+        } finally {
+            requestAnimationFrame(() => {
+                eqSection.style.minHeight = previousMinHeight;
+            });
         }
     });
 }
 
+function restartSfxRuntimeAnimations() {
+    pauseAllEffectAnimations();
+    stopEqTopVisualizer();
+    SFX_RUNTIME_ANIMS_ACTIVE = false;
+
+    requestAnimationFrame(() => {
+        setRuntimeAnimationsActive(true);
+        if (SFX.currentEffect === 'eq32') {
+            (SFX.eqSliders || []).forEach((slider) => {
+                if (!slider) return;
+                if (typeof slider.restartAnimation === 'function') slider.restartAnimation();
+                else if (typeof slider.startAnimation === 'function') slider.startAnimation();
+                if (typeof slider.draw === 'function') slider.draw();
+            });
+        }
+    });
+}
+
+function clearSfxLightsActivationRefresh() {
+    if (SFX.sfxLightsRefreshFrame) {
+        cancelAnimationFrame(SFX.sfxLightsRefreshFrame);
+        SFX.sfxLightsRefreshFrame = 0;
+    }
+    if (SFX.sfxLightsRefreshTimer) {
+        clearTimeout(SFX.sfxLightsRefreshTimer);
+        SFX.sfxLightsRefreshTimer = null;
+    }
+}
+
+function scheduleSfxLightsActivationRefresh() {
+    clearSfxLightsActivationRefresh();
+
+    const refresh = () => {
+        if (document.documentElement.dataset.sfxLights !== 'on') return;
+        const activeEffect = SFX.currentEffect || 'eq32';
+        if (!document.hidden) {
+            setRuntimeAnimationsActive(true);
+        }
+        if (activeEffect === 'eq32') {
+            (SFX.eqSliders || []).forEach((slider) => {
+                if (!slider) return;
+                if (typeof slider.restartAnimation === 'function') slider.restartAnimation();
+                else if (typeof slider.startAnimation === 'function') slider.startAnimation();
+                if (typeof slider.draw === 'function') slider.draw();
+                if (slider.canvas) {
+                    slider.canvas.style.transform = 'translateZ(0)';
+                    void slider.canvas.offsetHeight;
+                }
+            });
+        }
+        syncMeterLoops();
+    };
+
+    SFX.sfxLightsRefreshFrame = requestAnimationFrame(() => {
+        SFX.sfxLightsRefreshFrame = requestAnimationFrame(() => {
+            SFX.sfxLightsRefreshFrame = 0;
+            refresh();
+        });
+    });
+
+    SFX.sfxLightsRefreshTimer = setTimeout(() => {
+        SFX.sfxLightsRefreshTimer = null;
+        refresh();
+    }, 140);
+}
+
+async function syncSfxPerformanceProfileForLights(enabled) {
+    try {
+        let nextSettings = null;
+        if (window.aurivo?.loadSettings) {
+            const loaded = await window.aurivo.loadSettings();
+            nextSettings = (loaded && typeof loaded === 'object')
+                ? JSON.parse(JSON.stringify(loaded))
+                : {};
+        } else {
+            nextSettings = {};
+        }
+        if (!nextSettings.appearance || typeof nextSettings.appearance !== 'object') nextSettings.appearance = {};
+        if (!nextSettings.ui || typeof nextSettings.ui !== 'object') nextSettings.ui = {};
+        nextSettings.appearance.sfxLights = !!enabled;
+        nextSettings.ui.sfxLightsEnabled = !!enabled;
+        await applySfxRuntimePerformanceProfile(nextSettings);
+        setRuntimeAnimationsActive(!document.hidden);
+    } catch {
+        // ignore
+    }
+}
+
 function applySfxLightsRuntimeState(enabled) {
     const next = !!enabled;
+    const prev = SFX.sfxLightsEnabled === null
+        ? document.documentElement.dataset.sfxLights !== 'off'
+        : !!SFX.sfxLightsEnabled;
+    const changed = prev !== next;
+
+    SFX.sfxLightsEnabled = next;
     document.documentElement.dataset.sfxLights = next ? 'on' : 'off';
     setSfxLightsHeaderToggle(next);
 
     if (!next) {
-        pauseAllEffectAnimations();
+        clearSfxLightsActivationRefresh();
+        // Lights off: only affect visual appearance (CSS), keep meter animations running
         syncMeterLoops();
         refreshSfxStaticVisualState();
-        rerenderCurrentEffectPanel();
+        // Don't re-render panel - keeps animations smooth
         return;
     }
 
-    if (!SFX_ANIM_SAFE_MODE && SFX_RUNTIME_ANIMS_ACTIVE) {
-        setEffectAnimationsActive(SFX.currentEffect, true);
+    if (!changed) {
+        // State didn't change; avoid re-triggering heavy animation setup.
+        syncMeterLoops();
+        return;
     }
+
+    // Lights on: ensure current effect panel is rendered and visible, then activate animations
+    const effectToAnimate = SFX.currentEffect || 'eq32';
+    try {
+        ensureEffectPanelRendered(effectToAnimate);
+        // Ensure panel is visible (in case it was hidden)
+        const wrapper = document.querySelector(`.effect-panel-wrapper[data-effect="${effectToAnimate}"]`);
+        if (wrapper && wrapper.style.display === 'none') {
+            wrapper.style.display = 'block';
+        }
+    } catch (e) {
+        console.warn('[SFX] Panel setup error:', e?.message || e);
+    }
+    
+    // Delay animation start to ensure DOM is fully updated
+    setTimeout(() => {
+        setEffectAnimationsActive(effectToAnimate, true);
+    }, 50);
+    
+    // eq32 special handling: refresh only the animated region so motion starts immediately without visible panel flicker
+    if (effectToAnimate === 'eq32') {
+        refreshEq32AnimatedRegionForLights();
+    }
+
+    restartSfxRuntimeAnimations();
+    scheduleSfxLightsActivationRefresh();
+    
     syncMeterLoops();
-    rerenderCurrentEffectPanel();
+    // Don't re-render panel - keeps animations smooth
 }
 
 async function persistSfxLightsToAppSettings(enabled) {
@@ -511,6 +668,17 @@ async function applySfxLightsFromAppSettings() {
             return;
         }
         if (!window.aurivo?.loadSettings) {
+            // Embedded mode fallback: check BroadcastChannel state from other windows
+            // Try injecting a state request and wait briefly for response
+            if (SFX_EMBEDDED_MODE && appearanceSyncChannel) {
+                let stateReceived = false;
+                const tempHandler = () => { stateReceived = true; };
+                appearanceSyncChannel.addEventListener('message', tempHandler, { once: true });
+                appearanceSyncChannel.postMessage({ type: 'sfx-lights-query' });
+                // Wait max 100ms for response
+                await new Promise(resolve => setTimeout(resolve, 100));
+                appearanceSyncChannel.removeEventListener('message', tempHandler);
+            }
             applySfxLightsRuntimeState(true);
             return;
         }
@@ -1567,11 +1735,29 @@ function setupEventListeners() {
         sfxLightsToggle.addEventListener('change', (e) => {
             const enabled = !!e?.target?.checked;
             applySfxLightsRuntimeState(enabled);
+            Promise.resolve(syncSfxPerformanceProfileForLights(enabled)).catch(() => { });
             syncSfxLightsShadowStorage(enabled);
             appearanceSyncChannel?.postMessage({ type: 'sfx-lights', enabled });
             Promise.resolve(persistSfxLightsToAppSettings(enabled)).catch(() => { });
         });
     }
+
+    // Appearance sync: respond to state queries and listen for state changes
+    appearanceSyncChannel?.addEventListener('message', (event) => {
+        const eventType = String(event?.data?.type || '').trim().toLowerCase();
+        
+        // Handle state query from other windows
+        if (eventType === 'sfx-lights-query') {
+            const currentState = document.documentElement.dataset.sfxLights === 'on';
+            appearanceSyncChannel?.postMessage({ type: 'sfx-lights', enabled: currentState });
+            return;
+        }
+        
+        // Handle state broadcast
+        if (eventType !== 'sfx-lights') return;
+        applySfxLightsRuntimeState(event?.data?.enabled !== false);
+    });
+
 
     // Header tabs
     document.getElementById('tabEffects')?.addEventListener('click', () => {
@@ -1610,10 +1796,7 @@ function setupEventListeners() {
             document.documentElement.dataset.sfxIconSize = normalizeSfxIconSize(e.newValue || 'medium');
         }
     });
-    appearanceSyncChannel?.addEventListener('message', (event) => {
-        if (String(event?.data?.type || '').trim().toLowerCase() !== 'sfx-lights') return;
-        applySfxLightsRuntimeState(event?.data?.enabled !== false);
-    });
+
     window.aurivo?.onSettingsReload?.((nextSettings) => {
         const enabled = normalizeSfxLightsEnabled(
             nextSettings?.appearance?.sfxLights ?? nextSettings?.ui?.sfxLightsEnabled
@@ -1707,24 +1890,42 @@ function refreshLocalizedRuntimeUi() {
 
 function setEffectAnimationsActive(effectName, active) {
     if (!effectName) return;
+    if (active && SFX.activeAnimationEffect === effectName) return;
 
     // Generic knobs (effectName_*) + eq32 direct knobs (bass/mid/treble/stereoExpander)
     Object.entries(SFX.knobInstances).forEach(([key, inst]) => {
         const isEq32Direct = effectName === 'eq32' && ['bass', 'mid', 'treble', 'stereoExpander'].includes(key);
         if (key.startsWith(`${effectName}_`) || isEq32Direct) {
-            if (inst && typeof inst.setActive === 'function') inst.setActive(active);
-            else if (inst && typeof inst.stopAnimation === 'function' && !active) inst.stopAnimation();
-            else if (inst && typeof inst.startAnimation === 'function' && active) inst.startAnimation();
+            if (active) {
+                // Ensure animation is started when activating
+                if (inst && typeof inst.setActive === 'function') inst.setActive(true);
+                if (inst && typeof inst.startAnimation === 'function') {
+                    inst.startAnimation();
+                }
+            } else {
+                // Deactivate
+                if (inst && typeof inst.setActive === 'function') inst.setActive(false);
+                if (inst && typeof inst.stopAnimation === 'function') inst.stopAnimation();
+            }
         }
     });
 
     if (effectName === 'eq32') {
         (SFX.eqSliders || []).forEach((slider) => {
-            if (slider && typeof slider.setActive === 'function') slider.setActive(active);
-            else if (slider && typeof slider.stopAnimation === 'function' && !active) slider.stopAnimation();
-            else if (slider && typeof slider.startAnimation === 'function' && active) slider.startAnimation();
+            if (active) {
+                if (slider && typeof slider.setActive === 'function') slider.setActive(true);
+                if (slider && typeof slider.startAnimation === 'function') {
+                    slider.startAnimation();
+                }
+            } else {
+                if (slider && typeof slider.setActive === 'function') slider.setActive(false);
+                if (slider && typeof slider.stopAnimation === 'function') slider.stopAnimation();
+            }
         });
     }
+
+    if (active) SFX.activeAnimationEffect = effectName;
+    else if (SFX.activeAnimationEffect === effectName) SFX.activeAnimationEffect = null;
 }
 
 function pauseAllEffectAnimations() {
@@ -1736,6 +1937,7 @@ function pauseAllEffectAnimations() {
         if (slider && typeof slider.setActive === 'function') slider.setActive(false);
         else if (slider && typeof slider.stopAnimation === 'function') slider.stopAnimation();
     });
+    SFX.activeAnimationEffect = null;
 }
 
 // Tüm efekt panellerini başlangıçta oluştur - DOM'da kalıcı olacaklar
@@ -2430,11 +2632,7 @@ function getEffectTemplate(effectName) {
     return templates[effectName] || `<div class="effect-panel"><p>${tSync('sfx.ui.notImplemented')}</p></div>`;
 }
 
-// --- 32-Band EQ Template ---
-function getEQ32Template() {
-    const settings = getSettings('eq32');
-
-    // 32 band slider oluştur
+function getEQ32BandsMarkup(settings) {
     let bandsHTML = '';
     SFX.eqFrequencies.forEach((freq, i) => {
         const value = settings.bands[i] || 0;
@@ -2451,6 +2649,13 @@ function getEQ32Template() {
             </div>
         `;
     });
+    return bandsHTML;
+}
+
+// --- 32-Band EQ Template ---
+function getEQ32Template() {
+    const settings = getSettings('eq32');
+    const bandsHTML = getEQ32BandsMarkup(settings);
 
 	    return `
 	        <div class="effect-panel" id="eq32Panel">
@@ -4617,10 +4822,8 @@ function initEffectControls(effectName) {
 
     // Enable toggle (Reverb için özel işlem)
     const enableToggle = document.getElementById(`${effectName}Enabled`);
-    console.log(`[DEBUG] initEffectControls for ${effectName}, enableToggle element:`, enableToggle);
     if (enableToggle) {
         enableToggle.addEventListener('change', (e) => {
-            console.log(`[DEBUG] Toggle changed for ${effectName}:`, e.target.checked);
             const settings = getSettings(effectName);
             settings.enabled = e.target.checked;
             saveSettings(effectName, settings);
@@ -4633,15 +4836,12 @@ function initEffectControls(effectName) {
                     applyEffect('reverb');
                 }
             } else {
-                console.log(`[DEBUG] Calling applyEffect for ${effectName}`);
                 applyEffect(effectName);
             }
             if (effectName === 'truepeak') {
                 syncMeterLoops();
             }
         });
-    } else {
-        console.warn(`[DEBUG] enableToggle not found for ${effectName}!`);
     }
 
     // Reverb presets
@@ -5136,6 +5336,13 @@ function stopEqTopVisualizer() {
         cancelAnimationFrame(SFX.eqTopViz.frameId);
         SFX.eqTopViz.frameId = 0;
     }
+    // Clear canvas to avoid visual artifacts
+    if (SFX.barAnalyzer && SFX.currentEffect === 'eq32') {
+        try {
+            const count = Math.max(48, Number(SFX.barAnalyzer?.bandCount) || EQ_TOP_FIXED_BANDS);
+            SFX.barAnalyzer.draw(new Uint8Array(count).fill(0));
+        } catch { /* ignore */ }
+    }
 }
 
 function startEqTopVisualizer() {
@@ -5143,6 +5350,9 @@ function startEqTopVisualizer() {
     if (SFX.currentEffect !== 'eq32') return;
     const canvas = document.getElementById('barAnalyzerCanvas');
     if (!canvas || !SFX.barAnalyzer) return;
+    // Reset visualizer state first to avoid undefined bars on initial frames
+    resetEqTopVisualizerState();
+    
     const nativeSpectrumApi = window.aurivo?.audio?.spectrum;
     const webSpectrumGetter = window.aurivo?.soundEffects?.getWebSpectrum;
     const getSpectrumBands = (SFX_IS_SCOPED_DALI && typeof webSpectrumGetter === 'function')
@@ -5238,7 +5448,7 @@ function initEQSliders() {
             stepSize: 0.1,
             value: settings.bands[band] || 0,
             frequency: freq,
-            animatedHue: !SFX_LOW_LOAD_EQ32
+            animatedHue: true
         });
 
         slider.onChange((value) => {

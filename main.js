@@ -782,6 +782,8 @@ function detectDisplayServer() {
     if (selectedBackend === 'wayland') {
         console.log('💻 Display Server: Wayland');
         app.commandLine.appendSwitch('ozone-platform-hint', 'wayland');
+        app.commandLine.appendSwitch('disable-vulkan');
+        app.commandLine.appendSwitch('use-angle', 'gl');
         appendCsvSwitch('enable-features', enableVaapi
             ? 'UseOzonePlatform,WaylandWindowDecorations,VaapiVideoDecoder'
             : 'UseOzonePlatform,WaylandWindowDecorations');
@@ -4228,7 +4230,9 @@ function createSoundEffectsWindow(rawScope = 'music') {
             preload: path.join(__dirname, 'preload.js'),
             nodeIntegration: false,
             contextIsolation: true,
-            sandbox: false
+            sandbox: false,
+            backgroundThrottling: false,
+            spellcheck: false
         },
         frame: false, // Özel başlık çubuğu için çerçevesiz
         title: getSoundEffectsWindowTitle(scope),
@@ -7438,7 +7442,7 @@ ipcMain.handle('media:getAlbumArt', async (event, filePath) => {
                 if (imageBuffer) {
                     const base64 = imageBuffer.toString('base64');
                     console.log('Kapak bulundu! Boyut:', base64.length, 'format:', mimeType);
-                    return `data:${mimeType};base64,${base64}`;
+                    return toImageDataUrl(imageBuffer, mimeType);
                 }
             }
             console.log('Bu dosyada kapak yok (node-id3)');
@@ -7648,6 +7652,30 @@ function getImageMimeTypeFromFileName(fileName = '') {
     return null;
 }
 
+function normalizeImageMimeType(rawMime = '') {
+    const value = String(rawMime || '')
+        .replace(/\0/g, '')
+        .trim()
+        .toLowerCase()
+        .split(';')[0];
+
+    if (!value) return 'image/jpeg';
+    if (value === 'jpg' || value === 'jpeg' || value === 'image/jpg') return 'image/jpeg';
+    if (value === 'png' || value === 'image/png') return 'image/png';
+    if (value === 'webp' || value === 'image/webp') return 'image/webp';
+    if (value === 'gif' || value === 'image/gif') return 'image/gif';
+    if (value === 'bmp' || value === 'image/bmp') return 'image/bmp';
+    if (value === 'image/jpeg') return 'image/jpeg';
+    if (value.startsWith('image/')) return value;
+    return 'image/jpeg';
+}
+
+function toImageDataUrl(imageBuffer, mimeType = 'image/jpeg') {
+    if (!Buffer.isBuffer(imageBuffer) || imageBuffer.length <= 0) return null;
+    const safeMime = normalizeImageMimeType(mimeType);
+    return `data:${safeMime};base64,${imageBuffer.toString('base64')}`;
+}
+
 async function findBestFolderCoverPath(filePath) {
     const dir = path.dirname(filePath);
     const trackBaseName = path.basename(filePath, path.extname(filePath || '')).toLowerCase();
@@ -7691,7 +7719,7 @@ async function readFolderCoverImage(filePath) {
         const buffer = await fs.promises.readFile(coverPath);
         const mime = getImageMimeTypeFromFileName(coverPath) || 'image/jpeg';
         if (buffer?.length) {
-            return `data:${mime};base64,${buffer.toString('base64')}`;
+            return toImageDataUrl(buffer, mime);
         }
     } catch {
         // yoksay
@@ -8128,7 +8156,7 @@ async function extractEmbeddedCover(filePath) {
                         imageBuffer = img;
                     }
                     if (imageBuffer && imageBuffer.length > 100) {
-                        return `data:${mimeType};base64,${imageBuffer.toString('base64')}`;
+                        return toImageDataUrl(imageBuffer, mimeType);
                     }
                 }
             } catch {
@@ -8311,8 +8339,7 @@ async function extractID3Cover(filePath) {
         const imageData = buffer.slice(dataStart, apicIndex + 10 + frameSize);
 
         if (imageData.length > 0) {
-            const base64 = imageData.toString('base64');
-            return `data:${mimeType};base64,${base64}`;
+            return toImageDataUrl(imageData, mimeType);
         }
 
         return null;

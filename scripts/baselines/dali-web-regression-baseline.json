@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-03-26T00:14:47.394Z",
+  "generatedAt": "2026-04-10T01:54:27.183Z",
   "moduleCount": 4,
   "modules": {
     "dali-lang/examples/web-bass-enhancer.dali": {
@@ -75,7 +75,7 @@
       "sourceFile": "dali-lang/examples/web-eq32-reference.dl",
       "presetName": "Web EQ32 Reference v2",
       "backend": "webaudio",
-      "lineCount": 375,
+      "lineCount": 383,
       "nodeCtorCounts": {
         "GainNode": 1,
         "BiquadFilterNode": 32,
@@ -84,7 +84,9 @@
       "safeConnectCount": 35,
       "qualityKeys": [
         "max_latency_ms",
+        "profile",
         "raw",
+        "safety",
         "sample_rate",
         "true_peak_protection",
         "type",
@@ -92,7 +94,7 @@
         "value"
       ],
       "hashes": {
-        "fullCodeSha256": "7875e9094c69f42503f28576ac23294961cc1c125e928c0728e6d72f82b2624d",
+        "fullCodeSha256": "e1510fd1f3498e1aedfcbf5759f1998c9cee0dc12ff8fca29bfac0e727e8da99",
         "biquadShapeSha256": "a9a2cb4969974be8ce1cbf504a9f54fb13cf1cd266f6665c9c7d06a19965379a",
         "compressorShapeSha256": "21827c1f3ee44f9e80c5a7e209865c23af670206d028b3581a0ea29ada428a5b",
         "gainShapeSha256": "20186ad0678ddb725eff3f97a808f26963d6903421f836e289921a448f06a561",
@@ -103,22 +105,26 @@
         "compressorCount": 1,
         "gainNodeCount": 1
       },
-      "signatureSha256": "ce1ba08a4bff768cd3bc063ebf227156f47f599697bc65c9d2f41660c7d5fbf9"
+      "signatureSha256": "dac01e124044be011d494aeb7211d2eeb0f4b1a58ecbc8b81061f4e18623164d"
     },
     "dali-lang/examples/web-smart-task-reference.dl": {
       "sourceFile": "dali-lang/examples/web-smart-task-reference.dl",
       "presetName": "Web Smart Task Reference",
       "backend": "webaudio",
-      "lineCount": 125,
+      "lineCount": 130,
       "nodeCtorCounts": {
         "GainNode": 1,
         "BiquadFilterNode": 3,
         "DynamicsCompressorNode": 1
       },
       "safeConnectCount": 6,
-      "qualityKeys": [],
+      "qualityKeys": [
+        "safety",
+        "type",
+        "value"
+      ],
       "hashes": {
-        "fullCodeSha256": "e24ab309b7a633bb98997580e7a52b2b359693afd8ce88c49ef28961dd195990",
+        "fullCodeSha256": "73c120c902970eb5fb2fa3af48965d46107586e941c185733c14a8e9c2cd058e",
         "biquadShapeSha256": "825ffa4a15301f17dfe9b264a13026b53826b74d9ea976379a808c16fc724af5",
         "compressorShapeSha256": "21827c1f3ee44f9e80c5a7e209865c23af670206d028b3581a0ea29ada428a5b",
         "gainShapeSha256": "20186ad0678ddb725eff3f97a808f26963d6903421f836e289921a448f06a561",
@@ -129,8 +135,8 @@
         "compressorCount": 1,
         "gainNodeCount": 1
       },
-      "signatureSha256": "0b24e9accad3f5966e9c775dbef434078a50f131d832626c5d65a16e2c8cbfe8"
+      "signatureSha256": "ba3858d3bd4e3a4b0aeb1ea11f87c7f5744f04ec20c12148d55561bff95d3869"
     }
   },
-  "snapshotHash": "26134959f9df3073f18f4fd811e375866e4b5e2766fe357e43a05fae28ef1db8"
+  "snapshotHash": "417990855d2c04280bf2b28d1f6c2219437de48359d3b44aa5c9e5c861d2e629"
 }

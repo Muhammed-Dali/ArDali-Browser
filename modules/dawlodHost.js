@@ -6,7 +6,7 @@
 
 const path = require('path');
 const fs = require('fs');
-const { clipboard, nativeImage } = require('electron');
+const { clipboard, nativeImage, shell } = require('electron');
 
 let dawlodWindow = null;
 let desiredDawlodLocale = null;
@@ -129,7 +129,11 @@ function openDawlodWindow({ app, BrowserWindow, activate = true, emitState }) {
             contextIsolation: false,
             spellcheck: false,
             // Keep renderer responsive when main app window is focused/occluded.
-            backgroundThrottling: false
+            backgroundThrottling: false,
+            enableRemoteModule: false,
+            sandbox: false,
+            webSecurity: true,
+            allowRunningInsecureContent: false
         }
     });
 
@@ -140,6 +144,46 @@ function openDawlodWindow({ app, BrowserWindow, activate = true, emitState }) {
     try { emitState?.(true); } catch { }
 
     dawlodWindow.loadFile(html);
+
+    if (typeof dawlodWindow.webContents.setWindowOpenHandler === 'function') {
+        dawlodWindow.webContents.setWindowOpenHandler(({ url }) => {
+            const targetUrl = String(url || '').trim();
+            if (!targetUrl || targetUrl === 'about:blank') {
+                return {
+                    action: 'allow',
+                    overrideBrowserWindowOptions: {
+                        icon,
+                        title: 'Aurivo-Dawlod',
+                        autoHideMenuBar: true
+                    }
+                };
+            }
+            if (/^https?:\/\//i.test(targetUrl)) {
+                shell.openExternal(targetUrl).catch(() => {});
+            }
+            return { action: 'deny' };
+        });
+    }
+
+    dawlodWindow.webContents.on('will-navigate', (event, url) => {
+        const targetUrl = String(url || '').trim();
+        if (targetUrl && !targetUrl.startsWith('file:') && targetUrl !== 'about:blank') {
+            event.preventDefault();
+        }
+    });
+
+    dawlodWindow.webContents.on('will-attach-webview', (event, webPreferences) => {
+        try {
+            webPreferences.nodeIntegration = false;
+            webPreferences.contextIsolation = true;
+            webPreferences.enableRemoteModule = false;
+            webPreferences.allowRunningInsecureContent = false;
+            webPreferences.webSecurity = true;
+            delete webPreferences.preload;
+        } catch (e) {
+            console.warn('[SECURITY] Dawlod webview hardening error:', e?.message || e);
+        }
+    });
 
     // Apply desired locale as soon as the page is ready (and on subsequent navigations).
     const applyLocale = (locale) => {

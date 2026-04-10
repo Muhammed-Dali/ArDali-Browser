@@ -1797,6 +1797,57 @@ body.aurivo-reduced-motion:not(.web-platform-force-motion) .nav-platform-strip .
 #backBtn { --nav-icon-accent: #8ee4ff; }
 #forwardBtn { --nav-icon-accent: #8ee4ff; }
 #refreshBtn { --nav-icon-accent: #7cf2d5; }
+
+.music-view-quick {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    margin-left: 4px;
+    padding: 3px;
+    border-radius: 10px;
+    border: 1px solid rgba(103, 194, 255, 0.24);
+    background: linear-gradient(180deg, rgba(11, 24, 38, 0.72), rgba(9, 17, 27, 0.72));
+}
+
+.music-view-btn {
+    width: 28px;
+    height: 26px;
+    border: 1px solid transparent;
+    border-radius: 7px;
+    background: transparent;
+    color: rgba(149, 219, 255, 0.88);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: background-color 140ms ease, border-color 140ms ease, color 140ms ease;
+}
+
+.music-view-btn svg {
+    width: 16px;
+    height: 16px;
+}
+
+.music-view-btn svg path,
+.music-view-btn svg rect {
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.8;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
+.music-view-btn:hover {
+    background: rgba(58, 128, 177, 0.28);
+    color: #dff7ff;
+}
+
+.music-view-btn.active {
+    background: linear-gradient(180deg, rgba(38, 141, 205, 0.74), rgba(22, 92, 146, 0.86));
+    border-color: rgba(123, 220, 255, 0.66);
+    color: #f2fdff;
+    box-shadow: 0 4px 12px rgba(5, 34, 62, 0.36);
+}
 .nav-btn .nav-icon-img {
     width: 18px;
     height: 18px;
@@ -2628,11 +2679,72 @@ body.settings-window-mode #settingsPage .setting-row {
 
 .playlist.playlist-view-cards .playlist-item {
     min-height: 84px;
-    align-items: flex-start;
+    align-items: center;
     padding: 14px;
     border: 1px solid rgba(255, 255, 255, 0.06);
     margin-bottom: 0;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
+    gap: 10px;
+}
+
+.playlist.playlist-view-cards .item-index {
+    min-width: 20px;
+    font-size: 11px;
+}
+
+.playlist.playlist-view-cards .item-index.playback-state {
+    min-width: 24px;
+    min-height: 24px;
+    font-size: 10px;
+}
+
+.playlist.playlist-view-cards .item-text {
+    gap: 5px;
+}
+
+.playlist.playlist-view-cards .item-name {
+    font-size: 13px;
+}
+
+.playlist.playlist-view-cards .item-meta {
+    font-size: 11px;
+    line-height: 1.35;
+}
+
+.playlist.playlist-view-cards .item-remove {
+    align-self: flex-start;
+}
+
+.playlist-card-cover {
+    width: 70px;
+    height: 70px;
+    border-radius: 12px;
+    overflow: hidden;
+    flex: 0 0 70px;
+    background: linear-gradient(145deg, rgba(21, 33, 52, 0.95), rgba(9, 14, 24, 0.95));
+    border: 1px solid rgba(126, 190, 255, 0.22);
+    box-shadow: 0 6px 14px rgba(2, 10, 23, 0.38);
+    position: relative;
+    z-index: 1;
+}
+
+.playlist-card-cover-img {
+    width: 100%;
+    height: 100%;
+    display: block;
+    object-fit: cover;
+}
+
+.playlist-card-cover-img.default-cover {
+    object-fit: contain;
+    padding: 10px;
+    opacity: 0.72;
+    filter: saturate(0.45) brightness(1.25);
+}
+
+.playlist-item.playing .playlist-card-cover {
+    border-color: rgba(98, 214, 255, 0.6);
+    box-shadow: 0 0 0 1px rgba(98, 214, 255, 0.22), 0 8px 18px rgba(14, 86, 148, 0.4);
 }
 
 .playlist.playlist-large-mode .playlist-item {

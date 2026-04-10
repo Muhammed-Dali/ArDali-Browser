@@ -208,11 +208,22 @@ class RainbowSlider {
         this.lastTime = performance.now();
         RainbowSlider._runningInstances.add(this);
         RainbowSlider._ensureSharedLoop();
+        this.draw();
     }
 
     stopAnimation() {
         this._running = false;
         RainbowSlider._runningInstances.delete(this);
+    }
+
+    restartAnimation() {
+        if (!this.animatedHue) {
+            this.draw();
+            return;
+        }
+        this.stopAnimation();
+        this.lastTime = performance.now();
+        this.startAnimation();
     }
 
     setActive(active) {

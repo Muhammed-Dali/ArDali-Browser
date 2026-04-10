@@ -677,6 +677,10 @@ const libraryStatsRuntime = {
     lastComputedAt: 0,
     lastSignature: ''
 };
+const libraryViewWheelRuntime = {
+    lastAt: 0,
+    cooldownMs: 130
+};
 const WEB_STARTUP_LAZY_DELAY_OPTIONS = [0, 800, 1400, 2000];
 const WEB_STARTUP_LAZY_DELAY_DEFAULT_MS = 1400;
 
@@ -902,6 +906,9 @@ let blockFileTreeDragStart = false;
 let libraryWatchUnsubscribe = null;
 let libraryWatchRescanTimer = null;
 const albumArtCache = new Map();
+const playlistCardCoverInFlight = new Map();
+const playlistCardCoverState = new Map();
+const PLAYLIST_CARD_COVER_RETRY_MS = 10000;
 
 function getLibrarySettingsSyncSignature(settings = state.settings) {
     const library = settings?.library || {};
@@ -1450,6 +1457,8 @@ function cacheElements() {
     elements.backBtn = document.getElementById('backBtn');
     elements.forwardBtn = document.getElementById('forwardBtn');
     elements.refreshBtn = document.getElementById('refreshBtn');
+    elements.musicViewQuick = document.getElementById('musicViewQuick');
+    elements.musicViewModeBtns = document.querySelectorAll('.music-view-btn[data-view-mode]');
     elements.pulseQuickListenBtn = document.getElementById('pulseQuickListenBtn');
     elements.webDrawerToggleBtn = document.getElementById('webDrawerToggleBtn');
     elements.adblockBtn = document.getElementById('adblockBtn');
@@ -4211,6 +4220,7 @@ function setupEventListeners() {
     document.addEventListener('click', handleFileTreeClickGlobal, true);
     document.addEventListener('dblclick', handleFileTreeDblClickGlobal, true);
     document.addEventListener('contextmenu', handleNowPlayingContextMenu, true);
+    document.addEventListener('wheel', handleMusicViewModeWheel, { passive: false });
 
     // Klasör bağlam menüsü dışına tıklanınca kapat
     document.addEventListener('click', (e) => {
@@ -4227,6 +4237,14 @@ function setupEventListeners() {
     elements.backBtn.addEventListener('click', navigateBack);
     elements.forwardBtn.addEventListener('click', navigateForward);
     elements.refreshBtn.addEventListener('click', refreshCurrentView);
+    if (elements.musicViewModeBtns?.length) {
+        elements.musicViewModeBtns.forEach((btn) => {
+            btn.addEventListener('click', () => {
+                const mode = String(btn.dataset.viewMode || '').trim().toLowerCase();
+                setLibraryViewMode(mode, { persist: true });
+            });
+        });
+    }
     if (elements.webDrawerToggleBtn) {
         elements.webDrawerToggleBtn.addEventListener('click', () => {
             if (!isPageVisible(elements.webPage)) return;
@@ -4759,6 +4777,9 @@ function setupEventListeners() {
         elements.webView.addEventListener('did-finish-load', () => {
             hideWebLoadingOverlay();
             triggerAdblockNavBurstRefresh();
+            // Sayfa yüklenir yüklenmez DALI pre-arm: ilk tikta ham ses penceresini daralt.
+            const preArmDelay = isPackagedLinuxRuntimeRenderer() ? 90 : 40;
+            scheduleApplyWebDaliEngine('did-finish-load', preArmDelay);
         });
         elements.webView.addEventListener('did-frame-finish-load', (e) => {
             if (e?.isMainFrame !== false) {
@@ -4767,7 +4788,12 @@ function setupEventListeners() {
         });
         elements.webView.addEventListener('media-started-playing', () => {
             hideWebLoadingOverlay();
-            scheduleApplyWebDaliEngine('media-started', 80);
+            // Ilk sesi kesmeden hizli yakalama:
+            // mute-hold yerine anlik apply + volume push.
+            pushAppVolumeToWeb();
+            applyWebDaliEngineNow('media-started-immediate').catch(() => {});
+            // Ardindan kisa bir gecikmeyle bir kez daha uygula (DOM/player degisimi icin)
+            scheduleApplyWebDaliEngine('media-started', 120);
         });
 
         elements.webView.addEventListener('did-navigate', handleWebNavigation);
@@ -5573,11 +5599,10 @@ function setupEventListeners() {
             `);
             setTimeout(() => {
                 pushAppVolumeToWeb();
-                // Paketli Linux'ta dom-ready anında ağır DALI apply, bazı sistemlerde webview'i kilitleyebiliyor.
-                // Bu ortamda apply'i media-started / navigate tetiklerine bırakıyoruz.
-                if (!isPackagedLinuxRuntimeRenderer()) {
-                    scheduleApplyWebDaliEngine('dom-ready', 120);
-                }
+                // Paketli Linux'ta dom-ready anında agir apply bazi sistemlerde donmaya neden olabiliyor.
+                // Tamamen atlamak yerine daha gec bir "pre-arm" uygula; ilk tikta seviye ziplamasini azaltir.
+                const bootDelay = isPackagedLinuxRuntimeRenderer() ? 90 : 120;
+                scheduleApplyWebDaliEngine('dom-ready', bootDelay);
             }, 120);
         });
     }
@@ -15907,6 +15932,7 @@ function switchPage(pageName) {
     targetPage.classList.remove('hidden');
     targetPage.classList.add('active');
     syncWindowFullscreenLayoutState();
+    updateMusicViewQuickControlUi();
 }
 
 async function handlePlatformClick(btn) {
@@ -16609,6 +16635,119 @@ function writeCachedAlbumArt(filePath = '', data = null) {
     trimAlbumArtCache();
 }
 
+function rememberPlaylistCardCoverState(filePath = '', data = null, failedAt = 0) {
+    const key = String(filePath || '').trim();
+    if (!key) return;
+    playlistCardCoverState.set(key, {
+        data: typeof data === 'string' && data ? data : '',
+        failedAt: Number(failedAt || 0)
+    });
+}
+
+function getKnownPlaylistCardCover(filePath = '') {
+    const key = String(filePath || '').trim();
+    if (!key) return null;
+    const cached = readCachedAlbumArt(key);
+    if (cached) {
+        rememberPlaylistCardCoverState(key, cached, 0);
+        return cached;
+    }
+    const known = playlistCardCoverState.get(key);
+    return known?.data ? known.data : null;
+}
+
+function canRetryPlaylistCardCover(filePath = '') {
+    const key = String(filePath || '').trim();
+    if (!key) return false;
+    const known = playlistCardCoverState.get(key);
+    if (!known?.failedAt) return true;
+    return (Date.now() - Number(known.failedAt || 0)) >= PLAYLIST_CARD_COVER_RETRY_MS;
+}
+
+function applyPlaylistCardCover(img, imageData = null) {
+    if (!img || !img.isConnected) return;
+    const source = String(imageData || '').trim();
+    const isDataImage = /^data:image\/[a-z0-9.+-]+;base64,/i.test(source);
+    if (isDataImage) {
+        img.src = imageData;
+        img.classList.remove('default-cover');
+        return;
+    }
+    img.src = '../icons/aurivo_256.png';
+    img.classList.add('default-cover');
+}
+
+async function resolvePlaylistCardCover(filePath = '') {
+    const key = String(filePath || '').trim();
+    if (!key) return null;
+
+    const cached = getKnownPlaylistCardCover(key);
+    if (cached) return cached;
+    if (!canRetryPlaylistCardCover(key)) return null;
+
+    if (!window.aurivo?.getBestAlbumArt && !window.aurivo?.getAlbumArt) return null;
+    const inflight = playlistCardCoverInFlight.get(key);
+    if (inflight) return await inflight;
+
+    const request = (async () => {
+        try {
+            let coverData = window.aurivo?.getBestAlbumArt
+                ? await window.aurivo.getBestAlbumArt(key, getCoverPreferenceState())
+                : null;
+            if (!coverData && window.aurivo?.getAlbumArt) {
+                coverData = await window.aurivo.getAlbumArt(key);
+            }
+            if (coverData) {
+                writeCachedAlbumArt(key, coverData);
+                rememberPlaylistCardCoverState(key, coverData, 0);
+                return coverData;
+            }
+            rememberPlaylistCardCoverState(key, null, Date.now());
+            return null;
+        } catch {
+            rememberPlaylistCardCoverState(key, null, Date.now());
+            return null;
+        } finally {
+            playlistCardCoverInFlight.delete(key);
+        }
+    })();
+
+    playlistCardCoverInFlight.set(key, request);
+    return await request;
+}
+
+function queuePlaylistCardCoverLoad(itemElement, filePath = '') {
+    const img = itemElement?.querySelector('.playlist-card-cover-img');
+    const key = String(filePath || '').trim();
+    if (!img || !key) return;
+    if (getLibraryPerformanceState().lightweightMode) return;
+
+    if (img.dataset.coverErrorBound !== '1') {
+        img.dataset.coverErrorBound = '1';
+        img.addEventListener('error', () => {
+            rememberPlaylistCardCoverState(key, null, Date.now());
+            applyPlaylistCardCover(img, null);
+        });
+    }
+
+    const known = getKnownPlaylistCardCover(key);
+    if (known) {
+        applyPlaylistCardCover(img, known);
+        return;
+    }
+    applyPlaylistCardCover(img, null);
+    if (!canRetryPlaylistCardCover(key)) return;
+
+    const token = `${Date.now()}-${Math.random()}`;
+    img.dataset.coverToken = token;
+
+    resolvePlaylistCardCover(key).then((coverData) => {
+        if (!img.isConnected) return;
+        if (img.dataset.coverToken !== token) return;
+        applyPlaylistCardCover(img, coverData);
+    }).catch(() => {});
+}
+
 function updateLibraryPerformanceStatusUi() {
     if (!elements.libraryPerformanceStatus) return;
     const perf = getLibraryPerformanceState();
@@ -17192,6 +17331,87 @@ function getLibraryViewPreferenceState() {
             ? String(librarySettings.viewMode).toLowerCase()
             : 'list'
     };
+}
+
+function updateMusicViewQuickControlUi() {
+    if (!elements.musicViewQuick) return;
+    const visible = state.currentPage === 'music';
+    elements.musicViewQuick.classList.toggle('hidden', !visible);
+    if (!elements.musicViewModeBtns?.length) return;
+
+    const labels = {
+        list: uiT('settings.library.view.mode.list', 'Liste'),
+        compact: uiT('settings.library.view.mode.compact', 'Kompakt'),
+        comfortable: uiT('settings.library.view.mode.comfortable', 'Rahat'),
+        cards: uiT('settings.library.view.mode.cards', 'Kart')
+    };
+    const activeMode = getLibraryViewPreferenceState().mode;
+
+    elements.musicViewModeBtns.forEach((btn) => {
+        const mode = String(btn.dataset.viewMode || '').trim().toLowerCase();
+        const active = mode === activeMode;
+        const label = labels[mode] || mode;
+        btn.classList.toggle('active', active);
+        btn.setAttribute('aria-pressed', active ? 'true' : 'false');
+        btn.setAttribute('title', label);
+        btn.setAttribute('aria-label', label);
+    });
+}
+
+function setLibraryViewMode(mode = 'list', options = {}) {
+    const nextMode = ['list', 'compact', 'comfortable', 'cards'].includes(String(mode || '').toLowerCase())
+        ? String(mode).toLowerCase()
+        : 'list';
+    const persist = options?.persist !== false;
+    const currentMode = getLibraryViewPreferenceState().mode;
+    if (currentMode === nextMode) {
+        updateMusicViewQuickControlUi();
+        return;
+    }
+
+    ensureLibrarySettings().viewMode = nextMode;
+    if (elements.libraryViewMode) {
+        elements.libraryViewMode.value = nextMode;
+    }
+    renderPlaylist();
+    updateMusicViewQuickControlUi();
+    if (persist) {
+        saveSettings().catch(() => {});
+    }
+}
+
+function cycleLibraryViewMode(step = 1, options = {}) {
+    const order = ['list', 'compact', 'comfortable', 'cards'];
+    const current = getLibraryViewPreferenceState().mode;
+    const currentIndex = Math.max(0, order.indexOf(current));
+    const normalizedStep = step >= 0 ? 1 : -1;
+    const nextIndex = Math.min(order.length - 1, Math.max(0, currentIndex + normalizedStep));
+    setLibraryViewMode(order[nextIndex], options);
+}
+
+function handleMusicViewModeWheel(event) {
+    if (!event?.ctrlKey) return;
+    if (state.currentPage !== 'music') return;
+    if (state.currentPanel !== 'library') return;
+
+    const target = event.target;
+    if (target instanceof HTMLElement) {
+        if (target.closest('input, textarea, select, [contenteditable="true"], .settings-page, .context-menu, #videoFsControls')) {
+            return;
+        }
+    }
+
+    if (Math.abs(Number(event.deltaY || 0)) < 1) return;
+    event.preventDefault();
+
+    const now = Date.now();
+    if ((now - Number(libraryViewWheelRuntime.lastAt || 0)) < Number(libraryViewWheelRuntime.cooldownMs || 130)) {
+        return;
+    }
+    libraryViewWheelRuntime.lastAt = now;
+
+    const step = event.deltaY < 0 ? 1 : -1;
+    cycleLibraryViewMode(step, { persist: true });
 }
 
 function getPlaylistPresentationEntries() {
@@ -19168,8 +19388,10 @@ function renderPlaylist() {
     const largePlaylistMode = state.playlist.length > 300;
     elements.playlist.classList.toggle('has-playing-focus', hasNowPlayingFocus);
     const viewPrefs = getLibraryViewPreferenceState();
+    const perfState = getLibraryPerformanceState();
+    const isCardView = viewPrefs.mode === 'cards' && !largePlaylistMode;
     elements.playlist.classList.toggle('playlist-large-mode', largePlaylistMode);
-    elements.playlist.classList.toggle('playlist-view-cards', viewPrefs.mode === 'cards' && !largePlaylistMode);
+    elements.playlist.classList.toggle('playlist-view-cards', isCardView);
     elements.playlist.classList.toggle('playlist-view-compact', viewPrefs.mode === 'compact' && !largePlaylistMode);
     elements.playlist.classList.toggle('playlist-view-comfortable', viewPrefs.mode === 'comfortable' && !largePlaylistMode);
     elements.playlist.classList.toggle('playlist-view-list', viewPrefs.mode !== 'cards' || largePlaylistMode);
@@ -19215,20 +19437,29 @@ function renderPlaylist() {
         const icon = isVideoFile(item.name) ? '🎬' : '🎵';
         const statusGlyph = isAudioCurrent ? (isTrackPlaying ? '❚❚' : '▶') : String(visualOrder + 1);
         const statusClass = isAudioCurrent ? 'item-index playback-state' : 'item-index';
+        const showCardCover = isCardView && !isVideoFile(item.name) && !perfState.lightweightMode;
         const showMissingCover = !largePlaylistMode && getCoverPreferenceState().markMissing && item.hasCover === false;
         const metaParts = [artist, album].filter(Boolean);
-        const flowBadges = (getLibraryPerformanceState().lightweightMode || largePlaylistMode) ? [] : getTrackFlowBadges(item.path);
+        const flowBadges = (perfState.lightweightMode || largePlaylistMode) ? [] : getTrackFlowBadges(item.path);
+        const knownCardCover = showCardCover ? getKnownPlaylistCardCover(item.path) : null;
+        const leadingVisual = showCardCover
+            ? `<span class="playlist-card-cover"><img class="playlist-card-cover-img${knownCardCover ? '' : ' default-cover'}" src="${knownCardCover || '../icons/aurivo_256.png'}" alt="" loading="lazy" decoding="async"></span>`
+            : `<span class="item-icon">${icon}</span>`;
         div.innerHTML = `
             <span class="${statusClass}" aria-label="${isTrackPlaying ? 'playing' : 'paused'}">${statusGlyph}</span>
-            <span class="item-icon">${icon}</span>
+            ${leadingVisual}
             <span class="item-text">
                 <span class="item-name">${item.name}</span>
                 ${metaParts.length ? `<span class="item-meta">${escapeHtml(metaParts.join(' • '))}</span>` : ''}
                 ${flowBadges.length ? `<span class="item-flow-badges">${flowBadges.map((badge) => `<span class="playlist-flow-badge">${escapeHtml(badge)}</span>`).join('')}</span>` : ''}
             </span>
-            ${(!getLibraryPerformanceState().lightweightMode && showMissingCover) ? `<span class="playlist-cover-badge">${escapeHtml(uiT('settings.library.cover.missingBadge', 'Kapak yok'))}</span>` : ''}
+            ${(!perfState.lightweightMode && showMissingCover) ? `<span class="playlist-cover-badge">${escapeHtml(uiT('settings.library.cover.missingBadge', 'Kapak yok'))}</span>` : ''}
             <button class="item-remove" data-index="${index}">✕</button>
         `;
+
+        if (showCardCover) {
+            queuePlaylistCardCoverLoad(div, item.path);
+        }
 
         div.addEventListener('click', () => selectPlaylistItem(index));
         div.addEventListener('dblclick', () => {
@@ -21613,6 +21844,7 @@ function loadSettingsToUI() {
     if (elements.libraryViewSort) elements.libraryViewSort.value = getLibraryViewPreferenceState().sortBy;
     if (elements.libraryViewGroup) elements.libraryViewGroup.value = getLibraryViewPreferenceState().groupBy;
     if (elements.libraryViewMode) elements.libraryViewMode.value = getLibraryViewPreferenceState().mode;
+    updateMusicViewQuickControlUi();
     if (elements.libraryAudioExtensions) elements.libraryAudioExtensions.value = getConfiguredLibraryExtensions('audio').join(', ');
     if (elements.libraryVideoExtensions) elements.libraryVideoExtensions.value = getConfiguredLibraryExtensions('video').join(', ');
     updateLibraryCleanupStatus();

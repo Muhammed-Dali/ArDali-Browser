@@ -195,6 +195,33 @@
                         <rect x="18" y="8" width="3" height="12" rx="1.2" fill="currentColor"/>
                     </svg>
                 </button>
+                <div class="music-view-quick hidden" id="musicViewQuick" role="group" aria-label="Müzik görünüm modu">
+                    <button class="music-view-btn" type="button" data-view-mode="list" title="Liste">
+                        <svg viewBox="0 0 24 24" aria-hidden="true">
+                            <path d="M5 7h14M5 12h14M5 17h14" />
+                        </svg>
+                    </button>
+                    <button class="music-view-btn" type="button" data-view-mode="compact" title="Kompakt">
+                        <svg viewBox="0 0 24 24" aria-hidden="true">
+                            <path d="M5 8h14M5 12h14M5 16h14" />
+                            <path d="M7 6.2v1.6M7 10.2v1.6M7 14.2v1.6" />
+                        </svg>
+                    </button>
+                    <button class="music-view-btn" type="button" data-view-mode="comfortable" title="Rahat">
+                        <svg viewBox="0 0 24 24" aria-hidden="true">
+                            <path d="M5 6.5h14M5 12h14M5 17.5h14" />
+                            <path d="M5 9.5h14M5 14.9h14" />
+                        </svg>
+                    </button>
+                    <button class="music-view-btn" type="button" data-view-mode="cards" title="Kart">
+                        <svg viewBox="0 0 24 24" aria-hidden="true">
+                            <rect x="4.5" y="5" width="6.7" height="6.2" rx="1.1" />
+                            <rect x="12.8" y="5" width="6.7" height="6.2" rx="1.1" />
+                            <rect x="4.5" y="12.8" width="6.7" height="6.2" rx="1.1" />
+                            <rect x="12.8" y="12.8" width="6.7" height="6.2" rx="1.1" />
+                        </svg>
+                    </button>
+                </div>
                 <button class="nav-btn" id="adblockBtn" title="Aurivo Kontrol Panelini Aç">
                     <img class="nav-icon-img" src="icons/deliblock.svg" alt="DeliBlock">
                     <span class="nav-badge hidden" id="adblockBlockedBadge">0</span>
