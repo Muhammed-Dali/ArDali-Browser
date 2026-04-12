@@ -51,15 +51,13 @@ jobs:
   dali-linux-portable-arch:
     name: DALI portable arch smoke (linux amd64+arm64)
     runs-on: ubuntu-24.04
-    env:
-      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
     steps:
       - name: Checkout
         uses: actions/checkout@v5
 
       - name: Setup QEMU
-        uses: docker/setup-qemu-action@v3
+        uses: docker/setup-qemu-action@v4
         with:
           platforms: arm64,amd64
 
