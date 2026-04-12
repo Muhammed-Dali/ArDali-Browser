@@ -6,11 +6,8 @@
   "publisher": "aurivo",
   "license": "MIT",
   "main": "./extension.js",
-  "activationEvents": [
-    "onLanguage:dali"
-  ],
   "engines": {
-    "vscode": "^1.74.0"
+    "vscode": "^1.75.0"
   },
   "categories": [
     "Programming Languages"

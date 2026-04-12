@@ -97,14 +97,13 @@ fn current_pulse_ui_lang() -> String {
     }
     "en-us".to_string()
 }
-
 fn pulse_app_id() -> String {
     let env_id = std::env::var("AURIVO_APP_ID").unwrap_or_default();
     let normalized = env_id.trim().to_string();
-    if !normalized.is_empty() {
+    if !normalized.is_empty() && normalized.contains('.') {
         return normalized;
     }
-    "aurivo-media-player".to_string()
+    "com.aurivoplayer.pulse".to_string()
 }
 
 fn compact_text(input: &str, max_chars: usize) -> String {

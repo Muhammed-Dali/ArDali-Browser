@@ -3,6 +3,9 @@ project(AurivoProjectMVisualizer)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+option(AURIVO_PROJECTM_C_API_COMPAT "Use local projectM C-API compatibility header and explicit library path" OFF)
+set(AURIVO_PROJECTM_LIB "" CACHE STRING "Absolute path to libprojectM shared object for compat mode")
+set(AURIVO_PROJECTM_PLAYLIST_LIB "" CACHE STRING "Optional absolute path to libprojectM playlist shared object for compat mode")
 
 # Use pkg-config for all libraries
 find_package(PkgConfig REQUIRED)
@@ -24,8 +27,16 @@ endif()
 # Find OpenGL
 find_package(OpenGL REQUIRED)
 include_directories(${OPENGL_INCLUDE_DIR})
+set(AURIVO_OPENGL_LINK_LIBS "")
+if(TARGET OpenGL::GL)
+    list(APPEND AURIVO_OPENGL_LINK_LIBS OpenGL::GL)
+elseif(OPENGL_gl_LIBRARY)
+    list(APPEND AURIVO_OPENGL_LINK_LIBS ${OPENGL_gl_LIBRARY})
+else()
+    list(APPEND AURIVO_OPENGL_LINK_LIBS ${OPENGL_LIBRARIES})
+endif()
 
-# Find GLEW (use pkg-config on Linux/macOS; Windows can still use glew32)
+# Find GLEW (required on Windows only; Linux path uses custom GL loader)
 pkg_check_modules(GLEW glew)
 if(GLEW_FOUND)
     include_directories(${GLEW_INCLUDE_DIRS})
@@ -35,37 +46,53 @@ else()
         message(STATUS "GLEW pkg-config not found; using glew32 fallback")
         set(GLEW_LIBRARIES "glew32")
     else()
-        message(FATAL_ERROR "GLEW not found (pkg-config: glew). Install development package (e.g. libglew-dev).")
+        message(STATUS "GLEW not found; continuing without GLEW on Linux/macOS (custom GL loader)")
+        set(GLEW_LIBRARIES "")
     endif()
 endif()
 
 # Threads (portable replacement for hardcoded pthread)
 find_package(Threads REQUIRED)
 
-# Use system libprojectm instead of bundled Clementine version
-# Ubuntu/Debian typically ship `libprojectM` pkg-config; some distros ship `projectM-4`.
-# Try a few common pkg-config names for the core library.
-pkg_check_modules(PROJECTM projectM-4)
-if(NOT PROJECTM_FOUND)
-    pkg_check_modules(PROJECTM libprojectM)
-endif()
-if(NOT PROJECTM_FOUND)
-    pkg_check_modules(PROJECTM projectM)
-endif()
+if(AURIVO_PROJECTM_C_API_COMPAT)
+    if(NOT EXISTS "${AURIVO_PROJECTM_LIB}")
+        message(FATAL_ERROR "AURIVO_PROJECTM_C_API_COMPAT=ON but AURIVO_PROJECTM_LIB is missing: ${AURIVO_PROJECTM_LIB}")
+    endif()
+    message(STATUS "projectM compat mode: using explicit shared library path")
+    set(PROJECTM_FOUND TRUE)
+    set(PROJECTM_LIBRARIES "${AURIVO_PROJECTM_LIB}")
+    set(PROJECTM_PLAYLIST_FOUND FALSE)
+    if(EXISTS "${AURIVO_PROJECTM_PLAYLIST_LIB}")
+        set(PROJECTM_PLAYLIST_FOUND TRUE)
+        set(PROJECTM_PLAYLIST_LIBRARIES "${AURIVO_PROJECTM_PLAYLIST_LIB}")
+    endif()
+    include_directories(${CMAKE_CURRENT_LIST_DIR})
+else()
+    # Use system libprojectm instead of bundled Clementine version
+    # Ubuntu/Debian typically ship `libprojectM` pkg-config; some distros ship `projectM-4`.
+    # Try a few common pkg-config names for the core library.
+    pkg_check_modules(PROJECTM projectM-4)
+    if(NOT PROJECTM_FOUND)
+        pkg_check_modules(PROJECTM libprojectM)
+    endif()
+    if(NOT PROJECTM_FOUND)
+        pkg_check_modules(PROJECTM projectM)
+    endif()
 
-# Playlist library is optional; the visualizer doesn't require it.
-pkg_check_modules(PROJECTM_PLAYLIST projectM-4-playlist)
-if(NOT PROJECTM_PLAYLIST_FOUND)
-    pkg_check_modules(PROJECTM_PLAYLIST libprojectM-playlist)
-endif()
-if(NOT PROJECTM_PLAYLIST_FOUND)
-    pkg_check_modules(PROJECTM_PLAYLIST projectM-playlist)
-endif()
-include_directories(${PROJECTM_INCLUDE_DIRS})
-link_directories(${PROJECTM_LIBRARY_DIRS})
-if(PROJECTM_PLAYLIST_FOUND)
-    include_directories(${PROJECTM_PLAYLIST_INCLUDE_DIRS})
-    link_directories(${PROJECTM_PLAYLIST_LIBRARY_DIRS})
+    # Playlist library is optional; the visualizer doesn't require it.
+    pkg_check_modules(PROJECTM_PLAYLIST projectM-4-playlist)
+    if(NOT PROJECTM_PLAYLIST_FOUND)
+        pkg_check_modules(PROJECTM_PLAYLIST libprojectM-playlist)
+    endif()
+    if(NOT PROJECTM_PLAYLIST_FOUND)
+        pkg_check_modules(PROJECTM_PLAYLIST projectM-playlist)
+    endif()
+    include_directories(${PROJECTM_INCLUDE_DIRS})
+    link_directories(${PROJECTM_LIBRARY_DIRS})
+    if(PROJECTM_PLAYLIST_FOUND)
+        include_directories(${PROJECTM_PLAYLIST_INCLUDE_DIRS})
+        link_directories(${PROJECTM_PLAYLIST_LIBRARY_DIRS})
+    endif()
 endif()
 
 # Some distributions ship broken pkg-config .pc files for projectM that emit "-l:projectM-4"
@@ -80,11 +107,13 @@ function(aurivo_strip_colon_prefix out_var in_var)
     set(${out_var} "${out}" PARENT_SCOPE)
 endfunction()
 
-aurivo_strip_colon_prefix(PROJECTM_LIBRARIES_STRIPPED PROJECTM_LIBRARIES)
-set(PROJECTM_LIBRARIES "${PROJECTM_LIBRARIES_STRIPPED}")
-if(PROJECTM_PLAYLIST_FOUND)
-    aurivo_strip_colon_prefix(PROJECTM_PLAYLIST_LIBRARIES_STRIPPED PROJECTM_PLAYLIST_LIBRARIES)
-    set(PROJECTM_PLAYLIST_LIBRARIES "${PROJECTM_PLAYLIST_LIBRARIES_STRIPPED}")
+if(NOT AURIVO_PROJECTM_C_API_COMPAT)
+    aurivo_strip_colon_prefix(PROJECTM_LIBRARIES_STRIPPED PROJECTM_LIBRARIES)
+    set(PROJECTM_LIBRARIES "${PROJECTM_LIBRARIES_STRIPPED}")
+    if(PROJECTM_PLAYLIST_FOUND)
+        aurivo_strip_colon_prefix(PROJECTM_PLAYLIST_LIBRARIES_STRIPPED PROJECTM_PLAYLIST_LIBRARIES)
+        set(PROJECTM_PLAYLIST_LIBRARIES "${PROJECTM_PLAYLIST_LIBRARIES_STRIPPED}")
+    endif()
 endif()
 
 # Windows fallback when pkg-config doesn't provide projectM
@@ -134,6 +163,9 @@ target_include_directories(imgui PUBLIC
 target_compile_definitions(imgui PRIVATE
     IMGUI_IMPL_OPENGL_LOADER_CUSTOM
 )
+if(AURIVO_PROJECTM_C_API_COMPAT)
+    target_compile_definitions(imgui PRIVATE AURIVO_PROJECTM_C_API_COMPAT=1)
+endif()
 
 if(SDL2_IMAGE_FOUND)
     target_compile_definitions(imgui PUBLIC SDL_IMAGE_MAJOR_VERSION=2)
@@ -141,7 +173,7 @@ endif()
 
 target_link_libraries(imgui PUBLIC
     ${SDL2_LIBRARIES}
-    ${OPENGL_LIBRARIES}
+    ${AURIVO_OPENGL_LINK_LIBS}
 )
 
 # Visualizer executable
@@ -157,6 +189,9 @@ else()
         gl_loader.cpp
     )
 endif()
+if(AURIVO_PROJECTM_C_API_COMPAT)
+    target_compile_definitions(aurivo-projectm-visualizer PRIVATE AURIVO_PROJECTM_C_API_COMPAT=1)
+endif()
 
 # Ensure UTF-8 source parsing on Windows (fix mojibake in non-ASCII UI strings)
 if (WIN32)
@@ -169,7 +204,7 @@ endif()
 
 target_link_libraries(aurivo-projectm-visualizer
     ${SDL2_LIBRARIES}
-    ${OPENGL_LIBRARIES}
+    ${AURIVO_OPENGL_LINK_LIBS}
     ${GLEW_LIBRARIES}
     imgui
     ${PROJECTM_LIBRARIES}

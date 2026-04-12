@@ -10,9 +10,9 @@
     function getPulseQuickPreset(mode) {
         const key = String(mode || '').trim().toLowerCase();
         // Hızlı / Dengeli / Hassas profilleri:
-        // normal=2/5, background=4/8, max=8/12
-        if (key === 'normal') return { requestInterval: 2, bufferSize: 5 };
-        if (key === 'max') return { requestInterval: 8, bufferSize: 12 };
+        // normal=5/8 (Enerji/Ağ Tasarrufu), background=4/8 (Dengeli Varsayılan), max=4/10 (Geniş örneklem, zor şarkılar için)
+        if (key === 'normal') return { requestInterval: 5, bufferSize: 8 };
+        if (key === 'max') return { requestInterval: 4, bufferSize: 10 };
         return { requestInterval: 4, bufferSize: 8 };
     }
 
@@ -588,8 +588,17 @@
 
         const sec = Number(elements.pulseNoSignalHintSec?.value);
         state.settings.pulseQuick.noSignalHintSec = [4, 6, 8].includes(sec) ? sec : pulseDefaultSec;
-        const mode = String(elements.pulseQuickMode?.value || pulseDefaultMode).trim().toLowerCase();
+        let formMode = String(elements.pulseQuickMode?.value || '').trim().toLowerCase();
+        if (!formMode && elements.pulseQuickModeCards?.length) {
+            elements.pulseQuickModeCards.forEach(card => {
+                if (card.classList.contains('active')) {
+                    formMode = String(card.dataset.pulseQuickMode || '').trim().toLowerCase();
+                }
+            });
+        }
+        const mode = formMode || pulseDefaultMode;
         state.settings.pulseQuick.mode = ['normal', 'background', 'max'].includes(mode) ? mode : pulseDefaultMode;
+        console.log('[SETTINGS] applySettings saved pulseQuick mode:', state.settings.pulseQuick.mode);
         const pulsePreset = getPulseQuickPreset(state.settings.pulseQuick.mode);
 
         state.settings.pulsePreferences = normalizePulsePreferenceState({

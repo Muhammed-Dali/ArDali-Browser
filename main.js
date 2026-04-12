@@ -1,4 +1,21 @@
 const { app, BrowserWindow, ipcMain, dialog, nativeImage, Tray, Menu, shell, session, screen, globalShortcut } = require('electron');
+
+// Wayland/Flatpak: App ID synchronization must happen as early as possible.
+const FLATPAK_APP_ID = 'com.aurivo.mediaplayer';
+const DESKTOP_FILE_ID = 'com.aurivo.mediaplayer.desktop';
+
+if (app) {
+    app.name = FLATPAK_APP_ID;
+    if (typeof app.setName === 'function') app.setName(FLATPAK_APP_ID);
+    // Wayland/Windows: Unified App ID for grouping
+    if (typeof app.setAppUserModelId === 'function') app.setAppUserModelId(FLATPAK_APP_ID);
+    
+    // Wayland: Link process to the .desktop file for icons and grouping
+    if (process.platform === 'linux') {
+        app.desktopFileName = DESKTOP_FILE_ID;
+    }
+}
+
 const os = require('os');
 const readline = require('readline');
 const { spawn, spawnSync } = require('child_process');
@@ -602,6 +619,17 @@ if (process.platform === 'win32') {
     }
 }
 
+// Linux Wayland: taskbar/dock grouping
+if (process.platform === 'linux') {
+    const flatpakId = String(process.env.FLATPAK_ID || process.env.APP_ID || '').trim();
+    if (flatpakId && app && typeof app.setDesktopName === 'function') {
+        // Use the base ID for grouping. Compositors append .desktop to look for files.
+        app.setDesktopName(flatpakId);
+    } else if (app && typeof app.setDesktopName === 'function') {
+        app.setDesktopName('com.aurivo.mediaplayer');
+    }
+}
+
 function prependToProcessPath(dir) {
     if (!dir) return;
     const delimiter = path.delimiter || (process.platform === 'win32' ? ';' : ':');
@@ -724,6 +752,8 @@ function logWindowsRuntimeDepsOnce(context = '') {
 // ============================================
 // WAYLAND / X11 OTOMATİK ALGILAMA
 // ============================================
+let effectiveDisplayBackend = 'auto';
+
 function detectDisplayServer() {
     // Linux dışı sistemlerde atlama
     if (process.platform !== 'linux') return;
@@ -799,6 +829,8 @@ function detectDisplayServer() {
         // auto modunda bile Wayland secilebilir; ozone feature'i acik olsun.
         appendCsvSwitch('enable-features', enableVaapi ? 'UseOzonePlatform,VaapiVideoDecoder' : 'UseOzonePlatform');
     }
+    effectiveDisplayBackend = selectedBackend;
+    process.env.AURIVO_EFFECTIVE_DISPLAY_BACKEND = selectedBackend;
 
     if (ozoneHint && !displayBackendOverride) {
         console.log(`[Display] ELECTRON_OZONE_PLATFORM_HINT=${ozoneHint} (session-based auto mode takes precedence)`);
@@ -1439,7 +1471,7 @@ function resolveAurivoPulseGuiLaunch() {
 
     for (const bin of pathCandidates.filter(Boolean)) {
         if (isSpawnableBinary(bin)) {
-            return { command: bin, args: [], cwd: safeCwd, source: 'bundled-gui-binary' };
+            return { command: bin, args: ['gui'], cwd: safeCwd, source: 'bundled-gui-binary' };
         }
     }
 
@@ -1462,11 +1494,11 @@ function resolveAurivoPulseGuiLaunch() {
 
     const systemAurivoPulse = findExecutable('aurivo-pulse', ['/usr/bin', '/usr/local/bin', '/bin']);
     if (systemAurivoPulse) {
-        return { command: systemAurivoPulse, args: [], cwd: safeCwd, source: 'system-aurivo-pulse' };
+        return { command: systemAurivoPulse, args: ['gui'], cwd: safeCwd, source: 'system-aurivo-pulse' };
     }
     const systemSongrec = findExecutable('songrec', ['/usr/bin', '/usr/local/bin', '/bin']);
     if (systemSongrec) {
-        return { command: systemSongrec, args: [], cwd: safeCwd, source: 'system-songrec' };
+        return { command: systemSongrec, args: ['gui'], cwd: safeCwd, source: 'system-songrec' };
     }
 
     return null;
@@ -1985,13 +2017,12 @@ async function listAurivoPulseDevices() {
         let combined = '';
         const child = spawn(launch.command, ['listen', '--list-devices'], {
             cwd: launch.cwd,
-            env: {
-                ...process.env,
+            env: buildPulseRuntimeEnv({
                 AURIVO_PULSE_NO_GUI: '1',
                 // Parse tutarlılığı için CLI çıktısını sabitle
                 LANG: 'C',
                 LC_ALL: 'C'
-            }
+            })
         });
         child.stdout.on('data', (d) => { combined += String(d || ''); });
         child.stderr.on('data', (d) => { combined += String(d || ''); });
@@ -2015,6 +2046,28 @@ async function listAurivoPulseDevices() {
             resolve({ success: true, devices });
         });
     });
+}
+
+function pickPreferredMonitorDeviceId(devices) {
+    const list = Array.isArray(devices) ? devices : [];
+    if (!list.length) return '';
+
+    const asText = (dev) => [
+        String(dev?.id || ''),
+        String(dev?.name || ''),
+        String(dev?.label || ''),
+        String(dev?.description || '')
+    ].join(' ').toLowerCase();
+
+    // 1) Dogrudan monitor cihazlarini tercih et
+    const monitor = list.find((dev) => /\bmonitor\b/.test(asText(dev)));
+    if (monitor?.id) return String(monitor.id);
+
+    // 2) PipeWire/Pulse "output" benzeri yakalama kaynaklarini ikinci tercih yap
+    const outputLike = list.find((dev) => /(alsa_output|output|loopback|monitor_of)/.test(asText(dev)));
+    if (outputLike?.id) return String(outputLike.id);
+
+    return '';
 }
 
 function parsePulseResultLine(line) {
@@ -2465,12 +2518,11 @@ function startAurivoPulseListening(options = {}) {
     }
     const child = spawn(launch.command, args, {
         cwd: launch.cwd,
-        env: {
-            ...process.env,
+        env: buildPulseRuntimeEnv({
             AURIVO_PULSE_NO_GUI: '1',
             AURIVO_PULSE_BACKGROUND_MODE: requestedBackgroundMode ? '1' : '0',
             AURIVO_PULSE_BACKGROUND_PROFILE: requestedProfile || (requestedBackgroundMode ? 'background' : 'normal')
-        }
+        })
     });
 
     aurivoPulseProc = child;
@@ -2550,7 +2602,7 @@ async function recognizeSongFromFileWithPulse(filePath) {
         let err = '';
         const child = spawn(launch.command, ['recognize', '--json', input], {
             cwd: launch.cwd,
-            env: { ...process.env, AURIVO_PULSE_NO_GUI: '1' }
+            env: buildPulseRuntimeEnv({ AURIVO_PULSE_NO_GUI: '1' })
         });
 
         const timeout = setTimeout(() => {
@@ -2608,7 +2660,7 @@ async function captureMonitorSampleAndRecognizeWithPulse(options = {}) {
             '-vn',
             samplePath
         ], {
-            env: { ...process.env, AURIVO_PULSE_NO_GUI: '1' }
+            env: buildPulseRuntimeEnv({ AURIVO_PULSE_NO_GUI: '1' })
         });
 
         const timeout = setTimeout(() => {
@@ -2792,7 +2844,8 @@ function refreshGlobalMediaShortcuts(settings) {
 
 function deriveMainWindowCloseToTray(settings) {
     const ui = (settings?.ui && typeof settings.ui === 'object') ? settings.ui : {};
-    return ui.closeToTray !== false;
+    if (typeof ui.closeToTray === 'boolean') return ui.closeToTray;
+    return true;
 }
 
 function refreshMainWindowBehaviorSettingsSync() {
@@ -3137,6 +3190,8 @@ function resolveLinuxDesktopFileHint() {
     if (process.platform !== 'linux') return '';
     const home = app?.getPath?.('home') || process.env.HOME || '';
     const candidates = [
+        path.join('/app', 'share', 'applications', 'com.aurivo.mediaplayer.desktop'),
+        path.join('/app', 'share', 'applications', 'aurivo-media-player.desktop'),
         path.join(home, '.local', 'share', 'applications', 'aurivo-media-player.desktop'),
         path.join(home, '.local', 'share', 'applications', 'com.aurivo.mediaplayer.desktop'),
         path.join('/usr/local/share/applications', 'aurivo-media-player.desktop'),
@@ -3154,19 +3209,66 @@ function resolveLinuxDesktopFileHint() {
     return '';
 }
 
+function resolveLinuxDesktopEntryId() {
+    if (process.platform !== 'linux') return '';
+    const flatpakId = String(process.env.FLATPAK_ID || process.env.APP_ID || '').trim();
+    if (flatpakId) return flatpakId.replace(/\.desktop$/i, '');
+
+    const desktopHint = resolveLinuxDesktopFileHint();
+    if (desktopHint) {
+        const base = path.basename(desktopHint).replace(/\.desktop$/i, '').trim();
+        if (base) return base;
+    }
+    return 'com.aurivo.mediaplayer';
+}
+
+function buildPulseRuntimeEnv(extra = {}) {
+    const env = {
+        ...process.env,
+        ...(extra && typeof extra === 'object' ? extra : {})
+    };
+
+    const platformSubdir = process.platform === 'win32'
+        ? 'windows'
+        : (process.platform === 'linux' ? 'linux' : process.platform);
+    const libCandidates = [
+        path.join(process.resourcesPath || '', 'app.asar.unpacked', 'Aurivo-Pulse', 'libs'),
+        path.join(process.resourcesPath || '', 'Aurivo-Pulse', 'libs'),
+        path.join(__dirname, 'Aurivo-Pulse', 'libs'),
+        path.join(process.resourcesPath || '', 'native-dist', platformSubdir),
+        path.join(process.resourcesPath || '', 'native-dist')
+    ].filter(Boolean);
+
+    const existing = String(env.LD_LIBRARY_PATH || '').split(path.delimiter).filter(Boolean);
+    const finalPaths = [];
+    const seen = new Set();
+    for (const p of [...libCandidates, ...existing]) {
+        if (!p || seen.has(p)) continue;
+        seen.add(p);
+        try {
+            if (fs.existsSync(p)) finalPaths.push(p);
+        } catch {
+            // yoksay
+        }
+    }
+    if (finalPaths.length) {
+        env.LD_LIBRARY_PATH = finalPaths.join(path.delimiter);
+    }
+    return env;
+}
+
 function buildPulseGuiEnv() {
     const uiLang = getUiLanguageSync();
     const posixLocale = uiLangToPosixLocale(uiLang);
     const localeChain = uiLangToLocaleChain(uiLang);
-    const env = {
-        ...process.env,
+    const env = buildPulseRuntimeEnv({
         AURIVO_PULSE_NO_GUI: '0',
         AURIVO_LANG: uiLang,
         LANG: posixLocale,
         LC_ALL: posixLocale,
         LANGUAGE: localeChain,
         AURIVO_PULSE_BRIDGE_URL: getPulseBridgeUrl()
-    };
+    });
 
     // Linux'ta masaüstü eşleştirme ipucu ver (GNOME/KDE panel grouping için).
     if (process.platform === 'linux') {
@@ -3175,8 +3277,14 @@ function buildPulseGuiEnv() {
             env.BAMF_DESKTOP_FILE_HINT = desktopHint;
             env.GIO_LAUNCHED_DESKTOP_FILE = desktopHint;
         }
-        // Eski (gruplama çalışan) kimliği koru.
-        env.AURIVO_APP_ID = 'aurivo-media-player';
+        // Flatpak/Native Wayland kimliğini kullanarak doğru eşleştirme yap
+        const flatpakId = String(process.env.FLATPAK_ID || process.env.APP_ID || '').trim();
+        if (flatpakId) {
+            env.AURIVO_APP_ID = flatpakId;
+        } else {
+            env.AURIVO_APP_ID = 'com.aurivo.mediaplayer';
+        }
+        env.AURIVO_ICON_NAME = env.AURIVO_APP_ID;
     }
 
     return env;
@@ -3748,7 +3856,13 @@ function createWindow() {
                 mainWindow.hide();
                 return false;
             }
+            // "Kapatınca çık" modunda kapanışın gerçekten tüm süreci sonlandırmasını garantile.
+            event.preventDefault();
             app.isQuitting = true;
+            try {
+                app.quit();
+            } catch { }
+            return false;
         }
     });
 
@@ -3759,6 +3873,7 @@ function createWindow() {
             soundEffectsWindow.close();
         }
     });
+
 }
 
 async function createSettingsWindow(defaultTab = 'playback') {
@@ -3897,19 +4012,27 @@ function createMPRIS() {
     }
 
     try {
-        const desktopEntryCandidates = ['aurivo', 'com.aurivo.mediaplayer', 'aurivo-media-player'];
+        const flatpakAppId = (process.env.FLATPAK_ID || process.env.APP_ID || '').trim();
+        const mprisName = (flatpakAppId || 'aurivo').replace(/[^A-Za-z0-9_.-]/g, '') || 'aurivo';
+        const desktopEntryCandidates = [
+            flatpakAppId,
+            'com.aurivo.mediaplayer',
+            'aurivo-media-player',
+            'aurivo'
+        ].filter(Boolean);
         const desktopEntry = desktopEntryCandidates.find((entry) => {
             const file = `${entry}.desktop`;
             const paths = [
+                path.join('/app/share/applications', file),
                 path.join('/usr/share/applications', file),
                 path.join('/usr/local/share/applications', file),
                 path.join(app.getPath('home'), '.local/share/applications', file)
             ];
             return paths.some((p) => fs.existsSync(p));
-        }) || 'aurivo';
+        }) || (flatpakAppId || 'aurivo');
 
         mprisPlayer = Player({
-            name: 'aurivo',
+            name: mprisName,
             identity: 'Aurivo Media Player',
             desktopEntry, // KDE/GNOME sistem panelinde uygulama ikonunu eşleştirir
             supportedUriSchemes: ['file'],
@@ -4011,7 +4134,7 @@ function createMPRIS() {
             return mprisPlayer.position || 0;
         };
 
-        console.log('✓ MPRIS player başlatıldı (desktopEntry:', desktopEntry + ')');
+        console.log('✓ MPRIS player başlatıldı (name:', mprisName + ', desktopEntry:', desktopEntry + ')');
     } catch (e) {
         // MPRIS başlatma hatalarını sessizce yoksay
         console.log('MPRIS başlatma atlandı:', e.message);
@@ -4842,6 +4965,39 @@ function getVisualizerExecutablePath() {
     return basePick || ((baseCandidates && baseCandidates[0]) ? baseCandidates[0] : '');
 }
 
+function validateVisualizerBinaryForCurrentRuntime(exePath) {
+    if (!exePath || !fs.existsSync(exePath)) {
+        return { ok: false, reason: 'missing-executable' };
+    }
+    if (process.platform !== 'linux') {
+        return { ok: true };
+    }
+    const isFlatpakRuntime = !!(process.env.FLATPAK_ID || process.env.APP_ID);
+    if (!isFlatpakRuntime) {
+        return { ok: true };
+    }
+
+    try {
+        const check = spawnSync('ldd', [exePath], {
+            encoding: 'utf8',
+            timeout: 3000,
+            env: { ...process.env }
+        });
+        const output = `${check?.stdout || ''}\n${check?.stderr || ''}`;
+
+        if (/GLIBC_[0-9.]+['`]?\s+not found/i.test(output)) {
+            return { ok: false, reason: 'glibc-mismatch', detail: output.trim() };
+        }
+        if (/=>\s+not found/i.test(output)) {
+            return { ok: false, reason: 'missing-shared-lib', detail: output.trim() };
+        }
+    } catch (error) {
+        return { ok: false, reason: 'runtime-check-failed', detail: String(error?.message || error || '') };
+    }
+
+    return { ok: true };
+}
+
 function startVisualizer() {
     if (visualizerProc && !visualizerProc.killed) return true;
 
@@ -4896,8 +5052,42 @@ function startVisualizer() {
         }).catch(() => { /* yoksay */ });
         return false;
     }
+    const runtimeCheck = validateVisualizerBinaryForCurrentRuntime(exePath);
+    if (!runtimeCheck.ok) {
+        const title = tMainSync('visualizer.runtimeUnsupportedTitle') || 'Görselleştirici bu Flatpak ortamında başlatılamadı';
+        const reasonText = runtimeCheck.reason === 'glibc-mismatch'
+            ? 'Native visualizer binary bu runtime ile ABI uyumlu değil (GLIBC mismatch).'
+            : (runtimeCheck.reason === 'missing-shared-lib'
+                ? 'Native visualizer için gereken paylaşımlı kütüphaneler bulunamadı.'
+                : 'Native visualizer runtime doğrulaması başarısız oldu.');
+        const detail = [
+            reasonText,
+            '',
+            `Binary: ${exePath}`,
+            runtimeCheck.detail ? `Detay:\n${runtimeCheck.detail}` : ''
+        ].filter(Boolean).join('\n');
 
-    const visualizerIconPath = getResourcePath(path.join('icons', 'aurivo_512.png'));
+        dialog.showMessageBox({
+            type: 'warning',
+            title,
+            message: title,
+            detail,
+            buttons: ['Tamam']
+        }).catch(() => {});
+
+        console.warn('[Visualizer] runtime uyumsuz -> native visualizer devre dışı:', runtimeCheck.reason);
+        return { started: false, reason: runtimeCheck.reason };
+    }
+
+    const visualizerIconCandidates = [
+        getResourcePath(path.join('icons', 'aurivo_512.png')),
+        path.join(process.resourcesPath || '', 'icons', 'aurivo_512.png'),
+        '/app/share/icons/hicolor/512x512/apps/com.aurivo.mediaplayer.png'
+    ].filter(Boolean);
+    const visualizerIconPath = visualizerIconCandidates.find((p) => {
+        if (!p || p.includes('.asar/')) return false;
+        try { return fs.existsSync(p); } catch { return false; }
+    }) || visualizerIconCandidates.find(Boolean) || '';
     const tVis = (key, fallback, vars) => {
         const v = tMainSync(key, vars);
         if (!v || v === key) return '';
@@ -4905,15 +5095,33 @@ function startVisualizer() {
     };
 
     const uiLang = getUiLanguageSync();
+    const posixLocale = uiLangToPosixLocale(uiLang);
+    const localeChain = uiLangToLocaleChain(uiLang);
+    const visualizerDesktopEntry = resolveLinuxDesktopEntryId() || 'com.aurivo.mediaplayer';
+    const visualizerFontCandidates = [
+        // Flatpak: native binary icin asar disi okunabilir font
+        '/app/aurivo/resources/native-dist/linux/fonts/Inter-Regular.ttf',
+        path.join(process.resourcesPath || '', 'native-dist', 'linux', 'fonts', 'Inter-Regular.ttf'),
+        // Gelistirme ortami
+        path.join(__dirname, 'assets', 'fonts', 'Inter-Regular.ttf')
+    ].filter(Boolean);
+    const visualizerFontPath = visualizerFontCandidates.find((p) => {
+        if (!p || p.includes('.asar/')) return false;
+        try { return fs.existsSync(p); } catch { return false; }
+    }) || '';
     const env = {
         ...process.env,
         PROJECTM_PRESETS_PATH: presetsPath,
         AURIVO_VISUALIZER_ICON: visualizerIconPath,
+        AURIVO_VIS_FONT_PATH: visualizerFontPath,
         // Linux window grouping + icon lookup (Wayland app_id / X11 WM_CLASS)
-        AURIVO_VIS_DESKTOP_ENTRY: process.env.AURIVO_VIS_DESKTOP_ENTRY || 'aurivo',
-        AURIVO_VIS_WMCLASS: process.env.AURIVO_VIS_WMCLASS || 'aurivo-media-player',
+        AURIVO_VIS_DESKTOP_ENTRY: process.env.AURIVO_VIS_DESKTOP_ENTRY || visualizerDesktopEntry,
+        AURIVO_VIS_WMCLASS: process.env.AURIVO_VIS_WMCLASS || 'com.aurivo.mediaplayer',
         // Native görselleştirici için UI dili (SDL2/ImGui)
         AURIVO_LANG: uiLang,
+        LANG: posixLocale,
+        LC_ALL: posixLocale,
+        LANGUAGE: localeChain,
         // Native visualizer i18n strings (all app locales can override these keys over time)
         AURIVO_VIS_CTX_DISPLAY: tVis('visualizerNative.context.display', 'Display'),
         AURIVO_VIS_CTX_RENDERING: tVis('visualizerNative.context.rendering', 'Rendering'),
@@ -4960,10 +5168,22 @@ function startVisualizer() {
 
     // Linux: SDL2 için görüntü değişkenleri (Wayland/X11)
     if (process.platform === 'linux') {
+        const backendHint = String(
+            process.env.AURIVO_DISPLAY_BACKEND ||
+            process.env.ELECTRON_OZONE_PLATFORM_HINT ||
+            process.env.AURIVO_EFFECTIVE_DISPLAY_BACKEND ||
+            effectiveDisplayBackend ||
+            'auto'
+        ).trim().toLowerCase();
         env.DISPLAY = process.env.DISPLAY || '';
         env.WAYLAND_DISPLAY = process.env.WAYLAND_DISPLAY || '';
-        env.XDG_SESSION_TYPE = process.env.XDG_SESSION_TYPE || (process.env.WAYLAND_DISPLAY ? 'wayland' : 'x11');
-        env.SDL_VIDEODRIVER = process.env.WAYLAND_DISPLAY ? 'wayland' : 'x11';
+        if (backendHint === 'x11' || backendHint === 'wayland') {
+            env.SDL_VIDEODRIVER = backendHint;
+            env.XDG_SESSION_TYPE = process.env.XDG_SESSION_TYPE || backendHint;
+        } else {
+            env.XDG_SESSION_TYPE = process.env.XDG_SESSION_TYPE || (process.env.WAYLAND_DISPLAY ? 'wayland' : 'x11');
+            env.SDL_VIDEODRIVER = process.env.WAYLAND_DISPLAY ? 'wayland' : 'x11';
+        }
     }
 
     try {
@@ -5014,11 +5234,11 @@ function startVisualizer() {
             });
         }
 
-        return true;
+        return { started: true };
     } catch (e) {
         console.error('[Visualizer] startVisualizer exception:', e);
         visualizerProc = null;
-        return false;
+        return { started: false, reason: 'spawn-failed' };
     }
 }
 
@@ -5044,8 +5264,9 @@ ipcMain.handle('visualizer:toggle', () => {
     }
 
     console.log('[Visualizer] toggle -> start');
-    const started = startVisualizer();
-    return { running: started };
+    const result = startVisualizer();
+    if (typeof result === 'boolean') return { running: result };
+    return { running: !!result?.started, reason: result?.reason || '' };
 });
 
 ipcMain.on('visualizer:videoSpectrum', (_event, payload) => {
@@ -5469,8 +5690,9 @@ app.whenReady().then(async () => {
 });
 
 app.on('window-all-closed', () => {
-    // Tray varsa uygulamayı kapatma (arka planda çalışmaya devam et)
-    if (process.platform !== 'darwin' && !tray) {
+    // Linux/Windows: kullanıcı gerçekten çıkış akışını tetiklediyse (app.isQuitting)
+    // tray olsa bile uygulamayı tamamen sonlandır.
+    if (process.platform !== 'darwin' && (app.isQuitting || !tray)) {
         app.quit();
     }
 });
@@ -5538,7 +5760,7 @@ ipcMain.handle('pulse:openWindow', async () => {
         if (candidateCmd.includes(path.sep) && !isSpawnableBinary(candidateCmd)) continue;
         pushAttempt({
             command: candidateCmd,
-            args: [],
+            args: ['gui'],
             cwd: resolveSafePulseCwd(''),
             source: 'pulse-fallback'
         });
@@ -5624,11 +5846,29 @@ ipcMain.handle('pulse:openWindow', async () => {
         return { success: true, source: attempt.source, command: attempt.command };
     }
 
+    const fallback = startAurivoPulseListening({
+        backgroundMode: true,
+        profile: 'background'
+    });
+    if (fallback?.success) {
+        return {
+            success: true,
+            source: 'aurivo-pulse-cli-fallback',
+            command: fallback.command || '',
+            degraded: true
+        };
+    }
+
     throw new Error(lastError || 'Aurivo-Pulse GUI başlatılamadı');
 });
 
 ipcMain.handle('pulse:getWindowState', async () => {
-    return { open: !!(aurivoPulseGuiProc && !aurivoPulseGuiProc.killed) };
+    const guiOpen = !!(aurivoPulseGuiProc && !aurivoPulseGuiProc.killed);
+    const listenOpen = !!aurivoPulseStatus?.running;
+    return {
+        open: guiOpen || listenOpen,
+        mode: guiOpen ? 'gui' : (listenOpen ? 'listen' : 'none')
+    };
 });
 
 ipcMain.handle('pulse:listDevices', async () => {
@@ -5657,7 +5897,28 @@ ipcMain.handle('pulse:savePreferences', async (_event, update) => {
 });
 
 ipcMain.handle('pulse:startListening', async (_event, options) => {
-    return startAurivoPulseListening(options || {});
+    const next = (options && typeof options === 'object') ? { ...options } : {};
+    const chosenDevice = String(next.audioDevice || '').trim();
+    if (!chosenDevice) {
+        try {
+            const pref = await getAurivoPulsePreferredDevice();
+            const prefId = String(pref?.audioDevice || '').trim();
+            if (prefId) {
+                next.audioDevice = prefId;
+                console.log('[PULSE] startListening auto device: preferred', prefId);
+            } else {
+                const listed = await listAurivoPulseDevices();
+                const autoPick = pickPreferredMonitorDeviceId(listed?.devices || []);
+                if (autoPick) {
+                    next.audioDevice = autoPick;
+                    console.log('[PULSE] startListening auto device: monitor', autoPick);
+                }
+            }
+        } catch (e) {
+            console.warn('[PULSE] auto monitor pick failed:', e?.message || e);
+        }
+    }
+    return startAurivoPulseListening(next);
 });
 
 ipcMain.handle('pulse:stopListening', async () => {

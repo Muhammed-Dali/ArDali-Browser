@@ -4500,6 +4500,8 @@ function setupEventListeners() {
                 const mode = String(card.dataset.pulseQuickMode || '').trim().toLowerCase();
                 if (!elements.pulseQuickMode || !['normal', 'background', 'max'].includes(mode)) return;
                 elements.pulseQuickMode.value = mode;
+                if (!state.settings.pulseQuick) state.settings.pulseQuick = {};
+                state.settings.pulseQuick.mode = mode;
                 updatePulseQuickModeUi();
             });
         });
@@ -24973,6 +24975,18 @@ function setupVisualizerContextMenu() {
             try {
                 const result = await window.app.visualizer.toggle();
                 visualizerProjectMRunning = !!result?.running;
+                if (!visualizerProjectMRunning && result?.reason) {
+                    const msg = result.reason === 'glibc-mismatch'
+                        ? 'projectM görselleştirici bu Flatpak runtime ile uyumlu değil.'
+                        : (result.reason === 'missing-shared-lib'
+                            ? 'projectM görselleştirici için gereken sistem kütüphaneleri eksik.'
+                            : 'projectM görselleştirici başlatılamadı.');
+                    if (typeof showNotification === 'function') {
+                        showNotification(msg, 'warning');
+                    } else {
+                        console.warn('[Visualizer]', msg);
+                    }
+                }
                 updateContextMenuState();
             } catch (error) {
                 console.warn('[Visualizer] projectM toggle failed:', error);

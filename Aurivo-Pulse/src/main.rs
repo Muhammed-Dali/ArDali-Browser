@@ -36,13 +36,15 @@ mod gui {
     pub mod history_entry;
     pub mod listed_device;
 }
+#[cfg(not(feature = "gui"))]
+mod gui {
+    pub mod preferences;
+}
 
 mod utils {
     pub mod csv_song_history;
-    pub mod internationalization;
-
-    #[cfg(feature = "gui")]
     pub mod filesystem_operations;
+    pub mod internationalization;
 
     #[cfg(feature = "ffmpeg")]
     pub mod ffmpeg_wrapper;

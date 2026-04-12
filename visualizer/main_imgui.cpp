@@ -7,7 +7,6 @@
 
 #include <algorithm>
 #include <array>
-#include <chrono>
 #include <cmath>
 #include <cctype>
 #include <cstdint>
@@ -19,7 +18,6 @@
 #include <fcntl.h>
 #include <iostream>
 #include <optional>
-#include <sstream>
 #include <string>
 #include <utility>
 #include <unistd.h>
@@ -50,6 +48,9 @@
 #include <unistd.h>
 #endif
 
+#ifdef AURIVO_PROJECTM_C_API_COMPAT
+#include "projectm_c_api_compat.h"
+#else
 // projectM headers differ by distro/package/version.
 // Some distros ship a "projectM.h" umbrella header; others require including individual API headers.
 // Include the umbrella if present, then explicitly include the C-API headers we rely on.
@@ -124,6 +125,7 @@
   #if __has_include(<version.h>)
     #include <version.h>
   #endif
+#endif
 #endif
 
 #include "gl_loader.h"
@@ -606,8 +608,8 @@ static const char* L7Raw(const char* en, const char* tr, const char* ar, const c
 
 static const char* visEnvText(const char* key, const char* fallback) {
     const char* val = std::getenv(key);
-    if (val && *val) return val;
-    return fallback;
+    if (val && *val) return fixMojibakeCached(val);
+    return fixMojibakeCached(fallback);
 }
 
 static uint64_t nowMs() {
@@ -1753,6 +1755,25 @@ static void reloadFontsForScale(float scale) {
 	        io.FontDefault = font;
 	    }
 
+        // Inter benzeri bazı fontlarda Türkçe karakterler (özellikle ı/ş/ğ) eksik olabiliyor.
+        // Sistem UI fontundan Latin Extended merge ederek tüm menü metinlerini güvene al.
+        std::optional<std::string> latinMergeFont;
+        if (auto w = findWindowsUiFontPath()) latinMergeFont = *w;
+        if (!latinMergeFont) {
+            if (auto l = findLinuxUiFontPath()) latinMergeFont = *l;
+        }
+        if (latinMergeFont && !latinMergeFont->empty() && *latinMergeFont != g.fontPath) {
+            ImFontConfig mergeCfg;
+            mergeCfg.MergeMode = true;
+            mergeCfg.OversampleH = cfg.OversampleH;
+            mergeCfg.OversampleV = cfg.OversampleV;
+            mergeCfg.PixelSnapH = cfg.PixelSnapH;
+            mergeCfg.RasterizerMultiply = cfg.RasterizerMultiply;
+            if (!io.Fonts->AddFontFromFileTTF(latinMergeFont->c_str(), fontPx, &mergeCfg, glyphRanges.Data)) {
+                std::cerr << "[Font] Latin merge font load failed: " << *latinMergeFont << std::endl;
+            }
+        }
+
         // Latin dışı yazılar için birleşik yedek fontlar ekle (Arapça / Devanagari).
         // Inter Arapça/Devanagari glifleri içermez; birleşik font olmazsa ImGui "????" gösterir.
         if (detectUiLang() == UiLang::AR) {
@@ -2770,12 +2791,16 @@ static bool initSDLVideo() {
     const char* desktopEntry = std::getenv("AURIVO_VIS_DESKTOP_ENTRY");
     // Wayland app_id tercihen desktop dosyasının kimliğiyle aynı olmalı;
     // aksi halde başlık çubuğunda uygulama yerine varsayılan compositor ikonu görünebilir.
-    if (!desktopEntry || !*desktopEntry) desktopEntry = "aurivo";
+    if (!desktopEntry || !*desktopEntry) desktopEntry = "com.aurivo.mediaplayer";
+    std::string appId = std::string(desktopEntry);
+    if (appId.size() > 8 && appId.rfind(".desktop") == (appId.size() - 8)) {
+        appId.resize(appId.size() - 8);
+    }
     SDL_SetHint("SDL_VIDEO_X11_WMCLASS", wmclass);
     SDL_SetHint("SDL_VIDEO_X11_WMCLASS_NAME", wmclass);
     // Wayland tarafında app_id desktop dosyası kimliğiyle birebir eşleşmeli.
-    SDL_SetHint("SDL_VIDEO_WAYLAND_WMCLASS", desktopEntry);
-    SDL_SetHint("SDL_APP_ID", desktopEntry);
+    SDL_SetHint("SDL_VIDEO_WAYLAND_WMCLASS", appId.c_str());
+    SDL_SetHint("SDL_APP_NAME", appId.c_str());
 
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS | SDL_INIT_TIMER) != 0) {
         std::cerr << "SDL_Init failed: " << SDL_GetError() << std::endl;
