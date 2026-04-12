@@ -27,8 +27,10 @@
 
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_version.h>
-#ifdef _WIN32
 #include <SDL2/SDL_syswm.h>
+#if defined(__linux__) && !defined(_WIN32)
+#  include <wayland-client.h>
+#  include <sys/prctl.h>
 #endif
 
 #ifdef SDL_IMAGE_MAJOR_VERSION
@@ -956,7 +958,7 @@ struct AppState {
     bool stdinNonBlocking = false;
 
     bool showPresetPicker = false;
-    int delaySeconds = 15;
+    int delaySeconds = 120;
     uint64_t nextAutoSwitchMs = 0;
 
     int pickerNavIndex = 0;
@@ -2649,6 +2651,38 @@ static bool ensurePickerWindow() {
     // Preset secici pencere ikonunu da ayarla (Windows titlebar sol ust simge)
     setSdlWindowIconFromEnv(g.pickerWindow);
 
+    // ── WAYLAND APP_ID: Picker penceresi için zorla ───────────────────────────
+#if defined(__linux__) && !defined(_WIN32)
+    {
+        const char* targetAppId = std::getenv("AURIVO_VIS_WMCLASS");
+        if (!targetAppId || !*targetAppId) targetAppId = "com.aurivo.mediaplayer";
+
+        SDL_SysWMinfo wmi;
+        SDL_VERSION(&wmi.version);
+        if (SDL_GetWindowWMInfo(g.pickerWindow, &wmi) && wmi.subsystem == SDL_SYSWM_WAYLAND) {
+            struct wl_proxy* toplevel = reinterpret_cast<struct wl_proxy*>(wmi.info.wl.xdg_toplevel);
+            if (toplevel) {
+                wl_proxy_marshal(toplevel, 3 /* set_app_id */, targetAppId);
+                // Wayland state is double-buffered; MUST commit the surface for app_id to apply!
+                if (wmi.info.wl.surface) {
+                    wl_surface_commit(wmi.info.wl.surface);
+                }
+                wl_display_flush(wmi.info.wl.display);
+            }
+        }
+        
+        // KDE Plasma KWin'in pencereyi yeni ve yabancı bir programmış gibi ayrı bir 
+        // görev çubuğu sekmesinde göstermemesi için pencereyi açıkça 'ana pencerenin yavrusu' (transient) yapıyoruz.
+        // SDL Wayland arka planı bunu doğrudan xdg_toplevel_set_parent olarak iletecektir,
+        // bu da KWin'i anında görsel grup yenilemesine zorlar.
+        SDL_SetWindowModalFor(g.pickerWindow, g.window);
+    }
+#endif
+    // ────────────────────────────────────────────────────────────────────────────
+
+    // Pencereyi artık gösterebiliriz (Wayland app_id attach edildi)
+    // SDL_ShowWindow(g.pickerWindow); // Removed since window is already shown without HIDDEN flag
+
     // Bazı WM'ler önceki boyutu geri yükleyebilir; istenen boyutu zorla.
     SDL_SetWindowSize(g.pickerWindow, desiredW, desiredH);
     // Sağdan çekmece efekti: önce hedefin sağında başlat, sonra kaydır.
@@ -2872,6 +2906,46 @@ static bool initMainWindowAndGL() {
         std::cerr << "Failed to create window: " << SDL_GetError() << std::endl;
         return false;
     }
+
+    // ── WAYLAND APP_ID: SDL hint yoluyla zorla ──────────────────
+    // SDL_VIDEO_WAYLAND_WMCLASS = "app_id" olarak xdg_toplevel'a atanir.
+    // SDL_Init oncesi set ettigimiz icin bu zaten uygulanmis olmali;
+    // ama pencere olusturulduktan SONRA tekrar set etmek de guvenlidir.
+#if defined(__linux__) && !defined(_WIN32)
+    {
+        const char* targetAppId = std::getenv("AURIVO_VIS_WMCLASS");
+        if (!targetAppId || !*targetAppId) targetAppId = "com.aurivo.mediaplayer";
+
+        // SDL2 SysWMinfo uzerinden Wayland xdg_toplevel'i al ve app_id'yi set et
+        SDL_SysWMinfo wmi;
+        SDL_VERSION(&wmi.version);
+        bool appIdSetDirectly = false;
+        if (SDL_GetWindowWMInfo(g.window, &wmi) && wmi.subsystem == SDL_SYSWM_WAYLAND) {
+            // wl_proxy_marshal ile raw Wayland cagrisi (libwayland-client'tan)
+            // xdg_toplevel icin set_app_id opcode = 3
+            struct wl_proxy* toplevel = reinterpret_cast<struct wl_proxy*>(wmi.info.wl.xdg_toplevel);
+            if (toplevel) {
+                wl_proxy_marshal(toplevel, 3 /* set_app_id */, targetAppId);
+                // Komutun anında uygulanması için surface commit edilmeli (double-buffered)
+                if (wmi.info.wl.surface) {
+                    wl_surface_commit(wmi.info.wl.surface);
+                }
+                wl_display_flush(wmi.info.wl.display);
+                appIdSetDirectly = true;
+                std::cout << "[Wayland] wl_proxy app_id = " << targetAppId << std::endl;
+            }
+        }
+        if (!appIdSetDirectly) {
+            std::cout << "[Wayland] using SDL hint for app_id = " << targetAppId << std::endl;
+        }
+        SDL_SetHint("SDL_VIDEO_WAYLAND_WMCLASS", targetAppId);
+        SDL_SetHint("SDL_APP_NAME", targetAppId);
+    }
+#endif
+    // ────────────────────────────────────────────────────────────────────────────
+
+    // Pencereyi artık gösterebiliriz (Wayland app_id attach edildi)
+    // SDL_ShowWindow(g.window); // Removed since window is already shown without HIDDEN flag
 
     // Başlangıç boyutunu zorla (bazı masaüstlerinde "maksimize açılır"ı önler).
     SDL_RestoreWindow(g.window);

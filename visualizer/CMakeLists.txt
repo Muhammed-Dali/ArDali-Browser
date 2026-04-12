@@ -211,6 +211,17 @@ target_link_libraries(aurivo-projectm-visualizer
     Threads::Threads
 )
 
+# Link libwayland-client on Linux for direct Wayland protocol calls (xdg_toplevel app_id)
+if(UNIX AND NOT APPLE)
+    find_library(WAYLAND_CLIENT_LIB wayland-client)
+    if(WAYLAND_CLIENT_LIB)
+        target_link_libraries(aurivo-projectm-visualizer ${WAYLAND_CLIENT_LIB})
+        message(STATUS "wayland-client found: ${WAYLAND_CLIENT_LIB}")
+    else()
+        message(STATUS "wayland-client not found; Wayland app_id via SDL hints only")
+    endif()
+endif()
+
 if(PROJECTM_PLAYLIST_FOUND)
     target_link_libraries(aurivo-projectm-visualizer ${PROJECTM_PLAYLIST_LIBRARIES})
 endif()

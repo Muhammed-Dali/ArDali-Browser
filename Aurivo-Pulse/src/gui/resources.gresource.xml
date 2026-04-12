@@ -5,13 +5,13 @@
     <file compressed="true">style.css</file>
     <file compressed="true" preprocess="xml-stripblanks" alias="com.aurivo.pulse.svg">custom_icon.svg</file>
     <file compressed="true" preprocess="xml-stripblanks" alias="scalable/apps/com.aurivo.pulse.svg">custom_icon.svg</file>
-    <file compressed="true" preprocess="xml-stripblanks" alias="aurivo-media-player.svg">custom_icon.svg</file>
-    <file compressed="true" preprocess="xml-stripblanks" alias="scalable/apps/aurivo-media-player.svg">custom_icon.svg</file>
+    <file compressed="true" preprocess="xml-stripblanks" alias="com.aurivo.mediaplayer.svg">custom_icon.svg</file>
+    <file compressed="true" preprocess="xml-stripblanks" alias="scalable/apps/com.aurivo.mediaplayer.svg">custom_icon.svg</file>
     <file compressed="true" preprocess="xml-stripblanks">custom_icon.svg</file>
     <file compressed="true" alias="com.aurivo.pulse.png">custom_icon.png</file>
     <file compressed="true" alias="256x256/apps/com.aurivo.pulse.png">custom_icon.png</file>
-    <file compressed="true" alias="aurivo-media-player.png">custom_icon.png</file>
-    <file compressed="true" alias="256x256/apps/aurivo-media-player.png">custom_icon.png</file>
+    <file compressed="true" alias="com.aurivo.mediaplayer.png">custom_icon.png</file>
+    <file compressed="true" alias="256x256/apps/com.aurivo.mediaplayer.png">custom_icon.png</file>
     <file compressed="true">custom_icon.png</file>
     <file compressed="true" alias="search-symbolic.png">search-symbolic.png</file>
     <file compressed="true" alias="actions/128/search-symbolic.png">search-symbolic.png</file>

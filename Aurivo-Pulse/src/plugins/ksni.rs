@@ -11,7 +11,7 @@ impl ksni::Tray for SystrayInterface {
         "aurivo-pulse".into()
     }
     fn icon_name(&self) -> String {
-        "aurivo-media-player".into()
+        "com.aurivo.mediaplayer".into()
     }
     fn title(&self) -> String {
         "Aurivo-Pulse".into()

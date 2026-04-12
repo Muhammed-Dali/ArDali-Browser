@@ -19,6 +19,7 @@ finish-args:
   - --socket=session-bus
   - --share=network
   - --device=dri
+  - --device=all
   - --filesystem=xdg-music
   - --filesystem=xdg-videos
   - --filesystem=xdg-download

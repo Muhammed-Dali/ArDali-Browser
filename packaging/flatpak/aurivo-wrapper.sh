@@ -15,14 +15,18 @@ export AURIVO_SOFTWARE_RENDER="${AURIVO_SOFTWARE_RENDER:-1}"
 
 # Ensure shared visualizer ID
 export AURIVO_VIS_WMCLASS="$FLATPAK_APP_ID"
+export AURIVO_VIS_DESKTOP_ENTRY="$FLATPAK_APP_ID"
+export AURIVO_APP_ID="$FLATPAK_APP_ID"
 
 unset ELECTRON_RUN_AS_NODE
+unset DESKTOP_STARTUP_ID
+unset XDG_ACTIVATION_TOKEN
 
 # Rename argv[0] to match AppID - This is CRITICAL for KDE Wayland
 BINARY="/app/aurivo/aurivo"
 
 if command -v zypak-wrapper >/dev/null 2>&1; then
-  exec zypak-wrapper "$BINARY" --no-sandbox --disable-setuid-sandbox "$@"
+  exec zypak-wrapper "$BINARY" --no-sandbox --disable-setuid-sandbox --class="$FLATPAK_APP_ID" --app-id="$FLATPAK_APP_ID" "$@"
 fi
 
-exec "$BINARY" --no-sandbox --disable-setuid-sandbox "$@"
+exec "$BINARY" --no-sandbox --disable-setuid-sandbox --class="$FLATPAK_APP_ID" --app-id="$FLATPAK_APP_ID" "$@"

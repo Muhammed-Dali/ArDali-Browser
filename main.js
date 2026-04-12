@@ -5117,6 +5117,7 @@ function startVisualizer() {
         // Linux window grouping + icon lookup (Wayland app_id / X11 WM_CLASS)
         AURIVO_VIS_DESKTOP_ENTRY: process.env.AURIVO_VIS_DESKTOP_ENTRY || visualizerDesktopEntry,
         AURIVO_VIS_WMCLASS: process.env.AURIVO_VIS_WMCLASS || 'com.aurivo.mediaplayer',
+        SDL_APP_NAME: process.env.AURIVO_VIS_WMCLASS || 'com.aurivo.mediaplayer',
         // Native görselleştirici için UI dili (SDL2/ImGui)
         AURIVO_LANG: uiLang,
         LANG: posixLocale,
@@ -5195,8 +5196,17 @@ function startVisualizer() {
 
         // Hata ayıklama: strace ile çalıştır
         const useStrace = false; // hata ayıklama için true yap
-        const actualExe = useStrace ? 'strace' : exePath;
-        const actualArgs = useStrace ? ['-o', '/tmp/visualizer-strace.log', '-ff', exePath, '--presets', presetsPath] : ['--presets', presetsPath];
+        let actualExe = useStrace ? 'strace' : exePath;
+        let actualArgs = useStrace ? ['-o', '/tmp/visualizer-strace.log', '-ff', exePath, '--presets', presetsPath] : ['--presets', presetsPath];
+
+        // [KDE / Wayland Fix] KWin'in pencere açılır açılmaz anında gruplama yapabilmesi için
+        // process'in argv[0]'ını zorla desktop ID'si ile başlatıyoruz (bash exec -a kullanarak).
+        // Bu sayede Wayland app_id daha SDL2 tarafından iletilmeden süreç ismi tanınır.
+        if (process.platform === 'linux' && !useStrace) {
+            actualExe = 'bash';
+            const desktopId = env.AURIVO_VIS_DESKTOP_ENTRY || 'com.aurivo.mediaplayer';
+            actualArgs = ['-c', `exec -a "${desktopId}" "${exePath}" "$@"`, '--', '--presets', presetsPath];
+        }
 
         visualizerProc = spawn(actualExe, actualArgs, {
             env,
@@ -5771,7 +5781,18 @@ ipcMain.handle('pulse:openWindow', async () => {
         let child = null;
         let startupStderr = '';
         try {
-            child = spawn(attempt.command, attempt.args || [], {
+            let actualCmd = attempt.command;
+            let actualArgs = attempt.args || [];
+
+            // [KDE / Wayland Fix] KWin'in pencere açılır açılmaz anında gruplama yapabilmesi için
+            // process'in argv[0]'ını zorla desktop ID'si ile başlatıyoruz (bash exec -a kullanarak).
+            if (process.platform === 'linux') {
+                const desktopId = process.env.FLATPAK_ID || 'com.aurivo.mediaplayer';
+                actualCmd = 'bash';
+                actualArgs = ['-c', `exec -a "${desktopId}" "${attempt.command}" "$@"`, '--', ...(attempt.args || [])];
+            }
+
+            child = spawn(actualCmd, actualArgs, {
                 cwd: attempt.cwd,
                 env: buildPulseGuiEnv(),
                 detached: false,

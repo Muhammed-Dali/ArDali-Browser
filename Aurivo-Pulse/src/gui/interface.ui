@@ -752,8 +752,8 @@
     <property name="default-height">570</property>
     <property name="default-width">977</property>
     <property name="height-request">570</property>
-    <property name="icon-name">aurivo-media-player</property>
-    <property name="startup-id">aurivo-media-player</property>
+    <property name="icon-name">com.aurivo.mediaplayer</property>
+    <property name="startup-id">com.aurivo.mediaplayer</property>
     <property name="title">Aurivo-Pulse</property>
     <property name="visible">True</property>
     <property name="width-request">977</property>

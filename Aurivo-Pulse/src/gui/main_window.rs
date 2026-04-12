@@ -103,7 +103,7 @@ fn pulse_app_id() -> String {
     if !normalized.is_empty() && normalized.contains('.') {
         return normalized;
     }
-    "com.aurivoplayer.pulse".to_string()
+    "com.aurivo.mediaplayer".to_string()
 }
 
 fn compact_text(input: &str, max_chars: usize) -> String {
@@ -830,8 +830,8 @@ impl App {
         log_object.connect_to_gui_logger(gui_tx.clone());
 
         glib::set_prgname(Some(match std::env::var("SNAP_NAME") {
-            Ok(_) => "aurivo-media-player",
-            _ => "aurivo-media-player",
+            Ok(_) => "com.aurivo.mediaplayer",
+            _ => "com.aurivo.mediaplayer",
         }));
         Self::load_resources();
 
