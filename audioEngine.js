@@ -145,6 +145,21 @@ class AurivoAudioEngine {
      * Audio engine'i başlat
      * @returns {boolean} Başarılı mı?
      */
+    getAudioDevices() {
+        if (!isNativeAvailable || typeof nativeAudio.getAudioDevices !== "function") return "[]";
+        return nativeAudio.getAudioDevices();
+    }
+
+    setAudioDevice(id) {
+        if (!isNativeAvailable || typeof nativeAudio.setAudioDevice !== "function") return false;
+        return nativeAudio.setAudioDevice(id);
+    }
+
+    setPreamp(gainDB) {
+        if (!isNativeAvailable || typeof nativeAudio.setPreamp !== "function") return false;
+        return nativeAudio.setPreamp(gainDB);
+    }
+
     initialize() {
         if (!tryLoadNativeAddon() || !isNativeAvailable) {
             console.warn('Native audio mevcut değil');

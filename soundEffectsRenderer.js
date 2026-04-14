@@ -245,6 +245,12 @@ const SFX = {
             harmonics: 50,
             width: 1.5,
             dryWet: 50
+        },
+        audiophile: {
+            exclusiveMode: false,
+            outputDevice: 'default',
+            sampleRate: 'auto',
+            preamp: 0
         }
     }
 }
@@ -1012,6 +1018,7 @@ function getPresetIconSvg(iconName) {
 
 function getEffectNavIconSvg(effectName) {
     const icons = {
+        audiophile: '<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"></path><circle cx="6" cy="18" r="3"></circle><circle cx="18" cy="16" r="3"></circle></svg>',
         eq32: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 4v16M12 4v16M18 4v16"/><circle cx="6" cy="9" r="2"/><circle cx="12" cy="14" r="2"/><circle cx="18" cy="7" r="2"/></svg>',
         reverb: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h2m2 0h2m2 0h2m2 0h2m2 0h2"/><path d="M7 7c1.8 0 3 1.4 3 3s-1.2 3-3 3m10-6c1.8 0 3 1.4 3 3s-1.2 3-3 3"/></svg>',
         compressor: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 18V6l6 6 4-4 6 6"/><path d="M4 20h16"/></svg>',
@@ -1946,7 +1953,7 @@ function createAllEffectPanels() {
     if (!contentArea) return;
 
     const effectNames = [
-        'eq32', 'reverb', 'compressor', 'limiter', 'bassboost',
+        'audiophile', 'eq32', 'reverb', 'compressor', 'limiter', 'bassboost',
         'noisegate', 'deesser', 'exciter', 'stereowidener',
         'echo', 'softecho', 'convreverb', 'peq', 'autogain', 'truepeak', 'crossfeed', 'surround', 'bassmono', 'dynamiceq', 'tapesat', 'bitdither'
     ];
@@ -2604,6 +2611,7 @@ function stopDynamicEqStatusMeter() {
 // ============================================
 function getEffectTemplate(effectName) {
     const templates = {
+        audiophile: getAudiophileTemplate(),
         eq32: getEQ32Template(),
         reverb: getReverbTemplate(),
         compressor: getCompressorTemplate(),
@@ -2650,6 +2658,66 @@ function getEQ32BandsMarkup(settings) {
         `;
     });
     return bandsHTML;
+}
+
+// --- Audiophile Mode Template ---
+function getAudiophileTemplate() {
+    const settings = getSettings('audiophile') || { preamp: 0 };
+    return `
+        <div class="effect-panel" id="audiophilePanel">
+            <div class="effect-header audiophile-header">
+                <div class="effect-title-section">
+                    <h2 class="effect-title" style="color: #4bd8e3;">🎧 Ses Çıkışı (Odyofil)</h2>
+                    <p class="effect-description">Ses sisteminizi işletim sisteminin kısıtlamalarından kurtarın ve DAC'ınıza doğrudan saf veri akışı sağlayın.</p>
+                </div>
+            </div>
+            
+            <div class="effect-controls-grid" style="display: flex; flex-direction: column; gap: 20px; padding: 20px;">
+                
+                <div class="control-group switch-group" style="display: flex; align-items: center; justify-content: space-between; background: rgba(75, 216, 227, 0.05); border: 1px solid rgba(75, 216, 227, 0.2); padding: 15px; border-radius: 8px;">
+                    <label style="flex: 1; margin: 0; color: #fff;">
+                        <strong>Doğrudan Donanım Erişimi (Exclusive Mode)</strong>
+                        <span class="control-hint" style="display: block; opacity: 0.6; margin-top: 5px; font-size: 13px;">Bu modu açtığınızda Aurivo arka plandaki tüm sesleri keserek donanımın tam kontrolünü ele alır.</span>
+                    </label>
+                    <label class="switch" style="margin-left: 20px;">
+                        <input type="checkbox" id="audiophile_exclusiveMode">
+                        <span class="slider round"></span>
+                    </label>
+                </div>
+                
+                <div class="control-group" style="display: flex; flex-direction: column; gap: 8px;">
+                    <label style="color: var(--text-color);">Hedef Çıkış Cihazı (Audio Device)</label>
+                    <select id="audiophile_outputDevice" class="effect-select" style="width:100%; border-color: rgba(75,216,227,0.3); background: var(--bg-dark); color: #fff; padding: 10px; border-radius: 6px;">
+                        <option value="default">(Varsayılan) İşletim Sistemi Cihazı</option>
+                        <option value="direct_alsa">ALSA Direct / WASAPI (Donanımsal)</option>
+                    </select>
+                </div>
+
+                <div class="control-group" style="display: flex; flex-direction: column; gap: 8px;">
+                    <label style="color: var(--text-color);">Örnekleme Kalitesi (Sample Rate)</label>
+                    <select id="audiophile_sampleRate" class="effect-select" style="width:100%; border-color: var(--border-color); background: var(--bg-dark); color: #fff; padding: 10px; border-radius: 6px;">
+                        <option value="auto">Otomatik Müzik Tabanlı (Bit-Perfect)</option>
+                        <option value="44100">44.1 kHz (CD Kalitesi)</option>
+                        <option value="96000">96.0 kHz (Stüdyo Kalitesi)</option>
+                        <option value="192000">192.0 kHz (Odyofil Ultra-High)</option>
+                    </select>
+                    <span class="control-hint" style="font-size: 13px; opacity: 0.6; margin-top: 4px;">Orijinal dosyanın kalitesini bozmadan donanımınızın desteklediği saf oran.</span>
+                </div>
+            </div>
+
+            <div class="knobs-container" style="display: flex; gap: 20px; padding: 0 20px 20px 20px; justify-content: center;">
+                <div class="knob-wrapper">
+                    <canvas class="aurivo-knob-canvas" id="knobAudiophilePreampCanvas" 
+                        width="130" height="170"
+                        data-param="preamp" 
+                        data-label="Ana Kazanç (Preamp)"
+                        data-min="-24" data-max="24" 
+                        data-value="${settings.preamp || 0}" 
+                        data-unit=" dB"></canvas>
+                </div>
+            </div>
+        </div>
+    `;
 }
 
 // --- 32-Band EQ Template ---
@@ -5009,6 +5077,10 @@ function initEffectControls(effectName) {
         initCrossfeedControls();
     }
 
+    if (effectName === 'audiophile') {
+        initAudiophileControls();
+    }
+
     if (effectName === 'surround') {
         initSurroundControls();
     }
@@ -6746,6 +6818,31 @@ function applyEffect(effectName) {
             }
             break;
 
+        case 'audiophile':
+            // Audiophile Modu (Master C++ Output ve Web Node'una kazanç / donanım bayrağı basar)
+            if (window.aurivo?.ipcAudio?.preamp) {
+                // C++ Motoru için (native audio)
+                dispatchRealtimeParam('audiophile', 'preamp_native', () => window.aurivo.ipcAudio.preamp.set(Number(settings.preamp) || 0), 16);
+            }
+            if (window.aurivo?.audio?.preamp) {
+                // Video & Web Node'ları için (dali)
+                dispatchRealtimeParam('audiophile', 'preamp_web', () => { if (window.aurivo?.audio?.preamp) window.aurivo.audio.preamp.set(Number(settings.preamp) || 0); }, 16);
+            }
+            
+            // Cihaz Değişimi
+            if (window.aurivo?.ipcAudio?.devices && window.aurivo.ipcAudio.devices.setDevice) {
+                if (settings.outputDevice && settings.outputDevice !== 'default') {
+                    // Don't spam hardware device changes natively, use realtime dispatch or just static apply
+                    dispatchRealtimeParam('audiophile', 'device_switch', () => {
+                        window.aurivo.ipcAudio.devices.setDevice(parseInt(settings.outputDevice));
+                    }, 50);
+                }
+            }
+            
+            console.log('[AUDIOPHILE] Applied - Preamp:', settings.preamp, 'Exclusive:', settings.exclusiveMode, 'Output:', settings.outputDevice);
+            // Not: İleride C++ WASAPI veya Exclusive_Alsa entegrasyonu tamamlandığında deviceId ve exclusiveMode set edilecek altyapı hazırlandı.
+            break;
+
         default:
             console.log(`${effectName} efekti henüz uygulanmadı`);
     }
@@ -7907,6 +8004,57 @@ function applyTruePeakPreset(presetName) {
     applyEffect('truepeak');
 
     console.log(`[TRUE PEAK] Preset applied: ${presetName}`);
+}
+
+// ============================================
+// AUDIOPHILE CONTROLS
+// ============================================
+async function initAudiophileControls() {
+    const panel = document.getElementById('audiophilePanel');
+    if (!panel) return;
+
+    const exclusiveCb = document.getElementById('audiophile_exclusiveMode');
+    if (exclusiveCb) {
+        exclusiveCb.addEventListener('change', (e) => {
+            updateEffectParam('audiophile', 'exclusiveMode', e.target.checked);
+        });
+    }
+
+    const deviceSel = document.getElementById('audiophile_outputDevice');
+    if (deviceSel) {
+        if (window.aurivo?.ipcAudio?.devices) {
+            try {
+                const raw = await window.aurivo.ipcAudio.devices.get();
+                const devices = JSON.parse(raw);
+                deviceSel.innerHTML = '';
+                
+                devices.forEach(dev => {
+                    const opt = document.createElement('option');
+                    opt.value = dev.id;
+                    opt.textContent = `${dev.isDefault ? '(Varsayılan) ' : ''}${dev.name} ${dev.driver ? '[' + dev.driver + ']' : ''}`;
+                    deviceSel.appendChild(opt);
+                });
+                
+                const settings = getSettings('audiophile');
+                if (settings && settings.outputDevice) {
+                    deviceSel.value = settings.outputDevice;
+                }
+            } catch (e) {
+                console.error('[AUDIOPHILE] Failed to load output devices:', e);
+            }
+        }
+    
+        deviceSel.addEventListener('change', (e) => {
+            updateEffectParam('audiophile', 'outputDevice', e.target.value);
+        });
+    }
+
+    const sampleRateSel = document.getElementById('audiophile_sampleRate');
+    if (sampleRateSel) {
+        sampleRateSel.addEventListener('change', (e) => {
+            updateEffectParam('audiophile', 'sampleRate', e.target.value);
+        });
+    }
 }
 
 // ============================================

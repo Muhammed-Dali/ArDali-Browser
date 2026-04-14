@@ -576,6 +576,7 @@ private:
     
     // Durum
     bool m_initialized;
+    int m_currentDevice;
     std::mutex m_mutex;
     
     // FFT data
@@ -592,6 +593,7 @@ public:
         , m_analysisStream(0)
         , m_prevStream(0)
         , m_prevAnalysisStream(0)
+        , m_currentDevice(-1)
         , m_currentFilePath()
         , m_preampFx(0)
         , m_reverbFx(0)
@@ -727,6 +729,62 @@ public:
         
         m_initialized = true;
         return true;
+    }
+    
+    std::string escapeJson(const std::string& s) {
+        std::string out;
+        for (char c : s) {
+            if (c == '"') out += "\\\"";
+            else if (c == '\\') out += "\\\\";
+            else if (c == '\b') out += "\\b";
+            else if (c == '\f') out += "\\f";
+            else if (c == '\n') out += "\\n";
+            else if (c == '\r') out += "\\r";
+            else if (c == '\t') out += "\\t";
+            else out += c;
+        }
+        return out;
+    }
+
+    std::string getAudioDevices() {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        std::string json = "[";
+        BASS_DEVICEINFO info;
+        bool first = true;
+        for (int a = 1; BASS_GetDeviceInfo(a, &info); a++) {
+            if (info.flags & BASS_DEVICE_ENABLED) {
+                if (!first) json += ",";
+                json += "{";
+                json += "\"id\":" + std::to_string(a) + ",";
+                json += "\"name\":\"" + escapeJson(info.name ? info.name : "Device") + "\",";
+                json += "\"driver\":\"" + escapeJson(info.driver ? info.driver : "") + "\",";
+                json += "\"isDefault\":" + std::string((info.flags & BASS_DEVICE_DEFAULT) ? "true" : "false");
+                json += "}";
+                first = false;
+            }
+        }
+        json += "]";
+        return json;
+    }
+
+    bool setAudioDevice(int deviceIndex) {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        if (!m_initialized) return false;
+        
+        if (BASS_Init(deviceIndex, SAMPLE_RATE, 0, nullptr, nullptr) || BASS_ErrorGetCode() == BASS_ERROR_ALREADY) {
+            if (m_stream) BASS_ChannelSetDevice(m_stream, deviceIndex);
+            if (m_prevStream) BASS_ChannelSetDevice(m_prevStream, deviceIndex);
+            if (m_analysisStream) BASS_ChannelSetDevice(m_analysisStream, deviceIndex);
+            if (m_prevAnalysisStream) BASS_ChannelSetDevice(m_prevAnalysisStream, deviceIndex);
+            
+            BASS_SetDevice(deviceIndex);
+            m_currentDevice = deviceIndex;
+            printf("[AUDIO] Target Output Device: %d\n", deviceIndex);
+            return true;
+        }
+        
+        printf("[AUDIO] Target Output Device FAILED for %d (Error %d)\n", deviceIndex, BASS_ErrorGetCode());
+        return false;
     }
     
     void cleanup() {
@@ -1121,7 +1179,7 @@ public:
     // ============================================
     void setPreamp(float gainDB) {
         std::lock_guard<std::mutex> lock(m_mutex);
-        m_preampGain = clampf(gainDB, -12.0f, 12.0f);
+        m_preampGain = clampf(gainDB, -24.0f, 24.0f);
         updatePreampFx();
     }
     
@@ -1739,7 +1797,8 @@ private:
     }
 
     float computeEffectiveVolume() const {
-        return computeLinearMasterVolume() * std::max(0.0f, m_programVolumeMul);
+        float preampLin = dBToLinear(m_preampGain);
+        return computeLinearMasterVolume() * std::max(0.0f, m_programVolumeMul) * preampLin;
     }
 
     void applyMasterVolumeToStream(HSTREAM stream) {
@@ -1801,8 +1860,8 @@ private:
     void setupAllFxForStream(HSTREAM stream, void*& dsp, HDSP& dspHandle, HFX& preampFxHandle, HFX& reverbFxHandle) {
         if (!stream) return;
 
-        preampFxHandle = BASS_ChannelSetFX(stream, BASS_FX_BFX_VOLUME, 0);
-        updatePreampFxHandle(preampFxHandle);
+        // preampFxHandle removed
+        // ...
 
         if (!dsp) {
             dsp = create_dsp();
@@ -3352,8 +3411,8 @@ public:
     }
     
     void updatePreampFx() {
-        updatePreampFxHandle(m_preampFx);
-        updatePreampFxHandle(m_prevPreampFx);
+        applyMasterVolumeToStream(m_stream);
+        applyMasterVolumeToStream(m_prevStream);
     }
     
     void updateEqBand(int band) {
@@ -3669,6 +3728,26 @@ Napi::Value InitAudio(const Napi::CallbackInfo& info) {
     result.Set("success", Napi::Boolean::New(env, success));
     result.Set("error", success ? env.Null() : Napi::String::New(env, "BASS initialization failed"));
     return result;
+}
+
+// Device Management
+Napi::Value GetAudioDevices(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+    if (g_engine) {
+        std::string devices = g_engine->getAudioDevices();
+        return Napi::String::New(env, devices);
+    }
+    return Napi::String::New(env, "[]");
+}
+
+Napi::Value SetAudioDevice(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+    if (g_engine && info.Length() > 0 && info[0].IsNumber()) {
+        int deviceIndex = info[0].As<Napi::Number>().Int32Value();
+        bool success = g_engine->setAudioDevice(deviceIndex);
+        return Napi::Boolean::New(env, success);
+    }
+    return Napi::Boolean::New(env, false);
 }
 
 // Cleanup
@@ -6375,6 +6454,8 @@ Napi::Value SetDynamicEQRange(const Napi::CallbackInfo& info) {
 Napi::Object Init(Napi::Env env, Napi::Object exports) {
     // Core functions
     exports.Set("initAudio", Napi::Function::New(env, InitAudio));
+    exports.Set("getAudioDevices", Napi::Function::New(env, GetAudioDevices));
+    exports.Set("setAudioDevice", Napi::Function::New(env, SetAudioDevice));
     exports.Set("initialize", Napi::Function::New(env, Initialize));  // Legacy
     exports.Set("cleanup", Napi::Function::New(env, Cleanup));
     exports.Set("loadFile", Napi::Function::New(env, LoadFile));
