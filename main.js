@@ -22,7 +22,6 @@ const { spawn, spawnSync } = require('child_process');
 const path = require('path');
 const fs = require('fs');
 const http = require('http');
-const https = require('https');
 const { registerDawlodIpc } = require('./modules/dawlodHost');
 const {
     initAdBlocker,
@@ -40,16 +39,6 @@ try {
     console.warn('[UPDATER] electron-updater yüklenemedi:', e?.message || e);
 }
 
-function getEmbeddedDesktopUserAgentMain() {
-    let osToken = 'X11; Linux x86_64';
-    if (process.platform === 'win32') osToken = 'Windows NT 10.0; Win64; x64';
-    if (process.platform === 'darwin') osToken = 'Macintosh; Intel Mac OS X 10_15_7';
-    // WhatsApp Web için Electron kimliğini gizleyen, modern masaüstü UA.
-    return `Mozilla/5.0 (${osToken}) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36`;
-}
-
-const EMBEDDED_WEBVIEW_UA = getEmbeddedDesktopUserAgentMain();
-const webUaHookedSessions = new WeakSet();
 const appVersionInfo = Object.freeze({
     appVersion: app.getVersion(),
     electronVersion: process.versions.electron || '',
@@ -590,6 +579,7 @@ if (app && app.commandLine) {
     }
     app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
     app.commandLine.appendSwitch('disable-background-timer-throttling');
+    app.commandLine.appendSwitch('disable-blink-features', 'AutomationControlled');
 
     // DÜZELTME: WebView'larda çift medya oynatıcıyı önlemek için Chromium MediaSessionService devre dışı
     const disabledFeatures = ['HardwareMediaKeyHandling', 'MediaSessionService'];
@@ -602,12 +592,6 @@ if (app && app.commandLine) {
     app.commandLine.appendSwitch('disable-features', disabledFeatures.join(','));
 } else {
     console.warn('[Startup] app.commandLine not available');
-}
-
-try {
-    app.userAgentFallback = EMBEDDED_WEBVIEW_UA;
-} catch {
-    // yoksay
 }
 
 // Windows 10/11: taskbar/dock ikon eşleştirmesi ve gruplama
@@ -5486,29 +5470,6 @@ function installWebviewHardening() {
     try {
         const webSessions = getWebSessions();
         for (const ses of webSessions) {
-            if (ses && !webUaHookedSessions.has(ses) && ses.webRequest && typeof ses.webRequest.onBeforeSendHeaders === 'function') {
-                try {
-                    ses.webRequest.onBeforeSendHeaders(
-                        {
-                            urls: [
-                                'https://web.whatsapp.com/*',
-                                'https://*.whatsapp.com/*',
-                                'https://web.telegram.org/*',
-                                'https://*.telegram.org/*'
-                            ]
-                        },
-                        (details, callback) => {
-                            const requestHeaders = { ...(details?.requestHeaders || {}) };
-                            requestHeaders['User-Agent'] = EMBEDDED_WEBVIEW_UA;
-                            requestHeaders['user-agent'] = EMBEDDED_WEBVIEW_UA;
-                            callback({ requestHeaders });
-                        }
-                    );
-                    webUaHookedSessions.add(ses);
-                } catch {
-                    // yoksay
-                }
-            }
             if (ses && typeof ses.setPermissionRequestHandler === 'function') {
                 ses.setPermissionRequestHandler((webContents, permission, callback, details) => {
                     const wcType = webContents?.getType?.();
@@ -5569,11 +5530,6 @@ function installWebviewHardening() {
     app.on('web-contents-created', (_event, contents) => {
         const type = contents.getType?.();
         if (type !== 'webview') return;
-        try {
-            contents.setUserAgent(EMBEDDED_WEBVIEW_UA);
-        } catch {
-            // yoksay
-        }
 
         // Block opening arbitrary external windows from embedded web content.
         if (typeof contents.setWindowOpenHandler === 'function') {
@@ -9338,8 +9294,26 @@ ipcMain.handle('audio:setReverbInputGain', (event, dB) => {
 ipcMain.handle('audio:setPreamp', (event, gainDB) => {
     if (!audioEngine || !isNativeAudioAvailable) return;
     if (typeof audioEngine.setPreamp === 'function') {
-        audioEngine.setPreamp(gainDB);
+        console.log("[MAIN] Preamp set to", gainDB); audioEngine.setPreamp(gainDB);
     }
+});
+
+// Hardware Device Control
+ipcMain.handle('audio:getDevices', (event) => {
+    if (typeof initNativeAudioEngineSafe === 'function') initNativeAudioEngineSafe();
+    if (!audioEngine || !isNativeAudioAvailable) return "[]";
+    if (typeof audioEngine.getAudioDevices === 'function') {
+        return audioEngine.getAudioDevices();
+    }
+    return "[]";
+});
+
+ipcMain.handle('audio:setDevice', (event, deviceId) => {
+    if (!audioEngine || !isNativeAudioAvailable) return false;
+    if (typeof audioEngine.setAudioDevice === 'function') {
+        return audioEngine.setAudioDevice(deviceId);
+    }
+    return false;
 });
 
 // New Effects Handlers

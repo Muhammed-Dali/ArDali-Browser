@@ -258,6 +258,11 @@ const createAudioAPI = () => {
         // Temel Kontroller
         isNativeAvailable: () => isNativeAvailable,
 
+        devices: {
+            get: () => ipcRenderer.invoke("audio:getDevices"),
+            setDevice: (id) => ipcRenderer.invoke("audio:setDevice", id)
+        },
+
         init: async (deviceIndex = -1) => {
             const available = await ipcRenderer.invoke('audio:isNativeAvailable');
             isNativeAvailable = available;

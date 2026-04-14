@@ -4870,8 +4870,6 @@ function setupEventListeners() {
             const webAdblockConfig = getAdblockWebModeProfile();
             elements.webView.executeJavaScript(`
                 try {
-                    Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
-                    if (!window.chrome) window.chrome = { runtime: {} };
                     (function() {
                         const DELIBLOCK = ${JSON.stringify(webAdblockConfig)};
                         const send = (payload) => {
@@ -12644,9 +12642,28 @@ function getEmbeddedDesktopUserAgent() {
 function shouldInjectWebSync(url) {
     const parsed = parseHttpUrl(url);
     if (!parsed) return false;
-    // Web ses efektlerini yalnızca allowlist ile sınırlama:
-    // Geçerli http/https URL olan tüm platformlarda DALI zinciri uygulanabilsin.
-    return true;
+    const host = String(parsed.hostname || '').toLowerCase();
+
+    // Kimlik dogrulama sayfalarinda script enjeksiyonu yapma.
+    // Bu sayfalardaki fingerprint/policy kontrolleri daha hassas oldugu icin
+    // yalnizca medya senkronu gereken hostlarda enjeksiyon calissin.
+    if (
+        host === 'accounts.google.com' ||
+        host === 'myaccount.google.com' ||
+        host === 'oauth2.googleapis.com'
+    ) {
+        return false;
+    }
+
+    if (WEB_SYNC_ALLOWED_HOSTS.has(host)) return true;
+
+    return host.endsWith('.youtube.com') ||
+        host.endsWith('.deezer.com') ||
+        host.endsWith('.soundcloud.com') ||
+        host.endsWith('.mixcloud.com') ||
+        host.endsWith('.twitch.tv') ||
+        host.endsWith('.whatsapp.com') ||
+        host.endsWith('.telegram.org');
 }
 
 async function getSecurityStateSafe() {
@@ -16668,14 +16685,43 @@ function canRetryPlaylistCardCover(filePath = '') {
 
 function applyPlaylistCardCover(img, imageData = null) {
     if (!img || !img.isConnected) return;
+    
+    const parentContainer = img.closest('.playlist-card-cover');
+    const itemContainer = img.closest('.playlist-item');
+    const fallbackIcon = parentContainer ? parentContainer.querySelector('.fallback-cover-large-icon') : null;
+    
     const source = String(imageData || '').trim();
     const isDataImage = /^data:image\/[a-z0-9.+-]+;base64,/i.test(source);
+    
     if (isDataImage) {
+        if (parentContainer) parentContainer.style.display = '';
+        if (fallbackIcon) fallbackIcon.style.display = 'none';
+        img.style.display = '';
         img.src = imageData;
         img.classList.remove('default-cover');
         return;
     }
-    img.src = '../icons/aurivo_256.png';
+    
+    // Kapak yoksa img öğesini gizle, büyük ikon kutusunu göster
+    img.style.display = 'none';
+    
+    if (parentContainer) {
+        parentContainer.style.background = 'transparent';
+        parentContainer.style.border = 'none';
+        parentContainer.style.boxShadow = 'none';
+    }
+    
+    if (fallbackIcon) {
+        fallbackIcon.style.display = 'flex';
+    } else if (parentContainer && itemContainer) {
+        const iconElement = document.createElement('span');
+        iconElement.className = 'fallback-cover-large-icon';
+        const isVideo = itemContainer.querySelector('.item-name')?.textContent.match(/\.(mp4|mkv|avi|webm|mov)$/i);
+        iconElement.innerHTML = `<img src="icons/fallback_${isVideo ? 'video' : 'audio'}.svg" style="width: 100%; height: 100%; object-fit: contain;">`;
+        parentContainer.appendChild(iconElement);
+    }
+    
+    img.src = '';
     img.classList.add('default-cover');
 }
 
@@ -18009,7 +18055,7 @@ function showLibraryAddMenu(anchor, scope = 'audio') {
                 onClick: () => addMusicFilesToLibrary()
             }),
             buildLibraryAddMenuItem(uiT('libraryActions.addFolder', 'Klasör Ekle'), {
-                icon: '📁',
+                icon: `<svg viewBox="0 0 24 24" width="1.25em" height="1.25em" fill="currentColor" style="color: #4bd8e3; vertical-align: sub;"><path d="M10 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"></path></svg>`,
                 onClick: () => addMusicFolderFromSettings()
             })
         ]
@@ -18883,15 +18929,22 @@ function createTreeItem(name, path, isDirectory, icon = null) {
     const iconSpan = document.createElement('span');
     iconSpan.className = 'tree-icon';
 
-    if (!icon) {
+    const MODERN_FOLDER_SVG = `<svg viewBox="0 0 24 24" width="1.3em" height="1.3em" fill="currentColor" style="color: #4bd8e3; vertical-align: sub;"><path d="M10 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"></path></svg>`;
+
+    if (!icon || icon === '📁') {
         if (isDirectory) {
-            icon = '📁';
+            icon = MODERN_FOLDER_SVG;
         } else {
             const ext = name.split('.').pop().toLowerCase();
             icon = getConfiguredLibraryExtensions('video').includes(ext) ? '🎬' : '🎵';
         }
     }
-    iconSpan.textContent = icon;
+    
+    if (icon && typeof icon === 'string' && icon.trim().startsWith('<svg')) {
+        iconSpan.innerHTML = icon;
+    } else {
+        iconSpan.textContent = icon;
+    }
 
     const nameSpan = document.createElement('span');
     nameSpan.className = 'tree-name';
@@ -19442,10 +19495,19 @@ function renderPlaylist() {
         const showCardCover = isCardView && !isVideoFile(item.name) && !perfState.lightweightMode;
         const showMissingCover = !largePlaylistMode && getCoverPreferenceState().markMissing && item.hasCover === false;
         const metaParts = [artist, album].filter(Boolean);
+        div.title = metaParts.length ? `${item.name}\n${metaParts.join(' • ')}` : item.name;
+        
         const flowBadges = (perfState.lightweightMode || largePlaylistMode) ? [] : getTrackFlowBadges(item.path);
         const knownCardCover = showCardCover ? getKnownPlaylistCardCover(item.path) : null;
+        const canRetryCover = showCardCover ? canRetryPlaylistCardCover(item.path) : false;
+        const definitelyNoCover = showCardCover && !knownCardCover && !canRetryCover;
+
+        const largeFallbackImg = isVideoFile(item.name) ? 'icons/fallback_video.svg' : 'icons/fallback_audio.svg';
         const leadingVisual = showCardCover
-            ? `<span class="playlist-card-cover"><img class="playlist-card-cover-img${knownCardCover ? '' : ' default-cover'}" src="${knownCardCover || '../icons/aurivo_256.png'}" alt="" loading="lazy" decoding="async"></span>`
+            ? `<span class="playlist-card-cover" style="${definitelyNoCover ? 'background: transparent; border: none; box-shadow: none;' : ''}">
+                   <img class="playlist-card-cover-img${knownCardCover ? '' : ' default-cover'}" src="${knownCardCover || 'icons/aurivo_256.png'}" alt="" loading="lazy" decoding="async" style="${definitelyNoCover ? 'display: none;' : ''}">
+                   <span class="fallback-cover-large-icon" style="${definitelyNoCover ? 'display: flex;' : 'display: none;'}"><img src="${largeFallbackImg}" style="width: 100%; height: 100%; object-fit: contain;"></span>
+               </span>`
             : `<span class="item-icon">${icon}</span>`;
         div.innerHTML = `
             <span class="${statusClass}" aria-label="${isTrackPlaying ? 'playing' : 'paused'}">${statusGlyph}</span>
