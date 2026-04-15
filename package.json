@@ -1,6 +1,6 @@
 {
   "name": "aurivo-media-player",
-  "version": "2.0.31",
+  "version": "2.0.32",
   "description": "Aurivo Media Player - Electron App",
   "main": "main.js",
   "scripts": {
@@ -410,15 +410,15 @@
     }
   },
   "devDependencies": {
-    "electron": "^41.2.0",
-    "electron-builder": "^26.8.1",
-    "png-to-ico": "^3.0.1"
+    "electron": "41.2.0",
+    "electron-builder": "26.8.1",
+    "png-to-ico": "3.0.1"
   },
   "dependencies": {
-    "electron-updater": "^6.7.3",
-    "mpris-service": "^2.1.2",
-    "node-id3": "^0.2.9",
-    "systeminformation": "^5.25.11",
-    "yt-dlp-wrap-plus": "^2.4.3"
+    "electron-updater": "6.7.3",
+    "mpris-service": "2.1.2",
+    "node-id3": "0.2.9",
+    "systeminformation": "5.31.5",
+    "yt-dlp-wrap-plus": "2.4.3"
   }
 }
