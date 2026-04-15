@@ -2671,11 +2671,10 @@ static bool ensurePickerWindow() {
             }
         }
         
-        // KDE Plasma KWin'in pencereyi yeni ve yabancı bir programmış gibi ayrı bir 
-        // görev çubuğu sekmesinde göstermemesi için pencereyi açıkça 'ana pencerenin yavrusu' (transient) yapıyoruz.
-        // SDL Wayland arka planı bunu doğrudan xdg_toplevel_set_parent olarak iletecektir,
-        // bu da KWin'i anında görsel grup yenilemesine zorlar.
-        SDL_SetWindowModalFor(g.pickerWindow, g.window);
+        // NOT: SDL_SetWindowModalFor intentionally removed.
+        // Modal yapmak, Wayland/KDE'de picker penceresinin ana görselleştirici
+        // pencereyle birlikte hareket etmesine (yapışık kalmasına) yol açıyordu.
+        // Picker bağımsız, serbestçe taşınabilir bir pencere olmalıdır.
     }
 #endif
     // ────────────────────────────────────────────────────────────────────────────
@@ -2813,8 +2812,9 @@ static void updatePickerDockMotion() {
         return;
     }
 
-    // Animasyon dışında da ana pencereye bitişik kalsın (çekmece hissi).
-    SDL_SetWindowPosition(g.pickerWindow, targetX, targetY);
+    // Animasyon bitince picker bağımsız kalsın — her frame zorla pozisyon set etme.
+    // Eski: SDL_SetWindowPosition(g.pickerWindow, targetX, targetY);
+    // Bu satır, pencerenin görselleştiriciyle birlikte hareket etmesine yol açıyordu.
 }
 
 static bool initSDLVideo() {
