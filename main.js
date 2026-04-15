@@ -152,9 +152,9 @@ function launchAurivoBinUpdateTerminal() {
     }
 
     const updateScript = [
-        'printf "\\nAurivo (AUR) guncelleme baslatiliyor...\\n\\n"',
+        'printf "\\nAurivo Media Player (AUR) guncelleniyor...\\n\\n"',
         'sleep 0.8',
-        'yay -S aurivo-medya-player',
+        'yay -S aurivo-bin',
         'exit_code=$?',
         'printf "\\nIslem tamamlandi (kod: %s).\\n" "$exit_code"',
         'printf "Kapatmak icin Enter...\\n"',
