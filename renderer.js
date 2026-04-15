@@ -23020,8 +23020,12 @@ function applyAppUpdateStateToUi(payload = {}) {
     }
 
     if (elements.updateBannerText) {
+        const useAurFlow = window.aurivo?.platform === 'linux' && appUpdateRuntime.aurUpdateSupported && appUpdateRuntime.aurPackageInstalled;
         if (appUpdateRuntime.status === 'available') {
-            elements.updateBannerText.textContent = `Yeni sürüm hazır: ${appUpdateRuntime.targetVersion || ''}`.trim();
+            const ver = appUpdateRuntime.targetVersion ? ` (${appUpdateRuntime.targetVersion})` : '';
+            elements.updateBannerText.textContent = useAurFlow
+                ? `🔔 Yeni sürüm mevcut${ver} — AUR üzerinden güncelleyebilirsiniz.`
+                : `Yeni sürüm hazır: ${appUpdateRuntime.targetVersion || ''}`.trim();
         } else if (appUpdateRuntime.status === 'downloading') {
             elements.updateBannerText.textContent = `Güncelleme indiriliyor: %${Math.round(appUpdateRuntime.progress)}`;
         } else if (appUpdateRuntime.status === 'downloaded') {
@@ -23029,7 +23033,7 @@ function applyAppUpdateStateToUi(payload = {}) {
         } else if (appUpdateRuntime.status === 'error') {
             elements.updateBannerText.textContent = `Güncelleme hatası: ${appUpdateRuntime.lastError || 'Bilinmeyen hata'}`;
         } else if (appUpdateRuntime.status === 'not-available') {
-            elements.updateBannerText.textContent = 'Uygulama güncel.';
+            elements.updateBannerText.textContent = '✓ Uygulama güncel.';
         } else if (appUpdateRuntime.status === 'checking') {
             elements.updateBannerText.textContent = 'Güncelleme kontrol ediliyor...';
         } else {
@@ -23040,19 +23044,32 @@ function applyAppUpdateStateToUi(payload = {}) {
     if (elements.updateBannerUpdateBtn) {
         const useAurUpdateFlow = window.aurivo?.platform === 'linux' && appUpdateRuntime.aurUpdateSupported && appUpdateRuntime.aurPackageInstalled;
         elements.updateBannerUpdateBtn.textContent = useAurUpdateFlow
-            ? 'AUR Güncelle'
+            ? 'Güncelle (AUR)'
             : (appUpdateRuntime.status === 'downloaded'
                 ? 'Kur'
                 : (appUpdateRuntime.status === 'available' ? 'İndir' : 'Güncelle'));
+        // AUR: sadece 'available' durumunda buton aktif (dene/kontrol ayrı)
         elements.updateBannerUpdateBtn.disabled = appUpdateRuntime.status === 'checking' || appUpdateRuntime.status === 'downloading';
+        // Detaylar butonu: güncelleme notu varsa göster
+        if (elements.updateBannerDetailsBtn) {
+            const hasNotes = !!(appUpdateRuntime.releaseNotes || appUpdateRuntime.targetVersion);
+            elements.updateBannerDetailsBtn.classList.toggle('hidden', !(appUpdateRuntime.status === 'available' && hasNotes));
+        }
     }
 
     const shouldShowBanner =
         appUpdateRuntime.status === 'available' ||
         appUpdateRuntime.status === 'downloading' ||
         appUpdateRuntime.status === 'downloaded' ||
-        appUpdateRuntime.status === 'error';
+        appUpdateRuntime.status === 'error' ||
+        appUpdateRuntime.status === 'not-available';
     setUpdateBannerVisible(shouldShowBanner);
+
+    // "Güncel" bildirimini kısa süre göster, sonra banner'i gizle
+    if (appUpdateRuntime.status === 'not-available') {
+        setTimeout(() => setUpdateBannerVisible(false), 4000);
+    }
+
     maybeNotifyUpdateAvailable(previousStatus, previousTargetVersion);
     updateActionButtonState();
     syncAboutVersionInfoUi();
@@ -23060,20 +23077,30 @@ function applyAppUpdateStateToUi(payload = {}) {
 
 async function runUpdatePrimaryAction() {
     const useAurUpdateFlow = window.aurivo?.platform === 'linux' && appUpdateRuntime.aurUpdateSupported && appUpdateRuntime.aurPackageInstalled;
+    const status = String(appUpdateRuntime.status || '').toLowerCase();
+
     if (useAurUpdateFlow) {
-        const approved = window.confirm('Terminal açılacak, uygulama kapanacak ve "yay -S aurivo-medya-player" çalıştırılacak. Devam edilsin mi?');
-        if (!approved) return;
-        const result = await window.aurivo?.app?.updater?.launchAurivoBinUpdate?.();
-        if (!result?.ok) {
-            if (result?.reason === 'yay-not-found') {
-                safeNotify('yay bulunamadı. Lütfen önce yay kur.', 'warning', 2600);
-                return;
+        // Eğer güncelleme zaten bulunduysa → yükle (terminal aç, uygulamayı kapat)
+        if (status === 'available') {
+            const result = await window.aurivo?.app?.updater?.launchAurivoBinUpdate?.();
+            if (!result?.ok) {
+                if (result?.reason === 'yay-not-found') {
+                    safeNotify('yay bulunamadı. Lütfen önce yay kur.', 'warning', 2600);
+                    return;
+                }
+                if (result?.reason === 'terminal-not-found') {
+                    safeNotify('Terminal uygulaması bulunamadı.', 'warning', 2600);
+                    return;
+                }
+                safeNotify('AUR güncelleme başlatılamadı.', 'error', 2600);
             }
-            if (result?.reason === 'terminal-not-found') {
-                safeNotify('Terminal uygulaması bulunamadı.', 'warning', 2600);
-                return;
-            }
-            safeNotify('AUR güncelleme başlatılamadı.', 'error', 2600);
+            return;
+        }
+
+        // Henüz kontrol edilmemişse veya manuel kontrol istendi → AUR'dan kontrol et
+        const updater = window.aurivo?.app?.updater;
+        if (updater) {
+            await updater.check({ manual: true });
         }
         return;
     }
@@ -23083,7 +23110,6 @@ async function runUpdatePrimaryAction() {
         safeNotify('Güncelleme desteği bu yapıda aktif değil.', 'info', 2200);
         return;
     }
-    const status = String(appUpdateRuntime.status || '').toLowerCase();
     if (status === 'available') {
         await updater.download();
         return;
@@ -23094,6 +23120,7 @@ async function runUpdatePrimaryAction() {
     }
     await updater.check({ manual: true });
 }
+
 
 async function initAppUpdateUi() {
     try {
