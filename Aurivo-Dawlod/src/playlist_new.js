@@ -3,7 +3,7 @@ const { default: YTDlpWrap } = require("yt-dlp-wrap-plus");
 const path = require("path");
 const os = require("os");
 const fs = require("fs");
-const { execSync, exec, spawnSync } = require("child_process");
+const { execSync, execFile, spawnSync } = require("child_process");
 let url;
 const ytDlp = localStorage.getItem("ytdlp");
 const ytdlp = new YTDlpWrap(ytDlp);
@@ -59,8 +59,9 @@ function pasteLink() {
 	getId("errorBtn").style.display = "none";
 	getId("errorDetails").style.display = "none";
 	getId("errorDetails").textContent = "";
-	exec(
-		`${ytDlp} --yes-playlist --no-warnings -J --flat-playlist "${clipboardText}"`,
+	execFile(
+		ytDlp,
+		["--yes-playlist", "--no-warnings", "-J", "--flat-playlist", clipboardText],
 		(error, stdout, stderr) => {
 			if (error) {
 				getId("loadingWrapper").style.display = "none";

@@ -1,4 +1,4 @@
-const {exec} = require("child_process");
+const {execFile} = require("child_process");
 const path = require("path");
 const {ipcRenderer, shell} = require("electron");
 const os = require("os");
@@ -38,7 +38,7 @@ getId("menuIcon").addEventListener("click", () => {
 	}
 });
 
-const ffmpeg = `"${resolveFfmpegPathSync()}"`;
+const ffmpeg = resolveFfmpegPathSync();
 
 console.log(ffmpeg);
 
@@ -229,12 +229,12 @@ function generateOutputPath(file, settings) {
  * @param {string} outputPath
  */
 async function compressVideo(file, settings, itemId, outputPath) {
-	const command = buildFFmpegCommand(file, settings, outputPath);
+	const { cmd, args } = buildFFmpegCommand(file, settings, outputPath);
 
-	console.log("Command: " + command);
+	console.log("Command: " + cmd + " " + args.join(" "));
 
 	return new Promise((resolve, reject) => {
-		const child = exec(command, (error) => {
+		const child = execFile(cmd, args, (error) => {
 			if (error) reject(error);
 			else resolve();
 		});
@@ -301,7 +301,7 @@ function buildFFmpegCommand(file, settings, outputPath) {
 
 	console.log("Output path: " + outputPath);
 
-	const args = ["-hide_banner", "-y", "-stats", "-i", `"${inputPath}"`];
+	const args = ["-hide_banner", "-y", "-stats", "-i", inputPath];
 
 	switch (settings.encoder) {
 		case "copy":
@@ -449,9 +449,9 @@ function buildFFmpegCommand(file, settings, outputPath) {
 
 	// args.push("-vf", "scale=trunc(iw*1/2)*2:trunc(ih*1/2)*2,format=yuv420p");
 
-	args.push("-c:a", settings.audioFormat, `"${outputPath}"`);
+	args.push("-c:a", settings.audioFormat, outputPath);
 
-	return `${ffmpeg} ${args.join(" ")}`;
+	return { cmd: ffmpeg, args: args };
 }
 
 /**
