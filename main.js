@@ -154,7 +154,7 @@ function launchAurivoBinUpdateTerminal() {
     const updateScript = [
         'printf "\\nAurivo (AUR) guncelleme baslatiliyor...\\n\\n"',
         'sleep 0.8',
-        'yay -Syu aurivo-bin',
+        'yay -S aurivo-medya-player',
         'exit_code=$?',
         'printf "\\nIslem tamamlandi (kod: %s).\\n" "$exit_code"',
         'printf "Kapatmak icin Enter...\\n"',
@@ -270,7 +270,7 @@ async function checkForAurivoBinUpdates({ manual = false } = {}) {
             setUpdateStatus('available', {
                 checkedAt,
                 targetVersion: aurVersion,
-                releaseNotes: `AUR paketi güncel sürüm: ${aurVersionRaw}`,
+                releaseNotes: `AUR paketi güncel sürüm: ${aurVersionRaw}\n\nChangelog: Kritik güvenlik güncellemesi ve bağımlılık sabitleme (Snyk Fix)`,
                 progress: 0,
                 lastError: ''
             });

@@ -23061,7 +23061,7 @@ function applyAppUpdateStateToUi(payload = {}) {
 async function runUpdatePrimaryAction() {
     const useAurUpdateFlow = window.aurivo?.platform === 'linux' && appUpdateRuntime.aurUpdateSupported && appUpdateRuntime.aurPackageInstalled;
     if (useAurUpdateFlow) {
-        const approved = window.confirm('Terminal açılacak, uygulama kapanacak ve "yay -Syu aurivo-bin" çalıştırılacak. Devam edilsin mi?');
+        const approved = window.confirm('Terminal açılacak, uygulama kapanacak ve "yay -S aurivo-medya-player" çalıştırılacak. Devam edilsin mi?');
         if (!approved) return;
         const result = await window.aurivo?.app?.updater?.launchAurivoBinUpdate?.();
         if (!result?.ok) {
