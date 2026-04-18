@@ -40,7 +40,9 @@ jobs:
           node-version: "20"
 
       - name: Compile JS sample
-        run: node dali-lang/src/cli.js dali-lang/examples/web-bass-enhancer.dl /tmp/dali-native-smoke.generated.js --strict
+        run: |
+          mkdir -p .ci-tmp
+          node dali-lang/src/cli.js dali-lang/examples/web-bass-enhancer.dl .ci-tmp/dali-native-smoke.generated.js --strict
 
       - name: Run security suite
         run: node scripts/dali-security-suite.js
@@ -64,6 +66,7 @@ jobs:
       - name: Run smoke tests in Node container for each architecture
         run: |
           set -euo pipefail
+          mkdir -p .ci-tmp
           for platform in linux/amd64 linux/arm64; do
             echo "===> running DALI smoke on ${platform}"
             docker run --rm \
@@ -71,5 +74,5 @@ jobs:
               -v "${PWD}:/work" \
               -w /work \
               node:20-bookworm \
-              bash -lc "node -v && npm -v && node dali-lang/src/cli.js dali-lang/examples/web-eq32-reference.dl /tmp/dali-${platform##*/}.generated.js --strict"
+              bash -lc "node -v && npm -v && node dali-lang/src/cli.js dali-lang/examples/web-eq32-reference.dl .ci-tmp/dali-${platform##*/}.generated.js --strict"
           done
