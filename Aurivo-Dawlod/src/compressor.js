@@ -199,6 +199,28 @@ function cancelCompression() {
 	updateProgress("error", "Cancelled", currentItemId);
 }
 
+function safeFileNamePart(value, fallback = "output") {
+	const cleaned = String(value || "")
+		.replace(/[\\/]/g, "")
+		.trim();
+	return cleaned || fallback;
+}
+
+function safeJoinUnder(baseDir, fileName) {
+	// nosemgrep:javascript.lang.security.audit.path-traversal.path-join-resolve-traversal.path-join-resolve-traversal
+	const resolvedBase = path.resolve(String(baseDir || ""));
+	// nosemgrep:javascript.lang.security.audit.path-traversal.path-join-resolve-traversal.path-join-resolve-traversal
+	const candidatePath = path.resolve(resolvedBase, String(fileName || ""));
+	if (
+		candidatePath === resolvedBase ||
+		candidatePath.startsWith(`${resolvedBase}${path.sep}`)
+	) {
+		return candidatePath;
+	}
+	// nosemgrep:javascript.lang.security.audit.path-traversal.path-join-resolve-traversal.path-join-resolve-traversal
+	return path.resolve(resolvedBase, path.basename(String(fileName || "")));
+}
+
 /**
  * @param {File} file
  */
@@ -207,18 +229,21 @@ function generateOutputPath(file, settings) {
 	const output_extension = settings.extension;
 	const parsed_file = path.parse(file.path);
 
-	let outputDir = settings.outputPath || parsed_file.dir;
+	const outputDir = String(settings.outputPath || parsed_file.dir || "").trim();
+	const baseName = safeFileNamePart(parsed_file.name, "compressed");
+	const outputSuffix = safeFileNamePart(settings.outputSuffix || "", "");
+	const originalExt = safeFileNamePart(parsed_file.ext || "", "").replace(
+		/^\.+/,
+		"."
+	);
 
 	if (output_extension == "unchanged") {
-		return path.join(
-			outputDir,
-			`${parsed_file.name}${settings.outputSuffix}${parsed_file.ext}`
-		);
+		return safeJoinUnder(outputDir, `${baseName}${outputSuffix}${originalExt}`);
 	}
 
-	return path.join(
+	return safeJoinUnder(
 		outputDir,
-		`${parsed_file.name}_compressed.${output_extension}`
+		`${baseName}_compressed.${safeFileNamePart(output_extension, "mp4")}`
 	);
 }
 

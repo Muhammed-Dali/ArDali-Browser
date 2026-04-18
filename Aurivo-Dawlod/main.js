@@ -21,6 +21,7 @@ autoUpdater.autoDownload = false;
 
 const USER_DATA_PATH = app.getPath("userData");
 const CONFIG_FILE_PATH = path.join(USER_DATA_PATH, "aurivo-dawlod.json");
+const TRANSLATIONS_DIR = path.join(__dirname, "translations");
 
 const appState = {
 	/** @type {BrowserWindow | null} */
@@ -40,34 +41,31 @@ const appState = {
 
 function normalizeLocaleForFile(locale) {
 	if (!locale) return null;
-	const value = String(locale).trim();
+	const value = String(locale).trim().toLowerCase();
 	if (!value) return null;
-	if (value.toLowerCase() === "en-us") return "en";
+	if (value === "en-us") return "en";
+	// Allow only locale keys like: en, tr, pt-br
+	if (/^[a-z]{2,3}(?:-[a-z]{2,3})?$/.test(value) === false) return null;
 	return value;
 }
 
 function resolveTranslationFile(localeCandidate) {
-	const defaultLangPath = path.join(__dirname, "translations", "en.json");
+	// nosemgrep:javascript.lang.security.audit.path-traversal.path-join-resolve-traversal.path-join-resolve-traversal
+	const defaultLangPath = path.join(TRANSLATIONS_DIR, "en.json");
 	const normalized = normalizeLocaleForFile(localeCandidate);
 
 	if (!normalized) return {locale: "en", filePath: defaultLangPath};
 
-	const fullLocalePath = path.join(
-		__dirname,
-		"translations",
-		`${normalized}.json`
-	);
+	// nosemgrep:javascript.lang.security.audit.path-traversal.path-join-resolve-traversal.path-join-resolve-traversal
+	const fullLocalePath = path.join(TRANSLATIONS_DIR, `${normalized}.json`);
 	if (existsSync(fullLocalePath)) {
 		return {locale: normalized, filePath: fullLocalePath};
 	}
 
 	const langOnly = normalized.split("-")[0];
 	if (langOnly && langOnly !== normalized) {
-		const langOnlyPath = path.join(
-			__dirname,
-			"translations",
-			`${langOnly}.json`
-		);
+		// nosemgrep:javascript.lang.security.audit.path-traversal.path-join-resolve-traversal.path-join-resolve-traversal
+		const langOnlyPath = path.join(TRANSLATIONS_DIR, `${langOnly}.json`);
 		if (existsSync(langOnlyPath)) {
 			return {locale: langOnly, filePath: langOnlyPath};
 		}
@@ -585,21 +583,16 @@ function registerIpcHandlers() {
 	});
 
 	ipcMain.handle("get-translation", (_event, locale) => {
-		const fallbackFile = path.join(__dirname, "translations", "en.json");
-		const localeFile = path.join(
-			__dirname,
-			"translations",
-			`${locale}.json`
-		);
-
+		const {filePath: localeFile} = resolveTranslationFile(locale);
+		const {filePath: fallbackFile} = resolveTranslationFile("en");
 		const fallbackData = JSON.parse(readFileSync(fallbackFile, "utf8"));
 
 		let localeData = {};
-		if (locale !== "en" && existsSync(localeFile)) {
+		if (localeFile !== fallbackFile && existsSync(localeFile)) {
 			try {
 				localeData = JSON.parse(readFileSync(localeFile, "utf8"));
 			} catch (e) {
-				console.error(`Could not parse ${localeFile}`, e);
+				console.error("Could not parse locale file:", localeFile, e);
 			}
 		}
 
