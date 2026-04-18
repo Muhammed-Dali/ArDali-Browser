@@ -1,8 +1,9 @@
 name: Semgrep Security Gate
 
 on:
-  pull_request:
-  push:
+  workflow_run:
+    workflows: ["Snyk Security Gate"]
+    types: [completed]
     branches:
       - main
       - master
@@ -11,6 +12,18 @@ on:
 
 jobs:
   semgrep:
+    if: >-
+      ${{
+        github.event_name == 'workflow_dispatch' ||
+        (
+          github.event.workflow_run.conclusion == 'success' &&
+          (
+            github.event.workflow_run.event == 'push' ||
+            github.event.workflow_run.event == 'workflow_dispatch' ||
+            github.event.workflow_run.event == 'workflow_run'
+          )
+        )
+      }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -20,6 +33,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.ref }}
 
       - name: Setup Python
         uses: actions/setup-python@v6

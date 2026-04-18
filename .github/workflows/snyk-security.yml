@@ -1,18 +1,28 @@
 name: Snyk Security Gate
 
 on:
-  pull_request:
-  push:
+  workflow_run:
+    workflows: ["Publish Pacman Repo"]
+    types: [completed]
     branches:
       - main
       - master
       - release_v2_0_12_clean
-  schedule:
-    - cron: "0 3 * * *"
   workflow_dispatch:
 
 jobs:
   snyk:
+    if: >-
+      ${{
+        github.event_name == 'workflow_dispatch' ||
+        (
+          github.event.workflow_run.conclusion == 'success' &&
+          (
+            github.event.workflow_run.event == 'push' ||
+            github.event.workflow_run.event == 'workflow_dispatch'
+          )
+        )
+      }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -24,6 +34,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.ref }}
 
       - name: Setup Node
         uses: actions/setup-node@v6
