@@ -1,0 +1,96 @@
+name: Semgrep Security Gate
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - master
+      - release_v2_0_12_clean
+  workflow_dispatch:
+
+jobs:
+  semgrep:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    env:
+      SEMGREP_APP_TOKEN: ${{ secrets.SEMGREP_APP_TOKEN }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.x"
+
+      - name: Install Semgrep CLI
+        run: python -m pip install --upgrade semgrep
+
+      - name: Verify Semgrep CLI
+        run: semgrep --version
+
+      - name: Prepare Semgrep report directory
+        run: mkdir -p semgrep-reports
+
+      - name: Run Semgrep CI scan
+        id: semgrep_scan
+        continue-on-error: true
+        run: |
+          if [ -z "$SEMGREP_APP_TOKEN" ]; then
+            echo "::error::SEMGREP_APP_TOKEN is not set. Configure repository secret before running Semgrep Security Gate."
+            echo "exit_code=2" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          set +e
+          semgrep ci \
+            --sarif \
+            --output=semgrep-reports/semgrep.sarif
+          exit_code=$?
+          echo "exit_code=$exit_code" >> "$GITHUB_OUTPUT"
+          exit 0
+
+      - name: Upload Semgrep reports artifact
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: semgrep-reports-${{ github.run_id }}
+          path: semgrep-reports
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Upload Semgrep SARIF
+        if: always() && hashFiles('semgrep-reports/semgrep.sarif') != ''
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: semgrep-reports/semgrep.sarif
+          category: semgrep-code
+
+      - name: Summarize Semgrep findings
+        if: always() && hashFiles('semgrep-reports/semgrep.sarif') != ''
+        run: |
+          errors=$(jq -r '[.runs[].results[]? | select(.level=="error")] | length' semgrep-reports/semgrep.sarif 2>/dev/null || echo 0)
+          warnings=$(jq -r '[.runs[].results[]? | select(.level=="warning")] | length' semgrep-reports/semgrep.sarif 2>/dev/null || echo 0)
+          echo "Semgrep findings: error=$errors warning=$warnings"
+
+      - name: Enforce Semgrep security gate
+        if: always()
+        run: |
+          semgrep_exit="${{ steps.semgrep_scan.outputs.exit_code }}"
+          [ -n "$semgrep_exit" ] || semgrep_exit=2
+
+          echo "Semgrep exit code: $semgrep_exit"
+
+          if [ "$semgrep_exit" != "0" ]; then
+            if [ "$semgrep_exit" = "1" ]; then
+              echo "::error::Semgrep found policy violations. Review findings in Security > Code scanning alerts."
+            fi
+            if [ "$semgrep_exit" = "2" ]; then
+              echo "::error::Semgrep scan could not run (missing token or runtime error)."
+            fi
+            echo "::error::Semgrep security gate failed (SEMGREP=$semgrep_exit)."
+            exit 1
+          fi
