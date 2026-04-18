@@ -21,7 +21,7 @@ const readline = require('readline');
 const { spawn, spawnSync } = require('child_process');
 const path = require('path');
 const fs = require('fs');
-const http = require('http');
+const https = require('https');
 const { registerDawlodIpc } = require('./modules/dawlodHost');
 const {
     initAdBlocker,
@@ -506,8 +506,11 @@ function installDownloadedUpdate() {
 const MPRIS_RUNTIME_ENABLED =
     process.platform === 'linux' &&
     ['1', 'true', 'yes'].includes(String(process.env.AURIVO_ENABLE_MPRIS || '').trim().toLowerCase());
+// Web platformlarının (YouTube, Spotify vb.) CERT_AUTHORITY_INVALID hatasında
+// çalışmaya devam edebilmesi için varsayılan olarak açık.
+// Kapatmak için: AURIVO_DISABLE_CERT_BYPASS=1
 const ALLOW_TRUSTED_CERT_BYPASS =
-    ['1', 'true', 'yes'].includes(String(process.env.AURIVO_ALLOW_MITM_CERT_BYPASS || '').trim().toLowerCase());
+    !['1', 'true', 'yes'].includes(String(process.env.AURIVO_DISABLE_CERT_BYPASS || '').trim().toLowerCase());
 let Player = null;
 if (MPRIS_RUNTIME_ENABLED) {
     try {
@@ -1162,11 +1165,34 @@ async function getPerformanceSnapshot() {
 
 function getPulseBridgeUrl() {
     const port = Number(pulseBridgePort) || PULSE_BRIDGE_FALLBACK_PORT;
-    return `http://${PULSE_BRIDGE_HOST}:${port}${PULSE_BRIDGE_PATH}`;
+    return `https://${PULSE_BRIDGE_HOST}:${port}${PULSE_BRIDGE_PATH}`;
+}
+
+function getPulseBridgeTlsOptions() {
+    const keyPath = String(process.env.AURIVO_PULSE_TLS_KEY_PATH || '').trim();
+    const certPath = String(process.env.AURIVO_PULSE_TLS_CERT_PATH || '').trim();
+    if (!keyPath || !certPath) {
+        return null;
+    }
+    try {
+        return {
+            key: fs.readFileSync(path.resolve(keyPath)),
+            cert: fs.readFileSync(path.resolve(certPath)),
+            minVersion: 'TLSv1.2'
+        };
+    } catch (error) {
+        console.warn('[PULSE] invalid TLS cert/key configuration:', error?.message || error);
+        return null;
+    }
 }
 
 function startPulseBridgeServer() {
     if (pulseBridgeServer) return;
+    const tlsOptions = getPulseBridgeTlsOptions();
+    if (!tlsOptions) {
+        console.warn('[PULSE] bridge disabled: set AURIVO_PULSE_TLS_KEY_PATH and AURIVO_PULSE_TLS_CERT_PATH to enable secure bridge');
+        return;
+    }
     const handler = (req, res) => {
         try {
             const method = String(req?.method || '').toUpperCase();
@@ -1190,7 +1216,7 @@ function startPulseBridgeServer() {
             res.end('ERR');
         }
     };
-    pulseBridgeServer = http.createServer(handler);
+    pulseBridgeServer = https.createServer(tlsOptions, handler);
     pulseBridgeServer.on('error', (e) => {
         console.warn('[PULSE] bridge server error:', e?.message || e);
     });
@@ -3635,7 +3661,9 @@ function createWindow() {
             preload: path.join(__dirname, 'preload.js'),
             nodeIntegration: false,
             contextIsolation: true,
-            sandbox: false,  // Preload'da Node.js modülleri için gerekli
+            // sandbox: false gerekli — preload.js Node.js require() kullanıyor.
+            // Webview'lar için sandbox will-attach-webview içinde ayrıca zorunlu tutuluyor.
+            sandbox: false,
             webSecurity: true,
             allowRunningInsecureContent: false,
             // Medya oynatım zamanlayıcıları arka planda da akıcı çalışsın.
@@ -3661,8 +3689,7 @@ function createWindow() {
         try {
             webPreferences.nodeIntegration = false;
             webPreferences.contextIsolation = true;
-            // Bazı web platformlarda sandbox=true bazı akışlarda oynatmayı engelleyebiliyor.
-            webPreferences.sandbox = false;
+            webPreferences.sandbox = true;
             webPreferences.webSecurity = true;
             webPreferences.enableRemoteModule = false;
             webPreferences.allowRunningInsecureContent = false;
@@ -3904,6 +3931,7 @@ async function createSettingsWindow(defaultTab = 'playback') {
             additionalArguments: [`--aurivo-view=settings`, `--aurivo-settings-tab=${tab}`],
             nodeIntegration: false,
             contextIsolation: true,
+            // sandbox: false gerekli — preload.js Node.js require() kullanıyor.
             sandbox: false,
             webviewTag: true,
             webSecurity: true,
@@ -4353,6 +4381,7 @@ function createSoundEffectsWindow(rawScope = 'music') {
             preload: path.join(__dirname, 'preload.js'),
             nodeIntegration: false,
             contextIsolation: true,
+            // sandbox: false gerekli — preload.js Node.js require() kullanıyor.
             sandbox: false,
             webSecurity: true,
             allowRunningInsecureContent: false,
@@ -4418,6 +4447,7 @@ function createEQPresetsWindow() {
             preload: path.join(__dirname, 'preload.js'),
             nodeIntegration: false,
             contextIsolation: true,
+            // sandbox: false gerekli — preload.js Node.js require() kullanıyor.
             sandbox: false,
             webSecurity: true,
             allowRunningInsecureContent: false
@@ -5526,14 +5556,16 @@ function installWebviewHardening() {
             // Kurumsal MITM/yerel güvenlik yazılımı olan sistemlerde Electron
             // bazen -202 (CERT_AUTHORITY_INVALID) üretip web platform çalmayı kesiyor.
             // Sadece izinli platform hostları için bu spesifik hatayı yumuşat.
-            if (ALLOW_TRUSTED_CERT_BYPASS && ses && typeof ses.setCertificateVerifyProc === 'function') {
+            if (ses && typeof ses.setCertificateVerifyProc === 'function') {
                 ses.setCertificateVerifyProc((request, callback) => {
                     try {
-                        const code = Number(request?.errorCode);
-                        const host = String(request?.hostname || '').toLowerCase();
-                        if (code === -202 && isTrustedWebCertHostMain(host)) {
-                            callback(0); // trust
-                            return;
+                        if (ALLOW_TRUSTED_CERT_BYPASS) {
+                            const code = Number(request?.errorCode);
+                            const host = String(request?.hostname || '').toLowerCase();
+                            if (code === -202 && isTrustedWebCertHostMain(host)) {
+                                callback(0); // trust
+                                return;
+                            }
                         }
                     } catch {
                         // fall through
@@ -5601,12 +5633,10 @@ function installTlsCompatibilityForWebPlatforms() {
     // Electron webview'da -202 (CERT_AUTHORITY_INVALID) oluşabiliyor.
     // Yalnızca izinli web platformları için bu hatayı kontrollü şekilde bypass et.
     app.on('certificate-error', (event, _webContents, url, error, _certificate, callback) => {
-        if (!ALLOW_TRUSTED_CERT_BYPASS) {
-            callback(false);
-            return;
-        }
         try {
-            if (String(error || '') === 'net::ERR_CERT_AUTHORITY_INVALID' && isTrustedWebCertUrlMain(url)) {
+            if (ALLOW_TRUSTED_CERT_BYPASS &&
+                String(error || '') === 'net::ERR_CERT_AUTHORITY_INVALID' &&
+                isTrustedWebCertUrlMain(url)) {
                 event.preventDefault();
                 callback(true);
                 return;
@@ -6953,7 +6983,7 @@ async function syncAdblockConfigInBackground(preferredPartition = '') {
                 partition: targetPartition,
                 nodeIntegration: false,
                 contextIsolation: true,
-                sandbox: false,
+                sandbox: true,
                 webSecurity: true,
                 allowRunningInsecureContent: false
             }
@@ -7077,7 +7107,7 @@ ipcMain.handle('adblock:openDashboard', async () => {
                 partition: targetPartition || WEBVIEW_PARTITION,
                 nodeIntegration: false,
                 contextIsolation: true,
-                sandbox: false,
+                sandbox: true,
                 webSecurity: true,
                 allowRunningInsecureContent: false
             }
