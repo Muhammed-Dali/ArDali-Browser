@@ -26,6 +26,23 @@ function printUsage() {
   console.log('  node dali-lang/src/cli.js setup [--editor vscode] [--skip-editor-install]');
 }
 
+function resolvePathInsideCwd(rawPath, label) {
+  const input = String(rawPath || '').trim();
+  if (!input) {
+    throw new Error(`Missing path for ${label}`);
+  }
+  if (input.includes('\0')) {
+    throw new Error(`Invalid path for ${label}: contains NUL byte`);
+  }
+  const cwd = process.cwd();
+  const resolved = path.resolve(cwd, input);
+  const rel = path.relative(cwd, resolved);
+  if (rel.startsWith('..') || path.isAbsolute(rel)) {
+    throw new Error(`Path for ${label} must stay inside current workspace`);
+  }
+  return resolved;
+}
+
 function parseArgs(argv) {
   const args = Array.isArray(argv) ? argv.slice() : [];
   const options = {
@@ -138,7 +155,8 @@ function parseArgs(argv) {
 
 function installVsCodeExtension() {
   const extId = 'aurivo.dali-language';
-  const cmd = spawnSync('code', ['--install-extension', extId, '--force'], {
+  const codeBin = process.platform === 'win32' ? 'code.cmd' : 'code';
+  const cmd = spawnSync(codeBin, ['--install-extension', extId, '--force'], {
     encoding: 'utf8'
   });
   if (cmd.error) {
@@ -176,7 +194,11 @@ async function main() {
     process.exit(1);
   }
 
-  const inputPath = path.resolve(process.cwd(), inputPathArg);
+  const inputPath = resolvePathInsideCwd(inputPathArg, '--input');
+  const workspaceRoot = process.cwd();
+  if (!inputPath.startsWith(`${workspaceRoot}${path.sep}`) && inputPath !== workspaceRoot) {
+    throw new Error('Input path escaped workspace root');
+  }
   if (!fs.existsSync(inputPath)) {
     console.error(`Input file not found: ${inputPath}`);
     process.exit(1);
@@ -189,13 +211,16 @@ async function main() {
       throw new Error('Missing --public-key for --verify-signature');
     }
     const sigPath = options.signaturePath
-      ? path.resolve(process.cwd(), options.signaturePath)
+      ? resolvePathInsideCwd(options.signaturePath, '--signature')
       : defaultSignaturePathForSource(inputPath);
+    if (!sigPath.startsWith(`${workspaceRoot}${path.sep}`) && sigPath !== workspaceRoot) {
+      throw new Error('Signature path escaped workspace root');
+    }
     if (!fs.existsSync(sigPath)) {
       throw new Error(`Signature file not found: ${sigPath}`);
     }
     const signatureData = JSON.parse(fs.readFileSync(sigPath, 'utf8'));
-    const publicKeyPem = readPemFile(options.publicKeyPath);
+    const publicKeyPem = readPemFile(resolvePathInsideCwd(options.publicKeyPath, '--public-key'));
     verifySourceTextSignature(source, signatureData, {
       publicKeyPem,
       fileLabel: path.relative(process.cwd(), inputPath)
@@ -224,7 +249,7 @@ async function main() {
       timestamp: new Date().toISOString()
     };
     const outputPath = outputPathArg
-      ? path.resolve(process.cwd(), outputPathArg)
+      ? resolvePathInsideCwd(outputPathArg, 'ir-output')
       : inputPath.replace(/\.(dali|dl)$/i, '.ir.json');
     fs.mkdirSync(path.dirname(outputPath), { recursive: true });
     fs.writeFileSync(outputPath, JSON.stringify(irOut, null, 2), 'utf8');
@@ -277,7 +302,7 @@ async function main() {
   }
 
   const outputPath = outputPathArg
-    ? path.resolve(process.cwd(), outputPathArg)
+    ? resolvePathInsideCwd(outputPathArg, 'output')
     : inputPath.replace(/\.(dali|dl)$/i, '.compiled.js');
 
   fs.mkdirSync(path.dirname(outputPath), { recursive: true });

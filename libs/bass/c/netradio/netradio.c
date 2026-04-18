@@ -61,15 +61,20 @@ void DoMeta()
 {
 	GtkLabel *label = GTK_LABEL(GetWidget("status1"));
 	const char *meta = BASS_ChannelGetTags(chan, BASS_TAG_META);
-	if (meta) { // got Shoutcast metadata
-		char *p = strstr(meta, "StreamTitle='");
-		if (p) {
-			p = strdup(p + 13);
-			strchr(p, ';')[-1] = 0;
-			gtk_label_set_text_8859(label, p);
-			free(p);
-		}
-	} else {
+		if (meta) { // got Shoutcast metadata
+			char *p = strstr(meta, "StreamTitle='");
+			if (p) {
+				p = strdup(p + 13);
+				if (p) {
+					char *end = strchr(p, ';');
+					if (end && end > p) {
+						end[-1] = 0;
+					}
+					gtk_label_set_text_8859(label, p);
+					free(p);
+				}
+			}
+		} else {
 		meta = BASS_ChannelGetTags(chan, BASS_TAG_OGG);
 		if (meta) { // got Icecast/OGG tags
 			const char *artist = NULL, *title = NULL, *p = meta;
@@ -110,7 +115,7 @@ gboolean BufferTimerProc(gpointer data)
 	DWORD active = BASS_ChannelIsActive(chan);
 	if (active == BASS_ACTIVE_STALLED) {
 		char text[32];
-		sprintf(text, "buffering... %d%%", 100 - (int)BASS_StreamGetFilePosition(chan, BASS_FILEPOS_BUFFERING));
+		snprintf(text, sizeof(text), "buffering... %d%%", 100 - (int)BASS_StreamGetFilePosition(chan, BASS_FILEPOS_BUFFERING));
 		gtk_label_set_text(GTK_LABEL(GetWidget("status2")), text);
 		return TRUE; // continue monitoring
 	}
@@ -269,8 +274,17 @@ int main(int argc, char* argv[])
 	builder = gtk_builder_new();
 	if (!gtk_builder_add_from_file(builder, UIFILE, NULL)) {
 		char path[PATH_MAX];
-		readlink("/proc/self/exe", path, sizeof(path));
-		strcpy(strrchr(path, '/') + 1, UIFILE);
+		ssize_t n = readlink("/proc/self/exe", path, sizeof(path) - 1);
+		if (n < 0) n = 0;
+		path[n] = '\0';
+		{
+			char *slash = strrchr(path, '/');
+			if (slash) {
+				snprintf(slash + 1, (size_t)(path + sizeof(path) - (slash + 1)), "%s", UIFILE);
+			} else {
+				snprintf(path, sizeof(path), "%s", UIFILE);
+			}
+		}
 		if (!gtk_builder_add_from_file(builder, path, NULL)) {
 			Error("Can't load UI");
 			return 0;

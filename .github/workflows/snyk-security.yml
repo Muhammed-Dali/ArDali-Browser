@@ -20,7 +20,7 @@ jobs:
     env:
       SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
       # Scan the real product code while skipping cloned repos, caches, and generated outputs.
-      SNYK_EXCLUDES: Aurivo-Medya-Player-Linux,aurivo-bin,chromium.backup_20260328_182612,.semgrep-tmp,node_modules,dist,build,out,squashfs-root,.git,.cache,native-dist
+      SNYK_EXCLUDES: Aurivo-Medya-Player-Linux,aurivo-bin,third_party,visualizer,build-visualizer,chromium.backup_20260328_182612,.semgrep-tmp,node_modules,dist,build,out,squashfs-root,.git,.cache,native-dist
     steps:
       - name: Checkout
         uses: actions/checkout@v6

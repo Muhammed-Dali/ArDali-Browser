@@ -143,11 +143,15 @@ function createWindow() {
 		autoHideMenuBar: true,
 		show: false,
 		icon: path.join(__dirname, "/assets/images/icon.png"),
-		webPreferences: {
-			nodeIntegration: true,
-			contextIsolation: false,
-			spellcheck: false,
-		},
+			webPreferences: {
+				preload: path.join(__dirname, "preload.js"),
+				nodeIntegration: false,
+				contextIsolation: true,
+				sandbox: true,
+				webSecurity: true,
+				allowRunningInsecureContent: false,
+				spellcheck: false,
+			},
 	});
 
 	appState.mainWindow.loadFile("html/index.html");
@@ -217,10 +221,14 @@ function createSecondaryWindow(file) {
 		parent: appState.mainWindow,
 		modal: true,
 		show: false,
-		webPreferences: {
-			nodeIntegration: true,
-			contextIsolation: false,
-		},
+			webPreferences: {
+				preload: path.join(__dirname, "preload.js"),
+				nodeIntegration: false,
+				contextIsolation: true,
+				sandbox: true,
+				webSecurity: true,
+				allowRunningInsecureContent: false,
+			},
 		width: 1000,
 		height: 800,
 	});

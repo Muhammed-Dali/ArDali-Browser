@@ -4,7 +4,7 @@ const {constants} = require("fs/promises");
 const {homedir, platform} = require("os");
 const {join, basename, resolve, sep} = require("path");
 const {mkdirSync, accessSync, promises, existsSync} = require("fs");
-const {execSync, spawn} = require("child_process");
+const {spawn, spawnSync} = require("child_process");
 const {
 	ensureFfmpegPath,
 	getLinuxFfmpegInstallInfo,
@@ -358,16 +358,19 @@ class AurivoDawlodApp {
 			}
 		}
 
-		let defaultDownloadDir = join(userHomeDir, "Downloads");
-		if (platform() === "linux") {
-			try {
-				const xdgDownloadDir = execSync("xdg-user-dir DOWNLOAD")
-					.toString()
-					.trim();
-				if (xdgDownloadDir) {
-					defaultDownloadDir = xdgDownloadDir;
-				}
-			} catch (err) {
+			let defaultDownloadDir = join(userHomeDir, "Downloads");
+			if (platform() === "linux") {
+				try {
+					const res = spawnSync("xdg-user-dir", ["DOWNLOAD"], {
+						encoding: "utf8",
+						shell: false,
+						windowsHide: true,
+					});
+					const xdgDownloadDir = String(res.stdout || "").trim();
+					if (xdgDownloadDir) {
+						defaultDownloadDir = xdgDownloadDir;
+					}
+				} catch (err) {
 				console.warn("Could not execute xdg-user-dir:", err.message);
 			}
 		}
@@ -508,13 +511,21 @@ class AurivoDawlodApp {
 			}
 		}
 
-		// PRIORITY 3: FreeBSD
-		else if (isFreeBSD) {
-			try {
-				executablePath = execSync("which yt-dlp").toString().trim();
-			} catch {
-				throw new Error(
-					"No yt-dlp found in PATH on FreeBSD. Please install it."
+			// PRIORITY 3: FreeBSD
+			else if (isFreeBSD) {
+				try {
+					const res = spawnSync("which", ["yt-dlp"], {
+						encoding: "utf8",
+						shell: false,
+						windowsHide: true,
+					});
+					executablePath = String(res.stdout || "").trim();
+					if (!executablePath) {
+						throw new Error("yt-dlp not found in PATH");
+					}
+				} catch {
+					throw new Error(
+						"No yt-dlp found in PATH on FreeBSD. Please install it."
 				);
 			}
 		}
@@ -578,14 +589,17 @@ class AurivoDawlodApp {
 					console.log("yt-dlp brew update:", data.toString())
 				);
 			} else {
-				const updateTargetPath = this.state.ytDlpPath;
+				const updateTargetPath = String(executablePath || "").trim();
 				if (!this._isTrustedYtDlpPath(updateTargetPath)) {
 					console.warn(
 						"Skipping background yt-dlp update due to untrusted executable path."
 					);
 					return;
 				}
-				const updateProc = spawn(updateTargetPath, ["-U"]);
+				const updateProc = spawn(updateTargetPath, ["-U"], {
+					shell: false,
+					windowsHide: true,
+				});
 
 				updateProc.on("error", (err) =>
 					console.error(

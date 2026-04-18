@@ -17,3 +17,9 @@ native-dist/
 **/out/
 **/native-dist/
 **/chromium.backup_*/
+
+# Vendored / third-party code (tracked by upstream, not app-owned source)
+third_party/
+build-visualizer/
+visualizer/
+**/vendor/

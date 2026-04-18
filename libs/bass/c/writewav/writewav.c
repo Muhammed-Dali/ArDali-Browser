@@ -87,15 +87,18 @@ int main(int argc, char **argv)
 		Error("Can't initialize device");
 
 	{ // load plugins for additional input format support
-		const char *basspath = BASS_GetConfigPtr(BASS_CONFIG_FILENAME);
-		if (basspath) {
+			const char *basspath = BASS_GetConfigPtr(BASS_CONFIG_FILENAME);
+			if (basspath) {
 #ifdef _WIN32
-			WIN32_FIND_DATA fd;
-			HANDLE fh;
-			int pathlen = strrchr(basspath, '\\') + 1 - basspath;
-			char *pattern = alloca(pathlen + 10);
-			sprintf(pattern, "%.*sbass*.dll", pathlen, basspath);
-			fh = FindFirstFile(pattern, &fd);
+				WIN32_FIND_DATA fd;
+				HANDLE fh;
+				const char *sep = strrchr(basspath, '\\');
+				if (!sep) sep = basspath;
+				else sep += 1;
+				int pathlen = (int)(sep - basspath);
+				char *pattern = alloca(pathlen + 10);
+				snprintf(pattern, pathlen + 10, "%.*sbass*.dll", pathlen, basspath);
+				fh = FindFirstFile(pattern, &fd);
 			if (fh != INVALID_HANDLE_VALUE) {
 				int c = 0;
 				do {
@@ -108,23 +111,29 @@ int main(int argc, char **argv)
 				FindClose(fh);
 			}
 #else
-			glob_t g;
-			int pathlen = strrchr(basspath, '/') + 1 - basspath;
+				glob_t g;
+				const char *sep = strrchr(basspath, '/');
+				if (!sep) sep = basspath;
+				else sep += 1;
+				int pathlen = (int)(sep - basspath);
 #ifdef __APPLE__
-			char *pattern = alloca(pathlen + 16);
-			sprintf(pattern, "%.*slibbass?*.dylib", pathlen, basspath);
+				char *pattern = alloca(pathlen + 16);
+				snprintf(pattern, pathlen + 16, "%.*slibbass?*.dylib", pathlen, basspath);
 #else
-			char *pattern = alloca(pathlen + 13);
-			sprintf(pattern, "%.*slibbass?*.so", pathlen, basspath);
+				char *pattern = alloca(pathlen + 13);
+				snprintf(pattern, pathlen + 13, "%.*slibbass?*.so", pathlen, basspath);
 #endif
-			if (!glob(pattern, 0, 0, &g)) {
-				int a, c = 0;
-				for (a = 0; a < g.gl_pathc; a++) {
-					if (BASS_PluginLoad(g.gl_pathv[a], 0)) {
-						if (!c++) printf("plugins:");
-						printf(" %s", strrchr(g.gl_pathv[a], '/') + 1);
+				if (!glob(pattern, 0, 0, &g)) {
+					int a, c = 0;
+					for (a = 0; a < g.gl_pathc; a++) {
+						if (BASS_PluginLoad(g.gl_pathv[a], 0)) {
+							if (!c++) printf("plugins:");
+							{
+								const char *name = strrchr(g.gl_pathv[a], '/');
+								printf(" %s", name ? name + 1 : g.gl_pathv[a]);
+							}
+						}
 					}
-				}
 				if (c) printf("\n");
 			}
 			globfree(&g);

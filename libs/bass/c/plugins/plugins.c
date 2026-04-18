@@ -71,21 +71,24 @@ void OpenClicked(GtkButton *obj, gpointer data)
 	if (resp == GTK_RESPONSE_ACCEPT) {
 		char *file = gtk_file_chooser_get_filename(GTK_FILE_CHOOSER(filesel));
 		BASS_StreamFree(chan); // free old stream before opening new
-		if (!(chan = BASS_StreamCreateFile(0, file, 0, 0, BASS_SAMPLE_LOOP | BASS_SAMPLE_FLOAT))) {
-			gtk_button_set_label(obj, "Open file...");
+			if (!(chan = BASS_StreamCreateFile(0, file, 0, 0, BASS_SAMPLE_LOOP | BASS_SAMPLE_FLOAT))) {
+				gtk_button_set_label(obj, "Open file...");
 			gtk_label_set_text(GTK_LABEL(GetWidget("info")), "");
 			gtk_label_set_text(GTK_LABEL(GetWidget("positiontext")), "");
 			gtk_range_set_range(GTK_RANGE(GetWidget("position")), 0, 0);
 			Error("Can't play the file");
-		} else {
-			gtk_button_set_label(obj, strrchr(file, '/') + 1);
-			{ // display the file type
-				char text[100];
-				BASS_CHANNELINFO info;
-				BASS_ChannelGetInfo(chan, &info);
-				sprintf(text, "channel type = %x (%s)", info.ctype, GetCTypeString(info.ctype, info.plugin));
-				gtk_label_set_text(GTK_LABEL(GetWidget("info")), text);
-			}
+			} else {
+				{
+					const char *name = strrchr(file, '/');
+					gtk_button_set_label(obj, name ? name + 1 : file);
+				}
+				{ // display the file type
+					char text[100];
+					BASS_CHANNELINFO info;
+					BASS_ChannelGetInfo(chan, &info);
+					snprintf(text, sizeof(text), "channel type = %x (%s)", info.ctype, GetCTypeString(info.ctype, info.plugin));
+					gtk_label_set_text(GTK_LABEL(GetWidget("info")), text);
+				}
 			{ // update scroller range
 				QWORD len = BASS_ChannelGetLength(chan, BASS_POS_BYTE);
 				if (len == -1) len = 0; // unknown length
@@ -109,7 +112,7 @@ gboolean TimerProc(gpointer data)
 		double len = BASS_ChannelBytes2Seconds(chan, BASS_ChannelGetLength(chan, BASS_POS_BYTE));
 		double pos = BASS_ChannelBytes2Seconds(chan, BASS_ChannelGetPosition(chan, BASS_POS_BYTE));
 		char text[64];
-		sprintf(text, "%u:%02u / %u:%02u", (int)pos / 60, (int)pos % 60, (int)len / 60, (int)len % 60);
+		snprintf(text, sizeof(text), "%u:%02u / %u:%02u", (int)pos / 60, (int)pos % 60, (int)len / 60, (int)len % 60);
 		gtk_label_set_text(GTK_LABEL(GetWidget("positiontext")), text);
 		gtk_range_set_value(GTK_RANGE(GetWidget("position")), pos);
 	}
@@ -136,8 +139,17 @@ int main(int argc, char* argv[])
 	builder = gtk_builder_new();
 	if (!gtk_builder_add_from_file(builder, UIFILE, NULL)) {
 		char path[PATH_MAX];
-		readlink("/proc/self/exe", path, sizeof(path));
-		strcpy(strrchr(path, '/') + 1, UIFILE);
+		ssize_t n = readlink("/proc/self/exe", path, sizeof(path) - 1);
+		if (n < 0) n = 0;
+		path[n] = '\0';
+		{
+			char *slash = strrchr(path, '/');
+			if (slash) {
+				snprintf(slash + 1, (size_t)(path + sizeof(path) - (slash + 1)), "%s", UIFILE);
+			} else {
+				snprintf(path, sizeof(path), "%s", UIFILE);
+			}
+		}
 		if (!gtk_builder_add_from_file(builder, path, NULL)) {
 			Error("Can't load UI");
 			return 0;
@@ -165,32 +177,36 @@ int main(int argc, char* argv[])
 		gtk_file_filter_add_custom(filter, GTK_FILE_FILTER_FILENAME, FileExtensionFilter, fregex, NULL);
 		gtk_file_chooser_add_filter(GTK_FILE_CHOOSER(filesel), filter);
 		{ // look for plugins (alongside BASS library)
-			const char *basspath = BASS_GetConfigPtr(BASS_CONFIG_FILENAME);
-			if (basspath) {
-				glob_t g;
-				int pathlen = strrchr(basspath, '/') + 1 - basspath;
-				char *pattern = alloca(pathlen + 13);
-				sprintf(pattern, "%.*slibbass?*.so", pathlen, basspath);
-				if (!glob(pattern, 0, 0, &g)) {
+				const char *basspath = BASS_GetConfigPtr(BASS_CONFIG_FILENAME);
+				if (basspath) {
+					glob_t g;
+					const char *sep = strrchr(basspath, '/');
+					if (!sep) sep = basspath;
+					else sep += 1;
+					int pathlen = (int)(sep - basspath);
+					char *pattern = alloca(pathlen + 13);
+					snprintf(pattern, pathlen + 13, "%.*slibbass?*.so", pathlen, basspath);
+					if (!glob(pattern, 0, 0, &g)) {
 					int a;
 					for (a = 0; a < g.gl_pathc; a++) {
 						HPLUGIN plug = BASS_PluginLoad(g.gl_pathv[a], 0);
 						if (plug) { // plugin loaded
-							// add it to the list
-							char *file = strrchr(g.gl_pathv[a], '/') + 1;
+								// add it to the list
+								const char *file = strrchr(g.gl_pathv[a], '/');
+								file = file ? file + 1 : g.gl_pathv[a];
 							GtkTreeIter it;
 							gtk_list_store_append(liststore, &it);
 							gtk_list_store_set(liststore, &it, 0, file, -1);
 							// get plugin info to add to the file selector filter
 							const BASS_PLUGININFO *pinfo = BASS_PluginGetInfo(plug);
 							int b;
-							for (b = 0; b < pinfo->formatc; b++) {
-								char buf[4000], *p;
-								filter = gtk_file_filter_new();
-								sprintf(buf, "%s (%s) - %s", pinfo->formats[b].name, pinfo->formats[b].exts, file);
-								gtk_file_filter_set_name(filter, buf);
-								// build filter regex
-								sprintf(buf, "\\.(%s)$", pinfo->formats[b].exts);
+								for (b = 0; b < pinfo->formatc; b++) {
+									char buf[4000], *p;
+									filter = gtk_file_filter_new();
+									snprintf(buf, sizeof(buf), "%s (%s) - %s", pinfo->formats[b].name, pinfo->formats[b].exts, file);
+									gtk_file_filter_set_name(filter, buf);
+									// build filter regex
+									snprintf(buf, sizeof(buf), "\\.(%s)$", pinfo->formats[b].exts);
 								while (p = strchr(buf, '*')) { // find an extension
 									if (p[-1] == ';') // not the first
 										p[-1] = '|'; // add an alternation

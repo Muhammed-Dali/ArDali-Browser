@@ -1,5 +1,6 @@
 const {execFile} = require("child_process");
 const path = require("path");
+const fs = require("fs");
 const {ipcRenderer, shell} = require("electron");
 const os = require("os");
 const si = require("systeminformation");
@@ -39,6 +40,17 @@ getId("menuIcon").addEventListener("click", () => {
 });
 
 const ffmpeg = resolveFfmpegPathSync();
+const TRUSTED_FFMPEG_BINARIES = new Set(["ffmpeg", "ffmpeg.exe"]);
+
+function normalizeTrustedExecutablePath(filePath, allowedBasenames) {
+	if (typeof filePath !== "string" || filePath.length === 0) return "";
+	if (filePath.includes("\0")) return "";
+	const normalized = path.resolve(filePath);
+	if (!fs.existsSync(normalized)) return "";
+	const base = path.basename(normalized).toLowerCase();
+	if (!allowedBasenames.has(base)) return "";
+	return normalized;
+}
 
 console.log(ffmpeg);
 
@@ -255,11 +267,24 @@ function generateOutputPath(file, settings) {
  */
 async function compressVideo(file, settings, itemId, outputPath) {
 	const { cmd, args } = buildFFmpegCommand(file, settings, outputPath);
+	const trustedCmd = normalizeTrustedExecutablePath(
+		cmd,
+		TRUSTED_FFMPEG_BINARIES
+	);
+	if (!trustedCmd) {
+		throw new Error("Untrusted ffmpeg executable path.");
+	}
+	const safeArgs = Array.isArray(args)
+		? args
+				.filter((v) => typeof v === "string")
+				.map((v) => String(v))
+				.filter((v) => v.length > 0 && !v.includes("\0"))
+		: [];
 
-	console.log("Command: " + cmd + " " + args.join(" "));
+	console.log("Command: " + trustedCmd + " " + safeArgs.join(" "));
 
 	return new Promise((resolve, reject) => {
-		const child = execFile(cmd, args, (error) => {
+		const child = execFile(trustedCmd, safeArgs, (error) => {
 			if (error) reject(error);
 			else resolve();
 		});
