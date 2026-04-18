@@ -1,0 +1,27 @@
+# Exclude non-product trees and generated artifacts from Semgrep scans.
+
+# Cloned / duplicate repos and backups
+Aurivo-Medya-Player-Linux/
+aurivo-bin/
+**/chromium.backup_*/
+
+# Build/cache outputs
+.git/
+.cache/
+.semgrep-tmp/
+node_modules/
+dist/
+build/
+out/
+native-dist/
+squashfs-root/
+
+# Vendored / third-party content not maintained as app source
+third_party/
+build-visualizer/
+visualizer/
+**/vendor/
+
+# Browser ruleset data files (JSON filter/rules catalogs), not executable app logic
+uDAL*-weman-home/chromium/rulesets/
+uDAL*-weman-home/firefox/rulesets/
