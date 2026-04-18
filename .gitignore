@@ -17,6 +17,7 @@ node_modules/
 # Local cache
 npm-debug.log*
 .cache/
+.semgrep-tmp/
 
 # OS
 .DS_Store
@@ -45,6 +46,9 @@ assets/fonts/Inter.ttf
 assets/fonts/JetBrainsMono-Regular.ttf
 assets/fonts/Ubuntu-Regular.ttf
 aurivo-bin/
+Aurivo-Medya-Player-Linux/
+squashfs-root/
+**/chromium.backup_*/
 
 # VS Code extension packaged artifacts
 dali-lang/editors/vscode/*.vsix

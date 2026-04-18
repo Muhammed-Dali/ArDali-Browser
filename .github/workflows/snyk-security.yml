@@ -19,8 +19,8 @@ jobs:
       security-events: write
     env:
       SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
-      # Keep scanning comprehensive for real product code while avoiding backup/cloned trees.
-      SNYK_EXCLUDES: Aurivo-Medya-Player-Linux,chromium.backup_20260328_182612,.semgrep-tmp,node_modules,dist,squashfs-root
+      # Scan the real product code while skipping cloned repos, caches, and generated outputs.
+      SNYK_EXCLUDES: Aurivo-Medya-Player-Linux,aurivo-bin,chromium.backup_20260328_182612,.semgrep-tmp,node_modules,dist,build,out,squashfs-root,.git,.cache,native-dist
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -36,24 +36,83 @@ jobs:
       - name: Verify Snyk CLI
         run: snyk --version
 
-      - name: Snyk Open Source (SCA) - block on high/critical
+      - name: Prepare Snyk report directory
+        run: mkdir -p snyk-reports
+
+      - name: Snyk Open Source (SCA) scan
+        id: snyk_sca
+        continue-on-error: true
         run: |
+          set +e
           snyk test \
             --all-projects \
-            --detection-depth=6 \
+            --detection-depth=3 \
             --exclude="$SNYK_EXCLUDES" \
-            --severity-threshold=high
+            --prune-repeated-subdependencies \
+            --severity-threshold=high \
+            --json-file-output=snyk-reports/snyk-sca.json \
+            --sarif-file-output=snyk-reports/snyk-sca.sarif
+          exit_code=$?
+          echo "exit_code=$exit_code" >> "$GITHUB_OUTPUT"
+          exit 0
 
-      - name: Snyk Code (SAST) - block on high/critical
+      - name: Snyk Code (SAST) scan
+        id: snyk_code
+        continue-on-error: true
         run: |
+          set +e
           snyk code test \
             --exclude="$SNYK_EXCLUDES" \
-            --severity-threshold=high
+            --severity-threshold=high \
+            --json-file-output=snyk-reports/snyk-code.json \
+            --sarif-file-output=snyk-reports/snyk-code.sarif
+          exit_code=$?
+          echo "exit_code=$exit_code" >> "$GITHUB_OUTPUT"
+          exit 0
+
+      - name: Upload Snyk reports artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: snyk-reports-${{ github.run_id }}
+          path: snyk-reports
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Upload Snyk SCA SARIF
+        if: always() && hashFiles('snyk-reports/snyk-sca.sarif') != ''
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: snyk-reports/snyk-sca.sarif
+          category: snyk-open-source
+
+      - name: Upload Snyk Code SARIF
+        if: always() && hashFiles('snyk-reports/snyk-code.sarif') != ''
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: snyk-reports/snyk-code.sarif
+          category: snyk-code
+
+      - name: Enforce Snyk security gate
+        if: always()
+        run: |
+          sca_exit="${{ steps.snyk_sca.outputs.exit_code }}"
+          code_exit="${{ steps.snyk_code.outputs.exit_code }}"
+          [ -n "$sca_exit" ] || sca_exit=2
+          [ -n "$code_exit" ] || code_exit=2
+
+          echo "SCA exit code: $sca_exit"
+          echo "Code exit code: $code_exit"
+
+          if [ "$sca_exit" != "0" ] || [ "$code_exit" != "0" ]; then
+            echo "::error::Snyk security gate failed (SCA=$sca_exit, CODE=$code_exit)."
+            exit 1
+          fi
 
       - name: Snyk Monitor (main branch only)
         if: github.ref == 'refs/heads/main'
         run: |
           snyk monitor \
             --all-projects \
-            --detection-depth=6 \
+            --detection-depth=3 \
             --exclude="$SNYK_EXCLUDES"

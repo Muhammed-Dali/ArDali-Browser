@@ -503,11 +503,18 @@ function installDownloadedUpdate() {
 }
 
 // MPRIS (Linux Medya Oynatıcı Uzaktan Arayüz Spesifikasyonu)
+const MPRIS_RUNTIME_ENABLED =
+    process.platform === 'linux' &&
+    ['1', 'true', 'yes'].includes(String(process.env.AURIVO_ENABLE_MPRIS || '').trim().toLowerCase());
+const ALLOW_TRUSTED_CERT_BYPASS =
+    ['1', 'true', 'yes'].includes(String(process.env.AURIVO_ALLOW_MITM_CERT_BYPASS || '').trim().toLowerCase());
 let Player = null;
-try {
-    Player = require('mpris-service');
-} catch (e) {
-    console.log('mpris-service yüklenemedi (sadece Linux):', e.message);
+if (MPRIS_RUNTIME_ENABLED) {
+    try {
+        Player = require('mpris-service');
+    } catch (e) {
+        console.log('mpris-service yüklenemedi (opsiyonel):', e.message);
+    }
 }
 
 // stdout/stderr pipe kapandığında (örn. `| head`) Node `EPIPE` fırlatabilir.
@@ -3629,6 +3636,8 @@ function createWindow() {
             nodeIntegration: false,
             contextIsolation: true,
             sandbox: false,  // Preload'da Node.js modülleri için gerekli
+            webSecurity: true,
+            allowRunningInsecureContent: false,
             // Medya oynatım zamanlayıcıları arka planda da akıcı çalışsın.
             // Aksi halde track-end / next-track akışı gizli pencerede gecikebiliyor.
             backgroundThrottling: false,
@@ -3897,6 +3906,8 @@ async function createSettingsWindow(defaultTab = 'playback') {
             contextIsolation: true,
             sandbox: false,
             webviewTag: true,
+            webSecurity: true,
+            allowRunningInsecureContent: false,
             plugins: true,
             spellcheck: false
         }
@@ -3990,6 +4001,11 @@ function createTray() {
 // MPRIS (Linux Media Player Entegrasyonu)
 // ============================================
 function createMPRIS() {
+    if (!MPRIS_RUNTIME_ENABLED) {
+        console.log('MPRIS varsayılan olarak kapalı (AURIVO_ENABLE_MPRIS=1 ile açılabilir)');
+        return;
+    }
+
     if (!Player || process.platform !== 'linux') {
         console.log('MPRIS sadece Linux için destekleniyor');
         return;
@@ -4338,6 +4354,8 @@ function createSoundEffectsWindow(rawScope = 'music') {
             nodeIntegration: false,
             contextIsolation: true,
             sandbox: false,
+            webSecurity: true,
+            allowRunningInsecureContent: false,
             backgroundThrottling: false,
             spellcheck: false
         },
@@ -4400,7 +4418,9 @@ function createEQPresetsWindow() {
             preload: path.join(__dirname, 'preload.js'),
             nodeIntegration: false,
             contextIsolation: true,
-            sandbox: false
+            sandbox: false,
+            webSecurity: true,
+            allowRunningInsecureContent: false
         },
         frame: true,
         title: 'Aurivo Hazır Ayarlar — Aurivo Medya Player',
@@ -5506,7 +5526,7 @@ function installWebviewHardening() {
             // Kurumsal MITM/yerel güvenlik yazılımı olan sistemlerde Electron
             // bazen -202 (CERT_AUTHORITY_INVALID) üretip web platform çalmayı kesiyor.
             // Sadece izinli platform hostları için bu spesifik hatayı yumuşat.
-            if (ses && typeof ses.setCertificateVerifyProc === 'function') {
+            if (ALLOW_TRUSTED_CERT_BYPASS && ses && typeof ses.setCertificateVerifyProc === 'function') {
                 ses.setCertificateVerifyProc((request, callback) => {
                     try {
                         const code = Number(request?.errorCode);
@@ -5581,6 +5601,10 @@ function installTlsCompatibilityForWebPlatforms() {
     // Electron webview'da -202 (CERT_AUTHORITY_INVALID) oluşabiliyor.
     // Yalnızca izinli web platformları için bu hatayı kontrollü şekilde bypass et.
     app.on('certificate-error', (event, _webContents, url, error, _certificate, callback) => {
+        if (!ALLOW_TRUSTED_CERT_BYPASS) {
+            callback(false);
+            return;
+        }
         try {
             if (String(error || '') === 'net::ERR_CERT_AUTHORITY_INVALID' && isTrustedWebCertUrlMain(url)) {
                 event.preventDefault();
@@ -6930,7 +6954,8 @@ async function syncAdblockConfigInBackground(preferredPartition = '') {
                 nodeIntegration: false,
                 contextIsolation: true,
                 sandbox: false,
-                webSecurity: true
+                webSecurity: true,
+                allowRunningInsecureContent: false
             }
         });
 
@@ -7053,7 +7078,8 @@ ipcMain.handle('adblock:openDashboard', async () => {
                 nodeIntegration: false,
                 contextIsolation: true,
                 sandbox: false,
-                webSecurity: true
+                webSecurity: true,
+                allowRunningInsecureContent: false
             }
         });
 

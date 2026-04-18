@@ -416,7 +416,6 @@
   },
   "dependencies": {
     "electron-updater": "6.7.3",
-    "mpris-service": "2.1.2",
     "node-id3": "0.2.9",
     "systeminformation": "5.31.5",
     "yt-dlp-wrap-plus": "2.4.3"
