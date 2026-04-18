@@ -147,7 +147,8 @@ function createWindow() {
 				preload: path.join(__dirname, "preload.js"),
 				nodeIntegration: false,
 				contextIsolation: true,
-				sandbox: true,
+				// preload.js Node.js require() kullandığı için sandbox false olmalı.
+				sandbox: false,
 				webSecurity: true,
 				allowRunningInsecureContent: false,
 				spellcheck: false,
@@ -225,7 +226,8 @@ function createSecondaryWindow(file) {
 				preload: path.join(__dirname, "preload.js"),
 				nodeIntegration: false,
 				contextIsolation: true,
-				sandbox: true,
+				// preload.js Node.js require() kullandığı için sandbox false olmalı.
+				sandbox: false,
 				webSecurity: true,
 				allowRunningInsecureContent: false,
 			},

@@ -29,6 +29,13 @@ ignore:
           a strict contextBridge-only API surface. Webviews keep sandbox: true.
         expires: '2027-01-01T00:00:00.000Z'
         created: '2026-04-18T20:00:00.000Z'
+    - Aurivo-Dawlod/main.js:
+        reason: >
+          Aurivo-Dawlod preload.js uses Node.js require() for a restricted bridge.
+          Mitigated by contextIsolation: true, nodeIntegration: false, webSecurity: true,
+          allowRunningInsecureContent: false, and controlled IPC handlers.
+        expires: '2027-01-01T00:00:00.000Z'
+        created: '2026-04-18T20:00:00.000Z'
     - modules/dawlodHost.js:
         reason: >
           Dawlod preload.js requires require() for electron IPC and Node.js built-ins.

@@ -181,6 +181,7 @@ function openDawlodWindow({ app, BrowserWindow, activate = true, emitState }) {
         try {
             webPreferences.nodeIntegration = false;
             webPreferences.contextIsolation = true;
+            webPreferences.sandbox = true;
             webPreferences.enableRemoteModule = false;
             webPreferences.allowRunningInsecureContent = false;
             webPreferences.webSecurity = true;
