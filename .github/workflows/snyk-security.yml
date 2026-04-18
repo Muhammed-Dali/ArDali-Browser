@@ -1,0 +1,59 @@
+name: Snyk Security Gate
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - master
+      - release_v2_0_12_clean
+  schedule:
+    - cron: "0 3 * * *"
+  workflow_dispatch:
+
+jobs:
+  snyk:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    env:
+      SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+      # Keep scanning comprehensive for real product code while avoiding backup/cloned trees.
+      SNYK_EXCLUDES: Aurivo-Medya-Player-Linux,uDALİ-weman-home/chromium.backup_20260328_182612,.semgrep-tmp,node_modules,dist,squashfs-root
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install Snyk CLI
+        uses: snyk/actions/setup@master
+
+      - name: Verify Snyk CLI
+        run: snyk --version
+
+      - name: Snyk Open Source (SCA) - block on high/critical
+        run: |
+          snyk test \
+            --all-projects \
+            --detection-depth=6 \
+            --exclude="$SNYK_EXCLUDES" \
+            --severity-threshold=high
+
+      - name: Snyk Code (SAST) - block on high/critical
+        run: |
+          snyk code test \
+            --exclude="$SNYK_EXCLUDES" \
+            --severity-threshold=high
+
+      - name: Snyk Monitor (main branch only)
+        if: github.ref == 'refs/heads/main'
+        run: |
+          snyk monitor \
+            --all-projects \
+            --detection-depth=6 \
+            --exclude="$SNYK_EXCLUDES"
