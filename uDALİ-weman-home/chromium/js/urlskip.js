@@ -72,11 +72,36 @@
  * 
  * */
 
+const MAX_URLSKIP_STEPS = 16;
+const MAX_URLSKIP_STEP_LENGTH = 512;
+const suspiciousRegexPattern = /(?:\((?:[^()\\]|\\.)*[+*](?:[^()\\]|\\.)*\)[+*{])|(?:\.\*.*\.\*)|(?:\[[^\]]+\][+*{].*[+*{])/;
+
+function createSafeUrlskipRegExp(step) {
+    if ( typeof step !== 'string' ) { return null; }
+    if ( step.length < 3 || step.length > MAX_URLSKIP_STEP_LENGTH ) { return null; }
+    if ( step.charCodeAt(0) !== 0x2F || step.charCodeAt(step.length - 1) !== 0x2F ) {
+        return null;
+    }
+    const source = step.slice(1, -1);
+    if ( source.length === 0 ) { return null; }
+    if ( suspiciousRegexPattern.test(source) ) { return null; }
+    try {
+        return new RegExp(source);
+    } catch {
+    }
+    return null;
+}
+
 export function urlSkip(url, blocked, steps) {
     try {
+        if ( Array.isArray(steps) === false ) { return; }
+        if ( steps.length === 0 || steps.length > MAX_URLSKIP_STEPS ) { return; }
         let redirectBlocked = false;
         let urlout = url;
-        for ( const step of steps ) {
+        for ( const rawStep of steps ) {
+            if ( typeof rawStep !== 'string' ) { return; }
+            const step = rawStep.trim();
+            if ( step.length === 0 || step.length > MAX_URLSKIP_STEP_LENGTH ) { return; }
             const urlin = urlout;
             const c0 = step.charCodeAt(0);
             // Extract from hash
@@ -132,7 +157,8 @@ export function urlSkip(url, blocked, steps) {
             }
             // Regex extraction from first capture group
             if ( c0 === 0x2F ) { // /
-                const re = new RegExp(step.slice(1, -1));
+                const re = createSafeUrlskipRegExp(step);
+                if ( re === null ) { return; }
                 const match = re.exec(urlin);
                 if ( match === null ) { return; }
                 if ( match.length <= 1 ) { return; }

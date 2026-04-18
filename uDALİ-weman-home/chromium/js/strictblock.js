@@ -108,6 +108,8 @@ function fragmentFromTemplate(template, placeholder, text, details) {
 
 const MAX_DYNAMIC_REGEX_LENGTH = 512;
 const suspiciousRegexPattern = /(?:\((?:[^()\\]|\\.)*[+*](?:[^()\\]|\\.)*\)[+*{])|(?:\.\*.*\.\*)|(?:\[[^\]]+\][+*{].*[+*{])/;
+const MAX_URLSKIP_STEPS = 16;
+const MAX_URLSKIP_STEP_LENGTH = 512;
 
 function createSafeDynamicRegExp(source, flags = undefined) {
     if ( typeof source !== 'string' ) { return null; }
@@ -121,6 +123,38 @@ function createSafeDynamicRegExp(source, flags = undefined) {
     } catch {
     }
     return null;
+}
+
+function sanitizeUrlSkipSteps(steps) {
+    if ( Array.isArray(steps) === false ) { return null; }
+    if ( steps.length === 0 || steps.length > MAX_URLSKIP_STEPS ) { return null; }
+    const out = [];
+    for ( const item of steps ) {
+        if ( typeof item !== 'string' ) { return null; }
+        const step = item.trim();
+        if ( step.length === 0 || step.length > MAX_URLSKIP_STEP_LENGTH ) {
+            return null;
+        }
+        // Regex directives must be wrapped with "/" and avoid common
+        // catastrophic-backtracking shapes from remote rulesets.
+        if ( step.charCodeAt(0) === 0x2F ) {
+            if ( step.length < 3 || step.charCodeAt(step.length - 1) !== 0x2F ) {
+                return null;
+            }
+            const source = step.slice(1, -1);
+            if ( source.length === 0 || suspiciousRegexPattern.test(source) ) {
+                return null;
+            }
+            try {
+                // compile-check
+                new RegExp(source); // nosemgrep
+            } catch {
+                return null;
+            }
+        }
+        out.push(step);
+    }
+    return out;
 }
 
 /******************************************************************************/
@@ -305,7 +339,9 @@ function createSafeDynamicRegExp(source, flags = undefined) {
                     continue;
                 }
             }
-            const finalURL = urlSkip(toURL.href, false, urlskip.steps);
+            const safeSteps = sanitizeUrlSkipSteps(urlskip.steps);
+            if ( safeSteps === null ) { continue; }
+            const finalURL = urlSkip(toURL.href, false, safeSteps);
             if ( finalURL === undefined ) { continue; }
             toFinalURL.href = finalURL;
             const fragment = fragmentFromTemplate(
