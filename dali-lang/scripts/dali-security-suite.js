@@ -6,6 +6,7 @@ const { spawnSync } = require('child_process');
 
 const root = path.resolve(__dirname, '..');
 const cli = path.join(root, 'src', 'cli.js');
+const tmpRoot = path.join(root, '.ci-tmp', 'dali-security-suite');
 
 const cases = [
   {
@@ -197,11 +198,12 @@ const cases = [
 ];
 
 function runCase(testCase) {
-  const inputFile = testCase.file || path.join('/tmp', `dali-security-${testCase.label}.dl`);
+  fs.mkdirSync(tmpRoot, { recursive: true });
+  const inputFile = testCase.file || path.join(tmpRoot, `dali-security-${testCase.label}.dl`);
   if (!testCase.file && testCase.source) {
     fs.writeFileSync(inputFile, String(testCase.source), 'utf8');
   }
-  const outFile = path.join('/tmp', `dali-security-${testCase.label}.generated.js`);
+  const outFile = path.join(tmpRoot, `dali-security-${testCase.label}.generated.js`);
   const proc = spawnSync(
     process.execPath,
     [cli, inputFile, outFile, ...testCase.args],

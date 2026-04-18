@@ -18,6 +18,8 @@ node_modules/
 npm-debug.log*
 .cache/
 .semgrep-tmp/
+.ci-tmp/
+**/.ci-tmp/
 
 # OS
 .DS_Store
