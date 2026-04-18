@@ -23,10 +23,10 @@ jobs:
       SNYK_EXCLUDES: Aurivo-Medya-Player-Linux,aurivo-bin,chromium.backup_20260328_182612,.semgrep-tmp,node_modules,dist,build,out,squashfs-root,.git,.cache,native-dist
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: "20"
 
@@ -72,7 +72,7 @@ jobs:
 
       - name: Upload Snyk reports artifact
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: snyk-reports-${{ github.run_id }}
           path: snyk-reports
@@ -81,17 +81,38 @@ jobs:
 
       - name: Upload Snyk SCA SARIF
         if: always() && hashFiles('snyk-reports/snyk-sca.sarif') != ''
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: snyk-reports/snyk-sca.sarif
           category: snyk-open-source
 
       - name: Upload Snyk Code SARIF
         if: always() && hashFiles('snyk-reports/snyk-code.sarif') != ''
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: snyk-reports/snyk-code.sarif
           category: snyk-code
+
+      - name: Summarize Snyk findings
+        if: always()
+        run: |
+          sca_errors=0
+          sca_warnings=0
+          code_errors=0
+          code_warnings=0
+
+          if [ -f snyk-reports/snyk-sca.sarif ]; then
+            sca_errors=$(jq -r '[.runs[].results[]? | select(.level=="error")] | length' snyk-reports/snyk-sca.sarif 2>/dev/null || echo 0)
+            sca_warnings=$(jq -r '[.runs[].results[]? | select(.level=="warning")] | length' snyk-reports/snyk-sca.sarif 2>/dev/null || echo 0)
+          fi
+
+          if [ -f snyk-reports/snyk-code.sarif ]; then
+            code_errors=$(jq -r '[.runs[].results[]? | select(.level=="error")] | length' snyk-reports/snyk-code.sarif 2>/dev/null || echo 0)
+            code_warnings=$(jq -r '[.runs[].results[]? | select(.level=="warning")] | length' snyk-reports/snyk-code.sarif 2>/dev/null || echo 0)
+          fi
+
+          echo "Snyk SCA findings: error=$sca_errors warning=$sca_warnings"
+          echo "Snyk Code findings: error=$code_errors warning=$code_warnings"
 
       - name: Enforce Snyk security gate
         if: always()
@@ -105,6 +126,12 @@ jobs:
           echo "Code exit code: $code_exit"
 
           if [ "$sca_exit" != "0" ] || [ "$code_exit" != "0" ]; then
+            if [ "$code_exit" = "1" ]; then
+              echo "::error::Snyk Code found high/critical issues (CODE=1). Check SARIF findings in Security > Code scanning alerts."
+            fi
+            if [ "$sca_exit" = "1" ]; then
+              echo "::error::Snyk Open Source found high/critical issues (SCA=1)."
+            fi
             echo "::error::Snyk security gate failed (SCA=$sca_exit, CODE=$code_exit)."
             exit 1
           fi
