@@ -2,7 +2,7 @@ const {shell, ipcRenderer, clipboard} = require("electron");
 const {default: YTDlpWrap} = require("yt-dlp-wrap-plus");
 const {constants} = require("fs/promises");
 const {homedir, platform} = require("os");
-const {join} = require("path");
+const {join, basename, resolve, sep} = require("path");
 const {mkdirSync, accessSync, promises, existsSync} = require("fs");
 const {execSync, spawn} = require("child_process");
 const {
@@ -86,6 +86,13 @@ const CONSTANTS = {
 	},
 };
 
+const TRUSTED_YTDLP_BINARIES = new Set([
+	"ytdlp",
+	"ytdlp.exe",
+	"yt-dlp",
+	"yt-dlp.exe",
+]);
+
 /**
  * Shorthand for document.getElementById.
  * @param {string} id The ID of the DOM element.
@@ -157,7 +164,7 @@ class AurivoDawlodApp {
 				90000,
 				"yt-dlp hazırlanamadı (zaman aşımı)."
 			);
-			this.state.ytDlp = new YTDlpWrap(`"${this.state.ytDlpPath}"`);
+			this.state.ytDlp = new YTDlpWrap(this.state.ytDlpPath);
 			this.state.ffmpegPath = await this._withTimeout(
 				this._findFfmpeg(),
 				45000,
@@ -269,30 +276,37 @@ class AurivoDawlodApp {
 	}
 
 	_ensureCoreUiResponsive() {
-		const routeToSecondary = (id, fileName) => {
+		const routeToSecondary = (id, targetPath) => {
 			const el = $(id);
 			if (!el || typeof el.onclick === "function") return;
-			el.onclick = () =>
-				ipcRenderer.send(
-					"load-page",
-					join(__dirname, "..", "html", fileName)
-				);
+			el.onclick = () => ipcRenderer.send("load-page", targetPath);
 		};
-		const routeToMain = (id, fileName) => {
+		const routeToMain = (id, targetPath) => {
 			const el = $(id);
 			if (!el || typeof el.onclick === "function") return;
-			el.onclick = () =>
-				ipcRenderer.send(
-					"load-win",
-					join(__dirname, "..", "html", fileName)
-				);
+			el.onclick = () => ipcRenderer.send("load-win", targetPath);
 		};
 
-		routeToSecondary(CONSTANTS.DOM_IDS.PREFERENCE_WIN, "preferences.html");
-		routeToSecondary(CONSTANTS.DOM_IDS.ABOUT_WIN, "about.html");
-		routeToSecondary(CONSTANTS.DOM_IDS.HISTORY_WIN, "history.html");
-		routeToMain(CONSTANTS.DOM_IDS.PLAYLIST_WIN, "playlist.html");
-		routeToMain(CONSTANTS.DOM_IDS.COMPRESSOR_WIN, "compressor.html");
+		routeToSecondary(
+			CONSTANTS.DOM_IDS.PREFERENCE_WIN,
+			join(__dirname, "..", "html", "preferences.html")
+		);
+		routeToSecondary(
+			CONSTANTS.DOM_IDS.ABOUT_WIN,
+			join(__dirname, "..", "html", "about.html")
+		);
+		routeToSecondary(
+			CONSTANTS.DOM_IDS.HISTORY_WIN,
+			join(__dirname, "..", "html", "history.html")
+		);
+		routeToMain(
+			CONSTANTS.DOM_IDS.PLAYLIST_WIN,
+			join(__dirname, "..", "html", "playlist.html")
+		);
+		routeToMain(
+			CONSTANTS.DOM_IDS.COMPRESSOR_WIN,
+			join(__dirname, "..", "html", "compressor.html")
+		);
 	}
 
 	async _installFfmpegOnLinux() {
@@ -511,7 +525,7 @@ class AurivoDawlodApp {
 				CONSTANTS.LOCAL_STORAGE_KEYS.YT_DLP_PATH
 			);
 
-			if (storedPath && existsSync(storedPath)) {
+			if (this._isTrustedYtDlpPath(storedPath)) {
 				executablePath = storedPath;
 			}
 			// Download if missing
@@ -529,6 +543,18 @@ class AurivoDawlodApp {
 		this._runBackgroundUpdate(executablePath, isMacOS);
 
 		return executablePath;
+	}
+
+	_isTrustedYtDlpPath(filePath) {
+		if (typeof filePath !== "string" || filePath.length === 0) return false;
+		if (filePath.includes("\0")) return false;
+		// nosemgrep:javascript.lang.security.audit.path-traversal.path-join-resolve-traversal.path-join-resolve-traversal
+		// Path is normalized, existence-checked, and then restricted by strict basename allowlist.
+		const normalizedPath = resolve(filePath); // nosemgrep:javascript.lang.security.audit.path-traversal.path-join-resolve-traversal.path-join-resolve-traversal
+		if (!existsSync(normalizedPath)) return false;
+		return TRUSTED_YTDLP_BINARIES.has(
+			basename(normalizedPath).toLowerCase()
+		);
 	}
 
 	/**
@@ -552,7 +578,14 @@ class AurivoDawlodApp {
 					console.log("yt-dlp brew update:", data.toString())
 				);
 			} else {
-				const updateProc = spawn(executablePath, ["-U"]);
+				const updateTargetPath = this.state.ytDlpPath;
+				if (!this._isTrustedYtDlpPath(updateTargetPath)) {
+					console.warn(
+						"Skipping background yt-dlp update due to untrusted executable path."
+					);
+					return;
+				}
+				const updateProc = spawn(updateTargetPath, ["-U"]);
 
 				updateProc.on("error", (err) =>
 					console.error(
@@ -1066,15 +1099,15 @@ class AurivoDawlodApp {
 				proxy,
 				browserForCookies ? "--cookies-from-browser" : "",
 				browserForCookies,
-				this.state.jsRuntimePath
-					? `--no-js-runtimes --js-runtime ${this.state.jsRuntimePath}`
-					: "",
+				this.state.jsRuntimePath ? "--no-js-runtimes" : "",
+				this.state.jsRuntimePath ? "--js-runtime" : "",
+				this.state.jsRuntimePath || "",
 				configPath ? "--config-location" : "",
-				configPath ? `"${configPath}"` : "",
-				`"${url}"`,
+				configPath || "",
+				url,
 			].filter(Boolean);
 
-			const process = this.state.ytDlp.exec(args, {shell: true});
+			const process = this.state.ytDlp.exec(args, {shell: false});
 
 			console.log(
 			"Spawned yt-dlp with args:",
@@ -1131,7 +1164,7 @@ class AurivoDawlodApp {
 		this.state.downloadControllers.set(randomId, controller);
 
 		const downloadProcess = this.state.ytDlp.exec(downloadArgs, {
-			shell: true,
+			shell: false,
 			detached: false,
 			signal: controller.signal,
 		});
@@ -1177,25 +1210,30 @@ class AurivoDawlodApp {
 	_queueDownload(job) {
 		const randomId = "queue_" + Math.random().toString(36).substring(2, 12);
 		this.state.downloadQueue.push({...job, queueId: randomId});
-		const itemHTML = `
-            <div class="item" id="${randomId}">
-                <div class="itemIconBox">
-                    <img src="${
-						job.thumbnail || "../assets/images/thumb.png"
-					}" alt="thumbnail" class="itemIcon" crossorigin="anonymous">
-                    <span class="itemType">${i18n.__(
-						job.type === "video" ? "video" : "audio"
-					)}</span>
-                </div>
-                <div class="itemBody">
-                    <div class="itemTitle">${job.title}</div>
-                    <p>${i18n.__("preparing")}</p>
-                </div>
-            </div>`;
-		$(CONSTANTS.DOM_IDS.DOWNLOAD_LIST).insertAdjacentHTML(
-			"beforeend",
-			itemHTML
-		);
+		const item = document.createElement("div");
+		item.className = "item";
+		item.id = randomId;
+		const iconBox = document.createElement("div");
+		iconBox.className = "itemIconBox";
+		const thumb = document.createElement("img");
+		thumb.src = job.thumbnail || "../assets/images/thumb.png";
+		thumb.alt = "thumbnail";
+		thumb.className = "itemIcon";
+		thumb.setAttribute("crossorigin", "anonymous");
+		const itemType = document.createElement("span");
+		itemType.className = "itemType";
+		itemType.textContent = i18n.__(job.type === "video" ? "video" : "audio");
+		iconBox.append(thumb, itemType);
+		const body = document.createElement("div");
+		body.className = "itemBody";
+		const title = document.createElement("div");
+		title.className = "itemTitle";
+		title.textContent = job.title;
+		const preparing = document.createElement("p");
+		preparing.textContent = i18n.__("preparing");
+		body.append(title, preparing);
+		item.append(iconBox, body);
+		$(CONSTANTS.DOM_IDS.DOWNLOAD_LIST).appendChild(item);
 	}
 
 	/**
@@ -1283,15 +1321,15 @@ class AurivoDawlodApp {
 			finalFilename = finalFilename.substring(1);
 		}
 		if (rangeCmd) {
-			let rangeTxt = rangeCmd.replace("*", "");
+			let rangeTxt = rangeCmd.replace(/\*/g, "");
 			if (platform() === "win32") rangeTxt = rangeTxt.replace(/:/g, "_");
 			finalFilename += ` [${rangeTxt}]`;
 		}
 
-		const outputPath = `"${join(
+		const outputPath = this._safeJoinUnder(
 			this.state.downloadDir,
 			`${finalFilename}.${ext}`
-		)}"`;
+		);
 
 		const baseArgs = [
 			"--no-playlist",
@@ -1301,12 +1339,12 @@ class AurivoDawlodApp {
 			proxy ? "--proxy" : "",
 			proxy,
 			configPath ? "--config-location" : "",
-			configPath ? `"${configPath}"` : "",
+			configPath || "",
 			this.state.ffmpegPath ? "--ffmpeg-location" : "",
-			this.state.ffmpegPath ? `"${this.state.ffmpegPath}"` : "",
-			this.state.jsRuntimePath
-				? `--no-js-runtimes --js-runtime ${this.state.jsRuntimePath}`
-				: "",
+			this.state.ffmpegPath || "",
+			this.state.jsRuntimePath ? "--no-js-runtimes" : "",
+			this.state.jsRuntimePath ? "--js-runtime" : "",
+			this.state.jsRuntimePath || "",
 		].filter(Boolean);
 
 		const wantsCoverEmbed =
@@ -1362,7 +1400,7 @@ class AurivoDawlodApp {
 			downloadArgs.push(...customArgs);
 		}
 
-		downloadArgs.push(`"${url}"`);
+		downloadArgs.push(url);
 
 		return {downloadArgs, finalFilename, finalExt: ext};
 	}
@@ -1808,29 +1846,39 @@ class AurivoDawlodApp {
 	 * Creates the initial UI element for a new download.
 	 */
 	_createDownloadUI(randomId, job) {
-		const itemHTML = `
-            <div class="item" id="${randomId}">
-                <div class="itemIconBox">
-                    <img src="${
-						job.thumbnail || "../assets/images/thumb.png"
-					}" alt="thumbnail" class="itemIcon" crossorigin="anonymous">
-                    <span class="itemType">${i18n.__(
-						job.type === "video" ? "video" : "audio"
-					)}</span>
-                </div>
-                <img src="../assets/images/close.png" class="itemClose" id="${randomId}_close">
-                <div class="itemBody">
-                    <div class="itemTitle">${job.title}</div>
-                    <strong class="itemSpeed" id="${randomId}_speed"></strong>
-                    <div id="${randomId}_prog" class="itemProgress">${i18n.__(
-			"preparing"
-		)}</div>
-                </div>
-            </div>`;
-		$(CONSTANTS.DOM_IDS.DOWNLOAD_LIST).insertAdjacentHTML(
-			"beforeend",
-			itemHTML
-		);
+		const item = document.createElement("div");
+		item.className = "item";
+		item.id = randomId;
+		const iconBox = document.createElement("div");
+		iconBox.className = "itemIconBox";
+		const thumb = document.createElement("img");
+		thumb.src = job.thumbnail || "../assets/images/thumb.png";
+		thumb.alt = "thumbnail";
+		thumb.className = "itemIcon";
+		thumb.setAttribute("crossorigin", "anonymous");
+		const itemType = document.createElement("span");
+		itemType.className = "itemType";
+		itemType.textContent = i18n.__(job.type === "video" ? "video" : "audio");
+		iconBox.append(thumb, itemType);
+		const close = document.createElement("img");
+		close.src = "../assets/images/close.png";
+		close.className = "itemClose";
+		close.id = `${randomId}_close`;
+		const body = document.createElement("div");
+		body.className = "itemBody";
+		const title = document.createElement("div");
+		title.className = "itemTitle";
+		title.textContent = job.title;
+		const speed = document.createElement("strong");
+		speed.className = "itemSpeed";
+		speed.id = `${randomId}_speed`;
+		const progress = document.createElement("div");
+		progress.id = `${randomId}_prog`;
+		progress.className = "itemProgress";
+		progress.textContent = i18n.__("preparing");
+		body.append(title, speed, progress);
+		item.append(iconBox, close, body);
+		$(CONSTANTS.DOM_IDS.DOWNLOAD_LIST).appendChild(item);
 
 		$(`${randomId}_close`).addEventListener("click", () =>
 			this._cancelDownload(randomId)
@@ -1885,7 +1933,7 @@ class AurivoDawlodApp {
 		if (!progressEl) return;
 
 		const fullFilename = `${filename}.${ext}`;
-		const fullPath = join(this.state.downloadDir, fullFilename);
+		const fullPath = this._safeJoinUnder(this.state.downloadDir, fullFilename);
 
 		progressEl.innerHTML = ""; // Clear progress bar
 		const link = document.createElement("b");
@@ -1936,9 +1984,34 @@ class AurivoDawlodApp {
 			i18n.__("errorNetworkOrUrl");
 		$(CONSTANTS.DOM_IDS.ERROR_BTN).style.display = "inline-block";
 		const errorDetails = $(CONSTANTS.DOM_IDS.ERROR_DETAILS);
-		errorDetails.innerHTML = `<strong>URL: ${url}</strong><br><br>${errorMessage}`;
+		errorDetails.textContent = "";
+		const strong = document.createElement("strong");
+		strong.textContent = `URL: ${url || ""}`;
+		errorDetails.appendChild(strong);
+		errorDetails.appendChild(document.createElement("br"));
+		errorDetails.appendChild(document.createElement("br"));
+		errorDetails.append(
+			document.createTextNode(
+				errorMessage?.toString?.() || String(errorMessage)
+			)
+		);
 		errorDetails.title = i18n.__("clickToCopy");
 	}
+
+	_safeJoinUnder(baseDir, fileName) {
+		// nosemgrep: path traversal is mitigated by explicit containment checks.
+		// nosemgrep:javascript.lang.security.audit.path-traversal.path-join-resolve-traversal.path-join-resolve-traversal
+		// `baseDir` is an internal app directory; result is checked to stay under it.
+		const resolvedBase = resolve(baseDir); // nosemgrep:javascript.lang.security.audit.path-traversal.path-join-resolve-traversal.path-join-resolve-traversal
+			const candidatePath = resolve(resolvedBase, fileName); // nosemgrep
+		if (
+			candidatePath === resolvedBase ||
+			candidatePath.startsWith(`${resolvedBase}${sep}`)
+		) {
+			return candidatePath;
+		}
+			return resolve(resolvedBase, basename(fileName)); // nosemgrep
+		}
 
 	/**
 	 * Hides the info panel with an animation.

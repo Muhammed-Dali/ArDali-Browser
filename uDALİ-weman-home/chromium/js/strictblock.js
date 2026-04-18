@@ -106,6 +106,25 @@ function fragmentFromTemplate(template, placeholder, text, details) {
 
 /******************************************************************************/
 
+const MAX_DYNAMIC_REGEX_LENGTH = 512;
+const suspiciousRegexPattern = /(?:\((?:[^()\\]|\\.)*[+*](?:[^()\\]|\\.)*\)[+*{])|(?:\.\*.*\.\*)|(?:\[[^\]]+\][+*{].*[+*{])/;
+
+function createSafeDynamicRegExp(source, flags = undefined) {
+    if ( typeof source !== 'string' ) { return null; }
+    if ( source.length === 0 || source.length > MAX_DYNAMIC_REGEX_LENGTH ) {
+        return null;
+    }
+    // Guard against common catastrophic-backtracking shapes in remote rules.
+    if ( suspiciousRegexPattern.test(source) ) { return null; }
+    try {
+        return new RegExp(source, flags); // nosemgrep
+    } catch {
+    }
+    return null;
+}
+
+/******************************************************************************/
+
 // Enforce popup filters
 
 (async ( ) => {
@@ -229,7 +248,8 @@ function fragmentFromTemplate(template, placeholder, text, details) {
                 }
                 if ( matchesDomain === false ) { continue; }
             }
-            const re = new RegExp(regexFilter);
+            const re = createSafeDynamicRegExp(regexFilter);
+            if ( re === null ) { continue; }
             const matchesRegex = re.test(toHref);
             if ( matchesDomain && matchesRegex ) {
                 iList = i;
@@ -274,7 +294,11 @@ function fragmentFromTemplate(template, placeholder, text, details) {
     };
     for ( const urlskips of urlskipLists ) {
         for ( const urlskip of urlskips ) {
-            const re = new RegExp(urlskip.re, urlskip.c ? undefined : 'i');
+            const re = createSafeDynamicRegExp(
+                urlskip.re,
+                urlskip.c ? undefined : 'i'
+            );
+            if ( re === null ) { continue; }
             if ( re.test(toURL.href) === false ) { continue; }
             if ( urlskip.hostnames ) {
                 if ( urlskip.hostnames.some(hn => matchesHn(hn)) === false ) {
