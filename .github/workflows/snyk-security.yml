@@ -114,6 +114,26 @@ jobs:
           echo "Snyk SCA findings: error=$sca_errors warning=$sca_warnings"
           echo "Snyk Code findings: error=$code_errors warning=$code_warnings"
 
+      - name: Print top Snyk Code high/critical findings
+        if: always() && hashFiles('snyk-reports/snyk-code.sarif') != ''
+        run: |
+          echo "Top Snyk Code high/critical findings (rule | file:line | message)"
+          jq -r '
+            [
+              .runs[].results[]?
+              | select(.level=="error")
+              | {
+                  rule: (.ruleId // "unknown-rule"),
+                  file: (.locations[0].physicalLocation.artifactLocation.uri // "unknown-file"),
+                  line: (.locations[0].physicalLocation.region.startLine // 0),
+                  msg: (.message.text // "no message")
+                }
+            ]
+            | .[:20]
+            | .[]
+            | "- \(.rule) | \(.file):\(.line) | \(.msg)"
+          ' snyk-reports/snyk-code.sarif || true
+
       - name: Enforce Snyk security gate
         if: always()
         run: |
