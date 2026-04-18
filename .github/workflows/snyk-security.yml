@@ -20,7 +20,7 @@ jobs:
     env:
       SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
       # Keep scanning comprehensive for real product code while avoiding backup/cloned trees.
-      SNYK_EXCLUDES: Aurivo-Medya-Player-Linux,uDALİ-weman-home/chromium.backup_20260328_182612,.semgrep-tmp,node_modules,dist,squashfs-root
+      SNYK_EXCLUDES: Aurivo-Medya-Player-Linux,chromium.backup_20260328_182612,.semgrep-tmp,node_modules,dist,squashfs-root
     steps:
       - name: Checkout
         uses: actions/checkout@v4
