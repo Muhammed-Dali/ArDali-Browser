@@ -6,13 +6,6 @@ on:
       - main
       - master
       - release_v2_0_12_clean
-  workflow_run:
-    workflows: ["Publish Pacman Repo"]
-    types: [completed]
-    branches:
-      - main
-      - master
-      - release_v2_0_12_clean
   workflow_dispatch:
 
 jobs:
@@ -20,14 +13,7 @@ jobs:
     if: >-
       ${{
         github.event_name == 'workflow_dispatch' ||
-        github.event_name == 'push' ||
-        (
-          github.event.workflow_run.conclusion == 'success' &&
-          (
-            github.event.workflow_run.event == 'push' ||
-            github.event.workflow_run.event == 'workflow_dispatch'
-          )
-        )
+        github.event_name == 'push'
       }}
     runs-on: ubuntu-latest
     permissions:
