@@ -94,9 +94,15 @@ function run(cmd) {
   // This breaks the desktop app startup.
   delete env.ELECTRON_RUN_AS_NODE;
 
-  const child = spawn(cmd, {
+  // Security: avoid shell: true to prevent shell injection.
+  // Split the command string into binary + args and spawn directly.
+  const parts = String(cmd || '').trim().split(/\s+/);
+  const bin = parts[0];
+  const args = parts.slice(1);
+
+  const child = spawn(bin, args, {
     stdio: 'inherit',
-    shell: true,
+    shell: false,
     env
   });
   child.on('exit', (code) => process.exit(code ?? 1));

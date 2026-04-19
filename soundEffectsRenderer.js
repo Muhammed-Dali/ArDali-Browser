@@ -720,7 +720,11 @@ async function applySfxIconSizeFromAppSettings() {
 function postEmbeddedVideoUpdate(payload) {
     try {
         if (!SFX_EMBEDDED_MODE) return;
-        window.parent?.postMessage({ type: 'sfx:videoUpdate', payload }, '*');
+        // Security: use same-origin target instead of wildcard '*'.
+        // In Electron file:// context, targetOrigin is 'null';
+        // in web context use window.location.origin.
+        const targetOrigin = window.location.origin || 'null';
+        window.parent?.postMessage({ type: 'sfx:videoUpdate', payload }, targetOrigin);
     } catch {
         // ignore
     }
@@ -1816,6 +1820,12 @@ function setupEventListeners() {
     });
 
     window.addEventListener('message', (e) => {
+        // Security: validate message origin — only accept same-origin or
+        // Electron's file:// context ('null' origin).
+        const senderOrigin = String(e?.origin || '');
+        const selfOrigin = window.location.origin || 'null';
+        if (senderOrigin !== selfOrigin && senderOrigin !== 'null') return;
+
         const t = String(e?.data?.type || '');
         if (t === 'sfx:animControl') {
             const action = String(e?.data?.action || '');
@@ -1835,7 +1845,10 @@ function setupEventListeners() {
     // Window controls (frameless pencere için)
     document.getElementById('closeBtn')?.addEventListener('click', () => {
         if (SFX_EMBEDDED_MODE) {
-            try { window.parent?.postMessage({ type: 'sfx:closeEmbedded' }, '*'); } catch { }
+            try {
+                const targetOrigin = window.location.origin || 'null';
+                window.parent?.postMessage({ type: 'sfx:closeEmbedded' }, targetOrigin);
+            } catch { }
             return;
         }
         if (window.aurivo?.electronAPI) {

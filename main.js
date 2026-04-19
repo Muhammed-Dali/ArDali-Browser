@@ -89,9 +89,14 @@ function shouldUseAdblockExtensionOnThisRuntime() {
 
 function commandExists(command) {
     try {
-        const res = spawnSync('bash', ['-lc', `command -v ${String(command || '').trim()}`], {
+        // Security: Pass command as a direct argument to 'which' instead of
+        // interpolating into a shell string to prevent shell injection.
+        const sanitized = String(command || '').trim();
+        if (!sanitized || /[^a-zA-Z0-9._-]/.test(sanitized)) return false;
+        const res = spawnSync('which', [sanitized], {
             encoding: 'utf8',
-            timeout: 1200
+            timeout: 1200,
+            shell: false
         });
         return res.status === 0;
     } catch {
@@ -1623,12 +1628,24 @@ function parseArecordList(text) {
     return out;
 }
 
+// Security: only known, safe system commands may be passed to execCollect.
+const EXEC_COLLECT_ALLOWED_COMMANDS = new Set([
+    'arecord', 'pactl', 'pw-cli', 'pw-dump', 'ffmpeg', 'ffprobe',
+    'wpctl', 'amixer', 'pacmd', 'pipewire-cli'
+]);
+
 async function execCollect(command, args = [], timeoutMs = 3500) {
+    const sanitizedCommand = String(command || '').trim();
+    // Security: validate command against allowlist before spawning.
+    if (!sanitizedCommand || !EXEC_COLLECT_ALLOWED_COMMANDS.has(sanitizedCommand)) {
+        return { success: false, output: '' };
+    }
     return await new Promise((resolve) => {
         let combined = '';
         let timedOut = false;
-        const resolvedCommand = findExecutable(command, ['/usr/bin', '/usr/local/bin', '/bin', '/usr/sbin', '/sbin']) || command;
+        const resolvedCommand = findExecutable(sanitizedCommand, ['/usr/bin', '/usr/local/bin', '/bin', '/usr/sbin', '/sbin']) || sanitizedCommand;
         const child = spawn(resolvedCommand, args, {
+            shell: false,
             env: {
                 ...process.env,
                 LANG: 'C',
@@ -3160,7 +3177,9 @@ function deepGet(obj, pathStr) {
     const parts = String(pathStr).split('.').filter(Boolean);
     let cur = obj;
     for (const p of parts) {
-        if (!cur || typeof cur !== 'object' || !(p in cur)) return undefined;
+        // Security: block prototype pollution keys
+        if (p === '__proto__' || p === 'constructor' || p === 'prototype') return undefined;
+        if (!cur || typeof cur !== 'object' || !Object.prototype.hasOwnProperty.call(cur, p)) return undefined;
         cur = cur[p];
     }
     return cur;

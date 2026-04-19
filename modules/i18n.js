@@ -83,7 +83,9 @@
         const parts = String(path).split('.').filter(Boolean);
         let cur = obj;
         for (const p of parts) {
-            if (!cur || typeof cur !== 'object' || !(p in cur)) return undefined;
+            // Security: block prototype pollution keys
+            if (p === '__proto__' || p === 'constructor' || p === 'prototype') return undefined;
+            if (!cur || typeof cur !== 'object' || !Object.prototype.hasOwnProperty.call(cur, p)) return undefined;
             cur = cur[p];
         }
         return cur;
@@ -96,10 +98,15 @@
         let cur = obj;
         for (let i = 0; i < parts.length - 1; i++) {
             const p = parts[i];
-            if (!cur[p] || typeof cur[p] !== 'object') cur[p] = {};
+            // Security: block prototype pollution keys
+            if (p === '__proto__' || p === 'constructor' || p === 'prototype') return;
+            if (!Object.prototype.hasOwnProperty.call(cur, p) || typeof cur[p] !== 'object') cur[p] = {};
             cur = cur[p];
         }
-        cur[parts[parts.length - 1]] = value;
+        const lastKey = parts[parts.length - 1];
+        // Security: block prototype pollution keys
+        if (lastKey === '__proto__' || lastKey === 'constructor' || lastKey === 'prototype') return;
+        cur[lastKey] = value;
     }
 
     const ABOUT_COMMON_FALLBACK = {
