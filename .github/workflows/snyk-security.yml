@@ -1,6 +1,11 @@
 name: Snyk Security Gate
 
 on:
+  push:
+    branches:
+      - main
+      - master
+      - release_v2_0_12_clean
   workflow_run:
     workflows: ["Publish Pacman Repo"]
     types: [completed]
@@ -15,6 +20,7 @@ jobs:
     if: >-
       ${{
         github.event_name == 'workflow_dispatch' ||
+        github.event_name == 'push' ||
         (
           github.event.workflow_run.conclusion == 'success' &&
           (
