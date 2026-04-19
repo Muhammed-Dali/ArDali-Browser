@@ -1,7 +1,9 @@
 name: Semgrep Security Gate
 
 on:
-  push:
+  workflow_run:
+    workflows: ["Snyk Security Gate"]
+    types: [completed]
     branches:
       - main
       - master
@@ -13,7 +15,14 @@ jobs:
     if: >-
       ${{
         github.event_name == 'workflow_dispatch' ||
-        github.event_name == 'push'
+        (
+          github.event.workflow_run.conclusion == 'success' &&
+          (
+            github.event.workflow_run.event == 'push' ||
+            github.event.workflow_run.event == 'workflow_dispatch' ||
+            github.event.workflow_run.event == 'workflow_run'
+          )
+        )
       }}
     runs-on: ubuntu-latest
     permissions:
