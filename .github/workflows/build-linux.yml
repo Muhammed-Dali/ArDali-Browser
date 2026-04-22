@@ -230,7 +230,7 @@ jobs:
       ${{
         github.event_name == 'push' &&
         github.ref == 'refs/heads/main' &&
-        startsWith(github.event.head_commit.message, 'release: bump version')
+        github.actor != 'github-actions[bot]'
       }}
     runs-on: ubuntu-24.04
     permissions:
@@ -241,23 +241,37 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Create and push version tag
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: "20"
+
+      - name: Auto bump version, push commit and tag
         shell: bash
         run: |
           set -euo pipefail
-          VERSION="$(node -p "require('./package.json').version")"
-          TAG="v${VERSION}"
-          echo "Resolved package version: ${VERSION}"
-          echo "Release tag candidate: ${TAG}"
-
-          # Aynı tag zaten varsa tekrar push etmeyelim (idempotent davranış).
-          if git ls-remote --tags origin "refs/tags/${TAG}" | grep -q "${TAG}$"; then
-            echo "Tag already exists on origin: ${TAG}. Skipping."
-            exit 0
-          fi
 
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          # Her main push sonrasında patch versiyon otomatik artırılır.
+          NEW_VERSION="$(npm version patch --no-git-tag-version | sed 's/^v//')"
+          TAG="v${NEW_VERSION}"
+          echo "Auto bumped version: ${NEW_VERSION}"
+          echo "Release tag candidate: ${TAG}"
+
+          git add package.json
+          if [ -f package-lock.json ]; then
+            git add package-lock.json
+          fi
+
+          if [ -f npm-shrinkwrap.json ]; then
+            git add npm-shrinkwrap.json
+          fi
+
+          git commit -m "release: bump version to ${NEW_VERSION}"
+          git push origin HEAD:main
+
           git tag -a "${TAG}" -m "Release ${TAG}"
           git push origin "${TAG}"
-          echo "Pushed tag: ${TAG}"
+          echo "Pushed release commit + tag: ${TAG}"
