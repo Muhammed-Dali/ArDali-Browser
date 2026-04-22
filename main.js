@@ -162,7 +162,17 @@ function launchAurivoBinUpdateTerminal() {
         'yay -S aurivo-bin',
         'exit_code=$?',
         'printf "\\nIslem tamamlandi (kod: %s).\\n" "$exit_code"',
-        'printf "Kapatmak icin Enter...\\n"',
+        'if [ "$exit_code" -eq 0 ]; then',
+        '  printf "Yeni surum baslatiliyor...\\n"',
+        '  if command -v aurivo >/dev/null 2>&1; then',
+        '    nohup aurivo >/dev/null 2>&1 &',
+        '  elif command -v gtk-launch >/dev/null 2>&1; then',
+        '    nohup gtk-launch com.aurivo.mediaplayer.desktop >/dev/null 2>&1 &',
+        '  fi',
+        '  sleep 0.8',
+        '  exit 0',
+        'fi',
+        'printf "Guncelleme basarisiz. Kapatmak icin Enter...\\n"',
         'read -r _'
     ].join('; ');
 
