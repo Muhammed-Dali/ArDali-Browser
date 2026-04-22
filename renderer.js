@@ -13313,7 +13313,7 @@ function resetYouTubeNavigationHistory() {
 
 function recordYouTubeNavigation(url) {
     const normalized = normalizeYouTubeNavigationUrl(url);
-    if (!normalized || !isYouTubeWatchLikeUrl(normalized)) {
+    if (!normalized || !isYoutubeHost(normalized)) {
         if (!webPlatformRuntime.youtubeNavApplying) {
             resetYouTubeNavigationHistory();
         } else {
@@ -17143,6 +17143,13 @@ async function navigateBack() {
                     backSize: backStack.length,
                     forwardSize: Array.isArray(webPlatformRuntime.youtubeNavForwardStack) ? webPlatformRuntime.youtubeNavForwardStack.length : 0
                 });
+                // YouTube'da gerçek tarayıcı geçmişi en doğru UX'i verir:
+                // içerik sayfasından platform akışına (home/feed) güvenilir dönüş.
+                if (typeof elements.webView.canGoBack === 'function' && elements.webView.canGoBack()) {
+                    console.log('[WEB-BACK] action=youtube-webview-goBack');
+                    elements.webView.goBack();
+                    return;
+                }
                 if (backStack.length > 0) {
                     const prevUrl = String(backStack.pop() || '').trim();
                     if (prevUrl) {
@@ -17164,13 +17171,6 @@ async function navigateBack() {
                 const navigatedViaHomeClick = await tryNavigateBackViaYouTubeHomeClick();
                 console.log('[WEB-BACK] action=youtube-home-click', { navigatedViaHomeClick });
                 if (navigatedViaHomeClick) return;
-                // Stack boşsa YouTube'da tarayıcı geri semantiğini koru.
-                // Böylece watch sayfasından ana akışa dönüp mini player devam edebilir.
-                if (typeof elements.webView.canGoBack === 'function' && elements.webView.canGoBack()) {
-                    console.log('[WEB-BACK] action=youtube-webview-goBack');
-                    elements.webView.goBack();
-                    return;
-                }
                 console.log('[WEB-BACK] action=youtube-history-back-fallback');
                 elements.webView.executeJavaScript('try { history.back(); } catch (e) {}');
                 return;
@@ -17215,6 +17215,11 @@ async function navigateForward() {
             if (isYouTubePlatform) {
                 const normalizedCurrent = normalizeYouTubeNavigationUrl(currentUrl) || String(webPlatformRuntime.youtubeNavCurrentUrl || '').trim();
                 const forwardStack = Array.isArray(webPlatformRuntime.youtubeNavForwardStack) ? webPlatformRuntime.youtubeNavForwardStack : [];
+                // YouTube'da önce gerçek ileri geçmişini dene.
+                if (typeof elements.webView.canGoForward === 'function' && elements.webView.canGoForward()) {
+                    elements.webView.goForward();
+                    return;
+                }
                 if (forwardStack.length > 0) {
                     const nextUrl = String(forwardStack.pop() || '').trim();
                     if (nextUrl) {

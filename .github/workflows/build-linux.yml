@@ -250,12 +250,22 @@ jobs:
       - name: Auto bump version, push commit and tag
         shell: bash
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TRIGGER_TOKEN: ${{ secrets.RELEASE_TRIGGER_TOKEN }}
         run: |
           set -euo pipefail
 
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          # GITHUB_TOKEN ile atilan push/tag olaylari baska workflow'lari her zaman tetiklemez.
+          # Zincirin (Release -> Pacman -> Semgrep -> Snyk) garanti tetiklenmesi icin
+          # repo secret olarak RELEASE_TRIGGER_TOKEN (PAT) kullan.
+          if [ -n "${RELEASE_TRIGGER_TOKEN:-}" ]; then
+            git remote set-url origin "https://x-access-token:${RELEASE_TRIGGER_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+            echo "Using RELEASE_TRIGGER_TOKEN for release commit/tag push."
+          else
+            echo "::warning::RELEASE_TRIGGER_TOKEN is not set. Release/Pacman/Security workflows may not auto-trigger from bot push."
+          fi
 
           # Her main push sonrasında patch versiyon otomatik artırılır.
           NEW_VERSION="$(npm version patch --no-git-tag-version | sed 's/^v//')"
@@ -279,18 +289,6 @@ jobs:
           git push origin "${TAG}"
           echo "Pushed release commit + tag: ${TAG}"
 
-          # GITHUB_TOKEN ile workflow_dispatch çağrısı bazı repo politikalarında 403 dönebilir.
-          # Zincirin bozulmaması için bu çağrıyı best-effort yapıyoruz.
-          set +e
-          curl -fsSL -X POST \
-            -H "Authorization: Bearer ${GH_TOKEN}" \
-            -H "Accept: application/vnd.github+json" \
-            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/workflows/release.yml/dispatches" \
-            -d "{\"ref\":\"${TAG}\"}"
-          dispatch_code=$?
-          set -e
-          if [ "$dispatch_code" -ne 0 ]; then
-            echo "::warning::Release workflow dispatch skipped (exit=${dispatch_code}). Tag push already completed: ${TAG}"
-          else
-            echo "Dispatched Release workflow for ${TAG}"
-          fi
+          # release.yml zaten "push tags: v*" ile otomatik tetiklenir.
+          # Bu yüzden ek workflow_dispatch çağrısına gerek yok.
+          echo "Release workflow will be triggered automatically by tag push: ${TAG}"

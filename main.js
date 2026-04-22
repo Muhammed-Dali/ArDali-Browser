@@ -580,9 +580,15 @@ function installDownloadedUpdate() {
 }
 
 // MPRIS (Linux Medya Oynatıcı Uzaktan Arayüz Spesifikasyonu)
-const MPRIS_RUNTIME_ENABLED =
-    process.platform === 'linux' &&
+// Varsayılan: Linux'ta açık.
+// Kapatmak için: AURIVO_DISABLE_MPRIS=1
+// Açmayı zorlamak için: AURIVO_ENABLE_MPRIS=1
+const MPRIS_ENABLE_OVERRIDE =
     ['1', 'true', 'yes'].includes(String(process.env.AURIVO_ENABLE_MPRIS || '').trim().toLowerCase());
+const MPRIS_DISABLE_OVERRIDE =
+    ['1', 'true', 'yes'].includes(String(process.env.AURIVO_DISABLE_MPRIS || '').trim().toLowerCase());
+const MPRIS_RUNTIME_ENABLED =
+    process.platform === 'linux' && (MPRIS_ENABLE_OVERRIDE || !MPRIS_DISABLE_OVERRIDE);
 // Web platformlarının (YouTube, Spotify vb.) CERT_AUTHORITY_INVALID hatasında
 // çalışmaya devam edebilmesi için varsayılan olarak açık.
 // Kapatmak için: AURIVO_DISABLE_CERT_BYPASS=1
@@ -4149,12 +4155,17 @@ function createTray() {
 // ============================================
 function createMPRIS() {
     if (!MPRIS_RUNTIME_ENABLED) {
-        console.log('MPRIS varsayılan olarak kapalı (AURIVO_ENABLE_MPRIS=1 ile açılabilir)');
+        console.log('MPRIS devre dışı bırakıldı (AURIVO_DISABLE_MPRIS=1)');
         return;
     }
 
-    if (!Player || process.platform !== 'linux') {
+    if (process.platform !== 'linux') {
         console.log('MPRIS sadece Linux için destekleniyor');
+        return;
+    }
+
+    if (!Player) {
+        console.log('MPRIS devre dışı: mpris-service bağımlılığı bulunamadı');
         return;
     }
 
