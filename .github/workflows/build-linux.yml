@@ -26,6 +26,7 @@ concurrency:
 # Required for electron-builder to create/update GitHub Releases and upload assets (on tag builds).
 permissions:
   contents: write
+  actions: write
 
 jobs:
   build-linux:
@@ -248,6 +249,8 @@ jobs:
 
       - name: Auto bump version, push commit and tag
         shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
 
@@ -275,3 +278,12 @@ jobs:
           git tag -a "${TAG}" -m "Release ${TAG}"
           git push origin "${TAG}"
           echo "Pushed release commit + tag: ${TAG}"
+
+          # GITHUB_TOKEN ile atılan tag push'u bazı durumlarda push tetiklerini zincirlemeyebilir.
+          # Release workflow'unu ilgili tag ref'i ile doğrudan dispatch ederek zinciri garanti ediyoruz.
+          curl -fsSL -X POST \
+            -H "Authorization: Bearer ${GH_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/workflows/release.yml/dispatches" \
+            -d "{\"ref\":\"${TAG}\"}"
+          echo "Dispatched Release workflow for ${TAG}"
