@@ -167,11 +167,21 @@ function launchAurivoBinUpdateTerminal() {
     ].join('; ');
 
     const attempts = [
+        // Freedesktop uyumlu varsayılan terminal köprüsü
+        ['xdg-terminal-exec', ['bash', '-lc', updateScript]],
         ['x-terminal-emulator', ['-e', 'bash', '-lc', updateScript]],
         ['gnome-terminal', ['--', 'bash', '-lc', updateScript]],
+        ['kgx', ['--', 'bash', '-lc', updateScript]], // GNOME Console
+        ['ptyxis', ['--', 'bash', '-lc', updateScript]], // GNOME Ptyxis
         ['konsole', ['-e', 'bash', '-lc', updateScript]],
         ['xfce4-terminal', ['--command', `bash -lc '${updateScript.replace(/'/g, `'\\''`)}'`]],
+        ['mate-terminal', ['--', 'bash', '-lc', updateScript]],
+        ['tilix', ['-e', 'bash', '-lc', updateScript]],
+        ['qterminal', ['-e', 'bash', '-lc', updateScript]],
+        ['lxterminal', ['-e', 'bash', '-lc', updateScript]],
+        ['terminator', ['-x', 'bash', '-lc', updateScript]],
         ['kitty', ['bash', '-lc', updateScript]],
+        ['wezterm', ['start', '--', 'bash', '-lc', updateScript]],
         ['alacritty', ['-e', 'bash', '-lc', updateScript]],
         ['xterm', ['-e', 'bash', '-lc', updateScript]]
     ];

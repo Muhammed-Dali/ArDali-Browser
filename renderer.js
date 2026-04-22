@@ -24223,10 +24223,25 @@ async function runUpdatePrimaryAction() {
             return;
         }
 
-        // Henüz kontrol edilmemişse veya manuel kontrol istendi → AUR'dan kontrol et
+        // Henüz kontrol edilmemişse veya güncel durum bilinmiyorsa önce AUR'dan denetle.
+        // Kullanıcı tek tıkla işlem beklediği için güncelleme bulunduysa aynı tıkta başlat.
         const updater = window.aurivo?.app?.updater;
         if (updater) {
-            await updater.check({ manual: true });
+            const state = await updater.check({ manual: true });
+            if (String(state?.status || '').toLowerCase() === 'available') {
+                const result = await updater.launchAurivoBinUpdate?.();
+                if (!result?.ok) {
+                    if (result?.reason === 'yay-not-found') {
+                        safeNotify('yay bulunamadı. Lütfen önce yay kur.', 'warning', 2600);
+                        return;
+                    }
+                    if (result?.reason === 'terminal-not-found') {
+                        safeNotify('Terminal bulunamadı. Ayarlardan varsayılan terminali seçip tekrar dene.', 'warning', 3200);
+                        return;
+                    }
+                    safeNotify('AUR güncelleme başlatılamadı.', 'error', 2600);
+                }
+            }
         }
         return;
     }
