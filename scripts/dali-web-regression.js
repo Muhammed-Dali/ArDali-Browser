@@ -2,7 +2,6 @@
 'use strict';
 
 const fs = require('fs');
-const os = require('os');
 const path = require('path');
 const crypto = require('crypto');
 const { spawnSync } = require('child_process');
@@ -107,7 +106,9 @@ function buildSignature(sourceFile, generatedCode) {
 }
 
 function compileToTemp(sourceFile) {
-  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'aurivo-dali-reg-'));
+  const localTmpRoot = path.join(root, '.ci-tmp');
+  fs.mkdirSync(localTmpRoot, { recursive: true });
+  const tmpDir = fs.mkdtempSync(path.join(localTmpRoot, 'aurivo-dali-reg-'));
   const outFile = path.join(tmpDir, `${path.basename(sourceFile)}.generated.js`);
   const proc = spawnSync(process.execPath, [cliPath, sourceFile, outFile], {
     cwd: root,

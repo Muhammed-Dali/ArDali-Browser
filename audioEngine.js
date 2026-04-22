@@ -168,13 +168,17 @@ class AurivoAudioEngine {
 
         try {
             const result = nativeAudio.initialize();
-            this.initialized = result;
-            if (result) {
+            const ok = (result === true) || (result && typeof result === 'object' && result.success === true);
+            this.initialized = ok;
+            if (ok) {
                 console.log('✓ Aurivo Audio Engine başlatıldı');
+            } else if (result && typeof result === 'object' && result.error) {
+                console.warn('⚠ Audio Engine başlatılamadı:', result.error);
             }
-            return result;
+            return ok;
         } catch (error) {
             console.error('Audio Engine başlatma hatası:', error);
+            this.initialized = false;
             return false;
         }
     }

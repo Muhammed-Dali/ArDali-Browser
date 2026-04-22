@@ -708,6 +708,34 @@ static std::string trimAscii(const std::string& s) {
     return s.substr(b, e - b);
 }
 
+static std::string normalizePresetPathString(const std::string& rawPath) {
+    std::string normalized = rawPath;
+    try {
+        normalized = fs::path(rawPath).lexically_normal().generic_string();
+    } catch (...) {
+        normalized = rawPath;
+    }
+    std::replace(normalized.begin(), normalized.end(), '\\', '/');
+    return normalized;
+}
+
+static std::string presetStableKeyFromPath(const std::string& rawPath) {
+    std::string s = toLowerAscii(normalizePresetPathString(rawPath));
+    const char* markers[] = {
+        "/visualizer-presets/",
+        "/projectm/presets/",
+        "/presets/"
+    };
+    for (const char* marker : markers) {
+        const std::string m(marker);
+        const size_t pos = s.find(m);
+        if (pos != std::string::npos) {
+            return s.substr(pos + m.size());
+        }
+    }
+    return s;
+}
+
 static std::string initialsFromPresetName(const std::string& name) {
     std::string out;
     bool takeNext = true;
@@ -934,6 +962,7 @@ struct AppState {
     std::vector<PresetItem> presets;
     int currentPreset = 0;
     int pendingPresetApply = -1;
+    bool pendingPresetSmooth = false;
 
     AspectMode aspect = AspectMode::Free;
     QualityMode quality = QualityMode::High;
@@ -1010,7 +1039,9 @@ static void loadPresetPickerSettings() {
     int mainW = g.mainPrefW;
     int mainH = g.mainPrefH;
     std::unordered_set<std::string> enabledPaths;
+    std::unordered_set<std::string> enabledKeys;
     std::string lastPresetPath;
+    std::string lastPresetKey;
 
     std::string line;
     while (std::getline(in, line)) {
@@ -1053,9 +1084,17 @@ static void loadPresetPickerSettings() {
             } catch (...) {
             }
         } else if (key == "enabled") {
-            if (!val.empty()) enabledPaths.insert(val);
+            if (!val.empty()) {
+                enabledPaths.insert(val);
+                enabledKeys.insert(presetStableKeyFromPath(val));
+            }
+        } else if (key == "enabledKey") {
+            if (!val.empty()) enabledKeys.insert(toLowerAscii(trimAscii(val)));
         } else if (key == "lastPreset") {
             lastPresetPath = val;
+            lastPresetKey = presetStableKeyFromPath(val);
+        } else if (key == "lastPresetKey") {
+            lastPresetKey = toLowerAscii(trimAscii(val));
         } else if (key == "fpsMode") {
             g.fpsMode = fpsModeFromString(val);
         } else if (key == "textureQuality") {
@@ -1071,16 +1110,19 @@ static void loadPresetPickerSettings() {
     g.mainPrefW = mainW;
     g.mainPrefH = mainH;
 
-    if (!enabledPaths.empty()) {
+    if (!enabledPaths.empty() || !enabledKeys.empty()) {
         for (auto& p : g.presets) p.enabled = false;
         for (auto& p : g.presets) {
-            if (enabledPaths.count(p.path)) p.enabled = true;
+            const std::string stableKey = presetStableKeyFromPath(p.path);
+            if (enabledPaths.count(p.path) || enabledKeys.count(stableKey)) p.enabled = true;
         }
     }
 
-    if (!lastPresetPath.empty()) {
+    if (!lastPresetPath.empty() || !lastPresetKey.empty()) {
         for (int i = 0; i < (int)g.presets.size(); i++) {
-            if (g.presets[i].path == lastPresetPath) {
+            const bool pathMatch = (!lastPresetPath.empty() && g.presets[i].path == lastPresetPath);
+            const bool keyMatch = (!lastPresetKey.empty() && presetStableKeyFromPath(g.presets[i].path) == lastPresetKey);
+            if (pathMatch || keyMatch) {
                 g.currentPreset = i;
                 break;
             }
@@ -1112,9 +1154,13 @@ static void savePresetPickerSettings() {
     out << "clarityMode=" << clarityModeToString(g.clarityMode) << "\n";
     if (g.currentPreset >= 0 && g.currentPreset < (int)g.presets.size()) {
         out << "lastPreset=" << g.presets[g.currentPreset].path << "\n";
+        out << "lastPresetKey=" << presetStableKeyFromPath(g.presets[g.currentPreset].path) << "\n";
     }
     for (const auto& p : g.presets) {
-        if (p.enabled) out << "enabled=" << p.path << "\n";
+        if (p.enabled) {
+            out << "enabled=" << p.path << "\n";
+            out << "enabledKey=" << presetStableKeyFromPath(p.path) << "\n";
+        }
     }
     out.flush();
     out.close();
@@ -1468,29 +1514,31 @@ static void applyClarityMode(ClarityMode m) {
     savePresetPickerSettings();
 }
 
-static bool applyPresetByIndexNow(int idx) {
+static bool applyPresetByIndexNow(int idx, bool smoothTransition = false) {
     if (!g.pm) return false;
     if (idx < 0 || idx >= (int)g.presets.size()) return false;
     g.currentPreset = idx;
     const auto& p = g.presets[idx];
-    // Preset geçişindeki kısa takılmaları azaltmak için yumuşak geçişi kapat.
-    projectm_load_preset_file(g.pm, p.path.c_str(), false);
+    projectm_load_preset_file(g.pm, p.path.c_str(), smoothTransition);
     return true;
 }
 
-static void requestPresetPreview(int idx) {
+static void requestPresetPreview(int idx, bool smoothTransition = false) {
     if (idx < 0 || idx >= (int)g.presets.size()) return;
     g.pendingPresetApply = idx;
+    g.pendingPresetSmooth = smoothTransition;
 }
 
 static void flushPendingPresetApply() {
     if (g.pendingPresetApply < 0) return;
     const int idx = g.pendingPresetApply;
+    const bool smoothTransition = g.pendingPresetSmooth;
     g.pendingPresetApply = -1;
+    g.pendingPresetSmooth = false;
 
     // Preset yüklerken ana GL context'inde olduğumuzdan emin ol.
     SDL_GL_MakeCurrent(g.window, g.gl);
-    applyPresetByIndexNow(idx);
+    applyPresetByIndexNow(idx, smoothTransition);
     scheduleNextAutoSwitch();
 }
 
@@ -1548,7 +1596,8 @@ static void pumpAutoPresetSwitch() {
         g.pickerNavIndex = next;
         g.pickerNavScrollTo = true;
         g.pickerNavScrollDir = (next >= g.currentPreset) ? 1 : -1;
-        requestPresetPreview(next);
+        // Otomatik preset değişiminde yumuşak geçiş uygula.
+        requestPresetPreview(next, true);
     }
     scheduleNextAutoSwitch();
 }

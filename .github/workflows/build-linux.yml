@@ -129,6 +129,9 @@ jobs:
       - name: Build native audio addon (aurivo_audio.node)
         run: npm --prefix native ci
 
+      - name: Native audio latency/xrun smoke
+        run: npm run -s native:audio:smoke
+
       - name: Setup Rust toolchain (for Aurivo-Pulse)
         shell: bash
         run: |

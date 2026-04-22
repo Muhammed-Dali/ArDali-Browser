@@ -1,243 +1,188 @@
 <p align="center">
-  <img src="icons/aurivo_readme_round.png" width="120" height="120" alt="Aurivo Media Player"/>
+  <img src="icons/aurivo_readme_round.png" width="120" height="120" alt="Aurivo Medya Player"/>
 </p>
 
-<h1 align="center">Aurivo Media Player (Linux)</h1>
-
 <p align="center">
-  Müzik, video, web, indirici, dinleyerek şarkı bulma, projectM görselleştirme ve gelişmiş DSP ses efektlerini tek uygulamada birleştiren masaüstü medya platformu.
+  <a href="#english">English</a> | <a href="#turkce">Türkçe</a>
 </p>
 
-## Tek Cümlede Aurivo
-Aurivo, video oynatıcı + müzik çalar + web medya + indirme + dinleyerek şarkı bulma + gelişmiş ses efektlerini tek Linux uygulamasında birleştirir.
-
-## Kimler İçin?
-- Tek uygulamada kapsamlı medya deneyimi isteyen Linux kullanıcıları
-- Ses kalitesi ve DSP tarafında detaylı kontrol arayan kullanıcılar
-- Hem yerel medya hem web medya iş akışını birlikte kullananlar
-- Görselleştirici, indirici ve müzik keşfini aynı platformda isteyenler
-
-## 3 Adımda Kurulum
-1. [Latest Release](https://github.com/muhammed-aurivo-dev/Aurivo-Medya-Player-Linux/releases/latest) sayfasından sistemine uygun paketi indir (`AppImage`, `.deb`, `.rpm`).
-2. Paketi kur veya çalıştır:
-   - `AppImage`: dosyayı çalıştırılabilir yap (`chmod +x`) ve aç.
-   - `.deb`: `sudo apt install ./aurivo*.deb`
-   - `.rpm`: `sudo dnf install ./aurivo*.rpm`
-3. Aurivo'yu aç, medya klasörünü ekle ve çalmaya başla.
-
-## 30 Saniye Demo
-- Kısa tanıtım videosu: `README` içine YouTube/PeerTube linki ekleyebilirsin.
-- Öneri formatı: "0:00 arayüz, 0:10 ses efektleri, 0:20 web modu + indirici".
-
 <p align="center">
-  <a href="https://github.com/muhammed-aurivo-dev/Aurivo-Medya-Player-Linux/releases/latest">
-    <img alt="Latest release" src="https://img.shields.io/github/v/release/muhammed-aurivo-dev/Aurivo-Medya-Player-Linux?display_name=tag&sort=semver"/>
+  <a href="https://github.com/muhammed-aurivo-dev/Aurivo-Medya-Player-Linux">
+    <img alt="release" src="https://img.shields.io/github/v/release/muhammed-aurivo-dev/Aurivo-Medya-Player-Linux?display_name=tag&sort=semver&style=for-the-badge&labelColor=0b1220&color=22c55e"/>
   </a>
-  <a href="https://github.com/muhammed-aurivo-dev/Aurivo-Medya-Player-Linux/releases">
-    <img alt="Downloads" src="https://img.shields.io/github/downloads/muhammed-aurivo-dev/Aurivo-Medya-Player-Linux/total"/>
+  <a href="https://github.com/muhammed-aurivo-dev/Aurivo-Medya-Player-Linux">
+    <img alt="downloads" src="https://img.shields.io/github/downloads/muhammed-aurivo-dev/Aurivo-Medya-Player-Linux/total?style=for-the-badge&labelColor=0b1220&color=06b6d4"/>
   </a>
-  <a href="https://github.com/muhammed-aurivo-dev/Aurivo-Medya-Player-Linux/actions/workflows/release.yml">
-    <img alt="Release" src="https://github.com/muhammed-aurivo-dev/Aurivo-Medya-Player-Linux/actions/workflows/release.yml/badge.svg"/>
+  <a href="https://github.com/muhammed-aurivo-dev/Aurivo-Medya-Player-Linux/actions">
+    <img alt="build" src="https://img.shields.io/github/actions/workflow/status/muhammed-aurivo-dev/Aurivo-Medya-Player-Linux/release.yml?branch=main&label=build&style=for-the-badge&labelColor=0b1220"/>
   </a>
-  <a href="LICENSE">
-    <img alt="License" src="https://img.shields.io/badge/license-MIT-blue"/>
+  <a href="https://github.com/muhammed-aurivo-dev/Aurivo-Medya-Player-Linux/blob/main/LICENSE">
+    <img alt="license" src="https://img.shields.io/badge/license-MIT-6366f1?style=for-the-badge&labelColor=0b1220"/>
   </a>
 </p>
 
 <p align="center">
   <a href="https://github.com/muhammed-aurivo-dev/Aurivo-Medya-Player-Linux/releases/latest">
-    <img alt="Download AppImage" src="https://img.shields.io/badge/Download-AppImage-000000?style=for-the-badge&logo=linux&logoColor=white"/>
+    <img alt="Download AppImage" src="https://img.shields.io/badge/Download-AppImage-14b8a6?style=for-the-badge&logo=linux&logoColor=ffffff&labelColor=0b1220"/>
   </a>
   <a href="https://github.com/muhammed-aurivo-dev/Aurivo-Medya-Player-Linux/releases/latest">
-    <img alt="Download .deb" src="https://img.shields.io/badge/Download-.deb-A81D33?style=for-the-badge&logo=debian&logoColor=white"/>
+    <img alt="Download .deb" src="https://img.shields.io/badge/Download-.deb-0ea5e9?style=for-the-badge&logo=debian&logoColor=ffffff&labelColor=0b1220"/>
   </a>
   <a href="https://github.com/muhammed-aurivo-dev/Aurivo-Medya-Player-Linux/releases/latest">
-    <img alt="Download .rpm" src="https://img.shields.io/badge/Download-.rpm-294172?style=for-the-badge&logo=fedora&logoColor=white"/>
+    <img alt="Download .rpm" src="https://img.shields.io/badge/Download-.rpm-8b5cf6?style=for-the-badge&logo=fedora&logoColor=ffffff&labelColor=0b1220"/>
   </a>
 </p>
 
-## Linux Kurulum
-- AppImage / `.deb` / `.rpm`: [Latest Release](https://github.com/muhammed-aurivo-dev/Aurivo-Medya-Player-Linux/releases/latest)
-- Yayın kontrol listesi: [RELEASE-CHECKLIST.md](RELEASE-CHECKLIST.md)
+<p align="center">
+  <img src="screenshots/aber/shot-00.png" alt="Aurivo Hero Screenshot" width="1000"/>
+</p>
 
-## DALI npm Paketi
-- npm: [aurivo-dali-lang](https://www.npmjs.com/package/aurivo-dali-lang)
-- Kurulum:
-```bash
-npm install aurivo-dali-lang
-```
-- CLI örneği:
-```bash
-npx dali input.dali output.generated.js
-```
+## English
 
-### Hızlı Arch Kurulum
+### Aurivo Media Player (Linux)
 
-#### Seçenek 1: AUR (`yay`)
+Aurivo Media Player is a modern and lightweight player built for Linux.
+
+## AI Audit Statement
+
+This project was developed with active AI assistance.
+
+> **Although all code was generated with AI support, every line was personally reviewed before release and validated with security and performance testing.**
+
+In line with Linux community standards, all technical and legal responsibility for this project belongs to the developer, Muhammed.
+
+## Features
+
+- Built-in web platform mode for media-focused browsing
+- Web audio effects for online media playback
+- Video player with dedicated video audio effects
+- Music player with dedicated music audio effects
+- YouTube content downloader
+- Song recognition by listening
+- Real-time visualization support
+- Multi-language UI support (users can choose their preferred language)
+
+## Screenshots
+
+<details>
+  <summary>View screenshots</summary>
+  <br/>
+  <table>
+    <tr>
+      <td><img src="screenshots/aber/shot-00.png" alt="Aurivo Screenshot 00"/></td>
+      <td><img src="screenshots/aber/shot-01.png" alt="Aurivo Screenshot 01"/></td>
+    </tr>
+    <tr>
+      <td><img src="screenshots/aber/shot-02.png" alt="Aurivo Screenshot 02"/></td>
+      <td><img src="screenshots/aber/shot-03.png" alt="Aurivo Screenshot 03"/></td>
+    </tr>
+    <tr>
+      <td><img src="screenshots/aber/shot-04.png" alt="Aurivo Screenshot 04"/></td>
+      <td><img src="screenshots/aber/shot-05.png" alt="Aurivo Screenshot 05"/></td>
+    </tr>
+    <tr>
+      <td><img src="screenshots/aber/shot-06.png" alt="Aurivo Screenshot 06"/></td>
+      <td></td>
+    </tr>
+  </table>
+</details>
+
+## Installation
+
+Primary installation instruction for Arch-based Linux systems:
+
 ```bash
 yay -S aurivo-bin
 ```
 
-#### Seçenek 2: Doğrudan Pacman Repo
-`/etc/pacman.conf` içine ekleyin:
-```ini
-[aurivo]
-SigLevel = Optional TrustAll
-Server = https://github.com/muhammed-aurivo-dev/Aurivo-Medya-Player-Linux/releases/download/pacman-repo
-```
+For other distributions, follow the latest packages and releases on the GitHub release page.
 
-Ardından:
-```bash
-sudo pacman -Sy
-sudo pacman -S aurivo-bin
-```
+## Packages and Support
 
-## Aurivo Nedir?
-Aurivo, klasik bir medya oynatıcıdan daha fazlasını hedefler:
-- Yerel müzik/video oynatma
-- Dahili web medya deneyimi
-- Çok modüllü ses işleme (native C++ DSP)
-- Dinleyerek şarkı bulma (Aurivo-Pulse)
-- Gelişmiş indirici (Aurivo-Dawlod)
-- projectM tabanlı canlı görselleştirme
+- Linux packages: `AppImage`, `.deb`, `.rpm` (see [latest releases](https://github.com/muhammed-aurivo-dev/Aurivo-Medya-Player-Linux/releases/latest))
+- Bug reports and feature requests: [Issues](https://github.com/muhammed-aurivo-dev/Aurivo-Medya-Player-Linux/issues)
+- Contribution guide: [CONTRIBUTING.md](CONTRIBUTING.md)
 
-Bu yapı sayesinde kullanıcılar tek uygulamada üretken, modern ve kapsamlı bir medya ekosistemi elde eder.
+## Known Behavior
 
-## Temel Özellikler
+On some USB/headset audio devices, disconnecting the device may switch the system output route and pause playback. Playback can continue by pressing play again.
 
-### 1) Müzik ve Video Oynatma
-- Yerel dosya oynatma
-- Çalma listesi yönetimi
-- Çalma kontrolleri (play/pause, ileri/geri, tekrar, karıştır)
-- Kütüphane odaklı kullanım
+## License
 
-### 2) Dinleyerek Şarkı Bulma (Aurivo-Pulse)
-- Çalan sesi dinleyip şarkı tespiti akışı
-- Hızlı dinleme modu ve tercih ekranı
-- Tanıma sürecinde kullanıcıya net geri bildirim
+This project is released under the MIT License. See [LICENSE](LICENSE) for details.
 
-### 3) Web Medya Modu
-- Uygulama içi web sekmesi
-- Medya odaklı platform kullanımı için tek arayüz
-- Güvenlik ve gizlilik kontrolleri ile uyumlu yapı
+---
 
-### 4) İndirme Modülü (Aurivo-Dawlod)
-- Video/ses indirme senaryoları
-- Format, kalite ve çıktı kontrolü
-- Ayrı modül mimarisi ile ana uygulamadan temiz ayrım
+## Turkce
 
-### 5) projectM Görselleştirici
-- Native `projectM` görselleştirme altyapısı
-- Gerçek zamanlı görsel sahneler ve preset akışı
-- Performans odaklı harici görselleştirici bileşeni
+### Aurivo Medya Player (Linux)
 
-### 6) Gelişmiş Ses Efektleri (DSP)
-- Native C++ ses motoru (BASS + DSP zinciri)
-- 32 bant EQ ve preset sistemi
-- Kompresör, limiter, reverb, crossfeed, surround, true-peak vb. modüller
-- Efekt ayarlarının kalıcı saklanması ve UI senkronizasyonu
+Aurivo Medya Player, Linux için geliştirilmiş modern ve hafif bir oynatıcıdır.
 
-## Ses Efekt Modül Haritası
-Aurivo ses işleme tarafında kapsamlı bir modül seti sunar:
-- Ekolaycı (32-Bant)
-- Reverb (BASS FX)
-- Dinamik Kompresör
-- Limiter
-- Bas Güçlendirici
-- Akıllı Noise Gate
-- De-esser
-- Exciter
-- Stereo Widener v2
-- Echo / Saf Echo
-- Konvolüsyon Reverb (IR)
-- Parametrik EQ (PEQ)
-- Auto Gain / Normalize
-- True Peak Limiter + Meter
-- Crossfeed (Kulaklık)
-- Surround (5.1/7.1 Simülasyon)
-- Bass Mono
-- Dynamic EQ
-- Tape Saturation
-- Bit-depth / Dither
+## AI Denetim Beyanı
 
-## Çoklu Dil Desteği
-Uygulama çok dilli çalışır ve sistem dili ile uyumlu davranabilir.
+Bu projenin geliştirilme sürecinde yapay zekadan aktif olarak destek alınmıştır.
 
-Desteklenen diller (örnek):
-- Turkish (`tr-TR`)
-- English (`en-US`)
-- Arabic (`ar-SA`)
-- German (`de-DE`)
-- Spanish (`es-ES`)
-- French (`fr-FR`)
-- Italian (`it-IT`)
-- Portuguese (`pt-BR`)
-- Russian (`ru-RU`)
-- Chinese Simplified/Traditional (`zh-CN`, `zh-TW`)
-- ve diğerleri (`locales/` altında)
+> **Tüm kodlar AI desteğiyle üretilmiş olsa da, yayınlanmadan önce bizzat tarafımdan satır satır denetlenmiş, güvenlik ve performans testlerinden geçirilmiştir.**
 
-Detay: [LOCALE-COVERAGE.md](LOCALE-COVERAGE.md)
+Linux topluluğu standartlarına uygun şekilde, projeye ilişkin teknik ve yasal tüm sorumluluk geliştirici olarak tarafıma (Muhammed) aittir.
+
+## Özellikler
+
+- Medya odaklı kullanım için dahili web platform modu
+- Web içerikleri için web ses efektleri
+- Video oynatıcıda videoya özel ses efektleri
+- Müzik çalarda müziğe özel ses efektleri
+- YouTube içerik indirici
+- Dinleyerek şarkı bulma
+- Gerçek zamanlı görselleştirme desteği
+- Çoklu dil desteği (kullanıcı istediği dilde kullanabilir)
 
 ## Ekran Görüntüleri
 
-### Ana Arayüz
-<img src="screenshots/shot-20260331-222556.png" alt="Aurivo Main UI" width="1000"/>
-
-### Ses Efektleri (DSP)
-<img src="screenshots/shot-20260331-222611.png" alt="Aurivo Sound Effects" width="1000"/>
-
-### Dinleyerek Şarkı Bulma / Modüler Arayüz
-<img src="screenshots/shot-20260331-222650.png" alt="Aurivo Listen Mode" width="1000"/>
-
-### projectM Görselleştirici
-<img src="screenshots/shot-20260331-222722.png" alt="Aurivo projectM Visualizer" width="1000"/>
-
-### İndirme Modülü
-<img src="screenshots/shot-20260331-222758.png" alt="Aurivo Dawlod" width="1000"/>
-
 <details>
-<summary>Daha fazla ekran görüntüsü</summary>
-
-- ![Shot 1](screenshots/shot-20260331-222924.png)
-- ![Shot 2](screenshots/shot-20260331-222959.png)
-- ![Shot 3](screenshots/shot-20260331-223316.png)
-- ![Shot 4](screenshots/shot-20260331-223431.png)
-- ![Shot 5](screenshots/shot-20260331-223728.png)
-
+  <summary>Ekran görüntülerini göster</summary>
+  <br/>
+  <table>
+    <tr>
+      <td><img src="screenshots/aber/shot-00.png" alt="Aurivo Ekran Görüntüsü 00"/></td>
+      <td><img src="screenshots/aber/shot-01.png" alt="Aurivo Ekran Görüntüsü 01"/></td>
+    </tr>
+    <tr>
+      <td><img src="screenshots/aber/shot-02.png" alt="Aurivo Ekran Görüntüsü 02"/></td>
+      <td><img src="screenshots/aber/shot-03.png" alt="Aurivo Ekran Görüntüsü 03"/></td>
+    </tr>
+    <tr>
+      <td><img src="screenshots/aber/shot-04.png" alt="Aurivo Ekran Görüntüsü 04"/></td>
+      <td><img src="screenshots/aber/shot-05.png" alt="Aurivo Ekran Görüntüsü 05"/></td>
+    </tr>
+    <tr>
+      <td><img src="screenshots/aber/shot-06.png" alt="Aurivo Ekran Görüntüsü 06"/></td>
+      <td></td>
+    </tr>
+  </table>
 </details>
 
-## Kurulum ve Paketler
-En güncel paketler için: [Releases](https://github.com/muhammed-aurivo-dev/Aurivo-Medya-Player-Linux/releases/latest)
+## Kurulum
 
-Linux paketleri:
-- `AppImage` (geniş dağıtım uyumluluğu)
-- `.deb` (Debian/Ubuntu tabanlı)
-- `.rpm` (Fedora/openSUSE tabanlı)
+Arch tabanlı Linux sistemler için birincil kurulum talimatı:
 
-## Hızlı Başlangıç (Geliştirici)
 ```bash
-npm ci
-npm --prefix native ci
-cmake -S visualizer -B build-visualizer -G Ninja -DCMAKE_BUILD_TYPE=Release
-cmake --build build-visualizer
-npm run build:linux
+yay -S aurivo-bin
 ```
 
-## Proje Yapısı (Özet)
-- `renderer.js`, `main.js`, `preload.js`: Electron uygulama katmanı
-- `native/`: C++ native audio engine
-- `soundEffectsRenderer.js`: DSP arayüz ve kontrol katmanı
-- `visualizer/`: projectM görselleştirici bileşeni
-- `Aurivo-Pulse/`: dinleyerek şarkı bulma modülü
-- `Aurivo-Dawlod/`: indirme modülü
-- `locales/`: çeviri dosyaları
+Diğer dağıtımlar için güncel paketler ve sürümler yayın sayfasından takip edilebilir.
+
+## Paketler ve Destek
+
+- Linux paketleri: `AppImage`, `.deb`, `.rpm` ([son sürümler](https://github.com/muhammed-aurivo-dev/Aurivo-Medya-Player-Linux/releases/latest))
+- Hata ve özellik talepleri: [Issues](https://github.com/muhammed-aurivo-dev/Aurivo-Medya-Player-Linux/issues)
+- Katkı rehberi: [CONTRIBUTING.md](CONTRIBUTING.md)
 
 ## Bilinen Davranış
-Bazı USB/kulaklık ses cihazlarında bağlantı kesildiğinde sistem varsayılan çıkış rotası değişebilir ve oynatma durabilir. Kullanıcı play ile devam edebilir.
 
-## Katkı
-- Hata/öneri: Issues
-- PR: [CONTRIBUTING.md](CONTRIBUTING.md)
+Bazı USB/kulaklık ses cihazlarında bağlantı kesildiğinde sistem ses çıkış rotası değişebilir ve oynatma durabilir. Oynatma, tekrar play ile devam ettirilebilir.
 
 ## Lisans
-MIT - detaylar için [LICENSE](LICENSE)
+
+Bu proje MIT Lisansı ile sunulmaktadır. Detaylar için [LICENSE](LICENSE) dosyasına bakabilirsiniz.

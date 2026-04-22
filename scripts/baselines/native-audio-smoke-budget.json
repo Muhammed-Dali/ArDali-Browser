@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "maxInitMs": 2500,
+  "maxStartLatencyMs": 800,
+  "maxStallEvents": 2,
+  "maxBackwardJumps": 0,
+  "minObservedAdvanceMs": 400
+}

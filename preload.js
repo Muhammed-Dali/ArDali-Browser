@@ -263,6 +263,11 @@ const createAudioAPI = () => {
             setDevice: (id) => ipcRenderer.invoke("audio:setDevice", id)
         },
 
+        outputProfile: {
+            configure: (profile) => ipcRenderer.invoke('audio:configureOutputProfile', profile || {}),
+            getStatus: () => ipcRenderer.invoke('audio:getOutputProfileStatus')
+        },
+
         init: async (deviceIndex = -1) => {
             const available = await ipcRenderer.invoke('audio:isNativeAvailable');
             isNativeAvailable = available;
@@ -692,6 +697,12 @@ const aurivoAPI = {
         ipcRenderer.on('settings:requestClose', handler);
         return () => ipcRenderer.removeListener('settings:requestClose', handler);
     },
+    onScopedSfxLiveParam: (callback) => {
+        if (typeof callback !== 'function') return () => {};
+        const handler = (_event, payload) => callback(payload);
+        ipcRenderer.on('sfx:scoped-live-param', handler);
+        return () => ipcRenderer.removeListener('sfx:scoped-live-param', handler);
+    },
     confirmSettingsClose: () => ipcRenderer.invoke('settings:confirmClose'),
 
     // Playlist
@@ -828,6 +839,7 @@ const aurivoAPI = {
         },
         closeWindow: () => ipcRenderer.invoke('soundEffects:closeWindow'),
         applyInMainWindow: (script) => ipcRenderer.invoke('soundEffects:applyInMainWindow', String(script || '')),
+        emitScopedLiveParam: (payload) => ipcRenderer.send('soundEffects:scopedLiveParam', payload || {}),
         getWebSpectrum: (numBands) => ipcRenderer.invoke('soundEffects:getWebSpectrum', numBands || 128),
         getWebNoiseGateStatus: () => ipcRenderer.invoke('soundEffects:getWebNoiseGateStatus'),
         getWebTruePeakStatus: () => ipcRenderer.invoke('soundEffects:getWebTruePeakStatus'),

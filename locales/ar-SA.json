@@ -737,6 +737,14 @@
   "trayMedia.stop": "Stop",
   "trayMedia.stopAfterCurrent": "Stop after current track",
   "trayMedia.unmute": "Unmute",
-  "visualizer.notFoundBody": "Visualizer component is missing. Path: {path}",
-  "visualizer.notFoundTitle": "Visualizer components are missing"
+  "visualizer.notFoundBody": "مكوّن المرئيات مفقود. المسار: {path}",
+  "visualizer.notFoundTitle": "مكوّنات المرئيات مفقودة",
+  "ui.languageSelection.title": "اختيار اللغة",
+  "ui.languageSelection.label": "اللغة",
+  "ui.languageSelection.hint": "يتطلب تطبيق التغييرات إعادة تشغيل التطبيق.",
+  "ui.languageSelection.restartHint": "سيتم تطبيق اللغة المختارة عند التشغيل القادم.",
+  "restart.title": "إعادة التشغيل مطلوبة",
+  "restart.message": "لتطبيق تغيير اللغة، يجب إعادة تشغيل التطبيق. هل تريد إعادة التشغيل الآن؟",
+  "restart.yes": "نعم",
+  "restart.no": "لا"
 }

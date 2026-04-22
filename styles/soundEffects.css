@@ -629,6 +629,33 @@ body.rtl .effect-item::after {
     color: var(--text-dimmed);
 }
 
+.effect-select {
+    width: 100%;
+    border: 1px solid var(--border-medium);
+    background: var(--bg-dark);
+    color: #fff;
+    padding: 10px 12px;
+    border-radius: 8px;
+}
+
+.control-group {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.control-group label {
+    color: var(--text-color);
+}
+
+.control-hint {
+    display: block;
+    opacity: 0.65;
+    margin-top: 4px;
+    font-size: 12px;
+    color: var(--text-secondary);
+}
+
 .effect-actions {
     display: flex;
     gap: 8px;
@@ -725,6 +752,239 @@ body.rtl .effect-item::after {
 
 .action-btn.secondary:active {
     background: linear-gradient(180deg, var(--bg-medium) 0%, var(--bg-dark) 100%);
+}
+
+/* ============================================
+   AUDIOPHILE PANEL
+   ============================================ */
+.audiophile-title {
+    color: #4bd8e3;
+}
+
+.audiophile-controls-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    padding: 20px;
+}
+
+.audiophile-summary-card {
+    margin: 0 20px 4px;
+    border-radius: 12px;
+    border: 1px solid rgba(75, 216, 227, 0.24);
+    background:
+        radial-gradient(120% 120% at 100% 0%, rgba(75, 216, 227, 0.16) 0%, rgba(75, 216, 227, 0) 44%),
+        linear-gradient(180deg, rgba(13, 24, 34, 0.96) 0%, rgba(10, 18, 29, 0.98) 100%);
+    padding: 14px 14px 12px;
+}
+
+.audiophile-summary-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+}
+
+.audiophile-badges {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.audiophile-badge {
+    font-size: 11px;
+    font-weight: 600;
+    color: #92f7ff;
+    border: 1px solid rgba(103, 226, 255, 0.45);
+    background: rgba(62, 180, 212, 0.12);
+    border-radius: 999px;
+    padding: 4px 10px;
+}
+
+.audiophile-badge-btn {
+    cursor: pointer;
+    transition: transform 120ms ease, border-color 160ms ease, background 160ms ease;
+}
+
+.audiophile-badge-btn:hover {
+    transform: translateY(-1px);
+    border-color: rgba(123, 244, 255, 0.66);
+}
+
+.audiophile-badge-btn.active {
+    color: #d9ffff;
+    border-color: rgba(117, 243, 255, 0.88);
+    background: linear-gradient(180deg, rgba(41, 151, 183, 0.42) 0%, rgba(28, 107, 136, 0.34) 100%);
+    box-shadow: 0 0 0 1px rgba(111, 231, 255, 0.28), 0 4px 14px rgba(31, 157, 196, 0.36);
+}
+
+.audiophile-badge-btn.active::after {
+    content: " • Aktif";
+    font-weight: 700;
+}
+
+.audiophile-badge.muted {
+    color: #b8cad6;
+    border-color: rgba(140, 159, 174, 0.36);
+    background: rgba(76, 92, 112, 0.18);
+}
+
+.audiophile-refresh-btn {
+    padding: 7px 12px;
+    font-size: 12px;
+    min-width: 132px;
+}
+
+.audiophile-summary-status {
+    margin-top: 10px;
+    padding: 8px 10px;
+    border-radius: 8px;
+    border: 1px solid rgba(75, 216, 227, 0.2);
+    background: rgba(9, 24, 34, 0.75);
+    color: #cdebf2;
+    font-size: 12px;
+}
+
+.audiophile-quality-meter {
+    margin-top: 10px;
+    border-top: 1px solid rgba(126, 158, 178, 0.22);
+    padding-top: 10px;
+}
+
+.audiophile-quality-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    color: #d8e6ef;
+}
+
+.audiophile-quality-bar {
+    margin-top: 8px;
+    height: 8px;
+    background: rgba(30, 40, 54, 0.95);
+    border-radius: 999px;
+    overflow: hidden;
+    border: 1px solid rgba(110, 126, 142, 0.25);
+}
+
+.audiophile-quality-bar span {
+    display: block;
+    width: 0%;
+    height: 100%;
+    border-radius: 999px;
+    background: linear-gradient(90deg, #5f7f94 0%, #89a6ba 100%);
+    transition: width 220ms ease;
+}
+
+.audiophile-quality-bar span.tier-reference {
+    background: linear-gradient(90deg, #25d39f 0%, #7bffd0 100%);
+}
+
+.audiophile-quality-bar span.tier-high {
+    background: linear-gradient(90deg, #35b8ff 0%, #85deff 100%);
+}
+
+.audiophile-quality-bar span.tier-balanced {
+    background: linear-gradient(90deg, #f0b765 0%, #ffd999 100%);
+}
+
+.audiophile-quality-bar span.tier-basic {
+    background: linear-gradient(90deg, #8a97a6 0%, #b8c3ce 100%);
+}
+
+.audiophile-exclusive-status {
+    margin-top: 8px;
+    font-size: 12px;
+    color: #a8bfcd;
+}
+
+.audiophile-switch-group {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    background: rgba(75, 216, 227, 0.05);
+    border: 1px solid rgba(75, 216, 227, 0.2);
+    padding: 15px;
+    border-radius: 10px;
+}
+
+.audiophile-switch-label {
+    flex: 1;
+    margin: 0;
+    color: #fff;
+}
+
+.audiophile-exclusive-toggle {
+    margin-left: 10px;
+    min-width: 104px;
+    border: 1px solid rgba(110, 132, 149, 0.56);
+    border-radius: 999px;
+    background: linear-gradient(180deg, rgba(31, 40, 52, 0.95), rgba(20, 28, 38, 0.95));
+    color: #d7e3ec;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 10px 5px 7px;
+    cursor: pointer;
+}
+
+.audiophile-exclusive-toggle:hover {
+    border-color: rgba(88, 214, 247, 0.58);
+}
+
+.audiophile-exclusive-track {
+    width: 28px;
+    height: 16px;
+    border-radius: 999px;
+    background: rgba(81, 97, 112, 0.75);
+    padding: 2px;
+    display: inline-flex;
+    align-items: center;
+    transition: background 180ms ease;
+}
+
+.audiophile-exclusive-thumb {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: #f2f8ff;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.28);
+    transform: translateX(0);
+    transition: transform 180ms ease;
+}
+
+.audiophile-exclusive-text {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.2px;
+}
+
+.audiophile-exclusive-toggle.active {
+    border-color: rgba(77, 226, 184, 0.72);
+    background: linear-gradient(180deg, rgba(14, 47, 47, 0.95), rgba(12, 34, 37, 0.95));
+    color: #dfffee;
+}
+
+.audiophile-exclusive-toggle.active .audiophile-exclusive-track {
+    background: rgba(40, 186, 132, 0.88);
+}
+
+.audiophile-exclusive-toggle.active .audiophile-exclusive-thumb {
+    transform: translateX(12px);
+}
+
+.audiophile-select {
+    border-color: rgba(75, 216, 227, 0.28);
+}
+
+.audiophile-knobs {
+    display: flex;
+    gap: 20px;
+    padding: 0 20px 20px 20px;
+    justify-content: center;
 }
 
 /* Global Select & Option Dark Theme (Linux/Wayland Fix) */

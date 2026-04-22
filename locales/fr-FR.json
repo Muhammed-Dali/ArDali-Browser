@@ -553,6 +553,14 @@
   "trayMedia.stop": "Stop",
   "trayMedia.stopAfterCurrent": "Stop after current track",
   "trayMedia.unmute": "Unmute",
-  "visualizer.notFoundBody": "Visualizer component is missing. Path: {path}",
-  "visualizer.notFoundTitle": "Visualizer components are missing"
+  "visualizer.notFoundBody": "Le composant de visualisation est manquant. Chemin : {path}",
+  "visualizer.notFoundTitle": "Les composants de visualisation sont manquants",
+  "ui.languageSelection.title": "Sélection de la langue",
+  "ui.languageSelection.label": "Langue",
+  "ui.languageSelection.hint": "Un redémarrage est nécessaire pour appliquer les changements.",
+  "ui.languageSelection.restartHint": "La langue choisie sera appliquée au prochain démarrage.",
+  "restart.title": "Redémarrage requis",
+  "restart.message": "Pour appliquer le changement de langue, l'application doit redémarrer. Redémarrer maintenant ?",
+  "restart.yes": "Oui",
+  "restart.no": "Non"
 }

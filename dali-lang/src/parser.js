@@ -1,6 +1,7 @@
 'use strict';
 
 const { tokenize } = require('./tokenizer');
+const MAX_BLOCK_NESTING_DEPTH = 64;
 
 class Parser {
   constructor(tokens) {
@@ -215,7 +216,12 @@ function readBalancedBlock(source, openBraceIndex) {
   let depth = 0;
   for (let i = openBraceIndex; i < source.length; i += 1) {
     const ch = source[i];
-    if (ch === '{') depth += 1;
+    if (ch === '{') {
+      depth += 1;
+      if (depth > MAX_BLOCK_NESTING_DEPTH) {
+        throw new Error(`Block nesting too deep in .dl v2 source (> ${MAX_BLOCK_NESTING_DEPTH})`);
+      }
+    }
     if (ch === '}') {
       depth -= 1;
       if (depth === 0) {

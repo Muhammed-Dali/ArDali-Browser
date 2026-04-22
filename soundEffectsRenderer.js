@@ -18,6 +18,8 @@ const SFX = {
     eq32PersistTimer: null,
     eq32PersistInFlight: false,
     scopedPersistTimers: {},
+    scopedPersistQueue: {},
+    scopedPersistFlushTimer: null,
     crossfeedStatusInterval: null,
     crossfeedDeviceInterval: null,
     crossfeedAutoForcedBySystem: false,
@@ -954,6 +956,14 @@ function tOr(key, fallback) {
     return v && v !== key ? v : fallback;
 }
 
+function tFmt(key, fallback, vars = {}) {
+    let text = tOr(key, fallback);
+    Object.entries(vars || {}).forEach(([name, value]) => {
+        text = text.replaceAll(`{${name}}`, String(value));
+    });
+    return text;
+}
+
 function getKnobLabel(effectName, param, fallback) {
     const p = String(param || '');
     const specificKey = `sfx.knob.${effectName}.${p}`;
@@ -1599,10 +1609,36 @@ async function persistScopedEffectToAppSettings(effectName, effectSettings) {
     return !!(await window.aurivo.saveSettings(next));
 }
 
+async function flushScopedPersistQueue(reason = 'idle') {
+    if (!window.aurivo?.loadSettings || !window.aurivo?.saveSettings) return;
+    const entries = Object.entries(SFX.scopedPersistQueue || {});
+    if (!entries.length) return;
+    SFX.scopedPersistQueue = {};
+    for (const [effectName, effectSettings] of entries) {
+        try {
+            const saved = await persistScopedEffectToAppSettings(effectName, effectSettings);
+            console.log(`[SFX ROUTE] source=${SFX_SCOPE} route=web_dali effect=${effectName} action=${saved ? 'persist' : 'persist-skip'} reason=${reason}`);
+        } catch (e) {
+            console.warn(`[SFX ROUTE] source=${SFX_SCOPE} route=web_dali effect=${effectName} persist-failed:`, e?.message || e);
+        }
+    }
+}
+
 function schedulePersistScopedEffectToAppSettings(effectName, settings, delayMs = 120) {
     if (!window.aurivo?.loadSettings || !window.aurivo?.saveSettings) return;
     const key = String(effectName || '').trim().toLowerCase();
     if (!key) return;
+    if (SFX_IS_SCOPED_DALI) {
+        // Web/Video scope'ta slider sürüklerken sık saveSettings -> native reset dalgası oluşup
+        // takırtı yaratabiliyor. Bu yüzden değişiklikleri kuyruğa alıp idle dönemde tek sefer yaz.
+        SFX.scopedPersistQueue[key] = { ...(settings || {}) };
+        if (SFX.scopedPersistFlushTimer) clearTimeout(SFX.scopedPersistFlushTimer);
+        SFX.scopedPersistFlushTimer = setTimeout(() => {
+            SFX.scopedPersistFlushTimer = null;
+            flushScopedPersistQueue('idle').catch(() => {});
+        }, Math.max(1200, Number(delayMs) || 0));
+        return;
+    }
     if (SFX.scopedPersistTimers[key]) clearTimeout(SFX.scopedPersistTimers[key]);
     SFX.scopedPersistTimers[key] = setTimeout(async () => {
         try {
@@ -1614,6 +1650,26 @@ function schedulePersistScopedEffectToAppSettings(effectName, settings, delayMs 
             delete SFX.scopedPersistTimers[key];
         }
     }, Math.max(0, Number(delayMs) || 0));
+}
+
+function emitScopedLiveEffectToMain(effectName, effectSettings = null) {
+    if (!SFX_IS_SCOPED_DALI) return;
+    const effect = String(effectName || '').trim().toLowerCase();
+    if (!effect) return;
+    const scoped = effectSettings && typeof effectSettings === 'object'
+        ? effectSettings
+        : (getSettings(effect) || {});
+    const sanitized = sanitizeScopedEffectForApp(effect, scoped);
+    dispatchRealtimeParam(
+        'scopedlive',
+        effect,
+        () => window.aurivo?.soundEffects?.emitScopedLiveParam?.({
+            scope: SFX_SCOPE,
+            effect,
+            settings: sanitized
+        }),
+        24
+    );
 }
 
 // ============================================
@@ -1670,7 +1726,21 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // Uygulama ayarlarından EQ32'yi geri yükle (varsa) ve DSP'ye uygula
         await hydrateEq32FromAppSettings();
-        syncStartupEffectsState();
+        // Ses oynatım sırasında toplu re-apply klik/takırtı yapabildiği için,
+        // startup sync'i yalnızca oynatma yokken yap.
+        let isPlayingNow = false;
+        try {
+            if (typeof window.aurivo?.audio?.isPlaying === 'function') {
+                isPlayingNow = !!(await window.aurivo.audio.isPlaying());
+            }
+        } catch {
+            isPlayingNow = false;
+        }
+        if (!isPlayingNow) {
+            syncStartupEffectsState();
+        } else {
+            console.log('[SFX INIT] Startup sync skip (aktif oynatma var)');
+        }
 
         // İlk efekti göster (paneli lazy-load eder)
         showEffect('eq32');
@@ -1681,6 +1751,19 @@ document.addEventListener('DOMContentLoaded', () => {
         updateEqPresetButtonLabel();
         showEffect('eq32');
     });
+});
+
+window.addEventListener('beforeunload', () => {
+    if (!SFX_IS_SCOPED_DALI) return;
+    try {
+        if (SFX.scopedPersistFlushTimer) {
+            clearTimeout(SFX.scopedPersistFlushTimer);
+            SFX.scopedPersistFlushTimer = null;
+        }
+        flushScopedPersistQueue('beforeunload').catch(() => {});
+    } catch {
+        // yoksay
+    }
 });
 
 let eqPresetListenerAttached = false;
@@ -1840,6 +1923,11 @@ function setupEventListeners() {
                 await applyEmbeddedLanguage(lang);
             });
         }
+    });
+
+    // Standalone modda global dil değişimlerini canlı uygula.
+    window.addEventListener('aurivo:languageChanged', () => {
+        refreshLocalizedRuntimeUi();
     });
 
     // Window controls (frameless pencere için)
@@ -2474,8 +2562,8 @@ function updateNoiseGateStatusUI(status) {
     const led = document.getElementById('gateStatusLed');
     const text = document.getElementById('gateStatusText');
     if (!led || !text) return;
-    const onText = tSync('sfx.on') === 'sfx.on' ? 'Açık' : tSync('sfx.on');
-    const offText = tSync('sfx.off') === 'sfx.off' ? 'Kapalı' : tSync('sfx.off');
+    const onText = tSync('sfx.on') === 'sfx.on' ? 'On' : tSync('sfx.on');
+    const offText = tSync('sfx.off') === 'sfx.off' ? 'Off' : tSync('sfx.off');
     const enabled = !!status?.enabled;
     const open = !!status?.open;
     led.classList.remove('active', 'warning', 'danger');
@@ -2676,49 +2764,78 @@ function getEQ32BandsMarkup(settings) {
 // --- Audiophile Mode Template ---
 function getAudiophileTemplate() {
     const settings = getSettings('audiophile') || { preamp: 0 };
+    const onText = tSync('sfx.on') === 'sfx.on' ? 'On' : tSync('sfx.on');
+    const offText = tSync('sfx.off') === 'sfx.off' ? 'Off' : tSync('sfx.off');
     return `
         <div class="effect-panel" id="audiophilePanel">
             <div class="effect-header audiophile-header">
                 <div class="effect-title-section">
-                    <h2 class="effect-title" style="color: #4bd8e3;">🎧 Ses Çıkışı (Odyofil)</h2>
-                    <p class="effect-description">Ses sisteminizi işletim sisteminin kısıtlamalarından kurtarın ve DAC'ınıza doğrudan saf veri akışı sağlayın.</p>
+                    <h2 class="effect-title audiophile-title">🎧 ${tOr('sfx.audiophile.title', 'Audio Output (Audiophile)')}</h2>
+                    <p class="effect-description">${tOr('sfx.audiophile.description', 'Bypass operating system bottlenecks and deliver direct, clean audio data to your DAC.')}</p>
                 </div>
-            </div>
-            
-            <div class="effect-controls-grid" style="display: flex; flex-direction: column; gap: 20px; padding: 20px;">
-                
-                <div class="control-group switch-group" style="display: flex; align-items: center; justify-content: space-between; background: rgba(75, 216, 227, 0.05); border: 1px solid rgba(75, 216, 227, 0.2); padding: 15px; border-radius: 8px;">
-                    <label style="flex: 1; margin: 0; color: #fff;">
-                        <strong>Doğrudan Donanım Erişimi (Exclusive Mode)</strong>
-                        <span class="control-hint" style="display: block; opacity: 0.6; margin-top: 5px; font-size: 13px;">Bu modu açtığınızda Aurivo arka plandaki tüm sesleri keserek donanımın tam kontrolünü ele alır.</span>
-                    </label>
-                    <label class="switch" style="margin-left: 20px;">
-                        <input type="checkbox" id="audiophile_exclusiveMode">
-                        <span class="slider round"></span>
-                    </label>
-                </div>
-                
-                <div class="control-group" style="display: flex; flex-direction: column; gap: 8px;">
-                    <label style="color: var(--text-color);">Hedef Çıkış Cihazı (Audio Device)</label>
-                    <select id="audiophile_outputDevice" class="effect-select" style="width:100%; border-color: rgba(75,216,227,0.3); background: var(--bg-dark); color: #fff; padding: 10px; border-radius: 6px;">
-                        <option value="default">(Varsayılan) İşletim Sistemi Cihazı</option>
-                        <option value="direct_alsa">ALSA Direct / WASAPI (Donanımsal)</option>
-                    </select>
-                </div>
-
-                <div class="control-group" style="display: flex; flex-direction: column; gap: 8px;">
-                    <label style="color: var(--text-color);">Örnekleme Kalitesi (Sample Rate)</label>
-                    <select id="audiophile_sampleRate" class="effect-select" style="width:100%; border-color: var(--border-color); background: var(--bg-dark); color: #fff; padding: 10px; border-radius: 6px;">
-                        <option value="auto">Otomatik Müzik Tabanlı (Bit-Perfect)</option>
-                        <option value="44100">44.1 kHz (CD Kalitesi)</option>
-                        <option value="96000">96.0 kHz (Stüdyo Kalitesi)</option>
-                        <option value="192000">192.0 kHz (Odyofil Ultra-High)</option>
-                    </select>
-                    <span class="control-hint" style="font-size: 13px; opacity: 0.6; margin-top: 4px;">Orijinal dosyanın kalitesini bozmadan donanımınızın desteklediği saf oran.</span>
+                <div class="effect-actions">
+                    <button class="action-btn danger" id="audiophileResetBtn">${tSync('sfx.ui.reset')}</button>
                 </div>
             </div>
 
-            <div class="knobs-container" style="display: flex; gap: 20px; padding: 0 20px 20px 20px; justify-content: center;">
+            <div class="audiophile-summary-card">
+                <div class="audiophile-summary-head">
+                    <div class="audiophile-badges">
+                        <button class="audiophile-badge audiophile-badge-btn active" data-profile="bitperfect" type="button">${tOr('sfx.audiophile.badge.bitperfect', 'Bit-Perfect Ready')}</button>
+                        <button class="audiophile-badge audiophile-badge-btn muted" data-profile="exclusive" type="button">${tOr('sfx.audiophile.badge.exclusive', 'Exclusive (Experimental)')}</button>
+                        <button class="audiophile-badge audiophile-badge-btn muted" data-profile="lowjitter" type="button">${tOr('sfx.audiophile.badge.lowjitter', 'Low Jitter Target')}</button>
+                    </div>
+                    <button id="audiophile_refreshDevices" class="action-btn secondary audiophile-refresh-btn" type="button">${tOr('sfx.audiophile.refreshDevices', 'Refresh Devices')}</button>
+                </div>
+                <div class="audiophile-summary-status" id="audiophileRouteStatus">${tOr('sfx.audiophile.route.preparing', 'Output route is preparing...')}</div>
+                <div class="audiophile-quality-meter">
+                    <div class="audiophile-quality-head">
+                        <span id="audiophileQualityLabel">${tOr('sfx.audiophile.quality.measuring', 'Route Quality: Measuring...')}</span>
+                        <span id="audiophileQualityScore">--</span>
+                    </div>
+                    <div class="audiophile-quality-bar"><span id="audiophileQualityFill"></span></div>
+                    <div class="audiophile-exclusive-status" id="audiophileExclusiveStatus">${tOr('sfx.audiophile.exclusive.checking', 'Exclusive state is being checked...')}</div>
+                    <div class="audiophile-quality-note">${tOr('sfx.audiophile.quality.note', 'Note: This bar is not the live volume level; it represents output path quality.')}</div>
+                </div>
+            </div>
+
+            <div class="effect-controls-grid audiophile-controls-grid">
+
+                <div class="control-group switch-group audiophile-switch-group">
+                    <label class="audiophile-switch-label">
+                        <strong>${tOr('sfx.audiophile.exclusive.title', 'Direct Hardware Access (Exclusive Mode)')}</strong>
+                        <span class="control-hint">${tOr('sfx.audiophile.exclusive.hint', 'When enabled, the system mixer layer is bypassed where possible. Background sounds may be muted.')}</span>
+                    </label>
+                    <button type="button" class="audiophile-exclusive-toggle" id="audiophile_exclusiveToggle" aria-pressed="false" aria-label="${tOr('sfx.audiophile.exclusive.toggleAria', 'Toggle exclusive mode')}">
+                        <span class="audiophile-exclusive-track" aria-hidden="true">
+                            <span class="audiophile-exclusive-thumb"></span>
+                        </span>
+                        <span class="audiophile-exclusive-text">${offText}</span>
+                    </button>
+                </div>
+
+                <div class="control-group audiophile-control-group">
+                    <label>${tOr('sfx.audiophile.device.label', 'Target Output Device (Audio Device)')}</label>
+                    <select id="audiophile_outputDevice" class="effect-select audiophile-select">
+                        <option value="default">${tOr('sfx.audiophile.device.defaultSystem', '(Default) System Audio Device')}</option>
+                        <option value="direct_alsa">${tOr('sfx.audiophile.device.alsaDirect', 'ALSA Direct / WASAPI (Hardware)')}</option>
+                    </select>
+                </div>
+
+                <div class="control-group audiophile-control-group">
+                    <label>${tOr('sfx.audiophile.sampleRate.label', 'Sample Rate Quality')}</label>
+                    <select id="audiophile_sampleRate" class="effect-select audiophile-select">
+                        <option value="auto">${tOr('sfx.audiophile.sampleRate.auto', 'Automatic Music-Based (Bit-Perfect)')}</option>
+                        <option value="44100">44.1 kHz (${tOr('sfx.audiophile.sampleRate.cdQuality', 'CD Quality')})</option>
+                        <option value="48000">48.0 kHz (${tOr('sfx.audiophile.sampleRate.videoBroadcast', 'Video / Broadcast')})</option>
+                        <option value="96000">96.0 kHz (${tOr('sfx.audiophile.sampleRate.studioQuality', 'Studio Quality')})</option>
+                        <option value="192000">192.0 kHz (${tOr('sfx.audiophile.sampleRate.ultraHigh', 'Audiophile Ultra-High')})</option>
+                    </select>
+                    <span class="control-hint">${tOr('sfx.audiophile.sampleRate.hint', 'Tries to preserve the source file rate; when unsupported, switches to the nearest safe profile.')}</span>
+                </div>
+            </div>
+
+            <div class="knobs-container audiophile-knobs">
                 <div class="knob-wrapper">
                     <canvas class="aurivo-knob-canvas" id="knobAudiophilePreampCanvas" 
                         width="130" height="170"
@@ -5792,6 +5909,7 @@ function updateEffectParam(effectName, param, value) {
     saveSettings(effectName, settings);
 
     if (SFX_IS_SCOPED_DALI) {
+        emitScopedLiveEffectToMain(effectName, settings);
         if (effectName === 'eq32') {
             schedulePersistEq32ToAppSettings(settings);
             return;
@@ -5799,7 +5917,8 @@ function updateEffectParam(effectName, param, value) {
         const webDaliPersistEffects = new Set([
             'bassboost', 'reverb', 'compressor', 'noisegate', 'deesser', 'exciter',
             'echo', 'softecho', 'convreverb', 'peq', 'autogain', 'truepeak',
-            'stereowidener', 'crossfeed', 'surround', 'bassmono', 'dynamiceq', 'tapesat', 'bitdither', 'limiter'
+            'stereowidener', 'crossfeed', 'surround', 'bassmono', 'dynamiceq', 'tapesat', 'bitdither', 'limiter',
+            'audiophile'
         ]);
         if (webDaliPersistEffects.has(effectName)) {
             schedulePersistScopedEffectToAppSettings(effectName, settings, 220);
@@ -6087,6 +6206,10 @@ function applyEffect(effectName) {
     const settings = getSettings(effectName);
     const ipcAudio = window.aurivo?.ipcAudio;
 
+    if (SFX_IS_SCOPED_DALI) {
+        emitScopedLiveEffectToMain(effectName, settings);
+    }
+
     if (SFX_IS_SCOPED_DALI && effectName === 'eq32') {
         schedulePersistEq32ToAppSettings(settings);
         return;
@@ -6133,6 +6256,7 @@ function applyEffect(effectName) {
             if (echoSettings.enabled) {
                 echoSettings.enabled = false;
                 saveSettings('echo', echoSettings);
+                emitScopedLiveEffectToMain('echo', echoSettings);
                 schedulePersistScopedEffectToAppSettings('echo', echoSettings, 120);
                 const echoCb = document.getElementById('echoEnabled');
                 if (echoCb) echoCb.checked = false;
@@ -6190,6 +6314,11 @@ function applyEffect(effectName) {
     if (SFX_IS_SCOPED_DALI && effectName === 'limiter') {
         // Web tarafında sık save/reload döngüsünü azaltıp akıcılığı koru.
         schedulePersistScopedEffectToAppSettings('limiter', settings, 220);
+        return;
+    }
+
+    if (SFX_IS_SCOPED_DALI && effectName === 'audiophile') {
+        schedulePersistScopedEffectToAppSettings('audiophile', settings, 120);
         return;
     }
 
@@ -6841,19 +6970,9 @@ function applyEffect(effectName) {
                 // Video & Web Node'ları için (dali)
                 dispatchRealtimeParam('audiophile', 'preamp_web', () => { if (window.aurivo?.audio?.preamp) window.aurivo.audio.preamp.set(Number(settings.preamp) || 0); }, 16);
             }
-            
-            // Cihaz Değişimi
-            if (window.aurivo?.ipcAudio?.devices && window.aurivo.ipcAudio.devices.setDevice) {
-                if (settings.outputDevice && settings.outputDevice !== 'default') {
-                    // Don't spam hardware device changes natively, use realtime dispatch or just static apply
-                    dispatchRealtimeParam('audiophile', 'device_switch', () => {
-                        window.aurivo.ipcAudio.devices.setDevice(parseInt(settings.outputDevice));
-                    }, 50);
-                }
-            }
-            
+
+            syncAudiophileOutputProfile(settings).catch(() => { /* yoksay */ });
             console.log('[AUDIOPHILE] Applied - Preamp:', settings.preamp, 'Exclusive:', settings.exclusiveMode, 'Output:', settings.outputDevice);
-            // Not: İleride C++ WASAPI veya Exclusive_Alsa entegrasyonu tamamlandığında deviceId ve exclusiveMode set edilecek altyapı hazırlandı.
             break;
 
         default:
@@ -7126,6 +7245,41 @@ function resetEffect(effectName) {
         }
 
         console.log('🔄 True Peak Limiter sıfırlandı');
+    } else if (effectName === 'audiophile') {
+        const defaults = JSON.parse(JSON.stringify(SFX.defaults.audiophile));
+        const panel = document.getElementById('audiophilePanel');
+        const deviceSel = document.getElementById('audiophile_outputDevice');
+        const sampleRateSel = document.getElementById('audiophile_sampleRate');
+
+        if (deviceSel) {
+            defaults.outputDevice = resolveAudiophileDefaultDeviceValue(deviceSel);
+            deviceSel.value = defaults.outputDevice;
+        }
+
+        if (sampleRateSel) {
+            const selectedOption = deviceSel?.selectedOptions?.[0];
+            const selectedDevice = selectedOption
+                ? { supportedSampleRates: JSON.parse(selectedOption.dataset.supportedSampleRates || '[]') }
+                : null;
+            rebuildAudiophileSampleRateOptions(sampleRateSel, selectedDevice, defaults.sampleRate);
+            defaults.sampleRate = sampleRateSel.value;
+        }
+
+        saveSettings('audiophile', defaults);
+
+        const kPreamp = SFX.knobInstances['audiophile_preamp'];
+        if (kPreamp) kPreamp.setValue(defaults.preamp);
+        if (panel) {
+            setAudiophileExclusiveToggleUi(false);
+            setAudiophileProfileBadgeUI(detectAudiophileProfile(defaults));
+        }
+
+        audiophileLastProfileSig = '';
+        audiophileLastOutputStatus = null;
+        updateAudiophileRouteStatusUi(null);
+        applyEffect('audiophile');
+        syncAudiophileOutputProfile(defaults, { force: true }).catch(() => { /* yoksay */ });
+        console.log('🔄 Audiophile çıkış ayarları sıfırlandı');
     } else if (effectName === 'crossfeed') {
         // Crossfeed Özel Sıfırlama
         const defaults = { ...SFX.defaults.crossfeed };
@@ -8022,51 +8176,450 @@ function applyTruePeakPreset(presetName) {
 // ============================================
 // AUDIOPHILE CONTROLS
 // ============================================
+let audiophileLastProfileSig = '';
+let audiophileLastOutputStatus = null;
+
+function normalizeAudiophileDevicesPayload(raw) {
+    try {
+        if (Array.isArray(raw)) return raw;
+        if (typeof raw === 'string') {
+            const parsed = JSON.parse(raw);
+            return Array.isArray(parsed) ? parsed : [];
+        }
+        if (raw && typeof raw === 'object' && Array.isArray(raw.devices)) {
+            return raw.devices;
+        }
+    } catch {
+        // yoksay
+    }
+    return [];
+}
+
+function formatAudiophileSampleRateLabel(value) {
+    const v = String(value ?? '').trim().toLowerCase();
+    if (!v || v === 'auto') return 'Auto / Bit-Perfect';
+    const n = Number(v);
+    if (!Number.isFinite(n) || n <= 0) return 'Özel';
+    return `${(n / 1000).toFixed(1)} kHz`;
+}
+
+function computeAudiophileFallbackStatus(settings = {}) {
+    const sampleRate = String(settings?.sampleRate || 'auto').toLowerCase();
+    const exclusiveRequested = settings?.exclusiveMode === true;
+    let score = 68;
+
+    if (sampleRate === 'auto') score += 8;
+    else if (sampleRate === '44100') score += 10;
+    else if (sampleRate === '48000') score += 7;
+    else if (sampleRate === '96000') score += 5;
+    else if (sampleRate === '192000') score += 2;
+    else score += 4;
+
+    if (exclusiveRequested) score += 12;
+    if (String(settings?.outputDevice || 'default') !== 'default') score += 4;
+    score = Math.max(0, Math.min(100, score));
+
+    let tier = 'balanced';
+    if (score >= 90) tier = 'reference';
+    else if (score >= 80) tier = 'high';
+    else if (score < 65) tier = 'basic';
+
+    const labelMap = {
+        reference: tOr('sfx.audiophile.quality.tier.reference', 'Reference Profile'),
+        high: tOr('sfx.audiophile.quality.tier.high', 'High Fidelity'),
+        balanced: tOr('sfx.audiophile.quality.tier.balanced', 'Balanced Profile'),
+        basic: tOr('sfx.audiophile.quality.tier.basic', 'Basic Profile')
+    };
+
+    return {
+        requestedExclusive: exclusiveRequested,
+        exclusiveUnknown: true,
+        quality: {
+            score,
+            tier,
+            label: labelMap[tier] || tOr('sfx.audiophile.quality.tier.balanced', 'Balanced Profile')
+        }
+    };
+}
+
+function updateAudiophileQualityMeter(status = null) {
+    const fillEl = document.getElementById('audiophileQualityFill');
+    const scoreEl = document.getElementById('audiophileQualityScore');
+    const labelEl = document.getElementById('audiophileQualityLabel');
+    const exclEl = document.getElementById('audiophileExclusiveStatus');
+    const quality = status?.quality || null;
+    const tierLabelKey = quality?.tier ? `sfx.audiophile.quality.tier.${quality.tier}` : '';
+    const tierLabelRaw = tierLabelKey ? tSync(tierLabelKey) : '';
+    const localizedTierLabel = tierLabelRaw && tierLabelRaw !== tierLabelKey ? tierLabelRaw : '';
+    const effectiveQualityLabel = localizedTierLabel || quality?.label || '';
+    const score = Number(quality?.score);
+
+    if (fillEl) {
+        const width = Number.isFinite(score) ? Math.max(0, Math.min(100, score)) : 0;
+        fillEl.style.width = `${width}%`;
+        fillEl.classList.toggle('tier-reference', quality?.tier === 'reference');
+        fillEl.classList.toggle('tier-high', quality?.tier === 'high');
+        fillEl.classList.toggle('tier-balanced', quality?.tier === 'balanced');
+        fillEl.classList.toggle('tier-basic', quality?.tier === 'basic');
+    }
+    if (scoreEl) scoreEl.textContent = Number.isFinite(score) ? `${score}/100` : '--';
+    if (labelEl) {
+        labelEl.textContent = effectiveQualityLabel
+            ? tFmt('sfx.audiophile.quality.labelWithValue', 'Route Quality: {label}', { label: effectiveQualityLabel })
+            : tOr('sfx.audiophile.quality.measuring', 'Route Quality: Measuring...');
+    }
+    if (exclEl) {
+        if (status?.exclusiveUnknown === true) {
+            exclEl.textContent = status?.requestedExclusive
+                ? tOr('sfx.audiophile.exclusive.lock.pending', 'Exclusive lock: Waiting for state...')
+                : tOr('sfx.audiophile.exclusive.lock.disabled', 'Exclusive lock: Disabled');
+        } else if (status?.requestedExclusive && status?.exclusiveActive) {
+            exclEl.textContent = tOr('sfx.audiophile.exclusive.lock.active', 'Exclusive lock: Active');
+        } else if (status?.requestedExclusive && !status?.exclusiveActive) {
+            exclEl.textContent = tOr('sfx.audiophile.exclusive.lock.inactive', 'Exclusive lock: Inactive');
+        } else {
+            exclEl.textContent = tOr('sfx.audiophile.exclusive.lock.disabled', 'Exclusive lock: Disabled');
+        }
+    }
+}
+
+function updateAudiophileRouteStatusUi(status = null) {
+    const statusEl = document.getElementById('audiophileRouteStatus');
+    if (!statusEl) return;
+    const settings = getSettings('audiophile') || {};
+    const effectiveStatus = status || computeAudiophileFallbackStatus(settings);
+    const deviceSel = document.getElementById('audiophile_outputDevice');
+    const selectedDeviceText = (deviceSel && deviceSel.selectedOptions && deviceSel.selectedOptions[0])
+        ? deviceSel.selectedOptions[0].textContent
+        : tOr('sfx.audiophile.device.defaultSystem', '(Default) System Audio Device');
+    const isDefaultDevice = !!(deviceSel?.selectedOptions?.[0]?.dataset?.isDefault === '1');
+    const shortDevice = isDefaultDevice
+        ? tOr('sfx.audiophile.device.systemDefaultShort', 'System Default')
+        : String(selectedDeviceText || '').replace(/^\([^)]*\)\s*/i, '').trim() || tOr('sfx.audiophile.device.systemDefaultShort', 'System Default');
+    const route = (effectiveStatus?.exclusiveActive === true)
+        ? tOr('sfx.audiophile.route.exclusiveActive', 'Exclusive Active')
+        : (settings.exclusiveMode
+            ? tOr('sfx.audiophile.route.exclusiveTarget', 'Exclusive Target')
+            : tOr('sfx.audiophile.route.sharedSafe', 'Shared / Safe'));
+    const sampleRate = formatAudiophileSampleRateLabel(effectiveStatus?.effectiveSampleRate || settings.sampleRate);
+    statusEl.textContent = tFmt(
+        'sfx.audiophile.route.statusLine',
+        'Route: {route} • Device: {device} • Rate: {rate}',
+        { route, device: shortDevice, rate: sampleRate }
+    );
+    updateAudiophileQualityMeter(effectiveStatus);
+}
+
+function rebuildAudiophileSampleRateOptions(sampleRateSel, selectedDevice, preferredValue = 'auto') {
+    if (!sampleRateSel) return;
+    const deviceRates = Array.isArray(selectedDevice?.supportedSampleRates) && selectedDevice.supportedSampleRates.length
+        ? selectedDevice.supportedSampleRates
+        : [44100, 48000];
+    const uniqueRates = Array.from(new Set(deviceRates.map((r) => Number(r)).filter((r) => Number.isFinite(r) && r > 0)))
+        .sort((a, b) => a - b);
+
+    sampleRateSel.innerHTML = '';
+    const autoOpt = document.createElement('option');
+    autoOpt.value = 'auto';
+    autoOpt.textContent = tOr('sfx.audiophile.sampleRate.auto', 'Automatic Music-Based (Bit-Perfect)');
+    sampleRateSel.appendChild(autoOpt);
+
+    uniqueRates.forEach((rate) => {
+        const opt = document.createElement('option');
+        opt.value = String(rate);
+        const khz = (rate / 1000).toFixed(1);
+        let label = `${khz} kHz`;
+        if (rate === 44100) label += ` (${tOr('sfx.audiophile.sampleRate.cdQuality', 'CD Quality')})`;
+        if (rate === 48000) label += ` (${tOr('sfx.audiophile.sampleRate.videoBroadcast', 'Video / Broadcast')})`;
+        if (rate === 96000) label += ` (${tOr('sfx.audiophile.sampleRate.studioQuality', 'Studio Quality')})`;
+        if (rate === 192000) label += ` (${tOr('sfx.audiophile.sampleRate.ultraHigh', 'Audiophile Ultra-High')})`;
+        opt.textContent = label;
+        sampleRateSel.appendChild(opt);
+    });
+
+    const pref = String(preferredValue ?? 'auto');
+    const hasPreferred = Array.from(sampleRateSel.options).some((o) => String(o.value) === pref);
+    sampleRateSel.value = hasPreferred ? pref : 'auto';
+}
+
+function resolveAudiophileSampleRateValue(sampleRateSel, preferredValue = 'auto') {
+    if (!sampleRateSel) return 'auto';
+    const pref = String(preferredValue ?? 'auto');
+    const hasPreferred = Array.from(sampleRateSel.options).some((o) => String(o.value) === pref);
+    sampleRateSel.value = hasPreferred ? pref : 'auto';
+    return sampleRateSel.value;
+}
+
+function resolveAudiophileDefaultDeviceValue(deviceSel) {
+    if (!deviceSel) return 'default';
+    const options = Array.from(deviceSel.options || []);
+    const defaultOpt = options.find((opt) => {
+        if (String(opt.value || '') === 'default') return true;
+        const txt = String(opt.textContent || '').toLowerCase();
+        return txt.startsWith('(varsayılan)');
+    });
+    return defaultOpt?.value || options[0]?.value || 'default';
+}
+
+function currentAudiophileProfileSignature(settings) {
+    return [
+        settings?.exclusiveMode === true ? '1' : '0',
+        String(settings?.outputDevice || 'default'),
+        String(settings?.sampleRate || 'auto')
+    ].join('|');
+}
+
+function setAudiophileProfileBadgeUI(profileKey = 'bitperfect') {
+    document.querySelectorAll('.audiophile-badge-btn').forEach((btn) => {
+        const active = String(btn.dataset.profile || '') === String(profileKey || '');
+        btn.classList.toggle('active', active);
+        btn.classList.toggle('muted', !active);
+        btn.setAttribute('aria-pressed', active ? 'true' : 'false');
+    });
+}
+
+function detectAudiophileProfile(settings = {}) {
+    const exclusive = settings?.exclusiveMode === true;
+    const sampleRate = String(settings?.sampleRate || 'auto').toLowerCase();
+    if (exclusive) return 'exclusive';
+    if (sampleRate === '44100') return 'lowjitter';
+    return 'bitperfect';
+}
+
+function setAudiophileExclusiveToggleUi(enabled) {
+    const btn = document.getElementById('audiophile_exclusiveToggle');
+    if (!btn) return;
+    const on = enabled === true;
+    btn.classList.toggle('active', on);
+    btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+    const textEl = btn.querySelector('.audiophile-exclusive-text');
+    if (textEl) {
+        const onText = tSync('sfx.on') === 'sfx.on' ? 'On' : tSync('sfx.on');
+        const offText = tSync('sfx.off') === 'sfx.off' ? 'Off' : tSync('sfx.off');
+        textEl.textContent = on ? onText : offText;
+    }
+}
+
+async function syncAudiophileOutputProfile(settings, { force = false } = {}) {
+    const sig = currentAudiophileProfileSignature(settings || {});
+    if (!force && sig === audiophileLastProfileSig) {
+        updateAudiophileRouteStatusUi(audiophileLastOutputStatus);
+        return audiophileLastOutputStatus;
+    }
+    const api = window.aurivo?.ipcAudio?.outputProfile;
+    if (!api?.configure) {
+        updateAudiophileRouteStatusUi();
+        return null;
+    }
+    try {
+        const status = await api.configure({
+            exclusiveMode: settings?.exclusiveMode === true,
+            outputDevice: settings?.outputDevice || 'default',
+            sampleRate: settings?.sampleRate || 'auto'
+        });
+        audiophileLastProfileSig = sig;
+        audiophileLastOutputStatus = status || null;
+        updateAudiophileRouteStatusUi(status || null);
+        return status || null;
+    } catch (error) {
+        console.error('[AUDIOPHILE] Output profile sync failed:', error);
+        updateAudiophileRouteStatusUi();
+        return null;
+    }
+}
+
+async function refreshAudiophileOutputStatus() {
+    const api = window.aurivo?.ipcAudio?.outputProfile;
+    if (!api?.getStatus) {
+        updateAudiophileRouteStatusUi();
+        return null;
+    }
+    try {
+        const status = await api.getStatus();
+        audiophileLastOutputStatus = status || null;
+        updateAudiophileRouteStatusUi(status || null);
+        return status || null;
+    } catch (error) {
+        console.error('[AUDIOPHILE] Output status read failed:', error);
+        updateAudiophileRouteStatusUi();
+        return null;
+    }
+}
+
+async function isAudioPlayingNow() {
+    try {
+        if (typeof window.aurivo?.audio?.isPlaying === 'function') {
+            return !!(await window.aurivo.audio.isPlaying());
+        }
+    } catch {
+        // yoksay
+    }
+    return false;
+}
+
+async function populateAudiophileDevices(deviceSel, sampleRateSel = null) {
+    if (!deviceSel) return;
+    const previous = String(getSettings('audiophile')?.outputDevice || deviceSel.value || 'default');
+    if (!window.aurivo?.ipcAudio?.devices?.get) {
+        updateAudiophileRouteStatusUi();
+        return;
+    }
+    try {
+        const raw = await window.aurivo.ipcAudio.devices.get();
+        const devices = normalizeAudiophileDevicesPayload(raw);
+        deviceSel.innerHTML = '';
+
+        if (!Array.isArray(devices) || devices.length === 0) {
+            const fallback = document.createElement('option');
+            fallback.value = 'default';
+            fallback.textContent = tOr('sfx.audiophile.device.defaultSystem', '(Default) System Audio Device');
+            fallback.dataset.supportedSampleRates = JSON.stringify([44100, 48000]);
+            fallback.dataset.exclusiveHint = '0';
+            fallback.dataset.isDefault = '1';
+            deviceSel.appendChild(fallback);
+        } else {
+            devices.forEach((dev) => {
+                const opt = document.createElement('option');
+                opt.value = String(dev.id);
+                const defaultPrefix = dev.isDefault ? `${tOr('sfx.audiophile.device.defaultPrefix', '(Default)')} ` : '';
+                opt.textContent = `${defaultPrefix}${dev.name} ${dev.driver ? '[' + dev.driver + ']' : ''}`;
+                opt.dataset.supportedSampleRates = JSON.stringify(Array.isArray(dev.supportedSampleRates) ? dev.supportedSampleRates : [44100, 48000]);
+                opt.dataset.exclusiveHint = dev.exclusiveCapableHint ? '1' : '0';
+                opt.dataset.isDefault = dev.isDefault ? '1' : '0';
+                deviceSel.appendChild(opt);
+            });
+        }
+
+        const exists = Array.from(deviceSel.options).some((o) => String(o.value) === previous);
+        deviceSel.value = exists ? previous : (deviceSel.options[0]?.value || 'default');
+        if (sampleRateSel) {
+            const selectedOption = deviceSel.selectedOptions && deviceSel.selectedOptions[0];
+            const selectedDevice = selectedOption
+                ? { supportedSampleRates: JSON.parse(selectedOption.dataset.supportedSampleRates || '[]') }
+                : null;
+            rebuildAudiophileSampleRateOptions(sampleRateSel, selectedDevice, getSettings('audiophile')?.sampleRate || 'auto');
+        }
+
+        const current = getSettings('audiophile') || {};
+        const nextSampleRate = String(sampleRateSel?.value || current.sampleRate || 'auto');
+        const nextDevice = String(deviceSel.value || 'default');
+        const changed = String(current.outputDevice || 'default') !== nextDevice
+            || String(current.sampleRate || 'auto') !== nextSampleRate;
+
+        if (changed) {
+            updateEffectParam('audiophile', 'sampleRate', nextSampleRate);
+            updateEffectParam('audiophile', 'outputDevice', nextDevice);
+        } else {
+            updateAudiophileRouteStatusUi(audiophileLastOutputStatus);
+        }
+        if (changed && !(await isAudioPlayingNow())) {
+            await syncAudiophileOutputProfile(getSettings('audiophile') || {}, { force: true });
+        } else {
+            await refreshAudiophileOutputStatus();
+        }
+    } catch (e) {
+        console.error('[AUDIOPHILE] Failed to load output devices:', e);
+        updateAudiophileRouteStatusUi();
+    }
+}
+
 async function initAudiophileControls() {
     const panel = document.getElementById('audiophilePanel');
     if (!panel) return;
 
-    const exclusiveCb = document.getElementById('audiophile_exclusiveMode');
-    if (exclusiveCb) {
-        exclusiveCb.addEventListener('change', (e) => {
-            updateEffectParam('audiophile', 'exclusiveMode', e.target.checked);
-        });
-    }
+    const settings = getSettings('audiophile') || {};
+    setAudiophileExclusiveToggleUi(settings.exclusiveMode === true);
+    setAudiophileProfileBadgeUI(detectAudiophileProfile(settings));
 
-    const deviceSel = document.getElementById('audiophile_outputDevice');
-    if (deviceSel) {
-        if (window.aurivo?.ipcAudio?.devices) {
-            try {
-                const raw = await window.aurivo.ipcAudio.devices.get();
-                const devices = JSON.parse(raw);
-                deviceSel.innerHTML = '';
-                
-                devices.forEach(dev => {
-                    const opt = document.createElement('option');
-                    opt.value = dev.id;
-                    opt.textContent = `${dev.isDefault ? '(Varsayılan) ' : ''}${dev.name} ${dev.driver ? '[' + dev.driver + ']' : ''}`;
-                    deviceSel.appendChild(opt);
-                });
-                
-                const settings = getSettings('audiophile');
-                if (settings && settings.outputDevice) {
-                    deviceSel.value = settings.outputDevice;
-                }
-            } catch (e) {
-                console.error('[AUDIOPHILE] Failed to load output devices:', e);
-            }
-        }
-    
-        deviceSel.addEventListener('change', (e) => {
-            updateEffectParam('audiophile', 'outputDevice', e.target.value);
+    const exclusiveToggleBtn = document.getElementById('audiophile_exclusiveToggle');
+    if (exclusiveToggleBtn) {
+        exclusiveToggleBtn.addEventListener('click', async () => {
+            const current = getSettings('audiophile') || {};
+            const nextExclusive = !(current.exclusiveMode === true);
+            updateEffectParam('audiophile', 'exclusiveMode', nextExclusive);
+            setAudiophileExclusiveToggleUi(nextExclusive);
+            setAudiophileProfileBadgeUI(detectAudiophileProfile({ ...current, exclusiveMode: nextExclusive }));
+            updateAudiophileRouteStatusUi(null);
+            await syncAudiophileOutputProfile(getSettings('audiophile') || {});
         });
     }
 
     const sampleRateSel = document.getElementById('audiophile_sampleRate');
-    if (sampleRateSel) {
-        sampleRateSel.addEventListener('change', (e) => {
-            updateEffectParam('audiophile', 'sampleRate', e.target.value);
+    const deviceSel = document.getElementById('audiophile_outputDevice');
+    if (deviceSel) {
+        await populateAudiophileDevices(deviceSel, sampleRateSel);
+    
+        deviceSel.addEventListener('change', async (e) => {
+            const selectedOption = e.target.selectedOptions && e.target.selectedOptions[0];
+            if (sampleRateSel && selectedOption) {
+                const selectedDevice = {
+                    supportedSampleRates: JSON.parse(selectedOption.dataset.supportedSampleRates || '[]')
+                };
+                rebuildAudiophileSampleRateOptions(sampleRateSel, selectedDevice, getSettings('audiophile')?.sampleRate || 'auto');
+                updateEffectParam('audiophile', 'sampleRate', sampleRateSel.value);
+            }
+            updateEffectParam('audiophile', 'outputDevice', e.target.value);
+            setAudiophileProfileBadgeUI(detectAudiophileProfile(getSettings('audiophile') || {}));
+            updateAudiophileRouteStatusUi(null);
+            await syncAudiophileOutputProfile(getSettings('audiophile') || {});
         });
+    }
+
+    if (sampleRateSel) {
+        sampleRateSel.addEventListener('change', async (e) => {
+            updateEffectParam('audiophile', 'sampleRate', e.target.value);
+            setAudiophileProfileBadgeUI(detectAudiophileProfile(getSettings('audiophile') || {}));
+            updateAudiophileRouteStatusUi(null);
+            await syncAudiophileOutputProfile(getSettings('audiophile') || {});
+        });
+    }
+
+    panel.querySelectorAll('.audiophile-badge-btn').forEach((btn) => {
+        btn.addEventListener('click', async () => {
+            const profile = String(btn.dataset.profile || '').trim().toLowerCase();
+            const current = getSettings('audiophile') || {};
+            let nextExclusive = current.exclusiveMode === true;
+            let nextSampleRate = String(current.sampleRate || 'auto');
+
+            if (profile === 'exclusive') {
+                nextExclusive = true;
+                nextSampleRate = 'auto';
+            } else if (profile === 'lowjitter') {
+                nextExclusive = false;
+                nextSampleRate = '44100';
+            } else {
+                nextExclusive = false;
+                nextSampleRate = 'auto';
+            }
+
+            if (sampleRateSel) {
+                nextSampleRate = resolveAudiophileSampleRateValue(sampleRateSel, nextSampleRate);
+            }
+            updateEffectParam('audiophile', 'exclusiveMode', nextExclusive);
+            updateEffectParam('audiophile', 'sampleRate', nextSampleRate);
+            if (sampleRateSel) sampleRateSel.value = nextSampleRate;
+            setAudiophileExclusiveToggleUi(nextExclusive);
+            setAudiophileProfileBadgeUI(profile);
+            updateAudiophileRouteStatusUi(null);
+            await syncAudiophileOutputProfile(getSettings('audiophile') || {});
+        });
+    });
+
+    const refreshBtn = document.getElementById('audiophile_refreshDevices');
+    if (refreshBtn && deviceSel) {
+        refreshBtn.addEventListener('click', async () => {
+            refreshBtn.disabled = true;
+            refreshBtn.textContent = tOr('sfx.audiophile.refreshing', 'Refreshing...');
+            await populateAudiophileDevices(deviceSel, sampleRateSel);
+            await refreshAudiophileOutputStatus();
+            refreshBtn.textContent = tOr('sfx.audiophile.refreshDevices', 'Refresh Devices');
+            refreshBtn.disabled = false;
+        });
+    }
+
+    await refreshAudiophileOutputStatus();
+    if (!(await isAudioPlayingNow())) {
+        await syncAudiophileOutputProfile(getSettings('audiophile') || {}, { force: true });
     }
 }
 

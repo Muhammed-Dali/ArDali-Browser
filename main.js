@@ -4528,6 +4528,26 @@ ipcMain.handle('soundEffects:closeWindow', () => {
     return true;
 });
 
+ipcMain.on('soundEffects:scopedLiveParam', (event, payload) => {
+    try {
+        if (!mainWindow || mainWindow.isDestroyed()) return;
+        const senderWin = BrowserWindow.fromWebContents(event.sender);
+        if (!senderWin || senderWin !== soundEffectsWindow) return;
+
+        const rawScope = String(payload?.scope || '').trim().toLowerCase();
+        const scope = rawScope === 'video' ? 'video' : (rawScope === 'web' ? 'web' : 'music');
+        const effect = String(payload?.effect || '').trim().toLowerCase();
+        if (!effect) return;
+        const settings = payload?.settings && typeof payload.settings === 'object'
+            ? payload.settings
+            : {};
+
+        mainWindow.webContents.send('sfx:scoped-live-param', { scope, effect, settings });
+    } catch {
+        // yoksay
+    }
+});
+
 ipcMain.handle('soundEffects:applyInMainWindow', async (_event, script) => {
     try {
         if (!mainWindow || mainWindow.isDestroyed()) return { ok: false, error: 'main-window-missing' };
@@ -5388,14 +5408,23 @@ ipcMain.handle('app:relaunch', async () => {
     try {
         // Ayrık native süreçlerin (örn. görselleştirici) yeniden başlatmadan sonra yaşamamasını sağla.
         stopVisualizer();
+        // "close to tray" akışı yeniden başlatmayı engellememeli.
+        app.isQuitting = true;
 
-        app.relaunch();
-        // before-quit handler'larının çalışması için nazik çıkışı tercih et.
+        // Bazı Linux paketlerinde relaunch için execPath/args açık geçirmek daha kararlı.
+        const relaunchArgs = Array.isArray(process.argv) ? process.argv.slice(1) : [];
+        app.relaunch({
+            execPath: process.execPath,
+            args: relaunchArgs
+        });
+
+        // before-quit cleanup'larının çalışması için nazik kapanış.
         app.quit();
-        // Güvenlik ağı: çıkışı engelleyen bir şey varsa zorla çık.
+
+        // Güvenlik ağı: quit engellenirse süreç sonsuza kadar açık kalmasın.
         setTimeout(() => {
             try { app.exit(0); } catch { }
-        }, 900);
+        }, 2500);
         return true;
     } catch (e) {
         console.error('[APP] relaunch failed:', e);
@@ -9373,20 +9402,233 @@ ipcMain.handle('audio:setPreamp', (event, gainDB) => {
     }
 });
 
+const AUDIO_ENGINE_FIXED_SAMPLE_RATE = 44100;
+let audioOutputProfileState = {
+    requestedExclusive: false,
+    requestedSampleRate: 'auto',
+    requestedDeviceId: 'default',
+    appliedDeviceId: 'default',
+    deviceSwitchOk: true,
+    deviceSwitchError: '',
+    lastUpdatedAt: 0
+};
+
+function parseAudioDevicesRaw(raw) {
+    try {
+        if (Array.isArray(raw)) return raw;
+        if (typeof raw === 'string') {
+            const parsed = JSON.parse(raw);
+            return Array.isArray(parsed) ? parsed : [];
+        }
+        if (raw && typeof raw === 'object' && Array.isArray(raw.devices)) {
+            return raw.devices;
+        }
+    } catch {
+        // yoksay
+    }
+    return [];
+}
+
+function normalizeOutputSampleRate(requested) {
+    const raw = String(requested ?? 'auto').trim().toLowerCase();
+    if (!raw || raw === 'auto') return 'auto';
+    const n = Number(raw);
+    const allowed = new Set([44100, 48000, 88200, 96000, 176400, 192000]);
+    if (!Number.isFinite(n) || !allowed.has(Math.round(n))) return 'auto';
+    return Math.round(n);
+}
+
+function inferDeviceOutputCapabilities(device = {}) {
+    const hay = `${device?.name || ''} ${device?.driver || ''}`.toLowerCase();
+    const isBluetooth = /(bluetooth|a2dp|sco|handsfree)/.test(hay);
+    const isHdmiLike = /(hdmi|displayport|dp-|spdif|digital)/.test(hay);
+    const isPremiumPath = /(asio|wasapi|coreaudio|alsa|usb|dac)/.test(hay);
+    const isSharedOnlyLike = /(directsound|mme|pulse|pipewire|dmix)/.test(hay);
+
+    let supportedSampleRates = [44100, 48000];
+    if (isPremiumPath || isHdmiLike) {
+        supportedSampleRates = [44100, 48000, 96000, 192000];
+    }
+    if (isBluetooth) {
+        supportedSampleRates = [44100, 48000];
+    }
+
+    // Bu sürümde native motor sabit 44.1kHz çalışır; yüksek oranlar donanım önerisi olarak raporlanır.
+    const engineSupportedSampleRates = [AUDIO_ENGINE_FIXED_SAMPLE_RATE];
+    const exclusiveCapableHint = isPremiumPath && !isSharedOnlyLike;
+    return {
+        supportedSampleRates,
+        engineSupportedSampleRates,
+        exclusiveCapableHint
+    };
+}
+
+function listAudioDevicesWithCapabilities() {
+    if (typeof initNativeAudioEngineSafe === 'function') initNativeAudioEngineSafe();
+    if (!audioEngine || !isNativeAudioAvailable || typeof audioEngine.getAudioDevices !== 'function') return [];
+    const raw = audioEngine.getAudioDevices();
+    const parsed = parseAudioDevicesRaw(raw);
+    return parsed.map((dev) => ({
+        ...dev,
+        ...inferDeviceOutputCapabilities(dev)
+    }));
+}
+
+function buildAudioPathQuality(status = {}) {
+    if (!status.nativeAvailable) {
+        return {
+            score: 20,
+            tier: 'basic',
+            label: 'Uyumluluk Modu',
+            detail: 'Native ses motoru aktif değil; web/uyumluluk çıkışı kullanılıyor.',
+            bitPerfectLikely: false
+        };
+    }
+
+    let score = 58;
+    if (status.deviceSwitchOk && String(status.appliedDeviceId || 'default') !== 'default') score += 8;
+    if (status.requestedSampleRate === 'auto' || Number(status.requestedSampleRate) === AUDIO_ENGINE_FIXED_SAMPLE_RATE) score += 10;
+    if (status.resamplingActive) score -= 15;
+
+    if (status.exclusiveRequested && status.exclusiveActive) score += 20;
+    if (status.exclusiveRequested && !status.exclusiveActive) score -= 8;
+
+    score = Math.max(0, Math.min(100, Math.round(score)));
+
+    let tier = 'basic';
+    let label = 'Uyumluluk';
+    if (score >= 85) { tier = 'reference'; label = 'Referans Yol'; }
+    else if (score >= 70) { tier = 'high'; label = 'Yüksek Sadakat'; }
+    else if (score >= 55) { tier = 'balanced'; label = 'Dengeli'; }
+
+    const bitPerfectLikely = !!(
+        status.nativeAvailable &&
+        !status.resamplingActive &&
+        (status.requestedSampleRate === 'auto' || Number(status.requestedSampleRate) === AUDIO_ENGINE_FIXED_SAMPLE_RATE) &&
+        (!status.exclusiveRequested || status.exclusiveActive)
+    );
+
+    let detail = 'Paylaşımlı çıkış yolu aktif.';
+    if (status.exclusiveRequested && !status.exclusiveActive) {
+        detail = status.exclusiveFailureReason || 'Exclusive kilit alınamadı, paylaşımlı moda dönüldü.';
+    } else if (bitPerfectLikely) {
+        detail = 'Bit-perfect olasılığı yüksek (motor sabit 44.1kHz).';
+    } else if (status.resamplingActive) {
+        detail = 'İstenen örnekleme oranı motor tarafından yeniden örnekleniyor.';
+    }
+
+    return { score, tier, label, detail, bitPerfectLikely };
+}
+
+function buildOutputProfileStatus() {
+    const nativeAvailable = !!(audioEngine && isNativeAudioAvailable);
+    const devices = listAudioDevicesWithCapabilities();
+    const selected = devices.find((d) => String(d?.id) === String(audioOutputProfileState.appliedDeviceId))
+        || devices.find((d) => d?.isDefault)
+        || null;
+
+    const engineExclusiveSupported = false;
+    const exclusiveRequested = audioOutputProfileState.requestedExclusive === true;
+    const exclusiveActive = false;
+    const exclusiveFailureReason = exclusiveRequested && !exclusiveActive
+        ? 'Bu sürümde native motor (BASS) gerçek exclusive device lock sunmuyor.'
+        : '';
+
+    const requestedSampleRate = audioOutputProfileState.requestedSampleRate;
+    const effectiveSampleRate = nativeAvailable ? AUDIO_ENGINE_FIXED_SAMPLE_RATE : 0;
+    const resamplingActive = nativeAvailable
+        && requestedSampleRate !== 'auto'
+        && Number(requestedSampleRate) !== AUDIO_ENGINE_FIXED_SAMPLE_RATE;
+
+    const status = {
+        nativeAvailable,
+        backend: nativeAvailable ? 'bass-native' : 'web-fallback',
+        requestedExclusive: exclusiveRequested,
+        engineExclusiveSupported,
+        deviceExclusiveCapableHint: !!selected?.exclusiveCapableHint,
+        exclusiveActive,
+        exclusiveFailureReason,
+        requestedSampleRate,
+        effectiveSampleRate,
+        resamplingActive,
+        requestedDeviceId: audioOutputProfileState.requestedDeviceId,
+        appliedDeviceId: audioOutputProfileState.appliedDeviceId,
+        deviceSwitchOk: audioOutputProfileState.deviceSwitchOk,
+        deviceSwitchError: audioOutputProfileState.deviceSwitchError || '',
+        selectedDevice: selected,
+        devices,
+        lastUpdatedAt: audioOutputProfileState.lastUpdatedAt || Date.now()
+    };
+
+    status.quality = buildAudioPathQuality(status);
+    return status;
+}
+
+ipcMain.handle('audio:getOutputProfileStatus', () => {
+    return buildOutputProfileStatus();
+});
+
+ipcMain.handle('audio:configureOutputProfile', (_event, payload = {}) => {
+    const requestedExclusive = payload?.exclusiveMode === true;
+    const requestedSampleRate = normalizeOutputSampleRate(payload?.sampleRate);
+    const requestedDeviceIdRaw = String(payload?.outputDevice ?? 'default').trim();
+    const requestedDeviceId = requestedDeviceIdRaw || 'default';
+
+    let deviceSwitchOk = true;
+    let deviceSwitchError = '';
+    let appliedDeviceId = requestedDeviceId;
+
+    if (typeof initNativeAudioEngineSafe === 'function') initNativeAudioEngineSafe();
+    if (audioEngine && isNativeAudioAvailable && typeof audioEngine.setAudioDevice === 'function') {
+        if (requestedDeviceId !== 'default') {
+            const parsedId = Number(requestedDeviceId);
+            if (Number.isFinite(parsedId)) {
+                try {
+                    const ok = audioEngine.setAudioDevice(parsedId);
+                    deviceSwitchOk = !!ok;
+                    if (!ok) deviceSwitchError = 'Çıkış cihazı değiştirilemedi.';
+                    if (ok) appliedDeviceId = String(parsedId);
+                } catch (error) {
+                    deviceSwitchOk = false;
+                    deviceSwitchError = String(error?.message || error || 'Çıkış cihazı hatası');
+                }
+            } else {
+                deviceSwitchOk = false;
+                deviceSwitchError = 'Geçersiz çıkış cihazı.';
+            }
+        }
+    } else if (requestedDeviceId !== 'default') {
+        deviceSwitchOk = false;
+        deviceSwitchError = 'Native ses motoru hazır değil.';
+    }
+
+    audioOutputProfileState = {
+        requestedExclusive,
+        requestedSampleRate,
+        requestedDeviceId,
+        appliedDeviceId,
+        deviceSwitchOk,
+        deviceSwitchError,
+        lastUpdatedAt: Date.now()
+    };
+    return buildOutputProfileStatus();
+});
+
 // Hardware Device Control
 ipcMain.handle('audio:getDevices', (event) => {
-    if (typeof initNativeAudioEngineSafe === 'function') initNativeAudioEngineSafe();
-    if (!audioEngine || !isNativeAudioAvailable) return "[]";
-    if (typeof audioEngine.getAudioDevices === 'function') {
-        return audioEngine.getAudioDevices();
-    }
-    return "[]";
+    return JSON.stringify(listAudioDevicesWithCapabilities());
 });
 
 ipcMain.handle('audio:setDevice', (event, deviceId) => {
     if (!audioEngine || !isNativeAudioAvailable) return false;
     if (typeof audioEngine.setAudioDevice === 'function') {
-        return audioEngine.setAudioDevice(deviceId);
+        const ok = audioEngine.setAudioDevice(deviceId);
+        audioOutputProfileState.appliedDeviceId = String(deviceId ?? 'default');
+        audioOutputProfileState.requestedDeviceId = String(deviceId ?? 'default');
+        audioOutputProfileState.deviceSwitchOk = !!ok;
+        audioOutputProfileState.deviceSwitchError = ok ? '' : 'Çıkış cihazı değiştirilemedi.';
+        audioOutputProfileState.lastUpdatedAt = Date.now();
+        return ok;
     }
     return false;
 });

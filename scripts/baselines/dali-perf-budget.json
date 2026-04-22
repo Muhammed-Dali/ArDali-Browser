@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "limits": {
+    "parse_ms_p95": 90,
+    "ir_ms_p95": 90,
+    "compile_web_ms_p95": 180,
+    "compile_wasm_ms_p95": 220
+  }
+}

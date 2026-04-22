@@ -1,6 +1,6 @@
 {
   "name": "aurivo-media-player",
-  "version": "2.0.35",
+  "version": "2.0.36",
   "description": "Aurivo Media Player - Electron App",
   "main": "main.js",
   "scripts": {
@@ -36,6 +36,11 @@
     "dali:test:regression:update": "node scripts/dali-web-regression.js --update",
     "dali:test:security": "node scripts/dali-security-suite.js",
     "dali:test:wasm": "npm run -s dali:compile:web:wasm && node scripts/dali-wasm-smoke.js",
+    "dali:test:parity": "node scripts/dali-ir-parity.js",
+    "dali:test:fuzz": "node scripts/dali-fuzz.js",
+    "dali:test:perf": "node scripts/dali-perf-benchmark.js",
+    "native:audio:smoke": "node scripts/native-audio-smoke.js",
+    "dali:test:all": "npm run -s dali:compile:web:all && npm run -s dali:test:regression && npm run -s dali:test:security && npm run -s dali:test:wasm && npm run -s dali:test:parity && npm run -s dali:test:fuzz && npm run -s dali:test:perf",
     "dali:install:filetype:linux": "bash scripts/install-dali-filetype-linux.sh",
     "profile:linux:dali": "npm run -s dali:compile:web && npm run -s profile:linux",
     "dev:win": "cmd /c \"chcp 65001>nul && set ELECTRON_RUN_AS_NODE=&& set AURIVO_DEV=1&& set PATH=C:\\msys64\\mingw64\\bin;C:\\Users\\muhan\\Desktop\\Aurivo-Medya-Player-windows\\native-dist\\windows;C:\\Users\\muhan\\Desktop\\Aurivo-Medya-Player-windows\\native-dist;C:\\Users\\muhan\\Desktop\\Aurivo-Medya-Player-windows\\native\\build\\Release;C:\\Users\\muhan\\Desktop\\Aurivo-Medya-Player-windows\\bin;%PATH%&& electron . --enable-logging\"",

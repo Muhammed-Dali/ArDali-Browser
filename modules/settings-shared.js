@@ -193,6 +193,7 @@
         const smartVolumeLevelingEnabled = document.getElementById('smartVolumeLevelingEnabled');
         const smartVolumeLevelingMode = document.getElementById('smartVolumeLevelingMode');
         const mediaKeyAutoDetect = document.getElementById('mediaKeyAutoDetect');
+        const browserNavigationHotkeysEnabled = document.getElementById('browserNavigationHotkeysEnabled');
         const shortcutPrevious = document.getElementById('shortcutPrevious');
         const shortcutPlayPause = document.getElementById('shortcutPlayPause');
         const shortcutNext = document.getElementById('shortcutNext');
@@ -221,6 +222,7 @@
             smartVolumeLevelingMode.value = ['gentle', 'balanced', 'strong'].includes(mode) ? mode : 'balanced';
         }
         if (mediaKeyAutoDetect) mediaKeyAutoDetect.checked = pb.mediaKeyAutoDetect !== false;
+        if (browserNavigationHotkeysEnabled) browserNavigationHotkeysEnabled.checked = pb.browserNavigationHotkeysEnabled !== false;
         if (shortcutPrevious) shortcutPrevious.value = normalizePlaybackShortcutCode(pb?.customHotkeys?.previous, 'F2');
         if (shortcutPlayPause) shortcutPlayPause.value = normalizePlaybackShortcutCode(pb?.customHotkeys?.playPause, 'F3');
         if (shortcutNext) shortcutNext.value = normalizePlaybackShortcutCode(pb?.customHotkeys?.next, 'F4');
@@ -535,6 +537,7 @@
         const smartVolumeLevelingEnabled = document.getElementById('smartVolumeLevelingEnabled');
         const smartVolumeLevelingMode = document.getElementById('smartVolumeLevelingMode');
         const mediaKeyAutoDetect = document.getElementById('mediaKeyAutoDetect');
+        const browserNavigationHotkeysEnabled = document.getElementById('browserNavigationHotkeysEnabled');
         const shortcutPrevious = document.getElementById('shortcutPrevious');
         const shortcutPlayPause = document.getElementById('shortcutPlayPause');
         const shortcutNext = document.getElementById('shortcutNext');
@@ -571,6 +574,7 @@
                 ? smartVolumeLevelingModeValue
                 : 'balanced',
             mediaKeyAutoDetect: mediaKeyAutoDetect?.checked !== false,
+            browserNavigationHotkeysEnabled: browserNavigationHotkeysEnabled?.checked !== false,
             customHotkeys: {
                 previous: normalizePlaybackShortcutCode(shortcutPrevious?.value, 'F2'),
                 playPause: normalizePlaybackShortcutCode(shortcutPlayPause?.value, 'F3'),
@@ -835,6 +839,7 @@
         const smartVolumeLevelingEnabled = document.getElementById('smartVolumeLevelingEnabled');
         const smartVolumeLevelingMode = document.getElementById('smartVolumeLevelingMode');
         const mediaKeyAutoDetect = document.getElementById('mediaKeyAutoDetect');
+        const browserNavigationHotkeysEnabled = document.getElementById('browserNavigationHotkeysEnabled');
         const shortcutPrevious = document.getElementById('shortcutPrevious');
         const shortcutPlayPause = document.getElementById('shortcutPlayPause');
         const shortcutNext = document.getElementById('shortcutNext');
@@ -860,6 +865,7 @@
         if (smartVolumeLevelingEnabled) smartVolumeLevelingEnabled.checked = false;
         if (smartVolumeLevelingMode) smartVolumeLevelingMode.value = 'balanced';
         if (mediaKeyAutoDetect) mediaKeyAutoDetect.checked = true;
+        if (browserNavigationHotkeysEnabled) browserNavigationHotkeysEnabled.checked = true;
         if (shortcutPrevious) shortcutPrevious.value = 'F2';
         if (shortcutPlayPause) shortcutPlayPause.value = 'F3';
         if (shortcutNext) shortcutNext.value = 'F4';

@@ -1,0 +1,69 @@
+name: DALI Cross-Platform Gate
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ "main" ]
+    paths:
+      - "dali-lang/**"
+      - "scripts/dali-*.js"
+      - "scripts/baselines/dali-*.json"
+      - "package.json"
+      - ".github/workflows/dali-cross-platform-gate.yml"
+  pull_request:
+    paths:
+      - "dali-lang/**"
+      - "scripts/dali-*.js"
+      - "scripts/baselines/dali-*.json"
+      - "package.json"
+      - ".github/workflows/dali-cross-platform-gate.yml"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  dali-gate:
+    name: DALI gate (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, windows-2025]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install JS dependencies
+        run: npm ci
+
+      - name: DALI compile (JS + WASM)
+        run: npm run -s dali:compile:web:all
+
+      - name: DALI regression snapshot
+        run: npm run -s dali:test:regression
+
+      - name: DALI security suite
+        run: npm run -s dali:test:security
+
+      - name: DALI wasm smoke
+        run: npm run -s dali:test:wasm
+
+      - name: DALI IR parity gate
+        run: npm run -s dali:test:parity
+
+      - name: DALI fuzz gate
+        run: npm run -s dali:test:fuzz -- --cases=220
+
+      - name: DALI performance budget gate
+        run: npm run -s dali:test:perf -- --quick

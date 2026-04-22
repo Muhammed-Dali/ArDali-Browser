@@ -12,6 +12,8 @@ class ColorKnob {
         this.decimals = config.decimals !== undefined ? config.decimals : 1;
         this.suffix = config.suffix || ' dB'; // dB, %, etc.
         this.wheelStep = config.wheelStep || 0.5;
+        this.wheelDebounceMs = Number.isFinite(config.wheelDebounceMs) ? Math.max(24, config.wheelDebounceMs) : 72;
+        this.wheelLiveNotify = config.wheelLiveNotify === true;
         // Drag sensitivity: if set, dragging across this many pixels covers full range
         // (useful for large-range controls like PEQ frequency).
         this.dragRangePx = Number.isFinite(config.dragRangePx) ? config.dragRangePx : null;
@@ -26,6 +28,8 @@ class ColorKnob {
         // Callbacks
         this.listeners = [];
         this.lastNotifyTime = 0;
+        this.lastInputMode = 'program';
+        this._wheelIdleTimer = null;
 
         // Setup events
         this.setupEvents();
@@ -63,12 +67,13 @@ class ColorKnob {
         this.maxValue = max;
     }
 
-    setValue(val, instant = false) {
+    setValue(val, instant = false, inputMode = 'program') {
         let clamped = Math.min(Math.max(val, this.minValue), this.maxValue);
         if (this.stepSize > 0) {
             clamped = Math.round(clamped / this.stepSize) * this.stepSize;
             clamped = Math.min(Math.max(clamped, this.minValue), this.maxValue);
         }
+        this.lastInputMode = String(inputMode || 'program');
         
         this.targetValue = clamped;
         
@@ -193,7 +198,7 @@ class ColorKnob {
 
                 if (Math.abs(valueDelta) >= this.stepSize) {
                     const newValue = this.value + valueDelta;
-                    this.setValue(newValue, true);
+                    this.setValue(newValue, true, 'drag');
                     this.dragStartGlobal = { x: e.clientX, y: e.clientY };
                 }
                 return;
@@ -207,7 +212,7 @@ class ColorKnob {
 
             if (Math.abs(steps) >= 1) {
                 const newValue = this.value + steps * this.stepSize;
-                this.setValue(newValue, true);
+                this.setValue(newValue, true, 'drag');
                 this.dragStartGlobal = { x: e.clientX, y: e.clientY };
             }
         }
@@ -239,7 +244,16 @@ class ColorKnob {
             let step = this.wheelStep;
             if (e.shiftKey) step *= 0.25;
             
-            this.setValue(this.value + stepDirection * step);
+            this.setValue(this.value + stepDirection * step, false, 'wheel');
+            if (this._wheelIdleTimer) clearTimeout(this._wheelIdleTimer);
+            this._wheelIdleTimer = setTimeout(() => {
+                this._wheelIdleTimer = null;
+                this.value = this.targetValue;
+                this.notifyListeners();
+                this.lastNotifyTime = (typeof performance !== 'undefined' && typeof performance.now === 'function')
+                    ? performance.now()
+                    : Date.now();
+            }, this.wheelDebounceMs);
         });
         
         this.canvas.addEventListener('mouseenter', () => this.isHovered = true);
@@ -266,6 +280,10 @@ class ColorKnob {
 
     destroy() {
         this.stopAnimation();
+        if (this._wheelIdleTimer) {
+            clearTimeout(this._wheelIdleTimer);
+            this._wheelIdleTimer = null;
+        }
         window.removeEventListener('mousemove', this.handleWindowMouseMove);
         window.removeEventListener('mouseup', this.handleWindowMouseUp);
     }
@@ -289,7 +307,8 @@ class ColorKnob {
             this.value += diff * ease;
             
             // Notify listener (Throttled set to ~45fps = 22ms)
-            if (timestamp - this.lastNotifyTime > 22) { 
+            const allowRealtimeNotify = this.lastInputMode !== 'wheel' || this.wheelLiveNotify;
+            if (allowRealtimeNotify && (timestamp - this.lastNotifyTime > 22)) {
                 this.notifyListeners();
                 this.lastNotifyTime = timestamp;
             }
