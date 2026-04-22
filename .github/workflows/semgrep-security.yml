@@ -2,7 +2,7 @@ name: Semgrep Security Gate
 
 on:
   workflow_run:
-    workflows: ["Snyk Security Gate"]
+    workflows: ["Publish Pacman Repo"]
     types: [completed]
     branches:
       - main

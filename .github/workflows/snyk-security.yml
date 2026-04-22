@@ -2,7 +2,7 @@ name: Snyk Security Gate
 
 on:
   workflow_run:
-    workflows: ["Publish Pacman Repo"]
+    workflows: ["Semgrep Security Gate"]
     types: [completed]
     branches:
       - main
@@ -20,6 +20,7 @@ jobs:
           (
             github.event.workflow_run.event == 'push' ||
             github.event.workflow_run.event == 'workflow_dispatch' ||
+            github.event.workflow_run.event == 'workflow_run' ||
             github.event.workflow_run.event == 'release'
           )
         )
