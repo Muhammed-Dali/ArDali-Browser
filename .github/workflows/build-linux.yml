@@ -29,12 +29,6 @@ permissions:
 
 jobs:
   build-linux:
-    if: >-
-      ${{
-        github.event_name != 'push' ||
-        github.ref != 'refs/heads/main' ||
-        !startsWith(github.event.head_commit.message, 'release: bump version')
-      }}
     # PR builds use ubuntu-24.04 so GTK4/libadwaita requirements are available.
     # Release builds (tags) also use ubuntu-24.04 in `.github/workflows/release.yml`.
     runs-on: ubuntu-24.04
