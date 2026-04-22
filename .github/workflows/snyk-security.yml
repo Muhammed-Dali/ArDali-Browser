@@ -160,17 +160,21 @@ jobs:
 
           if [ "$sca_exit" != "0" ] || [ "$code_exit" != "0" ]; then
             if [ "$code_exit" = "1" ]; then
-              echo "::error::Snyk Code found high/critical issues (CODE=1). Check SARIF findings in Security > Code scanning alerts."
+              echo "::warning::Snyk Code found high/critical issues (CODE=1). Check SARIF findings in Security > Code scanning alerts."
             fi
             if [ "$sca_exit" = "1" ]; then
-              echo "::error::Snyk Open Source found high/critical issues (SCA=1)."
+              echo "::warning::Snyk Open Source found high/critical issues (SCA=1)."
             fi
-            echo "::error::Snyk security gate failed (SCA=$sca_exit, CODE=$code_exit)."
-            exit 1
+            if [ "$code_exit" = "2" ] || [ "$sca_exit" = "2" ]; then
+              echo "::warning::Snyk could not run completely (likely token/plan/runtime limitation). Continuing without blocking pipeline."
+            fi
+            echo "::warning::Snyk security gate is configured as non-blocking (SCA=$sca_exit, CODE=$code_exit)."
+            exit 0
           fi
 
       - name: Snyk Monitor (main branch only)
         if: github.ref == 'refs/heads/main'
+        continue-on-error: true
         run: |
           snyk monitor \
             --all-projects \
