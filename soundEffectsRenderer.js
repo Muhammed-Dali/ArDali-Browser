@@ -1903,11 +1903,16 @@ function setupEventListeners() {
     });
 
     window.addEventListener('message', (e) => {
-        // Security: validate message origin — only accept same-origin or
-        // Electron's file:// context ('null' origin).
+        // Security: accept messages only from trusted sender/origin pairs.
+        const source = e?.source || null;
+        const isEmbedded = !!SFX_EMBEDDED_MODE;
+        const sourceAllowed = isEmbedded ? source === window.parent : source === window;
+        if (!sourceAllowed) return;
+
         const senderOrigin = String(e?.origin || '');
         const selfOrigin = window.location.origin || 'null';
-        if (senderOrigin !== selfOrigin && senderOrigin !== 'null') return;
+        const originAllowed = (senderOrigin === selfOrigin) || (isEmbedded && senderOrigin === 'null');
+        if (!originAllowed) return;
 
         const t = String(e?.data?.type || '');
         if (t === 'sfx:animControl') {

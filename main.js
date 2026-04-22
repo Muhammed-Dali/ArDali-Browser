@@ -2277,9 +2277,15 @@ function parseAurivoPulsePreferredDevice(text) {
         .trim();
 }
 
+function escapeRegexFragment(value) {
+    return String(value || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 function parseAurivoPulseStringPref(text, key) {
     const raw = String(text || '');
-    const match = raw.match(new RegExp(`^\\s*${key}\\s*=\\s*"((?:[^"\\\\]|\\\\.)*)"`, 'm'));
+    const safeKey = escapeRegexFragment(key);
+    if (!safeKey) return '';
+    const match = raw.match(new RegExp(`^\\s*${safeKey}\\s*=\\s*"((?:[^"\\\\]|\\\\.)*)"`, 'm'));
     if (!match) return '';
     return String(match[1] || '')
         .replace(/\\"/g, '"')
@@ -2289,17 +2295,39 @@ function parseAurivoPulseStringPref(text, key) {
 
 function parseAurivoPulseBoolPref(text, key, fallback = false) {
     const raw = String(text || '');
-    const match = raw.match(new RegExp(`^\\s*${key}\\s*=\\s*(true|false)\\s*$`, 'mi'));
+    const safeKey = escapeRegexFragment(key);
+    if (!safeKey) return !!fallback;
+    const match = raw.match(new RegExp(`^\\s*${safeKey}\\s*=\\s*(true|false)\\s*$`, 'mi'));
     if (!match) return !!fallback;
     return String(match[1]).toLowerCase() === 'true';
 }
 
 function parseAurivoPulseIntPref(text, key, fallback = 0) {
     const raw = String(text || '');
-    const match = raw.match(new RegExp(`^\\s*${key}\\s*=\\s*(\\d+)\\s*$`, 'm'));
+    const safeKey = escapeRegexFragment(key);
+    if (!safeKey) return Number(fallback) || 0;
+    const match = raw.match(new RegExp(`^\\s*${safeKey}\\s*=\\s*(\\d+)\\s*$`, 'm'));
     if (!match) return Number(fallback) || 0;
     const num = Number(match[1]);
     return Number.isFinite(num) ? num : (Number(fallback) || 0);
+}
+
+function assignSafeOwnKeys(target, source) {
+    if (!target || typeof target !== 'object') return;
+    if (!source || typeof source !== 'object') return;
+    for (const [key, value] of Object.entries(source)) {
+        if (key === '__proto__' || key === 'constructor' || key === 'prototype') continue;
+        target[key] = value;
+    }
+}
+
+function sanitizePresetFilename(input) {
+    const value = String(input || '').trim();
+    if (!value || value.length > 180) return '';
+    if (value.includes('\0')) return '';
+    if (value !== path.basename(value)) return '';
+    if (!/^[a-z0-9._-]+\.json$/i.test(value)) return '';
+    return value;
 }
 
 function getDefaultAurivoPulsePreferences() {
@@ -3655,8 +3683,8 @@ async function updateEq32SettingsInFile(patch) {
         next.sfxScopes.music = { ...(next.sfxScopes.music || {}) };
         next.sfxScopes.music.eq32 = { ...(next.sfxScopes.music.eq32 || {}) };
 
-        Object.assign(next.sfx.eq32, patch || {});
-        Object.assign(next.sfxScopes.music.eq32, patch || {});
+        assignSafeOwnKeys(next.sfx.eq32, patch || {});
+        assignSafeOwnKeys(next.sfxScopes.music.eq32, patch || {});
 
         await writeJsonFileAtomic(getSettingsPath(), next);
         return next;
@@ -6239,7 +6267,7 @@ async function updateAdblockSettingsInFile(patch = {}) {
 
         const next = { ...(current || {}) };
         next.adblock = { ...(next.adblock || {}) };
-        Object.assign(next.adblock, patch || {});
+        assignSafeOwnKeys(next.adblock, patch || {});
 
         const sanitized = sanitizeSensitiveSettings(next);
         await writeJsonFileAtomic(getSettingsPath(), sanitized);
@@ -10899,7 +10927,11 @@ ipcMain.handle('presets:loadList', async () => {
 // Belirli bir preset'i yükle
 ipcMain.handle('presets:load', async (event, filename) => {
     try {
-        const filePath = path.join(presetsPath, filename);
+        const safeFilename = sanitizePresetFilename(filename);
+        if (!safeFilename) {
+            return null;
+        }
+        const filePath = path.join(presetsPath, safeFilename);
         const data = await fs.promises.readFile(filePath, 'utf8');
         return JSON.parse(data);
     } catch (error) {
@@ -10926,9 +10958,13 @@ ipcMain.handle('presets:search', async (event, query) => {
 // EQ preset seçimi (Hazır Ayarlar penceresinden)
 ipcMain.handle('eqPresets:select', async (event, filename) => {
     try {
-        let preset = null;
+        const requested = String(filename || '').trim();
+        if (!requested) return null;
 
-        if (filename === '__flat__') {
+        let preset = null;
+        let selectedFilename = requested;
+
+        if (requested === '__flat__') {
             preset = {
                 name: 'Düz (Flat)',
                 description: 'Tüm bantlar 0.0 dB',
@@ -10936,27 +10972,32 @@ ipcMain.handle('eqPresets:select', async (event, filename) => {
                 preamp: 0,
                 bands: new Array(32).fill(0)
             };
-        } else if (AURIVO_EQ_BUILTINS[filename]) {
-            preset = AURIVO_EQ_BUILTINS[filename];
+        } else if (Object.prototype.hasOwnProperty.call(AURIVO_EQ_BUILTINS, requested)) {
+            preset = AURIVO_EQ_BUILTINS[requested];
         } else {
-            const filePath = path.join(presetsPath, filename);
+            const safeFilename = sanitizePresetFilename(requested);
+            if (!safeFilename) {
+                return null;
+            }
+            selectedFilename = safeFilename;
+            const filePath = path.join(presetsPath, safeFilename);
             const data = await fs.promises.readFile(filePath, 'utf8');
             preset = JSON.parse(data);
         }
 
         const payload = {
-            filename,
+            filename: selectedFilename,
             preset
         };
 
         // Kalıcı olarak kaydet (tek kaynak: settings.json)
         const bands = normalizeEq32BandsForEngine(preset?.bands);
-        const presetName = preset?.name || (filename === '__flat__' ? 'Düz (Flat)' : String(filename || ''));
+        const presetName = preset?.name || (selectedFilename === '__flat__' ? 'Düz (Flat)' : String(selectedFilename || ''));
 
         await updateEq32SettingsInFile({
             bands,
             lastPreset: {
-                filename,
+                filename: selectedFilename,
                 name: presetName
             }
         });
