@@ -279,11 +279,18 @@ jobs:
           git push origin "${TAG}"
           echo "Pushed release commit + tag: ${TAG}"
 
-          # GITHUB_TOKEN ile atılan tag push'u bazı durumlarda push tetiklerini zincirlemeyebilir.
-          # Release workflow'unu ilgili tag ref'i ile doğrudan dispatch ederek zinciri garanti ediyoruz.
+          # GITHUB_TOKEN ile workflow_dispatch çağrısı bazı repo politikalarında 403 dönebilir.
+          # Zincirin bozulmaması için bu çağrıyı best-effort yapıyoruz.
+          set +e
           curl -fsSL -X POST \
             -H "Authorization: Bearer ${GH_TOKEN}" \
             -H "Accept: application/vnd.github+json" \
             "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/workflows/release.yml/dispatches" \
             -d "{\"ref\":\"${TAG}\"}"
-          echo "Dispatched Release workflow for ${TAG}"
+          dispatch_code=$?
+          set -e
+          if [ "$dispatch_code" -ne 0 ]; then
+            echo "::warning::Release workflow dispatch skipped (exit=${dispatch_code}). Tag push already completed: ${TAG}"
+          else
+            echo "Dispatched Release workflow for ${TAG}"
+          fi
