@@ -473,6 +473,58 @@ async function checkForRuntimeUpdates({ manual = false } = {}) {
     return checkForAppUpdates({ manual });
 }
 
+const STARTUP_UPDATE_RETRY_DELAYS_MS = [3200, 30000, 120000];
+let startupUpdateRetryTimer = null;
+let startupUpdateAttempt = 0;
+let startupUpdateDone = false;
+
+function clearStartupUpdateRetryTimer() {
+    if (!startupUpdateRetryTimer) return;
+    clearTimeout(startupUpdateRetryTimer);
+    startupUpdateRetryTimer = null;
+}
+
+function isTerminalUpdateStatus(status) {
+    const s = String(status || '').toLowerCase();
+    return s === 'available' ||
+        s === 'not-available' ||
+        s === 'downloaded' ||
+        s === 'unsupported';
+}
+
+async function runStartupUpdateCheckAttempt() {
+    try {
+        await checkForRuntimeUpdates({ manual: false });
+    } catch (e) {
+        console.warn('[APP] startup update attempt error:', e?.message || e);
+    }
+
+    const status = String(updateRuntime.status || '').toLowerCase();
+    if (isTerminalUpdateStatus(status)) {
+        startupUpdateDone = true;
+        clearStartupUpdateRetryTimer();
+        return;
+    }
+
+    if (startupUpdateAttempt >= (STARTUP_UPDATE_RETRY_DELAYS_MS.length - 1)) return;
+    startupUpdateAttempt += 1;
+    const waitMs = Number(STARTUP_UPDATE_RETRY_DELAYS_MS[startupUpdateAttempt]) || 30000;
+    clearStartupUpdateRetryTimer();
+    startupUpdateRetryTimer = setTimeout(() => {
+        runStartupUpdateCheckAttempt().catch(() => {});
+    }, waitMs);
+}
+
+function scheduleStartupUpdateCheck() {
+    if (startupUpdateDone) return;
+    clearStartupUpdateRetryTimer();
+    startupUpdateAttempt = 0;
+    const initialDelayMs = Number(STARTUP_UPDATE_RETRY_DELAYS_MS[0]) || 3200;
+    startupUpdateRetryTimer = setTimeout(() => {
+        runStartupUpdateCheckAttempt().catch(() => {});
+    }, initialDelayMs);
+}
+
 async function downloadAppUpdate() {
     if (!autoUpdater) {
         setUpdateStatus('unsupported', { lastError: 'electron-updater unavailable' });
@@ -5761,13 +5813,7 @@ app.whenReady().then(async () => {
     try { createWindow(); } catch (e) { console.error('[APP] createWindow error:', e); }
     try { createTray(); } catch (e) { console.error('[APP] createTray error:', e); }
     try { createMPRIS(); } catch (e) { console.error('[APP] createMPRIS error:', e); }
-    try {
-        setTimeout(() => {
-            checkForRuntimeUpdates({ manual: false }).catch(() => {});
-        }, 3200);
-    } catch (e) {
-        console.error('[APP] startup update check error:', e);
-    }
+    try { scheduleStartupUpdateCheck(); } catch (e) { console.error('[APP] startup update check error:', e); }
     try { refreshGlobalMediaShortcuts(await readSettingsFileSafe()); } catch (e) { console.error('[APP] media shortcut init error:', e); }
 
     // Kayıtlı EQ32 presetini açılışta uygula
@@ -5794,6 +5840,7 @@ app.on('window-all-closed', () => {
 });
 
 app.on('before-quit', () => {
+    clearStartupUpdateRetryTimer();
     stopPulseBridgeServer();
     stopVisualizer();
     stopAurivoPulseListening();
