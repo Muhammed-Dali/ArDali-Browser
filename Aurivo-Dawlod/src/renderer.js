@@ -556,16 +556,22 @@ class AurivoDawlodApp {
 		return executablePath;
 	}
 
+	/**
+	 * Validates a yt-dlp path and returns the normalized path if trusted.
+	 * @param {string} filePath The path to validate.
+	 * @returns {string|null} The normalized path if valid, null otherwise.
+	 */
 	_isTrustedYtDlpPath(filePath) {
-		if (typeof filePath !== "string" || filePath.length === 0) return false;
-		if (filePath.includes("\0")) return false;
+		if (typeof filePath !== "string" || filePath.length === 0) return null;
+		if (filePath.includes("\0")) return null;
 		// nosemgrep:javascript.lang.security.audit.path-traversal.path-join-resolve-traversal.path-join-resolve-traversal
 		// Path is normalized, existence-checked, and then restricted by strict basename allowlist.
 		const normalizedPath = resolve(filePath); // nosemgrep:javascript.lang.security.audit.path-traversal.path-join-resolve-traversal.path-join-resolve-traversal
-		if (!existsSync(normalizedPath)) return false;
-		return TRUSTED_YTDLP_BINARIES.has(
-			basename(normalizedPath).toLowerCase()
-		);
+		if (!existsSync(normalizedPath)) return null;
+		if (!TRUSTED_YTDLP_BINARIES.has(basename(normalizedPath).toLowerCase())) {
+			return null;
+		}
+		return normalizedPath;
 	}
 
 	/**
