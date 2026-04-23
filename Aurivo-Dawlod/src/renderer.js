@@ -10,6 +10,13 @@ const {
 	getLinuxFfmpegInstallInfo,
 } = require("../src/ffmpeg-manager");
 
+const IS_FLATPAK_RUNTIME =
+	platform() === "linux" &&
+	Boolean(
+		String(process.env.FLATPAK_ID || process.env.APP_ID || "").trim() ||
+			String(process.env.container || "").trim().toLowerCase() === "flatpak"
+	);
+
 const CONSTANTS = {
 	DOM_IDS: {
 		// Main UI
@@ -573,6 +580,12 @@ class AurivoDawlodApp {
 	 */
 	_runBackgroundUpdate(executablePath, isMacOS) {
 		try {
+			if (IS_FLATPAK_RUNTIME) {
+				console.log(
+					"Skipping yt-dlp background updater in Flatpak runtime (container-managed updates)."
+				);
+				return;
+			}
 			if (isMacOS) {
 				const brewPaths = [
 					"/opt/homebrew/bin/brew",
@@ -642,6 +655,11 @@ class AurivoDawlodApp {
 
 			return defaultYtDlpPath;
 		} catch {
+			if (IS_FLATPAK_RUNTIME) {
+				throw new Error(
+					"yt-dlp auto-download is disabled in Flatpak runtime."
+				);
+			}
 			console.log("yt-dlp not found, downloading...");
 
 			$(CONSTANTS.DOM_IDS.POPUP_BOX).style.display = "block";

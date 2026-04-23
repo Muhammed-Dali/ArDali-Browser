@@ -62,6 +62,17 @@ function isTruthyEnvFlag(name) {
     return value === '1' || value === 'true' || value === 'yes' || value === 'on';
 }
 
+function isFlatpakRuntime() {
+    if (process.platform !== 'linux') return false;
+    const flatpakId = String(process.env.FLATPAK_ID || process.env.APP_ID || '').trim();
+    if (flatpakId.length > 0) return true;
+    try {
+        return fs.existsSync('/.flatpak-info');
+    } catch {
+        return false;
+    }
+}
+
 function isPackagedLinuxConservativeGpuMode() {
     if (process.platform !== 'linux') return false;
     if (!app.isPackaged) return false;
@@ -70,6 +81,7 @@ function isPackagedLinuxConservativeGpuMode() {
 }
 
 function shouldEnableElectronUpdaterOnThisRuntime() {
+    if (isFlatpakRuntime()) return false;
     // Linux/AUR kurulumlarında electron-updater yerine paket yöneticisi (yay/pacman) akışı kullanılmalı.
     // Bu akış bazı ortamlarda gereksiz crash riskini artırdığı için varsayılan kapalı.
     if (process.platform === 'linux' && app.isPackaged) {
@@ -126,6 +138,13 @@ function getLinuxAurUpdateCapabilities() {
             hasYay: false
         };
     }
+    if (isFlatpakRuntime()) {
+        return {
+            aurUpdateSupported: false,
+            aurPackageInstalled: false,
+            hasYay: false
+        };
+    }
     const hasYay = commandExists('yay');
     const aurPackageInstalled = hasYay && isAurivoBinInstalledViaPacman();
     return {
@@ -151,6 +170,9 @@ function trySpawnDetached(command, args) {
 function launchAurivoBinUpdateTerminal() {
     if (process.platform !== 'linux') {
         return { ok: false, reason: 'unsupported-platform' };
+    }
+    if (isFlatpakRuntime()) {
+        return { ok: false, reason: 'flatpak-runtime' };
     }
     if (!commandExists('yay')) {
         return { ok: false, reason: 'yay-not-found' };
@@ -263,6 +285,13 @@ function fetchJsonHttps(url, timeoutMs = 4500) {
 }
 
 async function checkForAurivoBinUpdates({ manual = false } = {}) {
+    if (isFlatpakRuntime()) {
+        setUpdateStatus('unsupported', {
+            checkedAt: Date.now(),
+            lastError: 'AUR update flow is disabled in Flatpak runtime (use Flatpak/Flathub updates).'
+        });
+        return snapshotUpdateState();
+    }
     const caps = getLinuxAurUpdateCapabilities();
     const checkedAt = Date.now();
     if (!caps.aurUpdateSupported || !caps.aurPackageInstalled) {

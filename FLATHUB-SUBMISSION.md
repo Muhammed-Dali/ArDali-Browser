@@ -30,6 +30,13 @@ flatpak run com.aurivo.mediaplayer
 appstreamcli validate packaging/appstream/com.aurivo.mediaplayer.metainfo.xml
 ```
 
+## 3.1) Flathub Uyum Notlari (Guncel)
+
+1. Flatpak wrapper'da `--no-sandbox` ve `--disable-setuid-sandbox` kullanilmaz.
+2. Flatpak runtime icinde uygulama ici AUR/self-update akisi devre disidir.
+3. Flatpak runtime icinde `yt-dlp` otomatik indirme/guncelleme akisi devre disidir.
+4. Manifest izinleri daraltildi (`--device=all` ve `--socket=session-bus` kaldirildi).
+
 ## 4) Flathub PR Acma
 
 1. `flathub/flathub` reposunu forkla.

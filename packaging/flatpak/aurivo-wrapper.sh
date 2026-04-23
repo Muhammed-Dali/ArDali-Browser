@@ -26,7 +26,7 @@ unset XDG_ACTIVATION_TOKEN
 BINARY="/app/aurivo/aurivo"
 
 if command -v zypak-wrapper >/dev/null 2>&1; then
-  exec zypak-wrapper "$BINARY" --no-sandbox --disable-setuid-sandbox --class="$FLATPAK_APP_ID" --app-id="$FLATPAK_APP_ID" "$@"
+  exec zypak-wrapper "$BINARY" --class="$FLATPAK_APP_ID" --app-id="$FLATPAK_APP_ID" "$@"
 fi
 
-exec "$BINARY" --no-sandbox --disable-setuid-sandbox --class="$FLATPAK_APP_ID" --app-id="$FLATPAK_APP_ID" "$@"
+exec "$BINARY" --class="$FLATPAK_APP_ID" --app-id="$FLATPAK_APP_ID" "$@"

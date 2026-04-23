@@ -51,7 +51,12 @@
   </provides>
 
   <releases>
+    <release version="2.0.43" date="2026-04-23">
+      <description>
+        <p>Flatpak compatibility groundwork and security hardening updates.</p>
+      </description>
+    </release>
+    <release version="2.0.36" date="2026-04-23"/>
     <release version="2.0.31" date="2026-04-15"/>
-    <release version="2.0.30" date="2026-04-11"/>
   </releases>
 </component>
