@@ -596,6 +596,8 @@ class AurivoDawlodApp {
 					);
 					return;
 				}
+				// nosemgrep: javascript.lang.security.audit.dangerous-spawn.dangerous-spawn
+				// Path validated by _isTrustedYtDlpPath: non-empty, no null bytes, file exists, basename in strict allowlist.
 				const updateProc = spawn(updateTargetPath, ["-U"], {
 					shell: false,
 					windowsHide: true,
