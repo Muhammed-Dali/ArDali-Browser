@@ -7,6 +7,7 @@ node_modules/
 /dist3/
 /dist4/
 /dist5/
+/.dist/
 /out/
 /build/
 

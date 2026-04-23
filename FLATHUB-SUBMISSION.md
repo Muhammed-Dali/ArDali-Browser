@@ -39,6 +39,12 @@ appstreamcli validate packaging/appstream/com.aurivo.mediaplayer.metainfo.xml
 
 ## 4) Flathub PR Acma
 
+0. Teslim klasorunu otomatik hazirla:
+```bash
+bash scripts/prepare-flathub-pr.sh
+```
+Uretim klasoru: `.dist/flathub-pr/com.aurivo.mediaplayer`
+
 1. `flathub/flathub` reposunu forkla.
 2. Fork icinde dal ac:
 ```bash
@@ -48,11 +54,11 @@ git checkout -b new-pr/com.aurivo.mediaplayer
 ```bash
 mkdir -p com.aurivo.mediaplayer
 ```
-4. Dosyalari kopyala:
+4. Dosyalari kopyala (otomatik uretim klasorunden):
 ```bash
-cp /path/to/Aurivo-Medya-Player/packaging/flatpak/com.aurivo.mediaplayer.yml com.aurivo.mediaplayer/
-cp /path/to/Aurivo-Medya-Player/packaging/appstream/com.aurivo.mediaplayer.metainfo.xml com.aurivo.mediaplayer/
-cp /path/to/Aurivo-Medya-Player/packaging/linux/com.aurivo.mediaplayer.desktop com.aurivo.mediaplayer/
+cp /path/to/Aurivo-Medya-Player/.dist/flathub-pr/com.aurivo.mediaplayer/com.aurivo.mediaplayer.yml com.aurivo.mediaplayer/
+cp /path/to/Aurivo-Medya-Player/.dist/flathub-pr/com.aurivo.mediaplayer/com.aurivo.mediaplayer.metainfo.xml com.aurivo.mediaplayer/
+cp /path/to/Aurivo-Medya-Player/.dist/flathub-pr/com.aurivo.mediaplayer/com.aurivo.mediaplayer.desktop com.aurivo.mediaplayer/
 ```
 5. Commit + push + PR:
 ```bash
