@@ -59,6 +59,8 @@ This repository includes a limited set of native shared libraries (`.so` / `.so.
 - Pinned hash manifest: `third_party/binary-manifest.json`
 - Integrity check: `npm run verify:binary:manifest`
 
+Release artifact checksum/signature flow is documented in `RELEASE-SIGNING.md`.
+
 ## Features
 
 - Built-in web platform mode for media-focused browsing
