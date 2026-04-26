@@ -155,20 +155,52 @@ function getLinuxAurUpdateCapabilities() {
     };
 }
 
-function trySpawnDetached(command, args) {
-    try {
-        const child = spawn(command, args, {
-            detached: true,
-            stdio: 'ignore'
+function trySpawnDetached(command, args, probeMs = 450) {
+    return new Promise((resolve) => {
+        let settled = false;
+        let child = null;
+
+        const finish = (ok) => {
+            if (settled) return;
+            settled = true;
+            try { child?.unref?.(); } catch { /* yoksay */ }
+            resolve(Boolean(ok));
+        };
+
+        try {
+            child = spawn(command, args, {
+                detached: true,
+                stdio: 'ignore'
+            });
+        } catch {
+            finish(false);
+            return;
+        }
+
+        child.once('error', () => finish(false));
+
+        child.once('spawn', () => {
+            // Bazı terminal komutları geçersiz argümanla anında kapanabiliyor.
+            // Çok kısa bir pencere bekleyip hala canlıysa başarılı kabul et.
+            setTimeout(() => {
+                if (settled) return;
+                const exitedEarly = child.exitCode !== null;
+                finish(!exitedEarly);
+            }, Math.max(120, Number(probeMs) || 450));
         });
-        child.unref();
-        return true;
-    } catch {
-        return false;
-    }
+
+        child.once('exit', () => {
+            if (!settled) finish(false);
+        });
+
+        // Güvenlik ağı: beklenmedik bir durumda promise asılı kalmasın.
+        setTimeout(() => {
+            if (!settled) finish(false);
+        }, Math.max(900, (Number(probeMs) || 450) + 700));
+    });
 }
 
-function launchAurivoBinUpdateTerminal() {
+async function launchAurivoBinUpdateTerminal() {
     if (process.platform !== 'linux') {
         return { ok: false, reason: 'unsupported-platform' };
     }
@@ -221,7 +253,8 @@ function launchAurivoBinUpdateTerminal() {
 
     for (const [cmd, args] of attempts) {
         if (!commandExists(cmd)) continue;
-        if (trySpawnDetached(cmd, args)) {
+        // eslint-disable-next-line no-await-in-loop
+        if (await trySpawnDetached(cmd, args)) {
             return { ok: true, terminal: cmd };
         }
     }
@@ -5611,7 +5644,7 @@ ipcMain.handle('app:update:install', async () => {
 });
 
 ipcMain.handle('app:update:launchAurivoBinUpdate', async () => {
-    const result = launchAurivoBinUpdateTerminal();
+    const result = await launchAurivoBinUpdateTerminal();
     if (!result?.ok) {
         return result;
     }
