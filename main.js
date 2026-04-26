@@ -21,6 +21,7 @@ const readline = require('readline');
 const { spawn, spawnSync } = require('child_process');
 const path = require('path');
 const fs = require('fs');
+const crypto = require('crypto');
 const https = require('https');
 const { registerDawlodIpc } = require('./modules/dawlodHost');
 const {
@@ -3683,8 +3684,8 @@ function installAppMenu() {
             label: tMainSync('appMenu.help'),
             submenu: [
                 {
-                    label: 'aurivo.app',
-                    click: () => shell.openExternal('https://aurivo.app').catch(() => { /* yoksay */ })
+                    label: tMainSync('about.github'),
+                    click: () => shell.openExternal('https://github.com/muhammed-aurivo-dev/Aurivo-Medya-Player-Linux').catch(() => { /* yoksay */ })
                 }
             ]
         }
@@ -6299,6 +6300,114 @@ ipcMain.handle('web:getSecurityState', async () => {
     return { vpnDetected: vpn.detected, vpnInterfaces: vpn.interfaces };
 });
 
+function buildCookieUrlForImport(rawCookie = {}) {
+    const explicitUrl = String(rawCookie?.url || '').trim();
+    if (/^https?:\/\//i.test(explicitUrl)) return explicitUrl;
+
+    const rawDomain = String(rawCookie?.domain || '').trim().replace(/^\./, '');
+    if (!rawDomain) return '';
+
+    const secure = rawCookie?.secure === true;
+    const scheme = secure ? 'https' : 'http';
+    const pathName = String(rawCookie?.path || '/').trim() || '/';
+    const normalizedPath = pathName.startsWith('/') ? pathName : `/${pathName}`;
+    return `${scheme}://${rawDomain}${normalizedPath}`;
+}
+
+function normalizeCookieSameSiteValue(input = '') {
+    const value = String(input || '').trim().toLowerCase();
+    if (value === 'no_restriction' || value === 'lax' || value === 'strict' || value === 'unspecified') {
+        return value;
+    }
+    if (value === 'none') return 'no_restriction';
+    return '';
+}
+
+ipcMain.handle('web:exportCookies', async (_event, filePath) => {
+    const targetPath = String(filePath || '').trim();
+    if (!targetPath) return { ok: false, error: 'missing-path' };
+
+    try {
+        const ses = session.fromPartition(WEBVIEW_PARTITION);
+        const cookies = await ses.cookies.get({});
+        const payload = {
+            version: 1,
+            exportedAt: Date.now(),
+            partition: WEBVIEW_PARTITION,
+            cookies
+        };
+        await fs.promises.writeFile(targetPath, JSON.stringify(payload, null, 2), 'utf8');
+        return { ok: true, count: Array.isArray(cookies) ? cookies.length : 0, path: targetPath };
+    } catch (error) {
+        console.error('[WEB] exportCookies error:', error);
+        return { ok: false, error: String(error?.message || error || 'export-failed') };
+    }
+});
+
+ipcMain.handle('web:importCookies', async (_event, filePath) => {
+    const sourcePath = String(filePath || '').trim();
+    if (!sourcePath) return { ok: false, error: 'missing-path' };
+
+    try {
+        const raw = await fs.promises.readFile(sourcePath, 'utf8');
+        const parsed = JSON.parse(raw);
+        const cookieList = Array.isArray(parsed)
+            ? parsed
+            : (Array.isArray(parsed?.cookies) ? parsed.cookies : []);
+        if (!cookieList.length) {
+            return { ok: false, error: 'no-cookies-found', imported: 0, skipped: 0, total: 0 };
+        }
+
+        const ses = session.fromPartition(WEBVIEW_PARTITION);
+        let imported = 0;
+        let skipped = 0;
+
+        for (const rawCookie of cookieList) {
+            const name = String(rawCookie?.name || '').trim();
+            const value = String(rawCookie?.value || '');
+            const url = buildCookieUrlForImport(rawCookie);
+            if (!name || !url) {
+                skipped += 1;
+                continue;
+            }
+
+            const nextCookie = {
+                url,
+                name,
+                value,
+                path: String(rawCookie?.path || '/').trim() || '/',
+                secure: rawCookie?.secure === true,
+                httpOnly: rawCookie?.httpOnly === true
+            };
+            const sameSite = normalizeCookieSameSiteValue(rawCookie?.sameSite);
+            if (sameSite) nextCookie.sameSite = sameSite;
+
+            const expiry = Number(rawCookie?.expirationDate);
+            if (Number.isFinite(expiry) && expiry > 0) {
+                nextCookie.expirationDate = expiry;
+            }
+
+            try {
+                await ses.cookies.set(nextCookie);
+                imported += 1;
+            } catch {
+                skipped += 1;
+            }
+        }
+
+        return {
+            ok: imported > 0,
+            imported,
+            skipped,
+            total: cookieList.length,
+            path: sourcePath
+        };
+    } catch (error) {
+        console.error('[WEB] importCookies error:', error);
+        return { ok: false, error: String(error?.message || error || 'import-failed') };
+    }
+});
+
 // ─── Ad Blocker IPC ────────────────────────────────────────────────────
 ipcMain.handle('adblock:getStats', () => {
     try { return getAdBlockerStats(); } catch { return null; }
@@ -7632,6 +7741,115 @@ ipcMain.handle('fs:writeText', async (_event, filePath, text) => {
     }
 });
 
+ipcMain.handle('fs:writeBase64', async (_event, filePath, base64Data) => {
+    try {
+        const target = String(filePath || '').trim();
+        const encoded = String(base64Data || '').trim();
+        if (!target || !encoded) return false;
+        const buffer = Buffer.from(encoded, 'base64');
+        await fs.promises.writeFile(target, buffer);
+        return true;
+    } catch (error) {
+        console.error('[FS] writeBase64 error:', error);
+        return false;
+    }
+});
+
+ipcMain.handle('fs:renameItem', async (_event, sourcePath, nextName) => {
+    try {
+        const src = String(sourcePath || '').trim();
+        const rawName = String(nextName || '').trim();
+        if (!src || !rawName) {
+            return { ok: false, error: 'invalid-params' };
+        }
+        if (rawName.includes('/') || rawName.includes('\\') || rawName.includes('\0')) {
+            return { ok: false, error: 'invalid-name' };
+        }
+
+        const srcDir = path.dirname(src);
+        const targetPath = path.join(srcDir, rawName);
+        if (targetPath === src) {
+            return {
+                ok: true,
+                unchanged: true,
+                path: src,
+                name: path.basename(src)
+            };
+        }
+
+        try {
+            await fs.promises.access(targetPath);
+            return { ok: false, error: 'target-exists' };
+        } catch {
+            // hedef yok, devam
+        }
+
+        await fs.promises.rename(src, targetPath);
+        return {
+            ok: true,
+            path: targetPath,
+            name: path.basename(targetPath)
+        };
+    } catch (error) {
+        console.error('[FS] renameItem error:', error);
+        return { ok: false, error: String(error?.message || error || 'rename-failed') };
+    }
+});
+
+ipcMain.handle('fs:moveToTrash', async (_event, filePath) => {
+    try {
+        const targetPath = String(filePath || '').trim();
+        if (!targetPath) return false;
+        if (typeof shell?.trashItem !== 'function') return false;
+        await shell.trashItem(targetPath);
+        return true;
+    } catch (error) {
+        console.error('[FS] moveToTrash error:', error);
+        return false;
+    }
+});
+
+ipcMain.handle('fs:openContainingFolder', async (_event, filePath) => {
+    try {
+        const targetPath = String(filePath || '').trim();
+        if (!targetPath) return false;
+
+        try {
+            await fs.promises.access(targetPath);
+            shell.showItemInFolder(targetPath);
+            return true;
+        } catch {
+            const parentPath = path.dirname(targetPath);
+            const openError = await shell.openPath(parentPath);
+            return openError === '';
+        }
+    } catch (error) {
+        console.error('[FS] openContainingFolder error:', error);
+        return false;
+    }
+});
+
+ipcMain.handle('fs:getPathProperties', async (_event, filePath) => {
+    try {
+        const targetPath = String(filePath || '').trim();
+        if (!targetPath) return null;
+        const stat = await fs.promises.stat(targetPath);
+        return {
+            path: targetPath,
+            name: path.basename(targetPath),
+            directory: path.dirname(targetPath),
+            extension: path.extname(targetPath).replace(/^\./, '').toLowerCase(),
+            size: Number(stat.size || 0),
+            created: stat.birthtime,
+            modified: stat.mtime,
+            isDirectory: stat.isDirectory(),
+            isFile: stat.isFile()
+        };
+    } catch (error) {
+        return null;
+    }
+});
+
 ipcMain.handle('system:getHardwareHints', async () => {
     const ramGiB = Math.max(1, Math.round(Number(os.totalmem?.() || 0) / (1024 ** 3)));
     const cpuCores = Array.isArray(os.cpus?.()) ? os.cpus().length : 0;
@@ -7735,9 +7953,9 @@ ipcMain.handle('settings:load', async () => {
             smartVolumeLevelingMode: 'balanced',
             mediaKeyAutoDetect: true,
             customHotkeys: {
-                previous: 'F2',
-                playPause: 'F3',
-                next: 'F4'
+                previous: 'none',
+                playPause: 'none',
+                next: 'none'
             },
             startupState: {
                 lastTrackPath: '',
@@ -7981,6 +8199,52 @@ ipcMain.handle('media:getVideoThumbnail', async (_event, filePath) => {
     }
 });
 
+ipcMain.handle('media:getDisplayImagePath', async (_event, filePath, options = {}) => {
+    try {
+        const sourcePath = String(filePath || '').trim();
+        if (!sourcePath) return null;
+        try {
+            await fs.promises.access(sourcePath);
+        } catch {
+            return null;
+        }
+
+        const forceConvert = options?.forceConvert === true;
+        const ext = String(path.extname(sourcePath) || '').replace(/^\./, '').toLowerCase();
+        const convertibleExts = new Set([
+            'heic', 'heif',
+            'dng', 'cr2', 'cr3', 'nef', 'nrw', 'arw', 'srf', 'sr2',
+            'rw2', 'orf', 'raf', 'pef', 'srw', 'x3f', 'erf', 'kdc',
+            'mrw', '3fr', 'fff', 'iiq', 'mos', 'rwl'
+        ]);
+        const shouldConvert = forceConvert || convertibleExts.has(ext);
+        if (!shouldConvert) return sourcePath;
+
+        const stat = await fs.promises.stat(sourcePath);
+        const cacheDir = path.join(app.getPath('temp'), 'aurivo-image-cache');
+        await fs.promises.mkdir(cacheDir, { recursive: true });
+        const cacheKey = crypto
+            .createHash('sha1')
+            .update(`${sourcePath}|${Number(stat.size) || 0}|${Number(stat.mtimeMs) || 0}`)
+            .digest('hex');
+        const outputPath = path.join(cacheDir, `${cacheKey}.png`);
+
+        try {
+            await fs.promises.access(outputPath);
+            return outputPath;
+        } catch {
+            // cache miss
+        }
+
+        const converted = await convertStillImageToPngWithFFmpeg(sourcePath, outputPath);
+        if (converted) return outputPath;
+        return forceConvert ? null : sourcePath;
+    } catch (error) {
+        console.log('Display image conversion failed:', error?.message || error);
+        return null;
+    }
+});
+
 function getFfmpegPathForEnv() {
     // Linux/macOS'ta sistem ffmpeg genelde daha güncel codec desteği sunduğu için
     // önce sistemi dene; paketlenmiş sürümü fallback olarak kullan.
@@ -8051,7 +8315,7 @@ function normalizeAudioExtensions(extensions = []) {
     return normalized.length ? normalized : fallback;
 }
 
-async function collectAudioFilesRecursive(rootDir, out = [], excludedPaths = [], audioExtensions = [], diagnostics = null) {
+async function collectAudioFilesRecursive(rootDir, out = [], excludedPaths = [], audioExtensions = [], diagnostics = null, recursive = true) {
     const AUDIO_SET = new Set(normalizeAudioExtensions(audioExtensions));
     if (isPathExcluded(rootDir, excludedPaths)) {
         return out;
@@ -8073,8 +8337,8 @@ async function collectAudioFilesRecursive(rootDir, out = [], excludedPaths = [],
         const fullPath = path.join(rootDir, entry.name);
         try {
             if (entry.isDirectory()) {
-                if (!isPathExcluded(fullPath, excludedPaths)) {
-                    await collectAudioFilesRecursive(fullPath, out, excludedPaths, audioExtensions, diagnostics);
+                if (recursive && !isPathExcluded(fullPath, excludedPaths)) {
+                    await collectAudioFilesRecursive(fullPath, out, excludedPaths, audioExtensions, diagnostics, recursive);
                 }
                 continue;
             }
@@ -8422,6 +8686,7 @@ async function buildLibraryMetadataCacheFromFolders(folders, options = {}, exclu
     const excludedPaths = normalizeExcludedPaths(excludedFolders);
     const fastScan = performanceOptions?.fastScan !== false;
     const lightweightMode = !!performanceOptions?.lightweightMode;
+    const scanSubfolders = performanceOptions?.scanSubfolders !== false;
     const diagnostics = {
         scanErrors: [],
         unreadableFiles: []
@@ -8429,7 +8694,7 @@ async function buildLibraryMetadataCacheFromFolders(folders, options = {}, exclu
 
     const allFiles = [];
     for (const folder of normalizedFolders) {
-        await collectAudioFilesRecursive(folder.path, allFiles, excludedPaths, audioExtensions, diagnostics);
+        await collectAudioFilesRecursive(folder.path, allFiles, excludedPaths, audioExtensions, diagnostics, scanSubfolders);
     }
 
     const items = {};
@@ -8509,13 +8774,14 @@ async function buildLibraryStatsFromFolders(folders, metadataCache = {}, exclude
     const excludedPaths = normalizeExcludedPaths(excludedFolders);
     const fastScan = performanceOptions?.fastScan !== false;
     const lightweightMode = !!performanceOptions?.lightweightMode;
+    const scanSubfolders = performanceOptions?.scanSubfolders !== false;
     const diagnostics = {
         scanErrors: [],
         unreadableFiles: []
     };
     const allFiles = [];
     for (const folder of normalizedFolders) {
-        await collectAudioFilesRecursive(folder.path, allFiles, excludedPaths, audioExtensions, diagnostics);
+        await collectAudioFilesRecursive(folder.path, allFiles, excludedPaths, audioExtensions, diagnostics, scanSubfolders);
     }
 
     const uniqueFiles = Array.from(new Set(allFiles));
@@ -8598,9 +8864,10 @@ async function buildLibraryStatsComposite(folders, extraFiles = [], metadataCach
         scanErrors: [],
         unreadableFiles: []
     };
+    const scanSubfolders = performanceOptions?.scanSubfolders !== false;
     const allFiles = [];
     for (const folder of normalizedFolders) {
-        await collectAudioFilesRecursive(folder.path, allFiles, excludedPaths, audioExtensions, diagnostics);
+        await collectAudioFilesRecursive(folder.path, allFiles, excludedPaths, audioExtensions, diagnostics, scanSubfolders);
     }
     const mergedFiles = [
         ...allFiles,
@@ -8773,6 +9040,56 @@ async function extractVideoThumbnailWithFFmpeg(filePath) {
         });
 
         ffmpeg.on('error', () => resolve(null));
+    });
+}
+
+async function convertStillImageToPngWithFFmpeg(sourcePath, outputPath) {
+    return await new Promise((resolve) => {
+        const ffmpegPath = getFfmpegPathForEnv();
+        if (app.isPackaged && process.platform === 'win32' && !fs.existsSync(ffmpegPath)) {
+            resolve(false);
+            return;
+        }
+        if (process.platform === 'win32') {
+            try {
+                prependToProcessPath(path.dirname(ffmpegPath));
+            } catch {
+                // yoksay
+            }
+        }
+
+        const ffmpeg = spawn(ffmpegPath, [
+            '-y',
+            '-hide_banner',
+            '-loglevel', 'error',
+            '-i', sourcePath,
+            '-map', '0:v:0',
+            '-frames:v', '1',
+            '-f', 'image2',
+            '-vcodec', 'png',
+            outputPath
+        ], { windowsHide: true });
+
+        let done = false;
+        const finish = (ok) => {
+            if (done) return;
+            done = true;
+            resolve(!!ok);
+        };
+
+        const timeout = setTimeout(() => {
+            try { ffmpeg.kill('SIGTERM'); } catch { }
+            finish(false);
+        }, 15000);
+
+        ffmpeg.on('close', (code) => {
+            clearTimeout(timeout);
+            finish(code === 0 && fs.existsSync(outputPath));
+        });
+        ffmpeg.on('error', () => {
+            clearTimeout(timeout);
+            finish(false);
+        });
     });
 }
 

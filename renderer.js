@@ -53,6 +53,7 @@ const appearanceSyncChannel = typeof BroadcastChannel === 'function'
 const externalMediaRecentOpenMap = new Map();
 const externalMediaOpenQueue = [];
 let externalMediaOpenDrainActive = false;
+let galleryUiClickAudioCtx = null;
 
 function isStandaloneSettingsMode() {
     return forcedStandaloneSettingsMode;
@@ -182,6 +183,14 @@ function ensureLibrarySettings() {
             return [];
         }
     })();
+    const fallbackImage = (() => {
+        try {
+            const raw = localStorage.getItem(getUserFoldersStorageKey('image'));
+            return raw ? JSON.parse(raw) : [];
+        } catch {
+            return [];
+        }
+    })();
 
     state.settings.library.audioFolders = dedupeLibraryFolders(
         Array.isArray(state.settings.library.audioFolders) && state.settings.library.audioFolders.length
@@ -192,6 +201,11 @@ function ensureLibrarySettings() {
         Array.isArray(state.settings.library.videoFolders) && state.settings.library.videoFolders.length
             ? state.settings.library.videoFolders
             : fallbackVideo
+    );
+    state.settings.library.imageFolders = dedupeLibraryFolders(
+        Array.isArray(state.settings.library.imageFolders) && state.settings.library.imageFolders.length
+            ? state.settings.library.imageFolders
+            : fallbackImage
     );
     state.settings.library.excludedFolders = dedupeLibraryFolders(
         Array.isArray(state.settings.library.excludedFolders)
@@ -225,6 +239,9 @@ function ensureLibrarySettings() {
     if (typeof state.settings.library.startupState.lastVideoPath !== 'string') {
         state.settings.library.startupState.lastVideoPath = '';
     }
+    if (typeof state.settings.library.startupState.lastImagePath !== 'string') {
+        state.settings.library.startupState.lastImagePath = '';
+    }
     if (typeof state.settings.library.startupState.lastSelectedTreePath !== 'string') {
         state.settings.library.startupState.lastSelectedTreePath = '';
     }
@@ -239,6 +256,47 @@ function ensureLibrarySettings() {
     }
     if (typeof state.settings.library.performance.lightweightMode !== 'boolean') {
         state.settings.library.performance.lightweightMode = false;
+    }
+    if (typeof state.settings.library.performance.scanSubfolders !== 'boolean') {
+        state.settings.library.performance.scanSubfolders = true;
+    }
+    const galleryPageJumpRaw = Number(state.settings.library.performance.galleryPageJump);
+    if (!Number.isFinite(galleryPageJumpRaw)) {
+        state.settings.library.performance.galleryPageJump = 6;
+    } else {
+        state.settings.library.performance.galleryPageJump = Math.max(1, Math.min(30, Math.round(galleryPageJumpRaw)));
+    }
+    const gallerySlideshowMsRaw = Number(state.settings.library.performance.gallerySlideshowIntervalMs);
+    if (!Number.isFinite(gallerySlideshowMsRaw)) {
+        state.settings.library.performance.gallerySlideshowIntervalMs = 3000;
+    } else {
+        state.settings.library.performance.gallerySlideshowIntervalMs = Math.max(1000, Math.min(15000, Math.round(gallerySlideshowMsRaw)));
+    }
+    const galleryFastThresholdRaw = Number(state.settings.library.performance.galleryFastThresholdMs);
+    const gallerySlowThresholdRaw = Number(state.settings.library.performance.gallerySlowThresholdMs);
+    const fastThreshold = Number.isFinite(galleryFastThresholdRaw) ? Math.max(1000, Math.min(14000, Math.round(galleryFastThresholdRaw))) : 2500;
+    const slowThreshold = Number.isFinite(gallerySlowThresholdRaw) ? Math.max(1500, Math.min(15000, Math.round(gallerySlowThresholdRaw))) : 5000;
+    state.settings.library.performance.galleryFastThresholdMs = Math.min(fastThreshold, slowThreshold - 500);
+    state.settings.library.performance.gallerySlowThresholdMs = Math.max(slowThreshold, state.settings.library.performance.galleryFastThresholdMs + 500);
+    const galleryTransitionSlideshowRaw = Number(state.settings.library.performance.galleryTransitionSlideshowMs);
+    const galleryTransitionManualRaw = Number(state.settings.library.performance.galleryTransitionManualMs);
+    state.settings.library.performance.galleryTransitionSlideshowMs = Number.isFinite(galleryTransitionSlideshowRaw)
+        ? Math.max(280, Math.min(1100, Math.round(galleryTransitionSlideshowRaw)))
+        : 440;
+    state.settings.library.performance.galleryTransitionManualMs = Number.isFinite(galleryTransitionManualRaw)
+        ? Math.max(120, Math.min(500, Math.round(galleryTransitionManualRaw)))
+        : 190;
+    if (typeof state.settings.library.performance.gallerySlideshowLoop !== 'boolean') {
+        state.settings.library.performance.gallerySlideshowLoop = true;
+    }
+    if (typeof state.settings.library.performance.gallerySlideshowShuffle !== 'boolean') {
+        state.settings.library.performance.gallerySlideshowShuffle = false;
+    }
+    if (!['dim', 'blur', 'checker'].includes(String(state.settings.library.performance.galleryBackgroundMode || '').toLowerCase())) {
+        state.settings.library.performance.galleryBackgroundMode = 'dim';
+    }
+    if (typeof state.settings.library.performance.galleryMiniNavigatorEnabled !== 'boolean') {
+        state.settings.library.performance.galleryMiniNavigatorEnabled = false;
     }
     if (![32, 64, 128, 256].includes(Number(state.settings.library.performance.coverCacheLimitMb))) {
         state.settings.library.performance.coverCacheLimitMb = 64;
@@ -319,8 +377,14 @@ function ensureLibrarySettings() {
     if (!['none', 'artist', 'album'].includes(String(state.settings.library.viewGroup || '').toLowerCase())) {
         state.settings.library.viewGroup = 'none';
     }
+    if (typeof state.settings.library.manualOrderActive !== 'boolean') {
+        state.settings.library.manualOrderActive = false;
+    }
     if (!['list', 'compact', 'comfortable', 'cards'].includes(String(state.settings.library.viewMode || '').toLowerCase())) {
         state.settings.library.viewMode = 'list';
+    }
+    if (!['name-asc', 'name-desc', 'date-desc'].includes(String(state.settings.library.gallerySortMode || '').toLowerCase())) {
+        state.settings.library.gallerySortMode = 'name-asc';
     }
 
     return state.settings.library;
@@ -569,7 +633,9 @@ const state = {
     pathHistory: [],
     pathForward: [],
     settings: null,
-    mediaFilter: 'audio', // 'audio' - sadece ses dosyaları
+    mediaFilter: 'audio', // 'audio' | 'video' | 'image'
+    libraryViewTab: 'collection', // 'collection' | 'now-playing' | 'queue'
+    libraryQuickSearch: '',
     activeMedia: 'none', // 'audio', 'video', 'web', 'none'
     currentCover: null,
     // Çapraz geçiş durumu
@@ -591,11 +657,47 @@ const state = {
     // Sekme bazlı konum hafızası
     lastAudioPath: null, // Müzik sekmesi son konum
     lastVideoPath: null, // Video sekmesi son konum
+    lastImagePath: null, // Galeri sekmesi son konum
     pendingLibraryStartupPath: '',
     // Video durumu (müzikten tamamen ayrı)
     videoFiles: [], // Mevcut klasördeki video dosyaları
     currentVideoIndex: -1, // Oynatılan video indeksi
     currentVideoPath: null, // Oynatılan video yolu
+    imageFiles: [], // Mevcut klasördeki resim dosyaları
+    currentImagePath: null,
+    gallerySlideshowActive: false,
+    galleryEditPanelOpen: false,
+    galleryView: { mode: 'fit', zoom: 1, rotation: 0, flipX: 1, flipY: 1 },
+    galleryEdit: {
+        brightness: 100,
+        contrast: 100,
+        saturation: 100,
+        temperature: 100,
+        tint: 100,
+        shadows: 100,
+        highlights: 100,
+        sharpness: 100
+    },
+    galleryCrop: { enabled: false, drawing: false, startX: 0, startY: 0, x: 0.1, y: 0.1, w: 0.8, h: 0.8 },
+    galleryAnnotation: {
+        tool: 'draw',
+        color: '#5fd8ff',
+        size: 3,
+        pendingText: '',
+        items: [],
+        drawing: false,
+        startX: 0,
+        startY: 0,
+        draft: null
+    },
+    galleryRedEye: {
+        mode: false,
+        points: [],
+        radius: 18,
+        strength: 45
+    },
+    galleryBackgroundMode: 'dim',
+    galleryMiniNavigatorEnabled: false,
     webTrackId: 0, // Web/YouTube için benzersiz parça ID sayacı
     webDuration: 0,
     webPosition: 0,
@@ -686,8 +788,124 @@ const libraryViewWheelRuntime = {
     lastAt: 0,
     cooldownMs: 130
 };
+const libraryQueueDragRuntime = {
+    dragIndex: -1,
+    dragItemHeight: 0,
+    dropPlacement: 'before',
+    previewTargetIndex: -1,
+    previewPlacement: 'before',
+    previewInsertSlot: -1,
+    lastPreviewChangeAt: 0,
+    placementAxis: 'y',
+    shiftPreviewEnabled: false
+};
+const subtitleRuntime = {
+    searchToken: 0,
+    currentMediaPath: '',
+    currentSubtitlePath: '',
+    hasTrack: false
+};
 const WEB_STARTUP_LAZY_DELAY_OPTIONS = [0, 800, 1400, 2000];
 const WEB_STARTUP_LAZY_DELAY_DEFAULT_MS = 1400;
+let internalReorderDragGhost = null;
+const WEB_SESSION_PROFILES = ['persistent', 'isolated'];
+let webIsolatedSessionPrepared = false;
+const WEB_SHORTCUT_SETTING_IDS = [
+    'browserNavigationHotkeysEnabled',
+    'shortcutTabWeb',
+    'shortcutPlatformYtmusic',
+    'shortcutPlatformYoutube',
+    'shortcutPlatformDeezer',
+    'shortcutPlatformSoundcloud',
+    'shortcutPlatformFacebook',
+    'shortcutPlatformInstagram',
+    'shortcutPlatformTiktok',
+    'shortcutPlatformX',
+    'shortcutPlatformReddit',
+    'shortcutPlatformTwitch',
+    'shortcutPlatformWhatsapp',
+    'shortcutPlatformTelegram'
+];
+
+function isWebExperienceEnabled() {
+    return state.settings?.ui?.webExperienceEnabled === true;
+}
+
+function getAllowedMainPages() {
+    return isWebExperienceEnabled()
+        ? ['music', 'video', 'web']
+        : ['music', 'video'];
+}
+
+function normalizeMainPageForCurrentMode(page, fallback = 'music') {
+    const normalized = String(page || '').trim().toLowerCase();
+    const allowed = getAllowedMainPages();
+    return allowed.includes(normalized) ? normalized : fallback;
+}
+
+function normalizeWebSessionProfile(value, fallback = 'persistent') {
+    const normalized = String(value || '').trim().toLowerCase();
+    if (WEB_SESSION_PROFILES.includes(normalized)) return normalized;
+    return WEB_SESSION_PROFILES.includes(String(fallback || '').toLowerCase())
+        ? String(fallback || '').toLowerCase()
+        : 'persistent';
+}
+
+function getWebSettingContainerById(id) {
+    const input = document.getElementById(id);
+    if (!input) return null;
+    return input.closest('.setting-row, .settings-row, .checkbox-label') || null;
+}
+
+function syncWebDependentSettingsUi() {
+    const webEnabled = isWebExperienceEnabled();
+    document.body?.classList?.toggle('web-experience-disabled', !webEnabled);
+
+    const webRows = [
+        getWebSettingContainerById('behaviorWebStartupDelay'),
+        getWebSettingContainerById('behaviorWebAnimationMode'),
+        getWebSettingContainerById('behaviorWebMotionPreset'),
+        getWebSettingContainerById('behaviorWebLowPowerMode'),
+        getWebSettingContainerById('libraryWebStartupDelay'),
+        ...WEB_SHORTCUT_SETTING_IDS.map((id) => getWebSettingContainerById(id))
+    ];
+    webRows.forEach((row) => {
+        if (!row) return;
+        row.classList.toggle('hidden', !webEnabled);
+    });
+
+    const startupSelects = [elements.behaviorStartupPage, elements.libraryStartupPage];
+    startupSelects.forEach((select) => {
+        if (!select) return;
+        const webOption = Array.from(select.options || []).find((opt) => String(opt.value || '').toLowerCase() === 'web');
+        if (webOption) {
+            webOption.disabled = !webEnabled;
+            webOption.hidden = !webEnabled;
+        }
+        if (!webEnabled && String(select.value || '').toLowerCase() === 'web') {
+            select.value = 'music';
+        }
+    });
+}
+
+function applyWebExperienceMode(options = {}) {
+    const { forceSwitch = true } = options;
+    const webEnabled = isWebExperienceEnabled();
+
+    syncWebDependentSettingsUi();
+
+    if (!webEnabled) {
+        cancelStartupLazyWebLoad();
+        if (state.settings?.playback) {
+            state.settings.playback.browserNavigationHotkeysEnabled = false;
+        }
+        if (forceSwitch && (state.currentPage === 'web' || state.currentPanel === 'web' || state.activeMedia === 'web')) {
+            const fallbackBtn = document.querySelector('.sidebar-btn[data-page="music"]')
+                || document.querySelector('.sidebar-btn[data-page="video"]');
+            if (fallbackBtn) handleSidebarClick(fallbackBtn);
+        }
+    }
+}
 
 let appVolumePersistTimer = null;
 let suppressSettingsReloadUiUntil = 0;
@@ -884,6 +1102,36 @@ const DEFAULT_AUDIO_EXTENSIONS = [
 
 // Video formatları (ileride kullanılabilir)
 const DEFAULT_VIDEO_EXTENSIONS = ['mp4', 'mkv', 'webm', 'avi', 'mov', 'wmv', 'm4v', 'flv', 'mpg', 'mpeg'];
+const DEFAULT_IMAGE_EXTENSIONS = [
+    // JPEG family
+    'jpg', 'jpeg', 'jpe', 'jfif', 'pjpeg', 'pjp',
+    // PNG family
+    'png', 'apng',
+    // Modern web formats
+    'webp', 'avif',
+    // High efficiency still formats
+    'heic', 'heif',
+    // Classic raster formats
+    'gif', 'bmp', 'dib', 'tif', 'tiff',
+    // Icon formats
+    'ico', 'icns',
+    // Vector formats that Chromium can render as image sources
+    'svg', 'svgz',
+    // RAW camera families (will use ffmpeg fallback conversion when needed)
+    'dng', 'cr2', 'cr3', 'nef', 'nrw', 'arw', 'srf', 'sr2',
+    'rw2', 'orf', 'raf', 'pef', 'srw', 'x3f', 'erf', 'kdc',
+    'mrw', '3fr', 'fff', 'iiq', 'mos', 'rwl'
+];
+const GALLERY_EDIT_DEFAULTS = Object.freeze({
+    brightness: 100,
+    contrast: 100,
+    saturation: 100,
+    temperature: 100,
+    tint: 100,
+    shadows: 100,
+    highlights: 100,
+    sharpness: 100
+});
 const LIBRARY_ROOT_MARKER = '__LIBRARY_ROOT__';
 
 function toLocalFileUrl(p) {
@@ -917,6 +1165,33 @@ let libraryWatchRescanTimer = null;
 const albumArtCache = new Map();
 const playlistCardCoverInFlight = new Map();
 const playlistCardCoverState = new Map();
+let gallerySlideshowTimer = null;
+let galleryImageTransitionTimer = null;
+let galleryImageTransitionToken = 0;
+const GALLERY_RED_EYE_CACHE_LIMIT = 10;
+const galleryRedEyePreviewCache = new Map();
+let galleryRedEyePrewarmTimer = null;
+let galleryBottomViewMenuOpen = false;
+let galleryBottomViewPreviewBackup = null;
+let galleryUiHideTimer = null;
+let galleryGridReflowTimer = null;
+const GALLERY_UI_AUTOHIDE_MS = 2000;
+let galleryUiFreezeHiddenUntilPointer = false;
+const galleryThumbnailRotationDegByPath = new Map();
+const galleryDisplayImageUrlCache = new Map();
+const galleryDisplayImageFallbackInFlight = new Map();
+const GALLERY_CONVERSION_PREFERRED_EXTENSIONS = new Set([
+    'heic', 'heif',
+    'dng', 'cr2', 'cr3', 'nef', 'nrw', 'arw', 'srf', 'sr2',
+    'rw2', 'orf', 'raf', 'pef', 'srw', 'x3f', 'erf', 'kdc',
+    'mrw', '3fr', 'fff', 'iiq', 'mos', 'rwl'
+]);
+let galleryConverterSourceWidth = 0;
+let galleryConverterSourceHeight = 0;
+let galleryConverterSyncingDimensions = false;
+let galleryConverterSourceImage = null;
+let galleryConverterPreviewTimer = null;
+let galleryConverterPreviewRenderToken = 0;
 const PLAYLIST_CARD_COVER_RETRY_MS = 10000;
 
 function getLibrarySettingsSyncSignature(settings = state.settings) {
@@ -925,13 +1200,14 @@ function getLibrarySettingsSyncSignature(settings = state.settings) {
     return JSON.stringify({
         audioFolders: dedupeLibraryFolders(Array.isArray(library.audioFolders) ? library.audioFolders : []),
         videoFolders: dedupeLibraryFolders(Array.isArray(library.videoFolders) ? library.videoFolders : []),
+        imageFolders: dedupeLibraryFolders(Array.isArray(library.imageFolders) ? library.imageFolders : []),
         excludedFolders: dedupeLibraryFolders(Array.isArray(library.excludedFolders) ? library.excludedFolders : []),
         audioExtensions: Array.isArray(library.audioExtensions) ? library.audioExtensions : [],
         videoExtensions: Array.isArray(library.videoExtensions) ? library.videoExtensions : [],
         restoreLastFolder: library.restoreLastFolder !== false,
         restoreLastPlaylist: library.restoreLastPlaylist !== false,
         rememberTreeSelection: library.rememberTreeSelection !== false,
-        startupPage: String(ui.startupPage || 'music').toLowerCase(),
+        startupPage: normalizeMainPageForCurrentMode(ui.startupPage, 'music'),
         webStartupLazyDelayMs: normalizeWebStartupLazyDelayMs(ui.webStartupLazyDelayMs),
         rememberLastSection: ui.rememberLastSection !== false,
         viewSort: String(library.viewSort || 'title').toLowerCase(),
@@ -1064,6 +1340,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         applyAppearanceSettingsToRuntime();
         applySecuritySettingsToRuntime();
         applyWebUiClasses();
+        applyWebExperienceMode();
         await syncLibraryWatchState();
         const nextLibrarySignature = getLibrarySettingsSyncSignature(state.settings);
         if (prevLibrarySignature !== nextLibrarySignature) {
@@ -1154,6 +1431,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     await loadSettings();
+    applyWebExperienceMode({ forceSwitch: false });
     // C++ Ses Motoru kontrolü (ayarlar yüklendikten sonra)
     await checkNativeAudio();
     if (getLibraryStartupBehavior().restoreLastPlaylist) {
@@ -1203,6 +1481,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     try {
         if (elements.libraryActionsAudio) elements.libraryActionsAudio.classList.toggle('hidden', state.mediaFilter !== 'audio');
         if (elements.libraryActionsVideo) elements.libraryActionsVideo.classList.toggle('hidden', state.mediaFilter !== 'video');
+        if (elements.libraryActionsImage) elements.libraryActionsImage.classList.toggle('hidden', state.mediaFilter !== 'image');
+        syncLibrarySurfaceControlsUi();
     } catch {
         // yoksay
     }
@@ -1627,6 +1907,10 @@ function cacheElements() {
     elements.fileTree = document.getElementById('fileTree');
     elements.libraryActionsAudio = document.getElementById('libraryActionsAudio');
     elements.libraryActionsVideo = document.getElementById('libraryActionsVideo');
+    elements.libraryActionsImage = document.getElementById('libraryActionsImage');
+    elements.librarySurfaceControls = document.getElementById('librarySurfaceControls');
+    elements.libraryTabButtons = document.querySelectorAll('.library-tab-btn[data-library-tab]');
+    elements.libraryQuickSearchInput = document.getElementById('libraryQuickSearchInput');
 
     // Kapak
     elements.coverArt = document.getElementById('coverArt');
@@ -1650,6 +1934,9 @@ function cacheElements() {
     elements.forwardBtn = document.getElementById('forwardBtn');
     elements.refreshBtn = document.getElementById('refreshBtn');
     elements.musicViewQuick = document.getElementById('musicViewQuick');
+    elements.galleryClearQuickBtn = document.getElementById('galleryClearQuickBtn');
+    elements.gallerySortQuick = document.getElementById('gallerySortQuick');
+    elements.gallerySortQuickSelect = document.getElementById('gallerySortQuickSelect');
     elements.musicViewModeBtns = document.querySelectorAll('.music-view-btn[data-view-mode]');
     elements.pulseQuickListenBtn = document.getElementById('pulseQuickListenBtn');
     elements.webDrawerToggleBtn = document.getElementById('webDrawerToggleBtn');
@@ -1674,6 +1961,135 @@ function cacheElements() {
     elements.musicAddFilesBtnContext = document.getElementById('musicAddFilesBtnContext');
     elements.videoAddFolderBtn = document.getElementById('videoAddFolderBtn');
     elements.videoAddFilesBtn = document.getElementById('videoAddFilesBtn');
+    elements.imageAddFilesBtn = document.getElementById('imageAddFilesBtn');
+    elements.galleryLightbox = document.getElementById('galleryLightbox');
+    elements.galleryLightboxImage = document.getElementById('galleryLightboxImage');
+    elements.galleryLightboxCaption = document.getElementById('galleryLightboxCaption');
+    elements.galleryImageCounter = document.getElementById('galleryImageCounter');
+    elements.galleryInfoBtn = document.getElementById('galleryInfoBtn');
+    elements.galleryExitFullscreenBtn = document.getElementById('galleryExitFullscreenBtn');
+    elements.galleryBottomFitBtn = document.getElementById('galleryBottomFitBtn');
+    elements.galleryBottomFillBtn = document.getElementById('galleryBottomFillBtn');
+    elements.galleryBottomViewModeWrap = document.getElementById('galleryBottomViewModeWrap');
+    elements.galleryBottomViewModeBtn = document.getElementById('galleryBottomViewModeBtn');
+    elements.galleryBottomViewModeMenu = document.getElementById('galleryBottomViewModeMenu');
+    elements.galleryBottomViewModeItems = document.querySelectorAll('.gallery-bottom-viewmode-item');
+    elements.galleryBottomZoomOutBtn = document.getElementById('galleryBottomZoomOutBtn');
+    elements.galleryBottomZoomInBtn = document.getElementById('galleryBottomZoomInBtn');
+    elements.galleryBottomZoomSlider = document.getElementById('galleryBottomZoomSlider');
+    elements.galleryLightboxClose = document.getElementById('galleryLightboxClose');
+    elements.galleryLightboxToolsBtn = document.getElementById('galleryLightboxToolsBtn');
+    elements.galleryLightboxPrev = document.getElementById('galleryLightboxPrev');
+    elements.galleryLightboxNext = document.getElementById('galleryLightboxNext');
+    elements.galleryLightboxStage = document.getElementById('galleryLightboxStage');
+    elements.galleryCropLayer = document.getElementById('galleryCropLayer');
+    elements.galleryCropRect = document.getElementById('galleryCropRect');
+    elements.galleryAnnotationCanvas = document.getElementById('galleryAnnotationCanvas');
+    elements.galleryMiniNavigator = document.getElementById('galleryMiniNavigator');
+    elements.galleryMiniNavCanvas = document.getElementById('galleryMiniNavCanvas');
+    elements.galleryMiniNavViewport = document.getElementById('galleryMiniNavViewport');
+    elements.galleryEditPanel = document.getElementById('galleryEditPanel');
+    elements.galleryBackgroundMode = document.getElementById('galleryBackgroundMode');
+    elements.galleryFitToWindowBtn = document.getElementById('galleryFitToWindowBtn');
+    elements.galleryActualSizeBtn = document.getElementById('galleryActualSizeBtn');
+    elements.galleryZoomOutBtn = document.getElementById('galleryZoomOutBtn');
+    elements.galleryZoomInBtn = document.getElementById('galleryZoomInBtn');
+    elements.galleryRotateLeftBtn = document.getElementById('galleryRotateLeftBtn');
+    elements.galleryRotateRightBtn = document.getElementById('galleryRotateRightBtn');
+    elements.galleryFlipHBtn = document.getElementById('galleryFlipHBtn');
+    elements.galleryFlipVBtn = document.getElementById('galleryFlipVBtn');
+    elements.galleryLightboxContextMenu = document.getElementById('galleryLightboxContextMenu');
+    elements.galleryContextPrevBtn = document.getElementById('galleryContextPrevBtn');
+    elements.galleryContextNextBtn = document.getElementById('galleryContextNextBtn');
+    elements.galleryContextFirstBtn = document.getElementById('galleryContextFirstBtn');
+    elements.galleryContextLastBtn = document.getElementById('galleryContextLastBtn');
+    elements.galleryContextPageUpBtn = document.getElementById('galleryContextPageUpBtn');
+    elements.galleryContextPageDownBtn = document.getElementById('galleryContextPageDownBtn');
+    elements.galleryContextFitBtn = document.getElementById('galleryContextFitBtn');
+    elements.galleryContextActualSizeBtn = document.getElementById('galleryContextActualSizeBtn');
+    elements.galleryContextZoomInBtn = document.getElementById('galleryContextZoomInBtn');
+    elements.galleryContextZoomOutBtn = document.getElementById('galleryContextZoomOutBtn');
+    elements.galleryContextBackgroundModeBtn = document.getElementById('galleryContextBackgroundModeBtn');
+    elements.galleryContextViewMenuBtn = document.getElementById('galleryContextViewMenuBtn');
+    elements.galleryContextViewSubmenuWrap = document.getElementById('galleryContextViewSubmenuWrap');
+    elements.galleryContextViewSubmenu = document.getElementById('galleryContextViewSubmenu');
+    elements.galleryContextFullscreenBtn = document.getElementById('galleryContextFullscreenBtn');
+    elements.galleryContextSaveCopyBtn = document.getElementById('galleryContextSaveCopyBtn');
+    elements.galleryContextFileMenuBtn = document.getElementById('galleryContextFileMenuBtn');
+    elements.galleryContextFileSubmenuWrap = document.getElementById('galleryContextFileSubmenuWrap');
+    elements.galleryContextFileSubmenu = document.getElementById('galleryContextFileSubmenu');
+    elements.galleryContextRenameBtn = document.getElementById('galleryContextRenameBtn');
+    elements.galleryContextTrashBtn = document.getElementById('galleryContextTrashBtn');
+    elements.galleryContextOpenFolderBtn = document.getElementById('galleryContextOpenFolderBtn');
+    elements.galleryContextPropertiesBtn = document.getElementById('galleryContextPropertiesBtn');
+    elements.galleryContextRotateLeftBtn = document.getElementById('galleryContextRotateLeftBtn');
+    elements.galleryContextRotateRightBtn = document.getElementById('galleryContextRotateRightBtn');
+    elements.galleryContextFlipHBtn = document.getElementById('galleryContextFlipHBtn');
+    elements.galleryContextFlipVBtn = document.getElementById('galleryContextFlipVBtn');
+    elements.galleryContextTogglePanelBtn = document.getElementById('galleryContextTogglePanelBtn');
+    elements.galleryContextResetEditsBtn = document.getElementById('galleryContextResetEditsBtn');
+    elements.galleryContextConverterBtn = document.getElementById('galleryContextConverterBtn');
+    elements.galleryConverterModal = document.getElementById('galleryConverterModal');
+    elements.galleryConverterCloseBtn = document.getElementById('galleryConverterCloseBtn');
+    elements.galleryConverterResetBtn = document.getElementById('galleryConverterResetBtn');
+    elements.galleryConverterCancelBtn = document.getElementById('galleryConverterCancelBtn');
+    elements.galleryConverterSaveBtn = document.getElementById('galleryConverterSaveBtn');
+    elements.galleryConverterFormat = document.getElementById('galleryConverterFormat');
+    elements.galleryConverterWidth = document.getElementById('galleryConverterWidth');
+    elements.galleryConverterHeight = document.getElementById('galleryConverterHeight');
+    elements.galleryConverterLockAspect = document.getElementById('galleryConverterLockAspect');
+    elements.galleryConverterQuality = document.getElementById('galleryConverterQuality');
+    elements.galleryConverterQualityLabel = document.getElementById('galleryConverterQualityLabel');
+    elements.galleryConverterQualityValue = document.getElementById('galleryConverterQualityValue');
+    elements.galleryConverterTargetKb = document.getElementById('galleryConverterTargetKb');
+    elements.galleryConverterFileName = document.getElementById('galleryConverterFileName');
+    elements.galleryConverterInfoName = document.getElementById('galleryConverterInfoName');
+    elements.galleryConverterInfoExt = document.getElementById('galleryConverterInfoExt');
+    elements.galleryConverterInfoBytes = document.getElementById('galleryConverterInfoBytes');
+    elements.galleryConverterInfoDimensions = document.getElementById('galleryConverterInfoDimensions');
+    elements.galleryConverterPreviewImage = document.getElementById('galleryConverterPreviewImage');
+    elements.galleryEditBrightness = document.getElementById('galleryEditBrightness');
+    elements.galleryEditContrast = document.getElementById('galleryEditContrast');
+    elements.galleryEditSaturation = document.getElementById('galleryEditSaturation');
+    elements.galleryEditTemperature = document.getElementById('galleryEditTemperature');
+    elements.galleryEditTint = document.getElementById('galleryEditTint');
+    elements.galleryEditShadows = document.getElementById('galleryEditShadows');
+    elements.galleryEditHighlights = document.getElementById('galleryEditHighlights');
+    elements.galleryEditSharpness = document.getElementById('galleryEditSharpness');
+    elements.galleryRedEyeStrength = document.getElementById('galleryRedEyeStrength');
+    elements.galleryRedEyeRadius = document.getElementById('galleryRedEyeRadius');
+    elements.galleryEditBrightnessValue = document.getElementById('galleryEditBrightnessValue');
+    elements.galleryEditContrastValue = document.getElementById('galleryEditContrastValue');
+    elements.galleryEditSaturationValue = document.getElementById('galleryEditSaturationValue');
+    elements.galleryEditTemperatureValue = document.getElementById('galleryEditTemperatureValue');
+    elements.galleryEditTintValue = document.getElementById('galleryEditTintValue');
+    elements.galleryEditShadowsValue = document.getElementById('galleryEditShadowsValue');
+    elements.galleryEditHighlightsValue = document.getElementById('galleryEditHighlightsValue');
+    elements.galleryEditSharpnessValue = document.getElementById('galleryEditSharpnessValue');
+    elements.galleryRedEyeStrengthValue = document.getElementById('galleryRedEyeStrengthValue');
+    elements.galleryRedEyeRadiusValue = document.getElementById('galleryRedEyeRadiusValue');
+    elements.galleryAnnotationDrawBtn = document.getElementById('galleryAnnotationDrawBtn');
+    elements.galleryAnnotationArrowBtn = document.getElementById('galleryAnnotationArrowBtn');
+    elements.galleryAnnotationTextBtn = document.getElementById('galleryAnnotationTextBtn');
+    elements.galleryAnnotationColor = document.getElementById('galleryAnnotationColor');
+    elements.galleryAnnotationSize = document.getElementById('galleryAnnotationSize');
+    elements.galleryAnnotationTextInput = document.getElementById('galleryAnnotationTextInput');
+    elements.galleryAnnotationClearBtn = document.getElementById('galleryAnnotationClearBtn');
+    elements.galleryRedEyeModeBtn = document.getElementById('galleryRedEyeModeBtn');
+    elements.galleryRedEyeClearBtn = document.getElementById('galleryRedEyeClearBtn');
+    elements.galleryMiniNavToggleBtn = document.getElementById('galleryMiniNavToggleBtn');
+    elements.galleryEditResetBtn = document.getElementById('galleryEditResetBtn');
+    elements.galleryEditDefaultsBtn = document.getElementById('galleryEditDefaultsBtn');
+    elements.galleryCropToggleBtn = document.getElementById('galleryCropToggleBtn');
+    elements.galleryCropResetBtn = document.getElementById('galleryCropResetBtn');
+    elements.gallerySaveCopyBtn = document.getElementById('gallerySaveCopyBtn');
+    elements.galleryConvertToPngBtn = document.getElementById('galleryConvertToPngBtn');
+    elements.gallerySlideshowToggleBtn = document.getElementById('gallerySlideshowToggleBtn');
+    elements.gallerySlideshowSpeedQuickLabel = document.getElementById('gallerySlideshowSpeedQuickLabel');
+    elements.gallerySlideshowSpeedDownBtn = document.getElementById('gallerySlideshowSpeedDownBtn');
+    elements.gallerySlideshowSpeedUpBtn = document.getElementById('gallerySlideshowSpeedUpBtn');
+    elements.gallerySlideshowLoopQuickBtn = document.getElementById('gallerySlideshowLoopQuickBtn');
+    elements.gallerySlideshowShuffleQuickBtn = document.getElementById('gallerySlideshowShuffleQuickBtn');
 
     // Video ve Web
     elements.videoPlayer = document.getElementById('videoPlayer');
@@ -1781,7 +2197,21 @@ function cacheElements() {
     elements.libraryFlowsStatus = document.getElementById('libraryFlowsStatus');
     elements.libraryFastScan = document.getElementById('libraryFastScan');
     elements.libraryLightweightMode = document.getElementById('libraryLightweightMode');
+    elements.libraryScanSubfolders = document.getElementById('libraryScanSubfolders');
     elements.libraryCoverCacheLimitMb = document.getElementById('libraryCoverCacheLimitMb');
+    elements.libraryGalleryPageJump = document.getElementById('libraryGalleryPageJump');
+    elements.gallerySlideshowProfilePreset = document.getElementById('gallerySlideshowProfilePreset');
+    elements.gallerySlideshowIntervalMs = document.getElementById('gallerySlideshowIntervalMs');
+    elements.gallerySlideshowFastThresholdMs = document.getElementById('gallerySlideshowFastThresholdMs');
+    elements.gallerySlideshowSlowThresholdMs = document.getElementById('gallerySlideshowSlowThresholdMs');
+    elements.galleryTransitionSlideshowMs = document.getElementById('galleryTransitionSlideshowMs');
+    elements.galleryTransitionSlideshowMsValue = document.getElementById('galleryTransitionSlideshowMsValue');
+    elements.galleryTransitionManualMs = document.getElementById('galleryTransitionManualMs');
+    elements.galleryTransitionManualMsValue = document.getElementById('galleryTransitionManualMsValue');
+    elements.galleryTransitionPresetButtons = Array.from(document.querySelectorAll('[data-gallery-transition-preset]'));
+    elements.galleryThresholdDefaultsBtn = document.getElementById('galleryThresholdDefaultsBtn');
+    elements.gallerySlideshowLoop = document.getElementById('gallerySlideshowLoop');
+    elements.gallerySlideshowShuffle = document.getElementById('gallerySlideshowShuffle');
     elements.libraryPerformanceStatus = document.getElementById('libraryPerformanceStatus');
     elements.libraryDiagnosticsLastScan = document.getElementById('libraryDiagnosticsLastScan');
     elements.libraryDiagnosticsLastDuration = document.getElementById('libraryDiagnosticsLastDuration');
@@ -1852,6 +2282,7 @@ function cacheElements() {
     elements.themeSystemHint = document.getElementById('themeSystemHint');
     elements.themeModeStatus = document.getElementById('themeModeStatus');
     elements.uiFollowSystemThemeToggle = document.getElementById('uiFollowSystemThemeToggle');
+    elements.behaviorWebExperienceEnabled = document.getElementById('behaviorWebExperienceEnabled');
     elements.behaviorRememberLastSection = document.getElementById('behaviorRememberLastSection');
     elements.behaviorStartupPage = document.getElementById('behaviorStartupPage');
     elements.behaviorWebStartupDelay = document.getElementById('behaviorWebStartupDelay');
@@ -1886,10 +2317,14 @@ function cacheElements() {
     elements.securityEnforceAllowlist = document.getElementById('securityEnforceAllowlist');
     elements.securityCopyUrlBtn = document.getElementById('securityCopyUrlBtn');
     elements.securityOpenInBrowserBtn = document.getElementById('securityOpenInBrowserBtn');
+    elements.securityQuickDownloadBtn = document.getElementById('securityQuickDownloadBtn');
+    elements.securitySessionProfile = document.getElementById('securitySessionProfile');
     elements.securityClearCookiesBtn = document.getElementById('securityClearCookiesBtn');
     elements.securityClearCacheBtn = document.getElementById('securityClearCacheBtn');
     elements.securityClearAllBtn = document.getElementById('securityClearAllBtn');
     elements.securityResetWebBtn = document.getElementById('securityResetWebBtn');
+    elements.securityExportCookiesBtn = document.getElementById('securityExportCookiesBtn');
+    elements.securityImportCookiesBtn = document.getElementById('securityImportCookiesBtn');
 
     // Ses Öğeleri (iki adet - çapraz geçiş için)
     elements.audioA = new Audio();
@@ -1972,11 +2407,12 @@ async function loadSettings() {
                 smartVolumeLevelingEnabled: false,
                 smartVolumeLevelingMode: 'balanced',
                 mediaKeyAutoDetect: true,
-                browserNavigationHotkeysEnabled: true,
+                browserNavigationHotkeysEnabled: false,
+                galleryHotkeysEnabled: false,
                 customHotkeys: {
-                    previous: 'F2',
-                    playPause: 'F3',
-                    next: 'F4'
+                    previous: 'none',
+                    playPause: 'none',
+                    next: 'none'
                 },
                 navigationShortcuts: {
                     tabMusic: '',
@@ -1994,6 +2430,22 @@ async function loadSettings() {
                     platformTwitch: '',
                     platformWhatsapp: '',
                     platformTelegram: ''
+                },
+                galleryShortcuts: {
+                    prev: '',
+                    next: '',
+                    first: '',
+                    last: '',
+                    pageUp: '',
+                    pageDown: '',
+                    fit: '',
+                    actual: '',
+                    zoomIn: '',
+                    zoomOut: '',
+                    flipH: '',
+                    flipV: '',
+                    fullscreenWindow: '',
+                    fullscreenLightbox: ''
                 },
                 startupState: {
                     lastTrackPath: '',
@@ -2025,7 +2477,8 @@ async function loadSettings() {
                 ? String(playback.smartVolumeLevelingMode).toLowerCase()
                 : 'balanced';
             playback.mediaKeyAutoDetect = playback.mediaKeyAutoDetect !== false;
-            playback.browserNavigationHotkeysEnabled = playback.browserNavigationHotkeysEnabled !== false;
+            playback.browserNavigationHotkeysEnabled = !!playback.browserNavigationHotkeysEnabled;
+            playback.galleryHotkeysEnabled = playback.galleryHotkeysEnabled === true;
             if (!playback.customHotkeys || typeof playback.customHotkeys !== 'object') {
                 playback.customHotkeys = {};
             }
@@ -2043,9 +2496,17 @@ async function loadSettings() {
                 if (normalized === 'MediaTrackNext') return 'MediaNextTrack';
                 return normalized;
             };
-            playback.customHotkeys.previous = normalizeShortcutCode(playback.customHotkeys.previous, 'F2');
-            playback.customHotkeys.playPause = normalizeShortcutCode(playback.customHotkeys.playPause, 'F3');
-            playback.customHotkeys.next = normalizeShortcutCode(playback.customHotkeys.next, 'F4');
+            playback.customHotkeys.previous = normalizeShortcutCode(playback.customHotkeys.previous, 'none');
+            playback.customHotkeys.playPause = normalizeShortcutCode(playback.customHotkeys.playPause, 'none');
+            playback.customHotkeys.next = normalizeShortcutCode(playback.customHotkeys.next, 'none');
+            const hasLegacyAutoHotkeys = playback.customHotkeys.previous === 'F2'
+                && playback.customHotkeys.playPause === 'F3'
+                && playback.customHotkeys.next === 'F4';
+            if (hasLegacyAutoHotkeys) {
+                playback.customHotkeys.previous = 'none';
+                playback.customHotkeys.playPause = 'none';
+                playback.customHotkeys.next = 'none';
+            }
             if (!playback.navigationShortcuts || typeof playback.navigationShortcuts !== 'object') {
                 playback.navigationShortcuts = {};
             }
@@ -2057,6 +2518,17 @@ async function loadSettings() {
             ];
             navKeys.forEach((key) => {
                 playback.navigationShortcuts[key] = String(playback.navigationShortcuts[key] || '').trim();
+            });
+            if (!playback.galleryShortcuts || typeof playback.galleryShortcuts !== 'object') {
+                playback.galleryShortcuts = {};
+            }
+            const galleryShortcutKeys = [
+                'prev', 'next', 'first', 'last', 'pageUp', 'pageDown',
+                'fit', 'actual', 'zoomIn', 'zoomOut', 'flipH', 'flipV',
+                'fullscreenWindow', 'fullscreenLightbox'
+            ];
+            galleryShortcutKeys.forEach((key) => {
+                playback.galleryShortcuts[key] = normalizeShortcutComboString(playback.galleryShortcuts[key] || '');
             });
             if (!playback.startupState || typeof playback.startupState !== 'object') {
                 playback.startupState = {};
@@ -2104,6 +2576,12 @@ async function loadSettings() {
                 subtitles: 'off'
             };
         }
+        const fsSubtitlePref = String(state.settings.videoFullscreen.subtitles || 'off').trim().toLowerCase();
+        if (!['off', 'on'].includes(fsSubtitlePref)) {
+            state.settings.videoFullscreen.subtitles = 'off';
+        } else {
+            state.settings.videoFullscreen.subtitles = fsSubtitlePref;
+        }
         if (!Number.isFinite(Number(state.settings.videoFullscreen.audioDelayMs))) {
             state.settings.videoFullscreen.audioDelayMs = 0;
         }
@@ -2111,7 +2589,8 @@ async function loadSettings() {
             state.settings.security = {
                 strictVpnBlock: false,
                 allowPopups: true,
-                enforceAllowlist: false
+                enforceAllowlist: false,
+                sessionProfile: 'persistent'
             };
         }
         if (typeof state.settings.security.allowPopups !== 'boolean') {
@@ -2120,6 +2599,7 @@ async function loadSettings() {
         if (typeof state.settings.security.enforceAllowlist !== 'boolean') {
             state.settings.security.enforceAllowlist = false;
         }
+        state.settings.security.sessionProfile = normalizeWebSessionProfile(state.settings.security.sessionProfile, 'persistent');
         if (!state.settings.appearance || typeof state.settings.appearance !== 'object') {
             state.settings.appearance = {
                 theme: 'performance-balanced',
@@ -2201,6 +2681,7 @@ async function loadSettings() {
                 lastWebPlatform: '',
                 rememberLastSection: true,
                 startupPage: 'music',
+                webExperienceEnabled: false,
                 webStartupLazyDelayMs: WEB_STARTUP_LAZY_DELAY_DEFAULT_MS,
                 closeToTray: true,
                 language: ''
@@ -2216,6 +2697,9 @@ async function loadSettings() {
         if (typeof state.settings.ui.rememberLastSection !== 'boolean') {
             state.settings.ui.rememberLastSection = true;
         }
+        if (typeof state.settings.ui.webExperienceEnabled !== 'boolean') {
+            state.settings.ui.webExperienceEnabled = false;
+        }
         if (typeof state.settings.ui.closeToTray !== 'boolean') {
             state.settings.ui.closeToTray = true;
         }
@@ -2224,23 +2708,32 @@ async function loadSettings() {
         } else {
             state.settings.ui.lastWebPlatform = String(state.settings.ui.lastWebPlatform).trim().toLowerCase();
         }
-        if (!['music', 'video', 'web'].includes(String(state.settings.ui.startupPage || '').toLowerCase())) {
+        if (!getAllowedMainPages().includes(String(state.settings.ui.startupPage || '').toLowerCase())) {
             state.settings.ui.startupPage = 'music';
         }
         state.settings.ui.webStartupLazyDelayMs = normalizeWebStartupLazyDelayMs(state.settings.ui.webStartupLazyDelayMs);
+        if (state.settings.ui.webExperienceEnabled !== true) {
+            state.settings.playback.browserNavigationHotkeysEnabled = false;
+        }
         if (!state.settings.videoLibrary || typeof state.settings.videoLibrary !== 'object') {
             state.settings.videoLibrary = {
+                items: []
+            };
+        }
+        if (!state.settings.imageLibrary || typeof state.settings.imageLibrary !== 'object') {
+            state.settings.imageLibrary = {
                 items: []
             };
         }
         getAudioOutputSettings();
 
         state.videoFiles = sanitizeVideoLibraryItems(state.settings.videoLibrary.items);
+        state.imageFiles = sanitizeImageLibraryItems(state.settings.imageLibrary.items);
 
         const savedPage = String(state.settings.ui.lastPage || 'music').toLowerCase();
         const savedPanel = String(state.settings.ui.lastPanel || (savedPage === 'web' ? 'web' : 'library')).toLowerCase();
-        state.currentPage = ['music', 'video', 'web'].includes(savedPage) ? savedPage : 'music';
-        state.currentPanel = savedPanel === 'web' ? 'web' : 'library';
+        state.currentPage = normalizeMainPageForCurrentMode(savedPage, 'music');
+        state.currentPanel = (state.currentPage === 'web' && savedPanel === 'web') ? 'web' : 'library';
 
         // UI'yi güncelle
         if (elements.volumeSlider) elements.volumeSlider.value = state.volume;
@@ -2300,6 +2793,124 @@ function sanitizeVideoLibraryItems(items) {
     return out;
 }
 
+function sanitizeImageLibraryItems(items) {
+    if (!Array.isArray(items)) return [];
+    const out = [];
+    const fallbackNow = Date.now();
+    for (const raw of items) {
+        if (!raw || typeof raw !== 'object') continue;
+        const path = String(raw.path || '').trim();
+        if (!path) continue;
+        const name = String(raw.name || (window.aurivo?.path?.basename?.(path) || path.split('/').pop() || 'image')).trim();
+        const rawAddedAt = Number(raw.addedAt);
+        const addedAt = Number.isFinite(rawAddedAt) && rawAddedAt > 0
+            ? Math.round(rawAddedAt)
+            : (fallbackNow + out.length);
+        out.push({ path, name: name || 'image', addedAt });
+        if (out.length >= 5000) break;
+    }
+    return out;
+}
+
+function getGallerySortPreferenceState() {
+    const librarySettings = ensureLibrarySettings();
+    const sortMode = String(librarySettings.gallerySortMode || '').toLowerCase();
+    return ['name-asc', 'name-desc', 'date-desc'].includes(sortMode) ? sortMode : 'name-asc';
+}
+
+function getGalleryEntryModifiedAt(entry) {
+    const candidate = Number(
+        entry?.mtimeMs
+        || entry?.mtime
+        || entry?.modifiedMs
+        || entry?.modified
+        || entry?.lastModified
+        || entry?.addedAt
+        || 0
+    );
+    return Number.isFinite(candidate) && candidate > 0 ? Math.round(candidate) : 0;
+}
+
+function sortGalleryDirectoryEntries(entries, sortMode = 'name-asc') {
+    const mode = ['name-asc', 'name-desc', 'date-desc'].includes(String(sortMode || '').toLowerCase())
+        ? String(sortMode).toLowerCase()
+        : 'name-asc';
+    const compareByChars = (leftName, rightName) =>
+        String(leftName || '').localeCompare(String(rightName || ''), 'tr', {
+            numeric: false,
+            sensitivity: 'variant',
+            ignorePunctuation: false
+        });
+    return [...(Array.isArray(entries) ? entries : [])]
+        .map((item, index) => ({ item, index }))
+        .sort((left, right) => {
+            if (mode === 'date-desc') {
+                const leftDate = getGalleryEntryModifiedAt(left.item);
+                const rightDate = getGalleryEntryModifiedAt(right.item);
+                if (leftDate !== rightDate) return rightDate - leftDate;
+            }
+            const byName = compareByChars(left.item?.name, right.item?.name);
+            if (mode === 'name-desc' && byName !== 0) return -byName;
+            if (byName !== 0) return byName;
+            return left.index - right.index;
+        })
+        .map((entry) => entry.item);
+}
+
+function sortImageLibraryItems(items, options = {}) {
+    const requestedMode = String(options?.sortMode || getGallerySortPreferenceState()).toLowerCase();
+    const sortMode = ['name-asc', 'name-desc', 'date-desc'].includes(requestedMode) ? requestedMode : 'name-asc';
+    const compareByChars = (leftName, rightName) =>
+        String(leftName || '').localeCompare(String(rightName || ''), 'tr', {
+            numeric: false,
+            sensitivity: 'variant',
+            ignorePunctuation: false
+        });
+    return sanitizeImageLibraryItems(items)
+        .map((item, index) => ({ item, index }))
+        .sort((left, right) => {
+            if (sortMode === 'date-desc') {
+                const leftAddedAt = getGalleryEntryModifiedAt(left.item);
+                const rightAddedAt = getGalleryEntryModifiedAt(right.item);
+                if (leftAddedAt !== rightAddedAt) return rightAddedAt - leftAddedAt;
+            }
+            const byName = compareByChars(left.item?.name, right.item?.name);
+            if (sortMode === 'name-desc' && byName !== 0) return -byName;
+            if (byName !== 0) return byName;
+            const byPath = compareByChars(left.item?.path, right.item?.path);
+            if (byPath !== 0) return byPath;
+            return left.index - right.index;
+        })
+        .map((entry) => entry.item);
+}
+
+function getGalleryColumnFlowSpec(viewMode = '') {
+    const mode = String(viewMode || getLibraryViewPreferenceState().mode || 'list').toLowerCase();
+    if (mode === 'compact') return { columnWidth: 170, columnGap: 10 };
+    if (mode === 'comfortable') return { columnWidth: 290, columnGap: 16 };
+    if (mode === 'cards') return { columnWidth: 340, columnGap: 18 };
+    return { columnWidth: 240, columnGap: 14 };
+}
+
+function reorderGalleryItemsForLeftToRightColumns(items, viewMode = '') {
+    const list = Array.isArray(items) ? items : [];
+    if (list.length <= 1) return list;
+    const containerWidth = Math.max(0, Number(elements.playlist?.clientWidth) || 0);
+    const { columnWidth, columnGap } = getGalleryColumnFlowSpec(viewMode);
+    if (!containerWidth || columnWidth <= 0) return list;
+    const cols = Math.max(1, Math.floor((containerWidth + columnGap) / (columnWidth + columnGap)));
+    if (cols <= 1) return list;
+    const rows = Math.ceil(list.length / cols);
+    const reordered = [];
+    for (let col = 0; col < cols; col += 1) {
+        for (let row = 0; row < rows; row += 1) {
+            const index = (row * cols) + col;
+            if (index < list.length) reordered.push(list[index]);
+        }
+    }
+    return reordered.length === list.length ? reordered : list;
+}
+
 function mergeVideoLibraryItems(existingItems, incomingItems) {
     const merged = sanitizeVideoLibraryItems(existingItems);
     const seen = new Set(
@@ -2315,12 +2926,41 @@ function mergeVideoLibraryItems(existingItems, incomingItems) {
     return merged;
 }
 
+function mergeImageLibraryItems(existingItems, incomingItems) {
+    const merged = sanitizeImageLibraryItems(existingItems);
+    const seen = new Set(
+        merged.map((item) => String(item?.path || '').trim().toLowerCase())
+    );
+    const incomingNow = Date.now();
+    const incoming = sanitizeImageLibraryItems(incomingItems).map((item, index) => {
+        const addedAt = Number(item?.addedAt);
+        if (Number.isFinite(addedAt) && addedAt > 0) return item;
+        return { ...item, addedAt: incomingNow + index };
+    });
+    for (const item of incoming) {
+        const key = String(item?.path || '').trim().toLowerCase();
+        if (!key || seen.has(key)) continue;
+        seen.add(key);
+        merged.push(item);
+    }
+    return sortImageLibraryItems(merged);
+}
+
 function persistVideoLibrary() {
     if (!state.settings || typeof state.settings !== 'object') return;
     if (!state.settings.videoLibrary || typeof state.settings.videoLibrary !== 'object') {
         state.settings.videoLibrary = {};
     }
     state.settings.videoLibrary.items = sanitizeVideoLibraryItems(state.videoFiles);
+    saveSettings().catch(() => { });
+}
+
+function persistImageLibrary() {
+    if (!state.settings || typeof state.settings !== 'object') return;
+    if (!state.settings.imageLibrary || typeof state.settings.imageLibrary !== 'object') {
+        state.settings.imageLibrary = {};
+    }
+    state.settings.imageLibrary.items = sanitizeImageLibraryItems(state.imageFiles);
     saveSettings().catch(() => { });
 }
 
@@ -3508,7 +4148,7 @@ function persistCurrentMainSection() {
     if (!state.settings || typeof state.settings !== 'object') return;
     if (!state.settings.ui || typeof state.settings.ui !== 'object') state.settings.ui = {};
 
-    const page = ['music', 'video', 'web'].includes(state.currentPage) ? state.currentPage : 'music';
+    const page = normalizeMainPageForCurrentMode(state.currentPage, 'music');
     state.settings.ui.lastPage = page;
     state.settings.ui.lastPanel = page === 'web' ? 'web' : 'library';
 
@@ -3545,6 +4185,7 @@ function getWebStartupLazyDelayMs() {
 }
 
 function getStartupWebPlatformBtn() {
+    if (!isWebExperienceEnabled()) return null;
     if (!shouldAutoLoadWebOnStartup()) return null;
     const remember = state.settings?.ui?.rememberLastSection !== false;
     const startup = String(state.settings?.ui?.startupPage || 'music').toLowerCase();
@@ -3604,12 +4245,14 @@ function preloadLastWebPlatformOnStartup() {
 }
 
 function restoreLastMainSection() {
+    applyWebExperienceMode({ forceSwitch: false });
     const remember = state.settings?.ui?.rememberLastSection !== false;
     const startup = String(state.settings?.ui?.startupPage || 'music').toLowerCase();
     const savedPage = String(state.settings?.ui?.lastPage || '').toLowerCase();
+    const allowedPages = getAllowedMainPages();
     const page = remember
-        ? (['music', 'video', 'web'].includes(savedPage) ? savedPage : 'music')
-        : (['music', 'video', 'web'].includes(startup) ? startup : 'music');
+        ? (allowedPages.includes(savedPage) ? savedPage : 'music')
+        : (allowedPages.includes(startup) ? startup : 'music');
     const startupBehavior = getLibraryStartupBehavior();
     if (startupBehavior.restoreLastFolder) {
         if (page === 'music') {
@@ -3853,7 +4496,8 @@ function bindLibrarySettingsEventListeners({ includeVideoClear = false } = {}) {
     }
     if (elements.libraryHeroAddFolderBtn) {
         elements.libraryHeroAddFolderBtn.addEventListener('click', (event) => {
-            showLibraryAddMenu(event.currentTarget || event.target, 'audio');
+            const scope = state.mediaFilter === 'image' ? 'image' : (state.mediaFilter === 'video' ? 'video' : 'audio');
+            showLibraryAddMenu(event.currentTarget || event.target, scope);
         });
     }
     if (elements.libraryAddExcludedFolder) {
@@ -3948,6 +4592,62 @@ function bindLibrarySettingsEventListeners({ includeVideoClear = false } = {}) {
                 cleanBrokenChars: true,
                 inferFromFilename: true
             }).catch(() => {});
+        });
+    }
+    if (elements.galleryThresholdDefaultsBtn && elements.galleryThresholdDefaultsBtn.dataset.boundGalleryThresholdDefaults !== '1') {
+        elements.galleryThresholdDefaultsBtn.addEventListener('click', () => {
+            resetGalleryThresholdInputsToDefaults();
+        });
+        elements.galleryThresholdDefaultsBtn.dataset.boundGalleryThresholdDefaults = '1';
+    }
+    if (elements.gallerySlideshowProfilePreset && elements.gallerySlideshowProfilePreset.dataset.boundGallerySlideshowProfile !== '1') {
+        elements.gallerySlideshowProfilePreset.addEventListener('change', () => {
+            applyGallerySlideshowProfilePreset(String(elements.gallerySlideshowProfilePreset?.value || ''));
+        });
+        elements.gallerySlideshowProfilePreset.dataset.boundGallerySlideshowProfile = '1';
+    }
+    const syncSlideshowProfileFromInputs = () => {
+        syncGallerySlideshowProfilePresetUi();
+    };
+    if (elements.gallerySlideshowIntervalMs && elements.gallerySlideshowIntervalMs.dataset.boundGallerySlideshowProfileInput !== '1') {
+        elements.gallerySlideshowIntervalMs.addEventListener('input', syncSlideshowProfileFromInputs);
+        elements.gallerySlideshowIntervalMs.addEventListener('change', syncSlideshowProfileFromInputs);
+        elements.gallerySlideshowIntervalMs.dataset.boundGallerySlideshowProfileInput = '1';
+    }
+    if (elements.gallerySlideshowFastThresholdMs && elements.gallerySlideshowFastThresholdMs.dataset.boundGallerySlideshowProfileInput !== '1') {
+        elements.gallerySlideshowFastThresholdMs.addEventListener('input', syncSlideshowProfileFromInputs);
+        elements.gallerySlideshowFastThresholdMs.addEventListener('change', syncSlideshowProfileFromInputs);
+        elements.gallerySlideshowFastThresholdMs.dataset.boundGallerySlideshowProfileInput = '1';
+    }
+    if (elements.gallerySlideshowSlowThresholdMs && elements.gallerySlideshowSlowThresholdMs.dataset.boundGallerySlideshowProfileInput !== '1') {
+        elements.gallerySlideshowSlowThresholdMs.addEventListener('input', syncSlideshowProfileFromInputs);
+        elements.gallerySlideshowSlowThresholdMs.addEventListener('change', syncSlideshowProfileFromInputs);
+        elements.gallerySlideshowSlowThresholdMs.dataset.boundGallerySlideshowProfileInput = '1';
+    }
+    const bindGalleryTransitionInput = (inputEl, key, min, max) => {
+        if (!inputEl || inputEl.dataset.boundGalleryTransitionInput === '1') return;
+        const onUpdate = () => {
+            const perf = ensureLibrarySettings().performance || {};
+            ensureLibrarySettings().performance = perf;
+            const raw = Number(inputEl.value);
+            perf[key] = Number.isFinite(raw)
+                ? Math.max(min, Math.min(max, Math.round(raw)))
+                : (key === 'galleryTransitionSlideshowMs' ? 440 : 190);
+            updateGalleryTransitionSettingLabels();
+        };
+        inputEl.addEventListener('input', onUpdate);
+        inputEl.addEventListener('change', onUpdate);
+        inputEl.dataset.boundGalleryTransitionInput = '1';
+    };
+    bindGalleryTransitionInput(elements.galleryTransitionSlideshowMs, 'galleryTransitionSlideshowMs', 280, 1100);
+    bindGalleryTransitionInput(elements.galleryTransitionManualMs, 'galleryTransitionManualMs', 120, 500);
+    if (Array.isArray(elements.galleryTransitionPresetButtons) && elements.galleryTransitionPresetButtons.length) {
+        elements.galleryTransitionPresetButtons.forEach((button) => {
+            if (!button || button.dataset.boundGalleryTransitionPreset === '1') return;
+            button.addEventListener('click', () => {
+                applyGalleryTransitionPreset(String(button.dataset.galleryTransitionPreset || ''));
+            });
+            button.dataset.boundGalleryTransitionPreset = '1';
         });
     }
     if (includeVideoClear && elements.libraryClearVideoLibrary) {
@@ -4105,6 +4805,7 @@ function setupPlaybackShortcutUiBindings() {
     if (document.body?.dataset?.playbackShortcutUiBound === 'true') return;
     document.body.dataset.playbackShortcutUiBound = 'true';
     decoratePlaybackShortcutLabelsWithIcons();
+    window.AurivoSettingsShared?.updateGalleryShortcutAssignmentsUi?.({ autofillDefaults: true });
 
     const jumpToPlaybackShortcuts = document.getElementById('jumpToPlaybackShortcuts');
     if (jumpToPlaybackShortcuts) {
@@ -4155,6 +4856,14 @@ function setupPlaybackShortcutUiBindings() {
         });
     });
 
+    const galleryHotkeysEnabled = document.getElementById('galleryHotkeysEnabled');
+    if (galleryHotkeysEnabled && galleryHotkeysEnabled.dataset.galleryBindDone !== 'true') {
+        galleryHotkeysEnabled.dataset.galleryBindDone = 'true';
+        galleryHotkeysEnabled.addEventListener('change', () => {
+            window.AurivoSettingsShared?.updateGalleryShortcutAssignmentsUi?.({ autofillDefaults: true });
+        });
+    }
+
     bindNavigationShortcutCaptureHandlers();
 }
 
@@ -4167,6 +4876,34 @@ function setupEventListeners() {
         btn.addEventListener('click', () => handleSidebarClick(btn));
     });
 
+    if (elements.libraryTabButtons?.length) {
+        elements.libraryTabButtons.forEach((button) => {
+            button.addEventListener('click', () => {
+                const nextTab = String(button?.dataset?.libraryTab || '').trim().toLowerCase();
+                if (!['collection', 'now-playing', 'queue'].includes(nextTab)) return;
+                if (state.libraryViewTab === nextTab) return;
+                state.libraryViewTab = nextTab;
+                syncLibrarySurfaceControlsUi();
+                renderPlaylist();
+            });
+        });
+    }
+    if (elements.libraryQuickSearchInput) {
+        const handleLibraryQuickSearch = () => {
+            const query = String(elements.libraryQuickSearchInput.value || '');
+            if (state.libraryQuickSearch === query) return;
+            state.libraryQuickSearch = query;
+            renderPlaylist();
+        };
+        elements.libraryQuickSearchInput.addEventListener('input', handleLibraryQuickSearch);
+        elements.libraryQuickSearchInput.addEventListener('change', handleLibraryQuickSearch);
+        elements.libraryQuickSearchInput.addEventListener('keydown', (event) => {
+            if (event.code === 'Space' || event.key === ' ') {
+                // Keep space for query typing instead of triggering global play/pause shortcut.
+                event.stopPropagation();
+            }
+        });
+    }
     if (elements.settingsBtn) elements.settingsBtn.addEventListener('click', () => openSettings('playback'));
     if (elements.infoBtn) elements.infoBtn.addEventListener('click', showAbout);
     if (elements.adblockBtn) {
@@ -4345,12 +5082,25 @@ function setupEventListeners() {
             elements.behaviorRememberLastSection.checked = !!elements.libraryRememberSection.checked;
         });
     }
+    if (elements.behaviorWebExperienceEnabled) {
+        elements.behaviorWebExperienceEnabled.addEventListener('change', () => {
+            if (!state.settings || typeof state.settings !== 'object') state.settings = {};
+            if (!state.settings.ui || typeof state.settings.ui !== 'object') state.settings.ui = {};
+            state.settings.ui.webExperienceEnabled = !!elements.behaviorWebExperienceEnabled.checked;
+            applyWebExperienceMode();
+            markSettingsDirty();
+        });
+    }
     if (elements.behaviorStartupPage && elements.libraryStartupPage) {
         elements.behaviorStartupPage.addEventListener('change', () => {
-            elements.libraryStartupPage.value = String(elements.behaviorStartupPage.value || 'music');
+            const nextPage = normalizeMainPageForCurrentMode(elements.behaviorStartupPage.value || 'music', 'music');
+            elements.behaviorStartupPage.value = nextPage;
+            elements.libraryStartupPage.value = nextPage;
         });
         elements.libraryStartupPage.addEventListener('change', () => {
-            elements.behaviorStartupPage.value = String(elements.libraryStartupPage.value || 'music');
+            const nextPage = normalizeMainPageForCurrentMode(elements.libraryStartupPage.value || 'music', 'music');
+            elements.libraryStartupPage.value = nextPage;
+            elements.behaviorStartupPage.value = nextPage;
         });
     }
     if (elements.behaviorWebStartupDelay && elements.libraryWebStartupDelay) {
@@ -4423,6 +5173,37 @@ function setupEventListeners() {
         if (menu) menu.classList.add('hidden');
         const playlistMenu = document.getElementById('playlistContextMenu');
         if (playlistMenu && !playlistMenu.contains(e.target)) hidePlaylistContextMenu();
+
+        const galleryItem = e.target?.closest?.('.gallery-item[data-gallery-path]');
+        if (galleryItem) {
+            const path = String(galleryItem.dataset.galleryPath || '').trim();
+            const label = galleryItem.querySelector('.gallery-item-name')?.textContent || '';
+            const action = String(e.target?.closest?.('[data-gallery-action]')?.dataset?.galleryAction || '').trim().toLowerCase();
+            if (path && action) {
+                if (action === 'rotate-left') {
+                    rotateGalleryThumbnail(path, -90);
+                    return;
+                }
+                if (action === 'rotate-right') {
+                    rotateGalleryThumbnail(path, 90);
+                    return;
+                }
+                if (action === 'save-rotation') {
+                    void saveGalleryThumbnailRotation(path, label);
+                    return;
+                }
+                if (action === 'open') {
+                    state.currentImagePath = path;
+                    openImageInGalleryLightbox(path, label);
+                    return;
+                }
+                if (action === 'open-fullscreen') {
+                    state.currentImagePath = path;
+                    void openGalleryImageInFullscreen(path, label);
+                    return;
+                }
+            }
+        }
     });
     document.addEventListener('keydown', (e) => {
         if (e.key === 'Escape') hidePlaylistContextMenu();
@@ -4471,6 +5252,16 @@ function setupEventListeners() {
                 const mode = String(btn.dataset.viewMode || '').trim().toLowerCase();
                 setLibraryViewMode(mode, { persist: true });
             });
+        });
+    }
+    if (elements.gallerySortQuickSelect) {
+        elements.gallerySortQuickSelect.addEventListener('change', () => {
+            setGallerySortMode(String(elements.gallerySortQuickSelect?.value || 'name-asc'), { persist: true });
+        });
+    }
+    if (elements.galleryClearQuickBtn) {
+        elements.galleryClearQuickBtn.addEventListener('click', () => {
+            clearGalleryLibraryAndFolders().catch(() => {});
         });
     }
     if (elements.webDrawerToggleBtn) {
@@ -4527,7 +5318,7 @@ function setupEventListeners() {
             try {
                 state.mediaFilter = 'audio';
                 const res = await window.aurivo?.dialog?.openFolder?.({
-                    title: 'Müzik klasörü seç',
+                    title: 'Medya klasörü seç',
                     defaultPath: state.specialPaths?.music || undefined
                 });
                 if (res?.path) await addUserFolder(res.path, res.name || window.aurivo?.path?.basename?.(res.path) || 'Klasör', 'audio');
@@ -4539,7 +5330,8 @@ function setupEventListeners() {
 
     if (elements.musicAddFilesBtn) {
         elements.musicAddFilesBtn.addEventListener('click', (event) => {
-            showLibraryAddMenu(event.currentTarget || event.target, 'audio');
+            const scope = state.mediaFilter === 'image' ? 'image' : (state.mediaFilter === 'video' ? 'video' : 'audio');
+            showLibraryAddMenu(event.currentTarget || event.target, scope);
         });
     }
 
@@ -4584,6 +5376,839 @@ function setupEventListeners() {
             }
         });
     }
+
+    if (elements.imageAddFilesBtn) {
+        elements.imageAddFilesBtn.addEventListener('click', (event) => {
+            showLibraryAddMenu(event.currentTarget || event.target, 'image');
+        });
+    }
+    if (elements.galleryLightboxClose) {
+        elements.galleryLightboxClose.addEventListener('click', closeGalleryLightbox);
+    }
+    if (elements.galleryLightboxPrev) {
+        elements.galleryLightboxPrev.addEventListener('click', (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            showRelativeGalleryImage(-1);
+            refreshGallerySlideshowAfterManualNavigation();
+        });
+    }
+    if (elements.galleryLightboxNext) {
+        elements.galleryLightboxNext.addEventListener('click', (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            showRelativeGalleryImage(1);
+            refreshGallerySlideshowAfterManualNavigation();
+        });
+    }
+    if (elements.galleryLightbox) {
+        elements.galleryLightbox.addEventListener('click', (event) => {
+            if (event.target === elements.galleryLightbox) closeGalleryLightbox();
+            closeGalleryLightboxContextMenu();
+        });
+        elements.galleryLightbox.addEventListener('mousemove', () => {
+            refreshGalleryLightboxUiAutohide({ pointer: true });
+        });
+        elements.galleryLightbox.addEventListener('mouseenter', () => {
+            refreshGalleryLightboxUiAutohide({ pointer: true });
+        });
+    }
+    if (elements.galleryLightboxToolsBtn) {
+        elements.galleryLightboxToolsBtn.addEventListener('click', (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            toggleGalleryEditPanelOpen();
+            closeGalleryLightboxContextMenu();
+        });
+    }
+    if (elements.galleryLightboxStage) {
+        elements.galleryLightboxStage.addEventListener('contextmenu', (event) => {
+            if (!elements.galleryLightbox || elements.galleryLightbox.classList.contains('hidden')) return;
+            event.preventDefault();
+            event.stopPropagation();
+            openGalleryLightboxContextMenu(event.clientX, event.clientY);
+        });
+        elements.galleryLightboxStage.addEventListener('wheel', (event) => {
+            if (!elements.galleryLightbox || elements.galleryLightbox.classList.contains('hidden')) return;
+            if (event.ctrlKey) return;
+            const target = event.target;
+            if (target instanceof HTMLElement) {
+                if (target.closest('.gallery-lightbox-bottom-bar, .gallery-edit-panel, .gallery-lightbox-context-menu')) return;
+            }
+            event.preventDefault();
+            event.stopPropagation();
+            const direction = event.deltaY < 0 ? 1 : -1;
+            zoomGalleryByWheelStep(direction);
+        }, { passive: false });
+    }
+    if (elements.galleryLightboxImage) {
+        elements.galleryLightboxImage.addEventListener('load', () => {
+            elements.galleryLightboxImage.dataset.galleryFallbackTried = '0';
+            applyGalleryBackgroundMode(state.galleryBackgroundMode || getLibraryPerformanceState().galleryBackgroundMode || 'dim', { persist: false });
+            renderGalleryMiniNavigator();
+            renderGalleryAnnotationOverlay();
+        });
+        elements.galleryLightboxImage.addEventListener('error', () => {
+            const sourcePath = String(state.currentImagePath || '').trim();
+            if (!sourcePath) return;
+            void recoverGalleryImageElementSource(elements.galleryLightboxImage, sourcePath);
+        });
+    }
+    if (elements.galleryLightboxContextMenu) {
+        elements.galleryLightboxContextMenu.addEventListener('click', (event) => {
+            const btn = event.target instanceof Element
+                ? event.target.closest('.gallery-lightbox-context-item')
+                : null;
+            if (!(btn instanceof HTMLButtonElement) || btn.disabled) return;
+            applyGalleryContextClickPop(btn);
+            playGalleryContextClickSound();
+        }, true);
+        elements.galleryLightboxContextMenu.addEventListener('animationend', (event) => {
+            const target = event.target;
+            if (target instanceof HTMLElement && target.classList.contains('gallery-context-click-pop')) {
+                target.classList.remove('gallery-context-click-pop');
+            }
+        });
+    }
+    if (elements.galleryContextTogglePanelBtn) {
+        elements.galleryContextTogglePanelBtn.addEventListener('click', (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            toggleGalleryEditPanelOpen();
+            closeGalleryLightboxContextMenu();
+        });
+    }
+    if (elements.galleryContextPrevBtn) {
+        elements.galleryContextPrevBtn.addEventListener('click', (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            showRelativeGalleryImage(-1);
+            refreshGallerySlideshowAfterManualNavigation();
+            closeGalleryLightboxContextMenu();
+        });
+    }
+    if (elements.galleryContextNextBtn) {
+        elements.galleryContextNextBtn.addEventListener('click', (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            showRelativeGalleryImage(1);
+            refreshGallerySlideshowAfterManualNavigation();
+            closeGalleryLightboxContextMenu();
+        });
+    }
+    if (elements.galleryContextFirstBtn) {
+        elements.galleryContextFirstBtn.addEventListener('click', (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            showGalleryImageAt(0);
+            refreshGallerySlideshowAfterManualNavigation();
+            closeGalleryLightboxContextMenu();
+        });
+    }
+    if (elements.galleryContextLastBtn) {
+        elements.galleryContextLastBtn.addEventListener('click', (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            showGalleryImageAt((Array.isArray(state.imageFiles) ? state.imageFiles.length : 1) - 1);
+            refreshGallerySlideshowAfterManualNavigation();
+            closeGalleryLightboxContextMenu();
+        });
+    }
+    if (elements.galleryContextPageUpBtn) {
+        elements.galleryContextPageUpBtn.addEventListener('click', (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            showRelativeGalleryImage(-getGalleryPageJumpStep());
+            refreshGallerySlideshowAfterManualNavigation();
+            closeGalleryLightboxContextMenu();
+        });
+    }
+    if (elements.galleryContextPageDownBtn) {
+        elements.galleryContextPageDownBtn.addEventListener('click', (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            showRelativeGalleryImage(getGalleryPageJumpStep());
+            refreshGallerySlideshowAfterManualNavigation();
+            closeGalleryLightboxContextMenu();
+        });
+    }
+    if (elements.galleryContextFitBtn) {
+        elements.galleryContextFitBtn.addEventListener('click', (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            setGalleryZoomMode('fit');
+            closeGalleryLightboxContextMenu();
+        });
+    }
+    if (elements.galleryContextActualSizeBtn) {
+        elements.galleryContextActualSizeBtn.addEventListener('click', (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            setGalleryZoomMode('actual');
+            closeGalleryLightboxContextMenu();
+        });
+    }
+    if (elements.galleryContextZoomInBtn) {
+        elements.galleryContextZoomInBtn.addEventListener('click', (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            zoomGalleryByFactor(1.2);
+            closeGalleryLightboxContextMenu();
+        });
+    }
+    if (elements.galleryContextZoomOutBtn) {
+        elements.galleryContextZoomOutBtn.addEventListener('click', (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            zoomGalleryByFactor(1 / 1.2);
+            closeGalleryLightboxContextMenu();
+        });
+    }
+    if (elements.galleryContextBackgroundModeBtn) {
+        elements.galleryContextBackgroundModeBtn.addEventListener('click', (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            const order = ['dim', 'blur', 'checker'];
+            const current = String(state.galleryBackgroundMode || 'dim');
+            const index = order.indexOf(current);
+            const next = order[(index + 1 + order.length) % order.length];
+            applyGalleryBackgroundMode(next, { persist: true });
+            closeGalleryLightboxContextMenu();
+        });
+    }
+    if (elements.galleryContextFullscreenBtn) {
+        elements.galleryContextFullscreenBtn.addEventListener('click', async (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            await toggleGalleryWindowFullscreen();
+            updateGalleryContextMenuStateUi();
+            closeGalleryLightboxContextMenu();
+        });
+    }
+    if (elements.galleryContextSaveCopyBtn) {
+        elements.galleryContextSaveCopyBtn.addEventListener('click', async (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            await saveEditedGalleryImageCopy();
+            closeGalleryLightboxContextMenu();
+        });
+    }
+    if (elements.galleryContextViewMenuBtn) {
+        elements.galleryContextViewMenuBtn.addEventListener('click', (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            const wrap = elements.galleryContextViewSubmenuWrap;
+            if (!wrap) return;
+            const willOpen = !wrap.classList.contains('open');
+            if (willOpen) {
+                openGalleryContextSubmenu(wrap);
+                updateGalleryContextSubmenuPlacement();
+            } else {
+                closeGalleryContextSubmenu(wrap);
+            }
+        });
+    }
+    if (elements.galleryContextFileMenuBtn) {
+        elements.galleryContextFileMenuBtn.addEventListener('click', (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            const wrap = elements.galleryContextFileSubmenuWrap;
+            if (!wrap) return;
+            const willOpen = !wrap.classList.contains('open');
+            if (willOpen) {
+                openGalleryContextSubmenu(wrap);
+                updateGalleryContextSubmenuPlacement();
+            } else {
+                closeGalleryContextSubmenu(wrap);
+            }
+        });
+    }
+    if (elements.galleryContextRenameBtn) {
+        elements.galleryContextRenameBtn.addEventListener('click', async (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            closeGalleryLightboxContextMenu();
+            await renameCurrentGalleryImage();
+        });
+    }
+    if (elements.galleryContextTrashBtn) {
+        elements.galleryContextTrashBtn.addEventListener('click', async (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            await moveCurrentGalleryImageToTrash();
+            closeGalleryLightboxContextMenu();
+        });
+    }
+    if (elements.galleryContextOpenFolderBtn) {
+        elements.galleryContextOpenFolderBtn.addEventListener('click', async (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            await openCurrentGalleryImageFolder();
+            closeGalleryLightboxContextMenu();
+        });
+    }
+    if (elements.galleryContextPropertiesBtn) {
+        elements.galleryContextPropertiesBtn.addEventListener('click', async (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            await showCurrentGalleryImageProperties();
+            closeGalleryLightboxContextMenu();
+        });
+    }
+    if (elements.galleryContextRotateLeftBtn) {
+        elements.galleryContextRotateLeftBtn.addEventListener('click', (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            rotateGalleryBy(-90);
+            closeGalleryLightboxContextMenu();
+        });
+    }
+    if (elements.galleryContextRotateRightBtn) {
+        elements.galleryContextRotateRightBtn.addEventListener('click', (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            rotateGalleryBy(90);
+            closeGalleryLightboxContextMenu();
+        });
+    }
+    if (elements.galleryContextFlipHBtn) {
+        elements.galleryContextFlipHBtn.addEventListener('click', (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            flipGalleryHorizontal();
+            closeGalleryLightboxContextMenu();
+        });
+    }
+    if (elements.galleryContextFlipVBtn) {
+        elements.galleryContextFlipVBtn.addEventListener('click', (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            flipGalleryVertical();
+            closeGalleryLightboxContextMenu();
+        });
+    }
+    if (elements.galleryContextResetEditsBtn) {
+        elements.galleryContextResetEditsBtn.addEventListener('click', (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            resetGalleryEditValues();
+            closeGalleryLightboxContextMenu();
+        });
+    }
+    if (elements.galleryContextConverterBtn) {
+        elements.galleryContextConverterBtn.addEventListener('click', async (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            closeGalleryLightboxContextMenu();
+            await openGalleryConverterModal();
+        });
+    }
+    document.addEventListener('click', (event) => {
+        if (!elements.galleryLightboxContextMenu || elements.galleryLightboxContextMenu.classList.contains('hidden')) return;
+        const target = event.target;
+        if (!(target instanceof Element)) return;
+        if (target.closest('#galleryLightboxContextMenu')) return;
+        if (target.closest('#galleryLightboxToolsBtn')) return;
+        closeGalleryLightboxContextMenu();
+    });
+    document.addEventListener('click', (event) => {
+        if (!galleryBottomViewMenuOpen) return;
+        const target = event.target;
+        if (!(target instanceof Element)) return;
+        if (target.closest('#galleryBottomViewModeWrap')) return;
+        closeGalleryBottomViewModeMenu();
+    });
+    document.addEventListener('fullscreenchange', () => {
+        updateGalleryContextMenuStateUi();
+    });
+    if (elements.galleryCropLayer) {
+        elements.galleryCropLayer.addEventListener('mousedown', (event) => {
+            if (!state.galleryCrop?.enabled || !elements.galleryLightboxStage) return;
+            const rect = elements.galleryLightboxStage.getBoundingClientRect();
+            if (!rect.width || !rect.height) return;
+            const startX = clamp01((event.clientX - rect.left) / rect.width);
+            const startY = clamp01((event.clientY - rect.top) / rect.height);
+            state.galleryCrop = {
+                ...state.galleryCrop,
+                drawing: true,
+                startX,
+                startY,
+                x: startX,
+                y: startY,
+                w: 0.02,
+                h: 0.02
+            };
+            renderGalleryCropRect();
+            event.preventDefault();
+            event.stopPropagation();
+        });
+    }
+    if (elements.galleryAnnotationCanvas) {
+        elements.galleryAnnotationCanvas.addEventListener('mousedown', (event) => {
+            handleGalleryAnnotationPointerDown(event);
+            event.preventDefault();
+            event.stopPropagation();
+        });
+        elements.galleryAnnotationCanvas.addEventListener('contextmenu', (event) => {
+            if (!elements.galleryLightbox || elements.galleryLightbox.classList.contains('hidden')) return;
+            event.preventDefault();
+            event.stopPropagation();
+            openGalleryLightboxContextMenu(event.clientX, event.clientY);
+        });
+    }
+    document.addEventListener('mousemove', (event) => {
+        if (state.galleryCrop?.enabled && state.galleryCrop?.drawing) {
+            updateGalleryCropByPointer(event.clientX, event.clientY);
+        }
+        handleGalleryAnnotationPointerMove(event);
+    });
+    document.addEventListener('mouseup', () => {
+        if (!state.galleryCrop?.drawing) return;
+        state.galleryCrop = { ...state.galleryCrop, drawing: false };
+        renderGalleryCropRect();
+    });
+    document.addEventListener('mouseup', () => {
+        handleGalleryAnnotationPointerUp();
+    });
+    if (elements.galleryCropToggleBtn) {
+        elements.galleryCropToggleBtn.addEventListener('click', () => {
+            toggleGalleryCropMode();
+        });
+    }
+    if (elements.galleryCropResetBtn) {
+        elements.galleryCropResetBtn.addEventListener('click', () => {
+            resetGalleryCropRect();
+        });
+    }
+    if (elements.gallerySaveCopyBtn) {
+        elements.gallerySaveCopyBtn.addEventListener('click', () => {
+            saveEditedGalleryImageCopy();
+        });
+    }
+    if (elements.galleryConvertToPngBtn) {
+        elements.galleryConvertToPngBtn.addEventListener('click', () => {
+            convertCurrentGalleryImageToPngCopy();
+        });
+    }
+    if (elements.galleryConverterCloseBtn) {
+        elements.galleryConverterCloseBtn.addEventListener('click', () => {
+            triggerGalleryConverterButtonFeedback(elements.galleryConverterCloseBtn);
+            closeGalleryConverterModal();
+        });
+    }
+    if (elements.galleryConverterResetBtn) {
+        elements.galleryConverterResetBtn.addEventListener('click', () => {
+            triggerGalleryConverterButtonFeedback(elements.galleryConverterResetBtn);
+            resetGalleryConverterModalInputs();
+        });
+    }
+    if (elements.galleryConverterCancelBtn) {
+        elements.galleryConverterCancelBtn.addEventListener('click', () => {
+            triggerGalleryConverterButtonFeedback(elements.galleryConverterCancelBtn);
+            closeGalleryConverterModal();
+        });
+    }
+    if (elements.galleryConverterSaveBtn) {
+        elements.galleryConverterSaveBtn.addEventListener('click', () => {
+            triggerGalleryConverterButtonFeedback(elements.galleryConverterSaveBtn);
+            convertCurrentGalleryImageWithDialogSettings();
+        });
+    }
+    if (elements.galleryConverterFormat) {
+        elements.galleryConverterFormat.addEventListener('change', () => {
+            syncGalleryConverterFormatUi();
+            scheduleGalleryConverterPreviewRender();
+        });
+    }
+    if (elements.galleryConverterQuality) {
+        elements.galleryConverterQuality.addEventListener('input', () => {
+            updateGalleryConverterQualityLabel();
+            scheduleGalleryConverterPreviewRender();
+        });
+    }
+    if (elements.galleryConverterTargetKb) {
+        elements.galleryConverterTargetKb.addEventListener('input', () => {
+            scheduleGalleryConverterPreviewRender();
+        });
+    }
+    if (elements.galleryConverterWidth) {
+        elements.galleryConverterWidth.addEventListener('input', () => {
+            if (galleryConverterSyncingDimensions) return;
+            syncGalleryConverterDimensionsFromWidth();
+            scheduleGalleryConverterPreviewRender();
+        });
+    }
+    if (elements.galleryConverterHeight) {
+        elements.galleryConverterHeight.addEventListener('input', () => {
+            if (galleryConverterSyncingDimensions) return;
+            syncGalleryConverterDimensionsFromHeight();
+            scheduleGalleryConverterPreviewRender();
+        });
+    }
+    if (elements.galleryConverterModal) {
+        elements.galleryConverterModal.addEventListener('click', (event) => {
+            if (event.target === elements.galleryConverterModal) {
+                closeGalleryConverterModal();
+            }
+        });
+    }
+    if (elements.gallerySlideshowToggleBtn) {
+        elements.gallerySlideshowToggleBtn.addEventListener('click', () => {
+            toggleGallerySlideshow();
+        });
+    }
+    if (elements.gallerySlideshowSpeedDownBtn) {
+        elements.gallerySlideshowSpeedDownBtn.addEventListener('click', () => {
+            setGallerySlideshowIntervalMs(getGallerySlideshowIntervalMs() - 250, { persist: true });
+        });
+    }
+    if (elements.gallerySlideshowSpeedUpBtn) {
+        elements.gallerySlideshowSpeedUpBtn.addEventListener('click', () => {
+            setGallerySlideshowIntervalMs(getGallerySlideshowIntervalMs() + 250, { persist: true });
+        });
+    }
+    if (elements.gallerySlideshowLoopQuickBtn) {
+        elements.gallerySlideshowLoopQuickBtn.addEventListener('click', () => {
+            setGallerySlideshowPreference('gallerySlideshowLoop', !isGallerySlideshowLoopEnabled(), { persist: true });
+        });
+    }
+    if (elements.gallerySlideshowShuffleQuickBtn) {
+        elements.gallerySlideshowShuffleQuickBtn.addEventListener('click', () => {
+            setGallerySlideshowPreference('gallerySlideshowShuffle', !isGallerySlideshowShuffleEnabled(), { persist: true });
+        });
+    }
+    if (elements.galleryEditBrightness) {
+        elements.galleryEditBrightness.addEventListener('input', (event) => {
+            setGalleryEditValue('brightness', event?.target?.value);
+        });
+    }
+    if (elements.galleryEditContrast) {
+        elements.galleryEditContrast.addEventListener('input', (event) => {
+            setGalleryEditValue('contrast', event?.target?.value);
+        });
+    }
+    if (elements.galleryEditSaturation) {
+        elements.galleryEditSaturation.addEventListener('input', (event) => {
+            setGalleryEditValue('saturation', event?.target?.value);
+        });
+    }
+    if (elements.galleryEditTemperature) {
+        elements.galleryEditTemperature.addEventListener('input', (event) => {
+            setGalleryEditValue('temperature', event?.target?.value);
+        });
+    }
+    if (elements.galleryEditTint) {
+        elements.galleryEditTint.addEventListener('input', (event) => {
+            setGalleryEditValue('tint', event?.target?.value);
+        });
+    }
+    if (elements.galleryEditShadows) {
+        elements.galleryEditShadows.addEventListener('input', (event) => {
+            setGalleryEditValue('shadows', event?.target?.value);
+        });
+    }
+    if (elements.galleryEditHighlights) {
+        elements.galleryEditHighlights.addEventListener('input', (event) => {
+            setGalleryEditValue('highlights', event?.target?.value);
+        });
+    }
+    if (elements.galleryEditSharpness) {
+        elements.galleryEditSharpness.addEventListener('input', (event) => {
+            setGalleryEditValue('sharpness', event?.target?.value);
+        });
+    }
+    if (elements.galleryRedEyeStrength) {
+        elements.galleryRedEyeStrength.addEventListener('input', (event) => {
+            ensureGalleryRedEyeState();
+            state.galleryRedEye.strength = Math.max(0, Math.min(100, Number(event?.target?.value) || 0));
+            syncGalleryEditUi();
+            renderGalleryAnnotationOverlay();
+        });
+    }
+    if (elements.galleryRedEyeRadius) {
+        elements.galleryRedEyeRadius.addEventListener('input', (event) => {
+            ensureGalleryRedEyeState();
+            state.galleryRedEye.radius = Math.max(6, Math.min(70, Number(event?.target?.value) || 18));
+            syncGalleryEditUi();
+            renderGalleryAnnotationOverlay();
+        });
+    }
+    if (elements.galleryBackgroundMode) {
+        elements.galleryBackgroundMode.addEventListener('change', (event) => {
+            applyGalleryBackgroundMode(event?.target?.value, { persist: true });
+        });
+    }
+    if (elements.galleryMiniNavToggleBtn) {
+        elements.galleryMiniNavToggleBtn.addEventListener('click', () => {
+            setGalleryMiniNavigatorEnabled(!state.galleryMiniNavigatorEnabled, { persist: true });
+        });
+    }
+    if (elements.galleryAnnotationDrawBtn) {
+        elements.galleryAnnotationDrawBtn.addEventListener('click', () => setGalleryAnnotationTool('draw'));
+    }
+    if (elements.galleryAnnotationArrowBtn) {
+        elements.galleryAnnotationArrowBtn.addEventListener('click', () => setGalleryAnnotationTool('arrow'));
+    }
+    if (elements.galleryAnnotationTextBtn) {
+        elements.galleryAnnotationTextBtn.addEventListener('click', () => setGalleryAnnotationTool('text'));
+    }
+    if (elements.galleryAnnotationColor) {
+        elements.galleryAnnotationColor.addEventListener('input', (event) => {
+            ensureGalleryAnnotationState();
+            state.galleryAnnotation.color = String(event?.target?.value || '#5fd8ff');
+        });
+    }
+    if (elements.galleryAnnotationTextInput) {
+        elements.galleryAnnotationTextInput.addEventListener('input', (event) => {
+            ensureGalleryAnnotationState();
+            state.galleryAnnotation.pendingText = String(event?.target?.value || '');
+        });
+    }
+    if (elements.galleryAnnotationSize) {
+        elements.galleryAnnotationSize.addEventListener('input', (event) => {
+            ensureGalleryAnnotationState();
+            state.galleryAnnotation.size = Math.max(1, Math.min(18, Number(event?.target?.value) || 3));
+            syncGalleryEditUi();
+        });
+    }
+    if (elements.galleryAnnotationClearBtn) {
+        elements.galleryAnnotationClearBtn.addEventListener('click', () => clearGalleryAnnotationItems());
+    }
+    if (elements.galleryRedEyeModeBtn) {
+        elements.galleryRedEyeModeBtn.addEventListener('click', () => {
+            ensureGalleryRedEyeState();
+            state.galleryRedEye.mode = !state.galleryRedEye.mode;
+            updateGalleryAnnotationToolButtonsUi();
+            renderGalleryAnnotationOverlay();
+        });
+    }
+    if (elements.galleryRedEyeClearBtn) {
+        elements.galleryRedEyeClearBtn.addEventListener('click', () => {
+            clearGalleryRedEyePoints();
+        });
+    }
+    if (elements.galleryEditResetBtn) {
+        elements.galleryEditResetBtn.addEventListener('click', () => {
+            resetGalleryEditValues();
+        });
+    }
+    if (elements.galleryEditDefaultsBtn) {
+        elements.galleryEditDefaultsBtn.addEventListener('click', () => {
+            applyGalleryPanelDefaults();
+        });
+    }
+    if (elements.galleryFitToWindowBtn) elements.galleryFitToWindowBtn.addEventListener('click', () => setGalleryZoomMode('fit'));
+    if (elements.galleryActualSizeBtn) elements.galleryActualSizeBtn.addEventListener('click', () => setGalleryZoomMode('actual'));
+    if (elements.galleryZoomInBtn) elements.galleryZoomInBtn.addEventListener('click', () => zoomGalleryByFactor(1.2));
+    if (elements.galleryZoomOutBtn) elements.galleryZoomOutBtn.addEventListener('click', () => zoomGalleryByFactor(1 / 1.2));
+    if (elements.galleryRotateLeftBtn) elements.galleryRotateLeftBtn.addEventListener('click', () => rotateGalleryBy(-90));
+    if (elements.galleryRotateRightBtn) elements.galleryRotateRightBtn.addEventListener('click', () => rotateGalleryBy(90));
+    if (elements.galleryFlipHBtn) elements.galleryFlipHBtn.addEventListener('click', () => flipGalleryHorizontal());
+    if (elements.galleryFlipVBtn) elements.galleryFlipVBtn.addEventListener('click', () => flipGalleryVertical());
+    if (elements.galleryInfoBtn) elements.galleryInfoBtn.addEventListener('click', () => showCurrentGalleryImageProperties());
+    if (elements.galleryExitFullscreenBtn) {
+        elements.galleryExitFullscreenBtn.addEventListener('click', async () => {
+            if (isGalleryWindowFullscreenActive()) {
+                await toggleGalleryWindowFullscreen();
+                return;
+            }
+            if (isGalleryLightboxFullscreenActive()) {
+                await toggleGalleryLightboxFullscreen();
+            }
+        });
+    }
+    if (elements.galleryBottomFitBtn) {
+        elements.galleryBottomFitBtn.addEventListener('click', () => {
+            resetGalleryViewForImage();
+            setGalleryZoomMode('fit');
+        });
+    }
+    if (elements.galleryBottomViewModeBtn) {
+        elements.galleryBottomViewModeBtn.addEventListener('click', (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            if (galleryBottomViewMenuOpen) {
+                closeGalleryBottomViewModeMenu();
+            } else {
+                openGalleryBottomViewModeMenu();
+            }
+        });
+    }
+    if (elements.galleryBottomViewModeMenu) {
+        elements.galleryBottomViewModeMenu.addEventListener('mouseenter', () => {
+            if (!galleryBottomViewMenuOpen && elements.galleryBottomViewModeBtn) {
+                openGalleryBottomViewModeMenu();
+            }
+        });
+        elements.galleryBottomViewModeMenu.addEventListener('mouseleave', () => {
+            if (galleryBottomViewMenuOpen) {
+                closeGalleryBottomViewModeMenu();
+            }
+        });
+    }
+    if (elements.galleryBottomViewModeItems) {
+        elements.galleryBottomViewModeItems.forEach((item) => {
+            item.addEventListener('mouseenter', () => {
+                if (!(item instanceof HTMLElement)) return;
+                const value = String(item.dataset.viewMode || 'fit');
+                elements.galleryBottomViewModeItems.forEach((entry) => entry.classList.toggle('is-hover', entry === item));
+                applyGalleryBottomViewModeValue(value);
+            });
+            item.addEventListener('click', (event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                const value = String(item?.dataset?.viewMode || 'fit');
+                galleryBottomViewPreviewBackup = null;
+                applyGalleryBottomViewModeValue(value);
+                closeGalleryBottomViewModeMenu();
+            });
+        });
+    }
+    if (elements.galleryBottomZoomOutBtn) elements.galleryBottomZoomOutBtn.addEventListener('click', () => zoomGalleryByFactor(1 / 1.2));
+    if (elements.galleryBottomZoomInBtn) elements.galleryBottomZoomInBtn.addEventListener('click', () => zoomGalleryByFactor(1.2));
+    if (elements.galleryBottomZoomSlider) {
+        elements.galleryBottomZoomSlider.addEventListener('input', (event) => {
+            const value = Number(event?.target?.value);
+            const view = ensureGalleryViewState();
+            view.mode = 'custom';
+            view.zoom = Math.max(0.1, Math.min(16, (Number.isFinite(value) ? value : 100) / 100));
+            applyGalleryViewTransform();
+        });
+    }
+    window.addEventListener('resize', () => {
+        renderGalleryMiniNavigator();
+        renderGalleryAnnotationOverlay();
+        if (state.currentPage === 'gallery' && Array.isArray(state.imageFiles) && state.imageFiles.length) {
+            if (galleryGridReflowTimer) clearTimeout(galleryGridReflowTimer);
+            galleryGridReflowTimer = setTimeout(() => {
+                galleryGridReflowTimer = null;
+                renderImageGallery(state.imageFiles, { persist: false });
+            }, 120);
+        }
+    });
+    setGalleryEditPanelOpen(false);
+    document.addEventListener('keydown', (event) => {
+        if (!elements.galleryLightbox || elements.galleryLightbox.classList.contains('hidden')) return;
+        if (!elements.galleryConverterModal?.classList?.contains('hidden')) {
+            if (event.key === 'Escape') {
+                event.preventDefault();
+                closeGalleryConverterModal();
+            }
+            return;
+        }
+        const keyTarget = event.target;
+        if (keyTarget instanceof HTMLElement && keyTarget.closest('.gallery-edit-panel')) return;
+        const activeElement = document.activeElement;
+        const isEditingText =
+            isKeyboardEditableTarget(keyTarget) ||
+            isKeyboardEditableTarget(activeElement);
+        if (event.key === 'Escape') {
+            if (galleryBottomViewMenuOpen) {
+                closeGalleryBottomViewModeMenu();
+                return;
+            }
+            if (isGalleryLightboxFullscreenActive()) {
+                event.preventDefault();
+                if (isGalleryWindowFullscreenActive()) {
+                    toggleGalleryWindowFullscreen().catch(() => {});
+                } else {
+                    toggleGalleryLightboxFullscreen().catch(() => {});
+                }
+                return;
+            }
+            closeGalleryLightboxContextMenu();
+            closeGalleryLightbox();
+            return;
+        }
+        if (isEditingText) return;
+        if (state.galleryCrop?.enabled || state.galleryRedEye?.mode || state.galleryAnnotation?.drawing) return;
+
+        const galleryAction = detectGalleryShortcutAction(event);
+        if (!galleryAction) return;
+
+        if (galleryAction === 'first') {
+            event.preventDefault();
+            markGalleryUiKeyboardNavigationIntent();
+            showGalleryImageAt(0, { transitionMode: 'keyboard' });
+            refreshGallerySlideshowAfterManualNavigation();
+            return;
+        }
+        if (galleryAction === 'last') {
+            event.preventDefault();
+            markGalleryUiKeyboardNavigationIntent();
+            showGalleryImageAt((Array.isArray(state.imageFiles) ? state.imageFiles.length : 1) - 1, { transitionMode: 'keyboard' });
+            refreshGallerySlideshowAfterManualNavigation();
+            return;
+        }
+        if (galleryAction === 'pageUp') {
+            event.preventDefault();
+            markGalleryUiKeyboardNavigationIntent();
+            showRelativeGalleryImage(-getGalleryPageJumpStep(), { transitionMode: 'keyboard' });
+            refreshGallerySlideshowAfterManualNavigation();
+            return;
+        }
+        if (galleryAction === 'pageDown') {
+            event.preventDefault();
+            markGalleryUiKeyboardNavigationIntent();
+            showRelativeGalleryImage(getGalleryPageJumpStep(), { transitionMode: 'keyboard' });
+            refreshGallerySlideshowAfterManualNavigation();
+            return;
+        }
+        if (galleryAction === 'prev') {
+            event.preventDefault();
+            markGalleryUiKeyboardNavigationIntent();
+            showRelativeGalleryImage(-1, { transitionMode: 'keyboard' });
+            refreshGallerySlideshowAfterManualNavigation();
+            return;
+        }
+        if (galleryAction === 'next') {
+            event.preventDefault();
+            markGalleryUiKeyboardNavigationIntent();
+            showRelativeGalleryImage(1, { transitionMode: 'keyboard' });
+            refreshGallerySlideshowAfterManualNavigation();
+            return;
+        }
+        if (galleryAction === 'fullscreenWindow') {
+            event.preventDefault();
+            toggleGalleryWindowFullscreen().catch(() => {});
+            return;
+        }
+        if (galleryAction === 'fullscreenLightbox') {
+            event.preventDefault();
+            toggleGalleryLightboxFullscreen().catch(() => {});
+            return;
+        }
+        if (galleryAction === 'zoomIn') {
+            event.preventDefault();
+            zoomGalleryByFactor(1.2);
+            return;
+        }
+        if (galleryAction === 'zoomOut') {
+            event.preventDefault();
+            zoomGalleryByFactor(1 / 1.2);
+            return;
+        }
+        if (galleryAction === 'actual') {
+            event.preventDefault();
+            setGalleryZoomMode('actual');
+            return;
+        }
+        if (galleryAction === 'fit') {
+            event.preventDefault();
+            setGalleryZoomMode('fit');
+            return;
+        }
+        if (galleryAction === 'flipH') {
+            event.preventDefault();
+            flipGalleryHorizontal();
+            return;
+        }
+        if (galleryAction === 'flipV') {
+            event.preventDefault();
+            flipGalleryVertical();
+            return;
+        }
+    });
 
     // Görselleştirici (projectM)
     const visualizerBtn = document.getElementById('visualizer-btn');
@@ -4695,7 +6320,7 @@ function setupEventListeners() {
         document.addEventListener('click', (event) => {
             const menu = document.getElementById('libraryAddMenu');
             if (!menu) return;
-            const trigger = event.target?.closest?.('#musicAddFilesBtn, #libraryHeroAddFolderBtn');
+            const trigger = event.target?.closest?.('#musicAddFilesBtn, #libraryHeroAddFolderBtn, #imageAddFilesBtn');
             if (trigger) return;
             if (!menu.contains(event.target)) {
                 hideLibraryAddMenu();
@@ -13699,6 +15324,61 @@ async function updateSecurityUIAsync() {
     });
 }
 
+function getWebSessionProfile() {
+    return normalizeWebSessionProfile(state.settings?.security?.sessionProfile, 'persistent');
+}
+
+async function ensureWebIsolatedSessionInitialized(reason = 'web-entry') {
+    if (getWebSessionProfile() !== 'isolated') {
+        webIsolatedSessionPrepared = false;
+        return true;
+    }
+    if (webIsolatedSessionPrepared) return true;
+    try {
+        const ok = await window.aurivo?.webSecurity?.clearData?.({ all: true });
+        if (!ok) return false;
+        webIsolatedSessionPrepared = true;
+        safeNotify(
+            uiT('securityPage.notify.sessionIsolatedReady', 'İzole web profili hazır: temiz bir oturum başlatıldı.'),
+            'info',
+            1800
+        );
+        console.log('[SECURITY] isolated web session prepared:', reason);
+        return true;
+    } catch {
+        return false;
+    }
+}
+
+function openDawlodWithCurrentWebUrl({ strictUrl = true } = {}) {
+    if (!window.aurivo?.dawlod?.openWindow) {
+        safeNotify('İndirme modülü bulunamadı (Aurivo-Dawlod).', 'error');
+        return false;
+    }
+
+    const candidate = getWebViewUrlSafe();
+    const url = (candidate && candidate !== 'about:blank' && /^https?:\/\//i.test(candidate)) ? candidate : '';
+    if (strictUrl && !url) {
+        safeNotify(uiT('securityPage.notify.invalidExternalUrl', 'Önce geçerli bir web sayfası açın (http/https).'), 'info');
+        return false;
+    }
+
+    try {
+        if (url) {
+            window.aurivo.dawlod.openWindow({ url });
+            try { window.aurivo?.clipboard?.setText?.(url); } catch {}
+        } else {
+            window.aurivo.dawlod.openWindow();
+        }
+        setUtilityRunningState('download', true);
+        return true;
+    } catch (e) {
+        setUtilityRunningState('download', false);
+        safeNotify(`İndirme penceresi açılamadı: ${e?.message || e}`, 'error');
+        return false;
+    }
+}
+
 function setupSecurityUI() {
     if (!elements.securityConnStatus) return;
 
@@ -13737,6 +15417,24 @@ function setupSecurityUI() {
         });
     }
 
+    if (elements.securitySessionProfile) {
+        elements.securitySessionProfile.addEventListener('change', async () => {
+            if (!state.settings) state.settings = {};
+            if (!state.settings.security || typeof state.settings.security !== 'object') {
+                state.settings.security = {};
+            }
+            const profile = normalizeWebSessionProfile(elements.securitySessionProfile.value, 'persistent');
+            elements.securitySessionProfile.value = profile;
+            state.settings.security.sessionProfile = profile;
+            if (profile !== 'isolated') {
+                webIsolatedSessionPrepared = false;
+            }
+            await saveSettings();
+            applySecuritySettingsToRuntime();
+            updateSecurityUI();
+        });
+    }
+
     if (elements.securityCopyUrlBtn) {
         elements.securityCopyUrlBtn.addEventListener('click', async () => {
             const url = getWebViewUrlSafe();
@@ -13762,6 +15460,12 @@ function setupSecurityUI() {
             } catch (e) {
                 safeNotify(uiT('securityPage.notify.openInBrowserError', "Couldn't open in browser: {error}", { error: e?.message || e }), 'error');
             }
+        });
+    }
+
+    if (elements.securityQuickDownloadBtn) {
+        elements.securityQuickDownloadBtn.addEventListener('click', () => {
+            openDawlodWithCurrentWebUrl({ strictUrl: true });
         });
     }
 
@@ -13802,6 +15506,79 @@ function setupSecurityUI() {
                 updateSecurityUI();
             } catch (e) {
                 safeNotify(uiT('securityPage.notify.webResetFailed', "Couldn't reset Web: {error}", { error: e?.message || e }), 'error');
+            }
+        });
+    }
+
+    if (elements.securityExportCookiesBtn) {
+        elements.securityExportCookiesBtn.addEventListener('click', async () => {
+            try {
+                const saveResult = await window.aurivo?.saveFile?.({
+                    title: uiT('securityPage.buttons.exportCookies', 'Çerezleri dışa aktar'),
+                    defaultPath: `aurivo-web-cookies-${Date.now()}.json`,
+                    filters: [{ name: 'JSON', extensions: ['json'] }]
+                });
+                if (!saveResult?.path) return;
+
+                const result = await window.aurivo?.webSecurity?.exportCookies?.(saveResult.path);
+                if (!result?.ok) {
+                    safeNotify(
+                        uiT('securityPage.notify.cookiesExportFailed', 'Çerez dışa aktarımı başarısız: {error}', { error: result?.error || 'unknown' }),
+                        'error'
+                    );
+                    return;
+                }
+                safeNotify(
+                    uiT('securityPage.notify.cookiesExported', '{count} çerez dışa aktarıldı.', { count: Number(result?.count || 0) }),
+                    'success'
+                );
+            } catch (e) {
+                safeNotify(
+                    uiT('securityPage.notify.cookiesExportFailed', 'Çerez dışa aktarımı başarısız: {error}', { error: e?.message || e }),
+                    'error'
+                );
+            }
+        });
+    }
+
+    if (elements.securityImportCookiesBtn) {
+        elements.securityImportCookiesBtn.addEventListener('click', async () => {
+            try {
+                const files = await window.aurivo?.dialog?.openFiles?.({
+                    title: uiT('securityPage.buttons.importCookies', 'Çerezleri içe aktar'),
+                    filters: [
+                        { name: 'JSON', extensions: ['json'] },
+                        { name: uiT('common.allFiles', 'Tüm Dosyalar'), extensions: ['*'] }
+                    ]
+                });
+                const first = Array.isArray(files) ? files[0] : null;
+                if (!first?.path) return;
+
+                const result = await window.aurivo?.webSecurity?.importCookies?.(first.path);
+                if (!result?.ok) {
+                    safeNotify(
+                        uiT('securityPage.notify.cookiesImportFailed', 'Çerez içe aktarımı başarısız: {error}', { error: result?.error || 'unknown' }),
+                        'error'
+                    );
+                    return;
+                }
+                safeNotify(
+                    uiT(
+                        'securityPage.notify.cookiesImported',
+                        '{imported} çerez içe aktarıldı ({skipped} atlandı).',
+                        {
+                            imported: Number(result?.imported || 0),
+                            skipped: Number(result?.skipped || 0)
+                        }
+                    ),
+                    'success'
+                );
+                updateSecurityUI();
+            } catch (e) {
+                safeNotify(
+                    uiT('securityPage.notify.cookiesImportFailed', 'Çerez içe aktarımı başarısız: {error}', { error: e?.message || e }),
+                    'error'
+                );
             }
         });
     }
@@ -14384,7 +16161,8 @@ function setupDragAndDrop() {
     // Öğe üzerine sürüklendiğinde bırakma alanını vurgula
     ['dragenter', 'dragover'].forEach(eventName => {
         if (dropZone) {
-            dropZone.addEventListener(eventName, () => {
+            dropZone.addEventListener(eventName, (e) => {
+                if (isInternalPlaylistReorderEvent(e)) return;
                 dropZone.classList.add('drag-over');
             }, false);
         }
@@ -14392,7 +16170,8 @@ function setupDragAndDrop() {
 
     ['dragleave', 'drop'].forEach(eventName => {
         if (dropZone) {
-            dropZone.addEventListener(eventName, () => {
+            dropZone.addEventListener(eventName, (e) => {
+                if (isInternalPlaylistReorderEvent(e)) return;
                 dropZone.classList.remove('drag-over');
             }, false);
         }
@@ -14402,6 +16181,15 @@ function setupDragAndDrop() {
     appDropTargets.forEach((target) => {
         addDropListener(target, 'drop', handleFileDrop, { capture: true, passive: false });
     });
+}
+
+function getInternalReorderDragGhost() {
+    if (internalReorderDragGhost) return internalReorderDragGhost;
+    const ghost = document.createElement('canvas');
+    ghost.width = 1;
+    ghost.height = 1;
+    internalReorderDragGhost = ghost;
+    return ghost;
 }
 
 // Ağaç öğesi sürükleme başlangıcı
@@ -14437,6 +16225,15 @@ function handleTreeItemDragEnd(e) {
 }
 
 function preventDefaults(e) {
+    if (isInternalPlaylistReorderEvent(e)) {
+        e.preventDefault();
+        try {
+            if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+        } catch {
+            // yoksay
+        }
+        return;
+    }
     e.preventDefault();
     e.stopPropagation();
     try {
@@ -14444,6 +16241,21 @@ function preventDefaults(e) {
     } catch {
         // yoksay
     }
+}
+
+function isInternalPlaylistReorderEvent(e) {
+    try {
+        const types = Array.from(e?.dataTransfer?.types || []);
+        if (types.includes('text/aurivo-reorder')) return true;
+    } catch {
+        // yoksay
+    }
+
+    const target = e?.target;
+    if (target instanceof HTMLElement && target.closest('.playlist-item.queue-draggable-item')) {
+        return true;
+    }
+    return false;
 }
 
 // ============================================
@@ -14949,6 +16761,8 @@ let fsSettingsCaptureBound = false;
 let fsWindowFullscreenActive = false;
 let fsWindowFullscreenHooked = false;
 let fsWindowFullscreenUnsubscribe = null;
+let galleryInlineFullscreenActive = false;
+let galleryWindowFullscreenActive = false;
 let videoFullscreenToggleInFlight = false;
 let videoFullscreenLastToggleAt = 0;
 const videoFullscreenFlowState = {
@@ -15004,6 +16818,25 @@ function syncWindowFullscreenLayoutState() {
         String(state.currentPage || '') === 'video';
     body.classList.toggle('video-window-fs-active', active);
     videoPage.classList.toggle('fs-window-active', active);
+}
+
+function syncGalleryFullscreenLayoutState() {
+    const body = document.body;
+    const lightbox = elements.galleryLightbox;
+    if (!body || !lightbox) return;
+    const activeDom = (() => {
+        const active = getDomFullscreenElement();
+        return !!(active && (active === lightbox || lightbox.contains(active)));
+    })();
+    const active =
+        !lightbox.classList.contains('hidden') &&
+        (galleryInlineFullscreenActive || galleryWindowFullscreenActive || activeDom || fsWindowFullscreenActive);
+    body.classList.toggle('gallery-window-fs-active', active);
+    lightbox.classList.toggle('gallery-fs-active', active);
+    if (elements.galleryExitFullscreenBtn) {
+        const canExit = active && (isGalleryWindowFullscreenActive() || isGalleryLightboxFullscreenActive());
+        elements.galleryExitFullscreenBtn.classList.toggle('hidden', !canExit);
+    }
 }
 
 function isFsSettingsButtonHit(e, pad = 10) {
@@ -15328,22 +17161,18 @@ function setupFullscreenVideoControls() {
         });
     });
 
-    // Subtitles (placeholder)
+    // Subtitles (.vtt auto-detect)
     document.querySelectorAll('#fsSubtitlesMenu [data-subtitles]').forEach(item => {
         item.addEventListener('click', (e) => {
             const value = String(e.currentTarget.dataset.subtitles || 'off');
-            if (value === 'soon') {
-                safeNotify(fsT('videoFs.notify.subtitlesSoon', 'Subtitles will be added soon.'), 'info', 2600);
+            if (value === 'soon' || (value === 'on' && !subtitleRuntime.hasTrack)) {
+                safeNotify(fsT('videoFs.notify.subtitleNotFound', 'Bu medya için .vtt altyazı bulunamadı.'), 'info', 2600);
                 return;
             }
 
-            document.querySelectorAll('#fsSubtitlesMenu [data-subtitles]').forEach(i => i.classList.remove('active'));
-            e.currentTarget.classList.add('active');
-
             if (!state.settings?.videoFullscreen) state.settings.videoFullscreen = {};
-            state.settings.videoFullscreen.subtitles = 'off';
-            const label = document.getElementById('fsCurrentSubtitles');
-            if (label) label.textContent = fsT('videoFs.state.off', 'Off');
+            state.settings.videoFullscreen.subtitles = value === 'on' ? 'on' : 'off';
+            applySubtitlePreferenceToCurrentMedia();
             saveSettings();
 
             setFsMenuVisible(document.getElementById('fsSubtitlesMenu'), false);
@@ -15408,6 +17237,7 @@ function handleFullscreenChange() {
     const videoPage = document.getElementById('videoPage');
     const fsControls = document.getElementById('videoFsControls');
     syncWindowFullscreenLayoutState();
+    syncGalleryFullscreenLayoutState();
 
     if (isVideoFullscreenActive()) {
         // Tam ekrana girdi
@@ -15444,6 +17274,7 @@ function handleFullscreenChange() {
         setFsMenuVisible(document.getElementById('fsSleepMenu'), false);
         syncFsMenuOpenState();
     }
+    refreshGalleryLightboxUiAutohide();
 }
 
 function handleVideoMouseMove(e) {
@@ -15917,8 +17748,7 @@ function hydrateFsSettingsUI() {
     const mins = Number(prefs.sleepTimerMinutes || 0);
     if (sleepLabel) sleepLabel.textContent = getFsSleepLabel(mins);
 
-    const subLabel = document.getElementById('fsCurrentSubtitles');
-    if (subLabel) subLabel.textContent = fsT('videoFs.state.off', 'Off');
+    syncFsSubtitleUiState();
 
     const quality = document.querySelector('#fsQualityMenu .yt-radio-item.active')?.dataset?.quality || 'auto';
     const qualityLabel = document.getElementById('currentQuality');
@@ -16117,6 +17947,156 @@ function getInactiveAudioPlayer() {
     return state.activePlayer === 'A' ? elements.audioB : elements.audioA;
 }
 
+function getMediaPathWithoutExt(filePath) {
+    const normalized = String(filePath || '').trim();
+    if (!normalized) return '';
+    return normalized.replace(/\.[^./\\]+$/, '');
+}
+
+function isFsSubtitleEnabled() {
+    return String(state.settings?.videoFullscreen?.subtitles || 'off').toLowerCase() === 'on';
+}
+
+function setMediaTextTracksVisibility(mediaEl, enabled) {
+    if (!mediaEl || !mediaEl.textTracks) return;
+    try {
+        for (const track of Array.from(mediaEl.textTracks)) {
+            track.mode = enabled ? 'showing' : 'disabled';
+        }
+    } catch {
+        // yoksay
+    }
+}
+
+function clearAutoSubtitleTrack(mediaEl) {
+    if (!mediaEl) return;
+    try {
+        const autoTracks = mediaEl.querySelectorAll?.('track[data-aurivo-auto-subtitle="1"]');
+        if (autoTracks?.length) {
+            autoTracks.forEach((trackEl) => trackEl.remove());
+        }
+    } catch {
+        // yoksay
+    }
+    setMediaTextTracksVisibility(mediaEl, false);
+}
+
+function getCurrentSubtitleMediaElement() {
+    if (state.activeMedia === 'video') return elements.videoPlayer || null;
+    if (state.activeMedia === 'audio' && !useNativeAudio) return getActiveAudioPlayer();
+    return null;
+}
+
+function syncFsSubtitleUiState() {
+    const prefOn = isFsSubtitleEnabled();
+    const available = !!subtitleRuntime.hasTrack;
+    const offLabel = fsT('videoFs.state.off', 'Off');
+    const onLabel = `${fsT('videoFs.state.on', 'On')} (VTT)`;
+
+    const offItem = document.querySelector('#fsSubtitlesMenu [data-subtitles="off"]');
+    const onItem = document.querySelector('#fsSubtitlesMenu [data-subtitles="on"], #fsSubtitlesMenu [data-subtitles="soon"]');
+    const onText = onItem?.querySelector('span');
+    if (onItem) {
+        if (available) {
+            onItem.dataset.subtitles = 'on';
+            onItem.classList.remove('disabled');
+            if (onText) onText.textContent = onLabel;
+        } else {
+            onItem.dataset.subtitles = 'soon';
+            onItem.classList.add('disabled');
+            if (onText) onText.textContent = fsT('videoFs.state.soon', 'Soon');
+        }
+    }
+
+    if (offItem) offItem.classList.toggle('active', !prefOn || !available);
+    if (onItem) onItem.classList.toggle('active', !!prefOn && !!available);
+
+    const currentLabel = document.getElementById('fsCurrentSubtitles');
+    if (currentLabel) currentLabel.textContent = (prefOn && available) ? onLabel : offLabel;
+}
+
+async function findSiblingSubtitlePath(mediaPath) {
+    const base = getMediaPathWithoutExt(mediaPath);
+    if (!base) return '';
+
+    const directCandidates = [`${base}.vtt`, `${base}.VTT`];
+    if (window.aurivo?.fileExists) {
+        for (const candidate of directCandidates) {
+            try {
+                const exists = await window.aurivo.fileExists(candidate);
+                if (exists) return candidate;
+            } catch {
+                // yoksay
+            }
+        }
+    }
+
+    if (!window.aurivo?.path?.dirname || !window.aurivo?.readDirectory) return '';
+    try {
+        const dir = window.aurivo.path.dirname(mediaPath);
+        const baseName = getMediaPathWithoutExt(window.aurivo.path.basename(mediaPath)).toLowerCase();
+        const entries = await window.aurivo.readDirectory(dir);
+        if (!Array.isArray(entries)) return '';
+        const hit = entries.find((entry) => {
+            if (!entry?.isFile || !entry?.name) return false;
+            const name = String(entry.name);
+            return name.toLowerCase().endsWith('.vtt') &&
+                getMediaPathWithoutExt(name).toLowerCase() === baseName;
+        });
+        return hit?.path || '';
+    } catch {
+        return '';
+    }
+}
+
+async function applyAutoSubtitleForMedia(mediaEl, mediaPath) {
+    if (!mediaEl || !mediaPath) return;
+    const token = ++subtitleRuntime.searchToken;
+
+    clearAutoSubtitleTrack(mediaEl);
+    subtitleRuntime.currentMediaPath = String(mediaPath || '');
+    subtitleRuntime.currentSubtitlePath = '';
+    subtitleRuntime.hasTrack = false;
+    syncFsSubtitleUiState();
+
+    const subtitlePath = await findSiblingSubtitlePath(mediaPath);
+    if (token !== subtitleRuntime.searchToken) return;
+    if (!subtitlePath) {
+        syncFsSubtitleUiState();
+        return;
+    }
+
+    const trackEl = document.createElement('track');
+    trackEl.kind = 'subtitles';
+    trackEl.label = 'VTT';
+    trackEl.srclang = 'und';
+    trackEl.src = toLocalFileUrl(subtitlePath);
+    trackEl.default = isFsSubtitleEnabled();
+    trackEl.dataset.aurivoAutoSubtitle = '1';
+    mediaEl.appendChild(trackEl);
+
+    subtitleRuntime.currentSubtitlePath = subtitlePath;
+    subtitleRuntime.hasTrack = true;
+
+    const applyMode = () => {
+        if (token !== subtitleRuntime.searchToken) return;
+        setMediaTextTracksVisibility(mediaEl, isFsSubtitleEnabled());
+        syncFsSubtitleUiState();
+    };
+    trackEl.addEventListener('load', applyMode, { once: true });
+    setTimeout(applyMode, 0);
+}
+
+function applySubtitlePreferenceToCurrentMedia() {
+    const mediaEl = getCurrentSubtitleMediaElement();
+    if (!mediaEl) {
+        syncFsSubtitleUiState();
+        return;
+    }
+    setMediaTextTracksVisibility(mediaEl, isFsSubtitleEnabled() && subtitleRuntime.hasTrack);
+    syncFsSubtitleUiState();
+}
+
 // Player'ları değiştir
 function switchActivePlayer() {
     state.activePlayer = state.activePlayer === 'A' ? 'B' : 'A';
@@ -16149,6 +18129,11 @@ function applyWebUiClasses() {
     syncWebPlatformButtonsLayout(isWeb && !!state.webDrawerCollapsed);
     if (isWeb) restoreActiveWebPlatformIndicator();
     syncWebUtilityButtonsLayout(isWeb && !!state.webDrawerCollapsed);
+}
+
+function applyGalleryUiClasses() {
+    const isGallery = state.currentPage === 'gallery';
+    document.body.classList.toggle('gallery-mode', !!isGallery);
 }
 
 function restoreActiveWebPlatformIndicator() {
@@ -16419,6 +18404,7 @@ function setWebDrawerCollapsed(collapsed) {
 
 function requestPlatformSwitch(btn) {
     if (!btn) return;
+    if (!isWebExperienceEnabled()) return;
     cancelStartupLazyWebLoad();
     const key = String(btn.dataset.platform || btn.dataset.url || '').trim();
     if (webPlatformRuntime.switching) return;
@@ -16434,7 +18420,9 @@ function requestPlatformSwitch(btn) {
     try { elements.webView?.blur?.(); } catch { }
     try { document.activeElement?.blur?.(); } catch { }
 
-    Promise.resolve(handlePlatformClick(btn)).catch((e) => {
+    Promise.resolve(ensureWebIsolatedSessionInitialized('platform-switch'))
+        .then(() => handlePlatformClick(btn))
+        .catch((e) => {
         console.warn('[WEB] platform switch error:', e?.message || e);
     });
 }
@@ -16486,6 +18474,10 @@ function setupUtilityWindowIndicators() {
 function handleSidebarClick(btn) {
     const page = btn.dataset.page;
     const panel = btn.dataset.panel;
+    if (page === 'web' && !isWebExperienceEnabled()) {
+        safeNotify(uiT('ui.startup.webExperienceEnabled.notifyDisabled', 'Web experience is off. You can enable it in Settings.'), 'info');
+        return;
+    }
     if (page !== 'web') {
         cancelStartupLazyWebLoad();
     }
@@ -16499,8 +18491,8 @@ function handleSidebarClick(btn) {
         const currentPage = state.currentPage;
 
         // Müzik/Video sekmesindeyken İndir penceresi açılmasın; sadece bilgilendir.
-        if (currentPage === 'music' || currentPage === 'video') {
-            safeNotify('Müzik veya Video sekmesindeyken İndir penceresi açılamaz.', 'info');
+        if (currentPage === 'music' || currentPage === 'video' || currentPage === 'gallery') {
+            safeNotify('Müzik, Video veya Galeri sekmesindeyken İndir penceresi açılamaz.', 'info');
             try {
                 elements.sidebarBtns.forEach(b => b.classList.remove('active'));
                 if (prevActive) prevActive.classList.add('active');
@@ -16509,20 +18501,8 @@ function handleSidebarClick(btn) {
         }
 
         try {
-            if (window.aurivo?.dawlod?.openWindow) {
-                let url = '';
-                if (currentPage === 'web' || state.activeMedia === 'web') {
-                    const candidate = getWebViewUrlSafe();
-                    if (candidate && candidate !== 'about:blank' && /^https?:\/\//i.test(candidate)) {
-                        url = candidate;
-                        try { window.aurivo?.clipboard?.setText?.(candidate); } catch { }
-                    }
-                }
-                window.aurivo.dawlod.openWindow(url ? { url } : undefined);
-                setUtilityRunningState('download', true);
-            } else {
-                safeNotify('İndirme modülü bulunamadı (Aurivo-Dawlod).', 'error');
-            }
+            const strictUrl = (currentPage === 'web' || state.activeMedia === 'web');
+            openDawlodWithCurrentWebUrl({ strictUrl });
         } catch (e) {
             setUtilityRunningState('download', false);
             safeNotify('İndirme penceresi açılamadı: ' + (e?.message || e), 'error');
@@ -16566,6 +18546,8 @@ function handleSidebarClick(btn) {
         state.mediaFilter = 'audio';
     } else if (page === 'video') {
         state.mediaFilter = 'video';
+    } else if (page === 'gallery') {
+        state.mediaFilter = 'image';
     } else {
         state.mediaFilter = 'all';
     }
@@ -16574,6 +18556,8 @@ function handleSidebarClick(btn) {
     try {
         if (elements.libraryActionsAudio) elements.libraryActionsAudio.classList.toggle('hidden', state.mediaFilter !== 'audio');
         if (elements.libraryActionsVideo) elements.libraryActionsVideo.classList.toggle('hidden', state.mediaFilter !== 'video');
+        if (elements.libraryActionsImage) elements.libraryActionsImage.classList.toggle('hidden', state.mediaFilter !== 'image');
+        syncLibrarySurfaceControlsUi();
     } catch {
         // yoksay
     }
@@ -16597,7 +18581,11 @@ function handleSidebarClick(btn) {
     switchPage(page);
     state.currentPage = page;
     state.currentPanel = panel;
+    if (page === 'web') {
+        ensureWebIsolatedSessionInitialized('sidebar-web').catch(() => {});
+    }
     applyWebUiClasses();
+    applyGalleryUiClasses();
     if (page === 'web') {
         primeWebDaliOnWebTabActivation('sidebar-web-tab');
     }
@@ -16607,18 +18595,31 @@ function handleSidebarClick(btn) {
     try {
         if (panel === 'library') {
             const startupPath = String(state.pendingLibraryStartupPath || '').trim();
-            // Sekme değiştirince önceki sekmenin açık klasörü taşınmasın.
-            state.currentPath = startupPath || '';
+            // Her sekmenin klasör konumu birbirinden bağımsız olmalı.
+            if (state.mediaFilter === 'image') {
+                state.currentPath = String(state.lastImagePath || '').trim();
+            } else if (state.mediaFilter === 'video') {
+                state.currentPath = String(state.lastVideoPath || startupPath || '').trim();
+            } else {
+                state.currentPath = String(state.lastAudioPath || startupPath || '').trim();
+            }
             state.pendingLibraryStartupPath = '';
             initializeFileTree();
         }
     } catch {
         // yoksay
     }
+
+    if (page === 'music') {
+        renderPlaylist();
+    }
 }
 
 // Sekme izolasyonu - RAM tasarrufu için diğer medyaları tamamen kapat
 function isolateMediaSection(targetPage) {
+    if (targetPage !== 'gallery') {
+        stopGallerySlideshow();
+    }
     // Müzik sekmesine geçiliyorsa
     if (targetPage === 'music') {
         // Video'yu tamamen kapat
@@ -16642,6 +18643,10 @@ function isolateMediaSection(targetPage) {
         // Video'yu tamamen kapat
         stopVideo();
         state.activeMedia = 'web';
+    } else if (targetPage === 'gallery') {
+        // Galeriye geçerken oynatma devam etsin (audio/video/web).
+        // Sadece görünüm değişir; medya motorlarını durdurmayız.
+        state.activeMedia = state.activeMedia || 'none';
     }
 }
 
@@ -16662,15 +18667,22 @@ function stopAudio() {
 
     // Her iki HTML5 player'ı da durdur
     if (elements.audioA) {
+        clearAutoSubtitleTrack(elements.audioA);
         elements.audioA.pause();
         elements.audioA.src = '';
         elements.audioA.load(); // Tamamen sıfırla
     }
     if (elements.audioB) {
+        clearAutoSubtitleTrack(elements.audioB);
         elements.audioB.pause();
         elements.audioB.src = '';
         elements.audioB.load(); // Tamamen sıfırla
     }
+    subtitleRuntime.searchToken += 1;
+    subtitleRuntime.currentMediaPath = '';
+    subtitleRuntime.currentSubtitlePath = '';
+    subtitleRuntime.hasTrack = false;
+    syncFsSubtitleUiState();
 
     // Çapraz geçiş durumu'lerini sıfırla
     state.crossfadeInProgress = false;
@@ -16721,10 +18733,16 @@ function stopAudioWithPlaybackFade() {
 
 function stopVideo() {
     if (elements.videoPlayer) {
+        clearAutoSubtitleTrack(elements.videoPlayer);
         elements.videoPlayer.pause();
         elements.videoPlayer.src = '';
         elements.videoPlayer.load();
     }
+    subtitleRuntime.searchToken += 1;
+    subtitleRuntime.currentMediaPath = '';
+    subtitleRuntime.currentSubtitlePath = '';
+    subtitleRuntime.hasTrack = false;
+    syncFsSubtitleUiState();
 }
 
 function stopWeb() {
@@ -16761,7 +18779,16 @@ function switchPage(pageName) {
             targetPage = elements.videoPage;
             normalizedPage = 'video';
             break;
+        case 'gallery':
+            targetPage = elements.musicPage;
+            normalizedPage = 'gallery';
+            break;
         case 'web':
+            if (!isWebExperienceEnabled()) {
+                targetPage = elements.musicPage;
+                normalizedPage = 'music';
+                break;
+            }
             targetPage = elements.webPage;
             normalizedPage = 'web';
             break;
@@ -16773,11 +18800,13 @@ function switchPage(pageName) {
     state.currentPage = normalizedPage;
     targetPage.classList.remove('hidden');
     targetPage.classList.add('active');
+    applyGalleryUiClasses();
     syncWindowFullscreenLayoutState();
     updateMusicViewQuickControlUi();
 }
 
 async function handlePlatformClick(btn) {
+    if (!isWebExperienceEnabled()) return;
     webPlatformRuntime.switching = true;
     try {
         const url = btn.dataset.url;
@@ -17281,6 +19310,24 @@ function refreshCurrentView() {
         return;
     }
 
+    const isMusicLibrarySurface =
+        state.currentPage === 'music' &&
+        state.currentPanel === 'library' &&
+        state.mediaFilter === 'audio';
+    if (isMusicLibrarySurface) {
+        resetPlaylistOrderToInitialAdded({ notify: true });
+        return;
+    }
+    const isGalleryLibrarySurface =
+        state.currentPage === 'gallery' &&
+        state.currentPanel === 'library' &&
+        state.mediaFilter === 'image';
+    if (isGalleryLibrarySurface) {
+        setGallerySortMode('name-asc', { persist: true });
+        safeNotify(uiT('gallery.sort.resetDone', 'Galeri sıralaması varsayılan A-Z değerine döndürüldü.'), 'success', 1600);
+        return;
+    }
+
     if (state.currentPath) {
         loadDirectory(state.currentPath, false);
     } else {
@@ -17330,6 +19377,30 @@ async function initializeFileTree() {
         return;
     }
 
+    if (state.mediaFilter === 'image' && !state.currentPath && !loadSavedFolders('image').length) {
+        if (Array.isArray(state.imageFiles) && state.imageFiles.length > 0) {
+            state.imageFiles = sortImageLibraryItems(state.imageFiles);
+            state.imageFiles.forEach((file) => {
+                const label = String(file?.name || window.aurivo?.path?.basename?.(file?.path || '') || 'Gorsel');
+                const item = createTreeItem(label, String(file?.path || ''), false, '🖼️');
+                elements.fileTree.appendChild(item);
+            });
+            renderImageGallery(state.imageFiles);
+            updateLibraryAddButtonUi();
+            return;
+        }
+        if (resetFileTreeSurface(renderToken)) {
+            elements.fileTree.innerHTML = `
+                <div class="library-folder-empty">
+                    Fotoğraf klasörü seçmek için sol üstteki "Fotoğraf Aç" butonunu kullanın.
+                </div>
+            `;
+        }
+        renderImageGallery([]);
+        updateLibraryAddButtonUi();
+        return;
+    }
+
     const scope = getUserFoldersScope();
     const savedFolders = loadSavedFolders(scope);
     console.log('[LIBRARY] scope:', scope, 'savedFolders:', Array.isArray(savedFolders) ? savedFolders.length : 0, 'currentPath:', state.currentPath || '(root)');
@@ -17342,11 +19413,13 @@ async function initializeFileTree() {
             console.warn('[LIBRARY] currentPath missing, falling back to root:', state.currentPath);
             if (state.mediaFilter === 'audio') state.lastAudioPath = null;
             if (state.mediaFilter === 'video') state.lastVideoPath = null;
+            if (state.mediaFilter === 'image') state.lastImagePath = null;
             state.currentPath = '';
             state.pendingLibraryStartupPath = '';
             if (state.settings?.library?.startupState) {
                 if (state.mediaFilter === 'audio') state.settings.library.startupState.lastAudioPath = '';
                 if (state.mediaFilter === 'video') state.settings.library.startupState.lastVideoPath = '';
+                if (state.mediaFilter === 'image') state.settings.library.startupState.lastImagePath = '';
                 saveSettings().catch(() => {});
             }
         } else {
@@ -17368,7 +19441,7 @@ async function initializeFileTree() {
             if (resetFileTreeSurface(renderToken)) {
                 elements.fileTree.innerHTML = `
                     <div class="library-folder-empty">
-                        ${escapeHtml(uiT('settings.library.folders.empty', 'Henüz müzik klasörü eklenmedi.'))}
+                        ${escapeHtml(uiT('settings.library.folders.empty', 'Henüz medya klasörü eklenmedi.'))}
                     </div>
                 `;
             }
@@ -17387,6 +19460,11 @@ async function initializeFileTree() {
         item.dataset.folderScope = scope;
         elements.fileTree.appendChild(item);
     });
+    // Galeri kökünde sadece klasör listesi görünse bile içerik paneli
+    // müzik boş durumunda kalmamalı; her zaman galeri görünümünü bas.
+    if (scope === 'image') {
+        renderImageGallery(state.imageFiles || []);
+    }
     restoreTreeSelectionIfNeeded();
     updateLibraryAddButtonUi();
 }
@@ -17402,21 +19480,37 @@ function updateLibraryAddButtonUi() {
     if (!elements.musicAddFilesBtn) return;
 
     const inAudioFolder = state.mediaFilter === 'audio' && !!state.currentPath;
+    const isImageMode = state.mediaFilter === 'image';
+    const performance = getLibraryPerformanceState();
     const currentFolderLabel = inAudioFolder
         ? (window.aurivo?.path?.basename?.(state.currentPath) || String(state.currentPath).split('/').filter(Boolean).pop() || uiT('libraryActions.currentFolderFallback', 'Açık klasör'))
         : uiT('libraryActions.libraryRoot', 'Kök kütüphane');
+    const scanSubfoldersLabel = uiT('settings.library.performance.scanSubfolders', 'Alt klasörleri tara');
+    const scanSubfoldersState = performance.scanSubfolders
+        ? uiT('settings.common.on', 'On')
+        : uiT('settings.common.off', 'Off');
+    const contextLabel = `${currentFolderLabel} • ${scanSubfoldersLabel}: ${scanSubfoldersState}`;
 
     elements.musicAddFilesBtn.classList.toggle('is-folder-context', inAudioFolder);
     elements.musicAddFilesBtn.classList.toggle('is-library-root', !inAudioFolder);
     elements.musicAddFilesBtn.setAttribute(
         'title',
-        inAudioFolder
-            ? uiT('libraryActions.currentFolderTitle', 'Açık klasör: {name}', { name: currentFolderLabel })
-            : uiT('libraryActions.addToLibrary', 'Kütüphaneye ekle')
+        isImageMode
+            ? 'Galeriye fotoğraf veya klasör ekle'
+            : (inAudioFolder
+            ? `${uiT('libraryActions.currentFolderTitle', 'Açık klasör: {name}', { name: currentFolderLabel })} | ${scanSubfoldersLabel}: ${scanSubfoldersState}`
+            : `${uiT('libraryActions.addToLibrary', 'Kütüphaneye ekle')} | ${scanSubfoldersLabel}: ${scanSubfoldersState}`)
     );
 
     if (elements.musicAddFilesBtnContext) {
-        elements.musicAddFilesBtnContext.textContent = currentFolderLabel;
+        elements.musicAddFilesBtnContext.textContent = isImageMode ? 'Galeri' : contextLabel;
+    }
+    if (elements.imageAddFilesBtn) {
+        const addLabel = uiT('gallery.actions.addPhotos', 'Fotoğraf Aç');
+        const addTitle = uiT('gallery.actions.addPhotosTitle', 'Galeriye fotoğraf veya klasör ekle');
+        const addTextEl = elements.imageAddFilesBtn.querySelector('.video-add-btn-label');
+        if (addTextEl) addTextEl.textContent = addLabel;
+        elements.imageAddFilesBtn.setAttribute('title', addTitle);
     }
 }
 
@@ -17520,6 +19614,245 @@ function getLibraryTrackDisplayInfo(filePath = '') {
     };
 }
 
+function normalizeAlbumLabel(value) {
+    return String(value || '').trim().toLowerCase();
+}
+
+function getAlbumValueForTrack(item = null, filePath = '') {
+    const cached = getCachedMetadataForPath(filePath);
+    return String(cached?.album || item?.album || '').trim();
+}
+
+function isPathInsideLibraryRoots(filePath, roots = []) {
+    const normalizedPath = normalizeLibraryPath(filePath);
+    if (!normalizedPath || !Array.isArray(roots) || !roots.length) return false;
+    return roots.some((root) => normalizedPath === root || normalizedPath.startsWith(`${root}/`));
+}
+
+function getLibraryAlbumSourceTracks(savedFolders = loadSavedFolders('audio')) {
+    const roots = (Array.isArray(savedFolders) ? savedFolders : [])
+        .map((folder) => normalizeLibraryPath(folder?.path || ''))
+        .filter(Boolean);
+    const sourceMap = new Map();
+
+    const upsertTrack = (path, next) => {
+        const normalizedPath = normalizeLibraryPath(path);
+        if (!normalizedPath || !isAudioFile(normalizedPath)) return;
+        const previous = sourceMap.get(normalizedPath) || {
+            path: normalizedPath,
+            name: window.aurivo?.path?.basename?.(normalizedPath) || normalizedPath.split(/[\\/]/).pop() || 'Track',
+            title: '',
+            artist: '',
+            album: ''
+        };
+        sourceMap.set(normalizedPath, {
+            ...previous,
+            ...next,
+            path: normalizedPath
+        });
+    };
+
+    (state.playlist || []).forEach((item) => {
+        if (!item?.path || !isAudioFile(item.path)) return;
+        const cached = getCachedMetadataForPath(item.path);
+        upsertTrack(item.path, {
+            name: item.name || window.aurivo?.path?.basename?.(item.path) || String(item.path).split(/[\\/]/).pop() || 'Track',
+            title: String(cached?.title || item?.title || item?.name || '').trim(),
+            artist: String(cached?.artist || item?.artist || '').trim(),
+            album: String(cached?.album || item?.album || '').trim()
+        });
+    });
+
+    const metadataCache = getLibraryMetadataCache();
+    const canUseCacheScope = roots.length > 0;
+    if (metadataCache && typeof metadataCache === 'object' && canUseCacheScope) {
+        Object.entries(metadataCache).forEach(([path, meta]) => {
+            if (!path || !isPathInsideLibraryRoots(path, roots)) return;
+            const safeMeta = meta && typeof meta === 'object' ? meta : {};
+            upsertTrack(path, {
+                name: window.aurivo?.path?.basename?.(path) || String(path).split(/[\\/]/).pop() || 'Track',
+                title: String(safeMeta.title || '').trim(),
+                artist: String(safeMeta.artist || '').trim(),
+                album: String(safeMeta.album || '').trim()
+            });
+        });
+    }
+
+    return Array.from(sourceMap.values());
+}
+
+function buildLibraryAlbumBuckets(limit = 10, savedFolders = loadSavedFolders('audio')) {
+    const sourceTracks = getLibraryAlbumSourceTracks(savedFolders);
+    const bucketMap = new Map();
+
+    sourceTracks.forEach((item) => {
+        const album = String(item?.album || '').trim();
+        const normalized = normalizeAlbumLabel(album);
+        if (!normalized) return;
+
+        const artist = String(item?.artist || '').trim();
+        if (!bucketMap.has(normalized)) {
+            bucketMap.set(normalized, {
+                album,
+                count: 0,
+                artists: new Set(),
+                totalDurationSec: 0,
+                samplePath: String(item?.path || '').trim(),
+                sampleName: String(item?.name || '').trim()
+            });
+        }
+        const bucket = bucketMap.get(normalized);
+        bucket.count += 1;
+        if (artist) bucket.artists.add(artist);
+        const durationSec = Number(item?.duration || getCachedMetadataForPath(item?.path || '')?.duration || 0);
+        if (Number.isFinite(durationSec) && durationSec > 0) {
+            bucket.totalDurationSec += durationSec;
+        }
+    });
+
+    return Array.from(bucketMap.values())
+        .sort((a, b) => {
+            if (b.count !== a.count) return b.count - a.count;
+            return String(a.album || '').localeCompare(String(b.album || ''), 'tr', { sensitivity: 'base', numeric: true });
+        })
+        .slice(0, Math.max(0, Number(limit) || 0));
+}
+
+function focusAlbumInPlaylist(albumLabel, options = {}) {
+    const normalizedAlbum = normalizeAlbumLabel(albumLabel);
+    if (!normalizedAlbum) return false;
+
+    let index = (state.playlist || []).findIndex((item) => {
+        const album = getAlbumValueForTrack(item, item?.path || '');
+        return normalizeAlbumLabel(album) === normalizedAlbum;
+    });
+
+    if (index < 0) {
+        const buckets = buildLibraryAlbumBuckets(300);
+        const hit = buckets.find((bucket) => normalizeAlbumLabel(bucket.album) === normalizedAlbum);
+        const fallbackPath = String(hit?.samplePath || '').trim();
+        if (!fallbackPath) return false;
+        const fallbackName = String(hit?.sampleName || '').trim() || (window.aurivo?.path?.basename?.(fallbackPath) || fallbackPath.split(/[\\/]/).pop() || 'Track');
+        const addResult = addToPlaylist(fallbackPath, fallbackName);
+        if (typeof addResult?.index !== 'number' || addResult.index < 0) return false;
+        index = addResult.index;
+    }
+
+    selectPlaylistItem(index);
+    const row = elements.playlist?.querySelector?.(`.playlist-item[data-index="${index}"]`);
+    row?.scrollIntoView?.({ block: 'center', behavior: 'smooth' });
+
+    if (options.playNow) {
+        playIndex(index);
+    }
+    return true;
+}
+
+function applyLibraryRootAlbumCover(cardElement, coverData = null) {
+    const img = cardElement?.querySelector?.('.library-root-album-cover-img');
+    const fallback = cardElement?.querySelector?.('.library-root-album-cover-fallback');
+    if (!img) return;
+
+    const source = String(coverData || '').trim();
+    const isDataImage = /^data:image\/[a-z0-9.+-]+;base64,/i.test(source);
+    if (isDataImage) {
+        img.src = source;
+        img.classList.remove('default-cover');
+        img.style.display = '';
+        if (fallback) fallback.style.display = 'none';
+        return;
+    }
+
+    img.src = 'icons/aurivo_256.png';
+    img.classList.add('default-cover');
+    if (fallback) fallback.style.display = '';
+}
+
+function queueLibraryRootAlbumCoverLoad(cardElement, filePath = '') {
+    const key = String(filePath || '').trim();
+    if (!cardElement || !key) return;
+    if (getLibraryPerformanceState().lightweightMode) return;
+
+    const img = cardElement.querySelector('.library-root-album-cover-img');
+    if (!img) return;
+
+    const known = getKnownPlaylistCardCover(key);
+    if (known) {
+        applyLibraryRootAlbumCover(cardElement, known);
+        return;
+    }
+
+    const token = `${Date.now()}-${Math.random()}`;
+    img.dataset.coverToken = token;
+    resolvePlaylistCardCover(key).then((coverData) => {
+        if (!img.isConnected) return;
+        if (img.dataset.coverToken !== token) return;
+        applyLibraryRootAlbumCover(cardElement, coverData);
+    }).catch(() => {
+        applyLibraryRootAlbumCover(cardElement, null);
+    });
+}
+
+function renderLibraryRootAlbumSection(parent, renderToken = fileTreeRenderGeneration) {
+    if (!parent) return;
+    if (!isActiveFileTreeRender(renderToken)) return;
+    const albumBuckets = buildLibraryAlbumBuckets(12, loadSavedFolders('audio'));
+    if (!albumBuckets.length) return;
+
+    parent.appendChild(createLibrarySectionLabel(
+        uiT('settings.library.view.group.options.album', 'Albüme göre')
+    ));
+
+    const list = document.createElement('div');
+    list.className = 'library-root-album-list';
+
+    albumBuckets.forEach((bucket) => {
+        const card = document.createElement('button');
+        card.type = 'button';
+        card.className = 'library-root-album-card';
+        const artists = Array.from(bucket.artists).slice(0, 2).join(' • ');
+        const artistsCount = Math.max(1, bucket.artists.size || 0);
+        const durationText = bucket.totalDurationSec > 0 ? formatLibraryDuration(bucket.totalDurationSec) : '';
+        const metaParts = [
+            artists || uiT('nowPlaying.unknownArtist', 'Bilinmeyen Sanatçı'),
+            uiT('settings.library.album.artistCount', '{count} sanatçı', { count: artistsCount })
+        ];
+        if (durationText) {
+            metaParts.push(durationText);
+        }
+        card.innerHTML = `
+            <span class="library-root-album-cover">
+                <img class="library-root-album-cover-img default-cover" src="icons/aurivo_256.png" alt="" loading="lazy" decoding="async">
+                <span class="library-root-album-cover-fallback">💿</span>
+            </span>
+            <span class="library-root-album-text">
+                <strong>${escapeHtml(bucket.album)}</strong>
+                <span>${escapeHtml(metaParts.join(' • '))}</span>
+            </span>
+            <span class="library-root-album-count">${escapeHtml(String(bucket.count))}</span>
+        `;
+        card.addEventListener('click', () => {
+            const focused = focusAlbumInPlaylist(bucket.album, { playNow: false });
+            if (!focused) {
+                safeNotify(uiT('settings.library.notify.albumNotFound', 'Albüm listede bulunamadı.'), 'warning', 1800);
+            }
+        });
+        card.addEventListener('dblclick', () => {
+            const focused = focusAlbumInPlaylist(bucket.album, { playNow: true });
+            if (!focused) {
+                safeNotify(uiT('settings.library.notify.albumNotFound', 'Albüm listede bulunamadı.'), 'warning', 1800);
+            }
+        });
+        if (bucket.samplePath) {
+            queueLibraryRootAlbumCoverLoad(card, bucket.samplePath);
+        }
+        list.appendChild(card);
+    });
+
+    if (!isActiveFileTreeRender(renderToken)) return;
+    parent.appendChild(list);
+}
+
 function renderLibraryRootTrackCard(track, badgeLabel = '') {
     const info = getLibraryTrackDisplayInfo(track?.path || '');
     const item = document.createElement('button');
@@ -17565,7 +19898,7 @@ function renderUnifiedAudioLibraryRoot(savedFolders = loadSavedFolders('audio'),
         if (!isActiveFileTreeRender(renderToken)) return;
         elements.fileTree.innerHTML = `
             <div class="library-folder-empty">
-                ${escapeHtml(uiT('settings.library.folders.empty', 'Henüz müzik klasörü eklenmedi.'))}
+                ${escapeHtml(uiT('settings.library.folders.empty', 'Henüz medya klasörü eklenmedi.'))}
             </div>
         `;
         return;
@@ -17582,15 +19915,15 @@ function renderUnifiedAudioLibraryRoot(savedFolders = loadSavedFolders('audio'),
     overview.innerHTML = `
         ${hasSongsInLibrary ? '' : `
         <div class="library-root-overview-copy">
-            <strong>${escapeHtml(uiT('settings.tabs.library', 'Müzik Kütüphanesi'))}</strong>
+            <strong>${escapeHtml(uiT('settings.tabs.library', 'Medya Kütüphanesi'))}</strong>
             <span>${escapeHtml(uiT('settings.library.hero.subtitle', 'Klasörlerini ayarlardan yönetebilir, burada sadece gezinme görünür.'))}</span>
         </div>
         <div class="library-root-overview-stats">
-            <span class="library-root-stat-pill">${escapeHtml(uiT('settings.library.folders.summary.count', 'Ekli müzik klasörleri'))}: <strong>${escapeHtml(String(folders.length))}</strong></span>
+            <span class="library-root-stat-pill">${escapeHtml(uiT('settings.library.folders.summary.count', 'Ekli medya klasörleri'))}: <strong>${escapeHtml(String(folders.length))}</strong></span>
             <span class="library-root-stat-pill">${escapeHtml(uiT('settings.library.stats.totalSongs', 'Toplam şarkı'))}: <strong>${escapeHtml(String(totalSongsCount))}</strong></span>
             ${playlistOnlyEntries.length ? `<span class="library-root-stat-pill">${escapeHtml(uiT('settings.library.root.manualTracks', 'Manuel eklenen parçalar'))}: <strong>${escapeHtml(String(playlistOnlyEntries.length))}</strong></span>` : ''}
         </div>`}
-        <button type="button" class="library-root-settings-btn">${escapeHtml(uiT('settings.tabs.library', 'Müzik Kütüphanesi'))}</button>
+        <button type="button" class="library-root-settings-btn">${escapeHtml(uiT('settings.tabs.library', 'Medya Kütüphanesi'))}</button>
     `;
     overview.querySelector('.library-root-settings-btn')?.addEventListener('click', () => openSettings('library'));
     if (!isActiveFileTreeRender(renderToken)) return;
@@ -17599,12 +19932,14 @@ function renderUnifiedAudioLibraryRoot(savedFolders = loadSavedFolders('audio'),
     if (!hasSongsInLibrary && playlistOnlyEntries.length) {
         const note = document.createElement('div');
         note.className = 'library-root-note';
-        note.textContent = uiT('settings.library.root.manualTracksHint', 'Manuel eklenen parçalar çalma listesinde görünür. Ayrıntılı yönetim Ayarlar > Müzik Kütüphanesi bölümündedir.');
+        note.textContent = uiT('settings.library.root.manualTracksHint', 'Manuel eklenen parçalar çalma listesinde görünür. Ayrıntılı yönetim Ayarlar > Medya Kütüphanesi bölümündedir.');
         shell.appendChild(note);
     }
 
     if (!isActiveFileTreeRender(renderToken)) return;
     elements.fileTree.appendChild(shell);
+
+    renderLibraryRootAlbumSection(elements.fileTree, renderToken);
 
     if (folders.length) {
         elements.fileTree.appendChild(createLibrarySectionLabel(
@@ -17623,19 +19958,23 @@ function renderUnifiedAudioLibraryRoot(savedFolders = loadSavedFolders('audio'),
 }
 
 function getUserFoldersScope() {
+    if (state.mediaFilter === 'video') return 'video';
+    if (state.mediaFilter === 'image') return 'image';
     // 'music' sekmesi audio kapsamındadır.
-    return state.mediaFilter === 'video' ? 'video' : 'audio';
+    return 'audio';
 }
 
 function getUserFoldersStorageKey(scope) {
-    const s = scope === 'video' ? 'video' : 'audio';
+    const s = scope === 'video' ? 'video' : (scope === 'image' ? 'image' : 'audio');
     return `aurivo_user_folders_${s}`;
 }
 
 function loadSavedFolders(scope) {
     try {
         const librarySettings = ensureLibrarySettings();
-        const saved = scope === 'video' ? librarySettings.videoFolders : librarySettings.audioFolders;
+        const saved = scope === 'video'
+            ? librarySettings.videoFolders
+            : (scope === 'image' ? librarySettings.imageFolders : librarySettings.audioFolders);
         return dedupeLibraryFolders(saved);
     } catch (e) {
         console.error('Klasörler yüklenemedi:', e);
@@ -17649,6 +19988,8 @@ function saveFolders(scope, folders) {
         const librarySettings = ensureLibrarySettings();
         if (scope === 'video') {
             librarySettings.videoFolders = normalizedFolders;
+        } else if (scope === 'image') {
+            librarySettings.imageFolders = normalizedFolders;
         } else {
             librarySettings.audioFolders = normalizedFolders;
             invalidateAudioLibraryIndex();
@@ -17736,13 +20077,418 @@ function getLibraryStartupBehavior() {
 
 function getLibraryPerformanceState() {
     const perf = ensureLibrarySettings().performance || {};
+    const galleryPageJumpRaw = Number(perf.galleryPageJump);
+    const gallerySlideshowRaw = Number(perf.gallerySlideshowIntervalMs);
+    const fastThresholdRaw = Number(perf.galleryFastThresholdMs);
+    const slowThresholdRaw = Number(perf.gallerySlowThresholdMs);
+    const galleryFastThresholdMs = Number.isFinite(fastThresholdRaw)
+        ? Math.max(1000, Math.min(14000, Math.round(fastThresholdRaw)))
+        : 2500;
+    const gallerySlowThresholdMs = Number.isFinite(slowThresholdRaw)
+        ? Math.max(1500, Math.min(15000, Math.round(slowThresholdRaw)))
+        : 5000;
+    const transitionSlideshowRaw = Number(perf.galleryTransitionSlideshowMs);
+    const transitionManualRaw = Number(perf.galleryTransitionManualMs);
+    const safeFastThresholdMs = Math.min(galleryFastThresholdMs, gallerySlowThresholdMs - 500);
+    const safeSlowThresholdMs = Math.max(gallerySlowThresholdMs, safeFastThresholdMs + 500);
     return {
         fastScan: perf.fastScan !== false,
         lightweightMode: !!perf.lightweightMode,
+        scanSubfolders: perf.scanSubfolders !== false,
+        galleryPageJump: Number.isFinite(galleryPageJumpRaw)
+            ? Math.max(1, Math.min(30, Math.round(galleryPageJumpRaw)))
+            : 6,
+        gallerySlideshowIntervalMs: Number.isFinite(gallerySlideshowRaw)
+            ? Math.max(1000, Math.min(15000, Math.round(gallerySlideshowRaw)))
+            : 3000,
+        galleryFastThresholdMs: safeFastThresholdMs,
+        gallerySlowThresholdMs: safeSlowThresholdMs,
+        galleryTransitionSlideshowMs: Number.isFinite(transitionSlideshowRaw)
+            ? Math.max(280, Math.min(1100, Math.round(transitionSlideshowRaw)))
+            : 440,
+        galleryTransitionManualMs: Number.isFinite(transitionManualRaw)
+            ? Math.max(120, Math.min(500, Math.round(transitionManualRaw)))
+            : 190,
+        gallerySlideshowLoop: perf.gallerySlideshowLoop !== false,
+        gallerySlideshowShuffle: !!perf.gallerySlideshowShuffle,
+        galleryBackgroundMode: ['dim', 'blur', 'checker'].includes(String(perf.galleryBackgroundMode || '').toLowerCase())
+            ? String(perf.galleryBackgroundMode).toLowerCase()
+            : 'dim',
+        galleryMiniNavigatorEnabled: !!perf.galleryMiniNavigatorEnabled,
         coverCacheLimitMb: [32, 64, 128, 256].includes(Number(perf.coverCacheLimitMb))
             ? Number(perf.coverCacheLimitMb)
             : 64
     };
+}
+
+function getGalleryPageJumpStep() {
+    return getLibraryPerformanceState().galleryPageJump;
+}
+
+function getGallerySlideshowIntervalMs() {
+    return getLibraryPerformanceState().gallerySlideshowIntervalMs;
+}
+
+function isGallerySlideshowLoopEnabled() {
+    return getLibraryPerformanceState().gallerySlideshowLoop;
+}
+
+function isGallerySlideshowShuffleEnabled() {
+    return getLibraryPerformanceState().gallerySlideshowShuffle;
+}
+
+const GALLERY_SLIDESHOW_PROFILES = Object.freeze({
+    fast: Object.freeze({ intervalMs: 2000, fastThresholdMs: 1800, slowThresholdMs: 3500 }),
+    balanced: Object.freeze({ intervalMs: 3000, fastThresholdMs: 2500, slowThresholdMs: 5000 }),
+    calm: Object.freeze({ intervalMs: 5500, fastThresholdMs: 3000, slowThresholdMs: 7000 })
+});
+const GALLERY_IMAGE_TRANSITION_PRESETS = Object.freeze({
+    instant: Object.freeze({ outMs: 0, inMs: 0 })
+});
+const GALLERY_TRANSITION_SETTING_PRESETS = Object.freeze({
+    fast: Object.freeze({ slideshowMs: 320, manualMs: 130 }),
+    balanced: Object.freeze({ slideshowMs: 440, manualMs: 190 }),
+    cinematic: Object.freeze({ slideshowMs: 760, manualMs: 260 })
+});
+
+function clearGalleryImageTransitionRuntime() {
+    if (galleryImageTransitionTimer) {
+        clearTimeout(galleryImageTransitionTimer);
+        galleryImageTransitionTimer = null;
+    }
+}
+
+function clearGalleryRedEyePreviewCache() {
+    galleryRedEyePreviewCache.clear();
+    clearGalleryRedEyePrewarmTimer();
+}
+
+function readGalleryRedEyeCache(key = '') {
+    const safeKey = String(key || '');
+    if (!safeKey || !galleryRedEyePreviewCache.has(safeKey)) return null;
+    const hit = galleryRedEyePreviewCache.get(safeKey);
+    galleryRedEyePreviewCache.delete(safeKey);
+    galleryRedEyePreviewCache.set(safeKey, hit);
+    return hit || null;
+}
+
+function writeGalleryRedEyeCache(key = '', canvas = null) {
+    const safeKey = String(key || '');
+    if (!safeKey || !canvas) return;
+    if (galleryRedEyePreviewCache.has(safeKey)) {
+        galleryRedEyePreviewCache.delete(safeKey);
+    }
+    galleryRedEyePreviewCache.set(safeKey, canvas);
+    while (galleryRedEyePreviewCache.size > GALLERY_RED_EYE_CACHE_LIMIT) {
+        const oldest = galleryRedEyePreviewCache.keys().next().value;
+        galleryRedEyePreviewCache.delete(oldest);
+    }
+}
+
+function buildGalleryRedEyePreviewCacheKey(path = '', width = 0, height = 0, filter = '', radius = 0, strength = 0, points = []) {
+    const pointsSig = (Array.isArray(points) ? points : [])
+        .map((point) => `${Math.round(clamp01(point?.x) * 10000)}:${Math.round(clamp01(point?.y) * 10000)}`)
+        .join('|');
+    return [
+        String(path || ''),
+        Math.max(1, Math.round(Number(width) || 1)),
+        Math.max(1, Math.round(Number(height) || 1)),
+        String(filter || ''),
+        Math.max(1, Math.round(Number(radius) || 1)),
+        Math.max(0, Math.round(Number(strength) || 0)),
+        pointsSig
+    ].join('~');
+}
+
+function clearGalleryRedEyePrewarmTimer() {
+    if (galleryRedEyePrewarmTimer) {
+        clearTimeout(galleryRedEyePrewarmTimer);
+        galleryRedEyePrewarmTimer = null;
+    }
+}
+
+async function loadGalleryImageElementByPath(filePath = '') {
+    const targetUrl = toLocalFileUrl(String(filePath || '').trim());
+    if (!targetUrl) return null;
+    return await new Promise((resolve) => {
+        const probe = new Image();
+        let settled = false;
+        const done = (value) => {
+            if (settled) return;
+            settled = true;
+            resolve(value || null);
+        };
+        probe.onload = () => done(probe);
+        probe.onerror = () => done(null);
+        probe.src = targetUrl;
+        setTimeout(() => done(null), 1800);
+    });
+}
+
+function applyGalleryImageTransitionClasses(options = {}) {
+    const imageEl = elements.galleryLightboxImage;
+    if (!imageEl) return;
+    const outMs = Math.max(0, Number(options.outMs) || 0);
+    const inMs = Math.max(0, Number(options.inMs) || 0);
+    imageEl.style.setProperty('--gallery-fade-out-ms', `${outMs}ms`);
+    imageEl.style.setProperty('--gallery-fade-in-ms', `${inMs}ms`);
+}
+
+function getGalleryImageTransitionPreset(mode = 'manual') {
+    const normalized = String(mode || 'manual').trim().toLowerCase();
+    if (normalized === 'instant') {
+        return GALLERY_IMAGE_TRANSITION_PRESETS.instant;
+    }
+    if (normalized === 'keyboard') {
+        return { outMs: 0, inMs: 110 };
+    }
+    const perf = getLibraryPerformanceState();
+    if (normalized === 'slideshow') {
+        const inMs = Math.max(280, Math.min(1100, Number(perf.galleryTransitionSlideshowMs) || 440));
+        return {
+            outMs: Math.max(140, Math.round(inMs * 0.6)),
+            inMs
+        };
+    }
+    const inMs = Math.max(120, Math.min(500, Number(perf.galleryTransitionManualMs) || 190));
+    return {
+        outMs: Math.max(80, Math.round(inMs * 0.58)),
+        inMs
+    };
+}
+
+function preloadGalleryImage(url = '') {
+    return new Promise((resolve) => {
+        const src = String(url || '').trim();
+        if (!src) {
+            resolve(false);
+            return;
+        }
+        const probe = new Image();
+        let settled = false;
+        const done = (ok) => {
+            if (settled) return;
+            settled = true;
+            resolve(!!ok);
+        };
+        probe.onload = () => done(true);
+        probe.onerror = () => done(false);
+        probe.src = src;
+        setTimeout(() => done(false), 1200);
+    });
+}
+
+function detectGallerySlideshowProfilePreset(intervalMs, fastThresholdMs, slowThresholdMs) {
+    const interval = Number(intervalMs);
+    const fast = Number(fastThresholdMs);
+    const slow = Number(slowThresholdMs);
+    if (!Number.isFinite(interval) || !Number.isFinite(fast) || !Number.isFinite(slow)) {
+        return 'custom';
+    }
+    for (const [key, preset] of Object.entries(GALLERY_SLIDESHOW_PROFILES)) {
+        if (
+            interval === preset.intervalMs &&
+            fast === preset.fastThresholdMs &&
+            slow === preset.slowThresholdMs
+        ) {
+            return key;
+        }
+    }
+    return 'custom';
+}
+
+function syncGallerySlideshowProfilePresetUi() {
+    if (!elements.gallerySlideshowProfilePreset) return;
+    const interval = Number(elements.gallerySlideshowIntervalMs?.value);
+    const fast = Number(elements.gallerySlideshowFastThresholdMs?.value);
+    const slow = Number(elements.gallerySlideshowSlowThresholdMs?.value);
+    const preset = detectGallerySlideshowProfilePreset(interval, fast, slow);
+    elements.gallerySlideshowProfilePreset.value = preset;
+}
+
+function detectGalleryTransitionPreset(slideshowMs, manualMs) {
+    const slide = Number(slideshowMs);
+    const manual = Number(manualMs);
+    if (!Number.isFinite(slide) || !Number.isFinite(manual)) {
+        return 'custom';
+    }
+    for (const [key, preset] of Object.entries(GALLERY_TRANSITION_SETTING_PRESETS)) {
+        if (slide === preset.slideshowMs && manual === preset.manualMs) {
+            return key;
+        }
+    }
+    return 'custom';
+}
+
+function syncGalleryTransitionPresetButtonsUi() {
+    const buttons = Array.isArray(elements.galleryTransitionPresetButtons)
+        ? elements.galleryTransitionPresetButtons
+        : [];
+    if (!buttons.length) return;
+    const preset = detectGalleryTransitionPreset(
+        Number(elements.galleryTransitionSlideshowMs?.value),
+        Number(elements.galleryTransitionManualMs?.value)
+    );
+    buttons.forEach((button) => {
+        const key = String(button?.dataset?.galleryTransitionPreset || '');
+        button.classList.toggle('active', key && key === preset);
+    });
+}
+
+function updateGalleryTransitionSettingLabels() {
+    const perf = getLibraryPerformanceState();
+    if (elements.galleryTransitionSlideshowMs) {
+        elements.galleryTransitionSlideshowMs.value = String(perf.galleryTransitionSlideshowMs);
+    }
+    if (elements.galleryTransitionManualMs) {
+        elements.galleryTransitionManualMs.value = String(perf.galleryTransitionManualMs);
+    }
+    if (elements.galleryTransitionSlideshowMsValue) {
+        elements.galleryTransitionSlideshowMsValue.textContent = `${perf.galleryTransitionSlideshowMs} ms`;
+    }
+    if (elements.galleryTransitionManualMsValue) {
+        elements.galleryTransitionManualMsValue.textContent = `${perf.galleryTransitionManualMs} ms`;
+    }
+    syncGalleryTransitionPresetButtonsUi();
+}
+
+function applyGalleryTransitionPreset(presetKey = '') {
+    const preset = GALLERY_TRANSITION_SETTING_PRESETS[String(presetKey || '').trim()];
+    if (!preset) return;
+    const setValueAndNotify = (inputEl, nextValue) => {
+        if (!inputEl) return;
+        inputEl.value = String(nextValue);
+        inputEl.dispatchEvent(new Event('input', { bubbles: true }));
+        inputEl.dispatchEvent(new Event('change', { bubbles: true }));
+    };
+    setValueAndNotify(elements.galleryTransitionSlideshowMs, preset.slideshowMs);
+    setValueAndNotify(elements.galleryTransitionManualMs, preset.manualMs);
+    if (typeof markSettingsDirty === 'function') {
+        markSettingsDirty();
+    }
+    updateGalleryTransitionSettingLabels();
+    safeNotify(uiT('settings.gallery.transition.preset.applied', 'Geçiş preset uygulandı.'), 'info', 1200);
+}
+
+function applyGallerySlideshowProfilePreset(presetKey = '') {
+    const key = String(presetKey || '').trim();
+    const preset = GALLERY_SLIDESHOW_PROFILES[key];
+    if (!preset) return;
+    const setValueAndNotify = (inputEl, nextValue) => {
+        if (!inputEl) return;
+        inputEl.value = String(nextValue);
+        inputEl.dispatchEvent(new Event('input', { bubbles: true }));
+        inputEl.dispatchEvent(new Event('change', { bubbles: true }));
+    };
+    setValueAndNotify(elements.gallerySlideshowIntervalMs, preset.intervalMs);
+    setValueAndNotify(elements.gallerySlideshowFastThresholdMs, preset.fastThresholdMs);
+    setValueAndNotify(elements.gallerySlideshowSlowThresholdMs, preset.slowThresholdMs);
+    if (typeof markSettingsDirty === 'function') {
+        markSettingsDirty();
+    }
+    syncGallerySlideshowProfilePresetUi();
+}
+
+function updateGallerySlideshowToggleUi() {
+    if (!elements.gallerySlideshowToggleBtn) return;
+    const isActive = !!state.gallerySlideshowActive;
+    elements.gallerySlideshowToggleBtn.textContent = isActive
+        ? uiT('settings.gallery.slideshow.stop', 'Slayt: Açık')
+        : uiT('settings.gallery.slideshow.start', 'Slayt: Kapalı');
+    elements.gallerySlideshowToggleBtn.classList.toggle('active', isActive);
+}
+
+function updateGallerySlideshowQuickButtonsUi() {
+    const onText = uiT('settings.common.on', 'On');
+    const offText = uiT('settings.common.off', 'Off');
+    const perf = getLibraryPerformanceState();
+    const speedMs = getGallerySlideshowIntervalMs();
+    if (elements.gallerySlideshowSpeedQuickLabel) {
+        let speedStatusKey = 'settings.gallery.slideshow.speedStatus.normal';
+        let speedStatusFallback = 'Normal';
+        let speedClass = 'is-normal';
+        if (speedMs <= perf.galleryFastThresholdMs) {
+            speedStatusKey = 'settings.gallery.slideshow.speedStatus.fast';
+            speedStatusFallback = 'Hızlı';
+            speedClass = 'is-fast';
+        } else if (speedMs >= perf.gallerySlowThresholdMs) {
+            speedStatusKey = 'settings.gallery.slideshow.speedStatus.slow';
+            speedStatusFallback = 'Yavaş';
+            speedClass = 'is-slow';
+        }
+        const speedStatus = uiT(speedStatusKey, speedStatusFallback);
+        elements.gallerySlideshowSpeedQuickLabel.textContent = uiT(
+            'settings.gallery.slideshow.speedQuickLabel',
+            'Hız: {ms} ms ({status})',
+            { ms: speedMs, status: speedStatus }
+        );
+        elements.gallerySlideshowSpeedQuickLabel.classList.remove('is-slow', 'is-normal', 'is-fast');
+        elements.gallerySlideshowSpeedQuickLabel.classList.add(speedClass);
+    }
+    if (elements.gallerySlideshowSpeedDownBtn) {
+        elements.gallerySlideshowSpeedDownBtn.textContent = uiT('settings.gallery.slideshow.speedDownShort', 'Hız -');
+        elements.gallerySlideshowSpeedDownBtn.title = `${uiT('settings.gallery.slideshow.speed', 'Slayt gösterisi hızı (ms)')}: ${speedMs} ms`;
+    }
+    if (elements.gallerySlideshowSpeedUpBtn) {
+        elements.gallerySlideshowSpeedUpBtn.textContent = uiT('settings.gallery.slideshow.speedUpShort', 'Hız +');
+        elements.gallerySlideshowSpeedUpBtn.title = `${uiT('settings.gallery.slideshow.speed', 'Slayt gösterisi hızı (ms)')}: ${speedMs} ms`;
+    }
+    if (elements.gallerySlideshowLoopQuickBtn) {
+        const loopEnabled = isGallerySlideshowLoopEnabled();
+        elements.gallerySlideshowLoopQuickBtn.textContent = `${uiT('settings.gallery.slideshow.loopShort', 'Loop')}: ${loopEnabled ? onText : offText}`;
+        elements.gallerySlideshowLoopQuickBtn.classList.toggle('active', loopEnabled);
+    }
+    if (elements.gallerySlideshowShuffleQuickBtn) {
+        const shuffleEnabled = isGallerySlideshowShuffleEnabled();
+        elements.gallerySlideshowShuffleQuickBtn.textContent = `${uiT('settings.gallery.slideshow.shuffleShort', 'Rastgele')}: ${shuffleEnabled ? onText : offText}`;
+        elements.gallerySlideshowShuffleQuickBtn.classList.toggle('active', shuffleEnabled);
+    }
+}
+
+function setGallerySlideshowPreference(key, enabled, options = {}) {
+    const { persist = true } = options || {};
+    const perf = ensureLibrarySettings().performance || {};
+    ensureLibrarySettings().performance = perf;
+    if (key === 'gallerySlideshowLoop') {
+        perf.gallerySlideshowLoop = !!enabled;
+    } else if (key === 'gallerySlideshowShuffle') {
+        perf.gallerySlideshowShuffle = !!enabled;
+    }
+    if (elements.gallerySlideshowLoop) {
+        elements.gallerySlideshowLoop.checked = perf.gallerySlideshowLoop !== false;
+    }
+    if (elements.gallerySlideshowShuffle) {
+        elements.gallerySlideshowShuffle.checked = !!perf.gallerySlideshowShuffle;
+    }
+    updateGallerySlideshowQuickButtonsUi();
+    updateLibraryPerformanceStatusUi();
+    if (state.gallerySlideshowActive) {
+        scheduleGallerySlideshowTick();
+    }
+    if (persist) {
+        saveSettings().catch(() => {});
+    }
+}
+
+function setGallerySlideshowIntervalMs(value, options = {}) {
+    const { persist = true } = options || {};
+    const perf = ensureLibrarySettings().performance || {};
+    ensureLibrarySettings().performance = perf;
+    const raw = Number(value);
+    const nextMs = Number.isFinite(raw) ? Math.max(1000, Math.min(15000, Math.round(raw))) : 3000;
+    perf.gallerySlideshowIntervalMs = nextMs;
+    if (elements.gallerySlideshowIntervalMs) {
+        elements.gallerySlideshowIntervalMs.value = String(nextMs);
+    }
+    syncGallerySlideshowProfilePresetUi();
+    updateGallerySlideshowQuickButtonsUi();
+    updateLibraryPerformanceStatusUi();
+    if (state.gallerySlideshowActive) {
+        scheduleGallerySlideshowTick();
+    }
+    if (persist) {
+        saveSettings().catch(() => {});
+    }
 }
 
 function estimateDataUrlBytes(dataUrl = '') {
@@ -17931,11 +20677,16 @@ function updateLibraryPerformanceStatusUi() {
     if (!elements.libraryPerformanceStatus) return;
     const perf = getLibraryPerformanceState();
     elements.libraryPerformanceStatus.textContent = uiT(
-        'settings.library.performance.status',
-        'Hızlı tarama: {fast} | Hafif mod: {light} | Kapak önbelleği: {cache} MB',
+        'settings.library.performance.statusWithSubfolders',
+        'Hızlı tarama: {fast} | Hafif mod: {light} | Alt klasör tarama: {subfolders} | Galeri PgUp/PgDn: {jump} | Slayt: {slide} ms | Loop: {loop} | Rastgele: {shuffle} | Kapak önbelleği: {cache} MB',
         {
             fast: perf.fastScan ? uiT('settings.common.on', 'On') : uiT('settings.common.off', 'Off'),
             light: perf.lightweightMode ? uiT('settings.common.on', 'On') : uiT('settings.common.off', 'Off'),
+            subfolders: perf.scanSubfolders ? uiT('settings.common.on', 'On') : uiT('settings.common.off', 'Off'),
+            jump: perf.galleryPageJump,
+            slide: perf.gallerySlideshowIntervalMs,
+            loop: perf.gallerySlideshowLoop ? uiT('settings.common.on', 'On') : uiT('settings.common.off', 'Off'),
+            shuffle: perf.gallerySlideshowShuffle ? uiT('settings.common.on', 'On') : uiT('settings.common.off', 'Off'),
             cache: perf.coverCacheLimitMb
         }
     );
@@ -18052,6 +20803,7 @@ function persistLibraryStartupState() {
     }
     library.startupState.lastAudioPath = String(state.lastAudioPath || '');
     library.startupState.lastVideoPath = String(state.lastVideoPath || '');
+    library.startupState.lastImagePath = String(state.lastImagePath || '');
     library.startupState.lastSelectedTreePath = getLibraryStartupBehavior().rememberTreeSelection
         ? String(library.startupState.lastSelectedTreePath || '')
         : '';
@@ -18182,6 +20934,7 @@ function buildLibraryTransferBundle() {
         library: {
             audioFolders: dedupeLibraryFolders(librarySettings.audioFolders || []),
             videoFolders: dedupeLibraryFolders(librarySettings.videoFolders || []),
+            imageFolders: dedupeLibraryFolders(librarySettings.imageFolders || []),
             excludedFolders: dedupeLibraryFolders(librarySettings.excludedFolders || []),
             scanOnStartup: librarySettings.scanOnStartup !== false,
             autoRescanOnFolderChange: librarySettings.autoRescanOnFolderChange !== false,
@@ -18204,7 +20957,8 @@ function buildLibraryTransferBundle() {
             lastScanAt: Number(librarySettings.lastScanAt || 0)
         },
         playlist: state.playlist || [],
-        videoLibrary: Array.isArray(state.videoFiles) ? state.videoFiles : []
+        videoLibrary: Array.isArray(state.videoFiles) ? state.videoFiles : [],
+        imageLibrary: Array.isArray(state.imageFiles) ? state.imageFiles : []
     };
 }
 
@@ -18250,6 +21004,7 @@ async function importLibraryBundle() {
 
         librarySettings.audioFolders = dedupeLibraryFolders(nextLibrary.audioFolders || []);
         librarySettings.videoFolders = dedupeLibraryFolders(nextLibrary.videoFolders || []);
+        librarySettings.imageFolders = dedupeLibraryFolders(nextLibrary.imageFolders || []);
         librarySettings.excludedFolders = dedupeLibraryFolders(nextLibrary.excludedFolders || []);
         librarySettings.scanOnStartup = nextLibrary.scanOnStartup !== false;
         librarySettings.autoRescanOnFolderChange = nextLibrary.autoRescanOnFolderChange !== false;
@@ -18276,10 +21031,12 @@ async function importLibraryBundle() {
 
         state.playlist = Array.isArray(parsed.playlist) ? parsed.playlist : [];
         state.videoFiles = Array.isArray(parsed.videoLibrary) ? parsed.videoLibrary : [];
+        state.imageFiles = Array.isArray(parsed.imageLibrary) ? sanitizeImageLibraryItems(parsed.imageLibrary) : [];
 
         await saveSettings();
         await savePlaylistToDisk();
         persistVideoLibrary();
+        persistImageLibrary();
         loadSettingsToUI();
         await refreshLibraryStats();
         await syncLibraryWatchState();
@@ -18335,14 +21092,14 @@ function renderLibraryFolderSettings() {
     if (elements.libraryManagedFoldersSummary) {
         if (!folders.length) {
             elements.libraryManagedFoldersSummary.innerHTML = `
-                <span>${escapeHtml(uiT('settings.library.folders.summary.empty', 'Henüz müzik klasörü eklenmedi.'))}</span>
+                <span>${escapeHtml(uiT('settings.library.folders.summary.empty', 'Henüz medya klasörü eklenmedi.'))}</span>
                 <strong>0</strong>
             `;
         } else {
             const lastAddedPath = String(state.lastAddedLibraryFolderPath || '').trim();
             const lastAddedFolder = folders.find((folder) => folder.path === lastAddedPath) || folders[folders.length - 1];
             elements.libraryManagedFoldersSummary.innerHTML = `
-                <span>${escapeHtml(uiT('settings.library.folders.summary.count', 'Ekli müzik klasörleri'))}</span>
+                <span>${escapeHtml(uiT('settings.library.folders.summary.count', 'Ekli medya klasörleri'))}</span>
                 <strong>${folders.length}</strong>
                 <span>${escapeHtml(uiT('settings.library.folders.summary.lastAdded', 'Son eklenen'))}: ${escapeHtml(lastAddedFolder?.name || '-')}</span>
             `;
@@ -18351,7 +21108,7 @@ function renderLibraryFolderSettings() {
     if (!folders.length) {
         elements.libraryManagedFoldersList.innerHTML = `
             <div class="library-folder-empty">
-                ${escapeHtml(uiT('settings.library.folders.empty', 'Henüz müzik klasörü eklenmedi.'))}
+                ${escapeHtml(uiT('settings.library.folders.empty', 'Henüz medya klasörü eklenmedi.'))}
             </div>
         `;
     } else {
@@ -18512,10 +21269,60 @@ function getLibraryViewPreferenceState() {
     };
 }
 
+function updateGallerySortQuickControlUi() {
+    const visible = state.currentPage === 'gallery' && state.currentPanel === 'library';
+    if (elements.gallerySortQuick) {
+        elements.gallerySortQuick.classList.toggle('hidden', !visible);
+    }
+    if (elements.galleryClearQuickBtn) {
+        const clearLabel = uiT('gallery.clear.title', 'Galeriyi Temizle');
+        elements.galleryClearQuickBtn.classList.toggle('hidden', !visible);
+        elements.galleryClearQuickBtn.setAttribute('title', clearLabel);
+        elements.galleryClearQuickBtn.setAttribute('aria-label', clearLabel);
+    }
+    if (!elements.gallerySortQuickSelect) return;
+
+    const labels = {
+        'name-asc': uiT('gallery.sort.nameAsc', 'A-Z'),
+        'name-desc': uiT('gallery.sort.nameDesc', 'Z-A'),
+        'date-desc': uiT('gallery.sort.dateDesc', 'Tarih')
+    };
+    const currentMode = getGallerySortPreferenceState();
+    const options = Array.from(elements.gallerySortQuickSelect.options || []);
+    options.forEach((option) => {
+        const value = String(option.value || '').toLowerCase();
+        option.textContent = labels[value] || option.textContent;
+    });
+    const labelText = uiT('gallery.sort.label', 'Sırala');
+    const labelEl = document.querySelector('.gallery-sort-quick-label');
+    if (labelEl) labelEl.textContent = labelText;
+    elements.gallerySortQuick.setAttribute('aria-label', `${labelText} (${labels[currentMode] || currentMode})`);
+    elements.gallerySortQuickSelect.value = currentMode;
+    elements.gallerySortQuickSelect.setAttribute('title', `${labelText}: ${labels[currentMode] || currentMode}`);
+}
+
+function setGallerySortMode(mode = 'name-asc', options = {}) {
+    const requested = String(mode || '').toLowerCase();
+    const nextMode = ['name-asc', 'name-desc', 'date-desc'].includes(requested) ? requested : 'name-asc';
+    const persist = options?.persist !== false;
+    const librarySettings = ensureLibrarySettings();
+    const changed = String(librarySettings.gallerySortMode || '').toLowerCase() !== nextMode;
+    librarySettings.gallerySortMode = nextMode;
+    if (changed && Array.isArray(state.imageFiles) && state.imageFiles.length) {
+        renderImageGallery(state.imageFiles, { persist: false });
+    }
+    updateGallerySortQuickControlUi();
+    if (changed && persist) {
+        saveSettings().catch(() => {});
+    }
+}
+
 function updateMusicViewQuickControlUi() {
     if (!elements.musicViewQuick) return;
-    const visible = state.currentPage === 'music';
+    const visible = state.currentPage === 'music' || state.currentPage === 'gallery';
     elements.musicViewQuick.classList.toggle('hidden', !visible);
+    elements.musicViewQuick.setAttribute('aria-label', state.currentPage === 'gallery' ? 'Galeri görünüm modu' : 'Müzik görünüm modu');
+    updateGallerySortQuickControlUi();
     if (!elements.musicViewModeBtns?.length) return;
 
     const labels = {
@@ -18552,7 +21359,11 @@ function setLibraryViewMode(mode = 'list', options = {}) {
     if (elements.libraryViewMode) {
         elements.libraryViewMode.value = nextMode;
     }
-    renderPlaylist();
+    if (state.currentPage === 'gallery') {
+        renderImageGallery(state.imageFiles || []);
+    } else {
+        renderPlaylist();
+    }
     updateMusicViewQuickControlUi();
     if (persist) {
         saveSettings().catch(() => {});
@@ -18570,7 +21381,7 @@ function cycleLibraryViewMode(step = 1, options = {}) {
 
 function handleMusicViewModeWheel(event) {
     if (!event?.ctrlKey) return;
-    if (state.currentPage !== 'music') return;
+    if (state.currentPage !== 'music' && state.currentPage !== 'gallery') return;
     if (state.currentPanel !== 'library') return;
 
     const target = event.target;
@@ -18591,6 +21402,175 @@ function handleMusicViewModeWheel(event) {
 
     const step = event.deltaY < 0 ? 1 : -1;
     cycleLibraryViewMode(step, { persist: true });
+}
+
+function normalizeLibrarySearchText(value) {
+    return String(value || '')
+        .toLocaleLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/ı/g, 'i')
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
+function getLibraryTabQueueIndexSet() {
+    if (!Array.isArray(state.playlist) || state.playlist.length === 0) {
+        return new Set();
+    }
+    if (!Number.isInteger(state.currentIndex) || state.currentIndex < 0) {
+        return new Set(state.playlist.map((_, index) => index));
+    }
+
+    const queue = new Set();
+    for (let index = state.currentIndex + 1; index < state.playlist.length; index += 1) {
+        queue.add(index);
+    }
+    return queue;
+}
+
+function getPlaylistPresentationEntriesForLibrarySurface() {
+    const tab = String(state.libraryViewTab || 'collection').trim().toLowerCase();
+    const query = normalizeLibrarySearchText(state.libraryQuickSearch);
+    const baseEntries = tab === 'queue'
+        ? state.playlist.map((item, originalIndex) => ({
+            type: 'item',
+            visualOrder: originalIndex,
+            originalIndex,
+            item,
+            title: String(item?.name || '').trim(),
+            artist: String(item?.artist || '').trim(),
+            album: String(item?.album || '').trim()
+        }))
+        : getPlaylistPresentationEntries();
+    const nowPlayingIndex = Number.isInteger(state.currentIndex) ? state.currentIndex : -1;
+    const queueIndexSet = tab === 'queue' ? getLibraryTabQueueIndexSet() : null;
+
+    const matchesTab = (entry) => {
+        if (!entry || entry.type !== 'item') return false;
+        if (tab === 'now-playing') return entry.originalIndex === nowPlayingIndex;
+        if (tab === 'queue') return !!queueIndexSet?.has(entry.originalIndex);
+        return true;
+    };
+
+    const matchesQuery = (entry) => {
+        if (!query || !entry || entry.type !== 'item') return true;
+        const item = entry.item || {};
+        const haystack = normalizeLibrarySearchText([
+            item.name,
+            item.title,
+            entry.title,
+            entry.artist,
+            entry.album,
+            item.path
+        ].filter(Boolean).join(' '));
+        return haystack.includes(query);
+    };
+
+    const output = [];
+    let pendingHeader = null;
+
+    baseEntries.forEach((entry) => {
+        if (entry.type === 'header') {
+            pendingHeader = entry;
+            return;
+        }
+        if (!matchesTab(entry) || !matchesQuery(entry)) {
+            return;
+        }
+        if (pendingHeader) {
+            output.push(pendingHeader);
+            pendingHeader = null;
+        }
+        output.push(entry);
+    });
+
+    return output;
+}
+
+function getLibrarySurfaceEmptyState() {
+    const tab = String(state.libraryViewTab || 'collection').trim().toLowerCase();
+    const query = String(state.libraryQuickSearch || '').trim();
+    if (query) {
+        return {
+            icon: '🔎',
+            text: 'Arama sonucu bulunamadı',
+            hint: 'Farklı bir kelime deneyin veya filtreyi temizleyin'
+        };
+    }
+    if (tab === 'now-playing') {
+        return {
+            icon: '🎧',
+            text: 'Şu anda çalan parça yok',
+            hint: 'Bir parça başlatınca burada görünecek'
+        };
+    }
+    if (tab === 'queue') {
+        return {
+            icon: '🧾',
+            text: 'Kuyruk boş görünüyor',
+            hint: 'Kuyruk, mevcut parçadan sonraki öğeleri listeler'
+        };
+    }
+    return {
+        icon: '🎵',
+        text: 'Müzik veya video dosyalarını buraya sürükleyin',
+        hint: 'veya sol taraftaki klasörlerden seçin'
+    };
+}
+
+function updateLibraryTabLabelsUi() {
+    if (!elements.libraryTabButtons?.length) return;
+    const queueCount = getLibraryTabQueueIndexSet().size;
+    const hasCurrent = Number.isInteger(state.currentIndex) && state.currentIndex >= 0 && state.currentIndex < state.playlist.length;
+    const counters = {
+        collection: state.playlist.length,
+        'now-playing': hasCurrent ? 1 : 0,
+        queue: queueCount
+    };
+    const labels = {
+        collection: uiT('library.tabs.collection', 'Koleksiyon'),
+        'now-playing': uiT('library.tabs.nowPlaying', 'Şimdi Çalan'),
+        queue: uiT('library.tabs.queue', 'Kuyruk')
+    };
+
+    elements.libraryTabButtons.forEach((button) => {
+        const tab = String(button?.dataset?.libraryTab || '').toLowerCase();
+        const count = Number(counters[tab] || 0);
+        const baseLabel = labels[tab] || 'Liste';
+        const countEl = button.querySelector('.library-tab-count');
+        if (countEl) countEl.textContent = String(count);
+        button.title = `${baseLabel} (${count})`;
+        button.setAttribute('aria-label', `${baseLabel} (${count})`);
+    });
+}
+
+function updateLibraryNowPlayingCardUi() {
+    // Library mini now-playing card was intentionally removed for a simpler left panel UI.
+}
+
+function syncLibrarySurfaceControlsUi() {
+    const isAudioLibraryMode = state.mediaFilter === 'audio';
+    if (elements.librarySurfaceControls) {
+        elements.librarySurfaceControls.classList.toggle('hidden', !isAudioLibraryMode);
+    }
+    if (elements.libraryTabButtons?.length) {
+        const activeTab = String(state.libraryViewTab || 'collection').toLowerCase();
+        elements.libraryTabButtons.forEach((button) => {
+            const tab = String(button?.dataset?.libraryTab || '').toLowerCase();
+            const isActive = tab === activeTab;
+            button.classList.toggle('active', isActive);
+            button.setAttribute('aria-selected', isActive ? 'true' : 'false');
+        });
+    }
+    if (elements.libraryQuickSearchInput) {
+        const searchValue = String(state.libraryQuickSearch || '');
+        if (elements.libraryQuickSearchInput.value !== searchValue) {
+            elements.libraryQuickSearchInput.value = searchValue;
+        }
+    }
+    updateLibraryTabLabelsUi();
+    updateLibraryNowPlayingCardUi();
 }
 
 function getPlaylistPresentationEntries() {
@@ -19028,7 +22008,7 @@ async function refreshLibraryStats(options = {}) {
 async function refreshLibraryMetadataCache(options = {}) {
     const folders = loadSavedFolders('audio');
     if (!folders.length) {
-        safeNotify(uiT('settings.library.notify.noFolders', 'Önce en az bir müzik klasörü ekleyin.'), 'warning', 2000);
+        safeNotify(uiT('settings.library.notify.noFolders', 'Önce en az bir medya klasörü ekleyin.'), 'warning', 2000);
         return;
     }
 
@@ -19072,7 +22052,7 @@ async function refreshLibraryMetadataCache(options = {}) {
 async function addMusicFolderFromSettings() {
     try {
         const result = await window.aurivo?.dialog?.openFolder?.({
-            title: uiT('settings.library.folders.pickTitle', 'Müzik klasörü seç'),
+            title: uiT('settings.library.folders.pickTitle', 'Medya klasörü seç'),
             defaultPath: state.specialPaths?.music || undefined
         });
         if (!result?.path) return;
@@ -19082,50 +22062,103 @@ async function addMusicFolderFromSettings() {
             result.name || window.aurivo?.path?.basename?.(result.path) || 'Klasör',
             'audio'
         );
-        safeNotify(uiT('settings.library.notify.folderAdded', 'Müzik klasörü eklendi.'), 'success', 1800);
+        safeNotify(uiT('settings.library.notify.folderAdded', 'Medya klasörü eklendi.'), 'success', 1800);
     } catch (e) {
         safeNotify(`${uiT('settings.library.notify.folderPickFailed', 'Klasör seçilemedi')}: ${e?.message || e}`, 'error', 2200);
     }
 }
 
+function getConfiguredMediaExtensions() {
+    const audio = getConfiguredLibraryExtensions('audio');
+    const video = getConfiguredLibraryExtensions('video');
+    return Array.from(new Set([...(Array.isArray(audio) ? audio : []), ...(Array.isArray(video) ? video : [])]));
+}
+
+function getMediaKindForPath(filePath) {
+    if (!filePath) return 'unknown';
+    if (isVideoFile(filePath)) return 'video';
+    if (isAudioFile(filePath)) return 'audio';
+    return 'unknown';
+}
+
 async function addMusicFilesToLibrary() {
     try {
-        state.mediaFilter = 'audio';
+        const previousFilter = state.mediaFilter;
         const files = await window.aurivo?.dialog?.openFiles?.({
             title: uiT('libraryActions.addFiles', 'Dosya Ekle'),
             filters: [
-                { name: uiT('libraryActions.addFiles', 'Dosya Ekle'), extensions: getConfiguredLibraryExtensions('audio') },
+                { name: uiT('libraryActions.addFiles', 'Dosya Ekle'), extensions: getConfiguredMediaExtensions() },
+                { name: uiT('dialog.filters.audioFiles', 'Ses Dosyaları'), extensions: getConfiguredLibraryExtensions('audio') },
+                { name: uiT('dialog.filters.videoFiles', 'Video Dosyaları'), extensions: getConfiguredLibraryExtensions('video') },
                 { name: uiT('common.allFiles', 'Tüm Dosyalar'), extensions: ['*'] }
             ]
         });
         if (!files || !files.length) return;
 
-        const existingFolders = loadSavedFolders('audio');
-        const existingFolderPaths = new Set(existingFolders.map((folder) => String(folder?.path || '').trim()));
-        const derivedFolders = [];
-        const derivedFolderPaths = new Set();
+        const existingAudioFolders = loadSavedFolders('audio');
+        const existingAudioPaths = new Set(existingAudioFolders.map((folder) => String(folder?.path || '').trim()));
+        const existingVideoFolders = loadSavedFolders('video');
+        const existingVideoPaths = new Set(existingVideoFolders.map((folder) => String(folder?.path || '').trim()));
+
+        const derivedAudioFolders = [];
+        const derivedAudioPaths = new Set();
+        const derivedVideoFolders = [];
+        const derivedVideoPaths = new Set();
+
         for (const file of files) {
             const parentPath = String(window.aurivo?.path?.dirname?.(file.path) || '').trim();
             if (!parentPath) continue;
-            if (existingFolderPaths.has(parentPath) || derivedFolderPaths.has(parentPath)) continue;
-            derivedFolderPaths.add(parentPath);
-            derivedFolders.push({
-                path: parentPath,
-                name: window.aurivo?.path?.basename?.(parentPath) || parentPath.split(/[\\/]/).filter(Boolean).pop() || 'Klasör'
-            });
+            const mediaKind = getMediaKindForPath(file.path);
+            if (mediaKind === 'audio') {
+                if (existingAudioPaths.has(parentPath) || derivedAudioPaths.has(parentPath)) continue;
+                derivedAudioPaths.add(parentPath);
+                derivedAudioFolders.push({
+                    path: parentPath,
+                    name: window.aurivo?.path?.basename?.(parentPath) || parentPath.split(/[\\/]/).filter(Boolean).pop() || 'Klasör'
+                });
+                continue;
+            }
+            if (mediaKind === 'video') {
+                if (existingVideoPaths.has(parentPath) || derivedVideoPaths.has(parentPath)) continue;
+                derivedVideoPaths.add(parentPath);
+                derivedVideoFolders.push({
+                    path: parentPath,
+                    name: window.aurivo?.path?.basename?.(parentPath) || parentPath.split(/[\\/]/).filter(Boolean).pop() || 'Klasör'
+                });
+            }
         }
 
-        let firstIndex = null;
-        let addedCount = 0;
+        let firstAudioIndex = null;
+        let audioAddedCount = 0;
+        const newVideoItems = [];
+
         for (const f of files) {
-            const { index, added } = addToPlaylist(f.path, f.name);
-            if (added) addedCount++;
-            if (firstIndex === null && typeof index === 'number' && index >= 0) firstIndex = index;
+            const mediaKind = getMediaKindForPath(f.path);
+            if (mediaKind === 'audio') {
+                const { index, added } = addToPlaylist(f.path, f.name);
+                if (added) audioAddedCount++;
+                if (firstAudioIndex === null && typeof index === 'number' && index >= 0) firstAudioIndex = index;
+                continue;
+            }
+            if (mediaKind === 'video') {
+                newVideoItems.push({ name: f.name, path: f.path });
+            }
         }
 
-        if (derivedFolders.length) {
-            saveFolders('audio', [...existingFolders, ...derivedFolders]);
-            state.lastAddedLibraryFolderPath = derivedFolders[0].path;
+        if (newVideoItems.length) {
+            state.videoFiles = mergeVideoLibraryItems(state.videoFiles, newVideoItems);
+            persistVideoLibrary();
+        }
+
+        if (derivedAudioFolders.length) {
+            saveFolders('audio', [...existingAudioFolders, ...derivedAudioFolders]);
+            state.lastAddedLibraryFolderPath = derivedAudioFolders[0].path;
+        }
+        if (derivedVideoFolders.length) {
+            saveFolders('video', [...existingVideoFolders, ...derivedVideoFolders]);
+        }
+
+        if (derivedAudioFolders.length || derivedVideoFolders.length) {
             renderLibraryFolderSettings();
             syncAudioLibraryRootViewIfNeeded();
             if (state.currentPage === 'music' && state.currentPanel === 'library' && !state.currentPath) {
@@ -19133,18 +22166,75 @@ async function addMusicFilesToLibrary() {
             }
         }
 
-        if (addedCount) {
+        const videoAddedCount = newVideoItems.length;
+        const totalAdded = audioAddedCount + videoAddedCount;
+        if (totalAdded) {
             safeNotify(
-                uiT('settings.library.notify.filesAdded', '{count} dosya eklendi.', { count: addedCount }),
+                uiT(
+                    'settings.library.notify.mediaFilesAdded',
+                    '{count} medya dosyası eklendi. (Ses: {audio}, Video: {video})',
+                    { count: totalAdded, audio: audioAddedCount, video: videoAddedCount }
+                ),
                 'success',
                 1800
             );
         }
-        if (state.currentIndex === -1 && typeof firstIndex === 'number' && firstIndex >= 0) {
-            playIndex(firstIndex);
+        if (state.currentIndex === -1 && typeof firstAudioIndex === 'number' && firstAudioIndex >= 0) {
+            state.mediaFilter = 'audio';
+            playIndex(firstAudioIndex);
+        } else if (state.currentVideoIndex < 0 && newVideoItems.length > 0 && audioAddedCount === 0) {
+            state.mediaFilter = 'video';
+            playVideo(newVideoItems[0].path);
+        } else {
+            state.mediaFilter = previousFilter || state.mediaFilter;
         }
     } catch (e) {
         safeNotify(`${uiT('settings.library.notify.filePickFailed', 'Dosya seçilemedi')}: ${e?.message || e}`, 'error', 2200);
+    }
+}
+
+async function addImageFilesToGallery() {
+    try {
+        state.mediaFilter = 'image';
+        const files = await window.aurivo?.dialog?.openFiles?.({
+            title: 'Fotoğraf dosyalarını seç',
+            filters: [
+                { name: 'Fotoğraf Dosyaları', extensions: DEFAULT_IMAGE_EXTENSIONS },
+                { name: uiT('common.allFiles', 'Tüm Dosyalar'), extensions: ['*'] }
+            ]
+        });
+        if (!Array.isArray(files) || !files.length) return;
+        const imageFiles = files.filter((f) => isImageFile(f?.name || f?.path || ''));
+        if (!imageFiles.length) {
+            safeNotify('Seçilen dosyalar arasında desteklenen fotoğraf bulunamadı.', 'warning', 2200);
+            return;
+        }
+        const dirPath = String(window.aurivo?.path?.dirname?.(imageFiles[0].path) || '').trim();
+        if (dirPath) {
+            await loadDirectory(dirPath, false);
+        }
+        const mergedImages = mergeImageLibraryItems(state.imageFiles, imageFiles.map((f) => ({ name: f.name, path: f.path })));
+        renderImageGallery(mergedImages, { persist: true });
+        if (imageFiles[0]?.path) {
+            state.currentImagePath = imageFiles[0].path;
+        }
+    } catch (e) {
+        safeNotify(`Fotoğraf seçilemedi: ${e?.message || e}`, 'error', 2200);
+    }
+}
+
+async function addImageFolderToGallery() {
+    try {
+        state.mediaFilter = 'image';
+        const result = await window.aurivo?.dialog?.openFolder?.({
+            title: 'Fotoğraf klasörü seç',
+            defaultPath: state.specialPaths?.pictures || state.specialPaths?.home || undefined
+        });
+        if (!result?.path) return;
+        const folderName = result.name || window.aurivo?.path?.basename?.(result.path) || 'Klasör';
+        await addUserFolder(result.path, folderName, 'image');
+    } catch (e) {
+        safeNotify(`Klasör seçilemedi: ${e?.message || e}`, 'error', 2200);
     }
 }
 
@@ -19182,7 +22272,7 @@ function showLibraryAddMenu(anchor, scope = 'audio') {
     const items = scope === 'audio'
         ? [
             buildLibraryAddMenuItem(uiT('libraryActions.addFiles', 'Dosya Ekle'), {
-                icon: '🎵',
+                icon: '🎬',
                 onClick: () => addMusicFilesToLibrary()
             }),
             buildLibraryAddMenuItem(uiT('libraryActions.addFolder', 'Klasör Ekle'), {
@@ -19190,7 +22280,18 @@ function showLibraryAddMenu(anchor, scope = 'audio') {
                 onClick: () => addMusicFolderFromSettings()
             })
         ]
-        : [
+        : (scope === 'image'
+            ? [
+                buildLibraryAddMenuItem('Fotoğraf Ekle', {
+                    icon: '🖼️',
+                    onClick: () => addImageFilesToGallery()
+                }),
+                buildLibraryAddMenuItem('Klasör Ekle', {
+                    icon: `<svg viewBox="0 0 24 24" width="1.25em" height="1.25em" fill="currentColor" style="color: #4bd8e3; vertical-align: sub;"><path d="M10 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"></path></svg>`,
+                    onClick: () => addImageFolderToGallery()
+                })
+            ]
+            : [
             buildLibraryAddMenuItem(uiT('libraryActions.openVideo', 'Video Aç'), {
                 icon: '🎬',
                 onClick: async () => {
@@ -19217,7 +22318,7 @@ function showLibraryAddMenu(anchor, scope = 'audio') {
                     }
                 }
             })
-        ];
+            ]);
 
     items.forEach((item) => menu.appendChild(item));
     document.body.appendChild(menu);
@@ -19240,7 +22341,7 @@ function showLibraryAddMenu(anchor, scope = 'audio') {
 
 function removeMusicFolderFromSettings(path) {
     removeUserFolderWithScope(path, 'audio');
-    safeNotify(uiT('settings.library.notify.folderRemoved', 'Müzik klasörü kaldırıldı.'), 'success', 1800);
+    safeNotify(uiT('settings.library.notify.folderRemoved', 'Medya klasörü kaldırıldı.'), 'success', 1800);
 }
 
 async function pruneMissingManagedFolderReferences(notify = false) {
@@ -19295,7 +22396,7 @@ async function rescanMusicFolders(targetPath = '', options = {}) {
     const startedAt = Date.now();
     if (!folders.length) {
         if (notify) {
-            safeNotify(uiT('settings.library.notify.noFolders', 'Önce en az bir müzik klasörü ekleyin.'), 'warning', 2000);
+            safeNotify(uiT('settings.library.notify.noFolders', 'Önce en az bir medya klasörü ekleyin.'), 'warning', 2000);
         }
         state.libraryStats = {
             totalSongs: 0,
@@ -19334,7 +22435,7 @@ async function rescanMusicFolders(targetPath = '', options = {}) {
         await saveSettings();
         updateLibraryDiagnosticsUi();
         if (notify) {
-            safeNotify(uiT('settings.library.notify.rescanned', 'Müzik klasörleri yenilendi.'), 'success', 1800);
+            safeNotify(uiT('settings.library.notify.rescanned', 'Medya klasörleri yenilendi.'), 'success', 1800);
         }
     } catch (error) {
         pushLibraryDiagnosticError(error?.message || error, `rescan-${reason}`);
@@ -19514,9 +22615,11 @@ async function syncLibraryWatchState() {
 async function openFolderDialog() {
     try {
         const scope = getUserFoldersScope();
-        const defaultPath = scope === 'video' ? state.specialPaths?.videos : state.specialPaths?.music;
+        const defaultPath = scope === 'video'
+            ? state.specialPaths?.videos
+            : (scope === 'image' ? state.specialPaths?.pictures : state.specialPaths?.music);
         const result = await window.aurivo.dialog.openFolder({
-            title: scope === 'video' ? 'Video klasörü seç' : 'Müzik klasörü seç',
+            title: scope === 'video' ? 'Video klasörü seç' : (scope === 'image' ? 'Fotoğraf klasörü seç' : 'Medya klasörü seç'),
             defaultPath: defaultPath || undefined
         });
         if (result && result.path) {
@@ -19556,7 +22659,10 @@ async function addUserFolder(path, name, scopeOverride = null) {
     // Yeni eklenen klasörü doğrudan aç; böylece kullanıcı eklemenin başarılı olduğunu
     // anında görür. Geri ile kök kütüphane görünümüne dönebilir.
     state.currentPath = '';
-    if (scope === 'audio' && state.currentPage === 'music' && state.currentPanel === 'library') {
+    if (
+        ((scope === 'audio' && state.currentPage === 'music') || (scope === 'image' && state.currentPage === 'gallery'))
+        && state.currentPanel === 'library'
+    ) {
         await loadDirectory(path, true);
     } else {
         await initializeFileTree();
@@ -19594,10 +22700,14 @@ function handleFileTreeClick(e) {
 
     const path = item.dataset.path;
     const isDirectory = item.dataset.isDirectory === 'true' || item.classList.contains('folder');
+    const folderScope = String(item.dataset.folderScope || '').trim().toLowerCase();
 
     console.log('Tıklanan:', path, 'Klasör:', isDirectory);
 
     if (isDirectory) {
+        if (folderScope === 'image' || state.currentPage === 'gallery') state.mediaFilter = 'image';
+        else if (folderScope === 'video') state.mediaFilter = 'video';
+        else if (folderScope === 'audio') state.mediaFilter = 'audio';
         loadDirectory(path);
     } else {
         // Dosya seçimi
@@ -19613,9 +22723,13 @@ function handleFileTreeDblClick(e) {
 
     const path = item.dataset.path;
     const isDirectory = item.dataset.isDirectory === 'true' || item.classList.contains('folder');
+    const folderScope = String(item.dataset.folderScope || '').trim().toLowerCase();
     const name = item.dataset.name || path.split('/').pop();
 
     if (isDirectory) {
+        if (folderScope === 'image' || state.currentPage === 'gallery') state.mediaFilter = 'image';
+        else if (folderScope === 'video') state.mediaFilter = 'video';
+        else if (folderScope === 'audio') state.mediaFilter = 'audio';
         loadDirectory(path);
     } else {
         // Dosyayı türüne göre ilgili sekmede çalıştır
@@ -20193,6 +23307,10 @@ function handleTreeItemClick(item, path, isDirectory, e) {
 
     // Klasörse sadece aç
     if (isDirectory) {
+        const folderScope = String(item?.dataset?.folderScope || '').trim().toLowerCase();
+        if (folderScope === 'image' || state.currentPage === 'gallery') state.mediaFilter = 'image';
+        else if (folderScope === 'video') state.mediaFilter = 'video';
+        else if (folderScope === 'audio') state.mediaFilter = 'audio';
         console.log('Klasör açılıyor:', path);
         loadDirectory(path);
         return;
@@ -20314,6 +23432,14 @@ async function handleTreeItemDoubleClick(path, isDirectory, name = null) {
             state.currentPanel = 'library';
             switchPage('video');
             await playMediaFromFolder(path, 'video');
+        } else if (isImageFile(fileName)) {
+            setActiveSidebarByPage('gallery');
+            state.currentPage = 'gallery';
+            state.currentPanel = 'library';
+            state.mediaFilter = 'image';
+            switchPage('gallery');
+            state.currentImagePath = path;
+            openImageInGalleryLightbox(path, fileName);
         } else {
             setActiveSidebarByPage('music');
             state.currentPage = 'music';
@@ -20331,6 +23457,9 @@ async function loadDirectory(dirPath, pushHistory = true, renderToken = beginFil
     }
 
     try {
+        if (state.currentPage === 'gallery') {
+            state.mediaFilter = 'image';
+        }
         console.log('Klasör yükleniyor:', dirPath, 'pushHistory:', pushHistory);
         console.log('Önceki currentPath:', state.currentPath, 'History:', state.pathHistory.length);
 
@@ -20347,6 +23476,8 @@ async function loadDirectory(dirPath, pushHistory = true, renderToken = beginFil
             state.lastAudioPath = dirPath;
         } else if (state.mediaFilter === 'video') {
             state.lastVideoPath = dirPath;
+        } else if (state.mediaFilter === 'image') {
+            state.lastImagePath = dirPath;
         }
         persistLibraryStartupState();
 
@@ -20377,14 +23508,19 @@ async function loadDirectory(dirPath, pushHistory = true, renderToken = beginFil
                 const ext = i.name.split('.').pop().toLowerCase();
                 return getConfiguredLibraryExtensions('video').includes(ext);
             });
+        } else if (state.mediaFilter === 'image') {
+            files = files.filter(i => isImageFile(i.name));
         } else if (state.mediaFilter === 'web') {
             // Web sekmesinde dosya ağacı gösterilmez
             files = [];
         }
 
-        files = files
-            .filter((i) => !i.name.startsWith('.'))
-            .sort((a, b) => collator.compare(a.name, b.name));
+        files = files.filter((i) => !i.name.startsWith('.'));
+        if (state.mediaFilter === 'image') {
+            files = sortGalleryDirectoryEntries(files, getGallerySortPreferenceState());
+        } else {
+            files = files.sort((a, b) => collator.compare(a.name, b.name));
+        }
 
         // Video sekmesinde klasördeki tüm videoları kaydet (sıralı çalma için)
         if (state.mediaFilter === 'video') {
@@ -20395,6 +23531,36 @@ async function loadDirectory(dirPath, pushHistory = true, renderToken = beginFil
             console.log('Video dosyaları kaydedildi:', state.videoFiles.length);
             persistVideoLibrary();
             renderVideoLibraryTree(renderToken);
+            updateLibraryAddButtonUi();
+            return;
+        }
+
+        if (state.mediaFilter === 'image') {
+            directories.forEach((item) => {
+                const treeItem = createTreeItem(item.name, item.path, true, '📁');
+                elements.fileTree.appendChild(treeItem);
+            });
+            files.forEach((item) => {
+                const treeItem = createTreeItem(item.name, item.path, false, '🖼️');
+                elements.fileTree.appendChild(treeItem);
+            });
+            renderImageGallery(
+                files.map((file, index) => {
+                    const modifiedAtCandidate = Number(
+                        file?.mtimeMs
+                        || file?.mtime
+                        || file?.modifiedMs
+                        || file?.modified
+                        || file?.lastModified
+                        || 0
+                    );
+                    const addedAt = Number.isFinite(modifiedAtCandidate) && modifiedAtCandidate > 0
+                        ? Math.round(modifiedAtCandidate)
+                        : (Date.now() + index);
+                    return { name: file.name, path: file.path, addedAt };
+                }),
+                { persist: true }
+            );
             updateLibraryAddButtonUi();
             return;
         }
@@ -20424,7 +23590,9 @@ async function loadDirectory(dirPath, pushHistory = true, renderToken = beginFil
 
 function isMediaFile(filename) {
     const ext = filename.split('.').pop().toLowerCase();
-    return getConfiguredLibraryExtensions('audio').includes(ext) || getConfiguredLibraryExtensions('video').includes(ext);
+    return getConfiguredLibraryExtensions('audio').includes(ext)
+        || getConfiguredLibraryExtensions('video').includes(ext)
+        || DEFAULT_IMAGE_EXTENSIONS.includes(ext);
 }
 
 function isVideoFile(filename) {
@@ -20435,6 +23603,2976 @@ function isVideoFile(filename) {
 function isAudioFile(filename) {
     const ext = filename.split('.').pop().toLowerCase();
     return getConfiguredLibraryExtensions('audio').includes(ext);
+}
+
+function isImageFile(filename) {
+    const ext = String(filename || '').split('.').pop().toLowerCase();
+    return DEFAULT_IMAGE_EXTENSIONS.includes(ext);
+}
+
+function getPathExtension(pathLike = '') {
+    const normalized = String(pathLike || '').trim().toLowerCase();
+    const match = normalized.match(/\.([^.\/\\]+)$/);
+    return match ? String(match[1] || '') : '';
+}
+
+function prefersGalleryImageConversion(pathLike = '') {
+    const ext = getPathExtension(pathLike);
+    return GALLERY_CONVERSION_PREFERRED_EXTENSIONS.has(ext);
+}
+
+async function resolveGalleryDisplayImageUrl(pathLike = '', options = {}) {
+    const sourcePath = String(pathLike || '').trim();
+    if (!sourcePath) return '';
+    const forceConvert = options?.forceConvert === true;
+    const fromCache = galleryDisplayImageUrlCache.get(sourcePath);
+    if (fromCache && !forceConvert) return fromCache;
+
+    const mustConvert = forceConvert || prefersGalleryImageConversion(sourcePath);
+    if (!mustConvert) {
+        const nativeUrl = toLocalFileUrl(sourcePath);
+        if (nativeUrl) galleryDisplayImageUrlCache.set(sourcePath, nativeUrl);
+        return nativeUrl;
+    }
+
+    const inFlightKey = `${sourcePath}|${forceConvert ? 'force' : 'auto'}`;
+    if (galleryDisplayImageFallbackInFlight.has(inFlightKey)) {
+        return await galleryDisplayImageFallbackInFlight.get(inFlightKey);
+    }
+
+    const task = (async () => {
+        try {
+            const resolvedPath = await window.aurivo?.getDisplayImagePath?.(sourcePath, { forceConvert });
+            const finalPath = String(resolvedPath || '').trim();
+            if (finalPath) {
+                const convertedUrl = toLocalFileUrl(finalPath);
+                if (convertedUrl) {
+                    galleryDisplayImageUrlCache.set(sourcePath, convertedUrl);
+                    return convertedUrl;
+                }
+            }
+        } catch {
+            // yoksay
+        }
+        const fallbackUrl = toLocalFileUrl(sourcePath);
+        if (fallbackUrl) galleryDisplayImageUrlCache.set(sourcePath, fallbackUrl);
+        return fallbackUrl;
+    })();
+
+    galleryDisplayImageFallbackInFlight.set(inFlightKey, task);
+    try {
+        return await task;
+    } finally {
+        galleryDisplayImageFallbackInFlight.delete(inFlightKey);
+    }
+}
+
+async function recoverGalleryImageElementSource(imageEl, pathLike = '') {
+    if (!(imageEl instanceof HTMLImageElement)) return;
+    const sourcePath = String(pathLike || imageEl.dataset.galleryPath || '').trim();
+    if (!sourcePath) return;
+    if (imageEl.dataset.galleryFallbackTried === '1') return;
+    imageEl.dataset.galleryFallbackTried = '1';
+    const resolved = await resolveGalleryDisplayImageUrl(sourcePath, { forceConvert: true });
+    if (resolved && resolved !== imageEl.src) {
+        imageEl.src = resolved;
+    }
+}
+
+function getCurrentGalleryImageIndex() {
+    const currentPath = String(state.currentImagePath || '').trim();
+    if (!currentPath || !Array.isArray(state.imageFiles) || !state.imageFiles.length) return -1;
+    return state.imageFiles.findIndex((item) => String(item?.path || '').trim() === currentPath);
+}
+
+function getCurrentGalleryImageItem() {
+    const index = getCurrentGalleryImageIndex();
+    if (index < 0) return null;
+    return state.imageFiles[index] || null;
+}
+
+function formatFileSizeHuman(bytes) {
+    const value = Math.max(0, Number(bytes) || 0);
+    if (value < 1024) return `${value} B`;
+    const units = ['KB', 'MB', 'GB', 'TB'];
+    let size = value / 1024;
+    let unit = units[0];
+    for (let i = 1; i < units.length && size >= 1024; i += 1) {
+        size /= 1024;
+        unit = units[i];
+    }
+    return `${size.toFixed(size >= 10 ? 1 : 2)} ${unit}`;
+}
+
+function updateGalleryLightboxNavState() {
+    if (!elements.galleryLightbox) return;
+    const count = Array.isArray(state.imageFiles) ? state.imageFiles.length : 0;
+    elements.galleryLightbox.classList.toggle('single-image', count <= 1);
+    updateGalleryImageCounterUi();
+}
+
+function updateGalleryImageCounterUi() {
+    if (!elements.galleryImageCounter) return;
+    const list = Array.isArray(state.imageFiles) ? state.imageFiles : [];
+    const total = list.length;
+    const index = getCurrentGalleryImageIndex();
+    if (!total || index < 0) {
+        elements.galleryImageCounter.textContent = '0/0';
+        return;
+    }
+    elements.galleryImageCounter.textContent = `${index + 1}/${total}`;
+}
+
+function setGalleryContextButtonLabel(button, label = '') {
+    if (!button) return;
+    const textSpan = button.querySelector('.gallery-lightbox-context-label');
+    if (textSpan) {
+        textSpan.textContent = String(label || '');
+    } else {
+        button.textContent = String(label || '');
+    }
+}
+
+function clearGalleryUiHideTimer() {
+    if (galleryUiHideTimer) {
+        clearTimeout(galleryUiHideTimer);
+        galleryUiHideTimer = null;
+    }
+}
+
+function setGalleryLightboxUiHidden(hidden = false) {
+    if (!elements.galleryLightbox) return;
+    elements.galleryLightbox.classList.toggle('gallery-ui-hidden', !!hidden);
+}
+
+function markGalleryUiKeyboardNavigationIntent() {
+    if (!elements.galleryLightbox || elements.galleryLightbox.classList.contains('hidden')) return;
+    if (!isGalleryLightboxFullscreenActive()) return;
+    if (elements.galleryLightbox.classList.contains('gallery-ui-hidden')) {
+        galleryUiFreezeHiddenUntilPointer = true;
+    }
+}
+
+function canAutohideGalleryLightboxUi() {
+    if (!elements.galleryLightbox || elements.galleryLightbox.classList.contains('hidden')) return false;
+    if (!isGalleryLightboxFullscreenActive()) return false;
+    if (state.galleryEditPanelOpen) return false;
+    if (elements.galleryLightboxContextMenu && !elements.galleryLightboxContextMenu.classList.contains('hidden')) return false;
+    return true;
+}
+
+function refreshGalleryLightboxUiAutohide(options = {}) {
+    const fromPointer = !!options.pointer;
+    if (fromPointer) {
+        galleryUiFreezeHiddenUntilPointer = false;
+    }
+    clearGalleryUiHideTimer();
+    if (galleryUiFreezeHiddenUntilPointer && !fromPointer) {
+        setGalleryLightboxUiHidden(true);
+        return;
+    }
+    setGalleryLightboxUiHidden(false);
+    if (!canAutohideGalleryLightboxUi()) return;
+    galleryUiHideTimer = setTimeout(() => {
+        if (canAutohideGalleryLightboxUi()) {
+            setGalleryLightboxUiHidden(true);
+        }
+    }, GALLERY_UI_AUTOHIDE_MS);
+}
+
+function setGalleryEditPanelOpen(opened = false) {
+    state.galleryEditPanelOpen = !!opened;
+    if (elements.galleryEditPanel) {
+        elements.galleryEditPanel.classList.toggle('hidden', !state.galleryEditPanelOpen);
+    }
+    if (elements.galleryLightboxToolsBtn) {
+        elements.galleryLightboxToolsBtn.classList.toggle('active', state.galleryEditPanelOpen);
+    }
+    const toggleText = state.galleryEditPanelOpen
+        ? uiT('gallery.tools.close', 'Ayarları Kapat')
+        : uiT('gallery.tools.open', 'Ayarları Aç');
+    if (elements.galleryContextTogglePanelBtn) {
+        setGalleryContextButtonLabel(elements.galleryContextTogglePanelBtn, toggleText);
+    }
+    if (elements.galleryLightboxToolsBtn) {
+        elements.galleryLightboxToolsBtn.title = toggleText;
+    }
+    renderGalleryAnnotationOverlay();
+    updateGalleryContextMenuStateUi();
+    refreshGalleryLightboxUiAutohide();
+}
+
+function toggleGalleryEditPanelOpen() {
+    setGalleryEditPanelOpen(!state.galleryEditPanelOpen);
+}
+
+function closeGalleryLightboxContextMenu() {
+    if (!elements.galleryLightboxContextMenu) return;
+    if (elements.galleryContextViewSubmenuWrap) {
+        elements.galleryContextViewSubmenuWrap.classList.remove('open');
+        elements.galleryContextViewSubmenuWrap.classList.remove('submenu-left');
+    }
+    if (elements.galleryContextViewSubmenu) {
+        elements.galleryContextViewSubmenu.setAttribute('aria-hidden', 'true');
+    }
+    if (elements.galleryContextFileSubmenuWrap) {
+        elements.galleryContextFileSubmenuWrap.classList.remove('open');
+        elements.galleryContextFileSubmenuWrap.classList.remove('submenu-left');
+    }
+    if (elements.galleryContextFileSubmenu) {
+        elements.galleryContextFileSubmenu.setAttribute('aria-hidden', 'true');
+    }
+    elements.galleryLightboxContextMenu.classList.add('hidden');
+    elements.galleryLightboxContextMenu.setAttribute('aria-hidden', 'true');
+    refreshGalleryLightboxUiAutohide();
+}
+
+function applyGalleryContextClickPop(target) {
+    if (!(target instanceof HTMLElement)) return;
+    if (state.settings?.appearance?.reduceMotion === true) return;
+    target.classList.remove('gallery-context-click-pop');
+    // Force reflow so repeated clicks replay the animation.
+    void target.offsetWidth;
+    target.classList.add('gallery-context-click-pop');
+}
+
+function ensureGalleryClickAudioContext() {
+    try {
+        if (!galleryUiClickAudioCtx) {
+            const Ctx = window.AudioContext || window.webkitAudioContext;
+            if (!Ctx) return null;
+            galleryUiClickAudioCtx = new Ctx();
+        }
+        if (galleryUiClickAudioCtx.state === 'suspended') {
+            galleryUiClickAudioCtx.resume().catch(() => {});
+        }
+        return galleryUiClickAudioCtx;
+    } catch {
+        return null;
+    }
+}
+
+function playGalleryContextClickSound() {
+    try {
+        const ctx = ensureGalleryClickAudioContext();
+        if (!ctx) return;
+        const now = ctx.currentTime;
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(1450, now);
+        osc.frequency.exponentialRampToValueAtTime(1180, now + 0.022);
+        gain.gain.setValueAtTime(0.0001, now);
+        gain.gain.exponentialRampToValueAtTime(0.016, now + 0.004);
+        gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.03);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(now);
+        osc.stop(now + 0.034);
+    } catch {
+        // yoksay
+    }
+}
+
+function getGalleryContextMenuOpenState() {
+    return !!(
+        elements.galleryLightboxContextMenu &&
+        !elements.galleryLightboxContextMenu.classList.contains('hidden')
+    );
+}
+
+function getGalleryContextTopLevelItems() {
+    const menu = elements.galleryLightboxContextMenu;
+    if (!menu) return [];
+    return Array.from(
+        menu.querySelectorAll(':scope > .gallery-lightbox-context-item, :scope > .gallery-lightbox-context-submenu-wrap > .gallery-lightbox-context-item.has-submenu')
+    ).filter((item) => item instanceof HTMLButtonElement && !item.disabled);
+}
+
+function getGalleryContextSubmenuWrapByTrigger(triggerBtn) {
+    if (!(triggerBtn instanceof Element)) return null;
+    return triggerBtn.closest('.gallery-lightbox-context-submenu-wrap');
+}
+
+function getGalleryContextOpenSubmenuWrap() {
+    const menu = elements.galleryLightboxContextMenu;
+    if (!menu) return null;
+    return menu.querySelector('.gallery-lightbox-context-submenu-wrap.open') || null;
+}
+
+function getGalleryContextSubmenuItems(wrap) {
+    if (!(wrap instanceof Element)) return [];
+    return Array.from(wrap.querySelectorAll(':scope > .gallery-lightbox-context-submenu > .gallery-lightbox-context-item'))
+        .filter((item) => item instanceof HTMLButtonElement && !item.disabled);
+}
+
+function closeGalleryContextSubmenu(wrap) {
+    if (!(wrap instanceof Element)) return;
+    wrap.classList.remove('open');
+    const submenu = wrap.querySelector(':scope > .gallery-lightbox-context-submenu');
+    if (submenu) submenu.setAttribute('aria-hidden', 'true');
+}
+
+function closeAllGalleryContextSubmenus() {
+    const menu = elements.galleryLightboxContextMenu;
+    if (!menu) return;
+    const wraps = menu.querySelectorAll('.gallery-lightbox-context-submenu-wrap.open');
+    wraps.forEach((wrap) => closeGalleryContextSubmenu(wrap));
+}
+
+function openGalleryContextSubmenu(wrap) {
+    if (!(wrap instanceof Element)) return;
+    closeAllGalleryContextSubmenus();
+    wrap.classList.add('open');
+    const submenu = wrap.querySelector(':scope > .gallery-lightbox-context-submenu');
+    if (submenu) submenu.setAttribute('aria-hidden', 'false');
+}
+
+function focusGalleryContextItem(item) {
+    if (!(item instanceof HTMLButtonElement)) return;
+    item.focus({ preventScroll: true });
+}
+
+function focusGalleryContextSibling(delta = 1) {
+    const openWrap = getGalleryContextOpenSubmenuWrap();
+    const activeEl = document.activeElement;
+    if (openWrap) {
+        const submenuItems = getGalleryContextSubmenuItems(openWrap);
+        if (submenuItems.length) {
+            let currentIndex = submenuItems.findIndex((item) => item === activeEl);
+            if (currentIndex < 0) {
+                focusGalleryContextItem(delta >= 0 ? submenuItems[0] : submenuItems[submenuItems.length - 1]);
+                return true;
+            }
+            const nextIndex = (currentIndex + delta + submenuItems.length) % submenuItems.length;
+            focusGalleryContextItem(submenuItems[nextIndex]);
+            return true;
+        }
+    }
+
+    const topItems = getGalleryContextTopLevelItems();
+    if (!topItems.length) return false;
+    let currentIndex = topItems.findIndex((item) => item === activeEl);
+    if (currentIndex < 0) {
+        focusGalleryContextItem(delta >= 0 ? topItems[0] : topItems[topItems.length - 1]);
+        return true;
+    }
+    const nextIndex = (currentIndex + delta + topItems.length) % topItems.length;
+    focusGalleryContextItem(topItems[nextIndex]);
+    return true;
+}
+
+function handleGalleryContextMenuKeyboard(event) {
+    if (!getGalleryContextMenuOpenState()) return false;
+    const code = String(event.code || event.key || '').trim();
+    const activeEl = document.activeElement;
+    const openWrap = getGalleryContextOpenSubmenuWrap();
+    const activeWrap = getGalleryContextSubmenuWrapByTrigger(activeEl);
+    const inSubmenu = !!(openWrap && activeEl instanceof Element && openWrap.contains(activeEl) && activeWrap !== openWrap);
+
+    if (code === 'Escape') {
+        event.preventDefault();
+        event.stopPropagation();
+        if (openWrap) {
+            const trigger = openWrap.querySelector(':scope > .gallery-lightbox-context-item.has-submenu');
+            closeGalleryContextSubmenu(openWrap);
+            if (trigger instanceof HTMLButtonElement) focusGalleryContextItem(trigger);
+        } else {
+            closeGalleryLightboxContextMenu();
+        }
+        return true;
+    }
+
+    if (code === 'ArrowDown') {
+        event.preventDefault();
+        event.stopPropagation();
+        focusGalleryContextSibling(1);
+        return true;
+    }
+    if (code === 'ArrowUp') {
+        event.preventDefault();
+        event.stopPropagation();
+        focusGalleryContextSibling(-1);
+        return true;
+    }
+
+    if (code === 'ArrowRight') {
+        const topItem = activeEl instanceof HTMLButtonElement ? activeEl : null;
+        const wrap = getGalleryContextSubmenuWrapByTrigger(topItem);
+        if (wrap && topItem?.classList.contains('has-submenu')) {
+            event.preventDefault();
+            event.stopPropagation();
+            openGalleryContextSubmenu(wrap);
+            updateGalleryContextSubmenuPlacement();
+            const submenuItems = getGalleryContextSubmenuItems(wrap);
+            if (submenuItems.length) focusGalleryContextItem(submenuItems[0]);
+            return true;
+        }
+    }
+
+    if (code === 'ArrowLeft') {
+        if (openWrap && inSubmenu) {
+            event.preventDefault();
+            event.stopPropagation();
+            const trigger = openWrap.querySelector(':scope > .gallery-lightbox-context-item.has-submenu');
+            closeGalleryContextSubmenu(openWrap);
+            if (trigger instanceof HTMLButtonElement) focusGalleryContextItem(trigger);
+            return true;
+        }
+    }
+
+    if (code === 'Enter' || code === 'Space') {
+        const focusedBtn = activeEl instanceof HTMLButtonElement ? activeEl : null;
+        if (!focusedBtn || focusedBtn.disabled) return false;
+        event.preventDefault();
+        event.stopPropagation();
+        focusedBtn.click();
+        return true;
+    }
+
+    return false;
+}
+
+function updateGalleryContextSubmenuPlacement() {
+    const lightbox = elements.galleryLightbox;
+    const menu = elements.galleryLightboxContextMenu;
+    if (!menu || !lightbox) return;
+
+    const lightboxRect = lightbox.getBoundingClientRect();
+    const wraps = Array.from(menu.querySelectorAll('.gallery-lightbox-context-submenu-wrap'));
+    wraps.forEach((wrap) => {
+        if (!(wrap instanceof HTMLElement)) return;
+        const submenu = wrap.querySelector('.gallery-lightbox-context-submenu');
+        if (!(submenu instanceof HTMLElement)) return;
+        wrap.classList.remove('submenu-left');
+        const wrapRect = wrap.getBoundingClientRect();
+        const estimatedWidth = Math.max(220, submenu.offsetWidth || 230);
+        const projectedRight = wrapRect.right + estimatedWidth;
+        if (projectedRight > (lightboxRect.right - 8)) {
+            wrap.classList.add('submenu-left');
+        }
+    });
+}
+
+function isGalleryLightboxFullscreenActive() {
+    const active = getDomFullscreenElement();
+    const lightbox = elements.galleryLightbox;
+    if (active && lightbox) {
+        return active === lightbox || lightbox.contains(active);
+    }
+    return (
+        !!galleryInlineFullscreenActive ||
+        !!galleryWindowFullscreenActive ||
+        !!fsWindowFullscreenActive ||
+        !!lightbox?.classList?.contains('gallery-fs-active')
+    );
+}
+
+async function toggleGalleryLightboxFullscreen() {
+    if (!elements.galleryLightbox) return;
+    const targetEnter = !isGalleryLightboxFullscreenActive();
+    if (!targetEnter) {
+        galleryInlineFullscreenActive = false;
+        galleryUiFreezeHiddenUntilPointer = false;
+        elements.galleryLightbox.classList.remove('gallery-fs-active');
+        const domActive = getDomFullscreenElement();
+        if (domActive && (domActive === elements.galleryLightbox || elements.galleryLightbox.contains(domActive))) {
+            exitFullscreenSafe();
+        }
+        syncGalleryFullscreenLayoutState();
+        refreshGalleryLightboxUiAutohide();
+        return;
+    }
+
+    // Galeri fullscreen yalnızca lightbox üzerinde çalışır; pencere boyutunu değiştirmez.
+    galleryInlineFullscreenActive = true;
+    elements.galleryLightbox.classList.add('gallery-fs-active');
+    let ok = false;
+    if (!ok) ok = await requestFullscreenSafe(elements.galleryLightbox);
+    if (!ok && elements.galleryLightboxStage) ok = await requestFullscreenSafe(elements.galleryLightboxStage);
+    syncGalleryFullscreenLayoutState();
+    refreshGalleryLightboxUiAutohide();
+}
+
+function isGalleryWindowFullscreenActive() {
+    return !!galleryWindowFullscreenActive || !!fsWindowFullscreenActive;
+}
+
+async function toggleGalleryWindowFullscreen() {
+    if (!elements.galleryLightbox) return;
+    const targetEnter = !isGalleryWindowFullscreenActive();
+    if (!targetEnter) {
+        galleryWindowFullscreenActive = false;
+        galleryInlineFullscreenActive = false;
+        galleryUiFreezeHiddenUntilPointer = false;
+        elements.galleryLightbox.classList.remove('gallery-fs-active');
+        await setWindowFullscreenSafe(false);
+        await syncWindowFullscreenState();
+        syncGalleryFullscreenLayoutState();
+        refreshGalleryLightboxUiAutohide();
+        return;
+    }
+
+    galleryWindowFullscreenActive = true;
+    galleryInlineFullscreenActive = true;
+    elements.galleryLightbox.classList.add('gallery-fs-active');
+    await setWindowFullscreenSafe(true);
+    await syncWindowFullscreenState();
+    syncGalleryFullscreenLayoutState();
+    refreshGalleryLightboxUiAutohide();
+}
+
+function updateGalleryContextMenuStateUi() {
+    const count = Array.isArray(state.imageFiles) ? state.imageFiles.length : 0;
+    const hasAnyImage = count > 0;
+    const canNavigate = count > 1;
+    if (elements.galleryContextFirstBtn) elements.galleryContextFirstBtn.disabled = !hasAnyImage;
+    if (elements.galleryContextLastBtn) elements.galleryContextLastBtn.disabled = !hasAnyImage;
+    if (elements.galleryContextPageUpBtn) elements.galleryContextPageUpBtn.disabled = !canNavigate;
+    if (elements.galleryContextPageDownBtn) elements.galleryContextPageDownBtn.disabled = !canNavigate;
+    if (elements.galleryContextFitBtn) elements.galleryContextFitBtn.disabled = !hasAnyImage;
+    if (elements.galleryContextActualSizeBtn) elements.galleryContextActualSizeBtn.disabled = !hasAnyImage;
+    if (elements.galleryContextZoomInBtn) elements.galleryContextZoomInBtn.disabled = !hasAnyImage;
+    if (elements.galleryContextZoomOutBtn) elements.galleryContextZoomOutBtn.disabled = !hasAnyImage;
+    if (elements.galleryContextBackgroundModeBtn) {
+        elements.galleryContextBackgroundModeBtn.disabled = !hasAnyImage;
+        const mode = String(state.galleryBackgroundMode || 'dim');
+        const modeText = mode === 'blur'
+            ? uiT('gallery.background.mode.blur', 'Bulanık')
+            : (mode === 'checker'
+                ? uiT('gallery.background.mode.checker', 'Kareli')
+                : uiT('gallery.background.mode.dim', 'Koyu'));
+        setGalleryContextButtonLabel(
+            elements.galleryContextBackgroundModeBtn,
+            uiT('gallery.tools.backgroundMode', 'Arka Plan Kipini Değiştir ({mode})', { mode: modeText })
+        );
+    }
+    if (elements.galleryContextPrevBtn) elements.galleryContextPrevBtn.disabled = !canNavigate;
+    if (elements.galleryContextNextBtn) elements.galleryContextNextBtn.disabled = !canNavigate;
+    if (elements.galleryContextFullscreenBtn) {
+        const iconEl = elements.galleryContextFullscreenBtn.querySelector('.gallery-lightbox-context-icon');
+        const text = isGalleryLightboxFullscreenActive()
+            ? uiT('gallery.tools.fullscreen.exit', 'Tam Ekrandan Çık')
+            : uiT('gallery.tools.fullscreen.enter', 'Tam Ekrana Al');
+        if (iconEl) {
+            iconEl.textContent = isGalleryLightboxFullscreenActive() ? 'fullscreen_exit' : 'fullscreen';
+        }
+        setGalleryContextButtonLabel(elements.galleryContextFullscreenBtn, text);
+    }
+    if (elements.galleryContextViewMenuBtn) {
+        elements.galleryContextViewMenuBtn.disabled = !hasAnyImage;
+        if (!hasAnyImage && elements.galleryContextViewSubmenuWrap) {
+            elements.galleryContextViewSubmenuWrap.classList.remove('open');
+        }
+    }
+    if (elements.galleryContextFileMenuBtn) {
+        elements.galleryContextFileMenuBtn.disabled = !hasAnyImage;
+        if (!hasAnyImage && elements.galleryContextFileSubmenuWrap) {
+            elements.galleryContextFileSubmenuWrap.classList.remove('open');
+        }
+    }
+    if (elements.galleryContextRenameBtn) elements.galleryContextRenameBtn.disabled = !hasAnyImage;
+    if (elements.galleryContextTrashBtn) elements.galleryContextTrashBtn.disabled = !hasAnyImage;
+    if (elements.galleryContextOpenFolderBtn) elements.galleryContextOpenFolderBtn.disabled = !hasAnyImage;
+    if (elements.galleryContextPropertiesBtn) elements.galleryContextPropertiesBtn.disabled = !hasAnyImage;
+    if (elements.galleryContextRotateLeftBtn) elements.galleryContextRotateLeftBtn.disabled = !hasAnyImage;
+    if (elements.galleryContextRotateRightBtn) elements.galleryContextRotateRightBtn.disabled = !hasAnyImage;
+    if (elements.galleryContextFlipHBtn) elements.galleryContextFlipHBtn.disabled = !hasAnyImage;
+    if (elements.galleryContextFlipVBtn) elements.galleryContextFlipVBtn.disabled = !hasAnyImage;
+    if (elements.galleryContextConverterBtn) elements.galleryContextConverterBtn.disabled = !hasAnyImage;
+}
+
+function openGalleryLightboxContextMenu(clientX, clientY) {
+    if (!elements.galleryLightboxContextMenu || !elements.galleryLightbox) return;
+    updateGalleryContextMenuStateUi();
+    const menu = elements.galleryLightboxContextMenu;
+    menu.classList.remove('hidden');
+    menu.setAttribute('aria-hidden', 'false');
+    const lightboxRect = elements.galleryLightbox.getBoundingClientRect();
+    const menuRect = menu.getBoundingClientRect();
+    const desiredLeft = Number(clientX) - lightboxRect.left;
+    const desiredTop = Number(clientY) - lightboxRect.top;
+    const maxLeft = Math.max(8, lightboxRect.width - menuRect.width - 8);
+    const maxTop = Math.max(8, lightboxRect.height - menuRect.height - 8);
+    const left = Math.max(8, Math.min(maxLeft, desiredLeft));
+    const top = Math.max(8, Math.min(maxTop, desiredTop));
+    menu.style.left = `${left}px`;
+    menu.style.top = `${top}px`;
+    updateGalleryContextSubmenuPlacement();
+    refreshGalleryLightboxUiAutohide();
+}
+
+function showRelativeGalleryImage(step = 1, options = {}) {
+    const list = Array.isArray(state.imageFiles) ? state.imageFiles : [];
+    if (!list.length) return;
+    const transitionMode = String(options?.transitionMode || 'manual');
+    if (list.length === 1) {
+        const only = list[0];
+        openImageInGalleryLightbox(only.path, only.name, { transitionMode });
+        return;
+    }
+    const currentIndex = getCurrentGalleryImageIndex();
+    const base = currentIndex >= 0 ? currentIndex : 0;
+    const rawStep = Number(step);
+    if (!Number.isFinite(rawStep) || rawStep === 0) return;
+    const delta = rawStep > 0 ? Math.floor(rawStep) : Math.ceil(rawStep);
+    const nextIndex = ((base + delta) % list.length + list.length) % list.length;
+    const next = list[nextIndex];
+    if (!next?.path) return;
+    openImageInGalleryLightbox(next.path, next.name, { transitionMode });
+}
+
+function showGalleryImageAt(index = 0, options = {}) {
+    const list = Array.isArray(state.imageFiles) ? state.imageFiles : [];
+    if (!list.length) return;
+    const transitionMode = String(options?.transitionMode || 'manual');
+    const rawIndex = Number(index);
+    const safeIndex = Number.isFinite(rawIndex) ? Math.max(0, Math.min(list.length - 1, Math.floor(rawIndex))) : 0;
+    const target = list[safeIndex];
+    if (!target?.path) return;
+    openImageInGalleryLightbox(target.path, target.name, { transitionMode });
+}
+
+function clearGallerySlideshowTimer() {
+    if (gallerySlideshowTimer) {
+        clearTimeout(gallerySlideshowTimer);
+        gallerySlideshowTimer = null;
+    }
+}
+
+function getNextGallerySlideshowItem() {
+    const list = Array.isArray(state.imageFiles) ? state.imageFiles : [];
+    if (list.length <= 1) return null;
+    const currentIndex = getCurrentGalleryImageIndex();
+    const base = currentIndex >= 0 ? currentIndex : 0;
+
+    if (isGallerySlideshowShuffleEnabled()) {
+        const candidates = list.filter((_, idx) => idx !== base);
+        if (!candidates.length) return null;
+        const pick = candidates[Math.floor(Math.random() * candidates.length)];
+        return pick?.path ? pick : null;
+    }
+
+    const nextIndex = base + 1;
+    if (nextIndex >= list.length) {
+        if (!isGallerySlideshowLoopEnabled()) return null;
+        const first = list[0];
+        return first?.path ? first : null;
+    }
+    const next = list[nextIndex];
+    return next?.path ? next : null;
+}
+
+function scheduleGallerySlideshowTick() {
+    clearGallerySlideshowTimer();
+    if (!state.gallerySlideshowActive) return;
+    if (!elements.galleryLightbox || elements.galleryLightbox.classList.contains('hidden')) return;
+    const delay = getGallerySlideshowIntervalMs();
+    gallerySlideshowTimer = setTimeout(() => {
+        if (!state.gallerySlideshowActive) return;
+        const next = getNextGallerySlideshowItem();
+        if (!next?.path) {
+            stopGallerySlideshow();
+            return;
+        }
+        openImageInGalleryLightbox(next.path, next.name, { transitionMode: 'slideshow' });
+        scheduleGallerySlideshowTick();
+    }, Math.max(1000, Number(delay) || 3000));
+}
+
+function stopGallerySlideshow() {
+    state.gallerySlideshowActive = false;
+    clearGallerySlideshowTimer();
+    updateGallerySlideshowToggleUi();
+}
+
+function startGallerySlideshow() {
+    if (!Array.isArray(state.imageFiles) || state.imageFiles.length <= 1) {
+        safeNotify(uiT('settings.gallery.slideshow.needMore', 'Slayt gösterisi için en az 2 fotoğraf gerekli.'), 'info', 1800);
+        return;
+    }
+    state.gallerySlideshowActive = true;
+    updateGallerySlideshowToggleUi();
+    scheduleGallerySlideshowTick();
+}
+
+function toggleGallerySlideshow() {
+    if (state.gallerySlideshowActive) {
+        stopGallerySlideshow();
+        return;
+    }
+    startGallerySlideshow();
+}
+
+function refreshGallerySlideshowAfterManualNavigation() {
+    if (!state.gallerySlideshowActive) return;
+    scheduleGallerySlideshowTick();
+}
+
+function normalizeGalleryEditValue(kind, value) {
+    const raw = Number(value);
+    if (!Number.isFinite(raw)) return GALLERY_EDIT_DEFAULTS[kind] || 100;
+    if (kind === 'brightness' || kind === 'contrast' || kind === 'temperature' || kind === 'tint' || kind === 'shadows' || kind === 'highlights' || kind === 'sharpness') {
+        return Math.max(40, Math.min(180, Math.round(raw)));
+    }
+    if (kind === 'saturation') {
+        return Math.max(0, Math.min(220, Math.round(raw)));
+    }
+    return Math.round(raw);
+}
+
+function buildGalleryImageFilter() {
+    const brightness = normalizeGalleryEditValue('brightness', state.galleryEdit?.brightness);
+    const contrast = normalizeGalleryEditValue('contrast', state.galleryEdit?.contrast);
+    const saturation = normalizeGalleryEditValue('saturation', state.galleryEdit?.saturation);
+    const temperature = normalizeGalleryEditValue('temperature', state.galleryEdit?.temperature);
+    const tint = normalizeGalleryEditValue('tint', state.galleryEdit?.tint);
+    const shadows = normalizeGalleryEditValue('shadows', state.galleryEdit?.shadows);
+    const highlights = normalizeGalleryEditValue('highlights', state.galleryEdit?.highlights);
+    const warm = temperature - 100;
+    const tintDelta = tint - 100;
+    const shadowDelta = shadows - 100;
+    const highlightDelta = highlights - 100;
+    const sepia = Math.max(0, Math.min(60, Math.round(Math.max(0, warm) * 0.55)));
+    const hueRotate = ((tintDelta * 0.18) + (warm < 0 ? (-warm * 0.24) : 0)).toFixed(2);
+    const brightnessAdjusted = Math.max(40, Math.min(220, Math.round(brightness + (shadowDelta * 0.12) - (highlightDelta * 0.08))));
+    const contrastAdjusted = Math.max(40, Math.min(220, Math.round(contrast + (highlightDelta * 0.14) - (shadowDelta * 0.06))));
+    const saturationAdjusted = Math.max(0, Math.min(240, Math.round(saturation + (warm * 0.22))));
+    return `brightness(${brightnessAdjusted}%) contrast(${contrastAdjusted}%) saturate(${saturationAdjusted}%) sepia(${sepia}%) hue-rotate(${hueRotate}deg)`;
+}
+
+function clampByte(value) {
+    return Math.max(0, Math.min(255, Math.round(Number(value) || 0)));
+}
+
+function ensureGalleryAnnotationState() {
+    if (!state.galleryAnnotation || typeof state.galleryAnnotation !== 'object') {
+        state.galleryAnnotation = {
+            tool: 'draw',
+            color: '#5fd8ff',
+            size: 3,
+            pendingText: '',
+            items: [],
+            drawing: false,
+            startX: 0,
+            startY: 0,
+            draft: null
+        };
+    }
+    if (!['draw', 'arrow', 'text'].includes(String(state.galleryAnnotation.tool || '').toLowerCase())) {
+        state.galleryAnnotation.tool = 'draw';
+    }
+    if (!Array.isArray(state.galleryAnnotation.items)) {
+        state.galleryAnnotation.items = [];
+    }
+    if (typeof state.galleryAnnotation.color !== 'string' || !state.galleryAnnotation.color.trim()) {
+        state.galleryAnnotation.color = '#5fd8ff';
+    }
+    if (typeof state.galleryAnnotation.pendingText !== 'string') {
+        state.galleryAnnotation.pendingText = '';
+    }
+    state.galleryAnnotation.size = Math.max(1, Math.min(18, Number(state.galleryAnnotation.size) || 3));
+    return state.galleryAnnotation;
+}
+
+function ensureGalleryRedEyeState() {
+    if (!state.galleryRedEye || typeof state.galleryRedEye !== 'object') {
+        state.galleryRedEye = { mode: false, points: [], radius: 18, strength: 45 };
+    }
+    state.galleryRedEye.mode = !!state.galleryRedEye.mode;
+    if (!Array.isArray(state.galleryRedEye.points)) {
+        state.galleryRedEye.points = [];
+    }
+    state.galleryRedEye.radius = Math.max(6, Math.min(70, Math.round(Number(state.galleryRedEye.radius) || 18)));
+    state.galleryRedEye.strength = Math.max(0, Math.min(100, Math.round(Number(state.galleryRedEye.strength) || 45)));
+    return state.galleryRedEye;
+}
+
+function getGalleryImageContentRect() {
+    if (!elements.galleryLightboxStage || !elements.galleryLightboxImage) return null;
+    const stageRect = elements.galleryLightboxStage.getBoundingClientRect();
+    const imageRect = elements.galleryLightboxImage.getBoundingClientRect();
+    if (!stageRect.width || !stageRect.height || !imageRect.width || !imageRect.height) return null;
+    return { stageRect, imageRect };
+}
+
+function mapClientToGalleryImagePoint(clientX, clientY) {
+    const rects = getGalleryImageContentRect();
+    if (!rects) return null;
+    const nx = clamp01((clientX - rects.imageRect.left) / rects.imageRect.width);
+    const ny = clamp01((clientY - rects.imageRect.top) / rects.imageRect.height);
+    return { x: nx, y: ny, rects };
+}
+
+function mapImagePointToStagePixel(nx, ny, rects = null) {
+    const source = rects || getGalleryImageContentRect();
+    if (!source) return { x: 0, y: 0 };
+    const x = (source.imageRect.left - source.stageRect.left) + (clamp01(nx) * source.imageRect.width);
+    const y = (source.imageRect.top - source.stageRect.top) + (clamp01(ny) * source.imageRect.height);
+    return { x, y };
+}
+
+function applyGalleryBackgroundMode(mode = 'dim', options = {}) {
+    const { persist = false } = options || {};
+    const normalized = ['dim', 'blur', 'checker'].includes(String(mode || '').toLowerCase())
+        ? String(mode).toLowerCase()
+        : 'dim';
+    state.galleryBackgroundMode = normalized;
+    if (elements.galleryBackgroundMode) {
+        elements.galleryBackgroundMode.value = normalized;
+    }
+    const perf = ensureLibrarySettings().performance || {};
+    ensureLibrarySettings().performance = perf;
+    perf.galleryBackgroundMode = normalized;
+    if (elements.galleryLightboxStage) {
+        elements.galleryLightboxStage.classList.remove('bg-dim', 'bg-blur', 'bg-checker');
+        elements.galleryLightboxStage.classList.add(`bg-${normalized}`);
+        const src = String(elements.galleryLightboxImage?.src || '');
+        elements.galleryLightboxStage.style.setProperty('--gallery-bg-image', src ? `url("${src}")` : 'none');
+    }
+    if (persist) saveSettings().catch(() => {});
+}
+
+function setGalleryMiniNavigatorEnabled(enabled, options = {}) {
+    const { persist = false } = options || {};
+    // Mini navigator deliberately disabled in current UX.
+    state.galleryMiniNavigatorEnabled = false;
+    const perf = ensureLibrarySettings().performance || {};
+    ensureLibrarySettings().performance = perf;
+    perf.galleryMiniNavigatorEnabled = false;
+    if (elements.galleryMiniNavigator) {
+        elements.galleryMiniNavigator.classList.add('hidden');
+    }
+    if (elements.galleryMiniNavToggleBtn) {
+        const onText = uiT('settings.state.on', 'Açık');
+        const offText = uiT('settings.state.off', 'Kapalı');
+        const miniNavText = uiT('settings.gallery.miniNavigator.short', 'Kuşbakışı');
+        elements.galleryMiniNavToggleBtn.textContent = `${miniNavText}: ${offText}`;
+        elements.galleryMiniNavToggleBtn.classList.remove('active');
+    }
+    if (elements.galleryMiniNavViewport) {
+        elements.galleryMiniNavViewport.style.left = '0px';
+        elements.galleryMiniNavViewport.style.top = '0px';
+        elements.galleryMiniNavViewport.style.width = '0px';
+        elements.galleryMiniNavViewport.style.height = '0px';
+    }
+    if (persist) saveSettings().catch(() => {});
+}
+
+function renderGalleryMiniNavigator() {
+    if (!elements.galleryMiniNavigator || !elements.galleryMiniNavCanvas || !elements.galleryMiniNavViewport) return;
+    if (!state.galleryMiniNavigatorEnabled) {
+        elements.galleryMiniNavigator.classList.add('hidden');
+        return;
+    }
+    const img = elements.galleryLightboxImage;
+    if (!img || !img.naturalWidth || !img.naturalHeight) return;
+    const canvas = elements.galleryMiniNavCanvas;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    const width = canvas.width;
+    const height = canvas.height;
+    ctx.clearRect(0, 0, width, height);
+    ctx.fillStyle = '#081527';
+    ctx.fillRect(0, 0, width, height);
+    const scale = Math.min(width / img.naturalWidth, height / img.naturalHeight);
+    const drawW = Math.max(1, img.naturalWidth * scale);
+    const drawH = Math.max(1, img.naturalHeight * scale);
+    const dx = (width - drawW) / 2;
+    const dy = (height - drawH) / 2;
+    ctx.drawImage(img, dx, dy, drawW, drawH);
+    const zoom = Math.max(0.1, Number(state.galleryView?.zoom) || 1);
+    const viewW = Math.max(14, Math.min(drawW, drawW / zoom));
+    const viewH = Math.max(14, Math.min(drawH, drawH / zoom));
+    elements.galleryMiniNavViewport.style.left = `${dx + ((drawW - viewW) / 2)}px`;
+    elements.galleryMiniNavViewport.style.top = `${dy + ((drawH - viewH) / 2)}px`;
+    elements.galleryMiniNavViewport.style.width = `${viewW}px`;
+    elements.galleryMiniNavViewport.style.height = `${viewH}px`;
+}
+
+function drawArrowShape(ctx, x1, y1, x2, y2, width = 3, color = '#5fd8ff') {
+    const headLength = Math.max(10, width * 4.2);
+    const angle = Math.atan2(y2 - y1, x2 - x1);
+    ctx.save();
+    ctx.strokeStyle = color;
+    ctx.fillStyle = color;
+    ctx.lineWidth = Math.max(1, width);
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.beginPath();
+    ctx.moveTo(x1, y1);
+    ctx.lineTo(x2, y2);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(x2, y2);
+    ctx.lineTo(x2 - headLength * Math.cos(angle - Math.PI / 8), y2 - headLength * Math.sin(angle - Math.PI / 8));
+    ctx.lineTo(x2 - headLength * Math.cos(angle + Math.PI / 8), y2 - headLength * Math.sin(angle + Math.PI / 8));
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+}
+
+function renderGalleryAnnotationsOnContext(ctx, width, height, options = {}) {
+    const annotation = ensureGalleryAnnotationState();
+    const items = Array.isArray(options.itemsOverride) ? options.itemsOverride : (annotation.items || []);
+    const itemsToRender = options.includeDraft && annotation.draft
+        ? [...items, annotation.draft]
+        : [...items];
+    itemsToRender.forEach((item) => {
+        if (!item || !item.type) return;
+        const color = String(item.color || '#5fd8ff');
+        const thickness = Math.max(1, Number(item.size) || 3);
+        if (item.type === 'draw' && Array.isArray(item.points) && item.points.length > 1) {
+            ctx.save();
+            ctx.strokeStyle = color;
+            ctx.lineWidth = thickness;
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+            ctx.beginPath();
+            item.points.forEach((point, index) => {
+                const px = clamp01(point?.x) * width;
+                const py = clamp01(point?.y) * height;
+                if (index === 0) ctx.moveTo(px, py);
+                else ctx.lineTo(px, py);
+            });
+            ctx.stroke();
+            ctx.restore();
+            return;
+        }
+        if (item.type === 'arrow' && item.from && item.to) {
+            drawArrowShape(
+                ctx,
+                clamp01(item.from.x) * width,
+                clamp01(item.from.y) * height,
+                clamp01(item.to.x) * width,
+                clamp01(item.to.y) * height,
+                thickness,
+                color
+            );
+            return;
+        }
+        if (item.type === 'text' && item.at && item.text) {
+            ctx.save();
+            ctx.fillStyle = color;
+            ctx.font = `${Math.max(12, thickness * 5)}px sans-serif`;
+            ctx.textBaseline = 'top';
+            ctx.fillText(String(item.text), clamp01(item.at.x) * width, clamp01(item.at.y) * height);
+            ctx.restore();
+        }
+    });
+}
+
+function renderGalleryRedEyeMarkers(ctx, rects) {
+    const redEye = ensureGalleryRedEyeState();
+    if (!Array.isArray(redEye.points) || !redEye.points.length) return;
+    redEye.points.forEach((point) => {
+        const p = mapImagePointToStagePixel(point.x, point.y, rects);
+        const radius = Math.max(5, redEye.radius);
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, radius, 0, Math.PI * 2);
+        ctx.strokeStyle = 'rgba(255, 93, 93, 0.95)';
+        ctx.lineWidth = 1.6;
+        ctx.setLineDash([5, 3]);
+        ctx.stroke();
+        ctx.restore();
+    });
+}
+
+function buildGalleryRedEyePreviewCanvasFromImage(imageEl, options = {}) {
+    const img = imageEl;
+    const previewW = Math.max(1, Math.round(Number(options.width) || 1));
+    const previewH = Math.max(1, Math.round(Number(options.height) || 1));
+    const filterValue = String(options.filter || '');
+    const points = Array.isArray(options.points) ? options.points : [];
+    const radius = Math.max(2, Math.round(Number(options.radius) || 18));
+    const strength = Math.max(0, Math.min(100, Math.round(Number(options.strength) || 0)));
+    if (!img || !img.naturalWidth || !img.naturalHeight || !previewW || !previewH) return null;
+
+    const previewCanvas = document.createElement('canvas');
+    previewCanvas.width = previewW;
+    previewCanvas.height = previewH;
+    const previewCtx = previewCanvas.getContext('2d');
+    if (!previewCtx) return null;
+
+    previewCtx.filter = filterValue || 'none';
+    previewCtx.drawImage(img, 0, 0, previewW, previewH);
+    previewCtx.filter = 'none';
+    if (!points.length || strength <= 0) return previewCanvas;
+
+    const imageData = previewCtx.getImageData(0, 0, previewW, previewH);
+    const data = imageData.data;
+    const radiusSq = radius * radius;
+    const strengthFactor = strength / 100;
+
+    points.forEach((point) => {
+        const cx = Math.round(clamp01(point?.x) * previewW);
+        const cy = Math.round(clamp01(point?.y) * previewH);
+        const minX = Math.max(0, cx - radius);
+        const maxX = Math.min(previewW - 1, cx + radius);
+        const minY = Math.max(0, cy - radius);
+        const maxY = Math.min(previewH - 1, cy + radius);
+        for (let y = minY; y <= maxY; y += 1) {
+            for (let x = minX; x <= maxX; x += 1) {
+                const dx = x - cx;
+                const dy = y - cy;
+                if ((dx * dx + dy * dy) > radiusSq) continue;
+                const idx = ((y * previewW) + x) * 4;
+                const r = data[idx];
+                const g = data[idx + 1];
+                const b = data[idx + 2];
+                if (r > g * 1.18 && r > b * 1.18) {
+                    const neutral = (g + b) / 2;
+                    data[idx] = clampByte(r + ((neutral - r) * strengthFactor));
+                    data[idx + 1] = clampByte(g + ((neutral - g) * (strengthFactor * 0.45)));
+                    data[idx + 2] = clampByte(b + ((neutral - b) * (strengthFactor * 0.45)));
+                }
+            }
+        }
+    });
+    previewCtx.putImageData(imageData, 0, 0);
+    return previewCanvas;
+}
+
+function getGalleryNeighborItems(maxCount = 2) {
+    const list = Array.isArray(state.imageFiles) ? state.imageFiles : [];
+    if (list.length < 2) return [];
+    const currentIndex = getCurrentGalleryImageIndex();
+    const base = currentIndex >= 0 ? currentIndex : 0;
+    const out = [];
+    for (let step = 1; step <= Math.max(1, Math.floor(maxCount)); step += 1) {
+        const prev = list[(base - step + list.length) % list.length];
+        const next = list[(base + step) % list.length];
+        if (prev?.path) out.push(prev);
+        if (next?.path) out.push(next);
+    }
+    const seen = new Set();
+    return out.filter((item) => {
+        const key = String(item?.path || '');
+        if (!key || seen.has(key) || key === String(state.currentImagePath || '')) return false;
+        seen.add(key);
+        return true;
+    });
+}
+
+function scheduleGalleryRedEyePrewarm() {
+    clearGalleryRedEyePrewarmTimer();
+    const rects = getGalleryImageContentRect();
+    const redEye = ensureGalleryRedEyeState();
+    if (!rects || !rects.imageRect.width || !rects.imageRect.height || !redEye.points.length) return;
+    const previewW = Math.max(1, Math.round(rects.imageRect.width));
+    const previewH = Math.max(1, Math.round(rects.imageRect.height));
+    const filterValue = buildGalleryImageFilter();
+    const points = redEye.points.map((p) => ({ x: clamp01(p?.x), y: clamp01(p?.y) }));
+    const radius = redEye.radius;
+    const strength = redEye.strength;
+    const targets = getGalleryNeighborItems(1);
+    if (!targets.length) return;
+    galleryRedEyePrewarmTimer = setTimeout(async () => {
+        for (const item of targets) {
+            const key = buildGalleryRedEyePreviewCacheKey(item.path, previewW, previewH, filterValue, radius, strength, points);
+            if (readGalleryRedEyeCache(key)) continue;
+            const probe = await loadGalleryImageElementByPath(item.path);
+            if (!probe) continue;
+            const canvas = buildGalleryRedEyePreviewCanvasFromImage(probe, {
+                width: previewW,
+                height: previewH,
+                filter: filterValue,
+                radius,
+                strength,
+                points
+            });
+            if (canvas) writeGalleryRedEyeCache(key, canvas);
+        }
+    }, 120);
+}
+
+function renderGalleryRedEyeLivePreview(ctx, rects) {
+    const redEye = ensureGalleryRedEyeState();
+    const img = elements.galleryLightboxImage;
+    if (!img || !Array.isArray(redEye.points) || !redEye.points.length || redEye.strength <= 0) return;
+    const previewW = Math.max(1, Math.round(rects.imageRect.width));
+    const previewH = Math.max(1, Math.round(rects.imageRect.height));
+    if (previewW <= 2 || previewH <= 2) return;
+
+    const points = redEye.points.map((point) => ({ x: clamp01(point?.x), y: clamp01(point?.y) }));
+    const cacheKey = buildGalleryRedEyePreviewCacheKey(
+        state.currentImagePath,
+        previewW,
+        previewH,
+        buildGalleryImageFilter(),
+        redEye.radius,
+        redEye.strength,
+        points
+    );
+    let cached = readGalleryRedEyeCache(cacheKey);
+    if (!cached) {
+        cached = buildGalleryRedEyePreviewCanvasFromImage(img, {
+            width: previewW,
+            height: previewH,
+            filter: buildGalleryImageFilter(),
+            radius: redEye.radius,
+            strength: redEye.strength,
+            points
+        });
+        if (!cached) return;
+        writeGalleryRedEyeCache(cacheKey, cached);
+    }
+
+    const imageOffsetX = rects.imageRect.left - rects.stageRect.left;
+    const imageOffsetY = rects.imageRect.top - rects.stageRect.top;
+    ctx.save();
+    ctx.globalAlpha = 0.98;
+    ctx.drawImage(cached, imageOffsetX, imageOffsetY, rects.imageRect.width, rects.imageRect.height);
+    ctx.restore();
+    scheduleGalleryRedEyePrewarm();
+}
+
+function renderGalleryAnnotationOverlay() {
+    const canvas = elements.galleryAnnotationCanvas;
+    const stage = elements.galleryLightboxStage;
+    if (!canvas || !stage) return;
+    const rects = getGalleryImageContentRect();
+    const hasAnnotations = Array.isArray(state.galleryAnnotation?.items) && state.galleryAnnotation.items.length > 0;
+    const showOverlay = !!(state.galleryEditPanelOpen || state.galleryRedEye?.mode || state.galleryAnnotation?.drawing || state.galleryAnnotation?.draft || hasAnnotations || (state.galleryRedEye?.points || []).length);
+    canvas.classList.toggle('hidden', !showOverlay);
+    canvas.classList.toggle('active', !!(state.galleryEditPanelOpen || state.galleryRedEye?.mode || state.galleryAnnotation?.drawing));
+    if (!showOverlay || !rects) return;
+    const dpr = Math.max(1, window.devicePixelRatio || 1);
+    canvas.width = Math.max(1, Math.round(rects.stageRect.width * dpr));
+    canvas.height = Math.max(1, Math.round(rects.stageRect.height * dpr));
+    canvas.style.width = `${rects.stageRect.width}px`;
+    canvas.style.height = `${rects.stageRect.height}px`;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, rects.stageRect.width, rects.stageRect.height);
+    const imageOffsetX = rects.imageRect.left - rects.stageRect.left;
+    const imageOffsetY = rects.imageRect.top - rects.stageRect.top;
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(imageOffsetX, imageOffsetY, rects.imageRect.width, rects.imageRect.height);
+    ctx.clip();
+    renderGalleryRedEyeLivePreview(ctx, rects);
+    ctx.translate(imageOffsetX, imageOffsetY);
+    renderGalleryAnnotationsOnContext(ctx, rects.imageRect.width, rects.imageRect.height, { includeDraft: true });
+    ctx.restore();
+    if (state.galleryRedEye?.mode) {
+        renderGalleryRedEyeMarkers(ctx, rects);
+    }
+}
+
+function updateGalleryAnnotationToolButtonsUi() {
+    const tool = String(state.galleryAnnotation?.tool || 'draw');
+    if (elements.galleryAnnotationDrawBtn) elements.galleryAnnotationDrawBtn.classList.toggle('active', tool === 'draw');
+    if (elements.galleryAnnotationArrowBtn) elements.galleryAnnotationArrowBtn.classList.toggle('active', tool === 'arrow');
+    if (elements.galleryAnnotationTextBtn) elements.galleryAnnotationTextBtn.classList.toggle('active', tool === 'text');
+    if (elements.galleryRedEyeModeBtn) {
+        const redEyeMode = !!state.galleryRedEye?.mode;
+        const onText = uiT('settings.state.on', 'Açık');
+        const offText = uiT('settings.state.off', 'Kapalı');
+        const redEyePrefix = uiT('settings.gallery.panel.redEye.modePrefix', 'Kırmızı Göz Noktala');
+        elements.galleryRedEyeModeBtn.textContent = `${redEyePrefix}: ${redEyeMode ? onText : offText}`;
+        elements.galleryRedEyeModeBtn.classList.toggle('active', redEyeMode);
+    }
+}
+
+function setGalleryAnnotationTool(tool = 'draw') {
+    ensureGalleryAnnotationState();
+    ensureGalleryRedEyeState();
+    const nextTool = ['draw', 'arrow', 'text'].includes(String(tool || '').toLowerCase())
+        ? String(tool).toLowerCase()
+        : 'draw';
+    state.galleryAnnotation.tool = nextTool;
+    state.galleryRedEye.mode = false;
+    if (nextTool === 'text' && elements.galleryAnnotationTextInput) {
+        elements.galleryAnnotationTextInput.focus({ preventScroll: true });
+        elements.galleryAnnotationTextInput.select();
+    }
+    updateGalleryAnnotationToolButtonsUi();
+    renderGalleryAnnotationOverlay();
+}
+
+function clearGalleryAnnotationItems() {
+    ensureGalleryAnnotationState();
+    state.galleryAnnotation.items = [];
+    state.galleryAnnotation.drawing = false;
+    state.galleryAnnotation.draft = null;
+    renderGalleryAnnotationOverlay();
+}
+
+function clearGalleryRedEyePoints() {
+    ensureGalleryRedEyeState();
+    state.galleryRedEye.points = [];
+    clearGalleryRedEyePreviewCache();
+    renderGalleryAnnotationOverlay();
+}
+
+function ensureGalleryViewState() {
+    if (!state.galleryView || typeof state.galleryView !== 'object') {
+        state.galleryView = { mode: 'fit', zoom: 1, rotation: 0, flipX: 1, flipY: 1 };
+    }
+    if (!['fit', 'fill', 'actual', 'custom'].includes(String(state.galleryView.mode || '').toLowerCase())) {
+        state.galleryView.mode = 'fit';
+    }
+    state.galleryView.zoom = Math.max(0.1, Math.min(30, Number(state.galleryView.zoom) || 1));
+    const rotation = Number(state.galleryView.rotation) || 0;
+    state.galleryView.rotation = ((rotation % 360) + 360) % 360;
+    state.galleryView.flipX = Number(state.galleryView.flipX) === -1 ? -1 : 1;
+    state.galleryView.flipY = Number(state.galleryView.flipY) === -1 ? -1 : 1;
+    return state.galleryView;
+}
+
+function getGalleryActualSizeZoom() {
+    const img = elements.galleryLightboxImage;
+    if (!img || !img.naturalWidth || !img.naturalHeight || !img.clientWidth || !img.clientHeight) return 1;
+    const ratioW = img.naturalWidth / Math.max(1, img.clientWidth);
+    const ratioH = img.naturalHeight / Math.max(1, img.clientHeight);
+    const zoom = Math.max(ratioW, ratioH);
+    return Math.max(0.1, Math.min(30, Number.isFinite(zoom) ? zoom : 1));
+}
+
+function getGalleryBottomViewModeLabel(value = 'fit') {
+    const key = String(value || '').toLowerCase();
+    if (key === 'fit') return 'Sığdır';
+    if (key === 'fill') return 'Doldur';
+    const pct = Number(key);
+    if (Number.isFinite(pct)) return `%${Math.round(pct)}`;
+    return 'Sığdır';
+}
+
+function applyGalleryBottomViewModeValue(value = 'fit') {
+    const key = String(value || '').toLowerCase();
+    if (key === 'fit' || key === 'fill') {
+        setGalleryZoomMode(key);
+        return;
+    }
+    const parsed = Number(key);
+    const next = Number.isFinite(parsed) ? Math.max(10, Math.min(1600, Math.round(parsed))) : 100;
+    const view = ensureGalleryViewState();
+    view.mode = 'custom';
+    view.zoom = next / 100;
+    applyGalleryViewTransform();
+}
+
+function closeGalleryBottomViewModeMenu() {
+    if (!elements.galleryBottomViewModeMenu || !elements.galleryBottomViewModeBtn) return;
+    galleryBottomViewMenuOpen = false;
+    elements.galleryBottomViewModeMenu.classList.add('hidden');
+    elements.galleryBottomViewModeMenu.setAttribute('aria-hidden', 'true');
+    elements.galleryBottomViewModeBtn.setAttribute('aria-expanded', 'false');
+    if (galleryBottomViewPreviewBackup) {
+        const view = ensureGalleryViewState();
+        view.mode = galleryBottomViewPreviewBackup.mode;
+        view.zoom = galleryBottomViewPreviewBackup.zoom;
+        applyGalleryViewTransform();
+    }
+    galleryBottomViewPreviewBackup = null;
+    if (elements.galleryBottomViewModeItems) {
+        elements.galleryBottomViewModeItems.forEach((item) => item.classList.remove('is-hover'));
+    }
+}
+
+function openGalleryBottomViewModeMenu() {
+    if (!elements.galleryBottomViewModeMenu || !elements.galleryBottomViewModeBtn) return;
+    galleryBottomViewMenuOpen = true;
+    const view = ensureGalleryViewState();
+    galleryBottomViewPreviewBackup = { mode: view.mode, zoom: view.zoom };
+    elements.galleryBottomViewModeMenu.classList.remove('hidden');
+    elements.galleryBottomViewModeMenu.setAttribute('aria-hidden', 'false');
+    elements.galleryBottomViewModeBtn.setAttribute('aria-expanded', 'true');
+}
+
+function applyGalleryViewTransform() {
+    const img = elements.galleryLightboxImage;
+    if (!img) return;
+    const view = ensureGalleryViewState();
+    if (elements.galleryLightboxStage) {
+        elements.galleryLightboxStage.classList.toggle('fill-mode', view.mode === 'fill');
+    }
+    img.style.transform = `rotate(${view.rotation}deg) scale(${view.zoom * view.flipX}, ${view.zoom * view.flipY})`;
+    if (elements.galleryBottomZoomSlider) {
+        elements.galleryBottomZoomSlider.value = String(Math.max(10, Math.min(1600, Math.round(view.zoom * 100))));
+    }
+    if (elements.galleryBottomViewModeBtn) {
+        if (view.mode === 'fit') {
+            elements.galleryBottomViewModeBtn.textContent = 'Sığdır';
+        } else if (view.mode === 'fill') {
+            elements.galleryBottomViewModeBtn.textContent = 'Doldur';
+        } else {
+            const zoomPct = Math.max(10, Math.min(1600, Math.round(view.zoom * 100)));
+            elements.galleryBottomViewModeBtn.textContent = `%${zoomPct}`;
+        }
+    }
+    if (elements.galleryBottomViewModeItems) {
+        const activeValue = (() => {
+            if (view.mode === 'fit' || view.mode === 'fill') return view.mode;
+            return String(Math.max(10, Math.min(1600, Math.round(view.zoom * 100))));
+        })();
+        elements.galleryBottomViewModeItems.forEach((item) => {
+            const value = String(item?.dataset?.viewMode || '');
+            item.classList.toggle('active', value === activeValue);
+        });
+    }
+    if (elements.galleryBottomFitBtn) {
+        const active = view.mode === 'fit' && Math.abs((Number(view.zoom) || 1) - 1) < 0.001;
+        elements.galleryBottomFitBtn.classList.toggle('active', active);
+        elements.galleryBottomFitBtn.textContent = getGalleryBottomViewModeLabel('fit');
+    }
+    if (elements.galleryBottomFillBtn) {
+        const active = view.mode === 'fill';
+        elements.galleryBottomFillBtn.classList.toggle('active', active);
+        elements.galleryBottomFillBtn.textContent = getGalleryBottomViewModeLabel('fill');
+    }
+    if (elements.galleryBottomViewModeWrap) {
+        elements.galleryBottomViewModeWrap.classList.toggle('open', galleryBottomViewMenuOpen);
+    }
+    if (elements.galleryBottomViewModeMenu && !galleryBottomViewMenuOpen) {
+        elements.galleryBottomViewModeMenu.classList.add('hidden');
+        elements.galleryBottomViewModeMenu.setAttribute('aria-hidden', 'true');
+    }
+    if (elements.galleryBottomViewModeBtn && !galleryBottomViewMenuOpen) {
+        elements.galleryBottomViewModeBtn.setAttribute('aria-expanded', 'false');
+    }
+    if (elements.galleryBottomFitBtn) {
+        elements.galleryBottomFitBtn.textContent = 'Sığdır';
+    }
+    if (elements.galleryBottomFillBtn) {
+        elements.galleryBottomFillBtn.textContent = 'Doldur';
+    }
+    if (elements.galleryBottomZoomSlider) {
+        const value = Math.max(10, Math.min(1600, Number(elements.galleryBottomZoomSlider.value) || 100));
+        if (value !== Math.round(view.zoom * 100)) {
+            elements.galleryBottomZoomSlider.value = String(Math.round(view.zoom * 100));
+        }
+    }
+    renderGalleryAnnotationOverlay();
+    renderGalleryMiniNavigator();
+}
+
+function resetGalleryViewForImage() {
+    state.galleryView = { mode: 'fit', zoom: 1, rotation: 0, flipX: 1, flipY: 1 };
+    applyGalleryViewTransform();
+}
+
+function setGalleryZoomMode(mode = 'fit') {
+    const view = ensureGalleryViewState();
+    const normalized = String(mode || 'fit').toLowerCase();
+    if (normalized === 'actual') {
+        view.mode = 'actual';
+        view.zoom = getGalleryActualSizeZoom();
+    } else if (normalized === 'fill') {
+        view.mode = 'fill';
+        view.zoom = 1;
+    } else if (normalized === 'fit') {
+        view.mode = 'fit';
+        view.zoom = 1;
+    } else {
+        view.mode = 'custom';
+    }
+    applyGalleryViewTransform();
+}
+
+function zoomGalleryByFactor(factor = 1) {
+    const view = ensureGalleryViewState();
+    const safeFactor = Math.max(0.1, Math.min(10, Number(factor) || 1));
+    view.mode = 'custom';
+    view.zoom = Math.max(0.1, Math.min(30, view.zoom * safeFactor));
+    applyGalleryViewTransform();
+}
+
+function zoomGalleryByWheelStep(direction = 1) {
+    const stepPct = 5;
+    const view = ensureGalleryViewState();
+    const sign = Number(direction) >= 0 ? 1 : -1;
+    const currentPct = Math.max(10, Math.min(1600, Math.round(view.zoom * 100)));
+    const nextPct = Math.max(10, Math.min(1600, currentPct + (sign * stepPct)));
+    view.mode = 'custom';
+    view.zoom = nextPct / 100;
+    applyGalleryViewTransform();
+}
+
+function rotateGalleryBy(deltaDeg = 90) {
+    const view = ensureGalleryViewState();
+    view.rotation = ((view.rotation + (Number(deltaDeg) || 0)) % 360 + 360) % 360;
+    applyGalleryViewTransform();
+}
+
+function flipGalleryHorizontal() {
+    const view = ensureGalleryViewState();
+    view.flipX = view.flipX === 1 ? -1 : 1;
+    applyGalleryViewTransform();
+}
+
+function flipGalleryVertical() {
+    const view = ensureGalleryViewState();
+    view.flipY = view.flipY === 1 ? -1 : 1;
+    applyGalleryViewTransform();
+}
+
+function syncGalleryEditUi() {
+    const brightness = normalizeGalleryEditValue('brightness', state.galleryEdit?.brightness);
+    const contrast = normalizeGalleryEditValue('contrast', state.galleryEdit?.contrast);
+    const saturation = normalizeGalleryEditValue('saturation', state.galleryEdit?.saturation);
+    const temperature = normalizeGalleryEditValue('temperature', state.galleryEdit?.temperature);
+    const tint = normalizeGalleryEditValue('tint', state.galleryEdit?.tint);
+    const shadows = normalizeGalleryEditValue('shadows', state.galleryEdit?.shadows);
+    const highlights = normalizeGalleryEditValue('highlights', state.galleryEdit?.highlights);
+    const sharpness = normalizeGalleryEditValue('sharpness', state.galleryEdit?.sharpness);
+    const redEye = ensureGalleryRedEyeState();
+    if (elements.galleryEditBrightness) elements.galleryEditBrightness.value = String(brightness);
+    if (elements.galleryEditContrast) elements.galleryEditContrast.value = String(contrast);
+    if (elements.galleryEditSaturation) elements.galleryEditSaturation.value = String(saturation);
+    if (elements.galleryEditTemperature) elements.galleryEditTemperature.value = String(temperature);
+    if (elements.galleryEditTint) elements.galleryEditTint.value = String(tint);
+    if (elements.galleryEditShadows) elements.galleryEditShadows.value = String(shadows);
+    if (elements.galleryEditHighlights) elements.galleryEditHighlights.value = String(highlights);
+    if (elements.galleryEditSharpness) elements.galleryEditSharpness.value = String(sharpness);
+    if (elements.galleryRedEyeStrength) elements.galleryRedEyeStrength.value = String(redEye.strength);
+    if (elements.galleryRedEyeRadius) elements.galleryRedEyeRadius.value = String(redEye.radius);
+    if (elements.galleryEditBrightnessValue) elements.galleryEditBrightnessValue.textContent = `${brightness}%`;
+    if (elements.galleryEditContrastValue) elements.galleryEditContrastValue.textContent = `${contrast}%`;
+    if (elements.galleryEditSaturationValue) elements.galleryEditSaturationValue.textContent = `${saturation}%`;
+    if (elements.galleryEditTemperatureValue) elements.galleryEditTemperatureValue.textContent = `${temperature}%`;
+    if (elements.galleryEditTintValue) elements.galleryEditTintValue.textContent = `${tint}%`;
+    if (elements.galleryEditShadowsValue) elements.galleryEditShadowsValue.textContent = `${shadows}%`;
+    if (elements.galleryEditHighlightsValue) elements.galleryEditHighlightsValue.textContent = `${highlights}%`;
+    if (elements.galleryEditSharpnessValue) elements.galleryEditSharpnessValue.textContent = `${sharpness}%`;
+    if (elements.galleryRedEyeStrengthValue) elements.galleryRedEyeStrengthValue.textContent = `${redEye.strength}%`;
+    if (elements.galleryRedEyeRadiusValue) elements.galleryRedEyeRadiusValue.textContent = `${redEye.radius}px`;
+    if (elements.galleryAnnotationColor) elements.galleryAnnotationColor.value = String(state.galleryAnnotation?.color || '#5fd8ff');
+    if (elements.galleryAnnotationSize) elements.galleryAnnotationSize.value = String(Math.max(1, Math.min(18, Number(state.galleryAnnotation?.size) || 3)));
+    if (elements.galleryAnnotationTextInput) elements.galleryAnnotationTextInput.value = String(state.galleryAnnotation?.pendingText || '');
+    if (elements.galleryBackgroundMode) elements.galleryBackgroundMode.value = String(state.galleryBackgroundMode || 'dim');
+    updateGalleryAnnotationToolButtonsUi();
+}
+
+function applyGalleryImageFilter() {
+    if (!elements.galleryLightboxImage) return;
+    elements.galleryLightboxImage.style.filter = buildGalleryImageFilter();
+    applyGalleryViewTransform();
+    renderGalleryAnnotationOverlay();
+    renderGalleryMiniNavigator();
+}
+
+function setGalleryEditValue(kind, value) {
+    if (!state.galleryEdit || typeof state.galleryEdit !== 'object') {
+        state.galleryEdit = { ...GALLERY_EDIT_DEFAULTS };
+    }
+    state.galleryEdit[kind] = normalizeGalleryEditValue(kind, value);
+    syncGalleryEditUi();
+    applyGalleryImageFilter();
+}
+
+function resetGalleryEditValues() {
+    state.galleryEdit = { ...GALLERY_EDIT_DEFAULTS };
+    ensureGalleryRedEyeState();
+    state.galleryRedEye.strength = 45;
+    state.galleryRedEye.radius = 18;
+    syncGalleryEditUi();
+    applyGalleryImageFilter();
+}
+
+function applyGalleryPanelDefaults() {
+    resetGalleryEditValues();
+    resetGalleryCropRect();
+    clearGalleryAnnotationItems();
+    clearGalleryRedEyePoints();
+    ensureGalleryAnnotationState();
+    ensureGalleryRedEyeState();
+    state.galleryAnnotation.tool = 'draw';
+    state.galleryAnnotation.color = '#5fd8ff';
+    state.galleryAnnotation.size = 3;
+    state.galleryAnnotation.pendingText = '';
+    state.galleryRedEye.mode = false;
+    state.galleryRedEye.radius = 18;
+    state.galleryRedEye.strength = 45;
+    applyGalleryBackgroundMode('dim', { persist: true });
+    setGalleryMiniNavigatorEnabled(false, { persist: true });
+    syncGalleryEditUi();
+    renderGalleryAnnotationOverlay();
+}
+
+function clamp01(value) {
+    return Math.max(0, Math.min(1, Number(value) || 0));
+}
+
+function normalizeGalleryCropRect() {
+    const crop = state.galleryCrop || {};
+    const x = clamp01(crop.x);
+    const y = clamp01(crop.y);
+    const w = Math.max(0.02, Math.min(1 - x, Number(crop.w) || 0.8));
+    const h = Math.max(0.02, Math.min(1 - y, Number(crop.h) || 0.8));
+    state.galleryCrop = { ...crop, x, y, w, h };
+}
+
+function renderGalleryCropRect() {
+    if (!elements.galleryCropRect) return;
+    normalizeGalleryCropRect();
+    const crop = state.galleryCrop;
+    elements.galleryCropRect.style.left = `${crop.x * 100}%`;
+    elements.galleryCropRect.style.top = `${crop.y * 100}%`;
+    elements.galleryCropRect.style.width = `${crop.w * 100}%`;
+    elements.galleryCropRect.style.height = `${crop.h * 100}%`;
+}
+
+function applyGalleryCropUiState() {
+    const enabled = !!state.galleryCrop?.enabled;
+    if (elements.galleryCropLayer) {
+        elements.galleryCropLayer.classList.toggle('hidden', !enabled);
+        elements.galleryCropLayer.setAttribute('aria-hidden', enabled ? 'false' : 'true');
+    }
+    if (elements.galleryCropToggleBtn) {
+        elements.galleryCropToggleBtn.classList.toggle('active', enabled);
+        elements.galleryCropToggleBtn.textContent = enabled
+            ? uiT('settings.gallery.crop.closeMode', 'Kırpmayı Kapat')
+            : uiT('settings.gallery.crop.mode', 'Kırp Modu');
+    }
+    if (enabled) {
+        renderGalleryCropRect();
+    }
+}
+
+function resetGalleryCropRect() {
+    state.galleryCrop = {
+        ...state.galleryCrop,
+        enabled: !!state.galleryCrop?.enabled,
+        drawing: false,
+        startX: 0,
+        startY: 0,
+        x: 0.1,
+        y: 0.1,
+        w: 0.8,
+        h: 0.8
+    };
+    applyGalleryCropUiState();
+}
+
+function toggleGalleryCropMode() {
+    state.galleryCrop = { ...state.galleryCrop, enabled: !state.galleryCrop?.enabled, drawing: false };
+    applyGalleryCropUiState();
+    renderGalleryAnnotationOverlay();
+}
+
+function updateGalleryCropByPointer(clientX, clientY) {
+    if (!elements.galleryLightboxStage || !state.galleryCrop?.drawing) return;
+    const rect = elements.galleryLightboxStage.getBoundingClientRect();
+    if (!rect.width || !rect.height) return;
+    const currentX = clamp01((clientX - rect.left) / rect.width);
+    const currentY = clamp01((clientY - rect.top) / rect.height);
+    const startX = clamp01(state.galleryCrop.startX);
+    const startY = clamp01(state.galleryCrop.startY);
+    const x = Math.min(startX, currentX);
+    const y = Math.min(startY, currentY);
+    const w = Math.max(0.02, Math.abs(currentX - startX));
+    const h = Math.max(0.02, Math.abs(currentY - startY));
+    state.galleryCrop = { ...state.galleryCrop, x, y, w, h };
+    renderGalleryCropRect();
+}
+
+function handleGalleryAnnotationPointerDown(event) {
+    if (!elements.galleryLightbox || elements.galleryLightbox.classList.contains('hidden')) return;
+    if (state.galleryCrop?.enabled) return;
+    ensureGalleryAnnotationState();
+    ensureGalleryRedEyeState();
+    const point = mapClientToGalleryImagePoint(event.clientX, event.clientY);
+    if (!point) return;
+    if (state.galleryRedEye.mode) {
+        state.galleryRedEye.points.push({ x: point.x, y: point.y });
+        clearGalleryRedEyePreviewCache();
+        renderGalleryAnnotationOverlay();
+        return;
+    }
+    const tool = String(state.galleryAnnotation.tool || 'draw');
+    const color = String(state.galleryAnnotation.color || '#5fd8ff');
+    const size = Math.max(1, Math.min(18, Number(state.galleryAnnotation.size) || 3));
+    if (tool === 'text') {
+        const text = String(state.galleryAnnotation.pendingText || '').trim();
+        if (!text) {
+            safeNotify('Önce metin kutusuna yazı girin, sonra fotoğrafa tıklayın.', 'info', 1700);
+            if (elements.galleryAnnotationTextInput) {
+                elements.galleryAnnotationTextInput.focus({ preventScroll: true });
+            }
+            return;
+        }
+        state.galleryAnnotation.items.push({ type: 'text', at: { x: point.x, y: point.y }, text, color, size });
+        renderGalleryAnnotationOverlay();
+        return;
+    }
+    state.galleryAnnotation.drawing = true;
+    state.galleryAnnotation.startX = point.x;
+    state.galleryAnnotation.startY = point.y;
+    if (tool === 'draw') {
+        state.galleryAnnotation.draft = { type: 'draw', points: [{ x: point.x, y: point.y }], color, size };
+    } else {
+        state.galleryAnnotation.draft = {
+            type: 'arrow',
+            from: { x: point.x, y: point.y },
+            to: { x: point.x, y: point.y },
+            color,
+            size
+        };
+    }
+    renderGalleryAnnotationOverlay();
+}
+
+function handleGalleryAnnotationPointerMove(event) {
+    if (!state.galleryAnnotation?.drawing || !state.galleryAnnotation?.draft) return;
+    const point = mapClientToGalleryImagePoint(event.clientX, event.clientY);
+    if (!point) return;
+    if (state.galleryAnnotation.draft.type === 'draw') {
+        state.galleryAnnotation.draft.points.push({ x: point.x, y: point.y });
+    } else if (state.galleryAnnotation.draft.type === 'arrow') {
+        state.galleryAnnotation.draft.to = { x: point.x, y: point.y };
+    }
+    renderGalleryAnnotationOverlay();
+}
+
+function handleGalleryAnnotationPointerUp() {
+    if (!state.galleryAnnotation?.drawing) return;
+    state.galleryAnnotation.drawing = false;
+    if (state.galleryAnnotation.draft) {
+        state.galleryAnnotation.items.push(state.galleryAnnotation.draft);
+    }
+    state.galleryAnnotation.draft = null;
+    renderGalleryAnnotationOverlay();
+}
+
+async function saveEditedGalleryImageCopy() {
+    try {
+        const img = elements.galleryLightboxImage;
+        const srcPath = String(state.currentImagePath || '').trim();
+        if (!img || !srcPath || !img.naturalWidth || !img.naturalHeight) {
+            safeNotify('Kaydedilecek fotoğraf bulunamadı.', 'warning', 2200);
+            return;
+        }
+
+        normalizeGalleryCropRect();
+        const crop = state.galleryCrop || {};
+        const useCrop = !!crop.enabled;
+        const sx = Math.round((useCrop ? crop.x : 0) * img.naturalWidth);
+        const sy = Math.round((useCrop ? crop.y : 0) * img.naturalHeight);
+        const sw = Math.max(1, Math.round((useCrop ? crop.w : 1) * img.naturalWidth));
+        const sh = Math.max(1, Math.round((useCrop ? crop.h : 1) * img.naturalHeight));
+        const safeSw = Math.min(sw, img.naturalWidth - sx);
+        const safeSh = Math.min(sh, img.naturalHeight - sy);
+
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.max(1, safeSw);
+        canvas.height = Math.max(1, safeSh);
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+            safeNotify('Kaydetme için canvas başlatılamadı.', 'error', 2200);
+            return;
+        }
+        ctx.filter = buildGalleryImageFilter();
+        ctx.drawImage(img, sx, sy, safeSw, safeSh, 0, 0, canvas.width, canvas.height);
+        ctx.filter = 'none';
+
+        const edit = state.galleryEdit || {};
+        const temperature = normalizeGalleryEditValue('temperature', edit.temperature);
+        const tint = normalizeGalleryEditValue('tint', edit.tint);
+        const shadows = normalizeGalleryEditValue('shadows', edit.shadows);
+        const highlights = normalizeGalleryEditValue('highlights', edit.highlights);
+        const sharpness = normalizeGalleryEditValue('sharpness', edit.sharpness);
+        const tempDelta = (temperature - 100) / 100;
+        const tintDelta = (tint - 100) / 100;
+        const shadowsDelta = (shadows - 100) / 100;
+        const highlightsDelta = (highlights - 100) / 100;
+
+        let imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        const data = imageData.data;
+        for (let i = 0; i < data.length; i += 4) {
+            let r = data[i];
+            let g = data[i + 1];
+            let b = data[i + 2];
+            const lum = (r + g + b) / 3;
+            r += tempDelta * 34;
+            b -= tempDelta * 34;
+            g += tintDelta * 18;
+            r += tintDelta * 6;
+            b -= tintDelta * 6;
+            const shadowLift = shadowsDelta * (1 - (lum / 255)) * 74;
+            const highlightShift = highlightsDelta * (lum / 255) * 64;
+            r += shadowLift + highlightShift;
+            g += shadowLift + highlightShift;
+            b += shadowLift + highlightShift;
+            data[i] = clampByte(r);
+            data[i + 1] = clampByte(g);
+            data[i + 2] = clampByte(b);
+        }
+        ctx.putImageData(imageData, 0, 0);
+
+        const redEye = ensureGalleryRedEyeState();
+        if (Array.isArray(redEye.points) && redEye.points.length && redEye.strength > 0) {
+            imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+            const reData = imageData.data;
+            const radiusPx = Math.max(2, Math.round((redEye.radius / Math.max(1, img.clientWidth || 1)) * canvas.width));
+            const strengthFactor = redEye.strength / 100;
+            redEye.points.forEach((point) => {
+                const cx = Math.round(clamp01(point.x) * canvas.width);
+                const cy = Math.round(clamp01(point.y) * canvas.height);
+                const minX = Math.max(0, cx - radiusPx);
+                const maxX = Math.min(canvas.width - 1, cx + radiusPx);
+                const minY = Math.max(0, cy - radiusPx);
+                const maxY = Math.min(canvas.height - 1, cy + radiusPx);
+                const radiusSq = radiusPx * radiusPx;
+                for (let y = minY; y <= maxY; y += 1) {
+                    for (let x = minX; x <= maxX; x += 1) {
+                        const dx = x - cx;
+                        const dy = y - cy;
+                        if ((dx * dx + dy * dy) > radiusSq) continue;
+                        const idx = ((y * canvas.width) + x) * 4;
+                        const r = reData[idx];
+                        const g = reData[idx + 1];
+                        const b = reData[idx + 2];
+                        if (r > g * 1.18 && r > b * 1.18) {
+                            const neutral = (g + b) / 2;
+                            reData[idx] = clampByte(r + ((neutral - r) * strengthFactor));
+                            reData[idx + 1] = clampByte(g + ((neutral - g) * (strengthFactor * 0.45)));
+                            reData[idx + 2] = clampByte(b + ((neutral - b) * (strengthFactor * 0.45)));
+                        }
+                    }
+                }
+            });
+            ctx.putImageData(imageData, 0, 0);
+        }
+
+        if (sharpness !== 100) {
+            const amount = (sharpness - 100) / 100;
+            if (Math.abs(amount) > 0.01) {
+                const src = ctx.getImageData(0, 0, canvas.width, canvas.height);
+                const dst = ctx.createImageData(canvas.width, canvas.height);
+                const srcData = src.data;
+                const dstData = dst.data;
+                const factor = Math.max(-0.45, Math.min(1.2, amount));
+                const kernelCenter = 1 + (4 * factor);
+                const kernelEdge = -factor;
+                for (let y = 0; y < canvas.height; y += 1) {
+                    for (let x = 0; x < canvas.width; x += 1) {
+                        const idx = ((y * canvas.width) + x) * 4;
+                        for (let c = 0; c < 3; c += 1) {
+                            const center = srcData[idx + c] * kernelCenter;
+                            const left = srcData[((y * canvas.width) + Math.max(0, x - 1)) * 4 + c] * kernelEdge;
+                            const right = srcData[((y * canvas.width) + Math.min(canvas.width - 1, x + 1)) * 4 + c] * kernelEdge;
+                            const up = srcData[((Math.max(0, y - 1) * canvas.width) + x) * 4 + c] * kernelEdge;
+                            const down = srcData[((Math.min(canvas.height - 1, y + 1) * canvas.width) + x) * 4 + c] * kernelEdge;
+                            dstData[idx + c] = clampByte(center + left + right + up + down);
+                        }
+                        dstData[idx + 3] = srcData[idx + 3];
+                    }
+                }
+                ctx.putImageData(dst, 0, 0);
+            }
+        }
+
+        const annotation = ensureGalleryAnnotationState();
+        if (Array.isArray(annotation.items) && annotation.items.length) {
+            const mapX = (nx) => ((clamp01(nx) * img.naturalWidth) - sx) / Math.max(1, safeSw);
+            const mapY = (ny) => ((clamp01(ny) * img.naturalHeight) - sy) / Math.max(1, safeSh);
+            const exportItems = annotation.items.map((item) => {
+                if (!item || !item.type) return null;
+                if (item.type === 'draw' && Array.isArray(item.points)) {
+                    return {
+                        ...item,
+                        points: item.points.map((p) => ({ x: mapX(p?.x), y: mapY(p?.y) }))
+                    };
+                }
+                if (item.type === 'arrow' && item.from && item.to) {
+                    return {
+                        ...item,
+                        from: { x: mapX(item.from.x), y: mapY(item.from.y) },
+                        to: { x: mapX(item.to.x), y: mapY(item.to.y) }
+                    };
+                }
+                if (item.type === 'text' && item.at) {
+                    return {
+                        ...item,
+                        at: { x: mapX(item.at.x), y: mapY(item.at.y) }
+                    };
+                }
+                return item;
+            }).filter(Boolean);
+            ctx.save();
+            renderGalleryAnnotationsOnContext(ctx, canvas.width, canvas.height, {
+                includeDraft: false,
+                itemsOverride: exportItems
+            });
+            ctx.restore();
+        }
+
+        const dataUrl = canvas.toDataURL('image/png');
+        const base64 = String(dataUrl.split(',')[1] || '').trim();
+        if (!base64) {
+            safeNotify('Görsel verisi oluşturulamadı.', 'error', 2200);
+            return;
+        }
+
+        const baseNameRaw = String(window.aurivo?.path?.basename?.(srcPath) || 'image').replace(/\.[^.]+$/, '');
+        const defaultName = `${baseNameRaw}-edited.png`;
+        const target = await window.aurivo?.saveFile?.({
+            title: uiT('gallery.converter.saveEditedTitle', 'Düzenlenmiş fotoğrafı kaydet'),
+            defaultPath: defaultName,
+            filters: [{ name: 'PNG', extensions: ['png'] }]
+        });
+        if (!target?.path) return;
+        const ok = await window.aurivo?.writeBase64File?.(target.path, base64);
+        if (!ok) {
+            safeNotify('Dosya kaydedilemedi.', 'error', 2200);
+            return;
+        }
+        safeNotify(uiT('gallery.converter.notify.editedSaved', 'Düzenlenmiş kopya kaydedildi.'), 'success', 1800);
+    } catch (error) {
+        safeNotify(`Kopya kaydedilemedi: ${error?.message || error}`, 'error', 2400);
+    }
+}
+
+async function convertCurrentGalleryImageToPngCopy() {
+    try {
+        const srcPath = String(state.currentImagePath || '').trim();
+        if (!srcPath) {
+            safeNotify(uiT('gallery.converter.notify.imageNotFound', 'Dönüştürülecek fotoğraf bulunamadı.'), 'warning', 2200);
+            return;
+        }
+        const img = await loadImageForGallerySave(srcPath);
+        if (!img || !img.naturalWidth || !img.naturalHeight) {
+            safeNotify(uiT('gallery.converter.notify.imageLoadFailed', 'Fotoğraf dönüştürme için yüklenemedi.'), 'error', 2200);
+            return;
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.max(1, Number(img.naturalWidth) || 1);
+        canvas.height = Math.max(1, Number(img.naturalHeight) || 1);
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+            safeNotify(uiT('gallery.converter.notify.canvasInitFailed', 'Dönüştürme için canvas başlatılamadı.'), 'error', 2200);
+            return;
+        }
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        const dataUrl = canvas.toDataURL('image/png');
+        const base64 = String(dataUrl.split(',')[1] || '').trim();
+        if (!base64) {
+            safeNotify(uiT('gallery.converter.notify.pngDataFailed', 'PNG verisi oluşturulamadı.'), 'error', 2200);
+            return;
+        }
+        const baseNameRaw = String(window.aurivo?.path?.basename?.(srcPath) || 'image').replace(/\.[^.]+$/, '');
+        const defaultName = `${baseNameRaw}-converted.png`;
+        const target = await window.aurivo?.saveFile?.({
+            title: uiT('gallery.converter.pngSaveTitle', 'Fotoğrafı PNG olarak dönüştür'),
+            defaultPath: defaultName,
+            filters: [{ name: 'PNG', extensions: ['png'] }]
+        });
+        if (!target?.path) return;
+        const ok = await window.aurivo?.writeBase64File?.(target.path, base64);
+        if (!ok) {
+            safeNotify(uiT('gallery.converter.notify.pngSaveFailed', 'PNG dosyası kaydedilemedi.'), 'error', 2200);
+            return;
+        }
+        safeNotify(uiT('gallery.converter.notify.pngDone', 'PNG dönüştürme tamamlandı.'), 'success', 1800);
+    } catch (error) {
+        safeNotify(
+            uiT('gallery.converter.notify.pngFailed', 'PNG dönüştürme başarısız: {error}', { error: error?.message || error }),
+            'error',
+            2400
+        );
+    }
+}
+
+function getGalleryConverterMimeAndExtension(format = 'png') {
+    const normalized = String(format || 'png').trim().toLowerCase();
+    if (normalized === 'jpeg' || normalized === 'jpg') {
+        return { mime: 'image/jpeg', ext: 'jpg' };
+    }
+    if (normalized === 'webp') {
+        return { mime: 'image/webp', ext: 'webp' };
+    }
+    return { mime: 'image/png', ext: 'png' };
+}
+
+function updateGalleryConverterQualityLabel() {
+    if (!elements.galleryConverterQualityValue || !elements.galleryConverterQuality) return;
+    const quality = Math.max(40, Math.min(100, Number(elements.galleryConverterQuality.value) || 92));
+    elements.galleryConverterQualityValue.textContent = `%${quality}`;
+    if (elements.galleryConverterQualityLabel) {
+        elements.galleryConverterQualityLabel.textContent = uiT('gallery.converter.quality', 'Kalite');
+    }
+}
+
+function syncGalleryConverterFormatUi() {
+    if (!elements.galleryConverterFormat) return;
+    // Kullanıcı beklentisi: kalite ve hedef boyut alanları her zaman düzenlenebilir olmalı.
+    if (elements.galleryConverterQuality) elements.galleryConverterQuality.disabled = false;
+    if (elements.galleryConverterTargetKb) elements.galleryConverterTargetKb.disabled = false;
+}
+
+function clearGalleryConverterPreviewImage() {
+    if (!elements.galleryConverterPreviewImage) return;
+    elements.galleryConverterPreviewImage.removeAttribute('src');
+}
+
+function triggerGalleryConverterButtonFeedback(button) {
+    if (!(button instanceof HTMLElement)) return;
+    button.classList.remove('btn-press-feedback');
+    // Animasyonun her tıklamada yeniden tetiklenmesi için reflow.
+    void button.offsetWidth;
+    button.classList.add('btn-press-feedback');
+    setTimeout(() => {
+        button.classList.remove('btn-press-feedback');
+    }, 220);
+}
+
+function scheduleGalleryConverterPreviewRender(delayMs = 110) {
+    if (galleryConverterPreviewTimer) {
+        clearTimeout(galleryConverterPreviewTimer);
+        galleryConverterPreviewTimer = null;
+    }
+    galleryConverterPreviewTimer = setTimeout(() => {
+        galleryConverterPreviewTimer = null;
+        void renderGalleryConverterPreviewImage();
+    }, Math.max(0, Number(delayMs) || 0));
+}
+
+async function renderGalleryConverterPreviewImage() {
+    if (!elements.galleryConverterPreviewImage || elements.galleryConverterModal?.classList?.contains('hidden')) return;
+    const srcPath = String(state.currentImagePath || '').trim();
+    if (!srcPath) {
+        clearGalleryConverterPreviewImage();
+        return;
+    }
+    const token = ++galleryConverterPreviewRenderToken;
+    let sourceImage = galleryConverterSourceImage;
+    if (!sourceImage || !sourceImage.naturalWidth || !sourceImage.naturalHeight) {
+        sourceImage = await loadImageForGallerySave(srcPath);
+        if (!sourceImage) {
+            clearGalleryConverterPreviewImage();
+            return;
+        }
+        galleryConverterSourceImage = sourceImage;
+    }
+
+    const format = String(elements.galleryConverterFormat?.value || 'png').toLowerCase();
+    const { mime } = getGalleryConverterMimeAndExtension(format);
+    const requestedWidth = Math.max(1, Number(elements.galleryConverterWidth?.value) || Number(sourceImage.naturalWidth) || 1);
+    const requestedHeight = Math.max(1, Number(elements.galleryConverterHeight?.value) || Number(sourceImage.naturalHeight) || 1);
+    const quality = Math.max(0.4, Math.min(1, (Number(elements.galleryConverterQuality?.value) || 92) / 100));
+    const targetMbRaw = Number(elements.galleryConverterTargetKb?.value || 0);
+    const targetBytes = Number.isFinite(targetMbRaw) && targetMbRaw > 0 ? Math.round(targetMbRaw * 1024 * 1024) : 0;
+
+    const previewMaxEdge = 980;
+    const previewScale = Math.min(1, previewMaxEdge / Math.max(requestedWidth, requestedHeight));
+    const previewWidth = Math.max(1, Math.round(requestedWidth * previewScale));
+    const previewHeight = Math.max(1, Math.round(requestedHeight * previewScale));
+    const previewTargetBytes = targetBytes > 0
+        ? Math.max(1024, Math.round(targetBytes * previewScale * previewScale))
+        : 0;
+
+    const canvas = document.createElement('canvas');
+    canvas.width = previewWidth;
+    canvas.height = previewHeight;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    ctx.drawImage(sourceImage, 0, 0, previewWidth, previewHeight);
+    const dataUrl = buildGalleryConversionDataUrl(canvas, mime, quality, previewTargetBytes);
+    if (!dataUrl || token !== galleryConverterPreviewRenderToken) return;
+    elements.galleryConverterPreviewImage.src = dataUrl;
+}
+
+function syncGalleryConverterDimensionsFromWidth() {
+    if (!elements.galleryConverterWidth || !elements.galleryConverterHeight || !elements.galleryConverterLockAspect?.checked) return;
+    if (!galleryConverterSourceWidth || !galleryConverterSourceHeight) return;
+    const width = Math.max(1, Number(elements.galleryConverterWidth.value) || galleryConverterSourceWidth);
+    const nextHeight = Math.max(1, Math.round((width * galleryConverterSourceHeight) / galleryConverterSourceWidth));
+    galleryConverterSyncingDimensions = true;
+    elements.galleryConverterHeight.value = String(nextHeight);
+    galleryConverterSyncingDimensions = false;
+}
+
+function syncGalleryConverterDimensionsFromHeight() {
+    if (!elements.galleryConverterWidth || !elements.galleryConverterHeight || !elements.galleryConverterLockAspect?.checked) return;
+    if (!galleryConverterSourceWidth || !galleryConverterSourceHeight) return;
+    const height = Math.max(1, Number(elements.galleryConverterHeight.value) || galleryConverterSourceHeight);
+    const nextWidth = Math.max(1, Math.round((height * galleryConverterSourceWidth) / galleryConverterSourceHeight));
+    galleryConverterSyncingDimensions = true;
+    elements.galleryConverterWidth.value = String(nextWidth);
+    galleryConverterSyncingDimensions = false;
+}
+
+function resetGalleryConverterModalInputs() {
+    const srcPath = String(state.currentImagePath || '').trim();
+    if (elements.galleryConverterFormat) elements.galleryConverterFormat.value = 'png';
+    if (elements.galleryConverterLockAspect) elements.galleryConverterLockAspect.checked = true;
+    if (elements.galleryConverterQuality) elements.galleryConverterQuality.value = '92';
+    if (elements.galleryConverterTargetKb) elements.galleryConverterTargetKb.value = '';
+    if (elements.galleryConverterWidth) {
+        const w = galleryConverterSourceWidth || Number(elements.galleryConverterWidth.value) || 1920;
+        elements.galleryConverterWidth.value = String(Math.max(1, Math.round(w)));
+    }
+    if (elements.galleryConverterHeight) {
+        const h = galleryConverterSourceHeight || Number(elements.galleryConverterHeight.value) || 1080;
+        elements.galleryConverterHeight.value = String(Math.max(1, Math.round(h)));
+    }
+    if (elements.galleryConverterFileName) {
+        const baseNameRaw = String(window.aurivo?.path?.basename?.(srcPath) || 'image').replace(/\.[^.]+$/, '');
+        elements.galleryConverterFileName.value = `${baseNameRaw}-converted`;
+    }
+    updateGalleryConverterQualityLabel();
+    syncGalleryConverterFormatUi();
+    scheduleGalleryConverterPreviewRender(0);
+}
+
+async function openGalleryConverterModal() {
+    if (!elements.galleryConverterModal) return;
+    const srcPath = String(state.currentImagePath || '').trim();
+    if (!srcPath) {
+        safeNotify(uiT('gallery.converter.notify.imageNotFound', 'Dönüştürülecek fotoğraf bulunamadı.'), 'warning', 2200);
+        return;
+    }
+    const img = await loadImageForGallerySave(srcPath);
+    if (!img || !img.naturalWidth || !img.naturalHeight) {
+        safeNotify(uiT('gallery.converter.notify.imageSettingsLoadFailed', 'Fotoğraf dönüştürme ayarı için yüklenemedi.'), 'error', 2200);
+        return;
+    }
+    galleryConverterSourceWidth = Math.max(1, Number(img.naturalWidth) || 1);
+    galleryConverterSourceHeight = Math.max(1, Number(img.naturalHeight) || 1);
+    galleryConverterSourceImage = img;
+    resetGalleryConverterModalInputs();
+    if (elements.galleryConverterInfoName) {
+        elements.galleryConverterInfoName.textContent = String(window.aurivo?.path?.basename?.(srcPath) || '-');
+    }
+    if (elements.galleryConverterInfoExt) {
+        const ext = getPathExtension(srcPath);
+        elements.galleryConverterInfoExt.textContent = ext ? `.${ext}` : '-';
+    }
+    if (elements.galleryConverterInfoDimensions) {
+        elements.galleryConverterInfoDimensions.textContent = `${galleryConverterSourceWidth} x ${galleryConverterSourceHeight}`;
+    }
+    if (elements.galleryConverterInfoBytes) {
+        const info = await window.aurivo?.getFileInfo?.(srcPath);
+        const sizeBytes = Number(info?.size || 0);
+        elements.galleryConverterInfoBytes.textContent = sizeBytes > 0 ? formatMbLabel(sizeBytes) : '-';
+    }
+    elements.galleryConverterModal.classList.remove('hidden');
+    elements.galleryConverterModal.setAttribute('aria-hidden', 'false');
+    scheduleGalleryConverterPreviewRender(0);
+}
+
+function closeGalleryConverterModal() {
+    if (!elements.galleryConverterModal) return;
+    if (galleryConverterPreviewTimer) {
+        clearTimeout(galleryConverterPreviewTimer);
+        galleryConverterPreviewTimer = null;
+    }
+    galleryConverterPreviewRenderToken += 1;
+    galleryConverterSourceImage = null;
+    clearGalleryConverterPreviewImage();
+    elements.galleryConverterModal.classList.add('hidden');
+    elements.galleryConverterModal.setAttribute('aria-hidden', 'true');
+}
+
+function formatMbLabel(bytes = 0) {
+    const value = Math.max(0, Number(bytes) || 0);
+    return `${(value / (1024 * 1024)).toFixed(2)} MB`;
+}
+
+function approximateDataUrlBytes(dataUrl = '') {
+    const base64 = String(dataUrl || '').split(',')[1] || '';
+    return Math.floor((base64.length * 3) / 4);
+}
+
+function buildScaledCanvasFromSource(sourceCanvas, scale = 1) {
+    const safeScale = Math.max(0.1, Math.min(1, Number(scale) || 1));
+    const scaled = document.createElement('canvas');
+    scaled.width = Math.max(1, Math.round(sourceCanvas.width * safeScale));
+    scaled.height = Math.max(1, Math.round(sourceCanvas.height * safeScale));
+    const ctx = scaled.getContext('2d');
+    if (!ctx) return null;
+    ctx.drawImage(sourceCanvas, 0, 0, scaled.width, scaled.height);
+    return scaled;
+}
+
+function encodeLossyBestEffort(sourceCanvas, mime, preferredQuality = 0.92, targetBytes = 0) {
+    const safeQuality = Math.max(0.4, Math.min(1, Number(preferredQuality) || 0.92));
+    const target = Math.max(0, Number(targetBytes) || 0);
+    if (!target || target < 1024) {
+        const direct = sourceCanvas.toDataURL(mime, safeQuality);
+        return { dataUrl: direct, approxBytes: approximateDataUrlBytes(direct), usedQuality: safeQuality, usedScale: 1 };
+    }
+
+    const maxTry = sourceCanvas.toDataURL(mime, 1);
+    const maxBytes = approximateDataUrlBytes(maxTry);
+    if (maxBytes <= target) {
+        return { dataUrl: maxTry, approxBytes: maxBytes, usedQuality: 1, usedScale: 1 };
+    }
+
+    const minQualityFloor = 0.72;
+    const minQualityTry = sourceCanvas.toDataURL(mime, minQualityFloor);
+    const minQualityBytes = approximateDataUrlBytes(minQualityTry);
+    if (minQualityBytes <= target) {
+        let low = minQualityFloor;
+        let high = 1;
+        let bestData = minQualityTry;
+        let bestBytes = minQualityBytes;
+        let bestQ = minQualityFloor;
+        for (let i = 0; i < 10; i += 1) {
+            const q = (low + high) / 2;
+            const trial = sourceCanvas.toDataURL(mime, q);
+            const bytes = approximateDataUrlBytes(trial);
+            if (bytes <= target) {
+                bestData = trial;
+                bestBytes = bytes;
+                bestQ = q;
+                low = q;
+            } else {
+                high = q;
+            }
+        }
+        return { dataUrl: bestData, approxBytes: bestBytes, usedQuality: bestQ, usedScale: 1 };
+    }
+
+    let chosenData = sourceCanvas.toDataURL(mime, safeQuality);
+    let chosenBytes = approximateDataUrlBytes(chosenData);
+    let chosenScale = 1;
+    let chosenQuality = safeQuality;
+    for (let step = 1; step <= 8; step += 1) {
+        const scale = Math.max(0.52, 1 - (step * 0.06));
+        const scaledCanvas = buildScaledCanvasFromSource(sourceCanvas, scale);
+        if (!scaledCanvas) continue;
+        const trial = scaledCanvas.toDataURL(mime, safeQuality);
+        const bytes = approximateDataUrlBytes(trial);
+        if (bytes < chosenBytes) {
+            chosenData = trial;
+            chosenBytes = bytes;
+            chosenScale = scale;
+            chosenQuality = safeQuality;
+        }
+        if (bytes <= target) {
+            let low = safeQuality;
+            let high = 1;
+            let bestData = trial;
+            let bestBytes = bytes;
+            let bestQ = safeQuality;
+            for (let i = 0; i < 8; i += 1) {
+                const q = (low + high) / 2;
+                const hiTrial = scaledCanvas.toDataURL(mime, q);
+                const hiBytes = approximateDataUrlBytes(hiTrial);
+                if (hiBytes <= target) {
+                    bestData = hiTrial;
+                    bestBytes = hiBytes;
+                    bestQ = q;
+                    low = q;
+                } else {
+                    high = q;
+                }
+            }
+            return { dataUrl: bestData, approxBytes: bestBytes, usedQuality: bestQ, usedScale: scale };
+        }
+    }
+
+    return { dataUrl: chosenData, approxBytes: chosenBytes, usedQuality: chosenQuality, usedScale: chosenScale };
+}
+
+function encodePngBestEffort(sourceCanvas, targetBytes = 0) {
+    const target = Math.max(0, Number(targetBytes) || 0);
+    const direct = sourceCanvas.toDataURL('image/png');
+    if (!target || target < 1024) {
+        return { dataUrl: direct, approxBytes: approximateDataUrlBytes(direct), usedScale: 1 };
+    }
+    const directBytes = approximateDataUrlBytes(direct);
+    if (directBytes <= target) {
+        return { dataUrl: direct, approxBytes: directBytes, usedScale: 1 };
+    }
+
+    let chosenData = direct;
+    let chosenBytes = directBytes;
+    let chosenScale = 1;
+    for (let step = 1; step <= 14; step += 1) {
+        const scale = Math.max(0.16, 1 - (step * 0.06));
+        const scaledCanvas = buildScaledCanvasFromSource(sourceCanvas, scale);
+        if (!scaledCanvas) continue;
+        const trial = scaledCanvas.toDataURL('image/png');
+        const bytes = approximateDataUrlBytes(trial);
+        if (bytes < chosenBytes) {
+            chosenData = trial;
+            chosenBytes = bytes;
+            chosenScale = scale;
+        }
+        if (bytes <= target) {
+            return { dataUrl: trial, approxBytes: bytes, usedScale: scale };
+        }
+    }
+    return { dataUrl: chosenData, approxBytes: chosenBytes, usedScale: chosenScale };
+}
+
+function buildGalleryConversionDataUrl(canvas, mime, quality, targetBytes = 0) {
+    if (!canvas || !mime) return '';
+    if (mime === 'image/png') {
+        const result = encodePngBestEffort(canvas, targetBytes);
+        return String(result?.dataUrl || '');
+    }
+    const lossy = mime === 'image/jpeg' || mime === 'image/webp';
+    if (!lossy || !targetBytes || targetBytes < 1024) {
+        return mime === 'image/png'
+            ? canvas.toDataURL(mime)
+            : canvas.toDataURL(mime, quality);
+    }
+    const result = encodeLossyBestEffort(canvas, mime, quality, targetBytes);
+    return String(result?.dataUrl || '');
+}
+
+async function convertCurrentGalleryImageWithDialogSettings() {
+    try {
+        const srcPath = String(state.currentImagePath || '').trim();
+        if (!srcPath) {
+            safeNotify(uiT('gallery.converter.notify.imageNotFound', 'Dönüştürülecek fotoğraf bulunamadı.'), 'warning', 2200);
+            return;
+        }
+        const img = await loadImageForGallerySave(srcPath);
+        if (!img || !img.naturalWidth || !img.naturalHeight) {
+            safeNotify(uiT('gallery.converter.notify.imageLoadFailed', 'Fotoğraf dönüştürme için yüklenemedi.'), 'error', 2200);
+            return;
+        }
+        const format = String(elements.galleryConverterFormat?.value || 'png').toLowerCase();
+        const { mime, ext } = getGalleryConverterMimeAndExtension(format);
+        const outWidth = Math.max(1, Number(elements.galleryConverterWidth?.value) || Number(img.naturalWidth) || 1);
+        const outHeight = Math.max(1, Number(elements.galleryConverterHeight?.value) || Number(img.naturalHeight) || 1);
+        const quality = Math.max(0.4, Math.min(1, (Number(elements.galleryConverterQuality?.value) || 92) / 100));
+        const targetMbRaw = Number(elements.galleryConverterTargetKb?.value || 0);
+        const targetBytes = Number.isFinite(targetMbRaw) && targetMbRaw > 0 ? Math.round(targetMbRaw * 1024 * 1024) : 0;
+
+        const canvas = document.createElement('canvas');
+        canvas.width = outWidth;
+        canvas.height = outHeight;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+            safeNotify(uiT('gallery.converter.notify.canvasInitFailed', 'Dönüştürme için canvas başlatılamadı.'), 'error', 2200);
+            return;
+        }
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        const dataUrl = buildGalleryConversionDataUrl(canvas, mime, quality, targetBytes);
+        const base64 = String(dataUrl.split(',')[1] || '').trim();
+        if (!base64) {
+            safeNotify(uiT('gallery.converter.notify.dataBuildFailed', 'Dönüştürme verisi oluşturulamadı.'), 'error', 2200);
+            return;
+        }
+
+        const baseNameRaw = String(window.aurivo?.path?.basename?.(srcPath) || 'image').replace(/\.[^.]+$/, '');
+        const enteredName = String(elements.galleryConverterFileName?.value || '').trim();
+        const fallbackName = enteredName || `${baseNameRaw}-converted`;
+        const normalizedName = fallbackName.replace(/\.[^.]+$/, '');
+        const defaultName = `${normalizedName}.${ext}`;
+        const target = await window.aurivo?.saveFile?.({
+            title: uiT('gallery.converter.saveTitle', 'Fotoğrafı dönüştür ve kaydet'),
+            defaultPath: defaultName,
+            filters: [{ name: ext.toUpperCase(), extensions: [ext] }]
+        });
+        if (!target?.path) return;
+        const ok = await window.aurivo?.writeBase64File?.(target.path, base64);
+        if (!ok) {
+            safeNotify(uiT('gallery.converter.notify.outputSaveFailed', 'Dönüştürülen dosya kaydedilemedi.'), 'error', 2200);
+            return;
+        }
+        closeGalleryConverterModal();
+        const outBytes = Math.max(0, Math.round((base64.length * 3) / 4));
+        safeNotify(
+            uiT('gallery.converter.notify.doneWithSize', 'Dönüştürme tamamlandı ({size} MB).', {
+                size: (outBytes / (1024 * 1024)).toFixed(2)
+            }),
+            'success',
+            2000
+        );
+    } catch (error) {
+        safeNotify(uiT('gallery.converter.notify.failed', 'Dönüştürme başarısız: {error}', { error: error?.message || error }), 'error', 2400);
+    }
+}
+
+async function reloadGalleryAfterDiskMutation(preferredPath = '') {
+    const preferred = String(preferredPath || '').trim();
+    if (state.currentPath && state.mediaFilter === 'image') {
+        await loadDirectory(state.currentPath, false);
+    } else {
+        renderImageGallery(state.imageFiles, { persist: true });
+    }
+
+    const nextItem = preferred
+        ? state.imageFiles.find((item) => String(item?.path || '').trim() === preferred)
+        : null;
+    if (nextItem?.path) {
+        state.currentImagePath = nextItem.path;
+    } else if (!state.imageFiles.some((item) => String(item?.path || '').trim() === String(state.currentImagePath || '').trim())) {
+        state.currentImagePath = state.imageFiles[0]?.path || null;
+    }
+}
+
+async function renameCurrentGalleryImage() {
+    const current = getCurrentGalleryImageItem();
+    if (!current?.path || !window.aurivo?.renameItem) {
+        safeNotify(uiT('gallery.file.notify.notFound', 'Aktif görsel bulunamadı.'), 'warning', 1800);
+        return;
+    }
+
+    const currentName = String(current.name || window.aurivo?.path?.basename?.(current.path) || '').trim();
+    const extMatch = currentName.match(/\.[^./\\]+$/);
+    const currentExt = extMatch ? String(extMatch[0]) : '';
+    const currentBaseName = currentExt ? currentName.slice(0, -currentExt.length) : currentName;
+    const suggested = String(currentBaseName || currentName || 'image').trim();
+    const promptedName = await promptForTextInputInline({
+        title: uiT('gallery.file.rename', 'Yeniden Adlandır'),
+        message: uiT('gallery.file.prompt.rename', 'Yeni dosya adı:'),
+        defaultValue: suggested,
+        okLabel: uiT('gallery.file.rename', 'Yeniden Adlandır'),
+        cancelLabel: uiT('common.cancel', 'İptal')
+    });
+    if (promptedName == null) return;
+    const nextBaseRaw = String(promptedName || '').trim();
+    if (!nextBaseRaw) return;
+    const nextBase = currentExt
+        ? String(nextBaseRaw).replace(/\.[^./\\]+$/, '').trim()
+        : nextBaseRaw;
+    if (!nextBase) return;
+    const nextName = currentExt ? `${nextBase}${currentExt}` : nextBase;
+    if (!nextName || nextName === currentName) return;
+
+    const result = await window.aurivo.renameItem(current.path, nextName);
+    if (!result?.ok || !result?.path) {
+        if (result?.error === 'target-exists') {
+            safeNotify(uiT('gallery.file.notify.exists', 'Aynı adda bir dosya zaten var.'), 'warning', 2200);
+            return;
+        }
+        safeNotify(uiT('gallery.file.notify.renameFailed', 'Yeniden adlandırma başarısız.'), 'error', 2200);
+        return;
+    }
+
+    const oldPath = String(current.path);
+    const renamedPath = String(result.path);
+    const renamedName = String(result.name || window.aurivo?.path?.basename?.(renamedPath) || nextName).trim();
+    state.imageFiles = sanitizeImageLibraryItems(
+        state.imageFiles.map((item) => {
+            if (String(item?.path || '').trim() !== oldPath) return item;
+            return { path: renamedPath, name: renamedName, addedAt: Number(item?.addedAt || Date.now()) };
+        })
+    );
+    await reloadGalleryAfterDiskMutation(renamedPath);
+    if (elements.galleryLightbox && !elements.galleryLightbox.classList.contains('hidden')) {
+        await openImageInGalleryLightbox(renamedPath, renamedName, { transitionMode: 'instant' });
+    }
+    safeNotify(uiT('gallery.file.notify.renamed', 'Dosya yeniden adlandırıldı.'), 'success', 1700);
+}
+
+function promptForTextInputInline(options = {}) {
+    const title = String(options?.title || 'Girdi');
+    const message = String(options?.message || 'Değer girin:');
+    const defaultValue = String(options?.defaultValue || '');
+    const okLabel = String(options?.okLabel || 'Tamam');
+    const cancelLabel = String(options?.cancelLabel || 'İptal');
+
+    return new Promise((resolve) => {
+        const overlay = document.createElement('div');
+        overlay.style.position = 'fixed';
+        overlay.style.inset = '0';
+        overlay.style.background = 'rgba(6, 10, 18, 0.62)';
+        overlay.style.backdropFilter = 'blur(2px)';
+        overlay.style.zIndex = '25000';
+        overlay.style.display = 'flex';
+        overlay.style.alignItems = 'center';
+        overlay.style.justifyContent = 'center';
+
+        const panel = document.createElement('div');
+        panel.style.width = 'min(520px, calc(100vw - 28px))';
+        panel.style.borderRadius = '14px';
+        panel.style.padding = '16px';
+        panel.style.background = 'linear-gradient(160deg, rgba(15, 27, 44, 0.97), rgba(9, 18, 31, 0.97))';
+        panel.style.border = '1px solid rgba(84, 193, 255, 0.35)';
+        panel.style.boxShadow = '0 18px 50px rgba(0, 0, 0, 0.45)';
+        panel.style.color = '#d8ecff';
+
+        const heading = document.createElement('div');
+        heading.textContent = title;
+        heading.style.fontSize = '18px';
+        heading.style.fontWeight = '700';
+        heading.style.marginBottom = '8px';
+
+        const desc = document.createElement('div');
+        desc.textContent = message;
+        desc.style.fontSize = '14px';
+        desc.style.opacity = '0.92';
+        desc.style.marginBottom = '10px';
+
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.value = defaultValue;
+        input.style.width = '100%';
+        input.style.boxSizing = 'border-box';
+        input.style.padding = '10px 12px';
+        input.style.borderRadius = '10px';
+        input.style.border = '1px solid rgba(106, 199, 255, 0.45)';
+        input.style.background = 'rgba(10, 22, 35, 0.88)';
+        input.style.color = '#e9f7ff';
+        input.style.outline = 'none';
+        input.setAttribute('aria-label', message);
+
+        const actions = document.createElement('div');
+        actions.style.display = 'flex';
+        actions.style.justifyContent = 'flex-end';
+        actions.style.gap = '8px';
+        actions.style.marginTop = '12px';
+
+        const cancelBtn = document.createElement('button');
+        cancelBtn.type = 'button';
+        cancelBtn.textContent = cancelLabel;
+        cancelBtn.style.padding = '9px 14px';
+        cancelBtn.style.borderRadius = '10px';
+        cancelBtn.style.border = '1px solid rgba(130, 177, 218, 0.45)';
+        cancelBtn.style.background = 'rgba(18, 32, 47, 0.9)';
+        cancelBtn.style.color = '#dceeff';
+        cancelBtn.style.cursor = 'pointer';
+
+        const okBtn = document.createElement('button');
+        okBtn.type = 'button';
+        okBtn.textContent = okLabel;
+        okBtn.style.padding = '9px 14px';
+        okBtn.style.borderRadius = '10px';
+        okBtn.style.border = '1px solid rgba(98, 205, 255, 0.65)';
+        okBtn.style.background = 'linear-gradient(180deg, rgba(46, 156, 214, 0.9), rgba(25, 110, 170, 0.9))';
+        okBtn.style.color = '#ecf9ff';
+        okBtn.style.cursor = 'pointer';
+
+        const cleanup = (value) => {
+            document.removeEventListener('keydown', onKeyDown, true);
+            overlay.remove();
+            resolve(value);
+        };
+
+        const onKeyDown = (event) => {
+            if (event.key === 'Escape') {
+                event.preventDefault();
+                cleanup(null);
+                return;
+            }
+            if (event.key === 'Enter') {
+                event.preventDefault();
+                cleanup(String(input.value || ''));
+            }
+        };
+
+        cancelBtn.addEventListener('click', () => cleanup(null));
+        okBtn.addEventListener('click', () => cleanup(String(input.value || '')));
+        overlay.addEventListener('click', (event) => {
+            if (event.target === overlay) cleanup(null);
+        });
+
+        actions.appendChild(cancelBtn);
+        actions.appendChild(okBtn);
+        panel.appendChild(heading);
+        panel.appendChild(desc);
+        panel.appendChild(input);
+        panel.appendChild(actions);
+        overlay.appendChild(panel);
+        document.body.appendChild(overlay);
+        document.addEventListener('keydown', onKeyDown, true);
+
+        setTimeout(() => {
+            try {
+                input.focus();
+                input.select();
+            } catch {
+                // yoksay
+            }
+        }, 0);
+    });
+}
+
+async function moveCurrentGalleryImageToTrash() {
+    const current = getCurrentGalleryImageItem();
+    if (!current?.path || !window.aurivo?.moveToTrash) {
+        safeNotify(uiT('gallery.file.notify.notFound', 'Aktif görsel bulunamadı.'), 'warning', 1800);
+        return;
+    }
+
+    const approved = await window.aurivo?.dialog?.confirm?.({
+        title: uiT('gallery.file.trash', 'Çöp Kutusuna Gönder'),
+        message: uiT('gallery.file.confirmTrash', 'Bu görsel çöp kutusuna gönderilsin mi?'),
+        detail: String(current.name || ''),
+        okLabel: uiT('common.delete', 'Sil'),
+        cancelLabel: uiT('settings.buttons.cancel', 'İptal')
+    });
+    if (!approved) return;
+
+    const currentIndex = getCurrentGalleryImageIndex();
+    const oldPath = String(current.path);
+    const ok = await window.aurivo.moveToTrash(oldPath);
+    if (!ok) {
+        safeNotify(uiT('gallery.file.notify.trashFailed', 'Dosya çöp kutusuna gönderilemedi.'), 'error', 2200);
+        return;
+    }
+
+    const remaining = state.imageFiles.filter((item) => String(item?.path || '').trim() !== oldPath);
+    const preferredNext = remaining[Math.min(currentIndex, Math.max(remaining.length - 1, 0))]?.path || '';
+    state.imageFiles = sanitizeImageLibraryItems(remaining);
+    await reloadGalleryAfterDiskMutation(preferredNext);
+
+    if (elements.galleryLightbox && !elements.galleryLightbox.classList.contains('hidden')) {
+        const nextPath = String(state.currentImagePath || '').trim();
+        const nextItem = state.imageFiles.find((item) => String(item?.path || '').trim() === nextPath) || state.imageFiles[0];
+        if (nextItem?.path) {
+            await openImageInGalleryLightbox(nextItem.path, nextItem.name, { transitionMode: 'instant' });
+        } else {
+            closeGalleryLightbox();
+        }
+    }
+    safeNotify(uiT('gallery.file.notify.trashed', 'Dosya çöp kutusuna gönderildi.'), 'success', 1700);
+}
+
+async function openCurrentGalleryImageFolder() {
+    const current = getCurrentGalleryImageItem();
+    if (!current?.path || !window.aurivo?.openContainingFolder) {
+        safeNotify(uiT('gallery.file.notify.notFound', 'Aktif görsel bulunamadı.'), 'warning', 1800);
+        return;
+    }
+    const ok = await window.aurivo.openContainingFolder(current.path);
+    if (!ok) {
+        safeNotify(uiT('gallery.file.notify.openFolderFailed', 'Dosya konumu açılamadı.'), 'error', 2200);
+    }
+}
+
+async function showCurrentGalleryImageProperties() {
+    const current = getCurrentGalleryImageItem();
+    if (!current?.path || !window.aurivo?.getPathProperties) {
+        safeNotify(uiT('gallery.file.notify.notFound', 'Aktif görsel bulunamadı.'), 'warning', 1800);
+        return;
+    }
+    const info = await window.aurivo.getPathProperties(current.path);
+    if (!info) {
+        safeNotify(uiT('gallery.file.notify.propertiesFailed', 'Dosya özellikleri okunamadı.'), 'error', 2200);
+        return;
+    }
+
+    const detailLines = [
+        `${uiT('gallery.file.properties.path', 'Yol')}: ${info.path || '-'}`,
+        `${uiT('gallery.file.properties.folder', 'Klasör')}: ${info.directory || '-'}`,
+        `${uiT('gallery.file.properties.type', 'Tür')}: ${info.extension ? `.${info.extension}` : '-'}`,
+        `${uiT('gallery.file.properties.size', 'Boyut')}: ${formatFileSizeHuman(info.size)} (${Number(info.size || 0)} B)`,
+        `${uiT('gallery.file.properties.modified', 'Değiştirilme')}: ${info.modified ? new Date(info.modified).toLocaleString() : '-'}`,
+        `${uiT('gallery.file.properties.created', 'Oluşturulma')}: ${info.created ? new Date(info.created).toLocaleString() : '-'}`
+    ];
+    await window.aurivo?.dialog?.confirm?.({
+        title: uiT('gallery.file.properties', 'Özellikler'),
+        message: String(info.name || current.name || 'image'),
+        detail: detailLines.join('\n'),
+        okLabel: uiT('common.ok', 'Tamam'),
+        cancelLabel: uiT('settings.buttons.cancel', 'Kapat')
+    });
+}
+
+function closeGalleryLightbox() {
+    if (!elements.galleryLightbox) return;
+    closeGalleryConverterModal();
+    galleryImageTransitionToken += 1;
+    clearGalleryImageTransitionRuntime();
+    clearGalleryRedEyePreviewCache();
+    closeGalleryBottomViewModeMenu();
+    closeGalleryLightboxContextMenu();
+    setGalleryEditPanelOpen(false);
+    stopGallerySlideshow();
+    state.galleryCrop = { ...state.galleryCrop, drawing: false };
+    ensureGalleryAnnotationState();
+    ensureGalleryRedEyeState();
+    state.galleryAnnotation.drawing = false;
+    state.galleryAnnotation.draft = null;
+    state.galleryRedEye.mode = false;
+    clearGalleryUiHideTimer();
+    galleryUiFreezeHiddenUntilPointer = false;
+    setGalleryLightboxUiHidden(false);
+    galleryInlineFullscreenActive = false;
+    const shouldExitGalleryWindowFullscreen = galleryWindowFullscreenActive || fsWindowFullscreenActive;
+    galleryWindowFullscreenActive = false;
+    elements.galleryLightbox.classList.remove('gallery-fs-active');
+    elements.galleryLightbox.classList.add('hidden');
+    elements.galleryLightbox.setAttribute('aria-hidden', 'true');
+    if (shouldExitGalleryWindowFullscreen) {
+        setWindowFullscreenSafe(false)
+            .then(() => syncWindowFullscreenState())
+            .then(() => syncGalleryFullscreenLayoutState())
+            .catch(() => { /* yoksay */ });
+    }
+    if (elements.galleryLightboxImage) {
+        elements.galleryLightboxImage.classList.remove('gallery-transition-out');
+        elements.galleryLightboxImage.style.removeProperty('--gallery-fade-out-ms');
+        elements.galleryLightboxImage.style.removeProperty('--gallery-fade-in-ms');
+        elements.galleryLightboxImage.style.removeProperty('transform');
+        elements.galleryLightboxImage.src = '';
+        elements.galleryLightboxImage.style.filter = '';
+    }
+    if (elements.galleryLightboxCaption) {
+        elements.galleryLightboxCaption.textContent = '';
+    }
+    updateGalleryImageCounterUi();
+    syncGalleryFullscreenLayoutState();
+    if (elements.galleryAnnotationCanvas) {
+        const ctx = elements.galleryAnnotationCanvas.getContext('2d');
+        if (ctx) ctx.clearRect(0, 0, elements.galleryAnnotationCanvas.width, elements.galleryAnnotationCanvas.height);
+        elements.galleryAnnotationCanvas.classList.add('hidden');
+    }
+    applyGalleryCropUiState();
+    updateGalleryAnnotationToolButtonsUi();
+}
+
+async function openImageInGalleryLightbox(filePath = '', label = '', options = {}) {
+    if (!elements.galleryLightbox || !elements.galleryLightboxImage) return;
+    const normalizedPath = String(filePath || '').trim();
+    if (!normalizedPath) return;
+    const transitionModeRaw = String(options?.transitionMode || 'manual').trim().toLowerCase();
+    const transitionMode = ['manual', 'slideshow', 'instant', 'keyboard'].includes(transitionModeRaw) ? transitionModeRaw : 'manual';
+    const transitionPreset = getGalleryImageTransitionPreset(transitionMode);
+    const lightboxWasHidden = elements.galleryLightbox.classList.contains('hidden');
+    const targetUrl = await resolveGalleryDisplayImageUrl(normalizedPath, { forceConvert: false });
+    if (!targetUrl) return;
+
+    const transitionToken = ++galleryImageTransitionToken;
+    clearGalleryImageTransitionRuntime();
+    clearGalleryRedEyePreviewCache();
+    const imageEl = elements.galleryLightboxImage;
+    imageEl.classList.remove('gallery-transition-out');
+    applyGalleryImageTransitionClasses(transitionPreset);
+
+    state.currentImagePath = normalizedPath;
+    if (elements.galleryLightboxCaption) {
+        elements.galleryLightboxCaption.textContent = '';
+    }
+
+    const currentSrc = String(imageEl.src || '');
+    const sameImage = currentSrc === targetUrl;
+    const shouldAnimate =
+        !lightboxWasHidden &&
+        !sameImage &&
+        transitionMode !== 'instant' &&
+        (transitionPreset.outMs > 0 || transitionPreset.inMs > 0);
+    const shouldPreloadForTransition = shouldAnimate && transitionMode !== 'keyboard';
+
+    if (shouldPreloadForTransition) {
+        await preloadGalleryImage(targetUrl);
+        if (transitionToken !== galleryImageTransitionToken) return;
+    }
+
+    if (shouldAnimate && transitionPreset.outMs > 0) {
+        imageEl.classList.add('gallery-transition-out');
+        await new Promise((resolve) => {
+            galleryImageTransitionTimer = setTimeout(resolve, transitionPreset.outMs);
+        });
+        if (transitionToken !== galleryImageTransitionToken) return;
+        clearGalleryImageTransitionRuntime();
+    }
+
+    imageEl.dataset.galleryPath = normalizedPath;
+    imageEl.dataset.galleryFallbackTried = '0';
+    imageEl.src = targetUrl;
+    if (shouldAnimate) {
+        requestAnimationFrame(() => {
+            if (transitionToken !== galleryImageTransitionToken) return;
+            imageEl.classList.remove('gallery-transition-out');
+        });
+    }
+
+    state.galleryCrop = { ...state.galleryCrop, drawing: false };
+    ensureGalleryAnnotationState();
+    ensureGalleryRedEyeState();
+    state.galleryAnnotation.items = [];
+    state.galleryAnnotation.draft = null;
+    state.galleryAnnotation.drawing = false;
+    state.galleryRedEye.points = [];
+    state.galleryRedEye.mode = false;
+    resetGalleryViewForImage();
+    syncGalleryEditUi();
+    const perf = getLibraryPerformanceState();
+    applyGalleryBackgroundMode(perf.galleryBackgroundMode || 'dim', { persist: false });
+    setGalleryMiniNavigatorEnabled(false, { persist: false });
+    applyGalleryImageFilter();
+    applyGalleryCropUiState();
+    renderGalleryAnnotationOverlay();
+    renderGalleryMiniNavigator();
+    updateGalleryAnnotationToolButtonsUi();
+    updateGalleryLightboxNavState();
+    updateGallerySlideshowToggleUi();
+    updateGallerySlideshowQuickButtonsUi();
+    setGalleryEditPanelOpen(false);
+    closeGalleryLightboxContextMenu();
+    elements.galleryLightbox.classList.remove('hidden');
+    elements.galleryLightbox.setAttribute('aria-hidden', 'false');
+    syncGalleryFullscreenLayoutState();
+    refreshGalleryLightboxUiAutohide();
+}
+
+function normalizeGalleryThumbnailRotation(deg) {
+    const raw = Number(deg);
+    if (!Number.isFinite(raw)) return 0;
+    const normalized = ((Math.round(raw / 90) * 90) % 360 + 360) % 360;
+    return normalized;
+}
+
+function getGalleryThumbnailRotation(path = '') {
+    const normalizedPath = String(path || '').trim();
+    if (!normalizedPath) return 0;
+    return normalizeGalleryThumbnailRotation(galleryThumbnailRotationDegByPath.get(normalizedPath) || 0);
+}
+
+function applyGalleryThumbnailRotationToCard(path = '', card = null) {
+    const normalizedPath = String(path || '').trim();
+    if (!normalizedPath) return;
+    const targetCard = card || document.querySelector(`.gallery-item[data-gallery-path="${CSS.escape(normalizedPath)}"]`);
+    const image = targetCard?.querySelector?.('.gallery-item-preview-image');
+    if (!image) return;
+    const rotation = getGalleryThumbnailRotation(normalizedPath);
+    image.style.transform = `rotate(${rotation}deg)`;
+}
+
+function rotateGalleryThumbnail(path = '', deltaDeg = 90) {
+    const normalizedPath = String(path || '').trim();
+    if (!normalizedPath) return;
+    const next = normalizeGalleryThumbnailRotation(getGalleryThumbnailRotation(normalizedPath) + Number(deltaDeg || 0));
+    galleryThumbnailRotationDegByPath.set(normalizedPath, next);
+    applyGalleryThumbnailRotationToCard(normalizedPath);
+}
+
+function getGalleryThumbnailSaveFormat(path = '') {
+    const normalizedPath = String(path || '').trim();
+    const ext = (normalizedPath.match(/\.([^.\/\\]+)$/)?.[1] || '').toLowerCase();
+    if (ext === 'jpg' || ext === 'jpeg') {
+        return { mime: 'image/jpeg', quality: 0.95 };
+    }
+    if (ext === 'png') {
+        return { mime: 'image/png', quality: undefined };
+    }
+    if (ext === 'webp') {
+        return { mime: 'image/webp', quality: 0.95 };
+    }
+    return null;
+}
+
+async function loadImageForGallerySave(path = '') {
+    const fileUrl = await resolveGalleryDisplayImageUrl(path, { forceConvert: true });
+    if (!fileUrl) return null;
+    return await new Promise((resolve) => {
+        const probe = new Image();
+        let settled = false;
+        const done = (value) => {
+            if (settled) return;
+            settled = true;
+            resolve(value || null);
+        };
+        probe.onload = () => done(probe);
+        probe.onerror = () => done(null);
+        probe.src = `${fileUrl}${fileUrl.includes('?') ? '&' : '?'}v=${Date.now()}`;
+        setTimeout(() => done(null), 5000);
+    });
+}
+
+async function refreshGalleryThumbnailImage(path = '', card = null) {
+    const normalizedPath = String(path || '').trim();
+    if (!normalizedPath) return;
+    const targetCard = card || document.querySelector(`.gallery-item[data-gallery-path="${CSS.escape(normalizedPath)}"]`);
+    const image = targetCard?.querySelector?.('.gallery-item-preview-image');
+    if (!image) return;
+    galleryDisplayImageUrlCache.delete(normalizedPath);
+    const url = await resolveGalleryDisplayImageUrl(normalizedPath, { forceConvert: false });
+    if (!url) return;
+    image.dataset.galleryPath = normalizedPath;
+    image.dataset.galleryFallbackTried = '0';
+    image.src = `${url}${url.includes('?') ? '&' : '?'}v=${Date.now()}`;
+    image.style.transform = 'rotate(0deg)';
+}
+
+async function saveGalleryThumbnailRotation(path = '', label = '') {
+    const normalizedPath = String(path || '').trim();
+    if (!normalizedPath) return;
+    const rotation = getGalleryThumbnailRotation(normalizedPath);
+    if (!rotation) {
+        safeNotify('Kaydedilecek dondurme yok.', 'info', 1600);
+        return;
+    }
+    const format = getGalleryThumbnailSaveFormat(normalizedPath);
+    if (!format) {
+        safeNotify('Bu formatta hizli kaydetme desteklenmiyor (jpg, png, webp).', 'warning', 2400);
+        return;
+    }
+
+    try {
+        const image = await loadImageForGallerySave(normalizedPath);
+        if (!image || !image.naturalWidth || !image.naturalHeight) {
+            safeNotify('Gorsel yuklenemedi, kaydetme iptal edildi.', 'error', 2200);
+            return;
+        }
+
+        const srcW = Math.max(1, Number(image.naturalWidth) || 1);
+        const srcH = Math.max(1, Number(image.naturalHeight) || 1);
+        const swapAxes = rotation === 90 || rotation === 270;
+        const canvas = document.createElement('canvas');
+        canvas.width = swapAxes ? srcH : srcW;
+        canvas.height = swapAxes ? srcW : srcH;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+            safeNotify('Kaydetme icin canvas baslatilamadi.', 'error', 2200);
+            return;
+        }
+
+        ctx.save();
+        ctx.translate(canvas.width / 2, canvas.height / 2);
+        ctx.rotate((rotation * Math.PI) / 180);
+        ctx.drawImage(image, -srcW / 2, -srcH / 2);
+        ctx.restore();
+
+        const dataUrl = format.quality == null
+            ? canvas.toDataURL(format.mime)
+            : canvas.toDataURL(format.mime, format.quality);
+        const base64 = String(dataUrl.split(',')[1] || '').trim();
+        if (!base64) {
+            safeNotify('Gorsel verisi olusturulamadi.', 'error', 2200);
+            return;
+        }
+
+        const ok = await window.aurivo?.writeBase64File?.(normalizedPath, base64);
+        if (!ok) {
+            safeNotify('Dosya kaydedilemedi.', 'error', 2200);
+            return;
+        }
+
+        galleryThumbnailRotationDegByPath.set(normalizedPath, 0);
+        galleryDisplayImageUrlCache.delete(normalizedPath);
+        applyGalleryThumbnailRotationToCard(normalizedPath);
+        void refreshGalleryThumbnailImage(normalizedPath);
+        if (String(state.currentImagePath || '') === normalizedPath && elements.galleryLightbox && !elements.galleryLightbox.classList.contains('hidden')) {
+            await openImageInGalleryLightbox(normalizedPath, label, { transitionMode: 'instant' });
+        }
+        safeNotify('Dondurulen gorsel kaydedildi.', 'success', 1800);
+    } catch (error) {
+        safeNotify(`Kaydetme basarisiz: ${error?.message || error}`, 'error', 2400);
+    }
+}
+
+async function openGalleryImageInFullscreen(path = '', label = '') {
+    const normalizedPath = String(path || '').trim();
+    if (!normalizedPath) return;
+    await openImageInGalleryLightbox(normalizedPath, label);
+    // Kullanıcı isteği: uygulama içi değil, pencere seviyesinde gerçek tam ekran.
+    if (!isGalleryWindowFullscreenActive()) {
+        await toggleGalleryWindowFullscreen();
+    }
+}
+
+function hydrateGalleryPreviewFallbacks() {
+    const previewImages = Array.from(document.querySelectorAll('.gallery-item-preview-image[data-gallery-path]'));
+    previewImages.forEach((image) => {
+        image.dataset.galleryFallbackTried = '0';
+        image.addEventListener('error', () => {
+            const sourcePath = String(image.dataset.galleryPath || '').trim();
+            if (!sourcePath) return;
+            void recoverGalleryImageElementSource(image, sourcePath);
+        }, { once: true });
+        const sourcePath = String(image.dataset.galleryPath || '').trim();
+        if (!sourcePath || !prefersGalleryImageConversion(sourcePath)) return;
+        void (async () => {
+            const resolved = await resolveGalleryDisplayImageUrl(sourcePath, { forceConvert: false });
+            if (!resolved) return;
+            if (String(image.src || '') !== resolved) {
+                image.src = resolved;
+            }
+        })();
+    });
+}
+
+function renderImageGallery(files = [], options = {}) {
+    if (!elements.playlist) return;
+    elements.musicPage?.classList?.remove('workspace-bg-visible');
+    const list = Array.isArray(files) ? files : [];
+    state.imageFiles = sortImageLibraryItems(
+        list.map((file) => ({ name: file.name, path: file.path, addedAt: file.addedAt }))
+    );
+    if (options?.persist === true) {
+        persistImageLibrary();
+    }
+    if (!state.imageFiles.some((item) => String(item?.path || '') === String(state.currentImagePath || ''))) {
+        state.currentImagePath = state.imageFiles[0]?.path || null;
+    }
+    if (state.imageFiles.length <= 1 && state.gallerySlideshowActive) {
+        stopGallerySlideshow();
+    }
+    updateGallerySlideshowQuickButtonsUi();
+    const liveGalleryPaths = new Set(state.imageFiles.map((item) => String(item?.path || '').trim()).filter(Boolean));
+    for (const path of galleryThumbnailRotationDegByPath.keys()) {
+        if (!liveGalleryPaths.has(path)) {
+            galleryThumbnailRotationDegByPath.delete(path);
+        }
+    }
+    for (const path of galleryDisplayImageUrlCache.keys()) {
+        if (!liveGalleryPaths.has(path)) {
+            galleryDisplayImageUrlCache.delete(path);
+        }
+    }
+
+    const viewPrefs = getLibraryViewPreferenceState();
+    const galleryModeClass = `gallery-view-${viewPrefs.mode}`;
+    const renderItems = reorderGalleryItemsForLeftToRightColumns(state.imageFiles, viewPrefs.mode);
+    elements.playlist.classList.remove(
+        'has-playing-focus',
+        'playlist-large-mode',
+        'playlist-view-cards',
+        'playlist-view-compact',
+        'playlist-view-comfortable',
+        'playlist-view-list',
+        'gallery-view-list',
+        'gallery-view-compact',
+        'gallery-view-comfortable',
+        'gallery-view-cards'
+    );
+    elements.playlist.classList.add('gallery-mode', galleryModeClass);
+
+    if (!state.imageFiles.length) {
+        elements.playlist.innerHTML = `
+            <div class="gallery-empty-state">
+                <div class="gallery-empty-title">Galeri boş</div>
+                <div class="gallery-empty-sub">Fotoğraf eklemek için sol panelden "Fotoğraf Aç" butonunu kullanın.</div>
+            </div>
+        `;
+        updateGalleryLightboxNavState();
+        return;
+    }
+
+    const cards = renderItems.map((file) => {
+        const safeName = escapeHtml(String(file?.name || '').trim() || 'Gorsel');
+        const safePath = escapeAttribute(String(file?.path || '').trim());
+        const rotationDeg = getGalleryThumbnailRotation(file?.path);
+        const previewSrc = escapeAttribute(galleryDisplayImageUrlCache.get(String(file?.path || '').trim()) || toLocalFileUrl(file.path));
+        const openImageLabel = escapeAttribute(uiT('gallery.card.openImage', 'Open image'));
+        const quickActionsLabel = escapeAttribute(uiT('gallery.card.quickActions', 'Gallery quick actions'));
+        const openFullscreenLabel = escapeAttribute(uiT('gallery.card.openFullscreen', 'Open in fullscreen'));
+        const saveRotationLabel = escapeAttribute(uiT('gallery.card.saveRotation', 'Save rotation'));
+        const rotateLeftLabel = escapeAttribute(uiT('gallery.card.rotateLeft', 'Rotate left'));
+        const rotateRightLabel = escapeAttribute(uiT('gallery.card.rotateRight', 'Rotate right'));
+        return `
+            <article class="gallery-item" data-gallery-path="${safePath}" title="${safeName}">
+                <div class="gallery-item-preview-wrap" data-gallery-action="open" aria-label="${openImageLabel}">
+                    <img class="gallery-item-preview-image" data-gallery-path="${safePath}" src="${previewSrc}" alt="${safeName}" loading="lazy" decoding="async" style="transform: rotate(${rotationDeg}deg);">
+                    <div class="gallery-item-hover-actions" role="group" aria-label="${quickActionsLabel}">
+                        <button type="button" class="gallery-item-action" data-gallery-action="open-fullscreen" title="${openFullscreenLabel}" aria-label="${openFullscreenLabel}">
+                            <span class="material-symbols-rounded" aria-hidden="true">fullscreen</span>
+                        </button>
+                        <button type="button" class="gallery-item-action" data-gallery-action="save-rotation" title="${saveRotationLabel}" aria-label="${saveRotationLabel}">
+                            <span class="material-symbols-rounded" aria-hidden="true">save</span>
+                        </button>
+                        <button type="button" class="gallery-item-action" data-gallery-action="rotate-left" title="${rotateLeftLabel}" aria-label="${rotateLeftLabel}">
+                            <span class="material-symbols-rounded" aria-hidden="true">rotate_left</span>
+                        </button>
+                        <button type="button" class="gallery-item-action" data-gallery-action="rotate-right" title="${rotateRightLabel}" aria-label="${rotateRightLabel}">
+                            <span class="material-symbols-rounded" aria-hidden="true">rotate_right</span>
+                        </button>
+                    </div>
+                </div>
+                <button type="button" class="gallery-item-name" data-gallery-action="open" title="${safeName}" aria-label="${openImageLabel}">${safeName}</button>
+            </article>
+        `;
+    }).join('');
+
+    elements.playlist.innerHTML = `<div class="gallery-grid">${cards}</div>`;
+    hydrateGalleryPreviewFallbacks();
+    updateGalleryLightboxNavState();
+    updateGallerySlideshowToggleUi();
 }
 
 function normalizeExternalMediaPath(input) {
@@ -20555,6 +26693,21 @@ async function loadPlaylist() {
                 lastPlayedAt: Number(activity.lastPlayedAt || item?.lastPlayedAt || 0)
             };
         });
+        const librarySettings = ensureLibrarySettings();
+        if (!librarySettings.manualOrderActive) {
+            let changed = false;
+            if (String(librarySettings.viewSort || '').toLowerCase() !== 'title') {
+                librarySettings.viewSort = 'title';
+                if (elements.libraryViewSort) elements.libraryViewSort.value = 'title';
+                changed = true;
+            }
+            if (String(librarySettings.viewGroup || '').toLowerCase() !== 'none') {
+                librarySettings.viewGroup = 'none';
+                if (elements.libraryViewGroup) elements.libraryViewGroup.value = 'none';
+                changed = true;
+            }
+            if (changed) saveSettings().catch(() => {});
+        }
         invalidateAudioLibraryIndex();
         renderPlaylist();
     }
@@ -20566,16 +26719,130 @@ async function savePlaylistToDisk() {
     }
 }
 
+function clearPlaylistReorderPreview() {
+    if (!elements.playlist) return;
+    elements.playlist.style.removeProperty('--playlist-drag-shift');
+    elements.playlist.querySelectorAll('.playlist-item.drag-shift-up, .playlist-item.drag-shift-down, .playlist-item.is-drop-target, .playlist-item.is-drop-before, .playlist-item.is-drop-after').forEach((node) => {
+        node.classList.remove('drag-shift-up', 'drag-shift-down', 'is-drop-target', 'is-drop-before', 'is-drop-after');
+    });
+    libraryQueueDragRuntime.previewTargetIndex = -1;
+    libraryQueueDragRuntime.previewPlacement = 'before';
+    libraryQueueDragRuntime.previewInsertSlot = -1;
+    libraryQueueDragRuntime.lastPreviewChangeAt = 0;
+}
+
+function resolveQueueDropPlacement(targetElement, pointerClientX, pointerClientY, targetIndex) {
+    const rect = targetElement.getBoundingClientRect();
+    const axis = libraryQueueDragRuntime.placementAxis === 'x' ? 'x' : 'y';
+    const midpoint = axis === 'x'
+        ? rect.left + (rect.width / 2)
+        : rect.top + (rect.height / 2);
+    const pointerPosRaw = axis === 'x' ? Number(pointerClientX) : Number(pointerClientY);
+    const pointerPos = Number.isFinite(pointerPosRaw) ? pointerPosRaw : midpoint;
+    const deadZonePx = axis === 'x'
+        ? Math.max(8, Math.min(18, rect.width * 0.14))
+        : Math.max(5, Math.min(12, rect.height * 0.14));
+    const distanceFromMid = pointerPos - midpoint;
+
+    // Midpoint çevresinde karar titremesini önlemek için mevcut yönü koru.
+    if (
+        Math.abs(distanceFromMid) <= deadZonePx &&
+        libraryQueueDragRuntime.previewTargetIndex === targetIndex
+    ) {
+        return libraryQueueDragRuntime.previewPlacement === 'after' ? 'after' : 'before';
+    }
+
+    return distanceFromMid >= 0 ? 'after' : 'before';
+}
+
+function shouldKeepCurrentReorderTarget(pointerClientX, pointerClientY, candidateIndex) {
+    const currentIndex = Number.isInteger(libraryQueueDragRuntime.previewTargetIndex)
+        ? libraryQueueDragRuntime.previewTargetIndex
+        : -1;
+    if (currentIndex < 0 || currentIndex === candidateIndex) return false;
+
+    const axis = libraryQueueDragRuntime.placementAxis === 'x' ? 'x' : 'y';
+    const pointerPosRaw = axis === 'x'
+        ? Number(pointerClientX)
+        : Number(pointerClientY);
+    if (!Number.isFinite(pointerPosRaw)) return false;
+
+    const currentNode = elements.playlist?.querySelector(`.playlist-item.queue-draggable-item[data-index="${currentIndex}"]`);
+    if (!(currentNode instanceof HTMLElement)) return false;
+
+    const rect = currentNode.getBoundingClientRect();
+    if (axis === 'x') {
+        const lockMargin = Math.max(10, Math.min(24, rect.width * 0.22));
+        return pointerPosRaw >= (rect.left + lockMargin) && pointerPosRaw <= (rect.right - lockMargin);
+    }
+    const lockMargin = Math.max(8, Math.min(18, rect.height * 0.22));
+    return pointerPosRaw >= (rect.top + lockMargin) && pointerPosRaw <= (rect.bottom - lockMargin);
+}
+
+function updatePlaylistReorderPreview(insertSlot) {
+    if (!elements.playlist) return;
+    if (!libraryQueueDragRuntime.shiftPreviewEnabled) {
+        elements.playlist.style.removeProperty('--playlist-drag-shift');
+        elements.playlist.querySelectorAll('.playlist-item.drag-shift-up, .playlist-item.drag-shift-down').forEach((node) => {
+            node.classList.remove('drag-shift-up', 'drag-shift-down');
+        });
+        return;
+    }
+    const draggingNode = elements.playlist.querySelector('.playlist-item.queue-draggable-item.is-dragging');
+    const dropTargetNode = elements.playlist.querySelector('.playlist-item.queue-draggable-item.is-drop-target');
+    const fromSlot = Number.parseInt(String(draggingNode?.dataset?.visualOrder || ''), 10);
+
+    if (!Number.isInteger(insertSlot) || !Number.isInteger(fromSlot) || insertSlot < 0 || fromSlot === insertSlot) {
+        clearPlaylistReorderPreview();
+        return;
+    }
+
+    const shiftPx = Math.max(42, Number(libraryQueueDragRuntime.dragItemHeight || 0) + 6);
+    elements.playlist.style.setProperty('--playlist-drag-shift', `${shiftPx}px`);
+
+    elements.playlist.querySelectorAll('.playlist-item.queue-draggable-item').forEach((node) => {
+        const nodeSlot = Number.parseInt(String(node?.dataset?.visualOrder || ''), 10);
+        node.classList.remove('drag-shift-up', 'drag-shift-down');
+        if (!Number.isInteger(nodeSlot) || node === draggingNode || node === dropTargetNode) return;
+
+        if (fromSlot < insertSlot && nodeSlot > fromSlot && nodeSlot < insertSlot) {
+            node.classList.add('drag-shift-up');
+        } else if (fromSlot > insertSlot && nodeSlot >= insertSlot && nodeSlot < fromSlot) {
+            node.classList.add('drag-shift-down');
+        }
+    });
+}
+
 function renderPlaylist() {
     if (!elements.playlist) {
         return;
     }
+    syncLibrarySurfaceControlsUi();
+    const isGalleryActive =
+        state.currentPage === 'gallery' ||
+        state.mediaFilter === 'image' ||
+        document.body?.classList?.contains('gallery-mode') ||
+        !!document.querySelector('.sidebar-btn[data-page="gallery"].active');
+    if (isGalleryActive) {
+        renderImageGallery(state.imageFiles || []);
+        return;
+    }
+    elements.playlist.classList.remove(
+        'gallery-mode',
+        'gallery-view-list',
+        'gallery-view-compact',
+        'gallery-view-comfortable',
+        'gallery-view-cards'
+    );
     const hasNowPlayingFocus = state.activeMedia === 'audio' && state.isPlaying && state.currentIndex >= 0;
     const largePlaylistMode = state.playlist.length > 300;
     elements.playlist.classList.toggle('has-playing-focus', hasNowPlayingFocus);
     const viewPrefs = getLibraryViewPreferenceState();
     const perfState = getLibraryPerformanceState();
     const isCardView = viewPrefs.mode === 'cards' && !largePlaylistMode;
+    libraryQueueDragRuntime.placementAxis = isCardView ? 'x' : 'y';
+    libraryQueueDragRuntime.shiftPreviewEnabled = false;
+    elements.musicPage?.classList?.toggle('workspace-bg-visible', isCardView);
     elements.playlist.classList.toggle('playlist-large-mode', largePlaylistMode);
     elements.playlist.classList.toggle('playlist-view-cards', isCardView);
     elements.playlist.classList.toggle('playlist-view-compact', viewPrefs.mode === 'compact' && !largePlaylistMode);
@@ -20584,18 +26851,33 @@ function renderPlaylist() {
     elements.playlist.innerHTML = '';
 
     if (state.playlist.length === 0) {
+        const emptyState = getLibrarySurfaceEmptyState();
         elements.playlist.innerHTML = `
             <div class="playlist-empty">
-                <div class="empty-icon">🎵</div>
-                <div class="empty-text">Müzik veya video dosyalarını buraya sürükleyin</div>
-                <div class="empty-hint">veya sol taraftaki klasörlerden seçin</div>
+                <div class="empty-icon">${emptyState.icon}</div>
+                <div class="empty-text">${escapeHtml(emptyState.text)}</div>
+                <div class="empty-hint">${escapeHtml(emptyState.hint)}</div>
+            </div>
+        `;
+        return;
+    }
+
+    const viewEntries = getPlaylistPresentationEntriesForLibrarySurface();
+    if (!viewEntries.some((entry) => entry?.type === 'item')) {
+        const emptyState = getLibrarySurfaceEmptyState();
+        elements.playlist.innerHTML = `
+            <div class="playlist-empty">
+                <div class="empty-icon">${emptyState.icon}</div>
+                <div class="empty-text">${escapeHtml(emptyState.text)}</div>
+                <div class="empty-hint">${escapeHtml(emptyState.hint)}</div>
             </div>
         `;
         return;
     }
 
     const fragment = document.createDocumentFragment();
-    getPlaylistPresentationEntries().forEach((entry) => {
+    const isCollectionTabActive = state.mediaFilter === 'audio' && String(state.libraryViewTab || '').toLowerCase() === 'collection';
+    viewEntries.forEach((entry) => {
         if (entry.type === 'header') {
             const header = document.createElement('div');
             header.className = 'playlist-group-header';
@@ -20619,6 +26901,11 @@ function renderPlaylist() {
             div.classList.add('is-paused');
         }
         div.dataset.index = index;
+        div.dataset.visualOrder = String(visualOrder);
+        if (isCollectionTabActive) {
+            div.setAttribute('draggable', 'true');
+            div.classList.add('queue-draggable-item');
+        }
 
         const icon = isVideoFile(item.name) ? '🎬' : '🎵';
         const statusGlyph = isAudioCurrent ? (isTrackPlaying ? '❚❚' : '▶') : String(visualOrder + 1);
@@ -20626,13 +26913,21 @@ function renderPlaylist() {
         const showCardCover = isCardView && !isVideoFile(item.name) && !perfState.lightweightMode;
         const showMissingCover = !largePlaylistMode && getCoverPreferenceState().markMissing && item.hasCover === false;
         const metaParts = [artist, album].filter(Boolean);
-        div.title = metaParts.length ? `${item.name}\n${metaParts.join(' • ')}` : item.name;
+        const baseTitle = metaParts.length ? `${item.name}\n${metaParts.join(' • ')}` : item.name;
+        div.title = isCollectionTabActive ? `${baseTitle}\nSürükleyip sırayı değiştir` : baseTitle;
         
         const flowBadges = (perfState.lightweightMode || largePlaylistMode) ? [] : getTrackFlowBadges(item.path);
+        const flowBadgesMarkup = flowBadges.length
+            ? `<span class="item-flow-badges">${flowBadges.map((badge) => `<span class="playlist-flow-badge">${escapeHtml(badge)}</span>`).join('')}</span>`
+            : '';
+        const inlineFlowBadges = isCardView ? '' : flowBadgesMarkup;
+        const sideFlowBadges = isCardView ? flowBadgesMarkup : '';
         const knownCardCover = showCardCover ? getKnownPlaylistCardCover(item.path) : null;
         const canRetryCover = showCardCover ? canRetryPlaylistCardCover(item.path) : false;
         const definitelyNoCover = showCardCover && !knownCardCover && !canRetryCover;
-
+        const queueDragHandle = isCollectionTabActive
+            ? '<span class="queue-drag-handle material-symbols-rounded" aria-hidden="true" title="Sırayı değiştirmek için sürükle">drag_indicator</span>'
+            : '';
         const largeFallbackImg = isVideoFile(item.name) ? 'icons/fallback_video.svg' : 'icons/fallback_audio.svg';
         const leadingVisual = showCardCover
             ? `<span class="playlist-card-cover" style="${definitelyNoCover ? 'background: transparent; border: none; box-shadow: none;' : ''}">
@@ -20646,9 +26941,11 @@ function renderPlaylist() {
             <span class="item-text">
                 <span class="item-name">${item.name}</span>
                 ${metaParts.length ? `<span class="item-meta">${escapeHtml(metaParts.join(' • '))}</span>` : ''}
-                ${flowBadges.length ? `<span class="item-flow-badges">${flowBadges.map((badge) => `<span class="playlist-flow-badge">${escapeHtml(badge)}</span>`).join('')}</span>` : ''}
+                ${inlineFlowBadges}
             </span>
+            ${sideFlowBadges}
             ${(!perfState.lightweightMode && showMissingCover) ? `<span class="playlist-cover-badge">${escapeHtml(uiT('settings.library.cover.missingBadge', 'Kapak yok'))}</span>` : ''}
+            ${queueDragHandle}
             <button class="item-remove" data-index="${index}">✕</button>
         `;
 
@@ -20665,6 +26962,114 @@ function renderPlaylist() {
             e.preventDefault();
             showPlaylistContextMenu(e.clientX, e.clientY, index);
         });
+        if (isCollectionTabActive) {
+            div.addEventListener('dragstart', (e) => {
+                libraryQueueDragRuntime.dragIndex = index;
+                libraryQueueDragRuntime.dragItemHeight = Number(div.offsetHeight) || 0;
+                div.classList.add('is-dragging');
+                document.body?.classList?.add('playlist-reorder-dragging');
+                try {
+                    if (e.dataTransfer) {
+                        e.dataTransfer.effectAllowed = 'move';
+                        e.dataTransfer.setData('text/plain', String(index));
+                        e.dataTransfer.setData('text/aurivo-reorder', '1');
+                    }
+                } catch {
+                    // yoksay
+                }
+                // Kaynak satırı akıştan çıkar: alttaki öğeler hemen yukarı kayar.
+                // setTimeout, HTML5 drag başlangıcını bozmadan class uygulamak için gerekli.
+                setTimeout(() => {
+                    if (div.classList.contains('is-dragging')) {
+                        div.classList.add('drag-source-hidden');
+                    }
+                }, 0);
+            });
+            div.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                const fromIndex = Number.isInteger(libraryQueueDragRuntime.dragIndex) ? libraryQueueDragRuntime.dragIndex : -1;
+                const canBeTarget = fromIndex >= 0 && fromIndex !== index;
+                if (canBeTarget) {
+                    if (shouldKeepCurrentReorderTarget(e.clientX, e.clientY, index)) {
+                        try {
+                            if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+                        } catch {
+                            // yoksay
+                        }
+                        return;
+                    }
+                    const placement = resolveQueueDropPlacement(div, e.clientX, e.clientY, index);
+                    const targetSlot = Number.parseInt(String(div.dataset.visualOrder || ''), 10);
+                    const insertSlot = Number.isInteger(targetSlot)
+                        ? targetSlot + (placement === 'after' ? 1 : 0)
+                        : -1;
+                    libraryQueueDragRuntime.dropPlacement = placement;
+                    const previewUnchanged = libraryQueueDragRuntime.previewInsertSlot === insertSlot;
+                    const nowMs = Date.now();
+                    const changedRecently = (nowMs - Number(libraryQueueDragRuntime.lastPreviewChangeAt || 0)) < 55;
+                    elements.playlist?.querySelectorAll('.playlist-item.is-drop-target').forEach((node) => {
+                        if (node !== div) node.classList.remove('is-drop-target');
+                    });
+                    div.classList.add('is-drop-target');
+                    div.classList.toggle('is-drop-before', placement === 'before');
+                    div.classList.toggle('is-drop-after', placement === 'after');
+                    if (!previewUnchanged) {
+                        if (changedRecently) {
+                            try {
+                                if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+                            } catch {
+                                // yoksay
+                            }
+                            return;
+                        }
+                        updatePlaylistReorderPreview(insertSlot);
+                        libraryQueueDragRuntime.previewTargetIndex = index;
+                        libraryQueueDragRuntime.previewPlacement = placement;
+                        libraryQueueDragRuntime.previewInsertSlot = insertSlot;
+                        libraryQueueDragRuntime.lastPreviewChangeAt = nowMs;
+                    }
+                } else {
+                    clearPlaylistReorderPreview();
+                }
+                try {
+                    if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+                } catch {
+                    // yoksay
+                }
+            });
+            div.addEventListener('dragleave', (e) => {
+                const related = e.relatedTarget;
+                // Birçok platformda dragleave sırasında relatedTarget null geliyor.
+                // Bu durumda preview'ı temizlemek titremeye yol açıyor.
+                if (!related) return;
+                if (related instanceof Node && div.contains(related)) return;
+                div.classList.remove('is-drop-target');
+                div.classList.remove('is-drop-before', 'is-drop-after');
+            });
+            div.addEventListener('drop', (e) => {
+                e.preventDefault();
+                document.body?.classList?.remove('playlist-reorder-dragging');
+                const fromIndex = Number.isInteger(libraryQueueDragRuntime.dragIndex)
+                    ? libraryQueueDragRuntime.dragIndex
+                    : Number.parseInt(e.dataTransfer?.getData('text/plain') || '', 10);
+                const toIndex = index;
+                const placement = libraryQueueDragRuntime.dropPlacement === 'after' ? 'after' : 'before';
+                clearPlaylistReorderPreview();
+                div.classList.remove('drag-source-hidden');
+                movePlaylistItemFromCollectionView(fromIndex, toIndex, { placement });
+            });
+            div.addEventListener('dragend', () => {
+                libraryQueueDragRuntime.dragIndex = -1;
+                libraryQueueDragRuntime.dragItemHeight = 0;
+                libraryQueueDragRuntime.dropPlacement = 'before';
+                libraryQueueDragRuntime.lastPreviewChangeAt = 0;
+                document.body?.classList?.remove('playlist-reorder-dragging');
+                clearPlaylistReorderPreview();
+                elements.playlist?.querySelectorAll('.playlist-item.is-dragging, .playlist-item.drag-source-hidden').forEach((node) => {
+                    node.classList.remove('is-dragging', 'drag-source-hidden');
+                });
+            });
+        }
 
         // Kaldır butonu
         const removeBtn = div.querySelector('.item-remove');
@@ -20672,7 +27077,6 @@ function renderPlaylist() {
             e.stopPropagation();
             removeFromPlaylist(index);
         });
-
         fragment.appendChild(div);
     });
 
@@ -20735,6 +27139,170 @@ function addToPlaylist(filePath, fileName = null, options = {}) {
     return { index: state.playlist.length - 1, added: true };
 }
 
+function movePlaylistItem(fromIndex, toIndex) {
+    if (!Number.isInteger(fromIndex) || !Number.isInteger(toIndex)) return false;
+    if (fromIndex < 0 || toIndex < 0 || fromIndex >= state.playlist.length || toIndex >= state.playlist.length) return false;
+    if (fromIndex === toIndex) return false;
+
+    const [movedItem] = state.playlist.splice(fromIndex, 1);
+    state.playlist.splice(toIndex, 0, movedItem);
+
+    if (state.currentIndex === fromIndex) {
+        state.currentIndex = toIndex;
+    } else if (fromIndex < state.currentIndex && toIndex >= state.currentIndex) {
+        state.currentIndex -= 1;
+    } else if (fromIndex > state.currentIndex && toIndex <= state.currentIndex) {
+        state.currentIndex += 1;
+    }
+
+    renderPlaylist();
+    savePlaylistToDisk().catch(() => {});
+    refreshLibraryStats().catch(() => {});
+    syncAudioLibraryRootViewIfNeeded();
+    rememberPlaybackStartupState({ persist: false });
+    return true;
+}
+
+function movePlaylistItemFromCollectionView(fromIndex, toIndex, options = {}) {
+    if (!Number.isInteger(fromIndex) || !Number.isInteger(toIndex)) return false;
+    if (fromIndex < 0 || toIndex < 0 || fromIndex >= state.playlist.length || toIndex >= state.playlist.length) return false;
+    const placement = options?.placement === 'after' ? 'after' : 'before';
+    if (fromIndex === toIndex && placement === 'before') return false;
+
+    const activeTab = String(state.libraryViewTab || '').toLowerCase();
+    if (activeTab !== 'collection') {
+        return movePlaylistItem(fromIndex, toIndex);
+    }
+
+    if (String(state.libraryQuickSearch || '').trim()) {
+        safeNotify('Sürükleyerek sıralama için aramayı temizleyin.', 'info', 1800);
+        return false;
+    }
+
+    const entries = getPlaylistPresentationEntriesForLibrarySurface()
+        .filter((entry) => entry?.type === 'item' && Number.isInteger(entry.originalIndex));
+    const visualOrder = entries.map((entry) => entry.originalIndex);
+    if (visualOrder.length !== state.playlist.length) {
+        return movePlaylistItem(fromIndex, toIndex);
+    }
+
+    const fromPos = visualOrder.indexOf(fromIndex);
+    const targetPos = visualOrder.indexOf(toIndex);
+    if (fromPos < 0 || targetPos < 0) return false;
+
+    let insertPos = targetPos + (placement === 'after' ? 1 : 0);
+    if (fromPos < insertPos) {
+        insertPos -= 1;
+    }
+    if (insertPos < 0) insertPos = 0;
+    if (insertPos > visualOrder.length) insertPos = visualOrder.length;
+    if (insertPos === fromPos) return false;
+
+    const [movedOriginalIndex] = visualOrder.splice(fromPos, 1);
+    visualOrder.splice(insertPos, 0, movedOriginalIndex);
+
+    const previousPlaylist = state.playlist.slice();
+    const previousCurrentIndex = state.currentIndex;
+    state.playlist = visualOrder.map((originalIndex) => previousPlaylist[originalIndex]);
+    state.currentIndex = visualOrder.indexOf(previousCurrentIndex);
+
+    const librarySettings = ensureLibrarySettings();
+    let settingsChanged = false;
+    if (!librarySettings.manualOrderActive) {
+        librarySettings.manualOrderActive = true;
+        settingsChanged = true;
+    }
+    if (String(librarySettings.viewSort || '').toLowerCase() !== 'added') {
+        librarySettings.viewSort = 'added';
+        settingsChanged = true;
+        if (elements.libraryViewSort) elements.libraryViewSort.value = 'added';
+    }
+    if (String(librarySettings.viewGroup || '').toLowerCase() !== 'none') {
+        librarySettings.viewGroup = 'none';
+        settingsChanged = true;
+        if (elements.libraryViewGroup) elements.libraryViewGroup.value = 'none';
+    }
+
+    renderPlaylist();
+    savePlaylistToDisk().catch(() => {});
+    if (settingsChanged) saveSettings().catch(() => {});
+    refreshLibraryStats().catch(() => {});
+    syncAudioLibraryRootViewIfNeeded();
+    rememberPlaybackStartupState({ persist: false });
+    return true;
+}
+
+function resetPlaylistOrderToInitialAdded(options = {}) {
+    const notify = options?.notify !== false;
+    if (!Array.isArray(state.playlist) || state.playlist.length < 2) {
+        if (notify) safeNotify('Sıralama zaten varsayılan durumda.', 'info', 1600);
+        return false;
+    }
+
+    const previousPlaylist = state.playlist.slice();
+    const previousCurrentPath = String(state.playlist[state.currentIndex]?.path || '').trim();
+    const previousCurrentItem = state.playlist[state.currentIndex] || null;
+
+    const orderedPlaylist = previousPlaylist
+        .map((item, index) => {
+            const rawAddedAt = Number(item?.addedAt);
+            return {
+                item,
+                index,
+                addedAt: Number.isFinite(rawAddedAt) ? rawAddedAt : Number.MAX_SAFE_INTEGER
+            };
+        })
+        .sort((left, right) => {
+            if (left.addedAt !== right.addedAt) return left.addedAt - right.addedAt;
+            return left.index - right.index;
+        })
+        .map((entry) => entry.item);
+
+    const orderChanged = orderedPlaylist.some((item, index) => item !== previousPlaylist[index]);
+    const librarySettings = ensureLibrarySettings();
+    let settingsChanged = false;
+
+    if (librarySettings.manualOrderActive) {
+        librarySettings.manualOrderActive = false;
+        settingsChanged = true;
+    }
+    if (String(librarySettings.viewSort || '').toLowerCase() !== 'added') {
+        librarySettings.viewSort = 'added';
+        if (elements.libraryViewSort) elements.libraryViewSort.value = 'added';
+        settingsChanged = true;
+    }
+    if (String(librarySettings.viewGroup || '').toLowerCase() !== 'none') {
+        librarySettings.viewGroup = 'none';
+        if (elements.libraryViewGroup) elements.libraryViewGroup.value = 'none';
+        settingsChanged = true;
+    }
+
+    if (!orderChanged && !settingsChanged) {
+        if (notify) safeNotify('Sıralama zaten varsayılan durumda.', 'info', 1600);
+        return false;
+    }
+
+    state.playlist = orderedPlaylist;
+    if (previousCurrentPath) {
+        const nextCurrentIndex = state.playlist.findIndex((item) => String(item?.path || '').trim() === previousCurrentPath);
+        state.currentIndex = nextCurrentIndex >= 0 ? nextCurrentIndex : -1;
+    } else if (previousCurrentItem) {
+        state.currentIndex = state.playlist.indexOf(previousCurrentItem);
+    } else {
+        state.currentIndex = -1;
+    }
+
+    renderPlaylist();
+    savePlaylistToDisk().catch(() => {});
+    if (settingsChanged) saveSettings().catch(() => {});
+    refreshLibraryStats().catch(() => {});
+    syncAudioLibraryRootViewIfNeeded();
+    rememberPlaybackStartupState({ persist: false });
+
+    if (notify) safeNotify('Parçalar ilk eklendiği sıraya döndürüldü.', 'success', 1800);
+    return true;
+}
+
 function removeFromPlaylist(index) {
     state.playlist.splice(index, 1);
 
@@ -20768,6 +27336,12 @@ function clearPlaylistAll() {
     state.playlist = [];
     state.currentIndex = -1;
     invalidateAudioLibraryIndex();
+    const librarySettings = ensureLibrarySettings();
+    librarySettings.manualOrderActive = false;
+    librarySettings.viewSort = 'title';
+    librarySettings.viewGroup = 'none';
+    if (elements.libraryViewSort) elements.libraryViewSort.value = 'title';
+    if (elements.libraryViewGroup) elements.libraryViewGroup.value = 'none';
 
     // Sol panel listesini de temizle (müzik/video fark etmez).
     state.currentPath = '';
@@ -20776,8 +27350,13 @@ function clearPlaylistAll() {
     // Sekme değişiminde geri gelmemesi için kayıtlı klasörleri de temizle.
     saveFolders('audio', []);
     saveFolders('video', []);
+    saveFolders('image', []);
+    state.imageFiles = [];
+    state.currentImagePath = null;
+    persistImageLibrary();
     state.lastAudioPath = null;
     state.lastVideoPath = null;
+    state.lastImagePath = null;
     rememberSelectedTreePath('');
     persistLibraryStartupState();
 
@@ -20803,13 +27382,51 @@ function clearPlaylistAll() {
 
     renderPlaylist();
     savePlaylistToDisk();
+    saveSettings().catch(() => {});
     refreshLibraryStats().catch(() => {});
     syncAudioLibraryRootViewIfNeeded();
     updateTrayState();
     updateMPRISMetadata();
 }
 
+async function clearGalleryLibraryAndFolders() {
+    if (state.currentPage !== 'gallery' && state.mediaFilter !== 'image') {
+        state.mediaFilter = 'image';
+    }
+    const approved = await window.aurivo?.dialog?.confirm?.({
+        title: uiT('gallery.clear.title', 'Galeriyi Temizle'),
+        message: uiT(
+            'gallery.clear.confirm',
+            'Galeri listesi ve eklenen galeri klasörleri temizlensin mi? (Dosyalar silinmez)'
+        ),
+        okLabel: uiT('gallery.clear.action', 'Temizle'),
+        cancelLabel: uiT('common.cancel', 'İptal')
+    });
+    if (!approved) return;
+
+    stopGallerySlideshow();
+    closeGalleryLightbox();
+    state.imageFiles = [];
+    state.currentImagePath = null;
+    state.currentPath = '';
+    state.lastImagePath = null;
+    state.pendingLibraryStartupPath = '';
+
+    saveFolders('image', []);
+    persistImageLibrary();
+    rememberSelectedTreePath('');
+    persistLibraryStartupState();
+
+    await initializeFileTree();
+    renderImageGallery([]);
+    updateLibraryAddButtonUi();
+    safeNotify(uiT('gallery.clear.done', 'Galeri temizlendi.'), 'success', 1800);
+}
+
 async function handleFileDrop(e) {
+    if (isInternalPlaylistReorderEvent(e)) {
+        return;
+    }
     if (handledExternalDropEvents.has(e)) return;
     handledExternalDropEvents.add(e);
 
@@ -20969,6 +27586,9 @@ function playVideo(videoPath) {
 
     // Video player'ı ayarla ve oynat
     elements.videoPlayer.src = toLocalFileUrl(videoPath);
+    applyAutoSubtitleForMedia(elements.videoPlayer, videoPath).catch(() => {
+        syncFsSubtitleUiState();
+    });
     // Yeni kaynağa geçildiğinde video scope efektlerini bekletmeden sırala.
     scheduleApplyWebDaliEngine('video-src-set', 10);
 
@@ -21158,6 +27778,11 @@ async function playIndex(index) {
     // C++ Audio Engine veya HTML5 Audio kullan
     if (useNativeAudio) {
         console.log('C++ BASS Engine ile oynatılıyor...');
+        subtitleRuntime.searchToken += 1;
+        subtitleRuntime.currentMediaPath = item.path || '';
+        subtitleRuntime.currentSubtitlePath = '';
+        subtitleRuntime.hasTrack = false;
+        syncFsSubtitleUiState();
         // C++ BASS Engine ile oynat
         const result = await window.aurivo.audio.loadFile(item.path);
         console.log('loadFile sonucu:', result);
@@ -21215,6 +27840,9 @@ function playWithHTML5Audio(item) {
     const activePlayer = getActiveAudioPlayer();
     const encodedPath = toLocalFileUrl(item.path);
     activePlayer.src = encodedPath;
+    applyAutoSubtitleForMedia(activePlayer, item.path).catch(() => {
+        syncFsSubtitleUiState();
+    });
     const useWebAudioGainPath = !useNativeAudio && !!webAudioOutputGainNode;
     activePlayer.volume = useWebAudioGainPath ? 1 : (state.volume / 100);
     activePlayer.muted = useWebAudioGainPath ? false : state.isMuted;
@@ -21451,6 +28079,7 @@ function startNativePositionUpdates() {
                 elements.seekSlider.value = progress;
                 updateRainbowSlider(elements.seekSlider, progress / 10);
             }
+            updateLibraryNowPlayingCardUi();
 
             // MPRIS position'ı güncelle (her tam saniyede bir)
             const currentSecInt = Math.floor(positionSec);
@@ -21688,6 +28317,7 @@ function updateCoverArt(imageData, mediaType) {
     }
 
     state.currentCover = imageData;
+    updateLibraryNowPlayingCardUi();
 
     // MPRIS metadata'yı güncelle (albüm kapağı değiştiğinde)
     updateMPRISMetadata();
@@ -22058,6 +28688,7 @@ function updatePlayPauseIcon(isPlaying) {
     if (state.activeMedia === 'audio' && state.currentIndex >= 0) {
         renderPlaylist();
     }
+    updateLibraryNowPlayingCardUi();
 }
 
 // ============================================
@@ -22190,6 +28821,9 @@ function startCrossfadeToIndex(index, ms) {
     const encodedPath = toLocalFileUrl(item.path);
 
     newPlayer.src = encodedPath;
+    applyAutoSubtitleForMedia(newPlayer, item.path).catch(() => {
+        syncFsSubtitleUiState();
+    });
     newPlayer.volume = 0;
     newPlayer.play();
 
@@ -22222,6 +28856,7 @@ function startCrossfadeToIndex(index, ms) {
         } else {
             // Crossfade bitti
             oldPlayer.pause();
+            clearAutoSubtitleTrack(oldPlayer);
             oldPlayer.src = '';
             oldPlayer.volume = 0;
             state.crossfadeInProgress = false;
@@ -22697,6 +29332,9 @@ function updateTimeDisplay() {
         state.lastMPRISPosition = currentSecInt;
         updateMPRISMetadata();
     }
+    if (state.activeMedia === 'audio') {
+        updateLibraryNowPlayingCardUi();
+    }
 }
 
 function handleMetadataLoaded() {
@@ -23035,10 +29673,22 @@ function loadSettingsToUI() {
     if (elements.libraryWatchFolders) elements.libraryWatchFolders.checked = ensureLibrarySettings().watchFolders !== false;
     if (elements.libraryFastScan) elements.libraryFastScan.checked = getLibraryPerformanceState().fastScan;
     if (elements.libraryLightweightMode) elements.libraryLightweightMode.checked = getLibraryPerformanceState().lightweightMode;
+    if (elements.libraryScanSubfolders) elements.libraryScanSubfolders.checked = getLibraryPerformanceState().scanSubfolders;
+    if (elements.libraryGalleryPageJump) elements.libraryGalleryPageJump.value = String(getLibraryPerformanceState().galleryPageJump);
+    if (elements.gallerySlideshowIntervalMs) elements.gallerySlideshowIntervalMs.value = String(getLibraryPerformanceState().gallerySlideshowIntervalMs);
+    if (elements.gallerySlideshowFastThresholdMs) elements.gallerySlideshowFastThresholdMs.value = String(getLibraryPerformanceState().galleryFastThresholdMs);
+    if (elements.gallerySlideshowSlowThresholdMs) elements.gallerySlideshowSlowThresholdMs.value = String(getLibraryPerformanceState().gallerySlowThresholdMs);
+    updateGalleryTransitionSettingLabels();
+    syncGallerySlideshowProfilePresetUi();
+    if (elements.gallerySlideshowLoop) elements.gallerySlideshowLoop.checked = getLibraryPerformanceState().gallerySlideshowLoop;
+    if (elements.gallerySlideshowShuffle) elements.gallerySlideshowShuffle.checked = getLibraryPerformanceState().gallerySlideshowShuffle;
     if (elements.libraryCoverCacheLimitMb) elements.libraryCoverCacheLimitMb.value = String(getLibraryPerformanceState().coverCacheLimitMb);
+    updateGallerySlideshowToggleUi();
+    updateGallerySlideshowQuickButtonsUi();
     if (elements.libraryViewSort) elements.libraryViewSort.value = getLibraryViewPreferenceState().sortBy;
     if (elements.libraryViewGroup) elements.libraryViewGroup.value = getLibraryViewPreferenceState().groupBy;
     if (elements.libraryViewMode) elements.libraryViewMode.value = getLibraryViewPreferenceState().mode;
+    if (elements.gallerySortQuickSelect) elements.gallerySortQuickSelect.value = getGallerySortPreferenceState();
     updateMusicViewQuickControlUi();
     if (elements.libraryAudioExtensions) elements.libraryAudioExtensions.value = getConfiguredLibraryExtensions('audio').join(', ');
     if (elements.libraryVideoExtensions) elements.libraryVideoExtensions.value = getConfiguredLibraryExtensions('video').join(', ');
@@ -23074,6 +29724,7 @@ function loadSettingsToUI() {
     applyAppearanceSettingsToRuntime();
     applySecuritySettingsToRuntime();
     updateRecognitionEngineUi();
+    applyWebExperienceMode({ forceSwitch: !isStandaloneSettingsMode() });
 }
 
 async function applySettings() {
@@ -23167,8 +29818,13 @@ async function applySettings() {
     updateAutoHardwareProfileUi();
     applySecuritySettingsToRuntime();
     applyWebUiClasses();
+    applyWebExperienceMode();
     await applyPlaybackVolumeLevelingToEngine();
     updateLibraryPerformanceStatusUi();
+    if (state.gallerySlideshowActive) {
+        scheduleGallerySlideshowTick();
+    }
+    updateLibraryAddButtonUi();
     updateLibraryDiagnosticsUi();
     renderPlaylist();
     if (state.activeMedia === 'audio' && state.currentIndex >= 0) {
@@ -23765,6 +30421,7 @@ function previewAppearanceSettingsFromUI() {
 function applySecuritySettingsToRuntime() {
     if (!elements.webView) return;
     const allowPopups = state.settings?.security?.allowPopups !== false;
+    const sessionProfile = getWebSessionProfile();
     if (allowPopups) {
         elements.webView.setAttribute('allowpopups', '');
     } else {
@@ -23775,6 +30432,12 @@ function applySecuritySettingsToRuntime() {
     }
     if (elements.securityEnforceAllowlist) {
         elements.securityEnforceAllowlist.checked = !!state.settings?.security?.enforceAllowlist;
+    }
+    if (elements.securitySessionProfile) {
+        elements.securitySessionProfile.value = sessionProfile;
+    }
+    if (sessionProfile !== 'isolated') {
+        webIsolatedSessionPrepared = false;
     }
 }
 
@@ -23805,6 +30468,7 @@ function getSettingsTabLabel(tabName) {
         behavior: 'settings.tabs.behavior',
         security: 'securityPage.title',
         library: 'settings.tabs.library',
+        gallery: 'settings.tabs.gallery',
         audio: 'settings.tabs.audio',
         adblock: 'nav.adblock'
     };
@@ -23814,7 +30478,8 @@ function getSettingsTabLabel(tabName) {
         listen: 'Dinle',
         behavior: 'Davranış',
         security: 'Güvenlik',
-        library: 'Müzik Kütüphanesi',
+        library: 'Medya Kütüphanesi',
+        gallery: 'Galeri',
         audio: 'Ses Çıkışı',
         adblock: 'DeliBlock'
     };
@@ -23847,6 +30512,7 @@ function resetBehaviorDefaults() {
     if (elements.sliderFxToggle) elements.sliderFxToggle.checked = true;
     if (elements.sfxLightsToggle) elements.sfxLightsToggle.checked = true;
     if (elements.behaviorRememberLastSection) elements.behaviorRememberLastSection.checked = true;
+    if (elements.behaviorWebExperienceEnabled) elements.behaviorWebExperienceEnabled.checked = false;
     if (elements.libraryRememberSection) elements.libraryRememberSection.checked = true;
     if (elements.behaviorStartupPage) elements.behaviorStartupPage.value = 'music';
     if (elements.libraryStartupPage) elements.libraryStartupPage.value = 'music';
@@ -23859,6 +30525,10 @@ function resetBehaviorDefaults() {
     updateVisualModeUi();
     updateThemeFollowSystemUi();
     previewAppearanceSettingsFromUI();
+    if (!state.settings || typeof state.settings !== 'object') state.settings = {};
+    if (!state.settings.ui || typeof state.settings.ui !== 'object') state.settings.ui = {};
+    state.settings.ui.webExperienceEnabled = !!elements.behaviorWebExperienceEnabled?.checked;
+    applyWebExperienceMode({ forceSwitch: false });
     applyWebUiClasses();
 }
 
@@ -23866,6 +30536,8 @@ function resetSecurityDefaults() {
     if (elements.securityAllowPopups) elements.securityAllowPopups.checked = true;
     if (elements.securityStrictVpnBlock) elements.securityStrictVpnBlock.checked = false;
     if (elements.securityEnforceAllowlist) elements.securityEnforceAllowlist.checked = false;
+    if (elements.securitySessionProfile) elements.securitySessionProfile.value = 'persistent';
+    webIsolatedSessionPrepared = false;
 }
 
 function resetLibraryDefaults() {
@@ -23885,6 +30557,8 @@ function resetLibraryDefaults() {
     if (elements.libraryViewSort) elements.libraryViewSort.value = 'title';
     if (elements.libraryViewGroup) elements.libraryViewGroup.value = 'none';
     if (elements.libraryViewMode) elements.libraryViewMode.value = 'list';
+    ensureLibrarySettings().gallerySortMode = 'name-asc';
+    if (elements.gallerySortQuickSelect) elements.gallerySortQuickSelect.value = 'name-asc';
     if (elements.libraryAudioExtensions) elements.libraryAudioExtensions.value = DEFAULT_AUDIO_EXTENSIONS.join(', ');
     if (elements.libraryVideoExtensions) elements.libraryVideoExtensions.value = DEFAULT_VIDEO_EXTENSIONS.join(', ');
     if (elements.libraryFlowFavoritesEnabled) elements.libraryFlowFavoritesEnabled.checked = true;
@@ -23894,7 +30568,34 @@ function resetLibraryDefaults() {
     if (elements.libraryFlowMostPlayedLimit) elements.libraryFlowMostPlayedLimit.value = '25';
     if (elements.libraryFastScan) elements.libraryFastScan.checked = true;
     if (elements.libraryLightweightMode) elements.libraryLightweightMode.checked = false;
+    if (elements.libraryScanSubfolders) elements.libraryScanSubfolders.checked = true;
+    if (elements.libraryGalleryPageJump) elements.libraryGalleryPageJump.value = '6';
+    if (elements.gallerySlideshowProfilePreset) elements.gallerySlideshowProfilePreset.value = 'balanced';
+    if (elements.gallerySlideshowIntervalMs) elements.gallerySlideshowIntervalMs.value = '3000';
+    if (elements.gallerySlideshowFastThresholdMs) elements.gallerySlideshowFastThresholdMs.value = '2500';
+    if (elements.gallerySlideshowSlowThresholdMs) elements.gallerySlideshowSlowThresholdMs.value = '5000';
+    if (elements.galleryTransitionSlideshowMs) elements.galleryTransitionSlideshowMs.value = '440';
+    if (elements.galleryTransitionManualMs) elements.galleryTransitionManualMs.value = '190';
+    updateGalleryTransitionSettingLabels();
+    if (elements.gallerySlideshowLoop) elements.gallerySlideshowLoop.checked = true;
+    if (elements.gallerySlideshowShuffle) elements.gallerySlideshowShuffle.checked = false;
     if (elements.libraryCoverCacheLimitMb) elements.libraryCoverCacheLimitMb.value = '64';
+}
+
+function resetGalleryThresholdInputsToDefaults() {
+    const setValueAndNotify = (inputEl, nextValue) => {
+        if (!inputEl) return;
+        inputEl.value = String(nextValue);
+        inputEl.dispatchEvent(new Event('input', { bubbles: true }));
+        inputEl.dispatchEvent(new Event('change', { bubbles: true }));
+    };
+    setValueAndNotify(elements.gallerySlideshowFastThresholdMs, 2500);
+    setValueAndNotify(elements.gallerySlideshowSlowThresholdMs, 5000);
+    syncGallerySlideshowProfilePresetUi();
+    if (typeof markSettingsDirty === 'function') {
+        markSettingsDirty();
+    }
+    safeNotify(uiT('settings.gallery.slideshow.thresholdDefaultsDone', 'Galeri hız eşikleri varsayılana döndü. Kaydet ile kalıcı olur.'), 'info', 1800);
 }
 
 function resetAudioDefaults() {
@@ -23945,6 +30646,10 @@ function resetAdblockDefaults() {
     if (elements.adblockDeveloperMode) elements.adblockDeveloperMode.checked = !!ADBLOCK_DEFAULT_SETTINGS.developerMode;
 }
 
+function resetGalleryDefaults() {
+    resetLibraryDefaults();
+}
+
 async function resetCurrentSettingsTab() {
     const activeTab = getActiveSettingsTabName();
     if (activeTab === 'playback') resetPlaybackDefaults();
@@ -23953,6 +30658,7 @@ async function resetCurrentSettingsTab() {
     else if (activeTab === 'behavior') resetBehaviorDefaults();
     else if (activeTab === 'security') resetSecurityDefaults();
     else if (activeTab === 'library') resetLibraryDefaults();
+    else if (activeTab === 'gallery') resetGalleryDefaults();
     else if (activeTab === 'audio') resetAudioDefaults();
     else if (activeTab === 'adblock') resetAdblockDefaults();
 
@@ -24358,6 +31064,22 @@ const NAV_SHORTCUT_ACTIONS = {
     platformWhatsapp: { type: 'platform', target: 'whatsapp' },
     platformTelegram: { type: 'platform', target: 'telegram' }
 };
+const GALLERY_SHORTCUT_ACTION_TO_SETTING_KEY = {
+    prev: 'prev',
+    next: 'next',
+    first: 'first',
+    last: 'last',
+    pageUp: 'pageUp',
+    pageDown: 'pageDown',
+    fit: 'fit',
+    actual: 'actual',
+    zoomIn: 'zoomIn',
+    zoomOut: 'zoomOut',
+    flipH: 'flipH',
+    flipV: 'flipV',
+    fullscreenWindow: 'fullscreenWindow',
+    fullscreenLightbox: 'fullscreenLightbox'
+};
 let activeShortcutCaptureInputId = '';
 let activeShortcutCaptureButton = null;
 
@@ -24562,9 +31284,9 @@ function getPlaybackCustomHotkeys() {
     const playback = state.settings?.playback || {};
     const custom = playback.customHotkeys || {};
     return {
-        previous: String(custom.previous || 'F2').trim(),
-        playPause: String(custom.playPause || 'F3').trim(),
-        next: String(custom.next || 'F4').trim()
+        previous: String(custom.previous || 'none').trim(),
+        playPause: String(custom.playPause || 'none').trim(),
+        next: String(custom.next || 'none').trim()
     };
 }
 
@@ -24608,8 +31330,26 @@ function detectNavigationShortcutAction(e) {
     return NAV_SHORTCUT_ACTIONS[key] || null;
 }
 
+function detectGalleryShortcutAction(e) {
+    const playback = state.settings?.playback || {};
+    if (playback.galleryHotkeysEnabled !== true) return '';
+
+    const combo = normalizeShortcutComboString(getShortcutComboFromEvent(e));
+    const galleryShortcuts = (playback.galleryShortcuts && typeof playback.galleryShortcuts === 'object')
+        ? playback.galleryShortcuts
+        : {};
+
+    const configuredAction = Object.entries(GALLERY_SHORTCUT_ACTION_TO_SETTING_KEY).find(([, settingKey]) => {
+        const stored = normalizeShortcutComboString(galleryShortcuts[settingKey]);
+        return !!stored && stored === combo;
+    });
+    if (configuredAction) return configuredAction[0];
+    return '';
+}
+
 function executeNavigationShortcutAction(action) {
     if (!action || !action.type || !action.target) return;
+    if (!isWebExperienceEnabled() && (action.target === 'web' || action.type === 'platform')) return;
     if (action.type === 'tab') {
         const tabBtn = document.querySelector(`.sidebar-btn[data-page="${action.target}"]`);
         if (tabBtn) handleSidebarClick(tabBtn);
@@ -24626,6 +31366,10 @@ function executeNavigationShortcutAction(action) {
 }
 
 function handleKeyboard(e) {
+    if (handleGalleryContextMenuKeyboard(e)) {
+        return;
+    }
+
     // About modal açıksa önce onu kapat
     if (isAboutModalOpen()) {
         if (e.code === 'Escape') {
@@ -24637,6 +31381,31 @@ function handleKeyboard(e) {
 
     // Utility sayfalar açıkken klavye kısayollarını devre dışı bırak
     if (isPageVisible(elements.settingsPage)) return;
+
+    // Bir input/textarea üzerinde yazarken global kısayolları devre dışı bırak.
+    // Arama kutusunda yazarken shuffle/play gibi işlemler tetiklenmemeli.
+    const isEditingText = isKeyboardEditableTarget(e.target)
+        || isKeyboardEditableTarget(document.activeElement)
+        || document.activeElement === elements.libraryQuickSearchInput;
+    if (isEditingText) {
+        if (e.key === 'Escape' && document.activeElement === elements.libraryQuickSearchInput) {
+            e.preventDefault();
+            if (elements.libraryQuickSearchInput.value) {
+                elements.libraryQuickSearchInput.value = '';
+                state.libraryQuickSearch = '';
+                renderPlaylist();
+            } else {
+                elements.libraryQuickSearchInput.blur();
+            }
+        }
+        return;
+    }
+
+    // Galeri aktifken yön tuşları müzik/video seek kısayollarını tetiklemesin.
+    const galleryActive = state.currentPage === 'gallery' || document.body?.classList?.contains('gallery-mode');
+    if (galleryActive && ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(String(e.code || ''))) {
+        return;
+    }
 
     // Tarayıcı benzeri gezinme kısayolları: butonlarla aynı akışı kullan.
     if (!e.repeat && !isKeyboardEditableTarget(e.target)) {
@@ -24744,6 +31513,17 @@ function handleKeyboard(e) {
         return;
     }
 
+    // Ctrl/Cmd+F - Kütüphane hızlı aramaya odaklan
+    if ((e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && String(e.key || '').toLowerCase() === 'f') {
+        const canFocusLibrarySearch = state.currentPanel === 'library' && state.mediaFilter === 'audio' && !!elements.libraryQuickSearchInput;
+        if (canFocusLibrarySearch) {
+            e.preventDefault();
+            elements.libraryQuickSearchInput.focus();
+            elements.libraryQuickSearchInput.select();
+            return;
+        }
+    }
+
     // ENTER - seçili dosyaları playlist'e ekle
     if (e.key === 'Enter') {
         const selectedItems = document.querySelectorAll('.tree-item.file.selected');
@@ -24763,6 +31543,9 @@ function handleKeyboard(e) {
 
     switch (e.code) {
         case 'Space':
+            if (isKeyboardEditableTarget(e.target) || document.activeElement === elements.libraryQuickSearchInput) {
+                return;
+            }
             e.preventDefault();
             togglePlayPause();
             break;

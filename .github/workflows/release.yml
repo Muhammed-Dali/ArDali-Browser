@@ -201,6 +201,36 @@ jobs:
           find dist -maxdepth 1 -type f -print
           ls -lah dist || true
 
+      - name: Generate SHA256 checksums
+        run: |
+          set -euo pipefail
+          npm run -s release:checksums
+          test -f dist/SHA256SUMS.txt
+
+      - name: Sign checksums with GPG (optional)
+        env:
+          RELEASE_GPG_PRIVATE_KEY: ${{ secrets.RELEASE_GPG_PRIVATE_KEY }}
+          RELEASE_GPG_PASSPHRASE: ${{ secrets.RELEASE_GPG_PASSPHRASE }}
+        run: |
+          set -euo pipefail
+          if [ -z "${RELEASE_GPG_PRIVATE_KEY:-}" ]; then
+            echo "RELEASE_GPG_PRIVATE_KEY not set; skipping signature."
+            exit 0
+          fi
+
+          export GNUPGHOME="$(mktemp -d)"
+          printf '%s' "${RELEASE_GPG_PRIVATE_KEY}" | gpg --batch --import
+
+          if [ -n "${RELEASE_GPG_PASSPHRASE:-}" ]; then
+            gpg --batch --yes --pinentry-mode loopback --passphrase "${RELEASE_GPG_PASSPHRASE}" \
+              --armor --detach-sign --output dist/SHA256SUMS.txt.asc dist/SHA256SUMS.txt
+          else
+            gpg --batch --yes --armor --detach-sign --output dist/SHA256SUMS.txt.asc dist/SHA256SUMS.txt
+          fi
+
+          test -f dist/SHA256SUMS.txt.asc
+          gpg --batch --verify dist/SHA256SUMS.txt.asc dist/SHA256SUMS.txt
+
       - name: Install GitHub CLI
         run: |
           set -euo pipefail
@@ -239,6 +269,8 @@ jobs:
             dist/*.deb
             dist/*.rpm
             dist/latest-linux.yml
+            dist/SHA256SUMS.txt
+            dist/SHA256SUMS.txt.asc
           )
 
           if [ "${#assets[@]}" -eq 0 ]; then
