@@ -38,7 +38,36 @@ function aurivoRequire(request) {
   }
 
   if (id === 'electron') {
-    return { ipcRenderer, shell, clipboard };
+    const safeIpcRenderer = {
+      send: (channel, ...args) => ipcRenderer.send(channel, ...args),
+      invoke: (channel, ...args) => ipcRenderer.invoke(channel, ...args),
+      on: (channel, listener) => {
+        if (typeof listener !== 'function') return () => {};
+        const wrappedListener = (event, ...args) => listener(event, ...args);
+        ipcRenderer.on(channel, wrappedListener);
+        return () => ipcRenderer.removeListener(channel, wrappedListener);
+      },
+      once: (channel, listener) => {
+        if (typeof listener !== 'function') return () => {};
+        const wrappedListener = (event, ...args) => listener(event, ...args);
+        ipcRenderer.once(channel, wrappedListener);
+        return () => ipcRenderer.removeListener(channel, wrappedListener);
+      },
+      removeAllListeners: (channel) => ipcRenderer.removeAllListeners(channel),
+      removeListener: (channel, listener) => ipcRenderer.removeListener(channel, listener),
+    };
+
+    const safeShell = {
+      openExternal: (...args) => shell.openExternal(...args),
+      showItemInFolder: (...args) => shell.showItemInFolder(...args),
+    };
+
+    const safeClipboard = {
+      readText: (...args) => clipboard.readText(...args),
+      writeText: (...args) => clipboard.writeText(...args),
+    };
+
+    return { ipcRenderer: safeIpcRenderer, shell: safeShell, clipboard: safeClipboard };
   }
   if (id === 'path' || id === 'os' || id === 'fs' || id === 'fs/promises' || id === 'child_process' || id === 'https' || id === 'crypto' || id === 'systeminformation' || id === 'original-fs' || id === 'yt-dlp-wrap-plus') {
     return require(id);
