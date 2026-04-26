@@ -42,7 +42,11 @@
                                     </button>
                                     <button class="settings-tab" data-tab="library">
                                         <span class="settings-tab-icon material-symbols-rounded" aria-hidden="true">library_music</span>
-                                        <span class="settings-tab-label" data-i18n="settings.tabs.library">Müzik Kütüphanesi</span>
+                                        <span class="settings-tab-label" data-i18n="settings.tabs.library">Medya Kütüphanesi</span>
+                                    </button>
+                                    <button class="settings-tab" data-tab="gallery">
+                                        <span class="settings-tab-icon material-symbols-rounded" aria-hidden="true">photo_library</span>
+                                        <span class="settings-tab-label" data-i18n="settings.tabs.gallery">Galeri</span>
                                     </button>
                                     <button class="settings-tab" data-tab="audio">
                                         <span class="settings-tab-icon material-symbols-rounded" aria-hidden="true">headphones</span>
@@ -148,6 +152,7 @@
                                                 </div>
                                                 <input type="text" id="playbackShortcutSearch" class="settings-input" data-i18n-placeholder="playback.shortcuts.search.placeholder" placeholder="Kısayol ara...">
                                             </div>
+                                            <div class="settings-subtitle" data-i18n="settings.shortcuts.groups.music">Müzik Kısayolları</div>
                                             <div class="settings-subtitle" data-i18n="playback.shortcuts.sections.media">Medya Tuşları</div>
                                             <label class="checkbox-label">
                                                 <input type="checkbox" id="mediaKeyAutoDetect" checked>
@@ -162,6 +167,9 @@
                                             <div class="settings-row"><div class="settings-row-left"><div class="settings-label" data-i18n="playback.shortcuts.media.playPause">Oynat / Duraklat</div></div><div class="settings-inline"><input type="text" id="shortcutPlayPause" class="settings-input" autocomplete="off" autocapitalize="off" spellcheck="false"><button type="button" class="settings-btn shortcut-capture-btn" data-shortcut-target="shortcutPlayPause" data-i18n="playback.shortcuts.actions.assign">Ata</button><button type="button" class="settings-btn shortcut-clear-btn" data-shortcut-target="shortcutPlayPause" data-i18n="playback.shortcuts.actions.clear">Temizle</button></div></div>
                                             <div class="settings-row"><div class="settings-row-left"><div class="settings-label" data-i18n="playback.shortcuts.media.next">Sonraki parçaya geç</div></div><div class="settings-inline"><input type="text" id="shortcutNext" class="settings-input" autocomplete="off" autocapitalize="off" spellcheck="false"><button type="button" class="settings-btn shortcut-capture-btn" data-shortcut-target="shortcutNext" data-i18n="playback.shortcuts.actions.assign">Ata</button><button type="button" class="settings-btn shortcut-clear-btn" data-shortcut-target="shortcutNext" data-i18n="playback.shortcuts.actions.clear">Temizle</button></div></div>
                                             <div class="settings-sub" data-i18n="playback.shortcuts.assign.hint">Ata butonuna tıkla, sonra klavyede kısayolu bas. Temizle ile sıfırlayabilirsin.</div>
+                                            <div class="settings-subtitle" data-i18n="settings.shortcuts.groups.video">Video Kısayolları</div>
+                                            <div class="settings-sub" data-i18n="settings.shortcuts.video.hint">Video için şu an oynatma tuşları ve genel medya tuşları kullanılır.</div>
+                                            <div class="settings-subtitle" data-i18n="settings.shortcuts.groups.web">Web Kısayolları</div>
                                             <div class="settings-subtitle" data-i18n="playback.shortcuts.sections.tabs">Sekme Geçiş Tuşları</div>
                                             <div class="settings-row"><div class="settings-row-left"><div class="settings-label" data-i18n="playback.shortcuts.tabs.music">Müzik sekmesi</div></div><div class="settings-inline"><input type="text" id="shortcutTabMusic" class="settings-input" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="-"><button type="button" class="settings-btn shortcut-capture-btn" data-shortcut-target="shortcutTabMusic" data-i18n="playback.shortcuts.actions.assign">Ata</button><button type="button" class="settings-btn shortcut-clear-btn" data-shortcut-target="shortcutTabMusic" data-i18n="playback.shortcuts.actions.clear">Temizle</button></div></div>
                                             <div class="settings-row"><div class="settings-row-left"><div class="settings-label" data-i18n="playback.shortcuts.tabs.video">Video sekmesi</div></div><div class="settings-inline"><input type="text" id="shortcutTabVideo" class="settings-input" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="-"><button type="button" class="settings-btn shortcut-capture-btn" data-shortcut-target="shortcutTabVideo" data-i18n="playback.shortcuts.actions.assign">Ata</button><button type="button" class="settings-btn shortcut-clear-btn" data-shortcut-target="shortcutTabVideo" data-i18n="playback.shortcuts.actions.clear">Temizle</button></div></div>
@@ -179,6 +187,30 @@
                                             <div class="settings-row"><div class="settings-row-left"><div class="settings-label">Twitch</div></div><div class="settings-inline"><input type="text" id="shortcutPlatformTwitch" class="settings-input" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="-"><button type="button" class="settings-btn shortcut-capture-btn" data-shortcut-target="shortcutPlatformTwitch" data-i18n="playback.shortcuts.actions.assign">Ata</button><button type="button" class="settings-btn shortcut-clear-btn" data-shortcut-target="shortcutPlatformTwitch" data-i18n="playback.shortcuts.actions.clear">Temizle</button></div></div>
                                             <div class="settings-row"><div class="settings-row-left"><div class="settings-label">WhatsApp</div></div><div class="settings-inline"><input type="text" id="shortcutPlatformWhatsapp" class="settings-input" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="-"><button type="button" class="settings-btn shortcut-capture-btn" data-shortcut-target="shortcutPlatformWhatsapp" data-i18n="playback.shortcuts.actions.assign">Ata</button><button type="button" class="settings-btn shortcut-clear-btn" data-shortcut-target="shortcutPlatformWhatsapp" data-i18n="playback.shortcuts.actions.clear">Temizle</button></div></div>
                                             <div class="settings-row"><div class="settings-row-left"><div class="settings-label">Telegram</div></div><div class="settings-inline"><input type="text" id="shortcutPlatformTelegram" class="settings-input" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="-"><button type="button" class="settings-btn shortcut-capture-btn" data-shortcut-target="shortcutPlatformTelegram" data-i18n="playback.shortcuts.actions.assign">Ata</button><button type="button" class="settings-btn shortcut-clear-btn" data-shortcut-target="shortcutPlatformTelegram" data-i18n="playback.shortcuts.actions.clear">Temizle</button></div></div>
+                                            <div class="settings-subtitle" data-i18n="settings.shortcuts.groups.gallery">Galeri Kısayolları</div>
+                                            <label class="checkbox-label">
+                                                <input type="checkbox" id="galleryHotkeysEnabled">
+                                                <span data-i18n="settings.gallery.shortcuts.enable">Galeri klavye kısayollarını etkinleştir</span>
+                                            </label>
+                                            <div class="settings-sub" data-i18n="settings.gallery.shortcuts.disabledHint">Kapalıyken galeri içinde hiçbir klavye kısayolu tetiklenmez (yazı girişinde istem dışı işlem olmaz).</div>
+                                            <div id="galleryShortcutAssignments" class="hidden">
+                                            <div class="settings-subtitle" data-i18n="settings.gallery.shortcuts.title">Galeri Klavye Kısayolları</div>
+                                            <div class="settings-sub" data-i18n="settings.gallery.shortcuts.assignHint">Ata butonuna tıkla, klavyeden tuşa bas. Temizle ile kaldır.</div>
+                                            <div class="settings-row"><div class="settings-row-left"><div class="settings-label" data-i18n="settings.gallery.shortcuts.prev">Önceki Fotoğraf</div></div><div class="settings-inline"><input type="text" id="shortcutGalleryPrev" class="settings-input" autocomplete="off" autocapitalize="off" spellcheck="false" data-i18n-placeholder="playback.shortcuts.unassigned" placeholder="-"><button type="button" class="settings-btn shortcut-capture-btn" data-shortcut-target="shortcutGalleryPrev" data-i18n="playback.shortcuts.actions.assign">Ata</button><button type="button" class="settings-btn shortcut-clear-btn" data-shortcut-target="shortcutGalleryPrev" data-i18n="playback.shortcuts.actions.clear">Temizle</button></div></div>
+                                            <div class="settings-row"><div class="settings-row-left"><div class="settings-label" data-i18n="settings.gallery.shortcuts.next">Sonraki Fotoğraf</div></div><div class="settings-inline"><input type="text" id="shortcutGalleryNext" class="settings-input" autocomplete="off" autocapitalize="off" spellcheck="false" data-i18n-placeholder="playback.shortcuts.unassigned" placeholder="-"><button type="button" class="settings-btn shortcut-capture-btn" data-shortcut-target="shortcutGalleryNext" data-i18n="playback.shortcuts.actions.assign">Ata</button><button type="button" class="settings-btn shortcut-clear-btn" data-shortcut-target="shortcutGalleryNext" data-i18n="playback.shortcuts.actions.clear">Temizle</button></div></div>
+                                            <div class="settings-row"><div class="settings-row-left"><div class="settings-label" data-i18n="settings.gallery.shortcuts.first">İlk Fotoğraf</div></div><div class="settings-inline"><input type="text" id="shortcutGalleryFirst" class="settings-input" autocomplete="off" autocapitalize="off" spellcheck="false" data-i18n-placeholder="playback.shortcuts.unassigned" placeholder="-"><button type="button" class="settings-btn shortcut-capture-btn" data-shortcut-target="shortcutGalleryFirst" data-i18n="playback.shortcuts.actions.assign">Ata</button><button type="button" class="settings-btn shortcut-clear-btn" data-shortcut-target="shortcutGalleryFirst" data-i18n="playback.shortcuts.actions.clear">Temizle</button></div></div>
+                                            <div class="settings-row"><div class="settings-row-left"><div class="settings-label" data-i18n="settings.gallery.shortcuts.last">Son Fotoğraf</div></div><div class="settings-inline"><input type="text" id="shortcutGalleryLast" class="settings-input" autocomplete="off" autocapitalize="off" spellcheck="false" data-i18n-placeholder="playback.shortcuts.unassigned" placeholder="-"><button type="button" class="settings-btn shortcut-capture-btn" data-shortcut-target="shortcutGalleryLast" data-i18n="playback.shortcuts.actions.assign">Ata</button><button type="button" class="settings-btn shortcut-clear-btn" data-shortcut-target="shortcutGalleryLast" data-i18n="playback.shortcuts.actions.clear">Temizle</button></div></div>
+                                            <div class="settings-row"><div class="settings-row-left"><div class="settings-label" data-i18n="settings.gallery.shortcuts.pageUp">Sayfa Geri (PageUp)</div></div><div class="settings-inline"><input type="text" id="shortcutGalleryPageUp" class="settings-input" autocomplete="off" autocapitalize="off" spellcheck="false" data-i18n-placeholder="playback.shortcuts.unassigned" placeholder="-"><button type="button" class="settings-btn shortcut-capture-btn" data-shortcut-target="shortcutGalleryPageUp" data-i18n="playback.shortcuts.actions.assign">Ata</button><button type="button" class="settings-btn shortcut-clear-btn" data-shortcut-target="shortcutGalleryPageUp" data-i18n="playback.shortcuts.actions.clear">Temizle</button></div></div>
+                                            <div class="settings-row"><div class="settings-row-left"><div class="settings-label" data-i18n="settings.gallery.shortcuts.pageDown">Sayfa İleri (PageDown)</div></div><div class="settings-inline"><input type="text" id="shortcutGalleryPageDown" class="settings-input" autocomplete="off" autocapitalize="off" spellcheck="false" data-i18n-placeholder="playback.shortcuts.unassigned" placeholder="-"><button type="button" class="settings-btn shortcut-capture-btn" data-shortcut-target="shortcutGalleryPageDown" data-i18n="playback.shortcuts.actions.assign">Ata</button><button type="button" class="settings-btn shortcut-clear-btn" data-shortcut-target="shortcutGalleryPageDown" data-i18n="playback.shortcuts.actions.clear">Temizle</button></div></div>
+                                            <div class="settings-row"><div class="settings-row-left"><div class="settings-label" data-i18n="settings.gallery.shortcuts.fit">Sığdır</div></div><div class="settings-inline"><input type="text" id="shortcutGalleryFit" class="settings-input" autocomplete="off" autocapitalize="off" spellcheck="false" data-i18n-placeholder="playback.shortcuts.unassigned" placeholder="-"><button type="button" class="settings-btn shortcut-capture-btn" data-shortcut-target="shortcutGalleryFit" data-i18n="playback.shortcuts.actions.assign">Ata</button><button type="button" class="settings-btn shortcut-clear-btn" data-shortcut-target="shortcutGalleryFit" data-i18n="playback.shortcuts.actions.clear">Temizle</button></div></div>
+                                            <div class="settings-row"><div class="settings-row-left"><div class="settings-label" data-i18n="settings.gallery.shortcuts.actual">Gerçek Boyut</div></div><div class="settings-inline"><input type="text" id="shortcutGalleryActual" class="settings-input" autocomplete="off" autocapitalize="off" spellcheck="false" data-i18n-placeholder="playback.shortcuts.unassigned" placeholder="-"><button type="button" class="settings-btn shortcut-capture-btn" data-shortcut-target="shortcutGalleryActual" data-i18n="playback.shortcuts.actions.assign">Ata</button><button type="button" class="settings-btn shortcut-clear-btn" data-shortcut-target="shortcutGalleryActual" data-i18n="playback.shortcuts.actions.clear">Temizle</button></div></div>
+                                            <div class="settings-row"><div class="settings-row-left"><div class="settings-label" data-i18n="settings.gallery.shortcuts.zoomIn">Yakınlaştır</div></div><div class="settings-inline"><input type="text" id="shortcutGalleryZoomIn" class="settings-input" autocomplete="off" autocapitalize="off" spellcheck="false" data-i18n-placeholder="playback.shortcuts.unassigned" placeholder="-"><button type="button" class="settings-btn shortcut-capture-btn" data-shortcut-target="shortcutGalleryZoomIn" data-i18n="playback.shortcuts.actions.assign">Ata</button><button type="button" class="settings-btn shortcut-clear-btn" data-shortcut-target="shortcutGalleryZoomIn" data-i18n="playback.shortcuts.actions.clear">Temizle</button></div></div>
+                                            <div class="settings-row"><div class="settings-row-left"><div class="settings-label" data-i18n="settings.gallery.shortcuts.zoomOut">Uzaklaştır</div></div><div class="settings-inline"><input type="text" id="shortcutGalleryZoomOut" class="settings-input" autocomplete="off" autocapitalize="off" spellcheck="false" data-i18n-placeholder="playback.shortcuts.unassigned" placeholder="-"><button type="button" class="settings-btn shortcut-capture-btn" data-shortcut-target="shortcutGalleryZoomOut" data-i18n="playback.shortcuts.actions.assign">Ata</button><button type="button" class="settings-btn shortcut-clear-btn" data-shortcut-target="shortcutGalleryZoomOut" data-i18n="playback.shortcuts.actions.clear">Temizle</button></div></div>
+                                            <div class="settings-row"><div class="settings-row-left"><div class="settings-label" data-i18n="settings.gallery.shortcuts.flipH">Yatay Aynala</div></div><div class="settings-inline"><input type="text" id="shortcutGalleryFlipH" class="settings-input" autocomplete="off" autocapitalize="off" spellcheck="false" data-i18n-placeholder="playback.shortcuts.unassigned" placeholder="-"><button type="button" class="settings-btn shortcut-capture-btn" data-shortcut-target="shortcutGalleryFlipH" data-i18n="playback.shortcuts.actions.assign">Ata</button><button type="button" class="settings-btn shortcut-clear-btn" data-shortcut-target="shortcutGalleryFlipH" data-i18n="playback.shortcuts.actions.clear">Temizle</button></div></div>
+                                            <div class="settings-row"><div class="settings-row-left"><div class="settings-label" data-i18n="settings.gallery.shortcuts.flipV">Dikey Aynala</div></div><div class="settings-inline"><input type="text" id="shortcutGalleryFlipV" class="settings-input" autocomplete="off" autocapitalize="off" spellcheck="false" data-i18n-placeholder="playback.shortcuts.unassigned" placeholder="-"><button type="button" class="settings-btn shortcut-capture-btn" data-shortcut-target="shortcutGalleryFlipV" data-i18n="playback.shortcuts.actions.assign">Ata</button><button type="button" class="settings-btn shortcut-clear-btn" data-shortcut-target="shortcutGalleryFlipV" data-i18n="playback.shortcuts.actions.clear">Temizle</button></div></div>
+                                            <div class="settings-row"><div class="settings-row-left"><div class="settings-label" data-i18n="settings.gallery.shortcuts.fullscreenVisual">Görsel Tam Ekran</div></div><div class="settings-inline"><input type="text" id="shortcutGalleryFullscreenWindow" class="settings-input" autocomplete="off" autocapitalize="off" spellcheck="false" data-i18n-placeholder="playback.shortcuts.unassigned" placeholder="-"><button type="button" class="settings-btn shortcut-capture-btn" data-shortcut-target="shortcutGalleryFullscreenWindow" data-i18n="playback.shortcuts.actions.assign">Ata</button><button type="button" class="settings-btn shortcut-clear-btn" data-shortcut-target="shortcutGalleryFullscreenWindow" data-i18n="playback.shortcuts.actions.clear">Temizle</button></div></div>
+                                            <div class="settings-row"><div class="settings-row-left"><div class="settings-label" data-i18n="settings.gallery.shortcuts.fullscreenLightbox">Lightbox Tam Ekran</div></div><div class="settings-inline"><input type="text" id="shortcutGalleryFullscreenLightbox" class="settings-input" autocomplete="off" autocapitalize="off" spellcheck="false" data-i18n-placeholder="playback.shortcuts.unassigned" placeholder="-"><button type="button" class="settings-btn shortcut-capture-btn" data-shortcut-target="shortcutGalleryFullscreenLightbox" data-i18n="playback.shortcuts.actions.assign">Ata</button><button type="button" class="settings-btn shortcut-clear-btn" data-shortcut-target="shortcutGalleryFullscreenLightbox" data-i18n="playback.shortcuts.actions.clear">Temizle</button></div></div>
+                                            </div>
                                         </div>
                                     </div>
                                     <div class="settings-page hidden" id="listenSettings">
@@ -456,13 +488,18 @@
                                         <div class="settings-group">
                                             <h4 data-i18n="ui.startup.title">Başlangıç Davranışı</h4>
                                             <label class="checkbox-label">
+                                                <input type="checkbox" id="behaviorWebExperienceEnabled">
+                                                <span data-i18n="ui.startup.webExperienceEnabled">Web deneyimini etkinleştir (isteğe bağlı)</span>
+                                            </label>
+                                            <div class="settings-sub" data-i18n="ui.startup.webExperienceEnabled.hint">Kapalı olduğunda uygulama medya oynatıcı modunda kalır ve Web sekmesi gizlenir.</div>
+                                            <label class="checkbox-label">
                                                 <input type="checkbox" id="behaviorRememberLastSection" checked>
                                                 <span data-i18n="ui.startup.rememberLastSection">Son açık ana bölümü hatırla</span>
                                             </label>
                                             <div class="setting-row">
                                                 <span data-i18n="ui.startup.startupPage">Varsayılan açılış bölümü</span>
                                                 <select class="settings-select" id="behaviorStartupPage">
-                                                    <option value="music" data-i18n="settings.library.startupPage.options.music">Müzik</option>
+                                                    <option value="music" data-i18n="settings.library.startupPage.options.music">Medya (Ses)</option>
                                                     <option value="video" data-i18n="settings.library.startupPage.options.video">Video</option>
                                                     <option value="web" data-i18n="settings.library.startupPage.options.web">Web</option>
                                                 </select>
@@ -525,6 +562,7 @@
                                                     <div class="security-actions">
                                                         <button class="btn security-btn-small" id="securityCopyUrlBtn" data-i18n="securityPage.buttons.copy">Kopyala</button>
                                                         <button class="btn security-btn-small" id="securityOpenInBrowserBtn" data-i18n="securityPage.buttons.openInBrowser">Tarayıcıda aç</button>
+                                                        <button class="btn security-btn-small" id="securityQuickDownloadBtn" data-i18n="securityPage.buttons.quickDownload">Hızlı indir</button>
                                                     </div>
                                                 </div>
                                             </div>
@@ -542,7 +580,15 @@
                                                     <input type="checkbox" id="securityEnforceAllowlist">
                                                     <span>Yalnız izinli platformları aç (allowlist)</span>
                                                 </label>
+                                                <div class="setting-row">
+                                                    <span data-i18n="securityPage.sessionProfile.label">Web oturum profili</span>
+                                                    <select class="settings-select" id="securitySessionProfile">
+                                                        <option value="persistent" data-i18n="securityPage.sessionProfile.options.persistent">Kalıcı (çerezleri sakla)</option>
+                                                        <option value="isolated" data-i18n="securityPage.sessionProfile.options.isolated">İzole (her açılışta temiz başla)</option>
+                                                    </select>
+                                                </div>
                                                 <div class="security-hint" data-i18n="securityPage.vpnPolicyHint">Öneri: Kapalı bırakın. VPN’de sadece uyarı verilir; izinli platformlar dışı siteler zaten engellenir.</div>
+                                                <div class="security-hint" data-i18n="securityPage.sessionProfile.hint">İzole profil, Web sekmesine ilk girişte çerez/önbelleği temizleyerek temiz oturum açar.</div>
                                                 <div class="security-hint">Kapalıyken Web sekmesinde tüm geçerli http/https siteleri açabilirsiniz.</div>
                                                 <div class="security-hint" data-i18n="securityPage.allowPopupsHint">Not: Pop-up kapalıyken bazı sitelerde giriş/hesap bağlantıları açılmayabilir.</div>
                                             </div>
@@ -553,8 +599,11 @@
                                                     <button class="btn" id="securityClearCacheBtn" data-i18n="securityPage.buttons.clearCache">Önbelleği temizle</button>
                                                     <button class="btn" id="securityClearAllBtn" data-i18n="securityPage.buttons.clearAll">Her şeyi temizle</button>
                                                     <button class="btn" id="securityResetWebBtn" data-i18n="securityPage.buttons.resetWeb">Web’i sıfırla</button>
+                                                    <button class="btn" id="securityExportCookiesBtn" data-i18n="securityPage.buttons.exportCookies">Çerezleri dışa aktar</button>
+                                                    <button class="btn" id="securityImportCookiesBtn" data-i18n="securityPage.buttons.importCookies">Çerezleri içe aktar</button>
                                                 </div>
                                                 <div class="security-hint" data-i18n="securityPage.cleanupHint">Çerez/önbellek temizlemek bazı sitelerden çıkış yapabilir.</div>
+                                                <div class="security-hint" data-i18n="securityPage.cleanupCookiePortHint">Çerezleri JSON olarak dışa/içe aktararak oturumu başka ortama taşıyabilirsiniz.</div>
                                             </div>
                                             <div class="security-section">
                                                 <div class="security-section-title" data-i18n="securityPage.sections.allowedPlatforms">İzinli Platformlar</div>
@@ -574,7 +623,7 @@
                                         </div>
                                     </div>
                                     <div class="settings-page hidden library-settings-page" id="librarySettings">
-                                        <h3 data-i18n="settings.tabs.library">Müzik Kütüphanesi</h3>
+                                        <h3 data-i18n="settings.tabs.library">Medya Kütüphanesi</h3>
                                         <div class="library-hero-card">
                                             <div class="library-hero-copy">
                                                 <div class="library-hero-kicker" data-i18n="settings.library.hero.kicker">Akıllı kütüphane özeti</div>
@@ -641,7 +690,7 @@
                                             <div class="setting-row">
                                                 <span data-i18n="settings.library.startupPage">Varsayılan açılış bölümü</span>
                                                 <select class="settings-select" id="libraryStartupPage">
-                                                    <option value="music" data-i18n="settings.library.startupPage.options.music">Müzik</option>
+                                                    <option value="music" data-i18n="settings.library.startupPage.options.music">Medya (Ses)</option>
                                                     <option value="video" data-i18n="settings.library.startupPage.options.video">Video</option>
                                                     <option value="web" data-i18n="settings.library.startupPage.options.web">Web</option>
                                                 </select>
@@ -658,8 +707,8 @@
                                             <div class="settings-sub" data-i18n="settings.library.startupHint">Son bölüm hatırlama kapalıysa uygulama bu bölümle açılır.</div>
                                         </div>
                                         <div class="settings-group library-group-folders">
-                                            <h4 data-i18n="settings.library.folders.title">Müzik Klasörleri Yönetimi</h4>
-                                            <div class="settings-sub" data-i18n="settings.library.folders.hint">Birden fazla müzik klasörü ekleyebilir, kaldırabilir ve kütüphaneyi yeniden tarayabilirsiniz.</div>
+                                            <h4 data-i18n="settings.library.folders.title">Medya Kaynakları Yönetimi</h4>
+                                            <div class="settings-sub" data-i18n="settings.library.folders.hint">Ses ve video klasörlerini ekleyebilir, kaldırabilir ve kütüphaneyi yeniden tarayabilirsiniz.</div>
                                             <label class="checkbox-label">
                                                 <input type="checkbox" id="libraryScanOnStartup" checked>
                                                 <span data-i18n="settings.library.scanOnStartup">Uygulama açılışında kütüphaneyi tara</span>
@@ -766,6 +815,10 @@
                                                 <input type="checkbox" id="libraryLightweightMode">
                                                 <span data-i18n="settings.library.performance.lightweight">Hafif modu etkinleştir</span>
                                             </label>
+                                            <label class="checkbox-label">
+                                                <input type="checkbox" id="libraryScanSubfolders" checked>
+                                                <span data-i18n="settings.library.performance.scanSubfolders">Alt klasörleri tara</span>
+                                            </label>
                                             <div class="setting-row">
                                                 <span data-i18n="settings.library.performance.coverCache">Kapak önbellek limiti</span>
                                                 <select class="settings-select" id="libraryCoverCacheLimitMb">
@@ -775,7 +828,6 @@
                                                     <option value="256">256 MB</option>
                                                 </select>
                                             </div>
-                                            <div class="settings-sub" id="libraryPerformanceStatus">-</div>
                                         </div>
                                         <div class="settings-group library-group-diagnostics">
                                             <h4 data-i18n="settings.library.diagnostics.title">Tanılama</h4>
@@ -877,7 +929,7 @@
                                                     <strong id="libraryVideoCount">0</strong>
                                                 </div>
                                                 <div class="library-path-stack">
-                                                    <div class="settings-sub" id="libraryMusicPathInfo" data-i18n="settings.library.musicPath">Müzik klasörü: -</div>
+                                                    <div class="settings-sub" id="libraryMusicPathInfo" data-i18n="settings.library.musicPath">Medya klasörü: -</div>
                                                     <div class="settings-sub" id="libraryVideoPathInfo" data-i18n="settings.library.videoPath">Video klasörü: -</div>
                                                 </div>
                                             </div>
@@ -1071,6 +1123,118 @@
                                                 <span data-i18n="settings.audio.volumeBoost">Ses artırma</span>
                                             </label>
                                             <div class="settings-sub" data-i18n="settings.audio.volumeBoost.hint">Düşük sesli videolarda sesi daha güçlü hissettirmek için ek kazanç uygular.</div>
+                                        </div>
+                                    </div>
+                                    <div class="settings-page hidden" id="gallerySettings">
+                                        <h3 data-i18n="settings.tabs.gallery">Galeri</h3>
+                                        <div class="settings-group">
+                                            <h4 data-i18n="settings.gallery.navigation.title">Galeri Gezinme</h4>
+                                            <div class="settings-sub" data-i18n="settings.gallery.navigation.hint">Lightbox modunda klavye ile fotoğraf geçiş adımını ayarlayın.</div>
+                                            <div class="setting-row">
+                                                <span data-i18n="settings.library.performance.galleryPageJump">Galeri PageUp/PageDown adımı</span>
+                                                <input
+                                                    class="settings-input"
+                                                    id="libraryGalleryPageJump"
+                                                    type="number"
+                                                    min="1"
+                                                    max="30"
+                                                    step="1"
+                                                    value="6"
+                                                >
+                                            </div>
+                                            <div class="setting-row">
+                                                <span data-i18n="settings.gallery.slideshow.profile">Slayt profili</span>
+                                                <select class="settings-select" id="gallerySlideshowProfilePreset">
+                                                    <option value="balanced" data-i18n="settings.gallery.slideshow.profile.balanced">Dengeli</option>
+                                                    <option value="fast" data-i18n="settings.gallery.slideshow.profile.fast">Hızlı</option>
+                                                    <option value="calm" data-i18n="settings.gallery.slideshow.profile.calm">Sakin</option>
+                                                    <option value="custom" data-i18n="settings.gallery.slideshow.profile.custom">Özel</option>
+                                                </select>
+                                            </div>
+                                            <div class="setting-row">
+                                                <span data-i18n="settings.gallery.slideshow.speed">Slayt gösterisi hızı (ms)</span>
+                                                <input
+                                                    class="settings-input"
+                                                    id="gallerySlideshowIntervalMs"
+                                                    type="number"
+                                                    min="1000"
+                                                    max="15000"
+                                                    step="250"
+                                                    value="3000"
+                                                >
+                                            </div>
+                                            <div class="setting-row">
+                                                <span data-i18n="settings.gallery.slideshow.fastThreshold">Hızlı eşiği (<= ms)</span>
+                                                <input
+                                                    class="settings-input"
+                                                    id="gallerySlideshowFastThresholdMs"
+                                                    type="number"
+                                                    min="1000"
+                                                    max="14000"
+                                                    step="250"
+                                                    value="2500"
+                                                >
+                                            </div>
+                                            <div class="setting-row">
+                                                <span data-i18n="settings.gallery.slideshow.slowThreshold">Yavaş eşiği (>= ms)</span>
+                                                <input
+                                                    class="settings-input"
+                                                    id="gallerySlideshowSlowThresholdMs"
+                                                    type="number"
+                                                    min="1500"
+                                                    max="15000"
+                                                    step="250"
+                                                    value="5000"
+                                                >
+                                            </div>
+                                            <div class="setting-row">
+                                                <span data-i18n="settings.gallery.transition.slideshow">Slayt geçiş yumuşaklığı</span>
+                                                <div style="display:flex; align-items:center; gap:12px; min-width:320px;">
+                                                    <input
+                                                        id="galleryTransitionSlideshowMs"
+                                                        type="range"
+                                                        min="280"
+                                                        max="1100"
+                                                        step="20"
+                                                        value="440"
+                                                        style="flex:1;"
+                                                    >
+                                                    <strong id="galleryTransitionSlideshowMsValue">440 ms</strong>
+                                                </div>
+                                            </div>
+                                            <div class="setting-row">
+                                                <span data-i18n="settings.gallery.transition.manual">Elle geçiş hızı</span>
+                                                <div style="display:flex; align-items:center; gap:12px; min-width:320px;">
+                                                    <input
+                                                        id="galleryTransitionManualMs"
+                                                        type="range"
+                                                        min="120"
+                                                        max="500"
+                                                        step="10"
+                                                        value="190"
+                                                        style="flex:1;"
+                                                    >
+                                                    <strong id="galleryTransitionManualMsValue">190 ms</strong>
+                                                </div>
+                                            </div>
+                                            <div class="library-folder-toolbar">
+                                                <span class="settings-sub" data-i18n="settings.gallery.transition.presets">Geçiş presetleri</span>
+                                                <button class="btn btn-small" type="button" data-gallery-transition-preset="fast" data-i18n="settings.gallery.transition.preset.fast">Hızlı</button>
+                                                <button class="btn btn-small" type="button" data-gallery-transition-preset="balanced" data-i18n="settings.gallery.transition.preset.balanced">Dengeli</button>
+                                                <button class="btn btn-small" type="button" data-gallery-transition-preset="cinematic" data-i18n="settings.gallery.transition.preset.cinematic">Sinematik</button>
+                                            </div>
+                                            <div class="library-folder-toolbar">
+                                                <button class="btn btn-small" id="galleryThresholdDefaultsBtn" data-i18n="settings.gallery.slideshow.thresholdDefaults">Eşikleri varsayılana döndür</button>
+                                            </div>
+                                            <label class="checkbox-label">
+                                                <input type="checkbox" id="gallerySlideshowLoop" checked>
+                                                <span data-i18n="settings.gallery.slideshow.loop">Sonda başa sar (Loop)</span>
+                                            </label>
+                                            <label class="checkbox-label">
+                                                <input type="checkbox" id="gallerySlideshowShuffle">
+                                                <span data-i18n="settings.gallery.slideshow.shuffle">Rastgele fotoğraf seç</span>
+                                            </label>
+                                            <div class="settings-sub" id="libraryPerformanceStatus">-</div>
                                         </div>
                                     </div>
                                 </div>

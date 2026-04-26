@@ -1,0 +1,108 @@
+{
+  "version": 1,
+  "description": "Pinned native shared libraries tracked in git (.so/.so.*) for reproducible integrity checks.",
+  "entries": [
+    {
+      "path": "Aurivo-Pulse/libs/libchromaprint.so",
+      "sha256": "150613bf3db47d68466cead36efc335ef6f116f9a5c0e9eb9a3730f5db24869a",
+      "origin": "Vendored from Aurivo-Pulse upstream tree (SongRec lineage)",
+      "license": "GPL-3.0-or-later (Aurivo-Pulse project)"
+    },
+    {
+      "path": "Aurivo-Pulse/libs/libchromaprint.so.1",
+      "sha256": "150613bf3db47d68466cead36efc335ef6f116f9a5c0e9eb9a3730f5db24869a",
+      "origin": "SONAME compatibility symlink target tracked as file in repo",
+      "license": "GPL-3.0-or-later (Aurivo-Pulse project)"
+    },
+    {
+      "path": "Aurivo-Pulse/libs/libchromaprint.so.1.6.0",
+      "sha256": "150613bf3db47d68466cead36efc335ef6f116f9a5c0e9eb9a3730f5db24869a",
+      "origin": "Versioned chromaprint shared object used by Aurivo-Pulse",
+      "license": "GPL-3.0-or-later (Aurivo-Pulse project)"
+    },
+    {
+      "path": "libs/bass/libs/aarch64/libbass.so",
+      "sha256": "a05ba3afc880b03f36db8dea50fd1d912cacf2a2c85d785fbaef020f5a93adb2",
+      "origin": "Un4seen BASS Linux package",
+      "license": "Un4seen BASS license"
+    },
+    {
+      "path": "libs/bass/libs/armhf/libbass.so",
+      "sha256": "4c4ce4621028bca50adc82b7b28041aeb6eee6713e738201112ab8581bacc499",
+      "origin": "Un4seen BASS Linux package",
+      "license": "Un4seen BASS license"
+    },
+    {
+      "path": "libs/bass/libs/x86/libbass.so",
+      "sha256": "0237e21f6816a701d687cd942823256afbd8a2d5d063ff62e018135f3c52237c",
+      "origin": "Un4seen BASS Linux package",
+      "license": "Un4seen BASS license"
+    },
+    {
+      "path": "libs/bass/libs/x86_64/libbass.so",
+      "sha256": "bd0841d0c14f25065a16192be07c20b045e384199a86a00892cc3864474dbc51",
+      "origin": "Un4seen BASS Linux package",
+      "license": "Un4seen BASS license"
+    },
+    {
+      "path": "libs/linux/libbass.so",
+      "sha256": "403c1375f327725dc55887163a813f96df626a0ed2031eddfd52c7299aaaf636",
+      "origin": "Linux runtime copy of BASS core library",
+      "license": "Un4seen BASS license"
+    },
+    {
+      "path": "libs/linux/libbass_aac.so",
+      "sha256": "58b4d8336e7bdb54263d9adf574af98b214f0ef5d49c6e6eb669b3edd2b474ba",
+      "origin": "Linux runtime copy of BASS AAC plugin",
+      "license": "Un4seen BASS license"
+    },
+    {
+      "path": "libs/linux/libbass_fx.so",
+      "sha256": "63a41ba9627d4577874fd8f241789834ad058f4ef3bac930bf9bbce54b4cedba",
+      "origin": "Linux runtime copy of BASS FX plugin",
+      "license": "Un4seen BASS license"
+    },
+    {
+      "path": "libs/linux/libbassape.so",
+      "sha256": "10f74649ef26790f5fdac3b12a45783c8bd196b481f2739af00d255458b7bf03",
+      "origin": "Linux runtime copy of BASS APE plugin",
+      "license": "Un4seen BASS license"
+    },
+    {
+      "path": "libs/linux/libbassflac.so",
+      "sha256": "49a3cfd9cbdbc887cbd5c7214b57a6bf40fa95f7aeee990066e7a2e76877e7fb",
+      "origin": "Linux runtime copy of BASS FLAC plugin",
+      "license": "Un4seen BASS license"
+    },
+    {
+      "path": "libs/linux/libbasswv.so",
+      "sha256": "4e086bee67d4fac0eccff3b9eecedb0ba6a55ab159c1ea2d9cda3a52077957cb",
+      "origin": "Linux runtime copy of BASS WavPack plugin",
+      "license": "Un4seen BASS license"
+    },
+    {
+      "path": "packaging/flatpak/runtime-libs/libadwaita-1.so.0",
+      "sha256": "92a50b772ff348668ec91171553dd3d83d75c6807adf09231768c443f4f2ad13",
+      "origin": "Copied from GNOME Flatpak runtime for packaging compatibility",
+      "license": "LGPL-2.1-or-later"
+    },
+    {
+      "path": "packaging/flatpak/runtime-libs/libavutil.so.60",
+      "sha256": "aff0ddbd11debbcef3b7f3733908fcaa786d5fb5adb2946d8f0afa969be7504e",
+      "origin": "Copied runtime dependency used in Flatpak packaging",
+      "license": "LGPL-2.1-or-later"
+    },
+    {
+      "path": "packaging/flatpak/runtime-libs/libgtk-4.so.1",
+      "sha256": "aa88dcef7ff47ff1a076776c23be38a22660e6a2a4ff41c84c03045cfd62563f",
+      "origin": "Copied from GNOME Flatpak runtime for packaging compatibility",
+      "license": "LGPL-2.1-or-later"
+    },
+    {
+      "path": "packaging/flatpak/runtime-libs/libvpl.so.2",
+      "sha256": "9f13bd4304a8085caafc57466c64c4a254c51c84a2095d712b30db4577624dee",
+      "origin": "Copied runtime dependency used in Flatpak packaging",
+      "license": "MIT"
+    }
+  ]
+}

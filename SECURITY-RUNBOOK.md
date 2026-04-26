@@ -35,6 +35,7 @@ If either token is missing, the related workflow will fail by design.
 4. Verify `Snyk Security Gate` is green.
 5. Verify `Semgrep Security Gate` is green.
 6. Merge/release only after all required workflows pass.
+7. Run `npm run verify:binary:manifest` before release tagging to verify tracked `.so` integrity.
 
 ## 4) Local vs CI Scans
 
@@ -95,4 +96,3 @@ For local stability:
 - prefer manual scanning mode for Snyk
 - avoid running Semgrep + Snyk at the same time locally
 - use CI as final gate to reduce local machine pressure
-

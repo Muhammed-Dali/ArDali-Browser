@@ -64,6 +64,38 @@
         platformWhatsapp: 'shortcutPlatformWhatsapp',
         platformTelegram: 'shortcutPlatformTelegram'
     };
+    const GALLERY_SHORTCUT_FIELD_MAP = {
+        prev: 'shortcutGalleryPrev',
+        next: 'shortcutGalleryNext',
+        first: 'shortcutGalleryFirst',
+        last: 'shortcutGalleryLast',
+        pageUp: 'shortcutGalleryPageUp',
+        pageDown: 'shortcutGalleryPageDown',
+        fit: 'shortcutGalleryFit',
+        actual: 'shortcutGalleryActual',
+        zoomIn: 'shortcutGalleryZoomIn',
+        zoomOut: 'shortcutGalleryZoomOut',
+        flipH: 'shortcutGalleryFlipH',
+        flipV: 'shortcutGalleryFlipV',
+        fullscreenWindow: 'shortcutGalleryFullscreenWindow',
+        fullscreenLightbox: 'shortcutGalleryFullscreenLightbox'
+    };
+    const GALLERY_SHORTCUT_DEFAULTS = {
+        prev: 'ArrowLeft',
+        next: 'ArrowRight',
+        first: 'Home',
+        last: 'End',
+        pageUp: 'PageUp',
+        pageDown: 'PageDown',
+        fit: 'W',
+        actual: '1',
+        zoomIn: '=',
+        zoomOut: '-',
+        flipH: 'H',
+        flipV: 'V',
+        fullscreenWindow: 'F',
+        fullscreenLightbox: 'Shift+F'
+    };
 
     function normalizePlaybackShortcutCode(value, fallback) {
         const normalized = String(value || '').trim();
@@ -75,6 +107,38 @@
 
     function normalizeNavigationShortcut(value) {
         return String(value || '').trim();
+    }
+
+    function isShortcutInputEmpty(value) {
+        const normalized = normalizeNavigationShortcut(value);
+        return !normalized || normalized === '-';
+    }
+
+    function applyDefaultGalleryShortcutsToUi({ force = false } = {}) {
+        Object.entries(GALLERY_SHORTCUT_FIELD_MAP).forEach(([key, fieldId]) => {
+            const input = document.getElementById(fieldId);
+            if (!input) return;
+            if (!force && !isShortcutInputEmpty(input.value)) return;
+            input.value = normalizeNavigationShortcut(GALLERY_SHORTCUT_DEFAULTS[key]);
+        });
+    }
+
+    function updateGalleryShortcutAssignmentsUi({ autofillDefaults = true } = {}) {
+        const galleryHotkeysEnabled = document.getElementById('galleryHotkeysEnabled');
+        const assignmentsWrap = document.getElementById('galleryShortcutAssignments');
+        if (!galleryHotkeysEnabled) return;
+        const enabled = galleryHotkeysEnabled.checked === true;
+        if (assignmentsWrap) {
+            assignmentsWrap.classList.toggle('hidden', !enabled);
+        }
+        if (!enabled || !autofillDefaults) return;
+        const hasAnyAssigned = Object.values(GALLERY_SHORTCUT_FIELD_MAP).some((fieldId) => {
+            const input = document.getElementById(fieldId);
+            return input && !isShortcutInputEmpty(input.value);
+        });
+        if (!hasAnyAssigned) {
+            applyDefaultGalleryShortcutsToUi();
+        }
     }
 
     function visualModePreset(mode) {
@@ -194,6 +258,7 @@
         const smartVolumeLevelingMode = document.getElementById('smartVolumeLevelingMode');
         const mediaKeyAutoDetect = document.getElementById('mediaKeyAutoDetect');
         const browserNavigationHotkeysEnabled = document.getElementById('browserNavigationHotkeysEnabled');
+        const galleryHotkeysEnabled = document.getElementById('galleryHotkeysEnabled');
         const shortcutPrevious = document.getElementById('shortcutPrevious');
         const shortcutPlayPause = document.getElementById('shortcutPlayPause');
         const shortcutNext = document.getElementById('shortcutNext');
@@ -223,9 +288,10 @@
         }
         if (mediaKeyAutoDetect) mediaKeyAutoDetect.checked = pb.mediaKeyAutoDetect !== false;
         if (browserNavigationHotkeysEnabled) browserNavigationHotkeysEnabled.checked = pb.browserNavigationHotkeysEnabled !== false;
-        if (shortcutPrevious) shortcutPrevious.value = normalizePlaybackShortcutCode(pb?.customHotkeys?.previous, 'F2');
-        if (shortcutPlayPause) shortcutPlayPause.value = normalizePlaybackShortcutCode(pb?.customHotkeys?.playPause, 'F3');
-        if (shortcutNext) shortcutNext.value = normalizePlaybackShortcutCode(pb?.customHotkeys?.next, 'F4');
+        if (galleryHotkeysEnabled) galleryHotkeysEnabled.checked = pb.galleryHotkeysEnabled === true;
+        if (shortcutPrevious) shortcutPrevious.value = normalizePlaybackShortcutCode(pb?.customHotkeys?.previous, 'none');
+        if (shortcutPlayPause) shortcutPlayPause.value = normalizePlaybackShortcutCode(pb?.customHotkeys?.playPause, 'none');
+        if (shortcutNext) shortcutNext.value = normalizePlaybackShortcutCode(pb?.customHotkeys?.next, 'none');
         const navigationShortcuts = (pb?.navigationShortcuts && typeof pb.navigationShortcuts === 'object')
             ? pb.navigationShortcuts
             : {};
@@ -234,6 +300,15 @@
             if (!input) return;
             input.value = normalizeNavigationShortcut(navigationShortcuts[key]);
         });
+        const galleryShortcuts = (pb?.galleryShortcuts && typeof pb.galleryShortcuts === 'object')
+            ? pb.galleryShortcuts
+            : {};
+        Object.entries(GALLERY_SHORTCUT_FIELD_MAP).forEach(([key, fieldId]) => {
+            const input = document.getElementById(fieldId);
+            if (!input) return;
+            input.value = normalizeNavigationShortcut(galleryShortcuts[key]);
+        });
+        updateGalleryShortcutAssignmentsUi({ autofillDefaults: true });
 
         if (elements.pulseNoSignalHintSec) {
             const sec = Number(state.settings?.pulseQuick?.noSignalHintSec);
@@ -267,6 +342,9 @@
         }
         if (elements.behaviorRememberLastSection) {
             elements.behaviorRememberLastSection.checked = state.settings?.ui?.rememberLastSection !== false;
+        }
+        if (elements.behaviorWebExperienceEnabled) {
+            elements.behaviorWebExperienceEnabled.checked = state.settings?.ui?.webExperienceEnabled === true;
         }
         if (elements.libraryRestoreLastFolder) {
             elements.libraryRestoreLastFolder.checked = state.settings?.library?.restoreLastFolder !== false;
@@ -361,6 +439,51 @@
         if (elements.libraryLightweightMode) {
             elements.libraryLightweightMode.checked = !!state.settings?.library?.performance?.lightweightMode;
         }
+        if (elements.libraryScanSubfolders) {
+            elements.libraryScanSubfolders.checked = state.settings?.library?.performance?.scanSubfolders !== false;
+        }
+        if (elements.libraryGalleryPageJump) {
+            const jump = Number(state.settings?.library?.performance?.galleryPageJump);
+            elements.libraryGalleryPageJump.value = String(
+                Number.isFinite(jump) ? Math.max(1, Math.min(30, Math.round(jump))) : 6
+            );
+        }
+        if (elements.gallerySlideshowIntervalMs) {
+            const ms = Number(state.settings?.library?.performance?.gallerySlideshowIntervalMs);
+            elements.gallerySlideshowIntervalMs.value = String(
+                Number.isFinite(ms) ? Math.max(1000, Math.min(15000, Math.round(ms))) : 3000
+            );
+        }
+        if (elements.gallerySlideshowFastThresholdMs) {
+            const value = Number(state.settings?.library?.performance?.galleryFastThresholdMs);
+            elements.gallerySlideshowFastThresholdMs.value = String(
+                Number.isFinite(value) ? Math.max(1000, Math.min(14000, Math.round(value))) : 2500
+            );
+        }
+        if (elements.gallerySlideshowSlowThresholdMs) {
+            const value = Number(state.settings?.library?.performance?.gallerySlowThresholdMs);
+            elements.gallerySlideshowSlowThresholdMs.value = String(
+                Number.isFinite(value) ? Math.max(1500, Math.min(15000, Math.round(value))) : 5000
+            );
+        }
+        if (elements.galleryTransitionSlideshowMs) {
+            const value = Number(state.settings?.library?.performance?.galleryTransitionSlideshowMs);
+            elements.galleryTransitionSlideshowMs.value = String(
+                Number.isFinite(value) ? Math.max(280, Math.min(1100, Math.round(value))) : 440
+            );
+        }
+        if (elements.galleryTransitionManualMs) {
+            const value = Number(state.settings?.library?.performance?.galleryTransitionManualMs);
+            elements.galleryTransitionManualMs.value = String(
+                Number.isFinite(value) ? Math.max(120, Math.min(500, Math.round(value))) : 190
+            );
+        }
+        if (elements.gallerySlideshowLoop) {
+            elements.gallerySlideshowLoop.checked = state.settings?.library?.performance?.gallerySlideshowLoop !== false;
+        }
+        if (elements.gallerySlideshowShuffle) {
+            elements.gallerySlideshowShuffle.checked = !!state.settings?.library?.performance?.gallerySlideshowShuffle;
+        }
         if (elements.libraryCoverCacheLimitMb) {
             elements.libraryCoverCacheLimitMb.value = String(state.settings?.library?.performance?.coverCacheLimitMb || 64);
         }
@@ -429,6 +552,10 @@
         }
         if (elements.securityEnforceAllowlist) {
             elements.securityEnforceAllowlist.checked = !!state.settings?.security?.enforceAllowlist;
+        }
+        if (elements.securitySessionProfile) {
+            const profile = String(state.settings?.security?.sessionProfile || 'persistent').toLowerCase();
+            elements.securitySessionProfile.value = profile === 'isolated' ? 'isolated' : 'persistent';
         }
 
         if (elements.audioDefaultVolume) {
@@ -538,6 +665,7 @@
         const smartVolumeLevelingMode = document.getElementById('smartVolumeLevelingMode');
         const mediaKeyAutoDetect = document.getElementById('mediaKeyAutoDetect');
         const browserNavigationHotkeysEnabled = document.getElementById('browserNavigationHotkeysEnabled');
+        const galleryHotkeysEnabled = document.getElementById('galleryHotkeysEnabled');
         const shortcutPrevious = document.getElementById('shortcutPrevious');
         const shortcutPlayPause = document.getElementById('shortcutPlayPause');
         const shortcutNext = document.getElementById('shortcutNext');
@@ -546,6 +674,19 @@
             acc[key] = normalizeNavigationShortcut(input?.value);
             return acc;
         }, {});
+        const galleryShortcuts = Object.entries(GALLERY_SHORTCUT_FIELD_MAP).reduce((acc, [key, fieldId]) => {
+            const input = document.getElementById(fieldId);
+            acc[key] = normalizeNavigationShortcut(input?.value);
+            return acc;
+        }, {});
+        if (galleryHotkeysEnabled?.checked === true) {
+            const hasAnyAssigned = Object.values(galleryShortcuts).some((value) => !isShortcutInputEmpty(value));
+            if (!hasAnyAssigned) {
+                Object.entries(GALLERY_SHORTCUT_DEFAULTS).forEach(([key, value]) => {
+                    galleryShortcuts[key] = normalizeNavigationShortcut(value);
+                });
+            }
+        }
         const crossfadeMsValue = Math.max(0, Math.min(15000, parseInt(crossfadeMs?.value || '2000', 10) || 2000));
         const pauseFadeMsValue = Math.max(0, Math.min(5000, parseInt(pauseFadeMs?.value || '250', 10) || 250));
         const crossfadeSafetyPaddingMsValue = Math.max(0, Math.min(5000, parseInt(crossfadeSafetyPaddingMs?.value || '300', 10) || 300));
@@ -575,12 +716,14 @@
                 : 'balanced',
             mediaKeyAutoDetect: mediaKeyAutoDetect?.checked !== false,
             browserNavigationHotkeysEnabled: browserNavigationHotkeysEnabled?.checked !== false,
+            galleryHotkeysEnabled: galleryHotkeysEnabled?.checked === true,
             customHotkeys: {
-                previous: normalizePlaybackShortcutCode(shortcutPrevious?.value, 'F2'),
-                playPause: normalizePlaybackShortcutCode(shortcutPlayPause?.value, 'F3'),
-                next: normalizePlaybackShortcutCode(shortcutNext?.value, 'F4')
+                previous: normalizePlaybackShortcutCode(shortcutPrevious?.value, 'none'),
+                playPause: normalizePlaybackShortcutCode(shortcutPlayPause?.value, 'none'),
+                next: normalizePlaybackShortcutCode(shortcutNext?.value, 'none')
             },
             navigationShortcuts,
+            galleryShortcuts,
             startupState: state.settings?.playback?.startupState && typeof state.settings.playback.startupState === 'object'
                 ? state.settings.playback.startupState
                 : {}
@@ -658,12 +801,18 @@
                 ? !!elements.behaviorRememberLastSection.checked
                 : !!elements.libraryRememberSection?.checked;
         state.settings.ui.rememberLastSection = rememberLastSectionValue;
+        state.settings.ui.webExperienceEnabled =
+            (typeof elements.behaviorWebExperienceEnabled?.checked === 'boolean')
+                ? !!elements.behaviorWebExperienceEnabled.checked
+                : (state.settings.ui.webExperienceEnabled === true);
+        const allowWebStartup = state.settings.ui.webExperienceEnabled === true;
         const startupPage = String(
             elements.behaviorStartupPage?.value
             || elements.libraryStartupPage?.value
             || 'music'
         ).toLowerCase();
-        state.settings.ui.startupPage = ['music', 'video', 'web'].includes(startupPage) ? startupPage : 'music';
+        const allowedStartupPages = allowWebStartup ? ['music', 'video', 'web'] : ['music', 'video'];
+        state.settings.ui.startupPage = allowedStartupPages.includes(startupPage) ? startupPage : 'music';
         const webStartupLazyDelayMs = normalizeWebStartupLazyDelayMs(
             elements.behaviorWebStartupDelay?.value
             || elements.libraryWebStartupDelay?.value
@@ -690,6 +839,10 @@
         if (!state.settings.security || typeof state.settings.security !== 'object') state.settings.security = {};
         state.settings.security.allowPopups = !!elements.securityAllowPopups?.checked;
         state.settings.security.enforceAllowlist = !!elements.securityEnforceAllowlist?.checked;
+        state.settings.security.sessionProfile =
+            String(elements.securitySessionProfile?.value || state.settings.security.sessionProfile || 'persistent').toLowerCase() === 'isolated'
+                ? 'isolated'
+                : 'persistent';
         if (!state.settings.library || typeof state.settings.library !== 'object') state.settings.library = {};
         state.settings.library.restoreLastFolder = !!elements.libraryRestoreLastFolder?.checked;
         state.settings.library.restoreLastPlaylist = !!elements.libraryRestoreLastPlaylist?.checked;
@@ -739,6 +892,35 @@
         }
         state.settings.library.performance.fastScan = !!elements.libraryFastScan?.checked;
         state.settings.library.performance.lightweightMode = !!elements.libraryLightweightMode?.checked;
+        state.settings.library.performance.scanSubfolders = !!elements.libraryScanSubfolders?.checked;
+        const galleryPageJumpValue = Number(elements.libraryGalleryPageJump?.value);
+        state.settings.library.performance.galleryPageJump = Number.isFinite(galleryPageJumpValue)
+            ? Math.max(1, Math.min(30, Math.round(galleryPageJumpValue)))
+            : 6;
+        const gallerySlideshowIntervalMsValue = Number(elements.gallerySlideshowIntervalMs?.value);
+        state.settings.library.performance.gallerySlideshowIntervalMs = Number.isFinite(gallerySlideshowIntervalMsValue)
+            ? Math.max(1000, Math.min(15000, Math.round(gallerySlideshowIntervalMsValue)))
+            : 3000;
+        const galleryFastThresholdValue = Number(elements.gallerySlideshowFastThresholdMs?.value);
+        const gallerySlowThresholdValue = Number(elements.gallerySlideshowSlowThresholdMs?.value);
+        const safeFastThreshold = Number.isFinite(galleryFastThresholdValue)
+            ? Math.max(1000, Math.min(14000, Math.round(galleryFastThresholdValue)))
+            : 2500;
+        const safeSlowThreshold = Number.isFinite(gallerySlowThresholdValue)
+            ? Math.max(1500, Math.min(15000, Math.round(gallerySlowThresholdValue)))
+            : 5000;
+        state.settings.library.performance.galleryFastThresholdMs = Math.min(safeFastThreshold, safeSlowThreshold - 500);
+        state.settings.library.performance.gallerySlowThresholdMs = Math.max(safeSlowThreshold, state.settings.library.performance.galleryFastThresholdMs + 500);
+        const galleryTransitionSlideshowValue = Number(elements.galleryTransitionSlideshowMs?.value);
+        state.settings.library.performance.galleryTransitionSlideshowMs = Number.isFinite(galleryTransitionSlideshowValue)
+            ? Math.max(280, Math.min(1100, Math.round(galleryTransitionSlideshowValue)))
+            : 440;
+        const galleryTransitionManualValue = Number(elements.galleryTransitionManualMs?.value);
+        state.settings.library.performance.galleryTransitionManualMs = Number.isFinite(galleryTransitionManualValue)
+            ? Math.max(120, Math.min(500, Math.round(galleryTransitionManualValue)))
+            : 190;
+        state.settings.library.performance.gallerySlideshowLoop = !!elements.gallerySlideshowLoop?.checked;
+        state.settings.library.performance.gallerySlideshowShuffle = !!elements.gallerySlideshowShuffle?.checked;
         const coverCacheLimitValue = Number(elements.libraryCoverCacheLimitMb?.value);
         state.settings.library.performance.coverCacheLimitMb = [32, 64, 128, 256].includes(coverCacheLimitValue)
             ? coverCacheLimitValue
@@ -840,6 +1022,7 @@
         const smartVolumeLevelingMode = document.getElementById('smartVolumeLevelingMode');
         const mediaKeyAutoDetect = document.getElementById('mediaKeyAutoDetect');
         const browserNavigationHotkeysEnabled = document.getElementById('browserNavigationHotkeysEnabled');
+        const galleryHotkeysEnabled = document.getElementById('galleryHotkeysEnabled');
         const shortcutPrevious = document.getElementById('shortcutPrevious');
         const shortcutPlayPause = document.getElementById('shortcutPlayPause');
         const shortcutNext = document.getElementById('shortcutNext');
@@ -866,13 +1049,23 @@
         if (smartVolumeLevelingMode) smartVolumeLevelingMode.value = 'balanced';
         if (mediaKeyAutoDetect) mediaKeyAutoDetect.checked = true;
         if (browserNavigationHotkeysEnabled) browserNavigationHotkeysEnabled.checked = true;
-        if (shortcutPrevious) shortcutPrevious.value = 'F2';
-        if (shortcutPlayPause) shortcutPlayPause.value = 'F3';
-        if (shortcutNext) shortcutNext.value = 'F4';
+        if (galleryHotkeysEnabled) galleryHotkeysEnabled.checked = true;
+        if (shortcutPrevious) shortcutPrevious.value = 'none';
+        if (shortcutPlayPause) shortcutPlayPause.value = 'none';
+        if (shortcutNext) shortcutNext.value = 'none';
         Object.values(NAVIGATION_SHORTCUT_FIELD_MAP).forEach((fieldId) => {
             const input = document.getElementById(fieldId);
             if (input) input.value = '';
         });
+        applyDefaultGalleryShortcutsToUi({ force: true });
+        updateGalleryShortcutAssignmentsUi({ autofillDefaults: false });
+    }
+
+    function resetGalleryShortcutDefaults() {
+        const galleryHotkeysEnabled = document.getElementById('galleryHotkeysEnabled');
+        if (galleryHotkeysEnabled) galleryHotkeysEnabled.checked = true;
+        applyDefaultGalleryShortcutsToUi({ force: true });
+        updateGalleryShortcutAssignmentsUi({ autofillDefaults: false });
     }
 
     function resetListenDefaults({ elements, defaultSec, defaultMode, updatePulseQuickModeUi }) {
@@ -914,7 +1107,9 @@
         getButtonToggleState,
         setButtonToggleState,
         resetPlaybackDefaults,
+        resetGalleryShortcutDefaults,
         resetListenDefaults,
+        updateGalleryShortcutAssignmentsUi,
         updateAudioSettingsVolumeLabel,
         updateAudioAppVolumeLabel
     };

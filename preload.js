@@ -654,11 +654,17 @@ const aurivoAPI = {
     getFileInfo: (filePath) => ipcRenderer.invoke('fs:getFileInfo', filePath),
     readTextFile: (filePath) => ipcRenderer.invoke('fs:readText', filePath),
     writeTextFile: (filePath, text) => ipcRenderer.invoke('fs:writeText', filePath, text),
+    writeBase64File: (filePath, base64Data) => ipcRenderer.invoke('fs:writeBase64', filePath, base64Data),
+    renameItem: (sourcePath, nextName) => ipcRenderer.invoke('fs:renameItem', sourcePath, nextName),
+    moveToTrash: (filePath) => ipcRenderer.invoke('fs:moveToTrash', filePath),
+    openContainingFolder: (filePath) => ipcRenderer.invoke('fs:openContainingFolder', filePath),
+    getPathProperties: (filePath) => ipcRenderer.invoke('fs:getPathProperties', filePath),
 
     // Medya Metadata
     getAlbumArt: (filePath) => ipcRenderer.invoke('media:getAlbumArt', filePath),
     getBestAlbumArt: (filePath, options) => ipcRenderer.invoke('media:getBestAlbumArt', filePath, options),
     getVideoThumbnail: (filePath) => ipcRenderer.invoke('media:getVideoThumbnail', filePath),
+    getDisplayImagePath: (filePath, options) => ipcRenderer.invoke('media:getDisplayImagePath', filePath, options),
     library: {
         getStats: (folders, metadataCache, excludedFolders, audioExtensions, performanceOptions) => ipcRenderer.invoke('library:getStats', folders, metadataCache, excludedFolders, audioExtensions, performanceOptions),
         getStatsComposite: (folders, extraFiles, metadataCache, excludedFolders, audioExtensions, performanceOptions) => ipcRenderer.invoke('library:getStatsComposite', folders, extraFiles, metadataCache, excludedFolders, audioExtensions, performanceOptions),
@@ -791,7 +797,9 @@ const aurivoAPI = {
     webSecurity: {
         openExternal: (url) => ipcRenderer.invoke('web:openExternal', url),
         clearData: (options) => ipcRenderer.invoke('web:clearData', options),
-        getSecurityState: () => ipcRenderer.invoke('web:getSecurityState')
+        getSecurityState: () => ipcRenderer.invoke('web:getSecurityState'),
+        exportCookies: (filePath) => ipcRenderer.invoke('web:exportCookies', filePath),
+        importCookies: (filePath) => ipcRenderer.invoke('web:importCookies', filePath)
     },
 
     adblock: {

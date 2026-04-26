@@ -51,6 +51,14 @@ This project was developed with active AI assistance.
 
 In line with Linux community standards, all technical and legal responsibility for this project belongs to the developer, Muhammed.
 
+## Binary Provenance & Integrity
+
+This repository includes a limited set of native shared libraries (`.so` / `.so.*`) used by runtime and packaging.
+
+- Provenance list: `THIRD_PARTY_BINARIES.md`
+- Pinned hash manifest: `third_party/binary-manifest.json`
+- Integrity check: `npm run verify:binary:manifest`
+
 ## Features
 
 - Built-in web platform mode for media-focused browsing

@@ -11,6 +11,7 @@
     "gen:win:ico": "node scripts/generate-windows-ico.js",
     "rebuild-native": "npm --prefix native ci && npm --prefix native run rebuild",
     "verify:libs": "node native/verify-libs.js",
+    "verify:binary:manifest": "node scripts/verify-binary-manifest.js",
     "prepare:win:resources": "node scripts/prepare-win-resources.js",
     "locale:coverage": "node scripts/generate-locale-coverage.js",
     "locale:sync": "node scripts/sync-locales.js",
