@@ -270,8 +270,11 @@ jobs:
             dist/*.rpm
             dist/latest-linux.yml
             dist/SHA256SUMS.txt
-            dist/SHA256SUMS.txt.asc
           )
+
+          if [ -f dist/SHA256SUMS.txt.asc ]; then
+            assets+=(dist/SHA256SUMS.txt.asc)
+          fi
 
           if [ "${#assets[@]}" -eq 0 ]; then
             echo "No release assets found; skipping upload."
