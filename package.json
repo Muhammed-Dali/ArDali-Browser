@@ -1,7 +1,7 @@
 {
   "name": "aurivo-media-player",
   "version": "2.0.53",
-  "description": "Aurivo Media Player - Electron App",
+  "description": "Open-source Linux media player for music and video with DSP effects, equalizer, visualizer, downloader, and song recognition",
   "main": "main.js",
   "scripts": {
     "start": "npm run dev:linux",
@@ -53,6 +53,20 @@
     "locale:sync:main": "node scripts/sync-main-process-locales.js"
   },
   "author": "Muhammet Dali",
+  "keywords": [
+    "linux",
+    "media-player",
+    "music-player",
+    "video-player",
+    "electron",
+    "appimage",
+    "deb",
+    "rpm",
+    "equalizer",
+    "dsp",
+    "visualizer",
+    "audio-effects"
+  ],
   "homepage": "https://aurivo.app",
   "repository": {
     "type": "git",
@@ -255,9 +269,9 @@
       "desktop": {
         "entry": {
           "Name": "Aurivo Media Player",
-          "Comment": "Electron tabanlı gelişmiş medya oynatıcı",
+          "Comment": "Open-source Linux media player for music and video",
           "Categories": "AudioVideo;Player;",
-          "Keywords": "Music;Audio;Video;Player;Aurivo;"
+          "Keywords": "Music;Audio;Video;Media;Player;Linux;AppImage;Deb;Rpm;Equalizer;DSP;Aurivo;"
         }
       },
       "icon": "icons/aurivo_512.png",

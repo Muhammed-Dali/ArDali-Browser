@@ -19,6 +19,17 @@
     <category>AudioVideo</category>
     <category>Player</category>
   </categories>
+  <keywords>
+    <keyword>Linux media player</keyword>
+    <keyword>music player</keyword>
+    <keyword>video player</keyword>
+    <keyword>equalizer</keyword>
+    <keyword>DSP</keyword>
+    <keyword>AppImage</keyword>
+    <keyword>deb</keyword>
+    <keyword>rpm</keyword>
+    <keyword>Aurivo</keyword>
+  </keywords>
 
   <description>
     <p>Aurivo Media Player is a Linux desktop media app that combines music playback, video playback, web media, downloading workflows, and advanced DSP controls in a single interface.</p>
@@ -34,13 +45,13 @@
 
   <screenshots>
     <screenshot type="default">
-      <image>https://raw.githubusercontent.com/muhammed-aurivo-dev/Aurivo-Medya-Player-Linux/main/screenshots/shot-20260331-222556.png</image>
+      <image>https://raw.githubusercontent.com/muhammed-aurivo-dev/Aurivo-Medya-Player-Linux/main/screenshots/aber/shot-00.png</image>
     </screenshot>
     <screenshot>
-      <image>https://raw.githubusercontent.com/muhammed-aurivo-dev/Aurivo-Medya-Player-Linux/main/screenshots/shot-20260331-222611.png</image>
+      <image>https://raw.githubusercontent.com/muhammed-aurivo-dev/Aurivo-Medya-Player-Linux/main/screenshots/aber/shot-01.png</image>
     </screenshot>
     <screenshot>
-      <image>https://raw.githubusercontent.com/muhammed-aurivo-dev/Aurivo-Medya-Player-Linux/main/screenshots/shot-20260331-222722.png</image>
+      <image>https://raw.githubusercontent.com/muhammed-aurivo-dev/Aurivo-Medya-Player-Linux/main/screenshots/aber/shot-02.png</image>
     </screenshot>
   </screenshots>
 

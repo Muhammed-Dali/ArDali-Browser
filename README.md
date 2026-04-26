@@ -41,7 +41,9 @@
 
 ### Aurivo Media Player (Linux)
 
-Aurivo Media Player is a modern and lightweight player built for Linux.
+Aurivo Media Player is an open-source Linux media player for music and video playback with DSP effects, equalizer tools, real-time visualization, and built-in downloader workflows.
+
+Search terms: Linux media player, Linux music player, Linux video player, AppImage media player, DEB media player, RPM media player, Electron media player.
 
 ## AI Audit Statement
 
