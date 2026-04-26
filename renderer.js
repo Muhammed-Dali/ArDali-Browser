@@ -30894,20 +30894,9 @@ function applyAppUpdateStateToUi(payload = {}) {
         }
     }
 
-    const shouldShowBanner =
-        appUpdateRuntime.status === 'available' ||
-        appUpdateRuntime.status === 'downloading' ||
-        appUpdateRuntime.status === 'downloaded' ||
-        appUpdateRuntime.status === 'error' ||
-        appUpdateRuntime.status === 'not-available';
-    setUpdateBannerVisible(shouldShowBanner);
+    // Kullanıcı tercihi: ana arayüzde güncelleme banner'ı/otomatik bildirim gösterme.
+    setUpdateBannerVisible(false);
 
-    // "Güncel" bildirimini kısa süre göster, sonra banner'i gizle
-    if (appUpdateRuntime.status === 'not-available') {
-        setTimeout(() => setUpdateBannerVisible(false), 4000);
-    }
-
-    maybeNotifyUpdateAvailable(previousStatus, previousTargetVersion);
     updateActionButtonState();
     syncAboutVersionInfoUi();
 }
@@ -31001,6 +30990,7 @@ async function initAppUpdateUi() {
     } catch (error) {
         console.warn('[UPDATE] init failed:', error?.message || error);
     }
+    setUpdateBannerVisible(false);
     syncAboutVersionInfoUi();
     updateActionButtonState();
 }

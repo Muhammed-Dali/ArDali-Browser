@@ -5907,7 +5907,8 @@ app.whenReady().then(async () => {
     try { createWindow(); } catch (e) { console.error('[APP] createWindow error:', e); }
     try { createTray(); } catch (e) { console.error('[APP] createTray error:', e); }
     try { createMPRIS(); } catch (e) { console.error('[APP] createMPRIS error:', e); }
-    try { scheduleStartupUpdateCheck(); } catch (e) { console.error('[APP] startup update check error:', e); }
+    // Kullanıcı tercihi: arka planda otomatik güncelleme denetimi yapılmasın.
+    // Güncelleme kontrolü yalnızca UI'daki manuel aksiyon ile çalışır.
     try { refreshGlobalMediaShortcuts(await readSettingsFileSafe()); } catch (e) { console.error('[APP] media shortcut init error:', e); }
 
     // Kayıtlı EQ32 presetini açılışta uygula
