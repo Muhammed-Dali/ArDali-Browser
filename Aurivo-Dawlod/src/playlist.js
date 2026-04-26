@@ -5,17 +5,6 @@ const os = require("os");
 const fs = require("fs");
 const {constants} = require("fs/promises");
 const {resolveFfmpegPathSync} = require("../src/ffmpeg-manager");
-const SAFE_NAV_TARGETS = {
-	page: {
-		preferences: path.join(__dirname, "..", "html", "preferences.html"),
-		about: path.join(__dirname, "..", "html", "about.html"),
-		history: path.join(__dirname, "..", "html", "history.html"),
-	},
-	win: {
-		index: path.join(__dirname, "..", "html", "index.html"),
-		compressor: path.join(__dirname, "..", "html", "compressor.html"),
-	},
-};
 
 const playlistDownloader = {
 	// State and config
@@ -117,7 +106,7 @@ const playlistDownloader = {
 	loadInitialConfig() {
 		// yt-dlp path
 		this.state.ytDlpPath = localStorage.getItem("ytdlp");
-		this.state.ytDlpWrap = new YTDlpWrap(this.state.ytDlpPath);
+		this.state.ytDlpWrap = new YTDlpWrap(`"${this.state.ytDlpPath}"`);
 
 		const defaultDownloadsDir = path.join(os.homedir(), "Downloads");
 		let preferredDir =
@@ -201,19 +190,19 @@ const playlistDownloader = {
 		);
 
 		this.ui.preferenceWinBtn.addEventListener("click", () =>
-			this.navigate("page", "preferences")
+			this.navigate("page", "/preferences.html")
 		);
 		this.ui.aboutWinBtn.addEventListener("click", () =>
-			this.navigate("page", "about")
+			this.navigate("page", "/about.html")
 		);
 		this.ui.historyWinBtn.addEventListener("click", () =>
-			this.navigate("page", "history")
+			this.navigate("page", "/history.html")
 		);
 		this.ui.homeWinBtn.addEventListener("click", () =>
-			this.navigate("win", "index")
+			this.navigate("win", "/index.html")
 		);
 		this.ui.compressorWinBtn.addEventListener("click", () =>
-			this.navigate("win", "compressor")
+			this.navigate("win", "/compressor.html")
 		);
 
 		ipcRenderer.on("downloadPath", (_event, downloadPath) => {
@@ -251,14 +240,16 @@ const playlistDownloader = {
 				break;
 		}
 
-		const allArgs = [...baseArgs, ...specificArgs, this.state.url].filter(
-			Boolean
-		);
+		const allArgs = [
+			...baseArgs,
+			...specificArgs,
+			`"${this.state.url}"`,
+		].filter(Boolean);
 
-		console.log("Command:", this.state.ytDlpPath, allArgs.join(" "));
+		console.log(`Command: ${this.state.ytDlpPath}`, allArgs.join(" "));
 		this.state.currentDownloadProcess = this.state.ytDlpWrap.exec(
 			allArgs,
-			{shell: false, detached: false},
+			{shell: true, detached: false},
 			controller.signal
 		);
 
@@ -267,20 +258,20 @@ const playlistDownloader = {
 
 	buildBaseArgs() {
 		const {start, end} = this.config.playlistRange;
-		const outputPath = path.join(
+		const outputPath = `"${path.join(
 			this.state.downloadDir,
 			this.config.foldernameFormat,
 			this.config.filenameFormat
-		);
+		)}"`;
 
 		return [
 			"--yes-playlist",
 			"-o",
 			outputPath,
 			"-I",
-			`${start}:${end}`,
+			`"${start}:${end}"`,
 			...(this.state.ffmpegPath
-				? ["--ffmpeg-location", this.state.ffmpegPath]
+				? ["--ffmpeg-location", `"${this.state.ffmpegPath}"`]
 				: []),
 			...(this.state.jsRuntimePath
 				? ["--no-js-runtimes", "--js-runtime", this.state.jsRuntimePath]
@@ -393,11 +384,11 @@ const playlistDownloader = {
 	},
 
 	getLinkArgs() {
-		const linksFilePath = path.join(
+		const linksFilePath = `"${path.join(
 			this.state.downloadDir,
 			this.config.foldernameFormat,
 			"links.txt"
-		);
+		)}"`;
 		return [
 			"--skip-download",
 			"--print-to-file",
@@ -506,20 +497,14 @@ const playlistDownloader = {
 				prevProgress.textContent = window.i18n.__("fileSaved");
 		}
 
-		const itemContainer = document.createElement("div");
-		itemContainer.className = "playlistItem";
-
-		const titleElement = document.createElement("p");
-		titleElement.className = "itemTitle";
-		titleElement.textContent = itemTitle;
-
-		const progressElement = document.createElement("p");
-		progressElement.className = "itemProgress";
-		progressElement.id = `p${count}`;
-		progressElement.textContent = window.i18n.__("downloading");
-
-		itemContainer.append(titleElement, progressElement);
-		this.ui.downloadList.appendChild(itemContainer);
+		const itemHTML = `
+            <div class="playlistItem">
+                <p class="itemTitle">${itemTitle}</p>
+                <p class="itemProgress" id="p${count}">${window.i18n.__(
+			"downloading"
+		)}</p>
+            </div>`;
+		this.ui.downloadList.innerHTML += itemHTML;
 		window.scrollTo(0, document.body.scrollHeight);
 	},
 
@@ -538,7 +523,7 @@ const playlistDownloader = {
 			? "--cookies-from-browser"
 			: "";
 		const configPath = localStorage.getItem("configPath");
-		this.config.configFile.path = configPath || "";
+		this.config.configFile.path = configPath ? `"${configPath}"` : "";
 		this.config.configFile.arg = configPath ? "--config-location" : "";
 
 		// Playlist range from UI inputs
@@ -597,15 +582,9 @@ const playlistDownloader = {
 		this.ui.errorMsgDisplay.style.display = "block";
 		this.ui.errorMsgDisplay.title = error.toString();
 		this.ui.errorBtn.style.display = "inline-block";
-		this.ui.errorDetails.textContent = "";
-		const strong = document.createElement("strong");
-		strong.textContent = `URL: ${this.state.url || ""}`;
-		this.ui.errorDetails.appendChild(strong);
-		this.ui.errorDetails.appendChild(document.createElement("br"));
-		this.ui.errorDetails.appendChild(document.createElement("br"));
-		this.ui.errorDetails.append(
-			document.createTextNode(error?.toString?.() || String(error))
-		);
+		this.ui.errorDetails.innerHTML = `<strong>URL: ${
+			this.state.url
+		}</strong><br><br>${error.toString()}`;
 		// this.ui.errorDetails.title = window.i18n.__("clickToCopy");
 	},
 
@@ -660,13 +639,8 @@ const playlistDownloader = {
 
 	navigate(type, page) {
 		this.closeMenu();
-		const targetPath = SAFE_NAV_TARGETS[type]?.[page];
-		if (!targetPath) {
-			console.warn("Blocked unexpected navigation target:", page);
-			return;
-		}
 		const event = type === "page" ? "load-page" : "load-win";
-		ipcRenderer.send(event, targetPath);
+		ipcRenderer.send(event, path.join(__dirname, page));
 	},
 
 	getJsRuntimePath() {

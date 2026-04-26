@@ -5,35 +5,8 @@ const os = require("os");
 const fs = require("fs");
 const { execSync, execFile, spawnSync } = require("child_process");
 let url;
-const TRUSTED_YTDLP_BINARIES = new Set([
-	"ytdlp",
-	"ytdlp.exe",
-	"yt-dlp",
-	"yt-dlp.exe",
-]);
-function normalizeTrustedExecutablePath(filePath, allowedBasenames) {
-	if (typeof filePath !== "string" || filePath.length === 0) return "";
-	if (filePath.includes("\0")) return "";
-	const normalized = path.resolve(filePath);
-	if (!fs.existsSync(normalized)) return "";
-	const base = path.basename(normalized).toLowerCase();
-	if (!allowedBasenames.has(base)) return "";
-	return normalized;
-}
-function parseHttpUrl(raw) {
-	try {
-		const u = new URL(String(raw || "").trim());
-		if (u.protocol !== "http:" && u.protocol !== "https:") return "";
-		return u.toString();
-	} catch {
-		return "";
-	}
-}
-const ytDlp = normalizeTrustedExecutablePath(
-	localStorage.getItem("ytdlp"),
-	TRUSTED_YTDLP_BINARIES
-);
-const ytdlp = new YTDlpWrap(ytDlp || "yt-dlp");
+const ytDlp = localStorage.getItem("ytdlp");
+const ytdlp = new YTDlpWrap(ytDlp);
 const downloadDir = localStorage.getItem("downloadPath");
 const i18n = new (require("../translations/i18n"))();
 let cookieArg = "";
@@ -62,15 +35,8 @@ if (os.platform() === "win32") {
 
 if (!fs.existsSync(ffmpegPath)) {
 	try {
-		const res = spawnSync("which", ["ffmpeg"], {
-			encoding: "utf8",
-			shell: false,
-			windowsHide: true,
-		});
-		const found = String(res.stdout || "").trim();
-		if (found) {
-			ffmpeg = `"${found}"`;
-		}
+		ffmpeg = execSync("which ffmpeg", { encoding: "utf8" });
+		ffmpeg = `"${ffmpeg.trimEnd()}"`;
 	} catch (error) {
 		console.log(error);
 	}
@@ -87,14 +53,7 @@ function getId(id) {
 }
 
 function pasteLink() {
-	const clipboardText = parseHttpUrl(clipboard.readText());
-	if (!ytDlp || !clipboardText) {
-		getId("loadingWrapper").style.display = "none";
-		getId("incorrectMsg").textContent = i18n.__(
-			"Some error has occurred. Check your network and use correct URL"
-		);
-		return;
-	}
+	const clipboardText = clipboard.readText();
 	getId("loadingWrapper").style.display = "flex";
 	getId("incorrectMsg").textContent = "";
 	getId("errorBtn").style.display = "none";

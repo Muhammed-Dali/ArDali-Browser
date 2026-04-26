@@ -2,20 +2,13 @@ const {shell, ipcRenderer, clipboard} = require("electron");
 const {default: YTDlpWrap} = require("yt-dlp-wrap-plus");
 const {constants} = require("fs/promises");
 const {homedir, platform} = require("os");
-const {join, basename, resolve, sep} = require("path");
+const {join} = require("path");
 const {mkdirSync, accessSync, promises, existsSync} = require("fs");
-const {spawn, spawnSync} = require("child_process");
+const {execSync, spawn} = require("child_process");
 const {
 	ensureFfmpegPath,
 	getLinuxFfmpegInstallInfo,
 } = require("../src/ffmpeg-manager");
-
-const IS_FLATPAK_RUNTIME =
-	platform() === "linux" &&
-	Boolean(
-		String(process.env.FLATPAK_ID || process.env.APP_ID || "").trim() ||
-			String(process.env.container || "").trim().toLowerCase() === "flatpak"
-	);
 
 const CONSTANTS = {
 	DOM_IDS: {
@@ -91,14 +84,10 @@ const CONSTANTS = {
 		CLOSE_TO_TRAY: "closeToTray",
 		YT_DLP_CUSTOM_ARGS: "customYtDlpArgs",
 	},
+	SESSION_STORAGE_KEYS: {
+		LAST_MAIN_LINK: "aurivoDawlodLastMainLink",
+	},
 };
-
-const TRUSTED_YTDLP_BINARIES = new Set([
-	"ytdlp",
-	"ytdlp.exe",
-	"yt-dlp",
-	"yt-dlp.exe",
-]);
 
 /**
  * Shorthand for document.getElementById.
@@ -142,11 +131,12 @@ class AurivoDawlodApp {
 				browserForCookies: "",
 				customYtDlpArgs: "",
 			},
-			downloadControllers: new Map(),
-			downloadedItems: new Set(),
-			downloadQueue: [],
-		};
-	}
+				downloadControllers: new Map(),
+				downloadedItems: new Set(),
+				downloadQueue: [],
+				currentInfoUrl: "",
+			};
+		}
 
 	/**
 	 * Initializes the application, setting up directories, finding executables,
@@ -171,7 +161,7 @@ class AurivoDawlodApp {
 				90000,
 				"yt-dlp hazırlanamadı (zaman aşımı)."
 			);
-			this.state.ytDlp = new YTDlpWrap(this.state.ytDlpPath);
+			this.state.ytDlp = new YTDlpWrap(`"${this.state.ytDlpPath}"`);
 			this.state.ffmpegPath = await this._withTimeout(
 				this._findFfmpeg(),
 				45000,
@@ -182,16 +172,67 @@ class AurivoDawlodApp {
 
 			console.log("yt-dlp path:", this.state.ytDlpPath);
 			console.log("ffmpeg path:", this.state.ffmpegPath);
-			console.log("JS runtime path:", this.state.jsRuntimePath);
+				console.log("JS runtime path:", this.state.jsRuntimePath);
 
-			// Signal to the main process that the renderer is ready for links
-			ipcRenderer.send("ready-for-links");
-		} catch (error) {
-			console.error("Initialization failed:", error);
-			$(CONSTANTS.DOM_IDS.INCORRECT_MSG).textContent = error.message;
+				// Signal to the main process that the renderer is ready for links
+				ipcRenderer.send("ready-for-links");
+				setTimeout(() => this._restoreLastLinkFromSession(), 350);
+			} catch (error) {
+				console.error("Initialization failed:", error);
+				$(CONSTANTS.DOM_IDS.INCORRECT_MSG).textContent = error.message;
 		} finally {
 			this._hideStartupSplash();
 		}
+	}
+
+	_normalizeHttpUrl(raw) {
+		try {
+			const parsed = new URL(String(raw || "").trim());
+			if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+				return "";
+			}
+			return parsed.toString();
+		} catch {
+			return "";
+		}
+	}
+
+	_rememberLastLink(url) {
+		const normalized = this._normalizeHttpUrl(url);
+		if (!normalized) return;
+		try {
+			sessionStorage.setItem(
+				CONSTANTS.SESSION_STORAGE_KEYS.LAST_MAIN_LINK,
+				normalized
+			);
+		} catch {
+			// best-effort
+		}
+	}
+
+	_restoreLastLinkFromSession() {
+		try {
+			const panel = $(CONSTANTS.DOM_IDS.HIDDEN_PANEL);
+			if (panel?.style?.display && panel.style.display !== "none") return;
+		} catch {
+			// continue
+		}
+		if (this.state.videoInfo.url || this.state.currentInfoUrl) return;
+		let saved = "";
+		try {
+			saved = String(
+				sessionStorage.getItem(
+					CONSTANTS.SESSION_STORAGE_KEYS.LAST_MAIN_LINK
+				) || ""
+			).trim();
+		} catch {
+			saved = "";
+		}
+		const restoredUrl = this._normalizeHttpUrl(saved);
+		if (!restoredUrl) return;
+		Promise.resolve(this.getInfo(restoredUrl)).catch((error) => {
+			console.warn("Last link restore failed:", error?.message || error);
+		});
 	}
 
 	_hideStartupSplash() {
@@ -283,37 +324,30 @@ class AurivoDawlodApp {
 	}
 
 	_ensureCoreUiResponsive() {
-		const routeToSecondary = (id, targetPath) => {
+		const routeToSecondary = (id, fileName) => {
 			const el = $(id);
 			if (!el || typeof el.onclick === "function") return;
-			el.onclick = () => ipcRenderer.send("load-page", targetPath);
+			el.onclick = () =>
+				ipcRenderer.send(
+					"load-page",
+					join(__dirname, "..", "html", fileName)
+				);
 		};
-		const routeToMain = (id, targetPath) => {
+		const routeToMain = (id, fileName) => {
 			const el = $(id);
 			if (!el || typeof el.onclick === "function") return;
-			el.onclick = () => ipcRenderer.send("load-win", targetPath);
+			el.onclick = () =>
+				ipcRenderer.send(
+					"load-win",
+					join(__dirname, "..", "html", fileName)
+				);
 		};
 
-		routeToSecondary(
-			CONSTANTS.DOM_IDS.PREFERENCE_WIN,
-			join(__dirname, "..", "html", "preferences.html")
-		);
-		routeToSecondary(
-			CONSTANTS.DOM_IDS.ABOUT_WIN,
-			join(__dirname, "..", "html", "about.html")
-		);
-		routeToSecondary(
-			CONSTANTS.DOM_IDS.HISTORY_WIN,
-			join(__dirname, "..", "html", "history.html")
-		);
-		routeToMain(
-			CONSTANTS.DOM_IDS.PLAYLIST_WIN,
-			join(__dirname, "..", "html", "playlist.html")
-		);
-		routeToMain(
-			CONSTANTS.DOM_IDS.COMPRESSOR_WIN,
-			join(__dirname, "..", "html", "compressor.html")
-		);
+		routeToSecondary(CONSTANTS.DOM_IDS.PREFERENCE_WIN, "preferences.html");
+		routeToSecondary(CONSTANTS.DOM_IDS.ABOUT_WIN, "about.html");
+		routeToSecondary(CONSTANTS.DOM_IDS.HISTORY_WIN, "history.html");
+		routeToMain(CONSTANTS.DOM_IDS.PLAYLIST_WIN, "playlist.html");
+		routeToMain(CONSTANTS.DOM_IDS.COMPRESSOR_WIN, "compressor.html");
 	}
 
 	async _installFfmpegOnLinux() {
@@ -365,19 +399,16 @@ class AurivoDawlodApp {
 			}
 		}
 
-			let defaultDownloadDir = join(userHomeDir, "Downloads");
-			if (platform() === "linux") {
-				try {
-					const res = spawnSync("xdg-user-dir", ["DOWNLOAD"], {
-						encoding: "utf8",
-						shell: false,
-						windowsHide: true,
-					});
-					const xdgDownloadDir = String(res.stdout || "").trim();
-					if (xdgDownloadDir) {
-						defaultDownloadDir = xdgDownloadDir;
-					}
-				} catch (err) {
+		let defaultDownloadDir = join(userHomeDir, "Downloads");
+		if (platform() === "linux") {
+			try {
+				const xdgDownloadDir = execSync("xdg-user-dir DOWNLOAD")
+					.toString()
+					.trim();
+				if (xdgDownloadDir) {
+					defaultDownloadDir = xdgDownloadDir;
+				}
+			} catch (err) {
 				console.warn("Could not execute xdg-user-dir:", err.message);
 			}
 		}
@@ -518,21 +549,13 @@ class AurivoDawlodApp {
 			}
 		}
 
-			// PRIORITY 3: FreeBSD
-			else if (isFreeBSD) {
-				try {
-					const res = spawnSync("which", ["yt-dlp"], {
-						encoding: "utf8",
-						shell: false,
-						windowsHide: true,
-					});
-					executablePath = String(res.stdout || "").trim();
-					if (!executablePath) {
-						throw new Error("yt-dlp not found in PATH");
-					}
-				} catch {
-					throw new Error(
-						"No yt-dlp found in PATH on FreeBSD. Please install it."
+		// PRIORITY 3: FreeBSD
+		else if (isFreeBSD) {
+			try {
+				executablePath = execSync("which yt-dlp").toString().trim();
+			} catch {
+				throw new Error(
+					"No yt-dlp found in PATH on FreeBSD. Please install it."
 				);
 			}
 		}
@@ -543,7 +566,7 @@ class AurivoDawlodApp {
 				CONSTANTS.LOCAL_STORAGE_KEYS.YT_DLP_PATH
 			);
 
-			if (this._isTrustedYtDlpPath(storedPath)) {
+			if (storedPath && existsSync(storedPath)) {
 				executablePath = storedPath;
 			}
 			// Download if missing
@@ -563,29 +586,11 @@ class AurivoDawlodApp {
 		return executablePath;
 	}
 
-	_isTrustedYtDlpPath(filePath) {
-		if (typeof filePath !== "string" || filePath.length === 0) return false;
-		if (filePath.includes("\0")) return false;
-		// nosemgrep:javascript.lang.security.audit.path-traversal.path-join-resolve-traversal.path-join-resolve-traversal
-		// Path is normalized, existence-checked, and then restricted by strict basename allowlist.
-		const normalizedPath = resolve(filePath); // nosemgrep:javascript.lang.security.audit.path-traversal.path-join-resolve-traversal.path-join-resolve-traversal
-		if (!existsSync(normalizedPath)) return false;
-		return TRUSTED_YTDLP_BINARIES.has(
-			basename(normalizedPath).toLowerCase()
-		);
-	}
-
 	/**
 	 * yt-dlp background update
 	 */
 	_runBackgroundUpdate(executablePath, isMacOS) {
 		try {
-			if (IS_FLATPAK_RUNTIME) {
-				console.log(
-					"Skipping yt-dlp background updater in Flatpak runtime (container-managed updates)."
-				);
-				return;
-			}
 			if (isMacOS) {
 				const brewPaths = [
 					"/opt/homebrew/bin/brew",
@@ -602,19 +607,7 @@ class AurivoDawlodApp {
 					console.log("yt-dlp brew update:", data.toString())
 				);
 			} else {
-				const updateTargetPath = String(executablePath || "").trim();
-				if (!this._isTrustedYtDlpPath(updateTargetPath)) {
-					console.warn(
-						"Skipping background yt-dlp update due to untrusted executable path."
-					);
-					return;
-				}
-				// nosemgrep: javascript.lang.security.audit.dangerous-spawn.dangerous-spawn
-				// Path validated by _isTrustedYtDlpPath: non-empty, no null bytes, file exists, basename in strict allowlist.
-				const updateProc = spawn(updateTargetPath, ["-U"], {
-					shell: false,
-					windowsHide: true,
-				});
+				const updateProc = spawn(executablePath, ["-U"]);
 
 				updateProc.on("error", (err) =>
 					console.error(
@@ -655,11 +648,6 @@ class AurivoDawlodApp {
 
 			return defaultYtDlpPath;
 		} catch {
-			if (IS_FLATPAK_RUNTIME) {
-				throw new Error(
-					"yt-dlp auto-download is disabled in Flatpak runtime."
-				);
-			}
 			console.log("yt-dlp not found, downloading...");
 
 			$(CONSTANTS.DOM_IDS.POPUP_BOX).style.display = "block";
@@ -863,6 +851,23 @@ class AurivoDawlodApp {
 	 * Attaches all necessary event listeners for the UI.
 	 */
 	_addEventListeners() {
+		document.addEventListener("keydown", (event) => {
+			const isPasteShortcut =
+				(event.ctrlKey || event.metaKey) &&
+				String(event.key || "").toLowerCase() === "v";
+			if (!isPasteShortcut) return;
+			if (event.altKey || event.shiftKey) return;
+
+			const activeTag = String(document.activeElement?.tagName || "").toUpperCase();
+			const isTypingTarget =
+				activeTag === "INPUT" ||
+				activeTag === "TEXTAREA" ||
+				document.activeElement?.isContentEditable === true;
+			if (isTypingTarget) return;
+
+			this.pasteAndGetInfo();
+		});
+
 		// Download buttons
 		$(CONSTANTS.DOM_IDS.VIDEO_DOWNLOAD_BTN).addEventListener("click", () =>
 			this.handleDownloadRequest("video")
@@ -1005,33 +1010,49 @@ class AurivoDawlodApp {
 	// --- Public Methods ---
 
 	/**
+	 * Pastes URL from clipboard and initiates metadata fetch when it is a valid HTTP(S) URL.
+	 */
+	pasteAndGetInfo() {
+		const url = this._normalizeHttpUrl(clipboard.readText());
+		if (!url) return;
+		this.getInfo(url);
+	}
+
+	/**
 	 * Fetches video metadata from a given URL.
 	 * @param {string} url The video URL.
 	 */
 	async getInfo(url) {
+		const normalizedUrl = this._normalizeHttpUrl(url);
+		if (!normalizedUrl) return;
+		if (this.state.currentInfoUrl === normalizedUrl) return;
+		this.state.currentInfoUrl = normalizedUrl;
+		this._rememberLastLink(normalizedUrl);
+
 		this._loadSettings();
 		this._defaultVideoToggle();
 		this._resetUIForNewLink();
-		this.state.videoInfo.url = url;
+		this.state.videoInfo.url = normalizedUrl;
 
 		try {
-			const metadata = await this._fetchVideoMetadata(url);
+			const metadata = await this._fetchVideoMetadata(normalizedUrl);
 			console.log(metadata);
 
 			const durationInt =
 				metadata.duration == null ? null : Math.ceil(metadata.duration);
 
-			this.state.videoInfo = {
-				...this.state.videoInfo,
-				id: metadata.id,
+				this.state.videoInfo = {
+					...this.state.videoInfo,
+					id: metadata.id,
 				title: metadata.title,
 				thumbnail: metadata.thumbnail,
 				duration: durationInt,
-				extractor_key: metadata.extractor_key,
-			};
-			this.setVideoLength(durationInt);
-			this._populateFormatSelectors(metadata.formats || []);
-			this._displayInfoPanel();
+					extractor_key: metadata.extractor_key,
+				};
+				this._rememberLastLink(this.state.videoInfo.url);
+				this.setVideoLength(durationInt);
+				this._populateFormatSelectors(metadata.formats || []);
+				this._displayInfoPanel();
 		} catch (error) {
 			if (
 				error.message.includes("js-runtimes") &&
@@ -1042,6 +1063,7 @@ class AurivoDawlodApp {
 				this._showError(error.message, url);
 			}
 		} finally {
+			this.state.currentInfoUrl = "";
 			$(CONSTANTS.DOM_IDS.LOADING_WRAPPER).style.display = "none";
 		}
 	}
@@ -1133,15 +1155,15 @@ class AurivoDawlodApp {
 				proxy,
 				browserForCookies ? "--cookies-from-browser" : "",
 				browserForCookies,
-				this.state.jsRuntimePath ? "--no-js-runtimes" : "",
-				this.state.jsRuntimePath ? "--js-runtime" : "",
-				this.state.jsRuntimePath || "",
+				this.state.jsRuntimePath
+					? `--no-js-runtimes --js-runtime ${this.state.jsRuntimePath}`
+					: "",
 				configPath ? "--config-location" : "",
-				configPath || "",
-				url,
+				configPath ? `"${configPath}"` : "",
+				`"${url}"`,
 			].filter(Boolean);
 
-			const process = this.state.ytDlp.exec(args, {shell: false});
+			const process = this.state.ytDlp.exec(args, {shell: true});
 
 			console.log(
 			"Spawned yt-dlp with args:",
@@ -1198,7 +1220,7 @@ class AurivoDawlodApp {
 		this.state.downloadControllers.set(randomId, controller);
 
 		const downloadProcess = this.state.ytDlp.exec(downloadArgs, {
-			shell: false,
+			shell: true,
 			detached: false,
 			signal: controller.signal,
 		});
@@ -1244,30 +1266,25 @@ class AurivoDawlodApp {
 	_queueDownload(job) {
 		const randomId = "queue_" + Math.random().toString(36).substring(2, 12);
 		this.state.downloadQueue.push({...job, queueId: randomId});
-		const item = document.createElement("div");
-		item.className = "item";
-		item.id = randomId;
-		const iconBox = document.createElement("div");
-		iconBox.className = "itemIconBox";
-		const thumb = document.createElement("img");
-		thumb.src = job.thumbnail || "../assets/images/thumb.png";
-		thumb.alt = "thumbnail";
-		thumb.className = "itemIcon";
-		thumb.setAttribute("crossorigin", "anonymous");
-		const itemType = document.createElement("span");
-		itemType.className = "itemType";
-		itemType.textContent = i18n.__(job.type === "video" ? "video" : "audio");
-		iconBox.append(thumb, itemType);
-		const body = document.createElement("div");
-		body.className = "itemBody";
-		const title = document.createElement("div");
-		title.className = "itemTitle";
-		title.textContent = job.title;
-		const preparing = document.createElement("p");
-		preparing.textContent = i18n.__("preparing");
-		body.append(title, preparing);
-		item.append(iconBox, body);
-		$(CONSTANTS.DOM_IDS.DOWNLOAD_LIST).appendChild(item);
+		const itemHTML = `
+            <div class="item" id="${randomId}">
+                <div class="itemIconBox">
+                    <img src="${
+						job.thumbnail || "../assets/images/thumb.png"
+					}" alt="thumbnail" class="itemIcon" crossorigin="anonymous">
+                    <span class="itemType">${i18n.__(
+						job.type === "video" ? "video" : "audio"
+					)}</span>
+                </div>
+                <div class="itemBody">
+                    <div class="itemTitle">${job.title}</div>
+                    <p>${i18n.__("preparing")}</p>
+                </div>
+            </div>`;
+		$(CONSTANTS.DOM_IDS.DOWNLOAD_LIST).insertAdjacentHTML(
+			"beforeend",
+			itemHTML
+		);
 	}
 
 	/**
@@ -1355,15 +1372,15 @@ class AurivoDawlodApp {
 			finalFilename = finalFilename.substring(1);
 		}
 		if (rangeCmd) {
-			let rangeTxt = rangeCmd.replace(/\*/g, "");
+			let rangeTxt = rangeCmd.replace("*", "");
 			if (platform() === "win32") rangeTxt = rangeTxt.replace(/:/g, "_");
 			finalFilename += ` [${rangeTxt}]`;
 		}
 
-		const outputPath = this._safeJoinUnder(
+		const outputPath = `"${join(
 			this.state.downloadDir,
 			`${finalFilename}.${ext}`
-		);
+		)}"`;
 
 		const baseArgs = [
 			"--no-playlist",
@@ -1373,12 +1390,12 @@ class AurivoDawlodApp {
 			proxy ? "--proxy" : "",
 			proxy,
 			configPath ? "--config-location" : "",
-			configPath || "",
+			configPath ? `"${configPath}"` : "",
 			this.state.ffmpegPath ? "--ffmpeg-location" : "",
-			this.state.ffmpegPath || "",
-			this.state.jsRuntimePath ? "--no-js-runtimes" : "",
-			this.state.jsRuntimePath ? "--js-runtime" : "",
-			this.state.jsRuntimePath || "",
+			this.state.ffmpegPath ? `"${this.state.ffmpegPath}"` : "",
+			this.state.jsRuntimePath
+				? `--no-js-runtimes --js-runtime ${this.state.jsRuntimePath}`
+				: "",
 		].filter(Boolean);
 
 		const wantsCoverEmbed =
@@ -1434,7 +1451,7 @@ class AurivoDawlodApp {
 			downloadArgs.push(...customArgs);
 		}
 
-		downloadArgs.push(url);
+		downloadArgs.push(`"${url}"`);
 
 		return {downloadArgs, finalFilename, finalExt: ext};
 	}
@@ -1880,39 +1897,29 @@ class AurivoDawlodApp {
 	 * Creates the initial UI element for a new download.
 	 */
 	_createDownloadUI(randomId, job) {
-		const item = document.createElement("div");
-		item.className = "item";
-		item.id = randomId;
-		const iconBox = document.createElement("div");
-		iconBox.className = "itemIconBox";
-		const thumb = document.createElement("img");
-		thumb.src = job.thumbnail || "../assets/images/thumb.png";
-		thumb.alt = "thumbnail";
-		thumb.className = "itemIcon";
-		thumb.setAttribute("crossorigin", "anonymous");
-		const itemType = document.createElement("span");
-		itemType.className = "itemType";
-		itemType.textContent = i18n.__(job.type === "video" ? "video" : "audio");
-		iconBox.append(thumb, itemType);
-		const close = document.createElement("img");
-		close.src = "../assets/images/close.png";
-		close.className = "itemClose";
-		close.id = `${randomId}_close`;
-		const body = document.createElement("div");
-		body.className = "itemBody";
-		const title = document.createElement("div");
-		title.className = "itemTitle";
-		title.textContent = job.title;
-		const speed = document.createElement("strong");
-		speed.className = "itemSpeed";
-		speed.id = `${randomId}_speed`;
-		const progress = document.createElement("div");
-		progress.id = `${randomId}_prog`;
-		progress.className = "itemProgress";
-		progress.textContent = i18n.__("preparing");
-		body.append(title, speed, progress);
-		item.append(iconBox, close, body);
-		$(CONSTANTS.DOM_IDS.DOWNLOAD_LIST).appendChild(item);
+		const itemHTML = `
+            <div class="item" id="${randomId}">
+                <div class="itemIconBox">
+                    <img src="${
+						job.thumbnail || "../assets/images/thumb.png"
+					}" alt="thumbnail" class="itemIcon" crossorigin="anonymous">
+                    <span class="itemType">${i18n.__(
+						job.type === "video" ? "video" : "audio"
+					)}</span>
+                </div>
+                <img src="../assets/images/close.png" class="itemClose" id="${randomId}_close">
+                <div class="itemBody">
+                    <div class="itemTitle">${job.title}</div>
+                    <strong class="itemSpeed" id="${randomId}_speed"></strong>
+                    <div id="${randomId}_prog" class="itemProgress">${i18n.__(
+			"preparing"
+		)}</div>
+                </div>
+            </div>`;
+		$(CONSTANTS.DOM_IDS.DOWNLOAD_LIST).insertAdjacentHTML(
+			"beforeend",
+			itemHTML
+		);
 
 		$(`${randomId}_close`).addEventListener("click", () =>
 			this._cancelDownload(randomId)
@@ -1967,7 +1974,7 @@ class AurivoDawlodApp {
 		if (!progressEl) return;
 
 		const fullFilename = `${filename}.${ext}`;
-		const fullPath = this._safeJoinUnder(this.state.downloadDir, fullFilename);
+		const fullPath = join(this.state.downloadDir, fullFilename);
 
 		progressEl.innerHTML = ""; // Clear progress bar
 		const link = document.createElement("b");
@@ -2018,34 +2025,9 @@ class AurivoDawlodApp {
 			i18n.__("errorNetworkOrUrl");
 		$(CONSTANTS.DOM_IDS.ERROR_BTN).style.display = "inline-block";
 		const errorDetails = $(CONSTANTS.DOM_IDS.ERROR_DETAILS);
-		errorDetails.textContent = "";
-		const strong = document.createElement("strong");
-		strong.textContent = `URL: ${url || ""}`;
-		errorDetails.appendChild(strong);
-		errorDetails.appendChild(document.createElement("br"));
-		errorDetails.appendChild(document.createElement("br"));
-		errorDetails.append(
-			document.createTextNode(
-				errorMessage?.toString?.() || String(errorMessage)
-			)
-		);
+		errorDetails.innerHTML = `<strong>URL: ${url}</strong><br><br>${errorMessage}`;
 		errorDetails.title = i18n.__("clickToCopy");
 	}
-
-	_safeJoinUnder(baseDir, fileName) {
-		// nosemgrep: path traversal is mitigated by explicit containment checks.
-		// nosemgrep:javascript.lang.security.audit.path-traversal.path-join-resolve-traversal.path-join-resolve-traversal
-		// `baseDir` is an internal app directory; result is checked to stay under it.
-		const resolvedBase = resolve(baseDir); // nosemgrep:javascript.lang.security.audit.path-traversal.path-join-resolve-traversal.path-join-resolve-traversal
-			const candidatePath = resolve(resolvedBase, fileName); // nosemgrep
-		if (
-			candidatePath === resolvedBase ||
-			candidatePath.startsWith(`${resolvedBase}${sep}`)
-		) {
-			return candidatePath;
-		}
-			return resolve(resolvedBase, basename(fileName)); // nosemgrep
-		}
 
 	/**
 	 * Hides the info panel with an animation.

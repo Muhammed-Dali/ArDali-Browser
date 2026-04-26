@@ -21,7 +21,6 @@ autoUpdater.autoDownload = false;
 
 const USER_DATA_PATH = app.getPath("userData");
 const CONFIG_FILE_PATH = path.join(USER_DATA_PATH, "aurivo-dawlod.json");
-const TRANSLATIONS_DIR = path.join(__dirname, "translations");
 
 const appState = {
 	/** @type {BrowserWindow | null} */
@@ -41,31 +40,34 @@ const appState = {
 
 function normalizeLocaleForFile(locale) {
 	if (!locale) return null;
-	const value = String(locale).trim().toLowerCase();
+	const value = String(locale).trim();
 	if (!value) return null;
-	if (value === "en-us") return "en";
-	// Allow only locale keys like: en, tr, pt-br
-	if (/^[a-z]{2,3}(?:-[a-z]{2,3})?$/.test(value) === false) return null;
+	if (value.toLowerCase() === "en-us") return "en";
 	return value;
 }
 
 function resolveTranslationFile(localeCandidate) {
-	// nosemgrep:javascript.lang.security.audit.path-traversal.path-join-resolve-traversal.path-join-resolve-traversal
-	const defaultLangPath = path.join(TRANSLATIONS_DIR, "en.json");
+	const defaultLangPath = path.join(__dirname, "translations", "en.json");
 	const normalized = normalizeLocaleForFile(localeCandidate);
 
 	if (!normalized) return {locale: "en", filePath: defaultLangPath};
 
-	// nosemgrep:javascript.lang.security.audit.path-traversal.path-join-resolve-traversal.path-join-resolve-traversal
-	const fullLocalePath = path.join(TRANSLATIONS_DIR, `${normalized}.json`);
+	const fullLocalePath = path.join(
+		__dirname,
+		"translations",
+		`${normalized}.json`
+	);
 	if (existsSync(fullLocalePath)) {
 		return {locale: normalized, filePath: fullLocalePath};
 	}
 
 	const langOnly = normalized.split("-")[0];
 	if (langOnly && langOnly !== normalized) {
-		// nosemgrep:javascript.lang.security.audit.path-traversal.path-join-resolve-traversal.path-join-resolve-traversal
-		const langOnlyPath = path.join(TRANSLATIONS_DIR, `${langOnly}.json`);
+		const langOnlyPath = path.join(
+			__dirname,
+			"translations",
+			`${langOnly}.json`
+		);
 		if (existsSync(langOnlyPath)) {
 			return {locale: langOnly, filePath: langOnlyPath};
 		}
@@ -143,16 +145,11 @@ function createWindow() {
 		autoHideMenuBar: true,
 		show: false,
 		icon: path.join(__dirname, "/assets/images/icon.png"),
-			webPreferences: {
-				preload: path.join(__dirname, "preload.js"),
-				nodeIntegration: false,
-				contextIsolation: true,
-				// preload.js Node.js require() kullandığı için sandbox false olmalı.
-				sandbox: false,
-				webSecurity: true,
-				allowRunningInsecureContent: false,
-				spellcheck: false,
-			},
+		webPreferences: {
+			nodeIntegration: true,
+			contextIsolation: false,
+			spellcheck: false,
+		},
 	});
 
 	appState.mainWindow.loadFile("html/index.html");
@@ -222,15 +219,10 @@ function createSecondaryWindow(file) {
 		parent: appState.mainWindow,
 		modal: true,
 		show: false,
-			webPreferences: {
-				preload: path.join(__dirname, "preload.js"),
-				nodeIntegration: false,
-				contextIsolation: true,
-				// preload.js Node.js require() kullandığı için sandbox false olmalı.
-				sandbox: false,
-				webSecurity: true,
-				allowRunningInsecureContent: false,
-			},
+		webPreferences: {
+			nodeIntegration: true,
+			contextIsolation: false,
+		},
 		width: 1000,
 		height: 800,
 	});
@@ -593,16 +585,21 @@ function registerIpcHandlers() {
 	});
 
 	ipcMain.handle("get-translation", (_event, locale) => {
-		const {filePath: localeFile} = resolveTranslationFile(locale);
-		const {filePath: fallbackFile} = resolveTranslationFile("en");
+		const fallbackFile = path.join(__dirname, "translations", "en.json");
+		const localeFile = path.join(
+			__dirname,
+			"translations",
+			`${locale}.json`
+		);
+
 		const fallbackData = JSON.parse(readFileSync(fallbackFile, "utf8"));
 
 		let localeData = {};
-		if (localeFile !== fallbackFile && existsSync(localeFile)) {
+		if (locale !== "en" && existsSync(localeFile)) {
 			try {
 				localeData = JSON.parse(readFileSync(localeFile, "utf8"));
 			} catch (e) {
-				console.error("Could not parse locale file:", localeFile, e);
+				console.error(`Could not parse ${localeFile}`, e);
 			}
 		}
 

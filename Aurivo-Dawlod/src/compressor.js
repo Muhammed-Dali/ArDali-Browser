@@ -1,6 +1,5 @@
 const {execFile} = require("child_process");
 const path = require("path");
-const fs = require("fs");
 const {ipcRenderer, shell} = require("electron");
 const os = require("os");
 const si = require("systeminformation");
@@ -40,17 +39,6 @@ getId("menuIcon").addEventListener("click", () => {
 });
 
 const ffmpeg = resolveFfmpegPathSync();
-const TRUSTED_FFMPEG_BINARIES = new Set(["ffmpeg", "ffmpeg.exe"]);
-
-function normalizeTrustedExecutablePath(filePath, allowedBasenames) {
-	if (typeof filePath !== "string" || filePath.length === 0) return "";
-	if (filePath.includes("\0")) return "";
-	const normalized = path.resolve(filePath);
-	if (!fs.existsSync(normalized)) return "";
-	const base = path.basename(normalized).toLowerCase();
-	if (!allowedBasenames.has(base)) return "";
-	return normalized;
-}
 
 console.log(ffmpeg);
 
@@ -211,28 +199,6 @@ function cancelCompression() {
 	updateProgress("error", "Cancelled", currentItemId);
 }
 
-function safeFileNamePart(value, fallback = "output") {
-	const cleaned = String(value || "")
-		.replace(/[\\/]/g, "")
-		.trim();
-	return cleaned || fallback;
-}
-
-function safeJoinUnder(baseDir, fileName) {
-	// nosemgrep:javascript.lang.security.audit.path-traversal.path-join-resolve-traversal.path-join-resolve-traversal
-	const resolvedBase = path.resolve(String(baseDir || ""));
-	// nosemgrep:javascript.lang.security.audit.path-traversal.path-join-resolve-traversal.path-join-resolve-traversal
-	const candidatePath = path.resolve(resolvedBase, String(fileName || ""));
-	if (
-		candidatePath === resolvedBase ||
-		candidatePath.startsWith(`${resolvedBase}${path.sep}`)
-	) {
-		return candidatePath;
-	}
-	// nosemgrep:javascript.lang.security.audit.path-traversal.path-join-resolve-traversal.path-join-resolve-traversal
-	return path.resolve(resolvedBase, path.basename(String(fileName || "")));
-}
-
 /**
  * @param {File} file
  */
@@ -241,21 +207,18 @@ function generateOutputPath(file, settings) {
 	const output_extension = settings.extension;
 	const parsed_file = path.parse(file.path);
 
-	const outputDir = String(settings.outputPath || parsed_file.dir || "").trim();
-	const baseName = safeFileNamePart(parsed_file.name, "compressed");
-	const outputSuffix = safeFileNamePart(settings.outputSuffix || "", "");
-	const originalExt = safeFileNamePart(parsed_file.ext || "", "").replace(
-		/^\.+/,
-		"."
-	);
+	let outputDir = settings.outputPath || parsed_file.dir;
 
 	if (output_extension == "unchanged") {
-		return safeJoinUnder(outputDir, `${baseName}${outputSuffix}${originalExt}`);
+		return path.join(
+			outputDir,
+			`${parsed_file.name}${settings.outputSuffix}${parsed_file.ext}`
+		);
 	}
 
-	return safeJoinUnder(
+	return path.join(
 		outputDir,
-		`${baseName}_compressed.${safeFileNamePart(output_extension, "mp4")}`
+		`${parsed_file.name}_compressed.${output_extension}`
 	);
 }
 
@@ -267,24 +230,11 @@ function generateOutputPath(file, settings) {
  */
 async function compressVideo(file, settings, itemId, outputPath) {
 	const { cmd, args } = buildFFmpegCommand(file, settings, outputPath);
-	const trustedCmd = normalizeTrustedExecutablePath(
-		cmd,
-		TRUSTED_FFMPEG_BINARIES
-	);
-	if (!trustedCmd) {
-		throw new Error("Untrusted ffmpeg executable path.");
-	}
-	const safeArgs = Array.isArray(args)
-		? args
-				.filter((v) => typeof v === "string")
-				.map((v) => String(v))
-				.filter((v) => v.length > 0 && !v.includes("\0"))
-		: [];
 
-	console.log("Command: " + trustedCmd + " " + safeArgs.join(" "));
+	console.log("Command: " + cmd + " " + args.join(" "));
 
 	return new Promise((resolve, reject) => {
-		const child = execFile(trustedCmd, safeArgs, (error) => {
+		const child = execFile(cmd, args, (error) => {
 			if (error) reject(error);
 			else resolve();
 		});

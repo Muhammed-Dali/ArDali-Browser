@@ -314,6 +314,7 @@ img {
 	height: 40px;
 	cursor: pointer;
 	transition: 0.3s;
+	z-index: 41;
 }
 
 #brandBanner {
@@ -387,7 +388,7 @@ img {
 	font-family: "Inter", sans-serif;
 	font-size: medium;
 	color: #e2e8f0;
-	z-index: 2;
+	z-index: 40;
 	animation: fadeIn 0.25s ease-out;
 }
 

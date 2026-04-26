@@ -107,12 +107,8 @@ function openDawlodWindow({ app, BrowserWindow, activate = true, emitState }) {
 
     const root = getDawlodRoot(app);
     const html = getDawlodHtmlPath(app, 'index.html');
-    const preload = path.join(root, 'preload.js');
     if (!exists(html)) {
         throw new Error(`Aurivo-Dawlod not found at ${html}`);
-    }
-    if (!exists(preload)) {
-        throw new Error(`Aurivo-Dawlod preload not found at ${preload}`);
     }
 
     const iconPath = resolveDawlodIconPath(app);
@@ -128,14 +124,13 @@ function openDawlodWindow({ app, BrowserWindow, activate = true, emitState }) {
         title: 'Aurivo-Dawlod',
         icon,
         webPreferences: {
-            preload,
-            nodeIntegration: false,
-            contextIsolation: true,
+            // Dawlod UI uses require('electron') from its renderer scripts.
+            nodeIntegration: true,
+            contextIsolation: false,
             spellcheck: false,
             // Keep renderer responsive when main app window is focused/occluded.
             backgroundThrottling: false,
             enableRemoteModule: false,
-            // sandbox: false gerekli — preload.js require() kullaniyor (Node.js modülleri için)
             sandbox: false,
             webSecurity: true,
             allowRunningInsecureContent: false
@@ -181,7 +176,6 @@ function openDawlodWindow({ app, BrowserWindow, activate = true, emitState }) {
         try {
             webPreferences.nodeIntegration = false;
             webPreferences.contextIsolation = true;
-            webPreferences.sandbox = true;
             webPreferences.enableRemoteModule = false;
             webPreferences.allowRunningInsecureContent = false;
             webPreferences.webSecurity = true;

@@ -705,6 +705,7 @@ const state = {
     webPendingTitle: '',
     webArtist: '',
     webAlbum: '',
+    webSourceUrl: '',
     specialPaths: null,
     libraryStats: null,
     libraryIndex: {
@@ -7303,6 +7304,36 @@ function setupEventListeners() {
                             }
                         }
 
+                        function getPreferredSourceUrl() {
+                            try {
+                                if (isYouTubeHost()) {
+                                    const fromUrl = getYoutubeVideoIdFromUrl();
+                                    if (fromUrl) {
+                                        return 'https://www.youtube.com/watch?v=' + encodeURIComponent(fromUrl);
+                                    }
+
+                                    try {
+                                        const prId = String(window?.ytInitialPlayerResponse?.videoDetails?.videoId || '').trim();
+                                        if (prId) {
+                                            return 'https://www.youtube.com/watch?v=' + encodeURIComponent(prId);
+                                        }
+                                    } catch {}
+
+                                    try {
+                                        const movie = document.getElementById('movie_player');
+                                        const movieId = String(movie?.getVideoData?.()?.video_id || '').trim();
+                                        if (movieId) {
+                                            return 'https://www.youtube.com/watch?v=' + encodeURIComponent(movieId);
+                                        }
+                                    } catch {}
+                                }
+
+                                const href = String(location.href || '').trim();
+                                if (/^https?:\\/\\//i.test(href)) return href;
+                            } catch {}
+                            return '';
+                        }
+
                         function getDomArtworkUrl() {
                             try {
                                 if (isYouTubeHost()) {
@@ -7365,11 +7396,12 @@ function setupEventListeners() {
                                 const artist = (md && md.artist) ? String(md.artist) : '';
                                 const album = (md && md.album) ? String(md.album) : '';
                                 const artwork = md ? getArtworkUrl(md) : '';
-                                const key = [title, artist, album, artwork].join('|');
+                                const sourceUrl = getPreferredSourceUrl();
+                                const key = [title, artist, album, artwork, sourceUrl].join('|');
                                 if (!force && key === lastMetaKey) return;
                                 lastMetaKey = key;
                                 if (!title && !artist && !album && !artwork) return;
-                                send({ type: 'metadata', title, artist, album, artwork });
+                                send({ type: 'metadata', title, artist, album, artwork, sourceUrl });
                             } catch(e) {}
                         }
 
@@ -15350,14 +15382,19 @@ async function ensureWebIsolatedSessionInitialized(reason = 'web-entry') {
     }
 }
 
+function resolveBestWebDownloadUrl() {
+    const fromSync = parseHttpUrl(state.webSourceUrl)?.toString() || '';
+    if (fromSync) return fromSync;
+    return parseHttpUrl(getWebViewUrlSafe())?.toString() || '';
+}
+
 function openDawlodWithCurrentWebUrl({ strictUrl = true } = {}) {
     if (!window.aurivo?.dawlod?.openWindow) {
         safeNotify('İndirme modülü bulunamadı (Aurivo-Dawlod).', 'error');
         return false;
     }
 
-    const candidate = getWebViewUrlSafe();
-    const url = (candidate && candidate !== 'about:blank' && /^https?:\/\//i.test(candidate)) ? candidate : '';
+    const url = resolveBestWebDownloadUrl();
     if (strictUrl && !url) {
         safeNotify(uiT('securityPage.notify.invalidExternalUrl', 'Önce geçerli bir web sayfası açın (http/https).'), 'info');
         return false;
@@ -15465,7 +15502,9 @@ function setupSecurityUI() {
 
     if (elements.securityQuickDownloadBtn) {
         elements.securityQuickDownloadBtn.addEventListener('click', () => {
-            openDawlodWithCurrentWebUrl({ strictUrl: true });
+            Promise.resolve(openDawlodWithCurrentWebUrl({ strictUrl: true })).catch((e) => {
+                safeNotify(`İndirme penceresi açılamadı: ${e?.message || e}`, 'error');
+            });
         });
     }
 
@@ -15835,6 +15874,7 @@ async function handleWebNavigation(event) {
         state.webPendingTitle = '';
         state.webArtist = '';
         state.webAlbum = '';
+        state.webSourceUrl = '';
         // Metadata güncellemesi ile süreyi 0'a çek
         updateMPRISMetadata();
         scheduleApplyWebDaliEngine('navigate', 120);
@@ -15965,6 +16005,8 @@ function handleWebSync(data) {
         if (state.webTitle) state.webPendingTitle = '';
         state.webArtist = data.artist || '';
         state.webAlbum = data.album || '';
+        const normalizedSourceUrl = parseHttpUrl(data.sourceUrl)?.toString() || '';
+        if (normalizedSourceUrl) state.webSourceUrl = normalizedSourceUrl;
 
         if (state.webTitle) elements.nowPlayingLabel.textContent = `${uiT('nowPlaying.prefix', 'Now Playing')}: ${state.webTitle}`;
         const currentUrl = getWebViewUrlSafe();
@@ -18501,8 +18543,20 @@ function handleSidebarClick(btn) {
         }
 
         try {
-            const strictUrl = (currentPage === 'web' || state.activeMedia === 'web');
-            openDawlodWithCurrentWebUrl({ strictUrl });
+            if (window.aurivo?.dawlod?.openWindow) {
+                let url = '';
+                if (currentPage === 'web' || state.activeMedia === 'web') {
+                    const candidate = getWebViewUrlSafe();
+                    if (candidate && candidate !== 'about:blank' && /^https?:\/\//i.test(candidate)) {
+                        url = candidate;
+                        try { window.aurivo?.clipboard?.setText?.(candidate); } catch { }
+                    }
+                }
+                window.aurivo.dawlod.openWindow(url ? { url } : undefined);
+                setUtilityRunningState('download', true);
+            } else {
+                safeNotify('İndirme modülü bulunamadı (Aurivo-Dawlod).', 'error');
+            }
         } catch (e) {
             setUtilityRunningState('download', false);
             safeNotify('İndirme penceresi açılamadı: ' + (e?.message || e), 'error');
@@ -18844,6 +18898,7 @@ async function handlePlatformClick(btn) {
         state.webPendingTitle = '';
         state.webArtist = '';
         state.webAlbum = '';
+        state.webSourceUrl = '';
 
         // Tüm platform butonlarından active kaldır
         elements.platformBtns.forEach(b => b.classList.remove('active'));
