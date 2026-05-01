@@ -1,0 +1,94 @@
+version: 2
+
+updates:
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "Europe/Istanbul"
+    open-pull-requests-limit: 5
+    groups:
+      npm-production:
+        dependency-type: "production"
+      npm-development:
+        dependency-type: "development"
+
+  - package-ecosystem: "npm"
+    directory: "/native"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:15"
+      timezone: "Europe/Istanbul"
+    open-pull-requests-limit: 3
+    groups:
+      native-npm:
+        patterns:
+          - "*"
+
+  - package-ecosystem: "npm"
+    directory: "/Aurivo-Dawlod"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:30"
+      timezone: "Europe/Istanbul"
+    open-pull-requests-limit: 3
+    groups:
+      dawlod-npm:
+        patterns:
+          - "*"
+
+  - package-ecosystem: "npm"
+    directory: "/uDALİ-weman-home"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:45"
+      timezone: "Europe/Istanbul"
+    open-pull-requests-limit: 3
+    groups:
+      udali-home-npm:
+        patterns:
+          - "*"
+
+  - package-ecosystem: "npm"
+    directory: "/dali-lang"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "10:00"
+      timezone: "Europe/Istanbul"
+    open-pull-requests-limit: 3
+    groups:
+      dali-lang-npm:
+        patterns:
+          - "*"
+
+  - package-ecosystem: "npm"
+    directory: "/dali-lang/editors/vscode"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "10:15"
+      timezone: "Europe/Istanbul"
+    open-pull-requests-limit: 3
+    groups:
+      dali-vscode-npm:
+        patterns:
+          - "*"
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "10:30"
+      timezone: "Europe/Istanbul"
+    open-pull-requests-limit: 5
+    groups:
+      github-actions:
+        patterns:
+          - "*"
