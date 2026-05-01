@@ -441,5 +441,8 @@
     "node-id3": "0.2.9",
     "systeminformation": "5.31.5",
     "yt-dlp-wrap-plus": "2.4.3"
+  },
+  "overrides": {
+    "xml2js": "0.6.2"
   }
 }
