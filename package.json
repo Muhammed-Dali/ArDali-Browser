@@ -1,6 +1,6 @@
 {
   "name": "aurivo-media-player",
-  "version": "2.0.52",
+  "version": "2.0.53",
   "description": "Open-source Linux media player for music and video with DSP effects, equalizer, visualizer, downloader, and song recognition",
   "main": "main.js",
   "scripts": {
