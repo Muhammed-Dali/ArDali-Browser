@@ -41,3 +41,7 @@ scripts/
 # Browser ruleset data files (JSON filter/rules catalogs), not executable app logic
 uDAL*-weman-home/chromium/rulesets/
 uDAL*-weman-home/firefox/rulesets/
+
+# Vendored browser-extension scripts from the bundled ad blocker engine.
+uDAL*-weman-home/chromium/js/
+uDAL*-weman-home/firefox/js/

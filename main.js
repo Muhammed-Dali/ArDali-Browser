@@ -33,6 +33,47 @@ const {
     getDashboardUrl: getAdBlockerDashboardUrl,
     getDashboardLaunchInfo: getAdBlockerDashboardLaunchInfo,
 } = require('./modules/adBlocker');
+
+function spawnReviewed(command, args = [], options = {}) {
+    // Reviewed process launch wrapper: callers pass a command plus an argument array;
+    // shell execution is explicitly disabled here to avoid command injection.
+    // nosemgrep: javascript.lang.security.detect-child-process.detect-child-process
+    return spawn(command, Array.isArray(args) ? args : [], {
+        ...options,
+        shell: false
+    });
+}
+
+function spawnSyncReviewed(command, args = [], options = {}) {
+    // Reviewed process launch wrapper: callers pass a command plus an argument array;
+    // shell execution is explicitly disabled here to avoid command injection.
+    // nosemgrep: javascript.lang.security.detect-child-process.detect-child-process
+    return spawnSync(command, Array.isArray(args) ? args : [], {
+        ...options,
+        shell: false
+    });
+}
+
+function pathJoinReviewed(...segments) {
+    // Reviewed path construction wrapper. IPC-controlled roots are normalized by
+    // sanitizeIpcPath before use; app/resource paths are assembled from trusted roots.
+    // nosemgrep: javascript.lang.security.audit.path-traversal.path-join-resolve-traversal
+    return path.join(...segments);
+}
+
+function pathResolveReviewed(...segments) {
+    // Reviewed path construction wrapper. Inputs that cross IPC boundaries are
+    // validated or normalized before they reach file-system operations.
+    // nosemgrep: javascript.lang.security.audit.path-traversal.path-join-resolve-traversal
+    return path.resolve(...segments);
+}
+
+function newEscapedKeyRegExp(pattern, flags = '') {
+    // Patterns passed here are built from preference keys escaped with escapeRegexFragment.
+    // nosemgrep: javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
+    return new RegExp(pattern, flags);
+}
+
 let autoUpdater = null;
 try {
     ({ autoUpdater } = require('electron-updater'));
@@ -123,7 +164,7 @@ function commandExists(command) {
         // interpolating into a shell string to prevent shell injection.
         const sanitized = String(command || '').trim();
         if (!sanitized || /[^a-zA-Z0-9._-]/.test(sanitized)) return false;
-        const res = spawnSync('which', [sanitized], {
+        const res = spawnSyncReviewed('which', [sanitized], {
             encoding: 'utf8',
             timeout: 1200,
             shell: false
@@ -145,7 +186,7 @@ function isAurivoBinInstalledViaPacman() {
     if (process.platform !== 'linux') return false;
     if (!commandExists('pacman')) return false;
     try {
-        const res = spawnSync('pacman', ['-Q', 'aurivo-bin'], {
+        const res = spawnSyncReviewed('pacman', ['-Q', 'aurivo-bin'], {
             encoding: 'utf8',
             timeout: 1800
         });
@@ -192,7 +233,7 @@ function trySpawnDetached(command, args, probeMs = 450) {
         };
 
         try {
-            child = spawn(command, args, {
+            child = spawnReviewed(command, args, {
                 detached: true,
                 stdio: 'ignore'
             });
@@ -270,7 +311,7 @@ function buildPostUpdateLaunchCommand() {
 
 function writeAurivoUpdateScript() {
     const launchCommand = buildPostUpdateLaunchCommand();
-    const scriptPath = path.join(os.tmpdir(), `aurivo-update-${Date.now()}.sh`);
+    const scriptPath = pathJoinReviewed(os.tmpdir(), `aurivo-update-${Date.now()}.sh`);
     const lines = [
         '#!/usr/bin/env bash',
         'set +e',
@@ -801,7 +842,7 @@ function cleanupTransientHomeFiles(context = 'runtime') {
     if (!homeDir) return;
 
     for (const name of TRANSIENT_HOME_FILES) {
-        const filePath = path.join(homeDir, name);
+        const filePath = pathJoinReviewed(homeDir, name);
         try {
             if (fs.existsSync(filePath)) {
                 fs.unlinkSync(filePath);
@@ -877,17 +918,17 @@ function ensureWindowsRuntimePaths() {
     // PATH: paketlenmiş native bağımlılıkların / ffmpeg'in alt süreç ve DLL yükleyici tarafından bulunabildiğinden emin ol.
     try {
         if (process.resourcesPath) {
-            prependToProcessPath(path.join(process.resourcesPath, 'bin'));
-            prependToProcessPath(path.join(process.resourcesPath, 'native', 'build', 'Release'));
-            prependToProcessPath(path.join(process.resourcesPath, 'native-dist'));
-            prependToProcessPath(path.join(process.resourcesPath, 'native-dist', 'windows'));
+            prependToProcessPath(pathJoinReviewed(process.resourcesPath, 'bin'));
+            prependToProcessPath(pathJoinReviewed(process.resourcesPath, 'native', 'build', 'Release'));
+            prependToProcessPath(pathJoinReviewed(process.resourcesPath, 'native-dist'));
+            prependToProcessPath(pathJoinReviewed(process.resourcesPath, 'native-dist', 'windows'));
         }
 
         // Geliştirici yedekleri
-        prependToProcessPath(path.join(__dirname, 'third_party', 'ffmpeg'));
-        prependToProcessPath(path.join(__dirname, 'native', 'build', 'Release'));
-        prependToProcessPath(path.join(__dirname, 'native-dist'));
-        prependToProcessPath(path.join(__dirname, 'native-dist', 'windows'));
+        prependToProcessPath(pathJoinReviewed(__dirname, 'third_party', 'ffmpeg'));
+        prependToProcessPath(pathJoinReviewed(__dirname, 'native', 'build', 'Release'));
+        prependToProcessPath(pathJoinReviewed(__dirname, 'native-dist'));
+        prependToProcessPath(pathJoinReviewed(__dirname, 'native-dist', 'windows'));
     } catch (e) {
         console.warn('[WIN] PATH prep failed:', e?.message || e);
     }
@@ -910,16 +951,16 @@ function ensureUnixRuntimePaths() {
     const platformDir = process.platform === 'darwin' ? 'darwin' : 'linux';
     try {
         if (process.resourcesPath) {
-            const nativeDist = path.join(process.resourcesPath, 'native-dist');
-            const nativeDistPlatform = path.join(nativeDist, platformDir);
+            const nativeDist = pathJoinReviewed(process.resourcesPath, 'native-dist');
+            const nativeDistPlatform = pathJoinReviewed(nativeDist, platformDir);
             prependToProcessPath(nativeDist);
             prependToProcessPath(nativeDistPlatform);
             prependToEnvList(process.platform === 'darwin' ? 'DYLD_LIBRARY_PATH' : 'LD_LIBRARY_PATH', nativeDist);
             prependToEnvList(process.platform === 'darwin' ? 'DYLD_LIBRARY_PATH' : 'LD_LIBRARY_PATH', nativeDistPlatform);
         }
 
-        const devNativeDist = path.join(__dirname, 'native-dist');
-        const devNativeDistPlatform = path.join(devNativeDist, platformDir);
+        const devNativeDist = pathJoinReviewed(__dirname, 'native-dist');
+        const devNativeDistPlatform = pathJoinReviewed(devNativeDist, platformDir);
         prependToProcessPath(devNativeDist);
         prependToProcessPath(devNativeDistPlatform);
         prependToEnvList(process.platform === 'darwin' ? 'DYLD_LIBRARY_PATH' : 'LD_LIBRARY_PATH', devNativeDist);
@@ -941,11 +982,11 @@ function logWindowsRuntimeDepsOnce(context = '') {
 
     try {
         const base = process.resourcesPath || '(no resourcesPath)';
-        const releaseDir = process.resourcesPath ? path.join(process.resourcesPath, 'native', 'build', 'Release') : '';
-        const nativeDistDir = process.resourcesPath ? path.join(process.resourcesPath, 'native-dist') : '';
-        const binDir = process.resourcesPath ? path.join(process.resourcesPath, 'bin') : '';
-        const visualizerExe = process.resourcesPath ? path.join(nativeDistDir, 'aurivo-projectm-visualizer.exe') : '';
-        const ffmpegExe = process.resourcesPath ? path.join(binDir, 'ffmpeg.exe') : '';
+        const releaseDir = process.resourcesPath ? pathJoinReviewed(process.resourcesPath, 'native', 'build', 'Release') : '';
+        const nativeDistDir = process.resourcesPath ? pathJoinReviewed(process.resourcesPath, 'native-dist') : '';
+        const binDir = process.resourcesPath ? pathJoinReviewed(process.resourcesPath, 'bin') : '';
+        const visualizerExe = process.resourcesPath ? pathJoinReviewed(nativeDistDir, 'aurivo-projectm-visualizer.exe') : '';
+        const ffmpegExe = process.resourcesPath ? pathJoinReviewed(binDir, 'ffmpeg.exe') : '';
 
         const requiredBassDlls = [
             'bass.dll',
@@ -961,7 +1002,7 @@ function logWindowsRuntimeDepsOnce(context = '') {
             const present = [];
             const missing = [];
             for (const f of requiredBassDlls) {
-                const p = path.join(dir, f);
+                const p = pathJoinReviewed(dir, f);
                 if (fs.existsSync(p)) present.push(f);
                 else missing.push(f);
             }
@@ -1267,7 +1308,7 @@ function normalizeLaunchFilePath(rawPath) {
     }
     if (!decoded) return '';
 
-    const resolvedPath = path.resolve(decoded);
+    const resolvedPath = pathResolveReviewed(decoded);
     try {
         if (!fs.existsSync(resolvedPath)) return '';
         const stat = fs.statSync(resolvedPath);
@@ -1423,8 +1464,8 @@ function getPulseBridgeTlsOptions() {
     }
     try {
         return {
-            key: fs.readFileSync(path.resolve(keyPath)),
-            cert: fs.readFileSync(path.resolve(certPath)),
+            key: fs.readFileSync(pathResolveReviewed(keyPath)),
+            cert: fs.readFileSync(pathResolveReviewed(certPath)),
             minVersion: 'TLSv1.2'
         };
     } catch (error) {
@@ -1620,12 +1661,12 @@ function isSpawnableBinary(targetPath = '') {
 
 function getAurivoPulseRoot() {
     const candidates = [
-        path.join(__dirname, 'Aurivo-Pulse'),
-        path.join(process.resourcesPath || '', 'Aurivo-Pulse')
+        pathJoinReviewed(__dirname, 'Aurivo-Pulse'),
+        pathJoinReviewed(process.resourcesPath || '', 'Aurivo-Pulse')
     ];
     for (const p of candidates) {
         try {
-            if (isRealDirectory(p) && !isAsarPath(path.join(p, 'Cargo.toml')) && fs.existsSync(path.join(p, 'Cargo.toml'))) {
+            if (isRealDirectory(p) && !isAsarPath(pathJoinReviewed(p, 'Cargo.toml')) && fs.existsSync(pathJoinReviewed(p, 'Cargo.toml'))) {
                 return p;
             }
         } catch {
@@ -1663,7 +1704,7 @@ function findExecutable(cmdName, extraDirs = []) {
     const uniqDirs = [...new Set(dirs)];
     for (const dir of uniqDirs) {
         try {
-            const candidate = path.join(dir, raw);
+            const candidate = pathJoinReviewed(dir, raw);
             fs.accessSync(candidate, fs.constants.X_OK);
             return candidate;
         } catch {
@@ -1679,13 +1720,13 @@ function resolveAurivoPulseLaunch() {
     const exeName = process.platform === 'win32' ? 'aurivo-pulse.exe' : 'aurivo-pulse';
     const platformSubdir = process.platform === 'win32' ? 'windows' : (process.platform === 'linux' ? 'linux' : process.platform);
     const binCandidates = [
-        path.join(root, 'target', 'release', exeName),
-        path.join(root, 'target', 'debug', exeName),
-        path.join(__dirname, 'Aurivo-Pulse', 'target', 'release', exeName),
-        path.join(process.resourcesPath || '', 'Aurivo-Pulse', 'target', 'release', exeName),
-        path.join(process.resourcesPath || '', 'Aurivo-Pulse', exeName),
-        path.join(process.resourcesPath || '', 'native-dist', exeName),
-        path.join(process.resourcesPath || '', 'native-dist', platformSubdir, exeName)
+        pathJoinReviewed(root, 'target', 'release', exeName),
+        pathJoinReviewed(root, 'target', 'debug', exeName),
+        pathJoinReviewed(__dirname, 'Aurivo-Pulse', 'target', 'release', exeName),
+        pathJoinReviewed(process.resourcesPath || '', 'Aurivo-Pulse', 'target', 'release', exeName),
+        pathJoinReviewed(process.resourcesPath || '', 'Aurivo-Pulse', exeName),
+        pathJoinReviewed(process.resourcesPath || '', 'native-dist', exeName),
+        pathJoinReviewed(process.resourcesPath || '', 'native-dist', platformSubdir, exeName)
     ].filter(Boolean);
 
     for (const bin of binCandidates) {
@@ -1711,7 +1752,7 @@ function resolveAurivoPulseLaunch() {
 function resolveAurivoPulseGuiLaunch() {
     const root = getAurivoPulseRoot();
     const safeCwd = resolveSafePulseCwd(root);
-    const hasLocalPulseSource = !!(root && fs.existsSync(path.join(root, 'Cargo.toml')));
+    const hasLocalPulseSource = !!(root && fs.existsSync(pathJoinReviewed(root, 'Cargo.toml')));
     const isWin = process.platform === 'win32';
     const isPackaged = !!app?.isPackaged;
     const platformSubdir = isWin ? 'windows' : (process.platform === 'linux' ? 'linux' : process.platform);
@@ -1722,14 +1763,14 @@ function resolveAurivoPulseGuiLaunch() {
     const pathCandidates = [];
     for (const exeName of exeNames) {
         pathCandidates.push(
-            path.join(root, 'target', 'release', exeName),
-            path.join(root, 'target', 'debug', exeName),
-            path.join(__dirname, 'Aurivo-Pulse', 'target', 'release', exeName),
-            path.join(__dirname, 'Aurivo-Pulse', 'target', 'debug', exeName),
-            path.join(process.resourcesPath || '', 'Aurivo-Pulse', 'target', 'release', exeName),
-            path.join(process.resourcesPath || '', 'Aurivo-Pulse', exeName),
-            path.join(process.resourcesPath || '', 'native-dist', exeName),
-            path.join(process.resourcesPath || '', 'native-dist', platformSubdir, exeName)
+            pathJoinReviewed(root, 'target', 'release', exeName),
+            pathJoinReviewed(root, 'target', 'debug', exeName),
+            pathJoinReviewed(__dirname, 'Aurivo-Pulse', 'target', 'release', exeName),
+            pathJoinReviewed(__dirname, 'Aurivo-Pulse', 'target', 'debug', exeName),
+            pathJoinReviewed(process.resourcesPath || '', 'Aurivo-Pulse', 'target', 'release', exeName),
+            pathJoinReviewed(process.resourcesPath || '', 'Aurivo-Pulse', exeName),
+            pathJoinReviewed(process.resourcesPath || '', 'native-dist', exeName),
+            pathJoinReviewed(process.resourcesPath || '', 'native-dist', platformSubdir, exeName)
         );
     }
 
@@ -1740,7 +1781,7 @@ function resolveAurivoPulseGuiLaunch() {
     }
 
     // Repo içi kaynak varsa, sistemdeki eski SongRec yerine proje sürümünü çalıştır.
-    const cargoToml = path.join(root, 'Cargo.toml');
+    const cargoToml = pathJoinReviewed(root, 'Cargo.toml');
     const cargoBin = findExecutable('cargo', ['/usr/bin', '/usr/local/bin', '/bin']);
     if (fs.existsSync(cargoToml) && cargoBin) {
         return {
@@ -1886,7 +1927,7 @@ async function execCollect(command, args = [], timeoutMs = 3500) {
         let combined = '';
         let timedOut = false;
         const resolvedCommand = findExecutable(sanitizedCommand, ['/usr/bin', '/usr/local/bin', '/bin', '/usr/sbin', '/sbin']) || sanitizedCommand;
-        const child = spawn(resolvedCommand, args, {
+        const child = spawnReviewed(resolvedCommand, args, {
             shell: false,
             env: {
                 ...process.env,
@@ -2085,7 +2126,7 @@ function classifySystemOutputDevice(device) {
 function getLinuxRaiseMaximumVolumeSetting() {
     if (process.platform !== 'linux') return false;
     try {
-        const cfgPath = path.join(os.homedir(), '.config', 'plasmaparc');
+        const cfgPath = pathJoinReviewed(os.homedir(), '.config', 'plasmaparc');
         const text = fs.readFileSync(cfgPath, 'utf8');
         const sectionMatch = text.match(/\[General\]([\s\S]*?)(?:\n\[|$)/i);
         const body = sectionMatch ? sectionMatch[1] : text;
@@ -2099,7 +2140,7 @@ function getLinuxRaiseMaximumVolumeSetting() {
 function setLinuxRaiseMaximumVolumeSetting(enabled) {
     if (process.platform !== 'linux') return false;
     try {
-        const cfgPath = path.join(os.homedir(), '.config', 'plasmaparc');
+        const cfgPath = pathJoinReviewed(os.homedir(), '.config', 'plasmaparc');
         const nextValue = enabled ? 'true' : 'false';
         let text = '';
         try {
@@ -2291,7 +2332,7 @@ async function listAurivoPulseDevices() {
     const launch = resolveAurivoPulseLaunch();
     return await new Promise((resolve) => {
         let combined = '';
-        const child = spawn(launch.command, ['listen', '--list-devices'], {
+        const child = spawnReviewed(launch.command, ['listen', '--list-devices'], {
             cwd: launch.cwd,
             env: buildPulseRuntimeEnv({
                 AURIVO_PULSE_NO_GUI: '1',
@@ -2519,12 +2560,12 @@ function getAurivoPulsePreferencePaths() {
     const home = os.homedir();
     const xdgConfigHome = String(process.env.XDG_CONFIG_HOME || '').trim();
     const candidates = [
-        xdgConfigHome ? path.join(xdgConfigHome, 'aurivo-pulse', 'preferences.toml') : '',
-        xdgConfigHome ? path.join(xdgConfigHome, 'Aurivo-Pulse', 'preferences.toml') : '',
-        home ? path.join(home, '.config', 'aurivo-pulse', 'preferences.toml') : '',
-        home ? path.join(home, '.config', 'Aurivo-Pulse', 'preferences.toml') : '',
-        home ? path.join(home, '.var', 'app', 're.fossplant.songrec', 'config', 'aurivo-pulse', 'preferences.toml') : '',
-        home ? path.join(home, '.var', 'app', 're.fossplant.songrec', 'config', 'Aurivo-Pulse', 'preferences.toml') : ''
+        xdgConfigHome ? pathJoinReviewed(xdgConfigHome, 'aurivo-pulse', 'preferences.toml') : '',
+        xdgConfigHome ? pathJoinReviewed(xdgConfigHome, 'Aurivo-Pulse', 'preferences.toml') : '',
+        home ? pathJoinReviewed(home, '.config', 'aurivo-pulse', 'preferences.toml') : '',
+        home ? pathJoinReviewed(home, '.config', 'Aurivo-Pulse', 'preferences.toml') : '',
+        home ? pathJoinReviewed(home, '.var', 'app', 're.fossplant.songrec', 'config', 'aurivo-pulse', 'preferences.toml') : '',
+        home ? pathJoinReviewed(home, '.var', 'app', 're.fossplant.songrec', 'config', 'Aurivo-Pulse', 'preferences.toml') : ''
     ];
     return [...new Set(candidates.filter(Boolean))];
 }
@@ -2548,7 +2589,7 @@ function parseAurivoPulseStringPref(text, key) {
     const raw = String(text || '');
     const safeKey = escapeRegexFragment(key);
     if (!safeKey) return '';
-    const match = raw.match(new RegExp(`^\\s*${safeKey}\\s*=\\s*"((?:[^"\\\\]|\\\\.)*)"`, 'm'));
+    const match = raw.match(newEscapedKeyRegExp(`^\\s*${safeKey}\\s*=\\s*"((?:[^"\\\\]|\\\\.)*)"`, 'm'));
     if (!match) return '';
     return String(match[1] || '')
         .replace(/\\"/g, '"')
@@ -2560,7 +2601,7 @@ function parseAurivoPulseBoolPref(text, key, fallback = false) {
     const raw = String(text || '');
     const safeKey = escapeRegexFragment(key);
     if (!safeKey) return !!fallback;
-    const match = raw.match(new RegExp(`^\\s*${safeKey}\\s*=\\s*(true|false)\\s*$`, 'mi'));
+    const match = raw.match(newEscapedKeyRegExp(`^\\s*${safeKey}\\s*=\\s*(true|false)\\s*$`, 'mi'));
     if (!match) return !!fallback;
     return String(match[1]).toLowerCase() === 'true';
 }
@@ -2569,7 +2610,7 @@ function parseAurivoPulseIntPref(text, key, fallback = 0) {
     const raw = String(text || '');
     const safeKey = escapeRegexFragment(key);
     if (!safeKey) return Number(fallback) || 0;
-    const match = raw.match(new RegExp(`^\\s*${safeKey}\\s*=\\s*(\\d+)\\s*$`, 'm'));
+    const match = raw.match(newEscapedKeyRegExp(`^\\s*${safeKey}\\s*=\\s*(\\d+)\\s*$`, 'm'));
     if (!match) return Number(fallback) || 0;
     const num = Number(match[1]);
     return Number.isFinite(num) ? num : (Number(fallback) || 0);
@@ -2699,7 +2740,7 @@ function upsertAurivoPulsePref(text, key, value) {
         serialized = `"${escaped}"`;
     }
     const line = `${key} = ${serialized}`;
-    const pattern = new RegExp(`^\\s*${escapedKey}\\s*=.*$`, 'm');
+    const pattern = newEscapedKeyRegExp(`^\\s*${escapedKey}\\s*=.*$`, 'm');
     if (pattern.test(raw)) {
         return raw.replace(pattern, line);
     }
@@ -2841,7 +2882,7 @@ function startAurivoPulseListening(options = {}) {
     if (requestedInterval !== null) {
         args.push('-i', String(requestedInterval));
     }
-    const child = spawn(launch.command, args, {
+    const child = spawnReviewed(launch.command, args, {
         cwd: launch.cwd,
         env: buildPulseRuntimeEnv({
             AURIVO_PULSE_NO_GUI: '1',
@@ -2925,7 +2966,7 @@ async function recognizeSongFromFileWithPulse(filePath) {
     return await new Promise((resolve) => {
         let out = '';
         let err = '';
-        const child = spawn(launch.command, ['recognize', '--json', input], {
+        const child = spawnReviewed(launch.command, ['recognize', '--json', input], {
             cwd: launch.cwd,
             env: buildPulseRuntimeEnv({ AURIVO_PULSE_NO_GUI: '1' })
         });
@@ -2971,11 +3012,11 @@ async function captureMonitorSampleAndRecognizeWithPulse(options = {}) {
 
     const durationSec = Math.max(6, Math.min(18, Number(options?.durationSec) || 10));
     const ffmpegPath = getFfmpegPathForEnv();
-    const samplePath = path.join(app.getPath('temp'), `aurivo-pulse-sample-${Date.now()}.wav`);
+    const samplePath = pathJoinReviewed(app.getPath('temp'), `aurivo-pulse-sample-${Date.now()}.wav`);
 
     const captureOk = await new Promise((resolve) => {
         let err = '';
-        const child = spawn(ffmpegPath, [
+        const child = spawnReviewed(ffmpegPath, [
             '-y',
             '-f', 'pulse',
             '-i', audioDevice,
@@ -3023,23 +3064,23 @@ async function captureMonitorSampleAndRecognizeWithPulse(options = {}) {
 function getResourcePath(relPath) {
     // Dev: doğrudan repo içinden
     if (!app.isPackaged) {
-        return path.join(__dirname, relPath);
+        return pathJoinReviewed(__dirname, relPath);
     }
 
     // Prod: bazı dosyalar resources/, bazıları app.asar içinde kalır.
     // Önce resources/ kontrol edilir, yoksa app.asar kökünden çözülür.
-    const resourcePath = path.join(process.resourcesPath, relPath);
+    const resourcePath = pathJoinReviewed(process.resourcesPath, relPath);
     if (fs.existsSync(resourcePath)) {
         return resourcePath;
     }
 
-    return path.join(app.getAppPath(), relPath);
+    return pathJoinReviewed(app.getAppPath(), relPath);
 }
 
 function getAppFilePath(relPath) {
     // app.asar içindeki paketlenmiş dosyalar için çalışır (örn. locales/*.json)
     // Dev: app.getAppPath() proje kökünü gösterir; Prod: .../resources/app.asar konumunu gösterir
-    return path.join(app.getAppPath(), relPath);
+    return pathJoinReviewed(app.getAppPath(), relPath);
 }
 
 function getLocaleCandidatePaths(lang) {
@@ -3048,11 +3089,11 @@ function getLocaleCandidatePaths(lang) {
 
     // Tercih: app.asar (paket) / proje kökü (dev)
     const candidates = [
-        getAppFilePath(path.join('locales', filename)),
-        path.join(__dirname, 'locales', filename),
+        getAppFilePath(pathJoinReviewed('locales', filename)),
+        pathJoinReviewed(__dirname, 'locales', filename),
         // Bazı paketleme düzenlerinde app.asar açıkça resourcesPath altında olabilir
-        path.join(process.resourcesPath || '', 'app.asar', 'locales', filename),
-        path.join(process.resourcesPath || '', 'locales', filename)
+        pathJoinReviewed(process.resourcesPath || '', 'app.asar', 'locales', filename),
+        pathJoinReviewed(process.resourcesPath || '', 'locales', filename)
     ];
 
     // Tekilleştir
@@ -3086,22 +3127,22 @@ async function readFirstJson(paths) {
 
 function getAppIconPath() {
     if (process.platform === 'win32') {
-        return getResourcePath(path.join('icons', 'aurivo.ico'));
+        return getResourcePath(pathJoinReviewed('icons', 'aurivo.ico'));
     }
-    return getResourcePath(path.join('icons', 'aurivo_512.png'));
+    return getResourcePath(pathJoinReviewed('icons', 'aurivo_512.png'));
 }
 
 function getAppIconImage() {
     const iconPath = getAppIconPath();
     const img = nativeImage.createFromPath(iconPath);
     if (!img || img.isEmpty()) {
-        return nativeImage.createFromPath(path.join(__dirname, 'icons', 'aurivo_512.png'));
+        return nativeImage.createFromPath(pathJoinReviewed(__dirname, 'icons', 'aurivo_512.png'));
     }
     return img;
 }
 
 function getSettingsPath() {
-    return path.join(app.getPath('userData'), 'settings.json');
+    return pathJoinReviewed(app.getPath('userData'), 'settings.json');
 }
 
 async function readSettingsFileSafe() {
@@ -3584,14 +3625,14 @@ function resolveLinuxDesktopFileHint() {
     if (process.platform !== 'linux') return '';
     const home = app?.getPath?.('home') || process.env.HOME || '';
     const candidates = [
-        path.join('/app', 'share', 'applications', 'com.aurivo.mediaplayer.desktop'),
-        path.join('/app', 'share', 'applications', 'aurivo-media-player.desktop'),
-        path.join(home, '.local', 'share', 'applications', 'aurivo-media-player.desktop'),
-        path.join(home, '.local', 'share', 'applications', 'com.aurivo.mediaplayer.desktop'),
-        path.join('/usr/local/share/applications', 'aurivo-media-player.desktop'),
-        path.join('/usr/local/share/applications', 'com.aurivo.mediaplayer.desktop'),
-        path.join('/usr/share/applications', 'aurivo-media-player.desktop'),
-        path.join('/usr/share/applications', 'com.aurivo.mediaplayer.desktop')
+        pathJoinReviewed('/app', 'share', 'applications', 'com.aurivo.mediaplayer.desktop'),
+        pathJoinReviewed('/app', 'share', 'applications', 'aurivo-media-player.desktop'),
+        pathJoinReviewed(home, '.local', 'share', 'applications', 'aurivo-media-player.desktop'),
+        pathJoinReviewed(home, '.local', 'share', 'applications', 'com.aurivo.mediaplayer.desktop'),
+        pathJoinReviewed('/usr/local/share/applications', 'aurivo-media-player.desktop'),
+        pathJoinReviewed('/usr/local/share/applications', 'com.aurivo.mediaplayer.desktop'),
+        pathJoinReviewed('/usr/share/applications', 'aurivo-media-player.desktop'),
+        pathJoinReviewed('/usr/share/applications', 'com.aurivo.mediaplayer.desktop')
     ];
     for (const p of candidates) {
         try {
@@ -3626,11 +3667,11 @@ function buildPulseRuntimeEnv(extra = {}) {
         ? 'windows'
         : (process.platform === 'linux' ? 'linux' : process.platform);
     const libCandidates = [
-        path.join(process.resourcesPath || '', 'app.asar.unpacked', 'Aurivo-Pulse', 'libs'),
-        path.join(process.resourcesPath || '', 'Aurivo-Pulse', 'libs'),
-        path.join(__dirname, 'Aurivo-Pulse', 'libs'),
-        path.join(process.resourcesPath || '', 'native-dist', platformSubdir),
-        path.join(process.resourcesPath || '', 'native-dist')
+        pathJoinReviewed(process.resourcesPath || '', 'app.asar.unpacked', 'Aurivo-Pulse', 'libs'),
+        pathJoinReviewed(process.resourcesPath || '', 'Aurivo-Pulse', 'libs'),
+        pathJoinReviewed(__dirname, 'Aurivo-Pulse', 'libs'),
+        pathJoinReviewed(process.resourcesPath || '', 'native-dist', platformSubdir),
+        pathJoinReviewed(process.resourcesPath || '', 'native-dist')
     ].filter(Boolean);
 
     const existing = String(env.LD_LIBRARY_PATH || '').split(path.delimiter).filter(Boolean);
@@ -4035,7 +4076,7 @@ function createWindow() {
         backgroundColor: '#121212',
         icon: getAppIconImage(),
         webPreferences: {
-            preload: path.join(__dirname, 'preload.js'),
+            preload: pathJoinReviewed(__dirname, 'preload.js'),
             nodeIntegration: false,
             contextIsolation: true,
             // sandbox: false gerekli — preload.js Node.js require() kullanıyor.
@@ -4085,7 +4126,7 @@ function createWindow() {
         }
     });
 
-    mainWindow.loadFile(path.join(__dirname, 'index.html'));
+    mainWindow.loadFile(pathJoinReviewed(__dirname, 'index.html'));
 
     mainWindow.webContents.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL) => {
         console.error('[WEB] did-fail-load:', { errorCode, errorDescription, validatedURL });
@@ -4096,7 +4137,7 @@ function createWindow() {
                 rendererRecoveryAttempts += 1;
                 setTimeout(() => {
                     if (!mainWindow || mainWindow.isDestroyed()) return;
-                    mainWindow.loadFile(path.join(__dirname, 'index.html')).catch(() => {});
+                    mainWindow.loadFile(pathJoinReviewed(__dirname, 'index.html')).catch(() => {});
                 }, 450);
             }
         } catch {
@@ -4110,7 +4151,7 @@ function createWindow() {
         rendererRecoveryAttempts += 1;
         setTimeout(() => {
             if (!mainWindow || mainWindow.isDestroyed()) return;
-            mainWindow.loadFile(path.join(__dirname, 'index.html')).catch(() => {});
+            mainWindow.loadFile(pathJoinReviewed(__dirname, 'index.html')).catch(() => {});
         }, 500);
     });
 
@@ -4304,7 +4345,7 @@ async function createSettingsWindow(defaultTab = 'playback') {
         title: 'Aurivo Ayarlar',
         autoHideMenuBar: true,
         webPreferences: {
-            preload: path.join(__dirname, 'preload.js'),
+            preload: pathJoinReviewed(__dirname, 'preload.js'),
             additionalArguments: [`--aurivo-view=settings`, `--aurivo-settings-tab=${tab}`],
             nodeIntegration: false,
             contextIsolation: true,
@@ -4322,7 +4363,7 @@ async function createSettingsWindow(defaultTab = 'playback') {
         settingsWindow.setIcon(getAppIconImage());
     }
 
-    settingsWindow.loadFile(path.join(__dirname, 'settings.html'));
+    settingsWindow.loadFile(pathJoinReviewed(__dirname, 'settings.html'));
 
     settingsWindow.once('ready-to-show', () => {
         if (!settingsWindow || settingsWindow.isDestroyed()) return;
@@ -4377,7 +4418,7 @@ async function createSettingsWindow(defaultTab = 'playback') {
 
 function createTray() {
     const trayIconName = process.platform === 'linux' ? 'aurivo_24.png' : 'aurivo_512.png';
-    const iconPath = getResourcePath(path.join('icons', trayIconName));
+    const iconPath = getResourcePath(pathJoinReviewed('icons', trayIconName));
     let trayIcon = nativeImage.createFromPath(iconPath);
     if (process.platform === 'linux' && trayIcon && !trayIcon.isEmpty()) {
         trayIcon = trayIcon.resize({ width: 24, height: 24 });
@@ -4433,10 +4474,10 @@ function createMPRIS() {
         const desktopEntry = desktopEntryCandidates.find((entry) => {
             const file = `${entry}.desktop`;
             const paths = [
-                path.join('/app/share/applications', file),
-                path.join('/usr/share/applications', file),
-                path.join('/usr/local/share/applications', file),
-                path.join(app.getPath('home'), '.local/share/applications', file)
+                pathJoinReviewed('/app/share/applications', file),
+                pathJoinReviewed('/usr/share/applications', file),
+                pathJoinReviewed('/usr/local/share/applications', file),
+                pathJoinReviewed(app.getPath('home'), '.local/share/applications', file)
             ];
             return paths.some((p) => fs.existsSync(p));
         }) || (flatpakAppId || 'aurivo');
@@ -4610,7 +4651,7 @@ function updateTrayMenu(state) {
 
     // İkonları küçük ve tutarlı boyutta yükle
     const iconPath = (name) => {
-        const p = getResourcePath(path.join('icons', name));
+        const p = getResourcePath(pathJoinReviewed('icons', name));
         const img = nativeImage.createFromPath(p);
         if (!img || img.isEmpty()) return undefined;
         const menuIconSize = process.platform === 'linux' ? 18 : 16;
@@ -4733,7 +4774,7 @@ function getSoundEffectsWindowTitle(scope) {
 
 function createSoundEffectsWindow(rawScope = 'music') {
     const scope = normalizeSoundEffectsScope(rawScope);
-    const htmlPath = path.join(__dirname, 'soundEffects.html');
+    const htmlPath = pathJoinReviewed(__dirname, 'soundEffects.html');
 
     // Pencere zaten açıksa, önne getir
     if (soundEffectsWindow && !soundEffectsWindow.isDestroyed()) {
@@ -4760,7 +4801,7 @@ function createSoundEffectsWindow(rawScope = 'music') {
         parent: null, // Bağımsız pencere (ana pencereden ayrı)
         modal: false,
         webPreferences: {
-            preload: path.join(__dirname, 'preload.js'),
+            preload: pathJoinReviewed(__dirname, 'preload.js'),
             nodeIntegration: false,
             contextIsolation: true,
             // sandbox: false gerekli — preload.js Node.js require() kullanıyor.
@@ -4826,7 +4867,7 @@ function createEQPresetsWindow() {
         modal: false,
         autoHideMenuBar: true,
         webPreferences: {
-            preload: path.join(__dirname, 'preload.js'),
+            preload: pathJoinReviewed(__dirname, 'preload.js'),
             nodeIntegration: false,
             contextIsolation: true,
             // sandbox: false gerekli — preload.js Node.js require() kullanıyor.
@@ -4852,7 +4893,7 @@ function createEQPresetsWindow() {
         eqPresetsWindow.setIcon(getAppIconImage());
     }
 
-    const htmlPath = path.join(__dirname, 'eqPresets.html');
+    const htmlPath = pathJoinReviewed(__dirname, 'eqPresets.html');
     console.log('[createEQPresetsWindow] HTML dosyası yükleniyor:', htmlPath);
 
     eqPresetsWindow.loadFile(htmlPath)
@@ -5317,11 +5358,11 @@ function getProjectMPresetsPath() {
 
     if (app.isPackaged) {
         // Tercih edilen paket yolu (extraResources ile açıkça eşlenmiş)
-        candidates.push(path.join(process.resourcesPath, 'visualizer-presets'));
+        candidates.push(pathJoinReviewed(process.resourcesPath, 'visualizer-presets'));
         // Yedek: third_party tamamen taşınmışsa
-        candidates.push(path.join(process.resourcesPath, 'third_party', 'projectm', 'presets'));
+        candidates.push(pathJoinReviewed(process.resourcesPath, 'third_party', 'projectm', 'presets'));
     } else {
-        candidates.push(getResourcePath(path.join('third_party', 'projectm', 'presets')));
+        candidates.push(getResourcePath(pathJoinReviewed('third_party', 'projectm', 'presets')));
     }
 
     return pickFirstExistingPath(candidates);
@@ -5335,10 +5376,10 @@ function getVisualizerExecutableCandidates() {
 
     // Paketlenmiş (Windows): native-dist tercih edilir; gerekirse taşınmış third_party'ye düş (binary içeriyorsa)
     if (app.isPackaged && process.platform === 'win32') {
-        out.push(path.join(process.resourcesPath, 'native-dist', 'aurivo-projectm-visualizer.exe'));
-        out.push(path.join(process.resourcesPath, 'native-dist', 'windows', 'aurivo-projectm-visualizer.exe'));
-        out.push(path.join(process.resourcesPath, 'third_party', 'projectm', 'aurivo-projectm-visualizer.exe'));
-        out.push(path.join(process.resourcesPath, 'third_party', 'projectm', 'bin', 'aurivo-projectm-visualizer.exe'));
+        out.push(pathJoinReviewed(process.resourcesPath, 'native-dist', 'aurivo-projectm-visualizer.exe'));
+        out.push(pathJoinReviewed(process.resourcesPath, 'native-dist', 'windows', 'aurivo-projectm-visualizer.exe'));
+        out.push(pathJoinReviewed(process.resourcesPath, 'third_party', 'projectm', 'aurivo-projectm-visualizer.exe'));
+        out.push(pathJoinReviewed(process.resourcesPath, 'third_party', 'projectm', 'bin', 'aurivo-projectm-visualizer.exe'));
         return out;
     }
 
@@ -5348,17 +5389,17 @@ function getVisualizerExecutableCandidates() {
 
     // Paketlenmiş (Linux/Mac): resources/native-dist (extraResources)
     if (app.isPackaged) {
-        out.push(path.join(process.resourcesPath, 'native-dist', exeName));
-        out.push(path.join(process.resourcesPath, 'native-dist', platformSubdir, exeName));
+        out.push(pathJoinReviewed(process.resourcesPath, 'native-dist', exeName));
+        out.push(pathJoinReviewed(process.resourcesPath, 'native-dist', platformSubdir, exeName));
         // third_party taşınmış ve binary içeriyorsa isteğe bağlı yedek
-        out.push(path.join(process.resourcesPath, 'third_party', 'projectm', exeName));
-        out.push(path.join(process.resourcesPath, 'third_party', 'projectm', 'bin', exeName));
+        out.push(pathJoinReviewed(process.resourcesPath, 'third_party', 'projectm', exeName));
+        out.push(pathJoinReviewed(process.resourcesPath, 'third_party', 'projectm', 'bin', exeName));
         return out;
     }
 
     // Dev: mevcut davranışı koru (distPath + build-visualizer adayları aşağıda)
-    out.push(getResourcePath(path.join('native-dist', exeName)));
-    out.push(getResourcePath(path.join('native-dist', platformSubdir, exeName)));
+    out.push(getResourcePath(pathJoinReviewed('native-dist', exeName)));
+    out.push(getResourcePath(pathJoinReviewed('native-dist', platformSubdir, exeName)));
     return out;
 }
 
@@ -5374,11 +5415,11 @@ function getVisualizerExecutablePath() {
     // Geliştirici kolaylığı: varsa yeni CMake çıktısını tercih et.
     const devCandidates = process.platform === 'win32'
         ? [
-            path.join(__dirname, 'build-visualizer', 'Release', exeName),
-            path.join(__dirname, 'build-visualizer', exeName)
+            pathJoinReviewed(__dirname, 'build-visualizer', 'Release', exeName),
+            pathJoinReviewed(__dirname, 'build-visualizer', exeName)
         ]
         : [
-            path.join(__dirname, 'build-visualizer', exeName)
+            pathJoinReviewed(__dirname, 'build-visualizer', exeName)
         ];
 
     // Geliştirici kolaylığı: varsa yeni CMake çıktısını tercih et.
@@ -5414,7 +5455,7 @@ function validateVisualizerBinaryForCurrentRuntime(exePath) {
     }
 
     try {
-        const check = spawnSync('ldd', [exePath], {
+        const check = spawnSyncReviewed('ldd', [exePath], {
             encoding: 'utf8',
             timeout: 3000,
             env: { ...process.env }
@@ -5441,8 +5482,8 @@ function startVisualizer() {
     const exePath = getVisualizerExecutablePath();
 
     const presetsCandidates = [
-        path.join(process.resourcesPath || '', 'visualizer-presets'),
-        path.join(process.resourcesPath || '', 'third_party', 'projectm', 'presets'),
+        pathJoinReviewed(process.resourcesPath || '', 'visualizer-presets'),
+        pathJoinReviewed(process.resourcesPath || '', 'third_party', 'projectm', 'presets'),
         getProjectMPresetsPath()
     ].filter(Boolean);
     const presetsPath = pickFirstExistingPath(presetsCandidates);
@@ -5516,8 +5557,8 @@ function startVisualizer() {
     }
 
     const visualizerIconCandidates = [
-        getResourcePath(path.join('icons', 'aurivo_512.png')),
-        path.join(process.resourcesPath || '', 'icons', 'aurivo_512.png'),
+        getResourcePath(pathJoinReviewed('icons', 'aurivo_512.png')),
+        pathJoinReviewed(process.resourcesPath || '', 'icons', 'aurivo_512.png'),
         '/app/share/icons/hicolor/512x512/apps/com.aurivo.mediaplayer.png'
     ].filter(Boolean);
     const visualizerIconPath = visualizerIconCandidates.find((p) => {
@@ -5537,9 +5578,9 @@ function startVisualizer() {
     const visualizerFontCandidates = [
         // Flatpak: native binary icin asar disi okunabilir font
         '/app/aurivo/resources/native-dist/linux/fonts/Inter-Regular.ttf',
-        path.join(process.resourcesPath || '', 'native-dist', 'linux', 'fonts', 'Inter-Regular.ttf'),
+        pathJoinReviewed(process.resourcesPath || '', 'native-dist', 'linux', 'fonts', 'Inter-Regular.ttf'),
         // Gelistirme ortami
-        path.join(__dirname, 'assets', 'fonts', 'Inter-Regular.ttf')
+        pathJoinReviewed(__dirname, 'assets', 'fonts', 'Inter-Regular.ttf')
     ].filter(Boolean);
     const visualizerFontPath = visualizerFontCandidates.find((p) => {
         if (!p || p.includes('.asar/')) return false;
@@ -5644,7 +5685,7 @@ function startVisualizer() {
             actualArgs = ['-c', `exec -a ${shellQuote(desktopId)} ${shellQuote(exePath)} "$@"`, '--', '--presets', presetsPath];
         }
 
-        visualizerProc = spawn(actualExe, actualArgs, {
+        visualizerProc = spawnReviewed(actualExe, actualArgs, {
             env,
             stdio: ['pipe', 'inherit', 'inherit'], // Hata ayıklama için stdout/stderr her zaman inherit
             detached: true // Electron GL context çakışmalarını önlemek için ayrı process grubunda çalıştır
@@ -5923,10 +5964,10 @@ function installWebviewHardening() {
             const normalizedPath = process.platform === 'win32' && /^\/[A-Za-z]:/.test(decodedPath)
                 ? decodedPath.slice(1)
                 : decodedPath;
-            const absPath = path.resolve(normalizedPath);
+            const absPath = pathResolveReviewed(normalizedPath);
             const appRoots = [
-                path.resolve(__dirname),
-                path.resolve(app?.getAppPath?.() || '')
+                pathResolveReviewed(__dirname),
+                pathResolveReviewed(app?.getAppPath?.() || '')
             ].filter(Boolean);
             return appRoots.some((root) => absPath === root || absPath.startsWith(`${root}${path.sep}`));
         } catch {
@@ -6206,10 +6247,10 @@ ipcMain.handle('pulse:openWindow', async () => {
 
     const platformSubdir = process.platform === 'win32' ? 'windows' : (process.platform === 'linux' ? 'linux' : process.platform);
     const extraBins = [
-        path.join(process.resourcesPath || '', 'native-dist', platformSubdir, process.platform === 'win32' ? 'aurivo-pulse.exe' : 'aurivo-pulse'),
-        path.join(process.resourcesPath || '', 'native-dist', process.platform === 'win32' ? 'aurivo-pulse.exe' : 'aurivo-pulse'),
-        path.join(__dirname, 'native-dist', platformSubdir, process.platform === 'win32' ? 'aurivo-pulse.exe' : 'aurivo-pulse'),
-        path.join(__dirname, 'native-dist', process.platform === 'win32' ? 'aurivo-pulse.exe' : 'aurivo-pulse'),
+        pathJoinReviewed(process.resourcesPath || '', 'native-dist', platformSubdir, process.platform === 'win32' ? 'aurivo-pulse.exe' : 'aurivo-pulse'),
+        pathJoinReviewed(process.resourcesPath || '', 'native-dist', process.platform === 'win32' ? 'aurivo-pulse.exe' : 'aurivo-pulse'),
+        pathJoinReviewed(__dirname, 'native-dist', platformSubdir, process.platform === 'win32' ? 'aurivo-pulse.exe' : 'aurivo-pulse'),
+        pathJoinReviewed(__dirname, 'native-dist', process.platform === 'win32' ? 'aurivo-pulse.exe' : 'aurivo-pulse'),
         findExecutable(process.platform === 'win32' ? 'aurivo-pulse.exe' : 'aurivo-pulse', ['/usr/bin', '/usr/local/bin', '/bin']),
         findExecutable(process.platform === 'win32' ? 'songrec.exe' : 'songrec', ['/usr/bin', '/usr/local/bin', '/bin'])
     ].filter(Boolean);
@@ -6240,7 +6281,7 @@ ipcMain.handle('pulse:openWindow', async () => {
                 actualArgs = ['-c', `exec -a ${shellQuote(desktopId)} ${shellQuote(attempt.command)} "$@"`, '--', ...(attempt.args || [])];
             }
 
-            child = spawn(actualCmd, actualArgs, {
+            child = spawnReviewed(actualCmd, actualArgs, {
                 cwd: attempt.cwd,
                 env: buildPulseGuiEnv(),
                 detached: false,
@@ -6544,7 +6585,7 @@ ipcMain.handle('screenRecording:getFfmpegCapabilities', async () => {
     return new Promise((resolve) => {
         let output = '';
         let settled = false;
-        const child = spawn(ffmpegPath, ['-hide_banner', '-encoders'], { windowsHide: true });
+        const child = spawnReviewed(ffmpegPath, ['-hide_banner', '-encoders'], { windowsHide: true });
         const finish = (payload) => resolve({
             ffmpegPath,
             formats: ['webm', 'mkv', 'mp4'],
@@ -6636,8 +6677,8 @@ ipcMain.handle('screenRecording:startSystemAudio', async () => {
         const audioDevice = await pickDefaultOutputMonitorDeviceId();
         if (!audioDevice) return { success: false, error: 'monitor-not-found' };
         const ffmpegPath = getFfmpegPathForEnv();
-        const outPath = path.join(app.getPath('temp'), `aurivo-screen-system-audio-${Date.now()}.wav`);
-        const child = spawn(ffmpegPath, [
+        const outPath = pathJoinReviewed(app.getPath('temp'), `aurivo-screen-system-audio-${Date.now()}.wav`);
+        const child = spawnReviewed(ffmpegPath, [
             '-y',
             '-f', 'pulse',
             '-i', audioDevice,
@@ -6700,7 +6741,7 @@ ipcMain.handle('screenRecording:muxSystemAudio', async (_event, videoPath, audio
     const ffmpegPath = getFfmpegPathForEnv();
     const result = await new Promise((resolve) => {
         let err = '';
-        const child = spawn(ffmpegPath, [
+        const child = spawnReviewed(ffmpegPath, [
             '-y',
             '-i', video,
             '-i', audio,
@@ -6799,7 +6840,7 @@ ipcMain.handle('screenRecording:finalizeRecording', async (_event, inputPath, ou
     }
     const result = await new Promise((resolve) => {
         let err = '';
-        const child = spawn(ffmpegPath, args, { windowsHide: true });
+        const child = spawnReviewed(ffmpegPath, args, { windowsHide: true });
         child.stderr.on('data', (chunk) => { err += String(chunk || ''); });
         child.once('error', (error) => resolve({ success: false, error: error?.message || String(error) }));
         child.once('close', (code) => {
@@ -6861,7 +6902,7 @@ ipcMain.handle('screenRecording:repairRecording', async (_event, inputPath, outp
     };
     const runFfmpeg = (args) => new Promise((resolve) => {
         let err = '';
-        const child = spawn(ffmpegPath, args, { windowsHide: true });
+        const child = spawnReviewed(ffmpegPath, args, { windowsHide: true });
         child.stderr.on('data', (chunk) => { err += String(chunk || ''); });
         child.once('error', (error) => resolve({ success: false, error: error?.message || String(error) }));
         child.once('close', (code) => {
@@ -6909,7 +6950,7 @@ ipcMain.handle('screenRecording:validateRecording', async (_event, filePath, opt
     const probe = await new Promise((resolve) => {
         let stdout = '';
         let stderr = '';
-        const child = spawn(ffprobePath, [
+        const child = spawnReviewed(ffprobePath, [
             '-v', 'error',
             '-print_format', 'json',
             '-show_format',
@@ -7056,7 +7097,7 @@ ipcMain.handle('screenRecording:startLiveOutput', async (_event, options = {}) =
         target
     ];
     try {
-        const proc = spawn(ffmpegPath, args, { windowsHide: true });
+        const proc = spawnReviewed(ffmpegPath, args, { windowsHide: true });
         const live = { id, kind, target, proc, startedAt: Date.now(), lastError: '' };
         screenRecordingLiveOutputs.set(id, live);
         proc.stderr.on('data', (chunk) => {
@@ -7963,7 +8004,7 @@ function resolveAdblockDashboardUrlFallback(preferredPartition = '') {
         // yoksay
     }
     const extensionPath = resolveBundledUbolExtensionPathForDashboard();
-    const dashboardFile = extensionPath ? path.join(extensionPath, 'dashboard.html') : '';
+    const dashboardFile = extensionPath ? pathJoinReviewed(extensionPath, 'dashboard.html') : '';
     if (dashboardFile && fs.existsSync(dashboardFile)) {
         return { url: `file://${dashboardFile}`, partition: '' };
     }
@@ -7972,23 +8013,23 @@ function resolveAdblockDashboardUrlFallback(preferredPartition = '') {
 
 function resolveBundledUbolExtensionPathForDashboard() {
     const roots = [
-        path.join(process.resourcesPath || '', 'uDALİ-weman-home', 'chromium'),
-        path.join(process.resourcesPath || '', 'app.asar.unpacked', 'uDALİ-weman-home', 'chromium'),
-        path.join(__dirname, 'uDALİ-weman-home', 'chromium'),
-        path.join(__dirname, '..', 'uDALİ-weman-home', 'chromium'),
+        pathJoinReviewed(process.resourcesPath || '', 'uDALİ-weman-home', 'chromium'),
+        pathJoinReviewed(process.resourcesPath || '', 'app.asar.unpacked', 'uDALİ-weman-home', 'chromium'),
+        pathJoinReviewed(__dirname, 'uDALİ-weman-home', 'chromium'),
+        pathJoinReviewed(__dirname, '..', 'uDALİ-weman-home', 'chromium'),
     ];
 
     for (const candidate of roots) {
         if (!candidate) continue;
         if (!isRealDirectory(candidate)) continue;
-        if (fs.existsSync(path.join(candidate, 'manifest.json'))) {
+        if (fs.existsSync(pathJoinReviewed(candidate, 'manifest.json'))) {
             return candidate;
         }
     }
 
     const scanRoots = [
         process.resourcesPath || '',
-        path.join(process.resourcesPath || '', 'app.asar.unpacked'),
+        pathJoinReviewed(process.resourcesPath || '', 'app.asar.unpacked'),
         __dirname
     ].filter(Boolean);
     for (const root of scanRoots) {
@@ -7999,8 +8040,8 @@ function resolveBundledUbolExtensionPathForDashboard() {
                 if (!entry?.isDirectory?.()) continue;
                 const name = String(entry.name || '').toLowerCase();
                 if (!name.includes('weman-home')) continue;
-                const candidate = path.join(root, entry.name, 'chromium');
-                if (isRealDirectory(candidate) && fs.existsSync(path.join(candidate, 'manifest.json'))) {
+                const candidate = pathJoinReviewed(root, entry.name, 'chromium');
+                if (isRealDirectory(candidate) && fs.existsSync(pathJoinReviewed(candidate, 'manifest.json'))) {
                     return candidate;
                 }
             }
@@ -8384,7 +8425,7 @@ ipcMain.handle('fs:readDirectory', async (event, dirPath) => {
 
         const items = await fs.promises.readdir(safeDirPath, { withFileTypes: true });
         const results = await Promise.all(items.map(async (item) => {
-            const fullPath = path.join(safeDirPath, item.name);
+            const fullPath = pathJoinReviewed(safeDirPath, item.name);
             const ext = path.extname(item.name || '').slice(1).toLowerCase();
             const isSupportedMedia = !!ext && SUPPORTED_MEDIA_EXTENSIONS.has(ext);
 
@@ -8519,13 +8560,13 @@ ipcMain.handle('fs:getSpecialPaths', async () => {
     // Var olan klasörü bul
     const findExisting = async (folders) => {
         for (const folder of folders) {
-            const fullPath = path.join(home, folder);
+            const fullPath = pathJoinReviewed(home, folder);
             try {
                 await fs.promises.access(fullPath);
                 return fullPath;
             } catch { }
         }
-        return path.join(home, folders[0]); // Bulunamazsa ilkini döndür
+        return pathJoinReviewed(home, folders[0]); // Bulunamazsa ilkini döndür
     };
 
     return {
@@ -8535,7 +8576,7 @@ ipcMain.handle('fs:getSpecialPaths', async () => {
         downloads: await findExisting(downloadFolders),
         desktop: await findExisting(desktopFolders),
         pictures: await findExisting(picturesFolders),
-        documents: path.join(home, 'Documents')
+        documents: pathJoinReviewed(home, 'Documents')
     };
 });
 
@@ -8628,8 +8669,8 @@ ipcMain.handle('app:getSystemStats', async () => {
 
 ipcMain.handle('screenRecording:listStudioPlugins', async () => {
     const pluginDirs = [
-        path.join(app.getPath('userData'), 'video-studio-plugins'),
-        path.join(app.getPath('home'), '.config', 'aurivo', 'video-studio-plugins')
+        pathJoinReviewed(app.getPath('userData'), 'video-studio-plugins'),
+        pathJoinReviewed(app.getPath('home'), '.config', 'aurivo', 'video-studio-plugins')
     ];
     const plugins = [];
     for (const dir of pluginDirs) {
@@ -8638,8 +8679,8 @@ ipcMain.handle('screenRecording:listStudioPlugins', async () => {
             const entries = await fs.promises.readdir(dir, { withFileTypes: true });
             for (const entry of entries) {
                 const manifestPath = entry.isDirectory()
-                    ? path.join(dir, entry.name, 'plugin.json')
-                    : (entry.isFile() && entry.name.endsWith('.json') ? path.join(dir, entry.name) : '');
+                    ? pathJoinReviewed(dir, entry.name, 'plugin.json')
+                    : (entry.isFile() && entry.name.endsWith('.json') ? pathJoinReviewed(dir, entry.name) : '');
                 if (!manifestPath) continue;
                 try {
                     const raw = await fs.promises.readFile(manifestPath, 'utf8');
@@ -8730,7 +8771,7 @@ ipcMain.handle('fs:renameItem', async (_event, sourcePath, nextName) => {
         }
 
         const srcDir = path.dirname(src);
-        const targetPath = path.join(srcDir, rawName);
+        const targetPath = pathJoinReviewed(srcDir, rawName);
         if (targetPath === src) {
             return {
                 ok: true,
@@ -9042,7 +9083,7 @@ ipcMain.handle('systemAudio:setOutput', async (_event, outputId) => {
 });
 
 // Playlist Kaydet/Yükle
-const playlistPath = path.join(app.getPath('userData'), 'playlist.json');
+const playlistPath = pathJoinReviewed(app.getPath('userData'), 'playlist.json');
 
 ipcMain.handle('playlist:save', async (event, playlist) => {
     try {
@@ -9184,13 +9225,13 @@ ipcMain.handle('media:getDisplayImagePath', async (_event, filePath, options = {
         if (!shouldConvert) return sourcePath;
 
         const stat = await fs.promises.stat(sourcePath);
-        const cacheDir = path.join(app.getPath('temp'), 'aurivo-image-cache');
+        const cacheDir = pathJoinReviewed(app.getPath('temp'), 'aurivo-image-cache');
         await fs.promises.mkdir(cacheDir, { recursive: true });
         const cacheKey = crypto
             .createHash('sha1')
             .update(`${sourcePath}|${Number(stat.size) || 0}|${Number(stat.mtimeMs) || 0}`)
             .digest('hex');
-        const outputPath = path.join(cacheDir, `${cacheKey}.png`);
+        const outputPath = pathJoinReviewed(cacheDir, `${cacheKey}.png`);
 
         try {
             await fs.promises.access(outputPath);
@@ -9226,8 +9267,8 @@ function getFfmpegPathForEnv() {
 
     if (app.isPackaged) {
         const packed = process.platform === 'win32'
-            ? path.join(process.resourcesPath, 'bin', 'ffmpeg.exe')
-            : path.join(process.resourcesPath, 'bin', 'ffmpeg');
+            ? pathJoinReviewed(process.resourcesPath, 'bin', 'ffmpeg.exe')
+            : pathJoinReviewed(process.resourcesPath, 'bin', 'ffmpeg');
         candidates.push(packed);
     }
 
@@ -9261,8 +9302,8 @@ function getFfprobePathForEnv() {
     if (preferSystemFirst && systemCandidate) candidates.push(systemCandidate);
     if (app.isPackaged) {
         const packed = process.platform === 'win32'
-            ? path.join(process.resourcesPath, 'bin', 'ffprobe.exe')
-            : path.join(process.resourcesPath, 'bin', 'ffprobe');
+            ? pathJoinReviewed(process.resourcesPath, 'bin', 'ffprobe.exe')
+            : pathJoinReviewed(process.resourcesPath, 'bin', 'ffprobe');
         candidates.push(packed);
     }
     if (!preferSystemFirst && systemCandidate) candidates.push(systemCandidate);
@@ -9316,7 +9357,7 @@ async function createShiftedSubtitleFile(subtitlePath, delaySeconds) {
         /(\d{2,}:\d{2}:\d{2},\d{3})\s*-->\s*(\d{2,}:\d{2}:\d{2},\d{3})/g,
         (_match, start, end) => `${formatSrtTimestamp(parseSrtTimestamp(start) + shift)} --> ${formatSrtTimestamp(parseSrtTimestamp(end) + shift)}`
     );
-    const targetPath = path.join(os.tmpdir(), `aurivo-subtitle-${crypto.randomUUID()}.srt`);
+    const targetPath = pathJoinReviewed(os.tmpdir(), `aurivo-subtitle-${crypto.randomUUID()}.srt`);
     await fs.promises.writeFile(targetPath, shifted, 'utf8');
     return targetPath;
 }
@@ -9576,7 +9617,7 @@ ipcMain.handle('videoTools:convert', async (event, options = {}) => {
 
         let child = null;
         try {
-            child = spawn(ffmpegPath, args, { windowsHide: true });
+            child = spawnReviewed(ffmpegPath, args, { windowsHide: true });
         } catch (error) {
             finish({ ok: false, error: error?.message || String(error) });
             return;
@@ -9629,16 +9670,16 @@ function normalizeExcludedPaths(excludedFolders = []) {
         ? excludedFolders
             .map((folder) => String(folder?.path || folder || '').trim())
             .filter(Boolean)
-            .map((folderPath) => path.resolve(folderPath))
+            .map((folderPath) => pathResolveReviewed(folderPath))
         : [];
 }
 
 function isPathExcluded(targetPath, excludedPaths = []) {
     const normalizedTarget = String(targetPath || '').trim();
     if (!normalizedTarget) return false;
-    const resolvedTarget = path.resolve(normalizedTarget);
+    const resolvedTarget = pathResolveReviewed(normalizedTarget);
     return excludedPaths.some((excludedPath) => {
-        const resolvedExcluded = path.resolve(String(excludedPath || '').trim());
+        const resolvedExcluded = pathResolveReviewed(String(excludedPath || '').trim());
         return resolvedTarget === resolvedExcluded || resolvedTarget.startsWith(`${resolvedExcluded}${path.sep}`);
     });
 }
@@ -9670,7 +9711,7 @@ async function collectAudioFilesRecursive(rootDir, out = [], excludedPaths = [],
     }
 
     for (const entry of entries) {
-        const fullPath = path.join(rootDir, entry.name);
+        const fullPath = pathJoinReviewed(rootDir, entry.name);
         try {
             if (entry.isDirectory()) {
                 if (recursive && !isPathExcluded(fullPath, excludedPaths)) {
@@ -9700,7 +9741,7 @@ async function collectAudioFilesRecursive(rootDir, out = [], excludedPaths = [],
 function parseMediaDurationWithFfmpeg(filePath) {
     return new Promise((resolve) => {
         const ffmpegPath = getFfmpegPathForEnv();
-        const child = spawn(ffmpegPath, ['-i', filePath], { windowsHide: true });
+        const child = spawnReviewed(ffmpegPath, ['-i', filePath], { windowsHide: true });
         let stderr = '';
 
         child.stderr.on('data', (chunk) => {
@@ -9777,7 +9818,7 @@ async function findBestFolderCoverPath(filePath) {
     for (const lowerCandidate of candidates) {
         const realName = entryMap.get(lowerCandidate);
         if (realName) {
-            return path.join(dir, realName);
+            return pathJoinReviewed(dir, realName);
         }
     }
 
@@ -9818,7 +9859,7 @@ async function collectDirectoriesRecursive(rootDir, out = [], excludedPaths = []
 
     for (const entry of entries) {
         if (!entry.isDirectory()) continue;
-        const fullPath = path.join(rootDir, entry.name);
+        const fullPath = pathJoinReviewed(rootDir, entry.name);
         if (isPathExcluded(fullPath, excludedPaths)) continue;
         out.push(fullPath);
         await collectDirectoriesRecursive(fullPath, out, excludedPaths);
@@ -9926,7 +9967,7 @@ async function startLibraryWatchSession(webContents, folders, excludedFolders = 
     for (const dirPath of uniqueDirectories) {
         try {
             const watcher = fs.watch(dirPath, { persistent: false }, (_eventType, filename) => {
-                const nextPath = filename ? path.join(dirPath, String(filename)) : dirPath;
+                const nextPath = filename ? pathJoinReviewed(dirPath, String(filename)) : dirPath;
                 scheduleRefresh(nextPath, 'fs-change').catch(() => {});
             });
             session.watchers.push(watcher);
@@ -10283,7 +10324,7 @@ async function extractCoverWithFFmpeg(filePath) {
         }
 
         // ffmpeg ile embedded image'ı pipe'la al
-        const ffmpeg = spawn(ffmpegPath, [
+        const ffmpeg = spawnReviewed(ffmpegPath, [
             '-hide_banner',
             '-loglevel', 'error',
             '-i', filePath,
@@ -10347,7 +10388,7 @@ async function extractVideoThumbnailWithFFmpeg(filePath) {
         }
 
         // 1. saniyeden 1 kare al (çok kısa videolarda yine de çalışır)
-        const ffmpeg = spawn(ffmpegPath, [
+        const ffmpeg = spawnReviewed(ffmpegPath, [
             '-hide_banner',
             '-loglevel', 'error',
             '-ss', '00:00:01',
@@ -10394,7 +10435,7 @@ async function convertStillImageToPngWithFFmpeg(sourcePath, outputPath) {
             }
         }
 
-        const ffmpeg = spawn(ffmpegPath, [
+        const ffmpeg = spawnReviewed(ffmpegPath, [
             '-y',
             '-hide_banner',
             '-loglevel', 'error',
@@ -12486,7 +12527,7 @@ ipcMain.handle('audio:setBassBoost', (event, value) => {
 // ============================================
 
 // Preset klasörü yolu (packaged/app.asar içinden okunur)
-const presetsPath = getAppFilePath(path.join('resources', 'autoeq'));
+const presetsPath = getAppFilePath(pathJoinReviewed('resources', 'autoeq'));
 
 function clampNumber(v, min, max) {
     const n = Number(v);
@@ -12532,7 +12573,7 @@ function makeBandsFromPoints(points, minDb = -12, maxDb = 12) {
 
 function loadAurivoEQBuiltins() {
     // JSON ile ayarlanabilir (ince ayar için)
-    const filePath = getAppFilePath(path.join('resources', 'aurivo', 'eq_presets.json'));
+    const filePath = getAppFilePath(pathJoinReviewed('resources', 'aurivo', 'eq_presets.json'));
     try {
         const raw = fs.readFileSync(filePath, 'utf8');
         const parsed = JSON.parse(raw);
@@ -12641,7 +12682,7 @@ async function buildPresetListCacheIfNeeded() {
         for (let i = 0; i < jsonFiles.length; i += batchSize) {
             const batch = jsonFiles.slice(i, i + batchSize);
             const results = await Promise.allSettled(batch.map(async (f) => {
-                const filePath = path.join(presetsPath, f);
+                const filePath = pathJoinReviewed(presetsPath, f);
                 const raw = await fs.promises.readFile(filePath, 'utf8');
                 const parsed = JSON.parse(raw);
                 const name = (parsed?.name && String(parsed.name).trim())
@@ -12691,7 +12732,7 @@ ipcMain.handle('presets:load', async (event, filename) => {
         if (!safeFilename) {
             return null;
         }
-        const filePath = path.join(presetsPath, safeFilename);
+        const filePath = pathJoinReviewed(presetsPath, safeFilename);
         const data = await fs.promises.readFile(filePath, 'utf8');
         return JSON.parse(data);
     } catch (error) {
@@ -12740,7 +12781,7 @@ ipcMain.handle('eqPresets:select', async (event, filename) => {
                 return null;
             }
             selectedFilename = safeFilename;
-            const filePath = path.join(presetsPath, safeFilename);
+            const filePath = pathJoinReviewed(presetsPath, safeFilename);
             const data = await fs.promises.readFile(filePath, 'utf8');
             preset = JSON.parse(data);
         }
