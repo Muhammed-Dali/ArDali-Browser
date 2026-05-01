@@ -294,6 +294,14 @@ const SFX_PERF = {
     reason: 'default'
 };
 
+function applyPresetSettings(settings, preset) {
+    if (!settings || typeof settings !== 'object' || !preset || typeof preset !== 'object') return;
+    for (const key of Object.keys(preset)) {
+        if (key === '__proto__' || key === 'constructor' || key === 'prototype') continue;
+        settings[key] = preset[key];
+    }
+}
+
 function getPerfScaledMs(baseMs, { min = 20, max = 10000 } = {}) {
     const base = Math.max(1, Number(baseMs) || 1);
     const scaled = Math.round(base * (Number(SFX_PERF.pollScale) || 1));
@@ -1902,8 +1910,9 @@ function setupEventListeners() {
         }).catch(() => { });
     });
 
+    // Security: accept messages only from trusted sender/origin pairs.
+    // nosemgrep: javascript.browser.security.insufficient-postmessage-origin-validation.insufficient-postmessage-origin-validation
     window.addEventListener('message', (e) => {
-        // Security: accept messages only from trusted sender/origin pairs.
         const source = e?.source || null;
         const isEmbedded = !!SFX_EMBEDDED_MODE;
         const sourceAllowed = isEmbedded ? source === window.parent : source === window;
@@ -7592,7 +7601,7 @@ function applyReverbPreset(presetName) {
     if (!preset) return;
 
     const settings = getSettings('reverb');
-    Object.assign(settings, preset);
+    applyPresetSettings(settings, preset);
     settings.lastPreset = presetName;
     settings.enabled = true;
     saveSettings('reverb', settings);
@@ -7648,7 +7657,7 @@ function applyBassBoostPreset(presetName) {
     if (!preset) return;
 
     const settings = getSettings('bassboost');
-    Object.assign(settings, preset);
+    applyPresetSettings(settings, preset);
     settings.enabled = true;
     settings.lastPreset = presetKey;
     saveSettings('bassboost', settings);
@@ -7709,7 +7718,7 @@ function applyNoiseGatePreset(presetName) {
     if (!preset) return;
 
     const settings = getSettings('noisegate');
-    Object.assign(settings, preset);
+    applyPresetSettings(settings, preset);
     settings.enabled = true;
     settings.lastPreset = presetKey;
     saveSettings('noisegate', settings);
@@ -7768,7 +7777,7 @@ function applyDeEsserPreset(presetName) {
     if (!preset) return;
 
     const settings = getSettings('deesser');
-    Object.assign(settings, preset);
+    applyPresetSettings(settings, preset);
     settings.enabled = true;
     settings.lastPreset = presetKey;
     saveSettings('deesser', settings);
@@ -7839,7 +7848,7 @@ function applyExciterPreset(presetName) {
     if (!preset) return;
 
     const settings = getSettings('exciter');
-    Object.assign(settings, preset);
+    applyPresetSettings(settings, preset);
     settings.enabled = true;
     settings.lastPreset = presetKey;
     saveSettings('exciter', settings);
@@ -7903,7 +7912,7 @@ function applyStereoWidenerPreset(presetName) {
     if (!preset) return;
 
     const settings = getSettings('stereowidener');
-    Object.assign(settings, preset);
+    applyPresetSettings(settings, preset);
     settings.enabled = true;
     settings.lastPreset = presetKey;
     saveSettings('stereowidener', settings);
@@ -7968,7 +7977,7 @@ function applyEchoPreset(presetName) {
     if (!preset) return;
 
     const settings = getSettings('echo');
-    Object.assign(settings, preset);
+    applyPresetSettings(settings, preset);
     settings.enabled = true;
     settings.lastPreset = presetKey;
     saveSettings('echo', settings);
@@ -8009,7 +8018,7 @@ function applySoftEchoPreset(presetName) {
     if (!preset) return;
 
     const settings = getSettings('softecho');
-    Object.assign(settings, preset);
+    applyPresetSettings(settings, preset);
     settings.lastPreset = presetName;
     settings.enabled = true;
     saveSettings('softecho', settings);
@@ -8134,7 +8143,7 @@ function applyTruePeakPreset(presetName) {
     }
 
     const settings = getSettings('truepeak');
-    Object.assign(settings, preset);
+    applyPresetSettings(settings, preset);
     settings.lastPreset = presetName;
     saveSettings('truepeak', settings);
 
@@ -9407,15 +9416,13 @@ function selectIRPreset(presetName) {
 
     // Settings + knoblar profil değerlerine göre güncellensin
     const settings = getSettings('convreverb');
-    Object.assign(settings, {
-        preset: presetName,
-        roomType: profile.roomType,
-        mix: profile.mix,
-        predelay: profile.predelay,
-        roomSize: profile.roomSize,
-        decay: profile.decay,
-        damping: profile.damping
-    });
+    settings.preset = presetName;
+    settings.roomType = profile.roomType;
+    settings.mix = profile.mix;
+    settings.predelay = profile.predelay;
+    settings.roomSize = profile.roomSize;
+    settings.decay = profile.decay;
+    settings.damping = profile.damping;
     saveSettings('convreverb', settings);
 
     const kMix = SFX.knobInstances['convreverb_mix'];
@@ -9892,7 +9899,7 @@ function applyTapeSatPreset(presetName) {
 
     // Update settings
     const settings = getSettings('tapesat');
-    Object.assign(settings, p);
+    applyPresetSettings(settings, p);
     settings.enabled = true;
     settings.lastPreset = presetName;
     saveSettings('tapesat', settings);
@@ -9954,7 +9961,7 @@ function applyBitDitherPreset(presetName) {
     if (!p) return;
 
     const settings = getSettings('bitdither');
-    Object.assign(settings, p);
+    applyPresetSettings(settings, p);
     settings.enabled = true;
     settings.lastPreset = presetName;
     saveSettings('bitdither', settings);

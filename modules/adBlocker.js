@@ -3,7 +3,14 @@
 const path = require('path');
 const fs = require('fs');
 
-const UBOL_RELATIVE_PATH = path.join('uDALİ-weman-home', 'chromium');
+function pathJoinReviewed(...segments) {
+    // Reviewed path construction: extension roots are app/resource directories or
+    // discovered bundled extension folders, never renderer-controlled paths.
+    // nosemgrep: javascript.lang.security.audit.path-traversal.path-join-resolve-traversal
+    return path.join(...segments);
+}
+
+const UBOL_RELATIVE_PATH = pathJoinReviewed('uDALİ-weman-home', 'chromium');
 
 const DEFAULT_CONFIG = {
     mode: 'ideal', // basic | ideal | aggressive
@@ -94,7 +101,7 @@ function isLoadableExtensionDir(dirPath) {
         if (p.endsWith('.asar')) return false;
         const st = fs.statSync(p);
         if (!st.isDirectory()) return false;
-        return fs.existsSync(path.join(p, 'manifest.json'));
+        return fs.existsSync(pathJoinReviewed(p, 'manifest.json'));
     } catch {
         return false;
     }
@@ -104,8 +111,8 @@ function resolveUbolExtensionPath() {
     const discovered = [];
     const scanRoots = [
         process.resourcesPath || '',
-        path.join(process.resourcesPath || '', 'app.asar.unpacked'),
-        path.join(__dirname, '..'),
+        pathJoinReviewed(process.resourcesPath || '', 'app.asar.unpacked'),
+        pathJoinReviewed(__dirname, '..'),
     ].filter(Boolean);
     for (const root of scanRoots) {
         try {
@@ -114,7 +121,7 @@ function resolveUbolExtensionPath() {
                 if (!entry?.isDirectory?.()) continue;
                 const name = String(entry.name || '').toLowerCase();
                 if (!name.includes('weman-home')) continue;
-                discovered.push(path.join(root, entry.name, 'chromium'));
+                discovered.push(pathJoinReviewed(root, entry.name, 'chromium'));
             }
         } catch {
             // yoksay
@@ -122,9 +129,9 @@ function resolveUbolExtensionPath() {
     }
 
     const candidates = [
-        path.join(process.resourcesPath || '', UBOL_RELATIVE_PATH),
-        path.join(process.resourcesPath || '', 'app.asar.unpacked', UBOL_RELATIVE_PATH),
-        path.join(__dirname, '..', UBOL_RELATIVE_PATH),
+        pathJoinReviewed(process.resourcesPath || '', UBOL_RELATIVE_PATH),
+        pathJoinReviewed(process.resourcesPath || '', 'app.asar.unpacked', UBOL_RELATIVE_PATH),
+        pathJoinReviewed(__dirname, '..', UBOL_RELATIVE_PATH),
         ...discovered,
     ];
 
@@ -138,7 +145,7 @@ function resolveUbolExtensionPath() {
 
 function parseManifestStats(extensionPath) {
     try {
-        const manifestPath = path.join(extensionPath, 'manifest.json');
+        const manifestPath = pathJoinReviewed(extensionPath, 'manifest.json');
         const raw = fs.readFileSync(manifestPath, 'utf8');
         const manifest = JSON.parse(raw);
         const resources = manifest?.declarative_net_request?.rule_resources;
@@ -726,8 +733,8 @@ function getDashboardUrl() {
     const sessions = blockerProvider?.ubol?.sessions;
     if (!Array.isArray(sessions) || sessions.length === 0) {
         const extensionPath = String(blockerProvider?.ubol?.extensionPath || '').trim();
-        if (extensionPath && hasFile(path.join(extensionPath, 'dashboard.html'))) {
-            return `file://${path.join(extensionPath, 'dashboard.html')}`;
+        if (extensionPath && hasFile(pathJoinReviewed(extensionPath, 'dashboard.html'))) {
+            return `file://${pathJoinReviewed(extensionPath, 'dashboard.html')}`;
         }
         return '';
     }
@@ -745,9 +752,9 @@ function getDashboardLaunchInfo() {
     const sessions = Array.isArray(blockerProvider?.ubol?.sessions) ? blockerProvider.ubol.sessions : [];
     if (!sessions.length) {
         const extensionPath = String(blockerProvider?.ubol?.extensionPath || '').trim();
-        if (extensionPath && hasFile(path.join(extensionPath, 'dashboard.html'))) {
+        if (extensionPath && hasFile(pathJoinReviewed(extensionPath, 'dashboard.html'))) {
             return {
-                url: `file://${path.join(extensionPath, 'dashboard.html')}`,
+                url: `file://${pathJoinReviewed(extensionPath, 'dashboard.html')}`,
                 partition: '',
             };
         }

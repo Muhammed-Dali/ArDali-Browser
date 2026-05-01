@@ -86,6 +86,7 @@
             // Security: block prototype pollution keys
             if (p === '__proto__' || p === 'constructor' || p === 'prototype') return undefined;
             if (!cur || typeof cur !== 'object' || !Object.prototype.hasOwnProperty.call(cur, p)) return undefined;
+            // nosemgrep: javascript.lang.security.audit.prototype-pollution.prototype-pollution-loop
             cur = cur[p];
         }
         return cur;
@@ -101,6 +102,7 @@
             // Security: block prototype pollution keys
             if (p === '__proto__' || p === 'constructor' || p === 'prototype') return;
             if (!Object.prototype.hasOwnProperty.call(cur, p) || typeof cur[p] !== 'object') cur[p] = {};
+            // nosemgrep: javascript.lang.security.audit.prototype-pollution.prototype-pollution-loop
             cur = cur[p];
         }
         const lastKey = parts[parts.length - 1];

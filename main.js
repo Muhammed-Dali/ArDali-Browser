@@ -3579,6 +3579,7 @@ function deepGet(obj, pathStr) {
         // Security: block prototype pollution keys
         if (p === '__proto__' || p === 'constructor' || p === 'prototype') return undefined;
         if (!cur || typeof cur !== 'object' || !Object.prototype.hasOwnProperty.call(cur, p)) return undefined;
+        // nosemgrep: javascript.lang.security.audit.prototype-pollution.prototype-pollution-loop
         cur = cur[p];
     }
     return cur;
@@ -3734,10 +3735,14 @@ function applyUiLocaleOverrides(lang, messages) {
         let cur = obj;
         for (let i = 0; i < parts.length - 1; i++) {
             const p = parts[i];
+            if (p === '__proto__' || p === 'constructor' || p === 'prototype') return;
             if (!cur[p] || typeof cur[p] !== 'object') cur[p] = {};
+            // nosemgrep: javascript.lang.security.audit.prototype-pollution.prototype-pollution-loop
             cur = cur[p];
         }
-        cur[parts[parts.length - 1]] = value;
+        const lastKey = parts[parts.length - 1];
+        if (lastKey === '__proto__' || lastKey === 'constructor' || lastKey === 'prototype') return;
+        cur[lastKey] = value;
     };
     const deepEnsure = (key, value) => {
         if (deepGet(out, key) === undefined) deepSet(out, key, value);
