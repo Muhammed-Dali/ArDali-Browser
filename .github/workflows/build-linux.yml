@@ -246,6 +246,7 @@ jobs:
       - name: Auto bump version, push commit and tag
         shell: bash
         env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RELEASE_TRIGGER_TOKEN: ${{ secrets.RELEASE_TRIGGER_TOKEN }}
         run: |
           set -euo pipefail
@@ -263,7 +264,20 @@ jobs:
             echo "::warning::RELEASE_TRIGGER_TOKEN is not set. Release/Pacman/Security workflows may not auto-trigger from bot push."
           fi
 
-          # Her main push sonrasında patch versiyon otomatik artırılır.
+          # Public release numbers must follow the latest published release,
+          # not unpublished CI tags left behind by failed/interrupted releases.
+          LATEST_RELEASE_TAG="$(
+            curl -fsSL \
+              -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+              -H "Accept: application/vnd.github+json" \
+              "https://api.github.com/repos/${GITHUB_REPOSITORY}/releases/latest" \
+              | node -e "let s=''; process.stdin.on('data', d => s += d); process.stdin.on('end', () => { const r = JSON.parse(s); if (!/^v[0-9]+\\.[0-9]+\\.[0-9]+$/.test(r.tag_name || '')) process.exit(1); console.log(r.tag_name); });"
+          )"
+          LATEST_RELEASE="${LATEST_RELEASE_TAG#v}"
+          echo "Latest published release: ${LATEST_RELEASE_TAG}"
+          npm version "${LATEST_RELEASE}" --no-git-tag-version --allow-same-version >/dev/null
+
+          # Her main push sonrasında son yayinlanan release uzerinden patch versiyon otomatik artırılır.
           NEW_VERSION="$(npm version patch --no-git-tag-version | sed 's/^v//')"
           TAG="v${NEW_VERSION}"
           echo "Auto bumped version: ${NEW_VERSION}"
