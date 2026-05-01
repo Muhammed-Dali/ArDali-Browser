@@ -846,10 +846,10 @@ function cleanupTransientHomeFiles(context = 'runtime') {
         try {
             if (fs.existsSync(filePath)) {
                 fs.unlinkSync(filePath);
-                console.log(`[Cleanup] removed ${name} (${context})`);
+                console.log('[Cleanup] removed:', name, `(${context})`);
             }
         } catch (e) {
-            console.warn(`[Cleanup] failed to remove ${name} (${context}):`, e?.message || e);
+            console.warn('[Cleanup] failed to remove:', name, `(${context})`, e?.message || e);
         }
     }
 }
@@ -1079,7 +1079,7 @@ function detectDisplayServer() {
     // Paketli Linux sürümünde daha stabil varsayılan: Wayland yerine X11/auto.
     if (conservativeGpuMode && !displayBackendOverride && selectedBackend === 'wayland') {
         selectedBackend = display ? 'x11' : 'auto';
-        console.log(`[Display] conservative packaged mode -> backend fallback: ${selectedBackend}`);
+        console.log('[Display] conservative packaged mode -> backend fallback:', selectedBackend);
     }
 
     if (selectedBackend === 'wayland') {
@@ -1104,10 +1104,10 @@ function detectDisplayServer() {
     process.env.AURIVO_EFFECTIVE_DISPLAY_BACKEND = selectedBackend;
 
     if (ozoneHint && !displayBackendOverride) {
-        console.log(`[Display] ELECTRON_OZONE_PLATFORM_HINT=${ozoneHint} (session-based auto mode takes precedence)`);
+        console.log('[Display] ELECTRON_OZONE_PLATFORM_HINT:', ozoneHint, '(session-based auto mode takes precedence)');
     }
     if (displayBackendOverride) {
-        console.log(`[Display] AURIVO_DISPLAY_BACKEND override active: ${displayBackendOverride}`);
+        console.log('[Display] AURIVO_DISPLAY_BACKEND override active:', displayBackendOverride);
     }
 
     if (!forceSoftware) {
@@ -1153,7 +1153,7 @@ function installGpuFailsafe() {
 
     const triggerFallback = (reason) => {
         if (alreadySoftware) return;
-        console.warn(`[GPU] Crash detected (${reason}) -> switching to software rendering`);
+        console.warn('[GPU] Crash detected -> switching to software rendering:', reason);
         app.relaunch({
             env: {
                 ...process.env,
@@ -3191,9 +3191,9 @@ function registerGlobalMediaShortcuts() {
                 dispatchMediaShortcutAction(action);
             });
             if (ok) registeredAny = true;
-            else console.warn(`[SHORTCUT] register failed (in use?): ${accelerator}`);
+            else console.warn('[SHORTCUT] register failed (in use?):', accelerator);
         } catch (error) {
-            console.warn(`[SHORTCUT] register error: ${accelerator}`, error?.message || error);
+            console.warn('[SHORTCUT] register error:', accelerator, error?.message || error);
         }
     }
     mediaShortcutsRegistered = registeredAny;
@@ -3222,9 +3222,9 @@ function registerGlobalStudioShortcuts() {
                 dispatchMediaShortcutAction(action);
             });
             if (ok) registeredAny = true;
-            else console.warn(`[SHORTCUT] studio register failed (in use?): ${accelerator}`);
+            else console.warn('[SHORTCUT] studio register failed (in use?):', accelerator);
         } catch (error) {
-            console.warn(`[SHORTCUT] studio register error: ${accelerator}`, error?.message || error);
+            console.warn('[SHORTCUT] studio register error:', accelerator, error?.message || error);
         }
     }
     studioShortcutsRegistered = registeredAny;
@@ -4036,7 +4036,7 @@ async function applyPersistedEq32SfxFromSettings() {
         }
 
         const name = eq32?.lastPreset?.name;
-        console.log(`[SFX] EQ32 ayarları yüklendi${name ? `: ${name}` : ''}`);
+        console.log('[SFX] EQ32 ayarları yüklendi', name || '');
     } catch {
         // Ayar dosyası yoksa sorun değil
     }
@@ -5703,7 +5703,7 @@ function startVisualizer() {
         startVisualizerFeed();
 
         visualizerProc.on('exit', (code, signal) => {
-            console.log(`[Visualizer] kapandı (code=${code}, signal=${signal})`);
+            console.log('[Visualizer] kapandı:', { code, signal });
             stopVisualizerFeed();
             visualizerProc = null;
         });
@@ -8925,7 +8925,7 @@ ipcMain.handle('settings:save', async (event, settings) => {
         // Dil değiştiyse, çalışan native görselleştiriciyi yeni locale ile yeniden başlat.
         if (visualizerProc && !visualizerProc.killed && prevUiLang && nextUiLang && prevUiLang !== nextUiLang) {
             try {
-                console.log(`[Visualizer] language changed (${prevUiLang} -> ${nextUiLang}), restarting...`);
+                console.log('[Visualizer] language changed, restarting:', prevUiLang, '->', nextUiLang);
                 stopVisualizer();
                 startVisualizer();
             } catch (e) {
@@ -12715,7 +12715,7 @@ async function buildPresetListCacheIfNeeded() {
             for (const g of gs) acc[g] = (acc[g] || 0) + 1;
             return acc;
         }, {});
-        console.log(`AutoEQ: ${presetList.length} preset yüklendi (gruplu)`);
+        console.log('AutoEQ preset yüklendi (gruplu):', presetList.length);
         console.log('[AutoEQ] Grup dağılımı:', groupCounts);
         return presetListCache;
     } catch (error) {
