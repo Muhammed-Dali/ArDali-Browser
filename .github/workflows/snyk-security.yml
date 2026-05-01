@@ -7,7 +7,6 @@ on:
     branches:
       - main
       - master
-      - release_v2_0_12_clean
   workflow_dispatch:
 
 jobs:
