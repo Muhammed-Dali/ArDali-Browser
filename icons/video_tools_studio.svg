@@ -1,0 +1,28 @@
+<svg width="64" height="64" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="recIconBody" x1="7" y1="10" x2="47" y2="54" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#111f34"/>
+      <stop offset="0.58" stop-color="#0b1729"/>
+      <stop offset="1" stop-color="#07111f"/>
+    </linearGradient>
+    <linearGradient id="recIconLens" x1="43" y1="24" x2="61" y2="42" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#182842"/>
+      <stop offset="1" stop-color="#0a1424"/>
+    </linearGradient>
+    <filter id="recIconGlow" x="-20%" y="-24%" width="145%" height="150%" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="0" stdDeviation="2.2" flood-color="#cfeaff" flood-opacity="0.38"/>
+      <feDropShadow dx="0" dy="5" stdDeviation="5" flood-color="#020815" flood-opacity="0.58"/>
+    </filter>
+    <filter id="recDotGlow" x="-60%" y="-60%" width="220%" height="220%" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="0" stdDeviation="2" flood-color="#ff3838" flood-opacity="0.7"/>
+    </filter>
+  </defs>
+
+  <path d="M45 25.6 57 18.5c2-1.2 4.5.3 4.5 2.6v21.8c0 2.3-2.5 3.8-4.5 2.6l-12-7.1V25.6Z" fill="url(#recIconLens)" stroke="#f5fbff" stroke-width="4.2" stroke-linejoin="round" filter="url(#recIconGlow)"/>
+  <rect x="4.5" y="12.5" width="43" height="39" rx="8.5" fill="url(#recIconBody)" stroke="#f5fbff" stroke-width="4.4" filter="url(#recIconGlow)"/>
+
+  <path d="M12.5 25.5v-5.1c0-1.5 1.2-2.7 2.7-2.7h5.1M35.6 17.7h5.1c1.5 0 2.7 1.2 2.7 2.7v5.1M43.4 38.5v5.1c0 1.5-1.2 2.7-2.7 2.7h-5.1M20.4 46.3h-5.1c-1.5 0-2.7-1.2-2.7-2.7v-5.1" stroke="#f5fbff" stroke-width="3.4" stroke-linecap="round"/>
+
+  <circle cx="21.6" cy="32" r="5" fill="#ff3338" filter="url(#recDotGlow)"/>
+  <text x="29.4" y="36.6" fill="#f8fbff" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="12.5" font-weight="850" letter-spacing="0.6">REC</text>
+</svg>

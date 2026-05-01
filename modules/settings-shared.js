@@ -811,7 +811,7 @@
             || elements.libraryStartupPage?.value
             || 'music'
         ).toLowerCase();
-        const allowedStartupPages = allowWebStartup ? ['music', 'video', 'web'] : ['music', 'video'];
+        const allowedStartupPages = allowWebStartup ? ['music', 'video', 'videotools', 'web'] : ['music', 'video', 'videotools'];
         state.settings.ui.startupPage = allowedStartupPages.includes(startupPage) ? startupPage : 'music';
         const webStartupLazyDelayMs = normalizeWebStartupLazyDelayMs(
             elements.behaviorWebStartupDelay?.value

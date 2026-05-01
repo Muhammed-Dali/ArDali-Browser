@@ -2,16 +2,25 @@
 
 # Cloned / duplicate repos and backups
 Aurivo-Medya-Player-Linux/
+Aurivo-Dawlod/
+Aurivo-Pulse/
 aurivo-bin/
+dali-lang/
+dli/
 **/chromium.backup_*/
 
 # Build/cache outputs
 .git/
 .cache/
+.ci-tmp/
+.dist/
+.flatpak-builder/
 .semgrep-tmp/
 node_modules/
 dist/
 build/
+build-flatpak/
+build-resources/
 out/
 native-dist/
 squashfs-root/
@@ -20,7 +29,14 @@ squashfs-root/
 third_party/
 build-visualizer/
 visualizer/
+libs/
+native/build/
+native/node_modules/
 **/vendor/
+
+# Local development / release helper scripts are not shipped as runtime app code.
+# Runtime process spawning remains scanned in main.js.
+scripts/
 
 # Browser ruleset data files (JSON filter/rules catalogs), not executable app logic
 uDAL*-weman-home/chromium/rulesets/

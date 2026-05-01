@@ -25,6 +25,9 @@
                         <path d="M17 10.2 21 8v8l-4-2.2z"/>
                     </svg>
                 </button>
+                <button class="sidebar-btn" data-page="videoTools" data-panel="library" title="Video Düzenleme" data-i18n-title="sidebar.videoTools">
+                    <img class="sidebar-icon-img sidebar-video-tools-icon" src="icons/video_tools_studio.svg" alt="" aria-hidden="true">
+                </button>
                 <button class="sidebar-btn" data-page="music" data-panel="library" title="Müzik" data-i18n-title="sidebar.music">
                     <svg class="sidebar-glyph" viewBox="0 0 24 24" aria-hidden="true">
                         <path d="M13.2 5.2v9.4"/>
@@ -348,7 +351,48 @@
 
                 <!-- Video Sayfası -->
                 <div class="page hidden" id="videoPage">
-                    <video id="videoPlayer"></video>
+                    <div class="video-workspace-shell" id="videoWorkspaceShell">
+                        <div class="video-grid-view" id="videoGridView"></div>
+                        <div class="video-player-shell hidden" id="videoPlayerShell">
+                            <div class="video-player-topbar" id="videoPlayerTopbar">
+                                <button class="video-back-btn" id="videoBackToGridBtn" type="button">
+                                    <span class="material-symbols-rounded" aria-hidden="true">arrow_back</span>
+                                    <span data-i18n="video.workspace.back">Geri</span>
+                                </button>
+                                <div class="video-player-title-stack">
+                                    <div class="video-player-title" id="videoPlayerTitle">Video</div>
+                                    <div class="video-player-mini-meta" id="videoPlayerMiniMeta" data-i18n="video.workspace.miniLabel">Mini oynatıcı</div>
+                                </div>
+                            </div>
+                            <div class="video-mini-progress" id="videoMiniProgress" aria-hidden="true">
+                                <div class="video-mini-progress-bar" id="videoMiniProgressBar"></div>
+                                <div class="video-mini-progress-hover" id="videoMiniProgressHover"></div>
+                                <div class="video-mini-progress-thumb" id="videoMiniProgressThumb"></div>
+                                <div class="video-mini-progress-time" id="videoMiniProgressTime">00:00</div>
+                            </div>
+                            <div class="video-player-frame" id="videoPlayerFrame">
+                                <video id="videoPlayer"></video>
+                            </div>
+                            <div class="video-mini-overlay" id="videoMiniOverlay" aria-hidden="true">
+                                <div class="video-mini-overlay-top">
+                                    <button class="video-mini-overlay-btn" id="videoMiniRestoreBtn" type="button" aria-label="Büyük oynatıcı" title="Büyük oynatıcı" data-i18n-aria-label="video.workspace.restore" data-i18n-title="video.workspace.restore">
+                                        <span class="material-symbols-rounded" aria-hidden="true">open_in_full</span>
+                                    </button>
+                                    <button class="video-mini-overlay-btn video-mini-close-btn" id="videoMiniCloseBtn" type="button" aria-label="Kapat" title="Kapat" data-i18n-aria-label="video.workspace.close" data-i18n-title="video.workspace.close">
+                                        <span class="material-symbols-rounded" aria-hidden="true">close</span>
+                                    </button>
+                                </div>
+                                <button class="video-mini-play-toggle" id="videoMiniPlayPauseBtn" type="button" aria-label="Oynat / Duraklat" title="Oynat / Duraklat" data-i18n-aria-label="controls.playPause" data-i18n-title="controls.playPause">
+                                    <span class="material-symbols-rounded" id="videoMiniPlayIcon" aria-hidden="true">play_arrow</span>
+                                    <span class="material-symbols-rounded hidden" id="videoMiniPauseIcon" aria-hidden="true">pause</span>
+                                </button>
+                                <div class="video-mini-info">
+                                    <div class="video-mini-info-title" id="videoMiniTitle">Video</div>
+                                    <div class="video-mini-info-meta" id="videoMiniMeta" data-i18n="video.workspace.miniLabel">Mini oynatıcı</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
                     
                     <!-- TAM EKRAN KONTROL PANELI - Python Uygulamasından Uyarlandı -->
                     <div class="video-fs-controls" id="videoFsControls">
@@ -629,6 +673,11 @@
 
                 </div>
 
+                <!-- Video Düzenleme Sayfası -->
+                <div class="page hidden" id="videoToolsPage">
+                    <div class="video-edit-workspace" id="videoToolsWorkspace"></div>
+                </div>
+
                 <!-- Web Sayfası -->
                 <div class="page hidden" id="webPage">
                     <webview id="webView" src="about:blank" allowpopups partition="persist:aurivo-web"></webview>
@@ -686,9 +735,9 @@
                         </div>
                     </div>
                     <div class="gallery-edit-panel hidden" id="galleryEditPanel">
-                        <div class="gallery-edit-title">Foto Düzenle (Önizleme)</div>
+                        <div class="gallery-edit-title" data-i18n="settings.gallery.panel.title">Foto Düzenle (Önizleme)</div>
                         <label class="gallery-edit-row" data-icon="image" for="galleryBackgroundMode">
-                            <span>Arka Plan</span>
+                            <span data-i18n="settings.gallery.panel.background">Arka Plan</span>
                             <select id="galleryBackgroundMode">
                                 <option value="dim">Koyu</option>
                                 <option value="blur">Bulanık</option>
@@ -697,52 +746,52 @@
                             <strong>-</strong>
                         </label>
                         <label class="gallery-edit-row" data-icon="light_mode" for="galleryEditBrightness">
-                            <span>Parlaklık</span>
+                            <span data-i18n="settings.gallery.panel.brightness">Parlaklık</span>
                             <input type="range" id="galleryEditBrightness" min="40" max="180" step="1" value="100">
                             <strong id="galleryEditBrightnessValue">100%</strong>
                         </label>
                         <label class="gallery-edit-row" data-icon="contrast" for="galleryEditContrast">
-                            <span>Kontrast</span>
+                            <span data-i18n="settings.gallery.panel.contrast">Kontrast</span>
                             <input type="range" id="galleryEditContrast" min="40" max="180" step="1" value="100">
                             <strong id="galleryEditContrastValue">100%</strong>
                         </label>
                         <label class="gallery-edit-row" data-icon="palette" for="galleryEditSaturation">
-                            <span>Doygunluk</span>
+                            <span data-i18n="settings.gallery.panel.saturation">Doygunluk</span>
                             <input type="range" id="galleryEditSaturation" min="0" max="220" step="1" value="100">
                             <strong id="galleryEditSaturationValue">100%</strong>
                         </label>
                         <label class="gallery-edit-row" data-icon="device_thermostat" for="galleryEditTemperature">
-                            <span>Sıcaklık</span>
+                            <span data-i18n="settings.gallery.panel.temperature">Sıcaklık</span>
                             <input type="range" id="galleryEditTemperature" min="40" max="180" step="1" value="100">
                             <strong id="galleryEditTemperatureValue">100%</strong>
                         </label>
                         <label class="gallery-edit-row" data-icon="tonality" for="galleryEditTint">
-                            <span>Ton</span>
+                            <span data-i18n="settings.gallery.panel.tint">Ton</span>
                             <input type="range" id="galleryEditTint" min="40" max="180" step="1" value="100">
                             <strong id="galleryEditTintValue">100%</strong>
                         </label>
                         <label class="gallery-edit-row" data-icon="dark_mode" for="galleryEditShadows">
-                            <span>Gölgeler</span>
+                            <span data-i18n="settings.gallery.panel.shadows">Gölgeler</span>
                             <input type="range" id="galleryEditShadows" min="40" max="180" step="1" value="100">
                             <strong id="galleryEditShadowsValue">100%</strong>
                         </label>
                         <label class="gallery-edit-row" data-icon="wb_sunny" for="galleryEditHighlights">
-                            <span>Aydınlık</span>
+                            <span data-i18n="settings.gallery.panel.highlights">Aydınlık</span>
                             <input type="range" id="galleryEditHighlights" min="40" max="180" step="1" value="100">
                             <strong id="galleryEditHighlightsValue">100%</strong>
                         </label>
                         <label class="gallery-edit-row" data-icon="center_focus_strong" for="galleryEditSharpness">
-                            <span>Keskinlik</span>
+                            <span data-i18n="settings.gallery.panel.sharpness">Keskinlik</span>
                             <input type="range" id="galleryEditSharpness" min="40" max="180" step="1" value="100">
                             <strong id="galleryEditSharpnessValue">100%</strong>
                         </label>
                         <label class="gallery-edit-row" data-icon="visibility" for="galleryRedEyeStrength">
-                            <span>Kırmızı Göz</span>
+                            <span data-i18n="settings.gallery.panel.redEye.strength">Kırmızı Göz</span>
                             <input type="range" id="galleryRedEyeStrength" min="0" max="100" step="1" value="45">
                             <strong id="galleryRedEyeStrengthValue">45%</strong>
                         </label>
                         <label class="gallery-edit-row" data-icon="adjust" for="galleryRedEyeRadius">
-                            <span>Göz Yarıçapı</span>
+                            <span data-i18n="settings.gallery.panel.redEye.radius">Göz Yarıçapı</span>
                             <input type="range" id="galleryRedEyeRadius" min="6" max="70" step="1" value="18">
                             <strong id="galleryRedEyeRadiusValue">18px</strong>
                         </label>
@@ -1509,6 +1558,7 @@
                                                 <select class="settings-select" id="behaviorStartupPage">
                                                     <option value="music" data-i18n="settings.library.startupPage.options.music">Medya (Ses)</option>
                                                     <option value="video" data-i18n="settings.library.startupPage.options.video">Video</option>
+                                                    <option value="videotools" data-i18n="settings.library.startupPage.options.videoTools">Video Düzenleme</option>
                                                     <option value="web" data-i18n="settings.library.startupPage.options.web">Web</option>
                                                 </select>
                                             </div>
@@ -1684,6 +1734,7 @@
                                                 <select class="settings-select" id="libraryStartupPage">
                                                     <option value="music" data-i18n="settings.library.startupPage.options.music">Medya (Ses)</option>
                                                     <option value="video" data-i18n="settings.library.startupPage.options.video">Video</option>
+                                                    <option value="videotools" data-i18n="settings.library.startupPage.options.videoTools">Video Düzenleme</option>
                                                     <option value="web" data-i18n="settings.library.startupPage.options.web">Web</option>
                                                 </select>
                                             </div>
@@ -2729,8 +2780,8 @@
                         <h4 data-i18n="about.sections.updates.title">Sürüm ve Güncelleme</h4>
                         <ul class="about-list">
                             <li data-i18n="about.sections.updates.item1">Uygulama sürümü, Electron ve Chromium sürümü bu pencerede canlı görüntülenir.</li>
-                            <li data-i18n="about.sections.updates.item2">Açılışta güncelleme kontrolü yapılır; yeni sürüm varsa üstte bildirim görünür.</li>
-                            <li data-i18n-html="about.sections.updates.item3">Linux + AUR (aurivo-medya-player) kurulumunda güncelleme butonu terminal açıp <code>yay -S aurivo-medya-player</code> komutunu çalıştırır.</li>
+                            <li data-i18n="about.sections.updates.item2">Otomatik güncelleme bildirimi yoktur; kontrol yalnızca bu penceredeki düğme ile yapılır.</li>
+                            <li data-i18n-html="about.sections.updates.item3">Linux + AUR (aurivo-bin) kurulumunda güncelleme butonu terminal açıp <code>yay -S aurivo-bin</code> komutunu çalıştırır.</li>
                             <li data-i18n="about.sections.updates.item4">Güncelleme başlatıldığında çakışma olmaması için uygulama kapanır.</li>
                         </ul>
                     </section>

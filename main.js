@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, dialog, nativeImage, Tray, Menu, shell, session, screen, globalShortcut } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, nativeImage, Tray, Menu, shell, session, screen, globalShortcut, desktopCapturer } = require('electron');
 
 // Wayland/Flatpak: App ID synchronization must happen as early as possible.
 const FLATPAK_APP_ID = 'com.aurivo.mediaplayer';
@@ -63,6 +63,23 @@ function isTruthyEnvFlag(name) {
     return value === '1' || value === 'true' || value === 'yes' || value === 'on';
 }
 
+function appendCommandLineCsvSwitch(name, csv) {
+    if (!app?.commandLine || !csv) return;
+    try {
+        const current = app.commandLine.getSwitchValue(name) || '';
+        const values = new Set(
+            current
+                .split(',')
+                .concat(String(csv).split(','))
+                .map((item) => String(item || '').trim())
+                .filter(Boolean)
+        );
+        app.commandLine.appendSwitch(name, [...values].join(','));
+    } catch {
+        // en iyi çaba
+    }
+}
+
 function isFlatpakRuntime() {
     if (process.platform !== 'linux') return false;
     const flatpakId = String(process.env.FLATPAK_ID || process.env.APP_ID || '').trim();
@@ -117,11 +134,18 @@ function commandExists(command) {
     }
 }
 
+function sanitizeIpcPath(value, { requireAbsolute = true } = {}) {
+    const targetPath = String(value || '').trim();
+    if (!targetPath || targetPath.includes('\0')) return '';
+    if (requireAbsolute && !path.isAbsolute(targetPath)) return '';
+    return path.normalize(targetPath);
+}
+
 function isAurivoBinInstalledViaPacman() {
     if (process.platform !== 'linux') return false;
     if (!commandExists('pacman')) return false;
     try {
-        const res = spawnSync('bash', ['-lc', 'pacman -Q aurivo-bin'], {
+        const res = spawnSync('pacman', ['-Q', 'aurivo-bin'], {
             encoding: 'utf8',
             timeout: 1800
         });
@@ -200,6 +224,80 @@ function trySpawnDetached(command, args, probeMs = 450) {
     });
 }
 
+function shellQuote(value) {
+    return `'${String(value || '').replace(/'/g, `'\\''`)}'`;
+}
+
+function resolveLinuxRelaunchExecPath() {
+    if (process.platform !== 'linux' || !app.isPackaged) return '';
+    const appImagePath = String(process.env.APPIMAGE || '').trim();
+    if (appImagePath && fs.existsSync(appImagePath)) return appImagePath;
+    const wrapperPath = '/usr/bin/aurivo';
+    if (fs.existsSync(wrapperPath)) return wrapperPath;
+    return '';
+}
+
+function buildAppRelaunchOptions() {
+    const args = Array.isArray(process.argv)
+        ? process.argv.slice(1).filter((arg) => typeof arg === 'string' && arg.length > 0)
+        : [];
+    const execPath = resolveLinuxRelaunchExecPath();
+    if (execPath) {
+        return { execPath, args };
+    }
+    if (process.platform === 'linux' && app.isPackaged) {
+        return null;
+    }
+    return {
+        execPath: process.execPath,
+        args
+    };
+}
+
+function buildPostUpdateLaunchCommand() {
+    const appImagePath = resolveLinuxRelaunchExecPath();
+    if (appImagePath) {
+        return `nohup ${shellQuote(appImagePath)} >/dev/null 2>&1 &`;
+    }
+    if (commandExists('aurivo')) {
+        return 'nohup aurivo >/dev/null 2>&1 &';
+    }
+    if (commandExists('gtk-launch')) {
+        return `nohup gtk-launch ${DESKTOP_FILE_ID} >/dev/null 2>&1 &`;
+    }
+    return '';
+}
+
+function writeAurivoUpdateScript() {
+    const launchCommand = buildPostUpdateLaunchCommand();
+    const scriptPath = path.join(os.tmpdir(), `aurivo-update-${Date.now()}.sh`);
+    const lines = [
+        '#!/usr/bin/env bash',
+        'set +e',
+        'printf "\\nAurivo Media Player (AUR) guncelleniyor...\\n\\n"',
+        'yay -S aurivo-bin',
+        'exit_code=$?',
+        'printf "\\nIslem tamamlandi (kod: %s).\\n" "$exit_code"',
+        'if [ "$exit_code" -eq 0 ]; then'
+    ];
+    if (launchCommand) {
+        lines.push('  printf "Yeni surum baslatiliyor...\\n"');
+        lines.push(`  ${launchCommand}`);
+        lines.push('  sleep 0.8');
+        lines.push('  exit 0');
+    } else {
+        lines.push('  printf "Guncelleme tamamlandi. Uygulamayi elle yeniden acabilirsiniz.\\n"');
+        lines.push('  printf "Kapatmak icin Enter...\\n"');
+        lines.push('  read -r _');
+        lines.push('  exit 0');
+    }
+    lines.push('fi');
+    lines.push('printf "Guncelleme basarisiz. Kapatmak icin Enter...\\n"');
+    lines.push('read -r _');
+    fs.writeFileSync(scriptPath, `${lines.join('\n')}\n`, { mode: 0o700 });
+    return scriptPath;
+}
+
 async function launchAurivoBinUpdateTerminal() {
     if (process.platform !== 'linux') {
         return { ok: false, reason: 'unsupported-platform' };
@@ -211,44 +309,32 @@ async function launchAurivoBinUpdateTerminal() {
         return { ok: false, reason: 'yay-not-found' };
     }
 
-    const updateScript = [
-        'printf "\\nAurivo Media Player (AUR) guncelleniyor...\\n\\n"',
-        'sleep 0.8',
-        'yay -S aurivo-bin',
-        'exit_code=$?',
-        'printf "\\nIslem tamamlandi (kod: %s).\\n" "$exit_code"',
-        'if [ "$exit_code" -eq 0 ]; then',
-        '  printf "Yeni surum baslatiliyor...\\n"',
-        '  if command -v aurivo >/dev/null 2>&1; then',
-        '    nohup aurivo >/dev/null 2>&1 &',
-        '  elif command -v gtk-launch >/dev/null 2>&1; then',
-        '    nohup gtk-launch com.aurivo.mediaplayer.desktop >/dev/null 2>&1 &',
-        '  fi',
-        '  sleep 0.8',
-        '  exit 0',
-        'fi',
-        'printf "Guncelleme basarisiz. Kapatmak icin Enter...\\n"',
-        'read -r _'
-    ].join('; ');
+    let updateScriptPath = '';
+    try {
+        updateScriptPath = writeAurivoUpdateScript();
+    } catch (error) {
+        console.error('[UPDATE] temporary update script could not be created:', error);
+        return { ok: false, reason: 'script-create-failed' };
+    }
 
     const attempts = [
         // Freedesktop uyumlu varsayılan terminal köprüsü
-        ['xdg-terminal-exec', ['bash', '-lc', updateScript]],
-        ['x-terminal-emulator', ['-e', 'bash', '-lc', updateScript]],
-        ['gnome-terminal', ['--', 'bash', '-lc', updateScript]],
-        ['kgx', ['--', 'bash', '-lc', updateScript]], // GNOME Console
-        ['ptyxis', ['--', 'bash', '-lc', updateScript]], // GNOME Ptyxis
-        ['konsole', ['-e', 'bash', '-lc', updateScript]],
-        ['xfce4-terminal', ['--command', `bash -lc '${updateScript.replace(/'/g, `'\\''`)}'`]],
-        ['mate-terminal', ['--', 'bash', '-lc', updateScript]],
-        ['tilix', ['-e', 'bash', '-lc', updateScript]],
-        ['qterminal', ['-e', 'bash', '-lc', updateScript]],
-        ['lxterminal', ['-e', 'bash', '-lc', updateScript]],
-        ['terminator', ['-x', 'bash', '-lc', updateScript]],
-        ['kitty', ['bash', '-lc', updateScript]],
-        ['wezterm', ['start', '--', 'bash', '-lc', updateScript]],
-        ['alacritty', ['-e', 'bash', '-lc', updateScript]],
-        ['xterm', ['-e', 'bash', '-lc', updateScript]]
+        ['xdg-terminal-exec', ['bash', updateScriptPath]],
+        ['x-terminal-emulator', ['-e', 'bash', updateScriptPath]],
+        ['gnome-terminal', ['--', 'bash', updateScriptPath]],
+        ['kgx', ['--', 'bash', updateScriptPath]], // GNOME Console
+        ['ptyxis', ['--', 'bash', updateScriptPath]], // GNOME Ptyxis
+        ['konsole', ['-e', 'bash', updateScriptPath]],
+        ['xfce4-terminal', ['--command', `bash ${shellQuote(updateScriptPath)}`]],
+        ['mate-terminal', ['--', 'bash', updateScriptPath]],
+        ['tilix', ['--', 'bash', updateScriptPath]],
+        ['qterminal', ['-e', 'bash', updateScriptPath]],
+        ['lxterminal', ['-e', 'bash', updateScriptPath]],
+        ['terminator', ['-x', 'bash', updateScriptPath]],
+        ['kitty', ['bash', updateScriptPath]],
+        ['wezterm', ['start', '--', 'bash', updateScriptPath]],
+        ['alacritty', ['-e', 'bash', updateScriptPath]],
+        ['xterm', ['-e', 'bash', updateScriptPath]]
     ];
 
     for (const [cmd, args] of attempts) {
@@ -736,6 +822,7 @@ if (app && app.commandLine) {
     app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
     app.commandLine.appendSwitch('disable-background-timer-throttling');
     app.commandLine.appendSwitch('disable-blink-features', 'AutomationControlled');
+    app.commandLine.appendSwitch('enable-accelerated-video-decode');
 
     // DÜZELTME: WebView'larda çift medya oynatıcıyı önlemek için Chromium MediaSessionService devre dışı
     const disabledFeatures = ['HardwareMediaKeyHandling', 'MediaSessionService'];
@@ -746,6 +833,11 @@ if (app && app.commandLine) {
         disabledFeatures.push('CertVerifierBuiltinFeature');
     }
     app.commandLine.appendSwitch('disable-features', disabledFeatures.join(','));
+    if (process.platform === 'linux') {
+        appendCommandLineCsvSwitch('enable-features', isTruthyEnvFlag('AURIVO_DISABLE_VAAPI')
+            ? 'WebRTCPipeWireCapturer'
+            : 'VaapiVideoDecoder,WebRTCPipeWireCapturer');
+    }
 } else {
     console.warn('[Startup] app.commandLine not available');
 }
@@ -955,19 +1047,17 @@ function detectDisplayServer() {
         app.commandLine.appendSwitch('disable-vulkan');
         app.commandLine.appendSwitch('use-angle', 'gl');
         appendCsvSwitch('enable-features', enableVaapi
-            ? 'UseOzonePlatform,WaylandWindowDecorations,VaapiVideoDecoder'
-            : 'UseOzonePlatform,WaylandWindowDecorations');
+            ? 'UseOzonePlatform,WaylandWindowDecorations,VaapiVideoDecoder,WebRTCPipeWireCapturer'
+            : 'UseOzonePlatform,WaylandWindowDecorations,WebRTCPipeWireCapturer');
     } else if (selectedBackend === 'x11') {
         console.log('💻 Display Server: X11');
         app.commandLine.appendSwitch('ozone-platform-hint', 'x11');
-        if (enableVaapi) {
-            appendCsvSwitch('enable-features', 'VaapiVideoDecoder');
-        }
+        appendCsvSwitch('enable-features', enableVaapi ? 'VaapiVideoDecoder,WebRTCPipeWireCapturer' : 'WebRTCPipeWireCapturer');
     } else {
         console.log('💻 Display Server: auto');
         app.commandLine.appendSwitch('ozone-platform-hint', 'auto');
         // auto modunda bile Wayland secilebilir; ozone feature'i acik olsun.
-        appendCsvSwitch('enable-features', enableVaapi ? 'UseOzonePlatform,VaapiVideoDecoder' : 'UseOzonePlatform');
+        appendCsvSwitch('enable-features', enableVaapi ? 'UseOzonePlatform,VaapiVideoDecoder,WebRTCPipeWireCapturer' : 'UseOzonePlatform,WebRTCPipeWireCapturer');
     }
     effectiveDisplayBackend = selectedBackend;
     process.env.AURIVO_EFFECTIVE_DISPLAY_BACKEND = selectedBackend;
@@ -1126,6 +1216,14 @@ const GLOBAL_MEDIA_SHORTCUTS = Object.freeze([
     ['MediaNextTrack', 'next'],
     ['MediaPreviousTrack', 'previous']
 ]);
+let studioShortcutsRegistered = false;
+const DEFAULT_GLOBAL_STUDIO_SHORTCUTS = Object.freeze([
+    ['CommandOrControl+Alt+Shift+R', 'video-studio-record'],
+    ['CommandOrControl+Alt+Shift+P', 'video-studio-pause'],
+    ['CommandOrControl+Alt+Shift+S', 'video-studio-stop'],
+    ['CommandOrControl+Alt+Shift+B', 'video-studio-save-replay']
+]);
+let globalStudioShortcuts = DEFAULT_GLOBAL_STUDIO_SHORTCUTS.map((entry) => [...entry]);
 let mprisPlayer = null;
 let aurivoPulseProc = null;
 let aurivoPulseGuiProc = null;
@@ -1147,6 +1245,9 @@ let pulseBridgePort = 0;
 const PULSE_BRIDGE_HOST = '127.0.0.1';
 const PULSE_BRIDGE_PATH = '/pulse/open';
 const PULSE_BRIDGE_FALLBACK_PORT = 38947;
+let screenRecordingSystemAudioProc = null;
+let screenRecordingSystemAudioPath = '';
+const screenRecordingLiveOutputs = new Map();
 let pendingOpenMediaFiles = [];
 let rendererMediaOpenReady = false;
 
@@ -2245,6 +2346,27 @@ function pickPreferredMonitorDeviceId(devices) {
     return '';
 }
 
+async function pickDefaultOutputMonitorDeviceId() {
+    try {
+        const pactlInfo = await execCollect('pactl', ['info']);
+        const defaultSink = parsePactlInfoDefaultSink(pactlInfo.output);
+        const devices = await listSystemAudioDevicesFallback();
+        const list = Array.isArray(devices) ? devices : [];
+        if (defaultSink) {
+            const exactMonitor = `${defaultSink}.monitor`;
+            const exact = list.find((dev) => String(dev?.id || '') === exactMonitor);
+            if (exact?.id) return String(exact.id);
+            const loose = list.find((dev) => String(dev?.id || '').includes(defaultSink) && /monitor/i.test(String(dev?.id || '')));
+            if (loose?.id) return String(loose.id);
+            return exactMonitor;
+        }
+        return pickPreferredMonitorDeviceId(list);
+    } catch {
+        const devices = await listSystemAudioDevicesFallback();
+        return pickPreferredMonitorDeviceId(devices);
+    }
+}
+
 function parsePulseResultLine(line) {
     const raw = String(line || '').trim();
     if (!raw) return null;
@@ -3036,6 +3158,72 @@ function registerGlobalMediaShortcuts() {
     mediaShortcutsRegistered = registeredAny;
 }
 
+function unregisterGlobalStudioShortcuts() {
+    try {
+        for (const [accelerator] of globalStudioShortcuts) {
+            if (globalShortcut.isRegistered(accelerator)) {
+                globalShortcut.unregister(accelerator);
+            }
+        }
+    } catch (error) {
+        console.warn('[SHORTCUT] studio unregister failed:', error?.message || error);
+    } finally {
+        studioShortcutsRegistered = false;
+    }
+}
+
+function registerGlobalStudioShortcuts() {
+    if (studioShortcutsRegistered) return;
+    let registeredAny = false;
+    for (const [accelerator, action] of globalStudioShortcuts) {
+        try {
+            const ok = globalShortcut.register(accelerator, () => {
+                dispatchMediaShortcutAction(action);
+            });
+            if (ok) registeredAny = true;
+            else console.warn(`[SHORTCUT] studio register failed (in use?): ${accelerator}`);
+        } catch (error) {
+            console.warn(`[SHORTCUT] studio register error: ${accelerator}`, error?.message || error);
+        }
+    }
+    studioShortcutsRegistered = registeredAny;
+}
+
+function normalizeStudioShortcutAccelerator(value = '') {
+    const text = String(value || '').trim();
+    if (!text) return '';
+    return text
+        .split('+')
+        .map((part) => {
+            const token = part.trim();
+            const lower = token.toLowerCase();
+            if (['ctrl', 'control', 'cmdorctrl', 'commandorcontrol'].includes(lower)) return 'CommandOrControl';
+            if (['cmd', 'command', 'meta', 'super', 'win'].includes(lower)) return 'Super';
+            if (lower === 'alt' || lower === 'option') return 'Alt';
+            if (lower === 'shift') return 'Shift';
+            if (lower === 'space') return 'Space';
+            if (/^arrow/i.test(token)) return token.replace(/^arrow/i, '');
+            return token;
+        })
+        .filter(Boolean)
+        .join('+');
+}
+
+function setGlobalStudioShortcuts(shortcuts = {}) {
+    const actionMap = {
+        globalRecord: 'video-studio-record',
+        globalPause: 'video-studio-pause',
+        globalStop: 'video-studio-stop',
+        globalReplay: 'video-studio-save-replay'
+    };
+    unregisterGlobalStudioShortcuts();
+    globalStudioShortcuts = Object.entries(actionMap)
+        .map(([key, action]) => [normalizeStudioShortcutAccelerator(shortcuts?.[key] || ''), action])
+        .filter(([accelerator]) => !!accelerator);
+    registerGlobalStudioShortcuts();
+    return { success: true, registered: studioShortcutsRegistered, shortcuts: globalStudioShortcuts };
+}
+
 function refreshGlobalMediaShortcuts(settings) {
     if (!app.isReady()) return;
     if (isMediaKeyAutoDetectEnabled(settings)) {
@@ -3043,6 +3231,7 @@ function refreshGlobalMediaShortcuts(settings) {
     } else {
         unregisterGlobalMediaShortcuts();
     }
+    registerGlobalStudioShortcuts();
 }
 
 function deriveMainWindowCloseToTray(settings) {
@@ -5452,7 +5641,7 @@ function startVisualizer() {
         if (process.platform === 'linux' && !useStrace) {
             actualExe = 'bash';
             const desktopId = env.AURIVO_VIS_DESKTOP_ENTRY || 'com.aurivo.mediaplayer';
-            actualArgs = ['-c', `exec -a "${desktopId}" "${exePath}" "$@"`, '--', '--presets', presetsPath];
+            actualArgs = ['-c', `exec -a ${shellQuote(desktopId)} ${shellQuote(exePath)} "$@"`, '--', '--presets', presetsPath];
         }
 
         visualizerProc = spawn(actualExe, actualArgs, {
@@ -5584,13 +5773,12 @@ ipcMain.handle('app:relaunch', async () => {
         stopVisualizer();
         // "close to tray" akışı yeniden başlatmayı engellememeli.
         app.isQuitting = true;
-
-        // Bazı Linux paketlerinde relaunch için execPath/args açık geçirmek daha kararlı.
-        const relaunchArgs = Array.isArray(process.argv) ? process.argv.slice(1) : [];
-        app.relaunch({
-            execPath: process.execPath,
-            args: relaunchArgs
-        });
+        const relaunchOptions = buildAppRelaunchOptions();
+        if (relaunchOptions) {
+            app.relaunch(relaunchOptions);
+        } else {
+            app.relaunch();
+        }
 
         // before-quit cleanup'larının çalışması için nazik kapanış.
         app.quit();
@@ -5624,6 +5812,14 @@ ipcMain.handle('app:getVersionInfo', async () => {
         update: snapshotUpdateState(),
         aur
     };
+});
+
+ipcMain.handle('app:setStudioShortcuts', async (_event, shortcuts = {}) => {
+    try {
+        return setGlobalStudioShortcuts(shortcuts || {});
+    } catch (error) {
+        return { success: false, error: error?.message || String(error) };
+    }
 });
 
 ipcMain.handle('app:update:getState', async () => {
@@ -5772,6 +5968,29 @@ function installWebviewHardening() {
                     }
 
                     callback(false);
+                });
+            }
+            if (ses && typeof ses.setDisplayMediaRequestHandler === 'function') {
+                ses.setDisplayMediaRequestHandler(async (request, callback) => {
+                    try {
+                        const frame = request?.frame || null;
+                        const wc = frame?.top?.hostWebContents || frame?.hostWebContents || null;
+                        const currentUrl = String(frame?.url || wc?.getURL?.() || '').trim();
+                        if (!isLocalAppPageUrl(currentUrl)) {
+                            callback({});
+                            return;
+                        }
+                        const sources = await desktopCapturer.getSources({
+                            types: ['screen', 'window'],
+                            thumbnailSize: { width: 320, height: 180 },
+                            fetchWindowIcons: false
+                        });
+                        const source = sources.find((item) => String(item.id || '').startsWith('screen:')) || sources[0] || null;
+                        callback(source ? { video: source } : {});
+                    } catch (error) {
+                        console.warn('[SCREEN_REC] display media request failed:', error?.message || error);
+                        callback({});
+                    }
                 });
             }
 
@@ -5941,6 +6160,7 @@ app.on('before-quit', () => {
     stopAurivoPulseListening();
     stopAurivoPulseGuiWindow();
     unregisterGlobalMediaShortcuts();
+    unregisterGlobalStudioShortcuts();
     cleanupTransientHomeFiles('before-quit');
 });
 
@@ -6017,7 +6237,7 @@ ipcMain.handle('pulse:openWindow', async () => {
             if (process.platform === 'linux') {
                 const desktopId = process.env.FLATPAK_ID || 'com.aurivo.mediaplayer';
                 actualCmd = 'bash';
-                actualArgs = ['-c', `exec -a "${desktopId}" "${attempt.command}" "$@"`, '--', ...(attempt.args || [])];
+                actualArgs = ['-c', `exec -a ${shellQuote(desktopId)} ${shellQuote(attempt.command)} "$@"`, '--', ...(attempt.args || [])];
             }
 
             child = spawn(actualCmd, actualArgs, {
@@ -6295,6 +6515,589 @@ ipcMain.handle('dialog:saveFile', async (_event, opts) => {
         path: result.filePath,
         name: path.basename(result.filePath)
     };
+});
+
+ipcMain.handle('screenRecording:getSources', async () => {
+    try {
+        const sources = await desktopCapturer.getSources({
+            types: ['screen', 'window'],
+            thumbnailSize: { width: 0, height: 0 },
+            fetchWindowIcons: false
+        });
+        return sources.map((source) => ({
+            id: source.id,
+            name: source.name,
+            type: String(source.id || '').startsWith('screen:') ? 'screen' : 'window',
+            displayId: source.display_id || ''
+        })).sort((a, b) => {
+            if (a.type !== b.type) return a.type === 'screen' ? -1 : 1;
+            return String(a.name || '').localeCompare(String(b.name || ''), undefined, { numeric: true, sensitivity: 'base' });
+        });
+    } catch (error) {
+        console.error('[SCREEN_REC] getSources error:', error);
+        return [];
+    }
+});
+
+ipcMain.handle('screenRecording:getFfmpegCapabilities', async () => {
+    const ffmpegPath = getFfmpegPathForEnv();
+    return new Promise((resolve) => {
+        let output = '';
+        let settled = false;
+        const child = spawn(ffmpegPath, ['-hide_banner', '-encoders'], { windowsHide: true });
+        const finish = (payload) => resolve({
+            ffmpegPath,
+            formats: ['webm', 'mkv', 'mp4'],
+            encoders: {
+                libx264: /\blibx264\b/.test(output),
+                h264_nvenc: /\bh264_nvenc\b/.test(output),
+                hevc_nvenc: /\bhevc_nvenc\b/.test(output),
+                h264_vaapi: /\bh264_vaapi\b/.test(output),
+                h264_qsv: /\bh264_qsv\b/.test(output),
+                libaom_av1: /\blibaom-av1\b|\blibaom_av1\b/.test(output),
+                libsvtav1: /\blibsvtav1\b|\blibsvt_av1\b/.test(output)
+            },
+            ...payload
+        });
+        const finishOnce = (payload) => {
+            if (settled) return;
+            settled = true;
+            finish(payload);
+        };
+        const timer = setTimeout(() => {
+            try { child.kill('SIGTERM'); } catch {}
+            finishOnce({ success: false, error: 'timeout' });
+        }, 2500);
+        child.stdout.on('data', (chunk) => { output += String(chunk || ''); });
+        child.stderr.on('data', (chunk) => { output += String(chunk || ''); });
+        child.once('error', (error) => {
+            clearTimeout(timer);
+            finishOnce({ success: false, error: error?.message || String(error) });
+        });
+        child.once('close', (code) => {
+            clearTimeout(timer);
+            finishOnce({ success: code === 0, code });
+        });
+    });
+});
+
+function normalizeScreenRecordingVideoEncoder(value) {
+    const normalized = String(value || 'auto').trim().toLowerCase();
+    return ['auto', 'libx264', 'h264_nvenc', 'h264_vaapi', 'h264_qsv'].includes(normalized) ? normalized : 'auto';
+}
+
+function pushScreenRecordingVideoEncoderArgs(args, encoder, bitrateKbps) {
+    const normalized = normalizeScreenRecordingVideoEncoder(encoder);
+    const target = normalized === 'auto' ? 'libx264' : normalized;
+    const bitrate = Math.max(500, Math.min(60000, Math.round(Number(bitrateKbps) || 8000)));
+    if (target === 'h264_nvenc') {
+        args.push('-c:v', 'h264_nvenc', '-preset', 'p4', '-b:v', `${bitrate}k`, '-maxrate', `${bitrate}k`, '-bufsize', `${Math.max(1000, bitrate * 2)}k`, '-pix_fmt', 'yuv420p');
+        return;
+    }
+    if (target === 'h264_vaapi') {
+        args.push('-vaapi_device', '/dev/dri/renderD128', '-vf', 'format=nv12,hwupload', '-c:v', 'h264_vaapi', '-b:v', `${bitrate}k`, '-maxrate', `${bitrate}k`, '-bufsize', `${Math.max(1000, bitrate * 2)}k`);
+        return;
+    }
+    if (target === 'h264_qsv') {
+        args.push('-c:v', 'h264_qsv', '-preset', 'veryfast', '-b:v', `${bitrate}k`, '-maxrate', `${bitrate}k`, '-bufsize', `${Math.max(1000, bitrate * 2)}k`);
+        return;
+    }
+    args.push('-c:v', 'libx264', '-preset', 'veryfast', '-b:v', `${bitrate}k`, '-pix_fmt', 'yuv420p');
+}
+
+ipcMain.handle('screenRecording:getCursorPoint', () => {
+    try {
+        const point = screen.getCursorScreenPoint();
+        const display = screen.getDisplayNearestPoint(point) || screen.getPrimaryDisplay();
+        const bounds = display?.bounds || { x: 0, y: 0, width: 1, height: 1 };
+        return {
+            x: Number(point.x) || 0,
+            y: Number(point.y) || 0,
+            display: {
+                x: Number(bounds.x) || 0,
+                y: Number(bounds.y) || 0,
+                width: Math.max(1, Number(bounds.width) || 1),
+                height: Math.max(1, Number(bounds.height) || 1),
+                scaleFactor: Number(display?.scaleFactor) || 1
+            }
+        };
+    } catch (error) {
+        console.error('[SCREEN_REC] getCursorPoint error:', error);
+        return null;
+    }
+});
+
+ipcMain.handle('screenRecording:startSystemAudio', async () => {
+    if (process.platform !== 'linux') return { success: false, error: 'unsupported-platform' };
+    if (screenRecordingSystemAudioProc) {
+        return { success: true, path: screenRecordingSystemAudioPath, alreadyRunning: true };
+    }
+    try {
+        const audioDevice = await pickDefaultOutputMonitorDeviceId();
+        if (!audioDevice) return { success: false, error: 'monitor-not-found' };
+        const ffmpegPath = getFfmpegPathForEnv();
+        const outPath = path.join(app.getPath('temp'), `aurivo-screen-system-audio-${Date.now()}.wav`);
+        const child = spawn(ffmpegPath, [
+            '-y',
+            '-f', 'pulse',
+            '-i', audioDevice,
+            '-ac', '2',
+            '-ar', '48000',
+            '-vn',
+            outPath
+        ], {
+            env: buildPulseRuntimeEnv({ AURIVO_PULSE_NO_GUI: '1' }),
+            windowsHide: true
+        });
+        screenRecordingSystemAudioProc = child;
+        screenRecordingSystemAudioPath = outPath;
+        child.stderr.on('data', () => {});
+        child.once('error', (error) => {
+            console.warn('[SCREEN_REC] system audio capture error:', error?.message || error);
+            if (screenRecordingSystemAudioProc === child) screenRecordingSystemAudioProc = null;
+        });
+        child.once('close', () => {
+            if (screenRecordingSystemAudioProc === child) screenRecordingSystemAudioProc = null;
+        });
+        return { success: true, path: outPath, device: audioDevice };
+    } catch (error) {
+        console.error('[SCREEN_REC] startSystemAudio error:', error);
+        screenRecordingSystemAudioProc = null;
+        screenRecordingSystemAudioPath = '';
+        return { success: false, error: error?.message || String(error) };
+    }
+});
+
+ipcMain.handle('screenRecording:stopSystemAudio', async () => {
+    const child = screenRecordingSystemAudioProc;
+    const outPath = screenRecordingSystemAudioPath;
+    screenRecordingSystemAudioProc = null;
+    screenRecordingSystemAudioPath = '';
+    if (!child) {
+        const size = outPath && fs.existsSync(outPath) ? fs.statSync(outPath).size : 0;
+        return { success: !!size, path: outPath, size };
+    }
+    await new Promise((resolve) => {
+        const done = () => resolve();
+        child.once('close', done);
+        try { child.kill('SIGINT'); } catch { done(); }
+        setTimeout(() => {
+            try { if (!child.killed) child.kill('SIGTERM'); } catch {}
+            resolve();
+        }, 1800);
+    });
+    const size = outPath && fs.existsSync(outPath) ? fs.statSync(outPath).size : 0;
+    return { success: size > 128, path: outPath, size };
+});
+
+ipcMain.handle('screenRecording:muxSystemAudio', async (_event, videoPath, audioPath) => {
+    const video = String(videoPath || '').trim();
+    const audio = String(audioPath || '').trim();
+    if (!video || !audio || !fs.existsSync(video) || !fs.existsSync(audio)) {
+        return { success: false, error: 'missing-files' };
+    }
+    const tmpPath = video.replace(/\.webm$/i, '') + `.with-audio-${Date.now()}.webm`;
+    const ffmpegPath = getFfmpegPathForEnv();
+    const result = await new Promise((resolve) => {
+        let err = '';
+        const child = spawn(ffmpegPath, [
+            '-y',
+            '-i', video,
+            '-i', audio,
+            '-map', '0:v:0',
+            '-map', '1:a:0',
+            '-c:v', 'copy',
+            '-c:a', 'libopus',
+            '-shortest',
+            tmpPath
+        ], { windowsHide: true });
+        child.stderr.on('data', (chunk) => { err += String(chunk || ''); });
+        child.once('error', (error) => resolve({ success: false, error: error?.message || String(error) }));
+        child.once('close', (code) => {
+            if (code === 0 && fs.existsSync(tmpPath) && fs.statSync(tmpPath).size > 128) {
+                try {
+                    fs.renameSync(tmpPath, video);
+                    try { fs.unlinkSync(audio); } catch {}
+                    resolve({ success: true, path: video });
+                } catch (error) {
+                    resolve({ success: false, error: error?.message || String(error) });
+                }
+                return;
+            }
+            try { if (fs.existsSync(tmpPath)) fs.unlinkSync(tmpPath); } catch {}
+            resolve({ success: false, error: String(err || `ffmpeg exited with code ${code}`).trim() });
+        });
+    });
+    return result;
+});
+
+ipcMain.handle('screenRecording:finalizeRecording', async (_event, inputPath, outputPath, options = {}) => {
+    const input = String(inputPath || '').trim();
+    const output = String(outputPath || '').trim();
+    const format = String(options?.format || path.extname(output).replace(/^\./, '') || 'webm').trim().toLowerCase();
+    const bitrateKbps = Math.max(500, Math.min(60000, Math.round(Number(options?.bitrateKbps) || 8000)));
+    const videoEncoder = normalizeScreenRecordingVideoEncoder(options?.videoEncoder);
+    const externalAudioTracks = Array.isArray(options?.audioTracks)
+        ? options.audioTracks
+            .map((track) => ({
+                path: String(track?.path || '').trim(),
+                label: String(track?.label || track?.kind || 'Audio').trim() || 'Audio'
+            }))
+            .filter((track) => track.path && fs.existsSync(track.path))
+            .slice(0, 8)
+        : [];
+    if (!input || !output || !fs.existsSync(input)) {
+        return { success: false, error: 'missing-input' };
+    }
+    if (format === 'webm' && input === output && !externalAudioTracks.length) {
+        return { success: true, path: output, passthrough: true };
+    }
+    const ffmpegPath = getFfmpegPathForEnv();
+    const tmpPath = `${output}.ffmpeg-${Date.now()}.tmp.${format || 'webm'}`;
+    const args = ['-y', '-i', input];
+    externalAudioTracks.forEach((track) => {
+        args.push('-i', track.path);
+    });
+    const pushExternalAudioMaps = () => {
+        args.push('-map', '0:v:0');
+        externalAudioTracks.forEach((_track, index) => {
+            args.push('-map', `${index + 1}:a:0`);
+        });
+    };
+    const pushAudioMetadata = () => {
+        externalAudioTracks.forEach((track, index) => {
+            args.push(`-metadata:s:a:${index}`, `title=${track.label}`);
+        });
+    };
+    if (format === 'mp4') {
+        if (externalAudioTracks.length) pushExternalAudioMaps();
+        pushScreenRecordingVideoEncoderArgs(args, videoEncoder, bitrateKbps);
+        args.push('-c:a', 'aac', '-b:a', '160k', '-movflags', '+faststart');
+        if (externalAudioTracks.length) {
+            pushAudioMetadata();
+            args.push('-shortest');
+        }
+        args.push(tmpPath);
+    } else if (format === 'mkv') {
+        if (externalAudioTracks.length) {
+            pushExternalAudioMaps();
+            args.push('-c:v', 'copy', '-c:a', 'copy');
+            pushAudioMetadata();
+            args.push('-shortest', tmpPath);
+        } else {
+            args.push('-c', 'copy', tmpPath);
+        }
+    } else {
+        if (externalAudioTracks.length) {
+            pushExternalAudioMaps();
+            args.push('-c:v', 'copy', '-c:a', 'libopus');
+            pushAudioMetadata();
+            args.push('-shortest', tmpPath);
+        } else {
+            args.push('-c', 'copy', tmpPath);
+        }
+    }
+    const result = await new Promise((resolve) => {
+        let err = '';
+        const child = spawn(ffmpegPath, args, { windowsHide: true });
+        child.stderr.on('data', (chunk) => { err += String(chunk || ''); });
+        child.once('error', (error) => resolve({ success: false, error: error?.message || String(error) }));
+        child.once('close', (code) => {
+            if (code === 0 && fs.existsSync(tmpPath) && fs.statSync(tmpPath).size > 128) {
+                try {
+                    fs.renameSync(tmpPath, output);
+                    if (input !== output) {
+                        try { fs.unlinkSync(input); } catch {}
+                    }
+                    externalAudioTracks.forEach((track) => {
+                        try { fs.unlinkSync(track.path); } catch {}
+                    });
+                    resolve({ success: true, path: output });
+                } catch (error) {
+                    resolve({ success: false, error: error?.message || String(error) });
+                }
+                return;
+            }
+            try { if (fs.existsSync(tmpPath)) fs.unlinkSync(tmpPath); } catch {}
+            resolve({ success: false, error: String(err || `ffmpeg exited with code ${code}`).trim() });
+        });
+    });
+    return result;
+});
+
+ipcMain.handle('screenRecording:repairRecording', async (_event, inputPath, outputPath, options = {}) => {
+    const input = String(inputPath || '').trim();
+    const output = String(outputPath || '').trim();
+    const format = String(options?.format || path.extname(output).replace(/^\./, '') || 'mkv').trim().toLowerCase();
+    const bitrateKbps = Math.max(500, Math.min(60000, Math.round(Number(options?.bitrateKbps) || 8000)));
+    const videoEncoder = normalizeScreenRecordingVideoEncoder(options?.videoEncoder);
+    if (!input || !output || !fs.existsSync(input)) {
+        return { success: false, error: 'missing-input' };
+    }
+    const ffmpegPath = getFfmpegPathForEnv();
+    const tmpPath = `${output}.repair-${Date.now()}.tmp.${format || 'mkv'}`;
+    const runRepairArgs = (mode = 'copy') => {
+        const args = [
+            '-y',
+            '-fflags', '+genpts+igndts',
+            '-err_detect', 'ignore_err',
+            '-i', input,
+            '-map', '0:v:0?',
+            '-map', '0:a?'
+        ];
+        if (mode === 'copy' && format !== 'mp4') {
+            args.push('-c', 'copy');
+        } else {
+            if (format === 'webm') {
+                args.push('-c:v', 'libvpx-vp9', '-deadline', 'good', '-cpu-used', '4', '-b:v', `${bitrateKbps}k`);
+            } else {
+                pushScreenRecordingVideoEncoderArgs(args, format === 'mp4' ? videoEncoder : 'libx264', bitrateKbps);
+            }
+            args.push('-c:a', format === 'webm' ? 'libopus' : 'aac', '-b:a', '160k');
+            if (format === 'mp4') args.push('-movflags', '+faststart');
+        }
+        args.push(tmpPath);
+        return args;
+    };
+    const runFfmpeg = (args) => new Promise((resolve) => {
+        let err = '';
+        const child = spawn(ffmpegPath, args, { windowsHide: true });
+        child.stderr.on('data', (chunk) => { err += String(chunk || ''); });
+        child.once('error', (error) => resolve({ success: false, error: error?.message || String(error) }));
+        child.once('close', (code) => {
+            if (code === 0 && fs.existsSync(tmpPath) && fs.statSync(tmpPath).size > 128) {
+                resolve({ success: true });
+                return;
+            }
+            try { if (fs.existsSync(tmpPath)) fs.unlinkSync(tmpPath); } catch {}
+            resolve({ success: false, error: String(err || `ffmpeg exited with code ${code}`).trim() });
+        });
+    });
+    let result = await runFfmpeg(runRepairArgs('copy'));
+    if (!result.success) result = await runFfmpeg(runRepairArgs('transcode'));
+    if (!result.success) return result;
+    try {
+        fs.renameSync(tmpPath, output);
+        return { success: true, path: output };
+    } catch (error) {
+        try { if (fs.existsSync(tmpPath)) fs.unlinkSync(tmpPath); } catch {}
+        return { success: false, error: error?.message || String(error) };
+    }
+});
+
+ipcMain.handle('screenRecording:validateRecording', async (_event, filePath, options = {}) => {
+    const targetPath = String(filePath || '').trim();
+    const expectedDurationSec = Math.max(0, Number(options?.expectedDurationSec) || 0);
+    const minSizeBytes = Math.max(128, Number(options?.minSizeBytes) || 1024);
+    if (!targetPath || !fs.existsSync(targetPath)) {
+        return { success: false, status: 'error', error: 'missing-file', checks: [{ id: 'file', status: 'error', detail: 'missing-file' }] };
+    }
+    const checks = [];
+    let stat = null;
+    try {
+        stat = await fs.promises.stat(targetPath);
+        checks.push({
+            id: 'size',
+            status: stat.size >= minSizeBytes ? 'ok' : 'error',
+            detail: String(stat.size || 0)
+        });
+    } catch (error) {
+        return { success: false, status: 'error', error: error?.message || String(error), checks };
+    }
+
+    const ffprobePath = getFfprobePathForEnv();
+    const probe = await new Promise((resolve) => {
+        let stdout = '';
+        let stderr = '';
+        const child = spawn(ffprobePath, [
+            '-v', 'error',
+            '-print_format', 'json',
+            '-show_format',
+            '-show_streams',
+            targetPath
+        ], { windowsHide: true });
+        child.stdout.on('data', (chunk) => { stdout += String(chunk || ''); });
+        child.stderr.on('data', (chunk) => { stderr += String(chunk || ''); });
+        child.once('error', (error) => resolve({ ok: false, error: error?.message || String(error) }));
+        child.once('close', (code) => {
+            if (code !== 0) {
+                resolve({ ok: false, error: String(stderr || `ffprobe exited with code ${code}`).trim() });
+                return;
+            }
+            try {
+                resolve({ ok: true, data: JSON.parse(stdout || '{}') });
+            } catch (error) {
+                resolve({ ok: false, error: error?.message || String(error) });
+            }
+        });
+    });
+
+    if (!probe.ok) {
+        checks.push({ id: 'probe', status: 'warning', detail: probe.error || 'ffprobe-unavailable' });
+        return {
+            success: stat.size >= minSizeBytes,
+            status: stat.size >= minSizeBytes ? 'warning' : 'error',
+            path: targetPath,
+            size: stat.size,
+            checks,
+            error: probe.error || ''
+        };
+    }
+
+    const streams = Array.isArray(probe.data?.streams) ? probe.data.streams : [];
+    const videoStreams = streams.filter((stream) => String(stream?.codec_type || '') === 'video');
+    const audioStreams = streams.filter((stream) => String(stream?.codec_type || '') === 'audio');
+    const primaryVideo = videoStreams[0] || {};
+    const primaryAudio = audioStreams[0] || {};
+    const durationSec = Math.max(0, Number(probe.data?.format?.duration) || 0);
+    const parseRate = (value) => {
+        const [num, den] = String(value || '').split('/').map(Number);
+        if (!Number.isFinite(num) || !Number.isFinite(den) || den <= 0) return 0;
+        return num / den;
+    };
+    checks.push({
+        id: 'video',
+        status: videoStreams.length > 0 ? 'ok' : 'error',
+        detail: String(videoStreams.length)
+    });
+    checks.push({
+        id: 'duration',
+        status: durationSec > 0 ? 'ok' : 'error',
+        detail: String(durationSec)
+    });
+    if (expectedDurationSec > 2 && durationSec > 0) {
+        const delta = Math.abs(durationSec - expectedDurationSec);
+        const tolerance = Math.max(2.5, expectedDurationSec * 0.25);
+        checks.push({
+            id: 'duration-match',
+            status: delta <= tolerance ? 'ok' : 'warning',
+            detail: String(delta)
+        });
+    }
+    const hasError = checks.some((check) => check.status === 'error');
+    const hasWarning = checks.some((check) => check.status === 'warning');
+    return {
+        success: !hasError,
+        status: hasError ? 'error' : (hasWarning ? 'warning' : 'ok'),
+        path: targetPath,
+        size: stat.size,
+        durationSec,
+        videoStreams: videoStreams.length,
+        audioStreams: audioStreams.length,
+        formatName: String(probe.data?.format?.format_name || ''),
+        bitRate: Math.max(0, Number(probe.data?.format?.bit_rate || primaryVideo.bit_rate || 0) || 0),
+        fps: Math.max(0, parseRate(primaryVideo.avg_frame_rate || primaryVideo.r_frame_rate)),
+        videoCodec: String(primaryVideo.codec_name || ''),
+        audioCodec: String(primaryAudio.codec_name || ''),
+        checks
+    };
+});
+
+function normalizeLiveOutputId(value = '') {
+    return String(value || '').trim().replace(/[^a-zA-Z0-9_.:-]/g, '').slice(0, 80);
+}
+
+function stopScreenRecordingLiveOutput(id, signal = 'SIGINT') {
+    const outputId = normalizeLiveOutputId(id);
+    const live = screenRecordingLiveOutputs.get(outputId);
+    if (!live) return { success: true, stopped: false };
+    screenRecordingLiveOutputs.delete(outputId);
+    try { live.proc.stdin?.end?.(); } catch {}
+    try {
+        if (!live.proc.killed) live.proc.kill(signal);
+    } catch {}
+    return { success: true, stopped: true, id: outputId };
+}
+
+ipcMain.handle('screenRecording:startLiveOutput', async (_event, options = {}) => {
+    const id = normalizeLiveOutputId(options?.id || `live-${Date.now()}`);
+    const kind = String(options?.kind || 'rtmp').trim().toLowerCase();
+    const target = String(options?.target || '').trim();
+    const bitrateKbps = Math.max(500, Math.min(60000, Math.round(Number(options?.bitrateKbps) || 8000)));
+    const fps = Math.max(1, Math.min(120, Math.round(Number(options?.fps) || 30)));
+    if (!id || !target) return { success: false, error: 'missing-target' };
+    if (screenRecordingLiveOutputs.has(id)) return { success: false, error: 'already-running' };
+    if (!['rtmp', 'virtual-camera'].includes(kind)) return { success: false, error: 'unsupported-kind' };
+    if (kind === 'virtual-camera') {
+        if (process.platform !== 'linux') return { success: false, error: 'unsupported-platform' };
+        if (!/^\/dev\/video\d+$/i.test(target)) return { success: false, error: 'invalid-device' };
+        if (!fs.existsSync(target)) return { success: false, error: 'device-not-found' };
+    }
+    const ffmpegPath = getFfmpegPathForEnv();
+    const inputArgs = [
+        '-hide_banner',
+        '-loglevel', 'warning',
+        '-fflags', '+genpts',
+        '-f', 'webm',
+        '-i', 'pipe:0'
+    ];
+    const args = kind === 'virtual-camera' ? [
+        ...inputArgs,
+        '-an',
+        '-r', String(fps),
+        '-vf', 'format=yuyv422',
+        '-f', 'v4l2',
+        target
+    ] : [
+        ...inputArgs,
+        '-r', String(fps),
+        '-c:v', 'libx264',
+        '-preset', 'veryfast',
+        '-tune', 'zerolatency',
+        '-b:v', `${bitrateKbps}k`,
+        '-maxrate', `${bitrateKbps}k`,
+        '-bufsize', `${Math.max(1000, bitrateKbps * 2)}k`,
+        '-pix_fmt', 'yuv420p',
+        '-g', String(Math.max(30, fps * 2)),
+        '-c:a', 'aac',
+        '-b:a', '160k',
+        '-ar', '48000',
+        '-f', 'flv',
+        target
+    ];
+    try {
+        const proc = spawn(ffmpegPath, args, { windowsHide: true });
+        const live = { id, kind, target, proc, startedAt: Date.now(), lastError: '' };
+        screenRecordingLiveOutputs.set(id, live);
+        proc.stderr.on('data', (chunk) => {
+            const text = String(chunk || '').trim();
+            if (text) live.lastError = text.slice(-1200);
+        });
+        proc.once('error', (error) => {
+            live.lastError = error?.message || String(error);
+            screenRecordingLiveOutputs.delete(id);
+        });
+        proc.once('close', () => {
+            screenRecordingLiveOutputs.delete(id);
+        });
+        return { success: true, id };
+    } catch (error) {
+        screenRecordingLiveOutputs.delete(id);
+        return { success: false, error: error?.message || String(error) };
+    }
+});
+
+ipcMain.handle('screenRecording:writeLiveOutput', async (_event, id, chunk) => {
+    const outputId = normalizeLiveOutputId(id);
+    const live = screenRecordingLiveOutputs.get(outputId);
+    if (!live || !live.proc?.stdin || live.proc.stdin.destroyed) {
+        return { success: false, error: live?.lastError || 'not-running' };
+    }
+    try {
+        const buffer = Buffer.from(chunk instanceof ArrayBuffer ? new Uint8Array(chunk) : chunk);
+        if (!buffer.length) return { success: true, id: outputId, bytes: 0 };
+        const wrote = live.proc.stdin.write(buffer);
+        if (!wrote) {
+            await new Promise((resolve) => live.proc.stdin.once('drain', resolve));
+        }
+        return { success: true, id: outputId, bytes: buffer.length };
+    } catch (error) {
+        return { success: false, error: error?.message || String(error) };
+    }
+});
+
+ipcMain.handle('screenRecording:stopLiveOutput', async (_event, id) => {
+    return stopScreenRecordingLiveOutput(id);
 });
 
 // ============================================================
@@ -7569,7 +8372,8 @@ ipcMain.handle('web:clearData', async (_event, options) => {
 // Dizin Okuma
 ipcMain.handle('fs:readDirectory', async (event, dirPath) => {
     try {
-        if (!dirPath || typeof dirPath !== 'string') return [];
+        const safeDirPath = sanitizeIpcPath(dirPath);
+        if (!safeDirPath) return [];
 
         // Windows testleri için: kütüphane/kırpma filtreleri bu uzantılara göre çalışıyor.
         // Not: Bu liste "noktasız" (mp3) tutulur, kontrol `toLowerCase()` ile yapılır.
@@ -7578,9 +8382,9 @@ ipcMain.handle('fs:readDirectory', async (event, dirPath) => {
             'mp4', 'mkv', 'webm', 'avi', 'mov', 'wmv', 'm4v', 'flv', 'mpg', 'mpeg'
         ]);
 
-        const items = await fs.promises.readdir(dirPath, { withFileTypes: true });
+        const items = await fs.promises.readdir(safeDirPath, { withFileTypes: true });
         const results = await Promise.all(items.map(async (item) => {
-            const fullPath = path.join(dirPath, item.name);
+            const fullPath = path.join(safeDirPath, item.name);
             const ext = path.extname(item.name || '').slice(1).toLowerCase();
             const isSupportedMedia = !!ext && SUPPORTED_MEDIA_EXTENSIONS.has(ext);
 
@@ -7709,6 +8513,8 @@ ipcMain.handle('fs:getSpecialPaths', async () => {
     const musicFolders = ['Music', 'Müzik', 'music'];
     const videoFolders = ['Videos', 'Videolar', 'Video', 'videos'];
     const downloadFolders = ['Downloads', 'İndirilenler', 'downloads'];
+    const desktopFolders = ['Desktop', 'Masaüstü', 'Masaustu', 'desktop'];
+    const picturesFolders = ['Pictures', 'Resimler', 'pictures'];
 
     // Var olan klasörü bul
     const findExisting = async (folders) => {
@@ -7727,6 +8533,8 @@ ipcMain.handle('fs:getSpecialPaths', async () => {
         music: await findExisting(musicFolders),
         videos: await findExisting(videoFolders),
         downloads: await findExisting(downloadFolders),
+        desktop: await findExisting(desktopFolders),
+        pictures: await findExisting(picturesFolders),
         documents: path.join(home, 'Documents')
     };
 });
@@ -7734,7 +8542,20 @@ ipcMain.handle('fs:getSpecialPaths', async () => {
 // Dosya Varlık Kontrolü
 ipcMain.handle('fs:exists', async (event, filePath) => {
     try {
-        await fs.promises.access(filePath);
+        const targetPath = sanitizeIpcPath(filePath);
+        if (!targetPath) return false;
+        await fs.promises.access(targetPath);
+        return true;
+    } catch {
+        return false;
+    }
+});
+
+ipcMain.handle('fs:isWritable', async (_event, filePath) => {
+    try {
+        const targetPath = sanitizeIpcPath(filePath);
+        if (!targetPath) return false;
+        await fs.promises.access(targetPath, fs.constants.W_OK);
         return true;
     } catch {
         return false;
@@ -7744,7 +8565,9 @@ ipcMain.handle('fs:exists', async (event, filePath) => {
 // Dosya Bilgisi
 ipcMain.handle('fs:getFileInfo', async (event, filePath) => {
     try {
-        const stats = await fs.promises.stat(filePath);
+        const targetPath = sanitizeIpcPath(filePath);
+        if (!targetPath) return null;
+        const stats = await fs.promises.stat(targetPath);
         return {
             size: stats.size,
             created: stats.birthtime,
@@ -7757,9 +8580,99 @@ ipcMain.handle('fs:getFileInfo', async (event, filePath) => {
     }
 });
 
+ipcMain.handle('fs:getStorageStats', async (_event, targetPath) => {
+    try {
+        let probePath = sanitizeIpcPath(targetPath || app.getPath('videos') || app.getPath('home'));
+        if (!probePath) return null;
+        try {
+            const stats = await fs.promises.stat(probePath);
+            if (stats.isFile()) probePath = path.dirname(probePath);
+        } catch {
+            probePath = path.dirname(probePath);
+        }
+        const stats = await fs.promises.statfs(probePath);
+        const blockSize = Number(stats.bsize || stats.frsize || 0);
+        const freeBlocks = Number(stats.bavail || stats.bfree || 0);
+        const totalBlocks = Number(stats.blocks || 0);
+        return {
+            path: probePath,
+            freeBytes: Math.max(0, freeBlocks * blockSize),
+            totalBytes: Math.max(0, totalBlocks * blockSize)
+        };
+    } catch (error) {
+        return { error: error?.message || String(error) };
+    }
+});
+
+ipcMain.handle('app:getSystemStats', async () => {
+    try {
+        const memory = process.memoryUsage();
+        return {
+            memory: {
+                rss: Number(memory.rss || 0),
+                heapUsed: Number(memory.heapUsed || 0),
+                heapTotal: Number(memory.heapTotal || 0),
+                external: Number(memory.external || 0)
+            },
+            system: {
+                totalMemory: Number(os.totalmem?.() || 0),
+                freeMemory: Number(os.freemem?.() || 0),
+                loadAverage: Array.isArray(os.loadavg?.()) ? os.loadavg() : [],
+                cpuCount: Array.isArray(os.cpus?.()) ? os.cpus().length : 0
+            }
+        };
+    } catch (error) {
+        return { error: error?.message || String(error) };
+    }
+});
+
+ipcMain.handle('screenRecording:listStudioPlugins', async () => {
+    const pluginDirs = [
+        path.join(app.getPath('userData'), 'video-studio-plugins'),
+        path.join(app.getPath('home'), '.config', 'aurivo', 'video-studio-plugins')
+    ];
+    const plugins = [];
+    for (const dir of pluginDirs) {
+        try {
+            await fs.promises.mkdir(dir, { recursive: true });
+            const entries = await fs.promises.readdir(dir, { withFileTypes: true });
+            for (const entry of entries) {
+                const manifestPath = entry.isDirectory()
+                    ? path.join(dir, entry.name, 'plugin.json')
+                    : (entry.isFile() && entry.name.endsWith('.json') ? path.join(dir, entry.name) : '');
+                if (!manifestPath) continue;
+                try {
+                    const raw = await fs.promises.readFile(manifestPath, 'utf8');
+                    const manifest = JSON.parse(raw);
+                    plugins.push({
+                        ...manifest,
+                        path: manifestPath
+                    });
+                } catch (error) {
+                    plugins.push({
+                        id: `invalid-${entry.name}`,
+                        name: entry.name,
+                        path: manifestPath,
+                        error: error?.message || String(error)
+                    });
+                }
+            }
+        } catch {
+            // yoksay
+        }
+    }
+    return {
+        success: true,
+        pluginDirs,
+        plugins: plugins.slice(0, 64)
+    };
+});
+
 ipcMain.handle('fs:readText', async (_event, filePath) => {
     try {
-        return await fs.promises.readFile(String(filePath || ''), 'utf8');
+        const targetPath = sanitizeIpcPath(filePath);
+        if (!targetPath) return null;
+        return await fs.promises.readFile(targetPath, 'utf8');
     } catch (error) {
         return null;
     }
@@ -7767,7 +8680,9 @@ ipcMain.handle('fs:readText', async (_event, filePath) => {
 
 ipcMain.handle('fs:writeText', async (_event, filePath, text) => {
     try {
-        await fs.promises.writeFile(String(filePath || ''), String(text ?? ''), 'utf8');
+        const targetPath = sanitizeIpcPath(filePath);
+        if (!targetPath) return false;
+        await fs.promises.writeFile(targetPath, String(text ?? ''), 'utf8');
         return true;
     } catch (error) {
         console.error('[FS] writeText error:', error);
@@ -7777,7 +8692,7 @@ ipcMain.handle('fs:writeText', async (_event, filePath, text) => {
 
 ipcMain.handle('fs:writeBase64', async (_event, filePath, base64Data) => {
     try {
-        const target = String(filePath || '').trim();
+        const target = sanitizeIpcPath(filePath);
         const encoded = String(base64Data || '').trim();
         if (!target || !encoded) return false;
         const buffer = Buffer.from(encoded, 'base64');
@@ -7789,9 +8704,23 @@ ipcMain.handle('fs:writeBase64', async (_event, filePath, base64Data) => {
     }
 });
 
+ipcMain.handle('fs:writeBuffer', async (_event, filePath, arrayBuffer) => {
+    try {
+        const target = sanitizeIpcPath(filePath);
+        if (!target || !arrayBuffer) return false;
+        const buffer = Buffer.from(arrayBuffer);
+        if (!buffer.length) return false;
+        await fs.promises.writeFile(target, buffer);
+        return true;
+    } catch (error) {
+        console.error('[FS] writeBuffer error:', error);
+        return false;
+    }
+});
+
 ipcMain.handle('fs:renameItem', async (_event, sourcePath, nextName) => {
     try {
-        const src = String(sourcePath || '').trim();
+        const src = sanitizeIpcPath(sourcePath);
         const rawName = String(nextName || '').trim();
         if (!src || !rawName) {
             return { ok: false, error: 'invalid-params' };
@@ -7832,7 +8761,7 @@ ipcMain.handle('fs:renameItem', async (_event, sourcePath, nextName) => {
 
 ipcMain.handle('fs:moveToTrash', async (_event, filePath) => {
     try {
-        const targetPath = String(filePath || '').trim();
+        const targetPath = sanitizeIpcPath(filePath);
         if (!targetPath) return false;
         if (typeof shell?.trashItem !== 'function') return false;
         await shell.trashItem(targetPath);
@@ -7845,7 +8774,7 @@ ipcMain.handle('fs:moveToTrash', async (_event, filePath) => {
 
 ipcMain.handle('fs:openContainingFolder', async (_event, filePath) => {
     try {
-        const targetPath = String(filePath || '').trim();
+        const targetPath = sanitizeIpcPath(filePath);
         if (!targetPath) return false;
 
         try {
@@ -7865,7 +8794,7 @@ ipcMain.handle('fs:openContainingFolder', async (_event, filePath) => {
 
 ipcMain.handle('fs:getPathProperties', async (_event, filePath) => {
     try {
-        const targetPath = String(filePath || '').trim();
+        const targetPath = sanitizeIpcPath(filePath);
         if (!targetPath) return null;
         const stat = await fs.promises.stat(targetPath);
         return {
@@ -8321,6 +9250,379 @@ function getFfmpegPathForEnv() {
     }
     return 'ffmpeg';
 }
+
+function getFfprobePathForEnv() {
+    const candidates = [];
+    const preferSystemFirst =
+        process.platform !== 'win32' ||
+        process.env.AURIVO_FFMPEG_PREFER_SYSTEM === '1' ||
+        process.env.AURIVO_FFMPEG_PREFER_SYSTEM === 'true';
+    const systemCandidate = findExecutable('ffprobe', ['/usr/bin', '/usr/local/bin', '/bin']);
+    if (preferSystemFirst && systemCandidate) candidates.push(systemCandidate);
+    if (app.isPackaged) {
+        const packed = process.platform === 'win32'
+            ? path.join(process.resourcesPath, 'bin', 'ffprobe.exe')
+            : path.join(process.resourcesPath, 'bin', 'ffprobe');
+        candidates.push(packed);
+    }
+    if (!preferSystemFirst && systemCandidate) candidates.push(systemCandidate);
+    candidates.push('ffprobe');
+    for (const candidate of candidates) {
+        const value = String(candidate || '').trim();
+        if (!value) continue;
+        if (value === 'ffprobe') return value;
+        try {
+            fs.accessSync(value, fs.constants.X_OK);
+            return value;
+        } catch {
+            // sonraki adayı dene
+        }
+    }
+    return 'ffprobe';
+}
+
+function parseFfmpegTimeToSeconds(value) {
+    const match = String(value || '').trim().match(/^(\d{1,3}):(\d{2}):(\d{2}(?:\.\d+)?)$/);
+    if (!match) return 0;
+    const hours = Number(match[1]) || 0;
+    const minutes = Number(match[2]) || 0;
+    const seconds = Number(match[3]) || 0;
+    return (hours * 3600) + (minutes * 60) + seconds;
+}
+
+function formatSrtTimestamp(totalSeconds) {
+    const safeSeconds = Math.max(0, Number(totalSeconds) || 0);
+    const hours = Math.floor(safeSeconds / 3600);
+    const minutes = Math.floor((safeSeconds % 3600) / 60);
+    const seconds = Math.floor(safeSeconds % 60);
+    const millis = Math.round((safeSeconds - Math.floor(safeSeconds)) * 1000);
+    return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')},${String(millis).padStart(3, '0')}`;
+}
+
+function parseSrtTimestamp(value) {
+    const match = String(value || '').trim().match(/^(\d{2,}):(\d{2}):(\d{2}),(\d{3})$/);
+    if (!match) return 0;
+    return ((Number(match[1]) || 0) * 3600)
+        + ((Number(match[2]) || 0) * 60)
+        + (Number(match[3]) || 0)
+        + ((Number(match[4]) || 0) / 1000);
+}
+
+async function createShiftedSubtitleFile(subtitlePath, delaySeconds) {
+    const shift = Number(delaySeconds) || 0;
+    if (Math.abs(shift) < 0.001) return subtitlePath;
+    const source = await fs.promises.readFile(subtitlePath, 'utf8');
+    const shifted = source.replace(
+        /(\d{2,}:\d{2}:\d{2},\d{3})\s*-->\s*(\d{2,}:\d{2}:\d{2},\d{3})/g,
+        (_match, start, end) => `${formatSrtTimestamp(parseSrtTimestamp(start) + shift)} --> ${formatSrtTimestamp(parseSrtTimestamp(end) + shift)}`
+    );
+    const targetPath = path.join(os.tmpdir(), `aurivo-subtitle-${crypto.randomUUID()}.srt`);
+    await fs.promises.writeFile(targetPath, shifted, 'utf8');
+    return targetPath;
+}
+
+function escapeSubtitleFilterPath(filePath) {
+    return String(filePath || '')
+        .replace(/\\/g, '\\\\')
+        .replace(/:/g, '\\:')
+        .replace(/'/g, "\\'");
+}
+
+function buildVideoToolFfmpegArgs(options = {}) {
+    const inputPath = String(options.inputPath || '').trim();
+    const outputPath = String(options.outputPath || '').trim();
+    const target = String(options.target || 'video').trim().toLowerCase();
+    const format = String(options.format || 'mp4').trim().toLowerCase();
+    const quality = String(options.quality || 'medium').trim().toLowerCase();
+    const qualityMap = {
+        low: { crf: 32, audioBitrate: '128k' },
+        medium: { crf: 24, audioBitrate: '192k' },
+        high: { crf: 18, audioBitrate: '256k' }
+    };
+    const profile = qualityMap[quality] || qualityMap.medium;
+    const base = ['-y', '-hide_banner', '-i', inputPath];
+
+    const appendH264OutputArgs = (args) => {
+        args.push(
+            '-c:v', 'libx264',
+            '-preset', 'medium',
+            '-crf', String(profile.crf)
+        );
+        return args;
+    };
+
+    const appendVideoContainerArgs = (args, includeAudio = true) => {
+        if (format === 'webm') {
+            args.push(
+                '-c:v', 'libvpx-vp9',
+                '-crf', String(Math.min(38, profile.crf + 5)),
+                '-b:v', '0'
+            );
+            if (includeAudio) args.push('-c:a', 'libopus', '-b:a', profile.audioBitrate);
+        } else {
+            appendH264OutputArgs(args);
+            if (includeAudio) args.push('-c:a', 'aac', '-b:a', profile.audioBitrate);
+            if (format === 'mp4' || format === 'mov') {
+                args.push('-movflags', '+faststart');
+            }
+        }
+        return args;
+    };
+
+    if (target === 'thumbnail') {
+        const thumbnail = options.thumbnail && typeof options.thumbnail === 'object' ? options.thumbnail : {};
+        const atSeconds = Math.max(0, Number(thumbnail.atSeconds) || 0);
+        const width = Math.max(0, Math.min(3840, Number(thumbnail.width) || 0));
+        const imageFormat = ['jpg', 'jpeg', 'png', 'webp'].includes(format) ? format : 'jpg';
+        const args = ['-y', '-hide_banner'];
+        if (atSeconds > 0) args.push('-ss', String(atSeconds));
+        args.push('-i', inputPath, '-frames:v', '1');
+        if (width > 0) args.push('-vf', `scale=${width}:-2`);
+        if (imageFormat === 'jpg' || imageFormat === 'jpeg') {
+            args.push('-q:v', '2', '-update', '1');
+        } else if (imageFormat === 'png') {
+            args.push('-update', '1');
+        } else if (imageFormat === 'webp') {
+            args.push('-quality', '92');
+        }
+        args.push(outputPath);
+        return args;
+    }
+
+    if (target === 'enhance') {
+        const enhance = options.enhance && typeof options.enhance === 'object' ? options.enhance : {};
+        const brightness = Math.max(-0.5, Math.min(0.5, Number(enhance.brightness) || 0));
+        const contrast = Math.max(0.5, Math.min(2, Number(enhance.contrast) || 1));
+        const saturation = Math.max(0, Math.min(3, Number(enhance.saturation) || 1));
+        const sharpness = Math.max(0, Math.min(2, Number(enhance.sharpness) || 0));
+        const filters = [
+            `eq=brightness=${brightness.toFixed(3)}:contrast=${contrast.toFixed(3)}:saturation=${saturation.toFixed(3)}`
+        ];
+        if (enhance.denoise === true) filters.push('hqdn3d=1.5:1.5:6:6');
+        if (sharpness > 0.001) {
+            const amount = (sharpness * 0.75).toFixed(3);
+            filters.push(`unsharp=5:5:${amount}:3:3:${(sharpness * 0.35).toFixed(3)}`);
+        }
+
+        const args = ['-y', '-hide_banner', '-i', inputPath, '-map', '0:v:0', '-map', '0:a:0?'];
+        args.push('-vf', filters.join(','));
+        appendVideoContainerArgs(args, true);
+        if (enhance.normalizeAudio === true) {
+            args.push('-af', 'loudnorm=I=-16:TP=-1.5:LRA=11');
+        }
+        args.push(outputPath);
+        return args;
+    }
+
+    if (target === 'edit') {
+        const edit = options.edit && typeof options.edit === 'object' ? options.edit : {};
+        const startSeconds = Math.max(0, Number(edit.startSeconds) || 0);
+        const endSeconds = Math.max(0, Number(edit.endSeconds) || 0);
+        const durationSeconds = endSeconds > startSeconds ? endSeconds - startSeconds : 0;
+        const speed = Math.max(0.25, Math.min(4, Number(edit.speed) || 1));
+        const rotate = String(edit.rotate || 'none').trim().toLowerCase();
+        const filters = [];
+
+        if (rotate === '90') filters.push('transpose=1');
+        if (rotate === '270') filters.push('transpose=2');
+        if (rotate === '180') filters.push('transpose=1,transpose=1');
+        if (edit.flipH === true) filters.push('hflip');
+        if (edit.flipV === true) filters.push('vflip');
+        if (Math.abs(speed - 1) > 0.001) filters.push(`setpts=${(1 / speed).toFixed(6)}*PTS`);
+
+        const args = ['-y', '-hide_banner'];
+        if (startSeconds > 0) args.push('-ss', String(startSeconds));
+        args.push('-i', inputPath);
+        if (durationSeconds > 0) args.push('-t', String(durationSeconds));
+        args.push('-map', '0:v:0');
+        if (edit.mute === true) {
+            args.push('-an');
+        } else {
+            args.push('-map', '0:a:0?');
+        }
+        if (filters.length) args.push('-vf', filters.join(','));
+        appendVideoContainerArgs(args, edit.mute !== true);
+        if (edit.mute !== true && Math.abs(speed - 1) > 0.001) {
+            args.push('-filter:a', `atempo=${speed.toFixed(3)}`);
+        }
+        args.push(outputPath);
+        return args;
+    }
+
+    if (target === 'subtitle') {
+        const subtitle = options.subtitle && typeof options.subtitle === 'object' ? options.subtitle : {};
+        const subtitlePath = String(subtitle.path || '').trim();
+        const subtitleMode = String(subtitle.mode || 'burn').trim().toLowerCase() === 'selectable' ? 'selectable' : 'burn';
+        const delaySeconds = Number(subtitle.delaySeconds) || 0;
+
+        if (subtitleMode === 'selectable') {
+            const args = ['-y', '-hide_banner', '-i', inputPath];
+            if (Math.abs(delaySeconds) > 0.001) args.push('-itsoffset', String(delaySeconds));
+            args.push('-i', subtitlePath, '-map', '0:v:0', '-map', '0:a:0?', '-map', '1:0');
+            appendVideoContainerArgs(args);
+            args.push('-c:s', (format === 'mp4' || format === 'mov') ? 'mov_text' : 'srt');
+            args.push(outputPath);
+            return args;
+        }
+
+        const args = ['-y', '-hide_banner', '-i', inputPath, '-map', '0:v:0', '-map', '0:a:0?'];
+        args.push('-vf', `subtitles='${escapeSubtitleFilterPath(subtitlePath)}'`);
+        appendVideoContainerArgs(args);
+        args.push(outputPath);
+        return args;
+    }
+
+    if (target === 'audio') {
+        if (format === 'wav') {
+            return base.concat(['-vn', '-map', '0:a:0?', '-c:a', 'pcm_s16le', outputPath]);
+        }
+        return base.concat(['-vn', '-map', '0:a:0?', '-c:a', 'libmp3lame', '-b:a', profile.audioBitrate, outputPath]);
+    }
+
+    if (format === 'webm') {
+        return base.concat([
+            '-map', '0:v:0',
+            '-map', '0:a:0?',
+            '-c:v', 'libvpx-vp9',
+            '-crf', String(Math.min(38, profile.crf + 5)),
+            '-b:v', '0',
+            '-c:a', 'libopus',
+            '-b:a', profile.audioBitrate,
+            outputPath
+        ]);
+    }
+
+    const args = base.concat([
+        '-map', '0:v:0',
+        '-map', '0:a:0?'
+    ]);
+    appendVideoContainerArgs(args);
+    args.push(outputPath);
+    return args;
+}
+
+ipcMain.handle('videoTools:convert', async (event, options = {}) => {
+    const inputPath = String(options?.inputPath || '').trim();
+    const outputPath = String(options?.outputPath || '').trim();
+    const jobId = String(options?.jobId || crypto.randomUUID()).trim();
+    const target = String(options?.target || 'video').trim().toLowerCase();
+    const format = String(options?.format || (target === 'audio' ? 'mp3' : 'mp4')).trim().toLowerCase();
+    const allowedVideoFormats = new Set(['mp4', 'webm', 'mkv', 'mov']);
+    const allowedAudioFormats = new Set(['mp3', 'wav']);
+    const allowedImageFormats = new Set(['jpg', 'jpeg', 'png', 'webp']);
+
+    const sendProgress = (payload) => {
+        try {
+            event.sender.send('videoTools:progress', { jobId, ...payload });
+        } catch {
+            // yoksay
+        }
+    };
+
+    if (!inputPath || !outputPath) {
+        return { ok: false, error: 'Eksik dosya yolu.' };
+    }
+    if (target !== 'video' && target !== 'audio' && target !== 'edit' && target !== 'subtitle' && target !== 'thumbnail' && target !== 'enhance') {
+        return { ok: false, error: 'Geçersiz işlem türü.' };
+    }
+    if (((target === 'video' || target === 'edit' || target === 'subtitle' || target === 'enhance') && !allowedVideoFormats.has(format))
+        || (target === 'audio' && !allowedAudioFormats.has(format))
+        || (target === 'thumbnail' && !allowedImageFormats.has(format))) {
+        return { ok: false, error: 'Desteklenmeyen çıktı formatı.' };
+    }
+
+    let originalSubtitlePath = '';
+    let shiftedSubtitlePath = '';
+    try {
+        const inputStat = await fs.promises.stat(inputPath);
+        if (!inputStat.isFile()) return { ok: false, error: 'Kaynak bir dosya değil.' };
+        if (target === 'subtitle') {
+            const subtitle = options?.subtitle && typeof options.subtitle === 'object' ? options.subtitle : {};
+            const subtitlePath = String(subtitle.path || '').trim();
+            originalSubtitlePath = subtitlePath;
+            if (!subtitlePath) return { ok: false, error: 'Altyazı dosyası seçilmedi.' };
+            const subtitleStat = await fs.promises.stat(subtitlePath);
+            if (!subtitleStat.isFile()) return { ok: false, error: 'Altyazı yolu bir dosya değil.' };
+            if (!/\.srt$/i.test(subtitlePath)) return { ok: false, error: 'Şimdilik yalnızca .srt altyazı destekleniyor.' };
+            shiftedSubtitlePath = await createShiftedSubtitleFile(subtitlePath, Number(subtitle.delaySeconds) || 0);
+            options = {
+                ...options,
+                subtitle: {
+                    ...subtitle,
+                    path: shiftedSubtitlePath
+                }
+            };
+        }
+        await fs.promises.mkdir(path.dirname(outputPath), { recursive: true });
+    } catch (error) {
+        return { ok: false, error: error?.message || String(error) };
+    }
+
+    const ffmpegPath = getFfmpegPathForEnv();
+    const args = buildVideoToolFfmpegArgs({ ...options, target, format, inputPath, outputPath });
+
+    return await new Promise((resolve) => {
+        let stderrBuffer = '';
+        let durationSeconds = 0;
+        let settled = false;
+
+        const finish = (result) => {
+            if (settled) return;
+            settled = true;
+            resolve(result);
+        };
+
+        sendProgress({ status: 'running', percent: 0, message: 'FFmpeg başlatıldı.' });
+
+        let child = null;
+        try {
+            child = spawn(ffmpegPath, args, { windowsHide: true });
+        } catch (error) {
+            finish({ ok: false, error: error?.message || String(error) });
+            return;
+        }
+
+        child.stderr.on('data', (chunk) => {
+            const text = String(chunk || '');
+            stderrBuffer += text;
+            if (stderrBuffer.length > 12000) stderrBuffer = stderrBuffer.slice(-12000);
+
+            const durationMatch = text.match(/Duration:\s*(\d{2}:\d{2}:\d{2}(?:\.\d+)?)/);
+            if (durationMatch) durationSeconds = parseFfmpegTimeToSeconds(durationMatch[1]);
+
+            const timeMatches = Array.from(text.matchAll(/time=(\d{2}:\d{2}:\d{2}(?:\.\d+)?)/g));
+            const latestTime = timeMatches.length ? timeMatches[timeMatches.length - 1][1] : '';
+            if (latestTime && durationSeconds > 0) {
+                const currentSeconds = parseFfmpegTimeToSeconds(latestTime);
+                const percent = Math.max(1, Math.min(99, Math.round((currentSeconds / durationSeconds) * 100)));
+                sendProgress({ status: 'running', percent, message: `${percent}%` });
+            }
+        });
+
+        child.on('error', (error) => {
+            sendProgress({ status: 'error', percent: 0, message: error?.message || String(error) });
+            finish({ ok: false, error: error?.message || String(error) });
+        });
+
+        child.on('close', (code) => {
+            if (shiftedSubtitlePath && originalSubtitlePath && shiftedSubtitlePath !== originalSubtitlePath) {
+                fs.promises.unlink(shiftedSubtitlePath).catch(() => {});
+            }
+            if (code === 0) {
+                sendProgress({ status: 'done', percent: 100, message: 'Tamamlandı.' });
+                finish({ ok: true, path: outputPath, name: path.basename(outputPath) });
+                return;
+            }
+            const lastLine = stderrBuffer
+                .split(/\r?\n/)
+                .map((line) => line.trim())
+                .filter(Boolean)
+                .slice(-1)[0] || `ffmpeg exited with code ${code}`;
+            sendProgress({ status: 'error', percent: 0, message: lastLine });
+            finish({ ok: false, error: lastLine });
+        });
+    });
+});
 
 function normalizeExcludedPaths(excludedFolders = []) {
     return Array.isArray(excludedFolders)

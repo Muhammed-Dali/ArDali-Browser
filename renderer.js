@@ -663,6 +663,7 @@ const state = {
     videoFiles: [], // Mevcut klasördeki video dosyaları
     currentVideoIndex: -1, // Oynatılan video indeksi
     currentVideoPath: null, // Oynatılan video yolu
+    videoWorkspaceMode: 'grid',
     imageFiles: [], // Mevcut klasördeki resim dosyaları
     currentImagePath: null,
     gallerySlideshowActive: false,
@@ -834,14 +835,15 @@ function isWebExperienceEnabled() {
 
 function getAllowedMainPages() {
     return isWebExperienceEnabled()
-        ? ['music', 'video', 'web']
-        : ['music', 'video'];
+        ? ['music', 'video', 'videotools', 'web']
+        : ['music', 'video', 'videotools'];
 }
 
 function normalizeMainPageForCurrentMode(page, fallback = 'music') {
     const normalized = String(page || '').trim().toLowerCase();
     const allowed = getAllowedMainPages();
-    return allowed.includes(normalized) ? normalized : fallback;
+    if (!allowed.includes(normalized)) return fallback;
+    return normalized === 'videotools' ? 'videoTools' : normalized;
 }
 
 function normalizeWebSessionProfile(value, fallback = 'persistent') {
@@ -897,6 +899,7 @@ function applyWebExperienceMode(options = {}) {
 
     if (!webEnabled) {
         cancelStartupLazyWebLoad();
+        syncWebUtilityButtonsLayout(false);
         if (state.settings?.playback) {
             state.settings.playback.browserNavigationHotkeysEnabled = false;
         }
@@ -1181,6 +1184,198 @@ let galleryUiFreezeHiddenUntilPointer = false;
 const galleryThumbnailRotationDegByPath = new Map();
 const galleryDisplayImageUrlCache = new Map();
 const galleryDisplayImageFallbackInFlight = new Map();
+const videoThumbnailUrlCache = new Map();
+const videoThumbnailInFlight = new Map();
+const VIDEO_STUDIO_PROFILE_STORAGE_KEY = 'aurivo_video_studio_profile_v1';
+const VIDEO_STUDIO_RECOVERY_STORAGE_KEY = 'aurivo_video_studio_recovery_v1';
+const VIDEO_STUDIO_PORTAL_SOURCE_ID = '__aurivo_screen_picker__';
+let queuedVideoHighlightTimer = null;
+let videoMiniExpandAnimationTimer = null;
+let videoToolActiveJobId = '';
+let videoToolLastOutputPath = '';
+let videoToolBatchFiles = [];
+let videoToolModeState = 'video';
+let videoToolsViewMode = 'studio';
+let videoToolSourcePath = '';
+let videoToolPreviewPath = '';
+let videoToolsProgressUnsubscribe = null;
+let screenRecorder = null;
+let screenRecordingStream = null;
+let screenRecordingChunks = [];
+let screenRecordingBytes = 0;
+let screenRecordingOutputPath = '';
+let screenRecordingSeparateAudioRecorders = [];
+let screenRecordingStartedAt = 0;
+let screenRecordingPausedAt = 0;
+let screenRecordingPausedMs = 0;
+let screenRecordingLastChunkAt = 0;
+let screenRecordingLastHealthWarningAt = 0;
+let screenRecordingChunkCount = 0;
+let screenRecordingSlowChunkWarnings = 0;
+let screenRecordingLastBytesSampleAt = 0;
+let screenRecordingLastBytesSample = 0;
+let screenRecordingWriteBytesPerSecond = 0;
+let screenRecordingCompositionFrameCount = 0;
+let screenRecordingCompositionLastFrameSampleAt = 0;
+let screenRecordingCompositionLastFrameCount = 0;
+let screenRecordingCompositionFps = 0;
+let screenRecordingFrameDropEstimate = 0;
+let videoStudioLastStatsProbeAt = 0;
+let videoStudioStorageStats = null;
+let videoStudioSystemStats = null;
+let videoStudioRecordingLogs = [];
+let videoStudioPreflightChecks = [];
+let videoStudioPreflightRefreshing = false;
+let videoStudioLastValidation = null;
+let videoStudioLastQualityReport = null;
+let videoStudioRepairInProgress = false;
+let videoStudioSourcePickerOpen = false;
+let videoStudioPlugins = [];
+let videoStudioPluginDirs = [];
+let videoStudioPluginsLoaded = false;
+let videoStudioRecoveryCandidate = null;
+let videoStudioShortcutCaptureAction = '';
+let screenRecordingTimer = null;
+let screenRecordingAutoStopTimer = null;
+let screenRecordingTestStopTimer = null;
+let videoStudioTestRecordingActive = false;
+let screenRecordingAuxStreams = [];
+let screenRecordingSystemAudioCapture = null;
+let screenRecordingAudioContext = null;
+let screenRecordingDesktopGainNode = null;
+let screenRecordingMicGainNode = null;
+let screenRecordingDesktopAnalyser = null;
+let screenRecordingMicAnalyser = null;
+let screenRecordingMicGateAnalyser = null;
+let screenRecordingMicGateGainNode = null;
+let screenRecordingMicCompressorNode = null;
+let screenRecordingMicLimiterNode = null;
+let screenRecordingMicMonitorGainNode = null;
+let screenRecordingCompositionFrame = 0;
+let screenRecordingCompositionVideos = [];
+let videoStudioMeterAnimationFrame = 0;
+let videoStudioLiveMicStream = null;
+let videoStudioLiveMicAudioContext = null;
+let videoStudioLiveMicAnalyser = null;
+let videoStudioLiveMicMonitorGainNode = null;
+let videoStudioLiveMeterFrame = 0;
+let videoStudioPreviewStream = null;
+let videoStudioCameraPreviewStream = null;
+let videoStudioAutoPreviewTimer = null;
+let videoStudioLastAutoPreviewAttemptAt = 0;
+let videoStudioAutoPreviewEnabled = true;
+let videoStudioTransformDrag = null;
+let videoStudioProfileSaveTimer = null;
+let videoStudioSelectedSourceId = VIDEO_STUDIO_PORTAL_SOURCE_ID;
+let videoStudioActiveSceneId = 'scene-1';
+let videoStudioActiveSourceId = 'display';
+let videoStudioSelectedMicId = 'default';
+let videoStudioDesktopVolume = 80;
+let videoStudioMicVolume = 65;
+let videoStudioMicMonitorEnabled = false;
+let videoStudioMicMonitorVolume = 45;
+let videoStudioDesktopMuted = false;
+let videoStudioMicMuted = false;
+let videoStudioRecordPreset = 'balanced';
+let videoStudioRecordResolution = 'source';
+let videoStudioRecordFps = 30;
+let videoStudioRecordQuality = 'balanced';
+let videoStudioRecordBitrate = 8000;
+let videoStudioRecordFormat = 'webm';
+let videoStudioVideoEncoder = 'auto';
+let videoStudioAudioTrackMode = 'mix';
+let videoStudioFfmpegCapabilities = null;
+let videoStudioRecordOutputMode = 'auto';
+let videoStudioRecordOutputFolder = '';
+let videoStudioRecordNameTemplate = 'aurivo-{date}-{time}';
+let videoStudioStreamEnabled = false;
+let videoStudioStreamService = 'custom';
+let videoStudioStreamServer = '';
+let videoStudioStreamKey = '';
+let videoStudioStreamStatus = 'idle';
+let videoStudioLiveStreamRecorder = null;
+let videoStudioLiveStreamStream = null;
+let videoStudioLiveStreamAuxStreams = [];
+let videoStudioLiveStreamId = '';
+let videoStudioLiveStreamBytes = 0;
+let videoStudioVirtualCameraEnabled = false;
+let videoStudioVirtualCameraDevice = '/dev/video10';
+let videoStudioVirtualCameraStatus = 'idle';
+let videoStudioVirtualCameraRecorder = null;
+let videoStudioVirtualCameraStream = null;
+let videoStudioVirtualCameraAuxStreams = [];
+let videoStudioVirtualCameraOutputId = '';
+let videoStudioVirtualCameraBytes = 0;
+let videoStudioReplayBufferEnabled = false;
+let videoStudioReplayBufferSeconds = 60;
+let videoStudioReplayBufferRecorder = null;
+let videoStudioReplayBufferStream = null;
+let videoStudioReplayBufferAuxStreams = [];
+let videoStudioReplayBufferChunks = [];
+let videoStudioReplayBufferBytes = 0;
+let videoStudioMicFilterEnabled = false;
+let videoStudioMicNoiseGateThreshold = 8;
+let videoStudioMicCompressorEnabled = true;
+let videoStudioMicCompressorAmount = 45;
+let videoStudioMicLimiterEnabled = true;
+let videoStudioMicLimiterCeiling = 92;
+let videoStudioCaptureMode = 'full';
+let videoStudioCaptureRegion = { top: 0, right: 0, bottom: 0, left: 0 };
+let videoStudioShowMouseOverlay = false;
+let videoStudioShowKeyboardOverlay = false;
+let videoStudioMouseOverlayColor = '#12e7d8';
+let videoStudioMouseOverlaySize = 100;
+let videoStudioMouseOverlayDuration = 2800;
+let videoStudioKeyboardOverlayPosition = 'bottom-left';
+let videoStudioKeyboardOverlayDuration = 2200;
+let videoStudioInputOverlayPointer = { x: 0.5, y: 0.5, at: 0, down: false, clickAt: 0 };
+let videoStudioGlobalCursorPoint = null;
+let videoStudioGlobalCursorTimer = null;
+let videoStudioInputOverlayKeys = [];
+let videoStudioCountdownEnabled = false;
+let videoStudioCountdownSeconds = 3;
+let videoStudioAutoStopEnabled = false;
+let videoStudioAutoStopMinutes = 60;
+let videoStudioScheduleEnabled = false;
+let videoStudioScheduleMode = 'delay';
+let videoStudioScheduleDelayMinutes = 10;
+let videoStudioScheduleTime = '';
+let videoStudioScheduleTimer = null;
+let videoStudioScheduleTargetAt = 0;
+let videoStudioTransitionType = 'fade';
+let videoStudioTransitionDuration = 300;
+let videoStudioTransitionTimer = null;
+let videoStudioCanvasTransition = null;
+let videoStudioShortcutsEnabled = true;
+let videoStudioAudioDevices = [];
+let videoStudioActiveSceneCollectionId = 'collection-default';
+let videoStudioSceneCollections = [];
+let videoStudioScenes = [{ id: 'scene-1', name: 'Sahne 1' }];
+const VIDEO_STUDIO_DEFAULT_SHORTCUTS = Object.freeze({
+    record: 'Ctrl+Shift+R',
+    preview: 'Ctrl+Shift+P',
+    transition: 'Ctrl+Shift+T',
+    pause: 'Ctrl+Shift+Space',
+    sceneUp: 'Ctrl+Shift+ArrowUp',
+    sceneDown: 'Ctrl+Shift+ArrowDown',
+    globalRecord: 'Ctrl+Alt+Shift+R',
+    globalPause: 'Ctrl+Alt+Shift+P',
+    globalStop: 'Ctrl+Alt+Shift+S',
+    globalReplay: 'Ctrl+Alt+Shift+B'
+});
+let videoStudioShortcutMap = { ...VIDEO_STUDIO_DEFAULT_SHORTCUTS };
+const VIDEO_STUDIO_DEFAULT_SOURCES = [
+    { id: 'display', kind: 'display', name: 'Ekran Yakalama (PipeWire)', icon: 'desktop_windows', visible: true },
+    { id: 'desktop-audio', kind: 'system-audio', name: 'Masaüstü', icon: 'volume_up', visible: true },
+    { id: 'mic', kind: 'audio', name: 'Mikrofon', icon: 'mic', visible: true }
+];
+let videoStudioSources = VIDEO_STUDIO_DEFAULT_SOURCES.map((source) => ({ ...source }));
+const VIDEO_STUDIO_RECORD_PRESETS = {
+    performance: { resolution: '720p', fps: 30, quality: 'performance', bitrate: 4500, format: 'webm' },
+    balanced: { resolution: '1080p', fps: 30, quality: 'balanced', bitrate: 8000, format: 'mkv' },
+    high: { resolution: '1080p', fps: 60, quality: 'high', bitrate: 12000, format: 'mp4' },
+    ultra: { resolution: '4k', fps: 60, quality: 'high', bitrate: 35000, format: 'mkv' }
+};
 const GALLERY_CONVERSION_PREFERRED_EXTENSIONS = new Set([
     'heic', 'heif',
     'dng', 'cr2', 'cr3', 'nef', 'nrw', 'arw', 'srf', 'sr2',
@@ -1432,6 +1627,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     await loadSettings();
+    loadVideoStudioProfile();
+    loadVideoStudioPlugins().catch(() => {});
     applyWebExperienceMode({ forceSwitch: false });
     // C++ Ses Motoru kontrolü (ayarlar yüklendikten sonra)
     await checkNativeAudio();
@@ -1445,6 +1642,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     setupPulseQuickListeners();
     setupUtilityWindowIndicators();
     window.addEventListener('beforeunload', () => {
+        if (videoStudioProfileSaveTimer) {
+            clearTimeout(videoStudioProfileSaveTimer);
+            videoStudioProfileSaveTimer = null;
+        }
+        persistVideoStudioProfileNow();
+        releaseVideoToolIdleResources({ force: true });
         try {
             rememberPlaybackStartupState({ persist: true });
         } catch {
@@ -1951,6 +2154,27 @@ function cacheElements() {
     // Sayfalar
     elements.musicPage = document.getElementById('musicPage');
     elements.videoPage = document.getElementById('videoPage');
+    elements.videoToolsPage = document.getElementById('videoToolsPage');
+    elements.videoToolsWorkspace = document.getElementById('videoToolsWorkspace');
+    elements.videoWorkspaceShell = document.getElementById('videoWorkspaceShell');
+    elements.videoGridView = document.getElementById('videoGridView');
+    elements.videoPlayerShell = document.getElementById('videoPlayerShell');
+    elements.videoPlayerFrame = document.getElementById('videoPlayerFrame');
+    elements.videoBackToGridBtn = document.getElementById('videoBackToGridBtn');
+    elements.videoMiniCloseBtn = document.getElementById('videoMiniCloseBtn');
+    elements.videoMiniRestoreBtn = document.getElementById('videoMiniRestoreBtn');
+    elements.videoMiniPlayPauseBtn = document.getElementById('videoMiniPlayPauseBtn');
+    elements.videoMiniPlayIcon = document.getElementById('videoMiniPlayIcon');
+    elements.videoMiniPauseIcon = document.getElementById('videoMiniPauseIcon');
+    elements.videoPlayerTitle = document.getElementById('videoPlayerTitle');
+    elements.videoPlayerMiniMeta = document.getElementById('videoPlayerMiniMeta');
+    elements.videoMiniTitle = document.getElementById('videoMiniTitle');
+    elements.videoMiniMeta = document.getElementById('videoMiniMeta');
+    elements.videoMiniProgress = document.getElementById('videoMiniProgress');
+    elements.videoMiniProgressBar = document.getElementById('videoMiniProgressBar');
+    elements.videoMiniProgressHover = document.getElementById('videoMiniProgressHover');
+    elements.videoMiniProgressThumb = document.getElementById('videoMiniProgressThumb');
+    elements.videoMiniProgressTime = document.getElementById('videoMiniProgressTime');
     elements.webPage = document.getElementById('webPage');
     elements.settingsPage = document.getElementById('settingsPage');
     elements.pages = document.querySelectorAll('.page');
@@ -5356,7 +5580,9 @@ function setupEventListeners() {
             try {
                 state.mediaFilter = 'video';
                 const files = await window.aurivo?.dialog?.openFiles?.({
-                    title: 'Video dosyalarını seç',
+                    title: state.currentPage === 'videoTools'
+                        ? uiT('video.tools.mediaPool.addTitle', 'Düzenleme için medya ekle')
+                        : 'Video dosyalarını seç',
                     filters: [
                         { name: 'Video Dosyaları', extensions: getConfiguredLibraryExtensions('video') },
                         { name: 'Tüm Dosyalar', extensions: ['*'] }
@@ -5371,7 +5597,12 @@ function setupEventListeners() {
                 persistVideoLibrary();
                 state.currentPath = '';
                 renderVideoLibraryTree();
-                playVideo(files[0].path);
+                if (state.currentPage === 'videoTools') {
+                    markVideoToolSourceSelected(files[0].path);
+                    safeNotify(uiT('video.tools.sourceSelected', 'Video düzenleme kaynağı seçildi.'), 'success', 1800);
+                } else {
+                    playVideo(files[0].path);
+                }
             } catch (e) {
                 safeNotify('Video seçilemedi: ' + (e?.message || e), 'error');
             }
@@ -6266,12 +6497,121 @@ function setupEventListeners() {
     if (elements.videoPlayer) {
         elements.videoPlayer.addEventListener('dblclick', handleVideoSurfaceDoubleClick, true);
     }
+    if (elements.videoPlayerFrame) {
+        elements.videoPlayerFrame.addEventListener('dblclick', handleVideoSurfaceDoubleClick, true);
+    }
     const videoPageEl = document.getElementById('videoPage');
     if (videoPageEl) {
         videoPageEl.addEventListener('dblclick', handleVideoSurfaceDoubleClick, true);
         videoPageEl.addEventListener('mouseup', handleVideoSurfaceMouseUpFallback, true);
     }
     document.addEventListener('dblclick', handleGlobalVideoDoubleClickCapture, true);
+
+    if (elements.videoBackToGridBtn) {
+        elements.videoBackToGridBtn.addEventListener('click', (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            minimizeVideoToCornerCard();
+        });
+    }
+    if (elements.videoMiniCloseBtn) {
+        elements.videoMiniCloseBtn.addEventListener('click', (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            closeVideoMiniPlayer();
+        });
+    }
+    if (elements.videoMiniRestoreBtn) {
+        elements.videoMiniRestoreBtn.addEventListener('click', (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            restoreVideoFromCornerCard();
+        });
+    }
+    if (elements.videoMiniPlayPauseBtn) {
+        elements.videoMiniPlayPauseBtn.addEventListener('click', (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            togglePlayPause();
+        });
+    }
+    if (elements.videoGridView) {
+        elements.videoGridView.addEventListener('click', (event) => {
+            if (handleVideoToolClickEvent(event)) return;
+            const trigger = event.target instanceof Element
+                ? event.target.closest('[data-video-action][data-video-path]')
+                : null;
+            if (!trigger) return;
+            const videoPath = String(trigger.getAttribute('data-video-path') || '').trim();
+            if (!videoPath) return;
+            const action = String(trigger.getAttribute('data-video-action') || '').trim();
+            if (action === 'queue-next') {
+                event.preventDefault();
+                event.stopPropagation();
+                queueVideoItemNextByPath(videoPath);
+                return;
+            }
+            playVideo(videoPath, { mode: 'player' });
+        });
+        elements.videoGridView.addEventListener('change', (event) => {
+            handleVideoToolChangeEvent(event);
+        });
+    }
+    if (elements.videoToolsPage) {
+        elements.videoToolsPage.addEventListener('click', (event) => {
+            handleVideoToolClickEvent(event);
+        });
+        elements.videoToolsPage.addEventListener('pointerdown', (event) => {
+            beginVideoStudioSourceTransform(event);
+        });
+        elements.videoToolsPage.addEventListener('change', (event) => {
+            handleVideoToolChangeEvent(event);
+        });
+        elements.videoToolsPage.addEventListener('input', (event) => {
+            handleVideoToolChangeEvent(event);
+        });
+    }
+    document.addEventListener('pointermove', (event) => {
+        handleVideoStudioInputPointer(event);
+        moveVideoStudioSourceTransform(event);
+    });
+    document.addEventListener('pointerup', (event) => {
+        handleVideoStudioInputPointer(event);
+        endVideoStudioSourceTransform(event);
+    });
+    document.addEventListener('pointercancel', (event) => {
+        handleVideoStudioInputPointer(event);
+        endVideoStudioSourceTransform(event);
+    });
+    document.addEventListener('pointerdown', handleVideoStudioInputPointer, true);
+    document.addEventListener('keydown', handleVideoStudioInputKey, true);
+    document.addEventListener('visibilitychange', () => {
+        if (!isVideoStudioViewActive()) return;
+        if (document.hidden) {
+            releaseVideoStudioIdleRuntime();
+        } else {
+            scheduleVideoStudioAutoPreview();
+            setTimeout(() => {
+                startVideoStudioLiveAudioMeters().catch(() => {});
+            }, 200);
+        }
+    });
+    if (elements.videoPlayerShell) {
+        elements.videoPlayerShell.addEventListener('click', (event) => {
+            if (getVideoWorkspaceMode() !== 'mini') return;
+            const target = event.target;
+            if (target instanceof Element && target.closest('button, input, select, textarea, .video-fs-controls, #videoFsControls')) {
+                return;
+            }
+        });
+        elements.videoPlayerShell.addEventListener('dblclick', handleVideoSurfaceDoubleClick, true);
+    }
+    if (elements.videoMiniProgress) {
+        elements.videoMiniProgress.addEventListener('mousemove', handleMiniVideoHoverProgress);
+        elements.videoMiniProgress.addEventListener('mouseenter', handleMiniVideoHoverProgress);
+        elements.videoMiniProgress.addEventListener('mouseleave', resetMiniVideoHoverProgress);
+        elements.videoMiniProgress.addEventListener('click', handleMiniVideoProgressSeek);
+    }
 
     // TAM EKRAN VIDEO KONTROL PANELİ - Olay Dinleyicileri
     setupFullscreenVideoControls();
@@ -15689,6 +16029,10 @@ function setupSystemTrayControl() {
     // Ana süreçten gelen medya kontrol komutlarını dinle
     window.aurivo.onMediaControl((action) => {
         console.log('System tray media control:', action);
+        if (handleVideoStudioGlobalShortcut(action)) {
+            updateTrayState();
+            return;
+        }
         executeMediaControlAction(action);
 
         // Her medya kontrolden sonra tepsi durumunu güncelle
@@ -16366,11 +16710,13 @@ function setupAudioPlayerEvents(player, playerId) {
 function setupVideoPlayerEvents() {
     const video = elements.videoPlayer;
     if (!video) return;
+    prepareVideoElementForHighResolutionPlayback(video);
 
     // Zaman güncelleme
     video.addEventListener('timeupdate', () => {
         if (state.activeMedia === 'video') {
             updateTimeDisplay();
+            updateMiniVideoProgress();
 
             // MPRIS position'ını sınırla (her 2 saniyede bir)
             const currentSecInt = Math.floor(video.currentTime || 0);
@@ -16384,10 +16730,18 @@ function setupVideoPlayerEvents() {
     // Metadata yüklendiğinde
     video.addEventListener('loadedmetadata', () => {
         if (state.activeMedia === 'video') {
+            applyVideoPlaybackPerformanceMode(video);
             updateTimeDisplay();
+            updateMiniVideoProgress();
             updateMPRISMetadata();
             // Video metadata hazır olduğunda DSP grafiğini güvenli şekilde uygula.
             scheduleApplyWebDaliEngine('video-metadata', 40);
+        }
+    });
+
+    video.addEventListener('resize', () => {
+        if (state.activeMedia === 'video') {
+            applyVideoPlaybackPerformanceMode(video);
         }
     });
 
@@ -16427,6 +16781,66 @@ function setupVideoPlayerEvents() {
             updateMPRISMetadata();
         }
     });
+
+    video.addEventListener('error', () => {
+        if (state.activeMedia !== 'video') return;
+        const mediaError = video.error;
+        const detail = mediaError?.message || (mediaError?.code ? `code ${mediaError.code}` : '');
+        const hint = uiT('video.playback.codecHint', 'Codec desteklenmiyor veya dosya okunamıyor olabilir.');
+        safeNotify(detail ? `${hint} (${detail})` : hint, 'error', 3600);
+    });
+}
+
+function prepareVideoElementForHighResolutionPlayback(video = elements.videoPlayer) {
+    if (!video) return;
+    video.preload = 'auto';
+    video.playsInline = true;
+    video.controls = false;
+    try {
+        video.disablePictureInPicture = true;
+    } catch {
+        // yoksay
+    }
+    try {
+        video.setAttribute('playsinline', '');
+        video.setAttribute('webkit-playsinline', '');
+    } catch {
+        // yoksay
+    }
+}
+
+function getVideoPlaybackResolution(video = elements.videoPlayer) {
+    const width = Math.max(0, Number(video?.videoWidth || 0));
+    const height = Math.max(0, Number(video?.videoHeight || 0));
+    return { width, height, pixels: width * height };
+}
+
+function isUltraHdVideo(video = elements.videoPlayer) {
+    const { width, height, pixels } = getVideoPlaybackResolution(video);
+    return width >= 3840 || height >= 2160 || pixels >= 8294400;
+}
+
+function applyVideoPlaybackPerformanceMode(video = elements.videoPlayer) {
+    const { width, height } = getVideoPlaybackResolution(video);
+    const ultraHd = isUltraHdVideo(video);
+    document.body?.classList?.toggle('video-uhd-playback', ultraHd);
+    elements.videoPage?.classList?.toggle('video-uhd-playback', ultraHd);
+    elements.videoPlayerShell?.classList?.toggle('video-uhd-playback', ultraHd);
+    if (elements.videoPlayerShell) {
+        elements.videoPlayerShell.dataset.videoResolution = width && height ? `${width}x${height}` : '';
+    }
+    if (ultraHd) {
+        console.log(`[VIDEO] 4K/UHD playback mode active: ${width}x${height}`);
+    }
+}
+
+function clearVideoPlaybackPerformanceMode() {
+    document.body?.classList?.remove('video-uhd-playback');
+    elements.videoPage?.classList?.remove('video-uhd-playback');
+    elements.videoPlayerShell?.classList?.remove('video-uhd-playback');
+    if (elements.videoPlayerShell) {
+        delete elements.videoPlayerShell.dataset.videoResolution;
+    }
 }
 
 async function requestFullscreenSafe(el) {
@@ -16588,6 +17002,13 @@ async function toggleVideoFullscreen() {
 
     const wasFullscreen = isVideoFullscreenActive();
     const targetEnter = !wasFullscreen;
+    const currentWorkspaceMode = getVideoWorkspaceMode();
+    const shouldPromoteMiniToPlayer = targetEnter && currentWorkspaceMode === 'mini';
+
+    if (shouldPromoteMiniToPlayer) {
+        videoWorkspaceModeBeforeFullscreen = 'mini';
+        setVideoWorkspaceMode('player');
+    }
 
     try {
         if (videoFullscreenFlowState.useLegacy) {
@@ -16609,6 +17030,10 @@ async function toggleVideoFullscreen() {
             const afterLegacy = isVideoFullscreenActive();
             const legacyReached = targetEnter ? afterLegacy : !afterLegacy;
             if (!legacyReached) {
+                if (shouldPromoteMiniToPlayer) {
+                    setVideoWorkspaceMode('mini');
+                    videoWorkspaceModeBeforeFullscreen = null;
+                }
                 videoFullscreenFlowState.consecutiveFailures += 1;
             } else {
                 videoFullscreenFlowState.consecutiveFailures = 0;
@@ -16622,6 +17047,10 @@ async function toggleVideoFullscreen() {
             console.warn('[VIDEO-FS] switched to legacy fullscreen path');
         }
     } catch (e) {
+        if (shouldPromoteMiniToPlayer) {
+            setVideoWorkspaceMode('mini');
+            videoWorkspaceModeBeforeFullscreen = null;
+        }
         videoFullscreenFlowState.consecutiveFailures += 1;
         if (!videoFullscreenFlowState.useLegacy) {
             try {
@@ -16644,8 +17073,16 @@ async function toggleVideoFullscreen() {
 
 function isVideoSurfaceTarget(target) {
     if (!target || !(target instanceof Element)) return false;
-    if (!target.closest('#videoPage, #videoPlayer')) return false;
-    if (target.closest('#videoFsControls, .context-menu, button, input, select, textarea, [role=\"button\"]')) return false;
+    if (!target.closest('#videoPlayerShell, #videoPlayer, #videoPlayerFrame, #videoMiniOverlay')) return false;
+    if (target.closest('#videoFsControls, .context-menu, button, input, select, textarea, [role=\"button\"], #videoMiniProgress')) return false;
+    const shell = target.closest('#videoPlayerShell');
+    if (shell && getVideoWorkspaceMode() === 'mini') {
+        const frame = target.closest('#videoPlayerFrame');
+        const overlay = target.closest('#videoMiniOverlay');
+        const info = target.closest('.video-mini-info');
+        if (!frame && !overlay) return false;
+        if (info) return false;
+    }
     return true;
 }
 
@@ -16663,6 +17100,7 @@ function handleVideoSurfaceDoubleClick(e) {
 
 function handleGlobalVideoDoubleClickCapture(e) {
     if (!isPageVisible(elements.videoPage)) return;
+    if (getVideoWorkspaceMode() === 'grid') return;
     const target = e?.target;
     if (isVideoSurfaceTarget(target)) {
         handleVideoSurfaceDoubleClick(e);
@@ -16671,10 +17109,10 @@ function handleGlobalVideoDoubleClickCapture(e) {
 
     // Overlay/üst katman video üstünde ise target videoPage altında olmayabilir.
     // Bu durumda koordinata göre video alanında çift tıkı kabul et.
-    const videoPage = document.getElementById('videoPage');
-    if (!videoPage) return;
+    const videoShell = elements.videoPlayerShell;
+    if (!videoShell || videoShell.classList.contains('hidden')) return;
     if (typeof e?.clientX !== 'number' || typeof e?.clientY !== 'number') return;
-    const rect = videoPage.getBoundingClientRect();
+    const rect = videoShell.getBoundingClientRect();
     const insideVideoRect =
         e.clientX >= rect.left && e.clientX <= rect.right &&
         e.clientY >= rect.top && e.clientY <= rect.bottom;
@@ -16807,6 +17245,7 @@ let galleryInlineFullscreenActive = false;
 let galleryWindowFullscreenActive = false;
 let videoFullscreenToggleInFlight = false;
 let videoFullscreenLastToggleAt = 0;
+let videoWorkspaceModeBeforeFullscreen = null;
 const videoFullscreenFlowState = {
     useLegacy: false,
     consecutiveFailures: 0,
@@ -17308,6 +17747,11 @@ function handleFullscreenChange() {
         // Tam ekrandan çıktı
         videoPage?.classList.remove('fs-active');
         stopFsHideTimer();
+
+        if (videoWorkspaceModeBeforeFullscreen === 'mini' && String(state.currentVideoPath || '').trim()) {
+            setVideoWorkspaceMode('mini');
+        }
+        videoWorkspaceModeBeforeFullscreen = null;
 
         setFsMenuVisible(document.getElementById('fsSettingsMenu'), false);
         setFsMenuVisible(document.getElementById('fsQualityMenu'), false);
@@ -18533,7 +18977,7 @@ function handleSidebarClick(btn) {
         const currentPage = state.currentPage;
 
         // Müzik/Video sekmesindeyken İndir penceresi açılmasın; sadece bilgilendir.
-        if (currentPage === 'music' || currentPage === 'video' || currentPage === 'gallery') {
+        if (currentPage === 'music' || currentPage === 'video' || currentPage === 'videoTools' || currentPage === 'gallery') {
             safeNotify('Müzik, Video veya Galeri sekmesindeyken İndir penceresi açılamaz.', 'info');
             try {
                 elements.sidebarBtns.forEach(b => b.classList.remove('active'));
@@ -18586,7 +19030,7 @@ function handleSidebarClick(btn) {
     btn.classList.add('active');
 
     // Video sekmesine geçildiğinde müziği durdur
-    if (page === 'video' && state.isPlaying && state.activeMedia === 'audio') {
+    if ((page === 'video' || page === 'videoTools') && state.isPlaying && state.activeMedia === 'audio') {
         stopAudio();
         state.isPlaying = false;
         updatePlayPauseIcon(false);
@@ -18598,7 +19042,7 @@ function handleSidebarClick(btn) {
     // Media filtresini ayarla
     if (page === 'music') {
         state.mediaFilter = 'audio';
-    } else if (page === 'video') {
+    } else if (page === 'video' || page === 'videoTools') {
         state.mediaFilter = 'video';
     } else if (page === 'gallery') {
         state.mediaFilter = 'image';
@@ -18689,6 +19133,14 @@ function isolateMediaSection(targetPage) {
         // Web'i tamamen kapat
         stopWeb();
         state.activeMedia = 'video';
+    }
+    else if (targetPage === 'videoTools') {
+        // Düzenleme araçları aktif videoyu kaynak olarak kullanabilir; videoyu durdurma.
+        stopAudio();
+        stopWeb();
+        if (!state.activeMedia || state.activeMedia === 'audio' || state.activeMedia === 'web') {
+            state.activeMedia = 'video';
+        }
     }
     // Web sekmesine geçiliyorsa
     else if (targetPage === 'web') {
@@ -18792,11 +19244,21 @@ function stopVideo() {
         elements.videoPlayer.src = '';
         elements.videoPlayer.load();
     }
+    clearVideoPlaybackPerformanceMode();
     subtitleRuntime.searchToken += 1;
     subtitleRuntime.currentMediaPath = '';
     subtitleRuntime.currentSubtitlePath = '';
     subtitleRuntime.hasTrack = false;
     syncFsSubtitleUiState();
+    state.isPlaying = false;
+    state.currentVideoPath = null;
+    state.currentVideoIndex = -1;
+    updatePlayPauseIcon(false);
+    updateMiniVideoProgress();
+    state.videoWorkspaceMode = 'grid';
+    renderVideoWorkspace();
+    updateVideoWorkspaceTitle('');
+    setVideoWorkspaceMode('grid');
 }
 
 function stopWeb() {
@@ -18833,6 +19295,11 @@ function switchPage(pageName) {
             targetPage = elements.videoPage;
             normalizedPage = 'video';
             break;
+        case 'videoTools':
+        case 'videotools':
+            targetPage = elements.videoToolsPage;
+            normalizedPage = 'videoTools';
+            break;
         case 'gallery':
             targetPage = elements.musicPage;
             normalizedPage = 'gallery';
@@ -18852,8 +19319,20 @@ function switchPage(pageName) {
     }
 
     state.currentPage = normalizedPage;
+    if (normalizedPage !== 'videoTools') {
+        releaseVideoStudioIdleRuntime();
+    }
+    document.body?.classList?.toggle('video-tools-mode', normalizedPage === 'videoTools');
     targetPage.classList.remove('hidden');
     targetPage.classList.add('active');
+    if (normalizedPage === 'video') {
+        renderVideoWorkspace();
+        setVideoWorkspaceMode(String(state.currentVideoPath || '').trim() ? getVideoWorkspaceMode() : 'grid');
+    }
+    if (normalizedPage === 'videoTools') {
+        renderVideoToolsWorkspace();
+    }
+    updateVideoToolsLibraryPanelUi();
     applyGalleryUiClasses();
     syncWindowFullscreenLayoutState();
     updateMusicViewQuickControlUi();
@@ -19566,6 +20045,38 @@ function updateLibraryAddButtonUi() {
         const addTextEl = elements.imageAddFilesBtn.querySelector('.video-add-btn-label');
         if (addTextEl) addTextEl.textContent = addLabel;
         elements.imageAddFilesBtn.setAttribute('title', addTitle);
+    }
+    updateVideoToolsLibraryPanelUi();
+}
+
+function updateVideoToolsLibraryPanelUi() {
+    const isVideoTools = state.currentPage === 'videoTools';
+    const panelTitle = elements.libraryPanel?.querySelector?.('.panel-title');
+    if (panelTitle) {
+        panelTitle.textContent = isVideoTools
+            ? uiT('video.tools.mediaPool.title', 'MEDYA HAVUZU')
+            : uiT('panel.library', 'KÜTÜPHANE');
+    }
+    const videoLabel = elements.videoAddFilesBtn?.querySelector?.('.video-add-btn-label');
+    if (videoLabel) {
+        videoLabel.textContent = isVideoTools
+            ? uiT('video.tools.mediaPool.add', 'Medya Ekle')
+            : uiT('libraryActions.openVideo', 'Video Aç');
+    }
+    if (elements.videoAddFilesBtn) {
+        elements.videoAddFilesBtn.setAttribute(
+            'title',
+            isVideoTools
+                ? uiT('video.tools.mediaPool.addTitle', 'Düzenleme için medya ekle')
+                : uiT('libraryActions.openVideo', 'Video Aç')
+        );
+    }
+    if (elements.libraryQuickSearchInput) {
+        const placeholder = isVideoTools
+            ? uiT('video.tools.mediaPool.searchPlaceholder', 'Medya havuzunda ara...')
+            : uiT('library.quickSearch.placeholder', 'Kütüphanede ara...');
+        elements.libraryQuickSearchInput.setAttribute('placeholder', placeholder);
+        elements.libraryQuickSearchInput.setAttribute('aria-label', placeholder);
     }
 }
 
@@ -20617,14 +21128,14 @@ function canRetryPlaylistCardCover(filePath = '') {
 
 function applyPlaylistCardCover(img, imageData = null) {
     if (!img || !img.isConnected) return;
-    
+
     const parentContainer = img.closest('.playlist-card-cover');
     const itemContainer = img.closest('.playlist-item');
     const fallbackIcon = parentContainer ? parentContainer.querySelector('.fallback-cover-large-icon') : null;
-    
+
     const source = String(imageData || '').trim();
     const isDataImage = /^data:image\/[a-z0-9.+-]+;base64,/i.test(source);
-    
+
     if (isDataImage) {
         if (parentContainer) parentContainer.style.display = '';
         if (fallbackIcon) fallbackIcon.style.display = 'none';
@@ -20633,16 +21144,16 @@ function applyPlaylistCardCover(img, imageData = null) {
         img.classList.remove('default-cover');
         return;
     }
-    
+
     // Kapak yoksa img öğesini gizle, büyük ikon kutusunu göster
     img.style.display = 'none';
-    
+
     if (parentContainer) {
         parentContainer.style.background = 'transparent';
         parentContainer.style.border = 'none';
         parentContainer.style.boxShadow = 'none';
     }
-    
+
     if (fallbackIcon) {
         fallbackIcon.style.display = 'flex';
     } else if (parentContainer && itemContainer) {
@@ -20652,7 +21163,7 @@ function applyPlaylistCardCover(img, imageData = null) {
         iconElement.innerHTML = `<img src="icons/fallback_${isVideo ? 'video' : 'audio'}.svg" style="width: 100%; height: 100%; object-fit: contain;">`;
         parentContainer.appendChild(iconElement);
     }
-    
+
     img.src = '';
     img.classList.add('default-cover');
 }
@@ -22237,9 +22748,9 @@ async function addMusicFilesToLibrary() {
         if (state.currentIndex === -1 && typeof firstAudioIndex === 'number' && firstAudioIndex >= 0) {
             state.mediaFilter = 'audio';
             playIndex(firstAudioIndex);
-        } else if (state.currentVideoIndex < 0 && newVideoItems.length > 0 && audioAddedCount === 0) {
+        } else if (newVideoItems.length > 0 && audioAddedCount === 0) {
             state.mediaFilter = 'video';
-            playVideo(newVideoItems[0].path);
+            showVideoWorkspaceGrid();
         } else {
             state.mediaFilter = previousFilter || state.mediaFilter;
         }
@@ -22347,13 +22858,19 @@ function showLibraryAddMenu(anchor, scope = 'audio') {
                 })
             ]
             : [
-            buildLibraryAddMenuItem(uiT('libraryActions.openVideo', 'Video Aç'), {
+            buildLibraryAddMenuItem(
+                state.currentPage === 'videoTools'
+                    ? uiT('video.tools.mediaPool.add', 'Medya Ekle')
+                    : uiT('libraryActions.openVideo', 'Video Aç'),
+                {
                 icon: '🎬',
                 onClick: async () => {
                     try {
                         state.mediaFilter = 'video';
                         const files = await window.aurivo?.dialog?.openFiles?.({
-                            title: uiT('libraryActions.openVideo', 'Video Aç'),
+                            title: state.currentPage === 'videoTools'
+                                ? uiT('video.tools.mediaPool.addTitle', 'Düzenleme için medya ekle')
+                                : uiT('libraryActions.openVideo', 'Video Aç'),
                             filters: [
                                 { name: uiT('libraryActions.openVideo', 'Video Aç'), extensions: getConfiguredLibraryExtensions('video') },
                                 { name: uiT('common.allFiles', 'Tüm Dosyalar'), extensions: ['*'] }
@@ -22367,7 +22884,12 @@ function showLibraryAddMenu(anchor, scope = 'audio') {
                         persistVideoLibrary();
                         state.currentPath = '';
                         renderVideoLibraryTree();
-                        playVideo(files[0].path);
+                        if (state.currentPage === 'videoTools') {
+                            markVideoToolSourceSelected(files[0].path);
+                            safeNotify(uiT('video.tools.sourceSelected', 'Video düzenleme kaynağı seçildi.'), 'success', 1800);
+                        } else {
+                            showVideoWorkspaceGrid();
+                        }
                     } catch (e) {
                         safeNotify(`${uiT('libraryActions.openVideo', 'Video Aç')}: ${e?.message || e}`, 'error', 2200);
                     }
@@ -22768,6 +23290,9 @@ function handleFileTreeClick(e) {
         // Dosya seçimi
         document.querySelectorAll('.tree-item.file').forEach(i => i.classList.remove('selected'));
         item.classList.add('selected');
+        if (state.currentPage === 'videoTools' && isVideoFile(item.dataset.name || String(path || '').split('/').pop())) {
+            markVideoToolSourceSelected(path);
+        }
     }
 }
 
@@ -22787,6 +23312,10 @@ function handleFileTreeDblClick(e) {
         else if (folderScope === 'audio') state.mediaFilter = 'audio';
         loadDirectory(path);
     } else {
+        if (state.currentPage === 'videoTools' && isVideoFile(name)) {
+            markVideoToolSourceSelected(path);
+            return;
+        }
         // Dosyayı türüne göre ilgili sekmede çalıştır
         handleTreeItemDoubleClick(path, false, name);
     }
@@ -23239,7 +23768,7 @@ function createTreeItem(name, path, isDirectory, icon = null) {
             icon = getConfiguredLibraryExtensions('video').includes(ext) ? '🎬' : '🎵';
         }
     }
-    
+
     if (icon && typeof icon === 'string' && icon.trim().startsWith('<svg')) {
         iconSpan.innerHTML = icon;
     } else {
@@ -23482,6 +24011,10 @@ async function handleTreeItemDoubleClick(path, isDirectory, name = null) {
 
         // Video mu, müzik mi kontrol et
         if (isVideoFile(fileName)) {
+            if (state.currentPage === 'videoTools') {
+                markVideoToolSourceSelected(path);
+                return;
+            }
             setActiveSidebarByPage('video');
             state.currentPage = 'video';
             state.currentPanel = 'library';
@@ -26727,6 +27260,8534 @@ async function enqueueExternalMediaOpen(paths) {
     return await drainExternalMediaOpenQueue();
 }
 
+function getVideoWorkspaceMode() {
+    const mode = String(state.videoWorkspaceMode || 'grid').trim().toLowerCase();
+    return ['grid', 'player', 'mini'].includes(mode) ? mode : 'grid';
+}
+
+function updateVideoWorkspaceTitle(videoPath = '') {
+    if (!elements.videoPlayerTitle) return;
+    const sourcePath = String(videoPath || state.currentVideoPath || '').trim();
+    const title = sourcePath
+        ? (window.aurivo?.path?.basename?.(sourcePath) || sourcePath.split(/[\\/]/).pop() || 'Video')
+        : uiT('video.workspace.title', 'Videolar');
+    elements.videoPlayerTitle.textContent = title;
+    if (elements.videoMiniTitle) {
+        elements.videoMiniTitle.textContent = title;
+    }
+    if (elements.videoPlayerMiniMeta) {
+        elements.videoPlayerMiniMeta.textContent = sourcePath
+            ? uiT('video.workspace.miniLabel', 'Mini oynatıcı')
+            : '';
+    }
+    if (elements.videoMiniMeta) {
+        elements.videoMiniMeta.textContent = sourcePath
+            ? uiT('video.workspace.miniLabel', 'Mini oynatıcı')
+            : '';
+    }
+}
+
+function updateMiniVideoProgress() {
+    if (!elements.videoMiniProgressBar || !elements.videoPlayer) return;
+    const duration = Number(elements.videoPlayer.duration || 0);
+    const current = Number(elements.videoPlayer.currentTime || 0);
+    const percent = duration > 0 ? Math.max(0, Math.min(100, (current / duration) * 100)) : 0;
+    elements.videoMiniProgressBar.style.width = `${percent}%`;
+    if (elements.videoMiniProgressThumb) {
+        elements.videoMiniProgressThumb.style.left = `${percent}%`;
+    }
+    updateMiniVideoProgressFxColors(percent);
+}
+
+function updateMiniVideoProgressFxColors(percent = 0) {
+    if (!elements.videoMiniProgressBar) return;
+    const safePercent = Math.max(0, Math.min(100, Number(percent) || 0));
+    const sliderFxOff = !isSliderFxEnabledRuntime();
+    if (sliderFxOff) {
+        elements.videoMiniProgressBar.style.setProperty('--video-mini-progress-fill', 'linear-gradient(90deg, #31d7ff 0%, #79f2ff 100%)');
+        elements.videoMiniProgressBar.style.setProperty('--video-mini-progress-glow', 'rgba(49, 215, 255, 0.45)');
+        if (elements.videoMiniProgressThumb) {
+            elements.videoMiniProgressThumb.style.background = '#8cf6ff';
+            elements.videoMiniProgressThumb.style.boxShadow = '0 0 0 3px rgba(140, 246, 255, 0.16)';
+        }
+        return;
+    }
+
+    const colors = [
+        `hsl(${(rainbowHue + 0) % 360}, 100%, 50%)`,
+        `hsl(${(rainbowHue + 40) % 360}, 100%, 50%)`,
+        `hsl(${(rainbowHue + 80) % 360}, 100%, 50%)`,
+        `hsl(${(rainbowHue + 120) % 360}, 100%, 50%)`,
+        `hsl(${(rainbowHue + 160) % 360}, 100%, 50%)`,
+        `hsl(${(rainbowHue + 200) % 360}, 100%, 50%)`
+    ];
+    const glow = `hsl(${(rainbowHue + 60) % 360}, 100%, 50%)`;
+    const fill = `linear-gradient(90deg, ${colors.join(', ')})`;
+    elements.videoMiniProgressBar.style.setProperty('--video-mini-progress-fill', fill);
+    elements.videoMiniProgressBar.style.setProperty('--video-mini-progress-glow', glow);
+    if (elements.videoMiniProgressThumb) {
+        const thumbColor = `hsl(${(rainbowHue + Math.round((safePercent / 100) * 200) + 60) % 360}, 100%, 62%)`;
+        const thumbGlow = `hsl(${(rainbowHue + Math.round((safePercent / 100) * 200) + 60) % 360}, 100%, 50%)`;
+        elements.videoMiniProgressThumb.style.background = thumbColor;
+        elements.videoMiniProgressThumb.style.boxShadow = `0 0 0 3px color-mix(in srgb, ${thumbGlow} 28%, transparent)`;
+    }
+}
+
+function handleMiniVideoHoverProgress(event) {
+    if (getVideoWorkspaceMode() !== 'mini') return;
+    if (!elements.videoPlayerShell || !elements.videoMiniProgressHover || !elements.videoMiniProgressThumb) return;
+    const rect = elements.videoMiniProgress?.getBoundingClientRect?.() || elements.videoPlayerShell.getBoundingClientRect();
+    if (!rect.width) return;
+    const percent = Math.max(0, Math.min(100, ((event.clientX - rect.left) / rect.width) * 100));
+    elements.videoMiniProgressHover.style.width = `${percent}%`;
+    if (elements.videoMiniProgressTime && elements.videoPlayer) {
+        const duration = Number(elements.videoPlayer.duration || 0);
+        const hoverSeconds = duration > 0 ? (percent / 100) * duration : 0;
+        elements.videoMiniProgressTime.textContent = formatTime(hoverSeconds);
+        elements.videoMiniProgressTime.style.left = `${percent}%`;
+    }
+    elements.videoPlayerShell.classList.add('mini-progress-hover-active');
+}
+
+function resetMiniVideoHoverProgress() {
+    if (!elements.videoPlayerShell || !elements.videoMiniProgressHover || !elements.videoMiniProgressThumb) return;
+    elements.videoMiniProgressHover.style.width = '0%';
+    if (elements.videoMiniProgressTime) {
+        elements.videoMiniProgressTime.style.left = '0%';
+    }
+    elements.videoPlayerShell.classList.remove('mini-progress-hover-active');
+}
+
+function handleMiniVideoProgressSeek(event) {
+    if (getVideoWorkspaceMode() !== 'mini') return;
+    if (!elements.videoMiniProgress || !elements.videoPlayer) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const rect = elements.videoMiniProgress.getBoundingClientRect();
+    if (!rect.width) return;
+    const duration = Number(elements.videoPlayer.duration || 0);
+    if (!(duration > 0)) return;
+    const percent = Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width));
+    elements.videoPlayer.currentTime = percent * duration;
+    updateMiniVideoProgress();
+}
+
+function updateMiniVideoPlaybackUi(isPlaying = false) {
+    if (elements.videoMiniPlayIcon && elements.videoMiniPauseIcon) {
+        elements.videoMiniPlayIcon.classList.toggle('hidden', !!isPlaying);
+        elements.videoMiniPauseIcon.classList.toggle('hidden', !isPlaying);
+    }
+}
+
+function setVideoWorkspaceMode(mode = 'grid') {
+    const normalized = ['grid', 'player', 'mini'].includes(String(mode || '').toLowerCase())
+        ? String(mode).toLowerCase()
+        : 'grid';
+    state.videoWorkspaceMode = normalized;
+    if (!elements.videoPage || !elements.videoPlayerShell || !elements.videoGridView) return;
+    elements.videoPage.classList.remove('video-page-mode-grid', 'video-page-mode-player', 'video-page-mode-mini');
+    elements.videoPage.classList.add(`video-page-mode-${normalized}`);
+    const hasVideo = !!String(state.currentVideoPath || '').trim();
+    elements.videoGridView.classList.toggle('hidden', normalized === 'player');
+    elements.videoPlayerShell.classList.toggle('hidden', !hasVideo || normalized === 'grid');
+    elements.videoPlayerShell.classList.toggle('is-mini', normalized === 'mini');
+    updateVideoWorkspaceTitle();
+}
+
+async function ensureVideoThumbnailCached(videoPath = '') {
+    const normalizedPath = String(videoPath || '').trim();
+    if (!normalizedPath) return '';
+    if (videoThumbnailUrlCache.has(normalizedPath)) {
+        return videoThumbnailUrlCache.get(normalizedPath) || '';
+    }
+    if (videoThumbnailInFlight.has(normalizedPath)) {
+        return videoThumbnailInFlight.get(normalizedPath);
+    }
+    const task = (async () => {
+        try {
+            const thumb = await window.aurivo?.getVideoThumbnail?.(normalizedPath);
+            const resolved = String(thumb || '').trim();
+            if (resolved) {
+                videoThumbnailUrlCache.set(normalizedPath, resolved);
+                return resolved;
+            }
+        } catch {
+            // yoksay
+        } finally {
+            videoThumbnailInFlight.delete(normalizedPath);
+        }
+        videoThumbnailUrlCache.set(normalizedPath, '');
+        return '';
+    })();
+    videoThumbnailInFlight.set(normalizedPath, task);
+    return task;
+}
+
+function hydrateVideoWorkspaceThumbnails() {
+    const previews = Array.from(document.querySelectorAll('.video-workspace-preview[data-video-path]'));
+    previews.forEach((preview) => {
+        const videoPath = String(preview.getAttribute('data-video-path') || '').trim();
+        if (!videoPath) return;
+        void (async () => {
+            const thumb = await ensureVideoThumbnailCached(videoPath);
+            if (!thumb) return;
+            if (!preview.isConnected) return;
+            preview.innerHTML = `
+                <img class="gallery-item-preview-image video-workspace-preview-image" src="${escapeAttribute(thumb)}" alt="">
+                <span class="video-workspace-play-badge" aria-hidden="true">
+                    <span class="material-symbols-rounded">play_arrow</span>
+                </span>
+            `;
+        })();
+    });
+}
+
+function getPreferredVideoToolSourcePath() {
+    const toolSourcePath = String(videoToolSourcePath || '').trim();
+    if (toolSourcePath) return toolSourcePath;
+
+    const selectedItem = document.querySelector('.video-library-item.selected');
+    const selectedPath = String(selectedItem?.dataset?.path || '').trim();
+    if (selectedPath) return selectedPath;
+
+    const currentPath = String(state.currentVideoPath || '').trim();
+    if (currentPath) return currentPath;
+
+    if (Array.isArray(state.videoFiles) && state.currentVideoIndex >= 0 && state.currentVideoIndex < state.videoFiles.length) {
+        const indexedPath = String(state.videoFiles[state.currentVideoIndex]?.path || '').trim();
+        if (indexedPath) return indexedPath;
+    }
+
+    if (Array.isArray(state.videoFiles) && state.videoFiles.length > 0) {
+        return String(state.videoFiles[0]?.path || '').trim();
+    }
+    return '';
+}
+
+function markVideoToolSourceSelected(videoPath = '') {
+    const normalizedPath = String(videoPath || '').trim();
+    if (!normalizedPath) return;
+    videoToolSourcePath = normalizedPath;
+    document.querySelectorAll('.video-library-item').forEach((item) => {
+        item.classList.toggle('selected', String(item.dataset?.path || '').trim() === normalizedPath);
+    });
+    if (state.currentPage === 'videoTools') {
+        renderVideoToolsWorkspace();
+    }
+}
+
+function getVideoToolsViewMode() {
+    return videoToolsViewMode === 'processing' ? 'processing' : 'studio';
+}
+
+function isVideoStudioViewActive() {
+    return state.currentPage === 'videoTools' && getVideoToolsViewMode() === 'studio';
+}
+
+function setVideoToolsViewMode(mode = 'studio') {
+    const nextMode = mode === 'processing' ? 'processing' : 'studio';
+    if (videoToolsViewMode === nextMode) return;
+    videoToolsViewMode = nextMode;
+    if (nextMode !== 'studio') {
+        releaseVideoStudioIdleRuntime();
+    }
+    renderVideoToolsWorkspace();
+}
+
+function getVideoToolMode() {
+    const checked = document.querySelector('input[name="videoToolMode"]:checked');
+    const mode = String(checked?.value || videoToolModeState || 'video').trim().toLowerCase();
+    if (['video', 'audio', 'edit', 'subtitle', 'thumbnail', 'record', 'enhance', 'batch'].includes(mode)) {
+        videoToolModeState = mode;
+        return mode;
+    }
+    videoToolModeState = 'video';
+    return 'video';
+}
+
+function syncVideoToolFormatOptions() {
+    const mode = getVideoToolMode();
+    const formatSelect = document.getElementById('videoToolFormatSelect');
+    if (!formatSelect) return;
+    const batchOperation = String(document.getElementById('videoToolBatchOperationSelect')?.value || 'convert').toLowerCase();
+    const options = mode === 'audio'
+        ? [['mp3', 'MP3'], ['wav', 'WAV']]
+        : (mode === 'record'
+            ? [['webm', 'WebM']]
+            : (mode === 'thumbnail'
+            ? [['jpg', 'JPG'], ['png', 'PNG'], ['webp', 'WebP']]
+            : (mode === 'subtitle'
+                ? [['mp4', 'MP4'], ['mkv', 'MKV'], ['mov', 'MOV']]
+                : (mode === 'batch' && batchOperation === 'audio'
+                    ? [['mp3', 'MP3'], ['wav', 'WAV']]
+                    : [['mp4', 'MP4'], ['webm', 'WebM'], ['mkv', 'MKV'], ['mov', 'MOV']]))));
+    const previous = String(formatSelect.value || '').toLowerCase();
+    formatSelect.innerHTML = options
+        .map(([value, label]) => `<option value="${value}">${label}</option>`)
+        .join('');
+    formatSelect.value = options.some(([value]) => value === previous) ? previous : options[0][0];
+}
+
+function syncVideoToolModeUi() {
+    const mode = getVideoToolMode();
+    const editControls = document.getElementById('videoToolEditControls');
+    const subtitleControls = document.getElementById('videoToolSubtitleControls');
+    const thumbnailControls = document.getElementById('videoToolThumbnailControls');
+    const recordControls = document.getElementById('videoToolRecordControls');
+    const enhanceControls = document.getElementById('videoToolEnhanceControls');
+    const batchControls = document.getElementById('videoToolBatchControls');
+    const runLabel = document.getElementById('videoToolRunLabel');
+    const qualityField = document.getElementById('videoToolQualityField');
+    if (editControls) editControls.classList.toggle('hidden', mode !== 'edit');
+    if (subtitleControls) subtitleControls.classList.toggle('hidden', mode !== 'subtitle');
+    if (thumbnailControls) thumbnailControls.classList.toggle('hidden', mode !== 'thumbnail');
+    if (recordControls) recordControls.classList.toggle('hidden', mode !== 'record');
+    if (enhanceControls) enhanceControls.classList.toggle('hidden', mode !== 'enhance');
+    if (batchControls) batchControls.classList.toggle('hidden', mode !== 'batch');
+    if (qualityField) qualityField.classList.toggle('hidden', mode === 'audio' || mode === 'thumbnail' || mode === 'record');
+    if (runLabel) {
+        runLabel.textContent = mode === 'edit'
+            ? uiT('video.tools.applyEdit', 'Uygula')
+            : (mode === 'subtitle'
+                ? uiT('video.tools.applySubtitle', 'Altyazı Ekle')
+                : (mode === 'thumbnail'
+                    ? uiT('video.tools.thumbnail.create', 'Kapak Al')
+                    : (mode === 'record'
+                        ? uiT('video.tools.record.start', 'Kaydı Başlat')
+                        : (mode === 'enhance'
+                            ? uiT('video.tools.enhance.apply', 'İyileştir')
+                            : (mode === 'batch' ? uiT('video.tools.batch.start', 'Toplu Başlat') : uiT('video.tools.run', 'Dönüştür'))))));
+    }
+    applyVideoToolPerformanceHints();
+}
+
+function updateVideoToolStatus(message = '', type = 'idle', percent = null) {
+    const status = document.getElementById('videoToolStatus');
+    const fill = document.getElementById('videoToolProgressFill');
+    const openBtn = document.getElementById('videoToolOpenOutputBtn');
+    if (status) {
+        status.textContent = message || uiT('video.tools.status.ready', 'Hazır');
+        status.dataset.status = type;
+    }
+    if (fill) {
+        const numericPercent = Number(percent);
+        const safePercent = Number.isFinite(numericPercent) ? Math.max(0, Math.min(100, numericPercent)) : 0;
+        fill.style.width = `${safePercent}%`;
+    }
+    if (openBtn) {
+        openBtn.disabled = !videoToolLastOutputPath;
+    }
+}
+
+function handleVideoToolProgress(payload = {}) {
+    const jobId = String(payload?.jobId || '').trim();
+    if (!jobId || jobId !== videoToolActiveJobId) return;
+    const percent = Number(payload?.percent);
+    const message = String(payload?.message || '').trim()
+        || (Number.isFinite(percent) ? `${Math.round(percent)}%` : uiT('video.tools.status.running', 'Dönüştürülüyor...'));
+    const status = String(payload?.status || 'running').trim().toLowerCase();
+    updateVideoToolStatus(message, status, Number.isFinite(percent) ? percent : null);
+}
+
+function ensureVideoToolsProgressListener() {
+    if (videoToolsProgressUnsubscribe) return;
+    try {
+        const unsubscribe = window.aurivo?.videoTools?.onProgress?.(handleVideoToolProgress);
+        videoToolsProgressUnsubscribe = typeof unsubscribe === 'function' ? unsubscribe : null;
+    } catch {
+        videoToolsProgressUnsubscribe = null;
+    }
+}
+
+function releaseVideoToolsProgressListener() {
+    if (!videoToolsProgressUnsubscribe) return;
+    try {
+        videoToolsProgressUnsubscribe();
+    } catch {
+        // yoksay
+    }
+    videoToolsProgressUnsubscribe = null;
+}
+
+function getVideoToolPerformanceProfile() {
+    const appearance = state.settings?.appearance || {};
+    const libraryPerformance = state.settings?.library?.performance || {};
+    const visualMode = String(appearance.visualMode || '').trim().toLowerCase();
+    const theme = String(appearance.theme || '').trim().toLowerCase();
+    const hardwareTier = normalizeHardwareTier(cachedHardwareProfile?.tier || 'medium');
+    const lowPower = !!appearance.lowHardwareMode
+        || !!libraryPerformance.lightweightMode
+        || visualMode === 'minimal'
+        || theme === 'performance-lite'
+        || hardwareTier === 'low';
+    const balanced = !lowPower && (visualMode === 'balanced' || theme === 'performance-balanced' || hardwareTier === 'medium');
+    return {
+        lowPower,
+        maxRecordFps: lowPower ? 30 : 60,
+        defaultRecordFps: lowPower ? 24 : 30,
+        recorderVideoBitsPerSecond: lowPower ? 2500000 : (balanced ? 5000000 : 8000000),
+        batchYieldMs: lowPower ? 220 : (balanced ? 90 : 30),
+        singleJobSettleMs: lowPower ? 80 : 0
+    };
+}
+
+function applyVideoToolPerformanceHints() {
+    const profile = getVideoToolPerformanceProfile();
+    const fpsSelect = document.getElementById('videoToolRecordFpsSelect');
+    if (fpsSelect) {
+        const current = Number(fpsSelect.value) || profile.defaultRecordFps;
+        const options = profile.maxRecordFps <= 30
+            ? [[24, '24'], [30, '30']]
+            : [[30, '30'], [60, '60']];
+        fpsSelect.innerHTML = options
+            .map(([value, label]) => `<option value="${value}">${label}</option>`)
+            .join('');
+        const next = Math.min(Math.max(1, current), profile.maxRecordFps);
+        fpsSelect.value = String(options.some(([value]) => value === next) ? next : profile.defaultRecordFps);
+    }
+    const panel = document.querySelector('.video-tools-panel');
+    if (panel) {
+        panel.classList.toggle('video-tools-panel-low-power', profile.lowPower);
+    }
+}
+
+function clearScreenRecordingSources() {
+    const select = document.getElementById('videoToolRecordSourceSelect');
+    if (!select) return;
+    select.innerHTML = `<option value="">${escapeHtml(uiT('video.tools.record.sourcePlaceholder', 'Kaynakları yenileyin'))}</option>`;
+}
+
+function clearVideoToolBatchSelection() {
+    videoToolBatchFiles = [];
+    const input = document.getElementById('videoToolBatchFilesInput');
+    if (input) input.value = '';
+}
+
+function stopVideoStudioPreview() {
+    if (videoStudioAutoPreviewTimer) {
+        clearTimeout(videoStudioAutoPreviewTimer);
+        videoStudioAutoPreviewTimer = null;
+    }
+    try {
+        videoStudioPreviewStream?.getTracks?.().forEach((track) => track.stop());
+    } catch {
+        // yoksay
+    }
+    try {
+        videoStudioCameraPreviewStream?.getTracks?.().forEach((track) => track.stop());
+    } catch {
+        // yoksay
+    }
+    videoStudioPreviewStream = null;
+    videoStudioCameraPreviewStream = null;
+    const preview = document.getElementById('videoStudioPreviewVideo');
+    if (preview) {
+        try {
+            preview.pause();
+            preview.srcObject = null;
+            preview.removeAttribute('src');
+            preview.classList.remove('is-active');
+        } catch {
+            // yoksay
+        }
+    }
+    const cameraPreview = document.getElementById('videoStudioCameraPreviewVideo');
+    if (cameraPreview) {
+        try {
+            cameraPreview.pause();
+            cameraPreview.srcObject = null;
+            cameraPreview.removeAttribute('src');
+            cameraPreview.classList.remove('is-active');
+        } catch {
+            // yoksay
+        }
+    }
+    const stopBtn = document.getElementById('videoStudioStopPreviewBtn');
+    if (stopBtn) stopBtn.disabled = true;
+}
+
+function releaseVideoStudioIdleRuntime() {
+    stopVideoStudioPreview();
+    stopVideoStudioMeterLoop();
+    if (videoStudioTransitionTimer) {
+        clearTimeout(videoStudioTransitionTimer);
+        videoStudioTransitionTimer = null;
+    }
+    videoStudioTransformDrag = null;
+}
+
+function scheduleVideoStudioAutoPreview() {
+    if (!videoStudioAutoPreviewEnabled) return;
+    if (!isVideoStudioViewActive()) return;
+    if (videoStudioPreviewStream || screenRecorder) return;
+    if (!isVideoStudioDisplayVisible()) return;
+    const now = Date.now();
+    if (now - videoStudioLastAutoPreviewAttemptAt < 2500) return;
+    if (videoStudioAutoPreviewTimer) clearTimeout(videoStudioAutoPreviewTimer);
+    videoStudioAutoPreviewTimer = setTimeout(() => {
+        videoStudioAutoPreviewTimer = null;
+        if (!videoStudioAutoPreviewEnabled) return;
+        if (!isVideoStudioViewActive()) return;
+        if (videoStudioPreviewStream || screenRecorder || !isVideoStudioDisplayVisible()) return;
+        videoStudioLastAutoPreviewAttemptAt = Date.now();
+        startVideoStudioPreview({ silent: true }).catch(() => {});
+    }, 350);
+}
+
+function getVideoStudioDisplaySource() {
+    return videoStudioSources.find((source) => source.kind === 'display') || null;
+}
+
+function isVideoStudioDisplayVisible() {
+    const displaySource = getVideoStudioDisplaySource();
+    return !!displaySource && displaySource.visible !== false;
+}
+
+function isVideoStudioMicVisible() {
+    const micSource = videoStudioSources.find((source) => source.kind === 'audio') || null;
+    return !!micSource && micSource.visible !== false;
+}
+
+function isVideoStudioDesktopAudioVisible() {
+    const desktopAudioSource = videoStudioSources.find((source) => source.kind === 'system-audio') || null;
+    return !!desktopAudioSource && desktopAudioSource.visible !== false;
+}
+
+function isVideoStudioCameraVisible() {
+    const cameraSource = videoStudioSources.find((source) => source.kind === 'camera') || null;
+    return !!cameraSource && cameraSource.visible !== false;
+}
+
+function addVideoStudioLog(message, level = 'info') {
+    const text = String(message || '').trim();
+    if (!text) return;
+    videoStudioRecordingLogs.unshift({
+        at: new Date().toLocaleTimeString(),
+        level: String(level || 'info').trim(),
+        message: text
+    });
+    videoStudioRecordingLogs = videoStudioRecordingLogs.slice(0, 12);
+    const logEl = document.getElementById('videoStudioRecordingLogList');
+    if (logEl) {
+        logEl.innerHTML = buildVideoStudioLogMarkup();
+    }
+}
+
+function buildVideoStudioLogMarkup() {
+    if (!videoStudioRecordingLogs.length) {
+        return `<div class="video-studio-empty-mini">${escapeHtml(uiT('video.tools.logs.empty', 'Henüz log yok'))}</div>`;
+    }
+    return videoStudioRecordingLogs.map((entry) => `
+        <div class="video-studio-log-row" data-level="${escapeAttribute(entry.level || 'info')}">
+            <span>${escapeHtml(entry.at || '')}</span>
+            <strong>${escapeHtml(entry.message || '')}</strong>
+        </div>
+    `).join('');
+}
+
+function getVideoStudioSourceName(source) {
+    if (!source) return '';
+    if (source.kind === 'display') return uiT('video.tools.record.portalSource', 'Ekran Yakalama (PipeWire)');
+    if (source.kind === 'system-audio') return uiT('video.tools.studio.desktopAudio', 'Masaüstü');
+    if (source.kind === 'audio') return uiT('video.tools.studio.microphone', 'Mikrofon');
+    if (source.kind === 'camera') return uiT('video.tools.studio.camera', 'Kamera');
+    if (source.kind === 'image') return source.name || uiT('video.tools.studio.image', 'Görsel');
+    if (source.kind === 'media') return source.name || uiT('video.tools.studio.media', 'Medya');
+    if (source.kind === 'color') return source.name || uiT('video.tools.studio.color', 'Renk');
+    if (source.kind === 'text') return source.name || uiT('video.tools.studio.text', 'Metin');
+    return source.name || source.id;
+}
+
+function getVideoStudioDefaultTransform(kind = 'camera') {
+    if (kind === 'display') {
+        return { x: 0, y: 0, width: 1, height: 1 };
+    }
+    if (kind === 'image') {
+        return { x: 0.72, y: 0.08, width: 0.2, height: 0.18 };
+    }
+    if (kind === 'media') {
+        return { x: 0.58, y: 0.1, width: 0.36, height: 0.32 };
+    }
+    if (kind === 'color') {
+        return { x: 0.08, y: 0.72, width: 0.24, height: 0.16 };
+    }
+    if (kind === 'text') {
+        return { x: 0.08, y: 0.08, width: 0.38, height: 0.14 };
+    }
+    return { x: 0.74, y: 0.72, width: 0.22, height: 0.22 };
+}
+
+function clampVideoStudioTransform(transform, kind = 'camera') {
+    const defaults = getVideoStudioDefaultTransform(kind);
+    const minWidth = kind === 'display' ? 0.2 : 0.08;
+    const minHeight = kind === 'display' ? 0.2 : 0.08;
+    const maxWidth = 1;
+    const maxHeight = 1;
+    const width = Math.max(minWidth, Math.min(maxWidth, Number(transform?.width ?? defaults.width) || defaults.width));
+    const height = Math.max(minHeight, Math.min(maxHeight, Number(transform?.height ?? defaults.height) || defaults.height));
+    return {
+        x: Math.max(0, Math.min(1 - width, Number(transform?.x ?? defaults.x) || 0)),
+        y: Math.max(0, Math.min(1 - height, Number(transform?.y ?? defaults.y) || 0)),
+        width,
+        height
+    };
+}
+
+function getVideoStudioSourceTransform(source) {
+    if (!source) return getVideoStudioDefaultTransform();
+    source.transform = clampVideoStudioTransform(source.transform, source.kind);
+    return source.transform;
+}
+
+function getVideoStudioVisualSources() {
+    return videoStudioSources.filter((source) => source.visible !== false && ['camera', 'image', 'media', 'color', 'text'].includes(source.kind));
+}
+
+function getVideoStudioSourceLayer(sourceId) {
+    const index = videoStudioSources.findIndex((source) => source.id === sourceId);
+    if (index < 0) return 3;
+    return 3 + Math.max(0, videoStudioSources.length - index);
+}
+
+function getVideoStudioCameraSource() {
+    return videoStudioSources.find((source) => source.kind === 'camera') || null;
+}
+
+function hasVideoStudioCompositedVisualSources() {
+    return getVideoStudioVisualSources().length > 0;
+}
+
+function getVideoStudioActiveTextSource() {
+    const source = videoStudioSources.find((item) => item.id === videoStudioActiveSourceId);
+    return source?.kind === 'text' ? source : null;
+}
+
+function getVideoStudioActiveVisualSource() {
+    const source = videoStudioSources.find((item) => item.id === videoStudioActiveSourceId);
+    return source && ['camera', 'image', 'media', 'color', 'text'].includes(source.kind) ? source : null;
+}
+
+function normalizeVideoStudioSourceOpacity(value, fallback = 100) {
+    const numeric = Number(value);
+    return Number.isFinite(numeric) ? Math.max(0, Math.min(100, Math.round(numeric))) : fallback;
+}
+
+function getVideoStudioSourceOpacity(source) {
+    return normalizeVideoStudioSourceOpacity(source?.opacity, 100);
+}
+
+function normalizeVideoStudioSourceCropValue(value, fallback = 0) {
+    const numeric = Number(value);
+    return Number.isFinite(numeric) ? Math.max(0, Math.min(90, Math.round(numeric))) : fallback;
+}
+
+function normalizeVideoStudioSourceCrop(crop = {}) {
+    const top = normalizeVideoStudioSourceCropValue(crop?.top, 0);
+    const right = normalizeVideoStudioSourceCropValue(crop?.right, 0);
+    const bottom = normalizeVideoStudioSourceCropValue(crop?.bottom, 0);
+    const left = normalizeVideoStudioSourceCropValue(crop?.left, 0);
+    const verticalTotal = top + bottom;
+    const horizontalTotal = left + right;
+    return {
+        top: verticalTotal > 95 ? Math.round(top * 95 / verticalTotal) : top,
+        right: horizontalTotal > 95 ? Math.round(right * 95 / horizontalTotal) : right,
+        bottom: verticalTotal > 95 ? Math.round(bottom * 95 / verticalTotal) : bottom,
+        left: horizontalTotal > 95 ? Math.round(left * 95 / horizontalTotal) : left
+    };
+}
+
+function normalizeVideoStudioOverlayColor(value, fallback = '#12e7d8') {
+    const text = String(value || '').trim();
+    return /^#[0-9a-f]{6}$/i.test(text) ? text.toLowerCase() : fallback;
+}
+
+function normalizeVideoStudioMouseOverlaySize(value, fallback = 100) {
+    const numeric = Number(value);
+    return Number.isFinite(numeric) ? Math.max(60, Math.min(180, Math.round(numeric))) : fallback;
+}
+
+function normalizeVideoStudioOverlayDuration(value, fallback = 2200) {
+    const numeric = Number(value);
+    return Number.isFinite(numeric) ? Math.max(700, Math.min(5000, Math.round(numeric))) : fallback;
+}
+
+function normalizeVideoStudioKeyboardOverlayPosition(value) {
+    const key = String(value || '').trim().toLowerCase();
+    return ['bottom-left', 'bottom-right', 'top-left', 'top-right'].includes(key) ? key : 'bottom-left';
+}
+
+function hexToVideoStudioRgba(hex, alpha = 1) {
+    const safe = normalizeVideoStudioOverlayColor(hex);
+    const numeric = Number.parseInt(safe.slice(1), 16);
+    const r = (numeric >> 16) & 255;
+    const g = (numeric >> 8) & 255;
+    const b = numeric & 255;
+    return `rgba(${r}, ${g}, ${b}, ${Math.max(0, Math.min(1, Number(alpha) || 0))})`;
+}
+
+function getVideoStudioSourceCrop(source) {
+    return normalizeVideoStudioSourceCrop(source?.crop || {});
+}
+
+function getVideoStudioSourceCropStyle(source) {
+    const crop = getVideoStudioSourceCrop(source);
+    return `inset(${crop.top}% ${crop.right}% ${crop.bottom}% ${crop.left}%)`;
+}
+
+function buildVideoStudioSourcePickerMarkup() {
+    if (!videoStudioSourcePickerOpen) return '';
+    const items = [
+        { kind: 'display', icon: 'desktop_windows', label: uiT('video.tools.sourcePicker.display', 'Ekran yakalama') },
+        { kind: 'system-audio', icon: 'volume_up', label: uiT('video.tools.sourcePicker.desktopAudio', 'Masaüstü sesi') },
+        { kind: 'audio', icon: 'mic', label: uiT('video.tools.sourcePicker.microphone', 'Mikrofon') },
+        { kind: 'camera', icon: 'videocam', label: uiT('video.tools.sourcePicker.camera', 'Kamera') },
+        { kind: 'image', icon: 'image', label: uiT('video.tools.sourcePicker.image', 'Görsel') },
+        { kind: 'media', icon: 'movie', label: uiT('video.tools.sourcePicker.media', 'Medya') },
+        { kind: 'color', icon: 'palette', label: uiT('video.tools.sourcePicker.color', 'Renk') },
+        { kind: 'text', icon: 'title', label: uiT('video.tools.sourcePicker.text', 'Metin') }
+    ];
+    return `
+        <div class="video-studio-source-picker" role="menu" aria-label="${escapeAttribute(uiT('video.tools.sourcePicker.title', 'Kaynak tipi seç'))}">
+            ${items.map((item) => {
+                const hasSingleSource = ['display', 'system-audio', 'audio', 'camera'].includes(item.kind)
+                    && videoStudioSources.some((source) => source.kind === item.kind);
+                return `
+                    <button type="button" class="video-studio-source-picker-btn" data-video-studio-add-source-kind="${escapeAttribute(item.kind)}" role="menuitem">
+                        <span class="material-symbols-rounded" aria-hidden="true">${escapeHtml(item.icon)}</span>
+                        <span>${escapeHtml(item.label)}</span>
+                        ${hasSingleSource ? `<small>${escapeHtml(uiT('video.tools.sourcePicker.exists', 'Var'))}</small>` : ''}
+                    </button>
+                `;
+            }).join('')}
+        </div>
+    `;
+}
+
+function normalizeVideoStudioCaptureMode(value) {
+    return String(value || '').trim().toLowerCase() === 'region' ? 'region' : 'full';
+}
+
+function normalizeVideoStudioCameraResolution(value) {
+    const key = String(value || '').trim().toLowerCase();
+    return ['360p', '720p', '1080p'].includes(key) ? key : '720p';
+}
+
+function getVideoStudioCameraResolutionSize(value) {
+    const key = normalizeVideoStudioCameraResolution(value);
+    if (key === '1080p') return { width: 1920, height: 1080 };
+    if (key === '360p') return { width: 640, height: 360 };
+    return { width: 1280, height: 720 };
+}
+
+function normalizeVideoStudioCameraFps(value, fallback = 30) {
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric)) return fallback;
+    if (numeric >= 55) return 60;
+    if (numeric >= 25) return 30;
+    return 24;
+}
+
+function normalizeVideoStudioMediaPlaybackRate(value, fallback = 1) {
+    const numeric = Number(value);
+    return Number.isFinite(numeric) ? Math.max(0.25, Math.min(4, Number(numeric.toFixed(2)))) : fallback;
+}
+
+function normalizeVideoStudioSourceFit(value) {
+    const key = String(value || '').trim().toLowerCase();
+    return ['cover', 'contain', 'stretch'].includes(key) ? key : 'cover';
+}
+
+function getVideoStudioCaptureRegion() {
+    return normalizeVideoStudioSourceCrop(videoStudioCaptureRegion);
+}
+
+function isVideoStudioRegionCaptureEnabled() {
+    return normalizeVideoStudioCaptureMode(videoStudioCaptureMode) === 'region';
+}
+
+function getVideoStudioCaptureClipStyle() {
+    if (!isVideoStudioRegionCaptureEnabled()) return 'none';
+    const region = getVideoStudioCaptureRegion();
+    return `inset(${region.top}% ${region.right}% ${region.bottom}% ${region.left}%)`;
+}
+
+function updateVideoStudioCapturePreviewClip() {
+    const preview = document.getElementById('videoStudioPreviewVideo');
+    if (!preview) return;
+    preview.style.clipPath = getVideoStudioCaptureClipStyle();
+}
+
+function shouldBuildVideoStudioCompositedStream() {
+    return hasVideoStudioCompositedVisualSources() ||
+        isVideoStudioRegionCaptureEnabled() ||
+        shouldDrawVideoStudioInputOverlay() ||
+        shouldUseVideoStudioSceneTransitionCanvas();
+}
+
+function getVideoStudioActiveCropSource() {
+    const source = getVideoStudioActiveVisualSource();
+    return source && ['camera', 'image', 'media'].includes(source.kind) ? source : null;
+}
+
+function getDefaultVideoStudioSources() {
+    return VIDEO_STUDIO_DEFAULT_SOURCES.map((source) => ({ ...source }));
+}
+
+function getDefaultVideoStudioScenes() {
+    return [{ id: 'scene-1', name: uiT('video.tools.studio.sceneDefault', 'Sahne 1') }];
+}
+
+function normalizeVideoStudioPluginId(value = '') {
+    return String(value || '')
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9_-]+/g, '-')
+        .replace(/^-+|-+$/g, '')
+        .slice(0, 48);
+}
+
+function sanitizeVideoStudioPluginManifest(plugin, index = 0) {
+    if (!plugin || typeof plugin !== 'object' || plugin.error) return null;
+    const id = normalizeVideoStudioPluginId(plugin.id || plugin.name || `plugin-${index + 1}`);
+    if (!id) return null;
+    const templates = Array.isArray(plugin.templates)
+        ? plugin.templates.map((template, templateIndex) => {
+            const templateId = normalizeVideoStudioPluginId(template?.id || template?.name || `template-${templateIndex + 1}`);
+            if (!templateId) return null;
+            return {
+                id: `plugin:${id}:${templateId}`,
+                pluginId: id,
+                name: String(template?.name || templateId).trim().slice(0, 48) || templateId,
+                icon: String(template?.icon || 'extension').trim().slice(0, 40) || 'extension',
+                sources: Array.isArray(template?.sources) ? template.sources.slice(0, 24) : []
+            };
+        }).filter(Boolean).slice(0, 24)
+        : [];
+    if (!templates.length) return null;
+    return {
+        id,
+        name: String(plugin.name || id).trim().slice(0, 48) || id,
+        version: String(plugin.version || '').trim().slice(0, 24),
+        path: String(plugin.path || '').trim(),
+        templates
+    };
+}
+
+async function loadVideoStudioPlugins({ notify = false } = {}) {
+    if (!window.aurivo?.screenRecording?.listStudioPlugins) return [];
+    try {
+        const result = await window.aurivo.screenRecording.listStudioPlugins();
+        videoStudioPluginDirs = Array.isArray(result?.pluginDirs) ? result.pluginDirs.map((item) => String(item || '').trim()).filter(Boolean) : [];
+        videoStudioPlugins = Array.isArray(result?.plugins)
+            ? result.plugins.map(sanitizeVideoStudioPluginManifest).filter(Boolean)
+            : [];
+        videoStudioPluginsLoaded = true;
+        if (notify) safeNotify(`${videoStudioPlugins.length} stüdyo eklentisi yüklendi.`, 'success', 1800);
+        if (isVideoStudioViewActive()) renderVideoToolsWorkspace();
+        return videoStudioPlugins;
+    } catch (error) {
+        videoStudioPluginsLoaded = true;
+        if (notify) safeNotify(`Eklentiler okunamadı: ${error?.message || error}`, 'warning', 2400);
+        return [];
+    }
+}
+
+function getVideoStudioPluginTemplate(templateId = '') {
+    const id = String(templateId || '').trim();
+    for (const plugin of videoStudioPlugins) {
+        const template = plugin.templates.find((item) => item.id === id);
+        if (template) return template;
+    }
+    return null;
+}
+
+function getVideoStudioTemplateDefinitions() {
+    const builtins = ['basic', 'presentation', 'education', 'gaming', 'camera'].map((id) => ({
+        id,
+        name: getVideoStudioTemplateLabel(id),
+        icon: id === 'gaming' ? 'sports_esports' : (id === 'camera' ? 'videocam' : (id === 'presentation' ? 'co_present' : (id === 'education' ? 'school' : 'view_quilt')))
+    }));
+    const pluginTemplates = videoStudioPlugins.flatMap((plugin) => plugin.templates.map((template) => ({
+        id: template.id,
+        name: template.name,
+        icon: template.icon || 'extension',
+        pluginName: plugin.name
+    })));
+    return [...builtins, ...pluginTemplates];
+}
+
+function getVideoStudioTemplateLabel(template = 'basic') {
+    const key = String(template || 'basic').trim().toLowerCase();
+    const pluginTemplate = getVideoStudioPluginTemplate(template);
+    if (pluginTemplate) return pluginTemplate.name;
+    const labels = {
+        basic: uiT('video.tools.templates.basic', 'Temel'),
+        presentation: uiT('video.tools.templates.presentation', 'Sunum'),
+        education: uiT('video.tools.templates.education', 'Eğitim'),
+        gaming: uiT('video.tools.templates.gaming', 'Oyun'),
+        camera: uiT('video.tools.templates.camera', 'Kamera')
+    };
+    return labels[key] || labels.basic;
+}
+
+function createVideoStudioSourceTemplate(template = 'basic') {
+    const key = String(template || 'basic').trim().toLowerCase();
+    const stamp = `${Date.now()}-${Math.random().toString(16).slice(2, 7)}`;
+    const pluginTemplate = getVideoStudioPluginTemplate(template);
+    const base = [
+        { id: `display-${stamp}`, kind: 'display', name: 'Kaynak', icon: 'desktop_windows', visible: true },
+        { id: `desktop-audio-${stamp}`, kind: 'system-audio', name: 'Masaüstü', icon: 'volume_up', visible: true },
+        { id: `mic-${stamp}`, kind: 'audio', name: 'Mikrofon', icon: 'mic', visible: true }
+    ];
+    const camera = (transform, visible = true) => ({
+        id: `camera-${stamp}`,
+        kind: 'camera',
+        name: uiT('video.tools.studio.camera', 'Kamera'),
+        icon: 'videocam',
+        visible,
+        cameraResolution: '720p',
+        cameraFps: 30,
+        opacity: 100,
+        flipX: false,
+        crop: normalizeVideoStudioSourceCrop(),
+        transform
+    });
+    const text = (label, transform) => ({
+        id: `text-${stamp}`,
+        kind: 'text',
+        name: uiT('video.tools.studio.text', 'Metin'),
+        icon: 'title',
+        visible: true,
+        text: label,
+        color: '#ffffff',
+        fontSize: 42,
+        opacity: 100,
+        flipX: false,
+        transform
+    });
+    if (pluginTemplate) {
+        const pluginSources = pluginTemplate.sources.map((source, index) => ({
+            ...source,
+            id: `${source.kind || 'source'}-${stamp}-${index}`
+        })).map(sanitizeVideoStudioSourceForProfile).filter(Boolean);
+        return pluginSources.length ? pluginSources : base;
+    }
+    if (key === 'presentation') {
+        return [
+            text(uiT('video.tools.templates.presentationText', 'Sunum Başlığı'), { x: 0.05, y: 0.05, width: 0.52, height: 0.12 }),
+            camera({ x: 0.74, y: 0.68, width: 0.22, height: 0.24 }),
+            ...base
+        ];
+    }
+    if (key === 'education') {
+        return [
+            text(uiT('video.tools.templates.educationText', 'Ders Başlıyor'), { x: 0.06, y: 0.78, width: 0.42, height: 0.13 }),
+            camera({ x: 0.72, y: 0.08, width: 0.23, height: 0.26 }),
+            ...base
+        ];
+    }
+    if (key === 'gaming') {
+        return [
+            text(uiT('video.tools.templates.gamingText', 'Aurivo Live'), { x: 0.04, y: 0.04, width: 0.34, height: 0.11 }),
+            camera({ x: 0.04, y: 0.68, width: 0.2, height: 0.24 }),
+            ...base
+        ];
+    }
+    if (key === 'camera') {
+        return [
+            text(uiT('video.tools.templates.cameraText', 'Canlı Kamera'), { x: 0.06, y: 0.06, width: 0.42, height: 0.12 }),
+            camera({ x: 0.18, y: 0.08, width: 0.64, height: 0.78 }),
+            { ...base[2] }
+        ];
+    }
+    return base;
+}
+
+function sanitizeVideoStudioSourceForProfile(source) {
+    if (!source || typeof source !== 'object') return null;
+    const kind = String(source.kind || '').trim();
+    if (!['display', 'system-audio', 'audio', 'camera', 'image', 'media', 'color', 'text'].includes(kind)) return null;
+    const id = String(source.id || `${kind}-${Date.now()}`).trim();
+    if (!id) return null;
+    const safeSource = {
+        id,
+        kind,
+        name: String(source.name || '').trim(),
+        icon: String(source.icon || 'layers').trim() || 'layers',
+        visible: source.visible !== false,
+        locked: !!source.locked
+    };
+    if (['camera', 'image', 'media', 'color', 'text', 'display'].includes(kind)) {
+        safeSource.transform = clampVideoStudioTransform(source.transform, kind);
+    }
+    if (['camera', 'image', 'media', 'color', 'text'].includes(kind)) {
+        safeSource.opacity = getVideoStudioSourceOpacity(source);
+        safeSource.flipX = !!source.flipX;
+    }
+    if (['camera', 'image', 'media'].includes(kind)) {
+        safeSource.crop = getVideoStudioSourceCrop(source);
+        safeSource.fit = normalizeVideoStudioSourceFit(source.fit);
+    }
+    if (kind === 'camera') {
+        safeSource.cameraResolution = normalizeVideoStudioCameraResolution(source.cameraResolution);
+        safeSource.cameraFps = normalizeVideoStudioCameraFps(source.cameraFps, 30);
+    }
+    if (kind === 'image') {
+        safeSource.path = String(source.path || '').trim();
+        safeSource.url = toLocalFileUrl(safeSource.path);
+    }
+    if (kind === 'media') {
+        safeSource.path = String(source.path || '').trim();
+        safeSource.url = toLocalFileUrl(safeSource.path);
+        safeSource.loop = source.loop !== false;
+        safeSource.restartOnRecord = source.restartOnRecord !== false;
+        safeSource.playbackRate = normalizeVideoStudioMediaPlaybackRate(source.playbackRate, 1);
+    }
+    if (kind === 'color') {
+        safeSource.color = normalizeVideoStudioTextColor(source.color || '#0f172a', '#0f172a');
+    }
+    if (kind === 'text') {
+        safeSource.text = String(source.text || '').slice(0, 160);
+        safeSource.color = normalizeVideoStudioTextColor(source.color || '#ffffff', '#ffffff');
+        safeSource.fontSize = normalizeVideoStudioTextFontSize(source.fontSize, 42);
+    }
+    return safeSource;
+}
+
+function sanitizeVideoStudioSourceListForProfile(sources, fallbackSources = null) {
+    const normalized = Array.isArray(sources)
+        ? sources.map(sanitizeVideoStudioSourceForProfile).filter(Boolean)
+        : [];
+    if (normalized.length) return normalized;
+    if (Array.isArray(fallbackSources) && fallbackSources.length) {
+        return fallbackSources.map(sanitizeVideoStudioSourceForProfile).filter(Boolean);
+    }
+    return getDefaultVideoStudioSources().map(sanitizeVideoStudioSourceForProfile).filter(Boolean);
+}
+
+function sanitizeVideoStudioSceneForProfile(scene, index = 0) {
+    const id = String(scene?.id || `scene-${index + 1}`).trim();
+    if (!id) return null;
+    const safeScene = {
+        id,
+        name: String(scene?.name || uiT('video.tools.studio.sceneNamed', 'Sahne {count}', { count: index + 1 })).trim()
+    };
+    if (Array.isArray(scene?.sources)) {
+        safeScene.sources = sanitizeVideoStudioSourceListForProfile(scene.sources);
+        safeScene.activeSourceId = safeScene.sources.some((source) => source.id === scene.activeSourceId)
+            ? String(scene.activeSourceId)
+            : (safeScene.sources[0]?.id || '');
+    }
+    return safeScene;
+}
+
+function syncActiveVideoStudioSceneSourcesSnapshot() {
+    const scene = videoStudioScenes.find((item) => item.id === videoStudioActiveSceneId);
+    if (!scene) return false;
+    const safeSources = sanitizeVideoStudioSourceListForProfile(videoStudioSources);
+    scene.sources = safeSources.map((source) => ({ ...source }));
+    scene.activeSourceId = safeSources.some((source) => source.id === videoStudioActiveSourceId)
+        ? videoStudioActiveSourceId
+        : (safeSources[0]?.id || '');
+    return true;
+}
+
+function applyVideoStudioSceneSources(scene, fallbackSources = null) {
+    if (!scene) return false;
+    const safeSources = sanitizeVideoStudioSourceListForProfile(scene.sources, fallbackSources);
+    videoStudioSources = safeSources.map((source) => ({ ...source }));
+    videoStudioActiveSourceId = safeSources.some((source) => source.id === scene.activeSourceId)
+        ? String(scene.activeSourceId)
+        : (safeSources[0]?.id || '');
+    scene.sources = safeSources.map((source) => ({ ...source }));
+    scene.activeSourceId = videoStudioActiveSourceId;
+    syncVideoStudioAudioSourceState();
+    return true;
+}
+
+function createVideoStudioSceneSnapshot({ defaultEmpty = false } = {}) {
+    if (!defaultEmpty) syncActiveVideoStudioSceneSourcesSnapshot();
+    const scenes = defaultEmpty
+        ? getDefaultVideoStudioScenes()
+        : videoStudioScenes.map(sanitizeVideoStudioSceneForProfile).filter(Boolean);
+    const sources = defaultEmpty
+        ? getDefaultVideoStudioSources()
+        : videoStudioSources.map(sanitizeVideoStudioSourceForProfile).filter(Boolean);
+    const safeScenes = scenes.length ? scenes : getDefaultVideoStudioScenes();
+    const safeSources = sources.length ? sources : getDefaultVideoStudioSources();
+    const activeSceneId = safeScenes.some((scene) => scene.id === videoStudioActiveSceneId)
+        ? videoStudioActiveSceneId
+        : (safeScenes[0]?.id || 'scene-1');
+    const activeSourceId = safeSources.some((source) => source.id === videoStudioActiveSourceId)
+        ? videoStudioActiveSourceId
+        : (safeSources[0]?.id || '');
+    return {
+        scenes: safeScenes,
+        sources: safeSources,
+        activeSceneId,
+        activeSourceId
+    };
+}
+
+function sanitizeVideoStudioSceneCollection(collection, index = 0) {
+    if (!collection || typeof collection !== 'object') return null;
+    const id = String(collection.id || `collection-${index + 1}`).trim();
+    if (!id) return null;
+    const sources = Array.isArray(collection.sources)
+        ? collection.sources.map(sanitizeVideoStudioSourceForProfile).filter(Boolean)
+        : [];
+    const safeSources = sources.length ? sources : getDefaultVideoStudioSources();
+    const rawScenes = Array.isArray(collection.scenes) ? collection.scenes : [];
+    const collectionActiveSceneId = String(collection.activeSceneId || rawScenes[0]?.id || 'scene-1').trim();
+    const scenes = rawScenes.map((scene, sceneIndex) => {
+        const safeScene = sanitizeVideoStudioSceneForProfile(scene, sceneIndex);
+        if (!safeScene) return null;
+        if (!Array.isArray(safeScene.sources) || !safeScene.sources.length) {
+            const fallback = safeScene.id === collectionActiveSceneId ? safeSources : getDefaultVideoStudioSources();
+            safeScene.sources = sanitizeVideoStudioSourceListForProfile(fallback);
+            safeScene.activeSourceId = safeScene.sources.some((source) => source.id === collection.activeSourceId)
+                ? String(collection.activeSourceId)
+                : (safeScene.sources[0]?.id || '');
+        }
+        return safeScene;
+    }).filter(Boolean);
+    const safeScenes = scenes.length
+        ? scenes
+        : getDefaultVideoStudioScenes().map((scene) => ({
+            ...scene,
+            sources: sanitizeVideoStudioSourceListForProfile(safeSources),
+            activeSourceId: safeSources.some((source) => source.id === collection.activeSourceId)
+                ? String(collection.activeSourceId)
+                : (safeSources[0]?.id || '')
+        }));
+    const activeSceneId = safeScenes.some((scene) => scene.id === collection.activeSceneId)
+        ? String(collection.activeSceneId)
+        : (safeScenes[0]?.id || 'scene-1');
+    const activeScene = safeScenes.find((scene) => scene.id === activeSceneId) || safeScenes[0] || null;
+    const activeSceneSources = Array.isArray(activeScene?.sources) && activeScene.sources.length
+        ? activeScene.sources
+        : safeSources;
+    return {
+        id,
+        name: String(collection.name || uiT('video.tools.collections.named', 'Koleksiyon {count}', { count: index + 1 })).trim(),
+        scenes: safeScenes,
+        sources: safeSources,
+        activeSceneId,
+        activeSourceId: activeSceneSources.some((source) => source.id === collection.activeSourceId)
+            ? String(collection.activeSourceId)
+            : (activeScene?.activeSourceId || activeSceneSources[0]?.id || '')
+    };
+}
+
+function syncActiveVideoStudioSceneCollectionSnapshot() {
+    if (!Array.isArray(videoStudioSceneCollections)) videoStudioSceneCollections = [];
+    let collection = videoStudioSceneCollections.find((item) => item.id === videoStudioActiveSceneCollectionId);
+    if (!collection) {
+        collection = {
+            id: videoStudioActiveSceneCollectionId || 'collection-default',
+            name: uiT('video.tools.collections.default', 'Varsayılan'),
+            ...createVideoStudioSceneSnapshot()
+        };
+        videoStudioSceneCollections.unshift(collection);
+    }
+    Object.assign(collection, createVideoStudioSceneSnapshot());
+}
+
+function applyVideoStudioSceneCollection(collectionId) {
+    const collection = videoStudioSceneCollections.find((item) => item.id === collectionId);
+    if (!collection) return false;
+    const safeCollection = sanitizeVideoStudioSceneCollection(collection, 0);
+    if (!safeCollection) return false;
+    videoStudioActiveSceneCollectionId = safeCollection.id;
+    videoStudioScenes = safeCollection.scenes.map((scene) => ({ ...scene }));
+    videoStudioActiveSceneId = safeCollection.activeSceneId;
+    const activeScene = videoStudioScenes.find((scene) => scene.id === videoStudioActiveSceneId) || videoStudioScenes[0];
+    applyVideoStudioSceneSources(activeScene, safeCollection.sources);
+    return true;
+}
+
+function ensureVideoStudioSceneCollections() {
+    if (!Array.isArray(videoStudioSceneCollections) || !videoStudioSceneCollections.length) {
+        videoStudioActiveSceneCollectionId = 'collection-default';
+        videoStudioSceneCollections = [{
+            id: videoStudioActiveSceneCollectionId,
+            name: uiT('video.tools.collections.default', 'Varsayılan'),
+            ...createVideoStudioSceneSnapshot()
+        }];
+    }
+    if (!videoStudioSceneCollections.some((collection) => collection.id === videoStudioActiveSceneCollectionId)) {
+        videoStudioActiveSceneCollectionId = videoStudioSceneCollections[0]?.id || 'collection-default';
+    }
+    applyVideoStudioSceneCollection(videoStudioActiveSceneCollectionId);
+}
+
+function serializeVideoStudioProfile() {
+    syncActiveVideoStudioSceneCollectionSnapshot();
+    return {
+        version: 1,
+        scenes: videoStudioScenes.map(sanitizeVideoStudioSceneForProfile).filter(Boolean),
+        activeSceneId: videoStudioActiveSceneId,
+        activeSourceId: videoStudioActiveSourceId,
+        activeSceneCollectionId: videoStudioActiveSceneCollectionId,
+        sceneCollections: videoStudioSceneCollections.map(sanitizeVideoStudioSceneCollection).filter(Boolean),
+        selectedMicId: videoStudioSelectedMicId,
+        desktopVolume: normalizeVideoStudioVolume(videoStudioDesktopVolume, 80),
+        micVolume: normalizeVideoStudioVolume(videoStudioMicVolume, 65),
+        micMonitorEnabled: !!videoStudioMicMonitorEnabled,
+        micMonitorVolume: normalizeVideoStudioVolume(videoStudioMicMonitorVolume, 45),
+        desktopMuted: !!videoStudioDesktopMuted,
+        micMuted: !!videoStudioMicMuted,
+        recordPreset: normalizeVideoStudioRecordPreset(videoStudioRecordPreset),
+        recordResolution: String(videoStudioRecordResolution || 'source'),
+        recordFps: normalizeVideoStudioRecordFps(videoStudioRecordFps),
+        recordQuality: String(videoStudioRecordQuality || 'balanced'),
+        recordBitrate: normalizeVideoStudioRecordBitrate(videoStudioRecordBitrate),
+        recordFormat: normalizeVideoStudioRecordFormat(videoStudioRecordFormat),
+        videoEncoder: normalizeVideoStudioVideoEncoder(videoStudioVideoEncoder),
+        audioTrackMode: normalizeVideoStudioAudioTrackMode(videoStudioAudioTrackMode),
+        recordOutputMode: videoStudioRecordOutputMode === 'ask' ? 'ask' : 'auto',
+        recordOutputFolder: videoStudioRecordOutputFolder,
+        recordNameTemplate: videoStudioRecordNameTemplate,
+        streamEnabled: !!videoStudioStreamEnabled,
+        streamService: normalizeVideoStudioStreamService(videoStudioStreamService),
+        streamServer: videoStudioStreamServer,
+        streamKey: videoStudioStreamKey,
+        virtualCameraEnabled: !!videoStudioVirtualCameraEnabled,
+        virtualCameraDevice: videoStudioVirtualCameraDevice,
+        replayBufferEnabled: !!videoStudioReplayBufferEnabled,
+        replayBufferSeconds: normalizeVideoStudioReplayBufferSeconds(videoStudioReplayBufferSeconds),
+        micFilterEnabled: !!videoStudioMicFilterEnabled,
+        micNoiseGateThreshold: normalizeVideoStudioMicNoiseGateThreshold(videoStudioMicNoiseGateThreshold),
+        micCompressorEnabled: !!videoStudioMicCompressorEnabled,
+        micCompressorAmount: normalizeVideoStudioMicCompressorAmount(videoStudioMicCompressorAmount),
+        micLimiterEnabled: !!videoStudioMicLimiterEnabled,
+        micLimiterCeiling: normalizeVideoStudioMicLimiterCeiling(videoStudioMicLimiterCeiling),
+        captureMode: normalizeVideoStudioCaptureMode(videoStudioCaptureMode),
+        captureRegion: getVideoStudioCaptureRegion(),
+        showMouseOverlay: !!videoStudioShowMouseOverlay,
+        showKeyboardOverlay: !!videoStudioShowKeyboardOverlay,
+        mouseOverlayColor: normalizeVideoStudioOverlayColor(videoStudioMouseOverlayColor),
+        mouseOverlaySize: normalizeVideoStudioMouseOverlaySize(videoStudioMouseOverlaySize),
+        mouseOverlayDuration: normalizeVideoStudioOverlayDuration(videoStudioMouseOverlayDuration, 2800),
+        keyboardOverlayPosition: normalizeVideoStudioKeyboardOverlayPosition(videoStudioKeyboardOverlayPosition),
+        keyboardOverlayDuration: normalizeVideoStudioOverlayDuration(videoStudioKeyboardOverlayDuration, 2200),
+        countdownEnabled: !!videoStudioCountdownEnabled,
+        countdownSeconds: normalizeVideoStudioCountdownSeconds(videoStudioCountdownSeconds),
+        autoStopEnabled: !!videoStudioAutoStopEnabled,
+        autoStopMinutes: normalizeVideoStudioAutoStopMinutes(videoStudioAutoStopMinutes),
+        scheduleEnabled: !!videoStudioScheduleEnabled,
+        scheduleMode: normalizeVideoStudioScheduleMode(videoStudioScheduleMode),
+        scheduleDelayMinutes: normalizeVideoStudioScheduleDelayMinutes(videoStudioScheduleDelayMinutes),
+        scheduleTime: normalizeVideoStudioScheduleTime(videoStudioScheduleTime),
+        transitionType: normalizeVideoStudioTransitionType(videoStudioTransitionType),
+        transitionDuration: normalizeVideoStudioTransitionDuration(videoStudioTransitionDuration),
+        shortcutsEnabled: !!videoStudioShortcutsEnabled,
+        shortcuts: normalizeVideoStudioShortcutMap(videoStudioShortcutMap),
+        sources: videoStudioSources.map(sanitizeVideoStudioSourceForProfile).filter(Boolean)
+    };
+}
+
+function persistVideoStudioProfileNow() {
+    try {
+        localStorage.setItem(VIDEO_STUDIO_PROFILE_STORAGE_KEY, JSON.stringify(serializeVideoStudioProfile()));
+    } catch (error) {
+        console.warn('[VIDEO_STUDIO] profile save failed:', error?.message || error);
+    }
+}
+
+function scheduleVideoStudioProfileSave() {
+    if (videoStudioProfileSaveTimer) clearTimeout(videoStudioProfileSaveTimer);
+    videoStudioProfileSaveTimer = setTimeout(() => {
+        videoStudioProfileSaveTimer = null;
+        persistVideoStudioProfileNow();
+    }, 220);
+}
+
+function loadVideoStudioProfile() {
+    try {
+        const raw = localStorage.getItem(VIDEO_STUDIO_PROFILE_STORAGE_KEY);
+        if (!raw) {
+            ensureVideoStudioSceneCollections();
+            return;
+        }
+        const profile = JSON.parse(raw);
+        if (!profile || typeof profile !== 'object') {
+            ensureVideoStudioSceneCollections();
+            return;
+        }
+        const loadedSources = Array.isArray(profile.sources)
+            ? profile.sources.map(sanitizeVideoStudioSourceForProfile).filter(Boolean)
+            : [];
+        videoStudioSources = loadedSources.length ? loadedSources : getDefaultVideoStudioSources();
+        const rawScenes = Array.isArray(profile.scenes) ? profile.scenes : [];
+        const profileActiveSceneId = String(profile.activeSceneId || rawScenes[0]?.id || 'scene-1').trim();
+        const loadedScenes = rawScenes.map((scene, index) => {
+            const safeScene = sanitizeVideoStudioSceneForProfile(scene, index);
+            if (!safeScene) return null;
+            if (!Array.isArray(safeScene.sources) || !safeScene.sources.length) {
+                const fallback = safeScene.id === profileActiveSceneId ? videoStudioSources : getDefaultVideoStudioSources();
+                safeScene.sources = sanitizeVideoStudioSourceListForProfile(fallback);
+                safeScene.activeSourceId = safeScene.sources.some((source) => source.id === profile.activeSourceId)
+                    ? String(profile.activeSourceId)
+                    : (safeScene.sources[0]?.id || '');
+            }
+            return safeScene;
+        }).filter(Boolean);
+        videoStudioScenes = loadedScenes.length ? loadedScenes : getDefaultVideoStudioScenes().map((scene) => ({
+            ...scene,
+            sources: sanitizeVideoStudioSourceListForProfile(videoStudioSources),
+            activeSourceId: videoStudioSources.some((source) => source.id === profile.activeSourceId)
+                ? String(profile.activeSourceId)
+                : (videoStudioSources[0]?.id || '')
+        }));
+        const loadedCollections = Array.isArray(profile.sceneCollections)
+            ? profile.sceneCollections.map(sanitizeVideoStudioSceneCollection).filter(Boolean)
+            : [];
+        videoStudioSceneCollections = loadedCollections;
+        videoStudioActiveSceneCollectionId = String(profile.activeSceneCollectionId || videoStudioSceneCollections[0]?.id || 'collection-default').trim() || 'collection-default';
+        videoStudioActiveSceneId = videoStudioScenes.some((scene) => scene.id === profile.activeSceneId)
+            ? String(profile.activeSceneId)
+            : (videoStudioScenes[0]?.id || 'scene-1');
+        videoStudioActiveSourceId = videoStudioSources.some((source) => source.id === profile.activeSourceId)
+            ? String(profile.activeSourceId)
+            : (videoStudioSources[0]?.id || '');
+        videoStudioSelectedMicId = String(profile.selectedMicId || 'default').trim() || 'default';
+        videoStudioDesktopVolume = normalizeVideoStudioVolume(profile.desktopVolume, 80);
+        videoStudioMicVolume = normalizeVideoStudioVolume(profile.micVolume, 65);
+        videoStudioMicMonitorEnabled = !!profile.micMonitorEnabled;
+        videoStudioMicMonitorVolume = normalizeVideoStudioVolume(profile.micMonitorVolume, 45);
+        videoStudioDesktopMuted = !!profile.desktopMuted;
+        videoStudioMicMuted = !!profile.micMuted;
+        videoStudioRecordPreset = normalizeVideoStudioRecordPreset(profile.recordPreset);
+        videoStudioRecordResolution = String(profile.recordResolution || 'source').trim() || 'source';
+        videoStudioRecordFps = normalizeVideoStudioRecordFps(profile.recordFps, 30);
+        videoStudioRecordQuality = String(profile.recordQuality || 'balanced').trim() || 'balanced';
+        videoStudioRecordBitrate = normalizeVideoStudioRecordBitrate(profile.recordBitrate, 8000);
+        videoStudioRecordFormat = normalizeVideoStudioRecordFormat(profile.recordFormat, 'webm');
+        videoStudioVideoEncoder = normalizeVideoStudioVideoEncoder(profile.videoEncoder);
+        videoStudioAudioTrackMode = normalizeVideoStudioAudioTrackMode(profile.audioTrackMode);
+        videoStudioRecordOutputMode = profile.recordOutputMode === 'ask' ? 'ask' : 'auto';
+        videoStudioRecordOutputFolder = String(profile.recordOutputFolder || '').trim();
+        videoStudioRecordNameTemplate = String(profile.recordNameTemplate || 'aurivo-{date}-{time}').trim() || 'aurivo-{date}-{time}';
+        videoStudioStreamEnabled = !!profile.streamEnabled;
+        videoStudioStreamService = normalizeVideoStudioStreamService(profile.streamService);
+        videoStudioStreamServer = String(profile.streamServer || '').trim();
+        videoStudioStreamKey = String(profile.streamKey || '').trim();
+        videoStudioVirtualCameraEnabled = !!profile.virtualCameraEnabled;
+        videoStudioVirtualCameraDevice = String(profile.virtualCameraDevice || '/dev/video10').trim() || '/dev/video10';
+        videoStudioReplayBufferEnabled = !!profile.replayBufferEnabled;
+        videoStudioReplayBufferSeconds = normalizeVideoStudioReplayBufferSeconds(profile.replayBufferSeconds, 60);
+        videoStudioMicFilterEnabled = !!profile.micFilterEnabled;
+        videoStudioMicNoiseGateThreshold = normalizeVideoStudioMicNoiseGateThreshold(profile.micNoiseGateThreshold, 8);
+        videoStudioMicCompressorEnabled = profile.micCompressorEnabled !== false;
+        videoStudioMicCompressorAmount = normalizeVideoStudioMicCompressorAmount(profile.micCompressorAmount, 45);
+        videoStudioMicLimiterEnabled = profile.micLimiterEnabled !== false;
+        videoStudioMicLimiterCeiling = normalizeVideoStudioMicLimiterCeiling(profile.micLimiterCeiling, 92);
+        videoStudioCaptureMode = normalizeVideoStudioCaptureMode(profile.captureMode);
+        videoStudioCaptureRegion = normalizeVideoStudioSourceCrop(profile.captureRegion || {});
+        videoStudioShowMouseOverlay = !!profile.showMouseOverlay;
+        videoStudioShowKeyboardOverlay = !!profile.showKeyboardOverlay;
+        videoStudioMouseOverlayColor = normalizeVideoStudioOverlayColor(profile.mouseOverlayColor, '#12e7d8');
+        videoStudioMouseOverlaySize = normalizeVideoStudioMouseOverlaySize(profile.mouseOverlaySize, 100);
+        videoStudioMouseOverlayDuration = normalizeVideoStudioOverlayDuration(profile.mouseOverlayDuration, 2800);
+        videoStudioKeyboardOverlayPosition = normalizeVideoStudioKeyboardOverlayPosition(profile.keyboardOverlayPosition);
+        videoStudioKeyboardOverlayDuration = normalizeVideoStudioOverlayDuration(profile.keyboardOverlayDuration, 2200);
+        videoStudioCountdownEnabled = !!profile.countdownEnabled;
+        videoStudioCountdownSeconds = normalizeVideoStudioCountdownSeconds(profile.countdownSeconds, 3);
+        videoStudioAutoStopEnabled = !!profile.autoStopEnabled;
+        videoStudioAutoStopMinutes = normalizeVideoStudioAutoStopMinutes(profile.autoStopMinutes, 60);
+        videoStudioScheduleEnabled = !!profile.scheduleEnabled;
+        videoStudioScheduleMode = normalizeVideoStudioScheduleMode(profile.scheduleMode);
+        videoStudioScheduleDelayMinutes = normalizeVideoStudioScheduleDelayMinutes(profile.scheduleDelayMinutes, 10);
+        videoStudioScheduleTime = normalizeVideoStudioScheduleTime(profile.scheduleTime);
+        videoStudioTransitionType = normalizeVideoStudioTransitionType(profile.transitionType);
+        videoStudioTransitionDuration = normalizeVideoStudioTransitionDuration(profile.transitionDuration, 300);
+        videoStudioShortcutsEnabled = profile.shortcutsEnabled !== false;
+        videoStudioShortcutMap = normalizeVideoStudioShortcutMap(profile.shortcuts);
+        ensureVideoStudioSceneCollections();
+        syncVideoStudioGlobalShortcutsToMain();
+    } catch (error) {
+        console.warn('[VIDEO_STUDIO] profile load failed:', error?.message || error);
+        ensureVideoStudioSceneCollections();
+        syncVideoStudioGlobalShortcutsToMain();
+    }
+}
+
+function buildVideoStudioProfileExportBundle() {
+    const profile = serializeVideoStudioProfile();
+    // Yayın anahtarı dışa aktarılan dosyada saklanmasın.
+    profile.streamKey = '';
+    return {
+        app: 'Aurivo Media Player',
+        type: 'aurivo-video-studio-profile',
+        version: 1,
+        exportedAt: new Date().toISOString(),
+        profile
+    };
+}
+
+async function exportVideoStudioProfile() {
+    try {
+        const bundle = buildVideoStudioProfileExportBundle();
+        const target = await window.aurivo?.saveFile?.({
+            title: uiT('video.tools.profiles.exportTitle', 'Stüdyo profilini dışa aktar'),
+            defaultPath: `aurivo-studio-profile-${new Date().toISOString().slice(0, 10)}.json`,
+            filters: [
+                { name: 'JSON', extensions: ['json'] },
+                { name: uiT('dialog.filters.allFiles', 'Tüm Dosyalar'), extensions: ['*'] }
+            ]
+        });
+        const targetPath = String(target?.path || target || '').trim();
+        if (!targetPath) return;
+        const ok = await window.aurivo?.writeTextFile?.(targetPath, JSON.stringify(bundle, null, 2));
+        if (!ok) throw new Error('write-failed');
+        addVideoStudioLog(uiT('video.tools.logs.profileExported', 'Profil dışa aktarıldı.'), 'success');
+        safeNotify(uiT('video.tools.profiles.exported', 'Stüdyo profili dışa aktarıldı.'), 'success', 2200);
+    } catch (error) {
+        safeNotify(`${uiT('video.tools.profiles.exportFailed', 'Profil dışa aktarılamadı')}: ${error?.message || error}`, 'error', 2600);
+    }
+}
+
+async function importVideoStudioProfile() {
+    try {
+        const files = await window.aurivo?.dialog?.openFiles?.({
+            title: uiT('video.tools.profiles.importTitle', 'Stüdyo profili içe aktar'),
+            filters: [
+                { name: 'JSON', extensions: ['json'] },
+                { name: uiT('dialog.filters.allFiles', 'Tüm Dosyalar'), extensions: ['*'] }
+            ]
+        });
+        const filePath = String(Array.isArray(files) ? files[0]?.path || '' : '').trim();
+        if (!filePath) return;
+        const raw = await window.aurivo?.readTextFile?.(filePath);
+        const parsed = JSON.parse(String(raw || ''));
+        const profile = parsed?.type === 'aurivo-video-studio-profile' && parsed?.profile
+            ? parsed.profile
+            : parsed;
+        if (!profile || typeof profile !== 'object') throw new Error('invalid-profile');
+        stopVideoStudioPreview();
+        releaseVideoStudioIdleRuntime();
+        localStorage.setItem(VIDEO_STUDIO_PROFILE_STORAGE_KEY, JSON.stringify(profile));
+        loadVideoStudioProfile();
+        syncVideoStudioRecordControls();
+        syncVideoStudioMicSelect();
+        updateVideoStudioOutputFolderUi();
+        persistVideoStudioProfileNow();
+        renderVideoToolsWorkspace();
+        addVideoStudioLog(uiT('video.tools.logs.profileImported', 'Profil içe aktarıldı.'), 'success');
+        safeNotify(uiT('video.tools.profiles.imported', 'Stüdyo profili içe aktarıldı.'), 'success', 2200);
+    } catch (error) {
+        safeNotify(`${uiT('video.tools.profiles.importFailed', 'Profil içe aktarılamadı')}: ${error?.message || error}`, 'error', 3000);
+    }
+}
+
+function loadVideoStudioRecoveryCandidate() {
+    try {
+        const raw = localStorage.getItem(VIDEO_STUDIO_RECOVERY_STORAGE_KEY);
+        const parsed = raw ? JSON.parse(raw) : null;
+        videoStudioRecoveryCandidate = parsed && typeof parsed === 'object' && (parsed.capturePath || parsed.outputPath)
+            ? parsed
+            : null;
+    } catch {
+        videoStudioRecoveryCandidate = null;
+    }
+    return videoStudioRecoveryCandidate;
+}
+
+function saveVideoStudioRecoveryCandidate(candidate = {}) {
+    const safeCandidate = {
+        version: 1,
+        startedAt: candidate.startedAt || new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        stage: String(candidate.stage || 'recording'),
+        capturePath: String(candidate.capturePath || '').trim(),
+        outputPath: String(candidate.outputPath || '').trim(),
+        format: normalizeVideoStudioRecordFormat(candidate.format || videoStudioRecordFormat),
+        bitrateKbps: normalizeVideoStudioRecordBitrate(candidate.bitrateKbps || videoStudioRecordBitrate),
+        audioTracks: Array.isArray(candidate.audioTracks) ? candidate.audioTracks : [],
+        bytes: Math.max(0, Number(candidate.bytes || 0) || 0)
+    };
+    videoStudioRecoveryCandidate = safeCandidate;
+    try {
+        localStorage.setItem(VIDEO_STUDIO_RECOVERY_STORAGE_KEY, JSON.stringify(safeCandidate));
+    } catch {
+        // yoksay
+    }
+    updateVideoStudioRecoveryPanel();
+}
+
+function clearVideoStudioRecoveryCandidate() {
+    videoStudioRecoveryCandidate = null;
+    try {
+        localStorage.removeItem(VIDEO_STUDIO_RECOVERY_STORAGE_KEY);
+    } catch {
+        // yoksay
+    }
+    updateVideoStudioRecoveryPanel();
+}
+
+function getVideoStudioRecoveryCandidate() {
+    return videoStudioRecoveryCandidate || loadVideoStudioRecoveryCandidate();
+}
+
+function buildVideoStudioRecoveryMarkup() {
+    const candidate = getVideoStudioRecoveryCandidate();
+    if (!candidate) return '';
+    const path = String(candidate.capturePath || candidate.outputPath || '').trim();
+    const name = window.aurivo?.path?.basename?.(path) || path || uiT('video.tools.recovery.unknownFile', 'Bilinmeyen dosya');
+    const detail = candidate.bytes
+        ? uiT('video.tools.recovery.detailWithSize', '{file} - {size}', { file: name, size: formatVideoStudioBytes(candidate.bytes) })
+        : name;
+    return `
+        <div class="video-studio-recovery" id="videoStudioRecoveryPanel">
+            <div>
+                <div class="video-studio-panel-label">${escapeHtml(uiT('video.tools.recovery.title', 'Kayıt Kurtarma'))}</div>
+                <strong>${escapeHtml(uiT('video.tools.recovery.found', 'Tamamlanmamış kayıt bulundu'))}</strong>
+                <small>${escapeHtml(detail)}</small>
+            </div>
+            <div class="video-studio-recovery-actions">
+                <button type="button" class="btn btn-small" data-video-studio-recovery-action="recover">
+                    <span class="material-symbols-rounded" aria-hidden="true">settings_backup_restore</span>
+                    ${escapeHtml(uiT('video.tools.recovery.recover', 'Kurtar'))}
+                </button>
+                <button type="button" class="btn btn-small btn-ghost" data-video-studio-recovery-action="discard">
+                    <span class="material-symbols-rounded" aria-hidden="true">close</span>
+                    ${escapeHtml(uiT('video.tools.recovery.discard', 'Yoksay'))}
+                </button>
+            </div>
+        </div>
+    `;
+}
+
+function normalizeVideoStudioShortcutMap(shortcuts = {}) {
+    const source = shortcuts && typeof shortcuts === 'object' ? shortcuts : {};
+    return Object.entries(VIDEO_STUDIO_DEFAULT_SHORTCUTS).reduce((acc, [key, fallback]) => {
+        acc[key] = normalizeShortcutComboString(source[key] ?? fallback);
+        return acc;
+    }, {});
+}
+
+function getVideoStudioShortcutLabel(action) {
+    const labels = {
+        record: uiT('video.tools.shortcuts.record', 'Kaydı başlat/durdur'),
+        preview: uiT('video.tools.shortcuts.preview', 'Önizlemeyi aç/kapat'),
+        transition: uiT('video.tools.shortcuts.transition', 'Geçişi dene'),
+        pause: uiT('video.tools.shortcuts.pause', 'Kaydı duraklat/devam ettir'),
+        sceneUp: uiT('video.tools.shortcuts.sceneUp', 'Önceki sahne'),
+        sceneDown: uiT('video.tools.shortcuts.sceneDown', 'Sonraki sahne'),
+        globalRecord: uiT('video.tools.shortcuts.globalRecord', 'Global kayıt başlat/durdur'),
+        globalPause: uiT('video.tools.shortcuts.globalPause', 'Global duraklat/devam'),
+        globalStop: uiT('video.tools.shortcuts.globalStop', 'Global kaydı durdur'),
+        globalReplay: uiT('video.tools.shortcuts.globalReplay', 'Global replay kaydet')
+    };
+    return labels[action] || action;
+}
+
+function shortcutComboToElectronAccelerator(combo = '') {
+    return normalizeShortcutComboString(combo)
+        .split('+')
+        .map((part) => {
+            if (part === 'Ctrl') return 'CommandOrControl';
+            if (part === 'Meta') return 'Super';
+            if (part === 'ArrowUp') return 'Up';
+            if (part === 'ArrowDown') return 'Down';
+            if (part === 'ArrowLeft') return 'Left';
+            if (part === 'ArrowRight') return 'Right';
+            return part;
+        })
+        .filter(Boolean)
+        .join('+');
+}
+
+function syncVideoStudioGlobalShortcutsToMain() {
+    const shortcuts = normalizeVideoStudioShortcutMap(videoStudioShortcutMap);
+    videoStudioShortcutMap = shortcuts;
+    if (!videoStudioShortcutsEnabled) {
+        window.aurivo?.app?.setStudioShortcuts?.({})?.catch?.(() => {});
+        return;
+    }
+    window.aurivo?.app?.setStudioShortcuts?.({
+        globalRecord: shortcutComboToElectronAccelerator(shortcuts.globalRecord),
+        globalPause: shortcutComboToElectronAccelerator(shortcuts.globalPause),
+        globalStop: shortcutComboToElectronAccelerator(shortcuts.globalStop),
+        globalReplay: shortcutComboToElectronAccelerator(shortcuts.globalReplay)
+    })?.catch?.(() => {});
+}
+
+function setVideoStudioShortcut(action = '', combo = '') {
+    if (!Object.prototype.hasOwnProperty.call(VIDEO_STUDIO_DEFAULT_SHORTCUTS, action)) return;
+    videoStudioShortcutMap = normalizeVideoStudioShortcutMap({
+        ...videoStudioShortcutMap,
+        [action]: combo
+    });
+    syncVideoStudioGlobalShortcutsToMain();
+    scheduleVideoStudioProfileSave();
+}
+
+function resetVideoStudioShortcuts() {
+    videoStudioShortcutMap = { ...VIDEO_STUDIO_DEFAULT_SHORTCUTS };
+    videoStudioShortcutCaptureAction = '';
+    syncVideoStudioGlobalShortcutsToMain();
+    scheduleVideoStudioProfileSave();
+    renderVideoToolsWorkspace();
+}
+
+function buildVideoStudioShortcutRowsMarkup() {
+    const actions = ['record', 'preview', 'transition', 'pause', 'sceneUp', 'sceneDown', 'globalRecord', 'globalPause', 'globalStop', 'globalReplay'];
+    const shortcuts = normalizeVideoStudioShortcutMap(videoStudioShortcutMap);
+    return actions.map((action) => {
+        const value = shortcuts[action] || '';
+        const waiting = videoStudioShortcutCaptureAction === action;
+        return `
+            <div class="video-studio-shortcut-row">
+                <span>${escapeHtml(getVideoStudioShortcutLabel(action))}</span>
+                <kbd>${escapeHtml(waiting ? uiT('playback.shortcuts.actions.waiting', 'Tuş bekleniyor...') : (value || uiT('playback.shortcuts.unassigned', 'Atanmamış')))}</kbd>
+                <button type="button" class="video-studio-mini-btn" data-video-studio-shortcut-capture="${escapeAttribute(action)}" title="${escapeAttribute(uiT('playback.shortcuts.actions.assign', 'Ata'))}" aria-label="${escapeAttribute(uiT('playback.shortcuts.actions.assign', 'Ata'))}">
+                    <span class="material-symbols-rounded" aria-hidden="true">keyboard</span>
+                </button>
+                <button type="button" class="video-studio-mini-btn" data-video-studio-shortcut-clear="${escapeAttribute(action)}" title="${escapeAttribute(uiT('playback.shortcuts.actions.clear', 'Temizle'))}" aria-label="${escapeAttribute(uiT('playback.shortcuts.actions.clear', 'Temizle'))}">
+                    <span class="material-symbols-rounded" aria-hidden="true">backspace</span>
+                </button>
+            </div>
+        `;
+    }).join('');
+}
+
+function updateVideoStudioRecoveryPanel() {
+    const panel = document.getElementById('videoStudioRecoveryMount');
+    if (panel) panel.innerHTML = buildVideoStudioRecoveryMarkup();
+}
+
+async function recoverVideoStudioRecording() {
+    const candidate = getVideoStudioRecoveryCandidate();
+    if (!candidate) {
+        safeNotify(uiT('video.tools.recovery.none', 'Kurtarılacak kayıt yok.'), 'info', 1800);
+        return;
+    }
+    const capturePath = String(candidate.capturePath || '').trim();
+    const outputPath = String(candidate.outputPath || capturePath || '').trim();
+    try {
+        const captureExists = capturePath ? await window.aurivo?.fileExists?.(capturePath) : false;
+        const outputExists = outputPath ? await window.aurivo?.fileExists?.(outputPath) : false;
+        if (outputExists && (!captureExists || capturePath === outputPath)) {
+            videoToolLastOutputPath = outputPath;
+            screenRecordingOutputPath = outputPath;
+            await validateVideoStudioRecordingFile(outputPath);
+            clearVideoStudioRecoveryCandidate();
+            safeNotify(uiT('video.tools.recovery.done', 'Kayıt kurtarıldı.'), 'success', 2400);
+            renderVideoToolsWorkspace();
+            return;
+        }
+        if (!captureExists) {
+            clearVideoStudioRecoveryCandidate();
+            safeNotify(uiT('video.tools.recovery.missing', 'Kurtarma dosyası bulunamadı.'), 'warning', 2600);
+            renderVideoToolsWorkspace();
+            return;
+        }
+        updateVideoToolStatus(uiT('video.tools.recovery.running', 'Kayıt kurtarılıyor...'), 'running', 96);
+        const result = await window.aurivo?.screenRecording?.finalizeRecording?.(capturePath, outputPath, {
+            format: normalizeVideoStudioRecordFormat(candidate.format || videoStudioRecordFormat),
+            bitrateKbps: normalizeVideoStudioRecordBitrate(candidate.bitrateKbps || videoStudioRecordBitrate),
+            videoEncoder: normalizeVideoStudioVideoEncoder(candidate.videoEncoder || videoStudioVideoEncoder),
+            audioTracks: Array.isArray(candidate.audioTracks) ? candidate.audioTracks : []
+        });
+        if (!result?.success) throw new Error(result?.error || 'recover-failed');
+        videoToolLastOutputPath = String(result.path || outputPath);
+        screenRecordingOutputPath = videoToolLastOutputPath;
+        await validateVideoStudioRecordingFile(videoToolLastOutputPath);
+        clearVideoStudioRecoveryCandidate();
+        updateVideoToolStatus(uiT('video.tools.recovery.done', 'Kayıt kurtarıldı.'), 'done', 100);
+        addVideoStudioLog(uiT('video.tools.logs.recoveryDone', 'Kayıt kurtarıldı.'), 'success');
+        safeNotify(uiT('video.tools.recovery.done', 'Kayıt kurtarıldı.'), 'success', 2600);
+        renderVideoToolsWorkspace();
+    } catch (error) {
+        addVideoStudioLog(`${uiT('video.tools.logs.recoveryFailed', 'Kayıt kurtarılamadı.')}: ${error?.message || error}`, 'error');
+        safeNotify(`${uiT('video.tools.recovery.failed', 'Kayıt kurtarılamadı')}: ${error?.message || error}`, 'error', 3200);
+    }
+}
+
+function discardVideoStudioRecovery() {
+    clearVideoStudioRecoveryCandidate();
+    safeNotify(uiT('video.tools.recovery.discarded', 'Kurtarma kaydı yoksayıldı.'), 'info', 1800);
+    renderVideoToolsWorkspace();
+}
+
+function addVideoStudioTextSource() {
+    const source = {
+        id: `text-${Date.now()}`,
+        kind: 'text',
+        name: uiT('video.tools.studio.text', 'Metin'),
+        icon: 'title',
+        visible: true,
+        text: uiT('video.tools.studio.textDefault', 'Aurivo Canlı'),
+        color: '#ffffff',
+        fontSize: 42,
+        opacity: 100,
+        flipX: false,
+        transform: getVideoStudioDefaultTransform('text')
+    };
+    videoStudioSources.unshift(source);
+    videoStudioActiveSourceId = source.id;
+    renderVideoToolsWorkspace();
+}
+
+function createVideoStudioCoreSource(kind) {
+    const stamp = Date.now();
+    if (kind === 'display') {
+        return {
+            id: `display-${stamp}`,
+            kind: 'display',
+            name: uiT('video.tools.record.portalSource', 'Ekran Yakalama (PipeWire)'),
+            icon: 'desktop_windows',
+            visible: true
+        };
+    }
+    if (kind === 'system-audio') {
+        return {
+            id: `desktop-audio-${stamp}`,
+            kind: 'system-audio',
+            name: uiT('video.tools.studio.desktopAudio', 'Masaüstü'),
+            icon: 'volume_up',
+            visible: true
+        };
+    }
+    if (kind === 'audio') {
+        return {
+            id: `mic-${stamp}`,
+            kind: 'audio',
+            name: uiT('video.tools.studio.microphone', 'Mikrofon'),
+            icon: 'mic',
+            visible: true
+        };
+    }
+    if (kind === 'camera') {
+        return {
+            id: `camera-${stamp}`,
+            kind: 'camera',
+            name: uiT('video.tools.studio.camera', 'Kamera'),
+            icon: 'videocam',
+            visible: true,
+            cameraResolution: '720p',
+            cameraFps: 30,
+            opacity: 100,
+            flipX: false,
+            crop: normalizeVideoStudioSourceCrop(),
+            fit: 'cover',
+            transform: getVideoStudioDefaultTransform('camera')
+        };
+    }
+    return null;
+}
+
+function revealExistingVideoStudioSource(kind) {
+    const source = videoStudioSources.find((item) => item.kind === kind);
+    if (!source) return false;
+    source.visible = true;
+    videoStudioActiveSourceId = source.id;
+    if (kind === 'audio' || kind === 'system-audio') {
+        syncVideoStudioAudioSourceState();
+    }
+    safeNotify(uiT('video.tools.sourcePicker.revealed', 'Kaynak zaten vardı; görünür yapıldı.'), 'info', 1800);
+    return true;
+}
+
+async function addVideoStudioSourceByKind(kind = '') {
+    const normalized = String(kind || '').trim().toLowerCase();
+    videoStudioSourcePickerOpen = false;
+    if (normalized === 'image') {
+        renderVideoToolsWorkspace();
+        await addVideoStudioImageSource();
+        return;
+    }
+    if (normalized === 'media') {
+        renderVideoToolsWorkspace();
+        await addVideoStudioMediaSource();
+        return;
+    }
+    if (normalized === 'color') {
+        addVideoStudioColorSource();
+        return;
+    }
+    if (normalized === 'text') {
+        addVideoStudioTextSource();
+        return;
+    }
+    if (['display', 'system-audio', 'audio', 'camera'].includes(normalized)) {
+        if (revealExistingVideoStudioSource(normalized)) {
+            renderVideoToolsWorkspace();
+            return;
+        }
+        const source = createVideoStudioCoreSource(normalized);
+        if (!source) return;
+        videoStudioSources.push(source);
+        videoStudioActiveSourceId = source.id;
+        if (normalized === 'audio' || normalized === 'system-audio') {
+            syncVideoStudioAudioSourceState();
+        }
+        renderVideoToolsWorkspace();
+    }
+}
+
+function addVideoStudioScene() {
+    syncActiveVideoStudioSceneSourcesSnapshot();
+    const nextIndex = videoStudioScenes.length + 1;
+    const sources = getDefaultVideoStudioSources().map(sanitizeVideoStudioSourceForProfile).filter(Boolean);
+    const scene = {
+        id: `scene-${Date.now()}-${nextIndex}`,
+        name: uiT('video.tools.studio.sceneNamed', 'Sahne {count}', { count: nextIndex }),
+        sources,
+        activeSourceId: sources[0]?.id || ''
+    };
+    videoStudioScenes.push(scene);
+    videoStudioActiveSceneId = scene.id;
+    applyVideoStudioSceneSources(scene);
+    syncActiveVideoStudioSceneCollectionSnapshot();
+    renderVideoToolsWorkspace();
+}
+
+function getVideoStudioCollectionName(collection, index = 0) {
+    return String(collection?.name || uiT('video.tools.collections.named', 'Koleksiyon {count}', { count: index + 1 })).trim();
+}
+
+function selectVideoStudioSceneCollection(collectionId) {
+    if (!videoStudioSceneCollections.some((collection) => collection.id === collectionId)) return;
+    syncActiveVideoStudioSceneCollectionSnapshot();
+    if (collectionId === videoStudioActiveSceneCollectionId) return;
+    stopVideoStudioPreview();
+    applyVideoStudioSceneCollection(collectionId);
+    renderVideoToolsWorkspace();
+}
+
+function addVideoStudioSceneCollection() {
+    syncActiveVideoStudioSceneCollectionSnapshot();
+    const nextIndex = videoStudioSceneCollections.length + 1;
+    const snapshot = createVideoStudioSceneSnapshot({ defaultEmpty: true });
+    const collection = {
+        id: `collection-${Date.now()}-${nextIndex}`,
+        name: uiT('video.tools.collections.named', 'Koleksiyon {count}', { count: nextIndex }),
+        ...snapshot
+    };
+    videoStudioSceneCollections.push(collection);
+    stopVideoStudioPreview();
+    applyVideoStudioSceneCollection(collection.id);
+    renderVideoToolsWorkspace();
+}
+
+function duplicateVideoStudioSceneCollection() {
+    syncActiveVideoStudioSceneCollectionSnapshot();
+    const currentIndex = Math.max(0, videoStudioSceneCollections.findIndex((collection) => collection.id === videoStudioActiveSceneCollectionId));
+    const current = videoStudioSceneCollections[currentIndex] || videoStudioSceneCollections[0];
+    if (!current) return;
+    const nextIndex = videoStudioSceneCollections.length + 1;
+    const copy = sanitizeVideoStudioSceneCollection({
+        ...current,
+        id: `collection-${Date.now()}-${nextIndex}`,
+        name: uiT('video.tools.collections.copyName', '{name} kopyası', { name: getVideoStudioCollectionName(current, currentIndex) })
+    }, nextIndex - 1);
+    if (!copy) return;
+    videoStudioSceneCollections.push(copy);
+    stopVideoStudioPreview();
+    applyVideoStudioSceneCollection(copy.id);
+    renderVideoToolsWorkspace();
+}
+
+function removeVideoStudioSceneCollection() {
+    if (videoStudioSceneCollections.length <= 1) {
+        safeNotify(uiT('video.tools.collections.keepOne', 'En az bir koleksiyon kalmalı.'), 'info', 1800);
+        return;
+    }
+    const currentIndex = videoStudioSceneCollections.findIndex((collection) => collection.id === videoStudioActiveSceneCollectionId);
+    const safeIndex = currentIndex >= 0 ? currentIndex : 0;
+    videoStudioSceneCollections = videoStudioSceneCollections.filter((collection) => collection.id !== videoStudioActiveSceneCollectionId);
+    const nextCollection = videoStudioSceneCollections[Math.min(safeIndex, videoStudioSceneCollections.length - 1)] || videoStudioSceneCollections[0];
+    stopVideoStudioPreview();
+    applyVideoStudioSceneCollection(nextCollection?.id || '');
+    renderVideoToolsWorkspace();
+}
+
+function syncVideoStudioSceneCollectionNameFromUi() {
+    const input = document.getElementById('videoStudioSceneCollectionNameInput');
+    const collection = videoStudioSceneCollections.find((item) => item.id === videoStudioActiveSceneCollectionId);
+    if (!input || !collection) return false;
+    const fallback = getVideoStudioCollectionName(collection, videoStudioSceneCollections.indexOf(collection));
+    collection.name = String(input.value || '').trim().slice(0, 48) || fallback;
+    input.value = collection.name;
+    const select = document.getElementById('videoStudioSceneCollectionSelect');
+    if (select) {
+        const option = [...select.options].find((item) => item.value === collection.id);
+        if (option) option.textContent = collection.name;
+    }
+    scheduleVideoStudioProfileSave();
+    return true;
+}
+
+function applyVideoStudioTemplate(template = 'basic') {
+    const key = String(template || 'basic').trim().toLowerCase();
+    stopVideoStudioPreview();
+    const sources = createVideoStudioSourceTemplate(key).map(sanitizeVideoStudioSourceForProfile).filter(Boolean);
+    videoStudioScenes = [{
+        id: `scene-${Date.now()}`,
+        name: getVideoStudioTemplateLabel(key),
+        sources,
+        activeSourceId: sources[0]?.id || ''
+    }];
+    videoStudioSources = sources.map((source) => ({ ...source }));
+    videoStudioActiveSceneId = videoStudioScenes[0]?.id || 'scene-1';
+    videoStudioActiveSourceId = videoStudioSources[0]?.id || '';
+    syncVideoStudioAudioSourceState();
+    syncActiveVideoStudioSceneCollectionSnapshot();
+    renderVideoToolsWorkspace();
+    safeNotify(uiT('video.tools.templates.applied', 'Şablon uygulandı: {name}', { name: getVideoStudioTemplateLabel(key) }), 'success', 1600);
+}
+
+function handleVideoStudioQuickAction(action = '') {
+    const path = getVideoStudioLastRecordingPath();
+    if (!path) {
+        safeNotify(uiT('video.tools.quickActions.noRecording', 'Henüz kayıt yok'), 'info', 1800);
+        return;
+    }
+    if (action === 'open-folder') {
+        window.aurivo?.openContainingFolder?.(path);
+        return;
+    }
+    if (action === 'edit') {
+        markVideoToolSourceSelected(path);
+        videoToolModeState = 'edit';
+        setVideoToolsViewMode('processing');
+        safeNotify(uiT('video.tools.quickActions.editSelected', 'Kayıt video işleme kaynağı yapıldı.'), 'success', 1600);
+        return;
+    }
+    if (action === 'play') {
+        playVideo(path, { mode: 'player' });
+        return;
+    }
+    if (action === 'remux-mkv' || action === 'remux-mp4') {
+        remuxVideoStudioLastRecording(action === 'remux-mp4' ? 'mp4' : 'mkv').catch(() => {});
+        return;
+    }
+    if (action === 'repair') {
+        repairVideoStudioRecording(path).catch(() => {});
+    }
+}
+
+async function repairVideoStudioRecording(inputPath = '', { automatic = false } = {}) {
+    if (videoStudioRepairInProgress) return null;
+    const sourcePath = String(inputPath || getVideoStudioLastRecordingPath() || '').trim();
+    if (!sourcePath) {
+        if (!automatic) safeNotify(uiT('video.tools.quickActions.noRecording', 'Henüz kayıt yok'), 'info', 1800);
+        return null;
+    }
+    const extension = normalizeVideoStudioRecordFormat(window.aurivo?.path?.extname?.(sourcePath)?.replace(/^\./, '') || videoStudioRecordFormat || 'mkv', 'mkv');
+    const outputPath = buildNonConflictingRecordingPath(buildVideoStudioRepairOutputPath(sourcePath, extension), extension);
+    videoStudioRepairInProgress = true;
+    updateVideoToolStatus(automatic ? 'Kayıt otomatik onarılıyor...' : 'Kayıt onarılıyor...', 'running', 94);
+    addVideoStudioLog(automatic ? 'Otomatik kayıt onarma başlatıldı.' : 'Kayıt onarma başlatıldı.');
+    try {
+        const result = await window.aurivo?.screenRecording?.repairRecording?.(sourcePath, outputPath, {
+            format: extension,
+            bitrateKbps: normalizeVideoStudioRecordBitrate(videoStudioRecordBitrate),
+            videoEncoder: normalizeVideoStudioVideoEncoder(videoStudioVideoEncoder)
+        });
+        if (!result?.success) throw new Error(result?.error || 'repair-failed');
+        videoToolLastOutputPath = String(result.path || outputPath);
+        screenRecordingOutputPath = videoToolLastOutputPath;
+        addVideoStudioLog('Kayıt onarıldı.', 'success');
+        updateVideoToolStatus('Kayıt onarıldı; doğrulanıyor...', 'running', 98);
+        const validation = await validateVideoStudioRecordingFile(videoToolLastOutputPath, { autoRepair: false });
+        updateVideoToolStatus(validation?.status === 'ok' || validation?.status === 'warning' ? 'Kayıt onarıldı.' : 'Onarım çıktı dosyası doğrulanamadı.', validation?.status === 'error' ? 'error' : 'done', validation?.status === 'error' ? 0 : 100);
+        safeNotify(validation?.status === 'error' ? 'Onarım tamamlandı ama doğrulama başarısız.' : 'Kayıt onarıldı.', validation?.status === 'error' ? 'warning' : 'success', 2800);
+        updateVideoStudioQuickActionsPanel();
+        return validation;
+    } catch (error) {
+        addVideoStudioLog(`Kayıt onarılamadı: ${error?.message || error}`, 'error');
+        if (!automatic) safeNotify(`Kayıt onarılamadı: ${error?.message || error}`, 'error', 3200);
+        return { status: 'error', path: sourcePath, error: error?.message || String(error) };
+    } finally {
+        videoStudioRepairInProgress = false;
+    }
+}
+
+async function remuxVideoStudioLastRecording(format = 'mkv') {
+    const inputPath = getVideoStudioLastRecordingPath();
+    if (!inputPath) {
+        safeNotify(uiT('video.tools.quickActions.noRecording', 'Henüz kayıt yok'), 'info', 1800);
+        return;
+    }
+    const targetFormat = normalizeVideoStudioRecordFormat(format, 'mkv') === 'mp4' ? 'mp4' : 'mkv';
+    const baseName = String(window.aurivo?.path?.basename?.(inputPath) || 'aurivo-recording').replace(/\.[^.]+$/i, '');
+    const saveResult = await window.aurivo?.saveFile?.({
+        title: uiT('video.tools.remux.saveTitle', 'Remux çıktısını kaydet'),
+        defaultPath: `${baseName}.remux.${targetFormat}`,
+        filters: [
+            { name: targetFormat.toUpperCase(), extensions: [targetFormat] },
+            { name: uiT('dialog.filters.allFiles', 'Tüm Dosyalar'), extensions: ['*'] }
+        ]
+    });
+    const outputPath = String(saveResult?.path || saveResult || '').trim();
+    if (!outputPath) return;
+    updateVideoToolStatus(uiT('video.tools.remux.running', 'Remux çalışıyor...'), 'running', 92);
+    addVideoStudioLog(uiT('video.tools.logs.remuxStarted', 'Remux başlatıldı.'));
+    const result = await window.aurivo?.screenRecording?.finalizeRecording?.(inputPath, outputPath, {
+        format: targetFormat,
+        bitrateKbps: videoStudioRecordBitrate,
+        videoEncoder: normalizeVideoStudioVideoEncoder(videoStudioVideoEncoder)
+    });
+    if (result?.success) {
+        videoToolLastOutputPath = String(result.path || outputPath);
+        await validateVideoStudioRecordingFile(videoToolLastOutputPath);
+        updateVideoToolStatus(uiT('video.tools.remux.done', 'Remux tamamlandı.'), 'done', 100);
+        addVideoStudioLog(uiT('video.tools.logs.remuxDone', 'Remux tamamlandı.'), 'success');
+        safeNotify(uiT('video.tools.remux.done', 'Remux tamamlandı.'), 'success', 2400);
+        updateVideoStudioQuickActionsPanel();
+    } else {
+        const detail = result?.error ? `: ${result.error}` : '';
+        updateVideoToolStatus(uiT('video.tools.remux.failed', 'Remux başarısız.'), 'error', 0);
+        addVideoStudioLog(`${uiT('video.tools.logs.remuxFailed', 'Remux başarısız.')}${detail}`, 'error');
+        safeNotify(`${uiT('video.tools.remux.failed', 'Remux başarısız.')}${detail}`, 'error', 3200);
+    }
+}
+
+async function addVideoStudioImageSource() {
+    try {
+        const files = await window.aurivo?.dialog?.openFiles?.({
+            title: uiT('video.tools.studio.pickImage', 'Logo veya görsel seç'),
+            filters: [
+                { name: uiT('dialog.filters.imageFiles', 'Görsel Dosyaları'), extensions: typeof getConfiguredLibraryExtensions === 'function' ? getConfiguredLibraryExtensions('image') : DEFAULT_IMAGE_EXTENSIONS },
+                { name: uiT('dialog.filters.allFiles', 'Tüm Dosyalar'), extensions: ['*'] }
+            ]
+        });
+        const first = Array.isArray(files) ? files[0] : null;
+        const imagePath = String(first?.path || '').trim();
+        if (!imagePath) return;
+        const source = {
+            id: `image-${Date.now()}`,
+            kind: 'image',
+            name: String(first?.name || window.aurivo?.path?.basename?.(imagePath) || uiT('video.tools.studio.image', 'Görsel')).trim(),
+            icon: 'image',
+            visible: true,
+            path: imagePath,
+            url: toLocalFileUrl(imagePath),
+            opacity: 100,
+            flipX: false,
+            crop: normalizeVideoStudioSourceCrop(),
+            fit: 'cover',
+            transform: getVideoStudioDefaultTransform('image')
+        };
+        videoStudioSources.unshift(source);
+        videoStudioActiveSourceId = source.id;
+        renderVideoToolsWorkspace();
+    } catch (error) {
+        safeNotify(`${uiT('video.tools.studio.pickImageFailed', 'Görsel eklenemedi')}: ${error?.message || error}`, 'error', 2200);
+    }
+}
+
+async function addVideoStudioMediaSource() {
+    try {
+        const files = await window.aurivo?.dialog?.openFiles?.({
+            title: uiT('video.tools.studio.pickMedia', 'Medya kaynağı seç'),
+            filters: [
+                { name: uiT('dialog.filters.videoFiles', 'Video Dosyaları'), extensions: getConfiguredLibraryExtensions('video') },
+                { name: uiT('dialog.filters.allFiles', 'Tüm Dosyalar'), extensions: ['*'] }
+            ]
+        });
+        const first = Array.isArray(files) ? files[0] : null;
+        const mediaPath = String(first?.path || '').trim();
+        if (!mediaPath) return;
+        const source = {
+            id: `media-${Date.now()}`,
+            kind: 'media',
+            name: String(first?.name || window.aurivo?.path?.basename?.(mediaPath) || uiT('video.tools.studio.media', 'Medya')).trim(),
+            icon: 'movie',
+            visible: true,
+            path: mediaPath,
+            url: toLocalFileUrl(mediaPath),
+            loop: true,
+            restartOnRecord: true,
+            playbackRate: 1,
+            opacity: 100,
+            flipX: false,
+            crop: normalizeVideoStudioSourceCrop(),
+            fit: 'cover',
+            transform: getVideoStudioDefaultTransform('media')
+        };
+        videoStudioSources.unshift(source);
+        videoStudioActiveSourceId = source.id;
+        addVideoStudioLog(uiT('video.tools.logs.mediaSourceAdded', 'Medya kaynağı eklendi.'));
+        renderVideoToolsWorkspace();
+    } catch (error) {
+        safeNotify(`${uiT('video.tools.studio.pickMediaFailed', 'Medya kaynağı eklenemedi')}: ${error?.message || error}`, 'error', 2200);
+    }
+}
+
+function addVideoStudioColorSource() {
+    const source = {
+        id: `color-${Date.now()}`,
+        kind: 'color',
+        name: uiT('video.tools.studio.color', 'Renk'),
+        icon: 'palette',
+        visible: true,
+        color: '#12324a',
+        opacity: 100,
+        flipX: false,
+        transform: getVideoStudioDefaultTransform('color')
+    };
+    videoStudioSources.unshift(source);
+    videoStudioActiveSourceId = source.id;
+    addVideoStudioLog(uiT('video.tools.logs.colorSourceAdded', 'Renk kaynağı eklendi.'));
+    renderVideoToolsWorkspace();
+}
+
+async function addVideoStudioSource() {
+    videoStudioSourcePickerOpen = !videoStudioSourcePickerOpen;
+    renderVideoToolsWorkspace();
+}
+
+function normalizeVideoStudioTransitionType(value) {
+    const normalized = String(value || 'fade').trim().toLowerCase();
+    return ['cut', 'fade', 'slide'].includes(normalized) ? normalized : 'fade';
+}
+
+function normalizeVideoStudioTransitionDuration(value, fallback = videoStudioTransitionDuration) {
+    const numeric = Number(value);
+    return Number.isFinite(numeric) ? Math.max(0, Math.min(2000, Math.round(numeric))) : fallback;
+}
+
+function shouldUseVideoStudioSceneTransitionCanvas() {
+    return normalizeVideoStudioTransitionType(videoStudioTransitionType) !== 'cut' &&
+        normalizeVideoStudioTransitionDuration(videoStudioTransitionDuration, 0) > 0;
+}
+
+function getVideoStudioTransitionNow() {
+    return typeof performance !== 'undefined' && typeof performance.now === 'function'
+        ? performance.now()
+        : Date.now();
+}
+
+function triggerVideoStudioCanvasTransition(type = videoStudioTransitionType, duration = videoStudioTransitionDuration) {
+    const normalizedType = normalizeVideoStudioTransitionType(type);
+    const normalizedDuration = normalizeVideoStudioTransitionDuration(duration, 0);
+    if (normalizedType === 'cut' || normalizedDuration <= 0) {
+        videoStudioCanvasTransition = null;
+        return;
+    }
+    videoStudioCanvasTransition = {
+        type: normalizedType,
+        duration: normalizedDuration,
+        startedAt: getVideoStudioTransitionNow()
+    };
+}
+
+function syncVideoStudioTransitionSettingsFromUi() {
+    const typeSelect = document.getElementById('videoStudioTransitionTypeSelect');
+    if (typeSelect) videoStudioTransitionType = normalizeVideoStudioTransitionType(typeSelect.value);
+    const durationInput = document.getElementById('videoStudioTransitionDurationInput');
+    if (durationInput) {
+        videoStudioTransitionDuration = normalizeVideoStudioTransitionDuration(durationInput.value);
+        durationInput.value = String(videoStudioTransitionDuration);
+    }
+    scheduleVideoStudioProfileSave();
+}
+
+function playVideoStudioSceneTransition() {
+    syncVideoStudioTransitionSettingsFromUi();
+    if (videoStudioTransitionType === 'cut' || videoStudioTransitionDuration <= 0) return;
+    triggerVideoStudioCanvasTransition(videoStudioTransitionType, videoStudioTransitionDuration);
+    const preview = document.querySelector('.video-studio-preview');
+    if (!preview) return;
+    if (videoStudioTransitionTimer) {
+        clearTimeout(videoStudioTransitionTimer);
+        videoStudioTransitionTimer = null;
+    }
+    preview.style.setProperty('--video-studio-transition-ms', `${videoStudioTransitionDuration}ms`);
+    preview.classList.remove('is-transitioning-fade', 'is-transitioning-slide');
+    void preview.offsetWidth;
+    preview.classList.add(videoStudioTransitionType === 'slide' ? 'is-transitioning-slide' : 'is-transitioning-fade');
+    videoStudioTransitionTimer = setTimeout(() => {
+        preview.classList.remove('is-transitioning-fade', 'is-transitioning-slide');
+        videoStudioTransitionTimer = null;
+    }, videoStudioTransitionDuration + 80);
+}
+
+function selectAdjacentVideoStudioScene(direction = 1) {
+    if (!Array.isArray(videoStudioScenes) || videoStudioScenes.length < 2) return;
+    const currentIndex = videoStudioScenes.findIndex((scene) => scene.id === videoStudioActiveSceneId);
+    const safeIndex = currentIndex >= 0 ? currentIndex : 0;
+    const nextIndex = (safeIndex + direction + videoStudioScenes.length) % videoStudioScenes.length;
+    const nextSceneId = videoStudioScenes[nextIndex]?.id || '';
+    if (nextSceneId) selectVideoStudioScene(nextSceneId);
+}
+
+function selectVideoStudioScene(sceneId) {
+    if (!videoStudioScenes.some((scene) => scene.id === sceneId)) return;
+    const changed = videoStudioActiveSceneId !== sceneId;
+    if (changed) {
+        syncActiveVideoStudioSceneSourcesSnapshot();
+        stopVideoStudioPreview();
+    }
+    videoStudioActiveSceneId = sceneId;
+    if (changed) {
+        const nextScene = videoStudioScenes.find((scene) => scene.id === sceneId);
+        applyVideoStudioSceneSources(nextScene);
+        syncActiveVideoStudioSceneCollectionSnapshot();
+    }
+    renderVideoToolsWorkspace();
+    if (changed) requestAnimationFrame(playVideoStudioSceneTransition);
+}
+
+function removeVideoStudioScene(sceneId) {
+    if (videoStudioScenes.length <= 1) {
+        safeNotify(uiT('video.tools.studio.keepOneScene', 'En az bir sahne kalmalı.'), 'info', 1800);
+        return;
+    }
+    syncActiveVideoStudioSceneSourcesSnapshot();
+    const removingActive = sceneId === videoStudioActiveSceneId;
+    videoStudioScenes = videoStudioScenes.filter((scene) => scene.id !== sceneId);
+    if (removingActive || !videoStudioScenes.some((scene) => scene.id === videoStudioActiveSceneId)) {
+        videoStudioActiveSceneId = videoStudioScenes[0]?.id || 'scene-1';
+        applyVideoStudioSceneSources(videoStudioScenes[0]);
+    }
+    syncActiveVideoStudioSceneCollectionSnapshot();
+    renderVideoToolsWorkspace();
+}
+
+function selectVideoStudioSource(sourceId) {
+    if (!videoStudioSources.some((source) => source.id === sourceId)) return;
+    videoStudioActiveSourceId = sourceId;
+    renderVideoToolsWorkspace();
+}
+
+function isVideoStudioSourceLocked(source) {
+    return !!source?.locked;
+}
+
+function toggleVideoStudioSourceLock(sourceId) {
+    const source = videoStudioSources.find((item) => item.id === sourceId);
+    if (!source) return;
+    source.locked = !source.locked;
+    videoStudioActiveSourceId = sourceId;
+    scheduleVideoStudioProfileSave();
+    renderVideoToolsWorkspace();
+}
+
+function moveVideoStudioSourceLayer(sourceId, direction) {
+    const index = videoStudioSources.findIndex((source) => source.id === sourceId);
+    if (index < 0) return;
+    const nextIndex = index + direction;
+    if (nextIndex < 0 || nextIndex >= videoStudioSources.length) return;
+    const [source] = videoStudioSources.splice(index, 1);
+    videoStudioSources.splice(nextIndex, 0, source);
+    videoStudioActiveSourceId = sourceId;
+    renderVideoToolsWorkspace();
+}
+
+function updateVideoStudioTransformBox(sourceId) {
+    const source = videoStudioSources.find((item) => item.id === sourceId);
+    const safeId = typeof CSS !== 'undefined' && typeof CSS.escape === 'function'
+        ? CSS.escape(sourceId)
+        : String(sourceId).replace(/"/g, '\\"');
+    const box = document.querySelector(`[data-video-studio-transform-source="${safeId}"]`);
+    if (!source || !box) return;
+    const transform = getVideoStudioSourceTransform(source);
+    box.style.left = `${transform.x * 100}%`;
+    box.style.top = `${transform.y * 100}%`;
+    box.style.width = `${transform.width * 100}%`;
+    box.style.height = `${transform.height * 100}%`;
+}
+
+function beginVideoStudioSourceTransform(event) {
+    const target = event.target instanceof Element
+        ? event.target.closest('[data-video-studio-transform-source]')
+        : null;
+    if (!target || typeof PointerEvent === 'undefined' || !(event instanceof PointerEvent)) return false;
+    const sourceId = String(target.getAttribute('data-video-studio-transform-source') || '').trim();
+    const source = videoStudioSources.find((item) => item.id === sourceId);
+    const preview = target.closest('.video-studio-preview');
+    if (!source || !preview) return false;
+    event.preventDefault();
+    event.stopPropagation();
+    videoStudioActiveSourceId = sourceId;
+    if (isVideoStudioSourceLocked(source)) {
+        const safeSelectorId = typeof CSS !== 'undefined' && typeof CSS.escape === 'function'
+            ? CSS.escape(sourceId)
+            : String(sourceId).replace(/"/g, '\\"');
+        document.querySelectorAll('.video-studio-source-row.is-active, .video-studio-transform-box.is-active').forEach((node) => node.classList.remove('is-active'));
+        document.querySelectorAll(`[data-video-studio-source="${safeSelectorId}"], [data-video-studio-transform-source="${safeSelectorId}"]`).forEach((node) => {
+            const row = node.closest('.video-studio-source-row');
+            if (row) row.classList.add('is-active');
+            node.classList.add('is-active');
+        });
+        return true;
+    }
+    const previewRect = preview.getBoundingClientRect();
+    const transform = { ...getVideoStudioSourceTransform(source) };
+    const resizeHandle = event.target instanceof Element
+        ? event.target.closest('[data-video-studio-transform-resize]')
+        : null;
+    videoStudioTransformDrag = {
+        pointerId: event.pointerId,
+        sourceId,
+        mode: resizeHandle ? 'resize' : 'move',
+        startX: event.clientX,
+        startY: event.clientY,
+        previewWidth: Math.max(1, previewRect.width),
+        previewHeight: Math.max(1, previewRect.height),
+        transform
+    };
+    try {
+        target.setPointerCapture(event.pointerId);
+    } catch {
+        // yoksay
+    }
+    document.body.classList.add('is-video-studio-transforming');
+    document.querySelectorAll('.video-studio-source-row.is-active, .video-studio-transform-box.is-active').forEach((node) => node.classList.remove('is-active'));
+    const safeSelectorId = typeof CSS !== 'undefined' && typeof CSS.escape === 'function'
+        ? CSS.escape(sourceId)
+        : String(sourceId).replace(/"/g, '\\"');
+    document.querySelectorAll(`[data-video-studio-source="${safeSelectorId}"], [data-video-studio-transform-source="${safeSelectorId}"]`).forEach((node) => {
+        const row = node.closest('.video-studio-source-row');
+        if (row) row.classList.add('is-active');
+        node.classList.add('is-active');
+    });
+    return true;
+}
+
+function moveVideoStudioSourceTransform(event) {
+    if (!videoStudioTransformDrag || typeof PointerEvent === 'undefined' || !(event instanceof PointerEvent)) return false;
+    if (videoStudioTransformDrag.pointerId !== event.pointerId) return false;
+    const source = videoStudioSources.find((item) => item.id === videoStudioTransformDrag.sourceId);
+    if (!source) return false;
+    if (isVideoStudioSourceLocked(source)) return true;
+    event.preventDefault();
+    const dx = (event.clientX - videoStudioTransformDrag.startX) / videoStudioTransformDrag.previewWidth;
+    const dy = (event.clientY - videoStudioTransformDrag.startY) / videoStudioTransformDrag.previewHeight;
+    const start = videoStudioTransformDrag.transform;
+    const next = videoStudioTransformDrag.mode === 'resize'
+        ? {
+            x: start.x,
+            y: start.y,
+            width: start.width + dx,
+            height: start.height + dy
+        }
+        : {
+            x: start.x + dx,
+            y: start.y + dy,
+            width: start.width,
+            height: start.height
+        };
+    source.transform = clampVideoStudioTransform(next, source.kind);
+    updateVideoStudioTransformBox(source.id);
+    return true;
+}
+
+function endVideoStudioSourceTransform(event) {
+    if (!videoStudioTransformDrag || typeof PointerEvent === 'undefined' || !(event instanceof PointerEvent)) return false;
+    if (videoStudioTransformDrag.pointerId !== event.pointerId) return false;
+    videoStudioTransformDrag = null;
+    document.body.classList.remove('is-video-studio-transforming');
+    scheduleVideoStudioProfileSave();
+    return true;
+}
+
+function normalizeVideoStudioTextFontSize(value, fallback = 42) {
+    const numeric = Number(value);
+    return Number.isFinite(numeric) ? Math.max(12, Math.min(160, Math.round(numeric))) : fallback;
+}
+
+function normalizeVideoStudioTextColor(value, fallback = '#ffffff') {
+    const normalized = String(value || '').trim();
+    return /^#[0-9a-f]{6}$/i.test(normalized) ? normalized : fallback;
+}
+
+function updateVideoStudioTextSourcePreview(source) {
+    if (!source) return;
+    const safeId = typeof CSS !== 'undefined' && typeof CSS.escape === 'function'
+        ? CSS.escape(source.id)
+        : String(source.id).replace(/"/g, '\\"');
+    const box = document.querySelector(`[data-video-studio-transform-source="${safeId}"]`);
+    const preview = box?.querySelector?.('.video-studio-text-preview');
+    if (preview) {
+        preview.textContent = source.text || '';
+        preview.style.color = source.color || '#ffffff';
+        preview.style.fontSize = `${normalizeVideoStudioTextFontSize(source.fontSize)}px`;
+    }
+    const listLabel = document.querySelector(`[data-video-studio-source="${safeId}"] span:last-child`);
+    if (listLabel) listLabel.textContent = getVideoStudioSourceName(source);
+}
+
+function syncVideoStudioTextSourceFromUi() {
+    const source = getVideoStudioActiveTextSource();
+    if (!source) return false;
+    if (isVideoStudioSourceLocked(source)) return false;
+    const textInput = document.getElementById('videoStudioTextContentInput');
+    const colorInput = document.getElementById('videoStudioTextColorInput');
+    const sizeInput = document.getElementById('videoStudioTextSizeInput');
+    if (textInput) {
+        source.text = String(textInput.value || '').slice(0, 160);
+        source.name = source.text.trim() || uiT('video.tools.studio.text', 'Metin');
+    }
+    if (colorInput) {
+        source.color = normalizeVideoStudioTextColor(colorInput.value, source.color || '#ffffff');
+        colorInput.value = source.color;
+    }
+    if (sizeInput) {
+        source.fontSize = normalizeVideoStudioTextFontSize(sizeInput.value, source.fontSize || 42);
+        sizeInput.value = String(source.fontSize);
+    }
+    updateVideoStudioTextSourcePreview(source);
+    scheduleVideoStudioProfileSave();
+    return true;
+}
+
+function updateVideoStudioSourceFilterPreview(source) {
+    if (!source) return;
+    const safeId = typeof CSS !== 'undefined' && typeof CSS.escape === 'function'
+        ? CSS.escape(source.id)
+        : String(source.id).replace(/"/g, '\\"');
+    const box = document.querySelector(`[data-video-studio-transform-source="${safeId}"]`);
+    const content = box?.querySelector?.('.video-studio-camera-preview-video, .video-studio-image-preview, .video-studio-text-preview');
+    if (content instanceof HTMLElement) {
+        content.style.opacity = String(getVideoStudioSourceOpacity(source) / 100);
+        content.style.transform = source.flipX ? 'scaleX(-1)' : '';
+        content.style.clipPath = ['camera', 'image', 'media'].includes(source.kind) ? getVideoStudioSourceCropStyle(source) : '';
+        if (source.kind === 'color') content.style.background = source.color || '#12324a';
+    }
+}
+
+function syncVideoStudioSourceFiltersFromUi() {
+    const source = getVideoStudioActiveVisualSource();
+    if (!source) return false;
+    if (isVideoStudioSourceLocked(source)) return false;
+    const opacityInput = document.getElementById('videoStudioSourceOpacityInput');
+    const flipInput = document.getElementById('videoStudioSourceFlipInput');
+    const colorInput = document.getElementById('videoStudioSourceColorInput');
+    const fitSelect = document.getElementById('videoStudioSourceFitSelect');
+    const cameraResolutionSelect = document.getElementById('videoStudioCameraResolutionSelect');
+    const cameraFpsSelect = document.getElementById('videoStudioCameraFpsSelect');
+    const mediaLoopInput = document.getElementById('videoStudioMediaLoopInput');
+    const mediaRestartInput = document.getElementById('videoStudioMediaRestartInput');
+    const mediaPlaybackRateInput = document.getElementById('videoStudioMediaPlaybackRateInput');
+    if (opacityInput) {
+        source.opacity = normalizeVideoStudioSourceOpacity(opacityInput.value, getVideoStudioSourceOpacity(source));
+        opacityInput.value = String(source.opacity);
+        const valueLabel = opacityInput.closest('.video-studio-mixer-row')?.querySelector('strong');
+        if (valueLabel) valueLabel.textContent = `${source.opacity}%`;
+    }
+    if (flipInput) {
+        source.flipX = !!flipInput.checked;
+    }
+    if (colorInput && source.kind === 'color') {
+        source.color = normalizeVideoStudioTextColor(colorInput.value, source.color || '#12324a');
+        colorInput.value = source.color;
+    }
+    if (fitSelect && ['camera', 'image', 'media'].includes(source.kind)) {
+        source.fit = normalizeVideoStudioSourceFit(fitSelect.value);
+        fitSelect.value = source.fit;
+    }
+    if (source.kind === 'camera') {
+        if (cameraResolutionSelect) {
+            source.cameraResolution = normalizeVideoStudioCameraResolution(cameraResolutionSelect.value);
+            cameraResolutionSelect.value = source.cameraResolution;
+        }
+        if (cameraFpsSelect) {
+            source.cameraFps = normalizeVideoStudioCameraFps(cameraFpsSelect.value, 30);
+            cameraFpsSelect.value = String(source.cameraFps);
+        }
+    }
+    if (source.kind === 'media') {
+        if (mediaLoopInput) source.loop = !!mediaLoopInput.checked;
+        if (mediaRestartInput) source.restartOnRecord = !!mediaRestartInput.checked;
+        if (mediaPlaybackRateInput) {
+            source.playbackRate = normalizeVideoStudioMediaPlaybackRate(mediaPlaybackRateInput.value, 1);
+            mediaPlaybackRateInput.value = String(source.playbackRate);
+        }
+    }
+    updateVideoStudioSourceFilterPreview(source);
+    scheduleVideoStudioProfileSave();
+    return true;
+}
+
+function syncVideoStudioSourceCropFromUi() {
+    const source = getVideoStudioActiveCropSource();
+    if (!source) return false;
+    if (isVideoStudioSourceLocked(source)) return false;
+    const topInput = document.getElementById('videoStudioCropTopInput');
+    const rightInput = document.getElementById('videoStudioCropRightInput');
+    const bottomInput = document.getElementById('videoStudioCropBottomInput');
+    const leftInput = document.getElementById('videoStudioCropLeftInput');
+    const current = getVideoStudioSourceCrop(source);
+    source.crop = normalizeVideoStudioSourceCrop({
+        top: topInput ? topInput.value : current.top,
+        right: rightInput ? rightInput.value : current.right,
+        bottom: bottomInput ? bottomInput.value : current.bottom,
+        left: leftInput ? leftInput.value : current.left
+    });
+    if (topInput) topInput.value = String(source.crop.top);
+    if (rightInput) rightInput.value = String(source.crop.right);
+    if (bottomInput) bottomInput.value = String(source.crop.bottom);
+    if (leftInput) leftInput.value = String(source.crop.left);
+    updateVideoStudioSourceFilterPreview(source);
+    scheduleVideoStudioProfileSave();
+    return true;
+}
+
+function resetVideoStudioSourceCrop(sourceId = '') {
+    const source = videoStudioSources.find((item) => item.id === sourceId) || getVideoStudioActiveCropSource();
+    if (!source || !['camera', 'image', 'media'].includes(source.kind)) return;
+    if (isVideoStudioSourceLocked(source)) return;
+    source.crop = normalizeVideoStudioSourceCrop();
+    updateVideoStudioSourceFilterPreview(source);
+    scheduleVideoStudioProfileSave();
+    renderVideoToolsWorkspace();
+}
+
+function toggleVideoStudioSource(sourceId) {
+    const source = videoStudioSources.find((item) => item.id === sourceId);
+    if (!source) return;
+    source.visible = source.visible === false;
+    if (source.kind === 'display' && source.visible !== false) {
+        videoStudioAutoPreviewEnabled = true;
+    }
+    if (source.kind === 'display' && source.visible === false) {
+        videoStudioAutoPreviewEnabled = false;
+        stopVideoStudioPreview();
+    }
+    if (source.kind === 'camera' && source.visible === false) {
+        try {
+            videoStudioCameraPreviewStream?.getTracks?.().forEach((track) => track.stop());
+        } catch {
+            // yoksay
+        }
+        videoStudioCameraPreviewStream = null;
+    }
+    if (source.kind === 'audio' || source.kind === 'system-audio') {
+        syncVideoStudioAudioSourceState();
+    }
+    renderVideoToolsWorkspace();
+    if (source.kind === 'display' && source.visible !== false) {
+        scheduleVideoStudioAutoPreview();
+    }
+}
+
+function removeVideoStudioSource(sourceId) {
+    const source = videoStudioSources.find((item) => item.id === sourceId);
+    if (!source) return;
+    videoStudioSources = videoStudioSources.filter((item) => item.id !== sourceId);
+    if (source.kind === 'display') {
+        stopVideoStudioPreview();
+    }
+    if (source.kind === 'camera') {
+        try {
+            videoStudioCameraPreviewStream?.getTracks?.().forEach((track) => track.stop());
+        } catch {
+            // yoksay
+        }
+        videoStudioCameraPreviewStream = null;
+    }
+    if (source.kind === 'audio' || source.kind === 'system-audio') {
+        syncVideoStudioAudioSourceState();
+    }
+    if (!videoStudioSources.some((item) => item.id === videoStudioActiveSourceId)) {
+        videoStudioActiveSourceId = videoStudioSources[0]?.id || '';
+    }
+    renderVideoToolsWorkspace();
+}
+
+async function refreshVideoStudioSources() {
+    const sources = await window.aurivo?.screenRecording?.getSources?.() || [];
+    const studioSelect = document.getElementById('videoStudioSourceSelect');
+    const recordSelect = document.getElementById('videoToolRecordSourceSelect');
+    const previousValue = String(studioSelect?.value || videoStudioSelectedSourceId || recordSelect?.value || '').trim();
+    const markup = sources.length
+        ? sources.map((source) => {
+            const sourceType = String(source.type || '').toLowerCase() === 'screen'
+                ? uiT('video.tools.record.sourceScreen', 'Ekran')
+                : uiT('video.tools.record.sourceWindow', 'Pencere');
+            return `<option value="${escapeAttribute(source.id)}">${escapeHtml(`${sourceType}: ${source.name || source.id}`)}</option>`;
+        }).join('')
+        : `<option value="${escapeAttribute(VIDEO_STUDIO_PORTAL_SOURCE_ID)}">${escapeHtml(uiT('video.tools.record.portalSource', 'Ekran Yakalama (PipeWire)'))}</option>`;
+    if (studioSelect) studioSelect.innerHTML = markup;
+    if (recordSelect) recordSelect.innerHTML = markup;
+    const nextValue = sources.some((source) => source.id === previousValue)
+        ? previousValue
+        : String(sources[0]?.id || VIDEO_STUDIO_PORTAL_SOURCE_ID).trim();
+    if (studioSelect && nextValue) studioSelect.value = nextValue;
+    if (recordSelect && nextValue) recordSelect.value = nextValue;
+    videoStudioSelectedSourceId = nextValue;
+    return sources;
+}
+
+function buildVideoStudioMicOptions() {
+    const devices = Array.isArray(videoStudioAudioDevices) ? videoStudioAudioDevices : [];
+    if (!devices.length) {
+        return `<option value="default">${escapeHtml(uiT('video.tools.studio.defaultMic', 'Varsayılan mikrofon'))}</option>`;
+    }
+    return devices.map((device, index) => {
+        const value = String(device.deviceId || 'default').trim() || 'default';
+        const label = String(device.label || '').trim()
+            || (value === 'default'
+                ? uiT('video.tools.studio.defaultMic', 'Varsayılan mikrofon')
+                : uiT('video.tools.studio.micNamed', 'Mikrofon {count}', { count: index + 1 }));
+        return `<option value="${escapeAttribute(value)}">${escapeHtml(label)}</option>`;
+    }).join('');
+}
+
+function syncVideoStudioMicSelect() {
+    const micSelect = document.getElementById('videoStudioMicSelect');
+    if (!micSelect) return;
+    micSelect.innerHTML = buildVideoStudioMicOptions();
+    const hasSelected = Array.from(micSelect.options).some((option) => option.value === videoStudioSelectedMicId);
+    micSelect.value = hasSelected ? videoStudioSelectedMicId : (micSelect.options[0]?.value || 'default');
+    videoStudioSelectedMicId = micSelect.value || 'default';
+}
+
+async function refreshVideoStudioAudioDevices({ requestPermission = false } = {}) {
+    if (!navigator.mediaDevices?.enumerateDevices) return [];
+    let permissionStream = null;
+    try {
+        if (requestPermission && navigator.mediaDevices?.getUserMedia) {
+            permissionStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+        }
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        videoStudioAudioDevices = devices.filter((device) => device.kind === 'audioinput');
+        syncVideoStudioMicSelect();
+        return videoStudioAudioDevices;
+    } catch (error) {
+        safeNotify(`${uiT('video.tools.studio.micRefreshFailed', 'Mikrofonlar yenilenemedi')}: ${error?.message || error}`, 'warning', 2400);
+        syncVideoStudioMicSelect();
+        return videoStudioAudioDevices;
+    } finally {
+        try {
+            permissionStream?.getTracks?.().forEach((track) => track.stop());
+        } catch {
+            // yoksay
+        }
+    }
+}
+
+function syncVideoStudioSourceToRecorder() {
+    const studioSelect = document.getElementById('videoStudioSourceSelect');
+    const recordSelect = document.getElementById('videoToolRecordSourceSelect');
+    const sourceId = String(studioSelect?.value || '').trim();
+    videoStudioSelectedSourceId = sourceId;
+    if (recordSelect && sourceId) recordSelect.value = sourceId;
+    return sourceId;
+}
+
+function isPortalScreenSourceId(sourceId) {
+    return String(sourceId || '').trim() === VIDEO_STUDIO_PORTAL_SOURCE_ID;
+}
+
+async function resolveScreenRecordingSourceId() {
+    const studioSelect = document.getElementById('videoStudioSourceSelect');
+    const recordSelect = document.getElementById('videoToolRecordSourceSelect');
+    if (studioSelect) {
+        let sourceId = syncVideoStudioSourceToRecorder();
+        if (!sourceId) {
+            await refreshVideoStudioSources();
+            sourceId = syncVideoStudioSourceToRecorder();
+        }
+        return String(sourceId || videoStudioSelectedSourceId || studioSelect.value || '').trim();
+    }
+    if (!recordSelect?.value) {
+        await refreshScreenRecordingSources();
+    }
+    return String(recordSelect?.value || videoStudioSelectedSourceId || '').trim();
+}
+
+function getScreenRecordingAudioMode() {
+    const audioSelect = document.getElementById('videoToolRecordAudioSelect');
+    if (audioSelect) return String(audioSelect.value || 'none');
+    if (document.getElementById('videoStudioMicSelect') || document.getElementById('videoStudioSourceSelect')) {
+        const micVisible = isVideoStudioMicVisible();
+        const desktopVisible = isVideoStudioDesktopAudioVisible();
+        if (micVisible && desktopVisible) return 'both';
+        if (desktopVisible) return 'system';
+        if (micVisible) return 'mic';
+    }
+    return 'none';
+}
+
+function syncVideoStudioMicToRecorder() {
+    const micSelect = document.getElementById('videoStudioMicSelect');
+    if (micSelect) videoStudioSelectedMicId = String(micSelect.value || 'default').trim() || 'default';
+    const audioSelect = document.getElementById('videoToolRecordAudioSelect');
+    if (audioSelect) {
+        const micVisible = isVideoStudioMicVisible();
+        const desktopVisible = isVideoStudioDesktopAudioVisible();
+        audioSelect.value = micVisible && desktopVisible
+            ? 'both'
+            : (desktopVisible ? 'system' : (micVisible ? 'mic' : 'none'));
+    }
+    scheduleVideoStudioProfileSave();
+    return videoStudioSelectedMicId;
+}
+
+function getVideoStudioMicAudioConstraints() {
+    const selectedMicId = String(videoStudioSelectedMicId || 'default').trim();
+    if (!selectedMicId || selectedMicId === 'default') return true;
+    return {
+        deviceId: { exact: selectedMicId },
+        echoCancellation: false,
+        noiseSuppression: false,
+        autoGainControl: false
+    };
+}
+
+function getVideoStudioDesktopAudioConstraints(sourceId) {
+    if (!sourceId || !isVideoStudioDesktopAudioVisible()) return false;
+    return {
+        mandatory: {
+            chromeMediaSource: 'desktop',
+            chromeMediaSourceId: sourceId
+        }
+    };
+}
+
+function getVideoStudioResolutionSize(value = videoStudioRecordResolution) {
+    const normalized = String(value || 'source').trim().toLowerCase();
+    const sizes = {
+        '720p': { width: 1280, height: 720 },
+        '1080p': { width: 1920, height: 1080 },
+        '1440p': { width: 2560, height: 1440 },
+        '4k': { width: 3840, height: 2160 }
+    };
+    return sizes[normalized] || null;
+}
+
+function normalizeVideoStudioRecordFps(value, fallback = videoStudioRecordFps) {
+    const numeric = Number(value);
+    const profile = getVideoToolPerformanceProfile();
+    if (!Number.isFinite(numeric)) return Math.min(profile.maxRecordFps, fallback || profile.defaultRecordFps);
+    return Math.max(1, Math.min(profile.maxRecordFps, numeric));
+}
+
+function normalizeVideoStudioRecordBitrate(value, fallback = videoStudioRecordBitrate) {
+    const numeric = Number(value);
+    return Number.isFinite(numeric) ? Math.max(500, Math.min(60000, Math.round(numeric))) : fallback;
+}
+
+function normalizeVideoStudioRecordPreset(value) {
+    const normalized = String(value || 'balanced').trim().toLowerCase();
+    return normalized === 'custom' || VIDEO_STUDIO_RECORD_PRESETS[normalized] ? normalized : 'balanced';
+}
+
+function normalizeVideoStudioRecordFormat(value, fallback = 'webm') {
+    const normalized = String(value || fallback || 'webm').trim().toLowerCase();
+    return ['webm', 'mkv', 'mp4'].includes(normalized) ? normalized : 'webm';
+}
+
+function normalizeVideoStudioVideoEncoder(value, fallback = 'auto') {
+    const normalized = String(value || fallback || 'auto').trim().toLowerCase();
+    return ['auto', 'libx264', 'h264_nvenc', 'h264_vaapi', 'h264_qsv'].includes(normalized) ? normalized : 'auto';
+}
+
+function normalizeVideoStudioAudioTrackMode(value, fallback = 'mix') {
+    const normalized = String(value || fallback || 'mix').trim().toLowerCase();
+    return normalized === 'separate' ? 'separate' : 'mix';
+}
+
+function syncVideoStudioRecordControls() {
+    const presetSelect = document.getElementById('videoStudioRecordPresetSelect');
+    if (presetSelect) presetSelect.value = normalizeVideoStudioRecordPreset(videoStudioRecordPreset);
+    const resolutionSelect = document.getElementById('videoStudioRecordResolutionSelect');
+    if (resolutionSelect) resolutionSelect.value = videoStudioRecordResolution;
+    const fpsSelect = document.getElementById('videoStudioRecordFpsSelect');
+    if (fpsSelect) fpsSelect.value = String(videoStudioRecordFps);
+    const qualitySelect = document.getElementById('videoStudioRecordQualitySelect');
+    if (qualitySelect) qualitySelect.value = videoStudioRecordQuality;
+    const bitrateInput = document.getElementById('videoStudioRecordBitrateInput');
+    if (bitrateInput) bitrateInput.value = String(videoStudioRecordBitrate);
+    const formatSelect = document.getElementById('videoStudioRecordFormatSelect');
+    if (formatSelect) formatSelect.value = videoStudioRecordFormat;
+    const encoderSelect = document.getElementById('videoStudioVideoEncoderSelect');
+    if (encoderSelect) encoderSelect.value = normalizeVideoStudioVideoEncoder(videoStudioVideoEncoder);
+    const audioTrackSelect = document.getElementById('videoStudioAudioTrackModeSelect');
+    if (audioTrackSelect) audioTrackSelect.value = normalizeVideoStudioAudioTrackMode(videoStudioAudioTrackMode);
+}
+
+function applyVideoStudioRecordPreset(value) {
+    const presetName = normalizeVideoStudioRecordPreset(value);
+    videoStudioRecordPreset = presetName;
+    const preset = VIDEO_STUDIO_RECORD_PRESETS[presetName];
+    if (!preset) {
+        syncVideoStudioRecordControls();
+        scheduleVideoStudioProfileSave();
+        return;
+    }
+    videoStudioRecordResolution = preset.resolution;
+    videoStudioRecordFps = normalizeVideoStudioRecordFps(preset.fps);
+    videoStudioRecordQuality = preset.quality;
+    videoStudioRecordBitrate = normalizeVideoStudioRecordBitrate(preset.bitrate);
+    videoStudioRecordFormat = preset.format;
+    syncVideoStudioRecordControls();
+    scheduleVideoStudioProfileSave();
+}
+
+function getVideoStudioQualityBitrate(quality = videoStudioRecordQuality) {
+    const resolution = getVideoStudioResolutionSize();
+    const pixels = resolution ? resolution.width * resolution.height : 1920 * 1080;
+    const scale = Math.max(1, pixels / (1920 * 1080));
+    const normalized = String(quality || 'balanced').trim().toLowerCase();
+    const base = normalized === 'performance' ? 4500 : (normalized === 'high' ? 12000 : 8000);
+    return Math.round(base * scale);
+}
+
+function syncVideoStudioRecordingSettingsFromUi({ updateBitrateForQuality = false } = {}) {
+    const presetSelect = document.getElementById('videoStudioRecordPresetSelect');
+    if (presetSelect) videoStudioRecordPreset = normalizeVideoStudioRecordPreset(presetSelect.value);
+    const resolutionSelect = document.getElementById('videoStudioRecordResolutionSelect');
+    if (resolutionSelect) videoStudioRecordResolution = String(resolutionSelect.value || 'source').trim() || 'source';
+    const fpsSelect = document.getElementById('videoStudioRecordFpsSelect');
+    if (fpsSelect) {
+        videoStudioRecordFps = normalizeVideoStudioRecordFps(fpsSelect.value);
+        fpsSelect.value = String(videoStudioRecordFps);
+    }
+    const qualitySelect = document.getElementById('videoStudioRecordQualitySelect');
+    if (qualitySelect) videoStudioRecordQuality = String(qualitySelect.value || 'balanced').trim() || 'balanced';
+    if (updateBitrateForQuality) videoStudioRecordBitrate = getVideoStudioQualityBitrate(videoStudioRecordQuality);
+    const bitrateInput = document.getElementById('videoStudioRecordBitrateInput');
+    if (bitrateInput) {
+        if (updateBitrateForQuality) bitrateInput.value = String(videoStudioRecordBitrate);
+        videoStudioRecordBitrate = normalizeVideoStudioRecordBitrate(bitrateInput.value);
+        bitrateInput.value = String(videoStudioRecordBitrate);
+    }
+    const formatSelect = document.getElementById('videoStudioRecordFormatSelect');
+    if (formatSelect) {
+        videoStudioRecordFormat = normalizeVideoStudioRecordFormat(formatSelect.value, videoStudioRecordFormat);
+        formatSelect.value = videoStudioRecordFormat;
+    } else {
+        videoStudioRecordFormat = normalizeVideoStudioRecordFormat(videoStudioRecordFormat);
+    }
+    const audioTrackSelect = document.getElementById('videoStudioAudioTrackModeSelect');
+    const encoderSelect = document.getElementById('videoStudioVideoEncoderSelect');
+    if (encoderSelect) {
+        videoStudioVideoEncoder = normalizeVideoStudioVideoEncoder(encoderSelect.value, videoStudioVideoEncoder);
+        encoderSelect.value = videoStudioVideoEncoder;
+    } else {
+        videoStudioVideoEncoder = normalizeVideoStudioVideoEncoder(videoStudioVideoEncoder);
+    }
+    if (audioTrackSelect) {
+        videoStudioAudioTrackMode = normalizeVideoStudioAudioTrackMode(audioTrackSelect.value, videoStudioAudioTrackMode);
+        audioTrackSelect.value = videoStudioAudioTrackMode;
+    } else {
+        videoStudioAudioTrackMode = normalizeVideoStudioAudioTrackMode(videoStudioAudioTrackMode);
+    }
+    scheduleVideoStudioProfileSave();
+}
+
+function getVideoStudioRecordingSettings() {
+    syncVideoStudioRecordingSettingsFromUi();
+    const resolution = getVideoStudioResolutionSize(videoStudioRecordResolution);
+    return {
+        resolution,
+        fps: normalizeVideoStudioRecordFps(videoStudioRecordFps),
+        quality: videoStudioRecordQuality,
+        bitrateKbps: normalizeVideoStudioRecordBitrate(videoStudioRecordBitrate),
+        format: normalizeVideoStudioRecordFormat(videoStudioRecordFormat),
+        videoEncoder: normalizeVideoStudioVideoEncoder(videoStudioVideoEncoder),
+        audioTrackMode: normalizeVideoStudioAudioTrackMode(videoStudioAudioTrackMode)
+    };
+}
+
+function normalizeVideoStudioVolume(value, fallback = 100) {
+    const numeric = Number(value);
+    return Number.isFinite(numeric) ? Math.max(0, Math.min(100, numeric)) : fallback;
+}
+
+function normalizeVideoStudioMicNoiseGateThreshold(value, fallback = videoStudioMicNoiseGateThreshold) {
+    const numeric = Number(value);
+    return Number.isFinite(numeric) ? Math.max(0, Math.min(60, Math.round(numeric))) : fallback;
+}
+
+function normalizeVideoStudioMicCompressorAmount(value, fallback = videoStudioMicCompressorAmount) {
+    const numeric = Number(value);
+    return Number.isFinite(numeric) ? Math.max(0, Math.min(100, Math.round(numeric))) : fallback;
+}
+
+function normalizeVideoStudioMicLimiterCeiling(value, fallback = videoStudioMicLimiterCeiling) {
+    const numeric = Number(value);
+    return Number.isFinite(numeric) ? Math.max(50, Math.min(100, Math.round(numeric))) : fallback;
+}
+
+function videoStudioVolumeToGain(value) {
+    return normalizeVideoStudioVolume(value, 100) / 100;
+}
+
+function getVideoStudioDesktopGainValue() {
+    return isVideoStudioDesktopAudioVisible() && !videoStudioDesktopMuted
+        ? videoStudioVolumeToGain(videoStudioDesktopVolume)
+        : 0;
+}
+
+function getVideoStudioMicGainValue() {
+    return isVideoStudioMicVisible() && !videoStudioMicMuted
+        ? videoStudioVolumeToGain(videoStudioMicVolume)
+        : 0;
+}
+
+function getVideoStudioMicMonitorGainValue() {
+    return videoStudioMicMonitorEnabled && isVideoStudioMicVisible() && !videoStudioMicMuted
+        ? videoStudioVolumeToGain(videoStudioMicMonitorVolume)
+        : 0;
+}
+
+function updateVideoStudioAudioGains() {
+    const desktopGain = getVideoStudioDesktopGainValue();
+    const micGain = getVideoStudioMicGainValue();
+    const monitorGain = getVideoStudioMicMonitorGainValue();
+    try {
+        if (screenRecordingDesktopGainNode) {
+            screenRecordingDesktopGainNode.gain.value = desktopGain;
+        }
+        if (screenRecordingMicGainNode) {
+            screenRecordingMicGainNode.gain.value = micGain;
+        }
+        if (screenRecordingMicMonitorGainNode) {
+            screenRecordingMicMonitorGainNode.gain.value = monitorGain;
+        }
+        if (videoStudioLiveMicMonitorGainNode) {
+            videoStudioLiveMicMonitorGainNode.gain.value = monitorGain;
+        }
+    } catch {
+        // yoksay
+    }
+}
+
+function syncVideoStudioMicMonitorSettingsFromUi({ rebuild = true } = {}) {
+    const enabledInput = document.getElementById('videoStudioMicMonitorEnabledInput');
+    if (enabledInput) videoStudioMicMonitorEnabled = !!enabledInput.checked;
+    const volumeInput = document.getElementById('videoStudioMicMonitorVolumeInput');
+    if (volumeInput) {
+        videoStudioMicMonitorVolume = normalizeVideoStudioVolume(volumeInput.value, videoStudioMicMonitorVolume);
+        volumeInput.value = String(videoStudioMicMonitorVolume);
+        const valueLabel = document.getElementById('videoStudioMicMonitorVolumeValue');
+        if (valueLabel) valueLabel.textContent = `${videoStudioMicMonitorVolume}%`;
+    }
+    updateVideoStudioAudioGains();
+    if (rebuild && (!screenRecorder || screenRecorder.state === 'inactive')) {
+        stopVideoStudioLiveAudioMeters();
+        if (videoStudioMicMonitorEnabled || isVideoStudioViewActive()) {
+            startVideoStudioLiveAudioMeters().catch(() => {});
+        }
+    }
+    scheduleVideoStudioProfileSave();
+}
+
+function updateVideoStudioMicFilterGate() {
+    if (!screenRecordingAudioContext || !screenRecordingMicGateGainNode) return;
+    const rawLevel = getVideoStudioAnalyserLevel(screenRecordingMicGateAnalyser);
+    const threshold = normalizeVideoStudioMicNoiseGateThreshold(videoStudioMicNoiseGateThreshold);
+    const targetGain = videoStudioMicFilterEnabled && rawLevel < threshold ? 0.08 : 1;
+    try {
+        screenRecordingMicGateGainNode.gain.setTargetAtTime(targetGain, screenRecordingAudioContext.currentTime, 0.045);
+    } catch {
+        screenRecordingMicGateGainNode.gain.value = targetGain;
+    }
+}
+
+function applyVideoStudioMicDynamicsSettings() {
+    try {
+        if (screenRecordingMicCompressorNode) {
+            const amount = normalizeVideoStudioMicCompressorAmount(videoStudioMicCompressorAmount);
+            const enabled = videoStudioMicFilterEnabled && videoStudioMicCompressorEnabled && amount > 0;
+            screenRecordingMicCompressorNode.threshold.value = enabled ? (-18 - amount * 0.22) : 0;
+            screenRecordingMicCompressorNode.knee.value = enabled ? 12 + amount * 0.12 : 0;
+            screenRecordingMicCompressorNode.ratio.value = enabled ? 1.4 + amount * 0.07 : 1;
+            screenRecordingMicCompressorNode.attack.value = enabled ? 0.004 : 0.003;
+            screenRecordingMicCompressorNode.release.value = enabled ? 0.11 + amount * 0.002 : 0.05;
+        }
+        if (screenRecordingMicLimiterNode) {
+            const ceiling = normalizeVideoStudioMicLimiterCeiling(videoStudioMicLimiterCeiling);
+            const enabled = videoStudioMicFilterEnabled && videoStudioMicLimiterEnabled;
+            screenRecordingMicLimiterNode.threshold.value = enabled ? -Math.max(0.1, (100 - ceiling) * 0.35) : 0;
+            screenRecordingMicLimiterNode.knee.value = enabled ? 2 : 30;
+            screenRecordingMicLimiterNode.ratio.value = enabled ? 18 : 1;
+            screenRecordingMicLimiterNode.attack.value = 0.002;
+            screenRecordingMicLimiterNode.release.value = 0.05;
+        }
+    } catch {
+        // yoksay
+    }
+}
+
+function syncVideoStudioMicFilterSettingsFromUi() {
+    const enabledInput = document.getElementById('videoStudioMicFilterEnabledInput');
+    if (enabledInput) videoStudioMicFilterEnabled = !!enabledInput.checked;
+    const thresholdInput = document.getElementById('videoStudioMicNoiseGateInput');
+    if (thresholdInput) {
+        videoStudioMicNoiseGateThreshold = normalizeVideoStudioMicNoiseGateThreshold(thresholdInput.value);
+        thresholdInput.value = String(videoStudioMicNoiseGateThreshold);
+        const label = document.getElementById('videoStudioMicNoiseGateValue');
+        if (label) label.textContent = `${videoStudioMicNoiseGateThreshold}%`;
+    }
+    const compressorEnabledInput = document.getElementById('videoStudioMicCompressorEnabledInput');
+    if (compressorEnabledInput) videoStudioMicCompressorEnabled = !!compressorEnabledInput.checked;
+    const compressorInput = document.getElementById('videoStudioMicCompressorInput');
+    if (compressorInput) {
+        videoStudioMicCompressorAmount = normalizeVideoStudioMicCompressorAmount(compressorInput.value);
+        compressorInput.value = String(videoStudioMicCompressorAmount);
+        const label = document.getElementById('videoStudioMicCompressorValue');
+        if (label) label.textContent = `${videoStudioMicCompressorAmount}%`;
+    }
+    const limiterEnabledInput = document.getElementById('videoStudioMicLimiterEnabledInput');
+    if (limiterEnabledInput) videoStudioMicLimiterEnabled = !!limiterEnabledInput.checked;
+    const limiterInput = document.getElementById('videoStudioMicLimiterInput');
+    if (limiterInput) {
+        videoStudioMicLimiterCeiling = normalizeVideoStudioMicLimiterCeiling(limiterInput.value);
+        limiterInput.value = String(videoStudioMicLimiterCeiling);
+        const label = document.getElementById('videoStudioMicLimiterValue');
+        if (label) label.textContent = `${videoStudioMicLimiterCeiling}%`;
+    }
+    applyVideoStudioMicDynamicsSettings();
+    scheduleVideoStudioProfileSave();
+}
+
+function syncVideoStudioAudioSourceState() {
+    syncVideoStudioMicToRecorder();
+    updateVideoStudioAudioGains();
+    scheduleVideoStudioProfileSave();
+}
+
+function updateVideoStudioMuteButtons() {
+    const desktopBtn = document.getElementById('videoStudioDesktopMuteBtn');
+    const micBtn = document.getElementById('videoStudioMicMuteBtn');
+    if (desktopBtn) {
+        const label = videoStudioDesktopMuted
+            ? uiT('video.tools.audio.unmuteDesktop', 'Masaüstünü aç')
+            : uiT('video.tools.audio.muteDesktop', 'Masaüstünü sustur');
+        desktopBtn.classList.toggle('is-muted', videoStudioDesktopMuted);
+        desktopBtn.title = label;
+        desktopBtn.setAttribute('aria-label', label);
+        const icon = desktopBtn.querySelector('.material-symbols-rounded');
+        if (icon) icon.textContent = videoStudioDesktopMuted ? 'volume_off' : 'volume_up';
+    }
+    if (micBtn) {
+        const label = videoStudioMicMuted
+            ? uiT('video.tools.audio.unmuteMic', 'Mikrofonu aç')
+            : uiT('video.tools.audio.muteMic', 'Mikrofonu sustur');
+        micBtn.classList.toggle('is-muted', videoStudioMicMuted);
+        micBtn.title = label;
+        micBtn.setAttribute('aria-label', label);
+        const icon = micBtn.querySelector('.material-symbols-rounded');
+        if (icon) icon.textContent = videoStudioMicMuted ? 'mic_off' : 'mic';
+    }
+}
+
+function toggleVideoStudioAudioMute(kind) {
+    if (kind === 'desktop') {
+        videoStudioDesktopMuted = !videoStudioDesktopMuted;
+    } else if (kind === 'mic') {
+        videoStudioMicMuted = !videoStudioMicMuted;
+    } else {
+        return;
+    }
+    updateVideoStudioAudioGains();
+    updateVideoStudioMuteButtons();
+    resetVideoStudioMeters();
+    scheduleVideoStudioProfileSave();
+}
+
+function getVideoStudioAnalyserLevel(analyser) {
+    if (!analyser) return 0;
+    const data = new Uint8Array(analyser.fftSize);
+    analyser.getByteTimeDomainData(data);
+    let sum = 0;
+    for (const value of data) {
+        const centered = (value - 128) / 128;
+        sum += centered * centered;
+    }
+    const rms = Math.sqrt(sum / Math.max(1, data.length));
+    return Math.max(0, Math.min(100, Math.round(rms * 180)));
+}
+
+function setVideoStudioMeterLevel(kind, level) {
+    const fill = document.getElementById(kind === 'desktop' ? 'videoStudioDesktopMeterFill' : 'videoStudioMicMeterFill');
+    const label = document.getElementById(kind === 'desktop' ? 'videoStudioDesktopMeterValue' : 'videoStudioMicMeterValue');
+    const meter = fill?.closest?.('.video-studio-meter') || null;
+    if (!fill) return;
+    const safeLevel = Math.max(0, Math.min(100, Number(level) || 0));
+    fill.style.width = `${safeLevel}%`;
+    fill.dataset.level = String(Math.round(safeLevel));
+    if (meter) {
+        meter.classList.toggle('is-silent', safeLevel < 3);
+        meter.classList.toggle('is-hot', safeLevel >= 82);
+        meter.classList.toggle('is-clipping', safeLevel >= 96);
+    }
+    if (label) {
+        const db = safeLevel <= 0 ? '-inf' : `${Math.round(-60 + safeLevel * 0.6)} dB`;
+        label.textContent = db;
+    }
+}
+
+function resetVideoStudioMeters() {
+    setVideoStudioMeterLevel('desktop', 0);
+    setVideoStudioMeterLevel('mic', 0);
+}
+
+function stopVideoStudioLiveAudioMeters() {
+    if (videoStudioLiveMeterFrame) {
+        cancelAnimationFrame(videoStudioLiveMeterFrame);
+        videoStudioLiveMeterFrame = 0;
+    }
+    try {
+        videoStudioLiveMicStream?.getTracks?.().forEach((track) => track.stop());
+    } catch {
+        // yoksay
+    }
+    try {
+        videoStudioLiveMicAudioContext?.close?.();
+    } catch {
+        // yoksay
+    }
+    videoStudioLiveMicStream = null;
+    videoStudioLiveMicAudioContext = null;
+    videoStudioLiveMicAnalyser = null;
+    videoStudioLiveMicMonitorGainNode = null;
+}
+
+async function startVideoStudioLiveAudioMeters() {
+    if (!isVideoStudioViewActive()) return;
+    if (screenRecorder && screenRecorder.state !== 'inactive') return;
+    if (videoStudioLiveMeterFrame || videoStudioLiveMicStream) return;
+    if (!document.getElementById('videoStudioMicMeterFill')) return;
+    try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+            audio: getVideoStudioMicAudioConstraints(),
+            video: false
+        });
+        const AudioContextCtor = window.AudioContext || window.webkitAudioContext;
+        if (!AudioContextCtor) return;
+        const audioContext = new AudioContextCtor();
+        const source = audioContext.createMediaStreamSource(stream);
+        const analyser = audioContext.createAnalyser();
+        const monitorGain = audioContext.createGain();
+        analyser.fftSize = 256;
+        source.connect(analyser);
+        source.connect(monitorGain);
+        monitorGain.gain.value = getVideoStudioMicMonitorGainValue();
+        monitorGain.connect(audioContext.destination);
+        videoStudioLiveMicStream = stream;
+        videoStudioLiveMicAudioContext = audioContext;
+        videoStudioLiveMicAnalyser = analyser;
+        videoStudioLiveMicMonitorGainNode = monitorGain;
+        const tick = () => {
+            if (!isVideoStudioViewActive()) {
+                stopVideoStudioLiveAudioMeters();
+                return;
+            }
+            if (screenRecorder && screenRecorder.state !== 'inactive') {
+                stopVideoStudioLiveAudioMeters();
+                return;
+            }
+            setVideoStudioMeterLevel('desktop', 0);
+            setVideoStudioMeterLevel('mic', getVideoStudioMicGainValue() > 0 ? getVideoStudioAnalyserLevel(videoStudioLiveMicAnalyser) : 0);
+            videoStudioLiveMeterFrame = requestAnimationFrame(tick);
+        };
+        tick();
+    } catch {
+        stopVideoStudioLiveAudioMeters();
+    }
+}
+
+function stopVideoStudioMeterLoop() {
+    if (videoStudioMeterAnimationFrame) {
+        cancelAnimationFrame(videoStudioMeterAnimationFrame);
+        videoStudioMeterAnimationFrame = 0;
+    }
+    stopVideoStudioLiveAudioMeters();
+    resetVideoStudioMeters();
+}
+
+function startVideoStudioMeterLoop() {
+    stopVideoStudioMeterLoop();
+    const tick = () => {
+        updateVideoStudioMicFilterGate();
+        const externalDesktopLevel = screenRecordingSystemAudioCapture
+            ? 18 + Math.abs(Math.sin(Date.now() / 180)) * 38
+            : 0;
+        setVideoStudioMeterLevel('desktop', getVideoStudioDesktopGainValue() > 0
+            ? Math.max(externalDesktopLevel, getVideoStudioAnalyserLevel(screenRecordingDesktopAnalyser))
+            : 0);
+        setVideoStudioMeterLevel('mic', getVideoStudioMicGainValue() > 0 ? getVideoStudioAnalyserLevel(screenRecordingMicAnalyser) : 0);
+        videoStudioMeterAnimationFrame = requestAnimationFrame(tick);
+    };
+    tick();
+}
+
+function cleanupScreenRecordingComposition() {
+    if (screenRecordingCompositionFrame) {
+        cancelAnimationFrame(screenRecordingCompositionFrame);
+        screenRecordingCompositionFrame = 0;
+    }
+    videoStudioCanvasTransition = null;
+    stopVideoStudioGlobalCursorTracking();
+    screenRecordingCompositionVideos.forEach((video) => {
+        try {
+            video.pause();
+            video.srcObject = null;
+        } catch {
+            // yoksay
+        }
+    });
+    screenRecordingCompositionVideos = [];
+}
+
+async function startScreenRecordingSystemAudioCapture(enabled = false) {
+    screenRecordingSystemAudioCapture = null;
+    if (!enabled || !window.aurivo?.screenRecording?.startSystemAudio) return null;
+    try {
+        const result = await window.aurivo.screenRecording.startSystemAudio();
+        if (result?.success && result.path) {
+            screenRecordingSystemAudioCapture = result;
+            return result;
+        }
+        const detail = result?.error ? `: ${result.error}` : '';
+        safeNotify(`${uiT('video.tools.record.systemAudioFailed', 'Sistem sesi eklenemedi')}${detail}`, 'warning', 2600);
+    } catch (error) {
+        safeNotify(`${uiT('video.tools.record.systemAudioFailed', 'Sistem sesi eklenemedi')}: ${error?.message || error}`, 'warning', 2600);
+    }
+    return null;
+}
+
+async function stopScreenRecordingSystemAudioCapture() {
+    const active = screenRecordingSystemAudioCapture;
+    screenRecordingSystemAudioCapture = null;
+    if (!active || !window.aurivo?.screenRecording?.stopSystemAudio) return null;
+    try {
+        const stopped = await window.aurivo.screenRecording.stopSystemAudio();
+        return stopped?.success ? stopped : null;
+    } catch {
+        return null;
+    }
+}
+
+function releaseScreenRecordingAudioGraph() {
+    stopVideoStudioMeterLoop();
+    cleanupScreenRecordingComposition();
+    try {
+        screenRecordingAuxStreams.forEach((stream) => {
+            stream?.getTracks?.().forEach((track) => track.stop());
+        });
+    } catch {
+        // yoksay
+    }
+    screenRecordingAuxStreams = [];
+    try {
+        screenRecordingAudioContext?.close?.();
+    } catch {
+        // yoksay
+    }
+    screenRecordingAudioContext = null;
+    screenRecordingDesktopGainNode = null;
+    screenRecordingMicGainNode = null;
+    screenRecordingDesktopAnalyser = null;
+    screenRecordingMicAnalyser = null;
+    screenRecordingMicGateAnalyser = null;
+    screenRecordingMicGateGainNode = null;
+    screenRecordingMicCompressorNode = null;
+    screenRecordingMicLimiterNode = null;
+    screenRecordingMicMonitorGainNode = null;
+}
+
+async function getVideoStudioCameraStream() {
+    if (!navigator.mediaDevices?.getUserMedia) return null;
+    const cameraSource = getVideoStudioCameraSource();
+    const size = getVideoStudioCameraResolutionSize(cameraSource?.cameraResolution || '720p');
+    const fps = normalizeVideoStudioCameraFps(cameraSource?.cameraFps, 30);
+    return navigator.mediaDevices.getUserMedia({
+        audio: false,
+        video: {
+            width: { ideal: size.width },
+            height: { ideal: size.height },
+            frameRate: { ideal: fps, max: fps }
+        }
+    });
+}
+
+async function attachVideoStreamToElement(video, stream) {
+    if (!video || !stream) return;
+    video.srcObject = stream;
+    video.muted = true;
+    video.playsInline = true;
+    await video.play();
+}
+
+function drawVideoStudioCroppedMedia(ctx, media, source, dx, dy, dw, dh) {
+    const crop = getVideoStudioSourceCrop(source);
+    const clipX = dx + Math.round(dw * crop.left / 100);
+    const clipY = dy + Math.round(dh * crop.top / 100);
+    const clipW = Math.max(1, Math.round(dw * (100 - crop.left - crop.right) / 100));
+    const clipH = Math.max(1, Math.round(dh * (100 - crop.top - crop.bottom) / 100));
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(clipX, clipY, clipW, clipH);
+    ctx.clip();
+    const fit = normalizeVideoStudioSourceFit(source?.fit);
+    const sourceWidth = Number(media?.videoWidth || media?.naturalWidth || media?.width || 0) || 0;
+    const sourceHeight = Number(media?.videoHeight || media?.naturalHeight || media?.height || 0) || 0;
+    if (fit === 'stretch' || !sourceWidth || !sourceHeight) {
+        ctx.drawImage(media, dx, dy, dw, dh);
+    } else {
+        const scale = fit === 'contain'
+            ? Math.min(dw / sourceWidth, dh / sourceHeight)
+            : Math.max(dw / sourceWidth, dh / sourceHeight);
+        const drawW = Math.max(1, Math.round(sourceWidth * scale));
+        const drawH = Math.max(1, Math.round(sourceHeight * scale));
+        ctx.drawImage(media, dx + Math.round((dw - drawW) / 2), dy + Math.round((dh - drawH) / 2), drawW, drawH);
+    }
+    ctx.restore();
+}
+
+function drawVideoStudioBaseCapture(ctx, displayVideo, width, height) {
+    const sourceWidth = Number(displayVideo?.videoWidth || width) || width;
+    const sourceHeight = Number(displayVideo?.videoHeight || height) || height;
+    if (!isVideoStudioRegionCaptureEnabled()) {
+        ctx.drawImage(displayVideo, 0, 0, width, height);
+        return;
+    }
+    const region = getVideoStudioCaptureRegion();
+    const sx = Math.round(sourceWidth * region.left / 100);
+    const sy = Math.round(sourceHeight * region.top / 100);
+    const sw = Math.max(1, Math.round(sourceWidth * (100 - region.left - region.right) / 100));
+    const sh = Math.max(1, Math.round(sourceHeight * (100 - region.top - region.bottom) / 100));
+    ctx.drawImage(displayVideo, sx, sy, sw, sh, 0, 0, width, height);
+}
+
+function drawVideoStudioCanvasTransition(ctx, width, height) {
+    const transition = videoStudioCanvasTransition;
+    if (!transition) return;
+    const elapsed = getVideoStudioTransitionNow() - Number(transition.startedAt || 0);
+    const duration = Math.max(1, Number(transition.duration || 0));
+    const progress = Math.max(0, Math.min(1, elapsed / duration));
+    if (progress >= 1) {
+        videoStudioCanvasTransition = null;
+        return;
+    }
+
+    ctx.save();
+    if (transition.type === 'slide') {
+        const offset = Math.round(width * (1 - progress));
+        ctx.fillStyle = 'rgba(5, 14, 26, 0.88)';
+        ctx.fillRect(0, 0, offset, height);
+        ctx.fillStyle = 'rgba(132, 221, 255, 0.42)';
+        ctx.fillRect(Math.max(0, offset - 5), 0, 5, height);
+    } else {
+        const alpha = Math.sin(progress * Math.PI) * 0.72;
+        ctx.fillStyle = `rgba(0, 0, 0, ${alpha.toFixed(3)})`;
+        ctx.fillRect(0, 0, width, height);
+    }
+    ctx.restore();
+}
+
+function shouldDrawVideoStudioInputOverlay() {
+    const mouseInput = document.getElementById('videoStudioShowMouseOverlayInput');
+    const keyboardInput = document.getElementById('videoStudioShowKeyboardOverlayInput');
+    const mouseEnabled = mouseInput instanceof HTMLInputElement ? mouseInput.checked : videoStudioShowMouseOverlay;
+    const keyboardEnabled = keyboardInput instanceof HTMLInputElement ? keyboardInput.checked : videoStudioShowKeyboardOverlay;
+    return !!mouseEnabled || !!keyboardEnabled;
+}
+
+function normalizeVideoStudioKeyLabel(event) {
+    const key = String(event?.key || '').trim();
+    if (!key) return '';
+    if (key === ' ') return 'Space';
+    if (key.length === 1) return key.toUpperCase();
+    return key.replace(/^Arrow/, '');
+}
+
+function handleVideoStudioInputPointer(event) {
+    if (!videoStudioShowMouseOverlay) return;
+    const width = Math.max(1, window.innerWidth || document.documentElement.clientWidth || 1);
+    const height = Math.max(1, window.innerHeight || document.documentElement.clientHeight || 1);
+    videoStudioInputOverlayPointer.x = Math.max(0, Math.min(1, Number(event.clientX || 0) / width));
+    videoStudioInputOverlayPointer.y = Math.max(0, Math.min(1, Number(event.clientY || 0) / height));
+    videoStudioInputOverlayPointer.at = Date.now();
+    if (event.type === 'pointerdown') {
+        videoStudioInputOverlayPointer.down = true;
+        videoStudioInputOverlayPointer.clickAt = videoStudioInputOverlayPointer.at;
+    } else if (event.type === 'pointerup' || event.type === 'pointercancel') {
+        videoStudioInputOverlayPointer.down = false;
+    }
+}
+
+function handleVideoStudioInputKey(event) {
+    if (!videoStudioShowKeyboardOverlay || event.repeat) return;
+    if (isKeyboardEditableTarget(event.target) || isKeyboardEditableTarget(document.activeElement)) return;
+    const label = normalizeVideoStudioKeyLabel(event);
+    if (!label) return;
+    const keys = [];
+    if (event.ctrlKey) keys.push('Ctrl');
+    if (event.altKey) keys.push('Alt');
+    if (event.shiftKey && label !== 'Shift') keys.push('Shift');
+    if (event.metaKey) keys.push('Meta');
+    keys.push(label);
+    videoStudioInputOverlayKeys.unshift({ label: keys.join(' + '), at: Date.now() });
+    videoStudioInputOverlayKeys = videoStudioInputOverlayKeys.slice(0, 4);
+}
+
+function stopVideoStudioGlobalCursorTracking() {
+    if (videoStudioGlobalCursorTimer) {
+        clearInterval(videoStudioGlobalCursorTimer);
+        videoStudioGlobalCursorTimer = null;
+    }
+    videoStudioGlobalCursorPoint = null;
+}
+
+function startVideoStudioGlobalCursorTracking() {
+    stopVideoStudioGlobalCursorTracking();
+    if (!shouldDrawVideoStudioInputOverlay() || !window.aurivo?.screenRecording?.getCursorPoint) return;
+    const tick = async () => {
+        try {
+            const point = await window.aurivo.screenRecording.getCursorPoint();
+            if (point?.display) {
+                videoStudioGlobalCursorPoint = {
+                    x: Number(point.x) || 0,
+                    y: Number(point.y) || 0,
+                    display: {
+                        x: Number(point.display.x) || 0,
+                        y: Number(point.display.y) || 0,
+                        width: Math.max(1, Number(point.display.width) || 1),
+                        height: Math.max(1, Number(point.display.height) || 1)
+                    },
+                    at: Date.now()
+                };
+            }
+        } catch {
+            // yoksay
+        }
+    };
+    tick();
+    videoStudioGlobalCursorTimer = setInterval(tick, 40);
+}
+
+function getVideoStudioOverlayPointerPosition(width, height) {
+    if (videoStudioGlobalCursorPoint && Date.now() - Number(videoStudioGlobalCursorPoint.at || 0) < 250) {
+        const display = videoStudioGlobalCursorPoint.display || {};
+        return {
+            x: Math.round(width * Math.max(0, Math.min(1, (videoStudioGlobalCursorPoint.x - display.x) / Math.max(1, display.width)))),
+            y: Math.round(height * Math.max(0, Math.min(1, (videoStudioGlobalCursorPoint.y - display.y) / Math.max(1, display.height))))
+        };
+    }
+    return {
+        x: Math.round(width * videoStudioInputOverlayPointer.x),
+        y: Math.round(height * videoStudioInputOverlayPointer.y)
+    };
+}
+
+function syncVideoStudioInputOverlaySettingsFromUi() {
+    videoStudioShowMouseOverlay = !!document.getElementById('videoStudioShowMouseOverlayInput')?.checked;
+    videoStudioShowKeyboardOverlay = !!document.getElementById('videoStudioShowKeyboardOverlayInput')?.checked;
+    videoStudioMouseOverlayColor = normalizeVideoStudioOverlayColor(document.getElementById('videoStudioMouseOverlayColorInput')?.value, videoStudioMouseOverlayColor);
+    videoStudioMouseOverlaySize = normalizeVideoStudioMouseOverlaySize(document.getElementById('videoStudioMouseOverlaySizeInput')?.value, videoStudioMouseOverlaySize);
+    videoStudioMouseOverlayDuration = normalizeVideoStudioOverlayDuration(document.getElementById('videoStudioMouseOverlayDurationInput')?.value, videoStudioMouseOverlayDuration);
+    videoStudioKeyboardOverlayPosition = normalizeVideoStudioKeyboardOverlayPosition(document.getElementById('videoStudioKeyboardOverlayPositionSelect')?.value || videoStudioKeyboardOverlayPosition);
+    videoStudioKeyboardOverlayDuration = normalizeVideoStudioOverlayDuration(document.getElementById('videoStudioKeyboardOverlayDurationInput')?.value, videoStudioKeyboardOverlayDuration);
+    if (videoStudioShowMouseOverlay && screenRecorder && screenRecorder.state !== 'inactive') {
+        startVideoStudioGlobalCursorTracking();
+    } else if (!videoStudioShowMouseOverlay) {
+        stopVideoStudioGlobalCursorTracking();
+    }
+    scheduleVideoStudioProfileSave();
+}
+
+function drawRoundedRectPath(ctx, x, y, width, height, radius) {
+    const r = Math.max(0, Math.min(radius, width / 2, height / 2));
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.lineTo(x + width - r, y);
+    ctx.quadraticCurveTo(x + width, y, x + width, y + r);
+    ctx.lineTo(x + width, y + height - r);
+    ctx.quadraticCurveTo(x + width, y + height, x + width - r, y + height);
+    ctx.lineTo(x + r, y + height);
+    ctx.quadraticCurveTo(x, y + height, x, y + height - r);
+    ctx.lineTo(x, y + r);
+    ctx.quadraticCurveTo(x, y, x + r, y);
+    ctx.closePath();
+}
+
+function getVideoStudioKeyboardOverlayBoxPosition(index, boxWidth, rowHeight, gap, width, height) {
+    const marginX = Math.max(18, Math.round(width * 0.035));
+    const marginY = Math.max(18, Math.round(height * 0.04));
+    const position = normalizeVideoStudioKeyboardOverlayPosition(videoStudioKeyboardOverlayPosition);
+    const right = position.endsWith('right');
+    const top = position.startsWith('top');
+    return {
+        x: right ? Math.round(width - boxWidth - marginX) : marginX,
+        y: top
+            ? Math.round(marginY + index * (rowHeight + gap))
+            : Math.round(height - (index + 1) * (rowHeight + gap) - marginY)
+    };
+}
+
+function drawVideoStudioInputOverlay(ctx, width, height) {
+    const mouseInput = document.getElementById('videoStudioShowMouseOverlayInput');
+    const keyboardInput = document.getElementById('videoStudioShowKeyboardOverlayInput');
+    const drawMouse = mouseInput instanceof HTMLInputElement ? mouseInput.checked : videoStudioShowMouseOverlay;
+    const drawKeyboard = keyboardInput instanceof HTMLInputElement ? keyboardInput.checked : videoStudioShowKeyboardOverlay;
+    const now = Date.now();
+    if (drawMouse) {
+        const globalAge = videoStudioGlobalCursorPoint ? now - Number(videoStudioGlobalCursorPoint.at || 0) : Infinity;
+        const pointerAge = now - Number(videoStudioInputOverlayPointer.at || 0);
+        const age = globalAge < 250 ? 0 : pointerAge;
+        const { x, y } = getVideoStudioOverlayPointerPosition(width, height);
+        const mouseDuration = normalizeVideoStudioOverlayDuration(videoStudioMouseOverlayDuration, 2800);
+        const sizeScale = normalizeVideoStudioMouseOverlaySize(videoStudioMouseOverlaySize, 100) / 100;
+        const base = Math.max(8, Math.round(Math.min(width, height) * 0.018 * sizeScale));
+        const opacity = globalAge < 250 || pointerAge < mouseDuration ? Math.max(0.68, 1 - Math.min(age, mouseDuration) / mouseDuration) : 0.86;
+        ctx.save();
+        ctx.globalAlpha = opacity;
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.94)';
+        ctx.fillStyle = hexToVideoStudioRgba(videoStudioMouseOverlayColor, 0.92);
+        ctx.lineWidth = Math.max(2, Math.round(base * 0.16));
+        ctx.beginPath();
+        ctx.arc(x, y, videoStudioInputOverlayPointer.down ? base * 0.78 : base, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+        const clickAge = now - Number(videoStudioInputOverlayPointer.clickAt || 0);
+        const clickDuration = Math.max(240, Math.round(mouseDuration * 0.2));
+        if (clickAge < clickDuration) {
+            ctx.globalAlpha = Math.max(0, 1 - clickAge / clickDuration);
+            ctx.strokeStyle = hexToVideoStudioRgba(videoStudioMouseOverlayColor, 0.96);
+            ctx.lineWidth = Math.max(3, Math.round(base * 0.2));
+            ctx.beginPath();
+            ctx.arc(x, y, base + clickAge / Math.max(7, 12 / sizeScale), 0, Math.PI * 2);
+            ctx.stroke();
+        }
+        ctx.restore();
+    }
+    if (drawKeyboard) {
+        const keyboardDuration = normalizeVideoStudioOverlayDuration(videoStudioKeyboardOverlayDuration, 2200);
+        videoStudioInputOverlayKeys = videoStudioInputOverlayKeys.filter((item) => now - item.at < keyboardDuration);
+        if (videoStudioInputOverlayKeys.length) {
+            const fontSize = Math.max(16, Math.round(height * 0.026));
+            const paddingX = Math.round(fontSize * 0.72);
+            const rowHeight = Math.round(fontSize * 1.95);
+            const gap = Math.round(fontSize * 0.35);
+            ctx.save();
+            ctx.font = `800 ${fontSize}px Inter, Arial, sans-serif`;
+            ctx.textBaseline = 'middle';
+            ctx.textAlign = 'left';
+            videoStudioInputOverlayKeys.forEach((item, index) => {
+                const age = now - item.at;
+                const opacity = Math.max(0, 1 - age / keyboardDuration);
+                const textWidth = ctx.measureText(item.label).width;
+                const boxWidth = Math.min(width * 0.72, Math.max(fontSize * 5, textWidth + paddingX * 2));
+                const { x, y } = getVideoStudioKeyboardOverlayBoxPosition(index, boxWidth, rowHeight, gap, width, height);
+                ctx.globalAlpha = opacity * 0.92;
+                ctx.fillStyle = 'rgba(5, 14, 26, 0.82)';
+                drawRoundedRectPath(ctx, x, y, boxWidth, rowHeight, Math.round(rowHeight * 0.35));
+                ctx.fill();
+                ctx.globalAlpha = opacity;
+                ctx.strokeStyle = 'rgba(132, 221, 255, 0.58)';
+                ctx.lineWidth = 1;
+                ctx.stroke();
+                ctx.fillStyle = '#f3fbff';
+                ctx.fillText(item.label, x + paddingX, y + rowHeight / 2, boxWidth - paddingX * 2);
+            });
+            ctx.restore();
+        }
+    }
+}
+
+async function buildVideoStudioCompositedStream(displayStream, cameraStream, recordingSettings = {}) {
+    const displayTracks = displayStream?.getVideoTracks?.() || [];
+    const visualSources = getVideoStudioVisualSources();
+    if (!displayTracks.length) return displayStream;
+
+    const displayVideo = document.createElement('video');
+    displayVideo.muted = true;
+    displayVideo.playsInline = true;
+    displayVideo.srcObject = new MediaStream(displayTracks);
+    screenRecordingCompositionVideos = [displayVideo];
+    const cameraVideo = cameraStream ? document.createElement('video') : null;
+    if (cameraVideo) {
+        cameraVideo.muted = true;
+        cameraVideo.playsInline = true;
+        cameraVideo.srcObject = cameraStream;
+        screenRecordingCompositionVideos.push(cameraVideo);
+    }
+    const imageElements = new Map();
+    const mediaElements = new Map();
+    await Promise.all([
+        displayVideo.play().catch(() => {}),
+        cameraVideo ? cameraVideo.play().catch(() => {}) : Promise.resolve(),
+        ...visualSources
+            .filter((source) => source.kind === 'image' && source.url)
+            .map((source) => new Promise((resolve) => {
+                const image = new Image();
+                image.onload = () => {
+                    imageElements.set(source.id, image);
+                    resolve();
+                };
+                image.onerror = () => resolve();
+                image.src = source.url;
+            })),
+        ...visualSources
+            .filter((source) => source.kind === 'media' && source.url)
+            .map((source) => new Promise((resolve) => {
+                const video = document.createElement('video');
+                video.muted = true;
+                video.loop = source.loop !== false;
+                video.playsInline = true;
+                video.playbackRate = normalizeVideoStudioMediaPlaybackRate(source.playbackRate, 1);
+                video.src = source.url;
+                video.onloadeddata = () => {
+                    if (source.restartOnRecord !== false) {
+                        try { video.currentTime = 0; } catch {}
+                    }
+                    mediaElements.set(source.id, video);
+                    resolve();
+                };
+                video.onerror = () => resolve();
+                video.play().catch(() => resolve());
+                screenRecordingCompositionVideos.push(video);
+            }))
+    ]);
+
+    const fallbackResolution = recordingSettings?.resolution || getVideoStudioResolutionSize(videoStudioRecordResolution) || null;
+    const width = Math.max(640, Number(fallbackResolution?.width || displayVideo.videoWidth || 1280) || 1280);
+    const height = Math.max(360, Number(fallbackResolution?.height || displayVideo.videoHeight || 720) || 720);
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext('2d');
+    startVideoStudioGlobalCursorTracking();
+    const draw = () => {
+        if (!ctx) return;
+        ctx.fillStyle = '#000';
+        ctx.fillRect(0, 0, width, height);
+        try {
+            drawVideoStudioBaseCapture(ctx, displayVideo, width, height);
+        } catch {
+            // yoksay
+        }
+        [...getVideoStudioVisualSources()].reverse().forEach((source) => {
+            if (source.kind === 'camera' && !cameraVideo) return;
+            const transform = getVideoStudioSourceTransform(source);
+            const drawW = Math.max(1, Math.round(width * transform.width));
+            const drawH = Math.max(1, Math.round(height * transform.height));
+            const x = Math.round(width * transform.x);
+            const y = Math.round(height * transform.y);
+            const opacity = getVideoStudioSourceOpacity(source) / 100;
+            ctx.save();
+            ctx.globalAlpha = opacity;
+            try {
+                if (source.flipX) {
+                    ctx.translate(x + drawW, y);
+                    ctx.scale(-1, 1);
+                } else {
+                    ctx.translate(x, y);
+                }
+                if (source.kind === 'camera' && cameraVideo) {
+                    drawVideoStudioCroppedMedia(ctx, cameraVideo, source, 0, 0, drawW, drawH);
+                } else if (source.kind === 'image') {
+                    const image = imageElements.get(source.id);
+                    if (image) drawVideoStudioCroppedMedia(ctx, image, source, 0, 0, drawW, drawH);
+                } else if (source.kind === 'media') {
+                    const video = mediaElements.get(source.id);
+                    if (video) drawVideoStudioCroppedMedia(ctx, video, source, 0, 0, drawW, drawH);
+                } else if (source.kind === 'color') {
+                    ctx.fillStyle = source.color || '#12324a';
+                    ctx.fillRect(0, 0, drawW, drawH);
+                } else if (source.kind === 'text') {
+                    const fontSize = Math.max(12, Math.round(normalizeVideoStudioTextFontSize(source.fontSize, 42) * (height / 720)));
+                    const lines = String(source.text || '').split(/\r?\n/).slice(0, 4);
+                    ctx.fillStyle = source.color || '#ffffff';
+                    ctx.font = `800 ${fontSize}px Inter, Arial, sans-serif`;
+                    ctx.textBaseline = 'middle';
+                    ctx.textAlign = 'left';
+                    ctx.shadowColor = 'rgba(0, 0, 0, 0.82)';
+                    ctx.shadowBlur = Math.round(fontSize * 0.24);
+                    ctx.shadowOffsetY = Math.max(2, Math.round(fontSize * 0.06));
+                    const lineHeight = Math.round(fontSize * 1.18);
+                    const startY = Math.max(lineHeight / 2, (drawH - (lines.length - 1) * lineHeight) / 2);
+                    lines.forEach((line, index) => {
+                        ctx.fillText(line, Math.max(10, Math.round(drawW * 0.04)), startY + index * lineHeight, Math.max(1, drawW - 20));
+                    });
+                }
+            } catch {
+                // yoksay
+            }
+            ctx.restore();
+        });
+        drawVideoStudioCanvasTransition(ctx, width, height);
+        drawVideoStudioInputOverlay(ctx, width, height);
+        updateVideoStudioCompositionFrameMetrics();
+        screenRecordingCompositionFrame = requestAnimationFrame(draw);
+    };
+    draw();
+
+    const fps = normalizeVideoStudioRecordFps(recordingSettings?.fps || videoStudioRecordFps);
+    const canvasStream = canvas.captureStream(Math.max(1, fps));
+    const composedStream = new MediaStream(canvasStream.getVideoTracks());
+    displayStream.getAudioTracks?.().forEach((track) => composedStream.addTrack(track));
+    return composedStream;
+}
+
+function buildMixedScreenRecordingStream(displayStream, micStream = null, { includeDesktopAudio = false, includeMic = false, monitorMic = false } = {}) {
+    const videoTracks = displayStream?.getVideoTracks?.() || [];
+    const desktopAudioTracks = includeDesktopAudio ? (displayStream?.getAudioTracks?.() || []) : [];
+    const micAudioTracks = (includeMic || monitorMic) ? (micStream?.getAudioTracks?.() || []) : [];
+    const recordingStream = new MediaStream(videoTracks);
+    if (!desktopAudioTracks.length && !micAudioTracks.length) return recordingStream;
+
+    const AudioContextCtor = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContextCtor) {
+        [...desktopAudioTracks, ...micAudioTracks].forEach((track) => recordingStream.addTrack(track));
+        return recordingStream;
+    }
+
+    const audioContext = new AudioContextCtor();
+    const destination = audioContext.createMediaStreamDestination();
+    if (desktopAudioTracks.length) {
+        const desktopStream = new MediaStream(desktopAudioTracks);
+        const desktopSource = audioContext.createMediaStreamSource(desktopStream);
+        screenRecordingDesktopGainNode = audioContext.createGain();
+        screenRecordingDesktopAnalyser = audioContext.createAnalyser();
+        screenRecordingDesktopAnalyser.fftSize = 256;
+        screenRecordingDesktopGainNode.gain.value = videoStudioVolumeToGain(videoStudioDesktopVolume);
+        desktopSource.connect(screenRecordingDesktopGainNode);
+        screenRecordingDesktopGainNode.connect(screenRecordingDesktopAnalyser);
+        screenRecordingDesktopAnalyser.connect(destination);
+    }
+    if (micAudioTracks.length) {
+        const micOnlyStream = new MediaStream(micAudioTracks);
+        const micSource = audioContext.createMediaStreamSource(micOnlyStream);
+        screenRecordingMicGainNode = audioContext.createGain();
+        screenRecordingMicAnalyser = audioContext.createAnalyser();
+        screenRecordingMicAnalyser.fftSize = 256;
+        screenRecordingMicGainNode.gain.value = videoStudioVolumeToGain(videoStudioMicVolume);
+        let micTail = micSource;
+        if (videoStudioMicFilterEnabled) {
+            const highPass = audioContext.createBiquadFilter();
+            highPass.type = 'highpass';
+            highPass.frequency.value = 95;
+            highPass.Q.value = 0.7;
+            screenRecordingMicGateAnalyser = audioContext.createAnalyser();
+            screenRecordingMicGateAnalyser.fftSize = 256;
+            screenRecordingMicGateGainNode = audioContext.createGain();
+            screenRecordingMicGateGainNode.gain.value = 1;
+            screenRecordingMicCompressorNode = audioContext.createDynamicsCompressor();
+            screenRecordingMicLimiterNode = audioContext.createDynamicsCompressor();
+            applyVideoStudioMicDynamicsSettings();
+            micTail.connect(highPass);
+            highPass.connect(screenRecordingMicGateAnalyser);
+            screenRecordingMicGateAnalyser.connect(screenRecordingMicGateGainNode);
+            screenRecordingMicGateGainNode.connect(screenRecordingMicCompressorNode);
+            screenRecordingMicCompressorNode.connect(screenRecordingMicLimiterNode);
+            micTail = screenRecordingMicLimiterNode;
+        }
+        micTail.connect(screenRecordingMicGainNode);
+        screenRecordingMicGainNode.connect(screenRecordingMicAnalyser);
+        if (includeMic) {
+            screenRecordingMicAnalyser.connect(destination);
+        }
+        screenRecordingMicMonitorGainNode = audioContext.createGain();
+        screenRecordingMicMonitorGainNode.gain.value = monitorMic ? getVideoStudioMicMonitorGainValue() : 0;
+        screenRecordingMicAnalyser.connect(screenRecordingMicMonitorGainNode);
+        screenRecordingMicMonitorGainNode.connect(audioContext.destination);
+    }
+    screenRecordingAudioContext = audioContext;
+    destination.stream.getAudioTracks().forEach((track) => recordingStream.addTrack(track));
+    startVideoStudioMeterLoop();
+    return recordingStream;
+}
+
+function getSupportedScreenRecordingAudioMimeType() {
+    const candidates = [
+        'audio/webm;codecs=opus',
+        'audio/webm',
+        'audio/ogg;codecs=opus',
+        'audio/ogg'
+    ];
+    return candidates.find((type) => !window.MediaRecorder || MediaRecorder.isTypeSupported(type)) || '';
+}
+
+function buildScreenRecordingAuxAudioPath(capturePath = '', kind = 'audio', index = 0) {
+    const basePath = String(capturePath || screenRecordingOutputPath || `aurivo-audio-${Date.now()}`).replace(/\.[^.]+$/i, '');
+    const safeKind = String(kind || 'audio').replace(/[^a-z0-9_-]/gi, '').toLowerCase() || 'audio';
+    return `${basePath}.${safeKind}-${index + 1}.webm`;
+}
+
+function startScreenRecordingSeparateAudioRecorder(kind, label, stream, capturePath) {
+    const audioTracks = stream?.getAudioTracks?.() || [];
+    if (!audioTracks.length || !window.MediaRecorder) return null;
+    const mimeType = getSupportedScreenRecordingAudioMimeType();
+    const audioStream = new MediaStream(audioTracks);
+    const chunks = [];
+    const recorder = new MediaRecorder(audioStream, mimeType ? { mimeType } : undefined);
+    const entry = {
+        kind,
+        label,
+        path: buildScreenRecordingAuxAudioPath(capturePath, kind, screenRecordingSeparateAudioRecorders.length),
+        chunks,
+        recorder,
+        mimeType: mimeType || 'audio/webm'
+    };
+    recorder.ondataavailable = (event) => {
+        if (event.data && event.data.size > 0) chunks.push(event.data);
+    };
+    screenRecordingSeparateAudioRecorders.push(entry);
+    recorder.start(1000);
+    return entry;
+}
+
+function pauseScreenRecordingSeparateAudioRecorders() {
+    screenRecordingSeparateAudioRecorders.forEach((entry) => {
+        try {
+            if (entry?.recorder?.state === 'recording') entry.recorder.pause();
+        } catch {
+            // yoksay
+        }
+    });
+}
+
+function resumeScreenRecordingSeparateAudioRecorders() {
+    screenRecordingSeparateAudioRecorders.forEach((entry) => {
+        try {
+            if (entry?.recorder?.state === 'paused') entry.recorder.resume();
+        } catch {
+            // yoksay
+        }
+    });
+}
+
+async function stopScreenRecordingSeparateAudioRecorders() {
+    const entries = screenRecordingSeparateAudioRecorders.splice(0);
+    const tracks = [];
+    for (const entry of entries) {
+        const recorder = entry?.recorder;
+        if (!recorder || recorder.state === 'inactive') continue;
+        await new Promise((resolve) => {
+            recorder.addEventListener('stop', resolve, { once: true });
+            try {
+                if (recorder.state === 'recording') recorder.requestData?.();
+                recorder.stop();
+            } catch {
+                resolve();
+            }
+        });
+        const blob = new Blob(entry.chunks, { type: entry.mimeType || 'audio/webm' });
+        if (!blob.size || blob.size < 64) continue;
+        const arrayBuffer = await blob.arrayBuffer();
+        const ok = window.aurivo?.writeBufferFile
+            ? await window.aurivo.writeBufferFile(entry.path, arrayBuffer)
+            : await window.aurivo?.writeBase64File?.(entry.path, arrayBufferToBase64(arrayBuffer));
+        if (ok) {
+            tracks.push({
+                path: entry.path,
+                kind: entry.kind,
+                label: entry.label
+            });
+        }
+    }
+    return tracks;
+}
+
+function syncVideoStudioCaptureRegionFromUi() {
+    const modeSelect = document.getElementById('videoStudioCaptureModeSelect');
+    const nextMode = normalizeVideoStudioCaptureMode(modeSelect?.value || videoStudioCaptureMode);
+    const region = normalizeVideoStudioSourceCrop({
+        top: document.getElementById('videoStudioCaptureTopInput')?.value ?? videoStudioCaptureRegion.top,
+        right: document.getElementById('videoStudioCaptureRightInput')?.value ?? videoStudioCaptureRegion.right,
+        bottom: document.getElementById('videoStudioCaptureBottomInput')?.value ?? videoStudioCaptureRegion.bottom,
+        left: document.getElementById('videoStudioCaptureLeftInput')?.value ?? videoStudioCaptureRegion.left
+    });
+    videoStudioCaptureMode = nextMode;
+    videoStudioCaptureRegion = region;
+    if (modeSelect) modeSelect.value = nextMode;
+    const fields = [
+        ['videoStudioCaptureTopInput', region.top],
+        ['videoStudioCaptureRightInput', region.right],
+        ['videoStudioCaptureBottomInput', region.bottom],
+        ['videoStudioCaptureLeftInput', region.left]
+    ];
+    fields.forEach(([id, value]) => {
+        const input = document.getElementById(id);
+        if (input) {
+            input.value = String(value);
+            input.disabled = nextMode !== 'region';
+        }
+    });
+    const grid = document.querySelector('.video-studio-capture-region-grid');
+    if (grid) grid.classList.toggle('is-disabled', nextMode !== 'region');
+    updateVideoStudioCapturePreviewClip();
+    scheduleVideoStudioProfileSave();
+}
+
+async function getVideoStudioPortalDisplayStream() {
+    if (!navigator.mediaDevices?.getDisplayMedia) {
+        throw new Error(uiT('video.tools.record.displayCaptureUnsupported', 'PipeWire ekran yakalama bu Electron oturumunda desteklenmiyor.'));
+    }
+    const attempts = [
+        { video: true },
+        { video: { cursor: 'always' } },
+        {}
+    ];
+    let lastError = null;
+    for (const constraints of attempts) {
+        try {
+            return await navigator.mediaDevices.getDisplayMedia(constraints);
+        } catch (error) {
+            lastError = error;
+            const name = String(error?.name || '').toLowerCase();
+            const message = String(error?.message || '').toLowerCase();
+            if (!name.includes('type') && !message.includes('constraint') && !message.includes('invalid')) {
+                throw error;
+            }
+        }
+    }
+    throw lastError || new Error('display capture failed');
+}
+
+async function startVideoStudioPreview(options = {}) {
+    const silent = !!options.silent;
+    if (!isVideoStudioViewActive()) return;
+    videoStudioAutoPreviewEnabled = true;
+    if (!isVideoStudioDisplayVisible()) {
+        if (!silent) safeNotify(uiT('video.tools.studio.displayHidden', 'Ekran kaynağı gizli veya silinmiş.'), 'warning', 2200);
+        return;
+    }
+    let sourceId = syncVideoStudioSourceToRecorder();
+    if (!sourceId) {
+        await refreshVideoStudioSources();
+        sourceId = syncVideoStudioSourceToRecorder();
+    }
+    if (!sourceId) {
+        if (!silent) safeNotify(uiT('video.tools.record.noSources', 'Kaynak bulunamadı'), 'warning', 2200);
+        return;
+    }
+    stopVideoStudioPreview();
+    try {
+        const profile = getVideoToolPerformanceProfile();
+        const stream = isPortalScreenSourceId(sourceId)
+            ? await getVideoStudioPortalDisplayStream()
+            : await navigator.mediaDevices.getUserMedia({
+                audio: false,
+                video: {
+                    mandatory: {
+                        chromeMediaSource: 'desktop',
+                        chromeMediaSourceId: sourceId,
+                        maxFrameRate: profile.maxRecordFps
+                    }
+                }
+            });
+        videoStudioPreviewStream = stream;
+        const preview = document.getElementById('videoStudioPreviewVideo');
+        if (preview) {
+            preview.srcObject = stream;
+            preview.muted = true;
+            preview.playsInline = true;
+            updateVideoStudioCapturePreviewClip();
+            preview.classList.add('is-active');
+            await preview.play();
+        }
+        if (isVideoStudioCameraVisible()) {
+            try {
+                videoStudioCameraPreviewStream = await getVideoStudioCameraStream();
+                const cameraPreview = document.getElementById('videoStudioCameraPreviewVideo');
+                if (cameraPreview && videoStudioCameraPreviewStream) {
+                    await attachVideoStreamToElement(cameraPreview, videoStudioCameraPreviewStream);
+                    cameraPreview.classList.add('is-active');
+                }
+            } catch (error) {
+                if (!silent) safeNotify(`${uiT('video.tools.studio.cameraFailed', 'Kamera açılamadı')}: ${error?.message || error}`, 'warning', 2400);
+            }
+        }
+        const stopBtn = document.getElementById('videoStudioStopPreviewBtn');
+        if (stopBtn) stopBtn.disabled = false;
+    } catch (error) {
+        stopVideoStudioPreview();
+        if (!silent) safeNotify(`${uiT('video.tools.studio.previewFailed', 'Önizleme başlatılamadı')}: ${error?.message || error}`, 'error', 2800);
+    }
+}
+
+async function startVideoStudioRecording() {
+    if (!isVideoStudioDisplayVisible()) {
+        safeNotify(uiT('video.tools.studio.displayHidden', 'Ekran kaynağı gizli veya silinmiş.'), 'warning', 2200);
+        return;
+    }
+    videoToolModeState = 'record';
+    syncVideoToolFormatOptions();
+    syncVideoToolModeUi();
+    syncVideoStudioMicToRecorder();
+    let sourceId = syncVideoStudioSourceToRecorder();
+    if (!sourceId) {
+        await refreshVideoStudioSources();
+        sourceId = syncVideoStudioSourceToRecorder();
+    }
+    if (!sourceId) {
+        safeNotify(uiT('video.tools.record.noSources', 'Kaynak bulunamadı'), 'warning', 2200);
+        return;
+    }
+    const preflight = await runVideoStudioPreflightChecks({ silent: true });
+    const hasBlockingIssue = preflight.some((check) => check.state === 'error');
+    if (hasBlockingIssue) {
+        safeNotify(uiT('video.tools.preflight.fixBeforeRecord', 'Kayıt başlamadan önce kırmızı kontrolleri düzeltin.'), 'warning', 3000);
+        return;
+    }
+    const countdownOk = await runVideoStudioRecordCountdown();
+    if (!countdownOk) return;
+    await startScreenRecording();
+}
+
+async function startVideoStudioTestRecording() {
+    if (!isVideoStudioDisplayVisible()) {
+        safeNotify(uiT('video.tools.studio.displayHidden', 'Ekran kaynağı gizli veya silinmiş.'), 'warning', 2200);
+        return;
+    }
+    videoToolModeState = 'record';
+    syncVideoToolFormatOptions();
+    syncVideoToolModeUi();
+    syncVideoStudioMicToRecorder();
+    let sourceId = syncVideoStudioSourceToRecorder();
+    if (!sourceId) {
+        await refreshVideoStudioSources();
+        sourceId = syncVideoStudioSourceToRecorder();
+    }
+    if (!sourceId) {
+        safeNotify(uiT('video.tools.record.noSources', 'Kaynak bulunamadı'), 'warning', 2200);
+        return;
+    }
+    const preflight = await runVideoStudioPreflightChecks({ silent: true });
+    const hasBlockingIssue = preflight.some((check) => check.state === 'error');
+    if (hasBlockingIssue) {
+        safeNotify(uiT('video.tools.preflight.fixBeforeRecord', 'Kayıt başlamadan önce kırmızı kontrolleri düzeltin.'), 'warning', 3000);
+        return;
+    }
+    await startScreenRecording({ testMode: true, durationSec: 5 });
+}
+
+function isVideoStudioShortcutEvent(event) {
+    if (!videoStudioShortcutsEnabled) return false;
+    if (event.repeat) return false;
+    if (state.currentPage !== 'videoTools' || getVideoToolsViewMode() !== 'studio') return false;
+    if (isKeyboardEditableTarget(event.target) || isKeyboardEditableTarget(document.activeElement)) return false;
+    return true;
+}
+
+function handleVideoStudioKeyboardShortcut(event) {
+    if (videoStudioShortcutCaptureAction) {
+        event.preventDefault();
+        event.stopPropagation();
+        if (event.code === 'Escape') {
+            videoStudioShortcutCaptureAction = '';
+            renderVideoToolsWorkspace();
+            return true;
+        }
+        if (event.code === 'Backspace' || event.code === 'Delete') {
+            setVideoStudioShortcut(videoStudioShortcutCaptureAction, '');
+            videoStudioShortcutCaptureAction = '';
+            renderVideoToolsWorkspace();
+            return true;
+        }
+        const combo = getShortcutComboFromEvent(event);
+        if (combo) {
+            setVideoStudioShortcut(videoStudioShortcutCaptureAction, combo);
+            videoStudioShortcutCaptureAction = '';
+            renderVideoToolsWorkspace();
+        }
+        return true;
+    }
+    if (!isVideoStudioShortcutEvent(event)) return false;
+    const combo = normalizeShortcutComboString(getShortcutComboFromEvent(event));
+    const shortcuts = normalizeVideoStudioShortcutMap(videoStudioShortcutMap);
+    if (combo && combo === shortcuts.record) {
+        event.preventDefault();
+        if (screenRecorder && screenRecorder.state === 'recording') {
+            stopScreenRecording().catch(() => {});
+        } else {
+            startVideoStudioRecording().catch(() => {});
+        }
+        return true;
+    }
+    if (combo && combo === shortcuts.preview) {
+        event.preventDefault();
+        if (videoStudioPreviewStream) {
+            videoStudioAutoPreviewEnabled = false;
+            stopVideoStudioPreview();
+        } else {
+            startVideoStudioPreview().catch(() => {});
+        }
+        return true;
+    }
+    if (combo && combo === shortcuts.transition) {
+        event.preventDefault();
+        playVideoStudioSceneTransition();
+        return true;
+    }
+    if (combo && combo === shortcuts.pause) {
+        event.preventDefault();
+        toggleScreenRecordingPause();
+        return true;
+    }
+    if (combo && combo === shortcuts.sceneUp) {
+        event.preventDefault();
+        selectAdjacentVideoStudioScene(-1);
+        return true;
+    }
+    if (combo && combo === shortcuts.sceneDown) {
+        event.preventDefault();
+        selectAdjacentVideoStudioScene(1);
+        return true;
+    }
+    return false;
+}
+
+function handleVideoStudioGlobalShortcut(action = '') {
+    const normalized = String(action || '').trim();
+    if (!videoStudioShortcutsEnabled) return false;
+    if (normalized === 'video-studio-record') {
+        if (screenRecorder && screenRecorder.state !== 'inactive') {
+            stopScreenRecording().catch(() => {});
+            addVideoStudioLog(uiT('video.tools.logs.globalStop', 'Global kısayol: kayıt durduruldu.'));
+        } else {
+            if (state.currentPage !== 'videoTools') switchPage('videoTools');
+            startVideoStudioRecording().catch(() => {});
+            addVideoStudioLog(uiT('video.tools.logs.globalRecord', 'Global kısayol: kayıt başlatıldı.'));
+        }
+        return true;
+    }
+    if (normalized === 'video-studio-pause') {
+        toggleScreenRecordingPause();
+        addVideoStudioLog(uiT('video.tools.logs.globalPause', 'Global kısayol: duraklat/devam.'));
+        return true;
+    }
+    if (normalized === 'video-studio-stop') {
+        stopScreenRecording().catch(() => {});
+        addVideoStudioLog(uiT('video.tools.logs.globalStop', 'Global kısayol: kayıt durduruldu.'));
+        return true;
+    }
+    if (normalized === 'video-studio-save-replay') {
+        saveVideoStudioReplayBuffer().catch(() => {});
+        addVideoStudioLog(uiT('video.tools.logs.globalReplay', 'Global kısayol: replay kaydet.'));
+        return true;
+    }
+    return false;
+}
+
+function handleVideoStudioClickEvent(event) {
+    const trigger = event.target instanceof Element
+        ? event.target.closest('#videoStudioRefreshSourcesBtn, #videoStudioRefreshAudioBtn, #videoStudioPreviewBtn, #videoStudioStopPreviewBtn, #videoStudioStartRecordBtn, #videoStudioTestRecordBtn, #videoStudioPauseRecordBtn, #videoStudioStopRecordBtn, #videoStudioAddSceneBtn, #videoStudioAddSourceBtn, #videoStudioAddMediaSourceBtn, #videoStudioAddColorSourceBtn, #videoStudioAddTextSourceBtn, #videoStudioRunPreflightBtn, #videoStudioExportProfileBtn, #videoStudioImportProfileBtn, #videoStudioReloadPluginsBtn, #videoStudioAddCollectionBtn, #videoStudioDuplicateCollectionBtn, #videoStudioRemoveCollectionBtn, #videoStudioTestTransitionBtn, #videoStudioPrepareStreamBtn, #videoStudioStartStreamBtn, #videoStudioPrepareVirtualCameraBtn, #videoStudioStartVirtualCameraBtn, #videoStudioReplayBufferStartBtn, #videoStudioReplayBufferSaveBtn, #videoStudioPickOutputFolderBtn, #videoStudioOpenOutputFolderBtn, #videoStudioRepairRecordingBtn, #videoStudioResetShortcutsBtn, #videoStudioScheduleArmBtn, [data-video-studio-shortcut-capture], [data-video-studio-shortcut-clear], [data-video-studio-reset-crop], [data-video-studio-recovery-action], [data-video-studio-add-source-kind], [data-video-studio-template], [data-video-studio-quick-action], [data-video-studio-audio-mute], [data-video-studio-scene], [data-video-studio-remove-scene], [data-video-studio-source], [data-video-studio-move-source], [data-video-studio-lock-source], [data-video-studio-toggle-source], [data-video-studio-remove-source]')
+        : null;
+    if (!trigger) return false;
+    event.preventDefault();
+    event.stopPropagation();
+    const addSourceKind = String(trigger.getAttribute('data-video-studio-add-source-kind') || '').trim();
+    if (addSourceKind) {
+        addVideoStudioSourceByKind(addSourceKind).catch(() => {});
+        return true;
+    }
+    const recoveryAction = String(trigger.getAttribute('data-video-studio-recovery-action') || '').trim();
+    if (recoveryAction) {
+        if (recoveryAction === 'recover') recoverVideoStudioRecording().catch(() => {});
+        if (recoveryAction === 'discard') discardVideoStudioRecovery();
+        return true;
+    }
+    const resetCropId = String(trigger.getAttribute('data-video-studio-reset-crop') || '').trim();
+    if (resetCropId) {
+        resetVideoStudioSourceCrop(resetCropId);
+        return true;
+    }
+    const shortcutCapture = String(trigger.getAttribute('data-video-studio-shortcut-capture') || '').trim();
+    if (shortcutCapture) {
+        videoStudioShortcutCaptureAction = videoStudioShortcutCaptureAction === shortcutCapture ? '' : shortcutCapture;
+        renderVideoToolsWorkspace();
+        return true;
+    }
+    const shortcutClear = String(trigger.getAttribute('data-video-studio-shortcut-clear') || '').trim();
+    if (shortcutClear) {
+        setVideoStudioShortcut(shortcutClear, '');
+        videoStudioShortcutCaptureAction = '';
+        renderVideoToolsWorkspace();
+        return true;
+    }
+    const sceneId = String(trigger.getAttribute('data-video-studio-scene') || '').trim();
+    if (sceneId) {
+        selectVideoStudioScene(sceneId);
+        return true;
+    }
+    const sceneRemoveId = String(trigger.getAttribute('data-video-studio-remove-scene') || '').trim();
+    if (sceneRemoveId) {
+        removeVideoStudioScene(sceneRemoveId);
+        return true;
+    }
+    const sourceToggleId = String(trigger.getAttribute('data-video-studio-toggle-source') || '').trim();
+    if (sourceToggleId) {
+        toggleVideoStudioSource(sourceToggleId);
+        return true;
+    }
+    const audioMuteKind = String(trigger.getAttribute('data-video-studio-audio-mute') || '').trim();
+    if (audioMuteKind) {
+        toggleVideoStudioAudioMute(audioMuteKind);
+        return true;
+    }
+    const sourceMoveId = String(trigger.getAttribute('data-video-studio-move-source') || '').trim();
+    if (sourceMoveId) {
+        const direction = String(trigger.getAttribute('data-video-studio-move-direction') || '').trim() === 'down' ? 1 : -1;
+        moveVideoStudioSourceLayer(sourceMoveId, direction);
+        return true;
+    }
+    const sourceLockId = String(trigger.getAttribute('data-video-studio-lock-source') || '').trim();
+    if (sourceLockId) {
+        toggleVideoStudioSourceLock(sourceLockId);
+        return true;
+    }
+    const sourceRemoveId = String(trigger.getAttribute('data-video-studio-remove-source') || '').trim();
+    if (sourceRemoveId) {
+        removeVideoStudioSource(sourceRemoveId);
+        return true;
+    }
+    const sourceId = String(trigger.getAttribute('data-video-studio-source') || '').trim();
+    if (sourceId) {
+        selectVideoStudioSource(sourceId);
+        return true;
+    }
+    const templateId = String(trigger.getAttribute('data-video-studio-template') || '').trim();
+    if (templateId) {
+        applyVideoStudioTemplate(templateId);
+        return true;
+    }
+    const quickAction = String(trigger.getAttribute('data-video-studio-quick-action') || '').trim();
+    if (quickAction) {
+        handleVideoStudioQuickAction(quickAction);
+        return true;
+    }
+    if (trigger.id === 'videoStudioAddSceneBtn') {
+        addVideoStudioScene();
+        return true;
+    }
+    if (trigger.id === 'videoStudioAddCollectionBtn') {
+        addVideoStudioSceneCollection();
+        return true;
+    }
+    if (trigger.id === 'videoStudioDuplicateCollectionBtn') {
+        duplicateVideoStudioSceneCollection();
+        return true;
+    }
+    if (trigger.id === 'videoStudioRemoveCollectionBtn') {
+        removeVideoStudioSceneCollection();
+        return true;
+    }
+    if (trigger.id === 'videoStudioResetShortcutsBtn') {
+        resetVideoStudioShortcuts();
+        return true;
+    }
+    if (trigger.id === 'videoStudioScheduleArmBtn') {
+        armVideoStudioSchedule();
+        return true;
+    }
+    if (trigger.id === 'videoStudioAddSourceBtn') {
+        addVideoStudioSource().catch(() => {});
+        return true;
+    }
+    if (trigger.id === 'videoStudioAddTextSourceBtn') {
+        addVideoStudioTextSource();
+        return true;
+    }
+    if (trigger.id === 'videoStudioAddMediaSourceBtn') {
+        addVideoStudioMediaSource().catch(() => {});
+        return true;
+    }
+    if (trigger.id === 'videoStudioAddColorSourceBtn') {
+        addVideoStudioColorSource();
+        return true;
+    }
+    if (trigger.id === 'videoStudioTestTransitionBtn') {
+        playVideoStudioSceneTransition();
+        return true;
+    }
+    if (trigger.id === 'videoStudioRunPreflightBtn') {
+        runVideoStudioPreflightChecks().catch(() => {});
+        return true;
+    }
+    if (trigger.id === 'videoStudioExportProfileBtn') {
+        exportVideoStudioProfile().catch(() => {});
+        return true;
+    }
+    if (trigger.id === 'videoStudioImportProfileBtn') {
+        importVideoStudioProfile().catch(() => {});
+        return true;
+    }
+    if (trigger.id === 'videoStudioReloadPluginsBtn') {
+        loadVideoStudioPlugins({ notify: true }).catch(() => {});
+        return true;
+    }
+    if (trigger.id === 'videoStudioPrepareStreamBtn') {
+        prepareVideoStudioStreamOutput();
+        return true;
+    }
+    if (trigger.id === 'videoStudioStartStreamBtn') {
+        startVideoStudioStreamOutput();
+        return true;
+    }
+    if (trigger.id === 'videoStudioPrepareVirtualCameraBtn') {
+        prepareVideoStudioVirtualCamera();
+        return true;
+    }
+    if (trigger.id === 'videoStudioStartVirtualCameraBtn') {
+        startVideoStudioVirtualCamera();
+        return true;
+    }
+    if (trigger.id === 'videoStudioReplayBufferStartBtn') {
+        startVideoStudioReplayBuffer().catch(() => {});
+        return true;
+    }
+    if (trigger.id === 'videoStudioReplayBufferSaveBtn') {
+        saveVideoStudioReplayBuffer().catch(() => {});
+        return true;
+    }
+    if (trigger.id === 'videoStudioPickOutputFolderBtn') {
+        pickVideoStudioOutputFolder().catch(() => {});
+        return true;
+    }
+    if (trigger.id === 'videoStudioOpenOutputFolderBtn') {
+        const targetPath = videoToolLastOutputPath || buildVideoStudioAutoOutputPath(videoStudioRecordFormat);
+        if (targetPath) window.aurivo?.openContainingFolder?.(targetPath);
+        return true;
+    }
+    if (trigger.id === 'videoStudioRepairRecordingBtn') {
+        repairVideoStudioRecording().catch(() => {});
+        return true;
+    }
+    if (trigger.id === 'videoStudioRefreshSourcesBtn') {
+        refreshVideoStudioSources()
+            .then(() => {
+                if (!videoStudioPreviewStream && videoStudioSelectedSourceId) {
+                    startVideoStudioPreview().catch(() => {});
+                }
+            })
+            .catch(() => {});
+        return true;
+    }
+    if (trigger.id === 'videoStudioRefreshAudioBtn') {
+        refreshVideoStudioAudioDevices({ requestPermission: true }).catch(() => {});
+        return true;
+    }
+    if (trigger.id === 'videoStudioPreviewBtn') {
+        startVideoStudioPreview().catch(() => {});
+        return true;
+    }
+    if (trigger.id === 'videoStudioStopPreviewBtn') {
+        videoStudioAutoPreviewEnabled = false;
+        stopVideoStudioPreview();
+        return true;
+    }
+    if (trigger.id === 'videoStudioStartRecordBtn') {
+        startVideoStudioRecording().catch(() => {});
+        return true;
+    }
+    if (trigger.id === 'videoStudioTestRecordBtn') {
+        startVideoStudioTestRecording().catch(() => {});
+        return true;
+    }
+    if (trigger.id === 'videoStudioPauseRecordBtn') {
+        toggleScreenRecordingPause();
+        return true;
+    }
+    if (trigger.id === 'videoStudioStopRecordBtn') {
+        stopScreenRecording().catch(() => {});
+        return true;
+    }
+    return true;
+}
+
+function handleVideoToolClickEvent(event) {
+    if (handleVideoStudioClickEvent(event)) return true;
+
+    const viewTrigger = event.target instanceof Element
+        ? event.target.closest('[data-video-tools-view]')
+        : null;
+    if (viewTrigger) {
+        event.preventDefault();
+        event.stopPropagation();
+        setVideoToolsViewMode(String(viewTrigger.getAttribute('data-video-tools-view') || 'studio'));
+        return true;
+    }
+
+    const previewTrigger = event.target instanceof Element
+        ? event.target.closest('[data-video-tool-preview]')
+        : null;
+    if (previewTrigger) {
+        const videoPath = String(previewTrigger.getAttribute('data-video-tool-preview') || '').trim();
+        if (videoPath) {
+            event.preventDefault();
+            event.stopPropagation();
+            videoToolPreviewPath = videoToolPreviewPath === videoPath ? '' : videoPath;
+            markVideoToolSourceSelected(videoPath);
+            renderVideoToolsWorkspace();
+            return true;
+        }
+    }
+
+    const sourceTrigger = event.target instanceof Element
+        ? event.target.closest('[data-video-tool-source]')
+        : null;
+    if (sourceTrigger) {
+        const videoPath = String(sourceTrigger.getAttribute('data-video-tool-source') || '').trim();
+        if (videoPath) {
+            event.preventDefault();
+            event.stopPropagation();
+            markVideoToolSourceSelected(videoPath);
+            safeNotify(uiT('video.tools.sourceSelected', 'Video düzenleme kaynağı seçildi.'), 'success', 1200);
+            return true;
+        }
+    }
+
+    const toolTrigger = event.target instanceof Element
+        ? event.target.closest('#videoToolRunBtn, #videoToolPickSourceBtn, #videoToolPickSubtitleBtn, #videoToolUseCurrentTimeBtn, #videoToolRefreshSourcesBtn, #videoToolStopRecordBtn, #videoToolPickBatchFilesBtn, #videoToolPickBatchFolderBtn, #videoToolOpenOutputBtn')
+        : null;
+    if (!toolTrigger) return false;
+    event.preventDefault();
+    event.stopPropagation();
+    if (toolTrigger.id === 'videoToolRunBtn') {
+        runVideoToolConversion().catch(() => {});
+        return true;
+    }
+    if (toolTrigger.id === 'videoToolPickSourceBtn') {
+        pickVideoToolSource().catch(() => {});
+        return true;
+    }
+    if (toolTrigger.id === 'videoToolPickSubtitleBtn') {
+        pickVideoToolSubtitle().catch(() => {});
+        return true;
+    }
+    if (toolTrigger.id === 'videoToolUseCurrentTimeBtn') {
+        useCurrentVideoTimeForThumbnail();
+        return true;
+    }
+    if (toolTrigger.id === 'videoToolRefreshSourcesBtn') {
+        refreshScreenRecordingSources().catch(() => {});
+        return true;
+    }
+    if (toolTrigger.id === 'videoToolStopRecordBtn') {
+        stopScreenRecording().catch(() => {});
+        return true;
+    }
+    if (toolTrigger.id === 'videoToolPickBatchFilesBtn') {
+        pickVideoToolBatchFiles().catch(() => {});
+        return true;
+    }
+    if (toolTrigger.id === 'videoToolPickBatchFolderBtn') {
+        pickVideoToolBatchFolder().catch(() => {});
+        return true;
+    }
+    if (toolTrigger.id === 'videoToolOpenOutputBtn' && videoToolLastOutputPath) {
+        window.aurivo?.openContainingFolder?.(videoToolLastOutputPath);
+        return true;
+    }
+    return true;
+}
+
+function handleVideoToolChangeEvent(event) {
+    const target = event.target;
+    if (!(target instanceof HTMLInputElement || target instanceof HTMLSelectElement)) return false;
+    if (target.matches('input[name="videoToolMode"]')) {
+        videoToolModeState = String(target.value || 'video').trim().toLowerCase();
+        releaseVideoToolIdleResources({
+            keepBatch: getVideoToolMode() === 'batch',
+            keepSources: getVideoToolMode() === 'record'
+        });
+        syncVideoToolFormatOptions();
+        syncVideoToolModeUi();
+        return true;
+    }
+    if (target.matches('#videoToolBatchOperationSelect')) {
+        syncVideoToolFormatOptions();
+        return true;
+    }
+    if (target.matches('#videoStudioSourceSelect')) {
+        const sourceId = syncVideoStudioSourceToRecorder();
+        stopVideoStudioPreview();
+        if (sourceId) {
+            startVideoStudioPreview().catch(() => {});
+        }
+        return true;
+    }
+    if (target.matches('#videoStudioSceneCollectionSelect')) {
+        selectVideoStudioSceneCollection(String(target.value || '').trim());
+        return true;
+    }
+    if (target.matches('#videoStudioSceneCollectionNameInput')) {
+        syncVideoStudioSceneCollectionNameFromUi();
+        return true;
+    }
+    if (target.matches('#videoStudioMicSelect')) {
+        syncVideoStudioMicToRecorder();
+        if (!screenRecorder || screenRecorder.state === 'inactive') {
+            stopVideoStudioLiveAudioMeters();
+            startVideoStudioLiveAudioMeters().catch(() => {});
+        }
+        return true;
+    }
+    if (target.matches('#videoStudioDesktopVolumeInput')) {
+        videoStudioDesktopVolume = normalizeVideoStudioVolume(target.value, videoStudioDesktopVolume);
+        target.value = String(videoStudioDesktopVolume);
+        updateVideoStudioAudioGains();
+        scheduleVideoStudioProfileSave();
+        return true;
+    }
+    if (target.matches('#videoStudioMicVolumeInput')) {
+        videoStudioMicVolume = normalizeVideoStudioVolume(target.value, videoStudioMicVolume);
+        target.value = String(videoStudioMicVolume);
+        updateVideoStudioAudioGains();
+        scheduleVideoStudioProfileSave();
+        return true;
+    }
+    if (target.matches('#videoStudioMicMonitorEnabledInput, #videoStudioMicMonitorVolumeInput')) {
+        syncVideoStudioMicMonitorSettingsFromUi();
+        return true;
+    }
+    if (target.matches('#videoStudioMicFilterEnabledInput, #videoStudioMicNoiseGateInput, #videoStudioMicCompressorEnabledInput, #videoStudioMicCompressorInput, #videoStudioMicLimiterEnabledInput, #videoStudioMicLimiterInput')) {
+        syncVideoStudioMicFilterSettingsFromUi();
+        return true;
+    }
+    if (target.matches('#videoStudioRecordResolutionSelect, #videoStudioRecordFpsSelect, #videoStudioRecordQualitySelect, #videoStudioRecordBitrateInput, #videoStudioRecordFormatSelect, #videoStudioVideoEncoderSelect, #videoStudioAudioTrackModeSelect')) {
+        videoStudioRecordPreset = 'custom';
+        const presetSelect = document.getElementById('videoStudioRecordPresetSelect');
+        if (presetSelect) presetSelect.value = 'custom';
+        syncVideoStudioRecordingSettingsFromUi({
+            updateBitrateForQuality: target.matches('#videoStudioRecordResolutionSelect, #videoStudioRecordQualitySelect')
+        });
+        return true;
+    }
+    if (target.matches('#videoStudioRecordPresetSelect')) {
+        applyVideoStudioRecordPreset(target.value);
+        return true;
+    }
+    if (target.matches('#videoStudioRecordOutputModeSelect, #videoStudioRecordNameTemplateInput')) {
+        syncVideoStudioOutputSettingsFromUi();
+        return true;
+    }
+    if (target.matches('#videoStudioStreamEnabledInput, #videoStudioStreamServiceSelect, #videoStudioStreamServerInput, #videoStudioStreamKeyInput')) {
+        syncVideoStudioStreamSettingsFromUi({
+            applyPreset: target.matches('#videoStudioStreamServiceSelect')
+        });
+        return true;
+    }
+    if (target.matches('#videoStudioVirtualCameraEnabledInput, #videoStudioVirtualCameraDeviceInput')) {
+        syncVideoStudioVirtualCameraSettingsFromUi();
+        return true;
+    }
+    if (target.matches('#videoStudioAutoStopEnabledInput, #videoStudioAutoStopMinutesInput')) {
+        syncVideoStudioAutoStopSettingsFromUi();
+        return true;
+    }
+    if (target.matches('#videoStudioScheduleEnabledInput, #videoStudioScheduleModeSelect, #videoStudioScheduleDelayInput, #videoStudioScheduleTimeInput')) {
+        syncVideoStudioScheduleSettingsFromUi();
+        return true;
+    }
+    if (target.matches('#videoStudioReplayBufferEnabledInput, #videoStudioReplayBufferSecondsInput')) {
+        syncVideoStudioReplayBufferSettingsFromUi();
+        updateVideoStudioReplayBufferUi();
+        return true;
+    }
+    if (target.matches('#videoStudioCountdownEnabledInput, #videoStudioCountdownSecondsInput')) {
+        syncVideoStudioCountdownSettingsFromUi();
+        return true;
+    }
+    if (target.matches('#videoStudioTransitionTypeSelect, #videoStudioTransitionDurationInput')) {
+        syncVideoStudioTransitionSettingsFromUi();
+        return true;
+    }
+    if (target.matches('#videoStudioShortcutsEnabledInput')) {
+        videoStudioShortcutsEnabled = !!target.checked;
+        syncVideoStudioGlobalShortcutsToMain();
+        scheduleVideoStudioProfileSave();
+        return true;
+    }
+    if (target.matches('#videoStudioTextContentInput, #videoStudioTextColorInput, #videoStudioTextSizeInput')) {
+        syncVideoStudioTextSourceFromUi();
+        return true;
+    }
+    if (target.matches('#videoStudioSourceOpacityInput, #videoStudioSourceFlipInput, #videoStudioSourceColorInput, #videoStudioSourceFitSelect, #videoStudioCameraResolutionSelect, #videoStudioCameraFpsSelect, #videoStudioMediaLoopInput, #videoStudioMediaRestartInput, #videoStudioMediaPlaybackRateInput')) {
+        syncVideoStudioSourceFiltersFromUi();
+        return true;
+    }
+    if (target.matches('#videoStudioCropTopInput, #videoStudioCropRightInput, #videoStudioCropBottomInput, #videoStudioCropLeftInput')) {
+        syncVideoStudioSourceCropFromUi();
+        return true;
+    }
+    if (target.matches('#videoStudioCaptureModeSelect, #videoStudioCaptureTopInput, #videoStudioCaptureRightInput, #videoStudioCaptureBottomInput, #videoStudioCaptureLeftInput')) {
+        syncVideoStudioCaptureRegionFromUi();
+        return true;
+    }
+    if (target.matches('#videoStudioShowMouseOverlayInput, #videoStudioShowKeyboardOverlayInput, #videoStudioMouseOverlayColorInput, #videoStudioMouseOverlaySizeInput, #videoStudioMouseOverlayDurationInput, #videoStudioKeyboardOverlayPositionSelect, #videoStudioKeyboardOverlayDurationInput')) {
+        syncVideoStudioInputOverlaySettingsFromUi();
+        return true;
+    }
+    return false;
+}
+
+function releaseVideoToolIdleResources({ force = false, keepBatch = false, keepSources = false } = {}) {
+    const mode = getVideoToolMode();
+    const recordingActive = screenRecorder && screenRecorder.state === 'recording';
+    if (force) {
+        stopVideoStudioPreview();
+        clearVideoStudioScheduleTimer();
+    }
+    if (force || (mode !== 'record' && recordingActive)) {
+        stopScreenRecording().catch(() => {});
+    }
+    if (force || (!recordingActive && mode !== 'record')) {
+        if (screenRecordingTimer) {
+            clearInterval(screenRecordingTimer);
+            screenRecordingTimer = null;
+        }
+        clearScreenRecordingAutoStopTimer();
+        clearScreenRecordingTestStopTimer();
+        stopScreenRecordingSystemAudioCapture().catch(() => {});
+        stopScreenRecordingSeparateAudioRecorders().catch(() => {});
+        try {
+            screenRecordingStream?.getTracks?.().forEach((track) => track.stop());
+        } catch {
+            // yoksay
+        }
+        releaseScreenRecordingAudioGraph();
+        screenRecordingStream = null;
+        screenRecordingChunks = [];
+        screenRecordingBytes = 0;
+        screenRecordingChunkCount = 0;
+        screenRecordingSlowChunkWarnings = 0;
+        screenRecordingLastBytesSampleAt = 0;
+        screenRecordingLastBytesSample = 0;
+        screenRecordingWriteBytesPerSecond = 0;
+        screenRecordingCompositionFrameCount = 0;
+        screenRecordingCompositionLastFrameSampleAt = 0;
+        screenRecordingCompositionLastFrameCount = 0;
+        screenRecordingCompositionFps = 0;
+        screenRecordingFrameDropEstimate = 0;
+        screenRecordingLastChunkAt = 0;
+        screenRecordingLastHealthWarningAt = 0;
+        videoStudioTestRecordingActive = false;
+        if (force) screenRecordingOutputPath = '';
+        if (!keepSources) clearScreenRecordingSources();
+    }
+    if (force || (!keepBatch && mode !== 'batch')) {
+        clearVideoToolBatchSelection();
+    }
+    if (!videoToolActiveJobId) {
+        releaseVideoToolsProgressListener();
+    }
+}
+
+function buildVideoToolsPanel() {
+    const sourcePath = getPreferredVideoToolSourcePath();
+    const sourceName = sourcePath
+        ? (window.aurivo?.path?.basename?.(sourcePath) || sourcePath.split(/[\\/]/).pop() || 'Video')
+        : uiT('video.tools.noSource', 'Önce bir video ekleyin veya seçin');
+    const selectedMode = ['video', 'audio', 'edit', 'subtitle', 'thumbnail', 'enhance', 'batch'].includes(videoToolModeState) ? videoToolModeState : 'video';
+    const modeChecked = (mode) => selectedMode === mode ? ' checked' : '';
+    return `
+        <section class="video-tools-panel" aria-label="${escapeAttribute(uiT('video.tools.title', 'Video Araçları'))}">
+            <div class="video-tools-head">
+                <div class="video-tools-title-wrap">
+                    <span class="material-symbols-rounded" aria-hidden="true">movie_edit</span>
+                    <div>
+                        <div class="video-tools-title">${escapeHtml(uiT('video.tools.title', 'Video Araçları'))}</div>
+                        <div class="video-tools-source" id="videoToolSourceLabel">${escapeHtml(sourceName)}</div>
+                    </div>
+                </div>
+                <button type="button" class="btn btn-small video-tool-source-pick-btn" id="videoToolPickSourceBtn">
+                    <span class="material-symbols-rounded" aria-hidden="true">folder_open</span>
+                    <span>${escapeHtml(uiT('video.tools.pickSource', 'Dosya Seç'))}</span>
+                </button>
+            </div>
+            <div class="video-tools-controls">
+                <div class="video-tool-segment" role="radiogroup" aria-label="${escapeAttribute(uiT('video.tools.mode', 'İşlem'))}">
+                    <label>
+                        <input type="radio" name="videoToolMode" value="video"${modeChecked('video')}>
+                        <span>${escapeHtml(uiT('video.tools.mode.video', 'Video dönüştür'))}</span>
+                    </label>
+                    <label>
+                        <input type="radio" name="videoToolMode" value="audio"${modeChecked('audio')}>
+                        <span>${escapeHtml(uiT('video.tools.mode.audio', 'Sesi çıkar'))}</span>
+                    </label>
+                    <label>
+                        <input type="radio" name="videoToolMode" value="edit"${modeChecked('edit')}>
+                        <span>${escapeHtml(uiT('video.tools.mode.edit', 'Video düzenle'))}</span>
+                    </label>
+                    <label>
+                        <input type="radio" name="videoToolMode" value="subtitle"${modeChecked('subtitle')}>
+                        <span>${escapeHtml(uiT('video.tools.mode.subtitle', 'Altyazı'))}</span>
+                    </label>
+                    <label>
+                        <input type="radio" name="videoToolMode" value="thumbnail"${modeChecked('thumbnail')}>
+                        <span>${escapeHtml(uiT('video.tools.mode.thumbnail', 'Kapak'))}</span>
+                    </label>
+                    <label>
+                        <input type="radio" name="videoToolMode" value="enhance"${modeChecked('enhance')}>
+                        <span>${escapeHtml(uiT('video.tools.mode.enhance', 'İyileştir'))}</span>
+                    </label>
+                    <label>
+                        <input type="radio" name="videoToolMode" value="batch"${modeChecked('batch')}>
+                        <span>${escapeHtml(uiT('video.tools.mode.batch', 'Toplu'))}</span>
+                    </label>
+                </div>
+                <label class="video-tool-field">
+                    <span>${escapeHtml(uiT('video.tools.format', 'Format'))}</span>
+                    <select id="videoToolFormatSelect"></select>
+                </label>
+                <label class="video-tool-field" id="videoToolQualityField">
+                    <span>${escapeHtml(uiT('video.tools.quality', 'Kalite'))}</span>
+                    <select id="videoToolQualitySelect">
+                        <option value="medium">${escapeHtml(uiT('video.tools.quality.medium', 'Dengeli'))}</option>
+                        <option value="high">${escapeHtml(uiT('video.tools.quality.high', 'Yüksek'))}</option>
+                        <option value="low">${escapeHtml(uiT('video.tools.quality.low', 'Küçük dosya'))}</option>
+                    </select>
+                </label>
+                <button type="button" class="btn primary video-tool-run-btn" id="videoToolRunBtn">
+                    <span class="material-symbols-rounded" aria-hidden="true">sync_alt</span>
+                    <span id="videoToolRunLabel">${escapeHtml(uiT('video.tools.run', 'Dönüştür'))}</span>
+                </button>
+            </div>
+            <div class="video-tool-edit-controls hidden" id="videoToolEditControls">
+                <label class="video-tool-field">
+                    <span>${escapeHtml(uiT('video.tools.edit.start', 'Başlangıç'))}</span>
+                    <input id="videoToolStartInput" type="number" min="0" step="0.1" placeholder="0">
+                </label>
+                <label class="video-tool-field">
+                    <span>${escapeHtml(uiT('video.tools.edit.end', 'Bitiş'))}</span>
+                    <input id="videoToolEndInput" type="number" min="0" step="0.1" placeholder="0">
+                </label>
+                <label class="video-tool-field">
+                    <span>${escapeHtml(uiT('video.tools.edit.rotate', 'Döndür'))}</span>
+                    <select id="videoToolRotateSelect">
+                        <option value="none">${escapeHtml(uiT('video.tools.edit.rotate.none', 'Yok'))}</option>
+                        <option value="90">90°</option>
+                        <option value="180">180°</option>
+                        <option value="270">270°</option>
+                    </select>
+                </label>
+                <label class="video-tool-field">
+                    <span>${escapeHtml(uiT('video.tools.edit.speed', 'Hız'))}</span>
+                    <select id="videoToolSpeedSelect">
+                        <option value="0.5">0.5x</option>
+                        <option value="0.75">0.75x</option>
+                        <option value="1" selected>1x</option>
+                        <option value="1.25">1.25x</option>
+                        <option value="1.5">1.5x</option>
+                        <option value="2">2x</option>
+                    </select>
+                </label>
+                <label class="video-tool-check">
+                    <input id="videoToolFlipHInput" type="checkbox">
+                    <span>${escapeHtml(uiT('video.tools.edit.flipH', 'Yatay aynala'))}</span>
+                </label>
+                <label class="video-tool-check">
+                    <input id="videoToolFlipVInput" type="checkbox">
+                    <span>${escapeHtml(uiT('video.tools.edit.flipV', 'Dikey aynala'))}</span>
+                </label>
+                <label class="video-tool-check">
+                    <input id="videoToolMuteInput" type="checkbox">
+                    <span>${escapeHtml(uiT('video.tools.edit.mute', 'Sesi kapat'))}</span>
+                </label>
+            </div>
+            <div class="video-tool-subtitle-controls hidden" id="videoToolSubtitleControls">
+                <label class="video-tool-field video-tool-file-field">
+                    <span>${escapeHtml(uiT('video.tools.subtitle.file', 'Altyazı dosyası'))}</span>
+                    <div class="video-tool-file-row">
+                        <input id="videoToolSubtitlePathInput" type="text" readonly placeholder=".srt">
+                        <button type="button" class="video-tool-icon-btn" id="videoToolPickSubtitleBtn" title="${escapeAttribute(uiT('video.tools.subtitle.pick', 'SRT seç'))}" aria-label="${escapeAttribute(uiT('video.tools.subtitle.pick', 'SRT seç'))}">
+                            <span class="material-symbols-rounded" aria-hidden="true">subtitles</span>
+                        </button>
+                    </div>
+                </label>
+                <label class="video-tool-field">
+                    <span>${escapeHtml(uiT('video.tools.subtitle.mode', 'Tür'))}</span>
+                    <select id="videoToolSubtitleModeSelect">
+                        <option value="burn">${escapeHtml(uiT('video.tools.subtitle.mode.burn', 'Videoya göm'))}</option>
+                        <option value="selectable">${escapeHtml(uiT('video.tools.subtitle.mode.selectable', 'Seçilebilir ekle'))}</option>
+                    </select>
+                </label>
+                <label class="video-tool-field">
+                    <span>${escapeHtml(uiT('video.tools.subtitle.delay', 'Senkron'))}</span>
+                    <input id="videoToolSubtitleDelayInput" type="number" step="0.1" placeholder="0">
+                </label>
+            </div>
+            <div class="video-tool-thumbnail-controls hidden" id="videoToolThumbnailControls">
+                <label class="video-tool-field">
+                    <span>${escapeHtml(uiT('video.tools.thumbnail.time', 'Saniye'))}</span>
+                    <input id="videoToolThumbnailTimeInput" type="number" min="0" step="0.1" placeholder="0">
+                </label>
+                <label class="video-tool-field">
+                    <span>${escapeHtml(uiT('video.tools.thumbnail.width', 'Genişlik'))}</span>
+                    <select id="videoToolThumbnailWidthSelect">
+                        <option value="0">${escapeHtml(uiT('video.tools.thumbnail.original', 'Orijinal'))}</option>
+                        <option value="1280">1280 px</option>
+                        <option value="1920">1920 px</option>
+                        <option value="3840">3840 px</option>
+                    </select>
+                </label>
+                <button type="button" class="btn btn-small video-tool-current-time-btn" id="videoToolUseCurrentTimeBtn">
+                    <span class="material-symbols-rounded" aria-hidden="true">schedule</span>
+                    <span>${escapeHtml(uiT('video.tools.thumbnail.useCurrent', 'Şu anki kare'))}</span>
+                </button>
+            </div>
+            <div class="video-tool-record-controls hidden" id="videoToolRecordControls">
+                <label class="video-tool-field">
+                    <span>${escapeHtml(uiT('video.tools.record.source', 'Kaynak'))}</span>
+                    <select id="videoToolRecordSourceSelect">
+                        <option value="">${escapeHtml(uiT('video.tools.record.sourcePlaceholder', 'Kaynakları yenileyin'))}</option>
+                    </select>
+                </label>
+                <label class="video-tool-field">
+                    <span>${escapeHtml(uiT('video.tools.record.fps', 'FPS'))}</span>
+                    <select id="videoToolRecordFpsSelect">
+                        <option value="30">30</option>
+                        <option value="60">60</option>
+                    </select>
+                </label>
+                <label class="video-tool-field">
+                    <span>${escapeHtml(uiT('video.tools.record.audio', 'Ses'))}</span>
+                    <select id="videoToolRecordAudioSelect">
+                        <option value="none">${escapeHtml(uiT('video.tools.record.audio.none', 'Sessiz'))}</option>
+                        <option value="system">${escapeHtml(uiT('video.tools.record.audio.system', 'Sistem sesi'))}</option>
+                        <option value="mic">${escapeHtml(uiT('video.tools.record.audio.mic', 'Mikrofon'))}</option>
+                        <option value="both">${escapeHtml(uiT('video.tools.record.audio.both', 'Sistem + Mikrofon'))}</option>
+                    </select>
+                </label>
+                <button type="button" class="btn btn-small video-tool-current-time-btn" id="videoToolRefreshSourcesBtn">
+                    <span class="material-symbols-rounded" aria-hidden="true">refresh</span>
+                    <span>${escapeHtml(uiT('video.tools.record.refresh', 'Yenile'))}</span>
+                </button>
+                <button type="button" class="btn btn-small video-tool-record-stop-btn hidden" id="videoToolStopRecordBtn">
+                    <span class="material-symbols-rounded" aria-hidden="true">stop_circle</span>
+                    <span>${escapeHtml(uiT('video.tools.record.stop', 'Durdur'))}</span>
+                </button>
+            </div>
+            <div class="video-tool-enhance-controls hidden" id="videoToolEnhanceControls">
+                <label class="video-tool-field">
+                    <span>${escapeHtml(uiT('video.tools.enhance.brightness', 'Parlaklık'))}</span>
+                    <input id="videoToolBrightnessInput" type="range" min="-0.3" max="0.3" step="0.01" value="0">
+                </label>
+                <label class="video-tool-field">
+                    <span>${escapeHtml(uiT('video.tools.enhance.contrast', 'Kontrast'))}</span>
+                    <input id="videoToolContrastInput" type="range" min="0.6" max="1.8" step="0.05" value="1">
+                </label>
+                <label class="video-tool-field">
+                    <span>${escapeHtml(uiT('video.tools.enhance.saturation', 'Doygunluk'))}</span>
+                    <input id="videoToolSaturationInput" type="range" min="0" max="2.2" step="0.05" value="1">
+                </label>
+                <label class="video-tool-field">
+                    <span>${escapeHtml(uiT('video.tools.enhance.sharpness', 'Keskinlik'))}</span>
+                    <input id="videoToolSharpnessInput" type="range" min="0" max="2" step="0.1" value="0">
+                </label>
+                <label class="video-tool-check">
+                    <input id="videoToolDenoiseInput" type="checkbox">
+                    <span>${escapeHtml(uiT('video.tools.enhance.denoise', 'Gürültü azalt'))}</span>
+                </label>
+                <label class="video-tool-check">
+                    <input id="videoToolNormalizeAudioInput" type="checkbox">
+                    <span>${escapeHtml(uiT('video.tools.enhance.normalizeAudio', 'Sesi normalize et'))}</span>
+                </label>
+            </div>
+            <div class="video-tool-batch-controls hidden" id="videoToolBatchControls">
+                <label class="video-tool-field">
+                    <span>${escapeHtml(uiT('video.tools.batch.operation', 'İşlem'))}</span>
+                    <select id="videoToolBatchOperationSelect">
+                        <option value="convert">${escapeHtml(uiT('video.tools.batch.operation.convert', 'Video dönüştür'))}</option>
+                        <option value="compress">${escapeHtml(uiT('video.tools.batch.operation.compress', 'Sıkıştır'))}</option>
+                        <option value="audio">${escapeHtml(uiT('video.tools.batch.operation.audio', 'Sesi çıkar'))}</option>
+                    </select>
+                </label>
+                <label class="video-tool-field video-tool-file-field">
+                    <span>${escapeHtml(uiT('video.tools.batch.files', 'Dosyalar'))}</span>
+                    <div class="video-tool-file-row">
+                        <input id="videoToolBatchFilesInput" type="text" readonly placeholder="0">
+                        <button type="button" class="video-tool-icon-btn" id="videoToolPickBatchFilesBtn" title="${escapeAttribute(uiT('video.tools.batch.pickFiles', 'Videoları seç'))}" aria-label="${escapeAttribute(uiT('video.tools.batch.pickFiles', 'Videoları seç'))}">
+                            <span class="material-symbols-rounded" aria-hidden="true">video_library</span>
+                        </button>
+                    </div>
+                </label>
+                <label class="video-tool-field video-tool-file-field">
+                    <span>${escapeHtml(uiT('video.tools.batch.outputFolder', 'Çıktı klasörü'))}</span>
+                    <div class="video-tool-file-row">
+                        <input id="videoToolBatchFolderInput" type="text" readonly placeholder="-">
+                        <button type="button" class="video-tool-icon-btn" id="videoToolPickBatchFolderBtn" title="${escapeAttribute(uiT('video.tools.batch.pickFolder', 'Klasör seç'))}" aria-label="${escapeAttribute(uiT('video.tools.batch.pickFolder', 'Klasör seç'))}">
+                            <span class="material-symbols-rounded" aria-hidden="true">folder</span>
+                        </button>
+                    </div>
+                </label>
+            </div>
+            <div class="video-tool-progress" aria-hidden="true">
+                <div class="video-tool-progress-fill" id="videoToolProgressFill"></div>
+            </div>
+            <div class="video-tool-footer">
+                <div class="video-tool-status" id="videoToolStatus" data-status="idle">${escapeHtml(uiT('video.tools.status.ready', 'Hazır'))}</div>
+                <button type="button" class="btn btn-small" id="videoToolOpenOutputBtn" disabled>
+                    <span class="material-symbols-rounded" aria-hidden="true">folder_open</span>
+                    <span>${escapeHtml(uiT('video.tools.openOutput', 'Çıktıyı Aç'))}</span>
+                </button>
+            </div>
+        </section>
+    `;
+}
+
+async function pickVideoToolSource() {
+    try {
+        const files = await window.aurivo?.dialog?.openFiles?.({
+            title: uiT('video.tools.pickSource', 'Dosya Seç'),
+            filters: [
+                { name: uiT('dialog.filters.videoFiles', 'Video Dosyaları'), extensions: getConfiguredLibraryExtensions('video') },
+                { name: uiT('dialog.filters.allFiles', 'Tüm Dosyalar'), extensions: ['*'] }
+            ]
+        });
+        const first = Array.isArray(files) ? files[0] : null;
+        if (!first?.path) return '';
+        state.videoFiles = mergeVideoLibraryItems(state.videoFiles, [{ name: first.name, path: first.path }]);
+        persistVideoLibrary();
+        renderVideoLibraryTree();
+        markVideoToolSourceSelected(first.path);
+        return String(first.path || '').trim();
+    } catch (error) {
+        safeNotify(`${uiT('video.tools.notify.pickFailed', 'Video seçilemedi')}: ${error?.message || error}`, 'error', 2200);
+        return '';
+    }
+}
+
+async function pickVideoToolSubtitle() {
+    try {
+        const files = await window.aurivo?.dialog?.openFiles?.({
+            title: uiT('video.tools.subtitle.pick', 'SRT seç'),
+            filters: [
+                { name: 'SubRip (.srt)', extensions: ['srt'] },
+                { name: uiT('dialog.filters.allFiles', 'Tüm Dosyalar'), extensions: ['*'] }
+            ]
+        });
+        const first = Array.isArray(files) ? files[0] : null;
+        const subtitlePath = String(first?.path || '').trim();
+        if (!subtitlePath) return '';
+        const input = document.getElementById('videoToolSubtitlePathInput');
+        if (input) {
+            input.value = window.aurivo?.path?.basename?.(subtitlePath) || subtitlePath;
+            input.dataset.path = subtitlePath;
+        }
+        return subtitlePath;
+    } catch (error) {
+        safeNotify(`${uiT('video.tools.subtitle.pickFailed', 'Altyazı seçilemedi')}: ${error?.message || error}`, 'error', 2200);
+        return '';
+    }
+}
+
+function getVideoToolDefaultOutputPath(inputPath, format) {
+    const dir = window.aurivo?.path?.dirname?.(inputPath) || '';
+    const name = window.aurivo?.path?.basename?.(inputPath) || 'video';
+    const base = String(name || 'video').replace(/\.[^.\\/]+$/, '');
+    const mode = getVideoToolMode();
+    const suffix = mode === 'enhance' ? 'enhanced' : (mode === 'thumbnail' ? 'cover' : (mode === 'subtitle' ? 'subtitled' : (mode === 'edit' ? 'edited' : (format === 'mp3' || format === 'wav' ? 'audio' : 'converted'))));
+    const fileName = `${base}-${suffix}.${format}`;
+    return dir ? window.aurivo?.path?.join?.(dir, fileName) || fileName : fileName;
+}
+
+function buildVideoToolOutputPath(inputPath, outputDir, suffix, format) {
+    const name = window.aurivo?.path?.basename?.(inputPath) || 'video';
+    const base = String(name || 'video').replace(/\.[^.\\/]+$/, '');
+    const fileName = `${base}-${suffix}.${format}`;
+    return window.aurivo?.path?.join?.(outputDir, fileName) || `${outputDir}/${fileName}`;
+}
+
+function getVideoToolEditOptions() {
+    const startSeconds = Math.max(0, Number(document.getElementById('videoToolStartInput')?.value) || 0);
+    const endSeconds = Math.max(0, Number(document.getElementById('videoToolEndInput')?.value) || 0);
+    return {
+        startSeconds,
+        endSeconds,
+        rotate: String(document.getElementById('videoToolRotateSelect')?.value || 'none').toLowerCase(),
+        speed: Math.max(0.5, Math.min(2, Number(document.getElementById('videoToolSpeedSelect')?.value) || 1)),
+        flipH: !!document.getElementById('videoToolFlipHInput')?.checked,
+        flipV: !!document.getElementById('videoToolFlipVInput')?.checked,
+        mute: !!document.getElementById('videoToolMuteInput')?.checked
+    };
+}
+
+function getVideoToolSubtitleOptions() {
+    const pathInput = document.getElementById('videoToolSubtitlePathInput');
+    return {
+        path: String(pathInput?.dataset?.path || '').trim(),
+        mode: String(document.getElementById('videoToolSubtitleModeSelect')?.value || 'burn').toLowerCase(),
+        delaySeconds: Number(document.getElementById('videoToolSubtitleDelayInput')?.value) || 0
+    };
+}
+
+function getVideoToolThumbnailOptions() {
+    return {
+        atSeconds: Math.max(0, Number(document.getElementById('videoToolThumbnailTimeInput')?.value) || 0),
+        width: Math.max(0, Number(document.getElementById('videoToolThumbnailWidthSelect')?.value) || 0)
+    };
+}
+
+function getVideoToolEnhanceOptions() {
+    return {
+        brightness: Number(document.getElementById('videoToolBrightnessInput')?.value) || 0,
+        contrast: Number(document.getElementById('videoToolContrastInput')?.value) || 1,
+        saturation: Number(document.getElementById('videoToolSaturationInput')?.value) || 1,
+        sharpness: Number(document.getElementById('videoToolSharpnessInput')?.value) || 0,
+        denoise: !!document.getElementById('videoToolDenoiseInput')?.checked,
+        normalizeAudio: !!document.getElementById('videoToolNormalizeAudioInput')?.checked
+    };
+}
+
+async function pickVideoToolBatchFiles() {
+    try {
+        const files = await window.aurivo?.dialog?.openFiles?.({
+            title: uiT('video.tools.batch.pickFiles', 'Videoları seç'),
+            filters: [
+                { name: uiT('dialog.filters.videoFiles', 'Video Dosyaları'), extensions: getConfiguredLibraryExtensions('video') },
+                { name: uiT('dialog.filters.allFiles', 'Tüm Dosyalar'), extensions: ['*'] }
+            ]
+        });
+        videoToolBatchFiles = Array.isArray(files)
+            ? files.map((file) => ({ path: String(file?.path || '').trim(), name: String(file?.name || '').trim() })).filter((file) => file.path)
+            : [];
+        const input = document.getElementById('videoToolBatchFilesInput');
+        if (input) input.value = videoToolBatchFiles.length ? uiT('video.tools.batch.fileCount', '{count} dosya').replace('{count}', String(videoToolBatchFiles.length)) : '0';
+        return videoToolBatchFiles;
+    } catch (error) {
+        safeNotify(`${uiT('video.tools.batch.pickFilesFailed', 'Dosyalar seçilemedi')}: ${error?.message || error}`, 'error', 2200);
+        return [];
+    }
+}
+
+async function pickVideoToolBatchFolder() {
+    try {
+        const folder = await window.aurivo?.dialog?.openFolder?.({
+            title: uiT('video.tools.batch.pickFolder', 'Klasör seç'),
+            defaultPath: state.specialPaths?.videos || undefined
+        });
+        const folderPath = String(folder?.path || '').trim();
+        if (!folderPath) return '';
+        const input = document.getElementById('videoToolBatchFolderInput');
+        if (input) {
+            input.value = folder.name || window.aurivo?.path?.basename?.(folderPath) || folderPath;
+            input.dataset.path = folderPath;
+        }
+        return folderPath;
+    } catch (error) {
+        safeNotify(`${uiT('video.tools.batch.pickFolderFailed', 'Klasör seçilemedi')}: ${error?.message || error}`, 'error', 2200);
+        return '';
+    }
+}
+
+async function runVideoToolBatch() {
+    if (videoToolActiveJobId) return;
+    if (!videoToolBatchFiles.length) await pickVideoToolBatchFiles();
+    if (!videoToolBatchFiles.length) {
+        safeNotify(uiT('video.tools.batch.noFiles', 'Toplu işlem için önce video dosyaları seçin.'), 'warning', 2200);
+        return;
+    }
+    let outputDir = String(document.getElementById('videoToolBatchFolderInput')?.dataset?.path || '').trim();
+    if (!outputDir) outputDir = await pickVideoToolBatchFolder();
+    if (!outputDir) {
+        safeNotify(uiT('video.tools.batch.noFolder', 'Toplu işlem için çıktı klasörü seçin.'), 'warning', 2200);
+        return;
+    }
+
+    const operation = String(document.getElementById('videoToolBatchOperationSelect')?.value || 'convert').toLowerCase();
+    const format = String(document.getElementById('videoToolFormatSelect')?.value || (operation === 'audio' ? 'mp3' : 'mp4')).toLowerCase();
+    const selectedQuality = String(document.getElementById('videoToolQualitySelect')?.value || 'medium').toLowerCase();
+    const total = videoToolBatchFiles.length;
+    let done = 0;
+    let failed = 0;
+    videoToolLastOutputPath = outputDir;
+    const performanceProfile = getVideoToolPerformanceProfile();
+    ensureVideoToolsProgressListener();
+
+    const runBtn = document.getElementById('videoToolRunBtn');
+    if (runBtn) runBtn.disabled = true;
+
+    try {
+        for (const file of videoToolBatchFiles) {
+            const jobId = `video-batch-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+            videoToolActiveJobId = jobId;
+            const target = operation === 'audio' ? 'audio' : 'video';
+            const quality = operation === 'compress' ? 'low' : selectedQuality;
+            const suffix = operation === 'audio' ? 'audio' : (operation === 'compress' ? 'compressed' : 'converted');
+            const outputPath = buildVideoToolOutputPath(file.path, outputDir, suffix, format);
+            updateVideoToolStatus(
+                `${uiT('video.tools.batch.processing', 'İşleniyor')} ${done + 1}/${total}: ${file.name || window.aurivo?.path?.basename?.(file.path) || ''}`,
+                'running',
+                Math.round((done / total) * 100)
+            );
+            try {
+                const result = await window.aurivo?.videoTools?.convert?.({
+                    jobId,
+                    target,
+                    format,
+                    quality,
+                    inputPath: file.path,
+                    outputPath
+                });
+                if (result?.ok) done += 1;
+                else failed += 1;
+            } catch {
+                failed += 1;
+            }
+            if (performanceProfile.batchYieldMs > 0 && done + failed < total) {
+                await new Promise((resolve) => setTimeout(resolve, performanceProfile.batchYieldMs));
+            }
+        }
+    } finally {
+        videoToolActiveJobId = '';
+        if (runBtn) runBtn.disabled = false;
+        releaseVideoToolsProgressListener();
+    }
+    updateVideoToolStatus(
+        failed > 0
+            ? `${uiT('video.tools.batch.doneWithFailures', 'Toplu işlem bitti')}: ${done}/${total}, ${failed} hata`
+            : `${uiT('video.tools.batch.done', 'Toplu işlem tamamlandı')}: ${done}/${total}`,
+        failed > 0 ? 'error' : 'done',
+        100
+    );
+    safeNotify(failed > 0 ? uiT('video.tools.batch.doneWithFailures', 'Toplu işlem bitti') : uiT('video.tools.batch.done', 'Toplu işlem tamamlandı'), failed > 0 ? 'warning' : 'success', 2600);
+}
+
+function getSupportedScreenRecorderMimeType(format = 'webm') {
+    const normalized = String(format || 'webm').trim().toLowerCase();
+    const candidatesByFormat = {
+        webm: ['video/webm;codecs=vp8,opus', 'video/webm;codecs=vp9,opus', 'video/webm'],
+        mp4: ['video/webm;codecs=vp8,opus', 'video/webm'],
+        mkv: ['video/webm;codecs=vp8,opus', 'video/webm']
+    };
+    const candidates = candidatesByFormat[normalized] || candidatesByFormat.webm;
+    return candidates.find((type) => typeof MediaRecorder !== 'undefined' && MediaRecorder.isTypeSupported(type)) || '';
+}
+
+function getScreenRecordingFormatFromMimeType(mimeType = '', preferredFormat = 'webm') {
+    const type = String(mimeType || '').toLowerCase();
+    if (type.includes('mp4')) return 'mp4';
+    if (type.includes('matroska') || type.includes('mkv')) return 'mkv';
+    return 'webm';
+}
+
+function arrayBufferToBase64(arrayBuffer) {
+    const bytes = new Uint8Array(arrayBuffer);
+    let binary = '';
+    const chunkSize = 0x8000;
+    for (let index = 0; index < bytes.length; index += chunkSize) {
+        binary += String.fromCharCode(...bytes.subarray(index, index + chunkSize));
+    }
+    return btoa(binary);
+}
+
+function getVideoStudioDefaultOutputFolder() {
+    return String(
+        videoStudioRecordOutputFolder
+        || state.specialPaths?.desktop
+        || state.specialPaths?.videos
+        || state.specialPaths?.home
+        || ''
+    ).trim();
+}
+
+function sanitizeVideoStudioOutputName(value = '') {
+    const cleaned = String(value || '')
+        .replace(/[\\/:*?"<>|]+/g, '-')
+        .replace(/\s+/g, ' ')
+        .trim();
+    return cleaned || 'aurivo-recording';
+}
+
+function buildVideoStudioOutputFileName(format = 'webm') {
+    const extension = ['webm', 'mp4', 'mkv'].includes(String(format || '').toLowerCase()) ? String(format).toLowerCase() : 'webm';
+    const now = new Date();
+    const date = now.toISOString().slice(0, 10);
+    const time = now.toTimeString().slice(0, 8).replace(/:/g, '-');
+    const profile = normalizeVideoStudioRecordPreset(videoStudioRecordPreset);
+    const template = String(videoStudioRecordNameTemplate || 'aurivo-{date}-{time}').trim() || 'aurivo-{date}-{time}';
+    const stem = sanitizeVideoStudioOutputName(template
+        .replace(/\{date\}/gi, date)
+        .replace(/\{time\}/gi, time)
+        .replace(/\{profile\}/gi, profile));
+    return `${stem}.${extension}`;
+}
+
+function buildVideoStudioTestOutputPath(format = 'webm') {
+    const extension = ['webm', 'mp4', 'mkv'].includes(String(format || '').toLowerCase()) ? String(format).toLowerCase() : 'webm';
+    const baseDir = getVideoStudioDefaultOutputFolder();
+    const now = new Date();
+    const date = now.toISOString().slice(0, 10);
+    const time = now.toTimeString().slice(0, 8).replace(/:/g, '-');
+    const fileName = `aurivo-test-recording-${date}-${time}.${extension}`;
+    return baseDir && window.aurivo?.path?.join ? window.aurivo.path.join(baseDir, fileName) : fileName;
+}
+
+function buildVideoStudioAutoOutputPath(format = 'webm') {
+    const folder = getVideoStudioDefaultOutputFolder();
+    const fileName = buildVideoStudioOutputFileName(format);
+    if (folder && window.aurivo?.path?.join) return window.aurivo.path.join(folder, fileName);
+    return fileName;
+}
+
+function syncVideoStudioOutputSettingsFromUi() {
+    const modeSelect = document.getElementById('videoStudioRecordOutputModeSelect');
+    if (modeSelect) {
+        const mode = String(modeSelect.value || 'auto').trim().toLowerCase();
+        videoStudioRecordOutputMode = mode === 'ask' ? 'ask' : 'auto';
+    }
+    const templateInput = document.getElementById('videoStudioRecordNameTemplateInput');
+    if (templateInput) {
+        videoStudioRecordNameTemplate = String(templateInput.value || 'aurivo-{date}-{time}').trim() || 'aurivo-{date}-{time}';
+        templateInput.value = videoStudioRecordNameTemplate;
+    }
+    scheduleVideoStudioProfileSave();
+}
+
+function normalizeVideoStudioStreamService(value = 'custom') {
+    const normalized = String(value || 'custom').trim().toLowerCase();
+    return ['custom', 'youtube', 'twitch', 'facebook'].includes(normalized) ? normalized : 'custom';
+}
+
+function getVideoStudioStreamServerPreset(service = videoStudioStreamService) {
+    const normalized = normalizeVideoStudioStreamService(service);
+    if (normalized === 'youtube') return 'rtmp://a.rtmp.youtube.com/live2';
+    if (normalized === 'twitch') return 'rtmp://live.twitch.tv/app';
+    if (normalized === 'facebook') return 'rtmps://live-api-s.facebook.com:443/rtmp';
+    return '';
+}
+
+function getVideoStudioStreamTargetUrl() {
+    const server = String(videoStudioStreamServer || '').trim().replace(/\/+$/, '');
+    const key = String(videoStudioStreamKey || '').trim();
+    if (!server || !key) return '';
+    return `${server}/${key}`;
+}
+
+function getVideoStudioStreamStatusLabel() {
+    if (videoStudioStreamStatus === 'active') return uiT('video.tools.stream.status.active', 'Yayında');
+    if (videoStudioStreamStatus === 'stopping') return uiT('video.tools.stream.status.stopping', 'Durduruluyor');
+    if (videoStudioStreamStatus === 'failed') return uiT('video.tools.stream.status.failed', 'Yayın hatası');
+    if (videoStudioStreamStatus === 'ready') return uiT('video.tools.stream.status.ready', 'Yayına hazır');
+    if (videoStudioStreamStatus === 'missing') return uiT('video.tools.stream.status.missing', 'Sunucu ve anahtar gerekli');
+    if (videoStudioStreamStatus === 'unsupported') return uiT('video.tools.stream.status.unsupported', 'RTMP motoru bekliyor');
+    return uiT('video.tools.stream.status.idle', 'Kapalı');
+}
+
+function updateVideoStudioStreamStatusUi() {
+    const status = document.getElementById('videoStudioStreamStatusLabel');
+    if (status) status.textContent = getVideoStudioStreamStatusLabel();
+    const target = document.getElementById('videoStudioStreamTargetLabel');
+    if (target) target.textContent = getVideoStudioStreamTargetUrl() || uiT('video.tools.stream.noTarget', 'Hedef yok');
+    const button = document.getElementById('videoStudioStartStreamBtn');
+    if (button) {
+        const active = !!videoStudioLiveStreamRecorder && videoStudioLiveStreamRecorder.state !== 'inactive';
+        button.classList.toggle('is-danger', active);
+        const icon = button.querySelector('.material-symbols-rounded');
+        if (icon) icon.textContent = active ? 'stop_circle' : 'cell_tower';
+        const label = button.querySelector('[data-video-studio-stream-label]');
+        if (label) label.textContent = active
+            ? uiT('video.tools.stream.stop', 'Yayını Durdur')
+            : uiT('video.tools.stream.start', 'Yayını Başlat');
+    }
+}
+
+function syncVideoStudioStreamSettingsFromUi({ applyPreset = false } = {}) {
+    const enabledInput = document.getElementById('videoStudioStreamEnabledInput');
+    if (enabledInput) videoStudioStreamEnabled = !!enabledInput.checked;
+    const serviceSelect = document.getElementById('videoStudioStreamServiceSelect');
+    if (serviceSelect) videoStudioStreamService = normalizeVideoStudioStreamService(serviceSelect.value);
+    const serverInput = document.getElementById('videoStudioStreamServerInput');
+    if (serverInput) {
+        if (applyPreset) {
+            const preset = getVideoStudioStreamServerPreset(videoStudioStreamService);
+            if (preset) serverInput.value = preset;
+        }
+        videoStudioStreamServer = String(serverInput.value || '').trim();
+    }
+    const keyInput = document.getElementById('videoStudioStreamKeyInput');
+    if (keyInput) videoStudioStreamKey = String(keyInput.value || '').trim();
+    if (!videoStudioStreamEnabled) {
+        videoStudioStreamStatus = 'idle';
+    } else if (!getVideoStudioStreamTargetUrl()) {
+        videoStudioStreamStatus = 'missing';
+    } else if (!['ready', 'active', 'stopping'].includes(videoStudioStreamStatus)) {
+        videoStudioStreamStatus = 'idle';
+    }
+    updateVideoStudioStreamStatusUi();
+    scheduleVideoStudioProfileSave();
+}
+
+function prepareVideoStudioStreamOutput() {
+    syncVideoStudioStreamSettingsFromUi();
+    if (!videoStudioStreamEnabled || !getVideoStudioStreamTargetUrl()) {
+        videoStudioStreamStatus = 'missing';
+        updateVideoStudioStreamStatusUi();
+        safeNotify(uiT('video.tools.stream.missing', 'Yayın için sunucu ve yayın anahtarı gerekli.'), 'warning', 2400);
+        return false;
+    }
+    videoStudioStreamStatus = 'ready';
+    updateVideoStudioStreamStatusUi();
+    safeNotify(uiT('video.tools.stream.ready', 'Yayın hedefi hazırlandı.'), 'success', 1800);
+    return true;
+}
+
+function releaseVideoStudioLiveStreamRuntime() {
+    try {
+        videoStudioLiveStreamAuxStreams.forEach((stream) => {
+            stream?.getTracks?.().forEach((track) => track.stop());
+        });
+    } catch {
+        // yoksay
+    }
+    videoStudioLiveStreamAuxStreams = [];
+    try {
+        videoStudioLiveStreamStream?.getTracks?.().forEach((track) => track.stop());
+    } catch {
+        // yoksay
+    }
+    videoStudioLiveStreamStream = null;
+    releaseScreenRecordingAudioGraph();
+}
+
+async function stopVideoStudioStreamOutput() {
+    if (!videoStudioLiveStreamRecorder || videoStudioLiveStreamRecorder.state === 'inactive') {
+        if (videoStudioLiveStreamId) await window.aurivo?.screenRecording?.stopLiveOutput?.(videoStudioLiveStreamId);
+        videoStudioLiveStreamId = '';
+        videoStudioStreamStatus = videoStudioStreamEnabled ? 'ready' : 'idle';
+        updateVideoStudioStreamStatusUi();
+        return;
+    }
+    videoStudioStreamStatus = 'stopping';
+    updateVideoStudioStreamStatusUi();
+    try {
+        if (videoStudioLiveStreamRecorder.state === 'recording') {
+            videoStudioLiveStreamRecorder.requestData?.();
+        }
+        videoStudioLiveStreamRecorder.stop();
+    } catch {
+        if (videoStudioLiveStreamId) await window.aurivo?.screenRecording?.stopLiveOutput?.(videoStudioLiveStreamId);
+        videoStudioLiveStreamRecorder = null;
+        videoStudioLiveStreamId = '';
+        releaseVideoStudioLiveStreamRuntime();
+        videoStudioStreamStatus = videoStudioStreamEnabled ? 'ready' : 'idle';
+        updateVideoStudioStreamStatusUi();
+    }
+}
+
+async function buildVideoStudioLiveOutputStream(recordingSettings, sourceId, options = {}) {
+    const assignTo = String(options?.assignTo || 'stream');
+    const includeAudio = options?.includeAudio !== false;
+    const usePortalCapture = isPortalScreenSourceId(sourceId);
+    const audioMode = getScreenRecordingAudioMode();
+    const wantsDesktopAudio = includeAudio && ['system', 'both'].includes(audioMode) && isVideoStudioDesktopAudioVisible();
+    const includeDesktopAudio = !usePortalCapture && wantsDesktopAudio;
+    const includeMic = includeAudio && ['mic', 'both'].includes(audioMode) && isVideoStudioMicVisible();
+    const displayCaptureConstraints = {
+        audio: false,
+        video: true
+    };
+    if (!usePortalCapture) {
+        displayCaptureConstraints.audio = getVideoStudioDesktopAudioConstraints(sourceId);
+        displayCaptureConstraints.video = {
+            mandatory: {
+                chromeMediaSource: 'desktop',
+                chromeMediaSourceId: sourceId,
+                maxFrameRate: recordingSettings.fps,
+                ...(recordingSettings.resolution ? {
+                    maxWidth: recordingSettings.resolution.width,
+                    maxHeight: recordingSettings.resolution.height
+                } : {})
+            }
+        };
+    }
+    let displayStream;
+    try {
+        displayStream = usePortalCapture
+            ? await getVideoStudioPortalDisplayStream()
+            : await navigator.mediaDevices.getUserMedia(displayCaptureConstraints);
+    } catch (error) {
+        if (!includeDesktopAudio) throw error;
+        safeNotify(`${uiT('video.tools.record.systemAudioFailed', 'Sistem sesi eklenemedi')}: ${error?.message || error}`, 'warning', 2600);
+        displayStream = usePortalCapture
+            ? await getVideoStudioPortalDisplayStream()
+            : await navigator.mediaDevices.getUserMedia({
+                audio: false,
+                video: displayCaptureConstraints.video
+            });
+    }
+    let micStream = null;
+    if (includeMic) {
+        try {
+            micStream = await navigator.mediaDevices.getUserMedia({
+                audio: getVideoStudioMicAudioConstraints(),
+                video: false
+            });
+        } catch (error) {
+            safeNotify(`${uiT('video.tools.record.micFailed', 'Mikrofon eklenemedi')}: ${error?.message || error}`, 'warning', 2400);
+        }
+    }
+    let cameraStream = null;
+    if (isVideoStudioCameraVisible()) {
+        try {
+            cameraStream = await getVideoStudioCameraStream();
+        } catch (error) {
+            safeNotify(`${uiT('video.tools.studio.cameraFailed', 'Kamera açılamadı')}: ${error?.message || error}`, 'warning', 2400);
+        }
+    }
+    const visualStream = shouldBuildVideoStudioCompositedStream()
+        ? await buildVideoStudioCompositedStream(displayStream, cameraStream, recordingSettings)
+        : displayStream;
+    const liveStream = buildMixedScreenRecordingStream(visualStream, micStream, {
+        includeDesktopAudio,
+        includeMic: !!micStream,
+        monitorMic: !!micStream && videoStudioMicMonitorEnabled
+    });
+    const auxStreams = [displayStream, micStream, cameraStream, visualStream].filter(Boolean);
+    if (assignTo === 'virtual-camera') {
+        videoStudioVirtualCameraAuxStreams = auxStreams;
+    } else if (assignTo === 'replay') {
+        videoStudioReplayBufferAuxStreams = auxStreams;
+    } else {
+        videoStudioLiveStreamAuxStreams = auxStreams;
+    }
+    return liveStream;
+}
+
+async function startVideoStudioStreamOutput() {
+    if (videoStudioLiveStreamRecorder && videoStudioLiveStreamRecorder.state !== 'inactive') {
+        await stopVideoStudioStreamOutput();
+        return;
+    }
+    if (!prepareVideoStudioStreamOutput()) return;
+    let sourceId = syncVideoStudioSourceToRecorder();
+    if (!sourceId) {
+        await refreshVideoStudioSources();
+        sourceId = syncVideoStudioSourceToRecorder();
+    }
+    if (!sourceId) {
+        safeNotify(uiT('video.tools.record.noSources', 'Kaynak bulunamadı'), 'warning', 2200);
+        return;
+    }
+    const recordingSettings = getVideoStudioRecordingSettings();
+    const mimeType = getSupportedScreenRecorderMimeType('webm');
+    if (!mimeType || !window.aurivo?.screenRecording?.startLiveOutput) {
+        videoStudioStreamStatus = 'unsupported';
+        updateVideoStudioStreamStatusUi();
+        safeNotify(uiT('video.tools.stream.nativeRequired', 'RTMP yayını için native FFmpeg canlı köprüsü gerekiyor; hedef ayarı kaydedildi.'), 'warning', 3000);
+        return;
+    }
+    try {
+        stopVideoStudioPreview();
+        releaseScreenRecordingAudioGraph();
+        stopVideoStudioLiveAudioMeters();
+        videoStudioLiveStreamId = `rtmp-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`;
+        const started = await window.aurivo.screenRecording.startLiveOutput({
+            id: videoStudioLiveStreamId,
+            kind: 'rtmp',
+            target: getVideoStudioStreamTargetUrl(),
+            bitrateKbps: recordingSettings.bitrateKbps,
+            fps: recordingSettings.fps
+        });
+        if (!started?.success) throw new Error(started?.error || 'live-output-start-failed');
+        const liveStream = await buildVideoStudioLiveOutputStream(recordingSettings, sourceId);
+        videoStudioLiveStreamStream = liveStream;
+        videoStudioLiveStreamBytes = 0;
+        videoStudioLiveStreamRecorder = new MediaRecorder(liveStream, {
+            mimeType,
+            videoBitsPerSecond: recordingSettings.bitrateKbps * 1000
+        });
+        videoStudioLiveStreamRecorder.ondataavailable = async (event) => {
+            if (!event.data || event.data.size <= 0 || !videoStudioLiveStreamId) return;
+            try {
+                const buffer = await event.data.arrayBuffer();
+                videoStudioLiveStreamBytes += buffer.byteLength || 0;
+                const result = await window.aurivo?.screenRecording?.writeLiveOutput?.(videoStudioLiveStreamId, buffer);
+                if (!result?.success && videoStudioLiveStreamRecorder?.state === 'recording') {
+                    safeNotify(`${uiT('video.tools.stream.failed', 'Yayın başlatılamadı')}: ${result?.error || 'write-failed'}`, 'warning', 3200);
+                    stopVideoStudioStreamOutput().catch(() => {});
+                }
+            } catch (error) {
+                if (videoStudioLiveStreamRecorder?.state === 'recording') {
+                    safeNotify(`${uiT('video.tools.stream.failed', 'Yayın başlatılamadı')}: ${error?.message || error}`, 'warning', 3200);
+                    stopVideoStudioStreamOutput().catch(() => {});
+                }
+            }
+        };
+        videoStudioLiveStreamRecorder.onstop = async () => {
+            const id = videoStudioLiveStreamId;
+            videoStudioLiveStreamRecorder = null;
+            videoStudioLiveStreamId = '';
+            releaseVideoStudioLiveStreamRuntime();
+            if (id) await window.aurivo?.screenRecording?.stopLiveOutput?.(id);
+            videoStudioStreamStatus = videoStudioStreamEnabled ? 'ready' : 'idle';
+            updateVideoStudioStreamStatusUi();
+            safeNotify(uiT('video.tools.stream.stopped', 'Yayın durduruldu.'), 'info', 2200);
+        };
+        liveStream.getTracks?.().forEach((track) => {
+            track.addEventListener?.('ended', () => stopVideoStudioStreamOutput().catch(() => {}), { once: true });
+        });
+        videoStudioLiveStreamRecorder.start(750);
+        videoStudioStreamStatus = 'active';
+        updateVideoStudioStreamStatusUi();
+        safeNotify(uiT('video.tools.stream.started', 'Yayın başladı.'), 'success', 2200);
+    } catch (error) {
+        if (videoStudioLiveStreamId) await window.aurivo?.screenRecording?.stopLiveOutput?.(videoStudioLiveStreamId);
+        videoStudioLiveStreamRecorder = null;
+        videoStudioLiveStreamId = '';
+        releaseVideoStudioLiveStreamRuntime();
+        videoStudioStreamStatus = 'failed';
+        updateVideoStudioStreamStatusUi();
+        safeNotify(`${uiT('video.tools.stream.failed', 'Yayın başlatılamadı')}: ${error?.message || error}`, 'error', 3600);
+    }
+}
+
+function getVideoStudioVirtualCameraStatusLabel() {
+    if (videoStudioVirtualCameraStatus === 'active') return uiT('video.tools.virtualCamera.status.active', 'Kamera açık');
+    if (videoStudioVirtualCameraStatus === 'stopping') return uiT('video.tools.virtualCamera.status.stopping', 'Durduruluyor');
+    if (videoStudioVirtualCameraStatus === 'failed') return uiT('video.tools.virtualCamera.status.failed', 'Kamera hatası');
+    if (videoStudioVirtualCameraStatus === 'ready') return uiT('video.tools.virtualCamera.status.ready', 'Hazır');
+    if (videoStudioVirtualCameraStatus === 'missing') return uiT('video.tools.virtualCamera.status.missing', 'Cihaz yolu gerekli');
+    if (videoStudioVirtualCameraStatus === 'unsupported') return uiT('video.tools.virtualCamera.status.unsupported', 'v4l2loopback köprüsü bekliyor');
+    return uiT('video.tools.virtualCamera.status.idle', 'Kapalı');
+}
+
+function updateVideoStudioVirtualCameraStatusUi() {
+    const status = document.getElementById('videoStudioVirtualCameraStatusLabel');
+    if (status) status.textContent = getVideoStudioVirtualCameraStatusLabel();
+    const button = document.getElementById('videoStudioStartVirtualCameraBtn');
+    if (button) {
+        const active = !!videoStudioVirtualCameraRecorder && videoStudioVirtualCameraRecorder.state !== 'inactive';
+        button.classList.toggle('is-danger', active);
+        const icon = button.querySelector('.material-symbols-rounded');
+        if (icon) icon.textContent = active ? 'stop_circle' : 'linked_camera';
+        const label = button.querySelector('[data-video-studio-virtual-camera-label]');
+        if (label) label.textContent = active
+            ? uiT('video.tools.virtualCamera.stop', 'Kamerayı Durdur')
+            : uiT('video.tools.virtualCamera.start', 'Kamerayı Başlat');
+    }
+}
+
+function syncVideoStudioVirtualCameraSettingsFromUi() {
+    const enabledInput = document.getElementById('videoStudioVirtualCameraEnabledInput');
+    if (enabledInput) videoStudioVirtualCameraEnabled = !!enabledInput.checked;
+    const deviceInput = document.getElementById('videoStudioVirtualCameraDeviceInput');
+    if (deviceInput) {
+        videoStudioVirtualCameraDevice = String(deviceInput.value || '/dev/video10').trim() || '/dev/video10';
+        deviceInput.value = videoStudioVirtualCameraDevice;
+    }
+    if (!videoStudioVirtualCameraEnabled) {
+        videoStudioVirtualCameraStatus = 'idle';
+    } else if (!videoStudioVirtualCameraDevice) {
+        videoStudioVirtualCameraStatus = 'missing';
+    } else if (!['ready', 'active', 'stopping'].includes(videoStudioVirtualCameraStatus)) {
+        videoStudioVirtualCameraStatus = 'idle';
+    }
+    updateVideoStudioVirtualCameraStatusUi();
+    scheduleVideoStudioProfileSave();
+}
+
+function prepareVideoStudioVirtualCamera() {
+    syncVideoStudioVirtualCameraSettingsFromUi();
+    if (!videoStudioVirtualCameraEnabled || !videoStudioVirtualCameraDevice) {
+        videoStudioVirtualCameraStatus = 'missing';
+        updateVideoStudioVirtualCameraStatusUi();
+        safeNotify(uiT('video.tools.virtualCamera.missing', 'Sanal kamera için cihaz yolu gerekli.'), 'warning', 2200);
+        return false;
+    }
+    videoStudioVirtualCameraStatus = 'ready';
+    updateVideoStudioVirtualCameraStatusUi();
+    safeNotify(uiT('video.tools.virtualCamera.ready', 'Sanal kamera hedefi hazırlandı.'), 'success', 1800);
+    return true;
+}
+
+function releaseVideoStudioVirtualCameraRuntime() {
+    try {
+        videoStudioVirtualCameraAuxStreams.forEach((stream) => {
+            stream?.getTracks?.().forEach((track) => track.stop());
+        });
+    } catch {
+        // yoksay
+    }
+    videoStudioVirtualCameraAuxStreams = [];
+    try {
+        videoStudioVirtualCameraStream?.getTracks?.().forEach((track) => track.stop());
+    } catch {
+        // yoksay
+    }
+    videoStudioVirtualCameraStream = null;
+    releaseScreenRecordingAudioGraph();
+}
+
+async function stopVideoStudioVirtualCamera() {
+    if (!videoStudioVirtualCameraRecorder || videoStudioVirtualCameraRecorder.state === 'inactive') {
+        if (videoStudioVirtualCameraOutputId) {
+            await window.aurivo?.screenRecording?.stopLiveOutput?.(videoStudioVirtualCameraOutputId);
+        }
+        videoStudioVirtualCameraOutputId = '';
+        videoStudioVirtualCameraStatus = videoStudioVirtualCameraEnabled ? 'ready' : 'idle';
+        updateVideoStudioVirtualCameraStatusUi();
+        return;
+    }
+    videoStudioVirtualCameraStatus = 'stopping';
+    updateVideoStudioVirtualCameraStatusUi();
+    try {
+        if (videoStudioVirtualCameraRecorder.state === 'recording') {
+            videoStudioVirtualCameraRecorder.requestData?.();
+        }
+        videoStudioVirtualCameraRecorder.stop();
+    } catch {
+        if (videoStudioVirtualCameraOutputId) {
+            await window.aurivo?.screenRecording?.stopLiveOutput?.(videoStudioVirtualCameraOutputId);
+        }
+        videoStudioVirtualCameraRecorder = null;
+        videoStudioVirtualCameraOutputId = '';
+        releaseVideoStudioVirtualCameraRuntime();
+        videoStudioVirtualCameraStatus = videoStudioVirtualCameraEnabled ? 'ready' : 'idle';
+        updateVideoStudioVirtualCameraStatusUi();
+    }
+}
+
+async function startVideoStudioVirtualCamera() {
+    if (videoStudioVirtualCameraRecorder && videoStudioVirtualCameraRecorder.state !== 'inactive') {
+        await stopVideoStudioVirtualCamera();
+        return;
+    }
+    if (!prepareVideoStudioVirtualCamera()) return;
+    if (screenRecorder && screenRecorder.state !== 'inactive') {
+        safeNotify(uiT('video.tools.virtualCamera.busy', 'Kayıt sürerken sanal kamera başlatılamaz.'), 'warning', 2600);
+        return;
+    }
+    if (videoStudioLiveStreamRecorder && videoStudioLiveStreamRecorder.state !== 'inactive') {
+        safeNotify(uiT('video.tools.virtualCamera.busy', 'Yayın sürerken sanal kamera başlatılamaz.'), 'warning', 2600);
+        return;
+    }
+    let sourceId = syncVideoStudioSourceToRecorder();
+    if (!sourceId) {
+        await refreshVideoStudioSources();
+        sourceId = syncVideoStudioSourceToRecorder();
+    }
+    if (!sourceId) {
+        safeNotify(uiT('video.tools.record.noSources', 'Kaynak bulunamadı'), 'warning', 2200);
+        return;
+    }
+    const recordingSettings = getVideoStudioRecordingSettings();
+    const mimeType = getSupportedScreenRecorderMimeType('webm');
+    if (!mimeType || !window.aurivo?.screenRecording?.startLiveOutput) {
+        videoStudioVirtualCameraStatus = 'unsupported';
+        updateVideoStudioVirtualCameraStatusUi();
+        safeNotify(uiT('video.tools.virtualCamera.nativeRequired', 'Sanal kamera için v4l2loopback/FFmpeg canlı köprüsü gerekiyor; hedef ayarı kaydedildi.'), 'warning', 3000);
+        return;
+    }
+    try {
+        stopVideoStudioPreview();
+        releaseScreenRecordingAudioGraph();
+        stopVideoStudioLiveAudioMeters();
+        videoStudioVirtualCameraOutputId = `vcam-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`;
+        const started = await window.aurivo.screenRecording.startLiveOutput({
+            id: videoStudioVirtualCameraOutputId,
+            kind: 'virtual-camera',
+            target: videoStudioVirtualCameraDevice,
+            bitrateKbps: recordingSettings.bitrateKbps,
+            fps: recordingSettings.fps
+        });
+        if (!started?.success) throw new Error(started?.error || 'virtual-camera-start-failed');
+        const cameraStream = await buildVideoStudioLiveOutputStream(recordingSettings, sourceId, {
+            assignTo: 'virtual-camera',
+            includeAudio: false
+        });
+        videoStudioVirtualCameraStream = cameraStream;
+        videoStudioVirtualCameraBytes = 0;
+        videoStudioVirtualCameraRecorder = new MediaRecorder(cameraStream, {
+            mimeType,
+            videoBitsPerSecond: recordingSettings.bitrateKbps * 1000
+        });
+        videoStudioVirtualCameraRecorder.ondataavailable = async (event) => {
+            if (!event.data || event.data.size <= 0 || !videoStudioVirtualCameraOutputId) return;
+            try {
+                const buffer = await event.data.arrayBuffer();
+                videoStudioVirtualCameraBytes += buffer.byteLength || 0;
+                const result = await window.aurivo?.screenRecording?.writeLiveOutput?.(videoStudioVirtualCameraOutputId, buffer);
+                if (!result?.success && videoStudioVirtualCameraRecorder?.state === 'recording') {
+                    safeNotify(`${uiT('video.tools.virtualCamera.failed', 'Sanal kamera başlatılamadı')}: ${result?.error || 'write-failed'}`, 'warning', 3200);
+                    stopVideoStudioVirtualCamera().catch(() => {});
+                }
+            } catch (error) {
+                if (videoStudioVirtualCameraRecorder?.state === 'recording') {
+                    safeNotify(`${uiT('video.tools.virtualCamera.failed', 'Sanal kamera başlatılamadı')}: ${error?.message || error}`, 'warning', 3200);
+                    stopVideoStudioVirtualCamera().catch(() => {});
+                }
+            }
+        };
+        videoStudioVirtualCameraRecorder.onstop = async () => {
+            const id = videoStudioVirtualCameraOutputId;
+            videoStudioVirtualCameraRecorder = null;
+            videoStudioVirtualCameraOutputId = '';
+            releaseVideoStudioVirtualCameraRuntime();
+            if (id) await window.aurivo?.screenRecording?.stopLiveOutput?.(id);
+            videoStudioVirtualCameraStatus = videoStudioVirtualCameraEnabled ? 'ready' : 'idle';
+            updateVideoStudioVirtualCameraStatusUi();
+            safeNotify(uiT('video.tools.virtualCamera.stopped', 'Sanal kamera durduruldu.'), 'info', 2200);
+        };
+        cameraStream.getTracks?.().forEach((track) => {
+            track.addEventListener?.('ended', () => stopVideoStudioVirtualCamera().catch(() => {}), { once: true });
+        });
+        videoStudioVirtualCameraRecorder.start(750);
+        videoStudioVirtualCameraStatus = 'active';
+        updateVideoStudioVirtualCameraStatusUi();
+        safeNotify(uiT('video.tools.virtualCamera.started', 'Sanal kamera başladı.'), 'success', 2200);
+    } catch (error) {
+        if (videoStudioVirtualCameraOutputId) {
+            await window.aurivo?.screenRecording?.stopLiveOutput?.(videoStudioVirtualCameraOutputId);
+        }
+        videoStudioVirtualCameraRecorder = null;
+        videoStudioVirtualCameraOutputId = '';
+        releaseVideoStudioVirtualCameraRuntime();
+        videoStudioVirtualCameraStatus = 'failed';
+        updateVideoStudioVirtualCameraStatusUi();
+        safeNotify(`${uiT('video.tools.virtualCamera.failed', 'Sanal kamera başlatılamadı')}: ${error?.message || error}`, 'error', 3600);
+    }
+}
+
+function trimVideoStudioReplayBuffer() {
+    const cutoff = Date.now() - normalizeVideoStudioReplayBufferSeconds(videoStudioReplayBufferSeconds) * 1000;
+    while (videoStudioReplayBufferChunks.length && Number(videoStudioReplayBufferChunks[0].at || 0) < cutoff) {
+        const removed = videoStudioReplayBufferChunks.shift();
+        videoStudioReplayBufferBytes = Math.max(0, videoStudioReplayBufferBytes - Number(removed?.size || 0));
+    }
+    updateVideoStudioReplayBufferUi();
+}
+
+function releaseVideoStudioReplayBufferRuntime() {
+    try {
+        videoStudioReplayBufferAuxStreams.forEach((stream) => {
+            stream?.getTracks?.().forEach((track) => track.stop());
+        });
+    } catch {
+        // yoksay
+    }
+    videoStudioReplayBufferAuxStreams = [];
+    try {
+        videoStudioReplayBufferStream?.getTracks?.().forEach((track) => track.stop());
+    } catch {
+        // yoksay
+    }
+    videoStudioReplayBufferStream = null;
+    releaseScreenRecordingAudioGraph();
+}
+
+async function stopVideoStudioReplayBuffer() {
+    if (!videoStudioReplayBufferRecorder || videoStudioReplayBufferRecorder.state === 'inactive') {
+        videoStudioReplayBufferRecorder = null;
+        releaseVideoStudioReplayBufferRuntime();
+        updateVideoStudioReplayBufferUi();
+        return;
+    }
+    try {
+        if (videoStudioReplayBufferRecorder.state === 'recording') {
+            videoStudioReplayBufferRecorder.requestData?.();
+        }
+        videoStudioReplayBufferRecorder.stop();
+    } catch {
+        videoStudioReplayBufferRecorder = null;
+        releaseVideoStudioReplayBufferRuntime();
+        updateVideoStudioReplayBufferUi();
+    }
+}
+
+async function startVideoStudioReplayBuffer() {
+    if (videoStudioReplayBufferRecorder && videoStudioReplayBufferRecorder.state !== 'inactive') {
+        await stopVideoStudioReplayBuffer();
+        return;
+    }
+    syncVideoStudioReplayBufferSettingsFromUi();
+    if (!videoStudioReplayBufferEnabled) {
+        safeNotify(uiT('video.tools.replay.enableFirst', 'Replay bufferı önce etkinleştirin.'), 'warning', 2200);
+        return;
+    }
+    if (screenRecorder && screenRecorder.state !== 'inactive') {
+        safeNotify(uiT('video.tools.replay.busy', 'Kayıt, yayın veya sanal kamera sürerken replay buffer başlatılamaz.'), 'warning', 2600);
+        return;
+    }
+    if (videoStudioLiveStreamRecorder && videoStudioLiveStreamRecorder.state !== 'inactive') {
+        safeNotify(uiT('video.tools.replay.busy', 'Kayıt, yayın veya sanal kamera sürerken replay buffer başlatılamaz.'), 'warning', 2600);
+        return;
+    }
+    if (videoStudioVirtualCameraRecorder && videoStudioVirtualCameraRecorder.state !== 'inactive') {
+        safeNotify(uiT('video.tools.replay.busy', 'Kayıt, yayın veya sanal kamera sürerken replay buffer başlatılamaz.'), 'warning', 2600);
+        return;
+    }
+    let sourceId = syncVideoStudioSourceToRecorder();
+    if (!sourceId) {
+        await refreshVideoStudioSources();
+        sourceId = syncVideoStudioSourceToRecorder();
+    }
+    if (!sourceId) {
+        safeNotify(uiT('video.tools.record.noSources', 'Kaynak bulunamadı'), 'warning', 2200);
+        return;
+    }
+    const recordingSettings = getVideoStudioRecordingSettings();
+    const mimeType = getSupportedScreenRecorderMimeType('webm');
+    if (!mimeType) {
+        safeNotify(uiT('video.tools.record.formatFallback', 'Seçilen format desteklenmedi; WebM kullanılacak.'), 'warning', 2600);
+        return;
+    }
+    try {
+        stopVideoStudioPreview();
+        releaseScreenRecordingAudioGraph();
+        stopVideoStudioLiveAudioMeters();
+        const replayStream = await buildVideoStudioLiveOutputStream(recordingSettings, sourceId, {
+            assignTo: 'replay',
+            includeAudio: true
+        });
+        videoStudioReplayBufferStream = replayStream;
+        videoStudioReplayBufferChunks = [];
+        videoStudioReplayBufferBytes = 0;
+        videoStudioReplayBufferRecorder = new MediaRecorder(replayStream, {
+            mimeType,
+            videoBitsPerSecond: recordingSettings.bitrateKbps * 1000
+        });
+        videoStudioReplayBufferRecorder.ondataavailable = (event) => {
+            if (!event.data || event.data.size <= 0) return;
+            videoStudioReplayBufferChunks.push({ blob: event.data, at: Date.now(), size: event.data.size });
+            videoStudioReplayBufferBytes += event.data.size;
+            trimVideoStudioReplayBuffer();
+        };
+        videoStudioReplayBufferRecorder.onstop = () => {
+            videoStudioReplayBufferRecorder = null;
+            releaseVideoStudioReplayBufferRuntime();
+            updateVideoStudioReplayBufferUi();
+            safeNotify(uiT('video.tools.replay.stopped', 'Replay buffer durduruldu.'), 'info', 1800);
+        };
+        replayStream.getTracks?.().forEach((track) => {
+            track.addEventListener?.('ended', () => stopVideoStudioReplayBuffer().catch(() => {}), { once: true });
+        });
+        videoStudioReplayBufferRecorder.start(1000);
+        updateVideoStudioReplayBufferUi();
+        safeNotify(uiT('video.tools.replay.started', 'Replay buffer başladı.'), 'success', 1800);
+    } catch (error) {
+        videoStudioReplayBufferRecorder = null;
+        videoStudioReplayBufferChunks = [];
+        videoStudioReplayBufferBytes = 0;
+        releaseVideoStudioReplayBufferRuntime();
+        updateVideoStudioReplayBufferUi();
+        safeNotify(`${uiT('video.tools.replay.failed', 'Replay buffer başlatılamadı')}: ${error?.message || error}`, 'error', 3200);
+    }
+}
+
+async function saveVideoStudioReplayBuffer() {
+    if (!videoStudioReplayBufferChunks.length) {
+        safeNotify(uiT('video.tools.replay.empty', 'Replay buffer henüz boş.'), 'warning', 2200);
+        return;
+    }
+    trimVideoStudioReplayBuffer();
+    const targetPath = buildNonConflictingRecordingPath(buildVideoStudioReplayOutputPath(), 'webm');
+    const blob = new Blob(videoStudioReplayBufferChunks.map((item) => item.blob), { type: 'video/webm' });
+    if (!blob.size || blob.size < 128) {
+        safeNotify(uiT('video.tools.replay.empty', 'Replay buffer henüz boş.'), 'warning', 2200);
+        return;
+    }
+    updateVideoToolStatus(uiT('video.tools.replay.saving', 'Replay kaydediliyor...'), 'running', 80);
+    const arrayBuffer = await blob.arrayBuffer();
+    const ok = window.aurivo?.writeBufferFile
+        ? await window.aurivo.writeBufferFile(targetPath, arrayBuffer)
+        : await window.aurivo?.writeBase64File?.(targetPath, arrayBufferToBase64(arrayBuffer));
+    if (ok) {
+        videoToolLastOutputPath = targetPath;
+        updateVideoStudioQuickActionsPanel();
+        updateVideoToolStatus(uiT('video.tools.replay.saved', 'Replay kaydedildi.'), 'done', 100);
+        safeNotify(uiT('video.tools.replay.saved', 'Replay kaydedildi.'), 'success', 2400);
+    } else {
+        updateVideoToolStatus(uiT('video.tools.record.saveFailed', 'Ekran kaydı kaydedilemedi.'), 'error', 0);
+        safeNotify(uiT('video.tools.record.saveFailed', 'Ekran kaydı kaydedilemedi.'), 'error', 2600);
+    }
+}
+
+function normalizeVideoStudioAutoStopMinutes(value, fallback = videoStudioAutoStopMinutes) {
+    const numeric = Number(value);
+    return Number.isFinite(numeric) ? Math.max(1, Math.min(720, Math.round(numeric))) : fallback;
+}
+
+function normalizeVideoStudioReplayBufferSeconds(value, fallback = videoStudioReplayBufferSeconds) {
+    const numeric = Number(value);
+    return Number.isFinite(numeric) ? Math.max(10, Math.min(600, Math.round(numeric))) : fallback;
+}
+
+function syncVideoStudioAutoStopSettingsFromUi() {
+    const enabledInput = document.getElementById('videoStudioAutoStopEnabledInput');
+    if (enabledInput) videoStudioAutoStopEnabled = !!enabledInput.checked;
+    const minutesInput = document.getElementById('videoStudioAutoStopMinutesInput');
+    if (minutesInput) {
+        videoStudioAutoStopMinutes = normalizeVideoStudioAutoStopMinutes(minutesInput.value);
+        minutesInput.value = String(videoStudioAutoStopMinutes);
+    }
+    scheduleVideoStudioProfileSave();
+}
+
+function normalizeVideoStudioScheduleMode(value) {
+    const key = String(value || '').trim().toLowerCase();
+    return key === 'time' ? 'time' : 'delay';
+}
+
+function normalizeVideoStudioScheduleDelayMinutes(value, fallback = videoStudioScheduleDelayMinutes) {
+    const numeric = Number(value);
+    return Number.isFinite(numeric) ? Math.max(1, Math.min(1440, Math.round(numeric))) : fallback;
+}
+
+function normalizeVideoStudioScheduleTime(value) {
+    const text = String(value || '').trim();
+    return /^\d{2}:\d{2}$/.test(text) ? text : '';
+}
+
+function getVideoStudioScheduleTargetAt() {
+    const mode = normalizeVideoStudioScheduleMode(videoStudioScheduleMode);
+    if (mode === 'delay') {
+        return Date.now() + normalizeVideoStudioScheduleDelayMinutes(videoStudioScheduleDelayMinutes) * 60 * 1000;
+    }
+    const time = normalizeVideoStudioScheduleTime(videoStudioScheduleTime);
+    if (!time) return 0;
+    const [hours, minutes] = time.split(':').map(Number);
+    if (!Number.isFinite(hours) || !Number.isFinite(minutes)) return 0;
+    const target = new Date();
+    target.setHours(hours, minutes, 0, 0);
+    if (target.getTime() <= Date.now()) {
+        target.setDate(target.getDate() + 1);
+    }
+    return target.getTime();
+}
+
+function formatVideoStudioScheduleTarget(targetAt = videoStudioScheduleTargetAt) {
+    const ts = Number(targetAt || 0);
+    if (!ts) return uiT('video.tools.schedule.notSet', 'Plan yok');
+    const remaining = Math.max(0, ts - Date.now());
+    const minutes = Math.ceil(remaining / 60000);
+    const time = new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    return uiT('video.tools.schedule.targetLabel', '{time} ({minutes} dk)', { time, minutes });
+}
+
+function updateVideoStudioScheduleUi() {
+    const status = document.getElementById('videoStudioScheduleStatusLabel');
+    if (status) {
+        status.textContent = videoStudioScheduleTimer
+            ? formatVideoStudioScheduleTarget()
+            : uiT('video.tools.schedule.idle', 'Beklemede');
+    }
+    const button = document.getElementById('videoStudioScheduleArmBtn');
+    if (button) {
+        const active = !!videoStudioScheduleTimer;
+        button.classList.toggle('is-danger', active);
+        const icon = button.querySelector('.material-symbols-rounded');
+        if (icon) icon.textContent = active ? 'event_busy' : 'event_available';
+        const label = button.querySelector('[data-video-studio-schedule-label]');
+        if (label) label.textContent = active
+            ? uiT('video.tools.schedule.cancel', 'Planı iptal et')
+            : uiT('video.tools.schedule.arm', 'Planla');
+    }
+}
+
+function clearVideoStudioScheduleTimer({ notify = false } = {}) {
+    if (videoStudioScheduleTimer) {
+        clearTimeout(videoStudioScheduleTimer);
+        videoStudioScheduleTimer = null;
+    }
+    videoStudioScheduleTargetAt = 0;
+    updateVideoStudioScheduleUi();
+    if (notify) safeNotify(uiT('video.tools.schedule.cancelled', 'Planlı kayıt iptal edildi.'), 'info', 1800);
+}
+
+function syncVideoStudioScheduleSettingsFromUi() {
+    const enabledInput = document.getElementById('videoStudioScheduleEnabledInput');
+    if (enabledInput) videoStudioScheduleEnabled = !!enabledInput.checked;
+    const modeSelect = document.getElementById('videoStudioScheduleModeSelect');
+    if (modeSelect) videoStudioScheduleMode = normalizeVideoStudioScheduleMode(modeSelect.value);
+    const delayInput = document.getElementById('videoStudioScheduleDelayInput');
+    if (delayInput) {
+        videoStudioScheduleDelayMinutes = normalizeVideoStudioScheduleDelayMinutes(delayInput.value, 10);
+        delayInput.value = String(videoStudioScheduleDelayMinutes);
+    }
+    const timeInput = document.getElementById('videoStudioScheduleTimeInput');
+    if (timeInput) {
+        videoStudioScheduleTime = normalizeVideoStudioScheduleTime(timeInput.value);
+        timeInput.value = videoStudioScheduleTime;
+    }
+    scheduleVideoStudioProfileSave();
+    updateVideoStudioScheduleUi();
+}
+
+function armVideoStudioSchedule() {
+    syncVideoStudioScheduleSettingsFromUi();
+    if (videoStudioScheduleTimer) {
+        clearVideoStudioScheduleTimer({ notify: true });
+        return;
+    }
+    if (!videoStudioScheduleEnabled) {
+        videoStudioScheduleEnabled = true;
+        const enabledInput = document.getElementById('videoStudioScheduleEnabledInput');
+        if (enabledInput) enabledInput.checked = true;
+    }
+    const targetAt = getVideoStudioScheduleTargetAt();
+    if (!targetAt) {
+        safeNotify(uiT('video.tools.schedule.invalid', 'Geçerli bir plan zamanı seçin.'), 'warning', 2200);
+        return;
+    }
+    videoStudioScheduleTargetAt = targetAt;
+    const delayMs = Math.max(1000, targetAt - Date.now());
+    videoStudioScheduleTimer = setTimeout(() => {
+        videoStudioScheduleTimer = null;
+        videoStudioScheduleTargetAt = 0;
+        updateVideoStudioScheduleUi();
+        if (screenRecorder && screenRecorder.state !== 'inactive') {
+            safeNotify(uiT('video.tools.schedule.busy', 'Kayıt zaten çalışıyor; plan atlandı.'), 'warning', 2600);
+            return;
+        }
+        safeNotify(uiT('video.tools.schedule.starting', 'Planlı kayıt başlatılıyor.'), 'info', 2200);
+        startVideoStudioRecording().catch(() => {});
+    }, delayMs);
+    updateVideoStudioScheduleUi();
+    safeNotify(uiT('video.tools.schedule.armed', 'Planlı kayıt ayarlandı: {target}', { target: formatVideoStudioScheduleTarget(targetAt) }), 'success', 2600);
+}
+
+function syncVideoStudioReplayBufferSettingsFromUi() {
+    const enabledInput = document.getElementById('videoStudioReplayBufferEnabledInput');
+    if (enabledInput) videoStudioReplayBufferEnabled = !!enabledInput.checked;
+    const secondsInput = document.getElementById('videoStudioReplayBufferSecondsInput');
+    if (secondsInput) {
+        videoStudioReplayBufferSeconds = normalizeVideoStudioReplayBufferSeconds(secondsInput.value);
+        secondsInput.value = String(videoStudioReplayBufferSeconds);
+    }
+    scheduleVideoStudioProfileSave();
+}
+
+function updateVideoStudioReplayBufferUi() {
+    const active = !!videoStudioReplayBufferRecorder && videoStudioReplayBufferRecorder.state !== 'inactive';
+    const startBtn = document.getElementById('videoStudioReplayBufferStartBtn');
+    if (startBtn) {
+        startBtn.classList.toggle('is-danger', active);
+        const icon = startBtn.querySelector('.material-symbols-rounded');
+        if (icon) icon.textContent = active ? 'stop_circle' : 'fiber_smart_record';
+        const label = startBtn.querySelector('[data-video-studio-replay-start-label]');
+        if (label) label.textContent = active
+            ? uiT('video.tools.replay.stop', 'Bufferı Durdur')
+            : uiT('video.tools.replay.start', 'Bufferı Başlat');
+    }
+    const saveBtn = document.getElementById('videoStudioReplayBufferSaveBtn');
+    if (saveBtn) saveBtn.disabled = !active || !videoStudioReplayBufferChunks.length;
+    const status = document.getElementById('videoStudioReplayBufferStatusLabel');
+    if (status) {
+        status.textContent = active
+            ? uiT('video.tools.replay.active', 'Replay hazır')
+            : uiT('video.tools.replay.idle', 'Kapalı');
+    }
+}
+
+function normalizeVideoStudioCountdownSeconds(value, fallback = videoStudioCountdownSeconds) {
+    const numeric = Number(value);
+    return Number.isFinite(numeric) ? Math.max(1, Math.min(30, Math.round(numeric))) : fallback;
+}
+
+function syncVideoStudioCountdownSettingsFromUi() {
+    const enabledInput = document.getElementById('videoStudioCountdownEnabledInput');
+    if (enabledInput) videoStudioCountdownEnabled = !!enabledInput.checked;
+    const secondsInput = document.getElementById('videoStudioCountdownSecondsInput');
+    if (secondsInput) {
+        videoStudioCountdownSeconds = normalizeVideoStudioCountdownSeconds(secondsInput.value);
+        secondsInput.value = String(videoStudioCountdownSeconds);
+    }
+    scheduleVideoStudioProfileSave();
+}
+
+function waitVideoStudioCountdownTick(ms = 1000) {
+    return new Promise((resolve) => setTimeout(resolve, Math.max(0, ms)));
+}
+
+async function runVideoStudioRecordCountdown() {
+    syncVideoStudioCountdownSettingsFromUi();
+    if (!videoStudioCountdownEnabled) return true;
+    const total = normalizeVideoStudioCountdownSeconds(videoStudioCountdownSeconds);
+    const startBtn = document.getElementById('videoStudioStartRecordBtn');
+    const oldDisabled = !!startBtn?.disabled;
+    if (startBtn) startBtn.disabled = true;
+    try {
+        for (let remaining = total; remaining > 0; remaining -= 1) {
+            if (screenRecorder && screenRecorder.state !== 'inactive') return false;
+            updateVideoToolStatus(uiT('video.tools.countdown.status', 'Kayıt {count} saniye içinde başlayacak', { count: remaining }), 'running', 1);
+            safeNotify(uiT('video.tools.countdown.toast', 'Kayıt {count}', { count: remaining }), 'info', 650);
+            await waitVideoStudioCountdownTick(1000);
+        }
+        return true;
+    } finally {
+        if (startBtn) startBtn.disabled = oldDisabled;
+    }
+}
+
+function clearScreenRecordingAutoStopTimer() {
+    if (screenRecordingAutoStopTimer) {
+        clearTimeout(screenRecordingAutoStopTimer);
+        screenRecordingAutoStopTimer = null;
+    }
+}
+
+function clearScreenRecordingTestStopTimer() {
+    if (screenRecordingTestStopTimer) {
+        clearTimeout(screenRecordingTestStopTimer);
+        screenRecordingTestStopTimer = null;
+    }
+}
+
+function scheduleScreenRecordingAutoStop() {
+    clearScreenRecordingAutoStopTimer();
+    if (videoStudioTestRecordingActive) return;
+    syncVideoStudioAutoStopSettingsFromUi();
+    if (!videoStudioAutoStopEnabled) return;
+    const delayMs = normalizeVideoStudioAutoStopMinutes(videoStudioAutoStopMinutes) * 60 * 1000;
+    screenRecordingAutoStopTimer = setTimeout(() => {
+        screenRecordingAutoStopTimer = null;
+        if (screenRecorder && screenRecorder.state === 'recording') {
+            safeNotify(uiT('video.tools.autoStop.triggered', 'Süre doldu; kayıt durduruluyor.'), 'info', 2600);
+            stopScreenRecording().catch(() => {});
+        }
+    }, delayMs);
+}
+
+function scheduleVideoStudioTestRecordingStop(durationSec = 5) {
+    clearScreenRecordingTestStopTimer();
+    const safeDuration = Math.max(3, Math.min(30, Math.round(Number(durationSec) || 5)));
+    screenRecordingTestStopTimer = setTimeout(() => {
+        screenRecordingTestStopTimer = null;
+        if (screenRecorder && screenRecorder.state !== 'inactive') {
+            updateVideoToolStatus(`Test kaydı tamamlanıyor...`, 'running', 92);
+            stopScreenRecording().catch(() => {});
+        }
+    }, safeDuration * 1000);
+}
+
+function updateVideoStudioOutputFolderUi() {
+    const label = document.getElementById('videoStudioRecordOutputFolderLabel');
+    if (!label) return;
+    label.textContent = getVideoStudioDefaultOutputFolder() || uiT('video.tools.output.folderUnknown', 'Klasör seçilmedi');
+}
+
+async function pickVideoStudioOutputFolder() {
+    try {
+        const selected = await window.aurivo?.openFolder?.({
+            title: uiT('video.tools.output.pickFolder', 'Kayıt klasörü seç'),
+            defaultPath: getVideoStudioDefaultOutputFolder() || undefined
+        });
+        if (!selected?.path) return;
+        videoStudioRecordOutputFolder = String(selected.path || '').trim();
+        updateVideoStudioOutputFolderUi();
+        scheduleVideoStudioProfileSave();
+    } catch (error) {
+        safeNotify(`${uiT('video.tools.output.pickFailed', 'Klasör seçilemedi')}: ${error?.message || error}`, 'error', 2200);
+    }
+}
+
+async function getVideoStudioRecordingOutputPath(format = 'webm') {
+    syncVideoStudioOutputSettingsFromUi();
+    if (videoStudioRecordOutputMode !== 'ask') {
+        return buildVideoStudioAutoOutputPath(format);
+    }
+    const saveResult = await window.aurivo?.saveFile?.({
+        title: uiT('video.tools.record.saveTitle', 'Ekran kaydını kaydet'),
+        defaultPath: buildVideoStudioAutoOutputPath(format),
+        filters: [
+            { name: String(format || 'webm').toUpperCase(), extensions: [format] },
+            { name: uiT('dialog.filters.allFiles', 'Tüm Dosyalar'), extensions: ['*'] }
+        ]
+    });
+    return saveResult?.path ? String(saveResult.path || '') : '';
+}
+
+function buildVideoStudioReplayOutputPath() {
+    const base = buildVideoStudioAutoOutputPath('webm');
+    const dirname = window.aurivo?.path?.dirname?.(base) || '';
+    const basename = window.aurivo?.path?.basename?.(base) || 'aurivo-replay.webm';
+    const stem = basename.replace(/\.[^/.]+$/, '') || 'aurivo-replay';
+    const replayName = `${stem}-replay.webm`;
+    return dirname && window.aurivo?.path?.join ? window.aurivo.path.join(dirname, replayName) : replayName;
+}
+
+function buildVideoStudioRepairOutputPath(inputPath = '', format = '') {
+    const source = String(inputPath || '').trim() || getVideoStudioLastRecordingPath();
+    const sourceFormat = normalizeVideoStudioRecordFormat(format || window.aurivo?.path?.extname?.(source)?.replace(/^\./, '') || videoStudioRecordFormat || 'mkv', 'mkv');
+    const dirname = window.aurivo?.path?.dirname?.(source) || getVideoStudioDefaultOutputFolder();
+    const basename = window.aurivo?.path?.basename?.(source) || `aurivo-recording.${sourceFormat}`;
+    const stem = basename.replace(/\.[^/.]+$/, '') || 'aurivo-recording';
+    const repairName = `${stem}.repaired.${sourceFormat}`;
+    return dirname && window.aurivo?.path?.join ? window.aurivo.path.join(dirname, repairName) : repairName;
+}
+
+async function refreshScreenRecordingSources() {
+    const select = document.getElementById('videoToolRecordSourceSelect');
+    if (!select) return [];
+    const sources = await window.aurivo?.screenRecording?.getSources?.() || [];
+    select.innerHTML = sources.length
+        ? sources.map((source) => {
+            const sourceType = String(source.type || '').toLowerCase() === 'screen'
+                ? uiT('video.tools.record.sourceScreen', 'Ekran')
+                : uiT('video.tools.record.sourceWindow', 'Pencere');
+            return `<option value="${escapeAttribute(source.id)}">${escapeHtml(`${sourceType}: ${source.name || source.id}`)}</option>`;
+        }).join('')
+        : `<option value="${escapeAttribute(VIDEO_STUDIO_PORTAL_SOURCE_ID)}">${escapeHtml(uiT('video.tools.record.portalSource', 'Ekran Yakalama (PipeWire)'))}</option>`;
+    if (!sources.length) {
+        select.value = VIDEO_STUDIO_PORTAL_SOURCE_ID;
+        videoStudioSelectedSourceId = VIDEO_STUDIO_PORTAL_SOURCE_ID;
+    }
+    return sources;
+}
+
+async function refreshVideoStudioFfmpegCapabilities() {
+    if (videoStudioFfmpegCapabilities || !window.aurivo?.screenRecording?.getFfmpegCapabilities) {
+        return videoStudioFfmpegCapabilities;
+    }
+    try {
+        videoStudioFfmpegCapabilities = await window.aurivo.screenRecording.getFfmpegCapabilities();
+    } catch {
+        videoStudioFfmpegCapabilities = { success: false, formats: ['webm'] };
+    }
+    return videoStudioFfmpegCapabilities;
+}
+
+function buildScreenRecordingDefaultPath(format = 'webm') {
+    const extension = ['webm', 'mp4', 'mkv'].includes(String(format || '').toLowerCase()) ? String(format).toLowerCase() : 'webm';
+    const baseDir = getVideoStudioDefaultOutputFolder();
+    const fileName = buildVideoStudioOutputFileName(extension);
+    if (baseDir && window.aurivo?.path?.join) {
+        return window.aurivo.path.join(baseDir, fileName);
+    }
+    return fileName;
+}
+
+function isSamePathValue(a = '', b = '') {
+    const left = String(a || '').trim();
+    const right = String(b || '').trim();
+    if (!left || !right) return false;
+    return left === right;
+}
+
+function buildNonConflictingRecordingPath(outputPath = '', format = 'webm') {
+    const normalized = String(outputPath || '').trim();
+    if (!normalized) return '';
+    const currentVideoPath = String(state.currentVideoPath || '').trim();
+    if (!isSamePathValue(normalized, currentVideoPath)) return normalized;
+    const dirname = window.aurivo?.path?.dirname?.(normalized) || '';
+    const basename = window.aurivo?.path?.basename?.(normalized) || 'aurivo-screen-recording.webm';
+    const stem = basename.replace(/\.[^/.]+$/, '') || 'aurivo-screen-recording';
+    const extension = ['webm', 'mp4', 'mkv'].includes(String(format || '').toLowerCase()) ? String(format).toLowerCase() : 'webm';
+    const nextName = `${stem}-screen-recording.${extension}`;
+    return dirname && window.aurivo?.path?.join ? window.aurivo.path.join(dirname, nextName) : nextName;
+}
+
+function buildScreenRecordingCapturePath(finalPath = '', finalFormat = 'webm') {
+    const normalized = String(finalPath || '').trim();
+    if (!normalized || normalizeVideoStudioRecordFormat(finalFormat) === 'webm') return normalized;
+    const dirname = window.aurivo?.path?.dirname?.(normalized) || '';
+    const basename = window.aurivo?.path?.basename?.(normalized) || 'aurivo-screen-recording.webm';
+    const stem = basename.replace(/\.[^/.]+$/, '') || 'aurivo-screen-recording';
+    const captureName = `${stem}.capture-${Date.now()}.webm`;
+    return dirname && window.aurivo?.path?.join ? window.aurivo.path.join(dirname, captureName) : captureName;
+}
+
+function formatVideoStudioBytes(bytes = 0) {
+    const numeric = Number(bytes);
+    if (!Number.isFinite(numeric) || numeric <= 0) return '0 MB';
+    const units = ['B', 'KB', 'MB', 'GB'];
+    let value = numeric;
+    let index = 0;
+    while (value >= 1024 && index < units.length - 1) {
+        value /= 1024;
+        index += 1;
+    }
+    return `${value >= 10 || index === 0 ? value.toFixed(0) : value.toFixed(1)} ${units[index]}`;
+}
+
+function getVideoStudioRecordStateLabel() {
+    if (screenRecorder && screenRecorder.state === 'recording') return uiT('video.tools.stats.recording', 'Kaydediliyor');
+    if (screenRecorder && screenRecorder.state === 'paused') return uiT('video.tools.stats.paused', 'Duraklatıldı');
+    return uiT('video.tools.stats.ready', 'Hazır');
+}
+
+function getScreenRecordingElapsedSeconds() {
+    if (!screenRecordingStartedAt) return 0;
+    const pausedNowMs = screenRecordingPausedAt ? Math.max(0, Date.now() - screenRecordingPausedAt) : 0;
+    return Math.max(0, Math.floor((Date.now() - screenRecordingStartedAt - screenRecordingPausedMs - pausedNowMs) / 1000));
+}
+
+function getVideoStudioRecordingBitrateKbps() {
+    const elapsed = getScreenRecordingElapsedSeconds();
+    if (!elapsed || screenRecordingBytes <= 0) return 0;
+    return Math.max(0, Math.round((screenRecordingBytes * 8) / elapsed / 1000));
+}
+
+function getVideoStudioDiskFullEstimateLabel() {
+    const freeBytes = Number(videoStudioStorageStats?.freeBytes || 0);
+    const kbps = getVideoStudioRecordingBitrateKbps();
+    if (!freeBytes || !kbps) return uiT('video.tools.stats.unknown', 'Bilinmiyor');
+    const seconds = Math.floor(freeBytes / Math.max(1, (kbps * 1000) / 8));
+    if (!Number.isFinite(seconds) || seconds <= 0) return uiT('video.tools.stats.unknown', 'Bilinmiyor');
+    if (seconds < 3600) return `${Math.max(1, Math.floor(seconds / 60))} dk`;
+    return `${Math.floor(seconds / 3600)} sa ${Math.floor((seconds % 3600) / 60)} dk`;
+}
+
+function getVideoStudioMemoryUsageLabel() {
+    const rss = Number(videoStudioSystemStats?.memory?.rss || 0);
+    const free = Number(videoStudioSystemStats?.system?.freeMemory || 0);
+    if (!rss && !free) return uiT('video.tools.stats.unknown', 'Bilinmiyor');
+    return free ? `${formatVideoStudioBytes(rss)} / ${formatVideoStudioBytes(free)} boş` : formatVideoStudioBytes(rss);
+}
+
+function getVideoStudioCpuLoadLabel() {
+    const load = Number(videoStudioSystemStats?.system?.loadAverage?.[0] || 0);
+    const cpuCount = Math.max(1, Number(videoStudioSystemStats?.system?.cpuCount || navigator.hardwareConcurrency || 1) || 1);
+    if (!load) return uiT('video.tools.stats.unknown', 'Bilinmiyor');
+    return `${Math.round((load / cpuCount) * 100)}%`;
+}
+
+function getVideoStudioMemoryPressureRatio() {
+    const free = Number(videoStudioSystemStats?.system?.freeMemory || 0);
+    const total = Number(videoStudioSystemStats?.system?.totalMemory || 0);
+    if (!free || !total) return 0;
+    return Math.max(0, Math.min(1, 1 - (free / total)));
+}
+
+function getVideoStudioCpuPressureRatio() {
+    const load = Number(videoStudioSystemStats?.system?.loadAverage?.[0] || 0);
+    const cpuCount = Math.max(1, Number(videoStudioSystemStats?.system?.cpuCount || navigator.hardwareConcurrency || 1) || 1);
+    if (!load) return 0;
+    return Math.max(0, load / cpuCount);
+}
+
+function getVideoStudioFpsLabel() {
+    const target = normalizeVideoStudioRecordFps(videoStudioRecordFps, 30);
+    const actual = Number(screenRecordingCompositionFps || 0);
+    if (!shouldBuildVideoStudioCompositedStream()) return `${target} fps`;
+    return actual > 0 ? `${actual.toFixed(actual >= 10 ? 0 : 1)} / ${target}` : `0 / ${target}`;
+}
+
+function getVideoStudioWriteSpeedLabel() {
+    return screenRecordingWriteBytesPerSecond > 0
+        ? `${formatVideoStudioBytes(screenRecordingWriteBytesPerSecond)}/s`
+        : '0 MB/s';
+}
+
+function updateVideoStudioWriteRateSample() {
+    const now = Date.now();
+    if (!screenRecordingLastBytesSampleAt) {
+        screenRecordingLastBytesSampleAt = now;
+        screenRecordingLastBytesSample = screenRecordingBytes;
+        return;
+    }
+    const elapsed = Math.max(1, now - screenRecordingLastBytesSampleAt);
+    if (elapsed < 650) return;
+    const delta = Math.max(0, screenRecordingBytes - screenRecordingLastBytesSample);
+    screenRecordingWriteBytesPerSecond = Math.round(delta / (elapsed / 1000));
+    screenRecordingLastBytesSampleAt = now;
+    screenRecordingLastBytesSample = screenRecordingBytes;
+}
+
+function updateVideoStudioCompositionFrameMetrics() {
+    const now = Date.now();
+    screenRecordingCompositionFrameCount += 1;
+    if (!screenRecordingCompositionLastFrameSampleAt) {
+        screenRecordingCompositionLastFrameSampleAt = now;
+        screenRecordingCompositionLastFrameCount = screenRecordingCompositionFrameCount;
+        return;
+    }
+    const elapsed = Math.max(1, now - screenRecordingCompositionLastFrameSampleAt);
+    if (elapsed < 1000) return;
+    const deltaFrames = Math.max(0, screenRecordingCompositionFrameCount - screenRecordingCompositionLastFrameCount);
+    const actualFps = deltaFrames / (elapsed / 1000);
+    screenRecordingCompositionFps = actualFps;
+    const targetFps = normalizeVideoStudioRecordFps(videoStudioRecordFps, 30);
+    if (screenRecorder && screenRecorder.state === 'recording' && actualFps > 0 && actualFps < targetFps * 0.85) {
+        screenRecordingFrameDropEstimate += Math.max(1, Math.round((targetFps - actualFps) * (elapsed / 1000)));
+    }
+    screenRecordingCompositionLastFrameSampleAt = now;
+    screenRecordingCompositionLastFrameCount = screenRecordingCompositionFrameCount;
+}
+
+function getVideoStudioValidationLabel() {
+    if (!videoStudioLastValidation) return uiT('video.tools.validation.notRun', 'Henüz yok');
+    if (videoStudioLastValidation.status === 'pending') return uiT('video.tools.validation.running', 'Doğrulanıyor...');
+    if (videoStudioLastValidation.status === 'ok') {
+        const duration = Number(videoStudioLastValidation.durationSec || 0);
+        return duration > 0
+            ? uiT('video.tools.validation.okWithDuration', 'Doğrulandı ({duration})', { duration: formatTime(duration) })
+            : uiT('video.tools.validation.ok', 'Doğrulandı');
+    }
+    if (videoStudioLastValidation.status === 'warning') return uiT('video.tools.validation.warning', 'Uyarı');
+    return uiT('video.tools.validation.failed', 'Başarısız');
+}
+
+function buildVideoStudioQualityReport(validation = videoStudioLastValidation) {
+    if (!validation || !String(validation.path || '').trim()) return null;
+    const duration = Math.max(0, Number(validation.durationSec || 0) || 0);
+    const size = Math.max(0, Number(validation.size || 0) || 0);
+    const probedBitrate = Math.max(0, Number(validation.bitRate || 0) || 0);
+    const computedBitrate = duration > 0 && size > 0 ? Math.round((size * 8) / duration) : 0;
+    const bitrate = probedBitrate || computedBitrate;
+    return {
+        path: String(validation.path || ''),
+        status: String(validation.status || 'unknown'),
+        durationSec: duration,
+        size,
+        bitrateKbps: Math.round(bitrate / 1000),
+        fps: Math.max(0, Number(validation.fps || screenRecordingCompositionFps || 0) || 0),
+        videoStreams: Math.max(0, Number(validation.videoStreams || 0) || 0),
+        audioStreams: Math.max(0, Number(validation.audioStreams || 0) || 0),
+        videoCodec: String(validation.videoCodec || ''),
+        audioCodec: String(validation.audioCodec || ''),
+        slowEvents: Math.max(0, Number(screenRecordingSlowChunkWarnings || 0) + Number(screenRecordingFrameDropEstimate || 0))
+    };
+}
+
+function getVideoStudioQualityReportGrade(report = videoStudioLastQualityReport) {
+    if (!report) return { key: 'none', label: uiT('video.tools.qualityReport.none', 'Henüz yok'), className: 'is-paused' };
+    if (report.status === 'error' || !report.videoStreams || !report.durationSec) {
+        return { key: 'error', label: uiT('video.tools.qualityReport.problem', 'Sorunlu'), className: 'is-error' };
+    }
+    if (report.status === 'warning' || report.slowEvents > 0 || report.audioStreams < 1) {
+        return { key: 'warning', label: uiT('video.tools.qualityReport.warning', 'Uyarılı'), className: 'is-warning' };
+    }
+    return { key: 'good', label: uiT('video.tools.qualityReport.good', 'İyi'), className: 'is-good' };
+}
+
+function buildVideoStudioQualityReportMarkup() {
+    const report = videoStudioLastQualityReport;
+    if (!report) return '';
+    const grade = getVideoStudioQualityReportGrade(report);
+    const fpsLabel = report.fps > 0 ? `${report.fps.toFixed(report.fps >= 10 ? 0 : 1)} fps` : uiT('video.tools.stats.unknown', 'Bilinmiyor');
+    const bitrateLabel = report.bitrateKbps > 0 ? `${report.bitrateKbps} kbps` : uiT('video.tools.stats.unknown', 'Bilinmiyor');
+    return `
+        <div class="video-studio-quality-report" id="videoStudioQualityReport">
+            <div class="video-studio-quality-head">
+                <div class="video-studio-panel-label">${escapeHtml(uiT('video.tools.qualityReport.title', 'Kalite Analizi'))}</div>
+                <strong class="${escapeAttribute(grade.className)}">${escapeHtml(grade.label)}</strong>
+            </div>
+            <div class="video-studio-quality-grid">
+                <span>${escapeHtml(uiT('video.tools.stats.duration', 'Süre'))}: <b>${escapeHtml(formatTime(report.durationSec))}</b></span>
+                <span>${escapeHtml(uiT('video.tools.stats.size', 'Boyut'))}: <b>${escapeHtml(formatVideoStudioBytes(report.size))}</b></span>
+                <span>${escapeHtml(uiT('video.tools.health.bitrate', 'Bitrate'))}: <b>${escapeHtml(bitrateLabel)}</b></span>
+                <span>${escapeHtml(uiT('video.tools.stats.fps', 'FPS'))}: <b>${escapeHtml(fpsLabel)}</b></span>
+                <span>${escapeHtml(uiT('video.tools.qualityReport.audio', 'Ses'))}: <b>${escapeHtml(report.audioStreams ? uiT('video.tools.qualityReport.present', 'Var') : uiT('video.tools.qualityReport.missing', 'Yok'))}</b></span>
+                <span>${escapeHtml(uiT('video.tools.stats.dropped', 'Yavaş'))}: <b>${escapeHtml(String(report.slowEvents || 0))}</b></span>
+            </div>
+        </div>
+    `;
+}
+
+function updateVideoStudioQualityReportPanel() {
+    const panel = document.getElementById('videoStudioQualityReportMount');
+    if (panel) panel.innerHTML = buildVideoStudioQualityReportMarkup();
+}
+
+async function validateVideoStudioRecordingFile(filePath, { expectedDurationSec = 0, autoRepair = true } = {}) {
+    const targetPath = String(filePath || '').trim();
+    if (!targetPath) return null;
+    videoStudioLastValidation = {
+        status: 'pending',
+        path: targetPath,
+        durationSec: 0
+    };
+    videoStudioLastQualityReport = null;
+    updateVideoStudioStatsPanel();
+    updateVideoStudioQualityReportPanel();
+    try {
+        const result = await window.aurivo?.screenRecording?.validateRecording?.(targetPath, {
+            expectedDurationSec,
+            minSizeBytes: 1024
+        });
+        videoStudioLastValidation = result || { status: 'error', path: targetPath };
+        videoStudioLastQualityReport = buildVideoStudioQualityReport(videoStudioLastValidation);
+        const status = String(videoStudioLastValidation.status || '').trim();
+        if (status === 'ok') {
+            addVideoStudioLog(uiT('video.tools.logs.validationOk', 'Kayıt doğrulandı.'), 'success');
+        } else if (status === 'warning') {
+            const detail = videoStudioLastValidation.error ? `: ${videoStudioLastValidation.error}` : '';
+            addVideoStudioLog(`${uiT('video.tools.logs.validationWarning', 'Kayıt doğrulandı ama uyarı var.')}${detail}`, 'warning');
+        } else {
+            const detail = videoStudioLastValidation.error ? `: ${videoStudioLastValidation.error}` : '';
+            addVideoStudioLog(`${uiT('video.tools.logs.validationFailed', 'Kayıt doğrulanamadı.')}${detail}`, 'error');
+            safeNotify(`${uiT('video.tools.validation.failed', 'Doğrulama başarısız')}${detail}`, 'warning', 3200);
+            if (autoRepair && window.aurivo?.screenRecording?.repairRecording && !videoStudioRepairInProgress) {
+                repairVideoStudioRecording(targetPath, { automatic: true }).catch(() => {});
+            }
+        }
+        updateVideoStudioStatsPanel();
+        updateVideoStudioQualityReportPanel();
+        return videoStudioLastValidation;
+    } catch (error) {
+        videoStudioLastValidation = {
+            status: 'error',
+            path: targetPath,
+            error: error?.message || String(error)
+        };
+        videoStudioLastQualityReport = buildVideoStudioQualityReport(videoStudioLastValidation);
+        addVideoStudioLog(`${uiT('video.tools.logs.validationFailed', 'Kayıt doğrulanamadı.')}: ${error?.message || error}`, 'error');
+        if (autoRepair && window.aurivo?.screenRecording?.repairRecording && !videoStudioRepairInProgress) {
+            repairVideoStudioRecording(targetPath, { automatic: true }).catch(() => {});
+        }
+        updateVideoStudioStatsPanel();
+        updateVideoStudioQualityReportPanel();
+        return videoStudioLastValidation;
+    }
+}
+
+async function refreshVideoStudioAdvancedStats({ force = false } = {}) {
+    const now = Date.now();
+    if (!force && now - videoStudioLastStatsProbeAt < 5000) return;
+    videoStudioLastStatsProbeAt = now;
+    const target = screenRecordingOutputPath || buildVideoStudioAutoOutputPath(videoStudioRecordFormat);
+    try {
+        const [storage, systemStats] = await Promise.all([
+            window.aurivo?.getStorageStats?.(target),
+            window.aurivo?.getSystemStats?.()
+        ]);
+        if (storage && !storage.error) videoStudioStorageStats = storage;
+        if (systemStats && !systemStats.error) videoStudioSystemStats = systemStats;
+        updateVideoStudioStatsPanel();
+    } catch {
+        // yoksay
+    }
+}
+
+function createVideoStudioPreflightCheck(id, label, stateKey = 'pending', detail = '') {
+    return {
+        id,
+        label,
+        state: ['ok', 'warning', 'error', 'pending'].includes(stateKey) ? stateKey : 'pending',
+        detail: String(detail || '').trim()
+    };
+}
+
+function getVideoStudioPreflightSummary() {
+    const checks = Array.isArray(videoStudioPreflightChecks) ? videoStudioPreflightChecks : [];
+    if (videoStudioPreflightRefreshing) return {
+        state: 'pending',
+        label: uiT('video.tools.preflight.checking', 'Kontrol ediliyor...')
+    };
+    if (!checks.length) return {
+        state: 'pending',
+        label: uiT('video.tools.preflight.notRun', 'Henüz kontrol edilmedi')
+    };
+    const errors = checks.filter((item) => item.state === 'error').length;
+    const warnings = checks.filter((item) => item.state === 'warning').length;
+    if (errors) return {
+        state: 'error',
+        label: uiT('video.tools.preflight.blocked', '{count} sorun var', { count: errors })
+    };
+    if (warnings) return {
+        state: 'warning',
+        label: uiT('video.tools.preflight.warnings', '{count} uyarı var', { count: warnings })
+    };
+    return {
+        state: 'ok',
+        label: uiT('video.tools.preflight.ready', 'Kayıt hazır')
+    };
+}
+
+function buildVideoStudioPreflightMarkup() {
+    const checks = videoStudioPreflightChecks.length
+        ? videoStudioPreflightChecks
+        : [
+            createVideoStudioPreflightCheck('source', uiT('video.tools.preflight.source', 'Ekran kaynağı'), 'pending'),
+            createVideoStudioPreflightCheck('audio', uiT('video.tools.preflight.audio', 'Ses kaynakları'), 'pending'),
+            createVideoStudioPreflightCheck('output', uiT('video.tools.preflight.output', 'Çıktı klasörü'), 'pending'),
+            createVideoStudioPreflightCheck('format', uiT('video.tools.preflight.format', 'Format'), 'pending'),
+            createVideoStudioPreflightCheck('disk', uiT('video.tools.preflight.disk', 'Boş disk'), 'pending')
+        ];
+    return checks.map((check) => {
+        const icon = check.state === 'ok'
+            ? 'check_circle'
+            : (check.state === 'warning' ? 'warning' : (check.state === 'error' ? 'error' : 'radio_button_unchecked'));
+        return `
+            <div class="video-studio-preflight-row" data-state="${escapeAttribute(check.state)}">
+                <span class="material-symbols-rounded" aria-hidden="true">${icon}</span>
+                <strong>${escapeHtml(check.label)}</strong>
+                <small>${escapeHtml(check.detail || uiT('video.tools.preflight.waiting', 'Bekliyor'))}</small>
+            </div>
+        `;
+    }).join('');
+}
+
+function updateVideoStudioPreflightPanel() {
+    const panel = document.getElementById('videoStudioPreflightPanel');
+    if (!panel) return;
+    const summary = getVideoStudioPreflightSummary();
+    panel.dataset.state = summary.state;
+    const statusEl = document.getElementById('videoStudioPreflightStatus');
+    if (statusEl) statusEl.textContent = summary.label;
+    const listEl = document.getElementById('videoStudioPreflightList');
+    if (listEl) listEl.innerHTML = buildVideoStudioPreflightMarkup();
+    const button = document.getElementById('videoStudioRunPreflightBtn');
+    if (button) button.disabled = videoStudioPreflightRefreshing;
+}
+
+async function runVideoStudioPreflightChecks({ silent = false } = {}) {
+    if (videoStudioPreflightRefreshing) return videoStudioPreflightChecks;
+    videoStudioPreflightRefreshing = true;
+    updateVideoStudioPreflightPanel();
+    const checks = [];
+    try {
+        syncVideoStudioRecordingSettingsFromUi();
+        syncVideoStudioOutputSettingsFromUi();
+        if (document.getElementById('videoStudioMicSelect')) syncVideoStudioMicToRecorder();
+        const sourceId = String(videoStudioSelectedSourceId || syncVideoStudioSourceToRecorder() || '').trim();
+        const sourceVisible = isVideoStudioDisplayVisible();
+        checks.push(createVideoStudioPreflightCheck(
+            'source',
+            uiT('video.tools.preflight.source', 'Ekran kaynağı'),
+            sourceId && sourceVisible ? 'ok' : 'error',
+            sourceId && sourceVisible
+                ? uiT('video.tools.preflight.sourceOk', 'Ekran kaynağı seçili')
+                : uiT('video.tools.preflight.sourceMissing', 'Ekran kaynağı seçilmeli')
+        ));
+
+        const audioMode = getScreenRecordingAudioMode();
+        const micWanted = ['mic', 'both'].includes(audioMode) && isVideoStudioMicVisible();
+        const desktopWanted = ['system', 'both'].includes(audioMode) && isVideoStudioDesktopAudioVisible();
+        const micReady = !micWanted || !!String(videoStudioSelectedMicId || 'default').trim();
+        checks.push(createVideoStudioPreflightCheck(
+            'audio',
+            uiT('video.tools.preflight.audio', 'Ses kaynakları'),
+            audioMode === 'none' ? 'warning' : (micReady ? 'ok' : 'error'),
+            audioMode === 'none'
+                ? uiT('video.tools.preflight.audioNone', 'Sessiz kayıt seçili')
+                : (desktopWanted && micWanted
+                    ? uiT('video.tools.preflight.audioBoth', 'Masaüstü + mikrofon hazır')
+                    : (desktopWanted ? uiT('video.tools.preflight.audioDesktop', 'Masaüstü sesi hazır') : uiT('video.tools.preflight.audioMic', 'Mikrofon hazır')))
+        ));
+
+        const outputFolder = getVideoStudioDefaultOutputFolder();
+        const folderExists = outputFolder ? await window.aurivo?.fileExists?.(outputFolder) : false;
+        const folderWritable = folderExists ? await window.aurivo?.isPathWritable?.(outputFolder) : false;
+        checks.push(createVideoStudioPreflightCheck(
+            'output',
+            uiT('video.tools.preflight.output', 'Çıktı klasörü'),
+            folderWritable ? 'ok' : 'error',
+            folderWritable
+                ? uiT('video.tools.preflight.outputOk', 'Klasör yazılabilir')
+                : uiT('video.tools.preflight.outputBad', 'Klasör yazılamıyor')
+        ));
+
+        const settings = getVideoStudioRecordingSettings();
+        const caps = await refreshVideoStudioFfmpegCapabilities();
+        const format = normalizeVideoStudioRecordFormat(settings.format);
+        const nativeWebm = !!getSupportedScreenRecorderMimeType('webm');
+        const needsFfmpeg = format !== 'webm' || settings.audioTrackMode === 'separate';
+        const ffmpegOk = !needsFfmpeg || !!caps?.success;
+        checks.push(createVideoStudioPreflightCheck(
+            'format',
+            uiT('video.tools.preflight.format', 'Format'),
+            nativeWebm && ffmpegOk ? 'ok' : 'error',
+            !nativeWebm
+                ? uiT('video.tools.preflight.formatUnsupported', 'Tarayıcı WebM kaydı desteklemiyor')
+                : (needsFfmpeg ? (ffmpegOk ? uiT('video.tools.preflight.ffmpegOk', 'FFmpeg hazır') : uiT('video.tools.preflight.ffmpegMissing', 'FFmpeg gerekli')) : uiT('video.tools.preflight.formatOk', 'Format destekleniyor'))
+        ));
+        const requestedEncoder = normalizeVideoStudioVideoEncoder(settings.videoEncoder);
+        if (requestedEncoder !== 'auto' && requestedEncoder !== 'libx264') {
+            const encoderOk = !!caps?.encoders?.[requestedEncoder];
+            checks.push(createVideoStudioPreflightCheck(
+                'encoder',
+                'Encoder',
+                encoderOk ? 'ok' : 'error',
+                encoderOk ? `${requestedEncoder} hazır` : `${requestedEncoder} FFmpeg içinde yok`
+            ));
+        }
+
+        const storage = await window.aurivo?.getStorageStats?.(buildVideoStudioAutoOutputPath(format));
+        const freeBytes = Number(storage?.freeBytes || 0);
+        const warningBytes = 1024 * 1024 * 1024;
+        checks.push(createVideoStudioPreflightCheck(
+            'disk',
+            uiT('video.tools.preflight.disk', 'Boş disk'),
+            freeBytes > warningBytes ? 'ok' : (freeBytes > 0 ? 'warning' : 'error'),
+            freeBytes > 0
+                ? uiT('video.tools.preflight.diskFree', '{size} boş', { size: formatVideoStudioBytes(freeBytes) })
+                : uiT('video.tools.preflight.diskUnknown', 'Boş alan okunamadı')
+        ));
+    } catch (error) {
+        checks.push(createVideoStudioPreflightCheck(
+            'error',
+            uiT('video.tools.preflight.title', 'Kayıt Öncesi Kontrol'),
+            'error',
+            error?.message || String(error)
+        ));
+    } finally {
+        videoStudioPreflightChecks = checks;
+        videoStudioPreflightRefreshing = false;
+        updateVideoStudioPreflightPanel();
+    }
+    const summary = getVideoStudioPreflightSummary();
+    if (!silent) {
+        const type = summary.state === 'ok' ? 'success' : (summary.state === 'warning' ? 'warning' : 'error');
+        safeNotify(summary.label, type, 2200);
+    }
+    return videoStudioPreflightChecks;
+}
+
+function getVideoStudioHealthState() {
+    if (!screenRecorder || screenRecorder.state === 'inactive') {
+        return { key: 'idle', label: uiT('video.tools.health.idle', 'Beklemede'), className: 'is-idle' };
+    }
+    if (screenRecorder.state === 'paused') {
+        return { key: 'paused', label: uiT('video.tools.health.paused', 'Duraklatıldı'), className: 'is-paused' };
+    }
+    const elapsed = getScreenRecordingElapsedSeconds();
+    const chunkAge = screenRecordingLastChunkAt ? Date.now() - screenRecordingLastChunkAt : 0;
+    if (elapsed > 3 && (!screenRecordingLastChunkAt || chunkAge > 4200)) {
+        return { key: 'warning', label: uiT('video.tools.health.warning', 'Veri akışı yavaş'), className: 'is-warning' };
+    }
+    const targetFps = normalizeVideoStudioRecordFps(videoStudioRecordFps, 30);
+    if (screenRecordingCompositionFps > 0 && screenRecordingCompositionFps < targetFps * 0.75) {
+        return { key: 'warning', label: uiT('video.tools.health.fpsWarning', 'FPS düşüyor'), className: 'is-warning' };
+    }
+    if (getVideoStudioCpuPressureRatio() >= 0.95) {
+        return { key: 'warning', label: uiT('video.tools.health.cpuWarning', 'CPU yüksek'), className: 'is-warning' };
+    }
+    if (getVideoStudioMemoryPressureRatio() >= 0.92) {
+        return { key: 'warning', label: uiT('video.tools.health.memoryWarning', 'Bellek yüksek'), className: 'is-warning' };
+    }
+    return { key: 'good', label: uiT('video.tools.health.good', 'Sağlıklı'), className: 'is-good' };
+}
+
+function maybeNotifyVideoStudioHealthWarning() {
+    const health = getVideoStudioHealthState();
+    if (health.key !== 'warning') return;
+    const now = Date.now();
+    if (now - screenRecordingLastHealthWarningAt < 12000) return;
+    screenRecordingLastHealthWarningAt = now;
+    screenRecordingSlowChunkWarnings += 1;
+    safeNotify(uiT('video.tools.health.warningDetail', 'Kayıt verisi beklenenden yavaş geliyor; sistem yükünü kontrol edin.'), 'warning', 2600);
+}
+
+function updateVideoStudioStatsPanel() {
+    const stateEl = document.getElementById('videoStudioStatsState');
+    const durationEl = document.getElementById('videoStudioStatsDuration');
+    const sizeEl = document.getElementById('videoStudioStatsSize');
+    const targetEl = document.getElementById('videoStudioStatsTarget');
+    const profileEl = document.getElementById('videoStudioStatsProfile');
+    const healthEl = document.getElementById('videoStudioStatsHealth');
+    const bitrateEl = document.getElementById('videoStudioStatsBitrate');
+    const chunksEl = document.getElementById('videoStudioStatsChunks');
+    const droppedEl = document.getElementById('videoStudioStatsDropped');
+    const fpsEl = document.getElementById('videoStudioStatsFps');
+    const writeSpeedEl = document.getElementById('videoStudioStatsWriteSpeed');
+    const cpuEl = document.getElementById('videoStudioStatsCpu');
+    const diskEl = document.getElementById('videoStudioStatsDisk');
+    const memoryEl = document.getElementById('videoStudioStatsMemory');
+    const validationEl = document.getElementById('videoStudioStatsValidation');
+    if (stateEl) stateEl.textContent = getVideoStudioRecordStateLabel();
+    if (durationEl) {
+        durationEl.textContent = formatTime(getScreenRecordingElapsedSeconds());
+    }
+    if (sizeEl) sizeEl.textContent = formatVideoStudioBytes(screenRecordingBytes);
+    if (targetEl) targetEl.textContent = screenRecordingOutputPath || uiT('video.tools.stats.noTarget', 'Henüz yok');
+    if (profileEl) profileEl.textContent = normalizeVideoStudioRecordPreset(videoStudioRecordPreset);
+    if (healthEl) {
+        const health = getVideoStudioHealthState();
+        healthEl.textContent = health.label;
+        healthEl.classList.remove('is-idle', 'is-good', 'is-warning', 'is-paused');
+        healthEl.classList.add(health.className);
+    }
+    if (bitrateEl) {
+        const kbps = getVideoStudioRecordingBitrateKbps();
+        bitrateEl.textContent = kbps > 0 ? `${kbps} kbps` : '0 kbps';
+    }
+    if (chunksEl) chunksEl.textContent = String(screenRecordingChunkCount || 0);
+    if (droppedEl) droppedEl.textContent = String((screenRecordingSlowChunkWarnings || 0) + (screenRecordingFrameDropEstimate || 0));
+    if (fpsEl) fpsEl.textContent = getVideoStudioFpsLabel();
+    if (writeSpeedEl) writeSpeedEl.textContent = getVideoStudioWriteSpeedLabel();
+    if (cpuEl) cpuEl.textContent = getVideoStudioCpuLoadLabel();
+    if (diskEl) diskEl.textContent = getVideoStudioDiskFullEstimateLabel();
+    if (memoryEl) memoryEl.textContent = getVideoStudioMemoryUsageLabel();
+    if (validationEl) {
+        validationEl.textContent = getVideoStudioValidationLabel();
+        validationEl.classList.remove('is-good', 'is-warning', 'is-error', 'is-paused');
+        const status = String(videoStudioLastValidation?.status || '').trim();
+        validationEl.classList.add(status === 'ok' ? 'is-good' : (status === 'warning' ? 'is-warning' : (status === 'pending' ? 'is-paused' : 'is-error')));
+    }
+    maybeNotifyVideoStudioHealthWarning();
+    refreshVideoStudioAdvancedStats().catch(() => {});
+    updateVideoStudioQuickActionsPanel();
+}
+
+function getVideoStudioLastRecordingPath() {
+    return String(videoToolLastOutputPath || screenRecordingOutputPath || '').trim();
+}
+
+function updateVideoStudioQuickActionsPanel() {
+    const path = getVideoStudioLastRecordingPath();
+    const panel = document.getElementById('videoStudioQuickActionsPanel');
+    const label = document.getElementById('videoStudioQuickActionsFileLabel');
+    if (panel) panel.classList.toggle('is-disabled', !path);
+    if (label) {
+        label.textContent = path
+            ? (window.aurivo?.path?.basename?.(path) || path)
+            : uiT('video.tools.quickActions.noRecording', 'Henüz kayıt yok');
+    }
+    document.querySelectorAll('[data-video-studio-quick-action]').forEach((button) => {
+        if (button instanceof HTMLButtonElement) button.disabled = !path;
+    });
+}
+
+function updateVideoStudioRecordButtons() {
+    const isActive = !!screenRecorder && screenRecorder.state !== 'inactive';
+    const isPaused = !!screenRecorder && screenRecorder.state === 'paused';
+    const startBtn = document.getElementById('videoStudioStartRecordBtn');
+    const testBtn = document.getElementById('videoStudioTestRecordBtn');
+    const pauseBtn = document.getElementById('videoStudioPauseRecordBtn');
+    const stopBtn = document.getElementById('videoStudioStopRecordBtn');
+    if (startBtn) startBtn.disabled = isActive;
+    if (testBtn) testBtn.disabled = isActive;
+    if (stopBtn) stopBtn.disabled = !isActive;
+    if (pauseBtn) {
+        const label = isPaused
+            ? uiT('video.tools.studio.resumeRecord', 'Devam et')
+            : uiT('video.tools.studio.pauseRecord', 'Duraklat');
+        pauseBtn.disabled = !isActive;
+        pauseBtn.classList.toggle('is-paused', isPaused);
+        pauseBtn.title = label;
+        pauseBtn.setAttribute('aria-label', label);
+        const icon = pauseBtn.querySelector('.material-symbols-rounded');
+        if (icon) icon.textContent = isPaused ? 'play_arrow' : 'pause';
+    }
+    updateVideoStudioQuickActionsPanel();
+}
+
+function updateScreenRecordingElapsed() {
+    if (!screenRecorder || screenRecorder.state === 'inactive') return;
+    const elapsed = getScreenRecordingElapsedSeconds();
+    const label = screenRecorder.state === 'paused'
+        ? uiT('video.tools.record.paused', 'Duraklatıldı')
+        : (videoStudioTestRecordingActive ? 'Test kaydı' : uiT('video.tools.record.recording', 'Kaydediliyor'));
+    updateVideoToolStatus(`${label} ${formatTime(elapsed)}`, 'running', 1);
+    updateVideoStudioStatsPanel();
+}
+
+async function stopScreenRecording() {
+    if (!screenRecorder || screenRecorder.state === 'inactive') return;
+    try {
+        clearScreenRecordingAutoStopTimer();
+        clearScreenRecordingTestStopTimer();
+        if (screenRecorder.state === 'recording') {
+            try {
+                screenRecorder.requestData();
+            } catch {
+                // yoksay
+            }
+        }
+        setTimeout(() => {
+            try {
+                if (screenRecorder && screenRecorder.state !== 'inactive') {
+                    screenRecorder.stop();
+                }
+            } catch {
+                // yoksay
+            }
+        }, 120);
+    } catch {
+        // yoksay
+    }
+}
+
+function toggleScreenRecordingPause() {
+    if (!screenRecorder || screenRecorder.state === 'inactive') return;
+    try {
+        if (screenRecorder.state === 'recording') {
+            screenRecorder.pause();
+            pauseScreenRecordingSeparateAudioRecorders();
+            screenRecordingPausedAt = Date.now();
+            clearScreenRecordingAutoStopTimer();
+            updateVideoToolStatus(`${uiT('video.tools.record.paused', 'Duraklatıldı')} ${formatTime(getScreenRecordingElapsedSeconds())}`, 'running', 1);
+            updateVideoStudioStatsPanel();
+            updateVideoStudioRecordButtons();
+            return;
+        }
+        if (screenRecorder.state === 'paused') {
+            if (screenRecordingPausedAt) {
+                screenRecordingPausedMs += Math.max(0, Date.now() - screenRecordingPausedAt);
+                screenRecordingPausedAt = 0;
+            }
+            screenRecorder.resume();
+            resumeScreenRecordingSeparateAudioRecorders();
+            scheduleScreenRecordingAutoStop();
+            updateVideoToolStatus(`${uiT('video.tools.record.recording', 'Kaydediliyor')} ${formatTime(getScreenRecordingElapsedSeconds())}`, 'running', 1);
+            updateVideoStudioStatsPanel();
+            updateVideoStudioRecordButtons();
+        }
+    } catch (error) {
+        safeNotify(`${uiT('video.tools.record.pauseFailed', 'Kayıt duraklatılamadı')}: ${error?.message || error}`, 'warning', 2400);
+    }
+}
+
+async function startScreenRecording(options = {}) {
+    if (screenRecorder && screenRecorder.state !== 'inactive') return;
+    const testMode = options?.testMode === true;
+    const testDurationSec = Math.max(3, Math.min(30, Math.round(Number(options?.durationSec) || 5)));
+    const sourceId = await resolveScreenRecordingSourceId();
+    if (!sourceId) {
+        safeNotify(uiT('video.tools.record.noSources', 'Kaynak bulunamadı'), 'warning', 2200);
+        return;
+    }
+    const usePortalCapture = isPortalScreenSourceId(sourceId);
+
+    const performanceProfile = getVideoToolPerformanceProfile();
+    const recordingSettings = getVideoStudioRecordingSettings();
+    const fps = recordingSettings.fps || performanceProfile.defaultRecordFps;
+    if (document.getElementById('videoStudioMicSelect')) {
+        syncVideoStudioMicToRecorder();
+    }
+    const desktopVolumeInput = document.getElementById('videoStudioDesktopVolumeInput');
+    if (desktopVolumeInput) videoStudioDesktopVolume = normalizeVideoStudioVolume(desktopVolumeInput.value, videoStudioDesktopVolume);
+    const micVolumeInput = document.getElementById('videoStudioMicVolumeInput');
+    if (micVolumeInput) videoStudioMicVolume = normalizeVideoStudioVolume(micVolumeInput.value, videoStudioMicVolume);
+    syncVideoStudioInputOverlaySettingsFromUi();
+    const audioMode = getScreenRecordingAudioMode();
+    const wantsDesktopAudio = ['system', 'both'].includes(audioMode) && isVideoStudioDesktopAudioVisible();
+    const includeDesktopAudio = !usePortalCapture && wantsDesktopAudio;
+    const includeMonitorAudio = usePortalCapture && wantsDesktopAudio;
+    const includeMic = ['mic', 'both'].includes(audioMode) && isVideoStudioMicVisible();
+    const wantsSeparateAudioTracks = recordingSettings.audioTrackMode === 'separate' && (wantsDesktopAudio || includeMic);
+    await refreshVideoStudioFfmpegCapabilities();
+    let mimeType = getSupportedScreenRecorderMimeType('webm');
+    let actualFormat = normalizeVideoStudioRecordFormat(recordingSettings.format);
+    if (wantsSeparateAudioTracks && actualFormat === 'webm') {
+        actualFormat = 'mkv';
+        safeNotify(uiT('video.tools.audioTracks.webmFallback', 'Ayrı ses parçaları için çıktı MKV olarak kaydedilecek.'), 'info', 2600);
+    }
+    if (!mimeType) {
+        safeNotify(uiT('video.tools.record.formatFallback', 'Seçilen format desteklenmedi; WebM kullanılacak.'), 'warning', 2600);
+        mimeType = 'video/webm';
+        actualFormat = 'webm';
+    }
+    const selectedOutputPath = testMode
+        ? buildVideoStudioTestOutputPath(actualFormat)
+        : await getVideoStudioRecordingOutputPath(actualFormat);
+    if (!selectedOutputPath) return;
+    const requestedOutputPath = String(selectedOutputPath || '').toLowerCase().endsWith(`.${actualFormat}`)
+        ? String(selectedOutputPath || '')
+        : `${String(selectedOutputPath || '')}.${actualFormat}`;
+    const outputPath = buildNonConflictingRecordingPath(requestedOutputPath, actualFormat);
+    const capturePath = buildScreenRecordingCapturePath(outputPath, actualFormat);
+    if (outputPath !== requestedOutputPath) {
+        safeNotify(uiT('video.tools.record.avoidOverwrite', 'Mevcut video korunacak; kayıt ayrı bir dosyaya yazılacak.'), 'info', 2600);
+    }
+
+    try {
+        videoToolModeState = 'record';
+        videoStudioTestRecordingActive = testMode;
+        const displayCaptureConstraints = {
+            audio: false,
+            video: true
+        };
+        if (!usePortalCapture) {
+            displayCaptureConstraints.audio = getVideoStudioDesktopAudioConstraints(sourceId);
+            displayCaptureConstraints.video = {
+                mandatory: {
+                    chromeMediaSource: 'desktop',
+                    chromeMediaSourceId: sourceId,
+                    maxFrameRate: fps,
+                    ...(recordingSettings.resolution ? {
+                        maxWidth: recordingSettings.resolution.width,
+                        maxHeight: recordingSettings.resolution.height
+                    } : {})
+                }
+            };
+        }
+        let displayStream;
+        try {
+            displayStream = usePortalCapture
+                ? await getVideoStudioPortalDisplayStream()
+                : await navigator.mediaDevices.getUserMedia(displayCaptureConstraints);
+        } catch (error) {
+            if (!includeDesktopAudio) throw error;
+            safeNotify(`${uiT('video.tools.record.systemAudioFailed', 'Sistem sesi eklenemedi')}: ${error?.message || error}`, 'warning', 2800);
+            displayStream = usePortalCapture
+                ? await getVideoStudioPortalDisplayStream()
+                : await navigator.mediaDevices.getUserMedia({
+                    audio: false,
+                    video: displayCaptureConstraints.video
+                });
+        }
+        let micStream = null;
+        if (includeMic) {
+            try {
+                micStream = await navigator.mediaDevices.getUserMedia({
+                    audio: getVideoStudioMicAudioConstraints(),
+                    video: false
+                });
+                refreshVideoStudioAudioDevices().catch(() => {});
+            } catch (error) {
+                safeNotify(`${uiT('video.tools.record.micFailed', 'Mikrofon eklenemedi')}: ${error?.message || error}`, 'warning', 2500);
+            }
+        }
+        let cameraStream = null;
+        if (isVideoStudioCameraVisible()) {
+            try {
+                cameraStream = await getVideoStudioCameraStream();
+            } catch (error) {
+                safeNotify(`${uiT('video.tools.studio.cameraFailed', 'Kamera açılamadı')}: ${error?.message || error}`, 'warning', 2500);
+            }
+        }
+
+        releaseScreenRecordingAudioGraph();
+        stopVideoStudioLiveAudioMeters();
+        await startScreenRecordingSystemAudioCapture(includeMonitorAudio);
+        const visualStream = shouldBuildVideoStudioCompositedStream()
+            ? await buildVideoStudioCompositedStream(displayStream, cameraStream, recordingSettings)
+            : displayStream;
+        screenRecordingAuxStreams = [displayStream, micStream, cameraStream, visualStream].filter(Boolean);
+        const recordingStream = buildMixedScreenRecordingStream(visualStream, micStream, {
+            includeDesktopAudio: wantsSeparateAudioTracks ? false : includeDesktopAudio,
+            includeMic: wantsSeparateAudioTracks ? false : !!micStream,
+            monitorMic: !!micStream && videoStudioMicMonitorEnabled
+        });
+        screenRecordingSeparateAudioRecorders = [];
+        if (wantsSeparateAudioTracks) {
+            if (includeDesktopAudio && displayStream?.getAudioTracks?.().length) {
+                startScreenRecordingSeparateAudioRecorder('desktop', uiT('video.tools.audioTracks.desktop', 'Masaüstü'), displayStream, capturePath);
+            }
+            if (micStream?.getAudioTracks?.().length) {
+                startScreenRecordingSeparateAudioRecorder('microphone', uiT('video.tools.audioTracks.microphone', 'Mikrofon'), micStream, capturePath);
+            }
+        }
+        screenRecordingStream = recordingStream;
+        recordingStream.getTracks?.().forEach((track) => {
+            track.addEventListener?.('ended', () => {
+                if (screenRecorder && screenRecorder.state !== 'inactive') {
+                    stopScreenRecording().catch(() => {});
+                }
+            }, { once: true });
+        });
+        screenRecordingChunks = [];
+        screenRecordingBytes = 0;
+        screenRecordingChunkCount = 0;
+        screenRecordingSlowChunkWarnings = 0;
+        screenRecordingLastBytesSampleAt = 0;
+        screenRecordingLastBytesSample = 0;
+        screenRecordingWriteBytesPerSecond = 0;
+        screenRecordingCompositionFrameCount = 0;
+        screenRecordingCompositionLastFrameSampleAt = 0;
+        screenRecordingCompositionLastFrameCount = 0;
+        screenRecordingCompositionFps = 0;
+        screenRecordingFrameDropEstimate = 0;
+        videoStudioStorageStats = null;
+        videoStudioSystemStats = null;
+        screenRecordingLastChunkAt = 0;
+        screenRecordingLastHealthWarningAt = 0;
+        screenRecordingOutputPath = outputPath;
+        saveVideoStudioRecoveryCandidate({
+            stage: 'recording',
+            capturePath,
+            outputPath,
+                format: actualFormat,
+                bitrateKbps: recordingSettings.bitrateKbps,
+                videoEncoder: recordingSettings.videoEncoder,
+                audioTracks: screenRecordingSeparateAudioRecorders.map((entry) => ({
+                path: entry.path,
+                kind: entry.kind,
+                label: entry.label
+            }))
+        });
+        const recorderOptions = {
+            ...(mimeType ? { mimeType } : {}),
+            videoBitsPerSecond: recordingSettings.bitrateKbps * 1000
+        };
+        screenRecorder = new MediaRecorder(recordingStream, recorderOptions);
+        screenRecorder.ondataavailable = (event) => {
+            if (event.data && event.data.size > 0) {
+                screenRecordingChunks.push(event.data);
+                screenRecordingBytes += event.data.size;
+                screenRecordingChunkCount += 1;
+                screenRecordingLastChunkAt = Date.now();
+                updateVideoStudioWriteRateSample();
+                updateVideoStudioStatsPanel();
+            }
+        };
+        screenRecorder.onpause = () => {
+            if (!screenRecordingPausedAt) screenRecordingPausedAt = Date.now();
+            updateScreenRecordingElapsed();
+            updateVideoStudioRecordButtons();
+        };
+        screenRecorder.onresume = () => {
+            if (screenRecordingPausedAt) {
+                screenRecordingPausedMs += Math.max(0, Date.now() - screenRecordingPausedAt);
+                screenRecordingPausedAt = 0;
+            }
+            updateScreenRecordingElapsed();
+            updateVideoStudioRecordButtons();
+        };
+        screenRecorder.onstop = async () => {
+            clearScreenRecordingAutoStopTimer();
+            clearScreenRecordingTestStopTimer();
+            if (screenRecordingTimer) {
+                clearInterval(screenRecordingTimer);
+                screenRecordingTimer = null;
+            }
+            try {
+                screenRecordingStream?.getTracks?.().forEach((track) => track.stop());
+            } catch {
+                // yoksay
+            }
+                updateVideoToolStatus(testMode ? 'Test kaydı hazırlanıyor...' : uiT('video.tools.record.saving.prepare', 'Kayıt hazırlanıyor...'), 'running', 10);
+            const systemAudioResult = await stopScreenRecordingSystemAudioCapture();
+            const separateAudioTracks = await stopScreenRecordingSeparateAudioRecorders();
+            releaseScreenRecordingAudioGraph();
+            screenRecordingStream = null;
+            if (wantsSeparateAudioTracks && systemAudioResult?.path) {
+                separateAudioTracks.unshift({
+                    path: systemAudioResult.path,
+                    kind: 'desktop',
+                    label: uiT('video.tools.audioTracks.desktop', 'Masaüstü')
+                });
+            }
+            const blob = new Blob(screenRecordingChunks, { type: mimeType || 'video/webm' });
+            screenRecordingChunks = [];
+            screenRecordingBytes = blob.size || screenRecordingBytes;
+            updateVideoStudioStatsPanel();
+            let ok = false;
+            let captureWritten = false;
+            if (!blob.size || blob.size < 128) {
+                updateVideoToolStatus(uiT('video.tools.record.noFrames', 'Kayıt dosyası boş kaldı; lütfen PipeWire ekranını seçip birkaç saniye kaydedin.'), 'error', 0);
+                safeNotify(uiT('video.tools.record.noFrames', 'Kayıt dosyası boş kaldı; lütfen PipeWire ekranını seçip birkaç saniye kaydedin.'), 'warning', 3600);
+                clearVideoStudioRecoveryCandidate();
+            } else {
+                updateVideoToolStatus(uiT('video.tools.record.saving.reading', 'Kayıt dosyası hazırlanıyor...'), 'running', 35);
+                updateVideoToolStatus(uiT('video.tools.record.saving.writing', 'Kayıt diske yazılıyor...'), 'running', 90);
+                const arrayBuffer = await blob.arrayBuffer();
+                ok = window.aurivo?.writeBufferFile
+                    ? await window.aurivo.writeBufferFile(capturePath, arrayBuffer)
+                    : await window.aurivo?.writeBase64File?.(capturePath, arrayBufferToBase64(arrayBuffer));
+                captureWritten = !!ok;
+                if (captureWritten) {
+                    saveVideoStudioRecoveryCandidate({
+                        ...getVideoStudioRecoveryCandidate(),
+                        stage: 'captured',
+                        capturePath,
+                        outputPath,
+                        format: actualFormat,
+                        bitrateKbps: recordingSettings.bitrateKbps,
+                        videoEncoder: recordingSettings.videoEncoder,
+                        audioTracks: separateAudioTracks,
+                        bytes: blob.size
+                    });
+                }
+            }
+            if (ok) {
+                let muxedCapturePath = capturePath;
+                if (!wantsSeparateAudioTracks && systemAudioResult?.path && window.aurivo?.screenRecording?.muxSystemAudio) {
+                    const muxed = await window.aurivo.screenRecording.muxSystemAudio(capturePath, systemAudioResult.path);
+                    if (!muxed?.success) {
+                        const detail = muxed?.error ? `: ${muxed.error}` : '';
+                        safeNotify(`${uiT('video.tools.record.systemAudioFailed', 'Sistem sesi eklenemedi')}${detail}`, 'warning', 3200);
+                    } else if (muxed.path) {
+                        muxedCapturePath = muxed.path;
+                    }
+                }
+                if (actualFormat !== 'webm' || separateAudioTracks.length) {
+                    updateVideoToolStatus(uiT('video.tools.record.saving.converting', 'Kayıt FFmpeg ile dönüştürülüyor...'), 'running', 96);
+                    const finalized = await window.aurivo?.screenRecording?.finalizeRecording?.(muxedCapturePath, outputPath, {
+                        format: actualFormat,
+                        bitrateKbps: recordingSettings.bitrateKbps,
+                        videoEncoder: recordingSettings.videoEncoder,
+                        audioTracks: separateAudioTracks
+                    });
+                    if (!finalized?.success) {
+                        ok = false;
+                        const detail = finalized?.error ? `: ${finalized.error}` : '';
+                        safeNotify(`${uiT('video.tools.record.saveFailed', 'Ekran kaydı kaydedilemedi.')}${detail}`, 'warning', 3600);
+                    }
+                }
+            }
+            if (ok) {
+                clearVideoStudioRecoveryCandidate();
+                videoToolLastOutputPath = outputPath;
+                const outputName = window.aurivo?.path?.basename?.(outputPath) || outputPath;
+                updateVideoToolStatus(`${testMode ? 'Test kaydı kaydedildi.' : uiT('video.tools.record.done', 'Ekran kaydı kaydedildi.')} ${outputName}`, 'done', 100);
+                addVideoStudioLog(`${testMode ? 'Test kaydı tamamlandı.' : uiT('video.tools.logs.recordDone', 'Kayıt tamamlandı.')}: ${outputName}`, 'success');
+                updateVideoToolStatus(uiT('video.tools.validation.running', 'Kayıt doğrulanıyor...'), 'running', 98);
+                await validateVideoStudioRecordingFile(outputPath, {
+                    expectedDurationSec: testMode ? testDurationSec : getScreenRecordingElapsedSeconds()
+                });
+                updateVideoToolStatus(`${testMode ? 'Test kaydı doğrulandı.' : uiT('video.tools.record.done', 'Ekran kaydı kaydedildi.')} ${outputName}`, 'done', 100);
+                safeNotify(`${testMode ? 'Test kaydı doğrulandı.' : uiT('video.tools.record.done', 'Ekran kaydı kaydedildi.')} ${outputName}`, 'success', 3200);
+                updateVideoStudioQuickActionsPanel();
+            } else if (blob.size >= 128) {
+                if (!captureWritten) clearVideoStudioRecoveryCandidate();
+                updateVideoToolStatus(uiT('video.tools.record.saveFailed', 'Ekran kaydı kaydedilemedi.'), 'error', 0);
+                addVideoStudioLog(uiT('video.tools.logs.recordFailed', 'Kayıt kaydedilemedi.'), 'error');
+            }
+            const runBtn = document.getElementById('videoToolRunBtn');
+            const stopBtn = document.getElementById('videoToolStopRecordBtn');
+            if (runBtn) runBtn.disabled = false;
+            if (stopBtn) stopBtn.classList.add('hidden');
+            screenRecorder = null;
+            videoStudioTestRecordingActive = false;
+            screenRecordingPausedAt = 0;
+            screenRecordingPausedMs = 0;
+            updateVideoStudioStatsPanel();
+            updateVideoStudioRecordButtons();
+            releaseVideoToolIdleResources({ keepSources: getVideoToolMode() === 'record' });
+        };
+
+        const runBtn = document.getElementById('videoToolRunBtn');
+        const stopBtn = document.getElementById('videoToolStopRecordBtn');
+        if (runBtn) runBtn.disabled = true;
+        if (stopBtn) stopBtn.classList.remove('hidden');
+        videoToolLastOutputPath = '';
+        updateVideoToolStatus(testMode ? `Test kaydı başladı (${testDurationSec} sn)` : uiT('video.tools.record.recording', 'Kaydediliyor'), 'running', 1);
+        addVideoStudioLog(testMode ? `Test kaydı başlatıldı (${testDurationSec} sn).` : uiT('video.tools.logs.recordStarted', 'Kayıt başlatıldı.'));
+        screenRecordingStartedAt = Date.now();
+        screenRecordingLastChunkAt = Date.now();
+        screenRecordingLastHealthWarningAt = 0;
+        screenRecordingPausedAt = 0;
+        screenRecordingPausedMs = 0;
+        updateVideoStudioStatsPanel();
+        screenRecordingTimer = setInterval(updateScreenRecordingElapsed, 500);
+        screenRecorder.start(1000);
+        updateVideoStudioRecordButtons();
+        if (testMode) {
+            scheduleVideoStudioTestRecordingStop(testDurationSec);
+        } else {
+            scheduleScreenRecordingAutoStop();
+        }
+    } catch (error) {
+        if (screenRecordingTimer) {
+            clearInterval(screenRecordingTimer);
+            screenRecordingTimer = null;
+        }
+        clearScreenRecordingAutoStopTimer();
+        clearScreenRecordingTestStopTimer();
+        stopScreenRecordingSystemAudioCapture().catch(() => {});
+        stopScreenRecordingSeparateAudioRecorders().catch(() => {});
+        try {
+            screenRecordingStream?.getTracks?.().forEach((track) => track.stop());
+        } catch {
+            // yoksay
+        }
+        releaseScreenRecordingAudioGraph();
+        screenRecordingStream = null;
+        screenRecordingChunks = [];
+        screenRecordingBytes = 0;
+        screenRecordingChunkCount = 0;
+        screenRecordingSlowChunkWarnings = 0;
+        screenRecordingLastBytesSampleAt = 0;
+        screenRecordingLastBytesSample = 0;
+        screenRecordingWriteBytesPerSecond = 0;
+        screenRecordingCompositionFrameCount = 0;
+        screenRecordingCompositionLastFrameSampleAt = 0;
+        screenRecordingCompositionLastFrameCount = 0;
+        screenRecordingCompositionFps = 0;
+        screenRecordingFrameDropEstimate = 0;
+        screenRecordingLastChunkAt = 0;
+        screenRecordingLastHealthWarningAt = 0;
+        screenRecordingOutputPath = '';
+        screenRecordingSeparateAudioRecorders = [];
+        screenRecordingPausedAt = 0;
+        screenRecordingPausedMs = 0;
+        screenRecorder = null;
+        videoStudioTestRecordingActive = false;
+        clearVideoStudioRecoveryCandidate();
+        updateVideoStudioStatsPanel();
+        updateVideoStudioRecordButtons();
+        const runBtn = document.getElementById('videoToolRunBtn');
+        const stopBtn = document.getElementById('videoToolStopRecordBtn');
+        if (runBtn) runBtn.disabled = false;
+        if (stopBtn) stopBtn.classList.add('hidden');
+        updateVideoToolStatus(error?.message || String(error), 'error', 0);
+        addVideoStudioLog(`${uiT('video.tools.logs.recordFailed', 'Kayıt kaydedilemedi.')}: ${error?.message || error}`, 'error');
+        safeNotify(`${uiT('video.tools.record.failed', 'Ekran kaydı başlatılamadı')}: ${error?.message || error}`, 'error', 3500);
+    }
+}
+
+function useCurrentVideoTimeForThumbnail() {
+    const input = document.getElementById('videoToolThumbnailTimeInput');
+    if (!input) return;
+    const currentTime = Number(elements.videoPlayer?.currentTime || 0);
+    input.value = Number.isFinite(currentTime) ? currentTime.toFixed(1) : '0';
+}
+
+async function runVideoToolConversion() {
+    if (videoToolActiveJobId) return;
+    const mode = getVideoToolMode();
+    if (mode === 'record') {
+        await startScreenRecording();
+        return;
+    }
+    if (mode === 'batch') {
+        await runVideoToolBatch();
+        return;
+    }
+    const format = String(document.getElementById('videoToolFormatSelect')?.value || (mode === 'audio' ? 'mp3' : 'mp4')).toLowerCase();
+    const quality = String(document.getElementById('videoToolQualitySelect')?.value || 'medium').toLowerCase();
+    let inputPath = getPreferredVideoToolSourcePath();
+    if (!inputPath) inputPath = await pickVideoToolSource();
+    if (!inputPath) {
+        safeNotify(uiT('video.tools.notify.noSource', 'Dönüştürmek için önce bir video seçin.'), 'warning', 2200);
+        return;
+    }
+    if (mode === 'subtitle') {
+        const currentSubtitle = getVideoToolSubtitleOptions();
+        if (!currentSubtitle.path) {
+            const pickedSubtitle = await pickVideoToolSubtitle();
+            if (!pickedSubtitle) {
+                safeNotify(uiT('video.tools.subtitle.noFile', 'Altyazı eklemek için önce .srt dosyası seçin.'), 'warning', 2200);
+                return;
+            }
+        }
+    }
+
+    const saveResult = await window.aurivo?.saveFile?.({
+        title: uiT('video.tools.saveTitle', 'Çıktıyı kaydet'),
+        defaultPath: getVideoToolDefaultOutputPath(inputPath, format),
+        filters: [
+            { name: format.toUpperCase(), extensions: [format] },
+            { name: uiT('dialog.filters.allFiles', 'Tüm Dosyalar'), extensions: ['*'] }
+        ]
+    });
+    if (!saveResult?.path) return;
+    const outputPath = String(saveResult.path || '').toLowerCase().endsWith(`.${format}`)
+        ? String(saveResult.path || '')
+        : `${String(saveResult.path || '')}.${format}`;
+
+    const jobId = `video-tool-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    videoToolActiveJobId = jobId;
+    videoToolLastOutputPath = '';
+    const runBtn = document.getElementById('videoToolRunBtn');
+    if (runBtn) runBtn.disabled = true;
+    ensureVideoToolsProgressListener();
+    updateVideoToolStatus(uiT('video.tools.status.running', 'Dönüştürülüyor...'), 'running', 1);
+
+    try {
+        const result = await window.aurivo?.videoTools?.convert?.({
+            jobId,
+            target: mode,
+            format,
+            quality,
+            edit: mode === 'edit' ? getVideoToolEditOptions() : undefined,
+            subtitle: mode === 'subtitle' ? getVideoToolSubtitleOptions() : undefined,
+            thumbnail: mode === 'thumbnail' ? getVideoToolThumbnailOptions() : undefined,
+            enhance: mode === 'enhance' ? getVideoToolEnhanceOptions() : undefined,
+            inputPath,
+            outputPath
+        });
+        if (result?.ok) {
+            videoToolLastOutputPath = String(result.path || outputPath || '').trim();
+            updateVideoToolStatus(uiT('video.tools.status.done', 'Tamamlandı.'), 'done', 100);
+            safeNotify(uiT('video.tools.notify.done', 'Dönüştürme tamamlandı.'), 'success', 2200);
+            return;
+        }
+        const error = result?.error || uiT('video.tools.notify.failed', 'Dönüştürme başarısız.');
+        updateVideoToolStatus(error, 'error', 0);
+        safeNotify(error, 'error', 3500);
+    } catch (error) {
+        updateVideoToolStatus(error?.message || String(error), 'error', 0);
+        safeNotify(`${uiT('video.tools.notify.failed', 'Dönüştürme başarısız.')}: ${error?.message || error}`, 'error', 3500);
+    } finally {
+        const performanceProfile = getVideoToolPerformanceProfile();
+        if (performanceProfile.singleJobSettleMs > 0) {
+            await new Promise((resolve) => setTimeout(resolve, performanceProfile.singleJobSettleMs));
+        }
+        videoToolActiveJobId = '';
+        if (runBtn) runBtn.disabled = false;
+        releaseVideoToolsProgressListener();
+        if (videoToolLastOutputPath) {
+            updateVideoToolStatus(uiT('video.tools.status.done', 'Tamamlandı.'), 'done', 100);
+        }
+    }
+}
+
+function renderVideoWorkspace() {
+    if (!elements.videoGridView) return;
+    const videoItems = Array.isArray(state.videoFiles) ? state.videoFiles : [];
+    if (!videoItems.length) {
+        elements.videoGridView.innerHTML = `
+            <div class="video-workspace-empty">
+                <div class="video-workspace-empty-card">
+                    <span class="material-symbols-rounded" aria-hidden="true">movie</span>
+                    <div class="video-workspace-empty-title">${escapeHtml(uiT('video.workspace.emptyTitle', 'Henüz video yok'))}</div>
+                    <div class="video-workspace-empty-sub">${escapeHtml(uiT('video.workspace.emptyHint', 'Soldaki panelden video eklediğinizde burada galeri benzeri kartlar olarak görünecek.'))}</div>
+                </div>
+            </div>
+        `;
+        setVideoWorkspaceMode('grid');
+        return;
+    }
+
+    const cards = videoItems.map((video, index) => {
+        const normalizedPath = String(video?.path || '').trim();
+        const safePath = escapeAttribute(normalizedPath);
+        const cachedMeta = getCachedMetadataForPath(normalizedPath) || {};
+        const rawName = String(cachedMeta?.title || video?.name || window.aurivo?.path?.basename?.(video?.path) || 'Video');
+        const safeName = escapeHtml(rawName);
+        const thumb = videoThumbnailUrlCache.get(normalizedPath) || '';
+        const isCurrent = String(state.currentVideoPath || '').trim() === normalizedPath;
+        const isQueuedNext = state.currentVideoIndex >= 0 && index === (state.currentVideoIndex + 1);
+        const durationSec = Number(video?.duration || cachedMeta?.duration || 0);
+        const metaParts = [escapeHtml(uiT('video.workspace.metaLabel', 'Video'))];
+        if (Number.isFinite(durationSec) && durationSec > 0) {
+            metaParts.push(escapeHtml(formatTime(durationSec)));
+        }
+        if (isCurrent) {
+            metaParts.push(escapeHtml(uiT('video.workspace.nowPlaying', 'Şimdi oynatılıyor')));
+        }
+        const durationBadge = Number.isFinite(durationSec) && durationSec > 0
+            ? `<span class="video-workspace-duration-badge">${escapeHtml(formatTime(durationSec))}</span>`
+            : '';
+        const playLabel = escapeHtml(uiT('video.workspace.play', 'Oynat'));
+        const queueLabel = escapeHtml(uiT('video.workspace.queueNext', 'Sıradaki'));
+        const quickActionsLabel = escapeHtml(uiT('video.workspace.quickActions', 'Video işlemleri'));
+        const previewMarkup = thumb
+            ? `<img class="gallery-item-preview-image video-workspace-preview-image" src="${escapeAttribute(thumb)}" alt="">`
+            : `<div class="video-workspace-fallback"><span class="material-symbols-rounded" aria-hidden="true">play_circle</span></div>`;
+        return `
+            <article class="gallery-item video-workspace-item${isCurrent ? ' is-current' : ''}${isQueuedNext ? ' is-queued-next' : ''}" data-video-path="${safePath}" title="${safeName}">
+                <div class="gallery-item-preview-wrap video-workspace-preview" data-video-action="open" data-video-path="${safePath}" data-video-index="${index}">
+                    ${previewMarkup}
+                    <div class="gallery-item-hover-actions video-workspace-hover-actions" role="group" aria-label="${quickActionsLabel}">
+                        <button type="button" class="gallery-item-action" data-video-action="open" data-video-path="${safePath}" data-video-index="${index}" title="${playLabel}" aria-label="${playLabel}">
+                            <span class="material-symbols-rounded">play_arrow</span>
+                        </button>
+                        <button type="button" class="gallery-item-action" data-video-action="queue-next" data-video-path="${safePath}" data-video-index="${index}" title="${queueLabel}" aria-label="${queueLabel}">
+                            <span class="material-symbols-rounded">queue_play_next</span>
+                        </button>
+                    </div>
+                    <span class="video-workspace-play-badge" aria-hidden="true">
+                        <span class="material-symbols-rounded">play_arrow</span>
+                    </span>
+                    ${durationBadge}
+                </div>
+                <div class="video-workspace-card-body">
+                    <button type="button" class="gallery-item-name video-workspace-card-title" data-video-action="open" data-video-path="${safePath}" data-video-index="${index}" title="${safeName}">${safeName}</button>
+                    <div class="video-workspace-card-meta">${metaParts.join('<span class="video-workspace-meta-sep" aria-hidden="true">•</span>')}</div>
+                </div>
+            </article>
+        `;
+    }).join('');
+
+    elements.videoGridView.innerHTML = `<div class="gallery-grid">${cards}</div>`;
+    hydrateVideoWorkspaceThumbnails();
+}
+
+function renderVideoToolsWorkspace() {
+    if (!elements.videoToolsWorkspace) return;
+    const viewMode = getVideoToolsViewMode();
+    elements.videoToolsWorkspace.innerHTML = `
+        ${buildVideoToolsViewSwitcher()}
+        ${viewMode === 'studio' ? buildVideoStudioPanel() : buildVideoToolsPanel()}
+    `;
+    elements.videoToolsWorkspace.classList.toggle('is-studio-view', viewMode === 'studio');
+    elements.videoToolsWorkspace.classList.toggle('is-processing-view', viewMode === 'processing');
+    syncVideoToolFormatOptions();
+    syncVideoToolModeUi();
+    const studioPreview = document.getElementById('videoStudioPreviewVideo');
+    if (studioPreview && videoStudioPreviewStream) {
+        studioPreview.srcObject = videoStudioPreviewStream;
+        studioPreview.muted = true;
+        studioPreview.playsInline = true;
+        updateVideoStudioCapturePreviewClip();
+        studioPreview.classList.add('is-active');
+        studioPreview.play().catch(() => {});
+        const stopBtn = document.getElementById('videoStudioStopPreviewBtn');
+        if (stopBtn) stopBtn.disabled = false;
+    }
+    const cameraPreview = document.getElementById('videoStudioCameraPreviewVideo');
+    if (cameraPreview && videoStudioCameraPreviewStream) {
+        cameraPreview.srcObject = videoStudioCameraPreviewStream;
+        cameraPreview.muted = true;
+        cameraPreview.playsInline = true;
+        cameraPreview.classList.add('is-active');
+        cameraPreview.play().catch(() => {});
+    }
+    if (viewMode === 'studio') {
+        refreshVideoStudioAudioDevices().catch(() => {});
+        setTimeout(() => {
+            startVideoStudioLiveAudioMeters().catch(() => {});
+        }, 200);
+        scheduleVideoStudioAutoPreview();
+    } else {
+        releaseVideoStudioIdleRuntime();
+    }
+    hydrateVideoWorkspaceThumbnails();
+    scheduleVideoStudioProfileSave();
+}
+
+function buildVideoToolsViewSwitcher() {
+    const viewMode = getVideoToolsViewMode();
+    const studioActive = viewMode === 'studio';
+    const processingActive = viewMode === 'processing';
+    return `
+        <div class="video-tools-view-switcher" role="tablist" aria-label="${escapeAttribute(uiT('video.tools.viewSwitcher.label', 'Video düzenleme modu'))}">
+            <button type="button" class="video-tools-view-btn${studioActive ? ' is-active' : ''}" data-video-tools-view="studio" role="tab" aria-selected="${studioActive ? 'true' : 'false'}">
+                <img class="video-tools-tab-icon video-tools-record-icon" src="icons/video_tools_studio.svg" alt="" aria-hidden="true">
+                <span>${escapeHtml(uiT('video.tools.view.studio', 'Kayıt Stüdyosu'))}</span>
+            </button>
+            <button type="button" class="video-tools-view-btn${processingActive ? ' is-active' : ''}" data-video-tools-view="processing" role="tab" aria-selected="${processingActive ? 'true' : 'false'}">
+                <span class="material-symbols-rounded" aria-hidden="true">movie_edit</span>
+                <span>${escapeHtml(uiT('video.tools.view.processing', 'Video İşleme'))}</span>
+            </button>
+        </div>
+    `;
+}
+
+function buildVideoStudioPanel() {
+    const isRecording = screenRecorder && screenRecorder.state === 'recording';
+    const isPaused = screenRecorder && screenRecorder.state === 'paused';
+    const isRecordingActive = !!screenRecorder && screenRecorder.state !== 'inactive';
+    const sourcePlaceholder = uiT('video.tools.record.portalSource', 'Ekran Yakalama (PipeWire)');
+    const activeTextSource = getVideoStudioActiveTextSource();
+    const activeVisualSource = getVideoStudioActiveVisualSource();
+    const activeCropSource = getVideoStudioActiveCropSource();
+    const activeSourceLocked = isVideoStudioSourceLocked(activeVisualSource || activeTextSource);
+    const activeSourceFit = normalizeVideoStudioSourceFit(activeVisualSource?.fit);
+    if (!Array.isArray(videoStudioSceneCollections) || !videoStudioSceneCollections.length) {
+        ensureVideoStudioSceneCollections();
+    }
+    const activeCollection = videoStudioSceneCollections.find((collection) => collection.id === videoStudioActiveSceneCollectionId) || videoStudioSceneCollections[0] || null;
+    const collectionOptions = videoStudioSceneCollections.map((collection, index) => {
+        const id = escapeAttribute(collection.id);
+        const name = escapeHtml(getVideoStudioCollectionName(collection, index));
+        return `<option value="${id}"${collection.id === videoStudioActiveSceneCollectionId ? ' selected' : ''}>${name}</option>`;
+    }).join('');
+    const templateMarkup = getVideoStudioTemplateDefinitions().map((template) => `
+        <button type="button" class="video-studio-template-btn" data-video-studio-template="${escapeAttribute(template.id)}" title="${escapeAttribute(template.pluginName ? `Plugin: ${template.pluginName}` : '')}">
+            <span class="material-symbols-rounded" aria-hidden="true">${escapeHtml(template.icon || 'view_quilt')}</span>
+            <span>${escapeHtml(template.name)}</span>
+        </button>
+    `).join('');
+    const scenesMarkup = videoStudioScenes.map((scene) => {
+        const safeId = escapeAttribute(scene.id);
+        const sceneName = scene.id === 'scene-1'
+            ? uiT('video.tools.studio.sceneDefault', 'Sahne 1')
+            : (scene.name || uiT('video.tools.studio.sceneDefault', 'Sahne 1'));
+        const safeName = escapeHtml(sceneName);
+        return `
+            <div class="video-studio-scene-row${scene.id === videoStudioActiveSceneId ? ' is-active' : ''}">
+                <button type="button" class="video-studio-list-row" data-video-studio-scene="${safeId}">
+                    <span class="material-symbols-rounded" aria-hidden="true">movie</span>
+                    <span>${safeName}</span>
+                </button>
+                <button type="button" class="video-studio-mini-btn is-danger" data-video-studio-remove-scene="${safeId}" title="${escapeAttribute(uiT('video.tools.studio.removeScene', 'Sahneyi sil'))}" aria-label="${escapeAttribute(uiT('video.tools.studio.removeScene', 'Sahneyi sil'))}">
+                    <span class="material-symbols-rounded" aria-hidden="true">close</span>
+                </button>
+            </div>
+        `;
+    }).join('');
+    const sourcesMarkup = videoStudioSources.map((source, index) => {
+        const safeId = escapeAttribute(source.id);
+        const safeName = escapeHtml(getVideoStudioSourceName(source));
+        const isVisible = source.visible !== false;
+        const isLocked = isVideoStudioSourceLocked(source);
+        const toggleLabel = isVisible
+            ? uiT('video.tools.studio.hideSource', 'Kaynağı gizle')
+            : uiT('video.tools.studio.showSource', 'Kaynağı göster');
+        const lockLabel = isLocked
+            ? uiT('video.tools.studio.unlockSource', 'Kaynak kilidini aç')
+            : uiT('video.tools.studio.lockSource', 'Kaynağı kilitle');
+        const canMoveUp = index > 0;
+        const canMoveDown = index < videoStudioSources.length - 1;
+        return `
+            <div class="video-studio-source-row${source.id === videoStudioActiveSourceId ? ' is-active' : ''}${isVisible ? '' : ' is-hidden-source'}${isLocked ? ' is-locked-source' : ''}">
+                <button type="button" class="video-studio-list-row" data-video-studio-source="${safeId}">
+                    <span class="material-symbols-rounded" aria-hidden="true">${escapeHtml(source.icon || 'layers')}</span>
+                    <span>${safeName}</span>
+                </button>
+                <button type="button" class="video-studio-mini-btn" data-video-studio-move-source="${safeId}" data-video-studio-move-direction="up" title="${escapeAttribute(uiT('video.tools.studio.moveSourceUp', 'Üste taşı'))}" aria-label="${escapeAttribute(uiT('video.tools.studio.moveSourceUp', 'Üste taşı'))}"${canMoveUp ? '' : ' disabled'}>
+                    <span class="material-symbols-rounded" aria-hidden="true">keyboard_arrow_up</span>
+                </button>
+                <button type="button" class="video-studio-mini-btn" data-video-studio-move-source="${safeId}" data-video-studio-move-direction="down" title="${escapeAttribute(uiT('video.tools.studio.moveSourceDown', 'Alta taşı'))}" aria-label="${escapeAttribute(uiT('video.tools.studio.moveSourceDown', 'Alta taşı'))}"${canMoveDown ? '' : ' disabled'}>
+                    <span class="material-symbols-rounded" aria-hidden="true">keyboard_arrow_down</span>
+                </button>
+                <button type="button" class="video-studio-mini-btn" data-video-studio-toggle-source="${safeId}" title="${escapeAttribute(toggleLabel)}" aria-label="${escapeAttribute(toggleLabel)}">
+                    <span class="material-symbols-rounded" aria-hidden="true">${isVisible ? 'visibility' : 'visibility_off'}</span>
+                </button>
+                <button type="button" class="video-studio-mini-btn${isLocked ? ' is-locked' : ''}" data-video-studio-lock-source="${safeId}" title="${escapeAttribute(lockLabel)}" aria-label="${escapeAttribute(lockLabel)}">
+                    <span class="material-symbols-rounded" aria-hidden="true">${isLocked ? 'lock' : 'lock_open'}</span>
+                </button>
+                <button type="button" class="video-studio-mini-btn is-danger" data-video-studio-remove-source="${safeId}" title="${escapeAttribute(uiT('video.tools.studio.removeSource', 'Kaynağı sil'))}" aria-label="${escapeAttribute(uiT('video.tools.studio.removeSource', 'Kaynağı sil'))}">
+                    <span class="material-symbols-rounded" aria-hidden="true">close</span>
+                </button>
+            </div>
+        `;
+    }).join('') || `
+        <div class="video-studio-empty-mini">${escapeHtml(uiT('video.tools.studio.noSources', 'Kaynak yok'))}</div>
+    `;
+    const visualSourcesMarkup = getVideoStudioVisualSources().map((source) => {
+        const safeId = escapeAttribute(source.id);
+        const safeName = escapeHtml(getVideoStudioSourceName(source));
+        const isLocked = isVideoStudioSourceLocked(source);
+        const transform = getVideoStudioSourceTransform(source);
+        const style = `left: ${transform.x * 100}%; top: ${transform.y * 100}%; width: ${transform.width * 100}%; height: ${transform.height * 100}%; z-index: ${getVideoStudioSourceLayer(source.id)};`;
+        const contentStyle = `opacity: ${getVideoStudioSourceOpacity(source) / 100}; transform: ${source.flipX ? 'scaleX(-1)' : 'none'}; clip-path: ${['camera', 'image', 'media'].includes(source.kind) ? getVideoStudioSourceCropStyle(source) : 'none'};`;
+        return `
+            <div class="video-studio-transform-box${source.id === videoStudioActiveSourceId ? ' is-active' : ''}${isLocked ? ' is-locked-source' : ''}" data-video-studio-transform-source="${safeId}" style="${escapeAttribute(style)}">
+                ${source.kind === 'camera' ? `<video id="videoStudioCameraPreviewVideo" class="video-studio-camera-preview-video" style="${escapeAttribute(contentStyle)}" muted playsinline></video>` : ''}
+                ${source.kind === 'image' ? `<img class="video-studio-image-preview" style="${escapeAttribute(contentStyle)}" src="${escapeAttribute(source.url || toLocalFileUrl(source.path || ''))}" alt="">` : ''}
+                ${source.kind === 'media' ? `<video class="video-studio-camera-preview-video" style="${escapeAttribute(contentStyle)}" src="${escapeAttribute(source.url || toLocalFileUrl(source.path || ''))}" muted autoplay${source.loop === false ? '' : ' loop'} playsinline></video>` : ''}
+                ${source.kind === 'color' ? `<div class="video-studio-text-preview" style="${escapeAttribute(`${contentStyle} background: ${source.color || '#12324a'}; width: 100%; height: 100%;`)}"></div>` : ''}
+                ${source.kind === 'text' ? `<div class="video-studio-text-preview" style="${escapeAttribute(`${contentStyle} color: ${source.color || '#ffffff'}; font-size: ${normalizeVideoStudioTextFontSize(source.fontSize, 42)}px;`)}">${escapeHtml(source.text || '')}</div>` : ''}
+                <span class="video-studio-transform-label">${safeName}</span>
+                ${isLocked ? '<span class="video-studio-transform-lock material-symbols-rounded" aria-hidden="true">lock</span>' : ''}
+                <span class="video-studio-transform-handle" data-video-studio-transform-resize="1" aria-hidden="true"></span>
+            </div>
+        `;
+    }).join('');
+    const displayVisible = isVideoStudioDisplayVisible();
+    const captureMode = normalizeVideoStudioCaptureMode(videoStudioCaptureMode);
+    const captureRegion = getVideoStudioCaptureRegion();
+    const captureRegionDisabled = captureMode !== 'region';
+    const lastRecordingPath = getVideoStudioLastRecordingPath();
+    const lastRecordingName = lastRecordingPath
+        ? (window.aurivo?.path?.basename?.(lastRecordingPath) || lastRecordingPath)
+        : uiT('video.tools.quickActions.noRecording', 'Henüz kayıt yok');
+    const preflightSummary = getVideoStudioPreflightSummary();
+    loadVideoStudioRecoveryCandidate();
+    return `
+        <section class="video-studio-panel" aria-label="${escapeAttribute(uiT('video.tools.studio.title', 'Kayıt Stüdyosu'))}">
+            <div class="video-studio-head">
+                <div class="video-studio-title-wrap">
+                    <img class="video-studio-title-icon" src="icons/video_tools_studio.svg" alt="" aria-hidden="true">
+                    <div>
+                        <div class="video-studio-title">${escapeHtml(uiT('video.tools.studio.title', 'Kayıt Stüdyosu'))}</div>
+                        <div class="video-studio-sub">${escapeHtml(uiT('video.tools.studio.subtitle', 'Sahne, kaynak, önizleme ve kayıt kontrolü'))}</div>
+                    </div>
+                </div>
+                <div class="video-studio-actions">
+                    <button type="button" class="btn video-studio-record-btn" id="videoStudioStartRecordBtn"${isRecordingActive ? ' disabled' : ''}>
+                        <span class="material-symbols-rounded" aria-hidden="true">fiber_manual_record</span>
+                        ${escapeHtml(uiT('video.tools.studio.startRecord', 'Kaydı Başlat'))}
+                    </button>
+                    <button type="button" class="btn btn-small" id="videoStudioTestRecordBtn" title="5 saniyelik test kaydı" aria-label="5 saniyelik test kaydı"${isRecordingActive ? ' disabled' : ''}>
+                        <span class="material-symbols-rounded" aria-hidden="true">science</span>
+                        Test
+                    </button>
+                    <button type="button" class="video-tool-icon-btn video-studio-pause-btn${isPaused ? ' is-paused' : ''}" id="videoStudioPauseRecordBtn" title="${escapeAttribute(isPaused ? uiT('video.tools.studio.resumeRecord', 'Devam et') : uiT('video.tools.studio.pauseRecord', 'Duraklat'))}" aria-label="${escapeAttribute(isPaused ? uiT('video.tools.studio.resumeRecord', 'Devam et') : uiT('video.tools.studio.pauseRecord', 'Duraklat'))}"${isRecordingActive ? '' : ' disabled'}>
+                        <span class="material-symbols-rounded" aria-hidden="true">${isPaused ? 'play_arrow' : 'pause'}</span>
+                    </button>
+                    <button type="button" class="video-tool-icon-btn video-studio-stop-btn" id="videoStudioStopRecordBtn" title="${escapeAttribute(uiT('video.tools.studio.stopRecord', 'Durdur'))}" aria-label="${escapeAttribute(uiT('video.tools.studio.stopRecord', 'Durdur'))}"${isRecordingActive ? '' : ' disabled'}>
+                        <span class="material-symbols-rounded" aria-hidden="true">stop</span>
+                    </button>
+                </div>
+            </div>
+            <div class="video-studio-layout">
+                <aside class="video-studio-side" aria-label="${escapeAttribute(uiT('video.tools.studio.scene', 'Sahne'))}">
+                    <div class="video-studio-collection-box">
+                        <div class="video-studio-panel-head">
+                            <div class="video-studio-panel-label">${escapeHtml(uiT('video.tools.collections.title', 'Sahne Koleksiyonu'))}</div>
+                            <div class="video-studio-head-actions">
+                                <button type="button" class="video-studio-mini-btn" id="videoStudioAddCollectionBtn" title="${escapeAttribute(uiT('video.tools.collections.add', 'Koleksiyon ekle'))}" aria-label="${escapeAttribute(uiT('video.tools.collections.add', 'Koleksiyon ekle'))}">
+                                    <span class="material-symbols-rounded" aria-hidden="true">add</span>
+                                </button>
+                                <button type="button" class="video-studio-mini-btn" id="videoStudioDuplicateCollectionBtn" title="${escapeAttribute(uiT('video.tools.collections.duplicate', 'Koleksiyonu kopyala'))}" aria-label="${escapeAttribute(uiT('video.tools.collections.duplicate', 'Koleksiyonu kopyala'))}">
+                                    <span class="material-symbols-rounded" aria-hidden="true">content_copy</span>
+                                </button>
+                                <button type="button" class="video-studio-mini-btn is-danger" id="videoStudioRemoveCollectionBtn" title="${escapeAttribute(uiT('video.tools.collections.remove', 'Koleksiyonu sil'))}" aria-label="${escapeAttribute(uiT('video.tools.collections.remove', 'Koleksiyonu sil'))}"${videoStudioSceneCollections.length > 1 ? '' : ' disabled'}>
+                                    <span class="material-symbols-rounded" aria-hidden="true">delete</span>
+                                </button>
+                            </div>
+                        </div>
+                        <label class="video-tool-field">
+                            <span>${escapeHtml(uiT('video.tools.collections.select', 'Koleksiyon'))}</span>
+                            <select id="videoStudioSceneCollectionSelect">
+                                ${collectionOptions}
+                            </select>
+                        </label>
+                        <label class="video-tool-field">
+                            <span>${escapeHtml(uiT('video.tools.collections.name', 'Ad'))}</span>
+                            <input id="videoStudioSceneCollectionNameInput" type="text" maxlength="48" value="${escapeAttribute(getVideoStudioCollectionName(activeCollection, 0))}">
+                        </label>
+                        <div class="video-studio-profile-transfer">
+                            <button type="button" class="btn btn-small" id="videoStudioExportProfileBtn">
+                                <span class="material-symbols-rounded" aria-hidden="true">file_upload</span>
+                                ${escapeHtml(uiT('video.tools.profiles.export', 'Dışa aktar'))}
+                            </button>
+                            <button type="button" class="btn btn-small" id="videoStudioImportProfileBtn">
+                                <span class="material-symbols-rounded" aria-hidden="true">file_download</span>
+                                ${escapeHtml(uiT('video.tools.profiles.import', 'İçe aktar'))}
+                            </button>
+                        </div>
+                        <div class="video-studio-template-box">
+                            <div class="video-studio-panel-head">
+                                <div class="video-studio-panel-label">${escapeHtml(uiT('video.tools.templates.title', 'Şablonlar'))}</div>
+                                <button type="button" class="video-studio-mini-btn" id="videoStudioReloadPluginsBtn" title="Pluginleri yenile" aria-label="Pluginleri yenile">
+                                    <span class="material-symbols-rounded" aria-hidden="true">extension</span>
+                                </button>
+                            </div>
+                            ${videoStudioPlugins.length ? `<div class="video-studio-empty-mini">${escapeHtml(`${videoStudioPlugins.length} plugin aktif`)}</div>` : ''}
+                            <div class="video-studio-template-grid">
+                                ${templateMarkup}
+                            </div>
+                        </div>
+                    </div>
+                    <div class="video-studio-panel-head">
+                        <div class="video-studio-panel-label">${escapeHtml(uiT('video.tools.studio.scene', 'Sahne'))}</div>
+                        <button type="button" class="video-studio-mini-btn" id="videoStudioAddSceneBtn" title="${escapeAttribute(uiT('video.tools.studio.addScene', 'Sahne ekle'))}" aria-label="${escapeAttribute(uiT('video.tools.studio.addScene', 'Sahne ekle'))}">
+                            <span class="material-symbols-rounded" aria-hidden="true">add</span>
+                        </button>
+                    </div>
+                    <div class="video-studio-list">
+                        ${scenesMarkup}
+                    </div>
+                    <div class="video-studio-panel-head">
+                        <div class="video-studio-panel-label">${escapeHtml(uiT('video.tools.studio.sources', 'Kaynaklar'))}</div>
+                        <div class="video-studio-head-actions">
+                            <button type="button" class="video-studio-mini-btn${videoStudioSourcePickerOpen ? ' is-active' : ''}" id="videoStudioAddSourceBtn" title="${escapeAttribute(uiT('video.tools.studio.addSource', 'Kaynak ekle'))}" aria-label="${escapeAttribute(uiT('video.tools.studio.addSource', 'Kaynak ekle'))}">
+                                <span class="material-symbols-rounded" aria-hidden="true">add</span>
+                            </button>
+                        </div>
+                    </div>
+                    ${buildVideoStudioSourcePickerMarkup()}
+                    <div class="video-studio-list">
+                        ${sourcesMarkup}
+                    </div>
+                </aside>
+                <div class="video-studio-preview${displayVisible ? '' : ' is-source-hidden'}">
+                    <video id="videoStudioPreviewVideo" class="video-studio-preview-video" muted playsinline></video>
+                    ${visualSourcesMarkup}
+                    <div class="video-studio-preview-empty">
+                        <span class="material-symbols-rounded" aria-hidden="true">${displayVisible ? 'desktop_windows' : 'visibility_off'}</span>
+                        <span>${escapeHtml(displayVisible ? uiT('video.tools.studio.previewHint', 'Kaynak seçip önizleme başlatın') : uiT('video.tools.studio.displayHidden', 'Ekran kaynağı gizli veya silinmiş.'))}</span>
+                    </div>
+                </div>
+                <aside class="video-studio-side video-studio-right">
+                    <label class="video-tool-field">
+                        <span>${escapeHtml(uiT('video.tools.studio.source', 'Kaynak'))}</span>
+                        <select id="videoStudioSourceSelect">
+                            <option value="${escapeAttribute(VIDEO_STUDIO_PORTAL_SOURCE_ID)}"${videoStudioSelectedSourceId === VIDEO_STUDIO_PORTAL_SOURCE_ID ? ' selected' : ''}>${escapeHtml(sourcePlaceholder)}</option>
+                        </select>
+                    </label>
+                    <div class="video-studio-controls">
+                        <button type="button" class="video-tool-icon-btn" id="videoStudioRefreshSourcesBtn" title="${escapeAttribute(uiT('video.tools.studio.refresh', 'Yenile'))}" aria-label="${escapeAttribute(uiT('video.tools.studio.refresh', 'Yenile'))}">
+                            <span class="material-symbols-rounded" aria-hidden="true">refresh</span>
+                        </button>
+                        <button type="button" class="btn video-studio-preview-btn" id="videoStudioPreviewBtn">
+                            <span class="material-symbols-rounded" aria-hidden="true">visibility</span>
+                            ${escapeHtml(uiT('video.tools.studio.preview', 'Önizle'))}
+                        </button>
+                        <button type="button" class="video-tool-icon-btn" id="videoStudioStopPreviewBtn" title="${escapeAttribute(uiT('video.tools.studio.stopPreview', 'Önizlemeyi Durdur'))}" aria-label="${escapeAttribute(uiT('video.tools.studio.stopPreview', 'Önizlemeyi Durdur'))}" disabled>
+                            <span class="material-symbols-rounded" aria-hidden="true">visibility_off</span>
+                        </button>
+                    </div>
+                    <div class="video-studio-capture-settings">
+                        <div class="video-studio-panel-label">${escapeHtml(uiT('video.tools.captureSettings.title', 'Yakalama Alanı'))}</div>
+                        <label class="video-tool-field">
+                            <span>${escapeHtml(uiT('video.tools.captureSettings.mode', 'Mod'))}</span>
+                            <select id="videoStudioCaptureModeSelect">
+                                <option value="full"${captureMode === 'full' ? ' selected' : ''}>${escapeHtml(uiT('video.tools.captureSettings.full', 'Tam kaynak'))}</option>
+                                <option value="region"${captureMode === 'region' ? ' selected' : ''}>${escapeHtml(uiT('video.tools.captureSettings.region', 'Bölge'))}</option>
+                            </select>
+                        </label>
+                        <div class="video-studio-crop-grid video-studio-capture-region-grid${captureRegionDisabled ? ' is-disabled' : ''}">
+                            <label class="video-tool-field">
+                                <span>${escapeHtml(uiT('video.tools.cropSettings.top', 'Üst'))}</span>
+                                <input id="videoStudioCaptureTopInput" type="number" min="0" max="90" step="1" value="${escapeAttribute(String(captureRegion.top))}"${captureRegionDisabled ? ' disabled' : ''}>
+                            </label>
+                            <label class="video-tool-field">
+                                <span>${escapeHtml(uiT('video.tools.cropSettings.right', 'Sağ'))}</span>
+                                <input id="videoStudioCaptureRightInput" type="number" min="0" max="90" step="1" value="${escapeAttribute(String(captureRegion.right))}"${captureRegionDisabled ? ' disabled' : ''}>
+                            </label>
+                            <label class="video-tool-field">
+                                <span>${escapeHtml(uiT('video.tools.cropSettings.bottom', 'Alt'))}</span>
+                                <input id="videoStudioCaptureBottomInput" type="number" min="0" max="90" step="1" value="${escapeAttribute(String(captureRegion.bottom))}"${captureRegionDisabled ? ' disabled' : ''}>
+                            </label>
+                            <label class="video-tool-field">
+                                <span>${escapeHtml(uiT('video.tools.cropSettings.left', 'Sol'))}</span>
+                                <input id="videoStudioCaptureLeftInput" type="number" min="0" max="90" step="1" value="${escapeAttribute(String(captureRegion.left))}"${captureRegionDisabled ? ' disabled' : ''}>
+                            </label>
+                        </div>
+                    </div>
+                    <div class="video-studio-input-overlay-settings">
+                        <div class="video-studio-panel-label">${escapeHtml(uiT('video.tools.inputOverlay.title', 'Giriş Göstergesi'))}</div>
+                        <label class="video-studio-shortcuts-toggle">
+                            <input id="videoStudioShowMouseOverlayInput" type="checkbox"${videoStudioShowMouseOverlay ? ' checked' : ''}>
+                            <span>${escapeHtml(uiT('video.tools.inputOverlay.mouse', 'Mouse hareketi ve tıklama'))}</span>
+                        </label>
+                        <label class="video-studio-shortcuts-toggle">
+                            <input id="videoStudioShowKeyboardOverlayInput" type="checkbox"${videoStudioShowKeyboardOverlay ? ' checked' : ''}>
+                            <span>${escapeHtml(uiT('video.tools.inputOverlay.keyboard', 'Klavye tuşları'))}</span>
+                        </label>
+                        <div class="video-studio-text-settings-grid">
+                            <label class="video-tool-field">
+                                <span>${escapeHtml(uiT('video.tools.inputOverlay.mouseColor', 'Tıklama rengi'))}</span>
+                                <input id="videoStudioMouseOverlayColorInput" type="color" value="${escapeAttribute(normalizeVideoStudioOverlayColor(videoStudioMouseOverlayColor))}">
+                            </label>
+                            <label class="video-tool-field">
+                                <span>${escapeHtml(uiT('video.tools.inputOverlay.mouseSize', 'Halka boyutu'))}</span>
+                                <input id="videoStudioMouseOverlaySizeInput" type="range" min="60" max="180" step="5" value="${escapeAttribute(String(normalizeVideoStudioMouseOverlaySize(videoStudioMouseOverlaySize)))}">
+                            </label>
+                            <label class="video-tool-field">
+                                <span>${escapeHtml(uiT('video.tools.inputOverlay.mouseDuration', 'Mouse süresi'))}</span>
+                                <input id="videoStudioMouseOverlayDurationInput" type="number" min="700" max="5000" step="100" value="${escapeAttribute(String(normalizeVideoStudioOverlayDuration(videoStudioMouseOverlayDuration, 2800)))}">
+                            </label>
+                            <label class="video-tool-field">
+                                <span>${escapeHtml(uiT('video.tools.inputOverlay.keyboardDuration', 'Tuş süresi'))}</span>
+                                <input id="videoStudioKeyboardOverlayDurationInput" type="number" min="700" max="5000" step="100" value="${escapeAttribute(String(normalizeVideoStudioOverlayDuration(videoStudioKeyboardOverlayDuration, 2200)))}">
+                            </label>
+                        </div>
+                        <label class="video-tool-field">
+                            <span>${escapeHtml(uiT('video.tools.inputOverlay.keyboardPosition', 'Klavye konumu'))}</span>
+                            <select id="videoStudioKeyboardOverlayPositionSelect">
+                                <option value="bottom-left"${videoStudioKeyboardOverlayPosition === 'bottom-left' ? ' selected' : ''}>${escapeHtml(uiT('video.tools.inputOverlay.position.bottomLeft', 'Sol alt'))}</option>
+                                <option value="bottom-right"${videoStudioKeyboardOverlayPosition === 'bottom-right' ? ' selected' : ''}>${escapeHtml(uiT('video.tools.inputOverlay.position.bottomRight', 'Sağ alt'))}</option>
+                                <option value="top-left"${videoStudioKeyboardOverlayPosition === 'top-left' ? ' selected' : ''}>${escapeHtml(uiT('video.tools.inputOverlay.position.topLeft', 'Sol üst'))}</option>
+                                <option value="top-right"${videoStudioKeyboardOverlayPosition === 'top-right' ? ' selected' : ''}>${escapeHtml(uiT('video.tools.inputOverlay.position.topRight', 'Sağ üst'))}</option>
+                            </select>
+                        </label>
+                    </div>
+                    ${activeTextSource ? `
+                        <div class="video-studio-text-settings">
+                            <div class="video-studio-panel-label">${escapeHtml(uiT('video.tools.textSettings.title', 'Metin'))}</div>
+                            <label class="video-tool-field">
+                                <span>${escapeHtml(uiT('video.tools.textSettings.content', 'Yazı'))}</span>
+                                <textarea id="videoStudioTextContentInput" rows="3" maxlength="160"${activeSourceLocked ? ' disabled' : ''}>${escapeHtml(activeTextSource.text || '')}</textarea>
+                            </label>
+                            <div class="video-studio-text-settings-grid">
+                                <label class="video-tool-field">
+                                    <span>${escapeHtml(uiT('video.tools.textSettings.color', 'Renk'))}</span>
+                                    <input id="videoStudioTextColorInput" type="color" value="${escapeAttribute(activeTextSource.color || '#ffffff')}"${activeSourceLocked ? ' disabled' : ''}>
+                                </label>
+                                <label class="video-tool-field">
+                                    <span>${escapeHtml(uiT('video.tools.textSettings.size', 'Punto'))}</span>
+                                    <input id="videoStudioTextSizeInput" type="number" min="12" max="160" step="2" value="${escapeAttribute(String(normalizeVideoStudioTextFontSize(activeTextSource.fontSize, 42)))}"${activeSourceLocked ? ' disabled' : ''}>
+                                </label>
+                            </div>
+                        </div>
+                    ` : ''}
+                    ${activeVisualSource ? `
+                        <div class="video-studio-source-settings">
+                            <div class="video-studio-panel-label">${escapeHtml(uiT('video.tools.sourceSettings.title', 'Kaynak Ayarları'))}</div>
+                            <label class="video-studio-mixer-row">
+                                <span>${escapeHtml(uiT('video.tools.sourceSettings.opacity', 'Opaklık'))}</span>
+                                <input id="videoStudioSourceOpacityInput" type="range" min="0" max="100" value="${escapeAttribute(String(getVideoStudioSourceOpacity(activeVisualSource)))}" aria-label="${escapeAttribute(uiT('video.tools.sourceSettings.opacity', 'Opaklık'))}"${activeSourceLocked ? ' disabled' : ''}>
+                                <strong>${escapeHtml(`${getVideoStudioSourceOpacity(activeVisualSource)}%`)}</strong>
+                            </label>
+                            <label class="video-studio-shortcuts-toggle">
+                                <input id="videoStudioSourceFlipInput" type="checkbox"${activeVisualSource.flipX ? ' checked' : ''}${activeSourceLocked ? ' disabled' : ''}>
+                                <span>${escapeHtml(uiT('video.tools.sourceSettings.flipX', 'Yatay çevir'))}</span>
+                            </label>
+                            ${activeSourceLocked ? `<div class="video-studio-locked-hint">${escapeHtml(uiT('video.tools.sourceSettings.lockedHint', 'Kaynak kilitli; düzenlemek için kilidi açın.'))}</div>` : ''}
+                            ${activeVisualSource.kind === 'color' ? `
+                                <label class="video-tool-field">
+                                    <span>${escapeHtml(uiT('video.tools.sourceSettings.color', 'Renk'))}</span>
+                                    <input id="videoStudioSourceColorInput" type="color" value="${escapeAttribute(activeVisualSource.color || '#12324a')}"${activeSourceLocked ? ' disabled' : ''}>
+                                </label>
+                            ` : ''}
+                            ${['camera', 'image', 'media'].includes(activeVisualSource.kind) ? `
+                                <label class="video-tool-field">
+                                    <span>${escapeHtml(uiT('video.tools.sourceSettings.fit', 'Yerleşim'))}</span>
+                                    <select id="videoStudioSourceFitSelect"${activeSourceLocked ? ' disabled' : ''}>
+                                        <option value="cover"${activeSourceFit === 'cover' ? ' selected' : ''}>${escapeHtml(uiT('video.tools.sourceSettings.fit.cover', 'Doldur'))}</option>
+                                        <option value="contain"${activeSourceFit === 'contain' ? ' selected' : ''}>${escapeHtml(uiT('video.tools.sourceSettings.fit.contain', 'Sığdır'))}</option>
+                                        <option value="stretch"${activeSourceFit === 'stretch' ? ' selected' : ''}>${escapeHtml(uiT('video.tools.sourceSettings.fit.stretch', 'Esnet'))}</option>
+                                    </select>
+                                </label>
+                            ` : ''}
+                            ${activeVisualSource.kind === 'camera' ? `
+                                <div class="video-studio-text-settings-grid">
+                                    <label class="video-tool-field">
+                                        <span>${escapeHtml(uiT('video.tools.sourceSettings.cameraResolution', 'Kamera çözünürlüğü'))}</span>
+                                        <select id="videoStudioCameraResolutionSelect"${activeSourceLocked ? ' disabled' : ''}>
+                                            <option value="360p"${normalizeVideoStudioCameraResolution(activeVisualSource.cameraResolution) === '360p' ? ' selected' : ''}>360p</option>
+                                            <option value="720p"${normalizeVideoStudioCameraResolution(activeVisualSource.cameraResolution) === '720p' ? ' selected' : ''}>720p</option>
+                                            <option value="1080p"${normalizeVideoStudioCameraResolution(activeVisualSource.cameraResolution) === '1080p' ? ' selected' : ''}>1080p</option>
+                                        </select>
+                                    </label>
+                                    <label class="video-tool-field">
+                                        <span>${escapeHtml(uiT('video.tools.sourceSettings.cameraFps', 'Kamera FPS'))}</span>
+                                        <select id="videoStudioCameraFpsSelect"${activeSourceLocked ? ' disabled' : ''}>
+                                            <option value="24"${normalizeVideoStudioCameraFps(activeVisualSource.cameraFps, 30) === 24 ? ' selected' : ''}>24</option>
+                                            <option value="30"${normalizeVideoStudioCameraFps(activeVisualSource.cameraFps, 30) === 30 ? ' selected' : ''}>30</option>
+                                            <option value="60"${normalizeVideoStudioCameraFps(activeVisualSource.cameraFps, 30) === 60 ? ' selected' : ''}>60</option>
+                                        </select>
+                                    </label>
+                                </div>
+                            ` : ''}
+                            ${activeVisualSource.kind === 'media' ? `
+                                <div class="video-studio-text-settings-grid">
+                                    <label class="video-studio-shortcuts-toggle">
+                                        <input id="videoStudioMediaLoopInput" type="checkbox"${activeVisualSource.loop === false ? '' : ' checked'}${activeSourceLocked ? ' disabled' : ''}>
+                                        <span>${escapeHtml(uiT('video.tools.sourceSettings.mediaLoop', 'Döngü'))}</span>
+                                    </label>
+                                    <label class="video-studio-shortcuts-toggle">
+                                        <input id="videoStudioMediaRestartInput" type="checkbox"${activeVisualSource.restartOnRecord === false ? '' : ' checked'}${activeSourceLocked ? ' disabled' : ''}>
+                                        <span>${escapeHtml(uiT('video.tools.sourceSettings.mediaRestart', 'Kayıtta baştan başlat'))}</span>
+                                    </label>
+                                </div>
+                                <label class="video-tool-field">
+                                    <span>${escapeHtml(uiT('video.tools.sourceSettings.playbackRate', 'Oynatma hızı'))}</span>
+                                    <input id="videoStudioMediaPlaybackRateInput" type="number" min="0.25" max="4" step="0.25" value="${escapeAttribute(String(normalizeVideoStudioMediaPlaybackRate(activeVisualSource.playbackRate, 1)))}"${activeSourceLocked ? ' disabled' : ''}>
+                                </label>
+                            ` : ''}
+                            ${activeCropSource ? `
+                                <div class="video-studio-crop-settings">
+                                    <div class="video-studio-panel-head">
+                                        <div class="video-studio-panel-label">${escapeHtml(uiT('video.tools.cropSettings.title', 'Kırpma'))}</div>
+                                        <button type="button" class="video-studio-mini-btn" data-video-studio-reset-crop="${escapeAttribute(activeCropSource.id)}" title="${escapeAttribute(uiT('video.tools.cropSettings.reset', 'Kırpmayı sıfırla'))}" aria-label="${escapeAttribute(uiT('video.tools.cropSettings.reset', 'Kırpmayı sıfırla'))}"${activeSourceLocked ? ' disabled' : ''}>
+                                            <span class="material-symbols-rounded" aria-hidden="true">restart_alt</span>
+                                        </button>
+                                    </div>
+                                    <div class="video-studio-crop-grid">
+                                        <label class="video-tool-field">
+                                            <span>${escapeHtml(uiT('video.tools.cropSettings.top', 'Üst'))}</span>
+                                            <input id="videoStudioCropTopInput" type="number" min="0" max="90" step="1" value="${escapeAttribute(String(getVideoStudioSourceCrop(activeCropSource).top))}"${activeSourceLocked ? ' disabled' : ''}>
+                                        </label>
+                                        <label class="video-tool-field">
+                                            <span>${escapeHtml(uiT('video.tools.cropSettings.right', 'Sağ'))}</span>
+                                            <input id="videoStudioCropRightInput" type="number" min="0" max="90" step="1" value="${escapeAttribute(String(getVideoStudioSourceCrop(activeCropSource).right))}"${activeSourceLocked ? ' disabled' : ''}>
+                                        </label>
+                                        <label class="video-tool-field">
+                                            <span>${escapeHtml(uiT('video.tools.cropSettings.bottom', 'Alt'))}</span>
+                                            <input id="videoStudioCropBottomInput" type="number" min="0" max="90" step="1" value="${escapeAttribute(String(getVideoStudioSourceCrop(activeCropSource).bottom))}"${activeSourceLocked ? ' disabled' : ''}>
+                                        </label>
+                                        <label class="video-tool-field">
+                                            <span>${escapeHtml(uiT('video.tools.cropSettings.left', 'Sol'))}</span>
+                                            <input id="videoStudioCropLeftInput" type="number" min="0" max="90" step="1" value="${escapeAttribute(String(getVideoStudioSourceCrop(activeCropSource).left))}"${activeSourceLocked ? ' disabled' : ''}>
+                                        </label>
+                                    </div>
+                                </div>
+                            ` : ''}
+                        </div>
+                    ` : ''}
+                    <div class="video-studio-transition-settings">
+                        <div class="video-studio-panel-label">${escapeHtml(uiT('video.tools.transitions.title', 'Sahne Geçişi'))}</div>
+                        <div class="video-studio-transition-grid">
+                            <label class="video-tool-field">
+                                <span>${escapeHtml(uiT('video.tools.transitions.type', 'Geçiş'))}</span>
+                                <select id="videoStudioTransitionTypeSelect">
+                                    <option value="cut"${videoStudioTransitionType === 'cut' ? ' selected' : ''}>${escapeHtml(uiT('video.tools.transitions.cut', 'Kes'))}</option>
+                                    <option value="fade"${videoStudioTransitionType === 'fade' ? ' selected' : ''}>${escapeHtml(uiT('video.tools.transitions.fade', 'Solma'))}</option>
+                                    <option value="slide"${videoStudioTransitionType === 'slide' ? ' selected' : ''}>${escapeHtml(uiT('video.tools.transitions.slide', 'Kaydır'))}</option>
+                                </select>
+                            </label>
+                            <label class="video-tool-field">
+                                <span>${escapeHtml(uiT('video.tools.transitions.duration', 'Süre'))}</span>
+                                <input id="videoStudioTransitionDurationInput" type="number" min="0" max="2000" step="50" value="${escapeAttribute(String(videoStudioTransitionDuration))}">
+                            </label>
+                            <button type="button" class="btn video-studio-transition-test-btn" id="videoStudioTestTransitionBtn">
+                                <span class="material-symbols-rounded" aria-hidden="true">animation</span>
+                                ${escapeHtml(uiT('video.tools.transitions.test', 'Dene'))}
+                            </button>
+                        </div>
+                    </div>
+                    <div class="video-studio-shortcuts">
+                        <label class="video-studio-shortcuts-toggle">
+                            <input id="videoStudioShortcutsEnabledInput" type="checkbox"${videoStudioShortcutsEnabled ? ' checked' : ''}>
+                            <span>${escapeHtml(uiT('video.tools.shortcuts.enabled', 'Stüdyo kısayolları'))}</span>
+                        </label>
+                        <div class="video-studio-shortcut-list" aria-label="${escapeAttribute(uiT('video.tools.shortcuts.title', 'Kısayollar'))}">
+                            ${buildVideoStudioShortcutRowsMarkup()}
+                        </div>
+                        <button type="button" class="btn btn-small video-studio-shortcut-reset-btn" id="videoStudioResetShortcutsBtn">
+                            <span class="material-symbols-rounded" aria-hidden="true">restart_alt</span>
+                            ${escapeHtml(uiT('video.tools.shortcuts.reset', 'Varsayılana dön'))}
+                        </button>
+                    </div>
+                    <div class="video-studio-preflight" id="videoStudioPreflightPanel" data-state="${escapeAttribute(preflightSummary.state)}">
+                        <div class="video-studio-panel-head">
+                            <div class="video-studio-panel-label">${escapeHtml(uiT('video.tools.preflight.title', 'Kayıt Öncesi Kontrol'))}</div>
+                            <strong id="videoStudioPreflightStatus">${escapeHtml(preflightSummary.label)}</strong>
+                        </div>
+                        <div class="video-studio-preflight-list" id="videoStudioPreflightList">
+                            ${buildVideoStudioPreflightMarkup()}
+                        </div>
+                        <button type="button" class="btn btn-small video-studio-preflight-btn" id="videoStudioRunPreflightBtn"${videoStudioPreflightRefreshing ? ' disabled' : ''}>
+                            <span class="material-symbols-rounded" aria-hidden="true">fact_check</span>
+                            ${escapeHtml(uiT('video.tools.preflight.run', 'Kontrol Et'))}
+                        </button>
+                    </div>
+                    <div class="video-studio-mixer">
+                        <div class="video-studio-panel-label">${escapeHtml(uiT('video.tools.studio.mixer', 'Ses Mikseri'))}</div>
+                        <label class="video-tool-field video-studio-mic-field">
+                            <span>${escapeHtml(uiT('video.tools.studio.micDevice', 'Mikrofon cihazı'))}</span>
+                            <div class="video-studio-device-row">
+                                <select id="videoStudioMicSelect">
+                                    ${buildVideoStudioMicOptions()}
+                                </select>
+                                <button type="button" class="video-tool-icon-btn" id="videoStudioRefreshAudioBtn" title="${escapeAttribute(uiT('video.tools.studio.refreshAudio', 'Mikrofonları yenile'))}" aria-label="${escapeAttribute(uiT('video.tools.studio.refreshAudio', 'Mikrofonları yenile'))}">
+                                    <span class="material-symbols-rounded" aria-hidden="true">mic</span>
+                                </button>
+                            </div>
+                        </label>
+                        <label class="video-studio-mixer-row">
+                            <span>${escapeHtml(uiT('video.tools.studio.desktopAudio', 'Masaüstü'))}</span>
+                            <input id="videoStudioDesktopVolumeInput" type="range" min="0" max="100" value="${escapeAttribute(String(videoStudioDesktopVolume))}" aria-label="${escapeAttribute(uiT('video.tools.studio.desktopAudio', 'Masaüstü'))}">
+                            <span class="video-studio-meter-wrap">
+                                <span class="video-studio-meter" aria-hidden="true">
+                                    <span class="video-studio-meter-scale"></span>
+                                    <span class="video-studio-meter-fill" id="videoStudioDesktopMeterFill"></span>
+                                </span>
+                                <strong id="videoStudioDesktopMeterValue">-inf</strong>
+                            </span>
+                            <button type="button" class="video-studio-mini-btn video-studio-mute-btn${videoStudioDesktopMuted ? ' is-muted' : ''}" id="videoStudioDesktopMuteBtn" data-video-studio-audio-mute="desktop" title="${escapeAttribute(videoStudioDesktopMuted ? uiT('video.tools.audio.unmuteDesktop', 'Masaüstünü aç') : uiT('video.tools.audio.muteDesktop', 'Masaüstünü sustur'))}" aria-label="${escapeAttribute(videoStudioDesktopMuted ? uiT('video.tools.audio.unmuteDesktop', 'Masaüstünü aç') : uiT('video.tools.audio.muteDesktop', 'Masaüstünü sustur'))}">
+                                <span class="material-symbols-rounded" aria-hidden="true">${videoStudioDesktopMuted ? 'volume_off' : 'volume_up'}</span>
+                            </button>
+                        </label>
+                        <label class="video-studio-mixer-row">
+                            <span>${escapeHtml(uiT('video.tools.studio.microphone', 'Mikrofon'))}</span>
+                            <input id="videoStudioMicVolumeInput" type="range" min="0" max="100" value="${escapeAttribute(String(videoStudioMicVolume))}" aria-label="${escapeAttribute(uiT('video.tools.studio.microphone', 'Mikrofon'))}">
+                            <span class="video-studio-meter-wrap">
+                                <span class="video-studio-meter" aria-hidden="true">
+                                    <span class="video-studio-meter-scale"></span>
+                                    <span class="video-studio-meter-fill" id="videoStudioMicMeterFill"></span>
+                                </span>
+                                <strong id="videoStudioMicMeterValue">-inf</strong>
+                            </span>
+                            <button type="button" class="video-studio-mini-btn video-studio-mute-btn${videoStudioMicMuted ? ' is-muted' : ''}" id="videoStudioMicMuteBtn" data-video-studio-audio-mute="mic" title="${escapeAttribute(videoStudioMicMuted ? uiT('video.tools.audio.unmuteMic', 'Mikrofonu aç') : uiT('video.tools.audio.muteMic', 'Mikrofonu sustur'))}" aria-label="${escapeAttribute(videoStudioMicMuted ? uiT('video.tools.audio.unmuteMic', 'Mikrofonu aç') : uiT('video.tools.audio.muteMic', 'Mikrofonu sustur'))}">
+                                <span class="material-symbols-rounded" aria-hidden="true">${videoStudioMicMuted ? 'mic_off' : 'mic'}</span>
+                            </button>
+                        </label>
+                        <div class="video-studio-audio-monitor">
+                            <label class="video-studio-shortcuts-toggle">
+                                <input id="videoStudioMicMonitorEnabledInput" type="checkbox"${videoStudioMicMonitorEnabled ? ' checked' : ''}>
+                                <span>${escapeHtml(uiT('video.tools.audioMonitor.enabled', 'Mikrofonu dinle'))}</span>
+                            </label>
+                            <label class="video-studio-mixer-row">
+                                <span>${escapeHtml(uiT('video.tools.audioMonitor.volume', 'Monitör'))}</span>
+                                <input id="videoStudioMicMonitorVolumeInput" type="range" min="0" max="100" value="${escapeAttribute(String(videoStudioMicMonitorVolume))}" aria-label="${escapeAttribute(uiT('video.tools.audioMonitor.volume', 'Monitör'))}">
+                                <strong id="videoStudioMicMonitorVolumeValue">${escapeHtml(`${videoStudioMicMonitorVolume}%`)}</strong>
+                            </label>
+                            <div class="video-studio-monitor-hint">
+                                <span class="material-symbols-rounded" aria-hidden="true">headphones</span>
+                                <span>${escapeHtml(uiT('video.tools.audioMonitor.hint', 'Kulaklık kullanın; hoparlörde geri besleme oluşabilir.'))}</span>
+                            </div>
+                        </div>
+                        <div class="video-studio-mic-filter">
+                            <label class="video-studio-shortcuts-toggle">
+                                <input id="videoStudioMicFilterEnabledInput" type="checkbox"${videoStudioMicFilterEnabled ? ' checked' : ''}>
+                                <span>${escapeHtml(uiT('video.tools.micFilter.enabled', 'Mikrofon filtresi'))}</span>
+                            </label>
+                            <label class="video-studio-mixer-row">
+                                <span>${escapeHtml(uiT('video.tools.micFilter.gate', 'Gürültü eşiği'))}</span>
+                                <input id="videoStudioMicNoiseGateInput" type="range" min="0" max="60" value="${escapeAttribute(String(videoStudioMicNoiseGateThreshold))}" aria-label="${escapeAttribute(uiT('video.tools.micFilter.gate', 'Gürültü eşiği'))}">
+                                <strong id="videoStudioMicNoiseGateValue">${escapeHtml(`${videoStudioMicNoiseGateThreshold}%`)}</strong>
+                            </label>
+                            <label class="video-studio-shortcuts-toggle">
+                                <input id="videoStudioMicCompressorEnabledInput" type="checkbox"${videoStudioMicCompressorEnabled ? ' checked' : ''}>
+                                <span>${escapeHtml(uiT('video.tools.micFilter.compressor', 'Kompresör'))}</span>
+                            </label>
+                            <label class="video-studio-mixer-row">
+                                <span>${escapeHtml(uiT('video.tools.micFilter.compressorAmount', 'Sıkıştırma'))}</span>
+                                <input id="videoStudioMicCompressorInput" type="range" min="0" max="100" value="${escapeAttribute(String(videoStudioMicCompressorAmount))}" aria-label="${escapeAttribute(uiT('video.tools.micFilter.compressorAmount', 'Sıkıştırma'))}">
+                                <strong id="videoStudioMicCompressorValue">${escapeHtml(`${videoStudioMicCompressorAmount}%`)}</strong>
+                            </label>
+                            <label class="video-studio-shortcuts-toggle">
+                                <input id="videoStudioMicLimiterEnabledInput" type="checkbox"${videoStudioMicLimiterEnabled ? ' checked' : ''}>
+                                <span>${escapeHtml(uiT('video.tools.micFilter.limiter', 'Limiter'))}</span>
+                            </label>
+                            <label class="video-studio-mixer-row">
+                                <span>${escapeHtml(uiT('video.tools.micFilter.limiterCeiling', 'Tavan seviye'))}</span>
+                                <input id="videoStudioMicLimiterInput" type="range" min="50" max="100" value="${escapeAttribute(String(videoStudioMicLimiterCeiling))}" aria-label="${escapeAttribute(uiT('video.tools.micFilter.limiterCeiling', 'Tavan seviye'))}">
+                                <strong id="videoStudioMicLimiterValue">${escapeHtml(`${videoStudioMicLimiterCeiling}%`)}</strong>
+                            </label>
+                        </div>
+                    </div>
+                    <div class="video-studio-record-settings">
+                        <div class="video-studio-panel-label">${escapeHtml(uiT('video.tools.recordSettings.title', 'Kayıt Ayarları'))}</div>
+                        <label class="video-tool-field video-studio-preset-field">
+                            <span>${escapeHtml(uiT('video.tools.recordProfiles.title', 'Kayıt Profili'))}</span>
+                            <select id="videoStudioRecordPresetSelect">
+                                <option value="performance"${videoStudioRecordPreset === 'performance' ? ' selected' : ''}>${escapeHtml(uiT('video.tools.recordProfiles.performance', 'Performans'))}</option>
+                                <option value="balanced"${videoStudioRecordPreset === 'balanced' ? ' selected' : ''}>${escapeHtml(uiT('video.tools.recordProfiles.balanced', 'Dengeli'))}</option>
+                                <option value="high"${videoStudioRecordPreset === 'high' ? ' selected' : ''}>${escapeHtml(uiT('video.tools.recordProfiles.high', 'Yüksek kalite'))}</option>
+                                <option value="ultra"${videoStudioRecordPreset === 'ultra' ? ' selected' : ''}>${escapeHtml(uiT('video.tools.recordProfiles.ultra', '4K Ultra'))}</option>
+                                <option value="custom"${videoStudioRecordPreset === 'custom' ? ' selected' : ''}>${escapeHtml(uiT('video.tools.recordProfiles.custom', 'Özel'))}</option>
+                            </select>
+                        </label>
+                        <div class="video-studio-settings-grid">
+                            <label class="video-tool-field">
+                                <span>${escapeHtml(uiT('video.tools.recordSettings.resolution', 'Çözünürlük'))}</span>
+                                <select id="videoStudioRecordResolutionSelect">
+                                    <option value="source"${videoStudioRecordResolution === 'source' ? ' selected' : ''}>${escapeHtml(uiT('video.tools.recordSettings.resolution.source', 'Kaynak'))}</option>
+                                    <option value="720p"${videoStudioRecordResolution === '720p' ? ' selected' : ''}>720p</option>
+                                    <option value="1080p"${videoStudioRecordResolution === '1080p' ? ' selected' : ''}>1080p</option>
+                                    <option value="1440p"${videoStudioRecordResolution === '1440p' ? ' selected' : ''}>1440p</option>
+                                    <option value="4k"${videoStudioRecordResolution === '4k' ? ' selected' : ''}>4K</option>
+                                </select>
+                            </label>
+                            <label class="video-tool-field">
+                                <span>${escapeHtml(uiT('video.tools.recordSettings.fps', 'FPS'))}</span>
+                                <select id="videoStudioRecordFpsSelect">
+                                    <option value="24"${Number(videoStudioRecordFps) === 24 ? ' selected' : ''}>24</option>
+                                    <option value="30"${Number(videoStudioRecordFps) === 30 ? ' selected' : ''}>30</option>
+                                    <option value="60"${Number(videoStudioRecordFps) === 60 ? ' selected' : ''}>60</option>
+                                </select>
+                            </label>
+                            <label class="video-tool-field">
+                                <span>${escapeHtml(uiT('video.tools.recordSettings.quality', 'Kalite'))}</span>
+                                <select id="videoStudioRecordQualitySelect">
+                                    <option value="performance"${videoStudioRecordQuality === 'performance' ? ' selected' : ''}>${escapeHtml(uiT('video.tools.recordSettings.quality.performance', 'Performans'))}</option>
+                                    <option value="balanced"${videoStudioRecordQuality === 'balanced' ? ' selected' : ''}>${escapeHtml(uiT('video.tools.recordSettings.quality.balanced', 'Dengeli'))}</option>
+                                    <option value="high"${videoStudioRecordQuality === 'high' ? ' selected' : ''}>${escapeHtml(uiT('video.tools.recordSettings.quality.high', 'Yüksek kalite'))}</option>
+                                </select>
+                            </label>
+                            <label class="video-tool-field">
+                                <span>${escapeHtml(uiT('video.tools.recordSettings.format', 'Format'))}</span>
+                                <select id="videoStudioRecordFormatSelect">
+                                    <option value="webm"${videoStudioRecordFormat === 'webm' ? ' selected' : ''}>WebM (VP8/Opus)</option>
+                                    <option value="mkv"${videoStudioRecordFormat === 'mkv' ? ' selected' : ''}>MKV (FFmpeg remux)</option>
+                                    <option value="mp4"${videoStudioRecordFormat === 'mp4' ? ' selected' : ''}>MP4 (H.264/AAC)</option>
+                                </select>
+                            </label>
+                            <label class="video-tool-field">
+                                <span>${escapeHtml(uiT('video.tools.audioTracks.mode', 'Ses parçaları'))}</span>
+                                <select id="videoStudioAudioTrackModeSelect">
+                                    <option value="mix"${videoStudioAudioTrackMode === 'mix' ? ' selected' : ''}>${escapeHtml(uiT('video.tools.audioTracks.mix', 'Tek miks'))}</option>
+                                    <option value="separate"${videoStudioAudioTrackMode === 'separate' ? ' selected' : ''}>${escapeHtml(uiT('video.tools.audioTracks.separate', 'Ayrı parçalar'))}</option>
+                                </select>
+                            </label>
+                            <label class="video-tool-field">
+                                <span>Encoder</span>
+                                <select id="videoStudioVideoEncoderSelect">
+                                    <option value="auto"${videoStudioVideoEncoder === 'auto' ? ' selected' : ''}>Otomatik</option>
+                                    <option value="libx264"${videoStudioVideoEncoder === 'libx264' ? ' selected' : ''}>x264 CPU</option>
+                                    <option value="h264_nvenc"${videoStudioVideoEncoder === 'h264_nvenc' ? ' selected' : ''}>NVIDIA NVENC</option>
+                                    <option value="h264_vaapi"${videoStudioVideoEncoder === 'h264_vaapi' ? ' selected' : ''}>VAAPI</option>
+                                    <option value="h264_qsv"${videoStudioVideoEncoder === 'h264_qsv' ? ' selected' : ''}>Intel QSV</option>
+                                </select>
+                            </label>
+                            <label class="video-tool-field video-studio-bitrate-field">
+                                <span>${escapeHtml(uiT('video.tools.recordSettings.bitrate', 'Bitrate'))}</span>
+                                <input id="videoStudioRecordBitrateInput" type="number" min="500" max="60000" step="500" value="${escapeAttribute(String(videoStudioRecordBitrate))}">
+                            </label>
+                        </div>
+                        <div class="video-studio-countdown">
+                            <label class="video-studio-shortcuts-toggle">
+                                <input id="videoStudioCountdownEnabledInput" type="checkbox"${videoStudioCountdownEnabled ? ' checked' : ''}>
+                                <span>${escapeHtml(uiT('video.tools.countdown.enabled', 'Geri sayım'))}</span>
+                            </label>
+                            <label class="video-tool-field video-studio-countdown-seconds">
+                                <span>${escapeHtml(uiT('video.tools.countdown.seconds', 'Saniye'))}</span>
+                                <input id="videoStudioCountdownSecondsInput" type="number" min="1" max="30" step="1" value="${escapeAttribute(String(videoStudioCountdownSeconds))}">
+                            </label>
+                        </div>
+                    </div>
+                    <div class="video-studio-output-settings">
+                        <div class="video-studio-panel-label">${escapeHtml(uiT('video.tools.output.title', 'Çıktı'))}</div>
+                        <label class="video-tool-field">
+                            <span>${escapeHtml(uiT('video.tools.output.mode', 'Kayıt şekli'))}</span>
+                            <select id="videoStudioRecordOutputModeSelect">
+                                <option value="auto"${videoStudioRecordOutputMode === 'auto' ? ' selected' : ''}>${escapeHtml(uiT('video.tools.output.mode.auto', 'Otomatik kaydet'))}</option>
+                                <option value="ask"${videoStudioRecordOutputMode === 'ask' ? ' selected' : ''}>${escapeHtml(uiT('video.tools.output.mode.ask', 'Her seferinde sor'))}</option>
+                            </select>
+                        </label>
+                        <label class="video-tool-field">
+                            <span>${escapeHtml(uiT('video.tools.output.nameTemplate', 'Dosya adı'))}</span>
+                            <input id="videoStudioRecordNameTemplateInput" type="text" value="${escapeAttribute(videoStudioRecordNameTemplate)}" placeholder="aurivo-{date}-{time}">
+                        </label>
+                        <div class="video-studio-output-folder">
+                            <div class="video-studio-output-folder-text">
+                                <span>${escapeHtml(uiT('video.tools.output.folder', 'Klasör'))}</span>
+                                <strong id="videoStudioRecordOutputFolderLabel">${escapeHtml(getVideoStudioDefaultOutputFolder() || uiT('video.tools.output.folderUnknown', 'Klasör seçilmedi'))}</strong>
+                            </div>
+                            <div class="video-studio-output-actions">
+                                <button type="button" class="video-tool-icon-btn" id="videoStudioPickOutputFolderBtn" title="${escapeAttribute(uiT('video.tools.output.pickFolder', 'Kayıt klasörü seç'))}" aria-label="${escapeAttribute(uiT('video.tools.output.pickFolder', 'Kayıt klasörü seç'))}">
+                                    <span class="material-symbols-rounded" aria-hidden="true">folder_open</span>
+                                </button>
+                                <button type="button" class="video-tool-icon-btn" id="videoStudioOpenOutputFolderBtn" title="${escapeAttribute(uiT('video.tools.output.openFolder', 'Klasörü aç'))}" aria-label="${escapeAttribute(uiT('video.tools.output.openFolder', 'Klasörü aç'))}">
+                                    <span class="material-symbols-rounded" aria-hidden="true">open_in_new</span>
+                                </button>
+                            </div>
+                        </div>
+                        <div class="video-studio-auto-stop">
+                            <label class="video-studio-shortcuts-toggle">
+                                <input id="videoStudioAutoStopEnabledInput" type="checkbox"${videoStudioAutoStopEnabled ? ' checked' : ''}>
+                                <span>${escapeHtml(uiT('video.tools.autoStop.enabled', 'Otomatik durdur'))}</span>
+                            </label>
+                            <label class="video-tool-field video-studio-auto-stop-minutes">
+                                <span>${escapeHtml(uiT('video.tools.autoStop.minutes', 'Dakika'))}</span>
+                                <input id="videoStudioAutoStopMinutesInput" type="number" min="1" max="720" step="1" value="${escapeAttribute(String(videoStudioAutoStopMinutes))}">
+                            </label>
+                        </div>
+                        <div class="video-studio-schedule">
+                            <div class="video-studio-panel-head">
+                                <div class="video-studio-panel-label">${escapeHtml(uiT('video.tools.schedule.title', 'Kayıt Zamanlayıcı'))}</div>
+                                <strong id="videoStudioScheduleStatusLabel">${escapeHtml(videoStudioScheduleTimer ? formatVideoStudioScheduleTarget() : uiT('video.tools.schedule.idle', 'Beklemede'))}</strong>
+                            </div>
+                            <label class="video-studio-shortcuts-toggle">
+                                <input id="videoStudioScheduleEnabledInput" type="checkbox"${videoStudioScheduleEnabled ? ' checked' : ''}>
+                                <span>${escapeHtml(uiT('video.tools.schedule.enabled', 'Planlı kayıt'))}</span>
+                            </label>
+                            <div class="video-studio-schedule-grid">
+                                <label class="video-tool-field">
+                                    <span>${escapeHtml(uiT('video.tools.schedule.mode', 'Mod'))}</span>
+                                    <select id="videoStudioScheduleModeSelect">
+                                        <option value="delay"${videoStudioScheduleMode === 'delay' ? ' selected' : ''}>${escapeHtml(uiT('video.tools.schedule.mode.delay', 'Gecikme'))}</option>
+                                        <option value="time"${videoStudioScheduleMode === 'time' ? ' selected' : ''}>${escapeHtml(uiT('video.tools.schedule.mode.time', 'Saat'))}</option>
+                                    </select>
+                                </label>
+                                <label class="video-tool-field">
+                                    <span>${escapeHtml(uiT('video.tools.schedule.delayMinutes', 'Dakika sonra'))}</span>
+                                    <input id="videoStudioScheduleDelayInput" type="number" min="1" max="1440" step="1" value="${escapeAttribute(String(videoStudioScheduleDelayMinutes))}">
+                                </label>
+                                <label class="video-tool-field">
+                                    <span>${escapeHtml(uiT('video.tools.schedule.time', 'Başlama saati'))}</span>
+                                    <input id="videoStudioScheduleTimeInput" type="time" value="${escapeAttribute(videoStudioScheduleTime)}">
+                                </label>
+                                <button type="button" class="btn btn-small video-studio-schedule-btn${videoStudioScheduleTimer ? ' is-danger' : ''}" id="videoStudioScheduleArmBtn">
+                                    <span class="material-symbols-rounded" aria-hidden="true">${videoStudioScheduleTimer ? 'event_busy' : 'event_available'}</span>
+                                    <span data-video-studio-schedule-label>${escapeHtml(videoStudioScheduleTimer ? uiT('video.tools.schedule.cancel', 'Planı iptal et') : uiT('video.tools.schedule.arm', 'Planla'))}</span>
+                                </button>
+                            </div>
+                        </div>
+                        <div class="video-studio-auto-stop">
+                            <label class="video-studio-shortcuts-toggle">
+                                <input id="videoStudioReplayBufferEnabledInput" type="checkbox"${videoStudioReplayBufferEnabled ? ' checked' : ''}>
+                                <span>${escapeHtml(uiT('video.tools.replay.enabled', 'Replay buffer'))}</span>
+                            </label>
+                            <label class="video-tool-field video-studio-auto-stop-minutes">
+                                <span>${escapeHtml(uiT('video.tools.replay.seconds', 'Saniye'))}</span>
+                                <input id="videoStudioReplayBufferSecondsInput" type="number" min="10" max="600" step="5" value="${escapeAttribute(String(videoStudioReplayBufferSeconds))}">
+                            </label>
+                        </div>
+                        <div class="video-studio-stream-target">
+                            <span>${escapeHtml(uiT('video.tools.replay.status', 'Replay'))}</span>
+                            <strong id="videoStudioReplayBufferStatusLabel">${escapeHtml(videoStudioReplayBufferRecorder ? uiT('video.tools.replay.active', 'Replay hazır') : uiT('video.tools.replay.idle', 'Kapalı'))}</strong>
+                        </div>
+                        <div class="video-studio-stream-actions">
+                            <button type="button" class="btn btn-small" id="videoStudioReplayBufferStartBtn">
+                                <span class="material-symbols-rounded" aria-hidden="true">fiber_smart_record</span>
+                                <span data-video-studio-replay-start-label>${escapeHtml(uiT('video.tools.replay.start', 'Bufferı Başlat'))}</span>
+                            </button>
+                            <button type="button" class="btn btn-small" id="videoStudioReplayBufferSaveBtn"${videoStudioReplayBufferChunks.length ? '' : ' disabled'}>
+                                <span class="material-symbols-rounded" aria-hidden="true">save</span>
+                                ${escapeHtml(uiT('video.tools.replay.save', 'Replay Kaydet'))}
+                            </button>
+                        </div>
+                    </div>
+                    <div class="video-studio-stream-settings">
+                        <div class="video-studio-panel-label">${escapeHtml(uiT('video.tools.stream.title', 'Yayın Çıkışı'))}</div>
+                        <label class="video-studio-shortcuts-toggle">
+                            <input id="videoStudioStreamEnabledInput" type="checkbox"${videoStudioStreamEnabled ? ' checked' : ''}>
+                            <span>${escapeHtml(uiT('video.tools.stream.enabled', 'Yayın profilini etkinleştir'))}</span>
+                        </label>
+                        <div class="video-studio-settings-grid">
+                            <label class="video-tool-field">
+                                <span>${escapeHtml(uiT('video.tools.stream.service', 'Servis'))}</span>
+                                <select id="videoStudioStreamServiceSelect">
+                                    <option value="custom"${videoStudioStreamService === 'custom' ? ' selected' : ''}>${escapeHtml(uiT('video.tools.stream.service.custom', 'Özel'))}</option>
+                                    <option value="youtube"${videoStudioStreamService === 'youtube' ? ' selected' : ''}>YouTube</option>
+                                    <option value="twitch"${videoStudioStreamService === 'twitch' ? ' selected' : ''}>Twitch</option>
+                                    <option value="facebook"${videoStudioStreamService === 'facebook' ? ' selected' : ''}>Facebook</option>
+                                </select>
+                            </label>
+                            <label class="video-tool-field">
+                                <span>${escapeHtml(uiT('video.tools.stream.status', 'Durum'))}</span>
+                                <strong class="video-studio-stream-status" id="videoStudioStreamStatusLabel">${escapeHtml(getVideoStudioStreamStatusLabel())}</strong>
+                            </label>
+                        </div>
+                        <label class="video-tool-field">
+                            <span>${escapeHtml(uiT('video.tools.stream.server', 'Sunucu'))}</span>
+                            <input id="videoStudioStreamServerInput" type="text" value="${escapeAttribute(videoStudioStreamServer)}" placeholder="rtmp://...">
+                        </label>
+                        <label class="video-tool-field">
+                            <span>${escapeHtml(uiT('video.tools.stream.key', 'Yayın anahtarı'))}</span>
+                            <input id="videoStudioStreamKeyInput" type="password" value="${escapeAttribute(videoStudioStreamKey)}" placeholder="••••••">
+                        </label>
+                        <div class="video-studio-stream-target">
+                            <span>${escapeHtml(uiT('video.tools.stream.target', 'Hedef'))}</span>
+                            <strong id="videoStudioStreamTargetLabel">${escapeHtml(getVideoStudioStreamTargetUrl() || uiT('video.tools.stream.noTarget', 'Hedef yok'))}</strong>
+                        </div>
+                        <div class="video-studio-stream-actions">
+                            <button type="button" class="btn btn-small" id="videoStudioPrepareStreamBtn">
+                                <span class="material-symbols-rounded" aria-hidden="true">fact_check</span>
+                                ${escapeHtml(uiT('video.tools.stream.prepare', 'Hazırla'))}
+                            </button>
+                            <button type="button" class="btn btn-small" id="videoStudioStartStreamBtn">
+                                <span class="material-symbols-rounded" aria-hidden="true">cell_tower</span>
+                                <span data-video-studio-stream-label>${escapeHtml(uiT('video.tools.stream.start', 'Yayını Başlat'))}</span>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="video-studio-virtual-camera-settings">
+                        <div class="video-studio-panel-label">${escapeHtml(uiT('video.tools.virtualCamera.title', 'Sanal Kamera'))}</div>
+                        <label class="video-studio-shortcuts-toggle">
+                            <input id="videoStudioVirtualCameraEnabledInput" type="checkbox"${videoStudioVirtualCameraEnabled ? ' checked' : ''}>
+                            <span>${escapeHtml(uiT('video.tools.virtualCamera.enabled', 'Sanal kamera profilini etkinleştir'))}</span>
+                        </label>
+                        <div class="video-studio-settings-grid">
+                            <label class="video-tool-field">
+                                <span>${escapeHtml(uiT('video.tools.virtualCamera.device', 'Cihaz'))}</span>
+                                <input id="videoStudioVirtualCameraDeviceInput" type="text" value="${escapeAttribute(videoStudioVirtualCameraDevice)}" placeholder="/dev/video10">
+                            </label>
+                            <label class="video-tool-field">
+                                <span>${escapeHtml(uiT('video.tools.virtualCamera.status', 'Durum'))}</span>
+                                <strong class="video-studio-stream-status" id="videoStudioVirtualCameraStatusLabel">${escapeHtml(getVideoStudioVirtualCameraStatusLabel())}</strong>
+                            </label>
+                        </div>
+                        <div class="video-studio-stream-actions">
+                            <button type="button" class="btn btn-small" id="videoStudioPrepareVirtualCameraBtn">
+                                <span class="material-symbols-rounded" aria-hidden="true">fact_check</span>
+                                ${escapeHtml(uiT('video.tools.virtualCamera.prepare', 'Hazırla'))}
+                            </button>
+                            <button type="button" class="btn btn-small" id="videoStudioStartVirtualCameraBtn">
+                                <span class="material-symbols-rounded" aria-hidden="true">linked_camera</span>
+                                <span data-video-studio-virtual-camera-label>${escapeHtml(uiT('video.tools.virtualCamera.start', 'Kamerayı Başlat'))}</span>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="video-studio-stats">
+                        <div class="video-studio-panel-label">${escapeHtml(uiT('video.tools.stats.title', 'Kayıt Durumu'))}</div>
+                        <div class="video-studio-stats-grid">
+                            <div class="video-studio-stat">
+                                <span>${escapeHtml(uiT('video.tools.stats.state', 'Durum'))}</span>
+                                <strong id="videoStudioStatsState">${escapeHtml(getVideoStudioRecordStateLabel())}</strong>
+                            </div>
+                            <div class="video-studio-stat">
+                                <span>${escapeHtml(uiT('video.tools.stats.duration', 'Süre'))}</span>
+                                <strong id="videoStudioStatsDuration">00:00</strong>
+                            </div>
+                            <div class="video-studio-stat">
+                                <span>${escapeHtml(uiT('video.tools.stats.size', 'Boyut'))}</span>
+                                <strong id="videoStudioStatsSize">${escapeHtml(formatVideoStudioBytes(screenRecordingBytes))}</strong>
+                            </div>
+                            <div class="video-studio-stat">
+                                <span>${escapeHtml(uiT('video.tools.stats.profile', 'Profil'))}</span>
+                                <strong id="videoStudioStatsProfile">${escapeHtml(normalizeVideoStudioRecordPreset(videoStudioRecordPreset))}</strong>
+                            </div>
+                            <div class="video-studio-stat">
+                                <span>${escapeHtml(uiT('video.tools.health.title', 'Sağlık'))}</span>
+                                <strong id="videoStudioStatsHealth" class="${escapeAttribute(getVideoStudioHealthState().className)}">${escapeHtml(getVideoStudioHealthState().label)}</strong>
+                            </div>
+                            <div class="video-studio-stat">
+                                <span>${escapeHtml(uiT('video.tools.health.bitrate', 'Bitrate'))}</span>
+                                <strong id="videoStudioStatsBitrate">${escapeHtml(`${getVideoStudioRecordingBitrateKbps()} kbps`)}</strong>
+                            </div>
+                            <div class="video-studio-stat">
+                                <span>${escapeHtml(uiT('video.tools.stats.chunks', 'Chunk'))}</span>
+                                <strong id="videoStudioStatsChunks">${escapeHtml(String(screenRecordingChunkCount || 0))}</strong>
+                            </div>
+                            <div class="video-studio-stat">
+                                <span>${escapeHtml(uiT('video.tools.stats.dropped', 'Yavaş'))}</span>
+                                <strong id="videoStudioStatsDropped">${escapeHtml(String((screenRecordingSlowChunkWarnings || 0) + (screenRecordingFrameDropEstimate || 0)))}</strong>
+                            </div>
+                            <div class="video-studio-stat">
+                                <span>${escapeHtml(uiT('video.tools.stats.fps', 'FPS'))}</span>
+                                <strong id="videoStudioStatsFps">${escapeHtml(getVideoStudioFpsLabel())}</strong>
+                            </div>
+                            <div class="video-studio-stat">
+                                <span>${escapeHtml(uiT('video.tools.stats.writeSpeed', 'Yazma'))}</span>
+                                <strong id="videoStudioStatsWriteSpeed">${escapeHtml(getVideoStudioWriteSpeedLabel())}</strong>
+                            </div>
+                            <div class="video-studio-stat">
+                                <span>${escapeHtml(uiT('video.tools.stats.cpu', 'CPU'))}</span>
+                                <strong id="videoStudioStatsCpu">${escapeHtml(getVideoStudioCpuLoadLabel())}</strong>
+                            </div>
+                            <div class="video-studio-stat">
+                                <span>${escapeHtml(uiT('video.tools.stats.diskFullIn', 'Disk'))}</span>
+                                <strong id="videoStudioStatsDisk">${escapeHtml(getVideoStudioDiskFullEstimateLabel())}</strong>
+                            </div>
+                            <div class="video-studio-stat">
+                                <span>${escapeHtml(uiT('video.tools.stats.memory', 'Bellek'))}</span>
+                                <strong id="videoStudioStatsMemory">${escapeHtml(getVideoStudioMemoryUsageLabel())}</strong>
+                            </div>
+                            <div class="video-studio-stat">
+                                <span>${escapeHtml(uiT('video.tools.validation.title', 'Doğrulama'))}</span>
+                                <strong id="videoStudioStatsValidation">${escapeHtml(getVideoStudioValidationLabel())}</strong>
+                            </div>
+                        </div>
+                        <div class="video-studio-stat is-wide">
+                            <span>${escapeHtml(uiT('video.tools.stats.target', 'Hedef'))}</span>
+                            <strong id="videoStudioStatsTarget">${escapeHtml(screenRecordingOutputPath || uiT('video.tools.stats.noTarget', 'Henüz yok'))}</strong>
+                        </div>
+                    </div>
+                    <div id="videoStudioRecoveryMount">${buildVideoStudioRecoveryMarkup()}</div>
+                    <div id="videoStudioQualityReportMount">${buildVideoStudioQualityReportMarkup()}</div>
+                    <div class="video-studio-quick-actions${lastRecordingPath ? '' : ' is-disabled'}" id="videoStudioQuickActionsPanel">
+                        <div class="video-studio-panel-label">${escapeHtml(uiT('video.tools.quickActions.title', 'Kayıt Sonrası'))}</div>
+                        <div class="video-studio-quick-file">
+                            <span class="material-symbols-rounded" aria-hidden="true">movie</span>
+                            <strong id="videoStudioQuickActionsFileLabel">${escapeHtml(lastRecordingName)}</strong>
+                        </div>
+                        <div class="video-studio-quick-action-grid">
+                            <button type="button" class="btn btn-small" data-video-studio-quick-action="edit"${lastRecordingPath ? '' : ' disabled'}>
+                                <span class="material-symbols-rounded" aria-hidden="true">movie_edit</span>
+                                ${escapeHtml(uiT('video.tools.quickActions.edit', 'İşle'))}
+                            </button>
+                            <button type="button" class="btn btn-small" data-video-studio-quick-action="play"${lastRecordingPath ? '' : ' disabled'}>
+                                <span class="material-symbols-rounded" aria-hidden="true">play_arrow</span>
+                                ${escapeHtml(uiT('video.tools.quickActions.play', 'Oynat'))}
+                            </button>
+                            <button type="button" class="btn btn-small" data-video-studio-quick-action="open-folder"${lastRecordingPath ? '' : ' disabled'}>
+                                <span class="material-symbols-rounded" aria-hidden="true">folder_open</span>
+                                ${escapeHtml(uiT('video.tools.quickActions.openFolder', 'Klasör'))}
+                            </button>
+                            <button type="button" class="btn btn-small" data-video-studio-quick-action="remux-mkv"${lastRecordingPath ? '' : ' disabled'}>
+                                <span class="material-symbols-rounded" aria-hidden="true">sync_alt</span>
+                                MKV
+                            </button>
+                            <button type="button" class="btn btn-small" data-video-studio-quick-action="remux-mp4"${lastRecordingPath ? '' : ' disabled'}>
+                                <span class="material-symbols-rounded" aria-hidden="true">sync_alt</span>
+                                MP4
+                            </button>
+                            <button type="button" class="btn btn-small" id="videoStudioRepairRecordingBtn"${lastRecordingPath ? '' : ' disabled'}>
+                                <span class="material-symbols-rounded" aria-hidden="true">build</span>
+                                Onar
+                            </button>
+                        </div>
+                    </div>
+                    <div class="video-studio-recording-log">
+                        <div class="video-studio-panel-label">${escapeHtml(uiT('video.tools.logs.title', 'Kayıt Logu'))}</div>
+                        <div class="video-studio-log-list" id="videoStudioRecordingLogList">
+                            ${buildVideoStudioLogMarkup()}
+                        </div>
+                    </div>
+                </aside>
+            </div>
+        </section>
+    `;
+}
+
+function buildVideoToolsLibrarySection() {
+    const videoItems = Array.isArray(state.videoFiles) ? state.videoFiles : [];
+    if (!videoItems.length) {
+        return `
+            <section class="video-tools-library-panel video-tools-compact-library">
+                <div class="video-tools-library-head">
+                    <div>
+                        <div class="video-tools-library-title">${escapeHtml(uiT('video.tools.mediaPool.titleReadable', 'Medya Havuzu'))}</div>
+                        <div class="video-tools-library-sub">${escapeHtml(uiT('video.tools.library.empty', 'Soldaki Medya Ekle düğmesiyle bir video ekleyin.'))}</div>
+                    </div>
+                </div>
+            </section>
+        `;
+    }
+
+    const selectedPath = getPreferredVideoToolSourcePath();
+    const cards = videoItems.map((video, index) => {
+        const normalizedPath = String(video?.path || '').trim();
+        const safePath = escapeAttribute(normalizedPath);
+        const cachedMeta = getCachedMetadataForPath(normalizedPath) || {};
+        const rawName = String(cachedMeta?.title || video?.name || window.aurivo?.path?.basename?.(video?.path) || 'Video');
+        const safeName = escapeHtml(rawName);
+        const thumb = videoThumbnailUrlCache.get(normalizedPath) || '';
+        const isSelected = normalizedPath && normalizedPath === selectedPath;
+        const isPreviewing = normalizedPath && normalizedPath === videoToolPreviewPath;
+        const durationSec = Number(video?.duration || cachedMeta?.duration || 0);
+        const durationBadge = Number.isFinite(durationSec) && durationSec > 0
+            ? `<span class="video-workspace-duration-badge">${escapeHtml(formatTime(durationSec))}</span>`
+            : '';
+        const previewMarkup = isPreviewing
+            ? `<video class="video-tools-inline-preview" src="${escapeAttribute(toLocalFileUrl(normalizedPath))}" controls autoplay playsinline></video>`
+            : (thumb
+                ? `<img class="gallery-item-preview-image video-workspace-preview-image" src="${escapeAttribute(thumb)}" alt="">`
+                : `<div class="video-workspace-fallback"><span class="material-symbols-rounded" aria-hidden="true">movie_edit</span></div>`);
+        const previewIcon = isPreviewing ? 'pause' : 'play_arrow';
+        return `
+            <article class="gallery-item video-workspace-item video-tools-source-card${isSelected ? ' is-current' : ''}${isPreviewing ? ' is-previewing' : ''}" data-video-path="${safePath}" data-video-tool-source="${safePath}" title="${safeName}" tabindex="0">
+                <div class="gallery-item-preview-wrap video-workspace-preview" data-video-path="${safePath}" data-video-tool-source="${safePath}">
+                    ${previewMarkup}
+                    <button type="button" class="video-workspace-play-badge video-tools-source-badge" data-video-tool-preview="${safePath}" title="${escapeAttribute(uiT('video.tools.library.preview', 'Önizle'))}" aria-label="${escapeAttribute(uiT('video.tools.library.preview', 'Önizle'))}">
+                        <span class="material-symbols-rounded" aria-hidden="true">${previewIcon}</span>
+                    </button>
+                    ${durationBadge}
+                </div>
+                <div class="video-workspace-card-body">
+                    <button type="button" class="gallery-item-name video-workspace-card-title" data-video-tool-source="${safePath}" title="${safeName}">${safeName}</button>
+                    <div class="video-workspace-card-meta">
+                        ${escapeHtml(isSelected ? uiT('video.tools.library.selected', 'Düzenleme kaynağı') : uiT('video.tools.library.select', 'Kaynak olarak seç'))}
+                        <span class="video-workspace-meta-sep" aria-hidden="true">•</span>
+                        ${escapeHtml(uiT('video.workspace.metaLabel', 'Video'))}
+                    </div>
+                </div>
+            </article>
+        `;
+    }).join('');
+
+    return `
+        <section class="video-tools-library-panel video-tools-compact-library">
+            <div class="video-tools-library-head">
+                <div>
+                    <div class="video-tools-library-title">${escapeHtml(uiT('video.tools.mediaPool.titleReadable', 'Medya Havuzu'))}</div>
+                    <div class="video-tools-library-sub">${escapeHtml(uiT('video.tools.library.hint', 'Önizlemeden bir video seçin; araçlar bu kaynakla çalışır.'))}</div>
+                </div>
+                <span class="video-tools-library-count">${escapeHtml(String(videoItems.length))}</span>
+            </div>
+            <div class="gallery-grid video-tools-source-grid">${cards}</div>
+        </section>
+    `;
+}
+
+function showVideoWorkspaceGrid(options = {}) {
+    const shouldSwitchPage = options?.switchPage !== false;
+    state.videoWorkspaceMode = 'grid';
+    if (shouldSwitchPage && state.currentPage !== 'video') {
+        switchPage('video');
+        return;
+    }
+    renderVideoWorkspace();
+    setVideoWorkspaceMode('grid');
+}
+
+function minimizeVideoToCornerCard() {
+    if (!String(state.currentVideoPath || '').trim()) return;
+    if (elements.videoPlayerShell) {
+        elements.videoPlayerShell.classList.add('is-minimizing-to-corner');
+        if (videoMiniExpandAnimationTimer) {
+            clearTimeout(videoMiniExpandAnimationTimer);
+        }
+        videoMiniExpandAnimationTimer = setTimeout(() => {
+            elements.videoPlayerShell?.classList.remove('is-minimizing-to-corner');
+            videoMiniExpandAnimationTimer = null;
+        }, 700);
+    }
+    setVideoWorkspaceMode('mini');
+}
+
+function restoreVideoFromCornerCard() {
+    if (!String(state.currentVideoPath || '').trim()) return;
+    if (elements.videoPlayerShell) {
+        elements.videoPlayerShell.classList.add('is-restoring-from-mini');
+        if (videoMiniExpandAnimationTimer) {
+            clearTimeout(videoMiniExpandAnimationTimer);
+        }
+        videoMiniExpandAnimationTimer = setTimeout(() => {
+            elements.videoPlayerShell?.classList.remove('is-restoring-from-mini');
+            videoMiniExpandAnimationTimer = null;
+        }, 700);
+    }
+    setVideoWorkspaceMode('player');
+}
+
+function closeVideoMiniPlayer() {
+    stopVideo();
+}
+
+function pulseQueuedVideoCard(videoPath = '') {
+    const normalizedPath = String(videoPath || '').trim();
+    if (!normalizedPath) return;
+    const selector = `.video-workspace-item[data-video-path="${CSS.escape(normalizedPath)}"]`;
+    const card = document.querySelector(selector);
+    if (!card) return;
+    card.classList.remove('queue-highlight-pulse');
+    void card.offsetWidth;
+    card.classList.add('queue-highlight-pulse');
+    if (queuedVideoHighlightTimer) {
+        clearTimeout(queuedVideoHighlightTimer);
+    }
+    queuedVideoHighlightTimer = setTimeout(() => {
+        card.classList.remove('queue-highlight-pulse');
+        queuedVideoHighlightTimer = null;
+    }, 1800);
+}
+
+function queueVideoItemNextByPath(videoPath = '') {
+    const normalizedPath = String(videoPath || '').trim();
+    if (!normalizedPath || !Array.isArray(state.videoFiles) || state.videoFiles.length < 2) return false;
+    const sourceIndex = state.videoFiles.findIndex((item) => String(item?.path || '').trim() === normalizedPath);
+    if (sourceIndex < 0) return false;
+    if (state.currentVideoIndex < 0 || state.currentVideoIndex >= state.videoFiles.length) {
+        safeNotify(uiT('video.workspace.queueNeedsCurrent', 'Önce bir video oynat, sonra sıradakini seç.'), 'warning', 2200);
+        return false;
+    }
+    const targetIndex = Math.min(state.videoFiles.length - 1, state.currentVideoIndex + 1);
+    if (sourceIndex === targetIndex || sourceIndex === state.currentVideoIndex) {
+        safeNotify(uiT('playlist.context.notify.queueNoChange', 'Parça zaten sıradaki konumda.'), 'info', 1800);
+        return false;
+    }
+    const reordered = [...state.videoFiles];
+    const [movedItem] = reordered.splice(sourceIndex, 1);
+    reordered.splice(targetIndex, 0, movedItem);
+    state.videoFiles = reordered;
+    const currentPath = String(state.currentVideoPath || '').trim();
+    state.currentVideoIndex = state.videoFiles.findIndex((item) => String(item?.path || '').trim() === currentPath);
+    persistVideoLibrary();
+    renderVideoWorkspace();
+    renderVideoLibraryTree();
+    pulseQueuedVideoCard(normalizedPath);
+    safeNotify(uiT('playlist.context.notify.queuedNext', 'Track queued to play next.'), 'success', 1800);
+    return true;
+}
+
 // ============================================
 // PLAYLIST
 // ============================================
@@ -26970,7 +36031,7 @@ function renderPlaylist() {
         const metaParts = [artist, album].filter(Boolean);
         const baseTitle = metaParts.length ? `${item.name}\n${metaParts.join(' • ')}` : item.name;
         div.title = isCollectionTabActive ? `${baseTitle}\nSürükleyip sırayı değiştir` : baseTitle;
-        
+
         const flowBadges = (perfState.lightweightMode || largePlaylistMode) ? [] : getTrackFlowBadges(item.path);
         const flowBadgesMarkup = flowBadges.length
             ? `<span class="item-flow-badges">${flowBadges.map((badge) => `<span class="playlist-flow-badge">${escapeHtml(badge)}</span>`).join('')}</span>`
@@ -27427,6 +36488,8 @@ function clearPlaylistAll() {
     state.currentVideoIndex = -1;
     state.currentVideoPath = null;
     persistVideoLibrary();
+    renderVideoWorkspace();
+    renderVideoLibraryTree();
 
     state.isPlaying = false;
     updatePlayPauseIcon(false);
@@ -27615,7 +36678,7 @@ function addSelectedFilesToPlaylist() {
 // ============================================
 // VIDEO PLAYBACK (Playlist'siz, direkt kütüphaneden)
 // ============================================
-function playVideo(videoPath) {
+function playVideo(videoPath, options = {}) {
     console.log('[PLAY VIDEO] Video oynatılıyor:', videoPath);
 
     // Müziği tamamen durdur
@@ -27635,12 +36698,19 @@ function playVideo(videoPath) {
     state.currentVideoPath = videoPath;
     state.activeMedia = 'video';
     state.currentPage = 'video';
+    state.videoWorkspaceMode = ['grid', 'player', 'mini'].includes(String(options?.mode || '').toLowerCase())
+        ? String(options.mode).toLowerCase()
+        : 'player';
 
     // Video sayfasına geç
     switchPage('video');
+    updateVideoWorkspaceTitle(videoPath);
 
     // Video player'ı ayarla ve oynat
+    prepareVideoElementForHighResolutionPlayback(elements.videoPlayer);
+    clearVideoPlaybackPerformanceMode();
     elements.videoPlayer.src = toLocalFileUrl(videoPath);
+    elements.videoPlayer.load();
     applyAutoSubtitleForMedia(elements.videoPlayer, videoPath).catch(() => {
         syncFsSubtitleUiState();
     });
@@ -27667,7 +36737,14 @@ function playVideo(videoPath) {
         fsVolumeLabel.textContent = state.volume + '%';
     }
 
-    elements.videoPlayer.play();
+    const playPromise = elements.videoPlayer.play();
+    if (playPromise && typeof playPromise.catch === 'function') {
+        playPromise.catch((error) => {
+            const message = error?.message || String(error || '');
+            safeNotify(`${uiT('video.playback.failed', 'Video oynatılamadı')}: ${message}`, 'error', 3200);
+            console.warn('[PLAY VIDEO] play failed:', message);
+        });
+    }
     scheduleApplyWebDaliEngine('video-play-request', 30);
 
     // Video kapağı (thumbnail) göster
@@ -27679,6 +36756,8 @@ function playVideo(videoPath) {
     const fileName = videoPath.split('/').pop();
     elements.nowPlayingLabel.textContent = `${uiT('nowPlaying.prefix', 'Now Playing')}: ${fileName}`;
     renderVideoLibraryTree();
+    renderVideoWorkspace();
+    setVideoWorkspaceMode(state.videoWorkspaceMode);
 
     // Tray ve MPRIS'i güncelle
     updateTrayState();
@@ -28738,6 +37817,7 @@ function updatePlayPauseIcon(isPlaying) {
         elements.playIcon.classList.remove('hidden');
         elements.pauseIcon.classList.add('hidden');
     }
+    updateMiniVideoPlaybackUi(isPlaying);
 
     // Playlist satırındaki ▶ / ❚❚ durum göstergesini anında güncelle
     if (state.activeMedia === 'audio' && state.currentIndex >= 0) {
@@ -30859,7 +39939,7 @@ function updateActionButtonState() {
         elements.updateActionBtn.disabled = true;
         return;
     }
-    elements.updateActionBtn.textContent = 'Güncelleme Denetle';
+    elements.updateActionBtn.textContent = 'Güncellemeleri Denetle';
     elements.updateActionBtn.disabled = !window.aurivo?.app?.updater;
 }
 
@@ -30884,7 +39964,7 @@ function applyAppUpdateStateToUi(payload = {}) {
 
     if (elements.updateStatusText) {
         const status = appUpdateRuntime.status;
-        let statusText = 'Hazır';
+        let statusText = 'Henüz denetlenmedi';
         if (status === 'checking') statusText = 'Güncelleme kontrol ediliyor';
         else if (status === 'available') statusText = 'Yeni sürüm bulundu';
         else if (status === 'not-available') statusText = 'Uygulama güncel';
@@ -30929,7 +40009,7 @@ function applyAppUpdateStateToUi(payload = {}) {
         } else if (appUpdateRuntime.status === 'checking') {
             elements.updateBannerText.textContent = 'Güncelleme kontrol ediliyor...';
         } else {
-            elements.updateBannerText.textContent = 'Güncelleme kontrol ediliyor...';
+            elements.updateBannerText.textContent = 'Güncelleme bildirimi kapalı. Denetim için Hakkında bölümünü kullanın.';
         }
     }
 
@@ -30969,6 +40049,10 @@ async function runUpdatePrimaryAction() {
                     safeNotify('yay bulunamadı. Lütfen önce yay kur.', 'warning', 2600);
                     return;
                 }
+                if (result?.reason === 'script-create-failed') {
+                    safeNotify('Güncelleme betiği oluşturulamadı.', 'error', 2600);
+                    return;
+                }
                 if (result?.reason === 'terminal-not-found') {
                     safeNotify('Terminal uygulaması bulunamadı.', 'warning', 2600);
                     return;
@@ -30988,6 +40072,10 @@ async function runUpdatePrimaryAction() {
                 if (!result?.ok) {
                     if (result?.reason === 'yay-not-found') {
                         safeNotify('yay bulunamadı. Lütfen önce yay kur.', 'warning', 2600);
+                        return;
+                    }
+                    if (result?.reason === 'script-create-failed') {
+                        safeNotify('Güncelleme betiği oluşturulamadı.', 'error', 2600);
                         return;
                     }
                     if (result?.reason === 'terminal-not-found') {
@@ -31443,6 +40531,10 @@ function handleKeyboard(e) {
                 elements.libraryQuickSearchInput.blur();
             }
         }
+        return;
+    }
+
+    if (handleVideoStudioKeyboardShortcut(e)) {
         return;
     }
 
@@ -33692,6 +42784,8 @@ function renderVideoLibraryTree(renderToken = fileTreeRenderGeneration) {
 
     const videoItems = Array.isArray(state.videoFiles) ? state.videoFiles : [];
     const hasNowPlayingFocus = state.activeMedia === 'video' && state.isPlaying && state.currentVideoIndex >= 0;
+    renderVideoWorkspace();
+    if (state.currentPage === 'videoTools') renderVideoToolsWorkspace();
 
     if (!resetFileTreeSurface(renderToken)) return;
     elements.fileTree.classList.add('video-library-mode');
@@ -33704,6 +42798,8 @@ function renderVideoLibraryTree(renderToken = fileTreeRenderGeneration) {
                 <div class="video-library-empty-hint">"Video Aç" ile dosya ekleyin</div>
             </div>
         `;
+        renderVideoWorkspace();
+        if (state.currentPage === 'videoTools') renderVideoToolsWorkspace();
         return;
     }
 
@@ -33732,16 +42828,28 @@ function renderVideoLibraryTree(renderToken = fileTreeRenderGeneration) {
         item.addEventListener('click', () => {
             document.querySelectorAll('.video-library-item').forEach(i => i.classList.remove('selected'));
             item.classList.add('selected');
+            if (state.currentPage === 'videoTools') {
+                markVideoToolSourceSelected(video.path);
+                safeNotify(uiT('video.tools.sourceSelected', 'Video düzenleme kaynağı seçildi.'), 'success', 1200);
+            }
         });
 
         item.addEventListener('dblclick', (e) => {
             e.stopPropagation();
+            if (state.currentPage === 'videoTools') {
+                markVideoToolSourceSelected(video.path);
+                return;
+            }
             playVideo(video.path);
         });
 
         item.addEventListener('keydown', (e) => {
             if (e.key === 'Enter') {
                 e.preventDefault();
+                if (state.currentPage === 'videoTools') {
+                    markVideoToolSourceSelected(video.path);
+                    return;
+                }
                 playVideo(video.path);
             }
         });
@@ -33851,10 +42959,15 @@ function startRainbowAnimation() {
             updateRainbowSliderColors(fsSeekSlider, fsSeekPercent);
         }
 
-        if (fsVolumeSlider) {
-            const fsVolumePercent = fsVolumeSlider.value;
-            updateRainbowSliderColors(fsVolumeSlider, fsVolumePercent);
-        }
+    if (fsVolumeSlider) {
+        const fsVolumePercent = fsVolumeSlider.value;
+        updateRainbowSliderColors(fsVolumeSlider, fsVolumePercent);
+    }
+
+        const miniDuration = Number(elements.videoPlayer?.duration || 0);
+        const miniCurrent = Number(elements.videoPlayer?.currentTime || 0);
+        const miniPercent = miniDuration > 0 ? (miniCurrent / miniDuration) * 100 : 0;
+        updateMiniVideoProgressFxColors(miniPercent);
 
         rainbowAnimationId = requestAnimationFrame(animateRainbow);
     }
@@ -33909,14 +43022,14 @@ function updateRainbowSliderColors(slider, percent) {
 
     // Background: Sol kısım renkli gradient, sağ kısım saydam
     const gradientDir = isRtl ? 'to left' : 'to right';
-    const trackBackground = `linear-gradient(${gradientDir}, 
-        ${colors[0]} 0%, 
-        ${colors[1]} ${effectivePercent * 0.2}%, 
-        ${colors[2]} ${effectivePercent * 0.4}%, 
-        ${colors[3]} ${effectivePercent * 0.6}%, 
-        ${colors[4]} ${effectivePercent * 0.8}%, 
-        ${colors[5]} ${effectivePercent}%, 
-        ${emptyColor} ${effectivePercent}%, 
+    const trackBackground = `linear-gradient(${gradientDir},
+        ${colors[0]} 0%,
+        ${colors[1]} ${effectivePercent * 0.2}%,
+        ${colors[2]} ${effectivePercent * 0.4}%,
+        ${colors[3]} ${effectivePercent * 0.6}%,
+        ${colors[4]} ${effectivePercent * 0.8}%,
+        ${colors[5]} ${effectivePercent}%,
+        ${emptyColor} ${effectivePercent}%,
         ${emptyColor} 100%)`;
 
     slider.style.background = trackBackground;
@@ -33950,6 +43063,10 @@ function applySliderFxModeToAll() {
     if (fsVolumeSlider) {
         updateRainbowSliderColors(fsVolumeSlider, Number(fsVolumeSlider.value) || 0);
     }
+    const miniDuration = Number(elements.videoPlayer?.duration || 0);
+    const miniCurrent = Number(elements.videoPlayer?.currentTime || 0);
+    const miniPercent = miniDuration > 0 ? (miniCurrent / miniDuration) * 100 : 0;
+    updateMiniVideoProgressFxColors(miniPercent);
 }
 
 // ============================================

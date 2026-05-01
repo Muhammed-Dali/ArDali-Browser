@@ -651,10 +651,14 @@ const aurivoAPI = {
     readDirectory: (dirPath) => ipcRenderer.invoke('fs:readDirectory', dirPath),
     getSpecialPaths: () => ipcRenderer.invoke('fs:getSpecialPaths'),
     fileExists: (filePath) => ipcRenderer.invoke('fs:exists', filePath),
+    isPathWritable: (filePath) => ipcRenderer.invoke('fs:isWritable', filePath),
     getFileInfo: (filePath) => ipcRenderer.invoke('fs:getFileInfo', filePath),
+    getStorageStats: (targetPath) => ipcRenderer.invoke('fs:getStorageStats', targetPath),
+    getSystemStats: () => ipcRenderer.invoke('app:getSystemStats'),
     readTextFile: (filePath) => ipcRenderer.invoke('fs:readText', filePath),
     writeTextFile: (filePath, text) => ipcRenderer.invoke('fs:writeText', filePath, text),
     writeBase64File: (filePath, base64Data) => ipcRenderer.invoke('fs:writeBase64', filePath, base64Data),
+    writeBufferFile: (filePath, arrayBuffer) => ipcRenderer.invoke('fs:writeBuffer', filePath, arrayBuffer),
     renameItem: (sourcePath, nextName) => ipcRenderer.invoke('fs:renameItem', sourcePath, nextName),
     moveToTrash: (filePath) => ipcRenderer.invoke('fs:moveToTrash', filePath),
     openContainingFolder: (filePath) => ipcRenderer.invoke('fs:openContainingFolder', filePath),
@@ -665,6 +669,30 @@ const aurivoAPI = {
     getBestAlbumArt: (filePath, options) => ipcRenderer.invoke('media:getBestAlbumArt', filePath, options),
     getVideoThumbnail: (filePath) => ipcRenderer.invoke('media:getVideoThumbnail', filePath),
     getDisplayImagePath: (filePath, options) => ipcRenderer.invoke('media:getDisplayImagePath', filePath, options),
+    videoTools: {
+        convert: (options) => ipcRenderer.invoke('videoTools:convert', options || {}),
+        onProgress: (callback) => {
+            if (typeof callback !== 'function') return () => {};
+            const handler = (_event, payload) => callback(payload || {});
+            ipcRenderer.on('videoTools:progress', handler);
+            return () => ipcRenderer.removeListener('videoTools:progress', handler);
+        }
+    },
+    screenRecording: {
+        getSources: () => ipcRenderer.invoke('screenRecording:getSources'),
+        getFfmpegCapabilities: () => ipcRenderer.invoke('screenRecording:getFfmpegCapabilities'),
+        getCursorPoint: () => ipcRenderer.invoke('screenRecording:getCursorPoint'),
+        startSystemAudio: () => ipcRenderer.invoke('screenRecording:startSystemAudio'),
+        stopSystemAudio: () => ipcRenderer.invoke('screenRecording:stopSystemAudio'),
+        muxSystemAudio: (videoPath, audioPath) => ipcRenderer.invoke('screenRecording:muxSystemAudio', videoPath, audioPath),
+        finalizeRecording: (inputPath, outputPath, options) => ipcRenderer.invoke('screenRecording:finalizeRecording', inputPath, outputPath, options || {}),
+        repairRecording: (inputPath, outputPath, options) => ipcRenderer.invoke('screenRecording:repairRecording', inputPath, outputPath, options || {}),
+        validateRecording: (filePath, options) => ipcRenderer.invoke('screenRecording:validateRecording', filePath, options || {}),
+        listStudioPlugins: () => ipcRenderer.invoke('screenRecording:listStudioPlugins'),
+        startLiveOutput: (options) => ipcRenderer.invoke('screenRecording:startLiveOutput', options || {}),
+        writeLiveOutput: (id, chunk) => ipcRenderer.invoke('screenRecording:writeLiveOutput', id, chunk),
+        stopLiveOutput: (id) => ipcRenderer.invoke('screenRecording:stopLiveOutput', id)
+    },
     library: {
         getStats: (folders, metadataCache, excludedFolders, audioExtensions, performanceOptions) => ipcRenderer.invoke('library:getStats', folders, metadataCache, excludedFolders, audioExtensions, performanceOptions),
         getStatsComposite: (folders, extraFiles, metadataCache, excludedFolders, audioExtensions, performanceOptions) => ipcRenderer.invoke('library:getStatsComposite', folders, extraFiles, metadataCache, excludedFolders, audioExtensions, performanceOptions),
@@ -880,6 +908,7 @@ const aurivoAPI = {
         consumePendingOpenMediaFiles: () => ipcRenderer.invoke('app:consumePendingOpenMediaFiles'),
         notifyMediaOpenReady: () => ipcRenderer.send('app:renderer-media-open-ready'),
         getVersionInfo: () => ipcRenderer.invoke('app:getVersionInfo'),
+        setStudioShortcuts: (shortcuts) => ipcRenderer.invoke('app:setStudioShortcuts', shortcuts || {}),
         updater: {
             getState: () => ipcRenderer.invoke('app:update:getState'),
             check: (options = {}) => ipcRenderer.invoke('app:update:check', options),
