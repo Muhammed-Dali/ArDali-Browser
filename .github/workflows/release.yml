@@ -90,11 +90,8 @@ jobs:
             python3 \
             rpm \
             zlib1g-dev
-          if apt-cache show libfuse2 >/dev/null 2>&1; then
-            DEBIAN_FRONTEND=noninteractive apt_get install -y --no-install-recommends libfuse2
-          else
-            DEBIAN_FRONTEND=noninteractive apt_get install -y --no-install-recommends libfuse2t64
-          fi
+          DEBIAN_FRONTEND=noninteractive apt_get install -y --no-install-recommends libfuse2 \
+            || DEBIAN_FRONTEND=noninteractive apt_get install -y --no-install-recommends libfuse2t64
           update-ca-certificates || true
           rm -rf /var/lib/apt/lists/*
 
