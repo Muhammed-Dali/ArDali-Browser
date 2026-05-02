@@ -60,8 +60,8 @@ jobs:
       - name: Install system dependencies
         run: |
           set -euo pipefail
-          sudo apt-get update
-          sudo apt-get install -y \
+          sudo apt-get -o Acquire::Retries=5 update
+          sudo apt-get -o Acquire::Retries=5 install -y \
             binutils \
             build-essential \
             cmake \
@@ -73,7 +73,6 @@ jobs:
             libgl1-mesa-dev \
             libglu1-mesa-dev \
             libgtk-4-dev \
-            libfuse2 \
             libglm-dev \
             libglew-dev \
             libjpeg-dev \
@@ -89,6 +88,11 @@ jobs:
             python3 \
             rpm \
             zlib1g-dev
+          if apt-cache show libfuse2 >/dev/null 2>&1; then
+            sudo apt-get -o Acquire::Retries=5 install -y libfuse2
+          else
+            sudo apt-get -o Acquire::Retries=5 install -y libfuse2t64
+          fi
 
       # Ubuntu 20.04/22.04 ship an older libprojectM (v2.x/3.x) which doesn't provide the v4 C-API
       # used by our visualizer (projectm_create/projectm_destroy/...).

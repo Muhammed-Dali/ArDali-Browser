@@ -57,8 +57,11 @@ jobs:
       - name: Install system dependencies
         run: |
           set -euo pipefail
-          apt-get update
-          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+          apt_get() {
+            apt-get -o Acquire::Retries=5 "$@"
+          }
+          apt_get update
+          DEBIAN_FRONTEND=noninteractive apt_get install -y --no-install-recommends \
             binutils \
             build-essential \
             ca-certificates \
@@ -72,7 +75,6 @@ jobs:
             libgl1-mesa-dev \
             libglu1-mesa-dev \
             libgtk-4-dev \
-            libfuse2 \
             libglm-dev \
             libglew-dev \
             libjpeg-dev \
@@ -88,6 +90,11 @@ jobs:
             python3 \
             rpm \
             zlib1g-dev
+          if apt-cache show libfuse2 >/dev/null 2>&1; then
+            DEBIAN_FRONTEND=noninteractive apt_get install -y --no-install-recommends libfuse2
+          else
+            DEBIAN_FRONTEND=noninteractive apt_get install -y --no-install-recommends libfuse2t64
+          fi
           update-ca-certificates || true
           rm -rf /var/lib/apt/lists/*
 
