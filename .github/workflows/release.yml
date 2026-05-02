@@ -17,7 +17,6 @@ jobs:
   build-linux:
     # Build in Ubuntu 24.04 so GTK4/libadwaita requirements are available.
     runs-on: ubuntu-24.04
-    container: ubuntu:24.04
     defaults:
       run:
         shell: bash
@@ -58,10 +57,10 @@ jobs:
         run: |
           set -euo pipefail
           apt_get() {
-            apt-get -o Acquire::Retries=5 "$@"
+            sudo env DEBIAN_FRONTEND=noninteractive apt-get -o Acquire::Retries=5 "$@"
           }
           apt_get update
-          DEBIAN_FRONTEND=noninteractive apt_get install -y --no-install-recommends \
+          apt_get install -y --no-install-recommends \
             binutils \
             build-essential \
             ca-certificates \
@@ -90,10 +89,10 @@ jobs:
             python3 \
             rpm \
             zlib1g-dev
-          DEBIAN_FRONTEND=noninteractive apt_get install -y --no-install-recommends libfuse2 \
-            || DEBIAN_FRONTEND=noninteractive apt_get install -y --no-install-recommends libfuse2t64
-          update-ca-certificates || true
-          rm -rf /var/lib/apt/lists/*
+          apt_get install -y --no-install-recommends libfuse2 \
+            || apt_get install -y --no-install-recommends libfuse2t64
+          sudo update-ca-certificates || true
+          sudo rm -rf /var/lib/apt/lists/*
 
       - name: Build + install libprojectM v4
         run: |
@@ -109,8 +108,8 @@ jobs:
             -DBUILD_SHARED_LIBS=ON \
             -DBUILD_TESTING=OFF
           cmake --build /tmp/build-projectm
-          cmake --install /tmp/build-projectm
-          ldconfig
+          sudo cmake --install /tmp/build-projectm
+          sudo ldconfig
           echo "PKG_CONFIG_PATH=/usr/local/lib/pkgconfig:/usr/local/lib/x86_64-linux-gnu/pkgconfig:${PKG_CONFIG_PATH:-}" >> "$GITHUB_ENV"
 
       - name: Install JS dependencies
@@ -242,16 +241,16 @@ jobs:
             gh --version
             exit 0
           fi
-          apt-get update
-          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends curl ca-certificates gnupg
-          mkdir -p /etc/apt/keyrings
+          sudo apt-get -o Acquire::Retries=5 update
+          sudo env DEBIAN_FRONTEND=noninteractive apt-get -o Acquire::Retries=5 install -y --no-install-recommends curl ca-certificates gnupg
+          sudo mkdir -p /etc/apt/keyrings
           curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
-            | dd of=/etc/apt/keyrings/githubcli-archive-keyring.gpg
-          chmod go+r /etc/apt/keyrings/githubcli-archive-keyring.gpg
+            | sudo dd of=/etc/apt/keyrings/githubcli-archive-keyring.gpg
+          sudo chmod go+r /etc/apt/keyrings/githubcli-archive-keyring.gpg
           echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \
-            > /etc/apt/sources.list.d/github-cli.list
-          apt-get update
-          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends gh
+            | sudo tee /etc/apt/sources.list.d/github-cli.list >/dev/null
+          sudo apt-get -o Acquire::Retries=5 update
+          sudo env DEBIAN_FRONTEND=noninteractive apt-get -o Acquire::Retries=5 install -y --no-install-recommends gh
           gh --version
 
       - name: Create or update GitHub Release (gh CLI)
