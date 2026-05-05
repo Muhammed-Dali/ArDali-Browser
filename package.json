@@ -433,7 +433,7 @@
     }
   },
   "devDependencies": {
-    "electron": "41.2.0",
+    "electron": "41.4.0",
     "electron-builder": "26.8.1",
     "png-to-ico": "3.0.1"
   },
