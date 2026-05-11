@@ -441,7 +441,7 @@
     "electron-updater": "6.8.3",
     "mpris-service": "^2.1.2",
     "node-id3": "0.2.9",
-    "systeminformation": "5.31.5",
+    "systeminformation": "5.31.6",
     "yt-dlp-wrap-plus": "2.4.3"
   },
   "overrides": {
