@@ -1,6 +1,6 @@
 {
   "name": "aurivo-media-player",
-  "version": "2.5.56",
+  "version": "2.5.57",
   "description": "Open-source Linux media player for music and video with DSP effects, equalizer, and visualizer",
   "main": "main.js",
   "scripts": {
@@ -232,6 +232,7 @@
       "!bin/ffmpeg.exe",
       "!dist/**",
       "!build/**",
+      "!build-native-cmake/**",
       "!build-flatpak/**",
       "!flatpak-build/**",
       "!build-visualizer/**",
@@ -431,7 +432,7 @@
     "electron-updater": "6.7.3",
     "mpris-service": "^2.1.2",
     "node-id3": "0.2.9",
-    "systeminformation": "5.31.5"
+    "systeminformation": "5.31.6"
   },
   "overrides": {
     "xml2js": "0.6.2"

@@ -140,7 +140,7 @@ jobs:
       - name: Build Linux packages (AppImage/deb/rpm)
         run: npm run -s build:linux:appimage -- --publish=never
 
-      - name: Verify AppImage contains pulse + adblock resources
+      - name: Verify AppImage contains native + bundled app resources
         run: |
           set -euo pipefail
           appimage="$(ls -1 dist/*.AppImage | head -n1)"
@@ -151,10 +151,18 @@ jobs:
             cd "${tmpdir}"
             "${GITHUB_WORKSPACE}/${appimage}" --appimage-extract >/dev/null
           )
-          test -f "${tmpdir}/squashfs-root/resources/app.asar"
-          test -d "${tmpdir}/squashfs-root/resources/app.asar.unpacked/native/build/Release"
-          test -f "${tmpdir}/squashfs-root/resources/native-dist/linux/aurivo-projectm-visualizer"
-          echo "AppImage resource check OK: bundled app + native visualizer"
+          root="${tmpdir}/squashfs-root"
+          test -f "${root}/resources/app.asar"
+          test -f "${root}/resources/native/build/Release/aurivo_audio.node"
+          test -f "${root}/resources/native/build/Release/libbass.so"
+          test -f "${root}/resources/native-dist/linux/aurivo-projectm-visualizer"
+          test -f "${root}/resources/native-dist/linux/libprojectM-4.so.4"
+          test -f "${root}/resources/native-dist/linux/libprojectM-4-playlist.so.4"
+          npx asar list "${root}/resources/app.asar" | grep -qx '/modules/pulse/pulseService.js'
+          npx asar list "${root}/resources/app.asar" | grep -qx '/modules/adblock-engine.js'
+          npx asar list "${root}/resources/app.asar" | grep -qx '/modules/downloaderService.js'
+          npx asar list "${root}/resources/app.asar" | grep -qx '/resources/adblock/rulesets/main/easylist.json'
+          echo "AppImage resource check OK: bundled app, native audio, visualizer, pulse, downloader, adblock"
 
       - name: List release files
         run: |
