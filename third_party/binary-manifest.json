@@ -3,24 +3,6 @@
   "description": "Pinned native shared libraries tracked in git (.so/.so.*) for reproducible integrity checks.",
   "entries": [
     {
-      "path": "Aurivo-Pulse/libs/libchromaprint.so",
-      "sha256": "150613bf3db47d68466cead36efc335ef6f116f9a5c0e9eb9a3730f5db24869a",
-      "origin": "Vendored from Aurivo-Pulse upstream tree (SongRec lineage)",
-      "license": "GPL-3.0-or-later (Aurivo-Pulse project)"
-    },
-    {
-      "path": "Aurivo-Pulse/libs/libchromaprint.so.1",
-      "sha256": "150613bf3db47d68466cead36efc335ef6f116f9a5c0e9eb9a3730f5db24869a",
-      "origin": "SONAME compatibility symlink target tracked as file in repo",
-      "license": "GPL-3.0-or-later (Aurivo-Pulse project)"
-    },
-    {
-      "path": "Aurivo-Pulse/libs/libchromaprint.so.1.6.0",
-      "sha256": "150613bf3db47d68466cead36efc335ef6f116f9a5c0e9eb9a3730f5db24869a",
-      "origin": "Versioned chromaprint shared object used by Aurivo-Pulse",
-      "license": "GPL-3.0-or-later (Aurivo-Pulse project)"
-    },
-    {
       "path": "libs/bass/libs/aarch64/libbass.so",
       "sha256": "a05ba3afc880b03f36db8dea50fd1d912cacf2a2c85d785fbaef020f5a93adb2",
       "origin": "Un4seen BASS Linux package",

@@ -1,6 +1,6 @@
 # Locale Coverage
 
-Updated: 2026-05-01
+Updated: 2026-05-14
 
 This report summarizes the active UI locale coverage for the main `Aurivo Medya Player` application.
 
@@ -31,7 +31,7 @@ These were not part of the active main-app loading path.
 
 ## Summary
 
-- Total used keys: `1305`
+- Total used keys: `1273`
 - Supported locales checked: `22`
 - Effective missing keys across all supported locales: `0`
 
@@ -45,28 +45,28 @@ That means:
 
 | Locale | Raw Present | Raw Missing | Effective Missing | Override |
 | --- | ---: | ---: | ---: | --- |
-| `ar-SA` | 439 | 866 | 0 | yes |
-| `bn-BD` | 265 | 1040 | 0 | yes |
-| `de-DE` | 265 | 1040 | 0 | yes |
-| `el-GR` | 265 | 1040 | 0 | yes |
-| `en-US` | 941 | 364 | 0 | yes |
-| `es-ES` | 230 | 1075 | 0 | yes |
-| `fa-IR` | 265 | 1040 | 0 | yes |
-| `fi-FI` | 265 | 1040 | 0 | yes |
-| `fr-FR` | 230 | 1075 | 0 | yes |
-| `hi-IN` | 265 | 1040 | 0 | yes |
-| `hu-HU` | 265 | 1040 | 0 | yes |
-| `it-IT` | 265 | 1040 | 0 | yes |
-| `ja-JP` | 265 | 1040 | 0 | yes |
-| `ne-NP` | 265 | 1040 | 0 | yes |
-| `pl-PL` | 265 | 1040 | 0 | yes |
-| `pt-BR` | 265 | 1040 | 0 | yes |
-| `ru-RU` | 265 | 1040 | 0 | yes |
-| `tr-TR` | 877 | 428 | 0 | yes |
-| `uk-UA` | 265 | 1040 | 0 | yes |
-| `vi-VN` | 265 | 1040 | 0 | yes |
-| `zh-CN` | 222 | 1083 | 0 | yes |
-| `zh-TW` | 222 | 1083 | 0 | yes |
+| `ar-SA` | 437 | 836 | 0 | yes |
+| `bn-BD` | 235 | 1038 | 0 | yes |
+| `de-DE` | 235 | 1038 | 0 | yes |
+| `el-GR` | 235 | 1038 | 0 | yes |
+| `en-US` | 908 | 365 | 0 | yes |
+| `es-ES` | 228 | 1045 | 0 | yes |
+| `fa-IR` | 235 | 1038 | 0 | yes |
+| `fi-FI` | 235 | 1038 | 0 | yes |
+| `fr-FR` | 228 | 1045 | 0 | yes |
+| `hi-IN` | 235 | 1038 | 0 | yes |
+| `hu-HU` | 235 | 1038 | 0 | yes |
+| `it-IT` | 235 | 1038 | 0 | yes |
+| `ja-JP` | 235 | 1038 | 0 | yes |
+| `ne-NP` | 235 | 1038 | 0 | yes |
+| `pl-PL` | 235 | 1038 | 0 | yes |
+| `pt-BR` | 235 | 1038 | 0 | yes |
+| `ru-RU` | 235 | 1038 | 0 | yes |
+| `tr-TR` | 872 | 401 | 0 | yes |
+| `uk-UA` | 235 | 1038 | 0 | yes |
+| `vi-VN` | 235 | 1038 | 0 | yes |
+| `zh-CN` | 220 | 1053 | 0 | yes |
+| `zh-TW` | 220 | 1053 | 0 | yes |
 
 ## Interpretation
 

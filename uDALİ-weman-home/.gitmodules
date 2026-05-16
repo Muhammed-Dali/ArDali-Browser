@@ -1,6 +1,0 @@
-[submodule "uBlock"]
-	path = uBlock
-	url = https://github.com/gorhill/uBlock.git
-[submodule "publish-extension"]
-	path = publish-extension
-	url = https://github.com/gorhill/publish-extension.git

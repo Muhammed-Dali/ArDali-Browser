@@ -705,6 +705,15 @@ const aurivoAPI = {
             return () => ipcRenderer.removeListener('library:watch-event', handler);
         }
     },
+    adblock: {
+        openWindow: () => ipcRenderer.invoke('adblock:openWindow'),
+        setConfig: (config) => ipcRenderer.invoke('adblock:setConfig', config || {}),
+        getStats: () => ipcRenderer.invoke('adblock:getStats'),
+        resetStats: () => ipcRenderer.invoke('adblock:resetStats'),
+        listDevelopSources: () => ipcRenderer.invoke('adblock:listDevelopSources'),
+        readDevelopSource: (sourceId) => ipcRenderer.invoke('adblock:readDevelopSource', sourceId),
+        getScriptingInjection: (payload) => ipcRenderer.invoke('adblock:getScriptingInjection', payload || {})
+    },
 
     // Ayarlar
     saveSettings: (settings) => ipcRenderer.invoke('settings:save', settings),
@@ -760,53 +769,55 @@ const aurivoAPI = {
         }
     },
 
-    // Aurivo-Dawlod downloader window
-    dawlod: {
-        openWindow: (options) => ipcRenderer.invoke('dawlod:openWindow', options),
-        getWindowState: () => ipcRenderer.invoke('dawlod:getWindowState'),
-        onWindowState: (callback) => {
-            const handler = (_event, payload) => callback(payload);
-            ipcRenderer.on('dawlod:window-state', handler);
-            return () => ipcRenderer.removeListener('dawlod:window-state', handler);
-        }
-    },
-
-    // Aurivo-Pulse (Aurivo-Pulse tabanlı şarkı tanıma)
     pulse: {
         openWindow: () => ipcRenderer.invoke('pulse:openWindow'),
+        closeWindow: () => ipcRenderer.invoke('pulse:closeWindow'),
         getWindowState: () => ipcRenderer.invoke('pulse:getWindowState'),
         listDevices: () => ipcRenderer.invoke('pulse:listDevices'),
-        getStatus: () => ipcRenderer.invoke('pulse:getStatus'),
-        getPreferredDevice: () => ipcRenderer.invoke('pulse:getPreferredDevice'),
         getPreferences: () => ipcRenderer.invoke('pulse:getPreferences'),
-        savePreferences: (update) => ipcRenderer.invoke('pulse:savePreferences', update),
-        startListening: (options) => ipcRenderer.invoke('pulse:startListening', options),
+        savePreferences: (preferences) => ipcRenderer.invoke('pulse:savePreferences', preferences || {}),
+        getPreferredDevice: () => ipcRenderer.invoke('pulse:getPreferredDevice'),
+        getStatus: () => ipcRenderer.invoke('pulse:getStatus'),
+        startListening: (options) => ipcRenderer.invoke('pulse:startListening', options || {}),
         stopListening: () => ipcRenderer.invoke('pulse:stopListening'),
-        recognizeSample: (options) => ipcRenderer.invoke('pulse:recognizeSample', options),
+        recognizeSample: (options) => ipcRenderer.invoke('pulse:recognizeSample', options || {}),
+        openExternalSearch: (payload) => ipcRenderer.invoke('pulse:openExternalSearch', payload || {}),
+        openQueryInApp: (payload) => ipcRenderer.invoke('pulse:openQueryInApp', payload || {}),
+        onWindowState: (callback) => {
+            if (typeof callback !== 'function') return () => {};
+            const handler = (_event, payload) => callback(payload || {});
+            ipcRenderer.on('pulse:window-state', handler);
+            return () => ipcRenderer.removeListener('pulse:window-state', handler);
+        },
         onState: (callback) => {
-            const handler = (_event, payload) => callback(payload);
+            if (typeof callback !== 'function') return () => {};
+            const handler = (_event, payload) => callback(payload || {});
             ipcRenderer.on('pulse:state', handler);
             return () => ipcRenderer.removeListener('pulse:state', handler);
         },
+        onVolume: (callback) => {
+            if (typeof callback !== 'function') return () => {};
+            const handler = (_event, payload) => callback(payload || {});
+            ipcRenderer.on('pulse:volume', handler);
+            return () => ipcRenderer.removeListener('pulse:volume', handler);
+        },
         onResult: (callback) => {
-            const handler = (_event, payload) => callback(payload);
+            if (typeof callback !== 'function') return () => {};
+            const handler = (_event, payload) => callback(payload || {});
             ipcRenderer.on('pulse:result', handler);
             return () => ipcRenderer.removeListener('pulse:result', handler);
         },
         onUncertain: (callback) => {
-            const handler = (_event, payload) => callback(payload);
+            if (typeof callback !== 'function') return () => {};
+            const handler = (_event, payload) => callback(payload || {});
             ipcRenderer.on('pulse:uncertain', handler);
             return () => ipcRenderer.removeListener('pulse:uncertain', handler);
         },
         onOpenQuery: (callback) => {
-            const handler = (_event, payload) => callback(payload);
+            if (typeof callback !== 'function') return () => {};
+            const handler = (_event, payload) => callback(payload || {});
             ipcRenderer.on('pulse:open-query', handler);
             return () => ipcRenderer.removeListener('pulse:open-query', handler);
-        },
-        onWindowState: (callback) => {
-            const handler = (_event, payload) => callback(payload);
-            ipcRenderer.on('pulse:window-state', handler);
-            return () => ipcRenderer.removeListener('pulse:window-state', handler);
         }
     },
 
@@ -830,13 +841,6 @@ const aurivoAPI = {
         importCookies: (filePath) => ipcRenderer.invoke('web:importCookies', filePath)
     },
 
-    adblock: {
-        getStats: () => ipcRenderer.invoke('adblock:getStats'),
-        allowDomain: (domain) => ipcRenderer.invoke('adblock:allowDomain', domain),
-        getConfig: () => ipcRenderer.invoke('adblock:getConfig'),
-        setConfig: (config) => ipcRenderer.invoke('adblock:setConfig', config),
-        openDashboard: () => ipcRenderer.invoke('adblock:openDashboard')
-    },
 
     diagnostics: {
         getPerformanceSnapshot: () => ipcRenderer.invoke('diagnostics:getPerformanceSnapshot')
@@ -876,11 +880,59 @@ const aurivoAPI = {
         closeWindow: () => ipcRenderer.invoke('soundEffects:closeWindow'),
         applyInMainWindow: (script) => ipcRenderer.invoke('soundEffects:applyInMainWindow', String(script || '')),
         emitScopedLiveParam: (payload) => ipcRenderer.send('soundEffects:scopedLiveParam', payload || {}),
-        getWebSpectrum: (numBands) => ipcRenderer.invoke('soundEffects:getWebSpectrum', numBands || 128),
+        getWebSpectrum: (numBands, options = {}) => ipcRenderer.invoke('soundEffects:getWebSpectrum', numBands || 128, options || {}),
         getWebNoiseGateStatus: () => ipcRenderer.invoke('soundEffects:getWebNoiseGateStatus'),
         getWebTruePeakStatus: () => ipcRenderer.invoke('soundEffects:getWebTruePeakStatus'),
         getWebDynamicEqStatus: () => ipcRenderer.invoke('soundEffects:getWebDynamicEqStatus'),
         getWebPerfStatus: () => ipcRenderer.invoke('soundEffects:getWebPerfStatus')
+    },
+
+    // AURIVO DAWLOD PENCERESİ API
+    downloader: {
+        openWindow: (url) => ipcRenderer.invoke('downloader:openWindow', String(url || '')),
+        getSettings: () => ipcRenderer.invoke('downloader:getSettings'),
+        getDependencyStatus: () => ipcRenderer.invoke('downloader:getDependencyStatus'),
+        ensureDependencies: () => ipcRenderer.invoke('downloader:ensureDependencies'),
+        saveSettings: (settings) => ipcRenderer.invoke('downloader:saveSettings', settings || {}),
+        readClipboard: () => ipcRenderer.invoke('downloader:readClipboard'),
+        chooseFolder: () => ipcRenderer.invoke('downloader:chooseFolder'),
+        chooseOutputFolder: () => ipcRenderer.invoke('downloader:chooseOutputFolder'),
+        chooseConfigFile: () => ipcRenderer.invoke('downloader:chooseConfigFile'),
+        getPendingUrl: () => ipcRenderer.invoke('downloader:getPendingUrl'),
+        getPendingNotice: () => ipcRenderer.invoke('downloader:getPendingNotice'),
+        getPathForFile: (file) => {
+            try {
+                if (!file) return '';
+                if (webUtils && typeof webUtils.getPathForFile === 'function') {
+                    return String(webUtils.getPathForFile(file) || '').trim();
+                }
+                return String(file.path || '').trim();
+            } catch {
+                return '';
+            }
+        },
+        getInfo: (url) => ipcRenderer.invoke('downloader:getInfo', String(url || '')),
+        start: (options) => ipcRenderer.invoke('downloader:start', options || {}),
+        cancel: (id) => ipcRenderer.invoke('downloader:cancel', String(id || '')),
+        startCompression: (options) => ipcRenderer.invoke('downloader:startCompression', options || {}),
+        cancelCompression: (id) => ipcRenderer.invoke('downloader:cancelCompression', String(id || '')),
+        showFile: (filePath) => ipcRenderer.invoke('downloader:showFile', String(filePath || '')),
+        getHistory: () => ipcRenderer.invoke('downloader:getHistory'),
+        exportHistory: (format) => ipcRenderer.invoke('downloader:exportHistory', String(format || 'json')),
+        clearHistory: () => ipcRenderer.invoke('downloader:clearHistory'),
+        removeHistoryItem: (id) => ipcRenderer.invoke('downloader:removeHistoryItem', String(id || '')),
+        onJobUpdate: (callback) => {
+            if (typeof callback !== 'function') return () => {};
+            const handler = (_event, payload) => callback(payload || {});
+            ipcRenderer.on('downloader:job-update', handler);
+            return () => ipcRenderer.removeListener('downloader:job-update', handler);
+        },
+        onLoadUrl: (callback) => {
+            if (typeof callback !== 'function') return () => {};
+            const handler = (_event, payload) => callback(payload || {});
+            ipcRenderer.on('downloader:load-url', handler);
+            return () => ipcRenderer.removeListener('downloader:load-url', handler);
+        }
     },
 
     // ELECTRON PENCERE KONTROL API

@@ -64,10 +64,6 @@ modules:
         cmake --build build-visualizer-flatpak --config Release -j"$(nproc)"
       - install -d /app/aurivo
       - cp -a dist/linux-unpacked/. /app/aurivo/
-      - |
-        if [ -f /app/aurivo/resources/app.asar.unpacked/Aurivo-Pulse/libs/libchromaprint.so ]; then
-          ln -sf libchromaprint.so /app/aurivo/resources/app.asar.unpacked/Aurivo-Pulse/libs/libchromaprint.so.1
-        fi
       - install -Dm755 native/build/Release/aurivo_audio.node /app/aurivo/resources/native/build/Release/aurivo_audio.node
       - |
         for lib in \
@@ -81,20 +77,6 @@ modules:
         done
       - install -d /app/aurivo/resources/native-dist/linux
       - install -Dm755 build-visualizer-flatpak/aurivo-projectm-visualizer /app/aurivo/resources/native-dist/linux/aurivo-projectm-visualizer
-      - |
-        # Aurivo-Pulse: native-dist'den kopyala (binary zaten derlenmis olarak geliyor)
-        PULSE_BIN="dist/linux-unpacked/resources/native-dist/linux/aurivo-pulse"
-        if [ -f "$PULSE_BIN" ]; then
-          install -Dm755 "$PULSE_BIN" /app/aurivo/resources/native-dist/linux/aurivo-pulse
-        fi
-      - |
-        # Aurivo-Pulse: libchromaprint soname uyumlulugunu garanti et (.so.1 bekleniyor).
-        CHROMAPRINT_SRC="/app/aurivo/resources/app.asar.unpacked/Aurivo-Pulse/libs/libchromaprint.so"
-        if [ -f "$CHROMAPRINT_SRC" ]; then
-          install -Dm755 "$CHROMAPRINT_SRC" /app/aurivo/resources/native-dist/linux/libchromaprint.so.1
-          ln -sf libchromaprint.so.1 /app/aurivo/resources/native-dist/linux/libchromaprint.so
-          ln -sf libchromaprint.so /app/aurivo/resources/app.asar.unpacked/Aurivo-Pulse/libs/libchromaprint.so.1
-        fi
       - install -Dm644 assets/fonts/Inter-Regular.ttf /app/aurivo/resources/native-dist/linux/fonts/Inter-Regular.ttf
       - |
         for lib in \

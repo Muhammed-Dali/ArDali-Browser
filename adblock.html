@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: https:;">
+    <title>DeliBlock</title>
+    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet">
+    <link rel="stylesheet" href="styles/main.css">
+</head>
+<body class="adblock-window-mode">
+    <header class="adblock-dashboard-topbar">
+        <nav class="adblock-dashboard-tabs" aria-label="DeliBlock sekmeleri" data-i18n-aria-label="adblock.tabs.aria">
+            <img src="icons/deliblock.svg" alt="" aria-hidden="true">
+            <button type="button" class="adblock-tab-button active" data-adblock-tab="settings" data-i18n="adblock.tabs.settings">Ayarlar</button>
+            <button type="button" class="adblock-tab-button" data-adblock-tab="rulesets" data-i18n="adblock.tabs.rulesets">Filtre listeleri</button>
+            <button type="button" class="adblock-tab-button" data-adblock-tab="filters" data-i18n="adblock.tabs.filters">Özel filtreler</button>
+            <button type="button" class="adblock-tab-button adblock-develop-tab" data-adblock-tab="develop" data-i18n="adblock.tabs.develop">Geliştir</button>
+            <button type="button" class="adblock-tab-button" data-adblock-tab="about" data-i18n="adblock.tabs.about">Hakkında</button>
+        </nav>
+    </header>
+
+    <main class="adblock-window-shell">
+        <section class="adblock-tab-panel active" data-adblock-panel="settings">
+            <div class="settings-group adblock-dashboard-section adblock-settings-hero">
+                <div class="adblock-section-heading">
+                    <div>
+                        <h3 data-i18n="adblock.settings.mode.title">Varsayılan filtreleme modu</h3>
+                        <p id="adblockModeDescription">Web sitesi başına özel mod seçilmediğinde bu mod kullanılır. Her mod, koruma düzeyi ve uyumluluk arasında farklı denge kurar.</p>
+                    </div>
+                    <span class="adblock-mode-pill" id="adblockModeText">İdeal</span>
+                </div>
+
+                <div class="adblock-mode-grid adblock-mode-cards" id="adblockModeGrid" role="radiogroup" aria-label="DeliBlock modu" data-i18n-aria-label="adblock.settings.mode.aria">
+                    <button type="button" class="adblock-mode-card adblock-filtering-card" data-adblock-mode="basic" role="radio" aria-checked="false">
+                        <span class="adblock-radio-dot" aria-hidden="true"></span>
+                        <strong data-i18n="adblock.mode.basic.label">Temel</strong>
+                        <canvas class="adblock-mode-knob" width="130" height="150" data-level="1" data-value="35" data-label-key="adblock.mode.basic.knob" data-label="Hafif" aria-hidden="true"></canvas>
+                        <p data-i18n="adblock.mode.basic.card">Seçilen filtre listelerinden temel ağ filtrelemesi. Web sitelerindeki verileri okumak ve değiştirmek için izin gerektirmez.</p>
+                    </button>
+                    <button type="button" class="adblock-mode-card adblock-filtering-card active" data-adblock-mode="ideal" role="radio" aria-checked="true">
+                        <span class="adblock-radio-dot" aria-hidden="true"></span>
+                        <strong data-i18n="adblock.mode.ideal.label">İdeal</strong>
+                        <canvas class="adblock-mode-knob" width="130" height="150" data-level="2" data-value="65" data-label-key="adblock.mode.ideal.knob" data-label="Dengeli" aria-hidden="true"></canvas>
+                        <p data-i18n="adblock.mode.ideal.card">Gelişmiş ağ filtrelemesi ve seçilen filtre listelerinden genişletilmiş filtreleme.</p>
+                    </button>
+                    <button type="button" class="adblock-mode-card adblock-filtering-card" data-adblock-mode="aggressive" role="radio" aria-checked="false">
+                        <span class="adblock-radio-dot" aria-hidden="true"></span>
+                        <strong data-i18n="adblock.mode.aggressive.label">Kapsamlı</strong>
+                        <canvas class="adblock-mode-knob" width="130" height="150" data-level="3" data-value="95" data-label-key="adblock.mode.aggressive.knob" data-label="Güçlü" aria-hidden="true"></canvas>
+                        <p data-i18n="adblock.mode.aggressive.card">Gelişmiş ağ filtrelemenin yanında sert engelleme, görünür reklam temizliği ve ek YouTube sinyalleri.</p>
+                    </button>
+                </div>
+            </div>
+
+            <div class="settings-group adblock-dashboard-section">
+                <h3 data-i18n="adblock.behavior.title">Davranış</h3>
+                <label class="checkbox-label">
+                    <input type="checkbox" id="adblockAutoRefreshOnModeChange">
+                    <span data-i18n="adblock.behavior.autoRefresh">Filtreleme modunu değiştirirken sayfayı otomatik olarak yenile</span>
+                </label>
+                <label class="checkbox-label">
+                    <input type="checkbox" id="adblockShowBlockedCount" checked>
+                    <span data-i18n="adblock.behavior.showCount">Engellenen isteklerin sayısını araç çubuğu simgesinde göster</span>
+                </label>
+                <label class="checkbox-label">
+                    <input type="checkbox" id="adblockStrictBlock">
+                    <span><span data-i18n="adblock.behavior.strictBlock">Sıkı engellemeyi etkinleştir</span> <small data-i18n="adblock.behavior.strictBlockHint">İstenmeyebilecek sitelere erişim engellenecek ve devam etme seçeneği sunulacaktır.</small></span>
+                </label>
+                <label class="checkbox-label">
+                    <input type="checkbox" id="adblockDeveloperMode">
+                    <span><span data-i18n="adblock.behavior.developerMode">Geliştirici modu</span> <small data-i18n="adblock.behavior.developerModeHint">Teknik kullanıcılara uygun özelliklere erişime izin ver.</small></span>
+                </label>
+            </div>
+
+            <div class="settings-group adblock-dashboard-section">
+                <h3 data-i18n="adblock.backup.title">Yedekle</h3>
+                <p class="adblock-muted" data-i18n="adblock.backup.hint">Ayarlarınızı bir dosyaya yedekleyin veya yedeklenmiş bir dosyadan alın.</p>
+                <div class="adblock-action-row">
+                    <button class="btn btn-small" id="adblockBackupBtn"><span class="material-symbols-rounded" aria-hidden="true">download</span><span data-i18n="adblock.backup.export">Yedekle...</span></button>
+                    <button class="btn btn-small" id="adblockRestoreBtn"><span class="material-symbols-rounded" aria-hidden="true">upload</span><span data-i18n="adblock.backup.import">Geri yükle...</span></button>
+                    <button class="btn btn-small" id="adblockResetDefaultsBtn"><span class="material-symbols-rounded" aria-hidden="true">undo</span><span data-i18n="adblock.backup.reset">Varsayılan ayarlara sıfırla...</span></button>
+                    <input type="file" id="adblockRestoreInput" accept="application/json" hidden>
+                </div>
+            </div>
+        </section>
+
+        <section class="adblock-tab-panel" data-adblock-panel="rulesets">
+            <div class="adblock-dashboard-summary adblock-popup-stats" aria-label="DeliBlock durumu">
+                <div class="adblock-stat"><span data-i18n="adblock.stats.session">Bu oturum</span><strong id="adblockBlockedCount">0</strong></div>
+                <div class="adblock-stat"><span data-i18n="adblock.stats.total">Toplam</span><strong id="adblockTotalCount">0</strong></div>
+                <div class="adblock-stat"><span data-i18n="adblock.stats.ruleset">Ruleset</span><strong id="adblockRulesetCount">0</strong></div>
+                <div class="adblock-stat"><span data-i18n="adblock.stats.domainRules">Alan adı kuralı</span><strong id="adblockDomainRuleCount">0</strong></div>
+                <div class="adblock-stat"><span data-i18n="adblock.stats.dnrRules">DNR kuralı</span><strong id="adblockDnrRuleCount">0</strong></div>
+            </div>
+            <div class="settings-group adblock-dashboard-section adblock-ruleset-panel">
+                <div class="adblock-section-heading">
+                    <div>
+                        <h3 data-i18n="adblock.rulesets.title">Filtre listeleri</h3>
+                        <p id="adblockLastRule">Henüz eşleşen kural yok.</p>
+                    </div>
+                    <button class="btn btn-small" id="adblockRefreshStatsBtn" data-i18n="adblock.actions.refresh">Yenile</button>
+                </div>
+                <div class="adblock-ruleset-breakdown" id="adblockRulesetBreakdown">
+                    <p class="adblock-log-empty" data-i18n="adblock.rulesets.empty">Ruleset eşleşmesi bekleniyor.</p>
+                </div>
+            </div>
+        </section>
+
+        <section class="adblock-tab-panel" data-adblock-panel="filters">
+            <div class="settings-group adblock-dashboard-section">
+                <div class="adblock-section-heading">
+                    <div>
+                        <h3 data-i18n="adblock.filters.title">Özel filtreler</h3>
+                        <p data-i18n="adblock.filters.hint">Bu bölüm bir sonraki adımda DeliBlock özel filtre ekleme alanı için hazırlandı.</p>
+                    </div>
+                </div>
+                <textarea class="adblock-filter-editor" spellcheck="false" placeholder="Örnek: ||example.com/ads^" data-i18n-placeholder="adblock.filters.placeholder"></textarea>
+            </div>
+        </section>
+
+        <section class="adblock-tab-panel" data-adblock-panel="develop">
+            <div class="settings-group adblock-dashboard-section adblock-develop-panel">
+                <div class="adblock-develop-viewbar">
+                    <label for="adblockDevelopView" data-i18n="adblock.develop.view">Görünüm:</label>
+                    <select id="adblockDevelopView">
+                        <option value="modes" data-i18n="adblock.develop.options.modes">Filtreleme modu ayrıntıları</option>
+                        <option value="dnr" data-i18n="adblock.develop.options.dnr">DNR ruleset özeti</option>
+                        <option value="session" data-i18n="adblock.develop.options.session">Oturum eşleşme özeti</option>
+                    </select>
+                </div>
+                <div class="adblock-develop-toolbar">
+                    <button class="btn btn-small" id="adblockDevelopSaveBtn" disabled>
+                        <span class="material-symbols-rounded" aria-hidden="true">save</span>
+                        <span data-i18n="settings.buttons.save">Save</span>
+                    </button>
+                    <button class="btn btn-small" id="adblockDevelopRevertBtn" disabled>
+                        <span class="material-symbols-rounded" aria-hidden="true">undo</span>
+                        <span data-i18n="adblock.actions.revert">Revert</span>
+                    </button>
+                    <button class="btn btn-small" id="adblockResetStatsBtn">
+                        <span class="material-symbols-rounded" aria-hidden="true">delete_sweep</span>
+                        <span data-i18n="adblock.actions.resetCounter">Sayacı sıfırla</span>
+                    </button>
+                </div>
+                <div class="adblock-code-shell">
+                    <pre class="adblock-code-lines" id="adblockDevelopLineNumbers" aria-hidden="true">1</pre>
+                    <textarea id="adblockDevelopEditor" class="adblock-develop-editor" spellcheck="false" readonly></textarea>
+                </div>
+                <div class="adblock-log-list" id="adblockRecentList" hidden></div>
+            </div>
+        </section>
+
+        <section class="adblock-tab-panel" data-adblock-panel="about">
+            <div class="settings-group adblock-dashboard-section">
+                <h3 data-i18n="adblock.about.title">DeliBlock hakkında</h3>
+                <p class="adblock-muted" data-i18n="adblock.about.body">DeliBlock, yerel ruleset mantığını Aurivo'nun web sekmesiyle birleştirir. Ağ engelleme Electron webRequest üzerinde, görünür reklam temizliği ise sayfa içi güvenli enjeksiyonlarla yapılır.</p>
+                <div class="adblock-host-row">
+                    <span class="material-symbols-rounded" aria-hidden="true">public</span>
+                    <strong id="adblockCurrentHost" data-i18n="adblock.about.activeWebTab">Aktif web sekmesi</strong>
+                </div>
+            </div>
+        </section>
+    </main>
+    <script src="modules/i18n.js"></script>
+    <script src="adblockWindow.js"></script>
+</body>
+</html>

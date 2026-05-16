@@ -124,49 +124,6 @@ jobs:
       - name: Native audio latency/xrun smoke
         run: npm run -s native:audio:smoke
 
-      - name: Setup Rust toolchain (for Aurivo-Pulse)
-        shell: bash
-        run: |
-          set -euo pipefail
-          export RUSTUP_INIT_SKIP_PATH_CHECK=yes
-          export CARGO_HOME="${CARGO_HOME:-$HOME/.cargo}"
-
-          setup_rust() {
-            source "$HOME/.cargo/env" 2>/dev/null || true
-            command -v rustup >/dev/null 2>&1 || return 1
-            rustup set profile minimal
-            rustup toolchain install stable --no-self-update
-            rustup default stable
-            rustc --version
-            cargo --version
-            echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
-          }
-
-          for attempt in 1 2 3 4 5; do
-            echo "[rust-setup] attempt $attempt/5"
-            if setup_rust; then
-              echo "[rust-setup] ready"
-              exit 0
-            fi
-
-            rm -f /tmp/rustup-init.sh
-            if curl --retry 5 --retry-all-errors --retry-delay 2 --connect-timeout 20 --max-time 180 -fsSL https://sh.rustup.rs -o /tmp/rustup-init.sh; then
-              sh /tmp/rustup-init.sh -y --profile minimal --default-toolchain stable || true
-            fi
-            sleep $((attempt * 4))
-          done
-
-          echo "[rust-setup] failed after retries" >&2
-          exit 1
-
-      - name: Build Aurivo-Pulse binary
-        run: |
-          set -euo pipefail
-          cargo build --release --manifest-path Aurivo-Pulse/Cargo.toml
-          mkdir -p native-dist/linux
-          cp -f Aurivo-Pulse/target/release/aurivo-pulse native-dist/linux/aurivo-pulse
-          chmod +x native-dist/linux/aurivo-pulse
-
       - name: Build projectM visualizer (aurivo-projectm-visualizer)
         run: |
           set -euo pipefail
@@ -204,9 +161,10 @@ jobs:
             cd "${tmpdir}"
             "${GITHUB_WORKSPACE}/${appimage}" --appimage-extract >/dev/null
           )
-          test -f "${tmpdir}/squashfs-root/resources/native-dist/linux/aurivo-pulse"
-          test -f "${tmpdir}/squashfs-root/resources/uDALİ-weman-home/chromium/manifest.json"
-          echo "AppImage resource check OK: aurivo-pulse + uDALİ-weman-home/chromium"
+          test -f "${tmpdir}/squashfs-root/resources/app.asar"
+          test -d "${tmpdir}/squashfs-root/resources/app.asar.unpacked/native/build/Release"
+          test -f "${tmpdir}/squashfs-root/resources/native-dist/linux/aurivo-projectm-visualizer"
+          echo "AppImage resource check OK: bundled app + native visualizer"
 
       - name: Build + Publish (GitHub Release) on tag
         if: ${{ startsWith(github.ref, 'refs/tags/v') }}

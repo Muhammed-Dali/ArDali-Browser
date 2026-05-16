@@ -1,0 +1,652 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https:;">
+    <title data-i18n="listen.window.title">Aurivo Dinle</title>
+    <style>
+        :root {
+            color-scheme: dark;
+            --bg: #090d12;
+            --panel: #111821;
+            --line: #27415c;
+            --text: #d8e8f8;
+            --muted: #87a5bf;
+            --accent: #44dff2;
+            --accent2: #8fa8ff;
+            --danger: #ff6f8c;
+        }
+        * { box-sizing: border-box; }
+        body {
+            margin: 0;
+            min-height: 100vh;
+            background: var(--bg);
+            color: var(--text);
+            font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        }
+        .shell {
+            display: grid;
+            grid-template-rows: auto 1fr;
+            min-height: 100vh;
+        }
+        header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 16px;
+            padding: 18px 22px;
+            border-bottom: 1px solid rgba(130, 180, 220, .18);
+            background: #10161f;
+        }
+        h1 {
+            margin: 0;
+            font-size: 18px;
+            font-weight: 700;
+            letter-spacing: 0;
+        }
+        .status {
+            color: var(--muted);
+            font-size: 13px;
+        }
+        .header-actions {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            min-width: 0;
+        }
+        .view-back-btn.hidden {
+            display: none;
+        }
+        .menu-wrap {
+            position: relative;
+            flex: 0 0 auto;
+        }
+        .icon-btn {
+            width: 34px;
+            min-width: 34px;
+            height: 34px;
+            min-height: 34px;
+            padding: 0;
+            display: grid;
+            place-items: center;
+            border-radius: 8px;
+            font-size: 18px;
+            line-height: 1;
+        }
+        .menu-popover {
+            position: absolute;
+            top: calc(100% + 8px);
+            right: 0;
+            z-index: 20;
+            width: 190px;
+            padding: 6px;
+            border: 1px solid rgba(130, 180, 220, .22);
+            border-radius: 8px;
+            background: #111a26;
+            box-shadow: 0 18px 42px rgba(0, 0, 0, .42);
+        }
+        .menu-popover.hidden,
+        .page-view.hidden,
+        .listen-view.hidden {
+            display: none;
+        }
+        .menu-popover button {
+            min-height: 34px;
+            border: 0;
+            background: transparent;
+            text-align: left;
+            font-weight: 650;
+            color: var(--text);
+        }
+        .menu-popover button:hover {
+            background: rgba(68, 223, 242, .1);
+        }
+        main.listen-view {
+            display: grid;
+            grid-template-rows: auto minmax(380px, 1fr) auto;
+            gap: 14px;
+            padding: 18px;
+            min-height: calc(100vh - 73px);
+            background: var(--bg);
+        }
+        .page-view {
+            padding: 18px;
+            background: var(--bg);
+        }
+        section {
+            border: 1px solid rgba(130, 180, 220, .18);
+            background: rgba(22, 33, 48, .9);
+            border-radius: 8px;
+            padding: 16px;
+        }
+        label {
+            display: block;
+            color: var(--muted);
+            font-size: 12px;
+            margin-bottom: 7px;
+        }
+        select, button, input[type="number"] {
+            width: 100%;
+            border: 1px solid var(--line);
+            border-radius: 8px;
+            background: #0f1824;
+            color: var(--text);
+            min-height: 38px;
+            padding: 0 12px;
+            font: inherit;
+        }
+        button {
+            cursor: pointer;
+            font-weight: 700;
+        }
+        button:disabled, select:disabled {
+            cursor: not-allowed;
+            opacity: .58;
+        }
+        button.primary {
+            border-color: rgba(68, 223, 242, .55);
+            background: linear-gradient(180deg, #183f5a, #14293d);
+            color: #dffbff;
+        }
+        button.danger {
+            border-color: rgba(255, 111, 140, .45);
+            color: #ffd7df;
+        }
+        .actions {
+            display: grid;
+            gap: 10px;
+            margin-top: 14px;
+        }
+        .meter-row {
+            display: grid;
+            grid-template-columns: auto minmax(160px, 1fr);
+            align-items: center;
+            gap: 12px;
+            padding: 8px 12px;
+            border: 0;
+            border-radius: 0;
+            background: transparent;
+        }
+        .meter-row span {
+            color: var(--muted);
+            font-size: 12px;
+            font-weight: 700;
+        }
+        .listen-stage {
+            position: relative;
+            display: grid;
+            grid-template-rows: minmax(260px, 1fr) auto;
+            align-items: center;
+            justify-items: center;
+            gap: 18px;
+            padding: 42px 24px 24px;
+            overflow: visible;
+            border: 0;
+            border-radius: 0;
+            background: transparent;
+        }
+        .listen-center {
+            position: relative;
+            z-index: 1;
+            display: grid;
+            grid-template-rows: 220px 26px 42px;
+            justify-items: center;
+            align-content: center;
+            min-height: 420px;
+            gap: 18px;
+            text-align: center;
+            transform: translateY(0);
+        }
+        .big-listen-btn {
+            position: relative;
+            width: min(220px, 62vw);
+            height: min(220px, 62vw);
+            min-width: 180px;
+            min-height: 180px;
+            padding: 0;
+            border-radius: 999px;
+            border: 1px solid rgba(92, 193, 255, .62);
+            background:
+                radial-gradient(circle at 50% 38%, rgba(89, 225, 247, .28), transparent 42%),
+                linear-gradient(180deg, rgba(35, 92, 141, .86), rgba(17, 46, 80, .96));
+            color: #dff8ff;
+            box-shadow:
+                0 0 0 8px rgba(54, 152, 220, .13),
+                0 20px 54px rgba(0, 0, 0, .34),
+                inset 0 1px 0 rgba(255, 255, 255, .1);
+            display: grid;
+            place-items: center;
+            overflow: visible;
+            align-self: center;
+            justify-self: center;
+            transform: translateZ(0);
+        }
+        .big-listen-btn:active,
+        .big-listen-btn:focus {
+            transform: translateZ(0);
+        }
+        .big-listen-btn:focus-visible {
+            outline: 2px solid rgba(126, 224, 255, .75);
+            outline-offset: 6px;
+        }
+        .big-listen-btn:hover {
+            border-color: rgba(128, 228, 255, .9);
+            box-shadow:
+                0 0 0 10px rgba(54, 152, 220, .18),
+                0 24px 64px rgba(0, 0, 0, .4),
+                inset 0 1px 0 rgba(255, 255, 255, .13);
+        }
+        .big-listen-btn.active {
+            background:
+                radial-gradient(circle at 50% 35%, rgba(95, 241, 255, .42), transparent 42%),
+                linear-gradient(180deg, rgba(45, 139, 210, .95), rgba(18, 75, 130, .98));
+        }
+        .big-listen-btn.searching::before,
+        .big-listen-btn.searching::after {
+            content: '';
+            position: absolute;
+            inset: -12px;
+            border-radius: 999px;
+            box-shadow: 0 0 0 2px rgba(126, 224, 255, .72);
+            pointer-events: none;
+            will-change: transform, opacity;
+            transform: translate3d(0, 0, 0) scale(.9);
+            animation: pulseQuickRing 2.1s linear infinite;
+        }
+        .big-listen-btn.searching::after {
+            animation-delay: -1.05s;
+        }
+        .big-listen-icon {
+            width: 86px;
+            height: 86px;
+            filter: drop-shadow(0 0 16px rgba(83, 221, 255, .55));
+        }
+        .big-listen-btn.searching .big-listen-icon rect {
+            transform-box: fill-box;
+            transform-origin: center bottom;
+            will-change: transform;
+            animation: pulseQuickBars 920ms cubic-bezier(.42, 0, .58, 1) infinite;
+        }
+        .big-listen-btn.searching .big-listen-icon rect:nth-child(1) { animation-delay: 0ms; }
+        .big-listen-btn.searching .big-listen-icon rect:nth-child(2) { animation-delay: 90ms; }
+        .big-listen-btn.searching .big-listen-icon rect:nth-child(3) { animation-delay: 180ms; }
+        .big-listen-btn.searching .big-listen-icon rect:nth-child(4) { animation-delay: 270ms; }
+        .listen-state-title {
+            align-self: end;
+            margin: 0;
+            font-size: 16px;
+            font-weight: 800;
+            color: var(--text);
+            transform: translateY(34px);
+        }
+        .listen-state-sub {
+            align-self: start;
+            margin: -8px 0 0;
+            color: var(--muted);
+            font-size: 13px;
+            line-height: 1.45;
+            max-width: 320px;
+            transform: translateY(34px);
+        }
+        .listen-results {
+            position: relative;
+            z-index: 1;
+            width: min(760px, 100%);
+        }
+        .listen-controls {
+            display: grid;
+            grid-template-columns: minmax(260px, 1fr) minmax(160px, 220px);
+            gap: 14px;
+            align-items: end;
+            padding: 12px;
+            border: 0;
+            border-radius: 0;
+            background: transparent;
+        }
+        .device-field {
+            min-width: 0;
+        }
+        .listen-controls .actions {
+            grid-template-columns: 1fr;
+            margin-top: 0;
+        }
+        .listen-controls .hint {
+            grid-column: 1 / -1;
+            display: none;
+            margin: 0;
+        }
+        @keyframes pulseQuickRing {
+            0% {
+                transform: translate3d(0, 0, 0) scale(.9);
+                opacity: 0;
+            }
+            10% {
+                opacity: .74;
+            }
+            72% {
+                opacity: .18;
+            }
+            100% {
+                transform: translate3d(0, 0, 0) scale(1.42);
+                opacity: 0;
+            }
+        }
+        @keyframes pulseQuickBars {
+            0%, 100% { transform: scaleY(.48); }
+            50% { transform: scaleY(1.04); }
+        }
+        .meter {
+            height: 10px;
+            overflow: hidden;
+            background: #0a1018;
+            border-radius: 999px;
+            border: 1px solid rgba(130, 180, 220, .12);
+            margin-top: 0;
+        }
+        .meter > div {
+            height: 100%;
+            width: 100%;
+            background: linear-gradient(90deg, var(--accent), var(--accent2));
+            transform: scaleX(0);
+            transform-origin: left center;
+            transition: transform .08s linear;
+            will-change: transform;
+        }
+        .hint {
+            color: var(--muted);
+            font-size: 13px;
+            line-height: 1.45;
+            margin-top: 14px;
+        }
+        .results {
+            display: grid;
+            gap: 10px;
+            align-content: start;
+        }
+        .empty {
+            color: var(--muted);
+            border: 1px dashed rgba(130, 180, 220, .2);
+            border-radius: 8px;
+            padding: 18px;
+        }
+        .result {
+            display: grid;
+            grid-template-columns: 54px minmax(0, 1fr) auto;
+            gap: 12px;
+            align-items: center;
+            padding: 12px;
+            border: 1px solid rgba(130, 180, 220, .16);
+            border-radius: 8px;
+            background: rgba(9, 15, 23, .56);
+        }
+        .result-art {
+            width: 54px;
+            height: 54px;
+            border-radius: 8px;
+            display: grid;
+            place-items: center;
+            object-fit: cover;
+            color: var(--accent);
+            background: linear-gradient(160deg, rgba(68, 223, 242, .18), rgba(143, 168, 255, .18));
+            border: 1px solid rgba(130, 180, 220, .16);
+            overflow: hidden;
+        }
+        .result-text {
+            min-width: 0;
+        }
+        .result strong { display: block; font-size: 14px; }
+        .result span { display: block; color: var(--muted); font-size: 13px; margin-top: 3px; }
+        .result small { display: block; color: var(--accent); font-size: 12px; margin-top: 5px; }
+        .result-actions {
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            gap: 8px;
+        }
+        .result button {
+            width: auto;
+            min-width: 92px;
+        }
+        .result button.delete-result {
+            min-width: 38px;
+            width: 38px;
+            padding: 0;
+            border-color: rgba(255, 111, 140, .42);
+            color: #ffd7df;
+            display: grid;
+            place-items: center;
+        }
+        .result button.delete-result svg {
+            width: 17px;
+            height: 17px;
+        }
+        .settings-page {
+            display: grid;
+            gap: 18px;
+        }
+        .page-card {
+            width: min(760px, 100%);
+            border: 0;
+            border-radius: 0;
+            background: transparent;
+            overflow: visible;
+        }
+        .page-head {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            padding: 0 0 18px;
+            border-bottom: 0;
+        }
+        .page-head h2 {
+            margin: 0;
+            font-size: 18px;
+            letter-spacing: 0;
+        }
+        .page-body {
+            padding: 0;
+            display: grid;
+            gap: 14px;
+        }
+        .page-body .divider {
+            height: 1px;
+            background: rgba(130, 180, 220, .14);
+        }
+        .field {
+            display: grid;
+            gap: 7px;
+        }
+        .field-row {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 12px;
+        }
+        .check-field {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px 12px;
+            border: 1px solid rgba(130, 180, 220, .16);
+            border-radius: 8px;
+            background: rgba(9, 15, 23, .34);
+            color: var(--text);
+            font-weight: 700;
+        }
+        .check-field input {
+            width: 18px;
+            height: 18px;
+            accent-color: var(--accent);
+        }
+        .field p {
+            margin: 0;
+            color: var(--muted);
+            font-size: 13px;
+            line-height: 1.45;
+        }
+        .page-actions {
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
+            padding: 18px 0 0;
+        }
+        .page-actions button {
+            width: auto;
+            min-width: 96px;
+        }
+        @media (prefers-reduced-motion: reduce) {
+            .big-listen-btn.searching::before,
+            .big-listen-btn.searching::after,
+            .big-listen-btn.searching .big-listen-icon rect {
+                animation: none !important;
+            }
+        }
+        @media (max-width: 780px) {
+            main.listen-view {
+                grid-template-rows: auto minmax(360px, 1fr) auto;
+            }
+            .listen-stage {
+                padding: 34px 18px 18px;
+            }
+            .listen-center {
+                transform: translateY(0);
+            }
+            .listen-controls {
+                grid-template-columns: 1fr;
+            }
+            .listen-controls .actions {
+                grid-template-columns: 1fr;
+            }
+            .meter-row {
+                grid-template-columns: 1fr;
+                gap: 8px;
+            }
+            .field-row {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="shell">
+        <header>
+            <h1 data-i18n="listen.window.title">Aurivo Dinle</h1>
+            <div class="header-actions">
+                <div class="status" id="statusText" data-i18n="listen.status.ready">Hazır</div>
+                <button class="icon-btn view-back-btn hidden" id="viewBackBtn" title="Dinlemeye dön" data-i18n-title="listen.actions.backToListen">‹</button>
+                <div class="menu-wrap">
+                    <button class="icon-btn" id="menuBtn" title="Menü" aria-haspopup="true" aria-expanded="false" data-i18n-title="listen.menu.title" data-i18n-aria-label="listen.menu.title">☰</button>
+                    <div class="menu-popover hidden" id="menuPopover" role="menu">
+                        <button type="button" id="preferencesBtn" role="menuitem" data-i18n="listen.menu.preferences">Tercihler</button>
+                        <button type="button" id="aboutBtn" role="menuitem" data-i18n="listen.menu.about">Hakkında</button>
+                    </div>
+                </div>
+            </div>
+        </header>
+        <main class="listen-view" id="listenView">
+            <div class="meter-row">
+                <span data-i18n="listen.meter.level">Ses düzeyi</span>
+                <div class="meter" aria-hidden="true"><div id="levelBar"></div></div>
+            </div>
+            <section class="listen-stage">
+                <div class="listen-center">
+                    <button class="big-listen-btn" id="bigListenBtn" title="Dinlemeyi başlat" data-i18n-title="listen.actions.start">
+                        <svg class="big-listen-icon" viewBox="0 0 24 24" aria-hidden="true">
+                            <rect x="4" y="12" width="3" height="7" rx="1.5" fill="currentColor"></rect>
+                            <rect x="9" y="7" width="3" height="12" rx="1.5" fill="currentColor"></rect>
+                            <rect x="14" y="4" width="3" height="15" rx="1.5" fill="currentColor"></rect>
+                            <rect x="19" y="10" width="3" height="9" rx="1.5" fill="currentColor"></rect>
+                        </svg>
+                    </button>
+                    <p class="listen-state-title" id="listenStateTitle" data-i18n="listen.state.ready.title">Dinlemeye hazır</p>
+                    <p class="listen-state-sub" id="listenStateSub" data-i18n="listen.state.ready.subtitle">Ortadaki düğmeye bas; bilgisayarda çalan şarkıyı bulmaya başlayayım.</p>
+                </div>
+                <div class="results listen-results" id="results">
+                    <div class="empty" data-i18n="listen.results.empty">Henüz bulunan şarkı yok.</div>
+                </div>
+            </section>
+            <section class="listen-controls">
+                <div class="device-field">
+                    <label for="deviceSelect" data-i18n="listen.device.source">Ses kaynağı</label>
+                    <select id="deviceSelect"></select>
+                </div>
+                <div class="actions">
+                    <button id="refreshBtn" data-i18n="listen.actions.refreshDevices">Cihazları yenile</button>
+                </div>
+                <p class="hint" id="hintText"></p>
+            </section>
+        </main>
+        <main class="page-view hidden" id="preferencesView">
+            <div class="settings-page">
+                <div class="page-card">
+                    <div class="page-head">
+                        <h2 data-i18n="listen.menu.preferences">Tercihler</h2>
+                    </div>
+                    <div class="page-body">
+                        <div class="field">
+                            <label for="openPlatformSelect" data-i18n="listen.preferences.openPlatform.label">Bulunan şarkıyı aç</label>
+                            <select id="openPlatformSelect">
+                                <option value="youtube">YouTube</option>
+                                <option value="ytmusic">YouTube Music</option>
+                            </select>
+                            <p data-i18n="listen.preferences.openPlatform.hint">Şarkı bulunduğunda ve Aç düğmesine bastığında seçili platformda arama yapılır. Varsayılan YouTube.</p>
+                        </div>
+                        <div class="divider"></div>
+                        <div class="field">
+                            <label for="listenModeSelect" data-i18n="listen.preferences.sensitivity.label">Tanıma hassasiyeti</label>
+                            <select id="listenModeSelect">
+                                <option value="normal" data-i18n="listen.quick.mode.options.normal">Normal Dinleme</option>
+                                <option value="background" data-i18n="listen.quick.mode.options.background">Fon müzik odaklı</option>
+                                <option value="max" data-i18n="listen.quick.mode.options.max">Maksimum doğruluk</option>
+                                <option value="custom" data-i18n="listen.preferences.mode.custom">Özel</option>
+                            </select>
+                            <p data-i18n="listen.preferences.sensitivity.hint">Hız, örnek süresi ve eşleşme aralığı için hazır profili seçer.</p>
+                        </div>
+                        <div class="field-row">
+                            <div class="field">
+                                <label for="requestIntervalInput" data-i18n="listen.preferences.requestInterval.label">İstek aralığı</label>
+                                <input id="requestIntervalInput" type="number" min="1" max="120" step="1">
+                                <p data-i18n="listen.preferences.requestInterval.windowHint">Shazam istekleri arasında beklenecek saniye.</p>
+                            </div>
+                            <div class="field">
+                                <label for="bufferSizeInput" data-i18n="listen.preferences.bufferSize.label">Örnek süresi</label>
+                                <input id="bufferSizeInput" type="number" min="4" max="30" step="1">
+                                <p data-i18n="listen.preferences.bufferSize.windowHint">Tanıma için tutulacak canlı ses arabelleği.</p>
+                            </div>
+                        </div>
+                        <label class="check-field">
+                            <input type="checkbox" id="noDuplicatesCheckbox">
+                            <span data-i18n="listen.preferences.noDuplicates.windowLabel">Aynı şarkıyı tekrar listeleme</span>
+                        </label>
+                        <p class="field-note" data-i18n="listen.preferences.sharedHint">Hızlı Dinle düğmesi ana ayarlardaki davranışı kullanır; bu tercihler tanıma motoru ve Dinle penceresiyle ortaktır.</p>
+                    </div>
+                    <div class="page-actions">
+                        <button id="preferencesCancelBtn" data-i18n="common.cancel">Vazgeç</button>
+                        <button id="preferencesDefaultsBtn" data-i18n="common.default">Varsayılan</button>
+                        <button class="primary" id="preferencesSaveBtn" data-i18n="settings.buttons.save">Kaydet</button>
+                    </div>
+                </div>
+            </div>
+        </main>
+        <main class="page-view hidden" id="aboutView">
+            <div class="settings-page">
+                <div class="page-card">
+                    <div class="page-head">
+                        <h2 data-i18n="listen.window.title">Aurivo Dinle</h2>
+                    </div>
+                    <div class="page-body">
+                        <p data-i18n="listen.about.body1">Aurivo Dinle, bilgisayarda çalan sesi monitor kaynağından dinleyip şarkı tanıma için parmak izi oluşturur.</p>
+                        <p data-i18n="listen.about.body2">Varsayılan açma hedefi YouTube’dur; Tercihler bölümünden YouTube Music seçilebilir.</p>
+                    </div>
+                    <div class="page-actions">
+                        <button class="primary" id="aboutOkBtn" data-i18n="common.ok">Tamam</button>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+    <script src="modules/i18n.js"></script>
+    <script src="pulseRenderer.js"></script>
+</body>
+</html>

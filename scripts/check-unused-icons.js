@@ -14,7 +14,6 @@ const excludedDirs = [
   'dist',
   'build',
   'squashfs-root',
-  'uDALİ-weman-home',
   'aurivo-bin',
   'packaging/local-test-pkg',
 ];

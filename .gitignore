@@ -10,6 +10,7 @@ node_modules/
 /.dist/
 /out/
 /build/
+/build-native-cmake/
 
 # Native
 /native/build/

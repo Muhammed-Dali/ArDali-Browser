@@ -59,10 +59,6 @@ function main() {
   const visualizerExe = path.join(nativeDistDir, 'aurivo-projectm-visualizer');
   assertFileLooksLikeElf(visualizerExe, 'Visualizer exe (aurivo-projectm-visualizer)');
 
-  // Aurivo-Pulse binary (listening/recognition backend) must be bundled for packaged app
-  const aurivoPulseBin = path.join(nativeDistDir, 'aurivo-pulse');
-  assertFileLooksLikeElf(aurivoPulseBin, 'Aurivo-Pulse binary (aurivo-pulse)');
-
   // libprojectM v4 runtime (bundle next to visualizer for distro compatibility)
   const projectmCore = path.join(nativeDistDir, 'libprojectM-4.so.4');
   const projectmPlaylist = path.join(nativeDistDir, 'libprojectM-4-playlist.so.4');
@@ -89,16 +85,6 @@ function main() {
   const ffmpeg = '/usr/bin/ffmpeg';
   if (!exists(ffmpeg)) {
     console.warn('[verify-linux-artifacts] ⚠ /usr/bin/ffmpeg yok: Linux paketinde ffmpeg gömülemeyebilir.');
-  }
-
-  // Adblock resources used in packaged app
-  const ubolManifest = path.join(root, 'uDALİ-weman-home', 'chromium', 'manifest.json');
-  if (!exists(ubolManifest)) {
-    throw new Error(`Adblock manifest bulunamadı: ${ubolManifest}`);
-  }
-  const mergedBlocklist = path.join(root, 'modules', 'blocklists', 'blocklist.json');
-  if (!exists(mergedBlocklist)) {
-    throw new Error(`Adblock blocklist bulunamadı: ${mergedBlocklist}`);
   }
 
   console.log('[verify-linux-artifacts] ✓ OK');

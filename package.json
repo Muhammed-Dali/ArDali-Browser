@@ -1,7 +1,7 @@
 {
   "name": "aurivo-media-player",
-  "version": "2.0.56",
-  "description": "Open-source Linux media player for music and video with DSP effects, equalizer, visualizer, downloader, and song recognition",
+  "version": "2.5.56",
+  "description": "Open-source Linux media player for music and video with DSP effects, equalizer, and visualizer",
   "main": "main.js",
   "scripts": {
     "start": "npm run dev:linux",
@@ -48,9 +48,6 @@
     "dali:install:filetype:linux": "bash scripts/install-dali-filetype-linux.sh",
     "profile:linux:dali": "npm run -s dali:compile:web && npm run -s profile:linux",
     "dev:win": "cmd /c \"chcp 65001>nul && set ELECTRON_RUN_AS_NODE=&& set AURIVO_DEV=1&& set PATH=C:\\msys64\\mingw64\\bin;C:\\Users\\muhan\\Desktop\\Aurivo-Medya-Player-windows\\native-dist\\windows;C:\\Users\\muhan\\Desktop\\Aurivo-Medya-Player-windows\\native-dist;C:\\Users\\muhan\\Desktop\\Aurivo-Medya-Player-windows\\native\\build\\Release;C:\\Users\\muhan\\Desktop\\Aurivo-Medya-Player-windows\\bin;%PATH%&& electron . --enable-logging\"",
-    "adblock:build": "node uDALİ-weman-home/scripts/buildBlocklist.cjs",
-    "adblock:sync": "node uDALİ-weman-home/scripts/syncBlocklistToApp.cjs",
-    "adblock:rebuild": "npm run -s adblock:build && npm run -s adblock:sync",
     "locale:sync:visualizer": "node scripts/sync-visualizer-native-locales.js",
     "locale:sync:main": "node scripts/sync-main-process-locales.js"
   },
@@ -217,8 +214,7 @@
       "**/*.node",
       "**/*.dll",
       "**/*.so",
-      "**/*.dylib",
-      "uDALİ-weman-home/chromium/**"
+      "**/*.dylib"
     ],
     "files": [
       "**/*",
@@ -233,7 +229,6 @@
       "!**/*.pkg.tar.zst",
       "!aurivo-bin/**",
       "!packaging/**",
-      "!Aurivo-Pulse/target/**",
       "!bin/ffmpeg.exe",
       "!dist/**",
       "!build/**",
@@ -283,10 +278,6 @@
           "to": "bin/ffmpeg"
         },
         {
-          "from": "uDALİ-weman-home/chromium",
-          "to": "uDALİ-weman-home/chromium"
-        },
-        {
           "from": "native/build/Release",
           "to": "native/build/Release",
           "filter": [
@@ -308,7 +299,6 @@
           "from": "native-dist/linux",
           "to": "resources/native-dist/linux",
           "filter": [
-            "aurivo-pulse",
             "aurivo-projectm-visualizer",
             "libprojectM-4.so*",
             "libprojectM-4-playlist.so*"
@@ -433,16 +423,15 @@
     }
   },
   "devDependencies": {
-    "electron": "42.0.1",
+    "electron": "41.2.0",
     "electron-builder": "26.8.1",
     "png-to-ico": "3.0.1"
   },
   "dependencies": {
-    "electron-updater": "6.8.3",
+    "electron-updater": "6.7.3",
     "mpris-service": "^2.1.2",
     "node-id3": "0.2.9",
-    "systeminformation": "5.31.6",
-    "yt-dlp-wrap-plus": "2.4.3"
+    "systeminformation": "5.31.5"
   },
   "overrides": {
     "xml2js": "0.6.2"

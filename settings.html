@@ -217,8 +217,8 @@
                                         <h3 data-i18n="settings.tabs.listen">Dinle</h3>
                                         <div class="settings-group">
                                             <h4 data-i18n="listen.quick.title">Aurivo-Pulse Hızlı Dinleme</h4>
-                                            <div class="settings-sub" data-i18n="listen.quick.sharedNote.line1">Dinle sekmesindeki ayarlar, hem Dinle paneli hem de Hızlı Dinle için ortaktır.</div>
-                                            <div class="settings-sub" data-i18n="listen.quick.sharedNote.line2">Hızlı Dinle, ilk doğrulanan sonucu otomatik olarak Web platformunda açar.</div>
+                                            <div class="settings-sub">Bu bölüm sadece ana arayüzdeki hızlı dinleme düğmesinin davranışını ayarlar.</div>
+                                            <div class="settings-sub">Tanıma kalitesi, açılacak platform ve tekrar davranışı Aurivo Dinle penceresindeki Tercihler bölümündedir.</div>
                                             <div class="settings-row">
                                                 <div class="settings-row-left">
                                                     <div class="settings-label" data-i18n="listen.quick.toastDuration.label">Dinleme bildirim süresi</div>
@@ -259,62 +259,6 @@
                                             <div class="settings-sub listen-quick-detected-device" id="pulseQuickDetectedDeviceStatus" aria-live="polite"></div>
                                             <button class="reset-btn" id="pulseUltraFastPreset">⚡ Ultra Hızlı (3/5)</button>
                                             <button class="reset-btn" id="resetListen" data-i18n="listen.buttons.resetDefaults">↻ Dinle Varsayılanları</button>
-                                        </div>
-                                        <div class="settings-group">
-                                            <h4 data-i18n="listen.preferences.title">Aurivo-Pulse Tercihleri</h4>
-                                            <label class="checkbox-label">
-                                                <input type="checkbox" id="pulseEnableNotifications">
-                                                <span data-i18n="listen.preferences.notifications.label">Bildirimleri göster</span>
-                                            </label>
-                                            <div class="settings-sub" data-i18n="listen.preferences.notifications.hint">Şarkı bulunduğunda, ağ hatası olduğunda ve cihaz otomatik değiştiğinde bildirim gösterir.</div>
-                                            <label class="checkbox-label">
-                                                <input type="checkbox" id="pulseEnableMpris">
-                                                <span data-i18n="listen.preferences.mpris.label">MPRIS'i etkinleştir</span>
-                                            </label>
-                                            <div class="settings-sub" data-i18n="listen.preferences.mpris.hint">Linux medya panelinde tanınan parçayı gösterebilir. Şarkı bulma kalitesini etkilemez.</div>
-                                            <label class="checkbox-label">
-                                                <input type="checkbox" id="pulseEnableSystray">
-                                                <span data-i18n="listen.preferences.systray.label">Sistem tepsisine küçült</span>
-                                            </label>
-                                            <div class="settings-sub" data-i18n="listen.preferences.systray.hint">Dinle penceresini kapatınca tamamen çıkmak yerine sistem tepsisinde açık tutar.</div>
-                                            <label class="checkbox-label">
-                                                <input type="checkbox" id="pulseNoDuplicates">
-                                                <span data-i18n="listen.preferences.noDuplicates.label">Geçmişte tekrar olmasın</span>
-                                            </label>
-                                            <div class="settings-sub" data-i18n="listen.preferences.noDuplicates.hint">Aynı şarkı tekrar bulunursa geçmişte yeni satır açmak yerine eski kaydı günceller.</div>
-                                            <div class="setting-row">
-                                                <div class="settings-row-left">
-                                                    <div class="settings-label" data-i18n="listen.preferences.requestInterval.label">Shazam istek aralığı</div>
-                                                    <div class="settings-sub" data-i18n="listen.preferences.requestInterval.hint">Rate-limit yaşarsanız yükseltin.</div>
-                                                </div>
-                                                <input type="number" id="pulseRequestInterval" value="4" min="1" max="120" step="1"> sn
-                                            </div>
-                                            <div class="setting-row">
-                                                <div class="settings-row-left">
-                                                    <div class="settings-label" data-i18n="listen.preferences.bufferSize.label">Shazam arabellek boyutu</div>
-                                                    <div class="settings-sub" data-i18n="listen.preferences.bufferSize.hint">Daha uzun örnek daha kararlı olabilir ama biraz daha yavaştır.</div>
-                                                </div>
-                                                <input type="number" id="pulseBufferSize" value="6" min="4" max="30" step="1"> sn
-                                            </div>
-                                            <div class="setting-row">
-                                                <div class="settings-row-left">
-                                                    <div class="settings-label">Tanıma motoru</div>
-                                                    <div class="settings-sub">SongRec/AcoustID çalışma şeklini belirler.</div>
-                                                </div>
-                                                <select class="settings-select" id="pulseRecognitionEngine" aria-label="Tanıma motoru">
-                                                    <option value="hybrid">Hibrit (SongRec + AcoustID)</option>
-                                                    <option value="songrec_only">Sadece SongRec</option>
-                                                    <option value="acoustid_only">Sadece AcoustID</option>
-                                                </select>
-                                            </div>
-                                            <div class="setting-row">
-                                                <div class="settings-row-left">
-                                                    <div class="settings-label">AcoustID API Anahtarı</div>
-                                                    <div class="settings-sub" id="pulseAcoustidHint">Opsiyonel. Boş bırakılırsa hibrit mod SongRec ile çalışır.</div>
-                                                    <div class="settings-sub hidden" id="pulseAcoustidWarning" aria-live="polite">Sadece AcoustID modunda API anahtarı zorunludur. Anahtar yoksa tanıma yapılamaz.</div>
-                                                </div>
-                                                <input type="text" id="pulseAcoustidApiKey" class="settings-input" placeholder="AcoustID API anahtarı">
-                                            </div>
                                         </div>
                                     </div>
                                     <div class="settings-page hidden" id="behaviorSettings">
@@ -538,6 +482,11 @@
                                                 <span data-i18n="ui.startup.closeToTray">Pencereyi kapatınca sistem tepsisine küçült</span>
                                             </label>
                                             <div class="settings-sub" data-i18n="ui.startup.closeToTrayHint">Kapalıysa pencere kapatma uygulamadan çıkış olarak davranır.</div>
+                                            <label class="checkbox-label">
+                                                <input type="checkbox" id="behaviorNotificationsEnabled">
+                                                <span data-i18n="ui.startup.notificationsEnabled">Uygulama içi bildirimleri göster</span>
+                                            </label>
+                                            <div class="settings-sub" data-i18n="ui.startup.notificationsEnabledHint">Kapalıyken uygulama içi bildirimler gösterilmez.</div>
                                         </div>
                                     </div>
                                     <div class="settings-page hidden" id="securitySettings">
@@ -563,7 +512,6 @@
                                                     <div class="security-actions">
                                                         <button class="btn security-btn-small" id="securityCopyUrlBtn" data-i18n="securityPage.buttons.copy">Kopyala</button>
                                                         <button class="btn security-btn-small" id="securityOpenInBrowserBtn" data-i18n="securityPage.buttons.openInBrowser">Tarayıcıda aç</button>
-                                                        <button class="btn security-btn-small" id="securityQuickDownloadBtn" data-i18n="securityPage.buttons.quickDownload">Hızlı indir</button>
                                                     </div>
                                                 </div>
                                             </div>
@@ -1274,8 +1222,6 @@
     <div id="notificationContainer" class="notification-container" aria-live="polite" aria-atomic="false"></div>
 
     <script src="modules/i18n.js"></script>
-    <script src="modules/listen-settings.js"></script>
-    <script src="modules/adblock-settings.js"></script>
     <script src="modules/security-settings.js"></script>
     <script src="modules/settings-shared.js"></script>
     <script src="modules/settings-window.js"></script>

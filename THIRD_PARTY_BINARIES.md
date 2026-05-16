@@ -21,7 +21,6 @@ The check verifies:
 ## Provenance Groups
 
 - `libs/linux/*` and `libs/bass/libs/*`: Un4seen BASS Linux runtime and architecture builds.
-- `Aurivo-Pulse/libs/libchromaprint.so*`: vendored Aurivo-Pulse/SongRec lineage chromaprint shared object set.
 - `packaging/flatpak/runtime-libs/*`: Flatpak/runtime compatibility libraries used by packaging flow.
 
 ## Reviewer Notes

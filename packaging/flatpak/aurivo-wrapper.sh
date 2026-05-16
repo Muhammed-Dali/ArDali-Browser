@@ -10,7 +10,7 @@ export ELECTRON_OZONE_PLATFORM_HINT="wayland"
 export AURIVO_DISPLAY_BACKEND="wayland"
 export XDG_CURRENT_DESKTOP="${XDG_CURRENT_DESKTOP:-KDE}"
 
-export LD_LIBRARY_PATH="/app/aurivo/resources/app.asar.unpacked/Aurivo-Pulse/libs:/app/aurivo/resources/native-dist/linux:/app/aurivo/resources/native/build/Release:${LD_LIBRARY_PATH:-}"
+export LD_LIBRARY_PATH="/app/aurivo/resources/native-dist/linux:/app/aurivo/resources/native/build/Release:${LD_LIBRARY_PATH:-}"
 export AURIVO_SOFTWARE_RENDER="${AURIVO_SOFTWARE_RENDER:-1}"
 
 # Ensure shared visualizer ID

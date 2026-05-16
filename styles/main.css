@@ -464,6 +464,7 @@ body.web-experience-disabled #sidebarWebQuickActions {
     display: flex;
     height: 100vh;
     width: 100vw;
+    overflow: hidden;
 }
 
 /* ============================================
@@ -551,6 +552,7 @@ body.web-mode.web-drawer-collapsed .sidebar-web-quick-actions {
 .sidebar-btn[data-page="music"] { --icon-accent: #86ffc8; }
 .sidebar-btn[data-page="web"] { --icon-accent: #4fd6ff; }
 .sidebar-btn[data-page="pulse"] { --icon-accent: #8da4ff; }
+.aurivo-dawlod-btn { --icon-accent: #70e4ff; }
 #settingsBtn { --icon-accent: #9cc6ff; }
 #infoBtn { --icon-accent: #a8d4ff; }
 
@@ -575,6 +577,24 @@ body.web-mode.web-drawer-collapsed .sidebar-web-quick-actions {
 .sidebar-btn.active .sidebar-icon-img {
     filter: var(--theme-icon-hover-filter);
     opacity: var(--theme-icon-hover-opacity);
+}
+
+.aurivo-dawlod-btn .aurivo-dawlod-icon {
+    width: 32px;
+    height: 32px;
+    border-radius: 10px;
+    filter:
+        drop-shadow(0 0 8px rgba(112, 228, 255, 0.2))
+        drop-shadow(0 4px 12px rgba(0, 0, 0, 0.35));
+    opacity: 0.95;
+}
+
+.aurivo-dawlod-btn:hover .aurivo-dawlod-icon,
+.aurivo-dawlod-btn:focus-visible .aurivo-dawlod-icon {
+    filter:
+        drop-shadow(0 0 12px rgba(112, 228, 255, 0.44))
+        drop-shadow(0 5px 14px rgba(0, 0, 0, 0.42));
+    opacity: 1;
 }
 
 .sidebar-btn.active {
@@ -629,6 +649,29 @@ body.web-mode.web-drawer-collapsed .sidebar-web-quick-actions {
     box-shadow:
         0 0 10px color-mix(in srgb, var(--icon-accent, #8fcaff) 52%, transparent),
         0 0 18px color-mix(in srgb, var(--icon-accent, #8fcaff) 34%, transparent);
+}
+
+.sidebar-badge {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    width: 10px;
+    height: 10px;
+    border-radius: 999px;
+    background: radial-gradient(circle at 35% 35%, #ff9f9f 0%, #ff5c5c 26%, #f03030 58%, #b80f18 100%);
+    border: 1px solid rgba(255, 255, 255, 0.72);
+    box-shadow:
+        0 0 0 2px rgba(7, 14, 24, 0.9),
+        0 0 12px rgba(255, 69, 69, 0.55),
+        0 0 24px rgba(255, 44, 44, 0.3);
+}
+
+.sidebar-btn.is-recording {
+    border: 1px solid rgba(255, 92, 92, 0.38);
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.08),
+        0 0 0 1px rgba(255, 92, 92, 0.14),
+        0 12px 22px rgba(32, 7, 12, 0.36);
 }
 
 /* ============================================
@@ -1575,8 +1618,9 @@ body.video-tools-mode .now-playing-bar {
     text-align: left;
     display: flex;
     align-items: center;
-    gap: 8px;
-    padding: 8px 10px;
+    gap: 9px;
+    min-height: 48px;
+    padding: 6px 8px;
     border-radius: 8px;
     border: 1px solid var(--border-medium);
     background: rgba(35, 43, 56, 0.65);
@@ -1589,19 +1633,49 @@ body.video-tools-mode .now-playing-bar {
     color: var(--text-primary);
 }
 
-.pulse-found-dot {
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    background: linear-gradient(160deg, #77d5ff, #3b9cdf);
-    flex: 0 0 8px;
+.pulse-found-art {
+    width: 34px;
+    height: 34px;
+    flex: 0 0 34px;
+    border-radius: 7px;
+    display: grid;
+    place-items: center;
+    object-fit: cover;
+    overflow: hidden;
+    color: #8fe8ff;
+    background: linear-gradient(160deg, rgba(72, 178, 238, 0.28), rgba(121, 124, 255, 0.18));
+    border: 1px solid rgba(127, 210, 255, 0.2);
+}
+
+.pulse-found-body {
+    min-width: 0;
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    gap: 2px;
 }
 
 .pulse-found-name {
     font-size: 13px;
+    font-weight: 700;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+}
+
+.pulse-found-meta {
+    font-size: 11px;
+    color: var(--text-muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.pulse-found-action {
+    flex: 0 0 auto;
+    font-size: 11px;
+    font-weight: 800;
+    color: var(--accent-primary);
 }
 
 /* ============================================
@@ -1613,9 +1687,9 @@ body.video-tools-mode .now-playing-bar {
     flex-direction: column;
     background-color: var(--bg-medium);
     overflow-x: hidden;
-    overflow-y: visible;
+    overflow-y: hidden;
     min-width: 0;
-    /* Flexbox overflow fix */
+    min-height: 0;
 }
 
 /* Navigation Bar */
@@ -2032,6 +2106,25 @@ body.aurivo-reduced-motion:not(.web-platform-force-motion) .nav-platform-strip .
 #forwardBtn { --nav-icon-accent: #8ee4ff; }
 #refreshBtn { --nav-icon-accent: #7cf2d5; }
 
+#refreshBtn .nav-glyph {
+    transform-box: fill-box;
+    transform-origin: center;
+    will-change: transform;
+}
+
+#refreshBtn.is-refresh-spinning .nav-glyph {
+    animation: aurivoRefreshSpin 520ms cubic-bezier(0.28, 0.84, 0.42, 1) both;
+}
+
+@keyframes aurivoRefreshSpin {
+    from {
+        transform: rotate(0deg);
+    }
+    to {
+        transform: rotate(360deg);
+    }
+}
+
 .music-view-quick {
     display: inline-flex;
     align-items: center;
@@ -2345,6 +2438,7 @@ body:not(.web-mode) #adblockBtn {
     flex: 1;
     overflow: hidden;
     position: relative;
+    min-height: 0;
 }
 
 .page {
@@ -2359,6 +2453,7 @@ body:not(.web-mode) #adblockBtn {
 .page.active {
     display: flex;
     flex-direction: column;
+    min-height: 0;
 }
 
 #musicPage {
@@ -2922,6 +3017,7 @@ body.settings-window-mode #settingsPage .setting-row {
 /* Playlist */
 .playlist {
     flex: 1;
+    min-height: 0;
     overflow-y: auto;
     position: relative;
     z-index: 1;
@@ -3618,55 +3714,6 @@ body.video-tools-mode .video-edit-workspace {
     padding-top: 14px;
 }
 
-.video-tools-view-switcher {
-    width: fit-content;
-    max-width: 100%;
-    display: inline-grid;
-    grid-template-columns: repeat(2, minmax(150px, 1fr));
-    gap: 4px;
-    margin: 0 0 14px;
-    padding: 4px;
-    border: 1px solid rgba(132, 221, 255, 0.16);
-    border-radius: 8px;
-    background: rgba(3, 10, 20, 0.55);
-}
-
-.video-tools-view-btn {
-    min-height: 38px;
-    min-width: 0;
-    border: 0;
-    border-radius: 7px;
-    background: transparent;
-    color: rgba(220, 239, 251, 0.76);
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    gap: 8px;
-    padding: 0 12px;
-    font-weight: 800;
-    cursor: pointer;
-}
-
-.video-tools-view-btn .material-symbols-rounded {
-    font-size: 21px;
-}
-
-.video-tools-tab-icon {
-    width: 24px;
-    height: 24px;
-    flex: 0 0 24px;
-    object-fit: contain;
-    filter:
-        drop-shadow(0 0 6px rgba(255, 255, 255, 0.2))
-        drop-shadow(0 3px 8px rgba(2, 8, 20, 0.45));
-}
-
-.video-tools-view-btn.is-active {
-    background: linear-gradient(135deg, rgba(34, 211, 238, 0.26), rgba(45, 212, 191, 0.18));
-    color: #f5fcff;
-    box-shadow: inset 0 0 0 1px rgba(145, 234, 255, 0.22);
-}
-
 .video-tools-head {
     align-items: center;
 }
@@ -3813,14 +3860,36 @@ body.video-tools-mode .video-edit-workspace {
     font-size: 30px;
 }
 
+.video-studio-title-media {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 34px;
+}
+
 .video-studio-title-icon {
     width: 34px;
     height: 34px;
-    flex: 0 0 34px;
     object-fit: contain;
     filter:
         drop-shadow(0 0 8px rgba(255, 255, 255, 0.14))
         drop-shadow(0 4px 10px rgba(2, 8, 20, 0.48));
+}
+
+.video-studio-recording-badge {
+    position: absolute;
+    top: -3px;
+    right: -3px;
+    width: 11px;
+    height: 11px;
+    border-radius: 999px;
+    background: radial-gradient(circle at 35% 35%, #ffb2b2 0%, #ff6464 28%, #ff3131 58%, #b30a15 100%);
+    border: 1px solid rgba(255, 255, 255, 0.78);
+    box-shadow:
+        0 0 0 2px rgba(10, 18, 31, 0.92),
+        0 0 14px rgba(255, 74, 74, 0.58),
+        0 0 24px rgba(255, 36, 36, 0.34);
 }
 
 .video-studio-title {
@@ -4809,12 +4878,14 @@ body.video-tools-mode .video-edit-workspace {
 
 .video-studio-output-actions {
     display: inline-flex;
+    flex-wrap: wrap;
     gap: 6px;
+    justify-content: flex-end;
 }
 
-.video-studio-output-actions .video-tool-icon-btn {
-    width: 38px;
-    height: 38px;
+.video-studio-output-actions .btn {
+    min-height: 38px;
+    padding-inline: 12px;
 }
 
 .video-studio-auto-stop {
@@ -7516,36 +7587,6 @@ body.video-window-fs-active #videoPage.hide-cursor {
     height: 100%;
 }
 
-.web-loading-overlay {
-    position: absolute;
-    inset: 0;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: transparent;
-    z-index: 12;
-    pointer-events: none;
-}
-
-.web-loading-overlay.hidden {
-    display: none;
-}
-
-.web-loading-spinner {
-    width: 42px;
-    height: 42px;
-    border-radius: 50%;
-    border: 4px solid rgba(255, 255, 255, 0.28);
-    border-top-color: #ffffff;
-    animation: webSpinnerTurn 0.78s linear infinite;
-}
-
-@keyframes webSpinnerTurn {
-    to {
-        transform: rotate(360deg);
-    }
-}
-
 /* ============================================
    PLAYER BAR
    ============================================ */
@@ -7564,6 +7605,8 @@ body.video-window-fs-active #videoPage.hide-cursor {
         border-top-width 320ms ease,
         opacity 180ms ease,
         transform 320ms cubic-bezier(0.2, 0.8, 0.2, 1);
+    flex-shrink: 0;
+    overflow: hidden;
 }
 
 body.web-mode.web-drawer-collapsed .player-bar {
@@ -7575,6 +7618,11 @@ body.web-mode.web-drawer-collapsed .player-bar {
     transform: translateY(12px);
     pointer-events: none;
     overflow: hidden;
+}
+
+body.web-mode .now-playing-bar,
+body.web-mode .player-bar {
+    display: none !important;
 }
 
 /* Time Container */
@@ -8331,6 +8379,660 @@ html[dir="rtl"] .restart-actions {
     border-color: rgba(0, 221, 255, 0.7);
     box-shadow: 0 0 0 1px rgba(0, 221, 255, 0.25), 0 8px 18px rgba(0, 115, 255, 0.16);
     color: var(--text-primary);
+}
+
+.adblock-dashboard-summary {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 10px;
+    margin-bottom: 14px;
+}
+
+.adblock-stat {
+    min-height: 74px;
+    padding: 12px;
+    border-radius: 8px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: #0d0f12;
+}
+
+.adblock-stat span {
+    display: block;
+    color: var(--text-muted);
+    font-size: 12px;
+    line-height: 1.3;
+}
+
+.adblock-stat strong {
+    display: block;
+    margin-top: 8px;
+    color: var(--text-primary);
+    font-size: 24px;
+    line-height: 1;
+}
+
+.adblock-dashboard-section {
+    margin-bottom: 14px;
+}
+
+.adblock-dashboard-section:last-child {
+    margin-bottom: 0;
+}
+
+@media (max-width: 720px) {
+    .adblock-dashboard-summary {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
+body.adblock-window-mode {
+    min-height: 100vh;
+    overflow: hidden;
+    background: #070809;
+}
+
+body.adblock-window-mode {
+    color: var(--text-primary);
+    color-scheme: dark;
+}
+
+.adblock-dashboard-topbar {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+    background: #0b0c0f;
+}
+
+.adblock-dashboard-tabs {
+    display: flex;
+    align-items: stretch;
+    gap: 6px;
+    min-height: 62px;
+    padding: 0 16px;
+}
+
+.adblock-dashboard-tabs img {
+    align-self: center;
+    width: 34px;
+    height: 34px;
+    margin-right: 8px;
+    padding: 7px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.04);
+}
+
+.adblock-tab-button {
+    min-width: 118px;
+    padding: 0 16px;
+    border: 0;
+    border-bottom: 3px solid transparent;
+    background: transparent;
+    color: rgba(232, 241, 251, 0.88);
+    font: inherit;
+    font-size: 14px;
+    cursor: pointer;
+}
+
+.adblock-tab-button:hover {
+    background: rgba(255, 255, 255, 0.035);
+}
+
+.adblock-tab-button.active {
+    color: #f5f7fa;
+    border-bottom-color: rgba(245, 247, 250, 0.72);
+    background: rgba(255, 255, 255, 0.045);
+}
+
+body.adblock-window-mode:not([data-developer-mode="true"]) .adblock-develop-tab {
+    display: none;
+}
+
+.adblock-window-shell {
+    height: calc(100vh - 62px);
+    overflow: auto;
+    padding: 20px 32px 32px;
+    background: #070809;
+}
+
+.adblock-tab-panel {
+    display: none;
+    padding-top: 0;
+}
+
+.adblock-tab-panel.active {
+    display: block;
+}
+
+body.adblock-window-mode .settings-group {
+    margin: 0 0 26px;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+}
+
+body.adblock-window-mode .settings-group::before {
+    display: none;
+}
+
+body.adblock-window-mode .adblock-settings-hero {
+    border-radius: 0;
+}
+
+body.adblock-window-mode .adblock-section-heading h3,
+body.adblock-window-mode .settings-group h3 {
+    margin: 0 0 12px;
+    color: var(--text-primary);
+    font-size: 16px;
+    line-height: 1.3;
+}
+
+body.adblock-window-mode .adblock-section-heading h3 {
+    margin-bottom: 0;
+}
+
+body.adblock-window-mode .adblock-section-heading p,
+.adblock-muted {
+    margin: 0;
+    color: var(--text-secondary);
+    font-size: 14px;
+    line-height: 1.55;
+}
+
+.adblock-mode-cards {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 12px;
+}
+
+.adblock-filtering-card.adblock-mode-card {
+    position: relative;
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    grid-template-rows: auto 1fr auto;
+    align-items: start;
+    column-gap: 10px;
+    min-height: 236px;
+    padding: 14px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 8px;
+    background: #0d0f12;
+}
+
+.adblock-filtering-card.adblock-mode-card.active {
+    border-color: rgba(245, 247, 250, 0.42);
+    box-shadow:
+        inset 0 0 0 1px rgba(255, 255, 255, 0.04),
+        0 14px 26px rgba(0, 0, 0, 0.26);
+}
+
+.adblock-radio-dot {
+    display: inline-block;
+    width: 18px;
+    height: 18px;
+    margin-right: 10px;
+    vertical-align: -4px;
+    border: 2px solid rgba(232, 241, 251, 0.72);
+    border-radius: 999px;
+}
+
+.adblock-filtering-card.active .adblock-radio-dot {
+    border-color: #f5f7fa;
+    box-shadow: inset 0 0 0 4px rgba(245, 247, 250, 0.82);
+}
+
+.adblock-filtering-card strong {
+    display: inline;
+    font-size: 15px;
+    line-height: 20px;
+}
+
+.adblock-filtering-card p {
+    grid-column: 1 / -1;
+    align-self: end;
+    margin: 10px -14px 0;
+    padding: 10px 14px 0;
+    border-top: 1px solid rgba(255, 255, 255, 0.07);
+    color: var(--text-secondary);
+    font-size: 13px;
+    line-height: 1.45;
+}
+
+.adblock-mode-knob {
+    grid-column: 1 / -1;
+    justify-self: center;
+    width: 130px;
+    height: 150px;
+    margin-top: 10px;
+    pointer-events: none;
+    filter: drop-shadow(0 16px 24px rgba(0, 0, 0, 0.3));
+}
+
+.adblock-filtering-card.active .adblock-mode-knob {
+    filter: drop-shadow(0 16px 24px rgba(0, 0, 0, 0.34));
+}
+
+body.adblock-window-mode .checkbox-label {
+    align-items: flex-start;
+    gap: 10px;
+    max-width: 720px;
+    margin-bottom: 10px;
+    padding: 8px 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+}
+
+body.adblock-window-mode .checkbox-label:hover {
+    transform: none;
+    background: transparent;
+}
+
+body.adblock-window-mode .checkbox-label span {
+    color: var(--text-primary);
+    font-size: 14px;
+    line-height: 1.35;
+}
+
+body.adblock-window-mode .checkbox-label small {
+    display: block;
+    margin-top: 4px;
+    color: var(--text-muted);
+    font-size: 13px;
+}
+
+.adblock-action-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-top: 14px;
+}
+
+.adblock-action-row .btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+}
+
+.adblock-filter-editor {
+    width: 100%;
+    min-height: 360px;
+    resize: vertical;
+    padding: 14px;
+    border: 1px solid rgba(130, 177, 255, 0.22);
+    border-radius: 8px;
+    background: rgba(2, 8, 16, 0.72);
+    color: var(--text-primary);
+    font: 13px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+.adblock-develop-panel {
+    min-height: calc(100vh - 84px);
+    padding: 0 !important;
+    overflow: hidden;
+}
+
+.adblock-develop-viewbar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    height: 48px;
+    padding: 0 16px;
+    border-bottom: 1px solid rgba(130, 177, 255, 0.16);
+    background: rgba(0, 0, 0, 0.34);
+}
+
+.adblock-develop-viewbar label {
+    color: var(--text-primary);
+    font-size: 14px;
+}
+
+.adblock-develop-viewbar select {
+    width: min(350px, calc(100vw - 190px));
+    height: 26px;
+    border: 1px solid rgba(130, 177, 255, 0.24);
+    border-radius: 12px;
+    padding: 0 10px;
+    background: #1f2530;
+    color: #f7fbff;
+    font: inherit;
+    font-size: 13px;
+    outline: none;
+    color-scheme: dark;
+}
+
+.adblock-develop-viewbar select:focus {
+    border-color: rgba(143, 180, 255, 0.72);
+    box-shadow: 0 0 0 2px rgba(143, 180, 255, 0.16);
+}
+
+.adblock-develop-viewbar select option,
+.adblock-develop-viewbar select optgroup {
+    background: #20242c;
+    color: #f0f6ff;
+}
+
+.adblock-develop-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-height: 36px;
+    padding: 5px 16px;
+    background: rgba(33, 34, 43, 0.92);
+}
+
+.adblock-develop-toolbar .btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+}
+
+.adblock-develop-toolbar .btn:disabled {
+    opacity: 0.45;
+    cursor: default;
+}
+
+.adblock-code-shell {
+    display: grid;
+    grid-template-columns: 42px minmax(0, 1fr);
+    height: calc(100vh - 178px);
+    min-height: 520px;
+    background: #000000;
+}
+
+.adblock-code-lines,
+.adblock-develop-editor {
+    margin: 0;
+    border: 0;
+    font: 13px/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    tab-size: 4;
+}
+
+.adblock-code-lines {
+    overflow: hidden;
+    padding: 4px 8px 4px 0;
+    border-right: 1px solid rgba(130, 177, 255, 0.12);
+    background: #2a2d34;
+    color: rgba(170, 182, 198, 0.72);
+    text-align: right;
+    user-select: none;
+}
+
+.adblock-develop-editor {
+    width: 100%;
+    height: 100%;
+    resize: none;
+    padding: 4px 10px;
+    outline: 0;
+    background: #000000;
+    color: #d9dee8;
+}
+
+.adblock-develop-editor::selection {
+    background: rgba(134, 167, 255, 0.32);
+}
+
+.adblock-window-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 16px;
+    margin-bottom: 14px;
+    border: 1px solid rgba(130, 177, 255, 0.2);
+    border-radius: 10px;
+    background: rgba(8, 18, 31, 0.68);
+}
+
+.adblock-popup-header {
+    background:
+        linear-gradient(180deg, rgba(12, 28, 44, 0.86), rgba(8, 17, 28, 0.78)),
+        rgba(8, 18, 31, 0.68);
+    box-shadow: 0 14px 28px rgba(0, 0, 0, 0.2);
+}
+
+.adblock-title-stack {
+    min-width: 0;
+}
+
+.adblock-title-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+}
+
+.adblock-mode-pill {
+    flex: 0 0 auto;
+    padding: 4px 9px;
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    border-radius: 999px;
+    color: #d7dce2;
+    background: rgba(255, 255, 255, 0.04);
+    font-size: 11px;
+    line-height: 1;
+    font-weight: 700;
+}
+
+.adblock-host-row {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    min-width: 0;
+    margin-top: 10px;
+    color: var(--text-secondary);
+    font-size: 12px;
+}
+
+.adblock-host-row .material-symbols-rounded {
+    color: #c8ced6;
+    font-size: 18px;
+}
+
+.adblock-host-row strong {
+    min-width: 0;
+    overflow: hidden;
+    color: var(--text-primary);
+    font-size: 12px;
+    font-weight: 600;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.adblock-window-header h1 {
+    margin: 0;
+    color: var(--text-primary);
+    font-size: 22px;
+    line-height: 1.15;
+}
+
+.adblock-window-header p {
+    margin: 6px 0 0;
+    color: var(--text-muted);
+    font-size: 13px;
+}
+
+.adblock-window-header img {
+    width: 46px;
+    height: 46px;
+    flex: 0 0 46px;
+}
+
+body.adblock-window-mode .adblock-dashboard-summary {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+body.adblock-window-mode .adblock-popup-stats {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.adblock-section-heading {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 12px;
+}
+
+.adblock-section-heading h4 {
+    margin: 0;
+}
+
+.adblock-section-heading p {
+    margin: 5px 0 0;
+    color: var(--text-muted);
+    font-size: 12px;
+    line-height: 1.35;
+}
+
+.adblock-filtering-panel {
+    background: transparent;
+}
+
+.adblock-tools-panel {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0 10px;
+}
+
+.adblock-tools-panel .adblock-section-heading {
+    grid-column: 1 / -1;
+}
+
+.adblock-ruleset-breakdown {
+    display: grid;
+    gap: 8px;
+}
+
+.adblock-ruleset-row {
+    position: relative;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 10px;
+    padding: 9px 10px 17px;
+    overflow: hidden;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 8px;
+    background: #0d0f12;
+}
+
+.adblock-ruleset-row span,
+.adblock-ruleset-row strong {
+    position: relative;
+    z-index: 1;
+    min-width: 0;
+    color: var(--text-primary);
+    font-size: 12px;
+    line-height: 1.25;
+}
+
+.adblock-ruleset-row span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.adblock-ruleset-row strong {
+    color: #e8edf3;
+}
+
+.adblock-ruleset-row i {
+    position: absolute;
+    left: 10px;
+    right: 10px;
+    bottom: 8px;
+    height: 4px;
+    overflow: hidden;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.08);
+}
+
+.adblock-ruleset-row i::before {
+    content: "";
+    display: block;
+    width: var(--ruleset-fill, 0%);
+    height: 100%;
+    border-radius: inherit;
+    background: #cfd5dd;
+}
+
+body.adblock-window-mode .adblock-dashboard-footer {
+    display: flex;
+    gap: 10px;
+    justify-content: space-between;
+    padding-bottom: 8px;
+}
+
+.adblock-log-list {
+    display: grid;
+    gap: 8px;
+}
+
+.adblock-log-empty {
+    margin: 0;
+    color: var(--text-muted);
+    font-size: 13px;
+}
+
+.adblock-log-row {
+    min-width: 0;
+    padding: 10px 12px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 8px;
+    background: #0d0f12;
+}
+
+.adblock-log-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    min-width: 0;
+}
+
+.adblock-log-top strong {
+    min-width: 0;
+    overflow: hidden;
+    color: var(--text-primary);
+    font-size: 13px;
+    line-height: 1.25;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.adblock-log-top span,
+.adblock-log-meta,
+.adblock-log-url {
+    color: var(--text-muted);
+    font-size: 11px;
+    line-height: 1.35;
+}
+
+.adblock-log-top span {
+    flex: 0 0 auto;
+}
+
+.adblock-log-meta,
+.adblock-log-url {
+    min-width: 0;
+    margin-top: 4px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+@media (max-width: 560px) {
+    body.adblock-window-mode .adblock-dashboard-summary {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    body.adblock-window-mode .adblock-popup-stats,
+    .adblock-tools-panel {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
 }
 
 .checkbox-label {

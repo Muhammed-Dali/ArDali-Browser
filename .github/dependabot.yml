@@ -29,32 +29,6 @@ updates:
           - "*"
 
   - package-ecosystem: "npm"
-    directory: "/Aurivo-Dawlod"
-    schedule:
-      interval: "weekly"
-      day: "monday"
-      time: "09:30"
-      timezone: "Europe/Istanbul"
-    open-pull-requests-limit: 3
-    groups:
-      dawlod-npm:
-        patterns:
-          - "*"
-
-  - package-ecosystem: "npm"
-    directory: "/uDALİ-weman-home"
-    schedule:
-      interval: "weekly"
-      day: "monday"
-      time: "09:45"
-      timezone: "Europe/Istanbul"
-    open-pull-requests-limit: 3
-    groups:
-      udali-home-npm:
-        patterns:
-          - "*"
-
-  - package-ecosystem: "npm"
     directory: "/dali-lang"
     schedule:
       interval: "weekly"

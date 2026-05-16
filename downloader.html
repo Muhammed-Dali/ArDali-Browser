@@ -1,0 +1,631 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: https: http:; font-src 'self' data:; connect-src 'self';">
+    <title>Aurivo Dawlod</title>
+    <link rel="stylesheet" href="styles/downloader.css">
+    <script src="downloaderRenderer.js" defer></script>
+</head>
+<body>
+    <header class="titlebar">
+        <div class="brand">
+            <img src="icons/aurivo_dawlod.png" alt="" class="brand-icon">
+            <div>
+                <strong>Aurivo Dawlod</strong>
+                <span data-dl-i18n="downloader.brand.subtitle">Video ve ses indirme merkezi</span>
+            </div>
+        </div>
+        <div class="window-actions">
+            <button id="minimizeBtn" title="Küçült" aria-label="Küçült" data-dl-i18n-title="common.minimize" data-dl-i18n-aria-label="common.minimize">-</button>
+            <button id="maximizeBtn" title="Büyüt" aria-label="Büyüt" data-dl-i18n-title="common.maximize" data-dl-i18n-aria-label="common.maximize">□</button>
+            <button id="closeBtn" title="Kapat" aria-label="Kapat" data-dl-i18n-title="common.close" data-dl-i18n-aria-label="common.close">×</button>
+        </div>
+    </header>
+
+    <button id="menuBtn" class="menu-button" title="Menü" aria-label="Menü" data-dl-i18n-title="common.menu" data-dl-i18n-aria-label="common.menu">
+        <img src="icons/aurivo_dawlod_menu.png" alt="">
+    </button>
+
+    <aside id="appMenu" class="app-menu hidden" aria-label="Aurivo Dawlod menüsü" data-dl-i18n-aria-label="menu.aria">
+        <button class="menu-item" data-menu-page="playlist" data-dl-i18n="menu.playlist">Oynatma listesini indir</button>
+        <button class="menu-item" data-menu-page="settings" data-dl-i18n="menu.settings">Ayarlar</button>
+        <button class="menu-item" data-menu-page="compressor" data-dl-i18n="menu.compressor">Sıkıştırıcı</button>
+        <button class="menu-item" data-menu-page="history" data-dl-i18n="menu.history">İndirme Geçmişi</button>
+        <button class="menu-item" data-menu-page="about" data-dl-i18n="menu.about">Hakkında</button>
+        <div class="menu-divider"></div>
+        <label class="theme-row">
+            <span data-dl-i18n="menu.theme">Tema</span>
+            <select id="themeSelect">
+                <option value="aurivo">Aurivo</option>
+                <option value="dark" data-dl-i18n="theme.dark">Karanlık</option>
+                <option value="light" data-dl-i18n="theme.light">Aydınlık</option>
+                <option value="frappe">Frappé</option>
+                <option value="onedark">One dark</option>
+                <option value="matrix">Matrix</option>
+                <option value="github">Github</option>
+                <option value="latte">Latte</option>
+                <option value="solarized-dark">Solarized Dark</option>
+            </select>
+        </label>
+    </aside>
+
+    <div id="dependencyOverlay" class="dependency-overlay hidden" aria-live="polite">
+        <div class="dependency-modal">
+            <p data-dl-i18n="dependency.wait">Lütfen bekleyin dosyalar indiriliyor</p>
+            <div class="modal-dots" aria-hidden="true">
+                <span></span>
+                <span></span>
+                <span></span>
+            </div>
+            <strong id="dependencyProgressText">Süreç 0%</strong>
+        </div>
+    </div>
+
+    <main class="shell">
+        <section class="hero-card">
+            <img src="icons/aurivo_dawlod.png" alt="" class="hero-logo">
+            <div class="hero-copy">
+                <h1>Aurivo-Dawlod</h1>
+                <p data-dl-i18n="hero.subtitle">Daha temiz, daha hızlı, daha senin indirme deneyimin.</p>
+                <strong data-dl-i18n="hero.tagline">Aurivo-Dawlod ile daha akıllı indir.</strong>
+            </div>
+        </section>
+
+        <nav class="workspace-tabs page-panel hidden" data-page-panel="nav" aria-label="Downloader bolumleri">
+            <button class="workspace-tab active" data-page="single" data-dl-i18n="nav.single">Tekil</button>
+            <button class="workspace-tab" data-page="playlist" data-dl-i18n="nav.playlist">Playlist</button>
+            <button class="workspace-tab" data-page="history" data-dl-i18n="nav.history">Geçmiş</button>
+        </nav>
+
+        <section class="toolbar hidden" aria-hidden="true">
+            <label class="url-box">
+                <span data-dl-i18n="single.url.label">Bağlantı</span>
+                <input id="urlInput" type="url" placeholder="YouTube Vimeo veya desteklenen bir video bağlantısı" data-dl-i18n-placeholder="single.url.placeholder">
+            </label>
+            <button id="pasteBtn" class="secondary" data-dl-i18n="action.paste">Yapıştır</button>
+            <button id="analyzeBtn" class="primary" data-dl-i18n="action.analyze">Analiz Et</button>
+        </section>
+
+        <section id="statusPanel" class="status-panel idle">
+            <div>
+                <strong id="statusTitle">Hazır</strong>
+                <p id="statusText">Bir bağlantı yapıştırıp analiz ederek başlayın.</p>
+            </div>
+            <button id="errorDetailsBtn" class="error-details-btn hidden" type="button">
+                <span data-dl-i18n="error.details">Hata Ayrıntıları</span>
+                <span class="error-details-caret" aria-hidden="true">▲</span>
+            </button>
+            <div id="errorDetailsBox" class="error-details-box hidden" aria-live="polite"></div>
+            <div id="processingDots" class="processing-dots" aria-hidden="true">
+                <span></span>
+                <span></span>
+                <span></span>
+            </div>
+        </section>
+
+        <section id="mediaPanel" class="media-panel hidden page-panel" data-page-panel="single">
+            <button id="hideMediaPanelBtn" class="panel-close" title="Kapat" aria-label="Kapat" data-dl-i18n-title="common.close" data-dl-i18n-aria-label="common.close">×</button>
+            <div class="mode-tabs" role="tablist">
+                <button class="tab active icon-label-btn" data-mode="video">
+                    <img src="icons/download-video.svg" alt="">
+                    <span data-dl-i18n="mode.video">Video</span>
+                </button>
+                <button class="tab icon-label-btn" data-mode="audio">
+                    <img src="icons/download-audio.svg" alt="">
+                    <span data-dl-i18n="mode.audio">Ses</span>
+                </button>
+            </div>
+
+            <div class="title-line">
+                <strong data-dl-i18n="single.titleLabel">Başlık</strong>
+                <span id="mediaTitle">Başlık</span>
+                <small id="mediaSource">Kaynak</small>
+            </div>
+
+            <div class="options-grid">
+                <label id="videoFormatRow">
+                    <span data-dl-i18n="single.format.select">Format seçin</span>
+                    <select id="videoFormat"></select>
+                </label>
+                <label id="audioForVideoRow">
+                    <span data-dl-i18n="single.audioForVideo.select">Ses formatını seçin</span>
+                    <select id="audioForVideoFormat"></select>
+                </label>
+                <label id="audioFormatRow" class="hidden">
+                    <span data-dl-i18n="single.format.select">Format seçin</span>
+                    <select id="audioFormat"></select>
+                </label>
+            </div>
+
+            <div class="media-actions">
+                <button id="downloadBtn" class="primary icon-label-btn">
+                    <img src="icons/download-save.svg" alt="">
+                    <span data-dl-i18n="action.download">İndir</span>
+                </button>
+                <button id="moreOptionsBtn" class="secondary icon-label-btn">
+                    <img src="icons/download-options.svg" alt="">
+                    <span data-dl-i18n="action.moreSettings">Daha fazla ayar</span>
+                </button>
+            </div>
+
+            <details class="advanced">
+                <summary data-dl-i18n="action.moreSettings">Daha fazla ayar</summary>
+                <div class="advanced-list">
+                    <label class="advanced-item wide-item">
+                        <span class="advanced-label">
+                            <img src="icons/advanced-terminal.svg" alt="">
+                            <span data-dl-i18n="advanced.customArgs">Özel yt-dlp argümanları</span>
+                        </span>
+                        <textarea id="customArgs" spellcheck="false" placeholder="--sponsorblock-remove all"></textarea>
+                    </label>
+                    <div class="advanced-item">
+                        <strong class="advanced-label">
+                            <img src="icons/advanced-time.svg" alt="">
+                            <span data-dl-i18n="advanced.timeRange">Belirli zaman aralığını indir</span>
+                        </strong>
+                        <div class="time-range-row">
+                            <input id="startTime" type="text" value="0:00:00" aria-label="Başlangıç" data-dl-i18n-aria-label="common.start">
+                            <div class="time-range-track" aria-hidden="true">
+                                <span></span>
+                            </div>
+                            <input id="endTime" type="text" placeholder="0:03:30" aria-label="Bitiş" data-dl-i18n-aria-label="common.end">
+                        </div>
+                    </div>
+                    <div class="advanced-item path-item">
+                        <div>
+                            <span class="advanced-label">
+                                <img src="icons/advanced-folder.svg" alt="">
+                                <span data-dl-i18n="advanced.currentDownloadDir">Mevcut indirme dizini</span>
+                            </span>
+                            <strong id="downloadPath">İndirme klasörü yükleniyor</strong>
+                        </div>
+                        <button id="chooseFolderBtn" class="primary" data-dl-i18n="action.chooseDownloadDir">İndirme dizinini seç</button>
+                    </div>
+                    <label class="advanced-item check-row">
+                        <span class="advanced-label">
+                            <img src="icons/advanced-subtitles.svg" alt="">
+                            <span data-dl-i18n="advanced.subtitles">Altyazılar varsa indir</span>
+                        </span>
+                        <input id="subtitles" type="checkbox">
+                    </label>
+                    <label class="advanced-item check-row">
+                        <span class="advanced-label">
+                            <img src="icons/advanced-close.svg" alt="">
+                            <span data-dl-i18n="advanced.closeOnFinish">İndirme bitince pencereyi kapat</span>
+                        </span>
+                        <input id="closeOnFinish" type="checkbox">
+                    </label>
+                </div>
+            </details>
+
+            <section class="extract-card">
+                <h2 data-dl-i18n="extract.title">Sesi çıkart</h2>
+                <div class="extract-grid">
+                    <label>
+                        <span data-dl-i18n="single.format.select">Format seçin</span>
+                        <select id="extractFormat">
+                            <option value="mp3">Mp3</option>
+                            <option value="m4a">M4a</option>
+                            <option value="opus">Opus</option>
+                            <option value="wav">Wav</option>
+                            <option value="alac">Alac</option>
+                            <option value="flac">Flac</option>
+                        </select>
+                    </label>
+                    <label>
+                        <span data-dl-i18n="extract.quality">Kalite seç</span>
+                        <select id="audioQuality">
+                            <option value="5" data-dl-i18n="quality.normal">Normal</option>
+                            <option value="0" data-dl-i18n="quality.best">En iyi</option>
+                            <option value="2" data-dl-i18n="quality.good">İyi</option>
+                            <option value="8" data-dl-i18n="quality.low">Düşük</option>
+                            <option value="10" data-dl-i18n="quality.lowest">En düşük</option>
+                        </select>
+                    </label>
+                    <button id="extractBtn" class="secondary icon-label-btn">
+                        <img src="icons/download-extract-audio.svg" alt="">
+                        <span data-dl-i18n="action.extract">Çıkart</span>
+                    </button>
+                </div>
+            </section>
+
+        </section>
+
+        <section id="settingsPanel" class="media-panel page-panel hidden" data-page-panel="settings">
+            <div class="section-title">
+                <h1 data-dl-i18n="settings.title">Ayarlar</h1>
+                <div class="settings-top-actions">
+                    <button id="settingsRestartBtn" class="danger settings-icon-btn" title="Uygulamayı yeniden başlat" aria-label="Uygulamayı yeniden başlat" data-dl-i18n-title="settings.restart" data-dl-i18n-aria-label="settings.restart">
+                        <img src="icons/settings-restart.svg" alt="">
+                    </button>
+                    <button id="settingsHomeBtn" class="secondary settings-icon-btn" title="Ana sayfa" aria-label="Ana sayfa" data-dl-i18n-title="settings.home" data-dl-i18n-aria-label="settings.home">
+                        <img src="icons/settings-home.svg" alt="">
+                    </button>
+                </div>
+            </div>
+            <div class="settings-grid">
+                <div class="settings-group-title" data-dl-i18n="settings.downloadDir">İndirme dizini</div>
+                <div class="settings-row settings-path-display">
+                    <span data-dl-i18n="advanced.currentDownloadDir">Mevcut indirme dizini</span>
+                    <strong id="settingsDownloadPath">Yükleniyor</strong>
+                </div>
+                <div class="settings-inline-action">
+                    <button id="settingsChooseFolderBtn" class="primary settings-icon-btn" title="İndirme dizinini seç" aria-label="İndirme dizinini seç" data-dl-i18n-title="action.chooseDownloadDir" data-dl-i18n-aria-label="action.chooseDownloadDir">
+                        <img src="icons/settings-folder.svg" alt="">
+                    </button>
+                </div>
+                <label>
+                    <span data-dl-i18n="settings.preferredVideoQuality">Tercih edilen video kalitesi</span>
+                    <select id="settingsVideoQuality">
+                        <option value="144">144p</option>
+                        <option value="240">240p</option>
+                        <option value="360">360p</option>
+                        <option value="480">480p</option>
+                        <option value="720">720p</option>
+                        <option value="1080">1080p</option>
+                        <option value="1440">1440p</option>
+                        <option value="2160">2160p</option>
+                    </select>
+                </label>
+                <label>
+                    <span data-dl-i18n="settings.preferredVideoCodec">Tercih edilen video kodeği</span>
+                    <select id="settingsVideoCodec">
+                        <option value="avc1">AVC1</option>
+                        <option value="av01">AV1</option>
+                        <option value="vp9">VP9</option>
+                        <option value="mp4v">MP4V</option>
+                    </select>
+                </label>
+                <label>
+                    <span data-dl-i18n="settings.preferredAudioFormat">Tercih edilen ses formatı</span>
+                    <select id="settingsAudioFormat">
+                        <option value="mp3">Mp3</option>
+                        <option value="m4a">M4a</option>
+                        <option value="opus">Opus</option>
+                        <option value="wav">Wav</option>
+                        <option value="flac">Flac</option>
+                    </select>
+                </label>
+                <label>
+                    <span data-dl-i18n="settings.browserCookies">Çerezlerin kullanılacağı tarayıcıyı seçin</span>
+                    <select id="settingsBrowserCookies">
+                        <option value="" data-dl-i18n="common.none">Hiçbiri</option>
+                        <option value="chrome">Chrome</option>
+                        <option value="firefox">Firefox</option>
+                        <option value="brave">Brave</option>
+                        <option value="edge">Edge</option>
+                        <option value="chromium">Chromium</option>
+                        <option value="vivaldi">Vivaldi</option>
+                    </select>
+                </label>
+                <label>
+                    <span>Proxy</span>
+                    <input id="settingsProxy" type="text" placeholder="http://localhost:8080">
+                </label>
+                <div class="settings-row settings-wide-textarea">
+                    <span data-dl-i18n-html="settings.customOptions">Özel yt-dlp seçeneklerini ayarla <a href="https://github.com/yt-dlp/yt-dlp#usage-and-options">Daha fazla bilgi</a></span>
+                    <textarea id="settingsCustomArgs" spellcheck="false" placeholder="--sponsorblock-remove all"></textarea>
+                </div>
+                <label class="settings-check-row">
+                    <span data-dl-i18n="settings.useConfig">Konfigürasyon dosyasını kullan</span>
+                    <input id="settingsUseConfigFile" type="checkbox">
+                </label>
+                <div class="settings-row settings-config-row">
+                    <span id="settingsConfigPath">Seçilmedi</span>
+                    <button id="settingsChooseConfigBtn" class="secondary settings-icon-btn" title="Config seç" aria-label="Config seç" data-dl-i18n-title="settings.chooseConfig" data-dl-i18n-aria-label="settings.chooseConfig">
+                        <img src="icons/settings-config.svg" alt="">
+                    </button>
+                </div>
+                <label class="settings-check-row">
+                    <span data-dl-i18n="settings.showMoreFormats">Daha fazla format ayarı göster</span>
+                    <input id="settingsShowMoreFormats" type="checkbox">
+                </label>
+                <label class="settings-template-row">
+                    <span data-dl-i18n="settings.playlistFileTemplate">Oynatma listesi için dosya adı</span>
+                    <input id="settingsPlaylistFileTemplate" type="text" value="%(playlist_index)s.%(title)s.%(ext)s">
+                    <button id="resetPlaylistFileTemplateBtn" class="danger settings-icon-btn" type="button" title="Dosya adını varsayılana sıfırla" aria-label="Dosya adını varsayılana sıfırla" data-dl-i18n-title="settings.resetFileTemplate" data-dl-i18n-aria-label="settings.resetFileTemplate">
+                        <img src="icons/settings-reset-file.svg" alt="">
+                    </button>
+                </label>
+                <label class="settings-template-row">
+                    <span data-dl-i18n="settings.playlistFolderTemplate">Oynatma listesi için klasör ismi</span>
+                    <input id="settingsPlaylistFolderTemplate" type="text" value="%(playlist_title)s">
+                    <button id="resetPlaylistFolderTemplateBtn" class="danger settings-icon-btn" type="button" title="Klasör adını varsayılana sıfırla" aria-label="Klasör adını varsayılana sıfırla" data-dl-i18n-title="settings.resetFolderTemplate" data-dl-i18n-aria-label="settings.resetFolderTemplate">
+                        <img src="icons/settings-reset-folder.svg" alt="">
+                    </button>
+                </label>
+                <label>
+                    <span data-dl-i18n="settings.maxDownloads">Maksimum aktif indirme sayısı</span>
+                    <input id="settingsMaxDownloads" class="settings-small-number" type="number" min="1" max="2" value="1">
+                </label>
+                <label class="settings-check-row">
+                    <span data-dl-i18n="settings.closeToTray">Sistem tepsisine kapat</span>
+                    <input id="settingsCloseToTray" type="checkbox">
+                </label>
+                <label class="settings-check-row">
+                    <span data-dl-i18n="settings.disableAutoUpdates">Otomatik güncellemeleri devre dışı bırak</span>
+                    <input id="settingsDisableAutoUpdates" type="checkbox">
+                </label>
+                <section class="dependency-card hidden">
+                    <div class="jobs-head">
+                        <h2 data-dl-i18n="settings.dependencies">Gerekli araçlar</h2>
+                        <button id="prepareDependenciesBtn" class="secondary settings-icon-btn" title="Eksikleri hazırla" aria-label="Eksikleri hazırla" data-dl-i18n-title="settings.prepareDependencies" data-dl-i18n-aria-label="settings.prepareDependencies">
+                            <img src="icons/settings-tools.svg" alt="">
+                        </button>
+                    </div>
+                    <div class="dependency-grid">
+                        <article class="dependency-item">
+                            <strong>yt-dlp</strong>
+                            <span id="ytdlpStatus">Kontrol ediliyor</span>
+                            <small id="ytdlpPath"></small>
+                        </article>
+                        <article class="dependency-item">
+                            <strong>ffmpeg</strong>
+                            <span id="ffmpegStatus">Kontrol ediliyor</span>
+                            <small id="ffmpegPath"></small>
+                        </article>
+                    </div>
+                </section>
+                <div class="settings-row hidden">
+                    <strong>İndirme dizini</strong>
+                    <span></span>
+                </div>
+            </div>
+        </section>
+
+        <section id="playlistPanel" class="media-panel page-panel hidden" data-page-panel="playlist">
+            <button id="playlistPasteBtn" class="paste-hero">
+                <span data-dl-i18n="playlist.paste">Oynatma listesi bağlantısını yapıştır</span>
+                <kbd>Ctrl</kbd><kbd>V</kbd>
+            </button>
+
+            <div class="playlist-card">
+                <div class="mode-tabs playlist-mode-tabs" role="tablist">
+                    <button id="playlistVideoToggle" class="tab active" data-playlist-mode="playlist-video" data-dl-i18n="mode.video">Video</button>
+                    <button id="playlistAudioToggle" class="tab" data-playlist-mode="playlist-audio" data-dl-i18n="mode.audio">Ses</button>
+                </div>
+
+                <div class="playlist-link-line">
+                    <strong data-dl-i18n="playlist.link">Link</strong>
+                    <input id="playlistUrl" type="url" placeholder="Playlist URL" data-dl-i18n-placeholder="playlist.url.placeholder">
+                    <select id="playlistType" class="hidden">
+                        <option value="playlist-video" data-dl-i18n="mode.video">Video</option>
+                        <option value="playlist-audio" data-dl-i18n="mode.audio">Ses</option>
+                        <option value="playlist-thumbnails" data-dl-i18n="playlist.thumbnails">Kapaklar</option>
+                        <option value="playlist-links" data-dl-i18n="playlist.saveLinks">Linkleri kaydet</option>
+                    </select>
+                </div>
+
+                <div id="playlistVideoBox" class="playlist-options-box">
+                    <label>
+                        <span data-dl-i18n="playlist.videoQuality">Video kalitesi</span>
+                        <select id="playlistVideoQuality">
+                            <option value="best" data-dl-i18n="quality.best">En iyi</option>
+                            <option value="1080">1080p</option>
+                            <option value="720">720p</option>
+                            <option value="480">480p</option>
+                            <option value="360">360p</option>
+                            <option value="worst" data-dl-i18n="quality.lowest">En düşük</option>
+                        </select>
+                    </label>
+                    <label>
+                        <span data-dl-i18n="playlist.videoFormat">Video formatı</span>
+                        <select id="playlistVideoFormat">
+                            <option value="auto" data-dl-i18n="common.auto">Otomatik</option>
+                            <option value="mp4">Mp4</option>
+                            <option value="webm">WebM</option>
+                        </select>
+                    </label>
+                    <button id="playlistDownloadBtn" class="primary" data-dl-i18n="action.download">İndir</button>
+                </div>
+
+                <div id="playlistAudioBox" class="playlist-options-box hidden">
+                    <label>
+                        <span data-dl-i18n="playlist.audioFormat">Ses formatı</span>
+                        <select id="playlistAudioFormat">
+                            <option value="mp3">Mp3</option>
+                            <option value="m4a">M4a</option>
+                            <option value="opus">Opus</option>
+                            <option value="wav">Wav</option>
+                            <option value="flac">Flac</option>
+                        </select>
+                    </label>
+                    <label>
+                        <span data-dl-i18n="extract.quality">Kalite seç</span>
+                        <select id="playlistAudioQuality">
+                            <option value="5" data-dl-i18n="quality.normal">Normal</option>
+                            <option value="0" data-dl-i18n="quality.best">En iyi</option>
+                            <option value="2" data-dl-i18n="quality.good">İyi</option>
+                            <option value="8" data-dl-i18n="quality.low">Düşük</option>
+                        </select>
+                    </label>
+                    <button id="playlistAudioDownloadBtn" class="primary" data-dl-i18n="action.download">İndir</button>
+                </div>
+
+                <details class="playlist-advanced">
+                    <summary data-dl-i18n="action.moreSettings">Daha fazla ayar</summary>
+                    <div class="advanced-list">
+                        <div class="advanced-item">
+                            <strong data-dl-i18n="playlist.range">Playlist aralığı</strong>
+                            <div class="playlist-range-row">
+                                <input id="playlistStart" type="number" min="1" value="1" aria-label="Başlangıç" data-dl-i18n-aria-label="common.start">
+                                <span>:</span>
+                                <input id="playlistEnd" type="number" min="1" placeholder="Bitiş" aria-label="Bitiş" data-dl-i18n-placeholder="common.end" data-dl-i18n-aria-label="common.end">
+                            </div>
+                        </div>
+                        <div class="advanced-item path-item">
+                            <div>
+                                <span data-dl-i18n="advanced.currentDownloadDir">Mevcut indirme dizini</span>
+                                <strong id="playlistDownloadPath">İndirme klasörü yükleniyor</strong>
+                            </div>
+                            <button id="playlistChooseFolderBtn" class="primary" data-dl-i18n="action.chooseDownloadDir">İndirme dizinini seç</button>
+                        </div>
+                        <label class="advanced-item check-row">
+                            <span data-dl-i18n="advanced.subtitles">Altyazılar varsa indir</span>
+                            <input id="playlistSubtitles" type="checkbox">
+                        </label>
+                        <label class="advanced-item wide-item">
+                            <span data-dl-i18n="playlist.folderTemplate">Klasör şablonu</span>
+                            <input id="playlistFolderTemplate" type="text" value="%(playlist_title)s">
+                        </label>
+                        <label class="advanced-item wide-item">
+                            <span data-dl-i18n="playlist.fileTemplate">Dosya şablonu</span>
+                            <input id="playlistFileTemplate" type="text" value="%(playlist_index)s.%(title)s.%(ext)s">
+                        </label>
+                        <div class="playlist-extra-actions">
+                            <button id="playlistThumbnailsBtn" class="secondary" data-dl-i18n="playlist.downloadThumbnails">Kapakları indir</button>
+                            <button id="playlistLinksBtn" class="secondary" data-dl-i18n="playlist.saveLinksToFile">Linkleri dosyaya kaydet</button>
+                        </div>
+                    </div>
+                </details>
+            </div>
+        </section>
+
+        <section id="compressorPanel" class="media-panel page-panel hidden" data-page-panel="compressor">
+            <div class="section-title">
+                <div>
+                    <h1 data-dl-i18n="compressor.title">Sıkıştırıcı</h1>
+                    <p data-dl-i18n="compressor.subtitle">Video dosyalarını ffmpeg ile daha küçük hale getir.</p>
+                </div>
+            </div>
+
+            <div id="compressorDropZone" class="compressor-drop">
+                <strong data-dl-i18n="compressor.dropTitle">Dosyaları buraya bırak</strong>
+                <span data-dl-i18n="compressor.dropHint">veya bilgisayarından video seç</span>
+                <input id="compressorFileInput" type="file" accept="video/*" multiple>
+            </div>
+
+            <div class="compressor-layout">
+                <section class="compressor-options">
+                    <label>
+                        <span data-dl-i18n="compressor.outputFormat">Çıktı formatı</span>
+                        <select id="compressorExtension">
+                            <option value="unchanged" data-dl-i18n="compressor.unchanged">Aynı kalsın</option>
+                            <option value="mp4">Mp4</option>
+                            <option value="mkv">Mkv</option>
+                        </select>
+                    </label>
+                    <label>
+                        <span data-dl-i18n="compressor.encoder">Video kodlayıcı</span>
+                        <select id="compressorEncoder">
+                            <option value="x264">x264</option>
+                            <option value="x265">x265</option>
+                            <option value="qsv">Intel QSV</option>
+                            <option value="nvenc">NVIDIA H.264</option>
+                            <option value="hevc_nvenc">NVIDIA HEVC</option>
+                            <option value="amf">AMD H.264</option>
+                            <option value="hevc_amf">AMD HEVC</option>
+                            <option value="vaapi">VAAPI H.264</option>
+                            <option value="hevc_vaapi">VAAPI HEVC</option>
+                            <option value="videotoolbox">VideoToolbox</option>
+                            <option value="copy" data-dl-i18n="common.copy">Kopyala</option>
+                        </select>
+                    </label>
+                    <label>
+                        <span data-dl-i18n="compressor.speed">Sıkıştırma hızı</span>
+                        <select id="compressorSpeed">
+                            <option value="fast" data-dl-i18n="speed.fast">Hızlı</option>
+                            <option value="medium" selected data-dl-i18n="speed.medium">Orta</option>
+                            <option value="slow" data-dl-i18n="speed.slow">Yavaş</option>
+                        </select>
+                    </label>
+                    <label>
+                        <span data-dl-i18n="compressor.videoQuality">Video kalitesi</span>
+                        <input id="compressorQuality" type="range" min="18" max="51" value="23">
+                        <strong id="compressorQualityValue">23</strong>
+                    </label>
+                    <label>
+                        <span data-dl-i18n="playlist.audioFormat">Ses formatı</span>
+                        <select id="compressorAudioFormat">
+                            <option value="copy" data-dl-i18n="common.copy">Kopyala</option>
+                            <option value="aac">AAC</option>
+                            <option value="mp3">MP3</option>
+                        </select>
+                    </label>
+                    <label>
+                        <span data-dl-i18n="compressor.suffix">Çıktı eki</span>
+                        <input id="compressorSuffix" type="text" value="_compressed">
+                    </label>
+                    <label class="check-row compressor-check">
+                        <span data-dl-i18n="compressor.sameFolder">Aynı klasöre kaydet</span>
+                        <input id="compressorSameFolder" type="checkbox" checked>
+                    </label>
+                    <div class="settings-row compressor-output-row">
+                        <strong data-dl-i18n="compressor.outputFolder">Çıktı klasörü</strong>
+                        <span id="compressorOutputPath">Aynı klasör kullanılacak</span>
+                        <button id="compressorChooseOutputBtn" class="secondary" data-dl-i18n="action.chooseFolder">Klasör seç</button>
+                    </div>
+                </section>
+
+                <section class="compressor-files">
+                    <div class="jobs-head">
+                        <h2 data-dl-i18n="compressor.selectedFiles">Seçilen dosyalar</h2>
+                        <button id="compressorClearFilesBtn" class="ghost" data-dl-i18n="action.clear">Temizle</button>
+                    </div>
+                    <div id="compressorFileList" class="compressor-file-list"></div>
+                    <div class="compressor-actions">
+                        <button id="compressorStartBtn" class="primary" data-dl-i18n="action.compress">Sıkıştır</button>
+                        <button id="compressorCancelBtn" class="ghost" disabled data-dl-i18n="action.cancel">İptal</button>
+                    </div>
+                </section>
+            </div>
+        </section>
+
+        <section id="historyPanel" class="jobs page-panel hidden" data-page-panel="history">
+            <div class="history-header">
+                <h1 data-dl-i18n="history.title">İndirme Geçmişi</h1>
+                <div class="history-header-actions">
+                    <button id="exportHistoryJsonBtn" class="secondary">JSON</button>
+                    <button id="exportHistoryCsvBtn" class="secondary">CSV</button>
+                    <button id="clearHistoryBtn" class="ghost" data-dl-i18n="history.clearAll">Tüm geçmişi temizle</button>
+                </div>
+            </div>
+
+            <div class="history-controls">
+                <input id="historySearch" type="search" placeholder="Başlık veya URL ara" data-dl-i18n-placeholder="history.search">
+                <select id="historyFormatFilter">
+                    <option value="" data-dl-i18n="history.allFormats">Tüm formatlar</option>
+                    <option value="video" data-dl-i18n="mode.video">Video</option>
+                    <option value="audio" data-dl-i18n="mode.audio">Ses</option>
+                    <option value="extract" data-dl-i18n="history.extractedAudio">Sesi çıkarılanlar</option>
+                    <option value="playlist" data-dl-i18n="nav.playlist">Playlist</option>
+                </select>
+                <select id="historyStatusFilter">
+                    <option value="" data-dl-i18n="history.allStatuses">Tüm durumlar</option>
+                    <option value="done" data-dl-i18n="history.completed">Tamamlananlar</option>
+                    <option value="error" data-dl-i18n="history.errors">Hatalar</option>
+                    <option value="cancelled" data-dl-i18n="history.cancelled">İptaller</option>
+                </select>
+                <button id="refreshHistoryBtn" class="secondary" data-dl-i18n="action.refresh">Yenile</button>
+            </div>
+
+            <div class="history-stats">
+                <article class="stat-card">
+                    <span data-dl-i18n="history.total">Toplam indirme</span>
+                    <strong id="historyTotalCount">0</strong>
+                </article>
+                <article class="stat-card">
+                    <span data-dl-i18n="history.successful">Başarılı</span>
+                    <strong id="historyDoneCount">0</strong>
+                </article>
+                <article class="stat-card">
+                    <span data-dl-i18n="history.issue">Hata / İptal</span>
+                    <strong id="historyIssueCount">0</strong>
+                </article>
+            </div>
+
+            <div id="historyList" class="history-list"></div>
+        </section>
+
+        <section class="jobs hidden">
+            <div class="jobs-head">
+                <h2 data-dl-i18n="jobs.title">İndiriliyor</h2>
+                <button id="clearDoneBtn" class="ghost hidden" data-dl-i18n="jobs.clearCompleted">Tamamlananları temizle</button>
+            </div>
+            <div id="jobsList" class="jobs-list"></div>
+        </section>
+    </main>
+</body>
+</html>

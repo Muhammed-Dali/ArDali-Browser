@@ -1,0 +1,24 @@
+Aurivo DeliBlock includes bundled prebuilt DeliBlock ruleset JSON and scripting
+assets for local request filtering, cosmetic filtering, scriptlet execution, and
+developer inspection.
+
+Source snapshot:
+DeliBlock-compatible rulesets exported from a local reference checkout.
+
+Included ruleset metadata:
+- ruleset-details.json
+
+Included ruleset directories:
+- main/*.json
+- regex/*.json
+- strictblock/*.json
+- scripting/generic/*.js
+- scripting/generichigh/*.css
+- scripting/specific/*.js
+- scripting/procedural/*.js
+- scripting/scriptlet/main/*.js
+- scripting/scriptlet/isolated/*.js
+
+These rulesets originate from upstream filter-list build outputs adapted for
+DeliBlock. Keep this notice with the bundled resources and review upstream
+licenses before redistribution.

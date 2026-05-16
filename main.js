@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, dialog, nativeImage, Tray, Menu, shell, session, screen, globalShortcut, desktopCapturer } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, nativeImage, Tray, Menu, shell, session, screen, globalShortcut, desktopCapturer, clipboard } = require('electron');
 
 // Wayland/Flatpak: App ID synchronization must happen as early as possible.
 const FLATPAK_APP_ID = 'com.aurivo.mediaplayer';
@@ -23,57 +23,21 @@ const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
 const https = require('https');
-const { registerDawlodIpc } = require('./modules/dawlodHost');
+const { registerPulseIpc } = require('./modules/pulseHost');
 const {
-    initAdBlocker,
-    getStats: getAdBlockerStats,
-    allowDomain,
-    getConfig: getAdBlockerConfig,
-    setConfig: setAdBlockerConfig,
-    getDashboardUrl: getAdBlockerDashboardUrl,
-    getDashboardLaunchInfo: getAdBlockerDashboardLaunchInfo,
-} = require('./modules/adBlocker');
-
-function spawnReviewed(command, args = [], options = {}) {
-    // Reviewed process launch wrapper: callers pass a command plus an argument array;
-    // shell execution is explicitly disabled here to avoid command injection.
-    // nosemgrep: javascript.lang.security.detect-child-process.detect-child-process
-    return spawn(command, Array.isArray(args) ? args : [], {
-        ...options,
-        shell: false
-    });
-}
-
-function spawnSyncReviewed(command, args = [], options = {}) {
-    // Reviewed process launch wrapper: callers pass a command plus an argument array;
-    // shell execution is explicitly disabled here to avoid command injection.
-    // nosemgrep: javascript.lang.security.detect-child-process.detect-child-process
-    return spawnSync(command, Array.isArray(args) ? args : [], {
-        ...options,
-        shell: false
-    });
-}
-
-function pathJoinReviewed(...segments) {
-    // Reviewed path construction wrapper. IPC-controlled roots are normalized by
-    // sanitizeIpcPath before use; app/resource paths are assembled from trusted roots.
-    // nosemgrep: javascript.lang.security.audit.path-traversal.path-join-resolve-traversal
-    return path.join(...segments);
-}
-
-function pathResolveReviewed(...segments) {
-    // Reviewed path construction wrapper. Inputs that cross IPC boundaries are
-    // validated or normalized before they reach file-system operations.
-    // nosemgrep: javascript.lang.security.audit.path-traversal.path-join-resolve-traversal
-    return path.resolve(...segments);
-}
-
-function newEscapedKeyRegExp(pattern, flags = '') {
-    // Patterns passed here are built from preference keys escaped with escapeRegexFragment.
-    // nosemgrep: javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
-    return new RegExp(pattern, flags);
-}
-
+    normalizeAdblockConfig,
+    shouldBlockRequest,
+    evaluateDnrHeaderModifications,
+    getRulesetSummary
+} = require('./modules/adblock-engine');
+const {
+    RULESET_ROOT_DIR: ADBLOCK_RULESET_ROOT_DIR,
+    getActiveRulesetPlan,
+    getDevelopRulesetDetails,
+    getRulesetAssetPath,
+    readJsonFileSafe
+} = require('./modules/adblock-ruleset-registry');
+const { createDownloaderService } = require('./modules/downloaderService');
 let autoUpdater = null;
 try {
     ({ autoUpdater } = require('electron-updater'));
@@ -149,22 +113,13 @@ function shouldEnableElectronUpdaterOnThisRuntime() {
     return true;
 }
 
-function shouldUseAdblockExtensionOnThisRuntime() {
-    // Paketli Linux'ta extension tabanlı mod bazı sistemlerde kararsız davranabildiği için
-    // varsayılanı built-in moda çekiyoruz. Gelişmiş kullanıcı env ile tekrar açabilir.
-    if (process.platform === 'linux' && app.isPackaged) {
-        return isTruthyEnvFlag('AURIVO_ADBLOCK_EXTENSION');
-    }
-    return true;
-}
-
 function commandExists(command) {
     try {
         // Security: Pass command as a direct argument to 'which' instead of
         // interpolating into a shell string to prevent shell injection.
         const sanitized = String(command || '').trim();
         if (!sanitized || /[^a-zA-Z0-9._-]/.test(sanitized)) return false;
-        const res = spawnSyncReviewed('which', [sanitized], {
+        const res = spawnSync('which', [sanitized], {
             encoding: 'utf8',
             timeout: 1200,
             shell: false
@@ -186,7 +141,7 @@ function isAurivoBinInstalledViaPacman() {
     if (process.platform !== 'linux') return false;
     if (!commandExists('pacman')) return false;
     try {
-        const res = spawnSyncReviewed('pacman', ['-Q', 'aurivo-bin'], {
+        const res = spawnSync('pacman', ['-Q', 'aurivo-bin'], {
             encoding: 'utf8',
             timeout: 1800
         });
@@ -233,7 +188,7 @@ function trySpawnDetached(command, args, probeMs = 450) {
         };
 
         try {
-            child = spawnReviewed(command, args, {
+            child = spawn(command, args, {
                 detached: true,
                 stdio: 'ignore'
             });
@@ -311,7 +266,7 @@ function buildPostUpdateLaunchCommand() {
 
 function writeAurivoUpdateScript() {
     const launchCommand = buildPostUpdateLaunchCommand();
-    const scriptPath = pathJoinReviewed(os.tmpdir(), `aurivo-update-${Date.now()}.sh`);
+    const scriptPath = path.join(os.tmpdir(), `aurivo-update-${Date.now()}.sh`);
     const lines = [
         '#!/usr/bin/env bash',
         'set +e',
@@ -842,14 +797,14 @@ function cleanupTransientHomeFiles(context = 'runtime') {
     if (!homeDir) return;
 
     for (const name of TRANSIENT_HOME_FILES) {
-        const filePath = pathJoinReviewed(homeDir, name);
+        const filePath = path.join(homeDir, name);
         try {
             if (fs.existsSync(filePath)) {
                 fs.unlinkSync(filePath);
-                console.log('[Cleanup] removed:', name, `(${context})`);
+                console.log(`[Cleanup] removed ${name} (${context})`);
             }
         } catch (e) {
-            console.warn('[Cleanup] failed to remove:', name, `(${context})`, e?.message || e);
+            console.warn(`[Cleanup] failed to remove ${name} (${context}):`, e?.message || e);
         }
     }
 }
@@ -918,17 +873,17 @@ function ensureWindowsRuntimePaths() {
     // PATH: paketlenmiş native bağımlılıkların / ffmpeg'in alt süreç ve DLL yükleyici tarafından bulunabildiğinden emin ol.
     try {
         if (process.resourcesPath) {
-            prependToProcessPath(pathJoinReviewed(process.resourcesPath, 'bin'));
-            prependToProcessPath(pathJoinReviewed(process.resourcesPath, 'native', 'build', 'Release'));
-            prependToProcessPath(pathJoinReviewed(process.resourcesPath, 'native-dist'));
-            prependToProcessPath(pathJoinReviewed(process.resourcesPath, 'native-dist', 'windows'));
+            prependToProcessPath(path.join(process.resourcesPath, 'bin'));
+            prependToProcessPath(path.join(process.resourcesPath, 'native', 'build', 'Release'));
+            prependToProcessPath(path.join(process.resourcesPath, 'native-dist'));
+            prependToProcessPath(path.join(process.resourcesPath, 'native-dist', 'windows'));
         }
 
         // Geliştirici yedekleri
-        prependToProcessPath(pathJoinReviewed(__dirname, 'third_party', 'ffmpeg'));
-        prependToProcessPath(pathJoinReviewed(__dirname, 'native', 'build', 'Release'));
-        prependToProcessPath(pathJoinReviewed(__dirname, 'native-dist'));
-        prependToProcessPath(pathJoinReviewed(__dirname, 'native-dist', 'windows'));
+        prependToProcessPath(path.join(__dirname, 'third_party', 'ffmpeg'));
+        prependToProcessPath(path.join(__dirname, 'native', 'build', 'Release'));
+        prependToProcessPath(path.join(__dirname, 'native-dist'));
+        prependToProcessPath(path.join(__dirname, 'native-dist', 'windows'));
     } catch (e) {
         console.warn('[WIN] PATH prep failed:', e?.message || e);
     }
@@ -951,16 +906,16 @@ function ensureUnixRuntimePaths() {
     const platformDir = process.platform === 'darwin' ? 'darwin' : 'linux';
     try {
         if (process.resourcesPath) {
-            const nativeDist = pathJoinReviewed(process.resourcesPath, 'native-dist');
-            const nativeDistPlatform = pathJoinReviewed(nativeDist, platformDir);
+            const nativeDist = path.join(process.resourcesPath, 'native-dist');
+            const nativeDistPlatform = path.join(nativeDist, platformDir);
             prependToProcessPath(nativeDist);
             prependToProcessPath(nativeDistPlatform);
             prependToEnvList(process.platform === 'darwin' ? 'DYLD_LIBRARY_PATH' : 'LD_LIBRARY_PATH', nativeDist);
             prependToEnvList(process.platform === 'darwin' ? 'DYLD_LIBRARY_PATH' : 'LD_LIBRARY_PATH', nativeDistPlatform);
         }
 
-        const devNativeDist = pathJoinReviewed(__dirname, 'native-dist');
-        const devNativeDistPlatform = pathJoinReviewed(devNativeDist, platformDir);
+        const devNativeDist = path.join(__dirname, 'native-dist');
+        const devNativeDistPlatform = path.join(devNativeDist, platformDir);
         prependToProcessPath(devNativeDist);
         prependToProcessPath(devNativeDistPlatform);
         prependToEnvList(process.platform === 'darwin' ? 'DYLD_LIBRARY_PATH' : 'LD_LIBRARY_PATH', devNativeDist);
@@ -982,11 +937,11 @@ function logWindowsRuntimeDepsOnce(context = '') {
 
     try {
         const base = process.resourcesPath || '(no resourcesPath)';
-        const releaseDir = process.resourcesPath ? pathJoinReviewed(process.resourcesPath, 'native', 'build', 'Release') : '';
-        const nativeDistDir = process.resourcesPath ? pathJoinReviewed(process.resourcesPath, 'native-dist') : '';
-        const binDir = process.resourcesPath ? pathJoinReviewed(process.resourcesPath, 'bin') : '';
-        const visualizerExe = process.resourcesPath ? pathJoinReviewed(nativeDistDir, 'aurivo-projectm-visualizer.exe') : '';
-        const ffmpegExe = process.resourcesPath ? pathJoinReviewed(binDir, 'ffmpeg.exe') : '';
+        const releaseDir = process.resourcesPath ? path.join(process.resourcesPath, 'native', 'build', 'Release') : '';
+        const nativeDistDir = process.resourcesPath ? path.join(process.resourcesPath, 'native-dist') : '';
+        const binDir = process.resourcesPath ? path.join(process.resourcesPath, 'bin') : '';
+        const visualizerExe = process.resourcesPath ? path.join(nativeDistDir, 'aurivo-projectm-visualizer.exe') : '';
+        const ffmpegExe = process.resourcesPath ? path.join(binDir, 'ffmpeg.exe') : '';
 
         const requiredBassDlls = [
             'bass.dll',
@@ -1002,7 +957,7 @@ function logWindowsRuntimeDepsOnce(context = '') {
             const present = [];
             const missing = [];
             for (const f of requiredBassDlls) {
-                const p = pathJoinReviewed(dir, f);
+                const p = path.join(dir, f);
                 if (fs.existsSync(p)) present.push(f);
                 else missing.push(f);
             }
@@ -1079,7 +1034,7 @@ function detectDisplayServer() {
     // Paketli Linux sürümünde daha stabil varsayılan: Wayland yerine X11/auto.
     if (conservativeGpuMode && !displayBackendOverride && selectedBackend === 'wayland') {
         selectedBackend = display ? 'x11' : 'auto';
-        console.log('[Display] conservative packaged mode -> backend fallback:', selectedBackend);
+        console.log(`[Display] conservative packaged mode -> backend fallback: ${selectedBackend}`);
     }
 
     if (selectedBackend === 'wayland') {
@@ -1104,10 +1059,10 @@ function detectDisplayServer() {
     process.env.AURIVO_EFFECTIVE_DISPLAY_BACKEND = selectedBackend;
 
     if (ozoneHint && !displayBackendOverride) {
-        console.log('[Display] ELECTRON_OZONE_PLATFORM_HINT:', ozoneHint, '(session-based auto mode takes precedence)');
+        console.log(`[Display] ELECTRON_OZONE_PLATFORM_HINT=${ozoneHint} (session-based auto mode takes precedence)`);
     }
     if (displayBackendOverride) {
-        console.log('[Display] AURIVO_DISPLAY_BACKEND override active:', displayBackendOverride);
+        console.log(`[Display] AURIVO_DISPLAY_BACKEND override active: ${displayBackendOverride}`);
     }
 
     if (!forceSoftware) {
@@ -1153,7 +1108,7 @@ function installGpuFailsafe() {
 
     const triggerFallback = (reason) => {
         if (alreadySoftware) return;
-        console.warn('[GPU] Crash detected -> switching to software rendering:', reason);
+        console.warn(`[GPU] Crash detected (${reason}) -> switching to software rendering`);
         app.relaunch({
             env: {
                 ...process.env,
@@ -1230,27 +1185,16 @@ function initNativeAudioEngineSafe({ force = false } = {}) {
 
 let mainWindow;
 let settingsWindow = null;
-let adblockDashboardWindow = null;
-let adblockDashboardAutoSyncTimer = null;
-let adblockConfigBackgroundSyncTimer = null;
-const ADBLOCK_DASHBOARD_WINDOW_SIZE = Object.freeze({
-    width: 1120,
-    height: 820,
-});
-const AURIVO_ADBLOCK_DEFAULT_COMPLETE_HOSTS = Object.freeze([
-    'youtube.com',
-    'music.youtube.com',
-    'm.youtube.com',
-    'youtu.be',
-    'soundcloud.com',
-    'm.soundcloud.com',
-    'reddit.com',
-    'old.reddit.com',
-]);
+let adblockWindow = null;
+let downloaderWindow = null;
+let downloaderService = null;
+let pendingDownloaderUrl = '';
+let pendingDownloaderNotice = null;
 const libraryWatchSessions = new Map();
 let tray = null;
 let mainWindowCloseToTray = true;
 let lastTrayState = { isPlaying: false, currentTrack: 'Aurivo Media Player', isMuted: false, stopAfterCurrent: false };
+const trayIconCache = new Map();
 let mediaShortcutsRegistered = false;
 const GLOBAL_MEDIA_SHORTCUTS = Object.freeze([
     ['MediaPlayPause', 'play-pause'],
@@ -1266,26 +1210,6 @@ const DEFAULT_GLOBAL_STUDIO_SHORTCUTS = Object.freeze([
 ]);
 let globalStudioShortcuts = DEFAULT_GLOBAL_STUDIO_SHORTCUTS.map((entry) => [...entry]);
 let mprisPlayer = null;
-let aurivoPulseProc = null;
-let aurivoPulseGuiProc = null;
-let aurivoPulseGuiLang = '';
-let aurivoPulseStatus = {
-    running: false,
-    startedAt: null,
-    command: '',
-    source: '',
-    lastError: ''
-};
-let aurivoPulseLastRecognition = {
-    fingerprint: '',
-    ts: 0
-};
-let aurivoPulseRecentRecognitions = [];
-let pulseBridgeServer = null;
-let pulseBridgePort = 0;
-const PULSE_BRIDGE_HOST = '127.0.0.1';
-const PULSE_BRIDGE_PATH = '/pulse/open';
-const PULSE_BRIDGE_FALLBACK_PORT = 38947;
 let screenRecordingSystemAudioProc = null;
 let screenRecordingSystemAudioPath = '';
 const screenRecordingLiveOutputs = new Map();
@@ -1308,7 +1232,7 @@ function normalizeLaunchFilePath(rawPath) {
     }
     if (!decoded) return '';
 
-    const resolvedPath = pathResolveReviewed(decoded);
+    const resolvedPath = path.resolve(decoded);
     try {
         if (!fs.existsSync(resolvedPath)) return '';
         const stat = fs.statSync(resolvedPath);
@@ -1451,183 +1375,6 @@ async function getPerformanceSnapshot() {
     return snapshot;
 }
 
-function getPulseBridgeUrl() {
-    const port = Number(pulseBridgePort) || PULSE_BRIDGE_FALLBACK_PORT;
-    return `https://${PULSE_BRIDGE_HOST}:${port}${PULSE_BRIDGE_PATH}`;
-}
-
-function getPulseBridgeTlsOptions() {
-    const keyPath = String(process.env.AURIVO_PULSE_TLS_KEY_PATH || '').trim();
-    const certPath = String(process.env.AURIVO_PULSE_TLS_CERT_PATH || '').trim();
-    if (!keyPath || !certPath) {
-        return null;
-    }
-    try {
-        return {
-            key: fs.readFileSync(pathResolveReviewed(keyPath)),
-            cert: fs.readFileSync(pathResolveReviewed(certPath)),
-            minVersion: 'TLSv1.2'
-        };
-    } catch (error) {
-        console.warn('[PULSE] invalid TLS cert/key configuration:', error?.message || error);
-        return null;
-    }
-}
-
-function startPulseBridgeServer() {
-    if (pulseBridgeServer) return;
-    const tlsOptions = getPulseBridgeTlsOptions();
-    if (!tlsOptions) {
-        console.warn('[PULSE] bridge disabled: set AURIVO_PULSE_TLS_KEY_PATH and AURIVO_PULSE_TLS_CERT_PATH to enable secure bridge');
-        return;
-    }
-    const handler = (req, res) => {
-        try {
-            const method = String(req?.method || '').toUpperCase();
-            const rawUrl = String(req?.url || '/');
-            const u = new URL(rawUrl, `http://${PULSE_BRIDGE_HOST}`);
-            if (method !== 'GET' || u.pathname !== PULSE_BRIDGE_PATH) {
-                res.statusCode = 404;
-                res.end('Not Found');
-                return;
-            }
-            const query = String(u.searchParams.get('query') || u.searchParams.get('q') || '').trim();
-            const platform = String(u.searchParams.get('platform') || '').trim().toLowerCase();
-            if (query) {
-                emitPulseEvent('pulse:open-query', { query, platform, source: 'aurivo-pulse-gui' });
-            }
-            res.statusCode = 200;
-            res.setHeader('Content-Type', 'text/plain; charset=utf-8');
-            res.end('OK');
-        } catch (e) {
-            res.statusCode = 500;
-            res.end('ERR');
-        }
-    };
-    pulseBridgeServer = https.createServer(tlsOptions, handler);
-    pulseBridgeServer.on('error', (e) => {
-        console.warn('[PULSE] bridge server error:', e?.message || e);
-    });
-    pulseBridgeServer.listen(PULSE_BRIDGE_FALLBACK_PORT, PULSE_BRIDGE_HOST, () => {
-        const addr = pulseBridgeServer?.address?.();
-        if (addr && typeof addr === 'object' && Number(addr.port) > 0) {
-            pulseBridgePort = Number(addr.port);
-        } else {
-            pulseBridgePort = PULSE_BRIDGE_FALLBACK_PORT;
-        }
-    });
-}
-
-function stopPulseBridgeServer() {
-    if (!pulseBridgeServer) return;
-    try {
-        pulseBridgeServer.close();
-    } catch {
-        // best-effort
-    }
-    pulseBridgeServer = null;
-    pulseBridgePort = 0;
-}
-
-function stopAurivoPulseGuiWindow() {
-    const child = aurivoPulseGuiProc;
-    aurivoPulseGuiProc = null;
-    aurivoPulseGuiLang = '';
-    emitPulseGuiWindowState(false);
-    if (!child) return;
-    try {
-        if (!child.killed) child.kill('SIGTERM');
-    } catch {
-        // best-effort
-    }
-}
-
-function getLinuxMainWindowXid() {
-    try {
-        if (process.platform !== 'linux') return '';
-        if (!mainWindow || mainWindow.isDestroyed()) return '';
-        const handle = mainWindow.getNativeWindowHandle();
-        if (!handle || !handle.length) return '';
-        // X11'de handle çoğunlukla unsigned long (LE) olarak gelir.
-        const id32 = handle.readUInt32LE(0);
-        if (id32 > 0) return `0x${id32.toString(16)}`;
-        if (handle.length >= 8) {
-            const id64 = Number(handle.readBigUInt64LE(0));
-            if (Number.isFinite(id64) && id64 > 0) return `0x${id64.toString(16)}`;
-        }
-    } catch {
-        // yoksay
-    }
-    return '';
-}
-
-async function applyPulseLinuxWindowHints(childPid) {
-    try {
-        if (process.platform !== 'linux') return;
-        const pid = Number(childPid || 0);
-        if (!Number.isFinite(pid) || pid <= 0) return;
-
-        const xdotool = findExecutable('xdotool', ['/usr/bin', '/usr/local/bin', '/bin']);
-        const wmctrl = findExecutable('wmctrl', ['/usr/bin', '/usr/local/bin', '/bin']);
-        if (!xdotool && !wmctrl) return;
-
-        let childWid = '';
-        if (xdotool) {
-            // Pencerenin map olmasını bekle (kısa timeout ile).
-            const lookup = await execCollect(
-                xdotool,
-                ['search', '--onlyvisible', '--pid', String(pid), '--name', '.*'],
-                4500
-            );
-            if (lookup?.success && lookup?.output) {
-                const lines = String(lookup.output).split(/\r?\n/).map((s) => s.trim()).filter(Boolean);
-                childWid = lines.length ? lines[lines.length - 1] : '';
-            }
-        }
-        if (!childWid) return;
-
-        // Taskbar grouping için sınıf adı ana uygulamayla hizalanır.
-        if (xdotool) {
-            await execCollect(xdotool, ['set_window', '--class', 'aurivo-media-player', '--classname', 'aurivo-media-player', childWid], 1500);
-        }
-
-        // Ayrı ikon oluşmasını engellemek için taskbar'dan gizle.
-        if (wmctrl) {
-            await execCollect(wmctrl, ['-i', '-r', childWid, '-b', 'add,skip_taskbar'], 1500);
-            await execCollect(wmctrl, ['-i', '-r', childWid, '-b', 'remove,skip_pager'], 1500);
-        }
-
-        // Mümkünse ana pencereye transient ilişki ver (X11 ortamlarında bazı shell'ler bunu dikkate alır).
-        const parentXid = getLinuxMainWindowXid();
-        if (xdotool && parentXid) {
-            await execCollect(xdotool, ['set_window', '--name', 'Aurivo-Pulse', childWid], 800);
-            // Not: xdotool transient API sunmadığı için burada best-effort bırakıyoruz.
-        }
-    } catch (e) {
-        console.warn('[PULSE] Linux window hints apply failed:', e?.message || e);
-    }
-}
-
-function emitPulseEvent(channel, payload) {
-    try {
-        if (mainWindow && !mainWindow.isDestroyed()) {
-            mainWindow.webContents.send(channel, payload);
-        }
-    } catch (e) {
-        console.warn('[PULSE] emit event failed:', e?.message || e);
-    }
-}
-
-function emitPulseGuiWindowState(open) {
-    try {
-        if (mainWindow && !mainWindow.isDestroyed()) {
-            mainWindow.webContents.send('pulse:window-state', { open: !!open });
-        }
-    } catch (e) {
-        console.warn('[PULSE] emit window-state failed:', e?.message || e);
-    }
-}
-
 function isAsarPath(targetPath = '') {
     const normalized = String(targetPath || '').replace(/\\/g, '/');
     if (!normalized) return false;
@@ -1657,200 +1404,6 @@ function isSpawnableBinary(targetPath = '') {
     } catch {
         return false;
     }
-}
-
-function getAurivoPulseRoot() {
-    const candidates = [
-        pathJoinReviewed(__dirname, 'Aurivo-Pulse'),
-        pathJoinReviewed(process.resourcesPath || '', 'Aurivo-Pulse')
-    ];
-    for (const p of candidates) {
-        try {
-            if (isRealDirectory(p) && !isAsarPath(pathJoinReviewed(p, 'Cargo.toml')) && fs.existsSync(pathJoinReviewed(p, 'Cargo.toml'))) {
-                return p;
-            }
-        } catch {
-            // yoksay
-        }
-    }
-    return '';
-}
-
-function resolveSafePulseCwd(preferredRoot = '') {
-    const candidates = [
-        preferredRoot,
-        __dirname,
-        app?.getAppPath?.(),
-        process.resourcesPath,
-        process.cwd()
-    ].filter(Boolean);
-    for (const p of candidates) {
-        if (isRealDirectory(p)) return p;
-    }
-    return process.cwd();
-}
-
-function findExecutable(cmdName, extraDirs = []) {
-    const raw = String(cmdName || '').trim();
-    if (!raw) return '';
-    if (raw.includes(path.sep)) {
-        return isSpawnableBinary(raw) ? raw : '';
-    }
-
-    const dirs = [
-        ...(String(process.env.PATH || '').split(path.delimiter).filter(Boolean)),
-        ...extraDirs
-    ];
-    const uniqDirs = [...new Set(dirs)];
-    for (const dir of uniqDirs) {
-        try {
-            const candidate = pathJoinReviewed(dir, raw);
-            fs.accessSync(candidate, fs.constants.X_OK);
-            return candidate;
-        } catch {
-            // devam
-        }
-    }
-    return '';
-}
-
-function resolveAurivoPulseLaunch() {
-    const root = getAurivoPulseRoot();
-    const safeCwd = resolveSafePulseCwd(root);
-    const exeName = process.platform === 'win32' ? 'aurivo-pulse.exe' : 'aurivo-pulse';
-    const platformSubdir = process.platform === 'win32' ? 'windows' : (process.platform === 'linux' ? 'linux' : process.platform);
-    const binCandidates = [
-        pathJoinReviewed(root, 'target', 'release', exeName),
-        pathJoinReviewed(root, 'target', 'debug', exeName),
-        pathJoinReviewed(__dirname, 'Aurivo-Pulse', 'target', 'release', exeName),
-        pathJoinReviewed(process.resourcesPath || '', 'Aurivo-Pulse', 'target', 'release', exeName),
-        pathJoinReviewed(process.resourcesPath || '', 'Aurivo-Pulse', exeName),
-        pathJoinReviewed(process.resourcesPath || '', 'native-dist', exeName),
-        pathJoinReviewed(process.resourcesPath || '', 'native-dist', platformSubdir, exeName)
-    ].filter(Boolean);
-
-    for (const bin of binCandidates) {
-        if (isSpawnableBinary(bin)) {
-            return {
-                command: bin,
-                args: ['listen', '--json'],
-                cwd: safeCwd,
-                source: 'bundled-binary'
-            };
-        }
-    }
-
-    const systemSongrec = findExecutable('songrec', ['/usr/bin', '/usr/local/bin', '/bin']);
-    return {
-        command: systemSongrec || 'songrec',
-        args: ['listen', '--json'],
-        cwd: safeCwd,
-        source: 'system-aurivo-pulse'
-    };
-}
-
-function resolveAurivoPulseGuiLaunch() {
-    const root = getAurivoPulseRoot();
-    const safeCwd = resolveSafePulseCwd(root);
-    const hasLocalPulseSource = !!(root && fs.existsSync(pathJoinReviewed(root, 'Cargo.toml')));
-    const isWin = process.platform === 'win32';
-    const isPackaged = !!app?.isPackaged;
-    const platformSubdir = isWin ? 'windows' : (process.platform === 'linux' ? 'linux' : process.platform);
-    const exeNames = isWin
-        ? ['aurivo-pulse.exe', 'songrec.exe']
-        : ['aurivo-pulse', 'songrec'];
-
-    const pathCandidates = [];
-    for (const exeName of exeNames) {
-        pathCandidates.push(
-            pathJoinReviewed(root, 'target', 'release', exeName),
-            pathJoinReviewed(root, 'target', 'debug', exeName),
-            pathJoinReviewed(__dirname, 'Aurivo-Pulse', 'target', 'release', exeName),
-            pathJoinReviewed(__dirname, 'Aurivo-Pulse', 'target', 'debug', exeName),
-            pathJoinReviewed(process.resourcesPath || '', 'Aurivo-Pulse', 'target', 'release', exeName),
-            pathJoinReviewed(process.resourcesPath || '', 'Aurivo-Pulse', exeName),
-            pathJoinReviewed(process.resourcesPath || '', 'native-dist', exeName),
-            pathJoinReviewed(process.resourcesPath || '', 'native-dist', platformSubdir, exeName)
-        );
-    }
-
-    for (const bin of pathCandidates.filter(Boolean)) {
-        if (isSpawnableBinary(bin)) {
-            return { command: bin, args: ['gui'], cwd: safeCwd, source: 'bundled-gui-binary' };
-        }
-    }
-
-    // Repo içi kaynak varsa, sistemdeki eski SongRec yerine proje sürümünü çalıştır.
-    const cargoToml = pathJoinReviewed(root, 'Cargo.toml');
-    const cargoBin = findExecutable('cargo', ['/usr/bin', '/usr/local/bin', '/bin']);
-    if (fs.existsSync(cargoToml) && cargoBin) {
-        return {
-            command: cargoBin,
-            args: ['run', '--quiet', '--', 'gui'],
-            cwd: root,
-            source: 'cargo-run-gui'
-        };
-    }
-
-    // Yerel Aurivo-Pulse kaynak kodu varsa, sistemdeki farklı aurivo-pulse/songrec binary'sine düşme.
-    if (hasLocalPulseSource && !isPackaged) {
-        return null;
-    }
-
-    const systemAurivoPulse = findExecutable('aurivo-pulse', ['/usr/bin', '/usr/local/bin', '/bin']);
-    if (systemAurivoPulse) {
-        return { command: systemAurivoPulse, args: ['gui'], cwd: safeCwd, source: 'system-aurivo-pulse' };
-    }
-    const systemSongrec = findExecutable('songrec', ['/usr/bin', '/usr/local/bin', '/bin']);
-    if (systemSongrec) {
-        return { command: systemSongrec, args: ['gui'], cwd: safeCwd, source: 'system-songrec' };
-    }
-
-    return null;
-}
-
-function parsePulseDeviceLines(text) {
-    const out = [];
-    const seen = new Set();
-    const lines = String(text || '').split(/\r?\n/);
-    for (const ln of lines) {
-        const line = String(ln || '').trim();
-        if (!line) continue;
-        // Aurivo-Pulse CLI formatı: "<localized prefix> <inner_name> (<display_name>)"
-        // Örnek: "Available device: alsa_output.xxx.monitor (Monitor of Built-in Audio)"
-        // Çıktı dil bağımsız parse edilmelidir.
-        let left = '';
-        let right = '';
-        const parenMatch = line.match(/^(.*?)(?:\s*\(([^()]*)\)\s*)$/);
-        if (parenMatch) {
-            left = String(parenMatch[1] || '').trim();
-            right = String(parenMatch[2] || '').trim();
-            const colonIdx = left.lastIndexOf(':');
-            if (colonIdx >= 0) left = left.slice(colonIdx + 1).trim();
-        } else {
-            // Fallback: "(...)" yoksa satırın son bölümünü cihaz adı kabul et
-            const colonIdx = line.lastIndexOf(':');
-            left = (colonIdx >= 0 ? line.slice(colonIdx + 1) : line).trim();
-            right = '';
-        }
-        if (!left && !right) continue;
-
-        // Heuristik: teknik görünen değer id, okunabilir görünen değer label olsun.
-        const looksTechnical = (s) => /[:._-]/.test(String(s || ''));
-        let id = left;
-        let label = right || left;
-        if (!looksTechnical(left) && looksTechnical(right)) {
-            id = right;
-            label = left || right;
-        }
-
-        id = String(id || '').trim();
-        label = String(label || '').trim() || id;
-        if (!id || seen.has(id)) continue;
-        seen.add(id);
-        out.push({ id, label });
-    }
-    return out;
 }
 
 function dedupeAudioDevices(devices) {
@@ -1927,7 +1480,7 @@ async function execCollect(command, args = [], timeoutMs = 3500) {
         let combined = '';
         let timedOut = false;
         const resolvedCommand = findExecutable(sanitizedCommand, ['/usr/bin', '/usr/local/bin', '/bin', '/usr/sbin', '/sbin']) || sanitizedCommand;
-        const child = spawnReviewed(resolvedCommand, args, {
+        const child = spawn(resolvedCommand, args, {
             shell: false,
             env: {
                 ...process.env,
@@ -1945,9 +1498,9 @@ async function execCollect(command, args = [], timeoutMs = 3500) {
             clearTimeout(timer);
             resolve({ success: false, output: '' });
         });
-        child.once('close', () => {
+        child.once('close', (code) => {
             clearTimeout(timer);
-            resolve({ success: !timedOut, output: combined });
+            resolve({ success: !timedOut && code === 0, output: combined });
         });
     });
 }
@@ -2123,10 +1676,25 @@ function classifySystemOutputDevice(device) {
     return { kind: 'speakers', isHeadphones: false, badge: 'Hoparlör' };
 }
 
+function shouldTreatUsbOutputAsHeadphones(sink, relatedInput) {
+    const haystack = [
+        sink?.description,
+        sink?.activePort,
+        sink?.name,
+        relatedInput?.description,
+        relatedInput?.activePort,
+        relatedInput?.name
+    ].join(' ').toLowerCase();
+
+    if (!/\busb\b|usb-/.test(haystack)) return false;
+    if (/headphone|headset|earbud|airpods|buds|analog-output-headphones/.test(haystack)) return true;
+    return !!relatedInput && /(alsa_output\.usb|usb.*analog-stereo|usb pnp audio)/.test(haystack);
+}
+
 function getLinuxRaiseMaximumVolumeSetting() {
     if (process.platform !== 'linux') return false;
     try {
-        const cfgPath = pathJoinReviewed(os.homedir(), '.config', 'plasmaparc');
+        const cfgPath = path.join(os.homedir(), '.config', 'plasmaparc');
         const text = fs.readFileSync(cfgPath, 'utf8');
         const sectionMatch = text.match(/\[General\]([\s\S]*?)(?:\n\[|$)/i);
         const body = sectionMatch ? sectionMatch[1] : text;
@@ -2140,7 +1708,7 @@ function getLinuxRaiseMaximumVolumeSetting() {
 function setLinuxRaiseMaximumVolumeSetting(enabled) {
     if (process.platform !== 'linux') return false;
     try {
-        const cfgPath = pathJoinReviewed(os.homedir(), '.config', 'plasmaparc');
+        const cfgPath = path.join(os.homedir(), '.config', 'plasmaparc');
         const nextValue = enabled ? 'true' : 'false';
         let text = '';
         try {
@@ -2183,8 +1751,11 @@ async function getLinuxSystemAudioState() {
         };
     }
 
-    const classified = classifySystemOutputDevice(current);
     const relatedInput = findRelatedLinuxInputForSink(current, sources);
+    const classified = classifySystemOutputDevice(current);
+    const usbHeadsetLike = shouldTreatUsbOutputAsHeadphones(current, relatedInput);
+    const currentOutputKind = usbHeadsetLike ? 'headphones' : classified.kind;
+    const currentOutputBadge = usbHeadsetLike ? 'Kulaklık' : classified.badge;
     return {
         success: true,
         supported: true,
@@ -2194,9 +1765,9 @@ async function getLinuxSystemAudioState() {
         currentOutputName: String(current.description || current.name || '').trim() || 'Bilinmeyen çıkış',
         currentOutputId: String(current.name || '').trim(),
         currentOutputPort: String(current.activePort || '').trim(),
-        currentOutputKind: classified.kind,
-        currentOutputBadge: classified.badge,
-        isHeadphones: !!classified.isHeadphones,
+        currentOutputKind,
+        currentOutputBadge,
+        isHeadphones: !!classified.isHeadphones || usbHeadsetLike,
         sampleSpec: String(current.sampleSpec || '').trim(),
         sampleRateHz: Number(current.sampleRateHz) || 0,
         channelCount: Number(current.channelCount) || 0,
@@ -2328,43 +1899,6 @@ async function setSystemAudioVolume(percent) {
     return { success: false, error: 'Bu platformda sistem ses ayarı desteklenmiyor' };
 }
 
-async function listAurivoPulseDevices() {
-    const launch = resolveAurivoPulseLaunch();
-    return await new Promise((resolve) => {
-        let combined = '';
-        const child = spawnReviewed(launch.command, ['listen', '--list-devices'], {
-            cwd: launch.cwd,
-            env: buildPulseRuntimeEnv({
-                AURIVO_PULSE_NO_GUI: '1',
-                // Parse tutarlılığı için CLI çıktısını sabitle
-                LANG: 'C',
-                LC_ALL: 'C'
-            })
-        });
-        child.stdout.on('data', (d) => { combined += String(d || ''); });
-        child.stderr.on('data', (d) => { combined += String(d || ''); });
-        child.once('error', async (e) => {
-            const fallbackDevices = await listSystemAudioDevicesFallback();
-            resolve({
-                success: true,
-                devices: fallbackDevices,
-                warning: e?.message || String(e)
-            });
-        });
-        child.once('close', async () => {
-            let devices = dedupeAudioDevices(parsePulseDeviceLines(combined));
-            if (!devices.length || (devices.length === 1 && String(devices[0]?.id || '').toLowerCase() === 'alsa:default')) {
-                const fallbackDevices = await listSystemAudioDevicesFallback();
-                if (fallbackDevices.length) {
-                    devices = dedupeAudioDevices([...devices, ...fallbackDevices]);
-                }
-            }
-            devices = ensureCommonLinuxAudioEngines(devices);
-            resolve({ success: true, devices });
-        });
-    });
-}
-
 function pickPreferredMonitorDeviceId(devices) {
     const list = Array.isArray(devices) ? devices : [];
     if (!list.length) return '';
@@ -2408,214 +1942,6 @@ async function pickDefaultOutputMonitorDeviceId() {
     }
 }
 
-function parsePulseResultLine(line) {
-    const raw = String(line || '').trim();
-    if (!raw) return null;
-
-    try {
-        const parsed = JSON.parse(raw);
-        const candidates = Array.isArray(parsed?.matches)
-            ? parsed.matches
-                .map((entry) => ({
-                    title: String(entry?.track?.title || '').trim(),
-                    artist: String(entry?.track?.subtitle || '').trim(),
-                    trackKey: String(entry?.track?.key || '').trim()
-                }))
-                .filter((entry) => entry.title || entry.artist)
-                .slice(0, 3)
-            : [];
-        const title =
-            parsed?.track?.title ||
-            parsed?.title ||
-            parsed?.song?.title ||
-            parsed?.matches?.[0]?.track?.title ||
-            '';
-        const artist =
-            parsed?.track?.subtitle ||
-            parsed?.subtitle ||
-            parsed?.artist ||
-            parsed?.song?.artist ||
-            parsed?.matches?.[0]?.track?.subtitle ||
-            '';
-        const trackKey =
-            parsed?.track?.key ||
-            parsed?.track?.track_key ||
-            parsed?.track?.hub?.track_key ||
-            parsed?.matches?.[0]?.track?.key ||
-            '';
-
-        return {
-            raw,
-            parsed,
-            title: String(title || '').trim(),
-            artist: String(artist || '').trim(),
-            trackKey: String(trackKey || '').trim(),
-            candidates,
-            ts: Date.now()
-        };
-    } catch {
-        return {
-            raw,
-            parsed: null,
-            title: '',
-            artist: '',
-            trackKey: '',
-            candidates: [],
-            ts: Date.now()
-        };
-    }
-}
-
-function makePulseRecognitionFingerprint(result) {
-    const trackKey = String(result?.trackKey || '').trim().toLowerCase();
-    if (trackKey) return `k:${trackKey}`;
-    const title = String(result?.title || '').trim().toLowerCase();
-    const artist = String(result?.artist || '').trim().toLowerCase();
-    const raw = String(result?.raw || '').trim().toLowerCase();
-    if (title || artist) return `s:${artist} - ${title}`;
-    return `r:${raw}`;
-}
-
-function resetAurivoPulseRecognitionState() {
-    aurivoPulseLastRecognition = { fingerprint: '', ts: 0 };
-    aurivoPulseRecentRecognitions = [];
-}
-
-function shouldEmitStablePulseResult(result) {
-    const now = Date.now();
-    const fp = makePulseRecognitionFingerprint(result);
-    if (!fp) return false;
-    const candidateCount = Array.isArray(result?.candidates) ? result.candidates.length : 0;
-    const hasTrackKey = !!String(result?.trackKey || '').trim();
-    const hasTitle = !!String(result?.title || '').trim();
-    const hasArtist = !!String(result?.artist || '').trim();
-    const hasConfidentDirectTrack = !!(
-        hasTitle &&
-        hasArtist &&
-        hasTrackKey &&
-        candidateCount <= 1 &&
-        (
-            result?.parsed?.track?.title ||
-            result?.parsed?.matches?.[0]?.track?.title
-        )
-    );
-
-    if (hasConfidentDirectTrack) {
-        if (
-            aurivoPulseLastRecognition.fingerprint === fp &&
-            (now - Number(aurivoPulseLastRecognition.ts || 0)) < 90000
-        ) {
-            return false;
-        }
-        aurivoPulseLastRecognition = { fingerprint: fp, ts: now };
-        aurivoPulseRecentRecognitions = [{ fingerprint: fp, ts: now, result }];
-        return true;
-    }
-
-    aurivoPulseRecentRecognitions = aurivoPulseRecentRecognitions
-        .filter((entry) => entry && (now - Number(entry.ts || 0)) <= 28000);
-    aurivoPulseRecentRecognitions.push({ fingerprint: fp, ts: now, result });
-    if (aurivoPulseRecentRecognitions.length > 5) {
-        aurivoPulseRecentRecognitions = aurivoPulseRecentRecognitions.slice(-5);
-    }
-
-    const matching = aurivoPulseRecentRecognitions.filter((entry) => entry.fingerprint === fp);
-    if (matching.length < 2) {
-        return false;
-    }
-
-    if (
-        aurivoPulseLastRecognition.fingerprint === fp &&
-        (now - Number(aurivoPulseLastRecognition.ts || 0)) < 90000
-    ) {
-        return false;
-    }
-
-    aurivoPulseLastRecognition = { fingerprint: fp, ts: now };
-    aurivoPulseRecentRecognitions = aurivoPulseRecentRecognitions.filter((entry) => entry.fingerprint === fp);
-    return true;
-}
-
-function maybeEmitUncertainPulseResult(result) {
-    const now = Date.now();
-    if (aurivoPulseRecentRecognitions.length < 3) return;
-    const counts = new Map();
-    for (const entry of aurivoPulseRecentRecognitions) {
-        const cur = counts.get(entry.fingerprint) || 0;
-        counts.set(entry.fingerprint, cur + 1);
-    }
-    const strongest = Math.max(0, ...Array.from(counts.values()));
-    if (strongest >= 2) return;
-    if ((now - Number(aurivoPulseLastRecognition.ts || 0)) < 12000) return;
-    const candidates = Array.isArray(result?.candidates) ? result.candidates : [];
-    if (!candidates.length) return;
-    emitPulseEvent('pulse:uncertain', {
-        ts: now,
-        candidates
-    });
-    aurivoPulseLastRecognition = { fingerprint: `uncertain:${now}`, ts: now };
-}
-
-function getAurivoPulsePreferencePaths() {
-    const home = os.homedir();
-    const xdgConfigHome = String(process.env.XDG_CONFIG_HOME || '').trim();
-    const candidates = [
-        xdgConfigHome ? pathJoinReviewed(xdgConfigHome, 'aurivo-pulse', 'preferences.toml') : '',
-        xdgConfigHome ? pathJoinReviewed(xdgConfigHome, 'Aurivo-Pulse', 'preferences.toml') : '',
-        home ? pathJoinReviewed(home, '.config', 'aurivo-pulse', 'preferences.toml') : '',
-        home ? pathJoinReviewed(home, '.config', 'Aurivo-Pulse', 'preferences.toml') : '',
-        home ? pathJoinReviewed(home, '.var', 'app', 're.fossplant.songrec', 'config', 'aurivo-pulse', 'preferences.toml') : '',
-        home ? pathJoinReviewed(home, '.var', 'app', 're.fossplant.songrec', 'config', 'Aurivo-Pulse', 'preferences.toml') : ''
-    ];
-    return [...new Set(candidates.filter(Boolean))];
-}
-
-function parseAurivoPulsePreferredDevice(text) {
-    const raw = String(text || '');
-    if (!raw) return '';
-    const match = raw.match(/^\s*current_device_name\s*=\s*"((?:[^"\\]|\\.)*)"/m);
-    if (!match) return '';
-    return String(match[1] || '')
-        .replace(/\\"/g, '"')
-        .replace(/\\\\/g, '\\')
-        .trim();
-}
-
-function escapeRegexFragment(value) {
-    return String(value || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
-
-function parseAurivoPulseStringPref(text, key) {
-    const raw = String(text || '');
-    const safeKey = escapeRegexFragment(key);
-    if (!safeKey) return '';
-    const match = raw.match(newEscapedKeyRegExp(`^\\s*${safeKey}\\s*=\\s*"((?:[^"\\\\]|\\\\.)*)"`, 'm'));
-    if (!match) return '';
-    return String(match[1] || '')
-        .replace(/\\"/g, '"')
-        .replace(/\\\\/g, '\\')
-        .trim();
-}
-
-function parseAurivoPulseBoolPref(text, key, fallback = false) {
-    const raw = String(text || '');
-    const safeKey = escapeRegexFragment(key);
-    if (!safeKey) return !!fallback;
-    const match = raw.match(newEscapedKeyRegExp(`^\\s*${safeKey}\\s*=\\s*(true|false)\\s*$`, 'mi'));
-    if (!match) return !!fallback;
-    return String(match[1]).toLowerCase() === 'true';
-}
-
-function parseAurivoPulseIntPref(text, key, fallback = 0) {
-    const raw = String(text || '');
-    const safeKey = escapeRegexFragment(key);
-    if (!safeKey) return Number(fallback) || 0;
-    const match = raw.match(newEscapedKeyRegExp(`^\\s*${safeKey}\\s*=\\s*(\\d+)\\s*$`, 'm'));
-    if (!match) return Number(fallback) || 0;
-    const num = Number(match[1]);
-    return Number.isFinite(num) ? num : (Number(fallback) || 0);
-}
-
 function assignSafeOwnKeys(target, source) {
     if (!target || typeof target !== 'object') return;
     if (!source || typeof source !== 'object') return;
@@ -2625,462 +1951,43 @@ function assignSafeOwnKeys(target, source) {
     }
 }
 
-function sanitizePresetFilename(input) {
-    const value = String(input || '').trim();
-    if (!value || value.length > 180) return '';
-    if (value.includes('\0')) return '';
-    if (value !== path.basename(value)) return '';
-    if (!/^[a-z0-9._-]+\.json$/i.test(value)) return '';
-    return value;
-}
-
-function getDefaultAurivoPulsePreferences() {
-    return {
-        enable_notifications: true,
-        enable_mpris: false,
-        enable_systray: false,
-        no_duplicates: false,
-        // Dengeli kalite/hiz: hizli (2/5) profile gore daha guvenilir sonuc verir.
-        request_interval_secs_v3: 4,
-        buffer_size_secs: 8,
-        current_device_name: '',
-        recognition_engine: 'hybrid',
-        acoustid_api_key: ''
-    };
-}
-
-async function migrateLegacyAurivoPulsePerformancePrefsIfNeeded() {
-    const current = readAurivoPulsePreferences();
-    const preferences = current?.preferences || {};
-    const requestInterval = Number(preferences.request_interval_secs_v3) || 0;
-    const bufferSize = Number(preferences.buffer_size_secs) || 0;
-    // Eski profilleri dengeli varsayilana getir:
-    // - cok hizli: 2/5
-    // - eski SongRec varsayilani: 8/12
-    if ((requestInterval === 2 && bufferSize === 5) || (requestInterval === 8 && bufferSize === 12)) {
-        await saveAurivoPulsePreferences({
-            request_interval_secs_v3: getDefaultAurivoPulsePreferences().request_interval_secs_v3,
-            buffer_size_secs: getDefaultAurivoPulsePreferences().buffer_size_secs
-        });
-    }
-}
-
-function readAurivoPulsePreferences() {
-    const defaults = getDefaultAurivoPulsePreferences();
-    const candidates = getAurivoPulsePreferencePaths();
-    const parsed = [];
-
-    for (const prefPath of candidates) {
-        try {
-            if (!fs.existsSync(prefPath)) continue;
-            const stat = fs.statSync(prefPath);
-            const mtimeMs = Number(stat?.mtimeMs || 0);
-            const text = fs.readFileSync(prefPath, 'utf8');
-            parsed.push({
-                path: prefPath,
-                mtimeMs,
-                preferences: {
-                    enable_notifications: parseAurivoPulseBoolPref(text, 'enable_notifications', defaults.enable_notifications),
-                    enable_mpris: parseAurivoPulseBoolPref(text, 'enable_mpris', defaults.enable_mpris),
-                    enable_systray: parseAurivoPulseBoolPref(text, 'enable_systray', defaults.enable_systray),
-                    no_duplicates: parseAurivoPulseBoolPref(text, 'no_duplicates', defaults.no_duplicates),
-                    request_interval_secs_v3: parseAurivoPulseIntPref(text, 'request_interval_secs_v3', defaults.request_interval_secs_v3),
-                    buffer_size_secs: parseAurivoPulseIntPref(text, 'buffer_size_secs', defaults.buffer_size_secs),
-                    current_device_name: parseAurivoPulseStringPref(text, 'current_device_name') || defaults.current_device_name,
-                    recognition_engine: parseAurivoPulseStringPref(text, 'recognition_engine') || '',
-                    acoustid_api_key: parseAurivoPulseStringPref(text, 'acoustid_api_key') || ''
-                }
-            });
-        } catch (e) {
-            console.warn('[PULSE] preferences read/stat error:', prefPath, e?.message || e);
-        }
-    }
-
-    if (!parsed.length) {
-        return { success: true, source: candidates[0] || '', preferences: defaults };
-    }
-
-    parsed.sort((a, b) => b.mtimeMs - a.mtimeMs);
-    const selected = parsed[0];
-    const fallbackWithKey = parsed.find((entry) => String(entry?.preferences?.acoustid_api_key || '').trim().length > 0);
-
-    const recognitionEngine = ['hybrid', 'songrec_only', 'acoustid_only'].includes(
-        String(selected.preferences.recognition_engine || '').trim().toLowerCase()
-    )
-        ? String(selected.preferences.recognition_engine).trim().toLowerCase()
-        : (fallbackWithKey?.preferences?.recognition_engine || defaults.recognition_engine);
-
-    const acoustidApiKey = String(selected.preferences.acoustid_api_key || '').trim()
-        || String(fallbackWithKey?.preferences?.acoustid_api_key || '').trim()
-        || defaults.acoustid_api_key;
-
-    return {
-        success: true,
-        source: selected.path,
-        preferences: {
-            ...selected.preferences,
-            recognition_engine: recognitionEngine,
-            acoustid_api_key: acoustidApiKey
-        }
-    };
-}
-
-function upsertAurivoPulsePref(text, key, value) {
-    const raw = String(text || '');
-    const escapedKey = key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    let serialized = '';
-    if (typeof value === 'boolean') {
-        serialized = value ? 'true' : 'false';
-    } else if (typeof value === 'number') {
-        serialized = String(Math.max(0, Math.round(value)));
-    } else {
-        const escaped = String(value || '')
-            .replace(/\\/g, '\\\\')
-            .replace(/"/g, '\\"');
-        serialized = `"${escaped}"`;
-    }
-    const line = `${key} = ${serialized}`;
-    const pattern = newEscapedKeyRegExp(`^\\s*${escapedKey}\\s*=.*$`, 'm');
-    if (pattern.test(raw)) {
-        return raw.replace(pattern, line);
-    }
-    return `${raw.trimEnd()}\n${line}\n`;
-}
-
-async function saveAurivoPulsePreferences(update = {}) {
-    const current = readAurivoPulsePreferences();
-    const candidatePaths = getAurivoPulsePreferencePaths();
-    const next = {
-        ...getDefaultAurivoPulsePreferences(),
-        ...(current?.preferences || {}),
-        ...(update && typeof update === 'object' ? update : {})
-    };
-    const prefPath = current?.source || candidatePaths[0];
-    if (!prefPath) {
-        throw new Error('Aurivo-Pulse preference path bulunamadi');
-    }
-    await fs.promises.mkdir(path.dirname(prefPath), { recursive: true });
-    let text = '';
-    try {
-        text = await fs.promises.readFile(prefPath, 'utf8');
-    } catch {
-        text = '';
-    }
-    text = upsertAurivoPulsePref(text, 'enable_notifications', !!next.enable_notifications);
-    text = upsertAurivoPulsePref(text, 'enable_mpris', !!next.enable_mpris);
-    text = upsertAurivoPulsePref(text, 'enable_systray', !!next.enable_systray);
-    text = upsertAurivoPulsePref(text, 'no_duplicates', !!next.no_duplicates);
-    text = upsertAurivoPulsePref(
-        text,
-        'request_interval_secs_v3',
-        Number(next.request_interval_secs_v3) || getDefaultAurivoPulsePreferences().request_interval_secs_v3
-    );
-    text = upsertAurivoPulsePref(
-        text,
-        'buffer_size_secs',
-        Number(next.buffer_size_secs) || getDefaultAurivoPulsePreferences().buffer_size_secs
-    );
-    text = upsertAurivoPulsePref(text, 'current_device_name', String(next.current_device_name || ''));
-    text = upsertAurivoPulsePref(text, 'recognition_engine', String(next.recognition_engine || 'hybrid'));
-    text = upsertAurivoPulsePref(text, 'acoustid_api_key', String(next.acoustid_api_key || ''));
-    await fs.promises.writeFile(prefPath, text, 'utf8');
-
-    // Keep lowercase/uppercase config directories synchronized to avoid split settings.
-    for (const mirrorPath of candidatePaths) {
-        if (!mirrorPath || mirrorPath === prefPath) continue;
-        try {
-            await fs.promises.mkdir(path.dirname(mirrorPath), { recursive: true });
-            await fs.promises.writeFile(mirrorPath, text, 'utf8');
-        } catch (e) {
-            console.warn('[PULSE] preferences mirror write error:', mirrorPath, e?.message || e);
-        }
-    }
-
-    return { success: true, source: prefPath, preferences: next };
-}
-
-function getAurivoPulsePreferredDevice() {
-    for (const prefPath of getAurivoPulsePreferencePaths()) {
-        try {
-            if (!fs.existsSync(prefPath)) continue;
-            const text = fs.readFileSync(prefPath, 'utf8');
-            const audioDevice = parseAurivoPulsePreferredDevice(text);
-            if (audioDevice) {
-                return {
-                    success: true,
-                    audioDevice,
-                    source: prefPath
-                };
-            }
-        } catch (e) {
-            console.warn('[PULSE] preference read error:', e?.message || e);
-        }
-    }
-    return { success: true, audioDevice: '', source: '' };
-}
-
-function stopAurivoPulseListening() {
-    if (!aurivoPulseProc) {
-        aurivoPulseStatus.running = false;
-        return { success: true, running: false };
-    }
-
-    try {
-        aurivoPulseProc.kill('SIGTERM');
-    } catch (e) {
-        console.warn('[PULSE] kill error:', e?.message || e);
-    }
-
-    aurivoPulseProc = null;
-    aurivoPulseStatus.running = false;
-    aurivoPulseStatus.startedAt = null;
-    resetAurivoPulseRecognitionState();
-    emitPulseEvent('pulse:state', { running: false, reason: 'stopped', ...aurivoPulseStatus });
-    return { success: true, running: false };
-}
-
-function startAurivoPulseListening(options = {}) {
-    const requestedAudioDevice = String(options?.audioDevice || '').trim();
-    const requestedDisableMpris = !!options?.disableMpris;
-    const requestedBackgroundMode = !!options?.backgroundMode;
-    const requestedProfile = String(options?.profile || '').trim().toLowerCase();
-    const requestedIntervalRaw = Number(options?.requestInterval);
-    const requestedInterval = Number.isFinite(requestedIntervalRaw) && requestedIntervalRaw > 0
-        ? Math.max(1, Math.floor(requestedIntervalRaw))
-        : null;
-
-    if (aurivoPulseProc) {
-        const activeDevice = String(aurivoPulseStatus?.audioDevice || '').trim();
-        const activeDisableMpris = !!aurivoPulseStatus?.disableMpris;
-        const activeBackgroundMode = !!aurivoPulseStatus?.backgroundMode;
-        const activeProfile = String(aurivoPulseStatus?.profile || '').trim().toLowerCase();
-        const activeInterval = Number(aurivoPulseStatus?.requestInterval || 10);
-
-        const deviceChanged = !!requestedAudioDevice && requestedAudioDevice !== activeDevice;
-        const mprisChanged = requestedDisableMpris !== activeDisableMpris;
-        const backgroundModeChanged = requestedBackgroundMode !== activeBackgroundMode;
-        const profileChanged = requestedProfile !== activeProfile;
-        const intervalChanged = requestedInterval !== null && requestedInterval !== activeInterval;
-        const forceRestart = !!options?.forceRestart;
-
-        if (forceRestart || deviceChanged || mprisChanged || backgroundModeChanged || profileChanged || intervalChanged) {
-            stopAurivoPulseListening();
-        } else {
-            return { success: true, running: true, alreadyRunning: true, ...aurivoPulseStatus };
-        }
-    }
-
-    const launch = resolveAurivoPulseLaunch();
-    const args = ['listen', '--json'];
-    const audioDevice = requestedAudioDevice;
-    if (audioDevice) {
-        args.push('-d', audioDevice);
-    }
-    if (requestedDisableMpris) {
-        args.push('--disable-mpris');
-    }
-    if (requestedInterval !== null) {
-        args.push('-i', String(requestedInterval));
-    }
-    const child = spawnReviewed(launch.command, args, {
-        cwd: launch.cwd,
-        env: buildPulseRuntimeEnv({
-            AURIVO_PULSE_NO_GUI: '1',
-            AURIVO_PULSE_BACKGROUND_MODE: requestedBackgroundMode ? '1' : '0',
-            AURIVO_PULSE_BACKGROUND_PROFILE: requestedProfile || (requestedBackgroundMode ? 'background' : 'normal')
-        })
-    });
-
-    aurivoPulseProc = child;
-    aurivoPulseStatus = {
-        running: true,
-        startedAt: Date.now(),
-        command: `${launch.command} ${args.join(' ')}`,
-        source: launch.source,
-        audioDevice: audioDevice || '',
-        disableMpris: requestedDisableMpris,
-        backgroundMode: requestedBackgroundMode,
-        profile: requestedProfile || (requestedBackgroundMode ? 'background' : 'normal'),
-        requestInterval: requestedInterval !== null ? requestedInterval : 10,
-        lastError: ''
-    };
-    resetAurivoPulseRecognitionState();
-
-    const onStdoutLine = (line) => {
-        const result = parsePulseResultLine(line);
-        if (!result) return;
-        if (!shouldEmitStablePulseResult(result)) {
-            maybeEmitUncertainPulseResult(result);
-            return;
-        }
-        emitPulseEvent('pulse:result', result);
-    };
-    const onStderrLine = (line) => {
-        const text = String(line || '').trim();
-        if (!text) return;
-        aurivoPulseStatus.lastError = text;
-        emitPulseEvent('pulse:state', { running: true, warning: text, ...aurivoPulseStatus });
-    };
-
-    readline.createInterface({ input: child.stdout }).on('line', onStdoutLine);
-    readline.createInterface({ input: child.stderr }).on('line', onStderrLine);
-
-    child.once('error', (err) => {
-        // Eski bir process'in geç gelen olayı yeni oturumu bozmasın.
-        if (aurivoPulseProc !== child) return;
-        const message = err?.message || String(err || 'Aurivo-Pulse başlatılamadı');
-        aurivoPulseProc = null;
-        aurivoPulseStatus.running = false;
-        aurivoPulseStatus.startedAt = null;
-        aurivoPulseStatus.lastError = message;
-        emitPulseEvent('pulse:state', { running: false, error: message, ...aurivoPulseStatus });
-    });
-
-    child.once('close', (code, signal) => {
-        // stop->start sırasında eski process kapanışı yeni süreci "stopped" yapmamalı.
-        if (aurivoPulseProc !== child) return;
-        aurivoPulseProc = null;
-        aurivoPulseStatus.running = false;
-        aurivoPulseStatus.startedAt = null;
-        if (typeof code === 'number' && code !== 0) {
-            aurivoPulseStatus.lastError = `Aurivo-Pulse process exited with code ${code}`;
-        }
-        emitPulseEvent('pulse:state', {
-            running: false,
-            code,
-            signal,
-            ...aurivoPulseStatus
-        });
-    });
-
-    emitPulseEvent('pulse:state', { running: true, ...aurivoPulseStatus });
-    return { success: true, running: true, ...aurivoPulseStatus };
-}
-
-async function recognizeSongFromFileWithPulse(filePath) {
-    const input = String(filePath || '').trim();
-    if (!input) return { success: false, error: 'Geçersiz dosya yolu' };
-    if (!fs.existsSync(input)) return { success: false, error: 'Dosya bulunamadı' };
-
-    const launch = resolveAurivoPulseLaunch();
-    return await new Promise((resolve) => {
-        let out = '';
-        let err = '';
-        const child = spawnReviewed(launch.command, ['recognize', '--json', input], {
-            cwd: launch.cwd,
-            env: buildPulseRuntimeEnv({ AURIVO_PULSE_NO_GUI: '1' })
-        });
-
-        const timeout = setTimeout(() => {
-            try { child.kill('SIGTERM'); } catch { }
-            resolve({ success: false, error: 'Tanıma zaman aşımına uğradı' });
-        }, 60000);
-
-        child.stdout.on('data', (d) => { out += String(d || ''); });
-        child.stderr.on('data', (d) => { err += String(d || ''); });
-        child.once('error', (e) => {
-            clearTimeout(timeout);
-            resolve({ success: false, error: e?.message || String(e) });
-        });
-        child.once('close', () => {
-            clearTimeout(timeout);
-            const raw = String(out || '').trim();
-            if (!raw) {
-                resolve({ success: false, error: String(err || 'Tanıma sonucu alınamadı').trim() });
-                return;
-            }
-
-            const parsedResult = parsePulseResultLine(raw);
-            resolve({
-                success: true,
-                result: parsedResult
-            });
-        });
-    });
-}
-
-async function captureMonitorSampleAndRecognizeWithPulse(options = {}) {
-    if (process.platform !== 'linux') {
-        return { success: false, error: 'Bu fallback şu anda Linux ile sınırlı' };
-    }
-
-    const audioDevice = String(options?.audioDevice || '').trim();
-    if (!audioDevice) return { success: false, error: 'Ses cihazı gerekli' };
-    if (!/monitor/i.test(audioDevice)) {
-        return { success: false, error: 'Fallback için monitor cihazı gerekli' };
-    }
-
-    const durationSec = Math.max(6, Math.min(18, Number(options?.durationSec) || 10));
-    const ffmpegPath = getFfmpegPathForEnv();
-    const samplePath = pathJoinReviewed(app.getPath('temp'), `aurivo-pulse-sample-${Date.now()}.wav`);
-
-    const captureOk = await new Promise((resolve) => {
-        let err = '';
-        const child = spawnReviewed(ffmpegPath, [
-            '-y',
-            '-f', 'pulse',
-            '-i', audioDevice,
-            '-t', String(durationSec),
-            '-ac', '1',
-            '-ar', '16000',
-            '-vn',
-            samplePath
-        ], {
-            env: buildPulseRuntimeEnv({ AURIVO_PULSE_NO_GUI: '1' })
-        });
-
-        const timeout = setTimeout(() => {
-            try { child.kill('SIGTERM'); } catch { }
-            resolve({ success: false, error: 'Örnek kayıt zaman aşımına uğradı' });
-        }, (durationSec + 8) * 1000);
-
-        child.stderr.on('data', (d) => { err += String(d || ''); });
-        child.once('error', (e) => {
-            clearTimeout(timeout);
-            resolve({ success: false, error: e?.message || String(e) });
-        });
-        child.once('close', (code) => {
-            clearTimeout(timeout);
-            if (code === 0 && fs.existsSync(samplePath)) {
-                resolve({ success: true });
-                return;
-            }
-            resolve({ success: false, error: String(err || `ffmpeg exited with code ${code}`).trim() });
-        });
-    });
-
-    if (!captureOk?.success) {
-        try { fs.unlinkSync(samplePath); } catch { }
-        return captureOk;
-    }
-
-    try {
-        return await recognizeSongFromFileWithPulse(samplePath);
-    } finally {
-        try { fs.unlinkSync(samplePath); } catch { }
-    }
+function normalizeAppRelativePath(relPath) {
+    const raw = String(relPath || '').trim();
+    if (!raw || raw.includes('\0') || path.isAbsolute(raw)) return '';
+    const normalized = path.normalize(raw).replace(/^([/\\])+/, '');
+    if (!normalized || normalized === '.' || normalized === '..' || normalized.startsWith(`..${path.sep}`)) return '';
+    return normalized;
 }
 
 function getResourcePath(relPath) {
+    const safeRelPath = normalizeAppRelativePath(relPath);
+    if (!safeRelPath) return '';
+
     // Dev: doğrudan repo içinden
     if (!app.isPackaged) {
-        return pathJoinReviewed(__dirname, relPath);
+        // nosemgrep: javascript.lang.security.audit.path-traversal.path-join-resolve-traversal.path-join-resolve-traversal
+        return path.join(__dirname, safeRelPath);
     }
 
     // Prod: bazı dosyalar resources/, bazıları app.asar içinde kalır.
     // Önce resources/ kontrol edilir, yoksa app.asar kökünden çözülür.
-    const resourcePath = pathJoinReviewed(process.resourcesPath, relPath);
+    // nosemgrep: javascript.lang.security.audit.path-traversal.path-join-resolve-traversal.path-join-resolve-traversal
+    const resourcePath = path.join(process.resourcesPath, safeRelPath);
     if (fs.existsSync(resourcePath)) {
         return resourcePath;
     }
 
-    return pathJoinReviewed(app.getAppPath(), relPath);
+    // nosemgrep: javascript.lang.security.audit.path-traversal.path-join-resolve-traversal.path-join-resolve-traversal
+    return path.join(app.getAppPath(), safeRelPath);
 }
 
 function getAppFilePath(relPath) {
+    const safeRelPath = normalizeAppRelativePath(relPath);
+    if (!safeRelPath) return '';
     // app.asar içindeki paketlenmiş dosyalar için çalışır (örn. locales/*.json)
     // Dev: app.getAppPath() proje kökünü gösterir; Prod: .../resources/app.asar konumunu gösterir
-    return pathJoinReviewed(app.getAppPath(), relPath);
+    // nosemgrep: javascript.lang.security.audit.path-traversal.path-join-resolve-traversal.path-join-resolve-traversal
+    return path.join(app.getAppPath(), safeRelPath);
 }
 
 function getLocaleCandidatePaths(lang) {
@@ -3089,11 +1996,11 @@ function getLocaleCandidatePaths(lang) {
 
     // Tercih: app.asar (paket) / proje kökü (dev)
     const candidates = [
-        getAppFilePath(pathJoinReviewed('locales', filename)),
-        pathJoinReviewed(__dirname, 'locales', filename),
+        getAppFilePath(path.join('locales', filename)),
+        path.join(__dirname, 'locales', filename),
         // Bazı paketleme düzenlerinde app.asar açıkça resourcesPath altında olabilir
-        pathJoinReviewed(process.resourcesPath || '', 'app.asar', 'locales', filename),
-        pathJoinReviewed(process.resourcesPath || '', 'locales', filename)
+        path.join(process.resourcesPath || '', 'app.asar', 'locales', filename),
+        path.join(process.resourcesPath || '', 'locales', filename)
     ];
 
     // Tekilleştir
@@ -3127,22 +2034,22 @@ async function readFirstJson(paths) {
 
 function getAppIconPath() {
     if (process.platform === 'win32') {
-        return getResourcePath(pathJoinReviewed('icons', 'aurivo.ico'));
+        return getResourcePath(path.join('icons', 'aurivo.ico'));
     }
-    return getResourcePath(pathJoinReviewed('icons', 'aurivo_512.png'));
+    return getResourcePath(path.join('icons', 'aurivo_512.png'));
 }
 
 function getAppIconImage() {
     const iconPath = getAppIconPath();
     const img = nativeImage.createFromPath(iconPath);
     if (!img || img.isEmpty()) {
-        return nativeImage.createFromPath(pathJoinReviewed(__dirname, 'icons', 'aurivo_512.png'));
+        return nativeImage.createFromPath(path.join(__dirname, 'icons', 'aurivo_512.png'));
     }
     return img;
 }
 
 function getSettingsPath() {
-    return pathJoinReviewed(app.getPath('userData'), 'settings.json');
+    return path.join(app.getPath('userData'), 'settings.json');
 }
 
 async function readSettingsFileSafe() {
@@ -3191,9 +2098,9 @@ function registerGlobalMediaShortcuts() {
                 dispatchMediaShortcutAction(action);
             });
             if (ok) registeredAny = true;
-            else console.warn('[SHORTCUT] register failed (in use?):', accelerator);
+            else console.warn(`[SHORTCUT] register failed (in use?): ${accelerator}`);
         } catch (error) {
-            console.warn('[SHORTCUT] register error:', accelerator, error?.message || error);
+            console.warn(`[SHORTCUT] register error: ${accelerator}`, error?.message || error);
         }
     }
     mediaShortcutsRegistered = registeredAny;
@@ -3222,9 +2129,9 @@ function registerGlobalStudioShortcuts() {
                 dispatchMediaShortcutAction(action);
             });
             if (ok) registeredAny = true;
-            else console.warn('[SHORTCUT] studio register failed (in use?):', accelerator);
+            else console.warn(`[SHORTCUT] studio register failed (in use?): ${accelerator}`);
         } catch (error) {
-            console.warn('[SHORTCUT] studio register error:', accelerator, error?.message || error);
+            console.warn(`[SHORTCUT] studio register error: ${accelerator}`, error?.message || error);
         }
     }
     studioShortcutsRegistered = registeredAny;
@@ -3348,6 +2255,461 @@ async function persistSettingsWindowState(win) {
 }
 
 const WEBVIEW_PARTITION = 'persist:aurivo-web';
+const ADBLOCK_STRICTBLOCK_URL = `data:text/html;charset=utf-8,${encodeURIComponent(`<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DeliBlock</title>
+<style>
+body{margin:0;min-height:100vh;display:grid;place-items:center;background:#0b1016;color:#eef6ff;font-family:system-ui,-apple-system,Segoe UI,sans-serif}
+main{width:min(620px,calc(100vw - 36px));padding:28px;border:1px solid rgba(89,210,255,.28);border-radius:14px;background:#101923;box-shadow:0 24px 80px rgba(0,0,0,.38)}
+h1{margin:0 0 10px;font-size:24px}
+p{margin:0;color:#afbdc9;line-height:1.55}
+strong{color:#5ee6ff}
+</style>
+</head>
+<body><main><h1>DeliBlock koruması</h1><p>Bu adres, zararlı veya aldatıcı yönlendirme listeleriyle eşleştiği için açılmadı. <strong>Strict Block</strong> bu sayfayı güvenli tarafta durdurdu.</p></main></body>
+</html>`)}`;
+const YOUTUBE_INITIATOR_DOMAINS = Object.freeze([
+    'youtube.com',
+    'www.youtube.com',
+    'm.youtube.com',
+    'music.youtube.com'
+]);
+const YOUTUBE_HOSTNAMES = Object.freeze([
+    'youtube.com',
+    'www.youtube.com',
+    'm.youtube.com',
+    'music.youtube.com',
+    'youtu.be'
+]);
+const ADBLOCK_YOUTUBE_SERVER_CONTRACT_SCRIPTLET = String.raw`
+(function installDeliBlockYouTubeServerContract() {
+    if (window.__aurivoDeliBlockYouTubeServerContractPatch) return;
+    window.__aurivoDeliBlockYouTubeServerContractPatch = true;
+
+    try {
+        const host = String(location.hostname || '').toLowerCase();
+        if (!(host === 'youtube.com' || host.endsWith('.youtube.com') || host === 'youtu.be')) return;
+        if (location.href.startsWith('https://www.youtube.com/tv#/') ||
+            location.href.startsWith('https://www.youtube.com/embed/')) return;
+    } catch {
+        return;
+    }
+
+    const state = {
+        originalUserAgent: '',
+        probes: ['adunit', 'lactmilli', 'channel', 'instream', 'eafg'],
+        pendingReload: false
+    };
+
+    function getPlayer() {
+        try { return document.getElementById('movie_player'); } catch { return null; }
+    }
+
+    function getClient() {
+        try {
+            return window.ytcfg &&
+                window.ytcfg.data_ &&
+                window.ytcfg.data_.INNERTUBE_CONTEXT &&
+                window.ytcfg.data_.INNERTUBE_CONTEXT.client;
+        } catch {
+            return null;
+        }
+    }
+
+    function setClientProbe(probe) {
+        try {
+            const client = getClient();
+            if (!client || !state.originalUserAgent) return;
+            client.userAgent = probe
+                ? state.originalUserAgent.replace(/(Mozilla\/5\.0 \([^)]+)/, '$1; ' + probe)
+                : state.originalUserAgent;
+        } catch {}
+    }
+
+    function initClientProbe() {
+        try {
+            const client = getClient();
+            if (!client || state.originalUserAgent) return;
+            state.originalUserAgent = String(client.userAgent || '');
+        } catch {}
+    }
+
+    function maybeRecoverBlockedPlayback() {
+        try {
+            initClientProbe();
+            const player = getPlayer();
+            if (!player || !location.href.includes('/watch?')) {
+                state.probes = ['adunit', 'lactmilli', 'channel', 'instream', 'eafg'];
+                state.pendingReload = false;
+                return;
+            }
+
+            const response = player.getPlayerResponse && player.getPlayerResponse();
+            const progress = player.getProgressState && player.getProgressState();
+            const stats = player.getStatsForNerds && player.getStatsForNerds();
+            const stateObject = player.getPlayerStateObject && player.getPlayerStateObject();
+            const isServerAd = String(stats && stats.debug_info || '').startsWith('SSAP, AD');
+            const isBufferingBlank = !!stateObject && stateObject.isBuffering &&
+                stats && stats.buffer_health_seconds === '0.00 s' && stats.resolution === '0x0';
+
+            if (isServerAd && progress && Number(progress.duration) > 0) {
+                player.seekTo && player.seekTo(Number(progress.duration), true);
+                return;
+            }
+
+            if (!response || !progress || !(Number(progress.duration) > 0)) return;
+            if (!(progress.loaded < progress.duration ||
+                progress.duration - progress.current > 1 ||
+                response.videoDetails && response.videoDetails.isLive)) return;
+
+            const runs = JSON.stringify(response.playabilityStatus &&
+                response.playabilityStatus.errorScreen &&
+                response.playabilityStatus.errorScreen.playerErrorMessageRenderer &&
+                response.playabilityStatus.errorScreen.playerErrorMessageRenderer.subreason &&
+                response.playabilityStatus.errorScreen.playerErrorMessageRenderer.subreason.runs);
+            const isRecoverableUnplayable = response.playabilityStatus &&
+                response.playabilityStatus.status === 'UNPLAYABLE' &&
+                !(response.playabilityStatus.errorScreen &&
+                    response.playabilityStatus.errorScreen.playerErrorMessageRenderer &&
+                    response.playabilityStatus.errorScreen.playerErrorMessageRenderer.playerCaptchaViewModel) &&
+                runs && runs.includes('WEB_PAGE_TYPE_UNKNOWN') &&
+                runs.includes('https://support.google.com/youtube/answer/3037019');
+
+            if (isRecoverableUnplayable) {
+                const videoId = response.videoDetails && response.videoDetails.videoId;
+                const startSeconds = response.playerConfig && response.playerConfig.playbackStartConfig
+                    ? response.playerConfig.playbackStartConfig.startSeconds || 0
+                    : 0;
+                state.probes = state.probes.slice(1);
+                setClientProbe(state.probes[0] || '');
+                state.pendingReload = false;
+                if (videoId && player.loadVideoById) player.loadVideoById(videoId, startSeconds);
+                return;
+            }
+
+            if (isBufferingBlank && state.pendingReload && state.probes.length > 0) {
+                const videoId = response.videoDetails && response.videoDetails.videoId;
+                const startSeconds = progress.current || 0;
+                setClientProbe(state.probes[0]);
+                state.pendingReload = false;
+                if (videoId && player.loadVideoById) player.loadVideoById(videoId, startSeconds);
+            }
+        } catch {}
+    }
+
+    try {
+        const originalHas = window.Map && window.Map.prototype && window.Map.prototype.has;
+        if (typeof originalHas === 'function' && !window.__aurivoDeliBlockMapHasPatched) {
+            window.__aurivoDeliBlockMapHasPatched = true;
+            window.Map.prototype.has = new Proxy(originalHas, {
+                apply(target, self, args) {
+                    try {
+                        if (args && args[0] === 'onSnackbarMessage' && !state.pendingReload) {
+                            const player = getPlayer();
+                            const stats = player && player.getStatsForNerds && player.getStatsForNerds();
+                            const stateObject = player && player.getPlayerStateObject && player.getPlayerStateObject();
+                            const tracking = player && player.getPlayerResponse && player.getPlayerResponse();
+                            const playbackUrl = tracking && tracking.playbackTracking &&
+                                tracking.playbackTracking.videostatsPlaybackUrl &&
+                                tracking.playbackTracking.videostatsPlaybackUrl.baseUrl;
+                            if (stateObject && stateObject.isBuffering &&
+                                stats && stats.buffer_health_seconds === '0.00 s' && stats.resolution === '0x0' &&
+                                state.probes.length > 0) {
+                                if (String(playbackUrl || '').includes('reloadxhr')) state.probes = state.probes.slice(1);
+                                state.pendingReload = true;
+                            }
+                        }
+                    } catch {}
+                    return Reflect.apply(target, self, args);
+                }
+            });
+        }
+    } catch {}
+
+    try {
+        const originalStringify = window.JSON && window.JSON.stringify;
+        if (typeof originalStringify === 'function' && !window.__aurivoDeliBlockJsonStringifyPatched) {
+            window.__aurivoDeliBlockJsonStringifyPatched = true;
+            window.JSON.stringify = new Proxy(originalStringify, {
+                apply(target, self, args) {
+                    try {
+                        const body = args && args[0];
+                        const client = body && body.context && body.context.client;
+                        if (body && typeof body === 'object' &&
+                            'attestationRequest' in body &&
+                            body.playbackContext && body.playbackContext.contentPlaybackContext &&
+                            client && client.mainAppWebInfo &&
+                            String(client.mainAppWebInfo.graftUrl || '').includes('/watch?')) {
+                            body.playbackContext.contentPlaybackContext.lactMilliseconds = String(Date.now());
+                        }
+                    } catch {}
+                    return Reflect.apply(target, self, args);
+                }
+            });
+        }
+    } catch {}
+
+    try {
+        const originalThen = window.Promise && window.Promise.prototype && window.Promise.prototype.then;
+        if (typeof originalThen === 'function' && !window.__aurivoDeliBlockPromiseThenPatched) {
+            window.__aurivoDeliBlockPromiseThenPatched = true;
+            window.Promise.prototype.then = new Proxy(originalThen, {
+                apply(target, self, args) {
+                    try {
+                        if (typeof args[0] === 'function' && String(args[0]).includes('onAbnormalityDetected')) {
+                            args[0] = function noopAbnormalityDetected() {};
+                        }
+                    } catch {}
+                    return Reflect.apply(target, self, args);
+                }
+            });
+        }
+    } catch {}
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', maybeRecoverBlockedPlayback, { once: true });
+    } else {
+        maybeRecoverBlockedPlayback();
+    }
+    try {
+        new MutationObserver(maybeRecoverBlockedPlayback).observe(document, { childList: true, subtree: true });
+    } catch {}
+    setInterval(maybeRecoverBlockedPlayback, 800);
+}());
+`;
+const ADBLOCK_NOOP_JS_URL = `data:application/javascript;base64,${Buffer.from('"use strict";\nvoid 0;\n', 'utf8').toString('base64')}`;
+const ADBLOCK_NOOP_JSON_URL = `data:application/json;base64,${Buffer.from('{}\n', 'utf8').toString('base64')}`;
+const ADBLOCK_NOOP_DNR_RULES = Object.freeze([
+    {
+        id: 1100001,
+        priority: 65,
+        action: { type: 'redirect', redirect: { url: ADBLOCK_NOOP_JS_URL } },
+        condition: {
+            urlFilter: '||pagead2.googlesyndication.com/pagead/js/adsbygoogle.js',
+            resourceTypes: ['script']
+        },
+        ruleset: 'aurivo-noop'
+    },
+    {
+        id: 1100002,
+        priority: 65,
+        action: { type: 'redirect', redirect: { url: ADBLOCK_NOOP_JS_URL } },
+        condition: {
+            urlFilter: '||securepubads.g.doubleclick.net/tag/js/gpt.js',
+            resourceTypes: ['script']
+        },
+        ruleset: 'aurivo-noop'
+    },
+    {
+        id: 1100003,
+        priority: 65,
+        action: { type: 'redirect', redirect: { url: ADBLOCK_NOOP_JS_URL } },
+        condition: {
+            urlFilter: '||www.googletagservices.com/tag/js/gpt.js',
+            resourceTypes: ['script']
+        },
+        ruleset: 'aurivo-noop'
+    },
+    {
+        id: 1100004,
+        priority: 65,
+        action: { type: 'redirect', redirect: { url: ADBLOCK_NOOP_JS_URL } },
+        condition: {
+            urlFilter: '||www.google-analytics.com/analytics.js',
+            resourceTypes: ['script']
+        },
+        ruleset: 'aurivo-noop'
+    },
+    {
+        id: 1100005,
+        priority: 65,
+        action: { type: 'redirect', redirect: { url: ADBLOCK_NOOP_JS_URL } },
+        condition: {
+            urlFilter: '||www.google-analytics.com/gtag/js',
+            resourceTypes: ['script']
+        },
+        ruleset: 'aurivo-noop'
+    },
+    {
+        id: 1100006,
+        priority: 65,
+        action: { type: 'redirect', redirect: { url: ADBLOCK_NOOP_JSON_URL } },
+        condition: {
+            urlFilter: '/pagead/ppub_config',
+            resourceTypes: ['xmlhttprequest']
+        },
+        ruleset: 'aurivo-noop'
+    }
+]);
+const ADBLOCK_YOUTUBE_DNR_RULES = Object.freeze([
+    {
+        id: 1000000,
+        priority: 90,
+        action: { type: 'allow' },
+        condition: {
+            initiatorDomains: YOUTUBE_INITIATOR_DOMAINS,
+            requestDomains: [
+                'i.ytimg.com',
+                'yt3.ggpht.com',
+                'ggpht.com',
+                'youtube.com',
+                'www.youtube.com',
+                'm.youtube.com',
+                'music.youtube.com',
+                'youtubei.googleapis.com'
+            ],
+            resourceTypes: ['script', 'xmlhttprequest', 'image', 'stylesheet', 'font']
+        },
+        ruleset: 'aurivo-youtube-core'
+    },
+    {
+        id: 1000011,
+        priority: 90,
+        action: { type: 'allow' },
+        condition: {
+            initiatorDomains: YOUTUBE_INITIATOR_DOMAINS,
+            requestDomains: ['googlevideo.com'],
+            resourceTypes: ['media', 'xmlhttprequest']
+        },
+        ruleset: 'aurivo-youtube-core'
+    },
+    {
+        id: 1000001,
+        priority: 110,
+        action: { type: 'block' },
+        condition: {
+            initiatorDomains: YOUTUBE_INITIATOR_DOMAINS,
+            requestDomains: [
+                'ad.doubleclick.net',
+                'googleads.g.doubleclick.net',
+                'pagead2.googlesyndication.com',
+                'tpc.googlesyndication.com',
+                'static.doubleclick.net'
+            ],
+            resourceTypes: ['script', 'xmlhttprequest', 'sub_frame', 'image', 'media']
+        },
+        ruleset: 'aurivo-youtube'
+    },
+    {
+        id: 1000002,
+        priority: 110,
+        action: { type: 'block' },
+        condition: {
+            initiatorDomains: YOUTUBE_INITIATOR_DOMAINS,
+            urlFilter: '||youtube.com/pagead/',
+            resourceTypes: ['script', 'xmlhttprequest', 'sub_frame', 'image']
+        },
+        ruleset: 'aurivo-youtube'
+    },
+    {
+        id: 1000003,
+        priority: 110,
+        action: { type: 'block' },
+        condition: {
+            initiatorDomains: YOUTUBE_INITIATOR_DOMAINS,
+            urlFilter: '/api/stats/ads',
+            resourceTypes: ['xmlhttprequest', 'ping']
+        },
+        ruleset: 'aurivo-youtube'
+    },
+    {
+        id: 1000004,
+        priority: 120,
+        action: { type: 'redirect', redirect: { url: ADBLOCK_NOOP_JSON_URL } },
+        condition: {
+            initiatorDomains: YOUTUBE_INITIATOR_DOMAINS,
+            urlFilter: '||youtube.com/youtubei/v1/player/ad_break',
+            resourceTypes: ['xmlhttprequest']
+        },
+        ruleset: 'aurivo-youtube'
+    },
+    {
+        id: 1000005,
+        priority: 120,
+        action: { type: 'redirect', redirect: { url: ADBLOCK_NOOP_JSON_URL } },
+        condition: {
+            initiatorDomains: YOUTUBE_INITIATOR_DOMAINS,
+            urlFilter: '||www.youtube.com/get_midroll_',
+            resourceTypes: ['xmlhttprequest', 'script']
+        },
+        ruleset: 'aurivo-youtube'
+    },
+    {
+        id: 1000006,
+        priority: 120,
+        action: { type: 'redirect', redirect: { url: ADBLOCK_NOOP_JSON_URL } },
+        condition: {
+            initiatorDomains: YOUTUBE_INITIATOR_DOMAINS,
+            urlFilter: '||m.youtube.com/get_midroll_',
+            resourceTypes: ['xmlhttprequest', 'script']
+        },
+        ruleset: 'aurivo-youtube'
+    },
+    {
+        id: 1000007,
+        priority: 120,
+        action: { type: 'redirect', redirect: { url: ADBLOCK_NOOP_JSON_URL } },
+        condition: {
+            initiatorDomains: YOUTUBE_INITIATOR_DOMAINS,
+            urlFilter: '||youtube.com/get_video_info?*adunit',
+            resourceTypes: ['xmlhttprequest']
+        },
+        ruleset: 'aurivo-youtube'
+    },
+    {
+        id: 1000008,
+        priority: 120,
+        action: { type: 'redirect', redirect: { url: ADBLOCK_NOOP_JSON_URL } },
+        condition: {
+            initiatorDomains: YOUTUBE_INITIATOR_DOMAINS,
+            urlFilter: '/api/stats/qoe?*adformat=',
+            resourceTypes: ['xmlhttprequest', 'ping']
+        },
+        ruleset: 'aurivo-youtube'
+    },
+    {
+        id: 1000009,
+        priority: 120,
+        action: { type: 'block' },
+        condition: {
+            initiatorDomains: ['www.youtube.com'],
+            regexFilter: '\\.googlevideo\\.com\\/videoplayback\\?expire=(?:[02-9]+|1[1-68-9]\\d+|17[1-48-9]\\d+)&',
+            requestMethods: ['get'],
+            resourceTypes: ['xmlhttprequest']
+        },
+        ruleset: 'aurivo-youtube'
+    },
+    {
+        id: 1000010,
+        priority: 120,
+        action: { type: 'block' },
+        condition: {
+            initiatorDomains: YOUTUBE_INITIATOR_DOMAINS,
+            urlFilter: 'adformat=',
+            requestDomains: ['googlevideo.com'],
+            resourceTypes: ['xmlhttprequest', 'media']
+        },
+        ruleset: 'aurivo-youtube'
+    }
+]);
+
+const adblockRuntime = {
+    config: normalizeAdblockConfig(),
+    installed: false,
+    rulesetCache: new Map(),
+    strictblockCache: new Map(),
+    scriptingCache: new Map(),
+    recentMatchKeys: new Map(),
+    blockedSession: 0,
+    blockedTotal: 0,
+    blockedByRuleset: new Map(),
+    recentBlocked: [],
+    lastBlockedAt: 0,
+    lastBlocked: null
+};
 
 function getWebSessions() {
     const out = [];
@@ -3363,6 +2725,647 @@ function getWebSessions() {
     try { add(session.defaultSession); } catch { }
     return out;
 }
+
+function getAdblockStatsSnapshot() {
+    const plan = getActiveRulesetPlan(adblockRuntime.config);
+    const summary = getRulesetSummary(adblockRuntime.config, {
+        rulesetCount: new Set([
+            ...plan.dnr.map((item) => item.id),
+            ...plan.strictblock.map((item) => `strictblock:${item.id}`),
+            ...plan.scripting.map((item) => `scripting:${item.id}`)
+        ]).size,
+        domainRuleCount: (adblockRuntime.config?.dnrRules || []).filter((rule) => {
+            const condition = rule?.condition || {};
+            return Array.isArray(condition.requestDomains) ||
+                Array.isArray(condition.initiatorDomains) ||
+                String(condition.urlFilter || '').startsWith('||');
+        }).length,
+        cosmeticSelectorCount: plan.scripting.reduce((total, item) => {
+            const assets = item.assets || {};
+            return total + ['generic', 'generichigh', 'specific', 'procedural'].filter((key) => assets[key]).length;
+        }, 0)
+    });
+    const { dnrRules, ...publicConfig } = adblockRuntime.config || {};
+    return {
+        ...summary,
+        activeRulesets: {
+            dnr: plan.dnr.map((item) => ({ id: item.id, label: item.label, hasRegex: !!item.regexPath })),
+            strictblock: plan.strictblock.map((item) => ({ id: item.id, label: item.label })),
+            scripting: plan.scripting.map((item) => ({
+                id: item.id,
+                label: item.label,
+                assets: Object.keys(item.assets || {})
+            }))
+        },
+        blocked: adblockRuntime.blockedSession,
+        totalBlocked: adblockRuntime.blockedTotal,
+        blockedByRuleset: Object.fromEntries(adblockRuntime.blockedByRuleset.entries()),
+        recentBlocked: adblockRuntime.recentBlocked.slice(0, 20),
+        lastBlockedAt: adblockRuntime.lastBlockedAt,
+        lastBlocked: adblockRuntime.lastBlocked,
+        config: publicConfig
+    };
+}
+
+function getAdblockUrlParts(rawUrl = '') {
+    try {
+        const parsed = new URL(String(rawUrl || ''));
+        return {
+            hostname: String(parsed.hostname || '').toLowerCase(),
+            path: `${parsed.pathname || '/'}${parsed.search || ''}`.slice(0, 220)
+        };
+    } catch {
+        return { hostname: '', path: '' };
+    }
+}
+
+function getAdblockHostnameVariants(hostname = '', includeEntities = false) {
+    const parts = String(hostname || '').toLowerCase().split('.').filter(Boolean);
+    const out = [];
+    for (let i = 0; i < parts.length; i += 1) {
+        out.push(parts.slice(i).join('.'));
+    }
+    if (includeEntities && parts.length > 1) {
+        const n = parts.length - 1;
+        for (let i = 0; i < n; i += 1) {
+            for (let j = n; j > i; j -= 1) {
+                out.push(`${parts.slice(i, j).join('.')}.*`);
+            }
+        }
+    }
+    return Array.from(new Set(out));
+}
+
+function adblockBinarySearch(sorted, target) {
+    let left = 0;
+    let right = Array.isArray(sorted) ? sorted.length : 0;
+    while (left < right) {
+        const index = (left + right) >>> 1;
+        const candidate = String(sorted[index] || '');
+        let diff = String(target || '').length - candidate.length;
+        if (diff === 0) {
+            if (target === candidate) return index;
+            diff = target < candidate ? -1 : 1;
+        }
+        if (diff < 0) right = index;
+        else left = index + 1;
+    }
+    return -1;
+}
+
+function addAdblockSelectorsFromListIndex(data, listIndex, result) {
+    try {
+        const list = JSON.parse(`[${data.selectorLists[listIndex]}]`);
+        for (const selectorIndex of list) {
+            if (selectorIndex >= 0) result.selectors.add(data.selectors[selectorIndex]);
+            else result.exceptions.add(data.selectors[~selectorIndex]);
+        }
+    } catch {
+        // ignore malformed upstream selector fragments
+    }
+}
+
+function compileAdblockRegex(pattern) {
+    const source = String(pattern || '');
+    if (!source || source.length > 4096) return null;
+    try {
+        // Upstream adblock regex fragments are data, not user-authored input.
+        // nosemgrep: javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
+        return new RegExp(source);
+    } catch {
+        return null;
+    }
+}
+
+function collectAdblockSelectorsForHostname(data, hostname) {
+    const result = { selectors: new Set(), exceptions: new Set() };
+    if (!data || typeof data !== 'object') return [];
+    const variants = getAdblockHostnameVariants(hostname, data.hasEntities === true);
+    for (const variant of variants) {
+        const listRef = adblockBinarySearch(data.hostnames, variant);
+        if (listRef !== -1) {
+            addAdblockSelectorsFromListIndex(data, data.selectorListRefs[listRef], result);
+        }
+    }
+    const regexes = Array.isArray(data.regexes) ? data.regexes : [];
+    for (let i = 0; i < regexes.length; i += 3) {
+        try {
+            if (!String(hostname || '').includes(String(regexes[i] || ''))) continue;
+            const regex = compileAdblockRegex(regexes[i + 1]);
+            if (!regex) continue;
+            if (!regex.test(hostname)) continue;
+            addAdblockSelectorsFromListIndex(data, regexes[i + 2], result);
+        } catch {
+            // ignore invalid regex selector entry
+        }
+    }
+    for (const exception of result.exceptions) result.selectors.delete(exception);
+    return Array.from(result.selectors).filter(Boolean);
+}
+
+function collectAdblockProceduralRulesForHostname(data, hostname, sourceId = '') {
+    return collectAdblockSelectorsForHostname(data, hostname)
+        .map((entry) => {
+            try {
+                const parsed = JSON.parse(String(entry || ''));
+                if (!parsed || typeof parsed !== 'object') return null;
+                if (!parsed.selector && !Array.isArray(parsed.tasks) && !Array.isArray(parsed.action)) return null;
+                return {
+                    ...parsed,
+                    source: sourceId
+                };
+            } catch {
+                return null;
+            }
+        })
+        .filter(Boolean)
+        .slice(0, 600);
+}
+
+function readAdblockTextAsset(filePath) {
+    const key = `text:${filePath}`;
+    if (adblockRuntime.scriptingCache.has(key)) return adblockRuntime.scriptingCache.get(key);
+    let text = '';
+    try {
+        text = fs.readFileSync(filePath, 'utf8');
+    } catch {
+        text = '';
+    }
+    adblockRuntime.scriptingCache.set(key, text);
+    return text;
+}
+
+function readAdblockJsonAsset(filePath) {
+    const key = `json:${filePath}`;
+    if (adblockRuntime.scriptingCache.has(key)) return adblockRuntime.scriptingCache.get(key);
+    const parsed = readJsonFileSafe(filePath);
+    adblockRuntime.scriptingCache.set(key, parsed);
+    return parsed;
+}
+
+function getAdblockCompanionJsonPath(filePath) {
+    const value = String(filePath || '');
+    if (!value.endsWith('.js')) return '';
+    const jsonPath = `${value.slice(0, -3)}.json`;
+    return fs.existsSync(jsonPath) ? jsonPath : '';
+}
+
+function stripAdblockCssLicenseHeader(css = '') {
+    return String(css || '').replace(/^\/\*[\s\S]*?\*\/\s*/u, '');
+}
+
+function stripAdblockScriptLicenseHeader(script = '') {
+    return String(script || '').replace(/^\/\*[\s\S]*?\*\/\s*/u, '');
+}
+
+function isAdblockYouTubeHostname(hostname = '') {
+    const value = String(hostname || '').toLowerCase();
+    return YOUTUBE_HOSTNAMES.some((domain) => value === domain || value.endsWith(`.${domain}`));
+}
+
+function shouldSkipBundledYouTubeServerContractScriptlet(hostname = '', code = '') {
+    if (!isAdblockYouTubeHostname(hostname)) return false;
+    return String(code || '').includes('serverContract');
+}
+
+function buildAdblockScriptingInjection(rawUrl = '') {
+    let parsed;
+    try {
+        parsed = new URL(String(rawUrl || ''));
+    } catch {
+        return { ok: false, reason: 'invalid-url', css: [], scripts: [], sources: [] };
+    }
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+        return { ok: false, reason: 'unsupported-protocol', css: [], scripts: [], sources: [] };
+    }
+
+    const plan = getActiveRulesetPlan(adblockRuntime.config);
+    const hostname = String(parsed.hostname || '').toLowerCase();
+    const css = [];
+    const genericImports = [];
+    const proceduralRules = [];
+    const scripts = [];
+    const sources = [];
+
+    if (isAdblockYouTubeHostname(hostname)) {
+        scripts.push({
+            id: 'deliblock-youtube-server-contract',
+            world: 'main',
+            enabled: true,
+            code: ADBLOCK_YOUTUBE_SERVER_CONTRACT_SCRIPTLET
+        });
+        sources.push('deliblock-youtube:scriptlet');
+    }
+
+    for (const item of plan.scripting) {
+        const assets = item.assets || {};
+        if (assets.generic) {
+            const code = stripAdblockScriptLicenseHeader(readAdblockTextAsset(assets.generic));
+            if (code.trim()) {
+                genericImports.push({ id: item.id, code });
+                sources.push(`${item.id}:generic`);
+            }
+        }
+        if (assets.generichigh) {
+            const text = stripAdblockCssLicenseHeader(readAdblockTextAsset(assets.generichigh));
+            if (text.trim()) {
+                css.push(text);
+                sources.push(`${item.id}:generichigh`);
+            }
+        }
+        if (assets.specific) {
+            const jsonPath = getAdblockCompanionJsonPath(assets.specific);
+            const data = jsonPath ? readAdblockJsonAsset(jsonPath) : null;
+            const selectors = collectAdblockSelectorsForHostname(data, hostname);
+            if (selectors.length > 0) {
+                css.push(`${selectors.join(',\n')}{display:none!important;}`);
+                sources.push(`${item.id}:specific`);
+            }
+        }
+        if (assets.scriptletIsolated) {
+            const code = stripAdblockScriptLicenseHeader(readAdblockTextAsset(assets.scriptletIsolated));
+            if (!shouldSkipBundledYouTubeServerContractScriptlet(hostname, code)) {
+                scripts.push({
+                    id: `${item.id}:scriptletIsolated`,
+                    world: 'isolated',
+                    enabled: !!code.trim(),
+                    code
+                });
+            }
+        }
+        if (assets.scriptletMain) {
+            const code = stripAdblockScriptLicenseHeader(readAdblockTextAsset(assets.scriptletMain));
+            if (!shouldSkipBundledYouTubeServerContractScriptlet(hostname, code)) {
+                scripts.push({
+                    id: `${item.id}:scriptletMain`,
+                    world: 'main',
+                    enabled: !!code.trim(),
+                    code
+                });
+            }
+        }
+        if (assets.procedural) {
+            const jsonPath = getAdblockCompanionJsonPath(assets.procedural);
+            const data = jsonPath ? readAdblockJsonAsset(jsonPath) : null;
+            const rules = collectAdblockProceduralRulesForHostname(data, hostname, item.id);
+            if (rules.length > 0) {
+                proceduralRules.push(...rules);
+                sources.push(`${item.id}:procedural`);
+            }
+        }
+    }
+
+    return {
+        ok: true,
+        mode: plan.mode,
+        hostname,
+        css,
+        genericImports,
+        proceduralRules,
+        scripts,
+        sources
+    };
+}
+
+function recordAdblockMatch(details = {}, match = {}) {
+    const now = Date.now();
+    const url = String(details?.url || '');
+    const { hostname, path: urlPath } = getAdblockUrlParts(url);
+    const ruleset = String(match?.ruleset || match?.reason || 'legacy').trim() || 'legacy';
+    const record = {
+        at: now,
+        url,
+        hostname,
+        path: urlPath,
+        resourceType: String(details?.resourceType || ''),
+        method: String(details?.method || ''),
+        initiator: String(details?.initiator || details?.documentUrl || details?.referrer || ''),
+        reason: String(match?.reason || ''),
+        action: String(match?.action || 'block'),
+        rule: String(match?.rule || ''),
+        ruleset
+    };
+
+    const countKey = [
+        record.action,
+        record.ruleset,
+        record.rule,
+        record.hostname,
+        record.path,
+        record.resourceType
+    ].join('|');
+    const lastSeen = Number(adblockRuntime.recentMatchKeys.get(countKey) || 0);
+    const noisyYouTubeStat = (
+        /(^|\.)youtube\.com$/i.test(record.hostname) &&
+        (/\/api\/stats\//i.test(record.path) || /[?&](adformat|qoe)=/i.test(record.path))
+    );
+    const countable = !noisyYouTubeStat && (now - lastSeen > 2500);
+    adblockRuntime.recentMatchKeys.set(countKey, now);
+    for (const [key, at] of adblockRuntime.recentMatchKeys.entries()) {
+        if (now - Number(at || 0) > 15000) adblockRuntime.recentMatchKeys.delete(key);
+    }
+
+    if (countable) {
+        adblockRuntime.blockedSession += 1;
+        adblockRuntime.blockedTotal += 1;
+        adblockRuntime.blockedByRuleset.set(ruleset, Number(adblockRuntime.blockedByRuleset.get(ruleset) || 0) + 1);
+    }
+    adblockRuntime.lastBlockedAt = now;
+    adblockRuntime.lastBlocked = record;
+    adblockRuntime.recentBlocked.unshift(record);
+    if (adblockRuntime.recentBlocked.length > 40) {
+        adblockRuntime.recentBlocked.length = 40;
+    }
+}
+
+function loadAdblockRuleset(rulesetId, realm = 'main') {
+    const id = String(rulesetId || '').trim();
+    if (!id) return [];
+    const cacheKey = `${realm}:${id}`;
+    if (adblockRuntime.rulesetCache.has(cacheKey)) return adblockRuntime.rulesetCache.get(cacheKey);
+
+    const filePath = getRulesetAssetPath(id, realm);
+    if (!filePath) return [];
+
+    let rules = [];
+    try {
+        const parsed = readJsonFileSafe(filePath);
+        if (Array.isArray(parsed)) {
+            rules = parsed
+                .filter((rule) => rule && typeof rule === 'object')
+                .map((rule) => ({ ...rule, ruleset: id }));
+        }
+    } catch (error) {
+        console.warn('[ADBLOCK] ruleset load failed:', { id, filePath, error: error?.message || error });
+    }
+
+    adblockRuntime.rulesetCache.set(cacheKey, rules);
+    return rules;
+}
+
+function loadAdblockStrictblockRuleset(rulesetId, filePath = '') {
+    const id = String(rulesetId || '').trim();
+    if (!id) return [];
+    if (adblockRuntime.strictblockCache.has(id)) return adblockRuntime.strictblockCache.get(id);
+
+    const sourcePath = filePath || getRulesetAssetPath(id, 'strictblock');
+    if (!sourcePath) return [];
+
+    let rules = [];
+    try {
+        const parsed = readJsonFileSafe(sourcePath);
+        if (Array.isArray(parsed)) {
+            rules = parsed
+                .filter((rule) => rule && typeof rule === 'object')
+                .map((rule, index) => ({
+                    ...rule,
+                    id: 1200000 + (Number(rule.id) || index + 1),
+                    priority: Math.max(80, Number(rule.priority || 0) || 0),
+                    action: { type: 'redirect', redirect: { url: ADBLOCK_STRICTBLOCK_URL } },
+                    ruleset: `strictblock-${id}`
+                }));
+        }
+    } catch (error) {
+        console.warn('[ADBLOCK] strictblock ruleset load failed:', { id, filePath: sourcePath, error: error?.message || error });
+    }
+
+    adblockRuntime.strictblockCache.set(id, rules);
+    return rules;
+}
+
+function buildAdblockConfig(config = {}) {
+    const normalized = normalizeAdblockConfig(config);
+    const rules = [...ADBLOCK_NOOP_DNR_RULES, ...ADBLOCK_YOUTUBE_DNR_RULES];
+    const plan = getActiveRulesetPlan(normalized);
+    for (const item of plan.dnr) {
+        rules.push(...loadAdblockRuleset(item.id, 'main'));
+        rules.push(...loadAdblockRuleset(item.id, 'regex'));
+    }
+    for (const item of plan.strictblock) {
+        rules.push(...loadAdblockStrictblockRuleset(item.id, item.path));
+    }
+    return normalizeAdblockConfig({
+        ...normalized,
+        dnrRules: rules
+    });
+}
+
+function getAdblockDevelopRulesetDetails() {
+    return getDevelopRulesetDetails();
+}
+
+function listAdblockDevelopSources() {
+    const rulesets = getAdblockDevelopRulesetDetails();
+    return {
+        ok: true,
+        source: ADBLOCK_RULESET_ROOT_DIR,
+        sources: [
+            { id: 'modes', label: 'Filtreleme modu ayrıntıları', group: 'editors', editable: false },
+            { id: 'dnr.rw.user', label: 'Özel DNR kuralları', group: 'editors', editable: true },
+            { id: 'dnr.ro.dynamic', label: 'Dynamic ruleset', group: 'readonly', editable: false },
+            { id: 'dnr.ro.session', label: 'Session ruleset', group: 'readonly', editable: false },
+            ...rulesets.map((item) => ({
+                id: `dnr.ro.${item.id}`,
+                label: item.name,
+                group: 'rulesets',
+                rulesetId: item.id,
+                editable: false
+            }))
+        ]
+    };
+}
+
+function readRulesetRulesFromSource(rulesetId, realm) {
+    const id = String(rulesetId || '').replace(/[^a-z0-9_.-]/gi, '');
+    if (!id) return [];
+
+    const filePath = getRulesetAssetPath(id, realm === 'regex' ? 'regex' : 'main');
+    const parsed = filePath ? readJsonFileSafe(filePath) : null;
+    return Array.isArray(parsed) ? parsed : [];
+}
+
+function formatAdblockDevelopJson(title, value) {
+    const body = JSON.stringify(value, null, 1);
+    return `# ${title}\n${body}\n`;
+}
+
+function readAdblockDevelopSource(sourceId) {
+    const id = String(sourceId || 'modes');
+    if (id === 'modes') {
+        const plan = getActiveRulesetPlan(adblockRuntime.config);
+        const formatItems = (items, fallback) => (
+            Array.isArray(items) && items.length
+                ? items.map((item) => `  - ${item.label || item.id}`).join('\n')
+                : `  - ${fallback}`
+        );
+        return {
+            ok: true,
+            editable: false,
+            text: [
+                'DeliBlock registry:',
+                `mode: ${plan.mode}`,
+                '',
+                'active network rulesets:',
+                formatItems(plan.dnr, 'Henüz aktif kaynak yok'),
+                '',
+                'active strictblock rulesets:',
+                formatItems(plan.strictblock, 'Kapalı'),
+                '',
+                'available scripting assets:',
+                formatItems(plan.scripting.map((item) => ({
+                    ...item,
+                    label: `${item.label || item.id} (${Object.keys(item.assets || {}).join(', ')})`
+                })), 'Henüz bağlı değil'),
+                ''
+            ].join('\n')
+        };
+    }
+
+    if (id === 'dnr.rw.user') {
+        return {
+            ok: true,
+            editable: true,
+            text: '[\n]\n'
+        };
+    }
+
+    if (id === 'dnr.ro.dynamic' || id === 'dnr.ro.session') {
+        const rules = id.endsWith('.dynamic') ? (adblockRuntime.config?.dnrRules || []) : [];
+        return {
+            ok: true,
+            editable: false,
+            text: formatAdblockDevelopJson(id === 'dnr.ro.dynamic' ? 'Dynamic ruleset' : 'Session ruleset', rules)
+        };
+    }
+
+    const match = /^dnr\.ro\.(.+)$/.exec(id);
+    if (match) {
+        const rulesetId = match[1];
+        const details = getAdblockDevelopRulesetDetails().find((item) => item.id === rulesetId);
+        const mainRules = readRulesetRulesFromSource(rulesetId, 'main');
+        const regexRules = readRulesetRulesFromSource(rulesetId, 'regex');
+        const rules = [...mainRules, ...regexRules];
+        return {
+            ok: true,
+            editable: false,
+            text: formatAdblockDevelopJson(`${details?.name || rulesetId} (${rules.length.toLocaleString()} DNR rules)`, rules)
+        };
+    }
+
+    return { ok: false, editable: false, text: `# Bilinmeyen geliştirici kaynağı: ${id}\n` };
+}
+
+function installAdblockRequestBlocking() {
+    adblockRuntime.config = buildAdblockConfig(adblockRuntime.config);
+    if (adblockRuntime.installed) return;
+    adblockRuntime.installed = true;
+
+    const webSessions = [];
+    try { webSessions.push(session.fromPartition(WEBVIEW_PARTITION)); } catch { }
+    for (const ses of webSessions) {
+        try {
+            ses.webRequest.onBeforeRequest({ urls: ['http://*/*', 'https://*/*'] }, (details, callback) => {
+                try {
+                    const match = shouldBlockRequest(details?.url, details?.resourceType, adblockRuntime.config, details);
+                    if (match) {
+                        recordAdblockMatch(details, match);
+                        if (adblockRuntime.config.developerMode) {
+                            console.log('[ADBLOCK] blocked', adblockRuntime.lastBlocked);
+                        }
+                        if (match.action === 'redirect' && match.redirectUrl) {
+                            callback({ redirectURL: String(match.redirectUrl) });
+                        } else {
+                            callback({ cancel: true });
+                        }
+                        return;
+                    }
+                } catch (error) {
+                    console.warn('[ADBLOCK] request filter error:', error?.message || error);
+                }
+                callback({});
+            });
+        } catch (error) {
+            console.warn('[ADBLOCK] install failed:', error?.message || error);
+        }
+
+        try {
+            ses.webRequest.onBeforeSendHeaders({ urls: ['http://*/*', 'https://*/*'] }, (details, callback) => {
+                try {
+                    const match = evaluateDnrHeaderModifications(details?.url, details?.resourceType, adblockRuntime.config, details, 'request');
+                    if (match?.requestHeaders) {
+                        callback({ requestHeaders: match.requestHeaders });
+                        return;
+                    }
+                } catch (error) {
+                    console.warn('[ADBLOCK] request header filter error:', error?.message || error);
+                }
+                callback({ requestHeaders: details?.requestHeaders || {} });
+            });
+        } catch (error) {
+            console.warn('[ADBLOCK] request header install failed:', error?.message || error);
+        }
+
+        try {
+            ses.webRequest.onHeadersReceived({ urls: ['http://*/*', 'https://*/*'] }, (details, callback) => {
+                try {
+                    const blockMatch = shouldBlockRequest(details?.url, details?.resourceType, adblockRuntime.config, details);
+                    if (blockMatch) {
+                        recordAdblockMatch(details, blockMatch);
+                        callback({ cancel: true });
+                        return;
+                    }
+
+                    const headerMatch = evaluateDnrHeaderModifications(details?.url, details?.resourceType, adblockRuntime.config, details, 'response');
+                    if (headerMatch?.responseHeaders) {
+                        callback({ responseHeaders: headerMatch.responseHeaders });
+                        return;
+                    }
+                } catch (error) {
+                    console.warn('[ADBLOCK] response header filter error:', error?.message || error);
+                }
+                callback({ responseHeaders: details?.responseHeaders || {} });
+            });
+        } catch (error) {
+            console.warn('[ADBLOCK] response header install failed:', error?.message || error);
+        }
+    }
+}
+
+ipcMain.handle('adblock:setConfig', async (_event, config) => {
+    adblockRuntime.config = buildAdblockConfig(config);
+    installAdblockRequestBlocking();
+    return { ok: true, stats: getAdblockStatsSnapshot() };
+});
+
+ipcMain.handle('adblock:getStats', async () => {
+    adblockRuntime.config = buildAdblockConfig(adblockRuntime.config);
+    installAdblockRequestBlocking();
+    return getAdblockStatsSnapshot();
+});
+
+ipcMain.handle('adblock:resetStats', async () => {
+    adblockRuntime.blockedSession = 0;
+    adblockRuntime.blockedTotal = 0;
+    adblockRuntime.blockedByRuleset.clear();
+    adblockRuntime.recentMatchKeys.clear();
+    adblockRuntime.recentBlocked = [];
+    adblockRuntime.lastBlockedAt = 0;
+    adblockRuntime.lastBlocked = null;
+    return getAdblockStatsSnapshot();
+});
+
+ipcMain.handle('adblock:listDevelopSources', async () => {
+    return listAdblockDevelopSources();
+});
+
+ipcMain.handle('adblock:readDevelopSource', async (_event, sourceId) => {
+    return readAdblockDevelopSource(sourceId);
+});
+
+ipcMain.handle('adblock:getScriptingInjection', async (_event, payload = {}) => {
+    adblockRuntime.config = buildAdblockConfig(adblockRuntime.config);
+    return buildAdblockScriptingInjection(payload?.url || '');
+});
 
 const WEB_ALLOWED_HOSTS_MAIN = new Set([
     'google.com',
@@ -3579,7 +3582,6 @@ function deepGet(obj, pathStr) {
         // Security: block prototype pollution keys
         if (p === '__proto__' || p === 'constructor' || p === 'prototype') return undefined;
         if (!cur || typeof cur !== 'object' || !Object.prototype.hasOwnProperty.call(cur, p)) return undefined;
-        // nosemgrep: javascript.lang.security.audit.prototype-pollution.prototype-pollution-loop
         cur = cur[p];
     }
     return cur;
@@ -3626,14 +3628,14 @@ function resolveLinuxDesktopFileHint() {
     if (process.platform !== 'linux') return '';
     const home = app?.getPath?.('home') || process.env.HOME || '';
     const candidates = [
-        pathJoinReviewed('/app', 'share', 'applications', 'com.aurivo.mediaplayer.desktop'),
-        pathJoinReviewed('/app', 'share', 'applications', 'aurivo-media-player.desktop'),
-        pathJoinReviewed(home, '.local', 'share', 'applications', 'aurivo-media-player.desktop'),
-        pathJoinReviewed(home, '.local', 'share', 'applications', 'com.aurivo.mediaplayer.desktop'),
-        pathJoinReviewed('/usr/local/share/applications', 'aurivo-media-player.desktop'),
-        pathJoinReviewed('/usr/local/share/applications', 'com.aurivo.mediaplayer.desktop'),
-        pathJoinReviewed('/usr/share/applications', 'aurivo-media-player.desktop'),
-        pathJoinReviewed('/usr/share/applications', 'com.aurivo.mediaplayer.desktop')
+        path.join('/app', 'share', 'applications', 'com.aurivo.mediaplayer.desktop'),
+        path.join('/app', 'share', 'applications', 'aurivo-media-player.desktop'),
+        path.join(home, '.local', 'share', 'applications', 'aurivo-media-player.desktop'),
+        path.join(home, '.local', 'share', 'applications', 'com.aurivo.mediaplayer.desktop'),
+        path.join('/usr/local/share/applications', 'aurivo-media-player.desktop'),
+        path.join('/usr/local/share/applications', 'com.aurivo.mediaplayer.desktop'),
+        path.join('/usr/share/applications', 'aurivo-media-player.desktop'),
+        path.join('/usr/share/applications', 'com.aurivo.mediaplayer.desktop')
     ];
     for (const p of candidates) {
         try {
@@ -3658,74 +3660,6 @@ function resolveLinuxDesktopEntryId() {
     return 'com.aurivo.mediaplayer';
 }
 
-function buildPulseRuntimeEnv(extra = {}) {
-    const env = {
-        ...process.env,
-        ...(extra && typeof extra === 'object' ? extra : {})
-    };
-
-    const platformSubdir = process.platform === 'win32'
-        ? 'windows'
-        : (process.platform === 'linux' ? 'linux' : process.platform);
-    const libCandidates = [
-        pathJoinReviewed(process.resourcesPath || '', 'app.asar.unpacked', 'Aurivo-Pulse', 'libs'),
-        pathJoinReviewed(process.resourcesPath || '', 'Aurivo-Pulse', 'libs'),
-        pathJoinReviewed(__dirname, 'Aurivo-Pulse', 'libs'),
-        pathJoinReviewed(process.resourcesPath || '', 'native-dist', platformSubdir),
-        pathJoinReviewed(process.resourcesPath || '', 'native-dist')
-    ].filter(Boolean);
-
-    const existing = String(env.LD_LIBRARY_PATH || '').split(path.delimiter).filter(Boolean);
-    const finalPaths = [];
-    const seen = new Set();
-    for (const p of [...libCandidates, ...existing]) {
-        if (!p || seen.has(p)) continue;
-        seen.add(p);
-        try {
-            if (fs.existsSync(p)) finalPaths.push(p);
-        } catch {
-            // yoksay
-        }
-    }
-    if (finalPaths.length) {
-        env.LD_LIBRARY_PATH = finalPaths.join(path.delimiter);
-    }
-    return env;
-}
-
-function buildPulseGuiEnv() {
-    const uiLang = getUiLanguageSync();
-    const posixLocale = uiLangToPosixLocale(uiLang);
-    const localeChain = uiLangToLocaleChain(uiLang);
-    const env = buildPulseRuntimeEnv({
-        AURIVO_PULSE_NO_GUI: '0',
-        AURIVO_LANG: uiLang,
-        LANG: posixLocale,
-        LC_ALL: posixLocale,
-        LANGUAGE: localeChain,
-        AURIVO_PULSE_BRIDGE_URL: getPulseBridgeUrl()
-    });
-
-    // Linux'ta masaüstü eşleştirme ipucu ver (GNOME/KDE panel grouping için).
-    if (process.platform === 'linux') {
-        const desktopHint = resolveLinuxDesktopFileHint();
-        if (desktopHint) {
-            env.BAMF_DESKTOP_FILE_HINT = desktopHint;
-            env.GIO_LAUNCHED_DESKTOP_FILE = desktopHint;
-        }
-        // Flatpak/Native Wayland kimliğini kullanarak doğru eşleştirme yap
-        const flatpakId = String(process.env.FLATPAK_ID || process.env.APP_ID || '').trim();
-        if (flatpakId) {
-            env.AURIVO_APP_ID = flatpakId;
-        } else {
-            env.AURIVO_APP_ID = 'com.aurivo.mediaplayer';
-        }
-        env.AURIVO_ICON_NAME = env.AURIVO_APP_ID;
-    }
-
-    return env;
-}
-
 function applyUiLocaleOverrides(lang, messages) {
     const normalized = normalizeUiLang(lang) || 'en-US';
     const out = (messages && typeof messages === 'object') ? { ...messages } : {};
@@ -3735,14 +3669,10 @@ function applyUiLocaleOverrides(lang, messages) {
         let cur = obj;
         for (let i = 0; i < parts.length - 1; i++) {
             const p = parts[i];
-            if (p === '__proto__' || p === 'constructor' || p === 'prototype') return;
             if (!cur[p] || typeof cur[p] !== 'object') cur[p] = {};
-            // nosemgrep: javascript.lang.security.audit.prototype-pollution.prototype-pollution-loop
             cur = cur[p];
         }
-        const lastKey = parts[parts.length - 1];
-        if (lastKey === '__proto__' || lastKey === 'constructor' || lastKey === 'prototype') return;
-        cur[lastKey] = value;
+        cur[parts[parts.length - 1]] = value;
     };
     const deepEnsure = (key, value) => {
         if (deepGet(out, key) === undefined) deepSet(out, key, value);
@@ -4036,7 +3966,7 @@ async function applyPersistedEq32SfxFromSettings() {
         }
 
         const name = eq32?.lastPreset?.name;
-        console.log('[SFX] EQ32 ayarları yüklendi', name || '');
+        console.log(`[SFX] EQ32 ayarları yüklendi${name ? `: ${name}` : ''}`);
     } catch {
         // Ayar dosyası yoksa sorun değil
     }
@@ -4081,7 +4011,7 @@ function createWindow() {
         backgroundColor: '#121212',
         icon: getAppIconImage(),
         webPreferences: {
-            preload: pathJoinReviewed(__dirname, 'preload.js'),
+            preload: path.join(__dirname, 'preload.js'),
             nodeIntegration: false,
             contextIsolation: true,
             // sandbox: false gerekli — preload.js Node.js require() kullanıyor.
@@ -4117,8 +4047,8 @@ function createWindow() {
             webPreferences.enableRemoteModule = false;
             webPreferences.allowRunningInsecureContent = false;
             webPreferences.plugins = true;
-            // Guest preload disallow: no bridge in third-party pages.
-            delete webPreferences.preload;
+            // Guest preload: no app bridge, only early adblock scriptlet patch.
+            webPreferences.preload = path.join(__dirname, 'webviewAdblockPreload.js');
 
             const targetUrl = String(params?.src || '').trim();
             // Initial webview src is often about:blank; block only non-blank external URLs.
@@ -4131,7 +4061,7 @@ function createWindow() {
         }
     });
 
-    mainWindow.loadFile(pathJoinReviewed(__dirname, 'index.html'));
+    mainWindow.loadFile(path.join(__dirname, 'index.html'));
 
     mainWindow.webContents.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL) => {
         console.error('[WEB] did-fail-load:', { errorCode, errorDescription, validatedURL });
@@ -4142,7 +4072,7 @@ function createWindow() {
                 rendererRecoveryAttempts += 1;
                 setTimeout(() => {
                     if (!mainWindow || mainWindow.isDestroyed()) return;
-                    mainWindow.loadFile(pathJoinReviewed(__dirname, 'index.html')).catch(() => {});
+                    mainWindow.loadFile(path.join(__dirname, 'index.html')).catch(() => {});
                 }, 450);
             }
         } catch {
@@ -4156,7 +4086,7 @@ function createWindow() {
         rendererRecoveryAttempts += 1;
         setTimeout(() => {
             if (!mainWindow || mainWindow.isDestroyed()) return;
-            mainWindow.loadFile(pathJoinReviewed(__dirname, 'index.html')).catch(() => {});
+            mainWindow.loadFile(path.join(__dirname, 'index.html')).catch(() => {});
         }, 500);
     });
 
@@ -4294,8 +4224,6 @@ function createWindow() {
         if (!app.isQuitting) {
             if (mainWindowCloseToTray) {
                 event.preventDefault();
-                // Ana uygulama arka plana alınırken dinle penceresi açık kalmamalı.
-                stopAurivoPulseGuiWindow();
                 mainWindow.hide();
                 return false;
             }
@@ -4350,7 +4278,7 @@ async function createSettingsWindow(defaultTab = 'playback') {
         title: 'Aurivo Ayarlar',
         autoHideMenuBar: true,
         webPreferences: {
-            preload: pathJoinReviewed(__dirname, 'preload.js'),
+            preload: path.join(__dirname, 'preload.js'),
             additionalArguments: [`--aurivo-view=settings`, `--aurivo-settings-tab=${tab}`],
             nodeIntegration: false,
             contextIsolation: true,
@@ -4368,7 +4296,7 @@ async function createSettingsWindow(defaultTab = 'playback') {
         settingsWindow.setIcon(getAppIconImage());
     }
 
-    settingsWindow.loadFile(pathJoinReviewed(__dirname, 'settings.html'));
+    settingsWindow.loadFile(path.join(__dirname, 'settings.html'));
 
     settingsWindow.once('ready-to-show', () => {
         if (!settingsWindow || settingsWindow.isDestroyed()) return;
@@ -4421,15 +4349,165 @@ async function createSettingsWindow(defaultTab = 'playback') {
     return settingsWindow;
 }
 
-function createTray() {
-    const trayIconName = process.platform === 'linux' ? 'aurivo_24.png' : 'aurivo_512.png';
-    const iconPath = getResourcePath(pathJoinReviewed('icons', trayIconName));
-    let trayIcon = nativeImage.createFromPath(iconPath);
-    if (process.platform === 'linux' && trayIcon && !trayIcon.isEmpty()) {
-        trayIcon = trayIcon.resize({ width: 24, height: 24 });
+function createAdblockWindow() {
+    if (adblockWindow && !adblockWindow.isDestroyed()) {
+        adblockWindow.show();
+        adblockWindow.focus();
+        return adblockWindow;
     }
 
-    tray = new Tray(trayIcon);
+    adblockWindow = new BrowserWindow({
+        width: 1120,
+        height: 845,
+        minWidth: 920,
+        minHeight: 680,
+        backgroundColor: '#121212',
+        icon: getAppIconImage(),
+        parent: mainWindow && !mainWindow.isDestroyed() ? mainWindow : undefined,
+        modal: false,
+        show: false,
+        title: 'DeliBlock',
+        autoHideMenuBar: true,
+        webPreferences: {
+            preload: path.join(__dirname, 'preload.js'),
+            additionalArguments: ['--aurivo-view=adblock'],
+            nodeIntegration: false,
+            contextIsolation: true,
+            sandbox: false,
+            webSecurity: true,
+            allowRunningInsecureContent: false,
+            spellcheck: false
+        }
+    });
+
+    if (process.platform === 'linux' && typeof adblockWindow.setIcon === 'function') {
+        adblockWindow.setIcon(getAppIconImage());
+    }
+
+    adblockWindow.loadFile(path.join(__dirname, 'adblock.html'));
+
+    adblockWindow.once('ready-to-show', () => {
+        if (!adblockWindow || adblockWindow.isDestroyed()) return;
+        adblockWindow.show();
+        adblockWindow.focus();
+    });
+
+    adblockWindow.on('closed', () => {
+        adblockWindow = null;
+    });
+
+    return adblockWindow;
+}
+
+function getDownloaderService() {
+    if (!downloaderService) {
+        downloaderService = createDownloaderService({
+            app,
+            webContentsProvider: () =>
+                downloaderWindow && !downloaderWindow.isDestroyed()
+                    ? downloaderWindow.webContents
+                    : null
+        });
+    }
+    return downloaderService;
+}
+
+function createDownloaderWindow() {
+    if (downloaderWindow && !downloaderWindow.isDestroyed()) {
+        downloaderWindow.show();
+        downloaderWindow.focus();
+        return downloaderWindow;
+    }
+
+    downloaderWindow = new BrowserWindow({
+        width: 1120,
+        height: 820,
+        minWidth: 760,
+        minHeight: 620,
+        backgroundColor: '#10141c',
+        icon: getAppIconImage(),
+        modal: false,
+        show: false,
+        title: 'Aurivo Dawlod',
+        frame: true,
+        autoHideMenuBar: true,
+        webPreferences: {
+            preload: path.join(__dirname, 'preload.js'),
+            additionalArguments: ['--aurivo-view=downloader'],
+            nodeIntegration: false,
+            contextIsolation: true,
+            backgroundThrottling: true,
+            sandbox: false,
+            webSecurity: true,
+            allowRunningInsecureContent: false,
+            spellcheck: false
+        }
+    });
+
+    if (process.platform === 'linux' && typeof downloaderWindow.setIcon === 'function') {
+        downloaderWindow.setIcon(getAppIconImage());
+    }
+
+    downloaderWindow.loadFile(path.join(__dirname, 'downloader.html'));
+
+    downloaderWindow.once('ready-to-show', () => {
+        if (!downloaderWindow || downloaderWindow.isDestroyed()) return;
+        downloaderWindow.show();
+        downloaderWindow.focus();
+    });
+
+    downloaderWindow.on('closed', () => {
+        downloaderWindow = null;
+    });
+
+    return downloaderWindow;
+}
+
+function sendUrlToDownloaderWindow(url) {
+    const normalized = String(url || '').trim();
+    if (!/^https?:\/\//i.test(normalized)) return;
+    pendingDownloaderUrl = normalized;
+    const win = createDownloaderWindow();
+    const send = () => {
+        try {
+            if (win && !win.isDestroyed()) {
+                win.webContents.send('downloader:load-url', { url: normalized });
+            }
+        } catch (error) {
+            console.warn('[DOWNLOADER] load-url send failed:', error?.message || error);
+        }
+    };
+    if (win.webContents.isLoading()) {
+        win.webContents.once('dom-ready', send);
+    } else {
+        setTimeout(send, 30);
+    }
+}
+
+function sendDownloaderNoUrlNotice() {
+    pendingDownloaderNotice = {
+        url: '',
+        error: 'İndirilebilir içerik bulunamadı. Önce bir video veya şarkı açın.'
+    };
+    const win = createDownloaderWindow();
+    const send = () => {
+        try {
+            if (win && !win.isDestroyed()) {
+                win.webContents.send('downloader:load-url', pendingDownloaderNotice);
+            }
+        } catch (error) {
+            console.warn('[DOWNLOADER] no-url notice send failed:', error?.message || error);
+        }
+    };
+    if (win.webContents.isLoading()) {
+        win.webContents.once('dom-ready', send);
+    } else {
+        setTimeout(send, 30);
+    }
+}
+
+function createTray() {
+    tray = new Tray(getTrayImage(false));
 
     updateTrayMenu({ isPlaying: false, currentTrack: 'Aurivo Media Player' });
 
@@ -4446,6 +4524,66 @@ function createTray() {
             }
         }
     });
+}
+
+function getTrayBaseImage() {
+    const trayIconName = process.platform === 'linux' ? 'aurivo_24.png' : 'aurivo_512.png';
+    const iconPath = getResourcePath(path.join('icons', trayIconName));
+    let trayIcon = nativeImage.createFromPath(iconPath);
+    if (process.platform === 'linux' && trayIcon && !trayIcon.isEmpty()) {
+        trayIcon = trayIcon.resize({ width: 24, height: 24 });
+    }
+    return trayIcon;
+}
+
+function blendTrayPixel(buffer, width, x, y, rgba) {
+    if (!buffer || x < 0 || y < 0 || x >= width) return;
+    const index = (y * width + x) * 4;
+    if (index < 0 || index + 3 >= buffer.length) return;
+    const alpha = Math.max(0, Math.min(255, Number(rgba.a ?? 255))) / 255;
+    const invAlpha = 1 - alpha;
+    const srcB = Math.max(0, Math.min(255, Number(rgba.b ?? 0)));
+    const srcG = Math.max(0, Math.min(255, Number(rgba.g ?? 0)));
+    const srcR = Math.max(0, Math.min(255, Number(rgba.r ?? 0)));
+    buffer[index] = Math.round(srcB * alpha + buffer[index] * invAlpha);
+    buffer[index + 1] = Math.round(srcG * alpha + buffer[index + 1] * invAlpha);
+    buffer[index + 2] = Math.round(srcR * alpha + buffer[index + 2] * invAlpha);
+    buffer[index + 3] = 255;
+}
+
+function createRecordingTrayImage(baseImage) {
+    if (!baseImage || baseImage.isEmpty()) return baseImage;
+    const { width, height } = baseImage.getSize();
+    if (!width || !height) return baseImage;
+    const bitmap = Buffer.from(baseImage.toBitmap());
+    const radius = Math.max(3, Math.round(Math.min(width, height) * 0.2));
+    const centerX = width - radius - Math.max(7, Math.round(width * 0.32));
+    const centerY = radius + Math.max(2, Math.round(height * 0.08));
+    const ringRadius = radius + 1;
+    for (let y = Math.max(0, centerY - ringRadius - 1); y <= Math.min(height - 1, centerY + ringRadius + 1); y += 1) {
+        for (let x = Math.max(0, centerX - ringRadius - 1); x <= Math.min(width - 1, centerX + ringRadius + 1); x += 1) {
+            const distance = Math.hypot(x - centerX, y - centerY);
+            if (distance <= radius) {
+                blendTrayPixel(bitmap, width, x, y, { r: 244, g: 49, b: 49, a: 255 });
+            } else if (distance <= ringRadius) {
+                blendTrayPixel(bitmap, width, x, y, { r: 255, g: 255, b: 255, a: 232 });
+            }
+        }
+    }
+    try {
+        return nativeImage.createFromBitmap(bitmap, { width, height, scaleFactor: 1 });
+    } catch (_error) {
+        return baseImage;
+    }
+}
+
+function getTrayImage(recordingActive = false) {
+    const key = `${process.platform}:${recordingActive ? 'recording' : 'idle'}`;
+    if (trayIconCache.has(key)) return trayIconCache.get(key);
+    const baseImage = getTrayBaseImage();
+    const finalImage = recordingActive ? createRecordingTrayImage(baseImage) : baseImage;
+    trayIconCache.set(key, finalImage);
+    return finalImage;
 }
 
 // ============================================
@@ -4479,10 +4617,10 @@ function createMPRIS() {
         const desktopEntry = desktopEntryCandidates.find((entry) => {
             const file = `${entry}.desktop`;
             const paths = [
-                pathJoinReviewed('/app/share/applications', file),
-                pathJoinReviewed('/usr/share/applications', file),
-                pathJoinReviewed('/usr/local/share/applications', file),
-                pathJoinReviewed(app.getPath('home'), '.local/share/applications', file)
+                path.join('/app/share/applications', file),
+                path.join('/usr/share/applications', file),
+                path.join('/usr/local/share/applications', file),
+                path.join(app.getPath('home'), '.local/share/applications', file)
             ];
             return paths.some((p) => fs.existsSync(p));
         }) || (flatpakAppId || 'aurivo');
@@ -4652,11 +4790,11 @@ function updateTrayMenu(state) {
     };
     lastTrayState = mergedState;
 
-    const { isPlaying = false, currentTrack = 'Aurivo Media Player', isMuted = false, stopAfterCurrent = false } = mergedState;
+    const { isPlaying = false, currentTrack = 'Aurivo Media Player', isMuted = false, stopAfterCurrent = false, recordingActive = false } = mergedState;
 
     // İkonları küçük ve tutarlı boyutta yükle
     const iconPath = (name) => {
-        const p = getResourcePath(pathJoinReviewed('icons', name));
+        const p = getResourcePath(path.join('icons', name));
         const img = nativeImage.createFromPath(p);
         if (!img || img.isEmpty()) return undefined;
         const menuIconSize = process.platform === 'linux' ? 18 : 16;
@@ -4751,6 +4889,10 @@ function updateTrayMenu(state) {
     ]);
 
     tray.setContextMenu(contextMenu);
+    const trayImage = getTrayImage(!!recordingActive);
+    if (trayImage && !trayImage.isEmpty()) {
+        tray.setImage(trayImage);
+    }
 }
 
 // ============================================
@@ -4779,7 +4921,7 @@ function getSoundEffectsWindowTitle(scope) {
 
 function createSoundEffectsWindow(rawScope = 'music') {
     const scope = normalizeSoundEffectsScope(rawScope);
-    const htmlPath = pathJoinReviewed(__dirname, 'soundEffects.html');
+    const htmlPath = path.join(__dirname, 'soundEffects.html');
 
     // Pencere zaten açıksa, önne getir
     if (soundEffectsWindow && !soundEffectsWindow.isDestroyed()) {
@@ -4806,7 +4948,7 @@ function createSoundEffectsWindow(rawScope = 'music') {
         parent: null, // Bağımsız pencere (ana pencereden ayrı)
         modal: false,
         webPreferences: {
-            preload: pathJoinReviewed(__dirname, 'preload.js'),
+            preload: path.join(__dirname, 'preload.js'),
             nodeIntegration: false,
             contextIsolation: true,
             // sandbox: false gerekli — preload.js Node.js require() kullanıyor.
@@ -4872,7 +5014,7 @@ function createEQPresetsWindow() {
         modal: false,
         autoHideMenuBar: true,
         webPreferences: {
-            preload: pathJoinReviewed(__dirname, 'preload.js'),
+            preload: path.join(__dirname, 'preload.js'),
             nodeIntegration: false,
             contextIsolation: true,
             // sandbox: false gerekli — preload.js Node.js require() kullanıyor.
@@ -4898,7 +5040,7 @@ function createEQPresetsWindow() {
         eqPresetsWindow.setIcon(getAppIconImage());
     }
 
-    const htmlPath = pathJoinReviewed(__dirname, 'eqPresets.html');
+    const htmlPath = path.join(__dirname, 'eqPresets.html');
     console.log('[createEQPresetsWindow] HTML dosyası yükleniyor:', htmlPath);
 
     eqPresetsWindow.loadFile(htmlPath)
@@ -4970,12 +5112,13 @@ ipcMain.handle('soundEffects:applyInMainWindow', async (_event, script) => {
     }
 });
 
-ipcMain.handle('soundEffects:getWebSpectrum', async (_event, numBands) => {
+ipcMain.handle('soundEffects:getWebSpectrum', async (_event, numBands, options = {}) => {
     try {
         if (!mainWindow || mainWindow.isDestroyed()) return [];
         const safeBands = Math.max(64, Math.min(512, Number(numBands) || 128));
+        const rawSpectrum = !!(options && typeof options === 'object' && (options.raw === true || options.pure === true));
         const result = await mainWindow.webContents.executeJavaScript(
-            `window.__aurivoGetWebSpectrum ? window.__aurivoGetWebSpectrum(${safeBands}) : []`,
+            `window.__aurivoGetWebSpectrum ? window.__aurivoGetWebSpectrum(${safeBands}, { raw: ${rawSpectrum ? 'true' : 'false'} }) : []`,
             true
         );
         return Array.isArray(result) ? result : [];
@@ -5202,6 +5345,34 @@ function buildVisualizerVideoPcmFallback(framesPerChannel) {
     return { channels, countPerChannel, data: floatArray };
 }
 
+function applyVisualizerPcmVisualGain(floatArray, floatCount) {
+    if (!(floatArray instanceof Float32Array) || floatCount <= 0) return floatArray;
+
+    let peak = 0;
+    let sumSq = 0;
+    for (let i = 0; i < floatCount; i++) {
+        const v = Number(floatArray[i]) || 0;
+        const abs = Math.abs(v);
+        if (abs > peak) peak = abs;
+        sumSq += v * v;
+    }
+    if (peak <= 0) return floatArray;
+
+    const rms = Math.sqrt(sumSq / Math.max(1, floatCount));
+    const targetPeak = 0.72;
+    const targetRms = 0.18;
+    const peakGain = targetPeak / Math.max(peak, 1e-6);
+    const rmsGain = targetRms / Math.max(rms, 1e-6);
+    const gain = Math.max(1, Math.min(8, Math.min(peakGain, rmsGain)));
+    if (gain <= 1.02) return floatArray;
+
+    const out = new Float32Array(floatCount);
+    for (let i = 0; i < floatCount; i++) {
+        out[i] = Math.tanh((Number(floatArray[i]) || 0) * gain);
+    }
+    return out;
+}
+
 function stopVisualizerFeed() {
     if (visualizerFeedTimer) {
         clearTimeout(visualizerFeedTimer);
@@ -5282,6 +5453,7 @@ function startVisualizerFeed() {
                             if (floatCount !== floatArray.length) {
                                 floatArray = floatArray.subarray(0, floatCount);
                             }
+                            floatArray = applyVisualizerPcmVisualGain(floatArray, floatCount);
 
                             // Protokol v2: [u32 channels][u32 countPerChannel][float32 * (channels*countPerChannel)]
                             const header = Buffer.allocUnsafe(8);
@@ -5363,11 +5535,11 @@ function getProjectMPresetsPath() {
 
     if (app.isPackaged) {
         // Tercih edilen paket yolu (extraResources ile açıkça eşlenmiş)
-        candidates.push(pathJoinReviewed(process.resourcesPath, 'visualizer-presets'));
+        candidates.push(path.join(process.resourcesPath, 'visualizer-presets'));
         // Yedek: third_party tamamen taşınmışsa
-        candidates.push(pathJoinReviewed(process.resourcesPath, 'third_party', 'projectm', 'presets'));
+        candidates.push(path.join(process.resourcesPath, 'third_party', 'projectm', 'presets'));
     } else {
-        candidates.push(getResourcePath(pathJoinReviewed('third_party', 'projectm', 'presets')));
+        candidates.push(getResourcePath(path.join('third_party', 'projectm', 'presets')));
     }
 
     return pickFirstExistingPath(candidates);
@@ -5381,10 +5553,10 @@ function getVisualizerExecutableCandidates() {
 
     // Paketlenmiş (Windows): native-dist tercih edilir; gerekirse taşınmış third_party'ye düş (binary içeriyorsa)
     if (app.isPackaged && process.platform === 'win32') {
-        out.push(pathJoinReviewed(process.resourcesPath, 'native-dist', 'aurivo-projectm-visualizer.exe'));
-        out.push(pathJoinReviewed(process.resourcesPath, 'native-dist', 'windows', 'aurivo-projectm-visualizer.exe'));
-        out.push(pathJoinReviewed(process.resourcesPath, 'third_party', 'projectm', 'aurivo-projectm-visualizer.exe'));
-        out.push(pathJoinReviewed(process.resourcesPath, 'third_party', 'projectm', 'bin', 'aurivo-projectm-visualizer.exe'));
+        out.push(path.join(process.resourcesPath, 'native-dist', 'aurivo-projectm-visualizer.exe'));
+        out.push(path.join(process.resourcesPath, 'native-dist', 'windows', 'aurivo-projectm-visualizer.exe'));
+        out.push(path.join(process.resourcesPath, 'third_party', 'projectm', 'aurivo-projectm-visualizer.exe'));
+        out.push(path.join(process.resourcesPath, 'third_party', 'projectm', 'bin', 'aurivo-projectm-visualizer.exe'));
         return out;
     }
 
@@ -5394,17 +5566,17 @@ function getVisualizerExecutableCandidates() {
 
     // Paketlenmiş (Linux/Mac): resources/native-dist (extraResources)
     if (app.isPackaged) {
-        out.push(pathJoinReviewed(process.resourcesPath, 'native-dist', exeName));
-        out.push(pathJoinReviewed(process.resourcesPath, 'native-dist', platformSubdir, exeName));
+        out.push(path.join(process.resourcesPath, 'native-dist', exeName));
+        out.push(path.join(process.resourcesPath, 'native-dist', platformSubdir, exeName));
         // third_party taşınmış ve binary içeriyorsa isteğe bağlı yedek
-        out.push(pathJoinReviewed(process.resourcesPath, 'third_party', 'projectm', exeName));
-        out.push(pathJoinReviewed(process.resourcesPath, 'third_party', 'projectm', 'bin', exeName));
+        out.push(path.join(process.resourcesPath, 'third_party', 'projectm', exeName));
+        out.push(path.join(process.resourcesPath, 'third_party', 'projectm', 'bin', exeName));
         return out;
     }
 
     // Dev: mevcut davranışı koru (distPath + build-visualizer adayları aşağıda)
-    out.push(getResourcePath(pathJoinReviewed('native-dist', exeName)));
-    out.push(getResourcePath(pathJoinReviewed('native-dist', platformSubdir, exeName)));
+    out.push(getResourcePath(path.join('native-dist', exeName)));
+    out.push(getResourcePath(path.join('native-dist', platformSubdir, exeName)));
     return out;
 }
 
@@ -5420,11 +5592,11 @@ function getVisualizerExecutablePath() {
     // Geliştirici kolaylığı: varsa yeni CMake çıktısını tercih et.
     const devCandidates = process.platform === 'win32'
         ? [
-            pathJoinReviewed(__dirname, 'build-visualizer', 'Release', exeName),
-            pathJoinReviewed(__dirname, 'build-visualizer', exeName)
+            path.join(__dirname, 'build-visualizer', 'Release', exeName),
+            path.join(__dirname, 'build-visualizer', exeName)
         ]
         : [
-            pathJoinReviewed(__dirname, 'build-visualizer', exeName)
+            path.join(__dirname, 'build-visualizer', exeName)
         ];
 
     // Geliştirici kolaylığı: varsa yeni CMake çıktısını tercih et.
@@ -5460,7 +5632,7 @@ function validateVisualizerBinaryForCurrentRuntime(exePath) {
     }
 
     try {
-        const check = spawnSyncReviewed('ldd', [exePath], {
+        const check = spawnSync('ldd', [exePath], {
             encoding: 'utf8',
             timeout: 3000,
             env: { ...process.env }
@@ -5487,8 +5659,8 @@ function startVisualizer() {
     const exePath = getVisualizerExecutablePath();
 
     const presetsCandidates = [
-        pathJoinReviewed(process.resourcesPath || '', 'visualizer-presets'),
-        pathJoinReviewed(process.resourcesPath || '', 'third_party', 'projectm', 'presets'),
+        path.join(process.resourcesPath || '', 'visualizer-presets'),
+        path.join(process.resourcesPath || '', 'third_party', 'projectm', 'presets'),
         getProjectMPresetsPath()
     ].filter(Boolean);
     const presetsPath = pickFirstExistingPath(presetsCandidates);
@@ -5562,8 +5734,8 @@ function startVisualizer() {
     }
 
     const visualizerIconCandidates = [
-        getResourcePath(pathJoinReviewed('icons', 'aurivo_512.png')),
-        pathJoinReviewed(process.resourcesPath || '', 'icons', 'aurivo_512.png'),
+        getResourcePath(path.join('icons', 'aurivo_512.png')),
+        path.join(process.resourcesPath || '', 'icons', 'aurivo_512.png'),
         '/app/share/icons/hicolor/512x512/apps/com.aurivo.mediaplayer.png'
     ].filter(Boolean);
     const visualizerIconPath = visualizerIconCandidates.find((p) => {
@@ -5583,9 +5755,9 @@ function startVisualizer() {
     const visualizerFontCandidates = [
         // Flatpak: native binary icin asar disi okunabilir font
         '/app/aurivo/resources/native-dist/linux/fonts/Inter-Regular.ttf',
-        pathJoinReviewed(process.resourcesPath || '', 'native-dist', 'linux', 'fonts', 'Inter-Regular.ttf'),
+        path.join(process.resourcesPath || '', 'native-dist', 'linux', 'fonts', 'Inter-Regular.ttf'),
         // Gelistirme ortami
-        pathJoinReviewed(__dirname, 'assets', 'fonts', 'Inter-Regular.ttf')
+        path.join(__dirname, 'assets', 'fonts', 'Inter-Regular.ttf')
     ].filter(Boolean);
     const visualizerFontPath = visualizerFontCandidates.find((p) => {
         if (!p || p.includes('.asar/')) return false;
@@ -5690,7 +5862,7 @@ function startVisualizer() {
             actualArgs = ['-c', `exec -a ${shellQuote(desktopId)} ${shellQuote(exePath)} "$@"`, '--', '--presets', presetsPath];
         }
 
-        visualizerProc = spawnReviewed(actualExe, actualArgs, {
+        visualizerProc = spawn(actualExe, actualArgs, {
             env,
             stdio: ['pipe', 'inherit', 'inherit'], // Hata ayıklama için stdout/stderr her zaman inherit
             detached: true // Electron GL context çakışmalarını önlemek için ayrı process grubunda çalıştır
@@ -5703,7 +5875,7 @@ function startVisualizer() {
         startVisualizerFeed();
 
         visualizerProc.on('exit', (code, signal) => {
-            console.log('[Visualizer] kapandı:', { code, signal });
+            console.log(`[Visualizer] kapandı (code=${code}, signal=${signal})`);
             stopVisualizerFeed();
             visualizerProc = null;
         });
@@ -5969,10 +6141,10 @@ function installWebviewHardening() {
             const normalizedPath = process.platform === 'win32' && /^\/[A-Za-z]:/.test(decodedPath)
                 ? decodedPath.slice(1)
                 : decodedPath;
-            const absPath = pathResolveReviewed(normalizedPath);
+            const absPath = path.resolve(normalizedPath);
             const appRoots = [
-                pathResolveReviewed(__dirname),
-                pathResolveReviewed(app?.getAppPath?.() || '')
+                path.resolve(__dirname),
+                path.resolve(app?.getAppPath?.() || '')
             ].filter(Boolean);
             return appRoots.some((root) => absPath === root || absPath.startsWith(`${root}${path.sep}`));
         } catch {
@@ -6147,28 +6319,11 @@ app.whenReady().then(async () => {
     cleanupTransientHomeFiles('startup');
 
     try { installWebviewHardening(); } catch (e) { console.error('[APP] installWebviewHardening error:', e); }
+    try { installAdblockRequestBlocking(); } catch (e) { console.error('[APP] installAdblockRequestBlocking error:', e); }
     try { installTlsCompatibilityForWebPlatforms(); } catch (e) { console.error('[APP] installTlsCompatibilityForWebPlatforms error:', e); }
     try { initAutoUpdaterBridge(); } catch (e) { console.error('[APP] initAutoUpdaterBridge error:', e); }
     try { installAppMenu(); } catch (e) { console.error('[APP] installAppMenu error:', e); }
-    try { registerDawlodIpc({ ipcMain, app, dialog, shell, BrowserWindow, getMainWindow: () => mainWindow }); } catch (e) { console.error('[APP] registerDawlodIpc error:', e); }
-    try {
-        const useAdblockExtension = shouldUseAdblockExtensionOnThisRuntime();
-        if (!useAdblockExtension) {
-            console.log('[AdBlocker] packaged Linux safe mode -> built-in filtering (extension disabled)');
-        }
-        await initAdBlocker(session, {
-            app,
-            webviewPartition: WEBVIEW_PARTITION,
-            includeDefaultSession: true,
-            preferUbol: true,
-            enabled: true,
-            useExtension: useAdblockExtension
-        });
-    } catch (e) {
-        console.error('[APP] initAdBlocker error:', e);
-    }
-    try { scheduleAdblockConfigBackgroundSync(WEBVIEW_PARTITION); } catch (e) { console.error('[APP] scheduleAdblockConfigBackgroundSync error:', e); }
-    try { startPulseBridgeServer(); } catch (e) { console.error('[APP] startPulseBridgeServer error:', e); }
+    try { registerPulseIpc({ ipcMain, app, shell, BrowserWindow, getMainWindow: () => mainWindow }); } catch (e) { console.error('[APP] registerPulseIpc error:', e); }
     try { createWindow(); } catch (e) { console.error('[APP] createWindow error:', e); }
     try { createTray(); } catch (e) { console.error('[APP] createTray error:', e); }
     try { createMPRIS(); } catch (e) { console.error('[APP] createMPRIS error:', e); }
@@ -6201,10 +6356,7 @@ app.on('window-all-closed', () => {
 
 app.on('before-quit', () => {
     clearStartupUpdateRetryTimer();
-    stopPulseBridgeServer();
     stopVisualizer();
-    stopAurivoPulseListening();
-    stopAurivoPulseGuiWindow();
     unregisterGlobalMediaShortcuts();
     unregisterGlobalStudioShortcuts();
     cleanupTransientHomeFiles('before-quit');
@@ -6213,236 +6365,6 @@ app.on('before-quit', () => {
 // ============================================
 // IPC HANDLERS
 // ============================================
-
-ipcMain.handle('pulse:openWindow', async () => {
-    await migrateLegacyAurivoPulsePerformancePrefsIfNeeded();
-    const launch = resolveAurivoPulseGuiLaunch();
-    if (!launch?.command) {
-        throw new Error('Aurivo-Pulse GUI çalıştırılabilir dosyası bulunamadı');
-    }
-    const nextUiLang = getUiLanguageSync();
-
-    if (aurivoPulseGuiProc && !aurivoPulseGuiProc.killed) {
-        if (aurivoPulseGuiLang === nextUiLang) {
-            emitPulseGuiWindowState(true);
-            return { success: true, source: 'existing-gui-process', command: launch.command };
-        }
-        stopAurivoPulseGuiWindow();
-    }
-    const attempts = [];
-    const seenAttempt = new Set();
-    const pushAttempt = (candidate) => {
-        if (!candidate?.command) return;
-        const command = String(candidate.command || '').trim();
-        if (!command) return;
-        const args = Array.isArray(candidate.args) ? candidate.args : [];
-        const cwd = resolveSafePulseCwd(candidate.cwd || '');
-        const key = `${command}__${cwd}__${args.join(' ')}`;
-        if (seenAttempt.has(key)) return;
-        seenAttempt.add(key);
-        attempts.push({
-            command,
-            args,
-            cwd,
-            source: candidate.source || launch.source || 'unknown'
-        });
-    };
-
-    pushAttempt(launch);
-
-    const platformSubdir = process.platform === 'win32' ? 'windows' : (process.platform === 'linux' ? 'linux' : process.platform);
-    const extraBins = [
-        pathJoinReviewed(process.resourcesPath || '', 'native-dist', platformSubdir, process.platform === 'win32' ? 'aurivo-pulse.exe' : 'aurivo-pulse'),
-        pathJoinReviewed(process.resourcesPath || '', 'native-dist', process.platform === 'win32' ? 'aurivo-pulse.exe' : 'aurivo-pulse'),
-        pathJoinReviewed(__dirname, 'native-dist', platformSubdir, process.platform === 'win32' ? 'aurivo-pulse.exe' : 'aurivo-pulse'),
-        pathJoinReviewed(__dirname, 'native-dist', process.platform === 'win32' ? 'aurivo-pulse.exe' : 'aurivo-pulse'),
-        findExecutable(process.platform === 'win32' ? 'aurivo-pulse.exe' : 'aurivo-pulse', ['/usr/bin', '/usr/local/bin', '/bin']),
-        findExecutable(process.platform === 'win32' ? 'songrec.exe' : 'songrec', ['/usr/bin', '/usr/local/bin', '/bin'])
-    ].filter(Boolean);
-
-    for (const candidateCmd of extraBins) {
-        if (candidateCmd.includes(path.sep) && !isSpawnableBinary(candidateCmd)) continue;
-        pushAttempt({
-            command: candidateCmd,
-            args: ['gui'],
-            cwd: resolveSafePulseCwd(''),
-            source: 'pulse-fallback'
-        });
-    }
-
-    let lastError = '';
-    for (const attempt of attempts) {
-        let child = null;
-        let startupStderr = '';
-        try {
-            let actualCmd = attempt.command;
-            let actualArgs = attempt.args || [];
-
-            // [KDE / Wayland Fix] KWin'in pencere açılır açılmaz anında gruplama yapabilmesi için
-            // process'in argv[0]'ını zorla desktop ID'si ile başlatıyoruz (bash exec -a kullanarak).
-            if (process.platform === 'linux') {
-                const desktopId = process.env.FLATPAK_ID || 'com.aurivo.mediaplayer';
-                actualCmd = 'bash';
-                actualArgs = ['-c', `exec -a ${shellQuote(desktopId)} ${shellQuote(attempt.command)} "$@"`, '--', ...(attempt.args || [])];
-            }
-
-            child = spawnReviewed(actualCmd, actualArgs, {
-                cwd: attempt.cwd,
-                env: buildPulseGuiEnv(),
-                detached: false,
-                stdio: ['ignore', 'pipe', 'pipe']
-            });
-        } catch (spawnError) {
-            lastError = `spawn ${attempt.command} failed: ${spawnError?.message || spawnError}`;
-            continue;
-        }
-
-        aurivoPulseGuiProc = child;
-        aurivoPulseGuiLang = nextUiLang;
-        emitPulseGuiWindowState(true);
-        child.stderr?.on('data', (chunk) => {
-            startupStderr += String(chunk || '');
-            if (startupStderr.length > 4000) {
-                startupStderr = startupStderr.slice(-4000);
-            }
-        });
-        child.stdout?.on('data', () => { /* başlangıçta sadece alive kontrolü için pipe açık */ });
-
-        const startupResult = await new Promise((resolve) => {
-            let settled = false;
-            const settle = (payload) => {
-                if (settled) return;
-                settled = true;
-                resolve(payload);
-            };
-            const timer = setTimeout(() => settle({ ok: true }), 1400);
-            child.once('error', (err) => {
-                clearTimeout(timer);
-                settle({ ok: false, error: err?.message || String(err || 'spawn error') });
-            });
-            child.once('close', (code) => {
-                clearTimeout(timer);
-                settle({
-                    ok: false,
-                    error: `Aurivo-Pulse erken kapandı (exit code ${code ?? 'unknown'})`
-                });
-            });
-        });
-
-        if (!startupResult?.ok) {
-            if (aurivoPulseGuiProc === child) {
-                aurivoPulseGuiProc = null;
-                aurivoPulseGuiLang = '';
-                emitPulseGuiWindowState(false);
-            }
-            const stderrShort = String(startupStderr || '').trim();
-            const extra = stderrShort ? ` | stderr: ${stderrShort.split('\n').slice(-2).join(' ')}` : '';
-            lastError = `${startupResult?.error || 'Aurivo-Pulse GUI başlatılamadı'}${extra}`;
-            continue;
-        }
-
-        child.once('close', () => {
-            if (aurivoPulseGuiProc === child) {
-                aurivoPulseGuiProc = null;
-                aurivoPulseGuiLang = '';
-                emitPulseGuiWindowState(false);
-            }
-        });
-        child.once('error', () => {
-            if (aurivoPulseGuiProc === child) {
-                aurivoPulseGuiProc = null;
-                aurivoPulseGuiLang = '';
-                emitPulseGuiWindowState(false);
-            }
-        });
-
-        // Linux'ta ayrı uygulama gibi görünmeyi azaltmak için pencere hintlerini uygula.
-        applyPulseLinuxWindowHints(child.pid);
-        return { success: true, source: attempt.source, command: attempt.command };
-    }
-
-    const fallback = startAurivoPulseListening({
-        backgroundMode: true,
-        profile: 'background'
-    });
-    if (fallback?.success) {
-        return {
-            success: true,
-            source: 'aurivo-pulse-cli-fallback',
-            command: fallback.command || '',
-            degraded: true
-        };
-    }
-
-    throw new Error(lastError || 'Aurivo-Pulse GUI başlatılamadı');
-});
-
-ipcMain.handle('pulse:getWindowState', async () => {
-    const guiOpen = !!(aurivoPulseGuiProc && !aurivoPulseGuiProc.killed);
-    const listenOpen = !!aurivoPulseStatus?.running;
-    return {
-        open: guiOpen || listenOpen,
-        mode: guiOpen ? 'gui' : (listenOpen ? 'listen' : 'none')
-    };
-});
-
-ipcMain.handle('pulse:listDevices', async () => {
-    return await listAurivoPulseDevices();
-});
-
-ipcMain.handle('pulse:getStatus', async () => {
-    return { success: true, status: { ...aurivoPulseStatus } };
-});
-
-ipcMain.handle('pulse:getPreferredDevice', async () => {
-    return getAurivoPulsePreferredDevice();
-});
-
-ipcMain.handle('pulse:getPreferences', async () => {
-    return readAurivoPulsePreferences();
-});
-
-ipcMain.handle('pulse:savePreferences', async (_event, update) => {
-    try {
-        return await saveAurivoPulsePreferences(update);
-    } catch (error) {
-        console.error('[PULSE] save preferences error:', error);
-        return { success: false, error: error?.message || String(error) };
-    }
-});
-
-ipcMain.handle('pulse:startListening', async (_event, options) => {
-    const next = (options && typeof options === 'object') ? { ...options } : {};
-    const chosenDevice = String(next.audioDevice || '').trim();
-    if (!chosenDevice) {
-        try {
-            const pref = await getAurivoPulsePreferredDevice();
-            const prefId = String(pref?.audioDevice || '').trim();
-            if (prefId) {
-                next.audioDevice = prefId;
-                console.log('[PULSE] startListening auto device: preferred', prefId);
-            } else {
-                const listed = await listAurivoPulseDevices();
-                const autoPick = pickPreferredMonitorDeviceId(listed?.devices || []);
-                if (autoPick) {
-                    next.audioDevice = autoPick;
-                    console.log('[PULSE] startListening auto device: monitor', autoPick);
-                }
-            }
-        } catch (e) {
-            console.warn('[PULSE] auto monitor pick failed:', e?.message || e);
-        }
-    }
-    return startAurivoPulseListening(next);
-});
-
-ipcMain.handle('pulse:stopListening', async () => {
-    return stopAurivoPulseListening();
-});
-
-ipcMain.handle('pulse:recognizeSample', async (_event, options) => {
-    return captureMonitorSampleAndRecognizeWithPulse(options || {});
-});
 
 // Dosya/Klasör Seçimi
 ipcMain.handle('dialog:openFile', async () => {
@@ -6590,7 +6512,7 @@ ipcMain.handle('screenRecording:getFfmpegCapabilities', async () => {
     return new Promise((resolve) => {
         let output = '';
         let settled = false;
-        const child = spawnReviewed(ffmpegPath, ['-hide_banner', '-encoders'], { windowsHide: true });
+        const child = spawn(ffmpegPath, ['-hide_banner', '-encoders'], { windowsHide: true });
         const finish = (payload) => resolve({
             ffmpegPath,
             formats: ['webm', 'mkv', 'mp4'],
@@ -6682,8 +6604,8 @@ ipcMain.handle('screenRecording:startSystemAudio', async () => {
         const audioDevice = await pickDefaultOutputMonitorDeviceId();
         if (!audioDevice) return { success: false, error: 'monitor-not-found' };
         const ffmpegPath = getFfmpegPathForEnv();
-        const outPath = pathJoinReviewed(app.getPath('temp'), `aurivo-screen-system-audio-${Date.now()}.wav`);
-        const child = spawnReviewed(ffmpegPath, [
+        const outPath = path.join(app.getPath('temp'), `aurivo-screen-system-audio-${Date.now()}.wav`);
+        const child = spawn(ffmpegPath, [
             '-y',
             '-f', 'pulse',
             '-i', audioDevice,
@@ -6692,7 +6614,7 @@ ipcMain.handle('screenRecording:startSystemAudio', async () => {
             '-vn',
             outPath
         ], {
-            env: buildPulseRuntimeEnv({ AURIVO_PULSE_NO_GUI: '1' }),
+            env: process.env,
             windowsHide: true
         });
         screenRecordingSystemAudioProc = child;
@@ -6746,7 +6668,7 @@ ipcMain.handle('screenRecording:muxSystemAudio', async (_event, videoPath, audio
     const ffmpegPath = getFfmpegPathForEnv();
     const result = await new Promise((resolve) => {
         let err = '';
-        const child = spawnReviewed(ffmpegPath, [
+        const child = spawn(ffmpegPath, [
             '-y',
             '-i', video,
             '-i', audio,
@@ -6845,7 +6767,7 @@ ipcMain.handle('screenRecording:finalizeRecording', async (_event, inputPath, ou
     }
     const result = await new Promise((resolve) => {
         let err = '';
-        const child = spawnReviewed(ffmpegPath, args, { windowsHide: true });
+        const child = spawn(ffmpegPath, args, { windowsHide: true });
         child.stderr.on('data', (chunk) => { err += String(chunk || ''); });
         child.once('error', (error) => resolve({ success: false, error: error?.message || String(error) }));
         child.once('close', (code) => {
@@ -6907,7 +6829,7 @@ ipcMain.handle('screenRecording:repairRecording', async (_event, inputPath, outp
     };
     const runFfmpeg = (args) => new Promise((resolve) => {
         let err = '';
-        const child = spawnReviewed(ffmpegPath, args, { windowsHide: true });
+        const child = spawn(ffmpegPath, args, { windowsHide: true });
         child.stderr.on('data', (chunk) => { err += String(chunk || ''); });
         child.once('error', (error) => resolve({ success: false, error: error?.message || String(error) }));
         child.once('close', (code) => {
@@ -6955,7 +6877,7 @@ ipcMain.handle('screenRecording:validateRecording', async (_event, filePath, opt
     const probe = await new Promise((resolve) => {
         let stdout = '';
         let stderr = '';
-        const child = spawnReviewed(ffprobePath, [
+        const child = spawn(ffprobePath, [
             '-v', 'error',
             '-print_format', 'json',
             '-show_format',
@@ -7102,7 +7024,7 @@ ipcMain.handle('screenRecording:startLiveOutput', async (_event, options = {}) =
         target
     ];
     try {
-        const proc = spawnReviewed(ffmpegPath, args, { windowsHide: true });
+        const proc = spawn(ffmpegPath, args, { windowsHide: true });
         const live = { id, kind, target, proc, startedAt: Date.now(), lastError: '' };
         screenRecordingLiveOutputs.set(id, live);
         proc.stderr.on('data', (chunk) => {
@@ -7291,1129 +7213,7 @@ ipcMain.handle('web:importCookies', async (_event, filePath) => {
     }
 });
 
-// ─── Ad Blocker IPC ────────────────────────────────────────────────────
-ipcMain.handle('adblock:getStats', () => {
-    try { return getAdBlockerStats(); } catch { return null; }
-});
 
-ipcMain.handle('adblock:allowDomain', (_event, domain) => {
-    try { allowDomain(domain); return true; } catch { return false; }
-});
-
-ipcMain.handle('adblock:getConfig', () => {
-    try { return getAdBlockerConfig(); } catch { return null; }
-});
-
-ipcMain.handle('adblock:setConfig', (_event, config) => {
-    try {
-        const next = setAdBlockerConfig(config || {});
-        if (adblockDashboardWindow && !adblockDashboardWindow.isDestroyed()) {
-            syncAdblockConfigToDashboard(adblockDashboardWindow).catch(() => {});
-            ensureAdblockDefaultFilteringDetails(adblockDashboardWindow).catch(() => {});
-        } else {
-            scheduleAdblockConfigBackgroundSync();
-        }
-        return next;
-    } catch { return null; }
-});
-
-function mapUiLangToAdblockLocale(uiLang = '') {
-    const normalized = normalizeUiLang(uiLang) || 'en-US';
-    const lower = normalized.toLowerCase();
-    if (lower.startsWith('pt-br')) return 'pt_BR';
-    if (lower.startsWith('zh-cn')) return 'zh_CN';
-    if (lower.startsWith('zh-tw')) return 'zh_TW';
-    const base = lower.split('-')[0];
-    return base || 'en';
-}
-
-function getAdblockSavedToastText(uiLang = '') {
-    const normalized = normalizeUiLang(uiLang) || 'en-US';
-    const base = String(normalized).split('-')[0].toLowerCase();
-    if (base === 'tr') return 'Kaydedildi';
-    if (base === 'ar') return 'تم الحفظ';
-    if (base === 'fr') return 'Enregistre';
-    if (base === 'es') return 'Guardado';
-    if (base === 'de') return 'Gespeichert';
-    if (base === 'ru') return 'Сохранено';
-    if (base === 'zh') return '已保存';
-    return 'Saved';
-}
-
-function mapAdblockModeToUbolLevel(mode = '') {
-    const normalized = String(mode || '').trim().toLowerCase();
-    if (normalized === 'basic') return 1;
-    if (normalized === 'aggressive') return 3;
-    return 2;
-}
-
-function mapUbolLevelToAdblockMode(level) {
-    const n = Number(level);
-    if (n === 1) return 'basic';
-    if (n === 3) return 'aggressive';
-    return 'ideal';
-}
-
-async function updateAdblockSettingsInFile(patch = {}) {
-    try {
-        let current = {};
-        try {
-            const data = await fs.promises.readFile(getSettingsPath(), 'utf8');
-            current = JSON.parse(data);
-        } catch {
-            current = {};
-        }
-
-        const next = { ...(current || {}) };
-        next.adblock = { ...(next.adblock || {}) };
-        assignSafeOwnKeys(next.adblock, patch || {});
-
-        const sanitized = sanitizeSensitiveSettings(next);
-        await writeJsonFileAtomic(getSettingsPath(), sanitized);
-
-        for (const targetWindow of [mainWindow, settingsWindow, soundEffectsWindow]) {
-            if (!targetWindow || targetWindow.isDestroyed()) continue;
-            try {
-                targetWindow.webContents.send('settings:reloaded', sanitized);
-            } catch {
-                // yoksay
-            }
-        }
-
-        return sanitized;
-    } catch (e) {
-        console.error('[ADBLOCK] settings file update error:', e);
-        return null;
-    }
-}
-
-async function readAdblockStateFromDashboard(win) {
-    try {
-        if (!win || win.isDestroyed()) {
-            return {
-                mode: '',
-                autoReload: undefined,
-                showBlockedCount: undefined,
-                strictBlock: undefined,
-                developerMode: undefined,
-            };
-        }
-        const state = await win.webContents.executeJavaScript(`
-            (async () => {
-                const out = {};
-                try {
-                    const normalize = (v) => {
-                        const n = Number(v);
-                        if (n === 1) return 'basic';
-                        if (n === 3) return 'aggressive';
-                        return 'ideal';
-                    };
-
-                    try {
-                        const options = await chrome.runtime.sendMessage({ what: 'getOptionsPageData' });
-                        if (options && typeof options === 'object') {
-                            if (typeof options.defaultFilteringMode !== 'undefined') {
-                                out.mode = normalize(options.defaultFilteringMode);
-                            }
-                            if (typeof options.autoReload === 'boolean') {
-                                out.autoReload = options.autoReload;
-                            }
-                            if (typeof options.showBlockedCount === 'boolean') {
-                                out.showBlockedCount = options.showBlockedCount;
-                            }
-                            if (typeof options.strictBlockMode === 'boolean') {
-                                out.strictBlock = options.strictBlockMode;
-                            }
-                            if (typeof options.developerMode === 'boolean') {
-                                out.developerMode = options.developerMode;
-                            }
-                        }
-                    } catch {}
-
-                    try {
-                        const levelRes = await chrome.runtime.sendMessage({ what: 'getDefaultFilteringMode' });
-                        if (typeof levelRes === 'number') out.mode = normalize(levelRes);
-                        if (levelRes && typeof levelRes === 'object' && typeof levelRes.level !== 'undefined') {
-                            out.mode = normalize(levelRes.level);
-                        }
-                    } catch {}
-
-                    try {
-                        const modes = await chrome.runtime.sendMessage({ what: 'getFilteringModeDetails' });
-                        if (modes && typeof modes === 'object') {
-                            const hasAll = (arr) => Array.isArray(arr) && arr.includes('all-urls');
-                            if (hasAll(modes.complete)) out.mode = 'aggressive';
-                            else if (hasAll(modes.basic)) out.mode = 'basic';
-                            else out.mode = 'ideal';
-                        }
-                    } catch {}
-                } catch {}
-                return out;
-            })();
-        `, true);
-
-        const next = (state && typeof state === 'object') ? state : {};
-        const normalizedMode = String(next.mode || '').trim().toLowerCase();
-        return {
-            mode: (normalizedMode === 'basic' || normalizedMode === 'ideal' || normalizedMode === 'aggressive')
-                ? normalizedMode
-                : '',
-            autoReload: typeof next.autoReload === 'boolean' ? next.autoReload : undefined,
-            showBlockedCount: typeof next.showBlockedCount === 'boolean' ? next.showBlockedCount : undefined,
-            strictBlock: typeof next.strictBlock === 'boolean' ? next.strictBlock : undefined,
-            developerMode: typeof next.developerMode === 'boolean' ? next.developerMode : undefined,
-        };
-    } catch {
-        return {
-            mode: '',
-            autoReload: undefined,
-            showBlockedCount: undefined,
-            strictBlock: undefined,
-            developerMode: undefined,
-        };
-    }
-}
-
-async function syncAdblockStateFromDashboardToApp(win) {
-    const dashboardState = await readAdblockStateFromDashboard(win);
-    if (!dashboardState || typeof dashboardState !== 'object') return false;
-
-    const currentCfg = getAdBlockerConfig?.() || {};
-    const currentMode = String(currentCfg.mode || '').trim().toLowerCase();
-    const patch = {};
-
-    if (dashboardState.mode && currentMode !== dashboardState.mode) {
-        patch.mode = dashboardState.mode;
-    }
-    if (typeof dashboardState.autoReload === 'boolean' && !!currentCfg.autoReload !== dashboardState.autoReload) {
-        patch.autoReload = dashboardState.autoReload;
-    }
-    if (typeof dashboardState.showBlockedCount === 'boolean' && !!currentCfg.showBlockedCount !== dashboardState.showBlockedCount) {
-        patch.showBlockedCount = dashboardState.showBlockedCount;
-    }
-    if (typeof dashboardState.strictBlock === 'boolean' && !!currentCfg.strictBlock !== dashboardState.strictBlock) {
-        patch.strictBlock = dashboardState.strictBlock;
-    }
-    if (typeof dashboardState.developerMode === 'boolean' && !!currentCfg.developerMode !== dashboardState.developerMode) {
-        patch.developerMode = dashboardState.developerMode;
-    }
-
-    if (Object.keys(patch).length === 0) return true;
-
-    const updatedCfg = setAdBlockerConfig(patch) || {};
-    await updateAdblockSettingsInFile({
-        mode: String(updatedCfg.mode || dashboardState.mode || currentMode || 'ideal'),
-        showBlockedCount: !!updatedCfg.showBlockedCount,
-        autoRefreshOnModeChange: !!updatedCfg.autoReload,
-        strictBlock: !!updatedCfg.strictBlock,
-        developerMode: !!updatedCfg.developerMode
-    });
-
-    try {
-        if (win && !win.isDestroyed()) {
-            await win.webContents.executeJavaScript(`
-                try {
-                    if (typeof window.__aurivoShowSavedToast === 'function') {
-                        window.__aurivoShowSavedToast();
-                    }
-                } catch {}
-            `, true);
-        }
-    } catch {
-        // yoksay
-    }
-    return true;
-}
-
-async function syncAdblockConfigToDashboard(win) {
-    try {
-        if (!win || win.isDestroyed()) return;
-        const cfg = getAdBlockerConfig?.() || {};
-        const modeLevel = mapAdblockModeToUbolLevel(cfg.mode);
-        const payload = {
-            autoReload: !!cfg.autoReload,
-            showBlockedCount: !!cfg.showBlockedCount,
-            strictBlock: !!cfg.strictBlock,
-            developerMode: !!cfg.developerMode,
-            modeLevel
-        };
-        await win.webContents.executeJavaScript(`
-            try {
-                const send = (what, state) => {
-                    try { chrome.runtime.sendMessage({ what, state }); } catch {}
-                };
-                const cfg = ${JSON.stringify(payload)};
-                try {
-                    chrome.runtime.sendMessage({ what: 'setDefaultFilteringMode', level: Number(cfg.modeLevel) || 2 });
-                } catch {}
-                send('setAutoReload', cfg.autoReload);
-                send('setShowBlockedCount', cfg.showBlockedCount);
-                // Bazı uBOL sürümlerinde anahtar adları farklı olabiliyor; tüm olası setter'ları dene.
-                send('setStrictBlockMode', cfg.strictBlock);
-                send('setStrictBlock', cfg.strictBlock);
-                send('setDeveloperMode', cfg.developerMode);
-
-                // Dashboard UI fallback: runtime message desteklenmese bile checkbox durumunu eşitle.
-                const setCheckbox = (selector, checked) => {
-                    try {
-                        const el = document.querySelector(selector);
-                        if (!el) return;
-                        if (!!el.checked === !!checked) return;
-                        el.checked = !!checked;
-                        el.dispatchEvent(new Event('change', { bubbles: true }));
-                        el.dispatchEvent(new Event('input', { bubbles: true }));
-                    } catch {}
-                };
-                setCheckbox('#strictBlockMode', !!cfg.strictBlock);
-                setCheckbox('#developerMode', !!cfg.developerMode);
-            } catch {}
-        `, true);
-    } catch {
-        // yoksay
-    }
-}
-
-async function ensureAdblockDefaultFilteringDetails(win) {
-    try {
-        if (!win || win.isDestroyed()) return;
-        await win.webContents.executeJavaScript(`
-            (async () => {
-                try {
-                    const defaults = ${JSON.stringify(AURIVO_ADBLOCK_DEFAULT_COMPLETE_HOSTS)};
-                    const getModes = async () => {
-                        try {
-                            return await chrome.runtime.sendMessage({ what: 'getFilteringModeDetails' });
-                        } catch {
-                            return null;
-                        }
-                    };
-                    const setModes = async (modes) => {
-                        try {
-                            return await chrome.runtime.sendMessage({ what: 'setFilteringModeDetails', modes });
-                        } catch {
-                            return null;
-                        }
-                    };
-
-                    const modes = await getModes();
-                    if (!modes || typeof modes !== 'object') return;
-
-                    const next = {
-                        none: Array.isArray(modes.none) ? Array.from(new Set(modes.none.map(v => String(v || '').trim()).filter(Boolean))) : [],
-                        basic: Array.isArray(modes.basic) ? Array.from(new Set(modes.basic.map(v => String(v || '').trim()).filter(Boolean))) : [],
-                        optimal: Array.isArray(modes.optimal) ? Array.from(new Set(modes.optimal.map(v => String(v || '').trim()).filter(Boolean))) : [],
-                        complete: Array.isArray(modes.complete) ? Array.from(new Set(modes.complete.map(v => String(v || '').trim()).filter(Boolean))) : [],
-                    };
-
-                    let changed = false;
-                    const completeSet = new Set(next.complete);
-                    for (const host of defaults) {
-                        if (!completeSet.has(host)) {
-                            completeSet.add(host);
-                            changed = true;
-                        }
-                    }
-                    next.complete = Array.from(completeSet);
-
-                    if (changed) {
-                        await setModes(next);
-                        try {
-                            const bc = new BroadcastChannel('uBOL');
-                            bc.postMessage({ filteringModeDetails: next });
-                            bc.close();
-                        } catch {}
-                    }
-                } catch {}
-            })();
-        `, true);
-    } catch {
-        // yoksay
-    }
-}
-
-function startAdblockDashboardAutoSync(win) {
-    try {
-        if (adblockDashboardAutoSyncTimer) {
-            clearInterval(adblockDashboardAutoSyncTimer);
-            adblockDashboardAutoSyncTimer = null;
-        }
-    } catch {
-        // yoksay
-    }
-
-    if (!win || win.isDestroyed()) return;
-
-    adblockDashboardAutoSyncTimer = setInterval(() => {
-        syncAdblockStateFromDashboardToApp(win).catch(() => {});
-    }, 1200);
-}
-
-function stopAdblockDashboardAutoSync() {
-    try {
-        if (adblockDashboardAutoSyncTimer) {
-            clearInterval(adblockDashboardAutoSyncTimer);
-            adblockDashboardAutoSyncTimer = null;
-        }
-    } catch {
-        // yoksay
-    }
-}
-
-async function applyAdblockDashboardBranding(win, uiLang = 'en-US') {
-    try {
-        if (!win || win.isDestroyed()) return;
-        win.setTitle('Aurivo');
-        const targetLocale = mapUiLangToAdblockLocale(uiLang);
-        const savedToastText = getAdblockSavedToastText(uiLang);
-        await win.webContents.executeJavaScript(`
-            try {
-                document.title = 'Aurivo';
-                document.documentElement.lang = ${JSON.stringify(targetLocale)}.replace('_', '-');
-
-                const applyLocale = async () => {
-                    const pickMessage = (messages, key) => {
-                        const entry = messages?.[key];
-                        return entry && typeof entry.message === 'string' ? entry.message : '';
-                    };
-                    const applyMessages = (messages) => {
-                        if (!messages || typeof messages !== 'object') return;
-                        const setPreservedText = (el, msg) => {
-                            if (!el || typeof msg !== 'string' || !msg) return;
-                            const hasStructuredChildren = el.childElementCount > 0;
-                            if (!hasStructuredChildren) {
-                                el.textContent = msg;
-                                return;
-                            }
-                            const textNodes = Array.from(el.childNodes || []).filter((n) => n && n.nodeType === Node.TEXT_NODE);
-                            if (textNodes.length) {
-                                textNodes[textNodes.length - 1].textContent = msg;
-                                return;
-                            }
-                            el.appendChild(document.createTextNode(msg));
-                        };
-                        for (const el of document.querySelectorAll('[data-i18n]')) {
-                            const key = el.getAttribute('data-i18n');
-                            const msg = pickMessage(messages, key);
-                            if (msg) setPreservedText(el, msg);
-                        }
-                        for (const el of document.querySelectorAll('[data-i18n-title]')) {
-                            const key = el.getAttribute('data-i18n-title');
-                            const msg = pickMessage(messages, key);
-                            if (msg) el.setAttribute('title', msg);
-                        }
-                        for (const el of document.querySelectorAll('[data-i18n-label]')) {
-                            const key = el.getAttribute('data-i18n-label');
-                            const msg = pickMessage(messages, key);
-                            if (msg) el.setAttribute('label', msg);
-                        }
-                        for (const el of document.querySelectorAll('[placeholder]')) {
-                            const key = String(el.getAttribute('placeholder') || '').trim();
-                            const msg = pickMessage(messages, key);
-                            if (msg) el.setAttribute('placeholder', msg);
-                        }
-                    };
-                    const loadMessages = async (locale) => {
-                        try {
-                            const url = chrome?.runtime?.getURL?.('_locales/' + locale + '/messages.json');
-                            if (!url) return null;
-                            const res = await fetch(url);
-                            if (!res.ok) return null;
-                            return await res.json();
-                        } catch {
-                            return null;
-                        }
-                    };
-
-                    const primary = await loadMessages(${JSON.stringify(targetLocale)});
-                    const fallback = await loadMessages('en');
-                    applyMessages(primary || fallback);
-                };
-                applyLocale().catch(() => {});
-
-                if (!document.getElementById('aurivo-dashboard-premium-style')) {
-                    const style = document.createElement('style');
-                    style.id = 'aurivo-dashboard-premium-style';
-                    style.textContent = \`
-                        :root {
-                            --aurivo-accent: #31d0ff;
-                            --aurivo-accent-2: #4ef0b7;
-                            --aurivo-bg-1: #000000;
-                            --aurivo-bg-2: #000000;
-                            --aurivo-card: rgba(0, 0, 0, 0.92);
-                        }
-                        html, body {
-                            background: #000000 !important;
-                            color: #e9f6ff !important;
-                        }
-                        body {
-                            align-items: stretch !important;
-                            padding-inline: 12px !important;
-                        }
-                        body > *,
-                        body > section,
-                        body > header,
-                        body [data-pane-related] {
-                            width: 100% !important;
-                            max-width: none !important;
-                        }
-                        section[data-pane] {
-                            padding-inline: 2px !important;
-                        }
-                        .body, .pane, .card, .panel, .box, section, main {
-                            border-radius: 14px !important;
-                        }
-                        .card, .panel, .box, section {
-                            background: var(--aurivo-card) !important;
-                            border: 1px solid rgba(103, 182, 255, 0.25) !important;
-                            box-shadow: 0 12px 30px rgba(0, 0, 0, 0.28) !important;
-                            backdrop-filter: none !important;
-                        }
-                        button, .button, input, select {
-                            border-radius: 10px !important;
-                        }
-                        .active, [aria-selected="true"], [aria-checked="true"], [data-selected="true"] {
-                            outline-color: var(--aurivo-accent) !important;
-                            border-color: var(--aurivo-accent) !important;
-                            box-shadow: 0 0 0 1px rgba(49, 208, 255, 0.28), 0 0 0 6px rgba(49, 208, 255, 0.08) !important;
-                        }
-                        a, .link {
-                            color: #7fe6ff !important;
-                        }
-                        #dashboard-nav .logo {
-                            display: inline-flex;
-                            align-items: center;
-                            justify-content: center;
-                            width: 30px;
-                            height: 30px;
-                            margin-inline-end: 6px;
-                            border-radius: 8px;
-                            background: linear-gradient(145deg, rgba(49,208,255,0.24), rgba(78,240,183,0.14));
-                            border: 1px solid rgba(109, 218, 255, 0.35);
-                            box-shadow: 0 6px 18px rgba(5, 13, 33, 0.45);
-                        }
-                        #aurivo-logo-shield {
-                            font-size: 15px;
-                            line-height: 1;
-                            filter: drop-shadow(0 0 6px rgba(49,208,255,0.55));
-                        }
-                        #aurivo-save-toast {
-                            position: fixed;
-                            left: 50%;
-                            bottom: max(80px, env(safe-area-inset-bottom, 0px) + 16px);
-                            z-index: 2147483647;
-                            display: inline-flex;
-                            align-items: center;
-                            justify-content: center;
-                            padding: 7px 11px;
-                            min-height: 32px;
-                            max-width: min(92vw, 520px);
-                            border-radius: 9px;
-                            border: 1px solid rgba(76, 234, 185, 0.55);
-                            background: rgba(5, 16, 28, 0.92);
-                            color: #d8fff2;
-                            font-size: 12px;
-                            font-weight: 700;
-                            letter-spacing: 0.01em;
-                            white-space: nowrap;
-                            text-overflow: ellipsis;
-                            overflow: hidden;
-                            opacity: 0;
-                            transform: translate(-50%, 6px);
-                            pointer-events: none;
-                            transition: opacity .15s ease, transform .15s ease;
-                            box-shadow: 0 10px 24px rgba(0,0,0,0.4);
-                        }
-                        #aurivo-save-toast.show {
-                            opacity: 1;
-                            transform: translate(-50%, 0);
-                        }
-                    \`;
-                    document.head.appendChild(style);
-                }
-                if (!window.__aurivoSaveToastInit) {
-                    window.__aurivoSaveToastInit = true;
-                    window.__aurivoShowSavedToast = () => {
-                        try {
-                            let el = document.getElementById('aurivo-save-toast');
-                            if (!el) {
-                                el = document.createElement('div');
-                                el.id = 'aurivo-save-toast';
-                                (document.documentElement || document.body).appendChild(el);
-                            }
-                            el.textContent = window.__aurivoSaveToastText || 'Saved';
-                            el.classList.add('show');
-                            clearTimeout(window.__aurivoSaveToastTimer);
-                            window.__aurivoSaveToastTimer = setTimeout(() => {
-                                try { el.classList.remove('show'); } catch {}
-                            }, 1100);
-                        } catch {}
-                    };
-                    const onUiMutate = (event) => {
-                        try {
-                            const target = event && event.target;
-                            if (!target || !(target instanceof Element)) return;
-                            if (target.closest('#defaultFilteringMode, #autoReload, #showBlockedCount, #strictBlockMode, #developerMode')) {
-                                if (typeof window.__aurivoShowSavedToast === 'function') {
-                                    window.__aurivoShowSavedToast();
-                                }
-                            }
-                        } catch {}
-                    };
-                    document.addEventListener('change', onUiMutate, true);
-                }
-                window.__aurivoSaveToastText = ${JSON.stringify(savedToastText)};
-                const logo = document.querySelector('#dashboard-nav .logo');
-                if (logo && !logo.querySelector('#aurivo-logo-shield')) {
-                    const shield = document.createElement('span');
-                    shield.id = 'aurivo-logo-shield';
-                    shield.setAttribute('aria-hidden', 'true');
-                    shield.textContent = '🛡';
-                    if (typeof logo.replaceChildren === 'function') logo.replaceChildren(shield);
-                    else {
-                        while (logo.firstChild) logo.removeChild(logo.firstChild);
-                        logo.appendChild(shield);
-                    }
-                    logo.setAttribute('title', 'Aurivo');
-                }
-                const brandTargets = Array.from(document.querySelectorAll('h1, h2, .title, .brand, [data-i18n], [data-l10n-id]'));
-                for (const el of brandTargets) {
-                    if (!el || typeof el.textContent !== 'string') continue;
-                    if (/uBO\\s*Lite/i.test(el.textContent)) {
-                        el.textContent = el.textContent.replace(/uBO\\s*Lite/gi, 'Aurivo');
-                    }
-                }
-            } catch {}
-        `, true);
-    } catch {
-        // dashboard CSP/içerik kısıtları nedeniyle başarısız olabilir; en azından pencere başlığı set edilir.
-    }
-}
-
-async function ensureAdblockDashboardVisibleContent(win) {
-    try {
-        if (!win || win.isDestroyed()) return;
-        const wc = win.webContents;
-        if (!wc || wc.isDestroyed()) return;
-        const currentUrl = String(wc.getURL() || '');
-        if (!/\/dashboard\.html(?:[#?]|$)/i.test(currentUrl)) return;
-        const probe = await wc.executeJavaScript(`
-            (() => {
-                try {
-                    const hasDashboardUi = !!document.querySelector(
-                        '#dashboard-nav, #defaultFilteringMode, .filteringModeCard, .dashboard'
-                    );
-                    const hasPopupUi = !!document.querySelector(
-                        '#moreButton, .popupPanel, .filteringModeSlider'
-                    );
-                    const textLen = String(document.body?.innerText || '').trim().length;
-                    return { hasDashboardUi, hasPopupUi, textLen };
-                } catch {
-                    return { hasDashboardUi: false, hasPopupUi: false, textLen: 0 };
-                }
-            })();
-        `, true);
-        const hasUi = !!(probe && (probe.hasDashboardUi || probe.hasPopupUi));
-        const textLen = Number(probe?.textLen || 0);
-        if (!hasUi && textLen === 0) {
-            const fallbackUrl = currentUrl.replace('/dashboard.html', '/popup.html');
-            await wc.loadURL(fallbackUrl);
-        }
-    } catch {
-        // yoksay
-    }
-}
-
-async function waitForAdblockDashboardUiReady(win, timeoutMs = 2500) {
-    const startedAt = Date.now();
-    while ((Date.now() - startedAt) < timeoutMs) {
-        try {
-            if (!win || win.isDestroyed()) return false;
-            const wc = win.webContents;
-            if (!wc || wc.isDestroyed()) return false;
-            const probe = await wc.executeJavaScript(`
-                (() => {
-                    try {
-                        const hasDashboardUi = !!document.querySelector(
-                            '#dashboard-nav, #defaultFilteringMode, .filteringModeCard, .dashboard'
-                        );
-                        const hasPopupUi = !!document.querySelector(
-                            '#moreButton, .popupPanel, .filteringModeSlider'
-                        );
-                        const textLen = String(document.body?.innerText || '').trim().length;
-                        return { hasDashboardUi, hasPopupUi, textLen };
-                    } catch {
-                        return { hasDashboardUi: false, hasPopupUi: false, textLen: 0 };
-                    }
-                })();
-            `, true);
-            if (probe?.hasDashboardUi || probe?.hasPopupUi || Number(probe?.textLen || 0) > 0) {
-                return true;
-            }
-        } catch {
-            // yoksay
-        }
-        await new Promise((resolve) => setTimeout(resolve, 120));
-    }
-    return false;
-}
-
-function resolveAdblockDashboardUrlFallback(preferredPartition = '') {
-    const getSessionExtensionsApiMain = (ses) => {
-        return (ses && typeof ses === 'object' && ses.extensions && typeof ses.extensions === 'object')
-            ? ses.extensions
-            : null;
-    };
-    const getAllExtensionsMain = (ses) => {
-        const extApi = getSessionExtensionsApiMain(ses);
-        if (extApi && typeof extApi.getAllExtensions === 'function') {
-            return extApi.getAllExtensions();
-        }
-        if (ses && typeof ses.getAllExtensions === 'function') {
-            return ses.getAllExtensions();
-        }
-        return {};
-    };
-
-    const pickFromSession = (ses, partitionLabel = '') => {
-        try {
-            if (!ses) return { url: '', partition: '' };
-            const all = getAllExtensionsMain(ses);
-            const list = Array.isArray(all) ? all : Object.values(all || {});
-            const ext = list.find((item) => /uBlock(?:\s+Origin)?\s+Lite|uBO\s+Lite/i.test(String(item?.name || '')));
-            const extId = String(ext?.id || '').trim();
-            if (!extId) return { url: '', partition: '' };
-            return { url: `chrome-extension://${extId}/dashboard.html`, partition: String(partitionLabel || '') };
-        } catch {
-            return { url: '', partition: '' };
-        }
-    };
-
-    if (preferredPartition) {
-        try {
-            const byPreferred = pickFromSession(session.fromPartition(preferredPartition), preferredPartition);
-            if (byPreferred.url) return byPreferred;
-        } catch {
-            // yoksay
-        }
-    }
-    try {
-        const byWebview = pickFromSession(session.fromPartition(WEBVIEW_PARTITION), WEBVIEW_PARTITION);
-        if (byWebview.url) return byWebview;
-    } catch {
-        // yoksay
-    }
-    try {
-        const byDefault = pickFromSession(session.defaultSession, '');
-        if (byDefault.url) return byDefault;
-    } catch {
-        // yoksay
-    }
-    const extensionPath = resolveBundledUbolExtensionPathForDashboard();
-    const dashboardFile = extensionPath ? pathJoinReviewed(extensionPath, 'dashboard.html') : '';
-    if (dashboardFile && fs.existsSync(dashboardFile)) {
-        return { url: `file://${dashboardFile}`, partition: '' };
-    }
-    return { url: '', partition: preferredPartition || WEBVIEW_PARTITION };
-}
-
-function resolveBundledUbolExtensionPathForDashboard() {
-    const roots = [
-        pathJoinReviewed(process.resourcesPath || '', 'uDALİ-weman-home', 'chromium'),
-        pathJoinReviewed(process.resourcesPath || '', 'app.asar.unpacked', 'uDALİ-weman-home', 'chromium'),
-        pathJoinReviewed(__dirname, 'uDALİ-weman-home', 'chromium'),
-        pathJoinReviewed(__dirname, '..', 'uDALİ-weman-home', 'chromium'),
-    ];
-
-    for (const candidate of roots) {
-        if (!candidate) continue;
-        if (!isRealDirectory(candidate)) continue;
-        if (fs.existsSync(pathJoinReviewed(candidate, 'manifest.json'))) {
-            return candidate;
-        }
-    }
-
-    const scanRoots = [
-        process.resourcesPath || '',
-        pathJoinReviewed(process.resourcesPath || '', 'app.asar.unpacked'),
-        __dirname
-    ].filter(Boolean);
-    for (const root of scanRoots) {
-        if (!isRealDirectory(root)) continue;
-        try {
-            const entries = fs.readdirSync(root, { withFileTypes: true });
-            for (const entry of entries) {
-                if (!entry?.isDirectory?.()) continue;
-                const name = String(entry.name || '').toLowerCase();
-                if (!name.includes('weman-home')) continue;
-                const candidate = pathJoinReviewed(root, entry.name, 'chromium');
-                if (isRealDirectory(candidate) && fs.existsSync(pathJoinReviewed(candidate, 'manifest.json'))) {
-                    return candidate;
-                }
-            }
-        } catch {
-            // yoksay
-        }
-    }
-    return '';
-}
-
-async function ensureAdblockDashboardLaunchInfo(preferredPartition = '') {
-    const getSessionExtensionsApiMain = (ses) => {
-        return (ses && typeof ses === 'object' && ses.extensions && typeof ses.extensions === 'object')
-            ? ses.extensions
-            : null;
-    };
-    const getAllExtensionsMain = (ses) => {
-        const extApi = getSessionExtensionsApiMain(ses);
-        if (extApi && typeof extApi.getAllExtensions === 'function') {
-            return extApi.getAllExtensions();
-        }
-        if (ses && typeof ses.getAllExtensions === 'function') {
-            return ses.getAllExtensions();
-        }
-        return {};
-    };
-    const loadExtensionMain = async (ses, extensionPath) => {
-        const extApi = getSessionExtensionsApiMain(ses);
-        if (extApi && typeof extApi.loadExtension === 'function') {
-            return await extApi.loadExtension(extensionPath, { allowFileAccess: true });
-        }
-        if (ses && typeof ses.loadExtension === 'function') {
-            return await ses.loadExtension(extensionPath, { allowFileAccess: true });
-        }
-        throw new Error('Session extension loader unavailable');
-    };
-
-    const initial = resolveAdblockDashboardUrlFallback(preferredPartition);
-    // file://dashboard.html uzantı bağlamı olmadan siyah/boş pencere verebilir.
-    // Bu yüzden önce extension'ı session'a yüklemeyi dene; yalnızca chrome-extension://
-    // zaten mevcutsa doğrudan dönebiliriz.
-    const initialUrl = String(initial?.url || '').trim().toLowerCase();
-    if (initialUrl.startsWith('chrome-extension://')) return initial;
-
-    const extensionPath = resolveBundledUbolExtensionPathForDashboard();
-    if (!extensionPath) return initial;
-
-    const partitionToTry = String(preferredPartition || WEBVIEW_PARTITION).trim() || WEBVIEW_PARTITION;
-    const targets = [];
-    try { targets.push({ ses: session.fromPartition(partitionToTry), partition: partitionToTry }); } catch { }
-    try { targets.push({ ses: session.defaultSession, partition: '' }); } catch { }
-
-    for (const target of targets) {
-        const ses = target?.ses;
-        if (!ses) continue;
-        try {
-            const all = getAllExtensionsMain(ses);
-            const list = Array.isArray(all) ? all : Object.values(all || {});
-            const existing = list.find((item) => /uBlock(?:\s+Origin)?\s+Lite|uBO\s+Lite/i.test(String(item?.name || '')));
-            const existingId = String(existing?.id || '').trim();
-            if (existingId) {
-                return {
-                    url: `chrome-extension://${existingId}/dashboard.html`,
-                    partition: target.partition
-                };
-            }
-        } catch {
-            // yoksay
-        }
-        try {
-            const loaded = await loadExtensionMain(ses, extensionPath);
-            const loadedId = String(loaded?.id || '').trim();
-            if (loadedId) {
-                return {
-                    url: `chrome-extension://${loadedId}/dashboard.html`,
-                    partition: target.partition
-                };
-            }
-        } catch {
-            // yoksay
-        }
-    }
-
-    return resolveAdblockDashboardUrlFallback(partitionToTry);
-}
-
-async function syncAdblockConfigInBackground(preferredPartition = '') {
-    try {
-        if (adblockDashboardWindow && !adblockDashboardWindow.isDestroyed()) {
-            await syncAdblockConfigToDashboard(adblockDashboardWindow);
-            await ensureAdblockDefaultFilteringDetails(adblockDashboardWindow);
-            return true;
-        }
-
-        const launchInfo = await ensureAdblockDashboardLaunchInfo(preferredPartition || WEBVIEW_PARTITION);
-        const dashboardUrl = String(launchInfo?.url || '').trim();
-        const targetPartition = String(launchInfo?.partition || preferredPartition || WEBVIEW_PARTITION).trim() || WEBVIEW_PARTITION;
-        if (!dashboardUrl) return false;
-
-        const backgroundWin = new BrowserWindow({
-            width: 860,
-            height: 680,
-            show: false,
-            focusable: false,
-            skipTaskbar: true,
-            autoHideMenuBar: true,
-            backgroundColor: '#0f0f0f',
-            webPreferences: {
-                partition: targetPartition,
-                nodeIntegration: false,
-                contextIsolation: true,
-                sandbox: true,
-                webSecurity: true,
-                allowRunningInsecureContent: false
-            }
-        });
-
-        try {
-            backgroundWin.setMenuBarVisibility(false);
-            backgroundWin.setMenu(null);
-        } catch { }
-
-        try {
-            try {
-                await backgroundWin.loadURL(dashboardUrl);
-            } catch {
-                const fallbackUrl = dashboardUrl.replace('/dashboard.html', '/popup.html');
-                await backgroundWin.loadURL(fallbackUrl);
-            }
-            await ensureAdblockDashboardVisibleContent(backgroundWin);
-            await syncAdblockConfigToDashboard(backgroundWin);
-            await ensureAdblockDefaultFilteringDetails(backgroundWin);
-            return true;
-        } finally {
-            try {
-                if (!backgroundWin.isDestroyed()) {
-                    backgroundWin.destroy();
-                }
-            } catch { }
-        }
-    } catch {
-        return false;
-    }
-}
-
-function scheduleAdblockConfigBackgroundSync(preferredPartition = '') {
-    try {
-        if (adblockConfigBackgroundSyncTimer) {
-            clearTimeout(adblockConfigBackgroundSyncTimer);
-            adblockConfigBackgroundSyncTimer = null;
-        }
-    } catch { }
-    adblockConfigBackgroundSyncTimer = setTimeout(() => {
-        adblockConfigBackgroundSyncTimer = null;
-        syncAdblockConfigInBackground(preferredPartition).catch(() => {});
-    }, 180);
-}
-
-ipcMain.handle('adblock:openDashboard', async () => {
-    try {
-        const launchInfo = getAdBlockerDashboardLaunchInfo?.() || {};
-        let dashboardUrl = String(launchInfo.url || getAdBlockerDashboardUrl() || '').trim();
-        let targetPartition = String(launchInfo.partition || WEBVIEW_PARTITION).trim();
-        const uiLang = getUiLanguageSync();
-        // Modül içindeki saklı launch bilgisi (id/partition) güncel olmayabilir.
-        // Her açılışta canlı session'lardan yeniden çözerek siyah/boş dashboard penceresini önle.
-        const resolved = await ensureAdblockDashboardLaunchInfo(targetPartition);
-        if (resolved && resolved.url) {
-            dashboardUrl = String(resolved.url || '').trim();
-            targetPartition = String(resolved.partition || targetPartition || WEBVIEW_PARTITION).trim();
-        }
-        if (dashboardUrl.toLowerCase().startsWith('file://')) {
-            const secondTry = resolveAdblockDashboardUrlFallback(targetPartition);
-            const secondUrl = String(secondTry?.url || '').trim();
-            if (secondUrl.toLowerCase().startsWith('chrome-extension://')) {
-                dashboardUrl = secondUrl;
-                targetPartition = String(secondTry.partition || targetPartition || WEBVIEW_PARTITION).trim();
-            }
-        }
-        if (!dashboardUrl) return false;
-
-        const currentPartition = String(
-            adblockDashboardWindow?.webContents?.session?.partition || ''
-        ).trim();
-        const needsRecreate =
-            adblockDashboardWindow &&
-            !adblockDashboardWindow.isDestroyed() &&
-            currentPartition &&
-            targetPartition &&
-            currentPartition !== targetPartition;
-
-        if (needsRecreate) {
-            try { adblockDashboardWindow.close(); } catch { }
-            adblockDashboardWindow = null;
-        }
-
-        if (adblockDashboardWindow && !adblockDashboardWindow.isDestroyed()) {
-            await syncAdblockStateFromDashboardToApp(adblockDashboardWindow);
-            adblockDashboardWindow.show();
-            adblockDashboardWindow.focus();
-            try {
-                const currentUrl = String(adblockDashboardWindow.webContents?.getURL?.() || '').trim();
-                if (!currentUrl) {
-                    await adblockDashboardWindow.loadURL(dashboardUrl);
-                }
-            } catch { }
-            try {
-                adblockDashboardWindow.setAutoHideMenuBar(true);
-                adblockDashboardWindow.setMenuBarVisibility(false);
-                adblockDashboardWindow.setMenu(null);
-            } catch { }
-            await applyAdblockDashboardBranding(adblockDashboardWindow, uiLang);
-            await ensureAdblockDefaultFilteringDetails(adblockDashboardWindow);
-            await syncAdblockStateFromDashboardToApp(adblockDashboardWindow);
-            startAdblockDashboardAutoSync(adblockDashboardWindow);
-            return true;
-        }
-
-        let adblockDashboardCloseSyncInProgress = false;
-
-        adblockDashboardWindow = new BrowserWindow({
-            width: ADBLOCK_DASHBOARD_WINDOW_SIZE.width,
-            height: ADBLOCK_DASHBOARD_WINDOW_SIZE.height,
-            minWidth: ADBLOCK_DASHBOARD_WINDOW_SIZE.width,
-            minHeight: ADBLOCK_DASHBOARD_WINDOW_SIZE.height,
-            title: 'Aurivo',
-            icon: getAppIconImage(),
-            autoHideMenuBar: true,
-            show: false,
-            backgroundColor: '#0f0f0f',
-            parent: mainWindow && !mainWindow.isDestroyed() ? mainWindow : undefined,
-            webPreferences: {
-                partition: targetPartition || WEBVIEW_PARTITION,
-                nodeIntegration: false,
-                contextIsolation: true,
-                sandbox: true,
-                webSecurity: true,
-                allowRunningInsecureContent: false
-            }
-        });
-
-        adblockDashboardWindow.on('close', (event) => {
-            if (adblockDashboardCloseSyncInProgress) return;
-            event.preventDefault();
-            adblockDashboardCloseSyncInProgress = true;
-            syncAdblockStateFromDashboardToApp(adblockDashboardWindow)
-                .catch(() => {})
-                .finally(() => {
-                    try {
-                        if (adblockDashboardWindow && !adblockDashboardWindow.isDestroyed()) {
-                            adblockDashboardWindow.destroy();
-                        }
-                    } catch {
-                        // yoksay
-                    }
-                });
-        });
-
-        adblockDashboardWindow.on('closed', () => {
-            stopAdblockDashboardAutoSync();
-            adblockDashboardWindow = null;
-        });
-        try {
-            adblockDashboardWindow.setMenuBarVisibility(false);
-            adblockDashboardWindow.setMenu(null);
-        } catch { }
-        adblockDashboardWindow.webContents.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL) => {
-            console.error('[ADBLOCK] dashboard did-fail-load:', { errorCode, errorDescription, validatedURL });
-        });
-        adblockDashboardWindow.webContents.on('console-message', (_event, level, message, line, sourceId) => {
-            if (level >= 2) {
-                console.warn('[ADBLOCK][dashboard][console]', { message, line, sourceId });
-            }
-        });
-        adblockDashboardWindow.webContents.on('page-title-updated', (event) => {
-            event.preventDefault();
-            try { adblockDashboardWindow.setTitle('Aurivo'); } catch { }
-        });
-        let adblockDashboardShowInProgress = false;
-        const finalizeAndShowAdblockDashboard = async () => {
-            if (adblockDashboardShowInProgress) return;
-            adblockDashboardShowInProgress = true;
-            try {
-                if (!adblockDashboardWindow || adblockDashboardWindow.isDestroyed()) return;
-                try {
-                    adblockDashboardWindow.setMenuBarVisibility(false);
-                    adblockDashboardWindow.setMenu(null);
-                } catch { }
-                await ensureAdblockDashboardVisibleContent(adblockDashboardWindow);
-                const uiReady = await waitForAdblockDashboardUiReady(adblockDashboardWindow, 2600);
-                if (!uiReady) {
-                    try {
-                        const currentUrl = String(adblockDashboardWindow.webContents?.getURL?.() || '').trim();
-                        if (/\/dashboard\.html(?:[#?]|$)/i.test(currentUrl)) {
-                            await adblockDashboardWindow.loadURL(currentUrl.replace('/dashboard.html', '/popup.html'));
-                            await waitForAdblockDashboardUiReady(adblockDashboardWindow, 1200);
-                        }
-                    } catch { }
-                }
-                await applyAdblockDashboardBranding(adblockDashboardWindow, uiLang);
-                await ensureAdblockDefaultFilteringDetails(adblockDashboardWindow);
-                await syncAdblockStateFromDashboardToApp(adblockDashboardWindow);
-                startAdblockDashboardAutoSync(adblockDashboardWindow);
-                if (!adblockDashboardWindow.isVisible()) adblockDashboardWindow.show();
-                adblockDashboardWindow.focus();
-            } catch {
-                // yoksay
-            } finally {
-                adblockDashboardShowInProgress = false;
-            }
-        };
-
-        adblockDashboardWindow.webContents.on('did-finish-load', () => {
-            try {
-                adblockDashboardWindow.setMenuBarVisibility(false);
-                adblockDashboardWindow.setMenu(null);
-            } catch { }
-            finalizeAndShowAdblockDashboard().catch(() => {});
-        });
-
-        try {
-            await adblockDashboardWindow.loadURL(dashboardUrl);
-        } catch {
-            const fallbackUrl = dashboardUrl.replace('/dashboard.html', '/popup.html');
-            await adblockDashboardWindow.loadURL(fallbackUrl);
-        }
-        await finalizeAndShowAdblockDashboard();
-        return true;
-    } catch (e) {
-        console.error('[ADBLOCK] openDashboard error:', e);
-        return false;
-    }
-});
-
-ipcMain.handle('web:clearData', async (_event, options) => {
-    const opts = (options && typeof options === 'object') ? options : {};
-    const sessions = getWebSessions();
-    if (!sessions.length) return false;
-
-    const wantsAll = opts.all === true;
-    const wantsCookies = wantsAll || opts.cookies === true;
-    const wantsCache = wantsAll || opts.cache === true;
-    const wantsStorage = wantsAll || opts.storage === true;
-
-    try {
-        for (const ses of sessions) {
-            if (wantsCache) {
-                await ses.clearCache();
-            }
-
-            const storages = [];
-            if (wantsCookies) storages.push('cookies');
-            if (wantsStorage) {
-                storages.push('localstorage', 'indexdb', 'cachestorage', 'serviceworkers');
-            }
-
-            if (storages.length) {
-                await ses.clearStorageData({ storages });
-            }
-        }
-
-        return true;
-    } catch (e) {
-        console.error('[WEB] clearData error:', e);
-        return false;
-    }
-});
 
 // Dizin Okuma
 ipcMain.handle('fs:readDirectory', async (event, dirPath) => {
@@ -8430,7 +7230,7 @@ ipcMain.handle('fs:readDirectory', async (event, dirPath) => {
 
         const items = await fs.promises.readdir(safeDirPath, { withFileTypes: true });
         const results = await Promise.all(items.map(async (item) => {
-            const fullPath = pathJoinReviewed(safeDirPath, item.name);
+            const fullPath = path.join(safeDirPath, item.name);
             const ext = path.extname(item.name || '').slice(1).toLowerCase();
             const isSupportedMedia = !!ext && SUPPORTED_MEDIA_EXTENSIONS.has(ext);
 
@@ -8565,13 +7365,13 @@ ipcMain.handle('fs:getSpecialPaths', async () => {
     // Var olan klasörü bul
     const findExisting = async (folders) => {
         for (const folder of folders) {
-            const fullPath = pathJoinReviewed(home, folder);
+            const fullPath = path.join(home, folder);
             try {
                 await fs.promises.access(fullPath);
                 return fullPath;
             } catch { }
         }
-        return pathJoinReviewed(home, folders[0]); // Bulunamazsa ilkini döndür
+        return path.join(home, folders[0]); // Bulunamazsa ilkini döndür
     };
 
     return {
@@ -8581,7 +7381,7 @@ ipcMain.handle('fs:getSpecialPaths', async () => {
         downloads: await findExisting(downloadFolders),
         desktop: await findExisting(desktopFolders),
         pictures: await findExisting(picturesFolders),
-        documents: pathJoinReviewed(home, 'Documents')
+        documents: path.join(home, 'Documents')
     };
 });
 
@@ -8674,8 +7474,8 @@ ipcMain.handle('app:getSystemStats', async () => {
 
 ipcMain.handle('screenRecording:listStudioPlugins', async () => {
     const pluginDirs = [
-        pathJoinReviewed(app.getPath('userData'), 'video-studio-plugins'),
-        pathJoinReviewed(app.getPath('home'), '.config', 'aurivo', 'video-studio-plugins')
+        path.join(app.getPath('userData'), 'video-studio-plugins'),
+        path.join(app.getPath('home'), '.config', 'aurivo', 'video-studio-plugins')
     ];
     const plugins = [];
     for (const dir of pluginDirs) {
@@ -8684,8 +7484,8 @@ ipcMain.handle('screenRecording:listStudioPlugins', async () => {
             const entries = await fs.promises.readdir(dir, { withFileTypes: true });
             for (const entry of entries) {
                 const manifestPath = entry.isDirectory()
-                    ? pathJoinReviewed(dir, entry.name, 'plugin.json')
-                    : (entry.isFile() && entry.name.endsWith('.json') ? pathJoinReviewed(dir, entry.name) : '');
+                    ? path.join(dir, entry.name, 'plugin.json')
+                    : (entry.isFile() && entry.name.endsWith('.json') ? path.join(dir, entry.name) : '');
                 if (!manifestPath) continue;
                 try {
                     const raw = await fs.promises.readFile(manifestPath, 'utf8');
@@ -8776,7 +7576,7 @@ ipcMain.handle('fs:renameItem', async (_event, sourcePath, nextName) => {
         }
 
         const srcDir = path.dirname(src);
-        const targetPath = pathJoinReviewed(srcDir, rawName);
+        const targetPath = path.join(srcDir, rawName);
         if (targetPath === src) {
             return {
                 ok: true,
@@ -8913,7 +7713,7 @@ ipcMain.handle('settings:save', async (event, settings) => {
         await writeJsonFileAtomic(getSettingsPath(), sanitizedMerged);
         refreshGlobalMediaShortcuts(sanitizedMerged);
 
-        for (const targetWindow of [mainWindow, settingsWindow, soundEffectsWindow]) {
+        for (const targetWindow of [mainWindow, settingsWindow, soundEffectsWindow, adblockWindow]) {
             if (!targetWindow || targetWindow.isDestroyed()) continue;
             try {
                 targetWindow.webContents.send('settings:reloaded', sanitizedMerged);
@@ -8925,7 +7725,7 @@ ipcMain.handle('settings:save', async (event, settings) => {
         // Dil değiştiyse, çalışan native görselleştiriciyi yeni locale ile yeniden başlat.
         if (visualizerProc && !visualizerProc.killed && prevUiLang && nextUiLang && prevUiLang !== nextUiLang) {
             try {
-                console.log('[Visualizer] language changed, restarting:', prevUiLang, '->', nextUiLang);
+                console.log(`[Visualizer] language changed (${prevUiLang} -> ${nextUiLang}), restarting...`);
                 stopVisualizer();
                 startVisualizer();
             } catch (e) {
@@ -8974,13 +7774,6 @@ ipcMain.handle('settings:load', async () => {
                 updatedAt: 0
             }
         },
-        adblock: {
-            mode: 'ideal',
-            showBlockedCount: true,
-            autoRefreshOnModeChange: false,
-            strictBlock: false,
-            developerMode: false
-        },
         volume: 40,
         shuffle: false,
         repeat: false
@@ -9019,6 +7812,241 @@ ipcMain.handle('settings:openWindow', async (_event, defaultTab) => {
         console.error('[SETTINGS] openWindow error:', error);
         return false;
     }
+});
+
+ipcMain.handle('adblock:openWindow', async () => {
+    try {
+        createAdblockWindow();
+        return true;
+    } catch (error) {
+        console.error('[ADBLOCK] openWindow error:', error);
+        return false;
+    }
+});
+
+ipcMain.handle('downloader:openWindow', async (_event, url) => {
+    try {
+        const normalized = String(url || '').trim();
+        if (/^https?:\/\//i.test(normalized)) {
+            sendUrlToDownloaderWindow(normalized);
+        } else {
+            sendDownloaderNoUrlNotice();
+        }
+        return true;
+    } catch (error) {
+        console.error('[DOWNLOADER] openWindow error:', error);
+        return false;
+    }
+});
+
+ipcMain.handle('downloader:getSettings', async () => {
+    return getDownloaderService().readSettings();
+});
+
+ipcMain.handle('downloader:getPendingUrl', async () => {
+    const url = pendingDownloaderUrl;
+    pendingDownloaderUrl = '';
+    return url;
+});
+
+ipcMain.handle('downloader:getPendingNotice', async () => {
+    const notice = pendingDownloaderNotice;
+    pendingDownloaderNotice = null;
+    return notice || null;
+});
+
+ipcMain.handle('downloader:getDependencyStatus', async () => {
+    return getDownloaderService().getDependencyStatus();
+});
+
+ipcMain.handle('downloader:ensureDependencies', async () => {
+    try {
+        const status = await getDownloaderService().ensureDependencies();
+        return { success: true, status };
+    } catch (error) {
+        return {
+            success: false,
+            error: String(error?.message || error || 'Gerekli araçlar hazırlanamadı'),
+            status: getDownloaderService().getDependencyStatus()
+        };
+    }
+});
+
+ipcMain.handle('downloader:saveSettings', async (_event, settings) => {
+    const payload = settings && typeof settings === 'object' ? settings : {};
+    const allowed = {};
+    if (payload.preferredVideoQuality != null) allowed.preferredVideoQuality = String(payload.preferredVideoQuality);
+    if (payload.preferredVideoCodec != null) allowed.preferredVideoCodec = String(payload.preferredVideoCodec);
+    if (payload.preferredAudioFormat != null) allowed.preferredAudioFormat = String(payload.preferredAudioFormat);
+    if (payload.customArgs != null) allowed.customArgs = String(payload.customArgs);
+    if (payload.closeOnFinish != null) allowed.closeOnFinish = payload.closeOnFinish === true;
+    if (payload.browserCookies != null) allowed.browserCookies = String(payload.browserCookies);
+    if (payload.proxy != null) allowed.proxy = String(payload.proxy);
+    if (payload.configPath != null) allowed.configPath = String(payload.configPath);
+    if (payload.useConfigFile != null) allowed.useConfigFile = payload.useConfigFile === true;
+    if (payload.showMoreFormats != null) allowed.showMoreFormats = payload.showMoreFormats === true;
+    if (payload.theme != null) allowed.theme = String(payload.theme);
+    if (payload.playlistFileTemplate != null) allowed.playlistFileTemplate = String(payload.playlistFileTemplate);
+    if (payload.playlistFolderTemplate != null) allowed.playlistFolderTemplate = String(payload.playlistFolderTemplate);
+    if (payload.maxActiveDownloads != null) allowed.maxActiveDownloads = Math.max(1, Math.min(2, Number(payload.maxActiveDownloads) || 1));
+    if (payload.closeToTray != null) allowed.closeToTray = payload.closeToTray === true;
+    if (payload.disableAutoUpdates != null) allowed.disableAutoUpdates = payload.disableAutoUpdates === true;
+    if (payload.compressorExtension != null) allowed.compressorExtension = String(payload.compressorExtension);
+    if (payload.compressorEncoder != null) allowed.compressorEncoder = String(payload.compressorEncoder);
+    if (payload.compressorSpeed != null) allowed.compressorSpeed = String(payload.compressorSpeed);
+    if (payload.compressorQuality != null) allowed.compressorQuality = Math.max(18, Math.min(51, Number(payload.compressorQuality) || 23));
+    if (payload.compressorAudioFormat != null) allowed.compressorAudioFormat = String(payload.compressorAudioFormat);
+    if (payload.compressorSuffix != null) allowed.compressorSuffix = String(payload.compressorSuffix);
+    if (payload.compressorSameFolder != null) allowed.compressorSameFolder = payload.compressorSameFolder === true;
+    if (payload.compressorOutputDir != null) allowed.compressorOutputDir = String(payload.compressorOutputDir);
+    return getDownloaderService().writeSettings(allowed);
+});
+
+ipcMain.handle('downloader:readClipboard', async () => {
+    return clipboard.readText();
+});
+
+ipcMain.handle('downloader:chooseFolder', async () => {
+    const targetWindow = downloaderWindow && !downloaderWindow.isDestroyed()
+        ? downloaderWindow
+        : mainWindow;
+    const result = await dialog.showOpenDialog(targetWindow, {
+        properties: ['openDirectory']
+    });
+    if (result.canceled || !result.filePaths?.[0]) {
+        return { canceled: true };
+    }
+    const settings = await getDownloaderService().writeSettings({
+        downloadDir: result.filePaths[0]
+    });
+    return { canceled: false, downloadDir: settings.downloadDir };
+});
+
+ipcMain.handle('downloader:chooseOutputFolder', async () => {
+    const targetWindow = downloaderWindow && !downloaderWindow.isDestroyed()
+        ? downloaderWindow
+        : mainWindow;
+    const result = await dialog.showOpenDialog(targetWindow, {
+        properties: ['openDirectory']
+    });
+    if (result.canceled || !result.filePaths?.[0]) {
+        return { canceled: true };
+    }
+    return { canceled: false, folder: result.filePaths[0] };
+});
+
+ipcMain.handle('downloader:chooseConfigFile', async () => {
+    const targetWindow = downloaderWindow && !downloaderWindow.isDestroyed()
+        ? downloaderWindow
+        : mainWindow;
+    const result = await dialog.showOpenDialog(targetWindow, {
+        properties: ['openFile']
+    });
+    if (result.canceled || !result.filePaths?.[0]) {
+        return { canceled: true };
+    }
+    const settings = await getDownloaderService().writeSettings({
+        configPath: result.filePaths[0]
+    });
+    return { canceled: false, configPath: settings.configPath };
+});
+
+ipcMain.handle('downloader:getInfo', async (_event, url) => {
+    try {
+        const normalized = String(url || '').trim();
+        if (!/^https?:\/\//i.test(normalized)) {
+            return { success: false, error: 'Gecerli bir http/https baglantisi girin.' };
+        }
+        const info = await getDownloaderService().getInfo(normalized);
+        return { success: true, info };
+    } catch (error) {
+        return { success: false, error: String(error?.message || error || 'Analiz hatasi') };
+    }
+});
+
+ipcMain.handle('downloader:start', async (_event, options) => {
+    try {
+        const payload = options && typeof options === 'object' ? options : {};
+        if (!/^https?:\/\//i.test(String(payload.url || ''))) {
+            return { success: false, error: 'Indirme icin gecerli baglanti yok.' };
+        }
+        const job = await getDownloaderService().start(payload);
+        return { success: true, job };
+    } catch (error) {
+        return { success: false, error: String(error?.message || error || 'Indirme baslatilamadi') };
+    }
+});
+
+ipcMain.handle('downloader:cancel', async (_event, id) => {
+    return getDownloaderService().cancel(String(id || ''));
+});
+
+ipcMain.handle('downloader:startCompression', async (_event, options) => {
+    try {
+        const payload = options && typeof options === 'object' ? options : {};
+        const job = await getDownloaderService().startCompression(payload);
+        return { success: true, job };
+    } catch (error) {
+        return { success: false, error: String(error?.message || error || 'Sıkıştırma başlatılamadı') };
+    }
+});
+
+ipcMain.handle('downloader:cancelCompression', async (_event, id) => {
+    return getDownloaderService().cancelCompression(String(id || ''));
+});
+
+ipcMain.handle('downloader:getHistory', async () => {
+    return getDownloaderService().readHistory();
+});
+
+ipcMain.handle('downloader:exportHistory', async (_event, format) => {
+    const normalized = String(format || 'json').toLowerCase() === 'csv' ? 'csv' : 'json';
+    const targetWindow = downloaderWindow && !downloaderWindow.isDestroyed()
+        ? downloaderWindow
+        : mainWindow;
+    const result = await dialog.showSaveDialog(targetWindow, {
+        title: 'İndirme geçmişini dışa aktar',
+        defaultPath: `aurivo-download-history.${normalized}`,
+        filters: [
+            normalized === 'csv'
+                ? { name: 'CSV', extensions: ['csv'] }
+                : { name: 'JSON', extensions: ['json'] }
+        ]
+    });
+    if (result.canceled || !result.filePath) {
+        return { canceled: true };
+    }
+    const contents = await getDownloaderService().exportHistory(normalized);
+    await fs.promises.writeFile(result.filePath, contents, 'utf8');
+    return { canceled: false, filePath: result.filePath };
+});
+
+ipcMain.handle('downloader:clearHistory', async () => {
+    await getDownloaderService().clearHistory();
+    return true;
+});
+
+ipcMain.handle('downloader:removeHistoryItem', async (_event, id) => {
+    return getDownloaderService().removeHistoryItem(String(id || ''));
+});
+
+ipcMain.handle('downloader:showFile', async (_event, filePath) => {
+    const target = sanitizeIpcPath(filePath, { requireAbsolute: true });
+    if (!target) return false;
+    try {
+        if (fs.existsSync(target)) {
+            shell.showItemInFolder(target);
+            return true;
+        }
+        const parent = path.dirname(target);
+        if (fs.existsSync(parent)) {
+            await shell.openPath(parent);
+            return true;
+        }
+    } catch (error) {
+        console.error('[DOWNLOADER] showFile error:', error);
+    }
+    return false;
 });
 
 ipcMain.handle('settings:confirmClose', () => {
@@ -9088,7 +8116,7 @@ ipcMain.handle('systemAudio:setOutput', async (_event, outputId) => {
 });
 
 // Playlist Kaydet/Yükle
-const playlistPath = pathJoinReviewed(app.getPath('userData'), 'playlist.json');
+const playlistPath = path.join(app.getPath('userData'), 'playlist.json');
 
 ipcMain.handle('playlist:save', async (event, playlist) => {
     try {
@@ -9230,13 +8258,13 @@ ipcMain.handle('media:getDisplayImagePath', async (_event, filePath, options = {
         if (!shouldConvert) return sourcePath;
 
         const stat = await fs.promises.stat(sourcePath);
-        const cacheDir = pathJoinReviewed(app.getPath('temp'), 'aurivo-image-cache');
+        const cacheDir = path.join(app.getPath('temp'), 'aurivo-image-cache');
         await fs.promises.mkdir(cacheDir, { recursive: true });
         const cacheKey = crypto
             .createHash('sha1')
             .update(`${sourcePath}|${Number(stat.size) || 0}|${Number(stat.mtimeMs) || 0}`)
             .digest('hex');
-        const outputPath = pathJoinReviewed(cacheDir, `${cacheKey}.png`);
+        const outputPath = path.join(cacheDir, `${cacheKey}.png`);
 
         try {
             await fs.promises.access(outputPath);
@@ -9272,8 +8300,8 @@ function getFfmpegPathForEnv() {
 
     if (app.isPackaged) {
         const packed = process.platform === 'win32'
-            ? pathJoinReviewed(process.resourcesPath, 'bin', 'ffmpeg.exe')
-            : pathJoinReviewed(process.resourcesPath, 'bin', 'ffmpeg');
+            ? path.join(process.resourcesPath, 'bin', 'ffmpeg.exe')
+            : path.join(process.resourcesPath, 'bin', 'ffmpeg');
         candidates.push(packed);
     }
 
@@ -9307,8 +8335,8 @@ function getFfprobePathForEnv() {
     if (preferSystemFirst && systemCandidate) candidates.push(systemCandidate);
     if (app.isPackaged) {
         const packed = process.platform === 'win32'
-            ? pathJoinReviewed(process.resourcesPath, 'bin', 'ffprobe.exe')
-            : pathJoinReviewed(process.resourcesPath, 'bin', 'ffprobe');
+            ? path.join(process.resourcesPath, 'bin', 'ffprobe.exe')
+            : path.join(process.resourcesPath, 'bin', 'ffprobe');
         candidates.push(packed);
     }
     if (!preferSystemFirst && systemCandidate) candidates.push(systemCandidate);
@@ -9362,7 +8390,7 @@ async function createShiftedSubtitleFile(subtitlePath, delaySeconds) {
         /(\d{2,}:\d{2}:\d{2},\d{3})\s*-->\s*(\d{2,}:\d{2}:\d{2},\d{3})/g,
         (_match, start, end) => `${formatSrtTimestamp(parseSrtTimestamp(start) + shift)} --> ${formatSrtTimestamp(parseSrtTimestamp(end) + shift)}`
     );
-    const targetPath = pathJoinReviewed(os.tmpdir(), `aurivo-subtitle-${crypto.randomUUID()}.srt`);
+    const targetPath = path.join(os.tmpdir(), `aurivo-subtitle-${crypto.randomUUID()}.srt`);
     await fs.promises.writeFile(targetPath, shifted, 'utf8');
     return targetPath;
 }
@@ -9622,7 +8650,7 @@ ipcMain.handle('videoTools:convert', async (event, options = {}) => {
 
         let child = null;
         try {
-            child = spawnReviewed(ffmpegPath, args, { windowsHide: true });
+            child = spawn(ffmpegPath, args, { windowsHide: true });
         } catch (error) {
             finish({ ok: false, error: error?.message || String(error) });
             return;
@@ -9675,16 +8703,16 @@ function normalizeExcludedPaths(excludedFolders = []) {
         ? excludedFolders
             .map((folder) => String(folder?.path || folder || '').trim())
             .filter(Boolean)
-            .map((folderPath) => pathResolveReviewed(folderPath))
+            .map((folderPath) => path.resolve(folderPath))
         : [];
 }
 
 function isPathExcluded(targetPath, excludedPaths = []) {
     const normalizedTarget = String(targetPath || '').trim();
     if (!normalizedTarget) return false;
-    const resolvedTarget = pathResolveReviewed(normalizedTarget);
+    const resolvedTarget = path.resolve(normalizedTarget);
     return excludedPaths.some((excludedPath) => {
-        const resolvedExcluded = pathResolveReviewed(String(excludedPath || '').trim());
+        const resolvedExcluded = path.resolve(String(excludedPath || '').trim());
         return resolvedTarget === resolvedExcluded || resolvedTarget.startsWith(`${resolvedExcluded}${path.sep}`);
     });
 }
@@ -9716,7 +8744,7 @@ async function collectAudioFilesRecursive(rootDir, out = [], excludedPaths = [],
     }
 
     for (const entry of entries) {
-        const fullPath = pathJoinReviewed(rootDir, entry.name);
+        const fullPath = path.join(rootDir, entry.name);
         try {
             if (entry.isDirectory()) {
                 if (recursive && !isPathExcluded(fullPath, excludedPaths)) {
@@ -9746,7 +8774,7 @@ async function collectAudioFilesRecursive(rootDir, out = [], excludedPaths = [],
 function parseMediaDurationWithFfmpeg(filePath) {
     return new Promise((resolve) => {
         const ffmpegPath = getFfmpegPathForEnv();
-        const child = spawnReviewed(ffmpegPath, ['-i', filePath], { windowsHide: true });
+        const child = spawn(ffmpegPath, ['-i', filePath], { windowsHide: true });
         let stderr = '';
 
         child.stderr.on('data', (chunk) => {
@@ -9823,7 +8851,7 @@ async function findBestFolderCoverPath(filePath) {
     for (const lowerCandidate of candidates) {
         const realName = entryMap.get(lowerCandidate);
         if (realName) {
-            return pathJoinReviewed(dir, realName);
+            return path.join(dir, realName);
         }
     }
 
@@ -9864,7 +8892,7 @@ async function collectDirectoriesRecursive(rootDir, out = [], excludedPaths = []
 
     for (const entry of entries) {
         if (!entry.isDirectory()) continue;
-        const fullPath = pathJoinReviewed(rootDir, entry.name);
+        const fullPath = path.join(rootDir, entry.name);
         if (isPathExcluded(fullPath, excludedPaths)) continue;
         out.push(fullPath);
         await collectDirectoriesRecursive(fullPath, out, excludedPaths);
@@ -9972,7 +9000,7 @@ async function startLibraryWatchSession(webContents, folders, excludedFolders = 
     for (const dirPath of uniqueDirectories) {
         try {
             const watcher = fs.watch(dirPath, { persistent: false }, (_eventType, filename) => {
-                const nextPath = filename ? pathJoinReviewed(dirPath, String(filename)) : dirPath;
+                const nextPath = filename ? path.join(dirPath, String(filename)) : dirPath;
                 scheduleRefresh(nextPath, 'fs-change').catch(() => {});
             });
             session.watchers.push(watcher);
@@ -10290,11 +9318,16 @@ async function extractEmbeddedCover(filePath) {
             }
         }
 
-        // 2) ffmpeg ile attached picture dene (m4a/mp3/flac dahil)
+        // 2) M4A/MP4 içindeki covr atomunu doğrudan oku. Böylece ffmpeg olmayan
+        // ortamlarda da Apple/MP4 kapakları kaybolmaz.
+        const mp4Cover = await extractMp4Cover(filePath);
+        if (mp4Cover) return mp4Cover;
+
+        // 3) ffmpeg ile attached picture dene (m4a/mp3/flac dahil)
         const ffmpegCover = await extractCoverWithFFmpeg(filePath);
         if (ffmpegCover) return ffmpegCover;
 
-        // 3) Son çare: manuel ID3 okuma
+        // 4) Son çare: manuel ID3 okuma
         return await extractID3Cover(filePath);
 
     } catch (error) {
@@ -10329,7 +9362,7 @@ async function extractCoverWithFFmpeg(filePath) {
         }
 
         // ffmpeg ile embedded image'ı pipe'la al
-        const ffmpeg = spawnReviewed(ffmpegPath, [
+        const ffmpeg = spawn(ffmpegPath, [
             '-hide_banner',
             '-loglevel', 'error',
             '-i', filePath,
@@ -10372,6 +9405,88 @@ async function extractCoverWithFFmpeg(filePath) {
     });
 }
 
+function readMp4AtomHeader(buffer, offset, end) {
+    if (!Buffer.isBuffer(buffer) || offset + 8 > end) return null;
+    let size = buffer.readUInt32BE(offset);
+    const type = buffer.slice(offset + 4, offset + 8).toString('latin1');
+    let headerSize = 8;
+
+    if (size === 1) {
+        if (offset + 16 > end) return null;
+        const largeSize = buffer.readBigUInt64BE(offset + 8);
+        if (largeSize > BigInt(Number.MAX_SAFE_INTEGER)) return null;
+        size = Number(largeSize);
+        headerSize = 16;
+    } else if (size === 0) {
+        size = end - offset;
+    }
+
+    if (!Number.isFinite(size) || size < headerSize || offset + size > end) return null;
+    return {
+        type,
+        start: offset,
+        end: offset + size,
+        payloadStart: offset + headerSize
+    };
+}
+
+function findMp4CoverDataAtom(buffer, start = 0, end = buffer?.length || 0, depth = 0) {
+    if (!Buffer.isBuffer(buffer) || depth > 12) return null;
+
+    let offset = Math.max(0, start);
+    const limit = Math.min(Number(end) || 0, buffer.length);
+    while (offset + 8 <= limit) {
+        const atom = readMp4AtomHeader(buffer, offset, limit);
+        if (!atom) break;
+
+        if (atom.type === 'covr') {
+            const found = findMp4CoverDataAtom(buffer, atom.payloadStart, atom.end, depth + 1);
+            if (found) return found;
+        } else if (atom.type === 'data') {
+            return atom;
+        } else if (['moov', 'udta', 'ilst', 'trak', 'mdia', 'minf', 'stbl'].includes(atom.type)) {
+            const found = findMp4CoverDataAtom(buffer, atom.payloadStart, atom.end, depth + 1);
+            if (found) return found;
+        } else if (atom.type === 'meta') {
+            const found = findMp4CoverDataAtom(buffer, atom.payloadStart + 4, atom.end, depth + 1);
+            if (found) return found;
+        }
+
+        offset = atom.end;
+    }
+
+    return null;
+}
+
+async function extractMp4Cover(filePath) {
+    try {
+        const ext = path.extname(String(filePath || '')).toLowerCase();
+        if (!['.m4a', '.mp4', '.m4b', '.m4p', '.aac'].includes(ext)) return null;
+
+        const buffer = await fs.promises.readFile(filePath);
+        const dataAtom = findMp4CoverDataAtom(buffer, 0, buffer.length, 0);
+        if (!dataAtom) return null;
+
+        const imageStart = dataAtom.payloadStart + 8;
+        if (imageStart >= dataAtom.end) return null;
+
+        const dataType = dataAtom.payloadStart + 4 <= dataAtom.end
+            ? buffer.readUInt32BE(dataAtom.payloadStart)
+            : 0;
+        const imageBuffer = buffer.slice(imageStart, dataAtom.end);
+        if (imageBuffer.length <= 100) return null;
+
+        const isPng = imageBuffer.slice(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]));
+        const isJpeg = imageBuffer.slice(0, 3).equals(Buffer.from([0xff, 0xd8, 0xff]));
+        const mimeType = (dataType === 14 || isPng) ? 'image/png' : ((dataType === 13 || isJpeg) ? 'image/jpeg' : 'image/jpeg');
+
+        return toImageDataUrl(imageBuffer, mimeType);
+    } catch (error) {
+        console.log('MP4/M4A cover extraction failed:', error?.message || error);
+        return null;
+    }
+}
+
 // ffmpeg ile videodan küçük resim al (JPEG)
 async function extractVideoThumbnailWithFFmpeg(filePath) {
     return new Promise((resolve) => {
@@ -10393,7 +9508,7 @@ async function extractVideoThumbnailWithFFmpeg(filePath) {
         }
 
         // 1. saniyeden 1 kare al (çok kısa videolarda yine de çalışır)
-        const ffmpeg = spawnReviewed(ffmpegPath, [
+        const ffmpeg = spawn(ffmpegPath, [
             '-hide_banner',
             '-loglevel', 'error',
             '-ss', '00:00:01',
@@ -10440,7 +9555,7 @@ async function convertStillImageToPngWithFFmpeg(sourcePath, outputPath) {
             }
         }
 
-        const ffmpeg = spawnReviewed(ffmpegPath, [
+        const ffmpeg = spawn(ffmpegPath, [
             '-y',
             '-hide_banner',
             '-loglevel', 'error',
@@ -12532,7 +11647,7 @@ ipcMain.handle('audio:setBassBoost', (event, value) => {
 // ============================================
 
 // Preset klasörü yolu (packaged/app.asar içinden okunur)
-const presetsPath = getAppFilePath(pathJoinReviewed('resources', 'autoeq'));
+const presetsPath = getAppFilePath(path.join('resources', 'autoeq'));
 
 function clampNumber(v, min, max) {
     const n = Number(v);
@@ -12578,7 +11693,7 @@ function makeBandsFromPoints(points, minDb = -12, maxDb = 12) {
 
 function loadAurivoEQBuiltins() {
     // JSON ile ayarlanabilir (ince ayar için)
-    const filePath = getAppFilePath(pathJoinReviewed('resources', 'aurivo', 'eq_presets.json'));
+    const filePath = getAppFilePath(path.join('resources', 'aurivo', 'eq_presets.json'));
     try {
         const raw = fs.readFileSync(filePath, 'utf8');
         const parsed = JSON.parse(raw);
@@ -12619,6 +11734,14 @@ const AURIVO_EQ_FEATURED_LIST = [
     { filename: '__flat__', name: 'Düz (Flat)', description: 'Tüm bantlar 0.0 dB', bands: new Array(32).fill(0) },
     ...AURIVO_EQ_BUILTINS_LOADED.list
 ];
+
+function sanitizePresetFilename(filename) {
+    const raw = String(filename || '').trim();
+    if (!raw || raw.includes('/') || raw.includes('\\') || raw.includes('\0')) return '';
+    if (raw === '.' || raw === '..' || raw.includes('..')) return '';
+    if (!/^[A-Za-z0-9][A-Za-z0-9._(),+\-\s]*\.json$/u.test(raw)) return '';
+    return raw;
+}
 
 // Preset listesi önbelleği
 let presetListCache = null;
@@ -12687,7 +11810,7 @@ async function buildPresetListCacheIfNeeded() {
         for (let i = 0; i < jsonFiles.length; i += batchSize) {
             const batch = jsonFiles.slice(i, i + batchSize);
             const results = await Promise.allSettled(batch.map(async (f) => {
-                const filePath = pathJoinReviewed(presetsPath, f);
+                const filePath = path.join(presetsPath, f);
                 const raw = await fs.promises.readFile(filePath, 'utf8');
                 const parsed = JSON.parse(raw);
                 const name = (parsed?.name && String(parsed.name).trim())
@@ -12715,7 +11838,7 @@ async function buildPresetListCacheIfNeeded() {
             for (const g of gs) acc[g] = (acc[g] || 0) + 1;
             return acc;
         }, {});
-        console.log('AutoEQ preset yüklendi (gruplu):', presetList.length);
+        console.log(`AutoEQ: ${presetList.length} preset yüklendi (gruplu)`);
         console.log('[AutoEQ] Grup dağılımı:', groupCounts);
         return presetListCache;
     } catch (error) {
@@ -12737,7 +11860,7 @@ ipcMain.handle('presets:load', async (event, filename) => {
         if (!safeFilename) {
             return null;
         }
-        const filePath = pathJoinReviewed(presetsPath, safeFilename);
+        const filePath = path.join(presetsPath, safeFilename);
         const data = await fs.promises.readFile(filePath, 'utf8');
         return JSON.parse(data);
     } catch (error) {
@@ -12786,7 +11909,7 @@ ipcMain.handle('eqPresets:select', async (event, filename) => {
                 return null;
             }
             selectedFilename = safeFilename;
-            const filePath = pathJoinReviewed(presetsPath, safeFilename);
+            const filePath = path.join(presetsPath, safeFilename);
             const data = await fs.promises.readFile(filePath, 'utf8');
             preset = JSON.parse(data);
         }

@@ -9,11 +9,10 @@
 
     function getPulseQuickPreset(mode) {
         const key = String(mode || '').trim().toLowerCase();
-        // Hızlı / Dengeli / Hassas profilleri:
-        // normal=5/8 (Enerji/Ağ Tasarrufu), background=4/8 (Dengeli Varsayılan), max=4/10 (Geniş örneklem, zor şarkılar için)
-        if (key === 'normal') return { requestInterval: 5, bufferSize: 8 };
-        if (key === 'max') return { requestInterval: 4, bufferSize: 10 };
-        return { requestInterval: 4, bufferSize: 8 };
+        // Hızlı / Dengeli / Hassas profilleri.
+        if (key === 'normal') return { requestInterval: 5, bufferSize: 12 };
+        if (key === 'max') return { requestInterval: 3, bufferSize: 16 };
+        return { requestInterval: 4, bufferSize: 14 };
     }
 
     function normalizeVisualMode(value) {
@@ -322,19 +321,13 @@
 
         const pulsePrefs = normalizePulsePreferenceState(state.settings?.pulsePreferences);
         state.settings.pulsePreferences = pulsePrefs;
-        const pulseModeForPreset = String(
-            elements.pulseQuickMode?.value
-            || state.settings?.pulseQuick?.mode
-            || 'background'
-        ).trim().toLowerCase();
-        const pulsePreset = getPulseQuickPreset(pulseModeForPreset);
         if (elements.pulseEnableNotifications) elements.pulseEnableNotifications.checked = !!pulsePrefs.enable_notifications;
         if (elements.pulseEnableMpris) elements.pulseEnableMpris.checked = !!pulsePrefs.enable_mpris;
         if (elements.pulseEnableSystray) elements.pulseEnableSystray.checked = !!pulsePrefs.enable_systray;
         if (elements.pulseNoDuplicates) elements.pulseNoDuplicates.checked = !!pulsePrefs.no_duplicates;
-        if (elements.pulseRequestInterval) elements.pulseRequestInterval.value = String(pulsePreset.requestInterval);
-        if (elements.pulseBufferSize) elements.pulseBufferSize.value = String(pulsePreset.bufferSize);
-        if (elements.pulseRecognitionEngine) elements.pulseRecognitionEngine.value = String(pulsePrefs.recognition_engine || 'hybrid');
+        if (elements.pulseRequestInterval) elements.pulseRequestInterval.value = String(pulsePrefs.request_interval_secs_v3);
+        if (elements.pulseBufferSize) elements.pulseBufferSize.value = String(pulsePrefs.buffer_size_secs);
+        if (elements.pulseRecognitionEngine) elements.pulseRecognitionEngine.value = String(pulsePrefs.recognition_engine || 'songrec_only');
         if (elements.pulseAcoustidApiKey) elements.pulseAcoustidApiKey.value = String(pulsePrefs.acoustid_api_key || '');
 
         if (elements.libraryRememberSection) {
@@ -380,6 +373,9 @@
         }
         if (elements.behaviorCloseToTray) {
             elements.behaviorCloseToTray.checked = state.settings?.ui?.closeToTray !== false;
+        }
+        if (elements.behaviorNotificationsEnabled) {
+            elements.behaviorNotificationsEnabled.checked = state.settings?.ui?.notificationsEnabled === true;
         }
         if (elements.libraryScanOnStartup) {
             elements.libraryScanOnStartup.checked = state.settings?.library?.scanOnStartup !== false;
@@ -746,18 +742,36 @@
         const mode = formMode || pulseDefaultMode;
         state.settings.pulseQuick.mode = ['normal', 'background', 'max'].includes(mode) ? mode : pulseDefaultMode;
         console.log('[SETTINGS] applySettings saved pulseQuick mode:', state.settings.pulseQuick.mode);
-        const pulsePreset = getPulseQuickPreset(state.settings.pulseQuick.mode);
+        const existingPulsePrefs = normalizePulsePreferenceState(state.settings?.pulsePreferences);
+        const requestIntervalInput = Number(elements.pulseRequestInterval?.value);
+        const bufferSizeInput = Number(elements.pulseBufferSize?.value);
 
         state.settings.pulsePreferences = normalizePulsePreferenceState({
-            enable_notifications: !!elements.pulseEnableNotifications?.checked,
-            enable_mpris: !!elements.pulseEnableMpris?.checked,
-            enable_systray: !!elements.pulseEnableSystray?.checked,
-            no_duplicates: !!elements.pulseNoDuplicates?.checked,
-            request_interval_secs_v3: pulsePreset.requestInterval,
-            buffer_size_secs: pulsePreset.bufferSize,
-            current_device_name: state.settings?.pulsePreferences?.current_device_name || '',
-            recognition_engine: String(elements.pulseRecognitionEngine?.value || state.settings?.pulsePreferences?.recognition_engine || 'hybrid'),
-            acoustid_api_key: String(elements.pulseAcoustidApiKey?.value || '')
+            ...existingPulsePrefs,
+            enable_notifications: elements.pulseEnableNotifications
+                ? !!elements.pulseEnableNotifications.checked
+                : existingPulsePrefs.enable_notifications,
+            enable_mpris: elements.pulseEnableMpris
+                ? !!elements.pulseEnableMpris.checked
+                : existingPulsePrefs.enable_mpris,
+            enable_systray: elements.pulseEnableSystray
+                ? !!elements.pulseEnableSystray.checked
+                : existingPulsePrefs.enable_systray,
+            no_duplicates: elements.pulseNoDuplicates
+                ? !!elements.pulseNoDuplicates.checked
+                : existingPulsePrefs.no_duplicates,
+            request_interval_secs_v3: elements.pulseRequestInterval && Number.isFinite(requestIntervalInput)
+                ? requestIntervalInput
+                : existingPulsePrefs.request_interval_secs_v3,
+            buffer_size_secs: elements.pulseBufferSize && Number.isFinite(bufferSizeInput)
+                ? bufferSizeInput
+                : existingPulsePrefs.buffer_size_secs,
+            recognition_engine: elements.pulseRecognitionEngine
+                ? String(elements.pulseRecognitionEngine.value || existingPulsePrefs.recognition_engine || 'songrec_only')
+                : existingPulsePrefs.recognition_engine,
+            acoustid_api_key: elements.pulseAcoustidApiKey
+                ? String(elements.pulseAcoustidApiKey.value || '')
+                : existingPulsePrefs.acoustid_api_key
         });
 
         if (!state.settings.ui || typeof state.settings.ui !== 'object') state.settings.ui = {};
@@ -823,6 +837,10 @@
             (typeof elements.behaviorCloseToTray?.checked === 'boolean')
                 ? !!elements.behaviorCloseToTray.checked
                 : true;
+        state.settings.ui.notificationsEnabled =
+            (typeof elements.behaviorNotificationsEnabled?.checked === 'boolean')
+                ? !!elements.behaviorNotificationsEnabled.checked
+                : false;
         if (!state.settings.webUi || typeof state.settings.webUi !== 'object') {
             state.settings.webUi = {};
         }
@@ -993,10 +1011,22 @@
         const nextMode = normalizeAdblockMode(state.settings.adblock?.mode);
         const prevMode = normalizeAdblockMode(prevAdblock.mode);
         await Promise.resolve(saveSettings?.());
-        try {
-            await Promise.resolve(savePulsePreferences?.(state.settings.pulsePreferences));
-        } catch (error) {
-            notifyPulseSaveError?.(error);
+        const editsPulsePreferences = !!(
+            elements.pulseEnableNotifications
+            || elements.pulseEnableMpris
+            || elements.pulseEnableSystray
+            || elements.pulseNoDuplicates
+            || elements.pulseRequestInterval
+            || elements.pulseBufferSize
+            || elements.pulseRecognitionEngine
+            || elements.pulseAcoustidApiKey
+        );
+        if (editsPulsePreferences) {
+            try {
+                await Promise.resolve(savePulsePreferences?.(state.settings.pulsePreferences));
+            } catch (error) {
+                notifyPulseSaveError?.(error);
+            }
         }
 
         return { nextMode, prevMode };
@@ -1076,14 +1106,6 @@
             elements.pulseQuickMode.value = defaultMode;
             updatePulseQuickModeUi?.();
         }
-        if (elements.pulseEnableNotifications) elements.pulseEnableNotifications.checked = true;
-        if (elements.pulseEnableMpris) elements.pulseEnableMpris.checked = false;
-        if (elements.pulseEnableSystray) elements.pulseEnableSystray.checked = false;
-        if (elements.pulseNoDuplicates) elements.pulseNoDuplicates.checked = false;
-        if (elements.pulseRequestInterval) elements.pulseRequestInterval.value = '4';
-        if (elements.pulseBufferSize) elements.pulseBufferSize.value = '6';
-        if (elements.pulseRecognitionEngine) elements.pulseRecognitionEngine.value = 'hybrid';
-        if (elements.pulseAcoustidApiKey) elements.pulseAcoustidApiKey.value = '';
     }
 
     function updateAudioSettingsVolumeLabel(elements) {

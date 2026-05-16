@@ -123,15 +123,18 @@ function normalizePulsePreferenceState(input) {
     const engine = String(prefs.recognition_engine || '').trim().toLowerCase();
     const recognitionEngine = ['hybrid', 'songrec_only', 'acoustid_only'].includes(engine)
         ? engine
-        : 'hybrid';
+        : 'songrec_only';
     return {
-        enable_notifications: typeof prefs.enable_notifications === 'boolean' ? prefs.enable_notifications : true,
+        enable_notifications: typeof prefs.enable_notifications === 'boolean' ? prefs.enable_notifications : false,
         enable_mpris: typeof prefs.enable_mpris === 'boolean' ? prefs.enable_mpris : false,
         enable_systray: typeof prefs.enable_systray === 'boolean' ? prefs.enable_systray : false,
-        no_duplicates: typeof prefs.no_duplicates === 'boolean' ? prefs.no_duplicates : false,
+        no_duplicates: typeof prefs.no_duplicates === 'boolean' ? prefs.no_duplicates : true,
         request_interval_secs_v3: Math.max(1, Math.min(120, Number(prefs.request_interval_secs_v3) || 4)),
-        buffer_size_secs: Math.max(4, Math.min(30, Number(prefs.buffer_size_secs) || 8)),
+        buffer_size_secs: Math.max(4, Math.min(30, Number(prefs.buffer_size_secs) || 14)),
         current_device_name: typeof prefs.current_device_name === 'string' ? prefs.current_device_name : '',
+        open_platform: ['youtube', 'ytmusic'].includes(String(prefs.open_platform || '').trim().toLowerCase())
+            ? String(prefs.open_platform).trim().toLowerCase()
+            : 'youtube',
         recognition_engine: recognitionEngine,
         acoustid_api_key: typeof prefs.acoustid_api_key === 'string' ? prefs.acoustid_api_key : ''
     };
@@ -625,6 +628,7 @@ const state = {
     isPlaying: false,
     isShuffle: false,
     isRepeat: false,
+    isRepeatOne: false,
     stopAfterCurrent: false, // Sistem tepsisi "Geçerli parçadan sonra durdur" özelliği
     volume: 40,
     isMuted: false,
@@ -700,8 +704,6 @@ const state = {
     galleryBackgroundMode: 'dim',
     galleryMiniNavigatorEnabled: false,
     webTrackId: 0, // Web/YouTube için benzersiz parça ID sayacı
-    webDuration: 0,
-    webPosition: 0,
     webTitle: '',
     webPendingTitle: '',
     webArtist: '',
@@ -746,8 +748,6 @@ const securityRuntime = {
 };
 const webLoadRuntime = {
     retryMap: new Map(), // key=url, value=retry count
-    overlayTimer: null,
-    overlayShowTimer: null,
     navToken: 0,
     lastRequestedUrl: '',
     lastRequestedAt: 0
@@ -967,10 +967,12 @@ const pulseQuickRuntime = {
     lastUncertainAt: 0,
     lastWarningAt: 0,
     sampleRetryRunning: false,
+    ownedByQuickButton: false,
     unsubState: null,
     unsubResult: null,
     unsubUncertain: null,
-    unsubOpenQuery: null
+    unsubOpenQuery: null,
+    foundItems: []
 };
 
 const ADBLOCK_DEFAULT_SETTINGS = {
@@ -1030,63 +1032,32 @@ function getAdblockBridgeConfig() {
 }
 
 function getAdblockWebModeProfile() {
-    const packagedLinuxSafeMode = isPackagedLinuxRuntimeRenderer() && ensureAdblockSettings().developerMode !== true;
-    const mode = normalizeAdblockMode(ensureAdblockSettings().mode);
-
-    if (packagedLinuxSafeMode) {
-        // Paketli Linux'ta webview donmalarını azaltmak için daha hafif tarama profili.
-        // Özellikle DOM taraması ve sık tick döngüsü yavaş cihazlarda ana süreci kilitleyebiliyor.
-        if (mode === 'aggressive') {
-            return {
-                tickIntervalMs: 120,
-                uiScrubLevel: 1,
-                deepSponsoredScan: false,
-                adSignalLevel: 1,
-                forceSeekAds: true
-            };
-        }
-        if (mode === 'basic') {
-            return {
-                tickIntervalMs: 360,
-                uiScrubLevel: 0,
-                deepSponsoredScan: false,
-                adSignalLevel: 0,
-                forceSeekAds: false
-            };
-        }
+    const adblock = ensureAdblockSettings();
+    const mode = normalizeAdblockMode(adblock.mode);
+    if (mode === 'basic') {
         return {
-            tickIntervalMs: 180,
-            uiScrubLevel: 0,
+            tickIntervalMs: 1200,
+            uiScrubLevel: 1,
             deepSponsoredScan: false,
             adSignalLevel: 1,
             forceSeekAds: false
         };
     }
-
-    if (mode === 'basic') {
+    if (mode === 'aggressive') {
         return {
-            tickIntervalMs: 350,
-            uiScrubLevel: 0,
+            tickIntervalMs: 420,
+            uiScrubLevel: 2,
             deepSponsoredScan: false,
-            adSignalLevel: 0,
+            adSignalLevel: 2,
             forceSeekAds: false
         };
     }
-    if (mode === 'aggressive') {
-        return {
-            tickIntervalMs: 55,
-            uiScrubLevel: 2,
-            deepSponsoredScan: true,
-            adSignalLevel: 2,
-            forceSeekAds: true
-        };
-    }
     return {
-        tickIntervalMs: 75,
+        tickIntervalMs: 700,
         uiScrubLevel: 1,
-        deepSponsoredScan: true,
-        adSignalLevel: 2,
-        forceSeekAds: true
+        deepSponsoredScan: false,
+        adSignalLevel: 1,
+        forceSeekAds: false
     };
 }
 
@@ -1195,7 +1166,6 @@ let videoToolActiveJobId = '';
 let videoToolLastOutputPath = '';
 let videoToolBatchFiles = [];
 let videoToolModeState = 'video';
-let videoToolsViewMode = 'studio';
 let videoToolSourcePath = '';
 let videoToolPreviewPath = '';
 let videoToolsProgressUnsubscribe = null;
@@ -1389,6 +1359,7 @@ let galleryConverterSourceImage = null;
 let galleryConverterPreviewTimer = null;
 let galleryConverterPreviewRenderToken = 0;
 const PLAYLIST_CARD_COVER_RETRY_MS = 10000;
+const TRANSPARENT_IMAGE_DATA_URL = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==';
 
 function getLibrarySettingsSyncSignature(settings = state.settings) {
     const library = settings?.library || {};
@@ -1475,7 +1446,7 @@ function ensureMainShellVisible() {
             el.style.removeProperty('visibility');
             el.style.removeProperty('opacity');
         }
-        const overlays = document.querySelectorAll('.modal-overlay, .web-loading-overlay');
+        const overlays = document.querySelectorAll('.modal-overlay');
         overlays.forEach((el) => {
             if (!el) return;
             el.classList.add('hidden');
@@ -1628,6 +1599,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     await loadSettings();
     loadVideoStudioProfile();
+    hydrateVideoStudioOutputSettingsFromAppSettings();
     loadVideoStudioPlugins().catch(() => {});
     applyWebExperienceMode({ forceSwitch: false });
     // C++ Ses Motoru kontrolü (ayarlar yüklendikten sonra)
@@ -2076,6 +2048,7 @@ async function loadAndApplyStartupSfxSettings() {
 function cacheElements() {
     // Kenar çubuğu
     elements.sidebarBtns = document.querySelectorAll('.sidebar-btn[data-page]');
+    elements.aurivoDawlodBtn = document.getElementById('aurivoDawlodBtn');
     elements.settingsBtn = document.getElementById('settingsBtn');
     elements.infoBtn = document.getElementById('infoBtn');
     elements.aboutModalOverlay = document.getElementById('aboutModalOverlay');
@@ -2319,7 +2292,6 @@ function cacheElements() {
     // Video ve Web
     elements.videoPlayer = document.getElementById('videoPlayer');
     elements.webView = document.getElementById('webView');
-    elements.webLoadingOverlay = document.getElementById('webLoadingOverlay');
 
     // Oynatıcı Kontrolleri
     elements.seekSlider = document.getElementById('seekSlider');
@@ -2332,6 +2304,7 @@ function cacheElements() {
     elements.nextBtn = document.getElementById('nextBtn');
     elements.shuffleBtn = document.getElementById('shuffleBtn');
     elements.repeatBtn = document.getElementById('repeatBtn');
+    elements.repeatOneBtn = document.getElementById('repeatOneBtn');
     elements.rewindBtn = document.getElementById('rewindBtn');
     elements.forwardSeekBtn = document.getElementById('forwardSeekBtn');
     elements.volumeBtn = document.getElementById('volumeBtn');
@@ -2366,6 +2339,8 @@ function cacheElements() {
     elements.pulseAcoustidApiKey = document.getElementById('pulseAcoustidApiKey');
     elements.pulseAcoustidHint = document.getElementById('pulseAcoustidHint');
     elements.pulseAcoustidWarning = document.getElementById('pulseAcoustidWarning');
+    elements.pulseFoundSection = document.getElementById('pulseFoundSection');
+    elements.pulseFoundList = document.getElementById('pulseFoundList');
     elements.libraryRememberSection = document.getElementById('libraryRememberSection');
     elements.libraryRestoreLastFolder = document.getElementById('libraryRestoreLastFolder');
     elements.libraryRestoreLastPlaylist = document.getElementById('libraryRestoreLastPlaylist');
@@ -2491,11 +2466,6 @@ function cacheElements() {
     elements.audioVideoDelay = document.getElementById('audioVideoDelay');
     elements.audioVideoDelayValue = document.getElementById('audioVideoDelayValue');
     elements.audioVideoDelayReset = document.getElementById('audioVideoDelayReset');
-    elements.adblockBlockedCount = document.getElementById('adblockBlockedCount');
-    elements.adblockTotalCount = document.getElementById('adblockTotalCount');
-    elements.adblockRulesetCount = document.getElementById('adblockRulesetCount');
-    elements.adblockDomainRuleCount = document.getElementById('adblockDomainRuleCount');
-    elements.adblockOpenDashboardBtn = document.getElementById('adblockOpenDashboardBtn');
     elements.adblockModeGrid = document.getElementById('adblockModeGrid');
     elements.adblockModeCards = document.querySelectorAll('.adblock-mode-card[data-adblock-mode]');
     elements.adblockShowBlockedCount = document.getElementById('adblockShowBlockedCount');
@@ -2515,6 +2485,7 @@ function cacheElements() {
     elements.behaviorWebMotionPreset = document.getElementById('behaviorWebMotionPreset');
     elements.behaviorWebLowPowerMode = document.getElementById('behaviorWebLowPowerMode');
     elements.behaviorCloseToTray = document.getElementById('behaviorCloseToTray');
+    elements.behaviorNotificationsEnabled = document.getElementById('behaviorNotificationsEnabled');
     elements.uiVisualModeSelect = document.getElementById('uiVisualModeSelect');
     elements.uiMotionProfileSelect = document.getElementById('uiMotionProfileSelect');
     elements.uiSfxPerfModeSelect = document.getElementById('uiSfxPerfModeSelect');
@@ -2542,7 +2513,6 @@ function cacheElements() {
     elements.securityEnforceAllowlist = document.getElementById('securityEnforceAllowlist');
     elements.securityCopyUrlBtn = document.getElementById('securityCopyUrlBtn');
     elements.securityOpenInBrowserBtn = document.getElementById('securityOpenInBrowserBtn');
-    elements.securityQuickDownloadBtn = document.getElementById('securityQuickDownloadBtn');
     elements.securitySessionProfile = document.getElementById('securitySessionProfile');
     elements.securityClearCookiesBtn = document.getElementById('securityClearCookiesBtn');
     elements.securityClearCacheBtn = document.getElementById('securityClearCacheBtn');
@@ -2592,6 +2562,7 @@ async function loadSettings() {
         state.volume = state.settings.volume || 40;
         state.isShuffle = state.settings.shuffle || false;
         state.isRepeat = state.settings.repeat || false;
+        state.isRepeatOne = state.settings.repeatOne || false;
 
         // Web UI (çekmece)
         if (!state.settings.webUi || typeof state.settings.webUi !== 'object') {
@@ -2909,6 +2880,7 @@ async function loadSettings() {
                 webExperienceEnabled: false,
                 webStartupLazyDelayMs: WEB_STARTUP_LAZY_DELAY_DEFAULT_MS,
                 closeToTray: true,
+                notificationsEnabled: false,
                 language: ''
             };
         }
@@ -2927,6 +2899,9 @@ async function loadSettings() {
         }
         if (typeof state.settings.ui.closeToTray !== 'boolean') {
             state.settings.ui.closeToTray = true;
+        }
+        if (typeof state.settings.ui.notificationsEnabled !== 'boolean') {
+            state.settings.ui.notificationsEnabled = false;
         }
         if (typeof state.settings.ui.lastWebPlatform !== 'string') {
             state.settings.ui.lastWebPlatform = '';
@@ -2969,6 +2944,7 @@ async function loadSettings() {
 
         if (state.isShuffle && elements.shuffleBtn) elements.shuffleBtn.classList.add('active');
         if (state.isRepeat && elements.repeatBtn) elements.repeatBtn.classList.add('active');
+        if (state.isRepeatOne && elements.repeatOneBtn) elements.repeatOneBtn.classList.add('active');
         updateAdblockBadge(adblockRuntime.lastBlocked);
         applyAdblockRuntimeConfig();
         await refreshSystemAudioState();
@@ -2987,6 +2963,7 @@ async function saveSettings() {
         state.settings.volume = state.volume;
         state.settings.shuffle = state.isShuffle;
         state.settings.repeat = state.isRepeat;
+        state.settings.repeatOne = state.isRepeatOne;
         syncSfxLightsShadowStorage(state.settings?.appearance?.sfxLights !== false);
         syncSfxIconSizeShadowStorage(state.settings?.appearance?.sfxSidebarIconSize || 'medium');
         suppressSettingsReloadUiUntil = Date.now() + 700;
@@ -5131,6 +5108,24 @@ function setupEventListeners() {
     }
     if (elements.settingsBtn) elements.settingsBtn.addEventListener('click', () => openSettings('playback'));
     if (elements.infoBtn) elements.infoBtn.addEventListener('click', showAbout);
+    if (elements.aurivoDawlodBtn) {
+        elements.aurivoDawlodBtn.addEventListener('click', async () => {
+            const url = await getActiveWebDownloadUrl();
+            if (!url) {
+                const ok = await window.aurivo?.downloader?.openWindow?.('');
+                if (!ok) {
+                    safeNotify('Aurivo Dawlod penceresi açılamadı.', 'error', 2600);
+                    return;
+                }
+                safeNotify('İndirilebilir içerik bulunamadı. Önce bir video veya şarkı açın.', 'error', 3200);
+                return;
+            }
+            const ok = await window.aurivo?.downloader?.openWindow?.(url);
+            if (!ok) {
+                safeNotify('Aurivo Dawlod penceresi açılamadı.', 'error', 2600);
+            }
+        });
+    }
     if (elements.adblockBtn) {
         elements.adblockBtn.addEventListener('click', async () => {
             await openAdblockDashboardPanel();
@@ -5360,6 +5355,14 @@ function setupEventListeners() {
             applyWebUiClasses();
         });
     }
+    if (elements.behaviorNotificationsEnabled) {
+        elements.behaviorNotificationsEnabled.addEventListener('change', () => {
+            if (!state.settings || typeof state.settings !== 'object') state.settings = {};
+            if (!state.settings.ui || typeof state.settings.ui !== 'object') state.settings.ui = {};
+            state.settings.ui.notificationsEnabled = !!elements.behaviorNotificationsEnabled.checked;
+            markSettingsDirty();
+        });
+    }
 
     // Web Platformları
     elements.platformBtns.forEach(btn => {
@@ -5449,7 +5452,33 @@ function setupEventListeners() {
             navigateForward();
         });
     }
-    elements.refreshBtn.addEventListener('click', refreshCurrentView);
+    if (elements.refreshBtn) {
+        elements.refreshBtn.addEventListener('click', () => {
+            const glyph = elements.refreshBtn.querySelector('.nav-glyph');
+            if (glyph && typeof glyph.animate === 'function') {
+                glyph.getAnimations?.().forEach((animation) => animation.cancel());
+                glyph.animate(
+                    [
+                        { transform: 'rotate(0deg)' },
+                        { transform: 'rotate(360deg)' }
+                    ],
+                    {
+                        duration: 620,
+                        easing: 'cubic-bezier(0.28, 0.84, 0.42, 1)'
+                    }
+                );
+            }
+            elements.refreshBtn.classList.remove('is-refresh-spinning');
+            void elements.refreshBtn.offsetWidth;
+            elements.refreshBtn.classList.add('is-refresh-spinning');
+        });
+        elements.refreshBtn.addEventListener('animationend', (event) => {
+            if (event.animationName === 'aurivoRefreshSpin') {
+                elements.refreshBtn.classList.remove('is-refresh-spinning');
+            }
+        });
+        elements.refreshBtn.addEventListener('click', refreshCurrentView);
+    }
     if (document.body?.dataset?.navFallbackBound !== 'true') {
         document.body.dataset.navFallbackBound = 'true';
         document.addEventListener('click', (event) => {
@@ -5533,6 +5562,7 @@ function setupEventListeners() {
     elements.nextBtn.addEventListener('click', () => playNextWithCrossfade());
     elements.shuffleBtn.addEventListener('click', toggleShuffle);
     elements.repeatBtn.addEventListener('click', toggleRepeat);
+    elements.repeatOneBtn?.addEventListener('click', toggleRepeatOne);
     elements.rewindBtn.addEventListener('click', () => seekBy(-getPlaybackSeekStepSeconds()));
     elements.forwardSeekBtn.addEventListener('click', () => seekBy(getPlaybackSeekStepSeconds()));
 
@@ -6636,10 +6666,9 @@ function setupEventListeners() {
                     return;
                 }
                 hideRestartHint();
-                const recMode = String(elements.pulseRecognitionEngine?.value || 'hybrid').trim().toLowerCase();
-                const hasAcoustidKey = String(elements.pulseAcoustidApiKey?.value || '').trim().length > 0;
-                if (recMode === 'acoustid_only' && !hasAcoustidKey) {
-                    safeNotify('Sadece AcoustID secili ama API key bos. Anahtar eklenmezse tanima calismaz.', 'warning', 2600);
+                const recMode = String(elements.pulseRecognitionEngine?.value || 'songrec_only').trim().toLowerCase();
+                if (recMode === 'acoustid_only') {
+                    safeNotify('AcoustID modu hazirlaniyor. Canli tanima icin SongRec/Shazam uyumlu motoru secin.', 'warning', 3200);
                     return;
                 }
                 safeNotify(
@@ -6900,12 +6929,6 @@ function setupEventListeners() {
             saveSettings().catch(() => { });
         });
     }
-    if (elements.adblockOpenDashboardBtn) {
-        elements.adblockOpenDashboardBtn.addEventListener('click', () => {
-            openAdblockDashboardPanel();
-        });
-    }
-
     // Çapraz Geçiş Otomatik onay kutusu bağımlılığı
     const crossfadeAuto = document.getElementById('crossfadeAuto');
     const sameAlbumNo = document.getElementById('sameAlbumNoCrossfade');
@@ -6957,10 +6980,9 @@ function setupEventListeners() {
     setupSecurityUI();
     startAdblockStatsPolling();
 
-    // WebView Gezinti Olayları (YouTube parça değişimi tespiti)
+        // WebView Gezinti Olayları (YouTube parça değişimi tespiti)
     if (elements.webView) {
         elements.webView.addEventListener('did-start-loading', () => {
-            showWebLoadingOverlay();
             triggerAdblockNavBurstRefresh();
             resetWebDaliAttachMetrics('did-start-loading');
             primeWebDaliOnWebTabActivation('did-start-loading');
@@ -6975,24 +6997,16 @@ function setupEventListeners() {
             if (u && u !== 'about:blank') webLoadRuntime.retryMap.delete(u);
         });
         elements.webView.addEventListener('did-stop-loading', () => {
-            hideWebLoadingOverlay();
             triggerAdblockNavBurstRefresh();
         });
         elements.webView.addEventListener('did-finish-load', () => {
-            hideWebLoadingOverlay();
             triggerAdblockNavBurstRefresh();
             // Sayfa yüklenir yüklenmez DALI pre-arm: ilk tikta ham ses penceresini daralt.
             const preArmDelay = isPackagedLinuxRuntimeRenderer() ? 90 : 40;
             scheduleApplyWebDaliEngine('did-finish-load', preArmDelay);
             scheduleApplyWebDaliEngineBurst('did-finish-load', [0, 70, 180]);
         });
-        elements.webView.addEventListener('did-frame-finish-load', (e) => {
-            if (e?.isMainFrame !== false) {
-                hideWebLoadingOverlay();
-            }
-        });
         elements.webView.addEventListener('media-started-playing', () => {
-            hideWebLoadingOverlay();
             // Ilk sesi kesmeden hizli yakalama:
             // anlik + kisa burst retry; player gec baglansa da hizla yakalar.
             pushAppVolumeToWeb();
@@ -7026,7 +7040,6 @@ function setupEventListeners() {
                 }
 
                 safeNotify(`Web sayfası yüklenemedi (${code}).`, 'error', 2600);
-                hideWebLoadingOverlay();
             } catch {
                 // yoksay
             }
@@ -7071,7 +7084,6 @@ function setupEventListeners() {
         // Not: Bazı Chromium sürümlerinde navigator.mediaSession override edilemez (non-configurable).
         // Bu yüzden "disable" yerine güvenli polling + event dinleme ile AURIVO_SYNC mesajları üretiyoruz.
         elements.webView.addEventListener('dom-ready', () => {
-            hideWebLoadingOverlay();
             try {
                 elements.webView.setUserAgent(getEmbeddedDesktopUserAgent());
             } catch { }
@@ -7238,8 +7250,10 @@ function setupEventListeners() {
                         let lastVolumeKey = '';
                         let lastMedia = null;
                         let ytAdStyleInjected = false;
-                        let adShieldEl = null;
                         let adDetectedSince = 0;
+                        let adPlaybackRateBoosted = false;
+                        let adPreviousPlaybackRate = 1;
+                        const adAudioRestore = new WeakMap();
 
                         function isYouTubeHost() {
                             try {
@@ -7276,6 +7290,64 @@ function setupEventListeners() {
                             );
                         }
 
+                        function getYouTubeMediaElements() {
+                            try {
+                                return Array.from(document.querySelectorAll(
+                                    'video.html5-main-video, #movie_player video, #movie_player audio, video, audio'
+                                )).filter(Boolean);
+                            } catch {
+                                return [];
+                            }
+                        }
+
+                        function getYouTubeAdState(movie) {
+                            try {
+                                if (!movie) return 0;
+                                if (typeof movie.getAdState === 'function') return Number(movie.getAdState()) || 0;
+                                if (typeof movie.getPlayerState === 'function' && movie.classList?.contains?.('ad-showing')) {
+                                    return Number(movie.getPlayerState()) || 1;
+                                }
+                            } catch {}
+                            return 0;
+                        }
+
+                        function quarantineYouTubeAdAudio(shouldQuarantine) {
+                            if (!isYouTubeHost()) return;
+                            const medias = getYouTubeMediaElements();
+                            medias.forEach((m) => {
+                                try {
+                                    if (!m) return;
+                                    if (shouldQuarantine) {
+                                        if (!adAudioRestore.has(m)) {
+                                            adAudioRestore.set(m, {
+                                                muted: !!m.muted,
+                                                volume: Number.isFinite(Number(m.volume)) ? Number(m.volume) : 1,
+                                                playbackRate: Number.isFinite(Number(m.playbackRate)) ? Number(m.playbackRate) : 1
+                                            });
+                                        }
+                                        m.muted = true;
+                                        m.volume = 0;
+                                        if (isLikelyAdMediaSrc(m.currentSrc || m.src)) {
+                                            if (Number.isFinite(m.duration) && m.duration > 0) {
+                                                m.currentTime = Math.max(0, m.duration - 0.05);
+                                            }
+                                            if (Number.isFinite(m.playbackRate) && m.playbackRate < 8) {
+                                                m.playbackRate = 16;
+                                            }
+                                        }
+                                    } else if (adAudioRestore.has(m)) {
+                                        const prev = adAudioRestore.get(m) || {};
+                                        m.muted = !!prev.muted;
+                                        if (Number.isFinite(Number(prev.volume))) m.volume = Math.max(0, Math.min(1, Number(prev.volume)));
+                                        if (Number.isFinite(Number(prev.playbackRate)) && Number(prev.playbackRate) > 0 && Number(m.playbackRate) > 4) {
+                                            m.playbackRate = Number(prev.playbackRate);
+                                        }
+                                        adAudioRestore.delete(m);
+                                    }
+                                } catch {}
+                            });
+                        }
+
                         function isWebSyncEligible(media) {
                             if (!isYouTubeHost()) return true;
                             if (!isYouTubeWatchLikeContext()) return false;
@@ -7298,93 +7370,15 @@ function setupEventListeners() {
                             style.id = 'aurivo-deliblock-yt-css';
                             style.textContent = [
                                 '.ytp-ad-overlay-container, .ytp-ad-overlay-slot { display: none !important; }',
-                                '.ytd-display-ad-renderer, ytd-promoted-sparkles-web-renderer, ytd-player-legacy-desktop-watch-ads-renderer { display: none !important; }',
+                                '.ytd-display-ad-renderer, ytd-promoted-sparkles-web-renderer, ytd-player-legacy-desktop-watch-ads-renderer, ytd-action-companion-ad-renderer { display: none !important; }',
                                 'ytd-promoted-video-renderer, ytd-ad-slot-renderer, ytd-in-feed-ad-layout-renderer, ytd-video-masthead-ad-v3-renderer, ytd-banner-promo-renderer, ytd-companion-slot-renderer { display: none !important; }',
-                                '.ytp-ad-survey, .ytp-ad-preview-text, .ytp-ad-simple-ad-badge, .ytp-ad-button, .ytp-featured-product, ytd-engagement-panel-section-list-renderer[target-id^="engagement-panel-ads"] { display:none !important; }',
-                                '#player-ads, .ytp-ad-player-overlay, .ytp-ad-module { display: none !important; }',
-                                '#movie_player.ad-showing .ytp-chrome-bottom, #movie_player.ad-showing .ytp-progress-bar-container, #movie_player.ad-showing .ytp-scrubber-container, #movie_player.ad-showing .ytp-cued-thumbnail-overlay-image, #movie_player.ad-showing .ytp-ad-player-overlay-progress-bar, #movie_player.ad-showing .ytp-ad-progress { visibility: hidden !important; opacity: 0 !important; }',
-                                '#aurivo-deliblock-adshield { position:absolute; inset:0; display:none; z-index:2147483646; align-items:center; justify-content:center; pointer-events:none; background:transparent; }',
-                                '#aurivo-deliblock-adshield .spin { width:40px; height:40px; border:4px solid rgba(255,255,255,.32); border-top-color:#ffffff; border-radius:50%; animation:aurivoShieldSpin .78s linear infinite; }',
-                                '@keyframes aurivoShieldSpin { to { transform: rotate(360deg);} }'
+                                'ytd-statement-banner-renderer, ytd-mealbar-promo-renderer, ytd-compact-promoted-video-renderer, ytd-promoted-sparkles-text-search-renderer { display: none !important; }',
+                                '.ytp-ad-survey, .ytp-ad-preview-text, .ytp-ad-simple-ad-badge, .ytp-featured-product, .ytp-ad-module, ytd-engagement-panel-section-list-renderer[target-id^="engagement-panel-ads"] { display:none !important; }',
+                                '#player-ads, #masthead-ad, #panels ytd-engagement-panel-section-list-renderer[target-id*="ads"] { display: none !important; }',
+                                '.ytp-ad-skip-button, .ytp-ad-skip-button-modern, button.ytp-ad-skip-button-modern, .ytp-skip-ad-button { visibility: visible !important; opacity: 1 !important; pointer-events: auto !important; }',
                             ].join('\\n');
                             (document.head || document.documentElement).appendChild(style);
                             ytAdStyleInjected = true;
-                        }
-
-                        function ensurePlayerShield(movie) {
-                            if (!movie) return;
-                            const existing = document.getElementById('aurivo-deliblock-adshield');
-                            if (existing) {
-                                adShieldEl = existing;
-                            } else {
-                                adShieldEl = document.createElement('div');
-                                adShieldEl.id = 'aurivo-deliblock-adshield';
-                                movie.style.position = movie.style.position || 'relative';
-                                movie.appendChild(adShieldEl);
-                            }
-
-                            // Eski panel/metinli yapıyı zorla sade spinner'a çevir.
-                            if (!adShieldEl.querySelector('.spin') || adShieldEl.querySelector('.panel')) {
-                                const spinner = document.createElement('div');
-                                spinner.className = 'spin';
-                                spinner.setAttribute('aria-hidden', 'true');
-                                if (typeof adShieldEl.replaceChildren === 'function') adShieldEl.replaceChildren(spinner);
-                                else {
-                                    while (adShieldEl.firstChild) adShieldEl.removeChild(adShieldEl.firstChild);
-                                    adShieldEl.appendChild(spinner);
-                                }
-                            }
-                        }
-
-                        function isPulseSearchBypassActive() {
-                            try {
-                                return Number(window.__aurivoPulseSearchBypassUntil || 0) > Date.now();
-                            } catch { return false; }
-                        }
-
-                        function setPlayerShieldVisible(visible) {
-                            if (!adShieldEl) return;
-                            if (isPulseSearchBypassActive()) {
-                                adShieldEl.style.display = 'none';
-                                return;
-                            }
-                            adShieldEl.style.display = visible ? 'flex' : 'none';
-                        }
-
-                        function installYouTubePreflightClickGuard() {
-                            if (!isYouTubeHost()) return;
-                            if (window.__aurivoPreflightGuardInstalled) return;
-                            window.__aurivoPreflightGuardInstalled = true;
-                            document.addEventListener('click', (ev) => {
-                                try {
-                                    const pathArr = getEventPath(ev);
-                                    const anchor = findAnchorFromPath(pathArr);
-                                    const link = anchor && (
-                                        (typeof anchor.matches === 'function' && anchor.matches('a[href*="/watch"], a[href^="/watch"], a[href*="youtu.be/"]'))
-                                            ? anchor
-                                            : (anchor.closest?.('a[href*="/watch"], a[href^="/watch"], a[href*="youtu.be/"]') || null)
-                                    );
-                                    if (!link) return;
-                                    if (isPulseSearchBypassActive()) return;
-                                    const href = String(link.getAttribute('href') || '');
-                                    if (!href) return;
-                                    if (href.startsWith('#')) return;
-                                    if (ev.ctrlKey || ev.metaKey || ev.shiftKey || ev.altKey) return;
-                                    emitPendingTitle(extractClickTitle(link) || extractTitleFromPath(pathArr));
-                                    const movie = document.getElementById('movie_player');
-                                    if (!movie) return;
-
-                                    ensurePlayerShield(movie);
-                                    setPlayerShieldVisible(true);
-
-                                    ev.preventDefault();
-                                    ev.stopPropagation();
-                                    const nextUrl = new URL(href, location.href).toString();
-                                    setTimeout(() => {
-                                        try { location.assign(nextUrl); } catch {}
-                                    }, 140);
-                                } catch {}
-                            }, true);
                         }
 
                         function installGenericPendingTitleHint() {
@@ -7414,7 +7408,7 @@ function setupEventListeners() {
                         function hideContainer(node) {
                             if (!node || !node.closest) return;
                             const container = node.closest(
-                                'ytd-rich-item-renderer, ytd-video-renderer, ytd-grid-video-renderer, ytd-compact-video-renderer, ytd-item-section-renderer'
+                                'ytd-ad-slot-renderer, ytd-promoted-video-renderer, ytd-in-feed-ad-layout-renderer, ytd-display-ad-renderer, ytd-promoted-sparkles-web-renderer, ytd-video-masthead-ad-v3-renderer, ytd-banner-promo-renderer, ytd-companion-slot-renderer, ytd-action-companion-ad-renderer, ytd-compact-promoted-video-renderer, ytd-promoted-sparkles-text-search-renderer, ytd-rich-item-renderer, ytd-video-renderer, ytd-grid-video-renderer, ytd-compact-video-renderer'
                             );
                             if (container && container.style) {
                                 container.style.display = 'none';
@@ -7427,7 +7421,7 @@ function setupEventListeners() {
 
                             // Yapısal reklam render'ları
                             const structural = document.querySelectorAll(
-                                'ytd-ad-slot-renderer, ytd-promoted-video-renderer, ytd-in-feed-ad-layout-renderer, ytd-display-ad-renderer, ytd-promoted-sparkles-web-renderer, ytd-video-masthead-ad-v3-renderer, ytd-banner-promo-renderer, ytd-companion-slot-renderer'
+                                'ytd-ad-slot-renderer, ytd-promoted-video-renderer, ytd-in-feed-ad-layout-renderer, ytd-display-ad-renderer, ytd-promoted-sparkles-web-renderer, ytd-video-masthead-ad-v3-renderer, ytd-banner-promo-renderer, ytd-companion-slot-renderer, ytd-action-companion-ad-renderer, ytd-compact-promoted-video-renderer, ytd-promoted-sparkles-text-search-renderer'
                             );
                             structural.forEach((node) => hideContainer(node));
 
@@ -7452,6 +7446,7 @@ function setupEventListeners() {
 
                         function scrubGenericAdUi() {
                             if (!DELIBLOCK || (DELIBLOCK.uiScrubLevel | 0) <= 0) return;
+                            if (isYouTubeHost()) return;
                             const adLikeNodes = document.querySelectorAll(
                                 'iframe[src*="doubleclick"], iframe[src*="googlesyndication"], iframe[src*="adservice"], iframe[src*="taboola"], iframe[src*="outbrain"], .adsbygoogle, [data-ad-client], [data-ad-slot], [data-google-query-id], .ad-slot, .ad-container, .sponsored-post, [aria-label="Sponsored"], [aria-label="Sponsorlu"]'
                             );
@@ -7488,17 +7483,116 @@ function setupEventListeners() {
                             }
                         }
 
+                        function stripYouTubeAdPayload(payload) {
+                            try {
+                                if (!payload || typeof payload !== 'object') return payload;
+                                delete payload.adPlacements;
+                                delete payload.playerAds;
+                                delete payload.adSlots;
+                                delete payload.adBreakHeartbeatParams;
+                                delete payload.adSafetyReason;
+                                if (payload.playerConfig && typeof payload.playerConfig === 'object') {
+                                    delete payload.playerConfig.ads;
+                                }
+                                if (payload.responseContext && typeof payload.responseContext === 'object') {
+                                    delete payload.responseContext.adSignalsInfo;
+                                }
+                                const aux = payload.auxiliaryUi;
+                                if (aux && typeof aux === 'object') {
+                                    delete aux.messageRenderers;
+                                }
+                            } catch {}
+                            return payload;
+                        }
+
+                        function installYouTubePlayerResponsePatch() {
+                            if (!isYouTubeHost()) return;
+                            if (window.__aurivoDeliBlockYtPlayerPatch) return;
+                            window.__aurivoDeliBlockYtPlayerPatch = true;
+
+                            const isPlayerEndpoint = (raw) => {
+                                try {
+                                    const url = typeof raw === 'string'
+                                        ? raw
+                                        : String(raw?.url || raw?.toString?.() || '');
+                                    return /\\/youtubei\\/v1\\/(player|next)\\b/.test(url) ||
+                                        /\\/get_video_info\\?/.test(url);
+                                } catch {
+                                    return false;
+                                }
+                            };
+
+                            try {
+                                const originalFetch = window.fetch;
+                                if (typeof originalFetch === 'function') {
+                                    window.fetch = async function(...args) {
+                                        const response = await originalFetch.apply(this, args);
+                                        if (!isPlayerEndpoint(args[0])) return response;
+                                        try {
+                                            const clone = response.clone();
+                                            const contentType = String(clone.headers?.get?.('content-type') || '');
+                                            if (!contentType.includes('json')) return response;
+                                            const data = stripYouTubeAdPayload(await clone.json());
+                                            const headers = new Headers(response.headers);
+                                            headers.set('content-type', 'application/json; charset=utf-8');
+                                            return new Response(JSON.stringify(data), {
+                                                status: response.status,
+                                                statusText: response.statusText,
+                                                headers
+                                            });
+                                        } catch {
+                                            return response;
+                                        }
+                                    };
+                                }
+                            } catch {}
+
+                            try {
+                                const originalOpen = XMLHttpRequest.prototype.open;
+                                const originalSend = XMLHttpRequest.prototype.send;
+                                XMLHttpRequest.prototype.open = function(method, url, ...rest) {
+                                    try { this.__aurivoDeliBlockYtPlayerUrl = String(url || ''); } catch {}
+                                    return originalOpen.call(this, method, url, ...rest);
+                                };
+                                XMLHttpRequest.prototype.send = function(...args) {
+                                    if (isPlayerEndpoint(this.__aurivoDeliBlockYtPlayerUrl)) {
+                                        this.addEventListener('readystatechange', () => {
+                                            try {
+                                                if (this.readyState !== 4) return;
+                                                const raw = String(this.responseText || '');
+                                                if (!raw || raw[0] !== '{') return;
+                                                const patched = JSON.stringify(stripYouTubeAdPayload(JSON.parse(raw)));
+                                                Object.defineProperty(this, 'responseText', { configurable: true, get: () => patched });
+                                                Object.defineProperty(this, 'response', { configurable: true, get: () => patched });
+                                            } catch {}
+                                        });
+                                    }
+                                    return originalSend.apply(this, args);
+                                };
+                            } catch {}
+                        }
+
+                        function cleanYouTubeInitialPlayerResponse() {
+                            if (!isYouTubeHost()) return;
+                            try {
+                                stripYouTubeAdPayload(window.ytInitialPlayerResponse);
+                                const player = document.getElementById('movie_player');
+                                const response = player?.getPlayerResponse?.();
+                                stripYouTubeAdPayload(response);
+                            } catch {}
+                        }
+
                         function tickYouTubeAdSkip() {
                             maybeEmitPageTitleHint();
                             installGenericPendingTitleHint();
                             scrubGenericAdUi();
                             if (!isYouTubeHost()) return;
+                            installYouTubePlayerResponsePatch();
+                            cleanYouTubeInitialPlayerResponse();
                             ensureYouTubeAdCss();
-                            installYouTubePreflightClickGuard();
                             scrubYouTubePromotedUi();
                             try {
                                 const movie = document.getElementById('movie_player');
-                                if (movie) ensurePlayerShield(movie);
                                 const adShowing = !!(
                                     document.querySelector('.ad-showing, .ad-interrupting') ||
                                     (movie && movie.classList && (movie.classList.contains('ad-showing') || movie.classList.contains('ad-interrupting')))
@@ -7521,9 +7615,13 @@ function setupEventListeners() {
                                 })();
                                 const media = document.querySelector('video.html5-main-video, video');
                                 const mediaSrc = String(media?.currentSrc || media?.src || '').toLowerCase();
+                                const mediaElements = getYouTubeMediaElements();
                                 const adNetworkSignal =
-                                    mediaSrc.includes('googlevideo.com/videoplayback') &&
-                                    (mediaSrc.includes('oad=') || mediaSrc.includes('adformat=') || mediaSrc.includes('ad_type=') || mediaSrc.includes('ctier='));
+                                    isLikelyAdMediaSrc(mediaSrc) ||
+                                    mediaElements.some((m) => isLikelyAdMediaSrc(m?.currentSrc || m?.src));
+                                const skipBtn = document.querySelector(
+                                    '.ytp-ad-skip-button, .ytp-ad-skip-button-modern, button.ytp-ad-skip-button-modern, .videoAdUiSkipButton, .ytp-skip-ad-button'
+                                );
                                 const mediaRunning = !!(
                                     media &&
                                     Number.isFinite(media.readyState) &&
@@ -7531,63 +7629,45 @@ function setupEventListeners() {
                                     !media.paused &&
                                     !media.ended
                                 );
-                                const waitingForContent = !!(
-                                    media &&
-                                    !media.ended &&
-                                    Number.isFinite(media.readyState) &&
-                                    media.readyState < 2 &&
-                                    (media.currentTime < 0.5 || !Number.isFinite(media.duration) || media.duration <= 0)
-                                );
-                                const playerState = (() => {
-                                    try { return Number(movie?.getPlayerState?.()); } catch { return NaN; }
-                                })();
-                                const ytBufferingLike = playerState === 3 || playerState === -1 || playerState === 5;
-                                const startupStall = !!(
-                                    ytBufferingLike &&
-                                    !mediaRunning &&
-                                    (
-                                        !media ||
-                                        (
-                                            Number(media.currentTime || 0) < 0.8 &&
-                                            (!Number.isFinite(media.duration) || media.duration <= 0 || Number(media.readyState || 0) < 3)
-                                        )
-                                    )
-                                );
                                 const signalLevel = Math.max(0, Number(DELIBLOCK?.adSignalLevel) || 0);
-                                const adDetected = adShowing ||
-                                    (signalLevel >= 1 && adUiVisible) ||
-                                    (signalLevel >= 2 && adNetworkSignal);
+                                const ytAdState = getYouTubeAdState(movie);
+                                const strongAdDetected = adShowing || adNetworkSignal || !!skipBtn || ytAdState > 0;
+                                const adDetected = strongAdDetected || (signalLevel >= 2 && adUiVisible && mediaRunning && adDetectedSince > 0);
                                 const nowTs = Date.now();
                                 if (adDetected) {
                                     if (!adDetectedSince) adDetectedSince = nowTs;
                                 } else {
                                     adDetectedSince = 0;
+                                    if (media && adPlaybackRateBoosted) {
+                                        const restoreRate = Number.isFinite(adPreviousPlaybackRate) && adPreviousPlaybackRate > 0
+                                            ? adPreviousPlaybackRate
+                                            : 1;
+                                        if (Number(media.playbackRate) > 4) {
+                                            media.playbackRate = restoreRate;
+                                        }
+                                        adPlaybackRateBoosted = false;
+                                    }
                                 }
-                                setPlayerShieldVisible(
-                                    isPulseSearchBypassActive()
-                                        ? false
-                                        : ((adDetected || waitingForContent || startupStall) && !mediaRunning)
-                                );
 
-                                const skipBtn = document.querySelector(
-                                    '.ytp-ad-skip-button, .ytp-ad-skip-button-modern, button.ytp-ad-skip-button-modern, .videoAdUiSkipButton, .ytp-skip-ad-button'
-                                );
+                                quarantineYouTubeAdAudio(!!adDetected);
+
                                 if (skipBtn && typeof skipBtn.click === 'function') skipBtn.click();
-                                if (movie && typeof movie.skipAd === 'function') movie.skipAd();
-                                if (movie && typeof movie.skipVideo === 'function') movie.skipVideo();
+                                if ((strongAdDetected || skipBtn) && movie && typeof movie.skipAd === 'function') movie.skipAd();
 
                                 const closeBtn = document.querySelector(
                                     '.ytp-ad-overlay-close-button, .ytp-ad-image-overlay-close-button, .ytp-ad-overlay-slot button[aria-label*="Close"], .ytp-ad-overlay-slot button[aria-label*="Kapat"]'
                                 );
-                                if (closeBtn && typeof closeBtn.click === 'function') closeBtn.click();
+                                if (strongAdDetected && closeBtn && typeof closeBtn.click === 'function') closeBtn.click();
 
-                                if (adDetected && DELIBLOCK?.forceSeekAds) {
+                                if (strongAdDetected && (DELIBLOCK?.forceSeekAds || adNetworkSignal || ytAdState > 0)) {
                                     if (media) {
                                         if (Number.isFinite(media.duration) && media.duration > 0) {
                                             media.currentTime = Math.max(0, media.duration - 0.05);
                                         }
                                         if (Number.isFinite(media.playbackRate) && media.playbackRate < 8) {
+                                            adPreviousPlaybackRate = Number(media.playbackRate) || 1;
                                             media.playbackRate = 16;
+                                            adPlaybackRateBoosted = true;
                                         }
                                     }
                                     if (movie && typeof movie.getDuration === 'function' && typeof movie.seekTo === 'function') {
@@ -7599,7 +7679,6 @@ function setupEventListeners() {
                                     // Uzun süren takılmalarda atlama çağrılarını tekrarla.
                                     if (adDetectedSince && (nowTs - adDetectedSince) > 1800) {
                                         if (movie && typeof movie.skipAd === 'function') movie.skipAd();
-                                        if (movie && typeof movie.skipVideo === 'function') movie.skipVideo();
                                     }
                                 }
 
@@ -7862,6 +7941,52 @@ function getWebViewUrlSafe() {
     } catch {
         return 'about:blank';
     }
+}
+
+function isLikelyDownloadableWebUrl(raw) {
+    const parsed = parseHttpUrl(raw);
+    if (!parsed) return false;
+    const host = String(parsed.hostname || '').toLowerCase();
+    const path = String(parsed.pathname || '/').toLowerCase();
+    const parts = path.split('/').filter(Boolean);
+    const platform = detectPlatformFromUrl(parsed.toString());
+
+    if (!platform) return true;
+    if (host === 'youtu.be') return parts.length > 0;
+    if (platform === 'youtube' || platform === 'ytmusic') {
+        return (
+            path === '/watch' && !!parsed.searchParams.get('v') ||
+            path.startsWith('/shorts/') ||
+            path.startsWith('/live/') ||
+            path === '/playlist' && !!parsed.searchParams.get('list')
+        );
+    }
+    if (platform === 'soundcloud') {
+        return parts.length >= 2 && !['discover', 'search', 'you', 'stream', 'charts', 'upload'].includes(parts[0]);
+    }
+    if (platform === 'tiktok') return parts.length >= 3 && parts[0].startsWith('@') && parts[1] === 'video';
+    if (platform === 'instagram') return ['p', 'reel', 'tv'].includes(parts[0]) && parts.length >= 2;
+    if (platform === 'facebook') return path.includes('/videos/') || path.includes('/reel/') || (path === '/watch' && !!parsed.searchParams.get('v'));
+    if (platform === 'reddit') return path.includes('/comments/');
+    if (platform === 'twitch') return path.startsWith('/videos/') || path.startsWith('/clip/') || parts.length === 1;
+    if (platform === 'x') return path.includes('/status/');
+    if (platform === 'deezer') return ['track', 'album', 'playlist'].includes(parts[0]) || ['track', 'album', 'playlist'].includes(parts[1]);
+    if (platform === 'mixcloud') return parts.length >= 2;
+    return true;
+}
+
+async function getActiveWebDownloadUrl() {
+    try {
+        if (elements.webView && typeof elements.webView.executeJavaScript === 'function') {
+            const href = await elements.webView.executeJavaScript('String(location.href || "")', true);
+            const normalized = String(href || '').trim();
+            if (/^https?:\/\//i.test(normalized) && isLikelyDownloadableWebUrl(normalized)) return normalized;
+        }
+    } catch {
+        // fallback below
+    }
+    const currentUrl = getWebViewUrlSafe();
+    return /^https?:\/\//i.test(currentUrl) && isLikelyDownloadableWebUrl(currentUrl) ? currentUrl : '';
 }
 
 const DALI_WEB_EQ_FREQUENCIES = Object.freeze([
@@ -8407,16 +8532,12 @@ function createWebDaliInjectScript(payload, presetStages, bassPresetStages) {
                 const root = (window.__AURIVO_DALI_WEB__ = window.__AURIVO_DALI_WEB__ || {});
                 root.cfg = cfg;
                 root.buildConfigKey = function buildConfigKey(nextCfg) {
-                    // Limiter parametrelerini configKey'e dahil etmiyoruz.
-                    // Böylece Limiter slider değişiminde grafik yeniden kurulmaz,
-                    // sadece mevcut node parametreleri applyPostCfg ile güncellenir.
+                    // Slider/knob hareketlerinde grafiği söküp takmak web medyada tıkırtı üretir.
+                    // Topoloji değişmediği sürece değerler mevcut node'lara yumuşak rampalarla uygulanır.
                     return JSON.stringify({
                         webProfile: !!nextCfg?.webProfile,
-                        preampGain: Number(nextCfg?.preampGain) || 1,
-                        bass: Number(nextCfg?.bass) || 0,
-                        mid: Number(nextCfg?.mid) || 0,
-                        treble: Number(nextCfg?.treble) || 0,
-                        balance: Number(nextCfg?.balance) || 0
+                        daliPresetStages: Array.isArray(presetStages) ? presetStages.length : 0,
+                        bassPresetStages: Array.isArray(bassPresetStages) ? bassPresetStages.length : 0
                     });
                 };
                 root.clamp = function clamp(value, min, max, fallback) {
@@ -8551,7 +8672,7 @@ function createWebDaliInjectScript(payload, presetStages, bassPresetStages) {
                     const target = Number(nextValue);
                     if (!Number.isFinite(target)) return;
                     const now = Number(ctx.currentTime) || 0;
-                    const safeRampSec = Math.max(0.006, (Number(rampMs) || 12) / 1000);
+                    const safeRampSec = Math.max(0.012, (Number(rampMs) || 18) / 1000);
                     const perfNow = (typeof root.perfNow === 'function') ? root.perfNow() : Date.now();
                     const epsilon = Math.max(0.00005, Math.abs(target) * 0.0008);
                     root.__paramSmoothState = root.__paramSmoothState || new WeakMap();
@@ -8571,7 +8692,11 @@ function createWebDaliInjectScript(payload, presetStages, bassPresetStages) {
                             audioParam.cancelScheduledValues(now);
                             audioParam.setValueAtTime(Number.isFinite(current) ? current : target, now);
                         }
-                        audioParam.linearRampToValueAtTime(target, now + safeRampSec);
+                        if (typeof audioParam.setTargetAtTime === 'function') {
+                            audioParam.setTargetAtTime(target, now, Math.max(0.006, safeRampSec * 0.42));
+                        } else {
+                            audioParam.linearRampToValueAtTime(target, now + safeRampSec);
+                        }
                         root.__paramSmoothState.set(audioParam, { target, at: perfNow });
                     } catch (_) {
                         try { audioParam.value = target; } catch (_) {}
@@ -8604,13 +8729,13 @@ function createWebDaliInjectScript(payload, presetStages, bassPresetStages) {
                     }
                 };
                 root.smoothingProfilesMs = Object.freeze({
-                    instant: 4,
-                    switch: 7,
-                    detector: 10,
-                    preamp: 36,
-                    musical: 14,
-                    eqband: 20,
-                    dynamics: 16
+                    instant: 8,
+                    switch: 18,
+                    detector: 24,
+                    preamp: 56,
+                    musical: 34,
+                    eqband: 48,
+                    dynamics: 36
                 });
                 root.getSmoothingMs = function getSmoothingMs(profileName, fallbackMs) {
                     const key = String(profileName || '').trim().toLowerCase();
@@ -14287,7 +14412,8 @@ function applyScopedSfxLiveParam(payload) {
 
     const activeScope = getActiveDaliScope();
     if (activeScope !== scope) return;
-    scheduleApplyWebDaliEngineLive(`live:${scope}:${effect}`, 20, scope, effect);
+    const liveIntervalMs = effect === 'eq32' ? 32 : 36;
+    scheduleApplyWebDaliEngineLive(`live:${scope}:${effect}`, liveIntervalMs, scope, effect);
 }
 
 function updatePulseQuickBtnUi() {
@@ -14365,23 +14491,23 @@ function updatePulseQuickModeUi() {
 }
 
 function updateRecognitionEngineUi() {
-    const mode = String(elements.pulseRecognitionEngine?.value || 'hybrid').trim().toLowerCase();
+    const mode = String(elements.pulseRecognitionEngine?.value || 'songrec_only').trim().toLowerCase();
     const hasApiKey = String(elements.pulseAcoustidApiKey?.value || '').trim().length > 0;
 
     if (elements.pulseAcoustidHint) {
         if (mode === 'songrec_only') {
-            elements.pulseAcoustidHint.textContent = 'Bu modda API key gerekmez. AcoustID hic cagrilmaz.';
+            elements.pulseAcoustidHint.textContent = 'Varsayilan motor. API key gerekmez; canli ses Shazam uyumlu parmak iziyle aranir.';
         } else if (mode === 'acoustid_only' && hasApiKey) {
-            elements.pulseAcoustidHint.textContent = 'Sadece AcoustID aktif. Tanima bu API key ile yapilir.';
+            elements.pulseAcoustidHint.textContent = 'AcoustID yedek motoru hazirlaniyor; bu mod simdilik tanima baslatmaz.';
         } else if (mode === 'hybrid' && hasApiKey) {
-            elements.pulseAcoustidHint.textContent = 'Hibrit mod aktif. SongRec bulamazsa AcoustID yedek olarak kullanilir.';
+            elements.pulseAcoustidHint.textContent = 'Hibrit mod simdilik SongRec/Shazam uyumlu motorla calisir; AcoustID yedegi sonraki adimda baglanacak.';
         } else {
-            elements.pulseAcoustidHint.textContent = 'Opsiyonel. Bos birakilirsa hibrit mod SongRec ile calisir.';
+            elements.pulseAcoustidHint.textContent = 'API key opsiyonel alan olarak saklanir; aktif tanima varsayilan motorla yapilir.';
         }
     }
 
     if (elements.pulseAcoustidWarning) {
-        const showWarning = mode === 'acoustid_only' && !hasApiKey;
+        const showWarning = mode === 'acoustid_only';
         elements.pulseAcoustidWarning.classList.toggle('hidden', !showWarning);
     }
 }
@@ -14409,11 +14535,13 @@ async function tryPulseQuickSampleFallback() {
         });
         if (res?.success && res?.result?.title) {
             pulseQuickRuntime.lastResultAt = Date.now();
+            addPulseFoundResult(res.result);
             safeNotify('Ek deneme ile bulundu.', 'success', 2200);
             await routePulseResultToInAppPlatform(res.result);
             await window.aurivo?.pulse?.stopListening?.().catch(() => { });
             pulseQuickRuntime.running = false;
             pulseQuickRuntime.searching = false;
+            pulseQuickRuntime.ownedByQuickButton = false;
             pulseQuickRuntime.startedAt = 0;
             clearPulseNoSignalHintTimer();
             updatePulseQuickBtnUi();
@@ -14509,9 +14637,14 @@ async function getPreferredPulseDeviceForSpeakers() {
 function getPreferredWebPlatformBtn() {
     const active = document.querySelector('.platform-btn.active');
     if (active) return active;
-    return document.querySelector('.platform-btn[data-platform="ytmusic"]')
-        || document.querySelector('.platform-btn[data-platform="youtube"]')
+    return document.querySelector('.platform-btn[data-platform="youtube"]')
+        || document.querySelector('.platform-btn[data-platform="ytmusic"]')
         || document.querySelector('.platform-btn');
+}
+
+function getPulseOpenPlatformPreference() {
+    const platform = String(state.settings?.pulsePreferences?.open_platform || '').trim().toLowerCase();
+    return ['youtube', 'ytmusic'].includes(platform) ? platform : 'youtube';
 }
 
 function getWebPlatformBtnByName(platform) {
@@ -14528,7 +14661,7 @@ function buildPulseSearchUrl(platform, query) {
     if (key === 'youtube') return `https://www.youtube.com/results?search_query=${q}`;
     if (key === 'deezer') return `https://www.deezer.com/search/${q}`;
     if (key === 'soundcloud') return `https://soundcloud.com/search/sounds?q=${q}`;
-    return `https://music.youtube.com/search?q=${q}`;
+    return `https://www.youtube.com/results?search_query=${q}`;
 }
 
 function forceSearchInsideWebView(query, platform) {
@@ -14643,29 +14776,6 @@ function urlLooksLikePulseSearch(currentUrl, query, platform) {
     return false;
 }
 
-function setPulseSearchBypassInWebView(durationMs = 20000) {
-    if (!elements.webView) return;
-    const ms = Math.max(1000, Number(durationMs) || 20000);
-    const code = `
-        (function(){
-            try {
-                window.__aurivoPulseSearchBypassUntil = Date.now() + ${ms};
-                var shield = document.getElementById('aurivo-deliblock-adshield');
-                if (shield) shield.style.display = 'none';
-                return true;
-            } catch {
-                return false;
-            }
-        })();
-    `;
-    try {
-        const maybe = elements.webView.executeJavaScript(code, true);
-        if (maybe && typeof maybe.catch === 'function') maybe.catch(() => { });
-    } catch {
-        // yoksay
-    }
-}
-
 function isPulseTargetPlatformAlreadyOpen(platform) {
     if (state.activeMedia !== 'web' || !elements.webView) return false;
     const cur = getWebViewUrlSafe();
@@ -14704,7 +14814,6 @@ async function navigatePulseSearchInWebView(searchUrl, query, platform, options 
     if (!isAllowedWebUrl(searchUrl)) return;
     const startedAt = Date.now();
     const fastPath = !!options.fastPath;
-    setPulseSearchBypassInWebView(25000);
     const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
     const go = () => {
         safeNavigateWebView(searchUrl);
@@ -14787,7 +14896,11 @@ async function routePulseResultToInAppPlatform(result) {
     pulseQuickRuntime.lastFingerprint = fingerprint;
     pulseQuickRuntime.lastAt = now;
 
-    const btn = getWebPlatformBtnByName('youtube') || getPreferredWebPlatformBtn();
+    const preferredOpenPlatform = getPulseOpenPlatformPreference();
+    const btn = getWebPlatformBtnByName(preferredOpenPlatform)
+        || getWebPlatformBtnByName('youtube')
+        || getWebPlatformBtnByName('ytmusic')
+        || getPreferredWebPlatformBtn();
     if (!btn) return;
 
     const platform = String(btn.dataset.platform || '').toLowerCase();
@@ -14805,18 +14918,123 @@ async function routePulseResultToInAppPlatform(result) {
     }
 }
 
+function getPulseResultKey(result) {
+    const trackKey = String(result?.trackKey || result?.key || '').trim();
+    if (trackKey) return `key:${trackKey}`;
+    const title = String(result?.title || '').trim().toLowerCase();
+    const artist = String(result?.artist || result?.subtitle || '').trim().toLowerCase();
+    return `text:${artist}|${title}`;
+}
+
+function buildPulseResultQuery(result) {
+    const title = String(result?.title || '').trim();
+    const artist = String(result?.artist || result?.subtitle || '').trim();
+    return [artist, title].filter(Boolean).join(' ').trim();
+}
+
+function renderPulseFoundList() {
+    const section = elements.pulseFoundSection || document.getElementById('pulseFoundSection');
+    const list = elements.pulseFoundList || document.getElementById('pulseFoundList');
+    if (!section || !list) return;
+
+    const items = Array.isArray(pulseQuickRuntime.foundItems) ? pulseQuickRuntime.foundItems : [];
+    section.classList.toggle('hidden', items.length === 0);
+    list.innerHTML = '';
+
+    items.slice(0, 8).forEach((item) => {
+        const title = String(item?.title || '').trim();
+        const artist = String(item?.artist || '').trim();
+        const genre = String(item?.genre || '').trim();
+        const coverUrl = String(item?.coverUrl || '').trim();
+        const query = buildPulseResultQuery(item);
+        const label = [artist, title].filter(Boolean).join(' - ') || 'Bilinmeyen parça';
+        const foundAt = Number(item?.foundAt || 0);
+        const timeLabel = foundAt
+            ? new Date(foundAt).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })
+            : '';
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'pulse-found-item';
+        button.title = label;
+        button.dataset.query = query;
+
+        const art = document.createElement(coverUrl ? 'img' : 'span');
+        art.className = 'pulse-found-art';
+        if (coverUrl) {
+            art.src = coverUrl;
+            art.alt = '';
+            art.loading = 'lazy';
+            art.referrerPolicy = 'no-referrer';
+        } else {
+            art.setAttribute('aria-hidden', 'true');
+            art.textContent = '♪';
+        }
+
+        const body = document.createElement('span');
+        body.className = 'pulse-found-body';
+        const name = document.createElement('span');
+        name.className = 'pulse-found-name';
+        name.textContent = label;
+        const meta = document.createElement('span');
+        meta.className = 'pulse-found-meta';
+        meta.textContent = [genre, timeLabel].filter(Boolean).join(' · ') || 'Bulundu';
+        body.append(name, meta);
+
+        const action = document.createElement('span');
+        action.className = 'pulse-found-action';
+        action.textContent = 'Aç';
+
+        button.append(art, body, action);
+        button.addEventListener('click', () => {
+            const query = buildPulseResultQuery(item);
+            if (!query) return;
+            routePulseQueryToInAppPlatform({
+                query,
+                platform: getPulseOpenPlatformPreference(),
+                source: 'aurivo-main-found-list'
+            });
+        });
+        list.appendChild(button);
+    });
+}
+
+function addPulseFoundResult(result) {
+    const title = String(result?.title || '').trim();
+    const artist = String(result?.artist || result?.subtitle || '').trim();
+    if (!title && !artist) return;
+
+    const key = getPulseResultKey(result);
+    const now = Date.now();
+    const normalized = {
+        title,
+        artist,
+        album: String(result?.album || '').trim(),
+        coverUrl: String(result?.coverUrl || '').trim(),
+        genre: String(result?.genre || '').trim(),
+        trackKey: String(result?.trackKey || result?.key || '').trim(),
+        key,
+        foundAt: now
+    };
+
+    const current = Array.isArray(pulseQuickRuntime.foundItems) ? pulseQuickRuntime.foundItems : [];
+    pulseQuickRuntime.foundItems = [
+        normalized,
+        ...current.filter((item) => getPulseResultKey(item) !== key)
+    ].slice(0, 12);
+    renderPulseFoundList();
+}
+
 async function routePulseQueryToInAppPlatform(payload) {
     const query = String(payload?.query || '').trim();
     if (!query) return;
     const preferredPlatform = String(payload?.platform || '').trim().toLowerCase();
-    const fromPulseWindow = String(payload?.source || '').toLowerCase() === 'aurivo-pulse-gui';
     // Bu akış kullanıcı tıklamasıyla tetiklenir; dedupe uygulanmamalı.
     pulseQuickRuntime.lastFingerprint = `${preferredPlatform}|manual|${query.toLowerCase()}`;
     pulseQuickRuntime.lastAt = Date.now();
 
-    const forcedPlatform = fromPulseWindow ? 'youtube' : preferredPlatform;
-    const btn = getWebPlatformBtnByName(forcedPlatform)
-        || getWebPlatformBtnByName(preferredPlatform)
+    const btn = getWebPlatformBtnByName(preferredPlatform)
+        || getWebPlatformBtnByName('youtube')
+        || getWebPlatformBtnByName('ytmusic')
         || getPreferredWebPlatformBtn();
     if (!btn) return;
     const platform = String(btn.dataset.platform || '').toLowerCase();
@@ -14834,65 +15052,63 @@ async function routePulseQueryToInAppPlatform(payload) {
 }
 
 async function togglePulseQuickListen() {
-    try {
-        if (!window.aurivo?.pulse) return;
+    if (!window.aurivo?.pulse) {
+        safeNotify('Aurivo-Pulse bu oturumda hazır değil.', 'warning', 2400);
+        return;
+    }
 
-        if (pulseQuickRuntime.running) {
-            await window.aurivo.pulse.stopListening();
-            pulseQuickRuntime.running = false;
-            pulseQuickRuntime.searching = false;
-            pulseQuickRuntime.stoppingAfterResult = false;
-            pulseQuickRuntime.startedAt = 0;
-            clearPulseNoSignalHintTimer();
-            updatePulseQuickBtnUi();
-            safeNotify('Aurivo-Pulse dinleme durduruldu.', 'info', 1800);
-            return;
-        }
-
-        const preferredDevice = await getPreferredPulseDeviceForSpeakers();
-        if (!preferredDevice) {
-            safeNotify('İç ses (Monitor) cihazı bulunamadı. Dinle penceresinden monitor cihazını seçin.', 'error', 3000);
-            await window.aurivo?.pulse?.openWindow?.().catch(() => { });
-            return;
-        }
-        const pulseQuickMode = getPulseQuickModeConfig();
-        const started = await window.aurivo.pulse.startListening({
-            audioDevice: preferredDevice,
-            disableMpris: true,
-            backgroundMode: pulseQuickMode.backgroundMode,
-            profile: pulseQuickMode.mode,
-            requestInterval: pulseQuickMode.requestInterval,
-            forceRestart: true
-        });
-        pulseQuickRuntime.running = !!started?.running;
-        pulseQuickRuntime.searching = !!started?.running;
-        pulseQuickRuntime.stoppingAfterResult = false;
-        pulseQuickRuntime.startedAt = Date.now();
-        pulseQuickRuntime.lastResultAt = 0;
-        if (pulseQuickRuntime.running && preferredDevice) {
-            state.settings.pulseQuick.preferredAudioDevice = preferredDevice;
-            saveSettings().catch(() => { });
-        }
-        updatePulseQuickBtnUi();
-        if (pulseQuickRuntime.running) {
-            const modeLabel = getPulseQuickModeLabel(pulseQuickMode.mode);
-            safeNotify(`Dinleme modu: ${modeLabel}`, 'info', 1800);
-        }
-        if (pulseQuickRuntime.running) schedulePulseNoSignalHint();
-        if (!pulseQuickRuntime.running) {
-            pulseQuickRuntime.searching = false;
-            safeNotify('Aurivo-Pulse başlatılamadı.', 'error', 2200);
-        }
-    } catch (e) {
+    if (pulseQuickRuntime.running) {
+        pulseQuickRuntime.stoppingAfterResult = true;
+        await window.aurivo.pulse.stopListening().catch(() => null);
         pulseQuickRuntime.running = false;
         pulseQuickRuntime.searching = false;
+        pulseQuickRuntime.ownedByQuickButton = false;
         pulseQuickRuntime.stoppingAfterResult = false;
         pulseQuickRuntime.startedAt = 0;
         clearPulseNoSignalHintTimer();
         updatePulseQuickBtnUi();
-        safeNotify(`Dinleme başlatılamadı: ${e?.message || e}`, 'error', 2600);
+        safeNotify('Aurivo-Pulse durduruldu.', 'info', 1600);
+        return;
     }
+
+    const pulseMode = getPulseQuickModeConfig();
+    const audioDevice = await getPreferredPulseDeviceForSpeakers();
+    pulseQuickRuntime.running = true;
+    pulseQuickRuntime.searching = true;
+    pulseQuickRuntime.startedAt = Date.now();
+    pulseQuickRuntime.lastResultAt = 0;
+    pulseQuickRuntime.stoppingAfterResult = false;
+    pulseQuickRuntime.ownedByQuickButton = true;
+    updatePulseQuickBtnUi();
+
+    const res = await window.aurivo.pulse.startListening({
+        audioDevice,
+        autoSwitchOutputMonitor: true
+    }).catch((error) => ({ success: false, error: error?.message || String(error) }));
+
+    if (!res?.success) {
+        pulseQuickRuntime.running = false;
+        pulseQuickRuntime.searching = false;
+        pulseQuickRuntime.ownedByQuickButton = false;
+        pulseQuickRuntime.startedAt = 0;
+        clearPulseNoSignalHintTimer();
+        updatePulseQuickBtnUi();
+        safeNotify(`Aurivo-Pulse başlatılamadı: ${res?.error || 'bilinmeyen hata'}`, 'error', 3200);
+        return;
+    }
+
+    if (res?.status?.audioDevice) {
+        if (!state.settings.pulseQuick || typeof state.settings.pulseQuick !== 'object') {
+            state.settings.pulseQuick = {};
+        }
+        state.settings.pulseQuick.preferredAudioDevice = String(res.status.audioDevice);
+        saveSettings().catch(() => { });
+    }
+
+    schedulePulseNoSignalHint();
+    safeNotify(`Aurivo-Pulse ${getPulseQuickModeLabel(pulseMode.mode)}: dinliyor...`, 'info', 1800);
 }
+
 
 function setupPulseQuickListeners() {
     try {
@@ -14929,9 +15145,13 @@ function setupPulseQuickListeners() {
                     saveSettings().catch(() => { });
                 }
             }
+            if (pulseState?.preferences && typeof pulseState.preferences === 'object') {
+                state.settings.pulsePreferences = normalizePulsePreferenceState(pulseState.preferences);
+            }
             if (!pulseQuickRuntime.running) {
                 pulseQuickRuntime.searching = false;
                 pulseQuickRuntime.stoppingAfterResult = false;
+                pulseQuickRuntime.ownedByQuickButton = false;
                 pulseQuickRuntime.startedAt = 0;
                 clearPulseNoSignalHintTimer();
             }
@@ -14944,20 +15164,22 @@ function setupPulseQuickListeners() {
             const title = String(result?.title || '').trim();
             const artist = String(result?.artist || '').trim();
             const label = [artist, title].filter(Boolean).join(' - ') || 'Parça';
+            addPulseFoundResult(result);
             safeNotify(`Bulundu: ${label}`, 'success', 2600);
-            Promise.resolve(routePulseResultToInAppPlatform(result))
-                .catch((e) => {
-                    pulseSearchDebug('routeResult:error-from-onResult', String(e?.message || e));
-                })
-                .finally(() => {
-                    // Arama tamamlandıktan sonra Shazam tarzı animasyonu kapat.
-                    pulseQuickRuntime.searching = false;
-                    updatePulseQuickBtnUi();
-                });
+            const shouldAutoOpen = !!pulseQuickRuntime.ownedByQuickButton;
+            if (shouldAutoOpen) {
+                Promise.resolve(routePulseResultToInAppPlatform(result))
+                    .catch((e) => {
+                        pulseSearchDebug('routeResult:error-from-quick-button', String(e?.message || e));
+                    });
+            }
+            pulseQuickRuntime.searching = false;
+            updatePulseQuickBtnUi();
 
             // Üstteki hızlı dinleme: ilk sonuçtan sonra tamamen kapanmalı.
             if (
                 pulseQuickRuntime.autoStopOnFirstResult &&
+                pulseQuickRuntime.ownedByQuickButton &&
                 pulseQuickRuntime.running &&
                 !pulseQuickRuntime.stoppingAfterResult
             ) {
@@ -14966,6 +15188,7 @@ function setupPulseQuickListeners() {
                     .then(() => {
                         pulseQuickRuntime.running = false;
                         pulseQuickRuntime.searching = false;
+                        pulseQuickRuntime.ownedByQuickButton = false;
                         pulseQuickRuntime.startedAt = 0;
                         clearPulseNoSignalHintTimer();
                         updatePulseQuickBtnUi();
@@ -15031,7 +15254,7 @@ function resolveWebPlatformPrimaryUrl(platform, requestedUrl) {
 
 function resolveWebPlatformFallbackUrl(platform, requestedUrl) {
     const p = String(platform || '').toLowerCase();
-    if (p === 'youtube') return 'https://m.youtube.com/';
+    if (p === 'youtube') return 'https://www.youtube.com/';
     if (p === 'ytmusic') return 'https://music.youtube.com/';
     if (p === 'whatsapp') return 'https://web.whatsapp.com/';
     if (p === 'telegram') return 'https://web.telegram.org/';
@@ -15121,40 +15344,6 @@ function hardStopWebPlayback() {
     } catch {
         // yoksay
     }
-}
-
-function showWebLoadingOverlay() {
-    if (!elements.webLoadingOverlay) return;
-    if (webLoadRuntime.overlayShowTimer) {
-        clearTimeout(webLoadRuntime.overlayShowTimer);
-        webLoadRuntime.overlayShowTimer = null;
-    }
-    if (webLoadRuntime.overlayTimer) {
-        clearTimeout(webLoadRuntime.overlayTimer);
-    }
-    // Kisa yuklemelerde flicker/black-screen hissini engellemek icin gecikmeli ac.
-    if (elements.webLoadingOverlay.classList.contains('hidden')) {
-        webLoadRuntime.overlayShowTimer = setTimeout(() => {
-            elements.webLoadingOverlay.classList.remove('hidden');
-            webLoadRuntime.overlayShowTimer = null;
-        }, 320);
-    }
-    webLoadRuntime.overlayTimer = setTimeout(() => {
-        hideWebLoadingOverlay();
-    }, 7000);
-}
-
-function hideWebLoadingOverlay() {
-    if (webLoadRuntime.overlayShowTimer) {
-        clearTimeout(webLoadRuntime.overlayShowTimer);
-        webLoadRuntime.overlayShowTimer = null;
-    }
-    if (webLoadRuntime.overlayTimer) {
-        clearTimeout(webLoadRuntime.overlayTimer);
-        webLoadRuntime.overlayTimer = null;
-    }
-    if (!elements.webLoadingOverlay) return;
-    elements.webLoadingOverlay.classList.add('hidden');
 }
 
 const WEB_ALLOWED_HOSTS = new Set([
@@ -15486,17 +15675,28 @@ function isWebAllowlistEnforced() {
 
 function updateAdblockModeUI() {
     const adblock = ensureAdblockSettings();
-    window.AurivoAdblockSettings?.updateModeUI?.({
-        elements,
-        adblock,
-        normalizeMode: normalizeAdblockMode
-    });
+    const mode = normalizeAdblockMode(adblock.mode);
+    if (elements.adblockModeCards?.length) {
+        elements.adblockModeCards.forEach((card) => {
+            const active = normalizeAdblockMode(card.dataset.adblockMode) === mode;
+            card.classList.toggle('active', active);
+            card.setAttribute('aria-checked', active ? 'true' : 'false');
+        });
+    }
+    if (elements.adblockShowBlockedCount) elements.adblockShowBlockedCount.checked = !!adblock.showBlockedCount;
+    if (elements.adblockAutoRefreshOnModeChange) elements.adblockAutoRefreshOnModeChange.checked = !!adblock.autoRefreshOnModeChange;
+    if (elements.adblockStrictBlock) elements.adblockStrictBlock.checked = !!adblock.strictBlock;
+    if (elements.adblockDeveloperMode) elements.adblockDeveloperMode.checked = !!adblock.developerMode;
 }
 
 function readAdblockSettingsFromUI() {
     const adblock = ensureAdblockSettings();
     adblock.mode = normalizeAdblockMode(adblock.mode);
-    return window.AurivoAdblockSettings?.readSettingsFromUI?.({ elements, adblock }) || adblock;
+    if (elements.adblockShowBlockedCount) adblock.showBlockedCount = !!elements.adblockShowBlockedCount.checked;
+    if (elements.adblockAutoRefreshOnModeChange) adblock.autoRefreshOnModeChange = !!elements.adblockAutoRefreshOnModeChange.checked;
+    if (elements.adblockStrictBlock) adblock.strictBlock = !!elements.adblockStrictBlock.checked;
+    if (elements.adblockDeveloperMode) adblock.developerMode = !!elements.adblockDeveloperMode.checked;
+    return adblock;
 }
 
 function reloadWebViewForAdblock(reason = 'unknown', details = {}) {
@@ -15535,14 +15735,15 @@ function setAdblockMode(mode) {
         });
         if (reloaded) adblockRuntime.pendingModeChange = false;
     }
+    saveSettings().catch(() => { });
 }
 
 function updateAdblockBadge(blockedCount) {
-    window.AurivoAdblockSettings?.updateBadge?.({
-        elements,
-        blockedCount,
-        showCount: !!ensureAdblockSettings().showBlockedCount
-    });
+    if (!elements.adblockBlockedBadge) return;
+    const count = Math.max(0, Number(blockedCount) || 0);
+    const show = !!ensureAdblockSettings().showBlockedCount && count > 0;
+    elements.adblockBlockedBadge.textContent = count > 999 ? '999+' : String(count);
+    elements.adblockBlockedBadge.classList.toggle('hidden', !show);
 }
 
 function getActiveAdblockCounterKey() {
@@ -15566,45 +15767,52 @@ function resetAdblockVisibleCounter() {
 async function refreshAdblockStats(showToast = false) {
     const inWeb = state.currentPage === 'web' || state.currentPanel === 'web' || state.activeMedia === 'web';
     const key = getActiveAdblockCounterKey();
-    return window.AurivoAdblockSettings?.refreshStats?.({
-        getStats: () => window.aurivo?.adblock?.getStats?.(),
-        elements,
-        updateBadge: updateAdblockBadge,
-        setBlockedCount: (value) => {
-            const absoluteBlocked = Number(value) || 0;
-            adblockRuntime.lastAbsoluteBlocked = absoluteBlocked;
+    try {
+        const stats = await window.aurivo?.adblock?.getStats?.();
+        const absoluteBlocked = Number(stats?.blocked ?? stats?.totalBlocked ?? 0) || 0;
+        adblockRuntime.lastAbsoluteBlocked = absoluteBlocked;
 
-            if (!inWeb || !key) {
-                adblockRuntime.lastBlocked = 0;
-                updateAdblockBadge(0);
-                return;
-            }
+        if (elements.adblockStatusText) {
+            const mode = normalizeAdblockMode(stats?.mode || ensureAdblockSettings().mode);
+            elements.adblockStatusText.textContent = `DeliBlock: ${mode}`;
+        }
 
-            if (!adblockRuntime.counterBaseByKey.has(key)) {
-                adblockRuntime.counterBaseByKey.set(key, absoluteBlocked);
-            }
+        if (!inWeb || !key) {
+            adblockRuntime.lastBlocked = 0;
+            updateAdblockBadge(0);
+            return stats;
+        }
 
-            const base = Number(adblockRuntime.counterBaseByKey.get(key) || 0);
-            const visible = Math.max(0, absoluteBlocked - base);
-            adblockRuntime.currentCounterKey = key;
-            adblockRuntime.lastBlocked = visible;
-            updateAdblockBadge(visible);
-        },
-        notify: safeNotify,
-        showToast
-    });
+        if (!adblockRuntime.counterBaseByKey.has(key)) {
+            adblockRuntime.counterBaseByKey.set(key, absoluteBlocked);
+        }
+
+        const base = Number(adblockRuntime.counterBaseByKey.get(key) || 0);
+        const visible = Math.max(0, absoluteBlocked - base);
+        adblockRuntime.currentCounterKey = key;
+        adblockRuntime.lastBlocked = visible;
+        updateAdblockBadge(visible);
+
+        if (showToast && typeof safeNotify === 'function') {
+            safeNotify(`DeliBlock: ${visible} istek engellendi.`);
+        }
+        return stats;
+    } catch (e) {
+        console.warn('[ADBLOCK] refreshStats error:', e?.message || e);
+        return null;
+    }
 }
 
 async function openAdblockDashboardPanel() {
     try {
-        const ok = await window.aurivo?.adblock?.openDashboard?.();
-        if (ok) return true;
+        const opened = await window.aurivo?.adblock?.openWindow?.();
+        if (opened) return true;
     } catch (e) {
-        console.warn('[ADBLOCK] openDashboard error:', e?.message || e);
+        console.warn('[ADBLOCK] open window error:', e?.message || e);
     }
-    safeNotify('Aurivo paneli açılamadı', 'error', 2000);
     return false;
 }
+
 
 function startAdblockStatsPolling() {
     if (adblockRuntime.pollTimer) {
@@ -15722,40 +15930,6 @@ async function ensureWebIsolatedSessionInitialized(reason = 'web-entry') {
     }
 }
 
-function resolveBestWebDownloadUrl() {
-    const fromSync = parseHttpUrl(state.webSourceUrl)?.toString() || '';
-    if (fromSync) return fromSync;
-    return parseHttpUrl(getWebViewUrlSafe())?.toString() || '';
-}
-
-function openDawlodWithCurrentWebUrl({ strictUrl = true } = {}) {
-    if (!window.aurivo?.dawlod?.openWindow) {
-        safeNotify('İndirme modülü bulunamadı (Aurivo-Dawlod).', 'error');
-        return false;
-    }
-
-    const url = resolveBestWebDownloadUrl();
-    if (strictUrl && !url) {
-        safeNotify(uiT('securityPage.notify.invalidExternalUrl', 'Önce geçerli bir web sayfası açın (http/https).'), 'info');
-        return false;
-    }
-
-    try {
-        if (url) {
-            window.aurivo.dawlod.openWindow({ url });
-            try { window.aurivo?.clipboard?.setText?.(url); } catch {}
-        } else {
-            window.aurivo.dawlod.openWindow();
-        }
-        setUtilityRunningState('download', true);
-        return true;
-    } catch (e) {
-        setUtilityRunningState('download', false);
-        safeNotify(`İndirme penceresi açılamadı: ${e?.message || e}`, 'error');
-        return false;
-    }
-}
-
 function setupSecurityUI() {
     if (!elements.securityConnStatus) return;
 
@@ -15837,14 +16011,6 @@ function setupSecurityUI() {
             } catch (e) {
                 safeNotify(uiT('securityPage.notify.openInBrowserError', "Couldn't open in browser: {error}", { error: e?.message || e }), 'error');
             }
-        });
-    }
-
-    if (elements.securityQuickDownloadBtn) {
-        elements.securityQuickDownloadBtn.addEventListener('click', () => {
-            Promise.resolve(openDawlodWithCurrentWebUrl({ strictUrl: true })).catch((e) => {
-                safeNotify(`İndirme penceresi açılamadı: ${e?.message || e}`, 'error');
-            });
         });
     }
 
@@ -15980,8 +16146,6 @@ function executeMediaControlAction(action) {
         case 'stop':
             if (state.activeMedia === 'video') {
                 stopVideo();
-            } else if (state.activeMedia === 'web') {
-                stopWeb();
             } else {
                 stopAudioWithPlaybackFade();
             }
@@ -15993,7 +16157,7 @@ function executeMediaControlAction(action) {
                 if (state.videoFiles.length > 1 && state.currentVideoIndex > 0) {
                     playPreviousVideo();
                 }
-            } else if (state.activeMedia === 'audio' || state.activeMedia === 'web') {
+            } else if (state.activeMedia === 'audio') {
                 playPreviousWithCrossfade();
             }
             break;
@@ -16002,7 +16166,7 @@ function executeMediaControlAction(action) {
                 if (state.videoFiles.length > 1 && state.currentVideoIndex >= 0 && state.currentVideoIndex < state.videoFiles.length - 1) {
                     playNextVideo();
                 }
-            } else if (state.activeMedia === 'audio' || state.activeMedia === 'web') {
+            } else if (state.activeMedia === 'audio') {
                 playNextWithCrossfade();
             }
             break;
@@ -16045,25 +16209,6 @@ function setupSystemTrayControl() {
             console.log('MPRIS seek offset (relative):', offsetMicroseconds);
             const offsetSeconds = offsetMicroseconds / 1000000;
 
-            // ÖNCE aktif medya tipine göre yönlendir (web oynuyorsa native motor'a düşmesin)
-            if (state.activeMedia === 'web' && elements.webView) {
-                // Web/YouTube Göreli Atlama
-                try {
-                    const delta = Number(offsetSeconds);
-                    if (!isNaN(delta) && isFinite(delta)) {
-                        await elements.webView.executeJavaScript(`
-                            (function(){
-                                var v = document.querySelector('video, audio');
-                                if (v) v.currentTime = Math.max(0, (v.currentTime || 0) + (${delta}));
-                            })();
-                        `);
-                    }
-                } catch (e) {
-                    console.warn('Web seek error:', e);
-                }
-                return;
-            }
-
             // Mevcut pozisyonu al ve offset ekle (yalnızca ses sekmesinde)
             if (state.activeMedia === 'audio' && useNativeAudio && window.aurivo?.audio) {
                 try {
@@ -16085,28 +16230,6 @@ function setupSystemTrayControl() {
         window.aurivo.onMPRISPosition(async (positionMicroseconds) => {
             const positionSeconds = positionMicroseconds / 1000000;
             console.log('MPRIS SetPosition (absolute):', positionSeconds, 'seconds');
-
-            // ÖNCE aktif medya tipine göre yönlendir (web oynuyorsa native motor'a düşmesin)
-            if (state.activeMedia === 'web' && elements.webView) {
-                // Web/YouTube Mutlak Atlama
-                try {
-                    const pos = Number(positionSeconds);
-                    if (!isNaN(pos) && isFinite(pos)) {
-                        await elements.webView.executeJavaScript(`
-                            (function(){
-                                var v = document.querySelector('video, audio');
-                                if (v) v.currentTime = Math.max(0, ${pos});
-                            })();
-                        `);
-                        // Arayüzü anında güncelle (gecikmeyi önlemek için)
-                        state.webPosition = pos;
-                        updateMPRISMetadata();
-                    }
-                } catch (e) {
-                    console.warn('Web position error:', e);
-                }
-                return;
-            }
 
             if (state.activeMedia === 'audio' && useNativeAudio && window.aurivo?.audio) {
                 try {
@@ -16157,7 +16280,8 @@ function updateTrayState() {
         isPlaying: state.isPlaying,
         isMuted: state.isMuted,
         stopAfterCurrent: state.stopAfterCurrent,
-        currentTrack: trackName
+        currentTrack: trackName,
+        recordingActive: !!screenRecorder && screenRecorder.state !== 'inactive'
     });
 }
 
@@ -16212,8 +16336,6 @@ async function handleWebNavigation(event) {
         }
         console.log('[WEB] Navigation detected, resetting MPRIS position');
         state.webTrackId++; // Yeni bir ID atayarak sistemin "yeni parça" algılamasını sağla
-        state.webPosition = 0;
-        state.webDuration = 0;
         state.webTitle = '';
         state.webPendingTitle = '';
         state.webArtist = '';
@@ -16302,12 +16424,9 @@ async function updateMPRISMetadata() {
         artist = state.webArtist || 'Aurivo Web';
         album = state.webAlbum || 'Online';
         trackId = `web_${state.webTrackId}`; // DÜZELTME: Daha güvenli DBus yolu için tire alt çizgiyle değiştirildi
-        duration = state.webDuration || 0;
-        position = state.webPosition || 0;
-        // Web platformlarında ileri/geri komutlarını JS ile yönlendirdiğimiz için etkin bırak.
-        canGoNext = true;
-        canGoPrevious = true;
-        canSeek = true;
+        canGoNext = false;
+        canGoPrevious = false;
+        canSeek = false;
     }
 
     window.aurivo.updateMPRISMetadata({
@@ -16375,9 +16494,6 @@ function handleWebSync(data) {
 
     if (!syncEligible) return;
 
-    state.webPosition = data.currentTime || 0;
-    state.webDuration = data.duration || 0;
-
     // timeupdate yükü duraklatma durumunu taşıyabilir (yoklama)
     if (data.type === 'timeupdate' && typeof data.paused === 'boolean') {
         const nextPlaying = !data.paused;
@@ -16402,17 +16518,6 @@ function handleWebSync(data) {
         scheduleRememberPlaybackStartupState(220);
     } else if (data.type === 'seeked' || data.type === 'durationchange' || data.type === 'loadeddata') {
         updateMPRISMetadata();
-    }
-
-    // UI Güncelleme (Süre ve Slider)
-    if (elements.currentTime && elements.durationTime) {
-        elements.currentTime.textContent = formatTime(state.webPosition);
-        elements.durationTime.textContent = formatTime(state.webDuration);
-    }
-    if (elements.seekSlider && state.webDuration > 0) {
-        const progress = (state.webPosition / state.webDuration) * 1000;
-        elements.seekSlider.value = progress;
-        updateRainbowSlider(elements.seekSlider, progress / 10);
     }
 
 }
@@ -18935,13 +19040,6 @@ function setUtilityRunningState(page, isOpen) {
 
 function setupUtilityWindowIndicators() {
     try {
-        window.aurivo?.dawlod?.onWindowState?.((payload) => {
-            setUtilityRunningState('download', !!payload?.open);
-        });
-    } catch {
-        // yoksay
-    }
-    try {
         window.aurivo?.pulse?.onWindowState?.((payload) => {
             setUtilityRunningState('pulse', !!payload?.open);
         });
@@ -18949,9 +19047,6 @@ function setupUtilityWindowIndicators() {
         // yoksay
     }
 
-    Promise.resolve(window.aurivo?.dawlod?.getWindowState?.())
-        .then((payload) => setUtilityRunningState('download', !!payload?.open))
-        .catch(() => setUtilityRunningState('download', false));
     Promise.resolve(window.aurivo?.pulse?.getWindowState?.())
         .then((payload) => setUtilityRunningState('pulse', !!payload?.open))
         .catch(() => setUtilityRunningState('pulse', false));
@@ -18970,45 +19065,6 @@ function handleSidebarClick(btn) {
 
     // Yardımcı pages should not remain open when switching tabs
     closeAllUtilityPages();
-
-    // "İndir" sekmesi: Aurivo-Dawlod penceresini aç, mevcut sekmeyi bozmadan geri dön.
-    if (page === 'download') {
-        const prevActive = document.querySelector('.sidebar-btn[data-page].active');
-        const currentPage = state.currentPage;
-
-        // Müzik/Video sekmesindeyken İndir penceresi açılmasın; sadece bilgilendir.
-        if (currentPage === 'music' || currentPage === 'video' || currentPage === 'videoTools' || currentPage === 'gallery') {
-            safeNotify('Müzik, Video veya Galeri sekmesindeyken İndir penceresi açılamaz.', 'info');
-            try {
-                elements.sidebarBtns.forEach(b => b.classList.remove('active'));
-                if (prevActive) prevActive.classList.add('active');
-            } catch { }
-            return;
-        }
-
-        try {
-            if (window.aurivo?.dawlod?.openWindow) {
-                let url = '';
-                if (currentPage === 'web' || state.activeMedia === 'web') {
-                    const candidate = getWebViewUrlSafe();
-                    if (candidate && candidate !== 'about:blank' && /^https?:\/\//i.test(candidate)) {
-                        url = candidate;
-                        try { window.aurivo?.clipboard?.setText?.(candidate); } catch { }
-                    }
-                }
-                window.aurivo.dawlod.openWindow(url ? { url } : undefined);
-                setUtilityRunningState('download', true);
-            } else {
-                safeNotify('İndirme modülü bulunamadı (Aurivo-Dawlod).', 'error');
-            }
-        } catch (e) {
-            setUtilityRunningState('download', false);
-            safeNotify('İndirme penceresi açılamadı: ' + (e?.message || e), 'error');
-        }
-        // Active state'i eski sekmeye geri al
-        restoreSidebarSelectionAfterUtilityAction(prevActive);
-        return;
-    }
 
     // "Pulse" sekmesi: Dinleme modunu aç/kapat, aktif sekmeyi bozma.
     if (page === 'pulse') {
@@ -19272,7 +19328,6 @@ function stopWeb() {
             // WebView henüz yüklenmemiş olabilir - yoksay
         }
     }
-    hideWebLoadingOverlay();
 }
 
 function switchPage(pageName) {
@@ -19409,7 +19464,6 @@ async function handlePlatformClick(btn) {
                     clearTimeout(webPlatformRuntime.switchTimer);
                     webPlatformRuntime.switchTimer = null;
                 }
-                hideWebLoadingOverlay();
                 safeNavigateWebView(nextUrl);
             } catch (e) {
                 console.warn('WebView URL yükleme hatası:', e?.message || e);
@@ -19513,177 +19567,6 @@ async function tryNavigateBackViaYouTubeHomeClick() {
             })();
         `, true);
         return !!clicked;
-    } catch {
-        return false;
-    }
-}
-
-async function tryNavigateBackViaYouTubePreviousTrack() {
-    if (!elements.webView || typeof elements.webView.executeJavaScript !== 'function') return false;
-    try {
-        const moved = await elements.webView.executeJavaScript(`
-            (() => {
-                return new Promise((resolve) => {
-                try {
-                    const host = String(location.hostname || '').toLowerCase();
-                    const isYouTubeHost =
-                        host === 'youtube.com' ||
-                        host === 'www.youtube.com' ||
-                        host === 'm.youtube.com' ||
-                        host === 'music.youtube.com' ||
-                        host.endsWith('.youtube.com');
-                    if (!isYouTubeHost) { resolve(false); return; }
-
-                    const beforeUrl = String(location.href || '');
-
-                    const clickPreviousItemInPlaylistPanel = () => {
-                        try {
-                            const rows = Array.from(document.querySelectorAll('ytd-playlist-panel-video-renderer'));
-                            if (!rows.length) return false;
-                            let currentIndex = rows.findIndex((row) =>
-                                row.hasAttribute('selected') ||
-                                row.getAttribute('aria-selected') === 'true' ||
-                                row.classList.contains('selected')
-                            );
-                            if (currentIndex < 0) {
-                                currentIndex = rows.findIndex((row) => row.querySelector('#wc-endpoint[aria-current="page"]'));
-                            }
-                            if (currentIndex <= 0) return false;
-                            const prevRow = rows[currentIndex - 1];
-                            if (!prevRow) return false;
-                            const target = prevRow.querySelector('a#thumbnail, a#video-title, a#wc-endpoint, a[href*="watch"]');
-                            if (!(target instanceof HTMLElement) || typeof target.click !== 'function') return false;
-                            target.click();
-                            return true;
-                        } catch {
-                            return false;
-                        }
-                    };
-
-                    const dispatchShiftP = () => {
-                        const evtDown = new KeyboardEvent('keydown', { key: 'P', code: 'KeyP', shiftKey: true, bubbles: true, cancelable: true });
-                        const evtUp = new KeyboardEvent('keyup', { key: 'P', code: 'KeyP', shiftKey: true, bubbles: true, cancelable: true });
-                        document.dispatchEvent(evtDown);
-                        document.dispatchEvent(evtUp);
-                    };
-
-                    const clickPrevButton = () => {
-                        const selectors = [
-                            '.ytp-prev-button',
-                            'button[aria-label="Previous"]',
-                            'button[title="Previous"]',
-                            'button[aria-label*="Önceki"]',
-                            'button[title*="Önceki"]',
-                            'ytmusic-player-bar .previous-button'
-                        ];
-                        for (const selector of selectors) {
-                            const el = document.querySelector(selector);
-                            if (!(el instanceof HTMLElement)) continue;
-                            const style = window.getComputedStyle(el);
-                            if (style.display === 'none' || style.visibility === 'hidden') continue;
-                            if (typeof el.click === 'function') {
-                                el.click();
-                                return true;
-                            }
-                        }
-                        return false;
-                    };
-
-                    // 1) Playlist panelinden doğrudan bir önceki videoyu aç (en deterministik yol).
-                    if (clickPreviousItemInPlaylistPanel()) {
-                        setTimeout(() => {
-                            const afterPlaylistClickUrl = String(location.href || '');
-                            resolve(!!afterPlaylistClickUrl && afterPlaylistClickUrl !== beforeUrl);
-                        }, 240);
-                        return;
-                    }
-
-                    try {
-                        dispatchShiftP();
-                    } catch {
-                        // fallback button click denenecek
-                    }
-
-                    setTimeout(() => {
-                        const afterShortcutUrl = String(location.href || '');
-                        if (afterShortcutUrl && afterShortcutUrl !== beforeUrl) { resolve(true); return; }
-
-                        // 2) Çift prev: YouTube >5sn'de ilk tık "başa sar" yapabildiği için ikinci tık önceki videoya geçirir.
-                        const clickedOnce = clickPrevButton();
-                        if (!clickedOnce) { resolve(false); return; }
-                        setTimeout(() => {
-                            const afterFirstClickUrl = String(location.href || '');
-                            if (afterFirstClickUrl && afterFirstClickUrl !== beforeUrl) { resolve(true); return; }
-                            const clickedTwice = clickPrevButton();
-                            if (!clickedTwice) { resolve(false); return; }
-                            setTimeout(() => {
-                                const afterSecondClickUrl = String(location.href || '');
-                                resolve(!!afterSecondClickUrl && afterSecondClickUrl !== beforeUrl);
-                            }, 260);
-                        }, 200);
-                    }, 280);
-                } catch {
-                    resolve(false);
-                }
-                });
-            })();
-        `, true);
-        return !!moved;
-    } catch {
-        return false;
-    }
-}
-
-async function tryNavigateForwardViaYouTubeNextTrack() {
-    if (!elements.webView || typeof elements.webView.executeJavaScript !== 'function') return false;
-    try {
-        const moved = await elements.webView.executeJavaScript(`
-            (() => {
-                try {
-                    const host = String(location.hostname || '').toLowerCase();
-                    const isYouTubeHost =
-                        host === 'youtube.com' ||
-                        host === 'www.youtube.com' ||
-                        host === 'm.youtube.com' ||
-                        host === 'music.youtube.com' ||
-                        host.endsWith('.youtube.com');
-                    if (!isYouTubeHost) return false;
-
-                    const selectors = [
-                        '.ytp-next-button',
-                        'button[aria-label="Next"]',
-                        'button[title="Next"]',
-                        'button[aria-label*="Sonraki"]',
-                        'button[title*="Sonraki"]',
-                        'ytmusic-player-bar .next-button'
-                    ];
-
-                    for (const selector of selectors) {
-                        const el = document.querySelector(selector);
-                        if (!(el instanceof HTMLElement)) continue;
-                        const style = window.getComputedStyle(el);
-                        if (style.display === 'none' || style.visibility === 'hidden') continue;
-                        if (typeof el.click === 'function') {
-                            el.click();
-                            return true;
-                        }
-                    }
-
-                    try {
-                        const evtDown = new KeyboardEvent('keydown', { key: 'N', code: 'KeyN', shiftKey: true, bubbles: true, cancelable: true });
-                        const evtUp = new KeyboardEvent('keyup', { key: 'N', code: 'KeyN', shiftKey: true, bubbles: true, cancelable: true });
-                        document.dispatchEvent(evtDown);
-                        document.dispatchEvent(evtUp);
-                        return true;
-                    } catch {
-                        return false;
-                    }
-                } catch {
-                    return false;
-                }
-            })();
-        `, true);
-        return !!moved;
     } catch {
         return false;
     }
@@ -19798,8 +19681,6 @@ async function navigateForward() {
                         return;
                     }
                 }
-                const navigatedViaNextTrack = await tryNavigateForwardViaYouTubeNextTrack();
-                if (navigatedViaNextTrack) return;
             }
             if (typeof elements.webView.canGoForward === 'function' && elements.webView.canGoForward()) {
                 elements.webView.goForward();
@@ -21137,7 +21018,13 @@ function applyPlaylistCardCover(img, imageData = null) {
     const isDataImage = /^data:image\/[a-z0-9.+-]+;base64,/i.test(source);
 
     if (isDataImage) {
-        if (parentContainer) parentContainer.style.display = '';
+        img.dataset.coverPlaceholder = '0';
+        if (parentContainer) {
+            parentContainer.style.display = '';
+            parentContainer.style.background = '';
+            parentContainer.style.border = '';
+            parentContainer.style.boxShadow = '';
+        }
         if (fallbackIcon) fallbackIcon.style.display = 'none';
         img.style.display = '';
         img.src = imageData;
@@ -21146,6 +21033,7 @@ function applyPlaylistCardCover(img, imageData = null) {
     }
 
     // Kapak yoksa img öğesini gizle, büyük ikon kutusunu göster
+    img.dataset.coverPlaceholder = '1';
     img.style.display = 'none';
 
     if (parentContainer) {
@@ -21164,7 +21052,7 @@ function applyPlaylistCardCover(img, imageData = null) {
         parentContainer.appendChild(iconElement);
     }
 
-    img.src = '';
+    img.src = TRANSPARENT_IMAGE_DATA_URL;
     img.classList.add('default-cover');
 }
 
@@ -21216,6 +21104,7 @@ function queuePlaylistCardCoverLoad(itemElement, filePath = '') {
     if (img.dataset.coverErrorBound !== '1') {
         img.dataset.coverErrorBound = '1';
         img.addEventListener('error', () => {
+            if (img.dataset.coverPlaceholder === '1') return;
             rememberPlaylistCardCoverState(key, null, Date.now());
             applyPlaylistCardCover(img, null);
         });
@@ -27476,22 +27365,8 @@ function markVideoToolSourceSelected(videoPath = '') {
     }
 }
 
-function getVideoToolsViewMode() {
-    return videoToolsViewMode === 'processing' ? 'processing' : 'studio';
-}
-
 function isVideoStudioViewActive() {
-    return state.currentPage === 'videoTools' && getVideoToolsViewMode() === 'studio';
-}
-
-function setVideoToolsViewMode(mode = 'studio') {
-    const nextMode = mode === 'processing' ? 'processing' : 'studio';
-    if (videoToolsViewMode === nextMode) return;
-    videoToolsViewMode = nextMode;
-    if (nextMode !== 'studio') {
-        releaseVideoStudioIdleRuntime();
-    }
-    renderVideoToolsWorkspace();
+    return state.currentPage === 'videoTools';
 }
 
 function getVideoToolMode() {
@@ -28493,6 +28368,7 @@ function persistVideoStudioProfileNow() {
     } catch (error) {
         console.warn('[VIDEO_STUDIO] profile save failed:', error?.message || error);
     }
+    persistVideoStudioOutputSettingsToAppSettings();
 }
 
 function scheduleVideoStudioProfileSave() {
@@ -28610,6 +28486,40 @@ function loadVideoStudioProfile() {
         console.warn('[VIDEO_STUDIO] profile load failed:', error?.message || error);
         ensureVideoStudioSceneCollections();
         syncVideoStudioGlobalShortcutsToMain();
+    }
+}
+
+function ensureVideoStudioSettingsState() {
+    if (!state.settings || typeof state.settings !== 'object') state.settings = {};
+    if (!state.settings.videoStudio || typeof state.settings.videoStudio !== 'object') {
+        state.settings.videoStudio = {};
+    }
+    return state.settings.videoStudio;
+}
+
+function persistVideoStudioOutputSettingsToAppSettings() {
+    try {
+        const bucket = ensureVideoStudioSettingsState();
+        bucket.recordOutputMode = videoStudioRecordOutputMode === 'ask' ? 'ask' : 'auto';
+        bucket.recordOutputFolder = String(videoStudioRecordOutputFolder || '').trim();
+        bucket.recordNameTemplate = String(videoStudioRecordNameTemplate || 'aurivo-{date}-{time}').trim() || 'aurivo-{date}-{time}';
+        saveSettings().catch(() => {});
+    } catch (error) {
+        console.warn('[VIDEO_STUDIO] output settings save failed:', error?.message || error);
+    }
+}
+
+function hydrateVideoStudioOutputSettingsFromAppSettings() {
+    const bucket = state.settings?.videoStudio;
+    if (!bucket || typeof bucket !== 'object') return;
+    if (!videoStudioRecordOutputFolder) {
+        videoStudioRecordOutputFolder = String(bucket.recordOutputFolder || '').trim();
+    }
+    if (!videoStudioRecordNameTemplate || videoStudioRecordNameTemplate === 'aurivo-{date}-{time}') {
+        videoStudioRecordNameTemplate = String(bucket.recordNameTemplate || 'aurivo-{date}-{time}').trim() || 'aurivo-{date}-{time}';
+    }
+    if (!videoStudioRecordOutputMode || videoStudioRecordOutputMode === 'auto') {
+        videoStudioRecordOutputMode = bucket.recordOutputMode === 'ask' ? 'ask' : 'auto';
     }
 }
 
@@ -29148,13 +29058,6 @@ function handleVideoStudioQuickAction(action = '') {
     }
     if (action === 'open-folder') {
         window.aurivo?.openContainingFolder?.(path);
-        return;
-    }
-    if (action === 'edit') {
-        markVideoToolSourceSelected(path);
-        videoToolModeState = 'edit';
-        setVideoToolsViewMode('processing');
-        safeNotify(uiT('video.tools.quickActions.editSelected', 'Kayıt video işleme kaynağı yapıldı.'), 'success', 1600);
         return;
     }
     if (action === 'play') {
@@ -30512,6 +30415,22 @@ async function attachVideoStreamToElement(video, stream) {
     await video.play();
 }
 
+function cloneLiveMediaStream(sourceStream, { video = true, audio = true } = {}) {
+    if (!sourceStream) return null;
+    const stream = new MediaStream();
+    if (video) {
+        sourceStream.getVideoTracks?.().forEach((track) => {
+            if (track.readyState === 'live') stream.addTrack(track.clone?.() || track);
+        });
+    }
+    if (audio) {
+        sourceStream.getAudioTracks?.().forEach((track) => {
+            if (track.readyState === 'live') stream.addTrack(track.clone?.() || track);
+        });
+    }
+    return (stream.getTracks?.().length || 0) > 0 ? stream : null;
+}
+
 function drawVideoStudioCroppedMedia(ctx, media, source, dx, dy, dw, dh) {
     const crop = getVideoStudioSourceCrop(source);
     const clipX = dx + Math.round(dw * crop.left / 100);
@@ -31261,7 +31180,7 @@ async function startVideoStudioTestRecording() {
 function isVideoStudioShortcutEvent(event) {
     if (!videoStudioShortcutsEnabled) return false;
     if (event.repeat) return false;
-    if (state.currentPage !== 'videoTools' || getVideoToolsViewMode() !== 'studio') return false;
+    if (state.currentPage !== 'videoTools') return false;
     if (isKeyboardEditableTarget(event.target) || isKeyboardEditableTarget(document.activeElement)) return false;
     return true;
 }
@@ -31594,16 +31513,6 @@ function handleVideoStudioClickEvent(event) {
 
 function handleVideoToolClickEvent(event) {
     if (handleVideoStudioClickEvent(event)) return true;
-
-    const viewTrigger = event.target instanceof Element
-        ? event.target.closest('[data-video-tools-view]')
-        : null;
-    if (viewTrigger) {
-        event.preventDefault();
-        event.stopPropagation();
-        setVideoToolsViewMode(String(viewTrigger.getAttribute('data-video-tools-view') || 'studio'));
-        return true;
-    }
 
     const previewTrigger = event.target instanceof Element
         ? event.target.closest('[data-video-tool-preview]')
@@ -32430,6 +32339,7 @@ function syncVideoStudioOutputSettingsFromUi() {
         videoStudioRecordNameTemplate = String(templateInput.value || 'aurivo-{date}-{time}').trim() || 'aurivo-{date}-{time}';
         templateInput.value = videoStudioRecordNameTemplate;
     }
+    persistVideoStudioOutputSettingsToAppSettings();
     scheduleVideoStudioProfileSave();
 }
 
@@ -33365,7 +33275,9 @@ async function pickVideoStudioOutputFolder() {
         if (!selected?.path) return;
         videoStudioRecordOutputFolder = String(selected.path || '').trim();
         updateVideoStudioOutputFolderUi();
+        persistVideoStudioOutputSettingsToAppSettings();
         scheduleVideoStudioProfileSave();
+        safeNotify(uiT('video.tools.output.folderSaved', 'Kayıt klasörü kaydedildi.'), 'success', 2200);
     } catch (error) {
         safeNotify(`${uiT('video.tools.output.pickFailed', 'Klasör seçilemedi')}: ${error?.message || error}`, 'error', 2200);
     }
@@ -34023,6 +33935,8 @@ function updateVideoStudioQuickActionsPanel() {
 function updateVideoStudioRecordButtons() {
     const isActive = !!screenRecorder && screenRecorder.state !== 'inactive';
     const isPaused = !!screenRecorder && screenRecorder.state === 'paused';
+    updateVideoStudioRecordingIndicators(isActive, isPaused);
+    updateTrayState();
     const startBtn = document.getElementById('videoStudioStartRecordBtn');
     const testBtn = document.getElementById('videoStudioTestRecordBtn');
     const pauseBtn = document.getElementById('videoStudioPauseRecordBtn');
@@ -34042,6 +33956,23 @@ function updateVideoStudioRecordButtons() {
         if (icon) icon.textContent = isPaused ? 'play_arrow' : 'pause';
     }
     updateVideoStudioQuickActionsPanel();
+}
+
+function updateVideoStudioRecordingIndicators(isActive = !!screenRecorder && screenRecorder.state !== 'inactive', isPaused = !!screenRecorder && screenRecorder.state === 'paused') {
+    const sidebarBtn = document.querySelector('.sidebar-btn[data-page="videoTools"]');
+    const sidebarBadge = document.getElementById('videoToolsRecordingBadge');
+    if (sidebarBtn) sidebarBtn.classList.toggle('is-recording', !!isActive);
+    if (sidebarBadge) {
+        sidebarBadge.classList.toggle('hidden', !isActive);
+        sidebarBadge.title = isPaused ? 'Kayıt duraklatıldı' : 'Kayıt aktif';
+        sidebarBadge.setAttribute('aria-label', isPaused ? 'Kayıt duraklatıldı' : 'Kayıt aktif');
+    }
+    const studioBadge = document.getElementById('videoStudioRecordingBadge');
+    if (studioBadge) {
+        studioBadge.classList.toggle('hidden', !isActive);
+        studioBadge.title = isPaused ? 'Kayıt duraklatıldı' : 'Kayıt aktif';
+        studioBadge.setAttribute('aria-label', isPaused ? 'Kayıt duraklatıldı' : 'Kayıt aktif');
+    }
 }
 
 function updateScreenRecordingElapsed() {
@@ -34137,6 +34068,7 @@ async function startScreenRecording(options = {}) {
     const includeDesktopAudio = !usePortalCapture && wantsDesktopAudio;
     const includeMonitorAudio = usePortalCapture && wantsDesktopAudio;
     const includeMic = ['mic', 'both'].includes(audioMode) && isVideoStudioMicVisible();
+    const canReusePreviewDisplayStream = !!videoStudioPreviewStream && (usePortalCapture || !includeDesktopAudio);
     const wantsSeparateAudioTracks = recordingSettings.audioTrackMode === 'separate' && (wantsDesktopAudio || includeMic);
     await refreshVideoStudioFfmpegCapabilities();
     let mimeType = getSupportedScreenRecorderMimeType('webm');
@@ -34185,19 +34117,24 @@ async function startScreenRecording(options = {}) {
             };
         }
         let displayStream;
-        try {
-            displayStream = usePortalCapture
-                ? await getVideoStudioPortalDisplayStream()
-                : await navigator.mediaDevices.getUserMedia(displayCaptureConstraints);
-        } catch (error) {
-            if (!includeDesktopAudio) throw error;
-            safeNotify(`${uiT('video.tools.record.systemAudioFailed', 'Sistem sesi eklenemedi')}: ${error?.message || error}`, 'warning', 2800);
-            displayStream = usePortalCapture
-                ? await getVideoStudioPortalDisplayStream()
-                : await navigator.mediaDevices.getUserMedia({
-                    audio: false,
-                    video: displayCaptureConstraints.video
-                });
+        if (canReusePreviewDisplayStream) {
+            displayStream = cloneLiveMediaStream(videoStudioPreviewStream, { video: true, audio: false });
+        }
+        if (!displayStream) {
+            try {
+                displayStream = usePortalCapture
+                    ? await getVideoStudioPortalDisplayStream()
+                    : await navigator.mediaDevices.getUserMedia(displayCaptureConstraints);
+            } catch (error) {
+                if (!includeDesktopAudio) throw error;
+                safeNotify(`${uiT('video.tools.record.systemAudioFailed', 'Sistem sesi eklenemedi')}: ${error?.message || error}`, 'warning', 2800);
+                displayStream = usePortalCapture
+                    ? await getVideoStudioPortalDisplayStream()
+                    : await navigator.mediaDevices.getUserMedia({
+                        audio: false,
+                        video: displayCaptureConstraints.video
+                    });
+            }
         }
         let micStream = null;
         if (includeMic) {
@@ -34661,13 +34598,10 @@ function renderVideoWorkspace() {
 
 function renderVideoToolsWorkspace() {
     if (!elements.videoToolsWorkspace) return;
-    const viewMode = getVideoToolsViewMode();
-    elements.videoToolsWorkspace.innerHTML = `
-        ${buildVideoToolsViewSwitcher()}
-        ${viewMode === 'studio' ? buildVideoStudioPanel() : buildVideoToolsPanel()}
-    `;
-    elements.videoToolsWorkspace.classList.toggle('is-studio-view', viewMode === 'studio');
-    elements.videoToolsWorkspace.classList.toggle('is-processing-view', viewMode === 'processing');
+    elements.videoToolsWorkspace.innerHTML = buildVideoStudioPanel();
+    elements.videoToolsWorkspace.classList.add('is-studio-view');
+    elements.videoToolsWorkspace.classList.remove('is-processing-view');
+    updateVideoStudioRecordingIndicators();
     syncVideoToolFormatOptions();
     syncVideoToolModeUi();
     const studioPreview = document.getElementById('videoStudioPreviewVideo');
@@ -34689,35 +34623,13 @@ function renderVideoToolsWorkspace() {
         cameraPreview.classList.add('is-active');
         cameraPreview.play().catch(() => {});
     }
-    if (viewMode === 'studio') {
-        refreshVideoStudioAudioDevices().catch(() => {});
-        setTimeout(() => {
-            startVideoStudioLiveAudioMeters().catch(() => {});
-        }, 200);
-        scheduleVideoStudioAutoPreview();
-    } else {
-        releaseVideoStudioIdleRuntime();
-    }
+    refreshVideoStudioAudioDevices().catch(() => {});
+    setTimeout(() => {
+        startVideoStudioLiveAudioMeters().catch(() => {});
+    }, 200);
+    scheduleVideoStudioAutoPreview();
     hydrateVideoWorkspaceThumbnails();
     scheduleVideoStudioProfileSave();
-}
-
-function buildVideoToolsViewSwitcher() {
-    const viewMode = getVideoToolsViewMode();
-    const studioActive = viewMode === 'studio';
-    const processingActive = viewMode === 'processing';
-    return `
-        <div class="video-tools-view-switcher" role="tablist" aria-label="${escapeAttribute(uiT('video.tools.viewSwitcher.label', 'Video düzenleme modu'))}">
-            <button type="button" class="video-tools-view-btn${studioActive ? ' is-active' : ''}" data-video-tools-view="studio" role="tab" aria-selected="${studioActive ? 'true' : 'false'}">
-                <img class="video-tools-tab-icon video-tools-record-icon" src="icons/video_tools_studio.svg" alt="" aria-hidden="true">
-                <span>${escapeHtml(uiT('video.tools.view.studio', 'Kayıt Stüdyosu'))}</span>
-            </button>
-            <button type="button" class="video-tools-view-btn${processingActive ? ' is-active' : ''}" data-video-tools-view="processing" role="tab" aria-selected="${processingActive ? 'true' : 'false'}">
-                <span class="material-symbols-rounded" aria-hidden="true">movie_edit</span>
-                <span>${escapeHtml(uiT('video.tools.view.processing', 'Video İşleme'))}</span>
-            </button>
-        </div>
-    `;
 }
 
 function buildVideoStudioPanel() {
@@ -34836,7 +34748,10 @@ function buildVideoStudioPanel() {
         <section class="video-studio-panel" aria-label="${escapeAttribute(uiT('video.tools.studio.title', 'Kayıt Stüdyosu'))}">
             <div class="video-studio-head">
                 <div class="video-studio-title-wrap">
-                    <img class="video-studio-title-icon" src="icons/video_tools_studio.svg" alt="" aria-hidden="true">
+                    <div class="video-studio-title-media">
+                        <img class="video-studio-title-icon" src="icons/video_tools_studio.svg" alt="" aria-hidden="true">
+                        <span class="video-studio-recording-badge${isRecordingActive ? '' : ' hidden'}" id="videoStudioRecordingBadge" aria-label="${escapeAttribute(isPaused ? 'Kayıt duraklatıldı' : 'Kayıt aktif')}" title="${escapeAttribute(isPaused ? 'Kayıt duraklatıldı' : 'Kayıt aktif')}"></span>
+                    </div>
                     <div>
                         <div class="video-studio-title">${escapeHtml(uiT('video.tools.studio.title', 'Kayıt Stüdyosu'))}</div>
                         <div class="video-studio-sub">${escapeHtml(uiT('video.tools.studio.subtitle', 'Sahne, kaynak, önizleme ve kayıt kontrolü'))}</div>
@@ -35370,11 +35285,13 @@ function buildVideoStudioPanel() {
                                 <strong id="videoStudioRecordOutputFolderLabel">${escapeHtml(getVideoStudioDefaultOutputFolder() || uiT('video.tools.output.folderUnknown', 'Klasör seçilmedi'))}</strong>
                             </div>
                             <div class="video-studio-output-actions">
-                                <button type="button" class="video-tool-icon-btn" id="videoStudioPickOutputFolderBtn" title="${escapeAttribute(uiT('video.tools.output.pickFolder', 'Kayıt klasörü seç'))}" aria-label="${escapeAttribute(uiT('video.tools.output.pickFolder', 'Kayıt klasörü seç'))}">
+                                <button type="button" class="btn btn-small" id="videoStudioPickOutputFolderBtn" title="${escapeAttribute(uiT('video.tools.output.pickFolder', 'Kayıt klasörü seç'))}" aria-label="${escapeAttribute(uiT('video.tools.output.pickFolder', 'Kayıt klasörü seç'))}">
                                     <span class="material-symbols-rounded" aria-hidden="true">folder_open</span>
+                                    ${escapeHtml(uiT('video.tools.output.pickFolder', 'Kayıt klasörü seç'))}
                                 </button>
-                                <button type="button" class="video-tool-icon-btn" id="videoStudioOpenOutputFolderBtn" title="${escapeAttribute(uiT('video.tools.output.openFolder', 'Klasörü aç'))}" aria-label="${escapeAttribute(uiT('video.tools.output.openFolder', 'Klasörü aç'))}">
+                                <button type="button" class="btn btn-small" id="videoStudioOpenOutputFolderBtn" title="${escapeAttribute(uiT('video.tools.output.openFolder', 'Klasörü aç'))}" aria-label="${escapeAttribute(uiT('video.tools.output.openFolder', 'Klasörü aç'))}">
                                     <span class="material-symbols-rounded" aria-hidden="true">open_in_new</span>
+                                    ${escapeHtml(uiT('video.tools.output.openFolder', 'Klasörü aç'))}
                                 </button>
                             </div>
                         </div>
@@ -35589,10 +35506,6 @@ function buildVideoStudioPanel() {
                             <strong id="videoStudioQuickActionsFileLabel">${escapeHtml(lastRecordingName)}</strong>
                         </div>
                         <div class="video-studio-quick-action-grid">
-                            <button type="button" class="btn btn-small" data-video-studio-quick-action="edit"${lastRecordingPath ? '' : ' disabled'}>
-                                <span class="material-symbols-rounded" aria-hidden="true">movie_edit</span>
-                                ${escapeHtml(uiT('video.tools.quickActions.edit', 'İşle'))}
-                            </button>
                             <button type="button" class="btn btn-small" data-video-studio-quick-action="play"${lastRecordingPath ? '' : ' disabled'}>
                                 <span class="material-symbols-rounded" aria-hidden="true">play_arrow</span>
                                 ${escapeHtml(uiT('video.tools.quickActions.play', 'Oynat'))}
@@ -37343,26 +37256,27 @@ function handleNativePlaybackEnd() {
 
     if (state.autoCrossfadeTriggered || state.crossfadeInProgress) return;
 
-    if (state.isRepeat) {
+    if (state.isRepeatOne) {
         playIndex(state.currentIndex);
-    } else {
-        const nextIdx = computeNextIndex();
-        console.log('[NATIVE] Next index:', nextIdx);
+        return;
+    }
 
-        if (nextIdx >= 0) {
-            if (state.settings?.playback?.crossfadeAutoEnabled && !shouldSkipAutoCrossfadeBetween(state.currentIndex, nextIdx)) {
-                startNativeTransitionToIndex(nextIdx, state.settings.playback.crossfadeMs || 2000).catch((e) => {
-                    console.error('[CROSSFADE] Native end transition error:', e);
-                    playIndex(nextIdx);
-                });
-            } else {
+    const nextIdx = computeNextIndex();
+    console.log('[NATIVE] Next index:', nextIdx);
+
+    if (nextIdx >= 0) {
+        if (state.settings?.playback?.crossfadeAutoEnabled && !shouldSkipAutoCrossfadeBetween(state.currentIndex, nextIdx)) {
+            startNativeTransitionToIndex(nextIdx, state.settings.playback.crossfadeMs || 2000).catch((e) => {
+                console.error('[CROSSFADE] Native end transition error:', e);
                 playIndex(nextIdx);
-            }
+            });
         } else {
-            state.isPlaying = false;
-            updatePlayPauseIcon(false);
-            scheduleRememberPlaybackStartupState(220);
+            playIndex(nextIdx);
         }
+    } else {
+        state.isPlaying = false;
+        updatePlayPauseIcon(false);
+        scheduleRememberPlaybackStartupState(220);
     }
 }
 
@@ -37522,31 +37436,13 @@ function togglePlayPause() {
         } else if (state.activeMedia === 'video') {
             elements.videoPlayer.pause();
         }
-        // FIX: Web Pause handling added
-        else if (state.activeMedia === 'web' && elements.webView) {
-            elements.webView.executeJavaScript(`
-                    var m = document.querySelector('video, audio');
-                    if(m) m.pause();
-                `).catch(e => console.error('[web pause error]:', e));
-        }
         state.isPlaying = false;
         updatePlayPauseIcon(false);
         updateTrayState();
         updateMPRISMetadata();
     } else {
         // Oynatma
-        if (state.activeMedia === 'web' && elements.webView) {
-            // Web Play
-            elements.webView.executeJavaScript(`
-                var m = document.querySelector('video, audio');
-                if(m) m.play();
-            `).catch(e => console.error('[web play error]:', e));
-            state.isPlaying = true;
-            updatePlayPauseIcon(true);
-            updateTrayState();
-            updateMPRISMetadata();
-            scheduleRememberPlaybackStartupState(220);
-        } else if (state.currentIndex >= 0 && state.activeMedia === 'audio') {
+        if (state.currentIndex >= 0 && state.activeMedia === 'audio') {
             // Mevcut şarkıyı devam ettir
             if (useNativeAudio) {
                 try {
@@ -38042,140 +37938,9 @@ function maybeStartAutoCrossfade() {
     startCrossfadeToIndex(nextIdx, crossfadeMs);
 }
 
-// Manuel crossfade ile sonraki parça
-function sendWebTransportCommand(command) {
-    if (!elements.webView || typeof elements.webView.executeJavaScript !== 'function') return;
-    const js = `
-        (function () {
-            try {
-                var cmd = ${JSON.stringify(String(command || ''))};
-                var host = String(location.hostname || '');
-                function clickFirst(selectors) {
-                    try {
-                        for (var i = 0; i < selectors.length; i++) {
-                            var el = document.querySelector(selectors[i]);
-                            if (el && typeof el.click === 'function') { el.click(); return true; }
-                        }
-                    } catch (e) {}
-                    return false;
-                }
-                function dispatchMediaKey(keyName) {
-                    try {
-                        var evtDown = new KeyboardEvent('keydown', { key: keyName, code: keyName, bubbles: true, cancelable: true });
-                        var evtUp = new KeyboardEvent('keyup', { key: keyName, code: keyName, bubbles: true, cancelable: true });
-                        document.dispatchEvent(evtDown);
-                        document.dispatchEvent(evtUp);
-                    } catch (e) {}
-                }
-
-                // YouTube / YT Music
-                if (host.includes('youtube.com') || host.includes('music.youtube.com')) {
-                    function dispatchYouTubeShortcut(key, withShift) {
-                        try {
-                            var evtDown = new KeyboardEvent('keydown', { key: key, code: 'Key' + String(key || '').toUpperCase(), shiftKey: !!withShift, bubbles: true, cancelable: true });
-                            var evtUp = new KeyboardEvent('keyup', { key: key, code: 'Key' + String(key || '').toUpperCase(), shiftKey: !!withShift, bubbles: true, cancelable: true });
-                            document.dispatchEvent(evtDown);
-                            document.dispatchEvent(evtUp);
-                        } catch (e) {}
-                    }
-                    if (cmd === 'next') {
-                        if (!clickFirst([
-                            '.ytp-next-button',
-                            'button[aria-label=\"Next\"]',
-                            'button[title=\"Next\"]',
-                            'button[aria-label*=\"Sonraki\"]',
-                            'button[title*=\"Sonraki\"]'
-                        ])) {
-                            // YouTube kısayolu: Shift+N (sonraki video)
-                            dispatchYouTubeShortcut('N', true);
-                        }
-                        return;
-                    }
-                    if (cmd === 'previous') {
-                        if (!clickFirst([
-                            '.ytp-prev-button',
-                            'button[aria-label=\"Previous\"]',
-                            'button[title=\"Previous\"]',
-                            'button[aria-label*=\"Önceki\"]',
-                            'button[title*=\"Önceki\"]'
-                        ])) {
-                            // YouTube kısayolu: Shift+P (önceki video)
-                            dispatchYouTubeShortcut('P', true);
-                        }
-                        return;
-                    }
-                }
-
-                // Deezer
-                if (host.includes('deezer.com')) {
-                    if (cmd === 'next') {
-                        clickFirst([
-                            'footer button[data-testid*=\"next\" i]',
-                            'button[data-testid*=\"next\" i]',
-                            'footer button[aria-label*=\"Next\" i]',
-                            'button[aria-label*=\"Next\" i]',
-                            'footer button[title*=\"Next\" i]',
-                            'button[title*=\"Next\" i]',
-                            'footer button[aria-label*=\"Sonraki\" i]',
-                            'button[aria-label*=\"Sonraki\" i]',
-                            'footer button[title*=\"Sonraki\" i]',
-                            'button[title*=\"Sonraki\" i]',
-                            'footer button[class*=\"next\" i]',
-                            'button[class*=\"next\" i]'
-                        ]);
-                        return;
-                    }
-                    if (cmd === 'previous') {
-                        if (!clickFirst([
-                            'footer button[data-testid*=\"prev\" i]',
-                            'footer button[data-testid*=\"previous\" i]',
-                            'button[data-testid*=\"prev\" i]',
-                            'button[data-testid*=\"previous\" i]',
-                            'footer button[aria-label*=\"Previous\" i]',
-                            'button[aria-label*=\"Previous\" i]',
-                            'footer button[title*=\"Previous\" i]',
-                            'button[title*=\"Previous\" i]',
-                            'footer button[aria-label*=\"Önceki\" i]',
-                            'button[aria-label*=\"Önceki\" i]',
-                            'footer button[title*=\"Önceki\" i]',
-                            'button[title*=\"Önceki\" i]',
-                            'footer button[class*=\"prev\" i]',
-                            'button[class*=\"prev\" i]'
-                        ])) {
-                            try { window.history.back(); } catch (e) {}
-                        }
-                        return;
-                    }
-                }
-
-                // SoundCloud (bonus)
-                if (host.includes('soundcloud.com')) {
-                    if (cmd === 'next') {
-                        clickFirst(['.playControls__next', 'button[aria-label*=\"Next\" i]']);
-                        return;
-                    }
-                    if (cmd === 'previous') {
-                        clickFirst(['.playControls__prev', 'button[aria-label*=\"Previous\" i]']);
-                        return;
-                    }
-                }
-
-                // Fallback: media key
-                if (cmd === 'next') dispatchMediaKey('MediaNextTrack');
-                if (cmd === 'previous') dispatchMediaKey('MediaPreviousTrack');
-            } catch (e) {}
-        })();
-    `;
-    try { elements.webView.executeJavaScript(js); } catch { }
-}
-
 function playNextWithCrossfade() {
     if (state.activeMedia === 'video') {
         playNextVideo();
-        return;
-    }
-    if (state.activeMedia === 'web' && elements.webView) {
-        sendWebTransportCommand('next');
         return;
     }
     if (state.playlist.length === 0) return;
@@ -38196,10 +37961,6 @@ function playNextWithCrossfade() {
 function playPreviousWithCrossfade() {
     if (state.activeMedia === 'video') {
         playPreviousVideo();
-        return;
-    }
-    if (state.activeMedia === 'web' && elements.webView) {
-        sendWebTransportCommand('previous');
         return;
     }
     if (state.playlist.length === 0) return;
@@ -38265,24 +38026,25 @@ function handleTrackEnded() {
         return;
     }
 
-    if (state.isRepeat) {
+    if (state.isRepeatOne) {
         playIndex(state.currentIndex);
+        return;
+    }
+
+    // Otomatik crossfade aktifse ve sonraki parça varsa
+    const nextIdx = computeNextIndex();
+    console.log('[PLAYBACK] Next index:', nextIdx);
+    if (nextIdx >= 0 && state.settings?.playback?.crossfadeAutoEnabled && !shouldSkipAutoCrossfadeBetween(state.currentIndex, nextIdx)) {
+        startCrossfadeToIndex(nextIdx, state.settings.playback.crossfadeMs || 2000);
+    } else if (nextIdx >= 0) {
+        playIndex(nextIdx);
     } else {
-        // Otomatik crossfade aktifse ve sonraki parça varsa
-        const nextIdx = computeNextIndex();
-        console.log('[PLAYBACK] Next index:', nextIdx);
-        if (nextIdx >= 0 && state.settings?.playback?.crossfadeAutoEnabled && !shouldSkipAutoCrossfadeBetween(state.currentIndex, nextIdx)) {
-            startCrossfadeToIndex(nextIdx, state.settings.playback.crossfadeMs || 2000);
-        } else if (nextIdx >= 0) {
-            playIndex(nextIdx);
-        } else {
-            // Liste bitti
-            console.log('[PLAYBACK] Playlist finished');
-            state.isPlaying = false;
-            updatePlayPauseIcon(false);
-            updateTrayState();
-            scheduleRememberPlaybackStartupState(220);
-        }
+        // Liste bitti
+        console.log('[PLAYBACK] Playlist finished');
+        state.isPlaying = false;
+        updatePlayPauseIcon(false);
+        updateTrayState();
+        scheduleRememberPlaybackStartupState(220);
     }
 }
 
@@ -38291,20 +38053,6 @@ function seekBy(seconds) {
         // Video için seek
         const video = elements.videoPlayer;
         video.currentTime = Math.max(0, Math.min(video.duration || 0, video.currentTime + seconds));
-    } else if (state.activeMedia === 'web' && elements.webView) {
-        const delta = Number(seconds) || 0;
-        elements.webView.executeJavaScript(`
-            (function() {
-                const m = document.querySelector('video.html5-main-video, video, audio');
-                if (!m) return false;
-                const d = Number(m.duration) || 0;
-                const next = Math.max(0, (Number(m.currentTime) || 0) + (${delta}));
-                m.currentTime = d > 0 ? Math.min(d, next) : next;
-                return true;
-            })();
-        `).catch(() => {
-            // yoksay
-        });
     } else if (useNativeAudio && state.activeMedia === 'audio') {
         // C++ Engine ile seek
         window.aurivo.audio.getPosition().then(pos => {
@@ -38327,22 +38075,6 @@ async function handleSeek() {
         // Video için seek
         const duration = elements.videoPlayer.duration || 0;
         elements.videoPlayer.currentTime = (value / 1000) * duration;
-    } else if (state.activeMedia === 'web' && elements.webView) {
-        const duration = Number(state.webDuration) || 0;
-        if (duration > 0) {
-            const newTime = (value / 1000) * duration;
-            state.webPosition = newTime;
-            elements.webView.executeJavaScript(`
-                (function() {
-                    const m = document.querySelector('video.html5-main-video, video, audio');
-                    if (!m) return false;
-                    m.currentTime = ${newTime};
-                    return true;
-                })();
-            `).catch(() => {
-                // yoksay
-            });
-        }
     } else if (useNativeAudio && state.activeMedia === 'audio') {
         // C++ Engine ile seek
         const duration = await window.aurivo.audio.getDuration();
@@ -38376,25 +38108,6 @@ async function handleSeekClick(e) {
         if (duration > 0) {
             const newTime = percent * duration;
             elements.videoPlayer.currentTime = newTime;
-            elements.seekSlider.value = percent * 1000;
-            updateRainbowSlider(elements.seekSlider, percent * 100);
-        }
-    } else if (state.activeMedia === 'web' && elements.webView) {
-        // Web için seek
-        const duration = Number(state.webDuration) || 0;
-        if (duration > 0) {
-            const newTime = percent * duration;
-            state.webPosition = newTime;
-            elements.webView.executeJavaScript(`
-                (function() {
-                    const m = document.querySelector('video.html5-main-video, video, audio');
-                    if (!m) return false;
-                    m.currentTime = ${newTime};
-                    return true;
-                })();
-            `).catch(() => {
-                // yoksay
-            });
             elements.seekSlider.value = percent * 1000;
             updateRainbowSlider(elements.seekSlider, percent * 100);
         }
@@ -38575,7 +38288,13 @@ function playNotificationSound() {
     }
 }
 
+function areAppNotificationsEnabled() {
+    return state?.settings?.ui?.notificationsEnabled === true;
+}
+
 function showNotification(message, type = 'info', timeoutMs = 3000) {
+    if (!areAppNotificationsEnabled()) return;
+
     const textValue = String(message || '').trim();
     if (!textValue) return;
 
@@ -38693,6 +38412,12 @@ function toggleShuffle() {
 function toggleRepeat() {
     state.isRepeat = !state.isRepeat;
     elements.repeatBtn.classList.toggle('active', state.isRepeat);
+    saveSettings();
+}
+
+function toggleRepeatOne() {
+    state.isRepeatOne = !state.isRepeatOne;
+    elements.repeatOneBtn?.classList.toggle('active', state.isRepeatOne);
     saveSettings();
 }
 
@@ -39657,12 +39382,14 @@ function resetBehaviorDefaults() {
     if (elements.behaviorWebMotionPreset) elements.behaviorWebMotionPreset.value = 'balanced';
     if (elements.behaviorWebLowPowerMode) elements.behaviorWebLowPowerMode.checked = false;
     if (elements.behaviorCloseToTray) elements.behaviorCloseToTray.checked = true;
+    if (elements.behaviorNotificationsEnabled) elements.behaviorNotificationsEnabled.checked = false;
     updateVisualModeUi();
     updateThemeFollowSystemUi();
     previewAppearanceSettingsFromUI();
     if (!state.settings || typeof state.settings !== 'object') state.settings = {};
     if (!state.settings.ui || typeof state.settings.ui !== 'object') state.settings.ui = {};
     state.settings.ui.webExperienceEnabled = !!elements.behaviorWebExperienceEnabled?.checked;
+    state.settings.ui.notificationsEnabled = !!elements.behaviorNotificationsEnabled?.checked;
     applyWebExperienceMode({ forceSwitch: false });
     applyWebUiClasses();
 }
@@ -41379,6 +41106,10 @@ function shouldRunVisualizer() {
     return hasSize && visible;
 }
 
+function shouldFeedProjectMWhenVisualizerHidden() {
+    return state.activeMedia === 'web' && !!visualizerProjectMRunning;
+}
+
 function scheduleVisualizerTick(delayMs = 0) {
     if (visualizerTimerId) {
         clearTimeout(visualizerTimerId);
@@ -41402,7 +41133,8 @@ async function runVisualizerTick() {
         return;
     }
 
-    if (!shouldRunVisualizer()) {
+    const visualizerVisible = shouldRunVisualizer();
+    if (!visualizerVisible && !shouldFeedProjectMWhenVisualizerHidden()) {
         if (state.activeMedia === 'video' && isVideoFullscreenActive()) {
             visualizerReleaseFrame = null;
             visualizerReleaseState = null;
@@ -42364,13 +42096,13 @@ async function drawNativeVisualizerFrame() {
 
         if (isVideoMode) {
             // Video modunda uygulama içi DALI spektrumunu kullan.
-            spectrumData = await getWebDaliSpectrumBands(256);
+            spectrumData = await getWebDaliSpectrumBands(256, { preferCache: false });
             const video = elements.videoPlayer;
             const videoIsPlaying = !!(video && !video.paused && !video.ended && video.readyState >= 2);
             shouldAnimateNow = videoIsPlaying || state.isPlaying;
         } else if (isWebMode) {
-            // Web platform modunda saf (pre-FX) spektrum al.
-            spectrumData = await getWebDaliSpectrumBands(256, { raw: true });
+            // Web platform modunda projectM icin saf (pre-FX) spektrum al.
+            spectrumData = await getWebDaliSpectrumBands(256, { raw: true, preferCache: false });
             shouldAnimateNow = !!state.isPlaying;
         } else {
             let nativeIsPlaying = false;
@@ -42381,12 +42113,16 @@ async function drawNativeVisualizerFrame() {
             if (window.aurivo?.audio?.spectrum?.getBands) {
                 spectrumData = await window.aurivo.audio.spectrum.getBands(128);
             }
+            if (getSpectrumPeak(spectrumData) <= 0 && window.aurivo?.audio?.spectrum?.getPCM) {
+                const pcmSnapshot = await window.aurivo.audio.spectrum.getPCM(2048);
+                spectrumData = makeSpectrumBandsFromPcmSnapshot(pcmSnapshot, 128);
+            }
             shouldAnimateNow = nativeIsPlaying || state.isPlaying;
         }
 
         spectrumData = isWebMode
             ? normalizeSpectrumDataRaw(spectrumData)
-            : normalizeSpectrumData(spectrumData);
+            : normalizeSpectrumData(spectrumData, { source: isVideoMode ? 'video' : 'native-audio' });
         if (isVideoMode) {
             spectrumData = tuneVideoVisualizerSpectrum(spectrumData);
             pushVideoSpectrumToProjectM(spectrumData, shouldAnimateNow);
@@ -42532,21 +42268,75 @@ function calibrateWebRawVisualizerSpectrum(rawData) {
     if (!Array.isArray(rawData) || rawData.length === 0) return [];
     return rawData.map((v) => {
         const n = Math.max(0, Math.min(1, Number(v) || 0));
-        // Saf sinyali koru; görsel seviyeyi hafif canlı tut.
+        // Saf sinyali koru; projectM seviyesini hafif canlı tut.
         return Math.max(0, Math.min(1, Math.pow(n, 1.06) * 0.90));
     });
 }
 
-function normalizeSpectrumData(spectrumData) {
+function getSpectrumPeak(spectrumData) {
+    if (!spectrumData || !spectrumData.length) return 0;
+    let peak = 0;
+    for (const value of spectrumData) {
+        const n = Number(value);
+        if (Number.isFinite(n) && n > peak) peak = n;
+    }
+    return peak;
+}
+
+function makeSpectrumBandsFromPcmSnapshot(pcmSnapshot, targetCount = 128) {
+    const pcm = pcmSnapshot?.data;
+    const channels = Math.max(1, Math.min(8, Number(pcmSnapshot?.channels) || 1));
+    const src = Array.from(pcm || [], (v) => {
+        const n = Number(v);
+        return Number.isFinite(n) ? n : 0;
+    });
+    if (!src.length) return [];
+
+    const frames = Math.floor(src.length / channels);
+    if (frames < 64) return [];
+    const maxFrames = Math.min(frames, 2048);
+    const mono = new Float32Array(maxFrames);
+    for (let i = 0; i < maxFrames; i++) {
+        let sum = 0;
+        const base = i * channels;
+        for (let ch = 0; ch < channels; ch++) sum += src[base + ch] || 0;
+        mono[i] = sum / channels;
+    }
+
+    const sampleRate = Math.max(8000, Math.min(192000, Number(pcmSnapshot?.sampleRate) || 44100));
+    const minHz = 35;
+    const maxHz = Math.min(18000, sampleRate * 0.45);
+    const ratio = maxHz / minHz;
+    const count = Math.max(32, Math.min(192, Number(targetCount) || 128));
+    const out = new Array(count).fill(0);
+
+    for (let i = 0; i < count; i++) {
+        const freq = minHz * Math.pow(ratio, i / Math.max(1, count - 1));
+        const omega = (2 * Math.PI * freq) / sampleRate;
+        const coeff = 2 * Math.cos(omega);
+        let s0 = 0;
+        let s1 = 0;
+        let s2 = 0;
+        for (let j = 0; j < maxFrames; j++) {
+            s0 = mono[j] + (coeff * s1) - s2;
+            s2 = s1;
+            s1 = s0;
+        }
+        const power = (s1 * s1) + (s2 * s2) - (coeff * s1 * s2);
+        out[i] = Math.sqrt(Math.max(0, power)) / maxFrames;
+    }
+    return out;
+}
+
+function normalizeSpectrumData(spectrumData, options = {}) {
     if (!spectrumData || !spectrumData.length) return [];
+    const source = String(options?.source || '').trim().toLowerCase();
+    const isNativeAudioSource = source === 'native-audio';
 
     let arr = Array.from(spectrumData, (v) => {
         const n = Number(v);
         return Number.isFinite(n) ? Math.max(0, n) : 0;
     });
-
-    const noiseFloor = 0.004;
-    arr = arr.map((v) => (v < noiseFloor ? 0 : v));
 
     const max = Math.max(...arr, 0);
     if (max <= 0) return arr.map(() => 0);
@@ -42557,17 +42347,25 @@ function normalizeSpectrumData(spectrumData) {
         arr = arr.map((v) => v / scale);
     }
 
+    const normalizedPeak = Math.max(...arr, 0);
+    const noiseFloor = isNativeAudioSource
+        ? Math.min(0.00002, normalizedPeak * 0.04)
+        : Math.min(0.004, normalizedPeak * 0.08);
+    arr = arr.map((v) => (v < noiseFloor ? 0 : v));
+
     // Dinamik gain: barlar çok kısa kalmasın ama sürekli full de olmasın.
     const peak01 = Math.max(...arr, 0);
-    const targetPeak = 0.74;
-    const dynamicGain = Math.min(24, Math.max(1, targetPeak / Math.max(peak01, 1e-6)));
+    if (peak01 <= 0) return arr.map(() => 0);
+    const targetPeak = isNativeAudioSource ? 0.82 : 0.74;
+    const maxDynamicGain = isNativeAudioSource ? 200000 : 24;
+    const dynamicGain = Math.min(maxDynamicGain, Math.max(1, targetPeak / Math.max(peak01, 1e-9)));
 
     const len = arr.length || 1;
     return arr.map((v, i) => {
         // Tiz frekansları hafif öne çıkar (son bantlara doğru +%18).
         const hiTilt = 1 + (i / (len - 1 || 1)) * 0.18;
         const boosted = Math.min(1, v * dynamicGain * hiTilt);
-        return Math.pow(boosted, 0.85);
+        return Math.pow(boosted, isNativeAudioSource ? 0.72 : 0.85);
     });
 }
 

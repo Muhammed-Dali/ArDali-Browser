@@ -305,6 +305,7 @@
     "playPause": "Play/Pause",
     "shuffle": "Shuffle",
     "repeat": "Repeat",
+    "repeatOne": "Repeat current song",
     "volume": "Volume",
     "visual": "Visualizer",
     "eq": "Sound Effects (EQ)",
@@ -802,89 +803,6 @@
       "other": "Other"
     }
   },
-  "downloadUi": {
-    "title": "Download - Select Format",
-    "tabs": {
-      "video": "Video",
-      "audio": "Audio"
-    },
-    "view": {
-      "basic": "Basic",
-      "advanced": "Advanced"
-    },
-    "back": "Back",
-    "fields": {
-      "titleLabel": "Title:",
-      "titlePlaceholder": "Enter a title... (optional)",
-      "selectFormat": "Select format"
-    },
-    "quality": {
-      "autoBest": "Auto (Best) - Recommended"
-    },
-    "cardMode": {
-      "video": "Download Video",
-      "audio": "Extract Audio"
-    },
-    "audioQuality": {
-      "normal": "Normal (192kbps)",
-      "high": "High (320kbps)",
-      "low": "Low (128kbps)"
-    },
-    "normalizeAudio": "Audio normalization (louder)",
-    "advanced": {
-      "title": "Aurivo - Advanced Settings",
-      "urlLabel": "URL",
-      "urlPlaceholder": "Video/Audio URL (YouTube, SoundCloud, etc.)",
-      "pasteBtn": "Paste",
-      "pasteTitle": "Paste copied URL",
-      "folderLabel": "Folder",
-      "folderPlaceholder": "Download folder",
-      "selectBtn": "Select",
-      "videoCodecLabel": "Video codec",
-      "auto": "Auto",
-      "cookiesBrowserLabel": "Cookies (browser)",
-      "none": "None",
-      "cookiesFileLabel": "Cookies file",
-      "cookiesFilePlaceholder": "cookies.txt (optional)",
-      "proxyLabel": "Proxy",
-      "proxyPlaceholder": "http://localhost:8080 or socks5://127.0.0.1:1080",
-      "useConfig": "Use config file",
-      "configPlaceholder": "yt-dlp config file (optional)",
-      "moreFormats": "More formats (custom -f)",
-      "formatOverridePlaceholder": "e.g. bestvideo[height<=1080][vcodec^=avc1]+bestaudio/best or format id (251)",
-      "playlist": "Download playlist",
-      "playlistFilename": "Playlist filename format",
-      "playlistFoldername": "Playlist folder name format",
-      "customArgsLabel": "Custom yt-dlp arguments",
-      "customArgsPlaceholder": "e.g. --sponsorblock-remove all"
-    },
-    "progress": {
-      "ready": "Ready",
-      "starting": "Starting...",
-      "downloading": "Downloading...",
-      "done": "Download complete",
-      "error": "Download error"
-    },
-    "buttons": {
-      "details": "Details",
-      "start": "Download",
-      "more": "More settings",
-      "stop": "Stop",
-      "cancel": "Cancel",
-      "close": "Close",
-      "hide": "Hide"
-    },
-    "dialog": {
-      "selectFolderTitle": "Select Download Folder"
-    },
-    "notify": {
-      "apiMissing": "Download API not found (window.aurivo.download.start)",
-      "enterUrl": "Please enter a URL.",
-      "folderNotSelected": "No download folder selected.",
-      "folderSelectFailed": "Couldn't select folder: {error}",
-      "startFailed": "Couldn't start download: {error}"
-    }
-  },
   "securityPage": {
     "title": "Security",
     "heroTitle": "Aurivo Secure Internet",
@@ -1125,6 +1043,8 @@
   "ui.startup.webExperienceEnabled": "Enable Web experience (optional)",
   "ui.startup.webExperienceEnabled.hint": "When disabled, the app stays in media player mode and the Web tab is hidden.",
   "ui.startup.webExperienceEnabled.notifyDisabled": "Web experience is off. You can enable it in Settings.",
+  "ui.startup.notificationsEnabled": "Show in-app notifications",
+  "ui.startup.notificationsEnabledHint": "When disabled, in-app notifications are hidden.",
   "settings.tabs.library": "Media Library",
   "settings.library.startupPage.options.music": "Media (Audio)",
   "settings.library.folders.title": "Media Sources Management",
@@ -1149,7 +1069,6 @@
   "securityPage.notify.cookiesImported": "{imported} cookies imported ({skipped} skipped).",
   "securityPage.notify.cookiesExportFailed": "Cookie export failed: {error}",
   "securityPage.notify.cookiesImportFailed": "Cookie import failed: {error}",
-  "securityPage.buttons.quickDownload": "Quick download",
   "securityPage.sessionProfile.label": "Web session profile",
   "securityPage.sessionProfile.options.persistent": "Persistent (keep cookies)",
   "securityPage.sessionProfile.options.isolated": "Isolated (clean start on each launch)",
@@ -1817,5 +1736,8 @@
   "video.tools.batch.noFolder": "Choose an output folder before starting a batch.",
   "video.tools.batch.processing": "Processing",
   "video.tools.batch.done": "Batch completed",
-  "video.tools.batch.doneWithFailures": "Batch finished"
+  "video.tools.batch.doneWithFailures": "Batch finished",
+  "sfx.audiophile.preamp.title": "Analog Preamp",
+  "sfx.audiophile.preamp.hint": "Fine output gain before the web DSP chain.",
+  "sfx.audiophile.preamp.knobLabel": "Preamp Gain"
 }

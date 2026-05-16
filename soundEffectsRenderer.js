@@ -287,6 +287,7 @@ function normalizeSfxScope(rawScope) {
 
 const SFX_SCOPE = normalizeSfxScope(SFX_QUERY_PARAMS.get('scope'));
 const SFX_IS_SCOPED_DALI = SFX_SCOPE === 'web' || SFX_SCOPE === 'video';
+const SFX_HAS_EQ_TOP_VISUALIZER = SFX_SCOPE === 'music';
 const SFX_EMBEDDED_MODE = SFX_QUERY_PARAMS.get('embedded') === '1';
 const SFX_PERF = {
     lowPower: false,
@@ -492,7 +493,9 @@ function refreshEq32AnimatedRegionForLights() {
 
     const topViz = eqSection.querySelector('.eq-top-visualizer');
     if (topViz) {
-        topViz.innerHTML = '<canvas id="barAnalyzerCanvas" class="eq-top-visualizer-canvas"></canvas>';
+        topViz.innerHTML = SFX_HAS_EQ_TOP_VISUALIZER
+            ? '<canvas id="barAnalyzerCanvas" class="eq-top-visualizer-canvas"></canvas>'
+            : '';
     }
     bandsWrapper.innerHTML = getEQ32BandsMarkup(settings);
 
@@ -1910,28 +1913,30 @@ function setupEventListeners() {
         }).catch(() => { });
     });
 
-    // Security: accept messages only from trusted sender/origin pairs.
-    // nosemgrep: javascript.browser.security.insufficient-postmessage-origin-validation.insufficient-postmessage-origin-validation
     window.addEventListener('message', (e) => {
-        const source = e?.source || null;
-        const isEmbedded = !!SFX_EMBEDDED_MODE;
-        const sourceAllowed = isEmbedded ? source === window.parent : source === window;
+        const sourceAllowed = SFX_EMBEDDED_MODE
+            ? e.source === window.parent
+            : e.source === window;
         if (!sourceAllowed) return;
 
-        const senderOrigin = String(e?.origin || '');
-        const selfOrigin = window.location.origin || 'null';
-        const originAllowed = (senderOrigin === selfOrigin) || (isEmbedded && senderOrigin === 'null');
-        if (!originAllowed) return;
+        const senderOrigin = String(e.origin || '');
+        const selfOrigin = String(window.location.origin || 'null');
+        if (senderOrigin !== selfOrigin) return;
 
-        const t = String(e?.data?.type || '');
+        const data = e.data;
+        if (!data || typeof data !== 'object') return;
+
+        const t = String(data.type || '');
+        if (t !== 'sfx:animControl' && t !== 'sfx:setLanguage') return;
+
         if (t === 'sfx:animControl') {
-            const action = String(e?.data?.action || '');
+            const action = String(data.action || '');
             if (action === 'pause') setRuntimeAnimationsActive(false);
             if (action === 'resume') setRuntimeAnimationsActive(!document.hidden);
             return;
         }
         if (t === 'sfx:setLanguage') {
-            const lang = String(e?.data?.lang || '').trim();
+            const lang = String(data.lang || '').trim();
             if (!lang) return;
             Promise.resolve().then(async () => {
                 await applyEmbeddedLanguage(lang);
@@ -2495,28 +2500,107 @@ function stopTruePeakMeter() {
 }
 
 let compressorTimer = null;
+function getSpectrumActivityPercent(bands) {
+    const src = Array.isArray(bands) ? bands : [];
+    if (!src.length) return 0;
+    let peak = 0;
+    let sum = 0;
+    let count = 0;
+    for (const sample of src) {
+        const raw = Math.max(0, Number(sample) || 0);
+        const value = raw > 1 ? Math.min(1, raw / 255) : Math.min(1, raw);
+        if (value > peak) peak = value;
+        sum += value * value;
+        count += 1;
+    }
+    const rms = Math.sqrt(sum / Math.max(1, count));
+    const blended = Math.max(peak * 0.70, rms * 1.55);
+    return Math.max(0, Math.min(100, Math.pow(blended, 0.74) * 100));
+}
+
+function spectrumActivityToDb(activityPercent) {
+    const normalized = Math.max(0.000001, Math.min(1, (Number(activityPercent) || 0) / 100));
+    return 20 * Math.log10(normalized);
+}
+
+async function getDaliMeterPercent(effectName) {
+    if (!SFX_IS_SCOPED_DALI || !window.aurivo?.soundEffects?.getWebSpectrum) return null;
+    const bands = await window.aurivo.soundEffects.getWebSpectrum(128);
+    const activity = getSpectrumActivityPercent(bands);
+    if (activity <= 0) return 0;
+
+    if (effectName === 'compressor') {
+        const settings = getSettings('compressor');
+        const threshold = Number(settings.threshold) || -20;
+        const ratio = Math.max(1, Number(settings.ratio) || 1);
+        const estimatedDb = spectrumActivityToDb(activity);
+        const overDb = Math.max(0, estimatedDb - threshold);
+        const gainReductionDb = overDb * (1 - (1 / ratio));
+        return Math.max(activity * 0.18, Math.min(100, (gainReductionDb / 24) * 100));
+    }
+
+    if (effectName === 'limiter') {
+        const settings = getSettings('limiter');
+        const ceiling = Number(settings.ceiling) || -1;
+        const gain = Number(settings.gain) || 0;
+        const estimatedDb = spectrumActivityToDb(activity) + gain;
+        const overDb = Math.max(0, estimatedDb - ceiling);
+        return Math.max(activity * 0.14, Math.min(100, (overDb / 20) * 100));
+    }
+
+    return activity;
+}
+
+function paintReductionMeter(meterFill, percent, lowLimit, midLimit) {
+    const safePercent = Math.max(0, Math.min(100, Number(percent) || 0));
+    meterFill.style.width = `${safePercent}%`;
+    if (safePercent < lowLimit) {
+        meterFill.style.backgroundColor = '#4caf50';
+    } else if (safePercent < midLimit) {
+        meterFill.style.backgroundColor = '#ffeb3b';
+    } else {
+        meterFill.style.backgroundColor = '#f44336';
+    }
+}
+
+function isEffectEnabledForMeter(effectName) {
+    return !!getSettings(effectName)?.enabled;
+}
+
+function resetReductionMeterForEffect(effectName) {
+    if (effectName === 'compressor') {
+        const meterFill = document.getElementById('compressorMeter');
+        if (meterFill) paintReductionMeter(meterFill, 0, 25, 55);
+    } else if (effectName === 'limiter') {
+        const meterFill = document.getElementById('limiterMeter');
+        if (meterFill) paintReductionMeter(meterFill, 0, 18, 50);
+    }
+}
+
 function startCompressorMeter() {
     stopCompressorMeter();
     const meterFill = document.getElementById('compressorMeter');
     if (!meterFill) return;
+    if (!isEffectEnabledForMeter('compressor')) resetReductionMeterForEffect('compressor');
 
     compressorTimer = setInterval(async () => {
         if (!SFX_RUNTIME_ANIMS_ACTIVE || SFX.currentEffect !== 'compressor') return;
-        if (!window.aurivo?.ipcAudio?.compressor?.getGainReduction) return;
-        const reduction = await window.aurivo.ipcAudio.compressor.getGainReduction();
-        const reductionAbs = Math.min(Math.abs(reduction || 0), 24);
-        const percent = (reductionAbs / 24) * 100;
-
-        meterFill.style.width = `${percent}%`;
-
-        if (reductionAbs < 6) {
-            meterFill.style.backgroundColor = '#4caf50';
-        } else if (reductionAbs < 12) {
-            meterFill.style.backgroundColor = '#ffeb3b';
-        } else {
-            meterFill.style.backgroundColor = '#f44336';
+        if (!isEffectEnabledForMeter('compressor')) {
+            resetReductionMeterForEffect('compressor');
+            return;
         }
-    }, getPerfScaledMs(100, { min: 60, max: 400 }));
+        let percent = null;
+        if (SFX_IS_SCOPED_DALI) {
+            percent = await getDaliMeterPercent('compressor');
+        }
+        if (percent == null && window.aurivo?.ipcAudio?.compressor?.getGainReduction) {
+            const reduction = await window.aurivo.ipcAudio.compressor.getGainReduction();
+            const reductionAbs = Math.min(Math.abs(reduction || 0), 24);
+            percent = (reductionAbs / 24) * 100;
+        }
+        if (percent == null) return;
+        paintReductionMeter(meterFill, percent, 25, 55);
+    }, getPerfScaledMs(SFX_IS_SCOPED_DALI ? 55 : 100, { min: 40, max: 400 }));
 }
 
 function stopCompressorMeter() {
@@ -2532,24 +2616,26 @@ function startLimiterMeter() {
     stopLimiterMeter();
     const meterFill = document.getElementById('limiterMeter');
     if (!meterFill) return;
+    if (!isEffectEnabledForMeter('limiter')) resetReductionMeterForEffect('limiter');
 
     limiterTimer = setInterval(async () => {
         if (!SFX_RUNTIME_ANIMS_ACTIVE || SFX.currentEffect !== 'limiter') return;
-        if (!window.aurivo?.ipcAudio?.limiter?.getReduction) return;
-        const reduction = await window.aurivo.ipcAudio.limiter.getReduction();
-        const reductionAbs = Math.min(Math.abs(reduction || 0), 20);
-        const percent = (reductionAbs / 20) * 100;
-
-        meterFill.style.width = `${percent}%`;
-
-        if (reductionAbs < 3) {
-            meterFill.style.backgroundColor = '#4caf50';
-        } else if (reductionAbs < 10) {
-            meterFill.style.backgroundColor = '#ffeb3b';
-        } else {
-            meterFill.style.backgroundColor = '#f44336';
+        if (!isEffectEnabledForMeter('limiter')) {
+            resetReductionMeterForEffect('limiter');
+            return;
         }
-    }, getPerfScaledMs(50, { min: 40, max: 240 }));
+        let percent = null;
+        if (SFX_IS_SCOPED_DALI) {
+            percent = await getDaliMeterPercent('limiter');
+        }
+        if (percent == null && window.aurivo?.ipcAudio?.limiter?.getReduction) {
+            const reduction = await window.aurivo.ipcAudio.limiter.getReduction();
+            const reductionAbs = Math.min(Math.abs(reduction || 0), 20);
+            percent = (reductionAbs / 20) * 100;
+        }
+        if (percent == null) return;
+        paintReductionMeter(meterFill, percent, 18, 50);
+    }, getPerfScaledMs(SFX_IS_SCOPED_DALI ? 55 : 50, { min: 40, max: 240 }));
 }
 
 function stopLimiterMeter() {
@@ -2868,6 +2954,13 @@ function getAudiophileTemplate() {
 function getEQ32Template() {
     const settings = getSettings('eq32');
     const bandsHTML = getEQ32BandsMarkup(settings);
+    const topVisualizerHTML = SFX_HAS_EQ_TOP_VISUALIZER
+        ? `
+                <!-- Top visualizer -->
+                <div class="eq-top-visualizer">
+                    <canvas id="barAnalyzerCanvas" class="eq-top-visualizer-canvas"></canvas>
+                </div>`
+        : '';
 
 	    return `
 	        <div class="effect-panel" id="eq32Panel">
@@ -2883,10 +2976,7 @@ function getEQ32Template() {
 	            </div>
 	            
 	            <div class="eq-section" style="position: relative; padding-top: 10px;">
-                <!-- Top visualizer -->
-                <div class="eq-top-visualizer">
-                    <canvas id="barAnalyzerCanvas" class="eq-top-visualizer-canvas"></canvas>
-                </div>
+                ${topVisualizerHTML}
 
                 <div class="eq-bands-wrapper" id="eqBandsWrapper" style="position: relative; z-index: 1;">
                     ${bandsHTML}
@@ -3039,6 +3129,7 @@ function getReverbTemplate() {
 // --- Compressor Template ---
 function getCompressorTemplate() {
     const settings = getSettings('compressor');
+    const selectedPreset = String(settings.lastPreset || '').trim().toLowerCase();
 
     return `
         <div class="effect-panel" id="compressorPanel">
@@ -3053,6 +3144,17 @@ function getCompressorTemplate() {
                         <span class="toggle-slider"></span>
                         <span class="enable-label">${tSync('sfx.ui.enable')}</span>
                     </label>
+                </div>
+            </div>
+
+            <div class="presets-section">
+                <h3>${tSync('sfx.ui.presets')}</h3>
+                <div class="presets-buttons">
+                    ${renderModernPresetButton({ panelId: 'compressorPanel', preset: 'gentle', label: tOr('sfx.compressor.presets.gentle', 'Yumuşak'), icon: 'mild', active: selectedPreset === 'gentle', extraClass: 'compressor-preset-btn' })}
+                    ${renderModernPresetButton({ panelId: 'compressorPanel', preset: 'vocal', label: tOr('sfx.compressor.presets.vocal', 'Vokal'), icon: 'vocal', active: selectedPreset === 'vocal', extraClass: 'compressor-preset-btn' })}
+                    ${renderModernPresetButton({ panelId: 'compressorPanel', preset: 'night', label: tOr('sfx.compressor.presets.night', 'Gece'), icon: 'mild', active: selectedPreset === 'night', extraClass: 'compressor-preset-btn' })}
+                    ${renderModernPresetButton({ panelId: 'compressorPanel', preset: 'punch', label: tOr('sfx.compressor.presets.punch', 'Güçlü'), icon: 'burst', active: selectedPreset === 'punch', extraClass: 'compressor-preset-btn' })}
+                    ${renderModernPresetButton({ panelId: 'compressorPanel', preset: 'broadcast', label: tOr('sfx.compressor.presets.broadcast', 'Yayın'), icon: 'radio', active: selectedPreset === 'broadcast', extraClass: 'compressor-preset-btn' })}
                 </div>
             </div>
             
@@ -3137,6 +3239,7 @@ function getCompressorTemplate() {
 // --- Limiter Template ---
 function getLimiterTemplate() {
     const settings = getSettings('limiter');
+    const selectedPreset = String(settings.lastPreset || '').trim().toLowerCase();
 
     return `
         <div class="effect-panel" id="limiterPanel">
@@ -3151,6 +3254,17 @@ function getLimiterTemplate() {
                         <span class="toggle-slider"></span>
                         <span class="enable-label">${tSync('sfx.ui.enable')}</span>
                     </label>
+                </div>
+            </div>
+
+            <div class="presets-section">
+                <h3>${tSync('sfx.ui.presets')}</h3>
+                <div class="presets-buttons">
+                    ${renderModernPresetButton({ panelId: 'limiterPanel', preset: 'transparent', label: tOr('sfx.limiter.presets.transparent', 'Şeffaf'), icon: 'natural', active: selectedPreset === 'transparent', extraClass: 'limiter-preset-btn' })}
+                    ${renderModernPresetButton({ panelId: 'limiterPanel', preset: 'loud', label: tOr('sfx.limiter.presets.loud', 'Yüksek'), icon: 'burst', active: selectedPreset === 'loud', extraClass: 'limiter-preset-btn' })}
+                    ${renderModernPresetButton({ panelId: 'limiterPanel', preset: 'streaming', label: tOr('sfx.limiter.presets.streaming', 'Streaming'), icon: 'radio', active: selectedPreset === 'streaming', extraClass: 'limiter-preset-btn' })}
+                    ${renderModernPresetButton({ panelId: 'limiterPanel', preset: 'night', label: tOr('sfx.limiter.presets.night', 'Gece'), icon: 'mild', active: selectedPreset === 'night', extraClass: 'limiter-preset-btn' })}
+                    ${renderModernPresetButton({ panelId: 'limiterPanel', preset: 'safe', label: tOr('sfx.limiter.presets.safe', 'Güvenli'), icon: 'target', active: selectedPreset === 'safe', extraClass: 'limiter-preset-btn' })}
                 </div>
             </div>
             
@@ -5050,6 +5164,9 @@ function initEffectControls(effectName) {
             } else {
                 applyEffect(effectName);
             }
+            if ((effectName === 'compressor' || effectName === 'limiter') && !settings.enabled) {
+                resetReductionMeterForEffect(effectName);
+            }
             if (effectName === 'truepeak') {
                 syncMeterLoops();
             }
@@ -5061,6 +5178,20 @@ function initEffectControls(effectName) {
         const panel = document.getElementById('reverbPanel');
         panel?.querySelectorAll('.preset-btn')?.forEach(btn => {
             btn.addEventListener('click', () => applyReverbPreset(btn.dataset.preset));
+        });
+    }
+
+    if (effectName === 'compressor') {
+        const panel = document.getElementById('compressorPanel');
+        panel?.querySelectorAll('.compressor-preset-btn')?.forEach((btn) => {
+            btn.addEventListener('click', () => applyCompressorPreset(btn.dataset.preset));
+        });
+    }
+
+    if (effectName === 'limiter') {
+        const panel = document.getElementById('limiterPanel');
+        panel?.querySelectorAll('.limiter-preset-btn')?.forEach((btn) => {
+            btn.addEventListener('click', () => applyLimiterPreset(btn.dataset.preset));
         });
     }
 
@@ -5499,11 +5630,10 @@ function computeEqTopBars(rawBands, targetCount) {
     const minHz = EQ_TOP_MIN_HZ;
     const maxHz = EQ_TOP_MAX_HZ;
     const ratio = maxHz / minHz;
-    const isDaliScope = SFX_IS_SCOPED_DALI;
-    const eqInfluence = isDaliScope ? 0.12 : 0.28;
-    const moduleInfluence = isDaliScope ? 0.11 : 0.24;
-    const freqCompExp = isDaliScope ? 0.07 : 0.16;
-    const outputTrim = isDaliScope ? 0.64 : 0.90;
+    const eqInfluence = 0.28;
+    const moduleInfluence = 0.24;
+    const freqCompExp = 0.16;
+    const outputTrim = 0.90;
     let rawPeak = 0;
 
     for (let i = 0; i < count; i++) {
@@ -5526,10 +5656,10 @@ function computeEqTopBars(rawBands, targetCount) {
         const freqComp = Math.pow(freq / minHz, freqCompExp); // High-frequency visibility compensation
 
         // Normalize using raw (pre-EQ-weighted) level so EQ boost/cut stays visible.
-        const rawBase = Math.min(isDaliScope ? 1.45 : 1.8, e / Math.max(1e-6, SFX.eqTopViz.rawNorm));
+        const rawBase = Math.min(1.8, e / Math.max(1e-6, SFX.eqTopViz.rawNorm));
         const weighted = rawBase * eqWeight * moduleWeight * freqComp;
         const prev = SFX.eqTopViz.smooth[i] || 0;
-        const alpha = weighted >= prev ? (isDaliScope ? 0.42 : 0.50) : (isDaliScope ? 0.22 : 0.26); // calmer attack/release for visual stability
+        const alpha = weighted >= prev ? 0.50 : 0.26;
         const sm = lerp(prev, weighted, alpha);
         SFX.eqTopViz.smooth[i] = sm;
     }
@@ -5539,7 +5669,7 @@ function computeEqTopBars(rawBands, targetCount) {
 
     for (let i = 0; i < count; i++) {
         const n = clamp01((SFX.eqTopViz.smooth[i] || 0) * outputTrim);
-        const curved = Math.pow(n, isDaliScope ? 0.92 : 0.82);
+        const curved = Math.pow(n, 0.82);
         out[i] = Math.round(curved * 255);
     }
     return out;
@@ -5562,6 +5692,7 @@ function stopEqTopVisualizer() {
 }
 
 function startEqTopVisualizer() {
+    if (!SFX_HAS_EQ_TOP_VISUALIZER) return;
     if (SFX.eqTopViz.running) return;
     if (SFX.currentEffect !== 'eq32') return;
     const canvas = document.getElementById('barAnalyzerCanvas');
@@ -5570,12 +5701,9 @@ function startEqTopVisualizer() {
     resetEqTopVisualizerState();
     
     const nativeSpectrumApi = window.aurivo?.audio?.spectrum;
-    const webSpectrumGetter = window.aurivo?.soundEffects?.getWebSpectrum;
-    const getSpectrumBands = (SFX_IS_SCOPED_DALI && typeof webSpectrumGetter === 'function')
-        ? ((count) => webSpectrumGetter(count))
-        : (nativeSpectrumApi && typeof nativeSpectrumApi.getBands === 'function'
-            ? ((count) => nativeSpectrumApi.getBands(count))
-            : null);
+    const getSpectrumBands = nativeSpectrumApi && typeof nativeSpectrumApi.getBands === 'function'
+        ? ((count) => nativeSpectrumApi.getBands(count))
+        : null;
     if (typeof getSpectrumBands !== 'function') return;
 
     SFX.eqTopViz.running = true;
@@ -5638,7 +5766,7 @@ function initEQSliders() {
 
     // 1. Initialize Top Visualizer
     const analyzerCanvas = document.getElementById('barAnalyzerCanvas');
-    if (analyzerCanvas) {
+    if (SFX_HAS_EQ_TOP_VISUALIZER && analyzerCanvas && typeof BarAnalyzer === 'function') {
         SFX.barAnalyzer = new BarAnalyzer(analyzerCanvas, {
             columnWidth: 4,
             spacing: 2,
@@ -7562,6 +7690,83 @@ function resetAurivoModule() {
     console.log('🔄 Aurivo Modülü sıfırlandı');
 }
 
+function setEffectKnobValue(effectName, param, value) {
+    const mappedKnob = SFX.knobInstances[`${effectName}_${param}`];
+    if (mappedKnob && typeof mappedKnob.setValue === 'function') {
+        mappedKnob.setValue(value);
+        return;
+    }
+    const panel = document.getElementById(`${effectName}Panel`);
+    const canvas = panel?.querySelector(`.aurivo-knob-canvas[data-param="${param}"]`);
+    const canvasKnob = canvas?._knobInstance;
+    if (canvasKnob && typeof canvasKnob.setValue === 'function') {
+        canvasKnob.setValue(value);
+    }
+}
+
+function updatePresetButtons(panelId, selector, presetName) {
+    const panel = document.getElementById(panelId);
+    panel?.querySelectorAll(selector)?.forEach((btn) => {
+        const active = String(btn.dataset.preset) === String(presetName);
+        btn.classList.toggle('active', active);
+        btn.setAttribute('aria-pressed', active ? 'true' : 'false');
+    });
+}
+
+function applyCompressorPreset(presetName) {
+    const presetKey = String(presetName || '').trim().toLowerCase();
+    const presets = {
+        gentle: { threshold: -18, ratio: 2.2, attack: 18, release: 180, makeupGain: 1.5, knee: 5 },
+        vocal: { threshold: -24, ratio: 3.2, attack: 8, release: 120, makeupGain: 3, knee: 4 },
+        night: { threshold: -30, ratio: 4.8, attack: 12, release: 260, makeupGain: 2, knee: 6 },
+        punch: { threshold: -16, ratio: 5.5, attack: 4, release: 90, makeupGain: 2.5, knee: 2 },
+        broadcast: { threshold: -22, ratio: 6, attack: 3, release: 160, makeupGain: 4, knee: 3 }
+    };
+    const preset = presets[presetKey];
+    if (!preset) return;
+
+    const settings = getSettings('compressor');
+    applyPresetSettings(settings, preset);
+    settings.enabled = true;
+    settings.lastPreset = presetKey;
+    saveSettings('compressor', settings);
+
+    ['threshold', 'ratio', 'attack', 'release', 'makeupGain', 'knee'].forEach((param) => {
+        setEffectKnobValue('compressor', param, settings[param]);
+    });
+    const enabledCb = document.getElementById('compressorEnabled');
+    if (enabledCb) enabledCb.checked = true;
+    updatePresetButtons('compressorPanel', '.compressor-preset-btn', presetKey);
+    applyEffect('compressor');
+}
+
+function applyLimiterPreset(presetName) {
+    const presetKey = String(presetName || '').trim().toLowerCase();
+    const presets = {
+        transparent: { ceiling: -1.0, release: 180, lookahead: 5, gain: 0 },
+        loud: { ceiling: -0.5, release: 90, lookahead: 7, gain: 4 },
+        streaming: { ceiling: -1.0, release: 130, lookahead: 6, gain: 2 },
+        night: { ceiling: -2.0, release: 240, lookahead: 8, gain: -1 },
+        safe: { ceiling: -3.0, release: 180, lookahead: 10, gain: 0 }
+    };
+    const preset = presets[presetKey];
+    if (!preset) return;
+
+    const settings = getSettings('limiter');
+    applyPresetSettings(settings, preset);
+    settings.enabled = true;
+    settings.lastPreset = presetKey;
+    saveSettings('limiter', settings);
+
+    ['ceiling', 'release', 'lookahead', 'gain'].forEach((param) => {
+        setEffectKnobValue('limiter', param, settings[param]);
+    });
+    const enabledCb = document.getElementById('limiterEnabled');
+    if (enabledCb) enabledCb.checked = true;
+    updatePresetButtons('limiterPanel', '.limiter-preset-btn', presetKey);
+    applyEffect('limiter');
+}
+
 // ============================================
 // REVERB PRESETS
 // ============================================
@@ -8640,6 +8845,47 @@ async function initAudiophileControls() {
 // ============================================
 // CROSSFEED CONTROLS
 // ============================================
+function textLooksLikeHeadphones(value) {
+    return /headphone|headset|earbud|airpods|buds|kulakl|analog-output-headphones/i.test(String(value || ''));
+}
+
+function textLooksLikeUsbHeadset(value) {
+    const text = String(value || '').toLowerCase();
+    return /usb/.test(text) && /(monitor|output|sink|analog-stereo|pnp audio|audio device)/.test(text);
+}
+
+async function getCrossfeedFallbackDeviceState() {
+    const pulseApi = window.aurivo?.pulse;
+    if (!pulseApi?.listDevices) return null;
+
+    const listRes = await pulseApi.listDevices();
+    const devices = Array.isArray(listRes?.devices) ? listRes.devices : [];
+    if (!devices.length) return null;
+
+    const preferredRes = await pulseApi.getPreferredDevice?.().catch(() => null);
+    const preferredId = String(preferredRes?.audioDevice || '').trim();
+    const picked = devices.find((device) => device?.isDefaultMonitor)
+        || devices.find((device) => preferredId && String(device?.id || '') === preferredId)
+        || devices.find((device) => device?.isMonitor)
+        || devices[0];
+    if (!picked) return null;
+
+    const outputName = String(picked.label || picked.name || picked.id || '').trim();
+    const haystack = [
+        picked.id,
+        picked.name,
+        picked.label,
+        picked.description
+    ].join(' ');
+
+    return {
+        success: true,
+        currentOutputName: outputName || tOr('sfx.crossfeed.outputUnknown', 'Unknown output'),
+        isHeadphones: textLooksLikeHeadphones(haystack) || textLooksLikeUsbHeadset(haystack),
+        isFallback: true
+    };
+}
+
 function initCrossfeedControls() {
     const panel = document.getElementById('crossfeedPanel');
     if (!panel) return;
@@ -8947,7 +9193,17 @@ function initCrossfeedControls() {
         if (!SFX_RUNTIME_ANIMS_ACTIVE || SFX.currentEffect !== 'crossfeed') return;
         if (!deviceHintEl) return;
         try {
-            const st = await window.aurivo?.systemAudio?.getState?.();
+            let st = await window.aurivo?.systemAudio?.getState?.();
+            if (!st?.success) {
+                st = await getCrossfeedFallbackDeviceState();
+                if (!st?.success) {
+                    deviceHintEl.style.background = 'rgba(255, 193, 7, 0.10)';
+                    deviceHintEl.style.borderColor = 'rgba(255, 193, 7, 0.28)';
+                    deviceHintEl.style.color = '#ffe082';
+                    deviceHintEl.textContent = tOr('sfx.crossfeed.device.unreadable', 'ℹ Output info could not be read. Crossfeed remains in manual mode.');
+                    return;
+                }
+            }
             const outputName = String(st?.currentOutputName || st?.currentOutputBadge || tOr('sfx.crossfeed.outputUnknown', 'Unknown output'));
             const rawIsHeadphones = !!st?.isHeadphones;
             const isUsbHeadsetLike = String(st?.currentOutputKind || '') === 'usb' && !!st?.hasRelatedInput;

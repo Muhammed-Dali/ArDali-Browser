@@ -104,6 +104,7 @@ message(STATUS "BASS library dir: ${BASS_LIB_DIR}")
 # ============================================
 set(SOURCES
     aurivo_audio.cpp
+    aurivo_dsp.cpp
 )
 
 # ============================================

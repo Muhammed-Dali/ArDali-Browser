@@ -27,6 +27,7 @@
                 </button>
                 <button class="sidebar-btn" data-page="videoTools" data-panel="library" title="Video Düzenleme" data-i18n-title="sidebar.videoTools">
                     <img class="sidebar-icon-img sidebar-video-tools-icon" src="icons/video_tools_studio.svg" alt="" aria-hidden="true">
+                    <span class="sidebar-badge hidden" id="videoToolsRecordingBadge" aria-label="Kayıt aktif"></span>
                 </button>
                 <button class="sidebar-btn" data-page="music" data-panel="library" title="Müzik" data-i18n-title="sidebar.music">
                     <svg class="sidebar-glyph" viewBox="0 0 24 24" aria-hidden="true">
@@ -50,14 +51,14 @@
                         <path d="M3.6 12h16.8"/>
                     </svg>
                 </button>
-                <button class="sidebar-btn" data-page="download" data-panel="download" title="İndir" data-i18n-title="sidebar.download">
-                    <img class="sidebar-icon-img" src="Aurivo-Dawlod/resources/icon.png" alt="Aurivo-Dawlod">
-                </button>
-                <button class="sidebar-btn" data-page="pulse" data-panel="pulse" title="Aurivo Pulse Dinleme Modu">
+                <button class="sidebar-btn" data-page="pulse" data-panel="pulse" title="Dinle">
                     <svg class="sidebar-glyph" viewBox="0 0 24 24" aria-hidden="true">
                         <path d="M4.5 13.2v2.6M7.8 11.6v5.2M11.1 9.4v9.6M14.4 10.8v6.9M17.7 12.2v4.2"/>
                         <path d="M5.2 7.6a8.1 8.1 0 0 1 13.6 0"/>
                     </svg>
+                </button>
+                <button class="sidebar-btn aurivo-dawlod-btn" id="aurivoDawlodBtn" title="Aurivo Dawlod" aria-label="Aurivo Dawlod">
+                    <img class="sidebar-icon-img aurivo-dawlod-icon" src="icons/aurivo_dawlod.png" alt="" aria-hidden="true">
                 </button>
                 <div class="sidebar-web-quick-actions" id="sidebarWebQuickActions" aria-label="Web hızlı kontroller"></div>
 	            </div>
@@ -244,7 +245,7 @@
                         <span>Telegram</span>
                     </button>
                     <div class="pulse-found-section hidden" id="pulseFoundSection">
-                        <div class="pulse-found-title">Aurivo-Pulse Bulunanlar</div>
+                        <div class="pulse-found-title">Bulunanlar</div>
                         <div class="pulse-found-list" id="pulseFoundList"></div>
                     </div>
                 </div>
@@ -270,7 +271,7 @@
                 <button class="nav-btn" id="refreshBtn" title="Yenile" data-i18n-title="nav.reload">
                     <svg class="nav-glyph" viewBox="0 0 24 24" aria-hidden="true"><path d="M18.2 8.2A7.3 7.3 0 1 0 19 12"/><path d="M15.5 5.7h3.6v3.6"/></svg>
                 </button>
-                <button class="nav-btn" id="pulseQuickListenBtn" title="Aurivo-Pulse Dinle">
+                <button class="nav-btn" id="pulseQuickListenBtn" title="Dinle">
                     <svg class="pulse-quick-icon" viewBox="0 0 24 24" aria-hidden="true">
                         <rect x="3" y="10" width="3" height="10" rx="1.2" fill="currentColor"/>
                         <rect x="8" y="6" width="3" height="14" rx="1.2" fill="currentColor"/>
@@ -681,9 +682,6 @@
                 <!-- Web Sayfası -->
                 <div class="page hidden" id="webPage">
                     <webview id="webView" src="about:blank" allowpopups partition="persist:aurivo-web"></webview>
-                    <div class="web-loading-overlay hidden" id="webLoadingOverlay" aria-live="polite">
-                        <div class="web-loading-spinner" aria-hidden="true"></div>
-                    </div>
                 </div>
                 <div class="gallery-lightbox hidden" id="galleryLightbox" aria-hidden="true">
                     <button class="gallery-lightbox-close" id="galleryLightboxClose" type="button" aria-label="Kapat">×</button>
@@ -1069,10 +1067,6 @@
                                         <span class="settings-tab-icon material-symbols-rounded" aria-hidden="true">play_circle</span>
                                         <span class="settings-tab-label" data-i18n="settings.tabs.playback">Oynat</span>
                                     </button>
-                                    <button class="settings-tab" data-tab="listen">
-                                        <span class="settings-tab-icon material-symbols-rounded" aria-hidden="true">graphic_eq</span>
-                                        <span class="settings-tab-label" data-i18n="settings.tabs.listen">Dinle</span>
-                                    </button>
                                     <button class="settings-tab" data-tab="behavior">
                                         <span class="settings-tab-icon material-symbols-rounded" aria-hidden="true">tune</span>
                                         <span class="settings-tab-label" data-i18n="settings.tabs.behavior">Davranış</span>
@@ -1322,106 +1316,6 @@
                                             <button class="reset-btn" id="resetPlayback" data-i18n="settings.buttons.resetDefaults">↻ Varsayılan Ayarlar</button>
                                         </div>
                                     </div>
-                                    <div class="settings-page hidden" id="listenSettings">
-                                        <h3 data-i18n="settings.tabs.listen">Dinle</h3>
-                                        <div class="settings-group">
-                                            <h4 data-i18n="listen.quick.title">Aurivo-Pulse Hızlı Dinleme</h4>
-                                            <div class="settings-row">
-                                                <div class="settings-row-left">
-                                                    <div class="settings-label" data-i18n="listen.quick.toastDuration.label">Dinleme bildirim süresi</div>
-                                                    <div class="settings-sub" data-i18n="listen.quick.toastDuration.hint">Ses algılanamadı bildiriminin ekranda ne kadar kalacağını belirler.</div>
-                                                </div>
-                                                <select class="settings-select" id="pulseNoSignalHintSec" aria-label="Dinleme bildirim süresi" data-i18n-aria-label="listen.quick.toastDuration.label">
-                                                    <option value="4" data-i18n="listen.quick.toastDuration.options.4s">4 sn</option>
-                                                    <option value="6" selected data-i18n="listen.quick.toastDuration.options.6s">6 sn</option>
-                                                    <option value="8" data-i18n="listen.quick.toastDuration.options.8s">8 sn</option>
-                                                </select>
-                                            </div>
-                                            <div class="settings-row">
-                                                <div class="settings-row-left">
-                                                    <div class="settings-label" data-i18n="listen.quick.mode.label">Dinleme modu</div>
-                                                    <div class="settings-sub" data-i18n="listen.quick.mode.hint">Hız, fon müzik odağı ve doğruluk dengesini belirler.</div>
-                                                </div>
-                                                <div class="listen-mode-grid" id="pulseQuickModeGrid" role="radiogroup" aria-label="Dinleme modu">
-                                                    <button type="button" class="listen-mode-card" data-pulse-quick-mode="normal">
-                                                        <strong data-i18n="listen.quick.mode.options.normal">Normal Dinleme</strong>
-                                                        <span data-i18n="listen.quick.mode.card.normal">Temiz müzik ve hızlı günlük kullanım.</span>
-                                                    </button>
-                                                    <button type="button" class="listen-mode-card" data-pulse-quick-mode="background">
-                                                        <strong data-i18n="listen.quick.mode.options.background">Fon Müzik Odakli</strong>
-                                                        <span data-i18n="listen.quick.mode.card.background">Konuşma arkasındaki müzikler için dengeli seçim.</span>
-                                                    </button>
-                                                    <button type="button" class="listen-mode-card" data-pulse-quick-mode="max">
-                                                        <strong data-i18n="listen.quick.mode.options.max">Maksimum Dogruluk</strong>
-                                                        <span data-i18n="listen.quick.mode.card.max">Zor videolar, cover ve düşük sesli fon müzikler.</span>
-                                                    </button>
-                                                </div>
-                                                <select class="settings-select listen-mode-native-select" id="pulseQuickMode" aria-label="Dinleme modu" data-i18n-aria-label="listen.quick.mode.label">
-                                                    <option value="normal" data-i18n="listen.quick.mode.options.normal">Normal Dinleme</option>
-                                                    <option value="background" selected data-i18n="listen.quick.mode.options.background">Fon Müzik Odakli</option>
-                                                    <option value="max" data-i18n="listen.quick.mode.options.max">Maksimum Dogruluk</option>
-                                                </select>
-                                            </div>
-                                            <div class="settings-sub" id="pulseQuickModeDetails" aria-live="polite"></div>
-                                            <button class="reset-btn" id="resetListen" data-i18n="listen.buttons.resetDefaults">↻ Dinle Varsayılanları</button>
-                                        </div>
-                                        <div class="settings-group">
-                                            <h4 data-i18n="listen.preferences.title">Aurivo-Pulse Tercihleri</h4>
-                                            <label class="checkbox-label">
-                                                <input type="checkbox" id="pulseEnableNotifications">
-                                                <span data-i18n="listen.preferences.notifications.label">Bildirimleri göster</span>
-                                            </label>
-                                            <div class="settings-sub" data-i18n="listen.preferences.notifications.hint">Şarkı bulunduğunda, ağ hatası olduğunda ve cihaz otomatik değiştiğinde bildirim gösterir.</div>
-                                            <label class="checkbox-label">
-                                                <input type="checkbox" id="pulseEnableMpris">
-                                                <span data-i18n="listen.preferences.mpris.label">MPRIS'i etkinleştir</span>
-                                            </label>
-                                            <div class="settings-sub" data-i18n="listen.preferences.mpris.hint">Linux medya panelinde tanınan parçayı gösterebilir. Şarkı bulma kalitesini etkilemez.</div>
-                                            <label class="checkbox-label">
-                                                <input type="checkbox" id="pulseEnableSystray">
-                                                <span data-i18n="listen.preferences.systray.label">Sistem tepsisine küçült</span>
-                                            </label>
-                                            <div class="settings-sub" data-i18n="listen.preferences.systray.hint">Dinle penceresini kapatınca tamamen çıkmak yerine sistem tepsisinde açık tutar.</div>
-                                            <label class="checkbox-label">
-                                                <input type="checkbox" id="pulseNoDuplicates">
-                                                <span data-i18n="listen.preferences.noDuplicates.label">Geçmişte tekrar olmasın</span>
-                                            </label>
-                                            <div class="settings-sub" data-i18n="listen.preferences.noDuplicates.hint">Aynı şarkı tekrar bulunursa geçmişte yeni satır açmak yerine eski kaydı günceller.</div>
-                                            <div class="setting-row">
-                                                <div class="settings-row-left">
-                                                    <div class="settings-label" data-i18n="listen.preferences.requestInterval.label">Shazam istek aralığı</div>
-                                                    <div class="settings-sub" data-i18n="listen.preferences.requestInterval.hint">Rate-limit yaşarsanız yükseltin.</div>
-                                                </div>
-                                                <input type="number" id="pulseRequestInterval" value="2" min="1" max="120" step="1"> sn
-                                            </div>
-                                            <div class="setting-row">
-                                                <div class="settings-row-left">
-                                                    <div class="settings-label" data-i18n="listen.preferences.bufferSize.label">Shazam arabellek boyutu</div>
-                                                    <div class="settings-sub" data-i18n="listen.preferences.bufferSize.hint">Daha uzun örnek daha kararlı olabilir ama biraz daha yavaştır.</div>
-                                                </div>
-                                                <input type="number" id="pulseBufferSize" value="5" min="4" max="30" step="1"> sn
-                                            </div>
-                                            <div class="setting-row">
-                                                <div class="settings-row-left">
-                                                    <div class="settings-label">Tanıma motoru</div>
-                                                    <div class="settings-sub">SongRec/AcoustID çalışma şeklini belirler.</div>
-                                                </div>
-                                                <select class="settings-select" id="pulseRecognitionEngine" aria-label="Tanıma motoru">
-                                                    <option value="hybrid">Hibrit (SongRec + AcoustID)</option>
-                                                    <option value="songrec_only">Sadece SongRec</option>
-                                                    <option value="acoustid_only">Sadece AcoustID</option>
-                                                </select>
-                                            </div>
-                                            <div class="setting-row">
-                                                <div class="settings-row-left">
-                                                    <div class="settings-label">AcoustID API Key</div>
-                                                    <div class="settings-sub" id="pulseAcoustidHint">Opsiyonel. Boş bırakılırsa hibrit mod SongRec ile çalışır.</div>
-                                                    <div class="settings-sub hidden" id="pulseAcoustidWarning" aria-live="polite">Sadece AcoustID modunda API key zorunludur. Anahtar yoksa tanıma yapılamaz.</div>
-                                                </div>
-                                                <input type="text" id="pulseAcoustidApiKey" class="settings-input" placeholder="AcoustID API key">
-                                            </div>
-                                        </div>
-                                    </div>
                                     <div class="settings-page hidden" id="behaviorSettings">
                                         <h3 data-i18n="settings.tabs.behavior">Davranış</h3>
                                         <div class="settings-group">
@@ -1595,6 +1489,11 @@
                                                 <span data-i18n="ui.startup.closeToTray">Pencereyi kapatınca sistem tepsisine küçült</span>
                                             </label>
                                             <div class="settings-sub" data-i18n="ui.startup.closeToTrayHint">Kapalıysa pencere kapatma uygulamadan çıkış olarak davranır.</div>
+                                            <label class="checkbox-label">
+                                                <input type="checkbox" id="behaviorNotificationsEnabled">
+                                                <span data-i18n="ui.startup.notificationsEnabled">Uygulama içi bildirimleri göster</span>
+                                            </label>
+                                            <div class="settings-sub" data-i18n="ui.startup.notificationsEnabledHint">Kapalıyken uygulama içi bildirimler gösterilmez.</div>
                                         </div>
                                     </div>
                                     <div class="settings-page hidden" id="securitySettings">
@@ -1621,7 +1520,6 @@
                                                     <div class="security-actions">
                                                         <button class="btn security-btn-small" id="securityCopyUrlBtn" data-i18n="securityPage.buttons.copy">Kopyala</button>
                                                         <button class="btn security-btn-small" id="securityOpenInBrowserBtn" data-i18n="securityPage.buttons.openInBrowser">Tarayıcıda aç</button>
-                                                        <button class="btn security-btn-small" id="securityQuickDownloadBtn" data-i18n="securityPage.buttons.quickDownload">Hızlı indir</button>
                                                     </div>
                                                 </div>
                                             </div>
@@ -2330,6 +2228,12 @@
                         <button class="control-btn glow-btn" id="repeatBtn" title="Tekrarla" data-i18n-title="controls.repeat">
                             <svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 7h10v3l4-4-4-4v3H5v6h2V7zm10 10H7v-3l-4 4 4 4v-3h12v-6h-2v4z"/></svg>
                         </button>
+                        <button class="control-btn glow-btn" id="repeatOneBtn" title="Çalan şarkıyı tekrarla" data-i18n-title="controls.repeatOne">
+                            <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                                <path d="M7 7h9.4v2.4L20 5.8 16.4 2.2V5H5v6h2V7zm10 10H7.6v-2.4L4 18.2l3.6 3.6V19H19v-6h-2v4z"/>
+                                <path d="M11.2 9.2h1.55v5.6h-1.4v-3.75l-1.05.32-.35-1.12 1.25-1.05z"/>
+                            </svg>
+                        </button>
                     </div>
                     <div class="controls-right" id="playerControlsRight">
                         <div class="web-utility-actions-home" id="webUtilityActionsHome">
@@ -2790,7 +2694,6 @@
                         <h4 data-i18n="about.sections.app.title">Uygulama Özellikleri</h4>
                         <ul class="about-list">
                             <li data-i18n="about.sections.app.item1">Müzik, video, web ve indirme akışını tek arayüzde birleştirir.</li>
-                            <li data-i18n="about.sections.app.item2">Aurivo-Pulse dinleme modu ile hızlı şarkı tanıma sunar.</li>
                             <li data-i18n="about.sections.app.item3">Modern medya kontrolleri, çoklu dil desteği ve sistem dili algılama içerir.</li>
                         </ul>
                     </section>
@@ -2904,8 +2807,6 @@
     <div id="notificationContainer" class="notification-container" aria-live="polite" aria-atomic="false"></div>
 
     <script src="modules/i18n.js"></script>
-    <script src="modules/listen-settings.js"></script>
-    <script src="modules/adblock-settings.js"></script>
     <script src="modules/security-settings.js"></script>
     <script src="modules/settings-shared.js"></script>
     <script src="renderer.js"></script>
