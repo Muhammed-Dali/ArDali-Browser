@@ -1,4 +1,4 @@
-/* global aurivo */
+/* global ardali */
 
 const PREVIEW_W = 280;
 const PREVIEW_W_WHEEL = 312;
@@ -12,7 +12,7 @@ const PRESET_PERF = {
     autoLowPower: false,
     reason: 'default'
 };
-const PRESET_PROFILE_STORAGE_KEY = 'aurivo_eq_presets_preview_profile_v1';
+const PRESET_PROFILE_STORAGE_KEY = 'ardali_eq_presets_preview_profile_v1';
 
 function tSync(key, vars, fallback) {
     try {
@@ -232,13 +232,13 @@ function decideEqPresetLowPowerMode(appSettings, hardwareHints) {
 async function applyEqPresetPerformanceProfile() {
     let appSettings = null;
     try {
-        appSettings = await aurivo?.loadSettings?.();
+        appSettings = await ardali?.loadSettings?.();
     } catch {
         appSettings = null;
     }
     let hardwareHints = null;
     try {
-        hardwareHints = await aurivo?.system?.getHardwareHints?.();
+        hardwareHints = await ardali?.system?.getHardwareHints?.();
     } catch {
         hardwareHints = null;
     }
@@ -450,7 +450,7 @@ function getPreviewProfileTuning() {
 
 function previewTypeFromBands(bands, filename = '') {
     const id = String(filename || '').trim().toLowerCase();
-    if (id.startsWith('__aurivo_')) return 'wheel';
+    if (id.startsWith('__ardali_')) return 'wheel';
 
     const safe = normalizeBands(bands);
     let deltaSum = 0;
@@ -801,12 +801,12 @@ function setStatus(message) {
 
 async function ensureBandsLoaded(filename) {
     if (!filename || filename === '__flat__') return;
-    if (filename.startsWith('__aurivo_')) return;
+    if (filename.startsWith('__ardali_')) return;
     if (state.bandsCache.has(filename) || state.loadingBands.has(filename)) return;
 
     state.loadingBands.add(filename);
     try {
-        const data = await aurivo?.presets?.loadPreset(filename);
+        const data = await ardali?.presets?.loadPreset(filename);
         if (data && Array.isArray(data.bands)) {
             state.bandsCache.set(filename, normalizeBands(data.bands));
         }
@@ -828,7 +828,7 @@ async function hydratePresetPreviewRow(row) {
     setRowPreviewType(row, initialType);
     if (canvas) drawMiniCurveIfNeeded(canvas, initialBands, initialType);
 
-    if (filename === '__flat__' || filename.startsWith('__aurivo_')) return;
+    if (filename === '__flat__' || filename.startsWith('__ardali_')) return;
 
     await ensureBandsLoaded(filename);
     const hydratedBands = state.bandsCache.get(filename);
@@ -969,7 +969,7 @@ async function runSearch(query) {
         return;
     }
 
-    const results = await aurivo?.presets?.searchPresets(q);
+    const results = await ardali?.presets?.searchPresets(q);
 
     // Öne çıkanlardan eşleşenleri en üste sabitle + AutoEQ sonuçları
     const base = state.featured.length ? state.featured : getFeaturedPresetsFallback();
@@ -1000,7 +1000,7 @@ async function init() {
     const groupChips = document.getElementById('presetGroupChips');
     const profileRow = document.getElementById('presetProfileRow');
 
-    if (!aurivo?.presets) {
+    if (!ardali?.presets) {
         setEmpty(tSync('eqPresets.apiMissing', null, 'Preset API bulunamadı.'));
         return;
     }
@@ -1018,7 +1018,7 @@ async function init() {
 
     // Öne çıkan presetleri ana süreçten al (tek kaynak). Yoksa yedek.
     try {
-        const featured = await aurivo.presets.getFeaturedEQPresets?.();
+        const featured = await ardali.presets.getFeaturedEQPresets?.();
         state.featured = (Array.isArray(featured) && featured.length ? featured : getFeaturedPresetsFallback()).map(tagPreset);
     } catch {
         state.featured = getFeaturedPresetsFallback().map(tagPreset);
@@ -1026,7 +1026,7 @@ async function init() {
 
     // Kayıtlı seçimi (uygulama ayarları) oku
     try {
-        const appSettings = await aurivo.loadSettings?.();
+        const appSettings = await ardali.loadSettings?.();
         const saved = appSettings?.sfx?.eq32?.lastPreset?.filename;
         if (saved) {
             state.selected = saved;
@@ -1044,7 +1044,7 @@ async function init() {
         setEmpty(tSync('eqPresets.loading', null, 'AutoEQ presetleri yükleniyor...'));
         await new Promise(r => setTimeout(r, 0));
 
-        const presets = (await aurivo.presets.loadPresetList()) || [];
+        const presets = (await ardali.presets.loadPresetList()) || [];
         const base = state.featured.length ? state.featured : getFeaturedPresetsFallback().map(tagPreset);
 
         const taggedAuto = presets.map(tagPreset);
@@ -1111,7 +1111,7 @@ async function init() {
     okBtn?.addEventListener('click', async () => {
         const filename = state.selected || '__flat__';
         try {
-            await aurivo.presets.selectEQPreset(filename);
+            await ardali.presets.selectEQPreset(filename);
         } catch {
             // yoksay
         }
@@ -1132,7 +1132,7 @@ async function init() {
             setRowPreviewType(row, initialType);
             if (canvas) drawMiniCurveIfNeeded(canvas, initialBands, initialType);
 
-            if (filename === '__flat__' || filename.startsWith('__aurivo_')) continue;
+            if (filename === '__flat__' || filename.startsWith('__ardali_')) continue;
             ensureBandsLoaded(filename).then(() => {
                 const bands = state.bandsCache.get(filename);
                 if (!bands) return;

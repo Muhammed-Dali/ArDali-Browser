@@ -9,9 +9,9 @@
 
 ## Ortam
 - MSYS2 PATH: C:\msys64\mingw64\bin
-  - Not: `npm run prepare:win:resources` ve `npm run build:win` artık `AURIVO_VISUALIZER_DLL_DIR` verilmemişse
+  - Not: `npm run prepare:win:resources` ve `npm run build:win` artık `ARDALI_VISUALIZER_DLL_DIR` verilmemişse
     varsayılan olarak `C:\msys64\mingw64\bin` / `C:\msys2\mingw64\bin` yollarını dener.
-  - İsterseniz açıkça ayarlayın: `setx AURIVO_VISUALIZER_DLL_DIR "C:\msys64\mingw64\bin"`
+  - İsterseniz açıkça ayarlayın: `setx ARDALI_VISUALIZER_DLL_DIR "C:\msys64\mingw64\bin"`
 
 ## Adimlar
 1. npm ci
@@ -19,7 +19,7 @@
 3. Visualizer:
    - cmake -S visualizer -B build-visualizer
    - cmake --build build-visualizer --config Release
-   - Copy-Item build-visualizer\aurivo-projectm-visualizer.exe native-dist\aurivo-projectm-visualizer.exe -Force
+   - Copy-Item build-visualizer\ardali-projectm-visualizer.exe native-dist\ardali-projectm-visualizer.exe -Force
 4. Kaynak kopyalama:
    - npm run prepare:win:resources
 5. Build:
@@ -31,6 +31,6 @@
 - Visualizer acilip kapanirsa: gerekli DLL'ler native-dist icinde olmali.
 
 ## (Opsiyonel) Arch Linux'ta hızlı Windows Visualizer build + Wine testi
-> Not: Bu adım sadece `aurivo-projectm-visualizer.exe` içindir. Tam Windows kurulum çıktısı için yine Windows/MSYS2 veya GitHub Actions önerilir.
+> Not: Bu adım sadece `ardali-projectm-visualizer.exe` içindir. Tam Windows kurulum çıktısı için yine Windows/MSYS2 veya GitHub Actions önerilir.
 
 - `scripts/build-visualizer-win-mingw.sh --clean --run-wine`

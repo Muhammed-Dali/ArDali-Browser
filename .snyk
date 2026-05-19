@@ -6,7 +6,7 @@ version: v1.25.0
 ignore:
   # ElectronInsecureWebPreferences — sandbox: false required for preload.js
   #
-  # Context: Aurivo uses contextBridge + contextIsolation: true throughout.
+  # Context: ArDali uses contextBridge + contextIsolation: true throughout.
   # The preload.js scripts use require('electron') and other Node.js built-ins
   # to expose a limited, strongly-typed IPC bridge to the renderer via
   # contextBridge.exposeInMainWorld(). Electron requires sandbox: false when
@@ -29,9 +29,9 @@ ignore:
           a strict contextBridge-only API surface. Webviews keep sandbox: true.
         expires: '2027-01-01T00:00:00.000Z'
         created: '2026-04-18T20:00:00.000Z'
-    - Aurivo-Dawlod/main.js:
+    - ArDali-Dawlod/main.js:
         reason: >
-          Aurivo-Dawlod preload.js uses Node.js require() for a restricted bridge.
+          ArDali-Dawlod preload.js uses Node.js require() for a restricted bridge.
           Mitigated by contextIsolation: true, nodeIntegration: false, webSecurity: true,
           allowRunningInsecureContent: false, and controlled IPC handlers.
         expires: '2027-01-01T00:00:00.000Z'
@@ -40,7 +40,7 @@ ignore:
         reason: >
           Dawlod preload.js requires require() for electron IPC and Node.js built-ins.
           Mitigated by contextIsolation: true, nodeIntegration: false, and a path-
-          traversal-safe aurivoRequire() wrapper that only allows known modules.
+          traversal-safe ardaliRequire() wrapper that only allows known modules.
         expires: '2027-01-01T00:00:00.000Z'
         created: '2026-04-18T20:00:00.000Z'
 

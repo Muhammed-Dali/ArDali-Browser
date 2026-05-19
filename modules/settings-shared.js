@@ -1,4 +1,4 @@
-(function attachAurivoSettingsShared() {
+(function attachArDaliSettingsShared() {
     const WEB_STARTUP_LAZY_DELAY_OPTIONS = [0, 800, 1400, 2000];
     const WEB_STARTUP_LAZY_DELAY_DEFAULT_MS = 1400;
 
@@ -337,7 +337,7 @@
             elements.behaviorRememberLastSection.checked = state.settings?.ui?.rememberLastSection !== false;
         }
         if (elements.behaviorWebExperienceEnabled) {
-            elements.behaviorWebExperienceEnabled.checked = state.settings?.ui?.webExperienceEnabled === true;
+            elements.behaviorWebExperienceEnabled.checked = state.settings?.ui?.webExperienceEnabled !== false;
         }
         if (elements.libraryRestoreLastFolder) {
             elements.libraryRestoreLastFolder.checked = state.settings?.library?.restoreLastFolder !== false;
@@ -818,8 +818,8 @@
         state.settings.ui.webExperienceEnabled =
             (typeof elements.behaviorWebExperienceEnabled?.checked === 'boolean')
                 ? !!elements.behaviorWebExperienceEnabled.checked
-                : (state.settings.ui.webExperienceEnabled === true);
-        const allowWebStartup = state.settings.ui.webExperienceEnabled === true;
+                : (state.settings.ui.webExperienceEnabled !== false);
+        const allowWebStartup = state.settings.ui.webExperienceEnabled !== false;
         const startupPage = String(
             elements.behaviorStartupPage?.value
             || elements.libraryStartupPage?.value
@@ -1121,7 +1121,7 @@
         elements.audioAppVolumeValue.textContent = `${value}%`;
     }
 
-    window.AurivoSettingsShared = {
+    window.ArDaliSettingsShared = {
         switchSettingsTab,
         updatePulseQuickModeUi,
         loadSettingsToUI,

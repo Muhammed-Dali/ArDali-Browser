@@ -16,7 +16,7 @@ function sleep(ms) {
 function parseFlags(argv) {
   const args = new Set(argv || []);
   return {
-    strict: args.has('--strict') || process.env.AURIVO_REQUIRE_NATIVE_AUDIO_SMOKE === '1',
+    strict: args.has('--strict') || process.env.ARDALI_REQUIRE_NATIVE_AUDIO_SMOKE === '1',
     json: args.has('--json')
   };
 }
@@ -104,7 +104,7 @@ async function run() {
   };
 
   const audioEngineMod = require(path.join(root, 'audioEngine.js'));
-  const engine = new audioEngineMod.AurivoAudioEngine();
+  const engine = new audioEngineMod.ArDaliAudioEngine();
 
   const addonReady = !!audioEngineMod._tryLoadNativeAddon?.();
   result.addonAvailable = addonReady && !!audioEngineMod.isNativeAvailable;

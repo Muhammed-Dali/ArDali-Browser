@@ -1,5 +1,5 @@
-/* Turbine Analyzer for Aurivo Media Player
- * Based on Aurivo's TurbineAnalyzer
+/* Turbine Analyzer for ArDali
+ * Based on ArDali's TurbineAnalyzer
  * Original Author: Stanislav Karchebny <berkus@users.sf.net> 2003
  */
 

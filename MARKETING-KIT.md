@@ -1,30 +1,30 @@
-# Aurivo Marketing Kit (TR + EN)
+# ArDali Marketing Kit (TR + EN)
 
-Bu dosya, Aurivo'yu tanıtmak için hızlıca kopyala-yapıştır kullanabileceğin metinleri içerir.
+Bu dosya, ArDali'yu tanıtmak için hızlıca kopyala-yapıştır kullanabileceğin metinleri içerir.
 
 ## 1) GitHub Kısa Açıklama
 
 ### TR
-Aurivo: video oynatıcı, müzik çalar, web medya, indirme, dinleyerek şarkı bulma ve gelişmiş DSP ses efektlerini tek Linux uygulamasında birleştiren açık kaynak medya platformu.
+ArDali: video oynatıcı, müzik çalar, web medya, indirme, dinleyerek şarkı bulma ve gelişmiş DSP ses efektlerini tek Linux uygulamasında birleştiren açık kaynak medya platformu.
 
 ### EN
-Aurivo: an open-source Linux media platform that combines video playback, music player, web media, downloading, song recognition, and advanced DSP audio effects in one app.
+ArDali: an open-source Linux media platform that combines video playback, music player, web media, downloading, song recognition, and advanced DSP audio effects in one app.
 
 ## 2) 1 Cümlelik Pitch
 
 ### TR
-Aurivo, medya tüketimi ve ses kontrolünü tek yerde toplar: oynat, indir, şarkıyı bul, sesi profesyonelce şekillendir.
+ArDali, medya tüketimi ve ses kontrolünü tek yerde toplar: oynat, indir, şarkıyı bul, sesi profesyonelce şekillendir.
 
 ### EN
-Aurivo brings media playback and deep audio control into one place: play, download, identify songs, and shape sound like a pro.
+ArDali brings media playback and deep audio control into one place: play, download, identify songs, and shape sound like a pro.
 
 ## 3) Mağaza/Paylaşım Kısa Metin (80-120 kelime)
 
 ### TR
-Aurivo, Linux için geliştirdiğim hepsi bir arada bir medya oynatıcı. Yerel müzik/video oynatma, web medya deneyimi, video/ses indirme, dinleyerek şarkı bulma ve gelişmiş ses efektleri (32 bant EQ, compressor, limiter, reverb vb.) tek uygulamada bir araya geliyor. Amacım farklı uygulamalar arasında geçiş yapmadan güçlü ve modern bir medya deneyimi sunmak. Projeyi aktif geliştiriyorum ve geri bildirimlere göre hızlı iyileştirme yapıyorum.
+ArDali, Linux için geliştirdiğim hepsi bir arada bir medya oynatıcı. Yerel müzik/video oynatma, web medya deneyimi, video/ses indirme, dinleyerek şarkı bulma ve gelişmiş ses efektleri (32 bant EQ, compressor, limiter, reverb vb.) tek uygulamada bir araya geliyor. Amacım farklı uygulamalar arasında geçiş yapmadan güçlü ve modern bir medya deneyimi sunmak. Projeyi aktif geliştiriyorum ve geri bildirimlere göre hızlı iyileştirme yapıyorum.
 
 ### EN
-Aurivo is an all-in-one media app I built for Linux. It combines local music/video playback, web media, video/audio downloading, song recognition, and advanced audio effects (32-band EQ, compressor, limiter, reverb, and more) in a single desktop application. The goal is to remove app switching and provide a powerful, modern media workflow. The project is actively maintained and improved quickly based on user feedback.
+ArDali is an all-in-one media app I built for Linux. It combines local music/video playback, web media, video/audio downloading, song recognition, and advanced audio effects (32-band EQ, compressor, limiter, reverb, and more) in a single desktop application. The goal is to remove app switching and provide a powerful, modern media workflow. The project is actively maintained and improved quickly based on user feedback.
 
 ## 4) Topluluk Paylaşım Şablonları (5 Adet)
 
@@ -33,7 +33,7 @@ Link alanlarını paylaşmadan önce doldur:
 - `DEMO_LINK` = kısa demo videon
 
 ### 1. Genel Lansman (TR)
-Uzun süredir üzerinde çalıştığım Linux medya uygulamam **Aurivo** artık kullanılabilir durumda.
+Uzun süredir üzerinde çalıştığım Linux medya uygulamam **ArDali** artık kullanılabilir durumda.
 
 Tek uygulamada:
 - Müzik + video oynatma
@@ -43,15 +43,15 @@ Tek uygulamada:
 - Gelişmiş DSP ses efektleri (32-band EQ, compressor, limiter, reverb...)
 
 İndirip denemek isteyenler:
-https://github.com/muhammed-aurivo-dev/Aurivo-Medya-Player-Linux/releases/latest
+https://github.com/muhammed-ardali-dev/ArDali-Medya-Player-Linux/releases/latest
 
 30 sn demo:
-https://github.com/muhammed-aurivo-dev/Aurivo-Medya-Player-Linux#ekran-goruntuleri
+https://github.com/muhammed-ardali-dev/ArDali-Medya-Player-Linux#ekran-goruntuleri
 
 Geri bildirim benim için çok değerli.
 
 ### 1. General Launch (EN)
-After a long development journey, my Linux media app **Aurivo** is now available.
+After a long development journey, my Linux media app **ArDali** is now available.
 
 In one app:
 - Music + video playback
@@ -61,15 +61,15 @@ In one app:
 - Advanced DSP effects (32-band EQ, compressor, limiter, reverb...)
 
 Try it here:
-https://github.com/muhammed-aurivo-dev/Aurivo-Medya-Player-Linux/releases/latest
+https://github.com/muhammed-ardali-dev/ArDali-Medya-Player-Linux/releases/latest
 
 30s demo:
-https://github.com/muhammed-aurivo-dev/Aurivo-Medya-Player-Linux#ekran-goruntuleri
+https://github.com/muhammed-ardali-dev/ArDali-Medya-Player-Linux#ekran-goruntuleri
 
 Feedback is highly appreciated.
 
 ### 2. Geri Bildirim Odaklı (TR)
-Aurivo'yu geliştiriyorum ve gerçek kullanıcı geri bildirimi arıyorum.
+ArDali'yu geliştiriyorum ve gerçek kullanıcı geri bildirimi arıyorum.
 
 Denerseniz 3 soruya cevap verir misiniz?
 1. En çok hangi özellik işinize yaradı?
@@ -77,13 +77,13 @@ Denerseniz 3 soruya cevap verir misiniz?
 3. Düzenli kullanmanız için ne eksik?
 
 İndirme:
-https://github.com/muhammed-aurivo-dev/Aurivo-Medya-Player-Linux/releases/latest
+https://github.com/muhammed-ardali-dev/ArDali-Medya-Player-Linux/releases/latest
 
 Demo:
-https://github.com/muhammed-aurivo-dev/Aurivo-Medya-Player-Linux#ekran-goruntuleri
+https://github.com/muhammed-ardali-dev/ArDali-Medya-Player-Linux#ekran-goruntuleri
 
 ### 2. Feedback-Focused (EN)
-I'm improving Aurivo and looking for real user feedback.
+I'm improving ArDali and looking for real user feedback.
 
 If you try it, could you answer 3 quick questions?
 1. Which feature helped you the most?
@@ -91,13 +91,13 @@ If you try it, could you answer 3 quick questions?
 3. What is missing for regular use?
 
 Download:
-https://github.com/muhammed-aurivo-dev/Aurivo-Medya-Player-Linux/releases/latest
+https://github.com/muhammed-ardali-dev/ArDali-Medya-Player-Linux/releases/latest
 
 Demo:
-https://github.com/muhammed-aurivo-dev/Aurivo-Medya-Player-Linux#ekran-goruntuleri
+https://github.com/muhammed-ardali-dev/ArDali-Medya-Player-Linux#ekran-goruntuleri
 
 ### 3. Ses Kalitesi Odaklı (TR)
-Linux'ta ses kalitesini önemseyenler için: Aurivo'da güçlü bir DSP zinciri var.
+Linux'ta ses kalitesini önemseyenler için: ArDali'da güçlü bir DSP zinciri var.
 
 - 32-band EQ
 - Compressor / Limiter
@@ -105,10 +105,10 @@ Linux'ta ses kalitesini önemseyenler için: Aurivo'da güçlü bir DSP zinciri 
 - Crossfeed / True Peak vb.
 
 Müzik ve video oynatmanın yanında detaylı ses kontrolü isteyenler deneyebilir:
-https://github.com/muhammed-aurivo-dev/Aurivo-Medya-Player-Linux/releases/latest
+https://github.com/muhammed-ardali-dev/ArDali-Medya-Player-Linux/releases/latest
 
 ### 3. Audio Quality Focus (EN)
-For Linux users who care about audio quality: Aurivo includes a deep DSP chain.
+For Linux users who care about audio quality: ArDali includes a deep DSP chain.
 
 - 32-band EQ
 - Compressor / Limiter
@@ -116,47 +116,47 @@ For Linux users who care about audio quality: Aurivo includes a deep DSP chain.
 - Crossfeed / True Peak and more
 
 If you want detailed sound control beyond basic playback:
-https://github.com/muhammed-aurivo-dev/Aurivo-Medya-Player-Linux/releases/latest
+https://github.com/muhammed-ardali-dev/ArDali-Medya-Player-Linux/releases/latest
 
 ### 4. Üretici Hikayesi (TR)
-Aurivo'yu tek başıma uzun süredir geliştiriyorum.
+ArDali'yu tek başıma uzun süredir geliştiriyorum.
 Hedefim, Linux'ta da modern ve güçlü bir "hepsi bir arada" medya deneyimi sunmak.
 
 Projeyi denerseniz hem hata raporu hem özellik önerisi bırakmanız bana çok yardımcı olur.
 
 İndirme:
-https://github.com/muhammed-aurivo-dev/Aurivo-Medya-Player-Linux/releases/latest
+https://github.com/muhammed-ardali-dev/ArDali-Medya-Player-Linux/releases/latest
 
 ### 4. Builder Story (EN)
-I've been building Aurivo solo for a long time.
+I've been building ArDali solo for a long time.
 My goal is to deliver a modern, powerful all-in-one media experience on Linux.
 
 If you try it, bug reports and feature requests would help a lot.
 
 Download:
-https://github.com/muhammed-aurivo-dev/Aurivo-Medya-Player-Linux/releases/latest
+https://github.com/muhammed-ardali-dev/ArDali-Medya-Player-Linux/releases/latest
 
 ### 5. Güncelleme Notu/Stabil Sürüm (TR)
-Aurivo için yeni sürüm yayınladım.
+ArDali için yeni sürüm yayınladım.
 Odak: daha stabil oynatma, daha iyi ses efekti deneyimi, daha temiz arayüz akışı.
 
 Sürüm:
-https://github.com/muhammed-aurivo-dev/Aurivo-Medya-Player-Linux/releases/latest
+https://github.com/muhammed-ardali-dev/ArDali-Medya-Player-Linux/releases/latest
 
 Kısa demo:
-https://github.com/muhammed-aurivo-dev/Aurivo-Medya-Player-Linux#ekran-goruntuleri
+https://github.com/muhammed-ardali-dev/ArDali-Medya-Player-Linux#ekran-goruntuleri
 
 Yorumlarınızı bekliyorum.
 
 ### 5. Release Update (EN)
-New Aurivo release is out.
+New ArDali release is out.
 Focus: more stable playback, better audio effects workflow, and cleaner UI flow.
 
 Release:
-https://github.com/muhammed-aurivo-dev/Aurivo-Medya-Player-Linux/releases/latest
+https://github.com/muhammed-ardali-dev/ArDali-Medya-Player-Linux/releases/latest
 
 Short demo:
-https://github.com/muhammed-aurivo-dev/Aurivo-Medya-Player-Linux#ekran-goruntuleri
+https://github.com/muhammed-ardali-dev/ArDali-Medya-Player-Linux#ekran-goruntuleri
 
 I'd love your feedback.
 

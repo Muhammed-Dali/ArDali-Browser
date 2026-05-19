@@ -1,6 +1,6 @@
 {
   "app": {
-    "title": "Aurivo Media Player"
+    "title": "ArDali Media Player"
   },
   "sidebar": {
     "files": "Files",
@@ -25,7 +25,7 @@
   },
   "nowPlaying": {
     "prefix": "Now Playing",
-    "ready": "Now Playing: Aurivo Player - Ready",
+    "ready": "Now Playing: ArDali Player - Ready",
     "none": "No Track",
     "unknownTrack": "Unknown Track",
     "unknownArtist": "Unknown Artist"
@@ -126,7 +126,7 @@
   },
   "listen": {
     "quick": {
-      "title": "Aurivo-Pulse Quick Listen",
+      "title": "ArDali-Pulse Quick Listen",
       "toastDuration": {
         "label": "Listen notification duration",
         "hint": "Controls how long the no-signal hint stays on screen.",
@@ -160,7 +160,7 @@
       "resetDefaults": "Reset Listen Defaults"
     },
     "preferences": {
-      "title": "Aurivo-Pulse Preferences",
+      "title": "ArDali-Pulse Preferences",
       "notifications": {
         "label": "Show notifications",
         "hint": "Shows notifications when a song is found, when a network error occurs, and when the audio device changes automatically."
@@ -340,7 +340,7 @@
     }
   },
   "about": {
-    "title": "Aurivo Media Player",
+    "title": "ArDali Media Player",
     "version": "Version: 2.0.0 - Stable Release",
     "founderLabel": "Founder & Lead Developer",
     "featuresTitle": "Features",
@@ -376,10 +376,10 @@
   },
   "visualizer": {
     "notFoundTitle": "Visualizer not found",
-    "notFoundBody": "Executable not found:\n{path}\n\nLinux:\n- cmake --build build-visualizer\n- cp build-visualizer/aurivo-projectm-visualizer native-dist/aurivo-projectm-visualizer\n\nIn development mode (npm run dev), build-visualizer output is preferred automatically."
+    "notFoundBody": "Executable not found:\n{path}\n\nLinux:\n- cmake --build build-visualizer\n- cp build-visualizer/ardali-projectm-visualizer native-dist/ardali-projectm-visualizer\n\nIn development mode (npm run dev), build-visualizer output is preferred automatically."
   },
   "sfx": {
-    "windowTitle": "Sound Effects — Aurivo Media Player",
+    "windowTitle": "Sound Effects — ArDali Media Player",
     "tabs": {
       "effects": "Effects",
       "presets": "Presets"
@@ -413,7 +413,7 @@
     "eq32": {
       "title": "Professional 32‑Band Equalizer",
       "description": "Shape your sound with precise frequency control.",
-      "moduleTitle": "Aurivo Module",
+      "moduleTitle": "ArDali Module",
       "acousticSpace": {
         "label": "Acoustic Space:",
         "off": "Off",
@@ -584,7 +584,7 @@
       }
     },
     "footer": {
-      "engineInfo": "Aurivo DSP Engine v3.0 • 48kHz / 32-bit Float Processing"
+      "engineInfo": "ArDali DSP Engine v3.0 • 48kHz / 32-bit Float Processing"
     },
     "nativeUnavailable": "⚠️ Sound Effects unavailable: Native Audio Engine is not loaded. Basic playback is still available.",
     "tapesat": {
@@ -775,7 +775,7 @@
     }
   },
   "eqPresets": {
-    "windowTitle": "Presets — Aurivo Media Player",
+    "windowTitle": "Presets — ArDali Media Player",
     "title": "Presets",
     "searchPlaceholder": "Search presets... (e.g., bass, v-shape, vocal)",
     "groupLabel": "Preset group",
@@ -805,7 +805,7 @@
   },
   "securityPage": {
     "title": "Security",
-    "heroTitle": "Aurivo Secure Internet",
+    "heroTitle": "ArDali Secure Internet",
     "heroSub": "Use the Web tab more safely and in a controlled way.",
     "sections": {
       "currentSite": "Current Site",
@@ -824,7 +824,7 @@
     "allowPopups": "Allow pop-up windows (may be required for some logins)",
     "allowPopupsHint": "Note: When pop-ups are disabled, some login/account links may not open.",
     "cleanupHint": "Clearing cookies/cache may sign you out of some sites.",
-    "allowedPlatformsHint": "Aurivo targets the following platforms in the Web tab (CSP/frame-src):",
+    "allowedPlatformsHint": "ArDali targets the following platforms in the Web tab (CSP/frame-src):",
     "vpnPolicyLabel": "Block Web access when VPN is detected",
     "vpnPolicyHint": "Recommended: keep this off. With VPN, app will warn only; non-approved websites are already blocked.",
     "dynamic": {
@@ -856,7 +856,7 @@
   "about.featuresTitle": "Features & Transparency",
   "about.sections.app.title": "App Features",
   "about.sections.app.item1": "Combines music, video, web and download workflows in one interface.",
-  "about.sections.app.item2": "Includes Aurivo-Pulse listening mode for fast song recognition.",
+  "about.sections.app.item2": "Includes ArDali-Pulse listening mode for fast song recognition.",
   "about.sections.app.item3": "Offers modern media controls with multi-language and system language support.",
   "about.sections.web.title": "Web Features",
   "about.sections.web.item1": "Provides secure media access for YouTube, Deezer, SoundCloud and social platforms.",
@@ -984,7 +984,7 @@
   "visualizerNative.context.clarityBalanced": "Balanced",
   "visualizerNative.context.claritySharp": "Sharp",
   "visualizerNative.context.claritySharpPlus": "Sharp+",
-  "visualizerNative.picker.title": "Aurivo Visuals",
+  "visualizerNative.picker.title": "ArDali Visuals",
   "visualizerNative.picker.heroTitle": "Curate the visual atmosphere",
   "visualizerNative.picker.heroHint": "Choose presets included in auto-switch flow with a cleaner layout.",
   "visualizerNative.picker.presetDirectory": "Preset directory",
@@ -1276,7 +1276,7 @@
   "video.tools.studio.addColor": "Add color",
   "video.tools.studio.text": "Text",
   "video.tools.studio.addText": "Add text",
-  "video.tools.studio.textDefault": "Aurivo Live",
+  "video.tools.studio.textDefault": "ArDali Live",
   "video.tools.sourcePicker.title": "Choose source type",
   "video.tools.sourcePicker.display": "Screen capture",
   "video.tools.sourcePicker.desktopAudio": "Desktop audio",
@@ -1307,7 +1307,7 @@
   "video.tools.templates.applied": "Template applied: {name}",
   "video.tools.templates.presentationText": "Presentation Title",
   "video.tools.templates.educationText": "Class Starting",
-  "video.tools.templates.gamingText": "Aurivo Live",
+  "video.tools.templates.gamingText": "ArDali Live",
   "video.tools.templates.cameraText": "Live Camera",
   "video.tools.textSettings.title": "Text",
   "video.tools.textSettings.content": "Content",

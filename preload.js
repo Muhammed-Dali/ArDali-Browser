@@ -1,16 +1,16 @@
 // ============================================
-// AURIVO MEDIA PLAYER - Preload Betiği
+// ARDALI MEDIA PLAYER - Preload Betiği
 // Native Ses Motoru için Güvenli IPC Köprüsü
 // Sürüm 2.1 - Tüm Ses Main Process IPC üzerinden
 // ============================================
 
-const AURIVO_VERBOSE_LOGS =
+const ARDALI_VERBOSE_LOGS =
     typeof process !== 'undefined' &&
     process?.env &&
-    process.env.AURIVO_VERBOSE_LOGS === '1';
+    process.env.ARDALI_VERBOSE_LOGS === '1';
 
 const preloadLog = (...args) => {
-    if (AURIVO_VERBOSE_LOGS) console.log(...args);
+    if (ARDALI_VERBOSE_LOGS) console.log(...args);
 };
 
 preloadLog('[PRELOAD] Script basliyor...');
@@ -18,13 +18,13 @@ preloadLog('[PRELOAD] Script basliyor...');
 const { contextBridge, ipcRenderer, clipboard, webUtils } = require('electron');
 const preloadArgv = Array.isArray(process?.argv) ? process.argv : [];
 const preloadStandaloneView = String(
-    preloadArgv.find((arg) => String(arg).startsWith('--aurivo-view=')) || ''
+    preloadArgv.find((arg) => String(arg).startsWith('--ardali-view=')) || ''
 ).split('=').slice(1).join('=').trim().toLowerCase();
 const preloadStandaloneTab = String(
-    preloadArgv.find((arg) => String(arg).startsWith('--aurivo-settings-tab=')) || ''
+    preloadArgv.find((arg) => String(arg).startsWith('--ardali-settings-tab=')) || ''
 ).split('=').slice(1).join('=').trim().toLowerCase();
 const preloadStandaloneScope = String(
-    preloadArgv.find((arg) => String(arg).startsWith('--aurivo-settings-scope=')) || ''
+    preloadArgv.find((arg) => String(arg).startsWith('--ardali-settings-scope=')) || ''
 ).split('=').slice(1).join('=').trim().toLowerCase();
 const path = require('path');
 const os = require('os');
@@ -384,7 +384,7 @@ const createAudioAPI = () => {
             get: () => ipcRenderer.invoke('audio:getBalance')
         },
 
-        // Aurivo Module
+        // ArDali Module
         module: {
             setBass: (dB) => ipcRenderer.invoke('audio:setBass', dB),
             getBass: () => ipcRenderer.invoke('audio:getBass'),
@@ -643,7 +643,7 @@ const createAudioAPI = () => {
 // ============================================
 // Context Bridge - Renderer'a Aç
 // ============================================
-const aurivoAPI = {
+const ardaliAPI = {
     // Dosya Sistemi
     openFile: () => ipcRenderer.invoke('dialog:openFile'),
     openFolder: (opts) => ipcRenderer.invoke('dialog:openFolder', opts),
@@ -723,7 +723,7 @@ const aurivoAPI = {
         view: preloadStandaloneView,
         tab: preloadStandaloneTab,
         scope: preloadStandaloneScope,
-        perfMonitor: process?.env?.AURIVO_PERF_MONITOR === '1'
+        perfMonitor: process?.env?.ARDALI_PERF_MONITOR === '1'
     },
     onSettingsReload: (callback) => {
         const handler = (_event, payload) => callback(payload);
@@ -778,6 +778,7 @@ const aurivoAPI = {
         savePreferences: (preferences) => ipcRenderer.invoke('pulse:savePreferences', preferences || {}),
         getPreferredDevice: () => ipcRenderer.invoke('pulse:getPreferredDevice'),
         getStatus: () => ipcRenderer.invoke('pulse:getStatus'),
+        setContextMetadata: (metadata) => ipcRenderer.invoke('pulse:setContextMetadata', metadata || {}),
         startListening: (options) => ipcRenderer.invoke('pulse:startListening', options || {}),
         stopListening: () => ipcRenderer.invoke('pulse:stopListening'),
         recognizeSample: (options) => ipcRenderer.invoke('pulse:recognizeSample', options || {}),
@@ -887,7 +888,7 @@ const aurivoAPI = {
         getWebPerfStatus: () => ipcRenderer.invoke('soundEffects:getWebPerfStatus')
     },
 
-    // AURIVO DAWLOD PENCERESİ API
+    // ARDALI DAWLOD PENCERESİ API
     downloader: {
         openWindow: (url) => ipcRenderer.invoke('downloader:openWindow', String(url || '')),
         getSettings: () => ipcRenderer.invoke('downloader:getSettings'),
@@ -916,6 +917,7 @@ const aurivoAPI = {
         cancel: (id) => ipcRenderer.invoke('downloader:cancel', String(id || '')),
         startCompression: (options) => ipcRenderer.invoke('downloader:startCompression', options || {}),
         cancelCompression: (id) => ipcRenderer.invoke('downloader:cancelCompression', String(id || '')),
+        getFileThumbnail: (filePath) => ipcRenderer.invoke('downloader:getFileThumbnail', String(filePath || '')),
         showFile: (filePath) => ipcRenderer.invoke('downloader:showFile', String(filePath || '')),
         getHistory: () => ipcRenderer.invoke('downloader:getHistory'),
         exportHistory: (format) => ipcRenderer.invoke('downloader:exportHistory', String(format || 'json')),
@@ -966,7 +968,7 @@ const aurivoAPI = {
             check: (options = {}) => ipcRenderer.invoke('app:update:check', options),
             download: () => ipcRenderer.invoke('app:update:download'),
             install: () => ipcRenderer.invoke('app:update:install'),
-            launchAurivoBinUpdate: () => ipcRenderer.invoke('app:update:launchAurivoBinUpdate'),
+            launchArDaliBinUpdate: () => ipcRenderer.invoke('app:update:launchArDaliBinUpdate'),
             onStatus: (callback) => {
                 if (typeof callback !== 'function') return () => {};
                 const handler = (_event, payload) => callback(payload || {});
@@ -1052,20 +1054,20 @@ const aurivoAPI = {
     }
 };
 
-preloadLog('[PRELOAD] aurivoAPI objesi olusturuldu');
-preloadLog('[PRELOAD] API anahtarlari:', Object.keys(aurivoAPI));
+preloadLog('[PRELOAD] ardaliAPI objesi olusturuldu');
+preloadLog('[PRELOAD] API anahtarlari:', Object.keys(ardaliAPI));
 
 // Global fallback
 try {
-    globalThis.aurivo = aurivoAPI;
-    preloadLog('[PRELOAD] globalThis.aurivo atandi');
+    globalThis.ardali = ardaliAPI;
+    preloadLog('[PRELOAD] globalThis.ardali atandi');
 } catch (e) {
     console.error('[PRELOAD] globalThis hata:', e.message);
 }
 
 // contextBridge ile güvenli expose
 try {
-    contextBridge.exposeInMainWorld('aurivo', aurivoAPI);
+    contextBridge.exposeInMainWorld('ardali', ardaliAPI);
     preloadLog('[PRELOAD] contextBridge.exposeInMainWorld basarili');
 } catch (e) {
     console.error('[PRELOAD] contextBridge hata:', e.message);

@@ -1,10 +1,10 @@
-app-id: com.aurivo.mediaplayer
+app-id: com.ardali.mediaplayer
 runtime: org.gnome.Platform
 runtime-version: "47"
 sdk: org.gnome.Sdk
 sdk-extensions:
   - org.freedesktop.Sdk.Extension.node22
-command: com.aurivo.mediaplayer
+command: com.ardali.mediaplayer
 separate-locales: false
 
 build-options:
@@ -43,10 +43,10 @@ modules:
         url: https://github.com/libsdl-org/SDL_image/releases/download/release-2.8.2/SDL2_image-2.8.2.tar.gz
         sha256: 8f486bbfbcf8464dd58c9e5d93394ab0255ce68b51c5a966a918244820a76ddc
 
-  - name: aurivo-media-player
+  - name: ardali-media-player
     buildsystem: simple
     build-commands:
-      - test -x dist/linux-unpacked/aurivo
+      - test -x dist/linux-unpacked/ardali
       - node --version
       - npm --version
       - npm_config_nodedir=/usr/lib/sdk/node22 npm --prefix native run rebuild
@@ -56,15 +56,15 @@ modules:
         test -f "$PROJECTM_LIB"
         cmake -S visualizer -B build-visualizer-flatpak -G Ninja \
           -DCMAKE_BUILD_TYPE=Release \
-          -DAURIVO_PROJECTM_C_API_COMPAT=ON \
-          -DAURIVO_PROJECTM_LIB="$PROJECTM_LIB" \
-          -DAURIVO_PROJECTM_PLAYLIST_LIB="$PROJECTM_PLAYLIST_LIB" \
+          -DARDALI_PROJECTM_C_API_COMPAT=ON \
+          -DARDALI_PROJECTM_LIB="$PROJECTM_LIB" \
+          -DARDALI_PROJECTM_PLAYLIST_LIB="$PROJECTM_PLAYLIST_LIB" \
           -DSDL2IMAGE_INCLUDE_DIR=/app/include/SDL2 \
           -DSDL2IMAGE_LIBRARY=/app/lib/libSDL2_image.so
         cmake --build build-visualizer-flatpak --config Release -j"$(nproc)"
-      - install -d /app/aurivo
-      - cp -a dist/linux-unpacked/. /app/aurivo/
-      - install -Dm755 native/build/Release/aurivo_audio.node /app/aurivo/resources/native/build/Release/aurivo_audio.node
+      - install -d /app/ardali
+      - cp -a dist/linux-unpacked/. /app/ardali/
+      - install -Dm755 native/build/Release/ardali_audio.node /app/ardali/resources/native/build/Release/ardali_audio.node
       - |
         for lib in \
           libbass.so \
@@ -73,17 +73,17 @@ modules:
           libbassape.so \
           libbassflac.so \
           libbasswv.so; do
-          install -Dm755 "native/build/Release/$lib" "/app/aurivo/resources/native/build/Release/$lib"
+          install -Dm755 "native/build/Release/$lib" "/app/ardali/resources/native/build/Release/$lib"
         done
-      - install -d /app/aurivo/resources/native-dist/linux
-      - install -Dm755 build-visualizer-flatpak/aurivo-projectm-visualizer /app/aurivo/resources/native-dist/linux/aurivo-projectm-visualizer
-      - install -Dm644 assets/fonts/Inter-Regular.ttf /app/aurivo/resources/native-dist/linux/fonts/Inter-Regular.ttf
+      - install -d /app/ardali/resources/native-dist/linux
+      - install -Dm755 build-visualizer-flatpak/ardali-projectm-visualizer /app/ardali/resources/native-dist/linux/ardali-projectm-visualizer
+      - install -Dm644 assets/fonts/Inter-Regular.ttf /app/ardali/resources/native-dist/linux/fonts/Inter-Regular.ttf
       - |
         for lib in \
           libavutil.so.60 \
           libvpl.so.2; do
           if [ -f "packaging/flatpak/runtime-libs/$lib" ]; then
-            install -Dm755 "packaging/flatpak/runtime-libs/$lib" "/app/aurivo/resources/native-dist/linux/$lib"
+            install -Dm755 "packaging/flatpak/runtime-libs/$lib" "/app/ardali/resources/native-dist/linux/$lib"
           fi
         done
       - |
@@ -100,16 +100,16 @@ modules:
           libSDL2_image-2.0.so.0 \
           libX11.so.6; do
           if [ -f "/usr/lib/$lib" ]; then
-            cp -a "/usr/lib/$lib" "/app/aurivo/resources/native-dist/linux/$lib"
+            cp -a "/usr/lib/$lib" "/app/ardali/resources/native-dist/linux/$lib"
           elif [ -f "/usr/lib/x86_64-linux-gnu/$lib" ]; then
-            cp -a "/usr/lib/x86_64-linux-gnu/$lib" "/app/aurivo/resources/native-dist/linux/$lib"
+            cp -a "/usr/lib/x86_64-linux-gnu/$lib" "/app/ardali/resources/native-dist/linux/$lib"
           fi
         done
-      - install -Dm755 packaging/flatpak/aurivo-wrapper.sh /app/bin/com.aurivo.mediaplayer
-      - install -Dm644 packaging/linux/com.aurivo.mediaplayer.desktop /app/share/applications/com.aurivo.mediaplayer.desktop
-      - install -Dm644 packaging/appstream/com.aurivo.mediaplayer.metainfo.xml /app/share/metainfo/com.aurivo.mediaplayer.metainfo.xml
-      - install -Dm644 icons/aurivo_512.png /app/share/icons/hicolor/512x512/apps/com.aurivo.mediaplayer.png
-      - install -Dm644 icons/aurivo_256.png /app/share/icons/hicolor/256x256/apps/com.aurivo.mediaplayer.png
+      - install -Dm755 packaging/flatpak/ardali-wrapper.sh /app/bin/com.ardali.mediaplayer
+      - install -Dm644 packaging/linux/com.ardali.mediaplayer.desktop /app/share/applications/com.ardali.mediaplayer.desktop
+      - install -Dm644 packaging/appstream/com.ardali.mediaplayer.metainfo.xml /app/share/metainfo/com.ardali.mediaplayer.metainfo.xml
+      - install -Dm644 icons/ardali_512.png /app/share/icons/hicolor/512x512/apps/com.ardali.mediaplayer.png
+      - install -Dm644 icons/ardali_256.png /app/share/icons/hicolor/256x256/apps/com.ardali.mediaplayer.png
     sources:
       - type: dir
         path: ../../

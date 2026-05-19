@@ -108,7 +108,7 @@ function buildSignature(sourceFile, generatedCode) {
 function compileToTemp(sourceFile) {
   const localTmpRoot = path.join(root, '.ci-tmp');
   fs.mkdirSync(localTmpRoot, { recursive: true });
-  const tmpDir = fs.mkdtempSync(path.join(localTmpRoot, 'aurivo-dali-reg-'));
+  const tmpDir = fs.mkdtempSync(path.join(localTmpRoot, 'ardali-dali-reg-'));
   const outFile = path.join(tmpDir, `${path.basename(sourceFile)}.generated.js`);
   const proc = spawnSync(process.execPath, [cliPath, sourceFile, outFile], {
     cwd: root,

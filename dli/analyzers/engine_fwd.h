@@ -1,5 +1,5 @@
-/* Engine abstraction for Aurivo Media Player's Analyzer system
- * Adapted from Aurivo for BASS audio engine
+/* Engine abstraction for ArDali's Analyzer system
+ * Adapted from ArDali for BASS audio engine
  */
 
 #ifndef ANALYZERS_ENGINE_FWD_H_

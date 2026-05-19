@@ -14,7 +14,7 @@ const excludedDirs = [
   'dist',
   'build',
   'squashfs-root',
-  'aurivo-bin',
+  'ardali-bin',
   'packaging/local-test-pkg',
 ];
 

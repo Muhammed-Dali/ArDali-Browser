@@ -20,6 +20,9 @@
     --accent: #38bdf8;
     --accent-2: #34d399;
     --danger: #fb7185;
+    --progress-track: rgba(255, 255, 255, 0.72);
+    --progress-fill: linear-gradient(90deg, var(--accent), var(--blueBtn));
+    --progress-glow: rgba(56, 189, 248, 0.34);
     --menu-bg: rgba(17, 25, 48, 0.94);
     --menu-border: rgba(255, 255, 255, 0.08);
     --menu-item-bg: rgba(30, 41, 70, 0.72);
@@ -33,7 +36,7 @@
     font-family: Ubuntu, Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
 
-:root[theme="aurivo"] {
+:root[theme="ardali"] {
     --background: #0f172a;
     --text: #e2e8f0;
     --box-main: #172554;
@@ -48,6 +51,9 @@
     --redBtn-bottom: #b91c1c;
     --blueBtn: #2563eb;
     --blueBtn-bottom: #1d4ed8;
+    --progress-track: rgba(219, 234, 254, 0.82);
+    --progress-fill: linear-gradient(90deg, #ff3d6e 0%, #ff8a00 16%, #ffe500 31%, #38e26f 47%, #16d9ff 63%, #3767ff 79%, #b84cff 100%);
+    --progress-glow: rgba(56, 189, 248, 0.56);
 }
 
 :root[theme="light"] {
@@ -66,6 +72,9 @@
     --redBtn-bottom: #854243;
     --blueBtn: #3b82f6;
     --blueBtn-bottom: rgb(44, 78, 180);
+    --progress-track: rgba(31, 41, 55, 0.18);
+    --progress-fill: linear-gradient(90deg, #14b8a6, #3b82f6);
+    --progress-glow: rgba(59, 130, 246, 0.24);
     --menu-bg: rgba(255, 255, 255, 0.96);
     --menu-border: rgba(31, 41, 55, 0.12);
     --menu-item-bg: rgba(229, 231, 235, 0.88);
@@ -93,6 +102,9 @@
     --redBtn-bottom: #854243;
     --blueBtn: rgb(80, 128, 230);
     --blueBtn-bottom: rgb(44, 78, 180);
+    --progress-track: rgba(198, 208, 245, 0.28);
+    --progress-fill: linear-gradient(90deg, #f5a97f, #c6a0f6, #8aadf4);
+    --progress-glow: rgba(198, 160, 246, 0.3);
 }
 
 :root[theme="onedark"] {
@@ -110,6 +122,9 @@
     --redBtn-bottom: #791a22;
     --blueBtn: rgb(80, 128, 230);
     --blueBtn-bottom: rgb(44, 78, 180);
+    --progress-track: rgba(210, 214, 223, 0.24);
+    --progress-fill: linear-gradient(90deg, #98c379, #61afef);
+    --progress-glow: rgba(97, 175, 239, 0.28);
 }
 
 :root[theme="matrix"] {
@@ -127,6 +142,9 @@
     --redBtn-bottom: #10701c;
     --blueBtn: #19b42b;
     --blueBtn-bottom: #10701c;
+    --progress-track: rgba(0, 255, 65, 0.18);
+    --progress-fill: linear-gradient(90deg, #00ff41, #9cffb1);
+    --progress-glow: rgba(0, 255, 65, 0.42);
 }
 
 :root[theme="github"] {
@@ -145,6 +163,9 @@
     --redBtn-bottom: #9b2733;
     --blueBtn: #005cc5;
     --blueBtn-bottom: #00428e;
+    --progress-track: rgba(36, 41, 47, 0.18);
+    --progress-fill: linear-gradient(90deg, #2da44e, #0969da);
+    --progress-glow: rgba(9, 105, 218, 0.22);
     --menu-bg: rgba(255, 255, 255, 0.96);
     --menu-border: rgba(36, 41, 47, 0.14);
     --menu-item-bg: rgba(243, 244, 246, 0.92);
@@ -173,6 +194,9 @@
     --redBtn-bottom: #9c0c2b;
     --blueBtn: #1e66f5;
     --blueBtn-bottom: rgb(3, 49, 101);
+    --progress-track: rgba(76, 79, 105, 0.18);
+    --progress-fill: linear-gradient(90deg, #40a02b, #1e66f5, #8839ef);
+    --progress-glow: rgba(30, 102, 245, 0.24);
     --menu-bg: rgba(239, 241, 245, 0.96);
     --menu-border: rgba(76, 79, 105, 0.16);
     --menu-item-bg: rgba(230, 233, 239, 0.92);
@@ -200,9 +224,18 @@
     --redBtn-bottom: #af2523;
     --blueBtn: #268bd2;
     --blueBtn-bottom: #2074b1;
+    --progress-track: rgba(131, 148, 150, 0.22);
+    --progress-fill: linear-gradient(90deg, #b58900, #2aa198, #268bd2);
+    --progress-glow: rgba(42, 161, 152, 0.28);
 }
 
 * { box-sizing: border-box; }
+
+::view-transition-old(root),
+::view-transition-new(root) {
+    animation: none;
+    mix-blend-mode: normal;
+}
 
 body {
     margin: 0;
@@ -667,7 +700,7 @@ button:not(:disabled):not(.menu-button):not(.settings-icon-btn):not(.error-detai
     width: 12px;
     height: 12px;
     border-radius: 999px;
-    animation: aurivoDotFade 1.4s ease-in-out infinite;
+    animation: ardaliDotFade 1.4s ease-in-out infinite;
 }
 
 .processing-dots span:nth-child(1) {
@@ -695,12 +728,12 @@ button:not(:disabled):not(.menu-button):not(.settings-icon-btn):not(.error-detai
     font-weight: 500;
 }
 
-@keyframes aurivoDotFade {
+@keyframes ardaliDotFade {
     0%, 100% { opacity: 0; }
     50% { opacity: 1; }
 }
 
-@keyframes aurivoDotRainbow {
+@keyframes ardaliDotRainbow {
     0% { background: #22d3ee; }
     16% { background: #3b82f6; }
     32% { background: #a855f7; }
@@ -1491,12 +1524,67 @@ button:not(:disabled):not(.menu-button):not(.settings-icon-btn):not(.error-detai
     background: rgba(34, 197, 94, 0.16);
 }
 
-.compressor-drop strong {
+.compressor-drop > strong {
     font-size: 24px;
 }
 
-.compressor-drop span {
+.compressor-drop > span {
     color: var(--muted);
+}
+
+.compressor-drop.has-files {
+    min-height: 176px;
+    place-items: stretch;
+    padding: 14px;
+}
+
+.compressor-drop.has-files > strong,
+.compressor-drop.has-files > span {
+    display: none;
+}
+
+.compressor-drop-preview {
+    display: grid;
+    grid-template-columns: minmax(160px, 260px) minmax(0, 1fr);
+    align-items: center;
+    gap: 18px;
+    width: 100%;
+    min-height: 146px;
+    padding: 10px;
+    border-radius: 12px;
+    background: rgba(15, 23, 42, 0.34);
+    border: 1px solid rgba(148, 163, 184, 0.22);
+}
+
+.compressor-drop-preview.hidden {
+    display: none;
+}
+
+.compressor-drop-preview img {
+    width: 100%;
+    aspect-ratio: 16 / 9;
+    display: block;
+    object-fit: cover;
+    border-radius: 8px;
+    border: 1px solid var(--line);
+    background: rgba(15, 23, 42, 0.54);
+}
+
+.compressor-drop-preview strong {
+    display: block;
+    font-size: 22px;
+    line-height: 1.2;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.compressor-drop-preview span {
+    display: block;
+    margin-top: 8px;
+    color: var(--muted);
+    font: 12px "JetBrains Mono", ui-monospace, monospace;
+    overflow-wrap: anywhere;
 }
 
 .compressor-drop input {
@@ -1565,13 +1653,29 @@ button:not(:disabled):not(.menu-button):not(.settings-icon-btn):not(.error-detai
 
 .compressor-file {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-columns: 92px minmax(0, 1fr) auto;
     gap: 10px;
     align-items: center;
     padding: 12px;
     border-radius: 10px;
     background: var(--item-bg);
     text-align: left;
+}
+
+.compressor-file-thumb-wrap {
+    width: 92px;
+    aspect-ratio: 16 / 9;
+    border-radius: 8px;
+    overflow: hidden;
+    background: rgba(15, 23, 42, 0.46);
+    border: 1px solid var(--line);
+}
+
+.compressor-file-thumb {
+    width: 100%;
+    height: 100%;
+    display: block;
+    object-fit: cover;
 }
 
 .compressor-file strong {
@@ -1737,16 +1841,18 @@ button:not(:disabled):not(.menu-button):not(.settings-icon-btn):not(.error-detai
 }
 
 .progress-track {
-    height: 8px;
-    background: rgba(255, 255, 255, .74);
+    height: 10px;
+    background: var(--progress-track);
     border-radius: 999px;
     overflow: hidden;
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.14);
 }
 
 .progress-fill {
     height: 100%;
     width: 0;
-    background: linear-gradient(90deg, var(--accent), var(--blueBtn));
+    background: var(--progress-fill);
+    box-shadow: 0 0 16px var(--progress-glow);
     transition: width .2s ease;
 }
 
@@ -1759,10 +1865,10 @@ button:not(:disabled):not(.menu-button):not(.settings-icon-btn):not(.error-detai
 
 .job.indeterminate .progress-fill {
     min-width: 120px;
-    animation: aurivo-progress-wait 1.05s ease-in-out infinite alternate;
+    animation: ardali-progress-wait 1.05s ease-in-out infinite alternate;
 }
 
-@keyframes aurivo-progress-wait {
+@keyframes ardali-progress-wait {
     from {
         transform: translateX(-42%);
         opacity: .72;
@@ -1947,6 +2053,17 @@ button:not(:disabled):not(.menu-button):not(.settings-icon-btn):not(.error-detai
 
     .playlist-options-box label span {
         text-align: center;
+    }
+
+    .compressor-drop-preview,
+    .compressor-file {
+        grid-template-columns: 1fr;
+        text-align: center;
+    }
+
+    .compressor-file-thumb-wrap {
+        width: min(220px, 100%);
+        justify-self: center;
     }
 
     .wide {

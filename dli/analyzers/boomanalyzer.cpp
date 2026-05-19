@@ -1,5 +1,5 @@
-/* Boom Analyzer for Aurivo Media Player
- * Based on Aurivo's BoomAnalyzer
+/* Boom Analyzer for ArDali
+ * Based on ArDali's BoomAnalyzer
  * Original Author: Max Howell <max.howell@methylblue.com> 2004
  */
 

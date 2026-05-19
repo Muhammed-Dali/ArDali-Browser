@@ -1,6 +1,6 @@
 # Katkı Rehberi (CONTRIBUTING)
 
-Teşekkürler! Aurivo Media Player’a katkı yapabilirsiniz.
+Teşekkürler! ArDali Media Player’a katkı yapabilirsiniz.
 
 ## Hızlı akış
 1. Issue açın (bug/feature).

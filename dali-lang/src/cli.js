@@ -154,7 +154,7 @@ function parseArgs(argv) {
 }
 
 function installVsCodeExtension() {
-  const extId = 'aurivo.dali-language';
+  const extId = 'ardali.dali-language';
   const codeBin = process.platform === 'win32' ? 'code.cmd' : 'code';
   const cmd = spawnSync(codeBin, ['--install-extension', extId, '--force'], {
     encoding: 'utf8'

@@ -9,8 +9,8 @@
 #define M_PI 3.14159265358979323846
 #endif
 
-// Aurivo Safe EQ Engine (32-band only)
-namespace AurivoDSP {
+// ArDali Safe EQ Engine (32-band only)
+namespace ArDaliDSP {
 
 static const int NUM_BANDS = 32;
 static float gSampleRate = 48000.0f;
@@ -283,7 +283,7 @@ struct Biquad {
 };
 
 // ===========================================
-// ADDITIONAL EFFECTS (From Aurivo project)
+// ADDITIONAL EFFECTS (From ArDali project)
 // ===========================================
 
 struct SimpleCompressor {
@@ -507,7 +507,7 @@ struct ParametricEQ {
 };
 
 // ==================================================================================
-// MASTER DSP CHAIN (Merged Angolla + Aurivo Effects)
+// MASTER DSP CHAIN (Merged Angolla + ArDali Effects)
 // ==================================================================================
 class MasterDSP {
 private:
@@ -1244,56 +1244,56 @@ public:
   }
 };
 
-} // namespace AurivoDSP
+} // namespace ArDaliDSP
 
 // ==================================================================================
 // C-INTERFACE
 // ==================================================================================
 extern "C" {
-void *create_dsp() { return new AurivoDSP::MasterDSP(); }
-void destroy_dsp(void *dsp) { delete static_cast<AurivoDSP::MasterDSP *>(dsp); }
+void *create_dsp() { return new ArDaliDSP::MasterDSP(); }
+void destroy_dsp(void *dsp) { delete static_cast<ArDaliDSP::MasterDSP *>(dsp); }
 void process_dsp(void *dsp, float *buffer, int numFrames, int channels) {
-  if (dsp) static_cast<AurivoDSP::MasterDSP *>(dsp)->processBuffer(buffer, numFrames, channels);
+  if (dsp) static_cast<ArDaliDSP::MasterDSP *>(dsp)->processBuffer(buffer, numFrames, channels);
 }
-void set_eq_band(void *dsp, int band, float gain) { if (dsp) static_cast<AurivoDSP::MasterDSP *>(dsp)->setEQGain(band, gain); }
-void set_eq_bands(void *dsp, const float *gains, int numBands) { if (dsp) static_cast<AurivoDSP::MasterDSP *>(dsp)->setEQGains(gains, numBands); }
-void set_tone_params(void *dsp, float bass, float mid, float treble) { if (dsp) static_cast<AurivoDSP::MasterDSP *>(dsp)->setToneParams(bass, mid, treble); }
-void set_stereo_width(void *dsp, float width) { if (dsp) static_cast<AurivoDSP::MasterDSP *>(dsp)->setStereoWidth(width); }
-void set_master_toggle(void *dsp, int active) { if (dsp) static_cast<AurivoDSP::MasterDSP *>(dsp)->setMasterToggle(active != 0); }
-void set_dsp_enabled(void *dsp, int enabled) { if (dsp) static_cast<AurivoDSP::MasterDSP *>(dsp)->setDSPEnabled(enabled != 0); }
-void set_sample_rate(void *dsp, float sample_rate) { if (dsp) static_cast<AurivoDSP::MasterDSP *>(dsp)->setSampleRate(sample_rate); }
+void set_eq_band(void *dsp, int band, float gain) { if (dsp) static_cast<ArDaliDSP::MasterDSP *>(dsp)->setEQGain(band, gain); }
+void set_eq_bands(void *dsp, const float *gains, int numBands) { if (dsp) static_cast<ArDaliDSP::MasterDSP *>(dsp)->setEQGains(gains, numBands); }
+void set_tone_params(void *dsp, float bass, float mid, float treble) { if (dsp) static_cast<ArDaliDSP::MasterDSP *>(dsp)->setToneParams(bass, mid, treble); }
+void set_stereo_width(void *dsp, float width) { if (dsp) static_cast<ArDaliDSP::MasterDSP *>(dsp)->setStereoWidth(width); }
+void set_master_toggle(void *dsp, int active) { if (dsp) static_cast<ArDaliDSP::MasterDSP *>(dsp)->setMasterToggle(active != 0); }
+void set_dsp_enabled(void *dsp, int enabled) { if (dsp) static_cast<ArDaliDSP::MasterDSP *>(dsp)->setDSPEnabled(enabled != 0); }
+void set_sample_rate(void *dsp, float sample_rate) { if (dsp) static_cast<ArDaliDSP::MasterDSP *>(dsp)->setSampleRate(sample_rate); }
 // New wrappers
 void set_compressor_params(void *dsp, int enabled, float thresh, float ratio, float att, float rel, float makeup) {
-    if (dsp) static_cast<AurivoDSP::MasterDSP *>(dsp)->setCompressorParams(enabled != 0, thresh, ratio, att, rel, makeup);
+    if (dsp) static_cast<ArDaliDSP::MasterDSP *>(dsp)->setCompressorParams(enabled != 0, thresh, ratio, att, rel, makeup);
 }
 void set_gate_params(void *dsp, int enabled, float thresh, float att, float rel) {
-    if (dsp) static_cast<AurivoDSP::MasterDSP *>(dsp)->setGateParams(enabled != 0, thresh, att, rel);
+    if (dsp) static_cast<ArDaliDSP::MasterDSP *>(dsp)->setGateParams(enabled != 0, thresh, att, rel);
 }
 void set_limiter_params(void *dsp, int enabled, float ceiling, float rel) {
-    if (dsp) static_cast<AurivoDSP::MasterDSP *>(dsp)->setLimiterParams(enabled != 0, ceiling, rel);
+    if (dsp) static_cast<ArDaliDSP::MasterDSP *>(dsp)->setLimiterParams(enabled != 0, ceiling, rel);
 }
 void set_echo_params(void *dsp, int enabled, float delay, float feedback, float mix) {
-    if (dsp) static_cast<AurivoDSP::MasterDSP *>(dsp)->setEchoParams(enabled != 0, delay, feedback, mix);
+    if (dsp) static_cast<ArDaliDSP::MasterDSP *>(dsp)->setEchoParams(enabled != 0, delay, feedback, mix);
 }
 void set_bass_boost(void *dsp, int enabled, float gain, float freq) {
-    if (dsp) static_cast<AurivoDSP::MasterDSP *>(dsp)->setBassBoost(enabled != 0, gain, freq);
+    if (dsp) static_cast<ArDaliDSP::MasterDSP *>(dsp)->setBassBoost(enabled != 0, gain, freq);
 }
 void set_peq_band(void *dsp, int band, int enabled, float freq, float gain, float Q) {
-    if (dsp) static_cast<AurivoDSP::MasterDSP *>(dsp)->setPEQBand(band, enabled != 0, freq, gain, Q);
+    if (dsp) static_cast<ArDaliDSP::MasterDSP *>(dsp)->setPEQBand(band, enabled != 0, freq, gain, Q);
 }
 void set_peq_filter_type(void *dsp, int band, int filterType) {
-    if (dsp) static_cast<AurivoDSP::MasterDSP *>(dsp)->setPEQFilterType(band, filterType);
+    if (dsp) static_cast<ArDaliDSP::MasterDSP *>(dsp)->setPEQFilterType(band, filterType);
 }
 void get_peq_band(void *dsp, int band, float* freq, float* gain, float* Q, int* filterType) {
-    if (dsp) static_cast<AurivoDSP::MasterDSP *>(dsp)->getPEQBand(band, freq, gain, Q, filterType);
+    if (dsp) static_cast<ArDaliDSP::MasterDSP *>(dsp)->getPEQBand(band, freq, gain, Q, filterType);
 }
 void set_crossfeed_params(void *dsp, int enabled, float level, float delay, float lowCut, float highCut) {
-    if (dsp) static_cast<AurivoDSP::MasterDSP *>(dsp)->setCrossfeedParams(enabled != 0, level, delay, lowCut, highCut);
+    if (dsp) static_cast<ArDaliDSP::MasterDSP *>(dsp)->setCrossfeedParams(enabled != 0, level, delay, lowCut, highCut);
 }
 void set_bass_mono_params(void *dsp, int enabled, float cutoff, float slope, float width) {
-    if (dsp) static_cast<AurivoDSP::MasterDSP *>(dsp)->setBassMonoParams(enabled != 0, cutoff, slope, width);
+    if (dsp) static_cast<ArDaliDSP::MasterDSP *>(dsp)->setBassMonoParams(enabled != 0, cutoff, slope, width);
 }
 void set_dynamic_eq_params(void *dsp, int enabled, float freq, float q, float thr, float gain, float rng, float atk, float rel) {
-    if (dsp) static_cast<AurivoDSP::MasterDSP *>(dsp)->setDynamicEQParams(enabled != 0, freq, q, thr, gain, rng, atk, rel);
+    if (dsp) static_cast<ArDaliDSP::MasterDSP *>(dsp)->setDynamicEQParams(enabled != 0, freq, q, thr, gain, rng, atk, rel);
 }
 }

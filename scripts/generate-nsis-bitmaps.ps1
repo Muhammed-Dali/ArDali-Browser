@@ -62,8 +62,8 @@ try {
   $sidebarBmp = New-CoverBitmap -Source $srcImg -W 164 -H 314
   $headerBmp = New-CoverBitmap -Source $srcImg -W 150 -H 57
 
-  # Draw a small Aurivo icon on the header for brand recognition (if present).
-  $iconPath = "icons\\aurivo_256.png"
+  # Draw a small ArDali icon on the header for brand recognition (if present).
+  $iconPath = "icons\\ardali_256.png"
   if (Test-Path $iconPath) {
     $iconImg = [System.Drawing.Image]::FromFile($iconPath)
     try {

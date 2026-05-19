@@ -1,50 +1,50 @@
 [
 {
-  "directory": "/home/muhammetdali/Aurivo-Medya-Player/build-visualizer-temp",
-  "command": "/usr/bin/c++ -DIMGUI_IMPL_OPENGL_LOADER_CUSTOM -I/home/muhammetdali/Aurivo-Medya-Player/third_party/imgui -I/home/muhammetdali/Aurivo-Medya-Player/third_party/imgui/backends -I/home/muhammetdali/Aurivo-Medya-Player/visualizer -isystem /usr/include/SDL2 -std=gnu++17 -o CMakeFiles/imgui.dir/home/muhammetdali/Aurivo-Medya-Player/third_party/imgui/imgui.cpp.o -c /home/muhammetdali/Aurivo-Medya-Player/third_party/imgui/imgui.cpp",
-  "file": "/home/muhammetdali/Aurivo-Medya-Player/third_party/imgui/imgui.cpp",
-  "output": "CMakeFiles/imgui.dir/home/muhammetdali/Aurivo-Medya-Player/third_party/imgui/imgui.cpp.o"
+  "directory": "/home/muhammetdali/ArDali-WebMedia/build-visualizer-temp",
+  "command": "/usr/bin/c++ -DIMGUI_IMPL_OPENGL_LOADER_CUSTOM -I/home/muhammetdali/ArDali-WebMedia/third_party/imgui -I/home/muhammetdali/ArDali-WebMedia/third_party/imgui/backends -I/home/muhammetdali/ArDali-WebMedia/visualizer -isystem /usr/include/SDL2 -std=gnu++17 -o CMakeFiles/imgui.dir/home/muhammetdali/ArDali-WebMedia/third_party/imgui/imgui.cpp.o -c /home/muhammetdali/ArDali-WebMedia/third_party/imgui/imgui.cpp",
+  "file": "/home/muhammetdali/ArDali-WebMedia/third_party/imgui/imgui.cpp",
+  "output": "CMakeFiles/imgui.dir/home/muhammetdali/ArDali-WebMedia/third_party/imgui/imgui.cpp.o"
 },
 {
-  "directory": "/home/muhammetdali/Aurivo-Medya-Player/build-visualizer-temp",
-  "command": "/usr/bin/c++ -DIMGUI_IMPL_OPENGL_LOADER_CUSTOM -I/home/muhammetdali/Aurivo-Medya-Player/third_party/imgui -I/home/muhammetdali/Aurivo-Medya-Player/third_party/imgui/backends -I/home/muhammetdali/Aurivo-Medya-Player/visualizer -isystem /usr/include/SDL2 -std=gnu++17 -o CMakeFiles/imgui.dir/home/muhammetdali/Aurivo-Medya-Player/third_party/imgui/imgui_draw.cpp.o -c /home/muhammetdali/Aurivo-Medya-Player/third_party/imgui/imgui_draw.cpp",
-  "file": "/home/muhammetdali/Aurivo-Medya-Player/third_party/imgui/imgui_draw.cpp",
-  "output": "CMakeFiles/imgui.dir/home/muhammetdali/Aurivo-Medya-Player/third_party/imgui/imgui_draw.cpp.o"
+  "directory": "/home/muhammetdali/ArDali-WebMedia/build-visualizer-temp",
+  "command": "/usr/bin/c++ -DIMGUI_IMPL_OPENGL_LOADER_CUSTOM -I/home/muhammetdali/ArDali-WebMedia/third_party/imgui -I/home/muhammetdali/ArDali-WebMedia/third_party/imgui/backends -I/home/muhammetdali/ArDali-WebMedia/visualizer -isystem /usr/include/SDL2 -std=gnu++17 -o CMakeFiles/imgui.dir/home/muhammetdali/ArDali-WebMedia/third_party/imgui/imgui_draw.cpp.o -c /home/muhammetdali/ArDali-WebMedia/third_party/imgui/imgui_draw.cpp",
+  "file": "/home/muhammetdali/ArDali-WebMedia/third_party/imgui/imgui_draw.cpp",
+  "output": "CMakeFiles/imgui.dir/home/muhammetdali/ArDali-WebMedia/third_party/imgui/imgui_draw.cpp.o"
 },
 {
-  "directory": "/home/muhammetdali/Aurivo-Medya-Player/build-visualizer-temp",
-  "command": "/usr/bin/c++ -DIMGUI_IMPL_OPENGL_LOADER_CUSTOM -I/home/muhammetdali/Aurivo-Medya-Player/third_party/imgui -I/home/muhammetdali/Aurivo-Medya-Player/third_party/imgui/backends -I/home/muhammetdali/Aurivo-Medya-Player/visualizer -isystem /usr/include/SDL2 -std=gnu++17 -o CMakeFiles/imgui.dir/home/muhammetdali/Aurivo-Medya-Player/third_party/imgui/imgui_tables.cpp.o -c /home/muhammetdali/Aurivo-Medya-Player/third_party/imgui/imgui_tables.cpp",
-  "file": "/home/muhammetdali/Aurivo-Medya-Player/third_party/imgui/imgui_tables.cpp",
-  "output": "CMakeFiles/imgui.dir/home/muhammetdali/Aurivo-Medya-Player/third_party/imgui/imgui_tables.cpp.o"
+  "directory": "/home/muhammetdali/ArDali-WebMedia/build-visualizer-temp",
+  "command": "/usr/bin/c++ -DIMGUI_IMPL_OPENGL_LOADER_CUSTOM -I/home/muhammetdali/ArDali-WebMedia/third_party/imgui -I/home/muhammetdali/ArDali-WebMedia/third_party/imgui/backends -I/home/muhammetdali/ArDali-WebMedia/visualizer -isystem /usr/include/SDL2 -std=gnu++17 -o CMakeFiles/imgui.dir/home/muhammetdali/ArDali-WebMedia/third_party/imgui/imgui_tables.cpp.o -c /home/muhammetdali/ArDali-WebMedia/third_party/imgui/imgui_tables.cpp",
+  "file": "/home/muhammetdali/ArDali-WebMedia/third_party/imgui/imgui_tables.cpp",
+  "output": "CMakeFiles/imgui.dir/home/muhammetdali/ArDali-WebMedia/third_party/imgui/imgui_tables.cpp.o"
 },
 {
-  "directory": "/home/muhammetdali/Aurivo-Medya-Player/build-visualizer-temp",
-  "command": "/usr/bin/c++ -DIMGUI_IMPL_OPENGL_LOADER_CUSTOM -I/home/muhammetdali/Aurivo-Medya-Player/third_party/imgui -I/home/muhammetdali/Aurivo-Medya-Player/third_party/imgui/backends -I/home/muhammetdali/Aurivo-Medya-Player/visualizer -isystem /usr/include/SDL2 -std=gnu++17 -o CMakeFiles/imgui.dir/home/muhammetdali/Aurivo-Medya-Player/third_party/imgui/imgui_widgets.cpp.o -c /home/muhammetdali/Aurivo-Medya-Player/third_party/imgui/imgui_widgets.cpp",
-  "file": "/home/muhammetdali/Aurivo-Medya-Player/third_party/imgui/imgui_widgets.cpp",
-  "output": "CMakeFiles/imgui.dir/home/muhammetdali/Aurivo-Medya-Player/third_party/imgui/imgui_widgets.cpp.o"
+  "directory": "/home/muhammetdali/ArDali-WebMedia/build-visualizer-temp",
+  "command": "/usr/bin/c++ -DIMGUI_IMPL_OPENGL_LOADER_CUSTOM -I/home/muhammetdali/ArDali-WebMedia/third_party/imgui -I/home/muhammetdali/ArDali-WebMedia/third_party/imgui/backends -I/home/muhammetdali/ArDali-WebMedia/visualizer -isystem /usr/include/SDL2 -std=gnu++17 -o CMakeFiles/imgui.dir/home/muhammetdali/ArDali-WebMedia/third_party/imgui/imgui_widgets.cpp.o -c /home/muhammetdali/ArDali-WebMedia/third_party/imgui/imgui_widgets.cpp",
+  "file": "/home/muhammetdali/ArDali-WebMedia/third_party/imgui/imgui_widgets.cpp",
+  "output": "CMakeFiles/imgui.dir/home/muhammetdali/ArDali-WebMedia/third_party/imgui/imgui_widgets.cpp.o"
 },
 {
-  "directory": "/home/muhammetdali/Aurivo-Medya-Player/build-visualizer-temp",
-  "command": "/usr/bin/c++ -DIMGUI_IMPL_OPENGL_LOADER_CUSTOM -I/home/muhammetdali/Aurivo-Medya-Player/third_party/imgui -I/home/muhammetdali/Aurivo-Medya-Player/third_party/imgui/backends -I/home/muhammetdali/Aurivo-Medya-Player/visualizer -isystem /usr/include/SDL2 -std=gnu++17 -o CMakeFiles/imgui.dir/home/muhammetdali/Aurivo-Medya-Player/third_party/imgui/backends/imgui_impl_sdl2.cpp.o -c /home/muhammetdali/Aurivo-Medya-Player/third_party/imgui/backends/imgui_impl_sdl2.cpp",
-  "file": "/home/muhammetdali/Aurivo-Medya-Player/third_party/imgui/backends/imgui_impl_sdl2.cpp",
-  "output": "CMakeFiles/imgui.dir/home/muhammetdali/Aurivo-Medya-Player/third_party/imgui/backends/imgui_impl_sdl2.cpp.o"
+  "directory": "/home/muhammetdali/ArDali-WebMedia/build-visualizer-temp",
+  "command": "/usr/bin/c++ -DIMGUI_IMPL_OPENGL_LOADER_CUSTOM -I/home/muhammetdali/ArDali-WebMedia/third_party/imgui -I/home/muhammetdali/ArDali-WebMedia/third_party/imgui/backends -I/home/muhammetdali/ArDali-WebMedia/visualizer -isystem /usr/include/SDL2 -std=gnu++17 -o CMakeFiles/imgui.dir/home/muhammetdali/ArDali-WebMedia/third_party/imgui/backends/imgui_impl_sdl2.cpp.o -c /home/muhammetdali/ArDali-WebMedia/third_party/imgui/backends/imgui_impl_sdl2.cpp",
+  "file": "/home/muhammetdali/ArDali-WebMedia/third_party/imgui/backends/imgui_impl_sdl2.cpp",
+  "output": "CMakeFiles/imgui.dir/home/muhammetdali/ArDali-WebMedia/third_party/imgui/backends/imgui_impl_sdl2.cpp.o"
 },
 {
-  "directory": "/home/muhammetdali/Aurivo-Medya-Player/build-visualizer-temp",
-  "command": "/usr/bin/c++ -DIMGUI_IMPL_OPENGL_LOADER_CUSTOM -I/home/muhammetdali/Aurivo-Medya-Player/third_party/imgui -I/home/muhammetdali/Aurivo-Medya-Player/third_party/imgui/backends -I/home/muhammetdali/Aurivo-Medya-Player/visualizer -isystem /usr/include/SDL2 -std=gnu++17 -o CMakeFiles/imgui.dir/home/muhammetdali/Aurivo-Medya-Player/third_party/imgui/backends/imgui_impl_opengl3.cpp.o -c /home/muhammetdali/Aurivo-Medya-Player/third_party/imgui/backends/imgui_impl_opengl3.cpp",
-  "file": "/home/muhammetdali/Aurivo-Medya-Player/third_party/imgui/backends/imgui_impl_opengl3.cpp",
-  "output": "CMakeFiles/imgui.dir/home/muhammetdali/Aurivo-Medya-Player/third_party/imgui/backends/imgui_impl_opengl3.cpp.o"
+  "directory": "/home/muhammetdali/ArDali-WebMedia/build-visualizer-temp",
+  "command": "/usr/bin/c++ -DIMGUI_IMPL_OPENGL_LOADER_CUSTOM -I/home/muhammetdali/ArDali-WebMedia/third_party/imgui -I/home/muhammetdali/ArDali-WebMedia/third_party/imgui/backends -I/home/muhammetdali/ArDali-WebMedia/visualizer -isystem /usr/include/SDL2 -std=gnu++17 -o CMakeFiles/imgui.dir/home/muhammetdali/ArDali-WebMedia/third_party/imgui/backends/imgui_impl_opengl3.cpp.o -c /home/muhammetdali/ArDali-WebMedia/third_party/imgui/backends/imgui_impl_opengl3.cpp",
+  "file": "/home/muhammetdali/ArDali-WebMedia/third_party/imgui/backends/imgui_impl_opengl3.cpp",
+  "output": "CMakeFiles/imgui.dir/home/muhammetdali/ArDali-WebMedia/third_party/imgui/backends/imgui_impl_opengl3.cpp.o"
 },
 {
-  "directory": "/home/muhammetdali/Aurivo-Medya-Player/build-visualizer-temp",
-  "command": "/usr/bin/c++  -I/home/muhammetdali/Aurivo-Medya-Player/third_party/imgui -I/home/muhammetdali/Aurivo-Medya-Player/third_party/imgui/backends -I/home/muhammetdali/Aurivo-Medya-Player/visualizer -isystem /usr/include/SDL2 -std=gnu++17 -o CMakeFiles/aurivo-projectm-visualizer.dir/main_imgui.cpp.o -c /home/muhammetdali/Aurivo-Medya-Player/visualizer/main_imgui.cpp",
-  "file": "/home/muhammetdali/Aurivo-Medya-Player/visualizer/main_imgui.cpp",
-  "output": "CMakeFiles/aurivo-projectm-visualizer.dir/main_imgui.cpp.o"
+  "directory": "/home/muhammetdali/ArDali-WebMedia/build-visualizer-temp",
+  "command": "/usr/bin/c++  -I/home/muhammetdali/ArDali-WebMedia/third_party/imgui -I/home/muhammetdali/ArDali-WebMedia/third_party/imgui/backends -I/home/muhammetdali/ArDali-WebMedia/visualizer -isystem /usr/include/SDL2 -std=gnu++17 -o CMakeFiles/ardali-projectm-visualizer.dir/main_imgui.cpp.o -c /home/muhammetdali/ArDali-WebMedia/visualizer/main_imgui.cpp",
+  "file": "/home/muhammetdali/ArDali-WebMedia/visualizer/main_imgui.cpp",
+  "output": "CMakeFiles/ardali-projectm-visualizer.dir/main_imgui.cpp.o"
 },
 {
-  "directory": "/home/muhammetdali/Aurivo-Medya-Player/build-visualizer-temp",
-  "command": "/usr/bin/c++  -I/home/muhammetdali/Aurivo-Medya-Player/third_party/imgui -I/home/muhammetdali/Aurivo-Medya-Player/third_party/imgui/backends -I/home/muhammetdali/Aurivo-Medya-Player/visualizer -isystem /usr/include/SDL2 -std=gnu++17 -o CMakeFiles/aurivo-projectm-visualizer.dir/gl_loader.cpp.o -c /home/muhammetdali/Aurivo-Medya-Player/visualizer/gl_loader.cpp",
-  "file": "/home/muhammetdali/Aurivo-Medya-Player/visualizer/gl_loader.cpp",
-  "output": "CMakeFiles/aurivo-projectm-visualizer.dir/gl_loader.cpp.o"
+  "directory": "/home/muhammetdali/ArDali-WebMedia/build-visualizer-temp",
+  "command": "/usr/bin/c++  -I/home/muhammetdali/ArDali-WebMedia/third_party/imgui -I/home/muhammetdali/ArDali-WebMedia/third_party/imgui/backends -I/home/muhammetdali/ArDali-WebMedia/visualizer -isystem /usr/include/SDL2 -std=gnu++17 -o CMakeFiles/ardali-projectm-visualizer.dir/gl_loader.cpp.o -c /home/muhammetdali/ArDali-WebMedia/visualizer/gl_loader.cpp",
+  "file": "/home/muhammetdali/ArDali-WebMedia/visualizer/gl_loader.cpp",
+  "output": "CMakeFiles/ardali-projectm-visualizer.dir/gl_loader.cpp.o"
 }
 ]

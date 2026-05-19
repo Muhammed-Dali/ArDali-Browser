@@ -69,7 +69,7 @@ function normalizeMode(mode) {
 
 function sanitizeDnrRules(rules) {
     if (!Array.isArray(rules)) return [];
-    if (rules.__aurivoDnrSanitized === true) return rules;
+    if (rules.__ardaliDnrSanitized === true) return rules;
     const out = rules
         .filter((rule) => rule && typeof rule === 'object' && rule.action && rule.condition)
         .map((rule, index) => ({
@@ -80,7 +80,7 @@ function sanitizeDnrRules(rules) {
             ruleset: String(rule.ruleset || rule.rulesetId || '').trim()
         }));
     try {
-        Object.defineProperty(out, '__aurivoDnrSanitized', {
+        Object.defineProperty(out, '__ardaliDnrSanitized', {
             value: true,
             enumerable: false
         });

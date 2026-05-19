@@ -224,8 +224,8 @@
     async function saveAndApply() {
         readUi();
         settings.adblock = { ...adblock };
-        await window.aurivo?.adblock?.setConfig?.(bridgeConfig());
-        await window.aurivo?.saveSettings?.(settings);
+        await window.ardali?.adblock?.setConfig?.(bridgeConfig());
+        await window.ardali?.saveSettings?.(settings);
         updateModeUi();
         if (!adblock.developerMode && document.body.dataset.activePane === 'develop') setActiveTab('settings');
         await refreshStats();
@@ -360,7 +360,7 @@
         if (!elements.developView || developSourcesLoaded) return;
         developSourcesLoaded = true;
         try {
-            const result = await window.aurivo?.adblock?.listDevelopSources?.();
+            const result = await window.ardali?.adblock?.listDevelopSources?.();
             const sources = Array.isArray(result?.sources) ? result.sources : [];
             if (!sources.length) return;
 
@@ -399,7 +399,7 @@
             return;
         }
         try {
-            const result = await window.aurivo?.adblock?.readDevelopSource?.(view);
+            const result = await window.ardali?.adblock?.readDevelopSource?.(view);
             if (result?.ok) {
                 setDevelopEditorText(result.text, !!result.editable);
                 return;
@@ -510,7 +510,7 @@
     }
 
     async function refreshStats() {
-        const stats = await window.aurivo?.adblock?.getStats?.();
+        const stats = await window.ardali?.adblock?.getStats?.();
         lastStats = stats || null;
         setNumber(elements.blocked, stats?.blocked);
         setNumber(elements.total, stats?.totalBlocked ?? stats?.blocked);
@@ -528,7 +528,7 @@
     }
 
     async function resetStats() {
-        await window.aurivo?.adblock?.resetStats?.();
+        await window.ardali?.adblock?.resetStats?.();
         await refreshStats();
     }
 
@@ -567,12 +567,12 @@
         if (window.i18n && typeof window.i18n.init === 'function') {
             await window.i18n.init();
         }
-        settings = await window.aurivo?.loadSettings?.() || {};
+        settings = await window.ardali?.loadSettings?.() || {};
         adblock = ensureAdblock(settings.adblock);
         window.i18n?.translatePage?.();
         updateModeUi();
         setActiveTab('settings');
-        await window.aurivo?.adblock?.setConfig?.(bridgeConfig());
+        await window.ardali?.adblock?.setConfig?.(bridgeConfig());
         await refreshStats();
     }
 
@@ -619,7 +619,7 @@
         if (elements.developLines) elements.developLines.scrollTop = elements.developEditor.scrollTop;
     });
 
-    window.aurivo?.onSettingsReload?.((nextSettings) => {
+    window.ardali?.onSettingsReload?.((nextSettings) => {
         if (!nextSettings || typeof nextSettings !== 'object') return;
         settings = nextSettings;
         adblock = ensureAdblock(settings.adblock);

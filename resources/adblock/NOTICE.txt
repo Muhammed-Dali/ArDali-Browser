@@ -1,4 +1,4 @@
-Aurivo DeliBlock includes bundled prebuilt DeliBlock ruleset JSON and scripting
+ArDali DeliBlock includes bundled prebuilt DeliBlock ruleset JSON and scripting
 assets for local request filtering, cosmetic filtering, scriptlet execution, and
 developer inspection.
 

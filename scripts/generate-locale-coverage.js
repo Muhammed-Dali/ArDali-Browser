@@ -115,7 +115,7 @@ function generate() {
 
 Updated: ${today}
 
-This report summarizes the active UI locale coverage for the main \`Aurivo Medya Player\` application.
+This report summarizes the active UI locale coverage for the main \`ArDali Medya Player\` application.
 
 ## Active i18n stack
 

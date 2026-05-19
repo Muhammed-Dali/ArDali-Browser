@@ -28,7 +28,7 @@ Options:
   -h, --help              Show help
 
 Notes:
-  - This builds ONLY the visualizer (aurivo-projectm-visualizer.exe).
+  - This builds ONLY the visualizer (ardali-projectm-visualizer.exe).
   - For a real Windows installer, still use GitHub Actions windows-latest (MSYS2).
 EOF
 }
@@ -124,23 +124,23 @@ fi
 echo "[mingw] building..."
 cmake --build "${BUILD_DIR}" --config "${BUILD_TYPE}"
 
-EXE_SRC="${BUILD_DIR}/aurivo-projectm-visualizer.exe"
+EXE_SRC="${BUILD_DIR}/ardali-projectm-visualizer.exe"
 if [[ ! -f "${EXE_SRC}" ]]; then
   echo "Build output not found: ${EXE_SRC}" >&2
   echo "Tip: check CMake output above; missing SDL2/projectM deps are common." >&2
   exit 1
 fi
 
-EXE_DST="${NATIVE_DIST_DIR}/aurivo-projectm-visualizer.exe"
+EXE_DST="${NATIVE_DIST_DIR}/ardali-projectm-visualizer.exe"
 cp -f -- "${EXE_SRC}" "${EXE_DST}"
 echo "[mingw] copied: ${EXE_DST}"
 
 if [[ "${SKIP_RESOURCES}" != "1" ]]; then
   echo "[mingw] bundling runtime DLLs into native-dist/windows..."
   if [[ -d "${DLL_DIR}" ]]; then
-    AURIVO_VISUALIZER_DLL_DIR="${DLL_DIR}" node "${ROOT_DIR}/scripts/prepare-win-resources.js" || true
+    ARDALI_VISUALIZER_DLL_DIR="${DLL_DIR}" node "${ROOT_DIR}/scripts/prepare-win-resources.js" || true
   else
-    echo "[mingw] WARN: DLL dir not found; set AURIVO_VISUALIZER_DLL_DIR manually to bundle runtime DLLs." >&2
+    echo "[mingw] WARN: DLL dir not found; set ARDALI_VISUALIZER_DLL_DIR manually to bundle runtime DLLs." >&2
   fi
 fi
 

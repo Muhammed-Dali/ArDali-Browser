@@ -1,5 +1,5 @@
-/* Fast Hartley Transform for Aurivo Media Player
- * Based on Aurivo's FHT implementation
+/* Fast Hartley Transform for ArDali
+ * Based on ArDali's FHT implementation
  * Original Author: Melchior FRANZ <mfranz@kde.org> 2004
  */
 

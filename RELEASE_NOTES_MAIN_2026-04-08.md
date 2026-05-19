@@ -14,5 +14,5 @@
 
 ## Package versions
 
-- npm package: `aurivo-dali-lang@0.1.4` published.
+- npm package: `ardali-dali-lang@0.1.4` published.
 - VS Code extension package version bumped to `0.1.5` (tag `dali-vscode-v0.1.5`).

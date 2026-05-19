@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-APP_ID="aurivo-media-player"
+APP_ID="ardali-media-player"
 
 DESKTOP_DIR="$HOME/.local/share/applications"
 ICON_DIR_512="$HOME/.local/share/icons/hicolor/512x512/apps"
@@ -11,7 +11,7 @@ ICON_DIR_256="$HOME/.local/share/icons/hicolor/256x256/apps"
 mkdir -p "$DESKTOP_DIR" "$ICON_DIR_512" "$ICON_DIR_256"
 
 # Ikonları üret (GNOME/Wayland/KDE dock & üst bar için)
-SRC_ICON="$ROOT_DIR/icons/aurivo_alt_boldA_transparent_1024.png"
+SRC_ICON="$ROOT_DIR/icons/ardali_alt_boldA_transparent_1024.png"
 
 if command -v magick >/dev/null 2>&1; then
   magick "$SRC_ICON" -resize 512x512 "$ICON_DIR_512/${APP_ID}.png"
@@ -29,9 +29,9 @@ fi
 cat > "$DESKTOP_DIR/${APP_ID}.desktop" <<EOF
 [Desktop Entry]
 Type=Application
-Name=Aurivo Media Player
-Comment=Aurivo Media Player (dev)
-Exec=${ROOT_DIR}/scripts/run-aurivo.sh %U
+Name=ArDali
+Comment=ArDali Media Player (dev)
+Exec=${ROOT_DIR}/scripts/run-ardali.sh %U
 Icon=${APP_ID}
 Terminal=false
 Categories=AudioVideo;Player;

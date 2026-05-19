@@ -27,21 +27,21 @@ Bu dosya, `icons/` icindeki varliklari 3 grupta takip etmek icin tutulur.
 - `tray-like.png`
 - `tray-show.png`
 - `tray-exit.png`
-- `aurivo_24.png`
-- `aurivo_256.png`
-- `aurivo.png`
+- `ardali_24.png`
+- `ardali_256.png`
+- `ardali.png`
 
 ## 2) Paketleme Icin Gerekenler (Build/Installer)
 
-- `aurivo.ico` (Electron builder app icon)
-- `aurivo_512.png` (Linux/Flatpak icon)
-- `aurivo_logo.bmp` (installer/resources gereksinimi)
-- `aurivo_alt_boldA_transparent_1024.png` (paketleme kopyalama adimi)
+- `ardali.ico` (Electron builder app icon)
+- `ardali_512.png` (Linux/Flatpak icon)
+- `ardali_logo.bmp` (installer/resources gereksinimi)
+- `ardali_alt_boldA_transparent_1024.png` (paketleme kopyalama adimi)
 
 ## 3) Dokunulmayacaklar (Ozel amacli)
 
-- `aurivo_alt_boldA_1024.png` (`scripts/generate-transparent-icon.sh` kaynak gorsel)
-- `aurivo_readme_round.png` (repo README gorseli)
+- `ardali_alt_boldA_1024.png` (`scripts/generate-transparent-icon.sh` kaynak gorsel)
+- `ardali_readme_round.png` (repo README gorseli)
 - `setup_final.iss` (Inno Setup script dosyasi, ikon degil)
 
 ## Guncelleme Kurali

@@ -3,6 +3,7 @@
 const { EventEmitter } = require('events');
 const path = require('path');
 const fs = require('fs');
+const { Worker } = require('worker_threads');
 const { PulseAudioCapture, listPulseDevices } = require('./audioCapture');
 const { SlidingPcmBuffer, createSignatureFromSamples } = require('./fingerprint');
 const { recognizeSignature } = require('./shazamClient');
@@ -12,13 +13,28 @@ const DEFAULT_PREFERENCES = Object.freeze({
     enable_mpris: false,
     enable_systray: false,
     no_duplicates: true,
-    request_interval_secs_v3: 4,
-    buffer_size_secs: 14,
+    web_metadata_fallback_enabled: true,
+    auto_stop_on_result: true,
+    auto_open_on_result: false,
+    remember_audio_device: true,
+    request_interval_secs_v3: 6,
+    buffer_size_secs: 12,
     current_device_name: '',
     open_platform: 'youtube',
     recognition_engine: 'songrec_only',
     acoustid_api_key: ''
 });
+const RECOGNITION_SNAPSHOT_SECONDS = 14;
+const FINGERPRINT_WORKER_TIMEOUT_MS = 12000;
+const WEB_CONTEXT_TTL_MS = 2 * 60 * 1000;
+const PULSE_DEBUG =
+    process.env.ARDALI_DEV === '1' ||
+    process.env.ARDALI_PULSE_DEBUG === '1';
+
+function pulseDebug(...args) {
+    if (!PULSE_DEBUG) return;
+    console.log('[PULSE]', ...args);
+}
 
 function sanitizePreferences(input = {}) {
     const raw = input && typeof input === 'object' ? input : {};
@@ -27,6 +43,10 @@ function sanitizePreferences(input = {}) {
         enable_mpris: typeof raw.enable_mpris === 'boolean' ? raw.enable_mpris : DEFAULT_PREFERENCES.enable_mpris,
         enable_systray: typeof raw.enable_systray === 'boolean' ? raw.enable_systray : DEFAULT_PREFERENCES.enable_systray,
         no_duplicates: typeof raw.no_duplicates === 'boolean' ? raw.no_duplicates : DEFAULT_PREFERENCES.no_duplicates,
+        web_metadata_fallback_enabled: typeof raw.web_metadata_fallback_enabled === 'boolean' ? raw.web_metadata_fallback_enabled : DEFAULT_PREFERENCES.web_metadata_fallback_enabled,
+        auto_stop_on_result: typeof raw.auto_stop_on_result === 'boolean' ? raw.auto_stop_on_result : DEFAULT_PREFERENCES.auto_stop_on_result,
+        auto_open_on_result: typeof raw.auto_open_on_result === 'boolean' ? raw.auto_open_on_result : DEFAULT_PREFERENCES.auto_open_on_result,
+        remember_audio_device: typeof raw.remember_audio_device === 'boolean' ? raw.remember_audio_device : DEFAULT_PREFERENCES.remember_audio_device,
         request_interval_secs_v3: Math.max(1, Math.min(120, Number(raw.request_interval_secs_v3) || DEFAULT_PREFERENCES.request_interval_secs_v3)),
         buffer_size_secs: Math.max(4, Math.min(30, Number(raw.buffer_size_secs) || DEFAULT_PREFERENCES.buffer_size_secs)),
         current_device_name: typeof raw.current_device_name === 'string' ? raw.current_device_name : DEFAULT_PREFERENCES.current_device_name,
@@ -69,11 +89,15 @@ class PulseService extends EventEmitter {
         this.consecutiveNoSignal = 0;
         this.consecutiveNoMatch = 0;
         this.autoSwitchOutputMonitor = true;
+        this.fingerprintWorker = null;
+        this.fingerprintWorkerJobs = new Map();
+        this.fingerprintJobSeq = 0;
+        this.contextMetadata = null;
     }
 
     get preferencesPath() {
         const base = this.app?.getPath ? this.app.getPath('userData') : process.cwd();
-        return path.join(base, 'aurivo-pulse-preferences.json');
+        return path.join(base, 'ardali-pulse-preferences.json');
     }
 
     loadPreferences() {
@@ -82,6 +106,17 @@ class PulseService extends EventEmitter {
             this.preferences = sanitizePreferences(parsed);
         } catch {
             this.preferences = sanitizePreferences();
+        }
+        // Older defaults were aggressive enough to cause audible webview stutter on some systems.
+        const hasLegacyDefault =
+            (Number(this.preferences.request_interval_secs_v3) === 4 && Number(this.preferences.buffer_size_secs) === 14) ||
+            (Number(this.preferences.request_interval_secs_v3) === 8 && Number(this.preferences.buffer_size_secs) === 10);
+        if (hasLegacyDefault) {
+            this.preferences = sanitizePreferences({
+                ...this.preferences,
+                request_interval_secs_v3: DEFAULT_PREFERENCES.request_interval_secs_v3,
+                buffer_size_secs: DEFAULT_PREFERENCES.buffer_size_secs
+            });
         }
         this.buffer = new SlidingPcmBuffer({ seconds: this.preferences.buffer_size_secs });
         return this.preferences;
@@ -155,6 +190,56 @@ class PulseService extends EventEmitter {
         return true;
     }
 
+    getFingerprintWorker() {
+        if (this.fingerprintWorker) return this.fingerprintWorker;
+        const workerPath = path.join(__dirname, 'fingerprintWorker.js');
+        const worker = new Worker(workerPath);
+        worker.on('message', (message = {}) => {
+            const id = message.id;
+            const job = this.fingerprintWorkerJobs.get(id);
+            if (!job) return;
+            clearTimeout(job.timer);
+            this.fingerprintWorkerJobs.delete(id);
+            job.resolve(message.result || { success: false, error: 'fingerprint-worker-empty-result' });
+        });
+        worker.on('error', (error) => {
+            for (const [id, job] of this.fingerprintWorkerJobs.entries()) {
+                clearTimeout(job.timer);
+                job.reject(error);
+                this.fingerprintWorkerJobs.delete(id);
+            }
+            this.fingerprintWorker = null;
+        });
+        worker.on('exit', () => {
+            for (const [id, job] of this.fingerprintWorkerJobs.entries()) {
+                clearTimeout(job.timer);
+                job.reject(new Error('fingerprint-worker-exited'));
+                this.fingerprintWorkerJobs.delete(id);
+            }
+            this.fingerprintWorker = null;
+        });
+        this.fingerprintWorker = worker;
+        return worker;
+    }
+
+    createSignatureOffMainThread(samples) {
+        return new Promise((resolve, reject) => {
+            const id = ++this.fingerprintJobSeq;
+            const timer = setTimeout(() => {
+                this.fingerprintWorkerJobs.delete(id);
+                reject(new Error('fingerprint-worker-timeout'));
+            }, FINGERPRINT_WORKER_TIMEOUT_MS);
+            this.fingerprintWorkerJobs.set(id, { resolve, reject, timer });
+            try {
+                this.getFingerprintWorker().postMessage({ id, samples: samples.buffer }, [samples.buffer]);
+            } catch (error) {
+                clearTimeout(timer);
+                this.fingerprintWorkerJobs.delete(id);
+                reject(error);
+            }
+        });
+    }
+
     normalizeResultKeyPart(value) {
         return String(value || '')
             .normalize('NFKC')
@@ -191,6 +276,72 @@ class PulseService extends EventEmitter {
         this.recentResultKeys.clear();
     }
 
+    setContextMetadata(metadata = {}) {
+        const title = String(metadata?.title || metadata?.pendingTitle || '').trim();
+        const artist = String(metadata?.artist || '').trim();
+        const sourceUrl = String(metadata?.sourceUrl || '').trim();
+        const coverUrl = String(metadata?.coverUrl || metadata?.artwork || '').trim();
+        if (!title && !artist) {
+            this.contextMetadata = null;
+            return { success: true, cleared: true };
+        }
+        this.contextMetadata = {
+            title,
+            artist,
+            album: String(metadata?.album || '').trim(),
+            coverUrl,
+            sourceUrl,
+            platform: String(metadata?.platform || '').trim().toLowerCase(),
+            updatedAt: Date.now()
+        };
+        pulseDebug('context-metadata', {
+            title: this.contextMetadata.title,
+            artist: this.contextMetadata.artist,
+            platform: this.contextMetadata.platform,
+            hasSourceUrl: !!this.contextMetadata.sourceUrl
+        });
+        return { success: true, metadata: this.contextMetadata };
+    }
+
+    getFreshContextMetadata() {
+        if (!this.contextMetadata) return null;
+        if ((Date.now() - Number(this.contextMetadata.updatedAt || 0)) > WEB_CONTEXT_TTL_MS) return null;
+        const title = String(this.contextMetadata.title || '').trim();
+        if (!title || /^\d{1,2}:\d{2}(?::\d{2})?$/.test(title)) return null;
+        return this.contextMetadata;
+    }
+
+    emitContextFallback(reason = 'web-metadata-fallback') {
+        const metadata = this.getFreshContextMetadata();
+        if (!metadata) return false;
+        const result = {
+            title: metadata.title,
+            artist: metadata.artist || metadata.platform || 'Web',
+            album: metadata.album || '',
+            coverUrl: metadata.coverUrl || '',
+            trackKey: metadata.sourceUrl || `web:${metadata.artist || ''}:${metadata.title}`,
+            source: 'web-metadata',
+            confidence: 'metadata-fallback',
+            reason
+        };
+        const remembered = this.rememberResult(result);
+        if (this.preferences.no_duplicates && remembered.duplicate) {
+            this.emitUncertain('duplicate-result', { result }, 15000);
+            return true;
+        }
+        this.lastTrackKey = remembered.keys[0] || result.trackKey;
+        this.consecutiveNoMatch = 0;
+        this.status.warning = '';
+        this.emitState();
+        pulseDebug('context-fallback-result', {
+            title: result.title,
+            artist: result.artist,
+            reason
+        });
+        this.emit('result', result);
+        return true;
+    }
+
     startListening(options = {}) {
         if (this.capture?.running) {
             this.emitState();
@@ -200,11 +351,31 @@ class PulseService extends EventEmitter {
         const requestedDevice = String(options.audioDevice || '').trim();
         const preferredMonitor = this.getPreferredOutputMonitor();
         const audioDevice = requestedDevice || preferredMonitor.audioDevice || '';
+        const requestedInterval = Number(options.requestIntervalSecs);
+        const requestedBuffer = Number(options.bufferSizeSecs);
+        if (Number.isFinite(requestedInterval) || Number.isFinite(requestedBuffer)) {
+            this.preferences = sanitizePreferences({
+                ...this.preferences,
+                ...(Number.isFinite(requestedInterval) ? { request_interval_secs_v3: requestedInterval } : {}),
+                ...(Number.isFinite(requestedBuffer) ? { buffer_size_secs: requestedBuffer } : {})
+            });
+        }
         this.autoSwitchOutputMonitor = options.autoSwitchOutputMonitor !== false;
+        if (options.contextMetadata && typeof options.contextMetadata === 'object') {
+            this.setContextMetadata(options.contextMetadata);
+        }
         this.capture = new PulseAudioCapture();
         this.buffer = new SlidingPcmBuffer({ seconds: this.preferences.buffer_size_secs });
+        pulseDebug('startListening', {
+            requestedDevice,
+            audioDevice,
+            requestInterval: this.preferences.request_interval_secs_v3,
+            bufferSize: this.preferences.buffer_size_secs,
+            autoSwitchOutputMonitor: this.autoSwitchOutputMonitor
+        });
         const started = this.capture.start({ audioDevice });
         if (!started.success) {
+            pulseDebug('capture-start-failed', started.error || 'capture-start-failed');
             this.status = {
                 ...this.status,
                 running: false,
@@ -235,20 +406,35 @@ class PulseService extends EventEmitter {
         this.consecutiveNoMatch = 0;
         this.clearRecognizedHistory();
         this.lastUncertainAtByReason.clear();
-        this.savePreferences({ current_device_name: started.audioDevice });
+        if (this.preferences.remember_audio_device !== false) {
+            this.savePreferences({ current_device_name: started.audioDevice });
+        }
 
         this.attachCaptureListeners(this.capture);
 
         this.scheduleLoops();
         this.emitState();
+        pulseDebug('capture-started', {
+            audioDevice: started.audioDevice,
+            devices: Array.isArray(started.devices) ? started.devices.length : 0
+        });
         return { success: true, status: this.getStatus(), devices: started.devices || [] };
     }
 
     attachCaptureListeners(capture) {
+        let loggedFirstSamples = false;
         capture.on('samples', (chunk) => {
             this.buffer.pushF32Buffer(chunk);
             this.status.capturedBytes += chunk.length;
             this.updateBufferStatus();
+            if (!loggedFirstSamples) {
+                loggedFirstSamples = true;
+                pulseDebug('samples-flowing', {
+                    bytes: chunk.length,
+                    capturedBytes: this.status.capturedBytes,
+                    bufferFillPercent: this.status.bufferFillPercent
+                });
+            }
         });
         capture.on('warning', (message) => {
             this.status.warning = String(message || '').slice(0, 300);
@@ -273,7 +459,12 @@ class PulseService extends EventEmitter {
         clearInterval(this.recognitionTimer);
         clearInterval(this.volumeTimer);
         clearInterval(this.deviceTimer);
-        const requestMs = Math.max(1000, this.preferences.request_interval_secs_v3 * 1000);
+        const requestMs = Math.max(6000, this.preferences.request_interval_secs_v3 * 1000);
+        pulseDebug('scheduleLoops', {
+            requestMs,
+            volumeMs: 160,
+            deviceMs: 2500
+        });
         this.recognitionTimer = setInterval(() => {
             this.processCurrentBuffer().catch((error) => {
                 this.status.lastError = error?.message || String(error);
@@ -289,7 +480,7 @@ class PulseService extends EventEmitter {
                 percent: this.status.levelPercent,
                 bufferFillPercent: this.status.bufferFillPercent
             });
-        }, 80);
+        }, 160);
         this.volumeTimer.unref?.();
         this.deviceTimer = setInterval(() => {
             this.switchToCurrentDefaultMonitorIfNeeded();
@@ -314,7 +505,9 @@ class PulseService extends EventEmitter {
         this.capture = nextCapture;
         this.status.audioDevice = audioDevice;
         this.status.warning = '';
-        this.savePreferences({ current_device_name: audioDevice });
+        if (this.preferences.remember_audio_device !== false) {
+            this.savePreferences({ current_device_name: audioDevice });
+        }
         this.attachCaptureListeners(nextCapture);
 
         try {
@@ -345,6 +538,12 @@ class PulseService extends EventEmitter {
         );
         if (this.buffer.filled < minSamplesForRecognition) {
             this.updateBufferStatus();
+            pulseDebug('recognition-wait-buffer', {
+                filledSamples: this.buffer.filled,
+                requiredSamples: minSamplesForRecognition,
+                fillPercent: this.status.bufferFillPercent,
+                levelPercent: this.status.levelPercent
+            });
             this.emitUncertain('not-enough-audio', {
                 filledSamples: this.buffer.filled,
                 requiredSamples: minSamplesForRecognition,
@@ -360,6 +559,11 @@ class PulseService extends EventEmitter {
         }
         if (!this.buffer.hasSignal()) {
             this.consecutiveNoSignal += 1;
+            pulseDebug('recognition-no-signal', {
+                count: this.consecutiveNoSignal,
+                levelPercent: this.status.levelPercent,
+                fillPercent: this.status.bufferFillPercent
+            });
             this.status.warning = this.consecutiveNoSignal >= 3 ? 'no-signal' : '';
             this.emitUncertain('no-signal', { count: this.consecutiveNoSignal }, 9000);
             this.emitState();
@@ -369,7 +573,26 @@ class PulseService extends EventEmitter {
 
         this.processing = true;
         try {
-            const signature = createSignatureFromSamples(this.buffer.snapshot());
+            const samples = this.buffer.snapshot(this.buffer.sampleRate * RECOGNITION_SNAPSHOT_SECONDS);
+            let signature;
+            const startedAt = Date.now();
+            try {
+                signature = await this.createSignatureOffMainThread(samples);
+            } catch (error) {
+                pulseDebug('fingerprint-worker-fallback', error?.message || String(error));
+                signature = createSignatureFromSamples(this.buffer.snapshot(this.buffer.sampleRate * RECOGNITION_SNAPSHOT_SECONDS));
+                if (!signature.success) {
+                    signature.error = signature.error || error?.message || 'fingerprint-failed';
+                }
+            }
+            pulseDebug('fingerprint-result', {
+                success: !!signature.success,
+                error: signature.error || '',
+                pending: !!signature.pending,
+                totalPeaks: signature.totalPeaks || 0,
+                sampleMs: signature.sampleMs || 0,
+                elapsedMs: Date.now() - startedAt
+            });
             if (!signature.success) {
                 this.status.warning = signature.pending ? '' : (signature.error || 'fingerprint-pending');
                 this.emitUncertain(signature.error || 'fingerprint-pending', {
@@ -383,8 +606,15 @@ class PulseService extends EventEmitter {
             let recognized;
             try {
                 recognized = await recognizeSignature(signature.uri, { sampleMs: signature.sampleMs });
+                pulseDebug('shazam-result', {
+                    success: !!recognized?.success,
+                    error: recognized?.error || '',
+                    title: recognized?.result?.title || '',
+                    artist: recognized?.result?.artist || ''
+                });
             } catch (error) {
                 const message = String(error?.message || error || 'recognition-failed');
+                pulseDebug('shazam-error', message);
                 const lowered = message.toLowerCase();
                 if (lowered.includes('rate') || lowered.includes('429')) {
                     this.backoffUntil = Date.now() + 90000;
@@ -415,6 +645,18 @@ class PulseService extends EventEmitter {
             } else {
                 this.consecutiveNoMatch += 1;
                 const reason = recognized.error || 'no-match';
+                pulseDebug('recognition-no-match', {
+                    reason,
+                    count: this.consecutiveNoMatch
+                });
+                if (
+                    this.preferences.web_metadata_fallback_enabled &&
+                    reason === 'no-match' &&
+                    this.consecutiveNoMatch >= 2 &&
+                    this.emitContextFallback(reason)
+                ) {
+                    return { success: true, result: this.getFreshContextMetadata(), fallback: 'web-metadata' };
+                }
                 this.status.warning = this.consecutiveNoMatch >= 3 ? reason : '';
                 this.emitUncertain(reason, { count: this.consecutiveNoMatch }, 12000);
                 this.emitState();

@@ -38,12 +38,12 @@ jobs:
           pacman -Syu --noconfirm
           pacman -S --noconfirm --needed base-devel git curl pacman-contrib ffmpeg fuse2 github-cli
 
-      - name: Build aurivo-bin package
+      - name: Build ardali-bin package
         run: |
           set -euo pipefail
           useradd -m builder
           chown -R builder:builder "${GITHUB_WORKSPACE}"
-          su builder -c 'cd "${GITHUB_WORKSPACE}/packaging/aur/aurivo-bin" && makepkg -f --noconfirm'
+          su builder -c 'cd "${GITHUB_WORKSPACE}/packaging/aur/ardali-bin" && makepkg -f --noconfirm'
 
       - name: Generate pacman repo database
         run: |
@@ -51,11 +51,11 @@ jobs:
           out_dir="${GITHUB_WORKSPACE}/pacman-repo/x86_64"
           mkdir -p "${out_dir}"
 
-          pkg_path="$(find "${GITHUB_WORKSPACE}/packaging/aur/aurivo-bin" -maxdepth 1 -type f -name "aurivo-bin-*.pkg.tar.zst" | head -n1)"
+          pkg_path="$(find "${GITHUB_WORKSPACE}/packaging/aur/ardali-bin" -maxdepth 1 -type f -name "ardali-bin-*.pkg.tar.zst" | head -n1)"
           test -n "${pkg_path}"
           cp -f "${pkg_path}" "${out_dir}/"
 
-          repo-add "${out_dir}/aurivo.db.tar.gz" "${out_dir}"/*.pkg.tar.zst
+          repo-add "${out_dir}/ardali.db.tar.gz" "${out_dir}"/*.pkg.tar.zst
 
       - name: Publish as release assets
         env:
@@ -68,14 +68,14 @@ jobs:
 
           if ! gh release view pacman-repo >/dev/null 2>&1; then
             gh release create pacman-repo \
-              --title "Aurivo Pacman Repo" \
-              --notes "Pacman repository assets (aurivo.db + aurivo-bin package)."
+              --title "ArDali Pacman Repo" \
+              --notes "Pacman repository assets (ardali.db + ardali-bin package)."
           fi
 
           gh release upload pacman-repo \
-            "${out_dir}/aurivo.db.tar.gz" \
-            "${out_dir}/aurivo.db" \
-            "${out_dir}/aurivo.files.tar.gz" \
-            "${out_dir}/aurivo.files" \
-            "${out_dir}"/aurivo-bin-*.pkg.tar.zst \
+            "${out_dir}/ardali.db.tar.gz" \
+            "${out_dir}/ardali.db" \
+            "${out_dir}/ardali.files.tar.gz" \
+            "${out_dir}/ardali.files" \
+            "${out_dir}"/ardali-bin-*.pkg.tar.zst \
             --clobber

@@ -1,8 +1,8 @@
 {
-    "name": "aurivo-audio-native",
+    "name": "ardali-audio-native",
     "version": "1.0.0",
-    "description": "Aurivo Audio Engine - C++ Native Addon with BASS (Cross-Platform)",
-    "main": "build/Release/aurivo_audio.node",
+    "description": "ArDali Audio Engine - C++ Native Addon with BASS (Cross-Platform)",
+    "main": "build/Release/ardali_audio.node",
     "scripts": {
         "install": "node-gyp rebuild && npm run copy-libs",
         "build": "node-gyp rebuild && npm run copy-libs",

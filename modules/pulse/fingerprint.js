@@ -27,10 +27,11 @@ class SlidingPcmBuffer {
         }
     }
 
-    snapshot() {
-        const out = new Float32Array(this.filled);
-        const start = (this.writeIndex - this.filled + this.capacity) % this.capacity;
-        for (let i = 0; i < this.filled; i += 1) {
+    snapshot(maxSamples = 0) {
+        const wanted = Math.max(0, Math.min(this.filled, Number(maxSamples) || this.filled));
+        const out = new Float32Array(wanted);
+        const start = (this.writeIndex - wanted + this.capacity) % this.capacity;
+        for (let i = 0; i < wanted; i += 1) {
             out[i] = this.samples[(start + i) % this.capacity];
         }
         return out;

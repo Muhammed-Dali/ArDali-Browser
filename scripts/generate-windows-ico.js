@@ -26,12 +26,12 @@ function resizePng(bin, src, size, dest) {
 
 async function main() {
   const rootDir = path.join(__dirname, '..');
-  const src = path.join(rootDir, 'icons', 'aurivo_512.png');
-  const dest = path.join(rootDir, 'icons', 'aurivo.ico');
+  const src = path.join(rootDir, 'icons', 'ardali_512.png');
+  const dest = path.join(rootDir, 'icons', 'ardali.ico');
 
   const bin = findImageMagickBinary();
   if (bin) {
-    const tmpDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'aurivo-ico-'));
+    const tmpDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'ardali-ico-'));
     try {
       const sizes = [256, 128, 64, 48, 32, 24, 16];
       const images = [];

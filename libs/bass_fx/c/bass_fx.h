@@ -1,6 +1,6 @@
 /*
     BASS_FX 2.4 - C Header file
-    Minimal header for Aurivo Media Player
+    Minimal header for ArDali Media Player
 */
 
 #ifndef BASS_FX_H
@@ -39,7 +39,7 @@ HSTREAM BASS_FX_ReverseCreate(HSTREAM chan, float dec_block, DWORD flags);
 BOOL BASS_FX_ReverseGetSource(HSTREAM chan);
 
 // ============================================
-// BFX (DSP) effect types (needed by Aurivo)
+// BFX (DSP) effect types (needed by ArDali)
 // ============================================
 #define BASS_FX_BFX_ROTATE        0x10000
 #define BASS_FX_BFX_ECHO          0x10001

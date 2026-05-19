@@ -1,4 +1,4 @@
-(function attachAurivoSecuritySettings() {
+(function attachArDaliSecuritySettings() {
     function isVisible({ settingsPage }) {
         const securitySettings = document.getElementById('securitySettings');
         return Boolean(
@@ -60,7 +60,7 @@
         }
     }
 
-    window.AurivoSecuritySettings = {
+    window.ArDaliSecuritySettings = {
         isVisible,
         updateUI
     };

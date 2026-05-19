@@ -1,5 +1,5 @@
 /**
- * Aurivo Medya Player - Ses Efektleri Renderer
+ * ArDali - Ses Efektleri Renderer
  * Profesyonel DSP & EQ Arayüzü
  */
 
@@ -350,16 +350,16 @@ function shouldUseLowPowerSfxProfile(appSettings, hardwareHints) {
 
 async function applySfxRuntimePerformanceProfile(appSettings = null) {
     let settings = appSettings;
-    if (!settings && window.aurivo?.loadSettings) {
+    if (!settings && window.ardali?.loadSettings) {
         try {
-            settings = await window.aurivo.loadSettings();
+            settings = await window.ardali.loadSettings();
         } catch {
             settings = null;
         }
     }
     let hardwareHints = null;
     try {
-        hardwareHints = await window.aurivo?.system?.getHardwareHints?.();
+        hardwareHints = await window.ardali?.system?.getHardwareHints?.();
     } catch {
         hardwareHints = null;
     }
@@ -378,7 +378,7 @@ async function applySfxRuntimePerformanceProfile(appSettings = null) {
 }
 
 function getScopedSettingsStorageKey(effectName) {
-    return `aurivo_sfx_${SFX_SCOPE}_${effectName}`;
+    return `ardali_sfx_${SFX_SCOPE}_${effectName}`;
 }
 
 function getScopedWindowTitle(baseTitle) {
@@ -386,11 +386,11 @@ function getScopedWindowTitle(baseTitle) {
     return `${baseTitle} • ${scopeLabel}`;
 }
 
-const EMBED_VIDEO_SFX_SETTINGS_KEY = 'aurivo_video_sfx_settings_v1';
+const EMBED_VIDEO_SFX_SETTINGS_KEY = 'ardali_video_sfx_settings_v1';
 let SFX_RUNTIME_ANIMS_ACTIVE = true;
 let SFX_APPLIED_LANG = '';
 const appearanceSyncChannel = typeof BroadcastChannel === 'function'
-    ? new BroadcastChannel('aurivo-ui-appearance-sync')
+    ? new BroadcastChannel('ardali-ui-appearance-sync')
     : null;
 
 function normalizeSfxLightsEnabled(value) {
@@ -405,7 +405,7 @@ function normalizeSfxIconSize(value) {
 
 function getSfxLightsFromShadowStorage() {
     try {
-        const raw = localStorage.getItem('aurivo_ui_sfx_lights_enabled');
+        const raw = localStorage.getItem('ardali_ui_sfx_lights_enabled');
         if (raw === '0') return false;
         if (raw === '1') return true;
     } catch {
@@ -416,7 +416,7 @@ function getSfxLightsFromShadowStorage() {
 
 function getSfxIconSizeFromShadowStorage() {
     try {
-        const raw = localStorage.getItem('aurivo_ui_sfx_icon_size');
+        const raw = localStorage.getItem('ardali_ui_sfx_icon_size');
         if (!raw) return null;
         return normalizeSfxIconSize(raw);
     } catch {
@@ -433,7 +433,7 @@ function setSfxLightsHeaderToggle(enabled) {
 
 function syncSfxLightsShadowStorage(enabled) {
     try {
-        localStorage.setItem('aurivo_ui_sfx_lights_enabled', enabled ? '1' : '0');
+        localStorage.setItem('ardali_ui_sfx_lights_enabled', enabled ? '1' : '0');
     } catch {
         // ignore
     }
@@ -585,8 +585,8 @@ function scheduleSfxLightsActivationRefresh() {
 async function syncSfxPerformanceProfileForLights(enabled) {
     try {
         let nextSettings = null;
-        if (window.aurivo?.loadSettings) {
-            const loaded = await window.aurivo.loadSettings();
+        if (window.ardali?.loadSettings) {
+            const loaded = await window.ardali.loadSettings();
             nextSettings = (loaded && typeof loaded === 'object')
                 ? JSON.parse(JSON.stringify(loaded))
                 : {};
@@ -661,9 +661,9 @@ function applySfxLightsRuntimeState(enabled) {
 }
 
 async function persistSfxLightsToAppSettings(enabled) {
-    if (!window.aurivo?.loadSettings || !window.aurivo?.saveSettings) return false;
+    if (!window.ardali?.loadSettings || !window.ardali?.saveSettings) return false;
     try {
-        const current = await window.aurivo.loadSettings();
+        const current = await window.ardali.loadSettings();
         const next = (current && typeof current === 'object')
             ? JSON.parse(JSON.stringify(current))
             : {};
@@ -672,7 +672,7 @@ async function persistSfxLightsToAppSettings(enabled) {
         next.appearance.sfxLights = !!enabled;
         // Legacy/back-compat key
         next.ui.sfxLightsEnabled = !!enabled;
-        await window.aurivo.saveSettings(next);
+        await window.ardali.saveSettings(next);
         return true;
     } catch {
         return false;
@@ -686,7 +686,7 @@ async function applySfxLightsFromAppSettings() {
             applySfxLightsRuntimeState(shadow);
             return;
         }
-        if (!window.aurivo?.loadSettings) {
+        if (!window.ardali?.loadSettings) {
             // Embedded mode fallback: check BroadcastChannel state from other windows
             // Try injecting a state request and wait briefly for response
             if (SFX_EMBEDDED_MODE && appearanceSyncChannel) {
@@ -701,7 +701,7 @@ async function applySfxLightsFromAppSettings() {
             applySfxLightsRuntimeState(true);
             return;
         }
-        const appSettings = await window.aurivo.loadSettings();
+        const appSettings = await window.ardali.loadSettings();
         const enabled = normalizeSfxLightsEnabled(
             appSettings?.appearance?.sfxLights ?? appSettings?.ui?.sfxLightsEnabled
         );
@@ -718,11 +718,11 @@ async function applySfxIconSizeFromAppSettings() {
             document.documentElement.dataset.sfxIconSize = shadow;
             return;
         }
-        if (!window.aurivo?.loadSettings) {
+        if (!window.ardali?.loadSettings) {
             document.documentElement.dataset.sfxIconSize = 'medium';
             return;
         }
-        const appSettings = await window.aurivo.loadSettings();
+        const appSettings = await window.ardali.loadSettings();
         const size = normalizeSfxIconSize(appSettings?.appearance?.sfxSidebarIconSize);
         document.documentElement.dataset.sfxIconSize = size;
     } catch {
@@ -854,11 +854,11 @@ function installEmbeddedVideoBridge() {
     });
 
     try {
-        if (!window.aurivo) window.aurivo = {};
-        window.aurivo.loadSettings = safeLoad;
-        window.aurivo.saveSettings = safeSave;
-        window.aurivo.audio = bridgeAudio;
-        window.aurivo.ipcAudio = makeNoopProxy(['ipcAudio']);
+        if (!window.ardali) window.ardali = {};
+        window.ardali.loadSettings = safeLoad;
+        window.ardali.saveSettings = safeSave;
+        window.ardali.audio = bridgeAudio;
+        window.ardali.ipcAudio = makeNoopProxy(['ipcAudio']);
     } catch {
         // ignore
     }
@@ -1172,7 +1172,7 @@ function updateEq32UIFromSettings(settings) {
         }
     }
 
-    // Aurivo modül knobları
+    // ArDali modül knobları
     const bass = Number(settings?.bass);
     const mid = Number(settings?.mid);
     const treble = Number(settings?.treble);
@@ -1231,7 +1231,7 @@ function applyAcousticSpacePreset(space, { persist = true } = {}) {
 }
 
 function schedulePersistEq32ToAppSettings(eq32Settings) {
-    if (!window.aurivo?.loadSettings || !window.aurivo?.saveSettings) return;
+    if (!window.ardali?.loadSettings || !window.ardali?.saveSettings) return;
 
     // Sürekli slider hareketinde dosya yazımını boğmamak için debounce
     if (SFX.eq32PersistTimer) clearTimeout(SFX.eq32PersistTimer);
@@ -1591,10 +1591,10 @@ function sanitizeScopedEffectForApp(effectName, settings) {
 }
 
 async function persistScopedEffectToAppSettings(effectName, effectSettings) {
-    if (!window.aurivo?.loadSettings || !window.aurivo?.saveSettings) return false;
+    if (!window.ardali?.loadSettings || !window.ardali?.saveSettings) return false;
     const safeEffectName = String(effectName || '').trim().toLowerCase();
     if (!safeEffectName) return false;
-    const current = await window.aurivo.loadSettings();
+    const current = await window.ardali.loadSettings();
     const sanitizedNext = sanitizeScopedEffectForApp(safeEffectName, effectSettings);
     const scopedCurrent = sanitizeScopedEffectForApp(
         safeEffectName,
@@ -1617,11 +1617,11 @@ async function persistScopedEffectToAppSettings(effectName, effectSettings) {
         next.sfx = { ...(current?.sfx || {}) };
         next.sfx[safeEffectName] = { ...sanitizedNext };
     }
-    return !!(await window.aurivo.saveSettings(next));
+    return !!(await window.ardali.saveSettings(next));
 }
 
 async function flushScopedPersistQueue(reason = 'idle') {
-    if (!window.aurivo?.loadSettings || !window.aurivo?.saveSettings) return;
+    if (!window.ardali?.loadSettings || !window.ardali?.saveSettings) return;
     const entries = Object.entries(SFX.scopedPersistQueue || {});
     if (!entries.length) return;
     SFX.scopedPersistQueue = {};
@@ -1636,7 +1636,7 @@ async function flushScopedPersistQueue(reason = 'idle') {
 }
 
 function schedulePersistScopedEffectToAppSettings(effectName, settings, delayMs = 120) {
-    if (!window.aurivo?.loadSettings || !window.aurivo?.saveSettings) return;
+    if (!window.ardali?.loadSettings || !window.ardali?.saveSettings) return;
     const key = String(effectName || '').trim().toLowerCase();
     if (!key) return;
     if (SFX_IS_SCOPED_DALI) {
@@ -1674,7 +1674,7 @@ function emitScopedLiveEffectToMain(effectName, effectSettings = null) {
     dispatchRealtimeParam(
         'scopedlive',
         effect,
-        () => window.aurivo?.soundEffects?.emitScopedLiveParam?.({
+        () => window.ardali?.soundEffects?.emitScopedLiveParam?.({
             scope: SFX_SCOPE,
             effect,
             settings: sanitized
@@ -1691,7 +1691,7 @@ document.addEventListener('DOMContentLoaded', () => {
         try {
             document.documentElement.setAttribute('data-sfx-scope', SFX_SCOPE);
             // Uyarı: Native audio engine mevcut değilse ses efektleri çalışmayacak
-            const isNativeAudioAvailable = window.aurivo?.audio?.isNativeAvailable?.();
+            const isNativeAudioAvailable = window.ardali?.audio?.isNativeAvailable?.();
             if (SFX_SCOPE === 'music' && !isNativeAudioAvailable) {
                 const warningDiv = document.createElement('div');
                 warningDiv.style.cssText = `
@@ -1741,8 +1741,8 @@ document.addEventListener('DOMContentLoaded', () => {
         // startup sync'i yalnızca oynatma yokken yap.
         let isPlayingNow = false;
         try {
-            if (typeof window.aurivo?.audio?.isPlaying === 'function') {
-                isPlayingNow = !!(await window.aurivo.audio.isPlaying());
+            if (typeof window.ardali?.audio?.isPlaying === 'function') {
+                isPlayingNow = !!(await window.ardali.audio.isPlaying());
             }
         } catch {
             isPlayingNow = false;
@@ -1783,9 +1783,9 @@ function setupEQPresetListener() {
     if (eqPresetListenerAttached) return;
     eqPresetListenerAttached = true;
 
-    if (!window.aurivo?.audio?.on) return;
+    if (!window.ardali?.audio?.on) return;
 
-    window.aurivo.audio.on('eqPresetSelected', (payload) => {
+    window.ardali.audio.on('eqPresetSelected', (payload) => {
         try {
             applyEQPresetPayload(payload);
         } catch (e) {
@@ -1824,8 +1824,8 @@ function setupEventListeners() {
             SFX.masterEnabled = e.target.checked;
             updateDSPStatus();
             // Ana uygulamaya bildir
-            if (SFX_SCOPE === 'music' && window.aurivo?.audio) {
-                window.aurivo?.audio.setEffectsEnabled(SFX.masterEnabled);
+            if (SFX_SCOPE === 'music' && window.ardali?.audio) {
+                window.ardali?.audio.setEffectsEnabled(SFX.masterEnabled);
             }
             if (SFX_IS_SCOPED_DALI) {
                 schedulePersistScopedEffectToAppSettings('master', { enabled: SFX.masterEnabled }, 40);
@@ -1892,17 +1892,17 @@ function setupEventListeners() {
         applySfxIconSizeFromAppSettings().catch(() => { });
     });
     window.addEventListener('storage', (e) => {
-        if (e.key === 'aurivo_ui_sfx_lights_enabled') {
+        if (e.key === 'ardali_ui_sfx_lights_enabled') {
             const enabled = e.newValue !== '0';
             applySfxLightsRuntimeState(enabled);
             return;
         }
-        if (e.key === 'aurivo_ui_sfx_icon_size') {
+        if (e.key === 'ardali_ui_sfx_icon_size') {
             document.documentElement.dataset.sfxIconSize = normalizeSfxIconSize(e.newValue || 'medium');
         }
     });
 
-    window.aurivo?.onSettingsReload?.((nextSettings) => {
+    window.ardali?.onSettingsReload?.((nextSettings) => {
         const enabled = normalizeSfxLightsEnabled(
             nextSettings?.appearance?.sfxLights ?? nextSettings?.ui?.sfxLightsEnabled
         );
@@ -1945,7 +1945,7 @@ function setupEventListeners() {
     });
 
     // Standalone modda global dil değişimlerini canlı uygula.
-    window.addEventListener('aurivo:languageChanged', () => {
+    window.addEventListener('ardali:languageChanged', () => {
         refreshLocalizedRuntimeUi();
     });
 
@@ -1958,8 +1958,8 @@ function setupEventListeners() {
             } catch { }
             return;
         }
-        if (window.aurivo?.electronAPI) {
-            window.aurivo.electronAPI.closeWindow();
+        if (window.ardali?.electronAPI) {
+            window.ardali.electronAPI.closeWindow();
         } else {
             window.close();
         }
@@ -1967,15 +1967,15 @@ function setupEventListeners() {
 
     document.getElementById('minimizeBtn')?.addEventListener('click', () => {
         if (SFX_EMBEDDED_MODE) return;
-        if (window.aurivo?.electronAPI) {
-            window.aurivo.electronAPI.minimizeWindow();
+        if (window.ardali?.electronAPI) {
+            window.ardali.electronAPI.minimizeWindow();
         }
     });
 
     document.getElementById('maximizeBtn')?.addEventListener('click', async () => {
         if (SFX_EMBEDDED_MODE) return;
-        if (window.aurivo?.electronAPI) {
-            const isMaximized = await window.aurivo.electronAPI.maximizeWindow();
+        if (window.ardali?.electronAPI) {
+            const isMaximized = await window.ardali.electronAPI.maximizeWindow();
             const btn = document.getElementById('maximizeBtn');
             if (btn) {
                 btn.textContent = isMaximized ? '❐' : '☐';
@@ -2240,7 +2240,7 @@ function showEffect(effectName) {
 
 // PEQ Filter Type Event Listeners
 function setupPEQFilterTypeListeners() {
-    const ipcAudio = window.aurivo?.ipcAudio;
+    const ipcAudio = window.ardali?.ipcAudio;
 
     for (let i = 0; i < 6; i++) {
         const select = document.getElementById(`peqBand${i}Type`);
@@ -2327,10 +2327,10 @@ function startTruePeakMeter() {
         }
         try {
             let meter = null;
-            if (SFX_SCOPE === 'web' && window.aurivo?.soundEffects?.getWebTruePeakStatus) {
-                meter = await window.aurivo.soundEffects.getWebTruePeakStatus();
-            } else if (window.aurivo?.ipcAudio?.truePeakLimiter?.getMeter) {
-                meter = await window.aurivo.ipcAudio.truePeakLimiter.getMeter();
+            if (SFX_SCOPE === 'web' && window.ardali?.soundEffects?.getWebTruePeakStatus) {
+                meter = await window.ardali.soundEffects.getWebTruePeakStatus();
+            } else if (window.ardali?.ipcAudio?.truePeakLimiter?.getMeter) {
+                meter = await window.ardali.ipcAudio.truePeakLimiter.getMeter();
             }
             if (meter) {
                 lastMeterData = meter;
@@ -2524,8 +2524,8 @@ function spectrumActivityToDb(activityPercent) {
 }
 
 async function getDaliMeterPercent(effectName) {
-    if (!SFX_IS_SCOPED_DALI || !window.aurivo?.soundEffects?.getWebSpectrum) return null;
-    const bands = await window.aurivo.soundEffects.getWebSpectrum(128);
+    if (!SFX_IS_SCOPED_DALI || !window.ardali?.soundEffects?.getWebSpectrum) return null;
+    const bands = await window.ardali.soundEffects.getWebSpectrum(128);
     const activity = getSpectrumActivityPercent(bands);
     if (activity <= 0) return 0;
 
@@ -2593,8 +2593,8 @@ function startCompressorMeter() {
         if (SFX_IS_SCOPED_DALI) {
             percent = await getDaliMeterPercent('compressor');
         }
-        if (percent == null && window.aurivo?.ipcAudio?.compressor?.getGainReduction) {
-            const reduction = await window.aurivo.ipcAudio.compressor.getGainReduction();
+        if (percent == null && window.ardali?.ipcAudio?.compressor?.getGainReduction) {
+            const reduction = await window.ardali.ipcAudio.compressor.getGainReduction();
             const reductionAbs = Math.min(Math.abs(reduction || 0), 24);
             percent = (reductionAbs / 24) * 100;
         }
@@ -2628,8 +2628,8 @@ function startLimiterMeter() {
         if (SFX_IS_SCOPED_DALI) {
             percent = await getDaliMeterPercent('limiter');
         }
-        if (percent == null && window.aurivo?.ipcAudio?.limiter?.getReduction) {
-            const reduction = await window.aurivo.ipcAudio.limiter.getReduction();
+        if (percent == null && window.ardali?.ipcAudio?.limiter?.getReduction) {
+            const reduction = await window.ardali.ipcAudio.limiter.getReduction();
             const reductionAbs = Math.min(Math.abs(reduction || 0), 20);
             percent = (reductionAbs / 20) * 100;
         }
@@ -2689,10 +2689,10 @@ function startNoiseGateStatusMeter() {
         noiseGateStatusBusy = true;
         try {
             let status = null;
-            if (SFX_SCOPE === 'web' && window.aurivo?.soundEffects?.getWebNoiseGateStatus) {
-                status = await window.aurivo.soundEffects.getWebNoiseGateStatus();
-            } else if (window.aurivo?.ipcAudio?.noiseGate?.getStatus) {
-                status = await window.aurivo.ipcAudio.noiseGate.getStatus();
+            if (SFX_SCOPE === 'web' && window.ardali?.soundEffects?.getWebNoiseGateStatus) {
+                status = await window.ardali.soundEffects.getWebNoiseGateStatus();
+            } else if (window.ardali?.ipcAudio?.noiseGate?.getStatus) {
+                status = await window.ardali.ipcAudio.noiseGate.getStatus();
             }
             if (status && typeof status === 'object') {
                 updateNoiseGateStatusUI(status);
@@ -2778,10 +2778,10 @@ function startDynamicEqStatusMeter() {
         dynamicEqStatusBusy = true;
         try {
             let status = null;
-            if (SFX_SCOPE === 'web' && window.aurivo?.soundEffects?.getWebDynamicEqStatus) {
-                status = await window.aurivo.soundEffects.getWebDynamicEqStatus();
-            } else if (window.aurivo?.ipcAudio?.dynamicEQ?.getStatus) {
-                status = await window.aurivo.ipcAudio.dynamicEQ.getStatus();
+            if (SFX_SCOPE === 'web' && window.ardali?.soundEffects?.getWebDynamicEqStatus) {
+                status = await window.ardali.soundEffects.getWebDynamicEqStatus();
+            } else if (window.ardali?.ipcAudio?.dynamicEQ?.getStatus) {
+                status = await window.ardali.ipcAudio.dynamicEQ.getStatus();
             }
             if (status && typeof status === 'object') {
                 updateDynamicEqStatusUI(status);
@@ -2937,7 +2937,7 @@ function getAudiophileTemplate() {
 
             <div class="knobs-container audiophile-knobs">
                 <div class="knob-wrapper">
-                    <canvas class="aurivo-knob-canvas" id="knobAudiophilePreampCanvas" 
+                    <canvas class="ardali-knob-canvas" id="knobAudiophilePreampCanvas" 
                         width="130" height="170"
                         data-param="preamp" 
                         data-label="Ana Kazanç (Preamp)"
@@ -2983,24 +2983,24 @@ function getEQ32Template() {
                 </div>
             </div>
 	            
-	            <div class="aurivo-module">
+	            <div class="ardali-module">
 	                <div class="module-panel knobs-panel">
 	                    <div class="module-title">${tSync('sfx.eq32.moduleTitle')}</div>
-	                    <div class="knobs-container" id="aurivoKnobs">
+	                    <div class="knobs-container" id="ardaliKnobs">
 	                        <div class="knob-wrapper">
-	                            <canvas class="aurivo-knob-canvas" id="knobBassCanvas" width="130" height="170"></canvas>
+	                            <canvas class="ardali-knob-canvas" id="knobBassCanvas" width="130" height="170"></canvas>
 	                        </div>
 
                         <div class="knob-wrapper">
-                            <canvas class="aurivo-knob-canvas" id="knobMidCanvas" width="130" height="170"></canvas>
+                            <canvas class="ardali-knob-canvas" id="knobMidCanvas" width="130" height="170"></canvas>
                         </div>
 
                         <div class="knob-wrapper">
-                            <canvas class="aurivo-knob-canvas" id="knobTrebleCanvas" width="130" height="170"></canvas>
+                            <canvas class="ardali-knob-canvas" id="knobTrebleCanvas" width="130" height="170"></canvas>
                         </div>
 
                         <div class="knob-wrapper">
-                            <canvas class="aurivo-knob-canvas" id="knobStereoCanvas" width="130" height="170"></canvas>
+                            <canvas class="ardali-knob-canvas" id="knobStereoCanvas" width="130" height="170"></canvas>
                         </div>
 	                    </div>
 	                    <div class="module-dropdown">
@@ -3051,7 +3051,7 @@ function getReverbTemplate() {
             
             <div class="knobs-container">
                 <div class="knob-wrapper">
-                    <canvas class="aurivo-knob-canvas" id="knobRoomSizeCanvas" 
+                    <canvas class="ardali-knob-canvas" id="knobRoomSizeCanvas" 
                         width="130" height="170"
                         data-param="roomSize" 
                         data-label="Room Size" 
@@ -3061,7 +3061,7 @@ function getReverbTemplate() {
                 </div>
                 
                 <div class="knob-wrapper">
-                    <canvas class="aurivo-knob-canvas" id="knobDampingCanvas" 
+                    <canvas class="ardali-knob-canvas" id="knobDampingCanvas" 
                         width="130" height="170"
                         data-param="damping" 
                         data-label="Damping"
@@ -3072,7 +3072,7 @@ function getReverbTemplate() {
                 </div>
                 
                 <div class="knob-wrapper">
-                    <canvas class="aurivo-knob-canvas" id="knobWetDryCanvas" 
+                    <canvas class="ardali-knob-canvas" id="knobWetDryCanvas" 
                         width="130" height="170"
                         data-param="wetDry" 
                         data-label="Wet/Dry Mix"
@@ -3082,7 +3082,7 @@ function getReverbTemplate() {
                 </div>
                 
                 <div class="knob-wrapper">
-                    <canvas class="aurivo-knob-canvas" id="knobHFRatioCanvas" 
+                    <canvas class="ardali-knob-canvas" id="knobHFRatioCanvas" 
                         width="130" height="170"
                         data-param="hfRatio" 
                         data-label="HF Ratio"
@@ -3093,7 +3093,7 @@ function getReverbTemplate() {
                 </div>
                 
                 <div class="knob-wrapper">
-                    <canvas class="aurivo-knob-canvas" id="knobInputGainCanvas" 
+                    <canvas class="ardali-knob-canvas" id="knobInputGainCanvas" 
                         width="130" height="170"
                         data-param="inputGain" 
                         data-label="Input Gain"
@@ -3160,7 +3160,7 @@ function getCompressorTemplate() {
             
             <div class="knobs-container">
                 <div class="knob-wrapper">
-                    <canvas class="aurivo-knob-canvas" id="knobThresholdCanvas" 
+                    <canvas class="ardali-knob-canvas" id="knobThresholdCanvas" 
                         width="130" height="170"
                         data-param="threshold" 
                         data-label="Threshold (Eşik)"
@@ -3169,7 +3169,7 @@ function getCompressorTemplate() {
                         data-unit=" dB"></canvas>
                 </div>
                 <div class="knob-wrapper">
-                    <canvas class="aurivo-knob-canvas" id="knobRatioCanvas" 
+                    <canvas class="ardali-knob-canvas" id="knobRatioCanvas" 
                         width="130" height="170"
                         data-param="ratio" 
                         data-label="Ratio (Oran)"
@@ -3178,7 +3178,7 @@ function getCompressorTemplate() {
                         data-unit=":1"></canvas>
                 </div>
                 <div class="knob-wrapper">
-                    <canvas class="aurivo-knob-canvas" id="knobAttackCanvas" 
+                    <canvas class="ardali-knob-canvas" id="knobAttackCanvas" 
                         width="130" height="170"
                         data-param="attack" 
                         data-label="Attack (Saldırı)"
@@ -3187,7 +3187,7 @@ function getCompressorTemplate() {
                         data-unit=" ms"></canvas>
                 </div>
                 <div class="knob-wrapper">
-                    <canvas class="aurivo-knob-canvas" id="knobReleaseCanvas" 
+                    <canvas class="ardali-knob-canvas" id="knobReleaseCanvas" 
                         width="130" height="170"
                         data-param="release" 
                         data-label="Release (Salıverme)"
@@ -3196,7 +3196,7 @@ function getCompressorTemplate() {
                         data-unit=" ms"></canvas>
                 </div>
                 <div class="knob-wrapper">
-                    <canvas class="aurivo-knob-canvas" id="knobMakeupCanvas" 
+                    <canvas class="ardali-knob-canvas" id="knobMakeupCanvas" 
                         width="130" height="170"
                         data-param="makeupGain" 
                         data-label="Makeup Gain"
@@ -3205,7 +3205,7 @@ function getCompressorTemplate() {
                         data-unit=" dB"></canvas>
                 </div>
                 <div class="knob-wrapper">
-                    <canvas class="aurivo-knob-canvas" id="knobKneeCanvas" 
+                    <canvas class="ardali-knob-canvas" id="knobKneeCanvas" 
                         width="130" height="170"
                         data-param="knee" 
                         data-label="Knee (Diz)"
@@ -3270,7 +3270,7 @@ function getLimiterTemplate() {
             
             <div class="knobs-container">
                 <div class="knob-wrapper">
-                    <canvas class="aurivo-knob-canvas" id="knobCeilingCanvas" 
+                    <canvas class="ardali-knob-canvas" id="knobCeilingCanvas" 
                         width="130" height="170"
                         data-param="ceiling" 
                         data-label="Ceiling (Tavan)"
@@ -3280,7 +3280,7 @@ function getLimiterTemplate() {
                         data-unit=" dB"></canvas>
                 </div>
                 <div class="knob-wrapper">
-                    <canvas class="aurivo-knob-canvas" id="knobLimReleaseCanvas" 
+                    <canvas class="ardali-knob-canvas" id="knobLimReleaseCanvas" 
                         width="130" height="170"
                         data-param="release" 
                         data-label="Release"
@@ -3289,7 +3289,7 @@ function getLimiterTemplate() {
                         data-unit=" ms"></canvas>
                 </div>
                 <div class="knob-wrapper">
-                    <canvas class="aurivo-knob-canvas" id="knobLookaheadCanvas" 
+                    <canvas class="ardali-knob-canvas" id="knobLookaheadCanvas" 
                         width="130" height="170"
                         data-param="lookahead" 
                         data-label="Lookahead (Öngörü)"
@@ -3298,7 +3298,7 @@ function getLimiterTemplate() {
                         data-unit=" ms"></canvas>
                 </div>
                 <div class="knob-wrapper">
-                    <canvas class="aurivo-knob-canvas" id="knobLimGainCanvas" 
+                    <canvas class="ardali-knob-canvas" id="knobLimGainCanvas" 
                         width="130" height="170"
                         data-param="gain" 
                         data-label="Gain (Kazanç)"
@@ -3349,7 +3349,7 @@ function getBassBoostTemplate() {
             
             <div class="knobs-container">
                 <div class="knob-wrapper">
-                    <canvas class="aurivo-knob-canvas" id="knobBBFreqCanvas" 
+                    <canvas class="ardali-knob-canvas" id="knobBBFreqCanvas" 
                         width="130" height="170"
                         data-param="frequency" 
                         data-label="Frequency (Frekans)"
@@ -3358,7 +3358,7 @@ function getBassBoostTemplate() {
                         data-unit=" Hz"></canvas>
                 </div>
                 <div class="knob-wrapper">
-                    <canvas class="aurivo-knob-canvas" id="knobBBGainCanvas" 
+                    <canvas class="ardali-knob-canvas" id="knobBBGainCanvas" 
                         width="130" height="170"
                         data-param="gain" 
                         data-label="Gain (Kazanç)"
@@ -3367,7 +3367,7 @@ function getBassBoostTemplate() {
                         data-unit=" dB"></canvas>
                 </div>
                 <div class="knob-wrapper">
-                    <canvas class="aurivo-knob-canvas" id="knobHarmonicsCanvas" 
+                    <canvas class="ardali-knob-canvas" id="knobHarmonicsCanvas" 
                         width="130" height="170"
                         data-param="harmonics" 
                         data-label="Harmonics"
@@ -3376,7 +3376,7 @@ function getBassBoostTemplate() {
                         data-unit="%"></canvas>
                 </div>
                 <div class="knob-wrapper">
-                    <canvas class="aurivo-knob-canvas" id="knobBBWidthCanvas" 
+                    <canvas class="ardali-knob-canvas" id="knobBBWidthCanvas" 
                         width="130" height="170"
                         data-param="width" 
                         data-label="Width (Genişlik)"
@@ -3386,7 +3386,7 @@ function getBassBoostTemplate() {
                         data-unit=""></canvas>
                 </div>
                 <div class="knob-wrapper">
-                    <canvas class="aurivo-knob-canvas" id="knobBBMixCanvas" 
+                    <canvas class="ardali-knob-canvas" id="knobBBMixCanvas" 
                         width="130" height="170"
                         data-param="mix" 
                         data-label="Dry/Wet Mix"
@@ -3437,7 +3437,7 @@ function getNoiseGateTemplate() {
             
             <div class="knobs-container">
                 <div class="knob-wrapper">
-                    <canvas class="aurivo-knob-canvas" id="knobNGThresholdCanvas" 
+                    <canvas class="ardali-knob-canvas" id="knobNGThresholdCanvas" 
                         width="130" height="170"
                         data-param="threshold" 
                         data-label="Threshold (Eşik)"
@@ -3446,7 +3446,7 @@ function getNoiseGateTemplate() {
                         data-unit=" dB"></canvas>
                 </div>
                 <div class="knob-wrapper">
-                    <canvas class="aurivo-knob-canvas" id="knobNGAttackCanvas" 
+                    <canvas class="ardali-knob-canvas" id="knobNGAttackCanvas" 
                         width="130" height="170"
                         data-param="attack" 
                         data-label="Attack (Saldırı)"
@@ -3455,7 +3455,7 @@ function getNoiseGateTemplate() {
                         data-unit=" ms"></canvas>
                 </div>
                 <div class="knob-wrapper">
-                    <canvas class="aurivo-knob-canvas" id="knobNGHoldCanvas" 
+                    <canvas class="ardali-knob-canvas" id="knobNGHoldCanvas" 
                         width="130" height="170"
                         data-param="hold" 
                         data-label="Hold (Tutma)"
@@ -3464,7 +3464,7 @@ function getNoiseGateTemplate() {
                         data-unit=" ms"></canvas>
                 </div>
                 <div class="knob-wrapper">
-                    <canvas class="aurivo-knob-canvas" id="knobNGReleaseCanvas" 
+                    <canvas class="ardali-knob-canvas" id="knobNGReleaseCanvas" 
                         width="130" height="170"
                         data-param="release" 
                         data-label="Release (Salıverme)"
@@ -3473,7 +3473,7 @@ function getNoiseGateTemplate() {
                         data-unit=" ms"></canvas>
                 </div>
                 <div class="knob-wrapper">
-                    <canvas class="aurivo-knob-canvas" id="knobNGRangeCanvas" 
+                    <canvas class="ardali-knob-canvas" id="knobNGRangeCanvas" 
                         width="130" height="170"
                         data-param="range" 
                         data-label="Range (Aralık)"
@@ -3536,7 +3536,7 @@ function getDeesserTemplate() {
             
             <div class="knobs-container">
                 <div class="knob-wrapper">
-                    <canvas class="aurivo-knob-canvas" id="deesserfrequencyCanvas" 
+                    <canvas class="ardali-knob-canvas" id="deesserfrequencyCanvas" 
                         width="130" height="170"
                         data-param="frequency" 
                         data-label="Frequency"
@@ -3546,7 +3546,7 @@ function getDeesserTemplate() {
                         data-unit="Hz"></canvas>
                 </div>
                 <div class="knob-wrapper">
-                    <canvas class="aurivo-knob-canvas" id="deesserthresholdCanvas" 
+                    <canvas class="ardali-knob-canvas" id="deesserthresholdCanvas" 
                         width="130" height="170"
                         data-param="threshold" 
                         data-label="Threshold"
@@ -3556,7 +3556,7 @@ function getDeesserTemplate() {
                         data-unit="dB"></canvas>
                 </div>
                 <div class="knob-wrapper">
-                    <canvas class="aurivo-knob-canvas" id="deesserratioCanvas" 
+                    <canvas class="ardali-knob-canvas" id="deesserratioCanvas" 
                         width="130" height="170"
                         data-param="ratio" 
                         data-label="Ratio"
@@ -3566,7 +3566,7 @@ function getDeesserTemplate() {
                         data-unit=":1"></canvas>
                 </div>
                 <div class="knob-wrapper">
-                    <canvas class="aurivo-knob-canvas" id="deesserrangeCanvas" 
+                    <canvas class="ardali-knob-canvas" id="deesserrangeCanvas" 
                         width="130" height="170"
                         data-param="range" 
                         data-label="Range"
@@ -3624,7 +3624,7 @@ function getExciterTemplate() {
 
             <div class="knobs-container">
                 <div class="knob-wrapper">
-                    <canvas class="aurivo-knob-canvas" id="exciterfrequencyCanvas"
+                    <canvas class="ardali-knob-canvas" id="exciterfrequencyCanvas"
                         width="130" height="170"
                         data-param="frequency"
                         data-label="${tOr('sfx.knob.param.frequency', 'Frequency')}"
@@ -3634,7 +3634,7 @@ function getExciterTemplate() {
                         data-unit="Hz"></canvas>
                 </div>
                 <div class="knob-wrapper">
-                    <canvas class="aurivo-knob-canvas" id="exciteramountCanvas"
+                    <canvas class="ardali-knob-canvas" id="exciteramountCanvas"
                         width="130" height="170"
                         data-param="amount"
                         data-label="${tOr('sfx.knob.param.amount', 'Amount')}"
@@ -3644,7 +3644,7 @@ function getExciterTemplate() {
                         data-unit="%"></canvas>
                 </div>
                 <div class="knob-wrapper">
-                    <canvas class="aurivo-knob-canvas" id="excitermixCanvas"
+                    <canvas class="ardali-knob-canvas" id="excitermixCanvas"
                         width="130" height="170"
                         data-param="mix"
                         data-label="${tOr('sfx.knob.param.mix', 'Mix')}"
@@ -3718,7 +3718,7 @@ function getStereoWidenerTemplate() {
 
             <div class="knobs-container">
                 <div class="knob-wrapper">
-                    <canvas class="aurivo-knob-canvas" id="stereowidenerwidthCanvas"
+                    <canvas class="ardali-knob-canvas" id="stereowidenerwidthCanvas"
                         width="130" height="170"
                         data-param="width"
                         data-label="Width"
@@ -3728,7 +3728,7 @@ function getStereoWidenerTemplate() {
                         data-unit="%"></canvas>
                 </div>
                 <div class="knob-wrapper">
-                    <canvas class="aurivo-knob-canvas" id="stereowidenercenterLevelCanvas"
+                    <canvas class="ardali-knob-canvas" id="stereowidenercenterLevelCanvas"
                         width="130" height="170"
                         data-param="centerLevel"
                         data-label="Center Level"
@@ -3738,7 +3738,7 @@ function getStereoWidenerTemplate() {
                         data-unit="dB"></canvas>
                 </div>
                 <div class="knob-wrapper">
-                    <canvas class="aurivo-knob-canvas" id="stereowidenersideLevelCanvas"
+                    <canvas class="ardali-knob-canvas" id="stereowidenersideLevelCanvas"
                         width="130" height="170"
                         data-param="sideLevel"
                         data-label="Side Level"
@@ -3748,7 +3748,7 @@ function getStereoWidenerTemplate() {
                         data-unit="dB"></canvas>
                 </div>
                 <div class="knob-wrapper">
-                    <canvas class="aurivo-knob-canvas" id="stereowidenerbassToMonoCanvas"
+                    <canvas class="ardali-knob-canvas" id="stereowidenerbassToMonoCanvas"
                         width="130" height="170"
                         data-param="bassToMono"
                         data-label="Bass to Mono"
@@ -3814,7 +3814,7 @@ function getEchoTemplate() {
 
             <div class="knobs-container">
                 <div class="knob-wrapper">
-                    <canvas class="aurivo-knob-canvas" id="echodelayCanvas"
+                    <canvas class="ardali-knob-canvas" id="echodelayCanvas"
                         width="130" height="170"
                         data-param="delay"
                         data-label="Delay"
@@ -3824,7 +3824,7 @@ function getEchoTemplate() {
                         data-unit="ms"></canvas>
                 </div>
                 <div class="knob-wrapper">
-                    <canvas class="aurivo-knob-canvas" id="echofeedbackCanvas"
+                    <canvas class="ardali-knob-canvas" id="echofeedbackCanvas"
                         width="130" height="170"
                         data-param="feedback"
                         data-label="Feedback"
@@ -3834,7 +3834,7 @@ function getEchoTemplate() {
                         data-unit="%"></canvas>
                 </div>
                 <div class="knob-wrapper">
-                    <canvas class="aurivo-knob-canvas" id="echowetDryCanvas"
+                    <canvas class="ardali-knob-canvas" id="echowetDryCanvas"
                         width="130" height="170"
                         data-param="wetDry"
                         data-label="Wet/Dry"
@@ -3844,7 +3844,7 @@ function getEchoTemplate() {
                         data-unit="%"></canvas>
                 </div>
                 <div class="knob-wrapper">
-                    <canvas class="aurivo-knob-canvas" id="echohighCutCanvas"
+                    <canvas class="ardali-knob-canvas" id="echohighCutCanvas"
                         width="130" height="170"
                         data-param="highCut"
                         data-label="High Cut"
@@ -3911,7 +3911,7 @@ function getSoftEchoTemplate() {
 
             <div class="knobs-container">
                 <div class="knob-wrapper">
-                    <canvas class="aurivo-knob-canvas" width="130" height="170"
+                    <canvas class="ardali-knob-canvas" width="130" height="170"
                         data-param="delay"
                         data-label="Delay"
                         data-min="60" data-max="650"
@@ -3920,7 +3920,7 @@ function getSoftEchoTemplate() {
                         data-unit=" ms"></canvas>
                 </div>
                 <div class="knob-wrapper">
-                    <canvas class="aurivo-knob-canvas" width="130" height="170"
+                    <canvas class="ardali-knob-canvas" width="130" height="170"
                         data-param="feedback"
                         data-label="Feedback"
                         data-min="5" data-max="45"
@@ -3929,7 +3929,7 @@ function getSoftEchoTemplate() {
                         data-unit=" %"></canvas>
                 </div>
                 <div class="knob-wrapper">
-                    <canvas class="aurivo-knob-canvas" width="130" height="170"
+                    <canvas class="ardali-knob-canvas" width="130" height="170"
                         data-param="wetMix"
                         data-label="${tOr('sfx.knob.param.wetMix', 'Wet Mix')}"
                         data-min="5" data-max="40"
@@ -3938,7 +3938,7 @@ function getSoftEchoTemplate() {
                         data-unit=" %"></canvas>
                 </div>
                 <div class="knob-wrapper">
-                    <canvas class="aurivo-knob-canvas" width="130" height="170"
+                    <canvas class="ardali-knob-canvas" width="130" height="170"
                         data-param="highCut"
                         data-label="${tOr('sfx.knob.param.toneHighCut', 'Tone (High Cut)')}"
                         data-min="3000" data-max="12000"
@@ -4010,7 +4010,7 @@ function getConvReverbTemplate() {
             
             <div class="knobs-container">
                 <div class="knob-wrapper">
-                    <canvas class="aurivo-knob-canvas" id="knobConvMixCanvas" 
+                    <canvas class="ardali-knob-canvas" id="knobConvMixCanvas" 
                         width="130" height="170"
                         data-param="mix" 
                         data-label="Mix"
@@ -4019,7 +4019,7 @@ function getConvReverbTemplate() {
                         data-unit="%"></canvas>
                 </div>
                 <div class="knob-wrapper">
-                    <canvas class="aurivo-knob-canvas" id="knobPredelayCanvas" 
+                    <canvas class="ardali-knob-canvas" id="knobPredelayCanvas" 
                         width="130" height="170"
                         data-param="predelay" 
                         data-label="Pre-delay"
@@ -4081,7 +4081,7 @@ function getPEQTemplate() {
                 
                 <div class="knobs-container compact" style="flex-direction: column; gap: clamp(6px, 0.5vw, 10px);">
                     <div class="knob-wrapper small">
-                        <canvas class="aurivo-knob-canvas" id="peqBand${index}FreqCanvas" 
+                        <canvas class="ardali-knob-canvas" id="peqBand${index}FreqCanvas" 
                             width="128" height="168"
                             data-param="band${index}_freq" 
                             data-label="Freq"
@@ -4090,7 +4090,7 @@ function getPEQTemplate() {
                             data-unit=" Hz"></canvas>
                     </div>
                     <div class="knob-wrapper small">
-                        <canvas class="aurivo-knob-canvas" id="peqBand${index}GainCanvas" 
+                        <canvas class="ardali-knob-canvas" id="peqBand${index}GainCanvas" 
                             width="128" height="168"
                             data-param="band${index}_gain" 
                             data-label="Gain"
@@ -4099,7 +4099,7 @@ function getPEQTemplate() {
                             data-unit=" dB"></canvas>
                     </div>
                     <div class="knob-wrapper small">
-                        <canvas class="aurivo-knob-canvas" id="peqBand${index}QCanvas" 
+                        <canvas class="ardali-knob-canvas" id="peqBand${index}QCanvas" 
                             width="128" height="168"
                             data-param="band${index}_q" 
                             data-label="Q"
@@ -4180,7 +4180,7 @@ function getAutoGainTemplate() {
             
             <div class="knobs-container">
                 <div class="knob-wrapper">
-                    <canvas class="aurivo-knob-canvas" id="knobTargetLevelCanvas" 
+                    <canvas class="ardali-knob-canvas" id="knobTargetLevelCanvas" 
                         width="130" height="170"
                         data-param="targetLevel" 
                         data-label="Target Level"
@@ -4189,7 +4189,7 @@ function getAutoGainTemplate() {
                         data-unit=" dBFS"></canvas>
                 </div>
                 <div class="knob-wrapper">
-                    <canvas class="aurivo-knob-canvas" id="knobMaxGainCanvas" 
+                    <canvas class="ardali-knob-canvas" id="knobMaxGainCanvas" 
                         width="130" height="170"
                         data-param="maxGain" 
                         data-label="Max Gain"
@@ -4239,7 +4239,7 @@ function getTruePeakTemplate() {
             
             <div class="knobs-container">
                 <div class="knob-wrapper">
-                    <canvas class="aurivo-knob-canvas" id="knobTPCeilingCanvas" 
+                    <canvas class="ardali-knob-canvas" id="knobTPCeilingCanvas" 
                         width="130" height="170"
                         data-param="ceiling" 
                         data-label="Ceiling"
@@ -4249,7 +4249,7 @@ function getTruePeakTemplate() {
                         data-unit=" dBTP"></canvas>
                 </div>
                 <div class="knob-wrapper">
-                    <canvas class="aurivo-knob-canvas" id="knobTPReleaseCanvas" 
+                    <canvas class="ardali-knob-canvas" id="knobTPReleaseCanvas" 
                         width="130" height="170"
                         data-param="release" 
                         data-label="Release"
@@ -4258,7 +4258,7 @@ function getTruePeakTemplate() {
                         data-unit=" ms"></canvas>
                 </div>
                 <div class="knob-wrapper">
-                    <canvas class="aurivo-knob-canvas" id="knobTPLookaheadCanvas" 
+                    <canvas class="ardali-knob-canvas" id="knobTPLookaheadCanvas" 
                         width="130" height="170"
                         data-param="lookahead" 
                         data-label="Lookahead"
@@ -4268,7 +4268,7 @@ function getTruePeakTemplate() {
                         data-unit=" ms"></canvas>
                 </div>
                 <div class="knob-wrapper">
-                    <canvas class="aurivo-knob-canvas" id="knobTPDriveCanvas" 
+                    <canvas class="ardali-knob-canvas" id="knobTPDriveCanvas" 
                         width="130" height="170"
                         data-param="drive" 
                         data-label="Drive"
@@ -4439,7 +4439,7 @@ function getCrossfeedTemplate() {
             <!-- Knobs -->
             <div class="knob-grid" style="display: flex; justify-content: center; gap: 30px; flex-wrap: wrap; margin: 20px 0;">
                 <div class="knob-wrapper">
-                    <canvas class="aurivo-knob-canvas crossfeed-knob" id="crossfeedLevelCanvas" 
+                    <canvas class="ardali-knob-canvas crossfeed-knob" id="crossfeedLevelCanvas" 
                         width="110" height="145"
                         data-param="level" 
                         data-label="Level"
@@ -4449,7 +4449,7 @@ function getCrossfeedTemplate() {
                         data-unit="%"></canvas>
                 </div>
                 <div class="knob-wrapper">
-                    <canvas class="aurivo-knob-canvas crossfeed-knob" id="crossfeedDelayCanvas" 
+                    <canvas class="ardali-knob-canvas crossfeed-knob" id="crossfeedDelayCanvas" 
                         width="110" height="145"
                         data-param="delay" 
                         data-label="Delay"
@@ -4460,7 +4460,7 @@ function getCrossfeedTemplate() {
                         data-unit="ms"></canvas>
                 </div>
                 <div class="knob-wrapper">
-                    <canvas class="aurivo-knob-canvas crossfeed-knob" id="crossfeedLowCutCanvas" 
+                    <canvas class="ardali-knob-canvas crossfeed-knob" id="crossfeedLowCutCanvas" 
                         width="110" height="145"
                         data-param="lowCut" 
                         data-label="Low Cut"
@@ -4470,7 +4470,7 @@ function getCrossfeedTemplate() {
                         data-unit="Hz"></canvas>
                 </div>
                 <div class="knob-wrapper">
-                    <canvas class="aurivo-knob-canvas crossfeed-knob" id="crossfeedHighCutCanvas" 
+                    <canvas class="ardali-knob-canvas crossfeed-knob" id="crossfeedHighCutCanvas" 
                         width="110" height="145"
                         data-param="highCut" 
                         data-label="High Cut"
@@ -4525,7 +4525,7 @@ function getSurroundTemplate() {
 
             <div class="knobs-container">
                 <div class="knob-wrapper">
-                    <canvas class="aurivo-knob-canvas" width="130" height="170"
+                    <canvas class="ardali-knob-canvas" width="130" height="170"
                         data-param="center"
                         data-label="Center Level"
                         data-min="-12" data-max="12"
@@ -4534,7 +4534,7 @@ function getSurroundTemplate() {
                         data-unit=" dB"></canvas>
                 </div>
                 <div class="knob-wrapper">
-                    <canvas class="aurivo-knob-canvas" width="130" height="170"
+                    <canvas class="ardali-knob-canvas" width="130" height="170"
                         data-param="surround"
                         data-label="${tOr('sfx.knob.param.surroundLevel', 'Surround Level')}"
                         data-min="-12" data-max="12"
@@ -4543,7 +4543,7 @@ function getSurroundTemplate() {
                         data-unit=" dB"></canvas>
                 </div>
                 <div class="knob-wrapper">
-                    <canvas class="aurivo-knob-canvas" width="130" height="170"
+                    <canvas class="ardali-knob-canvas" width="130" height="170"
                         data-param="lfe"
                         data-label="${tOr('sfx.knob.param.lfeLevel', 'LFE Level')}"
                         data-min="-12" data-max="12"
@@ -4552,7 +4552,7 @@ function getSurroundTemplate() {
                         data-unit=" dB"></canvas>
                 </div>
                 <div class="knob-wrapper">
-                    <canvas class="aurivo-knob-canvas" width="130" height="170"
+                    <canvas class="ardali-knob-canvas" width="130" height="170"
                         data-param="crossover"
                         data-label="${tOr('sfx.knob.param.crossover', 'Crossover')}"
                         data-min="40" data-max="200"
@@ -4561,7 +4561,7 @@ function getSurroundTemplate() {
                         data-unit=" Hz"></canvas>
                 </div>
                 <div class="knob-wrapper">
-                    <canvas class="aurivo-knob-canvas" width="130" height="170"
+                    <canvas class="ardali-knob-canvas" width="130" height="170"
                         data-param="delay"
                         data-label="${tOr('sfx.knob.param.rearDelay', 'Rear Delay')}"
                         data-min="0" data-max="30"
@@ -4570,7 +4570,7 @@ function getSurroundTemplate() {
                         data-unit=" ms"></canvas>
                 </div>
                 <div class="knob-wrapper">
-                    <canvas class="aurivo-knob-canvas" width="130" height="170"
+                    <canvas class="ardali-knob-canvas" width="130" height="170"
                         data-param="mix"
                         data-label="Mix"
                         data-min="0" data-max="100"
@@ -4654,7 +4654,7 @@ function getBassMonoTemplate() {
             <!-- Knobs -->
             <div class="knob-grid" style="display: flex; justify-content: center; align-items: flex-start; gap: 24px; flex-wrap: wrap; margin: 16px 0 10px 0;">
                 <div class="knob-wrapper">
-                    <canvas class="aurivo-knob-canvas bass-mono-knob" id="bassmonoCutoffCanvas" 
+                    <canvas class="ardali-knob-canvas bass-mono-knob" id="bassmonoCutoffCanvas" 
                         width="130" height="170"
                         data-param="cutoff" 
                         data-label="Cutoff"
@@ -4674,7 +4674,7 @@ function getBassMonoTemplate() {
                 </div>
 
                 <div class="knob-wrapper">
-                    <canvas class="aurivo-knob-canvas bass-mono-knob" id="bassmonoStereoWidthCanvas" 
+                    <canvas class="ardali-knob-canvas bass-mono-knob" id="bassmonoStereoWidthCanvas" 
                         width="130" height="170"
                         data-param="stereoWidth" 
                         data-label="Stereo Width"
@@ -4736,7 +4736,7 @@ function getDynamicEQTemplate() {
             <!-- Knobs -->
             <div class="knob-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 20px; margin: 20px 0;">
                 <div class="knob-wrapper">
-                    <canvas class="aurivo-knob-canvas dynamiceq-knob" id="dynamiceqFrequencyCanvas" 
+                    <canvas class="ardali-knob-canvas dynamiceq-knob" id="dynamiceqFrequencyCanvas" 
                         width="130" height="170"
                         data-param="frequency" 
                         data-label="Frequency"
@@ -4747,7 +4747,7 @@ function getDynamicEQTemplate() {
                 </div>
                 
                 <div class="knob-wrapper">
-                    <canvas class="aurivo-knob-canvas dynamiceq-knob" id="dynamiceqQCanvas" 
+                    <canvas class="ardali-knob-canvas dynamiceq-knob" id="dynamiceqQCanvas" 
                         width="130" height="170"
                         data-param="q" 
                         data-label="Q (Bandwidth)"
@@ -4758,7 +4758,7 @@ function getDynamicEQTemplate() {
                 </div>
 
                 <div class="knob-wrapper">
-                    <canvas class="aurivo-knob-canvas dynamiceq-knob" id="dynamiceqThresholdCanvas" 
+                    <canvas class="ardali-knob-canvas dynamiceq-knob" id="dynamiceqThresholdCanvas" 
                         width="130" height="170"
                         data-param="threshold" 
                         data-label="Threshold"
@@ -4769,7 +4769,7 @@ function getDynamicEQTemplate() {
                 </div>
 
                 <div class="knob-wrapper">
-                    <canvas class="aurivo-knob-canvas dynamiceq-knob" id="dynamiceqGainCanvas" 
+                    <canvas class="ardali-knob-canvas dynamiceq-knob" id="dynamiceqGainCanvas" 
                         width="130" height="170"
                         data-param="gain" 
                         data-label="Target Gain"
@@ -4780,7 +4780,7 @@ function getDynamicEQTemplate() {
                 </div>
 
                 <div class="knob-wrapper">
-                    <canvas class="aurivo-knob-canvas dynamiceq-knob" id="dynamiceqRangeCanvas" 
+                    <canvas class="ardali-knob-canvas dynamiceq-knob" id="dynamiceqRangeCanvas" 
                         width="130" height="170"
                         data-param="range" 
                         data-label="Range"
@@ -4791,7 +4791,7 @@ function getDynamicEQTemplate() {
                 </div>
 
                 <div class="knob-wrapper">
-                    <canvas class="aurivo-knob-canvas dynamiceq-knob" id="dynamiceqAttackCanvas" 
+                    <canvas class="ardali-knob-canvas dynamiceq-knob" id="dynamiceqAttackCanvas" 
                         width="130" height="170"
                         data-param="attack" 
                         data-label="Attack"
@@ -4802,7 +4802,7 @@ function getDynamicEQTemplate() {
                 </div>
 
                 <div class="knob-wrapper">
-                    <canvas class="aurivo-knob-canvas dynamiceq-knob" id="dynamiceqReleaseCanvas" 
+                    <canvas class="ardali-knob-canvas dynamiceq-knob" id="dynamiceqReleaseCanvas" 
                         width="130" height="170"
                         data-param="release" 
                         data-label="Release"
@@ -4882,7 +4882,7 @@ function getTapeSatTemplate() {
             <!-- Knobs -->
             <div class="knob-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 20px; margin: 20px 0;">
                 <div class="knob-wrapper">
-                    <canvas class="aurivo-knob-canvas tapesat-knob" id="tapesatDriveDbCanvas" 
+                    <canvas class="ardali-knob-canvas tapesat-knob" id="tapesatDriveDbCanvas" 
                         width="130" height="170"
                         data-param="driveDb" 
                         data-label="${tOr('sfx.knob.param.drive', 'Drive')}"
@@ -4893,7 +4893,7 @@ function getTapeSatTemplate() {
                 </div>
                 
                 <div class="knob-wrapper">
-                    <canvas class="aurivo-knob-canvas tapesat-knob" id="tapesatMixCanvas" 
+                    <canvas class="ardali-knob-canvas tapesat-knob" id="tapesatMixCanvas" 
                         width="130" height="170"
                         data-param="mix" 
                         data-label="${tOr('sfx.knob.param.mix', 'Mix')}"
@@ -4904,7 +4904,7 @@ function getTapeSatTemplate() {
                 </div>
 
                 <div class="knob-wrapper">
-                    <canvas class="aurivo-knob-canvas tapesat-knob" id="tapesatToneCanvas" 
+                    <canvas class="ardali-knob-canvas tapesat-knob" id="tapesatToneCanvas" 
                         width="130" height="170"
                         data-param="tone" 
                         data-label="${tOr('sfx.knob.param.tone', 'Tone')}"
@@ -4915,7 +4915,7 @@ function getTapeSatTemplate() {
                 </div>
 
                 <div class="knob-wrapper">
-                    <canvas class="aurivo-knob-canvas tapesat-knob" id="tapesatOutputDbCanvas" 
+                    <canvas class="ardali-knob-canvas tapesat-knob" id="tapesatOutputDbCanvas" 
                         width="130" height="170"
                         data-param="outputDb" 
                         data-label="${tOr('sfx.knob.param.output', 'Output')}"
@@ -4926,7 +4926,7 @@ function getTapeSatTemplate() {
                 </div>
 
                 <div class="knob-wrapper">
-                    <canvas class="aurivo-knob-canvas tapesat-knob" id="tapesatHissCanvas" 
+                    <canvas class="ardali-knob-canvas tapesat-knob" id="tapesatHissCanvas" 
                         width="130" height="170"
                         data-param="hiss" 
                         data-label="${tOr('sfx.knob.param.tapeHiss', 'Tape Hiss')}"
@@ -5030,7 +5030,7 @@ function getBitDitherTemplate() {
             <!-- Knobs -->
             <div class="knob-grid" style="display: flex; justify-content: center; gap: 40px; margin: 20px 0;">
                 <div class="knob-wrapper">
-                    <canvas class="aurivo-knob-canvas bitdither-knob" id="bitditherMixCanvas" 
+                    <canvas class="ardali-knob-canvas bitdither-knob" id="bitditherMixCanvas" 
                         width="130" height="170"
                         data-param="mix" 
                         data-label="${tOr('sfx.knob.param.mix', 'Mix')}"
@@ -5041,7 +5041,7 @@ function getBitDitherTemplate() {
                 </div>
                 
                 <div class="knob-wrapper">
-                    <canvas class="aurivo-knob-canvas bitdither-knob" id="bitditherOutputDbCanvas" 
+                    <canvas class="ardali-knob-canvas bitdither-knob" id="bitditherOutputDbCanvas" 
                         width="130" height="170"
                         data-param="outputDb" 
                         data-label="${tOr('sfx.knob.param.output', 'Output')}"
@@ -5068,7 +5068,7 @@ function getGenericEffectTemplate(effectId, title, description, knobs) {
         // Use Canvas Knob
         return `
             <div class="knob-wrapper">
-                <canvas class="aurivo-knob-canvas" id="${effectId}${k.id}Canvas" 
+                <canvas class="ardali-knob-canvas" id="${effectId}${k.id}Canvas" 
                     width="130" height="170"
                     data-param="${k.id}" 
                     data-label="${k.label}"
@@ -5136,7 +5136,7 @@ function initEffectControls(effectName) {
 
         // Butonlar
         document.getElementById('eqResetBtn')?.addEventListener('click', () => resetEffect('eq32'));
-        document.getElementById('moduleResetBtn')?.addEventListener('click', () => resetAurivoModule());
+        document.getElementById('moduleResetBtn')?.addEventListener('click', () => resetArDaliModule());
         document.getElementById('eqPresetsBtn')?.addEventListener('click', () => showEQPresets());
     } else {
         // Init Canvas Knobs for other panels
@@ -5155,8 +5155,8 @@ function initEffectControls(effectName) {
             saveSettings(effectName, settings);
 
             // Reverb için direkt IPC çağrısı
-            if (effectName === 'reverb' && window.aurivo?.ipcAudio?.reverb) {
-                window.aurivo.ipcAudio.reverb.setEnabled(e.target.checked);
+            if (effectName === 'reverb' && window.ardali?.ipcAudio?.reverb) {
+                window.ardali.ipcAudio.reverb.setEnabled(e.target.checked);
                 if (e.target.checked) {
                     // Reverb açıldığında tüm parametreleri uygula
                     applyEffect('reverb');
@@ -5270,8 +5270,8 @@ function initEffectControls(effectName) {
                 const settings = getSettings('softecho');
                 settings.stereo = !!e.target.checked;
                 saveSettings('softecho', settings);
-                if (window.aurivo?.ipcAudio?.softEcho?.setStereoMode) {
-                    window.aurivo.ipcAudio.softEcho.setStereoMode(settings.stereo);
+                if (window.ardali?.ipcAudio?.softEcho?.setStereoMode) {
+                    window.ardali.ipcAudio.softEcho.setStereoMode(settings.stereo);
                 }
                 applyEffect('softecho');
             });
@@ -5294,8 +5294,8 @@ function initEffectControls(effectName) {
                 });
 
                 // C++ tarafına gönder
-                if (window.aurivo?.ipcAudio?.truePeakLimiter?.setOversampling) {
-                    window.aurivo.ipcAudio.truePeakLimiter.setOversampling(rate);
+                if (window.ardali?.ipcAudio?.truePeakLimiter?.setOversampling) {
+                    window.ardali.ipcAudio.truePeakLimiter.setOversampling(rate);
                 }
                 if (SFX_IS_SCOPED_DALI) {
                     applyEffect('truepeak');
@@ -5313,8 +5313,8 @@ function initEffectControls(effectName) {
                 settings.linkChannels = e.target.checked;
                 saveSettings('truepeak', settings);
 
-                if (window.aurivo?.ipcAudio?.truePeakLimiter?.setLinkChannels) {
-                    window.aurivo.ipcAudio.truePeakLimiter.setLinkChannels(e.target.checked);
+                if (window.ardali?.ipcAudio?.truePeakLimiter?.setLinkChannels) {
+                    window.ardali.ipcAudio.truePeakLimiter.setLinkChannels(e.target.checked);
                 }
                 if (SFX_IS_SCOPED_DALI) {
                     applyEffect('truepeak');
@@ -5328,8 +5328,8 @@ function initEffectControls(effectName) {
         const resetClipBtn = document.getElementById('resetClipBtn');
         if (resetClipBtn) {
             resetClipBtn.addEventListener('click', () => {
-                if (window.aurivo?.ipcAudio?.truePeakLimiter?.resetClipping) {
-                    window.aurivo.ipcAudio.truePeakLimiter.resetClipping();
+                if (window.ardali?.ipcAudio?.truePeakLimiter?.resetClipping) {
+                    window.ardali.ipcAudio.truePeakLimiter.resetClipping();
                 }
                 const clipCount = document.getElementById('truepeakClipCount');
                 if (clipCount) clipCount.textContent = '0';
@@ -5395,7 +5395,7 @@ function initGenericKnobs(effectName) {
     const panel = document.getElementById(`${effectName}Panel`);
     if (!panel) return;
 
-    const elements = panel.querySelectorAll('.aurivo-knob-canvas');
+    const elements = panel.querySelectorAll('.ardali-knob-canvas');
     elements.forEach(canvas => {
         // Skip if already initialized
         if (canvas._knobInitialized) return;
@@ -5505,7 +5505,7 @@ function updateKnobIndicator(knob, value, min, max) {
     const percentage = (value - min) / (max - min);
     const angle = -135 + (percentage * 270);
 
-    if (knob.classList.contains('knob-aurivo')) {
+    if (knob.classList.contains('knob-ardali')) {
         // Nokta indikatör: merkezden dışarı it (Halka üzerine)
         // Halka yarıçapı yaklaşık 40px (104px container / 2 - padding)
         indicator.style.transform = `translate(-50%, -50%) rotate(${angle}deg) translateY(-38px)`;
@@ -5700,7 +5700,7 @@ function startEqTopVisualizer() {
     // Reset visualizer state first to avoid undefined bars on initial frames
     resetEqTopVisualizerState();
     
-    const nativeSpectrumApi = window.aurivo?.audio?.spectrum;
+    const nativeSpectrumApi = window.ardali?.audio?.spectrum;
     const getSpectrumBands = nativeSpectrumApi && typeof nativeSpectrumApi.getBands === 'function'
         ? ((count) => nativeSpectrumApi.getBands(count))
         : null;
@@ -5813,8 +5813,8 @@ function initEQSliders() {
             currentSettings.bands[band] = value;
             saveSettings('eq32', currentSettings);
 
-            if (window.aurivo?.ipcAudio?.eq) {
-                dispatchRealtimeParam('eq32', `band${band}`, () => window.aurivo.ipcAudio.eq.setBand(band, value), 16);
+            if (window.ardali?.ipcAudio?.eq) {
+                dispatchRealtimeParam('eq32', `band${band}`, () => window.ardali.ipcAudio.eq.setBand(band, value), 16);
             }
 
             // Kalıcı kayıt (debounce)
@@ -5824,11 +5824,11 @@ function initEQSliders() {
         SFX.eqSliders[band] = slider;
     });
 
-    // Initialize Aurivo Module Knobs
-    initAurivoKnobs();
+    // Initialize ArDali Module Knobs
+    initArDaliKnobs();
 }
 
-function initAurivoKnobs() {
+function initArDaliKnobs() {
     const settings = getSettings('eq32');
 
     const knobsConfig = [
@@ -5903,8 +5903,8 @@ function initBalanceSlider() {
             schedulePersistEq32ToAppSettings(settings);
 
             // IPC Audio API'ye gönder (main process'e)
-            if (window.aurivo?.ipcAudio?.balance) {
-                dispatchRealtimeParam('eq32', 'balance', () => window.aurivo.ipcAudio.balance.set(value), 18);
+            if (window.ardali?.ipcAudio?.balance) {
+                dispatchRealtimeParam('eq32', 'balance', () => window.ardali.ipcAudio.balance.set(value), 18);
             }
         });
     }
@@ -5980,7 +5980,7 @@ function getSettings(effectName) {
         // localStorage'dan yükle veya varsayılan kullan
         try {
             const scopedKey = getScopedSettingsStorageKey(effectName);
-            const legacyKey = `aurivo_sfx_${effectName}`;
+            const legacyKey = `ardali_sfx_${effectName}`;
             const scopedSaved = localStorage.getItem(scopedKey);
             // Legacy anahtar sadece music scope için geri-uyumluluk amacıyla okunur.
             // Video/Web scope'ları kesinlikle birbirinden izole kalmalıdır.
@@ -6077,7 +6077,7 @@ function updateEffectParam(effectName, param, value) {
         return;
     }
 
-    const ipcAudio = window.aurivo?.ipcAudio;
+    const ipcAudio = window.ardali?.ipcAudio;
     if (!ipcAudio) return;
 
     // Parametre bazlı direkt IPC çağrısı
@@ -6346,7 +6346,7 @@ function updateEffectParam(effectName, param, value) {
 // ============================================
 function applyEffect(effectName) {
     const settings = getSettings(effectName);
-    const ipcAudio = window.aurivo?.ipcAudio;
+    const ipcAudio = window.ardali?.ipcAudio;
 
     if (SFX_IS_SCOPED_DALI) {
         emitScopedLiveEffectToMain(effectName, settings);
@@ -6480,7 +6480,7 @@ function applyEffect(effectName) {
     }
     
     // Native audio mevcut değilse uyarı
-    const isNativeAudioAvailable = window.aurivo?.audio?.isNativeAvailable?.();
+    const isNativeAudioAvailable = window.ardali?.audio?.isNativeAvailable?.();
     if (!isNativeAudioAvailable) {
         console.warn(`[SFX] Native audio unavailable - effect "${effectName}" cannot be applied`);
         return;
@@ -6503,7 +6503,7 @@ function applyEffect(effectName) {
             if (ipcAudio.balance) {
                 ipcAudio.balance.set(settings.balance);
             }
-            // Aurivo Module (Bass, Mid, Treble, Stereo)
+            // ArDali Module (Bass, Mid, Treble, Stereo)
             if (ipcAudio.module) {
                 ipcAudio.module.setBass(settings.bass);
                 ipcAudio.module.setMid(settings.mid);
@@ -7074,8 +7074,8 @@ function applyEffect(effectName) {
 
         case 'tapesat':
             // Tape Saturation: driveDb, mix, tone, outputDb, mode, hiss
-            if (window.aurivo?.audio?.tapeSat) {
-                const ts = window.aurivo.audio.tapeSat;
+            if (window.ardali?.audio?.tapeSat) {
+                const ts = window.ardali.audio.tapeSat;
                 ts.enable(settings.enabled);
                 ts.setDrive(settings.driveDb);
                 ts.setMix(settings.mix);
@@ -7089,8 +7089,8 @@ function applyEffect(effectName) {
 
         case 'bitdither':
             // Bit Depth / Dither: bitDepth, dither, shaping, downsample, mix, outputDb
-            if (window.aurivo?.audio?.bitDither) {
-                const bd = window.aurivo.audio.bitDither;
+            if (window.ardali?.audio?.bitDither) {
+                const bd = window.ardali.audio.bitDither;
                 bd.enable(settings.enabled);
                 bd.setBitDepth(parseInt(settings.bitDepth));
                 bd.setDither(parseInt(settings.dither));
@@ -7104,13 +7104,13 @@ function applyEffect(effectName) {
 
         case 'audiophile':
             // Audiophile Modu (Master C++ Output ve Web Node'una kazanç / donanım bayrağı basar)
-            if (window.aurivo?.ipcAudio?.preamp) {
+            if (window.ardali?.ipcAudio?.preamp) {
                 // C++ Motoru için (native audio)
-                dispatchRealtimeParam('audiophile', 'preamp_native', () => window.aurivo.ipcAudio.preamp.set(Number(settings.preamp) || 0), 16);
+                dispatchRealtimeParam('audiophile', 'preamp_native', () => window.ardali.ipcAudio.preamp.set(Number(settings.preamp) || 0), 16);
             }
-            if (window.aurivo?.audio?.preamp) {
+            if (window.ardali?.audio?.preamp) {
                 // Video & Web Node'ları için (dali)
-                dispatchRealtimeParam('audiophile', 'preamp_web', () => { if (window.aurivo?.audio?.preamp) window.aurivo.audio.preamp.set(Number(settings.preamp) || 0); }, 16);
+                dispatchRealtimeParam('audiophile', 'preamp_web', () => { if (window.ardali?.audio?.preamp) window.ardali.audio.preamp.set(Number(settings.preamp) || 0); }, 16);
             }
 
             syncAudiophileOutputProfile(settings).catch(() => { /* yoksay */ });
@@ -7220,8 +7220,8 @@ function resetEffect(effectName) {
         updateEq32UIFromSettings(settings);
 
         // Engine + settings.json reset (tek IPC)
-        if (window.aurivo?.ipcAudio?.eq?.resetBands) {
-            window.aurivo.ipcAudio.eq.resetBands();
+        if (window.ardali?.ipcAudio?.eq?.resetBands) {
+            window.ardali.ipcAudio.eq.resetBands();
         } else {
             applyEffect('eq32');
         }
@@ -7273,12 +7273,12 @@ function resetEffect(effectName) {
         // Apply (Disable and reset gains)
         updateEffectParam('peq', 'enabled', false);
         // Tüm bantları varsayılan değerlerle güncelle
-        if (window.aurivo?.ipcAudio?.peq) {
+        if (window.ardali?.ipcAudio?.peq) {
             defaults.bands.forEach((band, i) => {
-                window.aurivo.ipcAudio.peq.setBand(i, band.freq, band.gain, band.q, false);
+                window.ardali.ipcAudio.peq.setBand(i, band.freq, band.gain, band.q, false);
                 // Filter type'ı da sıfırla
-                if (typeof window.aurivo.ipcAudio.peq.setFilterType === 'function') {
-                    window.aurivo.ipcAudio.peq.setFilterType(i, band.filterType);
+                if (typeof window.ardali.ipcAudio.peq.setFilterType === 'function') {
+                    window.ardali.ipcAudio.peq.setFilterType(i, band.filterType);
                 }
             });
         }
@@ -7320,8 +7320,8 @@ function resetEffect(effectName) {
         }
 
         // Apply reset
-        if (window.aurivo?.ipcAudio?.autoGain?.reset) {
-            window.aurivo.ipcAudio.autoGain.reset();
+        if (window.ardali?.ipcAudio?.autoGain?.reset) {
+            window.ardali.ipcAudio.autoGain.reset();
         }
         applyEffect('autogain');
 
@@ -7382,8 +7382,8 @@ function resetEffect(effectName) {
         }
 
         // Apply reset
-        if (window.aurivo?.ipcAudio?.truePeakLimiter?.reset) {
-            window.aurivo.ipcAudio.truePeakLimiter.reset();
+        if (window.ardali?.ipcAudio?.truePeakLimiter?.reset) {
+            window.ardali.ipcAudio.truePeakLimiter.reset();
         }
 
         console.log('🔄 True Peak Limiter sıfırlandı');
@@ -7473,8 +7473,8 @@ function resetEffect(effectName) {
         }
 
         // Apply reset
-        if (window.aurivo?.ipcAudio?.crossfeed?.reset) {
-            window.aurivo.ipcAudio.crossfeed.reset();
+        if (window.ardali?.ipcAudio?.crossfeed?.reset) {
+            window.ardali.ipcAudio.crossfeed.reset();
         }
 
         // Visualization güncelle
@@ -7581,7 +7581,7 @@ function resetEffect(effectName) {
         const panel = document.getElementById(`${effectName}Panel`);
         if (panel) {
             // Find all Generic Knobs in this panel and set default value
-            const canvases = panel.querySelectorAll('.aurivo-knob-canvas');
+            const canvases = panel.querySelectorAll('.ardali-knob-canvas');
             canvases.forEach(canvas => {
                 const param = canvas.dataset.param;
                 // Defaults check
@@ -7613,7 +7613,7 @@ function resetEffect(effectName) {
     }
 }
 
-function resetAurivoModule() {
+function resetArDaliModule() {
     const settings = getSettings('eq32');
     settings.bass = 0;
     settings.mid = 0;
@@ -7640,8 +7640,8 @@ function resetAurivoModule() {
     if (acoustic) acoustic.value = 'off';
 
     // IPC Audio API'ye uygula - önce ipcAudio sonra audio dene
-    const ipcAudio = window.aurivo?.ipcAudio;
-    const audio = window.aurivo?.audio;
+    const ipcAudio = window.ardali?.ipcAudio;
+    const audio = window.ardali?.audio;
 
     if (ipcAudio?.module) {
         ipcAudio.module.reset();
@@ -7659,15 +7659,15 @@ function resetAurivoModule() {
         audio.setBalance(0);
     }
 
-    // Aurivo knob'larını doğrudan güncelle (pencereyi yenilemeden)
-    const aurivoKnobUpdates = [
+    // ArDali knob'larını doğrudan güncelle (pencereyi yenilemeden)
+    const ardaliKnobUpdates = [
         { id: 'knobBass', value: 0 },
         { id: 'knobMid', value: 0 },
         { id: 'knobTreble', value: 0 },
         { id: 'knobStereo', value: 100 }
     ];
 
-    aurivoKnobUpdates.forEach(({ id, value }) => {
+    ardaliKnobUpdates.forEach(({ id, value }) => {
         const knob = document.getElementById(id);
         if (!knob) return;
         const min = parseFloat(knob.dataset.min) || 0;
@@ -7687,7 +7687,7 @@ function resetAurivoModule() {
     const acousticSelect = document.getElementById('acousticSpace');
     if (acousticSelect) acousticSelect.value = 'off';
 
-    console.log('🔄 Aurivo Modülü sıfırlandı');
+    console.log('🔄 ArDali Modülü sıfırlandı');
 }
 
 function setEffectKnobValue(effectName, param, value) {
@@ -7697,7 +7697,7 @@ function setEffectKnobValue(effectName, param, value) {
         return;
     }
     const panel = document.getElementById(`${effectName}Panel`);
-    const canvas = panel?.querySelector(`.aurivo-knob-canvas[data-param="${param}"]`);
+    const canvas = panel?.querySelector(`.ardali-knob-canvas[data-param="${param}"]`);
     const canvasKnob = canvas?._knobInstance;
     if (canvasKnob && typeof canvasKnob.setValue === 'function') {
         canvasKnob.setValue(value);
@@ -7781,7 +7781,7 @@ function setReverbKnobValue(param, value) {
 
     // 2) Canvas üstündeki instance'tan dene
     const panel = document.getElementById('reverbPanel');
-    const canvas = panel?.querySelector(`.aurivo-knob-canvas[data-param="${param}"]`);
+    const canvas = panel?.querySelector(`.ardali-knob-canvas[data-param="${param}"]`);
     const canvasKnob = canvas?._knobInstance;
     if (canvasKnob && typeof canvasKnob.setValue === 'function') {
         canvasKnob.setValue(value);
@@ -7840,7 +7840,7 @@ function setBassBoostKnobValue(param, value) {
         return;
     }
     const panel = document.getElementById('bassboostPanel');
-    const canvas = panel?.querySelector(`.aurivo-knob-canvas[data-param="${param}"]`);
+    const canvas = panel?.querySelector(`.ardali-knob-canvas[data-param="${param}"]`);
     const canvasKnob = canvas?._knobInstance;
     if (canvasKnob && typeof canvasKnob.setValue === 'function') {
         canvasKnob.setValue(value);
@@ -7894,7 +7894,7 @@ function setNoiseGateKnobValue(param, value) {
         return;
     }
     const panel = document.getElementById('noisegatePanel');
-    const canvas = panel?.querySelector(`.aurivo-knob-canvas[data-param="${param}"]`);
+    const canvas = panel?.querySelector(`.ardali-knob-canvas[data-param="${param}"]`);
     const canvasKnob = canvas?._knobInstance;
     if (canvasKnob && typeof canvasKnob.setValue === 'function') {
         canvasKnob.setValue(value);
@@ -7955,7 +7955,7 @@ function setDeEsserKnobValue(param, value) {
         return;
     }
     const panel = document.getElementById('deesserPanel');
-    const canvas = panel?.querySelector(`.aurivo-knob-canvas[data-param="${param}"]`);
+    const canvas = panel?.querySelector(`.ardali-knob-canvas[data-param="${param}"]`);
     const canvasKnob = canvas?._knobInstance;
     if (canvasKnob && typeof canvasKnob.setValue === 'function') {
         canvasKnob.setValue(value);
@@ -8013,7 +8013,7 @@ function setExciterKnobValue(param, value) {
         return;
     }
     const panel = document.getElementById('exciterPanel');
-    const canvas = panel?.querySelector(`.aurivo-knob-canvas[data-param="${param}"]`);
+    const canvas = panel?.querySelector(`.ardali-knob-canvas[data-param="${param}"]`);
     const canvasKnob = canvas?._knobInstance;
     if (canvasKnob && typeof canvasKnob.setValue === 'function') {
         canvasKnob.setValue(value);
@@ -8083,7 +8083,7 @@ function setStereoWidenerKnobValue(param, value) {
         return;
     }
     const panel = document.getElementById('stereowidenerPanel');
-    const canvas = panel?.querySelector(`.aurivo-knob-canvas[data-param="${param}"]`);
+    const canvas = panel?.querySelector(`.ardali-knob-canvas[data-param="${param}"]`);
     const canvasKnob = canvas?._knobInstance;
     if (canvasKnob && typeof canvasKnob.setValue === 'function') {
         canvasKnob.setValue(value);
@@ -8148,7 +8148,7 @@ function setEchoKnobValue(param, value) {
         return;
     }
     const panel = document.getElementById('echoPanel');
-    const canvas = panel?.querySelector(`.aurivo-knob-canvas[data-param="${param}"]`);
+    const canvas = panel?.querySelector(`.ardali-knob-canvas[data-param="${param}"]`);
     const canvasKnob = canvas?._knobInstance;
     if (canvasKnob && typeof canvasKnob.setValue === 'function') {
         canvasKnob.setValue(value);
@@ -8234,7 +8234,7 @@ function applySoftEchoPreset(presetName) {
             mapped.setValue(settings[param]);
             return;
         }
-        const canvas = document.querySelector(`#softechoPanel .aurivo-knob-canvas[data-param="${param}"]`);
+        const canvas = document.querySelector(`#softechoPanel .ardali-knob-canvas[data-param="${param}"]`);
         const inst = canvas?._knobInstance;
         if (inst && typeof inst.setValue === 'function') inst.setValue(settings[param]);
     });
@@ -8625,7 +8625,7 @@ async function syncAudiophileOutputProfile(settings, { force = false } = {}) {
         updateAudiophileRouteStatusUi(audiophileLastOutputStatus);
         return audiophileLastOutputStatus;
     }
-    const api = window.aurivo?.ipcAudio?.outputProfile;
+    const api = window.ardali?.ipcAudio?.outputProfile;
     if (!api?.configure) {
         updateAudiophileRouteStatusUi();
         return null;
@@ -8648,7 +8648,7 @@ async function syncAudiophileOutputProfile(settings, { force = false } = {}) {
 }
 
 async function refreshAudiophileOutputStatus() {
-    const api = window.aurivo?.ipcAudio?.outputProfile;
+    const api = window.ardali?.ipcAudio?.outputProfile;
     if (!api?.getStatus) {
         updateAudiophileRouteStatusUi();
         return null;
@@ -8667,8 +8667,8 @@ async function refreshAudiophileOutputStatus() {
 
 async function isAudioPlayingNow() {
     try {
-        if (typeof window.aurivo?.audio?.isPlaying === 'function') {
-            return !!(await window.aurivo.audio.isPlaying());
+        if (typeof window.ardali?.audio?.isPlaying === 'function') {
+            return !!(await window.ardali.audio.isPlaying());
         }
     } catch {
         // yoksay
@@ -8679,12 +8679,12 @@ async function isAudioPlayingNow() {
 async function populateAudiophileDevices(deviceSel, sampleRateSel = null) {
     if (!deviceSel) return;
     const previous = String(getSettings('audiophile')?.outputDevice || deviceSel.value || 'default');
-    if (!window.aurivo?.ipcAudio?.devices?.get) {
+    if (!window.ardali?.ipcAudio?.devices?.get) {
         updateAudiophileRouteStatusUi();
         return;
     }
     try {
-        const raw = await window.aurivo.ipcAudio.devices.get();
+        const raw = await window.ardali.ipcAudio.devices.get();
         const devices = normalizeAudiophileDevicesPayload(raw);
         deviceSel.innerHTML = '';
 
@@ -8855,7 +8855,7 @@ function textLooksLikeUsbHeadset(value) {
 }
 
 async function getCrossfeedFallbackDeviceState() {
-    const pulseApi = window.aurivo?.pulse;
+    const pulseApi = window.ardali?.pulse;
     if (!pulseApi?.listDevices) return null;
 
     const listRes = await pulseApi.listDevices();
@@ -9060,8 +9060,8 @@ function initCrossfeedControls() {
             saveSettings('crossfeed', settings);
 
             // C++ tarafına preset gönder
-            if (window.aurivo?.ipcAudio?.crossfeed?.setPreset) {
-                window.aurivo.ipcAudio.crossfeed.setPreset(preset);
+            if (window.ardali?.ipcAudio?.crossfeed?.setPreset) {
+                window.ardali.ipcAudio.crossfeed.setPreset(preset);
             }
 
             // Visualization güncelle
@@ -9081,8 +9081,8 @@ function initCrossfeedControls() {
             settings.enabled = e.target.checked;
             saveSettings('crossfeed', settings);
 
-            if (window.aurivo?.ipcAudio?.crossfeed?.enable) {
-                window.aurivo.ipcAudio.crossfeed.enable(settings.enabled);
+            if (window.ardali?.ipcAudio?.crossfeed?.enable) {
+                window.ardali.ipcAudio.crossfeed.enable(settings.enabled);
                 console.log(`[CROSSFEED] ${settings.enabled ? 'Etkinleştirildi' : 'Devre dışı'}`);
             }
 
@@ -9121,8 +9121,8 @@ function initCrossfeedControls() {
     });
 
     // Başlangıçta enable durumunu senkronize et
-    if (window.aurivo?.ipcAudio?.crossfeed?.enable) {
-        window.aurivo.ipcAudio.crossfeed.enable(getSettings('crossfeed').enabled);
+    if (window.ardali?.ipcAudio?.crossfeed?.enable) {
+        window.ardali.ipcAudio.crossfeed.enable(getSettings('crossfeed').enabled);
     }
 
     // Reset butonu event listener
@@ -9169,9 +9169,9 @@ function initCrossfeedControls() {
     const statusEl = document.getElementById('crossfeed-status');
     const updateStatus = async () => {
         if (!SFX_RUNTIME_ANIMS_ACTIVE || SFX.currentEffect !== 'crossfeed') return;
-        if (!statusEl || !window.aurivo?.ipcAudio?.crossfeed?.getParams) return;
+        if (!statusEl || !window.ardali?.ipcAudio?.crossfeed?.getParams) return;
         try {
-            const params = await window.aurivo.ipcAudio.crossfeed.getParams();
+            const params = await window.ardali.ipcAudio.crossfeed.getParams();
             const attached = params?.dspAttached ? tSync('sfx.crossfeed.attached') : tSync('sfx.crossfeed.detached');
             const count = params?.callbackCount ?? 0;
             const err = params?.lastError ?? 0;
@@ -9193,7 +9193,7 @@ function initCrossfeedControls() {
         if (!SFX_RUNTIME_ANIMS_ACTIVE || SFX.currentEffect !== 'crossfeed') return;
         if (!deviceHintEl) return;
         try {
-            let st = await window.aurivo?.systemAudio?.getState?.();
+            let st = await window.ardali?.systemAudio?.getState?.();
             if (!st?.success) {
                 st = await getCrossfeedFallbackDeviceState();
                 if (!st?.success) {
@@ -9322,7 +9322,7 @@ function initSurroundControls() {
         if (!SFX_RUNTIME_ANIMS_ACTIVE || SFX.currentEffect !== 'surround') return;
         if (!hintEl) return;
         try {
-            const st = await window.aurivo?.systemAudio?.getState?.();
+            const st = await window.ardali?.systemAudio?.getState?.();
             const channels = Number(st?.channelCount || 0);
             const outputName = String(st?.currentOutputName || st?.currentOutputBadge || tOr('sfx.surround.outputUnknown', 'Unknown output'));
             const isMulti = Number.isFinite(channels) && channels > 2;
@@ -9473,9 +9473,9 @@ function updateCrossfeedVisual() {
 function showEQPresets() {
     dbgEq('[showEQPresets] Fonksiyon çağrıldı');
     
-    if (window.aurivo?.presets?.openEQPresetsWindow) {
+    if (window.ardali?.presets?.openEQPresetsWindow) {
         dbgEq('[showEQPresets] API bulundu, openEQPresetsWindow çağrılıyor...');
-        window.aurivo.presets.openEQPresetsWindow()
+        window.ardali.presets.openEQPresetsWindow()
             .then(result => dbgEq('[showEQPresets] Başarılı, sonuç:', result))
             .catch(err => console.error('[showEQPresets] Hata:', err));
         return;
@@ -9563,12 +9563,12 @@ function updateEqPresetButtonLabel() {
 async function persistEq32ToAppSettings(eq32Settings) {
     dbgEq('[PERSIST EQ32] çağrıldı');
 
-    if (!window.aurivo?.loadSettings || !window.aurivo?.saveSettings) {
-        console.error('[PERSIST EQ32] ✗ aurivo.loadSettings veya saveSettings mevcut değil!');
+    if (!window.ardali?.loadSettings || !window.ardali?.saveSettings) {
+        console.error('[PERSIST EQ32] ✗ ardali.loadSettings veya saveSettings mevcut değil!');
         return;
     }
 
-    const current = await window.aurivo.loadSettings();
+    const current = await window.ardali.loadSettings();
     dbgEq('[PERSIST EQ32] mevcut yüklendi');
 
     const next = { ...(current || {}) };
@@ -9591,18 +9591,18 @@ async function persistEq32ToAppSettings(eq32Settings) {
         next.sfx.eq32 = { ...scopedEq32 };
     }
 
-    const result = await window.aurivo.saveSettings(next);
+    const result = await window.ardali.saveSettings(next);
     dbgEq('[PERSIST EQ32] ✓ Kayıt sonucu:', result);
     
     return result;
 }
 
 async function hydrateEq32FromAppSettings() {
-    if (!window.aurivo?.loadSettings) return;
+    if (!window.ardali?.loadSettings) return;
 
     try {
         dbgEq('[EQ32 HYDRATE] Kayıtlı ayarlar yükleniyor...');
-        const appSettings = await window.aurivo.loadSettings();
+        const appSettings = await window.ardali.loadSettings();
         const sfxEq32 =
             appSettings?.sfxScopes?.[SFX_SCOPE]?.eq32 ||
             (SFX_SCOPE === 'music' ? appSettings?.sfx?.eq32 : null);

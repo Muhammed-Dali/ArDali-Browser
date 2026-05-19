@@ -5,8 +5,8 @@ const https = require('https');
 const os = require('os');
 const path = require('path');
 
-const CONFIG_NAME = 'aurivo-downloader.json';
-const HISTORY_NAME = 'aurivo-download-history.json';
+const CONFIG_NAME = 'ardali-downloader.json';
+const HISTORY_NAME = 'ardali-download-history.json';
 const YTDLP_LATEST_BASE_URL = 'https://github.com/yt-dlp/yt-dlp/releases/latest/download';
 const WINDOWS_FFMPEG_ZIP_URL = 'https://github.com/aandrew-me/ffmpeg-builds/releases/download/v8/ffmpeg_win64.zip';
 
@@ -24,7 +24,7 @@ function getManagedBinDir(app) {
     try {
         return path.join(app.getPath('userData'), 'downloader-bin');
     } catch {
-        return path.join(os.homedir(), '.aurivo-dawlod');
+        return path.join(os.homedir(), '.ardali-dawlod');
     }
 }
 
@@ -53,11 +53,11 @@ function resolveYtDlpBinary(app) {
 
     const localName = process.platform === 'win32' ? 'ytdlp.exe' : 'ytdlp';
     const candidates = [
-        process.env.AURIVO_YTDLP_PATH,
+        process.env.ARDALI_YTDLP_PATH,
         process.env.YTDOWNLOADER_YTDLP_PATH,
         app ? getManagedYtDlpPath(app) : '',
-        path.join(os.homedir(), '.aurivo-dawlod', localName),
-        path.join(os.homedir(), '.aurivo-dawlod', 'yt-dlp')
+        path.join(os.homedir(), '.ardali-dawlod', localName),
+        path.join(os.homedir(), '.ardali-dawlod', 'yt-dlp')
     ].filter(Boolean);
 
     for (const candidate of candidates) {
@@ -73,7 +73,7 @@ function resolveYtDlpBinary(app) {
 }
 
 function resolveFfmpegBinary(app) {
-    const envCandidate = process.env.AURIVO_FFMPEG_PATH || process.env.FFMPEG_PATH;
+    const envCandidate = process.env.ARDALI_FFMPEG_PATH || process.env.FFMPEG_PATH;
     const candidates = [
         envCandidate,
         app ? getManagedFfmpegPath(app) : '',
@@ -81,7 +81,7 @@ function resolveFfmpegBinary(app) {
         path.join(__dirname, '..', 'bin', process.platform === 'win32' ? 'ffmpeg.exe' : 'ffmpeg'),
         path.join(process.resourcesPath || '', 'bin', process.platform === 'win32' ? 'ffmpeg.exe' : 'ffmpeg'),
         path.join(process.resourcesPath || '', 'app.asar.unpacked', 'bin', process.platform === 'win32' ? 'ffmpeg.exe' : 'ffmpeg'),
-        path.join(os.homedir(), '.aurivo-dawlod', process.platform === 'win32' ? 'ffmpeg.exe' : 'ffmpeg'),
+        path.join(os.homedir(), '.ardali-dawlod', process.platform === 'win32' ? 'ffmpeg.exe' : 'ffmpeg'),
         process.platform === 'win32' ? '' : '/usr/bin/ffmpeg',
         process.platform === 'win32' ? '' : '/usr/local/bin/ffmpeg'
     ].filter(Boolean);
@@ -349,17 +349,19 @@ async function readSettings(app) {
         configPath: '',
         useConfigFile: false,
         showMoreFormats: false,
-        theme: 'dark',
+        theme: 'ardali',
         playlistFileTemplate: '%(playlist_index)s.%(title)s.%(ext)s',
         playlistFolderTemplate: '%(playlist_title)s',
         maxActiveDownloads: 1,
         closeToTray: false,
         disableAutoUpdates: false,
+        compressorMode: 'video',
         compressorExtension: 'unchanged',
         compressorEncoder: 'x264',
         compressorSpeed: 'medium',
         compressorQuality: 23,
         compressorAudioFormat: 'copy',
+        compressorEmbedCover: true,
         compressorSuffix: '_compressed',
         compressorSameFolder: true,
         compressorOutputDir: ''
@@ -598,6 +600,7 @@ function buildDownloadArgs(options, settings) {
     const mode = String(options.mode || 'video');
     const downloadDir = settings.downloadDir || getDefaultDownloadDir();
     const extractFormat = String(options.extractFormat || 'mp3');
+    const extractFormatLower = extractFormat.toLowerCase();
 
     if (mode === 'video') {
         const videoId = String(options.videoFormatId || '').trim();
@@ -608,10 +611,12 @@ function buildDownloadArgs(options, settings) {
     } else {
         const audioId = String(options.audioFormatId || '').trim();
         if (mode === 'audio' && audioId) args.push('-f', audioId);
+        else if (mode === 'audio' && extractFormatLower === 'm4a') args.push('-f', 'bestaudio[ext=m4a]/bestaudio/best');
+        else if (mode === 'audio' && extractFormatLower === 'opus') args.push('-f', 'bestaudio[ext=webm]/bestaudio/best');
         else args.push('-f', 'bestaudio/best');
         args.push('-x', '--audio-format', extractFormat);
-        args.push('--audio-quality', String(options.audioQuality || '5'));
-        if (['mp3', 'm4a', 'mp4', 'opus', 'alac'].includes(extractFormat.toLowerCase())) {
+        args.push('--audio-quality', String(options.audioQuality || '0'));
+        if (['mp3', 'm4a', 'mp4', 'opus', 'alac', 'flac'].includes(extractFormatLower)) {
             args.push('--embed-metadata', '--add-metadata', '--embed-thumbnail', '--convert-thumbnails', 'jpg');
         }
     }
@@ -650,7 +655,7 @@ function buildPlaylistArgs(options, settings) {
 
     if (mode === 'playlist-audio') {
         args.push('-x', '--audio-format', String(options.playlistAudioFormat || 'mp3'));
-        args.push('--audio-quality', String(options.playlistAudioQuality || '5'));
+        args.push('--audio-quality', String(options.playlistAudioQuality || '0'));
         args.push('--embed-metadata');
     } else if (mode === 'playlist-thumbnails') {
         args.push('--write-thumbnail', '--convert-thumbnails', 'png', '--skip-download');
@@ -688,6 +693,7 @@ function sanitizeCompressionFiles(files) {
 }
 
 function normalizeCompressionSettings(options) {
+    const mode = String(options.mode || 'video').toLowerCase() === 'audio' ? 'audio' : 'video';
     const extension = String(options.extension || 'unchanged').toLowerCase();
     const encoder = String(options.encoder || 'x264').toLowerCase();
     const speed = String(options.speed || 'medium').toLowerCase();
@@ -698,10 +704,12 @@ function normalizeCompressionSettings(options) {
     const quality = Math.max(18, Math.min(51, Number(options.videoQuality || 23) || 23));
 
     return {
+        mode,
         extension: ['unchanged', 'mp4', 'mkv'].includes(extension) ? extension : 'unchanged',
         encoder,
         speed: ['fast', 'medium', 'slow'].includes(speed) ? speed : 'medium',
-        audioFormat: ['copy', 'aac', 'mp3'].includes(audioFormat) ? audioFormat : 'copy',
+        audioFormat: ['copy', 'aac', 'mp3', 'm4a', 'mp4', 'opus', 'ogg', 'flac', 'wav', 'alac'].includes(audioFormat) ? audioFormat : 'copy',
+        embedCover: options.embedCover !== false,
         outputSuffix,
         sameFolder,
         outputDir,
@@ -712,8 +720,42 @@ function normalizeCompressionSettings(options) {
 function buildCompressionOutputPath(inputPath, settings) {
     const parsed = path.parse(inputPath);
     const targetDir = settings.sameFolder || !settings.outputDir ? parsed.dir : settings.outputDir;
-    const targetExt = settings.extension === 'unchanged' ? parsed.ext : `.${settings.extension}`;
+    const targetExt = settings.mode === 'audio'
+        ? `.${getAudioOutputExtension(settings.audioFormat)}`
+        : (settings.extension === 'unchanged' ? parsed.ext : `.${settings.extension}`);
     return path.join(targetDir, `${parsed.name}${settings.outputSuffix}${targetExt}`);
+}
+
+function getAudioOutputExtension(format) {
+    if (format === 'alac') return 'm4a';
+    if (format === 'copy') return 'mp3';
+    return ['aac', 'mp3', 'm4a', 'mp4', 'opus', 'ogg', 'flac', 'wav'].includes(format) ? format : 'mp3';
+}
+
+function supportsEmbeddedCover(format) {
+    return ['mp3', 'm4a', 'mp4', 'alac', 'flac'].includes(String(format || '').toLowerCase());
+}
+
+function getAudioCodecArgs(format) {
+    switch (format) {
+        case 'aac':
+        case 'm4a':
+        case 'mp4':
+            return ['-c:a', 'aac', '-b:a', '256k'];
+        case 'opus':
+            return ['-c:a', 'libopus', '-b:a', '192k'];
+        case 'ogg':
+            return ['-c:a', 'libvorbis', '-q:a', '7'];
+        case 'flac':
+            return ['-c:a', 'flac'];
+        case 'wav':
+            return ['-c:a', 'pcm_s16le'];
+        case 'alac':
+            return ['-c:a', 'alac'];
+        case 'mp3':
+        default:
+            return ['-c:a', 'libmp3lame', '-q:a', '0'];
+    }
 }
 
 function mapCompressionPreset(encoder, speed) {
@@ -723,7 +765,7 @@ function mapCompressionPreset(encoder, speed) {
 }
 
 function buildFFmpegArgs(inputPath, outputPath, settings) {
-    const args = ['-hide_banner', '-y', '-stats', '-i', inputPath];
+    const args = ['-hide_banner', '-y', '-stats', '-progress', 'pipe:2', '-i', inputPath];
     const preset = mapCompressionPreset(settings.encoder, settings.speed);
 
     switch (settings.encoder) {
@@ -768,6 +810,59 @@ function buildFFmpegArgs(inputPath, outputPath, settings) {
     return args;
 }
 
+async function extractAudioCover(ffmpegBinary, inputPath, batchId) {
+    const coverPath = path.join(os.tmpdir(), `ardali-cover-${batchId}-${crypto.randomBytes(4).toString('hex')}.jpg`);
+    await new Promise((resolve, reject) => {
+        const child = spawnLowPriority(ffmpegBinary, [
+            '-hide_banner',
+            '-y',
+            '-ss',
+            '00:00:01',
+            '-i',
+            inputPath,
+            '-frames:v',
+            '1',
+            '-vf',
+            'scale=900:-1',
+            coverPath
+        ], {
+            cwd: path.dirname(inputPath),
+            shell: false,
+            windowsHide: true
+        }, 15);
+        let stderr = '';
+        child.stderr.on('data', (chunk) => { stderr += chunk.toString(); });
+        child.on('error', reject);
+        child.on('close', (code) => {
+            if (code === 0 && fs.existsSync(coverPath)) resolve();
+            else reject(new Error(stderr.trim().slice(-500) || 'Kapak görseli çıkarılamadı.'));
+        });
+    });
+    return coverPath;
+}
+
+function buildAudioConversionArgs(inputPath, outputPath, settings, coverPath = '') {
+    const format = settings.audioFormat === 'copy' ? 'mp3' : settings.audioFormat;
+    const shouldEmbedCover = !!coverPath && settings.embedCover && supportsEmbeddedCover(format);
+    const args = ['-hide_banner', '-y', '-stats', '-progress', 'pipe:2', '-i', inputPath];
+    if (shouldEmbedCover) args.push('-i', coverPath);
+    args.push('-map', '0:a:0');
+    if (shouldEmbedCover) args.push('-map', '1:v:0');
+    else args.push('-vn');
+    args.push(...getAudioCodecArgs(format));
+    if (shouldEmbedCover) {
+        args.push(
+            '-c:v', 'copy',
+            '-disposition:v:0', 'attached_pic',
+            '-metadata:s:v', 'title=Album cover',
+            '-metadata:s:v', 'comment=Cover (front)'
+        );
+        if (format === 'mp3') args.push('-id3v2_version', '3');
+    }
+    args.push(outputPath);
+    return args;
+}
+
 function parseFfmpegDuration(text) {
     const match = String(text || '').match(/Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)/);
     if (!match) return 0;
@@ -778,6 +873,15 @@ function parseFfmpegTime(text) {
     const match = String(text || '').match(/time=(\d+):(\d+):(\d+(?:\.\d+)?)/);
     if (!match) return 0;
     return (Number(match[1]) * 3600) + (Number(match[2]) * 60) + Number(match[3]);
+}
+
+function parseFfmpegProgressTime(text) {
+    const value = String(text || '');
+    const microsMatch = value.match(/out_time_(?:ms|us)=(\d+)/);
+    if (microsMatch) return Number(microsMatch[1]) / 1000000;
+    const secondsMatch = value.match(/out_time=(\d+):(\d+):(\d+(?:\.\d+)?)/);
+    if (!secondsMatch) return 0;
+    return (Number(secondsMatch[1]) * 3600) + (Number(secondsMatch[2]) * 60) + Number(secondsMatch[3]);
 }
 
 function createDownloaderService({ app, webContentsProvider }) {
@@ -997,6 +1101,22 @@ function createDownloaderService({ app, webContentsProvider }) {
             };
         },
         readHistory: () => readHistory(app),
+        async getFileThumbnail(filePath) {
+            const target = String(filePath || '').trim();
+            if (!path.isAbsolute(target) || !fs.existsSync(target)) return '';
+            const ffmpegBinary = await ensureFfmpegBinary(app, emit);
+            const thumbnailPath = await extractAudioCover(ffmpegBinary, target, 'preview').catch((error) => {
+                console.warn('[DOWNLOADER] file thumbnail failed:', error?.message || error);
+                return '';
+            });
+            if (!thumbnailPath) return '';
+            try {
+                const buffer = await fs.promises.readFile(thumbnailPath);
+                return `data:image/jpeg;base64,${buffer.toString('base64')}`;
+            } finally {
+                fs.promises.unlink(thumbnailPath).catch(() => {});
+            }
+        },
         exportHistory: (format) => exportHistory(app, format),
         clearHistory: () => writeHistory(app, []),
         async removeHistoryItem(id) {
@@ -1108,7 +1228,16 @@ function createDownloaderService({ app, webContentsProvider }) {
                     const title = path.basename(inputPath);
                     const outputPath = buildCompressionOutputPath(inputPath, settings);
                     await fs.promises.mkdir(path.dirname(outputPath), { recursive: true });
-                    const args = buildFFmpegArgs(inputPath, outputPath, settings);
+                    let coverPath = '';
+                    if (settings.mode === 'audio' && settings.embedCover) {
+                        coverPath = await extractAudioCover(ffmpegBinary, inputPath, batchId).catch((error) => {
+                            console.warn('[DOWNLOADER] audio cover extraction failed:', error?.message || error);
+                            return '';
+                        });
+                    }
+                    const args = settings.mode === 'audio'
+                        ? buildAudioConversionArgs(inputPath, outputPath, settings, coverPath)
+                        : buildFFmpegArgs(inputPath, outputPath, settings);
                     const child = spawnLowPriority(ffmpegBinary, args, {
                         cwd: path.dirname(inputPath),
                         shell: false,
@@ -1117,7 +1246,8 @@ function createDownloaderService({ app, webContentsProvider }) {
 
                     jobs.set(id, child);
                     batch.children.add(child);
-                    emit({ id, batchId, state: 'running', title, percent: 0, message: 'Sıkıştırılıyor', detail: outputPath });
+                    const jobMode = settings.mode === 'audio' ? 'audio' : 'video';
+                    emit({ id, batchId, state: 'running', title, percent: 0, message: settings.mode === 'audio' ? 'Dönüştürülüyor' : 'Sıkıştırılıyor', detail: outputPath, sourcePath: inputPath, mode: jobMode });
 
                     await new Promise((resolve) => {
                         let stderr = '';
@@ -1126,7 +1256,7 @@ function createDownloaderService({ app, webContentsProvider }) {
                             const text = chunk.toString();
                             stderr += text;
                             duration = duration || parseFfmpegDuration(text);
-                            const current = parseFfmpegTime(text);
+                            const current = parseFfmpegProgressTime(text) || parseFfmpegTime(text);
                             if (duration > 0 && current > 0) {
                                 const percent = Math.min(99, (current / duration) * 100);
                                 emit({
@@ -1136,26 +1266,31 @@ function createDownloaderService({ app, webContentsProvider }) {
                                     title,
                                     percent,
                                     message: `%${Math.round(percent)}`,
-                                    detail: outputPath
+                                    detail: outputPath,
+                                    sourcePath: inputPath,
+                                    mode: jobMode
                                 });
                             }
                         });
                         child.on('error', (error) => {
                             jobs.delete(id);
                             batch.children.delete(child);
-                            emit({ id, batchId, state: 'error', title, percent: 0, message: 'Hata', detail: error.message });
+                            emit({ id, batchId, state: 'error', title, percent: 0, message: 'Hata', detail: error.message, sourcePath: inputPath, mode: jobMode });
                             resolve();
                         });
                         child.on('close', (code, signal) => {
                             jobs.delete(id);
                             batch.children.delete(child);
+                            if (coverPath) {
+                                fs.promises.unlink(coverPath).catch(() => {});
+                            }
                             if (signal || batch.cancelled) {
-                                emit({ id, batchId, state: 'cancelled', title, percent: 0, message: 'İptal edildi', detail: '' });
+                                emit({ id, batchId, state: 'cancelled', title, percent: 0, message: 'İptal edildi', detail: '', sourcePath: inputPath, mode: jobMode });
                                 resolve();
                                 return;
                             }
                             if (code === 0) {
-                                emit({ id, batchId, state: 'done', title, percent: 100, message: 'Tamamlandı', detail: outputPath, outputPath });
+                                emit({ id, batchId, state: 'done', title, percent: 100, message: 'Tamamlandı', detail: outputPath, outputPath, sourcePath: inputPath, mode: jobMode });
                                 resolve();
                                 return;
                             }
@@ -1166,7 +1301,9 @@ function createDownloaderService({ app, webContentsProvider }) {
                                 title,
                                 percent: 0,
                                 message: 'Hata',
-                                detail: stderr.trim().slice(-500) || `ffmpeg ${code} kodu ile kapandi.`
+                                detail: stderr.trim().slice(-500) || `ffmpeg ${code} kodu ile kapandi.`,
+                                sourcePath: inputPath,
+                                mode: jobMode
                             });
                             resolve();
                         });

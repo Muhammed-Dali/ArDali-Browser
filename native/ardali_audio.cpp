@@ -1,5 +1,5 @@
 // ============================================
-// AURIVO AUDIO ENGINE - Profesyonel BASS Ses
+// ARDALI AUDIO ENGINE - Profesyonel BASS Ses
 // Electron için Node.js Native Eklentisi
 // Sürüm 2.0 - Clipping Yok, Derin Bass
 // ============================================
@@ -26,7 +26,7 @@
 #define M_PI 3.14159265358979323846
 #endif
 
-// Aurivo DSP C API (src/audio/aurivo_dsp.cpp)
+// ArDali DSP C API (src/audio/ardali_dsp.cpp)
 extern "C" {
     void* create_dsp();
     void destroy_dsp(void* dsp);
@@ -502,12 +502,12 @@ static inline float softClip(float sample) {
     return sample;
 }
 
-// Gereksiz callback kaldırıldı. Crossfeed artık aurivo_dsp.cpp içinde entegre
+// Gereksiz callback kaldırıldı. Crossfeed artık ardali_dsp.cpp içinde entegre
 
 // ============================================
-// AURIVO AUDIO ENGINE SINIFI
+// ARDALI AUDIO ENGINE SINIFI
 // ============================================
-class AurivoAudioEngine {
+class ArDaliAudioEngine {
 private:
     // Stream handles
     HSTREAM m_stream;
@@ -528,12 +528,12 @@ private:
     HFX m_prevPreampFx;
     HFX m_prevReverbFx;
 
-    // Aurivo DSP
-    void* m_aurivoDSP;
+    // ArDali DSP
+    void* m_ardaliDSP;
     HDSP m_dspHandle;
 
     // Prev stream DSP
-    void* m_prevAurivoDSP;
+    void* m_prevArDaliDSP;
     HDSP m_prevDspHandle;
 
     struct TruePeakLimiterState {
@@ -557,7 +557,7 @@ private:
     float m_bassBoost;         // 0-100
     float m_balance;           // -100 (left) to +100 (right)
     
-    // Aurivo Module parameters - SADECE DEĞER SAKLA
+    // ArDali Module parameters - SADECE DEĞER SAKLA
     float m_bassGain;          // -15dB to +15dB (100Hz)
     float m_midGain;           // -15dB to +15dB (500Hz-2kHz)
     float m_trebleGain;        // -15dB to +15dB (10kHz)
@@ -584,10 +584,10 @@ private:
     std::atomic<bool> m_fftReady;
     
     // Singleton
-    static AurivoAudioEngine* s_instance;
+    static ArDaliAudioEngine* s_instance;
 
 public:
-    AurivoAudioEngine() 
+    ArDaliAudioEngine() 
         : m_stream(0)
         , m_decodeStream(0)
         , m_analysisStream(0)
@@ -599,9 +599,9 @@ public:
         , m_reverbFx(0)
         , m_prevPreampFx(0)
         , m_prevReverbFx(0)
-        , m_aurivoDSP(nullptr)
+        , m_ardaliDSP(nullptr)
         , m_dspHandle(0)
-        , m_prevAurivoDSP(nullptr)
+        , m_prevArDaliDSP(nullptr)
         , m_prevDspHandle(0)
         , m_masterVolume(100.0f)
         , m_programVolumeMul(1.0f)
@@ -630,18 +630,18 @@ public:
             m_eqGains[i] = 0.0f;
         }
 
-        // Aurivo DSP oluştur
-        m_aurivoDSP = create_dsp();
-        if (m_aurivoDSP) {
-            set_sample_rate(m_aurivoDSP, SAMPLE_RATE);
-            set_dsp_enabled(m_aurivoDSP, 1);
+        // ArDali DSP oluştur
+        m_ardaliDSP = create_dsp();
+        if (m_ardaliDSP) {
+            set_sample_rate(m_ardaliDSP, SAMPLE_RATE);
+            set_dsp_enabled(m_ardaliDSP, 1);
         }
         
         memset(m_fftData, 0, sizeof(m_fftData));
         s_instance = this;
     }
     
-    ~AurivoAudioEngine() {
+    ~ArDaliAudioEngine() {
         cleanup();
         s_instance = nullptr;
     }
@@ -823,14 +823,14 @@ public:
             m_initialized = false;
         }
 
-        if (m_aurivoDSP) {
-            destroy_dsp(m_aurivoDSP);
-            m_aurivoDSP = nullptr;
+        if (m_ardaliDSP) {
+            destroy_dsp(m_ardaliDSP);
+            m_ardaliDSP = nullptr;
         }
 
-        if (m_prevAurivoDSP) {
-            destroy_dsp(m_prevAurivoDSP);
-            m_prevAurivoDSP = nullptr;
+        if (m_prevArDaliDSP) {
+            destroy_dsp(m_prevArDaliDSP);
+            m_prevArDaliDSP = nullptr;
         }
 
         m_overlapCrossfadeActive = false;
@@ -843,8 +843,8 @@ public:
         return m_stream;
     }
 
-    void* getAurivoDSP() const {
-        return m_aurivoDSP;
+    void* getArDaliDSP() const {
+        return m_ardaliDSP;
     }
     
     // ============================================
@@ -876,9 +876,9 @@ public:
             m_prevAnalysisStream = 0;
         }
 
-        if (m_prevAurivoDSP) {
-            destroy_dsp(m_prevAurivoDSP);
-            m_prevAurivoDSP = nullptr;
+        if (m_prevArDaliDSP) {
+            destroy_dsp(m_prevArDaliDSP);
+            m_prevArDaliDSP = nullptr;
         }
 
         m_overlapCrossfadeActive = false;
@@ -966,9 +966,9 @@ public:
             BASS_StreamFree(m_prevAnalysisStream);
             m_prevAnalysisStream = 0;
         }
-        if (m_prevAurivoDSP) {
-            destroy_dsp(m_prevAurivoDSP);
-            m_prevAurivoDSP = nullptr;
+        if (m_prevArDaliDSP) {
+            destroy_dsp(m_prevArDaliDSP);
+            m_prevArDaliDSP = nullptr;
         }
 
         // Mevcut stream'i "prev" olarak sakla
@@ -976,7 +976,7 @@ public:
         m_prevAnalysisStream = m_analysisStream;
         m_prevPreampFx = m_preampFx;
         m_prevReverbFx = m_reverbFx;
-        m_prevAurivoDSP = m_aurivoDSP;
+        m_prevArDaliDSP = m_ardaliDSP;
         m_prevDspHandle = m_dspHandle;
 
         // Yeni stream'i oluştur ve ana stream olarak ata
@@ -984,7 +984,7 @@ public:
         m_analysisStream = 0;
         m_preampFx = 0;
         m_reverbFx = 0;
-        m_aurivoDSP = nullptr;
+        m_ardaliDSP = nullptr;
         m_dspHandle = 0;
 
         HSTREAM newStream = 0;
@@ -995,14 +995,14 @@ public:
             m_analysisStream = m_prevAnalysisStream;
             m_preampFx = m_prevPreampFx;
             m_reverbFx = m_prevReverbFx;
-            m_aurivoDSP = m_prevAurivoDSP;
+            m_ardaliDSP = m_prevArDaliDSP;
             m_dspHandle = m_prevDspHandle;
 
             m_prevStream = 0;
             m_prevAnalysisStream = 0;
             m_prevPreampFx = 0;
             m_prevReverbFx = 0;
-            m_prevAurivoDSP = nullptr;
+            m_prevArDaliDSP = nullptr;
             m_prevDspHandle = 0;
             return false;
         }
@@ -1034,9 +1034,9 @@ public:
                 BASS_StreamFree(m_prevAnalysisStream);
                 m_prevAnalysisStream = 0;
             }
-            if (m_prevAurivoDSP) {
-                destroy_dsp(m_prevAurivoDSP);
-                m_prevAurivoDSP = nullptr;
+            if (m_prevArDaliDSP) {
+                destroy_dsp(m_prevArDaliDSP);
+                m_prevArDaliDSP = nullptr;
             }
             BASS_ChannelSetAttribute(m_stream, BASS_ATTRIB_VOL, baseVol);
             m_overlapCrossfadeActive = false;
@@ -1067,9 +1067,9 @@ public:
                 this->m_prevAnalysisStream = 0;
             }
 
-            if (this->m_prevAurivoDSP) {
-                destroy_dsp(this->m_prevAurivoDSP);
-                this->m_prevAurivoDSP = nullptr;
+            if (this->m_prevArDaliDSP) {
+                destroy_dsp(this->m_prevArDaliDSP);
+                this->m_prevArDaliDSP = nullptr;
             }
 
             this->m_overlapCrossfadeActive = false;
@@ -1121,9 +1121,9 @@ public:
             m_prevAnalysisStream = 0;
         }
 
-        if (m_prevAurivoDSP) {
-            destroy_dsp(m_prevAurivoDSP);
-            m_prevAurivoDSP = nullptr;
+        if (m_prevArDaliDSP) {
+            destroy_dsp(m_prevArDaliDSP);
+            m_prevArDaliDSP = nullptr;
         }
 
         m_overlapCrossfadeActive = false;
@@ -1220,7 +1220,7 @@ public:
             m_eqGains[i] = 0.0f;
         }
         
-        if (!m_dspEnabled || !m_aurivoDSP) return;
+        if (!m_dspEnabled || !m_ardaliDSP) return;
         for (int i = 0; i < NUM_EQ_BANDS; ++i) {
             updateEqBand(i);
         }
@@ -1780,7 +1780,7 @@ private:
     // ============================================
     void setupAllFx() {
         if (!m_stream) return;
-        setupAllFxForStream(m_stream, m_aurivoDSP, m_dspHandle, m_preampFx, m_reverbFx);
+        setupAllFxForStream(m_stream, m_ardaliDSP, m_dspHandle, m_preampFx, m_reverbFx);
     }
     
     void clearAllFx() {
@@ -2057,13 +2057,13 @@ public:
         
         if (!m_stream) return;
         
-        if (m_aurivoDSP) {
-            set_dsp_enabled(m_aurivoDSP, enabled ? 1 : 0);
+        if (m_ardaliDSP) {
+            set_dsp_enabled(m_ardaliDSP, enabled ? 1 : 0);
             if (enabled) {
-                set_eq_bands(m_aurivoDSP, m_eqGains, NUM_EQ_BANDS);
+                set_eq_bands(m_ardaliDSP, m_eqGains, NUM_EQ_BANDS);
                 applyBassBoost();
-                set_tone_params(m_aurivoDSP, m_bassGain, m_midGain, m_trebleGain);
-                set_stereo_width(m_aurivoDSP, m_stereoExpander / 100.0f);
+                set_tone_params(m_ardaliDSP, m_bassGain, m_midGain, m_trebleGain);
+                set_stereo_width(m_ardaliDSP, m_stereoExpander / 100.0f);
             }
         }
 
@@ -2087,40 +2087,40 @@ public:
     }
     
     // ============================================
-    // AURIVO TONE: BASS
+    // ARDALI TONE: BASS
     // ============================================
     void setBass(float dB) {
         std::lock_guard<std::mutex> lock(m_mutex);
         m_bassGain = clampf(dB, -15.0f, 15.0f);
         
-        if (!m_dspEnabled || !m_aurivoDSP) return;
-        set_tone_params(m_aurivoDSP, m_bassGain, m_midGain, m_trebleGain);
+        if (!m_dspEnabled || !m_ardaliDSP) return;
+        set_tone_params(m_ardaliDSP, m_bassGain, m_midGain, m_trebleGain);
     }
     
     float getBass() { return m_bassGain; }
     
     // ============================================
-    // AURIVO TONE: MID
+    // ARDALI TONE: MID
     // ============================================
     void setMid(float dB) {
         std::lock_guard<std::mutex> lock(m_mutex);
         m_midGain = clampf(dB, -15.0f, 15.0f);
         
-        if (!m_dspEnabled || !m_aurivoDSP) return;
-        set_tone_params(m_aurivoDSP, m_bassGain, m_midGain, m_trebleGain);
+        if (!m_dspEnabled || !m_ardaliDSP) return;
+        set_tone_params(m_ardaliDSP, m_bassGain, m_midGain, m_trebleGain);
     }
     
     float getMid() { return m_midGain; }
     
     // ============================================
-    // AURIVO TONE: TREBLE
+    // ARDALI TONE: TREBLE
     // ============================================
     void setTreble(float dB) {
         std::lock_guard<std::mutex> lock(m_mutex);
         m_trebleGain = clampf(dB, -15.0f, 15.0f);
         
-        if (!m_dspEnabled || !m_aurivoDSP) return;
-        set_tone_params(m_aurivoDSP, m_bassGain, m_midGain, m_trebleGain);
+        if (!m_dspEnabled || !m_ardaliDSP) return;
+        set_tone_params(m_ardaliDSP, m_bassGain, m_midGain, m_trebleGain);
     }
     
     float getTreble() { return m_trebleGain; }
@@ -2131,8 +2131,8 @@ public:
     void setStereoExpander(float percent) {
         std::lock_guard<std::mutex> lock(m_mutex);
         m_stereoExpander = clampf(percent, 0.0f, 200.0f);
-        if (m_dspEnabled && m_aurivoDSP) {
-            set_stereo_width(m_aurivoDSP, m_stereoExpander / 100.0f);
+        if (m_dspEnabled && m_ardaliDSP) {
+            set_stereo_width(m_ardaliDSP, m_stereoExpander / 100.0f);
         }
     }
     
@@ -2180,19 +2180,19 @@ public:
     }
 
     // ============================================
-    // COMPRESSOR (Aurivo DSP)
+    // COMPRESSOR (ArDali DSP)
     // ============================================
     bool enableCompressor(bool enabled) {
         std::lock_guard<std::mutex> lock(m_mutex);
         g_compressor.enabled = enabled;
 
-        if (!m_aurivoDSP) {
+        if (!m_ardaliDSP) {
             printf("[COMPRESSOR] No DSP processor available\n");
             return false;
         }
 
-        // Use Aurivo DSP compressor (works on all platforms)
-        set_compressor_params(m_aurivoDSP, enabled ? 1 : 0, 
+        // Use ArDali DSP compressor (works on all platforms)
+        set_compressor_params(m_ardaliDSP, enabled ? 1 : 0, 
                               g_compressor.threshold, 
                               g_compressor.ratio, 
                               g_compressor.attack, 
@@ -2208,8 +2208,8 @@ public:
     }
 
     void applyCompressorToDSP() {
-        if (!m_aurivoDSP || !g_compressor.enabled) return;
-        set_compressor_params(m_aurivoDSP, 1, 
+        if (!m_ardaliDSP || !g_compressor.enabled) return;
+        set_compressor_params(m_ardaliDSP, 1, 
                               g_compressor.threshold, 
                               g_compressor.ratio, 
                               g_compressor.attack, 
@@ -2283,14 +2283,14 @@ public:
     }
 
     // ============================================
-    // LIMITER (Aurivo DSP)
+    // LIMITER (ArDali DSP)
     // ============================================
     void applyLimiterToDSP() {
-        if (!m_aurivoDSP) return;
+        if (!m_ardaliDSP) return;
         // DSP limiter sadece ceiling ve release destekliyor
         // inputGain'i ceiling'e ekleyerek simüle ediyoruz
         float effectiveCeiling = g_limiter.ceiling - g_limiter.inputGain;
-        set_limiter_params(m_aurivoDSP, g_limiter.enabled ? 1 : 0, 
+        set_limiter_params(m_ardaliDSP, g_limiter.enabled ? 1 : 0, 
                           effectiveCeiling, g_limiter.release);
     }
 
@@ -2298,7 +2298,7 @@ public:
         std::lock_guard<std::mutex> lock(m_mutex);
         g_limiter.enabled = enabled;
 
-        if (!m_aurivoDSP) {
+        if (!m_ardaliDSP) {
             printf("[LIMITER] No DSP processor available\n");
             return false;
         }
@@ -2370,10 +2370,10 @@ public:
     }
 
     // ============================================
-    // BASS ENHANCER (Aurivo DSP)
+    // BASS ENHANCER (ArDali DSP)
     // ============================================
     void applyBassEnhancerToDSP() {
-        if (!m_aurivoDSP) return;
+        if (!m_ardaliDSP) return;
         
         // Bass Enhancer, DSP bass_boost fonksiyonunu kullanıyor
         // gain: dB, frequency: Hz (merkez frekans)
@@ -2388,14 +2388,14 @@ public:
         float effectiveFreq = g_bassEnhancer.frequency / g_bassEnhancer.width;
         effectiveFreq = clampf(effectiveFreq, 20.0f, 200.0f);
         
-        set_bass_boost(m_aurivoDSP, g_bassEnhancer.enabled ? 1 : 0, effectiveGain, effectiveFreq);
+        set_bass_boost(m_ardaliDSP, g_bassEnhancer.enabled ? 1 : 0, effectiveGain, effectiveFreq);
     }
 
     bool enableBassEnhancer(bool enabled) {
         std::lock_guard<std::mutex> lock(m_mutex);
         g_bassEnhancer.enabled = enabled;
 
-        if (!m_aurivoDSP) {
+        if (!m_ardaliDSP) {
             printf("[BASS ENHANCER] No DSP processor available\n");
             return false;
         }
@@ -2457,16 +2457,16 @@ public:
     }
 
     // ============================================
-    // NOISE GATE (Aurivo DSP)
+    // NOISE GATE (ArDali DSP)
     // ============================================
     void applyNoiseGateToDSP() {
-        if (!m_aurivoDSP) return;
+        if (!m_ardaliDSP) return;
         
         // DSP gate fonksiyonu: threshold, attack, release
         // Hold parametresi DSP'de desteklenmiyor, release'e ekliyoruz
         float effectiveRelease = g_noiseGate.release + g_noiseGate.hold;
         
-        set_gate_params(m_aurivoDSP, g_noiseGate.enabled ? 1 : 0, 
+        set_gate_params(m_ardaliDSP, g_noiseGate.enabled ? 1 : 0, 
                        g_noiseGate.threshold, g_noiseGate.attack, effectiveRelease);
     }
 
@@ -2474,7 +2474,7 @@ public:
         std::lock_guard<std::mutex> lock(m_mutex);
         g_noiseGate.enabled = enabled;
 
-        if (!m_aurivoDSP) {
+        if (!m_ardaliDSP) {
             printf("[NOISE GATE] No DSP processor available\n");
             return false;
         }
@@ -2556,20 +2556,20 @@ public:
         if (!m_stream) return;
         
         // De-esser, yüksek frekanslarda (sibilance) sıkıştırma yapar
-        // Aurivo DSP compressor'ı kullanarak belirli frekans bandında çalışır
+        // ArDali DSP compressor'ı kullanarak belirli frekans bandında çalışır
         // Frequency: Hedef frekans (4-12 kHz arası sibilance bölgesi)
         // Threshold: Sıkıştırma başlangıç seviyesi
         // Ratio: Sıkıştırma oranı
         // Range: Maksimum azaltma miktarı
         
-        if (g_deEsser.enabled && m_aurivoDSP) {
+        if (g_deEsser.enabled && m_ardaliDSP) {
             // De-esser için compressor parametrelerini ayarla
             // Hızlı attack/release ile sibilance'ı yakala
             float attack = 0.5f;   // Çok hızlı attack (ms)
             float release = 20.0f; // Hızlı release (ms)
             float makeup = 0.0f;   // Makeup gain yok
             
-            set_compressor_params(m_aurivoDSP, 1,
+            set_compressor_params(m_ardaliDSP, 1,
                 g_deEsser.threshold,
                 g_deEsser.ratio,
                 attack,
@@ -2589,8 +2589,8 @@ public:
             applyDeEsserToDSP();
         } else {
             // Devre dışı bırakırken compressor'ı sıfırla
-            if (m_aurivoDSP) {
-                set_compressor_params(m_aurivoDSP, 0, 0.0f, 1.0f, 10.0f, 100.0f, 0.0f);
+            if (m_ardaliDSP) {
+                set_compressor_params(m_ardaliDSP, 0, 0.0f, 1.0f, 10.0f, 100.0f, 0.0f);
             }
         }
         
@@ -2666,7 +2666,7 @@ public:
 
     // ============== EXCITER (HARMONIC ENHANCER) ==============
     void applyExciterToDSP() {
-        if (!m_stream || !m_aurivoDSP) return;
+        if (!m_stream || !m_ardaliDSP) return;
         
         // Exciter: Yüksek frekanslara boost + harmonik zenginleştirme
         // PEQ bantları ile high-shelf boost simüle ediyoruz
@@ -2711,10 +2711,10 @@ public:
             boostGain *= (1.0f + harmFactor * 0.5f);
             
             // PEQ Band 0: Ana yüksek frekans boost (exciter frequency'den başlar)
-            set_peq_band(m_aurivoDSP, 0, 1, g_exciter.frequency, boostGain, bandwidth);
+            set_peq_band(m_ardaliDSP, 0, 1, g_exciter.frequency, boostGain, bandwidth);
             
             // PEQ Band 1: Air band (12-16 kHz arası "hava" hissi)
-            set_peq_band(m_aurivoDSP, 1, 1, 14000.0f, airGain, 1.0f);
+            set_peq_band(m_ardaliDSP, 1, 1, 14000.0f, airGain, 1.0f);
             
             printf("[EXCITER] Applied - Type: %d, Freq: %.0f Hz, Boost: %.1f dB, Air: %.1f dB\n",
                    g_exciter.type, g_exciter.frequency, boostGain, airGain);
@@ -2729,9 +2729,9 @@ public:
             applyExciterToDSP();
         } else {
             // PEQ bantlarını sıfırla
-            if (m_aurivoDSP) {
-                set_peq_band(m_aurivoDSP, 0, 0, 5000.0f, 0.0f, 1.0f);
-                set_peq_band(m_aurivoDSP, 1, 0, 14000.0f, 0.0f, 1.0f);
+            if (m_ardaliDSP) {
+                set_peq_band(m_ardaliDSP, 0, 0, 5000.0f, 0.0f, 1.0f);
+                set_peq_band(m_ardaliDSP, 1, 0, 14000.0f, 0.0f, 1.0f);
             }
         }
         
@@ -2790,13 +2790,13 @@ public:
     // ============================================
     
     void applyStereoWidenerToDSP() {
-        if (!m_aurivoDSP) return;
+        if (!m_ardaliDSP) return;
         
         // Width: 0% = mono (0.0), 100% = normal (1.0), 200% = max (2.0)
         float stereoWidth = g_stereoWidener.width / 100.0f;
         
-        // Aurivo DSP'nin set_stereo_width fonksiyonunu kullan
-        set_stereo_width(m_aurivoDSP, stereoWidth);
+        // ArDali DSP'nin set_stereo_width fonksiyonunu kullan
+        set_stereo_width(m_ardaliDSP, stereoWidth);
         
         printf("[STEREO WIDENER] Applied - Width: %.0f%%, Bass: %.0f Hz, Delay: %.1f ms\n",
                g_stereoWidener.width, g_stereoWidener.bassFreq, g_stereoWidener.delay);
@@ -2811,8 +2811,8 @@ public:
             printf("[STEREO WIDENER] Enabled\n");
         } else {
             // Sıfırla to normal stereo (100%)
-            if (m_aurivoDSP) {
-                set_stereo_width(m_aurivoDSP, 1.0f);  // Normal stereo
+            if (m_ardaliDSP) {
+                set_stereo_width(m_ardaliDSP, 1.0f);  // Normal stereo
             }
             printf("[STEREO WIDENER] Disabled\n");
         }
@@ -2906,14 +2906,14 @@ public:
     // ============================================
     
     void applyEchoToDSP() {
-        if (!m_aurivoDSP) return;
+        if (!m_ardaliDSP) return;
         
-        // Aurivo DSP'nin set_echo_params fonksiyonunu kullan
+        // ArDali DSP'nin set_echo_params fonksiyonunu kullan
         // delay (ms), feedback (0-1), mix (0-1)
         float feedbackNorm = g_echo.feedback / 100.0f;
         float mixNorm = g_echo.wetMix / 100.0f;
         
-        set_echo_params(m_aurivoDSP, g_echo.enabled ? 1 : 0, 
+        set_echo_params(m_ardaliDSP, g_echo.enabled ? 1 : 0, 
                         g_echo.delay, feedbackNorm, mixNorm);
         
         printf("[ECHO] Applied - Delay: %.0f ms, Feedback: %.0f%%, Wet: %.0f%%, Dry: %.0f%%, Stereo: %s\n",
@@ -2922,14 +2922,14 @@ public:
     }
 
     void applySoftEchoToDSP() {
-        if (!m_aurivoDSP) return;
+        if (!m_ardaliDSP) return;
 
         // Daha "saf/yumuşak" karakter için geri-besleme ve wet oranını biraz yumuşat.
         float feedbackNorm = (g_softEcho.feedback / 100.0f) * 0.82f;
         float mixNorm = (g_softEcho.wetMix / 100.0f) * 0.92f;
         float delayMs = clampf(g_softEcho.delay, 40.0f, 900.0f);
 
-        set_echo_params(m_aurivoDSP, g_softEcho.enabled ? 1 : 0,
+        set_echo_params(m_ardaliDSP, g_softEcho.enabled ? 1 : 0,
                         delayMs, clampf(feedbackNorm, 0.0f, 0.95f), clampf(mixNorm, 0.0f, 1.0f));
 
         printf("[SOFT ECHO] Applied - Delay: %.0f ms, Feedback: %.0f%%, Wet: %.0f%%, Stereo: %s\n",
@@ -2947,8 +2947,8 @@ public:
             printf("[ECHO] Enabled\n");
         } else {
             // Devre dışı bırak echo in DSP
-            if (m_aurivoDSP) {
-                set_echo_params(m_aurivoDSP, 0, 0, 0, 0);
+            if (m_ardaliDSP) {
+                set_echo_params(m_ardaliDSP, 0, 0, 0, 0);
             }
             printf("[ECHO] Disabled\n");
         }
@@ -2963,7 +2963,7 @@ public:
             printf("[SOFT ECHO] Enabled\n");
         } else {
             if (g_echo.enabled) applyEchoToDSP();
-            else if (m_aurivoDSP) set_echo_params(m_aurivoDSP, 0, 0, 0, 0);
+            else if (m_ardaliDSP) set_echo_params(m_ardaliDSP, 0, 0, 0, 0);
             printf("[SOFT ECHO] Disabled\n");
         }
     }
@@ -3339,8 +3339,8 @@ public:
         g_compressor.enabled = enabled;
 
         // Use DSP compressor
-        if (m_aurivoDSP) {
-            set_compressor_params(m_aurivoDSP, enabled ? 1 : 0, 
+        if (m_ardaliDSP) {
+            set_compressor_params(m_ardaliDSP, enabled ? 1 : 0, 
                                   g_compressor.threshold, 
                                   g_compressor.ratio, 
                                   g_compressor.attack, 
@@ -3351,43 +3351,43 @@ public:
     
     void setGateForEngine(bool enabled, float thresh, float att, float rel) {
         std::lock_guard<std::mutex> lock(m_mutex);
-        if (m_aurivoDSP) {
-            set_gate_params(m_aurivoDSP, enabled ? 1 : 0, thresh, att, rel);
+        if (m_ardaliDSP) {
+            set_gate_params(m_ardaliDSP, enabled ? 1 : 0, thresh, att, rel);
         }
     }
 
     void setLimiterForEngine(bool enabled, float ceiling, float rel) {
         std::lock_guard<std::mutex> lock(m_mutex);
-        if (m_aurivoDSP) {
-            set_limiter_params(m_aurivoDSP, enabled ? 1 : 0, ceiling, rel);
+        if (m_ardaliDSP) {
+            set_limiter_params(m_ardaliDSP, enabled ? 1 : 0, ceiling, rel);
         }
     }
 
     void setEchoForEngine(bool enabled, float delay, float feedback, float mix) {
         std::lock_guard<std::mutex> lock(m_mutex);
-        if (m_aurivoDSP) {
-            set_echo_params(m_aurivoDSP, enabled ? 1 : 0, delay, feedback, mix);
+        if (m_ardaliDSP) {
+            set_echo_params(m_ardaliDSP, enabled ? 1 : 0, delay, feedback, mix);
         }
     }
     
     void setBassBoostDsp(bool enabled, float gain, float freq) {
         std::lock_guard<std::mutex> lock(m_mutex);
-        if (m_aurivoDSP) {
-            set_bass_boost(m_aurivoDSP, enabled ? 1 : 0, gain, freq);
+        if (m_ardaliDSP) {
+            set_bass_boost(m_ardaliDSP, enabled ? 1 : 0, gain, freq);
         }
     }
 
     void setPEQ(int band, bool enabled, float freq, float gain, float Q) {
         std::lock_guard<std::mutex> lock(m_mutex);
-        if (m_aurivoDSP) {
-            set_peq_band(m_aurivoDSP, band, enabled ? 1 : 0, freq, gain, Q);
+        if (m_ardaliDSP) {
+            set_peq_band(m_ardaliDSP, band, enabled ? 1 : 0, freq, gain, Q);
         }
     }
     
     bool setPEQFilterType(int band, int filterType) {
         std::lock_guard<std::mutex> lock(m_mutex);
-        if (m_aurivoDSP && band >= 0 && band < 6 && filterType >= 0 && filterType <= 6) {
-            set_peq_filter_type(m_aurivoDSP, band, filterType);
+        if (m_ardaliDSP && band >= 0 && band < 6 && filterType >= 0 && filterType <= 6) {
+            set_peq_filter_type(m_ardaliDSP, band, filterType);
             const char* typeNames[] = {"Bell", "Low Shelf", "High Shelf", "Low Pass", "High Pass", "Notch", "Band Pass"};
             printf("[PEQ] Band %d Filter Type: %s\n", band + 1, typeNames[filterType]);
             return true;
@@ -3397,8 +3397,8 @@ public:
     
     bool getPEQBand(int band, float* freq, float* gain, float* Q, int* filterType) {
         std::lock_guard<std::mutex> lock(m_mutex);
-        if (m_aurivoDSP && band >= 0 && band < 6) {
-            get_peq_band(m_aurivoDSP, band, freq, gain, Q, filterType);
+        if (m_ardaliDSP && band >= 0 && band < 6) {
+            get_peq_band(m_ardaliDSP, band, freq, gain, Q, filterType);
             return true;
         }
         return false;
@@ -3416,7 +3416,7 @@ public:
     }
     
     void updateEqBand(int band) {
-        if (!m_aurivoDSP || !m_dspEnabled) return;
+        if (!m_ardaliDSP || !m_dspEnabled) return;
 
         float totalGain = m_eqGains[band];
         if (band < BASS_BOOST_BANDS && m_bassBoost > 0.0f) {
@@ -3428,11 +3428,11 @@ public:
         }
         
         totalGain = clampf(totalGain, -15.0f, 15.0f);
-        set_eq_band(m_aurivoDSP, band, totalGain);
+        set_eq_band(m_ardaliDSP, band, totalGain);
     }
 
     void updateEqBandWithOffset(int band, float offsetDb) {
-        if (!m_aurivoDSP || !m_dspEnabled) return;
+        if (!m_ardaliDSP || !m_dspEnabled) return;
 
         float totalGain = m_eqGains[band] + offsetDb;
         if (band < BASS_BOOST_BANDS && m_bassBoost > 0.0f) {
@@ -3441,7 +3441,7 @@ public:
             totalGain += boostDB;
         }
         totalGain = clampf(totalGain, -15.0f, 15.0f);
-        set_eq_band(m_aurivoDSP, band, totalGain);
+        set_eq_band(m_ardaliDSP, band, totalGain);
     }
     
     void applyBassBoost() {
@@ -3452,11 +3452,11 @@ public:
     }
     
     // ============================================
-    // AURIVO DSP CALLBACK
+    // ARDALI DSP CALLBACK
     // ============================================
     static void CALLBACK dspCallback(HDSP handle, DWORD channel, void* buffer, DWORD length, void* user) {
         (void)handle;
-        AurivoAudioEngine* engine = static_cast<AurivoAudioEngine*>(user);
+        ArDaliAudioEngine* engine = static_cast<ArDaliAudioEngine*>(user);
         
         // Debug logger (once per sec)
         static int cbDebugCounter = 0;
@@ -3480,10 +3480,10 @@ public:
            const bool isPrimary = (engine->m_stream != 0 && channel == (DWORD)engine->m_stream);
 
            if (engine->m_prevStream != 0 && channel == (DWORD)engine->m_prevStream) {
-              dsp = engine->m_prevAurivoDSP;
+              dsp = engine->m_prevArDaliDSP;
               limiterState = &engine->m_limiterStatePrev;
            } else {
-              dsp = engine->m_aurivoDSP;
+              dsp = engine->m_ardaliDSP;
               limiterState = &engine->m_limiterStateCurrent;
            }
 
@@ -3699,19 +3699,19 @@ public:
     }
 };
 
-AurivoAudioEngine* AurivoAudioEngine::s_instance = nullptr;
+ArDaliAudioEngine* ArDaliAudioEngine::s_instance = nullptr;
 
 // ============================================
 // N-API WRAPPER
 // ============================================
-static AurivoAudioEngine* g_engine = nullptr;
+static ArDaliAudioEngine* g_engine = nullptr;
 
 // Başlat
 Napi::Value InitAudio(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
     
     if (!g_engine) {
-        g_engine = new AurivoAudioEngine();
+        g_engine = new ArDaliAudioEngine();
     }
     
     int deviceIndex = -1;
@@ -4540,7 +4540,7 @@ Napi::Value GetBalance(const Napi::CallbackInfo& info) {
 }
 
 // ============================================
-// AURIVO MODULE NAPI WRAPPERS (Bass, Mid, Treble, Stereo)
+// ARDALI MODULE NAPI WRAPPERS (Bass, Mid, Treble, Stereo)
 // ============================================
 Napi::Value SetBass(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
@@ -5739,8 +5739,8 @@ Napi::Value EnableCrossfeed(const Napi::CallbackInfo& info) {
     
     g_crossfeed.enabled = enable;
     
-    if (g_engine && g_engine->getAurivoDSP()) {
-        void* dsp = g_engine->getAurivoDSP();
+    if (g_engine && g_engine->getArDaliDSP()) {
+        void* dsp = g_engine->getArDaliDSP();
         set_crossfeed_params(dsp, enable ? 1 : 0, 
                             g_crossfeed.crossfeedLevel, 
                             g_crossfeed.delay, 
@@ -5762,8 +5762,8 @@ Napi::Value SetCrossfeedLevel(const Napi::CallbackInfo& info) {
     float level = info[0].As<Napi::Number>().FloatValue();
     g_crossfeed.crossfeedLevel = clampf(level, 0.0f, 100.0f);
     
-    if (g_engine && g_engine->getAurivoDSP()) {
-        void* dsp = g_engine->getAurivoDSP();
+    if (g_engine && g_engine->getArDaliDSP()) {
+        void* dsp = g_engine->getArDaliDSP();
         set_crossfeed_params(dsp, g_crossfeed.enabled ? 1 : 0, 
                             g_crossfeed.crossfeedLevel, 
                             g_crossfeed.delay, 
@@ -5786,8 +5786,8 @@ Napi::Value SetCrossfeedDelay(const Napi::CallbackInfo& info) {
     float delay = info[0].As<Napi::Number>().FloatValue();
     g_crossfeed.delay = clampf(delay, 0.1f, 1.5f);
     
-    if (g_engine && g_engine->getAurivoDSP()) {
-        void* dsp = g_engine->getAurivoDSP();
+    if (g_engine && g_engine->getArDaliDSP()) {
+        void* dsp = g_engine->getArDaliDSP();
         set_crossfeed_params(dsp, g_crossfeed.enabled ? 1 : 0, 
                             g_crossfeed.crossfeedLevel, 
                             g_crossfeed.delay, 
@@ -5810,8 +5810,8 @@ Napi::Value SetCrossfeedLowCut(const Napi::CallbackInfo& info) {
     float lowCut = info[0].As<Napi::Number>().FloatValue();
     g_crossfeed.lowCut = clampf(lowCut, 200.0f, 2000.0f);
     
-    if (g_engine && g_engine->getAurivoDSP()) {
-        void* dsp = g_engine->getAurivoDSP();
+    if (g_engine && g_engine->getArDaliDSP()) {
+        void* dsp = g_engine->getArDaliDSP();
         set_crossfeed_params(dsp, g_crossfeed.enabled ? 1 : 0, 
                             g_crossfeed.crossfeedLevel, 
                             g_crossfeed.delay, 
@@ -5836,8 +5836,8 @@ Napi::Value SetCrossfeedHighCut(const Napi::CallbackInfo& info) {
     // Limit: 2 kHz ile 18 kHz
     g_crossfeed.highCut = clampf(highCut, 2000.0f, 18000.0f);
     
-    if (g_engine && g_engine->getAurivoDSP()) {
-        void* dsp = g_engine->getAurivoDSP();
+    if (g_engine && g_engine->getArDaliDSP()) {
+        void* dsp = g_engine->getArDaliDSP();
         set_crossfeed_params(dsp, g_crossfeed.enabled ? 1 : 0, 
                             g_crossfeed.crossfeedLevel, 
                             g_crossfeed.delay, 
@@ -5870,8 +5870,8 @@ Napi::Value SetCrossfeedPreset(const Napi::CallbackInfo& info) {
     g_crossfeed.lowCut = p.lowCut;
     g_crossfeed.highCut = p.highCut;
     
-    if (g_engine && g_engine->getAurivoDSP()) {
-        void* dsp = g_engine->getAurivoDSP();
+    if (g_engine && g_engine->getArDaliDSP()) {
+        void* dsp = g_engine->getArDaliDSP();
         set_crossfeed_params(dsp, g_crossfeed.enabled ? 1 : 0, 
                             g_crossfeed.crossfeedLevel, 
                             g_crossfeed.delay, 
@@ -5997,8 +5997,8 @@ Napi::Value EnableBassMono(const Napi::CallbackInfo& info) {
     bool enable = info[0].As<Napi::Boolean>().Value();
     g_bassMono.enabled = enable;
     
-    if (g_engine && g_engine->getAurivoDSP()) {
-        set_bass_mono_params(g_engine->getAurivoDSP(), enable ? 1 : 0,
+    if (g_engine && g_engine->getArDaliDSP()) {
+        set_bass_mono_params(g_engine->getArDaliDSP(), enable ? 1 : 0,
                              g_bassMono.cutoff, g_bassMono.slope, g_bassMono.stereoWidth);
         printf("[BASS MONO] %s\n", enable ? "Etkin" : "Devre dışı");
     }
@@ -6012,8 +6012,8 @@ Napi::Value SetBassMonoCutoff(const Napi::CallbackInfo& info) {
     float val = info[0].As<Napi::Number>().FloatValue();
     g_bassMono.cutoff = clampf(val, 20.0f, 500.0f);
     
-    if (g_engine && g_engine->getAurivoDSP()) {
-        set_bass_mono_params(g_engine->getAurivoDSP(), g_bassMono.enabled ? 1 : 0,
+    if (g_engine && g_engine->getArDaliDSP()) {
+        set_bass_mono_params(g_engine->getArDaliDSP(), g_bassMono.enabled ? 1 : 0,
                              g_bassMono.cutoff, g_bassMono.slope, g_bassMono.stereoWidth);
     }
     return Napi::Boolean::New(env, true);
@@ -6029,8 +6029,8 @@ Napi::Value SetBassMonoSlope(const Napi::CallbackInfo& info) {
     else if (val <= 36.0f) g_bassMono.slope = 24.0f;
     else g_bassMono.slope = 48.0f;
     
-    if (g_engine && g_engine->getAurivoDSP()) {
-        set_bass_mono_params(g_engine->getAurivoDSP(), g_bassMono.enabled ? 1 : 0,
+    if (g_engine && g_engine->getArDaliDSP()) {
+        set_bass_mono_params(g_engine->getArDaliDSP(), g_bassMono.enabled ? 1 : 0,
                              g_bassMono.cutoff, g_bassMono.slope, g_bassMono.stereoWidth);
     }
     return Napi::Boolean::New(env, true);
@@ -6043,8 +6043,8 @@ Napi::Value SetBassMonoStereoWidth(const Napi::CallbackInfo& info) {
     float val = info[0].As<Napi::Number>().FloatValue();
     g_bassMono.stereoWidth = clampf(val, 0.0f, 200.0f);
     
-    if (g_engine && g_engine->getAurivoDSP()) {
-        set_bass_mono_params(g_engine->getAurivoDSP(), g_bassMono.enabled ? 1 : 0,
+    if (g_engine && g_engine->getArDaliDSP()) {
+        set_bass_mono_params(g_engine->getArDaliDSP(), g_bassMono.enabled ? 1 : 0,
                              g_bassMono.cutoff, g_bassMono.slope, g_bassMono.stereoWidth);
     }
     return Napi::Boolean::New(env, true);
@@ -6057,8 +6057,8 @@ Napi::Value ResetBassMono(const Napi::CallbackInfo& info) {
     g_bassMono.slope = 24.0f;
     g_bassMono.stereoWidth = 100.0f;
     
-    if (g_engine && g_engine->getAurivoDSP()) {
-        set_bass_mono_params(g_engine->getAurivoDSP(), g_bassMono.enabled ? 1 : 0,
+    if (g_engine && g_engine->getArDaliDSP()) {
+        set_bass_mono_params(g_engine->getArDaliDSP(), g_bassMono.enabled ? 1 : 0,
                              g_bassMono.cutoff, g_bassMono.slope, g_bassMono.stereoWidth);
     }
     printf("[BASS MONO] Sıfırlandı\n");
@@ -6364,10 +6364,10 @@ Napi::Value ResetBitDepthDither(const Napi::CallbackInfo& info) {
 }
 
 void UpdateDynamicEQOnDSP() {
-    if (g_engine && g_engine->getAurivoDSP()) {
+    if (g_engine && g_engine->getArDaliDSP()) {
         printf("[AUDIO] UpdateDynamicEQ: en=%d, f=%.1f, q=%.1f, thr=%.1f, g=%.1f\n",
                g_dynamicEq.enabled, g_dynamicEq.frequency, g_dynamicEq.q, g_dynamicEq.threshold, g_dynamicEq.targetGain);
-        set_dynamic_eq_params(g_engine->getAurivoDSP(), 
+        set_dynamic_eq_params(g_engine->getArDaliDSP(), 
                               g_dynamicEq.enabled ? 1 : 0,
                               g_dynamicEq.frequency, 
                               g_dynamicEq.q, 
@@ -6544,7 +6544,7 @@ Napi::Object Init(Napi::Env env, Napi::Object exports) {
     exports.Set("setDSPEnabled", Napi::Function::New(env, SetDSPEnabled));
     exports.Set("isDSPEnabled", Napi::Function::New(env, IsDSPEnabled));
     
-    // Aurivo Module (Bass, Mid, Treble, Stereo Expander)
+    // ArDali Module (Bass, Mid, Treble, Stereo Expander)
     exports.Set("setBass", Napi::Function::New(env, SetBass));
     exports.Set("getBass", Napi::Function::New(env, GetBass));
     exports.Set("setMid", Napi::Function::New(env, SetMid));
@@ -6733,4 +6733,4 @@ Napi::Object Init(Napi::Env env, Napi::Object exports) {
     return exports;
 }
 
-NODE_API_MODULE(aurivo_audio, Init)
+NODE_API_MODULE(ardali_audio, Init)

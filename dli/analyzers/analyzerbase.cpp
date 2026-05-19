@@ -1,5 +1,5 @@
-/* Analyzer Base for Aurivo Media Player
- * Based on Aurivo's AnalyzerBase
+/* Analyzer Base for ArDali
+ * Based on ArDali's AnalyzerBase
  * Original Author: Max Howell <max.howell@methylblue.com> 2003
  */
 

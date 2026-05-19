@@ -1,10 +1,10 @@
 # Exclude non-product trees and generated artifacts from Semgrep scans.
 
 # Cloned / duplicate repos and backups
-Aurivo-Medya-Player-Linux/
-Aurivo-Dawlod/
-Aurivo-Pulse/
-aurivo-bin/
+ArDali-Medya-Player-Linux/
+ArDali-Dawlod/
+ArDali-Pulse/
+ardali-bin/
 dali-lang/
 dli/
 **/chromium.backup_*/

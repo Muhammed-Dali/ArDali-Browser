@@ -1,11 +1,5 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" role="img" aria-label="YouTube Music">
-  <defs>
-    <radialGradient id="ytmCore" cx="30%" cy="28%" r="80%">
-      <stop offset="0%" stop-color="#ff7a7a"/>
-      <stop offset="100%" stop-color="#ff1f41"/>
-    </radialGradient>
-  </defs>
-  <circle cx="12" cy="12" r="10" fill="url(#ytmCore)"/>
-  <circle cx="12" cy="12" r="5.9" fill="none" stroke="#fff" stroke-width="1.5" opacity="0.95"/>
-  <circle cx="12" cy="12" r="1.9" fill="#fff"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" role="img" aria-label="YouTube Music">
+  <circle cx="24" cy="24" r="23" fill="#ff0033"/>
+  <circle cx="24" cy="24" r="15.25" fill="none" stroke="#fff" stroke-width="3.25"/>
+  <path d="M20.25 16.9v14.2L32.55 24z" fill="#fff"/>
 </svg>

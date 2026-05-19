@@ -105,7 +105,7 @@ console.log('📊 Results:', successCount, 'copied,', failCount, 'failed');
 if (platform === 'linux') {
     console.log('');
     console.log('🔍 Checking RPATH...');
-    const nodePath = pathJoinReviewed(BUILD_TARGET, 'aurivo_audio.node');
+    const nodePath = pathJoinReviewed(BUILD_TARGET, 'ardali_audio.node');
     
     try {
         if (fs.existsSync(nodePath)) {

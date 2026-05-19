@@ -6,7 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta http-equiv="Content-Security-Policy"
         content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline';">
-    <title>Ses Efektleri — Aurivo Medya Player</title>
+    <title>Ses Efektleri — ArDali Medya Player</title>
     <link rel="stylesheet" href="styles/soundEffects.css">
     <script>
         (function () {
@@ -14,9 +14,9 @@
                 const embedded = new URLSearchParams(window.location.search).get('embedded') === '1';
                 if (!embedded) return;
                 document.documentElement.classList.add('embedded-sfx');
-                // IMPORTANT: never share the parent's aurivo object by reference in embedded mode.
+                // IMPORTANT: never share the parent's ardali object by reference in embedded mode.
                 // Otherwise video-side effect changes can leak into music/native engine state.
-                window.aurivo = {};
+                window.ardali = {};
                 if (!window.i18n) {
                     try {
                         if (window.parent && window.parent !== window && window.parent.i18n) {
@@ -38,7 +38,7 @@
         <!-- Üst Başlık Barı -->
         <header class="sfx-header">
             <div class="header-left">
-                <img src="icons/aurivo_256.png" alt="Aurivo" class="header-logo" onerror="this.style.display='none'">
+                <img src="icons/ardali_256.png" alt="ArDali" class="header-logo" onerror="this.style.display='none'">
                 <label class="master-toggle">
                     <input type="checkbox" id="masterEffectsToggle" checked>
                     <span class="toggle-slider"></span>
@@ -169,7 +169,7 @@
 
         <!-- Alt Durum Barı -->
         <footer class="sfx-footer">
-            <span class="engine-info" data-i18n="sfx.footer.engineInfo">Aurivo DSP Engine v3.0 • 48kHz / 32-bit Float Processing</span>
+            <span class="engine-info" data-i18n="sfx.footer.engineInfo">ArDali DSP Engine v3.0 • 48kHz / 32-bit Float Processing</span>
         </footer>
     </div>
 

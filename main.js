@@ -1,8 +1,8 @@
 const { app, BrowserWindow, ipcMain, dialog, nativeImage, Tray, Menu, shell, session, screen, globalShortcut, desktopCapturer, clipboard } = require('electron');
 
 // Wayland/Flatpak: App ID synchronization must happen as early as possible.
-const FLATPAK_APP_ID = 'com.aurivo.mediaplayer';
-const DESKTOP_FILE_ID = 'com.aurivo.mediaplayer.desktop';
+const FLATPAK_APP_ID = 'com.ardali.mediaplayer';
+const DESKTOP_FILE_ID = 'com.ardali.mediaplayer.desktop';
 
 if (app) {
     app.name = FLATPAK_APP_ID;
@@ -100,7 +100,7 @@ function isPackagedLinuxConservativeGpuMode() {
     if (process.platform !== 'linux') return false;
     if (!app.isPackaged) return false;
     // İsteyen ileri seviye kullanıcılar env ile mevcut agresif GPU ayarlarını geri açabilir.
-    return !isTruthyEnvFlag('AURIVO_FORCE_GPU_TUNING');
+    return !isTruthyEnvFlag('ARDALI_FORCE_GPU_TUNING');
 }
 
 function shouldEnableElectronUpdaterOnThisRuntime() {
@@ -108,7 +108,7 @@ function shouldEnableElectronUpdaterOnThisRuntime() {
     // Linux/AUR kurulumlarında electron-updater yerine paket yöneticisi (yay/pacman) akışı kullanılmalı.
     // Bu akış bazı ortamlarda gereksiz crash riskini artırdığı için varsayılan kapalı.
     if (process.platform === 'linux' && app.isPackaged) {
-        return isTruthyEnvFlag('AURIVO_ENABLE_ELECTRON_UPDATER');
+        return isTruthyEnvFlag('ARDALI_ENABLE_ELECTRON_UPDATER');
     }
     return true;
 }
@@ -137,11 +137,11 @@ function sanitizeIpcPath(value, { requireAbsolute = true } = {}) {
     return path.normalize(targetPath);
 }
 
-function isAurivoBinInstalledViaPacman() {
+function isArDaliBinInstalledViaPacman() {
     if (process.platform !== 'linux') return false;
     if (!commandExists('pacman')) return false;
     try {
-        const res = spawnSync('pacman', ['-Q', 'aurivo-bin'], {
+        const res = spawnSync('pacman', ['-Q', 'ardali-bin'], {
             encoding: 'utf8',
             timeout: 1800
         });
@@ -167,7 +167,7 @@ function getLinuxAurUpdateCapabilities() {
         };
     }
     const hasYay = commandExists('yay');
-    const aurPackageInstalled = hasYay && isAurivoBinInstalledViaPacman();
+    const aurPackageInstalled = hasYay && isArDaliBinInstalledViaPacman();
     return {
         aurUpdateSupported: hasYay,
         aurPackageInstalled,
@@ -228,7 +228,7 @@ function resolveLinuxRelaunchExecPath() {
     if (process.platform !== 'linux' || !app.isPackaged) return '';
     const appImagePath = String(process.env.APPIMAGE || '').trim();
     if (appImagePath && fs.existsSync(appImagePath)) return appImagePath;
-    const wrapperPath = '/usr/bin/aurivo';
+    const wrapperPath = '/usr/bin/ardali';
     if (fs.existsSync(wrapperPath)) return wrapperPath;
     return '';
 }
@@ -255,8 +255,8 @@ function buildPostUpdateLaunchCommand() {
     if (appImagePath) {
         return `nohup ${shellQuote(appImagePath)} >/dev/null 2>&1 &`;
     }
-    if (commandExists('aurivo')) {
-        return 'nohup aurivo >/dev/null 2>&1 &';
+    if (commandExists('ardali')) {
+        return 'nohup ardali >/dev/null 2>&1 &';
     }
     if (commandExists('gtk-launch')) {
         return `nohup gtk-launch ${DESKTOP_FILE_ID} >/dev/null 2>&1 &`;
@@ -264,14 +264,14 @@ function buildPostUpdateLaunchCommand() {
     return '';
 }
 
-function writeAurivoUpdateScript() {
+function writeArDaliUpdateScript() {
     const launchCommand = buildPostUpdateLaunchCommand();
-    const scriptPath = path.join(os.tmpdir(), `aurivo-update-${Date.now()}.sh`);
+    const scriptPath = path.join(os.tmpdir(), `ardali-update-${Date.now()}.sh`);
     const lines = [
         '#!/usr/bin/env bash',
         'set +e',
-        'printf "\\nAurivo Media Player (AUR) guncelleniyor...\\n\\n"',
-        'yay -S aurivo-bin',
+        'printf "\\nArDali (AUR) guncelleniyor...\\n\\n"',
+        'yay -S ardali-bin',
         'exit_code=$?',
         'printf "\\nIslem tamamlandi (kod: %s).\\n" "$exit_code"',
         'if [ "$exit_code" -eq 0 ]; then'
@@ -294,7 +294,7 @@ function writeAurivoUpdateScript() {
     return scriptPath;
 }
 
-async function launchAurivoBinUpdateTerminal() {
+async function launchArDaliBinUpdateTerminal() {
     if (process.platform !== 'linux') {
         return { ok: false, reason: 'unsupported-platform' };
     }
@@ -307,7 +307,7 @@ async function launchAurivoBinUpdateTerminal() {
 
     let updateScriptPath = '';
     try {
-        updateScriptPath = writeAurivoUpdateScript();
+        updateScriptPath = writeArDaliUpdateScript();
     } catch (error) {
         console.error('[UPDATE] temporary update script could not be created:', error);
         return { ok: false, reason: 'script-create-failed' };
@@ -400,7 +400,7 @@ function fetchJsonHttps(url, timeoutMs = 4500) {
     });
 }
 
-async function checkForAurivoBinUpdates({ manual = false } = {}) {
+async function checkForArDaliBinUpdates({ manual = false } = {}) {
     if (isFlatpakRuntime()) {
         setUpdateStatus('unsupported', {
             checkedAt: Date.now(),
@@ -425,7 +425,7 @@ async function checkForAurivoBinUpdates({ manual = false } = {}) {
             progress: 0
         });
 
-        const rpcUrl = 'https://aur.archlinux.org/rpc/?v=5&type=info&arg[]=aurivo-bin';
+        const rpcUrl = 'https://aur.archlinux.org/rpc/?v=5&type=info&arg[]=ardali-bin';
         const data = await fetchJsonHttps(rpcUrl, 5200);
         const result = Array.isArray(data?.results) ? data.results[0] : null;
         const aurVersionRaw = String(result?.Version || '').trim();
@@ -633,7 +633,7 @@ async function checkForAppUpdates({ manual = false } = {}) {
 
 async function checkForRuntimeUpdates({ manual = false } = {}) {
     if (process.platform === 'linux' && app.isPackaged && !shouldEnableElectronUpdaterOnThisRuntime()) {
-        return checkForAurivoBinUpdates({ manual });
+        return checkForArDaliBinUpdates({ manual });
     }
     return checkForAppUpdates({ manual });
 }
@@ -726,19 +726,19 @@ function installDownloadedUpdate() {
 
 // MPRIS (Linux Medya Oynatıcı Uzaktan Arayüz Spesifikasyonu)
 // Varsayılan: Linux'ta açık.
-// Kapatmak için: AURIVO_DISABLE_MPRIS=1
-// Açmayı zorlamak için: AURIVO_ENABLE_MPRIS=1
+// Kapatmak için: ARDALI_DISABLE_MPRIS=1
+// Açmayı zorlamak için: ARDALI_ENABLE_MPRIS=1
 const MPRIS_ENABLE_OVERRIDE =
-    ['1', 'true', 'yes'].includes(String(process.env.AURIVO_ENABLE_MPRIS || '').trim().toLowerCase());
+    ['1', 'true', 'yes'].includes(String(process.env.ARDALI_ENABLE_MPRIS || '').trim().toLowerCase());
 const MPRIS_DISABLE_OVERRIDE =
-    ['1', 'true', 'yes'].includes(String(process.env.AURIVO_DISABLE_MPRIS || '').trim().toLowerCase());
+    ['1', 'true', 'yes'].includes(String(process.env.ARDALI_DISABLE_MPRIS || '').trim().toLowerCase());
 const MPRIS_RUNTIME_ENABLED =
     process.platform === 'linux' && (MPRIS_ENABLE_OVERRIDE || !MPRIS_DISABLE_OVERRIDE);
 // Web platformlarının (YouTube, Spotify vb.) CERT_AUTHORITY_INVALID hatasında
 // çalışmaya devam edebilmesi için varsayılan olarak açık.
-// Kapatmak için: AURIVO_DISABLE_CERT_BYPASS=1
+// Kapatmak için: ARDALI_DISABLE_CERT_BYPASS=1
 const ALLOW_TRUSTED_CERT_BYPASS =
-    !['1', 'true', 'yes'].includes(String(process.env.AURIVO_DISABLE_CERT_BYPASS || '').trim().toLowerCase());
+    !['1', 'true', 'yes'].includes(String(process.env.ARDALI_DISABLE_CERT_BYPASS || '').trim().toLowerCase());
 let Player = null;
 if (MPRIS_RUNTIME_ENABLED) {
     try {
@@ -784,7 +784,7 @@ function safeStdoutLine(line) {
     }
 }
 
-const TRANSIENT_HOME_FILES = ['aurivo-freeze.log', 'imgui.ini'];
+const TRANSIENT_HOME_FILES = ['ardali-freeze.log', 'imgui.ini'];
 
 function cleanupTransientHomeFiles(context = 'runtime') {
     if (process.platform !== 'linux') return;
@@ -810,7 +810,7 @@ function cleanupTransientHomeFiles(context = 'runtime') {
 }
 
 // GNOME/Wayland üst bar & dock ikon eşleştirmesi için (desktop entry ile eşleşme)
-const LINUX_WM_CLASS = 'aurivo-media-player';
+const LINUX_WM_CLASS = 'ardali';
 if (app && app.commandLine) {
     if (process.platform === 'linux') {
         app.commandLine.appendSwitch('class', LINUX_WM_CLASS);
@@ -830,7 +830,7 @@ if (app && app.commandLine) {
     }
     app.commandLine.appendSwitch('disable-features', disabledFeatures.join(','));
     if (process.platform === 'linux') {
-        appendCommandLineCsvSwitch('enable-features', isTruthyEnvFlag('AURIVO_DISABLE_VAAPI')
+        appendCommandLineCsvSwitch('enable-features', isTruthyEnvFlag('ARDALI_DISABLE_VAAPI')
             ? 'WebRTCPipeWireCapturer'
             : 'VaapiVideoDecoder,WebRTCPipeWireCapturer');
     }
@@ -841,7 +841,7 @@ if (app && app.commandLine) {
 // Windows 10/11: taskbar/dock ikon eşleştirmesi ve gruplama
 if (process.platform === 'win32') {
     if (app && typeof app.setAppUserModelId === 'function') {
-        app.setAppUserModelId('com.aurivo.mediaplayer');
+        app.setAppUserModelId('com.ardali.mediaplayer');
     } else {
         console.warn('[Startup] setAppUserModelId unavailable');
     }
@@ -854,7 +854,7 @@ if (process.platform === 'linux') {
         // Use the base ID for grouping. Compositors append .desktop to look for files.
         app.setDesktopName(flatpakId);
     } else if (app && typeof app.setDesktopName === 'function') {
-        app.setDesktopName('com.aurivo.mediaplayer');
+        app.setDesktopName('com.ardali.mediaplayer');
     }
 }
 
@@ -940,7 +940,7 @@ function logWindowsRuntimeDepsOnce(context = '') {
         const releaseDir = process.resourcesPath ? path.join(process.resourcesPath, 'native', 'build', 'Release') : '';
         const nativeDistDir = process.resourcesPath ? path.join(process.resourcesPath, 'native-dist') : '';
         const binDir = process.resourcesPath ? path.join(process.resourcesPath, 'bin') : '';
-        const visualizerExe = process.resourcesPath ? path.join(nativeDistDir, 'aurivo-projectm-visualizer.exe') : '';
+        const visualizerExe = process.resourcesPath ? path.join(nativeDistDir, 'ardali-projectm-visualizer.exe') : '';
         const ffmpegExe = process.resourcesPath ? path.join(binDir, 'ffmpeg.exe') : '';
 
         const requiredBassDlls = [
@@ -990,7 +990,7 @@ function detectDisplayServer() {
     const xdgSessionType = process.env.XDG_SESSION_TYPE;
     const display = process.env.DISPLAY;
     const ozoneHint = process.env.ELECTRON_OZONE_PLATFORM_HINT;
-    const displayBackendOverride = String(process.env.AURIVO_DISPLAY_BACKEND || '').trim().toLowerCase();
+    const displayBackendOverride = String(process.env.ARDALI_DISPLAY_BACKEND || '').trim().toLowerCase();
 
     const appendCsvSwitch = (name, csv) => {
         if (!app?.commandLine || !csv) return;
@@ -1010,9 +1010,9 @@ function detectDisplayServer() {
     };
 
     // Kullanıcı manuel olarak ayarladıysa kullan
-    const forceSoftware = process.env.AURIVO_SOFTWARE_RENDER === '1' || process.env.AURIVO_SOFTWARE_RENDER === 'true';
-    const forceGpu = process.env.AURIVO_FORCE_GPU === '1' || process.env.AURIVO_FORCE_GPU === 'true';
-    const enableVaapi = isTruthyEnvFlag('AURIVO_ENABLE_VAAPI');
+    const forceSoftware = process.env.ARDALI_SOFTWARE_RENDER === '1' || process.env.ARDALI_SOFTWARE_RENDER === 'true';
+    const forceGpu = process.env.ARDALI_FORCE_GPU === '1' || process.env.ARDALI_FORCE_GPU === 'true';
+    const enableVaapi = isTruthyEnvFlag('ARDALI_ENABLE_VAAPI');
     const conservativeGpuMode = isPackagedLinuxConservativeGpuMode();
 
     const sessionLooksWayland =
@@ -1056,13 +1056,13 @@ function detectDisplayServer() {
         appendCsvSwitch('enable-features', enableVaapi ? 'UseOzonePlatform,VaapiVideoDecoder,WebRTCPipeWireCapturer' : 'UseOzonePlatform,WebRTCPipeWireCapturer');
     }
     effectiveDisplayBackend = selectedBackend;
-    process.env.AURIVO_EFFECTIVE_DISPLAY_BACKEND = selectedBackend;
+    process.env.ARDALI_EFFECTIVE_DISPLAY_BACKEND = selectedBackend;
 
     if (ozoneHint && !displayBackendOverride) {
         console.log(`[Display] ELECTRON_OZONE_PLATFORM_HINT=${ozoneHint} (session-based auto mode takes precedence)`);
     }
     if (displayBackendOverride) {
-        console.log(`[Display] AURIVO_DISPLAY_BACKEND override active: ${displayBackendOverride}`);
+        console.log(`[Display] ARDALI_DISPLAY_BACKEND override active: ${displayBackendOverride}`);
     }
 
     if (!forceSoftware) {
@@ -1094,7 +1094,7 @@ function detectDisplayServer() {
         app.commandLine.appendSwitch('force-device-scale-factor', '1');
 
         // Bağlam menüsü düzeltmeleri
-        if (isTruthyEnvFlag('AURIVO_DISABLE_GPU_SANDBOX')) {
+        if (isTruthyEnvFlag('ARDALI_DISABLE_GPU_SANDBOX')) {
             app.commandLine.appendSwitch('disable-gpu-sandbox');
         }
     }
@@ -1104,7 +1104,7 @@ function detectDisplayServer() {
 // GPU GÜVENLİ MOD (TÜM PLATFORMLAR)
 // ============================================================
 function installGpuFailsafe() {
-    const alreadySoftware = process.env.AURIVO_SOFTWARE_RENDER === '1' || process.env.AURIVO_SOFTWARE_RENDER === 'true';
+    const alreadySoftware = process.env.ARDALI_SOFTWARE_RENDER === '1' || process.env.ARDALI_SOFTWARE_RENDER === 'true';
 
     const triggerFallback = (reason) => {
         if (alreadySoftware) return;
@@ -1112,7 +1112,7 @@ function installGpuFailsafe() {
         app.relaunch({
             env: {
                 ...process.env,
-                AURIVO_SOFTWARE_RENDER: '1'
+                ARDALI_SOFTWARE_RENDER: '1'
             }
         });
         app.exit(0);
@@ -1162,7 +1162,7 @@ function initNativeAudioEngineSafe({ force = false } = {}) {
         isNativeAudioAvailable = !!ok && !!audioEngineModule?.isNativeAvailable;
 
         if (isNativeAudioAvailable) {
-            console.log('✓ C++ Aurivo Audio Engine aktif');
+            console.log('✓ C++ ArDali Audio Engine aktif');
             if (process.platform === 'win32') {
                 console.log('[NativeAudio] addon:', audioEngineModule?.loadedAddonPath || '(unknown)');
             }
@@ -1193,7 +1193,7 @@ let pendingDownloaderNotice = null;
 const libraryWatchSessions = new Map();
 let tray = null;
 let mainWindowCloseToTray = true;
-let lastTrayState = { isPlaying: false, currentTrack: 'Aurivo Media Player', isMuted: false, stopAfterCurrent: false };
+let lastTrayState = { isPlaying: false, currentTrack: 'ArDali', isMuted: false, stopAfterCurrent: false };
 const trayIconCache = new Map();
 let mediaShortcutsRegistered = false;
 const GLOBAL_MEDIA_SHORTCUTS = Object.freeze([
@@ -2034,16 +2034,16 @@ async function readFirstJson(paths) {
 
 function getAppIconPath() {
     if (process.platform === 'win32') {
-        return getResourcePath(path.join('icons', 'aurivo.ico'));
+        return getResourcePath(path.join('icons', 'ardali.ico'));
     }
-    return getResourcePath(path.join('icons', 'aurivo_512.png'));
+    return getResourcePath(path.join('icons', 'ardali_512.png'));
 }
 
 function getAppIconImage() {
     const iconPath = getAppIconPath();
     const img = nativeImage.createFromPath(iconPath);
     if (!img || img.isEmpty()) {
-        return nativeImage.createFromPath(path.join(__dirname, 'icons', 'aurivo_512.png'));
+        return nativeImage.createFromPath(path.join(__dirname, 'icons', 'ardali_512.png'));
     }
     return img;
 }
@@ -2254,7 +2254,7 @@ async function persistSettingsWindowState(win) {
     }
 }
 
-const WEBVIEW_PARTITION = 'persist:aurivo-web';
+const WEBVIEW_PARTITION = 'persist:ardali-web';
 const ADBLOCK_STRICTBLOCK_URL = `data:text/html;charset=utf-8,${encodeURIComponent(`<!doctype html>
 <html lang="tr">
 <head>
@@ -2286,8 +2286,8 @@ const YOUTUBE_HOSTNAMES = Object.freeze([
 ]);
 const ADBLOCK_YOUTUBE_SERVER_CONTRACT_SCRIPTLET = String.raw`
 (function installDeliBlockYouTubeServerContract() {
-    if (window.__aurivoDeliBlockYouTubeServerContractPatch) return;
-    window.__aurivoDeliBlockYouTubeServerContractPatch = true;
+    if (window.__ardaliDeliBlockYouTubeServerContractPatch) return;
+    window.__ardaliDeliBlockYouTubeServerContractPatch = true;
 
     try {
         const host = String(location.hostname || '').toLowerCase();
@@ -2402,8 +2402,8 @@ const ADBLOCK_YOUTUBE_SERVER_CONTRACT_SCRIPTLET = String.raw`
 
     try {
         const originalHas = window.Map && window.Map.prototype && window.Map.prototype.has;
-        if (typeof originalHas === 'function' && !window.__aurivoDeliBlockMapHasPatched) {
-            window.__aurivoDeliBlockMapHasPatched = true;
+        if (typeof originalHas === 'function' && !window.__ardaliDeliBlockMapHasPatched) {
+            window.__ardaliDeliBlockMapHasPatched = true;
             window.Map.prototype.has = new Proxy(originalHas, {
                 apply(target, self, args) {
                     try {
@@ -2431,8 +2431,8 @@ const ADBLOCK_YOUTUBE_SERVER_CONTRACT_SCRIPTLET = String.raw`
 
     try {
         const originalStringify = window.JSON && window.JSON.stringify;
-        if (typeof originalStringify === 'function' && !window.__aurivoDeliBlockJsonStringifyPatched) {
-            window.__aurivoDeliBlockJsonStringifyPatched = true;
+        if (typeof originalStringify === 'function' && !window.__ardaliDeliBlockJsonStringifyPatched) {
+            window.__ardaliDeliBlockJsonStringifyPatched = true;
             window.JSON.stringify = new Proxy(originalStringify, {
                 apply(target, self, args) {
                     try {
@@ -2454,8 +2454,8 @@ const ADBLOCK_YOUTUBE_SERVER_CONTRACT_SCRIPTLET = String.raw`
 
     try {
         const originalThen = window.Promise && window.Promise.prototype && window.Promise.prototype.then;
-        if (typeof originalThen === 'function' && !window.__aurivoDeliBlockPromiseThenPatched) {
-            window.__aurivoDeliBlockPromiseThenPatched = true;
+        if (typeof originalThen === 'function' && !window.__ardaliDeliBlockPromiseThenPatched) {
+            window.__ardaliDeliBlockPromiseThenPatched = true;
             window.Promise.prototype.then = new Proxy(originalThen, {
                 apply(target, self, args) {
                     try {
@@ -2491,7 +2491,7 @@ const ADBLOCK_NOOP_DNR_RULES = Object.freeze([
             urlFilter: '||pagead2.googlesyndication.com/pagead/js/adsbygoogle.js',
             resourceTypes: ['script']
         },
-        ruleset: 'aurivo-noop'
+        ruleset: 'ardali-noop'
     },
     {
         id: 1100002,
@@ -2501,7 +2501,7 @@ const ADBLOCK_NOOP_DNR_RULES = Object.freeze([
             urlFilter: '||securepubads.g.doubleclick.net/tag/js/gpt.js',
             resourceTypes: ['script']
         },
-        ruleset: 'aurivo-noop'
+        ruleset: 'ardali-noop'
     },
     {
         id: 1100003,
@@ -2511,7 +2511,7 @@ const ADBLOCK_NOOP_DNR_RULES = Object.freeze([
             urlFilter: '||www.googletagservices.com/tag/js/gpt.js',
             resourceTypes: ['script']
         },
-        ruleset: 'aurivo-noop'
+        ruleset: 'ardali-noop'
     },
     {
         id: 1100004,
@@ -2521,7 +2521,7 @@ const ADBLOCK_NOOP_DNR_RULES = Object.freeze([
             urlFilter: '||www.google-analytics.com/analytics.js',
             resourceTypes: ['script']
         },
-        ruleset: 'aurivo-noop'
+        ruleset: 'ardali-noop'
     },
     {
         id: 1100005,
@@ -2531,7 +2531,7 @@ const ADBLOCK_NOOP_DNR_RULES = Object.freeze([
             urlFilter: '||www.google-analytics.com/gtag/js',
             resourceTypes: ['script']
         },
-        ruleset: 'aurivo-noop'
+        ruleset: 'ardali-noop'
     },
     {
         id: 1100006,
@@ -2541,7 +2541,7 @@ const ADBLOCK_NOOP_DNR_RULES = Object.freeze([
             urlFilter: '/pagead/ppub_config',
             resourceTypes: ['xmlhttprequest']
         },
-        ruleset: 'aurivo-noop'
+        ruleset: 'ardali-noop'
     }
 ]);
 const ADBLOCK_YOUTUBE_DNR_RULES = Object.freeze([
@@ -2563,7 +2563,7 @@ const ADBLOCK_YOUTUBE_DNR_RULES = Object.freeze([
             ],
             resourceTypes: ['script', 'xmlhttprequest', 'image', 'stylesheet', 'font']
         },
-        ruleset: 'aurivo-youtube-core'
+        ruleset: 'ardali-youtube-core'
     },
     {
         id: 1000011,
@@ -2574,7 +2574,7 @@ const ADBLOCK_YOUTUBE_DNR_RULES = Object.freeze([
             requestDomains: ['googlevideo.com'],
             resourceTypes: ['media', 'xmlhttprequest']
         },
-        ruleset: 'aurivo-youtube-core'
+        ruleset: 'ardali-youtube-core'
     },
     {
         id: 1000001,
@@ -2591,7 +2591,7 @@ const ADBLOCK_YOUTUBE_DNR_RULES = Object.freeze([
             ],
             resourceTypes: ['script', 'xmlhttprequest', 'sub_frame', 'image', 'media']
         },
-        ruleset: 'aurivo-youtube'
+        ruleset: 'ardali-youtube'
     },
     {
         id: 1000002,
@@ -2602,7 +2602,7 @@ const ADBLOCK_YOUTUBE_DNR_RULES = Object.freeze([
             urlFilter: '||youtube.com/pagead/',
             resourceTypes: ['script', 'xmlhttprequest', 'sub_frame', 'image']
         },
-        ruleset: 'aurivo-youtube'
+        ruleset: 'ardali-youtube'
     },
     {
         id: 1000003,
@@ -2613,7 +2613,7 @@ const ADBLOCK_YOUTUBE_DNR_RULES = Object.freeze([
             urlFilter: '/api/stats/ads',
             resourceTypes: ['xmlhttprequest', 'ping']
         },
-        ruleset: 'aurivo-youtube'
+        ruleset: 'ardali-youtube'
     },
     {
         id: 1000004,
@@ -2624,7 +2624,7 @@ const ADBLOCK_YOUTUBE_DNR_RULES = Object.freeze([
             urlFilter: '||youtube.com/youtubei/v1/player/ad_break',
             resourceTypes: ['xmlhttprequest']
         },
-        ruleset: 'aurivo-youtube'
+        ruleset: 'ardali-youtube'
     },
     {
         id: 1000005,
@@ -2635,7 +2635,7 @@ const ADBLOCK_YOUTUBE_DNR_RULES = Object.freeze([
             urlFilter: '||www.youtube.com/get_midroll_',
             resourceTypes: ['xmlhttprequest', 'script']
         },
-        ruleset: 'aurivo-youtube'
+        ruleset: 'ardali-youtube'
     },
     {
         id: 1000006,
@@ -2646,7 +2646,7 @@ const ADBLOCK_YOUTUBE_DNR_RULES = Object.freeze([
             urlFilter: '||m.youtube.com/get_midroll_',
             resourceTypes: ['xmlhttprequest', 'script']
         },
-        ruleset: 'aurivo-youtube'
+        ruleset: 'ardali-youtube'
     },
     {
         id: 1000007,
@@ -2657,7 +2657,7 @@ const ADBLOCK_YOUTUBE_DNR_RULES = Object.freeze([
             urlFilter: '||youtube.com/get_video_info?*adunit',
             resourceTypes: ['xmlhttprequest']
         },
-        ruleset: 'aurivo-youtube'
+        ruleset: 'ardali-youtube'
     },
     {
         id: 1000008,
@@ -2668,7 +2668,7 @@ const ADBLOCK_YOUTUBE_DNR_RULES = Object.freeze([
             urlFilter: '/api/stats/qoe?*adformat=',
             resourceTypes: ['xmlhttprequest', 'ping']
         },
-        ruleset: 'aurivo-youtube'
+        ruleset: 'ardali-youtube'
     },
     {
         id: 1000009,
@@ -2680,7 +2680,7 @@ const ADBLOCK_YOUTUBE_DNR_RULES = Object.freeze([
             requestMethods: ['get'],
             resourceTypes: ['xmlhttprequest']
         },
-        ruleset: 'aurivo-youtube'
+        ruleset: 'ardali-youtube'
     },
     {
         id: 1000010,
@@ -2692,7 +2692,119 @@ const ADBLOCK_YOUTUBE_DNR_RULES = Object.freeze([
             requestDomains: ['googlevideo.com'],
             resourceTypes: ['xmlhttprequest', 'media']
         },
-        ruleset: 'aurivo-youtube'
+        ruleset: 'ardali-youtube'
+    }
+]);
+const ADBLOCK_PLATFORM_CORE_DNR_RULES = Object.freeze([
+    {
+        id: 1010000,
+        priority: 95,
+        action: { type: 'allow' },
+        condition: {
+            initiatorDomains: ['deezer.com', 'www.deezer.com'],
+            requestDomains: ['deezer.com', 'www.deezer.com', 'dzcdn.net'],
+            resourceTypes: ['stylesheet', 'script', 'font', 'image', 'media', 'xmlhttprequest']
+        },
+        ruleset: 'ardali-platform-core'
+    },
+    {
+        id: 1010001,
+        priority: 95,
+        action: { type: 'allow' },
+        condition: {
+            initiatorDomains: ['soundcloud.com', 'www.soundcloud.com'],
+            requestDomains: ['soundcloud.com', 'www.soundcloud.com', 'sndcdn.com'],
+            resourceTypes: ['stylesheet', 'script', 'font', 'image', 'media', 'xmlhttprequest']
+        },
+        ruleset: 'ardali-platform-core'
+    },
+    {
+        id: 1010002,
+        priority: 95,
+        action: { type: 'allow' },
+        condition: {
+            initiatorDomains: ['facebook.com', 'www.facebook.com', 'm.facebook.com', 'instagram.com', 'www.instagram.com'],
+            requestDomains: ['facebook.com', 'www.facebook.com', 'm.facebook.com', 'fbcdn.net', 'instagram.com', 'www.instagram.com', 'cdninstagram.com'],
+            resourceTypes: ['stylesheet', 'script', 'font', 'image', 'media', 'xmlhttprequest']
+        },
+        ruleset: 'ardali-platform-core'
+    },
+    {
+        id: 1010003,
+        priority: 95,
+        action: { type: 'allow' },
+        condition: {
+            initiatorDomains: ['tiktok.com', 'www.tiktok.com', 'm.tiktok.com'],
+            requestDomains: ['tiktok.com', 'www.tiktok.com', 'm.tiktok.com', 'tiktokcdn.com', 'tiktokv.com', 'byteoversea.com'],
+            resourceTypes: ['stylesheet', 'script', 'font', 'image', 'media', 'xmlhttprequest']
+        },
+        ruleset: 'ardali-platform-core'
+    },
+    {
+        id: 1010004,
+        priority: 95,
+        action: { type: 'allow' },
+        condition: {
+            initiatorDomains: ['x.com', 'www.x.com', 'twitter.com', 'www.twitter.com'],
+            requestDomains: ['x.com', 'www.x.com', 'twitter.com', 'www.twitter.com', 'twimg.com'],
+            resourceTypes: ['stylesheet', 'script', 'font', 'image', 'media', 'xmlhttprequest']
+        },
+        ruleset: 'ardali-platform-core'
+    },
+    {
+        id: 1010005,
+        priority: 95,
+        action: { type: 'allow' },
+        condition: {
+            initiatorDomains: ['reddit.com', 'www.reddit.com', 'old.reddit.com'],
+            requestDomains: ['reddit.com', 'www.reddit.com', 'old.reddit.com', 'redditstatic.com', 'redditmedia.com', 'redd.it'],
+            resourceTypes: ['stylesheet', 'script', 'font', 'image', 'media', 'xmlhttprequest']
+        },
+        ruleset: 'ardali-platform-core'
+    },
+    {
+        id: 1010006,
+        priority: 95,
+        action: { type: 'allow' },
+        condition: {
+            initiatorDomains: ['twitch.tv', 'www.twitch.tv'],
+            requestDomains: ['twitch.tv', 'www.twitch.tv', 'jtvnw.net', 'ttvnw.net', 'twitchcdn.net', 'ext-twitch.tv'],
+            resourceTypes: ['stylesheet', 'script', 'font', 'image', 'media', 'xmlhttprequest']
+        },
+        ruleset: 'ardali-platform-core'
+    },
+    {
+        id: 1010007,
+        priority: 95,
+        action: { type: 'allow' },
+        condition: {
+            initiatorDomains: ['telegram.org', 'www.telegram.org', 'web.telegram.org', 't.me', 'www.t.me'],
+            requestDomains: ['telegram.org', 'www.telegram.org', 'web.telegram.org', 't.me', 'www.t.me'],
+            resourceTypes: ['stylesheet', 'script', 'font', 'image', 'media', 'xmlhttprequest']
+        },
+        ruleset: 'ardali-platform-core'
+    },
+    {
+        id: 1010008,
+        priority: 95,
+        action: { type: 'allow' },
+        condition: {
+            initiatorDomains: ['whatsapp.com', 'www.whatsapp.com', 'web.whatsapp.com'],
+            requestDomains: ['whatsapp.com', 'www.whatsapp.com', 'web.whatsapp.com', 'whatsapp.net'],
+            resourceTypes: ['stylesheet', 'script', 'font', 'image', 'media', 'xmlhttprequest']
+        },
+        ruleset: 'ardali-platform-core'
+    },
+    {
+        id: 1010009,
+        priority: 95,
+        action: { type: 'allow' },
+        condition: {
+            initiatorDomains: ['mixcloud.com', 'www.mixcloud.com'],
+            requestDomains: ['mixcloud.com', 'www.mixcloud.com', 'mxcdn.net'],
+            resourceTypes: ['stylesheet', 'script', 'font', 'image', 'media', 'xmlhttprequest']
+        },
+        ruleset: 'ardali-platform-core'
     }
 ]);
 
@@ -2923,6 +3035,154 @@ function isAdblockYouTubeHostname(hostname = '') {
     return YOUTUBE_HOSTNAMES.some((domain) => value === domain || value.endsWith(`.${domain}`));
 }
 
+const ADBLOCK_PLATFORM_CORE_ASSET_TYPES = new Set([
+    'stylesheet',
+    'script',
+    'font',
+    'image',
+    'media',
+    'xmlhttprequest',
+    'xhr',
+    'websocket',
+    'other'
+]);
+const ADBLOCK_PLATFORM_CORE_DOMAINS = Object.freeze([
+    {
+        page: ['deezer.com'],
+        assets: ['deezer.com', 'dzcdn.net']
+    },
+    {
+        page: ['soundcloud.com'],
+        assets: ['soundcloud.com', 'sndcdn.com']
+    },
+    {
+        page: ['facebook.com', 'instagram.com'],
+        assets: ['facebook.com', 'fbcdn.net', 'instagram.com', 'cdninstagram.com']
+    },
+    {
+        page: ['tiktok.com'],
+        assets: ['tiktok.com', 'tiktokcdn.com', 'tiktokv.com', 'byteoversea.com']
+    },
+    {
+        page: ['x.com', 'twitter.com'],
+        assets: ['x.com', 'twitter.com', 'twimg.com']
+    },
+    {
+        page: ['reddit.com'],
+        assets: ['reddit.com', 'redditstatic.com', 'redditmedia.com', 'redd.it']
+    },
+    {
+        page: ['twitch.tv'],
+        assets: ['twitch.tv', 'jtvnw.net', 'ttvnw.net', 'twitchcdn.net', 'ext-twitch.tv']
+    },
+    {
+        page: ['telegram.org', 't.me'],
+        assets: ['telegram.org', 't.me']
+    },
+    {
+        page: ['whatsapp.com'],
+        assets: ['whatsapp.com', 'whatsapp.net']
+    },
+    {
+        page: ['mixcloud.com'],
+        assets: ['mixcloud.com', 'mxcdn.net']
+    }
+]);
+
+function getAdblockHostnameFromUrl(rawUrl = '') {
+    try {
+        return String(new URL(String(rawUrl || '')).hostname || '').toLowerCase();
+    } catch {
+        return '';
+    }
+}
+
+function adblockDomainMatches(hostname = '', domain = '') {
+    const host = String(hostname || '').toLowerCase();
+    const value = String(domain || '').toLowerCase();
+    return !!host && !!value && (host === value || host.endsWith(`.${value}`));
+}
+
+function adblockAnyDomainMatches(hostname = '', domains = []) {
+    return Array.isArray(domains) && domains.some((domain) => adblockDomainMatches(hostname, domain));
+}
+
+function getAdblockRequestSourceHostnames(details = {}) {
+    return [
+        details?.initiator,
+        details?.documentUrl,
+        details?.referrer
+    ]
+        .map((value) => getAdblockHostnameFromUrl(value))
+        .filter(Boolean);
+}
+
+function normalizeAdblockWebRequestResourceType(value = '') {
+    return String(value || '')
+        .trim()
+        .replace(/[A-Z]/g, (match) => `_${match.toLowerCase()}`)
+        .replace(/^xml_http_request$/, 'xmlhttprequest')
+        .toLowerCase();
+}
+
+function isPlatformCoreAssetBypassRequest(details = {}) {
+    const type = normalizeAdblockWebRequestResourceType(details?.resourceType);
+    if (!ADBLOCK_PLATFORM_CORE_ASSET_TYPES.has(type)) return false;
+    const requestHostname = getAdblockHostnameFromUrl(details?.url);
+    if (!requestHostname) return false;
+    const sourceHostnames = getAdblockRequestSourceHostnames(details);
+    if (!sourceHostnames.length) return false;
+
+    return ADBLOCK_PLATFORM_CORE_DOMAINS.some((entry) => {
+        if (!adblockAnyDomainMatches(requestHostname, entry.assets)) return false;
+        return sourceHostnames.some((sourceHostname) => adblockAnyDomainMatches(sourceHostname, entry.page));
+    });
+}
+
+function isGoogleAuthAdblockBypassUrl(rawUrl = '') {
+    let parsed;
+    try {
+        parsed = new URL(String(rawUrl || ''));
+    } catch {
+        return false;
+    }
+    const host = String(parsed.hostname || '').toLowerCase();
+    const path = `${parsed.pathname || ''}${parsed.search || ''}`.toLowerCase();
+    if (
+        host === 'gstatic.com' ||
+        host.endsWith('.gstatic.com') ||
+        host === 'googleusercontent.com' ||
+        host.endsWith('.googleusercontent.com') ||
+        host === 'googleapis.com' ||
+        host.endsWith('.googleapis.com')
+    ) {
+        return true;
+    }
+    if (
+        host === 'accounts.google.com' ||
+        host === 'myaccount.google.com' ||
+        host === 'oauth2.googleapis.com' ||
+        host === 'accounts.youtube.com'
+    ) {
+        return true;
+    }
+    if ((host === 'google.com' || host === 'www.google.com') && (
+        path.includes('/signin') ||
+        path.includes('/servicelogin') ||
+        path.includes('/accountchooser')
+    )) {
+        return true;
+    }
+    return false;
+}
+
+function isGoogleAuthAdblockBypassRequest(details = {}) {
+    return isGoogleAuthAdblockBypassUrl(details?.url) ||
+        isGoogleAuthAdblockBypassUrl(details?.initiator) ||
+        isGoogleAuthAdblockBypassUrl(details?.documentUrl) ||
+        isGoogleAuthAdblockBypassUrl(details?.referrer);
+}
+
 function shouldSkipBundledYouTubeServerContractScriptlet(hostname = '', code = '') {
     if (!isAdblockYouTubeHostname(hostname)) return false;
     return String(code || '').includes('serverContract');
@@ -2937,6 +3197,9 @@ function buildAdblockScriptingInjection(rawUrl = '') {
     }
     if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
         return { ok: false, reason: 'unsupported-protocol', css: [], scripts: [], sources: [] };
+    }
+    if (isGoogleAuthAdblockBypassUrl(parsed.toString())) {
+        return { ok: true, reason: 'google-auth-bypass', css: [], genericImports: [], proceduralRules: [], scripts: [], sources: [] };
     }
 
     const plan = getActiveRulesetPlan(adblockRuntime.config);
@@ -3135,7 +3398,7 @@ function loadAdblockStrictblockRuleset(rulesetId, filePath = '') {
 
 function buildAdblockConfig(config = {}) {
     const normalized = normalizeAdblockConfig(config);
-    const rules = [...ADBLOCK_NOOP_DNR_RULES, ...ADBLOCK_YOUTUBE_DNR_RULES];
+    const rules = [...ADBLOCK_NOOP_DNR_RULES, ...ADBLOCK_YOUTUBE_DNR_RULES, ...ADBLOCK_PLATFORM_CORE_DNR_RULES];
     const plan = getActiveRulesetPlan(normalized);
     for (const item of plan.dnr) {
         rules.push(...loadAdblockRuleset(item.id, 'main'));
@@ -3266,6 +3529,18 @@ function installAdblockRequestBlocking() {
         try {
             ses.webRequest.onBeforeRequest({ urls: ['http://*/*', 'https://*/*'] }, (details, callback) => {
                 try {
+                    if (isGoogleAuthAdblockBypassRequest(details)) {
+                        callback({});
+                        return;
+                    }
+                    if (isPlatformCoreAssetBypassRequest(details)) {
+                        callback({});
+                        return;
+                    }
+                    if (String(details?.resourceType || '').toLowerCase() === 'mainframe') {
+                        callback({});
+                        return;
+                    }
                     const match = shouldBlockRequest(details?.url, details?.resourceType, adblockRuntime.config, details);
                     if (match) {
                         recordAdblockMatch(details, match);
@@ -3291,6 +3566,14 @@ function installAdblockRequestBlocking() {
         try {
             ses.webRequest.onBeforeSendHeaders({ urls: ['http://*/*', 'https://*/*'] }, (details, callback) => {
                 try {
+                    if (isGoogleAuthAdblockBypassRequest(details)) {
+                        callback({ requestHeaders: details?.requestHeaders || {} });
+                        return;
+                    }
+                    if (isPlatformCoreAssetBypassRequest(details)) {
+                        callback({ requestHeaders: details?.requestHeaders || {} });
+                        return;
+                    }
                     const match = evaluateDnrHeaderModifications(details?.url, details?.resourceType, adblockRuntime.config, details, 'request');
                     if (match?.requestHeaders) {
                         callback({ requestHeaders: match.requestHeaders });
@@ -3308,6 +3591,18 @@ function installAdblockRequestBlocking() {
         try {
             ses.webRequest.onHeadersReceived({ urls: ['http://*/*', 'https://*/*'] }, (details, callback) => {
                 try {
+                    if (isGoogleAuthAdblockBypassRequest(details)) {
+                        callback({ responseHeaders: details?.responseHeaders || {} });
+                        return;
+                    }
+                    if (isPlatformCoreAssetBypassRequest(details)) {
+                        callback({ responseHeaders: details?.responseHeaders || {} });
+                        return;
+                    }
+                    if (String(details?.resourceType || '').toLowerCase() === 'mainframe') {
+                        callback({ responseHeaders: details?.responseHeaders || {} });
+                        return;
+                    }
                     const blockMatch = shouldBlockRequest(details?.url, details?.resourceType, adblockRuntime.config, details);
                     if (blockMatch) {
                         recordAdblockMatch(details, blockMatch);
@@ -3628,14 +3923,14 @@ function resolveLinuxDesktopFileHint() {
     if (process.platform !== 'linux') return '';
     const home = app?.getPath?.('home') || process.env.HOME || '';
     const candidates = [
-        path.join('/app', 'share', 'applications', 'com.aurivo.mediaplayer.desktop'),
-        path.join('/app', 'share', 'applications', 'aurivo-media-player.desktop'),
-        path.join(home, '.local', 'share', 'applications', 'aurivo-media-player.desktop'),
-        path.join(home, '.local', 'share', 'applications', 'com.aurivo.mediaplayer.desktop'),
-        path.join('/usr/local/share/applications', 'aurivo-media-player.desktop'),
-        path.join('/usr/local/share/applications', 'com.aurivo.mediaplayer.desktop'),
-        path.join('/usr/share/applications', 'aurivo-media-player.desktop'),
-        path.join('/usr/share/applications', 'com.aurivo.mediaplayer.desktop')
+        path.join('/app', 'share', 'applications', 'com.ardali.mediaplayer.desktop'),
+        path.join('/app', 'share', 'applications', 'ardali.desktop'),
+        path.join(home, '.local', 'share', 'applications', 'ardali.desktop'),
+        path.join(home, '.local', 'share', 'applications', 'com.ardali.mediaplayer.desktop'),
+        path.join('/usr/local/share/applications', 'ardali.desktop'),
+        path.join('/usr/local/share/applications', 'com.ardali.mediaplayer.desktop'),
+        path.join('/usr/share/applications', 'ardali.desktop'),
+        path.join('/usr/share/applications', 'com.ardali.mediaplayer.desktop')
     ];
     for (const p of candidates) {
         try {
@@ -3657,7 +3952,7 @@ function resolveLinuxDesktopEntryId() {
         const base = path.basename(desktopHint).replace(/\.desktop$/i, '').trim();
         if (base) return base;
     }
-    return 'com.aurivo.mediaplayer';
+    return 'com.ardali.mediaplayer';
 }
 
 function applyUiLocaleOverrides(lang, messages) {
@@ -3883,7 +4178,7 @@ function installAppMenu() {
             submenu: [
                 {
                     label: tMainSync('about.github'),
-                    click: () => shell.openExternal('https://github.com/muhammed-aurivo-dev/Aurivo-Medya-Player-Linux').catch(() => { /* yoksay */ })
+                    click: () => shell.openExternal('https://github.com/muhammed-ardali-dev/ArDali-Medya-Player-Linux').catch(() => { /* yoksay */ })
                 }
             ]
         }
@@ -4096,15 +4391,15 @@ function createWindow() {
         if (unresponsiveRecoveryTriggered) return;
         unresponsiveRecoveryTriggered = true;
 
-        const alreadySoftware = process.env.AURIVO_SOFTWARE_RENDER === '1' || process.env.AURIVO_SOFTWARE_RENDER === 'true';
+        const alreadySoftware = process.env.ARDALI_SOFTWARE_RENDER === '1' || process.env.ARDALI_SOFTWARE_RENDER === 'true';
         if (process.platform === 'linux' && app.isPackaged && !alreadySoftware) {
             console.warn('[WEB] unresponsive -> relaunching with safe software mode');
             app.relaunch({
                 env: {
                     ...process.env,
-                    AURIVO_SOFTWARE_RENDER: '1',
-                    AURIVO_DISPLAY_BACKEND: process.env.DISPLAY ? 'x11' : (process.env.AURIVO_DISPLAY_BACKEND || 'auto'),
-                    AURIVO_FORCE_GPU_TUNING: '0'
+                    ARDALI_SOFTWARE_RENDER: '1',
+                    ARDALI_DISPLAY_BACKEND: process.env.DISPLAY ? 'x11' : (process.env.ARDALI_DISPLAY_BACKEND || 'auto'),
+                    ARDALI_FORCE_GPU_TUNING: '0'
                 }
             });
             app.exit(0);
@@ -4200,13 +4495,13 @@ function createWindow() {
 
     // Eğer pencere hiç görünmezse yazılım render'a otomatik düş
     setTimeout(() => {
-        const alreadySoftware = process.env.AURIVO_SOFTWARE_RENDER === '1' || process.env.AURIVO_SOFTWARE_RENDER === 'true';
+        const alreadySoftware = process.env.ARDALI_SOFTWARE_RENDER === '1' || process.env.ARDALI_SOFTWARE_RENDER === 'true';
         if (mainWindow && !hasEverBeenShown && !mainWindow.isVisible() && !alreadySoftware) {
             console.warn('[GPU] Window not visible -> fallback to software rendering');
             app.relaunch({
                 env: {
                     ...process.env,
-                    AURIVO_SOFTWARE_RENDER: '1'
+                    ARDALI_SOFTWARE_RENDER: '1'
                 }
             });
             app.exit(0);
@@ -4214,8 +4509,8 @@ function createWindow() {
     }, 6000);
 
     // DevTools (sadece geliştirme modunda açılır)
-    // Geliştirme için: npm run dev veya AURIVO_DEV=1 npm start
-    if (process.env.AURIVO_DEV === '1' || process.argv.includes('--dev')) {
+    // Geliştirme için: npm run dev veya ARDALI_DEV=1 npm start
+    if (process.env.ARDALI_DEV === '1' || process.argv.includes('--dev')) {
         // mainWindow.webContents.openDevTools();
     }
 
@@ -4275,11 +4570,11 @@ async function createSettingsWindow(defaultTab = 'playback') {
         parent: mainWindow && !mainWindow.isDestroyed() ? mainWindow : undefined,
         modal: false,
         show: false,
-        title: 'Aurivo Ayarlar',
+        title: 'ArDali Ayarlar',
         autoHideMenuBar: true,
         webPreferences: {
             preload: path.join(__dirname, 'preload.js'),
-            additionalArguments: [`--aurivo-view=settings`, `--aurivo-settings-tab=${tab}`],
+            additionalArguments: [`--ardali-view=settings`, `--ardali-settings-tab=${tab}`],
             nodeIntegration: false,
             contextIsolation: true,
             // sandbox: false gerekli — preload.js Node.js require() kullanıyor.
@@ -4370,7 +4665,7 @@ function createAdblockWindow() {
         autoHideMenuBar: true,
         webPreferences: {
             preload: path.join(__dirname, 'preload.js'),
-            additionalArguments: ['--aurivo-view=adblock'],
+            additionalArguments: ['--ardali-view=adblock'],
             nodeIntegration: false,
             contextIsolation: true,
             sandbox: false,
@@ -4428,12 +4723,12 @@ function createDownloaderWindow() {
         icon: getAppIconImage(),
         modal: false,
         show: false,
-        title: 'Aurivo Dawlod',
+        title: 'ArDali Dawlod',
         frame: true,
         autoHideMenuBar: true,
         webPreferences: {
             preload: path.join(__dirname, 'preload.js'),
-            additionalArguments: ['--aurivo-view=downloader'],
+            additionalArguments: ['--ardali-view=downloader'],
             nodeIntegration: false,
             contextIsolation: true,
             backgroundThrottling: true,
@@ -4509,9 +4804,9 @@ function sendDownloaderNoUrlNotice() {
 function createTray() {
     tray = new Tray(getTrayImage(false));
 
-    updateTrayMenu({ isPlaying: false, currentTrack: 'Aurivo Media Player' });
+    updateTrayMenu({ isPlaying: false, currentTrack: 'ArDali' });
 
-    tray.setToolTip('Aurivo Media Player');
+    tray.setToolTip('ArDali');
 
     // Tray ikonuna sol tık: pencereyi göster/gizle
     tray.on('click', () => {
@@ -4527,7 +4822,7 @@ function createTray() {
 }
 
 function getTrayBaseImage() {
-    const trayIconName = process.platform === 'linux' ? 'aurivo_24.png' : 'aurivo_512.png';
+    const trayIconName = process.platform === 'linux' ? 'ardali_24.png' : 'ardali_512.png';
     const iconPath = getResourcePath(path.join('icons', trayIconName));
     let trayIcon = nativeImage.createFromPath(iconPath);
     if (process.platform === 'linux' && trayIcon && !trayIcon.isEmpty()) {
@@ -4591,7 +4886,7 @@ function getTrayImage(recordingActive = false) {
 // ============================================
 function createMPRIS() {
     if (!MPRIS_RUNTIME_ENABLED) {
-        console.log('MPRIS devre dışı bırakıldı (AURIVO_DISABLE_MPRIS=1)');
+        console.log('MPRIS devre dışı bırakıldı (ARDALI_DISABLE_MPRIS=1)');
         return;
     }
 
@@ -4607,12 +4902,12 @@ function createMPRIS() {
 
     try {
         const flatpakAppId = (process.env.FLATPAK_ID || process.env.APP_ID || '').trim();
-        const mprisName = (flatpakAppId || 'aurivo').replace(/[^A-Za-z0-9_.-]/g, '') || 'aurivo';
+        const mprisName = (flatpakAppId || 'ardali').replace(/[^A-Za-z0-9_.-]/g, '') || 'ardali';
         const desktopEntryCandidates = [
             flatpakAppId,
-            'com.aurivo.mediaplayer',
-            'aurivo-media-player',
-            'aurivo'
+            'com.ardali.mediaplayer',
+            'ardali',
+            'ardali'
         ].filter(Boolean);
         const desktopEntry = desktopEntryCandidates.find((entry) => {
             const file = `${entry}.desktop`;
@@ -4623,11 +4918,11 @@ function createMPRIS() {
                 path.join(app.getPath('home'), '.local/share/applications', file)
             ];
             return paths.some((p) => fs.existsSync(p));
-        }) || (flatpakAppId || 'aurivo');
+        }) || (flatpakAppId || 'ardali');
 
         mprisPlayer = Player({
             name: mprisName,
-            identity: 'Aurivo Media Player',
+            identity: 'ArDali',
             desktopEntry, // KDE/GNOME sistem panelinde uygulama ikonunu eşleştirir
             supportedUriSchemes: ['file'],
             supportedMimeTypes: ['audio/mpeg', 'audio/flac', 'audio/x-wav', 'audio/ogg'],
@@ -4790,7 +5085,7 @@ function updateTrayMenu(state) {
     };
     lastTrayState = mergedState;
 
-    const { isPlaying = false, currentTrack = 'Aurivo Media Player', isMuted = false, stopAfterCurrent = false, recordingActive = false } = mergedState;
+    const { isPlaying = false, currentTrack = 'ArDali', isMuted = false, stopAfterCurrent = false, recordingActive = false } = mergedState;
 
     // İkonları küçük ve tutarlı boyutta yükle
     const iconPath = (name) => {
@@ -4914,9 +5209,9 @@ function normalizeSoundEffectsScope(rawScope) {
 
 function getSoundEffectsWindowTitle(scope) {
     const normalized = normalizeSoundEffectsScope(scope);
-    if (normalized === 'web') return 'Ses Efektleri (Web) — Aurivo Medya Player';
-    if (normalized === 'video') return 'Ses Efektleri (Video) — Aurivo Medya Player';
-    return 'Ses Efektleri (Müzik) — Aurivo Medya Player';
+    if (normalized === 'web') return 'Ses Efektleri (Web) — ArDali';
+    if (normalized === 'video') return 'Ses Efektleri (Video) — ArDali';
+    return 'Ses Efektleri (Müzik) — ArDali';
 }
 
 function createSoundEffectsWindow(rawScope = 'music') {
@@ -5023,7 +5318,7 @@ function createEQPresetsWindow() {
             allowRunningInsecureContent: false
         },
         frame: true,
-        title: 'Aurivo Hazır Ayarlar — Aurivo Medya Player',
+        title: 'ArDali Hazır Ayarlar — ArDali',
         show: false
     });
 
@@ -5118,7 +5413,7 @@ ipcMain.handle('soundEffects:getWebSpectrum', async (_event, numBands, options =
         const safeBands = Math.max(64, Math.min(512, Number(numBands) || 128));
         const rawSpectrum = !!(options && typeof options === 'object' && (options.raw === true || options.pure === true));
         const result = await mainWindow.webContents.executeJavaScript(
-            `window.__aurivoGetWebSpectrum ? window.__aurivoGetWebSpectrum(${safeBands}, { raw: ${rawSpectrum ? 'true' : 'false'} }) : []`,
+            `window.__ardaliGetWebSpectrum ? window.__ardaliGetWebSpectrum(${safeBands}, { raw: ${rawSpectrum ? 'true' : 'false'} }) : []`,
             true
         );
         return Array.isArray(result) ? result : [];
@@ -5133,7 +5428,7 @@ ipcMain.handle('soundEffects:getWebNoiseGateStatus', async () => {
             return { ok: false, enabled: false, open: true, gain: 1, envDb: -120, thresholdDb: -40 };
         }
         const result = await mainWindow.webContents.executeJavaScript(
-            'window.__aurivoGetWebNoiseGateStatus ? window.__aurivoGetWebNoiseGateStatus() : ({ ok: false, enabled: false, open: true, gain: 1, envDb: -120, thresholdDb: -40 })',
+            'window.__ardaliGetWebNoiseGateStatus ? window.__ardaliGetWebNoiseGateStatus() : ({ ok: false, enabled: false, open: true, gain: 1, envDb: -120, thresholdDb: -40 })',
             true
         );
         return (result && typeof result === 'object')
@@ -5150,7 +5445,7 @@ ipcMain.handle('soundEffects:getWebTruePeakStatus', async () => {
             return { ok: false, truePeakL: -96, truePeakR: -96, holdL: -96, holdR: -96, clippingCount: 0, gainReduction: 0 };
         }
         const result = await mainWindow.webContents.executeJavaScript(
-            'window.__aurivoGetWebTruePeakStatus ? window.__aurivoGetWebTruePeakStatus() : ({ ok: false, truePeakL: -96, truePeakR: -96, holdL: -96, holdR: -96, clippingCount: 0, gainReduction: 0 })',
+            'window.__ardaliGetWebTruePeakStatus ? window.__ardaliGetWebTruePeakStatus() : ({ ok: false, truePeakL: -96, truePeakR: -96, holdL: -96, holdR: -96, clippingCount: 0, gainReduction: 0 })',
             true
         );
         return (result && typeof result === 'object')
@@ -5167,7 +5462,7 @@ ipcMain.handle('soundEffects:getWebDynamicEqStatus', async () => {
             return { ok: false, enabled: false, currentGainDb: 0, gainReductionDb: 0, envDb: -120, thresholdDb: -40, triggered: false };
         }
         const result = await mainWindow.webContents.executeJavaScript(
-            'window.__aurivoGetWebDynamicEqStatus ? window.__aurivoGetWebDynamicEqStatus() : ({ ok: false, enabled: false, currentGainDb: 0, gainReductionDb: 0, envDb: -120, thresholdDb: -40, triggered: false })',
+            'window.__ardaliGetWebDynamicEqStatus ? window.__ardaliGetWebDynamicEqStatus() : ({ ok: false, enabled: false, currentGainDb: 0, gainReductionDb: 0, envDb: -120, thresholdDb: -40, triggered: false })',
             true
         );
         return (result && typeof result === 'object')
@@ -5191,7 +5486,7 @@ ipcMain.handle('soundEffects:getWebPerfStatus', async () => {
             };
         }
         const result = await mainWindow.webContents.executeJavaScript(
-            'window.__aurivoGetWebPerfStatus ? window.__aurivoGetWebPerfStatus() : ({ ok: false, loops: {}, build: { count: 0, lastMs: 0, avgMs: 0, maxMs: 0, rebuildCount: 0 }, apply: { count: 0, lastMs: 0, avgMs: 0, maxMs: 0 }, totalGlitches: 0, uptimeSec: 0 })',
+            'window.__ardaliGetWebPerfStatus ? window.__ardaliGetWebPerfStatus() : ({ ok: false, loops: {}, build: { count: 0, lastMs: 0, avgMs: 0, maxMs: 0, rebuildCount: 0 }, apply: { count: 0, lastMs: 0, avgMs: 0, maxMs: 0 }, totalGlitches: 0, uptimeSec: 0 })',
             true
         );
         return (result && typeof result === 'object')
@@ -5237,7 +5532,7 @@ ipcMain.handle('eqPresets:closeWindow', () => {
 });
 
 ipcMain.handle('eqPresets:getFeaturedList', () => {
-    return AURIVO_EQ_FEATURED_LIST;
+    return ARDALI_EQ_FEATURED_LIST;
 });
 
 // ============================================
@@ -5514,9 +5809,9 @@ function startVisualizerFeed() {
 }
 
 function isDevMode() {
-    // Dev modda (electron . / npm start), build-visualizer içindeki yeni derlenmiş native binary'leri tercih ederiz.
+    // Dev modda (electron . / npm start), yeni derlenmiş native visualizer binary'lerini tercih ederiz.
     // Paketli sürümlerde native-dist kullanılır.
-    return !app.isPackaged || process.env.AURIVO_DEV === '1' || process.argv.includes('--dev');
+    return !app.isPackaged || process.env.ARDALI_DEV === '1' || process.argv.includes('--dev');
 }
 
 function pickFirstExistingPath(paths) {
@@ -5553,16 +5848,16 @@ function getVisualizerExecutableCandidates() {
 
     // Paketlenmiş (Windows): native-dist tercih edilir; gerekirse taşınmış third_party'ye düş (binary içeriyorsa)
     if (app.isPackaged && process.platform === 'win32') {
-        out.push(path.join(process.resourcesPath, 'native-dist', 'aurivo-projectm-visualizer.exe'));
-        out.push(path.join(process.resourcesPath, 'native-dist', 'windows', 'aurivo-projectm-visualizer.exe'));
-        out.push(path.join(process.resourcesPath, 'third_party', 'projectm', 'aurivo-projectm-visualizer.exe'));
-        out.push(path.join(process.resourcesPath, 'third_party', 'projectm', 'bin', 'aurivo-projectm-visualizer.exe'));
+        out.push(path.join(process.resourcesPath, 'native-dist', 'ardali-projectm-visualizer.exe'));
+        out.push(path.join(process.resourcesPath, 'native-dist', 'windows', 'ardali-projectm-visualizer.exe'));
+        out.push(path.join(process.resourcesPath, 'third_party', 'projectm', 'ardali-projectm-visualizer.exe'));
+        out.push(path.join(process.resourcesPath, 'third_party', 'projectm', 'bin', 'ardali-projectm-visualizer.exe'));
         return out;
     }
 
     const exeName = process.platform === 'win32'
-        ? 'aurivo-projectm-visualizer.exe'
-        : 'aurivo-projectm-visualizer';
+        ? 'ardali-projectm-visualizer.exe'
+        : 'ardali-projectm-visualizer';
 
     // Paketlenmiş (Linux/Mac): resources/native-dist (extraResources)
     if (app.isPackaged) {
@@ -5582,8 +5877,8 @@ function getVisualizerExecutableCandidates() {
 
 function getVisualizerExecutablePath() {
     const exeName = process.platform === 'win32'
-        ? 'aurivo-projectm-visualizer.exe'
-        : 'aurivo-projectm-visualizer';
+        ? 'ardali-projectm-visualizer.exe'
+        : 'ardali-projectm-visualizer';
 
     // Temel aday(lar)
     const baseCandidates = getVisualizerExecutableCandidates();
@@ -5592,10 +5887,13 @@ function getVisualizerExecutablePath() {
     // Geliştirici kolaylığı: varsa yeni CMake çıktısını tercih et.
     const devCandidates = process.platform === 'win32'
         ? [
+            path.join(__dirname, 'build-visualizer-ardali', 'Release', exeName),
+            path.join(__dirname, 'build-visualizer-ardali', exeName),
             path.join(__dirname, 'build-visualizer', 'Release', exeName),
             path.join(__dirname, 'build-visualizer', exeName)
         ]
         : [
+            path.join(__dirname, 'build-visualizer-ardali', exeName),
             path.join(__dirname, 'build-visualizer', exeName)
         ];
 
@@ -5689,7 +5987,7 @@ function startVisualizer() {
         lines.push('');
         lines.push('Çözüm:');
         if (process.platform === 'win32') {
-            lines.push('- Görselleştirici, Windows üzerinde çalışmak için `aurivo-projectm-visualizer.exe` gerektirir.');
+            lines.push('- Görselleştirici, Windows üzerinde çalışmak için `ardali-projectm-visualizer.exe` gerektirir.');
         }
         lines.push('- Uygulamayı yeniden kurmayı deneyin.');
         lines.push('- Paketleme sırasında `native-dist` (exe) ve presets klasörünün `extraResources` içine dahil olduğundan emin olun.');
@@ -5734,9 +6032,13 @@ function startVisualizer() {
     }
 
     const visualizerIconCandidates = [
-        getResourcePath(path.join('icons', 'aurivo_512.png')),
-        path.join(process.resourcesPath || '', 'icons', 'aurivo_512.png'),
-        '/app/share/icons/hicolor/512x512/apps/com.aurivo.mediaplayer.png'
+        // Native visualizer is often built without SDL2_image, so SDL can reliably load BMP.
+        getResourcePath(path.join('icons', 'ardali_logo.bmp')),
+        path.join(process.resourcesPath || '', 'icons', 'ardali_logo.bmp'),
+        path.join(process.resourcesPath || '', 'native-dist', 'linux', 'icons', 'ardali_logo.bmp'),
+        getResourcePath(path.join('icons', 'ardali_512.png')),
+        path.join(process.resourcesPath || '', 'icons', 'ardali_512.png'),
+        '/app/share/icons/hicolor/512x512/apps/com.ardali.mediaplayer.png'
     ].filter(Boolean);
     const visualizerIconPath = visualizerIconCandidates.find((p) => {
         if (!p || p.includes('.asar/')) return false;
@@ -5751,10 +6053,10 @@ function startVisualizer() {
     const uiLang = getUiLanguageSync();
     const posixLocale = uiLangToPosixLocale(uiLang);
     const localeChain = uiLangToLocaleChain(uiLang);
-    const visualizerDesktopEntry = resolveLinuxDesktopEntryId() || 'com.aurivo.mediaplayer';
+    const visualizerDesktopEntry = resolveLinuxDesktopEntryId() || 'com.ardali.mediaplayer';
     const visualizerFontCandidates = [
         // Flatpak: native binary icin asar disi okunabilir font
-        '/app/aurivo/resources/native-dist/linux/fonts/Inter-Regular.ttf',
+        '/app/ardali/resources/native-dist/linux/fonts/Inter-Regular.ttf',
         path.join(process.resourcesPath || '', 'native-dist', 'linux', 'fonts', 'Inter-Regular.ttf'),
         // Gelistirme ortami
         path.join(__dirname, 'assets', 'fonts', 'Inter-Regular.ttf')
@@ -5766,67 +6068,67 @@ function startVisualizer() {
     const env = {
         ...process.env,
         PROJECTM_PRESETS_PATH: presetsPath,
-        AURIVO_VISUALIZER_ICON: visualizerIconPath,
-        AURIVO_VIS_FONT_PATH: visualizerFontPath,
+        ARDALI_VISUALIZER_ICON: visualizerIconPath,
+        ARDALI_VIS_FONT_PATH: visualizerFontPath,
         // Linux window grouping + icon lookup (Wayland app_id / X11 WM_CLASS)
-        AURIVO_VIS_DESKTOP_ENTRY: process.env.AURIVO_VIS_DESKTOP_ENTRY || visualizerDesktopEntry,
-        AURIVO_VIS_WMCLASS: process.env.AURIVO_VIS_WMCLASS || 'com.aurivo.mediaplayer',
-        SDL_APP_NAME: process.env.AURIVO_VIS_WMCLASS || 'com.aurivo.mediaplayer',
+        ARDALI_VIS_DESKTOP_ENTRY: process.env.ARDALI_VIS_DESKTOP_ENTRY || visualizerDesktopEntry,
+        ARDALI_VIS_WMCLASS: process.env.ARDALI_VIS_WMCLASS || 'com.ardali.mediaplayer',
+        SDL_APP_NAME: process.env.ARDALI_VIS_WMCLASS || 'com.ardali.mediaplayer',
         // Native görselleştirici için UI dili (SDL2/ImGui)
-        AURIVO_LANG: uiLang,
+        ARDALI_LANG: uiLang,
         LANG: posixLocale,
         LC_ALL: posixLocale,
         LANGUAGE: localeChain,
         // Native visualizer i18n strings (all app locales can override these keys over time)
-        AURIVO_VIS_CTX_DISPLAY: tVis('visualizerNative.context.display', 'Display'),
-        AURIVO_VIS_CTX_RENDERING: tVis('visualizerNative.context.rendering', 'Rendering'),
-        AURIVO_VIS_CTX_PRESETS: tVis('visualizerNative.context.presets', 'Presets'),
-        AURIVO_VIS_CTX_TOGGLE_FULLSCREEN: tVis('visualizerNative.context.toggleFullscreen', 'Toggle fullscreen'),
-        AURIVO_VIS_CTX_FRAME_RATE: tVis('visualizerNative.context.frameRate', 'Frame rate'),
-        AURIVO_VIS_CTX_QUALITY: tVis('visualizerNative.context.quality', 'Quality'),
-        AURIVO_VIS_CTX_CLARITY: tVis('visualizerNative.context.clarity', 'Clarity'),
-        AURIVO_VIS_CTX_SELECT_VISUALS: tVis('visualizerNative.context.selectVisuals', 'Select visualizations...'),
-        AURIVO_VIS_CTX_CLOSE: tVis('visualizerNative.context.close', 'Close visualization'),
-        AURIVO_VIS_CTX_FPS_LOW: tVis('visualizerNative.context.fpsLow', 'Low (15 fps)'),
-        AURIVO_VIS_CTX_FPS_MEDIUM: tVis('visualizerNative.context.fpsMedium', 'Medium (25 fps)'),
-        AURIVO_VIS_CTX_FPS_HIGH: tVis('visualizerNative.context.fpsHigh', 'High (35 fps)'),
-        AURIVO_VIS_CTX_FPS_SUPER: tVis('visualizerNative.context.fpsUltra', 'Super high (60 fps)'),
-        AURIVO_VIS_CTX_QUALITY_LOW: tVis('visualizerNative.context.qualityLow', 'Low (256x256)'),
-        AURIVO_VIS_CTX_QUALITY_MEDIUM: tVis('visualizerNative.context.qualityMedium', 'Medium (512x512)'),
-        AURIVO_VIS_CTX_QUALITY_HIGH: tVis('visualizerNative.context.qualityHigh', 'High (1024x1024)'),
-        AURIVO_VIS_CTX_QUALITY_SUPER: tVis('visualizerNative.context.qualityUltra', 'Super high (2048x2048)'),
-        AURIVO_VIS_CTX_CLARITY_SOFT: tVis('visualizerNative.context.claritySoft', 'Soft'),
-        AURIVO_VIS_CTX_CLARITY_BALANCED: tVis('visualizerNative.context.clarityBalanced', 'Balanced'),
-        AURIVO_VIS_CTX_CLARITY_SHARP: tVis('visualizerNative.context.claritySharp', 'Sharp'),
-        AURIVO_VIS_CTX_CLARITY_SHARP_PLUS: tVis('visualizerNative.context.claritySharpPlus', 'Sharp+'),
-        AURIVO_VIS_PICKER_TITLE: tVis('visualizerNative.picker.title', 'Aurivo Visuals'),
-        AURIVO_VIS_PICKER_HERO_TITLE: tVis('visualizerNative.picker.heroTitle', 'Curate the visual atmosphere'),
-        AURIVO_VIS_PICKER_HINT: tVis('visualizerNative.picker.heroHint', 'Choose the presets included in the premium-style auto switch flow.'),
-        AURIVO_VIS_PICKER_PRESET_DIR: tVis('visualizerNative.picker.presetDirectory', 'Preset directory'),
-        AURIVO_VIS_PICKER_SEARCH: tVis('visualizerNative.picker.search', 'Search presets...'),
-        AURIVO_VIS_PICKER_DELAY: tVis('visualizerNative.picker.delay', 'Switch delay'),
-        AURIVO_VIS_PICKER_ENABLED: tVis('visualizerNative.picker.enabled', 'Enabled'),
-        AURIVO_VIS_PICKER_COMPACT: tVis('visualizerNative.picker.compact', 'Compact'),
-        AURIVO_VIS_PICKER_FILTER_ACTIVE: tVis('visualizerNative.picker.filterActive', 'Filter active:'),
-        AURIVO_VIS_PICKER_GALLERY: tVis('visualizerNative.picker.gallery', 'Preset gallery'),
-        AURIVO_VIS_PICKER_NO_MATCH: tVis('visualizerNative.picker.noMatch', 'No preset matched your search.'),
-        AURIVO_VIS_PICKER_IN_ROTATION: tVis('visualizerNative.picker.inRotation', 'In rotation'),
-        AURIVO_VIS_PICKER_MANUAL_ONLY: tVis('visualizerNative.picker.manualOnly', 'Manual only'),
-        AURIVO_VIS_PICKER_INCLUDED: tVis('visualizerNative.picker.includedInAutoSwitch', 'Included in auto-switch'),
-        AURIVO_VIS_PICKER_ALL: tVis('visualizerNative.picker.selectAll', 'Select all'),
-        AURIVO_VIS_PICKER_NONE: tVis('visualizerNative.picker.clearAll', 'Clear all'),
-        AURIVO_VIS_PICKER_OK: tVis('visualizerNative.picker.done', 'Done'),
+        ARDALI_VIS_CTX_DISPLAY: tVis('visualizerNative.context.display', 'Display'),
+        ARDALI_VIS_CTX_RENDERING: tVis('visualizerNative.context.rendering', 'Rendering'),
+        ARDALI_VIS_CTX_PRESETS: tVis('visualizerNative.context.presets', 'Presets'),
+        ARDALI_VIS_CTX_TOGGLE_FULLSCREEN: tVis('visualizerNative.context.toggleFullscreen', 'Toggle fullscreen'),
+        ARDALI_VIS_CTX_FRAME_RATE: tVis('visualizerNative.context.frameRate', 'Frame rate'),
+        ARDALI_VIS_CTX_QUALITY: tVis('visualizerNative.context.quality', 'Quality'),
+        ARDALI_VIS_CTX_CLARITY: tVis('visualizerNative.context.clarity', 'Clarity'),
+        ARDALI_VIS_CTX_SELECT_VISUALS: tVis('visualizerNative.context.selectVisuals', 'Select visualizations...'),
+        ARDALI_VIS_CTX_CLOSE: tVis('visualizerNative.context.close', 'Close visualization'),
+        ARDALI_VIS_CTX_FPS_LOW: tVis('visualizerNative.context.fpsLow', 'Low (15 fps)'),
+        ARDALI_VIS_CTX_FPS_MEDIUM: tVis('visualizerNative.context.fpsMedium', 'Medium (25 fps)'),
+        ARDALI_VIS_CTX_FPS_HIGH: tVis('visualizerNative.context.fpsHigh', 'High (35 fps)'),
+        ARDALI_VIS_CTX_FPS_SUPER: tVis('visualizerNative.context.fpsUltra', 'Super high (60 fps)'),
+        ARDALI_VIS_CTX_QUALITY_LOW: tVis('visualizerNative.context.qualityLow', 'Low (256x256)'),
+        ARDALI_VIS_CTX_QUALITY_MEDIUM: tVis('visualizerNative.context.qualityMedium', 'Medium (512x512)'),
+        ARDALI_VIS_CTX_QUALITY_HIGH: tVis('visualizerNative.context.qualityHigh', 'High (1024x1024)'),
+        ARDALI_VIS_CTX_QUALITY_SUPER: tVis('visualizerNative.context.qualityUltra', 'Super high (2048x2048)'),
+        ARDALI_VIS_CTX_CLARITY_SOFT: tVis('visualizerNative.context.claritySoft', 'Soft'),
+        ARDALI_VIS_CTX_CLARITY_BALANCED: tVis('visualizerNative.context.clarityBalanced', 'Balanced'),
+        ARDALI_VIS_CTX_CLARITY_SHARP: tVis('visualizerNative.context.claritySharp', 'Sharp'),
+        ARDALI_VIS_CTX_CLARITY_SHARP_PLUS: tVis('visualizerNative.context.claritySharpPlus', 'Sharp+'),
+        ARDALI_VIS_PICKER_TITLE: tVis('visualizerNative.picker.title', 'ArDali Visuals'),
+        ARDALI_VIS_PICKER_HERO_TITLE: tVis('visualizerNative.picker.heroTitle', 'Curate the visual atmosphere'),
+        ARDALI_VIS_PICKER_HINT: tVis('visualizerNative.picker.heroHint', 'Choose the presets included in the premium-style auto switch flow.'),
+        ARDALI_VIS_PICKER_PRESET_DIR: tVis('visualizerNative.picker.presetDirectory', 'Preset directory'),
+        ARDALI_VIS_PICKER_SEARCH: tVis('visualizerNative.picker.search', 'Search presets...'),
+        ARDALI_VIS_PICKER_DELAY: tVis('visualizerNative.picker.delay', 'Switch delay'),
+        ARDALI_VIS_PICKER_ENABLED: tVis('visualizerNative.picker.enabled', 'Enabled'),
+        ARDALI_VIS_PICKER_COMPACT: tVis('visualizerNative.picker.compact', 'Compact'),
+        ARDALI_VIS_PICKER_FILTER_ACTIVE: tVis('visualizerNative.picker.filterActive', 'Filter active:'),
+        ARDALI_VIS_PICKER_GALLERY: tVis('visualizerNative.picker.gallery', 'Preset gallery'),
+        ARDALI_VIS_PICKER_NO_MATCH: tVis('visualizerNative.picker.noMatch', 'No preset matched your search.'),
+        ARDALI_VIS_PICKER_IN_ROTATION: tVis('visualizerNative.picker.inRotation', 'In rotation'),
+        ARDALI_VIS_PICKER_MANUAL_ONLY: tVis('visualizerNative.picker.manualOnly', 'Manual only'),
+        ARDALI_VIS_PICKER_INCLUDED: tVis('visualizerNative.picker.includedInAutoSwitch', 'Included in auto-switch'),
+        ARDALI_VIS_PICKER_ALL: tVis('visualizerNative.picker.selectAll', 'Select all'),
+        ARDALI_VIS_PICKER_NONE: tVis('visualizerNative.picker.clearAll', 'Clear all'),
+        ARDALI_VIS_PICKER_OK: tVis('visualizerNative.picker.done', 'Done'),
         // Varsayılan ana pencere boyutu (kullanıcı yeniden boyutlandırabilir; bir sonraki açılışta bu varsayılan kullanılır).
-        AURIVO_VIS_MAIN_W: process.env.AURIVO_VIS_MAIN_W || '900',
-        AURIVO_VIS_MAIN_H: process.env.AURIVO_VIS_MAIN_H || '650'
+        ARDALI_VIS_MAIN_W: process.env.ARDALI_VIS_MAIN_W || '900',
+        ARDALI_VIS_MAIN_H: process.env.ARDALI_VIS_MAIN_H || '650'
     };
 
     // Linux: SDL2 için görüntü değişkenleri (Wayland/X11)
     if (process.platform === 'linux') {
         const backendHint = String(
-            process.env.AURIVO_DISPLAY_BACKEND ||
+            process.env.ARDALI_DISPLAY_BACKEND ||
             process.env.ELECTRON_OZONE_PLATFORM_HINT ||
-            process.env.AURIVO_EFFECTIVE_DISPLAY_BACKEND ||
+            process.env.ARDALI_EFFECTIVE_DISPLAY_BACKEND ||
             effectiveDisplayBackend ||
             'auto'
         ).trim().toLowerCase();
@@ -5844,7 +6146,7 @@ function startVisualizer() {
     try {
         console.log('[Visualizer] starting:', exePath);
         console.log('[Visualizer] presets:', presetsPath);
-        console.log('[Visualizer] ✓ Input source: Aurivo PCM only (NO mic/capture)');
+        console.log('[Visualizer] ✓ Input source: ArDali PCM only (NO mic/capture)');
         console.log('[Visualizer] DISPLAY:', env.DISPLAY);
         console.log('[Visualizer] SDL_VIDEODRIVER:', env.SDL_VIDEODRIVER);
 
@@ -5858,7 +6160,7 @@ function startVisualizer() {
         // Bu sayede Wayland app_id daha SDL2 tarafından iletilmeden süreç ismi tanınır.
         if (process.platform === 'linux' && !useStrace) {
             actualExe = 'bash';
-            const desktopId = env.AURIVO_VIS_DESKTOP_ENTRY || 'com.aurivo.mediaplayer';
+            const desktopId = env.ARDALI_VIS_DESKTOP_ENTRY || 'com.ardali.mediaplayer';
             actualArgs = ['-c', `exec -a ${shellQuote(desktopId)} ${shellQuote(exePath)} "$@"`, '--', '--presets', presetsPath];
         }
 
@@ -6057,8 +6359,8 @@ ipcMain.handle('app:update:install', async () => {
     return installDownloadedUpdate();
 });
 
-ipcMain.handle('app:update:launchAurivoBinUpdate', async () => {
-    const result = await launchAurivoBinUpdateTerminal();
+ipcMain.handle('app:update:launchArDaliBinUpdate', async () => {
+    const result = await launchArDaliBinUpdateTerminal();
     if (!result?.ok) {
         return result;
     }
@@ -6252,7 +6554,7 @@ function installWebviewHardening() {
                         action: 'allow',
                         overrideBrowserWindowOptions: {
                             icon: getAppIconImage(),
-                            title: 'Aurivo Medya Player',
+                            title: 'ArDali',
                             autoHideMenuBar: false
                         }
                     };
@@ -6262,7 +6564,7 @@ function installWebviewHardening() {
                         action: 'allow',
                         overrideBrowserWindowOptions: {
                             icon: getAppIconImage(),
-                            title: 'Aurivo Medya Player',
+                            title: 'ArDali',
                             autoHideMenuBar: false
                         }
                     };
@@ -6604,7 +6906,7 @@ ipcMain.handle('screenRecording:startSystemAudio', async () => {
         const audioDevice = await pickDefaultOutputMonitorDeviceId();
         if (!audioDevice) return { success: false, error: 'monitor-not-found' };
         const ffmpegPath = getFfmpegPathForEnv();
-        const outPath = path.join(app.getPath('temp'), `aurivo-screen-system-audio-${Date.now()}.wav`);
+        const outPath = path.join(app.getPath('temp'), `ardali-screen-system-audio-${Date.now()}.wav`);
         const child = spawn(ffmpegPath, [
             '-y',
             '-f', 'pulse',
@@ -7475,7 +7777,7 @@ ipcMain.handle('app:getSystemStats', async () => {
 ipcMain.handle('screenRecording:listStudioPlugins', async () => {
     const pluginDirs = [
         path.join(app.getPath('userData'), 'video-studio-plugins'),
-        path.join(app.getPath('home'), '.config', 'aurivo', 'video-studio-plugins')
+        path.join(app.getPath('home'), '.config', 'ardali', 'video-studio-plugins')
     ];
     const plugins = [];
     for (const dir of pluginDirs) {
@@ -7891,11 +8193,13 @@ ipcMain.handle('downloader:saveSettings', async (_event, settings) => {
     if (payload.maxActiveDownloads != null) allowed.maxActiveDownloads = Math.max(1, Math.min(2, Number(payload.maxActiveDownloads) || 1));
     if (payload.closeToTray != null) allowed.closeToTray = payload.closeToTray === true;
     if (payload.disableAutoUpdates != null) allowed.disableAutoUpdates = payload.disableAutoUpdates === true;
+    if (payload.compressorMode != null) allowed.compressorMode = String(payload.compressorMode);
     if (payload.compressorExtension != null) allowed.compressorExtension = String(payload.compressorExtension);
     if (payload.compressorEncoder != null) allowed.compressorEncoder = String(payload.compressorEncoder);
     if (payload.compressorSpeed != null) allowed.compressorSpeed = String(payload.compressorSpeed);
     if (payload.compressorQuality != null) allowed.compressorQuality = Math.max(18, Math.min(51, Number(payload.compressorQuality) || 23));
     if (payload.compressorAudioFormat != null) allowed.compressorAudioFormat = String(payload.compressorAudioFormat);
+    if (payload.compressorEmbedCover != null) allowed.compressorEmbedCover = payload.compressorEmbedCover === true;
     if (payload.compressorSuffix != null) allowed.compressorSuffix = String(payload.compressorSuffix);
     if (payload.compressorSameFolder != null) allowed.compressorSameFolder = payload.compressorSameFolder === true;
     if (payload.compressorOutputDir != null) allowed.compressorOutputDir = String(payload.compressorOutputDir);
@@ -8006,7 +8310,7 @@ ipcMain.handle('downloader:exportHistory', async (_event, format) => {
         : mainWindow;
     const result = await dialog.showSaveDialog(targetWindow, {
         title: 'İndirme geçmişini dışa aktar',
-        defaultPath: `aurivo-download-history.${normalized}`,
+        defaultPath: `ardali-download-history.${normalized}`,
         filters: [
             normalized === 'csv'
                 ? { name: 'CSV', extensions: ['csv'] }
@@ -8028,6 +8332,17 @@ ipcMain.handle('downloader:clearHistory', async () => {
 
 ipcMain.handle('downloader:removeHistoryItem', async (_event, id) => {
     return getDownloaderService().removeHistoryItem(String(id || ''));
+});
+
+ipcMain.handle('downloader:getFileThumbnail', async (_event, filePath) => {
+    const target = sanitizeIpcPath(filePath, { requireAbsolute: true });
+    if (!target || !fs.existsSync(target)) return '';
+    try {
+        return await getDownloaderService().getFileThumbnail(target);
+    } catch (error) {
+        console.warn('[DOWNLOADER] file thumbnail failed:', error?.message || error);
+        return '';
+    }
 });
 
 ipcMain.handle('downloader:showFile', async (_event, filePath) => {
@@ -8258,7 +8573,7 @@ ipcMain.handle('media:getDisplayImagePath', async (_event, filePath, options = {
         if (!shouldConvert) return sourcePath;
 
         const stat = await fs.promises.stat(sourcePath);
-        const cacheDir = path.join(app.getPath('temp'), 'aurivo-image-cache');
+        const cacheDir = path.join(app.getPath('temp'), 'ardali-image-cache');
         await fs.promises.mkdir(cacheDir, { recursive: true });
         const cacheKey = crypto
             .createHash('sha1')
@@ -8290,8 +8605,8 @@ function getFfmpegPathForEnv() {
 
     const preferSystemFirst =
         process.platform !== 'win32' ||
-        process.env.AURIVO_FFMPEG_PREFER_SYSTEM === '1' ||
-        process.env.AURIVO_FFMPEG_PREFER_SYSTEM === 'true';
+        process.env.ARDALI_FFMPEG_PREFER_SYSTEM === '1' ||
+        process.env.ARDALI_FFMPEG_PREFER_SYSTEM === 'true';
 
     const systemCandidate = findExecutable('ffmpeg', ['/usr/bin', '/usr/local/bin', '/bin']);
     if (preferSystemFirst) {
@@ -8329,8 +8644,8 @@ function getFfprobePathForEnv() {
     const candidates = [];
     const preferSystemFirst =
         process.platform !== 'win32' ||
-        process.env.AURIVO_FFMPEG_PREFER_SYSTEM === '1' ||
-        process.env.AURIVO_FFMPEG_PREFER_SYSTEM === 'true';
+        process.env.ARDALI_FFMPEG_PREFER_SYSTEM === '1' ||
+        process.env.ARDALI_FFMPEG_PREFER_SYSTEM === 'true';
     const systemCandidate = findExecutable('ffprobe', ['/usr/bin', '/usr/local/bin', '/bin']);
     if (preferSystemFirst && systemCandidate) candidates.push(systemCandidate);
     if (app.isPackaged) {
@@ -8390,7 +8705,7 @@ async function createShiftedSubtitleFile(subtitlePath, delaySeconds) {
         /(\d{2,}:\d{2}:\d{2},\d{3})\s*-->\s*(\d{2,}:\d{2}:\d{2},\d{3})/g,
         (_match, start, end) => `${formatSrtTimestamp(parseSrtTimestamp(start) + shift)} --> ${formatSrtTimestamp(parseSrtTimestamp(end) + shift)}`
     );
-    const targetPath = path.join(os.tmpdir(), `aurivo-subtitle-${crypto.randomUUID()}.srt`);
+    const targetPath = path.join(os.tmpdir(), `ardali-subtitle-${crypto.randomUUID()}.srt`);
     await fs.promises.writeFile(targetPath, shifted, 'utf8');
     return targetPath;
 }
@@ -10003,7 +10318,7 @@ ipcMain.handle('audio:setToneParams', (event, bass, mid, treble) => {
     }
 });
 
-// Bass ayarla (Aurivo Module)
+// Bass ayarla (ArDali Module)
 ipcMain.handle('audio:setBass', (event, dB) => {
     try {
         if (!audioEngine || !isNativeAudioAvailable) return { success: false, error: 'Native audio yok' };
@@ -10014,7 +10329,7 @@ ipcMain.handle('audio:setBass', (event, dB) => {
     }
 });
 
-// Mid ayarla (Aurivo Module)
+// Mid ayarla (ArDali Module)
 ipcMain.handle('audio:setMid', (event, dB) => {
     try {
         if (!audioEngine || !isNativeAudioAvailable) return { success: false, error: 'Native audio yok' };
@@ -10025,7 +10340,7 @@ ipcMain.handle('audio:setMid', (event, dB) => {
     }
 });
 
-// Treble ayarla (Aurivo Module)
+// Treble ayarla (ArDali Module)
 ipcMain.handle('audio:setTreble', (event, dB) => {
     try {
         if (!audioEngine || !isNativeAudioAvailable) return { success: false, error: 'Native audio yok' };
@@ -11691,9 +12006,9 @@ function makeBandsFromPoints(points, minDb = -12, maxDb = 12) {
     return normalize32Bands(out, minDb, maxDb);
 }
 
-function loadAurivoEQBuiltins() {
+function loadArDaliEQBuiltins() {
     // JSON ile ayarlanabilir (ince ayar için)
-    const filePath = getAppFilePath(path.join('resources', 'aurivo', 'eq_presets.json'));
+    const filePath = getAppFilePath(path.join('resources', 'ardali', 'eq_presets.json'));
     try {
         const raw = fs.readFileSync(filePath, 'utf8');
         const parsed = JSON.parse(raw);
@@ -11712,7 +12027,7 @@ function loadAurivoEQBuiltins() {
             const entry = {
                 name: String(p.name),
                 description: p.description ? String(p.description) : '',
-                category: 'Aurivo',
+                category: 'ArDali',
                 preamp: Number.isFinite(p.preamp) ? p.preamp : 0,
                 bands
             };
@@ -11723,16 +12038,16 @@ function loadAurivoEQBuiltins() {
 
         return { map, list };
     } catch (e) {
-        console.warn('[Aurivo EQ] resources/aurivo/eq_presets.json okunamadı:', e?.message || e);
+        console.warn('[ArDali EQ] resources/ardali/eq_presets.json okunamadı:', e?.message || e);
         return { map: {}, list: [] };
     }
 }
 
-const AURIVO_EQ_BUILTINS_LOADED = loadAurivoEQBuiltins();
-const AURIVO_EQ_BUILTINS = AURIVO_EQ_BUILTINS_LOADED.map;
-const AURIVO_EQ_FEATURED_LIST = [
+const ARDALI_EQ_BUILTINS_LOADED = loadArDaliEQBuiltins();
+const ARDALI_EQ_BUILTINS = ARDALI_EQ_BUILTINS_LOADED.map;
+const ARDALI_EQ_FEATURED_LIST = [
     { filename: '__flat__', name: 'Düz (Flat)', description: 'Tüm bantlar 0.0 dB', bands: new Array(32).fill(0) },
-    ...AURIVO_EQ_BUILTINS_LOADED.list
+    ...ARDALI_EQ_BUILTINS_LOADED.list
 ];
 
 function sanitizePresetFilename(filename) {
@@ -11897,12 +12212,12 @@ ipcMain.handle('eqPresets:select', async (event, filename) => {
             preset = {
                 name: 'Düz (Flat)',
                 description: 'Tüm bantlar 0.0 dB',
-                category: 'Aurivo',
+                category: 'ArDali',
                 preamp: 0,
                 bands: new Array(32).fill(0)
             };
-        } else if (Object.prototype.hasOwnProperty.call(AURIVO_EQ_BUILTINS, requested)) {
-            preset = AURIVO_EQ_BUILTINS[requested];
+        } else if (Object.prototype.hasOwnProperty.call(ARDALI_EQ_BUILTINS, requested)) {
+            preset = ARDALI_EQ_BUILTINS[requested];
         } else {
             const safeFilename = sanitizePresetFilename(requested);
             if (!safeFilename) {

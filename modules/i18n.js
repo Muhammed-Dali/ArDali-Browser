@@ -3,7 +3,7 @@
 (() => {
     'use strict';
 
-    const STORAGE_KEY = 'aurivo:lang';
+    const STORAGE_KEY = 'ardali:lang';
     const LEGACY_STORAGE_KEY = 'locale';
     const USER_SELECTED_KEY = 'localeUserSelected';
     const SUPPORTED = [
@@ -120,11 +120,11 @@
         'about.sections.updates.title': 'Version & Updates',
         'about.sections.updates.item1': 'App version, Electron and Chromium versions are shown live in this window.',
         'about.sections.updates.item2': 'There is no automatic update notification; checks run only when you use the button in this window.',
-        'about.sections.updates.item3': 'On Linux + AUR (aurivo-bin), the update button opens terminal and runs <code>yay -S aurivo-bin</code>.',
+        'about.sections.updates.item3': 'On Linux + AUR (ardali-bin), the update button opens terminal and runs <code>yay -S ardali-bin</code>.',
         'about.sections.updates.item4': 'When update starts, the app closes to avoid conflicts.',
         'about.sections.app.title': 'App Features',
         'about.sections.app.item1': 'Combines music, video, web and download workflows in one interface.',
-        'about.sections.app.item2': 'Includes Aurivo-Pulse listening mode for fast song recognition.',
+        'about.sections.app.item2': 'Includes ArDali-Pulse listening mode for fast song recognition.',
         'about.sections.app.item3': 'Offers modern media controls with multi-language and system language support.',
         'about.sections.web.title': 'Web Features',
         'about.sections.web.item1': 'Provides secure media access for YouTube, Deezer, SoundCloud and social platforms.',
@@ -255,7 +255,7 @@
         'settings.tabs.gallery': 'Gallery',
         'common.ok': 'OK',
         'common.default': 'Default',
-        'listen.window.title': 'Aurivo Listen',
+        'listen.window.title': 'ArDali Listen',
         'listen.menu.title': 'Menu',
         'listen.menu.preferences': 'Preferences',
         'listen.menu.about': 'About',
@@ -276,13 +276,13 @@
         'listen.status.notReady': 'Not ready - {error}',
         'listen.status.preferencesSaved': 'Preferences saved',
         'listen.state.ready.title': 'Ready to listen',
-        'listen.state.ready.subtitle': 'Press the button in the center and I will start finding the song playing on this computer.',
+        'listen.state.ready.subtitle': 'Press the button in the center and I will start finding the song playing on this computer',
         'listen.state.listening.title': 'Listening',
         'listen.state.listening.subtitle': 'I am analyzing the audio playing on this computer. Results will appear in the list below.',
         'listen.state.buffering.subtitle': 'Live audio is buffering; the first result should arrive in a few seconds',
         'listen.state.bufferFill.subtitle': 'Live audio buffering %{percent}',
-        'listen.state.found.title': 'Found',
-        'listen.state.found.subtitle': 'The result was added to the list below; I am still listening',
+        'listen.state.found.title': 'Match found',
+        'listen.state.found.subtitle': 'The result was added to the list',
         'listen.reason.noSignal': 'Signal is weak; make sure music is playing on the computer',
         'listen.reason.notEnoughAudio': 'A short sample is building up; I am listening a little longer',
         'listen.reason.notEnoughPeaks': 'The audio is not clear; waiting for a cleaner section',
@@ -311,9 +311,9 @@
         'listen.preferences.bufferSize.windowHint': 'Live audio buffer kept for recognition.',
         'listen.preferences.noDuplicates.windowLabel': 'Do not list the same song again',
         'listen.preferences.sharedHint': 'The Quick Listen button uses the behavior from main settings; these preferences are shared by the recognition engine and Listen window.',
-        'listen.about.body1': 'Aurivo Listen captures audio from the monitor source and creates fingerprints for song recognition.',
+        'listen.about.body1': 'ArDali Listen captures audio from the monitor source and creates fingerprints for song recognition.',
         'listen.about.body2': 'The default open target is YouTube; YouTube Music can be selected from Preferences.',
-        'listen.quick.title': 'Aurivo-Pulse Quick Listen',
+        'listen.quick.title': 'ArDali-Pulse Quick Listen',
         'listen.quick.toastDuration.label': 'Listen notification duration',
         'listen.quick.toastDuration.hint': 'Controls how long the no-signal hint stays on screen.',
         'listen.quick.toastDuration.options.4s': '4 sec',
@@ -331,7 +331,7 @@
         'listen.quick.mode.detail.background': 'Background Music Focus: Better for videos where music stays behind speech, ambience or effects.',
         'listen.quick.mode.detail.max': 'Maximum Accuracy: Uses denser sampling and waits longer. Best for hard cases like cover, live, remix or low-volume background music.',
         'listen.buttons.resetDefaults': 'Reset Listen Defaults',
-        'listen.preferences.title': 'Aurivo-Pulse Preferences',
+        'listen.preferences.title': 'ArDali-Pulse Preferences',
         'listen.preferences.notifications.label': 'Show notifications',
         'listen.preferences.notifications.hint': 'Shows notifications when a song is found, when a network error occurs, and when the audio device changes automatically.',
         'listen.preferences.mpris.label': 'Enable MPRIS',
@@ -400,7 +400,7 @@
         'adblock.actions.revert': 'Revert',
         'adblock.actions.resetCounter': 'Reset counter',
         'adblock.about.title': 'About DeliBlock',
-        'adblock.about.body': "DeliBlock combines local ruleset logic with Aurivo's web tab. Network blocking runs on Electron webRequest, while visible ad cleanup uses safe in-page injections.",
+        'adblock.about.body': "DeliBlock combines local ruleset logic with ArDali's web tab. Network blocking runs on Electron webRequest, while visible ad cleanup uses safe in-page injections.",
         'adblock.about.activeWebTab': 'Active web tab',
         'adblock.develop.registryTitle': 'DeliBlock registry:',
         'adblock.develop.mode': 'mode',
@@ -469,7 +469,7 @@
             'adblock.actions.revert': 'Geri al',
             'adblock.actions.resetCounter': 'Sayacı sıfırla',
             'adblock.about.title': 'DeliBlock hakkında',
-            'adblock.about.body': "DeliBlock, yerel ruleset mantığını Aurivo'nun web sekmesiyle birleştirir. Ağ engelleme Electron webRequest üzerinde, görünür reklam temizliği ise sayfa içi güvenli enjeksiyonlarla yapılır.",
+            'adblock.about.body': "DeliBlock, yerel ruleset mantığını ArDali'nin web sekmesiyle birleştirir. Ağ engelleme Electron webRequest üzerinde, görünür reklam temizliği ise sayfa içi güvenli enjeksiyonlarla yapılır.",
             'adblock.about.activeWebTab': 'Aktif web sekmesi',
             'adblock.develop.registryTitle': 'DeliBlock kayıt özeti:',
             'adblock.develop.mode': 'mod',
@@ -537,7 +537,7 @@
             'adblock.actions.revert': 'تراجع',
             'adblock.actions.resetCounter': 'إعادة تعيين العداد',
             'adblock.about.title': 'حول DeliBlock',
-            'adblock.about.body': 'يجمع DeliBlock منطق القواعد المحلي مع تبويب الويب في Aurivo. يعمل حظر الشبكة عبر Electron webRequest، بينما يتم تنظيف الإعلانات المرئية بحقن آمن داخل الصفحة.',
+            'adblock.about.body': 'يجمع DeliBlock منطق القواعد المحلي مع تبويب الويب في ArDali. يعمل حظر الشبكة عبر Electron webRequest، بينما يتم تنظيف الإعلانات المرئية بحقن آمن داخل الصفحة.',
             'adblock.about.activeWebTab': 'تبويب الويب النشط',
             'adblock.develop.registryTitle': 'سجل DeliBlock:',
             'adblock.develop.mode': 'الوضع',
@@ -1311,8 +1311,8 @@
         'settings.audio.outputSelect.unsupported': 'Output switching is currently available on Linux/PipeWire/PulseAudio.',
         'settings.audio.defaultVolume': 'Default volume level',
         'settings.audio.defaultVolume.hint': 'The main volume level used when the app opens and the audio engine loads.',
-        'settings.audio.appVolume': 'Aurivo app volume',
-        'settings.audio.appVolume.hint': 'Controls only Aurivo playback volume in real time, independently from the system volume.',
+        'settings.audio.appVolume': 'ArDali app volume',
+        'settings.audio.appVolume.hint': 'Controls only ArDali playback volume in real time, independently from the system volume.',
         'settings.audio.loudness.title': 'Balance loudness',
         'settings.audio.loudness.enabled': 'Loudness normalization',
         'settings.audio.loudness.enabled.hint': 'Reduces sudden volume differences between tracks and videos.',
@@ -1757,7 +1757,7 @@
 
     const LOCALE_OVERRIDES = {
         'ar-SA': {
-            'app.title': 'Aurivo Media Player',
+            'app.title': 'ArDali',
             'sidebar.files': 'الملفات',
             'sidebar.videos': 'الفيديو',
             'sidebar.music': 'الموسيقى',
@@ -1773,7 +1773,7 @@
             'about.sections.updates.title': 'الإصدار والتحديثات',
             'about.sections.updates.item1': 'يتم عرض إصدار التطبيق وElectron وChromium مباشرة في هذه النافذة.',
             'about.sections.updates.item2': 'لا توجد إشعارات تحديث تلقائية؛ يتم الفحص فقط عبر الزر الموجود في هذه النافذة.',
-            'about.sections.updates.item3': 'في Linux + AUR (aurivo-bin)، زر التحديث يفتح الطرفية ويشغّل <code>yay -S aurivo-bin</code>.',
+            'about.sections.updates.item3': 'في Linux + AUR (ardali-bin)، زر التحديث يفتح الطرفية ويشغّل <code>yay -S ardali-bin</code>.',
             'about.sections.updates.item4': 'عند بدء التحديث، يتم إغلاق التطبيق لتجنب التعارض.',
             'about.sections.app.title': 'ميزات التطبيق',
             'about.sections.app.item1': 'يجمع الموسيقى والفيديو والويب في واجهة واحدة.',
@@ -1816,7 +1816,7 @@
             'libraryActions.addFiles': 'إضافة ملفات',
             'libraryActions.openVideo': 'فتح فيديو',
             'nowPlaying.prefix': 'يتم التشغيل الآن',
-            'nowPlaying.ready': 'يتم التشغيل الآن: Aurivo Player - جاهز',
+            'nowPlaying.ready': 'يتم التشغيل الآن: ArDali Player - جاهز',
             'nowPlaying.none': 'لا يوجد مقطع',
             'nowPlaying.unknownTrack': 'مقطع غير معروف',
             'nowPlaying.unknownArtist': 'فنان غير معروف',
@@ -1908,7 +1908,7 @@
             'gallery.file.properties.created': 'تاريخ الإنشاء',
             'common.ok': 'موافق',
             'common.default': 'افتراضي',
-            'listen.window.title': 'Aurivo Listen',
+            'listen.window.title': 'ArDali Listen',
             'listen.menu.title': 'القائمة',
             'listen.menu.preferences': 'التفضيلات',
             'listen.menu.about': 'حول',
@@ -1929,13 +1929,13 @@
             'listen.status.notReady': 'غير جاهز - {error}',
             'listen.status.preferencesSaved': 'تم حفظ التفضيلات',
             'listen.state.ready.title': 'جاهز للاستماع',
-            'listen.state.ready.subtitle': 'اضغط الزر في الوسط وسأبدأ بالعثور على الأغنية التي تعمل على هذا الكمبيوتر.',
+            'listen.state.ready.subtitle': 'اضغط الزر في الوسط وسأبدأ بالعثور على الأغنية التي تعمل على هذا الكمبيوتر',
             'listen.state.listening.title': 'أستمع',
             'listen.state.listening.subtitle': 'أحلل الصوت الذي يعمل على هذا الكمبيوتر. ستظهر النتائج في القائمة أدناه.',
             'listen.state.buffering.subtitle': 'يتم تجميع عينة مباشرة؛ ستظهر أول نتيجة خلال ثوان قليلة',
             'listen.state.bufferFill.subtitle': 'تجميع العينة المباشرة %{percent}',
-            'listen.state.found.title': 'تم العثور',
-            'listen.state.found.subtitle': 'تمت إضافة النتيجة إلى القائمة أدناه، وما زلت أستمع',
+            'listen.state.found.title': 'تم العثور على تطابق',
+            'listen.state.found.subtitle': 'تمت إضافة النتيجة إلى القائمة',
             'listen.reason.noSignal': 'الإشارة ضعيفة؛ تأكد من تشغيل الموسيقى على الكمبيوتر',
             'listen.reason.notEnoughAudio': 'يتم تجميع عينة قصيرة؛ سأستمع قليلًا بعد',
             'listen.reason.notEnoughPeaks': 'الصوت غير واضح؛ أنتظر مقطعًا أنقى',
@@ -1964,9 +1964,9 @@
             'listen.preferences.bufferSize.windowHint': 'مخزن الصوت المباشر المستخدم للتعرف.',
             'listen.preferences.noDuplicates.windowLabel': 'لا تعرض نفس الأغنية مرة أخرى',
             'listen.preferences.sharedHint': 'زر الاستماع السريع يستخدم السلوك من الإعدادات الرئيسية؛ هذه التفضيلات مشتركة بين محرك التعرف ونافذة الاستماع.',
-            'listen.about.body1': 'يلتقط Aurivo Listen الصوت من مصدر الشاشة وينشئ بصمات للتعرف على الأغاني.',
+            'listen.about.body1': 'يلتقط ArDali Listen الصوت من مصدر الشاشة وينشئ بصمات للتعرف على الأغاني.',
             'listen.about.body2': 'هدف الفتح الافتراضي هو YouTube؛ يمكن اختيار YouTube Music من التفضيلات.',
-            'listen.quick.title': 'الاستماع السريع عبر Aurivo-Pulse',
+            'listen.quick.title': 'الاستماع السريع عبر ArDali-Pulse',
             'listen.quick.toastDuration.label': 'مدة إشعار الاستماع',
             'listen.quick.toastDuration.hint': 'يحدد مدة بقاء تلميح عدم اكتشاف الصوت على الشاشة.',
             'listen.quick.toastDuration.options.4s': '4 ث',
@@ -1984,7 +1984,7 @@
             'listen.quick.mode.detail.background': 'تركيز موسيقى الخلفية: أفضل للفيديوهات التي تكون فيها الموسيقى خلف الكلام أو الأجواء أو المؤثرات.',
             'listen.quick.mode.detail.max': 'أقصى دقة: يستخدم عينات أكثر وينتظر مدة أطول. مناسب للحالات الصعبة مثل الكوفر واللايف والريمكس أو موسيقى الخلفية الهادئة.',
             'listen.buttons.resetDefaults': 'إعادة افتراضيات الاستماع',
-            'listen.preferences.title': 'تفضيلات Aurivo-Pulse',
+            'listen.preferences.title': 'تفضيلات ArDali-Pulse',
             'listen.preferences.notifications.label': 'إظهار الإشعارات',
             'listen.preferences.notifications.hint': 'يعرض إشعارات عند العثور على أغنية أو حدوث خطأ شبكة أو تبدل جهاز الصوت تلقائيًا.',
             'listen.preferences.mpris.label': 'تفعيل MPRIS',
@@ -2081,7 +2081,7 @@
             'visualizerMenu.visuals': 'المؤثرات البصرية',
             'visualizerMenu.effects.glow': 'تأثير التوهج',
             'visualizerMenu.effects.reflection': 'انعكاس',
-            'sfx.windowTitle': 'مؤثرات الصوت — Aurivo Media Player',
+            'sfx.windowTitle': 'مؤثرات الصوت — ArDali',
             'sfx.tabs.effects': 'المؤثرات',
             'sfx.tabs.presets': 'الإعدادات المسبقة',
             'sfx.masterToggle': 'تفعيل مؤثرات الصوت',
@@ -2129,7 +2129,7 @@
             'sfx.peq.bands.high': 'مرتفع',
             'sfx.eq32.title': 'معادل احترافي 32 نطاقًا',
             'sfx.eq32.description': 'شكّل صوتك بتحكم دقيق في الترددات.',
-            'sfx.eq32.moduleTitle': 'وحدة Aurivo',
+            'sfx.eq32.moduleTitle': 'وحدة ArDali',
             'sfx.eq32.acousticSpace.label': 'المساحة الصوتية:',
             'sfx.eq32.acousticSpace.off': 'إيقاف',
             'sfx.eq32.acousticSpace.small': 'غرفة صغيرة',
@@ -2183,7 +2183,7 @@
             'sfx.crossfeed.presetDescriptions.2': '💪 قوي: Crossfeed واضح',
             'sfx.crossfeed.presetDescriptions.3': '🌌 واسع: مساحة أوسع',
             'sfx.crossfeed.presetDescriptions.4': '⚙️ مخصص: إعداداتك اليدوية',
-            'sfx.footer.engineInfo': 'محرك Aurivo DSP v3.0 • 48kHz / معالجة 32-bit Float',
+            'sfx.footer.engineInfo': 'محرك ArDali DSP v3.0 • 48kHz / معالجة 32-bit Float',
             'sfx.nativeUnavailable': '⚠️ مؤثرات الصوت غير متاحة: لم يتم تحميل محرك الصوت الأصلي. يعمل التشغيل الأساسي فقط.',
             'sfx.tapesat.statusLabel': 'حالة DSP:',
             'sfx.tapesat.statusAttached': 'متصل (أولوية Mastering 12)',
@@ -2396,7 +2396,7 @@
             'appMenu.paste': 'لصق',
             'appMenu.selectAll': 'تحديد الكل',
             'securityPage.title': 'الأمان',
-            'securityPage.heroTitle': 'إنترنت Aurivo الآمن',
+            'securityPage.heroTitle': 'إنترنت ArDali الآمن',
             'securityPage.heroSub': 'استخدم تبويب الويب بشكل أكثر أمانًا وتحكمًا.',
             'securityPage.sections.currentSite': 'الموقع الحالي',
             'securityPage.sections.controls': 'عناصر التحكم',
@@ -2413,7 +2413,7 @@
             'securityPage.vpnPolicyHint': 'مستحسن: اتركه مغلقًا. عند وجود VPN سيظهر تحذير فقط، والمواقع خارج المنصات المسموحة محجوبة أصلًا.',
             'securityPage.allowPopupsHint': 'ملاحظة: عند تعطيل النوافذ المنبثقة، قد لا تعمل بعض روابط تسجيل الدخول/الحساب.',
             'securityPage.cleanupHint': 'مسح الكوكيز/الكاش قد يؤدي إلى تسجيل خروجك من بعض المواقع.',
-            'securityPage.allowedPlatformsHint': 'يستهدف Aurivo المنصات التالية في تبويب الويب (CSP/frame-src):',
+            'securityPage.allowedPlatformsHint': 'يستهدف ArDali المنصات التالية في تبويب الويب (CSP/frame-src):',
             'securityPage.dynamic.urlLine': 'الرابط: {url}',
             'securityPage.dynamic.connSecure': 'الاتصال: آمن (HTTPS)',
             'securityPage.dynamic.connInsecure': 'الاتصال: غير آمن (HTTP)',
@@ -2476,7 +2476,7 @@
             'sfx.dynamiceq.info.body': 'When the selected frequency band exceeds the threshold, EQ is applied automatically. Use negative gain for de-harshing and positive gain for dynamic boost.'
         },
         'tr-TR': {
-            'app.title': 'Aurivo Medya Player',
+            'app.title': 'ArDali',
             'settings.title': 'Tercihler',
             'settings.tabs.playback': 'Oynat',
             'settings.tabs.listen': 'Dinle',
@@ -2485,7 +2485,7 @@
             'settings.tabs.library': 'Müzik Kütüphanesi',
             'settings.tabs.audio': 'Ses Çıkışı',
             'common.default': 'Varsayılan',
-            'listen.window.title': 'Aurivo Dinle',
+            'listen.window.title': 'ArDali Dinle',
             'listen.menu.title': 'Menü',
             'listen.menu.preferences': 'Tercihler',
             'listen.menu.about': 'Hakkında',
@@ -2506,20 +2506,20 @@
             'listen.status.notReady': 'Hazır değil - {error}',
             'listen.status.preferencesSaved': 'Tercihler kaydedildi',
             'listen.state.ready.title': 'Dinlemeye hazır',
-            'listen.state.ready.subtitle': 'Ortadaki düğmeye bas; bilgisayarda çalan şarkıyı bulmaya başlayayım.',
+            'listen.state.ready.subtitle': 'Ortadaki düğmeye bas bilgisayarda çalan şarkıyı bulmaya başlayayım',
             'listen.state.listening.title': 'Dinliyorum',
             'listen.state.listening.subtitle': 'Bilgisayarda çalan sesi analiz ediyorum. Sonuç geldiğinde aşağıdaki listeye eklenir.',
             'listen.state.buffering.subtitle': 'Canlı örnek birikiyor ilk sonuç birkaç saniye içinde gelir',
             'listen.state.bufferFill.subtitle': 'Canlı örnek doluyor %{percent}',
-            'listen.state.found.title': 'Bulundu',
-            'listen.state.found.subtitle': 'Sonuç aşağıdaki listeye eklendi dinlemeye devam ediyorum',
+            'listen.state.found.title': 'Eşleşme bulundu',
+            'listen.state.found.subtitle': 'Sonuç listeye eklendi',
             'listen.reason.noSignal': 'Sinyal zayıf müziğin bilgisayarda çaldığından emin olun',
             'listen.reason.notEnoughAudio': 'Kısa bir örnek birikiyor biraz daha dinliyorum',
             'listen.reason.notEnoughPeaks': 'Ses net değil daha temiz bir bölüm bekliyorum',
             'listen.reason.noMatch': 'Eşleşme bulunmadı dinlemeye devam ediyorum',
             'listen.reason.rateLimited': 'Shazam istek limiti devrede kısa süre sonra tekrar deneyeceğim',
             'listen.reason.networkTimeout': 'Ağ yanıtı gecikti internet bağlantısını kontrol edin',
-            'listen.reason.acoustidUnavailable': 'AcoustID modu bu sürümde hazır değil. SongRec/Shazam uyumlu motoru seçin.',
+            'listen.reason.acoustidUnavailable': 'AcoustID modu bu sürümde hazır değil SongRec/Shazam uyumlu motoru seçin',
             'listen.reason.duplicateResult': 'Aynı parça tekrar bulundu listeye ikinci kez eklenmedi',
             'listen.device.source': 'Ses kaynağı',
             'listen.device.automatic': 'Otomatik cihaz',
@@ -2533,47 +2533,47 @@
             'listen.results.openInApp': 'Ana uygulamada ara',
             'listen.results.remove': 'Bu sonucu kaldır',
             'listen.preferences.openPlatform.label': 'Bulunan şarkıyı aç',
-            'listen.preferences.openPlatform.hint': 'Şarkı bulunduğunda ve Aç düğmesine bastığında seçili platformda arama yapılır. Varsayılan YouTube.',
+            'listen.preferences.openPlatform.hint': 'Şarkı bulunduğunda ve Aç düğmesine bastığında seçili platformda arama yapılır Varsayılan YouTube',
             'listen.preferences.sensitivity.label': 'Tanıma hassasiyeti',
-            'listen.preferences.sensitivity.hint': 'Hız, örnek süresi ve eşleşme aralığı için hazır profili seçer.',
+            'listen.preferences.sensitivity.hint': 'Hız örnek süresi ve eşleşme aralığı için hazır profili seçer',
             'listen.preferences.mode.custom': 'Özel',
-            'listen.preferences.requestInterval.windowHint': 'Shazam istekleri arasında beklenecek saniye.',
-            'listen.preferences.bufferSize.windowHint': 'Tanıma için tutulacak canlı ses arabelleği.',
+            'listen.preferences.requestInterval.windowHint': 'Shazam istekleri arasında beklenecek saniye',
+            'listen.preferences.bufferSize.windowHint': 'Tanıma için tutulacak canlı ses arabelleği',
             'listen.preferences.noDuplicates.windowLabel': 'Aynı şarkıyı tekrar listeleme',
-            'listen.preferences.sharedHint': 'Hızlı Dinle düğmesi ana ayarlardaki davranışı kullanır; bu tercihler tanıma motoru ve Dinle penceresiyle ortaktır.',
-            'listen.about.body1': 'Aurivo Dinle, bilgisayarda çalan sesi monitor kaynağından dinleyip şarkı tanıma için parmak izi oluşturur.',
-            'listen.about.body2': 'Varsayılan açma hedefi YouTube’dur; Tercihler bölümünden YouTube Music seçilebilir.',
-            'listen.quick.title': 'Aurivo-Pulse Hızlı Dinleme',
+            'listen.preferences.sharedHint': 'Hızlı Dinle düğmesi ana ayarlardaki davranışı kullanır bu tercihler tanıma motoru ve Dinle penceresiyle ortaktır',
+            'listen.about.body1': 'ArDali Dinle bilgisayarda çalan sesi monitor kaynağından dinleyip şarkı tanıma için parmak izi oluşturur',
+            'listen.about.body2': 'Varsayılan açma hedefi YouTube’dur Tercihler bölümünden YouTube Music seçilebilir',
+            'listen.quick.title': 'ArDali-Pulse Hızlı Dinleme',
             'listen.quick.toastDuration.label': 'Dinleme bildirim süresi',
-            'listen.quick.toastDuration.hint': 'Ses algılanamadı uyarısının ekranda ne kadar kalacağını belirler.',
+            'listen.quick.toastDuration.hint': 'Ses algılanamadı uyarısının ekranda ne kadar kalacağını belirler',
             'listen.quick.toastDuration.options.4s': '4 sn',
             'listen.quick.toastDuration.options.6s': '6 sn',
             'listen.quick.toastDuration.options.8s': '8 sn',
             'listen.quick.mode.label': 'Dinleme modu',
-            'listen.quick.mode.hint': 'Hız, fon müzik odağı ve doğruluk dengesini belirler.',
+            'listen.quick.mode.hint': 'Hız fon müzik odağı ve doğruluk dengesini belirler',
             'listen.quick.mode.options.normal': 'Normal Dinleme',
             'listen.quick.mode.options.background': 'Fon Müzik Odakli',
             'listen.quick.mode.options.max': 'Maksimum Dogruluk',
-            'listen.quick.mode.card.normal': 'Temiz müzik ve hızlı günlük kullanım.',
-            'listen.quick.mode.card.background': 'Konuşma arkasındaki müzikler için dengeli seçim.',
-            'listen.quick.mode.card.max': 'Zor videolar, cover ve düşük sesli fon müzikler.',
-            'listen.quick.mode.detail.normal': 'Normal Dinleme: Temiz müzik, resmi sürümler ve günlük hızlı kullanım için en dengeli mod.',
-            'listen.quick.mode.detail.background': 'Fon Müzik Odakli: Konuşma, ortam sesi veya efektlerin arkasında kalan müzikleri bulmak için daha uygundur.',
-            'listen.quick.mode.detail.max': 'Maksimum Dogruluk: Daha sık örnek alır ve daha uzun bekler. Cover, live, remix ve düşük sesli fon müziklerde en güçlü moddur.',
+            'listen.quick.mode.card.normal': 'Temiz müzik ve hızlı günlük kullanım',
+            'listen.quick.mode.card.background': 'Konuşma arkasındaki müzikler için dengeli seçim',
+            'listen.quick.mode.card.max': 'Zor videolar cover ve düşük sesli fon müzikler',
+            'listen.quick.mode.detail.normal': 'Normal Dinleme Temiz müzik resmi sürümler ve günlük hızlı kullanım için en dengeli mod',
+            'listen.quick.mode.detail.background': 'Fon Müzik Odakli Konuşma ortam sesi veya efektlerin arkasında kalan müzikleri bulmak için daha uygundur',
+            'listen.quick.mode.detail.max': 'Maksimum Dogruluk Daha sık örnek alır ve daha uzun bekler Cover live remix ve düşük sesli fon müziklerde en güçlü moddur',
             'listen.buttons.resetDefaults': 'Dinle Varsayılanları',
-            'listen.preferences.title': 'Aurivo-Pulse Tercihleri',
+            'listen.preferences.title': 'ArDali-Pulse Tercihleri',
             'listen.preferences.notifications.label': 'Bildirimleri göster',
-            'listen.preferences.notifications.hint': 'Şarkı bulunduğunda, ağ hatası olduğunda ve cihaz otomatik değiştiğinde bildirim gösterir.',
+            'listen.preferences.notifications.hint': 'Şarkı bulunduğunda ağ hatası olduğunda ve cihaz otomatik değiştiğinde bildirim gösterir',
             'listen.preferences.mpris.label': 'MPRIS\'i etkinleştir',
-            'listen.preferences.mpris.hint': 'Linux medya panelinde tanınan parçayı gösterebilir. Şarkı bulma kalitesini etkilemez.',
+            'listen.preferences.mpris.hint': 'Linux medya panelinde tanınan parçayı gösterebilir Şarkı bulma kalitesini etkilemez',
             'listen.preferences.systray.label': 'Sistem tepsisine küçült',
-            'listen.preferences.systray.hint': 'Dinle penceresini kapatınca tamamen çıkmak yerine sistem tepsisinde açık tutar.',
+            'listen.preferences.systray.hint': 'Dinle penceresini kapatınca tamamen çıkmak yerine sistem tepsisinde açık tutar',
             'listen.preferences.noDuplicates.label': 'Geçmişte tekrar olmasın',
-            'listen.preferences.noDuplicates.hint': 'Aynı şarkı tekrar bulunursa geçmişte yeni satır açmak yerine eski kaydı günceller.',
+            'listen.preferences.noDuplicates.hint': 'Aynı şarkı tekrar bulunursa geçmişte yeni satır açmak yerine eski kaydı günceller',
             'listen.preferences.requestInterval.label': 'Shazam istek aralığı',
-            'listen.preferences.requestInterval.hint': 'Rate-limit yaşarsanız yükseltin.',
+            'listen.preferences.requestInterval.hint': 'Rate-limit yaşarsanız yükseltin',
             'listen.preferences.bufferSize.label': 'Shazam arabellek boyutu',
-            'listen.preferences.bufferSize.hint': 'Daha uzun örnek daha kararlı olabilir ama biraz daha yavaştır.',
+            'listen.preferences.bufferSize.hint': 'Daha uzun örnek daha kararlı olabilir ama biraz daha yavaştır',
             'settings.library.startup.title': 'Kütüphane Başlangıcı',
             'settings.library.rememberSection': 'Son açık ana bölümü hatırla',
             'settings.library.startupPage': 'Varsayılan açılış bölümü',
@@ -2847,8 +2847,8 @@
             'settings.audio.outputSelect.unsupported': 'Çıkış cihazı değiştirme şu an Linux/PipeWire/PulseAudio tarafında destekleniyor.',
             'settings.audio.defaultVolume': 'Varsayılan ses seviyesi',
             'settings.audio.defaultVolume.hint': 'Uygulama açıldığında ve ses motoru yüklendiğinde kullanılacak ana ses seviyesi.',
-            'settings.audio.appVolume': 'Aurivo uygulama sesi',
-            'settings.audio.appVolume.hint': 'Sistem sesinden bağımsız olarak yalnızca Aurivo oynatma sesini anlık kontrol eder.',
+            'settings.audio.appVolume': 'ArDali uygulama sesi',
+            'settings.audio.appVolume.hint': 'Sistem sesinden bağımsız olarak yalnızca ArDali oynatma sesini anlık kontrol eder.',
             'settings.audio.loudness.title': 'Ses farklarını dengele',
             'settings.audio.loudness.enabled': 'Loudness normalization',
             'settings.audio.loudness.enabled.hint': 'Parçalar ve videolar arasındaki ani ses farklarını azaltır.',
@@ -2925,7 +2925,7 @@
             'libraryActions.addFiles': 'Dosya Ekle',
             'libraryActions.openVideo': 'Video Aç',
             'nowPlaying.prefix': 'Şu An Çalınan',
-            'nowPlaying.ready': 'Şu An Çalınan: Aurivo Player - Hazır',
+            'nowPlaying.ready': 'Şu An Çalınan: ArDali Player - Hazır',
             'nowPlaying.none': 'Parça Yok',
             'nowPlaying.unknownTrack': 'Bilinmeyen Parça',
             'nowPlaying.unknownArtist': 'Bilinmeyen Sanatçı',
@@ -3113,7 +3113,7 @@
             'ui.effectsMode.hint': 'Dengeli mod önerilen başlangıç ayarıdır. İstersen Tam moda geçebilirsin; otomatik optimize zayıf sistemlerde arayüzü daha akıcı tutar.',
             'ui.effectsMode.toggle': 'Renk Efektleri',
             'ui.motionProfile.label': 'Animasyon Hızı',
-            'ui.motionProfile.hint': 'Geçiş ve efekt hızını belirler: Hızlı, Dengeli veya Sakin.',
+            'ui.motionProfile.hint': 'Geçiş ve efekt hızını belirler Hızlı Dengeli veya Sakin',
             'ui.motionProfile.options.fast': 'Hızlı',
             'ui.motionProfile.options.balanced': 'Dengeli',
             'ui.motionProfile.options.calm': 'Sakin',
@@ -3164,7 +3164,7 @@
             'restart.yes': 'Evet',
             'restart.no': 'Hayır',
             'securityPage.title': 'Güvenlik',
-            'securityPage.heroTitle': 'Aurivo Güvenli İnternet',
+            'securityPage.heroTitle': 'ArDali Güvenli İnternet',
             'securityPage.heroSub': 'Web sekmesini daha güvenli ve kontrollü kullan.',
             'securityPage.sections.currentSite': 'Mevcut Site',
             'securityPage.sections.controls': 'Kontroller',
@@ -3181,7 +3181,7 @@
             'securityPage.vpnPolicyHint': 'Öneri: Kapalı bırakın. VPN’de sadece uyarı verilir; izinli platformlar dışı siteler zaten engellenir.',
             'securityPage.allowPopupsHint': 'Not: Pop-up kapalıyken bazı sitelerde giriş/hesap bağlantıları açılmayabilir.',
             'securityPage.cleanupHint': 'Çerez/önbellek temizlemek bazı sitelerden çıkış yapabilir.',
-            'securityPage.allowedPlatformsHint': 'Aurivo, Web sekmesinde aşağıdaki platformları hedefler (CSP/frame-src):',
+            'securityPage.allowedPlatformsHint': 'ArDali, Web sekmesinde aşağıdaki platformları hedefler (CSP/frame-src):',
             'securityPage.dynamic.urlLine': 'URL: {url}',
             'securityPage.dynamic.connSecure': 'Bağlantı: Güvenli (HTTPS)',
             'securityPage.dynamic.connInsecure': 'Bağlantı: Güvenli Değil (HTTP)',
@@ -3252,11 +3252,11 @@
             'about.sections.updates.title': 'Sürüm ve Güncelleme',
             'about.sections.updates.item1': 'Uygulama sürümü, Electron ve Chromium sürümü bu pencerede canlı görüntülenir.',
             'about.sections.updates.item2': 'Otomatik güncelleme bildirimi yoktur; kontrol yalnızca bu penceredeki düğme ile yapılır.',
-            'about.sections.updates.item3': 'Linux + AUR (aurivo-bin) kurulumunda güncelleme butonu terminal açıp <code>yay -S aurivo-bin</code> komutunu çalıştırır.',
+            'about.sections.updates.item3': 'Linux + AUR (ardali-bin) kurulumunda güncelleme butonu terminal açıp <code>yay -S ardali-bin</code> komutunu çalıştırır.',
             'about.sections.updates.item4': 'Güncelleme başlatıldığında çakışma olmaması için uygulama kapanır.',
             'about.sections.app.title': 'Uygulama Özellikleri',
             'about.sections.app.item1': 'Müzik, video, web ve indirme akışını tek arayüzde birleştirir.',
-            'about.sections.app.item2': 'Aurivo-Pulse dinleme modu ile hızlı şarkı tanıma sunar.',
+            'about.sections.app.item2': 'ArDali-Pulse dinleme modu ile hızlı şarkı tanıma sunar.',
             'about.sections.app.item3': 'Modern medya kontrolleri, çoklu dil desteği ve sistem dili algılama içerir.',
             'about.sections.web.title': 'Web Özellikleri',
             'about.sections.web.item1': 'YouTube, Deezer, SoundCloud ve sosyal platformlar için güvenli web medya erişimi sağlar.',
@@ -3290,7 +3290,7 @@
         },
         'fr-FR': {
             'settings.tabs.listen': 'Ecouter',
-            'listen.quick.title': 'Ecoute rapide Aurivo-Pulse',
+            'listen.quick.title': 'Ecoute rapide ArDali-Pulse',
             'listen.quick.toastDuration.label': 'Duree de notification',
             'listen.quick.toastDuration.hint': 'Definit combien de temps l\'alerte d\'absence de signal reste visible.',
             'listen.quick.toastDuration.options.4s': '4 s',
@@ -3308,7 +3308,7 @@
             'listen.quick.mode.detail.background': 'Musique de fond : mieux adaptee aux videos ou la musique reste derriere la voix, l\'ambiance ou les effets.',
             'listen.quick.mode.detail.max': 'Precision maximale : echantillonne plus souvent et attend plus longtemps. Le meilleur choix pour cover, live, remix ou musique de fond faible.',
             'listen.buttons.resetDefaults': 'Reinitialiser Ecouter',
-            'listen.preferences.title': 'Preferences Aurivo-Pulse',
+            'listen.preferences.title': 'Preferences ArDali-Pulse',
             'listen.preferences.notifications.label': 'Afficher les notifications',
             'listen.preferences.notifications.hint': 'Affiche une notification lorsqu\'une chanson est trouvee, en cas d\'erreur reseau et lors d\'un changement automatique de peripherique.',
             'listen.preferences.mpris.label': 'Activer MPRIS',
@@ -3373,7 +3373,7 @@
         },
         'es-ES': {
             'settings.tabs.listen': 'Escuchar',
-            'listen.quick.title': 'Escucha rapida de Aurivo-Pulse',
+            'listen.quick.title': 'Escucha rapida de ArDali-Pulse',
             'listen.quick.toastDuration.label': 'Duracion del aviso',
             'listen.quick.toastDuration.hint': 'Define cuanto tiempo permanece visible el aviso de falta de senal.',
             'listen.quick.toastDuration.options.4s': '4 s',
@@ -3391,7 +3391,7 @@
             'listen.quick.mode.detail.background': 'Musica de fondo: mejor para videos donde la musica queda detras de la voz, el ambiente o los efectos.',
             'listen.quick.mode.detail.max': 'Maxima precision: toma muestras con mas frecuencia y espera mas tiempo. Es la mejor opcion para covers, directos, remixes o musica de fondo suave.',
             'listen.buttons.resetDefaults': 'Restablecer Escuchar',
-            'listen.preferences.title': 'Preferencias de Aurivo-Pulse',
+            'listen.preferences.title': 'Preferencias de ArDali-Pulse',
             'listen.preferences.notifications.label': 'Mostrar notificaciones',
             'listen.preferences.notifications.hint': 'Muestra notificaciones cuando se encuentra una cancion, ocurre un error de red o cambia automaticamente el dispositivo.',
             'listen.preferences.mpris.label': 'Activar MPRIS',
@@ -3456,7 +3456,7 @@
         },
         'zh-CN': {
             'settings.tabs.listen': '听歌识别',
-            'listen.quick.title': 'Aurivo-Pulse 快速识别',
+            'listen.quick.title': 'ArDali-Pulse 快速识别',
             'listen.quick.toastDuration.label': '提示显示时长',
             'listen.quick.toastDuration.hint': '控制未检测到音频提示在屏幕上停留的时间。',
             'listen.quick.toastDuration.options.4s': '4 秒',
@@ -3474,7 +3474,7 @@
             'listen.quick.mode.detail.background': '背景音乐优先：更适合音乐被人声、环境声或效果声压住的视频。',
             'listen.quick.mode.detail.max': '最高准确度：采样更密集、等待更久。最适合 cover、现场、remix 或低音量背景音乐。',
             'listen.buttons.resetDefaults': '重置听歌识别',
-            'listen.preferences.title': 'Aurivo-Pulse 偏好设置',
+            'listen.preferences.title': 'ArDali-Pulse 偏好设置',
             'listen.preferences.notifications.label': '显示通知',
             'listen.preferences.notifications.hint': '当识别到歌曲、发生网络错误或音频设备自动切换时显示通知。',
             'listen.preferences.mpris.label': '启用 MPRIS',
@@ -3539,7 +3539,7 @@
         },
         'zh-TW': {
             'settings.tabs.listen': '聽歌辨識',
-            'listen.quick.title': 'Aurivo-Pulse 快速辨識',
+            'listen.quick.title': 'ArDali-Pulse 快速辨識',
             'listen.quick.toastDuration.label': '提示顯示時間',
             'listen.quick.toastDuration.hint': '控制未偵測到音訊提示在畫面上停留多久。',
             'listen.quick.toastDuration.options.4s': '4 秒',
@@ -3557,7 +3557,7 @@
             'listen.quick.mode.detail.background': '背景音樂優先：更適合音樂被人聲、環境聲或效果聲壓住的影片。',
             'listen.quick.mode.detail.max': '最高準確度：採樣更密集、等待更久。最適合 cover、現場、remix 或低音量背景音樂。',
             'listen.buttons.resetDefaults': '重設聽歌辨識',
-            'listen.preferences.title': 'Aurivo-Pulse 偏好設定',
+            'listen.preferences.title': 'ArDali-Pulse 偏好設定',
             'listen.preferences.notifications.label': '顯示通知',
             'listen.preferences.notifications.hint': '當找到歌曲、發生網路錯誤或音訊裝置自動切換時顯示通知。',
             'listen.preferences.mpris.label': '啟用 MPRIS',
@@ -4481,8 +4481,8 @@
         if (cache.has(normalized)) return cache.get(normalized);
 
         try {
-            if (window.aurivo?.i18n?.loadLocale) {
-                const json = await window.aurivo.i18n.loadLocale(normalized);
+            if (window.ardali?.i18n?.loadLocale) {
+                const json = await window.ardali.i18n.loadLocale(normalized);
                 const patched = applyOverrides(json || {}, normalized);
                 cache.set(normalized, patched);
                 return patched;
@@ -4595,7 +4595,7 @@
         }
 
         try {
-            const p = window.aurivo?.saveSettings?.({ ui: { language: normalized } });
+            const p = window.ardali?.saveSettings?.({ ui: { language: normalized } });
             if (p && typeof p.then === 'function') await p;
         } catch {
             // ignore
@@ -4606,7 +4606,7 @@
 
     async function detectSystemLang() {
         try {
-            const fromMain = await window.aurivo?.i18n?.getSystemLocale?.();
+            const fromMain = await window.ardali?.i18n?.getSystemLocale?.();
             const normalized = normalizeLang(fromMain);
             if (normalized) return normalized;
         } catch {
@@ -4619,7 +4619,7 @@
 
     async function getInitialLanguage() {
         try {
-            const settings = await window.aurivo?.loadSettings?.();
+            const settings = await window.ardali?.loadSettings?.();
             const fromSettings = normalizeLang(settings?.ui?.language);
             if (fromSettings) return fromSettings;
         } catch {
@@ -4664,7 +4664,7 @@
                     // ignore
                 }
             });
-            window.dispatchEvent(new CustomEvent('aurivo:languageChanged', { detail: { lang: normalized } }));
+            window.dispatchEvent(new CustomEvent('ardali:languageChanged', { detail: { lang: normalized } }));
         }
 
         return normalized;

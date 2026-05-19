@@ -1,6 +1,6 @@
-# Aurivo Flathub Submission Plan
+# ArDali Flathub Submission Plan
 
-Bu dokuman, Aurivo'yu Flathub'a gondermek icin net adimlari listeler.
+Bu dokuman, ArDali'yu Flathub'a gondermek icin net adimlari listeler.
 
 ## 1) Hazirlik
 
@@ -20,14 +20,14 @@ Manifest su an `dist/linux-unpacked` bekliyor:
 
 ```bash
 npm run build:linux
-flatpak-builder --user --install --force-clean build-flatpak packaging/flatpak/com.aurivo.mediaplayer.yml
-flatpak run com.aurivo.mediaplayer
+flatpak-builder --user --install --force-clean build-flatpak packaging/flatpak/com.ardali.mediaplayer.yml
+flatpak run com.ardali.mediaplayer
 ```
 
 ## 3) Metadata Kontrol
 
 ```bash
-appstreamcli validate packaging/appstream/com.aurivo.mediaplayer.metainfo.xml
+appstreamcli validate packaging/appstream/com.ardali.mediaplayer.metainfo.xml
 ```
 
 ## 3.1) Flathub Uyum Notlari (Guncel)
@@ -42,28 +42,28 @@ appstreamcli validate packaging/appstream/com.aurivo.mediaplayer.metainfo.xml
 ```bash
 bash scripts/prepare-flathub-pr.sh
 ```
-Uretim klasoru: `.dist/flathub-pr/com.aurivo.mediaplayer`
+Uretim klasoru: `.dist/flathub-pr/com.ardali.mediaplayer`
 
 1. `flathub/flathub` reposunu forkla.
 2. Fork icinde dal ac:
 ```bash
-git checkout -b new-pr/com.aurivo.mediaplayer
+git checkout -b new-pr/com.ardali.mediaplayer
 ```
 3. Flathub repo icinde klasor olustur:
 ```bash
-mkdir -p com.aurivo.mediaplayer
+mkdir -p com.ardali.mediaplayer
 ```
 4. Dosyalari kopyala (otomatik uretim klasorunden):
 ```bash
-cp /path/to/Aurivo-Medya-Player/.dist/flathub-pr/com.aurivo.mediaplayer/com.aurivo.mediaplayer.yml com.aurivo.mediaplayer/
-cp /path/to/Aurivo-Medya-Player/.dist/flathub-pr/com.aurivo.mediaplayer/com.aurivo.mediaplayer.metainfo.xml com.aurivo.mediaplayer/
-cp /path/to/Aurivo-Medya-Player/.dist/flathub-pr/com.aurivo.mediaplayer/com.aurivo.mediaplayer.desktop com.aurivo.mediaplayer/
+cp /path/to/ArDali-Medya-Player/.dist/flathub-pr/com.ardali.mediaplayer/com.ardali.mediaplayer.yml com.ardali.mediaplayer/
+cp /path/to/ArDali-Medya-Player/.dist/flathub-pr/com.ardali.mediaplayer/com.ardali.mediaplayer.metainfo.xml com.ardali.mediaplayer/
+cp /path/to/ArDali-Medya-Player/.dist/flathub-pr/com.ardali.mediaplayer/com.ardali.mediaplayer.desktop com.ardali.mediaplayer/
 ```
 5. Commit + push + PR:
 ```bash
-git add com.aurivo.mediaplayer
-git commit -m "Add com.aurivo.mediaplayer"
-git push origin new-pr/com.aurivo.mediaplayer
+git add com.ardali.mediaplayer
+git commit -m "Add com.ardali.mediaplayer"
+git push origin new-pr/com.ardali.mediaplayer
 ```
 
 ## 5) Review Sonrasi

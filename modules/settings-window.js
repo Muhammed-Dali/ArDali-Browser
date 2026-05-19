@@ -1,4 +1,4 @@
-(function attachAurivoSettingsWindowApi() {
+(function attachArDaliSettingsWindowApi() {
     function setupStandaloneEventListeners(deps) {
         const {
             elements,
@@ -35,7 +35,7 @@
                     return;
                 }
                 try {
-                    const ok = await window.aurivo?.app?.relaunch?.();
+                    const ok = await window.ardali?.app?.relaunch?.();
                     if (!ok) closeRestartModal();
                 } catch {
                     closeRestartModal();
@@ -98,12 +98,12 @@
         }
         if (elements.audioDefaultVolume) {
             elements.audioDefaultVolume.addEventListener('input', () => {
-                window.AurivoSettingsShared?.updateAudioSettingsVolumeLabel?.(elements);
+                window.ArDaliSettingsShared?.updateAudioSettingsVolumeLabel?.(elements);
             });
         }
         if (elements.audioAppVolume) {
             elements.audioAppVolume.addEventListener('input', () => {
-                window.AurivoSettingsShared?.updateAudioAppVolumeLabel?.(elements);
+                window.ArDaliSettingsShared?.updateAudioAppVolumeLabel?.(elements);
             });
         }
         if (elements.libraryClearVideoLibrary) {
@@ -203,7 +203,7 @@
         }
     }
 
-    window.AurivoSettingsWindow = {
+    window.ArDaliSettingsWindow = {
         setupStandaloneEventListeners
     };
 })();

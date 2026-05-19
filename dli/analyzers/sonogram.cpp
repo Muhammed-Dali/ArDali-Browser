@@ -1,5 +1,5 @@
-/* Sonogram for Aurivo Media Player
- * Based on Aurivo's Sonogram
+/* Sonogram for ArDali
+ * Based on ArDali's Sonogram
  * Original Author: Melchior FRANZ <mfranz@kde.org> 2004
  */
 

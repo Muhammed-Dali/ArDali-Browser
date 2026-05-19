@@ -1,26 +1,26 @@
 // ============================================
-// AURIVO MEDIA PLAYER - Renderer Süreci
+// ArDali-WebMedia - Renderer Süreci
 // Qt MainWindow.cpp portlu JavaScript
 // C++ BASS Ses Motoru Entegrasyonu
 // ============================================
 
 // Terminal gürültüsünü azalt: sadece gerektiğinde detaylı log aç.
-const AURIVO_VERBOSE_LOGS =
+const ARDALI_VERBOSE_LOGS =
     typeof process !== 'undefined' &&
     process?.env &&
-    process.env.AURIVO_VERBOSE_LOGS === '1';
-const AURIVO_DEV_MODE =
+    process.env.ARDALI_VERBOSE_LOGS === '1';
+const ARDALI_DEV_MODE =
     typeof process !== 'undefined' &&
     process?.env &&
-    process.env.AURIVO_DEV === '1';
-const AURIVO_ATTACH_METRICS_LOGS = AURIVO_DEV_MODE || AURIVO_VERBOSE_LOGS;
+    process.env.ARDALI_DEV === '1';
+const ARDALI_ATTACH_METRICS_LOGS = ARDALI_DEV_MODE || ARDALI_VERBOSE_LOGS;
 const STARTUP_QUERY = new URLSearchParams(window.location.search);
-const PRELOAD_LAUNCH_CONTEXT = window.aurivo?.launchContext || {};
-const AURIVO_PERF_MONITOR_ENABLED =
+const PRELOAD_LAUNCH_CONTEXT = window.ardali?.launchContext || {};
+const ARDALI_PERF_MONITOR_ENABLED =
     (
         (typeof process !== 'undefined' &&
             process?.env &&
-            process.env.AURIVO_PERF_MONITOR === '1')
+            process.env.ARDALI_PERF_MONITOR === '1')
         ||
         PRELOAD_LAUNCH_CONTEXT?.perfMonitor === true
     );
@@ -48,7 +48,7 @@ let systemThemeMediaQuery = null;
 let systemThemeChangeListenerBound = false;
 let cachedHardwareProfile = null;
 const appearanceSyncChannel = typeof BroadcastChannel === 'function'
-    ? new BroadcastChannel('aurivo-ui-appearance-sync')
+    ? new BroadcastChannel('ardali-ui-appearance-sync')
     : null;
 const externalMediaRecentOpenMap = new Map();
 const externalMediaOpenQueue = [];
@@ -129,8 +129,8 @@ function normalizePulsePreferenceState(input) {
         enable_mpris: typeof prefs.enable_mpris === 'boolean' ? prefs.enable_mpris : false,
         enable_systray: typeof prefs.enable_systray === 'boolean' ? prefs.enable_systray : false,
         no_duplicates: typeof prefs.no_duplicates === 'boolean' ? prefs.no_duplicates : true,
-        request_interval_secs_v3: Math.max(1, Math.min(120, Number(prefs.request_interval_secs_v3) || 4)),
-        buffer_size_secs: Math.max(4, Math.min(30, Number(prefs.buffer_size_secs) || 14)),
+        request_interval_secs_v3: Math.max(1, Math.min(120, Number(prefs.request_interval_secs_v3) || 6)),
+        buffer_size_secs: Math.max(4, Math.min(30, Number(prefs.buffer_size_secs) || 12)),
         current_device_name: typeof prefs.current_device_name === 'string' ? prefs.current_device_name : '',
         open_platform: ['youtube', 'ytmusic'].includes(String(prefs.open_platform || '').trim().toLowerCase())
             ? String(prefs.open_platform).trim().toLowerCase()
@@ -144,7 +144,7 @@ function normalizeLibraryFolderEntry(entry) {
     if (!entry || typeof entry !== 'object') return null;
     const path = String(entry.path || '').trim();
     if (!path) return null;
-    const fallbackName = window.aurivo?.path?.basename?.(path) || path.split(/[\\/]/).pop() || 'Klasör';
+    const fallbackName = window.ardali?.path?.basename?.(path) || path.split(/[\\/]/).pop() || 'Klasör';
     return {
         path,
         name: String(entry.name || fallbackName).trim() || fallbackName
@@ -399,7 +399,7 @@ function escapeAttribute(value) {
 
 const __origLog = console.log.bind(console);
 console.log = (...args) => {
-    if (!AURIVO_VERBOSE_LOGS) {
+    if (!ARDALI_VERBOSE_LOGS) {
         const first = String(args?.[0] ?? '');
         if (
             first.includes('[DEBUG]') ||
@@ -549,7 +549,7 @@ const PerfMonitor = {
 
     async captureSnapshot() {
         const renderer = this.getRendererSnapshot();
-        const main = await window.aurivo?.diagnostics?.getPerformanceSnapshot?.();
+        const main = await window.ardali?.diagnostics?.getPerformanceSnapshot?.();
         return {
             timestamp: Date.now(),
             renderer,
@@ -595,7 +595,7 @@ const PerfMonitor = {
 };
 
 try {
-    window.AurivoPerf = {
+    window.ArDaliPerf = {
         start: (intervalMs) => PerfMonitor.start(intervalMs),
         stop: () => PerfMonitor.stop(),
         snapshot: () => PerfMonitor.captureSnapshot(),
@@ -606,13 +606,13 @@ try {
     // yoksay
 }
 
-// Hata ayıklama: window.aurivo kontrolü
+// Hata ayıklama: window.ardali kontrolü
 console.log('[RENDERER] Script başlıyor...');
-console.log('[RENDERER] window.aurivo:', typeof window.aurivo);
-if (window.aurivo) {
-    console.log('[RENDERER] aurivo anahtarları:', Object.keys(window.aurivo));
+console.log('[RENDERER] window.ardali:', typeof window.ardali);
+if (window.ardali) {
+    console.log('[RENDERER] ardali anahtarları:', Object.keys(window.ardali));
 } else {
-    console.error('[RENDERER] ⚠ window.aurivo undefined!');
+    console.error('[RENDERER] ⚠ window.ardali undefined!');
 }
 
 // C++ Native Ses Motoru kullanılabilir mi?
@@ -716,7 +716,7 @@ const state = {
     },
     systemAudio: {
         supported: false,
-        platform: window.aurivo?.platform || '',
+        platform: window.ardali?.platform || '',
         volumePercent: null,
         currentOutputName: '-',
         currentOutputBadge: '-',
@@ -830,7 +830,7 @@ const WEB_SHORTCUT_SETTING_IDS = [
 ];
 
 function isWebExperienceEnabled() {
-    return state.settings?.ui?.webExperienceEnabled === true;
+    return state.settings?.ui?.webExperienceEnabled !== false;
 }
 
 function getAllowedMainPages() {
@@ -920,6 +920,7 @@ const webPlatformRuntime = {
     switchTimer: null,
     startupLazyTimer: null,
     startupLazyArmed: false,
+    persistTimer: null,
     youtubeNavBackStack: [],
     youtubeNavForwardStack: [],
     youtubeNavCurrentUrl: '',
@@ -1063,7 +1064,7 @@ function getAdblockWebModeProfile() {
 
 async function applyAdblockRuntimeConfig() {
     try {
-        await window.aurivo?.adblock?.setConfig?.(getAdblockBridgeConfig());
+        await window.ardali?.adblock?.setConfig?.(getAdblockBridgeConfig());
     } catch (e) {
         console.warn('[ADBLOCK] setConfig error:', e?.message || e);
     }
@@ -1111,7 +1112,7 @@ const LIBRARY_ROOT_MARKER = '__LIBRARY_ROOT__';
 
 function toLocalFileUrl(p) {
     try {
-        const viaBridge = window.aurivo?.path?.toFileUrl?.(p);
+        const viaBridge = window.ardali?.path?.toFileUrl?.(p);
         if (viaBridge) return viaBridge;
     } catch {
         // yoksay
@@ -1157,9 +1158,9 @@ const galleryDisplayImageUrlCache = new Map();
 const galleryDisplayImageFallbackInFlight = new Map();
 const videoThumbnailUrlCache = new Map();
 const videoThumbnailInFlight = new Map();
-const VIDEO_STUDIO_PROFILE_STORAGE_KEY = 'aurivo_video_studio_profile_v1';
-const VIDEO_STUDIO_RECOVERY_STORAGE_KEY = 'aurivo_video_studio_recovery_v1';
-const VIDEO_STUDIO_PORTAL_SOURCE_ID = '__aurivo_screen_picker__';
+const VIDEO_STUDIO_PROFILE_STORAGE_KEY = 'ardali_video_studio_profile_v1';
+const VIDEO_STUDIO_RECOVERY_STORAGE_KEY = 'ardali_video_studio_recovery_v1';
+const VIDEO_STUDIO_PORTAL_SOURCE_ID = '__ardali_screen_picker__';
 let queuedVideoHighlightTimer = null;
 let videoMiniExpandAnimationTimer = null;
 let videoToolActiveJobId = '';
@@ -1257,7 +1258,7 @@ let videoStudioAudioTrackMode = 'mix';
 let videoStudioFfmpegCapabilities = null;
 let videoStudioRecordOutputMode = 'auto';
 let videoStudioRecordOutputFolder = '';
-let videoStudioRecordNameTemplate = 'aurivo-{date}-{time}';
+let videoStudioRecordNameTemplate = 'ardali-{date}-{time}';
 let videoStudioStreamEnabled = false;
 let videoStudioStreamService = 'custom';
 let videoStudioStreamServer = '';
@@ -1459,17 +1460,17 @@ function ensureMainShellVisible() {
 document.addEventListener('DOMContentLoaded', async () => {
     cacheElements();
     initAppUpdateUi().catch(() => {});
-    window.aurivo?.onOpenMediaFiles?.((paths) => {
+    window.ardali?.onOpenMediaFiles?.((paths) => {
         enqueueExternalMediaOpen(paths).catch((e) => {
             console.warn('[OPEN_MEDIA] live open error:', e?.message || e);
         });
     });
     window.addEventListener('storage', (event) => {
-        if (event.key === 'aurivo_ui_sfx_lights_enabled') {
+        if (event.key === 'ardali_ui_sfx_lights_enabled') {
             applySfxLightsShadowState(event.newValue !== '0');
             return;
         }
-        if (event.key === 'aurivo_ui_slider_fx_enabled') {
+        if (event.key === 'ardali_ui_slider_fx_enabled') {
             applySliderFxShadowState(event.newValue !== '0');
         }
     });
@@ -1483,12 +1484,12 @@ document.addEventListener('DOMContentLoaded', async () => {
             applySliderFxShadowState(event?.data?.enabled !== false);
         }
     });
-    if (AURIVO_PERF_MONITOR_ENABLED) {
+    if (ARDALI_PERF_MONITOR_ENABLED) {
         PerfMonitor.start(5000);
     }
     bindStandaloneSettingsDirtyTracking();
     installStandaloneSettingsLifecycleHooks();
-    window.aurivo?.onSettingsReload?.(async (nextSettings) => {
+    window.ardali?.onSettingsReload?.(async (nextSettings) => {
         if (!nextSettings || typeof nextSettings !== 'object') return;
         const prevLibrarySignature = getLibrarySettingsSyncSignature(state.settings);
         const prevAdblockSnapshot = {
@@ -1541,20 +1542,20 @@ document.addEventListener('DOMContentLoaded', async () => {
             scheduleApplyWebDaliEngine('settings-reload', 120);
         }
     });
-    window.aurivo?.onScopedSfxLiveParam?.((payload) => {
+    window.ardali?.onScopedSfxLiveParam?.((payload) => {
         try {
             applyScopedSfxLiveParam(payload);
         } catch {
             // yoksay
         }
     });
-    window.aurivo?.onSettingsNavigate?.(({ tab }) => {
+    window.ardali?.onSettingsNavigate?.(({ tab }) => {
         if (!isStandaloneSettingsMode()) return;
         const nextTab = String(tab || '').trim().toLowerCase() || 'playback';
         loadSettingsToUI();
         activateSettingsTab(nextTab);
     });
-    window.aurivo?.onSettingsStandaloneMode?.(({ tab }) => {
+    window.ardali?.onSettingsStandaloneMode?.(({ tab }) => {
         enterStandaloneSettingsMode(String(tab || 'playback').trim().toLowerCase() || 'playback').catch((e) => {
             console.error('[SETTINGS] standalone enter error:', e);
         });
@@ -1570,7 +1571,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     if (isStandaloneSettingsMode()) {
         try {
-            state.specialPaths = await window.aurivo?.getSpecialPaths?.();
+            state.specialPaths = await window.ardali?.getSpecialPaths?.();
         } catch {
             state.specialPaths = null;
         }
@@ -1590,7 +1591,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     try {
-        state.specialPaths = await window.aurivo?.getSpecialPaths?.();
+        state.specialPaths = await window.ardali?.getSpecialPaths?.();
         console.log('[PATHS] special paths:', state.specialPaths);
     } catch (e) {
         console.warn('[PATHS] getSpecialPaths failed:', e?.message || e);
@@ -1620,6 +1621,11 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
         persistVideoStudioProfileNow();
         releaseVideoToolIdleResources({ force: true });
+        if (webPlatformRuntime.persistTimer) {
+            clearTimeout(webPlatformRuntime.persistTimer);
+            webPlatformRuntime.persistTimer = null;
+        }
+        persistWebNavigationState(getWebViewUrlSafe(), state.webCurrentPlatform, { immediate: true });
         try {
             rememberPlaybackStartupState({ persist: true });
         } catch {
@@ -1640,12 +1646,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     ensureMainShellVisible();
     await restoreLibraryStartupState();
     const openedByStartupMedia = await enqueueExternalMediaOpen(
-        await window.aurivo?.app?.consumePendingOpenMediaFiles?.() || []
+        await window.ardali?.app?.consumePendingOpenMediaFiles?.() || []
     );
     if (!openedByStartupMedia) {
         await restorePlaybackStartupState();
     }
-    window.aurivo?.app?.notifyMediaOpenReady?.();
+    window.ardali?.app?.notifyMediaOpenReady?.();
     // Başlangıçta UI'yı hızlı göstermek için ağır kütüphane taramasını gecikmeli başlat.
     // İlk açılışta CPU sıçramasını ve takılma hissini azaltır.
     scheduleStartupLibraryScan();
@@ -1663,7 +1669,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         // yoksay
     }
 
-    console.log('Aurivo Player başlatıldı');
+    console.log('ArDali Player başlatıldı');
     if (useNativeAudio) {
         console.log('🎵 C++ BASS Audio Engine aktif');
     } else {
@@ -1758,7 +1764,7 @@ async function confirmAndRelaunchApp() {
     }
 
     try {
-        const ok = await window.aurivo?.app?.relaunch?.();
+        const ok = await window.ardali?.app?.relaunch?.();
         if (!ok) {
             closeRestartModal();
             safeNotify(uiT('restart.failed', 'Uygulama yeniden başlatılamadı.'), 'error', 2200);
@@ -1773,13 +1779,13 @@ async function confirmAndRelaunchApp() {
 // C++ Ses Motoru mevcut mu kontrol et ve başlat
 async function checkNativeAudio() {
     try {
-        if (window.aurivo && window.aurivo.audio) {
-            const isAvailable = window.aurivo.audio.isNativeAvailable();
+        if (window.ardali && window.ardali.audio) {
+            const isAvailable = window.ardali.audio.isNativeAvailable();
             console.log('Native Audio mevcut:', isAvailable);
 
             if (isAvailable) {
                 // Ses Motoru'nu başlat
-                const initResult = await window.aurivo.audio.init();
+                const initResult = await window.ardali.audio.init();
                 console.log('Audio Engine init sonucu:', initResult);
 
                 if (initResult && initResult.success) {
@@ -1787,12 +1793,12 @@ async function checkNativeAudio() {
                     console.log('✓ C++ Audio Engine başarıyla başlatıldı');
 
                     // AGC'yi kapat - ses bozukluğunu önlemek için
-                    if (window.aurivo.audio.autoGain) {
-                        window.aurivo.audio.autoGain.setEnabled(false);
+                    if (window.ardali.audio.autoGain) {
+                        window.ardali.audio.autoGain.setEnabled(false);
                         console.log('AGC devre dışı bırakıldı');
                         try {
                             const currentVol = Math.max(0, Math.min(100, Number(state.volume) || 40));
-                            window.aurivo.audio.setVolume(currentVol / 100);
+                            window.ardali.audio.setVolume(currentVol / 100);
                         } catch {
                             // yoksay
                         }
@@ -1818,13 +1824,13 @@ async function checkNativeAudio() {
 // EQ ayarlarını yükle ve Ses Motoru'na uygula
 async function loadAndApplyEQSettings() {
     try {
-        if (!window.aurivo?.loadSettings || !window.aurivo?.ipcAudio?.eq) {
+        if (!window.ardali?.loadSettings || !window.ardali?.ipcAudio?.eq) {
             console.warn('[MAIN WINDOW] EQ yükleme atlandı (API yok)');
             return;
         }
 
         console.log('[MAIN WINDOW] Kayıtlı EQ ayarları yükleniyor...');
-        const settings = await window.aurivo.loadSettings();
+        const settings = await window.ardali.loadSettings();
         const eq32 = settings?.sfxScopes?.music?.eq32 || settings?.sfx?.eq32;
 
         if (!eq32 || !Array.isArray(eq32.bands)) {
@@ -1839,28 +1845,28 @@ async function loadAndApplyEQSettings() {
 
         // EQ bantlarını Ses Motoru'na uygula
         eq32.bands.forEach((gain, index) => {
-            window.aurivo.ipcAudio.eq.setBand(index, gain);
+            window.ardali.ipcAudio.eq.setBand(index, gain);
         });
 
-        // Aurivo Modülü (Bass, Mid, Treble, Stereo)
-        if (window.aurivo.ipcAudio.module) {
+        // ArDali Modülü (Bass, Mid, Treble, Stereo)
+        if (window.ardali.ipcAudio.module) {
             if (typeof eq32.bass === 'number') {
-                window.aurivo.ipcAudio.module.setBass(eq32.bass);
+                window.ardali.ipcAudio.module.setBass(eq32.bass);
             }
             if (typeof eq32.mid === 'number') {
-                window.aurivo.ipcAudio.module.setMid(eq32.mid);
+                window.ardali.ipcAudio.module.setMid(eq32.mid);
             }
             if (typeof eq32.treble === 'number') {
-                window.aurivo.ipcAudio.module.setTreble(eq32.treble);
+                window.ardali.ipcAudio.module.setTreble(eq32.treble);
             }
             if (typeof eq32.stereoExpander === 'number') {
-                window.aurivo.ipcAudio.module.setStereoExpander(eq32.stereoExpander);
+                window.ardali.ipcAudio.module.setStereoExpander(eq32.stereoExpander);
             }
         }
 
         // Denge
-        if (window.aurivo.ipcAudio.balance && typeof eq32.balance === 'number') {
-            window.aurivo.ipcAudio.balance.set(eq32.balance);
+        if (window.ardali.ipcAudio.balance && typeof eq32.balance === 'number') {
+            window.ardali.ipcAudio.balance.set(eq32.balance);
         }
 
         console.log('[MAIN WINDOW] ✓ EQ ayarları uygulandı:', eq32.lastPreset?.name || 'Düz');
@@ -1876,11 +1882,11 @@ function getMusicSfxEffect(settings, effectName) {
 
 async function loadAndApplyStartupSfxSettings() {
     try {
-        if (!window.aurivo?.loadSettings || !window.aurivo?.ipcAudio) return;
+        if (!window.ardali?.loadSettings || !window.ardali?.ipcAudio) return;
 
-        const settings = await window.aurivo.loadSettings();
-        const ipcAudio = window.aurivo.ipcAudio;
-        const audioApi = window.aurivo.audio;
+        const settings = await window.ardali.loadSettings();
+        const ipcAudio = window.ardali.ipcAudio;
+        const audioApi = window.ardali.audio;
         const master = getMusicSfxEffect(settings, 'master');
         const audiophile = getMusicSfxEffect(settings, 'audiophile');
         const compressor = getMusicSfxEffect(settings, 'compressor');
@@ -2048,7 +2054,7 @@ async function loadAndApplyStartupSfxSettings() {
 function cacheElements() {
     // Kenar çubuğu
     elements.sidebarBtns = document.querySelectorAll('.sidebar-btn[data-page]');
-    elements.aurivoDawlodBtn = document.getElementById('aurivoDawlodBtn');
+    elements.ardaliDawlodBtn = document.getElementById('ardaliDawlodBtn');
     elements.settingsBtn = document.getElementById('settingsBtn');
     elements.infoBtn = document.getElementById('infoBtn');
     elements.aboutModalOverlay = document.getElementById('aboutModalOverlay');
@@ -2556,8 +2562,8 @@ function closeAllUtilityPages() {
 // AYARLAR
 // ============================================
 async function loadSettings() {
-    if (window.aurivo) {
-        state.settings = await window.aurivo.loadSettings();
+    if (window.ardali) {
+        state.settings = await window.ardali.loadSettings();
         if (!state.settings) state.settings = {};
         state.volume = state.settings.volume || 40;
         state.isShuffle = state.settings.shuffle || false;
@@ -2754,7 +2760,7 @@ async function loadSettings() {
             }
         }
         try {
-            const pulsePrefRes = await window.aurivo?.pulse?.getPreferences?.();
+            const pulsePrefRes = await window.ardali?.pulse?.getPreferences?.();
             state.settings.pulsePreferences = normalizePulsePreferenceState(pulsePrefRes?.preferences);
         } catch {
             state.settings.pulsePreferences = normalizePulsePreferenceState(null);
@@ -2877,7 +2883,7 @@ async function loadSettings() {
                 lastWebPlatform: '',
                 rememberLastSection: true,
                 startupPage: 'music',
-                webExperienceEnabled: false,
+                webExperienceEnabled: true,
                 webStartupLazyDelayMs: WEB_STARTUP_LAZY_DELAY_DEFAULT_MS,
                 closeToTray: true,
                 notificationsEnabled: false,
@@ -2895,7 +2901,7 @@ async function loadSettings() {
             state.settings.ui.rememberLastSection = true;
         }
         if (typeof state.settings.ui.webExperienceEnabled !== 'boolean') {
-            state.settings.ui.webExperienceEnabled = false;
+            state.settings.ui.webExperienceEnabled = true;
         }
         if (typeof state.settings.ui.closeToTray !== 'boolean') {
             state.settings.ui.closeToTray = true;
@@ -2959,7 +2965,7 @@ async function loadSettings() {
 }
 
 async function saveSettings() {
-    if (window.aurivo && state.settings) {
+    if (window.ardali && state.settings) {
         state.settings.volume = state.volume;
         state.settings.shuffle = state.isShuffle;
         state.settings.repeat = state.isRepeat;
@@ -2967,7 +2973,7 @@ async function saveSettings() {
         syncSfxLightsShadowStorage(state.settings?.appearance?.sfxLights !== false);
         syncSfxIconSizeShadowStorage(state.settings?.appearance?.sfxSidebarIconSize || 'medium');
         suppressSettingsReloadUiUntil = Date.now() + 700;
-        await window.aurivo.saveSettings(state.settings);
+        await window.ardali.saveSettings(state.settings);
     }
 }
 
@@ -2988,7 +2994,7 @@ function sanitizeVideoLibraryItems(items) {
         if (!raw || typeof raw !== 'object') continue;
         const path = String(raw.path || '').trim();
         if (!path) continue;
-        const name = String(raw.name || (window.aurivo?.path?.basename?.(path) || path.split('/').pop() || 'video')).trim();
+        const name = String(raw.name || (window.ardali?.path?.basename?.(path) || path.split('/').pop() || 'video')).trim();
         out.push({ path, name: name || 'video' });
         if (out.length >= 3000) break;
     }
@@ -3003,7 +3009,7 @@ function sanitizeImageLibraryItems(items) {
         if (!raw || typeof raw !== 'object') continue;
         const path = String(raw.path || '').trim();
         if (!path) continue;
-        const name = String(raw.name || (window.aurivo?.path?.basename?.(path) || path.split('/').pop() || 'image')).trim();
+        const name = String(raw.name || (window.ardali?.path?.basename?.(path) || path.split('/').pop() || 'image')).trim();
         const rawAddedAt = Number(raw.addedAt);
         const addedAt = Number.isFinite(rawAddedAt) && rawAddedAt > 0
             ? Math.round(rawAddedAt)
@@ -3231,7 +3237,7 @@ async function applyHeadphoneCrossfeedAutoMode() {
     if (audioOutputRuntime.lastHeadphonesState === shouldEnableAutoCrossfeed) return;
     audioOutputRuntime.lastHeadphonesState = shouldEnableAutoCrossfeed;
 
-    const crossfeed = window.aurivo?.ipcAudio?.crossfeed;
+    const crossfeed = window.ardali?.ipcAudio?.crossfeed;
     if (!crossfeed?.enable) return;
 
     try {
@@ -3298,7 +3304,7 @@ function setAppMasterVolume(value, options = {}) {
     if (!state.isMuted) state.savedVolume = safeValue;
 
     if (useNativeAudio && state.activeMedia === 'audio') {
-        window.aurivo.audio.setVolume(safeValue / 100);
+        window.ardali.audio.setVolume(safeValue / 100);
     }
 
     const useWebAudioGainPath = !useNativeAudio && state.activeMedia === 'audio' && !!webAudioOutputGainNode;
@@ -3360,11 +3366,11 @@ function setAudioRefreshBusy(isBusy) {
 }
 
 function setAudioOverdriveButtonState(active) {
-    window.AurivoSettingsShared?.setButtonToggleState?.(elements.audioAllowOverdrive150, !!active);
+    window.ArDaliSettingsShared?.setButtonToggleState?.(elements.audioAllowOverdrive150, !!active);
 }
 
 function getAudioOverdriveButtonState() {
-    return !!window.AurivoSettingsShared?.getButtonToggleState?.(elements.audioAllowOverdrive150);
+    return !!window.ArDaliSettingsShared?.getButtonToggleState?.(elements.audioAllowOverdrive150);
 }
 
 function setTextIfChanged(element, nextValue) {
@@ -3647,12 +3653,12 @@ function renderAudioQuickOutputCards() {
             </span>
         `;
         btn.addEventListener('click', async () => {
-            if (!window.aurivo?.systemAudio?.setOutput) return;
+            if (!window.ardali?.systemAudio?.setOutput) return;
             const outputId = String(output.id || '').trim();
             if (!outputId) return;
             btn.disabled = true;
             try {
-                const result = await window.aurivo.systemAudio.setOutput(outputId);
+                const result = await window.ardali.systemAudio.setOutput(outputId);
                 if (result?.success && result?.state) {
                     state.systemAudio = {
                         ...state.systemAudio,
@@ -3747,7 +3753,7 @@ function getLoudnessPreset(mode) {
 
 async function applyLoudnessNormalizationToEngine() {
     const prefs = getAudioOutputSettings();
-    const api = window.aurivo?.audio?.autoGain;
+    const api = window.ardali?.audio?.autoGain;
     if (!api) return false;
     try {
         const enabled = !!prefs.loudnessEnabled;
@@ -3784,7 +3790,7 @@ function getNightModePreset(mode) {
 
 async function applyNightModeToEngine() {
     const prefs = getAudioOutputSettings();
-    const compressor = window.aurivo?.ipcAudio?.compressor;
+    const compressor = window.ardali?.ipcAudio?.compressor;
     if (!compressor) return false;
     try {
         const enabled = !!prefs.nightModeEnabled;
@@ -3815,7 +3821,7 @@ async function applyNightModeToEngine() {
 
 async function applyLimiterProtectionToEngine() {
     const prefs = getAudioOutputSettings();
-    const limiter = window.aurivo?.audio?.limiter;
+    const limiter = window.ardali?.audio?.limiter;
     if (!limiter) return false;
     try {
         const enabled = !!prefs.limiterEnabled;
@@ -3893,15 +3899,15 @@ async function applySpatialAudioMode(mode, options = {}) {
     }
 
     try {
-        if (window.aurivo?.ipcAudio?.module?.setStereoExpander && Number.isFinite(preset.stereoExpander)) {
-            await window.aurivo.ipcAudio.module.setStereoExpander(preset.stereoExpander);
+        if (window.ardali?.ipcAudio?.module?.setStereoExpander && Number.isFinite(preset.stereoExpander)) {
+            await window.ardali.ipcAudio.module.setStereoExpander(preset.stereoExpander);
         }
     } catch {
         // yoksay
     }
 
     try {
-        const stereoWidener = window.aurivo?.ipcAudio?.stereoWidener;
+        const stereoWidener = window.ardali?.ipcAudio?.stereoWidener;
         if (stereoWidener) {
             await stereoWidener.enable(!!preset.stereoWidener.enabled);
             if (preset.stereoWidener.enabled) {
@@ -3919,7 +3925,7 @@ async function applySpatialAudioMode(mode, options = {}) {
     }
 
     try {
-        const crossfeed = window.aurivo?.ipcAudio?.crossfeed;
+        const crossfeed = window.ardali?.ipcAudio?.crossfeed;
         if (crossfeed) {
             await crossfeed.enable(!!preset.crossfeed.enabled);
             if (preset.crossfeed.enabled) {
@@ -3936,7 +3942,7 @@ async function applySpatialAudioMode(mode, options = {}) {
     }
 
     try {
-        const bassMono = window.aurivo?.ipcAudio?.bassMono;
+        const bassMono = window.ardali?.ipcAudio?.bassMono;
         if (bassMono) {
             await bassMono.enable(!!preset.bassMono.enabled);
             if (preset.bassMono.enabled) {
@@ -3993,9 +3999,9 @@ async function applyAudioProfile(profile, options = {}) {
         setAppMasterVolume(preset.appVolume, { persist: false, syncSettingsSlider: true, syncMainSlider: true });
     }
 
-    if (window.aurivo?.systemAudio?.setAllowOverdrive && state.systemAudio?.supported) {
+    if (window.ardali?.systemAudio?.setAllowOverdrive && state.systemAudio?.supported) {
         try {
-            const result = await window.aurivo.systemAudio.setAllowOverdrive(!!preset.allowOverdrive150);
+            const result = await window.ardali.systemAudio.setAllowOverdrive(!!preset.allowOverdrive150);
             if (result?.success && result?.state) {
                 state.systemAudio = {
                     ...state.systemAudio,
@@ -4099,10 +4105,10 @@ function applySystemAudioStateToUi() {
 }
 
 async function refreshSystemAudioState(options = {}) {
-    if (!window.aurivo?.systemAudio?.getState) return null;
+    if (!window.ardali?.systemAudio?.getState) return null;
     try {
         const previousOutputId = String(state.systemAudio?.currentOutputId || '').trim();
-        const response = await window.aurivo.systemAudio.getState();
+        const response = await window.ardali.systemAudio.getState();
         if (response && typeof response === 'object') {
             state.systemAudio = {
                 ...state.systemAudio,
@@ -4128,7 +4134,7 @@ async function keepNativePlaybackAliveAfterRouteChange() {
     if (!useNativeAudio) return;
     if (state.activeMedia !== 'audio') return;
     if (!state.isPlaying) return;
-    if (!window.aurivo?.audio?.isPlaying || !window.aurivo?.audio?.play) return;
+    if (!window.ardali?.audio?.isPlaying || !window.ardali?.audio?.play) return;
 
     const now = Date.now();
     if (now - Number(audioOutputRuntime.lastResumeAfterRouteChangeAt || 0) < 1000) return;
@@ -4137,12 +4143,12 @@ async function keepNativePlaybackAliveAfterRouteChange() {
     await new Promise((r) => setTimeout(r, 140));
     if (!state.isPlaying || state.activeMedia !== 'audio') return;
 
-    const playingNow = await window.aurivo.audio.isPlaying();
+    const playingNow = await window.ardali.audio.isPlaying();
     if (playingNow) return;
 
-    await window.aurivo.audio.play();
+    await window.ardali.audio.play();
     await new Promise((r) => setTimeout(r, 90));
-    let resumed = await window.aurivo.audio.isPlaying();
+    let resumed = await window.ardali.audio.isPlaying();
     if (!resumed) {
         const posHint = Number(state.nativePositionMs || 0);
         resumed = await hardRecoverCurrentTrackAfterRouteChange(posHint);
@@ -4158,7 +4164,7 @@ async function keepNativePlaybackAliveAfterRouteChange() {
 async function hardRecoverCurrentTrackAfterRouteChange(positionHintMs = 0) {
     if (!useNativeAudio) return false;
     if (!state.isPlaying || state.activeMedia !== 'audio') return false;
-    if (!window.aurivo?.audio?.loadFile || !window.aurivo?.audio?.play) return false;
+    if (!window.ardali?.audio?.loadFile || !window.ardali?.audio?.play) return false;
     if (!Array.isArray(state.playlist) || state.currentIndex < 0 || state.currentIndex >= state.playlist.length) return false;
 
     const now = Date.now();
@@ -4170,19 +4176,19 @@ async function hardRecoverCurrentTrackAfterRouteChange(positionHintMs = 0) {
     if (!path) return false;
 
     try {
-        const loadRes = await window.aurivo.audio.loadFile(path);
+        const loadRes = await window.ardali.audio.loadFile(path);
         const loaded = loadRes === true || (loadRes && loadRes.success);
         if (!loaded) return false;
 
         const safePos = Math.max(0, Number(positionHintMs || 0));
-        if (safePos > 350 && window.aurivo.audio.seek) {
-            try { await window.aurivo.audio.seek(safePos); } catch { }
+        if (safePos > 350 && window.ardali.audio.seek) {
+            try { await window.ardali.audio.seek(safePos); } catch { }
         }
 
-        await window.aurivo.audio.setVolume?.((state.volume || 0) / 100);
-        await window.aurivo.audio.play();
+        await window.ardali.audio.setVolume?.((state.volume || 0) / 100);
+        await window.ardali.audio.play();
         await new Promise((r) => setTimeout(r, 100));
-        const resumed = await window.aurivo.audio.isPlaying?.();
+        const resumed = await window.ardali.audio.isPlaying?.();
         return !!resumed;
     } catch {
         return false;
@@ -4261,7 +4267,7 @@ function renderAudioOutputMeter(levels) {
 }
 
 async function refreshAudioOutputLevels() {
-    const getLevels = window.aurivo?.ipcAudio?.spectrum?.getLevels;
+    const getLevels = window.ardali?.ipcAudio?.spectrum?.getLevels;
     try {
         let levels = null;
         if (typeof getLevels === 'function') {
@@ -4276,7 +4282,7 @@ async function refreshAudioOutputLevels() {
             return;
         }
 
-        const truePeakMeter = window.aurivo?.ipcAudio?.truePeakLimiter?.getMeter;
+        const truePeakMeter = window.ardali?.ipcAudio?.truePeakLimiter?.getMeter;
         if (typeof truePeakMeter === 'function') {
             const meter = await truePeakMeter();
             const peakLDb = Number(meter?.peakL);
@@ -4310,13 +4316,13 @@ function stopAudioOutputLevelMeter() {
 }
 
 async function applyAudioSettingsSliderToSystem(value) {
-    if (!window.aurivo?.systemAudio?.setVolume) return false;
+    if (!window.ardali?.systemAudio?.setVolume) return false;
     const prefs = getAudioOutputSettings();
     if (!prefs.followSystemVolume || !state.systemAudio?.supported) return false;
     if (audioOutputRuntime.applyingSlider) return false;
     audioOutputRuntime.applyingSlider = true;
     try {
-        const result = await window.aurivo.systemAudio.setVolume(value);
+        const result = await window.ardali.systemAudio.setVolume(value);
         if (result?.success && result?.state) {
             state.systemAudio = {
                 ...state.systemAudio,
@@ -4366,7 +4372,7 @@ function cancelStartupLazyWebLoad() {
 }
 
 function isPackagedLinuxRuntimeRenderer() {
-    const isLinux = String(window.aurivo?.platform || '').toLowerCase() === 'linux';
+    const isLinux = String(window.ardali?.platform || '').toLowerCase() === 'linux';
     if (!isLinux) return false;
     try {
         const href = String(window.location?.href || '');
@@ -4423,7 +4429,7 @@ function scheduleStartupLazyWebLoad() {
         if (!webPlatformRuntime.startupLazyArmed) return;
         webPlatformRuntime.startupLazyArmed = false;
         if (String(state.currentPage || '') !== 'web') return;
-        requestPlatformSwitch(preferredBtn);
+        requestPlatformSwitch(preferredBtn, { restoreLastUrl: true });
     }, delayMs);
     return true;
 }
@@ -4442,7 +4448,7 @@ function preloadLastWebPlatformOnStartup() {
 
     // İlk açılışta boş web panelini bekletmemek için son platformu hemen yükle.
     cancelStartupLazyWebLoad();
-    requestPlatformSwitch(preferredBtn);
+    requestPlatformSwitch(preferredBtn, { restoreLastUrl: true });
     return true;
 }
 
@@ -4534,15 +4540,15 @@ async function resumePlaybackPositionOnStartup(positionMs) {
     const targetMsRaw = Math.max(0, Number(positionMs) || 0);
     if (targetMsRaw < 1200) return;
 
-    if (useNativeAudio && state.activeMedia === 'audio' && window.aurivo?.audio?.seek) {
+    if (useNativeAudio && state.activeMedia === 'audio' && window.ardali?.audio?.seek) {
         try {
-            const durationSec = await window.aurivo.audio.getDuration();
+            const durationSec = await window.ardali.audio.getDuration();
             const durationMs = Math.max(0, Number(durationSec) * 1000);
             const safeTarget = durationMs > 0
                 ? Math.max(0, Math.min(targetMsRaw, Math.max(0, durationMs - 700)))
                 : targetMsRaw;
             if (safeTarget >= 1200) {
-                await window.aurivo.audio.seek(safeTarget);
+                await window.ardali.audio.seek(safeTarget);
             }
         } catch (error) {
             console.warn('[PLAYBACK] startup native seek failed:', error);
@@ -4615,10 +4621,10 @@ async function restorePlaybackStartupState() {
         // Böylece ilk Play tıklamasında çift tıklama gerekmeksizin hemen başlar.
         try {
             if (item?.path) {
-                if (useNativeAudio && window.aurivo?.audio?.loadFile) {
-                    const res = await window.aurivo.audio.loadFile(item.path);
+                if (useNativeAudio && window.ardali?.audio?.loadFile) {
+                    const res = await window.ardali.audio.loadFile(item.path);
                     if (res === true || (res && res.success)) {
-                        window.aurivo.audio.setVolume?.((state.volume || 0) / 100);
+                        window.ardali.audio.setVolume?.((state.volume || 0) / 100);
                     }
                 } else {
                     const activePlayer = getActiveAudioPlayer();
@@ -4646,7 +4652,7 @@ async function restorePlaybackStartupState() {
 }
 
 function setupStandaloneSettingsEventListeners() {
-    const api = window.AurivoSettingsWindow;
+    const api = window.ArDaliSettingsWindow;
     if (!api?.setupStandaloneEventListeners) {
         console.warn('[SETTINGS] standalone helper missing');
         return;
@@ -5007,7 +5013,7 @@ function setupPlaybackShortcutUiBindings() {
     if (document.body?.dataset?.playbackShortcutUiBound === 'true') return;
     document.body.dataset.playbackShortcutUiBound = 'true';
     decoratePlaybackShortcutLabelsWithIcons();
-    window.AurivoSettingsShared?.updateGalleryShortcutAssignmentsUi?.({ autofillDefaults: true });
+    window.ArDaliSettingsShared?.updateGalleryShortcutAssignmentsUi?.({ autofillDefaults: true });
 
     const jumpToPlaybackShortcuts = document.getElementById('jumpToPlaybackShortcuts');
     if (jumpToPlaybackShortcuts) {
@@ -5030,7 +5036,7 @@ function setupPlaybackShortcutUiBindings() {
         const onShortcutSearchInput = () => applyPlaybackShortcutSearchFilter(playbackShortcutSearch.value);
         playbackShortcutSearch.addEventListener('input', onShortcutSearchInput);
         playbackShortcutSearch.addEventListener('change', onShortcutSearchInput);
-        window.addEventListener('aurivo:languageChanged', onShortcutSearchInput);
+        window.addEventListener('ardali:languageChanged', onShortcutSearchInput);
         applyPlaybackShortcutSearchFilter(playbackShortcutSearch.value);
     }
 
@@ -5062,7 +5068,7 @@ function setupPlaybackShortcutUiBindings() {
     if (galleryHotkeysEnabled && galleryHotkeysEnabled.dataset.galleryBindDone !== 'true') {
         galleryHotkeysEnabled.dataset.galleryBindDone = 'true';
         galleryHotkeysEnabled.addEventListener('change', () => {
-            window.AurivoSettingsShared?.updateGalleryShortcutAssignmentsUi?.({ autofillDefaults: true });
+            window.ArDaliSettingsShared?.updateGalleryShortcutAssignmentsUi?.({ autofillDefaults: true });
         });
     }
 
@@ -5108,21 +5114,21 @@ function setupEventListeners() {
     }
     if (elements.settingsBtn) elements.settingsBtn.addEventListener('click', () => openSettings('playback'));
     if (elements.infoBtn) elements.infoBtn.addEventListener('click', showAbout);
-    if (elements.aurivoDawlodBtn) {
-        elements.aurivoDawlodBtn.addEventListener('click', async () => {
+    if (elements.ardaliDawlodBtn) {
+        elements.ardaliDawlodBtn.addEventListener('click', async () => {
             const url = await getActiveWebDownloadUrl();
             if (!url) {
-                const ok = await window.aurivo?.downloader?.openWindow?.('');
+                const ok = await window.ardali?.downloader?.openWindow?.('');
                 if (!ok) {
-                    safeNotify('Aurivo Dawlod penceresi açılamadı.', 'error', 2600);
+                    safeNotify('ArDali Dawlod penceresi açılamadı.', 'error', 2600);
                     return;
                 }
                 safeNotify('İndirilebilir içerik bulunamadı. Önce bir video veya şarkı açın.', 'error', 3200);
                 return;
             }
-            const ok = await window.aurivo?.downloader?.openWindow?.(url);
+            const ok = await window.ardali?.downloader?.openWindow?.(url);
             if (!ok) {
-                safeNotify('Aurivo Dawlod penceresi açılamadı.', 'error', 2600);
+                safeNotify('ArDali Dawlod penceresi açılamadı.', 'error', 2600);
             }
         });
     }
@@ -5153,10 +5159,10 @@ function setupEventListeners() {
     if (elements.aboutCloseBtn) elements.aboutCloseBtn.addEventListener('click', closeAboutModal);
     if (elements.aboutGithubBtn) {
         elements.aboutGithubBtn.addEventListener('click', async () => {
-            const url = 'https://github.com/muhammed-aurivo-dev/Aurivo-Medya-Player-Linux';
+            const url = 'https://github.com/muhammed-ardali-dev/ArDali-Medya-Player-Linux';
             try {
-                if (window.aurivo?.webSecurity?.openExternal) {
-                    await window.aurivo.webSecurity.openExternal(url);
+                if (window.ardali?.webSecurity?.openExternal) {
+                    await window.ardali.webSecurity.openExternal(url);
                 } else {
                     window.open(url, '_blank', 'noopener');
                 }
@@ -5440,15 +5446,15 @@ function setupEventListeners() {
     // Gezinti
     if (elements.backBtn) {
         elements.backBtn.addEventListener('click', (event) => {
-            if (event.__aurivoNavHandled) return;
-            event.__aurivoNavHandled = true;
+            if (event.__ardaliNavHandled) return;
+            event.__ardaliNavHandled = true;
             navigateBack();
         });
     }
     if (elements.forwardBtn) {
         elements.forwardBtn.addEventListener('click', (event) => {
-            if (event.__aurivoNavHandled) return;
-            event.__aurivoNavHandled = true;
+            if (event.__ardaliNavHandled) return;
+            event.__ardaliNavHandled = true;
             navigateForward();
         });
     }
@@ -5473,7 +5479,7 @@ function setupEventListeners() {
             elements.refreshBtn.classList.add('is-refresh-spinning');
         });
         elements.refreshBtn.addEventListener('animationend', (event) => {
-            if (event.animationName === 'aurivoRefreshSpin') {
+            if (event.animationName === 'ardaliRefreshSpin') {
                 elements.refreshBtn.classList.remove('is-refresh-spinning');
             }
         });
@@ -5482,20 +5488,20 @@ function setupEventListeners() {
     if (document.body?.dataset?.navFallbackBound !== 'true') {
         document.body.dataset.navFallbackBound = 'true';
         document.addEventListener('click', (event) => {
-            if (event.__aurivoNavHandled) return;
+            if (event.__ardaliNavHandled) return;
             const target = event.target instanceof Element ? event.target : null;
             if (!target) return;
             const backTrigger = target.closest('#backBtn');
             if (backTrigger) {
                 event.preventDefault();
-                event.__aurivoNavHandled = true;
+                event.__ardaliNavHandled = true;
                 navigateBack();
                 return;
             }
             const forwardTrigger = target.closest('#forwardBtn');
             if (forwardTrigger) {
                 event.preventDefault();
-                event.__aurivoNavHandled = true;
+                event.__ardaliNavHandled = true;
                 navigateForward();
             }
         }, true);
@@ -5572,11 +5578,11 @@ function setupEventListeners() {
         elements.musicAddFolderBtn.addEventListener('click', async () => {
             try {
                 state.mediaFilter = 'audio';
-                const res = await window.aurivo?.dialog?.openFolder?.({
+                const res = await window.ardali?.dialog?.openFolder?.({
                     title: 'Medya klasörü seç',
                     defaultPath: state.specialPaths?.music || undefined
                 });
-                if (res?.path) await addUserFolder(res.path, res.name || window.aurivo?.path?.basename?.(res.path) || 'Klasör', 'audio');
+                if (res?.path) await addUserFolder(res.path, res.name || window.ardali?.path?.basename?.(res.path) || 'Klasör', 'audio');
             } catch (e) {
                 safeNotify('Klasör seçilemedi: ' + (e?.message || e), 'error');
             }
@@ -5594,11 +5600,11 @@ function setupEventListeners() {
         elements.videoAddFolderBtn.addEventListener('click', async () => {
             try {
                 state.mediaFilter = 'video';
-                const res = await window.aurivo?.dialog?.openFolder?.({
+                const res = await window.ardali?.dialog?.openFolder?.({
                     title: 'Video klasörü seç',
                     defaultPath: state.specialPaths?.videos || undefined
                 });
-                if (res?.path) await addUserFolder(res.path, res.name || window.aurivo?.path?.basename?.(res.path) || 'Klasör', 'video');
+                if (res?.path) await addUserFolder(res.path, res.name || window.ardali?.path?.basename?.(res.path) || 'Klasör', 'video');
             } catch (e) {
                 safeNotify('Klasör seçilemedi: ' + (e?.message || e), 'error');
             }
@@ -5609,7 +5615,7 @@ function setupEventListeners() {
         elements.videoAddFilesBtn.addEventListener('click', async () => {
             try {
                 state.mediaFilter = 'video';
-                const files = await window.aurivo?.dialog?.openFiles?.({
+                const files = await window.ardali?.dialog?.openFiles?.({
                     title: state.currentPage === 'videoTools'
                         ? uiT('video.tools.mediaPool.addTitle', 'Düzenleme için medya ekle')
                         : 'Video dosyalarını seç',
@@ -6731,7 +6737,7 @@ function setupEventListeners() {
     }
     if (elements.audioDefaultVolume) {
         elements.audioDefaultVolume.addEventListener('input', async () => {
-            window.AurivoSettingsShared?.updateAudioSettingsVolumeLabel?.(elements);
+            window.ArDaliSettingsShared?.updateAudioSettingsVolumeLabel?.(elements);
             const prefs = getAudioOutputSettings();
             if (prefs.followSystemVolume && state.systemAudio?.supported) {
                 await applyAudioSettingsSliderToSystem(Number(elements.audioDefaultVolume.value));
@@ -6740,7 +6746,7 @@ function setupEventListeners() {
     }
     if (elements.audioAppVolume) {
         elements.audioAppVolume.addEventListener('input', () => {
-            window.AurivoSettingsShared?.updateAudioAppVolumeLabel?.(elements);
+            window.ArDaliSettingsShared?.updateAudioAppVolumeLabel?.(elements);
             setAppMasterVolume(Number(elements.audioAppVolume.value), { persist: true, syncSettingsSlider: false });
         });
     }
@@ -6846,10 +6852,10 @@ function setupEventListeners() {
     if (elements.audioOutputSelect) {
         elements.audioOutputSelect.addEventListener('change', async () => {
             const outputId = String(elements.audioOutputSelect.value || '').trim();
-            if (!outputId || !window.aurivo?.systemAudio?.setOutput) return;
+            if (!outputId || !window.ardali?.systemAudio?.setOutput) return;
             elements.audioOutputSelect.disabled = true;
             try {
-                const result = await window.aurivo.systemAudio.setOutput(outputId);
+                const result = await window.ardali.systemAudio.setOutput(outputId);
                 if (result?.success && result?.state) {
                     state.systemAudio = {
                         ...state.systemAudio,
@@ -6870,9 +6876,9 @@ function setupEventListeners() {
             const nextEnabled = !getAudioOverdriveButtonState();
             setAudioOverdriveButtonState(nextEnabled);
             getAudioOutputSettings().allowOverdrive150 = nextEnabled;
-            if (window.aurivo?.systemAudio?.setAllowOverdrive && state.systemAudio?.supported) {
+            if (window.ardali?.systemAudio?.setAllowOverdrive && state.systemAudio?.supported) {
                 try {
-                    const result = await window.aurivo.systemAudio.setAllowOverdrive(nextEnabled);
+                    const result = await window.ardali.systemAudio.setAllowOverdrive(nextEnabled);
                     if (result?.success && result?.state) {
                         state.systemAudio = {
                             ...state.systemAudio,
@@ -7060,16 +7066,16 @@ function setupEventListeners() {
 
         // Web Senkron Dinleyici (YouTube olaylarını yakala)
         elements.webView.addEventListener('console-message', (e) => {
-            if (e.message.startsWith('AURIVO_SYNC:')) {
+            if (e.message.startsWith('ARDALI_SYNC:')) {
                 try {
-                    const data = JSON.parse(e.message.replace('AURIVO_SYNC:', ''));
+                    const data = JSON.parse(e.message.replace('ARDALI_SYNC:', ''));
                     handleWebSync(data);
                 } catch (err) { console.error('Sync parse error', err); }
                 return;
             }
-            if (e.message.startsWith('AURIVO_DALI_ATTACH:')) {
+            if (e.message.startsWith('ARDALI_DALI_ATTACH:')) {
                 try {
-                    const payload = JSON.parse(e.message.replace('AURIVO_DALI_ATTACH:', ''));
+                    const payload = JSON.parse(e.message.replace('ARDALI_DALI_ATTACH:', ''));
                     markWebDaliAttachEvent(payload);
                 } catch {
                     // yoksay
@@ -7082,7 +7088,7 @@ function setupEventListeners() {
 
         // WebView Senkron: MediaSession/Video bilgilerini yakala (MPRIS + kapak + web şimdi-çalıyor için).
         // Not: Bazı Chromium sürümlerinde navigator.mediaSession override edilemez (non-configurable).
-        // Bu yüzden "disable" yerine güvenli polling + event dinleme ile AURIVO_SYNC mesajları üretiyoruz.
+        // Bu yüzden "disable" yerine güvenli polling + event dinleme ile ARDALI_SYNC mesajları üretiyoruz.
         elements.webView.addEventListener('dom-ready', () => {
             try {
                 elements.webView.setUserAgent(getEmbeddedDesktopUserAgent());
@@ -7097,7 +7103,7 @@ function setupEventListeners() {
                     (function() {
                         const DELIBLOCK = ${JSON.stringify(webAdblockConfig)};
                         const send = (payload) => {
-                            try { console.log('AURIVO_SYNC:' + JSON.stringify(payload)); } catch(e) {}
+                            try { console.log('ARDALI_SYNC:' + JSON.stringify(payload)); } catch(e) {}
                         };
                         const cleanTitle = (raw) => String(raw || '')
                             .replace(/\\s+/g, ' ')
@@ -7367,7 +7373,7 @@ function setupEventListeners() {
                         function ensureYouTubeAdCss() {
                             if (!isYouTubeHost() || ytAdStyleInjected) return;
                             const style = document.createElement('style');
-                            style.id = 'aurivo-deliblock-yt-css';
+                            style.id = 'ardali-deliblock-yt-css';
                             style.textContent = [
                                 '.ytp-ad-overlay-container, .ytp-ad-overlay-slot { display: none !important; }',
                                 '.ytd-display-ad-renderer, ytd-promoted-sparkles-web-renderer, ytd-player-legacy-desktop-watch-ads-renderer, ytd-action-companion-ad-renderer { display: none !important; }',
@@ -7382,8 +7388,8 @@ function setupEventListeners() {
                         }
 
                         function installGenericPendingTitleHint() {
-                            if (window.__aurivoPendingTitleHintInstalled) return;
-                            window.__aurivoPendingTitleHintInstalled = true;
+                            if (window.__ardaliPendingTitleHintInstalled) return;
+                            window.__ardaliPendingTitleHintInstalled = true;
                             const onIntent = (ev) => {
                                 try {
                                     const pathArr = getEventPath(ev);
@@ -7507,8 +7513,8 @@ function setupEventListeners() {
 
                         function installYouTubePlayerResponsePatch() {
                             if (!isYouTubeHost()) return;
-                            if (window.__aurivoDeliBlockYtPlayerPatch) return;
-                            window.__aurivoDeliBlockYtPlayerPatch = true;
+                            if (window.__ardaliDeliBlockYtPlayerPatch) return;
+                            window.__ardaliDeliBlockYtPlayerPatch = true;
 
                             const isPlayerEndpoint = (raw) => {
                                 try {
@@ -7551,11 +7557,11 @@ function setupEventListeners() {
                                 const originalOpen = XMLHttpRequest.prototype.open;
                                 const originalSend = XMLHttpRequest.prototype.send;
                                 XMLHttpRequest.prototype.open = function(method, url, ...rest) {
-                                    try { this.__aurivoDeliBlockYtPlayerUrl = String(url || ''); } catch {}
+                                    try { this.__ardaliDeliBlockYtPlayerUrl = String(url || ''); } catch {}
                                     return originalOpen.call(this, method, url, ...rest);
                                 };
                                 XMLHttpRequest.prototype.send = function(...args) {
-                                    if (isPlayerEndpoint(this.__aurivoDeliBlockYtPlayerUrl)) {
+                                    if (isPlayerEndpoint(this.__ardaliDeliBlockYtPlayerUrl)) {
                                         this.addEventListener('readystatechange', () => {
                                             try {
                                                 if (this.readyState !== 4) return;
@@ -7917,7 +7923,7 @@ function setupEventListeners() {
                         emitVolume(true);
                         tickYouTubeAdSkip();
                     })();
-                } catch(e) { console.error("AURIVO_SYNC error:", e); }
+                } catch(e) { console.error("ARDALI_SYNC error:", e); }
             `);
             installWebDaliAttachHooks();
             setTimeout(() => {
@@ -8045,7 +8051,7 @@ function resetWebDaliAttachMetrics(reason = 'reset') {
     webDaliAttachMetrics.firstPlayPageTs = 0;
     webDaliAttachMetrics.firstPlayType = '';
     webDaliAttachMetrics.reported = false;
-    if (AURIVO_ATTACH_METRICS_LOGS) {
+    if (ARDALI_ATTACH_METRICS_LOGS) {
         console.log('[DALI WEB][ATTACH_LATENCY] reset:', reason, 'session=', webDaliAttachMetrics.sessionId);
     }
 }
@@ -8062,7 +8068,7 @@ function markWebDaliAttachEvent(payload) {
 }
 
 function reportWebDaliAttachLatencyIfReady(reason, result, daliScope) {
-    if (!AURIVO_ATTACH_METRICS_LOGS) return;
+    if (!ARDALI_ATTACH_METRICS_LOGS) return;
     if (daliScope !== 'web') return;
     if (!result || !result.ok) return;
     if (webDaliAttachMetrics.reported) return;
@@ -8080,7 +8086,7 @@ function getRendererDocumentDir() {
     try {
         const pathname = decodeURIComponent(String(window.location.pathname || ''));
         if (!pathname) return '';
-        return String(window.aurivo?.path?.dirname?.(pathname) || '').trim();
+        return String(window.ardali?.path?.dirname?.(pathname) || '').trim();
     } catch {
         return '';
     }
@@ -8092,11 +8098,11 @@ async function loadWebDaliPresetSource() {
 
     webDaliPresetRuntime.loadPromise = (async () => {
         const baseDir = getRendererDocumentDir();
-        if (!baseDir || !window.aurivo?.path?.join || !window.aurivo?.readTextFile) {
+        if (!baseDir || !window.ardali?.path?.join || !window.ardali?.readTextFile) {
             throw new Error('DALI preset kaynagi icin gerekli yol/okuma API bulunamadi');
         }
-        const presetPath = window.aurivo.path.join(baseDir, ...DALI_WEB_EQ_PRESET_RELATIVE_PATH);
-        const sourceText = await window.aurivo.readTextFile(presetPath);
+        const presetPath = window.ardali.path.join(baseDir, ...DALI_WEB_EQ_PRESET_RELATIVE_PATH);
+        const sourceText = await window.ardali.readTextFile(presetPath);
         const safeText = String(sourceText || '').trim();
         if (!safeText.includes('buildGraph')) {
             throw new Error(`Gecersiz DALI preset cikti dosyasi: ${presetPath}`);
@@ -8119,11 +8125,11 @@ async function loadWebDaliBassPresetSource() {
 
     webDaliBassPresetRuntime.loadPromise = (async () => {
         const baseDir = getRendererDocumentDir();
-        if (!baseDir || !window.aurivo?.path?.join || !window.aurivo?.readTextFile) {
+        if (!baseDir || !window.ardali?.path?.join || !window.ardali?.readTextFile) {
             throw new Error('DALI bass preset kaynagi icin gerekli yol/okuma API bulunamadi');
         }
-        const presetPath = window.aurivo.path.join(baseDir, ...DALI_WEB_BASS_PRESET_RELATIVE_PATH);
-        const sourceText = await window.aurivo.readTextFile(presetPath);
+        const presetPath = window.ardali.path.join(baseDir, ...DALI_WEB_BASS_PRESET_RELATIVE_PATH);
+        const sourceText = await window.ardali.readTextFile(presetPath);
         const safeText = String(sourceText || '').trim();
         if (!safeText.includes('buildGraph')) {
             throw new Error(`Gecersiz DALI bass preset cikti dosyasi: ${presetPath}`);
@@ -8529,7 +8535,7 @@ function createWebDaliInjectScript(payload, presetStages, bassPresetStages) {
                 const cfg = ${cfg};
                 const presetStages = ${stages};
                 const bassPresetStages = ${bassStages};
-                const root = (window.__AURIVO_DALI_WEB__ = window.__AURIVO_DALI_WEB__ || {});
+                const root = (window.__ARDALI_DALI_WEB__ = window.__ARDALI_DALI_WEB__ || {});
                 root.cfg = cfg;
                 root.buildConfigKey = function buildConfigKey(nextCfg) {
                     // Slider/knob hareketlerinde grafiği söküp takmak web medyada tıkırtı üretir.
@@ -8756,10 +8762,10 @@ function createWebDaliInjectScript(payload, presetStages, bassPresetStages) {
                     epsilonDb: 0.04
                 });
                 root.ensureWasmKernels = function ensureWasmKernels() {
-                    root.__aurivoWasmKernels = (root && root.__aurivoWasmKernels && typeof root.__aurivoWasmKernels === 'object')
-                        ? root.__aurivoWasmKernels
+                    root.__ardaliWasmKernels = (root && root.__ardaliWasmKernels && typeof root.__ardaliWasmKernels === 'object')
+                        ? root.__ardaliWasmKernels
                         : {};
-                    const reg = root.__aurivoWasmKernels;
+                    const reg = root.__ardaliWasmKernels;
                     if (reg.__dynamicEqInitAttempted) return reg;
                     reg.__dynamicEqInitAttempted = true;
                     try {
@@ -10783,7 +10789,7 @@ function createWebDaliInjectScript(payload, presetStages, bassPresetStages) {
                     const rawMode = !!(options && typeof options === 'object' && (options.raw === true || options.pure === true));
                     const mediaElements = Array.from(document.querySelectorAll('video, audio'));
                     const graphs = mediaElements
-                        .map((media) => media && media.__aurivoDaliGraph)
+                        .map((media) => media && media.__ardaliDaliGraph)
                         .filter((graph) => graph && graph.analyser);
                     if (!graphs.length) return [];
                     const activeGraph = graphs.find((graph) => graph.media && !graph.media.paused) || graphs[0];
@@ -10857,7 +10863,7 @@ function createWebDaliInjectScript(payload, presetStages, bassPresetStages) {
                     const target = muted ? 0 : level;
                     const mediaElements = Array.from(document.querySelectorAll('video, audio'));
                     const graphs = mediaElements
-                        .map((media) => media && media.__aurivoDaliGraph)
+                        .map((media) => media && media.__ardaliDaliGraph)
                         .filter((graph) => graph && graph.masterGain && graph.ctx);
                     if (!graphs.length) return false;
                     for (const graph of graphs) {
@@ -10870,7 +10876,7 @@ function createWebDaliInjectScript(payload, presetStages, bassPresetStages) {
                 root.getNoiseGateStatus = function getNoiseGateStatus() {
                     const mediaElements = Array.from(document.querySelectorAll('video, audio'));
                     const graphs = mediaElements
-                        .map((media) => media && media.__aurivoDaliGraph)
+                        .map((media) => media && media.__ardaliDaliGraph)
                         .filter((graph) => graph && graph.noiseGateState);
                     if (!graphs.length) {
                         return {
@@ -10903,7 +10909,7 @@ function createWebDaliInjectScript(payload, presetStages, bassPresetStages) {
                 root.getTruePeakStatus = function getTruePeakStatus() {
                     const mediaElements = Array.from(document.querySelectorAll('video, audio'));
                     const graphs = mediaElements
-                        .map((media) => media && media.__aurivoDaliGraph)
+                        .map((media) => media && media.__ardaliDaliGraph)
                         .filter((graph) => graph && graph.truePeakState);
                     if (!graphs.length) {
                         return { ok: false, truePeakL: -96, truePeakR: -96, holdL: -96, holdR: -96, clippingCount: 0, gainReduction: 0 };
@@ -10927,7 +10933,7 @@ function createWebDaliInjectScript(payload, presetStages, bassPresetStages) {
                 root.getDynamicEqStatus = function getDynamicEqStatus() {
                     const mediaElements = Array.from(document.querySelectorAll('video, audio'));
                     const graphs = mediaElements
-                        .map((media) => media && media.__aurivoDaliGraph)
+                        .map((media) => media && media.__ardaliDaliGraph)
                         .filter((graph) => graph && graph.dynamicEqState);
                     if (!graphs.length) {
                         return {
@@ -10965,7 +10971,7 @@ function createWebDaliInjectScript(payload, presetStages, bassPresetStages) {
                 root.getPerfStatus = function getPerfStatus() {
                     const mediaElements = Array.from(document.querySelectorAll('video, audio'));
                     const graphs = mediaElements
-                        .map((media) => media && media.__aurivoDaliGraph)
+                        .map((media) => media && media.__ardaliDaliGraph)
                         .filter((graph) => graph && graph.perfState);
                     if (!graphs.length) {
                         return {
@@ -12394,7 +12400,7 @@ function createWebDaliInjectScript(payload, presetStages, bassPresetStages) {
                     const ctx = root.ctx;
                     try { if (ctx.state === 'suspended') ctx.resume(); } catch (_) {}
                     const configKey = root.buildConfigKey(cfg);
-                    let graph = media.__aurivoDaliGraph || null;
+                    let graph = media.__ardaliDaliGraph || null;
                     if (!graph) {
                         graph = {
                             ctx,
@@ -12402,7 +12408,7 @@ function createWebDaliInjectScript(payload, presetStages, bassPresetStages) {
                             configKey: '',
                             perfState: root.createPerfState()
                         };
-                        media.__aurivoDaliGraph = graph;
+                        media.__ardaliDaliGraph = graph;
                         media.addEventListener('play', function () {
                             try { if (ctx.state === 'suspended') ctx.resume(); } catch (_) {}
                         }, { passive: true });
@@ -13109,8 +13115,8 @@ function createWebDaliInjectScript(payload, presetStages, bassPresetStages) {
                     const epsLinear = Math.max(0.00001, Number(controlRate.epsilonLinear) || 0.0006);
                     const epsDb = Math.max(0.0001, Number(controlRate.epsilonDb) || 0.04);
                     const deEsserTimer = root.wrapPerfLoop(perfState, 'deesser', deEsserIntervalMs, function () {
-                        const st = media.__aurivoDaliGraph?.deEsserState || deEsserState;
-                        const kernelState = media.__aurivoDaliGraph?.deEsserKernelState || deEsserKernelState || {};
+                        const st = media.__ardaliDaliGraph?.deEsserState || deEsserState;
+                        const kernelState = media.__ardaliDaliGraph?.deEsserKernelState || deEsserKernelState || {};
                         if (!st?.enabled) {
                             st.currentHighGain = 1;
                             st.envDb = -120;
@@ -13134,8 +13140,8 @@ function createWebDaliInjectScript(payload, presetStages, bassPresetStages) {
                                     stepMs: deEsserIntervalMs
                                 });
                             } catch (_) {
-                                if (media.__aurivoDaliGraph) {
-                                    media.__aurivoDaliGraph.deEsserKernelState = {
+                                if (media.__ardaliDaliGraph) {
+                                    media.__ardaliDaliGraph.deEsserKernelState = {
                                         ...(kernelState || {}),
                                         mode: 'js',
                                         reason: 'wasm-kernel-runtime-error',
@@ -13158,8 +13164,8 @@ function createWebDaliInjectScript(payload, presetStages, bassPresetStages) {
                         }
                     });
                     const noiseGateTimer = root.wrapPerfLoop(perfState, 'noisegate', noiseGateIntervalMs, function () {
-                        const st = media.__aurivoDaliGraph?.noiseGateState || noiseGateState;
-                        const kernelState = media.__aurivoDaliGraph?.noiseGateKernelState || noiseGateKernelState || {};
+                        const st = media.__ardaliDaliGraph?.noiseGateState || noiseGateState;
+                        const kernelState = media.__ardaliDaliGraph?.noiseGateKernelState || noiseGateKernelState || {};
                         if (!st?.enabled) {
                             st.currentGain = 1;
                             st.isOpen = true;
@@ -13201,8 +13207,8 @@ function createWebDaliInjectScript(payload, presetStages, bassPresetStages) {
                                     stepMs: noiseGateIntervalMs
                                 });
                             } catch (_) {
-                                if (media.__aurivoDaliGraph) {
-                                    media.__aurivoDaliGraph.noiseGateKernelState = {
+                                if (media.__ardaliDaliGraph) {
+                                    media.__ardaliDaliGraph.noiseGateKernelState = {
                                         ...(kernelState || {}),
                                         mode: 'js',
                                         reason: 'wasm-kernel-runtime-error',
@@ -13226,8 +13232,8 @@ function createWebDaliInjectScript(payload, presetStages, bassPresetStages) {
                         }
                     });
                     const autoGainTimer = root.wrapPerfLoop(perfState, 'autogain', autoGainIntervalMs, function () {
-                        const st = media.__aurivoDaliGraph?.autoGainState || autoGainState;
-                        const kernelState = media.__aurivoDaliGraph?.autoGainKernelState || autoGainKernelState || {};
+                        const st = media.__ardaliDaliGraph?.autoGainState || autoGainState;
+                        const kernelState = media.__ardaliDaliGraph?.autoGainKernelState || autoGainKernelState || {};
                         if (!st?.enabled) {
                             st.currentGainDb = 0;
                             st.envDb = -120;
@@ -13251,8 +13257,8 @@ function createWebDaliInjectScript(payload, presetStages, bassPresetStages) {
                                     stepMs: autoGainIntervalMs
                                 });
                             } catch (_) {
-                                if (media.__aurivoDaliGraph) {
-                                    media.__aurivoDaliGraph.autoGainKernelState = {
+                                if (media.__ardaliDaliGraph) {
+                                    media.__ardaliDaliGraph.autoGainKernelState = {
                                         ...(kernelState || {}),
                                         mode: 'js',
                                         reason: 'wasm-kernel-runtime-error',
@@ -13277,8 +13283,8 @@ function createWebDaliInjectScript(payload, presetStages, bassPresetStages) {
                         }
                     });
                     const dynamicEqTimer = root.wrapPerfLoop(perfState, 'dynamiceq', dynamicEqIntervalMs, function () {
-                        const st = media.__aurivoDaliGraph?.dynamicEqState || dynamicEqState;
-                        const kernelState = media.__aurivoDaliGraph?.dynamicEqKernelState || dynamicEqKernelState || {};
+                        const st = media.__ardaliDaliGraph?.dynamicEqState || dynamicEqState;
+                        const kernelState = media.__ardaliDaliGraph?.dynamicEqKernelState || dynamicEqKernelState || {};
                         if (!st?.enabled) {
                             st.currentGainDb = 0;
                             st.envDb = -120;
@@ -13307,8 +13313,8 @@ function createWebDaliInjectScript(payload, presetStages, bassPresetStages) {
                                     stepMs: dynamicEqIntervalMs
                                 });
                             } catch (_) {
-                                if (media.__aurivoDaliGraph) {
-                                    media.__aurivoDaliGraph.dynamicEqKernelState = {
+                                if (media.__ardaliDaliGraph) {
+                                    media.__ardaliDaliGraph.dynamicEqKernelState = {
                                         ...(kernelState || {}),
                                         mode: 'js',
                                         reason: 'wasm-kernel-runtime-error',
@@ -13342,10 +13348,10 @@ function createWebDaliInjectScript(payload, presetStages, bassPresetStages) {
                         }
                     });
                     const truePeakTimer = root.wrapPerfLoop(perfState, 'truepeak', truePeakIntervalMs, function () {
-                        const st = media.__aurivoDaliGraph?.truePeakState || truePeakState;
-                        const kernelState = media.__aurivoDaliGraph?.truePeakKernelState || truePeakKernelState || {};
-                        const cg = media.__aurivoDaliGraph?.clipGuardState || clipGuardState;
-                        const tpCfg = media.__aurivoDaliGraph?.cfg?.truepeak || {};
+                        const st = media.__ardaliDaliGraph?.truePeakState || truePeakState;
+                        const kernelState = media.__ardaliDaliGraph?.truePeakKernelState || truePeakKernelState || {};
+                        const cg = media.__ardaliDaliGraph?.clipGuardState || clipGuardState;
+                        const tpCfg = media.__ardaliDaliGraph?.cfg?.truepeak || {};
                         st.enabled = !!tpCfg.enabled;
                         st.ceilingDb = root.clamp(tpCfg.ceiling, -18, 0, -1.0);
                         let peakDb = -96;
@@ -13380,8 +13386,8 @@ function createWebDaliInjectScript(payload, presetStages, bassPresetStages) {
                                     stepMs: 40
                                 });
                             } catch (_) {
-                                if (media.__aurivoDaliGraph) {
-                                    media.__aurivoDaliGraph.truePeakKernelState = {
+                                if (media.__ardaliDaliGraph) {
+                                    media.__ardaliDaliGraph.truePeakKernelState = {
                                         ...(kernelState || {}),
                                         mode: 'js',
                                         reason: 'wasm-kernel-runtime-error',
@@ -13409,7 +13415,7 @@ function createWebDaliInjectScript(payload, presetStages, bassPresetStages) {
                             cg.lastAppliedGainDb = cg.currentGainDb;
                         }
                     });
-                    media.__aurivoDaliGraph = {
+                    media.__ardaliDaliGraph = {
                         ctx,
                         media,
                         source: graph.source,
@@ -13643,9 +13649,9 @@ function createWebDaliInjectScript(payload, presetStages, bassPresetStages) {
                         autoCompDb: 0,
                         perfState
                     };
-                    root.applyPostCfg(media.__aurivoDaliGraph, cfg);
+                    root.applyPostCfg(media.__ardaliDaliGraph, cfg);
                     root.recordPerfBuild(perfState, root.perfNow() - buildStartedAt, true);
-                    return media.__aurivoDaliGraph;
+                    return media.__ardaliDaliGraph;
                 };
                 const mediaElements = Array.from(document.querySelectorAll('video, audio'));
                 let connected = 0;
@@ -13726,7 +13732,7 @@ async function applyWebDaliEngineNow(reason = 'runtime') {
             bassPresetLen: Array.isArray(bassPresetStages) ? bassPresetStages.length : 0
         });
         if (!skipCacheReasons.has(String(reason || '').toLowerCase()) && applySignature === webDaliLastApplySignature) {
-            if (AURIVO_VERBOSE_LOGS) {
+            if (ARDALI_VERBOSE_LOGS) {
                 console.log('[DALI WEB] apply skipped (unchanged):', reason, daliScope);
             }
             reportWebDaliAttachLatencyIfReady(`${reason}:unchanged-skip`, { ok: true, connected: -1 }, daliScope);
@@ -13738,14 +13744,14 @@ async function applyWebDaliEngineNow(reason = 'runtime') {
             result = await elements.webView.executeJavaScript(createWebDaliInjectScript(payload, presetStages, bassPresetStages), true);
         } else {
             const script = createVideoScopedDaliInjectScript(payload, presetStages, bassPresetStages);
-            if (window.aurivo?.soundEffects?.applyInMainWindow) {
-                result = await window.aurivo.soundEffects.applyInMainWindow(script);
+            if (window.ardali?.soundEffects?.applyInMainWindow) {
+                result = await window.ardali.soundEffects.applyInMainWindow(script);
             } else {
                 result = await (0, eval)(script);
             }
         }
 
-        if (AURIVO_VERBOSE_LOGS) {
+        if (ARDALI_VERBOSE_LOGS) {
             console.log('[DALI WEB] apply:', reason, daliScope, result);
         }
         const ok = !!(result && result.ok);
@@ -13790,7 +13796,7 @@ async function getWebDaliSpectrumBands(numBands = 128, options = {}) {
     const daliScope = getActiveDaliScope();
     if (daliScope === 'video') {
         try {
-            const root = window.__AURIVO_DALI_WEB__;
+            const root = window.__ARDALI_DALI_WEB__;
             if (!root || typeof root.getSpectrumSnapshot !== 'function') return [];
             const result = root.getSpectrumSnapshot(safeBands, { raw: rawSpectrum });
             return Array.isArray(result) ? result : [];
@@ -13805,7 +13811,7 @@ async function getWebDaliSpectrumBands(numBands = 128, options = {}) {
         const result = await elements.webView.executeJavaScript(`
             (function () {
                 try {
-                    const root = window.__AURIVO_DALI_WEB__;
+                    const root = window.__ARDALI_DALI_WEB__;
                     if (!root || typeof root.getSpectrumSnapshot !== 'function') return [];
                     return root.getSpectrumSnapshot(${safeBands}, { raw: ${rawSpectrum ? 'true' : 'false'} });
                 } catch (_) {
@@ -13821,7 +13827,7 @@ async function getWebDaliSpectrumBands(numBands = 128, options = {}) {
 
 function setVideoDaliRuntimeMasterVolume(volumePercent, muted) {
     try {
-        const root = window.__AURIVO_DALI_WEB__;
+        const root = window.__ARDALI_DALI_WEB__;
         if (!root || typeof root.setRuntimeMasterVolume !== 'function') return false;
         const level = Math.max(0, Math.min(1, (Number(volumePercent) || 0) / 100));
         return !!root.setRuntimeMasterVolume(level, !!muted);
@@ -13834,7 +13840,7 @@ async function getWebDaliNoiseGateStatus() {
     const daliScope = getActiveDaliScope();
     if (daliScope === 'video') {
         try {
-            const root = window.__AURIVO_DALI_WEB__;
+            const root = window.__ARDALI_DALI_WEB__;
             if (!root || typeof root.getNoiseGateStatus !== 'function') {
                 return { ok: false, enabled: false, open: true, gain: 1, envDb: -120, thresholdDb: -40 };
             }
@@ -13857,7 +13863,7 @@ async function getWebDaliNoiseGateStatus() {
         const result = await elements.webView.executeJavaScript(`
             (function () {
                 try {
-                    const root = window.__AURIVO_DALI_WEB__;
+                    const root = window.__ARDALI_DALI_WEB__;
                     if (!root || typeof root.getNoiseGateStatus !== 'function') {
                         return { ok: false, enabled: false, open: true, gain: 1, envDb: -120, thresholdDb: -40 };
                     }
@@ -13879,7 +13885,7 @@ async function getWebDaliTruePeakStatus() {
     const daliScope = getActiveDaliScope();
     if (daliScope === 'video') {
         try {
-            const root = window.__AURIVO_DALI_WEB__;
+            const root = window.__ARDALI_DALI_WEB__;
             if (!root || typeof root.getTruePeakStatus !== 'function') {
                 return { ok: false, truePeakL: -96, truePeakR: -96, holdL: -96, holdR: -96, clippingCount: 0, gainReduction: 0 };
             }
@@ -13902,7 +13908,7 @@ async function getWebDaliTruePeakStatus() {
         const result = await elements.webView.executeJavaScript(`
             (function () {
                 try {
-                    const root = window.__AURIVO_DALI_WEB__;
+                    const root = window.__ARDALI_DALI_WEB__;
                     if (!root || typeof root.getTruePeakStatus !== 'function') {
                         return { ok: false, truePeakL: -96, truePeakR: -96, holdL: -96, holdR: -96, clippingCount: 0, gainReduction: 0 };
                     }
@@ -13924,7 +13930,7 @@ async function getWebDaliDynamicEqStatus() {
     const daliScope = getActiveDaliScope();
     if (daliScope === 'video') {
         try {
-            const root = window.__AURIVO_DALI_WEB__;
+            const root = window.__ARDALI_DALI_WEB__;
             if (!root || typeof root.getDynamicEqStatus !== 'function') {
                 return { ok: false, enabled: false, currentGainDb: 0, gainReductionDb: 0, envDb: -120, thresholdDb: -40, triggered: false };
             }
@@ -13947,7 +13953,7 @@ async function getWebDaliDynamicEqStatus() {
         const result = await elements.webView.executeJavaScript(`
             (function () {
                 try {
-                    const root = window.__AURIVO_DALI_WEB__;
+                    const root = window.__ARDALI_DALI_WEB__;
                     if (!root || typeof root.getDynamicEqStatus !== 'function') {
                         return { ok: false, enabled: false, currentGainDb: 0, gainReductionDb: 0, envDb: -120, thresholdDb: -40, triggered: false };
                     }
@@ -13969,7 +13975,7 @@ async function getWebDaliPerfStatus() {
     const daliScope = getActiveDaliScope();
     if (daliScope === 'video') {
         try {
-            const root = window.__AURIVO_DALI_WEB__;
+            const root = window.__ARDALI_DALI_WEB__;
             if (!root || typeof root.getPerfStatus !== 'function') {
                 return {
                     ok: false,
@@ -14027,7 +14033,7 @@ async function getWebDaliPerfStatus() {
         const result = await elements.webView.executeJavaScript(`
             (function () {
                 try {
-                    const root = window.__AURIVO_DALI_WEB__;
+                    const root = window.__ARDALI_DALI_WEB__;
                     if (!root || typeof root.getPerfStatus !== 'function') {
                         return {
                             ok: false,
@@ -14074,11 +14080,11 @@ async function getWebDaliPerfStatus() {
 }
 
 try {
-    window.__aurivoGetWebSpectrum = getWebDaliSpectrumBands;
-    window.__aurivoGetWebNoiseGateStatus = getWebDaliNoiseGateStatus;
-    window.__aurivoGetWebTruePeakStatus = getWebDaliTruePeakStatus;
-    window.__aurivoGetWebDynamicEqStatus = getWebDaliDynamicEqStatus;
-    window.__aurivoGetWebPerfStatus = getWebDaliPerfStatus;
+    window.__ardaliGetWebSpectrum = getWebDaliSpectrumBands;
+    window.__ardaliGetWebNoiseGateStatus = getWebDaliNoiseGateStatus;
+    window.__ardaliGetWebTruePeakStatus = getWebDaliTruePeakStatus;
+    window.__ardaliGetWebDynamicEqStatus = getWebDaliDynamicEqStatus;
+    window.__ardaliGetWebPerfStatus = getWebDaliPerfStatus;
 } catch {
     // ignore
 }
@@ -14120,8 +14126,8 @@ function installWebDaliAttachHooks() {
     const code = `
         (function () {
             try {
-                if (window.__aurivoDaliAttachHookInstalled) return true;
-                window.__aurivoDaliAttachHookInstalled = true;
+                if (window.__ardaliDaliAttachHookInstalled) return true;
+                window.__ardaliDaliAttachHookInstalled = true;
                 const seen = new WeakSet();
                 const prewarmMap = new WeakMap();
                 const startupGuardMap = new WeakMap();
@@ -14131,15 +14137,15 @@ function installWebDaliAttachHooks() {
                         const now = Date.now();
                         if ((now - lastEmitAt) < 90) return;
                         lastEmitAt = now;
-                        console.log('AURIVO_DALI_ATTACH:' + JSON.stringify({ type: String(type || 'media-event'), ts: now }));
+                        console.log('ARDALI_DALI_ATTACH:' + JSON.stringify({ type: String(type || 'media-event'), ts: now }));
                     } catch (_) {}
                 };
                 const ensureDaliGraph = async (media) => {
                     try {
                         if (!media) return false;
-                        const root = window.__AURIVO_DALI_WEB__;
+                        const root = window.__ARDALI_DALI_WEB__;
                         if (!root || typeof root.ensureGraph !== 'function') return false;
-                        if (media.__aurivoDaliGraph) return true;
+                        if (media.__ardaliDaliGraph) return true;
                         let pending = prewarmMap.get(media);
                         if (!pending) {
                             pending = (async () => {
@@ -14172,8 +14178,8 @@ function installWebDaliAttachHooks() {
                         if (!Number.isFinite(currentTime) || currentTime > 1.4) return;
                         const ok = await ensureDaliGraph(media);
                         if (!ok) return;
-                        const root = window.__AURIVO_DALI_WEB__;
-                        const graph = media.__aurivoDaliGraph;
+                        const root = window.__ARDALI_DALI_WEB__;
+                        const graph = media.__ardaliDaliGraph;
                         const ctx = graph?.ctx;
                         const master = graph?.masterGain?.gain;
                         if (!root || !ctx || !master) return;
@@ -14207,7 +14213,7 @@ function installWebDaliAttachHooks() {
                     } catch (_) {}
                 };
 
-                if (!window.__aurivoDaliPlayPatchInstalled) {
+                if (!window.__ardaliDaliPlayPatchInstalled) {
                     try {
                         const proto = (typeof HTMLMediaElement !== 'undefined') ? HTMLMediaElement.prototype : null;
                         const originalPlay = proto && proto.play;
@@ -14220,7 +14226,7 @@ function installWebDaliAttachHooks() {
                                 };
                                 return run();
                             };
-                            window.__aurivoDaliPlayPatchInstalled = true;
+                            window.__ardaliDaliPlayPatchInstalled = true;
                         }
                     } catch (_) {
                         // yoksay
@@ -14289,7 +14295,7 @@ async function applyWebDaliLiveCfgNow(daliScope, cfg, liveEffect = '') {
 
     if (safeScope === 'video') {
         try {
-            const root = window.__AURIVO_DALI_WEB__;
+            const root = window.__ARDALI_DALI_WEB__;
             if (!root || typeof root.ensureGraph !== 'function' || typeof root.applyPostCfg !== 'function') return false;
             const mediaElements = Array.from(document.querySelectorAll('video'));
             let connected = 0;
@@ -14317,7 +14323,7 @@ async function applyWebDaliLiveCfgNow(daliScope, cfg, liveEffect = '') {
         const result = await elements.webView.executeJavaScript(`
             (async function () {
                 try {
-                    const root = window.__AURIVO_DALI_WEB__;
+                    const root = window.__ARDALI_DALI_WEB__;
                     if (!root || typeof root.ensureGraph !== 'function' || typeof root.applyPostCfg !== 'function') {
                         return { ok: false, error: 'dali-root-missing' };
                     }
@@ -14425,9 +14431,9 @@ function updatePulseQuickBtnUi() {
     elements.pulseQuickListenBtn.classList.toggle('searching', !!pulseQuickRuntime.searching);
     elements.pulseQuickListenBtn.title = pulseQuickRuntime.running
         ? (pulseQuickRuntime.searching
-            ? `Aurivo-Pulse ${modeLabel}: Dinliyor... (aramaya devam ediyor)`
-            : `Aurivo-Pulse ${modeLabel}: Açık (durdurmak için tıkla)`)
-        : `Aurivo-Pulse ${modeLabel}: Kapalı (başlatmak için tıkla)`;
+            ? `ArDali-Pulse ${modeLabel}: Dinliyor... (aramaya devam ediyor)`
+            : `ArDali-Pulse ${modeLabel}: Açık (durdurmak için tıkla)`)
+        : `ArDali-Pulse ${modeLabel}: Kapalı (başlatmak için tıkla)`;
 }
 
 function clearPulseNoSignalHintTimer() {
@@ -14471,17 +14477,17 @@ function getPulseNoSignalHintToastMs() {
 }
 
 function getPulseQuickModeLabel(mode) {
-    return window.AurivoListenSettings?.getPulseQuickModeLabel?.(mode, uiT)
+    return window.ArDaliListenSettings?.getPulseQuickModeLabel?.(mode, uiT)
         || uiT('listen.quick.mode.options.background', 'Fon Müzik Odakli');
 }
 
 function getPulseQuickModeDetail(mode) {
-    return window.AurivoListenSettings?.getPulseQuickModeDetail?.(mode, uiT)
+    return window.ArDaliListenSettings?.getPulseQuickModeDetail?.(mode, uiT)
         || uiT('listen.quick.mode.detail.background', 'Fon Muzik Odakli: Konusma, ortam sesi veya efektlerin arkasinda kalan muzikleri bulmak icin daha uygundur.');
 }
 
 function updatePulseQuickModeUi() {
-    window.AurivoSettingsShared?.updatePulseQuickModeUi?.({
+    window.ArDaliSettingsShared?.updatePulseQuickModeUi?.({
         elements,
         mode: elements.pulseQuickMode?.value,
         defaultMode: PULSE_QUICK_MODE_DEFAULT,
@@ -14517,7 +14523,7 @@ async function tryPulseQuickSampleFallback() {
     const pulseMode = getPulseQuickModeConfig();
     if (pulseMode.mode !== 'max') return false;
     const audioDevice = String(state.settings?.pulseQuick?.preferredAudioDevice || '').trim();
-    if (!audioDevice || !window.aurivo?.pulse?.recognizeSample) return false;
+    if (!audioDevice || !window.ardali?.pulse?.recognizeSample) return false;
 
     pulseQuickRuntime.sampleRetryRunning = true;
     try {
@@ -14529,7 +14535,7 @@ async function tryPulseQuickSampleFallback() {
                 Number(state.settings?.pulsePreferences?.buffer_size_secs) || 5
             )
         );
-        const res = await window.aurivo.pulse.recognizeSample({
+        const res = await window.ardali.pulse.recognizeSample({
             audioDevice,
             durationSec: fallbackDurationSec
         });
@@ -14538,7 +14544,7 @@ async function tryPulseQuickSampleFallback() {
             addPulseFoundResult(res.result);
             safeNotify('Ek deneme ile bulundu.', 'success', 2200);
             await routePulseResultToInAppPlatform(res.result);
-            await window.aurivo?.pulse?.stopListening?.().catch(() => { });
+            await window.ardali?.pulse?.stopListening?.().catch(() => { });
             pulseQuickRuntime.running = false;
             pulseQuickRuntime.searching = false;
             pulseQuickRuntime.ownedByQuickButton = false;
@@ -14562,17 +14568,17 @@ function getPulseQuickModeConfig() {
         1,
         Math.min(
             120,
-            Number(state.settings?.pulsePreferences?.request_interval_secs_v3) || 4
+            Number(state.settings?.pulsePreferences?.request_interval_secs_v3) || 6
         )
     );
-    if (mode === 'normal') return { mode, backgroundMode: false, requestInterval: runtimeInterval, noSignalDelayMs: 22000 };
-    if (mode === 'max') return { mode, backgroundMode: true, requestInterval: runtimeInterval, noSignalDelayMs: 28000 };
+    if (mode === 'normal') return { mode, backgroundMode: false, requestInterval: 8, noSignalDelayMs: 24000 };
+    if (mode === 'max') return { mode, backgroundMode: true, requestInterval: 6, noSignalDelayMs: 30000 };
     return { mode: 'background', backgroundMode: true, requestInterval: runtimeInterval, noSignalDelayMs: 30000 };
 }
 
 async function getPreferredPulseDeviceForSpeakers() {
     try {
-        const listRes = await window.aurivo?.pulse?.listDevices?.();
+        const listRes = await window.ardali?.pulse?.listDevices?.();
         const devices = Array.isArray(listRes?.devices) ? listRes.devices : [];
         const normalize = (value) => String(value || '').trim().toLowerCase();
         const findExistingDeviceId = (candidate) => {
@@ -14596,14 +14602,14 @@ async function getPreferredPulseDeviceForSpeakers() {
         const savedDevice = findExistingDeviceId(state.settings?.pulseQuick?.preferredAudioDevice);
         if (savedDevice) return savedDevice;
 
-        const statusRes = await window.aurivo?.pulse?.getStatus?.().catch(() => null);
+        const statusRes = await window.ardali?.pulse?.getStatus?.().catch(() => null);
         const activeDevice = findExistingDeviceId(statusRes?.status?.audioDevice);
         if (activeDevice) {
             remember(activeDevice);
             return activeDevice;
         }
 
-        const pulsePrefRes = await window.aurivo?.pulse?.getPreferredDevice?.().catch(() => null);
+        const pulsePrefRes = await window.ardali?.pulse?.getPreferredDevice?.().catch(() => null);
         const pulsePreferredDevice = findExistingDeviceId(pulsePrefRes?.audioDevice);
         if (pulsePreferredDevice) {
             remember(pulsePreferredDevice);
@@ -14652,6 +14658,49 @@ function getWebPlatformBtnByName(platform) {
     if (!key) return null;
     if (!/^[a-z0-9_-]+$/.test(key)) return null;
     return document.querySelector(`.platform-btn[data-platform="${key}"]`);
+}
+
+function getRestorableWebUrlForPlatform(platform) {
+    const key = String(platform || '').trim().toLowerCase();
+    const rawUrl = String(state.settings?.ui?.lastWebUrl || '').trim();
+    if (!key || !rawUrl || rawUrl === 'about:blank') return '';
+    const parsed = parseHttpUrl(rawUrl);
+    if (!parsed) return '';
+    const detected = detectPlatformFromUrl(parsed.toString());
+    if (detected && detected !== key) return '';
+    if (isWebAllowlistEnforced() && !isAllowedWebUrl(parsed.toString())) return '';
+    return parsed.toString();
+}
+
+function persistWebNavigationState(url, platform = '', options = {}) {
+    const targetUrl = String(url || '').trim();
+    if (!targetUrl || targetUrl === 'about:blank') return;
+    const parsed = parseHttpUrl(targetUrl);
+    if (!parsed) return;
+    const normalizedUrl = parsed.toString();
+    if (isWebAllowlistEnforced() && !isAllowedWebUrl(normalizedUrl)) return;
+
+    const detected = String(platform || detectPlatformFromUrl(normalizedUrl) || '').trim().toLowerCase();
+    if (!state.settings || typeof state.settings !== 'object') state.settings = {};
+    if (!state.settings.ui || typeof state.settings.ui !== 'object') state.settings.ui = {};
+    state.settings.ui.lastWebUrl = normalizedUrl;
+    if (detected) {
+        state.settings.ui.lastWebPlatform = detected;
+        state.webCurrentPlatform = detected;
+    }
+
+    if (webPlatformRuntime.persistTimer) {
+        clearTimeout(webPlatformRuntime.persistTimer);
+        webPlatformRuntime.persistTimer = null;
+    }
+    if (options.immediate) {
+        saveSettings().catch(() => { });
+        return;
+    }
+    webPlatformRuntime.persistTimer = setTimeout(() => {
+        webPlatformRuntime.persistTimer = null;
+        saveSettings().catch(() => { });
+    }, 450);
 }
 
 function buildPulseSearchUrl(platform, query) {
@@ -14991,7 +15040,7 @@ function renderPulseFoundList() {
             routePulseQueryToInAppPlatform({
                 query,
                 platform: getPulseOpenPlatformPreference(),
-                source: 'aurivo-main-found-list'
+                source: 'ardali-main-found-list'
             });
         });
         list.appendChild(button);
@@ -15052,14 +15101,14 @@ async function routePulseQueryToInAppPlatform(payload) {
 }
 
 async function togglePulseQuickListen() {
-    if (!window.aurivo?.pulse) {
-        safeNotify('Aurivo-Pulse bu oturumda hazır değil.', 'warning', 2400);
+    if (!window.ardali?.pulse) {
+        safeNotify('ArDali-Pulse bu oturumda hazır değil.', 'warning', 2400);
         return;
     }
 
     if (pulseQuickRuntime.running) {
         pulseQuickRuntime.stoppingAfterResult = true;
-        await window.aurivo.pulse.stopListening().catch(() => null);
+        await window.ardali.pulse.stopListening().catch(() => null);
         pulseQuickRuntime.running = false;
         pulseQuickRuntime.searching = false;
         pulseQuickRuntime.ownedByQuickButton = false;
@@ -15067,7 +15116,7 @@ async function togglePulseQuickListen() {
         pulseQuickRuntime.startedAt = 0;
         clearPulseNoSignalHintTimer();
         updatePulseQuickBtnUi();
-        safeNotify('Aurivo-Pulse durduruldu.', 'info', 1600);
+        safeNotify('ArDali-Pulse durduruldu.', 'info', 1600);
         return;
     }
 
@@ -15081,9 +15130,12 @@ async function togglePulseQuickListen() {
     pulseQuickRuntime.ownedByQuickButton = true;
     updatePulseQuickBtnUi();
 
-    const res = await window.aurivo.pulse.startListening({
+    const res = await window.ardali.pulse.startListening({
         audioDevice,
-        autoSwitchOutputMonitor: true
+        autoSwitchOutputMonitor: true,
+        requestIntervalSecs: pulseMode.requestInterval,
+        bufferSizeSecs: pulseMode.mode === 'max' ? 16 : (pulseMode.mode === 'normal' ? 10 : 12),
+        contextMetadata: getCurrentWebPulseContext()
     }).catch((error) => ({ success: false, error: error?.message || String(error) }));
 
     if (!res?.success) {
@@ -15093,7 +15145,7 @@ async function togglePulseQuickListen() {
         pulseQuickRuntime.startedAt = 0;
         clearPulseNoSignalHintTimer();
         updatePulseQuickBtnUi();
-        safeNotify(`Aurivo-Pulse başlatılamadı: ${res?.error || 'bilinmeyen hata'}`, 'error', 3200);
+        safeNotify(`ArDali-Pulse başlatılamadı: ${res?.error || 'bilinmeyen hata'}`, 'error', 3200);
         return;
     }
 
@@ -15106,19 +15158,19 @@ async function togglePulseQuickListen() {
     }
 
     schedulePulseNoSignalHint();
-    safeNotify(`Aurivo-Pulse ${getPulseQuickModeLabel(pulseMode.mode)}: dinliyor...`, 'info', 1800);
+    safeNotify(`ArDali-Pulse ${getPulseQuickModeLabel(pulseMode.mode)}: dinliyor...`, 'info', 1800);
 }
 
 
 function setupPulseQuickListeners() {
     try {
-        if (!window.aurivo?.pulse) return;
+        if (!window.ardali?.pulse) return;
         if (typeof pulseQuickRuntime.unsubState === 'function') pulseQuickRuntime.unsubState();
         if (typeof pulseQuickRuntime.unsubResult === 'function') pulseQuickRuntime.unsubResult();
         if (typeof pulseQuickRuntime.unsubUncertain === 'function') pulseQuickRuntime.unsubUncertain();
         if (typeof pulseQuickRuntime.unsubOpenQuery === 'function') pulseQuickRuntime.unsubOpenQuery();
 
-        pulseQuickRuntime.unsubState = window.aurivo.pulse.onState((pulseState) => {
+        pulseQuickRuntime.unsubState = window.ardali.pulse.onState((pulseState) => {
             pulseQuickRuntime.running = !!pulseState?.running;
             const warningText = String(pulseState?.warning || pulseState?.lastError || '').trim();
             if (warningText) {
@@ -15128,9 +15180,9 @@ function setupPulseQuickListeners() {
                     pulseQuickRuntime.lastWarningAt = now;
                     const lowered = warningText.toLowerCase();
                     if (lowered.includes('429') || lowered.includes('too many') || lowered.includes('rate')) {
-                        safeNotify('Aurivo-Pulse: Shazam istek limiti. 1-2 dakika bekleyip tekrar deneyin.', 'warning', 3200);
+                        safeNotify('ArDali-Pulse: Shazam istek limiti. 1-2 dakika bekleyip tekrar deneyin.', 'warning', 3200);
                     } else if (lowered.includes('network') || lowered.includes('unreachable') || lowered.includes('timeout')) {
-                        safeNotify('Aurivo-Pulse: ağ hatası. İnternet bağlantısını kontrol edin.', 'warning', 3200);
+                        safeNotify('ArDali-Pulse: ağ hatası. İnternet bağlantısını kontrol edin.', 'warning', 3200);
                     }
                 }
             }
@@ -15158,7 +15210,7 @@ function setupPulseQuickListeners() {
             updatePulseQuickBtnUi();
         });
 
-        pulseQuickRuntime.unsubResult = window.aurivo.pulse.onResult((result) => {
+        pulseQuickRuntime.unsubResult = window.ardali.pulse.onResult((result) => {
             pulseQuickRuntime.lastResultAt = Date.now();
             clearPulseNoSignalHintTimer();
             const title = String(result?.title || '').trim();
@@ -15184,7 +15236,7 @@ function setupPulseQuickListeners() {
                 !pulseQuickRuntime.stoppingAfterResult
             ) {
                 pulseQuickRuntime.stoppingAfterResult = true;
-                Promise.resolve(window.aurivo?.pulse?.stopListening?.())
+                Promise.resolve(window.ardali?.pulse?.stopListening?.())
                     .then(() => {
                         pulseQuickRuntime.running = false;
                         pulseQuickRuntime.searching = false;
@@ -15202,7 +15254,7 @@ function setupPulseQuickListeners() {
             }
         });
 
-        pulseQuickRuntime.unsubUncertain = window.aurivo.pulse.onUncertain((payload) => {
+        pulseQuickRuntime.unsubUncertain = window.ardali.pulse.onUncertain((payload) => {
             const now = Date.now();
             if ((now - Number(pulseQuickRuntime.lastUncertainAt || 0)) < 12000) return;
             pulseQuickRuntime.lastUncertainAt = now;
@@ -15218,14 +15270,14 @@ function setupPulseQuickListeners() {
             safeNotify(`Emin değilim, olası sonuçlar:\n${lines.join('\n')}`, 'info', 5200);
         });
 
-        pulseQuickRuntime.unsubOpenQuery = window.aurivo.pulse.onOpenQuery((payload) => {
+        pulseQuickRuntime.unsubOpenQuery = window.ardali.pulse.onOpenQuery((payload) => {
             const query = String(payload?.query || '').trim();
             if (!query) return;
             routePulseQueryToInAppPlatform(payload);
-            safeNotify(`Aurivo-Pulse: uygulama içinde açılıyor (${query})`, 'info', 1800);
+            safeNotify(`ArDali-Pulse: uygulama içinde açılıyor (${query})`, 'info', 1800);
         });
 
-        window.aurivo.pulse.getStatus().then((res) => {
+        window.ardali.pulse.getStatus().then((res) => {
             pulseQuickRuntime.running = !!res?.status?.running;
             pulseQuickRuntime.searching = !!res?.status?.running;
             pulseQuickRuntime.startedAt = pulseQuickRuntime.running ? Date.now() : 0;
@@ -15291,17 +15343,18 @@ function safeNavigateWebView(url) {
         // yoksay
     }
     const now = Date.now();
-    if (target === webLoadRuntime.lastRequestedUrl && (now - webLoadRuntime.lastRequestedAt) < 700) {
+    const currentUrl = getWebViewUrlSafe();
+    if (
+        target === webLoadRuntime.lastRequestedUrl
+        && (now - webLoadRuntime.lastRequestedAt) < 700
+        && currentUrl
+        && currentUrl !== 'about:blank'
+    ) {
         return true;
     }
     webLoadRuntime.lastRequestedUrl = target;
     webLoadRuntime.lastRequestedAt = now;
-    try {
-        elements.webView.src = target;
-        return true;
-    } catch {
-        // yoksay
-    }
+
     try {
         elements.webView.setAttribute('src', target);
         return true;
@@ -15309,8 +15362,7 @@ function safeNavigateWebView(url) {
         // yoksay
     }
     try {
-        const maybe = elements.webView.loadURL(target);
-        if (maybe && typeof maybe.catch === 'function') maybe.catch(() => { });
+        elements.webView.src = target;
         return true;
     } catch {
         return false;
@@ -15619,7 +15671,7 @@ function getEmbeddedDesktopUserAgent() {
     const nativeUa = String(navigator.userAgent || '');
     const stripped = nativeUa
         .replace(/\sElectron\/[^\s)]+/gi, '')
-        .replace(/\sAurivo\/[^\s)]+/gi, '')
+        .replace(/\sArDali\/[^\s)]+/gi, '')
         .replace(/\s{2,}/g, ' ')
         .trim();
     // Daha güncel Chrome kimliği: bazı servisler eski UA'ları kısıtlayabiliyor.
@@ -15655,7 +15707,7 @@ function shouldInjectWebSync(url) {
 
 async function getSecurityStateSafe() {
     try {
-        const data = await window.aurivo?.webSecurity?.getSecurityState?.();
+        const data = await window.ardali?.webSecurity?.getSecurityState?.();
         return {
             vpnDetected: !!data?.vpnDetected,
             vpnInterfaces: Array.isArray(data?.vpnInterfaces) ? data.vpnInterfaces : []
@@ -15768,7 +15820,7 @@ async function refreshAdblockStats(showToast = false) {
     const inWeb = state.currentPage === 'web' || state.currentPanel === 'web' || state.activeMedia === 'web';
     const key = getActiveAdblockCounterKey();
     try {
-        const stats = await window.aurivo?.adblock?.getStats?.();
+        const stats = await window.ardali?.adblock?.getStats?.();
         const absoluteBlocked = Number(stats?.blocked ?? stats?.totalBlocked ?? 0) || 0;
         adblockRuntime.lastAbsoluteBlocked = absoluteBlocked;
 
@@ -15805,7 +15857,7 @@ async function refreshAdblockStats(showToast = false) {
 
 async function openAdblockDashboardPanel() {
     try {
-        const opened = await window.aurivo?.adblock?.openWindow?.();
+        const opened = await window.ardali?.adblock?.openWindow?.();
         if (opened) return true;
     } catch (e) {
         console.warn('[ADBLOCK] open window error:', e?.message || e);
@@ -15887,13 +15939,13 @@ function updateSecurityUI() {
 }
 
 function isSecuritySettingsVisible() {
-    return !!window.AurivoSecuritySettings?.isVisible?.({
+    return !!window.ArDaliSecuritySettings?.isVisible?.({
         settingsPage: elements.settingsPage
     });
 }
 
 async function updateSecurityUIAsync() {
-    return window.AurivoSecuritySettings?.updateUI?.({
+    return window.ArDaliSecuritySettings?.updateUI?.({
         elements,
         getUrl: getWebViewUrlSafe,
         parseHttpUrl,
@@ -15915,7 +15967,7 @@ async function ensureWebIsolatedSessionInitialized(reason = 'web-entry') {
     }
     if (webIsolatedSessionPrepared) return true;
     try {
-        const ok = await window.aurivo?.webSecurity?.clearData?.({ all: true });
+        const ok = await window.ardali?.webSecurity?.clearData?.({ all: true });
         if (!ok) return false;
         webIsolatedSessionPrepared = true;
         safeNotify(
@@ -15990,7 +16042,7 @@ function setupSecurityUI() {
         elements.securityCopyUrlBtn.addEventListener('click', async () => {
             const url = getWebViewUrlSafe();
             try {
-                window.aurivo?.clipboard?.setText?.(url);
+                window.ardali?.clipboard?.setText?.(url);
                 safeNotify(uiT('securityPage.notify.urlCopied', 'URL copied.'), 'success');
             } catch (e) {
                 safeNotify(uiT('securityPage.notify.urlCopyFailed', "Couldn't copy URL: {error}", { error: e?.message || e }), 'error');
@@ -16006,7 +16058,7 @@ function setupSecurityUI() {
                 return;
             }
             try {
-                const ok = await window.aurivo?.webSecurity?.openExternal?.(url);
+                const ok = await window.ardali?.webSecurity?.openExternal?.(url);
                 if (!ok) safeNotify(uiT('securityPage.notify.openInBrowserFailed', "Couldn't open in browser."), 'error');
             } catch (e) {
                 safeNotify(uiT('securityPage.notify.openInBrowserError', "Couldn't open in browser: {error}", { error: e?.message || e }), 'error');
@@ -16016,7 +16068,7 @@ function setupSecurityUI() {
 
     const clear = async (opts, okMsg) => {
         try {
-            const ok = await window.aurivo?.webSecurity?.clearData?.(opts);
+            const ok = await window.ardali?.webSecurity?.clearData?.(opts);
             if (!ok) {
                 safeNotify(uiT('securityPage.notify.clearFailed', 'Clearing failed.'), 'error');
                 return;
@@ -16058,14 +16110,14 @@ function setupSecurityUI() {
     if (elements.securityExportCookiesBtn) {
         elements.securityExportCookiesBtn.addEventListener('click', async () => {
             try {
-                const saveResult = await window.aurivo?.saveFile?.({
+                const saveResult = await window.ardali?.saveFile?.({
                     title: uiT('securityPage.buttons.exportCookies', 'Çerezleri dışa aktar'),
-                    defaultPath: `aurivo-web-cookies-${Date.now()}.json`,
+                    defaultPath: `ardali-web-cookies-${Date.now()}.json`,
                     filters: [{ name: 'JSON', extensions: ['json'] }]
                 });
                 if (!saveResult?.path) return;
 
-                const result = await window.aurivo?.webSecurity?.exportCookies?.(saveResult.path);
+                const result = await window.ardali?.webSecurity?.exportCookies?.(saveResult.path);
                 if (!result?.ok) {
                     safeNotify(
                         uiT('securityPage.notify.cookiesExportFailed', 'Çerez dışa aktarımı başarısız: {error}', { error: result?.error || 'unknown' }),
@@ -16089,7 +16141,7 @@ function setupSecurityUI() {
     if (elements.securityImportCookiesBtn) {
         elements.securityImportCookiesBtn.addEventListener('click', async () => {
             try {
-                const files = await window.aurivo?.dialog?.openFiles?.({
+                const files = await window.ardali?.dialog?.openFiles?.({
                     title: uiT('securityPage.buttons.importCookies', 'Çerezleri içe aktar'),
                     filters: [
                         { name: 'JSON', extensions: ['json'] },
@@ -16099,7 +16151,7 @@ function setupSecurityUI() {
                 const first = Array.isArray(files) ? files[0] : null;
                 if (!first?.path) return;
 
-                const result = await window.aurivo?.webSecurity?.importCookies?.(first.path);
+                const result = await window.ardali?.webSecurity?.importCookies?.(first.path);
                 if (!result?.ok) {
                     safeNotify(
                         uiT('securityPage.notify.cookiesImportFailed', 'Çerez içe aktarımı başarısız: {error}', { error: result?.error || 'unknown' }),
@@ -16185,13 +16237,13 @@ function executeMediaControlAction(action) {
 }
 
 function setupSystemTrayControl() {
-    if (!window.aurivo || !window.aurivo.onMediaControl) {
+    if (!window.ardali || !window.ardali.onMediaControl) {
         console.warn('System tray API yok');
         return;
     }
 
     // Ana süreçten gelen medya kontrol komutlarını dinle
-    window.aurivo.onMediaControl((action) => {
+    window.ardali.onMediaControl((action) => {
         console.log('System tray media control:', action);
         if (handleVideoStudioGlobalShortcut(action)) {
             updateTrayState();
@@ -16204,17 +16256,17 @@ function setupSystemTrayControl() {
     });
 
     // MPRIS seek olayı (ortam oynatıcıdan süre çubuğu sürükleme)
-    if (window.aurivo.onMPRISSeek) {
-        window.aurivo.onMPRISSeek(async (offsetMicroseconds) => {
+    if (window.ardali.onMPRISSeek) {
+        window.ardali.onMPRISSeek(async (offsetMicroseconds) => {
             console.log('MPRIS seek offset (relative):', offsetMicroseconds);
             const offsetSeconds = offsetMicroseconds / 1000000;
 
             // Mevcut pozisyonu al ve offset ekle (yalnızca ses sekmesinde)
-            if (state.activeMedia === 'audio' && useNativeAudio && window.aurivo?.audio) {
+            if (state.activeMedia === 'audio' && useNativeAudio && window.ardali?.audio) {
                 try {
-                    const currentPos = await window.aurivo.audio.getPosition(); // ms
+                    const currentPos = await window.ardali.audio.getPosition(); // ms
                     const newPos = currentPos + (offsetSeconds * 1000); // ms
-                    await window.aurivo.audio.seek(Math.max(0, newPos));
+                    await window.ardali.audio.seek(Math.max(0, newPos));
                     console.log('Seeked to:', newPos / 1000, 'seconds');
                 } catch (e) {
                     console.error('Seek error:', e);
@@ -16226,14 +16278,14 @@ function setupSystemTrayControl() {
     }
 
     // MPRIS position olayı (ortam oynatıcıdan pozisyon değişikliği - MUTLAK pozisyon)
-    if (window.aurivo.onMPRISPosition) {
-        window.aurivo.onMPRISPosition(async (positionMicroseconds) => {
+    if (window.ardali.onMPRISPosition) {
+        window.ardali.onMPRISPosition(async (positionMicroseconds) => {
             const positionSeconds = positionMicroseconds / 1000000;
             console.log('MPRIS SetPosition (absolute):', positionSeconds, 'seconds');
 
-            if (state.activeMedia === 'audio' && useNativeAudio && window.aurivo?.audio) {
+            if (state.activeMedia === 'audio' && useNativeAudio && window.ardali?.audio) {
                 try {
-                    await window.aurivo.audio.seek(positionSeconds * 1000); // saniye -> milisaniye
+                    await window.ardali.audio.seek(positionSeconds * 1000); // saniye -> milisaniye
                     console.log('Position set to:', positionSeconds, 'seconds');
                 } catch (e) {
                     console.error('SetPosition error:', e);
@@ -16262,12 +16314,12 @@ function setupSystemTrayControl() {
 
 // Sistem tepsisine güncel oynatma durumu gönder
 function updateTrayState() {
-    if (!window.aurivo || !window.aurivo.updateTrayState) return;
+    if (!window.ardali || !window.ardali.updateTrayState) return;
 
     let trackName = uiT('nowPlaying.none', 'No Track');
     if (state.activeMedia === 'video') {
         trackName = state.currentVideoPath
-            ? (window.aurivo?.path?.basename?.(state.currentVideoPath) || String(state.currentVideoPath).split('/').pop() || 'Video')
+            ? (window.ardali?.path?.basename?.(state.currentVideoPath) || String(state.currentVideoPath).split('/').pop() || 'Video')
             : 'Video';
     } else if (state.activeMedia === 'web') {
         trackName = state.webTitle || state.webPendingTitle || elements.nowPlayingLabel?.textContent?.replace(`${uiT('nowPlaying.prefix', 'Now Playing')}: `, '') || 'Web';
@@ -16276,7 +16328,7 @@ function updateTrayState() {
         trackName = currentTrack ? (currentTrack.title || currentTrack.name || uiT('nowPlaying.unknownTrack', 'Unknown Track')) : uiT('nowPlaying.none', 'No Track');
     }
 
-    window.aurivo.updateTrayState({
+    window.ardali.updateTrayState({
         isPlaying: state.isPlaying,
         isMuted: state.isMuted,
         stopAfterCurrent: state.stopAfterCurrent,
@@ -16322,6 +16374,7 @@ async function handleWebNavigation(event) {
     if (state.activeMedia === 'web') {
         resetWebDaliAttachMetrics('web-navigation');
         syncActivePlatformButtonByUrl(currentUrl);
+        persistWebNavigationState(currentUrl);
         recordYouTubeNavigation(currentUrl);
         const fallbackCover = getWebCoverFallbackByUrl(currentUrl);
         if (fallbackCover) {
@@ -16355,7 +16408,7 @@ async function handleWebNavigation(event) {
 
 // MPRIS'e metadata gönder (Linux ortam oynatıcısı)
 async function updateMPRISMetadata() {
-    if (!window.aurivo || !window.aurivo.updateMPRISMetadata) return;
+    if (!window.ardali || !window.ardali.updateMPRISMetadata) return;
 
     // Süre ve pozisyon al
     let duration = 0;
@@ -16376,7 +16429,7 @@ async function updateMPRISMetadata() {
             position = video.currentTime || 0; // saniye
 
             // Video dosya adından başlık çıkar
-            const fileName = window.aurivo?.path?.basename?.(state.currentVideoPath || '') || video.src.split('/').pop().split('#')[0].split('?')[0];
+            const fileName = window.ardali?.path?.basename?.(state.currentVideoPath || '') || video.src.split('/').pop().split('#')[0].split('?')[0];
             title = decodeURIComponent(String(fileName || '')).replace(/\.[^/.]+$/, '') || 'Video';
             artist = 'Video';
             // DÜZELTME: DBus objectPath için '-' gibi karakterler sorun çıkarabilir; güvenli parçaId üret.
@@ -16404,11 +16457,11 @@ async function updateMPRISMetadata() {
             }
         }
 
-        if (useNativeAudio && window.aurivo?.audio) {
+        if (useNativeAudio && window.ardali?.audio) {
             try {
                 // getDuration saniye döndürür, getPosition milisaniye
-                duration = await window.aurivo.audio.getDuration(); // saniye
-                position = (await window.aurivo.audio.getPosition()) / 1000; // ms -> saniye
+                duration = await window.ardali.audio.getDuration(); // saniye
+                position = (await window.ardali.audio.getPosition()) / 1000; // ms -> saniye
             } catch (e) {
                 // yoksay
             }
@@ -16421,7 +16474,7 @@ async function updateMPRISMetadata() {
         canGoPrevious = state.playlist.length > 0 && state.currentIndex > 0;
     } else if (state.activeMedia === 'web') {
         title = state.webTitle || state.webPendingTitle || elements.nowPlayingLabel.textContent.replace(`${uiT('nowPlaying.prefix', 'Now Playing')}: `, '') || uiT('web.media', 'Web Media');
-        artist = state.webArtist || 'Aurivo Web';
+        artist = state.webArtist || 'ArDali Web';
         album = state.webAlbum || 'Online';
         trackId = `web_${state.webTrackId}`; // DÜZELTME: Daha güvenli DBus yolu için tire alt çizgiyle değiştirildi
         canGoNext = false;
@@ -16429,7 +16482,7 @@ async function updateMPRISMetadata() {
         canSeek = false;
     }
 
-    window.aurivo.updateMPRISMetadata({
+    window.ardali.updateMPRISMetadata({
         trackId: trackId,
         title: title,
         artist: artist,
@@ -16445,6 +16498,36 @@ async function updateMPRISMetadata() {
 }
 
 // Web/YouTube senkronizasyon işleyicisi
+function getCurrentWebPulseContext() {
+    const title = String(state.webTitle || state.webPendingTitle || '').trim();
+    const artist = String(state.webArtist || '').trim();
+    if (!title && !artist) return null;
+    return {
+        title,
+        artist,
+        album: String(state.webAlbum || '').trim(),
+        artwork: String(state.currentCover || '').trim(),
+        sourceUrl: String(state.webSourceUrl || getWebViewUrlSafe() || '').trim(),
+        platform: String(state.currentWebPlatform || '').trim().toLowerCase() || 'web'
+    };
+}
+
+function publishWebPulseContext() {
+    const context = getCurrentWebPulseContext();
+    if (!context || !window.ardali?.pulse?.setContextMetadata) return;
+    const key = `${context.platform}|${context.sourceUrl}|${context.artist}|${context.title}`;
+    const now = Date.now();
+    if (
+        publishWebPulseContext.lastKey === key &&
+        (now - Number(publishWebPulseContext.lastAt || 0)) < 10000
+    ) {
+        return;
+    }
+    publishWebPulseContext.lastKey = key;
+    publishWebPulseContext.lastAt = now;
+    Promise.resolve(window.ardali.pulse.setContextMetadata(context)).catch(() => { });
+}
+
 function handleWebSync(data) {
     if (state.activeMedia !== 'web') return;
     const syncEligible = data?.syncEligible !== false;
@@ -16458,6 +16541,7 @@ function handleWebSync(data) {
             }
             updateTrayState();
             updateMPRISMetadata();
+            publishWebPulseContext();
         }
         return;
     }
@@ -16484,6 +16568,7 @@ function handleWebSync(data) {
 
         updateTrayState();
         updateMPRISMetadata();
+        publishWebPulseContext();
         return;
     }
 
@@ -16539,7 +16624,7 @@ function pushAppVolumeToWeb() {
             const volPct = ${vol};
             const wantMuted = ${muted ? 'true' : 'false'};
             const targetLinear = ${target};
-            const root = window.__AURIVO_DALI_WEB__;
+            const root = window.__ARDALI_DALI_WEB__;
             const hasRuntimeMaster = !!(root && typeof root.setRuntimeMasterVolume === 'function');
 
             // YouTube player API varsa klasik yol:
@@ -16703,7 +16788,7 @@ function handleTreeItemDragStart(e) {
         });
     });
 
-    e.dataTransfer.setData('text/aurivo-files', JSON.stringify(filePaths));
+    e.dataTransfer.setData('text/ardali-files', JSON.stringify(filePaths));
     e.dataTransfer.effectAllowed = 'copy';
 
     // Sürükleme görselini ayarla
@@ -16737,7 +16822,7 @@ function preventDefaults(e) {
 function isInternalPlaylistReorderEvent(e) {
     try {
         const types = Array.from(e?.dataTransfer?.types || []);
-        if (types.includes('text/aurivo-reorder')) return true;
+        if (types.includes('text/ardali-reorder')) return true;
     } catch {
         // yoksay
     }
@@ -16995,7 +17080,7 @@ function exitFullscreenSafe() {
 
 async function syncWindowFullscreenState() {
     try {
-        const api = window.aurivo?.electronAPI;
+        const api = window.ardali?.electronAPI;
         if (api && typeof api.isFullscreen === 'function') {
             fsWindowFullscreenActive = !!(await api.isFullscreen());
         }
@@ -17007,7 +17092,7 @@ async function syncWindowFullscreenState() {
 
 async function setWindowFullscreenSafe(enabled) {
     try {
-        const api = window.aurivo?.electronAPI;
+        const api = window.ardali?.electronAPI;
         if (api && typeof api.setFullscreen === 'function') {
             fsWindowFullscreenActive = !!(await api.setFullscreen(!!enabled));
             return true;
@@ -17020,7 +17105,7 @@ async function setWindowFullscreenSafe(enabled) {
 
 async function toggleWindowFullscreenSafe() {
     try {
-        const api = window.aurivo?.electronAPI;
+        const api = window.ardali?.electronAPI;
         if (api && typeof api.toggleFullscreen === 'function') {
             fsWindowFullscreenActive = !!(await api.toggleFullscreen());
             return true;
@@ -17033,7 +17118,7 @@ async function toggleWindowFullscreenSafe() {
 
 function ensureWindowFullscreenBridge() {
     if (fsWindowFullscreenHooked) return;
-    const api = window.aurivo?.electronAPI;
+    const api = window.ardali?.electronAPI;
     if (!api || typeof api.onFullscreenChanged !== 'function') return;
 
     fsWindowFullscreenUnsubscribe = api.onFullscreenChanged((isFullscreen) => {
@@ -17192,8 +17277,8 @@ function isVideoSurfaceTarget(target) {
 }
 
 function handleVideoSurfaceDoubleClick(e) {
-    if (e?.__aurivoVideoFsHandled) return;
-    if (e) e.__aurivoVideoFsHandled = true;
+    if (e?.__ardaliVideoFsHandled) return;
+    if (e) e.__ardaliVideoFsHandled = true;
     const target = e?.target;
     if (!target || !(target instanceof Element)) {
         toggleVideoFullscreen();
@@ -17314,7 +17399,7 @@ function refreshLanguageSensitiveLibraryUi() {
     } catch {}
 }
 
-window.addEventListener('aurivo:languageChanged', () => {
+window.addEventListener('ardali:languageChanged', () => {
     refreshLanguageSensitiveLibraryUi();
 });
 
@@ -18562,7 +18647,7 @@ function setMediaTextTracksVisibility(mediaEl, enabled) {
 function clearAutoSubtitleTrack(mediaEl) {
     if (!mediaEl) return;
     try {
-        const autoTracks = mediaEl.querySelectorAll?.('track[data-aurivo-auto-subtitle="1"]');
+        const autoTracks = mediaEl.querySelectorAll?.('track[data-ardali-auto-subtitle="1"]');
         if (autoTracks?.length) {
             autoTracks.forEach((trackEl) => trackEl.remove());
         }
@@ -18611,10 +18696,10 @@ async function findSiblingSubtitlePath(mediaPath) {
     if (!base) return '';
 
     const directCandidates = [`${base}.vtt`, `${base}.VTT`];
-    if (window.aurivo?.fileExists) {
+    if (window.ardali?.fileExists) {
         for (const candidate of directCandidates) {
             try {
-                const exists = await window.aurivo.fileExists(candidate);
+                const exists = await window.ardali.fileExists(candidate);
                 if (exists) return candidate;
             } catch {
                 // yoksay
@@ -18622,11 +18707,11 @@ async function findSiblingSubtitlePath(mediaPath) {
         }
     }
 
-    if (!window.aurivo?.path?.dirname || !window.aurivo?.readDirectory) return '';
+    if (!window.ardali?.path?.dirname || !window.ardali?.readDirectory) return '';
     try {
-        const dir = window.aurivo.path.dirname(mediaPath);
-        const baseName = getMediaPathWithoutExt(window.aurivo.path.basename(mediaPath)).toLowerCase();
-        const entries = await window.aurivo.readDirectory(dir);
+        const dir = window.ardali.path.dirname(mediaPath);
+        const baseName = getMediaPathWithoutExt(window.ardali.path.basename(mediaPath)).toLowerCase();
+        const entries = await window.ardali.readDirectory(dir);
         if (!Array.isArray(entries)) return '';
         const hit = entries.find((entry) => {
             if (!entry?.isFile || !entry?.name) return false;
@@ -18663,7 +18748,7 @@ async function applyAutoSubtitleForMedia(mediaEl, mediaPath) {
     trackEl.srclang = 'und';
     trackEl.src = toLocalFileUrl(subtitlePath);
     trackEl.default = isFsSubtitleEnabled();
-    trackEl.dataset.aurivoAutoSubtitle = '1';
+    trackEl.dataset.ardaliAutoSubtitle = '1';
     mediaEl.appendChild(trackEl);
 
     subtitleRuntime.currentSubtitlePath = subtitlePath;
@@ -18792,7 +18877,7 @@ function isWebUiForceMotionEnabled() {
 
 function isWebPlatformReducedMotion() {
     if (isWebUiForceMotionEnabled()) return false;
-    if (document.body.classList.contains('aurivo-reduced-motion')) return true;
+    if (document.body.classList.contains('ardali-reduced-motion')) return true;
     try {
         return !!window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches;
     } catch {
@@ -18993,7 +19078,7 @@ function setWebDrawerCollapsed(collapsed) {
     applyWebUiClasses();
 }
 
-function requestPlatformSwitch(btn) {
+function requestPlatformSwitch(btn, options = {}) {
     if (!btn) return;
     if (!isWebExperienceEnabled()) return;
     cancelStartupLazyWebLoad();
@@ -19012,7 +19097,7 @@ function requestPlatformSwitch(btn) {
     try { document.activeElement?.blur?.(); } catch { }
 
     Promise.resolve(ensureWebIsolatedSessionInitialized('platform-switch'))
-        .then(() => handlePlatformClick(btn))
+        .then(() => handlePlatformClick(btn, options))
         .catch((e) => {
         console.warn('[WEB] platform switch error:', e?.message || e);
     });
@@ -19040,14 +19125,14 @@ function setUtilityRunningState(page, isOpen) {
 
 function setupUtilityWindowIndicators() {
     try {
-        window.aurivo?.pulse?.onWindowState?.((payload) => {
+        window.ardali?.pulse?.onWindowState?.((payload) => {
             setUtilityRunningState('pulse', !!payload?.open);
         });
     } catch {
         // yoksay
     }
 
-    Promise.resolve(window.aurivo?.pulse?.getWindowState?.())
+    Promise.resolve(window.ardali?.pulse?.getWindowState?.())
         .then((payload) => setUtilityRunningState('pulse', !!payload?.open))
         .catch(() => setUtilityRunningState('pulse', false));
 }
@@ -19069,13 +19154,13 @@ function handleSidebarClick(btn) {
     // "Pulse" sekmesi: Dinleme modunu aç/kapat, aktif sekmeyi bozma.
     if (page === 'pulse') {
         const prevActive = document.querySelector('.sidebar-btn[data-page].active');
-        Promise.resolve(window.aurivo?.pulse?.openWindow?.())
+        Promise.resolve(window.ardali?.pulse?.openWindow?.())
             .then(() => {
                 setUtilityRunningState('pulse', true);
             })
             .catch((e) => {
                 setUtilityRunningState('pulse', false);
-                safeNotify(`Aurivo-Pulse penceresi açılamadı: ${e?.message || e}`, 'error', 3200);
+                safeNotify(`ArDali-Pulse penceresi açılamadı: ${e?.message || e}`, 'error', 3200);
             })
             .finally(() => restoreSidebarSelectionAfterUtilityAction(prevActive));
         return;
@@ -19142,6 +19227,7 @@ function handleSidebarClick(btn) {
     applyGalleryUiClasses();
     if (page === 'web') {
         primeWebDaliOnWebTabActivation('sidebar-web-tab');
+        scheduleStartupLazyWebLoad();
     }
     persistCurrentMainSection();
 
@@ -19216,10 +19302,10 @@ function stopAudio() {
     console.log('stopAudio çağrıldı, useNativeAudio:', useNativeAudio);
 
     // C++ Audio Engine durdur - HER ZAMAN dene (useNativeAudio değerine bakılmaksızın)
-    if (window.aurivo && window.aurivo.audio) {
+    if (window.ardali && window.ardali.audio) {
         console.log('C++ Audio Engine durduruluyor...');
         try {
-            window.aurivo.audio.stop();
+            window.ardali.audio.stop();
             console.log('C++ Audio Engine durduruldu');
         } catch (e) {
             console.error('C++ stop hatası:', e);
@@ -19268,8 +19354,8 @@ function stopAudioWithPlaybackFade() {
     }
 
     const fadeMs = Math.max(80, Math.min(8000, Number(state.settings?.playback?.crossfadeMs) || 2000));
-    if (useNativeAudio && window.aurivo?.audio?.fadeVolumeTo) {
-        Promise.resolve(window.aurivo.audio.fadeVolumeTo(0, fadeMs))
+    if (useNativeAudio && window.ardali?.audio?.fadeVolumeTo) {
+        Promise.resolve(window.ardali.audio.fadeVolumeTo(0, fadeMs))
             .catch((e) => {
                 console.warn('[STOP] Native fade stop fallback:', e);
             })
@@ -19393,7 +19479,7 @@ function switchPage(pageName) {
     updateMusicViewQuickControlUi();
 }
 
-async function handlePlatformClick(btn) {
+async function handlePlatformClick(btn, options = {}) {
     if (!isWebExperienceEnabled()) return;
     webPlatformRuntime.switching = true;
     try {
@@ -19458,16 +19544,19 @@ async function handlePlatformClick(btn) {
         // Web sayfası aktif olduktan sonra URL yükle (race condition azaltır)
         if (elements.webView) {
             const requestedUrl = parsed.toString();
-            const nextUrl = resolveWebPlatformPrimaryUrl(platform, requestedUrl);
+            const restoredUrl = options.restoreLastUrl ? getRestorableWebUrlForPlatform(platform) : '';
+            const nextUrl = restoredUrl || resolveWebPlatformPrimaryUrl(platform, requestedUrl);
             try {
                 if (webPlatformRuntime.switchTimer) {
                     clearTimeout(webPlatformRuntime.switchTimer);
                     webPlatformRuntime.switchTimer = null;
                 }
                 safeNavigateWebView(nextUrl);
+                persistWebNavigationState(nextUrl, platform);
             } catch (e) {
                 console.warn('WebView URL yükleme hatası:', e?.message || e);
                 safeNavigateWebView(nextUrl);
+                persistWebNavigationState(nextUrl, platform);
             }
             scheduleApplyWebDaliEngineBurst('platform-switch-post-navigate', [40, 180, 420, 900, 1800, 3000]);
         }
@@ -19796,7 +19885,7 @@ async function initializeFileTree() {
         if (Array.isArray(state.imageFiles) && state.imageFiles.length > 0) {
             state.imageFiles = sortImageLibraryItems(state.imageFiles);
             state.imageFiles.forEach((file) => {
-                const label = String(file?.name || window.aurivo?.path?.basename?.(file?.path || '') || 'Gorsel');
+                const label = String(file?.name || window.ardali?.path?.basename?.(file?.path || '') || 'Gorsel');
                 const item = createTreeItem(label, String(file?.path || ''), false, '🖼️');
                 elements.fileTree.appendChild(item);
             });
@@ -19868,7 +19957,7 @@ async function initializeFileTree() {
     }
     if (!resetFileTreeSurface(renderToken)) return;
     savedFolders.forEach((folder) => {
-        const label = folder?.name || window.aurivo?.path?.basename?.(folder.path) || 'Klasör';
+        const label = folder?.name || window.ardali?.path?.basename?.(folder.path) || 'Klasör';
         const item = createTreeItem(label, folder.path, true, '📁');
         item.classList.add('user-folder');
         item.dataset.userFolder = 'true';
@@ -19898,7 +19987,7 @@ function updateLibraryAddButtonUi() {
     const isImageMode = state.mediaFilter === 'image';
     const performance = getLibraryPerformanceState();
     const currentFolderLabel = inAudioFolder
-        ? (window.aurivo?.path?.basename?.(state.currentPath) || String(state.currentPath).split('/').filter(Boolean).pop() || uiT('libraryActions.currentFolderFallback', 'Açık klasör'))
+        ? (window.ardali?.path?.basename?.(state.currentPath) || String(state.currentPath).split('/').filter(Boolean).pop() || uiT('libraryActions.currentFolderFallback', 'Açık klasör'))
         : uiT('libraryActions.libraryRoot', 'Kök kütüphane');
     const scanSubfoldersLabel = uiT('settings.library.performance.scanSubfolders', 'Alt klasörleri tara');
     const scanSubfoldersState = performance.scanSubfolders
@@ -19985,7 +20074,7 @@ function buildUnifiedAudioLibraryIndex(savedFolders = loadSavedFolders('audio'))
             const artist = String(cached?.artist || item.artist || '').trim();
             return {
                 path: item.path,
-                name: item.name || window.aurivo?.path?.basename?.(item.path) || 'Track',
+                name: item.name || window.ardali?.path?.basename?.(item.path) || 'Track',
                 title,
                 artist
             };
@@ -20002,7 +20091,7 @@ function buildUnifiedAudioLibraryIndex(savedFolders = loadSavedFolders('audio'))
             return {
                 path: item.path,
                 normalizedPath,
-                name: item.name || window.aurivo?.path?.basename?.(item.path) || 'Track',
+                name: item.name || window.ardali?.path?.basename?.(item.path) || 'Track',
                 title,
                 artist,
                 source: inSavedFolder ? 'saved-folder' : 'playlist'
@@ -20052,7 +20141,7 @@ function getLibraryTrackDisplayInfo(filePath = '') {
     const normalizedPath = normalizeLibraryPath(filePath);
     const playlistHit = (state.playlist || []).find((item) => normalizeLibraryPath(item?.path) === normalizedPath);
     const cached = getCachedMetadataForPath(filePath);
-    const title = String(cached?.title || playlistHit?.title || playlistHit?.name || window.aurivo?.path?.basename?.(filePath) || '').trim();
+    const title = String(cached?.title || playlistHit?.title || playlistHit?.name || window.ardali?.path?.basename?.(filePath) || '').trim();
     const artist = String(cached?.artist || playlistHit?.artist || '').trim();
     return {
         title: title || uiT('nowPlaying.unknownTrack', 'Bilinmeyen Parça'),
@@ -20087,7 +20176,7 @@ function getLibraryAlbumSourceTracks(savedFolders = loadSavedFolders('audio')) {
         if (!normalizedPath || !isAudioFile(normalizedPath)) return;
         const previous = sourceMap.get(normalizedPath) || {
             path: normalizedPath,
-            name: window.aurivo?.path?.basename?.(normalizedPath) || normalizedPath.split(/[\\/]/).pop() || 'Track',
+            name: window.ardali?.path?.basename?.(normalizedPath) || normalizedPath.split(/[\\/]/).pop() || 'Track',
             title: '',
             artist: '',
             album: ''
@@ -20103,7 +20192,7 @@ function getLibraryAlbumSourceTracks(savedFolders = loadSavedFolders('audio')) {
         if (!item?.path || !isAudioFile(item.path)) return;
         const cached = getCachedMetadataForPath(item.path);
         upsertTrack(item.path, {
-            name: item.name || window.aurivo?.path?.basename?.(item.path) || String(item.path).split(/[\\/]/).pop() || 'Track',
+            name: item.name || window.ardali?.path?.basename?.(item.path) || String(item.path).split(/[\\/]/).pop() || 'Track',
             title: String(cached?.title || item?.title || item?.name || '').trim(),
             artist: String(cached?.artist || item?.artist || '').trim(),
             album: String(cached?.album || item?.album || '').trim()
@@ -20117,7 +20206,7 @@ function getLibraryAlbumSourceTracks(savedFolders = loadSavedFolders('audio')) {
             if (!path || !isPathInsideLibraryRoots(path, roots)) return;
             const safeMeta = meta && typeof meta === 'object' ? meta : {};
             upsertTrack(path, {
-                name: window.aurivo?.path?.basename?.(path) || String(path).split(/[\\/]/).pop() || 'Track',
+                name: window.ardali?.path?.basename?.(path) || String(path).split(/[\\/]/).pop() || 'Track',
                 title: String(safeMeta.title || '').trim(),
                 artist: String(safeMeta.artist || '').trim(),
                 album: String(safeMeta.album || '').trim()
@@ -20179,7 +20268,7 @@ function focusAlbumInPlaylist(albumLabel, options = {}) {
         const hit = buckets.find((bucket) => normalizeAlbumLabel(bucket.album) === normalizedAlbum);
         const fallbackPath = String(hit?.samplePath || '').trim();
         if (!fallbackPath) return false;
-        const fallbackName = String(hit?.sampleName || '').trim() || (window.aurivo?.path?.basename?.(fallbackPath) || fallbackPath.split(/[\\/]/).pop() || 'Track');
+        const fallbackName = String(hit?.sampleName || '').trim() || (window.ardali?.path?.basename?.(fallbackPath) || fallbackPath.split(/[\\/]/).pop() || 'Track');
         const addResult = addToPlaylist(fallbackPath, fallbackName);
         if (typeof addResult?.index !== 'number' || addResult.index < 0) return false;
         index = addResult.index;
@@ -20210,7 +20299,7 @@ function applyLibraryRootAlbumCover(cardElement, coverData = null) {
         return;
     }
 
-    img.src = 'icons/aurivo_256.png';
+    img.src = 'icons/ardali_256.png';
     img.classList.add('default-cover');
     if (fallback) fallback.style.display = '';
 }
@@ -20269,7 +20358,7 @@ function renderLibraryRootAlbumSection(parent, renderToken = fileTreeRenderGener
         }
         card.innerHTML = `
             <span class="library-root-album-cover">
-                <img class="library-root-album-cover-img default-cover" src="icons/aurivo_256.png" alt="" loading="lazy" decoding="async">
+                <img class="library-root-album-cover-img default-cover" src="icons/ardali_256.png" alt="" loading="lazy" decoding="async">
                 <span class="library-root-album-cover-fallback">💿</span>
             </span>
             <span class="library-root-album-text">
@@ -20317,7 +20406,7 @@ function renderLibraryRootTrackCard(track, badgeLabel = '') {
     item.addEventListener('click', async () => {
         const path = String(track?.path || '').trim();
         if (!path) return;
-        const fileName = window.aurivo?.path?.basename?.(path) || path.split(/[\\/]/).pop() || 'Track';
+        const fileName = window.ardali?.path?.basename?.(path) || path.split(/[\\/]/).pop() || 'Track';
         const { index } = addToPlaylist(path, fileName);
         if (typeof index === 'number' && index >= 0) {
             await playIndex(index);
@@ -20393,7 +20482,7 @@ function renderUnifiedAudioLibraryRoot(savedFolders = loadSavedFolders('audio'),
             uiT('settings.library.root.savedFolders', 'Kayıtlı klasörler')
         ));
         folders.forEach((folder) => {
-            const label = folder?.name || window.aurivo?.path?.basename?.(folder.path) || 'Klasör';
+            const label = folder?.name || window.ardali?.path?.basename?.(folder.path) || 'Klasör';
             const item = createTreeItem(label, folder.path, true, '📁');
             item.classList.add('user-folder');
             item.dataset.userFolder = 'true';
@@ -20413,7 +20502,7 @@ function getUserFoldersScope() {
 
 function getUserFoldersStorageKey(scope) {
     const s = scope === 'video' ? 'video' : (scope === 'image' ? 'image' : 'audio');
-    return `aurivo_user_folders_${s}`;
+    return `ardali_user_folders_${s}`;
 }
 
 function loadSavedFolders(scope) {
@@ -21064,17 +21153,17 @@ async function resolvePlaylistCardCover(filePath = '') {
     if (cached) return cached;
     if (!canRetryPlaylistCardCover(key)) return null;
 
-    if (!window.aurivo?.getBestAlbumArt && !window.aurivo?.getAlbumArt) return null;
+    if (!window.ardali?.getBestAlbumArt && !window.ardali?.getAlbumArt) return null;
     const inflight = playlistCardCoverInFlight.get(key);
     if (inflight) return await inflight;
 
     const request = (async () => {
         try {
-            let coverData = window.aurivo?.getBestAlbumArt
-                ? await window.aurivo.getBestAlbumArt(key, getCoverPreferenceState())
+            let coverData = window.ardali?.getBestAlbumArt
+                ? await window.ardali.getBestAlbumArt(key, getCoverPreferenceState())
                 : null;
-            if (!coverData && window.aurivo?.getAlbumArt) {
-                coverData = await window.aurivo.getAlbumArt(key);
+            if (!coverData && window.ardali?.getAlbumArt) {
+                coverData = await window.ardali.getAlbumArt(key);
             }
             if (coverData) {
                 writeCachedAlbumArt(key, coverData);
@@ -21385,7 +21474,7 @@ function buildLibraryTransferBundle() {
     return {
         version: 1,
         exportedAt: new Date().toISOString(),
-        app: 'Aurivo Media Player',
+        app: 'ArDali',
         library: {
             audioFolders: dedupeLibraryFolders(librarySettings.audioFolders || []),
             videoFolders: dedupeLibraryFolders(librarySettings.videoFolders || []),
@@ -21419,16 +21508,16 @@ function buildLibraryTransferBundle() {
 
 async function exportLibraryBundle() {
     try {
-        const target = await window.aurivo?.saveFile?.({
+        const target = await window.ardali?.saveFile?.({
             title: uiT('settings.library.transfer.exportTitle', 'Kütüphane paketini dışa aktar'),
-            defaultPath: `aurivo-library-${new Date().toISOString().slice(0, 10)}.json`,
+            defaultPath: `ardali-library-${new Date().toISOString().slice(0, 10)}.json`,
             filters: [
                 { name: 'JSON', extensions: ['json'] }
             ]
         });
         if (!target?.path) return;
 
-        const ok = await window.aurivo?.writeTextFile?.(target.path, JSON.stringify(buildLibraryTransferBundle(), null, 2));
+        const ok = await window.ardali?.writeTextFile?.(target.path, JSON.stringify(buildLibraryTransferBundle(), null, 2));
         if (!ok) throw new Error('write failed');
 
         updateLibraryTransferStatus('exported', { path: target.path });
@@ -21442,7 +21531,7 @@ async function exportLibraryBundle() {
 
 async function importLibraryBundle() {
     try {
-        const files = await window.aurivo?.dialog?.openFiles?.({
+        const files = await window.ardali?.dialog?.openFiles?.({
             title: uiT('settings.library.transfer.importTitle', 'Kütüphane paketini içe aktar'),
             filters: [
                 { name: 'JSON', extensions: ['json'] }
@@ -21450,7 +21539,7 @@ async function importLibraryBundle() {
         });
         if (!files?.length) return;
 
-        const raw = await window.aurivo?.readTextFile?.(files[0].path);
+        const raw = await window.ardali?.readTextFile?.(files[0].path);
         if (!raw) throw new Error('empty file');
 
         const parsed = JSON.parse(raw);
@@ -21622,7 +21711,7 @@ function renderLibraryFolderSettings() {
 
 async function addExcludedFolderFromSettings() {
     try {
-        const result = await window.aurivo.dialog.openFolder({
+        const result = await window.ardali.dialog.openFolder({
             title: uiT('settings.library.exclude.pickTitle', 'Hariç tutulacak klasörü seç'),
             defaultPath: state.specialPaths?.downloads || state.specialPaths?.home || state.specialPaths?.music
         });
@@ -21634,7 +21723,7 @@ async function addExcludedFolderFromSettings() {
         }
         excluded.push({
             path: result.path,
-            name: result.name || window.aurivo?.path?.basename?.(result.path) || 'Klasör'
+            name: result.name || window.ardali?.path?.basename?.(result.path) || 'Klasör'
         });
         saveExcludedLibraryFolders(excluded);
         renderLibraryFolderSettings();
@@ -22223,7 +22312,7 @@ async function cleanupMissingLibraryEntries() {
     let removedCache = 0;
     const cacheEntries = Object.entries(metadataCache);
 
-    const existence = await Promise.all(cacheEntries.map(([filePath]) => window.aurivo?.fileExists?.(filePath)));
+    const existence = await Promise.all(cacheEntries.map(([filePath]) => window.ardali?.fileExists?.(filePath)));
     cacheEntries.forEach(([filePath, value], index) => {
         if (existence[index]) {
             nextCache[filePath] = value;
@@ -22235,7 +22324,7 @@ async function cleanupMissingLibraryEntries() {
     const nextVideoFiles = [];
     let removedVideo = 0;
     if (Array.isArray(state.videoFiles) && state.videoFiles.length) {
-        const videoExistence = await Promise.all(state.videoFiles.map((item) => window.aurivo?.fileExists?.(item.path)));
+        const videoExistence = await Promise.all(state.videoFiles.map((item) => window.ardali?.fileExists?.(item.path)));
         state.videoFiles.forEach((item, index) => {
             if (videoExistence[index]) {
                 nextVideoFiles.push(item);
@@ -22293,12 +22382,12 @@ async function cleanupEmptyLibraryFolderReferences() {
     let removedCount = 0;
 
     for (const folder of audioFolders) {
-        const exists = await window.aurivo?.fileExists?.(folder.path);
+        const exists = await window.ardali?.fileExists?.(folder.path);
         if (!exists) {
             removedCount += 1;
             continue;
         }
-        const stats = await window.aurivo?.library?.getStats?.([folder], {}, excludedFolders, audioExtensions);
+        const stats = await window.ardali?.library?.getStats?.([folder], {}, excludedFolders, audioExtensions);
         if (Number(stats?.totalSongs || 0) <= 0) {
             removedCount += 1;
             continue;
@@ -22310,7 +22399,7 @@ async function cleanupEmptyLibraryFolderReferences() {
         const next = [];
         let removed = 0;
         for (const folder of folders) {
-            const exists = await window.aurivo?.fileExists?.(folder.path);
+            const exists = await window.ardali?.fileExists?.(folder.path);
             if (exists) next.push(folder);
             else removed += 1;
         }
@@ -22420,7 +22509,7 @@ async function refreshLibraryStats(options = {}) {
 
     try {
         libraryStatsRuntime.inFlight = true;
-        const stats = await window.aurivo?.library?.getStatsComposite?.(
+        const stats = await window.ardali?.library?.getStatsComposite?.(
             folders,
             extraFiles,
             getLibraryMetadataCache(),
@@ -22471,7 +22560,7 @@ async function refreshLibraryMetadataCache(options = {}) {
         if (elements.libraryMetadataStatus) {
             elements.libraryMetadataStatus.textContent = uiT('settings.library.metadata.running', 'Metadata taranıyor...');
         }
-        const result = await window.aurivo?.library?.refreshMetadata?.(
+        const result = await window.ardali?.library?.refreshMetadata?.(
             folders,
             options,
             getExcludedLibraryFoldersForScan(),
@@ -22506,7 +22595,7 @@ async function refreshLibraryMetadataCache(options = {}) {
 
 async function addMusicFolderFromSettings() {
     try {
-        const result = await window.aurivo?.dialog?.openFolder?.({
+        const result = await window.ardali?.dialog?.openFolder?.({
             title: uiT('settings.library.folders.pickTitle', 'Medya klasörü seç'),
             defaultPath: state.specialPaths?.music || undefined
         });
@@ -22514,7 +22603,7 @@ async function addMusicFolderFromSettings() {
 
         await addUserFolder(
             result.path,
-            result.name || window.aurivo?.path?.basename?.(result.path) || 'Klasör',
+            result.name || window.ardali?.path?.basename?.(result.path) || 'Klasör',
             'audio'
         );
         safeNotify(uiT('settings.library.notify.folderAdded', 'Medya klasörü eklendi.'), 'success', 1800);
@@ -22539,7 +22628,7 @@ function getMediaKindForPath(filePath) {
 async function addMusicFilesToLibrary() {
     try {
         const previousFilter = state.mediaFilter;
-        const files = await window.aurivo?.dialog?.openFiles?.({
+        const files = await window.ardali?.dialog?.openFiles?.({
             title: uiT('libraryActions.addFiles', 'Dosya Ekle'),
             filters: [
                 { name: uiT('libraryActions.addFiles', 'Dosya Ekle'), extensions: getConfiguredMediaExtensions() },
@@ -22561,7 +22650,7 @@ async function addMusicFilesToLibrary() {
         const derivedVideoPaths = new Set();
 
         for (const file of files) {
-            const parentPath = String(window.aurivo?.path?.dirname?.(file.path) || '').trim();
+            const parentPath = String(window.ardali?.path?.dirname?.(file.path) || '').trim();
             if (!parentPath) continue;
             const mediaKind = getMediaKindForPath(file.path);
             if (mediaKind === 'audio') {
@@ -22569,7 +22658,7 @@ async function addMusicFilesToLibrary() {
                 derivedAudioPaths.add(parentPath);
                 derivedAudioFolders.push({
                     path: parentPath,
-                    name: window.aurivo?.path?.basename?.(parentPath) || parentPath.split(/[\\/]/).filter(Boolean).pop() || 'Klasör'
+                    name: window.ardali?.path?.basename?.(parentPath) || parentPath.split(/[\\/]/).filter(Boolean).pop() || 'Klasör'
                 });
                 continue;
             }
@@ -22578,7 +22667,7 @@ async function addMusicFilesToLibrary() {
                 derivedVideoPaths.add(parentPath);
                 derivedVideoFolders.push({
                     path: parentPath,
-                    name: window.aurivo?.path?.basename?.(parentPath) || parentPath.split(/[\\/]/).filter(Boolean).pop() || 'Klasör'
+                    name: window.ardali?.path?.basename?.(parentPath) || parentPath.split(/[\\/]/).filter(Boolean).pop() || 'Klasör'
                 });
             }
         }
@@ -22651,7 +22740,7 @@ async function addMusicFilesToLibrary() {
 async function addImageFilesToGallery() {
     try {
         state.mediaFilter = 'image';
-        const files = await window.aurivo?.dialog?.openFiles?.({
+        const files = await window.ardali?.dialog?.openFiles?.({
             title: 'Fotoğraf dosyalarını seç',
             filters: [
                 { name: 'Fotoğraf Dosyaları', extensions: DEFAULT_IMAGE_EXTENSIONS },
@@ -22664,7 +22753,7 @@ async function addImageFilesToGallery() {
             safeNotify('Seçilen dosyalar arasında desteklenen fotoğraf bulunamadı.', 'warning', 2200);
             return;
         }
-        const dirPath = String(window.aurivo?.path?.dirname?.(imageFiles[0].path) || '').trim();
+        const dirPath = String(window.ardali?.path?.dirname?.(imageFiles[0].path) || '').trim();
         if (dirPath) {
             await loadDirectory(dirPath, false);
         }
@@ -22681,12 +22770,12 @@ async function addImageFilesToGallery() {
 async function addImageFolderToGallery() {
     try {
         state.mediaFilter = 'image';
-        const result = await window.aurivo?.dialog?.openFolder?.({
+        const result = await window.ardali?.dialog?.openFolder?.({
             title: 'Fotoğraf klasörü seç',
             defaultPath: state.specialPaths?.pictures || state.specialPaths?.home || undefined
         });
         if (!result?.path) return;
-        const folderName = result.name || window.aurivo?.path?.basename?.(result.path) || 'Klasör';
+        const folderName = result.name || window.ardali?.path?.basename?.(result.path) || 'Klasör';
         await addUserFolder(result.path, folderName, 'image');
     } catch (e) {
         safeNotify(`Klasör seçilemedi: ${e?.message || e}`, 'error', 2200);
@@ -22756,7 +22845,7 @@ function showLibraryAddMenu(anchor, scope = 'audio') {
                 onClick: async () => {
                     try {
                         state.mediaFilter = 'video';
-                        const files = await window.aurivo?.dialog?.openFiles?.({
+                        const files = await window.ardali?.dialog?.openFiles?.({
                             title: state.currentPage === 'videoTools'
                                 ? uiT('video.tools.mediaPool.addTitle', 'Düzenleme için medya ekle')
                                 : uiT('libraryActions.openVideo', 'Video Aç'),
@@ -22811,7 +22900,7 @@ function removeMusicFolderFromSettings(path) {
 }
 
 async function pruneMissingManagedFolderReferences(notify = false) {
-    if (!window.aurivo?.fileExists) return 0;
+    if (!window.ardali?.fileExists) return 0;
 
     const removeMissing = async (folders = []) => {
         const next = [];
@@ -22822,7 +22911,7 @@ async function pruneMissingManagedFolderReferences(notify = false) {
                 removed += 1;
                 continue;
             }
-            const exists = await window.aurivo.fileExists(folderPath);
+            const exists = await window.ardali.fileExists(folderPath);
             if (exists) next.push(folder);
             else removed += 1;
         }
@@ -22990,8 +23079,8 @@ function updateLibraryWatchStatus(kind = 'idle', payload = {}) {
 }
 
 async function removeMissingPlaylistEntries() {
-    if (!state.playlist.length || !window.aurivo?.fileExists) return 0;
-    const existence = await Promise.all(state.playlist.map((item) => window.aurivo.fileExists(item.path)));
+    if (!state.playlist.length || !window.ardali?.fileExists) return 0;
+    const existence = await Promise.all(state.playlist.map((item) => window.ardali.fileExists(item.path)));
     let removed = 0;
     const nextPlaylist = [];
     let nextCurrentIndex = state.currentIndex;
@@ -23026,8 +23115,8 @@ async function syncLibraryWatchState() {
     const librarySettings = ensureLibrarySettings();
     const folders = loadSavedFolders('audio');
 
-    if (!libraryWatchUnsubscribe && window.aurivo?.library?.onWatchEvent) {
-        libraryWatchUnsubscribe = window.aurivo.library.onWatchEvent((payload) => {
+    if (!libraryWatchUnsubscribe && window.ardali?.library?.onWatchEvent) {
+        libraryWatchUnsubscribe = window.ardali.library.onWatchEvent((payload) => {
             if (payload?.type === 'error') {
                 updateLibraryWatchStatus('error', payload);
                 return;
@@ -23062,12 +23151,12 @@ async function syncLibraryWatchState() {
     }
 
     if (!librarySettings.watchFolders || !folders.length) {
-        await window.aurivo?.library?.stopWatch?.();
+        await window.ardali?.library?.stopWatch?.();
         updateLibraryWatchStatus(librarySettings.watchFolders ? 'idle' : 'disabled');
         return;
     }
 
-    const result = await window.aurivo?.library?.startWatch?.(folders, getExcludedLibraryFoldersForScan());
+    const result = await window.ardali?.library?.startWatch?.(folders, getExcludedLibraryFoldersForScan());
     if (result?.watching) {
         updateLibraryWatchStatus('watching', result);
     } else if (result?.error) {
@@ -23084,7 +23173,7 @@ async function openFolderDialog() {
         const defaultPath = scope === 'video'
             ? state.specialPaths?.videos
             : (scope === 'image' ? state.specialPaths?.pictures : state.specialPaths?.music);
-        const result = await window.aurivo.dialog.openFolder({
+        const result = await window.ardali.dialog.openFolder({
             title: scope === 'video' ? 'Video klasörü seç' : (scope === 'image' ? 'Fotoğraf klasörü seç' : 'Medya klasörü seç'),
             defaultPath: defaultPath || undefined
         });
@@ -23396,7 +23485,7 @@ function getPlaylistItemYouTubeSearchUrl(index) {
 function copyPlaylistItemYouTubeLink(index) {
     const url = getPlaylistItemYouTubeSearchUrl(index);
     if (!url) return;
-    const ok = !!window.aurivo?.clipboard?.setText?.(url);
+    const ok = !!window.ardali?.clipboard?.setText?.(url);
     safeNotify(
         ok
             ? uiT('playlist.context.notify.youtubeLinkCopied', 'YouTube search link copied.')
@@ -23408,12 +23497,12 @@ function copyPlaylistItemYouTubeLink(index) {
 
 async function openPlaylistItemOnYouTubeInBrowser(index) {
     const url = getPlaylistItemYouTubeSearchUrl(index);
-    if (!url || !window.aurivo?.webSecurity?.openExternal) {
+    if (!url || !window.ardali?.webSecurity?.openExternal) {
         safeNotify(uiT('playlist.context.notify.youtubeBrowserFailed', "Couldn't open YouTube in browser."), 'error', 2200);
         return;
     }
     try {
-        const ok = await window.aurivo.webSecurity.openExternal(url);
+        const ok = await window.ardali.webSecurity.openExternal(url);
         safeNotify(
             ok
                 ? uiT('playlist.context.notify.youtubeBrowserOpened', 'YouTube search opened in browser.')
@@ -23433,7 +23522,7 @@ async function openPlaylistItemOnYouTubeInBrowser(index) {
 function copyPlaylistItemName(index) {
     const item = state.playlist[index];
     if (!item?.name) return;
-    const ok = !!window.aurivo?.clipboard?.setText?.(item.name);
+    const ok = !!window.ardali?.clipboard?.setText?.(item.name);
     safeNotify(
         ok
             ? uiT('playlist.context.notify.nameCopied', 'Track name copied.')
@@ -23446,7 +23535,7 @@ function copyPlaylistItemName(index) {
 function copyPlaylistItemPath(index) {
     const item = state.playlist[index];
     if (!item?.path) return;
-    const ok = !!window.aurivo?.clipboard?.setText?.(item.path);
+    const ok = !!window.ardali?.clipboard?.setText?.(item.path);
     safeNotify(
         ok
             ? uiT('playlist.context.notify.pathCopied', 'File path copied.')
@@ -23458,15 +23547,15 @@ function copyPlaylistItemPath(index) {
 
 async function openPlaylistItemFolder(index) {
     const item = state.playlist[index];
-    const dir = item?.path && window.aurivo?.path?.dirname?.(item.path);
-    const url = dir && window.aurivo?.path?.toFileUrl?.(dir);
-    if (!dir || !url || !window.aurivo?.webSecurity?.openExternal) {
+    const dir = item?.path && window.ardali?.path?.dirname?.(item.path);
+    const url = dir && window.ardali?.path?.toFileUrl?.(dir);
+    if (!dir || !url || !window.ardali?.webSecurity?.openExternal) {
         safeNotify(uiT('playlist.context.notify.folderOpenFailed', "Couldn't open file location."), 'error', 2200);
         return;
     }
 
     try {
-        const ok = await window.aurivo.webSecurity.openExternal(url);
+        const ok = await window.ardali.webSecurity.openExternal(url);
         safeNotify(
             ok
                 ? uiT('playlist.context.notify.folderOpened', 'File location opened.')
@@ -23833,8 +23922,8 @@ function selectFileRange(startItem, endItem) {
 }
 
 async function playMediaFromFolder(filePath, kind = 'audio') {
-    if (!filePath || !window.aurivo) return;
-    const dirPath = window.aurivo.path.dirname(filePath);
+    if (!filePath || !window.ardali) return;
+    const dirPath = window.ardali.path.dirname(filePath);
     const targetIsVideo = kind === 'video';
 
     state.mediaFilter = targetIsVideo ? 'video' : 'audio';
@@ -23842,7 +23931,7 @@ async function playMediaFromFolder(filePath, kind = 'audio') {
 
     if (targetIsVideo) {
         const videoItems = state.videoFiles || [];
-        const picked = videoItems.find(v => v.path === filePath) || { path: filePath, name: window.aurivo.path.basename(filePath) };
+        const picked = videoItems.find(v => v.path === filePath) || { path: filePath, name: window.ardali.path.basename(filePath) };
         if (!videoItems.length) {
             state.videoFiles = [picked];
         }
@@ -23852,7 +23941,7 @@ async function playMediaFromFolder(filePath, kind = 'audio') {
 
     // Müzik: klasördeki tüm ses dosyalarını listeye ekle, çift tıklananı başlat.
     let playIndexTarget = -1;
-    const currentDirItems = await window.aurivo.readDirectory(dirPath);
+    const currentDirItems = await window.ardali.readDirectory(dirPath);
     const audioItems = currentDirItems
         .filter(i => i.isFile && isAudioFile(i.name))
         .sort((a, b) => a.name.localeCompare(b.name, 'tr'));
@@ -23879,7 +23968,7 @@ async function playMediaFromFolder(filePath, kind = 'audio') {
     if (playIndexTarget >= 0) {
         playIndex(playIndexTarget);
     } else {
-        const fileName = window.aurivo.path.basename(filePath);
+        const fileName = window.ardali.path.basename(filePath);
         const { index } = addToPlaylist(filePath, fileName);
         if (index >= 0) playIndex(index);
     }
@@ -23928,8 +24017,8 @@ async function handleTreeItemDoubleClick(path, isDirectory, name = null) {
 }
 
 async function loadDirectory(dirPath, pushHistory = true, renderToken = beginFileTreeRender()) {
-    if (!window.aurivo) {
-        console.error('Aurivo API bulunamadı');
+    if (!window.ardali) {
+        console.error('ArDali API bulunamadı');
         return;
     }
 
@@ -23958,7 +24047,7 @@ async function loadDirectory(dirPath, pushHistory = true, renderToken = beginFil
         }
         persistLibraryStartupState();
 
-        const items = await window.aurivo.readDirectory(dirPath);
+        const items = await window.ardali.readDirectory(dirPath);
         if (!isActiveFileTreeRender(renderToken)) return;
         console.log('Okunan öğeler:', items.length);
 
@@ -24119,7 +24208,7 @@ async function resolveGalleryDisplayImageUrl(pathLike = '', options = {}) {
 
     const task = (async () => {
         try {
-            const resolvedPath = await window.aurivo?.getDisplayImagePath?.(sourcePath, { forceConvert });
+            const resolvedPath = await window.ardali?.getDisplayImagePath?.(sourcePath, { forceConvert });
             const finalPath = String(resolvedPath || '').trim();
             if (finalPath) {
                 const convertedUrl = toLocalFileUrl(finalPath);
@@ -25885,15 +25974,15 @@ async function saveEditedGalleryImageCopy() {
             return;
         }
 
-        const baseNameRaw = String(window.aurivo?.path?.basename?.(srcPath) || 'image').replace(/\.[^.]+$/, '');
+        const baseNameRaw = String(window.ardali?.path?.basename?.(srcPath) || 'image').replace(/\.[^.]+$/, '');
         const defaultName = `${baseNameRaw}-edited.png`;
-        const target = await window.aurivo?.saveFile?.({
+        const target = await window.ardali?.saveFile?.({
             title: uiT('gallery.converter.saveEditedTitle', 'Düzenlenmiş fotoğrafı kaydet'),
             defaultPath: defaultName,
             filters: [{ name: 'PNG', extensions: ['png'] }]
         });
         if (!target?.path) return;
-        const ok = await window.aurivo?.writeBase64File?.(target.path, base64);
+        const ok = await window.ardali?.writeBase64File?.(target.path, base64);
         if (!ok) {
             safeNotify('Dosya kaydedilemedi.', 'error', 2200);
             return;
@@ -25931,15 +26020,15 @@ async function convertCurrentGalleryImageToPngCopy() {
             safeNotify(uiT('gallery.converter.notify.pngDataFailed', 'PNG verisi oluşturulamadı.'), 'error', 2200);
             return;
         }
-        const baseNameRaw = String(window.aurivo?.path?.basename?.(srcPath) || 'image').replace(/\.[^.]+$/, '');
+        const baseNameRaw = String(window.ardali?.path?.basename?.(srcPath) || 'image').replace(/\.[^.]+$/, '');
         const defaultName = `${baseNameRaw}-converted.png`;
-        const target = await window.aurivo?.saveFile?.({
+        const target = await window.ardali?.saveFile?.({
             title: uiT('gallery.converter.pngSaveTitle', 'Fotoğrafı PNG olarak dönüştür'),
             defaultPath: defaultName,
             filters: [{ name: 'PNG', extensions: ['png'] }]
         });
         if (!target?.path) return;
-        const ok = await window.aurivo?.writeBase64File?.(target.path, base64);
+        const ok = await window.ardali?.writeBase64File?.(target.path, base64);
         if (!ok) {
             safeNotify(uiT('gallery.converter.notify.pngSaveFailed', 'PNG dosyası kaydedilemedi.'), 'error', 2200);
             return;
@@ -26088,7 +26177,7 @@ function resetGalleryConverterModalInputs() {
         elements.galleryConverterHeight.value = String(Math.max(1, Math.round(h)));
     }
     if (elements.galleryConverterFileName) {
-        const baseNameRaw = String(window.aurivo?.path?.basename?.(srcPath) || 'image').replace(/\.[^.]+$/, '');
+        const baseNameRaw = String(window.ardali?.path?.basename?.(srcPath) || 'image').replace(/\.[^.]+$/, '');
         elements.galleryConverterFileName.value = `${baseNameRaw}-converted`;
     }
     updateGalleryConverterQualityLabel();
@@ -26113,7 +26202,7 @@ async function openGalleryConverterModal() {
     galleryConverterSourceImage = img;
     resetGalleryConverterModalInputs();
     if (elements.galleryConverterInfoName) {
-        elements.galleryConverterInfoName.textContent = String(window.aurivo?.path?.basename?.(srcPath) || '-');
+        elements.galleryConverterInfoName.textContent = String(window.ardali?.path?.basename?.(srcPath) || '-');
     }
     if (elements.galleryConverterInfoExt) {
         const ext = getPathExtension(srcPath);
@@ -26123,7 +26212,7 @@ async function openGalleryConverterModal() {
         elements.galleryConverterInfoDimensions.textContent = `${galleryConverterSourceWidth} x ${galleryConverterSourceHeight}`;
     }
     if (elements.galleryConverterInfoBytes) {
-        const info = await window.aurivo?.getFileInfo?.(srcPath);
+        const info = await window.ardali?.getFileInfo?.(srcPath);
         const sizeBytes = Number(info?.size || 0);
         elements.galleryConverterInfoBytes.textContent = sizeBytes > 0 ? formatMbLabel(sizeBytes) : '-';
     }
@@ -26331,18 +26420,18 @@ async function convertCurrentGalleryImageWithDialogSettings() {
             return;
         }
 
-        const baseNameRaw = String(window.aurivo?.path?.basename?.(srcPath) || 'image').replace(/\.[^.]+$/, '');
+        const baseNameRaw = String(window.ardali?.path?.basename?.(srcPath) || 'image').replace(/\.[^.]+$/, '');
         const enteredName = String(elements.galleryConverterFileName?.value || '').trim();
         const fallbackName = enteredName || `${baseNameRaw}-converted`;
         const normalizedName = fallbackName.replace(/\.[^.]+$/, '');
         const defaultName = `${normalizedName}.${ext}`;
-        const target = await window.aurivo?.saveFile?.({
+        const target = await window.ardali?.saveFile?.({
             title: uiT('gallery.converter.saveTitle', 'Fotoğrafı dönüştür ve kaydet'),
             defaultPath: defaultName,
             filters: [{ name: ext.toUpperCase(), extensions: [ext] }]
         });
         if (!target?.path) return;
-        const ok = await window.aurivo?.writeBase64File?.(target.path, base64);
+        const ok = await window.ardali?.writeBase64File?.(target.path, base64);
         if (!ok) {
             safeNotify(uiT('gallery.converter.notify.outputSaveFailed', 'Dönüştürülen dosya kaydedilemedi.'), 'error', 2200);
             return;
@@ -26381,12 +26470,12 @@ async function reloadGalleryAfterDiskMutation(preferredPath = '') {
 
 async function renameCurrentGalleryImage() {
     const current = getCurrentGalleryImageItem();
-    if (!current?.path || !window.aurivo?.renameItem) {
+    if (!current?.path || !window.ardali?.renameItem) {
         safeNotify(uiT('gallery.file.notify.notFound', 'Aktif görsel bulunamadı.'), 'warning', 1800);
         return;
     }
 
-    const currentName = String(current.name || window.aurivo?.path?.basename?.(current.path) || '').trim();
+    const currentName = String(current.name || window.ardali?.path?.basename?.(current.path) || '').trim();
     const extMatch = currentName.match(/\.[^./\\]+$/);
     const currentExt = extMatch ? String(extMatch[0]) : '';
     const currentBaseName = currentExt ? currentName.slice(0, -currentExt.length) : currentName;
@@ -26408,7 +26497,7 @@ async function renameCurrentGalleryImage() {
     const nextName = currentExt ? `${nextBase}${currentExt}` : nextBase;
     if (!nextName || nextName === currentName) return;
 
-    const result = await window.aurivo.renameItem(current.path, nextName);
+    const result = await window.ardali.renameItem(current.path, nextName);
     if (!result?.ok || !result?.path) {
         if (result?.error === 'target-exists') {
             safeNotify(uiT('gallery.file.notify.exists', 'Aynı adda bir dosya zaten var.'), 'warning', 2200);
@@ -26420,7 +26509,7 @@ async function renameCurrentGalleryImage() {
 
     const oldPath = String(current.path);
     const renamedPath = String(result.path);
-    const renamedName = String(result.name || window.aurivo?.path?.basename?.(renamedPath) || nextName).trim();
+    const renamedName = String(result.name || window.ardali?.path?.basename?.(renamedPath) || nextName).trim();
     state.imageFiles = sanitizeImageLibraryItems(
         state.imageFiles.map((item) => {
             if (String(item?.path || '').trim() !== oldPath) return item;
@@ -26559,12 +26648,12 @@ function promptForTextInputInline(options = {}) {
 
 async function moveCurrentGalleryImageToTrash() {
     const current = getCurrentGalleryImageItem();
-    if (!current?.path || !window.aurivo?.moveToTrash) {
+    if (!current?.path || !window.ardali?.moveToTrash) {
         safeNotify(uiT('gallery.file.notify.notFound', 'Aktif görsel bulunamadı.'), 'warning', 1800);
         return;
     }
 
-    const approved = await window.aurivo?.dialog?.confirm?.({
+    const approved = await window.ardali?.dialog?.confirm?.({
         title: uiT('gallery.file.trash', 'Çöp Kutusuna Gönder'),
         message: uiT('gallery.file.confirmTrash', 'Bu görsel çöp kutusuna gönderilsin mi?'),
         detail: String(current.name || ''),
@@ -26575,7 +26664,7 @@ async function moveCurrentGalleryImageToTrash() {
 
     const currentIndex = getCurrentGalleryImageIndex();
     const oldPath = String(current.path);
-    const ok = await window.aurivo.moveToTrash(oldPath);
+    const ok = await window.ardali.moveToTrash(oldPath);
     if (!ok) {
         safeNotify(uiT('gallery.file.notify.trashFailed', 'Dosya çöp kutusuna gönderilemedi.'), 'error', 2200);
         return;
@@ -26600,11 +26689,11 @@ async function moveCurrentGalleryImageToTrash() {
 
 async function openCurrentGalleryImageFolder() {
     const current = getCurrentGalleryImageItem();
-    if (!current?.path || !window.aurivo?.openContainingFolder) {
+    if (!current?.path || !window.ardali?.openContainingFolder) {
         safeNotify(uiT('gallery.file.notify.notFound', 'Aktif görsel bulunamadı.'), 'warning', 1800);
         return;
     }
-    const ok = await window.aurivo.openContainingFolder(current.path);
+    const ok = await window.ardali.openContainingFolder(current.path);
     if (!ok) {
         safeNotify(uiT('gallery.file.notify.openFolderFailed', 'Dosya konumu açılamadı.'), 'error', 2200);
     }
@@ -26612,11 +26701,11 @@ async function openCurrentGalleryImageFolder() {
 
 async function showCurrentGalleryImageProperties() {
     const current = getCurrentGalleryImageItem();
-    if (!current?.path || !window.aurivo?.getPathProperties) {
+    if (!current?.path || !window.ardali?.getPathProperties) {
         safeNotify(uiT('gallery.file.notify.notFound', 'Aktif görsel bulunamadı.'), 'warning', 1800);
         return;
     }
-    const info = await window.aurivo.getPathProperties(current.path);
+    const info = await window.ardali.getPathProperties(current.path);
     if (!info) {
         safeNotify(uiT('gallery.file.notify.propertiesFailed', 'Dosya özellikleri okunamadı.'), 'error', 2200);
         return;
@@ -26630,7 +26719,7 @@ async function showCurrentGalleryImageProperties() {
         `${uiT('gallery.file.properties.modified', 'Değiştirilme')}: ${info.modified ? new Date(info.modified).toLocaleString() : '-'}`,
         `${uiT('gallery.file.properties.created', 'Oluşturulma')}: ${info.created ? new Date(info.created).toLocaleString() : '-'}`
     ];
-    await window.aurivo?.dialog?.confirm?.({
+    await window.ardali?.dialog?.confirm?.({
         title: uiT('gallery.file.properties', 'Özellikler'),
         message: String(info.name || current.name || 'image'),
         detail: detailLines.join('\n'),
@@ -26904,7 +26993,7 @@ async function saveGalleryThumbnailRotation(path = '', label = '') {
             return;
         }
 
-        const ok = await window.aurivo?.writeBase64File?.(normalizedPath, base64);
+        const ok = await window.ardali?.writeBase64File?.(normalizedPath, base64);
         if (!ok) {
             safeNotify('Dosya kaydedilemedi.', 'error', 2200);
             return;
@@ -27088,15 +27177,15 @@ async function openFromExternalMediaPaths(paths) {
         if (wasExternalMediaPathHandledRecently(mediaPath)) continue;
 
         try {
-            if (window.aurivo?.fileExists) {
-                const exists = await window.aurivo.fileExists(mediaPath);
+            if (window.ardali?.fileExists) {
+                const exists = await window.ardali.fileExists(mediaPath);
                 if (!exists) continue;
             }
         } catch {
             // yoksay
         }
 
-        const fileName = window.aurivo?.path?.basename?.(mediaPath) || mediaPath;
+        const fileName = window.ardali?.path?.basename?.(mediaPath) || mediaPath;
         if (isVideoFile(fileName)) {
             markExternalMediaPathHandled(mediaPath);
             setActiveSidebarByPage('video');
@@ -27158,7 +27247,7 @@ function updateVideoWorkspaceTitle(videoPath = '') {
     if (!elements.videoPlayerTitle) return;
     const sourcePath = String(videoPath || state.currentVideoPath || '').trim();
     const title = sourcePath
-        ? (window.aurivo?.path?.basename?.(sourcePath) || sourcePath.split(/[\\/]/).pop() || 'Video')
+        ? (window.ardali?.path?.basename?.(sourcePath) || sourcePath.split(/[\\/]/).pop() || 'Video')
         : uiT('video.workspace.title', 'Videolar');
     elements.videoPlayerTitle.textContent = title;
     if (elements.videoMiniTitle) {
@@ -27294,7 +27383,7 @@ async function ensureVideoThumbnailCached(videoPath = '') {
     }
     const task = (async () => {
         try {
-            const thumb = await window.aurivo?.getVideoThumbnail?.(normalizedPath);
+            const thumb = await window.ardali?.getVideoThumbnail?.(normalizedPath);
             const resolved = String(thumb || '').trim();
             if (resolved) {
                 videoThumbnailUrlCache.set(normalizedPath, resolved);
@@ -27467,7 +27556,7 @@ function handleVideoToolProgress(payload = {}) {
 function ensureVideoToolsProgressListener() {
     if (videoToolsProgressUnsubscribe) return;
     try {
-        const unsubscribe = window.aurivo?.videoTools?.onProgress?.(handleVideoToolProgress);
+        const unsubscribe = window.ardali?.videoTools?.onProgress?.(handleVideoToolProgress);
         videoToolsProgressUnsubscribe = typeof unsubscribe === 'function' ? unsubscribe : null;
     } catch {
         videoToolsProgressUnsubscribe = null;
@@ -27949,9 +28038,9 @@ function sanitizeVideoStudioPluginManifest(plugin, index = 0) {
 }
 
 async function loadVideoStudioPlugins({ notify = false } = {}) {
-    if (!window.aurivo?.screenRecording?.listStudioPlugins) return [];
+    if (!window.ardali?.screenRecording?.listStudioPlugins) return [];
     try {
-        const result = await window.aurivo.screenRecording.listStudioPlugins();
+        const result = await window.ardali.screenRecording.listStudioPlugins();
         videoStudioPluginDirs = Array.isArray(result?.pluginDirs) ? result.pluginDirs.map((item) => String(item || '').trim()).filter(Boolean) : [];
         videoStudioPlugins = Array.isArray(result?.plugins)
             ? result.plugins.map(sanitizeVideoStudioPluginManifest).filter(Boolean)
@@ -28063,7 +28152,7 @@ function createVideoStudioSourceTemplate(template = 'basic') {
     }
     if (key === 'gaming') {
         return [
-            text(uiT('video.tools.templates.gamingText', 'Aurivo Live'), { x: 0.04, y: 0.04, width: 0.34, height: 0.11 }),
+            text(uiT('video.tools.templates.gamingText', 'ArDali Live'), { x: 0.04, y: 0.04, width: 0.34, height: 0.11 }),
             camera({ x: 0.04, y: 0.68, width: 0.2, height: 0.24 }),
             ...base
         ];
@@ -28444,7 +28533,7 @@ function loadVideoStudioProfile() {
         videoStudioAudioTrackMode = normalizeVideoStudioAudioTrackMode(profile.audioTrackMode);
         videoStudioRecordOutputMode = profile.recordOutputMode === 'ask' ? 'ask' : 'auto';
         videoStudioRecordOutputFolder = String(profile.recordOutputFolder || '').trim();
-        videoStudioRecordNameTemplate = String(profile.recordNameTemplate || 'aurivo-{date}-{time}').trim() || 'aurivo-{date}-{time}';
+        videoStudioRecordNameTemplate = String(profile.recordNameTemplate || 'ardali-{date}-{time}').trim() || 'ardali-{date}-{time}';
         videoStudioStreamEnabled = !!profile.streamEnabled;
         videoStudioStreamService = normalizeVideoStudioStreamService(profile.streamService);
         videoStudioStreamServer = String(profile.streamServer || '').trim();
@@ -28502,7 +28591,7 @@ function persistVideoStudioOutputSettingsToAppSettings() {
         const bucket = ensureVideoStudioSettingsState();
         bucket.recordOutputMode = videoStudioRecordOutputMode === 'ask' ? 'ask' : 'auto';
         bucket.recordOutputFolder = String(videoStudioRecordOutputFolder || '').trim();
-        bucket.recordNameTemplate = String(videoStudioRecordNameTemplate || 'aurivo-{date}-{time}').trim() || 'aurivo-{date}-{time}';
+        bucket.recordNameTemplate = String(videoStudioRecordNameTemplate || 'ardali-{date}-{time}').trim() || 'ardali-{date}-{time}';
         saveSettings().catch(() => {});
     } catch (error) {
         console.warn('[VIDEO_STUDIO] output settings save failed:', error?.message || error);
@@ -28515,8 +28604,8 @@ function hydrateVideoStudioOutputSettingsFromAppSettings() {
     if (!videoStudioRecordOutputFolder) {
         videoStudioRecordOutputFolder = String(bucket.recordOutputFolder || '').trim();
     }
-    if (!videoStudioRecordNameTemplate || videoStudioRecordNameTemplate === 'aurivo-{date}-{time}') {
-        videoStudioRecordNameTemplate = String(bucket.recordNameTemplate || 'aurivo-{date}-{time}').trim() || 'aurivo-{date}-{time}';
+    if (!videoStudioRecordNameTemplate || videoStudioRecordNameTemplate === 'ardali-{date}-{time}') {
+        videoStudioRecordNameTemplate = String(bucket.recordNameTemplate || 'ardali-{date}-{time}').trim() || 'ardali-{date}-{time}';
     }
     if (!videoStudioRecordOutputMode || videoStudioRecordOutputMode === 'auto') {
         videoStudioRecordOutputMode = bucket.recordOutputMode === 'ask' ? 'ask' : 'auto';
@@ -28528,8 +28617,8 @@ function buildVideoStudioProfileExportBundle() {
     // Yayın anahtarı dışa aktarılan dosyada saklanmasın.
     profile.streamKey = '';
     return {
-        app: 'Aurivo Media Player',
-        type: 'aurivo-video-studio-profile',
+        app: 'ArDali',
+        type: 'ardali-video-studio-profile',
         version: 1,
         exportedAt: new Date().toISOString(),
         profile
@@ -28539,9 +28628,9 @@ function buildVideoStudioProfileExportBundle() {
 async function exportVideoStudioProfile() {
     try {
         const bundle = buildVideoStudioProfileExportBundle();
-        const target = await window.aurivo?.saveFile?.({
+        const target = await window.ardali?.saveFile?.({
             title: uiT('video.tools.profiles.exportTitle', 'Stüdyo profilini dışa aktar'),
-            defaultPath: `aurivo-studio-profile-${new Date().toISOString().slice(0, 10)}.json`,
+            defaultPath: `ardali-studio-profile-${new Date().toISOString().slice(0, 10)}.json`,
             filters: [
                 { name: 'JSON', extensions: ['json'] },
                 { name: uiT('dialog.filters.allFiles', 'Tüm Dosyalar'), extensions: ['*'] }
@@ -28549,7 +28638,7 @@ async function exportVideoStudioProfile() {
         });
         const targetPath = String(target?.path || target || '').trim();
         if (!targetPath) return;
-        const ok = await window.aurivo?.writeTextFile?.(targetPath, JSON.stringify(bundle, null, 2));
+        const ok = await window.ardali?.writeTextFile?.(targetPath, JSON.stringify(bundle, null, 2));
         if (!ok) throw new Error('write-failed');
         addVideoStudioLog(uiT('video.tools.logs.profileExported', 'Profil dışa aktarıldı.'), 'success');
         safeNotify(uiT('video.tools.profiles.exported', 'Stüdyo profili dışa aktarıldı.'), 'success', 2200);
@@ -28560,7 +28649,7 @@ async function exportVideoStudioProfile() {
 
 async function importVideoStudioProfile() {
     try {
-        const files = await window.aurivo?.dialog?.openFiles?.({
+        const files = await window.ardali?.dialog?.openFiles?.({
             title: uiT('video.tools.profiles.importTitle', 'Stüdyo profili içe aktar'),
             filters: [
                 { name: 'JSON', extensions: ['json'] },
@@ -28569,9 +28658,9 @@ async function importVideoStudioProfile() {
         });
         const filePath = String(Array.isArray(files) ? files[0]?.path || '' : '').trim();
         if (!filePath) return;
-        const raw = await window.aurivo?.readTextFile?.(filePath);
+        const raw = await window.ardali?.readTextFile?.(filePath);
         const parsed = JSON.parse(String(raw || ''));
-        const profile = parsed?.type === 'aurivo-video-studio-profile' && parsed?.profile
+        const profile = parsed?.type === 'ardali-video-studio-profile' && parsed?.profile
             ? parsed.profile
             : parsed;
         if (!profile || typeof profile !== 'object') throw new Error('invalid-profile');
@@ -28644,7 +28733,7 @@ function buildVideoStudioRecoveryMarkup() {
     const candidate = getVideoStudioRecoveryCandidate();
     if (!candidate) return '';
     const path = String(candidate.capturePath || candidate.outputPath || '').trim();
-    const name = window.aurivo?.path?.basename?.(path) || path || uiT('video.tools.recovery.unknownFile', 'Bilinmeyen dosya');
+    const name = window.ardali?.path?.basename?.(path) || path || uiT('video.tools.recovery.unknownFile', 'Bilinmeyen dosya');
     const detail = candidate.bytes
         ? uiT('video.tools.recovery.detailWithSize', '{file} - {size}', { file: name, size: formatVideoStudioBytes(candidate.bytes) })
         : name;
@@ -28713,10 +28802,10 @@ function syncVideoStudioGlobalShortcutsToMain() {
     const shortcuts = normalizeVideoStudioShortcutMap(videoStudioShortcutMap);
     videoStudioShortcutMap = shortcuts;
     if (!videoStudioShortcutsEnabled) {
-        window.aurivo?.app?.setStudioShortcuts?.({})?.catch?.(() => {});
+        window.ardali?.app?.setStudioShortcuts?.({})?.catch?.(() => {});
         return;
     }
-    window.aurivo?.app?.setStudioShortcuts?.({
+    window.ardali?.app?.setStudioShortcuts?.({
         globalRecord: shortcutComboToElectronAccelerator(shortcuts.globalRecord),
         globalPause: shortcutComboToElectronAccelerator(shortcuts.globalPause),
         globalStop: shortcutComboToElectronAccelerator(shortcuts.globalStop),
@@ -28777,8 +28866,8 @@ async function recoverVideoStudioRecording() {
     const capturePath = String(candidate.capturePath || '').trim();
     const outputPath = String(candidate.outputPath || capturePath || '').trim();
     try {
-        const captureExists = capturePath ? await window.aurivo?.fileExists?.(capturePath) : false;
-        const outputExists = outputPath ? await window.aurivo?.fileExists?.(outputPath) : false;
+        const captureExists = capturePath ? await window.ardali?.fileExists?.(capturePath) : false;
+        const outputExists = outputPath ? await window.ardali?.fileExists?.(outputPath) : false;
         if (outputExists && (!captureExists || capturePath === outputPath)) {
             videoToolLastOutputPath = outputPath;
             screenRecordingOutputPath = outputPath;
@@ -28795,7 +28884,7 @@ async function recoverVideoStudioRecording() {
             return;
         }
         updateVideoToolStatus(uiT('video.tools.recovery.running', 'Kayıt kurtarılıyor...'), 'running', 96);
-        const result = await window.aurivo?.screenRecording?.finalizeRecording?.(capturePath, outputPath, {
+        const result = await window.ardali?.screenRecording?.finalizeRecording?.(capturePath, outputPath, {
             format: normalizeVideoStudioRecordFormat(candidate.format || videoStudioRecordFormat),
             bitrateKbps: normalizeVideoStudioRecordBitrate(candidate.bitrateKbps || videoStudioRecordBitrate),
             videoEncoder: normalizeVideoStudioVideoEncoder(candidate.videoEncoder || videoStudioVideoEncoder),
@@ -28829,7 +28918,7 @@ function addVideoStudioTextSource() {
         name: uiT('video.tools.studio.text', 'Metin'),
         icon: 'title',
         visible: true,
-        text: uiT('video.tools.studio.textDefault', 'Aurivo Canlı'),
+        text: uiT('video.tools.studio.textDefault', 'ArDali Canlı'),
         color: '#ffffff',
         fontSize: 42,
         opacity: 100,
@@ -29057,7 +29146,7 @@ function handleVideoStudioQuickAction(action = '') {
         return;
     }
     if (action === 'open-folder') {
-        window.aurivo?.openContainingFolder?.(path);
+        window.ardali?.openContainingFolder?.(path);
         return;
     }
     if (action === 'play') {
@@ -29080,13 +29169,13 @@ async function repairVideoStudioRecording(inputPath = '', { automatic = false } 
         if (!automatic) safeNotify(uiT('video.tools.quickActions.noRecording', 'Henüz kayıt yok'), 'info', 1800);
         return null;
     }
-    const extension = normalizeVideoStudioRecordFormat(window.aurivo?.path?.extname?.(sourcePath)?.replace(/^\./, '') || videoStudioRecordFormat || 'mkv', 'mkv');
+    const extension = normalizeVideoStudioRecordFormat(window.ardali?.path?.extname?.(sourcePath)?.replace(/^\./, '') || videoStudioRecordFormat || 'mkv', 'mkv');
     const outputPath = buildNonConflictingRecordingPath(buildVideoStudioRepairOutputPath(sourcePath, extension), extension);
     videoStudioRepairInProgress = true;
     updateVideoToolStatus(automatic ? 'Kayıt otomatik onarılıyor...' : 'Kayıt onarılıyor...', 'running', 94);
     addVideoStudioLog(automatic ? 'Otomatik kayıt onarma başlatıldı.' : 'Kayıt onarma başlatıldı.');
     try {
-        const result = await window.aurivo?.screenRecording?.repairRecording?.(sourcePath, outputPath, {
+        const result = await window.ardali?.screenRecording?.repairRecording?.(sourcePath, outputPath, {
             format: extension,
             bitrateKbps: normalizeVideoStudioRecordBitrate(videoStudioRecordBitrate),
             videoEncoder: normalizeVideoStudioVideoEncoder(videoStudioVideoEncoder)
@@ -29117,8 +29206,8 @@ async function remuxVideoStudioLastRecording(format = 'mkv') {
         return;
     }
     const targetFormat = normalizeVideoStudioRecordFormat(format, 'mkv') === 'mp4' ? 'mp4' : 'mkv';
-    const baseName = String(window.aurivo?.path?.basename?.(inputPath) || 'aurivo-recording').replace(/\.[^.]+$/i, '');
-    const saveResult = await window.aurivo?.saveFile?.({
+    const baseName = String(window.ardali?.path?.basename?.(inputPath) || 'ardali-recording').replace(/\.[^.]+$/i, '');
+    const saveResult = await window.ardali?.saveFile?.({
         title: uiT('video.tools.remux.saveTitle', 'Remux çıktısını kaydet'),
         defaultPath: `${baseName}.remux.${targetFormat}`,
         filters: [
@@ -29130,7 +29219,7 @@ async function remuxVideoStudioLastRecording(format = 'mkv') {
     if (!outputPath) return;
     updateVideoToolStatus(uiT('video.tools.remux.running', 'Remux çalışıyor...'), 'running', 92);
     addVideoStudioLog(uiT('video.tools.logs.remuxStarted', 'Remux başlatıldı.'));
-    const result = await window.aurivo?.screenRecording?.finalizeRecording?.(inputPath, outputPath, {
+    const result = await window.ardali?.screenRecording?.finalizeRecording?.(inputPath, outputPath, {
         format: targetFormat,
         bitrateKbps: videoStudioRecordBitrate,
         videoEncoder: normalizeVideoStudioVideoEncoder(videoStudioVideoEncoder)
@@ -29152,7 +29241,7 @@ async function remuxVideoStudioLastRecording(format = 'mkv') {
 
 async function addVideoStudioImageSource() {
     try {
-        const files = await window.aurivo?.dialog?.openFiles?.({
+        const files = await window.ardali?.dialog?.openFiles?.({
             title: uiT('video.tools.studio.pickImage', 'Logo veya görsel seç'),
             filters: [
                 { name: uiT('dialog.filters.imageFiles', 'Görsel Dosyaları'), extensions: typeof getConfiguredLibraryExtensions === 'function' ? getConfiguredLibraryExtensions('image') : DEFAULT_IMAGE_EXTENSIONS },
@@ -29165,7 +29254,7 @@ async function addVideoStudioImageSource() {
         const source = {
             id: `image-${Date.now()}`,
             kind: 'image',
-            name: String(first?.name || window.aurivo?.path?.basename?.(imagePath) || uiT('video.tools.studio.image', 'Görsel')).trim(),
+            name: String(first?.name || window.ardali?.path?.basename?.(imagePath) || uiT('video.tools.studio.image', 'Görsel')).trim(),
             icon: 'image',
             visible: true,
             path: imagePath,
@@ -29186,7 +29275,7 @@ async function addVideoStudioImageSource() {
 
 async function addVideoStudioMediaSource() {
     try {
-        const files = await window.aurivo?.dialog?.openFiles?.({
+        const files = await window.ardali?.dialog?.openFiles?.({
             title: uiT('video.tools.studio.pickMedia', 'Medya kaynağı seç'),
             filters: [
                 { name: uiT('dialog.filters.videoFiles', 'Video Dosyaları'), extensions: getConfiguredLibraryExtensions('video') },
@@ -29199,7 +29288,7 @@ async function addVideoStudioMediaSource() {
         const source = {
             id: `media-${Date.now()}`,
             kind: 'media',
-            name: String(first?.name || window.aurivo?.path?.basename?.(mediaPath) || uiT('video.tools.studio.media', 'Medya')).trim(),
+            name: String(first?.name || window.ardali?.path?.basename?.(mediaPath) || uiT('video.tools.studio.media', 'Medya')).trim(),
             icon: 'movie',
             visible: true,
             path: mediaPath,
@@ -29696,7 +29785,7 @@ function removeVideoStudioSource(sourceId) {
 }
 
 async function refreshVideoStudioSources() {
-    const sources = await window.aurivo?.screenRecording?.getSources?.() || [];
+    const sources = await window.ardali?.screenRecording?.getSources?.() || [];
     const studioSelect = document.getElementById('videoStudioSourceSelect');
     const recordSelect = document.getElementById('videoToolRecordSourceSelect');
     const previousValue = String(studioSelect?.value || videoStudioSelectedSourceId || recordSelect?.value || '').trim();
@@ -30337,9 +30426,9 @@ function cleanupScreenRecordingComposition() {
 
 async function startScreenRecordingSystemAudioCapture(enabled = false) {
     screenRecordingSystemAudioCapture = null;
-    if (!enabled || !window.aurivo?.screenRecording?.startSystemAudio) return null;
+    if (!enabled || !window.ardali?.screenRecording?.startSystemAudio) return null;
     try {
-        const result = await window.aurivo.screenRecording.startSystemAudio();
+        const result = await window.ardali.screenRecording.startSystemAudio();
         if (result?.success && result.path) {
             screenRecordingSystemAudioCapture = result;
             return result;
@@ -30355,9 +30444,9 @@ async function startScreenRecordingSystemAudioCapture(enabled = false) {
 async function stopScreenRecordingSystemAudioCapture() {
     const active = screenRecordingSystemAudioCapture;
     screenRecordingSystemAudioCapture = null;
-    if (!active || !window.aurivo?.screenRecording?.stopSystemAudio) return null;
+    if (!active || !window.ardali?.screenRecording?.stopSystemAudio) return null;
     try {
-        const stopped = await window.aurivo.screenRecording.stopSystemAudio();
+        const stopped = await window.ardali.screenRecording.stopSystemAudio();
         return stopped?.success ? stopped : null;
     } catch {
         return null;
@@ -30554,10 +30643,10 @@ function stopVideoStudioGlobalCursorTracking() {
 
 function startVideoStudioGlobalCursorTracking() {
     stopVideoStudioGlobalCursorTracking();
-    if (!shouldDrawVideoStudioInputOverlay() || !window.aurivo?.screenRecording?.getCursorPoint) return;
+    if (!shouldDrawVideoStudioInputOverlay() || !window.ardali?.screenRecording?.getCursorPoint) return;
     const tick = async () => {
         try {
-            const point = await window.aurivo.screenRecording.getCursorPoint();
+            const point = await window.ardali.screenRecording.getCursorPoint();
             if (point?.display) {
                 videoStudioGlobalCursorPoint = {
                     x: Number(point.x) || 0,
@@ -30923,7 +31012,7 @@ function getSupportedScreenRecordingAudioMimeType() {
 }
 
 function buildScreenRecordingAuxAudioPath(capturePath = '', kind = 'audio', index = 0) {
-    const basePath = String(capturePath || screenRecordingOutputPath || `aurivo-audio-${Date.now()}`).replace(/\.[^.]+$/i, '');
+    const basePath = String(capturePath || screenRecordingOutputPath || `ardali-audio-${Date.now()}`).replace(/\.[^.]+$/i, '');
     const safeKind = String(kind || 'audio').replace(/[^a-z0-9_-]/gi, '').toLowerCase() || 'audio';
     return `${basePath}.${safeKind}-${index + 1}.webm`;
 }
@@ -30989,9 +31078,9 @@ async function stopScreenRecordingSeparateAudioRecorders() {
         const blob = new Blob(entry.chunks, { type: entry.mimeType || 'audio/webm' });
         if (!blob.size || blob.size < 64) continue;
         const arrayBuffer = await blob.arrayBuffer();
-        const ok = window.aurivo?.writeBufferFile
-            ? await window.aurivo.writeBufferFile(entry.path, arrayBuffer)
-            : await window.aurivo?.writeBase64File?.(entry.path, arrayBufferToBase64(arrayBuffer));
+        const ok = window.ardali?.writeBufferFile
+            ? await window.ardali.writeBufferFile(entry.path, arrayBuffer)
+            : await window.ardali?.writeBase64File?.(entry.path, arrayBufferToBase64(arrayBuffer));
         if (ok) {
             tracks.push({
                 path: entry.path,
@@ -31462,7 +31551,7 @@ function handleVideoStudioClickEvent(event) {
     }
     if (trigger.id === 'videoStudioOpenOutputFolderBtn') {
         const targetPath = videoToolLastOutputPath || buildVideoStudioAutoOutputPath(videoStudioRecordFormat);
-        if (targetPath) window.aurivo?.openContainingFolder?.(targetPath);
+        if (targetPath) window.ardali?.openContainingFolder?.(targetPath);
         return true;
     }
     if (trigger.id === 'videoStudioRepairRecordingBtn') {
@@ -31582,7 +31671,7 @@ function handleVideoToolClickEvent(event) {
         return true;
     }
     if (toolTrigger.id === 'videoToolOpenOutputBtn' && videoToolLastOutputPath) {
-        window.aurivo?.openContainingFolder?.(videoToolLastOutputPath);
+        window.ardali?.openContainingFolder?.(videoToolLastOutputPath);
         return true;
     }
     return true;
@@ -31783,7 +31872,7 @@ function releaseVideoToolIdleResources({ force = false, keepBatch = false, keepS
 function buildVideoToolsPanel() {
     const sourcePath = getPreferredVideoToolSourcePath();
     const sourceName = sourcePath
-        ? (window.aurivo?.path?.basename?.(sourcePath) || sourcePath.split(/[\\/]/).pop() || 'Video')
+        ? (window.ardali?.path?.basename?.(sourcePath) || sourcePath.split(/[\\/]/).pop() || 'Video')
         : uiT('video.tools.noSource', 'Önce bir video ekleyin veya seçin');
     const selectedMode = ['video', 'audio', 'edit', 'subtitle', 'thumbnail', 'enhance', 'batch'].includes(videoToolModeState) ? videoToolModeState : 'video';
     const modeChecked = (mode) => selectedMode === mode ? ' checked' : '';
@@ -32035,7 +32124,7 @@ function buildVideoToolsPanel() {
 
 async function pickVideoToolSource() {
     try {
-        const files = await window.aurivo?.dialog?.openFiles?.({
+        const files = await window.ardali?.dialog?.openFiles?.({
             title: uiT('video.tools.pickSource', 'Dosya Seç'),
             filters: [
                 { name: uiT('dialog.filters.videoFiles', 'Video Dosyaları'), extensions: getConfiguredLibraryExtensions('video') },
@@ -32057,7 +32146,7 @@ async function pickVideoToolSource() {
 
 async function pickVideoToolSubtitle() {
     try {
-        const files = await window.aurivo?.dialog?.openFiles?.({
+        const files = await window.ardali?.dialog?.openFiles?.({
             title: uiT('video.tools.subtitle.pick', 'SRT seç'),
             filters: [
                 { name: 'SubRip (.srt)', extensions: ['srt'] },
@@ -32069,7 +32158,7 @@ async function pickVideoToolSubtitle() {
         if (!subtitlePath) return '';
         const input = document.getElementById('videoToolSubtitlePathInput');
         if (input) {
-            input.value = window.aurivo?.path?.basename?.(subtitlePath) || subtitlePath;
+            input.value = window.ardali?.path?.basename?.(subtitlePath) || subtitlePath;
             input.dataset.path = subtitlePath;
         }
         return subtitlePath;
@@ -32080,20 +32169,20 @@ async function pickVideoToolSubtitle() {
 }
 
 function getVideoToolDefaultOutputPath(inputPath, format) {
-    const dir = window.aurivo?.path?.dirname?.(inputPath) || '';
-    const name = window.aurivo?.path?.basename?.(inputPath) || 'video';
+    const dir = window.ardali?.path?.dirname?.(inputPath) || '';
+    const name = window.ardali?.path?.basename?.(inputPath) || 'video';
     const base = String(name || 'video').replace(/\.[^.\\/]+$/, '');
     const mode = getVideoToolMode();
     const suffix = mode === 'enhance' ? 'enhanced' : (mode === 'thumbnail' ? 'cover' : (mode === 'subtitle' ? 'subtitled' : (mode === 'edit' ? 'edited' : (format === 'mp3' || format === 'wav' ? 'audio' : 'converted'))));
     const fileName = `${base}-${suffix}.${format}`;
-    return dir ? window.aurivo?.path?.join?.(dir, fileName) || fileName : fileName;
+    return dir ? window.ardali?.path?.join?.(dir, fileName) || fileName : fileName;
 }
 
 function buildVideoToolOutputPath(inputPath, outputDir, suffix, format) {
-    const name = window.aurivo?.path?.basename?.(inputPath) || 'video';
+    const name = window.ardali?.path?.basename?.(inputPath) || 'video';
     const base = String(name || 'video').replace(/\.[^.\\/]+$/, '');
     const fileName = `${base}-${suffix}.${format}`;
-    return window.aurivo?.path?.join?.(outputDir, fileName) || `${outputDir}/${fileName}`;
+    return window.ardali?.path?.join?.(outputDir, fileName) || `${outputDir}/${fileName}`;
 }
 
 function getVideoToolEditOptions() {
@@ -32139,7 +32228,7 @@ function getVideoToolEnhanceOptions() {
 
 async function pickVideoToolBatchFiles() {
     try {
-        const files = await window.aurivo?.dialog?.openFiles?.({
+        const files = await window.ardali?.dialog?.openFiles?.({
             title: uiT('video.tools.batch.pickFiles', 'Videoları seç'),
             filters: [
                 { name: uiT('dialog.filters.videoFiles', 'Video Dosyaları'), extensions: getConfiguredLibraryExtensions('video') },
@@ -32160,7 +32249,7 @@ async function pickVideoToolBatchFiles() {
 
 async function pickVideoToolBatchFolder() {
     try {
-        const folder = await window.aurivo?.dialog?.openFolder?.({
+        const folder = await window.ardali?.dialog?.openFolder?.({
             title: uiT('video.tools.batch.pickFolder', 'Klasör seç'),
             defaultPath: state.specialPaths?.videos || undefined
         });
@@ -32168,7 +32257,7 @@ async function pickVideoToolBatchFolder() {
         if (!folderPath) return '';
         const input = document.getElementById('videoToolBatchFolderInput');
         if (input) {
-            input.value = folder.name || window.aurivo?.path?.basename?.(folderPath) || folderPath;
+            input.value = folder.name || window.ardali?.path?.basename?.(folderPath) || folderPath;
             input.dataset.path = folderPath;
         }
         return folderPath;
@@ -32214,12 +32303,12 @@ async function runVideoToolBatch() {
             const suffix = operation === 'audio' ? 'audio' : (operation === 'compress' ? 'compressed' : 'converted');
             const outputPath = buildVideoToolOutputPath(file.path, outputDir, suffix, format);
             updateVideoToolStatus(
-                `${uiT('video.tools.batch.processing', 'İşleniyor')} ${done + 1}/${total}: ${file.name || window.aurivo?.path?.basename?.(file.path) || ''}`,
+                `${uiT('video.tools.batch.processing', 'İşleniyor')} ${done + 1}/${total}: ${file.name || window.ardali?.path?.basename?.(file.path) || ''}`,
                 'running',
                 Math.round((done / total) * 100)
             );
             try {
-                const result = await window.aurivo?.videoTools?.convert?.({
+                const result = await window.ardali?.videoTools?.convert?.({
                     jobId,
                     target,
                     format,
@@ -32294,7 +32383,7 @@ function sanitizeVideoStudioOutputName(value = '') {
         .replace(/[\\/:*?"<>|]+/g, '-')
         .replace(/\s+/g, ' ')
         .trim();
-    return cleaned || 'aurivo-recording';
+    return cleaned || 'ardali-recording';
 }
 
 function buildVideoStudioOutputFileName(format = 'webm') {
@@ -32303,7 +32392,7 @@ function buildVideoStudioOutputFileName(format = 'webm') {
     const date = now.toISOString().slice(0, 10);
     const time = now.toTimeString().slice(0, 8).replace(/:/g, '-');
     const profile = normalizeVideoStudioRecordPreset(videoStudioRecordPreset);
-    const template = String(videoStudioRecordNameTemplate || 'aurivo-{date}-{time}').trim() || 'aurivo-{date}-{time}';
+    const template = String(videoStudioRecordNameTemplate || 'ardali-{date}-{time}').trim() || 'ardali-{date}-{time}';
     const stem = sanitizeVideoStudioOutputName(template
         .replace(/\{date\}/gi, date)
         .replace(/\{time\}/gi, time)
@@ -32317,14 +32406,14 @@ function buildVideoStudioTestOutputPath(format = 'webm') {
     const now = new Date();
     const date = now.toISOString().slice(0, 10);
     const time = now.toTimeString().slice(0, 8).replace(/:/g, '-');
-    const fileName = `aurivo-test-recording-${date}-${time}.${extension}`;
-    return baseDir && window.aurivo?.path?.join ? window.aurivo.path.join(baseDir, fileName) : fileName;
+    const fileName = `ardali-test-recording-${date}-${time}.${extension}`;
+    return baseDir && window.ardali?.path?.join ? window.ardali.path.join(baseDir, fileName) : fileName;
 }
 
 function buildVideoStudioAutoOutputPath(format = 'webm') {
     const folder = getVideoStudioDefaultOutputFolder();
     const fileName = buildVideoStudioOutputFileName(format);
-    if (folder && window.aurivo?.path?.join) return window.aurivo.path.join(folder, fileName);
+    if (folder && window.ardali?.path?.join) return window.ardali.path.join(folder, fileName);
     return fileName;
 }
 
@@ -32336,7 +32425,7 @@ function syncVideoStudioOutputSettingsFromUi() {
     }
     const templateInput = document.getElementById('videoStudioRecordNameTemplateInput');
     if (templateInput) {
-        videoStudioRecordNameTemplate = String(templateInput.value || 'aurivo-{date}-{time}').trim() || 'aurivo-{date}-{time}';
+        videoStudioRecordNameTemplate = String(templateInput.value || 'ardali-{date}-{time}').trim() || 'ardali-{date}-{time}';
         templateInput.value = videoStudioRecordNameTemplate;
     }
     persistVideoStudioOutputSettingsToAppSettings();
@@ -32451,7 +32540,7 @@ function releaseVideoStudioLiveStreamRuntime() {
 
 async function stopVideoStudioStreamOutput() {
     if (!videoStudioLiveStreamRecorder || videoStudioLiveStreamRecorder.state === 'inactive') {
-        if (videoStudioLiveStreamId) await window.aurivo?.screenRecording?.stopLiveOutput?.(videoStudioLiveStreamId);
+        if (videoStudioLiveStreamId) await window.ardali?.screenRecording?.stopLiveOutput?.(videoStudioLiveStreamId);
         videoStudioLiveStreamId = '';
         videoStudioStreamStatus = videoStudioStreamEnabled ? 'ready' : 'idle';
         updateVideoStudioStreamStatusUi();
@@ -32465,7 +32554,7 @@ async function stopVideoStudioStreamOutput() {
         }
         videoStudioLiveStreamRecorder.stop();
     } catch {
-        if (videoStudioLiveStreamId) await window.aurivo?.screenRecording?.stopLiveOutput?.(videoStudioLiveStreamId);
+        if (videoStudioLiveStreamId) await window.ardali?.screenRecording?.stopLiveOutput?.(videoStudioLiveStreamId);
         videoStudioLiveStreamRecorder = null;
         videoStudioLiveStreamId = '';
         releaseVideoStudioLiveStreamRuntime();
@@ -32570,7 +32659,7 @@ async function startVideoStudioStreamOutput() {
     }
     const recordingSettings = getVideoStudioRecordingSettings();
     const mimeType = getSupportedScreenRecorderMimeType('webm');
-    if (!mimeType || !window.aurivo?.screenRecording?.startLiveOutput) {
+    if (!mimeType || !window.ardali?.screenRecording?.startLiveOutput) {
         videoStudioStreamStatus = 'unsupported';
         updateVideoStudioStreamStatusUi();
         safeNotify(uiT('video.tools.stream.nativeRequired', 'RTMP yayını için native FFmpeg canlı köprüsü gerekiyor; hedef ayarı kaydedildi.'), 'warning', 3000);
@@ -32581,7 +32670,7 @@ async function startVideoStudioStreamOutput() {
         releaseScreenRecordingAudioGraph();
         stopVideoStudioLiveAudioMeters();
         videoStudioLiveStreamId = `rtmp-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`;
-        const started = await window.aurivo.screenRecording.startLiveOutput({
+        const started = await window.ardali.screenRecording.startLiveOutput({
             id: videoStudioLiveStreamId,
             kind: 'rtmp',
             target: getVideoStudioStreamTargetUrl(),
@@ -32601,7 +32690,7 @@ async function startVideoStudioStreamOutput() {
             try {
                 const buffer = await event.data.arrayBuffer();
                 videoStudioLiveStreamBytes += buffer.byteLength || 0;
-                const result = await window.aurivo?.screenRecording?.writeLiveOutput?.(videoStudioLiveStreamId, buffer);
+                const result = await window.ardali?.screenRecording?.writeLiveOutput?.(videoStudioLiveStreamId, buffer);
                 if (!result?.success && videoStudioLiveStreamRecorder?.state === 'recording') {
                     safeNotify(`${uiT('video.tools.stream.failed', 'Yayın başlatılamadı')}: ${result?.error || 'write-failed'}`, 'warning', 3200);
                     stopVideoStudioStreamOutput().catch(() => {});
@@ -32618,7 +32707,7 @@ async function startVideoStudioStreamOutput() {
             videoStudioLiveStreamRecorder = null;
             videoStudioLiveStreamId = '';
             releaseVideoStudioLiveStreamRuntime();
-            if (id) await window.aurivo?.screenRecording?.stopLiveOutput?.(id);
+            if (id) await window.ardali?.screenRecording?.stopLiveOutput?.(id);
             videoStudioStreamStatus = videoStudioStreamEnabled ? 'ready' : 'idle';
             updateVideoStudioStreamStatusUi();
             safeNotify(uiT('video.tools.stream.stopped', 'Yayın durduruldu.'), 'info', 2200);
@@ -32631,7 +32720,7 @@ async function startVideoStudioStreamOutput() {
         updateVideoStudioStreamStatusUi();
         safeNotify(uiT('video.tools.stream.started', 'Yayın başladı.'), 'success', 2200);
     } catch (error) {
-        if (videoStudioLiveStreamId) await window.aurivo?.screenRecording?.stopLiveOutput?.(videoStudioLiveStreamId);
+        if (videoStudioLiveStreamId) await window.ardali?.screenRecording?.stopLiveOutput?.(videoStudioLiveStreamId);
         videoStudioLiveStreamRecorder = null;
         videoStudioLiveStreamId = '';
         releaseVideoStudioLiveStreamRuntime();
@@ -32721,7 +32810,7 @@ function releaseVideoStudioVirtualCameraRuntime() {
 async function stopVideoStudioVirtualCamera() {
     if (!videoStudioVirtualCameraRecorder || videoStudioVirtualCameraRecorder.state === 'inactive') {
         if (videoStudioVirtualCameraOutputId) {
-            await window.aurivo?.screenRecording?.stopLiveOutput?.(videoStudioVirtualCameraOutputId);
+            await window.ardali?.screenRecording?.stopLiveOutput?.(videoStudioVirtualCameraOutputId);
         }
         videoStudioVirtualCameraOutputId = '';
         videoStudioVirtualCameraStatus = videoStudioVirtualCameraEnabled ? 'ready' : 'idle';
@@ -32737,7 +32826,7 @@ async function stopVideoStudioVirtualCamera() {
         videoStudioVirtualCameraRecorder.stop();
     } catch {
         if (videoStudioVirtualCameraOutputId) {
-            await window.aurivo?.screenRecording?.stopLiveOutput?.(videoStudioVirtualCameraOutputId);
+            await window.ardali?.screenRecording?.stopLiveOutput?.(videoStudioVirtualCameraOutputId);
         }
         videoStudioVirtualCameraRecorder = null;
         videoStudioVirtualCameraOutputId = '';
@@ -32772,7 +32861,7 @@ async function startVideoStudioVirtualCamera() {
     }
     const recordingSettings = getVideoStudioRecordingSettings();
     const mimeType = getSupportedScreenRecorderMimeType('webm');
-    if (!mimeType || !window.aurivo?.screenRecording?.startLiveOutput) {
+    if (!mimeType || !window.ardali?.screenRecording?.startLiveOutput) {
         videoStudioVirtualCameraStatus = 'unsupported';
         updateVideoStudioVirtualCameraStatusUi();
         safeNotify(uiT('video.tools.virtualCamera.nativeRequired', 'Sanal kamera için v4l2loopback/FFmpeg canlı köprüsü gerekiyor; hedef ayarı kaydedildi.'), 'warning', 3000);
@@ -32783,7 +32872,7 @@ async function startVideoStudioVirtualCamera() {
         releaseScreenRecordingAudioGraph();
         stopVideoStudioLiveAudioMeters();
         videoStudioVirtualCameraOutputId = `vcam-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`;
-        const started = await window.aurivo.screenRecording.startLiveOutput({
+        const started = await window.ardali.screenRecording.startLiveOutput({
             id: videoStudioVirtualCameraOutputId,
             kind: 'virtual-camera',
             target: videoStudioVirtualCameraDevice,
@@ -32806,7 +32895,7 @@ async function startVideoStudioVirtualCamera() {
             try {
                 const buffer = await event.data.arrayBuffer();
                 videoStudioVirtualCameraBytes += buffer.byteLength || 0;
-                const result = await window.aurivo?.screenRecording?.writeLiveOutput?.(videoStudioVirtualCameraOutputId, buffer);
+                const result = await window.ardali?.screenRecording?.writeLiveOutput?.(videoStudioVirtualCameraOutputId, buffer);
                 if (!result?.success && videoStudioVirtualCameraRecorder?.state === 'recording') {
                     safeNotify(`${uiT('video.tools.virtualCamera.failed', 'Sanal kamera başlatılamadı')}: ${result?.error || 'write-failed'}`, 'warning', 3200);
                     stopVideoStudioVirtualCamera().catch(() => {});
@@ -32823,7 +32912,7 @@ async function startVideoStudioVirtualCamera() {
             videoStudioVirtualCameraRecorder = null;
             videoStudioVirtualCameraOutputId = '';
             releaseVideoStudioVirtualCameraRuntime();
-            if (id) await window.aurivo?.screenRecording?.stopLiveOutput?.(id);
+            if (id) await window.ardali?.screenRecording?.stopLiveOutput?.(id);
             videoStudioVirtualCameraStatus = videoStudioVirtualCameraEnabled ? 'ready' : 'idle';
             updateVideoStudioVirtualCameraStatusUi();
             safeNotify(uiT('video.tools.virtualCamera.stopped', 'Sanal kamera durduruldu.'), 'info', 2200);
@@ -32837,7 +32926,7 @@ async function startVideoStudioVirtualCamera() {
         safeNotify(uiT('video.tools.virtualCamera.started', 'Sanal kamera başladı.'), 'success', 2200);
     } catch (error) {
         if (videoStudioVirtualCameraOutputId) {
-            await window.aurivo?.screenRecording?.stopLiveOutput?.(videoStudioVirtualCameraOutputId);
+            await window.ardali?.screenRecording?.stopLiveOutput?.(videoStudioVirtualCameraOutputId);
         }
         videoStudioVirtualCameraRecorder = null;
         videoStudioVirtualCameraOutputId = '';
@@ -32988,9 +33077,9 @@ async function saveVideoStudioReplayBuffer() {
     }
     updateVideoToolStatus(uiT('video.tools.replay.saving', 'Replay kaydediliyor...'), 'running', 80);
     const arrayBuffer = await blob.arrayBuffer();
-    const ok = window.aurivo?.writeBufferFile
-        ? await window.aurivo.writeBufferFile(targetPath, arrayBuffer)
-        : await window.aurivo?.writeBase64File?.(targetPath, arrayBufferToBase64(arrayBuffer));
+    const ok = window.ardali?.writeBufferFile
+        ? await window.ardali.writeBufferFile(targetPath, arrayBuffer)
+        : await window.ardali?.writeBase64File?.(targetPath, arrayBufferToBase64(arrayBuffer));
     if (ok) {
         videoToolLastOutputPath = targetPath;
         updateVideoStudioQuickActionsPanel();
@@ -33268,7 +33357,7 @@ function updateVideoStudioOutputFolderUi() {
 
 async function pickVideoStudioOutputFolder() {
     try {
-        const selected = await window.aurivo?.openFolder?.({
+        const selected = await window.ardali?.openFolder?.({
             title: uiT('video.tools.output.pickFolder', 'Kayıt klasörü seç'),
             defaultPath: getVideoStudioDefaultOutputFolder() || undefined
         });
@@ -33288,7 +33377,7 @@ async function getVideoStudioRecordingOutputPath(format = 'webm') {
     if (videoStudioRecordOutputMode !== 'ask') {
         return buildVideoStudioAutoOutputPath(format);
     }
-    const saveResult = await window.aurivo?.saveFile?.({
+    const saveResult = await window.ardali?.saveFile?.({
         title: uiT('video.tools.record.saveTitle', 'Ekran kaydını kaydet'),
         defaultPath: buildVideoStudioAutoOutputPath(format),
         filters: [
@@ -33301,27 +33390,27 @@ async function getVideoStudioRecordingOutputPath(format = 'webm') {
 
 function buildVideoStudioReplayOutputPath() {
     const base = buildVideoStudioAutoOutputPath('webm');
-    const dirname = window.aurivo?.path?.dirname?.(base) || '';
-    const basename = window.aurivo?.path?.basename?.(base) || 'aurivo-replay.webm';
-    const stem = basename.replace(/\.[^/.]+$/, '') || 'aurivo-replay';
+    const dirname = window.ardali?.path?.dirname?.(base) || '';
+    const basename = window.ardali?.path?.basename?.(base) || 'ardali-replay.webm';
+    const stem = basename.replace(/\.[^/.]+$/, '') || 'ardali-replay';
     const replayName = `${stem}-replay.webm`;
-    return dirname && window.aurivo?.path?.join ? window.aurivo.path.join(dirname, replayName) : replayName;
+    return dirname && window.ardali?.path?.join ? window.ardali.path.join(dirname, replayName) : replayName;
 }
 
 function buildVideoStudioRepairOutputPath(inputPath = '', format = '') {
     const source = String(inputPath || '').trim() || getVideoStudioLastRecordingPath();
-    const sourceFormat = normalizeVideoStudioRecordFormat(format || window.aurivo?.path?.extname?.(source)?.replace(/^\./, '') || videoStudioRecordFormat || 'mkv', 'mkv');
-    const dirname = window.aurivo?.path?.dirname?.(source) || getVideoStudioDefaultOutputFolder();
-    const basename = window.aurivo?.path?.basename?.(source) || `aurivo-recording.${sourceFormat}`;
-    const stem = basename.replace(/\.[^/.]+$/, '') || 'aurivo-recording';
+    const sourceFormat = normalizeVideoStudioRecordFormat(format || window.ardali?.path?.extname?.(source)?.replace(/^\./, '') || videoStudioRecordFormat || 'mkv', 'mkv');
+    const dirname = window.ardali?.path?.dirname?.(source) || getVideoStudioDefaultOutputFolder();
+    const basename = window.ardali?.path?.basename?.(source) || `ardali-recording.${sourceFormat}`;
+    const stem = basename.replace(/\.[^/.]+$/, '') || 'ardali-recording';
     const repairName = `${stem}.repaired.${sourceFormat}`;
-    return dirname && window.aurivo?.path?.join ? window.aurivo.path.join(dirname, repairName) : repairName;
+    return dirname && window.ardali?.path?.join ? window.ardali.path.join(dirname, repairName) : repairName;
 }
 
 async function refreshScreenRecordingSources() {
     const select = document.getElementById('videoToolRecordSourceSelect');
     if (!select) return [];
-    const sources = await window.aurivo?.screenRecording?.getSources?.() || [];
+    const sources = await window.ardali?.screenRecording?.getSources?.() || [];
     select.innerHTML = sources.length
         ? sources.map((source) => {
             const sourceType = String(source.type || '').toLowerCase() === 'screen'
@@ -33338,11 +33427,11 @@ async function refreshScreenRecordingSources() {
 }
 
 async function refreshVideoStudioFfmpegCapabilities() {
-    if (videoStudioFfmpegCapabilities || !window.aurivo?.screenRecording?.getFfmpegCapabilities) {
+    if (videoStudioFfmpegCapabilities || !window.ardali?.screenRecording?.getFfmpegCapabilities) {
         return videoStudioFfmpegCapabilities;
     }
     try {
-        videoStudioFfmpegCapabilities = await window.aurivo.screenRecording.getFfmpegCapabilities();
+        videoStudioFfmpegCapabilities = await window.ardali.screenRecording.getFfmpegCapabilities();
     } catch {
         videoStudioFfmpegCapabilities = { success: false, formats: ['webm'] };
     }
@@ -33353,8 +33442,8 @@ function buildScreenRecordingDefaultPath(format = 'webm') {
     const extension = ['webm', 'mp4', 'mkv'].includes(String(format || '').toLowerCase()) ? String(format).toLowerCase() : 'webm';
     const baseDir = getVideoStudioDefaultOutputFolder();
     const fileName = buildVideoStudioOutputFileName(extension);
-    if (baseDir && window.aurivo?.path?.join) {
-        return window.aurivo.path.join(baseDir, fileName);
+    if (baseDir && window.ardali?.path?.join) {
+        return window.ardali.path.join(baseDir, fileName);
     }
     return fileName;
 }
@@ -33371,22 +33460,22 @@ function buildNonConflictingRecordingPath(outputPath = '', format = 'webm') {
     if (!normalized) return '';
     const currentVideoPath = String(state.currentVideoPath || '').trim();
     if (!isSamePathValue(normalized, currentVideoPath)) return normalized;
-    const dirname = window.aurivo?.path?.dirname?.(normalized) || '';
-    const basename = window.aurivo?.path?.basename?.(normalized) || 'aurivo-screen-recording.webm';
-    const stem = basename.replace(/\.[^/.]+$/, '') || 'aurivo-screen-recording';
+    const dirname = window.ardali?.path?.dirname?.(normalized) || '';
+    const basename = window.ardali?.path?.basename?.(normalized) || 'ardali-screen-recording.webm';
+    const stem = basename.replace(/\.[^/.]+$/, '') || 'ardali-screen-recording';
     const extension = ['webm', 'mp4', 'mkv'].includes(String(format || '').toLowerCase()) ? String(format).toLowerCase() : 'webm';
     const nextName = `${stem}-screen-recording.${extension}`;
-    return dirname && window.aurivo?.path?.join ? window.aurivo.path.join(dirname, nextName) : nextName;
+    return dirname && window.ardali?.path?.join ? window.ardali.path.join(dirname, nextName) : nextName;
 }
 
 function buildScreenRecordingCapturePath(finalPath = '', finalFormat = 'webm') {
     const normalized = String(finalPath || '').trim();
     if (!normalized || normalizeVideoStudioRecordFormat(finalFormat) === 'webm') return normalized;
-    const dirname = window.aurivo?.path?.dirname?.(normalized) || '';
-    const basename = window.aurivo?.path?.basename?.(normalized) || 'aurivo-screen-recording.webm';
-    const stem = basename.replace(/\.[^/.]+$/, '') || 'aurivo-screen-recording';
+    const dirname = window.ardali?.path?.dirname?.(normalized) || '';
+    const basename = window.ardali?.path?.basename?.(normalized) || 'ardali-screen-recording.webm';
+    const stem = basename.replace(/\.[^/.]+$/, '') || 'ardali-screen-recording';
     const captureName = `${stem}.capture-${Date.now()}.webm`;
-    return dirname && window.aurivo?.path?.join ? window.aurivo.path.join(dirname, captureName) : captureName;
+    return dirname && window.ardali?.path?.join ? window.ardali.path.join(dirname, captureName) : captureName;
 }
 
 function formatVideoStudioBytes(bytes = 0) {
@@ -33594,7 +33683,7 @@ async function validateVideoStudioRecordingFile(filePath, { expectedDurationSec 
     updateVideoStudioStatsPanel();
     updateVideoStudioQualityReportPanel();
     try {
-        const result = await window.aurivo?.screenRecording?.validateRecording?.(targetPath, {
+        const result = await window.ardali?.screenRecording?.validateRecording?.(targetPath, {
             expectedDurationSec,
             minSizeBytes: 1024
         });
@@ -33610,7 +33699,7 @@ async function validateVideoStudioRecordingFile(filePath, { expectedDurationSec 
             const detail = videoStudioLastValidation.error ? `: ${videoStudioLastValidation.error}` : '';
             addVideoStudioLog(`${uiT('video.tools.logs.validationFailed', 'Kayıt doğrulanamadı.')}${detail}`, 'error');
             safeNotify(`${uiT('video.tools.validation.failed', 'Doğrulama başarısız')}${detail}`, 'warning', 3200);
-            if (autoRepair && window.aurivo?.screenRecording?.repairRecording && !videoStudioRepairInProgress) {
+            if (autoRepair && window.ardali?.screenRecording?.repairRecording && !videoStudioRepairInProgress) {
                 repairVideoStudioRecording(targetPath, { automatic: true }).catch(() => {});
             }
         }
@@ -33625,7 +33714,7 @@ async function validateVideoStudioRecordingFile(filePath, { expectedDurationSec 
         };
         videoStudioLastQualityReport = buildVideoStudioQualityReport(videoStudioLastValidation);
         addVideoStudioLog(`${uiT('video.tools.logs.validationFailed', 'Kayıt doğrulanamadı.')}: ${error?.message || error}`, 'error');
-        if (autoRepair && window.aurivo?.screenRecording?.repairRecording && !videoStudioRepairInProgress) {
+        if (autoRepair && window.ardali?.screenRecording?.repairRecording && !videoStudioRepairInProgress) {
             repairVideoStudioRecording(targetPath, { automatic: true }).catch(() => {});
         }
         updateVideoStudioStatsPanel();
@@ -33641,8 +33730,8 @@ async function refreshVideoStudioAdvancedStats({ force = false } = {}) {
     const target = screenRecordingOutputPath || buildVideoStudioAutoOutputPath(videoStudioRecordFormat);
     try {
         const [storage, systemStats] = await Promise.all([
-            window.aurivo?.getStorageStats?.(target),
-            window.aurivo?.getSystemStats?.()
+            window.ardali?.getStorageStats?.(target),
+            window.ardali?.getSystemStats?.()
         ]);
         if (storage && !storage.error) videoStudioStorageStats = storage;
         if (systemStats && !systemStats.error) videoStudioSystemStats = systemStats;
@@ -33760,8 +33849,8 @@ async function runVideoStudioPreflightChecks({ silent = false } = {}) {
         ));
 
         const outputFolder = getVideoStudioDefaultOutputFolder();
-        const folderExists = outputFolder ? await window.aurivo?.fileExists?.(outputFolder) : false;
-        const folderWritable = folderExists ? await window.aurivo?.isPathWritable?.(outputFolder) : false;
+        const folderExists = outputFolder ? await window.ardali?.fileExists?.(outputFolder) : false;
+        const folderWritable = folderExists ? await window.ardali?.isPathWritable?.(outputFolder) : false;
         checks.push(createVideoStudioPreflightCheck(
             'output',
             uiT('video.tools.preflight.output', 'Çıktı klasörü'),
@@ -33796,7 +33885,7 @@ async function runVideoStudioPreflightChecks({ silent = false } = {}) {
             ));
         }
 
-        const storage = await window.aurivo?.getStorageStats?.(buildVideoStudioAutoOutputPath(format));
+        const storage = await window.ardali?.getStorageStats?.(buildVideoStudioAutoOutputPath(format));
         const freeBytes = Number(storage?.freeBytes || 0);
         const warningBytes = 1024 * 1024 * 1024;
         checks.push(createVideoStudioPreflightCheck(
@@ -33924,7 +34013,7 @@ function updateVideoStudioQuickActionsPanel() {
     if (panel) panel.classList.toggle('is-disabled', !path);
     if (label) {
         label.textContent = path
-            ? (window.aurivo?.path?.basename?.(path) || path)
+            ? (window.ardali?.path?.basename?.(path) || path)
             : uiT('video.tools.quickActions.noRecording', 'Henüz kayıt yok');
     }
     document.querySelectorAll('[data-video-studio-quick-action]').forEach((button) => {
@@ -34282,9 +34371,9 @@ async function startScreenRecording(options = {}) {
                 updateVideoToolStatus(uiT('video.tools.record.saving.reading', 'Kayıt dosyası hazırlanıyor...'), 'running', 35);
                 updateVideoToolStatus(uiT('video.tools.record.saving.writing', 'Kayıt diske yazılıyor...'), 'running', 90);
                 const arrayBuffer = await blob.arrayBuffer();
-                ok = window.aurivo?.writeBufferFile
-                    ? await window.aurivo.writeBufferFile(capturePath, arrayBuffer)
-                    : await window.aurivo?.writeBase64File?.(capturePath, arrayBufferToBase64(arrayBuffer));
+                ok = window.ardali?.writeBufferFile
+                    ? await window.ardali.writeBufferFile(capturePath, arrayBuffer)
+                    : await window.ardali?.writeBase64File?.(capturePath, arrayBufferToBase64(arrayBuffer));
                 captureWritten = !!ok;
                 if (captureWritten) {
                     saveVideoStudioRecoveryCandidate({
@@ -34302,8 +34391,8 @@ async function startScreenRecording(options = {}) {
             }
             if (ok) {
                 let muxedCapturePath = capturePath;
-                if (!wantsSeparateAudioTracks && systemAudioResult?.path && window.aurivo?.screenRecording?.muxSystemAudio) {
-                    const muxed = await window.aurivo.screenRecording.muxSystemAudio(capturePath, systemAudioResult.path);
+                if (!wantsSeparateAudioTracks && systemAudioResult?.path && window.ardali?.screenRecording?.muxSystemAudio) {
+                    const muxed = await window.ardali.screenRecording.muxSystemAudio(capturePath, systemAudioResult.path);
                     if (!muxed?.success) {
                         const detail = muxed?.error ? `: ${muxed.error}` : '';
                         safeNotify(`${uiT('video.tools.record.systemAudioFailed', 'Sistem sesi eklenemedi')}${detail}`, 'warning', 3200);
@@ -34313,7 +34402,7 @@ async function startScreenRecording(options = {}) {
                 }
                 if (actualFormat !== 'webm' || separateAudioTracks.length) {
                     updateVideoToolStatus(uiT('video.tools.record.saving.converting', 'Kayıt FFmpeg ile dönüştürülüyor...'), 'running', 96);
-                    const finalized = await window.aurivo?.screenRecording?.finalizeRecording?.(muxedCapturePath, outputPath, {
+                    const finalized = await window.ardali?.screenRecording?.finalizeRecording?.(muxedCapturePath, outputPath, {
                         format: actualFormat,
                         bitrateKbps: recordingSettings.bitrateKbps,
                         videoEncoder: recordingSettings.videoEncoder,
@@ -34329,7 +34418,7 @@ async function startScreenRecording(options = {}) {
             if (ok) {
                 clearVideoStudioRecoveryCandidate();
                 videoToolLastOutputPath = outputPath;
-                const outputName = window.aurivo?.path?.basename?.(outputPath) || outputPath;
+                const outputName = window.ardali?.path?.basename?.(outputPath) || outputPath;
                 updateVideoToolStatus(`${testMode ? 'Test kaydı kaydedildi.' : uiT('video.tools.record.done', 'Ekran kaydı kaydedildi.')} ${outputName}`, 'done', 100);
                 addVideoStudioLog(`${testMode ? 'Test kaydı tamamlandı.' : uiT('video.tools.logs.recordDone', 'Kayıt tamamlandı.')}: ${outputName}`, 'success');
                 updateVideoToolStatus(uiT('video.tools.validation.running', 'Kayıt doğrulanıyor...'), 'running', 98);
@@ -34464,7 +34553,7 @@ async function runVideoToolConversion() {
         }
     }
 
-    const saveResult = await window.aurivo?.saveFile?.({
+    const saveResult = await window.ardali?.saveFile?.({
         title: uiT('video.tools.saveTitle', 'Çıktıyı kaydet'),
         defaultPath: getVideoToolDefaultOutputPath(inputPath, format),
         filters: [
@@ -34486,7 +34575,7 @@ async function runVideoToolConversion() {
     updateVideoToolStatus(uiT('video.tools.status.running', 'Dönüştürülüyor...'), 'running', 1);
 
     try {
-        const result = await window.aurivo?.videoTools?.convert?.({
+        const result = await window.ardali?.videoTools?.convert?.({
             jobId,
             target: mode,
             format,
@@ -34545,7 +34634,7 @@ function renderVideoWorkspace() {
         const normalizedPath = String(video?.path || '').trim();
         const safePath = escapeAttribute(normalizedPath);
         const cachedMeta = getCachedMetadataForPath(normalizedPath) || {};
-        const rawName = String(cachedMeta?.title || video?.name || window.aurivo?.path?.basename?.(video?.path) || 'Video');
+        const rawName = String(cachedMeta?.title || video?.name || window.ardali?.path?.basename?.(video?.path) || 'Video');
         const safeName = escapeHtml(rawName);
         const thumb = videoThumbnailUrlCache.get(normalizedPath) || '';
         const isCurrent = String(state.currentVideoPath || '').trim() === normalizedPath;
@@ -34740,7 +34829,7 @@ function buildVideoStudioPanel() {
     const captureRegionDisabled = captureMode !== 'region';
     const lastRecordingPath = getVideoStudioLastRecordingPath();
     const lastRecordingName = lastRecordingPath
-        ? (window.aurivo?.path?.basename?.(lastRecordingPath) || lastRecordingPath)
+        ? (window.ardali?.path?.basename?.(lastRecordingPath) || lastRecordingPath)
         : uiT('video.tools.quickActions.noRecording', 'Henüz kayıt yok');
     const preflightSummary = getVideoStudioPreflightSummary();
     loadVideoStudioRecoveryCandidate();
@@ -35277,7 +35366,7 @@ function buildVideoStudioPanel() {
                         </label>
                         <label class="video-tool-field">
                             <span>${escapeHtml(uiT('video.tools.output.nameTemplate', 'Dosya adı'))}</span>
-                            <input id="videoStudioRecordNameTemplateInput" type="text" value="${escapeAttribute(videoStudioRecordNameTemplate)}" placeholder="aurivo-{date}-{time}">
+                            <input id="videoStudioRecordNameTemplateInput" type="text" value="${escapeAttribute(videoStudioRecordNameTemplate)}" placeholder="ardali-{date}-{time}">
                         </label>
                         <div class="video-studio-output-folder">
                             <div class="video-studio-output-folder-text">
@@ -35560,7 +35649,7 @@ function buildVideoToolsLibrarySection() {
         const normalizedPath = String(video?.path || '').trim();
         const safePath = escapeAttribute(normalizedPath);
         const cachedMeta = getCachedMetadataForPath(normalizedPath) || {};
-        const rawName = String(cachedMeta?.title || video?.name || window.aurivo?.path?.basename?.(video?.path) || 'Video');
+        const rawName = String(cachedMeta?.title || video?.name || window.ardali?.path?.basename?.(video?.path) || 'Video');
         const safeName = escapeHtml(rawName);
         const thumb = videoThumbnailUrlCache.get(normalizedPath) || '';
         const isSelected = normalizedPath && normalizedPath === selectedPath;
@@ -35705,8 +35794,8 @@ function queueVideoItemNextByPath(videoPath = '') {
 // PLAYLIST
 // ============================================
 async function loadPlaylist() {
-    if (window.aurivo) {
-        state.playlist = await window.aurivo.loadPlaylist();
+    if (window.ardali) {
+        state.playlist = await window.ardali.loadPlaylist();
         state.playlist = (state.playlist || []).map((item) => {
             const activity = getTrackActivityForPath(item?.path) || updateTrackActivity(item?.path, {
                 favorite: !!item?.favorite,
@@ -35743,8 +35832,8 @@ async function loadPlaylist() {
 }
 
 async function savePlaylistToDisk() {
-    if (window.aurivo) {
-        await window.aurivo.savePlaylist(state.playlist);
+    if (window.ardali) {
+        await window.ardali.savePlaylist(state.playlist);
     }
 }
 
@@ -35960,7 +36049,7 @@ function renderPlaylist() {
         const largeFallbackImg = isVideoFile(item.name) ? 'icons/fallback_video.svg' : 'icons/fallback_audio.svg';
         const leadingVisual = showCardCover
             ? `<span class="playlist-card-cover" style="${definitelyNoCover ? 'background: transparent; border: none; box-shadow: none;' : ''}">
-                   <img class="playlist-card-cover-img${knownCardCover ? '' : ' default-cover'}" src="${knownCardCover || 'icons/aurivo_256.png'}" alt="" loading="lazy" decoding="async" style="${definitelyNoCover ? 'display: none;' : ''}">
+                   <img class="playlist-card-cover-img${knownCardCover ? '' : ' default-cover'}" src="${knownCardCover || 'icons/ardali_256.png'}" alt="" loading="lazy" decoding="async" style="${definitelyNoCover ? 'display: none;' : ''}">
                    <span class="fallback-cover-large-icon" style="${definitelyNoCover ? 'display: flex;' : 'display: none;'}"><img src="${largeFallbackImg}" style="width: 100%; height: 100%; object-fit: contain;"></span>
                </span>`
             : `<span class="item-icon">${icon}</span>`;
@@ -36001,7 +36090,7 @@ function renderPlaylist() {
                     if (e.dataTransfer) {
                         e.dataTransfer.effectAllowed = 'move';
                         e.dataTransfer.setData('text/plain', String(index));
-                        e.dataTransfer.setData('text/aurivo-reorder', '1');
+                        e.dataTransfer.setData('text/ardali-reorder', '1');
                     }
                 } catch {
                     // yoksay
@@ -36408,7 +36497,7 @@ function clearPlaylistAll() {
     updatePlayPauseIcon(false);
 
     if (elements.nowPlayingLabel) {
-        elements.nowPlayingLabel.textContent = uiT('nowPlaying.ready', 'Now Playing: Aurivo Player - Ready');
+        elements.nowPlayingLabel.textContent = uiT('nowPlaying.ready', 'Now Playing: ArDali Player - Ready');
     }
 
     renderPlaylist();
@@ -36424,7 +36513,7 @@ async function clearGalleryLibraryAndFolders() {
     if (state.currentPage !== 'gallery' && state.mediaFilter !== 'image') {
         state.mediaFilter = 'image';
     }
-    const approved = await window.aurivo?.dialog?.confirm?.({
+    const approved = await window.ardali?.dialog?.confirm?.({
         title: uiT('gallery.clear.title', 'Galeriyi Temizle'),
         message: uiT(
             'gallery.clear.confirm',
@@ -36469,7 +36558,7 @@ async function handleFileDrop(e) {
         const safePath = String(pathValue || '').trim();
         if (!safePath) return;
         const safeName = String(nameValue || '').trim()
-            || window.aurivo?.path?.basename?.(safePath)
+            || window.ardali?.path?.basename?.(safePath)
             || safePath.split(/[\\/]/).pop()
             || '';
         dropped.push({ path: safePath, name: safeName });
@@ -36493,21 +36582,21 @@ async function handleFileDrop(e) {
         return paths;
     };
 
-    // Önce Aurivo internal sürüklemesini kontrol et (file tree'den)
-    const aurivoData = e.dataTransfer.getData('text/aurivo-files');
-    if (aurivoData) {
+    // Önce ArDali internal sürüklemesini kontrol et (file tree'den)
+    const ardaliData = e.dataTransfer.getData('text/ardali-files');
+    if (ardaliData) {
         try {
-            const files = JSON.parse(aurivoData);
+            const files = JSON.parse(ardaliData);
             files.forEach(file => pushDroppedFile(file?.path, file?.name));
         } catch (err) {
-            console.error('Aurivo dosya verisi işlenemedi:', err);
+            console.error('ArDali dosya verisi işlenemedi:', err);
         }
     } else {
         // Harici dosya sürüklemesi (dosya yöneticisinden)
         const files = e.dataTransfer.files;
         for (let i = 0; i < files.length; i++) {
             const file = files[i];
-            const fallbackPath = window.aurivo?.path?.getPathForFile?.(file) || '';
+            const fallbackPath = window.ardali?.path?.getPathForFile?.(file) || '';
             pushDroppedFile(file?.path || fallbackPath, file?.name);
         }
 
@@ -36601,7 +36690,7 @@ function playVideo(videoPath, options = {}) {
     // Videolar listesinde bu videonun indeksini bul (tek dosya açma senaryosu için fallback)
     let videoIndex = state.videoFiles.findIndex(v => v.path === videoPath);
     if (videoIndex === -1) {
-        const fileName = window.aurivo?.path?.basename?.(videoPath) || String(videoPath || '').split('/').pop() || 'video';
+        const fileName = window.ardali?.path?.basename?.(videoPath) || String(videoPath || '').split('/').pop() || 'video';
         state.videoFiles = mergeVideoLibraryItems(state.videoFiles, [{ name: fileName, path: videoPath }]);
         videoIndex = state.videoFiles.findIndex(v => v.path === videoPath);
         persistVideoLibrary();
@@ -36681,11 +36770,11 @@ function playVideo(videoPath, options = {}) {
 
 async function ensureVideoQueueFromCurrentPath() {
     const currentPath = String(state.currentVideoPath || '').trim();
-    if (!currentPath || !window.aurivo?.readDirectory || !window.aurivo?.path?.dirname) return false;
+    if (!currentPath || !window.ardali?.readDirectory || !window.ardali?.path?.dirname) return false;
 
     try {
-        const dirPath = window.aurivo.path.dirname(currentPath);
-        const entries = await window.aurivo.readDirectory(dirPath);
+        const dirPath = window.ardali.path.dirname(currentPath);
+        const entries = await window.ardali.readDirectory(dirPath);
         if (!Array.isArray(entries)) return false;
 
         const videoExts = getConfiguredLibraryExtensions('video');
@@ -36705,7 +36794,7 @@ async function ensureVideoQueueFromCurrentPath() {
         state.currentVideoIndex = state.videoFiles.findIndex((v) => String(v.path || '').replace(/\\/g, '/') === normalizedCurrent);
 
         if (state.currentVideoIndex < 0) {
-            const currentName = window.aurivo?.path?.basename?.(currentPath) || normalizedCurrent.split('/').pop() || '';
+            const currentName = window.ardali?.path?.basename?.(currentPath) || normalizedCurrent.split('/').pop() || '';
             state.videoFiles.push({ name: currentName, path: currentPath });
             state.videoFiles.sort((a, b) => collator.compare(String(a?.name || ''), String(b?.name || '')));
             state.currentVideoIndex = state.videoFiles.findIndex((v) => String(v.path || '').replace(/\\/g, '/') === normalizedCurrent);
@@ -36831,16 +36920,16 @@ async function playIndex(index) {
         subtitleRuntime.hasTrack = false;
         syncFsSubtitleUiState();
         // C++ BASS Engine ile oynat
-        const result = await window.aurivo.audio.loadFile(item.path);
+        const result = await window.ardali.audio.loadFile(item.path);
         console.log('loadFile sonucu:', result);
         console.log('loadFile sonucu type:', typeof result, 'success check:', result === true, 'object success:', result && result.success);
         if (result && result.error) {
             console.log('🔥 BASS Audio Engine hatası:', result.error);
         }
         if (result === true || (result && result.success)) {
-            window.aurivo.audio.setVolume((state.volume || 0) / 100);
-            console.log('🎵 window.aurivo.audio.play() çağrılıyor...');
-            window.aurivo.audio.play();
+            window.ardali.audio.setVolume((state.volume || 0) / 100);
+            console.log('🎵 window.ardali.audio.play() çağrılıyor...');
+            window.ardali.audio.play();
             console.log('🎵 play() çağrıldı, ses çıkması gerekiyor');
             startNativePositionUpdates();
         } else {
@@ -36867,6 +36956,7 @@ async function playIndex(index) {
 
     state.isPlaying = true;
     updatePlayPauseIcon(true);
+    startVisualizerLoop();
     elements.nowPlayingLabel.textContent = `${uiT('nowPlaying.prefix', 'Now Playing')}: ${item.name}`;
     updateLibraryFlowsStatusUi();
     renderPlaylist();
@@ -36903,7 +36993,7 @@ async function startNativeTransitionToIndex(index, ms) {
 
     if (state.crossfadeInProgress) return;
     if (index < 0 || index >= state.playlist.length) return;
-    if (!window.aurivo?.audio) {
+    if (!window.ardali?.audio) {
         playIndex(index);
         return;
     }
@@ -36922,7 +37012,7 @@ async function startNativeTransitionToIndex(index, ms) {
     const targetVol = Math.max(0, Math.min(1, (state.volume || 0) / 100));
 
     // Native true overlap crossfade (iki parça üst üste)
-    if (totalMs > 0 && typeof window.aurivo.audio.crossfadeTo === 'function') {
+    if (totalMs > 0 && typeof window.ardali.audio.crossfadeTo === 'function') {
         state.crossfadeInProgress = true;
         state.autoCrossfadeTriggered = false;
         state.trackAboutToEnd = false;
@@ -36937,7 +37027,7 @@ async function startNativeTransitionToIndex(index, ms) {
             }
 
             // Crossfade'i başlat (native tarafında: prev fade-out, new fade-in)
-            const result = await window.aurivo.audio.crossfadeTo(toItem.path, totalMs);
+            const result = await window.ardali.audio.crossfadeTo(toItem.path, totalMs);
             const ok = (result === true) || (result && result.success);
             if (!ok) {
                 console.warn('[CROSSFADE] Native overlap crossfade failed, fallback to non-overlap', result);
@@ -36974,24 +37064,24 @@ async function startNativeTransitionToIndex(index, ms) {
     const recoverOldTrack = async () => {
         try {
             if (!fromItem?.path) {
-                await window.aurivo.audio.setVolume?.(targetVol);
-                await window.aurivo.audio.play?.();
+                await window.ardali.audio.setVolume?.(targetVol);
+                await window.ardali.audio.play?.();
                 startNativePositionUpdates();
                 state.isPlaying = true;
                 updatePlayPauseIcon(true);
                 return;
             }
-            const res = await window.aurivo.audio.loadFile(fromItem.path);
+            const res = await window.ardali.audio.loadFile(fromItem.path);
             if (res === true || (res && res.success)) {
-                await window.aurivo.audio.setVolume?.(0);
-                await window.aurivo.audio.play?.();
+                await window.ardali.audio.setVolume?.(0);
+                await window.ardali.audio.play?.();
                 startNativePositionUpdates();
                 state.isPlaying = true;
                 updatePlayPauseIcon(true);
-                if (typeof window.aurivo.audio.fadeVolumeTo === 'function' && totalMs > 0) {
-                    await window.aurivo.audio.fadeVolumeTo(targetVol, Math.min(inMs, 300));
+                if (typeof window.ardali.audio.fadeVolumeTo === 'function' && totalMs > 0) {
+                    await window.ardali.audio.fadeVolumeTo(targetVol, Math.min(inMs, 300));
                 } else {
-                    await window.aurivo.audio.setVolume?.(targetVol);
+                    await window.ardali.audio.setVolume?.(targetVol);
                 }
             }
         } catch (e) {
@@ -37003,16 +37093,16 @@ async function startNativeTransitionToIndex(index, ms) {
         console.log('[CROSSFADE] Native transition ->', toItem?.name, 'ms:', totalMs);
 
         // Fade out
-        if (totalMs > 0 && typeof window.aurivo.audio.fadeVolumeTo === 'function') {
-            await window.aurivo.audio.fadeVolumeTo(0, outMs);
+        if (totalMs > 0 && typeof window.ardali.audio.fadeVolumeTo === 'function') {
+            await window.ardali.audio.fadeVolumeTo(0, outMs);
         } else {
-            await window.aurivo.audio.setVolume?.(0);
+            await window.ardali.audio.setVolume?.(0);
         }
 
         stopNativePositionUpdates();
 
         // Stop + kısa bekle (bazı sürücülerde/codec'lerde hemen load sorun çıkarabiliyor)
-        try { await window.aurivo.audio.stop?.(); } catch (e) { console.warn('[CROSSFADE] native stop warn:', e); }
+        try { await window.ardali.audio.stop?.(); } catch (e) { console.warn('[CROSSFADE] native stop warn:', e); }
         await new Promise(r => setTimeout(r, 60));
 
         // Sayfayı/medyayı ayarla
@@ -37022,7 +37112,7 @@ async function startNativeTransitionToIndex(index, ms) {
         }
 
         // Yeni dosyayı yükle
-        const result = await window.aurivo.audio.loadFile(toItem.path);
+        const result = await window.ardali.audio.loadFile(toItem.path);
         console.log('[CROSSFADE] native loadFile result:', result);
         if (!(result === true || (result && result.success))) {
             console.error('[CROSSFADE] Native transition: loadFile failed', result);
@@ -37034,16 +37124,16 @@ async function startNativeTransitionToIndex(index, ms) {
         state.currentIndex = index;
         state.playbackEndWarnedTrackKey = '';
         state.playbackStatePersistSecond = -1;
-        await window.aurivo.audio.setVolume?.(0);
-        await window.aurivo.audio.play?.();
+        await window.ardali.audio.setVolume?.(0);
+        await window.ardali.audio.play?.();
         // Bazı durumlarda play çağrısı ilk seferde başlamayabiliyor -> kısa kontrol + retry
         try {
             await new Promise(r => setTimeout(r, 80));
-            if (typeof window.aurivo.audio.isPlaying === 'function') {
-                const playing = await window.aurivo.audio.isPlaying();
+            if (typeof window.ardali.audio.isPlaying === 'function') {
+                const playing = await window.ardali.audio.isPlaying();
                 if (!playing) {
                     console.warn('[CROSSFADE] play did not start, retrying...');
-                    await window.aurivo.audio.play?.();
+                    await window.ardali.audio.play?.();
                 }
             }
         } catch (e) {
@@ -37060,10 +37150,10 @@ async function startNativeTransitionToIndex(index, ms) {
         rememberPlaybackStartupState({ persist: false });
 
         // Fade in
-        if (totalMs > 0 && typeof window.aurivo.audio.fadeVolumeTo === 'function') {
-            await window.aurivo.audio.fadeVolumeTo(targetVol, inMs);
+        if (totalMs > 0 && typeof window.ardali.audio.fadeVolumeTo === 'function') {
+            await window.ardali.audio.fadeVolumeTo(targetVol, inMs);
         } else {
-            await window.aurivo.audio.setVolume?.(targetVol);
+            await window.ardali.audio.setVolume?.(targetVol);
         }
 
         console.log('[CROSSFADE] Native transition completed');
@@ -37098,9 +37188,9 @@ function startNativePositionUpdates() {
 
         try {
             // IPC çağrıları async
-            const positionMs = await window.aurivo.audio.getPosition(); // milisaniye
-            const durationSec = await window.aurivo.audio.getDuration(); // saniye
-            const isPlaying = await window.aurivo.audio.isPlaying();
+            const positionMs = await window.ardali.audio.getPosition(); // milisaniye
+            const durationSec = await window.ardali.audio.getDuration(); // saniye
+            const isPlaying = await window.ardali.audio.isPlaying();
             const nowMs = Date.now();
 
             // Bu tick sırasında stop/restart olduysa hiçbir şey yapma
@@ -37173,9 +37263,9 @@ function startNativePositionUpdates() {
                     if (now - lastTry > 1400) {
                         state.nativeAutoResumeLastTryAt = now;
                         try {
-                            await window.aurivo.audio.play?.();
+                            await window.ardali.audio.play?.();
                             await new Promise((r) => setTimeout(r, 70));
-                            const stillStopped = !(await window.aurivo.audio.isPlaying?.());
+                            const stillStopped = !(await window.ardali.audio.isPlaying?.());
                             if (stillStopped && inOutputSwitchGrace) {
                                 await hardRecoverCurrentTrackAfterRouteChange(positionMs);
                             }
@@ -37297,9 +37387,9 @@ async function extractAlbumArt(filePath) {
             return;
         }
         const coverPrefs = getCoverPreferenceState();
-        if (window.aurivo && window.aurivo.getBestAlbumArt) {
+        if (window.ardali && window.ardali.getBestAlbumArt) {
             console.log('getBestAlbumArt API mevcut, çağırılıyor...');
-            const coverData = await window.aurivo.getBestAlbumArt(filePath, coverPrefs);
+            const coverData = await window.ardali.getBestAlbumArt(filePath, coverPrefs);
 
             if (coverData) {
                 writeCachedAlbumArt(filePath, coverData);
@@ -37313,7 +37403,7 @@ async function extractAlbumArt(filePath) {
             }
         } else {
             console.log('HATA: getAlbumArt fonksiyonu yok!');
-            console.log('window.aurivo:', window.aurivo);
+            console.log('window.ardali:', window.ardali);
         }
     } catch (e) {
         console.error('HATA oluştu:', e);
@@ -37323,10 +37413,18 @@ async function extractAlbumArt(filePath) {
     updateCoverArt(null, 'audio');
 }
 
+function refreshCurrentAudioCoverIfNeeded() {
+    if (state.activeMedia !== 'audio' || state.currentIndex < 0) return;
+    const current = state.playlist[state.currentIndex];
+    const currentPath = String(current?.path || '').trim();
+    if (!currentPath) return;
+    extractAlbumArt(currentPath).catch(() => { });
+}
+
 async function extractVideoCover(filePath) {
     try {
-        if (window.aurivo?.getVideoThumbnail) {
-            const thumb = await window.aurivo.getVideoThumbnail(filePath);
+        if (window.ardali?.getVideoThumbnail) {
+            const thumb = await window.ardali.getVideoThumbnail(filePath);
             if (thumb) {
                 updateCoverArt(thumb, 'video');
                 return;
@@ -37359,7 +37457,7 @@ function updateCoverArt(imageData, mediaType) {
         } else if (mediaType === 'web') {
             coverImg.src = '../icons/nav_internet.svg';
         } else {
-            coverImg.src = '../icons/aurivo_256.png';
+            coverImg.src = '../icons/ardali_256.png';
         }
         coverImg.classList.add('default-cover');
     }
@@ -37400,21 +37498,21 @@ function togglePlayPause() {
             if (useNativeAudio) {
                 // C++ Engine ile duraklat (opsiyonel fade)
                 try {
-                    if (state.settings?.playback?.fadeOnPauseResume && window.aurivo?.audio?.fadeVolumeTo) {
+                    if (state.settings?.playback?.fadeOnPauseResume && window.ardali?.audio?.fadeVolumeTo) {
                         const ms = state.settings.playback.pauseFadeMs || 250;
-                        window.aurivo.audio.fadeVolumeTo(0, ms).finally(() => {
+                        window.ardali.audio.fadeVolumeTo(0, ms).finally(() => {
                             try {
-                                window.aurivo.audio.pause();
+                                window.ardali.audio.pause();
                             } catch (e) {
                                 console.error('[togglePlayPause] pause error:', e);
                             }
                             stopNativePositionUpdates();
                         }).catch(e => {
                             console.error('[togglePlayPause] fadeVolumeTo error:', e);
-                            try { window.aurivo.audio.pause(); } catch { }
+                            try { window.ardali.audio.pause(); } catch { }
                         });
                     } else {
-                        const result = window.aurivo.audio.pause();
+                        const result = window.ardali.audio.pause();
                         if (result && result.error) {
                             console.error('[togglePlayPause] pause failed:', result.error);
                         }
@@ -37446,10 +37544,10 @@ function togglePlayPause() {
             // Mevcut şarkıyı devam ettir
             if (useNativeAudio) {
                 try {
-                    if (state.settings?.playback?.fadeOnPauseResume && window.aurivo?.audio?.fadeVolumeTo) {
+                    if (state.settings?.playback?.fadeOnPauseResume && window.ardali?.audio?.fadeVolumeTo) {
                         const ms = state.settings.playback.pauseFadeMs || 250;
-                        window.aurivo.audio.setVolume(0);
-                        const playResult = window.aurivo.audio.play();
+                        window.ardali.audio.setVolume(0);
+                        const playResult = window.ardali.audio.play();
                         if (playResult && playResult.error) {
                             console.error('[togglePlayPause] play failed:', playResult.error);
                             // Seçili parça engine'e yüklenmemiş olabilir -> doğrudan parçayı yeniden başlat.
@@ -37457,10 +37555,10 @@ function togglePlayPause() {
                             return;
                         } else {
                             startNativePositionUpdates();
-                            window.aurivo.audio.fadeVolumeTo(Math.max(0, Math.min(1, (state.volume || 0) / 100)), ms).catch(e => console.error('[fadeVolume error]:', e));
+                            window.ardali.audio.fadeVolumeTo(Math.max(0, Math.min(1, (state.volume || 0) / 100)), ms).catch(e => console.error('[fadeVolume error]:', e));
                         }
                     } else {
-                        const playResult = window.aurivo.audio.play();
+                        const playResult = window.ardali.audio.play();
                         if (playResult && playResult.error) {
                             console.error('[togglePlayPause] play failed:', playResult.error);
                             // Seçili parça engine'e yüklenmemiş olabilir -> doğrudan parçayı yeniden başlat.
@@ -37485,6 +37583,7 @@ function togglePlayPause() {
             }
             state.isPlaying = true;
             updatePlayPauseIcon(true);
+            refreshCurrentAudioCoverIfNeeded();
             updateTrayState();
             updateMPRISMetadata();
             scheduleRememberPlaybackStartupState(220);
@@ -37577,7 +37676,7 @@ async function applyPlaybackVolumeLevelingToEngine() {
         // Playback-leveling kapalıysa, ana Ses Çıkışı loudness ayarını geri uygula.
         return applyLoudnessNormalizationToEngine();
     }
-    const autoGainApi = window.aurivo?.audio?.autoGain;
+    const autoGainApi = window.ardali?.audio?.autoGain;
     if (!autoGainApi) return false;
 
     try {
@@ -38055,8 +38154,8 @@ function seekBy(seconds) {
         video.currentTime = Math.max(0, Math.min(video.duration || 0, video.currentTime + seconds));
     } else if (useNativeAudio && state.activeMedia === 'audio') {
         // C++ Engine ile seek
-        window.aurivo.audio.getPosition().then(pos => {
-            window.aurivo.audio.seek(pos + seconds * 1000);
+        window.ardali.audio.getPosition().then(pos => {
+            window.ardali.audio.seek(pos + seconds * 1000);
         });
     } else {
         // HTML5 Audio için seek
@@ -38077,9 +38176,9 @@ async function handleSeek() {
         elements.videoPlayer.currentTime = (value / 1000) * duration;
     } else if (useNativeAudio && state.activeMedia === 'audio') {
         // C++ Engine ile seek
-        const duration = await window.aurivo.audio.getDuration();
+        const duration = await window.ardali.audio.getDuration();
         const newPos = (value / 1000) * duration;
-        await window.aurivo.audio.seek(newPos);
+        await window.ardali.audio.seek(newPos);
     } else {
         // HTML5 Audio için seek
         const activePlayer = getActiveAudioPlayer();
@@ -38113,10 +38212,10 @@ async function handleSeekClick(e) {
         }
     } else if (useNativeAudio && state.activeMedia === 'audio') {
         // C++ Engine ile seek - getDuration saniye dönüdürüyor, seek milisaniye bekliyor
-        const durationSec = await window.aurivo.audio.getDuration();
+        const durationSec = await window.ardali.audio.getDuration();
         if (durationSec > 0) {
             const newPosMs = percent * durationSec * 1000; // Milisaniyeye çevir
-            await window.aurivo.audio.seek(newPosMs);
+            await window.ardali.audio.seek(newPosMs);
             elements.seekSlider.value = percent * 1000;
             updateRainbowSlider(elements.seekSlider, percent * 100);
         }
@@ -38250,11 +38349,11 @@ function handleVolumeWheel(e) {
 }
 
 function ensureNotificationContainer() {
-    let container = document.getElementById('aurivoNotifyContainer');
+    let container = document.getElementById('ardaliNotifyContainer');
     if (container) return container;
     container = document.createElement('div');
-    container.id = 'aurivoNotifyContainer';
-    container.className = 'aurivo-notify-container';
+    container.id = 'ardaliNotifyContainer';
+    container.className = 'ardali-notify-container';
     container.setAttribute('aria-live', 'polite');
     document.body.appendChild(container);
     return container;
@@ -38300,18 +38399,18 @@ function showNotification(message, type = 'info', timeoutMs = 3000) {
 
     const container = ensureNotificationContainer();
     const item = document.createElement('div');
-    item.className = `aurivo-notify aurivo-notify-${String(type || 'info').toLowerCase()}`;
+    item.className = `ardali-notify ardali-notify-${String(type || 'info').toLowerCase()}`;
 
     const bars = document.createElement('span');
-    bars.className = 'aurivo-notify-bars';
+    bars.className = 'ardali-notify-bars';
     bars.innerHTML = '<i></i><i></i><i></i>';
 
     const text = document.createElement('span');
-    text.className = 'aurivo-notify-text';
+    text.className = 'ardali-notify-text';
     text.textContent = textValue;
 
     const sweep = document.createElement('span');
-    sweep.className = 'aurivo-notify-sweep';
+    sweep.className = 'ardali-notify-sweep';
 
     item.appendChild(bars);
     item.appendChild(text);
@@ -38360,9 +38459,9 @@ function isGenericTitle(title) {
     return (
         t === 'youtube' ||
         t === 'youtube music' ||
-        t === 'aurivo player - hazır' ||
-        t === 'aurivo player' ||
-        t.startsWith('şu an çalınan:') && (t === 'şu an çalınan: aurivo player - hazır')
+        t === 'ardali player - hazır' ||
+        t === 'ardali player' ||
+        t.startsWith('şu an çalınan:') && (t === 'şu an çalınan: ardali player - hazır')
     );
 }
 
@@ -38379,8 +38478,8 @@ async function getWebViewDocumentTitleSafe() {
 
 async function getClipboardTextSafe() {
     try {
-        if (window.aurivo?.clipboard?.getText) {
-            return String(await window.aurivo.clipboard.getText() || '');
+        if (window.ardali?.clipboard?.getText) {
+            return String(await window.ardali.clipboard.getText() || '');
         }
     } catch { }
     try {
@@ -38393,8 +38492,8 @@ async function getClipboardTextSafe() {
 
 async function fileExistsSafe(filePath) {
     try {
-        if (!filePath || !window.aurivo?.fileExists) return false;
-        return !!(await window.aurivo.fileExists(filePath));
+        if (!filePath || !window.ardali?.fileExists) return false;
+        return !!(await window.ardali.fileExists(filePath));
     } catch {
         return false;
     }
@@ -38426,7 +38525,7 @@ function toggleRepeatOne() {
 // ============================================
 function openSettings(defaultTab = 'playback') {
     if (!isStandaloneSettingsMode()) {
-        window.aurivo?.openSettingsWindow?.(defaultTab).catch((e) => {
+        window.ardali?.openSettingsWindow?.(defaultTab).catch((e) => {
             console.error('[SETTINGS] settings window open error:', e);
         });
         return;
@@ -38461,7 +38560,7 @@ function closeSettings() {
 }
 
 function switchSettingsTab(tab) {
-    window.AurivoSettingsShared?.switchSettingsTab?.({
+    window.ArDaliSettingsShared?.switchSettingsTab?.({
         tab,
         elements,
         updateSecurityUI,
@@ -38490,7 +38589,7 @@ function switchSettingsTab(tab) {
 }
 
 function loadSettingsToUI() {
-    window.AurivoSettingsShared?.loadSettingsToUI?.({
+    window.ArDaliSettingsShared?.loadSettingsToUI?.({
         state,
         elements,
         specialPaths: state.specialPaths,
@@ -38592,7 +38691,7 @@ async function applySettings() {
     let result;
     const prevAutoHardwareProfile = state.settings?.appearance?.autoHardwareProfile !== false;
     try {
-        result = await window.AurivoSettingsShared?.applySettings?.({
+        result = await window.ArDaliSettingsShared?.applySettings?.({
             state,
             elements,
             ensureAdblockSettings,
@@ -38605,10 +38704,10 @@ async function applySettings() {
             normalizePulsePreferenceState,
             pulseDefaultSec: PULSE_NO_SIGNAL_HINT_TOAST_DEFAULT_SEC,
             pulseDefaultMode: PULSE_QUICK_MODE_DEFAULT,
-            savePulsePreferences: (prefs) => window.aurivo?.pulse?.savePreferences?.(prefs),
+            savePulsePreferences: (prefs) => window.ardali?.pulse?.savePreferences?.(prefs),
             notifyPulseSaveError: (e) => {
                 console.error('[PULSE] save preferences error:', e);
-                safeNotify('Aurivo-Pulse tercihleri kaydedilemedi.', 'error', 2400);
+                safeNotify('ArDali-Pulse tercihleri kaydedilemedi.', 'error', 2400);
             }
         });
     } finally {
@@ -38743,7 +38842,7 @@ async function requestStandaloneSettingsClose() {
             return;
         }
         stopSettingsBackgroundWork();
-        await window.aurivo?.confirmSettingsClose?.();
+        await window.ardali?.confirmSettingsClose?.();
     } finally {
         settingsWindowRuntime.closing = false;
     }
@@ -38752,7 +38851,7 @@ async function requestStandaloneSettingsClose() {
 function installStandaloneSettingsLifecycleHooks() {
     if (!isStandaloneSettingsMode()) return;
 
-    window.aurivo?.onSettingsCloseRequest?.(() => {
+    window.ardali?.onSettingsCloseRequest?.(() => {
         requestStandaloneSettingsClose().catch((error) => {
             console.error('[SETTINGS] close request handling failed:', error);
         });
@@ -38794,18 +38893,18 @@ function applyAppearanceSettingsToRuntime(appearanceOverride = null) {
         : 'medium';
     const followSystemTheme = appearance.followSystemTheme === true;
     const systemPrefersDark = getSystemPrefersDark();
-    document.documentElement.dataset.aurivoTheme = theme;
-    document.documentElement.dataset.aurivoMotionProfile = motionProfile;
+    document.documentElement.dataset.ardaliTheme = theme;
+    document.documentElement.dataset.ardaliMotionProfile = motionProfile;
     document.documentElement.dataset.sfxIconSize = sfxSidebarIconSize;
-    document.body?.setAttribute?.('data-aurivo-theme', theme);
-    document.body?.setAttribute?.('data-aurivo-motion-profile', motionProfile);
-    document.body?.classList?.toggle('aurivo-system-light', followSystemTheme && !systemPrefersDark);
-    document.body?.classList?.toggle('aurivo-system-dark', followSystemTheme && systemPrefersDark);
-    document.body?.classList?.toggle('aurivo-visual-balanced', visualMode === 'balanced');
-    document.body?.classList?.toggle('aurivo-ui-fx-disabled', appearance.uiFxEnabled === false);
-    document.body?.classList?.toggle('aurivo-slider-fx-disabled', appearance.sliderFxEnabled === false);
-    document.body?.classList?.toggle('aurivo-reduced-motion', appearance.reduceMotion === true);
-    document.body?.classList?.toggle('aurivo-sfx-lights-disabled', appearance.sfxLights === false);
+    document.body?.setAttribute?.('data-ardali-theme', theme);
+    document.body?.setAttribute?.('data-ardali-motion-profile', motionProfile);
+    document.body?.classList?.toggle('ardali-system-light', followSystemTheme && !systemPrefersDark);
+    document.body?.classList?.toggle('ardali-system-dark', followSystemTheme && systemPrefersDark);
+    document.body?.classList?.toggle('ardali-visual-balanced', visualMode === 'balanced');
+    document.body?.classList?.toggle('ardali-ui-fx-disabled', appearance.uiFxEnabled === false);
+    document.body?.classList?.toggle('ardali-slider-fx-disabled', appearance.sliderFxEnabled === false);
+    document.body?.classList?.toggle('ardali-reduced-motion', appearance.reduceMotion === true);
+    document.body?.classList?.toggle('ardali-sfx-lights-disabled', appearance.sfxLights === false);
     if (appearance.sliderFxEnabled === false) {
         stopRainbowAnimation();
     } else {
@@ -38816,7 +38915,7 @@ function applyAppearanceSettingsToRuntime(appearanceOverride = null) {
 
 function syncSfxLightsShadowStorage(enabled) {
     try {
-        localStorage.setItem('aurivo_ui_sfx_lights_enabled', enabled ? '1' : '0');
+        localStorage.setItem('ardali_ui_sfx_lights_enabled', enabled ? '1' : '0');
     } catch {
         // ignore
     }
@@ -38838,7 +38937,7 @@ function applySfxLightsShadowState(enabled) {
 
 function syncSliderFxShadowStorage(enabled) {
     try {
-        localStorage.setItem('aurivo_ui_slider_fx_enabled', enabled ? '1' : '0');
+        localStorage.setItem('ardali_ui_slider_fx_enabled', enabled ? '1' : '0');
     } catch {
         // ignore
     }
@@ -38863,7 +38962,7 @@ function syncSfxIconSizeShadowStorage(size) {
         const normalized = ['compact', 'medium', 'large'].includes(String(size || '').toLowerCase())
             ? String(size).toLowerCase()
             : 'medium';
-        localStorage.setItem('aurivo_ui_sfx_icon_size', normalized);
+        localStorage.setItem('ardali_ui_sfx_icon_size', normalized);
     } catch {
         // ignore
     }
@@ -38963,7 +39062,7 @@ async function detectHardwareProfile() {
     let gpuRenderer = '';
 
     try {
-        const hints = await window.aurivo?.system?.getHardwareHints?.();
+        const hints = await window.ardali?.system?.getHardwareHints?.();
         ramGiB = Number(hints?.ramGiB) || 0;
         cpuCores = Number(hints?.cpuCores) || cpuCores;
         gpuRenderer = String(hints?.gpuRenderer || '').trim();
@@ -39302,11 +39401,11 @@ function applySecuritySettingsToRuntime() {
 }
 
 function resetPlaybackDefaults() {
-    window.AurivoSettingsShared?.resetPlaybackDefaults?.();
+    window.ArDaliSettingsShared?.resetPlaybackDefaults?.();
 }
 
 function resetListenDefaults() {
-    window.AurivoSettingsShared?.resetListenDefaults?.({
+    window.ArDaliSettingsShared?.resetListenDefaults?.({
         elements,
         defaultSec: PULSE_NO_SIGNAL_HINT_TOAST_DEFAULT_SEC,
         defaultMode: PULSE_QUICK_MODE_DEFAULT,
@@ -39372,7 +39471,7 @@ function resetBehaviorDefaults() {
     if (elements.sliderFxToggle) elements.sliderFxToggle.checked = true;
     if (elements.sfxLightsToggle) elements.sfxLightsToggle.checked = true;
     if (elements.behaviorRememberLastSection) elements.behaviorRememberLastSection.checked = true;
-    if (elements.behaviorWebExperienceEnabled) elements.behaviorWebExperienceEnabled.checked = false;
+    if (elements.behaviorWebExperienceEnabled) elements.behaviorWebExperienceEnabled.checked = true;
     if (elements.libraryRememberSection) elements.libraryRememberSection.checked = true;
     if (elements.behaviorStartupPage) elements.behaviorStartupPage.value = 'music';
     if (elements.libraryStartupPage) elements.libraryStartupPage.value = 'music';
@@ -39462,14 +39561,14 @@ function resetGalleryThresholdInputsToDefaults() {
 
 function resetAudioDefaults() {
     if (elements.audioFollowSystemVolume) elements.audioFollowSystemVolume.checked = true;
-    window.AurivoSettingsShared?.setButtonToggleState?.(elements.audioAllowOverdrive150, false);
+    window.ArDaliSettingsShared?.setButtonToggleState?.(elements.audioAllowOverdrive150, false);
     if (elements.audioDefaultVolume) {
         elements.audioDefaultVolume.max = '100';
         elements.audioDefaultVolume.value = '40';
     }
     if (elements.audioAppVolume) elements.audioAppVolume.value = '40';
-    window.AurivoSettingsShared?.updateAudioSettingsVolumeLabel?.(elements);
-    window.AurivoSettingsShared?.updateAudioAppVolumeLabel?.(elements);
+    window.ArDaliSettingsShared?.updateAudioSettingsVolumeLabel?.(elements);
+    window.ArDaliSettingsShared?.updateAudioAppVolumeLabel?.(elements);
     if (elements.audioLoudnessEnabled) elements.audioLoudnessEnabled.checked = false;
     if (elements.audioLoudnessMode) elements.audioLoudnessMode.value = 'balanced';
     if (elements.audioLimiterEnabled) elements.audioLimiterEnabled.checked = false;
@@ -39546,7 +39645,7 @@ function formatUpdateCheckedAt(ts) {
 
 function syncAboutVersionInfoUi() {
     if (elements.aboutAppVersionValue) {
-        elements.aboutAppVersionValue.textContent = appUpdateRuntime.currentVersion || window.aurivo?.version || '-';
+        elements.aboutAppVersionValue.textContent = appUpdateRuntime.currentVersion || window.ardali?.version || '-';
     }
     if (elements.aboutElectronVersionValue) {
         elements.aboutElectronVersionValue.textContent = appUpdateRuntime.electronVersion || '-';
@@ -39555,7 +39654,7 @@ function syncAboutVersionInfoUi() {
         elements.aboutChromiumVersionValue.textContent = appUpdateRuntime.chromiumVersion || '-';
     }
     if (elements.aboutLastUpdateCheckValue) {
-        const fallback = Number(localStorage.getItem('aurivo_last_update_check_at') || 0);
+        const fallback = Number(localStorage.getItem('ardali_last_update_check_at') || 0);
         elements.aboutLastUpdateCheckValue.textContent = formatUpdateCheckedAt(appUpdateRuntime.checkedAt || fallback);
     }
 }
@@ -39585,13 +39684,13 @@ function openUpdateCenterFromInteractiveNotice() {
 
 function tryShowDesktopUpdateNotification(versionText) {
     if (typeof Notification !== 'function') return false;
-    const title = 'Aurivo güncellemesi hazır';
+    const title = 'ArDali güncellemesi hazır';
     const body = `Yeni sürüm bulundu: ${versionText}. Açmak için tıkla.`;
     const show = () => {
         try {
             const notif = new Notification(title, {
                 body,
-                tag: 'aurivo-update-available',
+                tag: 'ardali-update-available',
                 silent: false
             });
             notif.onclick = () => {
@@ -39623,7 +39722,7 @@ function maybeNotifyUpdateAvailable(previousStatus, previousTargetVersion) {
     if (previousStatus === 'available' && previousTargetVersion === targetVersion) return;
     if (appUpdateRuntime.lastNotifiedVersion === targetVersion) return;
 
-    const seenKey = `aurivo_update_notice_seen_${targetVersion}`;
+    const seenKey = `ardali_update_notice_seen_${targetVersion}`;
     if (localStorage.getItem(seenKey) === '1') {
         appUpdateRuntime.lastNotifiedVersion = targetVersion;
         return;
@@ -39639,7 +39738,7 @@ function maybeNotifyUpdateAvailable(previousStatus, previousTargetVersion) {
 
 function updateActionButtonState() {
     if (!elements.updateActionBtn) return;
-    const useAurUpdateFlow = window.aurivo?.platform === 'linux' && appUpdateRuntime.aurUpdateSupported && appUpdateRuntime.aurPackageInstalled;
+    const useAurUpdateFlow = window.ardali?.platform === 'linux' && appUpdateRuntime.aurUpdateSupported && appUpdateRuntime.aurPackageInstalled;
     if (useAurUpdateFlow) {
         elements.updateActionBtn.textContent = 'AUR ile Güncelle';
         elements.updateActionBtn.disabled = false;
@@ -39667,7 +39766,7 @@ function updateActionButtonState() {
         return;
     }
     elements.updateActionBtn.textContent = 'Güncellemeleri Denetle';
-    elements.updateActionBtn.disabled = !window.aurivo?.app?.updater;
+    elements.updateActionBtn.disabled = !window.ardali?.app?.updater;
 }
 
 function applyAppUpdateStateToUi(payload = {}) {
@@ -39686,7 +39785,7 @@ function applyAppUpdateStateToUi(payload = {}) {
     if (payload.chromiumVersion != null) appUpdateRuntime.chromiumVersion = String(payload.chromiumVersion || '').trim();
 
     if (appUpdateRuntime.checkedAt > 0) {
-        localStorage.setItem('aurivo_last_update_check_at', String(appUpdateRuntime.checkedAt));
+        localStorage.setItem('ardali_last_update_check_at', String(appUpdateRuntime.checkedAt));
     }
 
     if (elements.updateStatusText) {
@@ -39719,7 +39818,7 @@ function applyAppUpdateStateToUi(payload = {}) {
     }
 
     if (elements.updateBannerText) {
-        const useAurFlow = window.aurivo?.platform === 'linux' && appUpdateRuntime.aurUpdateSupported && appUpdateRuntime.aurPackageInstalled;
+        const useAurFlow = window.ardali?.platform === 'linux' && appUpdateRuntime.aurUpdateSupported && appUpdateRuntime.aurPackageInstalled;
         if (appUpdateRuntime.status === 'available') {
             const ver = appUpdateRuntime.targetVersion ? ` (${appUpdateRuntime.targetVersion})` : '';
             elements.updateBannerText.textContent = useAurFlow
@@ -39741,7 +39840,7 @@ function applyAppUpdateStateToUi(payload = {}) {
     }
 
     if (elements.updateBannerUpdateBtn) {
-        const useAurUpdateFlow = window.aurivo?.platform === 'linux' && appUpdateRuntime.aurUpdateSupported && appUpdateRuntime.aurPackageInstalled;
+        const useAurUpdateFlow = window.ardali?.platform === 'linux' && appUpdateRuntime.aurUpdateSupported && appUpdateRuntime.aurPackageInstalled;
         elements.updateBannerUpdateBtn.textContent = useAurUpdateFlow
             ? 'Güncelle (AUR)'
             : (appUpdateRuntime.status === 'downloaded'
@@ -39764,13 +39863,13 @@ function applyAppUpdateStateToUi(payload = {}) {
 }
 
 async function runUpdatePrimaryAction() {
-    const useAurUpdateFlow = window.aurivo?.platform === 'linux' && appUpdateRuntime.aurUpdateSupported && appUpdateRuntime.aurPackageInstalled;
+    const useAurUpdateFlow = window.ardali?.platform === 'linux' && appUpdateRuntime.aurUpdateSupported && appUpdateRuntime.aurPackageInstalled;
     const status = String(appUpdateRuntime.status || '').toLowerCase();
 
     if (useAurUpdateFlow) {
         // Eğer güncelleme zaten bulunduysa → yükle (terminal aç, uygulamayı kapat)
         if (status === 'available') {
-            const result = await window.aurivo?.app?.updater?.launchAurivoBinUpdate?.();
+            const result = await window.ardali?.app?.updater?.launchArDaliBinUpdate?.();
             if (!result?.ok) {
                 if (result?.reason === 'yay-not-found') {
                     safeNotify('yay bulunamadı. Lütfen önce yay kur.', 'warning', 2600);
@@ -39791,11 +39890,11 @@ async function runUpdatePrimaryAction() {
 
         // Henüz kontrol edilmemişse veya güncel durum bilinmiyorsa önce AUR'dan denetle.
         // Kullanıcı tek tıkla işlem beklediği için güncelleme bulunduysa aynı tıkta başlat.
-        const updater = window.aurivo?.app?.updater;
+        const updater = window.ardali?.app?.updater;
         if (updater) {
             const state = await updater.check({ manual: true });
             if (String(state?.status || '').toLowerCase() === 'available') {
-                const result = await updater.launchAurivoBinUpdate?.();
+                const result = await updater.launchArDaliBinUpdate?.();
                 if (!result?.ok) {
                     if (result?.reason === 'yay-not-found') {
                         safeNotify('yay bulunamadı. Lütfen önce yay kur.', 'warning', 2600);
@@ -39816,7 +39915,7 @@ async function runUpdatePrimaryAction() {
         return;
     }
 
-    const updater = window.aurivo?.app?.updater;
+    const updater = window.ardali?.app?.updater;
     if (!updater) {
         safeNotify('Güncelleme desteği bu yapıda aktif değil.', 'info', 2200);
         return;
@@ -39835,7 +39934,7 @@ async function runUpdatePrimaryAction() {
 
 async function initAppUpdateUi() {
     try {
-        const versionInfo = await window.aurivo?.app?.getVersionInfo?.();
+        const versionInfo = await window.ardali?.app?.getVersionInfo?.();
         if (versionInfo && typeof versionInfo === 'object') {
             appUpdateRuntime.currentVersion = String(versionInfo.appVersion || appUpdateRuntime.currentVersion || '').trim();
             appUpdateRuntime.electronVersion = String(versionInfo.electronVersion || '').trim();
@@ -39846,7 +39945,7 @@ async function initAppUpdateUi() {
                 applyAppUpdateStateToUi(versionInfo.update);
             }
         }
-        const state = await window.aurivo?.app?.updater?.getState?.();
+        const state = await window.ardali?.app?.updater?.getState?.();
         if (state && typeof state === 'object') {
             applyAppUpdateStateToUi(state);
         }
@@ -39854,7 +39953,7 @@ async function initAppUpdateUi() {
             appUpdateRuntime.unsubStatus();
             appUpdateRuntime.unsubStatus = null;
         }
-        appUpdateRuntime.unsubStatus = window.aurivo?.app?.updater?.onStatus?.((payload) => {
+        appUpdateRuntime.unsubStatus = window.ardali?.app?.updater?.onStatus?.((payload) => {
             applyAppUpdateStateToUi(payload || {});
         }) || null;
     } catch (error) {
@@ -40457,6 +40556,7 @@ let visualizerReleaseFrame = null;
 let visualizerReleaseState = null;
 let audioVisualizerMildPrevBands = null;
 let videoVisualizerPrevBands = null;
+let audioVisualizerFallbackPhase = 0;
 let visualizerProjectMFeedLastSentAt = 0;
 let visualizerProjectMRunning = false;
 
@@ -40562,7 +40662,7 @@ const VisualizerSettings = {
 
     load() {
         try {
-            const saved = localStorage.getItem('aurivo_visualizer');
+            const saved = localStorage.getItem('ardali_visualizer');
             if (saved) {
                 const data = JSON.parse(saved);
                 this.currentAnalyzer = data.analyzer || 'bar';
@@ -40585,7 +40685,7 @@ const VisualizerSettings = {
 
     save() {
         try {
-            localStorage.setItem('aurivo_visualizer', JSON.stringify({
+            localStorage.setItem('ardali_visualizer', JSON.stringify({
                 analyzer: this.currentAnalyzer,
                 framerate: this.currentFramerate,
                 sharpness: this.sharpnessLevel,
@@ -40601,7 +40701,7 @@ const VisualizerSettings = {
 };
 
 // ============================================
-// AURIVO BAR ANALYZER - Qt/C++'den JavaScript'e taşıma
+// ARDALI BAR ANALYZER - Qt/C++'den JavaScript'e taşıma
 // Temel: dli/analyzers/baranalyzer.cpp
 // ============================================
 const BarAnalyzer = {
@@ -41093,11 +41193,30 @@ function getEffectiveVisualizerFps() {
     return configured;
 }
 
+function syncVisualizerCanvasSizeFromLayout(force = false) {
+    if (!visualizerCanvasRef) return false;
+    const rect = typeof visualizerCanvasRef.getBoundingClientRect === 'function'
+        ? visualizerCanvasRef.getBoundingClientRect()
+        : null;
+    const cssWidth = Math.max(0, Math.round(Number(rect?.width || visualizerCanvasRef.offsetWidth || 0)));
+    const cssHeight = Math.max(0, Math.round(Number(rect?.height || visualizerCanvasRef.offsetHeight || 0)));
+    if (cssWidth <= 0 || cssHeight <= 0) return false;
+
+    if (force || visualizerCanvasRef.width !== cssWidth || visualizerCanvasRef.height !== cssHeight) {
+        visualizerCanvasRef.width = cssWidth;
+        visualizerCanvasRef.height = cssHeight;
+        try { AnalyzerContainer.resize(); } catch { }
+        return true;
+    }
+    return false;
+}
+
 function shouldRunVisualizer() {
     if (!visualizerCanvasRef || !visualizerCtx) return false;
     if (state.activeMedia === 'video' && isVideoFullscreenActive()) {
         return false;
     }
+    syncVisualizerCanvasSizeFromLayout();
     const rect = typeof visualizerCanvasRef.getBoundingClientRect === 'function'
         ? visualizerCanvasRef.getBoundingClientRect()
         : null;
@@ -41167,6 +41286,7 @@ async function runVisualizerTick() {
 
 function startVisualizerLoop() {
     visualizerLastRenderAt = 0;
+    syncVisualizerCanvasSizeFromLayout(true);
     scheduleVisualizerTick(0);
 }
 
@@ -42035,21 +42155,19 @@ function setupVisualizer() {
 
     // Canvas boyutunu ayarla
     function resizeCanvas() {
-        canvas.width = canvas.offsetWidth;
-        canvas.height = canvas.offsetHeight;
-        AnalyzerContainer.resize();
+        syncVisualizerCanvasSizeFromLayout(true);
     }
-    resizeCanvas();
     window.addEventListener('resize', resizeCanvas);
 
     // Analyzer Container'ı başlat
     AnalyzerContainer.init(canvas);
+    resizeCanvas();
 
     // Bağlam menüsünü kur
     setupVisualizerContextMenu();
 
     // C++ Audio Engine varsa ona bağlan, yoksa Web Audio API kullan
-    if (useNativeAudio && window.aurivo && window.aurivo.audio) {
+    if (useNativeAudio && window.ardali && window.ardali.audio) {
         console.log('🎵 C++ FFT verisi ile Analyzer Container başlatılıyor...');
         visualizerIsNative = true;
     } else {
@@ -42106,16 +42224,21 @@ async function drawNativeVisualizerFrame() {
             shouldAnimateNow = !!state.isPlaying;
         } else {
             let nativeIsPlaying = false;
-            if (window.aurivo?.audio?.isPlaying) {
-                try { nativeIsPlaying = !!(await window.aurivo.audio.isPlaying()); } catch { }
+            if (window.ardali?.audio?.isPlaying) {
+                try { nativeIsPlaying = !!(await window.ardali.audio.isPlaying()); } catch { }
             }
+            let nativeLevels = null;
             // C++ engine'den ham spectrum verisini al (master volume'dan bağımsız analiz stream)
-            if (window.aurivo?.audio?.spectrum?.getBands) {
-                spectrumData = await window.aurivo.audio.spectrum.getBands(128);
+            if (window.ardali?.audio?.spectrum?.getBands) {
+                spectrumData = await window.ardali.audio.spectrum.getBands(128);
             }
-            if (getSpectrumPeak(spectrumData) <= 0 && window.aurivo?.audio?.spectrum?.getPCM) {
-                const pcmSnapshot = await window.aurivo.audio.spectrum.getPCM(2048);
+            if (getSpectrumPeak(spectrumData) <= 0 && window.ardali?.audio?.spectrum?.getPCM) {
+                const pcmSnapshot = await window.ardali.audio.spectrum.getPCM(2048);
                 spectrumData = makeSpectrumBandsFromPcmSnapshot(pcmSnapshot, 128);
+            }
+            if (getSpectrumPeak(spectrumData) <= 0 && window.ardali?.audio?.spectrum?.getLevels) {
+                try { nativeLevels = await window.ardali.audio.spectrum.getLevels(); } catch { nativeLevels = null; }
+                spectrumData = makeAudioLevelFallbackBands(nativeLevels, 128);
             }
             shouldAnimateNow = nativeIsPlaying || state.isPlaying;
         }
@@ -42324,6 +42447,26 @@ function makeSpectrumBandsFromPcmSnapshot(pcmSnapshot, targetCount = 128) {
         }
         const power = (s1 * s1) + (s2 * s2) - (coeff * s1 * s2);
         out[i] = Math.sqrt(Math.max(0, power)) / maxFrames;
+    }
+    return out;
+}
+
+function makeAudioLevelFallbackBands(levels, targetCount = 128) {
+    const left = Math.max(0, Math.min(1, Number(levels?.left) || 0));
+    const right = Math.max(0, Math.min(1, Number(levels?.right) || 0));
+    const base = Math.max(left, right, (left + right) * 0.5);
+    if (base <= 0.002) return [];
+
+    const count = Math.max(32, Math.min(192, Number(targetCount) || 128));
+    const out = new Array(count);
+    audioVisualizerFallbackPhase = (audioVisualizerFallbackPhase + 0.17) % (Math.PI * 2);
+    for (let i = 0; i < count; i++) {
+        const x = i / Math.max(1, count - 1);
+        const bassShape = Math.pow(1 - x, 1.7);
+        const waveA = 0.58 + (Math.sin((x * 14.0) + audioVisualizerFallbackPhase) * 0.22);
+        const waveB = 0.72 + (Math.sin((x * 37.0) - (audioVisualizerFallbackPhase * 1.7)) * 0.12);
+        const stereoTilt = i % 2 === 0 ? left : right;
+        out[i] = Math.max(0, Math.min(1, base * (0.18 + bassShape * 1.85) * waveA * waveB + stereoTilt * 0.12));
     }
     return out;
 }
@@ -42614,13 +42757,13 @@ function renderVideoLibraryTree(renderToken = fileTreeRenderGeneration) {
         if (isVideoCurrent && !isVideoPlaying) item.classList.add('is-paused');
         item.dataset.path = video.path;
         item.dataset.isDirectory = 'false';
-        item.dataset.name = video.name || (window.aurivo?.path?.basename?.(video.path) || 'video');
+        item.dataset.name = video.name || (window.ardali?.path?.basename?.(video.path) || 'video');
         item.dataset.videoIndex = String(index);
         item.tabIndex = 0;
         item.innerHTML = `
             <span class="${statusClass}">${statusGlyph}</span>
             <span class="video-lib-icon">🎬</span>
-            <span class="tree-name">${video.name || (window.aurivo?.path?.basename?.(video.path) || 'video')}</span>
+            <span class="tree-name">${video.name || (window.ardali?.path?.basename?.(video.path) || 'video')}</span>
         `;
 
         item.addEventListener('click', () => {
@@ -43061,7 +43204,7 @@ const EQController = {
     // Özel presetleri localStorage'dan yükle
     loadCustomPresets() {
         try {
-            const saved = localStorage.getItem('aurivo_custom_presets');
+            const saved = localStorage.getItem('ardali_custom_presets');
             if (saved) {
                 this.customPresets = JSON.parse(saved);
                 console.log(`📂 ${Object.keys(this.customPresets).length} özel preset yüklendi`);
@@ -43075,7 +43218,7 @@ const EQController = {
     // Özel presetleri localStorage'a kaydet
     saveCustomPresets() {
         try {
-            localStorage.setItem('aurivo_custom_presets', JSON.stringify(this.customPresets));
+            localStorage.setItem('ardali_custom_presets', JSON.stringify(this.customPresets));
         } catch (e) {
             console.error('Custom presets kaydedilemedi:', e);
         }
@@ -43181,10 +43324,10 @@ const EQController = {
         if (this.elements.eqButton) {
             this.elements.eqButton.addEventListener('click', async () => {
                 // Web/Müzik/Video için daima ayrı Ses Efektleri penceresi aç.
-                if (window.aurivo && window.aurivo.soundEffects) {
+                if (window.ardali && window.ardali.soundEffects) {
                     const page = String(state.currentPage || '').toLowerCase();
                     const scope = page === 'web' ? 'web' : (page === 'video' ? 'video' : 'music');
-                    await window.aurivo.soundEffects.openWindow({ scope });
+                    await window.ardali.soundEffects.openWindow({ scope });
                     console.log('🎛️ Ses Efektleri penceresi açılıyor...', { scope });
                     return;
                 }
@@ -43318,8 +43461,8 @@ const EQController = {
                 e.preventDefault();
                 const page = String(state.currentPage || '').toLowerCase();
                 const scope = page === 'web' ? 'web' : (page === 'video' ? 'video' : 'music');
-                if (window.aurivo?.soundEffects?.openWindow) {
-                    window.aurivo.soundEffects.openWindow({ scope }).catch(() => {});
+                if (window.ardali?.soundEffects?.openWindow) {
+                    window.ardali.soundEffects.openWindow({ scope }).catch(() => {});
                 }
             }
         });
@@ -43746,7 +43889,7 @@ const EQController = {
         };
 
         try {
-            localStorage.setItem('aurivo_eq_settings', JSON.stringify(settings));
+            localStorage.setItem('ardali_eq_settings', JSON.stringify(settings));
             console.log('💾 EQ settings saved');
 
             // Show notification
@@ -43759,7 +43902,7 @@ const EQController = {
     // Ayarları yükle from localStorage
     loadSettings() {
         try {
-            const saved = localStorage.getItem('aurivo_eq_settings');
+            const saved = localStorage.getItem('ardali_eq_settings');
             if (!saved) return;
 
             const settings = JSON.parse(saved);
@@ -44205,7 +44348,7 @@ const EQController = {
 
         const a = document.createElement('a');
         a.href = url;
-        a.download = `aurivo_eq_presets_${Date.now()}.json`;
+        a.download = `ardali_eq_presets_${Date.now()}.json`;
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
@@ -44622,7 +44765,7 @@ const AGCController = {
     // Ayarları kaydet
     saveSettings() {
         try {
-            localStorage.setItem('aurivo_agc_settings', JSON.stringify({
+            localStorage.setItem('ardali_agc_settings', JSON.stringify({
                 enabled: this.config.enabled,
                 attackTime: this.config.attackTime,
                 releaseTime: this.config.releaseTime,
@@ -44636,7 +44779,7 @@ const AGCController = {
     // Ayarları yükle
     loadSettings() {
         try {
-            const saved = localStorage.getItem('aurivo_agc_settings');
+            const saved = localStorage.getItem('ardali_agc_settings');
             if (saved) {
                 const settings = JSON.parse(saved);
                 this.config.enabled = settings.enabled ?? true;

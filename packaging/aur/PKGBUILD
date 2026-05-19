@@ -1,40 +1,40 @@
-# Maintainer: Aurivo <support@aurivo.app>
+# Maintainer: ArDali <support@ardali.app>
 #
 # This PKGBUILD is intended for Arch-based distros (Arch/CachyOS/EndeavourOS/Manjaro/Garuda).
 # It installs the prebuilt AppImage from GitHub Releases.
 
-pkgname=aurivo-media-player-bin
+pkgname=ardali-media-player-bin
 pkgver=2.0.12
 pkgrel=1
-pkgdesc="Aurivo Media Player (AppImage, prebuilt)"
+pkgdesc="ArDali Media Player (AppImage, prebuilt)"
 arch=('x86_64')
-url="https://aurivo.app"
+url="https://ardali.app"
 license=('MIT')
 depends=('fuse2' 'zlib' 'glibc' 'ffmpeg')
-provides=('aurivo-media-player')
-conflicts=('aurivo-media-player')
+provides=('ardali-media-player')
+conflicts=('ardali-media-player')
 
-_owner="muhammed-aurivo-dev"
-_repo="Aurivo-Medya-Player-Linux"
+_owner="muhammed-ardali-dev"
+_repo="ArDali-Medya-Player-Linux"
 
 source=(
-  "Aurivo-${pkgver}-linux-x86_64.AppImage::https://github.com/${_owner}/${_repo}/releases/download/v${pkgver}/Aurivo-${pkgver}-linux-x86_64.AppImage"
-  "com.aurivo.mediaplayer.desktop"
-  "com.aurivo.mediaplayer.metainfo.xml"
+  "ArDali-${pkgver}-linux-x86_64.AppImage::https://github.com/${_owner}/${_repo}/releases/download/v${pkgver}/ArDali-${pkgver}-linux-x86_64.AppImage"
+  "com.ardali.mediaplayer.desktop"
+  "com.ardali.mediaplayer.metainfo.xml"
 )
 sha256sums=('SKIP' 'SKIP' 'SKIP')
 
 prepare() {
-  cp -f "${srcdir}/com.aurivo.mediaplayer.desktop" "${srcdir}/aurivo.desktop"
+  cp -f "${srcdir}/com.ardali.mediaplayer.desktop" "${srcdir}/ardali.desktop"
 }
 
 package() {
-  install -Dm755 "Aurivo-${pkgver}-linux-x86_64.AppImage" "${pkgdir}/opt/aurivo/aurivo.AppImage"
-  install -Dm755 /dev/stdin "${pkgdir}/usr/bin/aurivo" <<'EOF'
+  install -Dm755 "ArDali-${pkgver}-linux-x86_64.AppImage" "${pkgdir}/opt/ardali/ardali.AppImage"
+  install -Dm755 /dev/stdin "${pkgdir}/usr/bin/ardali" <<'EOF'
 #!/usr/bin/env bash
-exec /opt/aurivo/aurivo.AppImage "$@"
+exec /opt/ardali/ardali.AppImage "$@"
 EOF
 
-  install -Dm644 "${srcdir}/aurivo.desktop" "${pkgdir}/usr/share/applications/com.aurivo.mediaplayer.desktop"
-  install -Dm644 "${srcdir}/com.aurivo.mediaplayer.metainfo.xml" "${pkgdir}/usr/share/metainfo/com.aurivo.mediaplayer.metainfo.xml"
+  install -Dm644 "${srcdir}/ardali.desktop" "${pkgdir}/usr/share/applications/com.ardali.mediaplayer.desktop"
+  install -Dm644 "${srcdir}/com.ardali.mediaplayer.metainfo.xml" "${pkgdir}/usr/share/metainfo/com.ardali.mediaplayer.metainfo.xml"
 }

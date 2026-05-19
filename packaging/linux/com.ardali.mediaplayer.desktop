@@ -1,12 +1,12 @@
 [Desktop Entry]
 Type=Application
 Version=1.5
-Name=Aurivo Media Player
+Name=ArDali
 Comment=Open-source Linux media player for music and video
-Exec=com.aurivo.mediaplayer %U
-Icon=com.aurivo.mediaplayer
+Exec=ardali %U
+Icon=ardali
 Terminal=false
 Categories=AudioVideo;Player;
-StartupWMClass=com.aurivo.mediaplayer
+StartupWMClass=ardali
 MimeType=audio/mpeg;audio/wav;audio/flac;audio/aac;audio/ogg;audio/mp4;audio/x-m4a;audio/opus;audio/aiff;audio/x-ms-wma;video/mp4;video/x-matroska;video/x-msvideo;video/quicktime;video/x-ms-wmv;video/webm;video/x-m4v;
-Keywords=Music;Audio;Video;Media;Player;Linux;AppImage;Deb;Rpm;Equalizer;DSP;Aurivo;
+Keywords=Music;Audio;Video;Media;Player;Linux;AppImage;Deb;Rpm;Equalizer;DSP;ArDali;

@@ -1,10 +1,10 @@
-Aurivo Media Player - Terms and License
+ArDali Media Player - Terms and License
 
 License
-Aurivo Media Player is free and open-source software provided under the MIT License, unless stated otherwise for third-party components.
+ArDali Media Player is free and open-source software provided under the MIT License, unless stated otherwise for third-party components.
 
 Content & Copyright
-Aurivo is a media player / helper tool. You are responsible for making sure the content you play or download complies with applicable copyright rules in your region.
+ArDali is a media player / helper tool. You are responsible for making sure the content you play or download complies with applicable copyright rules in your region.
 
 Warranty
 This software is provided "AS IS" without warranty of any kind. We recommend keeping regular backups to avoid accidental data loss.

@@ -12,7 +12,7 @@ function postJson(url, body, headers = {}) {
                 'Content-Type': 'application/json',
                 'Content-Length': String(payload.length),
                 'Content-Language': 'en_US',
-                'User-Agent': 'Aurivo-Pulse/1.0',
+                'User-Agent': 'ArDali-Pulse/1.0',
                 ...headers
             },
             timeout: 20000

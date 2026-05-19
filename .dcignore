@@ -1,7 +1,7 @@
 # Snyk Code / DeepCode ignore file
 # Exclude cloned repos, build outputs, caches, vendored dependencies, and backup browser trees.
-Aurivo-Medya-Player-Linux/
-aurivo-bin/
+ArDali-Medya-Player-Linux/
+ardali-bin/
 .semgrep-tmp/
 squashfs-root/
 .cache/

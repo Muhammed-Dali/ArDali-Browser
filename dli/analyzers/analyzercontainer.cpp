@@ -1,5 +1,5 @@
-/* Analyzer Container for Aurivo Media Player
- * Based on Aurivo's AnalyzerContainer
+/* Analyzer Container for ArDali
+ * Based on ArDali's AnalyzerContainer
  * Provides a container widget with right-click menu for selecting analyzers
  */
 

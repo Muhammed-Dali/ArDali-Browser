@@ -41,13 +41,13 @@ function assertFileLooksLikeWindowsBinary(p, label) {
     const extra = [];
     try {
       const root = path.resolve(__dirname, '..');
-      const wantsAddon = /aurivo_audio\.node/i.test(p);
-      const wantsVisualizer = /aurivo-projectm-visualizer(\.exe)?/i.test(p);
+      const wantsAddon = /ardali_audio\.node/i.test(p);
+      const wantsVisualizer = /ardali-projectm-visualizer(\.exe)?/i.test(p);
 
       if (wantsAddon) {
         const nativeBuildDir = path.join(root, 'native', 'build');
         if (exists(nativeBuildDir)) {
-          const hits = findFiles(nativeBuildDir, (name) => /aurivo_audio\.node$/i.test(name), 40);
+          const hits = findFiles(nativeBuildDir, (name) => /ardali_audio\.node$/i.test(name), 40);
           if (hits.length) extra.push(`Bulunan adaylar:\n- ${hits.join('\n- ')}`);
         }
       }
@@ -55,7 +55,7 @@ function assertFileLooksLikeWindowsBinary(p, label) {
       if (wantsVisualizer) {
         const nativeDistDir = resolveWindowsNativeDistDir(root);
         if (exists(nativeDistDir)) {
-          const hits = findFiles(nativeDistDir, (name) => /aurivo-projectm-visualizer/i.test(name), 40);
+          const hits = findFiles(nativeDistDir, (name) => /ardali-projectm-visualizer/i.test(name), 40);
           if (hits.length) extra.push(`Bulunan adaylar:\n- ${hits.join('\n- ')}`);
         }
       }
@@ -177,7 +177,7 @@ function listDllDeps(objdumpPath, filePath) {
 }
 
 function resolveVisualizerDllDirGuess() {
-  const fromEnv = String(process.env.AURIVO_VISUALIZER_DLL_DIR || '').trim();
+  const fromEnv = String(process.env.ARDALI_VISUALIZER_DLL_DIR || '').trim();
   if (fromEnv) return fromEnv;
 
   if (process.platform === 'win32') {
@@ -195,8 +195,8 @@ function resolveVisualizerDllDirGuess() {
 
 function assertBundledDllClosure(nativeDistDir, objdumpPath, entryFile, label) {
   if (!objdumpPath) {
-    const skip = String(process.env.AURIVO_SKIP_VISUALIZER_DLL_CHECK || '').trim() === '1';
-    const msg = `${label} DLL kontrolü için objdump bulunamadı. (AURIVO_SKIP_VISUALIZER_DLL_CHECK=1 ile atlanabilir)`;
+    const skip = String(process.env.ARDALI_SKIP_VISUALIZER_DLL_CHECK || '').trim() === '1';
+    const msg = `${label} DLL kontrolü için objdump bulunamadı. (ARDALI_SKIP_VISUALIZER_DLL_CHECK=1 ile atlanabilir)`;
     if (skip) {
       console.warn('[verify-win-artifacts] ⚠', msg);
       return;
@@ -236,13 +236,13 @@ function assertBundledDllClosure(nativeDistDir, objdumpPath, entryFile, label) {
     throw new Error(
       `${label} için eksik runtime DLL'leri (native-dist içinde olmalı):\n- ${[...missing].sort().join('\n- ')}\n\n` +
         `İpucu: Windows ortamında \`npm run prepare:win:resources\` ve MSYS2 MinGW64 DLL dizini (` +
-        `AURIVO_VISUALIZER_DLL_DIR="C:\\\\msys64\\\\mingw64\\\\bin") ayarlı olmalı.`
+        `ARDALI_VISUALIZER_DLL_DIR="C:\\\\msys64\\\\mingw64\\\\bin") ayarlı olmalı.`
     );
   }
 }
 
 function assertVisualizerRuntimeDlls(nativeDistDir, visualizerExe) {
-  const strict = String(process.env.AURIVO_REQUIRE_VISUALIZER_DLLS || '').trim() === '1';
+  const strict = String(process.env.ARDALI_REQUIRE_VISUALIZER_DLLS || '').trim() === '1';
   if (strict) {
     const mustExist = [
       'SDL2.dll',
@@ -258,7 +258,7 @@ function assertVisualizerRuntimeDlls(nativeDistDir, visualizerExe) {
       throw new Error(
         `Visualizer için eksik runtime DLL'leri (native-dist içinde olmalı):\n- ${missing.join('\n- ')}\n\n` +
           `İpucu: Windows ortamında \`npm run prepare:win:resources\` ve MSYS2 MinGW64 DLL dizini (` +
-          `AURIVO_VISUALIZER_DLL_DIR="C:\\\\msys64\\\\mingw64\\\\bin") ayarlı olmalı.`
+          `ARDALI_VISUALIZER_DLL_DIR="C:\\\\msys64\\\\mingw64\\\\bin") ayarlı olmalı.`
       );
     }
   }
@@ -345,28 +345,28 @@ function main() {
 
   console.log('\n[verify-win-artifacts] Windows build artifact kontrolü...');
   console.log('[verify-win-artifacts] host platform:', os.platform());
-  const skipVisualizer = String(process.env.AURIVO_SKIP_VISUALIZER || '').trim() === '1';
-  const visualizerOnly = String(process.env.AURIVO_VERIFY_VISUALIZER_ONLY || '').trim() === '1';
+  const skipVisualizer = String(process.env.ARDALI_SKIP_VISUALIZER || '').trim() === '1';
+  const visualizerOnly = String(process.env.ARDALI_VERIFY_VISUALIZER_ONLY || '').trim() === '1';
 
   // Native audio addon (must be built for Electron/Windows before packaging)
   if (!visualizerOnly) {
-    const nativeAddon = path.join(root, 'native', 'build', 'Release', 'aurivo_audio.node');
-    assertFileLooksLikeWindowsBinary(nativeAddon, 'Native audio addon (aurivo_audio.node)');
+    const nativeAddon = path.join(root, 'native', 'build', 'Release', 'ardali_audio.node');
+    assertFileLooksLikeWindowsBinary(nativeAddon, 'Native audio addon (ardali_audio.node)');
   }
 
   // Visualizer executable (must exist for Windows packaged builds)
   if (skipVisualizer) {
-    console.warn('[verify-win-artifacts] ⚠ Visualizer kontrolü atlandı (AURIVO_SKIP_VISUALIZER=1).');
+    console.warn('[verify-win-artifacts] ⚠ Visualizer kontrolü atlandı (ARDALI_SKIP_VISUALIZER=1).');
   } else {
     const nativeDistDir = resolveWindowsNativeDistDir(root);
-    const visualizerExe = path.join(nativeDistDir, 'aurivo-projectm-visualizer.exe');
+    const visualizerExe = path.join(nativeDistDir, 'ardali-projectm-visualizer.exe');
     if (!exists(visualizerExe)) {
       if (visualizerOnly) {
         throw new Error(`Visualizer exe yok: ${visualizerExe}`);
       }
       console.warn('[verify-win-artifacts] ⚠ Visualizer exe yok (opsiyonel - çalışmaya devam edilecek):', visualizerExe);
     } else {
-      assertFileLooksLikeWindowsBinary(visualizerExe, 'Visualizer exe (aurivo-projectm-visualizer.exe)');
+      assertFileLooksLikeWindowsBinary(visualizerExe, 'Visualizer exe (ardali-projectm-visualizer.exe)');
       assertVisualizerRuntimeDlls(nativeDistDir, visualizerExe);
       assertVisualizerLaunchable(visualizerExe, nativeDistDir);
     }
@@ -413,8 +413,8 @@ try {
   const msg = e && e.message ? e.message : String(e);
   console.error('\n[verify-win-artifacts] ❌', msg);
   console.error('\nİpucu: Windows installer üretmek için Windows ortamında derleyin:');
-  console.error('- `native/build/Release/aurivo_audio.node` Windows için derlenmeli (MZ)');
-  console.error('- `native-dist/windows/aurivo-projectm-visualizer.exe` Windows için derlenmeli (MZ)');
+  console.error('- `native/build/Release/ardali_audio.node` Windows için derlenmeli (MZ)');
+  console.error('- `native-dist/windows/ardali-projectm-visualizer.exe` Windows için derlenmeli (MZ)');
   console.error('- Sonra `npm run build:win`');
   process.exit(1);
 }

@@ -46,7 +46,7 @@
 - [ ] Confirm health panel updates CPU/RAM/FPS/write-rate while recording.
 
 ## Plugins
-- [ ] Add a plugin manifest under `~/.config/aurivo/video-studio-plugins`.
+- [ ] Add a plugin manifest under `~/.config/ardali/video-studio-plugins`.
 - [ ] Click the plugin reload button.
 - [ ] Confirm plugin templates appear in the template panel.
 - [ ] Apply a plugin template and verify sources are sanitized and added.

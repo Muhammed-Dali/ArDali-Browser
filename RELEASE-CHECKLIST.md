@@ -1,6 +1,6 @@
 # Release Checklist
 
-Bu dosya, Aurivo Linux sürüm yayın akışını hızlıca doğrulamak içindir.
+Bu dosya, ArDali Linux sürüm yayın akışını hızlıca doğrulamak içindir.
 
 ## Main Güncellemesi (Günlük Akış)
 
@@ -10,7 +10,7 @@ Bu dosya, Aurivo Linux sürüm yayın akışını hızlıca doğrulamak içindir
 - [ ] `Publish Pacman Repo` workflow'u `success`.
 - [ ] Pacman repo testi:
   - [ ] `sudo pacman -Sy`
-  - [ ] `sudo pacman -S aurivo-bin`
+  - [ ] `sudo pacman -S ardali-bin`
 
 ## Sürüm Yayını (Tag/Release Akışı)
 
@@ -20,9 +20,9 @@ Bu dosya, Aurivo Linux sürüm yayın akışını hızlıca doğrulamak içindir
 - [ ] `vX.Y.Z` tag pushlandı.
 - [ ] `Release` workflow'u `success`.
 - [ ] GitHub Release assetleri oluştu:
-  - [ ] `Aurivo-X.Y.Z-linux-x86_64.AppImage`
+  - [ ] `ArDali-X.Y.Z-linux-x86_64.AppImage`
   - [ ] `latest-linux.yml`
-- [ ] AUR (`aurivo-bin`) güncellendi ve pushlandı.
+- [ ] AUR (`ardali-bin`) güncellendi ve pushlandı.
 - [ ] `Publish Pacman Repo` workflow'u `success`.
 
 ## Son Doğrulama

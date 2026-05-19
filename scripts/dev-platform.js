@@ -30,8 +30,8 @@ function readTextFile(p) {
 
 function shouldDisableElectronSandbox() {
   const manual =
-    process.env.AURIVO_NO_SANDBOX === '1' ||
-    process.env.AURIVO_NO_SANDBOX === 'true' ||
+    process.env.ARDALI_NO_SANDBOX === '1' ||
+    process.env.ARDALI_NO_SANDBOX === 'true' ||
     process.env.ELECTRON_NO_SANDBOX === '1' ||
     process.env.ELECTRON_NO_SANDBOX === 'true';
   if (manual) return true;
@@ -137,7 +137,7 @@ function spawnWait(command, args, options) {
 
 async function runDevPosix(platform) {
   const root = path.resolve(__dirname, '..');
-  const env = { ...process.env, AURIVO_DEV: '1' };
+  const env = { ...process.env, ARDALI_DEV: '1' };
   delete env.ELECTRON_RUN_AS_NODE;
 
   const noSandbox = platform === 'linux' ? shouldDisableElectronSandbox() : false;

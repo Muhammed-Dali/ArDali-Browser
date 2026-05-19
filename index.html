@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: https:; media-src 'self' file:; frame-src 'self' https://music.youtube.com https://www.youtube.com https://www.youtube-nocookie.com https://youtube-nocookie.com https://www.deezer.com https://soundcloud.com https://www.facebook.com https://www.instagram.com https://www.tiktok.com https://x.com https://twitter.com https://www.reddit.com https://www.twitch.tv https://web.whatsapp.com https://web.telegram.org https://accounts.google.com https://*.google.com https://*.googleusercontent.com;">
-    <title>Aurivo Media Player</title>
+    <title>ArDali Media Player</title>
     <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet">
     <link rel="stylesheet" href="styles/main.css">
 </head>
@@ -57,8 +57,8 @@
                         <path d="M5.2 7.6a8.1 8.1 0 0 1 13.6 0"/>
                     </svg>
                 </button>
-                <button class="sidebar-btn aurivo-dawlod-btn" id="aurivoDawlodBtn" title="Aurivo Dawlod" aria-label="Aurivo Dawlod">
-                    <img class="sidebar-icon-img aurivo-dawlod-icon" src="icons/aurivo_dawlod.png" alt="" aria-hidden="true">
+                <button class="sidebar-btn ardali-dawlod-btn" id="ardaliDawlodBtn" title="ArDali Dawlod" aria-label="ArDali Dawlod">
+                    <img class="sidebar-icon-img ardali-dawlod-icon" src="icons/ardali_dawlod.png" alt="" aria-hidden="true">
                 </button>
                 <div class="sidebar-web-quick-actions" id="sidebarWebQuickActions" aria-label="Web hızlı kontroller"></div>
 	            </div>
@@ -317,7 +317,7 @@
                         <option value="date-desc">Tarih</option>
                     </select>
                 </div>
-                <button class="nav-btn" id="adblockBtn" title="Aurivo Kontrol Panelini Aç">
+                <button class="nav-btn" id="adblockBtn" title="ArDali Kontrol Panelini Aç">
                     <img class="nav-icon-img" src="icons/deliblock.svg" alt="DeliBlock">
                     <span class="nav-badge hidden" id="adblockBlockedBadge">0</span>
                 </button>
@@ -338,7 +338,7 @@
 
             <!-- Şu An Çalınan Barı -->
             <div class="now-playing-bar">
-                <span id="nowPlayingLabel" data-i18n="nowPlaying.ready">Şu An Çalınan: Aurivo Player - Hazır</span>
+                <span id="nowPlayingLabel" data-i18n="nowPlaying.ready">Şu An Çalınan: ArDali Player - Hazır</span>
             </div>
 
             <!-- İçerik Stack -->
@@ -681,7 +681,7 @@
 
                 <!-- Web Sayfası -->
                 <div class="page hidden" id="webPage">
-                    <webview id="webView" src="about:blank" allowpopups partition="persist:aurivo-web"></webview>
+                    <webview id="webView" src="about:blank" allowpopups partition="persist:ardali-web"></webview>
                 </div>
                 <div class="gallery-lightbox hidden" id="galleryLightbox" aria-hidden="true">
                     <button class="gallery-lightbox-close" id="galleryLightboxClose" type="button" aria-label="Kapat">×</button>
@@ -1358,7 +1358,7 @@
                                                     <div class="settings-sub hidden" id="themeSystemHint" data-i18n="ui.theme.followSystem.hint">Açıkken tema seçimi sistem temasına göre otomatik uygulanır.</div>
                                                 </div>
                                                 <select class="settings-select" id="themeSelect" aria-label="Theme">
-                                                    <option value="aur-renk-efektleri">Aurivo Medya Player</option>
+                                                    <option value="aur-renk-efektleri">ArDali Medya Player</option>
                                                     <option value="neon-night">Neon Night</option>
                                                     <option value="retro-amber">Retro Amber</option>
                                                     <option value="deep-ocean">Deep Ocean</option>
@@ -1439,7 +1439,7 @@
                                         <div class="settings-group">
                                             <h4 data-i18n="ui.startup.title">Başlangıç Davranışı</h4>
                                             <label class="checkbox-label">
-                                                <input type="checkbox" id="behaviorWebExperienceEnabled">
+                                                <input type="checkbox" id="behaviorWebExperienceEnabled" checked>
                                                 <span data-i18n="ui.startup.webExperienceEnabled">Web deneyimini etkinleştir (isteğe bağlı)</span>
                                             </label>
                                             <div class="settings-sub" data-i18n="ui.startup.webExperienceEnabled.hint">Kapalı olduğunda uygulama medya oynatıcı modunda kalır ve Web sekmesi gizlenir.</div>
@@ -1504,7 +1504,7 @@
                                                     <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm0 10.99h7c-.53 4.12-3.28 7.79-7 8.94V12H5V6.3l7-3.11v8.8z"/></svg>
                                                 </div>
                                                 <div class="security-hero-text">
-                                                    <div class="security-hero-title" data-i18n="securityPage.heroTitle">Aurivo Güvenli İnternet</div>
+                                                    <div class="security-hero-title" data-i18n="securityPage.heroTitle">ArDali Güvenli İnternet</div>
                                                     <div class="security-hero-sub" data-i18n="securityPage.heroSub">Web sekmesini daha güvenli ve kontrollü kullan.</div>
                                                 </div>
                                             </div>
@@ -1562,7 +1562,7 @@
 
                                             <div class="security-section">
                                                 <div class="security-section-title" data-i18n="securityPage.sections.allowedPlatforms">İzinli Platformlar</div>
-                                                <div class="security-sub" data-i18n="securityPage.allowedPlatformsHint">Aurivo, Web sekmesinde aşağıdaki platformları hedefler (CSP/frame-src):</div>
+                                                <div class="security-sub" data-i18n="securityPage.allowedPlatformsHint">ArDali, Web sekmesinde aşağıdaki platformları hedefler (CSP/frame-src):</div>
                                                 <ul class="security-list">
                                                     <li>YouTube / YouTube Music</li>
                                                     <li>Deezer</li>
@@ -1944,13 +1944,13 @@
                                             </div>
                                             <div class="settings-sub" data-i18n="settings.audio.defaultVolume.hint">Uygulama açıldığında ve ses motoru yüklendiğinde kullanılacak ana ses seviyesi.</div>
                                             <div class="setting-row" style="margin-top:16px;">
-                                                <span data-i18n="settings.audio.appVolume">Aurivo uygulama sesi</span>
+                                                <span data-i18n="settings.audio.appVolume">ArDali uygulama sesi</span>
                                                 <div style="display:flex; align-items:center; gap:12px; min-width:260px;">
                                                     <input type="range" id="audioAppVolume" min="0" max="100" step="1" style="flex:1;">
                                                     <strong id="audioAppVolumeValue">40%</strong>
                                                 </div>
                                             </div>
-                                            <div class="settings-sub" data-i18n="settings.audio.appVolume.hint">Sistem sesinden bağımsız olarak yalnızca Aurivo oynatma sesini anlık kontrol eder.</div>
+                                            <div class="settings-sub" data-i18n="settings.audio.appVolume.hint">Sistem sesinden bağımsız olarak yalnızca ArDali oynatma sesini anlık kontrol eder.</div>
                                         </div>
                                         <div class="settings-group">
                                             <h4 data-i18n="settings.audio.limiter.title">Anti-clipping koruması</h4>
@@ -2261,7 +2261,7 @@
                 <div class="player-bottom">
                     <!-- Kapak Resmi -->
                     <div class="cover-section" id="coverSection">
-                        <img src="icons/aurivo_256.png" alt="Cover" id="coverArt" onerror="this.src='icons/aurivo_256.png'">
+                        <img src="icons/ardali_256.png" alt="Cover" id="coverArt" onerror="this.src='icons/ardali_256.png'">
                     </div>
                     <!-- Visualizer -->
                     <div class="visualizer" id="visualizer">
@@ -2557,7 +2557,7 @@
 	    <div class="context-menu hidden" id="visualizerContextMenu">
 	        <!-- projectM Visualizer -->
 	        <div class="context-menu-item" id="projectmToggle">
-	            <span class="menu-checkbox"></span> Aurivo Görselleştirici
+	            <span class="menu-checkbox"></span> ArDali Görselleştirici
 	        </div>
 		        <div class="context-menu-separator"></div>
 		        <!-- Framerate Submenu -->
@@ -2648,9 +2648,9 @@
     <div class="modal-overlay hidden" id="aboutModalOverlay" role="presentation">
         <div class="about-modal glass-card" role="dialog" aria-modal="true" aria-labelledby="aboutTitle">
             <div class="about-header">
-                <img class="about-logo" src="icons/aurivo_256.png" alt="Aurivo" onerror="this.style.display='none'">
+                <img class="about-logo" src="icons/ardali_256.png" alt="ArDali" onerror="this.style.display='none'">
                 <div class="about-title-wrap">
-                    <div class="about-title" id="aboutTitle" data-i18n="about.title">Aurivo Medya Player</div>
+                    <div class="about-title" id="aboutTitle" data-i18n="about.title">ArDali Medya Player</div>
                     <div class="about-subtitle" data-i18n="about.version">Versiyon: 2.0.0 - Kararlı Sürüm</div>
                 </div>
             </div>
@@ -2685,7 +2685,7 @@
                         <ul class="about-list">
                             <li data-i18n="about.sections.updates.item1">Uygulama sürümü, Electron ve Chromium sürümü bu pencerede canlı görüntülenir.</li>
                             <li data-i18n="about.sections.updates.item2">Otomatik güncelleme bildirimi yoktur; kontrol yalnızca bu penceredeki düğme ile yapılır.</li>
-                            <li data-i18n-html="about.sections.updates.item3">Linux + AUR (aurivo-bin) kurulumunda güncelleme butonu terminal açıp <code>yay -S aurivo-bin</code> komutunu çalıştırır.</li>
+                            <li data-i18n-html="about.sections.updates.item3">Linux + AUR (ardali-bin) kurulumunda güncelleme butonu terminal açıp <code>yay -S ardali-bin</code> komutunu çalıştırır.</li>
                             <li data-i18n="about.sections.updates.item4">Güncelleme başlatıldığında çakışma olmaması için uygulama kapanır.</li>
                         </ul>
                     </section>

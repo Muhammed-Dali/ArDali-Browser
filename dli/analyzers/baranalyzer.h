@@ -1,5 +1,5 @@
-/* Bar Analyzer for Aurivo Media Player
- * Based on Aurivo's BarAnalyzer
+/* Bar Analyzer for ArDali
+ * Based on ArDali's BarAnalyzer
  * Original Author: Max Howell <max.howell@methylblue.com> 2003-2005
  */
 

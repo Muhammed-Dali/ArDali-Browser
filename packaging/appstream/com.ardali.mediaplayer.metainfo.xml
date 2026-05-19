@@ -1,19 +1,19 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <component type="desktop-application">
-  <id>com.aurivo.mediaplayer</id>
-  <name>Aurivo Media Player</name>
+  <id>com.ardali.mediaplayer</id>
+  <name>ArDali Media Player</name>
   <summary>All-in-one music and video player with advanced DSP effects</summary>
   <metadata_license>CC0-1.0</metadata_license>
   <project_license>MIT</project_license>
-  <developer id="app.aurivo">
+  <developer id="app.ardali">
     <name>Muhammet Dali</name>
   </developer>
-  <launchable type="desktop-id">com.aurivo.mediaplayer.desktop</launchable>
+  <launchable type="desktop-id">com.ardali.mediaplayer.desktop</launchable>
 
-  <url type="homepage">https://aurivo.app</url>
-  <url type="bugtracker">https://github.com/muhammed-aurivo-dev/Aurivo-Medya-Player-Linux/issues</url>
-  <url type="vcs-browser">https://github.com/muhammed-aurivo-dev/Aurivo-Medya-Player-Linux</url>
-  <url type="donation">https://github.com/sponsors/muhammed-aurivo-dev</url>
+  <url type="homepage">https://ardali.app</url>
+  <url type="bugtracker">https://github.com/muhammed-ardali-dev/ArDali-Medya-Player-Linux/issues</url>
+  <url type="vcs-browser">https://github.com/muhammed-ardali-dev/ArDali-Medya-Player-Linux</url>
+  <url type="donation">https://github.com/sponsors/muhammed-ardali-dev</url>
 
   <categories>
     <category>AudioVideo</category>
@@ -28,16 +28,16 @@
     <keyword>AppImage</keyword>
     <keyword>deb</keyword>
     <keyword>rpm</keyword>
-    <keyword>Aurivo</keyword>
+    <keyword>ArDali</keyword>
   </keywords>
 
   <description>
-    <p>Aurivo Media Player is a Linux desktop media app that combines music playback, video playback, web media, downloading workflows, and advanced DSP controls in a single interface.</p>
+    <p>ArDali Media Player is a Linux desktop media app that combines music playback, video playback, web media, downloading workflows, and advanced DSP controls in a single interface.</p>
     <p>Main features include:</p>
     <ul>
       <li>Local music and video playback with playlist management</li>
       <li>Advanced audio processing including 32-band EQ, compressor, limiter, reverb, and more</li>
-      <li>Song recognition workflow via Aurivo Pulse integration</li>
+      <li>Song recognition workflow via ArDali Pulse integration</li>
       <li>projectM-based real-time visualizer</li>
       <li>MPRIS integration for desktop media controls</li>
     </ul>
@@ -45,20 +45,20 @@
 
   <screenshots>
     <screenshot type="default">
-      <image>https://raw.githubusercontent.com/muhammed-aurivo-dev/Aurivo-Medya-Player-Linux/main/screenshots/aber/shot-00.png</image>
+      <image>https://raw.githubusercontent.com/muhammed-ardali-dev/ArDali-Medya-Player-Linux/main/screenshots/aber/shot-00.png</image>
     </screenshot>
     <screenshot>
-      <image>https://raw.githubusercontent.com/muhammed-aurivo-dev/Aurivo-Medya-Player-Linux/main/screenshots/aber/shot-01.png</image>
+      <image>https://raw.githubusercontent.com/muhammed-ardali-dev/ArDali-Medya-Player-Linux/main/screenshots/aber/shot-01.png</image>
     </screenshot>
     <screenshot>
-      <image>https://raw.githubusercontent.com/muhammed-aurivo-dev/Aurivo-Medya-Player-Linux/main/screenshots/aber/shot-02.png</image>
+      <image>https://raw.githubusercontent.com/muhammed-ardali-dev/ArDali-Medya-Player-Linux/main/screenshots/aber/shot-02.png</image>
     </screenshot>
   </screenshots>
 
   <content_rating type="oars-1.1"/>
 
   <provides>
-    <binary>aurivo</binary>
+    <binary>ardali</binary>
   </provides>
 
   <releases>

@@ -2,7 +2,7 @@
 
 Updated: 2026-05-14
 
-This report summarizes the active UI locale coverage for the main `Aurivo Medya Player` application.
+This report summarizes the active UI locale coverage for the main `ArDali Medya Player` application.
 
 ## Active i18n stack
 

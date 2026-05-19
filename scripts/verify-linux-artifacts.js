@@ -52,12 +52,12 @@ function main() {
   console.log('[verify-linux-artifacts] host platform:', os.platform());
 
   // Native audio addon (must be built for Electron/Linux before packaging)
-  const nativeAddon = path.join(root, 'native', 'build', 'Release', 'aurivo_audio.node');
-  assertFileLooksLikeElf(nativeAddon, 'Native audio addon (aurivo_audio.node)');
+  const nativeAddon = path.join(root, 'native', 'build', 'Release', 'ardali_audio.node');
+  assertFileLooksLikeElf(nativeAddon, 'Native audio addon (ardali_audio.node)');
 
   // Visualizer executable (must exist for Linux packaged builds)
-  const visualizerExe = path.join(nativeDistDir, 'aurivo-projectm-visualizer');
-  assertFileLooksLikeElf(visualizerExe, 'Visualizer exe (aurivo-projectm-visualizer)');
+  const visualizerExe = path.join(nativeDistDir, 'ardali-projectm-visualizer');
+  assertFileLooksLikeElf(visualizerExe, 'Visualizer exe (ardali-projectm-visualizer)');
 
   // libprojectM v4 runtime (bundle next to visualizer for distro compatibility)
   const projectmCore = path.join(nativeDistDir, 'libprojectM-4.so.4');
@@ -96,9 +96,9 @@ try {
   const msg = e && e.message ? e.message : String(e);
   console.error('\n[verify-linux-artifacts] ❌', msg);
   console.error('\nİpucu: Linux paketlemek için önce native bileşenleri üretin:');
-  console.error('- `npm run rebuild-native` (aurivo_audio.node)');
+  console.error('- `npm run rebuild-native` (ardali_audio.node)');
   console.error('- Visualizer: `cmake -S visualizer -B build-visualizer && cmake --build build-visualizer`');
-  console.error('- Sonra `cp build-visualizer/aurivo-projectm-visualizer native-dist/linux/`');
+  console.error('- Sonra `cp build-visualizer/ardali-projectm-visualizer native-dist/linux/`');
   console.error('- libprojectM v4 runtime (sisteme göre /usr/local/lib veya /usr/lib):');
   console.error('  - `cp -L /usr/local/lib/libprojectM-4.so.4 native-dist/linux/ || cp -L /usr/lib/libprojectM-4.so.4 native-dist/linux/`');
   console.error('  - `cp -L /usr/local/lib/libprojectM-4-playlist.so.4 native-dist/linux/ || cp -L /usr/lib/libprojectM-4-playlist.so.4 native-dist/linux/`');

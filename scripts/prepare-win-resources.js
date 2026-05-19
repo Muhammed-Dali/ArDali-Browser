@@ -119,7 +119,7 @@ function copyIfExists(from, to) {
 }
 
 function resolveVisualizerDllDir() {
-  const fromEnv = String(process.env.AURIVO_VISUALIZER_DLL_DIR || '').trim();
+  const fromEnv = String(process.env.ARDALI_VISUALIZER_DLL_DIR || '').trim();
   if (fromEnv && safeExists(fromEnv)) return fromEnv;
 
   const roots = [];
@@ -229,7 +229,7 @@ function copyVisualizerDllsFromDir(dllDir, nativeDistDir) {
   });
 
   if (!pickedDllDir || !anyDirExists) {
-    console.warn('[prepare-win-resources] AURIVO_VISUALIZER_DLL_DIR bulunamadı:', dllDir);
+    console.warn('[prepare-win-resources] ARDALI_VISUALIZER_DLL_DIR bulunamadı:', dllDir);
     return { copied: 0, skipped: 0 };
   }
 
@@ -371,7 +371,7 @@ function copyVisualizerDllsFromDir(dllDir, nativeDistDir) {
   ];
 
   const roots = [];
-  const visualizerExe = path.join(nativeDistDir, 'aurivo-projectm-visualizer.exe');
+  const visualizerExe = path.join(nativeDistDir, 'ardali-projectm-visualizer.exe');
   if (safeExists(visualizerExe)) roots.push(visualizerExe);
   for (const n of rootNames) {
     const p = resolveDllPath(n);
@@ -423,7 +423,7 @@ function copyVisualizerDllsFromDir(dllDir, nativeDistDir) {
     }
   }
 
-  const keepExtras = String(process.env.AURIVO_KEEP_EXTRA_VISUALIZER_DLLS || '').trim() === '1';
+  const keepExtras = String(process.env.ARDALI_KEEP_EXTRA_VISUALIZER_DLLS || '').trim() === '1';
   if (!keepExtras) {
     try {
       for (const entry of fs.readdirSync(nativeDistDir, { withFileTypes: true })) {
@@ -459,7 +459,7 @@ function copyVisualizerDllsFromDir(dllDir, nativeDistDir) {
 
 function main() {
   const root = path.resolve(__dirname, '..');
-  const requireDlls = String(process.env.AURIVO_REQUIRE_VISUALIZER_DLLS || '').trim() === '1';
+  const requireDlls = String(process.env.ARDALI_REQUIRE_VISUALIZER_DLLS || '').trim() === '1';
   const nativeDistLegacyDir = path.join(root, 'native-dist');
   const nativeDistDir = path.join(root, 'native-dist', 'windows');
   ensureDir(nativeDistDir);
@@ -482,8 +482,8 @@ function main() {
     }
   }
 
-  const visualizerExe = path.join(nativeDistDir, 'aurivo-projectm-visualizer.exe');
-  const legacyVisualizerExe = path.join(nativeDistLegacyDir, 'aurivo-projectm-visualizer.exe');
+  const visualizerExe = path.join(nativeDistDir, 'ardali-projectm-visualizer.exe');
+  const legacyVisualizerExe = path.join(nativeDistLegacyDir, 'ardali-projectm-visualizer.exe');
   if (!safeExists(visualizerExe) && safeExists(legacyVisualizerExe)) {
     copyIfExists(legacyVisualizerExe, visualizerExe);
   }
@@ -493,7 +493,7 @@ function main() {
   }
 
   // Optional: copy visualizer runtime DLLs (MSYS2/MinGW etc.)
-  // Example: set AURIVO_VISUALIZER_DLL_DIR="C:\\msys64\\mingw64\\bin"
+  // Example: set ARDALI_VISUALIZER_DLL_DIR="C:\\msys64\\mingw64\\bin"
   try {
     const dllDir = resolveVisualizerDllDir();
 
@@ -526,7 +526,7 @@ function main() {
       }
     } else if (hasVisualizerExe) {
       const msg =
-        '[prepare-win-resources] ⚠ Visualizer exe var ama AURIVO_VISUALIZER_DLL_DIR bulunamadı; DLL paketleme atlandı. ' +
+        '[prepare-win-resources] ⚠ Visualizer exe var ama ARDALI_VISUALIZER_DLL_DIR bulunamadı; DLL paketleme atlandı. ' +
         'Windows üzerinde MSYS2 kuruluysa env ayarlayın (ör: C:\\msys64\\mingw64\\bin).';
       if (requireDlls) throw new Error(msg);
       console.warn(msg);

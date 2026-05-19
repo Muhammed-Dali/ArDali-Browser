@@ -51,15 +51,15 @@ function registerPulseIpc({ ipcMain, app, BrowserWindow, getMainWindow, shell })
             minWidth: 780,
             minHeight: 560,
             backgroundColor: '#10151d',
-            icon: path.join(__dirname, '..', 'icons', 'aurivo.png'),
+            icon: path.join(__dirname, '..', 'icons', 'ardali.png'),
             parent: parent && !parent.isDestroyed() ? parent : undefined,
             modal: false,
             autoHideMenuBar: true,
             show: false,
-            title: 'Aurivo Dinle',
+            title: 'ArDali Dinle',
             webPreferences: {
                 preload: path.join(__dirname, '..', 'preload.js'),
-                additionalArguments: ['--aurivo-view=pulse'],
+                additionalArguments: ['--ardali-view=pulse'],
                 nodeIntegration: false,
                 contextIsolation: true,
                 sandbox: false,
@@ -99,6 +99,7 @@ function registerPulseIpc({ ipcMain, app, BrowserWindow, getMainWindow, shell })
     ipcMain.handle('pulse:savePreferences', (_event, preferences) => ({ success: true, preferences: service.savePreferences(preferences) }));
     ipcMain.handle('pulse:getPreferredDevice', () => ({ success: true, audioDevice: service.preferences.current_device_name || '' }));
     ipcMain.handle('pulse:getStatus', () => ({ success: true, status: service.getStatus() }));
+    ipcMain.handle('pulse:setContextMetadata', (_event, metadata) => service.setContextMetadata(metadata || {}));
     ipcMain.handle('pulse:startListening', (_event, options) => service.startListening(options || {}));
     ipcMain.handle('pulse:stopListening', () => service.stopListening());
     ipcMain.handle('pulse:recognizeSample', (_event, options) => service.recognizeSample(options || {}));
@@ -117,7 +118,7 @@ function registerPulseIpc({ ipcMain, app, BrowserWindow, getMainWindow, shell })
         broadcast('pulse:open-query', {
             query: String(payload.query || '').trim(),
             platform: String(payload.platform || 'youtube').trim().toLowerCase(),
-            source: 'aurivo-pulse-gui'
+            source: 'ardali-pulse-gui'
         });
         return { success: true };
     });

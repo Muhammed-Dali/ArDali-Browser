@@ -1,11 +1,11 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
   Backward-compat / requested filename.
-  The canonical AppStream ID used by the project is: com.aurivo.mediaplayer
+  The canonical AppStream ID used by the project is: com.ardali.mediaplayer
 -->
 <component type="desktop">
-  <id>com.aurivo.mediaplayer</id>
-  <name>Aurivo Media Player</name>
+  <id>com.ardali.mediaplayer</id>
+  <name>ArDali Media Player</name>
   <summary>Electron tabanlı gelişmiş medya oynatıcı</summary>
   <metadata_license>CC0-1.0</metadata_license>
   <project_license>MIT</project_license>
@@ -13,7 +13,7 @@
   <categories>
     <category>AudioVideo</category>
   </categories>
-  <url type="homepage">https://aurivo.app</url>
-  <launchable type="desktop-id">com.aurivo.mediaplayer.desktop</launchable>
+  <url type="homepage">https://ardali.app</url>
+  <launchable type="desktop-id">com.ardali.mediaplayer.desktop</launchable>
 </component>
 

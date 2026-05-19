@@ -1,5 +1,5 @@
 /* ============================================
-   AURIVO MEDIA PLAYER - Electron CSS
+   ARDALI MEDIA PLAYER - Electron CSS
    Qt MainWindow_Setup.cpp portlu arayüz
    ============================================ */
 
@@ -70,7 +70,7 @@
     --player-bar-height: 200px;
 }
 
-body.aurivo-system-light {
+body.ardali-system-light {
     --bg-darkest: #e9eef5;
     --bg-dark: #f4f7fb;
     --bg-medium: #edf2f8;
@@ -89,20 +89,20 @@ body.aurivo-system-light {
     --text-dimmed: #6a7f9c;
 }
 
-body[data-aurivo-motion-profile="fast"] {
+body[data-ardali-motion-profile="fast"] {
     --ui-motion-factor: 0.78;
 }
 
-body[data-aurivo-motion-profile="balanced"] {
+body[data-ardali-motion-profile="balanced"] {
     --ui-motion-factor: 1;
 }
 
-body[data-aurivo-motion-profile="calm"] {
+body[data-ardali-motion-profile="calm"] {
     --ui-motion-factor: 1.35;
 }
 
 /* Theme variants */
-body[data-aurivo-theme="aur-renk-efektleri"] {
+body[data-ardali-theme="aur-renk-efektleri"] {
     --bg-darkest: #0d0d0d;
     --bg-dark: #121212;
     --bg-medium: #181818;
@@ -121,7 +121,7 @@ body[data-aurivo-theme="aur-renk-efektleri"] {
     --accent-secondary: #40c4ff;
 }
 
-body[data-aurivo-theme="performance-lite"] {
+body[data-ardali-theme="performance-lite"] {
     --bg-darkest: #0d0f12;
     --bg-dark: #111418;
     --bg-medium: #161b22;
@@ -140,7 +140,7 @@ body[data-aurivo-theme="performance-lite"] {
     --accent-secondary: #4ca3ff;
 }
 
-body[data-aurivo-theme="performance-balanced"] {
+body[data-ardali-theme="performance-balanced"] {
     --bg-darkest: #0d1014;
     --bg-dark: #121821;
     --bg-medium: #172131;
@@ -160,9 +160,9 @@ body[data-aurivo-theme="performance-balanced"] {
 }
 
 /* Low-GPU theme: keep look, remove costly compositing effects. */
-body[data-aurivo-theme="performance-lite"] *,
-body[data-aurivo-theme="performance-lite"] *::before,
-body[data-aurivo-theme="performance-lite"] *::after {
+body[data-ardali-theme="performance-lite"] *,
+body[data-ardali-theme="performance-lite"] *::before,
+body[data-ardali-theme="performance-lite"] *::after {
     animation: none !important;
     transition: none !important;
     backdrop-filter: none !important;
@@ -171,40 +171,40 @@ body[data-aurivo-theme="performance-lite"] *::after {
 }
 
 /* Balanced theme: keep motion, trim expensive blur and deep glow. */
-body[data-aurivo-theme="performance-balanced"] *,
-body[data-aurivo-theme="performance-balanced"] *::before,
-body[data-aurivo-theme="performance-balanced"] *::after {
+body[data-ardali-theme="performance-balanced"] *,
+body[data-ardali-theme="performance-balanced"] *::before,
+body[data-ardali-theme="performance-balanced"] *::after {
     backdrop-filter: none !important;
     -webkit-backdrop-filter: none !important;
 }
 
-body[data-aurivo-theme="performance-lite"] .sidebar,
-body[data-aurivo-theme="performance-lite"] .left-panel,
-body[data-aurivo-theme="performance-lite"] .main-content,
-body[data-aurivo-theme="performance-lite"] .player-bottom,
-body[data-aurivo-theme="performance-lite"] .cover-art,
-body[data-aurivo-theme="performance-lite"] .settings-menu,
-body[data-aurivo-theme="performance-lite"] .playlist-item,
-body[data-aurivo-theme="performance-lite"] .playlist-header,
-body[data-aurivo-theme="performance-lite"] .visualizer,
-body[data-aurivo-theme="performance-lite"] #visualizerCanvas,
-body[data-aurivo-theme="performance-lite"] .aurivo-notification,
-body[data-aurivo-theme="performance-lite"] .video-tools-panel,
-body[data-aurivo-theme="performance-lite"] .video-tool-progress-fill,
+body[data-ardali-theme="performance-lite"] .sidebar,
+body[data-ardali-theme="performance-lite"] .left-panel,
+body[data-ardali-theme="performance-lite"] .main-content,
+body[data-ardali-theme="performance-lite"] .player-bottom,
+body[data-ardali-theme="performance-lite"] .cover-art,
+body[data-ardali-theme="performance-lite"] .settings-menu,
+body[data-ardali-theme="performance-lite"] .playlist-item,
+body[data-ardali-theme="performance-lite"] .playlist-header,
+body[data-ardali-theme="performance-lite"] .visualizer,
+body[data-ardali-theme="performance-lite"] #visualizerCanvas,
+body[data-ardali-theme="performance-lite"] .ardali-notification,
+body[data-ardali-theme="performance-lite"] .video-tools-panel,
+body[data-ardali-theme="performance-lite"] .video-tool-progress-fill,
 .video-tools-panel-low-power {
     box-shadow: none !important;
     filter: none !important;
 }
 
-body[data-aurivo-theme="performance-balanced"] .cover-art,
-body[data-aurivo-theme="performance-balanced"] .visualizer,
-body[data-aurivo-theme="performance-balanced"] #visualizerCanvas,
-body[data-aurivo-theme="performance-balanced"] .aurivo-notification {
+body[data-ardali-theme="performance-balanced"] .cover-art,
+body[data-ardali-theme="performance-balanced"] .visualizer,
+body[data-ardali-theme="performance-balanced"] #visualizerCanvas,
+body[data-ardali-theme="performance-balanced"] .ardali-notification {
     box-shadow: none !important;
     filter: none !important;
 }
 
-body[data-aurivo-theme="neon-night"] {
+body[data-ardali-theme="neon-night"] {
     --bg-darkest: #080710;
     --bg-dark: #100d1e;
     --bg-medium: #1a1430;
@@ -245,7 +245,7 @@ body[data-aurivo-theme="neon-night"] {
     --theme-motion-ease: cubic-bezier(0.22, 1, 0.36, 1);
 }
 
-body[data-aurivo-theme="retro-amber"] {
+body[data-ardali-theme="retro-amber"] {
     --bg-darkest: #140d07;
     --bg-dark: #1f140c;
     --bg-medium: #2a1a10;
@@ -286,7 +286,7 @@ body[data-aurivo-theme="retro-amber"] {
     --theme-motion-ease: cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
-body[data-aurivo-theme="deep-ocean"] {
+body[data-ardali-theme="deep-ocean"] {
     --bg-darkest: #02131a;
     --bg-dark: #05202b;
     --bg-medium: #083040;
@@ -327,7 +327,7 @@ body[data-aurivo-theme="deep-ocean"] {
     --theme-motion-ease: cubic-bezier(0.25, 0.9, 0.25, 1);
 }
 
-body[data-aurivo-theme="forest-mint"] {
+body[data-ardali-theme="forest-mint"] {
     --bg-darkest: #0b1711;
     --bg-dark: #102118;
     --bg-medium: #163027;
@@ -351,8 +351,8 @@ body[data-aurivo-theme="forest-mint"] {
 }
 
 /* System-follow palette must override selected theme tokens. */
-body.aurivo-system-light,
-body.aurivo-system-light[data-aurivo-theme] {
+body.ardali-system-light,
+body.ardali-system-light[data-ardali-theme] {
     --bg-darkest: #e9eef5;
     --bg-dark: #f4f7fb;
     --bg-medium: #edf2f8;
@@ -371,8 +371,8 @@ body.aurivo-system-light[data-aurivo-theme] {
     --accent-secondary: #58b6ff;
 }
 
-body.aurivo-system-dark,
-body.aurivo-system-dark[data-aurivo-theme] {
+body.ardali-system-dark,
+body.ardali-system-dark[data-ardali-theme] {
     --bg-darkest: #090d13;
     --bg-dark: #0d121a;
     --bg-medium: #121a25;
@@ -391,8 +391,8 @@ body.aurivo-system-dark[data-aurivo-theme] {
     --accent-secondary: #6aa7ff;
 }
 
-body.aurivo-visual-balanced .aurivo-notify-bars i,
-body.aurivo-visual-balanced .aurivo-notify-sweep {
+body.ardali-visual-balanced .ardali-notify-bars i,
+body.ardali-visual-balanced .ardali-notify-sweep {
     animation: none !important;
 }
 
@@ -552,7 +552,7 @@ body.web-mode.web-drawer-collapsed .sidebar-web-quick-actions {
 .sidebar-btn[data-page="music"] { --icon-accent: #86ffc8; }
 .sidebar-btn[data-page="web"] { --icon-accent: #4fd6ff; }
 .sidebar-btn[data-page="pulse"] { --icon-accent: #8da4ff; }
-.aurivo-dawlod-btn { --icon-accent: #70e4ff; }
+.ardali-dawlod-btn { --icon-accent: #70e4ff; }
 #settingsBtn { --icon-accent: #9cc6ff; }
 #infoBtn { --icon-accent: #a8d4ff; }
 
@@ -579,7 +579,7 @@ body.web-mode.web-drawer-collapsed .sidebar-web-quick-actions {
     opacity: var(--theme-icon-hover-opacity);
 }
 
-.aurivo-dawlod-btn .aurivo-dawlod-icon {
+.ardali-dawlod-btn .ardali-dawlod-icon {
     width: 32px;
     height: 32px;
     border-radius: 10px;
@@ -589,8 +589,8 @@ body.web-mode.web-drawer-collapsed .sidebar-web-quick-actions {
     opacity: 0.95;
 }
 
-.aurivo-dawlod-btn:hover .aurivo-dawlod-icon,
-.aurivo-dawlod-btn:focus-visible .aurivo-dawlod-icon {
+.ardali-dawlod-btn:hover .ardali-dawlod-icon,
+.ardali-dawlod-btn:focus-visible .ardali-dawlod-icon {
     filter:
         drop-shadow(0 0 12px rgba(112, 228, 255, 0.44))
         drop-shadow(0 5px 14px rgba(0, 0, 0, 0.42));
@@ -2038,28 +2038,28 @@ body.web-platform-anim-dock .nav-platform-strip .platform-btn.platform-btn-docke
     }
 }
 
-body.aurivo-reduced-motion:not(.web-platform-force-motion) .nav-platform-strip .nav-platform-spotlight {
+body.ardali-reduced-motion:not(.web-platform-force-motion) .nav-platform-strip .nav-platform-spotlight {
     display: none;
 }
 
-body.aurivo-reduced-motion:not(.web-platform-force-motion) .nav-platform-strip .platform-btn.platform-btn-docked {
+body.ardali-reduced-motion:not(.web-platform-force-motion) .nav-platform-strip .platform-btn.platform-btn-docked {
     animation: none !important;
     transition: background-color 90ms ease !important;
     transform: translateY(-1px) scale(var(--web-btn-base-scale, 1)) !important;
     opacity: 1 !important;
 }
 
-body.aurivo-reduced-motion .nav-platform-strip .platform-btn.platform-btn-docked.active {
+body.ardali-reduced-motion .nav-platform-strip .platform-btn.platform-btn-docked.active {
     animation: none !important;
 }
 
-body.aurivo-reduced-motion:not(.web-platform-force-motion) .nav-platform-strip .platform-btn.platform-btn-docked img {
+body.ardali-reduced-motion:not(.web-platform-force-motion) .nav-platform-strip .platform-btn.platform-btn-docked img {
     transform: none !important;
     transition: none !important;
 }
 
-body.aurivo-reduced-motion:not(.web-platform-force-motion) .nav-platform-strip .platform-btn.platform-btn-docked::before,
-body.aurivo-reduced-motion:not(.web-platform-force-motion) .nav-platform-strip .platform-btn.platform-btn-docked::after {
+body.ardali-reduced-motion:not(.web-platform-force-motion) .nav-platform-strip .platform-btn.platform-btn-docked::before,
+body.ardali-reduced-motion:not(.web-platform-force-motion) .nav-platform-strip .platform-btn.platform-btn-docked::after {
     transition-delay: 0ms !important;
 }
 
@@ -2113,10 +2113,10 @@ body.aurivo-reduced-motion:not(.web-platform-force-motion) .nav-platform-strip .
 }
 
 #refreshBtn.is-refresh-spinning .nav-glyph {
-    animation: aurivoRefreshSpin 520ms cubic-bezier(0.28, 0.84, 0.42, 1) both;
+    animation: ardaliRefreshSpin 520ms cubic-bezier(0.28, 0.84, 0.42, 1) both;
 }
 
-@keyframes aurivoRefreshSpin {
+@keyframes ardaliRefreshSpin {
     from {
         transform: rotate(0deg);
     }
@@ -2324,9 +2324,9 @@ body.aurivo-reduced-motion:not(.web-platform-force-motion) .nav-platform-strip .
     }
 }
 
-body.aurivo-reduced-motion:not(.web-platform-force-motion) *,
-body.aurivo-reduced-motion:not(.web-platform-force-motion) *::before,
-body.aurivo-reduced-motion:not(.web-platform-force-motion) *::after {
+body.ardali-reduced-motion:not(.web-platform-force-motion) *,
+body.ardali-reduced-motion:not(.web-platform-force-motion) *::before,
+body.ardali-reduced-motion:not(.web-platform-force-motion) *::after {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
@@ -3573,7 +3573,7 @@ body.playlist-reorder-dragging .playlist-item.playing .item-name {
     margin-bottom: 8px;
 }
 
-.aurivo-notify-container {
+.ardali-notify-container {
     position: fixed;
     top: 10px;
     left: calc((100% + var(--sidebar-width) + var(--left-panel-width)) / 2);
@@ -3586,7 +3586,7 @@ body.playlist-reorder-dragging .playlist-item.playing .item-name {
     pointer-events: none;
 }
 
-.aurivo-notify {
+.ardali-notify {
     position: relative;
     display: flex;
     align-items: center;
@@ -3606,17 +3606,17 @@ body.playlist-reorder-dragging .playlist-item.playing .item-name {
     overflow: hidden;
 }
 
-.aurivo-notify.show {
+.ardali-notify.show {
     opacity: 1;
     transform: translateY(0) scale(1);
 }
 
-.aurivo-notify.hide {
+.ardali-notify.hide {
     opacity: 0;
     transform: translateY(-8px) scale(0.98);
 }
 
-.aurivo-notify-text {
+.ardali-notify-text {
     font-size: 16px;
     line-height: 1.25;
     font-weight: 700;
@@ -3625,7 +3625,7 @@ body.playlist-reorder-dragging .playlist-item.playing .item-name {
     flex: 1;
 }
 
-.aurivo-notify-bars {
+.ardali-notify-bars {
     display: inline-flex;
     align-items: flex-end;
     gap: 3px;
@@ -3634,53 +3634,53 @@ body.playlist-reorder-dragging .playlist-item.playing .item-name {
     flex: 0 0 18px;
 }
 
-.aurivo-notify-bars i {
+.ardali-notify-bars i {
     width: 4px;
     border-radius: 2px;
     background: currentColor;
     opacity: 0.88;
-    animation: aurivoNotifyBars 0.9s ease-in-out infinite;
+    animation: ardaliNotifyBars 0.9s ease-in-out infinite;
 }
 
-.aurivo-notify-bars i:nth-child(1) { height: 7px; animation-delay: 0s; }
-.aurivo-notify-bars i:nth-child(2) { height: 14px; animation-delay: 0.12s; }
-.aurivo-notify-bars i:nth-child(3) { height: 10px; animation-delay: 0.24s; }
+.ardali-notify-bars i:nth-child(1) { height: 7px; animation-delay: 0s; }
+.ardali-notify-bars i:nth-child(2) { height: 14px; animation-delay: 0.12s; }
+.ardali-notify-bars i:nth-child(3) { height: 10px; animation-delay: 0.24s; }
 
-.aurivo-notify-sweep {
+.ardali-notify-sweep {
     position: absolute;
     inset: 0 auto 0 -24%;
     width: 24%;
     pointer-events: none;
     background: linear-gradient(100deg, rgba(255, 255, 255, 0) 0%, rgba(255, 255, 255, 0.22) 50%, rgba(255, 255, 255, 0) 100%);
-    animation: aurivoNotifySweep 1.2s ease-out;
+    animation: ardaliNotifySweep 1.2s ease-out;
 }
 
-.aurivo-notify-info {
+.ardali-notify-info {
     color: #53d2ff;
     border-color: rgba(83, 210, 255, 0.42);
 }
 
-.aurivo-notify-success {
+.ardali-notify-success {
     color: #58f2a2;
     border-color: rgba(88, 242, 162, 0.42);
 }
 
-.aurivo-notify-warning {
+.ardali-notify-warning {
     color: #ffd86b;
     border-color: rgba(255, 216, 107, 0.44);
 }
 
-.aurivo-notify-error {
+.ardali-notify-error {
     color: #ff6d84;
     border-color: rgba(255, 109, 132, 0.45);
 }
 
-@keyframes aurivoNotifyBars {
+@keyframes ardaliNotifyBars {
     0%, 100% { transform: scaleY(0.66); opacity: 0.55; }
     50% { transform: scaleY(1.1); opacity: 1; }
 }
 
-@keyframes aurivoNotifySweep {
+@keyframes ardaliNotifySweep {
     0% { left: -24%; }
     100% { left: 112%; }
 }
@@ -5312,7 +5312,7 @@ body.video-tools-mode .video-edit-workspace {
     }
 }
 
-body[data-aurivo-theme="performance-lite"] .video-studio-panel {
+body[data-ardali-theme="performance-lite"] .video-studio-panel {
     background: rgba(8, 18, 31, 0.96);
     box-shadow: none;
 }
@@ -5635,12 +5635,12 @@ body[data-aurivo-theme="performance-lite"] .video-studio-panel {
     transition: width 180ms ease;
 }
 
-body[data-aurivo-theme="performance-lite"] .video-tools-panel,
+body[data-ardali-theme="performance-lite"] .video-tools-panel,
 .video-tools-panel-low-power {
     background: rgba(8, 18, 31, 0.96);
 }
 
-body[data-aurivo-theme="performance-lite"] .video-tool-progress-fill,
+body[data-ardali-theme="performance-lite"] .video-tool-progress-fill,
 .video-tools-panel-low-power .video-tool-progress-fill {
     background: #30c8ff;
     transition: none;
@@ -10056,8 +10056,8 @@ body.settings-window-mode .library-group-performance .checkbox-label {
     }
 }
 
-body.aurivo-reduced-motion .app-container:has(.sidebar-btn[data-page="music"].active) #musicAddFilesBtn .library-add-btn-icon,
-body.aurivo-reduced-motion .app-container:has(.sidebar-btn[data-page="video"].active) #videoAddFilesBtn .video-add-btn-icon {
+body.ardali-reduced-motion .app-container:has(.sidebar-btn[data-page="music"].active) #musicAddFilesBtn .library-add-btn-icon,
+body.ardali-reduced-motion .app-container:has(.sidebar-btn[data-page="video"].active) #videoAddFilesBtn .video-add-btn-icon {
     animation: none !important;
 }
 
@@ -11298,7 +11298,7 @@ body.aurivo-reduced-motion .app-container:has(.sidebar-btn[data-page="video"].ac
     margin-top: 15px;
 }
 
-.aurivo-module {
+.ardali-module {
     flex: 2;
     background: #1b1b1b;
     border-radius: 10px;
@@ -11306,14 +11306,14 @@ body.aurivo-reduced-motion .app-container:has(.sidebar-btn[data-page="video"].ac
     border: 1px solid #333;
 }
 
-.aurivo-module h3 {
+.ardali-module h3 {
     font-size: 14px;
     margin-bottom: 15px;
     text-align: center;
     color: #ccc;
 }
 
-.aurivo-knobs {
+.ardali-knobs {
     display: flex;
     justify-content: space-around;
     flex-wrap: wrap;
@@ -11321,20 +11321,20 @@ body.aurivo-reduced-motion .app-container:has(.sidebar-btn[data-page="video"].ac
     margin-bottom: 15px;
 }
 
-.aurivo-knob-wrapper {
+.ardali-knob-wrapper {
     display: flex;
     flex-direction: column;
     align-items: center;
     cursor: pointer;
 }
 
-.aurivo-knob-canvas,
+.ardali-knob-canvas,
 .reverb-knob-canvas {
     width: 140px;
     height: 180px;
 }
 
-.aurivo-knob-value,
+.ardali-knob-value,
 .reverb-knob-value {
     font-size: 14px;
     font-weight: bold;
@@ -11342,21 +11342,21 @@ body.aurivo-reduced-motion .app-container:has(.sidebar-btn[data-page="video"].ac
     margin-top: 5px;
 }
 
-.aurivo-knob-label,
+.ardali-knob-label,
 .reverb-knob-label {
     font-size: 11px;
     color: #888;
     margin-top: 3px;
 }
 
-.aurivo-controls {
+.ardali-controls {
     display: flex;
     justify-content: space-between;
     align-items: center;
     margin-top: 10px;
 }
 
-.aurivo-acoustic {
+.ardali-acoustic {
     display: flex;
     align-items: center;
     gap: 10px;
@@ -11364,7 +11364,7 @@ body.aurivo-reduced-motion .app-container:has(.sidebar-btn[data-page="video"].ac
     color: #aaa;
 }
 
-.aurivo-acoustic select {
+.ardali-acoustic select {
     background: #1a1a2e;
     color: #fff;
     border: 1px solid #444;
@@ -11373,7 +11373,7 @@ body.aurivo-reduced-motion .app-container:has(.sidebar-btn[data-page="video"].ac
     cursor: pointer;
 }
 
-.aurivo-reset-btn {
+.ardali-reset-btn {
     background: #10b981;
     color: #fff;
     border: none;
@@ -11606,7 +11606,7 @@ body.aurivo-reduced-motion .app-container:has(.sidebar-btn[data-page="video"].ac
 
 /* Reverb Container */
 .reverb-container,
-.aurivo-container {
+.ardali-container {
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -11614,7 +11614,7 @@ body.aurivo-reduced-motion .app-container:has(.sidebar-btn[data-page="video"].ac
 }
 
 .reverb-container h3,
-.aurivo-container h3 {
+.ardali-container h3 {
     color: var(--text-primary);
     margin-bottom: 20px;
     font-size: 18px;

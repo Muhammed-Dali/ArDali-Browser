@@ -1,6 +1,6 @@
 # Security Runbook
 
-This document defines the security workflow for Aurivo-Medya-Player.
+This document defines the security workflow for ArDali-Medya-Player.
 
 ## 1) Release Security Pipeline (Ordered)
 
@@ -18,7 +18,7 @@ The chain is enforced by GitHub Actions `workflow_run` triggers:
 
 ## 2) Required GitHub Secrets
 
-Repository: `Aurivo-Medya-Player-Linux`
+Repository: `ArDali-Medya-Player-Linux`
 
 Required secrets:
 

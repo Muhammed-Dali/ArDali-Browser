@@ -115,16 +115,16 @@ jobs:
       - name: Install JS dependencies
         run: npm ci
 
-      - name: Build native audio addon (aurivo_audio.node)
+      - name: Build native audio addon (ardali_audio.node)
         run: npm --prefix native ci
 
-      - name: Build projectM visualizer (aurivo-projectm-visualizer)
+      - name: Build projectM visualizer (ardali-projectm-visualizer)
         run: |
           set -euo pipefail
           cmake -S visualizer -B build-visualizer -G Ninja -DCMAKE_BUILD_TYPE=Release
           cmake --build build-visualizer
           mkdir -p native-dist/linux
-          cp -f build-visualizer/aurivo-projectm-visualizer native-dist/linux/aurivo-projectm-visualizer
+          cp -f build-visualizer/ardali-projectm-visualizer native-dist/linux/ardali-projectm-visualizer
           for lib in libprojectM-4.so.4 libprojectM-4-playlist.so.4; do
             if [ -f "/usr/local/lib/$lib" ]; then
               cp -Lf "/usr/local/lib/$lib" "native-dist/linux/$lib"
@@ -135,7 +135,7 @@ jobs:
               exit 1
             fi
           done
-          chmod +x native-dist/linux/aurivo-projectm-visualizer
+          chmod +x native-dist/linux/ardali-projectm-visualizer
 
       - name: Build Linux packages (AppImage/deb/rpm)
         run: npm run -s build:linux:appimage -- --publish=never
@@ -153,9 +153,9 @@ jobs:
           )
           root="${tmpdir}/squashfs-root"
           test -f "${root}/resources/app.asar"
-          test -f "${root}/resources/native/build/Release/aurivo_audio.node"
+          test -f "${root}/resources/native/build/Release/ardali_audio.node"
           test -f "${root}/resources/native/build/Release/libbass.so"
-          test -f "${root}/resources/native-dist/linux/aurivo-projectm-visualizer"
+          test -f "${root}/resources/native-dist/linux/ardali-projectm-visualizer"
           test -f "${root}/resources/native-dist/linux/libprojectM-4.so.4"
           test -f "${root}/resources/native-dist/linux/libprojectM-4-playlist.so.4"
           npx asar list "${root}/resources/app.asar" | grep -qx '/modules/pulse/pulseService.js'

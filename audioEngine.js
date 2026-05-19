@@ -1,5 +1,5 @@
 // ============================================
-// AURIVO AUDIO ENGINE - JavaScript Wrapper
+// ARDALI AUDIO ENGINE - JavaScript Wrapper
 // C++ Native Addon Bridge for Electron
 // ============================================
 
@@ -17,7 +17,7 @@ function uniq(arr) {
 }
 
 function getAddonCandidatePaths() {
-    const name = 'aurivo_audio.node';
+    const name = 'ardali_audio.node';
     const out = [];
 
     // Packaged: prefer files copied as extraResources
@@ -105,7 +105,7 @@ function tryLoadNativeAddon() {
             nativeAudio = require(addonPath);
             isNativeAvailable = true;
             loadedAddonPath = addonPath;
-            console.log('✓ Aurivo C++ Audio Engine yüklendi:', addonPath);
+            console.log('✓ ArDali C++ Audio Engine yüklendi:', addonPath);
             return true;
         } catch (error) {
             lastErr = error;
@@ -130,7 +130,7 @@ function tryLoadNativeAddon() {
     return false;
 }
 
-class AurivoAudioEngine {
+class ArDaliAudioEngine {
     constructor() {
         this.initialized = false;
         this.callbacks = {
@@ -171,7 +171,7 @@ class AurivoAudioEngine {
             const ok = (result === true) || (result && typeof result === 'object' && result.success === true);
             this.initialized = ok;
             if (ok) {
-                console.log('✓ Aurivo Audio Engine başlatıldı');
+                console.log('✓ ArDali Audio Engine başlatıldı');
             } else if (result && typeof result === 'object' && result.error) {
                 console.warn('⚠ Audio Engine başlatılamadı:', result.error);
             }
@@ -421,7 +421,7 @@ class AurivoAudioEngine {
     }
 
     /**
-     * Bass ayarla (Aurivo Module)
+     * Bass ayarla (ArDali Module)
      * @param {number} dB - -15 ile +15 dB
      */
     setBass(dB) {
@@ -433,7 +433,7 @@ class AurivoAudioEngine {
     }
 
     /**
-     * Mid ayarla (Aurivo Module)
+     * Mid ayarla (ArDali Module)
      * @param {number} dB - -15 ile +15 dB
      */
     setMid(dB) {
@@ -445,7 +445,7 @@ class AurivoAudioEngine {
     }
 
     /**
-     * Treble ayarla (Aurivo Module)
+     * Treble ayarla (ArDali Module)
      * @param {number} dB - -15 ile +15 dB
      */
     setTreble(dB) {
@@ -2112,10 +2112,10 @@ class AurivoAudioEngine {
 }
 
 // Singleton instance
-const audioEngine = new AurivoAudioEngine();
+const audioEngine = new ArDaliAudioEngine();
 
 module.exports = {
-    AurivoAudioEngine,
+    ArDaliAudioEngine,
     audioEngine,
     get isNativeAvailable() { return isNativeAvailable; },
     get loadedAddonPath() { return loadedAddonPath; },

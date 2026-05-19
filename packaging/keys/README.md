@@ -1,4 +1,4 @@
-Aurivo Release Signing Key
+ArDali Release Signing Key
 ==========================
 
 Fingerprint:
@@ -7,16 +7,16 @@ Fingerprint:
 
 Public key file:
 
-`aurivo-release-signing.asc`
+`ardali-release-signing.asc`
 
 Import command:
 
 ```bash
-gpg --import aurivo-release-signing.asc
+gpg --import ardali-release-signing.asc
 ```
 
 For AUR users (one-time):
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/muhammed-aurivo-dev/Aurivo-Medya-Player-Linux/main/packaging/keys/aurivo-release-signing.asc | gpg --import
+curl -fsSL https://raw.githubusercontent.com/muhammed-ardali-dev/ArDali-Medya-Player-Linux/main/packaging/keys/ardali-release-signing.asc | gpg --import
 ```

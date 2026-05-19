@@ -49,8 +49,8 @@ assets/css/
 assets/fonts/Inter.ttf
 assets/fonts/JetBrainsMono-Regular.ttf
 assets/fonts/Ubuntu-Regular.ttf
-aurivo-bin/
-Aurivo-Medya-Player-Linux/
+ardali-bin/
+ArDali-Medya-Player-Linux/
 squashfs-root/
 **/chromium.backup_*/
 

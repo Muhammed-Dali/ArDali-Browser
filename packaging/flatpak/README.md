@@ -1,7 +1,7 @@
 
 # Flatpak (Flathub) Hazirligi
 
-Bu klasor, `com.aurivo.mediaplayer` uygulamasi icin Flatpak manifestini ve yardimci dosyalari icerir.
+Bu klasor, `com.ardali.mediaplayer` uygulamasi icin Flatpak manifestini ve yardimci dosyalari icerir.
 
 ## Hizli Ozet
 
@@ -24,7 +24,7 @@ flatpak install -y flathub org.freedesktop.Sdk//24.08 org.freedesktop.Platform//
 
 ## Lokal Build Testi
 
-Manifest mevcut haliyle `dist/linux-unpacked/aurivo` bekler. Bu nedenle once:
+Manifest mevcut haliyle `dist/linux-unpacked/ardali` bekler. Bu nedenle once:
 
 ```bash
 npm run build:linux
@@ -33,24 +33,24 @@ npm run build:linux
 Ardindan:
 
 ```bash
-flatpak-builder --user --install --force-clean build-flatpak packaging/flatpak/com.aurivo.mediaplayer.yml
-flatpak run com.aurivo.mediaplayer
+flatpak-builder --user --install --force-clean build-flatpak packaging/flatpak/com.ardali.mediaplayer.yml
+flatpak run com.ardali.mediaplayer
 ```
 
 ## AppStream Dogrulama
 
 ```bash
-appstreamcli validate packaging/appstream/com.aurivo.mediaplayer.metainfo.xml
+appstreamcli validate packaging/appstream/com.ardali.mediaplayer.metainfo.xml
 ```
 
 ## Flathub'a Gonderim
 
 1. GitHub'da `flathub/flathub` reposunu forklayip clone et.
-2. Forkta `new-pr/com.aurivo.mediaplayer` dali ac.
-3. Asagidaki dosyalari `flathub` repo icinde `com.aurivo.mediaplayer/` klasorune koy:
-   - `com.aurivo.mediaplayer.yml`
-   - `com.aurivo.mediaplayer.metainfo.xml` (gerekirse ayni adla)
-   - `com.aurivo.mediaplayer.desktop`
+2. Forkta `new-pr/com.ardali.mediaplayer` dali ac.
+3. Asagidaki dosyalari `flathub` repo icinde `com.ardali.mediaplayer/` klasorune koy:
+   - `com.ardali.mediaplayer.yml`
+   - `com.ardali.mediaplayer.metainfo.xml` (gerekirse ayni adla)
+   - `com.ardali.mediaplayer.desktop`
 4. Flathub'a PR ac.
 5. Bot ve reviewer geri bildirimlerini uygula.
 

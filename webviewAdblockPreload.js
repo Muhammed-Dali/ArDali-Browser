@@ -1,4 +1,4 @@
-(function installAurivoWebviewAdblockPreload() {
+(function installArDaliWebviewAdblockPreload() {
     function installDeliBlockScriptingBridge() {
         let ipcRenderer = null;
         try {
@@ -7,12 +7,12 @@
             return;
         }
         if (!ipcRenderer || typeof ipcRenderer.invoke !== 'function') return;
-        if (globalThis.__aurivoDeliBlockScriptingBridge) return;
-        globalThis.__aurivoDeliBlockScriptingBridge = true;
+        if (globalThis.__ardaliDeliBlockScriptingBridge) return;
+        globalThis.__ardaliDeliBlockScriptingBridge = true;
 
-        const styleId = 'aurivo-deliblock-cosmetic-style';
-        const genericStyleId = 'aurivo-deliblock-generic-style';
-        const proceduralStyleId = 'aurivo-deliblock-procedural-style';
+        const styleId = 'ardali-deliblock-cosmetic-style';
+        const genericStyleId = 'ardali-deliblock-generic-style';
+        const proceduralStyleId = 'ardali-deliblock-procedural-style';
         const genericState = {
             hostname: '',
             signature: '',
@@ -49,7 +49,7 @@
                 style = document.createElement('style');
                 style.id = id;
                 style.type = 'text/css';
-                style.setAttribute('data-aurivo-deliblock', 'cosmetic');
+                style.setAttribute('data-ardali-deliblock', 'cosmetic');
                 (document.head || root).appendChild(style);
             }
             return style;
@@ -520,7 +520,7 @@
                 installGenericCosmetics(result);
                 installProceduralCosmetics(result);
                 installScriptlets(result);
-                globalThis.__aurivoDeliBlockScriptingState = {
+                globalThis.__ardaliDeliBlockScriptingState = {
                     at: Date.now(),
                     mode: result.mode || '',
                     hostname: result.hostname || '',
@@ -572,9 +572,9 @@
     installDeliBlockScriptingBridge();
 
     const code = `
-        (function installAurivoDeliBlockEarlyYouTubePatch() {
-            if (window.__aurivoDeliBlockEarlyYouTubePatch) return;
-            window.__aurivoDeliBlockEarlyYouTubePatch = true;
+        (function installArDaliDeliBlockEarlyYouTubePatch() {
+            if (window.__ardaliDeliBlockEarlyYouTubePatch) return;
+            window.__ardaliDeliBlockEarlyYouTubePatch = true;
 
             function isYouTubeHost() {
                 try {
@@ -757,11 +757,11 @@
                 const originalOpen = XMLHttpRequest.prototype.open;
                 const originalSend = XMLHttpRequest.prototype.send;
                 XMLHttpRequest.prototype.open = function(method, url, ...rest) {
-                    try { this.__aurivoDeliBlockUrl = String(url || ''); } catch {}
+                    try { this.__ardaliDeliBlockUrl = String(url || ''); } catch {}
                     return originalOpen.call(this, method, url, ...rest);
                 };
                 XMLHttpRequest.prototype.send = function(...args) {
-                    if (isPlayerEndpoint(this.__aurivoDeliBlockUrl)) {
+                    if (isPlayerEndpoint(this.__ardaliDeliBlockUrl)) {
                         this.addEventListener('readystatechange', () => {
                             try {
                                 if (this.readyState !== 4) return;
@@ -780,8 +780,8 @@
             try {
                 Object.defineProperty(window, 'ytInitialPlayerResponse', {
                     configurable: true,
-                    get() { return this.__aurivoYtInitialPlayerResponse; },
-                    set(value) { this.__aurivoYtInitialPlayerResponse = stripAdPayload(value); }
+                    get() { return this.__ardaliYtInitialPlayerResponse; },
+                    set(value) { this.__ardaliYtInitialPlayerResponse = stripAdPayload(value); }
                 });
             } catch {}
 

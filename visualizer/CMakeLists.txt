@@ -1,11 +1,11 @@
 cmake_minimum_required(VERSION 3.15)
-project(AurivoProjectMVisualizer)
+project(ArDaliProjectMVisualizer)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
-option(AURIVO_PROJECTM_C_API_COMPAT "Use local projectM C-API compatibility header and explicit library path" OFF)
-set(AURIVO_PROJECTM_LIB "" CACHE STRING "Absolute path to libprojectM shared object for compat mode")
-set(AURIVO_PROJECTM_PLAYLIST_LIB "" CACHE STRING "Optional absolute path to libprojectM playlist shared object for compat mode")
+option(ARDALI_PROJECTM_C_API_COMPAT "Use local projectM C-API compatibility header and explicit library path" OFF)
+set(ARDALI_PROJECTM_LIB "" CACHE STRING "Absolute path to libprojectM shared object for compat mode")
+set(ARDALI_PROJECTM_PLAYLIST_LIB "" CACHE STRING "Optional absolute path to libprojectM playlist shared object for compat mode")
 
 # Use pkg-config for all libraries
 find_package(PkgConfig REQUIRED)
@@ -27,13 +27,13 @@ endif()
 # Find OpenGL
 find_package(OpenGL REQUIRED)
 include_directories(${OPENGL_INCLUDE_DIR})
-set(AURIVO_OPENGL_LINK_LIBS "")
+set(ARDALI_OPENGL_LINK_LIBS "")
 if(TARGET OpenGL::GL)
-    list(APPEND AURIVO_OPENGL_LINK_LIBS OpenGL::GL)
+    list(APPEND ARDALI_OPENGL_LINK_LIBS OpenGL::GL)
 elseif(OPENGL_gl_LIBRARY)
-    list(APPEND AURIVO_OPENGL_LINK_LIBS ${OPENGL_gl_LIBRARY})
+    list(APPEND ARDALI_OPENGL_LINK_LIBS ${OPENGL_gl_LIBRARY})
 else()
-    list(APPEND AURIVO_OPENGL_LINK_LIBS ${OPENGL_LIBRARIES})
+    list(APPEND ARDALI_OPENGL_LINK_LIBS ${OPENGL_LIBRARIES})
 endif()
 
 # Find GLEW (required on Windows only; Linux path uses custom GL loader)
@@ -54,17 +54,17 @@ endif()
 # Threads (portable replacement for hardcoded pthread)
 find_package(Threads REQUIRED)
 
-if(AURIVO_PROJECTM_C_API_COMPAT)
-    if(NOT EXISTS "${AURIVO_PROJECTM_LIB}")
-        message(FATAL_ERROR "AURIVO_PROJECTM_C_API_COMPAT=ON but AURIVO_PROJECTM_LIB is missing: ${AURIVO_PROJECTM_LIB}")
+if(ARDALI_PROJECTM_C_API_COMPAT)
+    if(NOT EXISTS "${ARDALI_PROJECTM_LIB}")
+        message(FATAL_ERROR "ARDALI_PROJECTM_C_API_COMPAT=ON but ARDALI_PROJECTM_LIB is missing: ${ARDALI_PROJECTM_LIB}")
     endif()
     message(STATUS "projectM compat mode: using explicit shared library path")
     set(PROJECTM_FOUND TRUE)
-    set(PROJECTM_LIBRARIES "${AURIVO_PROJECTM_LIB}")
+    set(PROJECTM_LIBRARIES "${ARDALI_PROJECTM_LIB}")
     set(PROJECTM_PLAYLIST_FOUND FALSE)
-    if(EXISTS "${AURIVO_PROJECTM_PLAYLIST_LIB}")
+    if(EXISTS "${ARDALI_PROJECTM_PLAYLIST_LIB}")
         set(PROJECTM_PLAYLIST_FOUND TRUE)
-        set(PROJECTM_PLAYLIST_LIBRARIES "${AURIVO_PROJECTM_PLAYLIST_LIB}")
+        set(PROJECTM_PLAYLIST_LIBRARIES "${ARDALI_PROJECTM_PLAYLIST_LIB}")
     endif()
     include_directories(${CMAKE_CURRENT_LIST_DIR})
 else()
@@ -98,7 +98,7 @@ endif()
 # Some distributions ship broken pkg-config .pc files for projectM that emit "-l:projectM-4"
 # instead of "-lprojectM-4" or "-l:libprojectM-4.so". CMake will pass this through verbatim and
 # the linker won't find the library. Strip an optional leading ":" from library entries.
-function(aurivo_strip_colon_prefix out_var in_var)
+function(ardali_strip_colon_prefix out_var in_var)
     set(out "")
     foreach(item IN LISTS ${in_var})
         string(REGEX REPLACE "^:" "" item "${item}")
@@ -107,11 +107,11 @@ function(aurivo_strip_colon_prefix out_var in_var)
     set(${out_var} "${out}" PARENT_SCOPE)
 endfunction()
 
-if(NOT AURIVO_PROJECTM_C_API_COMPAT)
-    aurivo_strip_colon_prefix(PROJECTM_LIBRARIES_STRIPPED PROJECTM_LIBRARIES)
+if(NOT ARDALI_PROJECTM_C_API_COMPAT)
+    ardali_strip_colon_prefix(PROJECTM_LIBRARIES_STRIPPED PROJECTM_LIBRARIES)
     set(PROJECTM_LIBRARIES "${PROJECTM_LIBRARIES_STRIPPED}")
     if(PROJECTM_PLAYLIST_FOUND)
-        aurivo_strip_colon_prefix(PROJECTM_PLAYLIST_LIBRARIES_STRIPPED PROJECTM_PLAYLIST_LIBRARIES)
+        ardali_strip_colon_prefix(PROJECTM_PLAYLIST_LIBRARIES_STRIPPED PROJECTM_PLAYLIST_LIBRARIES)
         set(PROJECTM_PLAYLIST_LIBRARIES "${PROJECTM_PLAYLIST_LIBRARIES_STRIPPED}")
     endif()
 endif()
@@ -163,8 +163,8 @@ target_include_directories(imgui PUBLIC
 target_compile_definitions(imgui PRIVATE
     IMGUI_IMPL_OPENGL_LOADER_CUSTOM
 )
-if(AURIVO_PROJECTM_C_API_COMPAT)
-    target_compile_definitions(imgui PRIVATE AURIVO_PROJECTM_C_API_COMPAT=1)
+if(ARDALI_PROJECTM_C_API_COMPAT)
+    target_compile_definitions(imgui PRIVATE ARDALI_PROJECTM_C_API_COMPAT=1)
 endif()
 
 if(SDL2_IMAGE_FOUND)
@@ -173,38 +173,38 @@ endif()
 
 target_link_libraries(imgui PUBLIC
     ${SDL2_LIBRARIES}
-    ${AURIVO_OPENGL_LINK_LIBS}
+    ${ARDALI_OPENGL_LINK_LIBS}
 )
 
 # Visualizer executable
 # Windows: build as GUI subsystem (no extra console window).
 if (WIN32)
-    add_executable(aurivo-projectm-visualizer WIN32
+    add_executable(ardali-projectm-visualizer WIN32
         main_imgui.cpp
         gl_loader.cpp
     )
 else()
-    add_executable(aurivo-projectm-visualizer
+    add_executable(ardali-projectm-visualizer
         main_imgui.cpp
         gl_loader.cpp
     )
 endif()
-if(AURIVO_PROJECTM_C_API_COMPAT)
-    target_compile_definitions(aurivo-projectm-visualizer PRIVATE AURIVO_PROJECTM_C_API_COMPAT=1)
+if(ARDALI_PROJECTM_C_API_COMPAT)
+    target_compile_definitions(ardali-projectm-visualizer PRIVATE ARDALI_PROJECTM_C_API_COMPAT=1)
 endif()
 
 # Ensure UTF-8 source parsing on Windows (fix mojibake in non-ASCII UI strings)
 if (WIN32)
     if (MSVC)
-        target_compile_options(aurivo-projectm-visualizer PRIVATE /utf-8)
+        target_compile_options(ardali-projectm-visualizer PRIVATE /utf-8)
     else()
-        target_compile_options(aurivo-projectm-visualizer PRIVATE -finput-charset=UTF-8 -fexec-charset=UTF-8)
+        target_compile_options(ardali-projectm-visualizer PRIVATE -finput-charset=UTF-8 -fexec-charset=UTF-8)
     endif()
 endif()
 
-target_link_libraries(aurivo-projectm-visualizer
+target_link_libraries(ardali-projectm-visualizer
     ${SDL2_LIBRARIES}
-    ${AURIVO_OPENGL_LINK_LIBS}
+    ${ARDALI_OPENGL_LINK_LIBS}
     ${GLEW_LIBRARIES}
     imgui
     ${PROJECTM_LIBRARIES}
@@ -215,7 +215,7 @@ target_link_libraries(aurivo-projectm-visualizer
 if(UNIX AND NOT APPLE)
     find_library(WAYLAND_CLIENT_LIB wayland-client)
     if(WAYLAND_CLIENT_LIB)
-        target_link_libraries(aurivo-projectm-visualizer ${WAYLAND_CLIENT_LIB})
+        target_link_libraries(ardali-projectm-visualizer ${WAYLAND_CLIENT_LIB})
         message(STATUS "wayland-client found: ${WAYLAND_CLIENT_LIB}")
     else()
         message(STATUS "wayland-client not found; Wayland app_id via SDL hints only")
@@ -223,38 +223,38 @@ if(UNIX AND NOT APPLE)
 endif()
 
 if(PROJECTM_PLAYLIST_FOUND)
-    target_link_libraries(aurivo-projectm-visualizer ${PROJECTM_PLAYLIST_LIBRARIES})
+    target_link_libraries(ardali-projectm-visualizer ${PROJECTM_PLAYLIST_LIBRARIES})
 endif()
 
 if (WIN32)
-    target_link_libraries(aurivo-projectm-visualizer shell32)
-    target_link_libraries(aurivo-projectm-visualizer dwmapi)
+    target_link_libraries(ardali-projectm-visualizer shell32)
+    target_link_libraries(ardali-projectm-visualizer dwmapi)
 endif()
 
 # Bundle-friendly runtime path: look for shared libraries next to the executable.
 if(UNIX AND NOT APPLE)
-    set_target_properties(aurivo-projectm-visualizer PROPERTIES
+    set_target_properties(ardali-projectm-visualizer PROPERTIES
         BUILD_RPATH "$ORIGIN"
         INSTALL_RPATH "$ORIGIN"
     )
 endif()
 
 if(SDL2_IMAGE_FOUND)
-    target_link_libraries(aurivo-projectm-visualizer ${SDL2_IMAGE_LIBRARIES})
-    target_compile_definitions(aurivo-projectm-visualizer PRIVATE SDL_IMAGE_MAJOR_VERSION=2)
+    target_link_libraries(ardali-projectm-visualizer ${SDL2_IMAGE_LIBRARIES})
+    target_compile_definitions(ardali-projectm-visualizer PRIVATE SDL_IMAGE_MAJOR_VERSION=2)
 endif()
 
 # Dev convenience: copy the built visualizer into ../native-dist on Windows
 if (WIN32)
-    add_custom_command(TARGET aurivo-projectm-visualizer POST_BUILD
+    add_custom_command(TARGET ardali-projectm-visualizer POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E make_directory "${CMAKE_SOURCE_DIR}/../native-dist"
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            "$<TARGET_FILE:aurivo-projectm-visualizer>"
-            "${CMAKE_SOURCE_DIR}/../native-dist/$<TARGET_FILE_NAME:aurivo-projectm-visualizer>"
+            "$<TARGET_FILE:ardali-projectm-visualizer>"
+            "${CMAKE_SOURCE_DIR}/../native-dist/$<TARGET_FILE_NAME:ardali-projectm-visualizer>"
     )
 endif()
 
 # Installation
-install(TARGETS aurivo-projectm-visualizer
+install(TARGETS ardali-projectm-visualizer
     RUNTIME DESTINATION ${CMAKE_SOURCE_DIR}/../native-dist
 )

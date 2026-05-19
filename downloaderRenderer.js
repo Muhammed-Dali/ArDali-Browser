@@ -1,5 +1,5 @@
-const api = window.aurivo?.downloader;
-const electronApi = window.aurivo?.electronAPI;
+const api = window.ardali?.downloader;
+const electronApi = window.ardali?.electronAPI;
 
 const DOWNLOADER_LOCALES = {
     'en-US': {
@@ -36,8 +36,12 @@ const DOWNLOADER_LOCALES = {
         'brand.source': 'Source',
         'compressor.dropHint': 'or choose videos from your computer',
         'compressor.dropTitle': 'Drop files here',
+        'compressor.embedCover': 'Add album cover',
         'compressor.encoder': 'Video encoder',
         'compressor.emptyFiles': 'No files selected yet.',
+        'compressor.mode': 'Task',
+        'compressor.modeAudio': 'Convert to audio',
+        'compressor.modeVideo': 'Compress video',
         'compressor.outputFolder': 'Output folder',
         'compressor.outputFormat': 'Output format',
         'compressor.sameFolder': 'Save to the same folder',
@@ -49,7 +53,7 @@ const DOWNLOADER_LOCALES = {
         'compressor.startingDetail': 'Preparing ffmpeg task',
         'compressor.started': 'Compressor is running',
         'compressor.startedDetail': 'You can follow the progress from the list below',
-        'compressor.subtitle': 'Make video files smaller with ffmpeg.',
+        'compressor.subtitle': 'Make videos smaller or convert them to audio.',
         'compressor.suffix': 'Output suffix',
         'compressor.title': 'Compressor',
         'compressor.unchanged': 'Keep unchanged',
@@ -74,7 +78,7 @@ const DOWNLOADER_LOCALES = {
         'extract.quality': 'Choose quality',
         'extract.title': 'Extract audio',
         'hero.subtitle': 'A cleaner faster download experience that feels yours.',
-        'hero.tagline': 'Download smarter with Aurivo-Dawlod.',
+        'hero.tagline': 'Download smarter with ArDali-Dawlod.',
         'history.allFormats': 'All formats',
         'history.allStatuses': 'All statuses',
         'history.cancelled': 'Cancelled',
@@ -91,11 +95,14 @@ const DOWNLOADER_LOCALES = {
         'history.title': 'Download History',
         'history.total': 'Total downloads',
         'jobs.clearCompleted': 'Clear completed',
+        'jobs.converted': 'Converted',
+        'jobs.converting': 'Converting',
+        'jobs.downloaded': 'Downloaded',
         'jobs.folderShow': 'Show in folder',
         'jobs.formatBack': 'Back to format settings',
         'jobs.title': 'Downloading',
         'menu.about': 'About',
-        'menu.aria': 'Aurivo Dawlod menu',
+        'menu.aria': 'ArDali Dawlod menu',
         'menu.compressor': 'Compressor',
         'menu.history': 'Download History',
         'menu.playlist': 'Download playlist',
@@ -217,8 +224,12 @@ const DOWNLOADER_LOCALES = {
         'brand.source': 'Kaynak',
         'compressor.dropHint': 'veya bilgisayarından video seç',
         'compressor.dropTitle': 'Dosyaları buraya bırak',
+        'compressor.embedCover': 'Albüm kapağı ekle',
         'compressor.encoder': 'Video kodlayıcı',
-        'compressor.emptyFiles': 'Henüz dosya seçilmedi.',
+        'compressor.emptyFiles': 'Henüz dosya seçilmedi',
+        'compressor.mode': 'İşlem',
+        'compressor.modeAudio': 'Sese dönüştür',
+        'compressor.modeVideo': 'Video sıkıştır',
         'compressor.outputFolder': 'Çıktı klasörü',
         'compressor.outputFormat': 'Çıktı formatı',
         'compressor.sameFolder': 'Aynı klasöre kaydet',
@@ -230,7 +241,7 @@ const DOWNLOADER_LOCALES = {
         'compressor.startingDetail': 'ffmpeg görevi hazırlanıyor',
         'compressor.started': 'Sıkıştırıcı çalışıyor',
         'compressor.startedDetail': 'İlerlemeyi alttaki listeden takip edebilirsiniz',
-        'compressor.subtitle': 'Video dosyalarını ffmpeg ile daha küçük hale getir.',
+        'compressor.subtitle': 'Video dosyalarını küçült veya ses dosyasına dönüştür',
         'compressor.suffix': 'Çıktı eki',
         'compressor.title': 'Sıkıştırıcı',
         'compressor.unchanged': 'Aynı kalsın',
@@ -242,26 +253,26 @@ const DOWNLOADER_LOCALES = {
         'dependency.wait': 'Lütfen bekleyin dosyalar indiriliyor',
         'downloader.brand.subtitle': 'Video ve ses indirme merkezi',
         'error.analysisFailed': 'Analiz başarısız',
-        'error.apiMissing': 'Downloader API bulunamadı.',
+        'error.apiMissing': 'Downloader API bulunamadı',
         'error.bridgeMissing': 'Köprü yüklenemedi',
         'error.details': 'Hata Ayrıntıları',
         'error.fileRequired': 'Dosya gerekli',
-        'error.fileRequiredDetail': 'Sıkıştırmak için en az bir video dosyası seçin.',
+        'error.fileRequiredDetail': 'Sıkıştırmak için en az bir video dosyası seçin',
         'error.noUrl.detail': 'URL bağlantısı bulunmadı\nÖnce video veya şarkı sayfasını açın sonra indir düğmesine tekrar basın',
         'error.noUrl.title': 'Hata oluştu İnternetinizi kontrol edin ve doğru bir bağlantı kullanın',
         'error.outputRequired': 'Çıktı klasörü gerekli',
-        'error.outputRequiredDetail': 'Aynı klasöre kaydet kapalıyken bir çıktı klasörü seçin.',
-        'error.videoInfoFailed': 'Video bilgisi alınamadı.',
+        'error.outputRequiredDetail': 'Aynı klasöre kaydet kapalıyken bir çıktı klasörü seçin',
+        'error.videoInfoFailed': 'Video bilgisi alınamadı',
         'extract.quality': 'Kalite seç',
         'extract.title': 'Sesi çıkart',
-        'hero.subtitle': 'Daha temiz, daha hızlı, daha senin indirme deneyimin.',
-        'hero.tagline': 'Aurivo-Dawlod ile daha akıllı indir.',
+        'hero.subtitle': 'Daha temiz daha hızlı daha senin indirme deneyimin',
+        'hero.tagline': 'ArDali-Dawlod ile daha akıllı indir',
         'history.allFormats': 'Tüm formatlar',
         'history.allStatuses': 'Tüm durumlar',
         'history.cancelled': 'İptaller',
         'history.clearAll': 'Tüm geçmişi temizle',
         'history.completed': 'Tamamlananlar',
-        'history.empty': 'Geçmiş kaydı yok.',
+        'history.empty': 'Geçmiş kaydı yok',
         'history.errors': 'Hatalar',
         'history.exported': 'Geçmiş dışa aktarıldı',
         'history.extractedAudio': 'Sesi çıkarılanlar',
@@ -272,11 +283,14 @@ const DOWNLOADER_LOCALES = {
         'history.title': 'İndirme Geçmişi',
         'history.total': 'Toplam indirme',
         'jobs.clearCompleted': 'Tamamlananları temizle',
+        'jobs.converted': 'Dönüştürüldü',
+        'jobs.converting': 'Dönüştürülüyor',
+        'jobs.downloaded': 'İndirildi',
         'jobs.folderShow': 'Klasörde göster',
         'jobs.formatBack': 'Format ayarlarına dön',
         'jobs.title': 'İndiriliyor',
         'menu.about': 'Hakkında',
-        'menu.aria': 'Aurivo Dawlod menüsü',
+        'menu.aria': 'ArDali Dawlod menüsü',
         'menu.compressor': 'Sıkıştırıcı',
         'menu.history': 'İndirme Geçmişi',
         'menu.playlist': 'Oynatma listesini indir',
@@ -327,12 +341,12 @@ const DOWNLOADER_LOCALES = {
         'settings.title': 'Ayarlar',
         'settings.useConfig': 'Konfigürasyon dosyasını kullan',
         'single.analysisDone': 'Analiz tamamlandı',
-        'single.analysisDoneDetail': 'Format seçip indirmeyi başlatabilirsiniz.',
+        'single.analysisDoneDetail': 'Format seçip indirmeyi başlatabilirsiniz',
         'single.audioForVideo.select': 'Ses formatını seçin',
         'single.format.select': 'Format seçin',
         'single.noAudioFormat': 'Ses formatı bulunamadı',
         'single.noVideoFormat': 'Video formatı bulunamadı',
-        'single.readyDetail': 'Bir bağlantı yapıştırıp analiz ederek başlayın.',
+        'single.readyDetail': 'Bir bağlantı yapıştırıp analiz ederek başlayın',
         'single.sourceFallback': 'Kaynak',
         'single.titleFallback': 'Başlık bulunamadı',
         'single.titleLabel': 'Başlık',
@@ -341,10 +355,10 @@ const DOWNLOADER_LOCALES = {
         'speed.fast': 'Hızlı',
         'speed.medium': 'Orta',
         'speed.slow': 'Yavaş',
-        'status.aboutDetail': 'Video ve ses indirme merkezi.',
+        'status.aboutDetail': 'Video ve ses indirme merkezi',
         'status.compressCancelled': 'Sıkıştırma iptal edildi',
-        'status.compressCancelledDetail': 'Yeni bir görev başlatabilirsiniz.',
-        'status.compressorReady': 'Dosya seçip sıkıştırmayı başlatabilirsiniz.',
+        'status.compressCancelledDetail': 'Yeni bir görev başlatabilirsiniz',
+        'status.compressorReady': 'Dosya seçip sıkıştırmayı başlatabilirsiniz',
         'status.downloadPreparing': 'İndirme başlatılıyor',
         'status.downloadPreparingDetail': 'İndirme görevi hazırlanıyor',
         'status.downloadStartFailed': 'İndirme başlatılamadı',
@@ -353,14 +367,14 @@ const DOWNLOADER_LOCALES = {
         'status.extractFailed': 'Ses çıkarılamadı',
         'status.processing': 'İşleniyor',
         'status.playlistDownloading': 'Playlist indiriliyor',
-        'status.playlistDownloadingDetail': 'İlerlemeyi indirmeler listesinden takip edebilirsiniz.',
+        'status.playlistDownloadingDetail': 'İlerlemeyi indirmeler listesinden takip edebilirsiniz',
         'status.playlistFailed': 'Playlist başlatılamadı',
         'status.playlistPreparing': 'Playlist başlatılıyor',
         'status.playlistPreparingDetail': 'yt-dlp playlist görevi hazırlanıyor',
         'status.playlistUrlRequired': 'Playlist bağlantısı gerekli',
-        'status.playlistUrlRequiredDetail': 'Lütfen bir playlist bağlantısı girin.',
+        'status.playlistUrlRequiredDetail': 'Lütfen bir playlist bağlantısı girin',
         'status.urlRequired': 'Bağlantı gerekli',
-        'status.urlRequiredDetail': 'Lütfen desteklenen bir video bağlantısı girin.',
+        'status.urlRequiredDetail': 'Lütfen desteklenen bir video bağlantısı girin',
         'theme.dark': 'Karanlık',
         'theme.light': 'Aydınlık'
     },
@@ -400,8 +414,12 @@ Object.assign(DOWNLOADER_LOCALES['ar-SA'], DOWNLOADER_LOCALES['en-US'], {
     'advanced.timeRange': 'تنزيل نطاق زمني محدد',
     'compressor.dropHint': 'أو اختر فيديو من جهازك',
     'compressor.dropTitle': 'أفلت الملفات هنا',
+    'compressor.embedCover': 'إضافة غلاف الألبوم',
     'compressor.encoder': 'برنامج ترميز الفيديو',
     'compressor.emptyFiles': 'لم يتم اختيار ملفات بعد.',
+    'compressor.mode': 'المهمة',
+    'compressor.modeAudio': 'تحويل إلى صوت',
+    'compressor.modeVideo': 'ضغط الفيديو',
     'compressor.outputFormat': 'صيغة الإخراج',
     'compressor.outputFolder': 'مجلد الإخراج',
     'compressor.sameFolder': 'احفظ في المجلد نفسه',
@@ -413,7 +431,7 @@ Object.assign(DOWNLOADER_LOCALES['ar-SA'], DOWNLOADER_LOCALES['en-US'], {
     'compressor.startingDetail': 'يتم تجهيز مهمة ffmpeg',
     'compressor.started': 'الضاغط يعمل',
     'compressor.startedDetail': 'يمكنك متابعة التقدم من القائمة بالأسفل',
-    'compressor.subtitle': 'اجعل ملفات الفيديو أصغر باستخدام ffmpeg.',
+    'compressor.subtitle': 'صغّر ملفات الفيديو أو حوّلها إلى صوت.',
     'compressor.suffix': 'لاحقة الإخراج',
     'compressor.title': 'الضاغط',
     'compressor.unchanged': 'ابقه كما هو',
@@ -437,7 +455,7 @@ Object.assign(DOWNLOADER_LOCALES['ar-SA'], DOWNLOADER_LOCALES['en-US'], {
     'extract.quality': 'اختر الجودة',
     'extract.title': 'استخراج الصوت',
     'hero.subtitle': 'تجربة تنزيل أنظف وأسرع ومناسبة لك.',
-    'hero.tagline': 'نزّل بذكاء أكثر مع Aurivo-Dawlod.',
+    'hero.tagline': 'نزّل بذكاء أكثر مع ArDali-Dawlod.',
     'history.clearAll': 'مسح كل السجل',
     'history.completed': 'المكتملة',
     'history.empty': 'لا توجد سجلات.',
@@ -450,11 +468,14 @@ Object.assign(DOWNLOADER_LOCALES['ar-SA'], DOWNLOADER_LOCALES['en-US'], {
     'history.title': 'سجل التنزيلات',
     'history.total': 'إجمالي التنزيلات',
     'jobs.clearCompleted': 'مسح المكتمل',
+    'jobs.converted': 'تم التحويل',
+    'jobs.converting': 'جار التحويل',
+    'jobs.downloaded': 'تم التنزيل',
     'jobs.folderShow': 'عرض في المجلد',
     'jobs.formatBack': 'العودة إلى إعدادات الصيغة',
     'jobs.title': 'جار التنزيل',
     'menu.about': 'حول',
-    'menu.aria': 'قائمة Aurivo Dawlod',
+    'menu.aria': 'قائمة ArDali Dawlod',
     'menu.compressor': 'الضاغط',
     'menu.history': 'سجل التنزيلات',
     'menu.playlist': 'تنزيل قائمة تشغيل',
@@ -588,6 +609,7 @@ function applyDownloaderTranslations() {
     if (state.page === 'compressor') {
         renderCompressorFiles();
         syncCompressorOutputState();
+        syncCompressorModeState();
     }
     if (els.statusPanel?.classList.contains('idle') && !els.statusTitle.textContent) return;
 }
@@ -604,20 +626,20 @@ function setDownloaderLanguage(lang) {
 async function initDownloaderLanguage() {
     let lang = null;
     try {
-        const settings = await window.aurivo?.loadSettings?.();
+        const settings = await window.ardali?.loadSettings?.();
         lang = settings?.ui?.language || settings?.language || settings?.lang;
     } catch {
         // ignore
     }
     if (!lang) {
         try {
-            lang = await window.aurivo?.i18n?.getSystemLocale?.();
+            lang = await window.ardali?.i18n?.getSystemLocale?.();
         } catch {
             // ignore
         }
     }
     setDownloaderLanguage(lang || navigator.language);
-    window.aurivo?.onSettingsReload?.((settings) => {
+    window.ardali?.onSettingsReload?.((settings) => {
         const nextLang = settings?.ui?.language || settings?.language || settings?.lang;
         if (nextLang) setDownloaderLanguage(nextLang);
     });
@@ -660,7 +682,8 @@ const els = {
     chooseFolderBtn: document.getElementById('chooseFolderBtn'),
     downloadBtn: document.getElementById('downloadBtn'),
     extractBtn: document.getElementById('extractBtn'),
-    jobsPanel: document.querySelector('.jobs'),
+    jobsPanel: document.getElementById('jobsPanel'),
+    jobsTitle: document.getElementById('jobsTitle'),
     clearDoneBtn: document.getElementById('clearDoneBtn'),
     jobsList: document.getElementById('jobsList'),
     workspaceTabs: document.querySelectorAll('.workspace-tab'),
@@ -688,6 +711,7 @@ const els = {
     playlistThumbnailsBtn: document.getElementById('playlistThumbnailsBtn'),
     playlistLinksBtn: document.getElementById('playlistLinksBtn'),
     historySearch: document.getElementById('historySearch'),
+    historyHomeBtn: document.getElementById('historyHomeBtn'),
     refreshHistoryBtn: document.getElementById('refreshHistoryBtn'),
     clearHistoryBtn: document.getElementById('clearHistoryBtn'),
     exportHistoryJsonBtn: document.getElementById('exportHistoryJsonBtn'),
@@ -731,13 +755,19 @@ const els = {
     ffmpegStatus: document.getElementById('ffmpegStatus'),
     ffmpegPath: document.getElementById('ffmpegPath'),
     compressorDropZone: document.getElementById('compressorDropZone'),
+    compressorDropPreview: document.getElementById('compressorDropPreview'),
+    compressorDropThumb: document.getElementById('compressorDropThumb'),
+    compressorDropTitle: document.getElementById('compressorDropTitle'),
+    compressorDropMeta: document.getElementById('compressorDropMeta'),
     compressorFileInput: document.getElementById('compressorFileInput'),
+    compressorMode: document.getElementById('compressorMode'),
     compressorExtension: document.getElementById('compressorExtension'),
     compressorEncoder: document.getElementById('compressorEncoder'),
     compressorSpeed: document.getElementById('compressorSpeed'),
     compressorQuality: document.getElementById('compressorQuality'),
     compressorQualityValue: document.getElementById('compressorQualityValue'),
     compressorAudioFormat: document.getElementById('compressorAudioFormat'),
+    compressorEmbedCover: document.getElementById('compressorEmbedCover'),
     compressorSuffix: document.getElementById('compressorSuffix'),
     compressorSameFolder: document.getElementById('compressorSameFolder'),
     compressorOutputPath: document.getElementById('compressorOutputPath'),
@@ -756,6 +786,7 @@ const state = {
     jobs: new Map(),
     history: [],
     compressorFiles: [],
+    compressorThumbs: new Map(),
     compressorOutputDir: '',
     compressorBatchId: ''
 };
@@ -861,8 +892,29 @@ function fillSelect(select, items, emptyText) {
         option.dataset.vcodec = item.vcodec || '';
         option.dataset.acodec = item.acodec || '';
         option.dataset.abr = item.abr || '';
+        option.dataset.outputFormat = item.outputFormat || '';
         select.append(option);
     }
+}
+
+function getAudioOutputChoices() {
+    const bestLabel = dlt('quality.best');
+    return [
+        { id: '__audio_mp3', ext: 'mp3', outputFormat: 'mp3', label: `${bestLabel}   | MP3   | yüksek kalite` },
+        { id: '__audio_m4a', ext: 'm4a', outputFormat: 'm4a', label: `${bestLabel}   | M4A   | yüksek kalite` },
+        { id: '__audio_opus', ext: 'opus', outputFormat: 'opus', label: `${bestLabel}   | Opus   | yüksek kalite` },
+        { id: '__audio_flac', ext: 'flac', outputFormat: 'flac', label: `${bestLabel}   | FLAC   | kayıpsız dönüştür` },
+        { id: '__audio_wav', ext: 'wav', outputFormat: 'wav', label: `${bestLabel}   | WAV   | kayıpsız dönüştür` },
+        { id: '__audio_alac', ext: 'alac', outputFormat: 'alac', label: `${bestLabel}   | ALAC   | kayıpsız dönüştür` }
+    ];
+}
+
+function fillAudioDownloadSelect(info) {
+    const sourceFormats = (info.audioFormats || []).map((item) => ({
+        ...item,
+        label: `${item.label}   | kaynak`
+    }));
+    fillSelect(els.audioFormat, [...getAudioOutputChoices(), ...sourceFormats], dlt('single.noAudioFormat'));
 }
 
 function selectPreferredVideoFormat() {
@@ -882,8 +934,10 @@ function selectPreferredVideoFormat() {
 function selectPreferredAudioFormat() {
     const targetExt = String(state.settings.preferredAudioFormat || 'mp3').toLowerCase();
     const options = [...els.audioFormat.options].filter((option) => option.value);
-    const matching = options.find((option) => String(option.dataset.ext || '').toLowerCase() === targetExt);
+    const matching = options.find((option) => String(option.dataset.outputFormat || '').toLowerCase() === targetExt)
+        || options.find((option) => String(option.dataset.ext || '').toLowerCase() === targetExt);
     if (matching) els.audioFormat.value = matching.value;
+    syncAudioOutputFormatFromSelect();
     const videoAudioOptions = [...els.audioForVideoFormat.options].filter((option) => option.value && option.value !== 'none');
     const bestForVideo = videoAudioOptions.find((option) => ['m4a', 'mp4'].includes(String(option.dataset.ext || '').toLowerCase()))
         || videoAudioOptions.find((option) => ['webm', 'opus'].includes(String(option.dataset.ext || '').toLowerCase()));
@@ -894,6 +948,13 @@ function selectPreferredAudioFormat() {
 
 function getSelectedOption(select) {
     return select?.selectedOptions?.[0] || null;
+}
+
+function syncAudioOutputFormatFromSelect() {
+    const outputFormat = getSelectedOption(els.audioFormat)?.dataset.outputFormat || '';
+    if (outputFormat && els.extractFormat) {
+        els.extractFormat.value = outputFormat;
+    }
 }
 
 function showProcessingHome() {
@@ -911,7 +972,7 @@ function renderInfo(info) {
     els.mediaSource.textContent = `${info.extractor || dlt('single.sourceFallback')}${info.durationText ? ` • ${info.durationText}` : ''}`;
     fillSelect(els.videoFormat, info.videoFormats || [], dlt('single.noVideoFormat'));
     fillSelect(els.audioForVideoFormat, [{ id: 'none', label: dlt('common.none') }, ...(info.audioFormats || [])], dlt('single.noAudioFormat'));
-    fillSelect(els.audioFormat, info.audioFormats || [], dlt('single.noAudioFormat'));
+    fillAudioDownloadSelect(info);
     selectPreferredVideoFormat();
     selectPreferredAudioFormat();
     setBusy(false);
@@ -936,9 +997,6 @@ function renderMode() {
 function switchPage(page) {
     state.page = page;
     document.body.dataset.page = page;
-    if (page !== 'single' && els.statusPanel.classList.contains('error')) {
-        setStatus('idle', '', '');
-    }
     els.workspaceTabs.forEach((tab) => {
         tab.classList.toggle('active', tab.dataset.page === page);
     });
@@ -948,6 +1006,7 @@ function switchPage(page) {
         panel.classList.toggle('hidden', !shouldShow);
     });
     setMenuOpen(false);
+    syncJobsPanel();
     if (page === 'history') loadHistory();
 }
 
@@ -957,16 +1016,45 @@ function setMenuOpen(open) {
     els.menuBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
 }
 
-function applyTheme(theme) {
-    const nextTheme = String(theme || 'dark');
-    document.documentElement.setAttribute('theme', nextTheme);
-    localStorage.setItem('aurivoDawlodTheme', nextTheme);
-    localStorage.setItem('theme', nextTheme);
-    if (els.themeSelect) els.themeSelect.value = nextTheme;
+function applyTheme(theme, options = {}) {
+    const rawTheme = String(theme || 'ardali');
+    const nextTheme = rawTheme === 'github' ? 'light' : rawTheme;
+    const commitTheme = () => {
+        document.documentElement.setAttribute('theme', nextTheme);
+        localStorage.setItem('ardaliDawlodTheme', nextTheme);
+        localStorage.setItem('theme', nextTheme);
+        if (els.themeSelect) els.themeSelect.value = nextTheme;
+    };
+
+    const prefersReducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches;
+    if (!options.animate || prefersReducedMotion || typeof document.startViewTransition !== 'function') {
+        commitTheme();
+        return;
+    }
+
+    const x = window.innerWidth;
+    const y = 0;
+    const maxRadius = Math.hypot(window.innerWidth, window.innerHeight);
+    const transition = document.startViewTransition(commitTheme);
+    transition.ready.then(() => {
+        document.documentElement.animate(
+            {
+                clipPath: [
+                    `circle(0px at ${x}px ${y}px)`,
+                    `circle(${maxRadius}px at ${x}px ${y}px)`
+                ]
+            },
+            {
+                duration: 1100,
+                easing: 'cubic-bezier(0.4, 0, 0.2, 1)',
+                pseudoElement: '::view-transition-new(root)'
+            }
+        );
+    }).catch(() => {});
 }
 
 async function saveThemeSetting(theme) {
-    applyTheme(theme);
+    applyTheme(theme, { animate: true });
     state.settings = await api.saveSettings({ theme });
 }
 
@@ -1035,11 +1123,13 @@ async function savePreferenceSettings() {
 
 async function saveCompressorSettings() {
     state.settings = await api.saveSettings({
+        compressorMode: els.compressorMode.value,
         compressorExtension: els.compressorExtension.value,
         compressorEncoder: els.compressorEncoder.value,
         compressorSpeed: els.compressorSpeed.value,
         compressorQuality: els.compressorQuality.value,
         compressorAudioFormat: els.compressorAudioFormat.value,
+        compressorEmbedCover: els.compressorEmbedCover.checked,
         compressorSuffix: els.compressorSuffix.value,
         compressorSameFolder: els.compressorSameFolder.checked,
         compressorOutputDir: state.compressorOutputDir
@@ -1051,6 +1141,7 @@ function buildDownloadPayload() {
     const videoOption = getSelectedOption(els.videoFormat);
     const audioForVideoOption = getSelectedOption(els.audioForVideoFormat);
     const audioOption = getSelectedOption(els.audioFormat);
+    const audioOutputFormat = audioOption?.dataset.outputFormat || els.extractFormat.value;
     return {
         mode: state.mode,
         url: info.url,
@@ -1061,9 +1152,9 @@ function buildDownloadPayload() {
         videoFormatCodec: videoOption?.dataset.vcodec || '',
         audioForVideoFormatId: els.audioForVideoFormat.value,
         audioForVideoFormatExt: audioForVideoOption?.dataset.ext || '',
-        audioFormatId: els.audioFormat.value,
+        audioFormatId: audioOption?.dataset.outputFormat ? '' : els.audioFormat.value,
         audioFormatExt: audioOption?.dataset.ext || '',
-        extractFormat: els.extractFormat.value,
+        extractFormat: audioOutputFormat,
         audioQuality: els.audioQuality.value,
         startTime: els.startTime.value,
         endTime: els.endTime.value,
@@ -1106,6 +1197,30 @@ function getBasename(filePath) {
     return String(filePath || '').split(/[\\/]/).filter(Boolean).pop() || filePath;
 }
 
+function syncCompressorDropPreview() {
+    const firstFile = state.compressorFiles[0] || '';
+    const hasFiles = Boolean(firstFile);
+    els.compressorDropZone?.classList.toggle('has-files', hasFiles);
+    els.compressorDropPreview?.classList.toggle('hidden', !hasFiles);
+    if (!hasFiles) {
+        if (els.compressorDropThumb) els.compressorDropThumb.removeAttribute('src');
+        if (els.compressorDropTitle) els.compressorDropTitle.textContent = '';
+        if (els.compressorDropMeta) els.compressorDropMeta.textContent = '';
+        return;
+    }
+
+    const count = state.compressorFiles.length;
+    if (els.compressorDropThumb) {
+        els.compressorDropThumb.src = state.compressorThumbs.get(firstFile) || 'icons/fallback_video.svg';
+    }
+    if (els.compressorDropTitle) {
+        els.compressorDropTitle.textContent = getBasename(firstFile);
+    }
+    if (els.compressorDropMeta) {
+        els.compressorDropMeta.textContent = count > 1 ? `${count} dosya seçildi` : firstFile;
+    }
+}
+
 function renderCompressorFiles() {
     els.compressorFileList.textContent = '';
     if (!state.compressorFiles.length) {
@@ -1113,13 +1228,18 @@ function renderCompressorFiles() {
         empty.className = 'history-meta';
         empty.textContent = dlt('compressor.emptyFiles');
         els.compressorFileList.append(empty);
+        syncCompressorDropPreview();
         return;
     }
 
     state.compressorFiles.forEach((filePath, index) => {
         const row = document.createElement('article');
         row.className = 'compressor-file';
+        row.dataset.filePath = filePath;
         row.innerHTML = `
+            <div class="compressor-file-thumb-wrap">
+                <img class="compressor-file-thumb" alt="">
+            </div>
             <div>
                 <strong></strong>
                 <span></span>
@@ -1128,12 +1248,46 @@ function renderCompressorFiles() {
         `;
         row.querySelector('strong').textContent = getBasename(filePath);
         row.querySelector('span').textContent = filePath;
+        row.querySelector('.compressor-file-thumb').src = state.compressorThumbs.get(filePath) || 'icons/fallback_video.svg';
         row.querySelector('button').addEventListener('click', () => {
+            state.compressorThumbs.delete(filePath);
             state.compressorFiles.splice(index, 1);
             renderCompressorFiles();
         });
         els.compressorFileList.append(row);
+        loadCompressorThumbnail(filePath);
     });
+    syncCompressorDropPreview();
+}
+
+async function loadCompressorThumbnail(filePath) {
+    if (!filePath || state.compressorThumbs.has(filePath) || typeof api.getFileThumbnail !== 'function') return;
+    const thumbnail = await api.getFileThumbnail(filePath).catch(() => '');
+    if (!thumbnail) return;
+    state.compressorThumbs.set(filePath, thumbnail);
+    const row = [...els.compressorFileList.querySelectorAll('.compressor-file')]
+        .find((item) => item.dataset.filePath === filePath);
+    const img = row?.querySelector('.compressor-file-thumb');
+    if (img) img.src = thumbnail;
+    if (state.compressorFiles[0] === filePath) syncCompressorDropPreview();
+}
+
+function findCompressorSourcePath(payload = {}) {
+    const sourcePath = String(payload.sourcePath || '');
+    if (sourcePath) return sourcePath;
+    const title = String(payload.title || '');
+    return state.compressorFiles.find((filePath) => getBasename(filePath) === title) || '';
+}
+
+async function syncJobThumbnailFromSource(row, sourcePath) {
+    if (!row || !sourcePath) return;
+    if (!state.compressorThumbs.has(sourcePath) && typeof api.getFileThumbnail === 'function') {
+        const thumbnail = await api.getFileThumbnail(sourcePath).catch(() => '');
+        if (thumbnail) state.compressorThumbs.set(sourcePath, thumbnail);
+    }
+    const thumbnail = state.compressorThumbs.get(sourcePath);
+    const img = row.querySelector('.job-thumb');
+    if (thumbnail && img) img.src = thumbnail;
 }
 
 async function addCompressorFiles(fileList) {
@@ -1156,14 +1310,35 @@ function syncCompressorOutputState() {
         : (state.compressorOutputDir || dlt('compressor.selectOutputFolder'));
 }
 
+function syncCompressorModeState() {
+    const isAudioMode = els.compressorMode.value === 'audio';
+    els.compressorExtension.closest('label')?.classList.toggle('hidden', isAudioMode);
+    els.compressorEncoder.closest('label')?.classList.toggle('hidden', isAudioMode);
+    els.compressorSpeed.closest('label')?.classList.toggle('hidden', isAudioMode);
+    els.compressorQuality.closest('label')?.classList.toggle('hidden', isAudioMode);
+    els.compressorEmbedCover.closest('label')?.classList.toggle('hidden', !isAudioMode);
+    [...els.compressorAudioFormat.options].forEach((option) => {
+        option.hidden = isAudioMode ? option.value === 'copy' : !['copy', 'aac', 'mp3'].includes(option.value);
+    });
+    if (isAudioMode && els.compressorAudioFormat.value === 'copy') {
+        els.compressorAudioFormat.value = 'mp3';
+    }
+    if (!isAudioMode && !['copy', 'aac', 'mp3'].includes(els.compressorAudioFormat.value)) {
+        els.compressorAudioFormat.value = 'copy';
+    }
+    els.compressorStartBtn.textContent = isAudioMode ? dlt('compressor.modeAudio') : dlt('action.compress');
+}
+
 function buildCompressionPayload() {
     return {
         files: state.compressorFiles,
+        mode: els.compressorMode.value,
         extension: els.compressorExtension.value,
         encoder: els.compressorEncoder.value,
         speed: els.compressorSpeed.value,
         videoQuality: els.compressorQuality.value,
         audioFormat: els.compressorAudioFormat.value,
+        embedCover: els.compressorEmbedCover.checked,
         outputSuffix: els.compressorSuffix.value,
         sameFolder: els.compressorSameFolder.checked,
         outputDir: state.compressorOutputDir
@@ -1191,6 +1366,10 @@ async function startCompression() {
     }
     state.compressorBatchId = result.job?.id || '';
     setStatus('idle', dlt('compressor.started'), dlt('compressor.startedDetail'));
+    window.setTimeout(() => {
+        syncJobsPanel();
+        els.jobsPanel?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }, 80);
 }
 
 async function startPlaylistModeDownload(mode) {
@@ -1203,18 +1382,48 @@ async function startPlaylistModeDownload(mode) {
 function syncJobsPanel() {
     const rows = [...state.jobs.values()].filter((row) => row?.isConnected);
     const hasJobs = rows.length > 0;
+    const canShowOnPage = state.page === 'single' || state.page === 'playlist' || state.page === 'compressor';
+    const compressorRows = rows.filter((row) => row.dataset.jobKind === 'compressor');
+    const relevantRows = state.page === 'compressor' && compressorRows.length ? compressorRows : rows;
+    const hasActiveJobs = rows.some((row) =>
+        !row.classList.contains('done') &&
+        !row.classList.contains('error') &&
+        !row.classList.contains('cancelled')
+    );
+    const hasDownloadedJobs = rows.some((row) => row.classList.contains('done'));
     const hasFinishedJobs = rows.some((row) =>
         row.classList.contains('done') ||
         row.classList.contains('error') ||
         row.classList.contains('cancelled')
     );
-    els.jobsPanel?.classList.toggle('hidden', !hasJobs);
-    els.clearDoneBtn?.classList.toggle('hidden', !hasFinishedJobs);
+    if (els.jobsTitle) {
+        const isCompressorJobs = state.page === 'compressor' && compressorRows.length > 0;
+        const hasRelevantActiveJobs = relevantRows.some((row) =>
+            !row.classList.contains('done') &&
+            !row.classList.contains('error') &&
+            !row.classList.contains('cancelled')
+        );
+        const hasRelevantDoneJobs = relevantRows.some((row) => row.classList.contains('done'));
+        els.jobsTitle.textContent = isCompressorJobs
+            ? (hasRelevantDoneJobs && !hasRelevantActiveJobs ? dlt('jobs.converted') : dlt('jobs.converting'))
+            : (hasDownloadedJobs && !hasActiveJobs ? dlt('jobs.downloaded') : dlt('jobs.title'));
+    }
+    els.jobsPanel?.classList.toggle('hidden', !hasJobs || !canShowOnPage);
+    els.clearDoneBtn?.classList.toggle('hidden', !hasFinishedJobs || !canShowOnPage);
 }
 
 function createOrUpdateJob(payload) {
     const id = payload.id;
     const isDependencyJob = id.startsWith('dependency-');
+    if (payload.batchDone) {
+        const row = state.jobs.get(id);
+        if (row) {
+            row.remove();
+            state.jobs.delete(id);
+            syncJobsPanel();
+        }
+        return;
+    }
     if (isDependencyJob) {
         showDependencyOverlay(payload.percent || 0);
         if (payload.state === 'done') {
@@ -1265,20 +1474,26 @@ function createOrUpdateJob(payload) {
     row.classList.toggle('cancelled', payload.state === 'cancelled');
     row.classList.toggle('processing', payload.message === 'İşleniyor');
     row.classList.toggle('indeterminate', payload.state === 'running' && Number(payload.percent || 0) <= 0);
+    row.dataset.jobKind = payload.batchId ? 'compressor' : 'download';
+    const sourcePath = payload.batchId ? findCompressorSourcePath(payload) : '';
     const percent = Math.max(0, Math.min(100, Number(payload.percent || 0)));
     row.querySelector('.job-title').textContent = payload.title || dlt('action.download');
     row.querySelector('.job-state').textContent = formatJobState(payload, percent);
     row.querySelector('.job-detail').textContent = payload.detail || '';
-    row.querySelector('.job-thumb').src = payload.thumbnail || 'icons/aurivo_dawlod.png';
+    row.querySelector('.job-thumb').src = payload.thumbnail || (sourcePath ? (state.compressorThumbs.get(sourcePath) || 'icons/fallback_video.svg') : 'icons/ardali_dawlod.png');
     row.querySelector('.job-type').textContent = payload.mode === 'audio' || payload.mode === 'extract' ? dlt('mode.audio') : dlt('mode.video');
     row.querySelector('.job-percent').textContent = formatJobPercent(percent);
     row.querySelector('.progress-fill').style.width = row.classList.contains('indeterminate') ? '34%' : `${percent}%`;
+    row.querySelector('.progress-row').classList.toggle('hidden', payload.state === 'done');
     row.querySelector('.cancel-btn').classList.toggle('hidden', isDependencyJob || ['done', 'error', 'cancelled'].includes(payload.state));
     if (payload.outputPath) {
         row.dataset.outputPath = payload.outputPath;
     }
     row.querySelector('.show-btn').classList.toggle('hidden', !row.dataset.outputPath || payload.state !== 'done');
     row.querySelector('.format-btn').classList.toggle('hidden', payload.state !== 'done' || !state.info);
+    if (sourcePath && !state.compressorThumbs.has(sourcePath)) {
+        syncJobThumbnailFromSource(row, sourcePath);
+    }
     syncJobsPanel();
     if (isDependencyJob && payload.state === 'done') {
         window.setTimeout(() => {
@@ -1419,7 +1634,7 @@ function renderHistory() {
                 <button class="ghost delete-history-btn">${dlt('action.clear')}</button>
             </div>
         `;
-        row.querySelector('.history-thumb').src = item.thumbnail || 'icons/aurivo_dawlod.png';
+        row.querySelector('.history-thumb').src = item.thumbnail || 'icons/ardali_dawlod.png';
         row.querySelector('.history-title').textContent = item.title || dlt('action.download');
         const meta = row.querySelector('.history-meta');
         const metaParts = [
@@ -1484,18 +1699,20 @@ async function init() {
     els.playlistFileTemplate.value = els.settingsPlaylistFileTemplate.value;
     els.playlistFolderTemplate.value = els.settingsPlaylistFolderTemplate.value;
     els.extractFormat.value = String(state.settings.preferredAudioFormat || 'mp3');
+    els.compressorMode.value = String(state.settings.compressorMode || 'video');
     els.compressorExtension.value = String(state.settings.compressorExtension || 'unchanged');
     els.compressorEncoder.value = String(state.settings.compressorEncoder || 'x264');
     els.compressorSpeed.value = String(state.settings.compressorSpeed || 'medium');
     els.compressorQuality.value = String(state.settings.compressorQuality || 23);
     els.compressorQualityValue.textContent = els.compressorQuality.value;
     els.compressorAudioFormat.value = String(state.settings.compressorAudioFormat || 'copy');
+    els.compressorEmbedCover.checked = state.settings.compressorEmbedCover !== false;
     els.compressorSuffix.value = String(state.settings.compressorSuffix || '_compressed');
     els.compressorSameFolder.checked = state.settings.compressorSameFolder !== false;
     state.compressorOutputDir = String(state.settings.compressorOutputDir || '');
     await refreshDependencyStatus();
     setPlaylistMode('playlist-video');
-    applyTheme(state.settings.theme || localStorage.getItem('aurivoDawlodTheme') || localStorage.getItem('theme') || 'dark');
+    applyTheme(state.settings.theme || localStorage.getItem('ardaliDawlodTheme') || localStorage.getItem('theme') || 'ardali');
 
     els.minimizeBtn.addEventListener('click', () => electronApi?.minimizeWindow());
     els.maximizeBtn.addEventListener('click', () => electronApi?.maximizeWindow());
@@ -1540,10 +1757,12 @@ async function init() {
         }
     });
     els.settingsHomeBtn.addEventListener('click', () => switchPage('single'));
-    els.settingsRestartBtn.addEventListener('click', () => window.aurivo?.app?.relaunch?.());
+    els.historyHomeBtn.addEventListener('click', () => switchPage('single'));
+    els.settingsRestartBtn.addEventListener('click', () => window.ardali?.app?.relaunch?.());
     els.prepareDependenciesBtn.addEventListener('click', prepareDependencies);
     els.downloadBtn.addEventListener('click', startDownload);
     els.extractBtn.addEventListener('click', startExtractDownload);
+    els.audioFormat.addEventListener('change', syncAudioOutputFormatFromSelect);
     els.errorDetailsBtn?.addEventListener('click', () => {
         els.errorDetailsBox?.classList.toggle('hidden');
         els.errorDetailsBtn?.classList.toggle('open', !els.errorDetailsBox?.classList.contains('hidden'));
@@ -1576,7 +1795,7 @@ async function init() {
         item.addEventListener('click', () => {
             const page = item.dataset.menuPage;
             if (page === 'about') {
-                setStatus('idle', 'Aurivo-Dawlod', dlt('status.aboutDetail'));
+                setStatus('idle', 'ArDali-Dawlod', dlt('status.aboutDetail'));
                 setMenuOpen(false);
                 return;
             }
@@ -1680,6 +1899,11 @@ async function init() {
         els.compressorAudioFormat,
         els.compressorSuffix
     ].forEach((control) => control.addEventListener('change', saveCompressorSettings));
+    els.compressorMode.addEventListener('change', async () => {
+        syncCompressorModeState();
+        await saveCompressorSettings();
+    });
+    els.compressorEmbedCover.addEventListener('change', saveCompressorSettings);
     els.compressorQuality.addEventListener('change', saveCompressorSettings);
     els.compressorSameFolder.addEventListener('change', async () => {
         syncCompressorOutputState();
@@ -1695,6 +1919,7 @@ async function init() {
     });
     els.compressorClearFilesBtn.addEventListener('click', () => {
         state.compressorFiles = [];
+        state.compressorThumbs.clear();
         renderCompressorFiles();
     });
     els.compressorStartBtn.addEventListener('click', startCompression);
@@ -1706,6 +1931,7 @@ async function init() {
         els.compressorCancelBtn.disabled = true;
         setStatus('idle', dlt('status.compressCancelled'), dlt('status.compressCancelledDetail'));
     });
+    syncCompressorModeState();
     renderCompressorFiles();
     syncCompressorOutputState();
     document.querySelectorAll('.tab').forEach((tab) => {

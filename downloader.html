@@ -4,16 +4,16 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: https: http:; font-src 'self' data:; connect-src 'self';">
-    <title>Aurivo Dawlod</title>
+    <title>ArDali Dawlod</title>
     <link rel="stylesheet" href="styles/downloader.css">
     <script src="downloaderRenderer.js" defer></script>
 </head>
 <body>
     <header class="titlebar">
         <div class="brand">
-            <img src="icons/aurivo_dawlod.png" alt="" class="brand-icon">
+            <img src="icons/ardali_dawlod.png" alt="" class="brand-icon">
             <div>
-                <strong>Aurivo Dawlod</strong>
+                <strong>ArDali Dawlod</strong>
                 <span data-dl-i18n="downloader.brand.subtitle">Video ve ses indirme merkezi</span>
             </div>
         </div>
@@ -25,10 +25,10 @@
     </header>
 
     <button id="menuBtn" class="menu-button" title="Menü" aria-label="Menü" data-dl-i18n-title="common.menu" data-dl-i18n-aria-label="common.menu">
-        <img src="icons/aurivo_dawlod_menu.png" alt="">
+        <img src="icons/ardali_dawlod_menu.png" alt="">
     </button>
 
-    <aside id="appMenu" class="app-menu hidden" aria-label="Aurivo Dawlod menüsü" data-dl-i18n-aria-label="menu.aria">
+    <aside id="appMenu" class="app-menu hidden" aria-label="ArDali Dawlod menüsü" data-dl-i18n-aria-label="menu.aria">
         <button class="menu-item" data-menu-page="playlist" data-dl-i18n="menu.playlist">Oynatma listesini indir</button>
         <button class="menu-item" data-menu-page="settings" data-dl-i18n="menu.settings">Ayarlar</button>
         <button class="menu-item" data-menu-page="compressor" data-dl-i18n="menu.compressor">Sıkıştırıcı</button>
@@ -38,13 +38,12 @@
         <label class="theme-row">
             <span data-dl-i18n="menu.theme">Tema</span>
             <select id="themeSelect">
-                <option value="aurivo">Aurivo</option>
+                <option value="ardali">ArDali</option>
                 <option value="dark" data-dl-i18n="theme.dark">Karanlık</option>
                 <option value="light" data-dl-i18n="theme.light">Aydınlık</option>
                 <option value="frappe">Frappé</option>
                 <option value="onedark">One dark</option>
                 <option value="matrix">Matrix</option>
-                <option value="github">Github</option>
                 <option value="latte">Latte</option>
                 <option value="solarized-dark">Solarized Dark</option>
             </select>
@@ -65,11 +64,11 @@
 
     <main class="shell">
         <section class="hero-card">
-            <img src="icons/aurivo_dawlod.png" alt="" class="hero-logo">
+            <img src="icons/ardali_dawlod.png" alt="" class="hero-logo">
             <div class="hero-copy">
-                <h1>Aurivo-Dawlod</h1>
-                <p data-dl-i18n="hero.subtitle">Daha temiz, daha hızlı, daha senin indirme deneyimin.</p>
-                <strong data-dl-i18n="hero.tagline">Aurivo-Dawlod ile daha akıllı indir.</strong>
+                <h1>ArDali-Dawlod</h1>
+                <p data-dl-i18n="hero.subtitle">Daha temiz daha hızlı daha senin indirme deneyimin</p>
+                <strong data-dl-i18n="hero.tagline">ArDali-Dawlod ile daha akıllı indir</strong>
             </div>
         </section>
 
@@ -91,7 +90,7 @@
         <section id="statusPanel" class="status-panel idle">
             <div>
                 <strong id="statusTitle">Hazır</strong>
-                <p id="statusText">Bir bağlantı yapıştırıp analiz ederek başlayın.</p>
+                <p id="statusText">Bir bağlantı yapıştırıp analiz ederek başlayın</p>
             </div>
             <button id="errorDetailsBtn" class="error-details-btn hidden" type="button">
                 <span data-dl-i18n="error.details">Hata Ayrıntıları</span>
@@ -217,8 +216,8 @@
                     <label>
                         <span data-dl-i18n="extract.quality">Kalite seç</span>
                         <select id="audioQuality">
-                            <option value="5" data-dl-i18n="quality.normal">Normal</option>
                             <option value="0" data-dl-i18n="quality.best">En iyi</option>
+                            <option value="5" data-dl-i18n="quality.normal">Normal</option>
                             <option value="2" data-dl-i18n="quality.good">İyi</option>
                             <option value="8" data-dl-i18n="quality.low">Düşük</option>
                             <option value="10" data-dl-i18n="quality.lowest">En düşük</option>
@@ -435,8 +434,8 @@
                     <label>
                         <span data-dl-i18n="extract.quality">Kalite seç</span>
                         <select id="playlistAudioQuality">
-                            <option value="5" data-dl-i18n="quality.normal">Normal</option>
                             <option value="0" data-dl-i18n="quality.best">En iyi</option>
+                            <option value="5" data-dl-i18n="quality.normal">Normal</option>
                             <option value="2" data-dl-i18n="quality.good">İyi</option>
                             <option value="8" data-dl-i18n="quality.low">Düşük</option>
                         </select>
@@ -487,11 +486,18 @@
             <div class="section-title">
                 <div>
                     <h1 data-dl-i18n="compressor.title">Sıkıştırıcı</h1>
-                    <p data-dl-i18n="compressor.subtitle">Video dosyalarını ffmpeg ile daha küçük hale getir.</p>
+                    <p data-dl-i18n="compressor.subtitle">Video dosyalarını küçült veya ses dosyasına dönüştür</p>
                 </div>
             </div>
 
             <div id="compressorDropZone" class="compressor-drop">
+                <div id="compressorDropPreview" class="compressor-drop-preview hidden" aria-hidden="true">
+                    <img id="compressorDropThumb" alt="">
+                    <div>
+                        <strong id="compressorDropTitle"></strong>
+                        <span id="compressorDropMeta"></span>
+                    </div>
+                </div>
                 <strong data-dl-i18n="compressor.dropTitle">Dosyaları buraya bırak</strong>
                 <span data-dl-i18n="compressor.dropHint">veya bilgisayarından video seç</span>
                 <input id="compressorFileInput" type="file" accept="video/*" multiple>
@@ -499,6 +505,13 @@
 
             <div class="compressor-layout">
                 <section class="compressor-options">
+                    <label>
+                        <span data-dl-i18n="compressor.mode">İşlem</span>
+                        <select id="compressorMode">
+                            <option value="video" data-dl-i18n="compressor.modeVideo">Video sıkıştır</option>
+                            <option value="audio" data-dl-i18n="compressor.modeAudio">Sese dönüştür</option>
+                        </select>
+                    </label>
                     <label>
                         <span data-dl-i18n="compressor.outputFormat">Çıktı formatı</span>
                         <select id="compressorExtension">
@@ -542,7 +555,18 @@
                             <option value="copy" data-dl-i18n="common.copy">Kopyala</option>
                             <option value="aac">AAC</option>
                             <option value="mp3">MP3</option>
+                            <option value="m4a">M4A</option>
+                            <option value="mp4">MP4</option>
+                            <option value="opus">Opus</option>
+                            <option value="ogg">Ogg</option>
+                            <option value="flac">FLAC</option>
+                            <option value="wav">WAV</option>
+                            <option value="alac">ALAC</option>
                         </select>
+                    </label>
+                    <label class="check-row compressor-check">
+                        <span data-dl-i18n="compressor.embedCover">Albüm kapağı ekle</span>
+                        <input id="compressorEmbedCover" type="checkbox" checked>
                     </label>
                     <label>
                         <span data-dl-i18n="compressor.suffix">Çıktı eki</span>
@@ -577,6 +601,9 @@
             <div class="history-header">
                 <h1 data-dl-i18n="history.title">İndirme Geçmişi</h1>
                 <div class="history-header-actions">
+                    <button id="historyHomeBtn" class="secondary settings-icon-btn" title="Ana sayfa" aria-label="Ana sayfa" data-dl-i18n-title="settings.home" data-dl-i18n-aria-label="settings.home">
+                        <img src="icons/settings-home.svg" alt="">
+                    </button>
                     <button id="exportHistoryJsonBtn" class="secondary">JSON</button>
                     <button id="exportHistoryCsvBtn" class="secondary">CSV</button>
                     <button id="clearHistoryBtn" class="ghost" data-dl-i18n="history.clearAll">Tüm geçmişi temizle</button>
@@ -619,9 +646,9 @@
             <div id="historyList" class="history-list"></div>
         </section>
 
-        <section class="jobs hidden">
+        <section id="jobsPanel" class="jobs hidden">
             <div class="jobs-head">
-                <h2 data-dl-i18n="jobs.title">İndiriliyor</h2>
+                <h2 id="jobsTitle" data-dl-i18n="jobs.title">İndiriliyor</h2>
                 <button id="clearDoneBtn" class="ghost hidden" data-dl-i18n="jobs.clearCompleted">Tamamlananları temizle</button>
             </div>
             <div id="jobsList" class="jobs-list"></div>

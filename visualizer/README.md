@@ -1,7 +1,7 @@
-# Aurivo projectM Visualizer
+# ArDali projectM Visualizer
 
 Bu visualizer **kesinlikle sistem/mikrofon/monitor capture kullanmaz**.
-Sadece Aurivo Media Player'ın kendi audio pipeline'ından alınan **PCM tap** verisi ile (Electron → stdin) beslenir.
+Sadece ArDali Media Player'ın kendi audio pipeline'ından alınan **PCM tap** verisi ile (Electron → stdin) beslenir.
 
 ## Audio IPC (stdin)
 Electron, visualizer process'inin `stdin`'ine float32 PCM yazar.
@@ -26,14 +26,14 @@ Debug kapalıyken ekranda hiçbir audio status yazısı çizilmez.
 Açmak için:
 
 - Arg: `--debug`
-- Env: `AURIVO_VIS_DEBUG=1`
+- Env: `ARDALI_VIS_DEBUG=1`
 
 ## Smoke test (Wayland/X11)
 Presets path'i için örnek:
 
 - Wayland:
-  - `SDL_VIDEODRIVER=wayland PROJECTM_PRESETS_PATH=third_party/projectm/presets ./build-visualizer/aurivo-projectm-visualizer --debug`
+  - `SDL_VIDEODRIVER=wayland PROJECTM_PRESETS_PATH=third_party/projectm/presets ./build-visualizer/ardali-projectm-visualizer --debug`
 - X11:
-  - `SDL_VIDEODRIVER=x11 PROJECTM_PRESETS_PATH=third_party/projectm/presets ./build-visualizer/aurivo-projectm-visualizer --debug`
+  - `SDL_VIDEODRIVER=x11 PROJECTM_PRESETS_PATH=third_party/projectm/presets ./build-visualizer/ardali-projectm-visualizer --debug`
 
 Not: Normal çalıştırmada visualizer Electron tarafından spawn edilir ve PCM otomatik pipe edilir.

@@ -1,6 +1,6 @@
-/* Engine Base for Aurivo Media Player's Analyzer system
+/* Engine Base for ArDali's Analyzer system
  * Provides audio scope data for visualizations
- * Adapted from Aurivo for BASS audio engine
+ * Adapted from ArDali for BASS audio engine
  */
 
 #ifndef ANALYZERS_ENGINEBASE_H_

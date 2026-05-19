@@ -1,10 +1,10 @@
 # ============================================
-# AURIVO AUDIO ENGINE - CMake Configuration
+# ARDALI AUDIO ENGINE - CMake Configuration
 # Node.js Native Addon with BASS Audio Library
 # ============================================
 
 cmake_minimum_required(VERSION 3.15)
-project(aurivo_audio VERSION 2.0.0 LANGUAGES CXX)
+project(ardali_audio VERSION 2.0.0 LANGUAGES CXX)
 
 # ============================================
 # C++ Standard
@@ -103,8 +103,8 @@ message(STATUS "BASS library dir: ${BASS_LIB_DIR}")
 # Source Files
 # ============================================
 set(SOURCES
-    aurivo_audio.cpp
-    aurivo_dsp.cpp
+    ardali_audio.cpp
+    ardali_dsp.cpp
 )
 
 # ============================================
@@ -116,7 +116,7 @@ add_library(${PROJECT_NAME} SHARED ${SOURCES})
 set_target_properties(${PROJECT_NAME} PROPERTIES
     PREFIX ""
     SUFFIX ".node"
-    OUTPUT_NAME "aurivo_audio"
+    OUTPUT_NAME "ardali_audio"
 )
 
 # ============================================
@@ -326,12 +326,12 @@ install(FILES ${BASS_LIBS_TO_COPY_FULL_PATHS}
 # ============================================
 message(STATUS "")
 message(STATUS "========================================")
-message(STATUS "AURIVO AUDIO ENGINE Configuration")
+message(STATUS "ARDALI AUDIO ENGINE Configuration")
 message(STATUS "========================================")
 message(STATUS "Project: ${PROJECT_NAME}")
 message(STATUS "Version: ${PROJECT_VERSION}")
 message(STATUS "Build type: ${CMAKE_BUILD_TYPE}")
 message(STATUS "C++ Standard: ${CMAKE_CXX_STANDARD}")
-message(STATUS "Output: ${CMAKE_LIBRARY_OUTPUT_DIRECTORY}/aurivo_audio.node")
+message(STATUS "Output: ${CMAKE_LIBRARY_OUTPUT_DIRECTORY}/ardali_audio.node")
 message(STATUS "========================================")
 message(STATUS "")

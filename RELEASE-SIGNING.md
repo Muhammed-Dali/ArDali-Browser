@@ -1,6 +1,6 @@
 # Release Signing
 
-Aurivo release artifacts are integrity-pinned with SHA-256 and can be GPG-signed.
+ArDali release artifacts are integrity-pinned with SHA-256 and can be GPG-signed.
 
 ## What is produced
 

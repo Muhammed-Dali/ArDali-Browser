@@ -50,7 +50,7 @@
 #include <unistd.h>
 #endif
 
-#ifdef AURIVO_PROJECTM_C_API_COMPAT
+#ifdef ARDALI_PROJECTM_C_API_COMPAT
 #include "projectm_c_api_compat.h"
 #else
 // projectM headers differ by distro/package/version.
@@ -162,7 +162,7 @@ static void setSdlWindowIconFromEnv(SDL_Window* w) {
     };
 
     // Windows titlebar (sol ust) ikonu: WM_SETICON ile .ico yuklemek daha guvenilir.
-    if (const char* icoPath = std::getenv("AURIVO_VISUALIZER_ICON_ICO")) {
+    if (const char* icoPath = std::getenv("ARDALI_VISUALIZER_ICON_ICO")) {
         if (icoPath && *icoPath) {
             SDL_SysWMinfo wmInfo;
             SDL_VERSION(&wmInfo.version);
@@ -214,7 +214,7 @@ static void setSdlWindowIconFromEnv(SDL_Window* w) {
     }
 #endif
 
-    const char* iconPath = std::getenv("AURIVO_VISUALIZER_ICON");
+    const char* iconPath = std::getenv("ARDALI_VISUALIZER_ICON");
     if (!iconPath || !*iconPath) return;
 
     SDL_Surface* iconSurf = nullptr;
@@ -235,14 +235,14 @@ static void setSdlWindowIconFromEnv(SDL_Window* w) {
 
 #ifdef _WIN32
 static void setWindowsAppUserModelId() {
-    // Group visualizer with the main Aurivo app on taskbar.
+    // Group visualizer with the main ArDali app on taskbar.
     // Must be called before top-level windows are created.
     using SetAppIdFn = HRESULT (WINAPI*)(PCWSTR);
     HMODULE shell32 = LoadLibraryW(L"shell32.dll");
     if (!shell32) return;
     auto setAppId = reinterpret_cast<SetAppIdFn>(GetProcAddress(shell32, "SetCurrentProcessExplicitAppUserModelID"));
     if (setAppId) {
-        (void)setAppId(L"com.aurivo.mediaplayer");
+        (void)setAppId(L"com.ardali.mediaplayer");
     }
     FreeLibrary(shell32);
 }
@@ -559,7 +559,7 @@ static UiLang detectUiLang() {
     if (cached) return *cached;
 
     const char* raw =
-        (std::getenv("AURIVO_LANG") && *std::getenv("AURIVO_LANG")) ? std::getenv("AURIVO_LANG") :
+        (std::getenv("ARDALI_LANG") && *std::getenv("ARDALI_LANG")) ? std::getenv("ARDALI_LANG") :
         (std::getenv("LC_ALL") && *std::getenv("LC_ALL")) ? std::getenv("LC_ALL") :
         (std::getenv("LC_MESSAGES") && *std::getenv("LC_MESSAGES")) ? std::getenv("LC_MESSAGES") :
         (std::getenv("LANG") && *std::getenv("LANG")) ? std::getenv("LANG") :
@@ -627,13 +627,13 @@ static void scheduleNextAutoSwitch();
 static fs::path getVisualizerConfigDir() {
     const char* xdg = std::getenv("XDG_CONFIG_HOME");
     if (xdg && *xdg) {
-        return fs::path(xdg) / "aurivo-projectm-visualizer";
+        return fs::path(xdg) / "ardali-projectm-visualizer";
     }
     const char* home = std::getenv("HOME");
     if (home && *home) {
-        return fs::path(home) / ".config" / "aurivo-projectm-visualizer";
+        return fs::path(home) / ".config" / "ardali-projectm-visualizer";
     }
-    return fs::temp_directory_path() / "aurivo-projectm-visualizer";
+    return fs::temp_directory_path() / "ardali-projectm-visualizer";
 }
 
 static fs::path getPresetPickerSettingsPath() {
@@ -933,7 +933,7 @@ struct AppState {
     int fbH = 720;
 
     // Tercih edilen ana pencere boyutu.
-    // Aurivo (Electron) içinden başlatıldığında env AURIVO_VIS_MAIN_W/H ile geçersiz kılınır
+    // ArDali (Electron) içinden başlatıldığında env ARDALI_VIS_MAIN_W/H ile geçersiz kılınır
     // böylece pencere her zaman uygulamanın beklediği varsayılan boyutta açılır.
     int mainPrefW = 900;
     int mainPrefH = 650;
@@ -1143,7 +1143,7 @@ static void savePresetPickerSettings() {
     std::ofstream out(tmp);
     if (!out.is_open()) return;
 
-    out << "# Aurivo projectM visualizer preset picker\n";
+    out << "# ArDali projectM visualizer preset picker\n";
     out << "delaySeconds=" << g.delaySeconds << "\n";
     out << "pickerWinW=" << g.pickerWinW << "\n";
     out << "pickerWinH=" << g.pickerWinH << "\n";
@@ -1604,7 +1604,7 @@ static void pumpAutoPresetSwitch() {
 
 static std::optional<std::string> findInterFontPath() {
     // Env override (gerekirse host uygulama tarafından set edilir)
-    if (const char* envFont = std::getenv("AURIVO_VIS_FONT_PATH")) {
+    if (const char* envFont = std::getenv("ARDALI_VIS_FONT_PATH")) {
         if (*envFont) {
             std::error_code ec;
             fs::path p(envFont);
@@ -1916,27 +1916,27 @@ static bool stringContainsCaseInsensitiveAscii(const std::string& haystack, cons
 }
 
 static void renderContextMenuContents() {
-        const char* ctxDisplay = visEnvText("AURIVO_VIS_CTX_DISPLAY", L7("Display", "Görüntü", "العرض", "Affichage", "Anzeige", "Pantalla", "डिस्प्ले"));
-        const char* ctxRendering = visEnvText("AURIVO_VIS_CTX_RENDERING", L7("Rendering", "İşleme", "العرض المرئي", "Rendu", "Rendering", "Renderizado", "रेंडरिंग"));
-        const char* ctxPresets = visEnvText("AURIVO_VIS_CTX_PRESETS", L7("Presets", "Presetler", "الإعدادات", "Presets", "Presets", "Presets", "प्रीसेट"));
-        const char* ctxToggleFullscreen = visEnvText("AURIVO_VIS_CTX_TOGGLE_FULLSCREEN", L7("Toggle fullscreen", "Tam ekran göster/gizle", "تبديل ملء الشاشة", "Basculer plein écran", "Vollbild umschalten", "Alternar pantalla completa", "फुलस्क्रीन टॉगल करें"));
-        const char* ctxFrameRate = visEnvText("AURIVO_VIS_CTX_FRAME_RATE", L7("Frame rate", "Kare oranı", "معدل الإطارات", "Fréquence d’images", "Bildrate", "Velocidad de fotogramas", "फ़्रेम दर"));
-        const char* ctxQuality = visEnvText("AURIVO_VIS_CTX_QUALITY", L7("Quality", "Kalite", "الجودة", "Qualité", "Qualität", "Calidad", "गुणवत्ता"));
-        const char* ctxClarity = visEnvText("AURIVO_VIS_CTX_CLARITY", L7("Clarity", "Netlik", "الوضوح", "Netteté", "Klarheit", "Nitidez", "स्पष्टता"));
-        const char* ctxSelectVisuals = visEnvText("AURIVO_VIS_CTX_SELECT_VISUALS", L7("Select visualizations...", "Görselleştirmeleri seç...", "اختيار المرئيات...", "Sélectionner des visuels...", "Visuals auswählen...", "Seleccionar visuales...", "विज़ुअल चुनें..."));
-        const char* ctxClose = visEnvText("AURIVO_VIS_CTX_CLOSE", L7("Close visualization", "Görselleştirmeyi kapat", "إغلاق المرئيات", "Fermer le visualiseur", "Visualizer schließen", "Cerrar visualizador", "विज़ुअलाइज़र बंद करें"));
-        const char* ctxFpsLow = visEnvText("AURIVO_VIS_CTX_FPS_LOW", L7("Low (15 fps)", "Düşük (15 fps)", "منخفض (١٥)", "Faible (15 fps)", "Niedrig (15 fps)", "Bajo (15 fps)", "कम (15 fps)"));
-        const char* ctxFpsMedium = visEnvText("AURIVO_VIS_CTX_FPS_MEDIUM", L7("Medium (25 fps)", "Orta (25 fps)", "متوسط (٢٥)", "Moyen (25 fps)", "Mittel (25 fps)", "Medio (25 fps)", "मध्यम (25 fps)"));
-        const char* ctxFpsHigh = visEnvText("AURIVO_VIS_CTX_FPS_HIGH", L7("High (35 fps)", "Yüksek (35 fps)", "مرتفع (٣٥)", "Élevé (35 fps)", "Hoch (35 fps)", "Alto (35 fps)", "उच्च (35 fps)"));
-        const char* ctxFpsSuper = visEnvText("AURIVO_VIS_CTX_FPS_SUPER", L7("Super high (60 fps)", "Süper yüksek (60 fps)", "فائق (٦٠)", "Très élevé (60 fps)", "Sehr hoch (60 fps)", "Muy alto (60 fps)", "बहुत उच्च (60 fps)"));
-        const char* ctxQualityLow = visEnvText("AURIVO_VIS_CTX_QUALITY_LOW", L7("Low (256x256)", "Düşük (256x256)", "منخفض (٢٥٦×٢٥٦)", "Faible (256×256)", "Niedrig (256×256)", "Bajo (256×256)", "कम (256×256)"));
-        const char* ctxQualityMedium = visEnvText("AURIVO_VIS_CTX_QUALITY_MEDIUM", L7("Medium (512x512)", "Orta (512x512)", "متوسط (٥١٢×٥١٢)", "Moyen (512×512)", "Mittel (512×512)", "Medio (512×512)", "मध्यम (512×512)"));
-        const char* ctxQualityHigh = visEnvText("AURIVO_VIS_CTX_QUALITY_HIGH", L7("High (1024x1024)", "Yüksek (1024x1024)", "مرتفع (١٠٢٤×١٠٢٤)", "Élevé (1024×1024)", "Hoch (1024×1024)", "Alto (1024×1024)", "उच्च (1024×1024)"));
-        const char* ctxQualitySuper = visEnvText("AURIVO_VIS_CTX_QUALITY_SUPER", L7("Super high (2048x2048)", "Süper yüksek (2048x2048)", "فائق (٢٠٤٨×٢٠٤٨)", "Très élevé (2048×2048)", "Sehr hoch (2048×2048)", "Muy alto (2048×2048)", "बहुत उच्च (2048×2048)"));
-        const char* ctxClaritySoft = visEnvText("AURIVO_VIS_CTX_CLARITY_SOFT", L7("Soft", "Yumuşak", "ناعم", "Doux", "Weich", "Suave", "नरम"));
-        const char* ctxClarityBalanced = visEnvText("AURIVO_VIS_CTX_CLARITY_BALANCED", L7("Balanced", "Dengeli", "متوازن", "Équilibré", "Ausgewogen", "Equilibrado", "संतुलित"));
-        const char* ctxClaritySharp = visEnvText("AURIVO_VIS_CTX_CLARITY_SHARP", L7("Sharp", "Keskin", "حاد", "Net", "Scharf", "Nítido", "तीक्ष्ण"));
-        const char* ctxClaritySharpPlus = visEnvText("AURIVO_VIS_CTX_CLARITY_SHARP_PLUS", L7("Sharp+", "Keskin+", "حاد+", "Net+", "Scharf+", "Nítido+", "तीक्ष्ण+"));
+        const char* ctxDisplay = visEnvText("ARDALI_VIS_CTX_DISPLAY", L7("Display", "Görüntü", "العرض", "Affichage", "Anzeige", "Pantalla", "डिस्प्ले"));
+        const char* ctxRendering = visEnvText("ARDALI_VIS_CTX_RENDERING", L7("Rendering", "İşleme", "العرض المرئي", "Rendu", "Rendering", "Renderizado", "रेंडरिंग"));
+        const char* ctxPresets = visEnvText("ARDALI_VIS_CTX_PRESETS", L7("Presets", "Presetler", "الإعدادات", "Presets", "Presets", "Presets", "प्रीसेट"));
+        const char* ctxToggleFullscreen = visEnvText("ARDALI_VIS_CTX_TOGGLE_FULLSCREEN", L7("Toggle fullscreen", "Tam ekran göster/gizle", "تبديل ملء الشاشة", "Basculer plein écran", "Vollbild umschalten", "Alternar pantalla completa", "फुलस्क्रीन टॉगल करें"));
+        const char* ctxFrameRate = visEnvText("ARDALI_VIS_CTX_FRAME_RATE", L7("Frame rate", "Kare oranı", "معدل الإطارات", "Fréquence d’images", "Bildrate", "Velocidad de fotogramas", "फ़्रेम दर"));
+        const char* ctxQuality = visEnvText("ARDALI_VIS_CTX_QUALITY", L7("Quality", "Kalite", "الجودة", "Qualité", "Qualität", "Calidad", "गुणवत्ता"));
+        const char* ctxClarity = visEnvText("ARDALI_VIS_CTX_CLARITY", L7("Clarity", "Netlik", "الوضوح", "Netteté", "Klarheit", "Nitidez", "स्पष्टता"));
+        const char* ctxSelectVisuals = visEnvText("ARDALI_VIS_CTX_SELECT_VISUALS", L7("Select visualizations...", "Görselleştirmeleri seç...", "اختيار المرئيات...", "Sélectionner des visuels...", "Visuals auswählen...", "Seleccionar visuales...", "विज़ुअल चुनें..."));
+        const char* ctxClose = visEnvText("ARDALI_VIS_CTX_CLOSE", L7("Close visualization", "Görselleştirmeyi kapat", "إغلاق المرئيات", "Fermer le visualiseur", "Visualizer schließen", "Cerrar visualizador", "विज़ुअलाइज़र बंद करें"));
+        const char* ctxFpsLow = visEnvText("ARDALI_VIS_CTX_FPS_LOW", L7("Low (15 fps)", "Düşük (15 fps)", "منخفض (١٥)", "Faible (15 fps)", "Niedrig (15 fps)", "Bajo (15 fps)", "कम (15 fps)"));
+        const char* ctxFpsMedium = visEnvText("ARDALI_VIS_CTX_FPS_MEDIUM", L7("Medium (25 fps)", "Orta (25 fps)", "متوسط (٢٥)", "Moyen (25 fps)", "Mittel (25 fps)", "Medio (25 fps)", "मध्यम (25 fps)"));
+        const char* ctxFpsHigh = visEnvText("ARDALI_VIS_CTX_FPS_HIGH", L7("High (35 fps)", "Yüksek (35 fps)", "مرتفع (٣٥)", "Élevé (35 fps)", "Hoch (35 fps)", "Alto (35 fps)", "उच्च (35 fps)"));
+        const char* ctxFpsSuper = visEnvText("ARDALI_VIS_CTX_FPS_SUPER", L7("Super high (60 fps)", "Süper yüksek (60 fps)", "فائق (٦٠)", "Très élevé (60 fps)", "Sehr hoch (60 fps)", "Muy alto (60 fps)", "बहुत उच्च (60 fps)"));
+        const char* ctxQualityLow = visEnvText("ARDALI_VIS_CTX_QUALITY_LOW", L7("Low (256x256)", "Düşük (256x256)", "منخفض (٢٥٦×٢٥٦)", "Faible (256×256)", "Niedrig (256×256)", "Bajo (256×256)", "कम (256×256)"));
+        const char* ctxQualityMedium = visEnvText("ARDALI_VIS_CTX_QUALITY_MEDIUM", L7("Medium (512x512)", "Orta (512x512)", "متوسط (٥١٢×٥١٢)", "Moyen (512×512)", "Mittel (512×512)", "Medio (512×512)", "मध्यम (512×512)"));
+        const char* ctxQualityHigh = visEnvText("ARDALI_VIS_CTX_QUALITY_HIGH", L7("High (1024x1024)", "Yüksek (1024x1024)", "مرتفع (١٠٢٤×١٠٢٤)", "Élevé (1024×1024)", "Hoch (1024×1024)", "Alto (1024×1024)", "उच्च (1024×1024)"));
+        const char* ctxQualitySuper = visEnvText("ARDALI_VIS_CTX_QUALITY_SUPER", L7("Super high (2048x2048)", "Süper yüksek (2048x2048)", "فائق (٢٠٤٨×٢٠٤٨)", "Très élevé (2048×2048)", "Sehr hoch (2048×2048)", "Muy alto (2048×2048)", "बहुत उच्च (2048×2048)"));
+        const char* ctxClaritySoft = visEnvText("ARDALI_VIS_CTX_CLARITY_SOFT", L7("Soft", "Yumuşak", "ناعم", "Doux", "Weich", "Suave", "नरम"));
+        const char* ctxClarityBalanced = visEnvText("ARDALI_VIS_CTX_CLARITY_BALANCED", L7("Balanced", "Dengeli", "متوازن", "Équilibré", "Ausgewogen", "Equilibrado", "संतुलित"));
+        const char* ctxClaritySharp = visEnvText("ARDALI_VIS_CTX_CLARITY_SHARP", L7("Sharp", "Keskin", "حاد", "Net", "Scharf", "Nítido", "तीक्ष्ण"));
+        const char* ctxClaritySharpPlus = visEnvText("ARDALI_VIS_CTX_CLARITY_SHARP_PLUS", L7("Sharp+", "Keskin+", "حاد+", "Net+", "Scharf+", "Nítido+", "तीक्ष्ण+"));
 
         ImGui::PushStyleColor(ImGuiCol_TextDisabled, ImVec4(0.58f, 0.66f, 0.76f, 1.0f));
         ImGui::TextUnformatted(ctxDisplay);
@@ -2058,13 +2058,13 @@ static void drawContextMenuHost() {
                              ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoScrollbar |
                              ImGuiWindowFlags_NoScrollWithMouse | ImGuiWindowFlags_NoInputs;
 
-    ImGui::Begin("##AurivoContextHost", nullptr, flags);
+    ImGui::Begin("##ArDaliContextHost", nullptr, flags);
 
     // Sağlam bağlam menüsü tetikleyici: hangi ImGui penceresi hover olursa olsun sağ tuş bırakmada aç.
     // Bu, BeginPopupContextWindow()'un hover/capture tuhaflıkları nedeniyle tetiklenmediği uç durumları önler.
     if (ImGui::IsMouseReleased(ImGuiMouseButton_Right) &&
-        !ImGui::IsPopupOpen("AurivoContextMenu", ImGuiPopupFlags_AnyPopupId)) {
-        ImGui::OpenPopup("AurivoContextMenu");
+        !ImGui::IsPopupOpen("ArDaliContextMenu", ImGuiPopupFlags_AnyPopupId)) {
+        ImGui::OpenPopup("ArDaliContextMenu");
     }
 
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(14.0f, 12.0f));
@@ -2079,7 +2079,7 @@ static void drawContextMenuHost() {
     ImGui::PushStyleColor(ImGuiCol_HeaderActive, ImVec4(0.25f, 0.40f, 0.54f, 0.84f));
     ImGui::PushStyleColor(ImGuiCol_Separator, ImVec4(0.35f, 0.46f, 0.58f, 0.35f));
 
-    if (ImGui::BeginPopup("AurivoContextMenu")) {
+    if (ImGui::BeginPopup("ArDaliContextMenu")) {
         ImDrawList* dl = ImGui::GetWindowDrawList();
         const ImVec2 p = ImGui::GetWindowPos();
         const ImVec2 s = ImGui::GetWindowSize();
@@ -2107,7 +2107,7 @@ static void drawPresetPicker() {
     ImGui::SetNextWindowSize(io.DisplaySize);
     ImGuiWindowFlags rootFlags = ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove |
                                  ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoBringToFrontOnFocus;
-    ImGui::Begin("##AurivoPickerRoot", nullptr, rootFlags);
+    ImGui::Begin("##ArDaliPickerRoot", nullptr, rootFlags);
 
     const float scale = (g.pickerWindow ? g.pickerDpiScale : g.dpiScale);
     ImDrawList* rootDl = ImGui::GetWindowDrawList();
@@ -2130,8 +2130,8 @@ static void drawPresetPicker() {
     const float heroH = compactMode ? std::max(64.0f, 72.0f * scale) : std::max(84.0f, 96.0f * scale);
     const float footerH = compactMode ? std::max(40.0f, 50.0f * scale) : std::max(46.0f, 58.0f * scale);
 
-    const char* heroTitle = visEnvText("AURIVO_VIS_PICKER_HERO_TITLE", L7("Curate the visual atmosphere", "Görsel atmosferi küratör gibi seçin", "Ù†Ø³Ù‚ Ø§Ù„Ø£Ø¬ÙˆØ§Ø¡ Ø§Ù„Ø¨ØµØ±ÙŠØ©", "Composez une atmosphère visuelle", "Gestalte die visuelle Stimmung", "Cura la atmósfera visual", "à¤µà¤¿à¤œà¤¼à¥à¤…à¤² à¤®à¤¾à¤¹à¥Œà¤² à¤šà¥à¤¨à¥‡à¤‚"));
-    const char* heroHint = visEnvText("AURIVO_VIS_PICKER_HINT", L7(
+    const char* heroTitle = visEnvText("ARDALI_VIS_PICKER_HERO_TITLE", L7("Curate the visual atmosphere", "Görsel atmosferi küratör gibi seçin", "Ù†Ø³Ù‚ Ø§Ù„Ø£Ø¬ÙˆØ§Ø¡ Ø§Ù„Ø¨ØµØ±ÙŠØ©", "Composez une atmosphère visuelle", "Gestalte die visuelle Stimmung", "Cura la atmósfera visual", "à¤µà¤¿à¤œà¤¼à¥à¤…à¤² à¤®à¤¾à¤¹à¥Œà¤² à¤šà¥à¤¨à¥‡à¤‚"));
+    const char* heroHint = visEnvText("ARDALI_VIS_PICKER_HINT", L7(
         "Choose the presets included in the premium-style auto switch flow.",
         "Otomatik geçiş akışına dahil olacak presetleri daha seçkin bir düzenle yönetin.",
         "Ø­Ø¯Ø¯ Ø§Ù„Ù…Ø±Ø¦ÙŠØ§Øª Ø§Ù„ØªÙŠ Ø³ØªØ¯Ø®Ù„ ÙÙŠ Ø§Ù„ØªØ¨Ø¯ÙŠÙ„ Ø§Ù„ØªÙ„Ù‚Ø§Ø¦ÙŠ.",
@@ -2140,17 +2140,17 @@ static void drawPresetPicker() {
         "Elige los presets incluidos en el cambio automático.",
         "à¤‘à¤Ÿà¥‹ à¤¸à¥à¤µà¤¿à¤š à¤®à¥‡à¤‚ à¤¶à¤¾à¤®à¤¿à¤² à¤¹à¥‹à¤¨à¥‡ à¤µà¤¾à¤²à¥‡ à¤ªà¥à¤°à¥€à¤¸à¥‡à¤Ÿ à¤šà¥à¤¨à¥‡à¤‚।"
     ));
-    const char* dirLabel = visEnvText("AURIVO_VIS_PICKER_PRESET_DIR", L7("Preset directory", "Preset dizini", "Ù…Ø¬Ù„Ø¯ Ø§Ù„Ø¥Ø¹Ø¯Ø§Ø¯Ø§Øª", "Dossier des préréglages", "Preset-Ordner", "Carpeta de presets", "à¤ªà¥à¤°à¥€à¤¸à¥‡à¤Ÿ à¤«à¤¼à¥‹à¤²à¥à¤¡à¤°"));
-    const char* searchHint = visEnvText("AURIVO_VIS_PICKER_SEARCH", L7("Search presets...", "Preset ara...", "Ø§Ø¨Ø­Ø« Ø¹Ù† preset...", "Rechercher un preset...", "Preset suchen...", "Buscar preset...", "à¤ªà¥à¤°à¥€à¤¸à¥‡à¤Ÿ à¤–à¥‹à¤œà¥‡à¤‚..."));
-    const char* delayLabel = visEnvText("AURIVO_VIS_PICKER_DELAY", L7("Switch delay", "Geçiş gecikmesi", "ØªØ£Ø®ÙŠØ± Ø§Ù„ØªØ¨Ø¯ÙŠÙ„", "Délai de rotation", "Wechselverzögerung", "Retraso de cambio", "à¤¸à¥à¤µà¤¿à¤š à¤¡à¥‡à¤²à¥‡"));
-    const char* compactLabel = visEnvText("AURIVO_VIS_PICKER_COMPACT", L7("Compact", "Kompakt", "Ù…Ø¯Ù…Ø¬", "Compact", "Kompakt", "Compacto", "à¤•à¥‰à¤®à¥à¤ªà¥ˆà¤•à¥à¤Ÿ"));
-    const char* enabledLabel = visEnvText("AURIVO_VIS_PICKER_ENABLED", L7("Enabled", "Etkin", "Ù…ÙÙØ¹Ù„", "Actif", "Aktiv", "Activo", "à¤¸à¤•à¥à¤°à¤¿à¤¯"));
-    const char* filterActiveLabel = visEnvText("AURIVO_VIS_PICKER_FILTER_ACTIVE", L7("Filter active:", "Filtre aktif:", "Ø§Ù„ÙÙ„ØªØ± Ù†Ø´Ø·:", "Filtre actif :", "Filter aktiv:", "Filtro activo:", "à¤«à¤¿à¤²à¥à¤Ÿà¤° à¤¸à¤•à¥à¤°à¤¿à¤¯:"));
-    const char* galleryLabel = visEnvText("AURIVO_VIS_PICKER_GALLERY", L7("Preset gallery", "Preset galerisi", "Ù…Ø¹Ø±Ø¶ preset", "Galerie de presets", "Preset-Galerie", "Galería de presets", "à¤ªà¥à¤°à¥€à¤¸à¥‡à¤Ÿ à¤—à¥ˆà¤²à¤°à¥€"));
-    const char* noMatchLabel = visEnvText("AURIVO_VIS_PICKER_NO_MATCH", L7("No preset matched your search.", "Aramanızla eşleşen preset bulunamadı.", "Ù„Ù… ÙŠÙØ¹Ø«Ø± Ø¹Ù„Ù‰ preset Ù…Ø·Ø§Ø¨Ù‚.", "Aucun preset ne correspond.", "Kein passendes Preset gefunden.", "No hay coincidencias.", "à¤•à¥‹à¤ˆ à¤®à¤¿à¤²à¤¾à¤¨ à¤¨à¤¹à¥€à¤‚ à¤®à¤¿à¤²à¤¾।"));
-    const char* inRotationLabel = visEnvText("AURIVO_VIS_PICKER_IN_ROTATION", L7("In rotation", "Döngüde", "ÙÙŠ Ø§Ù„Ø¯ÙˆØ±Ø§Ù†", "Dans la rotation", "In Rotation", "En rotación", "à¤°à¥‹à¤Ÿà¥‡à¤¶à¤¨ à¤®à¥‡à¤‚"));
-    const char* manualOnlyLabel = visEnvText("AURIVO_VIS_PICKER_MANUAL_ONLY", L7("Manual only", "Sadece manuel", "ÙŠØ¯ÙˆÙŠ ÙÙ‚Ø·", "Manuel uniquement", "Nur manuell", "Solo manual", "à¤¸à¤¿à¤°à¥à¤« à¤®à¥ˆà¤¨à¥à¤…à¤²"));
-    const char* includedTipLabel = visEnvText("AURIVO_VIS_PICKER_INCLUDED", L7("Included in auto-switch", "Otomatik geçişe dahil", "Ù…Ø¶Ù…Ù† ÙÙŠ Ø§Ù„ØªØ¨Ø¯ÙŠÙ„ Ø§Ù„ØªÙ„Ù‚Ø§Ø¦ÙŠ", "Inclus dans la rotation auto", "Im Auto-Wechsel enthalten", "Incluido en auto-cambio", "à¤‘à¤Ÿà¥‹ à¤¸à¥à¤µà¤¿à¤š à¤®à¥‡à¤‚ à¤¶à¤¾à¤®à¤¿à¤²"));
+    const char* dirLabel = visEnvText("ARDALI_VIS_PICKER_PRESET_DIR", L7("Preset directory", "Preset dizini", "Ù…Ø¬Ù„Ø¯ Ø§Ù„Ø¥Ø¹Ø¯Ø§Ø¯Ø§Øª", "Dossier des préréglages", "Preset-Ordner", "Carpeta de presets", "à¤ªà¥à¤°à¥€à¤¸à¥‡à¤Ÿ à¤«à¤¼à¥‹à¤²à¥à¤¡à¤°"));
+    const char* searchHint = visEnvText("ARDALI_VIS_PICKER_SEARCH", L7("Search presets...", "Preset ara...", "Ø§Ø¨Ø­Ø« Ø¹Ù† preset...", "Rechercher un preset...", "Preset suchen...", "Buscar preset...", "à¤ªà¥à¤°à¥€à¤¸à¥‡à¤Ÿ à¤–à¥‹à¤œà¥‡à¤‚..."));
+    const char* delayLabel = visEnvText("ARDALI_VIS_PICKER_DELAY", L7("Switch delay", "Geçiş gecikmesi", "ØªØ£Ø®ÙŠØ± Ø§Ù„ØªØ¨Ø¯ÙŠÙ„", "Délai de rotation", "Wechselverzögerung", "Retraso de cambio", "à¤¸à¥à¤µà¤¿à¤š à¤¡à¥‡à¤²à¥‡"));
+    const char* compactLabel = visEnvText("ARDALI_VIS_PICKER_COMPACT", L7("Compact", "Kompakt", "Ù…Ø¯Ù…Ø¬", "Compact", "Kompakt", "Compacto", "à¤•à¥‰à¤®à¥à¤ªà¥ˆà¤•à¥à¤Ÿ"));
+    const char* enabledLabel = visEnvText("ARDALI_VIS_PICKER_ENABLED", L7("Enabled", "Etkin", "Ù…ÙÙØ¹Ù„", "Actif", "Aktiv", "Activo", "à¤¸à¤•à¥à¤°à¤¿à¤¯"));
+    const char* filterActiveLabel = visEnvText("ARDALI_VIS_PICKER_FILTER_ACTIVE", L7("Filter active:", "Filtre aktif:", "Ø§Ù„ÙÙ„ØªØ± Ù†Ø´Ø·:", "Filtre actif :", "Filter aktiv:", "Filtro activo:", "à¤«à¤¿à¤²à¥à¤Ÿà¤° à¤¸à¤•à¥à¤°à¤¿à¤¯:"));
+    const char* galleryLabel = visEnvText("ARDALI_VIS_PICKER_GALLERY", L7("Preset gallery", "Preset galerisi", "Ù…Ø¹Ø±Ø¶ preset", "Galerie de presets", "Preset-Galerie", "Galería de presets", "à¤ªà¥à¤°à¥€à¤¸à¥‡à¤Ÿ à¤—à¥ˆà¤²à¤°à¥€"));
+    const char* noMatchLabel = visEnvText("ARDALI_VIS_PICKER_NO_MATCH", L7("No preset matched your search.", "Aramanızla eşleşen preset bulunamadı.", "Ù„Ù… ÙŠÙØ¹Ø«Ø± Ø¹Ù„Ù‰ preset Ù…Ø·Ø§Ø¨Ù‚.", "Aucun preset ne correspond.", "Kein passendes Preset gefunden.", "No hay coincidencias.", "à¤•à¥‹à¤ˆ à¤®à¤¿à¤²à¤¾à¤¨ à¤¨à¤¹à¥€à¤‚ à¤®à¤¿à¤²à¤¾।"));
+    const char* inRotationLabel = visEnvText("ARDALI_VIS_PICKER_IN_ROTATION", L7("In rotation", "Döngüde", "ÙÙŠ Ø§Ù„Ø¯ÙˆØ±Ø§Ù†", "Dans la rotation", "In Rotation", "En rotación", "à¤°à¥‹à¤Ÿà¥‡à¤¶à¤¨ à¤®à¥‡à¤‚"));
+    const char* manualOnlyLabel = visEnvText("ARDALI_VIS_PICKER_MANUAL_ONLY", L7("Manual only", "Sadece manuel", "ÙŠØ¯ÙˆÙŠ ÙÙ‚Ø·", "Manuel uniquement", "Nur manuell", "Solo manual", "à¤¸à¤¿à¤°à¥à¤« à¤®à¥ˆà¤¨à¥à¤…à¤²"));
+    const char* includedTipLabel = visEnvText("ARDALI_VIS_PICKER_INCLUDED", L7("Included in auto-switch", "Otomatik geçişe dahil", "Ù…Ø¶Ù…Ù† ÙÙŠ Ø§Ù„ØªØ¨Ø¯ÙŠÙ„ Ø§Ù„ØªÙ„Ù‚Ø§Ø¦ÙŠ", "Inclus dans la rotation auto", "Im Auto-Wechsel enthalten", "Incluido en auto-cambio", "à¤‘à¤Ÿà¥‹ à¤¸à¥à¤µà¤¿à¤š à¤®à¥‡à¤‚ à¤¶à¤¾à¤®à¤¿à¤²"));
     static uint64_t pickerAppearMs = 0;
     if (ImGui::IsWindowAppearing()) {
         pickerAppearMs = nowMs();
@@ -2564,7 +2564,7 @@ static void drawPresetPicker() {
     ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.14f, 0.20f, 0.28f, 1.0f));
     ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.16f, 0.24f, 0.33f, 1.0f));
 
-    if (ImGui::Button(visEnvText("AURIVO_VIS_PICKER_ALL", L7("Select all", "Tümünü seç", "ØªØ­Ø¯ÙŠØ¯ Ø§Ù„ÙƒÙ„", "Tout sélectionner", "Alle wählen", "Seleccionar todo", "à¤¸à¤­à¥€ à¤šà¥à¤¨à¥‡à¤‚")))) {
+    if (ImGui::Button(visEnvText("ARDALI_VIS_PICKER_ALL", L7("Select all", "Tümünü seç", "ØªØ­Ø¯ÙŠØ¯ Ø§Ù„ÙƒÙ„", "Tout sélectionner", "Alle wählen", "Seleccionar todo", "à¤¸à¤­à¥€ à¤šà¥à¤¨à¥‡à¤‚")))) {
         for (auto& p : g.presets) p.enabled = true;
         // Baştan başlat: ilk presetten devam et.
         if (!g.presets.empty()) {
@@ -2577,13 +2577,13 @@ static void drawPresetPicker() {
         }
     }
     ImGui::SameLine();
-    if (ImGui::Button(visEnvText("AURIVO_VIS_PICKER_NONE", L7("Clear all", "Tümünü temizle", "Ù…Ø³Ø­ Ø§Ù„ÙƒÙ„", "Tout effacer", "Alles leeren", "Limpiar todo", "à¤¸à¤­à¥€ à¤¹à¤Ÿà¤¾à¤à¤")))) {
+    if (ImGui::Button(visEnvText("ARDALI_VIS_PICKER_NONE", L7("Clear all", "Tümünü temizle", "Ù…Ø³Ø­ Ø§Ù„ÙƒÙ„", "Tout effacer", "Alles leeren", "Limpiar todo", "à¤¸à¤­à¥€ à¤¹à¤Ÿà¤¾à¤à¤")))) {
         for (auto& p : g.presets) p.enabled = false;
         g.nextAutoSwitchMs = 0;
         g.pickerNavIndex = -1;
     }
 
-    const char* okText = visEnvText("AURIVO_VIS_PICKER_OK", L7("Done", "Tamam", "ØªÙ…", "Terminer", "Fertig", "Listo", "à¤ªà¥‚à¤°à¤¾"));
+    const char* okText = visEnvText("ARDALI_VIS_PICKER_OK", L7("Done", "Tamam", "ØªÙ…", "Terminer", "Fertig", "Listo", "à¤ªà¥‚à¤°à¤¾"));
     float btnW = std::max(96.0f * scale, ImGui::CalcTextSize(okText).x + ImGui::GetStyle().FramePadding.x * 2.0f);
     float rightX = ImGui::GetCursorPosX() + (ImGui::GetContentRegionAvail().x - btnW);
     rightX = std::max(ImGui::GetCursorPosX(), rightX);
@@ -2677,14 +2677,14 @@ static bool ensurePickerWindow() {
     Uint32 pickerFlags = SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI;
 
 			    g.pickerWindow = SDL_CreateWindow(
-		        visEnvText("AURIVO_VIS_PICKER_TITLE", L7Raw(
-		            "Aurivo Visuals",
-            "Aurivo G\u00F6rseller",
-		            "Ù…Ø±Ø¦ÙŠØ§Øª Aurivo",
-		            "Visuels Aurivo",
-		            "Aurivo Visuals",
-		            "Visuales de Aurivo",
-		            "Aurivo Visuals"
+		        visEnvText("ARDALI_VIS_PICKER_TITLE", L7Raw(
+		            "ArDali Visuals",
+            "ArDali G\u00F6rseller",
+		            "Ù…Ø±Ø¦ÙŠØ§Øª ArDali",
+		            "Visuels ArDali",
+		            "ArDali Visuals",
+		            "Visuales de ArDali",
+		            "ArDali Visuals"
 		        )),
 		        targetX,
 		        targetY,
@@ -2703,8 +2703,8 @@ static bool ensurePickerWindow() {
     // ── WAYLAND APP_ID: Picker penceresi için zorla ───────────────────────────
 #if defined(__linux__) && !defined(_WIN32)
     {
-        const char* targetAppId = std::getenv("AURIVO_VIS_WMCLASS");
-        if (!targetAppId || !*targetAppId) targetAppId = "com.aurivo.mediaplayer";
+        const char* targetAppId = std::getenv("ARDALI_VIS_WMCLASS");
+        if (!targetAppId || !*targetAppId) targetAppId = "com.ardali.mediaplayer";
 
         SDL_SysWMinfo wmi;
         SDL_VERSION(&wmi.version);
@@ -2753,7 +2753,7 @@ static bool ensurePickerWindow() {
 
     // Bu context için de GL function pointer'larını yükle (zaten yüklüyse güvenli no-op).
     std::cout << "BOOT GL load functions..." << std::endl;
-    if (!AurivoGL_LoadFunctions()) {
+    if (!ArDaliGL_LoadFunctions()) {
 #ifdef _WIN32
     glewExperimental = GL_TRUE;
     GLenum glewErr = glewInit();
@@ -2869,12 +2869,12 @@ static void updatePickerDockMotion() {
 static bool initSDLVideo() {
     // WM_CLASS / Wayland app_id: görev çubuğu/dock gruplaması için ana uygulamayla eşleştir.
     // Bu hint'ler pencere oluşturulmadan önce, güvenli tarafta kalmak için SDL_Init öncesi set edilir.
-    const char* wmclass = std::getenv("AURIVO_VIS_WMCLASS");
-    if (!wmclass || !*wmclass) wmclass = "aurivo-media-player";
-    const char* desktopEntry = std::getenv("AURIVO_VIS_DESKTOP_ENTRY");
+    const char* wmclass = std::getenv("ARDALI_VIS_WMCLASS");
+    if (!wmclass || !*wmclass) wmclass = "ardali";
+    const char* desktopEntry = std::getenv("ARDALI_VIS_DESKTOP_ENTRY");
     // Wayland app_id tercihen desktop dosyasının kimliğiyle aynı olmalı;
     // aksi halde başlık çubuğunda uygulama yerine varsayılan compositor ikonu görünebilir.
-    if (!desktopEntry || !*desktopEntry) desktopEntry = "com.aurivo.mediaplayer";
+    if (!desktopEntry || !*desktopEntry) desktopEntry = "com.ardali.mediaplayer";
     std::string appId = std::string(desktopEntry);
     if (appId.size() > 8 && appId.rfind(".desktop") == (appId.size() - 8)) {
         appId.resize(appId.size() - 8);
@@ -2937,13 +2937,13 @@ static bool initMainWindowAndGL() {
 
 	    g.window = SDL_CreateWindow(
 	        L7Raw(
-	            "Aurivo Visualizer",
-            "Aurivo G\u00F6rselle\u015Ftirici",
+	            "ArDali Visualizer",
+            "ArDali G\u00F6rselle\u015Ftirici",
 	            "Ù…Ø±Ø¦ÙŠØ§Øª Ø£ÙˆØ±ÙŠÙÙˆ",
-	            "Visualiseur Aurivo",
-	            "Aurivo-Visualizer",
-	            "Visualizador Aurivo",
-	            "Aurivo à¤µà¤¿à¤œà¤¼à¥à¤…à¤²à¤¾à¤‡à¤œà¤¼à¤°"
+	            "Visualiseur ArDali",
+	            "ArDali-Visualizer",
+	            "Visualizador ArDali",
+	            "ArDali à¤µà¤¿à¤œà¤¼à¥à¤…à¤²à¤¾à¤‡à¤œà¤¼à¤°"
 	        ),
 	        SDL_WINDOWPOS_CENTERED,
 	        SDL_WINDOWPOS_CENTERED,
@@ -2962,8 +2962,8 @@ static bool initMainWindowAndGL() {
     // ama pencere olusturulduktan SONRA tekrar set etmek de guvenlidir.
 #if defined(__linux__) && !defined(_WIN32)
     {
-        const char* targetAppId = std::getenv("AURIVO_VIS_WMCLASS");
-        if (!targetAppId || !*targetAppId) targetAppId = "com.aurivo.mediaplayer";
+        const char* targetAppId = std::getenv("ARDALI_VIS_WMCLASS");
+        if (!targetAppId || !*targetAppId) targetAppId = "com.ardali.mediaplayer";
 
         // SDL2 SysWMinfo uzerinden Wayland xdg_toplevel'i al ve app_id'yi set et
         SDL_SysWMinfo wmi;
@@ -3027,7 +3027,7 @@ static bool initMainWindowAndGL() {
     SDL_GL_SetSwapInterval(1);
 
     std::cout << "BOOT GL load functions..." << std::endl;
-    if (!AurivoGL_LoadFunctions()) {
+    if (!ArDaliGL_LoadFunctions()) {
 #ifdef _WIN32
     glewExperimental = GL_TRUE;
     GLenum glewErr = glewInit();
@@ -3240,14 +3240,14 @@ int main(int argc, char* argv[]) {
     loadPresetPickerSettings();
 
     // Üst uygulama varsayılan boyut sağlıyorsa onu tercih et (her seferinde bu boyutta aç).
-    if (const char* w = std::getenv("AURIVO_VIS_MAIN_W")) {
+    if (const char* w = std::getenv("ARDALI_VIS_MAIN_W")) {
         try {
             int v = std::stoi(std::string(w));
             if (v >= 640 && v <= 8192) g.mainPrefW = v;
         } catch (...) {
         }
     }
-    if (const char* h = std::getenv("AURIVO_VIS_MAIN_H")) {
+    if (const char* h = std::getenv("ARDALI_VIS_MAIN_H")) {
         try {
             int v = std::stoi(std::string(h));
             if (v >= 480 && v <= 8192) g.mainPrefH = v;
@@ -3281,7 +3281,7 @@ int main(int argc, char* argv[]) {
             break;
         }
     }
-    if (const char* dbg = std::getenv("AURIVO_VIS_DEBUG")) {
+    if (const char* dbg = std::getenv("ARDALI_VIS_DEBUG")) {
         if (std::string(dbg) == "1") g.debugOverlay = true;
     }
 
@@ -3293,10 +3293,10 @@ int main(int argc, char* argv[]) {
         if (!g.stdinIsPipe) {
             std::cout << "[Audio] stdin is not a pipe; PCM input disabled (no capture)" << std::endl;
         } else {
-            std::cout << "[Audio] ✓ projectM input = aurivo_pcm (stdin only, NO mic/capture)" << std::endl;
+            std::cout << "[Audio] ✓ projectM input = ardali_pcm (stdin only, NO mic/capture)" << std::endl;
         }
 #else
-        std::cout << "[Audio] ✓ projectM input = aurivo_pcm (stdin only, NO mic/capture)" << std::endl;
+        std::cout << "[Audio] ✓ projectM input = ardali_pcm (stdin only, NO mic/capture)" << std::endl;
 #endif
     }
 

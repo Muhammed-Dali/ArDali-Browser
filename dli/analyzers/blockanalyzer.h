@@ -1,5 +1,5 @@
-/* Block Analyzer for Aurivo Media Player
- * Based on Aurivo's BlockAnalyzer
+/* Block Analyzer for ArDali
+ * Based on ArDali's BlockAnalyzer
  * Original Author: Max Howell <max.howell@methylblue.com> 2003-2005
  */
 

@@ -211,8 +211,8 @@
   "settings.audio.outputSelect.unsupported": "تبديل جهاز الإخراج متاح حاليًا على Linux/PipeWire/PulseAudio فقط.",
   "settings.audio.defaultVolume": "مستوى الصوت الافتراضي",
   "settings.audio.defaultVolume.hint": "مستوى الصوت الرئيسي المستخدم عند فتح التطبيق وتحميل محرك الصوت.",
-  "settings.audio.appVolume": "صوت تطبيق Aurivo",
-  "settings.audio.appVolume.hint": "يتحكم فورًا في صوت تشغيل Aurivo فقط وبشكل مستقل عن صوت النظام.",
+  "settings.audio.appVolume": "صوت تطبيق ArDali",
+  "settings.audio.appVolume.hint": "يتحكم فورًا في صوت تشغيل ArDali فقط وبشكل مستقل عن صوت النظام.",
   "settings.audio.main.title": "مخرج الصوت الرئيسي",
   "settings.audio.limiter.title": "حماية منع التشويه",
   "settings.audio.limiter.enabled": "حماية المحدد",
@@ -677,7 +677,7 @@
   "visualizerNative.context.clarityBalanced": "متوازن",
   "visualizerNative.context.claritySharp": "حاد",
   "visualizerNative.context.claritySharpPlus": "حاد+",
-  "visualizerNative.picker.title": "مرئيات Aurivo",
+  "visualizerNative.picker.title": "مرئيات ArDali",
   "visualizerNative.picker.heroTitle": "نسّق الأجواء البصرية",
   "visualizerNative.picker.heroHint": "اختر الإعدادات المسبقة ضمن تدفق تبديل تلقائي منظم.",
   "visualizerNative.picker.presetDirectory": "مجلد الإعدادات المسبقة",
@@ -949,5 +949,11 @@
   "gallery.file.properties": "الخصائص",
   "sfx.audiophile.preamp.title": "المضخم التمهيدي التناظري",
   "sfx.audiophile.preamp.hint": "ضبط دقيق لكسب الخرج قبل سلسلة DSP للويب.",
-  "sfx.audiophile.preamp.knobLabel": "كسب التمهيد"
+  "sfx.audiophile.preamp.knobLabel": "كسب التمهيد",
+  "video.tools.title": "أدوات الفيديو",
+  "video.tools.viewSwitcher.label": "وضع تحرير الفيديو",
+  "video.tools.view.studio": "استوديو التسجيل",
+  "video.tools.view.processing": "معالجة الفيديو",
+  "video.tools.studio.title": "استوديو التسجيل",
+  "video.tools.studio.subtitle": "التحكم في المشهد والمصدر والمعاينة والتسجيل"
 }

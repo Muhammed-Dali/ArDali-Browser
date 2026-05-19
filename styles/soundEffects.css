@@ -1,5 +1,5 @@
 /* ============================================
-   AURIVO MEDYA PLAYER - SES EFEKTLERİ PENCERESİ
+   ARDALI MEDYA PLAYER - SES EFEKTLERİ PENCERESİ
    Profesyonel DSP & EQ Arayüzü
    ============================================ */
 
@@ -84,8 +84,8 @@ html[data-sfx-lights='off'] .sfx-container * {
 
 html[data-sfx-lights='off'] .action-btn,
 html[data-sfx-lights='off'] .preset-btn,
-html[data-sfx-lights='off'] .aurivo-knob,
-html[data-sfx-lights='off'] .aurivo-knob-canvas,
+html[data-sfx-lights='off'] .ardali-knob,
+html[data-sfx-lights='off'] .ardali-knob-canvas,
 html[data-sfx-lights='off'] .eq-slider-canvas,
 html[data-sfx-lights='off'] .eq-top-visualizer,
 html[data-sfx-lights='off'] .eq-top-visualizer-canvas,
@@ -100,7 +100,7 @@ html[data-sfx-lights='off'] .module-knob canvas {
 
 html[data-sfx-lights='off'] .eq-slider-canvas,
 html[data-sfx-lights='off'] .eq-top-visualizer-canvas,
-html[data-sfx-lights='off'] .aurivo-knob-canvas {
+html[data-sfx-lights='off'] .ardali-knob-canvas {
     filter: none !important;
 }
 
@@ -1312,9 +1312,9 @@ select:focus {
 }
 
 /* ============================================
-   AURIVO MODÜLÜ (Alt Kısım)
+   ARDALI MODÜLÜ (Alt Kısım)
    ============================================ */
-.aurivo-module {
+.ardali-module {
     display: flex;
     gap: 20px;
     margin-top: 20px;
@@ -1352,15 +1352,15 @@ select:focus {
 }
 
 /* ============================================
-   AURIVO MODÜLÜ KNOB (Legacy tabanlı)
+   ARDALI MODÜLÜ KNOB (Legacy tabanlı)
    ============================================ */
 
-.knob.knob-aurivo {
+.knob.knob-ardali {
     width: 104px;
     height: 104px;
 }
 
-.knob.knob-aurivo .knob-ring {
+.knob.knob-ardali .knob-ring {
     padding: 8px;
     /* Kalın halka */
     background: conic-gradient(from 135deg,
@@ -1381,7 +1381,7 @@ select:focus {
     -webkit-mask: radial-gradient(transparent 58%, black 60%);
 }
 
-.knob.knob-aurivo .knob-inner {
+.knob.knob-ardali .knob-inner {
     position: absolute;
     top: 50%;
     left: 50%;
@@ -1395,7 +1395,7 @@ select:focus {
     z-index: 2;
 }
 
-.knob.knob-aurivo .knob-indicator {
+.knob.knob-ardali .knob-indicator {
     width: 10px;
     height: 10px;
     border-radius: 50%;
@@ -1410,7 +1410,7 @@ select:focus {
     /* transform kod içinde ayarlanıyor ama başlangıç için ortada dursun */
 }
 
-.knob.knob-aurivo .knob-center {
+.knob.knob-ardali .knob-center {
     width: 8px;
     height: 8px;
     border-radius: 50%;
@@ -1883,7 +1883,7 @@ select:focus {
         font-size: 11px;
     }
 
-    .aurivo-module {
+    .ardali-module {
         flex-direction: column;
     }
 
@@ -1899,7 +1899,7 @@ select:focus {
     touch-action: none;
 }
 
-.aurivo-knob-canvas {
+.ardali-knob-canvas {
     cursor: pointer;
     touch-action: none;
     border-radius: 50%;

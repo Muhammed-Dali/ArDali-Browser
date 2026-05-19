@@ -4,8 +4,8 @@
   "maxDb": 12,
   "presets": [
     {
-      "id": "__aurivo_bass__",
-      "name": "Aurivo Bass",
+      "id": "__ardali_bass__",
+      "name": "ArDali Bass",
       "description": "Bas ağırlıklı, dengeli mid/treble",
       "points": [
         { "i": 0, "v": 5.5 },
@@ -20,8 +20,8 @@
       ]
     },
     {
-      "id": "__aurivo_pop__",
-      "name": "Aurivo Pop",
+      "id": "__ardali_pop__",
+      "name": "ArDali Pop",
       "description": "Hafif V-shape; enerjik bas ve parlak tiz",
       "points": [
         { "i": 0, "v": 3.5 },
@@ -35,8 +35,8 @@
       ]
     },
     {
-      "id": "__aurivo_rock__",
-      "name": "Aurivo Rock",
+      "id": "__ardali_rock__",
+      "name": "ArDali Rock",
       "description": "Daha dolgun gitar/vokal; kontrollü parlaklık",
       "points": [
         { "i": 0, "v": 2.5 },
@@ -50,8 +50,8 @@
       ]
     },
     {
-      "id": "__aurivo_vocal__",
-      "name": "Aurivo Vocal",
+      "id": "__ardali_vocal__",
+      "name": "ArDali Vocal",
       "description": "Vokal ve konuşma netliği; mid/upper-mid öne çıkar",
       "points": [
         { "i": 0, "v": -0.8 },
@@ -65,8 +65,8 @@
       ]
     },
     {
-      "id": "__aurivo_jazz__",
-      "name": "Aurivo Jazz",
+      "id": "__ardali_jazz__",
+      "name": "ArDali Jazz",
       "description": "Sıcak ve doğal; yumuşak tiz",
       "points": [
         { "i": 0, "v": 1.8 },
@@ -80,8 +80,8 @@
       ]
     },
     {
-      "id": "__aurivo_classical__",
-      "name": "Aurivo Classical",
+      "id": "__ardali_classical__",
+      "name": "ArDali Classical",
       "description": "Daha nötr; sahne ve hava için hafif tiz artışı",
       "points": [
         { "i": 0, "v": 0.6 },
@@ -94,8 +94,8 @@
       ]
     },
     {
-      "id": "__aurivo_electronic__",
-      "name": "Aurivo Electronic",
+      "id": "__ardali_electronic__",
+      "name": "ArDali Electronic",
       "description": "Güçlü sub-bass + parlak tiz; club hissi",
       "points": [
         { "i": 0, "v": 6.5 },

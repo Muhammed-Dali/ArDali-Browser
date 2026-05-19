@@ -28,7 +28,7 @@ jobs:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       # Fail fast if we can't bundle/verify visualizer runtime DLLs.
-      AURIVO_REQUIRE_VISUALIZER_DLLS: "1"
+      ARDALI_REQUIRE_VISUALIZER_DLLS: "1"
 
     steps:
       - name: Checkout
@@ -80,9 +80,9 @@ jobs:
           $dll = Join-Path $msys "mingw64\\bin"
           "MSYS2_ROOT=$msys" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           "MSYS2_LOCATION=$msys" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-          "AURIVO_VISUALIZER_DLL_DIR=$dll" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "ARDALI_VISUALIZER_DLL_DIR=$dll" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           Write-Host "MSYS2_ROOT=$msys"
-          Write-Host "AURIVO_VISUALIZER_DLL_DIR=$dll"
+          Write-Host "ARDALI_VISUALIZER_DLL_DIR=$dll"
           $probe = @("SDL2.dll","SDL2_image.dll","glew32.dll","libstdc++-6.dll","libgcc_s_seh-1.dll","libwinpthread-1.dll","libprojectM-4-4.dll")
           foreach ($f in $probe) {
             $p = Join-Path $dll $f
@@ -120,20 +120,20 @@ jobs:
       - name: Install JS dependencies
         run: npm ci
 
-      - name: Build native audio addon (aurivo_audio.node)
+      - name: Build native audio addon (ardali_audio.node)
         run: npm --prefix native ci
 
       - name: Native audio latency/xrun smoke
         run: npm run -s native:audio:smoke
 
-      - name: Build projectM visualizer (aurivo-projectm-visualizer.exe)
+      - name: Build projectM visualizer (ardali-projectm-visualizer.exe)
         shell: msys2 {0}
         run: |
           set -euo pipefail
           cmake -S visualizer -B build-visualizer -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH=/mingw64
           cmake --build build-visualizer
           mkdir -p native-dist/windows
-          cp -f build-visualizer/aurivo-projectm-visualizer.exe native-dist/windows/aurivo-projectm-visualizer.exe
+          cp -f build-visualizer/ardali-projectm-visualizer.exe native-dist/windows/ardali-projectm-visualizer.exe
 
       - name: Prepare Windows resources (ffmpeg + visualizer DLLs)
         run: npm run -s prepare:win:resources

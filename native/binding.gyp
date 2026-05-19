@@ -1,8 +1,8 @@
 {
     "targets": [
         {
-            "target_name": "aurivo_audio",
-            "sources": ["aurivo_audio.cpp", "aurivo_dsp.cpp"],
+            "target_name": "ardali_audio",
+            "sources": ["ardali_audio.cpp", "ardali_dsp.cpp"],
             "include_dirs": [
                 "<!@(node -p \"require('node-addon-api').include\")",
                 "../libs/bass/c",
