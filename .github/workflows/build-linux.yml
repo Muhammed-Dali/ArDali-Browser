@@ -148,7 +148,7 @@ jobs:
 
       - name: Build Linux packages (AppImage/deb/rpm)
         if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
-        run: npm run -s build:linux:appimage
+        run: npm run -s build:linux:appimage -- --publish=never
 
       - name: Verify AppImage contains native + bundled app resources
         run: |
