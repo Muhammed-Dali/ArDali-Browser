@@ -60,8 +60,9 @@ jobs:
           cp -f "${pkg_path}" "${out_dir}/"
 
           repo-add "${out_dir}/ardali.db.tar.gz" "${out_dir}"/*.pkg.tar.zst
-          cp -Lf "${out_dir}/ardali.db.tar.gz" "${out_dir}/ardali.db"
-          cp -Lf "${out_dir}/ardali.files.tar.gz" "${out_dir}/ardali.files"
+          rm -f "${out_dir}/ardali.db" "${out_dir}/ardali.files"
+          cp -f "${out_dir}/ardali.db.tar.gz" "${out_dir}/ardali.db"
+          cp -f "${out_dir}/ardali.files.tar.gz" "${out_dir}/ardali.files"
 
           cat > "${repo_root}/ardali.repo" <<'EOF'
           [ardali]

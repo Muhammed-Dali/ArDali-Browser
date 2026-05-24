@@ -39,11 +39,11 @@
 
 ## English
 
-### ArDali (v3.1.3)
+### ArDali (v3.1.4)
 
 Linux media player, web audio engine, music/video downloader, screen recorder, and projectM visualizer in one optimized desktop application.
 
-ArDali is an advanced Electron-based multimedia ecosystem for Linux, designed around strong optimization principles. After 2 years of continuous and intensive development, its infrastructure and architecture have been fully renewed with the v3.1.3 release.
+ArDali is an advanced Electron-based multimedia ecosystem for Linux, designed around strong optimization principles. After 2 years of continuous and intensive development, its infrastructure and architecture have been fully renewed with the v3.1.4 release.
 
 At the heart of the application is a custom-built technology layer that processes web-based audio streams with zero-latency behavior.
 
@@ -255,11 +255,11 @@ This project is released under the GNU GPL v3 License. See [LICENSE](LICENSE) fo
 
 ## Turkce
 
-### ArDali (v3.1.3)
+### ArDali (v3.1.4)
 
 Linux için medya oynatıcı, web ses motoru, müzik/video indirici, ekran kaydedici ve projectM görselleştirici tek bir optimize masaüstü uygulamasında birleşir.
 
-ArDali, Linux sistemler için geliştirilmiş; üstün optimizasyon ilkeleriyle tasarlanmış, Electron tabanlı gelişmiş bir multimedya ekosistemidir. 2 yıllık kesintisiz ve yoğun bir geliştirme sürecinin ardından, tüm altyapısı ve mimarisi v3.1.3 sürümüyle tamamen yenilenmiştir.
+ArDali, Linux sistemler için geliştirilmiş; üstün optimizasyon ilkeleriyle tasarlanmış, Electron tabanlı gelişmiş bir multimedya ekosistemidir. 2 yıllık kesintisiz ve yoğun bir geliştirme sürecinin ardından, tüm altyapısı ve mimarisi v3.1.4 sürümüyle tamamen yenilenmiştir.
 
 Uygulamanın kalbinde, web tabanlı ses akışlarını sıfır gecikmeyle işleyen ve tamamen bu projeye özel olarak derlenmiş bir teknoloji yatmaktadır.
 
