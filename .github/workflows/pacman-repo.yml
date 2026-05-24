@@ -64,38 +64,38 @@ jobs:
           cp -Lf "${out_dir}/ardali.files.tar.gz" "${out_dir}/ardali.files"
 
           cat > "${repo_root}/ardali.repo" <<'EOF'
-[ardali]
-SigLevel = Optional TrustAll
-Server = https://muhammed-dali.github.io/ArDali-WebMedia/x86_64
-EOF
+          [ardali]
+          SigLevel = Optional TrustAll
+          Server = https://muhammed-dali.github.io/ArDali-WebMedia/x86_64
+          EOF
 
           cat > "${repo_root}/index.html" <<'EOF'
-<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>ArDali Pacman Repo</title>
-    <style>
-      body { font-family: system-ui, sans-serif; max-width: 760px; margin: 48px auto; padding: 0 20px; color: #dbeafe; background: #0b1220; }
-      a { color: #67e8f9; }
-      code, pre { background: #111827; border-radius: 8px; }
-      pre { padding: 16px; overflow: auto; }
-    </style>
-  </head>
-  <body>
-    <h1>ArDali Pacman Repo</h1>
-    <p>Add this repository to <code>/etc/pacman.conf</code>:</p>
-    <pre>[ardali]
-SigLevel = Optional TrustAll
-Server = https://muhammed-dali.github.io/ArDali-WebMedia/x86_64</pre>
-    <p>Then run:</p>
-    <pre>sudo pacman -Sy
-sudo pacman -S ardali-bin</pre>
-    <p><a href="./ardali.repo">Download ardali.repo</a></p>
-  </body>
-</html>
-EOF
+          <!doctype html>
+          <html lang="en">
+            <head>
+              <meta charset="utf-8">
+              <meta name="viewport" content="width=device-width, initial-scale=1">
+              <title>ArDali Pacman Repo</title>
+              <style>
+                body { font-family: system-ui, sans-serif; max-width: 760px; margin: 48px auto; padding: 0 20px; color: #dbeafe; background: #0b1220; }
+                a { color: #67e8f9; }
+                code, pre { background: #111827; border-radius: 8px; }
+                pre { padding: 16px; overflow: auto; }
+              </style>
+            </head>
+            <body>
+              <h1>ArDali Pacman Repo</h1>
+              <p>Add this repository to <code>/etc/pacman.conf</code>:</p>
+              <pre>[ardali]
+          SigLevel = Optional TrustAll
+          Server = https://muhammed-dali.github.io/ArDali-WebMedia/x86_64</pre>
+              <p>Then run:</p>
+              <pre>sudo pacman -Sy
+          sudo pacman -S ardali-bin</pre>
+              <p><a href="./ardali.repo">Download ardali.repo</a></p>
+            </body>
+          </html>
+          EOF
 
       - name: Publish as release assets
         env:
