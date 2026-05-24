@@ -22,6 +22,26 @@
         }
     };
 
+    const UI_THEME_STORAGE_KEY = 'ardali_ui_theme';
+    const SHARED_THEME_KEY = 'theme';
+    const THEME_ALIASES = {
+        github: 'light',
+        'aur-renk-efektleri': 'ardali',
+        'performance-lite': 'dark',
+        'performance-balanced': 'ardali'
+    };
+    const THEME_OPTIONS = new Set([
+        'ardali',
+        'dark',
+        'black',
+        'light',
+        'frappe',
+        'onedark',
+        'matrix',
+        'latte',
+        'solarized-dark'
+    ]);
+
     function t(key, fallback = '') {
         try {
             const value = window.i18n?.tSync?.(key);
@@ -70,6 +90,44 @@
     let saveTimer = null;
     let lastStats = null;
     let developSourcesLoaded = false;
+
+    function normalizeTheme(theme) {
+        const raw = String(theme || '').trim().toLowerCase();
+        const mapped = THEME_ALIASES[raw] || raw;
+        return THEME_OPTIONS.has(mapped) ? mapped : 'black';
+    }
+
+    function applyTheme(theme, options = {}) {
+        const nextTheme = normalizeTheme(theme);
+        const commitTheme = () => {
+            document.documentElement.setAttribute('theme', nextTheme);
+            document.documentElement.dataset.ardaliTheme = nextTheme;
+            document.body?.setAttribute('data-ardali-theme', nextTheme);
+        };
+        const prefersReducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches;
+        if (!options.animate || prefersReducedMotion || typeof document.startViewTransition !== 'function') {
+            commitTheme();
+            return;
+        }
+        try {
+            document.startViewTransition(commitTheme);
+        } catch {
+            commitTheme();
+        }
+    }
+
+    function getStoredTheme() {
+        try {
+            return normalizeTheme(
+                settings?.appearance?.theme ||
+                localStorage.getItem(UI_THEME_STORAGE_KEY) ||
+                localStorage.getItem(SHARED_THEME_KEY) ||
+                'black'
+            );
+        } catch {
+            return normalizeTheme(settings?.appearance?.theme || 'black');
+        }
+    }
 
     function drawStaticKnob(canvas) {
         if (!canvas || typeof canvas.getContext !== 'function') return;
@@ -569,6 +627,7 @@
         }
         settings = await window.ardali?.loadSettings?.() || {};
         adblock = ensureAdblock(settings.adblock);
+        applyTheme(getStoredTheme());
         window.i18n?.translatePage?.();
         updateModeUi();
         setActiveTab('settings');
@@ -623,6 +682,7 @@
         if (!nextSettings || typeof nextSettings !== 'object') return;
         settings = nextSettings;
         adblock = ensureAdblock(settings.adblock);
+        applyTheme(getStoredTheme(), { animate: true });
         const nextLang = String(settings?.ui?.language || '').trim();
         if (nextLang && window.i18n?.setLanguage) {
             window.i18n.setLanguage(nextLang, { skipPersist: true }).catch(() => {
@@ -635,6 +695,11 @@
         updateModeUi();
         if (!adblock.developerMode && document.body.dataset.activePane === 'develop') setActiveTab('settings');
         refreshStats().catch(() => {});
+    });
+
+    window.addEventListener('storage', (event) => {
+        if (event.key !== UI_THEME_STORAGE_KEY && event.key !== SHARED_THEME_KEY) return;
+        applyTheme(event.newValue || 'black', { animate: true });
     });
 
     window.i18n?.onChange?.(() => {

@@ -9,6 +9,20 @@
     <link rel="stylesheet" href="styles/main.css">
 </head>
 <body class="settings-window-mode">
+    <script>
+        (() => {
+            try {
+                const allowed = new Set(['aur-renk-efektleri', 'performance-balanced', 'performance-lite', 'ardali', 'dark', 'black', 'light', 'frappe', 'onedark', 'matrix', 'latte', 'solarized-dark', 'neon-night', 'retro-amber', 'deep-ocean', 'forest-mint']);
+                const theme = String(localStorage.getItem('ardali_ui_theme') || localStorage.getItem('theme') || '').trim();
+                if (!allowed.has(theme)) return;
+                document.documentElement.dataset.ardaliTheme = theme;
+                document.documentElement.setAttribute('theme', theme);
+                document.body.setAttribute('data-ardali-theme', theme);
+            } catch {
+                // ignore
+            }
+        })();
+    </script>
     <div class="app-container">
         <main class="main-content">
             <div class="content-stack">
@@ -21,35 +35,39 @@
                             <div class="modal-body">
                                 <div class="settings-sidebar">
                                     <button class="settings-tab active" data-tab="playback">
-                                        <span class="settings-tab-icon material-symbols-rounded" aria-hidden="true">play_circle</span>
+                                        <span class="settings-tab-icon settings-tab-icon-play" aria-hidden="true"></span>
                                         <span class="settings-tab-label" data-i18n="settings.tabs.playback">Oynat</span>
                                     </button>
                                     <button class="settings-tab" data-tab="shortcuts">
-                                        <span class="settings-tab-icon material-symbols-rounded" aria-hidden="true">keyboard</span>
+                                        <span class="settings-tab-icon settings-tab-icon-keyboard" aria-hidden="true"></span>
                                         <span class="settings-tab-label" data-i18n="playback.shortcuts.title">Klavye Kısayolları</span>
                                     </button>
                                     <button class="settings-tab" data-tab="listen">
-                                        <span class="settings-tab-icon material-symbols-rounded" aria-hidden="true">graphic_eq</span>
+                                        <span class="settings-tab-icon settings-tab-icon-eq" aria-hidden="true"></span>
                                         <span class="settings-tab-label" data-i18n="settings.tabs.listen">Dinle</span>
                                     </button>
                                     <button class="settings-tab" data-tab="behavior">
-                                        <span class="settings-tab-icon material-symbols-rounded" aria-hidden="true">tune</span>
+                                        <span class="settings-tab-icon settings-tab-icon-tune" aria-hidden="true"></span>
                                         <span class="settings-tab-label" data-i18n="settings.tabs.behavior">Davranış</span>
                                     </button>
                                     <button class="settings-tab" data-tab="security">
-                                        <span class="settings-tab-icon material-symbols-rounded" aria-hidden="true">shield</span>
+                                        <span class="settings-tab-icon settings-tab-icon-shield" aria-hidden="true"></span>
                                         <span class="settings-tab-label" data-i18n="securityPage.title">Güvenlik</span>
                                     </button>
+                                    <button class="settings-tab" data-tab="web">
+                                        <span class="settings-tab-icon settings-tab-icon-globe" aria-hidden="true"></span>
+                                        <span class="settings-tab-label" data-i18n="settings.tabs.web">Web Ayarları</span>
+                                    </button>
                                     <button class="settings-tab" data-tab="library">
-                                        <span class="settings-tab-icon material-symbols-rounded" aria-hidden="true">library_music</span>
+                                        <span class="settings-tab-icon settings-tab-icon-library" aria-hidden="true"></span>
                                         <span class="settings-tab-label" data-i18n="settings.tabs.library">Medya Kütüphanesi</span>
                                     </button>
                                     <button class="settings-tab" data-tab="gallery">
-                                        <span class="settings-tab-icon material-symbols-rounded" aria-hidden="true">photo_library</span>
+                                        <span class="settings-tab-icon settings-tab-icon-gallery" aria-hidden="true"></span>
                                         <span class="settings-tab-label" data-i18n="settings.tabs.gallery">Galeri</span>
                                     </button>
                                     <button class="settings-tab" data-tab="audio">
-                                        <span class="settings-tab-icon material-symbols-rounded" aria-hidden="true">headphones</span>
+                                        <span class="settings-tab-icon settings-tab-icon-headphones" aria-hidden="true"></span>
                                         <span class="settings-tab-label" data-i18n="settings.tabs.audio">Ses Çıkışı</span>
                                     </button>
                                 </div>
@@ -159,34 +177,14 @@
                                                 <span data-i18n="playback.shortcuts.media.autoDetect">Klavye medya tuşlarını otomatik algıla (Play/Pause, Önceki, Sonraki)</span>
                                             </label>
                                             <div class="settings-sub" data-i18n="playback.shortcuts.media.autoDetectHint">Birçok klavyede medya tuşları veya Fn + medya tuşları bu şekilde otomatik çalışır.</div>
-                                            <label class="checkbox-label">
-                                                <input type="checkbox" id="browserNavigationHotkeysEnabled" checked>
-                                                <span>Tarayıcı gezinme kısayollarını etkinleştir (Alt+Sol / Alt+Sağ, BrowserBack / BrowserForward)</span>
-                                            </label>
                                             <div class="settings-row"><div class="settings-row-left"><div class="settings-label" data-i18n="playback.shortcuts.media.previous">Önceki parçaya geç</div></div><div class="settings-inline"><input type="text" id="shortcutPrevious" class="settings-input" autocomplete="off" autocapitalize="off" spellcheck="false"><button type="button" class="settings-btn shortcut-capture-btn" data-shortcut-target="shortcutPrevious" data-i18n="playback.shortcuts.actions.assign">Ata</button><button type="button" class="settings-btn shortcut-clear-btn" data-shortcut-target="shortcutPrevious" data-i18n="playback.shortcuts.actions.clear">Temizle</button></div></div>
                                             <div class="settings-row"><div class="settings-row-left"><div class="settings-label" data-i18n="playback.shortcuts.media.playPause">Oynat / Duraklat</div></div><div class="settings-inline"><input type="text" id="shortcutPlayPause" class="settings-input" autocomplete="off" autocapitalize="off" spellcheck="false"><button type="button" class="settings-btn shortcut-capture-btn" data-shortcut-target="shortcutPlayPause" data-i18n="playback.shortcuts.actions.assign">Ata</button><button type="button" class="settings-btn shortcut-clear-btn" data-shortcut-target="shortcutPlayPause" data-i18n="playback.shortcuts.actions.clear">Temizle</button></div></div>
                                             <div class="settings-row"><div class="settings-row-left"><div class="settings-label" data-i18n="playback.shortcuts.media.next">Sonraki parçaya geç</div></div><div class="settings-inline"><input type="text" id="shortcutNext" class="settings-input" autocomplete="off" autocapitalize="off" spellcheck="false"><button type="button" class="settings-btn shortcut-capture-btn" data-shortcut-target="shortcutNext" data-i18n="playback.shortcuts.actions.assign">Ata</button><button type="button" class="settings-btn shortcut-clear-btn" data-shortcut-target="shortcutNext" data-i18n="playback.shortcuts.actions.clear">Temizle</button></div></div>
                                             <div class="settings-sub" data-i18n="playback.shortcuts.assign.hint">Ata butonuna tıkla, sonra klavyede kısayolu bas. Temizle ile sıfırlayabilirsin.</div>
                                             <div class="settings-subtitle" data-i18n="settings.shortcuts.groups.video">Video Kısayolları</div>
                                             <div class="settings-sub" data-i18n="settings.shortcuts.video.hint">Video için şu an oynatma tuşları ve genel medya tuşları kullanılır.</div>
-                                            <div class="settings-subtitle" data-i18n="settings.shortcuts.groups.web">Web Kısayolları</div>
-                                            <div class="settings-subtitle" data-i18n="playback.shortcuts.sections.tabs">Sekme Geçiş Tuşları</div>
                                             <div class="settings-row"><div class="settings-row-left"><div class="settings-label" data-i18n="playback.shortcuts.tabs.music">Müzik sekmesi</div></div><div class="settings-inline"><input type="text" id="shortcutTabMusic" class="settings-input" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="-"><button type="button" class="settings-btn shortcut-capture-btn" data-shortcut-target="shortcutTabMusic" data-i18n="playback.shortcuts.actions.assign">Ata</button><button type="button" class="settings-btn shortcut-clear-btn" data-shortcut-target="shortcutTabMusic" data-i18n="playback.shortcuts.actions.clear">Temizle</button></div></div>
                                             <div class="settings-row"><div class="settings-row-left"><div class="settings-label" data-i18n="playback.shortcuts.tabs.video">Video sekmesi</div></div><div class="settings-inline"><input type="text" id="shortcutTabVideo" class="settings-input" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="-"><button type="button" class="settings-btn shortcut-capture-btn" data-shortcut-target="shortcutTabVideo" data-i18n="playback.shortcuts.actions.assign">Ata</button><button type="button" class="settings-btn shortcut-clear-btn" data-shortcut-target="shortcutTabVideo" data-i18n="playback.shortcuts.actions.clear">Temizle</button></div></div>
-                                            <div class="settings-row"><div class="settings-row-left"><div class="settings-label" data-i18n="playback.shortcuts.tabs.web">Web sekmesi</div></div><div class="settings-inline"><input type="text" id="shortcutTabWeb" class="settings-input" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="-"><button type="button" class="settings-btn shortcut-capture-btn" data-shortcut-target="shortcutTabWeb" data-i18n="playback.shortcuts.actions.assign">Ata</button><button type="button" class="settings-btn shortcut-clear-btn" data-shortcut-target="shortcutTabWeb" data-i18n="playback.shortcuts.actions.clear">Temizle</button></div></div>
-                                            <div class="settings-subtitle" data-i18n="playback.shortcuts.sections.platforms">Web Platform Tuşları</div>
-                                            <div class="settings-row"><div class="settings-row-left"><div class="settings-label">YouTube Music</div></div><div class="settings-inline"><input type="text" id="shortcutPlatformYtmusic" class="settings-input" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="-"><button type="button" class="settings-btn shortcut-capture-btn" data-shortcut-target="shortcutPlatformYtmusic" data-i18n="playback.shortcuts.actions.assign">Ata</button><button type="button" class="settings-btn shortcut-clear-btn" data-shortcut-target="shortcutPlatformYtmusic" data-i18n="playback.shortcuts.actions.clear">Temizle</button></div></div>
-                                            <div class="settings-row"><div class="settings-row-left"><div class="settings-label">YouTube</div></div><div class="settings-inline"><input type="text" id="shortcutPlatformYoutube" class="settings-input" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="-"><button type="button" class="settings-btn shortcut-capture-btn" data-shortcut-target="shortcutPlatformYoutube" data-i18n="playback.shortcuts.actions.assign">Ata</button><button type="button" class="settings-btn shortcut-clear-btn" data-shortcut-target="shortcutPlatformYoutube" data-i18n="playback.shortcuts.actions.clear">Temizle</button></div></div>
-                                            <div class="settings-row"><div class="settings-row-left"><div class="settings-label">Deezer</div></div><div class="settings-inline"><input type="text" id="shortcutPlatformDeezer" class="settings-input" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="-"><button type="button" class="settings-btn shortcut-capture-btn" data-shortcut-target="shortcutPlatformDeezer" data-i18n="playback.shortcuts.actions.assign">Ata</button><button type="button" class="settings-btn shortcut-clear-btn" data-shortcut-target="shortcutPlatformDeezer" data-i18n="playback.shortcuts.actions.clear">Temizle</button></div></div>
-                                            <div class="settings-row"><div class="settings-row-left"><div class="settings-label">SoundCloud</div></div><div class="settings-inline"><input type="text" id="shortcutPlatformSoundcloud" class="settings-input" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="-"><button type="button" class="settings-btn shortcut-capture-btn" data-shortcut-target="shortcutPlatformSoundcloud" data-i18n="playback.shortcuts.actions.assign">Ata</button><button type="button" class="settings-btn shortcut-clear-btn" data-shortcut-target="shortcutPlatformSoundcloud" data-i18n="playback.shortcuts.actions.clear">Temizle</button></div></div>
-                                            <div class="settings-row"><div class="settings-row-left"><div class="settings-label">Facebook</div></div><div class="settings-inline"><input type="text" id="shortcutPlatformFacebook" class="settings-input" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="-"><button type="button" class="settings-btn shortcut-capture-btn" data-shortcut-target="shortcutPlatformFacebook" data-i18n="playback.shortcuts.actions.assign">Ata</button><button type="button" class="settings-btn shortcut-clear-btn" data-shortcut-target="shortcutPlatformFacebook" data-i18n="playback.shortcuts.actions.clear">Temizle</button></div></div>
-                                            <div class="settings-row"><div class="settings-row-left"><div class="settings-label">Instagram</div></div><div class="settings-inline"><input type="text" id="shortcutPlatformInstagram" class="settings-input" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="-"><button type="button" class="settings-btn shortcut-capture-btn" data-shortcut-target="shortcutPlatformInstagram" data-i18n="playback.shortcuts.actions.assign">Ata</button><button type="button" class="settings-btn shortcut-clear-btn" data-shortcut-target="shortcutPlatformInstagram" data-i18n="playback.shortcuts.actions.clear">Temizle</button></div></div>
-                                            <div class="settings-row"><div class="settings-row-left"><div class="settings-label">TikTok</div></div><div class="settings-inline"><input type="text" id="shortcutPlatformTiktok" class="settings-input" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="-"><button type="button" class="settings-btn shortcut-capture-btn" data-shortcut-target="shortcutPlatformTiktok" data-i18n="playback.shortcuts.actions.assign">Ata</button><button type="button" class="settings-btn shortcut-clear-btn" data-shortcut-target="shortcutPlatformTiktok" data-i18n="playback.shortcuts.actions.clear">Temizle</button></div></div>
-                                            <div class="settings-row"><div class="settings-row-left"><div class="settings-label">X</div></div><div class="settings-inline"><input type="text" id="shortcutPlatformX" class="settings-input" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="-"><button type="button" class="settings-btn shortcut-capture-btn" data-shortcut-target="shortcutPlatformX" data-i18n="playback.shortcuts.actions.assign">Ata</button><button type="button" class="settings-btn shortcut-clear-btn" data-shortcut-target="shortcutPlatformX" data-i18n="playback.shortcuts.actions.clear">Temizle</button></div></div>
-                                            <div class="settings-row"><div class="settings-row-left"><div class="settings-label">Reddit</div></div><div class="settings-inline"><input type="text" id="shortcutPlatformReddit" class="settings-input" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="-"><button type="button" class="settings-btn shortcut-capture-btn" data-shortcut-target="shortcutPlatformReddit" data-i18n="playback.shortcuts.actions.assign">Ata</button><button type="button" class="settings-btn shortcut-clear-btn" data-shortcut-target="shortcutPlatformReddit" data-i18n="playback.shortcuts.actions.clear">Temizle</button></div></div>
-                                            <div class="settings-row"><div class="settings-row-left"><div class="settings-label">Twitch</div></div><div class="settings-inline"><input type="text" id="shortcutPlatformTwitch" class="settings-input" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="-"><button type="button" class="settings-btn shortcut-capture-btn" data-shortcut-target="shortcutPlatformTwitch" data-i18n="playback.shortcuts.actions.assign">Ata</button><button type="button" class="settings-btn shortcut-clear-btn" data-shortcut-target="shortcutPlatformTwitch" data-i18n="playback.shortcuts.actions.clear">Temizle</button></div></div>
-                                            <div class="settings-row"><div class="settings-row-left"><div class="settings-label">WhatsApp</div></div><div class="settings-inline"><input type="text" id="shortcutPlatformWhatsapp" class="settings-input" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="-"><button type="button" class="settings-btn shortcut-capture-btn" data-shortcut-target="shortcutPlatformWhatsapp" data-i18n="playback.shortcuts.actions.assign">Ata</button><button type="button" class="settings-btn shortcut-clear-btn" data-shortcut-target="shortcutPlatformWhatsapp" data-i18n="playback.shortcuts.actions.clear">Temizle</button></div></div>
-                                            <div class="settings-row"><div class="settings-row-left"><div class="settings-label">Telegram</div></div><div class="settings-inline"><input type="text" id="shortcutPlatformTelegram" class="settings-input" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="-"><button type="button" class="settings-btn shortcut-capture-btn" data-shortcut-target="shortcutPlatformTelegram" data-i18n="playback.shortcuts.actions.assign">Ata</button><button type="button" class="settings-btn shortcut-clear-btn" data-shortcut-target="shortcutPlatformTelegram" data-i18n="playback.shortcuts.actions.clear">Temizle</button></div></div>
                                             <div class="settings-subtitle" data-i18n="settings.shortcuts.groups.gallery">Galeri Kısayolları</div>
                                             <label class="checkbox-label">
                                                 <input type="checkbox" id="galleryHotkeysEnabled">
@@ -268,8 +266,8 @@
                                             <div class="settings-row">
                                                 <div class="settings-row-left">
                                                     <div class="settings-label" data-i18n="ui.languageSelection.label">Dil</div>
-                                                    <div class="settings-sub" data-i18n="ui.languageSelection.hint">Değişiklikler için yeniden başlatma gerekir.</div>
-                                                    <div class="settings-sub hidden" id="languageRestartHint" data-i18n="ui.languageSelection.restartHint">Seçtiğiniz dil bir sonraki açılışta uygulanacak.</div>
+                                                    <div class="settings-sub" data-i18n="ui.languageSelection.hint">Dil değişikliği kaydedildikten sonra yeniden başlatma gerekir.</div>
+                                                    <div class="settings-sub hidden" id="languageRestartHint" data-i18n="ui.languageSelection.restartHint">Seçilen dil uygulandı.</div>
                                                 </div>
                                                 <select class="settings-select" id="languageSelect" aria-label="Language">
                                                     <option value="tr-TR">🇹🇷 Türkçe</option>
@@ -285,15 +283,15 @@
                                                     <option value="hi-IN">🇮🇳 हिन्दी</option>
                                                     <option value="hu-HU">🇭🇺 Magyar</option>
                                                     <option value="it-IT">🇮🇹 Italiano</option>
-                                                    <option value="ja-JP">🇯🇵 Japonca</option>
+                                                    <option value="ja-JP">🇯🇵 日本語</option>
                                                     <option value="ne-NP">🇳🇵 नेपाली</option>
                                                     <option value="pl-PL">🇵🇱 Polski</option>
                                                     <option value="pt-BR">🇧🇷 Português (Brasil)</option>
                                                     <option value="ru-RU">🇷🇺 Русский</option>
                                                     <option value="uk-UA">🇺🇦 Українська</option>
                                                     <option value="vi-VN">🇻🇳 Tiếng Việt</option>
-                                                    <option value="zh-CN">🇨🇳 Çince (Basitleştirilmiş)</option>
-                                                    <option value="zh-TW">🇹🇼 Çince (Geleneksel)</option>
+                                                    <option value="zh-CN">🇨🇳 简体中文</option>
+                                                    <option value="zh-TW">🇹🇼 繁體中文</option>
                                                 </select>
                                             </div>
                                             <div class="settings-row">
@@ -306,6 +304,15 @@
                                                     <option value="aur-renk-efektleri">ArDali Medya Player</option>
                                                     <option value="performance-balanced" data-i18n="ui.theme.options.performanceBalanced">Balanced Flow</option>
                                                     <option value="performance-lite" data-i18n="ui.theme.options.performanceLite">Low Hardware Stable</option>
+                                                    <option value="ardali">ArDali</option>
+                                                    <option value="dark">Karanlık</option>
+                                                    <option value="black" data-i18n="ui.theme.options.black">Siyah</option>
+                                                    <option value="light">Aydınlık</option>
+                                                    <option value="frappe">Frappé</option>
+                                                    <option value="onedark">One dark</option>
+                                                    <option value="matrix">Matrix</option>
+                                                    <option value="latte">Latte</option>
+                                                    <option value="solarized-dark">Solarized Dark</option>
                                                     <option value="neon-night">Neon Night</option>
                                                     <option value="retro-amber">Retro Amber</option>
                                                     <option value="deep-ocean">Deep Ocean</option>
@@ -328,11 +335,25 @@
                                                 <div class="settings-row-left">
                                                     <div class="settings-label" data-i18n="ui.effectsMode.label">Görsel Efekt Modu</div>
                                                     <div class="settings-sub" data-i18n="ui.effectsMode.hint">Glow/blur performansını ayarlar. Otomatik mod düşük sistemde kendisi azaltır.</div>
+                                                    <div class="settings-sub" id="uiOptimizationProfileHint" data-i18n="ui.optimizationProfile.hint.initial">Otomatik Akıllı: güç, pil ve donanıma göre en uygun profil seçilir.</div>
                                                 </div>
                                                 <select class="settings-select" id="uiVisualModeSelect" aria-label="Visual mode">
                                                     <option value="full" data-i18n="ui.visualMode.options.full">Tam</option>
                                                     <option value="balanced" data-i18n="ui.visualMode.options.balanced">Dengeli</option>
                                                     <option value="minimal" data-i18n="ui.visualMode.options.minimal">Minimum</option>
+                                                </select>
+                                            </div>
+                                            <div class="settings-row">
+                                                <div class="settings-row-left">
+                                                    <div class="settings-label" data-i18n="ui.optimizationProfile.label">Optimize Hedefi</div>
+                                                    <div class="settings-sub" data-i18n="ui.optimizationProfile.hint">Otomatik veya manuel önceliğe göre arayüz, kapak, web ve ses efekt yükünü ayarlar.</div>
+                                                </div>
+                                                <select class="settings-select" id="uiOptimizationProfileSelect" aria-label="Optimization profile">
+                                                    <option value="auto" data-i18n="ui.optimizationProfile.options.auto">Otomatik Akıllı</option>
+                                                    <option value="gpu" data-i18n="ui.optimizationProfile.options.gpu">GPU öncelikli</option>
+                                                    <option value="ram" data-i18n="ui.optimizationProfile.options.ram">RAM öncelikli</option>
+                                                    <option value="battery" data-i18n="ui.optimizationProfile.options.battery">Pil öncelikli</option>
+                                                    <option value="quality" data-i18n="ui.optimizationProfile.options.quality">Görsel kalite öncelikli</option>
                                                 </select>
                                             </div>
                                             <div class="settings-row">
@@ -432,11 +453,6 @@
                                         <div class="settings-group">
                                             <h4 data-i18n="ui.startup.title">Başlangıç Davranışı</h4>
                                             <label class="checkbox-label">
-                                                <input type="checkbox" id="behaviorWebExperienceEnabled" checked>
-                                                <span data-i18n="ui.startup.webExperienceEnabled">Web deneyimini etkinleştir (isteğe bağlı)</span>
-                                            </label>
-                                            <div class="settings-sub" data-i18n="ui.startup.webExperienceEnabled.hint">Kapalı olduğunda uygulama medya oynatıcı modunda kalır ve Web sekmesi gizlenir.</div>
-                                            <label class="checkbox-label">
                                                 <input type="checkbox" id="behaviorRememberLastSection" checked>
                                                 <span data-i18n="ui.startup.rememberLastSection">Son açık ana bölümü hatırla</span>
                                             </label>
@@ -449,6 +465,35 @@
                                                     <option value="web" data-i18n="settings.library.startupPage.options.web">Web</option>
                                                 </select>
                                             </div>
+                                            <label class="checkbox-label">
+                                                <input type="checkbox" id="behaviorCloseToTray" checked>
+                                                <span data-i18n="ui.startup.closeToTray">Pencereyi kapatınca sistem tepsisine küçült</span>
+                                            </label>
+                                            <div class="settings-sub" data-i18n="ui.startup.closeToTrayHint">Kapalıysa pencere kapatma uygulamadan çıkış olarak davranır.</div>
+                                            <label class="checkbox-label">
+                                                <input type="checkbox" id="behaviorNotificationsEnabled">
+                                                <span data-i18n="ui.startup.notificationsEnabled">Uygulama içi bildirimleri göster</span>
+                                            </label>
+                                            <div class="settings-sub" data-i18n="ui.startup.notificationsEnabledHint">Kapalıyken uygulama içi bildirimler gösterilmez.</div>
+                                        </div>
+                                    </div>
+                                    <div class="settings-page hidden" id="webSettings">
+                                        <h3 data-i18n="settings.tabs.web">Web Ayarları</h3>
+                                        <div class="settings-group">
+                                            <h4 data-i18n="settings.web.sections.general">Genel</h4>
+                                            <label class="checkbox-label">
+                                                <input type="checkbox" id="behaviorWebExperienceEnabled" checked>
+                                                <span data-i18n="ui.startup.webExperienceEnabled">Web deneyimini etkinleştir (isteğe bağlı)</span>
+                                            </label>
+                                            <div class="settings-sub" data-i18n="ui.startup.webExperienceEnabled.hint">Kapalı olduğunda uygulama medya oynatıcı modunda kalır ve Web sekmesi gizlenir.</div>
+                                            <label class="checkbox-label">
+                                                <input type="checkbox" id="behaviorWebRestoreLastSession" checked>
+                                                <span data-i18n="settings.web.restoreLastSession">Son web oturumunu hatırla</span>
+                                            </label>
+                                            <label class="checkbox-label">
+                                                <input type="checkbox" id="behaviorWebSuspendWhenInactive" checked>
+                                                <span data-i18n="settings.web.suspendWhenInactive">Web sekmesi pasifken oynatmayı duraklat</span>
+                                            </label>
                                             <div class="setting-row">
                                                 <span data-i18n="ui.startup.webStartupDelay">Web başlangıç yükleme gecikmesi</span>
                                                 <select class="settings-select" id="behaviorWebStartupDelay">
@@ -458,6 +503,9 @@
                                                     <option value="2000" data-i18n="ui.startup.webStartupDelay.options.calm">Sakin (2.0 sn)</option>
                                                 </select>
                                             </div>
+                                        </div>
+                                        <div class="settings-group">
+                                            <h4 data-i18n="settings.web.sections.appearance">Görünüm ve Hareket</h4>
                                             <div class="setting-row">
                                                 <span data-i18n="ui.startup.webAnimationMode.label">Web arayüz animasyonu</span>
                                                 <select class="settings-select" id="behaviorWebAnimationMode">
@@ -475,18 +523,238 @@
                                             </div>
                                             <label class="checkbox-label">
                                                 <input type="checkbox" id="behaviorWebLowPowerMode">
+                                                <span class="web-setting-icon web-setting-icon-battery" aria-hidden="true"></span>
                                                 <span data-i18n="ui.startup.webLowPowerMode.label">Web animasyonları düşük sistem modu</span>
                                             </label>
+                                        </div>
+                                        <div class="settings-group">
+                                            <h4 data-i18n="settings.web.sections.privacy">Gizlilik ve Veri</h4>
                                             <label class="checkbox-label">
-                                                <input type="checkbox" id="behaviorCloseToTray" checked>
-                                                <span data-i18n="ui.startup.closeToTray">Pencereyi kapatınca sistem tepsisine küçült</span>
+                                                <input type="checkbox" id="behaviorWebClearCacheOnQuit" checked>
+                                                <span class="web-setting-icon web-setting-icon-cache" aria-hidden="true"></span>
+                                                <span data-i18n="ui.startup.webClearCacheOnQuit.label">Uygulama kapanırken web önbelleğini temizle</span>
                                             </label>
-                                            <div class="settings-sub" data-i18n="ui.startup.closeToTrayHint">Kapalıysa pencere kapatma uygulamadan çıkış olarak davranır.</div>
+                                            <div class="settings-sub" data-i18n="ui.startup.webClearCacheOnQuit.hint">Cache, GPUCache ve Code Cache klasörleri kapanışta sessizce temizlenir.</div>
                                             <label class="checkbox-label">
-                                                <input type="checkbox" id="behaviorNotificationsEnabled">
-                                                <span data-i18n="ui.startup.notificationsEnabled">Uygulama içi bildirimleri göster</span>
+                                                <input type="checkbox" id="behaviorWebClearCookiesOnQuit">
+                                                <span class="web-setting-icon web-setting-icon-cookie" aria-hidden="true"></span>
+                                                <span data-i18n="settings.web.clearCookiesOnQuit">Kapanışta web çerezlerini temizle</span>
                                             </label>
-                                            <div class="settings-sub" data-i18n="ui.startup.notificationsEnabledHint">Kapalıyken uygulama içi bildirimler gösterilmez.</div>
+                                            <label class="checkbox-label">
+                                                <input type="checkbox" id="behaviorWebClearSiteDataOnQuit">
+                                                <span class="web-setting-icon web-setting-icon-database" aria-hidden="true"></span>
+                                                <span data-i18n="settings.web.clearSiteDataOnQuit">Kapanışta site verilerini temizle</span>
+                                            </label>
+                                            <label class="checkbox-label">
+                                                <input type="checkbox" id="behaviorWebClearHistoryOnQuit">
+                                                <span class="web-setting-icon web-setting-icon-history" aria-hidden="true"></span>
+                                                <span data-i18n="settings.web.clearHistoryOnQuit">Kapanışta son web adresini unut</span>
+                                            </label>
+                                            <div class="settings-row">
+                                                <div class="settings-row-left">
+                                                    <div class="settings-label" data-i18n="settings.web.clearNow.label">Tüm web verilerini şimdi temizle</div>
+                                                    <div class="settings-sub" id="webClearLastStatus" data-i18n="settings.web.clearStatus.never">Henüz temizlik yapılmadı.</div>
+                                                </div>
+                                                <div class="settings-inline">
+                                                    <button type="button" class="settings-btn" id="webClearCacheNowBtn" data-i18n="settings.web.clearCacheNow">Önbellek</button>
+                                                    <button type="button" class="settings-btn" id="webClearCookiesNowBtn" data-i18n="settings.web.clearCookiesNow">Çerezler</button>
+                                                    <button type="button" class="settings-btn" id="webClearSiteDataNowBtn" data-i18n="settings.web.clearSiteDataNow">Site verisi</button>
+                                                    <button type="button" class="settings-btn" id="webClearAllDataNowBtn" data-i18n="settings.web.clearAllNow">Tümü</button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div class="settings-group">
+                                            <h4 data-i18n="settings.web.sections.security">Güvenlik</h4>
+                                            <label class="checkbox-label">
+                                                <input type="checkbox" id="behaviorWebPreferHttps" checked>
+                                                <span class="web-setting-icon web-setting-icon-lock" aria-hidden="true"></span>
+                                                <span data-i18n="settings.web.preferHttps">HTTP adreslerini HTTPS olarak dene</span>
+                                            </label>
+                                            <label class="checkbox-label">
+                                                <input type="checkbox" id="behaviorWebReduceWebRtcIpLeaks" checked>
+                                                <span class="web-setting-icon web-setting-icon-eye-lock" aria-hidden="true"></span>
+                                                <span data-i18n="settings.web.reduceWebRtcIpLeaks">WebRTC yerel IP sızıntısını azalt</span>
+                                            </label>
+                                            <div class="settings-sub" data-i18n="settings.web.reduceWebRtcIpLeaks.hint">Bu ayar uygulama yeniden başlatıldıktan sonra Chromium ağına tam uygulanır.</div>
+                                            <div class="setting-row">
+                                                <span data-i18n="settings.web.sessionProfile">Web oturum profili</span>
+                                                <select class="settings-select" id="behaviorWebSessionProfile">
+                                                    <option value="persistent" data-i18n="securityPage.sessionProfile.options.persistent">Kalıcı (çerezleri sakla)</option>
+                                                    <option value="isolated" data-i18n="securityPage.sessionProfile.options.isolated">İzole (her açılışta temiz başla)</option>
+                                                </select>
+                                            </div>
+                                            <label class="checkbox-label">
+                                                <input type="checkbox" id="behaviorWebAutoRecover" checked>
+                                                <span class="web-setting-icon web-setting-icon-restart" aria-hidden="true"></span>
+                                                <span data-i18n="settings.web.autoRecover">Web donarsa veya çökerse otomatik kurtar</span>
+                                            </label>
+                                        </div>
+                                        <div class="settings-group">
+                                            <h4 data-i18n="settings.web.sections.permissions">Site İzinleri</h4>
+                                            <label class="checkbox-label">
+                                                <input type="checkbox" id="behaviorWebAllowCamera">
+                                                <span class="web-setting-icon web-setting-icon-camera" aria-hidden="true"></span>
+                                                <span data-i18n="settings.web.permissions.camera">Kameraya izin ver</span>
+                                            </label>
+                                            <label class="checkbox-label">
+                                                <input type="checkbox" id="behaviorWebAllowMicrophone">
+                                                <span class="web-setting-icon web-setting-icon-mic" aria-hidden="true"></span>
+                                                <span data-i18n="settings.web.permissions.microphone">Mikrofona izin ver</span>
+                                            </label>
+                                            <label class="checkbox-label">
+                                                <input type="checkbox" id="behaviorWebAllowLocation">
+                                                <span class="web-setting-icon web-setting-icon-location" aria-hidden="true"></span>
+                                                <span data-i18n="settings.web.permissions.location">Konuma izin ver</span>
+                                            </label>
+                                            <label class="checkbox-label">
+                                                <input type="checkbox" id="behaviorWebAllowNotifications">
+                                                <span class="web-setting-icon web-setting-icon-bell" aria-hidden="true"></span>
+                                                <span data-i18n="settings.web.permissions.notifications">Site bildirimlerine izin ver</span>
+                                            </label>
+                                            <label class="checkbox-label">
+                                                <input type="checkbox" id="behaviorWebAllowPopups" checked>
+                                                <span class="web-setting-icon web-setting-icon-popup" aria-hidden="true"></span>
+                                                <span data-i18n="settings.web.permissions.popups">Pop-up pencerelerine izin ver</span>
+                                            </label>
+                                        </div>
+                                        <div class="settings-group">
+                                            <h4 data-i18n="settings.web.sections.siteData">Aktif Site Verisi</h4>
+                                            <div class="settings-row">
+                                                <div class="settings-row-left">
+                                                    <div class="settings-label" data-i18n="settings.web.activeSitePermissions.label">Aktif site izinleri</div>
+                                                    <div class="settings-sub" id="webActiveSitePermissionStatus" data-i18n="settings.web.activeSitePermissions.hint">Açık site için özel izin tercihi kaydedilebilir.</div>
+                                                </div>
+                                                <div class="settings-inline">
+                                                    <label class="checkbox-label compact">
+                                                        <input type="checkbox" id="webActiveSiteAllowCamera">
+                                                        <span class="web-setting-icon web-setting-icon-camera" aria-hidden="true"></span>
+                                                        <span data-i18n="settings.web.permissions.camera.short">Kamera</span>
+                                                    </label>
+                                                    <label class="checkbox-label compact">
+                                                        <input type="checkbox" id="webActiveSiteAllowMicrophone">
+                                                        <span class="web-setting-icon web-setting-icon-mic" aria-hidden="true"></span>
+                                                        <span data-i18n="settings.web.permissions.microphone.short">Mikrofon</span>
+                                                    </label>
+                                                    <label class="checkbox-label compact">
+                                                        <input type="checkbox" id="webActiveSiteAllowLocation">
+                                                        <span class="web-setting-icon web-setting-icon-location" aria-hidden="true"></span>
+                                                        <span data-i18n="settings.web.permissions.location.short">Konum</span>
+                                                    </label>
+                                                    <label class="checkbox-label compact">
+                                                        <input type="checkbox" id="webActiveSiteAllowNotifications">
+                                                        <span class="web-setting-icon web-setting-icon-bell" aria-hidden="true"></span>
+                                                        <span data-i18n="settings.web.permissions.notifications.short">Bildirim</span>
+                                                    </label>
+                                                    <label class="checkbox-label compact">
+                                                        <input type="checkbox" id="webActiveSiteAllowPopups">
+                                                        <span class="web-setting-icon web-setting-icon-popup" aria-hidden="true"></span>
+                                                        <span data-i18n="settings.web.permissions.popups.short">Pop-up</span>
+                                                    </label>
+                                                    <button type="button" class="settings-btn settings-btn-with-icon" id="webSaveActiveSitePermissionsBtn">
+                                                        <span class="settings-button-icon settings-button-icon-save-card" aria-hidden="true"></span>
+                                                        <span data-i18n="settings.web.activeSitePermissions.save">Kaydet</span>
+                                                    </button>
+                                                </div>
+                                            </div>
+                                            <div class="settings-row">
+                                                <div class="settings-row-left">
+                                                    <div class="settings-label" data-i18n="settings.web.currentSiteData.label">Aktif sitenin verilerini temizle</div>
+                                                    <div class="settings-sub" id="webCurrentSiteClearStatus" data-i18n="settings.web.currentSiteData.hint">Yalnızca açık olan web sitesinin çerezleri veya site verisi temizlenir.</div>
+                                                </div>
+                                                <div class="settings-inline">
+                                                    <button type="button" class="settings-btn" id="webClearCurrentSiteCookiesBtn" data-i18n="settings.web.clearCookiesNow">Çerezler</button>
+                                                    <button type="button" class="settings-btn" id="webClearCurrentSiteDataBtn" data-i18n="settings.web.clearSiteDataNow">Site verisi</button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div class="settings-group">
+                                            <h4 data-i18n="settings.web.sections.browserBehavior">Tarayıcı Davranışı</h4>
+                                            <div class="setting-row">
+                                                <span data-i18n="settings.web.userAgentMode">Kullanıcı ajanı modu</span>
+                                                <select class="settings-select" id="behaviorWebUserAgentMode">
+                                                    <option value="desktop" data-i18n="settings.web.userAgentMode.desktop">Masaüstü</option>
+                                                    <option value="mobile" data-i18n="settings.web.userAgentMode.mobile">Mobil</option>
+                                                    <option value="default" data-i18n="settings.web.userAgentMode.default">Varsayılan</option>
+                                                </select>
+                                            </div>
+                                            <div class="setting-row">
+                                                <span data-i18n="settings.web.autoplayPolicy">Web otomatik oynatma</span>
+                                                <select class="settings-select" id="behaviorWebAutoplayPolicy">
+                                                    <option value="allow" data-i18n="settings.web.autoplayPolicy.allow">İzin ver</option>
+                                                    <option value="gesture" data-i18n="settings.web.autoplayPolicy.gesture">Kullanıcı etkileşimi iste</option>
+                                                    <option value="block" data-i18n="settings.web.autoplayPolicy.block">Engelle</option>
+                                                </select>
+                                            </div>
+                                            <label class="checkbox-label">
+                                                <input type="checkbox" id="behaviorWebAskDownloadLocation" checked>
+                                                <span class="web-setting-icon web-setting-icon-download" aria-hidden="true"></span>
+                                                <span data-i18n="settings.web.askDownloadLocation">Web indirmelerinde konum sor</span>
+                                            </label>
+                                        </div>
+                                        <div class="settings-group">
+                                            <h4 data-i18n="settings.web.sections.advancedPrivacy">Gelişmiş Gizlilik</h4>
+                                            <label class="checkbox-label">
+                                                <input type="checkbox" id="behaviorWebReduceReferrers" checked>
+                                                <span class="web-setting-icon web-setting-icon-link-off" aria-hidden="true"></span>
+                                                <span data-i18n="settings.web.reduceReferrers">Referer bilgisini azalt</span>
+                                            </label>
+                                            <label class="checkbox-label">
+                                                <input type="checkbox" id="behaviorWebStripTrackingParams" checked>
+                                                <span class="web-setting-icon web-setting-icon-filter-off" aria-hidden="true"></span>
+                                                <span data-i18n="settings.web.stripTrackingParams">Takip parametrelerini temizle</span>
+                                            </label>
+                                            <label class="checkbox-label">
+                                                <input type="checkbox" id="behaviorWebBlockThirdPartyCookies">
+                                                <span class="web-setting-icon web-setting-icon-cookie-off" aria-hidden="true"></span>
+                                                <span data-i18n="settings.web.blockThirdPartyCookies">Üçüncü taraf çerezlerini engelle</span>
+                                            </label>
+                                        </div>
+                                        <div class="settings-group">
+                                            <h4 data-i18n="settings.web.sections.performance">Performans</h4>
+                                            <div class="setting-row">
+                                                <span class="web-setting-row-title">
+                                                    <span class="web-setting-icon web-setting-icon-battery-charge" aria-hidden="true"></span>
+                                                    <span data-i18n="settings.web.playbackPowerMode">Pilde web/video oynatma</span>
+                                                </span>
+                                                <select class="settings-select" id="behaviorWebPlaybackPowerMode">
+                                                    <option value="balanced" data-i18n="settings.web.playbackPowerMode.balanced">Dengeli (önerilen)</option>
+                                                    <option value="smooth" data-i18n="settings.web.playbackPowerMode.smooth">Akıcılık öncelikli</option>
+                                                    <option value="battery" data-i18n="settings.web.playbackPowerMode.battery">Pil tasarrufu öncelikli</option>
+                                                    <option value="off" data-i18n="settings.web.playbackPowerMode.off">Kapalı</option>
+                                                </select>
+                                            </div>
+                                            <div class="settings-sub" id="webPlaybackPowerModeHint" data-i18n="settings.web.playbackPowerMode.hint">Dengeli mod pilde oynatma sırasında takılmayı azaltır, oynatma durunca sistem güç profiline geri döner.</div>
+                                            <div class="settings-sub" id="webPlaybackPowerLiveStatus">Şu anki güç durumu okunuyor...</div>
+                                            <label class="checkbox-label">
+                                                <input type="checkbox" id="behaviorWebBackgroundThrottle" checked>
+                                                <span class="web-setting-icon web-setting-icon-battery" aria-hidden="true"></span>
+                                                <span data-i18n="settings.web.backgroundThrottle">Web arka plandayken güç kullanımını azalt</span>
+                                            </label>
+                                            <div class="settings-sub" data-i18n="settings.web.backgroundThrottle.hint">Tam Chromium zamanlayıcı davranışı uygulama yeniden başlatıldıktan sonra uygulanır.</div>
+                                        </div>
+                                        <div class="settings-group">
+                                            <h4 data-i18n="settings.web.sections.shortcuts">Web Kısayolları</h4>
+                                            <label class="checkbox-label">
+                                                <input type="checkbox" id="browserNavigationHotkeysEnabled" checked>
+                                                <span class="web-setting-icon web-setting-icon-keyboard" aria-hidden="true"></span>
+                                                <span data-i18n="settings.web.browserNavigationHotkeys">Tarayıcı gezinme kısayollarını etkinleştir</span>
+                                            </label>
+                                            <div class="settings-sub" data-i18n="settings.web.browserNavigationHotkeys.hint">Alt+Sol / Alt+Sağ ve BrowserBack / BrowserForward tuşlarını Web içinde kullanır.</div>
+                                            <div class="settings-subtitle" data-i18n="playback.shortcuts.sections.tabs">Sekme Geçiş Tuşları</div>
+                                            <div class="settings-row"><div class="settings-row-left"><div class="settings-label" data-i18n="playback.shortcuts.tabs.web">Web sekmesi</div></div><div class="settings-inline"><input type="text" id="shortcutTabWeb" class="settings-input" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="-"><button type="button" class="settings-btn shortcut-capture-btn" data-shortcut-target="shortcutTabWeb" data-i18n="playback.shortcuts.actions.assign">Ata</button><button type="button" class="settings-btn shortcut-clear-btn" data-shortcut-target="shortcutTabWeb" data-i18n="playback.shortcuts.actions.clear">Temizle</button></div></div>
+                                            <div class="settings-subtitle" data-i18n="playback.shortcuts.sections.platforms">Web Platform Tuşları</div>
+                                            <div class="settings-row"><div class="settings-row-left"><div class="settings-label">YouTube Music</div></div><div class="settings-inline"><input type="text" id="shortcutPlatformYtmusic" class="settings-input" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="-"><button type="button" class="settings-btn shortcut-capture-btn" data-shortcut-target="shortcutPlatformYtmusic" data-i18n="playback.shortcuts.actions.assign">Ata</button><button type="button" class="settings-btn shortcut-clear-btn" data-shortcut-target="shortcutPlatformYtmusic" data-i18n="playback.shortcuts.actions.clear">Temizle</button></div></div>
+                                            <div class="settings-row"><div class="settings-row-left"><div class="settings-label">YouTube</div></div><div class="settings-inline"><input type="text" id="shortcutPlatformYoutube" class="settings-input" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="-"><button type="button" class="settings-btn shortcut-capture-btn" data-shortcut-target="shortcutPlatformYoutube" data-i18n="playback.shortcuts.actions.assign">Ata</button><button type="button" class="settings-btn shortcut-clear-btn" data-shortcut-target="shortcutPlatformYoutube" data-i18n="playback.shortcuts.actions.clear">Temizle</button></div></div>
+                                            <div class="settings-row"><div class="settings-row-left"><div class="settings-label">Deezer</div></div><div class="settings-inline"><input type="text" id="shortcutPlatformDeezer" class="settings-input" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="-"><button type="button" class="settings-btn shortcut-capture-btn" data-shortcut-target="shortcutPlatformDeezer" data-i18n="playback.shortcuts.actions.assign">Ata</button><button type="button" class="settings-btn shortcut-clear-btn" data-shortcut-target="shortcutPlatformDeezer" data-i18n="playback.shortcuts.actions.clear">Temizle</button></div></div>
+                                            <div class="settings-row"><div class="settings-row-left"><div class="settings-label">SoundCloud</div></div><div class="settings-inline"><input type="text" id="shortcutPlatformSoundcloud" class="settings-input" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="-"><button type="button" class="settings-btn shortcut-capture-btn" data-shortcut-target="shortcutPlatformSoundcloud" data-i18n="playback.shortcuts.actions.assign">Ata</button><button type="button" class="settings-btn shortcut-clear-btn" data-shortcut-target="shortcutPlatformSoundcloud" data-i18n="playback.shortcuts.actions.clear">Temizle</button></div></div>
+                                            <div class="settings-row"><div class="settings-row-left"><div class="settings-label">Facebook</div></div><div class="settings-inline"><input type="text" id="shortcutPlatformFacebook" class="settings-input" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="-"><button type="button" class="settings-btn shortcut-capture-btn" data-shortcut-target="shortcutPlatformFacebook" data-i18n="playback.shortcuts.actions.assign">Ata</button><button type="button" class="settings-btn shortcut-clear-btn" data-shortcut-target="shortcutPlatformFacebook" data-i18n="playback.shortcuts.actions.clear">Temizle</button></div></div>
+                                            <div class="settings-row"><div class="settings-row-left"><div class="settings-label">Instagram</div></div><div class="settings-inline"><input type="text" id="shortcutPlatformInstagram" class="settings-input" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="-"><button type="button" class="settings-btn shortcut-capture-btn" data-shortcut-target="shortcutPlatformInstagram" data-i18n="playback.shortcuts.actions.assign">Ata</button><button type="button" class="settings-btn shortcut-clear-btn" data-shortcut-target="shortcutPlatformInstagram" data-i18n="playback.shortcuts.actions.clear">Temizle</button></div></div>
+                                            <div class="settings-row"><div class="settings-row-left"><div class="settings-label">TikTok</div></div><div class="settings-inline"><input type="text" id="shortcutPlatformTiktok" class="settings-input" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="-"><button type="button" class="settings-btn shortcut-capture-btn" data-shortcut-target="shortcutPlatformTiktok" data-i18n="playback.shortcuts.actions.assign">Ata</button><button type="button" class="settings-btn shortcut-clear-btn" data-shortcut-target="shortcutPlatformTiktok" data-i18n="playback.shortcuts.actions.clear">Temizle</button></div></div>
+                                            <div class="settings-row"><div class="settings-row-left"><div class="settings-label">X</div></div><div class="settings-inline"><input type="text" id="shortcutPlatformX" class="settings-input" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="-"><button type="button" class="settings-btn shortcut-capture-btn" data-shortcut-target="shortcutPlatformX" data-i18n="playback.shortcuts.actions.assign">Ata</button><button type="button" class="settings-btn shortcut-clear-btn" data-shortcut-target="shortcutPlatformX" data-i18n="playback.shortcuts.actions.clear">Temizle</button></div></div>
+                                            <div class="settings-row"><div class="settings-row-left"><div class="settings-label">Reddit</div></div><div class="settings-inline"><input type="text" id="shortcutPlatformReddit" class="settings-input" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="-"><button type="button" class="settings-btn shortcut-capture-btn" data-shortcut-target="shortcutPlatformReddit" data-i18n="playback.shortcuts.actions.assign">Ata</button><button type="button" class="settings-btn shortcut-clear-btn" data-shortcut-target="shortcutPlatformReddit" data-i18n="playback.shortcuts.actions.clear">Temizle</button></div></div>
+                                            <div class="settings-row"><div class="settings-row-left"><div class="settings-label">Twitch</div></div><div class="settings-inline"><input type="text" id="shortcutPlatformTwitch" class="settings-input" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="-"><button type="button" class="settings-btn shortcut-capture-btn" data-shortcut-target="shortcutPlatformTwitch" data-i18n="playback.shortcuts.actions.assign">Ata</button><button type="button" class="settings-btn shortcut-clear-btn" data-shortcut-target="shortcutPlatformTwitch" data-i18n="playback.shortcuts.actions.clear">Temizle</button></div></div>
+                                            <div class="settings-row"><div class="settings-row-left"><div class="settings-label">WhatsApp</div></div><div class="settings-inline"><input type="text" id="shortcutPlatformWhatsapp" class="settings-input" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="-"><button type="button" class="settings-btn shortcut-capture-btn" data-shortcut-target="shortcutPlatformWhatsapp" data-i18n="playback.shortcuts.actions.assign">Ata</button><button type="button" class="settings-btn shortcut-clear-btn" data-shortcut-target="shortcutPlatformWhatsapp" data-i18n="playback.shortcuts.actions.clear">Temizle</button></div></div>
+                                            <div class="settings-row"><div class="settings-row-left"><div class="settings-label">Telegram</div></div><div class="settings-inline"><input type="text" id="shortcutPlatformTelegram" class="settings-input" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="-"><button type="button" class="settings-btn shortcut-capture-btn" data-shortcut-target="shortcutPlatformTelegram" data-i18n="playback.shortcuts.actions.assign">Ata</button><button type="button" class="settings-btn shortcut-clear-btn" data-shortcut-target="shortcutPlatformTelegram" data-i18n="playback.shortcuts.actions.clear">Temizle</button></div></div>
                                         </div>
                                     </div>
                                     <div class="settings-page hidden" id="securitySettings">
@@ -1191,8 +1459,14 @@
                             </div>
                             <div class="modal-footer">
                                 <button class="btn settings-action-btn settings-action-btn-ghost" id="settingsCancel" data-i18n="settings.buttons.cancel">İptal</button>
-                                <button class="btn settings-action-btn settings-action-btn-secondary settings-action-btn-reset" id="settingsResetCurrentTab" data-i18n="settings.buttons.resetCurrentTab">Varsayılana döndür</button>
-                                <button class="btn settings-action-btn settings-action-btn-primary" id="settingsOk" data-i18n="settings.buttons.save">Kaydet</button>
+                                <button class="btn settings-action-btn settings-action-btn-secondary settings-action-btn-reset" id="settingsResetCurrentTab">
+                                    <span class="settings-button-icon settings-button-icon-reset" aria-hidden="true"></span>
+                                    <span data-i18n="settings.buttons.resetCurrentTab">Varsayılana döndür</span>
+                                </button>
+                                <button class="btn settings-action-btn settings-action-btn-primary" id="settingsOk">
+                                    <span class="settings-button-icon settings-button-icon-save" aria-hidden="true"></span>
+                                    <span data-i18n="settings.buttons.save">Kaydet</span>
+                                </button>
                             </div>
                         </div>
                     </div>

@@ -38,6 +38,25 @@
             --danger: #fb7185;
             --select: #0f274f;
         }
+        :root[theme="black"] {
+            --bg: #000000;
+            --panel: #050505;
+            --panel2: rgba(8, 8, 8, .94);
+            --line: #151515;
+            --text: #f4f4f5;
+            --muted: #a9b1bd;
+            --accent: #00c8ff;
+            --accent2: #38e6a7;
+            --danger: #fb7185;
+            --select: #070707;
+            --menu-bg: rgba(0, 0, 0, 0.96);
+            --menu-border: rgba(255, 255, 255, 0.09);
+            --menu-item-bg: rgba(12, 12, 12, 0.94);
+            --menu-item-hover: rgba(24, 24, 24, 0.98);
+            --menu-text: #dfe5ee;
+            --menu-muted: #a9b1bd;
+            --menu-divider: rgba(255, 255, 255, 0.08);
+        }
         :root[theme="light"] {
             color-scheme: light;
             --bg: #f9fafb;
@@ -718,6 +737,7 @@
                             <select id="themeSelect">
                                 <option value="ardali">ArDali</option>
                                 <option value="dark">Karanlık</option>
+                                <option value="black" data-i18n="ui.theme.options.black">Siyah</option>
                                 <option value="light">Aydınlık</option>
                                 <option value="frappe">Frappé</option>
                                 <option value="onedark">One dark</option>

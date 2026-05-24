@@ -723,10 +723,12 @@ const ardaliAPI = {
         view: preloadStandaloneView,
         tab: preloadStandaloneTab,
         scope: preloadStandaloneScope,
-        perfMonitor: process?.env?.ARDALI_PERF_MONITOR === '1'
+        perfMonitor: process?.env?.ARDALI_PERF_MONITOR === '1',
+        perfMonitorIntervalMs: Number(process?.env?.ARDALI_PERF_MONITOR_INTERVAL_MS || 15000) || 15000,
+        perfMonitorDelayMs: Number(process?.env?.ARDALI_PERF_MONITOR_DELAY_MS || 12000) || 12000
     },
     onSettingsReload: (callback) => {
-        const handler = (_event, payload) => callback(payload);
+        const handler = (_event, payload, meta) => callback(payload, meta || {});
         ipcRenderer.on('settings:reloaded', handler);
         return () => ipcRenderer.removeListener('settings:reloaded', handler);
     },
@@ -739,6 +741,11 @@ const ardaliAPI = {
         const handler = () => callback();
         ipcRenderer.on('settings:requestClose', handler);
         return () => ipcRenderer.removeListener('settings:requestClose', handler);
+    },
+    onWebReloadActive: (callback) => {
+        const handler = () => callback();
+        ipcRenderer.on('web:reload-active', handler);
+        return () => ipcRenderer.removeListener('web:reload-active', handler);
     },
     onScopedSfxLiveParam: (callback) => {
         if (typeof callback !== 'function') return () => {};
@@ -837,6 +844,7 @@ const ardaliAPI = {
     webSecurity: {
         openExternal: (url) => ipcRenderer.invoke('web:openExternal', url),
         clearData: (options) => ipcRenderer.invoke('web:clearData', options),
+        reloadActive: () => ipcRenderer.invoke('web:reloadActive'),
         getSecurityState: () => ipcRenderer.invoke('web:getSecurityState'),
         exportCookies: (filePath) => ipcRenderer.invoke('web:exportCookies', filePath),
         importCookies: (filePath) => ipcRenderer.invoke('web:importCookies', filePath)
@@ -890,7 +898,15 @@ const ardaliAPI = {
 
     // ARDALI DAWLOD PENCERESİ API
     downloader: {
-        openWindow: (url) => ipcRenderer.invoke('downloader:openWindow', String(url || '')),
+        openWindow: (payload) => {
+            if (payload && typeof payload === 'object') {
+                return ipcRenderer.invoke('downloader:openWindow', {
+                    url: String(payload.url || ''),
+                    titleHint: String(payload.titleHint || payload.title || '')
+                });
+            }
+            return ipcRenderer.invoke('downloader:openWindow', String(payload || ''));
+        },
         getSettings: () => ipcRenderer.invoke('downloader:getSettings'),
         getDependencyStatus: () => ipcRenderer.invoke('downloader:getDependencyStatus'),
         ensureDependencies: () => ipcRenderer.invoke('downloader:ensureDependencies'),
@@ -963,6 +979,8 @@ const ardaliAPI = {
         notifyMediaOpenReady: () => ipcRenderer.send('app:renderer-media-open-ready'),
         getVersionInfo: () => ipcRenderer.invoke('app:getVersionInfo'),
         setStudioShortcuts: (shortcuts) => ipcRenderer.invoke('app:setStudioShortcuts', shortcuts || {}),
+        setPlaybackPowerSaveBlocker: (payload) => ipcRenderer.invoke('app:setPlaybackPowerSaveBlocker', payload || {}),
+        getPlaybackPowerState: () => ipcRenderer.invoke('app:getPlaybackPowerState'),
         updater: {
             getState: () => ipcRenderer.invoke('app:update:getState'),
             check: (options = {}) => ipcRenderer.invoke('app:update:check', options),

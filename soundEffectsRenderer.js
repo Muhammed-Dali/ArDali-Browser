@@ -6,6 +6,10 @@
 // ============================================
 // GLOBAL STATE
 // ============================================
+const SFX_VERBOSE_LOGS =
+    typeof process !== 'undefined' &&
+    process?.env &&
+    process.env.ARDALI_VERBOSE_LOGS === '1';
 const SFX = {
     currentEffect: 'eq32',
     masterEnabled: true,
@@ -38,6 +42,7 @@ const SFX = {
         running: false,
         frameId: 0,
         lastFetchAt: 0,
+        lastDrawAt: 0,
         busy: false,
         bars: new Uint8Array(0),
         smooth: new Float32Array(0),
@@ -257,6 +262,57 @@ const SFX = {
     }
 }
 
+const SFX_ALLOWED_THEMES = new Set([
+    'aur-renk-efektleri',
+    'performance-balanced',
+    'performance-lite',
+    'ardali',
+    'dark',
+    'black',
+    'light',
+    'frappe',
+    'onedark',
+    'matrix',
+    'latte',
+    'solarized-dark',
+    'neon-night',
+    'retro-amber',
+    'deep-ocean',
+    'forest-mint'
+]);
+
+function normalizeSfxTheme(theme) {
+    const normalized = String(theme || '').trim();
+    return SFX_ALLOWED_THEMES.has(normalized) ? normalized : 'black';
+}
+
+function applySfxTheme(theme) {
+    const nextTheme = normalizeSfxTheme(theme);
+    document.documentElement.dataset.ardaliTheme = nextTheme;
+    document.documentElement.setAttribute('theme', nextTheme);
+    document.body?.setAttribute('data-ardali-theme', nextTheme);
+}
+
+function installSfxThemeSync() {
+    applySfxTheme(localStorage.getItem('ardali_ui_theme') || localStorage.getItem('theme') || 'black');
+    window.addEventListener('storage', (event) => {
+        if (event.key !== 'ardali_ui_theme' && event.key !== 'theme') return;
+        applySfxTheme(event.newValue || 'black');
+    });
+    try {
+        const channel = new BroadcastChannel('ardali-ui-appearance-sync');
+        channel.addEventListener('message', (event) => {
+            const appearance = event?.data?.appearance;
+            if (event?.data?.type !== 'appearance' || !appearance) return;
+            applySfxTheme(appearance.theme || 'black');
+        });
+    } catch {
+        // ignore
+    }
+}
+
+installSfxThemeSync();
+
 // Video oynatma kararlılığı için güvenli mod:
 // Efektler sekmesindeki ağır animasyonları kapatır.
 let SFX_ANIM_SAFE_MODE = false;
@@ -292,6 +348,10 @@ const SFX_EMBEDDED_MODE = SFX_QUERY_PARAMS.get('embedded') === '1';
 const SFX_PERF = {
     lowPower: false,
     pollScale: 1,
+    meterFps: 24,
+    backgroundFps: 5,
+    widgetFps: 30,
+    profile: 'normal',
     reason: 'default'
 };
 
@@ -348,6 +408,90 @@ function shouldUseLowPowerSfxProfile(appSettings, hardwareHints) {
     return { lowPower: false, reason: 'normal' };
 }
 
+function normalizeOptimizationProfile(value) {
+    const normalized = String(value || '').trim().toLowerCase();
+    if (normalized === 'auto' || normalized === 'ram' || normalized === 'gpu' || normalized === 'battery' || normalized === 'quality') return normalized;
+    return 'auto';
+}
+
+async function detectSfxOnBattery() {
+    if (!navigator || typeof navigator.getBattery !== 'function') return false;
+    try {
+        const battery = await navigator.getBattery();
+        return battery?.charging === false;
+    } catch {
+        return false;
+    }
+}
+
+function resolveSfxOptimizationProfile(profileValue, hardwareHints = {}, onBattery = false) {
+    const profile = normalizeOptimizationProfile(profileValue);
+    if (profile !== 'auto') return profile;
+    const ramGiB = parsePositiveNumber(hardwareHints?.ramGiB) || parsePositiveNumber(navigator.deviceMemory);
+    const cpuCores = parsePositiveNumber(hardwareHints?.cpuCores) || parsePositiveNumber(navigator.hardwareConcurrency);
+    const gpuRenderer = String(hardwareHints?.gpuRenderer || '').toLowerCase();
+    const weakGpu = /intel|uhd|hd graphics|llvmpipe|software|swiftshader/.test(gpuRenderer);
+    if (onBattery) return 'battery';
+    if ((ramGiB > 0 && ramGiB <= 8) || (cpuCores > 0 && cpuCores <= 4)) return 'ram';
+    if (weakGpu) return 'gpu';
+    if ((ramGiB >= 16 && cpuCores >= 8) && !onBattery) return 'quality';
+    return 'gpu';
+}
+
+function getSfxPerfShape(appSettings, decision, hardwareHints = {}, onBattery = false) {
+    const appearance = appSettings?.appearance || {};
+    const profile = resolveSfxOptimizationProfile(appearance.optimizationProfile || 'auto', hardwareHints, onBattery);
+    const sfxPerfMode = String(appearance.sfxPerfMode || 'auto').trim().toLowerCase();
+    if (sfxPerfMode === 'full' || profile === 'quality') {
+        return {
+            lowPower: false,
+            profile: 'quality',
+            pollScale: 1.0,
+            meterFps: 30,
+            backgroundFps: 8,
+            widgetFps: 30
+        };
+    }
+    if (profile === 'gpu') {
+        return {
+            lowPower: true,
+            profile: 'gpu',
+            pollScale: 1.6,
+            meterFps: 24,
+            backgroundFps: 5,
+            widgetFps: 10
+        };
+    }
+    if (profile === 'ram') {
+        return {
+            lowPower: true,
+            profile: 'ram',
+            pollScale: 2.8,
+            meterFps: 15,
+            backgroundFps: 5,
+            widgetFps: 8
+        };
+    }
+    if (profile === 'battery' || decision?.lowPower) {
+        return {
+            lowPower: true,
+            profile: 'battery',
+            pollScale: 3.2,
+            meterFps: 15,
+            backgroundFps: 5,
+            widgetFps: 6
+        };
+    }
+    return {
+        lowPower: false,
+        profile: 'normal',
+        pollScale: 1.0,
+        meterFps: 30,
+        backgroundFps: 8,
+        widgetFps: 30
+    };
+}
+
 async function applySfxRuntimePerformanceProfile(appSettings = null) {
     let settings = appSettings;
     if (!settings && window.ardali?.loadSettings) {
@@ -364,17 +508,28 @@ async function applySfxRuntimePerformanceProfile(appSettings = null) {
         hardwareHints = null;
     }
 
+    const onBattery = await detectSfxOnBattery();
     const decision = shouldUseLowPowerSfxProfile(settings || {}, hardwareHints || {});
-    const lowPower = !!decision.lowPower;
+    const shape = getSfxPerfShape(settings || {}, decision, hardwareHints || {}, onBattery);
+    const lowPower = !!shape.lowPower;
     SFX_PERF.lowPower = lowPower;
-    SFX_PERF.pollScale = lowPower ? 2.0 : 1.0;
+    SFX_PERF.pollScale = Number(shape.pollScale) || (lowPower ? 2.8 : 1.0);
+    SFX_PERF.meterFps = Number(shape.meterFps) || (lowPower ? 15 : 30);
+    SFX_PERF.backgroundFps = Number(shape.backgroundFps) || 5;
+    SFX_PERF.widgetFps = Number(shape.widgetFps) || (lowPower ? 8 : 30);
+    SFX_PERF.profile = String(shape.profile || (lowPower ? 'lite' : 'normal'));
     SFX_PERF.reason = String(decision.reason || (lowPower ? 'low' : 'normal'));
     SFX_ANIM_SAFE_MODE = lowPower;
     RAM_PRIORITY_MODE = lowPower;
-    SFX_LOW_LOAD_EQ32 = lowPower;
+    SFX_LOW_LOAD_EQ32 = lowPower && SFX_PERF.profile !== 'gpu';
 
-    document.documentElement.dataset.sfxPerf = lowPower ? 'lite' : 'normal';
-    console.log(`[SFX PERF] mode=${lowPower ? 'lite' : 'normal'} reason=${SFX_PERF.reason}`);
+    document.documentElement.dataset.sfxPerf = SFX_PERF.profile;
+    window.__ARDALI_SFX_PERF__ = {
+        lowPower,
+        profile: SFX_PERF.profile,
+        widgetFrameMs: Math.max(16, Math.round(1000 / SFX_PERF.widgetFps))
+    };
+    console.log(`[SFX PERF] mode=${SFX_PERF.profile} reason=${SFX_PERF.reason}`);
 }
 
 function getScopedSettingsStorageKey(effectName) {
@@ -439,6 +594,22 @@ function syncSfxLightsShadowStorage(enabled) {
     }
 }
 
+function areSfxLightsEnabled() {
+    if (typeof SFX.sfxLightsEnabled === 'boolean') return SFX.sfxLightsEnabled;
+    return document.documentElement.dataset.sfxLights !== 'off';
+}
+
+function isSfxWindowForeground() {
+    if (document.hidden) return false;
+    if (typeof document.hasFocus === 'function' && !document.hasFocus()) return false;
+    return true;
+}
+
+function getSfxEffectiveMeterFps() {
+    if (!isSfxWindowForeground()) return Math.max(5, Number(SFX_PERF.backgroundFps) || 5);
+    return Math.max(24, Number(SFX_PERF.meterFps) || 30);
+}
+
 function refreshSfxStaticVisualState() {
     try {
         const eq32 = getSettings('eq32');
@@ -448,11 +619,6 @@ function refreshSfxStaticVisualState() {
                 slider.setValue(Number(eq32?.bands?.[index]) || 0, { immediate: true });
             });
         }
-        if (SFX.currentEffect === 'eq32' && SFX.barAnalyzer && typeof SFX.barAnalyzer.draw === 'function') {
-            const bars = new Uint8Array(Math.max(48, Number(SFX.barAnalyzer.bandCount) || EQ_TOP_FIXED_BANDS)).fill(0);
-            SFX.barAnalyzer.draw(bars);
-        }
-
         Object.entries(SFX.knobInstances || {}).forEach(([key, inst]) => {
             if (!inst || typeof inst.setValue !== 'function') return;
             if (['bass', 'mid', 'treble', 'stereoExpander'].includes(key)) {
@@ -598,6 +764,9 @@ async function syncSfxPerformanceProfileForLights(enabled) {
         nextSettings.appearance.sfxLights = !!enabled;
         nextSettings.ui.sfxLightsEnabled = !!enabled;
         await applySfxRuntimePerformanceProfile(nextSettings);
+        if (enabled && SFX.currentEffect === 'eq32') {
+            refreshEq32AnimatedRegionForLights();
+        }
         setRuntimeAnimationsActive(!document.hidden);
     } catch {
         // ignore
@@ -617,10 +786,10 @@ function applySfxLightsRuntimeState(enabled) {
 
     if (!next) {
         clearSfxLightsActivationRefresh();
-        // Lights off: only affect visual appearance (CSS), keep meter animations running
+        // Lights off: keep DSP and the audio analyzers alive, but make decorative widget motion static.
+        pauseAllEffectAnimations();
         syncMeterLoops();
         refreshSfxStaticVisualState();
-        // Don't re-render panel - keeps animations smooth
         return;
     }
 
@@ -920,7 +1089,7 @@ function syncMeterLoops() {
         stopCompressorMeter();
         stopLimiterMeter();
         stopNoiseGateStatusMeter();
-        stopEqTopVisualizer();
+        stopEqTopVisualizer({ clear: false });
         return;
     }
     const tpEnabled = !!getSettings('truepeak')?.enabled;
@@ -931,7 +1100,7 @@ function syncMeterLoops() {
     if (masterOn && SFX.currentEffect === 'limiter') startLimiterMeter(); else stopLimiterMeter();
     if (masterOn && SFX.currentEffect === 'noisegate') startNoiseGateStatusMeter(); else stopNoiseGateStatusMeter();
     if (masterOn && SFX.currentEffect === 'dynamiceq') startDynamicEqStatusMeter(); else stopDynamicEqStatusMeter();
-    if (masterOn && SFX.currentEffect === 'eq32') startEqTopVisualizer(); else stopEqTopVisualizer();
+    if (masterOn && SFX.currentEffect === 'eq32') startEqTopVisualizer(); else stopEqTopVisualizer({ clear: false });
 }
 
 function setRuntimeAnimationsActive(active) {
@@ -1250,6 +1419,21 @@ function schedulePersistEq32ToAppSettings(eq32Settings) {
 
 function sanitizeScopedEffectForApp(effectName, settings) {
     const src = settings && typeof settings === 'object' ? settings : {};
+    if (effectName === 'audiophile') {
+        const toNum = (value, min, max, fallback) => {
+            const n = Number(value);
+            if (!Number.isFinite(n)) return fallback;
+            return Math.max(min, Math.min(max, n));
+        };
+        const sampleRateRaw = String(src.sampleRate || 'auto').trim().toLowerCase();
+        const allowedSampleRates = new Set(['auto', '44100', '48000', '88200', '96000', '176400', '192000']);
+        return {
+            exclusiveMode: !!src.exclusiveMode,
+            outputDevice: String(src.outputDevice || 'default').trim() || 'default',
+            sampleRate: allowedSampleRates.has(sampleRateRaw) ? sampleRateRaw : 'auto',
+            preamp: toNum(src.preamp, -24, 24, 0)
+        };
+    }
     if (effectName === 'bassboost') {
         const toNum = (value, min, max, fallback) => {
             const n = Number(value);
@@ -1628,7 +1812,9 @@ async function flushScopedPersistQueue(reason = 'idle') {
     for (const [effectName, effectSettings] of entries) {
         try {
             const saved = await persistScopedEffectToAppSettings(effectName, effectSettings);
-            console.log(`[SFX ROUTE] source=${SFX_SCOPE} route=web_dali effect=${effectName} action=${saved ? 'persist' : 'persist-skip'} reason=${reason}`);
+            if (SFX_VERBOSE_LOGS) {
+                console.log(`[SFX ROUTE] source=${SFX_SCOPE} route=web_dali effect=${effectName} action=${saved ? 'persist' : 'persist-skip'} reason=${reason}`);
+            }
         } catch (e) {
             console.warn(`[SFX ROUTE] source=${SFX_SCOPE} route=web_dali effect=${effectName} persist-failed:`, e?.message || e);
         }
@@ -1654,7 +1840,9 @@ function schedulePersistScopedEffectToAppSettings(effectName, settings, delayMs 
     SFX.scopedPersistTimers[key] = setTimeout(async () => {
         try {
             const saved = await persistScopedEffectToAppSettings(key, settings);
-            console.log(`[SFX ROUTE] source=${SFX_SCOPE} route=web_dali effect=${key} action=${saved ? 'persist' : 'persist-skip'}`);
+            if (SFX_VERBOSE_LOGS) {
+                console.log(`[SFX ROUTE] source=${SFX_SCOPE} route=web_dali effect=${key} action=${saved ? 'persist' : 'persist-skip'}`);
+            }
         } catch (e) {
             console.warn(`[SFX ROUTE] source=${SFX_SCOPE} route=web_dali effect=${key} persist-failed:`, e?.message || e);
         } finally {
@@ -1737,6 +1925,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // Uygulama ayarlarından EQ32'yi geri yükle (varsa) ve DSP'ye uygula
         await hydrateEq32FromAppSettings();
+        applyEffect('audiophile');
         // Ses oynatım sırasında toplu re-apply klik/takırtı yapabildiği için,
         // startup sync'i yalnızca oynatma yokken yap.
         let isPlayingNow = false;
@@ -1882,14 +2071,22 @@ function setupEventListeners() {
 
     document.addEventListener('visibilitychange', () => {
         setRuntimeAnimationsActive(!document.hidden);
+        syncMeterLoops();
     });
 
     window.addEventListener('focus', () => {
         if (!document.hidden) {
             setRuntimeAnimationsActive(true);
         }
+        syncMeterLoops();
         applySfxLightsFromAppSettings().catch(() => { });
         applySfxIconSizeFromAppSettings().catch(() => { });
+    });
+    window.addEventListener('blur', () => {
+        if (SFX_PERF.profile !== 'quality') {
+            pauseAllEffectAnimations();
+        }
+        syncMeterLoops();
     });
     window.addEventListener('storage', (e) => {
         if (e.key === 'ardali_ui_sfx_lights_enabled') {
@@ -1909,6 +2106,10 @@ function setupEventListeners() {
         applySfxLightsRuntimeState(enabled);
         document.documentElement.dataset.sfxIconSize = normalizeSfxIconSize(nextSettings?.appearance?.sfxSidebarIconSize);
         Promise.resolve(applySfxRuntimePerformanceProfile(nextSettings)).then(() => {
+            // Settings reload can fire after unrelated saves while music is playing.
+            // Rebuilding the EQ canvas here resets smoothing/roof state and causes
+            // periodic analyzer jumps when lights are on; real light toggles already
+            // refresh the animated region through applySfxLightsRuntimeState().
             setRuntimeAnimationsActive(!document.hidden);
         }).catch(() => { });
     });
@@ -2017,6 +2218,7 @@ function refreshLocalizedRuntimeUi() {
 
 function setEffectAnimationsActive(effectName, active) {
     if (!effectName) return;
+    if (active && !areSfxLightsEnabled()) active = false;
     if (active && SFX.activeAnimationEffect === effectName) return;
 
     // Generic knobs (effectName_*) + eq32 direct knobs (bass/mid/treble/stereoExpander)
@@ -5566,7 +5768,7 @@ const eqSliders = [];
 const EQ_TOP_MIN_HZ = 20;
 const EQ_TOP_MAX_HZ = 22000;
 const EQ_TOP_FIXED_BANDS = 92;
-const EQ_TOP_TARGET_FPS = 45;
+const EQ_TOP_TARGET_FPS = 30;
 const EQ_TOP_FRAME_MS = Math.max(8, Math.floor(1000 / EQ_TOP_TARGET_FPS));
 const EQ_TOP_EQ_FREQS = [
     20, 25, 31, 40, 50, 63, 80, 100,
@@ -5675,15 +5877,15 @@ function computeEqTopBars(rawBands, targetCount) {
     return out;
 }
 
-function stopEqTopVisualizer() {
+function stopEqTopVisualizer(options = {}) {
+    const clear = options?.clear === true;
     SFX.eqTopViz.running = false;
     SFX.eqTopViz.busy = false;
     if (SFX.eqTopViz.frameId) {
         cancelAnimationFrame(SFX.eqTopViz.frameId);
         SFX.eqTopViz.frameId = 0;
     }
-    // Clear canvas to avoid visual artifacts
-    if (SFX.barAnalyzer && SFX.currentEffect === 'eq32') {
+    if (clear && SFX.barAnalyzer && SFX.currentEffect === 'eq32') {
         try {
             const count = Math.max(48, Number(SFX.barAnalyzer?.bandCount) || EQ_TOP_FIXED_BANDS);
             SFX.barAnalyzer.draw(new Uint8Array(count).fill(0));
@@ -5697,8 +5899,11 @@ function startEqTopVisualizer() {
     if (SFX.currentEffect !== 'eq32') return;
     const canvas = document.getElementById('barAnalyzerCanvas');
     if (!canvas || !SFX.barAnalyzer) return;
-    // Reset visualizer state first to avoid undefined bars on initial frames
-    resetEqTopVisualizerState();
+    const existingBars = SFX.eqTopViz.bars;
+    const expectedCount = Math.max(48, Number(SFX.barAnalyzer?.bandCount) || EQ_TOP_FIXED_BANDS);
+    if (!existingBars || existingBars.length !== expectedCount) {
+        resetEqTopVisualizerState();
+    }
     
     const nativeSpectrumApi = window.ardali?.audio?.spectrum;
     const getSpectrumBands = nativeSpectrumApi && typeof nativeSpectrumApi.getBands === 'function'
@@ -5708,6 +5913,7 @@ function startEqTopVisualizer() {
 
     SFX.eqTopViz.running = true;
     SFX.eqTopViz.lastFetchAt = 0;
+    SFX.eqTopViz.lastDrawAt = 0;
     SFX.eqTopViz.busy = false;
     SFX.eqTopViz.norm = 0.02;
 
@@ -5719,17 +5925,25 @@ function startEqTopVisualizer() {
         }
 
         const now = Number(ts) || performance.now();
-        const fetchMs = getPerfScaledMs(SFX_LOW_LOAD_EQ32 ? 34 : EQ_TOP_FRAME_MS, { min: 16, max: 120 });
+        const effectiveFps = getSfxEffectiveMeterFps();
+        if (effectiveFps <= 0) {
+            SFX.eqTopViz.frameId = requestAnimationFrame(tick);
+            return;
+        }
+        const foreground = isSfxWindowForeground();
+        const fetchMs = foreground
+            ? Math.max(33, Math.round(1000 / Math.max(24, effectiveFps)))
+            : Math.max(120, Math.round(1000 / Math.max(5, effectiveFps)));
         const needsFetch = (now - SFX.eqTopViz.lastFetchAt) >= fetchMs;
 
         if (needsFetch && !SFX.eqTopViz.busy) {
             SFX.eqTopViz.busy = true;
             SFX.eqTopViz.lastFetchAt = now;
             const baseBandCount = Number(SFX.barAnalyzer.bandCount) || EQ_TOP_FIXED_BANDS;
-            const target = SFX_LOW_LOAD_EQ32
-                ? Math.max(40, Math.min(72, baseBandCount))
-                : Math.max(48, Math.min(112, baseBandCount));
-            const requestBands = SFX_LOW_LOAD_EQ32 ? 96 : Math.max(128, target * 2);
+            const target = foreground
+                ? Math.max(72, Math.min(EQ_TOP_FIXED_BANDS, baseBandCount))
+                : Math.max(48, Math.min(72, baseBandCount));
+            const requestBands = Math.max(128, target * 2);
             getSpectrumBands(requestBands)
                 .then((bands) => {
                     if (!SFX.eqTopViz.running) return;
@@ -5741,7 +5955,9 @@ function startEqTopVisualizer() {
                 });
         }
 
-        if (SFX.eqTopViz.bars && SFX.eqTopViz.bars.length) {
+        const shouldDraw = (now - Number(SFX.eqTopViz.lastDrawAt || 0)) >= fetchMs;
+        if (shouldDraw && SFX.eqTopViz.bars && SFX.eqTopViz.bars.length) {
+            SFX.eqTopViz.lastDrawAt = now;
             SFX.barAnalyzer.draw(SFX.eqTopViz.bars);
         }
         SFX.eqTopViz.frameId = requestAnimationFrame(tick);
@@ -5792,7 +6008,7 @@ function initEQSliders() {
             stepSize: 0.1,
             value: settings.bands[band] || 0,
             frequency: freq,
-            animatedHue: true
+            animatedHue: !SFX_LOW_LOAD_EQ32 && document.documentElement.dataset.sfxLights !== 'off'
         });
 
         slider.onChange((value) => {
@@ -5848,7 +6064,8 @@ function initArDaliKnobs() {
                 stepSize: cfg.step,
                 value: cfg.val,
                 suffix: cfg.suffix,
-                wheelStep: (cfg.max - cfg.min) / 40
+                wheelStep: (cfg.max - cfg.min) / 40,
+                animatedHue: !SFX_LOW_LOAD_EQ32 && document.documentElement.dataset.sfxLights !== 'off'
             });
 
             knob.onChange((value) => {
@@ -6020,7 +6237,7 @@ function syncStartupEffectsState() {
     try {
         // Panel açılmasa bile kayıtlı efekt ayarlarını native DSP'ye uygula.
         const effectOrder = [
-            'eq32', 'reverb', 'compressor', 'limiter', 'bassboost',
+            'audiophile', 'eq32', 'reverb', 'compressor', 'limiter', 'bassboost',
             'noisegate', 'deesser', 'exciter', 'stereowidener',
             'echo', 'softecho', 'convreverb', 'peq', 'autogain', 'truepeak',
             'crossfeed', 'surround', 'bassmono', 'dynamiceq', 'tapesat', 'bitdither'
@@ -6070,6 +6287,10 @@ function updateEffectParam(effectName, param, value) {
 
     if (effectName === 'eq32') {
         schedulePersistEq32ToAppSettings(settings);
+    }
+
+    if (effectName === 'audiophile') {
+        schedulePersistScopedEffectToAppSettings('audiophile', settings, 120);
     }
 
     if (SFX_IS_SCOPED_DALI && effectName === 'autogain') {
@@ -7103,6 +7324,9 @@ function applyEffect(effectName) {
             break;
 
         case 'audiophile':
+            if (SFX_SCOPE === 'music') {
+                schedulePersistScopedEffectToAppSettings('audiophile', settings, 120);
+            }
             // Audiophile Modu (Master C++ Output ve Web Node'una kazanç / donanım bayrağı basar)
             if (window.ardali?.ipcAudio?.preamp) {
                 // C++ Motoru için (native audio)

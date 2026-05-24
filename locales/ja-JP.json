@@ -772,5 +772,19 @@
   "gallery.file.properties": "Properties",
   "sfx.audiophile.preamp.title": "アナログプリアンプ",
   "sfx.audiophile.preamp.hint": "Web DSPチェーンの前で出力ゲインを細かく調整します。",
-  "sfx.audiophile.preamp.knobLabel": "プリアンプゲイン"
+  "sfx.audiophile.preamp.knobLabel": "プリアンプゲイン",
+  "ui.theme.options.black": "ブラック",
+  "ui.optimizationProfile.label": "最適化ターゲット",
+  "ui.optimizationProfile.hint": "Adjusts interface, cover, web and sound effect load based on automatic or manual priority.",
+  "ui.optimizationProfile.hint.initial": "Smart Auto: chooses the best profile based on power, battery and hardware.",
+  "ui.optimizationProfile.options.auto": "スマート自動",
+  "ui.optimizationProfile.options.ram": "RAM優先",
+  "ui.optimizationProfile.options.gpu": "GPU優先",
+  "ui.optimizationProfile.options.battery": "バッテリー優先",
+  "ui.optimizationProfile.options.quality": "画質優先",
+  "ui.optimizationProfile.hint.autoActive": "Smart Auto: currently applying {profile}.",
+  "ui.optimizationProfile.hint.ram": "RAM priority: web tabs sleep, cover cache shrinks and the library runs lighter.",
+  "ui.optimizationProfile.hint.gpu": "GPU priority: glow, lighting and canvas animations are reduced; album covers stay enabled.",
+  "ui.optimizationProfile.hint.battery": "Battery priority: RAM and GPU savings are applied together and background FPS drops heavily.",
+  "ui.optimizationProfile.hint.quality": "Visual quality priority: effects and animations stay lively; resource use may be higher."
 }

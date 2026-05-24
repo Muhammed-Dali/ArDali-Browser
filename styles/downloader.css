@@ -56,6 +56,39 @@
     --progress-glow: rgba(56, 189, 248, 0.56);
 }
 
+:root[theme="black"] {
+    --background: #000000;
+    --text: #f4f4f5;
+    --box-main: #050505;
+    --box-toggle: #0a0a0a;
+    --box-separation: #151515;
+    --box-toggleOn: #101820;
+    --item-bg: #101010;
+    --select: #070707;
+    --greenBtn: #00c8ff;
+    --greenBtn-bottom: #006f8f;
+    --redBtn: #ef4444;
+    --redBtn-bottom: #8b1f1f;
+    --blueBtn: #38e6a7;
+    --blueBtn-bottom: #147e60;
+    --line: rgba(255, 255, 255, 0.08);
+    --muted: #a9b1bd;
+    --panel-2: #0a0a0a;
+    --accent: #00c8ff;
+    --accent-2: #38e6a7;
+    --danger: #fb7185;
+    --progress-track: rgba(255, 255, 255, 0.26);
+    --progress-fill: linear-gradient(90deg, #00c8ff, #38e6a7);
+    --progress-glow: rgba(0, 200, 255, 0.24);
+    --menu-bg: rgba(0, 0, 0, 0.96);
+    --menu-border: rgba(255, 255, 255, 0.09);
+    --menu-item-bg: rgba(12, 12, 12, 0.94);
+    --menu-item-hover: rgba(24, 24, 24, 0.98);
+    --menu-text: #dfe5ee;
+    --menu-muted: #a9b1bd;
+    --menu-divider: rgba(255, 255, 255, 0.08);
+}
+
 :root[theme="light"] {
     color-scheme: light;
     --background: #f9fafb;
@@ -700,22 +733,34 @@ button:not(:disabled):not(.menu-button):not(.settings-icon-btn):not(.error-detai
     width: 12px;
     height: 12px;
     border-radius: 999px;
-    animation: ardaliDotFade 1.4s ease-in-out infinite;
+    opacity: 0.25;
+    transform: translateX(-2px) scale(0.82);
+    animation: ardaliDotFlow 1.35s ease-in-out infinite;
 }
 
 .processing-dots span:nth-child(1) {
     background: #22d3ee;
-    animation-delay: 0s, 0.1s;
+    animation-delay: 0s;
 }
 
 .processing-dots span:nth-child(2) {
-    background: #a855f7;
-    animation-delay: -1.6s, 0.2s;
+    background: #38e6a7;
+    animation-delay: 0.12s;
 }
 
 .processing-dots span:nth-child(3) {
     background: #ffe600;
-    animation-delay: -3.2s, 0.3s;
+    animation-delay: 0.24s;
+}
+
+.processing-dots span:nth-child(4) {
+    background: #ff8a00;
+    animation-delay: 0.36s;
+}
+
+.processing-dots span:nth-child(5) {
+    background: #a855f7;
+    animation-delay: 0.48s;
 }
 
 .status-panel.busy .processing-dots {
@@ -728,9 +773,15 @@ button:not(:disabled):not(.menu-button):not(.settings-icon-btn):not(.error-detai
     font-weight: 500;
 }
 
-@keyframes ardaliDotFade {
-    0%, 100% { opacity: 0; }
-    50% { opacity: 1; }
+@keyframes ardaliDotFlow {
+    0%, 100% {
+        opacity: 0.25;
+        transform: translateX(-2px) scale(0.82);
+    }
+    45% {
+        opacity: 1;
+        transform: translateX(3px) scale(1);
+    }
 }
 
 @keyframes ardaliDotRainbow {

@@ -10,7 +10,10 @@ class RainbowSlider {
         this.stepSize = config.stepSize !== undefined ? config.stepSize : 0.1;
         this.wheelStep = config.wheelStep || 0.5;
         this.frequency = config.frequency;
-        this.animatedHue = config.animatedHue !== false;
+        const perf = (typeof window !== 'undefined' && window.__ARDALI_SFX_PERF__) || {};
+        this.animatedHue = config.animatedHue !== false && perf.lowPower !== true;
+        this.frameMs = Number(config.frameMs || perf.widgetFrameMs || 33) || 33;
+        this.lastDrawTime = 0;
 
         // State variables matching C++ implementation
         this.shift = 0;
@@ -241,16 +244,22 @@ class RainbowSlider {
     animate(timestamp) {
         if (!this._running) return;
         const dt = timestamp - this.lastTime;
+        const diff = this.targetValue - this.value;
+        const lightsOff = this.isSfxLightsOff();
+        const hasMotion = Math.abs(diff) > 0.001 || this.isDragging || this.isHovered;
+        if ((timestamp - this.lastDrawTime) < this.frameMs && !hasMotion) {
+            this.lastTime = timestamp;
+            return;
+        }
         
         // C++: Every 50ms, shift += 0.02.
         // Rate: 0.02 / 50ms = 0.0004 per ms.
-        if (!this.isSfxLightsOff()) {
+        if (!lightsOff) {
             this.shift += 0.0004 * dt;
             if (this.shift > 1.0) this.shift -= 1.0;
         }
         
         // Value Smoothing (Inertia)
-        const diff = this.targetValue - this.value;
         if (Math.abs(diff) > 0.001) {
             const ease = 0.25; 
             this.value += diff * ease;
@@ -266,6 +275,7 @@ class RainbowSlider {
         }
 
         this.lastTime = timestamp;
+        this.lastDrawTime = timestamp;
         this.draw();
         
     }

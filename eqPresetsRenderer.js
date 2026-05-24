@@ -6,13 +6,31 @@ const PREVIEW_H = 88;
 const PREVIEW_ZOOM_X = 2.0; // %100 yatay zoom (domain daraltma)
 const PREVIEW_ZOOM_Y = 2.0; // %100 dikey zoom (genlik artırma)
 const PREVIEW_Y_OFFSET = -7; // çizgileri tabandan biraz yukarı taşı
-const PAGE_SIZE = 32;
+const PAGE_SIZE = 18;
 const PRESET_PERF = {
     lowPower: false,
     autoLowPower: false,
     reason: 'default'
 };
 const PRESET_PROFILE_STORAGE_KEY = 'ardali_eq_presets_preview_profile_v1';
+const EQ_PRESET_ALLOWED_THEMES = new Set([
+    'aur-renk-efektleri',
+    'performance-balanced',
+    'performance-lite',
+    'ardali',
+    'dark',
+    'black',
+    'light',
+    'frappe',
+    'onedark',
+    'matrix',
+    'latte',
+    'solarized-dark',
+    'neon-night',
+    'retro-amber',
+    'deep-ocean',
+    'forest-mint'
+]);
 
 function tSync(key, vars, fallback) {
     try {
@@ -38,8 +56,45 @@ const state = {
     previewProfile: 'balanced',
     previewStyle: 'graphic',
     previewDetail: 'sharp',
-    previewHydrationObserver: null
+    previewHydrationObserver: null,
+    previewHydrationQueue: new Set(),
+    previewHydrationScheduled: false,
+    previewScrollIdleTimer: null,
+    previewScrolling: false,
+    renderNextPageScheduled: false
 };
+
+function normalizeEqPresetTheme(theme) {
+    const normalized = String(theme || '').trim();
+    return EQ_PRESET_ALLOWED_THEMES.has(normalized) ? normalized : 'black';
+}
+
+function applyEqPresetTheme(theme) {
+    const nextTheme = normalizeEqPresetTheme(theme);
+    document.documentElement.dataset.ardaliTheme = nextTheme;
+    document.documentElement.setAttribute('theme', nextTheme);
+    document.body?.setAttribute('data-ardali-theme', nextTheme);
+}
+
+function installEqPresetThemeSync() {
+    applyEqPresetTheme(localStorage.getItem('ardali_ui_theme') || localStorage.getItem('theme') || 'black');
+    window.addEventListener('storage', (event) => {
+        if (event.key !== 'ardali_ui_theme' && event.key !== 'theme') return;
+        applyEqPresetTheme(event.newValue || 'black');
+    });
+    try {
+        const channel = new BroadcastChannel('ardali-ui-appearance-sync');
+        channel.addEventListener('message', (event) => {
+            const appearance = event?.data?.appearance;
+            if (event?.data?.type !== 'appearance' || !appearance) return;
+            applyEqPresetTheme(appearance.theme || 'black');
+        });
+    } catch {
+        // ignore
+    }
+}
+
+installEqPresetThemeSync();
 
 function normalizeHaystack(preset) {
     const a = preset?.name || '';
@@ -706,14 +761,79 @@ function bandsForPreview(filename) {
 function redrawVisiblePreviews() {
     const rows = document.querySelectorAll('.preset-item');
     rows.forEach((row) => {
-        const filename = row?.dataset?.filename;
         const canvas = row.querySelector('canvas.preset-preview');
-        if (!canvas) return;
-        const bands = bandsForPreview(filename);
-        const type = previewTypeFromBands(bands, filename);
-        setRowPreviewType(row, type);
-        drawMiniCurveIfNeeded(canvas, bands, type);
+        if (canvas) canvas.dataset.drawKey = '';
+        row.dataset.previewHydrated = '';
+        if (isRowNearPresetViewport(row)) enqueuePreviewHydration(row);
     });
+    schedulePreviewHydrationFlush();
+}
+
+function runWhenBrowserIdle(callback, timeout = 140) {
+    if (typeof window.requestIdleCallback === 'function') {
+        window.requestIdleCallback(callback, { timeout });
+        return;
+    }
+    window.setTimeout(() => callback({ timeRemaining: () => 8, didTimeout: true }), 16);
+}
+
+function isRowNearPresetViewport(row) {
+    const list = document.getElementById('presetList');
+    if (!list || !row) return false;
+    const top = row.offsetTop;
+    const bottom = top + row.offsetHeight;
+    const viewTop = list.scrollTop - 180;
+    const viewBottom = list.scrollTop + list.clientHeight + 220;
+    return bottom >= viewTop && top <= viewBottom;
+}
+
+function enqueuePreviewHydration(row) {
+    if (!row || row.dataset.previewHydrated === '1') return;
+    state.previewHydrationQueue.add(row);
+    schedulePreviewHydrationFlush();
+}
+
+function schedulePreviewHydrationFlush() {
+    if (state.previewHydrationScheduled) return;
+    state.previewHydrationScheduled = true;
+    if (state.previewScrolling) {
+        window.setTimeout(processPreviewHydrationQueue, 120);
+        return;
+    }
+    runWhenBrowserIdle(processPreviewHydrationQueue);
+}
+
+function processPreviewHydrationQueue(deadline = { timeRemaining: () => 8 }) {
+    state.previewHydrationScheduled = false;
+    if (state.previewScrolling) {
+        if (!state.previewHydrationScheduled) {
+            state.previewHydrationScheduled = true;
+            window.setTimeout(processPreviewHydrationQueue, 120);
+        }
+        return;
+    }
+
+    let processed = 0;
+    const maxPerBatch = state.previewProfile === 'quality' ? 2 : 3;
+    for (const row of Array.from(state.previewHydrationQueue)) {
+        if (processed >= maxPerBatch || deadline.timeRemaining() < 4) break;
+        state.previewHydrationQueue.delete(row);
+        if (!row.isConnected) continue;
+        if (!isRowNearPresetViewport(row)) {
+            row.dataset.previewHydrated = '';
+            state.previewHydrationObserver?.observe(row);
+            continue;
+        }
+        row.dataset.previewHydrated = '1';
+        processed += 1;
+        hydratePresetPreviewRow(row).catch(() => {
+            row.dataset.previewHydrated = '';
+        });
+    }
+
+    if (state.previewHydrationQueue.size) {
+        schedulePreviewHydrationFlush();
+    }
 }
 
 function createItemRow(preset) {
@@ -847,9 +967,9 @@ function schedulePreviewHydration(container, rowsToObserve) {
                 if (!entry.isIntersecting) return;
                 const row = entry.target;
                 state.previewHydrationObserver?.unobserve(row);
-                hydratePresetPreviewRow(row).catch(() => { });
+                enqueuePreviewHydration(row);
             });
-        }, { root: container, rootMargin: '120px' });
+        }, { root: container, rootMargin: '80px' });
     }
 
     const observer = state.previewHydrationObserver;
@@ -888,6 +1008,20 @@ function renderNextPage() {
     }
 
     schedulePreviewHydration(list, appendedRows);
+}
+
+function scheduleRenderNextPage() {
+    if (state.renderNextPageScheduled) return;
+    state.renderNextPageScheduled = true;
+    requestAnimationFrame(() => {
+        state.renderNextPageScheduled = false;
+        renderNextPage();
+        const list = document.getElementById('presetList');
+        const nearBottom = list && list.scrollTop + list.clientHeight >= list.scrollHeight - 140;
+        if (nearBottom && state.renderedCount < state.filtered.length) {
+            scheduleRenderNextPage();
+        }
+    });
 }
 
 function focusSelected() {
@@ -945,6 +1079,13 @@ function renderList(presets) {
         try { state.previewHydrationObserver.disconnect(); } catch { }
         state.previewHydrationObserver = null;
     }
+    state.previewHydrationQueue.clear();
+    state.previewHydrationScheduled = false;
+    state.previewScrolling = false;
+    if (state.previewScrollIdleTimer) {
+        clearTimeout(state.previewScrollIdleTimer);
+        state.previewScrollIdleTimer = null;
+    }
     list.innerHTML = '';
     state.filtered = presets;
     state.renderedCount = 0;
@@ -953,8 +1094,14 @@ function renderList(presets) {
     updateStatusForList(state.filtered);
 
     list.onscroll = () => {
+        state.previewScrolling = true;
+        if (state.previewScrollIdleTimer) clearTimeout(state.previewScrollIdleTimer);
+        state.previewScrollIdleTimer = setTimeout(() => {
+            state.previewScrolling = false;
+            schedulePreviewHydrationFlush();
+        }, 110);
         const nearBottom = list.scrollTop + list.clientHeight >= list.scrollHeight - 140;
-        if (nearBottom) renderNextPage();
+        if (nearBottom) scheduleRenderNextPage();
     };
 }
 
@@ -1118,32 +1265,9 @@ async function init() {
         window.close();
     });
 
-    // varsayılan seçim
     if (list) {
-        // İlk görünen öğelerin önizlemesini hızlıca yükle
-        const firstRows = Array.from(list.querySelectorAll('.preset-item')).slice(0, 14);
-        for (const row of firstRows) {
-            const filename = row.dataset.filename;
-            if (!filename) continue;
-
-            const canvas = row.querySelector('canvas.preset-preview');
-            const initialBands = bandsForPreview(filename);
-            const initialType = previewTypeFromBands(initialBands, filename);
-            setRowPreviewType(row, initialType);
-            if (canvas) drawMiniCurveIfNeeded(canvas, initialBands, initialType);
-
-            if (filename === '__flat__' || filename.startsWith('__ardali_')) continue;
-            ensureBandsLoaded(filename).then(() => {
-                const bands = state.bandsCache.get(filename);
-                if (!bands) return;
-                if (canvas) {
-                    const type = previewTypeFromBands(bands, filename);
-                    setRowPreviewType(row, type);
-                    drawMiniCurveIfNeeded(canvas, bands, type);
-                }
-        });
+        Array.from(list.querySelectorAll('.preset-item')).slice(0, 8).forEach(enqueuePreviewHydration);
     }
-}
 }
 
 document.addEventListener('DOMContentLoaded', () => {

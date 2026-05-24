@@ -191,13 +191,18 @@
 
         function installGenericCosmetics(result) {
             const imports = Array.isArray(result?.genericImports) ? result.genericImports : [];
-            if (imports.length === 0) return;
-            const hostname = String(result.hostname || location.hostname || '').toLowerCase();
+            const hostname = String(result?.hostname || location.hostname || '').toLowerCase();
+            const signature = imports.map((item) => String(item?.id || '')).join('|') || 'none';
+            if (imports.length === 0) {
+                if (genericState.hostname !== hostname || genericState.signature !== signature) {
+                    resetGenericCosmetics(hostname, signature);
+                }
+                return;
+            }
             if (hostname === 'youtube.com' || hostname.endsWith('.youtube.com')) {
                 resetGenericCosmetics(hostname, 'youtube-lite');
                 return;
             }
-            const signature = imports.map((item) => String(item?.id || '')).join('|');
             if (genericState.hostname !== hostname || genericState.signature !== signature) {
                 resetGenericCosmetics(hostname, signature);
             }
@@ -678,6 +683,46 @@
                 return false;
             }
 
+            function getYouTubeAdContainer(node) {
+                try {
+                    if (!node || !node.closest) return null;
+                    return node.closest(
+                        'ytd-ad-slot-renderer, ytd-promoted-video-renderer, ytd-in-feed-ad-layout-renderer, ytd-display-ad-renderer, ytd-promoted-sparkles-web-renderer, ytd-video-masthead-ad-v3-renderer, ytd-banner-promo-renderer, ytd-companion-slot-renderer, ytd-action-companion-ad-renderer, ytd-compact-promoted-video-renderer, ytd-promoted-sparkles-text-search-renderer, #player-ads, #masthead-ad, .video-ads, .ytp-ad-module, [data-ad], [id*="ad-slot"], [class*="ad-slot"]'
+                    );
+                } catch {
+                    return null;
+                }
+            }
+
+            function neutralizeAdContainerMedia() {
+                try {
+                    const containers = document.querySelectorAll(
+                        'ytd-ad-slot-renderer, ytd-promoted-video-renderer, ytd-in-feed-ad-layout-renderer, ytd-display-ad-renderer, ytd-promoted-sparkles-web-renderer, ytd-video-masthead-ad-v3-renderer, ytd-banner-promo-renderer, ytd-companion-slot-renderer, ytd-action-companion-ad-renderer, ytd-compact-promoted-video-renderer, ytd-promoted-sparkles-text-search-renderer, #player-ads, #masthead-ad, .video-ads, .ytp-ad-module, [data-ad], [id*="ad-slot"], [class*="ad-slot"]'
+                    );
+                    containers.forEach((container) => {
+                        try {
+                            const medias = container && typeof container.querySelectorAll === 'function'
+                                ? Array.from(container.querySelectorAll('video, audio'))
+                                : [];
+                            medias.forEach((m) => {
+                                try {
+                                    m.muted = true;
+                                    m.volume = 0;
+                                    if (typeof m.pause === 'function') m.pause();
+                                    if (Number.isFinite(m.duration) && m.duration > 0) {
+                                        m.currentTime = Math.max(0, m.duration - 0.05);
+                                    }
+                                } catch {}
+                            });
+                            if (container && container.style) {
+                                container.style.setProperty('display', 'none', 'important');
+                                container.style.setProperty('visibility', 'hidden', 'important');
+                            }
+                        } catch {}
+                    });
+                } catch {}
+            }
+
             function guardAdAudio() {
                 try {
                     const player = document.getElementById('movie_player');
@@ -690,10 +735,12 @@
                     const medias = Array.from(document.querySelectorAll('video.html5-main-video, #movie_player video, #movie_player audio, video, audio'));
                     const adSrc = medias.some((m) => isLikelyAdMediaSrc(m && (m.currentSrc || m.src)));
                     const shouldMute = adShowing || adSrc;
+                    neutralizeAdContainerMedia();
                     medias.forEach((m) => {
                         try {
                             if (!m) return;
-                            if (shouldMute) {
+                            const mediaIsAd = isLikelyAdMediaSrc(m.currentSrc || m.src) || !!getYouTubeAdContainer(m);
+                            if (shouldMute || mediaIsAd) {
                                 if (!adAudioRestore.has(m)) {
                                     adAudioRestore.set(m, {
                                         muted: !!m.muted,
@@ -703,7 +750,7 @@
                                 }
                                 m.muted = true;
                                 m.volume = 0;
-                                if (isLikelyAdMediaSrc(m.currentSrc || m.src)) {
+                                if (mediaIsAd) {
                                     if (Number.isFinite(m.duration) && m.duration > 0) {
                                         m.currentTime = Math.max(0, m.duration - 0.05);
                                     }

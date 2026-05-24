@@ -1,6 +1,6 @@
 (function attachArDaliSettingsShared() {
     const WEB_STARTUP_LAZY_DELAY_OPTIONS = [0, 800, 1400, 2000];
-    const WEB_STARTUP_LAZY_DELAY_DEFAULT_MS = 1400;
+    const WEB_STARTUP_LAZY_DELAY_DEFAULT_MS = 0;
 
     function normalizeWebStartupLazyDelayMs(value) {
         const num = Number(value);
@@ -368,8 +368,63 @@
         if (elements.behaviorWebMotionPreset) {
             elements.behaviorWebMotionPreset.value = normalizeWebMotionPreset(state.settings?.webUi?.motionPreset || 'balanced');
         }
+        if (elements.behaviorWebPlaybackPowerMode) {
+            const mode = String(state.settings?.webUi?.playbackPowerMode || 'balanced').toLowerCase();
+            elements.behaviorWebPlaybackPowerMode.value = ['balanced', 'smooth', 'battery', 'off'].includes(mode) ? mode : 'balanced';
+        }
         if (elements.behaviorWebLowPowerMode) {
             elements.behaviorWebLowPowerMode.checked = !!state.settings?.webUi?.lowPowerMode;
+        }
+        if (elements.behaviorWebClearCacheOnQuit) {
+            elements.behaviorWebClearCacheOnQuit.checked = state.settings?.webUi?.clearCacheOnQuit !== false;
+        }
+        if (elements.behaviorWebClearCookiesOnQuit) {
+            elements.behaviorWebClearCookiesOnQuit.checked = state.settings?.webUi?.clearCookiesOnQuit === true;
+        }
+        if (elements.behaviorWebClearSiteDataOnQuit) {
+            elements.behaviorWebClearSiteDataOnQuit.checked = state.settings?.webUi?.clearSiteDataOnQuit === true;
+        }
+        if (elements.behaviorWebClearHistoryOnQuit) {
+            elements.behaviorWebClearHistoryOnQuit.checked = state.settings?.webUi?.clearHistoryOnQuit === true;
+        }
+        if (elements.behaviorWebPreferHttps) {
+            elements.behaviorWebPreferHttps.checked = state.settings?.webUi?.preferHttps !== false;
+        }
+        if (elements.behaviorWebReduceWebRtcIpLeaks) {
+            elements.behaviorWebReduceWebRtcIpLeaks.checked = state.settings?.webUi?.reduceWebRtcIpLeaks !== false;
+        }
+        if (elements.behaviorWebBackgroundThrottle) {
+            elements.behaviorWebBackgroundThrottle.checked = state.settings?.webUi?.backgroundThrottle !== false;
+        }
+        if (elements.behaviorWebRestoreLastSession) {
+            elements.behaviorWebRestoreLastSession.checked = state.settings?.webUi?.restoreLastSession !== false;
+        }
+        if (elements.behaviorWebSuspendWhenInactive) {
+            elements.behaviorWebSuspendWhenInactive.checked = state.settings?.webUi?.suspendWhenInactive !== false;
+        }
+        if (elements.behaviorWebSessionProfile) {
+            elements.behaviorWebSessionProfile.value = String(state.settings?.security?.sessionProfile || 'persistent').toLowerCase() === 'isolated' ? 'isolated' : 'persistent';
+        }
+        if (elements.behaviorWebAutoRecover) elements.behaviorWebAutoRecover.checked = state.settings?.webUi?.autoRecover !== false;
+        if (elements.behaviorWebAllowCamera) elements.behaviorWebAllowCamera.checked = state.settings?.webUi?.allowCamera === true;
+        if (elements.behaviorWebAllowMicrophone) elements.behaviorWebAllowMicrophone.checked = state.settings?.webUi?.allowMicrophone === true;
+        if (elements.behaviorWebAllowLocation) elements.behaviorWebAllowLocation.checked = state.settings?.webUi?.allowLocation === true;
+        if (elements.behaviorWebAllowNotifications) elements.behaviorWebAllowNotifications.checked = state.settings?.webUi?.allowNotifications === true;
+        if (elements.behaviorWebAllowPopups) elements.behaviorWebAllowPopups.checked = state.settings?.webUi?.allowPopups !== false && state.settings?.security?.allowPopups !== false;
+        if (elements.behaviorWebUserAgentMode) {
+            const mode = String(state.settings?.webUi?.userAgentMode || 'desktop').toLowerCase();
+            elements.behaviorWebUserAgentMode.value = ['desktop', 'mobile', 'default'].includes(mode) ? mode : 'desktop';
+        }
+        if (elements.behaviorWebAutoplayPolicy) {
+            const policy = String(state.settings?.webUi?.autoplayPolicy || 'allow').toLowerCase();
+            elements.behaviorWebAutoplayPolicy.value = ['allow', 'gesture', 'block'].includes(policy) ? policy : 'allow';
+        }
+        if (elements.behaviorWebAskDownloadLocation) elements.behaviorWebAskDownloadLocation.checked = state.settings?.webUi?.askDownloadLocation !== false;
+        if (elements.behaviorWebReduceReferrers) elements.behaviorWebReduceReferrers.checked = state.settings?.webUi?.reduceReferrers !== false;
+        if (elements.behaviorWebStripTrackingParams) elements.behaviorWebStripTrackingParams.checked = state.settings?.webUi?.stripTrackingParams !== false;
+        if (elements.behaviorWebBlockThirdPartyCookies) elements.behaviorWebBlockThirdPartyCookies.checked = state.settings?.webUi?.blockThirdPartyCookies === true;
+        if (elements.uiSidebarMotionToggle) {
+            elements.uiSidebarMotionToggle.checked = state.settings?.appearance?.sidebarMotionEnabled !== false;
         }
         if (elements.behaviorCloseToTray) {
             elements.behaviorCloseToTray.checked = state.settings?.ui?.closeToTray !== false;
@@ -510,7 +565,7 @@
             );
         }
         if (elements.themeSelect) {
-            elements.themeSelect.value = String(state.settings?.appearance?.theme || 'aur-renk-efektleri');
+            elements.themeSelect.value = String(state.settings?.appearance?.theme || 'black');
         }
         const modePreset = visualModePreset(state.settings?.appearance?.visualMode || 'full');
         if (elements.uiVisualModeSelect) {
@@ -518,6 +573,10 @@
         }
         if (elements.uiMotionProfileSelect) {
             elements.uiMotionProfileSelect.value = normalizeMotionProfile(state.settings?.appearance?.motionProfile);
+        }
+        if (elements.uiOptimizationProfileSelect) {
+            const profile = String(state.settings?.appearance?.optimizationProfile || 'auto').toLowerCase();
+            elements.uiOptimizationProfileSelect.value = ['auto', 'ram', 'gpu', 'battery', 'quality'].includes(profile) ? profile : 'auto';
         }
         if (elements.uiFollowSystemThemeToggle) {
             elements.uiFollowSystemThemeToggle.checked = !!state.settings?.appearance?.followSystemTheme;
@@ -788,7 +847,7 @@
         const prevAutoHardwareProfile = state.settings.appearance.autoHardwareProfile !== false;
         const nextAutoHardwareProfile = !!elements.uiAutoHardwareProfileToggle?.checked;
         const modePresetForApply = visualModePreset(elements.uiVisualModeSelect?.value || state.settings.appearance.visualMode || 'full');
-        state.settings.appearance.theme = String(elements.themeSelect?.value || state.settings.appearance.theme || 'aur-renk-efektleri');
+        state.settings.appearance.theme = String(elements.themeSelect?.value || state.settings.appearance.theme || 'black');
         state.settings.appearance.followSystemTheme = !!elements.uiFollowSystemThemeToggle?.checked;
         state.settings.appearance.visualMode = modePresetForApply.visualMode;
         state.settings.appearance.motionProfile = normalizeMotionProfile(
@@ -797,7 +856,15 @@
         state.settings.appearance.uiFxEnabled = !!elements.uiFxEnabledToggle?.checked;
         state.settings.appearance.sliderFxEnabled = !!elements.sliderFxToggle?.checked;
         state.settings.appearance.reduceMotion = !!elements.uiReduceMotionToggle?.checked;
+        state.settings.appearance.sidebarMotionEnabled =
+            (typeof elements.uiSidebarMotionToggle?.checked === 'boolean')
+                ? !!elements.uiSidebarMotionToggle.checked
+                : state.settings.appearance.sidebarMotionEnabled !== false;
         state.settings.appearance.sfxLights = !!elements.sfxLightsToggle?.checked;
+        if (elements.uiOptimizationProfileSelect) {
+            const profile = String(elements.uiOptimizationProfileSelect.value || 'auto').toLowerCase();
+            state.settings.appearance.optimizationProfile = ['auto', 'ram', 'gpu', 'battery', 'quality'].includes(profile) ? profile : 'auto';
+        }
         state.settings.appearance.sfxSidebarIconSize = normalizeSfxIconSize(
             elements.uiSfxIconSizeSelect?.value || state.settings.appearance.sfxSidebarIconSize || 'medium'
         );
@@ -833,6 +900,9 @@
             || state.settings.ui.webStartupLazyDelayMs
         );
         state.settings.ui.webStartupLazyDelayMs = webStartupLazyDelayMs;
+        if (elements.behaviorWebStartupDelay || elements.libraryWebStartupDelay) {
+            state.settings.ui.webStartupDelayManual = true;
+        }
         state.settings.ui.closeToTray =
             (typeof elements.behaviorCloseToTray?.checked === 'boolean')
                 ? !!elements.behaviorCloseToTray.checked
@@ -853,12 +923,39 @@
             || state.settings.webUi.motionPreset
             || 'balanced'
         );
+        const playbackPowerMode = String(elements.behaviorWebPlaybackPowerMode?.value || state.settings.webUi.playbackPowerMode || 'balanced').toLowerCase();
+        state.settings.webUi.playbackPowerMode = ['balanced', 'smooth', 'battery', 'off'].includes(playbackPowerMode) ? playbackPowerMode : 'balanced';
         state.settings.webUi.lowPowerMode = !!elements.behaviorWebLowPowerMode?.checked;
+        state.settings.webUi.clearCacheOnQuit = elements.behaviorWebClearCacheOnQuit?.checked !== false;
+        state.settings.webUi.clearCookiesOnQuit = elements.behaviorWebClearCookiesOnQuit?.checked === true;
+        state.settings.webUi.clearSiteDataOnQuit = elements.behaviorWebClearSiteDataOnQuit?.checked === true;
+        state.settings.webUi.clearHistoryOnQuit = elements.behaviorWebClearHistoryOnQuit?.checked === true;
+        state.settings.webUi.preferHttps = elements.behaviorWebPreferHttps?.checked !== false;
+        state.settings.webUi.reduceWebRtcIpLeaks = elements.behaviorWebReduceWebRtcIpLeaks?.checked !== false;
+        state.settings.webUi.backgroundThrottle = elements.behaviorWebBackgroundThrottle?.checked !== false;
+        state.settings.webUi.restoreLastSession = elements.behaviorWebRestoreLastSession?.checked !== false;
+        state.settings.webUi.suspendWhenInactive = elements.behaviorWebSuspendWhenInactive?.checked !== false;
+        state.settings.webUi.autoRecover = elements.behaviorWebAutoRecover?.checked !== false;
+        state.settings.webUi.allowCamera = elements.behaviorWebAllowCamera?.checked === true;
+        state.settings.webUi.allowMicrophone = elements.behaviorWebAllowMicrophone?.checked === true;
+        state.settings.webUi.allowLocation = elements.behaviorWebAllowLocation?.checked === true;
+        state.settings.webUi.allowNotifications = elements.behaviorWebAllowNotifications?.checked === true;
+        state.settings.webUi.allowPopups = elements.behaviorWebAllowPopups?.checked !== false;
+        state.settings.webUi.userAgentMode = ['desktop', 'mobile', 'default'].includes(String(elements.behaviorWebUserAgentMode?.value || '').toLowerCase())
+            ? String(elements.behaviorWebUserAgentMode.value).toLowerCase()
+            : 'desktop';
+        state.settings.webUi.autoplayPolicy = ['allow', 'gesture', 'block'].includes(String(elements.behaviorWebAutoplayPolicy?.value || '').toLowerCase())
+            ? String(elements.behaviorWebAutoplayPolicy.value).toLowerCase()
+            : 'allow';
+        state.settings.webUi.askDownloadLocation = elements.behaviorWebAskDownloadLocation?.checked !== false;
+        state.settings.webUi.reduceReferrers = elements.behaviorWebReduceReferrers?.checked !== false;
+        state.settings.webUi.stripTrackingParams = elements.behaviorWebStripTrackingParams?.checked !== false;
+        state.settings.webUi.blockThirdPartyCookies = elements.behaviorWebBlockThirdPartyCookies?.checked === true;
         if (!state.settings.security || typeof state.settings.security !== 'object') state.settings.security = {};
-        state.settings.security.allowPopups = !!elements.securityAllowPopups?.checked;
+        state.settings.security.allowPopups = elements.behaviorWebAllowPopups ? state.settings.webUi.allowPopups : !!elements.securityAllowPopups?.checked;
         state.settings.security.enforceAllowlist = !!elements.securityEnforceAllowlist?.checked;
         state.settings.security.sessionProfile =
-            String(elements.securitySessionProfile?.value || state.settings.security.sessionProfile || 'persistent').toLowerCase() === 'isolated'
+            String(elements.behaviorWebSessionProfile?.value || elements.securitySessionProfile?.value || state.settings.security.sessionProfile || 'persistent').toLowerCase() === 'isolated'
                 ? 'isolated'
                 : 'persistent';
         if (!state.settings.library || typeof state.settings.library !== 'object') state.settings.library = {};
@@ -944,7 +1041,7 @@
             ? coverCacheLimitValue
             : 64;
 
-        if (state.settings.appearance.lowHardwareMode) {
+        if (state.settings.appearance.lowHardwareMode && state.settings.ui.webStartupDelayManual !== true) {
             state.settings.ui.webStartupLazyDelayMs = 2000;
             state.settings.library.watchFolders = false;
             state.settings.library.autoRescanOnFolderChange = false;

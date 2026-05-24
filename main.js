@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, dialog, nativeImage, Tray, Menu, shell, session, screen, globalShortcut, desktopCapturer, clipboard } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, nativeImage, Tray, Menu, shell, session, screen, globalShortcut, desktopCapturer, clipboard, powerSaveBlocker } = require('electron');
 
 // Wayland/Flatpak: App ID synchronization must happen as early as possible.
 const FLATPAK_APP_ID = 'com.ardali.mediaplayer';
@@ -786,6 +786,22 @@ function safeStdoutLine(line) {
 
 const TRANSIENT_HOME_FILES = ['ardali-freeze.log', 'imgui.ini'];
 
+function readStartupSettingsForCommandLine() {
+    try {
+        const home = os.homedir();
+        const base =
+            process.platform === 'win32'
+                ? (process.env.APPDATA || path.join(home, 'AppData', 'Roaming'))
+                : process.platform === 'darwin'
+                    ? path.join(home, 'Library', 'Application Support')
+                    : (process.env.XDG_CONFIG_HOME || path.join(home, '.config'));
+        const data = fs.readFileSync(path.join(base, FLATPAK_APP_ID, 'settings.json'), 'utf8');
+        return JSON.parse(data);
+    } catch {
+        return {};
+    }
+}
+
 function cleanupTransientHomeFiles(context = 'runtime') {
     if (process.platform !== 'linux') return;
     let homeDir = '';
@@ -812,13 +828,27 @@ function cleanupTransientHomeFiles(context = 'runtime') {
 // GNOME/Wayland üst bar & dock ikon eşleştirmesi için (desktop entry ile eşleşme)
 const LINUX_WM_CLASS = 'ardali';
 if (app && app.commandLine) {
+    const startupSettings = readStartupSettingsForCommandLine();
+    const startupWebUi = startupSettings?.webUi && typeof startupSettings.webUi === 'object' ? startupSettings.webUi : {};
+
     if (process.platform === 'linux') {
         app.commandLine.appendSwitch('class', LINUX_WM_CLASS);
     }
-    app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
-    app.commandLine.appendSwitch('disable-background-timer-throttling');
+    const startupAutoplayPolicy = String(startupWebUi.autoplayPolicy || 'allow').toLowerCase();
+    app.commandLine.appendSwitch(
+        'autoplay-policy',
+        startupAutoplayPolicy === 'gesture' || startupAutoplayPolicy === 'block'
+            ? 'user-gesture-required'
+            : 'no-user-gesture-required'
+    );
+    if (startupWebUi.backgroundThrottle === false) {
+        app.commandLine.appendSwitch('disable-background-timer-throttling');
+    }
     app.commandLine.appendSwitch('disable-blink-features', 'AutomationControlled');
     app.commandLine.appendSwitch('enable-accelerated-video-decode');
+    if (startupWebUi.reduceWebRtcIpLeaks !== false) {
+        app.commandLine.appendSwitch('force-webrtc-ip-handling-policy', 'default_public_interface_only');
+    }
 
     // DÜZELTME: WebView'larda çift medya oynatıcıyı önlemek için Chromium MediaSessionService devre dışı
     const disabledFeatures = ['HardwareMediaKeyHandling', 'MediaSessionService'];
@@ -1215,6 +1245,277 @@ let screenRecordingSystemAudioPath = '';
 const screenRecordingLiveOutputs = new Map();
 let pendingOpenMediaFiles = [];
 let rendererMediaOpenReady = false;
+let playbackPowerSaveBlockerDisplayId = null;
+let playbackPowerSaveBlockerAppId = null;
+const linuxPlaybackPowerProfile = {
+    active: false,
+    previousProfile: '',
+    lastErrorAt: 0
+};
+const playbackPowerRuntime = {
+    active: false,
+    mode: 'balanced',
+    reason: '',
+    monitorTimer: null,
+    lastStateKey: ''
+};
+
+function readPowerSupplyValueSync(dir, name) {
+    try {
+        return fs.readFileSync(path.join(dir, name), 'utf8').trim();
+    } catch {
+        return '';
+    }
+}
+
+function getLinuxPowerSupplyStateSync() {
+    const state = {
+        onBattery: false,
+        hasBattery: false,
+        hasMains: false,
+        mainsOnline: false,
+        batteryStatus: '',
+        mains: []
+    };
+    if (process.platform !== 'linux') return state;
+    try {
+        const base = '/sys/class/power_supply';
+        const entries = fs.readdirSync(base, { withFileTypes: true });
+        for (const entry of entries) {
+            if (!entry?.isDirectory?.() && !entry?.isSymbolicLink?.()) continue;
+            const dir = path.join(base, entry.name);
+            const type = readPowerSupplyValueSync(dir, 'type').toLowerCase();
+            if (type === 'battery') {
+                state.hasBattery = true;
+                const status = readPowerSupplyValueSync(dir, 'status');
+                if (status) state.batteryStatus = status;
+                continue;
+            }
+            if (type !== 'mains' && type !== 'usb' && type !== 'usb-c' && type !== 'usb_pd') continue;
+            const online = readPowerSupplyValueSync(dir, 'online');
+            state.hasMains = true;
+            state.mains.push({ name: entry.name, type, online });
+            if (online === '1') state.mainsOnline = true;
+        }
+        state.onBattery = state.hasBattery && !state.mainsOnline;
+        return state;
+    } catch {
+        return state;
+    }
+}
+
+function getLinuxPowerSupplyOnBatterySync() {
+    return getLinuxPowerSupplyStateSync().onBattery;
+}
+
+function runPowerProfilesCtl(args = []) {
+    if (process.platform !== 'linux') return { ok: false, stdout: '', stderr: 'not-linux' };
+    if (isTruthyEnvFlag('ARDALI_DISABLE_PLAYBACK_POWER_PROFILE')) {
+        return { ok: false, stdout: '', stderr: 'disabled' };
+    }
+    if (!commandExists('powerprofilesctl')) return { ok: false, stdout: '', stderr: 'missing' };
+    try {
+        const res = spawnSync('powerprofilesctl', args.map((arg) => String(arg)), {
+            encoding: 'utf8',
+            timeout: 1500,
+            shell: false
+        });
+        return {
+            ok: res.status === 0,
+            stdout: String(res.stdout || '').trim(),
+            stderr: String(res.stderr || '').trim()
+        };
+    } catch (error) {
+        return { ok: false, stdout: '', stderr: error?.message || String(error) };
+    }
+}
+
+function normalizePlaybackPowerMode(value) {
+    const mode = String(value || '').trim().toLowerCase();
+    if (mode === 'smooth' || mode === 'battery' || mode === 'off') return mode;
+    return 'balanced';
+}
+
+function setLinuxPlaybackPerformanceProfile(active, reason = 'media-playback', modeValue = 'balanced') {
+    if (process.platform !== 'linux') return;
+    if (isTruthyEnvFlag('ARDALI_DISABLE_PLAYBACK_POWER_PROFILE')) return;
+
+    const mode = normalizePlaybackPowerMode(modeValue);
+    const powerState = getLinuxPowerSupplyStateSync();
+    const shouldHold = active === true && (
+        mode === 'smooth' ||
+        (mode === 'balanced' && powerState.onBattery)
+    );
+    if (shouldHold) {
+        if (linuxPlaybackPowerProfile.active) {
+            const current = runPowerProfilesCtl(['get']);
+            const currentProfile = String(current.stdout || '').trim();
+            if (current.ok && currentProfile !== 'performance') {
+                const setResult = runPowerProfilesCtl(['set', 'performance']);
+                if (setResult.ok) {
+                    console.log('[POWER] playback performance profile reasserted', { current: currentProfile, mode, reason });
+                }
+            }
+            return;
+        }
+        const current = runPowerProfilesCtl(['get']);
+        if (!current.ok) {
+            const now = Date.now();
+            if ((now - linuxPlaybackPowerProfile.lastErrorAt) > 30000) {
+                linuxPlaybackPowerProfile.lastErrorAt = now;
+                console.warn('[POWER] power profile okunamadı:', current.stderr || 'unknown');
+            }
+            return;
+        }
+        const previous = String(current.stdout || '').trim();
+        if (!previous || previous === 'performance') return;
+        const setResult = runPowerProfilesCtl(['set', 'performance']);
+        if (!setResult.ok) {
+            const now = Date.now();
+            if ((now - linuxPlaybackPowerProfile.lastErrorAt) > 30000) {
+                linuxPlaybackPowerProfile.lastErrorAt = now;
+                console.warn('[POWER] performance profile uygulanamadı:', setResult.stderr || 'unknown');
+            }
+            return;
+        }
+        linuxPlaybackPowerProfile.active = true;
+        linuxPlaybackPowerProfile.previousProfile = previous;
+        console.log('[POWER] playback performance profile started', { previous, mode, reason });
+        return;
+    }
+
+    if (!linuxPlaybackPowerProfile.active) return;
+    const previous = String(linuxPlaybackPowerProfile.previousProfile || '').trim();
+    linuxPlaybackPowerProfile.active = false;
+    linuxPlaybackPowerProfile.previousProfile = '';
+    if (!previous || previous === 'performance') return;
+    const restore = runPowerProfilesCtl(['set', previous]);
+    if (restore.ok) {
+        console.log('[POWER] playback performance profile restored', { profile: previous, reason });
+    } else {
+        console.warn('[POWER] power profile geri alınamadı:', restore.stderr || 'unknown');
+    }
+}
+
+function getPlaybackPowerRuntimeSnapshot() {
+    const powerSupply = getLinuxPowerSupplyStateSync();
+    const current = runPowerProfilesCtl(['get']);
+    return {
+        active: playbackPowerRuntime.active,
+        mode: playbackPowerRuntime.mode,
+        onBattery: powerSupply.onBattery,
+        hasBattery: powerSupply.hasBattery,
+        mainsOnline: powerSupply.mainsOnline,
+        batteryStatus: powerSupply.batteryStatus,
+        mains: powerSupply.mains,
+        profile: current.ok ? current.stdout : '',
+        performanceProfile: linuxPlaybackPowerProfile.active
+    };
+}
+
+function syncPlaybackPowerRuntime(reason = 'power-monitor') {
+    if (!playbackPowerRuntime.active) {
+        setLinuxPlaybackPerformanceProfile(false, reason, playbackPowerRuntime.mode);
+        return;
+    }
+    setLinuxPlaybackPerformanceProfile(true, reason, playbackPowerRuntime.mode);
+    const snapshot = getPlaybackPowerRuntimeSnapshot();
+    const key = [
+        snapshot.active ? 1 : 0,
+        snapshot.mode,
+        snapshot.onBattery ? 1 : 0,
+        snapshot.mainsOnline ? 1 : 0,
+        snapshot.batteryStatus,
+        snapshot.profile,
+        snapshot.performanceProfile ? 1 : 0
+    ].join(':');
+    if (key !== playbackPowerRuntime.lastStateKey) {
+        playbackPowerRuntime.lastStateKey = key;
+        console.log('[POWER] playback power state', snapshot);
+    }
+}
+
+function startPlaybackPowerMonitor() {
+    if (playbackPowerRuntime.monitorTimer) return;
+    playbackPowerRuntime.monitorTimer = setInterval(() => {
+        syncPlaybackPowerRuntime('power-monitor');
+    }, 2500);
+    if (typeof playbackPowerRuntime.monitorTimer.unref === 'function') {
+        playbackPowerRuntime.monitorTimer.unref();
+    }
+}
+
+function stopPlaybackPowerMonitor() {
+    if (playbackPowerRuntime.monitorTimer) {
+        clearInterval(playbackPowerRuntime.monitorTimer);
+        playbackPowerRuntime.monitorTimer = null;
+    }
+    playbackPowerRuntime.lastStateKey = '';
+}
+
+function setPlaybackPowerSaveBlocker(active, reason = 'media-playback', modeValue = 'balanced') {
+    const mode = normalizePlaybackPowerMode(modeValue);
+    const shouldRun = active === true && mode !== 'off';
+    try {
+        if (shouldRun) {
+            playbackPowerRuntime.active = true;
+            playbackPowerRuntime.mode = mode;
+            playbackPowerRuntime.reason = reason;
+            let started = false;
+            if (playbackPowerSaveBlockerDisplayId === null || !powerSaveBlocker.isStarted(playbackPowerSaveBlockerDisplayId)) {
+                playbackPowerSaveBlockerDisplayId = powerSaveBlocker.start('prevent-display-sleep');
+                started = true;
+            }
+            if (playbackPowerSaveBlockerAppId === null || !powerSaveBlocker.isStarted(playbackPowerSaveBlockerAppId)) {
+                playbackPowerSaveBlockerAppId = powerSaveBlocker.start('prevent-app-suspension');
+                started = true;
+            }
+            syncPlaybackPowerRuntime(reason);
+            startPlaybackPowerMonitor();
+            if (started) {
+                console.log('[POWER] playback blocker started', {
+                    displayId: playbackPowerSaveBlockerDisplayId,
+                    appId: playbackPowerSaveBlockerAppId,
+                    mode,
+                    reason
+                });
+            }
+            return {
+                ok: true,
+                active: true,
+                displayId: playbackPowerSaveBlockerDisplayId,
+                appId: playbackPowerSaveBlockerAppId,
+                mode,
+                performanceProfile: linuxPlaybackPowerProfile.active
+            };
+        }
+        playbackPowerRuntime.active = false;
+        playbackPowerRuntime.mode = mode;
+        playbackPowerRuntime.reason = reason;
+        stopPlaybackPowerMonitor();
+        let stopped = false;
+        if (playbackPowerSaveBlockerDisplayId !== null && powerSaveBlocker.isStarted(playbackPowerSaveBlockerDisplayId)) {
+            powerSaveBlocker.stop(playbackPowerSaveBlockerDisplayId);
+            stopped = true;
+        }
+        if (playbackPowerSaveBlockerAppId !== null && powerSaveBlocker.isStarted(playbackPowerSaveBlockerAppId)) {
+            powerSaveBlocker.stop(playbackPowerSaveBlockerAppId);
+            stopped = true;
+        }
+        setLinuxPlaybackPerformanceProfile(false, reason, mode);
+        if (stopped) {
+            console.log('[POWER] playback blocker stopped', { reason });
+        }
+        playbackPowerSaveBlockerDisplayId = null;
+        playbackPowerSaveBlockerAppId = null;
+        return { ok: true, active: false, displayId: null, appId: null, performanceProfile: false };
+    } catch (error) {
+        console.warn('[POWER] playback blocker error:', error?.message || error);
+        playbackPowerSaveBlockerDisplayId = null;
+        playbackPowerSaveBlockerAppId = null;
+        return { ok: false, active: false, error: error?.message || String(error) };
+    }
+}
 
 function normalizeLaunchFilePath(rawPath) {
     const value = String(rawPath || '').trim();
@@ -2061,6 +2362,257 @@ async function readSettingsFileSafe() {
     }
 }
 
+function readSettingsFileSafeSync() {
+    try {
+        const data = fs.readFileSync(getSettingsPath(), 'utf8');
+        return JSON.parse(data);
+    } catch {
+        return {};
+    }
+}
+
+function shouldClearWebCacheOnQuit() {
+    const settings = readSettingsFileSafeSync();
+    return settings?.webUi?.clearCacheOnQuit !== false;
+}
+
+function getWebQuitCleanupSettings() {
+    const settings = readSettingsFileSafeSync();
+    const webUi = settings?.webUi && typeof settings.webUi === 'object' ? settings.webUi : {};
+    return {
+        clearCacheOnQuit: webUi.clearCacheOnQuit !== false,
+        clearCookiesOnQuit: webUi.clearCookiesOnQuit === true,
+        clearSiteDataOnQuit: webUi.clearSiteDataOnQuit === true,
+        clearHistoryOnQuit: webUi.clearHistoryOnQuit === true
+    };
+}
+
+function getWebRuntimeSettingsSync() {
+    const settings = readSettingsFileSafeSync();
+    const webUi = settings?.webUi && typeof settings.webUi === 'object' ? settings.webUi : {};
+    const security = settings?.security && typeof settings.security === 'object' ? settings.security : {};
+    return {
+        allowCamera: webUi.allowCamera === true,
+        allowMicrophone: webUi.allowMicrophone === true,
+        allowLocation: webUi.allowLocation === true,
+        allowNotifications: webUi.allowNotifications === true,
+        allowPopups: webUi.allowPopups !== false && security.allowPopups !== false,
+        askDownloadLocation: webUi.askDownloadLocation !== false,
+        reduceReferrers: webUi.reduceReferrers !== false,
+        blockThirdPartyCookies: webUi.blockThirdPartyCookies === true
+    };
+}
+
+function getWebSitePermissionOverrideSync(rawUrl = '') {
+    try {
+        const settings = readSettingsFileSafeSync();
+        const permissions = settings?.webUi?.sitePermissions;
+        if (!permissions || typeof permissions !== 'object' || Array.isArray(permissions)) return null;
+        const origin = new URL(String(rawUrl || '').trim()).origin;
+        const entry = permissions[origin];
+        return entry && typeof entry === 'object' ? entry : null;
+    } catch {
+        return null;
+    }
+}
+
+function getWebPermissionFlag(permission = '') {
+    const value = String(permission || '').trim();
+    if (value === 'media' || value === 'audioCapture') return 'allowMicrophone';
+    if (value === 'videoCapture') return 'allowCamera';
+    if (value === 'geolocation') return 'allowLocation';
+    if (value === 'notifications') return 'allowNotifications';
+    return '';
+}
+
+function isWebPermissionAllowedBySettings(permission, currentUrl = '', originUrl = '') {
+    const flag = getWebPermissionFlag(permission);
+    if (!flag) return false;
+    const override = getWebSitePermissionOverrideSync(originUrl || currentUrl);
+    if (String(permission || '').trim() === 'media') {
+        if (override && (typeof override.allowMicrophone === 'boolean' || typeof override.allowCamera === 'boolean')) {
+            return override.allowMicrophone === true || override.allowCamera === true;
+        }
+        const webPrefs = getWebRuntimeSettingsSync();
+        return webPrefs.allowMicrophone === true || webPrefs.allowCamera === true;
+    }
+    if (override && typeof override[flag] === 'boolean') return override[flag] === true;
+    const webPrefs = getWebRuntimeSettingsSync();
+    return webPrefs[flag] === true;
+}
+
+function isWebPopupAllowedBySettings(currentUrl = '', popupUrl = '') {
+    const override = getWebSitePermissionOverrideSync(popupUrl || currentUrl);
+    if (override && typeof override.allowPopups === 'boolean') return override.allowPopups === true;
+    return getWebRuntimeSettingsSync().allowPopups !== false;
+}
+
+function buildWebStorageClearOptions(options = {}) {
+    const opts = options && typeof options === 'object' ? options : {};
+    if (opts.all === true) {
+        return {
+            cache: true,
+            cookies: true,
+            storageOptions: {
+                storages: ['cookies', 'localstorage', 'indexdb', 'cachestorage', 'serviceworkers', 'websql', 'shadercache']
+            },
+            cookieOrigin: ''
+        };
+    }
+
+    const storages = [];
+    if (opts.cookies === true) storages.push('cookies');
+    if (opts.siteData === true || opts.storage === true) {
+        storages.push('localstorage', 'indexdb', 'cachestorage', 'serviceworkers', 'websql');
+    }
+    return {
+        cache: opts.cache === true,
+        cookies: opts.cookies === true,
+        storageOptions: storages.length ? {
+            storages: [...new Set(storages)],
+            ...(typeof opts.origin === 'string' && /^https?:\/\//i.test(opts.origin) ? { origin: opts.origin } : {})
+        } : null,
+        cookieOrigin: typeof opts.origin === 'string' && /^https?:\/\//i.test(opts.origin) ? opts.origin : ''
+    };
+}
+
+function getCookieUrlForRemoval(cookie = {}) {
+    const domain = String(cookie.domain || '').trim().replace(/^\./, '');
+    if (!domain || !cookie.name) return '';
+    const protocol = cookie.secure ? 'https:' : 'http:';
+    const pathName = String(cookie.path || '/').trim() || '/';
+    return `${protocol}//${domain}${pathName.startsWith('/') ? pathName : `/${pathName}`}`;
+}
+
+function getRelatedCookieDomainsForOrigin(origin = '') {
+    try {
+        const host = String(new URL(origin).hostname || '').toLowerCase();
+        if (!host) return [];
+        const domains = new Set([getRegistrableDomainMain(host)]);
+        if (host === 'youtube.com' || host.endsWith('.youtube.com') || host === 'youtu.be') {
+            ['youtube.com', 'google.com', 'googleusercontent.com', 'gstatic.com', 'ytimg.com'].forEach((domain) => domains.add(domain));
+        }
+        if (host === 'google.com' || host.endsWith('.google.com')) {
+            ['google.com', 'youtube.com', 'googleusercontent.com', 'gstatic.com'].forEach((domain) => domains.add(domain));
+        }
+        return [...domains].filter(Boolean);
+    } catch {
+        return [];
+    }
+}
+
+function cookieMatchesAnyDomain(cookie = {}, domains = []) {
+    const cookieDomain = String(cookie.domain || '').trim().toLowerCase().replace(/^\./, '');
+    return domains.some((domain) => {
+        const value = String(domain || '').toLowerCase().replace(/^\./, '');
+        return !!value && (cookieDomain === value || cookieDomain.endsWith(`.${value}`));
+    });
+}
+
+async function clearCookiesFromSession(ses, origin = '') {
+    if (!ses || typeof ses.cookies?.get !== 'function' || typeof ses.cookies?.remove !== 'function') return 0;
+    const allCookies = await ses.cookies.get({});
+    const relatedDomains = origin ? getRelatedCookieDomainsForOrigin(origin) : [];
+    const cookies = origin
+        ? (allCookies || []).filter((cookie) => cookieMatchesAnyDomain(cookie, relatedDomains))
+        : (allCookies || []);
+    let removed = 0;
+    for (const cookie of cookies) {
+        const url = getCookieUrlForRemoval(cookie);
+        if (!url || !cookie.name) continue;
+        try {
+            await ses.cookies.remove(url, cookie.name);
+            removed += 1;
+        } catch (error) {
+            console.warn('[WEB] cookie remove failed:', cookie.name, error?.message || error);
+        }
+    }
+    return removed;
+}
+
+async function clearWebSessionData(options = {}) {
+    const clearOptions = buildWebStorageClearOptions(options);
+    const sessions = getWebSessions();
+    let removedCookies = 0;
+    for (const ses of sessions) {
+        if (!ses) continue;
+        if (clearOptions.cache && typeof ses.clearCache === 'function') {
+            await ses.clearCache();
+        }
+        if (clearOptions.storageOptions && typeof ses.clearStorageData === 'function') {
+            await ses.clearStorageData(clearOptions.storageOptions);
+        }
+        if (clearOptions.cookies) {
+            removedCookies += await clearCookiesFromSession(ses, clearOptions.cookieOrigin);
+        }
+    }
+    if (clearOptions.cookies) {
+        console.log('[WEB] cookies cleared:', {
+            origin: clearOptions.cookieOrigin || 'all',
+            removed: removedCookies,
+            sessions: sessions.length
+        });
+    }
+    return {
+        ok: true,
+        removedCookies,
+        sessions: sessions.length,
+        cache: !!clearOptions.cache,
+        cookies: !!clearOptions.cookies,
+        siteData: !!clearOptions.storageOptions,
+        origin: clearOptions.cookieOrigin || ''
+    };
+}
+
+function clearLastWebHistoryFromSettingsSync() {
+    try {
+        const settings = readSettingsFileSafeSync();
+        if (!settings || typeof settings !== 'object') return;
+        if (!settings.ui || typeof settings.ui !== 'object') settings.ui = {};
+        settings.ui.lastWebUrl = '';
+        writeJsonFileAtomicSync(getSettingsPath(), sanitizeSensitiveSettings(settings));
+    } catch (error) {
+        console.warn('[WEB] son web adresi temizlenemedi:', error?.message || error);
+    }
+}
+
+function clearWebCacheDirectoriesOnQuit() {
+    if (!shouldClearWebCacheOnQuit()) return;
+
+    const userDataPath = app.getPath('userData');
+    for (const cacheDirName of ['Cache', 'GPUCache', 'Code Cache']) {
+        try {
+            const cachePath = path.join(userDataPath, cacheDirName);
+            fs.rmSync(cachePath, { recursive: true, force: true });
+        } catch (error) {
+            console.warn(`[CACHE] ${cacheDirName} temizlenemedi:`, error?.message || error);
+        }
+    }
+}
+
+let webQuitCleanupInProgress = false;
+let webQuitCleanupDone = false;
+
+async function runWebQuitCleanup() {
+    const cleanup = getWebQuitCleanupSettings();
+    if (cleanup.clearHistoryOnQuit) {
+        clearLastWebHistoryFromSettingsSync();
+    }
+    if (cleanup.clearCacheOnQuit || cleanup.clearCookiesOnQuit || cleanup.clearSiteDataOnQuit) {
+        await clearWebSessionData({
+            cache: cleanup.clearCacheOnQuit,
+            cookies: cleanup.clearCookiesOnQuit,
+            siteData: cleanup.clearSiteDataOnQuit
+        });
+    }
+}
+
+function getCurrentUiThemeSync() {
+    const settings = readSettingsFileSafeSync();
+    const theme = String(settings?.appearance?.theme || '').trim();
+    return theme || 'black';
+}
+
 function isMediaKeyAutoDetectEnabled(settings) {
     return settings?.playback?.mediaKeyAutoDetect !== false;
 }
@@ -2724,7 +3276,21 @@ const ADBLOCK_PLATFORM_CORE_DNR_RULES = Object.freeze([
         action: { type: 'allow' },
         condition: {
             initiatorDomains: ['facebook.com', 'www.facebook.com', 'm.facebook.com', 'instagram.com', 'www.instagram.com'],
-            requestDomains: ['facebook.com', 'www.facebook.com', 'm.facebook.com', 'fbcdn.net', 'instagram.com', 'www.instagram.com', 'cdninstagram.com'],
+            requestDomains: [
+                'facebook.com',
+                'www.facebook.com',
+                'm.facebook.com',
+                'web.facebook.com',
+                'graph.facebook.com',
+                'static.xx.fbcdn.net',
+                'fbcdn.net',
+                'fbcdn.com',
+                'fbsbx.com',
+                'facebook.net',
+                'instagram.com',
+                'www.instagram.com',
+                'cdninstagram.com'
+            ],
             resourceTypes: ['stylesheet', 'script', 'font', 'image', 'media', 'xmlhttprequest']
         },
         ruleset: 'ardali-platform-core'
@@ -2735,7 +3301,20 @@ const ADBLOCK_PLATFORM_CORE_DNR_RULES = Object.freeze([
         action: { type: 'allow' },
         condition: {
             initiatorDomains: ['tiktok.com', 'www.tiktok.com', 'm.tiktok.com'],
-            requestDomains: ['tiktok.com', 'www.tiktok.com', 'm.tiktok.com', 'tiktokcdn.com', 'tiktokv.com', 'byteoversea.com'],
+            requestDomains: [
+                'tiktok.com',
+                'www.tiktok.com',
+                'm.tiktok.com',
+                'tiktokcdn.com',
+                'tiktokcdn-us.com',
+                'tiktokv.com',
+                'ttwstatic.com',
+                'byteoversea.com',
+                'ibyteimg.com',
+                'byteimg.com',
+                'ibytedtos.com',
+                'muscdn.com'
+            ],
             resourceTypes: ['stylesheet', 'script', 'font', 'image', 'media', 'xmlhttprequest']
         },
         ruleset: 'ardali-platform-core'
@@ -3035,6 +3614,47 @@ function isAdblockYouTubeHostname(hostname = '') {
     return YOUTUBE_HOSTNAMES.some((domain) => value === domain || value.endsWith(`.${domain}`));
 }
 
+function isAdblockTikTokHostname(hostname = '') {
+    const value = String(hostname || '').toLowerCase();
+    return value === 'tiktok.com' || value === 'www.tiktok.com' || value === 'm.tiktok.com' || value.endsWith('.tiktok.com');
+}
+
+function isAdblockFacebookHostname(hostname = '') {
+    const value = String(hostname || '').toLowerCase();
+    return value === 'facebook.com' ||
+        value === 'www.facebook.com' ||
+        value === 'm.facebook.com' ||
+        value === 'web.facebook.com' ||
+        value.endsWith('.facebook.com');
+}
+
+function isAdblockFacebookCoreAssetHostname(hostname = '') {
+    const value = String(hostname || '').toLowerCase();
+    return [
+        'facebook.com',
+        'fbcdn.net',
+        'fbcdn.com',
+        'fbsbx.com',
+        'facebook.net'
+    ].some((domain) => value === domain || value.endsWith(`.${domain}`));
+}
+
+function isAdblockTikTokCoreAssetHostname(hostname = '') {
+    const value = String(hostname || '').toLowerCase();
+    return [
+        'tiktok.com',
+        'tiktokcdn.com',
+        'tiktokcdn-us.com',
+        'tiktokv.com',
+        'ttwstatic.com',
+        'byteoversea.com',
+        'ibyteimg.com',
+        'byteimg.com',
+        'ibytedtos.com',
+        'muscdn.com'
+    ].some((domain) => value === domain || value.endsWith(`.${domain}`));
+}
+
 const ADBLOCK_PLATFORM_CORE_ASSET_TYPES = new Set([
     'stylesheet',
     'script',
@@ -3043,7 +3663,9 @@ const ADBLOCK_PLATFORM_CORE_ASSET_TYPES = new Set([
     'media',
     'xmlhttprequest',
     'xhr',
+    'fetch',
     'websocket',
+    'ping',
     'other'
 ]);
 const ADBLOCK_PLATFORM_CORE_DOMAINS = Object.freeze([
@@ -3057,11 +3679,30 @@ const ADBLOCK_PLATFORM_CORE_DOMAINS = Object.freeze([
     },
     {
         page: ['facebook.com', 'instagram.com'],
-        assets: ['facebook.com', 'fbcdn.net', 'instagram.com', 'cdninstagram.com']
+        assets: [
+            'facebook.com',
+            'fbcdn.com',
+            'fbcdn.net',
+            'fbsbx.com',
+            'facebook.net',
+            'instagram.com',
+            'cdninstagram.com'
+        ]
     },
     {
         page: ['tiktok.com'],
-        assets: ['tiktok.com', 'tiktokcdn.com', 'tiktokv.com', 'byteoversea.com']
+        assets: [
+            'tiktok.com',
+            'tiktokcdn.com',
+            'tiktokcdn-us.com',
+            'tiktokv.com',
+            'ttwstatic.com',
+            'byteoversea.com',
+            'ibyteimg.com',
+            'byteimg.com',
+            'ibytedtos.com',
+            'muscdn.com'
+        ]
     },
     {
         page: ['x.com', 'twitter.com'],
@@ -3125,11 +3766,34 @@ function normalizeAdblockWebRequestResourceType(value = '') {
         .toLowerCase();
 }
 
+function getRegistrableDomainMain(hostname = '') {
+    const parts = String(hostname || '').toLowerCase().split('.').filter(Boolean);
+    if (parts.length <= 2) return parts.join('.');
+    return parts.slice(-2).join('.');
+}
+
+function isThirdPartyWebRequest(details = {}) {
+    try {
+        const targetHost = new URL(String(details?.url || '')).hostname;
+        const sourceUrl = String(details?.initiator || details?.documentUrl || details?.referrer || '').trim();
+        if (!targetHost || !sourceUrl) return false;
+        const sourceHost = new URL(sourceUrl).hostname;
+        return getRegistrableDomainMain(targetHost) !== getRegistrableDomainMain(sourceHost);
+    } catch {
+        return false;
+    }
+}
+
 function isPlatformCoreAssetBypassRequest(details = {}) {
     const type = normalizeAdblockWebRequestResourceType(details?.resourceType);
     if (!ADBLOCK_PLATFORM_CORE_ASSET_TYPES.has(type)) return false;
     const requestHostname = getAdblockHostnameFromUrl(details?.url);
     if (!requestHostname) return false;
+    if (isAdblockFacebookCoreAssetHostname(requestHostname)) {
+        const sourceHostnames = getAdblockRequestSourceHostnames(details);
+        return sourceHostnames.some((sourceHostname) => isAdblockFacebookHostname(sourceHostname));
+    }
+    if (isAdblockTikTokCoreAssetHostname(requestHostname)) return true;
     const sourceHostnames = getAdblockRequestSourceHostnames(details);
     if (!sourceHostnames.length) return false;
 
@@ -3209,6 +3873,34 @@ function buildAdblockScriptingInjection(rawUrl = '') {
     const proceduralRules = [];
     const scripts = [];
     const sources = [];
+
+    if (isAdblockFacebookHostname(hostname)) {
+        return {
+            ok: true,
+            reason: 'facebook-cosmetic-bypass',
+            mode: plan.mode,
+            hostname,
+            css,
+            genericImports,
+            proceduralRules,
+            scripts,
+            sources: ['facebook:cosmetic-bypass']
+        };
+    }
+
+    if (isAdblockTikTokHostname(hostname)) {
+        return {
+            ok: true,
+            reason: 'tiktok-cosmetic-bypass',
+            mode: plan.mode,
+            hostname,
+            css,
+            genericImports,
+            proceduralRules,
+            scripts,
+            sources: ['tiktok:cosmetic-bypass']
+        };
+    }
 
     if (isAdblockYouTubeHostname(hostname)) {
         scripts.push({
@@ -3523,8 +4215,7 @@ function installAdblockRequestBlocking() {
     if (adblockRuntime.installed) return;
     adblockRuntime.installed = true;
 
-    const webSessions = [];
-    try { webSessions.push(session.fromPartition(WEBVIEW_PARTITION)); } catch { }
+    const webSessions = getWebSessions();
     for (const ses of webSessions) {
         try {
             ses.webRequest.onBeforeRequest({ urls: ['http://*/*', 'https://*/*'] }, (details, callback) => {
@@ -3579,6 +4270,18 @@ function installAdblockRequestBlocking() {
                         callback({ requestHeaders: match.requestHeaders });
                         return;
                     }
+                    const webPrefs = getWebRuntimeSettingsSync();
+                    const headers = { ...(details?.requestHeaders || {}) };
+                    if (webPrefs.reduceReferrers) {
+                        delete headers.Referer;
+                        delete headers.referer;
+                    }
+                    if (webPrefs.blockThirdPartyCookies && isThirdPartyWebRequest(details)) {
+                        delete headers.Cookie;
+                        delete headers.cookie;
+                    }
+                    callback({ requestHeaders: headers });
+                    return;
                 } catch (error) {
                     console.warn('[ADBLOCK] request header filter error:', error?.message || error);
                 }
@@ -3613,6 +4316,15 @@ function installAdblockRequestBlocking() {
                     const headerMatch = evaluateDnrHeaderModifications(details?.url, details?.resourceType, adblockRuntime.config, details, 'response');
                     if (headerMatch?.responseHeaders) {
                         callback({ responseHeaders: headerMatch.responseHeaders });
+                        return;
+                    }
+                    const webPrefs = getWebRuntimeSettingsSync();
+                    if (webPrefs.blockThirdPartyCookies && isThirdPartyWebRequest(details)) {
+                        const headers = { ...(details?.responseHeaders || {}) };
+                        for (const key of Object.keys(headers)) {
+                            if (String(key).toLowerCase() === 'set-cookie') delete headers[key];
+                        }
+                        callback({ responseHeaders: headers });
                         return;
                     }
                 } catch (error) {
@@ -4218,6 +4930,30 @@ async function writeJsonFileAtomic(filePath, obj) {
     }
 }
 
+function writeJsonFileAtomicSync(filePath, obj) {
+    const dir = path.dirname(filePath);
+    try {
+        fs.mkdirSync(dir, { recursive: true });
+    } catch {
+        // yoksay
+    }
+
+    const tmpPath = `${filePath}.${process.pid}.${Date.now()}.${Math.random().toString(16).slice(2)}.tmp`;
+    fs.writeFileSync(tmpPath, JSON.stringify(obj ?? {}, null, 2), 'utf8');
+    try {
+        fs.renameSync(tmpPath, filePath);
+    } catch (error) {
+        if (error && (error.code === 'EEXIST' || error.code === 'EPERM' || error.code === 'EACCES')) {
+            try { fs.unlinkSync(filePath); } catch { /* yoksay */ }
+            fs.renameSync(tmpPath, filePath);
+            return;
+        }
+        throw error;
+    } finally {
+        try { fs.unlinkSync(tmpPath); } catch { /* yoksay */ }
+    }
+}
+
 function normalizeEq32BandsForEngine(bands) {
     const out = new Array(32).fill(0);
     if (!Array.isArray(bands)) return out;
@@ -4232,8 +4968,7 @@ async function applyPersistedEq32SfxFromSettings() {
     if (!audioEngine || !isNativeAudioAvailable) return;
 
     try {
-        const data = await fs.promises.readFile(getSettingsPath(), 'utf8');
-        const settings = JSON.parse(data);
+        const settings = await readSettingsFileSafe();
         const eq32 = settings?.sfxScopes?.music?.eq32 || settings?.sfx?.eq32;
         if (!eq32) return;
 
@@ -4265,6 +5000,49 @@ async function applyPersistedEq32SfxFromSettings() {
     } catch {
         // Ayar dosyası yoksa sorun değil
     }
+}
+
+function clampAudioNumber(value, min, max, fallback) {
+    const n = Number(value);
+    if (!Number.isFinite(n)) return fallback;
+    return Math.max(min, Math.min(max, n));
+}
+
+function getPersistedMusicSfxEffect(settings, effectName) {
+    const key = String(effectName || '').trim().toLowerCase();
+    if (!key) return {};
+    return settings?.sfxScopes?.music?.[key] || settings?.sfx?.[key] || {};
+}
+
+async function applyPersistedAudiophileSfxFromSettings() {
+    if (!audioEngine || !isNativeAudioAvailable) return;
+
+    try {
+        const settings = await readSettingsFileSafe();
+        const audiophile = getPersistedMusicSfxEffect(settings, 'audiophile');
+        const preamp = clampAudioNumber(audiophile?.preamp, -24, 24, 0);
+
+        if (typeof audioEngine.setPreamp === 'function') {
+            audioEngine.setPreamp(preamp);
+            console.log('[SFX] Audiophile preamp reapplied:', preamp);
+        }
+
+        const outputDevice = String(audiophile?.outputDevice || 'default').trim() || 'default';
+        audioOutputProfileState = {
+            ...audioOutputProfileState,
+            requestedExclusive: audiophile?.exclusiveMode === true,
+            requestedSampleRate: normalizeOutputSampleRate(audiophile?.sampleRate),
+            requestedDeviceId: outputDevice,
+            lastUpdatedAt: Date.now()
+        };
+    } catch (e) {
+        console.warn('[SFX] Audiophile ayarları uygulanamadı:', e?.message || e);
+    }
+}
+
+async function applyPersistedMusicSfxFromSettings() {
+    await applyPersistedEq32SfxFromSettings();
+    await applyPersistedAudiophileSfxFromSettings();
 }
 
 async function updateEq32SettingsInFile(patch) {
@@ -4342,6 +5120,7 @@ function createWindow() {
             webPreferences.enableRemoteModule = false;
             webPreferences.allowRunningInsecureContent = false;
             webPreferences.plugins = true;
+            webPreferences.backgroundThrottling = false;
             // Guest preload: no app bridge, only early adblock scriptlet patch.
             webPreferences.preload = path.join(__dirname, 'webviewAdblockPreload.js');
 
@@ -4758,15 +5537,93 @@ function createDownloaderWindow() {
     return downloaderWindow;
 }
 
-function sendUrlToDownloaderWindow(url) {
-    const normalized = String(url || '').trim();
+function normalizeDownloaderUrlForAnalysis(rawUrl = '') {
+    const value = String(rawUrl || '').trim();
+    if (!/^https?:\/\//i.test(value)) return value;
+    try {
+        const url = new URL(value);
+        const host = String(url.hostname || '').toLowerCase();
+        const normalizeNestedYouTubeUrl = (paramName) => {
+            const nested = url.searchParams.get(paramName);
+            if (!nested) return '';
+            try {
+                return normalizeDownloaderUrlForAnalysis(new URL(nested, url.origin).toString());
+            } catch {
+                return normalizeDownloaderUrlForAnalysis(nested);
+            }
+        };
+        if (host === 'youtube.com' || host === 'www.youtube.com' || host === 'm.youtube.com' || host === 'music.youtube.com' || host.endsWith('.youtube.com')) {
+            const pathName = String(url.pathname || '').toLowerCase();
+            if (pathName === '/attribution_link') {
+                const nested = normalizeNestedYouTubeUrl('u');
+                if (nested) return nested;
+            }
+            if (pathName === '/redirect') {
+                const nested = normalizeNestedYouTubeUrl('q') || normalizeNestedYouTubeUrl('url');
+                if (nested) return nested;
+            }
+        }
+        if (host === 'youtu.be') {
+            const id = String(url.pathname || '').split('/').filter(Boolean)[0] || '';
+            return id ? `https://www.youtube.com/watch?v=${encodeURIComponent(id)}` : value;
+        }
+        if (host === 'youtube.com' || host === 'www.youtube.com' || host === 'm.youtube.com' || host === 'music.youtube.com' || host.endsWith('.youtube.com')) {
+            const pathName = String(url.pathname || '').toLowerCase();
+            const buildWatchUrl = (id) => {
+                const cleanId = String(id || '').trim();
+                return /^[\w-]{6,128}$/.test(cleanId)
+                    ? `https://www.youtube.com/watch?v=${encodeURIComponent(cleanId)}`
+                    : '';
+            };
+            const searchId = buildWatchUrl(url.searchParams.get('v'));
+            if (searchId) return searchId;
+            if (pathName === '/watch') {
+                return value;
+            }
+            const shortsMatch = String(url.pathname || '').match(/^\/shorts\/([^/?#]+)/i);
+            if (shortsMatch?.[1]) {
+                const normalized = buildWatchUrl(shortsMatch[1]);
+                return normalized || `https://www.youtube.com/shorts/${encodeURIComponent(shortsMatch[1])}`;
+            }
+            const liveMatch = String(url.pathname || '').match(/^\/live\/([^/?#]+)/i);
+            if (liveMatch?.[1]) {
+                const normalized = buildWatchUrl(liveMatch[1]);
+                if (normalized) return normalized;
+            }
+            const embeddedMatch = String(url.pathname || '').match(/^\/(?:embed|v|e)\/([^/?#]+)/i);
+            if (embeddedMatch?.[1]) {
+                const normalized = buildWatchUrl(embeddedMatch[1]);
+                if (normalized) return normalized;
+            }
+        }
+    } catch {}
+    return value;
+}
+
+function normalizeDownloaderTitleHint(value = '') {
+    const text = String(value || '')
+        .replace(/\s+/g, ' ')
+        .replace(/\s+[·•]\s+(?:Follow|Following|Subscribe|Abone ol|Takip et)\b.*$/i, '')
+        .replace(/\b(?:Follow|Following|Subscribe|Abone ol|Takip et)\b/gi, '')
+        .trim()
+        .slice(0, 180);
+    const compact = text.replace(/\s+/g, '').toLowerCase();
+    if (/^(seniniçin|seniniçinönerilenler|foryou|foryoupage|suggestedforyou)$/i.test(compact)) return '';
+    return text;
+}
+
+function sendUrlToDownloaderWindow(url, options = {}) {
+    const normalized = normalizeDownloaderUrlForAnalysis(url);
     if (!/^https?:\/\//i.test(normalized)) return;
+    const titleHint = normalizeDownloaderTitleHint(options.titleHint || options.title || '');
+    const payload = { url: normalized, titleHint };
     pendingDownloaderUrl = normalized;
+    pendingDownloaderNotice = payload;
     const win = createDownloaderWindow();
     const send = () => {
         try {
             if (win && !win.isDestroyed()) {
-                win.webContents.send('downloader:load-url', { url: normalized });
+                win.webContents.send('downloader:load-url', payload);
             }
         } catch (error) {
             console.warn('[DOWNLOADER] load-url send failed:', error?.message || error);
@@ -4780,6 +5637,7 @@ function sendUrlToDownloaderWindow(url) {
 }
 
 function sendDownloaderNoUrlNotice() {
+    pendingDownloaderUrl = '';
     pendingDownloaderNotice = {
         url: '',
         error: 'İndirilebilir içerik bulunamadı. Önce bir video veya şarkı açın.'
@@ -4798,6 +5656,73 @@ function sendDownloaderNoUrlNotice() {
         win.webContents.once('dom-ready', send);
     } else {
         setTimeout(send, 30);
+    }
+}
+
+function getDownloaderCookieDomainsForUrl(rawUrl = '') {
+    let host = '';
+    try {
+        host = String(new URL(String(rawUrl || '')).hostname || '').toLowerCase();
+    } catch {
+        return [];
+    }
+    if (!host) return [];
+    if (host === 'facebook.com' || host.endsWith('.facebook.com')) {
+        return ['facebook.com', 'fbcdn.net', 'fbsbx.com', 'facebook.net'];
+    }
+    if (host === 'instagram.com' || host.endsWith('.instagram.com')) {
+        return ['instagram.com', 'cdninstagram.com', 'facebook.com'];
+    }
+    if (host === 'youtube.com' || host.endsWith('.youtube.com') || host === 'youtu.be') {
+        return [];
+    }
+    if (host === 'tiktok.com' || host.endsWith('.tiktok.com')) {
+        return ['tiktok.com'];
+    }
+    return [host.replace(/^www\./, '')];
+}
+
+function cookieDomainMatches(cookieDomain = '', allowedDomain = '') {
+    const cookieHost = String(cookieDomain || '').trim().toLowerCase().replace(/^\./, '');
+    const allowed = String(allowedDomain || '').trim().toLowerCase().replace(/^\./, '');
+    return !!cookieHost && !!allowed && (cookieHost === allowed || cookieHost.endsWith(`.${allowed}`));
+}
+
+function formatNetscapeCookieLine(cookie = {}) {
+    const domainRaw = String(cookie.domain || '').trim();
+    if (!domainRaw || !cookie.name) return '';
+    const includeSubdomains = domainRaw.startsWith('.') || cookie.hostOnly === false;
+    const normalizedDomain = includeSubdomains && !domainRaw.startsWith('.') ? `.${domainRaw}` : domainRaw;
+    const domain = cookie.httpOnly ? `#HttpOnly_${normalizedDomain}` : normalizedDomain;
+    const flag = includeSubdomains ? 'TRUE' : 'FALSE';
+    const pathValue = String(cookie.path || '/').trim() || '/';
+    const secure = cookie.secure ? 'TRUE' : 'FALSE';
+    const expires = Math.max(0, Math.floor(Number(cookie.expirationDate || 0) || 0));
+    return [domain, flag, pathValue, secure, String(expires), String(cookie.name), String(cookie.value || '')].join('\t');
+}
+
+async function writeDownloaderCookiesFileForUrl(rawUrl = '') {
+    const allowedDomains = getDownloaderCookieDomainsForUrl(rawUrl);
+    if (!allowedDomains.length) return '';
+    try {
+        const ses = session.fromPartition(WEBVIEW_PARTITION);
+        const cookies = await ses.cookies.get({});
+        const filtered = (Array.isArray(cookies) ? cookies : [])
+            .filter((cookie) => allowedDomains.some((domain) => cookieDomainMatches(cookie.domain, domain)));
+        if (!filtered.length) return '';
+        const dir = path.join(app.getPath('userData'), 'downloader-cookies');
+        await fs.promises.mkdir(dir, { recursive: true });
+        const filePath = path.join(dir, `ardali-web-${crypto.createHash('sha1').update(String(rawUrl)).digest('hex').slice(0, 12)}.cookies.txt`);
+        const lines = [
+            '# Netscape HTTP Cookie File',
+            '# Generated by ArDali Dawlod from the in-app web session.',
+            ...filtered.map(formatNetscapeCookieLine).filter(Boolean)
+        ];
+        await fs.promises.writeFile(filePath, `${lines.join('\n')}\n`, { mode: 0o600 });
+        return filePath;
+    } catch (error) {
+        console.warn('[DOWNLOADER] cookie export failed:', error?.message || error);
+        return '';
     }
 }
 
@@ -5059,7 +5984,9 @@ function updateMPRISMetadata(metadata) {
         if (typeof metadata.canGoNext === 'boolean') mprisPlayer.canGoNext = metadata.canGoNext;
         if (typeof metadata.canGoPrevious === 'boolean') mprisPlayer.canGoPrevious = metadata.canGoPrevious;
 
-        console.log('MPRIS metadata güncellendi:', metadata.title, 'duration:', metadata.duration.toFixed(1), 's, position:', metadata.position.toFixed(1), 's');
+        if (isTruthyEnvFlag('ARDALI_VERBOSE_LOGS')) {
+            console.log('MPRIS metadata güncellendi:', metadata.title, 'duration:', metadata.duration.toFixed(1), 's, position:', metadata.position.toFixed(1), 's');
+        }
     } catch (e) {
         // D-Bus bağlantı hataları - sessizce yoksay (normal durum)
         // EPIPE, akış kapalı gibi hatalar dbus bağlantısı hazır olmadığında oluşur
@@ -6068,6 +6995,7 @@ function startVisualizer() {
     const env = {
         ...process.env,
         PROJECTM_PRESETS_PATH: presetsPath,
+        ARDALI_UI_THEME: getCurrentUiThemeSync(),
         ARDALI_VISUALIZER_ICON: visualizerIconPath,
         ARDALI_VIS_FONT_PATH: visualizerFontPath,
         // Linux window grouping + icon lookup (Wayland app_id / X11 WM_CLASS)
@@ -6342,6 +7270,16 @@ ipcMain.handle('app:setStudioShortcuts', async (_event, shortcuts = {}) => {
     }
 });
 
+ipcMain.handle('app:setPlaybackPowerSaveBlocker', async (_event, payload = {}) => {
+    return setPlaybackPowerSaveBlocker(
+        payload?.active === true,
+        payload?.reason || 'renderer-media-playback',
+        payload?.mode || payload?.policy || 'balanced'
+    );
+});
+
+ipcMain.handle('app:getPlaybackPowerState', async () => getPlaybackPowerRuntimeSnapshot());
+
 ipcMain.handle('app:update:getState', async () => {
     return snapshotUpdateState();
 });
@@ -6468,6 +7406,10 @@ function installWebviewHardening() {
                     if (wcType === 'webview') {
                         // Web platformlarda (allowlist) kullanıcı akışını bozmayacak şekilde
                         // izinleri host bazlı değerlendir.
+                        if (!isWebPermissionAllowedBySettings(requestedPermission, currentUrl, originUrl)) {
+                            callback(false);
+                            return;
+                        }
                         const trustedContext =
                             isAllowedWebUrlMain(currentUrl) ||
                             isAllowedWebUrlMain(originUrl);
@@ -6514,6 +7456,28 @@ function installWebviewHardening() {
                 });
             }
 
+            if (ses && typeof ses.on === 'function') {
+                ses.on('will-download', async (event, item, webContents) => {
+                    try {
+                        const prefs = getWebRuntimeSettingsSync();
+                        if (!prefs.askDownloadLocation) return;
+                        item.pause();
+                        const fileName = String(item?.getFilename?.() || 'download').trim() || 'download';
+                        const result = await dialog.showSaveDialog(BrowserWindow.fromWebContents(webContents) || mainWindow, {
+                            defaultPath: path.join(app.getPath('downloads'), fileName)
+                        });
+                        if (result.canceled || !result.filePath) {
+                            item.cancel();
+                            return;
+                        }
+                        item.setSavePath(result.filePath);
+                        item.resume();
+                    } catch (error) {
+                        console.warn('[WEB] download prompt failed:', error?.message || error);
+                    }
+                });
+            }
+
             // Kurumsal MITM/yerel güvenlik yazılımı olan sistemlerde Electron
             // bazen -202 (CERT_AUTHORITY_INVALID) üretip web platform çalmayı kesiyor.
             // Sadece izinli platform hostları için bu spesifik hatayı yumuşat.
@@ -6543,11 +7507,18 @@ function installWebviewHardening() {
     app.on('web-contents-created', (_event, contents) => {
         const type = contents.getType?.();
         if (type !== 'webview') return;
+        try {
+            contents.setBackgroundThrottling?.(false);
+        } catch (error) {
+            console.warn('[WEB] setBackgroundThrottling failed:', error?.message || error);
+        }
 
         // Block opening arbitrary external windows from embedded web content.
         if (typeof contents.setWindowOpenHandler === 'function') {
             contents.setWindowOpenHandler(({ url }) => {
                 const popupUrl = String(url || '').trim();
+                const currentUrl = String(contents?.getURL?.() || '').trim();
+                if (!isWebPopupAllowedBySettings(currentUrl, popupUrl)) return { action: 'deny' };
                 // OAuth flows often open an empty popup first, then navigate.
                 if (!popupUrl || popupUrl === 'about:blank') {
                     return {
@@ -6657,11 +7628,34 @@ app.on('window-all-closed', () => {
 });
 
 app.on('before-quit', () => {
+    setPlaybackPowerSaveBlocker(false, 'before-quit');
     clearStartupUpdateRetryTimer();
     stopVisualizer();
     unregisterGlobalMediaShortcuts();
     unregisterGlobalStudioShortcuts();
     cleanupTransientHomeFiles('before-quit');
+});
+
+app.on('before-quit', (event) => {
+    if (webQuitCleanupDone || webQuitCleanupInProgress) return;
+    const cleanup = getWebQuitCleanupSettings();
+    if (!cleanup.clearCacheOnQuit && !cleanup.clearCookiesOnQuit && !cleanup.clearSiteDataOnQuit && !cleanup.clearHistoryOnQuit) return;
+
+    event.preventDefault();
+    webQuitCleanupInProgress = true;
+    runWebQuitCleanup()
+        .catch((error) => {
+            console.warn('[WEB] kapanış veri temizliği tamamlanamadı:', error?.message || error);
+        })
+        .finally(() => {
+            webQuitCleanupDone = true;
+            webQuitCleanupInProgress = false;
+            app.quit();
+        });
+});
+
+app.on('will-quit', () => {
+    clearWebCacheDirectoriesOnQuit();
 });
 
 // ============================================
@@ -7407,6 +8401,32 @@ ipcMain.handle('web:getSecurityState', async () => {
     return { vpnDetected: vpn.detected, vpnInterfaces: vpn.interfaces };
 });
 
+ipcMain.handle('web:clearData', async (_event, options) => {
+    try {
+        const opts = options && typeof options === 'object' ? options : {};
+        console.log('[WEB] clearData request:', opts);
+        if (opts.all === true || opts.history === true) {
+            clearLastWebHistoryFromSettingsSync();
+        }
+        return await clearWebSessionData(opts);
+    } catch (error) {
+        console.error('[WEB] clearData error:', error);
+        return false;
+    }
+});
+
+ipcMain.handle('web:reloadActive', async () => {
+    try {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send('web:reload-active');
+            return true;
+        }
+    } catch (error) {
+        console.warn('[WEB] reload active send failed:', error?.message || error);
+    }
+    return false;
+});
+
 function buildCookieUrlForImport(rawCookie = {}) {
     const explicitUrl = String(rawCookie?.url || '').trim();
     if (/^https?:\/\//i.test(explicitUrl)) return explicitUrl;
@@ -8015,10 +9035,25 @@ ipcMain.handle('settings:save', async (event, settings) => {
         await writeJsonFileAtomic(getSettingsPath(), sanitizedMerged);
         refreshGlobalMediaShortcuts(sanitizedMerged);
 
+        const senderId = event?.sender?.id || 0;
+        const saveSource =
+            adblockWindow && !adblockWindow.isDestroyed() && adblockWindow.webContents?.id === senderId ? 'adblock' :
+            settingsWindow && !settingsWindow.isDestroyed() && settingsWindow.webContents?.id === senderId ? 'settings' :
+            soundEffectsWindow && !soundEffectsWindow.isDestroyed() && soundEffectsWindow.webContents?.id === senderId ? 'soundEffects' :
+            mainWindow && !mainWindow.isDestroyed() && mainWindow.webContents?.id === senderId ? 'main' :
+            'unknown';
+        const reloadMeta = {
+            source: saveSource,
+            sourceWebContentsId: senderId,
+            savedAt: Date.now()
+        };
+
         for (const targetWindow of [mainWindow, settingsWindow, soundEffectsWindow, adblockWindow]) {
             if (!targetWindow || targetWindow.isDestroyed()) continue;
+            if (event?.sender && targetWindow.webContents === event.sender) continue;
+            if (event?.sender?.id && targetWindow.webContents?.id === event.sender.id) continue;
             try {
-                targetWindow.webContents.send('settings:reloaded', sanitizedMerged);
+                targetWindow.webContents.send('settings:reloaded', sanitizedMerged, reloadMeta);
             } catch (e) {
                 console.error('[SETTINGS] reload broadcast error:', e);
             }
@@ -8078,7 +9113,30 @@ ipcMain.handle('settings:load', async () => {
         },
         volume: 40,
         shuffle: false,
-        repeat: false
+        repeat: false,
+        webUi: {
+            clearCacheOnQuit: true,
+            clearCookiesOnQuit: false,
+            clearSiteDataOnQuit: false,
+            clearHistoryOnQuit: false,
+            preferHttps: true,
+            reduceWebRtcIpLeaks: true,
+            backgroundThrottle: true,
+            restoreLastSession: true,
+            suspendWhenInactive: true,
+            allowCamera: false,
+            allowMicrophone: false,
+            allowLocation: false,
+            allowNotifications: false,
+            allowPopups: true,
+            userAgentMode: 'desktop',
+            autoplayPolicy: 'allow',
+            askDownloadLocation: true,
+            reduceReferrers: true,
+            stripTrackingParams: true,
+            blockThirdPartyCookies: false,
+            autoRecover: true
+        }
     };
 
     // Eşzamanlı yazma anında (truncate/partial) parse hatası oluşursa kısa retry.
@@ -8126,11 +9184,15 @@ ipcMain.handle('adblock:openWindow', async () => {
     }
 });
 
-ipcMain.handle('downloader:openWindow', async (_event, url) => {
+ipcMain.handle('downloader:openWindow', async (_event, payload) => {
     try {
-        const normalized = String(url || '').trim();
+        const url = payload && typeof payload === 'object' ? payload.url : payload;
+        const titleHint = payload && typeof payload === 'object'
+            ? normalizeDownloaderTitleHint(payload.titleHint || payload.title || '')
+            : '';
+        const normalized = normalizeDownloaderUrlForAnalysis(url);
         if (/^https?:\/\//i.test(normalized)) {
-            sendUrlToDownloaderWindow(normalized);
+            sendUrlToDownloaderWindow(normalized, { titleHint });
         } else {
             sendDownloaderNoUrlNotice();
         }
@@ -8257,11 +9319,19 @@ ipcMain.handle('downloader:chooseConfigFile', async () => {
 
 ipcMain.handle('downloader:getInfo', async (_event, url) => {
     try {
-        const normalized = String(url || '').trim();
+        const normalized = normalizeDownloaderUrlForAnalysis(url);
         if (!/^https?:\/\//i.test(normalized)) {
             return { success: false, error: 'Gecerli bir http/https baglantisi girin.' };
         }
-        const info = await getDownloaderService().getInfo(normalized);
+        const cookiesFile = await writeDownloaderCookiesFileForUrl(normalized);
+        let info;
+        try {
+            info = await getDownloaderService().getInfo(normalized, { cookiesFile });
+        } catch (error) {
+            if (!cookiesFile) throw error;
+            console.warn('[DOWNLOADER] cookie based analysis failed, retrying without cookies:', error?.message || error);
+            info = await getDownloaderService().getInfo(normalized, { cookiesFile: '' });
+        }
         return { success: true, info };
     } catch (error) {
         return { success: false, error: String(error?.message || error || 'Analiz hatasi') };
@@ -8271,10 +9341,13 @@ ipcMain.handle('downloader:getInfo', async (_event, url) => {
 ipcMain.handle('downloader:start', async (_event, options) => {
     try {
         const payload = options && typeof options === 'object' ? options : {};
-        if (!/^https?:\/\//i.test(String(payload.url || ''))) {
+        const normalizedUrl = normalizeDownloaderUrlForAnalysis(payload.url);
+        if (!/^https?:\/\//i.test(normalizedUrl)) {
             return { success: false, error: 'Indirme icin gecerli baglanti yok.' };
         }
-        const job = await getDownloaderService().start(payload);
+        payload.url = normalizedUrl;
+        const cookiesFile = await writeDownloaderCookiesFileForUrl(normalizedUrl);
+        const job = await getDownloaderService().start({ ...payload, cookiesFile });
         return { success: true, job };
     } catch (error) {
         return { success: false, error: String(error?.message || error || 'Indirme baslatilamadi') };
@@ -9983,7 +11056,7 @@ ipcMain.handle('audio:loadFile', async (event, filePath) => {
     const ok = audioEngine.loadFile(filePath);
     console.log('[MAIN] loadFile:', ok ? 'ok' : 'fail', filePath);
     if (ok) {
-        applyPersistedEq32SfxFromSettings().catch(() => { /* yoksay */ });
+        applyPersistedMusicSfxFromSettings().catch(() => { /* yoksay */ });
     }
     return ok ? { success: true } : { success: false, error: 'Dosya yüklenemedi' };
 });
@@ -10001,7 +11074,7 @@ ipcMain.handle('audio:crossfadeTo', async (event, filePath, durationMs) => {
     const ok = (res === true) || (res && res.success);
     console.log('[MAIN] crossfadeTo:', ok ? 'ok' : 'fail', 'ms=', ms, filePath);
     if (ok) {
-        applyPersistedEq32SfxFromSettings().catch(() => { /* yoksay */ });
+        applyPersistedMusicSfxFromSettings().catch(() => { /* yoksay */ });
     }
     return ok ? { success: true } : { success: false, error: (res && res.error) || 'Crossfade başarısız' };
 });
@@ -10014,6 +11087,7 @@ ipcMain.handle('audio:play', () => {
     }
     try {
         audioEngine.play();
+        applyPersistedAudiophileSfxFromSettings().catch(() => { /* yoksay */ });
         return { success: true };
     } catch (e) {
         console.error('[AUDIO] play error:', e);

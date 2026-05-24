@@ -14,6 +14,10 @@ class ColorKnob {
         this.wheelStep = config.wheelStep || 0.5;
         this.wheelDebounceMs = Number.isFinite(config.wheelDebounceMs) ? Math.max(24, config.wheelDebounceMs) : 72;
         this.wheelLiveNotify = config.wheelLiveNotify === true;
+        const perf = (typeof window !== 'undefined' && window.__ARDALI_SFX_PERF__) || {};
+        this.animatedHue = config.animatedHue !== false && perf.lowPower !== true;
+        this.frameMs = Number(config.frameMs || perf.widgetFrameMs || 33) || 33;
+        this.lastDrawTime = 0;
         // Drag sensitivity: if set, dragging across this many pixels covers full range
         // (useful for large-range controls like PEQ frequency).
         this.dragRangePx = Number.isFinite(config.dragRangePx) ? config.dragRangePx : null;
@@ -37,7 +41,8 @@ class ColorKnob {
         // Start animation loop
         this.lastTime = performance.now();
         this._running = false;
-        this.startAnimation();
+        if (this.animatedHue) this.startAnimation();
+        else this.draw();
     }
     
     static _runningInstances = new Set();
@@ -80,6 +85,15 @@ class ColorKnob {
         if (instant) {
             this.value = this.targetValue;
             this.notifyListeners();
+            this.draw();
+            return;
+        }
+
+        if (!this.animatedHue) {
+            this.value = this.targetValue;
+            this.notifyListeners();
+            this.draw();
+            return;
         }
         
         // Instant set if large jump (fallback)
@@ -134,8 +148,14 @@ class ColorKnob {
         });
 
         // Hover effects
-        this.canvas.addEventListener('mouseenter', () => { this.isHovered = true; });
-        this.canvas.addEventListener('mouseleave', () => { this.isHovered = false; });
+        this.canvas.addEventListener('mouseenter', () => {
+            this.isHovered = true;
+            if (!this.animatedHue) this.draw();
+        });
+        this.canvas.addEventListener('mouseleave', () => {
+            this.isHovered = false;
+            if (!this.animatedHue) this.draw();
+        });
     }
 
     handleWindowMouseMove = (e) => {
@@ -256,11 +276,18 @@ class ColorKnob {
             }, this.wheelDebounceMs);
         });
         
-        this.canvas.addEventListener('mouseenter', () => this.isHovered = true);
-        this.canvas.addEventListener('mouseleave', () => this.isHovered = false);
+        this.canvas.addEventListener('mouseenter', () => {
+            this.isHovered = true;
+            if (!this.animatedHue) this.draw();
+        });
+        this.canvas.addEventListener('mouseleave', () => {
+            this.isHovered = false;
+            if (!this.animatedHue) this.draw();
+        });
     }
     
     startAnimation() {
+        if (!this.animatedHue) return;
         if (this._running) return;
         this._running = true;
         this.lastTime = performance.now();
@@ -274,6 +301,10 @@ class ColorKnob {
     }
 
     setActive(active) {
+        if (!this.animatedHue) {
+            this.draw();
+            return;
+        }
         if (active) this.startAnimation();
         else this.stopAnimation();
     }
@@ -292,15 +323,21 @@ class ColorKnob {
         if (!this._running) return;
         // Calculate delta time
         const dt = timestamp - this.lastTime;
+        const diff = this.targetValue - this.value;
+        const lightsOff = this.isSfxLightsOff();
+        const hasMotion = Math.abs(diff) > 0.001 || this.isDragging || this.isHovered;
+        if ((timestamp - this.lastDrawTime) < this.frameMs && !hasMotion) {
+            this.lastTime = timestamp;
+            return;
+        }
         
         // 1. Color Shift Animation
-        if (!this.isSfxLightsOff()) {
+        if (!lightsOff) {
             this.shift += 0.0004 * dt;
             if (this.shift > 1.0) this.shift -= 1.0;
         }
         
         // 2. Value Smoothing (Inertia)
-        const diff = this.targetValue - this.value;
         if (Math.abs(diff) > 0.001) {
             // Speed factor: Increased to 0.4 for faster wheel/ipc response
             const ease = 0.4; 
@@ -318,6 +355,7 @@ class ColorKnob {
         }
 
         this.lastTime = timestamp;
+        this.lastDrawTime = timestamp;
         
         this.draw();
         

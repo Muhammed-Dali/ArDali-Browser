@@ -1,6 +1,6 @@
 {
   "name": "ardali",
-  "version": "3.0.1",
+  "version": "3.1.0",
   "productName": "ArDali",
   "description": "Open-source Linux media player for music and video with DSP effects, equalizer, and visualizer",
   "main": "main.js",
@@ -33,7 +33,6 @@
     "build:mac": "node native/copy-libs.js darwin && electron-builder --mac",
     "dist": "npm run build:linux",
     "dev:linux": "ELECTRON_RUN_AS_NODE= ARDALI_DEV=1 PATH=\"$(pwd)/native-dist:$(pwd)/native/build/Release:$(pwd)/bin:$PATH\" electron . --enable-logging",
-    "profile:linux": "ELECTRON_RUN_AS_NODE= ARDALI_DEV=1 ARDALI_PERF_MONITOR=1 PATH=\"$(pwd)/native-dist:$(pwd)/native/build/Release:$(pwd)/bin:$PATH\" electron . --enable-logging",
     "dali:compile:web": "node scripts/compile-dali-web.js",
     "dali:compile:web:wasm": "node scripts/compile-dali-web-wasm.js",
     "dali:compile:web:all": "npm run -s dali:compile:web && npm run -s dali:compile:web:wasm",
@@ -47,7 +46,6 @@
     "native:audio:smoke": "node scripts/native-audio-smoke.js",
     "dali:test:all": "npm run -s dali:compile:web:all && npm run -s dali:test:regression && npm run -s dali:test:security && npm run -s dali:test:wasm && npm run -s dali:test:parity && npm run -s dali:test:fuzz && npm run -s dali:test:perf",
     "dali:install:filetype:linux": "bash scripts/install-dali-filetype-linux.sh",
-    "profile:linux:dali": "npm run -s dali:compile:web && npm run -s profile:linux",
     "dev:win": "cmd /c \"chcp 65001>nul && set ELECTRON_RUN_AS_NODE=&& set ARDALI_DEV=1&& set PATH=C:\\msys64\\mingw64\\bin;C:\\Users\\muhan\\Desktop\\ArDali-Medya-Player-windows\\native-dist\\windows;C:\\Users\\muhan\\Desktop\\ArDali-Medya-Player-windows\\native-dist;C:\\Users\\muhan\\Desktop\\ArDali-Medya-Player-windows\\native\\build\\Release;C:\\Users\\muhan\\Desktop\\ArDali-Medya-Player-windows\\bin;%PATH%&& electron . --enable-logging\"",
     "locale:sync:visualizer": "node scripts/sync-visualizer-native-locales.js",
     "locale:sync:main": "node scripts/sync-main-process-locales.js"

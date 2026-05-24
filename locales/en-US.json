@@ -57,8 +57,8 @@
     "languageSelection": {
       "title": "Language Selection",
       "label": "Language",
-      "hint": "Restart required to apply changes.",
-      "restartHint": "Your selected language will apply on next launch."
+      "hint": "Language changes apply immediately and are kept for the next launch.",
+      "restartHint": "Selected language applied."
     },
     "theme": {
       "label": "Theme",
@@ -78,6 +78,11 @@
       "label": "Reduced Motion",
       "hint": "Uses fewer animations and transitions for a calmer interface.",
       "toggle": "Reduced Motion"
+    },
+    "sidebarMotion": {
+      "label": "Sidebar Animation",
+      "hint": "Uses a smooth slide animation when opening and closing the left tab bar.",
+      "toggle": "Sidebar Animation"
     },
     "sfxLights": {
       "label": "Sound Effect Lights",
@@ -1046,6 +1051,7 @@
   "ui.startup.notificationsEnabled": "Show in-app notifications",
   "ui.startup.notificationsEnabledHint": "When disabled, in-app notifications are hidden.",
   "settings.tabs.library": "Media Library",
+  "settings.tabs.web": "Web Settings",
   "settings.library.startupPage.options.music": "Media (Audio)",
   "settings.library.folders.title": "Media Sources Management",
   "settings.library.folders.hint": "You can add or remove audio and video folders, then rescan the library.",
@@ -1739,5 +1745,19 @@
   "video.tools.batch.doneWithFailures": "Batch finished",
   "sfx.audiophile.preamp.title": "Analog Preamp",
   "sfx.audiophile.preamp.hint": "Fine output gain before the web DSP chain.",
-  "sfx.audiophile.preamp.knobLabel": "Preamp Gain"
+  "sfx.audiophile.preamp.knobLabel": "Preamp Gain",
+  "ui.theme.options.black": "Black",
+  "ui.optimizationProfile.label": "Optimization Target",
+  "ui.optimizationProfile.hint": "Adjusts interface, cover, web and sound effect load based on automatic or manual priority.",
+  "ui.optimizationProfile.hint.initial": "Smart Auto: chooses the best profile based on power, battery and hardware.",
+  "ui.optimizationProfile.options.auto": "Smart Auto",
+  "ui.optimizationProfile.options.ram": "RAM priority",
+  "ui.optimizationProfile.options.gpu": "GPU priority",
+  "ui.optimizationProfile.options.battery": "Battery priority",
+  "ui.optimizationProfile.options.quality": "Visual quality priority",
+  "ui.optimizationProfile.hint.autoActive": "Smart Auto: currently applying {profile}.",
+  "ui.optimizationProfile.hint.ram": "RAM priority: web tabs sleep, cover cache shrinks and the library runs lighter.",
+  "ui.optimizationProfile.hint.gpu": "GPU priority: glow, lighting and canvas animations are reduced; album covers stay enabled.",
+  "ui.optimizationProfile.hint.battery": "Battery priority: RAM and GPU savings are applied together and background FPS drops heavily.",
+  "ui.optimizationProfile.hint.quality": "Visual quality priority: effects and animations stay lively; resource use may be higher."
 }

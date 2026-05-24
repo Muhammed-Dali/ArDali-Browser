@@ -188,6 +188,7 @@ const DOWNLOADER_LOCALES = {
         'status.urlRequired': 'Link required',
         'status.urlRequiredDetail': 'Enter a supported video link.',
         'theme.dark': 'Dark',
+        'theme.black': 'Black',
         'theme.light': 'Light'
     },
     'tr-TR': {
@@ -376,6 +377,7 @@ const DOWNLOADER_LOCALES = {
         'status.urlRequired': 'Bağlantı gerekli',
         'status.urlRequiredDetail': 'Lütfen desteklenen bir video bağlantısı girin',
         'theme.dark': 'Karanlık',
+        'theme.black': 'Siyah',
         'theme.light': 'Aydınlık'
     },
     'ar-SA': {}
@@ -557,6 +559,7 @@ Object.assign(DOWNLOADER_LOCALES['ar-SA'], DOWNLOADER_LOCALES['en-US'], {
     'status.urlRequired': 'الرابط مطلوب',
     'status.urlRequiredDetail': 'أدخل رابط فيديو مدعوما.',
     'theme.dark': 'داكن',
+    'theme.black': 'أسود',
     'theme.light': 'فاتح'
 });
 
@@ -782,6 +785,7 @@ const state = {
     mode: 'video',
     page: 'single',
     info: null,
+    titleHint: '',
     settings: {},
     jobs: new Map(),
     history: [],
@@ -965,19 +969,122 @@ function showProcessingHome() {
 }
 
 function renderInfo(info) {
-    state.info = info;
+    const titleHint = normalizeTitleHint(state.titleHint);
+    const nextInfo = { ...(info || {}) };
+    if (titleHint && (isInstagramDownloadUrl(nextInfo.url) || isGenericDownloadTitle(nextInfo.title))) {
+        nextInfo.title = titleHint;
+        nextInfo.titleHintApplied = true;
+    }
+    state.info = nextInfo;
     els.mediaPanel.classList.remove('hidden');
-    if (els.thumb) els.thumb.src = info.thumbnail || '';
-    els.mediaTitle.textContent = info.title || dlt('single.titleFallback');
-    els.mediaSource.textContent = `${info.extractor || dlt('single.sourceFallback')}${info.durationText ? ` • ${info.durationText}` : ''}`;
-    fillSelect(els.videoFormat, info.videoFormats || [], dlt('single.noVideoFormat'));
-    fillSelect(els.audioForVideoFormat, [{ id: 'none', label: dlt('common.none') }, ...(info.audioFormats || [])], dlt('single.noAudioFormat'));
-    fillAudioDownloadSelect(info);
+    if (els.thumb) els.thumb.src = nextInfo.thumbnail || '';
+    els.mediaTitle.textContent = nextInfo.title || dlt('single.titleFallback');
+    els.mediaSource.textContent = `${nextInfo.extractor || dlt('single.sourceFallback')}${nextInfo.durationText ? ` • ${nextInfo.durationText}` : ''}`;
+    fillSelect(els.videoFormat, nextInfo.videoFormats || [], dlt('single.noVideoFormat'));
+    fillSelect(els.audioForVideoFormat, [{ id: 'none', label: dlt('common.none') }, ...(nextInfo.audioFormats || [])], dlt('single.noAudioFormat'));
+    fillAudioDownloadSelect(nextInfo);
     selectPreferredVideoFormat();
     selectPreferredAudioFormat();
     setBusy(false);
     setStatus('idle', dlt('single.analysisDone'), dlt('single.analysisDoneDetail'));
     renderMode();
+}
+
+function isInstagramDownloadUrl(value = '') {
+    try {
+        const host = new URL(String(value || '')).hostname.toLowerCase();
+        return host === 'instagram.com' ||
+            host === 'www.instagram.com' ||
+            host.endsWith('.instagram.com') ||
+            host === 'cdninstagram.com' ||
+            host.endsWith('.cdninstagram.com');
+    } catch {
+        return false;
+    }
+}
+
+function normalizeTitleHint(value = '') {
+    const text = String(value || '')
+        .replace(/\s+/g, ' ')
+        .replace(/\s+[·•]\s+(?:Follow|Following|Subscribe|Abone ol|Takip et)\b.*$/i, '')
+        .trim()
+        .slice(0, 180);
+    const compact = text.replace(/\s+/g, '').toLowerCase();
+    if (/(sesoynatılıyor|oynatdüğmesisimgesi|duraklatdüğmesisimgesi|audioisplaying|playbuttonicon|pausebuttonicon)/i.test(compact)) return '';
+    if (/^(takipettiklerin|beğenmeler|begenmeler|yorumlar|gönder|gonder|paylaşımlar|paylasimlar|seniniçin|seniniçinönerilenler|foryou|foryoupage|suggestedforyou)$/i.test(compact)) return '';
+    if (/^\.{0,3}\s*(?:devam[ıi]|more|see more|show more)$/i.test(text)) return '';
+    if (/^(?:devamı|devami|more|seemore|showmore)$/i.test(compact)) return '';
+    if (/^[.\s…]+$/.test(text)) return '';
+    return text.replace(/^[.\s…]+/g, '').trim();
+}
+
+function normalizeDownloaderInputUrl(rawUrl = '') {
+    const value = String(rawUrl || '').trim();
+    if (!/^https?:\/\//i.test(value)) return value;
+    try {
+        const url = new URL(value);
+        url.hash = '';
+        const host = String(url.hostname || '').toLowerCase();
+        const normalizeNestedYouTubeUrl = (paramName) => {
+            const nested = url.searchParams.get(paramName);
+            if (!nested) return '';
+            try {
+                return normalizeDownloaderInputUrl(new URL(nested, url.origin).toString());
+            } catch {
+                return normalizeDownloaderInputUrl(nested);
+            }
+        };
+        const isYouTubeHost = host === 'youtu.be' ||
+            host === 'youtube.com' ||
+            host === 'www.youtube.com' ||
+            host === 'm.youtube.com' ||
+            host === 'music.youtube.com' ||
+            host.endsWith('.youtube.com');
+        if (!isYouTubeHost) return url.toString();
+        const pathName = String(url.pathname || '').toLowerCase();
+        if (pathName === '/attribution_link') {
+            const nested = normalizeNestedYouTubeUrl('u');
+            if (nested) return nested;
+        }
+        if (pathName === '/redirect') {
+            const nested = normalizeNestedYouTubeUrl('q') || normalizeNestedYouTubeUrl('url');
+            if (nested) return nested;
+        }
+        const buildWatchUrl = (id) => {
+            const cleanId = String(id || '').trim();
+            return /^[\w-]{6,128}$/.test(cleanId)
+                ? `https://www.youtube.com/watch?v=${encodeURIComponent(cleanId)}`
+                : '';
+        };
+        if (host === 'youtu.be') {
+            const id = String(url.pathname || '').split('/').filter(Boolean)[0] || '';
+            return buildWatchUrl(id) || url.toString();
+        }
+        const searchId = buildWatchUrl(url.searchParams.get('v'));
+        if (searchId) return searchId;
+        const mediaMatch = String(url.pathname || '').match(/^\/(?:shorts|live|embed|v|e)\/([^/?#]+)/i);
+        if (mediaMatch?.[1]) return buildWatchUrl(mediaMatch[1]) || url.toString();
+        return url.toString();
+    } catch {
+        return value;
+    }
+}
+
+function isGenericDownloadTitle(value = '') {
+    const title = String(value || '').trim().toLowerCase();
+    return !title ||
+        title === 'video' ||
+        title === 'facebook' ||
+        title === 'watch' ||
+        title === 'reels' ||
+        title === 'reel' ||
+        title === 'takip ettiklerin' ||
+        title === 'beğenmeler' ||
+        title === 'yorumlar' ||
+        /^video\s+by\b/i.test(title) ||
+        /^[a-z0-9_-]{18,}$/i.test(title) ||
+        /^[0-9]{6,}[_0-9a-z-]*$/i.test(title) ||
+        /^\(?\d+\)?\s*facebook$/i.test(title);
 }
 
 function renderMode() {
@@ -1017,7 +1124,7 @@ function setMenuOpen(open) {
 }
 
 function applyTheme(theme, options = {}) {
-    const rawTheme = String(theme || 'ardali');
+    const rawTheme = String(theme || 'black');
     const nextTheme = rawTheme === 'github' ? 'light' : rawTheme;
     const commitTheme = () => {
         document.documentElement.setAttribute('theme', nextTheme);
@@ -1146,8 +1253,11 @@ function buildDownloadPayload() {
         mode: state.mode,
         url: info.url,
         title: info.title,
+        mediaId: info.id || '',
+        titleHint: state.titleHint,
         thumbnail: info.thumbnail,
         videoFormatId: els.videoFormat.value,
+        videoFormatHeight: videoOption?.dataset.height || '',
         videoFormatExt: videoOption?.dataset.ext || '',
         videoFormatCodec: videoOption?.dataset.vcodec || '',
         audioForVideoFormatId: els.audioForVideoFormat.value,
@@ -1288,6 +1398,18 @@ async function syncJobThumbnailFromSource(row, sourcePath) {
     const thumbnail = state.compressorThumbs.get(sourcePath);
     const img = row.querySelector('.job-thumb');
     if (thumbnail && img) img.src = thumbnail;
+}
+
+function setJobThumbnail(row, src) {
+    const img = row?.querySelector?.('.job-thumb');
+    if (!img) return;
+    const fallback = 'icons/ardali_dawlod.png';
+    const nextSrc = String(src || '').trim() || fallback;
+    img.onerror = () => {
+        img.onerror = null;
+        img.src = fallback;
+    };
+    if (img.src !== nextSrc) img.src = nextSrc;
 }
 
 async function addCompressorFiles(fileList) {
@@ -1480,7 +1602,7 @@ function createOrUpdateJob(payload) {
     row.querySelector('.job-title').textContent = payload.title || dlt('action.download');
     row.querySelector('.job-state').textContent = formatJobState(payload, percent);
     row.querySelector('.job-detail').textContent = payload.detail || '';
-    row.querySelector('.job-thumb').src = payload.thumbnail || (sourcePath ? (state.compressorThumbs.get(sourcePath) || 'icons/fallback_video.svg') : 'icons/ardali_dawlod.png');
+    setJobThumbnail(row, payload.thumbnail || (sourcePath ? (state.compressorThumbs.get(sourcePath) || 'icons/fallback_video.svg') : 'icons/ardali_dawlod.png'));
     row.querySelector('.job-type').textContent = payload.mode === 'audio' || payload.mode === 'extract' ? dlt('mode.audio') : dlt('mode.video');
     row.querySelector('.job-percent').textContent = formatJobPercent(percent);
     row.querySelector('.progress-fill').style.width = row.classList.contains('indeterminate') ? '34%' : `${percent}%`;
@@ -1504,12 +1626,13 @@ function createOrUpdateJob(payload) {
     }
 }
 
-async function analyze() {
-    const url = els.urlInput.value.trim();
+async function analyze(titleHint = state.titleHint) {
+    const url = normalizeDownloaderInputUrl(els.urlInput.value);
     if (!url) {
         setStatus('error', dlt('status.urlRequired'), dlt('status.urlRequiredDetail'));
         return;
     }
+    els.urlInput.value = url;
     setBusy(true);
     setStatus('busy', dlt('status.processing'), '');
     const result = await api.getInfo(url);
@@ -1518,15 +1641,17 @@ async function analyze() {
         setStatus('error', dlt('error.analysisFailed'), result?.error || dlt('error.videoInfoFailed'));
         return;
     }
+    state.titleHint = normalizeTitleHint(titleHint);
     renderInfo(result.info);
 }
 
-async function analyzeUrl(url) {
-    const normalized = String(url || '').trim();
+async function analyzeUrl(url, options = {}) {
+    const normalized = normalizeDownloaderInputUrl(url);
     if (!/^https?:\/\//i.test(normalized)) return;
+    state.titleHint = normalizeTitleHint(options.titleHint || options.title || '');
     els.urlInput.value = normalized;
     switchPage('single');
-    await analyze();
+    await analyze(state.titleHint);
 }
 
 async function startDownload() {
@@ -1712,7 +1837,7 @@ async function init() {
     state.compressorOutputDir = String(state.settings.compressorOutputDir || '');
     await refreshDependencyStatus();
     setPlaylistMode('playlist-video');
-    applyTheme(state.settings.theme || localStorage.getItem('ardaliDawlodTheme') || localStorage.getItem('theme') || 'ardali');
+    applyTheme(state.settings.theme || localStorage.getItem('ardaliDawlodTheme') || localStorage.getItem('theme') || 'black');
 
     els.minimizeBtn.addEventListener('click', () => electronApi?.minimizeWindow());
     els.maximizeBtn.addEventListener('click', () => electronApi?.maximizeWindow());
@@ -1723,7 +1848,7 @@ async function init() {
     });
     els.pasteBtn.addEventListener('click', async () => {
         const text = await api.readClipboard();
-        if (text) els.urlInput.value = text;
+        if (text) els.urlInput.value = normalizeDownloaderInputUrl(text);
     });
     els.chooseFolderBtn.addEventListener('click', async () => {
         const result = await api.chooseFolder();
@@ -1946,19 +2071,26 @@ async function init() {
             showNoUrlNotice(payload?.error);
             return;
         }
-        analyzeUrl(payload.url).catch((error) => {
+        analyzeUrl(payload.url, { titleHint: payload.titleHint }).catch((error) => {
             setStatus('error', dlt('error.analysisFailed'), String(error?.message || error || dlt('common.unknownError')));
         });
     });
+    const pendingNotice = await api.getPendingNotice?.();
+    if (pendingNotice) {
+        if (/^https?:\/\//i.test(String(pendingNotice.url || '').trim())) {
+            analyzeUrl(pendingNotice.url, { titleHint: pendingNotice.titleHint }).catch((error) => {
+                setStatus('error', dlt('error.analysisFailed'), String(error?.message || error || dlt('common.unknownError')));
+            });
+            return;
+        }
+        showNoUrlNotice(pendingNotice.error);
+        return;
+    }
     const pendingUrl = await api.getPendingUrl?.();
     if (pendingUrl) {
         analyzeUrl(pendingUrl).catch((error) => {
             setStatus('error', dlt('error.analysisFailed'), String(error?.message || error || dlt('common.unknownError')));
         });
-    }
-    const pendingNotice = await api.getPendingNotice?.();
-    if (pendingNotice) {
-        showNoUrlNotice(pendingNotice.error);
     }
 }
 

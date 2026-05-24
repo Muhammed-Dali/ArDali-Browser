@@ -94,8 +94,8 @@ function setListenCopyKey(titleKey, titleFallback, subKey, subFallback, vars) {
 }
 
 function applyTheme(theme, options = {}) {
-    const rawTheme = String(theme || 'ardali').trim().toLowerCase();
-    const nextTheme = rawTheme === 'github' ? 'light' : (rawTheme || 'ardali');
+    const rawTheme = String(theme || 'black').trim().toLowerCase();
+    const nextTheme = rawTheme === 'github' ? 'light' : (rawTheme || 'black');
     const commitTheme = () => {
         document.documentElement.setAttribute('theme', nextTheme);
         localStorage.setItem('ardaliPulseTheme', nextTheme);
@@ -439,6 +439,28 @@ async function refreshDevices() {
     );
 }
 
+function createResultArt(coverUrl) {
+    const src = String(coverUrl || '').trim();
+    const fallback = () => {
+        const art = document.createElement('div');
+        art.className = 'result-art';
+        art.textContent = '♪';
+        return art;
+    };
+    if (!src) return fallback();
+
+    const art = document.createElement('img');
+    art.className = 'result-art';
+    art.src = src;
+    art.alt = '';
+    art.loading = 'lazy';
+    art.referrerPolicy = 'no-referrer';
+    art.addEventListener('error', () => {
+        art.replaceWith(fallback());
+    }, { once: true });
+    return art;
+}
+
 function addResult(result) {
     const title = String(result?.title || '').trim();
     const artist = String(result?.artist || '').trim();
@@ -463,16 +485,7 @@ function addResult(result) {
     const item = document.createElement('div');
     item.className = 'result';
 
-    const art = document.createElement(coverUrl ? 'img' : 'div');
-    art.className = 'result-art';
-    if (coverUrl) {
-        art.src = coverUrl;
-        art.alt = '';
-        art.loading = 'lazy';
-        art.referrerPolicy = 'no-referrer';
-    } else {
-        art.textContent = '♪';
-    }
+    const art = createResultArt(coverUrl);
 
     const text = document.createElement('div');
     text.className = 'result-text';
@@ -641,7 +654,7 @@ window.ardali?.onSettingsReload?.((nextSettings) => {
 
 window.i18n?.onChange?.(refreshLocalizedUi);
 
-applyTheme(localStorage.getItem('ardaliPulseTheme') || localStorage.getItem('theme') || 'ardali');
+applyTheme(localStorage.getItem('ardaliPulseTheme') || localStorage.getItem('theme') || 'black');
 
 initLanguage()
     .then(refreshLocalizedUi)

@@ -48,6 +48,186 @@
     --sfx-nav-row-min-h: 44px;
 }
 
+html[data-ardali-theme="black"] {
+    --bg-darkest: #000000;
+    --bg-dark: #020202;
+    --bg-medium: #050505;
+    --bg-light: #0a0a0a;
+    --bg-lighter: #101010;
+    --bg-hover: #171717;
+    --bg-active: #101820;
+    --border-dark: #070707;
+    --border-medium: #151515;
+    --border-light: #262626;
+    --border-accent: rgba(0, 200, 255, 0.32);
+    --text-primary: #f4f4f5;
+    --text-secondary: #dfe5ee;
+    --text-muted: #a9b1bd;
+    --text-dimmed: #747b87;
+    --accent-primary: #00c8ff;
+    --accent-secondary: #38e6a7;
+    --knob-bg: linear-gradient(145deg, #101010, #030303);
+}
+
+html[data-ardali-theme="dark"] {
+    --bg-darkest: #0d0d0d;
+    --bg-dark: #121212;
+    --bg-medium: #181818;
+    --bg-light: #1d1d1d;
+    --bg-lighter: #252426;
+    --bg-hover: #2c2e31;
+    --bg-active: #2e2e2e;
+    --border-dark: #1a1a1a;
+    --border-medium: #2e2e2e;
+    --border-light: #3a3a3a;
+    --text-primary: #e5e5e5;
+    --text-secondary: #d7deeb;
+    --text-muted: #aab2bf;
+    --text-dimmed: #7d8794;
+    --accent-primary: #38bdf8;
+    --accent-secondary: #34d399;
+}
+
+html[data-ardali-theme="ardali"],
+html[data-ardali-theme="aur-renk-efektleri"],
+html[data-ardali-theme="performance-balanced"] {
+    --bg-darkest: #0f172a;
+    --bg-dark: #111c33;
+    --bg-medium: #172554;
+    --bg-light: #1e3a8a;
+    --bg-lighter: #1e293b;
+    --bg-hover: #243b63;
+    --bg-active: #0e7490;
+    --border-dark: #132140;
+    --border-medium: #1d4ed8;
+    --border-light: #2563eb;
+    --text-primary: #e2e8f0;
+    --text-secondary: #dbeafe;
+    --text-muted: #aab8d0;
+    --text-dimmed: #7d8ca8;
+    --accent-primary: #06b6d4;
+    --accent-secondary: #34d399;
+}
+
+html[data-ardali-theme="light"] {
+    --bg-darkest: #eef2f7;
+    --bg-dark: #f8fafc;
+    --bg-medium: #e9eef5;
+    --bg-light: #e1e8f1;
+    --bg-lighter: #dbe3ee;
+    --bg-hover: #cbd8e8;
+    --bg-active: #bfdbfe;
+    --border-dark: #cbd5e1;
+    --border-medium: #b6c2d2;
+    --border-light: #8fa1b8;
+    --border-accent: rgba(37, 99, 235, 0.32);
+    --text-primary: #111827;
+    --text-secondary: #1f2937;
+    --text-muted: #374151;
+    --text-dimmed: #4b5563;
+    --accent-primary: #2563eb;
+    --accent-secondary: #0f766e;
+    --knob-bg: linear-gradient(145deg, #e9eef5, #f8fafc);
+}
+
+html[data-ardali-theme="latte"] {
+    --bg-darkest: #dce0e8;
+    --bg-dark: #eff1f5;
+    --bg-medium: #e6e9ef;
+    --bg-light: #d7dce8;
+    --bg-lighter: #ccd3df;
+    --bg-hover: #bcc6d8;
+    --bg-active: #cce5ff;
+    --border-dark: #bcc0cc;
+    --border-medium: #aab2c3;
+    --border-light: #8c98ad;
+    --border-accent: rgba(30, 102, 245, 0.32);
+    --text-primary: #1f2937;
+    --text-secondary: #334155;
+    --text-muted: #4b5563;
+    --text-dimmed: #64748b;
+    --accent-primary: #1e66f5;
+    --accent-secondary: #40a02b;
+    --knob-bg: linear-gradient(145deg, #e6e9ef, #eff1f5);
+}
+
+html[data-ardali-theme="frappe"] {
+    --bg-darkest: #232634;
+    --bg-dark: #292c3c;
+    --bg-medium: #303446;
+    --bg-light: #414559;
+    --bg-lighter: #51576d;
+    --bg-hover: #626880;
+    --bg-active: #8caaee;
+    --border-dark: #303446;
+    --border-medium: #414559;
+    --border-light: #51576d;
+    --text-primary: #f2d5cf;
+    --text-secondary: #c6d0f5;
+    --text-muted: #a5adce;
+    --text-dimmed: #838ba7;
+    --accent-primary: #8caaee;
+    --accent-secondary: #a6d189;
+}
+
+html[data-ardali-theme="onedark"] {
+    --bg-darkest: #282c34;
+    --bg-dark: #2f333d;
+    --bg-medium: #3a3d46;
+    --bg-light: #454954;
+    --bg-lighter: #505663;
+    --bg-hover: #5c6370;
+    --bg-active: #3e4451;
+    --border-dark: #2f333d;
+    --border-medium: #3e4451;
+    --border-light: #5c6370;
+    --text-primary: #d2d6df;
+    --text-secondary: #abb2bf;
+    --text-muted: #9aa1ad;
+    --text-dimmed: #6b7280;
+    --accent-primary: #61afef;
+    --accent-secondary: #98c379;
+}
+
+html[data-ardali-theme="matrix"] {
+    --bg-darkest: #0d0208;
+    --bg-dark: #050f0a;
+    --bg-medium: #0c2216;
+    --bg-light: #12321f;
+    --bg-lighter: #164027;
+    --bg-hover: #1b4d2f;
+    --bg-active: #00ff41;
+    --border-dark: #0c2216;
+    --border-medium: #1a3d2a;
+    --border-light: #2e5f43;
+    --text-primary: #00ff41;
+    --text-secondary: #7cff8f;
+    --text-muted: #9cffb1;
+    --text-dimmed: #4d9f5c;
+    --accent-primary: #00ff41;
+    --accent-secondary: #19b42b;
+}
+
+html[data-ardali-theme="solarized-dark"],
+html[data-ardali-theme="deep-ocean"] {
+    --bg-darkest: #002b36;
+    --bg-dark: #00313d;
+    --bg-medium: #003745;
+    --bg-light: #073d4b;
+    --bg-lighter: #174b58;
+    --bg-hover: #255d6b;
+    --bg-active: #005a6f;
+    --border-dark: #073642;
+    --border-medium: #2e4c52;
+    --border-light: #586e75;
+    --text-primary: #d7e7e8;
+    --text-secondary: #a4b1b3;
+    --text-muted: #839496;
+    --text-dimmed: #657b83;
+    --accent-primary: #268bd2;
+    --accent-secondary: #2aa198;
+}
+
 html[data-sfx-icon-size='compact'] {
     --sfx-nav-icon-box: 24px;
     --sfx-nav-icon-size: 16px;
@@ -117,6 +297,113 @@ html[data-sfx-lights='off'] .panel-card,
 html[data-sfx-lights='off'] .module-section,
 html[data-sfx-lights='off'] .eq-bands-wrapper {
     border-color: rgba(170, 180, 200, 0.12) !important;
+}
+
+html[data-ardali-theme] .sfx-container,
+html[data-ardali-theme] .sfx-content {
+    background: linear-gradient(180deg, var(--bg-darkest), var(--bg-dark)) !important;
+    color: var(--text-primary);
+}
+
+html[data-ardali-theme] .sfx-header {
+    background:
+        linear-gradient(90deg, color-mix(in srgb, var(--accent-primary) 7%, transparent), transparent, color-mix(in srgb, var(--accent-primary) 7%, transparent));
+    border-bottom-color: color-mix(in srgb, var(--accent-primary) 32%, var(--border-dark));
+}
+
+html[data-ardali-theme] .sfx-sidebar,
+html[data-ardali-theme] .eq-section,
+html[data-ardali-theme] .panel-card,
+html[data-ardali-theme] .module-section,
+html[data-ardali-theme] .control-card,
+html[data-ardali-theme] .settings-card {
+    background: color-mix(in srgb, var(--bg-dark) 92%, var(--bg-darkest)) !important;
+    border-color: color-mix(in srgb, var(--border-light) 48%, transparent) !important;
+}
+
+html[data-ardali-theme] .effect-item {
+    background: linear-gradient(180deg, color-mix(in srgb, var(--bg-lighter) 66%, transparent), color-mix(in srgb, var(--bg-dark) 88%, transparent)) !important;
+    border-color: color-mix(in srgb, var(--border-light) 42%, transparent) !important;
+}
+
+html[data-ardali-theme] .effect-item:hover,
+html[data-ardali-theme] .effect-item.active {
+    background: linear-gradient(90deg, color-mix(in srgb, var(--accent-primary) 24%, var(--bg-dark)), color-mix(in srgb, var(--bg-dark) 88%, transparent)) !important;
+    border-color: color-mix(in srgb, var(--accent-primary) 62%, var(--border-light)) !important;
+}
+
+html[data-ardali-theme] .effect-icon,
+html[data-ardali-theme] .effect-title-nav-icon {
+    background: linear-gradient(180deg, color-mix(in srgb, var(--bg-light) 78%, transparent), color-mix(in srgb, var(--bg-dark) 92%, transparent)) !important;
+    border-color: color-mix(in srgb, var(--accent-primary) 34%, var(--border-light)) !important;
+    color: var(--text-secondary) !important;
+}
+
+html[data-ardali-theme] .effect-name,
+html[data-ardali-theme] .effect-title,
+html[data-ardali-theme] .module-title,
+html[data-ardali-theme] .settings-label {
+    color: var(--text-primary) !important;
+}
+
+html[data-ardali-theme] .effect-description,
+html[data-ardali-theme] .control-hint,
+html[data-ardali-theme] .engine-info,
+html[data-ardali-theme] .dsp-status {
+    color: var(--text-muted) !important;
+}
+
+html[data-ardali-theme] .effect-select,
+html[data-ardali-theme] select,
+html[data-ardali-theme] input,
+html[data-ardali-theme] textarea {
+    background: var(--bg-lighter) !important;
+    color: var(--text-primary) !important;
+    border-color: color-mix(in srgb, var(--border-light) 58%, transparent) !important;
+}
+
+html[data-ardali-theme] option {
+    background-color: var(--bg-lighter) !important;
+    color: var(--text-primary) !important;
+}
+
+html[data-ardali-theme] .eq-bands-wrapper {
+    background: linear-gradient(180deg, color-mix(in srgb, var(--bg-lighter) 62%, transparent), color-mix(in srgb, var(--bg-dark) 92%, transparent)) !important;
+    border: 1px solid color-mix(in srgb, var(--border-light) 36%, transparent);
+}
+
+html[data-ardali-theme="black"] body,
+html[data-ardali-theme="black"] .sfx-container,
+html[data-ardali-theme="black"] .sfx-content {
+    background: #000000 !important;
+}
+
+html[data-ardali-theme="black"] .sfx-header,
+html[data-ardali-theme="black"] .sfx-sidebar,
+html[data-ardali-theme="black"] .eq-section,
+html[data-ardali-theme="black"] .panel-card,
+html[data-ardali-theme="black"] .module-section,
+html[data-ardali-theme="black"] .control-card,
+html[data-ardali-theme="black"] .settings-card {
+    background: #030303 !important;
+}
+
+html[data-ardali-theme="black"] .effect-item,
+html[data-ardali-theme="black"] .eq-bands-wrapper {
+    background: linear-gradient(180deg, #090909, #030303) !important;
+    border-color: #1b1b1b !important;
+}
+
+html[data-ardali-theme="black"] .eq-top-visualizer {
+    background: #000000 !important;
+    box-shadow: none;
+}
+
+html[data-ardali-theme="light"] select,
+html[data-ardali-theme="light"] option,
+html[data-ardali-theme="latte"] select,
+html[data-ardali-theme="latte"] option {
+    color-scheme: light !important;
 }
 
 html[data-sfx-lights='off'] .eq-band {

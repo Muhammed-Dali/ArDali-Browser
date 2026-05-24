@@ -772,5 +772,19 @@
   "gallery.file.properties": "Properties",
   "sfx.audiophile.preamp.title": "Аналоговый предусилитель",
   "sfx.audiophile.preamp.hint": "Точная настройка усиления выхода перед цепочкой Web DSP.",
-  "sfx.audiophile.preamp.knobLabel": "Усиление предусилителя"
+  "sfx.audiophile.preamp.knobLabel": "Усиление предусилителя",
+  "ui.theme.options.black": "Черный",
+  "ui.optimizationProfile.label": "Цель оптимизации",
+  "ui.optimizationProfile.hint": "Adjusts interface, cover, web and sound effect load based on automatic or manual priority.",
+  "ui.optimizationProfile.hint.initial": "Smart Auto: chooses the best profile based on power, battery and hardware.",
+  "ui.optimizationProfile.options.auto": "Умное авто",
+  "ui.optimizationProfile.options.ram": "Приоритет RAM",
+  "ui.optimizationProfile.options.gpu": "Приоритет GPU",
+  "ui.optimizationProfile.options.battery": "Приоритет батареи",
+  "ui.optimizationProfile.options.quality": "Приоритет качества",
+  "ui.optimizationProfile.hint.autoActive": "Smart Auto: currently applying {profile}.",
+  "ui.optimizationProfile.hint.ram": "RAM priority: web tabs sleep, cover cache shrinks and the library runs lighter.",
+  "ui.optimizationProfile.hint.gpu": "GPU priority: glow, lighting and canvas animations are reduced; album covers stay enabled.",
+  "ui.optimizationProfile.hint.battery": "Battery priority: RAM and GPU savings are applied together and background FPS drops heavily.",
+  "ui.optimizationProfile.hint.quality": "Visual quality priority: effects and animations stay lively; resource use may be higher."
 }

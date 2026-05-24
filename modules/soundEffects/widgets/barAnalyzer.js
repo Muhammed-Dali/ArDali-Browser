@@ -25,6 +25,8 @@ class BarAnalyzer {
         // Colors
         this.baseColor = { r: 0, g: 217, b: 255 }; // Default accent
         this.psychedelic = false;
+        this._colorCacheKey = '';
+        this._colorCache = [];
         
         this.resize();
         window.addEventListener('resize', () => this.resize());
@@ -83,6 +85,16 @@ class BarAnalyzer {
     getBandColor(index) {
         if (this.isSfxLightsOff()) return '#22d3ee';
         if (!this.rainbow || this.bandCount <= 1) return this.gradient;
+        const cacheKey = `${this.bandCount}:${this.rainbow ? 1 : 0}`;
+        if (this._colorCacheKey !== cacheKey) {
+            this._colorCacheKey = cacheKey;
+            this._colorCache = Array.from({ length: this.bandCount }, (_, i) => {
+                const t = this.bandCount <= 1 ? 0 : i / (this.bandCount - 1);
+                const hue = 180 + (140 * t);
+                return `hsl(${hue.toFixed(1)}, 92%, 56%)`;
+            });
+        }
+        if (this._colorCache[index]) return this._colorCache[index];
         const t = index / (this.bandCount - 1);
         const hue = 180 + (140 * t); // cyan -> magenta
         return `hsl(${hue.toFixed(1)}, 92%, 56%)`;
@@ -103,6 +115,7 @@ class BarAnalyzer {
         const maxBarHeight = this.height - 2; // Leave room for roof
         const slot = this.width / this.bandCount;
         const barW = Math.max(2, Math.floor(slot - this.SPACING));
+        const lightsOff = this.isSfxLightsOff();
         
         for (let i = 0; i < this.bandCount; i++) {
             // Ratio-based sampling: avoids right-side zeros when barCount > data length
@@ -156,7 +169,7 @@ class BarAnalyzer {
             
             // Draw Roof
             if (this.roofs[i] > 0) {
-                this.ctx.fillStyle = this.isSfxLightsOff() ? '#7dd3fc' : (this.rainbow ? this.getBandColor(i) : '#ffffff');
+                this.ctx.fillStyle = lightsOff ? '#7dd3fc' : (this.rainbow ? this.getBandColor(i) : '#ffffff');
                 // Roof is a single pixel line or small block
                 this.ctx.fillRect(
                     x,

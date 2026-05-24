@@ -1,6 +1,7 @@
 const { spawn, spawnSync } = require('child_process');
 const crypto = require('crypto');
 const fs = require('fs');
+const http = require('http');
 const https = require('https');
 const os = require('os');
 const path = require('path');
@@ -349,7 +350,7 @@ async function readSettings(app) {
         configPath: '',
         useConfigFile: false,
         showMoreFormats: false,
-        theme: 'ardali',
+        theme: 'black',
         playlistFileTemplate: '%(playlist_index)s.%(title)s.%(ext)s',
         playlistFolderTemplate: '%(playlist_title)s',
         maxActiveDownloads: 1,
@@ -460,7 +461,156 @@ function formatDuration(seconds) {
         : `${m}:${String(s).padStart(2, '0')}`;
 }
 
-function summarizeFormats(formats = []) {
+function pickBestThumbnail(metadata = {}) {
+    const direct = String(metadata.thumbnail || '').trim();
+    const thumbnails = Array.isArray(metadata.thumbnails) ? metadata.thumbnails : [];
+    const sorted = thumbnails
+        .map((item) => ({
+            url: String(item?.url || '').trim(),
+            width: Number(item?.width || 0) || 0,
+            height: Number(item?.height || 0) || 0,
+            preference: Number(item?.preference || 0) || 0
+        }))
+        .filter((item) => /^https?:\/\//i.test(item.url))
+        .sort((a, b) => {
+            const areaDiff = (b.width * b.height) - (a.width * a.height);
+            if (areaDiff) return areaDiff;
+            return b.preference - a.preference;
+        });
+    return sorted[0]?.url || direct;
+}
+
+function fetchThumbnailAsDataUrl(rawUrl = '', referer = '') {
+    const target = String(rawUrl || '').trim();
+    if (!/^https?:\/\//i.test(target)) return Promise.resolve('');
+    return new Promise((resolve) => {
+        let parsed;
+        try {
+            parsed = new URL(target);
+        } catch {
+            resolve('');
+            return;
+        }
+
+        const transport = parsed.protocol === 'http:' ? http : https;
+        const request = transport.get(parsed, {
+            headers: {
+                'user-agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36',
+                accept: 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8',
+                referer: referer || `${parsed.protocol}//${parsed.hostname}/`
+            },
+            timeout: 8000
+        }, (response) => {
+            const statusCode = Number(response.statusCode || 0);
+            const location = response.headers.location;
+            if ([301, 302, 303, 307, 308].includes(statusCode) && location) {
+                response.resume();
+                const nextUrl = new URL(location, target).toString();
+                fetchThumbnailAsDataUrl(nextUrl, referer).then(resolve).catch(() => resolve(''));
+                return;
+            }
+            if (statusCode < 200 || statusCode >= 300) {
+                response.resume();
+                resolve('');
+                return;
+            }
+
+            const chunks = [];
+            let total = 0;
+            response.on('data', (chunk) => {
+                total += chunk.length;
+                if (total <= 5 * 1024 * 1024) chunks.push(chunk);
+                else request.destroy();
+            });
+            response.on('end', () => {
+                if (!chunks.length) {
+                    resolve('');
+                    return;
+                }
+                const contentType = String(response.headers['content-type'] || 'image/jpeg').split(';')[0].trim() || 'image/jpeg';
+                resolve(`data:${contentType};base64,${Buffer.concat(chunks).toString('base64')}`);
+            });
+        });
+        request.on('timeout', () => request.destroy());
+        request.on('error', () => resolve(''));
+    });
+}
+
+async function resolveDisplayThumbnail(metadata = {}, pageUrl = '') {
+    const thumbnail = pickBestThumbnail(metadata);
+    if (!thumbnail) return '';
+    const dataUrl = await fetchThumbnailAsDataUrl(thumbnail, pageUrl).catch(() => '');
+    return dataUrl || thumbnail;
+}
+
+function getUrlMediaExt(rawUrl = '') {
+    try {
+        const parsed = new URL(String(rawUrl || ''));
+        const match = String(parsed.pathname || '').match(/\.([a-z0-9]{2,5})$/i);
+        return match ? match[1].toLowerCase() : '';
+    } catch {
+        return '';
+    }
+}
+
+function isLikelyDirectVideoUrl(rawUrl = '') {
+    try {
+        const parsed = new URL(String(rawUrl || ''));
+        const host = String(parsed.hostname || '').toLowerCase();
+        const text = parsed.toString();
+        const pathAndSearch = String(parsed.pathname || '') + parsed.search;
+        if (/\.(?:jpe?g|png|webp|gif|avif|heic)(?:$|[?#])/i.test(pathAndSearch)) return false;
+        if (/(?:\/safe_image\.php\b|[?&](?:format|mime|mime_type)=image|image\/(?:jpeg|png|webp|gif|avif)|(?:^|[?&])stp=dst-jpg)/i.test(text)) return false;
+        if (
+            host === 'fbcdn.net' ||
+            host.endsWith('.fbcdn.net') ||
+            host === 'fbcdn.com' ||
+            host.endsWith('.fbcdn.com') ||
+            host === 'fbsbx.com' ||
+            host.endsWith('.fbsbx.com') ||
+            host === 'cdninstagram.com' ||
+            host.endsWith('.cdninstagram.com')
+        ) {
+            return true;
+        }
+        return /\.(mp4|m4v|webm|mov|m3u8)(?:$|[?#])/i.test(pathAndSearch) ||
+            /(?:mime_type=video|video_redirect|video_id|bytestart|byteend|efg=)/i.test(text);
+    } catch {
+        return false;
+    }
+}
+
+function normalizeInfoTitle(metadata = {}, pageUrl = '') {
+    const cleanTitle = (value = '') => String(value || '')
+        .replace(/\s+/g, ' ')
+        .replace(/\s+[·•]\s+(?:Follow|Following|Subscribe|Abone ol|Takip et)\b.*$/i, '')
+        .replace(/\b(?:Follow|Following|Subscribe|Abone ol|Takip et)\b/gi, '')
+        .trim();
+    const rawTitle = cleanTitle(metadata.title || metadata.fulltitle || metadata.alt_title || '');
+    const id = String(metadata.id || '').trim();
+    const looksGenerated =
+        !rawTitle ||
+        rawTitle === id ||
+        /^video\s+by\b/i.test(rawTitle) ||
+        /^[a-z0-9_-]{18,}$/i.test(rawTitle) ||
+        /^[0-9]{6,}[_0-9a-z-]*$/i.test(rawTitle);
+    if (looksGenerated) {
+        const descriptionLine = cleanTitle(String(metadata.description || '').split(/\r?\n/).find((line) => cleanTitle(line).length >= 3) || '');
+        if (descriptionLine && !/^(facebook|watch|reels?|video)$/i.test(descriptionLine)) {
+            return descriptionLine.slice(0, 180);
+        }
+        const uploader = cleanTitle(metadata.uploader || metadata.channel || metadata.creator || '');
+        if (uploader && !/^(facebook|watch|reels?|video)$/i.test(uploader)) {
+            return `${uploader} - Video`;
+        }
+    }
+    if (looksGenerated && isLikelyDirectVideoUrl(pageUrl)) {
+        return 'Video';
+    }
+    return rawTitle;
+}
+
+function summarizeFormats(formats = [], metadata = {}, pageUrl = '') {
     const videoFormats = [];
     const audioFormats = [];
     const seenVideo = new Set();
@@ -479,7 +629,7 @@ function summarizeFormats(formats = []) {
         const filesize = Number(format.filesize || format.filesize_approx || 0);
         const sizeText = filesize > 0 ? `${(filesize / 1024 / 1024).toFixed(2)} MB` : '—';
 
-        if (vcodec !== 'none' && height > 0 && !seenVideo.has(id)) {
+        if (vcodec !== 'none' && !seenVideo.has(id)) {
             seenVideo.add(id);
             videoFormats.push({
                 id,
@@ -488,7 +638,7 @@ function summarizeFormats(formats = []) {
                 vcodec,
                 acodec,
                 filesize,
-                label: `${height}p${fps ? `${fps}` : ''}   | ${ext || 'video'}   | ${sizeText}`
+                label: `${height > 0 ? `${height}p${fps ? `${fps}` : ''}` : 'Video'}   | ${ext || 'video'}   | ${sizeText}`
             });
         }
 
@@ -509,17 +659,64 @@ function summarizeFormats(formats = []) {
     videoFormats.sort((a, b) => b.height - a.height);
     audioFormats.sort((a, b) => b.abr - a.abr);
 
+    if (!videoFormats.length && isLikelyDirectVideoUrl(pageUrl)) {
+        const ext = String(metadata.ext || getUrlMediaExt(pageUrl) || 'mp4').toLowerCase();
+        const filesize = Number(metadata.filesize || metadata.filesize_approx || 0);
+        const sizeText = filesize > 0 ? `${(filesize / 1024 / 1024).toFixed(2)} MB` : '—';
+        videoFormats.push({
+            id: 'best',
+            height: Number(metadata.height || 0) || 0,
+            ext,
+            vcodec: String(metadata.vcodec || 'video'),
+            acodec: String(metadata.acodec || 'audio'),
+            filesize,
+            label: `Video   | ${ext || 'video'}   | ${sizeText}`
+        });
+    }
+
     return { videoFormats, audioFormats };
 }
 
-function runYtDlpJson(url, ytDlpBinary) {
+function buildYtDlpInfoArgs(url, settings = {}) {
+    const args = ['-J', '--no-playlist', '--no-warnings'];
+    args.push(...getPlatformHttpHeaderArgs(url));
+    if (settings.cookiesFile) args.push('--cookies', settings.cookiesFile);
+    if (settings.browserCookies) args.push('--cookies-from-browser', settings.browserCookies);
+    if (settings.proxy) args.push('--no-check-certificate', '--proxy', settings.proxy);
+    if (settings.useConfigFile && settings.configPath) args.push('--config-location', settings.configPath);
+    args.push(...splitArgs(settings.customArgs));
+    args.push(url);
+    return args.filter(Boolean);
+}
+
+function getPlatformHttpHeaderArgs(rawUrl = '') {
+    let host = '';
+    try {
+        host = String(new URL(String(rawUrl || '')).hostname || '').toLowerCase();
+    } catch {
+        return [];
+    }
+    const isInstagram = host === 'instagram.com' ||
+        host.endsWith('.instagram.com') ||
+        host === 'cdninstagram.com' ||
+        host.endsWith('.cdninstagram.com');
+    if (!isInstagram) return [];
+    return [
+        '--user-agent',
+        'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36',
+        '--referer',
+        'https://www.instagram.com/'
+    ];
+}
+
+function runYtDlpJson(url, ytDlpBinary, settings = {}) {
     return new Promise((resolve, reject) => {
         if (!ytDlpBinary) {
             reject(new Error('yt-dlp bulunamadi. Lutfen sisteminize yt-dlp kurun.'));
             return;
         }
 
-        const child = spawnLowPriority(ytDlpBinary, ['-J', '--no-playlist', '--no-warnings', url], {
+        const child = spawnLowPriority(ytDlpBinary, buildYtDlpInfoArgs(url, settings), {
             shell: false,
             windowsHide: true
         }, 12);
@@ -529,19 +726,20 @@ function runYtDlpJson(url, ytDlpBinary) {
         child.stdout.on('data', (chunk) => { stdout += chunk.toString(); });
         child.stderr.on('data', (chunk) => { stderr += chunk.toString(); });
         child.on('error', reject);
-        child.on('close', (code) => {
+        child.on('close', async (code) => {
             if (code !== 0) {
                 reject(new Error(stderr.trim() || `yt-dlp ${code} kodu ile kapandi.`));
                 return;
             }
             try {
                 const metadata = JSON.parse(stdout);
-                const formats = summarizeFormats(metadata.formats || []);
+                const formats = summarizeFormats(metadata.formats || [], metadata, url);
+                const thumbnail = await resolveDisplayThumbnail(metadata, url);
                 resolve({
                     id: metadata.id || '',
                     url,
-                    title: metadata.title || '',
-                    thumbnail: metadata.thumbnail || '',
+                    title: normalizeInfoTitle(metadata, url),
+                    thumbnail,
                     extractor: metadata.extractor_key || metadata.extractor || '',
                     duration: metadata.duration || 0,
                     durationText: formatDuration(metadata.duration),
@@ -565,6 +763,100 @@ function sanitizeOutputTemplate(downloadDir) {
     return path.join(downloadDir, '%(title).200B.%(ext)s');
 }
 
+function sanitizeOutputTitle(value = '') {
+    const title = String(value || '')
+        .replace(/[\u0000-\u001f\u007f<>:"/\\|?*]+/g, ' ')
+        .replace(/\s+/g, ' ')
+        .replace(/[. ]+$/g, '')
+        .replace(/^[. …]+/g, '')
+        .trim()
+        .slice(0, 160);
+    const compact = title.replace(/\s+/g, '').toLowerCase();
+    if (/(sesoynatılıyor|oynatdüğmesisimgesi|duraklatdüğmesisimgesi|audioisplaying|playbuttonicon|pausebuttonicon)/i.test(compact)) return '';
+    if (/^(takipettiklerin|beğenmeler|begenmeler|yorumlar|gönder|gonder|paylaşımlar|paylasimlar|seniniçinönerilenler|foryou|foryoupage)$/i.test(compact)) return '';
+    if (/^(?:devamı|devami|more|seemore|showmore)$/i.test(compact)) return '';
+    return title;
+}
+
+function isGenericDownloaderTitle(value = '') {
+    const title = String(value || '').trim().toLowerCase();
+    return !title ||
+        title === 'video' ||
+        title === 'facebook' ||
+        title === 'watch' ||
+        title === 'reel' ||
+        title === 'reels' ||
+        title === 'senin için önerilenler' ||
+        title === 'for you' ||
+        title === 'for you page' ||
+        title === 'devamı' ||
+        title === 'devami' ||
+        title === 'more' ||
+        title === 'takip ettiklerin' ||
+        title === 'beğenmeler' ||
+        title === 'yorumlar' ||
+        /(sesoynatılıyor|oynatdüğmesisimgesi|duraklatdüğmesisimgesi|audioisplaying|playbuttonicon|pausebuttonicon)/i.test(title.replace(/\s+/g, '')) ||
+        /^video\s+by\b/i.test(title) ||
+        /^\(?\d+\)?\s*facebook$/i.test(title);
+}
+
+function getDownloadUrlHost(rawUrl = '') {
+    try {
+        return String(new URL(String(rawUrl || '')).hostname || '').toLowerCase();
+    } catch {
+        return '';
+    }
+}
+
+function isCollisionProneDownloadUrl(rawUrl = '') {
+    const host = getDownloadUrlHost(rawUrl);
+    if (!host) return false;
+    return host === 'instagram.com' ||
+        host.endsWith('.instagram.com') ||
+        host === 'cdninstagram.com' ||
+        host.endsWith('.cdninstagram.com') ||
+        host === 'facebook.com' ||
+        host.endsWith('.facebook.com') ||
+        host === 'fbcdn.net' ||
+        host.endsWith('.fbcdn.net') ||
+        host === 'fbcdn.com' ||
+        host.endsWith('.fbcdn.com') ||
+        host === 'fbsbx.com' ||
+        host.endsWith('.fbsbx.com') ||
+        isLikelyDirectVideoUrl(rawUrl);
+}
+
+function sanitizeOutputKey(value = '') {
+    return String(value || '')
+        .replace(/[\u0000-\u001f\u007f<>:"/\\|?*\s]+/g, '')
+        .replace(/[^\p{L}\p{N}._-]+/gu, '')
+        .slice(0, 24);
+}
+
+function buildDownloadUniqueKey(options = {}) {
+    const id = sanitizeOutputKey(options.mediaId || options.id || '');
+    if (id && id.toLowerCase() !== 'na') return id;
+    const url = String(options.url || '').trim();
+    if (!url) return crypto.randomBytes(4).toString('hex');
+    return crypto.createHash('sha1').update(url).digest('hex').slice(0, 10);
+}
+
+function appendDownloadUniqueKey(title, options = {}) {
+    const cleanTitle = sanitizeOutputTitle(title) || 'Video';
+    const key = buildDownloadUniqueKey(options);
+    return sanitizeOutputTitle(`${cleanTitle} - ${key}`) || `Video - ${key}`;
+}
+
+function getOutputTemplate(downloadDir, options = {}) {
+    const titleHint = sanitizeOutputTitle(options.titleHint);
+    const title = sanitizeOutputTitle(options.title);
+    const preferredTitle = titleHint || (isGenericDownloaderTitle(title) ? '' : title);
+    if (isCollisionProneDownloadUrl(options.url) || !preferredTitle) {
+        return path.join(downloadDir, `${appendDownloadUniqueKey(preferredTitle || title || 'Video', options)}.%(ext)s`);
+    }
+    return path.join(downloadDir, `${preferredTitle}.%(ext)s`);
+}
+
 function normalizeMediaExt(value) {
     const ext = String(value || '').trim().toLowerCase();
     if (ext === 'webm') return 'opus';
@@ -586,6 +878,42 @@ function getVideoMergeFormat(options) {
     return 'mp4';
 }
 
+function buildVideoFormatFallbackSelector(options = {}) {
+    const height = Math.max(0, Number(options.videoFormatHeight || 0) || 0);
+    const videoExt = String(options.videoFormatExt || '').trim().toLowerCase();
+    const audioExt = normalizeMediaExt(options.audioForVideoFormatExt);
+    const heightFilter = height > 0 ? `[height<=${height}]` : '';
+
+    if (videoExt === 'mp4') {
+        return [
+            `bestvideo${heightFilter}[ext=mp4]+bestaudio[ext=m4a]`,
+            `bestvideo${heightFilter}[ext=mp4]+bestaudio`,
+            `bestvideo${heightFilter}+bestaudio[ext=m4a]`,
+            `bestvideo${heightFilter}+bestaudio`,
+            `best${heightFilter}[ext=mp4]`,
+            `best${heightFilter}`,
+            'best'
+        ].join('/');
+    }
+
+    if (videoExt === 'webm') {
+        const audioSelector = audioExt === 'm4a' ? 'bestaudio[ext=m4a]/bestaudio' : 'bestaudio[ext=webm]/bestaudio';
+        return [
+            `bestvideo${heightFilter}[ext=webm]+${audioSelector}`,
+            `bestvideo${heightFilter}+${audioSelector}`,
+            `best${heightFilter}[ext=webm]`,
+            `best${heightFilter}`,
+            'best'
+        ].join('/');
+    }
+
+    return [
+        `bestvideo${heightFilter}+bestaudio`,
+        `best${heightFilter}`,
+        'best'
+    ].join('/');
+}
+
 function cleanupPartialArtifacts(outputPath) {
     const target = String(outputPath || '').trim();
     if (!target) return;
@@ -597,17 +925,16 @@ function cleanupPartialArtifacts(outputPath) {
 
 function buildDownloadArgs(options, settings) {
     const args = ['--newline', '--no-playlist', '--no-mtime'];
+    args.push(...getPlatformHttpHeaderArgs(options.url));
     const mode = String(options.mode || 'video');
     const downloadDir = settings.downloadDir || getDefaultDownloadDir();
     const extractFormat = String(options.extractFormat || 'mp3');
     const extractFormatLower = extractFormat.toLowerCase();
 
     if (mode === 'video') {
-        const videoId = String(options.videoFormatId || '').trim();
-        const audioId = String(options.audioForVideoFormatId || '').trim();
-        if (videoId && audioId && audioId !== 'none') args.push('-f', `${videoId}+${audioId}`);
-        else if (videoId) args.push('-f', `${videoId}+bestaudio[ext=m4a]/${videoId}+bestaudio/${videoId}/best`);
-        else args.push('-f', 'bestvideo+bestaudio/best');
+        const fallbackSelector = buildVideoFormatFallbackSelector(options);
+        args.push('-f', fallbackSelector);
+        args.push('--merge-output-format', getVideoMergeFormat(options));
     } else {
         const audioId = String(options.audioFormatId || '').trim();
         if (mode === 'audio' && audioId) args.push('-f', audioId);
@@ -625,12 +952,13 @@ function buildDownloadArgs(options, settings) {
     const end = String(options.endTime || '').trim();
     if (start || end) args.push('--download-sections', `*${start || '0'}-${end || 'inf'}`);
     if (options.subtitles) args.push('--write-subs', '--write-auto-subs');
+    if (settings.cookiesFile) args.push('--cookies', settings.cookiesFile);
     if (settings.browserCookies) args.push('--cookies-from-browser', settings.browserCookies);
     if (settings.proxy) args.push('--no-check-certificate', '--proxy', settings.proxy);
     if (settings.useConfigFile && settings.configPath) args.push('--config-location', settings.configPath);
     if (settings.ffmpegPath) args.push('--ffmpeg-location', path.dirname(settings.ffmpegPath));
     args.push(...splitArgs(settings.customArgs), ...splitArgs(options.customArgs));
-    args.push('-o', sanitizeOutputTemplate(downloadDir));
+    args.push('-o', getOutputTemplate(downloadDir, options));
     args.push(String(options.url || '').trim());
     return args.filter(Boolean);
 }
@@ -648,6 +976,7 @@ function buildPlaylistArgs(options, settings) {
     args.push('-o', outputTemplate);
     args.push('-I', `${start}:${end}`);
     args.push('--compat-options', 'no-youtube-unavailable-videos');
+    if (settings.cookiesFile) args.push('--cookies', settings.cookiesFile);
     if (settings.browserCookies) args.push('--cookies-from-browser', settings.browserCookies);
     if (settings.proxy) args.push('--no-check-certificate', '--proxy', settings.proxy);
     if (settings.useConfigFile && settings.configPath) args.push('--config-location', settings.configPath);
@@ -949,10 +1278,19 @@ function createDownloaderService({ app, webContentsProvider }) {
         const parseProgress = (text) => {
             const line = String(text || '').replace(/\x1b\[[0-9;]*m/g, '').trim();
             if (!line) return;
-            const destination = line.match(/\[download\]\s+Destination:\s+(.+)/i) || line.match(/\[Merger\]\s+Merging formats into\s+"?([^"\n]+)"?/i);
+            const destination =
+                line.match(/\[download\]\s+Destination:\s+(.+)/i) ||
+                line.match(/\[download\]\s+(.+?)\s+has already been downloaded/i) ||
+                line.match(/\[Merger\]\s+Merging formats into\s+"?([^"\n]+)"?/i) ||
+                line.match(/\[(?:VideoRemuxer|ExtractAudio)\]\s+Destination:\s+(.+)/i);
             if (destination) {
                 outputPath = destination[1].trim();
                 emit({ id, state: 'running', title, percent: 0, message: 'İndiriliyor', detail: '', thumbnail: options.thumbnail || '', mode });
+                return;
+            }
+            const ffmpegOutput = line.match(/\bto\s+'file:([^']+?)(?:\.part)?'/i) || line.match(/\bto\s+'([^']+?)(?:\.part)?'/i);
+            if (!outputPath && ffmpegOutput?.[1]) {
+                outputPath = ffmpegOutput[1].trim();
                 return;
             }
             if (/^\[(Merger|ExtractAudio|VideoRemuxer|Metadata|EmbedThumbnail|Fixup)\]/i.test(line)) {
@@ -1126,9 +1464,13 @@ function createDownloaderService({ app, webContentsProvider }) {
             await writeHistory(app, next);
             return next.length !== history.length;
         },
-        async getInfo(url) {
+        async getInfo(url, runtimeOptions = {}) {
             const ytDlpBinary = await ensureYtDlpBinary(app, emit);
-            return runYtDlpJson(url, ytDlpBinary);
+            const settings = await readSettings(app);
+            return runYtDlpJson(url, ytDlpBinary, {
+                ...settings,
+                cookiesFile: String(runtimeOptions.cookiesFile || '').trim()
+            });
         },
         async start(options) {
             const ytDlpBinary = await ensureYtDlpBinary(app, emit);
@@ -1148,17 +1490,23 @@ function createDownloaderService({ app, webContentsProvider }) {
                 closeOnFinish: options.closeOnFinish === true,
                 ffmpegPath
             });
-            maxActiveDownloadLimit = getMaxActiveDownloads(settings);
-            await fs.promises.mkdir(settings.downloadDir, { recursive: true });
+            const runtimeSettings = {
+                ...settings,
+                cookiesFile: String(options.cookiesFile || '').trim()
+            };
+            maxActiveDownloadLimit = getMaxActiveDownloads(runtimeSettings);
+            await fs.promises.mkdir(runtimeSettings.downloadDir, { recursive: true });
 
             const id = crypto.randomBytes(6).toString('hex');
             const isPlaylist = mode.startsWith('playlist-');
+            const titleHint = sanitizeOutputTitle(options.titleHint);
+            const requestedTitle = String(options.title || 'Indirme');
+            const title = titleHint || (isGenericDownloaderTitle(requestedTitle) ? 'Indirme' : requestedTitle);
             const args = isPlaylist
-                ? buildPlaylistArgs(options, settings)
-                : buildDownloadArgs(options, settings);
-            const title = String(options.title || 'Indirme');
+                ? buildPlaylistArgs(options, runtimeSettings)
+                : buildDownloadArgs(options, runtimeSettings);
 
-            const task = { id, ytDlpBinary, args, settings, options, mode, title };
+            const task = { id, ytDlpBinary, args, settings: runtimeSettings, options, mode, title };
             if (activeDownloads.size >= maxActiveDownloadLimit) {
                 downloadQueue.push(task);
                 emit({

@@ -7,8 +7,18 @@
     <meta http-equiv="Content-Security-Policy"
         content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline';">
     <title>Ses Efektleri — ArDali Medya Player</title>
-    <link rel="stylesheet" href="styles/soundEffects.css">
     <script>
+        (() => {
+            try {
+                const allowed = new Set(['aur-renk-efektleri', 'performance-balanced', 'performance-lite', 'ardali', 'dark', 'black', 'light', 'frappe', 'onedark', 'matrix', 'latte', 'solarized-dark', 'neon-night', 'retro-amber', 'deep-ocean', 'forest-mint']);
+                const theme = String(localStorage.getItem('ardali_ui_theme') || localStorage.getItem('theme') || 'black').trim();
+                if (!allowed.has(theme)) return;
+                document.documentElement.dataset.ardaliTheme = theme;
+                document.documentElement.setAttribute('theme', theme);
+            } catch {
+                // ignore
+            }
+        })();
         (function () {
             try {
                 const embedded = new URLSearchParams(window.location.search).get('embedded') === '1';
@@ -31,6 +41,7 @@
             }
         })();
     </script>
+    <link rel="stylesheet" href="styles/soundEffects.css">
 </head>
 
 <body>

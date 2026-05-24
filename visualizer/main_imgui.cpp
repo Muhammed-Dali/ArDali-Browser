@@ -998,9 +998,148 @@ struct AppState {
 
     ImGuiStyle baseStyle;
     std::string fontPath;
+    std::string themeName = "black";
 };
 
 static AppState g;
+
+struct UiThemePalette {
+    ImVec4 windowBg;
+    ImVec4 popupBg;
+    ImVec4 panelBg;
+    ImVec4 panelBgAlt;
+    ImVec4 frameBg;
+    ImVec4 frameBgHovered;
+    ImVec4 frameBgActive;
+    ImVec4 header;
+    ImVec4 headerHovered;
+    ImVec4 headerActive;
+    ImVec4 button;
+    ImVec4 buttonHovered;
+    ImVec4 buttonActive;
+    ImVec4 text;
+    ImVec4 textMuted;
+    ImVec4 border;
+    ImVec4 accent;
+    ImVec4 accent2;
+    ImVec4 danger;
+};
+
+static ImU32 col32(const ImVec4& c, float alphaMul = 1.0f) {
+    return ImGui::ColorConvertFloat4ToU32(ImVec4(c.x, c.y, c.z, std::clamp(c.w * alphaMul, 0.0f, 1.0f)));
+}
+
+static ImU32 col32a(const ImVec4& c, int alpha) {
+    return ImGui::ColorConvertFloat4ToU32(ImVec4(c.x, c.y, c.z, std::clamp((float)alpha / 255.0f, 0.0f, 1.0f)));
+}
+
+static UiThemePalette makeThemePalette(const std::string& rawTheme) {
+    const std::string theme = toLowerAscii(rawTheme);
+    UiThemePalette p{
+        ImVec4(0.05f, 0.07f, 0.10f, 0.96f),
+        ImVec4(0.06f, 0.08f, 0.12f, 0.98f),
+        ImVec4(0.07f, 0.10f, 0.15f, 0.92f),
+        ImVec4(0.09f, 0.13f, 0.19f, 0.95f),
+        ImVec4(0.10f, 0.14f, 0.20f, 1.00f),
+        ImVec4(0.13f, 0.20f, 0.29f, 1.00f),
+        ImVec4(0.15f, 0.24f, 0.34f, 1.00f),
+        ImVec4(0.12f, 0.22f, 0.30f, 0.86f),
+        ImVec4(0.15f, 0.30f, 0.42f, 0.92f),
+        ImVec4(0.17f, 0.38f, 0.52f, 0.96f),
+        ImVec4(0.11f, 0.15f, 0.21f, 1.00f),
+        ImVec4(0.14f, 0.20f, 0.28f, 1.00f),
+        ImVec4(0.16f, 0.24f, 0.33f, 1.00f),
+        ImVec4(0.92f, 0.96f, 1.00f, 1.00f),
+        ImVec4(0.58f, 0.66f, 0.76f, 1.00f),
+        ImVec4(0.27f, 0.42f, 0.55f, 0.55f),
+        ImVec4(0.20f, 0.78f, 1.00f, 1.00f),
+        ImVec4(0.32f, 0.92f, 0.75f, 1.00f),
+        ImVec4(0.90f, 0.25f, 0.20f, 1.00f)
+    };
+
+    if (theme == "black") {
+        p.windowBg = ImVec4(0.00f, 0.00f, 0.00f, 0.98f);
+        p.popupBg = ImVec4(0.01f, 0.01f, 0.01f, 0.98f);
+        p.panelBg = ImVec4(0.02f, 0.02f, 0.02f, 0.94f);
+        p.panelBgAlt = ImVec4(0.04f, 0.04f, 0.04f, 0.95f);
+        p.frameBg = ImVec4(0.05f, 0.05f, 0.05f, 1.00f);
+        p.frameBgHovered = ImVec4(0.08f, 0.13f, 0.15f, 1.00f);
+        p.frameBgActive = ImVec4(0.08f, 0.20f, 0.23f, 1.00f);
+        p.header = ImVec4(0.04f, 0.12f, 0.14f, 0.88f);
+        p.headerHovered = ImVec4(0.06f, 0.22f, 0.26f, 0.94f);
+        p.headerActive = ImVec4(0.07f, 0.30f, 0.34f, 0.98f);
+        p.button = ImVec4(0.05f, 0.05f, 0.05f, 1.00f);
+        p.buttonHovered = ImVec4(0.08f, 0.14f, 0.16f, 1.00f);
+        p.buttonActive = ImVec4(0.09f, 0.22f, 0.25f, 1.00f);
+        p.border = ImVec4(0.10f, 0.64f, 0.78f, 0.42f);
+    } else if (theme == "light" || theme == "latte") {
+        p.windowBg = ImVec4(0.91f, 0.93f, 0.96f, 0.98f);
+        p.popupBg = ImVec4(0.96f, 0.97f, 0.99f, 0.99f);
+        p.panelBg = ImVec4(0.88f, 0.91f, 0.95f, 0.94f);
+        p.panelBgAlt = ImVec4(0.93f, 0.95f, 0.98f, 0.96f);
+        p.frameBg = ImVec4(0.86f, 0.89f, 0.94f, 1.00f);
+        p.frameBgHovered = ImVec4(0.80f, 0.87f, 0.96f, 1.00f);
+        p.frameBgActive = ImVec4(0.74f, 0.83f, 0.95f, 1.00f);
+        p.header = ImVec4(0.72f, 0.84f, 0.96f, 0.92f);
+        p.headerHovered = ImVec4(0.63f, 0.79f, 0.95f, 0.96f);
+        p.headerActive = ImVec4(0.45f, 0.70f, 0.93f, 0.98f);
+        p.button = ImVec4(0.85f, 0.89f, 0.95f, 1.00f);
+        p.buttonHovered = ImVec4(0.78f, 0.86f, 0.96f, 1.00f);
+        p.buttonActive = ImVec4(0.68f, 0.80f, 0.95f, 1.00f);
+        p.text = ImVec4(0.09f, 0.12f, 0.18f, 1.00f);
+        p.textMuted = ImVec4(0.32f, 0.38f, 0.48f, 1.00f);
+        p.border = ImVec4(0.37f, 0.54f, 0.76f, 0.46f);
+        p.accent = ImVec4(0.05f, 0.48f, 0.92f, 1.00f);
+        p.accent2 = ImVec4(0.00f, 0.62f, 0.55f, 1.00f);
+    } else if (theme == "matrix") {
+        p.windowBg = ImVec4(0.01f, 0.03f, 0.02f, 0.97f);
+        p.popupBg = ImVec4(0.01f, 0.05f, 0.03f, 0.98f);
+        p.panelBg = ImVec4(0.02f, 0.08f, 0.05f, 0.93f);
+        p.header = ImVec4(0.03f, 0.22f, 0.10f, 0.90f);
+        p.headerHovered = ImVec4(0.04f, 0.34f, 0.14f, 0.94f);
+        p.headerActive = ImVec4(0.05f, 0.44f, 0.18f, 0.98f);
+        p.accent = ImVec4(0.18f, 0.95f, 0.42f, 1.00f);
+        p.accent2 = ImVec4(0.55f, 1.00f, 0.66f, 1.00f);
+    } else if (theme == "retro-amber") {
+        p.windowBg = ImVec4(0.08f, 0.05f, 0.02f, 0.97f);
+        p.popupBg = ImVec4(0.10f, 0.06f, 0.03f, 0.98f);
+        p.panelBg = ImVec4(0.13f, 0.08f, 0.04f, 0.93f);
+        p.header = ImVec4(0.28f, 0.16f, 0.05f, 0.90f);
+        p.headerHovered = ImVec4(0.43f, 0.25f, 0.08f, 0.94f);
+        p.headerActive = ImVec4(0.54f, 0.32f, 0.09f, 0.98f);
+        p.accent = ImVec4(1.00f, 0.66f, 0.16f, 1.00f);
+        p.accent2 = ImVec4(1.00f, 0.86f, 0.38f, 1.00f);
+    } else if (theme == "deep-ocean") {
+        p.windowBg = ImVec4(0.02f, 0.07f, 0.10f, 0.97f);
+        p.popupBg = ImVec4(0.02f, 0.09f, 0.13f, 0.98f);
+        p.panelBg = ImVec4(0.03f, 0.12f, 0.18f, 0.93f);
+        p.accent = ImVec4(0.10f, 0.78f, 0.92f, 1.00f);
+        p.accent2 = ImVec4(0.32f, 0.92f, 0.82f, 1.00f);
+    } else if (theme == "frappe" || theme == "onedark" || theme == "solarized-dark" || theme == "neon-night" || theme == "forest-mint") {
+        p.windowBg = ImVec4(0.08f, 0.08f, 0.11f, 0.97f);
+        p.popupBg = ImVec4(0.10f, 0.10f, 0.14f, 0.98f);
+        p.panelBg = ImVec4(0.12f, 0.13f, 0.18f, 0.93f);
+        if (theme == "forest-mint") {
+            p.accent = ImVec4(0.30f, 0.92f, 0.68f, 1.00f);
+            p.accent2 = ImVec4(0.56f, 0.82f, 0.48f, 1.00f);
+        } else if (theme == "neon-night") {
+            p.accent = ImVec4(0.82f, 0.28f, 1.00f, 1.00f);
+            p.accent2 = ImVec4(0.14f, 0.88f, 1.00f, 1.00f);
+        }
+    }
+
+    return p;
+}
+
+static const UiThemePalette& themePalette() {
+    static UiThemePalette palette = makeThemePalette("black");
+    static std::string cached;
+    if (cached != g.themeName) {
+        cached = g.themeName;
+        palette = makeThemePalette(g.themeName);
+    }
+    return palette;
+}
 
 static inline float easeOutCubic(float t) {
     t = std::clamp(t, 0.0f, 1.0f);
@@ -1737,25 +1876,26 @@ static void applyClementineishStyle() {
     style.FrameBorderSize = 0.0f;
     style.PopupBorderSize = 1.0f;
 
+    const UiThemePalette& pal = themePalette();
     ImVec4* colors = style.Colors;
-    colors[ImGuiCol_WindowBg] = ImVec4(0.10f, 0.10f, 0.10f, 0.96f);
-    colors[ImGuiCol_PopupBg] = ImVec4(0.12f, 0.12f, 0.12f, 0.98f);
-    colors[ImGuiCol_Border] = ImVec4(0.28f, 0.28f, 0.28f, 1.00f);
-    colors[ImGuiCol_FrameBg] = ImVec4(0.16f, 0.16f, 0.16f, 1.00f);
-    colors[ImGuiCol_FrameBgHovered] = ImVec4(0.18f, 0.24f, 0.32f, 1.00f);
-    colors[ImGuiCol_FrameBgActive] = ImVec4(0.20f, 0.30f, 0.40f, 1.00f);
-    colors[ImGuiCol_Header] = ImVec4(0.16f, 0.22f, 0.30f, 1.00f);
-    colors[ImGuiCol_HeaderHovered] = ImVec4(0.18f, 0.28f, 0.38f, 1.00f);
-    colors[ImGuiCol_HeaderActive] = ImVec4(0.20f, 0.34f, 0.46f, 1.00f);
-    colors[ImGuiCol_Button] = ImVec4(0.16f, 0.16f, 0.16f, 1.00f);
-    colors[ImGuiCol_ButtonHovered] = ImVec4(0.18f, 0.24f, 0.32f, 1.00f);
-    colors[ImGuiCol_ButtonActive] = ImVec4(0.20f, 0.30f, 0.40f, 1.00f);
-    colors[ImGuiCol_CheckMark] = ImVec4(0.17f, 0.55f, 0.95f, 1.00f);
-    colors[ImGuiCol_SliderGrab] = ImVec4(0.17f, 0.55f, 0.95f, 1.00f);
-    colors[ImGuiCol_SliderGrabActive] = ImVec4(0.20f, 0.60f, 0.98f, 1.00f);
-    colors[ImGuiCol_Separator] = ImVec4(0.24f, 0.24f, 0.24f, 1.00f);
-    colors[ImGuiCol_Text] = ImVec4(0.92f, 0.92f, 0.92f, 1.00f);
-    colors[ImGuiCol_TextDisabled] = ImVec4(0.60f, 0.60f, 0.60f, 1.00f);
+    colors[ImGuiCol_WindowBg] = pal.windowBg;
+    colors[ImGuiCol_PopupBg] = pal.popupBg;
+    colors[ImGuiCol_Border] = pal.border;
+    colors[ImGuiCol_FrameBg] = pal.frameBg;
+    colors[ImGuiCol_FrameBgHovered] = pal.frameBgHovered;
+    colors[ImGuiCol_FrameBgActive] = pal.frameBgActive;
+    colors[ImGuiCol_Header] = pal.header;
+    colors[ImGuiCol_HeaderHovered] = pal.headerHovered;
+    colors[ImGuiCol_HeaderActive] = pal.headerActive;
+    colors[ImGuiCol_Button] = pal.button;
+    colors[ImGuiCol_ButtonHovered] = pal.buttonHovered;
+    colors[ImGuiCol_ButtonActive] = pal.buttonActive;
+    colors[ImGuiCol_CheckMark] = pal.accent;
+    colors[ImGuiCol_SliderGrab] = pal.accent;
+    colors[ImGuiCol_SliderGrabActive] = pal.accent2;
+    colors[ImGuiCol_Separator] = pal.border;
+    colors[ImGuiCol_Text] = pal.text;
+    colors[ImGuiCol_TextDisabled] = pal.textMuted;
 }
 
 static void reloadFontsForScale(float scale) {
@@ -1916,6 +2056,7 @@ static bool stringContainsCaseInsensitiveAscii(const std::string& haystack, cons
 }
 
 static void renderContextMenuContents() {
+        const UiThemePalette& pal = themePalette();
         const char* ctxDisplay = visEnvText("ARDALI_VIS_CTX_DISPLAY", L7("Display", "Görüntü", "العرض", "Affichage", "Anzeige", "Pantalla", "डिस्प्ले"));
         const char* ctxRendering = visEnvText("ARDALI_VIS_CTX_RENDERING", L7("Rendering", "İşleme", "العرض المرئي", "Rendu", "Rendering", "Renderizado", "रेंडरिंग"));
         const char* ctxPresets = visEnvText("ARDALI_VIS_CTX_PRESETS", L7("Presets", "Presetler", "الإعدادات", "Presets", "Presets", "Presets", "प्रीसेट"));
@@ -1938,7 +2079,7 @@ static void renderContextMenuContents() {
         const char* ctxClaritySharp = visEnvText("ARDALI_VIS_CTX_CLARITY_SHARP", L7("Sharp", "Keskin", "حاد", "Net", "Scharf", "Nítido", "तीक्ष्ण"));
         const char* ctxClaritySharpPlus = visEnvText("ARDALI_VIS_CTX_CLARITY_SHARP_PLUS", L7("Sharp+", "Keskin+", "حاد+", "Net+", "Scharf+", "Nítido+", "तीक्ष्ण+"));
 
-        ImGui::PushStyleColor(ImGuiCol_TextDisabled, ImVec4(0.58f, 0.66f, 0.76f, 1.0f));
+        ImGui::PushStyleColor(ImGuiCol_TextDisabled, pal.textMuted);
         ImGui::TextUnformatted(ctxDisplay);
         ImGui::PopStyleColor();
 
@@ -1975,7 +2116,7 @@ static void renderContextMenuContents() {
 		        }
 
         ImGui::Spacing();
-        ImGui::PushStyleColor(ImGuiCol_TextDisabled, ImVec4(0.58f, 0.66f, 0.76f, 1.0f));
+        ImGui::PushStyleColor(ImGuiCol_TextDisabled, pal.textMuted);
         ImGui::TextUnformatted(ctxRendering);
         ImGui::PopStyleColor();
 
@@ -2024,7 +2165,7 @@ static void renderContextMenuContents() {
 		        }
 
         ImGui::Separator();
-        ImGui::PushStyleColor(ImGuiCol_TextDisabled, ImVec4(0.58f, 0.66f, 0.76f, 1.0f));
+        ImGui::PushStyleColor(ImGuiCol_TextDisabled, pal.textMuted);
         ImGui::TextUnformatted(ctxPresets);
         ImGui::PopStyleColor();
 
@@ -2036,7 +2177,7 @@ static void renderContextMenuContents() {
         ImGui::Separator();
 
 	        // 6) Görselleştirmeyi kapat
-	        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.85f, 0.25f, 0.20f, 1.0f));
+	        ImGui::PushStyleColor(ImGuiCol_Text, pal.danger);
         if (ImGui::MenuItem(ctxClose, nullptr)) {
 	            g.running = false;
 	        }
@@ -2057,6 +2198,7 @@ static void drawContextMenuHost() {
                              ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoNav |
                              ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoScrollbar |
                              ImGuiWindowFlags_NoScrollWithMouse | ImGuiWindowFlags_NoInputs;
+    const UiThemePalette& pal = themePalette();
 
     ImGui::Begin("##ArDaliContextHost", nullptr, flags);
 
@@ -2072,12 +2214,12 @@ static void drawContextMenuHost() {
     ImGui::PushStyleVar(ImGuiStyleVar_PopupRounding, 14.0f);
     ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 9.0f);
     ImGui::PushStyleVar(ImGuiStyleVar_PopupBorderSize, 1.0f);
-    ImGui::PushStyleColor(ImGuiCol_PopupBg, ImVec4(0.07f, 0.09f, 0.13f, 0.97f));
-    ImGui::PushStyleColor(ImGuiCol_Border, ImVec4(0.28f, 0.42f, 0.55f, 0.42f));
-    ImGui::PushStyleColor(ImGuiCol_Header, ImVec4(0.17f, 0.24f, 0.33f, 0.58f));
-    ImGui::PushStyleColor(ImGuiCol_HeaderHovered, ImVec4(0.22f, 0.33f, 0.45f, 0.72f));
-    ImGui::PushStyleColor(ImGuiCol_HeaderActive, ImVec4(0.25f, 0.40f, 0.54f, 0.84f));
-    ImGui::PushStyleColor(ImGuiCol_Separator, ImVec4(0.35f, 0.46f, 0.58f, 0.35f));
+    ImGui::PushStyleColor(ImGuiCol_PopupBg, pal.popupBg);
+    ImGui::PushStyleColor(ImGuiCol_Border, pal.border);
+    ImGui::PushStyleColor(ImGuiCol_Header, pal.header);
+    ImGui::PushStyleColor(ImGuiCol_HeaderHovered, pal.headerHovered);
+    ImGui::PushStyleColor(ImGuiCol_HeaderActive, pal.headerActive);
+    ImGui::PushStyleColor(ImGuiCol_Separator, pal.border);
 
     if (ImGui::BeginPopup("ArDaliContextMenu")) {
         ImDrawList* dl = ImGui::GetWindowDrawList();
@@ -2086,10 +2228,10 @@ static void drawContextMenuHost() {
         dl->AddRectFilledMultiColor(
             p,
             ImVec2(p.x + s.x, p.y + 5.0f),
-            IM_COL32(90, 182, 255, 205),
-            IM_COL32(82, 236, 197, 165),
-            IM_COL32(82, 236, 197, 165),
-            IM_COL32(90, 182, 255, 205)
+            col32(pal.accent, 0.80f),
+            col32(pal.accent2, 0.65f),
+            col32(pal.accent2, 0.65f),
+            col32(pal.accent, 0.80f)
         );
         renderContextMenuContents();
         ImGui::EndPopup();
@@ -2110,6 +2252,7 @@ static void drawPresetPicker() {
     ImGui::Begin("##ArDaliPickerRoot", nullptr, rootFlags);
 
     const float scale = (g.pickerWindow ? g.pickerDpiScale : g.dpiScale);
+    const UiThemePalette& pal = themePalette();
     ImDrawList* rootDl = ImGui::GetWindowDrawList();
     const ImVec2 rootPos = ImGui::GetWindowPos();
     const ImVec2 rootSize = ImGui::GetWindowSize();
@@ -2238,20 +2381,20 @@ static void drawPresetPicker() {
     {
         ImVec2 heroPos = ImGui::GetCursorScreenPos();
         ImVec2 heroSize(ImGui::GetContentRegionAvail().x, heroH);
-        rootDl->AddRectFilled(heroPos, ImVec2(heroPos.x + heroSize.x, heroPos.y + heroSize.y), IM_COL32(17, 24, 34, 214), 16.0f * scale);
+        rootDl->AddRectFilled(heroPos, ImVec2(heroPos.x + heroSize.x, heroPos.y + heroSize.y), col32(pal.panelBg, 0.90f), 16.0f * scale);
         rootDl->AddRectFilledMultiColor(
             heroPos,
             ImVec2(heroPos.x + heroSize.x, heroPos.y + heroSize.y),
-            IM_COL32(58, 168, 255, 30),
-            IM_COL32(95, 230, 194, 14),
-            IM_COL32(8, 12, 18, 2),
-            IM_COL32(10, 14, 22, 8)
+            col32(pal.accent, 0.14f),
+            col32(pal.accent2, 0.08f),
+            col32(pal.windowBg, 0.08f),
+            col32(pal.panelBgAlt, 0.12f)
         );
-        rootDl->AddCircleFilled(ImVec2(heroPos.x + heroSize.x - 44.0f * scale, heroPos.y + 34.0f * scale), 32.0f * scale, IM_COL32(70, 160, 255, 18), 36);
+        rootDl->AddCircleFilled(ImVec2(heroPos.x + heroSize.x - 44.0f * scale, heroPos.y + 34.0f * scale), 32.0f * scale, col32(pal.accent, 0.12f), 36);
 
         ImGui::Dummy(heroSize);
         ImGui::SetCursorScreenPos(ImVec2(heroPos.x + 16.0f * scale, heroPos.y + (compactMode ? 8.0f : 12.0f) * scale));
-        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.93f, 0.97f, 1.0f, 1.0f));
+        ImGui::PushStyleColor(ImGuiCol_Text, pal.text);
         ImGui::TextUnformatted(heroTitle);
         ImGui::PopStyleColor();
 
@@ -2265,7 +2408,7 @@ static void drawPresetPicker() {
         ImGui::SetCursorScreenPos(ImVec2(heroPos.x + 16.0f * scale, heroPos.y + heroSize.y - (compactMode ? 22.0f : 24.0f) * scale));
         ImGui::TextDisabled("%s:", dirLabel);
         ImGui::SameLine();
-        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.70f, 0.87f, 1.0f, 1.0f));
+        ImGui::PushStyleColor(ImGuiCol_Text, pal.accent);
         ImGui::Text("%d", (int)g.presets.size());
         ImGui::PopStyleColor();
         ImGui::SameLine();
@@ -2273,7 +2416,7 @@ static void drawPresetPicker() {
         ImGui::SameLine();
         ImGui::TextDisabled("%s:", enabledLabel);
         ImGui::SameLine();
-        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.62f, 0.90f, 0.78f, 1.0f));
+        ImGui::PushStyleColor(ImGuiCol_Text, pal.accent2);
         ImGui::Text("%d", enabledCount);
         ImGui::PopStyleColor();
     }
@@ -2282,8 +2425,8 @@ static void drawPresetPicker() {
     {
         ImVec2 controlPos = ImGui::GetCursorScreenPos();
         ImVec2 controlSize(ImGui::GetContentRegionAvail().x, (compactMode ? 50.0f : 58.0f) * scale);
-        rootDl->AddRectFilled(controlPos, ImVec2(controlPos.x + controlSize.x, controlPos.y + controlSize.y), IM_COL32(15, 20, 28, 220), 14.0f * scale);
-        rootDl->AddRect(controlPos, ImVec2(controlPos.x + controlSize.x, controlPos.y + controlSize.y), IM_COL32(255, 255, 255, 18), 14.0f * scale, 0, 1.0f);
+        rootDl->AddRectFilled(controlPos, ImVec2(controlPos.x + controlSize.x, controlPos.y + controlSize.y), col32(pal.panelBgAlt, 0.90f), 14.0f * scale);
+        rootDl->AddRect(controlPos, ImVec2(controlPos.x + controlSize.x, controlPos.y + controlSize.y), col32(pal.border, 0.55f), 14.0f * scale, 0, 1.0f);
         ImGui::Dummy(controlSize);
 
         float delayBlockW = std::max(230.0f, 240.0f * scale);
@@ -2293,9 +2436,9 @@ static void drawPresetPicker() {
         ImGui::SetCursorScreenPos(ImVec2(controlPos.x + 12.0f * scale, controlPos.y + (compactMode ? 8.0f : 10.0f) * scale));
         ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 10.0f * scale);
         ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(12.0f * scale, (compactMode ? 7.0f : 9.0f) * scale));
-        ImGui::PushStyleColor(ImGuiCol_FrameBg, ImVec4(0.09f, 0.12f, 0.17f, 0.98f));
-        ImGui::PushStyleColor(ImGuiCol_FrameBgHovered, ImVec4(0.12f, 0.17f, 0.24f, 1.0f));
-        ImGui::PushStyleColor(ImGuiCol_FrameBgActive, ImVec4(0.13f, 0.20f, 0.29f, 1.0f));
+        ImGui::PushStyleColor(ImGuiCol_FrameBg, pal.frameBg);
+        ImGui::PushStyleColor(ImGuiCol_FrameBgHovered, pal.frameBgHovered);
+        ImGui::PushStyleColor(ImGuiCol_FrameBgActive, pal.frameBgActive);
         ImGui::SetNextItemWidth(searchW);
         if (ImGui::InputTextWithHint("##picker_search", searchHint, g.pickerSearchBuf.data(), g.pickerSearchBuf.size())) {
             setNavToVisible(g.currentPreset);
@@ -2354,8 +2497,8 @@ static void drawPresetPicker() {
         const std::string filterText = std::string(filterActiveLabel) + std::string(" ") + activeSearch;
         const float filterW = ImGui::CalcTextSize(filterText.c_str()).x + 26.0f * scale;
         const float filterH = 24.0f * scale;
-            rootDl->AddRectFilled(filterPos, ImVec2(filterPos.x + filterW, filterPos.y + filterH), IM_COL32(34, 63, 94, 232), 12.0f * scale);
-            rootDl->AddRect(filterPos, ImVec2(filterPos.x + filterW, filterPos.y + filterH), IM_COL32(124, 196, 255, 110), 12.0f * scale, 0, 1.0f);
+            rootDl->AddRectFilled(filterPos, ImVec2(filterPos.x + filterW, filterPos.y + filterH), col32(pal.headerActive, 0.90f), 12.0f * scale);
+            rootDl->AddRect(filterPos, ImVec2(filterPos.x + filterW, filterPos.y + filterH), col32(pal.accent, 0.55f), 12.0f * scale, 0, 1.0f);
             ImGui::Dummy(ImVec2(filterW, filterH));
             ImGui::SetCursorScreenPos(ImVec2(filterPos.x + 11.0f * scale, filterPos.y + 5.0f * scale));
             ImGui::TextUnformatted(filterText.c_str());
@@ -2369,8 +2512,8 @@ static void drawPresetPicker() {
     {
         ImVec2 listPos = ImGui::GetCursorScreenPos();
         ImVec2 listSize(ImGui::GetContentRegionAvail().x, listH);
-        rootDl->AddRectFilled(listPos, ImVec2(listPos.x + listSize.x, listPos.y + listSize.y), IM_COL32(14, 18, 25, 220), 18.0f * scale);
-        rootDl->AddRect(listPos, ImVec2(listPos.x + listSize.x, listPos.y + listSize.y), IM_COL32(255, 255, 255, 18), 18.0f * scale, 0, 1.0f);
+        rootDl->AddRectFilled(listPos, ImVec2(listPos.x + listSize.x, listPos.y + listSize.y), col32(pal.panelBg, 0.90f), 18.0f * scale);
+        rootDl->AddRect(listPos, ImVec2(listPos.x + listSize.x, listPos.y + listSize.y), col32(pal.border, 0.50f), 18.0f * scale, 0, 1.0f);
 
         ImGui::SetCursorScreenPos(ImVec2(listPos.x + 16.0f * scale, listPos.y + 10.0f * scale));
         ImGui::TextDisabled("%s", galleryLabel);
@@ -2416,12 +2559,12 @@ static void drawPresetPicker() {
                         float rowW = ImGui::GetContentRegionAvail().x;
                         ImVec2 rowMax(rowMin.x + rowW, rowMin.y + rowH);
 
-                        const ImU32 bgCol = isCurrent ? IM_COL32(22, 64, 100, rowAlpha) : IM_COL32(18, 24, 34, rowAlpha);
-                        const ImU32 borderCol = isNav ? IM_COL32(108, 208, 255, std::min(220, rowAlpha)) : IM_COL32(255, 255, 255, std::min(36, rowAlpha));
+                        const ImU32 bgCol = isCurrent ? col32a(pal.headerActive, rowAlpha) : col32a(pal.panelBgAlt, rowAlpha);
+                        const ImU32 borderCol = isNav ? col32a(pal.accent, std::min(220, rowAlpha)) : col32a(pal.border, std::min(130, rowAlpha));
                         listDl->AddRectFilled(rowMin, rowMax, bgCol, 14.0f * scale);
                         listDl->AddRect(rowMin, rowMax, borderCol, 14.0f * scale, 0, isNav ? 1.5f : 1.0f);
                         if (p.enabled) {
-                            listDl->AddRectFilled(ImVec2(rowMin.x + 8.0f * scale, rowMin.y + 8.0f * scale), ImVec2(rowMin.x + 12.0f * scale, rowMax.y - 8.0f * scale), IM_COL32(88, 220, 176, std::min(255, rowAlpha)), 8.0f * scale);
+                            listDl->AddRectFilled(ImVec2(rowMin.x + 8.0f * scale, rowMin.y + 8.0f * scale), ImVec2(rowMin.x + 12.0f * scale, rowMax.y - 8.0f * scale), col32a(pal.accent2, std::min(255, rowAlpha)), 8.0f * scale);
                         }
 
                         ImGui::SetCursorScreenPos(rowMin);
@@ -2432,11 +2575,11 @@ static void drawPresetPicker() {
                         ImVec2 cbMin(rowMin.x + 20.0f * scale, rowMin.y + (rowH - cbSize) * 0.5f);
                         ImVec2 cbMax(cbMin.x + cbSize, cbMin.y + cbSize);
                         bool cbHovered = ImGui::IsMouseHoveringRect(cbMin, cbMax, true);
-                        listDl->AddRectFilled(cbMin, cbMax, p.enabled ? IM_COL32(88, 220, 176, std::min(235, rowAlpha)) : IM_COL32(30, 36, 46, std::min(255, rowAlpha)), 6.0f * scale);
-                        listDl->AddRect(cbMin, cbMax, p.enabled ? IM_COL32(122, 245, 205, std::min(255, rowAlpha)) : IM_COL32(122, 132, 148, std::min(170, rowAlpha)), 6.0f * scale, 0, 1.2f);
+                        listDl->AddRectFilled(cbMin, cbMax, p.enabled ? col32a(pal.accent2, std::min(235, rowAlpha)) : col32a(pal.frameBg, std::min(255, rowAlpha)), 6.0f * scale);
+                        listDl->AddRect(cbMin, cbMax, p.enabled ? col32a(pal.text, std::min(235, rowAlpha)) : col32a(pal.textMuted, std::min(170, rowAlpha)), 6.0f * scale, 0, 1.2f);
                         if (p.enabled) {
-                            listDl->AddLine(ImVec2(cbMin.x + cbSize * 0.24f, cbMin.y + cbSize * 0.55f), ImVec2(cbMin.x + cbSize * 0.43f, cbMin.y + cbSize * 0.74f), IM_COL32(9, 18, 22, std::min(255, rowAlpha)), std::max(1.6f, 2.2f * scale));
-                            listDl->AddLine(ImVec2(cbMin.x + cbSize * 0.43f, cbMin.y + cbSize * 0.74f), ImVec2(cbMin.x + cbSize * 0.76f, cbMin.y + cbSize * 0.30f), IM_COL32(9, 18, 22, std::min(255, rowAlpha)), std::max(1.6f, 2.2f * scale));
+                            listDl->AddLine(ImVec2(cbMin.x + cbSize * 0.24f, cbMin.y + cbSize * 0.55f), ImVec2(cbMin.x + cbSize * 0.43f, cbMin.y + cbSize * 0.74f), col32a(pal.windowBg, std::min(255, rowAlpha)), std::max(1.6f, 2.2f * scale));
+                            listDl->AddLine(ImVec2(cbMin.x + cbSize * 0.43f, cbMin.y + cbSize * 0.74f), ImVec2(cbMin.x + cbSize * 0.76f, cbMin.y + cbSize * 0.30f), col32a(pal.windowBg, std::min(255, rowAlpha)), std::max(1.6f, 2.2f * scale));
                         }
                         if (cbHovered) {
                             ImGui::SetTooltip("%s", includedTipLabel);
@@ -2466,7 +2609,7 @@ static void drawPresetPicker() {
                         ImVec2 actionMax(actionPos.x + (compactMode ? 32.0f : 40.0f) * scale, actionPos.y + 28.0f * scale);
                         ImVec2 textPos(contentX, compactMode ? (rowMin.y + (rowH - ImGui::GetTextLineHeight()) * 0.5f - 1.0f * scale) : (rowMin.y + 10.0f * scale));
                         if (rowHovered && !isCurrent) {
-                            listDl->AddRectFilled(rowMin, rowMax, IM_COL32(72, 158, 222, std::min(64, rowAlpha)), 14.0f * scale);
+                            listDl->AddRectFilled(rowMin, rowMax, col32a(pal.accent, std::min(64, rowAlpha)), 14.0f * scale);
                         }
                         bool actionHovered = ImGui::IsMouseHoveringRect(actionPos, actionMax, true);
                         if (rowClicked && cbHovered) {
@@ -2489,7 +2632,7 @@ static void drawPresetPicker() {
 
                         listDl->AddText(
                             textPos,
-                            isCurrent ? IM_COL32(158, 214, 255, std::min(255, rowAlpha)) : IM_COL32(132, 166, 196, std::min(245, rowAlpha)),
+                            isCurrent ? col32a(pal.accent, std::min(255, rowAlpha)) : col32a(pal.textMuted, std::min(245, rowAlpha)),
                             orderBuf
                         );
 
@@ -2497,11 +2640,11 @@ static void drawPresetPicker() {
                         std::string shown = truncateToFit(cleanDisplayName, titleW, &truncated);
                         listDl->AddText(
                             ImVec2(titleX, textPos.y),
-                            isCurrent ? IM_COL32(244, 249, 255, std::min(255, rowAlpha)) : IM_COL32(220, 228, 238, std::min(255, rowAlpha)),
+                            col32a(pal.text, std::min(255, rowAlpha)),
                             shown.c_str()
                         );
                         if (!compactMode) {
-                            listDl->AddText(ImVec2(titleX, textPos.y + 22.0f * scale), IM_COL32(134, 149, 170, std::min(255, rowAlpha)), p.enabled ? inRotationLabel : manualOnlyLabel);
+                            listDl->AddText(ImVec2(titleX, textPos.y + 22.0f * scale), col32a(pal.textMuted, std::min(255, rowAlpha)), p.enabled ? inRotationLabel : manualOnlyLabel);
                         }
                         if (truncated && rowHovered) {
                             ImGui::SetTooltip("%s", cleanDisplayName.c_str());
@@ -2509,17 +2652,17 @@ static void drawPresetPicker() {
 
                         const bool isActiveNow = (enabledCount > 0) && p.enabled && isCurrent;
                         listDl->AddRectFilled(actionPos, actionMax,
-                                              isActiveNow ? IM_COL32(94, 184, 255, std::min(255, rowAlpha))
-                                                          : (actionHovered ? IM_COL32(64, 94, 132, std::min(255, rowAlpha)) : IM_COL32(37, 48, 63, std::min(255, rowAlpha))),
+                                              isActiveNow ? col32a(pal.accent, std::min(255, rowAlpha))
+                                                          : (actionHovered ? col32a(pal.headerHovered, std::min(255, rowAlpha)) : col32a(pal.frameBg, std::min(255, rowAlpha))),
                                               14.0f * scale);
                         const ImVec2 dotC((actionPos.x + actionMax.x) * 0.5f, (actionPos.y + actionMax.y) * 0.5f);
                         if (isActiveNow) {
                             // Kontrastı artır: dış glow + halka + canlı yeşil çekirdek.
-                            listDl->AddCircleFilled(dotC, 8.5f * scale, IM_COL32(8, 20, 14, std::min(210, rowAlpha)), 24);
-                            listDl->AddCircleFilled(dotC, 6.0f * scale, IM_COL32(92, 255, 170, std::min(255, rowAlpha)), 24);
-                            listDl->AddCircle(dotC, 7.5f * scale, IM_COL32(226, 255, 240, std::min(245, rowAlpha)), 24, std::max(1.0f, 1.4f * scale));
+                            listDl->AddCircleFilled(dotC, 8.5f * scale, col32a(pal.windowBg, std::min(210, rowAlpha)), 24);
+                            listDl->AddCircleFilled(dotC, 6.0f * scale, col32a(pal.accent2, std::min(255, rowAlpha)), 24);
+                            listDl->AddCircle(dotC, 7.5f * scale, col32a(pal.text, std::min(245, rowAlpha)), 24, std::max(1.0f, 1.4f * scale));
                         } else {
-                            listDl->AddCircleFilled(dotC, 4.5f * scale, IM_COL32(176, 196, 220, std::min(240, rowAlpha)), 20);
+                            listDl->AddCircleFilled(dotC, 4.5f * scale, col32a(pal.textMuted, std::min(240, rowAlpha)), 20);
                         }
 
                         ImGui::SetCursorScreenPos(ImVec2(rowMin.x, rowMax.y + cardGap));
@@ -2560,9 +2703,9 @@ static void drawPresetPicker() {
 
     ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 12.0f * scale);
     ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(16.0f * scale, 10.0f * scale));
-    ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.11f, 0.15f, 0.21f, 1.0f));
-    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.14f, 0.20f, 0.28f, 1.0f));
-    ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.16f, 0.24f, 0.33f, 1.0f));
+    ImGui::PushStyleColor(ImGuiCol_Button, pal.button);
+    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, pal.buttonHovered);
+    ImGui::PushStyleColor(ImGuiCol_ButtonActive, pal.buttonActive);
 
     if (ImGui::Button(visEnvText("ARDALI_VIS_PICKER_ALL", L7("Select all", "Tümünü seç", "ØªØ­Ø¯ÙŠØ¯ Ø§Ù„ÙƒÙ„", "Tout sélectionner", "Alle wählen", "Seleccionar todo", "à¤¸à¤­à¥€ à¤šà¥à¤¨à¥‡à¤‚")))) {
         for (auto& p : g.presets) p.enabled = true;
@@ -2589,9 +2732,9 @@ static void drawPresetPicker() {
     rightX = std::max(ImGui::GetCursorPosX(), rightX);
     ImGui::SameLine();
     ImGui::SetCursorPosX(rightX);
-    ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.31f, 0.69f, 1.0f, 0.95f));
-    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.39f, 0.75f, 1.0f, 1.0f));
-    ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.24f, 0.61f, 0.94f, 1.0f));
+    ImGui::PushStyleColor(ImGuiCol_Button, pal.accent);
+    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, pal.accent2);
+    ImGui::PushStyleColor(ImGuiCol_ButtonActive, pal.headerActive);
     if (ImGui::Button(okText, ImVec2(btnW, 0))) {
         g.showPresetPicker = false;
     }
@@ -3254,6 +3397,11 @@ int main(int argc, char* argv[]) {
         } catch (...) {
         }
     }
+    if (const char* theme = std::getenv("ARDALI_UI_THEME")) {
+        g.themeName = toLowerAscii(trimAscii(theme));
+        if (g.themeName.empty()) g.themeName = "black";
+    }
+    std::cout << "[Theme] ArDali UI theme: " << g.themeName << std::endl;
 
     if (!initSDLVideo()) return 1;
     std::cout << "BOOT initSDLVideo ok" << std::endl;

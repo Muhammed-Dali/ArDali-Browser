@@ -13,7 +13,7 @@ const ARDALI_DEV_MODE =
     typeof process !== 'undefined' &&
     process?.env &&
     process.env.ARDALI_DEV === '1';
-const ARDALI_ATTACH_METRICS_LOGS = ARDALI_DEV_MODE || ARDALI_VERBOSE_LOGS;
+const ARDALI_ATTACH_METRICS_LOGS = ARDALI_VERBOSE_LOGS;
 const STARTUP_QUERY = new URLSearchParams(window.location.search);
 const PRELOAD_LAUNCH_CONTEXT = window.ardali?.launchContext || {};
 const ARDALI_PERF_MONITOR_ENABLED =
@@ -24,6 +24,28 @@ const ARDALI_PERF_MONITOR_ENABLED =
         ||
         PRELOAD_LAUNCH_CONTEXT?.perfMonitor === true
     );
+const ARDALI_PERF_MONITOR_INTERVAL_MS = Math.max(
+    5000,
+    Math.min(
+        60000,
+        Number(
+            (typeof process !== 'undefined' && process?.env?.ARDALI_PERF_MONITOR_INTERVAL_MS)
+            || PRELOAD_LAUNCH_CONTEXT?.perfMonitorIntervalMs
+            || 15000
+        ) || 15000
+    )
+);
+const ARDALI_PERF_MONITOR_DELAY_MS = Math.max(
+    0,
+    Math.min(
+        60000,
+        Number(
+            (typeof process !== 'undefined' && process?.env?.ARDALI_PERF_MONITOR_DELAY_MS)
+            || PRELOAD_LAUNCH_CONTEXT?.perfMonitorDelayMs
+            || 12000
+        ) || 12000
+    )
+);
 const PULSE_SEARCH_DEBUG =
     typeof process !== 'undefined' &&
     process?.env &&
@@ -46,6 +68,17 @@ let forcedStandaloneSettingsMode =
 let fileTreeRenderGeneration = 0;
 let systemThemeMediaQuery = null;
 let systemThemeChangeListenerBound = false;
+let languageRestartBaseline = '';
+let pendingLanguageRestart = false;
+let batteryStatusListenerBound = false;
+let cachedPowerState = {
+    available: false,
+    charging: true,
+    onBattery: false,
+    level: null
+};
+let webPlaybackPowerStatusTimer = null;
+let webPlaybackPowerStatusRefreshInFlight = false;
 let cachedHardwareProfile = null;
 const appearanceSyncChannel = typeof BroadcastChannel === 'function'
     ? new BroadcastChannel('ardali-ui-appearance-sync')
@@ -547,6 +580,16 @@ const PerfMonitor = {
         };
     },
 
+    isWebNavigationBusy() {
+        try {
+            if (webLoadRuntime?.navigationInFlight) return true;
+            if (elements?.webView && typeof elements.webView.isLoading === 'function' && elements.webView.isLoading()) return true;
+        } catch {
+            // yoksay
+        }
+        return false;
+    },
+
     async captureSnapshot() {
         const renderer = this.getRendererSnapshot();
         const main = await window.ardali?.diagnostics?.getPerformanceSnapshot?.();
@@ -587,6 +630,11 @@ const PerfMonitor = {
     },
 
     async logSnapshot() {
+        if (this.isWebNavigationBusy()) {
+            if (ARDALI_VERBOSE_LOGS) console.log('[PERF] skipped while web navigation is busy');
+            this.resetWindow();
+            return null;
+        }
         const snapshot = await this.captureSnapshot();
         console.log('[PERF] ' + JSON.stringify(this.summarize(snapshot)));
         this.resetWindow();
@@ -623,6 +671,7 @@ const state = {
     currentPage: 'files',
     currentPanel: 'library',
     webDrawerCollapsed: true,
+    sidebarCollapsed: false,
     playlist: [],
     currentIndex: -1,
     isPlaying: false,
@@ -750,7 +799,11 @@ const webLoadRuntime = {
     retryMap: new Map(), // key=url, value=retry count
     navToken: 0,
     lastRequestedUrl: '',
-    lastRequestedAt: 0
+    lastRequestedAt: 0,
+    navigationInFlight: false,
+    suspendedUrl: '',
+    suspendedPlatform: '',
+    appliedUserAgent: ''
 };
 const adblockRuntime = {
     pollTimer: null,
@@ -808,7 +861,7 @@ const subtitleRuntime = {
     hasTrack: false
 };
 const WEB_STARTUP_LAZY_DELAY_OPTIONS = [0, 800, 1400, 2000];
-const WEB_STARTUP_LAZY_DELAY_DEFAULT_MS = 1400;
+const WEB_STARTUP_LAZY_DELAY_DEFAULT_MS = 0;
 let internalReorderDragGhost = null;
 const WEB_SESSION_PROFILES = ['persistent', 'isolated'];
 let webIsolatedSessionPrepared = false;
@@ -860,6 +913,34 @@ function getWebSettingContainerById(id) {
     return input.closest('.setting-row, .settings-row, .checkbox-label') || null;
 }
 
+function ensureSidebarMotionSettingRow() {
+    if (document.getElementById('uiSidebarMotionToggle')) return;
+    const anchor = getWebSettingContainerById('behaviorWebLowPowerMode')
+        || getWebSettingContainerById('behaviorWebMotionPreset')
+        || document.getElementById('behaviorWebMotionPreset')?.closest?.('.settings-group');
+    if (!anchor || !anchor.parentNode) return;
+
+    const label = document.createElement('label');
+    label.className = 'checkbox-label sidebar-motion-setting-row';
+    label.innerHTML = `
+        <input type="checkbox" id="uiSidebarMotionToggle" checked>
+        <span data-i18n="ui.sidebarMotion.toggle">Yan Bar Animasyonu</span>
+    `;
+
+    const hint = document.createElement('div');
+    hint.className = 'settings-sub sidebar-motion-setting-hint';
+    hint.setAttribute('data-i18n', 'ui.sidebarMotion.hint');
+    hint.textContent = 'Sol sekme barını açıp kapatırken akıcı kayma animasyonunu kullanır.';
+
+    if (anchor.id === 'behaviorWebMotionPreset') {
+        anchor.appendChild(label);
+        anchor.appendChild(hint);
+    } else {
+        anchor.parentNode.insertBefore(hint, anchor);
+        anchor.parentNode.insertBefore(label, hint);
+    }
+}
+
 function syncWebDependentSettingsUi() {
     const webEnabled = isWebExperienceEnabled();
     document.body?.classList?.toggle('web-experience-disabled', !webEnabled);
@@ -868,6 +949,7 @@ function syncWebDependentSettingsUi() {
         getWebSettingContainerById('behaviorWebStartupDelay'),
         getWebSettingContainerById('behaviorWebAnimationMode'),
         getWebSettingContainerById('behaviorWebMotionPreset'),
+        getWebSettingContainerById('uiSidebarMotionToggle'),
         getWebSettingContainerById('behaviorWebLowPowerMode'),
         getWebSettingContainerById('libraryWebStartupDelay'),
         ...WEB_SHORTCUT_SETTING_IDS.map((id) => getWebSettingContainerById(id))
@@ -917,6 +999,8 @@ const webPlatformRuntime = {
     lastSwitchAt: 0,
     lastSwitchKey: '',
     switching: false,
+    switchToken: 0,
+    manualSwitchUntil: 0,
     switchTimer: null,
     startupLazyTimer: null,
     startupLazyArmed: false,
@@ -1141,6 +1225,7 @@ let libraryWatchRescanTimer = null;
 const albumArtCache = new Map();
 const playlistCardCoverInFlight = new Map();
 const playlistCardCoverState = new Map();
+let playlistCardCoverObserver = null;
 let gallerySlideshowTimer = null;
 let galleryImageTransitionTimer = null;
 let galleryImageTransitionToken = 0;
@@ -1459,6 +1544,7 @@ function ensureMainShellVisible() {
 
 document.addEventListener('DOMContentLoaded', async () => {
     cacheElements();
+    startWebPlaybackPowerStatusPolling();
     initAppUpdateUi().catch(() => {});
     window.ardali?.onOpenMediaFiles?.((paths) => {
         enqueueExternalMediaOpen(paths).catch((e) => {
@@ -1482,15 +1568,38 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
         if (type === 'slider-fx') {
             applySliderFxShadowState(event?.data?.enabled !== false);
+            return;
+        }
+        if (type === 'appearance') {
+            const appearance = event?.data?.appearance;
+            if (!appearance || typeof appearance !== 'object') return;
+            if (!state.settings || typeof state.settings !== 'object') state.settings = {};
+            state.settings.appearance = {
+                ...(state.settings.appearance && typeof state.settings.appearance === 'object' ? state.settings.appearance : {}),
+                ...appearance
+            };
+            applyAppearanceSettingsToRuntime(state.settings.appearance);
         }
     });
     if (ARDALI_PERF_MONITOR_ENABLED) {
-        PerfMonitor.start(5000);
+        setTimeout(() => {
+            PerfMonitor.start(ARDALI_PERF_MONITOR_INTERVAL_MS);
+        }, ARDALI_PERF_MONITOR_DELAY_MS);
     }
     bindStandaloneSettingsDirtyTracking();
     installStandaloneSettingsLifecycleHooks();
-    window.ardali?.onSettingsReload?.(async (nextSettings) => {
+    window.ardali?.onWebReloadActive?.(() => {
+        try {
+            if (elements.webView && typeof elements.webView.reload === 'function') {
+                elements.webView.reload();
+            }
+        } catch {
+            // yoksay
+        }
+    });
+    window.ardali?.onSettingsReload?.(async (nextSettings, reloadMeta = {}) => {
         if (!nextSettings || typeof nextSettings !== 'object') return;
+        const reloadSource = String(reloadMeta?.source || '').trim().toLowerCase();
         const prevLibrarySignature = getLibrarySettingsSyncSignature(state.settings);
         const prevAdblockSnapshot = {
             mode: normalizeAdblockMode(state.settings?.adblock?.mode),
@@ -1530,12 +1639,19 @@ document.addEventListener('DOMContentLoaded', async () => {
             prevAdblockSnapshot.strictBlock !== nextAdblockSnapshot.strictBlock ||
             prevAdblockSnapshot.developerMode !== nextAdblockSnapshot.developerMode;
         const isWebActive = state.currentPage === 'web' || state.activeMedia === 'web';
-        if (adblockRuntimeChanged && nextAdblockSnapshot.autoRefreshOnModeChange && isWebActive && elements.webView) {
+        if (
+            adblockRuntimeChanged &&
+            nextAdblockSnapshot.autoRefreshOnModeChange &&
+            isWebActive &&
+            elements.webView
+        ) {
             reloadWebViewForAdblock('settings:reloaded', {
                 prevMode: prevAdblockSnapshot.mode,
                 nextMode: nextAdblockSnapshot.mode,
                 strictBlock: nextAdblockSnapshot.strictBlock,
-                developerMode: nextAdblockSnapshot.developerMode
+                developerMode: nextAdblockSnapshot.developerMode,
+                source: reloadSource || 'unknown',
+                userInitiated: reloadSource === 'adblock' || reloadSource === 'settings'
             });
         }
         if (state.currentPage === 'web' || state.activeMedia === 'web' || state.currentPage === 'video' || state.activeMedia === 'video') {
@@ -1599,6 +1715,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     await loadSettings();
+    await applyAdblockRuntimeConfig();
     loadVideoStudioProfile();
     hydrateVideoStudioOutputSettingsFromAppSettings();
     loadVideoStudioPlugins().catch(() => {});
@@ -1681,29 +1798,34 @@ async function initializeI18n() {
     try {
         if (window.i18n && typeof window.i18n.init === 'function') {
             const lang = await window.i18n.init();
-            try {
-                document.title = await window.i18n.t('app.title');
-            } catch {
-                // yoksay
-            }
+            languageRestartBaseline = String(lang || '').trim();
+            pendingLanguageRestart = false;
+            updateAppWindowTitle();
 
             if (elements.languageSelect) {
                 elements.languageSelect.value = lang || elements.languageSelect.value;
                 hideRestartHint();
                 if (!elements.languageSelect.dataset.listenerAttached) {
                     elements.languageSelect.dataset.listenerAttached = 'true';
-                    elements.languageSelect.addEventListener('change', (e) => {
+                    elements.languageSelect.addEventListener('change', async (e) => {
                         const next = String(e?.target?.value || '').trim();
                         if (!next) return;
-            const currentLang = String(
-                window.i18n?.getLanguage?.()
-                || state.settings?.ui?.language
-                || state.settings?.lang
-                || ''
-            ).trim();
-                        if (next && currentLang && next !== currentLang) {
+                        try {
+                            const applied = typeof window.i18n?.setLanguage === 'function'
+                                ? await window.i18n.setLanguage(next)
+                                : next;
+                            const normalized = String(applied || next).trim();
+                            if (!state.settings || typeof state.settings !== 'object') state.settings = {};
+                            if (!state.settings.ui || typeof state.settings.ui !== 'object') state.settings.ui = {};
+                            state.settings.ui.language = normalized;
+                            state.settings.lang = normalized;
+                            elements.languageSelect.value = normalized;
+                            pendingLanguageRestart = !!(languageRestartBaseline && normalized !== languageRestartBaseline);
+                            updateAppWindowTitle();
+                            updatePulseQuickModeUi();
                             showRestartHint();
-                        } else {
+                        } catch (error) {
+                            console.warn('[I18N] language change failed:', error?.message || error);
                             hideRestartHint();
                         }
                     });
@@ -1718,7 +1840,12 @@ async function initializeI18n() {
 
 function showRestartHint() {
     const el = document.getElementById('languageRestartHint');
-    if (el) el.classList.remove('hidden');
+    if (!el) return;
+    el.classList.remove('hidden');
+    clearTimeout(showRestartHint.hideTimer);
+    showRestartHint.hideTimer = setTimeout(() => {
+        hideRestartHint();
+    }, 3500);
 }
 
 function hideRestartHint() {
@@ -1741,19 +1868,16 @@ function closeRestartModal() {
 }
 
 function hasPendingLanguageChange() {
-    const activeLanguage = String(
-        window.i18n?.getLanguage?.()
-        || state.settings?.ui?.language
-        || state.settings?.lang
-        || ''
-    ).trim();
     const selectedLanguage = String(
         elements.languageSelect?.value
         || state.settings?.ui?.language
         || state.settings?.lang
         || ''
     ).trim();
-    return !!(selectedLanguage && activeLanguage && selectedLanguage !== activeLanguage);
+    if (languageRestartBaseline && selectedLanguage) {
+        return selectedLanguage !== languageRestartBaseline;
+    }
+    return pendingLanguageRestart;
 }
 
 async function confirmAndRelaunchApp() {
@@ -2054,6 +2178,7 @@ async function loadAndApplyStartupSfxSettings() {
 function cacheElements() {
     // Kenar çubuğu
     elements.sidebarBtns = document.querySelectorAll('.sidebar-btn[data-page]');
+    elements.sidebarToggleBtn = document.getElementById('sidebarToggleBtn');
     elements.ardaliDawlodBtn = document.getElementById('ardaliDawlodBtn');
     elements.settingsBtn = document.getElementById('settingsBtn');
     elements.infoBtn = document.getElementById('infoBtn');
@@ -2122,7 +2247,6 @@ function cacheElements() {
     elements.gallerySortQuickSelect = document.getElementById('gallerySortQuickSelect');
     elements.musicViewModeBtns = document.querySelectorAll('.music-view-btn[data-view-mode]');
     elements.pulseQuickListenBtn = document.getElementById('pulseQuickListenBtn');
-    elements.webDrawerToggleBtn = document.getElementById('webDrawerToggleBtn');
     elements.adblockBtn = document.getElementById('adblockBtn');
     elements.adblockBlockedBadge = document.getElementById('adblockBlockedBadge');
     elements.adblockStatusText = document.getElementById('adblockStatusText');
@@ -2490,9 +2614,51 @@ function cacheElements() {
     elements.behaviorWebAnimationMode = document.getElementById('behaviorWebAnimationMode');
     elements.behaviorWebMotionPreset = document.getElementById('behaviorWebMotionPreset');
     elements.behaviorWebLowPowerMode = document.getElementById('behaviorWebLowPowerMode');
+    elements.behaviorWebClearCacheOnQuit = document.getElementById('behaviorWebClearCacheOnQuit');
+    elements.behaviorWebClearCookiesOnQuit = document.getElementById('behaviorWebClearCookiesOnQuit');
+    elements.behaviorWebClearSiteDataOnQuit = document.getElementById('behaviorWebClearSiteDataOnQuit');
+    elements.behaviorWebClearHistoryOnQuit = document.getElementById('behaviorWebClearHistoryOnQuit');
+    elements.webClearCacheNowBtn = document.getElementById('webClearCacheNowBtn');
+    elements.webClearCookiesNowBtn = document.getElementById('webClearCookiesNowBtn');
+    elements.webClearSiteDataNowBtn = document.getElementById('webClearSiteDataNowBtn');
+    elements.webClearAllDataNowBtn = document.getElementById('webClearAllDataNowBtn');
+    elements.webClearCurrentSiteCookiesBtn = document.getElementById('webClearCurrentSiteCookiesBtn');
+    elements.webClearCurrentSiteDataBtn = document.getElementById('webClearCurrentSiteDataBtn');
+    elements.webClearLastStatus = document.getElementById('webClearLastStatus');
+    elements.webCurrentSiteClearStatus = document.getElementById('webCurrentSiteClearStatus');
+    elements.webActiveSitePermissionStatus = document.getElementById('webActiveSitePermissionStatus');
+    elements.webActiveSiteAllowCamera = document.getElementById('webActiveSiteAllowCamera');
+    elements.webActiveSiteAllowMicrophone = document.getElementById('webActiveSiteAllowMicrophone');
+    elements.webActiveSiteAllowLocation = document.getElementById('webActiveSiteAllowLocation');
+    elements.webActiveSiteAllowNotifications = document.getElementById('webActiveSiteAllowNotifications');
+    elements.webActiveSiteAllowPopups = document.getElementById('webActiveSiteAllowPopups');
+    elements.webSaveActiveSitePermissionsBtn = document.getElementById('webSaveActiveSitePermissionsBtn');
+    elements.behaviorWebPreferHttps = document.getElementById('behaviorWebPreferHttps');
+    elements.behaviorWebReduceWebRtcIpLeaks = document.getElementById('behaviorWebReduceWebRtcIpLeaks');
+    elements.behaviorWebSessionProfile = document.getElementById('behaviorWebSessionProfile');
+    elements.behaviorWebAutoRecover = document.getElementById('behaviorWebAutoRecover');
+    elements.behaviorWebAllowCamera = document.getElementById('behaviorWebAllowCamera');
+    elements.behaviorWebAllowMicrophone = document.getElementById('behaviorWebAllowMicrophone');
+    elements.behaviorWebAllowLocation = document.getElementById('behaviorWebAllowLocation');
+    elements.behaviorWebAllowNotifications = document.getElementById('behaviorWebAllowNotifications');
+    elements.behaviorWebAllowPopups = document.getElementById('behaviorWebAllowPopups');
+    elements.behaviorWebUserAgentMode = document.getElementById('behaviorWebUserAgentMode');
+    elements.behaviorWebAutoplayPolicy = document.getElementById('behaviorWebAutoplayPolicy');
+    elements.behaviorWebAskDownloadLocation = document.getElementById('behaviorWebAskDownloadLocation');
+    elements.behaviorWebReduceReferrers = document.getElementById('behaviorWebReduceReferrers');
+    elements.behaviorWebStripTrackingParams = document.getElementById('behaviorWebStripTrackingParams');
+    elements.behaviorWebBlockThirdPartyCookies = document.getElementById('behaviorWebBlockThirdPartyCookies');
+    elements.behaviorWebBackgroundThrottle = document.getElementById('behaviorWebBackgroundThrottle');
+    elements.behaviorWebPlaybackPowerMode = document.getElementById('behaviorWebPlaybackPowerMode');
+    elements.webPlaybackPowerModeHint = document.getElementById('webPlaybackPowerModeHint');
+    elements.webPlaybackPowerLiveStatus = document.getElementById('webPlaybackPowerLiveStatus');
+    elements.behaviorWebRestoreLastSession = document.getElementById('behaviorWebRestoreLastSession');
+    elements.behaviorWebSuspendWhenInactive = document.getElementById('behaviorWebSuspendWhenInactive');
     elements.behaviorCloseToTray = document.getElementById('behaviorCloseToTray');
     elements.behaviorNotificationsEnabled = document.getElementById('behaviorNotificationsEnabled');
     elements.uiVisualModeSelect = document.getElementById('uiVisualModeSelect');
+    elements.uiOptimizationProfileSelect = document.getElementById('uiOptimizationProfileSelect');
+    elements.uiOptimizationProfileHint = document.getElementById('uiOptimizationProfileHint');
     elements.uiMotionProfileSelect = document.getElementById('uiMotionProfileSelect');
     elements.uiSfxPerfModeSelect = document.getElementById('uiSfxPerfModeSelect');
     elements.uiSfxIconSizeSelect = document.getElementById('uiSfxIconSizeSelect');
@@ -2503,6 +2669,8 @@ function cacheElements() {
     elements.uiHardwareProfileStatus = document.getElementById('uiHardwareProfileStatus');
     elements.uiFxEnabledToggle = document.getElementById('uiFxEnabledToggle');
     elements.uiReduceMotionToggle = document.getElementById('uiReduceMotionToggle');
+    ensureSidebarMotionSettingRow();
+    elements.uiSidebarMotionToggle = document.getElementById('uiSidebarMotionToggle');
     elements.sliderFxToggle = document.getElementById('sliderFxToggle');
     elements.sliderFxToggleState = document.getElementById('sliderFxToggleState');
     elements.sfxLightsToggle = document.getElementById('sfxLightsToggle');
@@ -2570,23 +2738,69 @@ async function loadSettings() {
         state.isRepeat = state.settings.repeat || false;
         state.isRepeatOne = state.settings.repeatOne || false;
 
-        // Web UI (çekmece)
+        // Web UI: platform çekmecesi kaldırıldı; web sekmesi her zaman tam modda açılır.
         if (!state.settings.webUi || typeof state.settings.webUi !== 'object') {
             state.settings.webUi = {
                 drawerCollapsed: true,
                 autoCollapseOnPlatformOpen: false,
                 animationMode: 'compact',
                 motionPreset: 'balanced',
-                lowPowerMode: false
+                lowPowerMode: false,
+                clearCacheOnQuit: true,
+                clearCookiesOnQuit: false,
+                clearSiteDataOnQuit: false,
+                clearHistoryOnQuit: false,
+                preferHttps: true,
+                reduceWebRtcIpLeaks: true,
+                backgroundThrottle: true,
+                restoreLastSession: true,
+                suspendWhenInactive: true,
+                allowCamera: false,
+                allowMicrophone: false,
+                allowLocation: false,
+                allowNotifications: false,
+                userAgentMode: 'desktop',
+                autoplayPolicy: 'allow',
+                askDownloadLocation: true,
+                reduceReferrers: true,
+                stripTrackingParams: true,
+                blockThirdPartyCookies: false,
+                autoRecover: true
             };
         }
-        if (typeof state.settings.webUi.drawerCollapsed !== 'boolean') {
-            state.settings.webUi.drawerCollapsed = true;
-        }
+        state.settings.webUi.drawerCollapsed = true;
         state.settings.webUi.animationMode = normalizeWebUiAnimationMode(state.settings.webUi.animationMode || 'compact');
         state.settings.webUi.motionPreset = normalizeWebUiMotionPreset(state.settings.webUi.motionPreset || 'balanced');
+        state.settings.webUi.playbackPowerMode = normalizeWebPlaybackPowerMode(state.settings.webUi.playbackPowerMode || 'balanced');
         state.settings.webUi.lowPowerMode = !!state.settings.webUi.lowPowerMode;
-        state.webDrawerCollapsed = state.settings.webUi.drawerCollapsed !== false;
+        if (typeof state.settings.webUi.clearCacheOnQuit !== 'boolean') {
+            state.settings.webUi.clearCacheOnQuit = true;
+        }
+        if (typeof state.settings.webUi.clearCookiesOnQuit !== 'boolean') state.settings.webUi.clearCookiesOnQuit = false;
+        if (typeof state.settings.webUi.clearSiteDataOnQuit !== 'boolean') state.settings.webUi.clearSiteDataOnQuit = false;
+        if (typeof state.settings.webUi.clearHistoryOnQuit !== 'boolean') state.settings.webUi.clearHistoryOnQuit = false;
+        if (typeof state.settings.webUi.preferHttps !== 'boolean') state.settings.webUi.preferHttps = true;
+        if (typeof state.settings.webUi.reduceWebRtcIpLeaks !== 'boolean') state.settings.webUi.reduceWebRtcIpLeaks = true;
+        if (typeof state.settings.webUi.backgroundThrottle !== 'boolean') state.settings.webUi.backgroundThrottle = true;
+        if (typeof state.settings.webUi.restoreLastSession !== 'boolean') state.settings.webUi.restoreLastSession = true;
+        if (typeof state.settings.webUi.suspendWhenInactive !== 'boolean') state.settings.webUi.suspendWhenInactive = true;
+        if (typeof state.settings.webUi.allowCamera !== 'boolean') state.settings.webUi.allowCamera = false;
+        if (typeof state.settings.webUi.allowMicrophone !== 'boolean') state.settings.webUi.allowMicrophone = false;
+        if (typeof state.settings.webUi.allowLocation !== 'boolean') state.settings.webUi.allowLocation = false;
+        if (typeof state.settings.webUi.allowNotifications !== 'boolean') state.settings.webUi.allowNotifications = false;
+        if (!['desktop', 'mobile', 'default'].includes(String(state.settings.webUi.userAgentMode || '').toLowerCase())) state.settings.webUi.userAgentMode = 'desktop';
+        if (!['allow', 'gesture', 'block'].includes(String(state.settings.webUi.autoplayPolicy || '').toLowerCase())) state.settings.webUi.autoplayPolicy = 'allow';
+        if (typeof state.settings.webUi.askDownloadLocation !== 'boolean') state.settings.webUi.askDownloadLocation = true;
+        if (typeof state.settings.webUi.reduceReferrers !== 'boolean') state.settings.webUi.reduceReferrers = true;
+        if (typeof state.settings.webUi.stripTrackingParams !== 'boolean') state.settings.webUi.stripTrackingParams = true;
+        if (typeof state.settings.webUi.blockThirdPartyCookies !== 'boolean') state.settings.webUi.blockThirdPartyCookies = false;
+        if (typeof state.settings.webUi.autoRecover !== 'boolean') state.settings.webUi.autoRecover = true;
+        if (typeof state.settings.webUi.lastClearAt !== 'string') state.settings.webUi.lastClearAt = '';
+        if (typeof state.settings.webUi.lastClearSummary !== 'string') state.settings.webUi.lastClearSummary = '';
+        if (!state.settings.webUi.sitePermissions || typeof state.settings.webUi.sitePermissions !== 'object' || Array.isArray(state.settings.webUi.sitePermissions)) {
+            state.settings.webUi.sitePermissions = {};
+        }
+        state.webDrawerCollapsed = true;
 
         // Çalma ayarları için varsayılanlar (eksikse)
         if (!state.settings.playback) {
@@ -2624,7 +2838,6 @@ async function loadSettings() {
                     platformYoutube: '',
                     platformDeezer: '',
                     platformSoundcloud: '',
-                    platformFacebook: '',
                     platformInstagram: '',
                     platformTiktok: '',
                     platformX: '',
@@ -2715,7 +2928,7 @@ async function loadSettings() {
             const navKeys = [
                 'tabMusic', 'tabVideo', 'tabWeb',
                 'platformYtmusic', 'platformYoutube', 'platformDeezer', 'platformSoundcloud',
-                'platformFacebook', 'platformInstagram', 'platformTiktok', 'platformX',
+                'platformInstagram', 'platformTiktok', 'platformX',
                 'platformReddit', 'platformTwitch', 'platformWhatsapp', 'platformTelegram'
             ];
             navKeys.forEach((key) => {
@@ -2802,19 +3015,25 @@ async function loadSettings() {
             state.settings.security.enforceAllowlist = false;
         }
         state.settings.security.sessionProfile = normalizeWebSessionProfile(state.settings.security.sessionProfile, 'persistent');
+        if (typeof state.settings.webUi.allowPopups !== 'boolean') {
+            state.settings.webUi.allowPopups = state.settings.security.allowPopups !== false;
+        }
+        state.settings.security.allowPopups = state.settings.webUi.allowPopups !== false;
         if (!state.settings.appearance || typeof state.settings.appearance !== 'object') {
             state.settings.appearance = {
-                theme: 'performance-balanced',
+                theme: 'black',
                 followSystemTheme: false,
-                visualMode: 'balanced',
+                visualMode: 'minimal',
                 motionProfile: 'balanced',
-                uiFxEnabled: true,
-                sliderFxEnabled: true,
+                uiFxEnabled: false,
+                sliderFxEnabled: false,
                 reduceMotion: true,
-                sfxLights: true,
+                sidebarMotionEnabled: true,
+                sfxLights: false,
+                optimizationProfile: 'auto',
                 autoHardwareProfile: true,
                 lowHardwareMode: false,
-                sfxPerfMode: 'auto',
+                sfxPerfMode: 'lite',
                 sfxSidebarIconSize: 'medium'
             };
         }
@@ -2822,6 +3041,15 @@ async function loadSettings() {
             'aur-renk-efektleri',
             'performance-balanced',
             'performance-lite',
+            'ardali',
+            'dark',
+            'black',
+            'light',
+            'frappe',
+            'onedark',
+            'matrix',
+            'latte',
+            'solarized-dark',
             'neon-night',
             'retro-amber',
             'deep-ocean',
@@ -2829,7 +3057,7 @@ async function loadSettings() {
         ]);
         const savedTheme = String(state.settings.appearance.theme || '').trim();
         if (!savedTheme || !allowedThemeIds.has(savedTheme)) {
-            state.settings.appearance.theme = 'aur-renk-efektleri';
+            state.settings.appearance.theme = 'black';
         }
         if (typeof state.settings.appearance.followSystemTheme !== 'boolean') {
             state.settings.appearance.followSystemTheme = false;
@@ -2857,8 +3085,16 @@ async function loadSettings() {
         if (typeof state.settings.appearance.reduceMotion !== 'boolean') {
             state.settings.appearance.reduceMotion = true;
         }
+        if (typeof state.settings.appearance.sidebarMotionEnabled !== 'boolean') {
+            state.settings.appearance.sidebarMotionEnabled = true;
+        }
         if (typeof state.settings.appearance.sfxLights !== 'boolean') {
             state.settings.appearance.sfxLights = true;
+        }
+        const savedOptimizationProfile = String(state.settings.appearance.optimizationProfile || '').toLowerCase();
+        if (!['auto', 'ram', 'gpu', 'battery', 'quality'].includes(savedOptimizationProfile)) {
+            state.settings.appearance.optimizationProfile = 'auto';
+            Object.assign(state.settings.appearance, getOptimizationAppearancePreset('auto'), { optimizationProfile: 'auto' });
         }
         if (typeof state.settings.appearance.autoHardwareProfile !== 'boolean') {
             state.settings.appearance.autoHardwareProfile = true;
@@ -2909,10 +3145,24 @@ async function loadSettings() {
         if (typeof state.settings.ui.notificationsEnabled !== 'boolean') {
             state.settings.ui.notificationsEnabled = false;
         }
+        if (typeof state.settings.ui.sidebarCollapsed !== 'boolean') {
+            state.settings.ui.sidebarCollapsed = false;
+        }
+        state.sidebarCollapsed = !!state.settings.ui.sidebarCollapsed;
+        applyAppSidebarCollapsed(state.sidebarCollapsed, { persist: false });
         if (typeof state.settings.ui.lastWebPlatform !== 'string') {
             state.settings.ui.lastWebPlatform = '';
         } else {
             state.settings.ui.lastWebPlatform = String(state.settings.ui.lastWebPlatform).trim().toLowerCase();
+        }
+        if (typeof state.settings.ui.lastWebUrl !== 'string') {
+            state.settings.ui.lastWebUrl = '';
+        }
+        if (typeof state.settings.ui.suspendWebWhenInactive !== 'boolean') {
+            state.settings.ui.suspendWebWhenInactive = true;
+        }
+        if (typeof state.settings.ui.webStartupDelayManual !== 'boolean') {
+            state.settings.ui.webStartupDelayManual = false;
         }
         if (!getAllowedMainPages().includes(String(state.settings.ui.startupPage || '').toLowerCase())) {
             state.settings.ui.startupPage = 'music';
@@ -2970,10 +3220,17 @@ async function saveSettings() {
         state.settings.shuffle = state.isShuffle;
         state.settings.repeat = state.isRepeat;
         state.settings.repeatOne = state.isRepeatOne;
+        syncThemeShadowStorage(state.settings?.appearance?.theme);
         syncSfxLightsShadowStorage(state.settings?.appearance?.sfxLights !== false);
         syncSfxIconSizeShadowStorage(state.settings?.appearance?.sfxSidebarIconSize || 'medium');
         suppressSettingsReloadUiUntil = Date.now() + 700;
         await window.ardali.saveSettings(state.settings);
+        if (state.settings?.appearance && typeof state.settings.appearance === 'object') {
+            appearanceSyncChannel?.postMessage({
+                type: 'appearance',
+                appearance: { ...state.settings.appearance }
+            });
+        }
     }
 }
 
@@ -4429,7 +4686,7 @@ function scheduleStartupLazyWebLoad() {
         if (!webPlatformRuntime.startupLazyArmed) return;
         webPlatformRuntime.startupLazyArmed = false;
         if (String(state.currentPage || '') !== 'web') return;
-        requestPlatformSwitch(preferredBtn, { restoreLastUrl: true });
+        requestPlatformSwitch(preferredBtn);
     }, delayMs);
     return true;
 }
@@ -4448,7 +4705,7 @@ function preloadLastWebPlatformOnStartup() {
 
     // İlk açılışta boş web panelini bekletmemek için son platformu hemen yükle.
     cancelStartupLazyWebLoad();
-    requestPlatformSwitch(preferredBtn, { restoreLastUrl: true });
+    requestPlatformSwitch(preferredBtn);
     return true;
 }
 
@@ -4477,9 +4734,7 @@ function restoreLastMainSection() {
         document.querySelector('.sidebar-btn[data-page="music"]');
     if (!btn) return;
     handleSidebarClick(btn);
-    if (page === 'web') {
-        scheduleStartupLazyWebLoad();
-    } else {
+    if (page !== 'web') {
         cancelStartupLazyWebLoad();
     }
 }
@@ -4686,6 +4941,330 @@ function setupStandaloneSettingsEventListeners() {
 
     setupPlaybackShortcutUiBindings();
     bindLibrarySettingsEventListeners();
+    bindStandaloneAppearanceSettingsEventListeners();
+    bindWebSettingsClearButtons();
+    bindActiveWebSitePermissionControls();
+}
+
+function bindActiveWebSitePermissionControls() {
+    if (elements.webSaveActiveSitePermissionsBtn?.dataset?.webSitePermissionBound === 'true') return;
+    if (elements.webSaveActiveSitePermissionsBtn) {
+        elements.webSaveActiveSitePermissionsBtn.dataset.webSitePermissionBound = 'true';
+        elements.webSaveActiveSitePermissionsBtn.addEventListener('click', async (event) => {
+            event.preventDefault();
+            await saveActiveWebSitePermissions();
+        });
+    }
+    renderActiveWebSitePermissions();
+}
+
+function bindWebSettingsClearButtons() {
+    const bindings = [
+        ['webClearCacheNowBtn', { cache: true }, 'securityPage.notify.cacheCleared', 'Cache cleared.'],
+        ['webClearCookiesNowBtn', { cookies: true, reloadAfter: true }, 'securityPage.notify.cookiesCleared', 'Cookies cleared.'],
+        ['webClearSiteDataNowBtn', { siteData: true, reloadAfter: true }, 'settings.web.notify.siteDataCleared', 'Site data cleared.'],
+        ['webClearAllDataNowBtn', { all: true, history: true, reloadAfter: true, confirmAll: true }, 'securityPage.notify.allCleared', 'Web data cleared.'],
+        ['webClearCurrentSiteCookiesBtn', { cookies: true, reloadAfter: true, useActiveOrigin: true }, 'securityPage.notify.cookiesCleared', 'Cookies cleared.'],
+        ['webClearCurrentSiteDataBtn', { siteData: true, reloadAfter: true, useActiveOrigin: true }, 'settings.web.notify.siteDataCleared', 'Site data cleared.']
+    ];
+
+    const setButtonState = (button, stateName, previousText = '') => {
+        if (!button) return;
+        if (stateName === 'working') {
+            button.disabled = true;
+            button.classList.add('is-working');
+            button.classList.remove('is-done');
+            button.textContent = uiT('settings.web.clearWorking', 'Temizleniyor...');
+            return;
+        }
+        if (stateName === 'done') {
+            button.classList.remove('is-working');
+            button.classList.add('is-done');
+            button.textContent = uiT('settings.web.clearDone', 'Temizlendi');
+            return;
+        }
+        button.disabled = false;
+        button.classList.remove('is-working', 'is-done');
+        if (previousText) button.textContent = previousText;
+    };
+
+    const clearFromButton = async (button, options, successKey, successFallback) => {
+        if (!button || button.dataset.webClearBound === 'busy') return;
+        const previousText = button.textContent;
+        button.dataset.webClearBound = 'busy';
+        setButtonState(button, 'working');
+        try {
+            const payload = { ...options };
+            if (payload.confirmAll) {
+                delete payload.confirmAll;
+                const okToClear = window.confirm(uiT('settings.web.clearAllConfirm', 'Tüm web önbelleği, çerezleri, site verileri ve son web adresi temizlensin mi?'));
+                if (!okToClear) return;
+            }
+            if (payload.useActiveOrigin) {
+                delete payload.useActiveOrigin;
+                const origin = getActiveWebOrigin();
+                if (!origin) {
+                    safeNotify(uiT('securityPage.notify.invalidExternalUrl', 'Önce geçerli bir web sayfası açın (http/https).'), 'info');
+                    return;
+                }
+                payload.origin = origin;
+            }
+            console.log('[WEB] clear button request:', payload);
+            const result = await window.ardali?.webSecurity?.clearData?.(payload);
+            if (!result) {
+                safeNotify(uiT('securityPage.notify.clearFailed', 'Clearing failed.'), 'error');
+                return;
+            }
+            setButtonState(button, 'done');
+            const resultMessage = formatWebClearResultMessage(payload, result, successKey, successFallback);
+            updateWebClearStatus(payload, resultMessage);
+            persistWebClearStatus(resultMessage).catch(() => {});
+            safeNotify(resultMessage, 'success');
+            if (payload.reloadAfter === true) {
+                if (elements.webView && typeof elements.webView.reload === 'function') {
+                    elements.webView.reload();
+                } else {
+                    await window.ardali?.webSecurity?.reloadActive?.();
+                }
+            }
+        } catch (error) {
+            safeNotify(uiT('securityPage.notify.clearError', 'Clearing error: {error}', { error: error?.message || error }), 'error');
+        } finally {
+            setTimeout(() => {
+                delete button.dataset.webClearBound;
+                setButtonState(button, 'idle', previousText);
+            }, 900);
+        }
+    };
+
+    for (const [id, options, successKey, successFallback] of bindings) {
+        const button = document.getElementById(id);
+        if (!button || button.dataset.webClearListenerBound === 'true') continue;
+        button.dataset.webClearListenerBound = 'true';
+        button.addEventListener('click', (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            clearFromButton(button, options, successKey, successFallback);
+        });
+    }
+}
+
+function formatWebClearResultMessage(payload = {}, result = {}, successKey = '', successFallback = '') {
+    const removedCookies = Number(result?.removedCookies);
+    if ((payload.cookies || payload.all) && Number.isFinite(removedCookies)) {
+        if (removedCookies > 0) {
+            return uiT('settings.web.clearResult.cookiesRemoved', '{count} cookies cleared.', { count: removedCookies });
+        }
+        return uiT('settings.web.clearResult.noCookies', 'No cookies found to clear.');
+    }
+    return uiT(successKey, successFallback);
+}
+
+function formatWebClearTimestamp(value) {
+    if (!value) return '';
+    const date = new Date(value);
+    if (!Number.isFinite(date.getTime())) return '';
+    try {
+        return new Intl.DateTimeFormat(undefined, {
+            dateStyle: 'short',
+            timeStyle: 'medium'
+        }).format(date);
+    } catch {
+        return date.toLocaleString();
+    }
+}
+
+function localizeStoredWebClearSummary(message = '') {
+    const text = String(message || '').trim();
+    if (!text) return '';
+
+    const noCookieMessages = new Set([
+        'No cookies found to clear.',
+        'Temizlenecek çerez bulunamadı.',
+        'لم يتم العثور على كوكيز لمسحها.'
+    ]);
+    if (noCookieMessages.has(text)) {
+        return uiT('settings.web.clearResult.noCookies', 'No cookies found to clear.');
+    }
+
+    const removedCookiesMatch =
+        text.match(/^(\d+)\s+cookies cleared\.$/i) ||
+        text.match(/^(\d+)\s+çerez temizlendi\.$/i) ||
+        text.match(/^تم مسح\s+(\d+)\s+كوكيز\.$/i);
+    if (removedCookiesMatch) {
+        return uiT('settings.web.clearResult.cookiesRemoved', '{count} cookies cleared.', {
+            count: removedCookiesMatch[1]
+        });
+    }
+
+    const siteDataMessages = new Set([
+        'Site data cleared.',
+        'Site verisi temizlendi.',
+        'تم مسح بيانات الموقع.'
+    ]);
+    if (siteDataMessages.has(text)) {
+        return uiT('settings.web.notify.siteDataCleared', 'Site data cleared.');
+    }
+
+    return text;
+}
+
+function updateWebClearStatus(payload = {}, message = '') {
+    const now = new Date().toISOString();
+    const timestamp = formatWebClearTimestamp(now);
+    const localizedMessage = localizeStoredWebClearSummary(message);
+    const text = localizedMessage
+        ? uiT('settings.web.clearStatus.last', 'Last cleanup: {time} - {message}', { time: timestamp, message: localizedMessage })
+        : uiT('settings.web.clearStatus.never', 'No cleanup yet.');
+    const target = payload?.origin ? elements.webCurrentSiteClearStatus : elements.webClearLastStatus;
+    if (target) target.textContent = text;
+}
+
+async function persistWebClearStatus(message = '') {
+    if (!state.settings || typeof state.settings !== 'object') state.settings = {};
+    if (!state.settings.webUi || typeof state.settings.webUi !== 'object') state.settings.webUi = {};
+    state.settings.webUi.lastClearAt = new Date().toISOString();
+    state.settings.webUi.lastClearSummary = String(message || '').slice(0, 180);
+    await saveSettings();
+}
+
+function renderWebClearStatusFromSettings() {
+    const lastClearAt = state.settings?.webUi?.lastClearAt;
+    const lastClearSummary = String(state.settings?.webUi?.lastClearSummary || '').trim();
+    const timestamp = formatWebClearTimestamp(lastClearAt);
+    const text = timestamp
+        ? uiT('settings.web.clearStatus.last', 'Last cleanup: {time} - {message}', {
+            time: timestamp,
+            message: localizeStoredWebClearSummary(lastClearSummary) || uiT('settings.web.clearDone', 'Cleared')
+        })
+        : uiT('settings.web.clearStatus.never', 'No cleanup yet.');
+    if (elements.webClearLastStatus) elements.webClearLastStatus.textContent = text;
+    if (elements.webCurrentSiteClearStatus) {
+        elements.webCurrentSiteClearStatus.textContent = uiT('settings.web.currentSiteData.hint', 'Only the currently open website cookies or site data will be cleared.');
+    }
+}
+
+function getWebSitePermissionStore() {
+    if (!state.settings || typeof state.settings !== 'object') state.settings = {};
+    if (!state.settings.webUi || typeof state.settings.webUi !== 'object') state.settings.webUi = {};
+    if (!state.settings.webUi.sitePermissions || typeof state.settings.webUi.sitePermissions !== 'object' || Array.isArray(state.settings.webUi.sitePermissions)) {
+        state.settings.webUi.sitePermissions = {};
+    }
+    return state.settings.webUi.sitePermissions;
+}
+
+function getActiveWebSitePermissionState() {
+    const origin = getActiveWebOrigin();
+    const store = getWebSitePermissionStore();
+    const entry = origin && store[origin] && typeof store[origin] === 'object' ? store[origin] : {};
+    return { origin, entry };
+}
+
+function renderActiveWebSitePermissions() {
+    const { origin, entry } = getActiveWebSitePermissionState();
+    const controls = [
+        [elements.webActiveSiteAllowCamera, 'allowCamera'],
+        [elements.webActiveSiteAllowMicrophone, 'allowMicrophone'],
+        [elements.webActiveSiteAllowLocation, 'allowLocation'],
+        [elements.webActiveSiteAllowNotifications, 'allowNotifications'],
+        [elements.webActiveSiteAllowPopups, 'allowPopups']
+    ];
+    for (const [control, key] of controls) {
+        if (!control) continue;
+        control.disabled = !origin;
+        control.checked = entry?.[key] === true;
+    }
+    if (elements.webSaveActiveSitePermissionsBtn) {
+        elements.webSaveActiveSitePermissionsBtn.disabled = !origin;
+    }
+    if (elements.webActiveSitePermissionStatus) {
+        elements.webActiveSitePermissionStatus.textContent = origin
+            ? uiT('settings.web.activeSitePermissions.status', 'Active site: {origin}', { origin })
+            : uiT('settings.web.activeSitePermissions.noSite', 'Open a valid web page first.');
+    }
+}
+
+async function saveActiveWebSitePermissions() {
+    const origin = getActiveWebOrigin();
+    if (!origin) {
+        safeNotify(uiT('securityPage.notify.invalidExternalUrl', 'Önce geçerli bir web sayfası açın (http/https).'), 'info');
+        renderActiveWebSitePermissions();
+        return;
+    }
+    const store = getWebSitePermissionStore();
+    store[origin] = {
+        allowCamera: elements.webActiveSiteAllowCamera?.checked === true,
+        allowMicrophone: elements.webActiveSiteAllowMicrophone?.checked === true,
+        allowLocation: elements.webActiveSiteAllowLocation?.checked === true,
+        allowNotifications: elements.webActiveSiteAllowNotifications?.checked === true,
+        allowPopups: elements.webActiveSiteAllowPopups?.checked === true,
+        updatedAt: new Date().toISOString()
+    };
+    await saveSettings();
+    renderActiveWebSitePermissions();
+    safeNotify(uiT('settings.web.activeSitePermissions.saved', 'Active site permissions saved.'), 'success');
+}
+
+function bindStandaloneAppearanceSettingsEventListeners() {
+    if (!isStandaloneSettingsMode()) return;
+    if (document.body?.dataset?.standaloneAppearanceBound === 'true') return;
+    document.body.dataset.standaloneAppearanceBound = 'true';
+
+    const previewAndMark = () => {
+        previewAppearanceSettingsFromUI();
+        markSettingsDirty();
+    };
+
+    if (elements.uiVisualModeSelect) {
+        elements.uiVisualModeSelect.addEventListener('change', () => {
+            previewAndMark();
+        });
+    }
+    if (elements.uiOptimizationProfileSelect) {
+        elements.uiOptimizationProfileSelect.addEventListener('change', () => {
+            applyOptimizationProfileToUi({ updateSystemPreset: true });
+            previewAndMark();
+        });
+    }
+    if (elements.uiMotionProfileSelect) elements.uiMotionProfileSelect.addEventListener('change', previewAndMark);
+    if (elements.uiSfxPerfModeSelect) elements.uiSfxPerfModeSelect.addEventListener('change', previewAndMark);
+    if (elements.uiSfxIconSizeSelect) elements.uiSfxIconSizeSelect.addEventListener('change', previewAndMark);
+    if (elements.uiAutoHardwareProfileToggle) {
+        elements.uiAutoHardwareProfileToggle.addEventListener('change', async () => {
+            if (!state.settings.appearance || typeof state.settings.appearance !== 'object') {
+                state.settings.appearance = {};
+            }
+            state.settings.appearance.autoHardwareProfile = !!elements.uiAutoHardwareProfileToggle.checked;
+            if (elements.uiAutoHardwareProfileToggle.checked) {
+                await applyAutoHardwareAppearanceIfNeeded({ persist: false });
+            } else {
+                applyFullPowerAppearancePresetToUi();
+                previewAppearanceSettingsFromUI();
+            }
+            markSettingsDirty();
+        });
+    }
+    if (elements.uiLowHardwareModeToggle) {
+        elements.uiLowHardwareModeToggle.addEventListener('change', () => {
+            if (!state.settings.appearance || typeof state.settings.appearance !== 'object') {
+                state.settings.appearance = {};
+            }
+            state.settings.appearance.lowHardwareMode = !!elements.uiLowHardwareModeToggle.checked;
+            if (elements.uiLowHardwareModeToggle.checked) {
+                applyLowHardwareModeToStateAndUi();
+            } else {
+                restoreNormalHardwareModeToStateAndUi();
+            }
+            markSettingsDirty();
+        });
+    }
+    if (elements.uiFollowSystemThemeToggle) elements.uiFollowSystemThemeToggle.addEventListener('change', previewAndMark);
+    if (elements.themeSelect) elements.themeSelect.addEventListener('change', previewAndMark);
+    if (elements.uiFxEnabledToggle) elements.uiFxEnabledToggle.addEventListener('change', previewAndMark);
+    if (elements.uiReduceMotionToggle) elements.uiReduceMotionToggle.addEventListener('change', previewAndMark);
+    if (elements.uiSidebarMotionToggle) elements.uiSidebarMotionToggle.addEventListener('change', previewAndMark);
+    if (elements.sliderFxToggle) elements.sliderFxToggle.addEventListener('change', previewAndMark);
+    if (elements.sfxLightsToggle) elements.sfxLightsToggle.addEventListener('change', previewAndMark);
 }
 
 function bindLibrarySettingsEventListeners({ includeVideoClear = false } = {}) {
@@ -4939,7 +5518,6 @@ function getPlaybackShortcutSearchEntries() {
     pushEntry('shortcutPlatformYoutube', 'youtube');
     pushEntry('shortcutPlatformDeezer', 'deezer');
     pushEntry('shortcutPlatformSoundcloud', 'soundcloud');
-    pushEntry('shortcutPlatformFacebook', 'facebook');
     pushEntry('shortcutPlatformInstagram', 'instagram');
     pushEntry('shortcutPlatformTiktok', 'tiktok');
     pushEntry('shortcutPlatformX', 'x twitter');
@@ -4984,7 +5562,6 @@ function decoratePlaybackShortcutLabelsWithIcons() {
         shortcutPlatformYoutube: { icon: 'smart_display', tone: 'youtube' },
         shortcutPlatformDeezer: { icon: 'equalizer', tone: 'deezer' },
         shortcutPlatformSoundcloud: { icon: 'cloud', tone: 'soundcloud' },
-        shortcutPlatformFacebook: { icon: 'public', tone: 'facebook' },
         shortcutPlatformInstagram: { icon: 'photo_camera', tone: 'instagram' },
         shortcutPlatformTiktok: { icon: 'music_note', tone: 'tiktok' },
         shortcutPlatformX: { icon: 'alternate_email', tone: 'x' },
@@ -5083,6 +5660,11 @@ function setupEventListeners() {
     elements.sidebarBtns.forEach(btn => {
         btn.addEventListener('click', () => handleSidebarClick(btn));
     });
+    if (elements.sidebarToggleBtn) {
+        elements.sidebarToggleBtn.addEventListener('click', () => {
+            applyAppSidebarCollapsed(!state.sidebarCollapsed);
+        });
+    }
 
     if (elements.libraryTabButtons?.length) {
         elements.libraryTabButtons.forEach((button) => {
@@ -5126,7 +5708,8 @@ function setupEventListeners() {
                 safeNotify('İndirilebilir içerik bulunamadı. Önce bir video veya şarkı açın.', 'error', 3200);
                 return;
             }
-            const ok = await window.ardali?.downloader?.openWindow?.(url);
+            const titleHint = (await getActiveWebDownloadTitleHintFromPage(url)) || buildWebDownloadFallbackTitleHint(url);
+            const ok = await window.ardali?.downloader?.openWindow?.({ url, titleHint });
             if (!ok) {
                 safeNotify('ArDali Dawlod penceresi açılamadı.', 'error', 2600);
             }
@@ -5223,8 +5806,14 @@ function setupEventListeners() {
     }
     if (elements.uiVisualModeSelect) {
         elements.uiVisualModeSelect.addEventListener('change', () => {
-            syncThemeWithVisualMode();
             previewAppearanceSettingsFromUI();
+        });
+    }
+    if (elements.uiOptimizationProfileSelect) {
+        elements.uiOptimizationProfileSelect.addEventListener('change', () => {
+            applyOptimizationProfileToUi({ updateSystemPreset: true });
+            previewAppearanceSettingsFromUI();
+            markSettingsDirty();
         });
     }
     if (elements.uiMotionProfileSelect) {
@@ -5272,6 +5861,8 @@ function setupEventListeners() {
             state.settings.appearance.lowHardwareMode = !!elements.uiLowHardwareModeToggle.checked;
             if (elements.uiLowHardwareModeToggle.checked) {
                 applyLowHardwareModeToStateAndUi();
+            } else {
+                restoreNormalHardwareModeToStateAndUi();
             }
             markSettingsDirty();
         });
@@ -5282,6 +5873,7 @@ function setupEventListeners() {
     }
     if (elements.uiFxEnabledToggle) elements.uiFxEnabledToggle.addEventListener('change', previewAppearanceSettingsFromUI);
     if (elements.uiReduceMotionToggle) elements.uiReduceMotionToggle.addEventListener('change', previewAppearanceSettingsFromUI);
+    if (elements.uiSidebarMotionToggle) elements.uiSidebarMotionToggle.addEventListener('change', previewAppearanceSettingsFromUI);
     if (elements.sliderFxToggle) {
         const onSliderFxToggleChanged = () => {
             updateSliderFxToggleStateUi();
@@ -5331,10 +5923,18 @@ function setupEventListeners() {
     }
     if (elements.behaviorWebStartupDelay && elements.libraryWebStartupDelay) {
         elements.behaviorWebStartupDelay.addEventListener('change', () => {
+            if (!state.settings.ui || typeof state.settings.ui !== 'object') state.settings.ui = {};
+            state.settings.ui.webStartupDelayManual = true;
+            state.settings.ui.webStartupLazyDelayMs = normalizeWebStartupLazyDelayMs(elements.behaviorWebStartupDelay.value);
             elements.libraryWebStartupDelay.value = String(elements.behaviorWebStartupDelay.value || WEB_STARTUP_LAZY_DELAY_DEFAULT_MS);
+            markSettingsDirty();
         });
         elements.libraryWebStartupDelay.addEventListener('change', () => {
+            if (!state.settings.ui || typeof state.settings.ui !== 'object') state.settings.ui = {};
+            state.settings.ui.webStartupDelayManual = true;
+            state.settings.ui.webStartupLazyDelayMs = normalizeWebStartupLazyDelayMs(elements.libraryWebStartupDelay.value);
             elements.behaviorWebStartupDelay.value = String(elements.libraryWebStartupDelay.value || WEB_STARTUP_LAZY_DELAY_DEFAULT_MS);
+            markSettingsDirty();
         });
     }
     if (elements.behaviorWebAnimationMode) {
@@ -5353,12 +5953,102 @@ function setupEventListeners() {
             applyWebUiClasses();
         });
     }
+    if (elements.behaviorWebPlaybackPowerMode) {
+        elements.behaviorWebPlaybackPowerMode.addEventListener('change', () => {
+            if (!state.settings || typeof state.settings !== 'object') state.settings = {};
+            if (!state.settings.webUi || typeof state.settings.webUi !== 'object') state.settings.webUi = {};
+            state.settings.webUi.playbackPowerMode = normalizeWebPlaybackPowerMode(elements.behaviorWebPlaybackPowerMode.value);
+            updateMediaPlaybackPowerSaveBlocker('web-playback-power-mode-change');
+        });
+    }
     if (elements.behaviorWebLowPowerMode) {
         elements.behaviorWebLowPowerMode.addEventListener('change', () => {
             if (!state.settings || typeof state.settings !== 'object') state.settings = {};
             if (!state.settings.webUi || typeof state.settings.webUi !== 'object') state.settings.webUi = {};
             state.settings.webUi.lowPowerMode = !!elements.behaviorWebLowPowerMode.checked;
             applyWebUiClasses();
+        });
+    }
+    if (elements.behaviorWebClearCacheOnQuit) {
+        elements.behaviorWebClearCacheOnQuit.addEventListener('change', () => {
+            if (!state.settings || typeof state.settings !== 'object') state.settings = {};
+            if (!state.settings.webUi || typeof state.settings.webUi !== 'object') state.settings.webUi = {};
+            state.settings.webUi.clearCacheOnQuit = elements.behaviorWebClearCacheOnQuit.checked !== false;
+            markSettingsDirty();
+        });
+    }
+    bindWebSettingsClearButtons();
+    bindActiveWebSitePermissionControls();
+    [
+        ['behaviorWebClearCookiesOnQuit', 'clearCookiesOnQuit', false],
+        ['behaviorWebClearSiteDataOnQuit', 'clearSiteDataOnQuit', false],
+        ['behaviorWebClearHistoryOnQuit', 'clearHistoryOnQuit', false],
+        ['behaviorWebPreferHttps', 'preferHttps', true],
+        ['behaviorWebReduceWebRtcIpLeaks', 'reduceWebRtcIpLeaks', true],
+        ['behaviorWebBackgroundThrottle', 'backgroundThrottle', true],
+        ['behaviorWebRestoreLastSession', 'restoreLastSession', true],
+        ['behaviorWebSuspendWhenInactive', 'suspendWhenInactive', true],
+        ['behaviorWebAutoRecover', 'autoRecover', true],
+        ['behaviorWebAllowCamera', 'allowCamera', false],
+        ['behaviorWebAllowMicrophone', 'allowMicrophone', false],
+        ['behaviorWebAllowLocation', 'allowLocation', false],
+        ['behaviorWebAllowNotifications', 'allowNotifications', false],
+        ['behaviorWebAllowPopups', 'allowPopups', true],
+        ['behaviorWebAskDownloadLocation', 'askDownloadLocation', true],
+        ['behaviorWebReduceReferrers', 'reduceReferrers', true],
+        ['behaviorWebStripTrackingParams', 'stripTrackingParams', true],
+        ['behaviorWebBlockThirdPartyCookies', 'blockThirdPartyCookies', false]
+    ].forEach(([elementKey, settingKey, defaultEnabled]) => {
+        const element = elements[elementKey];
+        if (!element) return;
+        element.addEventListener('change', () => {
+            if (!state.settings || typeof state.settings !== 'object') state.settings = {};
+            if (!state.settings.webUi || typeof state.settings.webUi !== 'object') state.settings.webUi = {};
+            state.settings.webUi[settingKey] = defaultEnabled ? element.checked !== false : element.checked === true;
+            if (settingKey === 'allowPopups') {
+                if (!state.settings.security || typeof state.settings.security !== 'object') state.settings.security = {};
+                state.settings.security.allowPopups = state.settings.webUi.allowPopups !== false;
+                if (elements.securityAllowPopups) elements.securityAllowPopups.checked = state.settings.security.allowPopups;
+                applySecuritySettingsToRuntime();
+            }
+            if (settingKey === 'preferHttps' || settingKey === 'backgroundThrottle') {
+                applyWebRuntimePreferences();
+            }
+            if (settingKey === 'reduceWebRtcIpLeaks' || settingKey === 'backgroundThrottle') {
+                safeNotify(uiT('settings.web.notify.restartRequired', 'This Web setting is fully applied after restarting the app.'), 'info', 2600);
+            }
+            markSettingsDirty();
+        });
+    });
+    if (elements.behaviorWebSessionProfile) {
+        elements.behaviorWebSessionProfile.addEventListener('change', () => {
+            if (!state.settings || typeof state.settings !== 'object') state.settings = {};
+            if (!state.settings.security || typeof state.settings.security !== 'object') state.settings.security = {};
+            state.settings.security.sessionProfile = normalizeWebSessionProfile(elements.behaviorWebSessionProfile.value, 'persistent');
+            if (elements.securitySessionProfile) elements.securitySessionProfile.value = state.settings.security.sessionProfile;
+            markSettingsDirty();
+        });
+    }
+    if (elements.behaviorWebUserAgentMode) {
+        elements.behaviorWebUserAgentMode.addEventListener('change', () => {
+            if (!state.settings || typeof state.settings !== 'object') state.settings = {};
+            if (!state.settings.webUi || typeof state.settings.webUi !== 'object') state.settings.webUi = {};
+            const mode = String(elements.behaviorWebUserAgentMode.value || 'desktop').toLowerCase();
+            state.settings.webUi.userAgentMode = ['desktop', 'mobile', 'default'].includes(mode) ? mode : 'desktop';
+            webLoadRuntime.appliedUserAgent = '';
+            applyEmbeddedUserAgentToWebView();
+            safeNotify(uiT('settings.web.notify.reloadRecommended', 'Reload the Web page to apply this setting.'), 'info', 2200);
+            markSettingsDirty();
+        });
+    }
+    if (elements.behaviorWebAutoplayPolicy) {
+        elements.behaviorWebAutoplayPolicy.addEventListener('change', () => {
+            if (!state.settings || typeof state.settings !== 'object') state.settings = {};
+            if (!state.settings.webUi || typeof state.settings.webUi !== 'object') state.settings.webUi = {};
+            const policy = String(elements.behaviorWebAutoplayPolicy.value || 'allow').toLowerCase();
+            state.settings.webUi.autoplayPolicy = ['allow', 'gesture', 'block'].includes(policy) ? policy : 'allow';
+            safeNotify(uiT('settings.web.notify.restartRequired', 'This Web setting is fully applied after restarting the app.'), 'info', 2600);
+            markSettingsDirty();
         });
     }
     if (elements.behaviorNotificationsEnabled) {
@@ -5522,12 +6212,6 @@ function setupEventListeners() {
     if (elements.galleryClearQuickBtn) {
         elements.galleryClearQuickBtn.addEventListener('click', () => {
             clearGalleryLibraryAndFolders().catch(() => {});
-        });
-    }
-    if (elements.webDrawerToggleBtn) {
-        elements.webDrawerToggleBtn.addEventListener('click', () => {
-            if (!isPageVisible(elements.webPage)) return;
-            setWebDrawerCollapsed(!state.webDrawerCollapsed);
         });
     }
     if (elements.navPlatformStrip) {
@@ -6986,9 +7670,10 @@ function setupEventListeners() {
     setupSecurityUI();
     startAdblockStatsPolling();
 
-        // WebView Gezinti Olayları (YouTube parça değişimi tespiti)
+    // WebView Gezinti Olayları (YouTube parça değişimi tespiti)
     if (elements.webView) {
         elements.webView.addEventListener('did-start-loading', () => {
+            webLoadRuntime.navigationInFlight = true;
             triggerAdblockNavBurstRefresh();
             resetWebDaliAttachMetrics('did-start-loading');
             primeWebDaliOnWebTabActivation('did-start-loading');
@@ -7003,10 +7688,22 @@ function setupEventListeners() {
             if (u && u !== 'about:blank') webLoadRuntime.retryMap.delete(u);
         });
         elements.webView.addEventListener('did-stop-loading', () => {
+            webLoadRuntime.navigationInFlight = false;
             triggerAdblockNavBurstRefresh();
         });
         elements.webView.addEventListener('did-finish-load', () => {
+            webLoadRuntime.navigationInFlight = false;
             triggerAdblockNavBurstRefresh();
+            if (String(state.settings?.webUi?.autoplayPolicy || 'allow').toLowerCase() === 'block') {
+                elements.webView.executeJavaScript(`
+                    try {
+                        for (const media of document.querySelectorAll('audio,video')) {
+                            media.autoplay = false;
+                            media.pause();
+                        }
+                    } catch (e) {}
+                `, true).catch(() => {});
+            }
             // Sayfa yüklenir yüklenmez DALI pre-arm: ilk tikta ham ses penceresini daralt.
             const preArmDelay = isPackagedLinuxRuntimeRenderer() ? 90 : 40;
             scheduleApplyWebDaliEngine('did-finish-load', preArmDelay);
@@ -7021,8 +7718,12 @@ function setupEventListeners() {
 
         elements.webView.addEventListener('did-navigate', handleWebNavigation);
         elements.webView.addEventListener('did-navigate-in-page', handleWebNavigation);
+        elements.webView.addEventListener('will-navigate', (e) => {
+            redirectWebNavigationToPreferredHttps(e, e?.url);
+        });
         elements.webView.addEventListener('did-fail-load', (e) => {
             try {
+                webLoadRuntime.navigationInFlight = false;
                 const code = Number(e?.errorCode);
                 const url = String(e?.validatedURL || '').trim();
                 const desc = String(e?.errorDescription || '').trim();
@@ -7050,18 +7751,30 @@ function setupEventListeners() {
                 // yoksay
             }
         });
+        const recoverWebView = (reason) => {
+            if (state.settings?.webUi?.autoRecover === false) return;
+            const url = String(webLoadRuntime.suspendedUrl || getWebViewUrlSafe() || '').trim();
+            const target = url && url !== 'about:blank' ? url : String(state.settings?.ui?.lastWebUrl || '').trim();
+            if (!target || target === 'about:blank') return;
+            console.warn('[WEBVIEW] auto recovery:', reason);
+            setTimeout(() => safeNavigateWebView(target), 800);
+        };
+        elements.webView.addEventListener('render-process-gone', () => recoverWebView('render-process-gone'));
+        elements.webView.addEventListener('crashed', () => recoverWebView('crashed'));
+        elements.webView.addEventListener('unresponsive', () => recoverWebView('unresponsive'));
         elements.webView.addEventListener('new-window', (e) => {
             const target = e?.url;
             const parsed = parseHttpUrl(target);
             if (!parsed) return;
-            if (isWebAllowlistEnforced() && !isAllowedWebUrl(parsed.toString())) return;
+            const preferredTarget = normalizeWebNavigationTarget(parsed.toString());
+            if (isWebAllowlistEnforced() && !isAllowedWebUrl(preferredTarget)) return;
 
             // OAuth/login akışları popup ile çalışır; popup izni açıksa pencereyi engelleme.
             const popupsEnabled = !!elements.webView?.hasAttribute?.('allowpopups');
             if (popupsEnabled) return;
 
             e.preventDefault();
-            safeNavigateWebView(parsed.toString());
+            safeNavigateWebView(preferredTarget);
         });
 
         // Web Senkron Dinleyici (YouTube olaylarını yakala)
@@ -7081,7 +7794,7 @@ function setupEventListeners() {
                     // yoksay
                 }
                 scheduleApplyWebDaliEngine('media-hook', 0);
-                scheduleApplyWebDaliEngineBurst('media-hook', [0, 20, 60, 140, 320, 700]);
+                scheduleApplyWebDaliEngineBurst('media-hook', [180, 700]);
                 return;
             }
         });
@@ -7090,9 +7803,7 @@ function setupEventListeners() {
         // Not: Bazı Chromium sürümlerinde navigator.mediaSession override edilemez (non-configurable).
         // Bu yüzden "disable" yerine güvenli polling + event dinleme ile ARDALI_SYNC mesajları üretiyoruz.
         elements.webView.addEventListener('dom-ready', () => {
-            try {
-                elements.webView.setUserAgent(getEmbeddedDesktopUserAgent());
-            } catch { }
+            applyEmbeddedUserAgentToWebView();
             const currentUrl = getWebViewUrlSafe();
             if (!shouldInjectWebSync(currentUrl)) {
                 return;
@@ -7116,7 +7827,7 @@ function setupEventListeners() {
                                 const title = cleanTitle(rawTitle);
                                 if (!title || title.length < 3) return;
                                 const now = Date.now();
-                                if (title === lastPendingTitle && (now - lastPendingAt) < 1200) return;
+                                if (title === lastPendingTitle && (now - lastPendingAt) < 4000) return;
                                 lastPendingTitle = title;
                                 lastPendingAt = now;
                                 send({ type: 'pending-title', title });
@@ -7242,7 +7953,7 @@ function setupEventListeners() {
                             try {
                                 if (!isYouTubeHost()) return;
                                 const now = Date.now();
-                                if ((now - lastPageTitleProbeAt) < 650) return;
+                                if ((now - lastPageTitleProbeAt) < 2500) return;
                                 lastPageTitleProbeAt = now;
                                 const p = String(location.pathname || '');
                                 const isWatchLike = p.includes('/watch') || p.includes('/shorts') || p.includes('/playlist') || location.hostname === 'music.youtube.com';
@@ -7296,15 +8007,44 @@ function setupEventListeners() {
                             );
                         }
 
-                        function getYouTubeMediaElements() {
-                            try {
-                                return Array.from(document.querySelectorAll(
-                                    'video.html5-main-video, #movie_player video, #movie_player audio, video, audio'
-                                )).filter(Boolean);
-                            } catch {
-                                return [];
-                            }
-                        }
+	                        function getYouTubeMediaElements() {
+	                            try {
+	                                return Array.from(document.querySelectorAll(
+	                                    'video.html5-main-video, #movie_player video, #movie_player audio, video, audio'
+	                                )).filter(Boolean);
+	                            } catch {
+	                                return [];
+	                            }
+	                        }
+
+	                        function getYouTubeAdContainer(node) {
+	                            try {
+	                                if (!node || !node.closest) return null;
+	                                return node.closest(
+	                                    'ytd-ad-slot-renderer, ytd-promoted-video-renderer, ytd-in-feed-ad-layout-renderer, ytd-display-ad-renderer, ytd-promoted-sparkles-web-renderer, ytd-video-masthead-ad-v3-renderer, ytd-banner-promo-renderer, ytd-companion-slot-renderer, ytd-action-companion-ad-renderer, ytd-compact-promoted-video-renderer, ytd-promoted-sparkles-text-search-renderer, #player-ads, #masthead-ad, .video-ads, .ytp-ad-module, [data-ad], [id*="ad-slot"], [class*="ad-slot"]'
+	                                );
+	                            } catch {
+	                                return null;
+	                            }
+	                        }
+
+	                        function neutralizeYouTubeAdMedia(rootNode) {
+	                            try {
+	                                const medias = rootNode && typeof rootNode.querySelectorAll === 'function'
+	                                    ? Array.from(rootNode.querySelectorAll('video, audio'))
+	                                    : [];
+	                                medias.forEach((m) => {
+	                                    try {
+	                                        m.muted = true;
+	                                        m.volume = 0;
+	                                        if (typeof m.pause === 'function') m.pause();
+	                                        if (Number.isFinite(m.duration) && m.duration > 0) {
+	                                            m.currentTime = Math.max(0, m.duration - 0.05);
+	                                        }
+	                                    } catch {}
+	                                });
+	                            } catch {}
+	                        }
 
                         function getYouTubeAdState(movie) {
                             try {
@@ -7317,36 +8057,37 @@ function setupEventListeners() {
                             return 0;
                         }
 
-                        function quarantineYouTubeAdAudio(shouldQuarantine) {
-                            if (!isYouTubeHost()) return;
-                            const medias = getYouTubeMediaElements();
-                            medias.forEach((m) => {
-                                try {
-                                    if (!m) return;
-                                    if (shouldQuarantine) {
-                                        if (!adAudioRestore.has(m)) {
-                                            adAudioRestore.set(m, {
-                                                muted: !!m.muted,
-                                                volume: Number.isFinite(Number(m.volume)) ? Number(m.volume) : 1,
-                                                playbackRate: Number.isFinite(Number(m.playbackRate)) ? Number(m.playbackRate) : 1
+	                        function quarantineYouTubeAdAudio(shouldQuarantine) {
+	                            if (!isYouTubeHost()) return;
+	                            const medias = getYouTubeMediaElements();
+	                            medias.forEach((m) => {
+	                                try {
+	                                    if (!m) return;
+	                                    const mediaIsAd = isLikelyAdMediaSrc(m.currentSrc || m.src) || !!getYouTubeAdContainer(m);
+	                                    if (shouldQuarantine || mediaIsAd) {
+	                                        if (!adAudioRestore.has(m)) {
+	                                            adAudioRestore.set(m, {
+	                                                muted: !!m.muted,
+	                                                volume: Number.isFinite(Number(m.volume)) ? Number(m.volume) : 1,
+	                                                playbackRate: Number.isFinite(Number(m.playbackRate)) ? Number(m.playbackRate) : 1
                                             });
-                                        }
-                                        m.muted = true;
-                                        m.volume = 0;
-                                        if (isLikelyAdMediaSrc(m.currentSrc || m.src)) {
-                                            if (Number.isFinite(m.duration) && m.duration > 0) {
-                                                m.currentTime = Math.max(0, m.duration - 0.05);
-                                            }
-                                            if (Number.isFinite(m.playbackRate) && m.playbackRate < 8) {
-                                                m.playbackRate = 16;
-                                            }
-                                        }
-                                    } else if (adAudioRestore.has(m)) {
-                                        const prev = adAudioRestore.get(m) || {};
-                                        m.muted = !!prev.muted;
-                                        if (Number.isFinite(Number(prev.volume))) m.volume = Math.max(0, Math.min(1, Number(prev.volume)));
-                                        if (Number.isFinite(Number(prev.playbackRate)) && Number(prev.playbackRate) > 0 && Number(m.playbackRate) > 4) {
-                                            m.playbackRate = Number(prev.playbackRate);
+	                                        }
+	                                        m.muted = true;
+	                                        m.volume = 0;
+	                                        if (mediaIsAd) {
+	                                            if (Number.isFinite(m.duration) && m.duration > 0) {
+	                                                m.currentTime = Math.max(0, m.duration - 0.05);
+	                                            }
+	                                            if (Number.isFinite(m.playbackRate) && m.playbackRate < 8) {
+	                                                m.playbackRate = 16;
+	                                            }
+	                                        }
+	                                    } else if (adAudioRestore.has(m)) {
+	                                        const prev = adAudioRestore.get(m) || {};
+	                                        m.muted = !!prev.muted;
+	                                        if (Number.isFinite(Number(prev.volume))) m.volume = Math.max(0, Math.min(1, Number(prev.volume)));
+	                                        if (Number.isFinite(Number(prev.playbackRate)) && Number(prev.playbackRate) > 0 && Number(m.playbackRate) > 4) {
+	                                            m.playbackRate = Number(prev.playbackRate);
                                         }
                                         adAudioRestore.delete(m);
                                     }
@@ -7411,15 +8152,16 @@ function setupEventListeners() {
                             document.addEventListener('click', onIntent, true);
                         }
 
-                        function hideContainer(node) {
-                            if (!node || !node.closest) return;
-                            const container = node.closest(
-                                'ytd-ad-slot-renderer, ytd-promoted-video-renderer, ytd-in-feed-ad-layout-renderer, ytd-display-ad-renderer, ytd-promoted-sparkles-web-renderer, ytd-video-masthead-ad-v3-renderer, ytd-banner-promo-renderer, ytd-companion-slot-renderer, ytd-action-companion-ad-renderer, ytd-compact-promoted-video-renderer, ytd-promoted-sparkles-text-search-renderer, ytd-rich-item-renderer, ytd-video-renderer, ytd-grid-video-renderer, ytd-compact-video-renderer'
-                            );
-                            if (container && container.style) {
-                                container.style.display = 'none';
-                            }
-                        }
+	                        function hideContainer(node) {
+	                            if (!node || !node.closest) return;
+	                            const container = getYouTubeAdContainer(node) || node.closest(
+	                                'ytd-rich-item-renderer, ytd-video-renderer, ytd-grid-video-renderer, ytd-compact-video-renderer'
+	                            );
+	                            if (container && container.style) {
+	                                neutralizeYouTubeAdMedia(container);
+	                                container.style.display = 'none';
+	                            }
+	                        }
 
                         function scrubYouTubePromotedUi() {
                             if (!isYouTubeHost()) return;
@@ -7839,8 +8581,8 @@ function setupEventListeners() {
                                 const ct = Number(media.currentTime) || 0;
                                 const dur = Number(media.duration) || 0;
                                 const paused = !!media.paused;
-                                // 0.5s çözünürlük spam'i azaltır
-                                const key = [Math.floor(ct * 2) / 2, Math.floor(dur), paused].join('|');
+                                const stepSec = paused ? 1 : 2;
+                                const key = [Math.floor(ct / stepSec) * stepSec, Math.floor(dur), paused].join('|');
                                 if (!force && key === lastTimeKey) return;
                                 lastTimeKey = key;
                                 send({ type: 'timeupdate', currentTime: ct, duration: dur, paused, syncEligible: true });
@@ -7911,12 +8653,13 @@ function setupEventListeners() {
                         const media = document.querySelector('video, audio');
                         if (media) attachEvents(media);
 
+                        const syncTickMs = Math.max(900, Number(DELIBLOCK && DELIBLOCK.tickIntervalMs) || 1200);
                         setInterval(() => {
                             emitMetadata(false);
                             emitTime(false);
                             emitVolume(false);
                             tickYouTubeAdSkip();
-                        }, Math.max(80, Number(DELIBLOCK && DELIBLOCK.tickIntervalMs) || 150));
+                        }, syncTickMs);
 
                         emitMetadata(true);
                         emitTime(true);
@@ -7952,6 +8695,7 @@ function getWebViewUrlSafe() {
 function isLikelyDownloadableWebUrl(raw) {
     const parsed = parseHttpUrl(raw);
     if (!parsed) return false;
+    if (isLikelyImageAssetUrl(parsed.toString())) return false;
     const host = String(parsed.hostname || '').toLowerCase();
     const path = String(parsed.pathname || '/').toLowerCase();
     const parts = path.split('/').filter(Boolean);
@@ -7967,21 +8711,1364 @@ function isLikelyDownloadableWebUrl(raw) {
             path === '/playlist' && !!parsed.searchParams.get('list')
         );
     }
+    if (platform === 'facebook') {
+        return (
+            path === '/watch' && !!parsed.searchParams.get('v') ||
+            /^\/reels?\/\d{5,}(?:\/|$)/i.test(path) ||
+            /\/videos\/\d{5,}(?:\/|$)/i.test(path) ||
+            /^\/share\/v\/[^/?#]+/i.test(path) ||
+            path.includes('/posts/') ||
+            path.includes('/permalink/')
+        );
+    }
     if (platform === 'soundcloud') {
         return parts.length >= 2 && !['discover', 'search', 'you', 'stream', 'charts', 'upload'].includes(parts[0]);
     }
     if (platform === 'tiktok') return parts.length >= 3 && parts[0].startsWith('@') && parts[1] === 'video';
-    if (platform === 'instagram') return ['p', 'reel', 'tv'].includes(parts[0]) && parts.length >= 2;
-    if (platform === 'facebook') return path.includes('/videos/') || path.includes('/reel/') || (path === '/watch' && !!parsed.searchParams.get('v'));
+    if (platform === 'instagram') return ['p', 'reel', 'reels', 'tv'].includes(parts[0]) && parts.length >= 2;
     if (platform === 'reddit') return path.includes('/comments/');
     if (platform === 'twitch') return path.startsWith('/videos/') || path.startsWith('/clip/') || parts.length === 1;
     if (platform === 'x') return path.includes('/status/');
     if (platform === 'deezer') return ['track', 'album', 'playlist'].includes(parts[0]) || ['track', 'album', 'playlist'].includes(parts[1]);
     if (platform === 'mixcloud') return parts.length >= 2;
+    if (/(^|\.)tiktokv\.com$/i.test(host) ||
+        /(^|\.)tiktokcdn(?:-us)?\.com$/i.test(host) ||
+        /(^|\.)ttwstatic\.com$/i.test(host) ||
+        /(^|\.)ibytedtos\.com$/i.test(host) ||
+        /(^|\.)byteoversea\.com$/i.test(host) ||
+        /(^|\.)ibyteimg\.com$/i.test(host) ||
+        /(^|\.)byteimg\.com$/i.test(host) ||
+        /(^|\.)muscdn\.com$/i.test(host)) {
+        return /video|mime_type=video|mp4|webm|m3u8|playwm|playaddr/i.test(parsed.toString());
+    }
     return true;
 }
 
+function isLikelyImageAssetUrl(rawUrl = '') {
+    const parsed = parseHttpUrl(rawUrl);
+    if (!parsed) return false;
+    const pathAndSearch = `${parsed.pathname || ''}${parsed.search || ''}`;
+    const text = parsed.toString();
+    return /\.(?:jpe?g|png|webp|gif|avif|heic)(?:$|[?#])/i.test(pathAndSearch) ||
+        /(?:\/safe_image\.php\b|[?&](?:format|mime|mime_type)=image|image\/(?:jpeg|png|webp|gif|avif)|(?:^|[?&])stp=dst-jpg)/i.test(text);
+}
+
+function normalizeWebDownloadCandidateUrl(raw, baseUrl = '') {
+    try {
+        const value = String(raw || '').trim();
+        if (!value || value.startsWith('#') || /^javascript:/i.test(value)) return '';
+        const url = new URL(value, baseUrl || getWebViewUrlSafe());
+        if (!/^https?:$/i.test(url.protocol)) return '';
+        url.hash = '';
+        const host = String(url.hostname || '').toLowerCase();
+        const normalizeNestedYouTubeUrl = (paramName) => {
+            const nested = url.searchParams.get(paramName);
+            if (!nested) return '';
+            try {
+                return normalizeWebDownloadCandidateUrl(new URL(nested, url.origin).toString(), url.origin);
+            } catch {
+                return normalizeWebDownloadCandidateUrl(nested, url.origin);
+            }
+        };
+        if (host === 'youtube.com' || host === 'www.youtube.com' || host === 'm.youtube.com' || host === 'music.youtube.com' || host.endsWith('.youtube.com')) {
+            const pathName = String(url.pathname || '').toLowerCase();
+            if (pathName === '/attribution_link') {
+                const nested = normalizeNestedYouTubeUrl('u');
+                if (nested) return nested;
+            }
+            if (pathName === '/redirect') {
+                const nested = normalizeNestedYouTubeUrl('q') || normalizeNestedYouTubeUrl('url');
+                if (nested) return nested;
+            }
+        }
+        if (host === 'youtu.be') {
+            const id = String(url.pathname || '').split('/').filter(Boolean)[0] || '';
+            if (id) return `https://www.youtube.com/watch?v=${encodeURIComponent(id)}`;
+        }
+        if (host === 'youtube.com' || host === 'www.youtube.com' || host === 'm.youtube.com' || host === 'music.youtube.com' || host.endsWith('.youtube.com')) {
+            const buildWatchUrl = (id) => {
+                const cleanId = String(id || '').trim();
+                return /^[\w-]{6,128}$/.test(cleanId)
+                    ? `https://www.youtube.com/watch?v=${encodeURIComponent(cleanId)}`
+                    : '';
+            };
+            const searchId = buildWatchUrl(url.searchParams.get('v'));
+            if (searchId) return searchId;
+            if (String(url.pathname || '').toLowerCase() === '/watch') {
+                return url.toString();
+            }
+            const shortsMatch = String(url.pathname || '').match(/^\/shorts\/([^/?#]+)/i);
+            if (shortsMatch?.[1]) {
+                const normalized = buildWatchUrl(shortsMatch[1]);
+                return normalized || `https://www.youtube.com/shorts/${encodeURIComponent(shortsMatch[1])}`;
+            }
+            const liveMatch = String(url.pathname || '').match(/^\/live\/([^/?#]+)/i);
+            if (liveMatch?.[1]) {
+                const normalized = buildWatchUrl(liveMatch[1]);
+                if (normalized) return normalized;
+            }
+            const embeddedMatch = String(url.pathname || '').match(/^\/(?:embed|v|e)\/([^/?#]+)/i);
+            if (embeddedMatch?.[1]) {
+                const normalized = buildWatchUrl(embeddedMatch[1]);
+                if (normalized) return normalized;
+            }
+        }
+        return url.toString();
+    } catch {
+        return '';
+    }
+}
+
+function scoreWebDownloadCandidateUrl(rawUrl, platformHint = '') {
+    const parsed = parseHttpUrl(rawUrl);
+    if (!parsed) return 0;
+    const url = parsed.toString();
+    const path = String(parsed.pathname || '/').toLowerCase();
+    const platform = detectPlatformFromUrl(url);
+    const hint = String(platformHint || '').toLowerCase();
+    let score = 1;
+
+    if (platform && hint && platform === hint) score += 20;
+    if (isLikelyDownloadableWebUrl(url)) score += 35;
+    if ((platform === 'youtube' || platform === 'ytmusic') && (
+        path === '/watch' ||
+        path.startsWith('/shorts/') ||
+        path.startsWith('/live/')
+    )) score += 90;
+    if (platform === 'facebook' && (
+        path === '/watch' ||
+        /^\/reels?\/\d{5,}(?:\/|$)/i.test(path) ||
+        /\/videos\/\d{5,}(?:\/|$)/i.test(path) ||
+        /^\/share\/v\/[^/?#]+/i.test(path)
+    )) score += 75;
+    if (platform === 'tiktok' && /\/@[^/]+\/video\/\d+/i.test(path)) score += 70;
+    if (platform === 'instagram' && /^\/(p|reels?|tv)\//i.test(path)) score += 65;
+    if (platform === 'x' && /\/status\/\d+/i.test(path)) score += 65;
+    if (platform === 'reddit' && /\/comments\//i.test(path)) score += 55;
+    if (platform === 'twitch' && (/^\/videos\//i.test(path) || /^\/clip\//i.test(path))) score += 55;
+    if (platform === 'soundcloud' && path.split('/').filter(Boolean).length >= 2) score += 45;
+    if (!platform && /tiktok|byte|ibytedtos|video|mime_type=video|mp4|webm|m3u8|playwm|playaddr/i.test(url)) score += 50;
+
+    if (/\/(login|signin|signup|register|account|settings|privacy|about)(\/|$)/i.test(path)) score -= 50;
+    if (path === '/' || path === '') score -= 40;
+    return score;
+}
+
+function isDirectPlatformMediaAssetUrl(rawUrl) {
+    const parsed = parseHttpUrl(rawUrl);
+    if (!parsed) return false;
+    if (isLikelyImageAssetUrl(parsed.toString())) return false;
+    const host = String(parsed.hostname || '').toLowerCase();
+    const url = parsed.toString();
+    return (
+        host === 'googlevideo.com' ||
+        host.endsWith('.googlevideo.com') ||
+        /\/videoplayback\b|mime=video|mime_type=video|\.m3u8\b|\.mp4(?:\?|$)|\.webm(?:\?|$)/i.test(url)
+    );
+}
+
+function isFacebookCdnMediaCandidate(rawUrl) {
+    const parsed = parseHttpUrl(rawUrl);
+    if (!parsed) return false;
+    if (isLikelyImageAssetUrl(parsed.toString())) return false;
+    const host = String(parsed.hostname || '').toLowerCase();
+    return host === 'fbcdn.net' ||
+        host.endsWith('.fbcdn.net') ||
+        host === 'fbcdn.com' ||
+        host.endsWith('.fbcdn.com') ||
+        host === 'fbsbx.com' ||
+        host.endsWith('.fbsbx.com') ||
+        host === 'cdninstagram.com' ||
+        host.endsWith('.cdninstagram.com');
+}
+
+function getWebDownloadCandidateSourcePriority(source = '') {
+    const value = String(source || '').toLowerCase();
+    if (value.includes('youtube-player')) return 290;
+    if (value.includes('youtube-meta-video-id')) return 275;
+    if (value.includes('tiktok-active-container')) return 240;
+    if (value.includes('tiktok-visible-json')) return 230;
+    if (value.includes('instagram-active-container')) return 242;
+    if (value.includes('instagram-text-url') || value.includes('instagram-text-path')) return 222;
+    if (value.includes('instagram-shortcode')) return 214;
+    if (value === 'active-page-url') return 260;
+    if (value.includes('active-container-link')) return 245;
+    if (value.includes('facebook-video-id')) return 238;
+    if (value.includes('facebook-text-url')) return 232;
+    if (value === 'media-current-src' || value === 'media-source') return 120;
+    if (value.includes('performance-resource')) return 160;
+    if (value.includes('canonical') || value.includes('og:url') || value.includes('twitter:url') || value.includes('location')) return 120;
+    if (value.includes('tiktok-path') || value.includes('tiktok-url')) return 80;
+    if (value.includes('script-json') || value.includes('window-state') || value.includes('visible-user-id')) return -180;
+    return 0;
+}
+
+function isTikTokVideoPageUrl(rawUrl) {
+    const parsed = parseHttpUrl(rawUrl);
+    if (!parsed) return false;
+    if (detectPlatformFromUrl(parsed.toString()) !== 'tiktok') return false;
+    return /\/@[^/]+\/video\/\d+/i.test(String(parsed.pathname || ''));
+}
+
+async function getActiveWebDownloadUrlFromPage() {
+    if (!elements.webView || typeof elements.webView.executeJavaScript !== 'function') return '';
+    const currentUrl = getWebViewUrlSafe();
+    const currentPlatform = detectPlatformFromUrl(currentUrl);
+
+    try {
+        const candidates = await elements.webView.executeJavaScript(`
+            (() => {
+                const out = [];
+                const push = (url, source, visibleScore = 0) => {
+                    try {
+                        const value = String(url || '').trim();
+                        if (!value || value.startsWith('#') || /^javascript:/i.test(value)) return;
+                        out.push({ url: new URL(value, location.href).href, source, visibleScore });
+                    } catch {}
+                };
+                const meta = (selector, attr = 'content') => {
+                    try { return document.querySelector(selector)?.getAttribute(attr) || ''; } catch { return ''; }
+                };
+                push(location.href, 'location', 8);
+                push(meta('link[rel="canonical"]', 'href'), 'canonical', 20);
+                push(meta('meta[property="og:url"]'), 'og:url', 18);
+                push(meta('meta[name="twitter:url"]'), 'twitter:url', 16);
+
+                const host = String(location.hostname || '').toLowerCase();
+                const path = String(location.pathname || '').toLowerCase();
+                if (
+                    (
+                        host === 'youtube.com' ||
+                        host === 'www.youtube.com' ||
+                        host === 'm.youtube.com' ||
+                        host === 'music.youtube.com' ||
+                        host.endsWith('.youtube.com')
+                    ) &&
+                    (
+                        path === '/watch' ||
+                        path.startsWith('/shorts/') ||
+                        path.startsWith('/live/')
+                    )
+                ) {
+                    push(location.href, 'active-page-url', 120);
+                }
+                if (
+                    host === 'youtube.com' ||
+                    host === 'www.youtube.com' ||
+                    host === 'm.youtube.com' ||
+                    host === 'music.youtube.com' ||
+                    host.endsWith('.youtube.com')
+                ) {
+                    try {
+                        const movie = document.getElementById('movie_player');
+                        const playerUrl = typeof movie?.getVideoUrl === 'function' ? movie.getVideoUrl() : '';
+                        push(playerUrl, 'youtube-player-url', 180);
+                    } catch {}
+                    try {
+                        const data = window.ytInitialPlayerResponse || window.ytplayer?.config?.args?.player_response;
+                        const parsed = typeof data === 'string' ? JSON.parse(data) : data;
+                        const videoId = parsed?.videoDetails?.videoId || parsed?.videoDetails?.externalVideoId || '';
+                        if (videoId) push('https://www.youtube.com/watch?v=' + videoId, 'youtube-player-response-id', 170);
+                    } catch {}
+                    try {
+                        const canonicalId = document.querySelector('meta[itemprop="videoId"]')?.getAttribute('content') || '';
+                        if (canonicalId) push('https://www.youtube.com/watch?v=' + canonicalId, 'youtube-meta-video-id', 165);
+                    } catch {}
+                }
+                if (
+                    (
+                        host === 'instagram.com' ||
+                        host === 'www.instagram.com' ||
+                        host.endsWith('.instagram.com')
+                    ) &&
+                    /^\\/(p|reels?|tv)\\//i.test(location.pathname || '')
+                ) {
+                    push(location.href, 'active-page-url', 115);
+                }
+                if (
+                    (
+                        host === 'facebook.com' ||
+                        host === 'www.facebook.com' ||
+                        host === 'm.facebook.com' ||
+                        host === 'web.facebook.com' ||
+                        host.endsWith('.facebook.com')
+                    ) &&
+                    (
+                        path === '/watch' ||
+                        path.startsWith('/reel/') ||
+                        path.startsWith('/reels/') ||
+                        path.includes('/videos/') ||
+                        path.startsWith('/share/v/')
+                    )
+                ) {
+                    push(location.href, 'active-page-url', 115);
+                }
+                try {
+                    const videos = Array.from(document.querySelectorAll('video, audio')).slice(0, 40);
+                    for (const media of videos) {
+                        let visibleScore = 0;
+                        try {
+                            const rect = media.getBoundingClientRect();
+                            const area = Math.max(0, Math.min(rect.right, innerWidth) - Math.max(rect.left, 0)) *
+                                Math.max(0, Math.min(rect.bottom, innerHeight) - Math.max(rect.top, 0));
+                            if (area > 0) visibleScore += Math.min(55, area / 2600);
+                            if (!media.paused) visibleScore += 35;
+                            if (media.currentTime > 0) visibleScore += 10;
+                        } catch {}
+                        push(media.currentSrc || media.src || '', 'media-current-src', visibleScore);
+                        for (const source of Array.from(media.querySelectorAll?.('source[src]') || [])) {
+                            push(source.getAttribute('src') || source.src || '', 'media-source', visibleScore - 5);
+                        }
+                    }
+                } catch {}
+                try {
+                    const resourceEntries = performance.getEntriesByType?.('resource') || [];
+                    for (const entry of Array.from(resourceEntries).slice(-700)) {
+                        const name = String(entry?.name || '');
+                        if (!/^https?:\\/\\//i.test(name)) continue;
+                        if (!/(tiktok|byte|ibytedtos|video|mime_type=video|mp4|webm|m3u8|googlevideo|cdninstagram|twimg|redd|twitch)/i.test(name)) continue;
+                        push(name, 'performance-resource', 8);
+                    }
+                } catch {}
+                const normalizeText = (value) => String(value || '')
+                    .replace(/\\\\u002F/g, '/')
+                    .replace(/\\\\\\//g, '/')
+                    .replace(/&amp;/g, '&');
+                const pushInstagramPermalink = (kind, shortcode, source, visibleScore = 0) => {
+                    const rawKind = String(kind || '').toLowerCase();
+                    const safeKind = rawKind === 'reels'
+                        ? 'reel'
+                        : (['p', 'reel', 'tv'].includes(rawKind) ? rawKind : 'reel');
+                    const code = String(shortcode || '').trim().replace(/[^A-Za-z0-9_-]/g, '');
+                    if (!code || code.length < 4) return;
+                    push('https://www.instagram.com/' + safeKind + '/' + code + '/', source, visibleScore);
+                };
+                const pushInstagramUrl = (raw, source, visibleScore = 0) => {
+                    const value = normalizeText(raw);
+                    const full = value.match(/https?:\\/\\/(?:www\\.)?instagram\\.com\\/(p|reels?|tv)\\/([A-Za-z0-9_-]{4,})/i);
+                    if (full) {
+                        pushInstagramPermalink(full[1], full[2], source, visibleScore);
+                        return;
+                    }
+                    const pathOnly = value.match(/(?:^|["'\\s])\\/?(p|reels?|tv)\\/([A-Za-z0-9_-]{4,})/i);
+                    if (pathOnly) pushInstagramPermalink(pathOnly[1], pathOnly[2], source, visibleScore);
+                };
+                const scanInstagramJson = (value, source, visibleScore = 0, limit = 1200) => {
+                    const stack = [value];
+                    const seenObjects = new Set();
+                    let scanned = 0;
+                    while (stack.length && scanned < limit) {
+                        const item = stack.pop();
+                        if (!item || typeof item !== 'object' || seenObjects.has(item)) continue;
+                        seenObjects.add(item);
+                        scanned += 1;
+                        const shortcode = item.shortcode || item.code || item.short_code || item.media_shortcode || item?.node?.shortcode || '';
+                        const typename = String(item.__typename || item.media_type || item.product_type || item.type || '').toLowerCase();
+                        const kind = typename.includes('reel') || typename.includes('video') ? 'reel' : 'p';
+                        if (shortcode) pushInstagramPermalink(kind, shortcode, source, visibleScore);
+                        if (Array.isArray(item)) {
+                            for (let i = item.length - 1; i >= 0; i -= 1) stack.push(item[i]);
+                            continue;
+                        }
+                        for (const key of Object.keys(item)) {
+                            const child = item[key];
+                            if (typeof child === 'string' && /instagram\\.com\\/(?:p|reels?|tv)\\//i.test(child)) {
+                                pushInstagramUrl(child, source, visibleScore);
+                            } else if (child && typeof child === 'object') {
+                                stack.push(child);
+                            }
+                        }
+                    }
+                };
+                const pushTikTokPair = (username, videoId, source, visibleScore = 0) => {
+                    const user = String(username || '').trim().replace(/^@+/, '').replace(/[^\\w.-]/g, '');
+                    const id = String(videoId || '').trim().replace(/[^\\d]/g, '');
+                    if (!user || !id || id.length < 6) return;
+                    push('https://www.tiktok.com/@' + user + '/video/' + id, source, visibleScore);
+                };
+                const pushTikTokObject = (item, source, visibleScore = 0) => {
+                    if (!item || typeof item !== 'object') return;
+                    const id = item.id || item.awemeId || item.aweme_id || item.groupId || item.group_id || item.itemId || item.item_id || item.videoId || item.video_id;
+                    const author = item.author || item.authorInfo || item.author_info || item.user || item.userInfo || item.user_info || {};
+                    const user = (typeof item.author === 'string' ? item.author : '') ||
+                        author.uniqueId ||
+                        author.unique_id ||
+                        author.username ||
+                        item.authorUniqueId ||
+                        item.author_unique_id ||
+                        '';
+                    pushTikTokPair(user, id, source, visibleScore);
+                };
+                const scanTikTokJson = (value, source, visibleScore = 0, limit = 900) => {
+                    const stack = [value];
+                    const seenObjects = new Set();
+                    let scanned = 0;
+                    while (stack.length && scanned < limit) {
+                        const item = stack.pop();
+                        if (!item || typeof item !== 'object' || seenObjects.has(item)) continue;
+                        seenObjects.add(item);
+                        scanned += 1;
+                        pushTikTokObject(item, source, visibleScore);
+                        if (Array.isArray(item)) {
+                            for (let i = item.length - 1; i >= 0; i -= 1) stack.push(item[i]);
+                            continue;
+                        }
+                        for (const key of Object.keys(item)) {
+                            const child = item[key];
+                            if (child && typeof child === 'object') stack.push(child);
+                        }
+                    }
+                };
+                const selectors = [
+                    'a[href*="/video/"]',
+                    'a[href*="/reel/"]',
+                    'a[href*="/reels/"]',
+                    'a[href*="/watch?v="]',
+                    'a[href*="/watch/?v="]',
+                    'a[href*="facebook.com/watch"]',
+                    'a[href*="facebook.com/reel"]',
+                    'a[href*="/share/v/"]',
+                    'a[href*="/videos/"]',
+                    'a[href*="/status/"]',
+                    'a[href*="/comments/"]',
+                    'a[href*="/clip/"]',
+                    'a[href*="/p/"]',
+                    'a[href*="/tv/"]'
+                ];
+                const seen = new Set();
+                for (const selector of selectors) {
+                    for (const a of Array.from(document.querySelectorAll(selector)).slice(0, 180)) {
+                        const href = a.getAttribute('href') || a.href || '';
+                        if (!href || seen.has(href)) continue;
+                        seen.add(href);
+                        let visibleScore = 0;
+                        try {
+                            const rect = a.getBoundingClientRect();
+                            const area = Math.max(0, Math.min(rect.right, innerWidth) - Math.max(rect.left, 0)) *
+                                Math.max(0, Math.min(rect.bottom, innerHeight) - Math.max(rect.top, 0));
+                            if (area > 0) visibleScore += Math.min(30, area / 3500);
+                            const centerY = rect.top + rect.height / 2;
+                            if (centerY > 0 && centerY < innerHeight) visibleScore += 8;
+                        } catch {}
+                        push(href, selector, visibleScore);
+                    }
+                }
+
+                if (host.includes('facebook.com') || host.includes('instagram.com')) {
+                    try {
+                        const viewportCenterX = innerWidth / 2;
+                        const viewportCenterY = innerHeight / 2;
+                        const containers = Array.from(document.querySelectorAll('[role="article"], article, div[data-pagelet*="FeedUnit"], div[data-pagelet*="Reels"], div[data-pagelet*="Watch"], div[aria-posinset]')).slice(0, 80);
+                        const scored = [];
+                        for (const node of containers) {
+                            const rect = node.getBoundingClientRect();
+                            const visibleWidth = Math.max(0, Math.min(rect.right, innerWidth) - Math.max(rect.left, 0));
+                            const visibleHeight = Math.max(0, Math.min(rect.bottom, innerHeight) - Math.max(rect.top, 0));
+                            const area = visibleWidth * visibleHeight;
+                            if (area <= 0) continue;
+                            const centerX = rect.left + rect.width / 2;
+                            const centerY = rect.top + rect.height / 2;
+                            const score = Math.min(95, area / 4500) - Math.abs(centerX - viewportCenterX) / 30 - Math.abs(centerY - viewportCenterY) / 30;
+                            scored.push({ node, score });
+                        }
+                        scored.sort((a, b) => b.score - a.score);
+                        for (const entry of scored.slice(0, 8)) {
+                            for (const a of Array.from(entry.node.querySelectorAll?.('a[href]') || []).slice(0, 80)) {
+                                const href = a.getAttribute('href') || a.href || '';
+                                if (!/(\\/watch\\/?\\?v=|\\/reel\\/|\\/reels\\/|\\/share\\/v\\/|\\/videos\\/|\\/p\\/|\\/tv\\/)/i.test(href)) continue;
+                                push(href, 'active-container-link', 110 + entry.score);
+                            }
+                        }
+                    } catch {}
+                }
+
+                if (host.includes('instagram.com')) {
+                    try {
+                        const viewportCenterX = innerWidth / 2;
+                        const viewportCenterY = innerHeight / 2;
+                        const scoredVideos = [];
+                        for (const video of Array.from(document.querySelectorAll('video')).slice(0, 50)) {
+                            const rect = video.getBoundingClientRect();
+                            const visibleWidth = Math.max(0, Math.min(rect.right, innerWidth) - Math.max(rect.left, 0));
+                            const visibleHeight = Math.max(0, Math.min(rect.bottom, innerHeight) - Math.max(rect.top, 0));
+                            const area = visibleWidth * visibleHeight;
+                            if (area <= 0) continue;
+                            let score = area / 2200 -
+                                Math.abs((rect.left + rect.width / 2) - viewportCenterX) / 22 -
+                                Math.abs((rect.top + rect.height / 2) - viewportCenterY) / 22;
+                            if (!video.paused) score += 90;
+                            if (video.currentTime > 0) score += 20;
+                            scoredVideos.push({ video, score });
+                        }
+                        scoredVideos.sort((a, b) => b.score - a.score);
+                        for (const entry of scoredVideos.slice(0, 4)) {
+                            let node = entry.video;
+                            for (let depth = 0; node && depth < 10; depth += 1, node = node.parentElement) {
+                                for (const link of Array.from(node.querySelectorAll?.('a[href]') || []).slice(0, 70)) {
+                                    pushInstagramUrl(link.getAttribute('href') || link.href || '', 'instagram-active-container-link', 150 + entry.score - depth * 2);
+                                }
+                                const attrs = [];
+                                for (const attr of Array.from(node.attributes || [])) {
+                                    if (/href|url|media|shortcode|code|video|permalink/i.test(attr.name)) attrs.push(attr.value);
+                                }
+                                const text = normalizeText(attrs.concat(node.textContent || '').join('\\n').slice(0, 260000));
+                                const urlMatches = text.match(/https?:\\/\\/(?:www\\.)?instagram\\.com\\/(?:p|reels?|tv)\\/[A-Za-z0-9_-]{4,}/gi) || [];
+                                for (const match of urlMatches.slice(0, 30)) pushInstagramUrl(match, 'instagram-active-container-url', 145 + entry.score - depth * 2);
+                                const pathMatches = Array.from(text.matchAll(/(?:^|["'\\s])\\/?(p|reels?|tv)\\/([A-Za-z0-9_-]{4,})/gi)).slice(0, 30);
+                                for (const match of pathMatches) pushInstagramPermalink(match[1], match[2], 'instagram-active-container-path', 140 + entry.score - depth * 2);
+                            }
+                        }
+                    } catch {}
+                    try {
+                        const chunks = [];
+                        try { chunks.push(String(document.body?.innerHTML || '')); } catch {}
+                        try {
+                            for (const script of Array.from(document.scripts || []).slice(0, 120)) {
+                                const text = script.textContent || '';
+                                if (text && /instagram|shortcode|xdt_shortcode_media|graphql|reel|video/i.test(text)) chunks.push(text);
+                            }
+                        } catch {}
+                        const text = normalizeText(chunks.join('\\n').slice(0, 7000000));
+                        const urlMatches = text.match(/https?:\\/\\/(?:www\\.)?instagram\\.com\\/(?:p|reels?|tv)\\/[A-Za-z0-9_-]{4,}/gi) || [];
+                        for (const match of urlMatches.slice(0, 100)) pushInstagramUrl(match, 'instagram-text-url', 70);
+                        const pathMatches = Array.from(text.matchAll(/(?:^|["'\\s])\\/?(p|reels?|tv)\\/([A-Za-z0-9_-]{4,})/gi)).slice(0, 120);
+                        for (const match of pathMatches) pushInstagramPermalink(match[1], match[2], 'instagram-text-path', 62);
+                        const shortcodeMatches = Array.from(text.matchAll(/["'](?:shortcode|code|media_shortcode)["']\\s*:\\s*["']([A-Za-z0-9_-]{4,})["']/gi)).slice(0, 120);
+                        for (const match of shortcodeMatches) pushInstagramPermalink('reel', match[1], 'instagram-shortcode', 58);
+                    } catch {}
+                    try {
+                        const stateNames = [
+                            '__additionalDataLoaded',
+                            '__initialData',
+                            '__NEXT_DATA__',
+                            '__initialDataLoaded',
+                            '_sharedData'
+                        ];
+                        for (const name of stateNames) scanInstagramJson(window[name], 'instagram-window-state', -80);
+                        for (const script of Array.from(document.querySelectorAll('script[type="application/json"], script#__NEXT_DATA__')).slice(0, 24)) {
+                            const raw = script.textContent || '';
+                            if (!raw || !/instagram|shortcode|reel|video|graphql/i.test(raw)) continue;
+                            try { scanInstagramJson(JSON.parse(raw), 'instagram-script-json', -70); } catch {}
+                        }
+                    } catch {}
+                }
+
+                if (host.includes('facebook.com')) {
+                    try {
+                        const pushFacebookVideoId = (id, source, visibleScore = 0) => {
+                            const clean = String(id || '').trim().replace(/[^\\d]/g, '');
+                            if (!clean || clean.length < 5) return;
+                            push('https://www.facebook.com/watch/?v=' + clean, source, visibleScore);
+                        };
+                        const chunks = [];
+                        try { chunks.push(String(document.body?.innerHTML || '')); } catch {}
+                        try {
+                            for (const script of Array.from(document.scripts || []).slice(0, 120)) {
+                                const text = script.textContent || '';
+                                if (text && /facebook|reel|video|watch|video_id|videoID/i.test(text)) chunks.push(text);
+                            }
+                        } catch {}
+                        const text = normalizeText(chunks.join('\\n').slice(0, 7000000));
+                        const urlMatches = text.match(/https?:\\/\\/(?:www\\.|m\\.|web\\.)?facebook\\.com\\/(?:watch\\/?\\?v=\\d+|reel\\/?\\d+|reels\\/?\\d+|share\\/v\\/[^"'<>\\s]+)/gi) || [];
+                        for (const match of urlMatches.slice(0, 80)) push(normalizeText(match), 'facebook-text-url', 80);
+                        const pathMatches = text.match(/(?:\\/watch\\/?\\?v=\\d+|\\/reel\\/?\\d+|\\/reels\\/?\\d+|\\/share\\/v\\/[^"'<>\\s]+)/gi) || [];
+                        for (const match of pathMatches.slice(0, 80)) push('https://www.facebook.com' + normalizeText(match), 'facebook-text-url', 70);
+                        const idPatterns = [
+                            /["']video_id["']\\s*:\\s*["']?(\\d{5,})/gi,
+                            /["']videoID["']\\s*:\\s*["']?(\\d{5,})/gi,
+                            /["']videoId["']\\s*:\\s*["']?(\\d{5,})/gi,
+                            /["']mf_story_key["']\\s*:\\s*["']?(\\d{5,})/gi
+                        ];
+                        for (const pattern of idPatterns) {
+                            let match;
+                            let count = 0;
+                            while ((match = pattern.exec(text)) && count < 80) {
+                                count += 1;
+                                pushFacebookVideoId(match[1], 'facebook-video-id', 85);
+                            }
+                        }
+                    } catch {}
+                }
+
+	                if (host.includes('tiktok.com')) {
+                    const activeUsernames = [];
+                    const activeContainers = [];
+                    try {
+                        const viewportCenterX = innerWidth / 2;
+                        const viewportCenterY = innerHeight / 2;
+                        const scoredVideos = [];
+                        for (const video of Array.from(document.querySelectorAll('video')).slice(0, 60)) {
+                            const rect = video.getBoundingClientRect();
+                            const visibleWidth = Math.max(0, Math.min(rect.right, innerWidth) - Math.max(rect.left, 0));
+                            const visibleHeight = Math.max(0, Math.min(rect.bottom, innerHeight) - Math.max(rect.top, 0));
+                            const area = visibleWidth * visibleHeight;
+                            if (area <= 0) continue;
+                            const centerX = rect.left + rect.width / 2;
+                            const centerY = rect.top + rect.height / 2;
+                            let score = area / 1800 - Math.abs(centerX - viewportCenterX) / 18 - Math.abs(centerY - viewportCenterY) / 18;
+                            if (!video.paused) score += 90;
+                            if (video.currentTime > 0) score += 20;
+                            scoredVideos.push({ video, score });
+                        }
+                        scoredVideos.sort((a, b) => b.score - a.score);
+                        for (const entry of scoredVideos.slice(0, 3)) {
+                            let node = entry.video;
+                            for (let depth = 0; node && depth < 10; depth += 1, node = node.parentElement) {
+                                activeContainers.push({ node, score: entry.score - depth * 2 });
+                            }
+                        }
+                    } catch {}
+                    try {
+                        for (const entry of activeContainers.slice(0, 24)) {
+                            const node = entry.node;
+                            for (const link of Array.from(node.querySelectorAll?.('a[href*="/@"][href*="/video/"]') || []).slice(0, 20)) {
+                                push(link.getAttribute('href') || link.href || '', 'tiktok-active-container-link', 120 + entry.score);
+                            }
+                            const attrs = [];
+                            for (const attr of Array.from(node.attributes || [])) {
+                                if (/id|video|aweme|item|href|url|author|user/i.test(attr.name)) attrs.push(attr.value);
+                            }
+                            const text = normalizeText(attrs.concat(node.textContent || '').join('\\n').slice(0, 240000));
+                            const urlMatches = text.match(/https?:\\/\\/(?:www\\.)?tiktok\\.com\\/@[^"'<>\\s]+\\/video\\/\\d+/gi) || [];
+                            for (const match of urlMatches.slice(0, 20)) push(normalizeText(match), 'tiktok-active-container-url', 115 + entry.score);
+                            const pathMatches = Array.from(text.matchAll(/(?:^|["'\\s])\\/?@([\\w.-]{2,32})\\/video\\/(\\d{6,})/gi)).slice(0, 30);
+                            for (const match of pathMatches) pushTikTokPair(match[1], match[2], 'tiktok-active-container-path', 115 + entry.score);
+                        }
+                    } catch {}
+                    try {
+                        const stateNames = [
+                            '__UNIVERSAL_DATA_FOR_REHYDRATION__',
+                            'SIGI_STATE',
+                            '__NEXT_DATA__',
+                            '__INITIAL_STATE__',
+                            '__INIT_PROPS__'
+                        ];
+                        for (const name of stateNames) scanTikTokJson(window[name], 'tiktok-window-state', -120);
+                        for (const script of Array.from(document.querySelectorAll('script[type="application/json"], script#__UNIVERSAL_DATA_FOR_REHYDRATION__, script#SIGI_STATE, script#__NEXT_DATA__')).slice(0, 18)) {
+                            const raw = script.textContent || '';
+                            if (!raw || !/tiktok|aweme|uniqueId|unique_id|video/i.test(raw)) continue;
+                            try { scanTikTokJson(JSON.parse(raw), 'tiktok-script-json', -120); } catch {}
+                        }
+                    } catch {}
+	                    try {
+	                        const viewportCenterX = innerWidth / 2;
+	                        const viewportCenterY = innerHeight / 2;
+	                        const visibleNodes = Array.from(document.querySelectorAll('a[href^="/@"], a[href*="tiktok.com/@"], [data-e2e*="author"], [data-e2e*="user"]')).slice(0, 160);
+                        const scored = [];
+                        for (const node of visibleNodes) {
+                            const rawHref = node.getAttribute?.('href') || '';
+                            const rawText = node.textContent || node.getAttribute?.('aria-label') || '';
+                            const match = String(rawHref || rawText).match(/@([\\w.-]{2,32})/);
+                            const username = match?.[1] || String(rawText).trim().replace(/^@/, '').match(/^[\\w.-]{2,32}$/)?.[0] || '';
+                            if (!username) continue;
+                            const rect = node.getBoundingClientRect();
+                            const visible = rect.width > 0 && rect.height > 0 && rect.bottom > 0 && rect.right > 0 && rect.top < innerHeight && rect.left < innerWidth;
+                            if (!visible) continue;
+                            const dx = Math.abs((rect.left + rect.width / 2) - viewportCenterX);
+                            const dy = Math.abs((rect.top + rect.height / 2) - viewportCenterY);
+                            scored.push({ username, score: 1000 - dx - dy });
+                        }
+	                        scored.sort((a, b) => b.score - a.score);
+	                        for (const item of scored.slice(0, 8)) activeUsernames.push(item.username);
+	                    } catch {}
+
+	                    try {
+	                        const visibleUserSet = new Set(activeUsernames.map((user) => String(user || '').toLowerCase()));
+	                        const pushVisibleTikTokObject = (item, source, visibleScore = 0) => {
+	                            if (!item || typeof item !== 'object') return;
+	                            const id = item.id || item.awemeId || item.aweme_id || item.groupId || item.group_id || item.itemId || item.item_id || item.videoId || item.video_id;
+	                            const author = item.author || item.authorInfo || item.author_info || item.user || item.userInfo || item.user_info || {};
+	                            const user = (typeof item.author === 'string' ? item.author : '') ||
+	                                author.uniqueId ||
+	                                author.unique_id ||
+	                                author.username ||
+	                                item.authorUniqueId ||
+	                                item.author_unique_id ||
+	                                '';
+	                            const cleanUser = String(user || '').replace(/^@+/, '').toLowerCase();
+	                            if (!cleanUser || !visibleUserSet.has(cleanUser)) return;
+	                            pushTikTokPair(cleanUser, id, source, visibleScore);
+	                        };
+	                        const scanVisibleTikTokJson = (value, source, limit = 1400) => {
+	                            const stack = [value];
+	                            const seenObjects = new Set();
+	                            let scanned = 0;
+	                            while (stack.length && scanned < limit) {
+	                                const item = stack.pop();
+	                                if (!item || typeof item !== 'object' || seenObjects.has(item)) continue;
+	                                seenObjects.add(item);
+	                                scanned += 1;
+	                                pushVisibleTikTokObject(item, source, 155);
+	                                if (Array.isArray(item)) {
+	                                    for (let i = item.length - 1; i >= 0; i -= 1) stack.push(item[i]);
+	                                    continue;
+	                                }
+	                                for (const key of Object.keys(item)) {
+	                                    const child = item[key];
+	                                    if (child && typeof child === 'object') stack.push(child);
+	                                }
+	                            }
+	                        };
+	                        if (visibleUserSet.size) {
+	                            const stateNames = [
+	                                '__UNIVERSAL_DATA_FOR_REHYDRATION__',
+	                                'SIGI_STATE',
+	                                '__NEXT_DATA__',
+	                                '__INITIAL_STATE__',
+	                                '__INIT_PROPS__'
+	                            ];
+	                            for (const name of stateNames) scanVisibleTikTokJson(window[name], 'tiktok-visible-json');
+	                            for (const script of Array.from(document.querySelectorAll('script[type="application/json"], script#__UNIVERSAL_DATA_FOR_REHYDRATION__, script#SIGI_STATE, script#__NEXT_DATA__')).slice(0, 18)) {
+	                                const raw = script.textContent || '';
+	                                if (!raw || !/tiktok|aweme|uniqueId|unique_id|video/i.test(raw)) continue;
+	                                try { scanVisibleTikTokJson(JSON.parse(raw), 'tiktok-visible-json-script'); } catch {}
+	                            }
+	                        }
+	                    } catch {}
+
+	                    const chunks = [];
+                    try { chunks.push(String(document.body?.innerHTML || '')); } catch {}
+                    try {
+                        for (const script of Array.from(document.scripts || []).slice(0, 80)) {
+                            const text = script.textContent || '';
+                            if (text && /tiktok|aweme|video/i.test(text)) chunks.push(text);
+                        }
+                    } catch {}
+
+                    const text = normalizeText(chunks.join('\\n').slice(0, 6000000));
+                    const urlMatches = text.match(/https?:\\/\\/(?:www\\.)?tiktok\\.com\\/@[^"'<>\\s]+\\/video\\/\\d+/gi) || [];
+                    for (const match of urlMatches.slice(0, 80)) push(normalizeText(match), 'tiktok-url', 18);
+
+                    const pathRegex = /(?:^|["'\\s])\\/?@([\\w.-]{2,32})\\/video\\/(\\d{6,})/gi;
+                    let pathMatch;
+                    let pathCount = 0;
+                    while ((pathMatch = pathRegex.exec(text)) && pathCount < 120) {
+                        pathCount += 1;
+                        const user = pathMatch[1];
+                        const id = pathMatch[2];
+                        const visibleBoost = activeUsernames.includes(user) ? 60 : 12;
+                        pushTikTokPair(user, id, 'tiktok-path', visibleBoost);
+	                    }
+	                }
+
+	                return out;
+	            })();
+        `, true);
+
+	        const ranked = (Array.isArray(candidates) ? candidates : [])
+	            .map((item) => {
+	                const url = normalizeWebDownloadCandidateUrl(item?.url, currentUrl);
+	                if (!url) return null;
+                    const source = String(item?.source || '');
+                    const sourceLower = source.toLowerCase();
+                    if (isLikelyImageAssetUrl(url)) return null;
+                    let score = scoreWebDownloadCandidateUrl(url, currentPlatform) +
+                        Number(item?.visibleScore || 0) +
+                        getWebDownloadCandidateSourcePriority(source);
+                    const candidatePlatform = detectPlatformFromUrl(url);
+                    const isMediaElementSource =
+                        sourceLower.includes('media-current-src') ||
+                        sourceLower.includes('media-source');
+                    const isDirectMediaAsset =
+                        isDirectPlatformMediaAssetUrl(url) ||
+                        ((currentPlatform === 'facebook' || currentPlatform === 'instagram') &&
+                            isMediaElementSource &&
+                            isFacebookCdnMediaCandidate(url));
+                    const isVisibleMediaAsset =
+                        isDirectMediaAsset &&
+                        (
+                            isMediaElementSource ||
+                            sourceLower.includes('performance-resource')
+                        );
+                    if (currentPlatform === 'facebook' && isVisibleMediaAsset) {
+                        score += sourceLower.includes('media') ? 420 : 260;
+                    }
+                    if (currentPlatform === 'instagram' && isVisibleMediaAsset) {
+                        score += sourceLower.includes('media') ? 360 : 220;
+                    }
+                    const shouldPreferPageUrl =
+                        currentPlatform === 'youtube' ||
+                        currentPlatform === 'ytmusic' ||
+                        currentPlatform === 'instagram';
+                    if (
+                        shouldPreferPageUrl &&
+                        !candidatePlatform &&
+                        isDirectMediaAsset &&
+                        (
+                            sourceLower.includes('media') ||
+                            sourceLower.includes('performance-resource')
+                        )
+                    ) {
+                        score -= 260;
+                    }
+	                return {
+	                    url,
+                    source,
+                    score
+                };
+            })
+            .filter(Boolean)
+            .sort((a, b) => b.score - a.score);
+
+	        if (currentPlatform === 'facebook') {
+	            const facebookDirectMedia = ranked.find((item) => {
+	                const source = String(item.source || '').toLowerCase();
+	                const isMediaElementSource =
+	                    source.includes('media-current-src') ||
+	                    source.includes('media-source');
+	                return item.score > 20 &&
+	                    (
+	                        isDirectPlatformMediaAssetUrl(item.url) ||
+	                        (isMediaElementSource && isFacebookCdnMediaCandidate(item.url))
+	                    ) &&
+	                    (
+	                        isMediaElementSource ||
+	                        source.includes('performance-resource')
+	                    );
+	            });
+	            if (facebookDirectMedia) return facebookDirectMedia.url;
+	        }
+
+            if (currentPlatform === 'instagram') {
+                const instagramPageUrl = ranked.find((item) => {
+                    const source = String(item.source || '').toLowerCase();
+                    return item.score > 20 &&
+                        /^https?:\/\/(?:www\.)?instagram\.com\/(?:p|reels?|tv)\//i.test(item.url) &&
+                        (
+                            source.includes('active-page-url') ||
+                            source.includes('active-container') ||
+                            source.includes('instagram-text') ||
+                            source.includes('instagram-shortcode') ||
+                            source.includes('canonical') ||
+                            source.includes('og:url')
+                        );
+                });
+                if (instagramPageUrl) return instagramPageUrl.url;
+
+                const instagramDirectMedia = ranked.find((item) => {
+                    const source = String(item.source || '').toLowerCase();
+                    const isMediaElementSource =
+                        source.includes('media-current-src') ||
+                        source.includes('media-source');
+                    return item.score > 20 &&
+                        (
+                            isDirectPlatformMediaAssetUrl(item.url) ||
+                            (isMediaElementSource && isFacebookCdnMediaCandidate(item.url))
+                        ) &&
+                        (
+                            isMediaElementSource ||
+                            source.includes('performance-resource')
+                        );
+                });
+                if (instagramDirectMedia) return instagramDirectMedia.url;
+            }
+
+	        const isTikTokFeed = currentPlatform === 'tiktok' && !isTikTokVideoPageUrl(currentUrl);
+	        const best = ranked.find((item) => {
+	            if (item.score <= 20 || !isLikelyDownloadableWebUrl(item.url)) return false;
+	            const source = String(item.source || '').toLowerCase();
+	            if (isTikTokFeed) {
+	                if (isTikTokVideoPageUrl(item.url) && source.includes('tiktok-active-container')) return true;
+	                if (isTikTokVideoPageUrl(item.url) && source.includes('tiktok-visible-json')) return true;
+	                return false;
+	            }
+	            return true;
+	        });
+        if (best) return best.url;
+    } catch {
+        // fallback below
+    }
+    return '';
+}
+
+function normalizeWebDownloadTitleHint(value = '') {
+    const text = String(value || '')
+        .replace(/\s+/g, ' ')
+        .replace(/\s+[·•]\s+(?:Follow|Following|Subscribe|Abone ol|Takip et)\b.*$/i, '')
+        .replace(/\b(?:Follow|Following|Subscribe|Abone ol|Takip et)\b/gi, '')
+        .trim()
+        .slice(0, 180);
+    const compact = text.replace(/\s+/g, '').toLowerCase();
+    if (/(sesoynatılıyor|oynatdüğmesisimgesi|duraklatdüğmesisimgesi|audioisplaying|playbuttonicon|pausebuttonicon)/i.test(compact)) return '';
+    if (/^(takipettiklerin|beğenmeler|begenmeler|yorumlar|gönder|gonder|paylaşımlar|paylasimlar|seniniçin|seniniçinönerilenler|foryou|foryoupage|suggestedforyou)$/i.test(compact)) return '';
+    if (/^\.{0,3}\s*(?:devam[ıi]|more|see more|show more)$/i.test(text)) return '';
+    if (/^(?:devamı|devami|more|seemore|showmore)$/i.test(compact)) return '';
+    if (/^[.\s…]+$/.test(text)) return '';
+    return text.replace(/^[.\s…]+/g, '').trim();
+}
+
+function buildWebDownloadFallbackTitleHint(rawUrl = '') {
+    const parsed = parseHttpUrl(rawUrl);
+    if (!parsed) return '';
+    const platform = detectPlatformFromUrl(parsed.toString());
+    const path = String(parsed.pathname || '');
+    if (platform === 'instagram') {
+        const match = path.match(/^\/(?:p|reels?|tv)\/([A-Za-z0-9_-]{4,})/i);
+        if (match?.[1]) return `Instagram video ${match[1]}`;
+    }
+    const host = String(parsed.hostname || '').toLowerCase();
+    if (
+        host === 'cdninstagram.com' ||
+        host.endsWith('.cdninstagram.com') ||
+        host === 'fbcdn.net' ||
+        host.endsWith('.fbcdn.net') ||
+        host === 'fbcdn.com' ||
+        host.endsWith('.fbcdn.com') ||
+        host === 'fbsbx.com' ||
+        host.endsWith('.fbsbx.com')
+    ) {
+        let hash = 0;
+        const value = parsed.toString();
+        for (let i = 0; i < value.length; i += 1) {
+            hash = ((hash << 5) - hash + value.charCodeAt(i)) | 0;
+        }
+        return `Instagram video ${Math.abs(hash).toString(36).slice(0, 8)}`;
+    }
+    return '';
+}
+
+function getActiveWebDownloadUrlFromState() {
+    const candidates = [
+        state.webSourceUrl,
+        state.webLastSourceUrl,
+        state.webCanonicalUrl
+    ];
+    const activePlatform = detectPlatformFromUrl(getWebViewUrlSafe());
+    for (const candidate of candidates) {
+        const normalized = normalizeWebDownloadCandidateUrl(candidate, getWebViewUrlSafe());
+        if (!normalized || !isLikelyDownloadableWebUrl(normalized)) continue;
+        const candidatePlatform = detectPlatformFromUrl(normalized);
+        if (activePlatform && candidatePlatform && activePlatform !== candidatePlatform) continue;
+        return normalized;
+    }
+    return '';
+}
+
+async function getInstagramShareDialogCopiedUrl() {
+    if (detectPlatformFromUrl(getWebViewUrlSafe()) !== 'instagram') return '';
+    if (!elements.webView || typeof elements.webView.executeJavaScript !== 'function') return '';
+    const beforeClipboard = String(window.ardali?.clipboard?.getText?.() || '').trim();
+    try {
+        const clicked = await elements.webView.executeJavaScript(`
+            (() => {
+                try {
+                    const isVisible = (node) => {
+                        if (!node || typeof node.getBoundingClientRect !== 'function') return false;
+                        const rect = node.getBoundingClientRect();
+                        return rect.width > 0 &&
+                            rect.height > 0 &&
+                            rect.bottom > 0 &&
+                            rect.right > 0 &&
+                            rect.top < innerHeight &&
+                            rect.left < innerWidth;
+                    };
+                    const normalize = (value) => String(value || '').replace(/\\s+/g, ' ').trim().toLowerCase();
+                    const dialogs = Array.from(document.querySelectorAll('[role="dialog"], div[aria-modal="true"]')).filter(isVisible);
+                    const roots = dialogs.length ? dialogs : [document.body];
+                    const labels = [
+                        'bağlantıyı kopyala',
+                        'baglantiyi kopyala',
+                        'linki kopyala',
+                        'copy link',
+                        'copy url'
+                    ];
+                    for (const root of roots) {
+                        const candidates = Array.from(root.querySelectorAll('button, [role="button"], a, div[tabindex], span[tabindex]'));
+                        for (const node of candidates) {
+                            if (!isVisible(node)) continue;
+                            const text = normalize([
+                                node.innerText,
+                                node.textContent,
+                                node.getAttribute('aria-label'),
+                                node.getAttribute('title')
+                            ].filter(Boolean).join(' '));
+                            if (!labels.some((label) => text.includes(label))) continue;
+                            node.click();
+                            return true;
+                        }
+                    }
+                    return false;
+                } catch (_) {
+                    return false;
+                }
+            })();
+        `, true);
+        if (!clicked) return '';
+        await new Promise((resolve) => setTimeout(resolve, 450));
+        const copied = String(window.ardali?.clipboard?.getText?.() || '').trim();
+        const candidate = copied || beforeClipboard;
+        const normalized = normalizeWebDownloadCandidateUrl(candidate, getWebViewUrlSafe());
+        if (!normalized || !isLikelyDownloadableWebUrl(normalized)) return '';
+        if (detectPlatformFromUrl(normalized) !== 'instagram') return '';
+        return normalized;
+    } catch {
+        return '';
+    }
+}
+
+async function getInstagramActiveMediaDirectUrl() {
+    if (detectPlatformFromUrl(getWebViewUrlSafe()) !== 'instagram') return '';
+    if (!elements.webView || typeof elements.webView.executeJavaScript !== 'function') return '';
+    try {
+        const raw = await elements.webView.executeJavaScript(`
+            (() => {
+                try {
+                    const isVideoUrl = (value) => {
+                        const url = String(value || '').trim();
+                        if (!/^https?:\\/\\//i.test(url)) return false;
+                        if (/\\.(?:jpe?g|png|webp|gif|avif|heic)(?:$|[?#])/i.test(url)) return false;
+                        return /(?:cdninstagram|fbcdn|fbsbx|\\.mp4(?:[?#]|$)|mime_type=video|bytestart|byteend)/i.test(url);
+                    };
+                    const pickMediaUrl = (media) => {
+                        const direct = String(media?.currentSrc || media?.src || '').trim();
+                        if (isVideoUrl(direct)) return direct;
+                        for (const source of Array.from(media?.querySelectorAll?.('source[src]') || [])) {
+                            const src = String(source.getAttribute('src') || source.src || '').trim();
+                            if (isVideoUrl(src)) return src;
+                        }
+                        return '';
+                    };
+                    const viewportCenterX = innerWidth / 2;
+                    const viewportCenterY = innerHeight / 2;
+                    const minVisibleArea = Math.max(26000, Math.min(innerWidth * innerHeight * 0.08, 110000));
+                    const videos = Array.from(document.querySelectorAll('video')).map((video, index) => {
+                        let score = Math.max(0, 100 - index);
+                        try {
+                            const rect = video.getBoundingClientRect();
+                            const visibleWidth = Math.max(0, Math.min(rect.right, innerWidth) - Math.max(rect.left, 0));
+                            const visibleHeight = Math.max(0, Math.min(rect.bottom, innerHeight) - Math.max(rect.top, 0));
+                            const area = visibleWidth * visibleHeight;
+                            if (area < minVisibleArea) return null;
+                            const intrinsicArea = Math.max(0, Number(video.videoWidth || 0) * Number(video.videoHeight || 0));
+                            if (intrinsicArea > 0 && intrinsicArea < 32000) return null;
+                            const centerX = rect.left + rect.width / 2;
+                            const centerY = rect.top + rect.height / 2;
+                            if (centerY < innerHeight * 0.26 || centerY > innerHeight * 0.94) return null;
+                            score += Math.min(1800, area / 420);
+                            score -= Math.abs(centerX - viewportCenterX) / 8;
+                            const targetY = innerHeight * 0.58;
+                            score -= Math.abs(centerY - targetY) / 7;
+                            if (!video.paused) score += 700;
+                            if (Number(video.currentTime || 0) > 0) score += 120;
+                            if (!video.muted && Number(video.volume || 0) > 0) score += 60;
+                            if (Number(video.duration || 0) > 2) score += 80;
+                        } catch {
+                            return null;
+                        }
+                        return { video, score };
+                    }).filter(Boolean).sort((a, b) => b.score - a.score);
+                    for (const entry of videos.slice(0, 6)) {
+                        const src = pickMediaUrl(entry.video);
+                        if (src) return src;
+                    }
+                    return '';
+                } catch {
+                    return '';
+                }
+            })();
+        `, true);
+        const normalized = normalizeWebDownloadCandidateUrl(raw, getWebViewUrlSafe());
+        if (!normalized || !isLikelyDownloadableWebUrl(normalized)) return '';
+        return normalized;
+    } catch {
+        return '';
+    }
+}
+
+async function getActiveWebDownloadTitleHintFromPage(targetUrl = '') {
+    if (!elements.webView || typeof elements.webView.executeJavaScript !== 'function') return '';
+    try {
+        const targetUrlJson = JSON.stringify(String(targetUrl || ''));
+        const title = await elements.webView.executeJavaScript(`
+            (() => {
+                const targetUrl = ${targetUrlJson};
+                const clean = (value) => String(value || '')
+                    .replace(/\\s+/g, ' ')
+                    .replace(/\\s+[·•]\\s+(?:Follow|Following|Subscribe|Abone ol|Takip et)\\b.*$/i, '')
+                    .replace(/\\b(?:Follow|Following|Subscribe|Abone ol|Takip et)\\b/gi, '')
+                    .trim();
+                const candidates = [];
+                const push = (text, score = 0) => {
+                    const value = clean(text);
+                    if (!value || value.length < 3) return;
+                    if (/^(Facebook|Watch|Reels?|Video)$/i.test(value)) return;
+                    if (/^[·•\\s]+$/.test(value)) return;
+                    score += Math.min(35, value.length / 4);
+                    candidates.push({ text: value, score });
+                };
+                try {
+                    const host = String(location.hostname || '').toLowerCase();
+                    if (host.includes('instagram.com')) {
+                        const isVisible = (node) => {
+                            if (!node || typeof node.getBoundingClientRect !== 'function') return false;
+                            const rect = node.getBoundingClientRect();
+                            return rect.width > 0 &&
+                                rect.height > 0 &&
+                                rect.bottom > 0 &&
+                                rect.right > 0 &&
+                                rect.top < innerHeight &&
+                                rect.left < innerWidth;
+                        };
+                        const isNoiseLine = (line) => {
+                            const value = clean(line);
+                            const compact = value.replace(/\s+/g, '').toLowerCase();
+                            if (!value || value.length < 4) return true;
+                            if (value.length > 180) return true;
+                            if (/^(reels?|video|photo|instagram|home|search|explore|notifications?|messages?|more|share|send|save|like|comment|follow|following|takip et|beğen|yorum yap|paylaş|kaydet|ses|oynat|durdur|duraklat|mute|unmute|takip ettiklerin|beğenmeler|yorumlar|gönder|paylaşımlar|senin için|senin için önerilenler|for you|for you page|suggested for you)$/i.test(value)) return true;
+                            if (/(ses(?:i)?(?:\s+)?oynatılıyor|oynat(?:\s+)?düğmesi(?:\s+)?simgesi|duraklat(?:\s+)?düğmesi(?:\s+)?simgesi|audio(?:\s+)?is(?:\s+)?playing|play(?:\s+)?button(?:\s+)?icon|pause(?:\s+)?button(?:\s+)?icon)/i.test(value)) return true;
+                            if (/(sesoynatılıyor|oynatdüğmesisimgesi|duraklatdüğmesisimgesi|audioisplaying|playbuttonicon|pausebuttonicon)/i.test(compact)) return true;
+                            if (/^\.{0,3}\s*(?:devam[ıi]|more|see more|show more)$/i.test(value)) return true;
+                            if (/^(?:devamı|devami|more|seemore|showmore)$/i.test(compact)) return true;
+                            if (/^(senin için|senin için önerilenler|takip|takip ettiklerin|for you|for you page|following|suggested for you)$/i.test(value)) return true;
+                            if (/^@?[\\w.]{2,32}$/.test(value)) return true;
+                            if (/^\\d+(?:[.,]\\d+)?\\s*(?:b|bin|m|mn|k)?$/i.test(value)) return true;
+                            return false;
+                        };
+                        const targetCode = (() => {
+                            try {
+                                const parsed = new URL(targetUrl || location.href);
+                                const match = String(parsed.pathname || '').match(/^\\/(?:p|reels?|tv)\\/([A-Za-z0-9_-]{4,})/i);
+                                return match?.[1] || '';
+                            } catch {
+                                return '';
+                            }
+                        })();
+                        const pushCaptionText = (text, score) => {
+                            const value = clean(text)
+                                .replace(/^(?:[^\\s]{2,32}\\s+)?(?:Follow|Following|Takip Et)\\s+/i, '')
+                                .trim();
+                            if (isNoiseLine(value)) return;
+                            push(value, score);
+                        };
+                        const collectCaptionFromObject = (item, score) => {
+                            if (!item || typeof item !== 'object') return;
+                            const captionEdges = item.edge_media_to_caption?.edges || item.edge_media_to_parent_comment?.edges || [];
+                            for (const edge of Array.isArray(captionEdges) ? captionEdges.slice(0, 4) : []) {
+                                pushCaptionText(edge?.node?.text || edge?.text || '', score);
+                            }
+                            const caption = item.caption || item.caption_text || item.accessibility_caption;
+                            if (typeof caption === 'string') pushCaptionText(caption, score - 8);
+                            if (caption && typeof caption === 'object') pushCaptionText(caption.text || caption.caption || '', score - 8);
+                            pushCaptionText(item.title || item.description || '', score - 18);
+                        };
+                        const scanForTargetCaption = (root, sourceScore = 0, limit = 2600) => {
+                            if (!targetCode || !root || typeof root !== 'object') return;
+                            const stack = [root];
+                            const seen = new Set();
+                            let scanned = 0;
+                            while (stack.length && scanned < limit) {
+                                const item = stack.pop();
+                                if (!item || typeof item !== 'object' || seen.has(item)) continue;
+                                seen.add(item);
+                                scanned += 1;
+                                const code = String(item.shortcode || item.code || item.short_code || item.media_code || '').trim();
+                                if (code === targetCode) collectCaptionFromObject(item, 105 + sourceScore);
+                                if (Array.isArray(item)) {
+                                    for (let i = item.length - 1; i >= 0; i -= 1) stack.push(item[i]);
+                                    continue;
+                                }
+                                for (const key of Object.keys(item)) {
+                                    const child = item[key];
+                                    if (child && typeof child === 'object') stack.push(child);
+                                }
+                            }
+                        };
+                        try {
+                            for (const name of ['__additionalDataLoaded', '__initialData', '__INITIAL_DATA__', '__NEXT_DATA__', '__INSTAGRAM_DATA__']) {
+                                scanForTargetCaption(window[name], 10);
+                            }
+                            for (const script of Array.from(document.querySelectorAll('script[type="application/json"], script#__NEXT_DATA__')).slice(0, 24)) {
+                                const raw = script.textContent || '';
+                                if (!raw || !/(shortcode|caption|graphql|xdt_shortcode_media|media)/i.test(raw)) continue;
+                                try { scanForTargetCaption(JSON.parse(raw), 0); } catch {}
+                            }
+                        } catch {}
+                        try {
+                            const viewportCenterX = innerWidth / 2;
+                            const viewportCenterY = innerHeight / 2;
+                            const videos = Array.from(document.querySelectorAll('video')).filter(isVisible);
+                            const scoredVideos = videos.map((video) => {
+                                const rect = video.getBoundingClientRect();
+                                const visibleWidth = Math.max(0, Math.min(rect.right, innerWidth) - Math.max(rect.left, 0));
+                                const visibleHeight = Math.max(0, Math.min(rect.bottom, innerHeight) - Math.max(rect.top, 0));
+                                const area = visibleWidth * visibleHeight;
+                                const centerY = rect.top + rect.height / 2;
+                                if (area < Math.max(22000, innerWidth * innerHeight * 0.055)) return null;
+                                if (centerY < innerHeight * 0.26 || centerY > innerHeight * 0.94) return null;
+                                const dx = Math.abs((rect.left + rect.width / 2) - viewportCenterX);
+                                const dy = Math.abs(centerY - (innerHeight * 0.58));
+                                let score = area / 2200 - dx / 28 - dy / 24;
+                                if (!video.paused) score += 60;
+                                return { video, rect, score };
+                            }).filter(Boolean).sort((a, b) => b.score - a.score);
+                            const pushNearbyCaptionLines = (entry) => {
+                                try {
+                                    const videoRect = entry?.rect;
+                                    if (!videoRect) return;
+                                    const textNodes = Array.from(document.querySelectorAll('span, div, a, h1, h2, h3, p')).slice(0, 900);
+                                    for (const node of textNodes) {
+                                        if (!isVisible(node)) continue;
+                                        const rect = node.getBoundingClientRect();
+                                        if (rect.width < 12 || rect.height < 8) continue;
+                                        if (rect.height > 180 || rect.width > Math.max(520, innerWidth * 0.52)) continue;
+                                        const text = clean(node.innerText || node.textContent || '');
+                                        if (!text || text.length > 260) continue;
+                                        if (node.querySelector?.('video, img, svg, button, [role="button"]')) {
+                                            const directText = Array.from(node.childNodes || [])
+                                                .filter((child) => child.nodeType === Node.TEXT_NODE)
+                                                .map((child) => clean(child.textContent || ''))
+                                                .filter(Boolean)
+                                                .join(' ');
+                                            if (!directText) continue;
+                                        }
+                                        const horizontalOverlap = Math.max(0, Math.min(rect.right, videoRect.right) - Math.max(rect.left, videoRect.left));
+                                        const verticalOverlap = Math.max(0, Math.min(rect.bottom, videoRect.bottom) - Math.max(rect.top, videoRect.top));
+                                        const leftOfVideo = rect.right <= videoRect.left + 24 && rect.right >= videoRect.left - Math.max(360, innerWidth * 0.34);
+                                        const rightOfVideo = rect.left >= videoRect.right - 24 && rect.left <= videoRect.right + Math.max(360, innerWidth * 0.34);
+                                        const nearBelow = rect.top >= videoRect.bottom - 220 && rect.top <= videoRect.bottom + 180 && horizontalOverlap > 24;
+                                        const textCenterY = rect.top + rect.height / 2;
+                                        const lowerHalfBand = textCenterY >= (videoRect.top + (videoRect.height * 0.36)) && rect.top <= videoRect.bottom + 220;
+                                        if (!nearBelow && !(lowerHalfBand && (leftOfVideo || rightOfVideo || horizontalOverlap > 24 || verticalOverlap > 24))) continue;
+                                        const lines = text.split(/\\n+/).map(clean).filter(Boolean);
+                                        for (const line of lines) {
+                                            if (isNoiseLine(line)) continue;
+                                            let score = 330 + entry.score;
+                                            if (leftOfVideo || rightOfVideo) score += 120;
+                                            if (nearBelow) score += 90;
+                                            if (line.includes('...')) score += 45;
+                                            if (/#\\w+/.test(line)) score += 18;
+                                            score -= Math.abs((rect.top + rect.height / 2) - (videoRect.top + videoRect.height / 2)) / 14;
+                                            pushCaptionText(line, score);
+                                        }
+                                    }
+                                } catch {}
+                            };
+                            if (scoredVideos[0]) pushNearbyCaptionLines(scoredVideos[0]);
+                            for (const entry of scoredVideos.slice(0, 2)) {
+                                let node = entry.video;
+                                for (let depth = 0; node && depth < 12; depth += 1, node = node.parentElement) {
+                                    if (!isVisible(node)) continue;
+                                    const text = String(node.innerText || node.textContent || '');
+                                    if (!text || text.length > 3500) continue;
+                                    const rect = node.getBoundingClientRect();
+                                    if (rect.height > innerHeight * 1.35 && depth > 4) continue;
+                                    const textCenterY = rect.top + rect.height / 2;
+                                    if (textCenterY < (entry.rect.top + (entry.rect.height * 0.34)) && depth > 2) continue;
+                                    const lines = text.split(/\\n+/).map(clean).filter(Boolean);
+                                    for (const line of lines) {
+                                        if (line.includes('...')) pushCaptionText(line, 255 + entry.score - depth * 6);
+                                        else pushCaptionText(line, 215 + entry.score - depth * 6);
+                                    }
+                                }
+                            }
+                        } catch {}
+                        if (candidates.length) {
+                            candidates.sort((a, b) => b.score - a.score);
+                            return candidates[0]?.text || '';
+                        }
+                    }
+                    const selectors = host.includes('facebook.com')
+                        ? [
+                            '[role="article"] h2',
+                            '[role="article"] h3',
+                            '[role="article"] strong',
+                            '[role="article"] span[dir="auto"]',
+                            'div[data-ad-preview="message"]',
+                            'h1',
+                            'meta[property="og:title"]',
+                            'meta[name="twitter:title"]'
+                        ]
+                        : [
+                            'h1',
+                            'meta[property="og:title"]',
+                            'meta[name="twitter:title"]',
+                            '[data-e2e*="caption"]',
+                            'article span[dir="auto"]'
+                        ];
+                    for (const selector of selectors) {
+                        for (const node of Array.from(document.querySelectorAll(selector)).slice(0, 80)) {
+                            const raw = node.tagName === 'META'
+                                ? node.getAttribute('content')
+                                : (node.innerText || node.textContent);
+                            let score = selector.includes('og:title') || selector.includes('twitter:title') ? 70 : 40;
+                            try {
+                                const rect = node.getBoundingClientRect();
+                                const visible = rect.width > 0 && rect.height > 0 && rect.bottom > 0 && rect.top < innerHeight;
+                                if (visible) score += 45;
+                                score -= Math.abs((rect.top + rect.height / 2) - (innerHeight / 2)) / 80;
+                            } catch {}
+                            push(raw, score);
+                        }
+                    }
+                    if (host.includes('facebook.com')) {
+                        try {
+                            const scoredVideos = [];
+                            const viewportCenterX = innerWidth / 2;
+                            const viewportCenterY = innerHeight / 2;
+                            for (const video of Array.from(document.querySelectorAll('video')).slice(0, 30)) {
+                                const rect = video.getBoundingClientRect();
+                                const visibleWidth = Math.max(0, Math.min(rect.right, innerWidth) - Math.max(rect.left, 0));
+                                const visibleHeight = Math.max(0, Math.min(rect.bottom, innerHeight) - Math.max(rect.top, 0));
+                                const area = visibleWidth * visibleHeight;
+                                if (area <= 0) continue;
+                                let score = area / 4500 -
+                                    Math.abs((rect.left + rect.width / 2) - viewportCenterX) / 30 -
+                                    Math.abs((rect.top + rect.height / 2) - viewportCenterY) / 30;
+                                if (!video.paused) score += 45;
+                                scoredVideos.push({ video, score });
+                            }
+                            scoredVideos.sort((a, b) => b.score - a.score);
+                            for (const entry of scoredVideos.slice(0, 3)) {
+                                let node = entry.video;
+                                for (let depth = 0; node && depth < 9; depth += 1, node = node.parentElement) {
+                                    const text = node.innerText || node.textContent || '';
+                                    const quoted = Array.from(String(text).matchAll(/["“”'«»](.{3,120}?)["“”'«»]/g))
+                                        .map((match) => match[1]);
+                                    for (const item of quoted.slice(0, 8)) push(item, 140 + entry.score - depth * 2);
+                                    const lines = String(text).split(/\\n+/)
+                                        .map(clean)
+                                        .filter(Boolean)
+                                        .filter((line) => line.length >= 3 && line.length <= 140)
+                                        .filter((line) => !/^(like|comment|share|send|follow|following|subscribe|reels?|watch|video)$/i.test(line))
+                                        .filter((line) => !/^\\d+(?:\\.\\d+)?[kmb]?$/i.test(line));
+                                    for (const line of lines.slice(-8)) push(line, 95 + entry.score - depth * 2);
+                                }
+                            }
+                        } catch {}
+                    }
+                    push(document.title, 20);
+                } catch {}
+                candidates.sort((a, b) => b.score - a.score);
+                return candidates[0]?.text || '';
+            })();
+        `, true);
+        return normalizeWebDownloadTitleHint(title);
+    } catch {
+        return '';
+    }
+}
+
 async function getActiveWebDownloadUrl() {
+    const currentPlatform = detectPlatformFromUrl(getWebViewUrlSafe());
+    if (currentPlatform === 'instagram') {
+        const instagramMediaCandidate = await getInstagramActiveMediaDirectUrl();
+        if (instagramMediaCandidate) return instagramMediaCandidate;
+
+        const shareCandidate = await getInstagramShareDialogCopiedUrl();
+        if (shareCandidate) return shareCandidate;
+
+        const currentUrl = getWebViewUrlSafe();
+        if (/^https?:\/\//i.test(currentUrl) && isLikelyDownloadableWebUrl(currentUrl)) return currentUrl;
+        return '';
+    }
+
+    const pageCandidate = await getActiveWebDownloadUrlFromPage();
+    if (pageCandidate) return pageCandidate;
+
+    const stateCandidate = getActiveWebDownloadUrlFromState();
+    if (stateCandidate) return stateCandidate;
+
+    const currentUrl = getWebViewUrlSafe();
     try {
         if (elements.webView && typeof elements.webView.executeJavaScript === 'function') {
             const href = await elements.webView.executeJavaScript('String(location.href || "")', true);
@@ -7991,7 +10078,6 @@ async function getActiveWebDownloadUrl() {
     } catch {
         // fallback below
     }
-    const currentUrl = getWebViewUrlSafe();
     return /^https?:\/\//i.test(currentUrl) && isLikelyDownloadableWebUrl(currentUrl) ? currentUrl : '';
 }
 
@@ -8018,6 +10104,7 @@ let webDaliApplyInFlight = false;
 let webDaliPendingApplyReason = '';
 let webDaliLastApplySignature = '';
 let webDaliAttachBurstTimers = [];
+let webDaliLastNoMediaRetryAt = 0;
 const webDaliAttachMetrics = {
     sessionId: 0,
     firstPlayAt: 0,
@@ -8540,11 +10627,12 @@ function createWebDaliInjectScript(payload, presetStages, bassPresetStages) {
                 root.buildConfigKey = function buildConfigKey(nextCfg) {
                     // Slider/knob hareketlerinde grafiği söküp takmak web medyada tıkırtı üretir.
                     // Topoloji değişmediği sürece değerler mevcut node'lara yumuşak rampalarla uygulanır.
-                    return JSON.stringify({
-                        webProfile: !!nextCfg?.webProfile,
-                        daliPresetStages: Array.isArray(presetStages) ? presetStages.length : 0,
-                        bassPresetStages: Array.isArray(bassPresetStages) ? bassPresetStages.length : 0
-                    });
+	                    return JSON.stringify({
+	                        graphVersion: 2,
+	                        webProfile: !!nextCfg?.webProfile,
+	                        daliPresetStages: Array.isArray(presetStages) ? presetStages.length : 0,
+	                        bassPresetStages: Array.isArray(bassPresetStages) ? bassPresetStages.length : 0
+	                    });
                 };
                 root.clamp = function clamp(value, min, max, fallback) {
                     const n = Number(value);
@@ -8751,6 +10839,88 @@ function createWebDaliInjectScript(payload, presetStages, bassPresetStages) {
                     const fb = Number(fallbackMs);
                     if (Number.isFinite(fb) && fb > 0) return fb;
                     return Number(table.musical) || 14;
+                };
+                root.isYouTubeHost = function isYouTubeHost() {
+                    try {
+                        const host = String(location.hostname || '').toLowerCase();
+                        return host === 'youtube.com' ||
+                            host === 'www.youtube.com' ||
+                            host === 'm.youtube.com' ||
+                            host === 'music.youtube.com' ||
+                            host.endsWith('.youtube.com') ||
+                            host === 'youtu.be';
+                    } catch (_) {
+                        return false;
+                    }
+                };
+                root.isLikelyYouTubeAdMediaSrc = function isLikelyYouTubeAdMediaSrc(raw) {
+                    const src = String(raw || '').toLowerCase();
+                    if (!src || !src.includes('googlevideo.com/videoplayback')) return false;
+                    return src.includes('oad=') ||
+                        src.includes('moad=') ||
+                        src.includes('ctier=') ||
+                        src.includes('adformat=') ||
+                        src.includes('ad_type=') ||
+                        src.includes('gct=');
+                };
+	                root.hasVisibleYouTubeAdUi = function hasVisibleYouTubeAdUi() {
+	                    try {
+	                        const nodes = document.querySelectorAll(
+	                            '.ytp-ad-player-overlay, .ytp-ad-skip-button, .ytp-ad-skip-button-modern, .ytp-ad-preview-container, .ytp-ad-text, .ytp-ad-message-container'
+	                        );
+                        for (const node of nodes) {
+                            if (!node) continue;
+                            const style = window.getComputedStyle ? window.getComputedStyle(node) : null;
+                            if (style && (style.display === 'none' || style.visibility === 'hidden' || Number(style.opacity || '1') === 0)) continue;
+                            const rect = typeof node.getBoundingClientRect === 'function' ? node.getBoundingClientRect() : null;
+                            if (rect && rect.width < 2 && rect.height < 2) continue;
+                            return true;
+                        }
+	                    } catch (_) {}
+	                    return false;
+	                };
+	                root.getYouTubeAdContainer = function getYouTubeAdContainer(node) {
+	                    try {
+	                        if (!node || !node.closest) return null;
+	                        return node.closest(
+	                            'ytd-ad-slot-renderer, ytd-promoted-video-renderer, ytd-in-feed-ad-layout-renderer, ytd-display-ad-renderer, ytd-promoted-sparkles-web-renderer, ytd-video-masthead-ad-v3-renderer, ytd-banner-promo-renderer, ytd-companion-slot-renderer, ytd-action-companion-ad-renderer, ytd-compact-promoted-video-renderer, ytd-promoted-sparkles-text-search-renderer, #player-ads, #masthead-ad, .video-ads, .ytp-ad-module, [data-ad], [id*="ad-slot"], [class*="ad-slot"]'
+	                        );
+	                    } catch (_) {
+	                        return null;
+	                    }
+	                };
+	                root.getYouTubeAdAudioActive = function getYouTubeAdAudioActive(media) {
+	                    try {
+	                        if (!root.isYouTubeHost()) return false;
+	                        const player = document.getElementById('movie_player');
+                        const adState = player && typeof player.getAdState === 'function'
+                            ? (Number(player.getAdState()) || 0)
+                            : 0;
+                        const classAd = !!(
+                            document.querySelector('.ad-showing, .ad-interrupting') ||
+                            (player && player.classList && (player.classList.contains('ad-showing') || player.classList.contains('ad-interrupting')))
+                        );
+	                        const uiAd = root.hasVisibleYouTubeAdUi();
+	                        const currentSrc = media && (media.currentSrc || media.src);
+	                        const mediaAd = root.isLikelyYouTubeAdMediaSrc(currentSrc);
+	                        const containerAd = !!root.getYouTubeAdContainer(media);
+	                        return classAd || adState > 0 || uiAd || mediaAd || containerAd;
+	                    } catch (_) {
+	                        return false;
+	                    }
+	                };
+                root.updateYouTubeAdMute = function updateYouTubeAdMute(graph) {
+                    if (!graph || !graph.ctx || !graph.youtubeAdMuteGain) return false;
+                    const active = root.getYouTubeAdAudioActive(graph.media);
+                    if (graph.youtubeAdMuteState === active) return active;
+                    graph.youtubeAdMuteState = active;
+                    root.smoothParam(
+                        graph.youtubeAdMuteGain.gain,
+                        active ? 0 : 1,
+                        graph.ctx,
+                        active ? root.getSmoothingMs('instant', 8) : root.getSmoothingMs('switch', 18)
+                    );
+                    return active;
                 };
                 root.controlRateProfiles = Object.freeze({
                     deesserMs: 24,
@@ -10397,6 +12567,63 @@ function createWebDaliInjectScript(payload, presetStages, bassPresetStages) {
                     a.maxMs = Math.max(a.maxMs || 0, v);
                     a.emaMs = a.emaMs > 0 ? (a.emaMs * 0.82) + (v * 0.18) : v;
                 };
+                root.scoreMediaCandidate = function scoreMediaCandidate(media) {
+                    try {
+                        if (!media || typeof media !== 'object') return -1;
+                        const tag = String(media.tagName || '').toLowerCase();
+                        const src = String(media.currentSrc || media.src || '').trim();
+                        const readyState = Number(media.readyState) || 0;
+                        const duration = Number(media.duration) || 0;
+                        const currentTime = Number(media.currentTime) || 0;
+                        const rect = (typeof media.getBoundingClientRect === 'function')
+                            ? media.getBoundingClientRect()
+                            : null;
+                        const width = Math.max(0, Number(rect?.width || media.videoWidth || media.clientWidth || 0));
+                        const height = Math.max(0, Number(rect?.height || media.videoHeight || media.clientHeight || 0));
+                        const visiblePixels = width * height;
+                        const paused = !!media.paused;
+                        const muted = !!media.muted || Number(media.volume) === 0;
+                        const inDocument = !document.body || document.body.contains(media);
+                        if (!inDocument) return -1;
+                        if (!src && readyState < 1) return -1;
+
+                        let score = 0;
+                        if (!paused) score += 1000;
+                        if (!muted) score += 220;
+                        if (readyState >= 2) score += 180;
+                        if (currentTime > 0.05) score += 120;
+                        if (Number.isFinite(duration) && duration > 5) score += Math.min(220, duration);
+                        if (tag === 'audio') score += paused ? 80 : 260;
+                        if (tag === 'video') {
+                            score += Math.min(420, visiblePixels / 1200);
+                            if (width >= 220 && height >= 120) score += 240;
+                            if (width >= 480 && height >= 240) score += 260;
+                            if (media.matches?.('.html5-main-video, video[src], video')) score += 20;
+                        }
+                        if (document.fullscreenElement && document.fullscreenElement.contains?.(media)) score += 700;
+                        if (media === document.querySelector('video.html5-main-video')) score += 900;
+                        if (media.closest?.('#movie_player, ytd-player, [data-pagelet="Reels"], [role="main"]')) score += 120;
+                        if (width < 96 && height < 64 && tag === 'video' && paused) score -= 500;
+                        if (muted && paused && currentTime <= 0.05) score -= 420;
+                        return score;
+                    } catch (_) {
+                        return -1;
+                    }
+                };
+                root.getCandidateMediaElements = function getCandidateMediaElements(options) {
+                    const includePausedMain = !!(options && options.includePausedMain);
+                    const mediaElements = Array.from(document.querySelectorAll('video, audio'));
+                    const scored = mediaElements
+                        .map((media, index) => ({ media, index, score: root.scoreMediaCandidate(media) }))
+                        .filter((item) => item.score >= (includePausedMain ? 260 : 420));
+                    scored.sort((a, b) => (b.score - a.score) || (a.index - b.index));
+                    const active = scored.filter((item) => item.media && !item.media.paused);
+                    // Web platformlarında, özellikle YouTube'da birden fazla media elementi
+                    // kısa süreli canlı kalabiliyor. Aynı anda iki graph kurmak ses kırpılması
+                    // ve çift route riskini artırıyor; yalnızca en güçlü ana adayı işle.
+                    const selected = active.length ? active.slice(0, 1) : scored.slice(0, 1);
+                    return selected.map((item) => item.media).filter(Boolean);
+                };
                 root.wrapPerfLoop = function wrapPerfLoop(perfState, key, intervalMs, fn) {
                     const safeInterval = Math.max(10, Number(intervalMs) || 20);
                     if (!perfState.loops[key]) {
@@ -10430,6 +12657,28 @@ function createWebDaliInjectScript(payload, presetStages, bassPresetStages) {
                             if (jitterMs > (safeInterval * 1.25) || durationMs > (safeInterval * 0.95)) {
                                 loopPerf.glitches = Math.max(0, Number(loopPerf.glitches) || 0) + 1;
                                 perfState.totalGlitches = Math.max(0, Number(perfState.totalGlitches) || 0) + 1;
+                                if (root?.cfg?.webProfile && perfState.totalGlitches >= 6 && perfState.webSafetyMode !== true) {
+                                    perfState.webSafetyMode = true;
+                                    try {
+                                        console.warn('[DALI WEB][SAFETY_MODE]', JSON.stringify({
+                                            reason: 'audio-glitch-threshold',
+                                            totalGlitches: perfState.totalGlitches
+                                        }));
+                                    } catch (_) {}
+                                }
+                                const nowWarn = Date.now();
+                                if (!perfState.lastGlitchWarnAt || (nowWarn - perfState.lastGlitchWarnAt) > 1800) {
+                                    perfState.lastGlitchWarnAt = nowWarn;
+                                    try {
+                                        console.warn('[DALI WEB][GLITCH]', JSON.stringify({
+                                            key,
+                                            jitterMs: Math.round(jitterMs),
+                                            durationMs: Math.round(durationMs),
+                                            intervalMs: safeInterval,
+                                            totalGlitches: perfState.totalGlitches
+                                        }));
+                                    } catch (_) {}
+                                }
                             }
                         }
                     }, safeInterval);
@@ -10595,11 +12844,15 @@ function createWebDaliInjectScript(payload, presetStages, bassPresetStages) {
                         try { clearInterval(graph.truePeakTimer); } catch (_) {}
                         graph.truePeakTimer = null;
                     }
-                    if (graph.dynamicEqTimer) {
-                        try { clearInterval(graph.dynamicEqTimer); } catch (_) {}
-                        graph.dynamicEqTimer = null;
-                    }
-                    try { graph.source?.disconnect?.(); } catch (_) {}
+	                    if (graph.dynamicEqTimer) {
+	                        try { clearInterval(graph.dynamicEqTimer); } catch (_) {}
+	                        graph.dynamicEqTimer = null;
+	                    }
+	                    if (graph.youtubeAdMuteTimer) {
+	                        try { clearInterval(graph.youtubeAdMuteTimer); } catch (_) {}
+	                        graph.youtubeAdMuteTimer = null;
+	                    }
+	                    try { graph.source?.disconnect?.(); } catch (_) {}
                     const nodes = [
                         graph.analyser,
                         graph.inputGain,
@@ -10775,11 +13028,12 @@ function createWebDaliInjectScript(payload, presetStages, bassPresetStages) {
                         graph.clipGuardGain,
                         graph.truePeakMeterAnalyser,
                         graph.balanceSplit,
-                        graph.balanceGainL,
-                        graph.balanceGainR,
-                        graph.balanceMerge,
-                        graph.masterGain
-                    ];
+	                        graph.balanceGainL,
+	                        graph.balanceGainR,
+	                        graph.balanceMerge,
+	                        graph.masterGain,
+	                        graph.youtubeAdMuteGain
+	                    ];
                     for (const node of nodes) {
                         try { node?.disconnect?.(); } catch (_) {}
                     }
@@ -10787,7 +13041,9 @@ function createWebDaliInjectScript(payload, presetStages, bassPresetStages) {
                 root.getSpectrumSnapshot = function getSpectrumSnapshot(targetCount, options) {
                     const requested = Math.max(64, Number(targetCount) || 128);
                     const rawMode = !!(options && typeof options === 'object' && (options.raw === true || options.pure === true));
-                    const mediaElements = Array.from(document.querySelectorAll('video, audio'));
+                    const mediaElements = typeof root.getCandidateMediaElements === 'function'
+                        ? root.getCandidateMediaElements({ includePausedMain: true })
+                        : Array.from(document.querySelectorAll('video, audio'));
                     const graphs = mediaElements
                         .map((media) => media && media.__ardaliDaliGraph)
                         .filter((graph) => graph && graph.analyser);
@@ -11220,19 +13476,20 @@ function createWebDaliInjectScript(payload, presetStages, bassPresetStages) {
                         root.smoothParam(graph.bass?.gain, Number(cfg?.bass) || 0, ctx, root.getSmoothingMs('musical', 18));
                         root.smoothParam(graph.mid?.gain, Number(cfg?.mid) || 0, ctx, root.getSmoothingMs('musical', 18));
                         root.smoothParam(graph.treble?.gain, Number(cfg?.treble) || 0, ctx, root.getSmoothingMs('musical', 18));
-                        if (graph.balanceGainL && graph.balanceGainR) {
-                            const balNorm = Math.max(-1, Math.min(1, (Number(cfg?.balance) || 0) / 100));
-                            const leftGain = balNorm > 0 ? (1 - balNorm) : 1;
-                            const rightGain = balNorm < 0 ? (1 + balNorm) : 1;
-                            root.smoothParam(graph.balanceGainL.gain, leftGain, ctx, root.getSmoothingMs('musical', 12));
-                            root.smoothParam(graph.balanceGainR.gain, rightGain, ctx, root.getSmoothingMs('musical', 12));
-                        }
-                        if (graph.masterGain) {
-                            const masterVolume = root.clamp(cfg?.masterVolume, 0, 1, 1);
-                            const masterMuted = !!cfg?.masterMuted;
-                            root.smoothParam(graph.masterGain.gain, masterMuted ? 0 : masterVolume, ctx, root.getSmoothingMs('musical', 10));
-                        }
-                        const bands = Array.isArray(cfg?.bands) ? cfg.bands : [];
+	                        if (graph.balanceGainL && graph.balanceGainR) {
+	                            const balNorm = Math.max(-1, Math.min(1, (Number(cfg?.balance) || 0) / 100));
+	                            const leftGain = balNorm > 0 ? (1 - balNorm) : 1;
+	                            const rightGain = balNorm < 0 ? (1 + balNorm) : 1;
+	                            root.smoothParam(graph.balanceGainL.gain, leftGain, ctx, root.getSmoothingMs('musical', 12));
+	                            root.smoothParam(graph.balanceGainR.gain, rightGain, ctx, root.getSmoothingMs('musical', 12));
+	                        }
+	                        if (graph.masterGain) {
+	                            const masterVolume = root.clamp(cfg?.masterVolume, 0, 1, 1);
+	                            const masterMuted = !!cfg?.masterMuted;
+	                            root.smoothParam(graph.masterGain.gain, masterMuted ? 0 : masterVolume, ctx, root.getSmoothingMs('musical', 10));
+	                        }
+	                        root.updateYouTubeAdMute(graph);
+	                        const bands = Array.isArray(cfg?.bands) ? cfg.bands : [];
                         const bandNodes = Array.isArray(graph.daliBandNodes) ? graph.daliBandNodes : [];
                         for (let i = 0; i < bandNodes.length; i += 1) {
                             root.smoothParam(bandNodes[i]?.gain, Number(bands[i]) || 0, ctx, root.getSmoothingMs('eqband', 20));
@@ -11272,19 +13529,20 @@ function createWebDaliInjectScript(payload, presetStages, bassPresetStages) {
                     graph.autoCompDb = autoCompDb;
                     const compensatedInputGain = preampGainLin * root.dbToLinear(autoCompDb);
                     root.smoothContinuousParam(graph.inputGain?.gain, compensatedInputGain, ctx, root.getSmoothingMs('preamp', 36));
-                    if (graph.balanceGainL && graph.balanceGainR) {
-                        const balNorm = Math.max(-1, Math.min(1, (Number(cfg?.balance) || 0) / 100));
-                        const leftGain = balNorm > 0 ? (1 - balNorm) : 1;
-                        const rightGain = balNorm < 0 ? (1 + balNorm) : 1;
-                        root.smoothParam(graph.balanceGainL.gain, leftGain, ctx, root.getSmoothingMs('musical', 12));
-                        root.smoothParam(graph.balanceGainR.gain, rightGain, ctx, root.getSmoothingMs('musical', 12));
-                    }
-                    if (graph.masterGain) {
-                        const masterVolume = root.clamp(cfg?.masterVolume, 0, 1, 1);
-                        const masterMuted = !!cfg?.masterMuted;
-                        root.smoothParam(graph.masterGain.gain, masterMuted ? 0 : masterVolume, ctx, root.getSmoothingMs('musical', 10));
-                    }
-                    return true;
+	                    if (graph.balanceGainL && graph.balanceGainR) {
+	                        const balNorm = Math.max(-1, Math.min(1, (Number(cfg?.balance) || 0) / 100));
+	                        const leftGain = balNorm > 0 ? (1 - balNorm) : 1;
+	                        const rightGain = balNorm < 0 ? (1 + balNorm) : 1;
+	                        root.smoothParam(graph.balanceGainL.gain, leftGain, ctx, root.getSmoothingMs('musical', 12));
+	                        root.smoothParam(graph.balanceGainR.gain, rightGain, ctx, root.getSmoothingMs('musical', 12));
+	                    }
+	                    if (graph.masterGain) {
+	                        const masterVolume = root.clamp(cfg?.masterVolume, 0, 1, 1);
+	                        const masterMuted = !!cfg?.masterMuted;
+	                        root.smoothParam(graph.masterGain.gain, masterMuted ? 0 : masterVolume, ctx, root.getSmoothingMs('musical', 10));
+	                    }
+	                    root.updateYouTubeAdMute(graph);
+	                    return true;
                 };
                 root.applyBassBoostCfg = function applyBassBoostCfg(graph, nextCfg) {
                     if (!graph || !graph.ctx) return;
@@ -12404,6 +14662,7 @@ function createWebDaliInjectScript(payload, presetStages, bassPresetStages) {
                     if (!graph) {
                         graph = {
                             ctx,
+                            media,
                             source: ctx.createMediaElementSource(media),
                             configKey: '',
                             perfState: root.createPerfState()
@@ -12627,10 +14886,11 @@ function createWebDaliInjectScript(payload, presetStages, bassPresetStages) {
                         maxDecibels: 0
                     });
                     const balanceSplit = new ChannelSplitterNode(ctx, { numberOfOutputs: 2 });
-                    const balanceGainL = new GainNode(ctx, { gain: 1.0 });
-                    const balanceGainR = new GainNode(ctx, { gain: 1.0 });
-                    const balanceMerge = new ChannelMergerNode(ctx, { numberOfInputs: 2 });
-                    const masterGain = new GainNode(ctx, { gain: 1.0 });
+	                    const balanceGainL = new GainNode(ctx, { gain: 1.0 });
+	                    const balanceGainR = new GainNode(ctx, { gain: 1.0 });
+	                    const balanceMerge = new ChannelMergerNode(ctx, { numberOfInputs: 2 });
+	                    const masterGain = new GainNode(ctx, { gain: 1.0 });
+	                    const youtubeAdMuteGain = new GainNode(ctx, { gain: 1.0 });
                     graph.source.connect(analyser);
                     graph.source.connect(inputGain);
                     const daliChain = root.createDaliChain(ctx, inputGain, daliOutput, cfg);
@@ -12856,12 +15116,13 @@ function createWebDaliInjectScript(payload, presetStages, bassPresetStages) {
                     limiterComp.connect(clipGuardGain);
                     clipGuardGain.connect(truePeakMeterAnalyser);
                     truePeakMeterAnalyser.connect(balanceSplit);
-                    balanceSplit.connect(balanceGainL, 0);
-                    balanceSplit.connect(balanceGainR, 1);
-                    balanceGainL.connect(balanceMerge, 0, 0);
-                    balanceGainR.connect(balanceMerge, 0, 1);
-                    balanceMerge.connect(masterGain);
-                    masterGain.connect(ctx.destination);
+	                    balanceSplit.connect(balanceGainL, 0);
+	                    balanceSplit.connect(balanceGainR, 1);
+	                    balanceGainL.connect(balanceMerge, 0, 0);
+	                    balanceGainR.connect(balanceMerge, 0, 1);
+	                    balanceMerge.connect(masterGain);
+	                    masterGain.connect(youtubeAdMuteGain);
+	                    youtubeAdMuteGain.connect(ctx.destination);
                     const noiseGateState = {
                         enabled: false,
                         thresholdDb: -40,
@@ -13041,8 +15302,13 @@ function createWebDaliInjectScript(payload, presetStages, bassPresetStages) {
                     const surroundKernelState = root.resolveSurroundKernel({
                         surroundState
                     });
-                    const perfState = graph.perfState || root.createPerfState();
-                    graph.perfState = perfState;
+	                    const perfState = graph.perfState || root.createPerfState();
+	                    graph.perfState = perfState;
+	                    const youtubeAdMuteTimer = root.isYouTubeHost()
+	                        ? setInterval(function youtubeAdMuteLoop() {
+	                            try { root.updateYouTubeAdMute(media.__ardaliDaliGraph); } catch (_) {}
+	                        }, 160)
+	                        : null;
                     const smoothSwitchMs = root.getSmoothingMs('switch', 7);
                     const smoothDetectorMs = root.getSmoothingMs('detector', 10);
                     const smoothDynamicsMs = root.getSmoothingMs('dynamics', 16);
@@ -13107,14 +15373,34 @@ function createWebDaliInjectScript(payload, presetStages, bassPresetStages) {
                     const truePeakBuffer = new Uint8Array(truePeakMeterAnalyser.fftSize || 2048);
                     const controlRate = root.controlRateProfiles || {};
                     const isWebProfile = !!cfg?.webProfile;
-                    const deEsserIntervalMs = Math.max(10, Number(controlRate.deesserMs) || 24) * (isWebProfile ? 2.0 : 1.0);
-                    const noiseGateIntervalMs = Math.max(10, Number(controlRate.noisegateMs) || 24) * (isWebProfile ? 2.0 : 1.0);
-                    const autoGainIntervalMs = Math.max(20, Number(controlRate.autogainMs) || 60) * (isWebProfile ? 2.0 : 1.0);
-                    const dynamicEqIntervalMs = Math.max(10, Number(controlRate.dynamiceqMs) || 24) * (isWebProfile ? 2.0 : 1.0);
-                    const truePeakIntervalMs = Math.max(20, Number(controlRate.truepeakMs) || 50) * (isWebProfile ? 2.0 : 1.0);
+                    const deEsserIntervalMs = isWebProfile
+                        ? Math.max(120, Number(controlRate.deesserMs) || 24)
+                        : Math.max(10, Number(controlRate.deesserMs) || 24);
+                    const noiseGateIntervalMs = isWebProfile
+                        ? Math.max(90, Number(controlRate.noisegateMs) || 24)
+                        : Math.max(10, Number(controlRate.noisegateMs) || 24);
+                    const autoGainIntervalMs = isWebProfile
+                        ? Math.max(160, Number(controlRate.autogainMs) || 60)
+                        : Math.max(20, Number(controlRate.autogainMs) || 60);
+                    const dynamicEqIntervalMs = isWebProfile
+                        ? Math.max(140, Number(controlRate.dynamiceqMs) || 24)
+                        : Math.max(10, Number(controlRate.dynamiceqMs) || 24);
+                    const truePeakIntervalMs = isWebProfile
+                        ? Math.max(160, Number(controlRate.truepeakMs) || 50)
+                        : Math.max(20, Number(controlRate.truepeakMs) || 50);
                     const epsLinear = Math.max(0.00001, Number(controlRate.epsilonLinear) || 0.0006);
                     const epsDb = Math.max(0.0001, Number(controlRate.epsilonDb) || 0.04);
                     const deEsserTimer = root.wrapPerfLoop(perfState, 'deesser', deEsserIntervalMs, function () {
+                        if (isWebProfile && perfState.webSafetyMode === true) {
+                            const st = media.__ardaliDaliGraph?.deEsserState || deEsserState;
+                            if (st) {
+                                st.currentHighGain = 1;
+                                st.envDb = -120;
+                                st.lastAppliedGain = 1;
+                            }
+                            root.smoothParam(deEsserHighGain?.gain, 1, ctx, smoothSwitchMs);
+                            return;
+                        }
                         const st = media.__ardaliDaliGraph?.deEsserState || deEsserState;
                         const kernelState = media.__ardaliDaliGraph?.deEsserKernelState || deEsserKernelState || {};
                         if (!st?.enabled) {
@@ -13164,6 +15450,18 @@ function createWebDaliInjectScript(payload, presetStages, bassPresetStages) {
                         }
                     });
                     const noiseGateTimer = root.wrapPerfLoop(perfState, 'noisegate', noiseGateIntervalMs, function () {
+                        if (isWebProfile && perfState.webSafetyMode === true) {
+                            const st = media.__ardaliDaliGraph?.noiseGateState || noiseGateState;
+                            if (st) {
+                                st.currentGain = 1;
+                                st.isOpen = true;
+                                st.open = true;
+                                st.envDb = -120;
+                                st.lastAppliedGain = 1;
+                            }
+                            root.smoothParam(noiseGateGain?.gain, 1, ctx, smoothSwitchMs);
+                            return;
+                        }
                         const st = media.__ardaliDaliGraph?.noiseGateState || noiseGateState;
                         const kernelState = media.__ardaliDaliGraph?.noiseGateKernelState || noiseGateKernelState || {};
                         if (!st?.enabled) {
@@ -13232,6 +15530,16 @@ function createWebDaliInjectScript(payload, presetStages, bassPresetStages) {
                         }
                     });
                     const autoGainTimer = root.wrapPerfLoop(perfState, 'autogain', autoGainIntervalMs, function () {
+                        if (isWebProfile && perfState.webSafetyMode === true) {
+                            const st = media.__ardaliDaliGraph?.autoGainState || autoGainState;
+                            if (st) {
+                                st.currentGainDb = 0;
+                                st.envDb = -120;
+                                st.lastAppliedGainDb = 0;
+                            }
+                            root.smoothParam(autoGainNode?.gain, 1, ctx, smoothSwitchMs);
+                            return;
+                        }
                         const st = media.__ardaliDaliGraph?.autoGainState || autoGainState;
                         const kernelState = media.__ardaliDaliGraph?.autoGainKernelState || autoGainKernelState || {};
                         if (!st?.enabled) {
@@ -13283,6 +15591,19 @@ function createWebDaliInjectScript(payload, presetStages, bassPresetStages) {
                         }
                     });
                     const dynamicEqTimer = root.wrapPerfLoop(perfState, 'dynamiceq', dynamicEqIntervalMs, function () {
+                        if (isWebProfile && perfState.webSafetyMode === true) {
+                            const st = media.__ardaliDaliGraph?.dynamicEqState || dynamicEqState;
+                            if (st) {
+                                st.currentGainDb = 0;
+                                st.envDb = -120;
+                                st.gainReductionDb = 0;
+                                st.triggered = false;
+                                st.lastAppliedGainDb = 0;
+                            }
+                            root.smoothParam(dynamicEqPeakL?.gain, 0, ctx, smoothSwitchMs);
+                            root.smoothParam(dynamicEqPeakR?.gain, 0, ctx, smoothSwitchMs);
+                            return;
+                        }
                         const st = media.__ardaliDaliGraph?.dynamicEqState || dynamicEqState;
                         const kernelState = media.__ardaliDaliGraph?.dynamicEqKernelState || dynamicEqKernelState || {};
                         if (!st?.enabled) {
@@ -13348,6 +15669,9 @@ function createWebDaliInjectScript(payload, presetStages, bassPresetStages) {
                         }
                     });
                     const truePeakTimer = root.wrapPerfLoop(perfState, 'truepeak', truePeakIntervalMs, function () {
+                        if (isWebProfile && perfState.webSafetyMode === true) {
+                            return;
+                        }
                         const st = media.__ardaliDaliGraph?.truePeakState || truePeakState;
                         const kernelState = media.__ardaliDaliGraph?.truePeakKernelState || truePeakKernelState || {};
                         const cg = media.__ardaliDaliGraph?.clipGuardState || clipGuardState;
@@ -13415,6 +15739,46 @@ function createWebDaliInjectScript(payload, presetStages, bassPresetStages) {
                             cg.lastAppliedGainDb = cg.currentGainDb;
                         }
                     });
+                    if (isWebProfile) {
+                        [deEsserTimer, noiseGateTimer, autoGainTimer, dynamicEqTimer, truePeakTimer].forEach((timerId) => {
+                            try {
+                                clearInterval(timerId);
+                            } catch (_) {}
+                        });
+                        perfState.webStableMode = true;
+                        perfState.webSafetyMode = true;
+                        deEsserState.currentHighGain = 1;
+                        deEsserState.envDb = -120;
+                        deEsserState.lastAppliedGain = 1;
+                        noiseGateState.currentGain = 1;
+                        noiseGateState.isOpen = true;
+                        noiseGateState.open = true;
+                        noiseGateState.envDb = -120;
+                        noiseGateState.lastAppliedGain = 1;
+                        autoGainState.currentGainDb = 0;
+                        autoGainState.envDb = -120;
+                        autoGainState.lastAppliedGainDb = 0;
+                        dynamicEqState.currentGainDb = 0;
+                        dynamicEqState.envDb = -120;
+                        dynamicEqState.gainReductionDb = 0;
+                        dynamicEqState.triggered = false;
+                        dynamicEqState.lastAppliedGainDb = 0;
+                        clipGuardState.currentGainDb = 0;
+                        clipGuardState.targetGainDb = 0;
+                        clipGuardState.lastAppliedGainDb = 0;
+                        root.smoothParam(deEsserHighGain?.gain, 1, ctx, smoothSwitchMs);
+                        root.smoothParam(noiseGateGain?.gain, 1, ctx, smoothSwitchMs);
+                        root.smoothParam(autoGainNode?.gain, 1, ctx, smoothSwitchMs);
+                        root.smoothParam(dynamicEqPeakL?.gain, 0, ctx, smoothSwitchMs);
+                        root.smoothParam(dynamicEqPeakR?.gain, 0, ctx, smoothSwitchMs);
+                        root.smoothParam(clipGuardGain?.gain, 1, ctx, smoothSwitchMs);
+                        if (${JSON.stringify(ARDALI_VERBOSE_LOGS)}) {
+                            console.log('[DALI WEB][WEB_STABLE_MODE]', JSON.stringify({
+                                dynamicAnalysis: 'disabled',
+                                reason: 'web-audio-stability'
+                            }));
+                        }
+                    }
                     media.__ardaliDaliGraph = {
                         ctx,
                         media,
@@ -13642,10 +16006,13 @@ function createWebDaliInjectScript(payload, presetStages, bassPresetStages) {
                         truePeakMeterAnalyser,
                         balanceSplit,
                         balanceGainL,
-                        balanceGainR,
-                        balanceMerge,
-                        masterGain,
-                        clipGuardState,
+	                        balanceGainR,
+	                        balanceMerge,
+	                        masterGain,
+	                        youtubeAdMuteGain,
+	                        youtubeAdMuteTimer,
+	                        youtubeAdMuteState: false,
+	                        clipGuardState,
                         autoCompDb: 0,
                         perfState
                     };
@@ -13653,7 +16020,9 @@ function createWebDaliInjectScript(payload, presetStages, bassPresetStages) {
                     root.recordPerfBuild(perfState, root.perfNow() - buildStartedAt, true);
                     return media.__ardaliDaliGraph;
                 };
-                const mediaElements = Array.from(document.querySelectorAll('video, audio'));
+                const mediaElements = typeof root.getCandidateMediaElements === 'function'
+                    ? root.getCandidateMediaElements({ includePausedMain: true })
+                    : Array.from(document.querySelectorAll('video, audio'));
                 let connected = 0;
                 for (const m of mediaElements) {
                     const graph = await root.ensureGraph(m);
@@ -13759,15 +16128,20 @@ async function applyWebDaliEngineNow(reason = 'runtime') {
             reportWebDaliAttachLatencyIfReady(reason, result, daliScope);
         }
         if (!ok) {
-            console.warn('[DALI WEB] apply failed:', reason, daliScope, result);
+            if (ARDALI_VERBOSE_LOGS) {
+                console.warn('[DALI WEB] apply failed:', reason, daliScope, result);
+            }
             const resultError = String(result?.error || '').toLowerCase();
             const reasonLower = String(reason || '').toLowerCase();
+            const nowRetry = Date.now();
             if (
                 daliScope === 'web' &&
                 resultError.includes('no-media-graph-connected') &&
-                !reasonLower.includes('no-media-retry')
+                !reasonLower.includes('no-media-retry') &&
+                (nowRetry - webDaliLastNoMediaRetryAt) > 1800
             ) {
-                scheduleApplyWebDaliEngineBurst(`${reason}:no-media-retry`, [20, 60, 120, 240, 500, 900]);
+                webDaliLastNoMediaRetryAt = nowRetry;
+                scheduleApplyWebDaliEngineBurst(`${reason}:no-media-retry`, [240, 900]);
             }
         }
         if (ok && daliScope === 'video') {
@@ -14090,7 +16464,9 @@ try {
 }
 
 function scheduleApplyWebDaliEngine(reason = 'runtime', delayMs = 180) {
-    const waitMs = Math.max(0, Number(delayMs) || 0);
+    const profile = getWebDaliPlatformProfile();
+    const minDelay = profile.lightAttach ? Number(profile.minApplyDelayMs || 0) : 0;
+    const waitMs = Math.max(minDelay, Math.max(0, Number(delayMs) || 0));
     const dueAt = Date.now() + waitMs;
     if (webDaliApplyTimer && webDaliApplyDueAt > 0 && webDaliApplyDueAt <= dueAt + 2) {
         return;
@@ -14111,7 +16487,15 @@ function scheduleApplyWebDaliEngineBurst(reason = 'runtime-burst', delaysMs = [0
         });
         webDaliAttachBurstTimers = [];
     }
-    const plan = Array.isArray(delaysMs) ? delaysMs : [0, 90, 220];
+    const profile = getWebDaliPlatformProfile();
+    let plan = Array.isArray(delaysMs) ? delaysMs : [0, 90, 220];
+    if (profile.lightAttach) {
+        const minDelay = Math.max(0, Number(profile.minApplyDelayMs) || 0);
+        const limit = Math.max(1, Number(profile.burstLimit) || 2);
+        plan = plan.map((delay) => Math.max(minDelay, Number(delay) || 0)).slice(0, limit);
+        if (!plan.length) plan = [minDelay, minDelay + 700];
+    }
+    plan = Array.from(new Set(plan.map((delay) => Math.max(0, Number(delay) || 0))));
     plan.forEach((delay, idx) => {
         const waitMs = Math.max(0, Number(delay) || 0);
         const timer = setTimeout(() => {
@@ -14121,23 +16505,67 @@ function scheduleApplyWebDaliEngineBurst(reason = 'runtime-burst', delaysMs = [0
     });
 }
 
+function getWebDaliPlatformProfile(rawUrl = getWebViewUrlSafe()) {
+    const platform = detectPlatformFromUrl(rawUrl);
+    if (platform === 'instagram') {
+        return {
+            platform,
+            lightAttach: true,
+            patchPlay: false,
+            prewarmOnLoad: false,
+            attachLimit: 8,
+            observerThrottleMs: 600,
+            minApplyDelayMs: 260,
+            burstLimit: 2
+        };
+    }
+    if (platform === 'youtube' || platform === 'ytmusic') {
+        return {
+            platform,
+            lightAttach: true,
+            patchPlay: true,
+            prewarmOnLoad: true,
+            attachLimit: 10,
+            observerThrottleMs: 450,
+            minApplyDelayMs: 160,
+            burstLimit: 2
+        };
+    }
+    return {
+        platform,
+        lightAttach: false,
+        patchPlay: true,
+        prewarmOnLoad: true,
+        attachLimit: 40,
+        observerThrottleMs: 80,
+        minApplyDelayMs: 0,
+        burstLimit: 8
+    };
+}
+
 function installWebDaliAttachHooks() {
     if (!elements.webView || typeof elements.webView.executeJavaScript !== 'function') return;
+    const profile = getWebDaliPlatformProfile();
     const code = `
         (function () {
             try {
                 if (window.__ardaliDaliAttachHookInstalled) return true;
                 window.__ardaliDaliAttachHookInstalled = true;
+                const DALI_PROFILE = ${JSON.stringify(profile)};
+                const EMIT_ATTACH_METRICS = ${JSON.stringify(ARDALI_ATTACH_METRICS_LOGS)};
                 const seen = new WeakSet();
                 const prewarmMap = new WeakMap();
                 const startupGuardMap = new WeakMap();
                 let lastEmitAt = 0;
                 const emit = (type) => {
                     try {
+                        const safeType = String(type || 'media-event');
+                        const isPlaybackEvent = safeType === 'play' || safeType === 'playing';
+                        if (!EMIT_ATTACH_METRICS && !isPlaybackEvent) return;
                         const now = Date.now();
-                        if ((now - lastEmitAt) < 90) return;
+                        if ((now - lastEmitAt) < 500) return;
                         lastEmitAt = now;
-                        console.log('ARDALI_DALI_ATTACH:' + JSON.stringify({ type: String(type || 'media-event'), ts: now }));
+                        console.log('ARDALI_DALI_ATTACH:' + JSON.stringify({ type: safeType, ts: now }));
                     } catch (_) {}
                 };
                 const ensureDaliGraph = async (media) => {
@@ -14213,7 +16641,7 @@ function installWebDaliAttachHooks() {
                     } catch (_) {}
                 };
 
-                if (!window.__ardaliDaliPlayPatchInstalled) {
+                if (!window.__ardaliDaliPlayPatchInstalled && DALI_PROFILE.patchPlay !== false) {
                     try {
                         const proto = (typeof HTMLMediaElement !== 'undefined') ? HTMLMediaElement.prototype : null;
                         const originalPlay = proto && proto.play;
@@ -14239,9 +16667,16 @@ function installWebDaliAttachHooks() {
                     const safeEmit = (kind) => async () => {
                         emit(kind);
                         if (kind === 'loadstart' || kind === 'loadedmetadata' || kind === 'canplay') {
-                            try { await ensureDaliGraph(media); } catch (_) {}
+                            if (DALI_PROFILE.prewarmOnLoad === false) return;
+                            const root = window.__ARDALI_DALI_WEB__;
+                            const score = (root && typeof root.scoreMediaCandidate === 'function')
+                                ? root.scoreMediaCandidate(media)
+                                : 0;
+                            if (score >= 420) {
+                                try { await ensureDaliGraph(media); } catch (_) {}
+                            }
                         }
-                        if (kind === 'play' || kind === 'playing' || kind === 'loadstart') {
+                        if (kind === 'play' || kind === 'playing') {
                             try { await applyStartupGuard(media); } catch (_) {}
                         }
                     };
@@ -14252,16 +16687,49 @@ function installWebDaliAttachHooks() {
                     media.addEventListener('play', safeEmit('play'), { passive: true });
                     media.addEventListener('playing', safeEmit('playing'), { passive: true });
                     emit('media-found');
-                    ensureDaliGraph(media).catch(() => {});
+                    if (!media.paused) ensureDaliGraph(media).catch(() => {});
                 };
                 const attachAll = () => {
                     try {
-                        const list = Array.from(document.querySelectorAll('video, audio'));
+                        const all = Array.from(document.querySelectorAll('video, audio'));
+                        const scoreForAttach = (media, index) => {
+                            try {
+                                let score = Math.max(0, all.length - index);
+                                if (!media.paused) score += 1000;
+                                if (!media.muted && Number(media.volume) !== 0) score += 160;
+                                const rect = typeof media.getBoundingClientRect === 'function' ? media.getBoundingClientRect() : null;
+                                const visible = rect &&
+                                    rect.width > 0 &&
+                                    rect.height > 0 &&
+                                    rect.bottom > 0 &&
+                                    rect.right > 0 &&
+                                    rect.top < innerHeight &&
+                                    rect.left < innerWidth;
+                                if (visible) score += Math.min(500, (rect.width * rect.height) / 1800);
+                                return score;
+                            } catch (_) {
+                                return 0;
+                            }
+                        };
+                        const maxItems = Math.max(1, Number(DALI_PROFILE.attachLimit) || 40);
+                        const list = all
+                            .map((media, index) => ({ media, score: scoreForAttach(media, index) }))
+                            .sort((a, b) => b.score - a.score)
+                            .slice(0, maxItems)
+                            .map((item) => item.media);
                         for (const media of list) attachMedia(media);
                     } catch (_) {}
                 };
                 attachAll();
-                const observer = new MutationObserver(() => attachAll());
+                let observerTimer = 0;
+                const observerDelay = Math.max(80, Number(DALI_PROFILE.observerThrottleMs) || 80);
+                const observer = new MutationObserver(() => {
+                    if (observerTimer) return;
+                    observerTimer = setTimeout(() => {
+                        observerTimer = 0;
+                        attachAll();
+                    }, observerDelay);
+                });
                 observer.observe(document.documentElement || document.body, { childList: true, subtree: true });
                 return true;
             } catch (_) {
@@ -14329,7 +16797,9 @@ async function applyWebDaliLiveCfgNow(daliScope, cfg, liveEffect = '') {
                     }
                     const cfg = ${cfgJson};
                     const effectName = ${effectJson};
-                    const mediaElements = Array.from(document.querySelectorAll('video, audio'));
+                    const mediaElements = (typeof root.getCandidateMediaElements === 'function')
+                        ? root.getCandidateMediaElements({ includePausedMain: true })
+                        : Array.from(document.querySelectorAll('video, audio'));
                     let connected = 0;
                     for (const media of mediaElements) {
                         const graph = await root.ensureGraph(media);
@@ -14641,11 +17111,11 @@ async function getPreferredPulseDeviceForSpeakers() {
 }
 
 function getPreferredWebPlatformBtn() {
-    const active = document.querySelector('.platform-btn.active');
+    const active = document.querySelector('.platform-btn.active:not([data-placeholder="true"])');
     if (active) return active;
     return document.querySelector('.platform-btn[data-platform="youtube"]')
         || document.querySelector('.platform-btn[data-platform="ytmusic"]')
-        || document.querySelector('.platform-btn');
+        || document.querySelector('.platform-btn:not([data-placeholder="true"])');
 }
 
 function getPulseOpenPlatformPreference() {
@@ -14657,10 +17127,11 @@ function getWebPlatformBtnByName(platform) {
     const key = String(platform || '').trim().toLowerCase();
     if (!key) return null;
     if (!/^[a-z0-9_-]+$/.test(key)) return null;
-    return document.querySelector(`.platform-btn[data-platform="${key}"]`);
+    return document.querySelector(`.platform-btn[data-platform="${key}"]:not([data-placeholder="true"])`);
 }
 
 function getRestorableWebUrlForPlatform(platform) {
+    if (state.settings?.webUi?.restoreLastSession === false) return '';
     const key = String(platform || '').trim().toLowerCase();
     const rawUrl = String(state.settings?.ui?.lastWebUrl || '').trim();
     if (!key || !rawUrl || rawUrl === 'about:blank') return '';
@@ -14670,6 +17141,33 @@ function getRestorableWebUrlForPlatform(platform) {
     if (detected && detected !== key) return '';
     if (isWebAllowlistEnforced() && !isAllowedWebUrl(parsed.toString())) return '';
     return parsed.toString();
+}
+
+function restoreSuspendedWebViewIfNeeded(reason = 'web-activate') {
+    if (!elements.webView || !isWebExperienceEnabled()) return false;
+    if (state.settings?.webUi?.restoreLastSession === false) return false;
+    if (webPlatformRuntime.switching || Date.now() < Number(webPlatformRuntime.manualSwitchUntil || 0)) {
+        return false;
+    }
+    const currentUrl = String(getWebViewUrlSafe() || '').trim();
+    if (currentUrl && currentUrl !== 'about:blank') return false;
+
+    const platform = String(
+        webLoadRuntime.suspendedPlatform
+        || state.webCurrentPlatform
+        || state.settings?.ui?.lastWebPlatform
+        || ''
+    ).trim().toLowerCase();
+    const rawUrl = String(webLoadRuntime.suspendedUrl || state.settings?.ui?.lastWebUrl || '').trim();
+    const parsed = parseHttpUrl(rawUrl);
+    if (!parsed) return false;
+    const url = parsed.toString();
+    if (isWebAllowlistEnforced() && !isAllowedWebUrl(url)) return false;
+
+    console.log('[WEB] restore suspended webview', { reason, platform, url });
+    safeNavigateWebView(url);
+    persistWebNavigationState(url, platform);
+    return true;
 }
 
 function persistWebNavigationState(url, platform = '', options = {}) {
@@ -14701,6 +17199,10 @@ function persistWebNavigationState(url, platform = '', options = {}) {
         webPlatformRuntime.persistTimer = null;
         saveSettings().catch(() => { });
     }, 450);
+}
+
+function shouldSuspendWebWhenInactive() {
+    return state.settings?.webUi?.suspendWhenInactive === true && state.settings?.webUi?.backgroundThrottle !== false;
 }
 
 function buildPulseSearchUrl(platform, query) {
@@ -14981,6 +17483,29 @@ function buildPulseResultQuery(result) {
     return [artist, title].filter(Boolean).join(' ').trim();
 }
 
+function createPulseFoundArt(coverUrl) {
+    const src = String(coverUrl || '').trim();
+    const fallback = () => {
+        const art = document.createElement('span');
+        art.className = 'pulse-found-art';
+        art.setAttribute('aria-hidden', 'true');
+        art.textContent = '♪';
+        return art;
+    };
+    if (!src) return fallback();
+
+    const art = document.createElement('img');
+    art.className = 'pulse-found-art';
+    art.src = src;
+    art.alt = '';
+    art.loading = 'lazy';
+    art.referrerPolicy = 'no-referrer';
+    art.addEventListener('error', () => {
+        art.replaceWith(fallback());
+    }, { once: true });
+    return art;
+}
+
 function renderPulseFoundList() {
     const section = elements.pulseFoundSection || document.getElementById('pulseFoundSection');
     const list = elements.pulseFoundList || document.getElementById('pulseFoundList');
@@ -15007,17 +17532,7 @@ function renderPulseFoundList() {
         button.title = label;
         button.dataset.query = query;
 
-        const art = document.createElement(coverUrl ? 'img' : 'span');
-        art.className = 'pulse-found-art';
-        if (coverUrl) {
-            art.src = coverUrl;
-            art.alt = '';
-            art.loading = 'lazy';
-            art.referrerPolicy = 'no-referrer';
-        } else {
-            art.setAttribute('aria-hidden', 'true');
-            art.textContent = '♪';
-        }
+        const art = createPulseFoundArt(coverUrl);
 
         const body = document.createElement('span');
         body.className = 'pulse-found-body';
@@ -15299,6 +17814,8 @@ function resolveWebPlatformPrimaryUrl(platform, requestedUrl) {
     const p = String(platform || '').toLowerCase();
     if (p === 'youtube') return 'https://www.youtube.com/';
     if (p === 'ytmusic') return 'https://music.youtube.com/';
+    if (p === 'facebook') return 'https://www.facebook.com/';
+    if (p === 'instagram') return 'https://www.instagram.com/';
     if (p === 'whatsapp') return 'https://web.whatsapp.com/';
     if (p === 'telegram') return 'https://web.telegram.org/';
     return requestedUrl;
@@ -15308,6 +17825,8 @@ function resolveWebPlatformFallbackUrl(platform, requestedUrl) {
     const p = String(platform || '').toLowerCase();
     if (p === 'youtube') return 'https://www.youtube.com/';
     if (p === 'ytmusic') return 'https://music.youtube.com/';
+    if (p === 'facebook') return 'https://www.facebook.com/';
+    if (p === 'instagram') return 'https://www.instagram.com/';
     if (p === 'whatsapp') return 'https://web.whatsapp.com/';
     if (p === 'telegram') return 'https://web.telegram.org/';
     return requestedUrl;
@@ -15328,32 +17847,53 @@ function webUrlLooksLikeTarget(currentUrl, targetUrl, platform = '') {
     if (p === 'ytmusic') {
         return ch === 'music.youtube.com';
     }
+    if (p && detectPlatformFromUrl(currentUrl) === p) return true;
     return ch === th;
+}
+
+function applyEmbeddedUserAgentToWebView() {
+    if (!elements.webView || typeof elements.webView.setUserAgent !== 'function') return false;
+    const userAgent = getPreferredWebUserAgent();
+    if (webLoadRuntime.appliedUserAgent === userAgent) return false;
+    try {
+        elements.webView.setUserAgent(userAgent);
+        webLoadRuntime.appliedUserAgent = userAgent;
+        return true;
+    } catch {
+        return false;
+    }
 }
 
 function safeNavigateWebView(url) {
     if (!elements.webView || !url) return false;
-    const target = String(url);
+    const target = normalizeWebNavigationTarget(url);
     if (!target) return false;
-    try {
-        // WhatsApp gibi servisler ilk istekte gelen UA'ya göre engelleme yapabiliyor.
-        // Bu yüzden navigasyondan hemen önce UA'yı uygula.
-        elements.webView.setUserAgent(getEmbeddedDesktopUserAgent());
-    } catch {
-        // yoksay
-    }
-    const now = Date.now();
+    webLoadRuntime.suspendedUrl = '';
+    webLoadRuntime.suspendedPlatform = '';
     const currentUrl = getWebViewUrlSafe();
+    // Bazı servisler ilk istekte gelen UA'ya göre karar verebiliyor.
+    // UA'yı navigasyondan önce ve yalnızca değiştiyse uygula; dom-ready'de tekrar vermek
+    // bazı SPA'larda ikinci ana yükleme gibi davranabiliyor.
+    applyEmbeddedUserAgentToWebView();
+    const now = Date.now();
     if (
         target === webLoadRuntime.lastRequestedUrl
-        && (now - webLoadRuntime.lastRequestedAt) < 700
-        && currentUrl
-        && currentUrl !== 'about:blank'
+        && (
+            webLoadRuntime.navigationInFlight
+            ||
+            (now - webLoadRuntime.lastRequestedAt) < 1500
+            || (
+                (now - webLoadRuntime.lastRequestedAt) < 5000
+                && currentUrl
+                && currentUrl !== 'about:blank'
+            )
+        )
     ) {
         return true;
     }
     webLoadRuntime.lastRequestedUrl = target;
     webLoadRuntime.lastRequestedAt = now;
+    webLoadRuntime.navigationInFlight = true;
 
     try {
         elements.webView.setAttribute('src', target);
@@ -15366,6 +17906,19 @@ function safeNavigateWebView(url) {
         return true;
     } catch {
         return false;
+    }
+}
+
+function prepareWebViewForImmediateNavigation() {
+    if (!elements.webView) return;
+    try {
+        elements.webView.removeAttribute?.('hidden');
+        elements.webView.style.removeProperty('display');
+        elements.webView.style.removeProperty('visibility');
+        elements.webView.style.removeProperty('opacity');
+        void elements.webView.getBoundingClientRect();
+    } catch {
+        // yoksay
     }
 }
 
@@ -15385,6 +17938,30 @@ function hardStopWebPlayback() {
                                 m.removeAttribute('src');
                             }
                             if (typeof m.load === 'function') m.load();
+                        } catch {}
+                    });
+                    return true;
+                } catch {
+                    return false;
+                }
+            })();
+        `).catch(() => { });
+    } catch {
+        // yoksay
+    }
+}
+
+function softPauseWebPlayback() {
+    try {
+        if (!elements.webView || typeof elements.webView.executeJavaScript !== 'function') return;
+        elements.webView.executeJavaScript(`
+            (function() {
+                try {
+                    const medias = document.querySelectorAll('video, audio');
+                    medias.forEach((m) => {
+                        try {
+                            m.pause();
+                            m.muted = true;
                         } catch {}
                     });
                     return true;
@@ -15678,6 +18255,22 @@ function getEmbeddedDesktopUserAgent() {
     return stripped || 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36';
 }
 
+function getEmbeddedMobileUserAgent() {
+    return 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1';
+}
+
+function getWebUserAgentMode() {
+    const mode = String(state.settings?.webUi?.userAgentMode || 'desktop').toLowerCase();
+    return ['desktop', 'mobile', 'default'].includes(mode) ? mode : 'desktop';
+}
+
+function getPreferredWebUserAgent() {
+    const mode = getWebUserAgentMode();
+    if (mode === 'default') return '';
+    if (mode === 'mobile') return getEmbeddedMobileUserAgent();
+    return getEmbeddedDesktopUserAgent();
+}
+
 function shouldInjectWebSync(url) {
     const parsed = parseHttpUrl(url);
     if (!parsed) return false;
@@ -15707,7 +18300,11 @@ function shouldInjectWebSync(url) {
 
 async function getSecurityStateSafe() {
     try {
-        const data = await window.ardali?.webSecurity?.getSecurityState?.();
+        const securityPromise = Promise.resolve(window.ardali?.webSecurity?.getSecurityState?.());
+        const timeoutPromise = new Promise((resolve) => {
+            setTimeout(() => resolve({ vpnDetected: false, vpnInterfaces: [] }), 220);
+        });
+        const data = await Promise.race([securityPromise, timeoutPromise]);
         return {
             vpnDetected: !!data?.vpnDetected,
             vpnInterfaces: Array.isArray(data?.vpnInterfaces) ? data.vpnInterfaces : []
@@ -15783,7 +18380,9 @@ function setAdblockMode(mode) {
     if (nextMode !== prevMode && adblock.autoRefreshOnModeChange && elements.webView) {
         const reloaded = reloadWebViewForAdblock('setAdblockMode', {
             prevMode,
-            nextMode
+            nextMode,
+            source: 'adblock',
+            userInitiated: true
         });
         if (reloaded) adblockRuntime.pendingModeChange = false;
     }
@@ -15836,11 +18435,10 @@ async function refreshAdblockStats(showToast = false) {
         }
 
         if (!adblockRuntime.counterBaseByKey.has(key)) {
-            adblockRuntime.counterBaseByKey.set(key, absoluteBlocked);
+            adblockRuntime.counterBaseByKey.set(key, 0);
         }
 
-        const base = Number(adblockRuntime.counterBaseByKey.get(key) || 0);
-        const visible = Math.max(0, absoluteBlocked - base);
+        const visible = Math.max(0, absoluteBlocked);
         adblockRuntime.currentCounterKey = key;
         adblockRuntime.lastBlocked = visible;
         updateAdblockBadge(visible);
@@ -16482,7 +19080,7 @@ async function updateMPRISMetadata() {
         canSeek = false;
     }
 
-    window.ardali.updateMPRISMetadata({
+    const metadataPayload = {
         trackId: trackId,
         title: title,
         artist: artist,
@@ -16494,7 +19092,29 @@ async function updateMPRISMetadata() {
         canGoNext,
         canGoPrevious,
         canSeek
+    };
+    const mprisKey = JSON.stringify({
+        activeMedia: state.activeMedia,
+        trackId: metadataPayload.trackId,
+        title: metadataPayload.title,
+        artist: metadataPayload.artist,
+        albumArt: metadataPayload.albumArt,
+        isPlaying: metadataPayload.isPlaying,
+        position: state.activeMedia === 'web'
+            ? 0
+            : Math.floor((Number(metadataPayload.position) || 0) / 2)
     });
+    const now = Date.now();
+    const minIntervalMs = state.activeMedia === 'web' ? 1800 : 650;
+    if (
+        updateMPRISMetadata.lastKey === mprisKey &&
+        (now - Number(updateMPRISMetadata.lastAt || 0)) < minIntervalMs
+    ) {
+        return;
+    }
+    updateMPRISMetadata.lastKey = mprisKey;
+    updateMPRISMetadata.lastAt = now;
+    window.ardali.updateMPRISMetadata(metadataPayload);
 }
 
 // Web/YouTube senkronizasyon işleyicisi
@@ -16528,6 +19148,29 @@ function publishWebPulseContext() {
     Promise.resolve(window.ardali.pulse.setContextMetadata(context)).catch(() => { });
 }
 
+function updateMediaPlaybackPowerSaveBlocker(reason = 'media-state') {
+    if (!window.ardali?.app?.setPlaybackPowerSaveBlocker) return;
+    const source = String(state.activeMedia || state.currentPage || '').trim().toLowerCase();
+    const playbackPowerMode = normalizeWebPlaybackPowerMode(state.settings?.webUi?.playbackPowerMode || 'balanced');
+    const active = playbackPowerMode !== 'off' && !!state.isPlaying && (source === 'web' || source === 'video');
+    const key = `${active ? '1' : '0'}:${source}:${playbackPowerMode}`;
+    const now = Date.now();
+    if (
+        updateMediaPlaybackPowerSaveBlocker.lastKey === key &&
+        (now - Number(updateMediaPlaybackPowerSaveBlocker.lastAt || 0)) < 1500
+    ) {
+        return;
+    }
+    updateMediaPlaybackPowerSaveBlocker.lastKey = key;
+    updateMediaPlaybackPowerSaveBlocker.lastAt = now;
+    Promise.resolve(window.ardali.app.setPlaybackPowerSaveBlocker({
+        active,
+        source,
+        mode: playbackPowerMode,
+        reason
+    })).catch(() => { });
+}
+
 function handleWebSync(data) {
     if (state.activeMedia !== 'web') return;
     const syncEligible = data?.syncEligible !== false;
@@ -16548,11 +19191,16 @@ function handleWebSync(data) {
 
     if (data.type === 'metadata') {
         if (!syncEligible) return;
+        const normalizedSourceUrl = parseHttpUrl(data.sourceUrl)?.toString() || '';
+        const sourcePlatform = normalizedSourceUrl ? detectPlatformFromUrl(normalizedSourceUrl) : '';
+        const activePlatform = String(state.webCurrentPlatform || '').trim().toLowerCase();
+        if (sourcePlatform && activePlatform && sourcePlatform !== activePlatform) {
+            return;
+        }
         state.webTitle = data.title || '';
         if (state.webTitle) state.webPendingTitle = '';
         state.webArtist = data.artist || '';
         state.webAlbum = data.album || '';
-        const normalizedSourceUrl = parseHttpUrl(data.sourceUrl)?.toString() || '';
         if (normalizedSourceUrl) state.webSourceUrl = normalizedSourceUrl;
 
         if (state.webTitle) elements.nowPlayingLabel.textContent = `${uiT('nowPlaying.prefix', 'Now Playing')}: ${state.webTitle}`;
@@ -16587,6 +19235,7 @@ function handleWebSync(data) {
             updatePlayPauseIcon(nextPlaying);
             updateTrayState();
             updateMPRISMetadata();
+            updateMediaPlaybackPowerSaveBlocker('web-timeupdate');
         }
     }
 
@@ -16595,11 +19244,13 @@ function handleWebSync(data) {
         updatePlayPauseIcon(true);
         updateTrayState();
         updateMPRISMetadata();
+        updateMediaPlaybackPowerSaveBlocker('web-play');
     } else if (data.type === 'pause') {
         state.isPlaying = false;
         updatePlayPauseIcon(false);
         updateTrayState();
         updateMPRISMetadata();
+        updateMediaPlaybackPowerSaveBlocker('web-pause');
         scheduleRememberPlaybackStartupState(220);
     } else if (data.type === 'seeked' || data.type === 'durationchange' || data.type === 'loadeddata') {
         updateMPRISMetadata();
@@ -16943,6 +19594,7 @@ function setupVideoPlayerEvents() {
             renderVideoLibraryTree();
             updateTrayState();
             updateMPRISMetadata();
+            updateMediaPlaybackPowerSaveBlocker('video-ended');
 
             // Sıradaki videoyu çal (kütüphaneden)
             playNextVideo();
@@ -16957,6 +19609,7 @@ function setupVideoPlayerEvents() {
             renderVideoLibraryTree();
             updateTrayState();
             updateMPRISMetadata();
+            updateMediaPlaybackPowerSaveBlocker('video-play');
             // Oynatma başladığında efekt zincirini aktif videoya yeniden uygula.
             scheduleApplyWebDaliEngine('video-play', 20);
         }
@@ -16969,6 +19622,7 @@ function setupVideoPlayerEvents() {
             renderVideoLibraryTree();
             updateTrayState();
             updateMPRISMetadata();
+            updateMediaPlaybackPowerSaveBlocker('video-pause');
         }
     });
 
@@ -17364,6 +20018,28 @@ function uiT(key, fallback, vars) {
         // yoksay
     }
     return fallback ?? String(key);
+}
+
+function getAppWindowTitleForPage(pageName) {
+    const normalized = String(pageName || state.currentPage || 'music').trim().toLowerCase();
+    const page = normalized === 'videotools' ? 'videoTools' : normalized;
+    const titles = {
+        files: 'ArDali Medya Player',
+        music: 'ArDali Music',
+        video: 'ArDali Video',
+        videoTools: 'ArDali Video Studio',
+        gallery: 'ArDali Gallery',
+        web: 'ArDali WebMedya'
+    };
+    return titles[page] || uiT('app.title', 'ArDali Medya Player');
+}
+
+function updateAppWindowTitle(pageName) {
+    try {
+        document.title = getAppWindowTitleForPage(pageName);
+    } catch {
+        // yoksay
+    }
 }
 
 function refreshLanguageSensitiveLibraryUi() {
@@ -18782,19 +21458,50 @@ function switchActivePlayer() {
 // ============================================
 // SIDEBAR & NAVIGATION
 // ============================================
+function applyAppSidebarCollapsed(collapsed, options = {}) {
+    const next = !!collapsed;
+    const sidebarMotionEnabled = typeof elements.uiSidebarMotionToggle?.checked === 'boolean'
+        ? !!elements.uiSidebarMotionToggle.checked
+        : state.settings?.appearance?.sidebarMotionEnabled !== false;
+    document.body?.classList?.toggle('sidebar-motion-enabled', sidebarMotionEnabled);
+    state.sidebarCollapsed = next;
+    document.body?.classList?.toggle('sidebar-collapsed', next);
+
+    const toggleLabel = next ? 'Kenar çubuğunu aç' : 'Kenar çubuğunu gizle';
+    if (elements.sidebarToggleBtn) {
+        elements.sidebarToggleBtn.setAttribute('aria-pressed', next ? 'true' : 'false');
+        elements.sidebarToggleBtn.setAttribute('title', toggleLabel);
+        elements.sidebarToggleBtn.setAttribute('aria-label', toggleLabel);
+        const arrow = elements.sidebarToggleBtn.querySelector('.sidebar-toggle-arrow');
+        if (arrow) {
+            arrow.setAttribute('d', next
+                ? 'M12.8 9.2 15.6 12l-2.8 2.8'
+                : 'M15.2 9.2 12.4 12l2.8 2.8');
+        }
+    }
+
+    if (state.settings) {
+        if (!state.settings.ui || typeof state.settings.ui !== 'object') state.settings.ui = {};
+        state.settings.ui.sidebarCollapsed = next;
+        if (options.persist !== false) {
+            saveSettings().catch(() => { /* yoksay */ });
+        }
+    }
+}
+
 function applyWebUiClasses() {
     const isWeb = isPageVisible(elements.webPage) || state.currentPage === 'web' || state.currentPanel === 'web';
+    if (isWeb) {
+        state.webDrawerCollapsed = true;
+        if (state.settings?.webUi) state.settings.webUi.drawerCollapsed = true;
+    }
     document.body.classList.toggle('web-mode', !!isWeb);
     if (isWeb) {
-        document.body.classList.toggle('web-drawer-collapsed', !!state.webDrawerCollapsed);
+        document.body.classList.add('web-drawer-collapsed');
     } else {
         document.body.classList.remove('web-drawer-collapsed');
     }
 
-    if (elements.webDrawerToggleBtn) {
-        const pressed = isWeb && state.webDrawerCollapsed;
-        elements.webDrawerToggleBtn.setAttribute('aria-pressed', pressed ? 'true' : 'false');
-    }
     if (elements.adblockBtn) {
         elements.adblockBtn.classList.toggle('active', !!isWeb);
         elements.adblockBtn.setAttribute('aria-pressed', isWeb ? 'true' : 'false');
@@ -18818,9 +21525,10 @@ function restoreActiveWebPlatformIndicator() {
     const detectedFromUrl = detectPlatformFromUrl(getWebViewUrlSafe());
     const runtimeRemembered = String(state.webCurrentPlatform || '').trim().toLowerCase();
     const remembered = String(state.settings?.ui?.lastWebPlatform || '').trim().toLowerCase();
-    const activeNow = String(document.querySelector('.platform-btn.active')?.dataset?.platform || '').trim().toLowerCase();
+    const activeNow = String(document.querySelector('.platform-btn.active:not([data-placeholder="true"])')?.dataset?.platform || '').trim().toLowerCase();
     const targetKey = detectedFromUrl || runtimeRemembered || remembered || activeNow;
-    if (!targetKey) {
+    const targetBtn = targetKey ? getWebPlatformBtnByName(targetKey) : null;
+    if (!targetKey || !targetBtn) {
         const fallbackBtn = getPreferredWebPlatformBtn();
         if (fallbackBtn) {
             elements.platformBtns.forEach((btn) => btn.classList.remove('active'));
@@ -18837,7 +21545,7 @@ function restoreActiveWebPlatformIndicator() {
     let matched = false;
     elements.platformBtns.forEach((btn) => {
         const key = String(btn.dataset.platform || '').trim().toLowerCase();
-        const isMatch = key === targetKey;
+        const isMatch = btn !== targetBtn ? false : key === targetKey;
         btn.classList.toggle('active', isMatch);
         if (isMatch) matched = true;
     });
@@ -18859,6 +21567,133 @@ function normalizeWebUiMotionPreset(value) {
     return 'balanced';
 }
 
+function normalizeWebPlaybackPowerMode(value) {
+    const key = String(value || '').trim().toLowerCase();
+    if (key === 'smooth' || key === 'battery' || key === 'off') return key;
+    return 'balanced';
+}
+
+function getWebPlaybackPowerModeStatusText(status = {}) {
+    const mode = normalizeWebPlaybackPowerMode(
+        elements.behaviorWebPlaybackPowerMode?.value ||
+        state.settings?.webUi?.playbackPowerMode ||
+        status.mode ||
+        'balanced'
+    );
+    const profile = String(status.profile || '').trim() || '-';
+    const batteryText = status.hasBattery
+        ? (status.onBattery
+            ? uiT('settings.web.playbackPowerMode.status.onBattery', 'pilde')
+            : uiT('settings.web.playbackPowerMode.status.charging', 'şarjda'))
+        : uiT('settings.web.playbackPowerMode.status.desktop', 'masaüstü güç kaynağı');
+    const playbackText = status.active
+        ? uiT('settings.web.playbackPowerMode.status.playing', 'oynatma var')
+        : uiT('settings.web.playbackPowerMode.status.waiting', 'oynatma bekleniyor');
+
+    if (!status.hasBattery) {
+        return uiT(
+            'settings.web.playbackPowerMode.status.desktopDetail',
+            `Şu an: ${batteryText}. Laptop pili algılanmadığı için pil modu beklemede.`,
+            { power: batteryText }
+        );
+    }
+    if (mode === 'off') {
+        return uiT(
+            'settings.web.playbackPowerMode.status.offDetail',
+            `Şu an: ${batteryText}, ${playbackText}. Güç koruması kapalı.`,
+            { power: batteryText, playback: playbackText }
+        );
+    }
+    if (mode === 'battery') {
+        return uiT(
+            'settings.web.playbackPowerMode.status.batteryDetail',
+            `Şu an: ${batteryText}, ${playbackText}. Pil tasarrufu öncelikli; performans profiline geçilmez.`,
+            { power: batteryText, playback: playbackText }
+        );
+    }
+    if (mode === 'smooth') {
+        return uiT(
+            'settings.web.playbackPowerMode.status.smoothDetail',
+            `Şu an: ${batteryText}, ${playbackText}. Akıcılık öncelikli; oynatma sırasında performans profili istenir. Profil: ${profile}`,
+            { power: batteryText, playback: playbackText, profile }
+        );
+    }
+    if (status.onBattery && status.active && status.performanceProfile) {
+        return uiT(
+            'settings.web.playbackPowerMode.status.balancedActive',
+            `Şu an: pilde, oynatma var. Dengeli mod akıcılık korumasını açtı. Profil: ${profile}`,
+            { profile }
+        );
+    }
+    if (status.onBattery && status.active) {
+        return uiT(
+            'settings.web.playbackPowerMode.status.balancedPending',
+            `Şu an: pilde, oynatma var. Dengeli mod performans profiline geçmeye çalışıyor. Profil: ${profile}`,
+            { profile }
+        );
+    }
+    return uiT(
+        'settings.web.playbackPowerMode.status.balancedIdle',
+        `Şu an: ${batteryText}, ${playbackText}. Dengeli mod pilde oynatma başlayınca akıcılık korumasını açar. Profil: ${profile}`,
+        { power: batteryText, playback: playbackText, profile }
+    );
+}
+
+async function refreshWebPlaybackPowerLiveStatus() {
+    if (!elements.webPlaybackPowerLiveStatus || webPlaybackPowerStatusRefreshInFlight) return;
+    if (typeof window.ardali?.app?.getPlaybackPowerState !== 'function') return;
+    webPlaybackPowerStatusRefreshInFlight = true;
+    try {
+        const status = await window.ardali.app.getPlaybackPowerState();
+        if (status && typeof status === 'object') {
+            cachedPowerState = {
+                available: status.hasBattery === true,
+                charging: status.onBattery !== true,
+                onBattery: status.onBattery === true,
+                level: cachedPowerState.level
+            };
+            updateWebPlaybackPowerModeUi();
+            elements.webPlaybackPowerLiveStatus.textContent = getWebPlaybackPowerModeStatusText(status);
+        }
+    } catch {
+        elements.webPlaybackPowerLiveStatus.textContent = uiT(
+            'settings.web.playbackPowerMode.status.unavailable',
+            'Şu anki güç durumu okunamadı.'
+        );
+    } finally {
+        webPlaybackPowerStatusRefreshInFlight = false;
+    }
+}
+
+function startWebPlaybackPowerStatusPolling() {
+    if (!elements.webPlaybackPowerLiveStatus || webPlaybackPowerStatusTimer) return;
+    refreshWebPlaybackPowerLiveStatus().catch(() => {});
+    webPlaybackPowerStatusTimer = setInterval(() => {
+        refreshWebPlaybackPowerLiveStatus().catch(() => {});
+    }, 2500);
+}
+
+function updateWebPlaybackPowerModeUi() {
+    if (!elements.behaviorWebPlaybackPowerMode) return;
+    const hasBattery = cachedPowerState.available === true;
+    elements.behaviorWebPlaybackPowerMode.disabled = !hasBattery;
+    elements.behaviorWebPlaybackPowerMode.setAttribute('aria-disabled', hasBattery ? 'false' : 'true');
+    const row = elements.behaviorWebPlaybackPowerMode.closest?.('.setting-row');
+    row?.classList?.toggle('setting-row-disabled', !hasBattery);
+    if (elements.webPlaybackPowerModeHint) {
+        elements.webPlaybackPowerModeHint.textContent = hasBattery
+            ? uiT(
+                'settings.web.playbackPowerMode.hint',
+                'Dengeli mod pilde oynatma sırasında takılmayı azaltır, oynatma durunca sistem güç profiline geri döner.'
+            )
+            : uiT(
+                'settings.web.playbackPowerMode.desktopHint',
+                'Bu sistemde pil algılanmadı; masaüstü bilgisayarlarda bu ayar devre dışıdır.'
+            );
+    }
+    refreshWebPlaybackPowerLiveStatus().catch(() => {});
+}
+
 function getWebUiAnimationMode() {
     return normalizeWebUiAnimationMode(state.settings?.webUi?.animationMode || 'compact');
 }
@@ -18869,6 +21704,81 @@ function getWebUiMotionPreset() {
 
 function isWebUiLowPowerMode() {
     return !!state.settings?.webUi?.lowPowerMode;
+}
+
+function isWebPreferHttpsEnabled() {
+    return state.settings?.webUi?.preferHttps !== false;
+}
+
+const WEB_TRACKING_QUERY_PARAMS = new Set([
+    'fbclid', 'gclid', 'gbraid', 'wbraid', 'mc_cid', 'mc_eid', 'igshid', 'yclid', 'msclkid', 'ttclid'
+]);
+
+function shouldStripWebTrackingParams() {
+    return state.settings?.webUi?.stripTrackingParams !== false;
+}
+
+function stripWebTrackingParamsFromUrl(parsed) {
+    if (!shouldStripWebTrackingParams()) return false;
+    let changed = false;
+    for (const key of [...parsed.searchParams.keys()]) {
+        const normalized = String(key || '').toLowerCase();
+        if (normalized.startsWith('utm_') || WEB_TRACKING_QUERY_PARAMS.has(normalized)) {
+            parsed.searchParams.delete(key);
+            changed = true;
+        }
+    }
+    return changed;
+}
+
+function normalizeWebNavigationTarget(url) {
+    const target = String(url || '').trim();
+    if (!target) return '';
+    try {
+        const parsed = new URL(target);
+        let changed = false;
+        if (isWebPreferHttpsEnabled() && parsed.protocol === 'http:' && !['localhost', '127.0.0.1', '::1'].includes(parsed.hostname)) {
+            parsed.protocol = 'https:';
+            changed = true;
+        }
+        changed = stripWebTrackingParamsFromUrl(parsed) || changed;
+        if (changed) return parsed.toString();
+    } catch {
+        // Keep non-URL targets as-is.
+    }
+    return target;
+}
+
+function redirectWebNavigationToPreferredHttps(event, rawUrl) {
+    const url = String(rawUrl || '').trim();
+    if (!url) return false;
+    const target = normalizeWebNavigationTarget(url);
+    if (!target || target === url) return false;
+    try {
+        event?.preventDefault?.();
+    } catch {
+        // yoksay
+    }
+    setTimeout(() => {
+        safeNavigateWebView(target);
+    }, 0);
+    return true;
+}
+
+function getActiveWebOrigin() {
+    try {
+        const current = String(getWebViewUrlSafe() || '').trim();
+        const fallback = String(state.settings?.ui?.lastWebUrl || '').trim();
+        const parsed = new URL(current && current !== 'about:blank' ? current : fallback);
+        if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return '';
+        return parsed.origin;
+    } catch {
+        return '';
+    }
+}
+
+function applyWebRuntimePreferences() {
+    document.body?.classList?.toggle?.('web-background-throttle-enabled', state.settings?.webUi?.backgroundThrottle !== false);
 }
 
 function isWebUiForceMotionEnabled() {
@@ -19066,41 +21976,114 @@ function syncWebUtilityButtonsLayout(shouldDockToSidebar) {
     webSidebarActionsRuntime.dockedToSidebar = false;
 }
 
-function setWebDrawerCollapsed(collapsed) {
-    const next = !!collapsed;
-    state.webDrawerCollapsed = next;
-    if (state.settings) {
-        if (!state.settings.webUi || typeof state.settings.webUi !== 'object') state.settings.webUi = {};
-        state.settings.webUi.drawerCollapsed = next;
-        // Best-effort persist (volume/shuffle/repeat ile birlikte kaydedilir)
-        saveSettings().catch(() => { });
-    }
-    applyWebUiClasses();
-}
-
 function requestPlatformSwitch(btn, options = {}) {
     if (!btn) return;
     if (!isWebExperienceEnabled()) return;
+    if (btn.dataset.placeholder === 'true') {
+        elements.platformBtns.forEach((platformBtn) => platformBtn.classList.remove('active'));
+        btn.classList.add('platform-placeholder');
+        return;
+    }
     cancelStartupLazyWebLoad();
     const key = String(btn.dataset.platform || btn.dataset.url || '').trim();
-    if (webPlatformRuntime.switching) return;
     const now = Date.now();
+    const url = String(btn.dataset.url || '').trim();
+    const currentUrl = String(getWebViewUrlSafe() || '').trim();
+    const activePlatform = String(state.webCurrentPlatform || '').trim().toLowerCase();
+    const currentMatchesTarget = url && webUrlLooksLikeTarget(currentUrl, url, key);
+    const requestedMatchesTarget = url && webUrlLooksLikeTarget(webLoadRuntime.lastRequestedUrl, url, key);
+    const samePlatformCoolingDown = key
+        && key === webPlatformRuntime.lastSwitchKey
+        && (now - webPlatformRuntime.lastSwitchAt) < 5000;
+
+    if (
+        key === activePlatform
+        && webLoadRuntime.navigationInFlight
+        && requestedMatchesTarget
+    ) {
+        elements.platformBtns.forEach((platformBtn) => platformBtn.classList.remove('active'));
+        btn.classList.add('active');
+        state.activeMedia = 'web';
+        state.currentPage = 'web';
+        state.currentPanel = 'web';
+        switchPage('web');
+        applyWebUiClasses();
+        prepareWebViewForImmediateNavigation();
+        return;
+    }
+
+    if (key === activePlatform && currentUrl && currentUrl !== 'about:blank' && currentMatchesTarget) {
+        elements.platformBtns.forEach((platformBtn) => platformBtn.classList.remove('active'));
+        btn.classList.add('active');
+        state.activeMedia = 'web';
+        state.currentPage = 'web';
+        state.currentPanel = 'web';
+        switchPage('web');
+        applyWebUiClasses();
+        prepareWebViewForImmediateNavigation();
+        return;
+    }
+
+    if (
+        samePlatformCoolingDown
+        && currentUrl
+        && currentUrl !== 'about:blank'
+        && currentMatchesTarget
+    ) {
+        elements.platformBtns.forEach((platformBtn) => platformBtn.classList.remove('active'));
+        btn.classList.add('active');
+        state.activeMedia = 'web';
+        state.currentPage = 'web';
+        state.currentPanel = 'web';
+        switchPage('web');
+        applyWebUiClasses();
+        prepareWebViewForImmediateNavigation();
+        return;
+    }
 
     if (key && key === webPlatformRuntime.lastSwitchKey && (now - webPlatformRuntime.lastSwitchAt) < 350) {
         return;
     }
 
+    const previousActiveMedia = String(state.activeMedia || '').trim().toLowerCase();
     webPlatformRuntime.lastSwitchKey = key;
     webPlatformRuntime.lastSwitchAt = now;
+    const switchToken = ++webPlatformRuntime.switchToken;
+    webPlatformRuntime.switching = true;
+    webPlatformRuntime.manualSwitchUntil = now + 3500;
+    webLoadRuntime.suspendedUrl = '';
+    webLoadRuntime.suspendedPlatform = '';
+    webLoadRuntime.lastRequestedUrl = '';
+    webLoadRuntime.lastRequestedAt = 0;
+
+    const platform = String(btn.dataset.platform || '').trim().toLowerCase();
+    elements.platformBtns.forEach((platformBtn) => platformBtn.classList.remove('active'));
+    btn.classList.add('active');
+    if (platform) {
+        state.webCurrentPlatform = platform;
+        if (state.settings?.ui) {
+            state.settings.ui.lastWebPlatform = platform;
+        }
+    }
 
     try { elements.webView?.blur?.(); } catch { }
     try { document.activeElement?.blur?.(); } catch { }
 
+    state.activeMedia = 'web';
+    state.currentPage = 'web';
+    state.currentPanel = 'web';
+    switchPage('web');
+    applyWebUiClasses();
+    prepareWebViewForImmediateNavigation();
+
     Promise.resolve(ensureWebIsolatedSessionInitialized('platform-switch'))
-        .then(() => handlePlatformClick(btn, options))
+        .then(() => handlePlatformClick(btn, { ...options, switchToken, previousActiveMedia }))
         .catch((e) => {
-        console.warn('[WEB] platform switch error:', e?.message || e);
-    });
+            if (switchToken === webPlatformRuntime.switchToken) {
+                webPlatformRuntime.switching = false;
+            }
+            console.warn('[WEB] platform switch error:', e?.message || e);
+        });
 }
 
 function restoreSidebarSelectionAfterUtilityAction(prevActiveBtn) {
@@ -19220,6 +22203,7 @@ function handleSidebarClick(btn) {
     switchPage(page);
     state.currentPage = page;
     state.currentPanel = panel;
+    updateAppWindowTitle(page);
     if (page === 'web') {
         ensureWebIsolatedSessionInitialized('sidebar-web').catch(() => {});
     }
@@ -19227,6 +22211,8 @@ function handleSidebarClick(btn) {
     applyGalleryUiClasses();
     if (page === 'web') {
         primeWebDaliOnWebTabActivation('sidebar-web-tab');
+        webLoadRuntime.suspendedUrl = '';
+        webLoadRuntime.suspendedPlatform = '';
         scheduleStartupLazyWebLoad();
     }
     persistCurrentMainSection();
@@ -19292,9 +22278,29 @@ function isolateMediaSection(targetPage) {
         stopVideo();
         state.activeMedia = 'web';
     } else if (targetPage === 'gallery') {
-        // Galeriye geçerken oynatma devam etsin (audio/video/web).
-        // Sadece görünüm değişir; medya motorlarını durdurmayız.
-        state.activeMedia = state.activeMedia || 'none';
+        const wasAudioActive = state.activeMedia === 'audio';
+        const wasAudioPlaying = wasAudioActive && state.isPlaying;
+
+        // Galeri fotoğraf odaklıdır: web ve video arkada çalışmasın.
+        // Müzik çalıyorsa korunur; kullanıcı fotoğraflara bakarken müzik devam edebilir.
+        stopWeb();
+        if (state.activeMedia === 'video' || String(elements.videoPlayer?.currentSrc || elements.videoPlayer?.src || '').trim()) {
+            stopVideo();
+        }
+
+        if (wasAudioActive) {
+            state.activeMedia = 'audio';
+            state.isPlaying = wasAudioPlaying;
+            updatePlayPauseIcon(wasAudioPlaying);
+            updateTrayState();
+            updateMPRISMetadata();
+        } else {
+            state.activeMedia = 'none';
+            state.isPlaying = false;
+            updatePlayPauseIcon(false);
+            updateTrayState();
+            updateMPRISMetadata();
+        }
     }
 }
 
@@ -19393,6 +22399,7 @@ function stopVideo() {
     subtitleRuntime.hasTrack = false;
     syncFsSubtitleUiState();
     state.isPlaying = false;
+    updateMediaPlaybackPowerSaveBlocker('video-stop');
     state.currentVideoPath = null;
     state.currentVideoIndex = -1;
     updatePlayPauseIcon(false);
@@ -19404,15 +22411,38 @@ function stopVideo() {
 }
 
 function stopWeb() {
-    if (elements.webView) {
-        // WebView'ı durdur (RAM temizliği)
-        try {
-            hardStopWebPlayback();
-            // Sessiz sayfa yükle - about:blank kullan (data URL yerine)
-            elements.webView.setAttribute('src', 'about:blank');
-        } catch (e) {
-            // WebView henüz yüklenmemiş olabilir - yoksay
+    if (!elements.webView) return;
+    try {
+        const currentUrl = String(getWebViewUrlSafe() || '').trim();
+        const platform = String(state.webCurrentPlatform || detectPlatformFromUrl(currentUrl) || state.settings?.ui?.lastWebPlatform || '').trim().toLowerCase();
+        if (currentUrl && currentUrl !== 'about:blank') {
+            webLoadRuntime.suspendedUrl = currentUrl;
+            webLoadRuntime.suspendedPlatform = platform;
+            persistWebNavigationState(currentUrl, platform, { immediate: true });
         }
+        if (shouldSuspendWebWhenInactive()) {
+            hardStopWebPlayback();
+            state.isPlaying = false;
+            updateMediaPlaybackPowerSaveBlocker('web-stop');
+            // WebView'i gerçekten uyut: Chromium guest sayfası, JS ve medya yükü about:blank ile boşalır.
+            elements.webView.setAttribute('src', 'about:blank');
+            webLoadRuntime.lastRequestedUrl = '';
+            webLoadRuntime.lastRequestedAt = 0;
+            setTimeout(() => {
+                if (String(state.currentPage || '') === 'web') return;
+                try {
+                    elements.webView?.removeAttribute?.('src');
+                } catch {
+                    // yoksay
+                }
+            }, 900);
+        } else {
+            softPauseWebPlayback();
+            state.isPlaying = false;
+            updateMediaPlaybackPowerSaveBlocker('web-soft-pause');
+        }
+    } catch (e) {
+        // WebView henüz yüklenmemiş olabilir - yoksay
     }
 }
 
@@ -19460,6 +22490,7 @@ function switchPage(pageName) {
     }
 
     state.currentPage = normalizedPage;
+    updateAppWindowTitle(normalizedPage);
     if (normalizedPage !== 'videoTools') {
         releaseVideoStudioIdleRuntime();
     }
@@ -19481,6 +22512,8 @@ function switchPage(pageName) {
 
 async function handlePlatformClick(btn, options = {}) {
     if (!isWebExperienceEnabled()) return;
+    const switchToken = Number(options.switchToken || 0);
+    const isStaleSwitch = () => switchToken > 0 && switchToken !== webPlatformRuntime.switchToken;
     webPlatformRuntime.switching = true;
     try {
         const url = btn.dataset.url;
@@ -19492,6 +22525,7 @@ async function handlePlatformClick(btn, options = {}) {
         }
 
         const sec = await getSecurityStateSafe();
+        if (isStaleSwitch()) return;
         if (sec.vpnDetected) {
             if (isStrictVpnBlockEnabled() && !isYoutubeHost(url)) {
                 safeNotify(uiT('securityPage.notify.vpnBlocked', 'VPN algılandı. Güvenlik nedeniyle Web sekmesi geçici olarak engellendi.'), 'error');
@@ -19510,9 +22544,15 @@ async function handlePlatformClick(btn, options = {}) {
         // Yardımcı pages should not remain open when switching to a platform
         closeAllUtilityPages();
 
-        // Önce diğer medyaları kapat (RAM tasarrufu)
-        stopAudio();
-        stopVideo();
+        // Web platformları arasında geçerken yerel medya motorlarını tekrar durdurma:
+        // TikTok gibi ağır arayüzlerde gereksiz IPC/audio temizliği ilk yüklemeyi geciktiriyor.
+        const previousActiveMedia = String(options.previousActiveMedia || '').trim().toLowerCase();
+        if (previousActiveMedia === 'audio' || (previousActiveMedia !== 'web' && state.isPlaying)) {
+            stopAudio();
+        }
+        if (previousActiveMedia === 'video' || (previousActiveMedia !== 'web' && state.currentVideoPath)) {
+            stopVideo();
+        }
         state.activeMedia = 'web';
         state.webTitle = '';
         state.webPendingTitle = '';
@@ -19529,6 +22569,7 @@ async function handlePlatformClick(btn, options = {}) {
         state.currentPanel = 'web';
         switchPage('web');
         applyWebUiClasses();
+        prepareWebViewForImmediateNavigation();
         primeWebDaliOnWebTabActivation('platform-switch');
         if (state.settings?.ui) {
             state.settings.ui.lastWebPlatform = String(platform || '').trim().toLowerCase();
@@ -19537,7 +22578,7 @@ async function handlePlatformClick(btn, options = {}) {
         resetYouTubeNavigationHistory();
         persistCurrentMainSection();
         adblockRuntime.currentCounterKey = String(platform || 'web').trim().toLowerCase() || 'web';
-        adblockRuntime.counterBaseByKey.set(adblockRuntime.currentCounterKey, Number(adblockRuntime.lastAbsoluteBlocked || 0));
+        adblockRuntime.counterBaseByKey.set(adblockRuntime.currentCounterKey, 0);
         adblockRuntime.lastBlocked = 0;
         updateAdblockBadge(0);
 
@@ -19572,7 +22613,9 @@ async function handlePlatformClick(btn, options = {}) {
         updateTrayState();
         updateMPRISMetadata();
     } finally {
-        webPlatformRuntime.switching = false;
+        if (!switchToken || switchToken === webPlatformRuntime.switchToken) {
+            webPlatformRuntime.switching = false;
+        }
     }
 }
 
@@ -21184,7 +24227,35 @@ async function resolvePlaylistCardCover(filePath = '') {
     return await request;
 }
 
-function queuePlaylistCardCoverLoad(itemElement, filePath = '') {
+function resetPlaylistCardCoverObserver() {
+    if (!playlistCardCoverObserver) return;
+    try {
+        playlistCardCoverObserver.disconnect();
+    } catch {
+        // yoksay
+    }
+}
+
+function getPlaylistCardCoverObserver() {
+    if (playlistCardCoverObserver || typeof IntersectionObserver !== 'function') {
+        return playlistCardCoverObserver;
+    }
+    playlistCardCoverObserver = new IntersectionObserver((entries) => {
+        entries.forEach((entry) => {
+            if (!entry?.isIntersecting) return;
+            const itemElement = entry.target;
+            playlistCardCoverObserver?.unobserve?.(itemElement);
+            loadPlaylistCardCoverNow(itemElement, itemElement?.dataset?.coverPath || '');
+        });
+    }, {
+        root: elements.playlist || null,
+        rootMargin: '180px 0px',
+        threshold: 0.01
+    });
+    return playlistCardCoverObserver;
+}
+
+function loadPlaylistCardCoverNow(itemElement, filePath = '') {
     const img = itemElement?.querySelector('.playlist-card-cover-img');
     const key = String(filePath || '').trim();
     if (!img || !key) return;
@@ -21215,6 +24286,30 @@ function queuePlaylistCardCoverLoad(itemElement, filePath = '') {
         if (img.dataset.coverToken !== token) return;
         applyPlaylistCardCover(img, coverData);
     }).catch(() => {});
+}
+
+function queuePlaylistCardCoverLoad(itemElement, filePath = '') {
+    const img = itemElement?.querySelector('.playlist-card-cover-img');
+    const key = String(filePath || '').trim();
+    if (!itemElement || !img || !key) return;
+    if (getLibraryPerformanceState().lightweightMode) return;
+
+    itemElement.dataset.coverPath = key;
+    const known = getKnownPlaylistCardCover(key);
+    if (known) {
+        applyPlaylistCardCover(img, known);
+        return;
+    }
+
+    applyPlaylistCardCover(img, null);
+    if (!canRetryPlaylistCardCover(key)) return;
+
+    const observer = getPlaylistCardCoverObserver();
+    if (observer) {
+        observer.observe(itemElement);
+        return;
+    }
+    setTimeout(() => loadPlaylistCardCoverNow(itemElement, key), 0);
 }
 
 function updateLibraryPerformanceStatusUi() {
@@ -27595,6 +30690,37 @@ function getVideoToolPerformanceProfile() {
     };
 }
 
+function getUiRuntimePerformanceProfile() {
+    const appearance = state.settings?.appearance || {};
+    const libraryPerformance = state.settings?.library?.performance || {};
+    const visualMode = String(appearance.visualMode || '').trim().toLowerCase();
+    const theme = String(appearance.theme || '').trim().toLowerCase();
+    const optimizationProfile = getEffectiveOptimizationProfile(appearance.optimizationProfile || 'auto');
+    const hardwareTier = normalizeHardwareTier(cachedHardwareProfile?.tier || 'medium');
+    const qualityPriority = optimizationProfile === 'quality';
+    const lowPower = !qualityPriority && (!!appearance.lowHardwareMode
+        || !!libraryPerformance.lightweightMode
+        || visualMode === 'minimal'
+        || theme === 'performance-lite'
+        || hardwareTier === 'low'
+        || optimizationProfile === 'ram'
+        || optimizationProfile === 'gpu'
+        || optimizationProfile === 'battery');
+    const balanced = !lowPower && !qualityPriority && (visualMode === 'balanced' || theme === 'performance-balanced' || hardwareTier === 'medium');
+    const sliderFxFps = optimizationProfile === 'battery' ? 4 : (optimizationProfile === 'gpu' ? 5 : (lowPower ? 6 : (balanced ? 8 : 12)));
+    return {
+        lowPower,
+        balanced,
+        optimizationProfile,
+        visualMode: qualityPriority ? 'full' : (lowPower ? 'minimal' : (balanced ? 'balanced' : 'full')),
+        activeVisualizerFps: qualityPriority ? 30 : (optimizationProfile === 'battery' ? 15 : (optimizationProfile === 'gpu' ? 24 : (lowPower ? 18 : (balanced ? 24 : 30)))),
+        idleVisualizerFps: qualityPriority ? 12 : (optimizationProfile === 'battery' ? 5 : (optimizationProfile === 'gpu' ? 8 : (lowPower ? 6 : (balanced ? 8 : 12)))),
+        hiddenVisualizerFps: qualityPriority ? 6 : (optimizationProfile === 'battery' ? 2 : 3),
+        sliderFxFps,
+        settingsFxFps: qualityPriority ? 8 : Math.min(6, sliderFxFps)
+    };
+}
+
 function applyVideoToolPerformanceHints() {
     const profile = getVideoToolPerformanceProfile();
     const fpsSelect = document.getElementById('videoToolRecordFpsSelect');
@@ -32434,14 +35560,13 @@ function syncVideoStudioOutputSettingsFromUi() {
 
 function normalizeVideoStudioStreamService(value = 'custom') {
     const normalized = String(value || 'custom').trim().toLowerCase();
-    return ['custom', 'youtube', 'twitch', 'facebook'].includes(normalized) ? normalized : 'custom';
+    return ['custom', 'youtube', 'twitch'].includes(normalized) ? normalized : 'custom';
 }
 
 function getVideoStudioStreamServerPreset(service = videoStudioStreamService) {
     const normalized = normalizeVideoStudioStreamService(service);
     if (normalized === 'youtube') return 'rtmp://a.rtmp.youtube.com/live2';
     if (normalized === 'twitch') return 'rtmp://live.twitch.tv/app';
-    if (normalized === 'facebook') return 'rtmps://live-api-s.facebook.com:443/rtmp';
     return '';
 }
 
@@ -35463,7 +38588,6 @@ function buildVideoStudioPanel() {
                                     <option value="custom"${videoStudioStreamService === 'custom' ? ' selected' : ''}>${escapeHtml(uiT('video.tools.stream.service.custom', 'Özel'))}</option>
                                     <option value="youtube"${videoStudioStreamService === 'youtube' ? ' selected' : ''}>YouTube</option>
                                     <option value="twitch"${videoStudioStreamService === 'twitch' ? ' selected' : ''}>Twitch</option>
-                                    <option value="facebook"${videoStudioStreamService === 'facebook' ? ' selected' : ''}>Facebook</option>
                                 </select>
                             </label>
                             <label class="video-tool-field">
@@ -35966,6 +39090,7 @@ function renderPlaylist() {
     elements.playlist.classList.toggle('playlist-view-compact', viewPrefs.mode === 'compact' && !largePlaylistMode);
     elements.playlist.classList.toggle('playlist-view-comfortable', viewPrefs.mode === 'comfortable' && !largePlaylistMode);
     elements.playlist.classList.toggle('playlist-view-list', viewPrefs.mode !== 'cards' || largePlaylistMode);
+    resetPlaylistCardCoverObserver();
     elements.playlist.innerHTML = '';
 
     if (state.playlist.length === 0) {
@@ -37440,11 +40565,18 @@ async function extractVideoCover(filePath) {
 function updateCoverArt(imageData, mediaType) {
     const coverImg = elements.coverArt;
     if (!coverImg) {
-        console.log('coverArt element bulunamadı');
+        if (ARDALI_VERBOSE_LOGS) console.log('coverArt element bulunamadı');
         return;
     }
 
-    console.log('Cover güncelleniyor:', mediaType, imageData ? 'data var' : 'varsayılan');
+    const nextCoverKey = `${String(mediaType || '')}|${String(imageData || '')}`;
+    if (updateCoverArt.lastKey === nextCoverKey) {
+        return;
+    }
+    updateCoverArt.lastKey = nextCoverKey;
+    if (ARDALI_VERBOSE_LOGS) {
+        console.log('Cover güncelleniyor:', mediaType, imageData ? 'data var' : 'varsayılan');
+    }
 
     if (imageData) {
         // Base64 resim verisi
@@ -38608,22 +41740,52 @@ function loadSettingsToUI() {
     if (elements.uiSfxPerfModeSelect) {
         elements.uiSfxPerfModeSelect.value = String(state.settings?.appearance?.sfxPerfMode || 'auto').toLowerCase();
     }
+    if (elements.uiOptimizationProfileSelect) {
+        elements.uiOptimizationProfileSelect.value = normalizeOptimizationProfile(state.settings?.appearance?.optimizationProfile || 'auto');
+    }
     if (elements.uiSfxIconSizeSelect) {
         const size = String(state.settings?.appearance?.sfxSidebarIconSize || 'medium').toLowerCase();
         elements.uiSfxIconSizeSelect.value = ['compact', 'medium', 'large'].includes(size) ? size : 'medium';
     }
+    if (elements.uiSidebarMotionToggle) {
+        elements.uiSidebarMotionToggle.checked = state.settings?.appearance?.sidebarMotionEnabled !== false;
+    }
     updateVisualModeUi();
+    updateOptimizationProfileUi();
     updateThemeFollowSystemUi();
     updateAutoHardwareProfileUi();
     if (elements.uiLowHardwareModeToggle) {
         elements.uiLowHardwareModeToggle.checked = !!state.settings?.appearance?.lowHardwareMode;
     }
+    if (elements.behaviorWebSessionProfile) elements.behaviorWebSessionProfile.value = normalizeWebSessionProfile(state.settings?.security?.sessionProfile, 'persistent');
+    if (elements.behaviorWebUserAgentMode) elements.behaviorWebUserAgentMode.value = getWebUserAgentMode();
+    if (elements.behaviorWebAutoplayPolicy) elements.behaviorWebAutoplayPolicy.value = ['allow', 'gesture', 'block'].includes(String(state.settings?.webUi?.autoplayPolicy || '').toLowerCase()) ? String(state.settings.webUi.autoplayPolicy).toLowerCase() : 'allow';
+    if (elements.behaviorWebPlaybackPowerMode) elements.behaviorWebPlaybackPowerMode.value = normalizeWebPlaybackPowerMode(state.settings?.webUi?.playbackPowerMode || 'balanced');
+    updateWebPlaybackPowerModeUi();
+    if (elements.behaviorWebAutoRecover) elements.behaviorWebAutoRecover.checked = state.settings?.webUi?.autoRecover !== false;
+    if (elements.behaviorWebAllowCamera) elements.behaviorWebAllowCamera.checked = state.settings?.webUi?.allowCamera === true;
+    if (elements.behaviorWebAllowMicrophone) elements.behaviorWebAllowMicrophone.checked = state.settings?.webUi?.allowMicrophone === true;
+    if (elements.behaviorWebAllowLocation) elements.behaviorWebAllowLocation.checked = state.settings?.webUi?.allowLocation === true;
+    if (elements.behaviorWebAllowNotifications) elements.behaviorWebAllowNotifications.checked = state.settings?.webUi?.allowNotifications === true;
+    if (elements.behaviorWebAllowPopups) elements.behaviorWebAllowPopups.checked = state.settings?.webUi?.allowPopups !== false && state.settings?.security?.allowPopups !== false;
+    if (elements.behaviorWebAskDownloadLocation) elements.behaviorWebAskDownloadLocation.checked = state.settings?.webUi?.askDownloadLocation !== false;
+    if (elements.behaviorWebReduceReferrers) elements.behaviorWebReduceReferrers.checked = state.settings?.webUi?.reduceReferrers !== false;
+    if (elements.behaviorWebStripTrackingParams) elements.behaviorWebStripTrackingParams.checked = state.settings?.webUi?.stripTrackingParams !== false;
+    if (elements.behaviorWebBlockThirdPartyCookies) elements.behaviorWebBlockThirdPartyCookies.checked = state.settings?.webUi?.blockThirdPartyCookies === true;
+    renderWebClearStatusFromSettings();
+    renderActiveWebSitePermissions();
     if (state.settings?.appearance?.lowHardwareMode) {
         applyLowHardwareModeToStateAndUi();
     }
     detectHardwareProfile().then(renderHardwareProfileStatus).catch(() => {
         renderHardwareProfileStatus(null);
     });
+    detectPowerState().then(() => {
+        updateOptimizationProfileUi();
+        if (getCurrentOptimizationProfile() === 'auto' && state.settings?.appearance?.autoHardwareProfile === true) {
+            applyOptimizationProfileToUi({ updateSystemPreset: true });
+        }
+    }).catch(() => {});
     renderLibraryFolderSettings();
     updateLibraryMetadataStatusUi();
     if (elements.libraryPreferEmbeddedCover) elements.libraryPreferEmbeddedCover.checked = getCoverPreferenceState().preferEmbedded;
@@ -38682,6 +41844,7 @@ function loadSettingsToUI() {
     if (smartVolumeLevelingMode) smartVolumeLevelingMode.disabled = !smartVolumeLevelingEnabled?.checked;
     applyAppearanceSettingsToRuntime();
     applySecuritySettingsToRuntime();
+    applyWebRuntimePreferences();
     updateRecognitionEngineUi();
     applyWebExperienceMode({ forceSwitch: !isStandaloneSettingsMode() });
 }
@@ -38690,6 +41853,7 @@ async function applySettings() {
     settingsWindowRuntime.saving = true;
     let result;
     const prevAutoHardwareProfile = state.settings?.appearance?.autoHardwareProfile !== false;
+    const prevLowHardwareMode = !!state.settings?.appearance?.lowHardwareMode;
     try {
         result = await window.ArDaliSettingsShared?.applySettings?.({
             state,
@@ -38718,6 +41882,46 @@ async function applySettings() {
     const { nextMode, prevMode } = result;
     const nextAutoHardwareProfile = !!elements.uiAutoHardwareProfileToggle?.checked;
     const nextLowHardwareMode = !!elements.uiLowHardwareModeToggle?.checked;
+    const nextOptimizationProfile = getCurrentOptimizationProfile();
+    const nextEffectiveOptimizationProfile = getEffectiveOptimizationProfile(nextOptimizationProfile);
+    const selectedWebStartupDelay = normalizeWebStartupLazyDelayMs(
+        elements.behaviorWebStartupDelay?.value
+        || elements.libraryWebStartupDelay?.value
+        || state.settings?.ui?.webStartupLazyDelayMs
+    );
+    const selectedWebAnimationMode = normalizeWebUiAnimationMode(elements.behaviorWebAnimationMode?.value || state.settings?.webUi?.animationMode || 'compact');
+    const selectedWebMotionPreset = normalizeWebUiMotionPreset(elements.behaviorWebMotionPreset?.value || state.settings?.webUi?.motionPreset || 'balanced');
+    const selectedWebLowPowerMode = !!elements.behaviorWebLowPowerMode?.checked;
+    const selectedWebClearCacheOnQuit = elements.behaviorWebClearCacheOnQuit?.checked !== false;
+    const selectedWebClearCookiesOnQuit = elements.behaviorWebClearCookiesOnQuit?.checked === true;
+    const selectedWebClearSiteDataOnQuit = elements.behaviorWebClearSiteDataOnQuit?.checked === true;
+    const selectedWebClearHistoryOnQuit = elements.behaviorWebClearHistoryOnQuit?.checked === true;
+    const selectedWebPreferHttps = elements.behaviorWebPreferHttps?.checked !== false;
+    const selectedWebReduceWebRtcIpLeaks = elements.behaviorWebReduceWebRtcIpLeaks?.checked !== false;
+    const selectedWebBackgroundThrottle = elements.behaviorWebBackgroundThrottle?.checked !== false;
+    const selectedWebRestoreLastSession = elements.behaviorWebRestoreLastSession?.checked !== false;
+    const selectedWebSuspendWhenInactive = elements.behaviorWebSuspendWhenInactive?.checked !== false;
+    const selectedWebSessionProfile = normalizeWebSessionProfile(elements.behaviorWebSessionProfile?.value || state.settings?.security?.sessionProfile, 'persistent');
+    const selectedWebUserAgentMode = ['desktop', 'mobile', 'default'].includes(String(elements.behaviorWebUserAgentMode?.value || '').toLowerCase())
+        ? String(elements.behaviorWebUserAgentMode.value).toLowerCase()
+        : 'desktop';
+    const selectedWebAutoplayPolicy = ['allow', 'gesture', 'block'].includes(String(elements.behaviorWebAutoplayPolicy?.value || '').toLowerCase())
+        ? String(elements.behaviorWebAutoplayPolicy.value).toLowerCase()
+        : 'allow';
+    const selectedWebPlaybackPowerMode = normalizeWebPlaybackPowerMode(elements.behaviorWebPlaybackPowerMode?.value || state.settings?.webUi?.playbackPowerMode || 'balanced');
+    const selectedWebAdvanced = {
+        autoRecover: elements.behaviorWebAutoRecover?.checked !== false,
+        allowCamera: elements.behaviorWebAllowCamera?.checked === true,
+        allowMicrophone: elements.behaviorWebAllowMicrophone?.checked === true,
+        allowLocation: elements.behaviorWebAllowLocation?.checked === true,
+        allowNotifications: elements.behaviorWebAllowNotifications?.checked === true,
+        allowPopups: elements.behaviorWebAllowPopups?.checked !== false,
+        askDownloadLocation: elements.behaviorWebAskDownloadLocation?.checked !== false,
+        reduceReferrers: elements.behaviorWebReduceReferrers?.checked !== false,
+        stripTrackingParams: elements.behaviorWebStripTrackingParams?.checked !== false,
+        blockThirdPartyCookies: elements.behaviorWebBlockThirdPartyCookies?.checked === true
+    };
+    let needsPostApplySave = false;
     if (!state.settings.appearance || typeof state.settings.appearance !== 'object') {
         state.settings.appearance = {};
     }
@@ -38727,30 +41931,124 @@ async function applySettings() {
         if (elements.sfxLightsToggle) elements.sfxLightsToggle.checked = true;
         if (elements.uiVisualModeSelect) elements.uiVisualModeSelect.value = 'full';
         if (elements.uiMotionProfileSelect) elements.uiMotionProfileSelect.value = 'fast';
-        if (elements.themeSelect) elements.themeSelect.value = 'aur-renk-efektleri';
         if (elements.uiFollowSystemThemeToggle) {
             elements.uiFollowSystemThemeToggle.disabled = false;
             elements.uiFollowSystemThemeToggle.setAttribute('aria-disabled', 'false');
         }
         state.settings.appearance.visualMode = 'full';
         state.settings.appearance.motionProfile = 'fast';
-        state.settings.appearance.theme = 'aur-renk-efektleri';
         state.settings.appearance.uiFxEnabled = true;
         state.settings.appearance.reduceMotion = false;
+        state.settings.appearance.sidebarMotionEnabled = true;
     }
+    state.settings.appearance.theme = String(
+        elements.themeSelect?.value ||
+        state.settings.appearance.theme ||
+        'black'
+    );
+    state.settings.appearance.followSystemTheme = !!elements.uiFollowSystemThemeToggle?.checked;
     // Save aninda toggle degeri kesin uygulanir.
     state.settings.appearance.uiFxEnabled = !!elements.uiFxEnabledToggle?.checked;
     state.settings.appearance.reduceMotion = !!elements.uiReduceMotionToggle?.checked;
+    state.settings.appearance.sidebarMotionEnabled = elements.uiSidebarMotionToggle?.checked !== false;
     state.settings.appearance.sliderFxEnabled = getSliderFxToggleChecked();
     state.settings.appearance.sfxLights = !!elements.sfxLightsToggle?.checked;
+    state.settings.appearance.optimizationProfile = nextOptimizationProfile;
     state.settings.appearance.sfxPerfMode = String(elements.uiSfxPerfModeSelect?.value || 'auto').toLowerCase();
     state.settings.appearance.sfxSidebarIconSize = ['compact', 'medium', 'large'].includes(String(elements.uiSfxIconSizeSelect?.value || '').toLowerCase())
         ? String(elements.uiSfxIconSizeSelect.value).toLowerCase()
         : 'medium';
     state.settings.appearance.lowHardwareMode = nextLowHardwareMode;
-    if (nextLowHardwareMode) {
+    if (!state.settings.ui || typeof state.settings.ui !== 'object') state.settings.ui = {};
+    if (!state.settings.webUi || typeof state.settings.webUi !== 'object') state.settings.webUi = {};
+    state.settings.ui.webStartupLazyDelayMs = selectedWebStartupDelay;
+    state.settings.ui.webStartupDelayManual = true;
+    state.settings.webUi.animationMode = selectedWebAnimationMode;
+    state.settings.webUi.motionPreset = selectedWebMotionPreset;
+    state.settings.webUi.lowPowerMode = selectedWebLowPowerMode;
+    state.settings.webUi.clearCacheOnQuit = selectedWebClearCacheOnQuit;
+    state.settings.webUi.clearCookiesOnQuit = selectedWebClearCookiesOnQuit;
+    state.settings.webUi.clearSiteDataOnQuit = selectedWebClearSiteDataOnQuit;
+    state.settings.webUi.clearHistoryOnQuit = selectedWebClearHistoryOnQuit;
+    state.settings.webUi.preferHttps = selectedWebPreferHttps;
+    state.settings.webUi.reduceWebRtcIpLeaks = selectedWebReduceWebRtcIpLeaks;
+    state.settings.webUi.backgroundThrottle = selectedWebBackgroundThrottle;
+    state.settings.webUi.restoreLastSession = selectedWebRestoreLastSession;
+    state.settings.webUi.suspendWhenInactive = selectedWebSuspendWhenInactive;
+    state.settings.webUi.playbackPowerMode = selectedWebPlaybackPowerMode;
+    Object.assign(state.settings.webUi, selectedWebAdvanced, {
+        userAgentMode: selectedWebUserAgentMode,
+        autoplayPolicy: selectedWebAutoplayPolicy
+    });
+    if (!state.settings.security || typeof state.settings.security !== 'object') state.settings.security = {};
+    state.settings.security.sessionProfile = selectedWebSessionProfile;
+    state.settings.security.allowPopups = selectedWebAdvanced.allowPopups;
+    if (nextLowHardwareMode || nextEffectiveOptimizationProfile === 'ram' || nextEffectiveOptimizationProfile === 'battery') {
         applyLowHardwareModeToStateAndUi();
+        needsPostApplySave = true;
+    } else if (prevLowHardwareMode) {
+        applyHardwareSystemPresetToStateAndUi(getSystemPresetForOptimizationProfile(nextOptimizationProfile));
+        playlistCardCoverState.clear();
+        playlistCardCoverInFlight.clear();
+        trimAlbumArtCache();
+        renderPlaylist();
+        refreshCurrentAudioCoverIfNeeded();
+        needsPostApplySave = true;
+    } else {
+        applyHardwareSystemPresetToStateAndUi(getSystemPresetForOptimizationProfile(nextOptimizationProfile));
+        needsPostApplySave = true;
     }
+    state.settings.ui.webStartupLazyDelayMs = selectedWebStartupDelay;
+    state.settings.ui.webStartupDelayManual = true;
+    state.settings.webUi.animationMode = selectedWebAnimationMode;
+    state.settings.webUi.motionPreset = selectedWebMotionPreset;
+    state.settings.webUi.lowPowerMode = selectedWebLowPowerMode;
+    state.settings.webUi.clearCacheOnQuit = selectedWebClearCacheOnQuit;
+    state.settings.webUi.clearCookiesOnQuit = selectedWebClearCookiesOnQuit;
+    state.settings.webUi.clearSiteDataOnQuit = selectedWebClearSiteDataOnQuit;
+    state.settings.webUi.clearHistoryOnQuit = selectedWebClearHistoryOnQuit;
+    state.settings.webUi.preferHttps = selectedWebPreferHttps;
+    state.settings.webUi.reduceWebRtcIpLeaks = selectedWebReduceWebRtcIpLeaks;
+    state.settings.webUi.backgroundThrottle = selectedWebBackgroundThrottle;
+    state.settings.webUi.restoreLastSession = selectedWebRestoreLastSession;
+    state.settings.webUi.suspendWhenInactive = selectedWebSuspendWhenInactive;
+    state.settings.webUi.playbackPowerMode = selectedWebPlaybackPowerMode;
+    Object.assign(state.settings.webUi, selectedWebAdvanced, {
+        userAgentMode: selectedWebUserAgentMode,
+        autoplayPolicy: selectedWebAutoplayPolicy
+    });
+    state.settings.security.sessionProfile = selectedWebSessionProfile;
+    state.settings.security.allowPopups = selectedWebAdvanced.allowPopups;
+    if (elements.behaviorWebStartupDelay) elements.behaviorWebStartupDelay.value = String(selectedWebStartupDelay);
+    if (elements.libraryWebStartupDelay) elements.libraryWebStartupDelay.value = String(selectedWebStartupDelay);
+    if (elements.behaviorWebAnimationMode) elements.behaviorWebAnimationMode.value = selectedWebAnimationMode;
+    if (elements.behaviorWebMotionPreset) elements.behaviorWebMotionPreset.value = selectedWebMotionPreset;
+    if (elements.behaviorWebLowPowerMode) elements.behaviorWebLowPowerMode.checked = selectedWebLowPowerMode;
+    if (elements.behaviorWebClearCacheOnQuit) elements.behaviorWebClearCacheOnQuit.checked = selectedWebClearCacheOnQuit;
+    if (elements.behaviorWebClearCookiesOnQuit) elements.behaviorWebClearCookiesOnQuit.checked = selectedWebClearCookiesOnQuit;
+    if (elements.behaviorWebClearSiteDataOnQuit) elements.behaviorWebClearSiteDataOnQuit.checked = selectedWebClearSiteDataOnQuit;
+    if (elements.behaviorWebClearHistoryOnQuit) elements.behaviorWebClearHistoryOnQuit.checked = selectedWebClearHistoryOnQuit;
+    if (elements.behaviorWebPreferHttps) elements.behaviorWebPreferHttps.checked = selectedWebPreferHttps;
+    if (elements.behaviorWebReduceWebRtcIpLeaks) elements.behaviorWebReduceWebRtcIpLeaks.checked = selectedWebReduceWebRtcIpLeaks;
+    if (elements.behaviorWebBackgroundThrottle) elements.behaviorWebBackgroundThrottle.checked = selectedWebBackgroundThrottle;
+    if (elements.behaviorWebPlaybackPowerMode) elements.behaviorWebPlaybackPowerMode.value = selectedWebPlaybackPowerMode;
+    if (elements.behaviorWebRestoreLastSession) elements.behaviorWebRestoreLastSession.checked = selectedWebRestoreLastSession;
+    if (elements.behaviorWebSuspendWhenInactive) elements.behaviorWebSuspendWhenInactive.checked = selectedWebSuspendWhenInactive;
+    if (elements.behaviorWebSessionProfile) elements.behaviorWebSessionProfile.value = selectedWebSessionProfile;
+    if (elements.securitySessionProfile) elements.securitySessionProfile.value = selectedWebSessionProfile;
+    if (elements.behaviorWebUserAgentMode) elements.behaviorWebUserAgentMode.value = selectedWebUserAgentMode;
+    if (elements.behaviorWebAutoplayPolicy) elements.behaviorWebAutoplayPolicy.value = selectedWebAutoplayPolicy;
+    if (elements.behaviorWebAutoRecover) elements.behaviorWebAutoRecover.checked = selectedWebAdvanced.autoRecover;
+    if (elements.behaviorWebAllowCamera) elements.behaviorWebAllowCamera.checked = selectedWebAdvanced.allowCamera;
+    if (elements.behaviorWebAllowMicrophone) elements.behaviorWebAllowMicrophone.checked = selectedWebAdvanced.allowMicrophone;
+    if (elements.behaviorWebAllowLocation) elements.behaviorWebAllowLocation.checked = selectedWebAdvanced.allowLocation;
+    if (elements.behaviorWebAllowNotifications) elements.behaviorWebAllowNotifications.checked = selectedWebAdvanced.allowNotifications;
+    if (elements.behaviorWebAllowPopups) elements.behaviorWebAllowPopups.checked = selectedWebAdvanced.allowPopups;
+    if (elements.securityAllowPopups) elements.securityAllowPopups.checked = selectedWebAdvanced.allowPopups;
+    if (elements.behaviorWebAskDownloadLocation) elements.behaviorWebAskDownloadLocation.checked = selectedWebAdvanced.askDownloadLocation;
+    if (elements.behaviorWebReduceReferrers) elements.behaviorWebReduceReferrers.checked = selectedWebAdvanced.reduceReferrers;
+    if (elements.behaviorWebStripTrackingParams) elements.behaviorWebStripTrackingParams.checked = selectedWebAdvanced.stripTrackingParams;
+    if (elements.behaviorWebBlockThirdPartyCookies) elements.behaviorWebBlockThirdPartyCookies.checked = selectedWebAdvanced.blockThirdPartyCookies;
     syncSfxIconSizeShadowStorage(state.settings.appearance.sfxSidebarIconSize);
     updateSliderFxToggleStateUi();
     updateSfxLightsToggleStateUi();
@@ -38766,7 +42064,9 @@ async function applySettings() {
         reloadWebViewForAdblock('applySettings', {
             prevMode,
             nextMode,
-            pendingModeChange: !!adblockRuntime.pendingModeChange
+            pendingModeChange: !!adblockRuntime.pendingModeChange,
+            source: 'settings',
+            userInitiated: true
         });
     }
     adblockRuntime.pendingModeChange = false;
@@ -38777,6 +42077,7 @@ async function applySettings() {
     updateAutoHardwareProfileUi();
     applySecuritySettingsToRuntime();
     applyWebUiClasses();
+    applyWebRuntimePreferences();
     applyWebExperienceMode();
     await applyPlaybackVolumeLevelingToEngine();
     updateLibraryPerformanceStatusUi();
@@ -38793,6 +42094,9 @@ async function applySettings() {
         }
     }
     syncLibraryWatchState().catch(() => {});
+    if (needsPostApplySave) {
+        await saveSettings();
+    }
     settingsWindowRuntime.dirty = false;
 }
 
@@ -38887,24 +42191,43 @@ function applyAppearanceSettingsToRuntime(appearanceOverride = null) {
         : (state.settings?.appearance || {});
     const visualMode = String(appearance.visualMode || 'full').trim().toLowerCase();
     const motionProfile = normalizeMotionProfile(appearance.motionProfile || 'balanced');
-    const theme = String(appearance.theme || 'aur-renk-efektleri').trim() || 'aur-renk-efektleri';
+    const theme = String(appearance.theme || 'black').trim() || 'black';
     const sfxSidebarIconSize = ['compact', 'medium', 'large'].includes(String(appearance.sfxSidebarIconSize || '').toLowerCase())
         ? String(appearance.sfxSidebarIconSize).toLowerCase()
         : 'medium';
     const followSystemTheme = appearance.followSystemTheme === true;
     const systemPrefersDark = getSystemPrefersDark();
-    document.documentElement.dataset.ardaliTheme = theme;
-    document.documentElement.dataset.ardaliMotionProfile = motionProfile;
-    document.documentElement.dataset.sfxIconSize = sfxSidebarIconSize;
-    document.body?.setAttribute?.('data-ardali-theme', theme);
-    document.body?.setAttribute?.('data-ardali-motion-profile', motionProfile);
-    document.body?.classList?.toggle('ardali-system-light', followSystemTheme && !systemPrefersDark);
-    document.body?.classList?.toggle('ardali-system-dark', followSystemTheme && systemPrefersDark);
-    document.body?.classList?.toggle('ardali-visual-balanced', visualMode === 'balanced');
-    document.body?.classList?.toggle('ardali-ui-fx-disabled', appearance.uiFxEnabled === false);
-    document.body?.classList?.toggle('ardali-slider-fx-disabled', appearance.sliderFxEnabled === false);
-    document.body?.classList?.toggle('ardali-reduced-motion', appearance.reduceMotion === true);
-    document.body?.classList?.toggle('ardali-sfx-lights-disabled', appearance.sfxLights === false);
+    const previousTheme = String(document.documentElement.dataset.ardaliTheme || '').trim();
+    const shouldAnimateTheme = previousTheme
+        && previousTheme !== theme
+        && appearance.reduceMotion !== true
+        && !(window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches)
+        && typeof document.startViewTransition === 'function';
+    const commitAppearance = () => {
+        document.documentElement.dataset.ardaliTheme = theme;
+        document.documentElement.dataset.ardaliMotionProfile = motionProfile;
+        document.documentElement.dataset.sfxIconSize = sfxSidebarIconSize;
+        document.body?.setAttribute?.('data-ardali-theme', theme);
+        document.body?.setAttribute?.('data-ardali-motion-profile', motionProfile);
+        document.body?.classList?.toggle('ardali-system-light', followSystemTheme && !systemPrefersDark);
+        document.body?.classList?.toggle('ardali-system-dark', followSystemTheme && systemPrefersDark);
+        document.body?.classList?.toggle('ardali-visual-balanced', visualMode === 'balanced');
+        document.body?.classList?.toggle('ardali-ui-fx-disabled', appearance.uiFxEnabled === false);
+        document.body?.classList?.toggle('ardali-slider-fx-disabled', appearance.sliderFxEnabled === false);
+        document.body?.classList?.toggle('ardali-reduced-motion', appearance.reduceMotion === true);
+        document.body?.classList?.toggle('sidebar-motion-enabled', appearance.sidebarMotionEnabled !== false);
+        document.body?.classList?.toggle('ardali-sfx-lights-disabled', appearance.sfxLights === false);
+    };
+    syncThemeShadowStorage(theme);
+    if (shouldAnimateTheme) {
+        try {
+            document.startViewTransition(commitAppearance);
+        } catch {
+            commitAppearance();
+        }
+    } else {
+        commitAppearance();
+    }
     if (appearance.sliderFxEnabled === false) {
         stopRainbowAnimation();
     } else {
@@ -38916,6 +42239,17 @@ function applyAppearanceSettingsToRuntime(appearanceOverride = null) {
 function syncSfxLightsShadowStorage(enabled) {
     try {
         localStorage.setItem('ardali_ui_sfx_lights_enabled', enabled ? '1' : '0');
+    } catch {
+        // ignore
+    }
+}
+
+function syncThemeShadowStorage(theme) {
+    try {
+        const value = String(theme || '').trim();
+        if (!value) return;
+        localStorage.setItem('ardali_ui_theme', value);
+        localStorage.setItem('theme', value);
     } catch {
         // ignore
     }
@@ -39106,10 +42440,33 @@ async function detectHardwareProfile() {
 
 function getAppearancePresetForHardwareTier(tierValue) {
     const tier = normalizeHardwareTier(tierValue);
+    const optimizationProfile = getEffectiveOptimizationProfile(getCurrentOptimizationProfile(), {
+        ...(cachedHardwareProfile || {}),
+        tier
+    });
+    if (optimizationProfile === 'quality') {
+        return {
+            visualMode: 'full',
+            theme: 'black',
+            motionProfile: 'fast',
+            uiFxEnabled: true,
+            reduceMotion: false
+        };
+    }
+    if (optimizationProfile === 'ram' || optimizationProfile === 'battery' || optimizationProfile === 'gpu') {
+        const minimal = optimizationProfile === 'battery' || optimizationProfile === 'gpu' || tier === 'low';
+        return {
+            visualMode: minimal ? 'minimal' : 'balanced',
+            theme: 'black',
+            motionProfile: optimizationProfile === 'gpu' ? 'balanced' : 'calm',
+            uiFxEnabled: optimizationProfile === 'ram',
+            reduceMotion: true
+        };
+    }
     if (tier === 'low') {
         return {
             visualMode: 'minimal',
-            theme: 'performance-lite',
+            theme: 'black',
             motionProfile: 'calm',
             uiFxEnabled: false,
             reduceMotion: true
@@ -39117,16 +42474,100 @@ function getAppearancePresetForHardwareTier(tierValue) {
     }
     return {
         visualMode: 'balanced',
-        theme: 'performance-balanced',
+        theme: 'black',
         motionProfile: 'balanced',
         uiFxEnabled: true,
         reduceMotion: true
     };
 }
 
-function getLowHardwareSystemPreset() {
+function normalizeOptimizationProfile(value) {
+    const normalized = String(value || '').trim().toLowerCase();
+    if (normalized === 'auto' || normalized === 'ram' || normalized === 'gpu' || normalized === 'battery' || normalized === 'quality') {
+        return normalized;
+    }
+    return 'auto';
+}
+
+function getCurrentOptimizationProfile() {
+    return normalizeOptimizationProfile(
+        elements.uiOptimizationProfileSelect?.value
+        || state.settings?.appearance?.optimizationProfile
+        || 'auto'
+    );
+}
+
+function getEffectiveOptimizationProfile(profileValue = getCurrentOptimizationProfile(), hardwareProfile = cachedHardwareProfile) {
+    const profile = normalizeOptimizationProfile(profileValue);
+    if (state.settings?.appearance?.lowHardwareMode || elements.uiLowHardwareModeToggle?.checked) return 'battery';
+    if (profile !== 'auto') return profile;
+
+    const hw = hardwareProfile || cachedHardwareProfile || {};
+    const tier = normalizeHardwareTier(hw.tier || 'medium');
+    const ramGiB = Number(hw.ramGiB || 0);
+    const gpuTier = detectGpuTierHint(String(hw.gpuRenderer || ''));
+
+    const mediaPlaybackActive = !!state.isPlaying && ['web', 'video'].includes(String(state.activeMedia || '').trim().toLowerCase());
+    if (cachedPowerState.onBattery && !mediaPlaybackActive) return 'battery';
+    if (cachedPowerState.onBattery && mediaPlaybackActive) return 'gpu';
+    if ((ramGiB > 0 && ramGiB <= 8) || tier === 'low') return 'ram';
+    if (gpuTier === 'low') return 'gpu';
+    if (tier === 'high' && !cachedPowerState.onBattery) return 'quality';
+    return 'gpu';
+}
+
+function getOptimizationProfileLabel(profileValue) {
+    const profile = normalizeOptimizationProfile(profileValue);
+    const labels = {
+        auto: uiT('ui.optimizationProfile.options.auto', 'Otomatik Akıllı'),
+        ram: uiT('ui.optimizationProfile.options.ram', 'RAM öncelikli'),
+        gpu: uiT('ui.optimizationProfile.options.gpu', 'GPU öncelikli'),
+        battery: uiT('ui.optimizationProfile.options.battery', 'Pil öncelikli'),
+        quality: uiT('ui.optimizationProfile.options.quality', 'Görsel kalite öncelikli')
+    };
+    return labels[profile] || labels.gpu;
+}
+
+function getSystemPresetForOptimizationProfile(profileValue) {
+    const profile = getEffectiveOptimizationProfile(profileValue);
+    if (profile === 'quality') {
+        return {
+            webStartupLazyDelayMs: 0,
+            watchFolders: true,
+            autoRescanOnFolderChange: true,
+            lightweightMode: false,
+            coverCacheLimitMb: 128,
+            flowFavoritesEnabled: true,
+            flowRecentEnabled: true,
+            flowMostPlayedEnabled: true
+        };
+    }
+    if (profile === 'gpu') {
+        return {
+            webStartupLazyDelayMs: 0,
+            watchFolders: true,
+            autoRescanOnFolderChange: true,
+            lightweightMode: false,
+            coverCacheLimitMb: 64,
+            flowFavoritesEnabled: true,
+            flowRecentEnabled: true,
+            flowMostPlayedEnabled: true
+        };
+    }
+    if (profile === 'ram') {
+        return {
+            webStartupLazyDelayMs: 800,
+            watchFolders: false,
+            autoRescanOnFolderChange: false,
+            lightweightMode: true,
+            coverCacheLimitMb: 32,
+            flowFavoritesEnabled: false,
+            flowRecentEnabled: true,
+            flowMostPlayedEnabled: false
+        };
+    }
     return {
-        webStartupLazyDelayMs: 2000,
+        webStartupLazyDelayMs: 1400,
         watchFolders: false,
         autoRescanOnFolderChange: false,
         lightweightMode: true,
@@ -39137,14 +42578,89 @@ function getLowHardwareSystemPreset() {
     };
 }
 
-function applyLowHardwareModeToStateAndUi() {
-    const preset = getLowHardwareSystemPreset();
+function getLowHardwareSystemPreset() {
+    if (state.settings?.appearance?.lowHardwareMode || elements.uiLowHardwareModeToggle?.checked) {
+        return getSystemPresetForOptimizationProfile('battery');
+    }
+    return getSystemPresetForOptimizationProfile(getCurrentOptimizationProfile());
+}
+
+async function detectPowerState() {
+    if (!navigator || typeof navigator.getBattery !== 'function') {
+        cachedPowerState = {
+            available: false,
+            charging: true,
+            onBattery: false,
+            level: null
+        };
+        updateWebPlaybackPowerModeUi();
+        return cachedPowerState;
+    }
+    try {
+        const battery = await navigator.getBattery();
+        const sync = () => {
+            cachedPowerState = {
+                available: true,
+                charging: battery.charging !== false,
+                onBattery: battery.charging === false,
+                level: Number.isFinite(Number(battery.level)) ? Number(battery.level) : null
+            };
+            updateWebPlaybackPowerModeUi();
+            updateOptimizationProfileUi();
+        };
+        sync();
+        if (!batteryStatusListenerBound) {
+            batteryStatusListenerBound = true;
+            battery.addEventListener?.('chargingchange', () => {
+                sync();
+                handleSmartOptimizationEnvironmentChange();
+            });
+            battery.addEventListener?.('levelchange', sync);
+        }
+    } catch {
+        cachedPowerState = {
+            available: false,
+            charging: true,
+            onBattery: false,
+            level: null
+        };
+        updateWebPlaybackPowerModeUi();
+    }
+    return cachedPowerState;
+}
+
+function handleSmartOptimizationEnvironmentChange() {
+    if (getCurrentOptimizationProfile() !== 'auto') return;
+    if (state.settings?.appearance?.autoHardwareProfile !== true) return;
+    applyOptimizationProfileToUi({ updateSystemPreset: true });
+    previewAppearanceSettingsFromUI();
+    markSettingsDirty();
+}
+
+function getNormalHardwareSystemPreset() {
+    return {
+        webStartupLazyDelayMs: WEB_STARTUP_LAZY_DELAY_DEFAULT_MS,
+        watchFolders: true,
+        autoRescanOnFolderChange: true,
+        lightweightMode: false,
+        coverCacheLimitMb: 64,
+        flowFavoritesEnabled: true,
+        flowRecentEnabled: true,
+        flowMostPlayedEnabled: true
+    };
+}
+
+function applyHardwareSystemPresetToStateAndUi(preset) {
+    if (!preset || typeof preset !== 'object') return;
     if (!state.settings.ui || typeof state.settings.ui !== 'object') state.settings.ui = {};
     const library = ensureLibrarySettings();
     if (!library.performance || typeof library.performance !== 'object') library.performance = {};
     if (!library.smartFlows || typeof library.smartFlows !== 'object') library.smartFlows = {};
 
-    state.settings.ui.webStartupLazyDelayMs = normalizeWebStartupLazyDelayMs(preset.webStartupLazyDelayMs);
+    const preserveManualWebDelay = state.settings.ui.webStartupDelayManual === true;
+    if (!preserveManualWebDelay) {
+        state.settings.ui.webStartupLazyDelayMs = normalizeWebStartupLazyDelayMs(preset.webStartupLazyDelayMs);
+    }
     library.watchFolders = !!preset.watchFolders;
     library.autoRescanOnFolderChange = !!preset.autoRescanOnFolderChange;
     library.performance.lightweightMode = !!preset.lightweightMode;
@@ -39184,14 +42700,119 @@ function applyLowHardwareModeToStateAndUi() {
     updateLibraryFlowsStatusUi();
 }
 
+function applyLowHardwareModeToStateAndUi() {
+    applyHardwareSystemPresetToStateAndUi(getLowHardwareSystemPreset());
+}
+
+function restoreNormalHardwareModeToStateAndUi() {
+    applyHardwareSystemPresetToStateAndUi(getNormalHardwareSystemPreset());
+    playlistCardCoverState.clear();
+    playlistCardCoverInFlight.clear();
+    trimAlbumArtCache();
+    renderPlaylist();
+    refreshCurrentAudioCoverIfNeeded();
+}
+
 function applyFullPowerAppearancePresetToUi() {
+    if (elements.uiOptimizationProfileSelect) elements.uiOptimizationProfileSelect.value = 'quality';
     if (elements.uiVisualModeSelect) elements.uiVisualModeSelect.value = 'full';
     if (elements.uiMotionProfileSelect) elements.uiMotionProfileSelect.value = 'fast';
-    if (elements.themeSelect) elements.themeSelect.value = 'aur-renk-efektleri';
     if (elements.sliderFxToggle) elements.sliderFxToggle.checked = true;
     if (elements.sfxLightsToggle) elements.sfxLightsToggle.checked = true;
     if (elements.uiFxEnabledToggle) elements.uiFxEnabledToggle.checked = true;
     if (elements.uiReduceMotionToggle) elements.uiReduceMotionToggle.checked = false;
+    if (elements.uiSidebarMotionToggle) elements.uiSidebarMotionToggle.checked = true;
+}
+
+function getOptimizationAppearancePreset(profileValue) {
+    const profile = getEffectiveOptimizationProfile(profileValue);
+    if (profile === 'quality') {
+        return {
+            visualMode: 'full',
+            theme: 'black',
+            motionProfile: 'fast',
+            uiFxEnabled: true,
+            sliderFxEnabled: true,
+            reduceMotion: false,
+            sidebarMotionEnabled: true,
+            sfxLights: true,
+            sfxPerfMode: 'full'
+        };
+    }
+    if (profile === 'gpu') {
+        return {
+            visualMode: 'minimal',
+            theme: 'black',
+            motionProfile: 'balanced',
+            uiFxEnabled: false,
+            sliderFxEnabled: false,
+            reduceMotion: true,
+            sidebarMotionEnabled: true,
+            sfxLights: false,
+            sfxPerfMode: 'lite'
+        };
+    }
+    if (profile === 'ram') {
+        return {
+            visualMode: 'balanced',
+            theme: 'black',
+            motionProfile: 'calm',
+            uiFxEnabled: true,
+            sliderFxEnabled: false,
+            reduceMotion: true,
+            sidebarMotionEnabled: true,
+            sfxLights: false,
+            sfxPerfMode: 'lite'
+        };
+    }
+    return {
+        visualMode: 'minimal',
+        theme: 'black',
+        motionProfile: 'calm',
+        uiFxEnabled: false,
+        sliderFxEnabled: false,
+        reduceMotion: true,
+        sidebarMotionEnabled: true,
+        sfxLights: false,
+        sfxPerfMode: 'lite'
+    };
+}
+
+function updateOptimizationProfileUi() {
+    const profile = getCurrentOptimizationProfile();
+    const effectiveProfile = getEffectiveOptimizationProfile(profile);
+    if (elements.uiOptimizationProfileSelect) {
+        elements.uiOptimizationProfileSelect.value = profile;
+    }
+    if (!elements.uiOptimizationProfileHint) return;
+    const hintMap = {
+        auto: uiT('ui.optimizationProfile.hint.autoActive', 'Otomatik Akıllı: şu an {profile} uygulanıyor.', { profile: getOptimizationProfileLabel(effectiveProfile) }),
+        ram: uiT('ui.optimizationProfile.hint.ram', 'RAM öncelikli: web sekmesi uyutulur, kapak önbelleği küçülür, kütüphane daha hafif çalışır.'),
+        gpu: uiT('ui.optimizationProfile.hint.gpu', 'GPU öncelikli: glow, ışık ve canvas animasyonları kısılır; albüm kapakları açık kalır.'),
+        battery: uiT('ui.optimizationProfile.hint.battery', 'Pil öncelikli: RAM ve GPU tasarrufu birlikte uygulanır, arka plan FPS ciddi düşer.'),
+        quality: uiT('ui.optimizationProfile.hint.quality', 'Görsel kalite öncelikli: efektler ve animasyonlar canlı kalır; kaynak tüketimi daha yüksek olabilir.')
+    };
+    elements.uiOptimizationProfileHint.textContent = hintMap[profile] || hintMap.gpu;
+}
+
+function applyOptimizationProfileToUi({ updateSystemPreset = false } = {}) {
+    const profile = getCurrentOptimizationProfile();
+    const preset = getOptimizationAppearancePreset(profile);
+    if (elements.uiVisualModeSelect) elements.uiVisualModeSelect.value = preset.visualMode;
+    if (elements.uiMotionProfileSelect) elements.uiMotionProfileSelect.value = preset.motionProfile;
+    if (elements.uiFxEnabledToggle) elements.uiFxEnabledToggle.checked = !!preset.uiFxEnabled;
+    if (elements.sliderFxToggle) elements.sliderFxToggle.checked = !!preset.sliderFxEnabled;
+    if (elements.uiReduceMotionToggle) elements.uiReduceMotionToggle.checked = !!preset.reduceMotion;
+    if (elements.uiSidebarMotionToggle) elements.uiSidebarMotionToggle.checked = preset.sidebarMotionEnabled !== false;
+    if (elements.sfxLightsToggle) elements.sfxLightsToggle.checked = !!preset.sfxLights;
+    if (elements.uiSfxPerfModeSelect) elements.uiSfxPerfModeSelect.value = preset.sfxPerfMode;
+    if (updateSystemPreset) {
+        applyHardwareSystemPresetToStateAndUi(getSystemPresetForOptimizationProfile(profile));
+    }
+    updateOptimizationProfileUi();
+    updateVisualModeUi();
+    updateSliderFxToggleStateUi();
+    updateSfxLightsToggleStateUi();
 }
 
 function renderHardwareProfileStatus(profile) {
@@ -39223,17 +42844,27 @@ function renderHardwareProfileStatus(profile) {
 async function applyAutoHardwareAppearanceIfNeeded({ persist = false } = {}) {
     const appearance = state.settings?.appearance || {};
     if (appearance.autoHardwareProfile !== true) return false;
-    const profile = await detectHardwareProfile();
+    const [profile] = await Promise.all([
+        detectHardwareProfile(),
+        detectPowerState().catch(() => null)
+    ]);
     const preset = getAppearancePresetForHardwareTier(profile.tier);
+    const selectedTheme = String(
+        appearance.theme ||
+        preset.theme ||
+        'black'
+    ).trim() || 'black';
 
     state.settings.appearance = {
         ...appearance,
-        ...preset
+        ...preset,
+        theme: selectedTheme,
+        optimizationProfile: normalizeOptimizationProfile(appearance.optimizationProfile || 'auto')
     };
 
     if (elements.uiVisualModeSelect) elements.uiVisualModeSelect.value = preset.visualMode;
     if (elements.uiMotionProfileSelect) elements.uiMotionProfileSelect.value = normalizeMotionProfile(preset.motionProfile);
-    if (elements.themeSelect) elements.themeSelect.value = preset.theme;
+    if (elements.themeSelect) elements.themeSelect.value = selectedTheme;
     updateVisualModeUi();
     updateThemeFollowSystemUi();
     updateAutoHardwareProfileUi();
@@ -39308,12 +42939,12 @@ function updateVisualModeUi() {
 function getRecommendedThemeForVisualMode(mode) {
     const normalized = String(mode || 'full').trim().toLowerCase();
     if (normalized === 'balanced') {
-        return 'performance-balanced';
+        return 'black';
     }
     if (normalized === 'minimal') {
-        return 'performance-lite';
+        return 'black';
     }
-    return 'aur-renk-efektleri';
+    return 'black';
 }
 
 function syncThemeWithVisualMode() {
@@ -39331,7 +42962,6 @@ function previewAppearanceSettingsFromUI() {
         const autoPreset = getAppearancePresetForHardwareTier(cachedHardwareProfile?.tier || 'medium');
         if (elements.uiVisualModeSelect) elements.uiVisualModeSelect.value = autoPreset.visualMode;
         if (elements.uiMotionProfileSelect) elements.uiMotionProfileSelect.value = normalizeMotionProfile(autoPreset.motionProfile);
-        if (elements.themeSelect) elements.themeSelect.value = autoPreset.theme;
     }
     const sfxLightsEnabled = !!elements.sfxLightsToggle?.checked;
     const sliderFxEnabled = getSliderFxToggleChecked();
@@ -39341,14 +42971,18 @@ function previewAppearanceSettingsFromUI() {
     const reduceMotionEnabled = typeof elements.uiReduceMotionToggle?.checked === 'boolean'
         ? !!elements.uiReduceMotionToggle.checked
         : !!current.reduceMotion;
+    const sidebarMotionEnabled = typeof elements.uiSidebarMotionToggle?.checked === 'boolean'
+        ? !!elements.uiSidebarMotionToggle.checked
+        : current.sidebarMotionEnabled !== false;
     const followSystemTheme = !!elements.uiFollowSystemThemeToggle?.checked;
-    const selectedTheme = String(elements.themeSelect?.value || current.theme || 'aur-renk-efektleri');
+    const selectedTheme = String(elements.themeSelect?.value || current.theme || 'black');
     const selectedMotionProfile = normalizeMotionProfile(
         elements.uiMotionProfileSelect?.value || current.motionProfile || 'balanced'
     );
     const selectedSfxPerfMode = ['auto', 'lite', 'full'].includes(String(elements.uiSfxPerfModeSelect?.value || '').toLowerCase())
         ? String(elements.uiSfxPerfModeSelect.value).toLowerCase()
         : String(current.sfxPerfMode || 'auto').toLowerCase();
+    const selectedOptimizationProfile = getCurrentOptimizationProfile();
     const selectedSfxIconSize = ['compact', 'medium', 'large'].includes(String(elements.uiSfxIconSizeSelect?.value || '').toLowerCase())
         ? String(elements.uiSfxIconSizeSelect.value).toLowerCase()
         : String(current.sfxSidebarIconSize || 'medium').toLowerCase();
@@ -39370,7 +43004,9 @@ function previewAppearanceSettingsFromUI() {
         uiFxEnabled,
         sliderFxEnabled,
         reduceMotion: reduceMotionEnabled,
+        sidebarMotionEnabled,
         sfxLights: sfxLightsEnabled,
+        optimizationProfile: selectedOptimizationProfile,
         sfxPerfMode: selectedSfxPerfMode,
         sfxSidebarIconSize: selectedSfxIconSize,
         autoHardwareProfile
@@ -39426,6 +43062,7 @@ function getSettingsTabLabel(tabName) {
         listen: 'settings.tabs.listen',
         behavior: 'settings.tabs.behavior',
         security: 'securityPage.title',
+        web: 'settings.tabs.web',
         library: 'settings.tabs.library',
         gallery: 'settings.tabs.gallery',
         audio: 'settings.tabs.audio',
@@ -39437,6 +43074,7 @@ function getSettingsTabLabel(tabName) {
         listen: 'Dinle',
         behavior: 'Davranış',
         security: 'Güvenlik',
+        web: 'Web Ayarları',
         library: 'Medya Kütüphanesi',
         gallery: 'Galeri',
         audio: 'Ses Çıkışı',
@@ -39455,42 +43093,110 @@ function resetBehaviorDefaults() {
         );
     }
     const themeSelect = document.getElementById('themeSelect');
-    if (themeSelect) themeSelect.value = 'aur-renk-efektleri';
+    if (themeSelect) themeSelect.value = 'black';
     const uiFollowSystemThemeToggle = document.getElementById('uiFollowSystemThemeToggle');
     if (uiFollowSystemThemeToggle) uiFollowSystemThemeToggle.checked = false;
-    if (elements.uiVisualModeSelect) elements.uiVisualModeSelect.value = 'full';
+    if (elements.uiOptimizationProfileSelect) elements.uiOptimizationProfileSelect.value = 'auto';
+    applyOptimizationProfileToUi({ updateSystemPreset: true });
     if (elements.uiMotionProfileSelect) elements.uiMotionProfileSelect.value = 'balanced';
-    if (elements.uiSfxPerfModeSelect) elements.uiSfxPerfModeSelect.value = 'auto';
+    if (elements.uiSfxPerfModeSelect) elements.uiSfxPerfModeSelect.value = 'lite';
     if (elements.uiSfxIconSizeSelect) elements.uiSfxIconSizeSelect.value = 'medium';
     if (elements.uiAutoHardwareProfileToggle) elements.uiAutoHardwareProfileToggle.checked = true;
     if (elements.uiLowHardwareModeToggle) elements.uiLowHardwareModeToggle.checked = false;
     const uiFxEnabledToggle = document.getElementById('uiFxEnabledToggle');
-    if (uiFxEnabledToggle) uiFxEnabledToggle.checked = true;
+    if (uiFxEnabledToggle) uiFxEnabledToggle.checked = false;
     const uiReduceMotionToggle = document.getElementById('uiReduceMotionToggle');
-    if (uiReduceMotionToggle) uiReduceMotionToggle.checked = false;
-    if (elements.sliderFxToggle) elements.sliderFxToggle.checked = true;
-    if (elements.sfxLightsToggle) elements.sfxLightsToggle.checked = true;
+    if (uiReduceMotionToggle) uiReduceMotionToggle.checked = true;
+    if (elements.uiSidebarMotionToggle) elements.uiSidebarMotionToggle.checked = true;
+    if (elements.sliderFxToggle) elements.sliderFxToggle.checked = false;
+    if (elements.sfxLightsToggle) elements.sfxLightsToggle.checked = false;
     if (elements.behaviorRememberLastSection) elements.behaviorRememberLastSection.checked = true;
-    if (elements.behaviorWebExperienceEnabled) elements.behaviorWebExperienceEnabled.checked = true;
     if (elements.libraryRememberSection) elements.libraryRememberSection.checked = true;
     if (elements.behaviorStartupPage) elements.behaviorStartupPage.value = 'music';
     if (elements.libraryStartupPage) elements.libraryStartupPage.value = 'music';
-    if (elements.behaviorWebStartupDelay) elements.behaviorWebStartupDelay.value = String(WEB_STARTUP_LAZY_DELAY_DEFAULT_MS);
-    if (elements.libraryWebStartupDelay) elements.libraryWebStartupDelay.value = String(WEB_STARTUP_LAZY_DELAY_DEFAULT_MS);
-    if (elements.behaviorWebAnimationMode) elements.behaviorWebAnimationMode.value = 'compact';
-    if (elements.behaviorWebMotionPreset) elements.behaviorWebMotionPreset.value = 'balanced';
-    if (elements.behaviorWebLowPowerMode) elements.behaviorWebLowPowerMode.checked = false;
     if (elements.behaviorCloseToTray) elements.behaviorCloseToTray.checked = true;
     if (elements.behaviorNotificationsEnabled) elements.behaviorNotificationsEnabled.checked = false;
     updateVisualModeUi();
+    updateOptimizationProfileUi();
     updateThemeFollowSystemUi();
     previewAppearanceSettingsFromUI();
     if (!state.settings || typeof state.settings !== 'object') state.settings = {};
     if (!state.settings.ui || typeof state.settings.ui !== 'object') state.settings.ui = {};
-    state.settings.ui.webExperienceEnabled = !!elements.behaviorWebExperienceEnabled?.checked;
+    if (!state.settings.appearance || typeof state.settings.appearance !== 'object') state.settings.appearance = {};
     state.settings.ui.notificationsEnabled = !!elements.behaviorNotificationsEnabled?.checked;
+    state.settings.appearance.sidebarMotionEnabled = true;
+}
+
+function resetWebDefaults() {
+    if (elements.behaviorWebExperienceEnabled) elements.behaviorWebExperienceEnabled.checked = true;
+    if (elements.behaviorWebStartupDelay) elements.behaviorWebStartupDelay.value = '0';
+    if (elements.libraryWebStartupDelay) elements.libraryWebStartupDelay.value = '0';
+    if (elements.behaviorWebAnimationMode) elements.behaviorWebAnimationMode.value = 'compact';
+    if (elements.behaviorWebMotionPreset) elements.behaviorWebMotionPreset.value = 'balanced';
+    if (elements.behaviorWebLowPowerMode) elements.behaviorWebLowPowerMode.checked = false;
+    if (elements.behaviorWebClearCacheOnQuit) elements.behaviorWebClearCacheOnQuit.checked = true;
+    if (elements.behaviorWebClearCookiesOnQuit) elements.behaviorWebClearCookiesOnQuit.checked = false;
+    if (elements.behaviorWebClearSiteDataOnQuit) elements.behaviorWebClearSiteDataOnQuit.checked = false;
+    if (elements.behaviorWebClearHistoryOnQuit) elements.behaviorWebClearHistoryOnQuit.checked = false;
+    if (elements.behaviorWebPreferHttps) elements.behaviorWebPreferHttps.checked = true;
+    if (elements.behaviorWebReduceWebRtcIpLeaks) elements.behaviorWebReduceWebRtcIpLeaks.checked = true;
+    if (elements.behaviorWebBackgroundThrottle) elements.behaviorWebBackgroundThrottle.checked = true;
+    if (elements.behaviorWebPlaybackPowerMode) elements.behaviorWebPlaybackPowerMode.value = 'balanced';
+    if (elements.behaviorWebRestoreLastSession) elements.behaviorWebRestoreLastSession.checked = true;
+    if (elements.behaviorWebSuspendWhenInactive) elements.behaviorWebSuspendWhenInactive.checked = true;
+    if (elements.behaviorWebSessionProfile) elements.behaviorWebSessionProfile.value = 'persistent';
+    if (elements.behaviorWebAutoRecover) elements.behaviorWebAutoRecover.checked = true;
+    if (elements.behaviorWebAllowCamera) elements.behaviorWebAllowCamera.checked = false;
+    if (elements.behaviorWebAllowMicrophone) elements.behaviorWebAllowMicrophone.checked = false;
+    if (elements.behaviorWebAllowLocation) elements.behaviorWebAllowLocation.checked = false;
+    if (elements.behaviorWebAllowNotifications) elements.behaviorWebAllowNotifications.checked = false;
+    if (elements.behaviorWebAllowPopups) elements.behaviorWebAllowPopups.checked = true;
+    if (elements.behaviorWebUserAgentMode) elements.behaviorWebUserAgentMode.value = 'desktop';
+    if (elements.behaviorWebAutoplayPolicy) elements.behaviorWebAutoplayPolicy.value = 'allow';
+    if (elements.behaviorWebAskDownloadLocation) elements.behaviorWebAskDownloadLocation.checked = true;
+    if (elements.behaviorWebReduceReferrers) elements.behaviorWebReduceReferrers.checked = true;
+    if (elements.behaviorWebStripTrackingParams) elements.behaviorWebStripTrackingParams.checked = true;
+    if (elements.behaviorWebBlockThirdPartyCookies) elements.behaviorWebBlockThirdPartyCookies.checked = false;
+    const browserNavigationHotkeysEnabled = document.getElementById('browserNavigationHotkeysEnabled');
+    if (browserNavigationHotkeysEnabled) browserNavigationHotkeysEnabled.checked = true;
+    if (!state.settings || typeof state.settings !== 'object') state.settings = {};
+    if (!state.settings.ui || typeof state.settings.ui !== 'object') state.settings.ui = {};
+    if (!state.settings.webUi || typeof state.settings.webUi !== 'object') state.settings.webUi = {};
+    if (!state.settings.security || typeof state.settings.security !== 'object') state.settings.security = {};
+    state.settings.ui.webExperienceEnabled = !!elements.behaviorWebExperienceEnabled?.checked;
+    state.settings.ui.webStartupLazyDelayMs = 0;
+    state.settings.ui.webStartupDelayManual = true;
+    state.settings.webUi.animationMode = 'compact';
+    state.settings.webUi.motionPreset = 'balanced';
+    state.settings.webUi.lowPowerMode = false;
+    state.settings.webUi.clearCacheOnQuit = true;
+    state.settings.webUi.clearCookiesOnQuit = false;
+    state.settings.webUi.clearSiteDataOnQuit = false;
+    state.settings.webUi.clearHistoryOnQuit = false;
+    state.settings.webUi.preferHttps = true;
+    state.settings.webUi.reduceWebRtcIpLeaks = true;
+    state.settings.webUi.backgroundThrottle = true;
+    state.settings.webUi.playbackPowerMode = 'balanced';
+    state.settings.webUi.restoreLastSession = true;
+    state.settings.webUi.suspendWhenInactive = true;
+    state.settings.webUi.allowCamera = false;
+    state.settings.webUi.allowMicrophone = false;
+    state.settings.webUi.allowLocation = false;
+    state.settings.webUi.allowNotifications = false;
+    state.settings.webUi.allowPopups = true;
+    state.settings.webUi.userAgentMode = 'desktop';
+    state.settings.webUi.autoplayPolicy = 'allow';
+    state.settings.webUi.askDownloadLocation = true;
+    state.settings.webUi.reduceReferrers = true;
+    state.settings.webUi.stripTrackingParams = true;
+    state.settings.webUi.blockThirdPartyCookies = false;
+    state.settings.webUi.autoRecover = true;
+    state.settings.webUi.sitePermissions = {};
+    state.settings.security.sessionProfile = 'persistent';
+    state.settings.security.allowPopups = true;
     applyWebExperienceMode({ forceSwitch: false });
     applyWebUiClasses();
+    applyWebRuntimePreferences();
 }
 
 function resetSecurityDefaults() {
@@ -39507,8 +43213,12 @@ function resetLibraryDefaults() {
     if (elements.libraryRestoreLastPlaylist) elements.libraryRestoreLastPlaylist.checked = true;
     if (elements.libraryRememberTreeSelection) elements.libraryRememberTreeSelection.checked = true;
     if (elements.libraryStartupPage) elements.libraryStartupPage.value = 'music';
-    if (elements.libraryWebStartupDelay) elements.libraryWebStartupDelay.value = String(WEB_STARTUP_LAZY_DELAY_DEFAULT_MS);
-    if (elements.behaviorWebStartupDelay) elements.behaviorWebStartupDelay.value = String(WEB_STARTUP_LAZY_DELAY_DEFAULT_MS);
+    if (elements.libraryWebStartupDelay) elements.libraryWebStartupDelay.value = '0';
+    if (elements.behaviorWebStartupDelay) elements.behaviorWebStartupDelay.value = '0';
+    if (state.settings?.ui) {
+        state.settings.ui.webStartupLazyDelayMs = 0;
+        state.settings.ui.webStartupDelayManual = true;
+    }
     if (elements.libraryScanOnStartup) elements.libraryScanOnStartup.checked = true;
     if (elements.libraryAutoRescanOnFolderChange) elements.libraryAutoRescanOnFolderChange.checked = true;
     if (elements.libraryWatchFolders) elements.libraryWatchFolders.checked = true;
@@ -39618,12 +43328,14 @@ async function resetCurrentSettingsTab() {
     else if (activeTab === 'listen') resetListenDefaults();
     else if (activeTab === 'behavior') resetBehaviorDefaults();
     else if (activeTab === 'security') resetSecurityDefaults();
+    else if (activeTab === 'web') resetWebDefaults();
     else if (activeTab === 'library') resetLibraryDefaults();
     else if (activeTab === 'gallery') resetGalleryDefaults();
     else if (activeTab === 'audio') resetAudioDefaults();
     else if (activeTab === 'adblock') resetAdblockDefaults();
 
     await applySettings();
+    loadSettingsToUI();
     safeNotify(`${getSettingsTabLabel(activeTab)} varsayılan değerlere döndürüldü ve kaydedildi.`, 'success', 2100);
 }
 
@@ -41185,12 +44897,14 @@ const BoomAnalyzer = {
 
 function getEffectiveVisualizerFps() {
     const configured = Math.max(1, Number(VisualizerSettings.currentFramerate) || 30);
-    if (document.hidden) return Math.min(configured, 8);
+    const profile = getUiRuntimePerformanceProfile();
+    if (document.hidden) return Math.min(configured, profile.hiddenVisualizerFps);
     // Focus kaybında FPS düşürme: kapatıldı.
     // Kullanıcının seçtiği FPS ayarlar penceresi açıkken de korunur.
-    if (!isVisualizerReactiveMediaMode() || !isVisualizerMediaPlayingNow()) return Math.min(configured, 12);
+    if (!isVisualizerReactiveMediaMode() || !isVisualizerMediaPlayingNow()) return Math.min(configured, profile.idleVisualizerFps);
     if (VisualizerSettings.currentAnalyzer === 'none') return 2;
-    return configured;
+    if (profile.visualMode === 'full') return configured;
+    return Math.min(configured, profile.activeVisualizerFps);
 }
 
 function syncVisualizerCanvasSizeFromLayout(force = false) {
@@ -41213,6 +44927,11 @@ function syncVisualizerCanvasSizeFromLayout(force = false) {
 
 function shouldRunVisualizer() {
     if (!visualizerCanvasRef || !visualizerCtx) return false;
+    if (VisualizerSettings.currentAnalyzer === 'none') return false;
+    const profile = getUiRuntimePerformanceProfile();
+    if (profile.lowPower && !isVisualizerMediaPlayingNow() && !isPageVisible(elements.settingsPage)) {
+        return false;
+    }
     if (state.activeMedia === 'video' && isVideoFullscreenActive()) {
         return false;
     }
@@ -42827,9 +46546,10 @@ function shouldAnimateRainbow() {
 }
 
 function getRainbowAnimationIntervalMs() {
-    if (isStandaloneSettingsMode() || isPageVisible(elements.settingsPage)) return 1000 / 8;
-    if (state.activeMedia === 'audio' && state.isPlaying) return 1000 / 12;
-    return 1000 / 6;
+    const profile = getUiRuntimePerformanceProfile();
+    if (isStandaloneSettingsMode() || isPageVisible(elements.settingsPage)) return 1000 / profile.settingsFxFps;
+    if (state.activeMedia === 'audio' && state.isPlaying) return 1000 / profile.sliderFxFps;
+    return 1000 / Math.max(3, Math.min(6, profile.sliderFxFps));
 }
 
 function stopRainbowAnimation() {

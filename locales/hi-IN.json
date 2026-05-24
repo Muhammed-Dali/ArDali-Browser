@@ -772,5 +772,19 @@
   "gallery.file.properties": "Properties",
   "sfx.audiophile.preamp.title": "एनालॉग प्रीऐम्प",
   "sfx.audiophile.preamp.hint": "वेब DSP चेन से पहले आउटपुट गेन को बारीकी से सेट करें.",
-  "sfx.audiophile.preamp.knobLabel": "प्रीऐम्प गेन"
+  "sfx.audiophile.preamp.knobLabel": "प्रीऐम्प गेन",
+  "ui.theme.options.black": "Black",
+  "ui.optimizationProfile.label": "Optimization Target",
+  "ui.optimizationProfile.hint": "Adjusts interface, cover, web and sound effect load based on automatic or manual priority.",
+  "ui.optimizationProfile.hint.initial": "Smart Auto: chooses the best profile based on power, battery and hardware.",
+  "ui.optimizationProfile.options.auto": "Smart Auto",
+  "ui.optimizationProfile.options.ram": "RAM priority",
+  "ui.optimizationProfile.options.gpu": "GPU priority",
+  "ui.optimizationProfile.options.battery": "Battery priority",
+  "ui.optimizationProfile.options.quality": "Visual quality priority",
+  "ui.optimizationProfile.hint.autoActive": "Smart Auto: currently applying {profile}.",
+  "ui.optimizationProfile.hint.ram": "RAM priority: web tabs sleep, cover cache shrinks and the library runs lighter.",
+  "ui.optimizationProfile.hint.gpu": "GPU priority: glow, lighting and canvas animations are reduced; album covers stay enabled.",
+  "ui.optimizationProfile.hint.battery": "Battery priority: RAM and GPU savings are applied together and background FPS drops heavily.",
+  "ui.optimizationProfile.hint.quality": "Visual quality priority: effects and animations stay lively; resource use may be higher."
 }
