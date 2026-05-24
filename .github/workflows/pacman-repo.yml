@@ -58,7 +58,7 @@ jobs:
           out_dir="${repo_root}/x86_64"
           mkdir -p "${out_dir}"
 
-          pkg_path="$(find "${GITHUB_WORKSPACE}/packaging/aur/ardali-bin" -maxdepth 1 -type f -name "ardali-bin-*.pkg.tar.zst" | head -n1)"
+          pkg_path="$(find "${GITHUB_WORKSPACE}/packaging/aur/ardali-bin" -maxdepth 1 -type f -name "ardali-*.pkg.tar.zst" | head -n1)"
           test -n "${pkg_path}"
           cp -f "${pkg_path}" "${out_dir}/"
 
@@ -95,7 +95,7 @@ jobs:
           Server = https://muhammed-dali.github.io/ArDali-WebMedia/x86_64</pre>
               <p>Then run:</p>
               <pre>sudo pacman -Sy
-          sudo pacman -S ardali-bin</pre>
+          sudo pacman -S ardali</pre>
               <p><a href="./ardali.repo">Download ardali.repo</a></p>
             </body>
           </html>
@@ -121,7 +121,7 @@ jobs:
             "${out_dir}/ardali.db" \
             "${out_dir}/ardali.files.tar.gz" \
             "${out_dir}/ardali.files" \
-            "${out_dir}"/ardali-bin-*.pkg.tar.zst \
+            "${out_dir}"/ardali-*.pkg.tar.zst \
             --clobber
 
       - name: Upload GitHub Pages artifact

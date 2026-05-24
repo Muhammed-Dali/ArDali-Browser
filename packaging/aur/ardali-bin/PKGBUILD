@@ -3,16 +3,16 @@
 # AUR package for Arch-based distros.
 # Installs the prebuilt AppImage from GitHub Releases.
 
-pkgname=ardali-bin
-pkgver=3.1.4
+pkgname=ardali
+pkgver=3.1.5
 pkgrel=1
 pkgdesc="ArDali multimedia ecosystem for Linux (prebuilt AppImage)"
 arch=('x86_64')
 url="https://ardali.app"
 license=('MIT')
 depends=('fuse2' 'glibc' 'zlib' 'ffmpeg')
-provides=('ardali')
-conflicts=('ardali' 'aurivo-bin')
+provides=('ardali-bin')
+conflicts=('ardali-bin' 'aurivo-bin')
 options=(!strip !debug)
 
 _owner="Muhammed-Dali"

@@ -232,7 +232,7 @@ Server = https://muhammed-dali.github.io/ArDali-WebMedia/x86_64
 
 ```bash
 sudo pacman -Sy
-sudo pacman -S ardali-bin
+sudo pacman -S ardali
 ```
 
 For other distributions, follow the latest packages and releases on the GitHub release page.
@@ -438,7 +438,7 @@ Server = https://muhammed-dali.github.io/ArDali-WebMedia/x86_64
 
 ```bash
 sudo pacman -Sy
-sudo pacman -S ardali-bin
+sudo pacman -S ardali
 ```
 
 Diğer dağıtımlar için güncel paketler ve sürümler yayın sayfasından takip edilebilir.
