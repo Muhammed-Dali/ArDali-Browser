@@ -259,6 +259,19 @@ jobs:
             git add npm-shrinkwrap.json
           fi
 
+          if git diff --cached --quiet; then
+            echo "::notice::Version files already at ${NEW_VERSION}; no release bump commit needed."
+            if git ls-remote --exit-code --tags origin "refs/tags/${TAG}" >/dev/null 2>&1; then
+              echo "::notice::Release tag already exists: ${TAG}; skipping tag push."
+              exit 0
+            fi
+
+            git tag -a "${TAG}" -m "Release ${TAG}"
+            git push origin "${TAG}"
+            echo "Pushed release tag without version commit: ${TAG}"
+            exit 0
+          fi
+
           git commit -m "release: bump version to ${NEW_VERSION}"
           git push origin HEAD:main
 
