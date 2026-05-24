@@ -41,9 +41,10 @@ jobs:
       - name: Build ardali-bin package
         run: |
           set -euo pipefail
+          pkg_dir="${GITHUB_WORKSPACE}/packaging/aur/ardali-bin"
           useradd -m builder
           chown -R builder:builder "${GITHUB_WORKSPACE}"
-          su builder -c 'cd "${GITHUB_WORKSPACE}/packaging/aur/ardali-bin" && makepkg -f --noconfirm'
+          su builder -c "cd '${pkg_dir}' && makepkg -f --noconfirm"
 
       - name: Generate pacman repo database
         run: |

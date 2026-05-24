@@ -49,7 +49,7 @@ assets/css/
 assets/fonts/Inter.ttf
 assets/fonts/JetBrainsMono-Regular.ttf
 assets/fonts/Ubuntu-Regular.ttf
-ardali-bin/
+/ardali-bin/
 ArDali-Medya-Player-Linux/
 squashfs-root/
 **/chromium.backup_*/
