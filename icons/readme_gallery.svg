@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64" role="img" aria-label="Gallery">
+  <defs>
+    <linearGradient id="galleryStroke" x1="8%" y1="8%" x2="92%" y2="92%">
+      <stop offset="0%" stop-color="#83f8d3"/>
+      <stop offset="50%" stop-color="#58d8ff"/>
+      <stop offset="100%" stop-color="#7d8cff"/>
+    </linearGradient>
+  </defs>
+  <rect x="8" y="11" width="48" height="42" rx="9" fill="#0d1a2c" stroke="url(#galleryStroke)" stroke-width="4"/>
+  <circle cx="24" cy="25" r="5" fill="#f2fbff"/>
+  <path d="M14 46 27 33l8 8 6-6 9 11" fill="none" stroke="#effaff" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

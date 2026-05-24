@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64" role="img" aria-label="projectM Visualizer">
+  <defs>
+    <linearGradient id="pmRing" x1="10%" y1="8%" x2="90%" y2="92%">
+      <stop offset="0%" stop-color="#72f7d2"/>
+      <stop offset="48%" stop-color="#5bdcff"/>
+      <stop offset="100%" stop-color="#9b7dff"/>
+    </linearGradient>
+    <linearGradient id="pmBars" x1="20%" y1="20%" x2="80%" y2="90%">
+      <stop offset="0%" stop-color="#ffef7a"/>
+      <stop offset="35%" stop-color="#51f59d"/>
+      <stop offset="70%" stop-color="#42c7ff"/>
+      <stop offset="100%" stop-color="#a277ff"/>
+    </linearGradient>
+  </defs>
+  <circle cx="32" cy="32" r="24" fill="#0d1a2c" stroke="url(#pmRing)" stroke-width="4"/>
+  <path d="M18 44V34M25 44V25M32 44V18M39 44V28M46 44V22" stroke="url(#pmBars)" stroke-width="5" stroke-linecap="round"/>
+  <path d="M21 22c7-8 15-8 22 0" fill="none" stroke="#effaff" stroke-width="3.5" stroke-linecap="round"/>
+</svg>

@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64" role="img" aria-label="Listen">
+  <defs>
+    <linearGradient id="pulseBars" x1="14%" y1="10%" x2="86%" y2="90%">
+      <stop offset="0%" stop-color="#87f7d5"/>
+      <stop offset="50%" stop-color="#59d7ff"/>
+      <stop offset="100%" stop-color="#8b7dff"/>
+    </linearGradient>
+  </defs>
+  <rect x="8" y="8" width="48" height="48" rx="14" fill="#0d1a2c"/>
+  <path d="M16 28a18 18 0 0 1 32 0" fill="none" stroke="#effaff" stroke-width="4" stroke-linecap="round"/>
+  <path d="M18 34v8M25 29v17M32 23v25M39 29v17M46 34v8" fill="none" stroke="url(#pulseBars)" stroke-width="4.5" stroke-linecap="round"/>
+</svg>

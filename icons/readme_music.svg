@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64" role="img" aria-label="Music">
+  <defs>
+    <linearGradient id="musicStroke" x1="10%" y1="8%" x2="90%" y2="92%">
+      <stop offset="0%" stop-color="#7df7d4"/>
+      <stop offset="55%" stop-color="#55d7ff"/>
+      <stop offset="100%" stop-color="#7b8cff"/>
+    </linearGradient>
+    <radialGradient id="musicGlow" cx="35%" cy="20%" r="75%">
+      <stop offset="0%" stop-color="#dffcff" stop-opacity=".38"/>
+      <stop offset="100%" stop-color="#dffcff" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect x="8" y="8" width="48" height="48" rx="14" fill="#0d1a2c"/>
+  <rect x="8" y="8" width="48" height="48" rx="14" fill="url(#musicGlow)"/>
+  <path d="M36 17v26" fill="none" stroke="url(#musicStroke)" stroke-width="4.2" stroke-linecap="round"/>
+  <path d="M36 17 49 14v24" fill="none" stroke="url(#musicStroke)" stroke-width="4.2" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="25" cy="45" r="7" fill="none" stroke="#effaff" stroke-width="4"/>
+  <circle cx="43" cy="40" r="7" fill="none" stroke="#effaff" stroke-width="4"/>
+</svg>

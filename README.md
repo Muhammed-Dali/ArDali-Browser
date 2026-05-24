@@ -7,29 +7,29 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/muhammed-ardali-dev/ArDali-Medya-Player-Linux">
-    <img alt="release" src="https://img.shields.io/github/v/release/muhammed-ardali-dev/ArDali-Medya-Player-Linux?display_name=tag&sort=semver&style=for-the-badge&labelColor=0b1220&color=22c55e"/>
+  <a href="https://github.com/Muhammed-Dali/ArDali-WebMedia/releases/latest">
+    <img alt="release" src="https://img.shields.io/github/v/release/Muhammed-Dali/ArDali-WebMedia?display_name=tag&sort=semver&style=for-the-badge&labelColor=0b1220&color=22c55e"/>
   </a>
-  <a href="https://github.com/muhammed-ardali-dev/ArDali-Medya-Player-Linux">
-    <img alt="downloads" src="https://img.shields.io/github/downloads/muhammed-ardali-dev/ArDali-Medya-Player-Linux/total?style=for-the-badge&labelColor=0b1220&color=06b6d4"/>
+  <a href="https://github.com/Muhammed-Dali/ArDali-WebMedia/releases">
+    <img alt="downloads" src="https://img.shields.io/github/downloads/Muhammed-Dali/ArDali-WebMedia/total?style=for-the-badge&labelColor=0b1220&color=06b6d4"/>
   </a>
-  <a href="https://github.com/muhammed-ardali-dev/ArDali-Medya-Player-Linux/actions">
-    <img alt="build" src="https://img.shields.io/github/actions/workflow/status/muhammed-ardali-dev/ArDali-Medya-Player-Linux/release.yml?branch=main&label=build&style=for-the-badge&labelColor=0b1220"/>
+  <a href="https://github.com/Muhammed-Dali/ArDali-WebMedia/actions/workflows/build-linux.yml">
+    <img alt="build" src="https://img.shields.io/github/actions/workflow/status/Muhammed-Dali/ArDali-WebMedia/build-linux.yml?branch=main&label=build&style=for-the-badge&labelColor=0b1220"/>
   </a>
-  <a href="https://github.com/muhammed-ardali-dev/ArDali-Medya-Player-Linux/blob/main/LICENSE">
-    <img alt="license" src="https://img.shields.io/badge/license-MIT-6366f1?style=for-the-badge&labelColor=0b1220"/>
+  <a href="https://github.com/Muhammed-Dali/ArDali-WebMedia/blob/main/LICENSE">
+    <img alt="license" src="https://img.shields.io/badge/license-GPL--3.0-6366f1?style=for-the-badge&labelColor=0b1220"/>
   </a>
 </p>
 
 <p align="center">
-  <a href="https://github.com/muhammed-ardali-dev/ArDali-Medya-Player-Linux/releases/latest">
+  <a href="https://github.com/Muhammed-Dali/ArDali-WebMedia/releases/latest">
     <img alt="Download AppImage" src="https://img.shields.io/badge/Download-AppImage-14b8a6?style=for-the-badge&logo=linux&logoColor=ffffff&labelColor=0b1220"/>
   </a>
-  <a href="https://github.com/muhammed-ardali-dev/ArDali-Medya-Player-Linux/releases/latest">
-    <img alt="Download .deb" src="https://img.shields.io/badge/Download-.deb-0ea5e9?style=for-the-badge&logo=debian&logoColor=ffffff&labelColor=0b1220"/>
+  <a href="https://github.com/Muhammed-Dali/ArDali-WebMedia/releases/tag/pacman-repo">
+    <img alt="Pacman Repo" src="https://img.shields.io/badge/Pacman-Repo-1793d1?style=for-the-badge&logo=archlinux&logoColor=ffffff&labelColor=0b1220"/>
   </a>
-  <a href="https://github.com/muhammed-ardali-dev/ArDali-Medya-Player-Linux/releases/latest">
-    <img alt="Download .rpm" src="https://img.shields.io/badge/Download-.rpm-8b5cf6?style=for-the-badge&logo=fedora&logoColor=ffffff&labelColor=0b1220"/>
+  <a href="https://aur.archlinux.org/packages/ardali-bin">
+    <img alt="AUR package" src="https://img.shields.io/badge/AUR-ardali--bin-f59e0b?style=for-the-badge&logo=archlinux&logoColor=ffffff&labelColor=0b1220"/>
   </a>
 </p>
 
@@ -39,15 +39,70 @@
 
 ## English
 
-### ArDali (v3.0.0) 🚀
+### ArDali (v3.1.2)
 
 Linux media player, web audio engine, music/video downloader, screen recorder, and projectM visualizer in one optimized desktop application.
 
-ArDali is an advanced Electron-based multimedia ecosystem for Linux, designed around strong optimization principles. After 2 years of continuous and intensive development, its infrastructure and architecture have been fully renewed with the v3.0.0 release.
+ArDali is an advanced Electron-based multimedia ecosystem for Linux, designed around strong optimization principles. After 2 years of continuous and intensive development, its infrastructure and architecture have been fully renewed with the v3.1.2 release.
 
 At the heart of the application is a custom-built technology layer that processes web-based audio streams with zero-latency behavior.
 
-Keywords: Linux media player, Linux music player, Linux video player, Electron media player, YouTube downloader for Linux, audio equalizer, 32-band EQ, Shazam-like song recognition, screen recorder for Linux, OBS-style recorder, projectM visualizer, web audio engine, ad blocker browser, AppImage media player, DEB media player, RPM media player.
+Keywords: Linux media player, Linux music player, Linux video player, Electron media player, YouTube downloader for Linux, audio equalizer, 32-band EQ, Shazam-like song recognition, screen recorder for Linux, OBS-style recorder, projectM visualizer, web audio engine, ad blocker browser, AppImage media player, Pacman repo, AUR package.
+
+## Feature Map
+
+<table>
+  <tr>
+    <th width="72">Icon</th>
+    <th>Feature</th>
+    <th>What it does</th>
+  </tr>
+  <tr>
+    <td align="center"><img src="icons/nav_video.svg" width="34" alt="Video playback icon"/></td>
+    <td><strong>Video playback</strong></td>
+    <td>Play local videos with a modern player, mini player, fullscreen controls, speed, subtitles, sleep timer, and smooth progress handling.</td>
+  </tr>
+  <tr>
+    <td align="center"><img src="icons/video_tools_studio.svg" width="34" alt="Recorder icon"/></td>
+    <td><strong>Recorder</strong></td>
+    <td>Record the screen with a creator-focused workflow for tutorials, demos, and content production.</td>
+  </tr>
+  <tr>
+    <td align="center"><img src="icons/readme_music.svg" width="34" alt="Music playback icon"/></td>
+    <td><strong>Music playback</strong></td>
+    <td>Manage and play local music with playlists, metadata, album art, rich controls, equalizer, and audio effects.</td>
+  </tr>
+  <tr>
+    <td align="center"><img src="icons/readme_gallery.svg" width="34" alt="Gallery icon"/></td>
+    <td><strong>Gallery</strong></td>
+    <td>Browse images, open a lightbox, zoom, rotate, fit to screen, run slideshows, and apply quick photo adjustments.</td>
+  </tr>
+  <tr>
+    <td align="center"><img src="icons/nav_internet.svg" width="34" alt="Web icon"/></td>
+    <td><strong>Web</strong></td>
+    <td>Use YouTube, YouTube Music, SoundCloud, Deezer, social platforms, and general web browsing inside one desktop app.</td>
+  </tr>
+  <tr>
+    <td align="center"><img src="icons/deliblock.svg" width="34" alt="Ad blocker icon"/></td>
+    <td><strong>Ad blocking</strong></td>
+    <td>Filter ads, pop-ups, trackers, and noisy web elements through the integrated DeliBlock protection layer.</td>
+  </tr>
+  <tr>
+    <td align="center"><img src="icons/ardali_dawlod.png" width="34" alt="Downloader icon"/></td>
+    <td><strong>Downloader</strong></td>
+    <td>Download media from supported platforms and save video or audio with local conversion options.</td>
+  </tr>
+  <tr>
+    <td align="center"><img src="icons/readme_pulse.svg" width="34" alt="Song recognition icon"/></td>
+    <td><strong>Song recognition by listening</strong></td>
+    <td>Listen to system or ambient audio and identify songs with an integrated acoustic fingerprinting workflow.</td>
+  </tr>
+  <tr>
+    <td align="center"><img src="icons/readme_projectm.svg" width="34" alt="projectM visualizer icon"/></td>
+    <td><strong>projectM visualization</strong></td>
+    <td>Render hardware-accelerated music visuals that react to rhythm, frequency, and energy.</td>
+  </tr>
+</table>
 
 ## AI Audit Statement
 
@@ -167,12 +222,25 @@ Primary installation instruction for Arch-based Linux systems:
 yay -S ardali-bin
 ```
 
+Pacman repo installation:
+
+```ini
+[ardali]
+SigLevel = Optional TrustAll
+Server = https://github.com/Muhammed-Dali/ArDali-WebMedia/releases/download/pacman-repo
+```
+
+```bash
+sudo pacman -Sy
+sudo pacman -S ardali-bin
+```
+
 For other distributions, follow the latest packages and releases on the GitHub release page.
 
 ## Packages and Support
 
-- Linux packages: `AppImage`, `.deb`, `.rpm` (see [latest releases](https://github.com/muhammed-ardali-dev/ArDali-Medya-Player-Linux/releases/latest))
-- Bug reports and feature requests: [Issues](https://github.com/muhammed-ardali-dev/ArDali-Medya-Player-Linux/issues)
+- Linux packages: `AppImage`, `Pacman repo`, `AUR` (see [latest releases](https://github.com/Muhammed-Dali/ArDali-WebMedia/releases/latest))
+- Bug reports and feature requests: [Issues](https://github.com/Muhammed-Dali/ArDali-WebMedia/issues)
 - Contribution guide: [CONTRIBUTING.md](CONTRIBUTING.md)
 
 ## Known Behavior
@@ -181,21 +249,76 @@ On some USB/headset audio devices, disconnecting the device may switch the syste
 
 ## License
 
-This project is released under the MIT License. See [LICENSE](LICENSE) for details.
+This project is released under the GNU GPL v3 License. See [LICENSE](LICENSE) for details.
 
 ---
 
 ## Turkce
 
-### ArDali (v3.0.0) 🚀
+### ArDali (v3.1.2)
 
 Linux için medya oynatıcı, web ses motoru, müzik/video indirici, ekran kaydedici ve projectM görselleştirici tek bir optimize masaüstü uygulamasında birleşir.
 
-ArDali, Linux sistemler için geliştirilmiş; üstün optimizasyon ilkeleriyle tasarlanmış, Electron tabanlı gelişmiş bir multimedya ekosistemidir. 2 yıllık kesintisiz ve yoğun bir geliştirme sürecinin ardından, tüm altyapısı ve mimarisi v3.0.0 sürümüyle tamamen yenilenmiştir.
+ArDali, Linux sistemler için geliştirilmiş; üstün optimizasyon ilkeleriyle tasarlanmış, Electron tabanlı gelişmiş bir multimedya ekosistemidir. 2 yıllık kesintisiz ve yoğun bir geliştirme sürecinin ardından, tüm altyapısı ve mimarisi v3.1.2 sürümüyle tamamen yenilenmiştir.
 
 Uygulamanın kalbinde, web tabanlı ses akışlarını sıfır gecikmeyle işleyen ve tamamen bu projeye özel olarak derlenmiş bir teknoloji yatmaktadır.
 
-Anahtar kelimeler: Linux medya oynatıcı, Linux müzik çalar, Linux video oynatıcı, YouTube indirici, şarkı bulma, Shazam benzeri müzik tanıma, ekran kaydedici, OBS tarzı kayıt stüdyosu, 32 bant ekolayzır, ses motoru, reklam engelleyici, projectM görselleştirici, AppImage, DEB, RPM.
+Anahtar kelimeler: Linux medya oynatıcı, Linux müzik çalar, Linux video oynatıcı, YouTube indirici, şarkı bulma, Shazam benzeri müzik tanıma, ekran kaydedici, OBS tarzı kayıt stüdyosu, 32 bant ekolayzır, ses motoru, reklam engelleyici, projectM görselleştirici, AppImage, Pacman repo, AUR paketi.
+
+## Özellik Haritası
+
+<table>
+  <tr>
+    <th width="72">İkon</th>
+    <th>Özellik</th>
+    <th>Ne işe yarar</th>
+  </tr>
+  <tr>
+    <td align="center"><img src="icons/nav_video.svg" width="34" alt="Video oynatma ikonu"/></td>
+    <td><strong>Video oynatma</strong></td>
+    <td>Yerel videoları modern oynatıcı, mini oynatıcı, tam ekran kontrolleri, hız, altyazı, uyku zamanlayıcı ve akıcı ilerleme desteğiyle oynatır.</td>
+  </tr>
+  <tr>
+    <td align="center"><img src="icons/video_tools_studio.svg" width="34" alt="Kaydedici ikonu"/></td>
+    <td><strong>Kaydedici</strong></td>
+    <td>Eğitim, tanıtım ve içerik üretimi için ekran kaydı odaklı yerleşik bir çalışma alanı sunar.</td>
+  </tr>
+  <tr>
+    <td align="center"><img src="icons/readme_music.svg" width="34" alt="Müzik oynatma ikonu"/></td>
+    <td><strong>Müzik oynatma</strong></td>
+    <td>Yerel müzikleri çalma listeleri, etiket bilgileri, albüm kapağı, gelişmiş kontroller, ekolayzır ve ses efektleriyle yönetir.</td>
+  </tr>
+  <tr>
+    <td align="center"><img src="icons/readme_gallery.svg" width="34" alt="Galeri ikonu"/></td>
+    <td><strong>Galeri</strong></td>
+    <td>Fotoğrafları görüntüler; ışık kutusu, yakınlaştırma, döndürme, ekrana sığdırma, slayt ve hızlı düzenleme araçları sağlar.</td>
+  </tr>
+  <tr>
+    <td align="center"><img src="icons/nav_internet.svg" width="34" alt="Web ikonu"/></td>
+    <td><strong>Web</strong></td>
+    <td>YouTube, YouTube Music, SoundCloud, Deezer, sosyal platformlar ve genel web gezintisini tek masaüstü uygulamasında birleştirir.</td>
+  </tr>
+  <tr>
+    <td align="center"><img src="icons/deliblock.svg" width="34" alt="Reklam engelleme ikonu"/></td>
+    <td><strong>Reklam engelleme</strong></td>
+    <td>Entegre DeliBlock katmanıyla reklamları, pop-up'ları, izleyicileri ve rahatsız edici web öğelerini filtreler.</td>
+  </tr>
+  <tr>
+    <td align="center"><img src="icons/ardali_dawlod.png" width="34" alt="İndirme ikonu"/></td>
+    <td><strong>İndirme</strong></td>
+    <td>Desteklenen platformlardan medya indirir; video veya ses olarak kaydetme ve yerel dönüştürme seçenekleri sunar.</td>
+  </tr>
+  <tr>
+    <td align="center"><img src="icons/readme_pulse.svg" width="34" alt="Dinleyerek şarkı bulma ikonu"/></td>
+    <td><strong>Dinleyerek şarkı bulma</strong></td>
+    <td>Sistemden veya ortamdan gelen sesi dinleyerek şarkıları akustik parmak izi yöntemiyle tanımlar.</td>
+  </tr>
+  <tr>
+    <td align="center"><img src="icons/readme_projectm.svg" width="34" alt="projectM görselleştirme ikonu"/></td>
+    <td><strong>projectM görselleştirme</strong></td>
+    <td>Çalan müziğin ritmine, frekansına ve enerjisine tepki veren donanım hızlandırmalı görseller üretir.</td>
+  </tr>
+</table>
 
 ## AI Denetim Beyanı
 
@@ -305,12 +428,25 @@ Arch tabanlı Linux sistemler için birincil kurulum talimatı:
 yay -S ardali-bin
 ```
 
+Pacman repo ile kurulum:
+
+```ini
+[ardali]
+SigLevel = Optional TrustAll
+Server = https://github.com/Muhammed-Dali/ArDali-WebMedia/releases/download/pacman-repo
+```
+
+```bash
+sudo pacman -Sy
+sudo pacman -S ardali-bin
+```
+
 Diğer dağıtımlar için güncel paketler ve sürümler yayın sayfasından takip edilebilir.
 
 ## Paketler ve Destek
 
-- Linux paketleri: `AppImage`, `.deb`, `.rpm` ([son sürümler](https://github.com/muhammed-ardali-dev/ArDali-Medya-Player-Linux/releases/latest))
-- Hata ve özellik talepleri: [Issues](https://github.com/muhammed-ardali-dev/ArDali-Medya-Player-Linux/issues)
+- Linux paketleri: `AppImage`, `Pacman repo`, `AUR` ([son sürümler](https://github.com/Muhammed-Dali/ArDali-WebMedia/releases/latest))
+- Hata ve özellik talepleri: [Issues](https://github.com/Muhammed-Dali/ArDali-WebMedia/issues)
 - Katkı rehberi: [CONTRIBUTING.md](CONTRIBUTING.md)
 
 ## Bilinen Davranış
@@ -319,4 +455,4 @@ Bazı USB/kulaklık ses cihazlarında bağlantı kesildiğinde sistem ses çık�
 
 ## Lisans
 
-Bu proje MIT Lisansı ile sunulmaktadır. Detaylar için [LICENSE](LICENSE) dosyasına bakabilirsiniz.
+Bu proje GNU GPL v3 Lisansı ile sunulmaktadır. Detaylar için [LICENSE](LICENSE) dosyasına bakabilirsiniz.
