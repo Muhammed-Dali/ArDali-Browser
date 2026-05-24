@@ -128,7 +128,6 @@ EOF
   deploy-pages:
     name: Deploy GitHub Pages
     needs: publish
-    if: ${{ needs.publish.result == 'success' }}
     runs-on: ubuntu-24.04
     environment:
       name: github-pages
