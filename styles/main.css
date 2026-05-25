@@ -1025,13 +1025,28 @@ body.video-tools-mode .now-playing-bar {
     align-items: center;
     justify-content: center;
     position: relative;
+    overflow: hidden;
     cursor: pointer;
     transition: background-color 160ms ease, border-color 160ms ease, color 160ms ease, transform 160ms ease;
 }
 
 .library-tab-icon {
+    width: 16px;
+    height: 16px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 16px;
+    overflow: hidden;
+    white-space: nowrap;
     font-size: 16px;
     line-height: 1;
+}
+
+.library-tab-icon svg {
+    width: 16px;
+    height: 16px;
+    display: block;
 }
 
 .library-tab-count {
@@ -6737,8 +6752,18 @@ body.video-uhd-playback .video-mini-overlay {
     color: rgba(214, 240, 255, 0.94);
 }
 
-.video-workspace-fallback .material-symbols-rounded {
-    font-size: 54px;
+.video-workspace-svg-icon {
+    width: 1.25em;
+    height: 1.25em;
+    display: block;
+    flex: 0 0 auto;
+    overflow: hidden;
+    color: currentColor;
+}
+
+.video-workspace-svg-icon-large {
+    width: 54px;
+    height: 54px;
     filter: drop-shadow(0 10px 26px rgba(5, 20, 40, 0.42));
 }
 
@@ -6758,8 +6783,14 @@ body.video-uhd-playback .video-mini-overlay {
     box-shadow: 0 10px 24px rgba(2, 8, 20, 0.4);
 }
 
-.video-workspace-play-badge .material-symbols-rounded {
-    font-size: 28px;
+.video-workspace-play-badge .video-workspace-svg-icon {
+    width: 28px;
+    height: 28px;
+}
+
+.video-workspace-hover-actions .video-workspace-svg-icon {
+    width: 22px;
+    height: 22px;
 }
 
 .video-workspace-duration-badge {
@@ -13711,6 +13742,14 @@ body.ardali-reduced-motion .app-container:has(.sidebar-btn[data-page="video"].ac
 }
 
 body.gallery-mode .player-bar {
+    display: none !important;
+}
+
+body.video-mode .player-bar {
+    height: 118px;
+}
+
+body.video-mode .player-bottom {
     display: none !important;
 }
 

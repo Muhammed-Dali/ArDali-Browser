@@ -758,6 +758,9 @@ const state = {
     webArtist: '',
     webAlbum: '',
     webSourceUrl: '',
+    webDuration: 0,
+    webPosition: 0,
+    webCanSeek: false,
     specialPaths: null,
     libraryStats: null,
     libraryIndex: {
@@ -6245,7 +6248,7 @@ function setupEventListeners() {
 
     // Oynatıcı Kontrolleri
     if (elements.clearPlaylistBtn) {
-        elements.clearPlaylistBtn.addEventListener('click', clearPlaylistAll);
+        elements.clearPlaylistBtn.addEventListener('click', clearActiveMediaList);
     }
     elements.playPauseBtn.addEventListener('click', togglePlayPause);
     elements.prevBtn.addEventListener('click', () => playPreviousWithCrossfade());
@@ -17975,6 +17978,106 @@ function softPauseWebPlayback() {
     }
 }
 
+function controlWebPlayback(action = 'toggle') {
+    try {
+        if (!elements.webView || typeof elements.webView.executeJavaScript !== 'function') return;
+        const normalized = String(action || 'toggle').trim().toLowerCase();
+        elements.webView.executeJavaScript(`
+            (function() {
+                const action = ${JSON.stringify(normalized)};
+                const media = document.querySelector('video.html5-main-video, #movie_player video, #movie_player audio, video, audio');
+                const movie = document.getElementById('movie_player');
+                const tryClick = (selector) => {
+                    try {
+                        const btn = document.querySelector(selector);
+                        if (btn && typeof btn.click === 'function') {
+                            btn.click();
+                            return true;
+                        }
+                    } catch {}
+                    return false;
+                };
+                try {
+                    if (action === 'next') {
+                        if (movie && typeof movie.nextVideo === 'function') {
+                            movie.nextVideo();
+                            return true;
+                        }
+                        return tryClick('.ytp-next-button, ytmusic-player-bar .next-button, [aria-label*="Next"], [aria-label*="Sonraki"]');
+                    }
+                    if (action === 'previous') {
+                        if (movie && typeof movie.previousVideo === 'function') {
+                            movie.previousVideo();
+                            return true;
+                        }
+                        return tryClick('.ytp-prev-button, ytmusic-player-bar .previous-button, [aria-label*="Previous"], [aria-label*="Onceki"], [aria-label*="Önceki"]');
+                    }
+                    if (!media) return false;
+                    if (action === 'stop') {
+                        media.pause();
+                        if (Number.isFinite(media.currentTime)) media.currentTime = 0;
+                        return true;
+                    }
+                    if (action === 'pause') {
+                        media.pause();
+                        return true;
+                    }
+                    if (action === 'play') {
+                        media.muted = false;
+                        const p = media.play();
+                        if (p && typeof p.catch === 'function') p.catch(() => {});
+                        return true;
+                    }
+                    if (media.paused) {
+                        media.muted = false;
+                        const p = media.play();
+                        if (p && typeof p.catch === 'function') p.catch(() => {});
+                    } else {
+                        media.pause();
+                    }
+                    return true;
+                } catch {
+                    return false;
+                }
+            })();
+        `, true).catch(() => { });
+    } catch {
+        // yoksay
+    }
+}
+
+function seekWebPlayback(positionSeconds, relative = false) {
+    try {
+        if (!elements.webView || typeof elements.webView.executeJavaScript !== 'function') return;
+        const seconds = Number(positionSeconds) || 0;
+        elements.webView.executeJavaScript(`
+            (function() {
+                const value = ${JSON.stringify(seconds)};
+                const relative = ${relative ? 'true' : 'false'};
+                const media = document.querySelector('video.html5-main-video, #movie_player video, #movie_player audio, video, audio');
+                const movie = document.getElementById('movie_player');
+                try {
+                    const current = media && Number.isFinite(media.currentTime) ? Number(media.currentTime) : 0;
+                    const duration = media && Number.isFinite(media.duration) ? Number(media.duration) : 0;
+                    const targetRaw = relative ? current + value : value;
+                    const target = duration > 0 ? Math.max(0, Math.min(duration, targetRaw)) : Math.max(0, targetRaw);
+                    if (movie && typeof movie.seekTo === 'function') {
+                        movie.seekTo(target, true);
+                        return true;
+                    }
+                    if (!media) return false;
+                    media.currentTime = target;
+                    return true;
+                } catch {
+                    return false;
+                }
+            })();
+        `, true).catch(() => { });
+    } catch {
+        // yoksay
+    }
+}
+
 const WEB_ALLOWED_HOSTS = new Set([
     'google.com',
     'www.google.com',
@@ -18796,6 +18899,10 @@ function executeMediaControlAction(action) {
         case 'stop':
             if (state.activeMedia === 'video') {
                 stopVideo();
+            } else if (state.activeMedia === 'web') {
+                controlWebPlayback('stop');
+                state.isPlaying = false;
+                updateMediaPlaybackPowerSaveBlocker('web-stop-control');
             } else {
                 stopAudioWithPlaybackFade();
             }
@@ -18809,6 +18916,8 @@ function executeMediaControlAction(action) {
                 }
             } else if (state.activeMedia === 'audio') {
                 playPreviousWithCrossfade();
+            } else if (state.activeMedia === 'web') {
+                controlWebPlayback('previous');
             }
             break;
         case 'next':
@@ -18818,6 +18927,8 @@ function executeMediaControlAction(action) {
                 }
             } else if (state.activeMedia === 'audio') {
                 playNextWithCrossfade();
+            } else if (state.activeMedia === 'web') {
+                controlWebPlayback('next');
             }
             break;
         case 'mute-toggle':
@@ -18869,6 +18980,10 @@ function setupSystemTrayControl() {
                 } catch (e) {
                     console.error('Seek error:', e);
                 }
+            } else if (state.activeMedia === 'web') {
+                seekWebPlayback(offsetSeconds, true);
+                state.webPosition = Math.max(0, Number(state.webPosition || 0) + offsetSeconds);
+                updateMPRISMetadata();
             } else {
                 seekBy(offsetSeconds);
             }
@@ -18900,6 +19015,10 @@ function setupSystemTrayControl() {
                 } catch (e) {
                     console.warn('Video position error:', e);
                 }
+            } else if (state.activeMedia === 'web') {
+                seekWebPlayback(positionSeconds, false);
+                state.webPosition = Math.max(0, Number(positionSeconds) || 0);
+                updateMPRISMetadata();
             } else {
                 const activePlayer = getActiveAudioPlayer();
                 if (activePlayer) activePlayer.currentTime = positionSeconds;
@@ -18992,6 +19111,9 @@ async function handleWebNavigation(event) {
         state.webArtist = '';
         state.webAlbum = '';
         state.webSourceUrl = '';
+        state.webDuration = 0;
+        state.webPosition = 0;
+        state.webCanSeek = false;
         // Metadata güncellemesi ile süreyi 0'a çek
         updateMPRISMetadata();
         scheduleApplyWebDaliEngine('navigate', 120);
@@ -19074,10 +19196,12 @@ async function updateMPRISMetadata() {
         title = state.webTitle || state.webPendingTitle || elements.nowPlayingLabel.textContent.replace(`${uiT('nowPlaying.prefix', 'Now Playing')}: `, '') || uiT('web.media', 'Web Media');
         artist = state.webArtist || 'ArDali Web';
         album = state.webAlbum || 'Online';
+        duration = Number.isFinite(Number(state.webDuration)) ? Number(state.webDuration) : 0;
+        position = Number.isFinite(Number(state.webPosition)) ? Number(state.webPosition) : 0;
         trackId = `web_${state.webTrackId}`; // DÜZELTME: Daha güvenli DBus yolu için tire alt çizgiyle değiştirildi
-        canGoNext = false;
-        canGoPrevious = false;
-        canSeek = false;
+        canGoNext = true;
+        canGoPrevious = true;
+        canSeek = !!state.webCanSeek || duration > 0;
     }
 
     const metadataPayload = {
@@ -19091,7 +19215,16 @@ async function updateMPRISMetadata() {
         isPlaying: state.isPlaying,
         canGoNext,
         canGoPrevious,
-        canSeek
+        canSeek,
+        mediaType: state.activeMedia,
+        url: state.activeMedia === 'web'
+            ? (state.webSourceUrl || getWebViewUrlSafe() || '')
+            : (state.activeMedia === 'video'
+                ? (state.currentVideoPath ? toLocalFileUrl(state.currentVideoPath) : '')
+                : (state.playlist[state.currentIndex]?.path ? toLocalFileUrl(state.playlist[state.currentIndex].path) : '')),
+        platform: state.activeMedia === 'web'
+            ? (state.webCurrentPlatform || detectPlatformFromUrl(state.webSourceUrl || getWebViewUrlSafe() || '') || 'web')
+            : state.activeMedia
     };
     const mprisKey = JSON.stringify({
         activeMedia: state.activeMedia,
@@ -19100,12 +19233,11 @@ async function updateMPRISMetadata() {
         artist: metadataPayload.artist,
         albumArt: metadataPayload.albumArt,
         isPlaying: metadataPayload.isPlaying,
-        position: state.activeMedia === 'web'
-            ? 0
-            : Math.floor((Number(metadataPayload.position) || 0) / 2)
+        duration: Math.floor(Number(metadataPayload.duration) || 0),
+        position: Math.floor((Number(metadataPayload.position) || 0) / 2)
     });
     const now = Date.now();
-    const minIntervalMs = state.activeMedia === 'web' ? 1800 : 650;
+    const minIntervalMs = state.activeMedia === 'web' ? 900 : 650;
     if (
         updateMPRISMetadata.lastKey === mprisKey &&
         (now - Number(updateMPRISMetadata.lastAt || 0)) < minIntervalMs
@@ -19128,7 +19260,7 @@ function getCurrentWebPulseContext() {
         album: String(state.webAlbum || '').trim(),
         artwork: String(state.currentCover || '').trim(),
         sourceUrl: String(state.webSourceUrl || getWebViewUrlSafe() || '').trim(),
-        platform: String(state.currentWebPlatform || '').trim().toLowerCase() || 'web'
+        platform: String(state.webCurrentPlatform || '').trim().toLowerCase() || 'web'
     };
 }
 
@@ -19227,6 +19359,23 @@ function handleWebSync(data) {
 
     if (!syncEligible) return;
 
+    if (
+        ['timeupdate', 'play', 'pause', 'seeked', 'durationchange', 'loadeddata'].includes(String(data.type || '')) ||
+        typeof data.currentTime === 'number' ||
+        typeof data.duration === 'number'
+    ) {
+        const duration = Number(data.duration);
+        const position = Number(data.currentTime);
+        if (Number.isFinite(duration) && duration > 0) {
+            state.webDuration = duration;
+            state.webCanSeek = true;
+        }
+        if (Number.isFinite(position) && position >= 0) {
+            const maxDuration = Number(state.webDuration || 0);
+            state.webPosition = maxDuration > 0 ? Math.min(maxDuration, position) : position;
+        }
+    }
+
     // timeupdate yükü duraklatma durumunu taşıyabilir (yoklama)
     if (data.type === 'timeupdate' && typeof data.paused === 'boolean') {
         const nextPlaying = !data.paused;
@@ -19237,6 +19386,7 @@ function handleWebSync(data) {
             updateMPRISMetadata();
             updateMediaPlaybackPowerSaveBlocker('web-timeupdate');
         }
+        updateMPRISMetadata();
     }
 
     if (data.type === 'play') {
@@ -21519,6 +21669,11 @@ function applyGalleryUiClasses() {
     document.body.classList.toggle('gallery-mode', !!isGallery);
 }
 
+function applyVideoUiClasses() {
+    const isVideo = state.currentPage === 'video';
+    document.body.classList.toggle('video-mode', !!isVideo);
+}
+
 function restoreActiveWebPlatformIndicator() {
     if (!elements.platformBtns?.length) return;
 
@@ -22506,6 +22661,7 @@ function switchPage(pageName) {
     }
     updateVideoToolsLibraryPanelUi();
     applyGalleryUiClasses();
+    applyVideoUiClasses();
     syncWindowFullscreenLayoutState();
     updateMusicViewQuickControlUi();
 }
@@ -30508,11 +30664,60 @@ function hydrateVideoWorkspaceThumbnails() {
             preview.innerHTML = `
                 <img class="gallery-item-preview-image video-workspace-preview-image" src="${escapeAttribute(thumb)}" alt="">
                 <span class="video-workspace-play-badge" aria-hidden="true">
-                    <span class="material-symbols-rounded">play_arrow</span>
+                    ${getVideoWorkspaceSvgIcon('play')}
                 </span>
             `;
         })();
     });
+}
+
+function getVideoWorkspaceSvgIcon(icon = 'play') {
+    const normalized = String(icon || 'play').trim();
+    if (normalized === 'queue') {
+        return `
+            <svg class="video-workspace-svg-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                <path d="M4 6.75h8.2M4 12h8.2M4 17.25h6.2" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/>
+                <path d="M15 7.5v9l6-4.5-6-4.5Z" fill="currentColor"/>
+            </svg>
+        `;
+    }
+    if (normalized === 'video') {
+        return `
+            <svg class="video-workspace-svg-icon video-workspace-svg-icon-large" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                <rect x="3.5" y="6.5" width="12" height="11" rx="2.4" fill="none" stroke="currentColor" stroke-width="1.8"/>
+                <path d="M16 10.2 20.5 8v8L16 13.8v-3.6Z" fill="currentColor"/>
+            </svg>
+        `;
+    }
+    if (normalized === 'edit') {
+        return `
+            <svg class="video-workspace-svg-icon video-workspace-svg-icon-large" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                <rect x="3.5" y="6.5" width="11.6" height="11" rx="2.3" fill="none" stroke="currentColor" stroke-width="1.8"/>
+                <path d="M15.6 10.1 20 8v5.4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+                <path d="m13.4 17.8 4.75-4.75 1.8 1.8-4.75 4.75-2.15.35.35-2.15Z" fill="currentColor"/>
+            </svg>
+        `;
+    }
+    if (normalized === 'pause') {
+        return `
+            <svg class="video-workspace-svg-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                <path d="M8 6.5h2.8v11H8v-11Zm5.2 0H16v11h-2.8v-11Z" fill="currentColor"/>
+            </svg>
+        `;
+    }
+    if (normalized === 'play-circle') {
+        return `
+            <svg class="video-workspace-svg-icon video-workspace-svg-icon-large" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                <circle cx="12" cy="12" r="8.3" fill="none" stroke="currentColor" stroke-width="1.8"/>
+                <path d="M10.1 8.25v7.5L15.8 12l-5.7-3.75Z" fill="currentColor"/>
+            </svg>
+        `;
+    }
+    return `
+        <svg class="video-workspace-svg-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+            <path d="M9 6.5v11l8-5.5-8-5.5Z" fill="currentColor"/>
+        </svg>
+    `;
 }
 
 function getPreferredVideoToolSourcePath() {
@@ -37745,7 +37950,7 @@ function renderVideoWorkspace() {
         elements.videoGridView.innerHTML = `
             <div class="video-workspace-empty">
                 <div class="video-workspace-empty-card">
-                    <span class="material-symbols-rounded" aria-hidden="true">movie</span>
+                    ${getVideoWorkspaceSvgIcon('video')}
                     <div class="video-workspace-empty-title">${escapeHtml(uiT('video.workspace.emptyTitle', 'Henüz video yok'))}</div>
                     <div class="video-workspace-empty-sub">${escapeHtml(uiT('video.workspace.emptyHint', 'Soldaki panelden video eklediğinizde burada galeri benzeri kartlar olarak görünecek.'))}</div>
                 </div>
@@ -37780,21 +37985,21 @@ function renderVideoWorkspace() {
         const quickActionsLabel = escapeHtml(uiT('video.workspace.quickActions', 'Video işlemleri'));
         const previewMarkup = thumb
             ? `<img class="gallery-item-preview-image video-workspace-preview-image" src="${escapeAttribute(thumb)}" alt="">`
-            : `<div class="video-workspace-fallback"><span class="material-symbols-rounded" aria-hidden="true">play_circle</span></div>`;
+            : `<div class="video-workspace-fallback">${getVideoWorkspaceSvgIcon('play-circle')}</div>`;
         return `
             <article class="gallery-item video-workspace-item${isCurrent ? ' is-current' : ''}${isQueuedNext ? ' is-queued-next' : ''}" data-video-path="${safePath}" title="${safeName}">
                 <div class="gallery-item-preview-wrap video-workspace-preview" data-video-action="open" data-video-path="${safePath}" data-video-index="${index}">
                     ${previewMarkup}
                     <div class="gallery-item-hover-actions video-workspace-hover-actions" role="group" aria-label="${quickActionsLabel}">
                         <button type="button" class="gallery-item-action" data-video-action="open" data-video-path="${safePath}" data-video-index="${index}" title="${playLabel}" aria-label="${playLabel}">
-                            <span class="material-symbols-rounded">play_arrow</span>
+                            ${getVideoWorkspaceSvgIcon('play')}
                         </button>
                         <button type="button" class="gallery-item-action" data-video-action="queue-next" data-video-path="${safePath}" data-video-index="${index}" title="${queueLabel}" aria-label="${queueLabel}">
-                            <span class="material-symbols-rounded">queue_play_next</span>
+                            ${getVideoWorkspaceSvgIcon('queue')}
                         </button>
                     </div>
                     <span class="video-workspace-play-badge" aria-hidden="true">
-                        <span class="material-symbols-rounded">play_arrow</span>
+                        ${getVideoWorkspaceSvgIcon('play')}
                     </span>
                     ${durationBadge}
                 </div>
@@ -38786,14 +38991,14 @@ function buildVideoToolsLibrarySection() {
             ? `<video class="video-tools-inline-preview" src="${escapeAttribute(toLocalFileUrl(normalizedPath))}" controls autoplay playsinline></video>`
             : (thumb
                 ? `<img class="gallery-item-preview-image video-workspace-preview-image" src="${escapeAttribute(thumb)}" alt="">`
-                : `<div class="video-workspace-fallback"><span class="material-symbols-rounded" aria-hidden="true">movie_edit</span></div>`);
-        const previewIcon = isPreviewing ? 'pause' : 'play_arrow';
+                : `<div class="video-workspace-fallback">${getVideoWorkspaceSvgIcon('edit')}</div>`);
+        const previewSvgIcon = isPreviewing ? getVideoWorkspaceSvgIcon('pause') : getVideoWorkspaceSvgIcon('play');
         return `
             <article class="gallery-item video-workspace-item video-tools-source-card${isSelected ? ' is-current' : ''}${isPreviewing ? ' is-previewing' : ''}" data-video-path="${safePath}" data-video-tool-source="${safePath}" title="${safeName}" tabindex="0">
                 <div class="gallery-item-preview-wrap video-workspace-preview" data-video-path="${safePath}" data-video-tool-source="${safePath}">
                     ${previewMarkup}
                     <button type="button" class="video-workspace-play-badge video-tools-source-badge" data-video-tool-preview="${safePath}" title="${escapeAttribute(uiT('video.tools.library.preview', 'Önizle'))}" aria-label="${escapeAttribute(uiT('video.tools.library.preview', 'Önizle'))}">
-                        <span class="material-symbols-rounded" aria-hidden="true">${previewIcon}</span>
+                        ${previewSvgIcon}
                     </button>
                     ${durationBadge}
                 </div>
@@ -39567,7 +39772,7 @@ function removeFromPlaylist(index) {
 }
 
 function clearPlaylistAll() {
-    // Only stop audio if it was coming from the playlist
+    // Muzik listesi temizligi yalnizca muzik tarafini etkiler.
     if (state.activeMedia === 'audio' && state.currentIndex !== -1) {
         try {
             stopAudio();
@@ -39586,37 +39791,15 @@ function clearPlaylistAll() {
     if (elements.libraryViewSort) elements.libraryViewSort.value = 'title';
     if (elements.libraryViewGroup) elements.libraryViewGroup.value = 'none';
 
-    // Sol panel listesini de temizle (müzik/video fark etmez).
+    // Müzik sekmesindeki sol panel listesini temizle.
     state.currentPath = '';
     if (elements.fileTree) elements.fileTree.innerHTML = '';
 
-    // Sekme değişiminde geri gelmemesi için kayıtlı klasörleri de temizle.
+    // Sekme değişiminde geri gelmemesi için kayıtlı ses klasörlerini de temizle.
     saveFolders('audio', []);
-    saveFolders('video', []);
-    saveFolders('image', []);
-    state.imageFiles = [];
-    state.currentImagePath = null;
-    persistImageLibrary();
     state.lastAudioPath = null;
-    state.lastVideoPath = null;
-    state.lastImagePath = null;
     rememberSelectedTreePath('');
     persistLibraryStartupState();
-
-    // Video listesini her durumda sıfırla (drag-drop ile eklenenler dahil).
-    if (state.activeMedia === 'video') {
-        try {
-            stopVideo();
-        } catch {
-            // yoksay
-        }
-    }
-    state.videoFiles = [];
-    state.currentVideoIndex = -1;
-    state.currentVideoPath = null;
-    persistVideoLibrary();
-    renderVideoWorkspace();
-    renderVideoLibraryTree();
 
     state.isPlaying = false;
     updatePlayPauseIcon(false);
@@ -39632,6 +39815,46 @@ function clearPlaylistAll() {
     syncAudioLibraryRootViewIfNeeded();
     updateTrayState();
     updateMPRISMetadata();
+}
+
+function clearVideoListForCurrentTab() {
+    if (state.activeMedia === 'video' || state.currentPage === 'video') {
+        try {
+            stopVideo();
+        } catch {
+            // yoksay
+        }
+    }
+
+    state.videoFiles = [];
+    state.currentVideoIndex = -1;
+    state.currentVideoPath = null;
+    state.currentPath = '';
+    state.lastVideoPath = null;
+
+    saveFolders('video', []);
+    persistVideoLibrary();
+    rememberSelectedTreePath('');
+    persistLibraryStartupState();
+
+    renderVideoWorkspace();
+    renderVideoLibraryTree();
+    updateLibraryAddButtonUi();
+    updateTrayState();
+    updateMPRISMetadata();
+    safeNotify(uiT('settings.library.notify.videoLibraryCleared', 'Saved video list cleared.'), 'success', 1800);
+}
+
+function clearActiveMediaList() {
+    if (state.currentPage === 'video' || state.mediaFilter === 'video') {
+        clearVideoListForCurrentTab();
+        return;
+    }
+    if (state.currentPage === 'gallery' || state.mediaFilter === 'image') {
+        clearGalleryLibraryAndFolders();
+        return;
+    }
+    clearPlaylistAll();
 }
 
 async function clearGalleryLibraryAndFolders() {
@@ -40665,6 +40888,9 @@ function togglePlayPause() {
             }
         } else if (state.activeMedia === 'video') {
             elements.videoPlayer.pause();
+        } else if (state.activeMedia === 'web') {
+            controlWebPlayback('pause');
+            updateMediaPlaybackPowerSaveBlocker('web-pause-control');
         }
         state.isPlaying = false;
         updatePlayPauseIcon(false);
@@ -40738,6 +40964,13 @@ function togglePlayPause() {
             updatePlayPauseIcon(true);
             updateTrayState();
             updateMPRISMetadata();
+        } else if (state.activeMedia === 'web') {
+            controlWebPlayback('play');
+            state.isPlaying = true;
+            updatePlayPauseIcon(true);
+            updateTrayState();
+            updateMPRISMetadata();
+            updateMediaPlaybackPowerSaveBlocker('web-play-control');
         }
     }
 }
@@ -44267,68 +44500,25 @@ let visualizerLastRenderAt = 0;
 let visualizerReleaseFrame = null;
 let visualizerReleaseState = null;
 let audioVisualizerMildPrevBands = null;
-let videoVisualizerPrevBands = null;
 let audioVisualizerFallbackPhase = 0;
-let visualizerProjectMFeedLastSentAt = 0;
 let visualizerProjectMRunning = false;
 
 function getVisualizerReleaseDropMultiplier() {
     if (!visualizerReleaseState) return 1;
-    if (state.activeMedia !== 'audio' && state.activeMedia !== 'video' && state.activeMedia !== 'web') return 1;
+    if (state.activeMedia !== 'audio') return 1;
     if (state.isPlaying) return 1;
     return 2.1;
 }
 
 function isVisualizerReactiveMediaMode() {
-    return state.activeMedia === 'audio' || state.activeMedia === 'video' || state.activeMedia === 'web';
+    return state.activeMedia === 'audio';
 }
 
 function isVisualizerMediaPlayingNow() {
-    if (state.activeMedia === 'video') {
-        const video = elements.videoPlayer;
-        const videoIsPlaying = !!(video && !video.paused && !video.ended && video.readyState >= 2);
-        if (videoIsPlaying) return true;
-    } else if (state.activeMedia === 'web') {
-        if (state.isPlaying) return true;
-    } else if (state.activeMedia === 'audio') {
-        const player = getActiveAudioPlayer();
-        const audioIsPlaying = !!(player && !player.paused && !player.ended);
-        if (audioIsPlaying) return true;
-    }
-    return !!state.isPlaying;
-}
-
-function getVisualizerTransportFps() {
-    return Math.max(20, Math.min(60, Number(VisualizerSettings?.currentFramerate) || 30));
-}
-
-function pushVideoSpectrumToProjectM(spectrumData, isPlaying, options = {}) {
-    if (!Array.isArray(spectrumData) || spectrumData.length === 0) return;
-    if (!window.app?.visualizer?.pushVideoSpectrum) return;
-
-    const now = performance.now();
-    const targetFps = getVisualizerTransportFps();
-    const minIntervalMs = 1000 / targetFps;
-    if (now - visualizerProjectMFeedLastSentAt < minIntervalMs) return;
-    visualizerProjectMFeedLastSentAt = now;
-
-    try {
-        const useSensitivity = options?.useSensitivity !== false;
-        const sensitivity = useSensitivity
-            ? Math.max(0.6, Math.min(1.2, Number(VisualizerSettings?.inputSensitivity) || 0.86))
-            : 1;
-        window.app.visualizer.pushVideoSpectrum(
-            spectrumData.map((v) => {
-                const n = Number(v);
-                if (!Number.isFinite(n)) return 0;
-                return Math.max(0, Math.min(1, n * sensitivity));
-            }),
-            !!isPlaying,
-            { targetFps, sourceMode: state.activeMedia === 'video' ? 'video' : (state.activeMedia === 'web' ? 'web' : 'audio') }
-        );
-    } catch {
-        // en iyi çaba
-    }
+    if (state.activeMedia !== 'audio') return false;
+    const player = getActiveAudioPlayer();
+    const audioIsPlaying = !!(player && !player.paused && !player.ended);
+    return audioIsPlaying || !!state.isPlaying;
 }
 
 function setWebAudioOutputGainFromState() {
@@ -44945,7 +45135,7 @@ function shouldRunVisualizer() {
 }
 
 function shouldFeedProjectMWhenVisualizerHidden() {
-    return state.activeMedia === 'web' && !!visualizerProjectMRunning;
+    return false;
 }
 
 function scheduleVisualizerTick(delayMs = 0) {
@@ -44973,22 +45163,16 @@ async function runVisualizerTick() {
 
     const visualizerVisible = shouldRunVisualizer();
     if (!visualizerVisible && !shouldFeedProjectMWhenVisualizerHidden()) {
-        if (state.activeMedia === 'video' && isVideoFullscreenActive()) {
-            visualizerReleaseFrame = null;
-            visualizerReleaseState = null;
-            videoVisualizerPrevBands = null;
-            AnalyzerContainer.analyze(null, false);
-            scheduleVisualizerTick(700);
-            return;
-        }
         scheduleVisualizerTick(250);
         return;
     }
 
     visualizerInFlight = true;
     try {
-        if (state.activeMedia === 'video' || state.activeMedia === 'web') {
-            await drawNativeVisualizerFrame();
+        if (state.activeMedia !== 'audio') {
+            visualizerReleaseFrame = null;
+            visualizerReleaseState = null;
+            AnalyzerContainer.analyze(null, false);
         } else if (visualizerIsNative) {
             await drawNativeVisualizerFrame();
         } else if (analyser) {
@@ -45926,54 +46110,34 @@ function setupVisualizer() {
 // C++ Audio Engine FFT verisi ile görselleştirici
 async function drawNativeVisualizerFrame() {
     try {
-        const isVideoMode = state.activeMedia === 'video';
-        const isWebMode = state.activeMedia === 'web';
+        if (state.activeMedia !== 'audio') {
+            AnalyzerContainer.analyze(null, false);
+            return;
+        }
+
         let shouldAnimateNow = false;
         let spectrumData = [];
-
-        if (isVideoMode) {
-            // Video modunda uygulama içi DALI spektrumunu kullan.
-            spectrumData = await getWebDaliSpectrumBands(256, { preferCache: false });
-            const video = elements.videoPlayer;
-            const videoIsPlaying = !!(video && !video.paused && !video.ended && video.readyState >= 2);
-            shouldAnimateNow = videoIsPlaying || state.isPlaying;
-        } else if (isWebMode) {
-            // Web platform modunda projectM icin saf (pre-FX) spektrum al.
-            spectrumData = await getWebDaliSpectrumBands(256, { raw: true, preferCache: false });
-            shouldAnimateNow = !!state.isPlaying;
-        } else {
-            let nativeIsPlaying = false;
-            if (window.ardali?.audio?.isPlaying) {
-                try { nativeIsPlaying = !!(await window.ardali.audio.isPlaying()); } catch { }
-            }
-            let nativeLevels = null;
-            // C++ engine'den ham spectrum verisini al (master volume'dan bağımsız analiz stream)
-            if (window.ardali?.audio?.spectrum?.getBands) {
-                spectrumData = await window.ardali.audio.spectrum.getBands(128);
-            }
-            if (getSpectrumPeak(spectrumData) <= 0 && window.ardali?.audio?.spectrum?.getPCM) {
-                const pcmSnapshot = await window.ardali.audio.spectrum.getPCM(2048);
-                spectrumData = makeSpectrumBandsFromPcmSnapshot(pcmSnapshot, 128);
-            }
-            if (getSpectrumPeak(spectrumData) <= 0 && window.ardali?.audio?.spectrum?.getLevels) {
-                try { nativeLevels = await window.ardali.audio.spectrum.getLevels(); } catch { nativeLevels = null; }
-                spectrumData = makeAudioLevelFallbackBands(nativeLevels, 128);
-            }
-            shouldAnimateNow = nativeIsPlaying || state.isPlaying;
+        let nativeIsPlaying = false;
+        if (window.ardali?.audio?.isPlaying) {
+            try { nativeIsPlaying = !!(await window.ardali.audio.isPlaying()); } catch { }
         }
-
-        spectrumData = isWebMode
-            ? normalizeSpectrumDataRaw(spectrumData)
-            : normalizeSpectrumData(spectrumData, { source: isVideoMode ? 'video' : 'native-audio' });
-        if (isVideoMode) {
-            spectrumData = tuneVideoVisualizerSpectrum(spectrumData);
-            pushVideoSpectrumToProjectM(spectrumData, shouldAnimateNow);
-        } else if (isWebMode) {
-            spectrumData = calibrateWebRawVisualizerSpectrum(spectrumData);
-            pushVideoSpectrumToProjectM(spectrumData, shouldAnimateNow, { useSensitivity: false });
-        } else {
-            spectrumData = tuneAudioVisualizerSpectrumMild(spectrumData);
+        let nativeLevels = null;
+        // C++ engine'den ham spectrum verisini al (master volume'dan bağımsız analiz stream)
+        if (window.ardali?.audio?.spectrum?.getBands) {
+            spectrumData = await window.ardali.audio.spectrum.getBands(128);
         }
+        if (getSpectrumPeak(spectrumData) <= 0 && window.ardali?.audio?.spectrum?.getPCM) {
+            const pcmSnapshot = await window.ardali.audio.spectrum.getPCM(2048);
+            spectrumData = makeSpectrumBandsFromPcmSnapshot(pcmSnapshot, 128);
+        }
+        if (getSpectrumPeak(spectrumData) <= 0 && window.ardali?.audio?.spectrum?.getLevels) {
+            try { nativeLevels = await window.ardali.audio.spectrum.getLevels(); } catch { nativeLevels = null; }
+            spectrumData = makeAudioLevelFallbackBands(nativeLevels, 128);
+        }
+        shouldAnimateNow = nativeIsPlaying || state.isPlaying;
+
+        spectrumData = normalizeSpectrumData(spectrumData, { source: 'native-audio' });
+        spectrumData = tuneAudioVisualizerSpectrumMild(spectrumData);
         const isReactiveMode = isVisualizerReactiveMediaMode();
         const releaseState = applyVisualizerReleaseFrame(spectrumData, shouldAnimateNow, isReactiveMode);
 
@@ -46089,30 +46253,6 @@ function applyVisualizerReleaseFrame(sourceData, shouldAnimateNow, isReactiveMod
     visualizerReleaseState.zeroFeedMaxFrames = 0;
 
     return { data: released, animate: true };
-}
-
-function normalizeSpectrumDataRaw(spectrumData) {
-    if (!spectrumData || !spectrumData.length) return [];
-    let arr = Array.from(spectrumData, (v) => {
-        const n = Number(v);
-        return Number.isFinite(n) ? Math.max(0, n) : 0;
-    });
-    const max = Math.max(...arr, 0);
-    if (max <= 0) return arr.map(() => 0);
-    if (max > 1.5) {
-        const scale = max > 255 ? max : 255;
-        arr = arr.map((v) => v / scale);
-    }
-    return arr.map((v) => Math.max(0, Math.min(1, v)));
-}
-
-function calibrateWebRawVisualizerSpectrum(rawData) {
-    if (!Array.isArray(rawData) || rawData.length === 0) return [];
-    return rawData.map((v) => {
-        const n = Math.max(0, Math.min(1, Number(v) || 0));
-        // Saf sinyali koru; projectM seviyesini hafif canlı tut.
-        return Math.max(0, Math.min(1, Math.pow(n, 1.06) * 0.90));
-    });
 }
 
 function getSpectrumPeak(spectrumData) {
@@ -46290,152 +46430,6 @@ function tuneAudioVisualizerSpectrumMild(normalizedData) {
         });
     }
     audioVisualizerMildPrevBands = finalOut.slice();
-    return finalOut;
-}
-
-function tuneVideoVisualizerSpectrum(normalizedData) {
-    if (!Array.isArray(normalizedData) || normalizedData.length === 0) {
-        videoVisualizerPrevBands = null;
-        return [];
-    }
-    const input = normalizedData.map((v) => {
-        const n = Number(v);
-        return Number.isFinite(n) ? Math.max(0, Math.min(1, n)) : 0;
-    });
-    const sorted = [...input].sort((a, b) => a - b);
-    const p10 = sorted[Math.floor((sorted.length - 1) * 0.10)] || 0;
-    const p90 = sorted[Math.floor((sorted.length - 1) * 0.90)] || 0;
-
-    // Video akışında sabit tabanı temizle, ama tüm bantları birlikte bastırma.
-    const floor = Math.min(0.24, p10 * 0.88);
-    const gated = input.map((v) => Math.max(0, v - floor));
-
-    // Her karede "peak=1" normalizasyonu yapmak yerine yüzdelik tepeye göre yumuşak gain.
-    const gain = Math.max(0.55, Math.min(1.45, 0.42 / Math.max(0.09, p90 - floor)));
-    const leveled = gated.map((v) => Math.min(1, v * gain));
-
-    const len = leveled.length || 1;
-    const contrasted = leveled.map((v, i) => {
-        const l2 = leveled[Math.max(0, i - 2)] || 0;
-        const l1 = leveled[Math.max(0, i - 1)] || 0;
-        const r1 = leveled[Math.min(len - 1, i + 1)] || 0;
-        const r2 = leveled[Math.min(len - 1, i + 2)] || 0;
-        const local = (l2 + l1 + v + r1 + r2) / 5;
-        const detail = Math.max(0, v - local);
-
-        // Sadece uçlara değil, çubuğun tüm gövdesine ayrışım uygula.
-        const bodyRatio = Math.max(0.70, Math.min(1.45, v / (local + 0.035)));
-        const freqNorm = i / (len - 1 || 1);
-        const lowFocus = Math.pow(1 - freqNorm, 1.05);
-        const immediate = (l1 + v + r1) / 3;
-        let broad = 0;
-        let broadCount = 0;
-        for (let k = i - 5; k <= i + 5; k += 1) {
-            const idx = Math.max(0, Math.min(len - 1, k));
-            broad += leveled[idx] || 0;
-            broadCount += 1;
-        }
-        broad = broadCount > 0 ? (broad / broadCount) : v;
-        const microDetail = Math.max(0, v - immediate);
-        const macroDetail = Math.max(0, v - broad);
-        const slope = Math.abs(v - l1);
-        const lowDetailBoost = 1 + (lowFocus * 0.90);
-        const bodySeparated = Math.min(
-            1,
-            (v * (0.62 + (bodyRatio - 1) * 0.54))
-            + (microDetail * 0.78 * lowDetailBoost)
-            + (macroDetail * 0.92 * lowDetailBoost)
-            + (slope * 0.20 * lowFocus)
-        );
-
-        // Sol (bass) bantlar tizden geride kalmasın diye düşük frekanslara hafif enerji desteği.
-        const bassSoft = 0.98 + (Math.pow(1 - freqNorm, 0.92) * 0.13);
-        const tilt = 0.97 + (freqNorm * 0.12);
-        const mixed = Math.min(1, (bodySeparated * 0.82) + (detail * 0.62));
-        return Math.pow(Math.min(1, mixed * tilt), 0.98) * 0.74 * bassSoft;
-    });
-
-    // Tum bantlarda ayrisimi belirginlestir:
-    // Her bar'i genis komsu zarfindan ayirip (decouple) govdeye de uygula.
-    const decoupled = contrasted.map((v, i) => {
-        const freqNorm = i / (len - 1 || 1);
-        const lowFocus = Math.pow(1 - freqNorm, 1.0);
-        let wide = 0;
-        let cnt = 0;
-        const radius = Math.max(3, Math.min(7, Math.round(3 + (freqNorm * 4))));
-        for (let k = i - radius; k <= i + radius; k += 1) {
-            const idx = Math.max(0, Math.min(len - 1, k));
-            wide += contrasted[idx] || 0;
-            cnt += 1;
-        }
-        wide = cnt > 0 ? (wide / cnt) : v;
-        const rel = (v - wide) / (wide + 0.030);
-        const relPos = Math.max(0, rel);
-        const relNeg = Math.max(0, -rel);
-        const bassBoost = 1 + (lowFocus * 0.85);
-        const bodyLift = Math.min(1, v * (0.86 + (relPos * 0.90 * bassBoost)));
-        const diffLift = Math.max(0, v - wide) * (0.95 * bassBoost);
-        const valleyKeep = Math.max(0, v * (1 - (relNeg * 0.38)));
-        const mixed = Math.min(1, (bodyLift * 0.72) + (diffLift * 0.56) + (valleyKeep * 0.10));
-        return mixed;
-    });
-
-    if (!Array.isArray(videoVisualizerPrevBands) || videoVisualizerPrevBands.length !== decoupled.length) {
-        videoVisualizerPrevBands = decoupled.slice();
-        return decoupled;
-    }
-
-    // Toplu dalgalanma hissini azaltmak için bant bazlı attack/release.
-    const sharpnessLevel = Math.max(0, Math.min(3, Number(VisualizerSettings?.sharpnessLevel) || 1));
-    const isUltraSharp = sharpnessLevel >= 3;
-    const attack = isUltraSharp ? 0.93 : (sharpnessLevel >= 2 ? 0.88 : (sharpnessLevel <= 0 ? 0.74 : 0.82));
-    const release = isUltraSharp ? 0.42 : (sharpnessLevel >= 2 ? 0.34 : (sharpnessLevel <= 0 ? 0.22 : 0.28));
-    const out = decoupled.map((v, i) => {
-        const prev = Number(videoVisualizerPrevBands[i]) || 0;
-        const freqNorm = i / (decoupled.length - 1 || 1);
-        const lowFocus = Math.pow(1 - freqNorm, 1.05);
-        const bandAttack = Math.min(0.92, attack + (lowFocus * 0.10));
-        const bandRelease = Math.min(0.62, release + (lowFocus * 0.12));
-        const alpha = v > prev ? bandAttack : bandRelease;
-        const raw = prev + ((v - prev) * alpha);
-        const rise = Math.max(0, raw - prev);
-        const transientBoost = rise * (0.46 + (lowFocus * 0.34));
-        const capped = raw + transientBoost;
-        const headroomCap = Math.max(0.80, 0.84 + (lowFocus * 0.03));
-        return Math.min(headroomCap, capped);
-    });
-    const n = out.length || 1;
-    for (let i = 0; i < n; i += 1) {
-        const freqNorm = i / (n - 1 || 1);
-        const edgeNorm = Math.min(freqNorm, 1 - freqNorm);
-        const edgeBoost = edgeNorm < 0.10 ? ((0.10 - edgeNorm) / 0.10) : 0;
-        if (edgeBoost <= 0) continue;
-        const left = out[Math.max(0, i - 1)] || out[i] || 0;
-        const right = out[Math.min(n - 1, i + 1)] || out[i] || 0;
-        const neighbor = (left + right) * 0.5;
-        const carried = neighbor * (0.10 * edgeBoost);
-        out[i] = Math.min(0.88, Math.max(out[i], out[i] + carried));
-    }
-    // "Havada asili kalma" hissini azalt: adaptif taban seviyesini temizle.
-    const avgLevel = out.reduce((sum, v) => sum + (Number(v) || 0), 0) / (n || 1);
-    const hoverFloor = Math.min(0.22, Math.max(0.02, avgLevel * 0.42));
-    for (let i = 0; i < n; i += 1) {
-        const lifted = Math.max(0, (Number(out[i]) || 0) - hoverFloor);
-        out[i] = Math.min(0.88, lifted * 1.16);
-    }
-    let finalOut = out;
-    if (sharpnessLevel > 0) {
-        const amount = isUltraSharp ? 0.38 : (sharpnessLevel >= 2 ? 0.26 : 0.14);
-        finalOut = out.map((v, i) => {
-            const left = out[Math.max(0, i - 1)] || v;
-            const right = out[Math.min(n - 1, i + 1)] || v;
-            const neighbor = (left + right) * 0.5;
-            const sharpened = v + ((v - neighbor) * amount);
-            return Math.max(0, Math.min(0.92, sharpened));
-        });
-    }
-
-    videoVisualizerPrevBands = finalOut.slice();
     return finalOut;
 }
 

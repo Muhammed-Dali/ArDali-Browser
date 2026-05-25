@@ -130,6 +130,36 @@ function commandExists(command) {
     }
 }
 
+function findExecutable(command, extraDirs = []) {
+    const sanitized = String(command || '').trim();
+    if (!sanitized || /[^a-zA-Z0-9._/-]/.test(sanitized)) return '';
+    const candidates = [];
+    if (path.isAbsolute(sanitized)) {
+        candidates.push(sanitized);
+    } else {
+        const dirs = [
+            ...String(process.env.PATH || '').split(path.delimiter),
+            ...(Array.isArray(extraDirs) ? extraDirs : [])
+        ];
+        const seen = new Set();
+        for (const dir of dirs) {
+            const cleanDir = String(dir || '').trim();
+            if (!cleanDir || seen.has(cleanDir)) continue;
+            seen.add(cleanDir);
+            candidates.push(path.join(cleanDir, sanitized));
+        }
+    }
+    for (const candidate of candidates) {
+        try {
+            fs.accessSync(candidate, fs.constants.X_OK);
+            return candidate;
+        } catch {
+            // sonraki aday
+        }
+    }
+    return '';
+}
+
 function sanitizeIpcPath(value, { requireAbsolute = true } = {}) {
     const targetPath = String(value || '').trim();
     if (!targetPath || targetPath.includes('\0')) return '';
@@ -802,6 +832,13 @@ function readStartupSettingsForCommandLine() {
     }
 }
 
+function readStartupWebUiSettings() {
+    const startupSettings = readStartupSettingsForCommandLine();
+    return startupSettings?.webUi && typeof startupSettings.webUi === 'object'
+        ? startupSettings.webUi
+        : {};
+}
+
 function cleanupTransientHomeFiles(context = 'runtime') {
     if (process.platform !== 'linux') return;
     let homeDir = '';
@@ -828,8 +865,7 @@ function cleanupTransientHomeFiles(context = 'runtime') {
 // GNOME/Wayland üst bar & dock ikon eşleştirmesi için (desktop entry ile eşleşme)
 const LINUX_WM_CLASS = 'ardali';
 if (app && app.commandLine) {
-    const startupSettings = readStartupSettingsForCommandLine();
-    const startupWebUi = startupSettings?.webUi && typeof startupSettings.webUi === 'object' ? startupSettings.webUi : {};
+    const startupWebUi = readStartupWebUiSettings();
 
     if (process.platform === 'linux') {
         app.commandLine.appendSwitch('class', LINUX_WM_CLASS);
@@ -5076,6 +5112,7 @@ async function updateEq32SettingsInFile(patch) {
 function createWindow() {
     refreshMainWindowBehaviorSettingsSync();
     rendererMediaOpenReady = false;
+    const startupWebUi = readStartupWebUiSettings();
 
     let rendererRecoveryAttempts = 0;
     mainWindow = new BrowserWindow({
@@ -5092,9 +5129,9 @@ function createWindow() {
             sandbox: false,
             webSecurity: true,
             allowRunningInsecureContent: false,
-            // Medya oynatım zamanlayıcıları arka planda da akıcı çalışsın.
-            // Aksi halde track-end / next-track akışı gizli pencerede gecikebiliyor.
-            backgroundThrottling: false,
+            // Varsayılan olarak arka plan zamanlayıcılarını kıs. Ses oynatma devam eder,
+            // ama gizli/arka plandaki animasyon ve web işleri RAM/CPU basıncı oluşturmaz.
+            backgroundThrottling: startupWebUi.backgroundThrottle !== false,
             webviewTag: true,  // WebView desteği
             plugins: true, // DRM/CDM tabanlı web oynatıcılar için gerekli olabilir
             spellcheck: false
@@ -5120,7 +5157,7 @@ function createWindow() {
             webPreferences.enableRemoteModule = false;
             webPreferences.allowRunningInsecureContent = false;
             webPreferences.plugins = true;
-            webPreferences.backgroundThrottling = false;
+            webPreferences.backgroundThrottling = startupWebUi.backgroundThrottle !== false;
             // Guest preload: no app bridge, only early adblock scriptlet patch.
             webPreferences.preload = path.join(__dirname, 'webviewAdblockPreload.js');
 
@@ -5827,31 +5864,26 @@ function createMPRIS() {
 
     try {
         const flatpakAppId = (process.env.FLATPAK_ID || process.env.APP_ID || '').trim();
-        const mprisName = (flatpakAppId || 'ardali').replace(/[^A-Za-z0-9_.-]/g, '') || 'ardali';
-        const desktopEntryCandidates = [
-            flatpakAppId,
-            'com.ardali.mediaplayer',
-            'ardali',
-            'ardali'
-        ].filter(Boolean);
-        const desktopEntry = desktopEntryCandidates.find((entry) => {
-            const file = `${entry}.desktop`;
-            const paths = [
-                path.join('/app/share/applications', file),
-                path.join('/usr/share/applications', file),
-                path.join('/usr/local/share/applications', file),
-                path.join(app.getPath('home'), '.local/share/applications', file)
-            ];
-            return paths.some((p) => fs.existsSync(p));
-        }) || (flatpakAppId || 'ardali');
+        const canonicalDesktopEntry = 'com.ardali.mediaplayer';
+        // MPRIS player name becomes org.mpris.MediaPlayer2.<name>.
+        // Keep it simple for KDE/GNOME media widgets; desktopEntry still maps the icon.
+        const mprisName = 'ardali';
+        const desktopEntry = flatpakAppId || canonicalDesktopEntry;
 
         mprisPlayer = Player({
             name: mprisName,
             identity: 'ArDali',
             desktopEntry, // KDE/GNOME sistem panelinde uygulama ikonunu eşleştirir
-            supportedUriSchemes: ['file'],
-            supportedMimeTypes: ['audio/mpeg', 'audio/flac', 'audio/x-wav', 'audio/ogg'],
+            supportedUriSchemes: ['file', 'http', 'https'],
+            supportedMimeTypes: [
+                'audio/mpeg', 'audio/flac', 'audio/x-wav', 'audio/ogg', 'audio/mp4',
+                'video/mp4', 'video/x-matroska', 'video/webm', 'video/x-msvideo',
+                'application/ogg'
+            ],
             supportedInterfaces: ['player']
+        });
+        mprisPlayer.on('error', (error) => {
+            console.log('[MPRIS] service error:', error?.message || error);
         });
 
         // Oynatma yeteneklerini ayarla
@@ -5960,32 +5992,50 @@ function updateMPRISMetadata(metadata) {
     if (!mprisPlayer) return;
 
     try {
+        const safeMetadata = (metadata && typeof metadata === 'object') ? metadata : {};
+        const duration = Number(safeMetadata.duration) || 0;
+        const position = Number(safeMetadata.position) || 0;
+        const mediaType = String(safeMetadata.mediaType || '').trim().toLowerCase();
+        const url = String(safeMetadata.url || '').trim();
+        const title = String(safeMetadata.title || '').trim() || 'ArDali';
+        const artist = String(safeMetadata.artist || '').trim();
+        const album = String(safeMetadata.album || '').trim();
         const mprisMetadata = {
-            'mpris:trackid': mprisPlayer.objectPath('track/' + (metadata.trackId || '0')),
-            'mpris:length': Math.floor((metadata.duration || 0) * 1000000), // saniye -> mikrosaniye
-            'mpris:artUrl': metadata.albumArt || '',
-            'xesam:title': metadata.title || 'Bilinmeyen Parça',
-            'xesam:artist': metadata.artist ? [metadata.artist] : ['Bilinmeyen Sanatçı'],
-            'xesam:album': metadata.album || ''
+            'mpris:trackid': mprisPlayer.objectPath('track/' + (safeMetadata.trackId || '0')),
+            'mpris:length': Math.floor(duration * 1000000), // saniye -> mikrosaniye
+            'mpris:artUrl': safeMetadata.albumArt || '',
+            'xesam:title': title,
+            'xesam:artist': artist ? [artist] : ['ArDali'],
+            'xesam:album': album,
+            'xesam:genre': mediaType ? [mediaType] : []
         };
+        if (url) {
+            mprisMetadata['xesam:url'] = url;
+        }
+        if (safeMetadata.platform) {
+            mprisMetadata['xesam:comment'] = `ArDali ${String(safeMetadata.platform)}`;
+        }
 
         mprisPlayer.metadata = mprisMetadata;
-        mprisPlayer.playbackStatus = metadata.isPlaying ? Player.PLAYBACK_STATUS_PLAYING : Player.PLAYBACK_STATUS_PAUSED;
+        mprisPlayer.playbackStatus = safeMetadata.isPlaying ? Player.PLAYBACK_STATUS_PLAYING : Player.PLAYBACK_STATUS_PAUSED;
 
         // Pozisyon bilgisini güncelle (saniye -> mikrosaniye)
-        if (typeof metadata.position === 'number') {
-            mprisPlayer.position = Math.floor(metadata.position * 1000000);
+        if (Number.isFinite(position)) {
+            mprisPlayer.position = Math.floor(Math.max(0, position) * 1000000);
             mprisPlayer._lastUpdateHRTime = process.hrtime();
         }
 
         // Seek yeteneklerini güncelle
-        mprisPlayer.canSeek = (typeof metadata.canSeek === 'boolean') ? metadata.canSeek : true;
+        mprisPlayer.canSeek = (typeof safeMetadata.canSeek === 'boolean') ? safeMetadata.canSeek : true;
         mprisPlayer.canControl = true;
-        if (typeof metadata.canGoNext === 'boolean') mprisPlayer.canGoNext = metadata.canGoNext;
-        if (typeof metadata.canGoPrevious === 'boolean') mprisPlayer.canGoPrevious = metadata.canGoPrevious;
+        mprisPlayer.canPlay = true;
+        mprisPlayer.canPause = true;
+        mprisPlayer.canStop = true;
+        if (typeof safeMetadata.canGoNext === 'boolean') mprisPlayer.canGoNext = safeMetadata.canGoNext;
+        if (typeof safeMetadata.canGoPrevious === 'boolean') mprisPlayer.canGoPrevious = safeMetadata.canGoPrevious;
 
         if (isTruthyEnvFlag('ARDALI_VERBOSE_LOGS')) {
-            console.log('MPRIS metadata güncellendi:', metadata.title, 'duration:', metadata.duration.toFixed(1), 's, position:', metadata.position.toFixed(1), 's');
+            console.log('MPRIS metadata güncellendi:', title, 'type:', mediaType || '-', 'duration:', duration.toFixed(1), 's, position:', position.toFixed(1), 's');
         }
     } catch (e) {
         // D-Bus bağlantı hataları - sessizce yoksay (normal durum)
