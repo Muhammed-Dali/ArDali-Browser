@@ -130,7 +130,7 @@ jobs:
             --clobber
 
       - name: Upload GitHub Pages artifact
-        uses: actions/upload-pages-artifact@v3
+        uses: actions/upload-pages-artifact@v5
         with:
           path: pacman-repo
 
@@ -144,4 +144,4 @@ jobs:
     steps:
       - name: Deploy pacman repo to GitHub Pages
         id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5
