@@ -1,6 +1,6 @@
 {
   "name": "ardali",
-  "version": "3.1.7",
+  "version": "3.1.6",
   "productName": "ArDali",
   "description": "Open-source Linux media player for music and video with DSP effects, equalizer, and visualizer",
   "main": "main.js",
