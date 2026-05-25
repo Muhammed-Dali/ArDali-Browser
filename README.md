@@ -222,6 +222,8 @@ Primary installation instruction for Arch-based Linux systems:
 yay -S ardali-bin
 ```
 
+If ArDali is useful to you, you can quietly support it by voting on the [AUR package page](https://aur.archlinux.org/packages/ardali-bin).
+
 Pacman repo installation:
 
 ```ini
@@ -427,6 +429,8 @@ Arch tabanlı Linux sistemler için birincil kurulum talimatı:
 ```bash
 yay -S ardali-bin
 ```
+
+ArDali işinize yarıyorsa [AUR paket sayfasında](https://aur.archlinux.org/packages/ardali-bin) oy vererek sessizce destek olabilirsiniz.
 
 Pacman repo ile kurulum:
 
