@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
+  <defs>
+    <linearGradient id="viz-ring" x1="10" y1="9" x2="54" y2="55" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#60A5FA"/>
+      <stop offset="0.5" stop-color="#A78BFA"/>
+      <stop offset="1" stop-color="#F472B6"/>
+    </linearGradient>
+    <linearGradient id="viz-bars" x1="18" y1="18" x2="46" y2="48" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#E0F2FE"/>
+      <stop offset="0.45" stop-color="#38BDF8"/>
+      <stop offset="1" stop-color="#F472B6"/>
+    </linearGradient>
+  </defs>
+  <rect x="10" y="10" width="44" height="44" rx="14" fill="#07111F" stroke="url(#viz-ring)" stroke-width="4"/>
+  <path d="M20 42V31M28 42V22M36 42V27M44 42V18" stroke="url(#viz-bars)" stroke-width="5.5" stroke-linecap="round"/>
+  <path d="M18 46h28" stroke="#E0F2FE" stroke-width="3" stroke-linecap="round" opacity=".75"/>
+  <path d="M19 24c4.1 0 4.1-5 8.2-5s4.1 5 8.2 5 4.1-5 8.6-5" stroke="#FBBF24" stroke-width="3.5" stroke-linecap="round"/>
+</svg>

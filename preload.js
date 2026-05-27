@@ -725,7 +725,11 @@ const ardaliAPI = {
         scope: preloadStandaloneScope,
         perfMonitor: process?.env?.ARDALI_PERF_MONITOR === '1',
         perfMonitorIntervalMs: Number(process?.env?.ARDALI_PERF_MONITOR_INTERVAL_MS || 15000) || 15000,
-        perfMonitorDelayMs: Number(process?.env?.ARDALI_PERF_MONITOR_DELAY_MS || 12000) || 12000
+        perfMonitorDelayMs: Number(process?.env?.ARDALI_PERF_MONITOR_DELAY_MS || 12000) || 12000,
+        disableWebDali: process?.env?.ARDALI_DISABLE_WEB_DALI === '1' ||
+            String(process?.env?.ARDALI_DISABLE_WEB_DALI || '').toLowerCase() === 'true',
+        enableWebDali: process?.env?.ARDALI_ENABLE_WEB_DALI === '1' ||
+            String(process?.env?.ARDALI_ENABLE_WEB_DALI || '').toLowerCase() === 'true'
     },
     onSettingsReload: (callback) => {
         const handler = (_event, payload, meta) => callback(payload, meta || {});
@@ -788,6 +792,8 @@ const ardaliAPI = {
         setContextMetadata: (metadata) => ipcRenderer.invoke('pulse:setContextMetadata', metadata || {}),
         startListening: (options) => ipcRenderer.invoke('pulse:startListening', options || {}),
         stopListening: () => ipcRenderer.invoke('pulse:stopListening'),
+        startLevelPreview: (options) => ipcRenderer.invoke('pulse:startLevelPreview', options || {}),
+        stopLevelPreview: () => ipcRenderer.invoke('pulse:stopLevelPreview'),
         recognizeSample: (options) => ipcRenderer.invoke('pulse:recognizeSample', options || {}),
         openExternalSearch: (payload) => ipcRenderer.invoke('pulse:openExternalSearch', payload || {}),
         openQueryInApp: (payload) => ipcRenderer.invoke('pulse:openQueryInApp', payload || {}),
@@ -808,6 +814,12 @@ const ardaliAPI = {
             const handler = (_event, payload) => callback(payload || {});
             ipcRenderer.on('pulse:volume', handler);
             return () => ipcRenderer.removeListener('pulse:volume', handler);
+        },
+        onPreviewVolume: (callback) => {
+            if (typeof callback !== 'function') return () => {};
+            const handler = (_event, payload) => callback(payload || {});
+            ipcRenderer.on('pulse:preview-volume', handler);
+            return () => ipcRenderer.removeListener('pulse:preview-volume', handler);
         },
         onResult: (callback) => {
             if (typeof callback !== 'function') return () => {};
@@ -979,8 +991,6 @@ const ardaliAPI = {
         notifyMediaOpenReady: () => ipcRenderer.send('app:renderer-media-open-ready'),
         getVersionInfo: () => ipcRenderer.invoke('app:getVersionInfo'),
         setStudioShortcuts: (shortcuts) => ipcRenderer.invoke('app:setStudioShortcuts', shortcuts || {}),
-        setPlaybackPowerSaveBlocker: (payload) => ipcRenderer.invoke('app:setPlaybackPowerSaveBlocker', payload || {}),
-        getPlaybackPowerState: () => ipcRenderer.invoke('app:getPlaybackPowerState'),
         updater: {
             getState: () => ipcRenderer.invoke('app:update:getState'),
             check: (options = {}) => ipcRenderer.invoke('app:update:check', options),

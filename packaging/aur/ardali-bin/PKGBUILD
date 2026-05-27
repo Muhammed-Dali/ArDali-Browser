@@ -4,7 +4,7 @@
 # Installs the prebuilt AppImage from GitHub Releases.
 
 pkgname=ardali
-pkgver=3.1.7
+pkgver=3.2.0
 pkgrel=1
 pkgdesc="ArDali multimedia ecosystem for Linux (prebuilt AppImage)"
 arch=('x86_64')
@@ -22,7 +22,7 @@ _appimage="ArDali-${pkgver}-linux-x86_64.AppImage"
 
 source=(
   "${_appimage}::https://github.com/${_owner}/${_repo}/releases/download/${_tag}/${_appimage}"
-  "com.ardali.mediaplayer.png::https://raw.githubusercontent.com/${_owner}/${_repo}/main/icons/ardali_512.png"
+  "com.ardali.mediaplayer.png::https://raw.githubusercontent.com/${_owner}/${_repo}/main/icons/app/ardali_512.png"
 )
 
 sha256sums=('SKIP'
@@ -51,8 +51,6 @@ MimeType=audio/mpeg;audio/wav;audio/flac;audio/aac;audio/ogg;audio/mp4;audio/x-m
 Keywords=Music;Audio;Video;Media;Player;Linux;AppImage;Equalizer;DSP;ArDali;
 StartupNotify=true
 EOF
-  ln -s com.ardali.mediaplayer.desktop "${pkgdir}/usr/share/applications/ardali.desktop"
-
   install -Dm644 "${srcdir}/com.ardali.mediaplayer.png" \
     "${pkgdir}/usr/share/icons/hicolor/512x512/apps/com.ardali.mediaplayer.png"
 

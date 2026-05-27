@@ -79,7 +79,7 @@ Yukarıdaki Linux test adımlarını (A, B, C) uygula.
 ### Visualizer ikonu görünmüyor
 ```bash
 # extraFiles doğru kopyalandı mı kontrol et
-ls -la dist/linux-unpacked/resources/icons/ardali_logo.bmp
+ls -la dist/linux-unpacked/resources/icons/app/ardali_logo.bmp
 ls -la dist/linux-unpacked/resources/native-dist/ardali-projectm-visualizer
 ```
 
@@ -112,7 +112,7 @@ cp build-visualizer/ardali-projectm-visualizer native-dist/
 
 ### Packaging
 - [package.json](package.json): `extraFiles` visualizer binary + presets + icon
-- [icons/ardali_logo.bmp](icons/ardali_logo.bmp): SDL_LoadBMP için BMP format
+- [icons/app/ardali_logo.bmp](icons/app/ardali_logo.bmp): SDL_LoadBMP için BMP format
 
 ### Mikrofon Garantisi
 - [visualizer/main_imgui.cpp](visualizer/main_imgui.cpp): Log "projectM input = ardali_pcm"

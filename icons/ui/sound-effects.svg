@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
+  <defs>
+    <linearGradient id="fx-ring" x1="11" y1="10" x2="53" y2="54" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#38BDF8"/>
+      <stop offset="1" stop-color="#22C55E"/>
+    </linearGradient>
+    <linearGradient id="fx-bars" x1="20" y1="17" x2="44" y2="47" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#E0F2FE"/>
+      <stop offset="0.55" stop-color="#67E8F9"/>
+      <stop offset="1" stop-color="#A7F3D0"/>
+    </linearGradient>
+  </defs>
+  <rect x="10" y="10" width="44" height="44" rx="14" fill="#06111F" stroke="url(#fx-ring)" stroke-width="4"/>
+  <path d="M22 25v14M32 18v28M42 27v10" stroke="url(#fx-bars)" stroke-width="5.5" stroke-linecap="round"/>
+  <circle cx="22" cy="25" r="4" fill="#06111F" stroke="#E0F2FE" stroke-width="3"/>
+  <circle cx="32" cy="18" r="4" fill="#06111F" stroke="#67E8F9" stroke-width="3"/>
+  <circle cx="42" cy="27" r="4" fill="#06111F" stroke="#A7F3D0" stroke-width="3"/>
+  <path d="M46 16l1.4 3.1 3.1 1.4-3.1 1.4L46 25l-1.4-3.1-3.1-1.4 3.1-1.4L46 16Z" fill="#FBBF24"/>
+</svg>

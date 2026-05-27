@@ -1,8 +1,26 @@
 # icons/ Klasor Rehberi
 
-Bu dosya, `icons/` icindeki varliklari 3 grupta takip etmek icin tutulur.
+Bu klasor, ikon kalabaligini azaltmak icin 3 kategoriye ayrildi.
 
-## 1) Kullanilanlar (UI/Runtime)
+## app/
+
+Uygulama markasi, paketleme ikonlari ve ArDali alt uygulama logolari:
+
+- `ardali.ico`
+- `ardali.png`
+- `ardali_24.png`
+- `ardali_256.png`
+- `ardali_512.png`
+- `ardali_alt_boldA_1024.png`
+- `ardali_alt_boldA_transparent_1024.png`
+- `ardali_dawlod.png`
+- `ardali_dawlod_menu.png`
+- `ardali_logo.bmp`
+- `ardali_readme_round.png`
+
+## platforms/
+
+Web platform logolari:
 
 - `youtube_music.svg`
 - `youtube_modern.svg`
@@ -14,41 +32,25 @@ Bu dosya, `icons/` icindeki varliklari 3 grupta takip etmek icin tutulur.
 - `x.svg`
 - `reddit.svg`
 - `twitch.svg`
+- `telegram.svg`
+- `whatsapp.svg`
+
+## ui/
+
+Uygulama ici arac, navigasyon, fallback, tray ve README ozellik ikonlari:
+
+- `advanced-*.svg`
+- `download-*.svg`
+- `fallback_*.svg`
+- `nav_*.svg`
+- `readme_*.svg`
+- `settings-*.svg`
+- `tray-*.png`
 - `deliblock.svg`
-- `nav_internet.svg`
-- `nav_video.svg`
-- `tray-play.png`
-- `tray-pause.png`
-- `tray-stop.png`
-- `tray-next.png`
-- `tray-previous.png`
-- `tray-mute.png`
-- `tray-volume.png`
-- `tray-like.png`
-- `tray-show.png`
-- `tray-exit.png`
-- `ardali_24.png`
-- `ardali_256.png`
-- `ardali.png`
+- `video_tools_studio.svg`
 
-## 2) Paketleme Icin Gerekenler (Build/Installer)
+## Notlar
 
-- `ardali.ico` (Electron builder app icon)
-- `ardali_512.png` (Linux/Flatpak icon)
-- `ardali_logo.bmp` (installer/resources gereksinimi)
-- `ardali_alt_boldA_transparent_1024.png` (paketleme kopyalama adimi)
-
-## 3) Dokunulmayacaklar (Ozel amacli)
-
-- `ardali_alt_boldA_1024.png` (`scripts/generate-transparent-icon.sh` kaynak gorsel)
-- `ardali_readme_round.png` (repo README gorseli)
-- `setup_final.iss` (Inno Setup script dosyasi, ikon degil)
-
-## Guncelleme Kurali
-
-Bu dosyayi sadece su durumlarda guncelle:
-
-1. Yeni ikon/asset eklendiginde
-2. Bir ikonun kullanim yeri degistiginde
-3. Bir dosya silindiginde
-4. Paketleme gereksinimleri degistiginde
+- Inno Setup dosyasi ikon olmadigi icin `packaging/windows/setup_final.iss` altina tasindi.
+- Yeni ikon eklerken once uygun kategoriye koy, sonra kullanim yerinde `icons/<kategori>/<dosya>` yolunu kullan.
+- Kullanilmayan ikon kontrolu icin `npm run icons:unused` calistirilabilir.

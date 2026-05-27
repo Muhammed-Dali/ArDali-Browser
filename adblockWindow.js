@@ -24,6 +24,7 @@
 
     const UI_THEME_STORAGE_KEY = 'ardali_ui_theme';
     const SHARED_THEME_KEY = 'theme';
+    const ADBLOCK_THEME_STORAGE_KEY = 'ardaliAdblockTheme';
     const THEME_ALIASES = {
         github: 'light',
         'aur-renk-efektleri': 'ardali',
@@ -97,12 +98,40 @@
         return THEME_OPTIONS.has(mapped) ? mapped : 'black';
     }
 
+    function getAppTheme() {
+        try {
+            return normalizeTheme(
+                settings?.appearance?.theme ||
+                localStorage.getItem(UI_THEME_STORAGE_KEY) ||
+                localStorage.getItem(SHARED_THEME_KEY) ||
+                'black'
+            );
+        } catch {
+            return normalizeTheme(settings?.appearance?.theme || 'black');
+        }
+    }
+
+    function getAdblockThemePreference() {
+        try {
+            const raw = String(localStorage.getItem(ADBLOCK_THEME_STORAGE_KEY) || 'app').trim().toLowerCase();
+            return raw === 'app' ? 'app' : normalizeTheme(raw);
+        } catch {
+            return 'app';
+        }
+    }
+
     function applyTheme(theme, options = {}) {
-        const nextTheme = normalizeTheme(theme);
+        const requestedTheme = String(theme || 'app').trim().toLowerCase();
+        const nextTheme = requestedTheme === 'app' ? getAppTheme() : normalizeTheme(requestedTheme);
         const commitTheme = () => {
             document.documentElement.setAttribute('theme', nextTheme);
             document.documentElement.dataset.ardaliTheme = nextTheme;
             document.body?.setAttribute('data-ardali-theme', nextTheme);
+            try {
+                localStorage.setItem(ADBLOCK_THEME_STORAGE_KEY, requestedTheme === 'app' ? 'app' : nextTheme);
+            } catch {
+                // ignore
+            }
         };
         const prefersReducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches;
         if (!options.animate || prefersReducedMotion || typeof document.startViewTransition !== 'function') {
@@ -117,16 +146,8 @@
     }
 
     function getStoredTheme() {
-        try {
-            return normalizeTheme(
-                settings?.appearance?.theme ||
-                localStorage.getItem(UI_THEME_STORAGE_KEY) ||
-                localStorage.getItem(SHARED_THEME_KEY) ||
-                'black'
-            );
-        } catch {
-            return normalizeTheme(settings?.appearance?.theme || 'black');
-        }
+        const preference = getAdblockThemePreference();
+        return preference === 'app' ? 'app' : preference;
     }
 
     function drawStaticKnob(canvas) {
@@ -699,7 +720,7 @@
 
     window.addEventListener('storage', (event) => {
         if (event.key !== UI_THEME_STORAGE_KEY && event.key !== SHARED_THEME_KEY) return;
-        applyTheme(event.newValue || 'black', { animate: true });
+        if (getAdblockThemePreference() === 'app') applyTheme('app', { animate: true });
     });
 
     window.i18n?.onChange?.(() => {

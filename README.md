@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="icons/ardali_readme_round.png" width="120" height="120" alt="ArDali Medya Player"/>
+  <img src="icons/app/ardali_readme_round.png" width="120" height="120" alt="ArDali Medya Player"/>
 </p>
 
 <p align="center">
@@ -58,47 +58,47 @@ Keywords: Linux media player, Linux music player, Linux video player, Electron m
     <th>What it does</th>
   </tr>
   <tr>
-    <td align="center"><img src="icons/nav_video.svg" width="34" alt="Video playback icon"/></td>
+    <td align="center"><img src="icons/ui/nav_video.svg" width="34" alt="Video playback icon"/></td>
     <td><strong>Video playback</strong></td>
     <td>Play local videos with a modern player, mini player, fullscreen controls, speed, subtitles, sleep timer, and smooth progress handling.</td>
   </tr>
   <tr>
-    <td align="center"><img src="icons/video_tools_studio.svg" width="34" alt="Recorder icon"/></td>
+    <td align="center"><img src="icons/ui/video_tools_studio.svg" width="34" alt="Recorder icon"/></td>
     <td><strong>Recorder</strong></td>
     <td>Record the screen with a creator-focused workflow for tutorials, demos, and content production.</td>
   </tr>
   <tr>
-    <td align="center"><img src="icons/readme_music.svg" width="34" alt="Music playback icon"/></td>
+    <td align="center"><img src="icons/ui/readme_music.svg" width="34" alt="Music playback icon"/></td>
     <td><strong>Music playback</strong></td>
     <td>Manage and play local music with playlists, metadata, album art, rich controls, equalizer, and audio effects.</td>
   </tr>
   <tr>
-    <td align="center"><img src="icons/readme_gallery.svg" width="34" alt="Gallery icon"/></td>
+    <td align="center"><img src="icons/ui/readme_gallery.svg" width="34" alt="Gallery icon"/></td>
     <td><strong>Gallery</strong></td>
     <td>Browse images, open a lightbox, zoom, rotate, fit to screen, run slideshows, and apply quick photo adjustments.</td>
   </tr>
   <tr>
-    <td align="center"><img src="icons/nav_internet.svg" width="34" alt="Web icon"/></td>
+    <td align="center"><img src="icons/ui/nav_internet.svg" width="34" alt="Web icon"/></td>
     <td><strong>Web</strong></td>
     <td>Use YouTube, YouTube Music, SoundCloud, Deezer, social platforms, and general web browsing inside one desktop app.</td>
   </tr>
   <tr>
-    <td align="center"><img src="icons/deliblock.svg" width="34" alt="Ad blocker icon"/></td>
+    <td align="center"><img src="icons/ui/deliblock.svg" width="34" alt="Ad blocker icon"/></td>
     <td><strong>Ad blocking</strong></td>
     <td>Filter ads, pop-ups, trackers, and noisy web elements through the integrated DeliBlock protection layer.</td>
   </tr>
   <tr>
-    <td align="center"><img src="icons/ardali_dawlod.png" width="34" alt="Downloader icon"/></td>
+    <td align="center"><img src="icons/app/ardali_dawlod.png" width="34" alt="Downloader icon"/></td>
     <td><strong>Downloader</strong></td>
     <td>Download media from supported platforms and save video or audio with local conversion options.</td>
   </tr>
   <tr>
-    <td align="center"><img src="icons/readme_pulse.svg" width="34" alt="Song recognition icon"/></td>
+    <td align="center"><img src="icons/ui/readme_pulse.svg" width="34" alt="Song recognition icon"/></td>
     <td><strong>Song recognition by listening</strong></td>
     <td>Listen to system or ambient audio and identify songs with an integrated acoustic fingerprinting workflow.</td>
   </tr>
   <tr>
-    <td align="center"><img src="icons/readme_projectm.svg" width="34" alt="projectM visualizer icon"/></td>
+    <td align="center"><img src="icons/ui/readme_projectm.svg" width="34" alt="projectM visualizer icon"/></td>
     <td><strong>projectM visualization</strong></td>
     <td>Render hardware-accelerated music visuals that react to rhythm, frequency, and energy.</td>
   </tr>
@@ -276,47 +276,47 @@ Anahtar kelimeler: Linux medya oynatıcı, Linux müzik çalar, Linux video oyna
     <th>Ne işe yarar</th>
   </tr>
   <tr>
-    <td align="center"><img src="icons/nav_video.svg" width="34" alt="Video oynatma ikonu"/></td>
+    <td align="center"><img src="icons/ui/nav_video.svg" width="34" alt="Video oynatma ikonu"/></td>
     <td><strong>Video oynatma</strong></td>
     <td>Yerel videoları modern oynatıcı, mini oynatıcı, tam ekran kontrolleri, hız, altyazı, uyku zamanlayıcı ve akıcı ilerleme desteğiyle oynatır.</td>
   </tr>
   <tr>
-    <td align="center"><img src="icons/video_tools_studio.svg" width="34" alt="Kaydedici ikonu"/></td>
+    <td align="center"><img src="icons/ui/video_tools_studio.svg" width="34" alt="Kaydedici ikonu"/></td>
     <td><strong>Kaydedici</strong></td>
     <td>Eğitim, tanıtım ve içerik üretimi için ekran kaydı odaklı yerleşik bir çalışma alanı sunar.</td>
   </tr>
   <tr>
-    <td align="center"><img src="icons/readme_music.svg" width="34" alt="Müzik oynatma ikonu"/></td>
+    <td align="center"><img src="icons/ui/readme_music.svg" width="34" alt="Müzik oynatma ikonu"/></td>
     <td><strong>Müzik oynatma</strong></td>
     <td>Yerel müzikleri çalma listeleri, etiket bilgileri, albüm kapağı, gelişmiş kontroller, ekolayzır ve ses efektleriyle yönetir.</td>
   </tr>
   <tr>
-    <td align="center"><img src="icons/readme_gallery.svg" width="34" alt="Galeri ikonu"/></td>
+    <td align="center"><img src="icons/ui/readme_gallery.svg" width="34" alt="Galeri ikonu"/></td>
     <td><strong>Galeri</strong></td>
     <td>Fotoğrafları görüntüler; ışık kutusu, yakınlaştırma, döndürme, ekrana sığdırma, slayt ve hızlı düzenleme araçları sağlar.</td>
   </tr>
   <tr>
-    <td align="center"><img src="icons/nav_internet.svg" width="34" alt="Web ikonu"/></td>
+    <td align="center"><img src="icons/ui/nav_internet.svg" width="34" alt="Web ikonu"/></td>
     <td><strong>Web</strong></td>
     <td>YouTube, YouTube Music, SoundCloud, Deezer, sosyal platformlar ve genel web gezintisini tek masaüstü uygulamasında birleştirir.</td>
   </tr>
   <tr>
-    <td align="center"><img src="icons/deliblock.svg" width="34" alt="Reklam engelleme ikonu"/></td>
+    <td align="center"><img src="icons/ui/deliblock.svg" width="34" alt="Reklam engelleme ikonu"/></td>
     <td><strong>Reklam engelleme</strong></td>
     <td>Entegre DeliBlock katmanıyla reklamları, pop-up'ları, izleyicileri ve rahatsız edici web öğelerini filtreler.</td>
   </tr>
   <tr>
-    <td align="center"><img src="icons/ardali_dawlod.png" width="34" alt="İndirme ikonu"/></td>
+    <td align="center"><img src="icons/app/ardali_dawlod.png" width="34" alt="İndirme ikonu"/></td>
     <td><strong>İndirme</strong></td>
     <td>Desteklenen platformlardan medya indirir; video veya ses olarak kaydetme ve yerel dönüştürme seçenekleri sunar.</td>
   </tr>
   <tr>
-    <td align="center"><img src="icons/readme_pulse.svg" width="34" alt="Dinleyerek şarkı bulma ikonu"/></td>
+    <td align="center"><img src="icons/ui/readme_pulse.svg" width="34" alt="Dinleyerek şarkı bulma ikonu"/></td>
     <td><strong>Dinleyerek şarkı bulma</strong></td>
     <td>Sistemden veya ortamdan gelen sesi dinleyerek şarkıları akustik parmak izi yöntemiyle tanımlar.</td>
   </tr>
   <tr>
-    <td align="center"><img src="icons/readme_projectm.svg" width="34" alt="projectM görselleştirme ikonu"/></td>
+    <td align="center"><img src="icons/ui/readme_projectm.svg" width="34" alt="projectM görselleştirme ikonu"/></td>
     <td><strong>projectM görselleştirme</strong></td>
     <td>Çalan müziğin ritmine, frekansına ve enerjisine tepki veren donanım hızlandırmalı görseller üretir.</td>
   </tr>

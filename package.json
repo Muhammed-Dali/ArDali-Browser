@@ -1,6 +1,6 @@
 {
   "name": "ardali",
-  "version": "3.1.7",
+  "version": "3.2.0",
   "productName": "ArDali",
   "description": "Open-source Linux media player for music and video with DSP effects, equalizer, and visualizer",
   "main": "main.js",
@@ -76,7 +76,7 @@
     "appId": "com.ardali.mediaplayer",
     "productName": "ArDali",
     "electronVersion": "40.6.1",
-    "icon": "icons/ardali.ico",
+    "icon": "icons/app/ardali.ico",
     "artifactName": "ArDali-${version}-${os}-${arch}.${ext}",
     "directories": {
       "buildResources": "build-resources"
@@ -100,112 +100,112 @@
         "name": "ArDali Audio",
         "description": "ArDali Media Player Audio",
         "role": "Viewer",
-        "icon": "icons/ardali.ico",
+        "icon": "icons/app/ardali.ico",
         "ext": "mp3"
       },
       {
         "name": "ArDali Audio",
         "description": "ArDali Media Player Audio",
         "role": "Viewer",
-        "icon": "icons/ardali.ico",
+        "icon": "icons/app/ardali.ico",
         "ext": "wav"
       },
       {
         "name": "ArDali Audio",
         "description": "ArDali Media Player Audio",
         "role": "Viewer",
-        "icon": "icons/ardali.ico",
+        "icon": "icons/app/ardali.ico",
         "ext": "flac"
       },
       {
         "name": "ArDali Audio",
         "description": "ArDali Media Player Audio",
         "role": "Viewer",
-        "icon": "icons/ardali.ico",
+        "icon": "icons/app/ardali.ico",
         "ext": "aac"
       },
       {
         "name": "ArDali Audio",
         "description": "ArDali Media Player Audio",
         "role": "Viewer",
-        "icon": "icons/ardali.ico",
+        "icon": "icons/app/ardali.ico",
         "ext": "ogg"
       },
       {
         "name": "ArDali Audio",
         "description": "ArDali Media Player Audio",
         "role": "Viewer",
-        "icon": "icons/ardali.ico",
+        "icon": "icons/app/ardali.ico",
         "ext": "m4a"
       },
       {
         "name": "ArDali Audio",
         "description": "ArDali Media Player Audio",
         "role": "Viewer",
-        "icon": "icons/ardali.ico",
+        "icon": "icons/app/ardali.ico",
         "ext": "opus"
       },
       {
         "name": "ArDali Audio",
         "description": "ArDali Media Player Audio",
         "role": "Viewer",
-        "icon": "icons/ardali.ico",
+        "icon": "icons/app/ardali.ico",
         "ext": "aiff"
       },
       {
         "name": "ArDali Audio",
         "description": "ArDali Media Player Audio",
         "role": "Viewer",
-        "icon": "icons/ardali.ico",
+        "icon": "icons/app/ardali.ico",
         "ext": "wma"
       },
       {
         "name": "ArDali Video",
         "description": "ArDali Media Player Video",
         "role": "Viewer",
-        "icon": "icons/ardali.ico",
+        "icon": "icons/app/ardali.ico",
         "ext": "mp4"
       },
       {
         "name": "ArDali Video",
         "description": "ArDali Media Player Video",
         "role": "Viewer",
-        "icon": "icons/ardali.ico",
+        "icon": "icons/app/ardali.ico",
         "ext": "mkv"
       },
       {
         "name": "ArDali Video",
         "description": "ArDali Media Player Video",
         "role": "Viewer",
-        "icon": "icons/ardali.ico",
+        "icon": "icons/app/ardali.ico",
         "ext": "avi"
       },
       {
         "name": "ArDali Video",
         "description": "ArDali Media Player Video",
         "role": "Viewer",
-        "icon": "icons/ardali.ico",
+        "icon": "icons/app/ardali.ico",
         "ext": "mov"
       },
       {
         "name": "ArDali Video",
         "description": "ArDali Media Player Video",
         "role": "Viewer",
-        "icon": "icons/ardali.ico",
+        "icon": "icons/app/ardali.ico",
         "ext": "wmv"
       },
       {
         "name": "ArDali Video",
         "description": "ArDali Media Player Video",
         "role": "Viewer",
-        "icon": "icons/ardali.ico",
+        "icon": "icons/app/ardali.ico",
         "ext": "webm"
       },
       {
         "name": "ArDali Video",
         "description": "ArDali Media Player Video",
         "role": "Viewer",
-        "icon": "icons/ardali.ico",
+        "icon": "icons/app/ardali.ico",
         "ext": "m4v"
       }
     ],
@@ -271,7 +271,7 @@
           "Keywords": "Music;Audio;Video;Media;Player;Linux;AppImage;Deb;Rpm;Equalizer;DSP;ArDali;"
         }
       },
-      "icon": "icons/ardali_512.png",
+      "icon": "icons/app/ardali_512.png",
       "extraResources": [
         {
           "from": "/usr/bin/ffmpeg",
@@ -309,12 +309,12 @@
           "to": "resources/third_party/projectm/presets"
         },
         {
-          "from": "icons/ardali_alt_boldA_transparent_1024.png",
-          "to": "resources/icons/ardali_alt_boldA_transparent_1024.png"
+          "from": "icons/app/ardali_alt_boldA_transparent_1024.png",
+          "to": "resources/icons/app/ardali_alt_boldA_transparent_1024.png"
         },
         {
-          "from": "icons/ardali_logo.bmp",
-          "to": "resources/icons/ardali_logo.bmp"
+          "from": "icons/app/ardali_logo.bmp",
+          "to": "resources/icons/app/ardali_logo.bmp"
         },
         {
           "from": "packaging/appstream/com.ardali.mediaplayer.metainfo.xml",
@@ -326,7 +326,7 @@
       "target": [
         "nsis"
       ],
-      "icon": "icons/ardali.ico",
+      "icon": "icons/app/ardali.ico",
       "executableName": "ArDali",
       "requestedExecutionLevel": "asInvoker",
       "extraResources": [
@@ -355,20 +355,20 @@
           ]
         },
         {
-          "from": "icons/ardali.ico",
-          "to": "icons/ardali.ico"
+          "from": "icons/app/ardali.ico",
+          "to": "icons/app/ardali.ico"
         },
         {
-          "from": "icons/ardali_256.png",
-          "to": "icons/ardali_256.png"
+          "from": "icons/app/ardali_256.png",
+          "to": "icons/app/ardali_256.png"
         },
         {
-          "from": "icons/ardali_512.png",
-          "to": "icons/ardali_512.png"
+          "from": "icons/app/ardali_512.png",
+          "to": "icons/app/ardali_512.png"
         },
         {
-          "from": "icons/ardali_logo.bmp",
-          "to": "icons/ardali_logo.bmp"
+          "from": "icons/app/ardali_logo.bmp",
+          "to": "icons/app/ardali_logo.bmp"
         },
         {
           "from": "third_party/projectm/presets",
@@ -417,9 +417,9 @@
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
       "shortcutName": "ArDali",
-      "installerIcon": "icons/ardali.ico",
-      "uninstallerIcon": "icons/ardali.ico",
-      "installerHeaderIcon": "icons/ardali.ico"
+      "installerIcon": "icons/app/ardali.ico",
+      "uninstallerIcon": "icons/app/ardali.ico",
+      "installerHeaderIcon": "icons/app/ardali.ico"
     }
   },
   "devDependencies": {

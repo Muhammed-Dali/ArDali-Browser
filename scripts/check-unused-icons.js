@@ -19,16 +19,36 @@ const excludedDirs = [
 ];
 
 function getIconFiles() {
-  const files = fs.readdirSync(iconsDir, { withFileTypes: true });
-  return files
-    .filter((entry) => entry.isFile())
-    .map((entry) => entry.name)
-    .filter((name) => iconExts.has(path.extname(name).toLowerCase()))
-    .sort((a, b) => a.localeCompare(b));
+  const result = [];
+  const walk = (dir) => {
+    const entries = fs.readdirSync(dir, { withFileTypes: true });
+    for (const entry of entries) {
+      const fullPath = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        walk(fullPath);
+        continue;
+      }
+      if (!entry.isFile()) continue;
+      if (!iconExts.has(path.extname(entry.name).toLowerCase())) continue;
+      result.push(path.relative(iconsDir, fullPath).replace(/\\/g, '/'));
+    }
+  };
+  walk(iconsDir);
+  return result.sort((a, b) => a.localeCompare(b));
 }
 
-function hasReference(fileName) {
-  const args = ['-n', '--fixed-strings', fileName, '.'];
+function hasReference(relativePath) {
+  const fileName = path.basename(relativePath);
+  const references = [
+    `icons/${relativePath}`,
+    `icons\\${relativePath.replace(/\//g, '\\')}`,
+    fileName,
+  ];
+  const args = ['-n', '--fixed-strings'];
+  for (const reference of references) {
+    args.push('-e', reference);
+  }
+  args.push('.');
   for (const dir of excludedDirs) {
     args.push('-g', `!${dir}/**`);
   }

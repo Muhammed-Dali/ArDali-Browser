@@ -11,7 +11,7 @@
 <body>
     <header class="titlebar">
         <div class="brand">
-            <img src="icons/ardali_dawlod.png" alt="" class="brand-icon">
+            <img src="icons/app/ardali_dawlod.png" alt="" class="brand-icon">
             <div>
                 <strong>ArDali Dawlod</strong>
                 <span data-dl-i18n="downloader.brand.subtitle">Video ve ses indirme merkezi</span>
@@ -25,7 +25,7 @@
     </header>
 
     <button id="menuBtn" class="menu-button" title="Menü" aria-label="Menü" data-dl-i18n-title="common.menu" data-dl-i18n-aria-label="common.menu">
-        <img src="icons/ardali_dawlod_menu.png" alt="">
+        <img src="icons/app/ardali_dawlod_menu.png" alt="">
     </button>
 
     <aside id="appMenu" class="app-menu hidden" aria-label="ArDali Dawlod menüsü" data-dl-i18n-aria-label="menu.aria">
@@ -38,6 +38,7 @@
         <label class="theme-row">
             <span data-dl-i18n="menu.theme">Tema</span>
             <select id="themeSelect">
+                <option value="app" data-dl-i18n="theme.app">Uygulama temasını kullan</option>
                 <option value="ardali">ArDali</option>
                 <option value="dark" data-dl-i18n="theme.dark">Karanlık</option>
                 <option value="black" data-dl-i18n="theme.black">Siyah</option>
@@ -65,7 +66,7 @@
 
     <main class="shell">
         <section class="hero-card">
-            <img src="icons/ardali_dawlod.png" alt="" class="hero-logo">
+            <img src="icons/app/ardali_dawlod.png" alt="" class="hero-logo">
             <div class="hero-copy">
                 <h1>ArDali-Dawlod</h1>
                 <p data-dl-i18n="hero.subtitle">Daha temiz daha hızlı daha senin indirme deneyimin</p>
@@ -111,11 +112,11 @@
             <button id="hideMediaPanelBtn" class="panel-close" title="Kapat" aria-label="Kapat" data-dl-i18n-title="common.close" data-dl-i18n-aria-label="common.close">×</button>
             <div class="mode-tabs" role="tablist">
                 <button class="tab active icon-label-btn" data-mode="video">
-                    <img src="icons/download-video.svg" alt="">
+                    <img src="icons/ui/download-video.svg" alt="">
                     <span data-dl-i18n="mode.video">Video</span>
                 </button>
                 <button class="tab icon-label-btn" data-mode="audio">
-                    <img src="icons/download-audio.svg" alt="">
+                    <img src="icons/ui/download-audio.svg" alt="">
                     <span data-dl-i18n="mode.audio">Ses</span>
                 </button>
             </div>
@@ -143,11 +144,11 @@
 
             <div class="media-actions">
                 <button id="downloadBtn" class="primary icon-label-btn">
-                    <img src="icons/download-save.svg" alt="">
+                    <img src="icons/ui/download-save.svg" alt="">
                     <span data-dl-i18n="action.download">İndir</span>
                 </button>
                 <button id="moreOptionsBtn" class="secondary icon-label-btn">
-                    <img src="icons/download-options.svg" alt="">
+                    <img src="icons/ui/download-options.svg" alt="">
                     <span data-dl-i18n="action.moreSettings">Daha fazla ayar</span>
                 </button>
             </div>
@@ -157,14 +158,14 @@
                 <div class="advanced-list">
                     <label class="advanced-item wide-item">
                         <span class="advanced-label">
-                            <img src="icons/advanced-terminal.svg" alt="">
+                            <img src="icons/ui/advanced-terminal.svg" alt="">
                             <span data-dl-i18n="advanced.customArgs">Özel yt-dlp argümanları</span>
                         </span>
                         <textarea id="customArgs" spellcheck="false" placeholder="--sponsorblock-remove all"></textarea>
                     </label>
                     <div class="advanced-item">
                         <strong class="advanced-label">
-                            <img src="icons/advanced-time.svg" alt="">
+                            <img src="icons/ui/advanced-time.svg" alt="">
                             <span data-dl-i18n="advanced.timeRange">Belirli zaman aralığını indir</span>
                         </strong>
                         <div class="time-range-row">
@@ -178,7 +179,7 @@
                     <div class="advanced-item path-item">
                         <div>
                             <span class="advanced-label">
-                                <img src="icons/advanced-folder.svg" alt="">
+                                <img src="icons/ui/advanced-folder.svg" alt="">
                                 <span data-dl-i18n="advanced.currentDownloadDir">Mevcut indirme dizini</span>
                             </span>
                             <strong id="downloadPath">İndirme klasörü yükleniyor</strong>
@@ -187,14 +188,14 @@
                     </div>
                     <label class="advanced-item check-row">
                         <span class="advanced-label">
-                            <img src="icons/advanced-subtitles.svg" alt="">
+                            <img src="icons/ui/advanced-subtitles.svg" alt="">
                             <span data-dl-i18n="advanced.subtitles">Altyazılar varsa indir</span>
                         </span>
                         <input id="subtitles" type="checkbox">
                     </label>
                     <label class="advanced-item check-row">
                         <span class="advanced-label">
-                            <img src="icons/advanced-close.svg" alt="">
+                            <img src="icons/ui/advanced-close.svg" alt="">
                             <span data-dl-i18n="advanced.closeOnFinish">İndirme bitince pencereyi kapat</span>
                         </span>
                         <input id="closeOnFinish" type="checkbox">
@@ -227,7 +228,7 @@
                         </select>
                     </label>
                     <button id="extractBtn" class="secondary icon-label-btn">
-                        <img src="icons/download-extract-audio.svg" alt="">
+                        <img src="icons/ui/download-extract-audio.svg" alt="">
                         <span data-dl-i18n="action.extract">Çıkart</span>
                     </button>
                 </div>
@@ -240,10 +241,10 @@
                 <h1 data-dl-i18n="settings.title">Ayarlar</h1>
                 <div class="settings-top-actions">
                     <button id="settingsRestartBtn" class="danger settings-icon-btn" title="Uygulamayı yeniden başlat" aria-label="Uygulamayı yeniden başlat" data-dl-i18n-title="settings.restart" data-dl-i18n-aria-label="settings.restart">
-                        <img src="icons/settings-restart.svg" alt="">
+                        <img src="icons/ui/settings-restart.svg" alt="">
                     </button>
                     <button id="settingsHomeBtn" class="secondary settings-icon-btn" title="Ana sayfa" aria-label="Ana sayfa" data-dl-i18n-title="settings.home" data-dl-i18n-aria-label="settings.home">
-                        <img src="icons/settings-home.svg" alt="">
+                        <img src="icons/ui/settings-home.svg" alt="">
                     </button>
                 </div>
             </div>
@@ -255,7 +256,7 @@
                 </div>
                 <div class="settings-inline-action">
                     <button id="settingsChooseFolderBtn" class="primary settings-icon-btn" title="İndirme dizinini seç" aria-label="İndirme dizinini seç" data-dl-i18n-title="action.chooseDownloadDir" data-dl-i18n-aria-label="action.chooseDownloadDir">
-                        <img src="icons/settings-folder.svg" alt="">
+                        <img src="icons/ui/settings-folder.svg" alt="">
                     </button>
                 </div>
                 <label>
@@ -317,7 +318,7 @@
                 <div class="settings-row settings-config-row">
                     <span id="settingsConfigPath">Seçilmedi</span>
                     <button id="settingsChooseConfigBtn" class="secondary settings-icon-btn" title="Config seç" aria-label="Config seç" data-dl-i18n-title="settings.chooseConfig" data-dl-i18n-aria-label="settings.chooseConfig">
-                        <img src="icons/settings-config.svg" alt="">
+                        <img src="icons/ui/settings-config.svg" alt="">
                     </button>
                 </div>
                 <label class="settings-check-row">
@@ -328,14 +329,14 @@
                     <span data-dl-i18n="settings.playlistFileTemplate">Oynatma listesi için dosya adı</span>
                     <input id="settingsPlaylistFileTemplate" type="text" value="%(playlist_index)s.%(title)s.%(ext)s">
                     <button id="resetPlaylistFileTemplateBtn" class="danger settings-icon-btn" type="button" title="Dosya adını varsayılana sıfırla" aria-label="Dosya adını varsayılana sıfırla" data-dl-i18n-title="settings.resetFileTemplate" data-dl-i18n-aria-label="settings.resetFileTemplate">
-                        <img src="icons/settings-reset-file.svg" alt="">
+                        <img src="icons/ui/settings-reset-file.svg" alt="">
                     </button>
                 </label>
                 <label class="settings-template-row">
                     <span data-dl-i18n="settings.playlistFolderTemplate">Oynatma listesi için klasör ismi</span>
                     <input id="settingsPlaylistFolderTemplate" type="text" value="%(playlist_title)s">
                     <button id="resetPlaylistFolderTemplateBtn" class="danger settings-icon-btn" type="button" title="Klasör adını varsayılana sıfırla" aria-label="Klasör adını varsayılana sıfırla" data-dl-i18n-title="settings.resetFolderTemplate" data-dl-i18n-aria-label="settings.resetFolderTemplate">
-                        <img src="icons/settings-reset-folder.svg" alt="">
+                        <img src="icons/ui/settings-reset-folder.svg" alt="">
                     </button>
                 </label>
                 <label>
@@ -354,7 +355,7 @@
                     <div class="jobs-head">
                         <h2 data-dl-i18n="settings.dependencies">Gerekli araçlar</h2>
                         <button id="prepareDependenciesBtn" class="secondary settings-icon-btn" title="Eksikleri hazırla" aria-label="Eksikleri hazırla" data-dl-i18n-title="settings.prepareDependencies" data-dl-i18n-aria-label="settings.prepareDependencies">
-                            <img src="icons/settings-tools.svg" alt="">
+                            <img src="icons/ui/settings-tools.svg" alt="">
                         </button>
                     </div>
                     <div class="dependency-grid">
@@ -605,7 +606,7 @@
                 <h1 data-dl-i18n="history.title">İndirme Geçmişi</h1>
                 <div class="history-header-actions">
                     <button id="historyHomeBtn" class="secondary settings-icon-btn" title="Ana sayfa" aria-label="Ana sayfa" data-dl-i18n-title="settings.home" data-dl-i18n-aria-label="settings.home">
-                        <img src="icons/settings-home.svg" alt="">
+                        <img src="icons/ui/settings-home.svg" alt="">
                     </button>
                     <button id="exportHistoryJsonBtn" class="secondary">JSON</button>
                     <button id="exportHistoryCsvBtn" class="secondary">CSV</button>

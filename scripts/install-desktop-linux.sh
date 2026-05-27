@@ -11,7 +11,7 @@ ICON_DIR_256="$HOME/.local/share/icons/hicolor/256x256/apps"
 mkdir -p "$DESKTOP_DIR" "$ICON_DIR_512" "$ICON_DIR_256"
 
 # Ikonları üret (GNOME/Wayland/KDE dock & üst bar için)
-SRC_ICON="$ROOT_DIR/icons/ardali_alt_boldA_transparent_1024.png"
+SRC_ICON="$ROOT_DIR/icons/app/ardali_alt_boldA_transparent_1024.png"
 
 if command -v magick >/dev/null 2>&1; then
   magick "$SRC_ICON" -resize 512x512 "$ICON_DIR_512/${APP_ID}.png"

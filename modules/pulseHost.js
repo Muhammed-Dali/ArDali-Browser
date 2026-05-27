@@ -33,6 +33,7 @@ function registerPulseIpc({ ipcMain, app, BrowserWindow, getMainWindow, shell })
 
     service.on('state', (payload) => broadcast('pulse:state', payload));
     service.on('volume', (payload) => broadcast('pulse:volume', payload));
+    service.on('preview-volume', (payload) => broadcast('pulse:preview-volume', payload));
     service.on('result', (payload) => broadcast('pulse:result', payload));
     service.on('uncertain', (payload) => broadcast('pulse:uncertain', payload));
 
@@ -51,7 +52,7 @@ function registerPulseIpc({ ipcMain, app, BrowserWindow, getMainWindow, shell })
             minWidth: 780,
             minHeight: 560,
             backgroundColor: '#10151d',
-            icon: path.join(__dirname, '..', 'icons', 'ardali.png'),
+            icon: path.join(__dirname, '..', 'icons', 'app', 'ardali.png'),
             parent: parent && !parent.isDestroyed() ? parent : undefined,
             modal: false,
             autoHideMenuBar: true,
@@ -102,6 +103,8 @@ function registerPulseIpc({ ipcMain, app, BrowserWindow, getMainWindow, shell })
     ipcMain.handle('pulse:setContextMetadata', (_event, metadata) => service.setContextMetadata(metadata || {}));
     ipcMain.handle('pulse:startListening', (_event, options) => service.startListening(options || {}));
     ipcMain.handle('pulse:stopListening', () => service.stopListening());
+    ipcMain.handle('pulse:startLevelPreview', (_event, options) => service.startLevelPreview(options || {}));
+    ipcMain.handle('pulse:stopLevelPreview', () => service.stopLevelPreview());
     ipcMain.handle('pulse:recognizeSample', (_event, options) => service.recognizeSample(options || {}));
     ipcMain.handle('pulse:openExternalSearch', async (_event, payload = {}) => {
         const query = String(payload.query || '').trim();

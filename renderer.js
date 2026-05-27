@@ -77,8 +77,6 @@ let cachedPowerState = {
     onBattery: false,
     level: null
 };
-let webPlaybackPowerStatusTimer = null;
-let webPlaybackPowerStatusRefreshInFlight = false;
 let cachedHardwareProfile = null;
 const appearanceSyncChannel = typeof BroadcastChannel === 'function'
     ? new BroadcastChannel('ardali-ui-appearance-sync')
@@ -1547,7 +1545,6 @@ function ensureMainShellVisible() {
 
 document.addEventListener('DOMContentLoaded', async () => {
     cacheElements();
-    startWebPlaybackPowerStatusPolling();
     initAppUpdateUi().catch(() => {});
     window.ardali?.onOpenMediaFiles?.((paths) => {
         enqueueExternalMediaOpen(paths).catch((e) => {
@@ -2616,6 +2613,8 @@ function cacheElements() {
     elements.behaviorWebStartupDelay = document.getElementById('behaviorWebStartupDelay');
     elements.behaviorWebAnimationMode = document.getElementById('behaviorWebAnimationMode');
     elements.behaviorWebMotionPreset = document.getElementById('behaviorWebMotionPreset');
+    elements.behaviorSidebarStyle = document.getElementById('behaviorSidebarStyle');
+    elements.behaviorSidebarIconScale = document.getElementById('behaviorSidebarIconScale');
     elements.behaviorWebLowPowerMode = document.getElementById('behaviorWebLowPowerMode');
     elements.behaviorWebClearCacheOnQuit = document.getElementById('behaviorWebClearCacheOnQuit');
     elements.behaviorWebClearCookiesOnQuit = document.getElementById('behaviorWebClearCookiesOnQuit');
@@ -2652,9 +2651,6 @@ function cacheElements() {
     elements.behaviorWebStripTrackingParams = document.getElementById('behaviorWebStripTrackingParams');
     elements.behaviorWebBlockThirdPartyCookies = document.getElementById('behaviorWebBlockThirdPartyCookies');
     elements.behaviorWebBackgroundThrottle = document.getElementById('behaviorWebBackgroundThrottle');
-    elements.behaviorWebPlaybackPowerMode = document.getElementById('behaviorWebPlaybackPowerMode');
-    elements.webPlaybackPowerModeHint = document.getElementById('webPlaybackPowerModeHint');
-    elements.webPlaybackPowerLiveStatus = document.getElementById('webPlaybackPowerLiveStatus');
     elements.behaviorWebRestoreLastSession = document.getElementById('behaviorWebRestoreLastSession');
     elements.behaviorWebSuspendWhenInactive = document.getElementById('behaviorWebSuspendWhenInactive');
     elements.behaviorCloseToTray = document.getElementById('behaviorCloseToTray');
@@ -2774,7 +2770,6 @@ async function loadSettings() {
         state.settings.webUi.drawerCollapsed = true;
         state.settings.webUi.animationMode = normalizeWebUiAnimationMode(state.settings.webUi.animationMode || 'compact');
         state.settings.webUi.motionPreset = normalizeWebUiMotionPreset(state.settings.webUi.motionPreset || 'balanced');
-        state.settings.webUi.playbackPowerMode = normalizeWebPlaybackPowerMode(state.settings.webUi.playbackPowerMode || 'balanced');
         state.settings.webUi.lowPowerMode = !!state.settings.webUi.lowPowerMode;
         if (typeof state.settings.webUi.clearCacheOnQuit !== 'boolean') {
             state.settings.webUi.clearCacheOnQuit = true;
@@ -3037,7 +3032,9 @@ async function loadSettings() {
                 autoHardwareProfile: true,
                 lowHardwareMode: false,
                 sfxPerfMode: 'lite',
-                sfxSidebarIconSize: 'medium'
+                sfxSidebarIconSize: 'medium',
+                sidebarStyle: 'classic',
+                sidebarIconScale: 'x3'
             };
         }
         const allowedThemeIds = new Set([
@@ -3111,6 +3108,8 @@ async function loadSettings() {
         if (!['compact', 'medium', 'large'].includes(String(state.settings.appearance.sfxSidebarIconSize || '').toLowerCase())) {
             state.settings.appearance.sfxSidebarIconSize = 'medium';
         }
+        state.settings.appearance.sidebarStyle = normalizeSidebarStyle(state.settings.appearance.sidebarStyle);
+        state.settings.appearance.sidebarIconScale = normalizeSidebarIconScale(state.settings.appearance.sidebarIconScale);
         await applyAutoHardwareAppearanceIfNeeded({ persist: false });
         syncSfxLightsShadowStorage(state.settings.appearance.sfxLights !== false);
         syncSfxIconSizeShadowStorage(state.settings.appearance.sfxSidebarIconSize || 'medium');
@@ -5232,6 +5231,8 @@ function bindStandaloneAppearanceSettingsEventListeners() {
     if (elements.uiMotionProfileSelect) elements.uiMotionProfileSelect.addEventListener('change', previewAndMark);
     if (elements.uiSfxPerfModeSelect) elements.uiSfxPerfModeSelect.addEventListener('change', previewAndMark);
     if (elements.uiSfxIconSizeSelect) elements.uiSfxIconSizeSelect.addEventListener('change', previewAndMark);
+    if (elements.behaviorSidebarStyle) elements.behaviorSidebarStyle.addEventListener('change', previewAndMark);
+    if (elements.behaviorSidebarIconScale) elements.behaviorSidebarIconScale.addEventListener('change', previewAndMark);
     if (elements.uiAutoHardwareProfileToggle) {
         elements.uiAutoHardwareProfileToggle.addEventListener('change', async () => {
             if (!state.settings.appearance || typeof state.settings.appearance !== 'object') {
@@ -5553,6 +5554,33 @@ function applyPlaybackShortcutSearchFilter(rawQuery) {
     });
 }
 
+function renderMaterialSymbolWhenReady(iconEl, iconName) {
+    const normalizedIconName = String(iconName || '').trim();
+    if (!iconEl || !normalizedIconName) return;
+
+    const applyIcon = () => {
+        iconEl.classList.add('material-symbols-rounded');
+        iconEl.textContent = normalizedIconName;
+    };
+
+    try {
+        const fonts = document.fonts;
+        if (!fonts || typeof fonts.check !== 'function' || typeof fonts.load !== 'function') {
+            applyIcon();
+            return;
+        }
+        if (fonts.check('18px "Material Symbols Rounded"', normalizedIconName)) {
+            applyIcon();
+            return;
+        }
+        fonts.load('18px "Material Symbols Rounded"', normalizedIconName)
+            .then(applyIcon)
+            .catch(applyIcon);
+    } catch {
+        applyIcon();
+    }
+}
+
 function decoratePlaybackShortcutLabelsWithIcons() {
     const iconMap = {
         shortcutPrevious: { icon: 'skip_previous', tone: 'media' },
@@ -5582,10 +5610,10 @@ function decoratePlaybackShortcutLabelsWithIcons() {
         label.classList.add('shortcut-label-with-icon');
 
         const icon = document.createElement('span');
-        icon.className = `shortcut-label-icon shortcut-icon-tone-${cfg.tone} material-symbols-rounded`;
+        icon.className = `shortcut-label-icon shortcut-icon-tone-${cfg.tone}`;
         icon.setAttribute('aria-hidden', 'true');
-        icon.textContent = cfg.icon;
         label.prepend(icon);
+        renderMaterialSymbolWhenReady(icon, cfg.icon);
     });
 }
 
@@ -5837,6 +5865,18 @@ function setupEventListeners() {
             markSettingsDirty();
         });
     }
+    if (elements.behaviorSidebarStyle) {
+        elements.behaviorSidebarStyle.addEventListener('change', () => {
+            previewAppearanceSettingsFromUI();
+            markSettingsDirty();
+        });
+    }
+    if (elements.behaviorSidebarIconScale) {
+        elements.behaviorSidebarIconScale.addEventListener('change', () => {
+            previewAppearanceSettingsFromUI();
+            markSettingsDirty();
+        });
+    }
     if (elements.uiAutoHardwareProfileToggle) {
         elements.uiAutoHardwareProfileToggle.addEventListener('change', async () => {
             if (!state.settings.appearance || typeof state.settings.appearance !== 'object') {
@@ -5877,6 +5917,8 @@ function setupEventListeners() {
     if (elements.uiFxEnabledToggle) elements.uiFxEnabledToggle.addEventListener('change', previewAppearanceSettingsFromUI);
     if (elements.uiReduceMotionToggle) elements.uiReduceMotionToggle.addEventListener('change', previewAppearanceSettingsFromUI);
     if (elements.uiSidebarMotionToggle) elements.uiSidebarMotionToggle.addEventListener('change', previewAppearanceSettingsFromUI);
+    if (elements.behaviorSidebarStyle) elements.behaviorSidebarStyle.addEventListener('change', previewAppearanceSettingsFromUI);
+    if (elements.behaviorSidebarIconScale) elements.behaviorSidebarIconScale.addEventListener('change', previewAppearanceSettingsFromUI);
     if (elements.sliderFxToggle) {
         const onSliderFxToggleChanged = () => {
             updateSliderFxToggleStateUi();
@@ -5954,14 +5996,6 @@ function setupEventListeners() {
             if (!state.settings.webUi || typeof state.settings.webUi !== 'object') state.settings.webUi = {};
             state.settings.webUi.motionPreset = normalizeWebUiMotionPreset(elements.behaviorWebMotionPreset.value);
             applyWebUiClasses();
-        });
-    }
-    if (elements.behaviorWebPlaybackPowerMode) {
-        elements.behaviorWebPlaybackPowerMode.addEventListener('change', () => {
-            if (!state.settings || typeof state.settings !== 'object') state.settings = {};
-            if (!state.settings.webUi || typeof state.settings.webUi !== 'object') state.settings.webUi = {};
-            state.settings.webUi.playbackPowerMode = normalizeWebPlaybackPowerMode(elements.behaviorWebPlaybackPowerMode.value);
-            updateMediaPlaybackPowerSaveBlocker('web-playback-power-mode-change');
         });
     }
     if (elements.behaviorWebLowPowerMode) {
@@ -7173,6 +7207,12 @@ function setupEventListeners() {
                 try {
                     const result = await window.app.visualizer.toggle();
                     visualizerProjectMRunning = !!result?.running;
+                    if (visualizerProjectMRunning) {
+                        projectMExternalFeedLastAt = 0;
+                        projectMExternalFeedSentAt = 0;
+                        await feedProjectMExternalSpectrum({ force: true });
+                        startVisualizerLoop();
+                    }
                     updateContextMenuState();
                 } catch (error) {
                     console.warn('[Visualizer] toggle failed:', error);
@@ -7721,9 +7761,6 @@ function setupEventListeners() {
 
         elements.webView.addEventListener('did-navigate', handleWebNavigation);
         elements.webView.addEventListener('did-navigate-in-page', handleWebNavigation);
-        elements.webView.addEventListener('will-navigate', (e) => {
-            redirectWebNavigationToPreferredHttps(e, e?.url);
-        });
         elements.webView.addEventListener('did-fail-load', (e) => {
             try {
                 webLoadRuntime.navigationInFlight = false;
@@ -7764,7 +7801,6 @@ function setupEventListeners() {
         };
         elements.webView.addEventListener('render-process-gone', () => recoverWebView('render-process-gone'));
         elements.webView.addEventListener('crashed', () => recoverWebView('crashed'));
-        elements.webView.addEventListener('unresponsive', () => recoverWebView('unresponsive'));
         elements.webView.addEventListener('new-window', (e) => {
             const target = e?.url;
             const parsed = parseHttpUrl(target);
@@ -7797,7 +7833,7 @@ function setupEventListeners() {
                     // yoksay
                 }
                 scheduleApplyWebDaliEngine('media-hook', 0);
-                scheduleApplyWebDaliEngineBurst('media-hook', [180, 700]);
+                scheduleApplyWebDaliEngineBurst('media-hook', [0, 20, 60, 140, 320, 700]);
                 return;
             }
         });
@@ -12528,7 +12564,9 @@ function createWebDaliInjectScript(payload, presetStages, bassPresetStages) {
                     const tp = nextCfg?.truepeak || {};
                     const lm = nextCfg?.limiter || {};
                     const masterOn = nextCfg?.masterEnabled !== false;
-                    st.enabled = !!masterOn;
+                    // Web media runs through a constrained embedded AudioContext. The adaptive
+                    // clip guard can create audible gain steps there, so keep it native/video-only.
+                    st.enabled = !!masterOn && nextCfg?.webProfile !== true;
                     const tpCeiling = root.clamp(tp.ceiling, -18, 0, -1.0);
                     const lmCeiling = root.clamp(lm.ceiling, -18, 0, -0.3);
                     st.ceilingDb = tp.enabled ? tpCeiling : (lm.enabled ? lmCeiling : -1.0);
@@ -12657,7 +12695,8 @@ function createWebDaliInjectScript(payload, presetStages, bassPresetStages) {
                             loopPerf.avgMs = loopPerf.avgMs > 0 ? (loopPerf.avgMs * 0.86) + (durationMs * 0.14) : durationMs;
                             loopPerf.jitterMs = loopPerf.jitterMs > 0 ? (loopPerf.jitterMs * 0.88) + (jitterMs * 0.12) : jitterMs;
                             loopPerf.maxJitterMs = Math.max(loopPerf.maxJitterMs || 0, jitterMs);
-                            if (jitterMs > (safeInterval * 1.25) || durationMs > (safeInterval * 0.95)) {
+                            const warmupTick = root?.cfg?.webProfile && loopPerf.ticks <= 8;
+                            if (!warmupTick && (jitterMs > (safeInterval * 1.25) || durationMs > (safeInterval * 0.95))) {
                                 loopPerf.glitches = Math.max(0, Number(loopPerf.glitches) || 0) + 1;
                                 perfState.totalGlitches = Math.max(0, Number(perfState.totalGlitches) || 0) + 1;
                                 if (root?.cfg?.webProfile && perfState.totalGlitches >= 6 && perfState.webSafetyMode !== true) {
@@ -13176,6 +13215,40 @@ function createWebDaliInjectScript(payload, presetStages, bassPresetStages) {
                     const activeGraph = graphs.find((graph) => graph.media && !graph.media.paused) || graphs[0];
                     const st = activeGraph?.truePeakState || {};
                     const ks = activeGraph?.truePeakKernelState || {};
+                    try {
+                        const analyser = activeGraph?.truePeakMeterAnalyser;
+                        const tpCfg = activeGraph?.cfg?.truepeak || {};
+                        st.enabled = !!tpCfg.enabled;
+                        st.ceilingDb = root.clamp(tpCfg.ceiling, -18, 0, -1.0);
+                        if (analyser && st.enabled) {
+                            const needed = Math.max(32, Number(analyser.fftSize) || 2048);
+                            if (!activeGraph.truePeakStatusBuffer || activeGraph.truePeakStatusBuffer.length !== needed) {
+                                activeGraph.truePeakStatusBuffer = new Uint8Array(needed);
+                            }
+                            const buffer = activeGraph.truePeakStatusBuffer;
+                            analyser.getByteTimeDomainData(buffer);
+                            let peakAbs = 0;
+                            for (let i = 0; i < buffer.length; i += 1) {
+                                const x = Math.abs((buffer[i] - 128) / 128);
+                                if (x > peakAbs) peakAbs = x;
+                            }
+                            const peakDb = 20 * Math.log10(Math.max(1e-6, peakAbs));
+                            const now = root.perfNow();
+                            const last = Number(st.lastSampleAt) || 0;
+                            const stepMs = Math.max(40, Math.min(240, last > 0 ? (now - last) : 90));
+                            st.lastSampleAt = now;
+                            root.computeTruePeakJsStep(st, { enabled: false }, peakDb, stepMs, 0);
+                        } else if (!st.enabled) {
+                            st.truePeakL = -96;
+                            st.truePeakR = -96;
+                            st.holdL = -96;
+                            st.holdR = -96;
+                            st.clippingCount = 0;
+                            st.gainReduction = 0;
+                        }
+                    } catch (_) {
+                        // keep last meter state
+                    }
                     return {
                         ok: true,
                         truePeakL: Number.isFinite(Number(st.truePeakL)) ? Number(st.truePeakL) : -96,
@@ -13523,6 +13596,49 @@ function createWebDaliInjectScript(payload, presetStages, bassPresetStages) {
                 root.applyLiveCfgFast = function applyLiveCfgFast(graph, nextCfg, effectName) {
                     if (!graph || !nextCfg) return false;
                     const fx = String(effectName || '').trim().toLowerCase();
+                    if (fx === 'truepeak') {
+                        const isWebMeterOnly = nextCfg?.webProfile === true || graph?.cfg?.webProfile === true;
+                        if (!isWebMeterOnly) return false;
+                        const mergedTruePeak = {
+                            ...(graph.cfg?.truepeak || {}),
+                            ...(nextCfg?.truepeak || {})
+                        };
+                        graph.cfg = {
+                            ...(graph.cfg || {}),
+                            truepeak: mergedTruePeak,
+                            webProfile: true
+                        };
+                        if (graph.truePeakState) {
+                            graph.truePeakState.enabled = !!mergedTruePeak.enabled;
+                            graph.truePeakState.ceilingDb = root.clamp(mergedTruePeak.ceiling, -18, 0, -1.0);
+                            graph.truePeakState.kernelPreference = ['auto', 'wasm', 'js']
+                                .includes(String(mergedTruePeak.kernel || '').toLowerCase())
+                                ? String(mergedTruePeak.kernel).toLowerCase()
+                                : 'auto';
+                        }
+                        if (!mergedTruePeak.enabled && graph.truePeakState) {
+                            graph.truePeakState.truePeakL = -96;
+                            graph.truePeakState.truePeakR = -96;
+                            graph.truePeakState.holdL = -96;
+                            graph.truePeakState.holdR = -96;
+                            graph.truePeakState.clippingCount = 0;
+                            graph.truePeakState.gainReduction = 0;
+                        }
+                        return true;
+                    }
+                    if (fx === 'dynamiceq') {
+                        const mergedDynamicEq = {
+                            ...(graph.cfg?.dynamiceq || {}),
+                            ...(nextCfg?.dynamiceq || {})
+                        };
+                        graph.cfg = {
+                            ...(graph.cfg || {}),
+                            dynamiceq: mergedDynamicEq,
+                            webProfile: graph?.cfg?.webProfile === true || nextCfg?.webProfile === true
+                        };
+                        root.applyDynamicEqCfg(graph, graph.cfg);
+                        return true;
+                    }
                     if (fx !== 'audiophile' && fx !== 'sescikisi' && fx !== 'ses-cikisi') return false;
                     const cfg = { ...(graph.cfg || {}), ...(nextCfg || {}) };
                     graph.cfg = cfg;
@@ -14588,7 +14704,10 @@ function createWebDaliInjectScript(payload, presetStages, bassPresetStages) {
                     const limiterKernelPreference = (limiterKernelRaw === 'js' || limiterKernelRaw === 'wasm') ? limiterKernelRaw : 'auto';
                     const tpKernelRaw = String(tpCfg.kernel || 'auto').trim().toLowerCase();
                     const tpKernelPreference = (tpKernelRaw === 'js' || tpKernelRaw === 'wasm') ? tpKernelRaw : 'auto';
-                    const enabled = tpEnabled || !!limiterCfg.enabled;
+                    // In web profile True Peak is meter-first. Engaging the compressor limiter
+                    // on/off in page media can produce crackles; keep the separate Limiter effect
+                    // active when requested, but don't let the True Peak meter toggle alter audio.
+                    const enabled = (!!limiterCfg.enabled) || (tpEnabled && nextCfg?.webProfile !== true);
                     const releaseMs = tpEnabled
                         ? root.clamp(tpCfg.release, 10, 500, 50)
                         : root.clamp(limiterCfg.release, 1, 1000, 50);
@@ -14892,7 +15011,7 @@ function createWebDaliInjectScript(payload, presetStages, bassPresetStages) {
 	                    const balanceGainL = new GainNode(ctx, { gain: 1.0 });
 	                    const balanceGainR = new GainNode(ctx, { gain: 1.0 });
 	                    const balanceMerge = new ChannelMergerNode(ctx, { numberOfInputs: 2 });
-	                    const masterGain = new GainNode(ctx, { gain: 1.0 });
+	                    const masterGain = new GainNode(ctx, { gain: 0.0 });
 	                    const youtubeAdMuteGain = new GainNode(ctx, { gain: 1.0 });
                     graph.source.connect(analyser);
                     graph.source.connect(inputGain);
@@ -15386,7 +15505,7 @@ function createWebDaliInjectScript(payload, presetStages, bassPresetStages) {
                         ? Math.max(160, Number(controlRate.autogainMs) || 60)
                         : Math.max(20, Number(controlRate.autogainMs) || 60);
                     const dynamicEqIntervalMs = isWebProfile
-                        ? Math.max(140, Number(controlRate.dynamiceqMs) || 24)
+                        ? Math.max(220, Number(controlRate.dynamiceqMs) || 24)
                         : Math.max(10, Number(controlRate.dynamiceqMs) || 24);
                     const truePeakIntervalMs = isWebProfile
                         ? Math.max(160, Number(controlRate.truepeakMs) || 50)
@@ -15594,8 +15713,8 @@ function createWebDaliInjectScript(payload, presetStages, bassPresetStages) {
                         }
                     });
                     const dynamicEqTimer = root.wrapPerfLoop(perfState, 'dynamiceq', dynamicEqIntervalMs, function () {
-                        if (isWebProfile && perfState.webSafetyMode === true) {
-                            const st = media.__ardaliDaliGraph?.dynamicEqState || dynamicEqState;
+                        const st = media.__ardaliDaliGraph?.dynamicEqState || dynamicEqState;
+                        if (isWebProfile && perfState.webSafetyMode === true && !st?.enabled) {
                             if (st) {
                                 st.currentGainDb = 0;
                                 st.envDb = -120;
@@ -15607,7 +15726,6 @@ function createWebDaliInjectScript(payload, presetStages, bassPresetStages) {
                             root.smoothParam(dynamicEqPeakR?.gain, 0, ctx, smoothSwitchMs);
                             return;
                         }
-                        const st = media.__ardaliDaliGraph?.dynamicEqState || dynamicEqState;
                         const kernelState = media.__ardaliDaliGraph?.dynamicEqKernelState || dynamicEqKernelState || {};
                         if (!st?.enabled) {
                             st.currentGainDb = 0;
@@ -15671,10 +15789,7 @@ function createWebDaliInjectScript(payload, presetStages, bassPresetStages) {
                             st.lastAppliedGainDb = st.currentGainDb;
                         }
                     });
-                    const truePeakTimer = root.wrapPerfLoop(perfState, 'truepeak', truePeakIntervalMs, function () {
-                        if (isWebProfile && perfState.webSafetyMode === true) {
-                            return;
-                        }
+                    const truePeakTimer = isWebProfile ? null : root.wrapPerfLoop(perfState, 'truepeak', truePeakIntervalMs, function () {
                         const st = media.__ardaliDaliGraph?.truePeakState || truePeakState;
                         const kernelState = media.__ardaliDaliGraph?.truePeakKernelState || truePeakKernelState || {};
                         const cg = media.__ardaliDaliGraph?.clipGuardState || clipGuardState;
@@ -15743,7 +15858,7 @@ function createWebDaliInjectScript(payload, presetStages, bassPresetStages) {
                         }
                     });
                     if (isWebProfile) {
-                        [deEsserTimer, noiseGateTimer, autoGainTimer, dynamicEqTimer, truePeakTimer].forEach((timerId) => {
+                        [deEsserTimer, noiseGateTimer, autoGainTimer, truePeakTimer].forEach((timerId) => {
                             try {
                                 clearInterval(timerId);
                             } catch (_) {}
@@ -15761,19 +15876,23 @@ function createWebDaliInjectScript(payload, presetStages, bassPresetStages) {
                         autoGainState.currentGainDb = 0;
                         autoGainState.envDb = -120;
                         autoGainState.lastAppliedGainDb = 0;
-                        dynamicEqState.currentGainDb = 0;
-                        dynamicEqState.envDb = -120;
-                        dynamicEqState.gainReductionDb = 0;
-                        dynamicEqState.triggered = false;
-                        dynamicEqState.lastAppliedGainDb = 0;
+                        if (!dynamicEqState.enabled) {
+                            dynamicEqState.currentGainDb = 0;
+                            dynamicEqState.envDb = -120;
+                            dynamicEqState.gainReductionDb = 0;
+                            dynamicEqState.triggered = false;
+                            dynamicEqState.lastAppliedGainDb = 0;
+                        }
                         clipGuardState.currentGainDb = 0;
                         clipGuardState.targetGainDb = 0;
                         clipGuardState.lastAppliedGainDb = 0;
                         root.smoothParam(deEsserHighGain?.gain, 1, ctx, smoothSwitchMs);
                         root.smoothParam(noiseGateGain?.gain, 1, ctx, smoothSwitchMs);
                         root.smoothParam(autoGainNode?.gain, 1, ctx, smoothSwitchMs);
-                        root.smoothParam(dynamicEqPeakL?.gain, 0, ctx, smoothSwitchMs);
-                        root.smoothParam(dynamicEqPeakR?.gain, 0, ctx, smoothSwitchMs);
+                        if (!dynamicEqState.enabled) {
+                            root.smoothParam(dynamicEqPeakL?.gain, 0, ctx, smoothSwitchMs);
+                            root.smoothParam(dynamicEqPeakR?.gain, 0, ctx, smoothSwitchMs);
+                        }
                         root.smoothParam(clipGuardGain?.gain, 1, ctx, smoothSwitchMs);
                         if (${JSON.stringify(ARDALI_VERBOSE_LOGS)}) {
                             console.log('[DALI WEB][WEB_STABLE_MODE]', JSON.stringify({
@@ -16066,9 +16185,17 @@ function createVideoScopedDaliInjectScript(payload, presetStages, bassPresetStag
     return String(baseScript).split("document.querySelectorAll('video, audio')").join("document.querySelectorAll('video')");
 }
 
+function shouldEnableWebDaliForScope(daliScope = getActiveDaliScope()) {
+    if (String(daliScope || '').trim().toLowerCase() !== 'web') return true;
+    if (window.ardali?.launchContext?.disableWebDali === true) return false;
+    if (window.ardali?.launchContext?.enableWebDali === true) return true;
+    return true;
+}
+
 async function applyWebDaliEngineNow(reason = 'runtime') {
     const daliScope = getActiveDaliScope();
     if (!daliScope) return false;
+    if (!shouldEnableWebDaliForScope(daliScope)) return false;
     if (webDaliApplyInFlight) {
         webDaliPendingApplyReason = String(reason || 'runtime');
         return false;
@@ -16171,6 +16298,7 @@ async function getWebDaliSpectrumBands(numBands = 128, options = {}) {
     const safeBands = Math.max(64, Math.min(512, Number(numBands) || 128));
     const rawSpectrum = !!options?.raw;
     const daliScope = getActiveDaliScope();
+    if (!shouldEnableWebDaliForScope(daliScope)) return [];
     if (daliScope === 'video') {
         try {
             const root = window.__ARDALI_DALI_WEB__;
@@ -16215,6 +16343,9 @@ function setVideoDaliRuntimeMasterVolume(volumePercent, muted) {
 
 async function getWebDaliNoiseGateStatus() {
     const daliScope = getActiveDaliScope();
+    if (!shouldEnableWebDaliForScope(daliScope)) {
+        return { ok: false, enabled: false, open: true, gain: 1, envDb: -120, thresholdDb: -40 };
+    }
     if (daliScope === 'video') {
         try {
             const root = window.__ARDALI_DALI_WEB__;
@@ -16260,6 +16391,9 @@ async function getWebDaliNoiseGateStatus() {
 
 async function getWebDaliTruePeakStatus() {
     const daliScope = getActiveDaliScope();
+    if (!shouldEnableWebDaliForScope(daliScope)) {
+        return { ok: false, truePeakL: -96, truePeakR: -96, holdL: -96, holdR: -96, clippingCount: 0, gainReduction: 0 };
+    }
     if (daliScope === 'video') {
         try {
             const root = window.__ARDALI_DALI_WEB__;
@@ -16305,6 +16439,9 @@ async function getWebDaliTruePeakStatus() {
 
 async function getWebDaliDynamicEqStatus() {
     const daliScope = getActiveDaliScope();
+    if (!shouldEnableWebDaliForScope(daliScope)) {
+        return { ok: false, enabled: false, currentGainDb: 0, gainReductionDb: 0, envDb: -120, thresholdDb: -40, triggered: false };
+    }
     if (daliScope === 'video') {
         try {
             const root = window.__ARDALI_DALI_WEB__;
@@ -16350,6 +16487,16 @@ async function getWebDaliDynamicEqStatus() {
 
 async function getWebDaliPerfStatus() {
     const daliScope = getActiveDaliScope();
+    if (!shouldEnableWebDaliForScope(daliScope)) {
+        return {
+            ok: false,
+            loops: {},
+            build: { count: 0, lastMs: 0, avgMs: 0, maxMs: 0, rebuildCount: 0 },
+            apply: { count: 0, lastMs: 0, avgMs: 0, maxMs: 0 },
+            totalGlitches: 0,
+            uptimeSec: 0
+        };
+    }
     if (daliScope === 'video') {
         try {
             const root = window.__ARDALI_DALI_WEB__;
@@ -16467,6 +16614,7 @@ try {
 }
 
 function scheduleApplyWebDaliEngine(reason = 'runtime', delayMs = 180) {
+    if (!shouldEnableWebDaliForScope()) return;
     const profile = getWebDaliPlatformProfile();
     const minDelay = profile.lightAttach ? Number(profile.minApplyDelayMs || 0) : 0;
     const waitMs = Math.max(minDelay, Math.max(0, Number(delayMs) || 0));
@@ -16484,6 +16632,7 @@ function scheduleApplyWebDaliEngine(reason = 'runtime', delayMs = 180) {
 }
 
 function scheduleApplyWebDaliEngineBurst(reason = 'runtime-burst', delaysMs = [0, 90, 220]) {
+    if (!shouldEnableWebDaliForScope()) return;
     if (Array.isArray(webDaliAttachBurstTimers) && webDaliAttachBurstTimers.length) {
         webDaliAttachBurstTimers.forEach((id) => {
             try { clearTimeout(id); } catch (_) {}
@@ -16548,6 +16697,7 @@ function getWebDaliPlatformProfile(rawUrl = getWebViewUrlSafe()) {
 
 function installWebDaliAttachHooks() {
     if (!elements.webView || typeof elements.webView.executeJavaScript !== 'function') return;
+    if (!shouldEnableWebDaliForScope('web')) return;
     const profile = getWebDaliPlatformProfile();
     const code = `
         (function () {
@@ -16749,6 +16899,7 @@ function installWebDaliAttachHooks() {
 }
 
 function primeWebDaliOnWebTabActivation(reason = 'web-tab-activate') {
+    if (!shouldEnableWebDaliForScope('web')) return;
     const currentPage = String(state.currentPage || '').trim().toLowerCase();
     const activeMedia = String(state.activeMedia || '').trim().toLowerCase();
     if (currentPage !== 'web' && activeMedia !== 'web') return;
@@ -16786,6 +16937,7 @@ async function applyWebDaliLiveCfgNow(daliScope, cfg, liveEffect = '') {
     }
 
     if (!elements.webView || typeof elements.webView.executeJavaScript !== 'function') return false;
+    if (!shouldEnableWebDaliForScope('web')) return false;
     const currentUrl = getWebViewUrlSafe();
     if (!shouldInjectWebSync(currentUrl)) return false;
     const cfgJson = JSON.stringify(cfg || {});
@@ -16826,6 +16978,9 @@ async function applyWebDaliLiveCfgNow(daliScope, cfg, liveEffect = '') {
 }
 
 function scheduleApplyWebDaliEngineLive(reason = 'live-param', minIntervalMs = 24, forcedScope = '', liveEffect = '') {
+    const preferred = String(forcedScope || '').trim().toLowerCase();
+    if (preferred === 'web' && !shouldEnableWebDaliForScope('web')) return;
+    if (!preferred && getActiveDaliScope() === 'web' && !shouldEnableWebDaliForScope('web')) return;
     const now = (typeof performance !== 'undefined' && typeof performance.now === 'function')
         ? performance.now()
         : Date.now();
@@ -17205,7 +17360,7 @@ function persistWebNavigationState(url, platform = '', options = {}) {
 }
 
 function shouldSuspendWebWhenInactive() {
-    return state.settings?.webUi?.suspendWhenInactive === true && state.settings?.webUi?.backgroundThrottle !== false;
+    return state.settings?.webUi?.suspendWhenInactive === true && state.settings?.webUi?.backgroundThrottle === true;
 }
 
 function buildPulseSearchUrl(platform, query) {
@@ -18902,7 +19057,6 @@ function executeMediaControlAction(action) {
             } else if (state.activeMedia === 'web') {
                 controlWebPlayback('stop');
                 state.isPlaying = false;
-                updateMediaPlaybackPowerSaveBlocker('web-stop-control');
             } else {
                 stopAudioWithPlaybackFade();
             }
@@ -19196,12 +19350,12 @@ async function updateMPRISMetadata() {
         title = state.webTitle || state.webPendingTitle || elements.nowPlayingLabel.textContent.replace(`${uiT('nowPlaying.prefix', 'Now Playing')}: `, '') || uiT('web.media', 'Web Media');
         artist = state.webArtist || 'ArDali Web';
         album = state.webAlbum || 'Online';
-        duration = Number.isFinite(Number(state.webDuration)) ? Number(state.webDuration) : 0;
-        position = Number.isFinite(Number(state.webPosition)) ? Number(state.webPosition) : 0;
+        duration = 0;
+        position = 0;
         trackId = `web_${state.webTrackId}`; // DÜZELTME: Daha güvenli DBus yolu için tire alt çizgiyle değiştirildi
         canGoNext = true;
         canGoPrevious = true;
-        canSeek = !!state.webCanSeek || duration > 0;
+        canSeek = false;
     }
 
     const metadataPayload = {
@@ -19233,11 +19387,11 @@ async function updateMPRISMetadata() {
         artist: metadataPayload.artist,
         albumArt: metadataPayload.albumArt,
         isPlaying: metadataPayload.isPlaying,
-        duration: Math.floor(Number(metadataPayload.duration) || 0),
-        position: Math.floor((Number(metadataPayload.position) || 0) / 2)
+        duration: state.activeMedia === 'web' ? 0 : Math.floor(Number(metadataPayload.duration) || 0),
+        position: state.activeMedia === 'web' ? 0 : Math.floor((Number(metadataPayload.position) || 0) / 2)
     });
     const now = Date.now();
-    const minIntervalMs = state.activeMedia === 'web' ? 900 : 650;
+    const minIntervalMs = state.activeMedia === 'web' ? 1800 : 650;
     if (
         updateMPRISMetadata.lastKey === mprisKey &&
         (now - Number(updateMPRISMetadata.lastAt || 0)) < minIntervalMs
@@ -19278,29 +19432,6 @@ function publishWebPulseContext() {
     publishWebPulseContext.lastKey = key;
     publishWebPulseContext.lastAt = now;
     Promise.resolve(window.ardali.pulse.setContextMetadata(context)).catch(() => { });
-}
-
-function updateMediaPlaybackPowerSaveBlocker(reason = 'media-state') {
-    if (!window.ardali?.app?.setPlaybackPowerSaveBlocker) return;
-    const source = String(state.activeMedia || state.currentPage || '').trim().toLowerCase();
-    const playbackPowerMode = normalizeWebPlaybackPowerMode(state.settings?.webUi?.playbackPowerMode || 'balanced');
-    const active = playbackPowerMode !== 'off' && !!state.isPlaying && (source === 'web' || source === 'video');
-    const key = `${active ? '1' : '0'}:${source}:${playbackPowerMode}`;
-    const now = Date.now();
-    if (
-        updateMediaPlaybackPowerSaveBlocker.lastKey === key &&
-        (now - Number(updateMediaPlaybackPowerSaveBlocker.lastAt || 0)) < 1500
-    ) {
-        return;
-    }
-    updateMediaPlaybackPowerSaveBlocker.lastKey = key;
-    updateMediaPlaybackPowerSaveBlocker.lastAt = now;
-    Promise.resolve(window.ardali.app.setPlaybackPowerSaveBlocker({
-        active,
-        source,
-        mode: playbackPowerMode,
-        reason
-    })).catch(() => { });
 }
 
 function handleWebSync(data) {
@@ -19384,9 +19515,8 @@ function handleWebSync(data) {
             updatePlayPauseIcon(nextPlaying);
             updateTrayState();
             updateMPRISMetadata();
-            updateMediaPlaybackPowerSaveBlocker('web-timeupdate');
         }
-        updateMPRISMetadata();
+        return;
     }
 
     if (data.type === 'play') {
@@ -19394,16 +19524,12 @@ function handleWebSync(data) {
         updatePlayPauseIcon(true);
         updateTrayState();
         updateMPRISMetadata();
-        updateMediaPlaybackPowerSaveBlocker('web-play');
     } else if (data.type === 'pause') {
         state.isPlaying = false;
         updatePlayPauseIcon(false);
         updateTrayState();
         updateMPRISMetadata();
-        updateMediaPlaybackPowerSaveBlocker('web-pause');
         scheduleRememberPlaybackStartupState(220);
-    } else if (data.type === 'seeked' || data.type === 'durationchange' || data.type === 'loadeddata') {
-        updateMPRISMetadata();
     }
 
 }
@@ -19744,7 +19870,6 @@ function setupVideoPlayerEvents() {
             renderVideoLibraryTree();
             updateTrayState();
             updateMPRISMetadata();
-            updateMediaPlaybackPowerSaveBlocker('video-ended');
 
             // Sıradaki videoyu çal (kütüphaneden)
             playNextVideo();
@@ -19759,7 +19884,6 @@ function setupVideoPlayerEvents() {
             renderVideoLibraryTree();
             updateTrayState();
             updateMPRISMetadata();
-            updateMediaPlaybackPowerSaveBlocker('video-play');
             // Oynatma başladığında efekt zincirini aktif videoya yeniden uygula.
             scheduleApplyWebDaliEngine('video-play', 20);
         }
@@ -19772,7 +19896,6 @@ function setupVideoPlayerEvents() {
             renderVideoLibraryTree();
             updateTrayState();
             updateMPRISMetadata();
-            updateMediaPlaybackPowerSaveBlocker('video-pause');
         }
     });
 
@@ -21641,11 +21764,13 @@ function applyAppSidebarCollapsed(collapsed, options = {}) {
 
 function applyWebUiClasses() {
     const isWeb = isPageVisible(elements.webPage) || state.currentPage === 'web' || state.currentPanel === 'web';
+    const mediaUtilityInSidebar = ['music', 'video', 'web'].includes(String(state.currentPage || '').trim().toLowerCase());
     if (isWeb) {
         state.webDrawerCollapsed = true;
         if (state.settings?.webUi) state.settings.webUi.drawerCollapsed = true;
     }
     document.body.classList.toggle('web-mode', !!isWeb);
+    document.body.classList.toggle('media-utility-sidebar', !!mediaUtilityInSidebar);
     if (isWeb) {
         document.body.classList.add('web-drawer-collapsed');
     } else {
@@ -21661,7 +21786,7 @@ function applyWebUiClasses() {
     updateWebPlatformDockHoverEffect(null);
     syncWebPlatformButtonsLayout(isWeb && !!state.webDrawerCollapsed);
     if (isWeb) restoreActiveWebPlatformIndicator();
-    syncWebUtilityButtonsLayout(isWeb && !!state.webDrawerCollapsed);
+    syncWebUtilityButtonsLayout(mediaUtilityInSidebar);
 }
 
 function applyGalleryUiClasses() {
@@ -21720,133 +21845,6 @@ function normalizeWebUiMotionPreset(value) {
     const key = String(value || '').trim().toLowerCase();
     if (key === 'calm' || key === 'lively') return key;
     return 'balanced';
-}
-
-function normalizeWebPlaybackPowerMode(value) {
-    const key = String(value || '').trim().toLowerCase();
-    if (key === 'smooth' || key === 'battery' || key === 'off') return key;
-    return 'balanced';
-}
-
-function getWebPlaybackPowerModeStatusText(status = {}) {
-    const mode = normalizeWebPlaybackPowerMode(
-        elements.behaviorWebPlaybackPowerMode?.value ||
-        state.settings?.webUi?.playbackPowerMode ||
-        status.mode ||
-        'balanced'
-    );
-    const profile = String(status.profile || '').trim() || '-';
-    const batteryText = status.hasBattery
-        ? (status.onBattery
-            ? uiT('settings.web.playbackPowerMode.status.onBattery', 'pilde')
-            : uiT('settings.web.playbackPowerMode.status.charging', 'şarjda'))
-        : uiT('settings.web.playbackPowerMode.status.desktop', 'masaüstü güç kaynağı');
-    const playbackText = status.active
-        ? uiT('settings.web.playbackPowerMode.status.playing', 'oynatma var')
-        : uiT('settings.web.playbackPowerMode.status.waiting', 'oynatma bekleniyor');
-
-    if (!status.hasBattery) {
-        return uiT(
-            'settings.web.playbackPowerMode.status.desktopDetail',
-            `Şu an: ${batteryText}. Laptop pili algılanmadığı için pil modu beklemede.`,
-            { power: batteryText }
-        );
-    }
-    if (mode === 'off') {
-        return uiT(
-            'settings.web.playbackPowerMode.status.offDetail',
-            `Şu an: ${batteryText}, ${playbackText}. Güç koruması kapalı.`,
-            { power: batteryText, playback: playbackText }
-        );
-    }
-    if (mode === 'battery') {
-        return uiT(
-            'settings.web.playbackPowerMode.status.batteryDetail',
-            `Şu an: ${batteryText}, ${playbackText}. Pil tasarrufu öncelikli; performans profiline geçilmez.`,
-            { power: batteryText, playback: playbackText }
-        );
-    }
-    if (mode === 'smooth') {
-        return uiT(
-            'settings.web.playbackPowerMode.status.smoothDetail',
-            `Şu an: ${batteryText}, ${playbackText}. Akıcılık öncelikli; oynatma sırasında performans profili istenir. Profil: ${profile}`,
-            { power: batteryText, playback: playbackText, profile }
-        );
-    }
-    if (status.onBattery && status.active && status.performanceProfile) {
-        return uiT(
-            'settings.web.playbackPowerMode.status.balancedActive',
-            `Şu an: pilde, oynatma var. Dengeli mod akıcılık korumasını açtı. Profil: ${profile}`,
-            { profile }
-        );
-    }
-    if (status.onBattery && status.active) {
-        return uiT(
-            'settings.web.playbackPowerMode.status.balancedPending',
-            `Şu an: pilde, oynatma var. Dengeli mod performans profiline geçmeye çalışıyor. Profil: ${profile}`,
-            { profile }
-        );
-    }
-    return uiT(
-        'settings.web.playbackPowerMode.status.balancedIdle',
-        `Şu an: ${batteryText}, ${playbackText}. Dengeli mod pilde oynatma başlayınca akıcılık korumasını açar. Profil: ${profile}`,
-        { power: batteryText, playback: playbackText, profile }
-    );
-}
-
-async function refreshWebPlaybackPowerLiveStatus() {
-    if (!elements.webPlaybackPowerLiveStatus || webPlaybackPowerStatusRefreshInFlight) return;
-    if (typeof window.ardali?.app?.getPlaybackPowerState !== 'function') return;
-    webPlaybackPowerStatusRefreshInFlight = true;
-    try {
-        const status = await window.ardali.app.getPlaybackPowerState();
-        if (status && typeof status === 'object') {
-            cachedPowerState = {
-                available: status.hasBattery === true,
-                charging: status.onBattery !== true,
-                onBattery: status.onBattery === true,
-                level: cachedPowerState.level
-            };
-            updateWebPlaybackPowerModeUi();
-            elements.webPlaybackPowerLiveStatus.textContent = getWebPlaybackPowerModeStatusText(status);
-        }
-    } catch {
-        elements.webPlaybackPowerLiveStatus.textContent = uiT(
-            'settings.web.playbackPowerMode.status.unavailable',
-            'Şu anki güç durumu okunamadı.'
-        );
-    } finally {
-        webPlaybackPowerStatusRefreshInFlight = false;
-    }
-}
-
-function startWebPlaybackPowerStatusPolling() {
-    if (!elements.webPlaybackPowerLiveStatus || webPlaybackPowerStatusTimer) return;
-    refreshWebPlaybackPowerLiveStatus().catch(() => {});
-    webPlaybackPowerStatusTimer = setInterval(() => {
-        refreshWebPlaybackPowerLiveStatus().catch(() => {});
-    }, 2500);
-}
-
-function updateWebPlaybackPowerModeUi() {
-    if (!elements.behaviorWebPlaybackPowerMode) return;
-    const hasBattery = cachedPowerState.available === true;
-    elements.behaviorWebPlaybackPowerMode.disabled = !hasBattery;
-    elements.behaviorWebPlaybackPowerMode.setAttribute('aria-disabled', hasBattery ? 'false' : 'true');
-    const row = elements.behaviorWebPlaybackPowerMode.closest?.('.setting-row');
-    row?.classList?.toggle('setting-row-disabled', !hasBattery);
-    if (elements.webPlaybackPowerModeHint) {
-        elements.webPlaybackPowerModeHint.textContent = hasBattery
-            ? uiT(
-                'settings.web.playbackPowerMode.hint',
-                'Dengeli mod pilde oynatma sırasında takılmayı azaltır, oynatma durunca sistem güç profiline geri döner.'
-            )
-            : uiT(
-                'settings.web.playbackPowerMode.desktopHint',
-                'Bu sistemde pil algılanmadı; masaüstü bilgisayarlarda bu ayar devre dışıdır.'
-            );
-    }
-    refreshWebPlaybackPowerLiveStatus().catch(() => {});
 }
 
 function getWebUiAnimationMode() {
@@ -21933,7 +21931,7 @@ function getActiveWebOrigin() {
 }
 
 function applyWebRuntimePreferences() {
-    document.body?.classList?.toggle?.('web-background-throttle-enabled', state.settings?.webUi?.backgroundThrottle !== false);
+    document.body?.classList?.toggle?.('web-background-throttle-enabled', state.settings?.webUi?.backgroundThrottle === true);
 }
 
 function isWebUiForceMotionEnabled() {
@@ -22112,23 +22110,14 @@ function syncWebPlatformButtonsLayout(shouldDockToNav) {
 }
 
 function syncWebUtilityButtonsLayout(shouldDockToSidebar) {
-    if (!elements.webUtilityActionsHome || !elements.sidebarWebQuickActions || !elements.playerControlsRight) return;
+    if (!elements.webUtilityActionsHome || !elements.sidebarWebQuickActions) return;
     const shouldDock = !!shouldDockToSidebar;
     if (webSidebarActionsRuntime.dockedToSidebar === shouldDock) return;
 
-    if (shouldDock) {
+    if (elements.webUtilityActionsHome.parentElement !== elements.sidebarWebQuickActions) {
         elements.sidebarWebQuickActions.appendChild(elements.webUtilityActionsHome);
-        webSidebarActionsRuntime.dockedToSidebar = true;
-        return;
     }
-
-    const volumeBtn = elements.playerControlsRight.querySelector('#volumeBtn');
-    if (volumeBtn) {
-        elements.playerControlsRight.insertBefore(elements.webUtilityActionsHome, volumeBtn);
-    } else {
-        elements.playerControlsRight.appendChild(elements.webUtilityActionsHome);
-    }
-    webSidebarActionsRuntime.dockedToSidebar = false;
+    webSidebarActionsRuntime.dockedToSidebar = shouldDock;
 }
 
 function requestPlatformSwitch(btn, options = {}) {
@@ -22554,7 +22543,6 @@ function stopVideo() {
     subtitleRuntime.hasTrack = false;
     syncFsSubtitleUiState();
     state.isPlaying = false;
-    updateMediaPlaybackPowerSaveBlocker('video-stop');
     state.currentVideoPath = null;
     state.currentVideoIndex = -1;
     updatePlayPauseIcon(false);
@@ -22578,7 +22566,6 @@ function stopWeb() {
         if (shouldSuspendWebWhenInactive()) {
             hardStopWebPlayback();
             state.isPlaying = false;
-            updateMediaPlaybackPowerSaveBlocker('web-stop');
             // WebView'i gerçekten uyut: Chromium guest sayfası, JS ve medya yükü about:blank ile boşalır.
             elements.webView.setAttribute('src', 'about:blank');
             webLoadRuntime.lastRequestedUrl = '';
@@ -22594,7 +22581,6 @@ function stopWeb() {
         } else {
             softPauseWebPlayback();
             state.isPlaying = false;
-            updateMediaPlaybackPowerSaveBlocker('web-soft-pause');
         }
     } catch (e) {
         // WebView henüz yüklenmemiş olabilir - yoksay
@@ -22778,20 +22764,20 @@ async function handlePlatformClick(btn, options = {}) {
 // Platform logosunu kapak olarak ayarla
 function updatePlatformCover(platform) {
     const platformCovers = {
-        'youtube': 'icons/youtube_modern.svg',
-        'soundcloud': 'icons/soundcloud.svg',
-        'deezer': 'icons/deezer.svg',
-        'facebook': 'icons/facebook.svg',
-        'instagram': 'icons/instagram.svg',
-        'tiktok': 'icons/tiktok.svg',
-        'x': 'icons/x.svg',
-        'reddit': 'icons/reddit.svg',
-        'twitch': 'icons/twitch.svg',
-        'whatsapp': 'icons/whatsapp.svg',
-        'telegram': 'icons/telegram.svg',
-        'tidal': 'icons/nav_internet.svg',
-        'mixcloud': 'icons/nav_internet.svg',
-        'web': 'icons/nav_internet.svg'
+        'youtube': 'icons/platforms/youtube_modern.svg',
+        'soundcloud': 'icons/platforms/soundcloud.svg',
+        'deezer': 'icons/platforms/deezer.svg',
+        'facebook': 'icons/platforms/facebook.svg',
+        'instagram': 'icons/platforms/instagram.svg',
+        'tiktok': 'icons/platforms/tiktok.svg',
+        'x': 'icons/platforms/x.svg',
+        'reddit': 'icons/platforms/reddit.svg',
+        'twitch': 'icons/platforms/twitch.svg',
+        'whatsapp': 'icons/platforms/whatsapp.svg',
+        'telegram': 'icons/platforms/telegram.svg',
+        'tidal': 'icons/ui/nav_internet.svg',
+        'mixcloud': 'icons/ui/nav_internet.svg',
+        'web': 'icons/ui/nav_internet.svg'
     };
 
     const coverUrl = platformCovers[platform] || platformCovers['web'];
@@ -23498,7 +23484,7 @@ function applyLibraryRootAlbumCover(cardElement, coverData = null) {
         return;
     }
 
-    img.src = 'icons/ardali_256.png';
+    img.src = 'icons/app/ardali_256.png';
     img.classList.add('default-cover');
     if (fallback) fallback.style.display = '';
 }
@@ -23557,7 +23543,7 @@ function renderLibraryRootAlbumSection(parent, renderToken = fileTreeRenderGener
         }
         card.innerHTML = `
             <span class="library-root-album-cover">
-                <img class="library-root-album-cover-img default-cover" src="icons/ardali_256.png" alt="" loading="lazy" decoding="async">
+                <img class="library-root-album-cover-img default-cover" src="icons/app/ardali_256.png" alt="" loading="lazy" decoding="async">
                 <span class="library-root-album-cover-fallback">💿</span>
             </span>
             <span class="library-root-album-text">
@@ -24336,7 +24322,7 @@ function applyPlaylistCardCover(img, imageData = null) {
         const iconElement = document.createElement('span');
         iconElement.className = 'fallback-cover-large-icon';
         const isVideo = itemContainer.querySelector('.item-name')?.textContent.match(/\.(mp4|mkv|avi|webm|mov)$/i);
-        iconElement.innerHTML = `<img src="icons/fallback_${isVideo ? 'video' : 'audio'}.svg" style="width: 100%; height: 100%; object-fit: contain;">`;
+        iconElement.innerHTML = `<img src="icons/ui/fallback_${isVideo ? 'video' : 'audio'}.svg" style="width: 100%; height: 100%; object-fit: contain;">`;
         parentContainer.appendChild(iconElement);
     }
 
@@ -38168,7 +38154,7 @@ function buildVideoStudioPanel() {
             <div class="video-studio-head">
                 <div class="video-studio-title-wrap">
                     <div class="video-studio-title-media">
-                        <img class="video-studio-title-icon" src="icons/video_tools_studio.svg" alt="" aria-hidden="true">
+                        <img class="video-studio-title-icon" src="icons/ui/video_tools_studio.svg" alt="" aria-hidden="true">
                         <span class="video-studio-recording-badge${isRecordingActive ? '' : ' hidden'}" id="videoStudioRecordingBadge" aria-label="${escapeAttribute(isPaused ? 'Kayıt duraklatıldı' : 'Kayıt aktif')}" title="${escapeAttribute(isPaused ? 'Kayıt duraklatıldı' : 'Kayıt aktif')}"></span>
                     </div>
                     <div>
@@ -39376,10 +39362,10 @@ function renderPlaylist() {
         const queueDragHandle = isCollectionTabActive
             ? '<span class="queue-drag-handle material-symbols-rounded" aria-hidden="true" title="Sırayı değiştirmek için sürükle">drag_indicator</span>'
             : '';
-        const largeFallbackImg = isVideoFile(item.name) ? 'icons/fallback_video.svg' : 'icons/fallback_audio.svg';
+        const largeFallbackImg = isVideoFile(item.name) ? 'icons/ui/fallback_video.svg' : 'icons/ui/fallback_audio.svg';
         const leadingVisual = showCardCover
             ? `<span class="playlist-card-cover" style="${definitelyNoCover ? 'background: transparent; border: none; box-shadow: none;' : ''}">
-                   <img class="playlist-card-cover-img${knownCardCover ? '' : ' default-cover'}" src="${knownCardCover || 'icons/ardali_256.png'}" alt="" loading="lazy" decoding="async" style="${definitelyNoCover ? 'display: none;' : ''}">
+                   <img class="playlist-card-cover-img${knownCardCover ? '' : ' default-cover'}" src="${knownCardCover || 'icons/app/ardali_256.png'}" alt="" loading="lazy" decoding="async" style="${definitelyNoCover ? 'display: none;' : ''}">
                    <span class="fallback-cover-large-icon" style="${definitelyNoCover ? 'display: flex;' : 'display: none;'}"><img src="${largeFallbackImg}" style="width: 100%; height: 100%; object-fit: contain;"></span>
                </span>`
             : `<span class="item-icon">${icon}</span>`;
@@ -40808,11 +40794,11 @@ function updateCoverArt(imageData, mediaType) {
     } else {
         // Varsayılan ikonları göster (mevcut dosyaları kullan)
         if (mediaType === 'video') {
-            coverImg.src = '../icons/nav_video.svg';
+            coverImg.src = '../icons/ui/nav_video.svg';
         } else if (mediaType === 'web') {
-            coverImg.src = '../icons/nav_internet.svg';
+            coverImg.src = '../icons/ui/nav_internet.svg';
         } else {
-            coverImg.src = '../icons/ardali_256.png';
+            coverImg.src = '../icons/app/ardali_256.png';
         }
         coverImg.classList.add('default-cover');
     }
@@ -40890,7 +40876,6 @@ function togglePlayPause() {
             elements.videoPlayer.pause();
         } else if (state.activeMedia === 'web') {
             controlWebPlayback('pause');
-            updateMediaPlaybackPowerSaveBlocker('web-pause-control');
         }
         state.isPlaying = false;
         updatePlayPauseIcon(false);
@@ -40970,7 +40955,6 @@ function togglePlayPause() {
             updatePlayPauseIcon(true);
             updateTrayState();
             updateMPRISMetadata();
-            updateMediaPlaybackPowerSaveBlocker('web-play-control');
         }
     }
 }
@@ -41980,6 +41964,12 @@ function loadSettingsToUI() {
         const size = String(state.settings?.appearance?.sfxSidebarIconSize || 'medium').toLowerCase();
         elements.uiSfxIconSizeSelect.value = ['compact', 'medium', 'large'].includes(size) ? size : 'medium';
     }
+    if (elements.behaviorSidebarStyle) {
+        elements.behaviorSidebarStyle.value = normalizeSidebarStyle(state.settings?.appearance?.sidebarStyle);
+    }
+    if (elements.behaviorSidebarIconScale) {
+        elements.behaviorSidebarIconScale.value = normalizeSidebarIconScale(state.settings?.appearance?.sidebarIconScale);
+    }
     if (elements.uiSidebarMotionToggle) {
         elements.uiSidebarMotionToggle.checked = state.settings?.appearance?.sidebarMotionEnabled !== false;
     }
@@ -41993,8 +41983,6 @@ function loadSettingsToUI() {
     if (elements.behaviorWebSessionProfile) elements.behaviorWebSessionProfile.value = normalizeWebSessionProfile(state.settings?.security?.sessionProfile, 'persistent');
     if (elements.behaviorWebUserAgentMode) elements.behaviorWebUserAgentMode.value = getWebUserAgentMode();
     if (elements.behaviorWebAutoplayPolicy) elements.behaviorWebAutoplayPolicy.value = ['allow', 'gesture', 'block'].includes(String(state.settings?.webUi?.autoplayPolicy || '').toLowerCase()) ? String(state.settings.webUi.autoplayPolicy).toLowerCase() : 'allow';
-    if (elements.behaviorWebPlaybackPowerMode) elements.behaviorWebPlaybackPowerMode.value = normalizeWebPlaybackPowerMode(state.settings?.webUi?.playbackPowerMode || 'balanced');
-    updateWebPlaybackPowerModeUi();
     if (elements.behaviorWebAutoRecover) elements.behaviorWebAutoRecover.checked = state.settings?.webUi?.autoRecover !== false;
     if (elements.behaviorWebAllowCamera) elements.behaviorWebAllowCamera.checked = state.settings?.webUi?.allowCamera === true;
     if (elements.behaviorWebAllowMicrophone) elements.behaviorWebAllowMicrophone.checked = state.settings?.webUi?.allowMicrophone === true;
@@ -42131,7 +42119,7 @@ async function applySettings() {
     const selectedWebClearHistoryOnQuit = elements.behaviorWebClearHistoryOnQuit?.checked === true;
     const selectedWebPreferHttps = elements.behaviorWebPreferHttps?.checked !== false;
     const selectedWebReduceWebRtcIpLeaks = elements.behaviorWebReduceWebRtcIpLeaks?.checked !== false;
-    const selectedWebBackgroundThrottle = elements.behaviorWebBackgroundThrottle?.checked !== false;
+    const selectedWebBackgroundThrottle = elements.behaviorWebBackgroundThrottle?.checked === true;
     const selectedWebRestoreLastSession = elements.behaviorWebRestoreLastSession?.checked !== false;
     const selectedWebSuspendWhenInactive = elements.behaviorWebSuspendWhenInactive?.checked !== false;
     const selectedWebSessionProfile = normalizeWebSessionProfile(elements.behaviorWebSessionProfile?.value || state.settings?.security?.sessionProfile, 'persistent');
@@ -42141,7 +42129,6 @@ async function applySettings() {
     const selectedWebAutoplayPolicy = ['allow', 'gesture', 'block'].includes(String(elements.behaviorWebAutoplayPolicy?.value || '').toLowerCase())
         ? String(elements.behaviorWebAutoplayPolicy.value).toLowerCase()
         : 'allow';
-    const selectedWebPlaybackPowerMode = normalizeWebPlaybackPowerMode(elements.behaviorWebPlaybackPowerMode?.value || state.settings?.webUi?.playbackPowerMode || 'balanced');
     const selectedWebAdvanced = {
         autoRecover: elements.behaviorWebAutoRecover?.checked !== false,
         allowCamera: elements.behaviorWebAllowCamera?.checked === true,
@@ -42191,6 +42178,12 @@ async function applySettings() {
     state.settings.appearance.sfxSidebarIconSize = ['compact', 'medium', 'large'].includes(String(elements.uiSfxIconSizeSelect?.value || '').toLowerCase())
         ? String(elements.uiSfxIconSizeSelect.value).toLowerCase()
         : 'medium';
+    state.settings.appearance.sidebarStyle = normalizeSidebarStyle(
+        elements.behaviorSidebarStyle?.value || state.settings.appearance.sidebarStyle || 'classic'
+    );
+    state.settings.appearance.sidebarIconScale = normalizeSidebarIconScale(
+        elements.behaviorSidebarIconScale?.value || state.settings.appearance.sidebarIconScale || 'x3'
+    );
     state.settings.appearance.lowHardwareMode = nextLowHardwareMode;
     if (!state.settings.ui || typeof state.settings.ui !== 'object') state.settings.ui = {};
     if (!state.settings.webUi || typeof state.settings.webUi !== 'object') state.settings.webUi = {};
@@ -42208,7 +42201,6 @@ async function applySettings() {
     state.settings.webUi.backgroundThrottle = selectedWebBackgroundThrottle;
     state.settings.webUi.restoreLastSession = selectedWebRestoreLastSession;
     state.settings.webUi.suspendWhenInactive = selectedWebSuspendWhenInactive;
-    state.settings.webUi.playbackPowerMode = selectedWebPlaybackPowerMode;
     Object.assign(state.settings.webUi, selectedWebAdvanced, {
         userAgentMode: selectedWebUserAgentMode,
         autoplayPolicy: selectedWebAutoplayPolicy
@@ -42245,7 +42237,6 @@ async function applySettings() {
     state.settings.webUi.backgroundThrottle = selectedWebBackgroundThrottle;
     state.settings.webUi.restoreLastSession = selectedWebRestoreLastSession;
     state.settings.webUi.suspendWhenInactive = selectedWebSuspendWhenInactive;
-    state.settings.webUi.playbackPowerMode = selectedWebPlaybackPowerMode;
     Object.assign(state.settings.webUi, selectedWebAdvanced, {
         userAgentMode: selectedWebUserAgentMode,
         autoplayPolicy: selectedWebAutoplayPolicy
@@ -42264,7 +42255,6 @@ async function applySettings() {
     if (elements.behaviorWebPreferHttps) elements.behaviorWebPreferHttps.checked = selectedWebPreferHttps;
     if (elements.behaviorWebReduceWebRtcIpLeaks) elements.behaviorWebReduceWebRtcIpLeaks.checked = selectedWebReduceWebRtcIpLeaks;
     if (elements.behaviorWebBackgroundThrottle) elements.behaviorWebBackgroundThrottle.checked = selectedWebBackgroundThrottle;
-    if (elements.behaviorWebPlaybackPowerMode) elements.behaviorWebPlaybackPowerMode.value = selectedWebPlaybackPowerMode;
     if (elements.behaviorWebRestoreLastSession) elements.behaviorWebRestoreLastSession.checked = selectedWebRestoreLastSession;
     if (elements.behaviorWebSuspendWhenInactive) elements.behaviorWebSuspendWhenInactive.checked = selectedWebSuspendWhenInactive;
     if (elements.behaviorWebSessionProfile) elements.behaviorWebSessionProfile.value = selectedWebSessionProfile;
@@ -42282,6 +42272,8 @@ async function applySettings() {
     if (elements.behaviorWebReduceReferrers) elements.behaviorWebReduceReferrers.checked = selectedWebAdvanced.reduceReferrers;
     if (elements.behaviorWebStripTrackingParams) elements.behaviorWebStripTrackingParams.checked = selectedWebAdvanced.stripTrackingParams;
     if (elements.behaviorWebBlockThirdPartyCookies) elements.behaviorWebBlockThirdPartyCookies.checked = selectedWebAdvanced.blockThirdPartyCookies;
+    if (elements.behaviorSidebarStyle) elements.behaviorSidebarStyle.value = state.settings.appearance.sidebarStyle;
+    if (elements.behaviorSidebarIconScale) elements.behaviorSidebarIconScale.value = state.settings.appearance.sidebarIconScale;
     syncSfxIconSizeShadowStorage(state.settings.appearance.sfxSidebarIconSize);
     updateSliderFxToggleStateUi();
     updateSfxLightsToggleStateUi();
@@ -42428,6 +42420,8 @@ function applyAppearanceSettingsToRuntime(appearanceOverride = null) {
     const sfxSidebarIconSize = ['compact', 'medium', 'large'].includes(String(appearance.sfxSidebarIconSize || '').toLowerCase())
         ? String(appearance.sfxSidebarIconSize).toLowerCase()
         : 'medium';
+    const sidebarStyle = normalizeSidebarStyle(appearance.sidebarStyle || 'classic');
+    const sidebarIconScale = normalizeSidebarIconScale(appearance.sidebarIconScale || 'x3');
     const followSystemTheme = appearance.followSystemTheme === true;
     const systemPrefersDark = getSystemPrefersDark();
     const previousTheme = String(document.documentElement.dataset.ardaliTheme || '').trim();
@@ -42440,7 +42434,11 @@ function applyAppearanceSettingsToRuntime(appearanceOverride = null) {
         document.documentElement.dataset.ardaliTheme = theme;
         document.documentElement.dataset.ardaliMotionProfile = motionProfile;
         document.documentElement.dataset.sfxIconSize = sfxSidebarIconSize;
+        document.documentElement.dataset.sidebarStyle = sidebarStyle;
+        document.documentElement.dataset.sidebarIconScale = sidebarIconScale;
         document.body?.setAttribute?.('data-ardali-theme', theme);
+        document.body?.setAttribute?.('data-sidebar-style', sidebarStyle);
+        document.body?.setAttribute?.('data-sidebar-icon-scale', sidebarIconScale);
         document.body?.setAttribute?.('data-ardali-motion-profile', motionProfile);
         document.body?.classList?.toggle('ardali-system-light', followSystemTheme && !systemPrefersDark);
         document.body?.classList?.toggle('ardali-system-dark', followSystemTheme && systemPrefersDark);
@@ -42450,6 +42448,7 @@ function applyAppearanceSettingsToRuntime(appearanceOverride = null) {
         document.body?.classList?.toggle('ardali-reduced-motion', appearance.reduceMotion === true);
         document.body?.classList?.toggle('sidebar-motion-enabled', appearance.sidebarMotionEnabled !== false);
         document.body?.classList?.toggle('ardali-sfx-lights-disabled', appearance.sfxLights === false);
+        applySidebarIconStyle(sidebarStyle);
     };
     syncThemeShadowStorage(theme);
     if (shouldAnimateTheme) {
@@ -42535,13 +42534,218 @@ function syncSfxIconSizeShadowStorage(size) {
     }
 }
 
+function normalizeSidebarStyle(value) {
+    const normalized = String(value || '').trim().toLowerCase();
+    if (['classic', 'minimal', 'studio', 'neonpulse', 'vinyldisc', 'monotech', 'crystal', 'retroblock'].includes(normalized)) return normalized;
+    return 'classic';
+}
+
+function normalizeSidebarIconScale(value) {
+    const normalized = String(value || '').trim().toLowerCase();
+    if (['x1', 'x2', 'x3', 'x4', 'x5'].includes(normalized)) return normalized;
+    return 'x3';
+}
+
+function applySidebarIconStyle(style) {
+    const normalized = normalizeSidebarStyle(style);
+    const classicIconSet = {
+        files: 'icons/sidebar-themes/classic/files.svg',
+        video: 'icons/sidebar-themes/classic/video.svg',
+        music: 'icons/sidebar-themes/classic/music.svg',
+        gallery: 'icons/sidebar-themes/classic/gallery.svg',
+        web: 'icons/sidebar-themes/classic/web.svg',
+        pulse: 'icons/sidebar-themes/classic/pulse.svg'
+    };
+    const studioIconSet = {
+        files: 'icons/sidebar-themes/studio/files.svg',
+        video: 'icons/sidebar-themes/studio/video.svg',
+        music: 'icons/sidebar-themes/studio/music-cd.svg',
+        gallery: 'icons/sidebar-themes/studio/gallery.svg',
+        web: 'icons/sidebar-themes/studio/web.svg',
+        pulse: 'icons/sidebar-themes/studio/pulse.svg'
+    };
+    const generatedIconSet = buildGeneratedSidebarIconSet(normalized);
+    const themedIconSet = normalized === 'classic'
+        ? classicIconSet
+        : normalized === 'studio'
+            ? studioIconSet
+            : generatedIconSet?.pages || null;
+    Object.entries(classicIconSet).forEach(([page]) => {
+        const btn = document.querySelector(`.sidebar-btn[data-page="${page}"]`);
+        if (!btn) return;
+        if (!btn.dataset.modernSidebarIconHtml) {
+            btn.dataset.modernSidebarIconHtml = btn.innerHTML;
+        }
+        if (themedIconSet) {
+            const src = themedIconSet[page];
+            const currentImg = btn.querySelector('img.sidebar-theme-icon');
+            if (currentImg && currentImg.getAttribute('src') === src) return;
+            btn.innerHTML = `<img class="sidebar-theme-icon" src="${src}" alt="" aria-hidden="true">`;
+        } else if (btn.dataset.modernSidebarIconHtml) {
+            btn.innerHTML = btn.dataset.modernSidebarIconHtml;
+        }
+    });
+    const iconSet = normalized === 'classic'
+        ? {
+            videoTools: 'icons/sidebar-themes/classic/video-tools.svg',
+            dawlod: 'icons/sidebar-themes/classic/download.png',
+            soundEffects: 'icons/sidebar-themes/classic/sound-effects.svg',
+            visualizer: 'icons/sidebar-themes/classic/visualizer.svg'
+        }
+        : normalized === 'studio'
+            ? {
+                videoTools: 'icons/sidebar-themes/studio/video-tools.svg',
+                dawlod: 'icons/sidebar-themes/studio/download.svg',
+                soundEffects: 'icons/sidebar-themes/studio/sound-effects.svg',
+                visualizer: 'icons/sidebar-themes/studio/visualizer.svg'
+            }
+        : generatedIconSet?.specials
+            ? generatedIconSet.specials
+        : {
+            videoTools: 'icons/ui/video_tools_studio.svg',
+            dawlod: 'icons/ui/sidebar-dawlod-premium.svg',
+            soundEffects: 'icons/ui/sound-effects.svg',
+            visualizer: 'icons/ui/visualizer-spectrum.svg'
+        };
+    const videoToolsIcon = document.querySelector('.sidebar-video-tools-icon');
+    const dawlodIcon = document.querySelector('.ardali-dawlod-icon');
+    const soundEffectsIcon = document.querySelector('.sound-effects-icon');
+    const visualizerIcon = document.querySelector('.visualizer-spectrum-icon');
+    if (videoToolsIcon && videoToolsIcon.getAttribute('src') !== iconSet.videoTools) {
+        videoToolsIcon.setAttribute('src', iconSet.videoTools);
+    }
+    if (dawlodIcon && dawlodIcon.getAttribute('src') !== iconSet.dawlod) {
+        dawlodIcon.setAttribute('src', iconSet.dawlod);
+    }
+    if (soundEffectsIcon && soundEffectsIcon.getAttribute('src') !== iconSet.soundEffects) {
+        soundEffectsIcon.setAttribute('src', iconSet.soundEffects);
+    }
+    if (visualizerIcon && visualizerIcon.getAttribute('src') !== iconSet.visualizer) {
+        visualizerIcon.setAttribute('src', iconSet.visualizer);
+    }
+}
+
+function sidebarSvgDataUri(svg) {
+    return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`;
+}
+
+function buildGeneratedSidebarIconSet(theme) {
+    const normalized = normalizeSidebarStyle(theme);
+    const generatedThemes = new Set(['neonpulse', 'vinyldisc', 'monotech', 'crystal', 'retroblock']);
+    if (!generatedThemes.has(normalized)) return null;
+    const keys = ['files', 'video', 'videoTools', 'music', 'gallery', 'web', 'pulse', 'dawlod', 'soundEffects', 'visualizer'];
+    const icons = Object.fromEntries(keys.map((key) => [key, sidebarSvgDataUri(renderSidebarGeneratedSvg(normalized, key))]));
+    return {
+        pages: {
+            files: icons.files,
+            video: icons.video,
+            music: icons.music,
+            gallery: icons.gallery,
+            web: icons.web,
+            pulse: icons.pulse
+        },
+        specials: {
+            videoTools: icons.videoTools,
+            dawlod: icons.dawlod,
+            soundEffects: icons.soundEffects,
+            visualizer: icons.visualizer
+        }
+    };
+}
+
+function renderSidebarGeneratedSvg(theme, key) {
+    const palettes = {
+        neonpulse: { a: '#22D3EE', b: '#F472B6', c: '#A7F3D0', bg: '#07101D' },
+        vinyldisc: { a: '#FACC15', b: '#FB7185', c: '#38BDF8', bg: '#111827' },
+        monotech: { a: '#E5E7EB', b: '#94A3B8', c: '#CBD5E1', bg: '#020617' },
+        crystal: { a: '#BAE6FD', b: '#A78BFA', c: '#67E8F9', bg: '#07111F' },
+        retroblock: { a: '#34D399', b: '#F97316', c: '#60A5FA', bg: '#101014' }
+    };
+    const p = palettes[theme] || palettes.neonpulse;
+    const line = `stroke="${p.a}" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"`;
+    const shell = `<rect x="8" y="8" width="48" height="48" rx="${theme === 'retroblock' ? 6 : 14}" fill="${p.bg}" stroke="${p.b}" stroke-width="3.5"/>`;
+    const glyphs = {
+        files: {
+            neonpulse: `${shell}<path d="M16 25h12l5 5h15v15H16z" ${line}/><path d="M18 36h28" ${line}/>`,
+            vinyldisc: `${shell}<circle cx="32" cy="33" r="15" fill="none" ${line}/><path d="M22 22h12l5 5" stroke="${p.b}" stroke-width="4" stroke-linecap="round"/>`,
+            monotech: `${shell}<path d="M18 22h28v22H18zM23 29h18M23 36h12" ${line}/>`,
+            crystal: `${shell}<path d="M17 25 28 17h19v29H17z" ${line}/><path d="m28 17 6 10" ${line}/>`,
+            retroblock: `${shell}<path d="M16 24h12v6h20v18H16z" fill="${p.a}"/><path d="M20 36h24v4H20z" fill="${p.bg}"/>`
+        },
+        video: {
+            neonpulse: `${shell}<path d="M19 22h24v20H19z" ${line}/><path d="m43 29 8-5v16l-8-5" ${line}/>`,
+            vinyldisc: `${shell}<circle cx="27" cy="32" r="13" fill="none" ${line}/><path d="m36 25 12 7-12 7z" fill="${p.b}"/>`,
+            monotech: `${shell}<path d="M18 23h28v18H18zM25 29h5M34 29h5" ${line}/><path d="m46 29 6-4v14l-6-4" ${line}/>`,
+            crystal: `${shell}<path d="M17 24 31 18l16 7v16l-16 6-14-7z" ${line}/><path d="m29 27 12 6-12 6z" fill="${p.c}"/>`,
+            retroblock: `${shell}<path d="M17 22h26v22H17z" fill="${p.a}"/><path d="M43 29h6v8h-6z" fill="${p.b}"/><path d="M27 28h5v10h-5z" fill="${p.bg}"/><path d="M32 31h5v4h-5z" fill="${p.bg}"/>`
+        },
+        videoTools: {
+            neonpulse: `${shell}<path d="M18 23h23v18H18z" ${line}/><circle cx="29" cy="32" r="5" fill="${p.b}"/><path d="m42 29 8-5v16l-8-5" ${line}/>`,
+            vinyldisc: `${shell}<circle cx="27" cy="32" r="14" fill="none" ${line}/><circle cx="27" cy="32" r="5" fill="${p.b}"/><path d="M41 24h8v16h-8z" stroke="${p.c}" stroke-width="4"/>`,
+            monotech: `${shell}<path d="M18 22h24v20H18zM24 28h12M24 36h7" ${line}/><path d="m42 29 7-4v14l-7-4" ${line}/><circle cx="24" cy="32" r="3" fill="${p.b}"/>`,
+            crystal: `${shell}<path d="M18 24 32 18l14 6v16l-14 6-14-6z" ${line}/><circle cx="32" cy="32" r="6" fill="${p.b}"/>`,
+            retroblock: `${shell}<path d="M16 22h26v22H16z" fill="${p.a}"/><path d="M42 28h7v10h-7z" fill="${p.b}"/><path d="M24 29h8v8h-8z" fill="${p.bg}"/>`
+        },
+        music: {
+            neonpulse: `${shell}<path d="M38 18v22M38 18l12-3v18" ${line}/><circle cx="27" cy="43" r="7" fill="none" ${line}/><circle cx="45" cy="38" r="7" fill="none" ${line}/>`,
+            vinyldisc: `${shell}<circle cx="32" cy="32" r="17" fill="none" ${line}/><circle cx="32" cy="32" r="5" fill="${p.b}"/><path d="M43 18v18" stroke="${p.c}" stroke-width="4" stroke-linecap="round"/>`,
+            monotech: `${shell}<path d="M21 41h22M24 23h16v18H24z" ${line}/><path d="M30 29h4M30 35h8" ${line}/>`,
+            crystal: `${shell}<path d="M31 16 48 25v18L31 52 16 43V25z" ${line}/><circle cx="32" cy="34" r="8" fill="none" stroke="${p.c}" stroke-width="4"/>`,
+            retroblock: `${shell}<path d="M34 17h8v24h-8z" fill="${p.a}"/><path d="M22 39h12v8H22zM42 35h8v8h-8z" fill="${p.b}"/>`
+        },
+        gallery: {
+            neonpulse: `${shell}<path d="M17 20h30v26H17z" ${line}/><path d="m20 42 10-10 7 7 5-5 5 6" ${line}/><circle cx="28" cy="28" r="3" fill="${p.b}"/>`,
+            vinyldisc: `${shell}<circle cx="24" cy="25" r="6" fill="${p.b}"/><path d="M16 46h32L37 32l-8 9-5-5z" fill="${p.a}"/>`,
+            monotech: `${shell}<path d="M17 20h30v26H17zM22 39l8-8 6 6 4-4 5 6" ${line}/><path d="M24 26h5v5h-5z" fill="${p.b}"/>`,
+            crystal: `${shell}<path d="M17 21 32 16l15 5v26l-15 5-15-5z" ${line}/><path d="m22 43 9-12 7 8 4-5" stroke="${p.c}" stroke-width="4" stroke-linecap="round"/>`,
+            retroblock: `${shell}<path d="M16 20h32v28H16z" fill="${p.a}"/><path d="M22 28h6v6h-6z" fill="${p.bg}"/><path d="M20 43h8v-6h6v6h10v4H20z" fill="${p.b}"/>`
+        },
+        web: {
+            neonpulse: `${shell}<circle cx="32" cy="32" r="16" fill="none" ${line}/><path d="M16 32h32M32 16c6 7 6 25 0 32M32 16c-6 7-6 25 0 32" ${line}/>`,
+            vinyldisc: `${shell}<circle cx="32" cy="32" r="17" fill="none" ${line}/><circle cx="32" cy="32" r="6" fill="${p.b}"/><path d="M18 32h28" stroke="${p.c}" stroke-width="4"/>`,
+            monotech: `${shell}<path d="M17 20h30v24H17zM22 27h20M22 34h14" ${line}/><path d="M18 19 24 13h28v24l-5 7" stroke="${p.b}" stroke-width="3" fill="none"/>`,
+            crystal: `${shell}<path d="M32 14 50 26v18L32 54 14 44V26z" ${line}/><path d="M14 26h36M32 14v40" stroke="${p.c}" stroke-width="3.6"/>`,
+            retroblock: `${shell}<path d="M18 18h28v28H18z" fill="${p.a}"/><path d="M22 26h20v4H22zM22 34h12v4H22z" fill="${p.bg}"/>`
+        },
+        pulse: {
+            neonpulse: `${shell}<path d="M17 38v7M24 31v16M32 20v28M40 31v16M47 38v7" ${line}/><path d="M20 20c7-7 17-7 24 0" stroke="${p.b}" stroke-width="4" stroke-linecap="round"/>`,
+            vinyldisc: `${shell}<circle cx="32" cy="34" r="15" fill="none" ${line}/><path d="M18 34h5l4-9 8 18 5-9h6" stroke="${p.b}" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>`,
+            monotech: `${shell}<path d="M18 40h28M20 35v5M27 26v14M34 20v20M41 30v10" ${line}/>`,
+            crystal: `${shell}<path d="M18 36 27 24l8 18 7-12 5 6" ${line}/><path d="M16 48h32" stroke="${p.c}" stroke-width="4" stroke-linecap="round"/>`,
+            retroblock: `${shell}<path d="M18 38h6v8h-6zM27 30h6v16h-6zM36 20h6v26h-6zM45 34h5v12h-5z" fill="${p.a}"/>`
+        },
+        dawlod: {
+            neonpulse: `${shell}<path d="M32 17v24M22 32l10 10 10-10" ${line}/><path d="M20 48h24" stroke="${p.b}" stroke-width="4" stroke-linecap="round"/>`,
+            vinyldisc: `${shell}<circle cx="32" cy="30" r="14" fill="none" ${line}/><path d="M32 19v22M24 33l8 8 8-8" stroke="${p.b}" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>`,
+            monotech: `${shell}<path d="M20 19h24v26H20zM32 24v13M26 32l6 6 6-6M24 48h16" ${line}/>`,
+            crystal: `${shell}<path d="M32 14 48 24v18L32 52 16 42V24z" ${line}/><path d="M32 22v18M25 33l7 7 7-7" stroke="${p.c}" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>`,
+            retroblock: `${shell}<path d="M28 18h8v18h8L32 48 20 36h8z" fill="${p.a}"/>`
+        },
+        soundEffects: {
+            neonpulse: `${shell}<path d="M23 18v28M32 18v28M41 18v28" ${line}/><circle cx="23" cy="28" r="4" fill="${p.b}"/><circle cx="32" cy="39" r="4" fill="${p.b}"/><circle cx="41" cy="24" r="4" fill="${p.b}"/>`,
+            vinyldisc: `${shell}<circle cx="24" cy="32" r="8" fill="none" ${line}/><circle cx="42" cy="25" r="5" fill="${p.b}"/><circle cx="42" cy="42" r="5" fill="${p.c}"/>`,
+            monotech: `${shell}<path d="M20 20h24M20 32h24M20 44h24" ${line}/><path d="M27 16v8M38 28v8M31 40v8" stroke="${p.b}" stroke-width="4" stroke-linecap="round"/>`,
+            crystal: `${shell}<path d="M22 18 31 28 22 38 13 28zM42 26l8 8-8 8-8-8z" ${line}/>`,
+            retroblock: `${shell}<path d="M18 18h6v28h-6zM29 26h6v20h-6zM40 14h6v32h-6z" fill="${p.a}"/>`
+        },
+        visualizer: {
+            neonpulse: `${shell}<path d="M20 43V33M28 43V23M36 43V29M44 43V18" ${line}/><path d="M18 47h30" stroke="${p.b}" stroke-width="3" stroke-linecap="round"/>`,
+            vinyldisc: `${shell}<circle cx="32" cy="32" r="16" fill="none" ${line}/><path d="M22 41V32M30 41V24M38 41V29M46 41V21" stroke="${p.b}" stroke-width="4" stroke-linecap="round"/>`,
+            monotech: `${shell}<path d="M19 45h26M22 38v7M29 28v17M36 34v11M43 22v23" ${line}/>`,
+            crystal: `${shell}<path d="M18 44 25 31l7 9 8-20 7 24" ${line}/><path d="M18 48h30" stroke="${p.c}" stroke-width="4" stroke-linecap="round"/>`,
+            retroblock: `${shell}<path d="M18 36h6v10h-6zM27 25h6v21h-6zM36 31h6v15h-6zM45 18h5v28h-5z" fill="${p.b}"/>`
+        }
+    };
+    return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">${glyphs[key]?.[theme] || glyphs.files.neonpulse}</svg>`;
+}
+
 function updateThemeFollowSystemUi() {
     const followSystemTheme = !!elements.uiFollowSystemThemeToggle?.checked;
     if (elements.themeSelect) {
-        elements.themeSelect.disabled = false;
-        elements.themeSelect.setAttribute('aria-disabled', 'false');
-        elements.themeSelect.style.pointerEvents = '';
-        elements.themeSelect.tabIndex = 0;
+        elements.themeSelect.disabled = followSystemTheme;
+        elements.themeSelect.setAttribute('aria-disabled', followSystemTheme ? 'true' : 'false');
+        elements.themeSelect.style.pointerEvents = followSystemTheme ? 'none' : '';
+        elements.themeSelect.tabIndex = followSystemTheme ? -1 : 0;
     }
     if (elements.themeSystemHint) {
         elements.themeSystemHint.classList.toggle('hidden', !followSystemTheme);
@@ -42826,7 +43030,6 @@ async function detectPowerState() {
             onBattery: false,
             level: null
         };
-        updateWebPlaybackPowerModeUi();
         return cachedPowerState;
     }
     try {
@@ -42838,7 +43041,6 @@ async function detectPowerState() {
                 onBattery: battery.charging === false,
                 level: Number.isFinite(Number(battery.level)) ? Number(battery.level) : null
             };
-            updateWebPlaybackPowerModeUi();
             updateOptimizationProfileUi();
         };
         sync();
@@ -42857,7 +43059,6 @@ async function detectPowerState() {
             onBattery: false,
             level: null
         };
-        updateWebPlaybackPowerModeUi();
     }
     return cachedPowerState;
 }
@@ -43219,6 +43420,8 @@ function previewAppearanceSettingsFromUI() {
     const selectedSfxIconSize = ['compact', 'medium', 'large'].includes(String(elements.uiSfxIconSizeSelect?.value || '').toLowerCase())
         ? String(elements.uiSfxIconSizeSelect.value).toLowerCase()
         : String(current.sfxSidebarIconSize || 'medium').toLowerCase();
+    const selectedSidebarStyle = normalizeSidebarStyle(elements.behaviorSidebarStyle?.value || current.sidebarStyle || 'classic');
+    const selectedSidebarIconScale = normalizeSidebarIconScale(elements.behaviorSidebarIconScale?.value || current.sidebarIconScale || 'x3');
     const preset = getVisualModePreset(elements.uiVisualModeSelect?.value || current.visualMode || 'full');
     updateVisualModeUi();
     updateThemeFollowSystemUi();
@@ -43242,8 +43445,33 @@ function previewAppearanceSettingsFromUI() {
         optimizationProfile: selectedOptimizationProfile,
         sfxPerfMode: selectedSfxPerfMode,
         sfxSidebarIconSize: selectedSfxIconSize,
+        sidebarStyle: selectedSidebarStyle,
+        sidebarIconScale: selectedSidebarIconScale,
         autoHardwareProfile
     });
+    if (isStandaloneSettingsMode()) {
+        appearanceSyncChannel?.postMessage({
+            type: 'appearance',
+            appearance: {
+                ...current,
+                theme: selectedTheme,
+                motionProfile: selectedMotionProfile,
+                followSystemTheme,
+                visualMode: preset.visualMode,
+                uiFxEnabled,
+                sliderFxEnabled,
+                reduceMotion: reduceMotionEnabled,
+                sidebarMotionEnabled,
+                sfxLights: sfxLightsEnabled,
+                optimizationProfile: selectedOptimizationProfile,
+                sfxPerfMode: selectedSfxPerfMode,
+                sfxSidebarIconSize: selectedSfxIconSize,
+                sidebarStyle: selectedSidebarStyle,
+                sidebarIconScale: selectedSidebarIconScale,
+                autoHardwareProfile
+            }
+        });
+    }
 }
 
 function applySecuritySettingsToRuntime() {
@@ -43334,6 +43562,8 @@ function resetBehaviorDefaults() {
     if (elements.uiMotionProfileSelect) elements.uiMotionProfileSelect.value = 'balanced';
     if (elements.uiSfxPerfModeSelect) elements.uiSfxPerfModeSelect.value = 'lite';
     if (elements.uiSfxIconSizeSelect) elements.uiSfxIconSizeSelect.value = 'medium';
+    if (elements.behaviorSidebarStyle) elements.behaviorSidebarStyle.value = 'classic';
+    if (elements.behaviorSidebarIconScale) elements.behaviorSidebarIconScale.value = 'x3';
     if (elements.uiAutoHardwareProfileToggle) elements.uiAutoHardwareProfileToggle.checked = true;
     if (elements.uiLowHardwareModeToggle) elements.uiLowHardwareModeToggle.checked = false;
     const uiFxEnabledToggle = document.getElementById('uiFxEnabledToggle');
@@ -43358,6 +43588,8 @@ function resetBehaviorDefaults() {
     if (!state.settings.appearance || typeof state.settings.appearance !== 'object') state.settings.appearance = {};
     state.settings.ui.notificationsEnabled = !!elements.behaviorNotificationsEnabled?.checked;
     state.settings.appearance.sidebarMotionEnabled = true;
+    state.settings.appearance.sidebarStyle = normalizeSidebarStyle(elements.behaviorSidebarStyle?.value || 'classic');
+    state.settings.appearance.sidebarIconScale = normalizeSidebarIconScale(elements.behaviorSidebarIconScale?.value || 'x3');
 }
 
 function resetWebDefaults() {
@@ -43374,7 +43606,6 @@ function resetWebDefaults() {
     if (elements.behaviorWebPreferHttps) elements.behaviorWebPreferHttps.checked = true;
     if (elements.behaviorWebReduceWebRtcIpLeaks) elements.behaviorWebReduceWebRtcIpLeaks.checked = true;
     if (elements.behaviorWebBackgroundThrottle) elements.behaviorWebBackgroundThrottle.checked = true;
-    if (elements.behaviorWebPlaybackPowerMode) elements.behaviorWebPlaybackPowerMode.value = 'balanced';
     if (elements.behaviorWebRestoreLastSession) elements.behaviorWebRestoreLastSession.checked = true;
     if (elements.behaviorWebSuspendWhenInactive) elements.behaviorWebSuspendWhenInactive.checked = true;
     if (elements.behaviorWebSessionProfile) elements.behaviorWebSessionProfile.value = 'persistent';
@@ -43409,7 +43640,6 @@ function resetWebDefaults() {
     state.settings.webUi.preferHttps = true;
     state.settings.webUi.reduceWebRtcIpLeaks = true;
     state.settings.webUi.backgroundThrottle = true;
-    state.settings.webUi.playbackPowerMode = 'balanced';
     state.settings.webUi.restoreLastSession = true;
     state.settings.webUi.suspendWhenInactive = true;
     state.settings.webUi.allowCamera = false;
@@ -44502,6 +44732,9 @@ let visualizerReleaseState = null;
 let audioVisualizerMildPrevBands = null;
 let audioVisualizerFallbackPhase = 0;
 let visualizerProjectMRunning = false;
+let projectMExternalFeedPhase = 0;
+let projectMExternalFeedLastAt = 0;
+let projectMExternalFeedSentAt = 0;
 
 function getVisualizerReleaseDropMultiplier() {
     if (!visualizerReleaseState) return 1;
@@ -45134,8 +45367,94 @@ function shouldRunVisualizer() {
     return hasSize && visible;
 }
 
+function getProjectMExternalSourceMode() {
+    const active = String(state.activeMedia || '').trim().toLowerCase();
+    const page = String(state.currentPage || '').trim().toLowerCase();
+    if (active === 'video') return 'video';
+    if (active === 'web') return 'web';
+    if ((active === 'none' || !active) && page === 'video') return 'video';
+    if ((active === 'none' || !active) && page === 'web') return 'web';
+    return '';
+}
+
+function shouldFeedProjectMExternalSpectrum() {
+    if (!visualizerProjectMRunning) return false;
+    if (!window.app?.visualizer?.pushVideoSpectrum) return false;
+    return !!getProjectMExternalSourceMode();
+}
+
 function shouldFeedProjectMWhenVisualizerHidden() {
-    return false;
+    return shouldFeedProjectMExternalSpectrum();
+}
+
+function buildProjectMExternalSpectrumBands(targetCount = 128) {
+    const count = Math.max(32, Math.min(192, Number(targetCount) || 128));
+    const volume = Math.max(0, Math.min(1, (Number(state.volume) || 0) / 100));
+    const now = performance.now();
+    const dt = Math.max(0.5, Math.min(3, (now - (projectMExternalFeedLastAt || now)) / 16.6667));
+    projectMExternalFeedLastAt = now;
+    projectMExternalFeedPhase = (projectMExternalFeedPhase + 0.115 * dt) % (Math.PI * 2);
+
+    const mediaActive = getProjectMExternalSourceMode();
+    const playing = !!mediaActive && !state.isMuted && volume > 0 && (
+        state.isPlaying ||
+        state.activeMedia === 'web' ||
+        state.activeMedia === 'video'
+    );
+
+    if (!playing) return new Array(count).fill(0);
+
+    const energy = Math.max(0.18, Math.min(1, volume));
+    const out = new Array(count);
+    for (let i = 0; i < count; i++) {
+        const x = i / Math.max(1, count - 1);
+        const bass = Math.pow(1 - x, 2.25) * (0.42 + 0.34 * Math.sin(projectMExternalFeedPhase * 1.7));
+        const kick = Math.pow(Math.max(0, Math.sin(projectMExternalFeedPhase * 2.8)), 5) * Math.pow(1 - x, 5.2);
+        const midWave = (0.18 + 0.10 * Math.sin((x * 18) + projectMExternalFeedPhase * 2.2)) * Math.exp(-Math.pow((x - 0.34) * 2.25, 2));
+        const highRipple = (0.045 + 0.035 * Math.sin((x * 58) - projectMExternalFeedPhase * 3.7)) * Math.pow(x, 0.55) * Math.pow(1 - x, 0.42);
+        const shimmer = ((Math.sin((i * 12.9898) + (projectMExternalFeedPhase * 9.1)) + 1) * 0.5) * 0.035 * Math.pow(x, 0.7);
+        out[i] = Math.max(0, Math.min(1, (bass + kick + midWave + highRipple + shimmer) * energy));
+    }
+    return normalizeSpectrumData(out, { source: 'projectm-external' });
+}
+
+async function getProjectMExternalSpectrumBands(targetCount = 128) {
+    if (typeof getWebDaliSpectrumBands === 'function') {
+        try {
+            const realBands = await getWebDaliSpectrumBands(targetCount, { raw: false });
+            const normalized = normalizeSpectrumData(realBands, { source: 'projectm-web-dali' });
+            if (getSpectrumPeak(normalized) > 0.0035) {
+                return normalized;
+            }
+        } catch {
+            // WebView spektrum okunamazsa aşağıdaki ritmik yedek kullanılır.
+        }
+    }
+    if (typeof scheduleApplyWebDaliEngine === 'function') {
+        scheduleApplyWebDaliEngine('projectm-spectrum-feed', 0);
+    }
+    return buildProjectMExternalSpectrumBands(targetCount);
+}
+
+async function feedProjectMExternalSpectrum(options = {}) {
+    if (!shouldFeedProjectMExternalSpectrum()) return false;
+    const sourceMode = getProjectMExternalSourceMode();
+    if (!sourceMode) return false;
+    const force = !!options.force;
+    const fps = Math.max(20, Math.min(60, Number(getEffectiveVisualizerFps()) || 30));
+    const now = performance.now();
+    if (!force && now - projectMExternalFeedSentAt < (1000 / fps) * 0.55) return false;
+    projectMExternalFeedSentAt = now;
+    const bands = await getProjectMExternalSpectrumBands(128);
+    const hasEnergy = bands.some((value) => Number(value) > 0.0035);
+    const isPlaying = hasEnergy || (!!state.isPlaying && !state.isMuted && (Number(state.volume) || 0) > 0);
+    try {
+        window.app.visualizer.pushVideoSpectrum(bands, isPlaying, { sourceMode, targetFps: fps });
+        return true;
+    } catch (error) {
+        console.warn('[Visualizer] projectM external spectrum feed failed:', error);
+        return false;
+    }
 }
 
 function scheduleVisualizerTick(delayMs = 0) {
@@ -45172,6 +45491,7 @@ async function runVisualizerTick() {
         if (state.activeMedia !== 'audio') {
             visualizerReleaseFrame = null;
             visualizerReleaseState = null;
+            await feedProjectMExternalSpectrum();
             AnalyzerContainer.analyze(null, false);
         } else if (visualizerIsNative) {
             await drawNativeVisualizerFrame();
@@ -45907,6 +46227,12 @@ function setupVisualizerContextMenu() {
             try {
                 const result = await window.app.visualizer.toggle();
                 visualizerProjectMRunning = !!result?.running;
+                if (visualizerProjectMRunning) {
+                    projectMExternalFeedLastAt = 0;
+                    projectMExternalFeedSentAt = 0;
+                    await feedProjectMExternalSpectrum({ force: true });
+                    startVisualizerLoop();
+                }
                 if (!visualizerProjectMRunning && result?.reason) {
                     const msg = result.reason === 'glibc-mismatch'
                         ? 'projectM görselleştirici bu Flatpak runtime ile uyumlu değil.'

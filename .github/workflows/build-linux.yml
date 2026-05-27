@@ -54,7 +54,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v6
         with:
-          node-version: "20"
+          node-version: "22.12.0"
           cache: "npm"
 
       - name: Install system dependencies
@@ -208,7 +208,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v6
         with:
-          node-version: "20"
+          node-version: "22.12.0"
 
       - name: Auto bump version, push commit and tag
         shell: bash

@@ -354,6 +354,8 @@
             color: var(--muted);
             font-size: 12px;
             font-weight: 700;
+            line-height: 1;
+            white-space: nowrap;
         }
         .listen-stage {
             position: relative;
@@ -519,8 +521,9 @@
             50% { transform: scaleY(1.04); }
         }
         .meter {
+            position: relative;
             width: clamp(220px, 48vw, 560px);
-            height: 10px;
+            height: 5px;
             overflow: hidden;
             background: #0a1018;
             border-radius: 999px;
@@ -528,13 +531,19 @@
             margin-top: 0;
         }
         .meter > div {
-            height: 100%;
+            position: absolute;
+            left: 0;
             width: 100%;
-            background: linear-gradient(90deg, var(--accent), var(--accent2));
+            height: 100%;
             transform: scaleX(0);
             transform-origin: left center;
-            transition: transform .08s linear;
+            transition: transform .035s linear;
             will-change: transform;
+        }
+        .signal-level-bar {
+            inset: 0 auto auto 0;
+            border-radius: 999px;
+            background: linear-gradient(90deg, var(--accent), var(--accent2));
         }
         .hint {
             color: var(--muted);
@@ -726,7 +735,7 @@
                 <button class="icon-btn view-back-btn hidden" id="viewBackBtn" title="Dinlemeye dön" data-i18n-title="listen.actions.backToListen">‹</button>
                 <div class="menu-wrap">
                     <button class="icon-btn menu-btn" id="menuBtn" title="Menü" aria-haspopup="true" aria-expanded="false" data-i18n-title="listen.menu.title" data-i18n-aria-label="listen.menu.title">
-                        <img src="icons/ardali_dawlod_menu.png" alt="">
+                        <img src="icons/app/ardali_dawlod_menu.png" alt="">
                     </button>
                     <div class="menu-popover hidden" id="menuPopover" role="menu">
                         <button type="button" id="preferencesBtn" role="menuitem" data-i18n="listen.menu.preferences">Tercihler</button>
@@ -735,6 +744,7 @@
                         <label class="theme-row">
                             <span>Tema</span>
                             <select id="themeSelect">
+                                <option value="app">Uygulama temasını kullan</option>
                                 <option value="ardali">ArDali</option>
                                 <option value="dark">Karanlık</option>
                                 <option value="black" data-i18n="ui.theme.options.black">Siyah</option>
@@ -752,8 +762,10 @@
         </header>
         <main class="listen-view" id="listenView">
             <div class="meter-row">
-                <span data-i18n="listen.meter.level">Ses düzeyi</span>
-                <div class="meter" aria-hidden="true"><div id="levelBar"></div></div>
+                <span>Kaynak sinyali</span>
+                <div class="meter" aria-hidden="true">
+                    <div id="levelBar" class="signal-level-bar"></div>
+                </div>
             </div>
             <section class="listen-stage">
                 <div class="listen-center">

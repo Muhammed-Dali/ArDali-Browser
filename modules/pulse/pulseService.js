@@ -63,6 +63,11 @@ class PulseService extends EventEmitter {
         super();
         this.app = app;
         this.capture = null;
+        this.previewCapture = null;
+        this.previewBuffer = new SlidingPcmBuffer({ seconds: 4 });
+        this.previewTimer = null;
+        this.previewAudioDevice = '';
+        this.previewDevices = [];
         this.preferences = sanitizePreferences();
         this.buffer = new SlidingPcmBuffer({ seconds: this.preferences.buffer_size_secs });
         this.status = {
@@ -154,6 +159,24 @@ class PulseService extends EventEmitter {
             devices,
             audioDevice: devices.find((device) => device.isDefaultMonitor)?.id || ''
         };
+    }
+
+    findDeviceById(devices, deviceId) {
+        const wanted = String(deviceId || '').trim();
+        if (!wanted) return null;
+        return (Array.isArray(devices) ? devices : []).find((device) => {
+            return String(device?.id || '') === wanted || String(device?.label || '') === wanted;
+        }) || null;
+    }
+
+    shouldAutoSwitchOutputMonitor(requestedDevice, activeDevice, devices) {
+        if (!activeDevice) return false;
+        const requested = String(requestedDevice || '').trim();
+        if (!requested) return true;
+
+        const selected = this.findDeviceById(devices, activeDevice) || this.findDeviceById(devices, requested);
+        if (!selected) return false;
+        return selected.isMonitor === true || selected.isDefaultMonitor === true;
     }
 
     getStatus() {
@@ -347,7 +370,6 @@ class PulseService extends EventEmitter {
             this.emitState();
             return { success: true, status: this.getStatus(), alreadyRunning: true };
         }
-
         const requestedDevice = String(options.audioDevice || '').trim();
         const preferredMonitor = this.getPreferredOutputMonitor();
         const audioDevice = requestedDevice || preferredMonitor.audioDevice || '';
@@ -360,11 +382,28 @@ class PulseService extends EventEmitter {
                 ...(Number.isFinite(requestedBuffer) ? { buffer_size_secs: requestedBuffer } : {})
             });
         }
-        this.autoSwitchOutputMonitor = options.autoSwitchOutputMonitor !== false;
+        this.autoSwitchOutputMonitor = options.autoSwitchOutputMonitor !== false
+            && this.shouldAutoSwitchOutputMonitor(requestedDevice, audioDevice, preferredMonitor.devices);
         if (options.contextMetadata && typeof options.contextMetadata === 'object') {
             this.setContextMetadata(options.contextMetadata);
         }
-        this.capture = new PulseAudioCapture();
+        const canPromotePreview = this.previewCapture?.running && this.previewAudioDevice === audioDevice;
+        const promotedPreviewCapture = canPromotePreview ? this.previewCapture : null;
+        const promotedDevices = canPromotePreview ? this.previewDevices : [];
+        const promotedPreviewLevel = canPromotePreview
+            ? this.previewBuffer.getLevelPercent(480, 2.0)
+            : this.status.levelPercent;
+        if (canPromotePreview) {
+            clearInterval(this.previewTimer);
+            this.previewTimer = null;
+            this.previewCapture = null;
+            this.previewAudioDevice = '';
+            this.previewDevices = [];
+        } else {
+            this.stopLevelPreview();
+        }
+
+        this.capture = promotedPreviewCapture || new PulseAudioCapture();
         this.buffer = new SlidingPcmBuffer({ seconds: this.preferences.buffer_size_secs });
         pulseDebug('startListening', {
             requestedDevice,
@@ -373,7 +412,9 @@ class PulseService extends EventEmitter {
             bufferSize: this.preferences.buffer_size_secs,
             autoSwitchOutputMonitor: this.autoSwitchOutputMonitor
         });
-        const started = this.capture.start({ audioDevice });
+        const started = promotedPreviewCapture
+            ? { success: true, audioDevice, devices: promotedDevices }
+            : this.capture.start({ audioDevice });
         if (!started.success) {
             pulseDebug('capture-start-failed', started.error || 'capture-start-failed');
             this.status = {
@@ -395,7 +436,7 @@ class PulseService extends EventEmitter {
             audioDevice: started.audioDevice,
             lastError: '',
             warning: '',
-            levelPercent: 0,
+            levelPercent: Math.max(0, Math.min(100, Number(promotedPreviewLevel) || 0)),
             startedAt: Date.now(),
             capturedBytes: 0,
             bufferFilledSamples: 0,
@@ -419,6 +460,80 @@ class PulseService extends EventEmitter {
             devices: Array.isArray(started.devices) ? started.devices.length : 0
         });
         return { success: true, status: this.getStatus(), devices: started.devices || [] };
+    }
+
+    startLevelPreview(options = {}) {
+        if (this.capture?.running) {
+            this.stopLevelPreview();
+            return { success: true, skipped: true, running: true };
+        }
+
+        const requestedDevice = String(options.audioDevice || '').trim();
+        const preferredMonitor = this.getPreferredOutputMonitor();
+        const audioDevice = requestedDevice || preferredMonitor.audioDevice || '';
+        if (this.previewCapture?.running && this.previewAudioDevice === audioDevice) {
+            return { success: true, alreadyRunning: true, audioDevice };
+        }
+        this.stopLevelPreview();
+
+        const previewCapture = new PulseAudioCapture();
+        const started = previewCapture.start({ audioDevice });
+        if (!started.success) {
+            this.emit('preview-volume', {
+                percent: 0,
+                audioDevice,
+                error: started.error || 'preview-start-failed'
+            });
+            return { success: false, error: started.error || 'preview-start-failed' };
+        }
+
+        this.previewCapture = previewCapture;
+        this.previewAudioDevice = started.audioDevice;
+        this.previewDevices = started.devices || [];
+        this.previewBuffer = new SlidingPcmBuffer({ seconds: 4 });
+
+        previewCapture.on('samples', (chunk) => {
+            this.previewBuffer.pushF32Buffer(chunk);
+        });
+        previewCapture.on('error', (error) => {
+            this.emit('preview-volume', {
+                percent: 0,
+                audioDevice: this.previewAudioDevice,
+                error: error?.message || String(error)
+            });
+        });
+        previewCapture.on('close', () => {
+            if (this.previewCapture !== previewCapture) return;
+            this.previewCapture = null;
+            this.previewAudioDevice = '';
+            clearInterval(this.previewTimer);
+            this.previewTimer = null;
+            this.emit('preview-volume', { percent: 0, audioDevice: started.audioDevice, stopped: true });
+        });
+
+        this.previewTimer = setInterval(() => {
+            this.emit('preview-volume', {
+                percent: this.previewBuffer.getLevelPercent(480, 2.0),
+                audioDevice: this.previewAudioDevice
+            });
+        }, 60);
+        this.previewTimer.unref?.();
+
+        return { success: true, audioDevice: started.audioDevice, devices: started.devices || [] };
+    }
+
+    stopLevelPreview() {
+        const hadPreview = !!(this.previewCapture || this.previewTimer || this.previewAudioDevice);
+        clearInterval(this.previewTimer);
+        this.previewTimer = null;
+        const stopped = this.previewCapture?.stop() || { success: true, stopped: false };
+        const audioDevice = this.previewAudioDevice;
+        this.previewCapture = null;
+        this.previewAudioDevice = '';
+        this.previewDevices = [];
+        this.previewBuffer = new SlidingPcmBuffer({ seconds: 4 });
+        if (hadPreview) this.emit('preview-volume', { percent: 0, audioDevice, stopped: true });
+        return { success: true, ...stopped };
     }
 
     attachCaptureListeners(capture) {
@@ -462,7 +577,7 @@ class PulseService extends EventEmitter {
         const requestMs = Math.max(6000, this.preferences.request_interval_secs_v3 * 1000);
         pulseDebug('scheduleLoops', {
             requestMs,
-            volumeMs: 160,
+            volumeMs: 80,
             deviceMs: 2500
         });
         this.recognitionTimer = setInterval(() => {
@@ -474,13 +589,13 @@ class PulseService extends EventEmitter {
         }, requestMs);
         this.recognitionTimer.unref?.();
         this.volumeTimer = setInterval(() => {
-            this.status.levelPercent = this.buffer.getLevelPercent(1600, 2.0);
+            this.status.levelPercent = this.buffer.getLevelPercent(800, 2.0);
             this.updateBufferStatus();
             this.emit('volume', {
                 percent: this.status.levelPercent,
                 bufferFillPercent: this.status.bufferFillPercent
             });
-        }, 160);
+        }, 80);
         this.volumeTimer.unref?.();
         this.deviceTimer = setInterval(() => {
             this.switchToCurrentDefaultMonitorIfNeeded();

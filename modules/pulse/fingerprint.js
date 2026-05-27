@@ -37,9 +37,9 @@ class SlidingPcmBuffer {
         return out;
     }
 
-    getLevelPercent(windowSamples = 1600, gain = 1) {
+    getRecentLevelStats(windowSamples = 1600) {
         const count = Math.min(this.filled, Math.max(1, Number(windowSamples) || 320));
-        if (!count) return 0;
+        if (!count) return { peak: 0, rms: 0 };
         let peak = 0;
         let sumSquares = 0;
         for (let i = 0; i < count; i += 1) {
@@ -48,14 +48,33 @@ class SlidingPcmBuffer {
             peak = Math.max(peak, sample);
             sumSquares += sample * sample;
         }
-        const rms = Math.sqrt(sumSquares / count);
+        return {
+            peak,
+            rms: Math.sqrt(sumSquares / count)
+        };
+    }
+
+    getLevelPercent(windowSamples = 1600, gain = 1) {
+        const { peak, rms } = this.getRecentLevelStats(windowSamples);
+        if (!peak && !rms) return 0;
         const visualGain = Math.max(0.1, Math.min(8, Number(gain) || 1));
-        const blended = Math.max(peak * 100, rms * 185) * visualGain;
+        const gainDb = 20 * Math.log10(visualGain);
+        const rmsDb = 20 * Math.log10(Math.max(1e-6, rms)) + gainDb;
+        const peakDb = 20 * Math.log10(Math.max(1e-6, peak)) + gainDb;
+        const toPercent = (db, floorDb, ceilingDb) => {
+            const normalized = (db - floorDb) / (ceilingDb - floorDb);
+            return Math.max(0, Math.min(100, normalized * 100));
+        };
+        const rmsPercent = toPercent(rmsDb, -48, -2);
+        const peakPercent = toPercent(peakDb, -35, -1) * 0.35;
+        const linearPercent = Math.min(100, rms * visualGain * 420);
+        const blended = Math.max((rmsPercent * 0.08) + (linearPercent * 0.92), peakPercent);
         return Math.max(0, Math.min(100, blended));
     }
 
     hasSignal(threshold = 0.003) {
-        return this.getLevelPercent(this.sampleRate / 2, 1) >= threshold * 100;
+        const { peak, rms } = this.getRecentLevelStats(this.sampleRate / 2);
+        return Math.max(peak, rms * 1.8) >= threshold;
     }
 }
 

@@ -22,6 +22,7 @@
         (function () {
             try {
                 const embedded = new URLSearchParams(window.location.search).get('embedded') === '1';
+                if (!embedded) document.documentElement.classList.add('framed-sfx');
                 if (!embedded) return;
                 document.documentElement.classList.add('embedded-sfx');
                 // IMPORTANT: never share the parent's ardali object by reference in embedded mode.
@@ -49,16 +50,24 @@
         <!-- Üst Başlık Barı -->
         <header class="sfx-header">
             <div class="header-left">
-                <img src="icons/ardali_256.png" alt="ArDali" class="header-logo" onerror="this.style.display='none'">
+                <img src="icons/app/ardali_256.png" alt="ArDali" class="header-logo" onerror="this.style.display='none'">
                 <label class="master-toggle">
                     <input type="checkbox" id="masterEffectsToggle" checked>
                     <span class="toggle-slider"></span>
                     <span class="toggle-label" data-i18n="sfx.masterToggle">Ses Efektlerini Etkinleştir</span>
                 </label>
-                <label class="master-toggle sfx-lights-toggle">
-                    <input type="checkbox" id="sfxLightsHeaderToggle" checked>
-                    <span class="toggle-slider"></span>
-                    <span class="toggle-label" data-i18n="ui.sfxLights.toggle">Işık Efekti</span>
+                <label class="sfx-light-mode-control">
+                    <span class="sfx-light-mode-label">Işık Rengi</span>
+                    <select id="sfxLightsModeSelect" class="sfx-light-mode-select" title="Işık rengi">
+                        <option value="rainbow">Rainbow</option>
+                        <option value="cyan">Gök Mavi</option>
+                        <option value="blue">Mavi</option>
+                        <option value="purple">Mor</option>
+                        <option value="green">Yeşil</option>
+                        <option value="amber">Amber</option>
+                        <option value="red">Kırmızı</option>
+                        <option value="off">Kapalı</option>
+                    </select>
                 </label>
             </div>
             <div class="header-right">

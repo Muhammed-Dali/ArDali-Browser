@@ -39,6 +39,18 @@
         return 'medium';
     }
 
+    function normalizeSidebarStyle(value) {
+        const normalized = String(value || '').trim().toLowerCase();
+        if (['classic', 'minimal', 'studio', 'neonpulse', 'vinyldisc', 'monotech', 'crystal', 'retroblock'].includes(normalized)) return normalized;
+        return 'classic';
+    }
+
+    function normalizeSidebarIconScale(value) {
+        const normalized = String(value || '').trim().toLowerCase();
+        if (['x1', 'x2', 'x3', 'x4', 'x5'].includes(normalized)) return normalized;
+        return 'x3';
+    }
+
     const PLAYBACK_SHORTCUT_CODES = new Set([
         'none',
         'F1', 'F2', 'F3', 'F4', 'F5', 'F6',
@@ -368,10 +380,6 @@
         if (elements.behaviorWebMotionPreset) {
             elements.behaviorWebMotionPreset.value = normalizeWebMotionPreset(state.settings?.webUi?.motionPreset || 'balanced');
         }
-        if (elements.behaviorWebPlaybackPowerMode) {
-            const mode = String(state.settings?.webUi?.playbackPowerMode || 'balanced').toLowerCase();
-            elements.behaviorWebPlaybackPowerMode.value = ['balanced', 'smooth', 'battery', 'off'].includes(mode) ? mode : 'balanced';
-        }
         if (elements.behaviorWebLowPowerMode) {
             elements.behaviorWebLowPowerMode.checked = !!state.settings?.webUi?.lowPowerMode;
         }
@@ -595,6 +603,12 @@
         }
         if (elements.uiSfxIconSizeSelect) {
             elements.uiSfxIconSizeSelect.value = normalizeSfxIconSize(state.settings?.appearance?.sfxSidebarIconSize);
+        }
+        if (elements.behaviorSidebarStyle) {
+            elements.behaviorSidebarStyle.value = normalizeSidebarStyle(state.settings?.appearance?.sidebarStyle);
+        }
+        if (elements.behaviorSidebarIconScale) {
+            elements.behaviorSidebarIconScale.value = normalizeSidebarIconScale(state.settings?.appearance?.sidebarIconScale);
         }
         if (elements.uiAutoHardwareProfileToggle) {
             elements.uiAutoHardwareProfileToggle.checked = state.settings?.appearance?.autoHardwareProfile !== false;
@@ -868,6 +882,12 @@
         state.settings.appearance.sfxSidebarIconSize = normalizeSfxIconSize(
             elements.uiSfxIconSizeSelect?.value || state.settings.appearance.sfxSidebarIconSize || 'medium'
         );
+        state.settings.appearance.sidebarStyle = normalizeSidebarStyle(
+            elements.behaviorSidebarStyle?.value || state.settings.appearance.sidebarStyle || 'classic'
+        );
+        state.settings.appearance.sidebarIconScale = normalizeSidebarIconScale(
+            elements.behaviorSidebarIconScale?.value || state.settings.appearance.sidebarIconScale || 'x3'
+        );
         state.settings.appearance.autoHardwareProfile = nextAutoHardwareProfile;
         state.settings.appearance.lowHardwareMode = !!elements.uiLowHardwareModeToggle?.checked;
         if (prevAutoHardwareProfile && !nextAutoHardwareProfile) {
@@ -923,8 +943,6 @@
             || state.settings.webUi.motionPreset
             || 'balanced'
         );
-        const playbackPowerMode = String(elements.behaviorWebPlaybackPowerMode?.value || state.settings.webUi.playbackPowerMode || 'balanced').toLowerCase();
-        state.settings.webUi.playbackPowerMode = ['balanced', 'smooth', 'battery', 'off'].includes(playbackPowerMode) ? playbackPowerMode : 'balanced';
         state.settings.webUi.lowPowerMode = !!elements.behaviorWebLowPowerMode?.checked;
         state.settings.webUi.clearCacheOnQuit = elements.behaviorWebClearCacheOnQuit?.checked !== false;
         state.settings.webUi.clearCookiesOnQuit = elements.behaviorWebClearCookiesOnQuit?.checked === true;

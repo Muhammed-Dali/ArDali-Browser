@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
+  <defs>
+    <linearGradient id="dawlod-shell" x1="9" y1="8" x2="55" y2="56" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#38BDF8"/>
+      <stop offset="0.55" stop-color="#22D3EE"/>
+      <stop offset="1" stop-color="#A78BFA"/>
+    </linearGradient>
+    <linearGradient id="dawlod-bars" x1="15" y1="48" x2="49" y2="48" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#F97316"/>
+      <stop offset="0.25" stop-color="#FACC15"/>
+      <stop offset="0.5" stop-color="#22C55E"/>
+      <stop offset="0.75" stop-color="#38BDF8"/>
+      <stop offset="1" stop-color="#EC4899"/>
+    </linearGradient>
+  </defs>
+  <rect x="8" y="8" width="48" height="48" rx="15" fill="#06111F" stroke="url(#dawlod-shell)" stroke-width="3.5"/>
+  <path d="M16 34c0-10.5 7.2-18 16-18s16 7.5 16 18" stroke="#DCEBFF" stroke-width="5" stroke-linecap="round"/>
+  <rect x="13" y="34" width="8" height="14" rx="4" fill="#071827" stroke="#9FEAFF" stroke-width="3"/>
+  <rect x="43" y="34" width="8" height="14" rx="4" fill="#071827" stroke="#9FEAFF" stroke-width="3"/>
+  <path d="M32 22v16" stroke="#E8F7FF" stroke-width="5" stroke-linecap="round"/>
+  <path d="m23 32 9 9 9-9" stroke="#E8F7FF" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M17 51h30" stroke="url(#dawlod-bars)" stroke-width="5" stroke-linecap="round"/>
+  <path d="M22 45v6M28.5 41v10M35 44v7M41.5 46v5" stroke="url(#dawlod-bars)" stroke-width="4" stroke-linecap="round"/>
+</svg>

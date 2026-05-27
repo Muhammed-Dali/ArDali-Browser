@@ -388,20 +388,37 @@ class ColorKnob {
     
     rainbowColor(t, alpha, sat, val) {
         t = Math.max(0, Math.min(t, 1));
-        if (this.isSfxLightsOff()) {
-            return this.hsvToRgb(195, sat, val, alpha);
-        }
+        const mode = this.getSfxLightMode();
+        if (mode === 'off') return this.hsvToRgb(195, sat, val, alpha);
+        if (mode !== 'rainbow') return this.hsvToRgb(this.getSfxLightHue(mode), sat, val, alpha);
         // float hue = fmod(m_shift * 360.0f + t * 300.0f, 360.0f);
         let hue = (this.shift * 360 + t * 300) % 360;
         return this.hsvToRgb(hue, sat, val, alpha);
     }
 
-    isSfxLightsOff() {
+    getSfxLightMode() {
         try {
-            return document?.documentElement?.dataset?.sfxLights === 'off';
+            const mode = String(document?.documentElement?.dataset?.sfxLights || 'rainbow').toLowerCase();
+            if (['off', 'cyan', 'blue', 'purple', 'green', 'amber', 'red', 'rainbow'].includes(mode)) return mode;
         } catch {
-            return false;
+            // ignore
         }
+        return 'rainbow';
+    }
+
+    getSfxLightHue(mode) {
+        return {
+            cyan: 195,
+            blue: 220,
+            purple: 275,
+            green: 135,
+            amber: 38,
+            red: 4
+        }[mode] ?? 195;
+    }
+
+    isSfxLightsOff() {
+        return this.getSfxLightMode() === 'off';
     }
 
     draw() {

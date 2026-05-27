@@ -35,46 +35,59 @@
                 </button>
                 <button class="sidebar-btn" data-page="video" data-panel="library" title="Videolar" data-i18n-title="sidebar.videos">
                     <svg class="sidebar-glyph" viewBox="0 0 24 24" aria-hidden="true">
-                        <rect x="3" y="6" width="14" height="12" rx="2.5"/>
-                        <path d="M17 10.2 21 8v8l-4-2.2z"/>
+                        <rect x="3.2" y="6.4" width="13.6" height="11.2" rx="3"/>
+                        <path d="M16.8 10.2 21 7.9v8.2l-4.2-2.3z"/>
+                        <circle cx="8" cy="12" r="1.6" class="glyph-dot"/>
                     </svg>
                 </button>
                 <button class="sidebar-btn" data-page="videoTools" data-panel="library" title="Video Düzenleme" data-i18n-title="sidebar.videoTools">
-                    <img class="sidebar-icon-img sidebar-video-tools-icon" src="icons/video_tools_studio.svg" alt="" aria-hidden="true">
+                    <img class="sidebar-icon-img sidebar-video-tools-icon" src="icons/ui/video_tools_studio.svg" alt="" aria-hidden="true">
                     <span class="sidebar-badge hidden" id="videoToolsRecordingBadge" aria-label="Kayıt aktif"></span>
                 </button>
                 <button class="sidebar-btn" data-page="music" data-panel="library" title="Müzik" data-i18n-title="sidebar.music">
                     <svg class="sidebar-glyph" viewBox="0 0 24 24" aria-hidden="true">
-                        <path d="M13.2 5.2v9.4"/>
-                        <path d="M13.2 5.2 19 4v8.6"/>
-                        <circle cx="10.2" cy="16.8" r="2.6"/>
-                        <circle cx="16" cy="15.6" r="2.6"/>
+                        <path d="M14 5v10.8"/>
+                        <path d="M14 5.1 20 4v8.5"/>
+                        <circle cx="10.5" cy="17.2" r="2.9"/>
+                        <circle cx="17" cy="15.8" r="2.9"/>
                     </svg>
                 </button>
                 <button class="sidebar-btn" data-page="gallery" data-panel="library" title="Galeri">
                     <svg class="sidebar-glyph" viewBox="0 0 24 24" aria-hidden="true">
-                        <rect x="3.5" y="5" width="17" height="14" rx="2.6"/>
-                        <circle cx="9.2" cy="10.2" r="1.5"/>
-                        <path d="M6 16.7 10.4 12.4 13.5 15.5 15.9 13.2 18 15.3"/>
+                        <rect x="3.5" y="5" width="17" height="14" rx="3"/>
+                        <circle cx="9" cy="10" r="1.7"/>
+                        <path d="M5.8 16.8 10.2 12.4l3.1 3 2.6-2.6 2.4 2.5"/>
                     </svg>
                 </button>
                 <button class="sidebar-btn" data-page="web" data-panel="web" title="Web" data-i18n-title="sidebar.web">
                     <svg class="sidebar-glyph" viewBox="0 0 24 24" aria-hidden="true">
-                        <circle cx="12" cy="12" r="8.4"/>
-                        <ellipse cx="12" cy="12" rx="3.7" ry="8.4"/>
-                        <path d="M3.6 12h16.8"/>
+                        <circle cx="12" cy="12" r="8.5"/>
+                        <ellipse cx="12" cy="12" rx="4" ry="8.5"/>
+                        <path d="M3.7 12h16.6"/>
+                        <path d="M5.3 8.1h13.4M5.3 15.9h13.4"/>
                     </svg>
                 </button>
                 <button class="sidebar-btn" data-page="pulse" data-panel="pulse" title="Dinle">
                     <svg class="sidebar-glyph" viewBox="0 0 24 24" aria-hidden="true">
-                        <path d="M4.5 13.2v2.6M7.8 11.6v5.2M11.1 9.4v9.6M14.4 10.8v6.9M17.7 12.2v4.2"/>
-                        <path d="M5.2 7.6a8.1 8.1 0 0 1 13.6 0"/>
+                        <path d="M4.8 13.2v3M8.3 11.2v6.4M12 8.8v11M15.7 11.2v6.4M19.2 13.2v3"/>
+                        <path d="M5.3 7.8a8 8 0 0 1 13.4 0"/>
+                        <path d="M8.1 8.9a4.9 4.9 0 0 1 7.8 0"/>
                     </svg>
                 </button>
                 <button class="sidebar-btn ardali-dawlod-btn" id="ardaliDawlodBtn" title="ArDali Dawlod" aria-label="ArDali Dawlod">
-                    <img class="sidebar-icon-img ardali-dawlod-icon" src="icons/ardali_dawlod.png" alt="" aria-hidden="true">
+                    <img class="sidebar-icon-img ardali-dawlod-icon" src="icons/ui/sidebar-dawlod-premium.svg" alt="" aria-hidden="true">
                 </button>
-                <div class="sidebar-web-quick-actions" id="sidebarWebQuickActions" aria-label="Web hızlı kontroller"></div>
+                <div class="sidebar-web-quick-actions" id="sidebarWebQuickActions" aria-label="Medya hızlı kontroller">
+                    <div class="web-utility-actions-home" id="webUtilityActionsHome">
+                        <button class="control-btn eq-btn-player" id="eqBtn" title="Ses Efektleri (EQ)" data-i18n-title="controls.eq">
+                            <img class="sound-effects-icon" src="icons/ui/sound-effects.svg" alt="" aria-hidden="true">
+                        </button>
+                        <button class="control-btn eq-btn-player" id="visualizer-btn" title="Görsel" data-i18n-title="controls.visual">
+                            <img class="visualizer-spectrum-icon" src="icons/ui/visualizer-spectrum.svg" alt="" aria-hidden="true">
+                            <span class="visually-hidden" data-i18n="controls.visual">Görsel</span>
+                        </button>
+                    </div>
+                </div>
 	            </div>
 	            <div class="sidebar-bottom">
 <button class="sidebar-btn" id="settingsBtn" title="Ayarlar" data-i18n-title="sidebar.settings">
@@ -231,47 +244,47 @@
 	                </div>
 	                <div class="web-platforms">
 	                    <button class="platform-btn" data-url="https://music.youtube.com/" data-platform="ytmusic">
-	                        <img src="icons/youtube_music.svg" alt="YT Music">
+	                        <img src="icons/platforms/youtube_music.svg" alt="YT Music">
 	                        <span>YouTube Music</span>
                     </button>
                     <button class="platform-btn" data-url="https://www.youtube.com/" data-platform="youtube">
-                        <img src="icons/youtube_modern.svg" alt="YouTube">
+                        <img src="icons/platforms/youtube_modern.svg" alt="YouTube">
                         <span>YouTube</span>
                     </button>
                     <button class="platform-btn" data-url="https://www.deezer.com/" data-platform="deezer">
-                        <img src="icons/deezer.svg" alt="Deezer">
+                        <img src="icons/platforms/deezer.svg" alt="Deezer">
                         <span>Deezer</span>
                     </button>
                     <button class="platform-btn" data-url="https://soundcloud.com/" data-platform="soundcloud">
-                        <img src="icons/soundcloud.svg" alt="SoundCloud">
+                        <img src="icons/platforms/soundcloud.svg" alt="SoundCloud">
                         <span>SoundCloud</span>
                     </button>
                     <button class="platform-btn" data-url="https://www.facebook.com/" data-platform="facebook">
-                        <img src="icons/facebook.svg" alt="Facebook">
+                        <img src="icons/platforms/facebook.svg" alt="Facebook">
                         <span>Facebook</span>
                     </button>
                     <button class="platform-btn" data-url="https://www.instagram.com/" data-platform="instagram">
-                        <img src="icons/instagram.svg" alt="Instagram">
+                        <img src="icons/platforms/instagram.svg" alt="Instagram">
                         <span>Instagram</span>
                     </button>
                     <button class="platform-btn" data-url="https://www.tiktok.com/" data-platform="tiktok">
-                        <img src="icons/tiktok.svg" alt="TikTok">
+                        <img src="icons/platforms/tiktok.svg" alt="TikTok">
                         <span>TikTok</span>
                     </button>
                     <button class="platform-btn" data-url="https://x.com/" data-platform="x">
-                        <img src="icons/x.svg" alt="X">
+                        <img src="icons/platforms/x.svg" alt="X">
                         <span>X</span>
                     </button>
                     <button class="platform-btn" data-url="https://www.reddit.com/" data-platform="reddit">
-                        <img src="icons/reddit.svg" alt="Reddit">
+                        <img src="icons/platforms/reddit.svg" alt="Reddit">
                         <span>Reddit</span>
                     </button>
                     <button class="platform-btn" data-url="https://www.twitch.tv/" data-platform="twitch">
-                        <img src="icons/twitch.svg" alt="Twitch">
+                        <img src="icons/platforms/twitch.svg" alt="Twitch">
                         <span>Twitch</span>
                     </button>
                     <button class="platform-btn" data-url="https://web.telegram.org/" data-platform="telegram">
-                        <img src="icons/telegram.svg" alt="Telegram">
+                        <img src="icons/platforms/telegram.svg" alt="Telegram">
                         <span>Telegram</span>
                     </button>
                     <div class="pulse-found-section hidden" id="pulseFoundSection">
@@ -349,7 +362,7 @@
                     </select>
                 </div>
                 <button class="nav-btn" id="adblockBtn" title="ArDali Kontrol Panelini Aç">
-                    <img class="nav-icon-img" src="icons/deliblock.svg" alt="DeliBlock">
+                    <img class="nav-icon-img" src="icons/ui/deliblock.svg" alt="DeliBlock">
                     <span class="nav-badge hidden" id="adblockBlockedBadge">0</span>
                 </button>
                 <div class="nav-platform-strip" id="navPlatformStrip" aria-label="Web platform kısayolları">
@@ -1534,6 +1547,30 @@
                                                     <option value="lively" data-i18n="ui.startup.webMotionPreset.options.lively">Canlı</option>
                                                 </select>
                                             </div>
+                                            <div class="setting-row">
+                                                <span>Kenar bar görünümü</span>
+                                                <select class="settings-select" id="behaviorSidebarStyle">
+                                                    <option value="classic">Klasik Simgeler</option>
+                                                    <option value="minimal">Modern Çizgi</option>
+                                                    <option value="studio">Medya Stüdyo</option>
+                                                    <option value="neonpulse">Neon Pulse</option>
+                                                    <option value="vinyldisc">Vinyl Disk</option>
+                                                    <option value="monotech">Mono Tech</option>
+                                                    <option value="crystal">Kristal Cam</option>
+                                                    <option value="retroblock">Retro Blok</option>
+                                                </select>
+                                            </div>
+                                            <div class="setting-row">
+                                                <span>Kenar bar ikon boyutu</span>
+                                                <select class="settings-select" id="behaviorSidebarIconScale">
+                                                    <option value="x1">X1 - Küçük</option>
+                                                    <option value="x2">X2 - Kompakt</option>
+                                                    <option value="x3">X3 - Normal</option>
+                                                    <option value="x4">X4 - Büyük</option>
+                                                    <option value="x5">X5 - Çok Büyük</option>
+                                                </select>
+                                            </div>
+                                            <div class="settings-sub">Sol bardaki ana ikonların ve web hızlı ikonlarının boyutunu değiştirir.</div>
                                             <label class="checkbox-label">
                                                 <input type="checkbox" id="uiSidebarMotionToggle" checked>
                                                 <span data-i18n="ui.sidebarMotion.toggle">Yan Bar Animasyonu</span>
@@ -2295,19 +2332,6 @@
                         </button>
                     </div>
                     <div class="controls-right" id="playerControlsRight">
-                        <div class="web-utility-actions-home" id="webUtilityActionsHome">
-                            <button class="control-btn eq-btn-player" id="eqBtn" title="Ses Efektleri (EQ)" data-i18n-title="controls.eq">
-                                <svg viewBox="0 0 24 24" fill="currentColor">
-                                    <path d="M3 17v2h6v-2H3zM3 5v2h10V5H3zm10 16v-2h8v-2h-8v-2h-2v6h2zM7 9v2H3v2h4v2h2V9H7zm14 4v-2H11v2h10zm-6-4h2V7h4V5h-4V3h-2v6z"/>
-                                </svg>
-                            </button>
-                            <button class="control-btn eq-btn-player" id="visualizer-btn" title="Görsel" data-i18n-title="controls.visual">
-                                <svg viewBox="0 0 24 24" fill="currentColor">
-                                    <path d="M4 19h2V5H4v14zm4 0h2V9H8v10zm4 0h2V3h-2v16zm4 0h2V7h-2v12z"/>
-                                </svg>
-                                <span class="visually-hidden" data-i18n="controls.visual">Görsel</span>
-                            </button>
-                        </div>
                         <button class="control-btn" id="volumeBtn" title="Ses" data-i18n-title="controls.volume">
                             <svg viewBox="0 0 24 24" fill="currentColor" id="volumeIcon"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/></svg>
                         </button>
@@ -2320,7 +2344,7 @@
                 <div class="player-bottom">
                     <!-- Kapak Resmi -->
                     <div class="cover-section" id="coverSection">
-                        <img src="icons/ardali_256.png" alt="Cover" id="coverArt" onerror="this.src='icons/ardali_256.png'">
+                        <img src="icons/app/ardali_256.png" alt="Cover" id="coverArt" onerror="this.src='icons/app/ardali_256.png'">
                     </div>
                     <!-- Visualizer -->
                     <div class="visualizer" id="visualizer">
@@ -2707,7 +2731,7 @@
     <div class="modal-overlay hidden" id="aboutModalOverlay" role="presentation">
         <div class="about-modal glass-card" role="dialog" aria-modal="true" aria-labelledby="aboutTitle">
             <div class="about-header">
-                <img class="about-logo" src="icons/ardali_256.png" alt="ArDali" onerror="this.style.display='none'">
+                <img class="about-logo" src="icons/app/ardali_256.png" alt="ArDali" onerror="this.style.display='none'">
                 <div class="about-title-wrap">
                     <div class="about-title" id="aboutTitle" data-i18n="about.title">ArDali Medya Player</div>
                     <div class="about-subtitle" data-i18n="about.version">Versiyon: 2.0.0 - Kararlı Sürüm</div>

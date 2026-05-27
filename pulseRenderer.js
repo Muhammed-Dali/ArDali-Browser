@@ -11,6 +11,7 @@ const els = {
     refresh: $('refreshBtn'),
     status: $('statusText'),
     level: $('levelBar'),
+    previewLevel: $('levelBar'),
     hint: $('hintText'),
     results: $('results'),
     menu: $('menuBtn'),
@@ -47,6 +48,9 @@ let renderedListenTitle = '';
 let renderedListenSub = '';
 let renderedHint = '';
 let renderedLevel = -1;
+let renderedPreviewLevel = -1;
+let previewRestartTimer = null;
+let startingListen = false;
 const visibleResultKeys = new Set();
 let preferences = {
     open_platform: 'youtube',
@@ -93,14 +97,27 @@ function setListenCopyKey(titleKey, titleFallback, subKey, subFallback, vars) {
     setListenCopy(t(titleKey, titleFallback, vars), t(subKey, subFallback, vars));
 }
 
+function normalizeTheme(value, fallback = 'black') {
+    const rawTheme = String(value || fallback).trim().toLowerCase();
+    return rawTheme === 'github' ? 'light' : (rawTheme || fallback);
+}
+
+function getAppTheme() {
+    return normalizeTheme(localStorage.getItem('ardali_ui_theme') || localStorage.getItem('theme') || 'black');
+}
+
+function getPulseThemePreference() {
+    return normalizeTheme(localStorage.getItem('ardaliPulseTheme') || 'app', 'app');
+}
+
 function applyTheme(theme, options = {}) {
-    const rawTheme = String(theme || 'black').trim().toLowerCase();
-    const nextTheme = rawTheme === 'github' ? 'light' : (rawTheme || 'black');
+    const requestedTheme = normalizeTheme(theme || 'app', 'app');
+    const followsAppTheme = requestedTheme === 'app';
+    const nextTheme = followsAppTheme ? getAppTheme() : requestedTheme;
     const commitTheme = () => {
         document.documentElement.setAttribute('theme', nextTheme);
-        localStorage.setItem('ardaliPulseTheme', nextTheme);
-        localStorage.setItem('theme', nextTheme);
-        if (els.themeSelect) els.themeSelect.value = nextTheme;
+        localStorage.setItem('ardaliPulseTheme', requestedTheme);
+        if (els.themeSelect) els.themeSelect.value = requestedTheme;
     };
 
     const prefersReducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches;
@@ -200,12 +217,57 @@ function setHint(text) {
     if (els.hint) els.hint.textContent = '';
 }
 
-function setLevel(percent) {
+function setMeterTransform(el, scale, instant = false) {
+    if (!el) return;
+    if (!instant) {
+        el.style.transform = `scaleX(${scale})`;
+        return;
+    }
+    const previousTransition = el.style.transition;
+    el.style.transition = 'none';
+    el.style.transform = `scaleX(${scale})`;
+    el.getBoundingClientRect();
+    el.style.transition = previousTransition;
+}
+
+function setLevel(percent, options = {}) {
     if (!els.level) return;
     const next = Math.max(0, Math.min(100, Math.round(Number(percent) || 0)));
-    if (Math.abs(next - renderedLevel) < 1) return;
+    if (Math.abs(next - renderedLevel) < 2.5) return;
     renderedLevel = next;
-    els.level.style.transform = `scaleX(${next / 100})`;
+    if (els.previewLevel === els.level) renderedPreviewLevel = next;
+    setMeterTransform(els.level, next / 100, options.instant === true);
+}
+
+function setPreviewLevel(percent, options = {}) {
+    if (!els.previewLevel) return;
+    const next = Math.max(0, Math.min(100, Math.round(Number(percent) || 0)));
+    if (Math.abs(next - renderedPreviewLevel) < 2.5) return;
+    renderedPreviewLevel = next;
+    if (els.previewLevel === els.level) renderedLevel = next;
+    setMeterTransform(els.previewLevel, next / 100, options.instant === true);
+}
+
+async function stopLevelPreview(options = {}) {
+    clearTimeout(previewRestartTimer);
+    previewRestartTimer = null;
+    if (options.reset !== false) setPreviewLevel(0, { instant: true });
+    await window.ardali?.pulse?.stopLevelPreview?.().catch(() => null);
+}
+
+function scheduleLevelPreview() {
+    clearTimeout(previewRestartTimer);
+    previewRestartTimer = setTimeout(async () => {
+        previewRestartTimer = null;
+        if (running || !els.device || els.device.disabled) return;
+        const audioDevice = els.device.value || '';
+        if (!audioDevice) {
+            setPreviewLevel(0);
+            return;
+        }
+        const res = await window.ardali?.pulse?.startLevelPreview?.({ audioDevice }).catch(() => null);
+        if (!res?.success) setPreviewLevel(0);
+    }, 180);
 }
 
 function translateStaticPage() {
@@ -437,6 +499,7 @@ async function refreshDevices() {
         (res?.devices || []).length ? 'listen.status.ready' : 'listen.status.noDevice',
         (res?.devices || []).length ? 'Hazır' : 'Cihaz bulunamadı'
     );
+    scheduleLevelPreview();
 }
 
 function createResultArt(coverUrl) {
@@ -538,14 +601,19 @@ function openResultInApp(result = {}) {
 }
 
 async function start() {
+    const previewLevel = renderedPreviewLevel > 0 ? renderedPreviewLevel : 0;
+    if (previewLevel > 0) setLevel(previewLevel, { instant: true });
     const audioDevice = els.device.value || '';
+    startingListen = true;
     const res = await window.ardali?.pulse?.startListening?.({
         audioDevice,
         autoSwitchOutputMonitor: true
-    });
+    }).catch((error) => ({ success: false, error: error?.message || String(error) }));
+    startingListen = false;
     if (!res?.success) {
         setStatusKey('listen.status.startFailed', 'Başlatılamadı: {error}', { error: res?.error || t('listen.status.unknownError', 'bilinmeyen hata') });
         setRunningState(false);
+        scheduleLevelPreview();
         return;
     }
     setRunningState(true);
@@ -563,7 +631,7 @@ async function stop() {
     await window.ardali?.pulse?.stopListening?.();
     setRunningState(false);
     setStatusKey('listen.status.stopped', 'Durduruldu');
-    setLevel(0);
+    scheduleLevelPreview();
 }
 
 async function toggleBigListen() {
@@ -578,6 +646,10 @@ els.bigListen?.addEventListener('click', toggleBigListen);
 els.start?.addEventListener('click', start);
 els.stop?.addEventListener('click', stop);
 els.refresh?.addEventListener('click', refreshDevices);
+els.device?.addEventListener('change', () => {
+    setPreviewLevel(0);
+    scheduleLevelPreview();
+});
 els.menu?.addEventListener('click', (event) => {
     event.stopPropagation();
     setMenuOpen(els.menuPopover?.classList.contains('hidden'));
@@ -640,9 +712,15 @@ document.addEventListener('keydown', (event) => {
     setMenuOpen(false);
     showView('listen');
 });
+window.addEventListener('beforeunload', () => {
+    window.ardali?.pulse?.stopLevelPreview?.();
+});
 
 window.ardali?.onSettingsReload?.((nextSettings) => {
     const nextLang = String(nextSettings?.ui?.language || '').trim();
+    const nextTheme = String(nextSettings?.appearance?.theme || '').trim();
+    if (nextTheme) localStorage.setItem('ardali_ui_theme', normalizeTheme(nextTheme));
+    if (getPulseThemePreference() === 'app') applyTheme('app');
     if (nextLang && window.i18n?.setLanguage) {
         window.i18n.setLanguage(nextLang, { skipPersist: true })
             .then(refreshLocalizedUi)
@@ -654,7 +732,12 @@ window.ardali?.onSettingsReload?.((nextSettings) => {
 
 window.i18n?.onChange?.(refreshLocalizedUi);
 
-applyTheme(localStorage.getItem('ardaliPulseTheme') || localStorage.getItem('theme') || 'black');
+window.addEventListener('storage', (event) => {
+    if (!['ardali_ui_theme', 'theme'].includes(String(event.key || ''))) return;
+    if (getPulseThemePreference() === 'app') applyTheme('app');
+});
+
+applyTheme(getPulseThemePreference());
 
 initLanguage()
     .then(refreshLocalizedUi)
@@ -687,7 +770,7 @@ window.ardali?.pulse?.onState?.((state) => {
     } else {
         setStatusKey('listen.status.ready', 'Hazır');
     }
-    if (typeof state?.levelPercent === 'number') {
+    if (state?.running && typeof state?.levelPercent === 'number' && !(startingListen && state.levelPercent === 0 && renderedLevel > 0)) {
         setLevel(state.levelPercent);
     }
 });
@@ -701,7 +784,7 @@ window.ardali?.pulse?.onResult?.(async (result) => {
     if (preferences.auto_stop_on_result !== false) {
         await window.ardali?.pulse?.stopListening?.();
         setRunningState(false);
-        setLevel(0);
+        scheduleLevelPreview();
     }
     setStatusKey('listen.status.found', 'Eşleşme bulundu');
     setListenCopyKey(
@@ -727,6 +810,9 @@ window.ardali?.pulse?.onVolume?.((payload) => {
             { percent: fill }
         );
     }
+});
+window.ardali?.pulse?.onPreviewVolume?.((payload) => {
+    if (!running && !startingListen) setPreviewLevel(payload?.percent);
 });
 window.ardali?.pulse?.onUncertain?.((payload) => {
     const reason = String(payload?.reason || '').trim();

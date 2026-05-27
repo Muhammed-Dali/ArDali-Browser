@@ -465,6 +465,30 @@
                                                     <option value="web" data-i18n="settings.library.startupPage.options.web">Web</option>
                                                 </select>
                                             </div>
+                                            <div class="setting-row">
+                                                <span>Kenar bar görünümü</span>
+                                                <select class="settings-select" id="behaviorSidebarStyle">
+                                                    <option value="classic">Klasik Simgeler</option>
+                                                    <option value="minimal">Modern Çizgi</option>
+                                                    <option value="studio">Medya Stüdyo</option>
+                                                    <option value="neonpulse">Neon Pulse</option>
+                                                    <option value="vinyldisc">Vinyl Disk</option>
+                                                    <option value="monotech">Mono Tech</option>
+                                                    <option value="crystal">Kristal Cam</option>
+                                                    <option value="retroblock">Retro Blok</option>
+                                                </select>
+                                            </div>
+                                            <div class="setting-row">
+                                                <span>Kenar bar ikon boyutu</span>
+                                                <select class="settings-select" id="behaviorSidebarIconScale">
+                                                    <option value="x1">X1 - Küçük</option>
+                                                    <option value="x2">X2 - Kompakt</option>
+                                                    <option value="x3">X3 - Normal</option>
+                                                    <option value="x4">X4 - Büyük</option>
+                                                    <option value="x5">X5 - Çok Büyük</option>
+                                                </select>
+                                            </div>
+                                            <div class="settings-sub">Sol bardaki ana ikonların ve web hızlı ikonlarının boyutunu değiştirir.</div>
                                             <label class="checkbox-label">
                                                 <input type="checkbox" id="behaviorCloseToTray" checked>
                                                 <span data-i18n="ui.startup.closeToTray">Pencereyi kapatınca sistem tepsisine küçült</span>
@@ -711,20 +735,6 @@
                                         </div>
                                         <div class="settings-group">
                                             <h4 data-i18n="settings.web.sections.performance">Performans</h4>
-                                            <div class="setting-row">
-                                                <span class="web-setting-row-title">
-                                                    <span class="web-setting-icon web-setting-icon-battery-charge" aria-hidden="true"></span>
-                                                    <span data-i18n="settings.web.playbackPowerMode">Pilde web/video oynatma</span>
-                                                </span>
-                                                <select class="settings-select" id="behaviorWebPlaybackPowerMode">
-                                                    <option value="balanced" data-i18n="settings.web.playbackPowerMode.balanced">Dengeli (önerilen)</option>
-                                                    <option value="smooth" data-i18n="settings.web.playbackPowerMode.smooth">Akıcılık öncelikli</option>
-                                                    <option value="battery" data-i18n="settings.web.playbackPowerMode.battery">Pil tasarrufu öncelikli</option>
-                                                    <option value="off" data-i18n="settings.web.playbackPowerMode.off">Kapalı</option>
-                                                </select>
-                                            </div>
-                                            <div class="settings-sub" id="webPlaybackPowerModeHint" data-i18n="settings.web.playbackPowerMode.hint">Dengeli mod pilde oynatma sırasında takılmayı azaltır, oynatma durunca sistem güç profiline geri döner.</div>
-                                            <div class="settings-sub" id="webPlaybackPowerLiveStatus">Şu anki güç durumu okunuyor...</div>
                                             <label class="checkbox-label">
                                                 <input type="checkbox" id="behaviorWebBackgroundThrottle" checked>
                                                 <span class="web-setting-icon web-setting-icon-battery" aria-hidden="true"></span>

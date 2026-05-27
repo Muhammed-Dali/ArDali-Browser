@@ -108,8 +108,8 @@ modules:
       - install -Dm755 packaging/flatpak/ardali-wrapper.sh /app/bin/com.ardali.mediaplayer
       - install -Dm644 packaging/linux/com.ardali.mediaplayer.desktop /app/share/applications/com.ardali.mediaplayer.desktop
       - install -Dm644 packaging/appstream/com.ardali.mediaplayer.metainfo.xml /app/share/metainfo/com.ardali.mediaplayer.metainfo.xml
-      - install -Dm644 icons/ardali_512.png /app/share/icons/hicolor/512x512/apps/com.ardali.mediaplayer.png
-      - install -Dm644 icons/ardali_256.png /app/share/icons/hicolor/256x256/apps/com.ardali.mediaplayer.png
+      - install -Dm644 icons/app/ardali_512.png /app/share/icons/hicolor/512x512/apps/com.ardali.mediaplayer.png
+      - install -Dm644 icons/app/ardali_256.png /app/share/icons/hicolor/256x256/apps/com.ardali.mediaplayer.png
     sources:
       - type: dir
         path: ../../

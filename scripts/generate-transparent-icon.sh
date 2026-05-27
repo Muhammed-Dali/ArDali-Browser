@@ -2,8 +2,8 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-SRC="$ROOT_DIR/icons/ardali_alt_boldA_1024.png"
-OUT="$ROOT_DIR/icons/ardali_alt_boldA_transparent_1024.png"
+SRC="$ROOT_DIR/icons/app/ardali_alt_boldA_1024.png"
+OUT="$ROOT_DIR/icons/app/ardali_alt_boldA_transparent_1024.png"
 
 if command -v magick >/dev/null 2>&1; then
   magick "$SRC" \

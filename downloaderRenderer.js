@@ -189,7 +189,8 @@ const DOWNLOADER_LOCALES = {
         'status.urlRequiredDetail': 'Enter a supported video link.',
         'theme.dark': 'Dark',
         'theme.black': 'Black',
-        'theme.light': 'Light'
+        'theme.light': 'Light',
+        'theme.app': 'Use app theme'
     },
     'tr-TR': {
         'common.auto': 'Otomatik',
@@ -378,7 +379,8 @@ const DOWNLOADER_LOCALES = {
         'status.urlRequiredDetail': 'Lütfen desteklenen bir video bağlantısı girin',
         'theme.dark': 'Karanlık',
         'theme.black': 'Siyah',
-        'theme.light': 'Aydınlık'
+        'theme.light': 'Aydınlık',
+        'theme.app': 'Uygulama temasını kullan'
     },
     'ar-SA': {}
 };
@@ -560,7 +562,8 @@ Object.assign(DOWNLOADER_LOCALES['ar-SA'], DOWNLOADER_LOCALES['en-US'], {
     'status.urlRequiredDetail': 'أدخل رابط فيديو مدعوما.',
     'theme.dark': 'داكن',
     'theme.black': 'أسود',
-    'theme.light': 'فاتح'
+    'theme.light': 'فاتح',
+    'theme.app': 'استخدم سمة التطبيق'
 });
 
 let currentDownloaderLang = 'en-US';
@@ -644,6 +647,9 @@ async function initDownloaderLanguage() {
     setDownloaderLanguage(lang || navigator.language);
     window.ardali?.onSettingsReload?.((settings) => {
         const nextLang = settings?.ui?.language || settings?.language || settings?.lang;
+        const nextTheme = String(settings?.appearance?.theme || '').trim();
+        if (nextTheme) localStorage.setItem('ardali_ui_theme', normalizeTheme(nextTheme));
+        if (getDownloaderThemePreference() === 'app') applyTheme('app');
         if (nextLang) setDownloaderLanguage(nextLang);
     });
 }
@@ -1123,14 +1129,32 @@ function setMenuOpen(open) {
     els.menuBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
 }
 
+function normalizeTheme(value, fallback = 'black') {
+    const rawTheme = String(value || fallback).trim().toLowerCase();
+    if (rawTheme === 'github') return 'light';
+    if (rawTheme === 'performance-lite') return 'dark';
+    if (rawTheme === 'performance-balanced') return 'ardali';
+    return rawTheme || fallback;
+}
+
+function getAppTheme() {
+    return normalizeTheme(localStorage.getItem('ardali_ui_theme') || localStorage.getItem('theme') || 'black');
+}
+
+function getDownloaderThemePreference() {
+    const preferenceVersion = localStorage.getItem('ardaliDawlodThemePreferenceVersion');
+    if (preferenceVersion !== '2') return 'app';
+    return normalizeTheme(localStorage.getItem('ardaliDawlodTheme') || state.settings?.theme || 'app', 'app');
+}
+
 function applyTheme(theme, options = {}) {
-    const rawTheme = String(theme || 'black');
-    const nextTheme = rawTheme === 'github' ? 'light' : rawTheme;
+    const requestedTheme = normalizeTheme(theme || 'app', 'app');
+    const nextTheme = requestedTheme === 'app' ? getAppTheme() : requestedTheme;
     const commitTheme = () => {
         document.documentElement.setAttribute('theme', nextTheme);
-        localStorage.setItem('ardaliDawlodTheme', nextTheme);
-        localStorage.setItem('theme', nextTheme);
-        if (els.themeSelect) els.themeSelect.value = nextTheme;
+        localStorage.setItem('ardaliDawlodTheme', requestedTheme);
+        localStorage.setItem('ardaliDawlodThemePreferenceVersion', '2');
+        if (els.themeSelect) els.themeSelect.value = requestedTheme;
     };
 
     const prefersReducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches;
@@ -1160,9 +1184,14 @@ function applyTheme(theme, options = {}) {
     }).catch(() => {});
 }
 
+window.addEventListener('storage', (event) => {
+    if (!['ardali_ui_theme', 'theme'].includes(String(event.key || ''))) return;
+    if (getDownloaderThemePreference() === 'app') applyTheme('app');
+});
+
 async function saveThemeSetting(theme) {
     applyTheme(theme, { animate: true });
-    state.settings = await api.saveSettings({ theme });
+    state.settings = await api.saveSettings({ theme: normalizeTheme(theme || 'app', 'app') });
 }
 
 function renderDependencyStatus(status) {
@@ -1321,7 +1350,7 @@ function syncCompressorDropPreview() {
 
     const count = state.compressorFiles.length;
     if (els.compressorDropThumb) {
-        els.compressorDropThumb.src = state.compressorThumbs.get(firstFile) || 'icons/fallback_video.svg';
+        els.compressorDropThumb.src = state.compressorThumbs.get(firstFile) || 'icons/ui/fallback_video.svg';
     }
     if (els.compressorDropTitle) {
         els.compressorDropTitle.textContent = getBasename(firstFile);
@@ -1358,7 +1387,7 @@ function renderCompressorFiles() {
         `;
         row.querySelector('strong').textContent = getBasename(filePath);
         row.querySelector('span').textContent = filePath;
-        row.querySelector('.compressor-file-thumb').src = state.compressorThumbs.get(filePath) || 'icons/fallback_video.svg';
+        row.querySelector('.compressor-file-thumb').src = state.compressorThumbs.get(filePath) || 'icons/ui/fallback_video.svg';
         row.querySelector('button').addEventListener('click', () => {
             state.compressorThumbs.delete(filePath);
             state.compressorFiles.splice(index, 1);
@@ -1403,7 +1432,7 @@ async function syncJobThumbnailFromSource(row, sourcePath) {
 function setJobThumbnail(row, src) {
     const img = row?.querySelector?.('.job-thumb');
     if (!img) return;
-    const fallback = 'icons/ardali_dawlod.png';
+    const fallback = 'icons/app/ardali_dawlod.png';
     const nextSrc = String(src || '').trim() || fallback;
     img.onerror = () => {
         img.onerror = null;
@@ -1602,7 +1631,7 @@ function createOrUpdateJob(payload) {
     row.querySelector('.job-title').textContent = payload.title || dlt('action.download');
     row.querySelector('.job-state').textContent = formatJobState(payload, percent);
     row.querySelector('.job-detail').textContent = payload.detail || '';
-    setJobThumbnail(row, payload.thumbnail || (sourcePath ? (state.compressorThumbs.get(sourcePath) || 'icons/fallback_video.svg') : 'icons/ardali_dawlod.png'));
+    setJobThumbnail(row, payload.thumbnail || (sourcePath ? (state.compressorThumbs.get(sourcePath) || 'icons/ui/fallback_video.svg') : 'icons/app/ardali_dawlod.png'));
     row.querySelector('.job-type').textContent = payload.mode === 'audio' || payload.mode === 'extract' ? dlt('mode.audio') : dlt('mode.video');
     row.querySelector('.job-percent').textContent = formatJobPercent(percent);
     row.querySelector('.progress-fill').style.width = row.classList.contains('indeterminate') ? '34%' : `${percent}%`;
@@ -1759,7 +1788,7 @@ function renderHistory() {
                 <button class="ghost delete-history-btn">${dlt('action.clear')}</button>
             </div>
         `;
-        row.querySelector('.history-thumb').src = item.thumbnail || 'icons/ardali_dawlod.png';
+        row.querySelector('.history-thumb').src = item.thumbnail || 'icons/app/ardali_dawlod.png';
         row.querySelector('.history-title').textContent = item.title || dlt('action.download');
         const meta = row.querySelector('.history-meta');
         const metaParts = [
@@ -1837,7 +1866,7 @@ async function init() {
     state.compressorOutputDir = String(state.settings.compressorOutputDir || '');
     await refreshDependencyStatus();
     setPlaylistMode('playlist-video');
-    applyTheme(state.settings.theme || localStorage.getItem('ardaliDawlodTheme') || localStorage.getItem('theme') || 'black');
+    applyTheme(getDownloaderThemePreference());
 
     els.minimizeBtn.addEventListener('click', () => electronApi?.minimizeWindow());
     els.maximizeBtn.addEventListener('click', () => electronApi?.maximizeWindow());

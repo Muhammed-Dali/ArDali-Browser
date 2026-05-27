@@ -319,19 +319,36 @@ class RainbowSlider {
     }
     
     colorAtRatio(r, alpha = 255, s = 220, v = 255) {
-        if (this.isSfxLightsOff()) {
-            return this.hsvToRgb(195, 220, 255, alpha);
-        }
+        const mode = this.getSfxLightMode();
+        if (mode === 'off') return this.hsvToRgb(195, 220, 255, alpha);
+        if (mode !== 'rainbow') return this.hsvToRgb(this.getSfxLightHue(mode), s, v, alpha);
         let hue = (this.shift * 360.0 + Math.max(0, Math.min(r, 1)) * 300.0) % 360.0;
         return this.hsvToRgb(hue, s, v, alpha);
     }
 
-    isSfxLightsOff() {
+    getSfxLightMode() {
         try {
-            return document?.documentElement?.dataset?.sfxLights === 'off';
+            const mode = String(document?.documentElement?.dataset?.sfxLights || 'rainbow').toLowerCase();
+            if (['off', 'cyan', 'blue', 'purple', 'green', 'amber', 'red', 'rainbow'].includes(mode)) return mode;
         } catch {
-            return false;
+            // ignore
         }
+        return 'rainbow';
+    }
+
+    getSfxLightHue(mode) {
+        return {
+            cyan: 195,
+            blue: 220,
+            purple: 275,
+            green: 135,
+            amber: 38,
+            red: 4
+        }[mode] ?? 195;
+    }
+
+    isSfxLightsOff() {
+        return this.getSfxLightMode() === 'off';
     }
 
     draw() {
@@ -356,9 +373,15 @@ class RainbowSlider {
         // Gradient: BottomLeft to TopLeft
         const grad = ctx.createLinearGradient(trackX, trackY + trackH, trackX, trackY);
         const steps = 28;
-        if (this.isSfxLightsOff()) {
+        const lightMode = this.getSfxLightMode();
+        if (lightMode === 'off') {
             grad.addColorStop(0, this.hsvToRgb(195, 200, 205, 92));
             grad.addColorStop(1, this.hsvToRgb(195, 235, 255, 132));
+        } else if (lightMode !== 'rainbow') {
+            const hue = this.getSfxLightHue(lightMode);
+            grad.addColorStop(0, this.hsvToRgb(hue, 170, 165, 76));
+            grad.addColorStop(0.55, this.hsvToRgb(hue, 210, 225, 100));
+            grad.addColorStop(1, this.hsvToRgb(hue, 235, 255, 132));
         } else {
             for (let i = 0; i <= steps; ++i) {
                 let t = i / steps;
@@ -389,9 +412,14 @@ class RainbowSlider {
         
         if (filledH > 0.5) {
              const brightGrad = ctx.createLinearGradient(trackX, trackY + trackH, trackX, trackY);
-             if (this.isSfxLightsOff()) {
+             if (lightMode === 'off') {
                 brightGrad.addColorStop(0, this.hsvToRgb(195, 215, 230, 190));
                 brightGrad.addColorStop(1, this.hsvToRgb(195, 245, 255, 240));
+             } else if (lightMode !== 'rainbow') {
+                const hue = this.getSfxLightHue(lightMode);
+                brightGrad.addColorStop(0, this.hsvToRgb(hue, 205, 225, 180));
+                brightGrad.addColorStop(0.55, this.hsvToRgb(hue, 230, 255, 215));
+                brightGrad.addColorStop(1, this.hsvToRgb(hue, 245, 255, 240));
              } else {
                 for (let i = 0; i <= steps; ++i) {
                     let t = i / steps;

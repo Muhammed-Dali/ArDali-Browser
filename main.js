@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, dialog, nativeImage, Tray, Menu, shell, session, screen, globalShortcut, desktopCapturer, clipboard, powerSaveBlocker } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, nativeImage, Tray, Menu, shell, session, screen, globalShortcut, desktopCapturer, clipboard } = require('electron');
 
 // Wayland/Flatpak: App ID synchronization must happen as early as possible.
 const FLATPAK_APP_ID = 'com.ardali.mediaplayer';
@@ -98,9 +98,19 @@ function isFlatpakRuntime() {
 
 function isPackagedLinuxConservativeGpuMode() {
     if (process.platform !== 'linux') return false;
-    if (!app.isPackaged) return false;
-    // İsteyen ileri seviye kullanıcılar env ile mevcut agresif GPU ayarlarını geri açabilir.
+    // Linux'ta YouTube/webview video takılmalarını azaltmak için agresif GPU
+    // switch'leri varsayılan kapalı tut. İsteyen ileri seviye kullanıcı env ile açabilir.
     return !isTruthyEnvFlag('ARDALI_FORCE_GPU_TUNING');
+}
+
+function shouldEnableWebviewAdblockPreloadOnThisRuntime() {
+    if (isTruthyEnvFlag('ARDALI_DISABLE_WEBVIEW_ADBLOCK_PRELOAD')) return false;
+    if (isTruthyEnvFlag('ARDALI_WEBVIEW_ADBLOCK_PRELOAD')) return true;
+    return true;
+}
+
+function shouldUseRelaxedWebTimers(startupWebUi = readStartupWebUiSettings()) {
+    return startupWebUi?.backgroundThrottle === false || isTruthyEnvFlag('ARDALI_RELAX_WEB_TIMERS');
 }
 
 function shouldEnableElectronUpdaterOnThisRuntime() {
@@ -877,11 +887,15 @@ if (app && app.commandLine) {
             ? 'user-gesture-required'
             : 'no-user-gesture-required'
     );
-    if (startupWebUi.backgroundThrottle === false) {
+    if (shouldUseRelaxedWebTimers(startupWebUi)) {
         app.commandLine.appendSwitch('disable-background-timer-throttling');
     }
     app.commandLine.appendSwitch('disable-blink-features', 'AutomationControlled');
-    app.commandLine.appendSwitch('enable-accelerated-video-decode');
+    if (process.platform === 'linux' && !isTruthyEnvFlag('ARDALI_ENABLE_ACCELERATED_VIDEO_DECODE')) {
+        app.commandLine.appendSwitch('disable-accelerated-video-decode');
+    } else {
+        app.commandLine.appendSwitch('enable-accelerated-video-decode');
+    }
     if (startupWebUi.reduceWebRtcIpLeaks !== false) {
         app.commandLine.appendSwitch('force-webrtc-ip-handling-policy', 'default_public_interface_only');
     }
@@ -894,11 +908,14 @@ if (app && app.commandLine) {
     if (process.platform === 'win32') {
         disabledFeatures.push('CertVerifierBuiltinFeature');
     }
+    if (process.platform === 'linux' && !isTruthyEnvFlag('ARDALI_ENABLE_VAAPI')) {
+        disabledFeatures.push('VaapiVideoDecoder');
+    }
     app.commandLine.appendSwitch('disable-features', disabledFeatures.join(','));
     if (process.platform === 'linux') {
-        appendCommandLineCsvSwitch('enable-features', isTruthyEnvFlag('ARDALI_DISABLE_VAAPI')
-            ? 'WebRTCPipeWireCapturer'
-            : 'VaapiVideoDecoder,WebRTCPipeWireCapturer');
+        appendCommandLineCsvSwitch('enable-features', isTruthyEnvFlag('ARDALI_ENABLE_VAAPI')
+            ? 'VaapiVideoDecoder,WebRTCPipeWireCapturer'
+            : 'WebRTCPipeWireCapturer');
     }
 } else {
     console.warn('[Startup] app.commandLine not available');
@@ -1097,12 +1114,6 @@ function detectDisplayServer() {
         selectedBackend = 'x11';
     }
 
-    // Paketli Linux sürümünde daha stabil varsayılan: Wayland yerine X11/auto.
-    if (conservativeGpuMode && !displayBackendOverride && selectedBackend === 'wayland') {
-        selectedBackend = display ? 'x11' : 'auto';
-        console.log(`[Display] conservative packaged mode -> backend fallback: ${selectedBackend}`);
-    }
-
     if (selectedBackend === 'wayland') {
         console.log('💻 Display Server: Wayland');
         app.commandLine.appendSwitch('ozone-platform-hint', 'wayland');
@@ -1117,9 +1128,10 @@ function detectDisplayServer() {
         appendCsvSwitch('enable-features', enableVaapi ? 'VaapiVideoDecoder,WebRTCPipeWireCapturer' : 'WebRTCPipeWireCapturer');
     } else {
         console.log('💻 Display Server: auto');
-        app.commandLine.appendSwitch('ozone-platform-hint', 'auto');
-        // auto modunda bile Wayland secilebilir; ozone feature'i acik olsun.
-        appendCsvSwitch('enable-features', enableVaapi ? 'UseOzonePlatform,VaapiVideoDecoder,WebRTCPipeWireCapturer' : 'UseOzonePlatform,WebRTCPipeWireCapturer');
+        if (!conservativeGpuMode) {
+            app.commandLine.appendSwitch('ozone-platform-hint', 'auto');
+        }
+        appendCsvSwitch('enable-features', enableVaapi ? 'VaapiVideoDecoder,WebRTCPipeWireCapturer' : 'WebRTCPipeWireCapturer');
     }
     effectiveDisplayBackend = selectedBackend;
     process.env.ARDALI_EFFECTIVE_DISPLAY_BACKEND = selectedBackend;
@@ -1131,7 +1143,7 @@ function detectDisplayServer() {
         console.log(`[Display] ARDALI_DISPLAY_BACKEND override active: ${displayBackendOverride}`);
     }
 
-    if (!forceSoftware) {
+    if (!forceSoftware && (!conservativeGpuMode || forceGpu)) {
         // GPU kara listesine takılan makinelerde siyah pencere olabiliyor
         app.commandLine.appendSwitch('ignore-gpu-blocklist');
     }
@@ -1151,7 +1163,9 @@ function detectDisplayServer() {
             app.commandLine.appendSwitch('enable-gpu-rasterization');
             app.commandLine.appendSwitch('enable-zero-copy');
         } else {
-            console.log('[GPU] conservative packaged mode: zero-copy/rasterization flags skipped');
+            app.commandLine.appendSwitch('disable-gpu-rasterization');
+            app.commandLine.appendSwitch('disable-zero-copy');
+            console.log('[GPU] conservative linux mode: accelerated video decode, zero-copy and gpu rasterization disabled');
         }
 
         // Yazı tipi oluşturma iyileştirmeleri - Wayland/X11 uyumluluğu
@@ -1174,7 +1188,9 @@ function installGpuFailsafe() {
 
     const triggerFallback = (reason) => {
         if (alreadySoftware) return;
-        console.warn(`[GPU] Crash detected (${reason}) -> switching to software rendering`);
+        console.warn(`[GPU] Crash detected (${reason})`);
+        if (!isTruthyEnvFlag('ARDALI_GPU_CRASH_RELAUNCH')) return;
+        console.warn('[GPU] relaunch fallback requested -> switching to software rendering');
         app.relaunch({
             env: {
                 ...process.env,
@@ -1281,278 +1297,6 @@ let screenRecordingSystemAudioPath = '';
 const screenRecordingLiveOutputs = new Map();
 let pendingOpenMediaFiles = [];
 let rendererMediaOpenReady = false;
-let playbackPowerSaveBlockerDisplayId = null;
-let playbackPowerSaveBlockerAppId = null;
-const linuxPlaybackPowerProfile = {
-    active: false,
-    previousProfile: '',
-    lastErrorAt: 0
-};
-const playbackPowerRuntime = {
-    active: false,
-    mode: 'balanced',
-    reason: '',
-    monitorTimer: null,
-    lastStateKey: ''
-};
-
-function readPowerSupplyValueSync(dir, name) {
-    try {
-        return fs.readFileSync(path.join(dir, name), 'utf8').trim();
-    } catch {
-        return '';
-    }
-}
-
-function getLinuxPowerSupplyStateSync() {
-    const state = {
-        onBattery: false,
-        hasBattery: false,
-        hasMains: false,
-        mainsOnline: false,
-        batteryStatus: '',
-        mains: []
-    };
-    if (process.platform !== 'linux') return state;
-    try {
-        const base = '/sys/class/power_supply';
-        const entries = fs.readdirSync(base, { withFileTypes: true });
-        for (const entry of entries) {
-            if (!entry?.isDirectory?.() && !entry?.isSymbolicLink?.()) continue;
-            const dir = path.join(base, entry.name);
-            const type = readPowerSupplyValueSync(dir, 'type').toLowerCase();
-            if (type === 'battery') {
-                state.hasBattery = true;
-                const status = readPowerSupplyValueSync(dir, 'status');
-                if (status) state.batteryStatus = status;
-                continue;
-            }
-            if (type !== 'mains' && type !== 'usb' && type !== 'usb-c' && type !== 'usb_pd') continue;
-            const online = readPowerSupplyValueSync(dir, 'online');
-            state.hasMains = true;
-            state.mains.push({ name: entry.name, type, online });
-            if (online === '1') state.mainsOnline = true;
-        }
-        state.onBattery = state.hasBattery && !state.mainsOnline;
-        return state;
-    } catch {
-        return state;
-    }
-}
-
-function getLinuxPowerSupplyOnBatterySync() {
-    return getLinuxPowerSupplyStateSync().onBattery;
-}
-
-function runPowerProfilesCtl(args = []) {
-    if (process.platform !== 'linux') return { ok: false, stdout: '', stderr: 'not-linux' };
-    if (isTruthyEnvFlag('ARDALI_DISABLE_PLAYBACK_POWER_PROFILE')) {
-        return { ok: false, stdout: '', stderr: 'disabled' };
-    }
-    if (!commandExists('powerprofilesctl')) return { ok: false, stdout: '', stderr: 'missing' };
-    try {
-        const res = spawnSync('powerprofilesctl', args.map((arg) => String(arg)), {
-            encoding: 'utf8',
-            timeout: 1500,
-            shell: false
-        });
-        return {
-            ok: res.status === 0,
-            stdout: String(res.stdout || '').trim(),
-            stderr: String(res.stderr || '').trim()
-        };
-    } catch (error) {
-        return { ok: false, stdout: '', stderr: error?.message || String(error) };
-    }
-}
-
-function normalizePlaybackPowerMode(value) {
-    const mode = String(value || '').trim().toLowerCase();
-    if (mode === 'smooth' || mode === 'battery' || mode === 'off') return mode;
-    return 'balanced';
-}
-
-function setLinuxPlaybackPerformanceProfile(active, reason = 'media-playback', modeValue = 'balanced') {
-    if (process.platform !== 'linux') return;
-    if (isTruthyEnvFlag('ARDALI_DISABLE_PLAYBACK_POWER_PROFILE')) return;
-
-    const mode = normalizePlaybackPowerMode(modeValue);
-    const powerState = getLinuxPowerSupplyStateSync();
-    const shouldHold = active === true && (
-        mode === 'smooth' ||
-        (mode === 'balanced' && powerState.onBattery)
-    );
-    if (shouldHold) {
-        if (linuxPlaybackPowerProfile.active) {
-            const current = runPowerProfilesCtl(['get']);
-            const currentProfile = String(current.stdout || '').trim();
-            if (current.ok && currentProfile !== 'performance') {
-                const setResult = runPowerProfilesCtl(['set', 'performance']);
-                if (setResult.ok) {
-                    console.log('[POWER] playback performance profile reasserted', { current: currentProfile, mode, reason });
-                }
-            }
-            return;
-        }
-        const current = runPowerProfilesCtl(['get']);
-        if (!current.ok) {
-            const now = Date.now();
-            if ((now - linuxPlaybackPowerProfile.lastErrorAt) > 30000) {
-                linuxPlaybackPowerProfile.lastErrorAt = now;
-                console.warn('[POWER] power profile okunamadı:', current.stderr || 'unknown');
-            }
-            return;
-        }
-        const previous = String(current.stdout || '').trim();
-        if (!previous || previous === 'performance') return;
-        const setResult = runPowerProfilesCtl(['set', 'performance']);
-        if (!setResult.ok) {
-            const now = Date.now();
-            if ((now - linuxPlaybackPowerProfile.lastErrorAt) > 30000) {
-                linuxPlaybackPowerProfile.lastErrorAt = now;
-                console.warn('[POWER] performance profile uygulanamadı:', setResult.stderr || 'unknown');
-            }
-            return;
-        }
-        linuxPlaybackPowerProfile.active = true;
-        linuxPlaybackPowerProfile.previousProfile = previous;
-        console.log('[POWER] playback performance profile started', { previous, mode, reason });
-        return;
-    }
-
-    if (!linuxPlaybackPowerProfile.active) return;
-    const previous = String(linuxPlaybackPowerProfile.previousProfile || '').trim();
-    linuxPlaybackPowerProfile.active = false;
-    linuxPlaybackPowerProfile.previousProfile = '';
-    if (!previous || previous === 'performance') return;
-    const restore = runPowerProfilesCtl(['set', previous]);
-    if (restore.ok) {
-        console.log('[POWER] playback performance profile restored', { profile: previous, reason });
-    } else {
-        console.warn('[POWER] power profile geri alınamadı:', restore.stderr || 'unknown');
-    }
-}
-
-function getPlaybackPowerRuntimeSnapshot() {
-    const powerSupply = getLinuxPowerSupplyStateSync();
-    const current = runPowerProfilesCtl(['get']);
-    return {
-        active: playbackPowerRuntime.active,
-        mode: playbackPowerRuntime.mode,
-        onBattery: powerSupply.onBattery,
-        hasBattery: powerSupply.hasBattery,
-        mainsOnline: powerSupply.mainsOnline,
-        batteryStatus: powerSupply.batteryStatus,
-        mains: powerSupply.mains,
-        profile: current.ok ? current.stdout : '',
-        performanceProfile: linuxPlaybackPowerProfile.active
-    };
-}
-
-function syncPlaybackPowerRuntime(reason = 'power-monitor') {
-    if (!playbackPowerRuntime.active) {
-        setLinuxPlaybackPerformanceProfile(false, reason, playbackPowerRuntime.mode);
-        return;
-    }
-    setLinuxPlaybackPerformanceProfile(true, reason, playbackPowerRuntime.mode);
-    const snapshot = getPlaybackPowerRuntimeSnapshot();
-    const key = [
-        snapshot.active ? 1 : 0,
-        snapshot.mode,
-        snapshot.onBattery ? 1 : 0,
-        snapshot.mainsOnline ? 1 : 0,
-        snapshot.batteryStatus,
-        snapshot.profile,
-        snapshot.performanceProfile ? 1 : 0
-    ].join(':');
-    if (key !== playbackPowerRuntime.lastStateKey) {
-        playbackPowerRuntime.lastStateKey = key;
-        console.log('[POWER] playback power state', snapshot);
-    }
-}
-
-function startPlaybackPowerMonitor() {
-    if (playbackPowerRuntime.monitorTimer) return;
-    playbackPowerRuntime.monitorTimer = setInterval(() => {
-        syncPlaybackPowerRuntime('power-monitor');
-    }, 2500);
-    if (typeof playbackPowerRuntime.monitorTimer.unref === 'function') {
-        playbackPowerRuntime.monitorTimer.unref();
-    }
-}
-
-function stopPlaybackPowerMonitor() {
-    if (playbackPowerRuntime.monitorTimer) {
-        clearInterval(playbackPowerRuntime.monitorTimer);
-        playbackPowerRuntime.monitorTimer = null;
-    }
-    playbackPowerRuntime.lastStateKey = '';
-}
-
-function setPlaybackPowerSaveBlocker(active, reason = 'media-playback', modeValue = 'balanced') {
-    const mode = normalizePlaybackPowerMode(modeValue);
-    const shouldRun = active === true && mode !== 'off';
-    try {
-        if (shouldRun) {
-            playbackPowerRuntime.active = true;
-            playbackPowerRuntime.mode = mode;
-            playbackPowerRuntime.reason = reason;
-            let started = false;
-            if (playbackPowerSaveBlockerDisplayId === null || !powerSaveBlocker.isStarted(playbackPowerSaveBlockerDisplayId)) {
-                playbackPowerSaveBlockerDisplayId = powerSaveBlocker.start('prevent-display-sleep');
-                started = true;
-            }
-            if (playbackPowerSaveBlockerAppId === null || !powerSaveBlocker.isStarted(playbackPowerSaveBlockerAppId)) {
-                playbackPowerSaveBlockerAppId = powerSaveBlocker.start('prevent-app-suspension');
-                started = true;
-            }
-            syncPlaybackPowerRuntime(reason);
-            startPlaybackPowerMonitor();
-            if (started) {
-                console.log('[POWER] playback blocker started', {
-                    displayId: playbackPowerSaveBlockerDisplayId,
-                    appId: playbackPowerSaveBlockerAppId,
-                    mode,
-                    reason
-                });
-            }
-            return {
-                ok: true,
-                active: true,
-                displayId: playbackPowerSaveBlockerDisplayId,
-                appId: playbackPowerSaveBlockerAppId,
-                mode,
-                performanceProfile: linuxPlaybackPowerProfile.active
-            };
-        }
-        playbackPowerRuntime.active = false;
-        playbackPowerRuntime.mode = mode;
-        playbackPowerRuntime.reason = reason;
-        stopPlaybackPowerMonitor();
-        let stopped = false;
-        if (playbackPowerSaveBlockerDisplayId !== null && powerSaveBlocker.isStarted(playbackPowerSaveBlockerDisplayId)) {
-            powerSaveBlocker.stop(playbackPowerSaveBlockerDisplayId);
-            stopped = true;
-        }
-        if (playbackPowerSaveBlockerAppId !== null && powerSaveBlocker.isStarted(playbackPowerSaveBlockerAppId)) {
-            powerSaveBlocker.stop(playbackPowerSaveBlockerAppId);
-            stopped = true;
-        }
-        setLinuxPlaybackPerformanceProfile(false, reason, mode);
-        if (stopped) {
-            console.log('[POWER] playback blocker stopped', { reason });
-        }
-        playbackPowerSaveBlockerDisplayId = null;
-        playbackPowerSaveBlockerAppId = null;
-        return { ok: true, active: false, displayId: null, appId: null, performanceProfile: false };
-    } catch (error) {
-        console.warn('[POWER] playback blocker error:', error?.message || error);
-        playbackPowerSaveBlockerDisplayId = null;
-        playbackPowerSaveBlockerAppId = null;
-        return { ok: false, active: false, error: error?.message || String(error) };
-    }
-}
-
 function normalizeLaunchFilePath(rawPath) {
     const value = String(rawPath || '').trim();
     if (!value) return '';
@@ -1631,6 +1375,7 @@ function dispatchPendingOpenMediaFiles() {
 
 const gotSingleInstanceLock = app.requestSingleInstanceLock();
 if (!gotSingleInstanceLock) {
+    console.warn('[APP] single instance lock failed; exiting secondary instance');
     app.exit(0);
 }
 
@@ -2371,16 +2116,16 @@ async function readFirstJson(paths) {
 
 function getAppIconPath() {
     if (process.platform === 'win32') {
-        return getResourcePath(path.join('icons', 'ardali.ico'));
+        return getResourcePath(path.join('icons', 'app', 'ardali.ico'));
     }
-    return getResourcePath(path.join('icons', 'ardali_512.png'));
+    return getResourcePath(path.join('icons', 'app', 'ardali_512.png'));
 }
 
 function getAppIconImage() {
     const iconPath = getAppIconPath();
     const img = nativeImage.createFromPath(iconPath);
     if (!img || img.isEmpty()) {
-        return nativeImage.createFromPath(path.join(__dirname, 'icons', 'ardali_512.png'));
+        return nativeImage.createFromPath(path.join(__dirname, 'icons', 'app', 'ardali_512.png'));
     }
     return img;
 }
@@ -2462,10 +2207,18 @@ function getWebPermissionFlag(permission = '') {
 }
 
 function isWebPermissionAllowedBySettings(permission, currentUrl = '', originUrl = '') {
+    const requestedPermission = String(permission || '').trim();
+    if (
+        requestedPermission === 'fullscreen' ||
+        requestedPermission === 'pointerLock' ||
+        requestedPermission === 'keyboardLock'
+    ) {
+        return true;
+    }
     const flag = getWebPermissionFlag(permission);
     if (!flag) return false;
     const override = getWebSitePermissionOverrideSync(originUrl || currentUrl);
-    if (String(permission || '').trim() === 'media') {
+    if (requestedPermission === 'media') {
         if (override && (typeof override.allowMicrophone === 'boolean' || typeof override.allowCamera === 'boolean')) {
             return override.allowMicrophone === true || override.allowCamera === true;
         }
@@ -3938,7 +3691,7 @@ function buildAdblockScriptingInjection(rawUrl = '') {
         };
     }
 
-    if (isAdblockYouTubeHostname(hostname)) {
+    if (isAdblockYouTubeHostname(hostname) && shouldEnableWebviewAdblockPreloadOnThisRuntime()) {
         scripts.push({
             id: 'deliblock-youtube-server-contract',
             world: 'main',
@@ -5129,9 +4882,9 @@ function createWindow() {
             sandbox: false,
             webSecurity: true,
             allowRunningInsecureContent: false,
-            // Varsayılan olarak arka plan zamanlayıcılarını kıs. Ses oynatma devam eder,
-            // ama gizli/arka plandaki animasyon ve web işleri RAM/CPU basıncı oluşturmaz.
-            backgroundThrottling: startupWebUi.backgroundThrottle !== false,
+            // Ana pencere ayarlar/yardımcı pencere arkasında kalsa bile Web sekmesindeki
+            // görünür YouTube videosunun compositor/timer akışı kısılmasın.
+            backgroundThrottling: false,
             webviewTag: true,  // WebView desteği
             plugins: true, // DRM/CDM tabanlı web oynatıcılar için gerekli olabilir
             spellcheck: false
@@ -5157,9 +4910,16 @@ function createWindow() {
             webPreferences.enableRemoteModule = false;
             webPreferences.allowRunningInsecureContent = false;
             webPreferences.plugins = true;
-            webPreferences.backgroundThrottling = startupWebUi.backgroundThrottle !== false;
-            // Guest preload: no app bridge, only early adblock scriptlet patch.
-            webPreferences.preload = path.join(__dirname, 'webviewAdblockPreload.js');
+            // YouTube gibi görünür medya webview'ları, ayarlar penceresi öne gelince
+            // "arka plan" sayılıp video frame timer'ları kısılmasın. Ana pencere timer
+            // politikası ayrı kalır; burada yalnızca guest webview'i akıcı tutuyoruz.
+            webPreferences.backgroundThrottling = false;
+            if (shouldEnableWebviewAdblockPreloadOnThisRuntime()) {
+                // Guest preload: no app bridge, only early adblock scriptlet patch.
+                webPreferences.preload = path.join(__dirname, 'webviewAdblockPreload.js');
+            } else {
+                delete webPreferences.preload;
+            }
 
             const targetUrl = String(params?.src || '').trim();
             // Initial webview src is often about:blank; block only non-blank external URLs.
@@ -5785,7 +5545,7 @@ function createTray() {
 
 function getTrayBaseImage() {
     const trayIconName = process.platform === 'linux' ? 'ardali_24.png' : 'ardali_512.png';
-    const iconPath = getResourcePath(path.join('icons', trayIconName));
+    const iconPath = getResourcePath(path.join('icons', 'app', trayIconName));
     let trayIcon = nativeImage.createFromPath(iconPath);
     if (process.platform === 'linux' && trayIcon && !trayIcon.isEmpty()) {
         trayIcon = trayIcon.resize({ width: 24, height: 24 });
@@ -6066,7 +5826,7 @@ function updateTrayMenu(state) {
 
     // İkonları küçük ve tutarlı boyutta yükle
     const iconPath = (name) => {
-        const p = getResourcePath(path.join('icons', name));
+        const p = getResourcePath(path.join('icons', 'ui', name));
         const img = nativeImage.createFromPath(p);
         if (!img || img.isEmpty()) return undefined;
         const menuIconSize = process.platform === 'linux' ? 18 : 16;
@@ -6217,20 +5977,22 @@ function createSoundEffectsWindow(rawScope = 'music') {
         minHeight: 600,
         backgroundColor: '#0a0a0f',
         icon: getAppIconImage(),
-        parent: null, // Bağımsız pencere (ana pencereden ayrı)
+        parent: mainWindow && !mainWindow.isDestroyed() ? mainWindow : undefined,
         modal: false,
+        autoHideMenuBar: true,
         webPreferences: {
             preload: path.join(__dirname, 'preload.js'),
+            additionalArguments: ['--ardali-view=sound-effects'],
             nodeIntegration: false,
             contextIsolation: true,
             // sandbox: false gerekli — preload.js Node.js require() kullanıyor.
             sandbox: false,
             webSecurity: true,
             allowRunningInsecureContent: false,
-            backgroundThrottling: false,
+            backgroundThrottling: true,
             spellcheck: false
         },
-        frame: false, // Özel başlık çubuğu için çerçevesiz
+        frame: true,
         title: getSoundEffectsWindowTitle(scope),
         show: false
     });
@@ -6416,20 +6178,44 @@ ipcMain.handle('soundEffects:getWebNoiseGateStatus', async () => {
     }
 });
 
+let webTruePeakStatusCache = {
+    at: 0,
+    pending: null,
+    value: { ok: false, truePeakL: -96, truePeakR: -96, holdL: -96, holdR: -96, clippingCount: 0, gainReduction: 0 }
+};
+
 ipcMain.handle('soundEffects:getWebTruePeakStatus', async () => {
+    const fallback = { ok: false, truePeakL: -96, truePeakR: -96, holdL: -96, holdR: -96, clippingCount: 0, gainReduction: 0 };
     try {
         if (!mainWindow || mainWindow.isDestroyed()) {
-            return { ok: false, truePeakL: -96, truePeakR: -96, holdL: -96, holdR: -96, clippingCount: 0, gainReduction: 0 };
+            webTruePeakStatusCache.value = fallback;
+            webTruePeakStatusCache.pending = null;
+            webTruePeakStatusCache.at = Date.now();
+            return fallback;
         }
-        const result = await mainWindow.webContents.executeJavaScript(
+        const now = Date.now();
+        if (now - Number(webTruePeakStatusCache.at || 0) < 180) {
+            return webTruePeakStatusCache.value || fallback;
+        }
+        if (webTruePeakStatusCache.pending) {
+            return webTruePeakStatusCache.pending;
+        }
+        webTruePeakStatusCache.pending = mainWindow.webContents.executeJavaScript(
             'window.__ardaliGetWebTruePeakStatus ? window.__ardaliGetWebTruePeakStatus() : ({ ok: false, truePeakL: -96, truePeakR: -96, holdL: -96, holdR: -96, clippingCount: 0, gainReduction: 0 })',
             true
-        );
-        return (result && typeof result === 'object')
+        ).then((result) => (result && typeof result === 'object')
             ? result
-            : { ok: false, truePeakL: -96, truePeakR: -96, holdL: -96, holdR: -96, clippingCount: 0, gainReduction: 0 };
+            : fallback
+        ).catch(() => fallback).finally(() => {
+            webTruePeakStatusCache.pending = null;
+        });
+        const value = await webTruePeakStatusCache.pending;
+        webTruePeakStatusCache.value = value;
+        webTruePeakStatusCache.at = Date.now();
+        return value;
     } catch {
-        return { ok: false, truePeakL: -96, truePeakR: -96, holdL: -96, holdR: -96, clippingCount: 0, gainReduction: 0 };
+        webTruePeakStatusCache.pending = null;
+        return webTruePeakStatusCache.value || fallback;
     }
 });
 
@@ -7010,11 +6796,11 @@ function startVisualizer() {
 
     const visualizerIconCandidates = [
         // Native visualizer is often built without SDL2_image, so SDL can reliably load BMP.
-        getResourcePath(path.join('icons', 'ardali_logo.bmp')),
-        path.join(process.resourcesPath || '', 'icons', 'ardali_logo.bmp'),
-        path.join(process.resourcesPath || '', 'native-dist', 'linux', 'icons', 'ardali_logo.bmp'),
-        getResourcePath(path.join('icons', 'ardali_512.png')),
-        path.join(process.resourcesPath || '', 'icons', 'ardali_512.png'),
+        getResourcePath(path.join('icons', 'app', 'ardali_logo.bmp')),
+        path.join(process.resourcesPath || '', 'icons', 'app', 'ardali_logo.bmp'),
+        path.join(process.resourcesPath || '', 'native-dist', 'linux', 'icons', 'app', 'ardali_logo.bmp'),
+        getResourcePath(path.join('icons', 'app', 'ardali_512.png')),
+        path.join(process.resourcesPath || '', 'icons', 'app', 'ardali_512.png'),
         '/app/share/icons/hicolor/512x512/apps/com.ardali.mediaplayer.png'
     ].filter(Boolean);
     const visualizerIconPath = visualizerIconCandidates.find((p) => {
@@ -7320,16 +7106,6 @@ ipcMain.handle('app:setStudioShortcuts', async (_event, shortcuts = {}) => {
     }
 });
 
-ipcMain.handle('app:setPlaybackPowerSaveBlocker', async (_event, payload = {}) => {
-    return setPlaybackPowerSaveBlocker(
-        payload?.active === true,
-        payload?.reason || 'renderer-media-playback',
-        payload?.mode || payload?.policy || 'balanced'
-    );
-});
-
-ipcMain.handle('app:getPlaybackPowerState', async () => getPlaybackPowerRuntimeSnapshot());
-
 ipcMain.handle('app:update:getState', async () => {
     return snapshotUpdateState();
 });
@@ -7456,13 +7232,17 @@ function installWebviewHardening() {
                     if (wcType === 'webview') {
                         // Web platformlarda (allowlist) kullanıcı akışını bozmayacak şekilde
                         // izinleri host bazlı değerlendir.
+                        const trustedContext =
+                            isAllowedWebUrlMain(currentUrl) ||
+                            isAllowedWebUrlMain(originUrl);
+                        if (!trustedContext) {
+                            callback(false);
+                            return;
+                        }
                         if (!isWebPermissionAllowedBySettings(requestedPermission, currentUrl, originUrl)) {
                             callback(false);
                             return;
                         }
-                        const trustedContext =
-                            isAllowedWebUrlMain(currentUrl) ||
-                            isAllowedWebUrlMain(originUrl);
                         callback(!!trustedContext);
                         return;
                     }
@@ -7637,7 +7417,7 @@ app.whenReady().then(async () => {
         app.commandLine.appendSwitch('enable-gpu-rasterization');
         app.commandLine.appendSwitch('enable-zero-copy');
     } else {
-        console.log('[GPU] startup conservative mode active (packaged linux)');
+        console.log('[GPU] startup conservative mode active (linux)');
     }
     cleanupTransientHomeFiles('startup');
 
@@ -7678,7 +7458,6 @@ app.on('window-all-closed', () => {
 });
 
 app.on('before-quit', () => {
-    setPlaybackPowerSaveBlocker(false, 'before-quit');
     clearStartupUpdateRetryTimer();
     stopVisualizer();
     unregisterGlobalMediaShortcuts();
@@ -9102,6 +8881,11 @@ ipcMain.handle('settings:save', async (event, settings) => {
             if (!targetWindow || targetWindow.isDestroyed()) continue;
             if (event?.sender && targetWindow.webContents === event.sender) continue;
             if (event?.sender?.id && targetWindow.webContents?.id === event.sender.id) continue;
+            // Sound effects already stream live Web/Video DSP changes through
+            // soundEffects:scopedLiveParam. Broadcasting every persistence save
+            // back to the main window rebuilds the web DALI graph while audio is
+            // playing, which can surface as crackle.
+            if (saveSource === 'soundEffects' && targetWindow === mainWindow) continue;
             try {
                 targetWindow.webContents.send('settings:reloaded', sanitizedMerged, reloadMeta);
             } catch (e) {

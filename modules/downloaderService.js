@@ -350,7 +350,7 @@ async function readSettings(app) {
         configPath: '',
         useConfigFile: false,
         showMoreFormats: false,
-        theme: 'black',
+        theme: 'app',
         playlistFileTemplate: '%(playlist_index)s.%(title)s.%(ext)s',
         playlistFolderTemplate: '%(playlist_title)s',
         maxActiveDownloads: 1,

@@ -75,17 +75,39 @@ class BarAnalyzer {
     }
 
     isSfxLightsOff() {
+        return this.getSfxLightMode() === 'off';
+    }
+
+    getSfxLightMode() {
         try {
-            return document?.documentElement?.dataset?.sfxLights === 'off';
+            const mode = String(document?.documentElement?.dataset?.sfxLights || 'rainbow').toLowerCase();
+            if (['off', 'cyan', 'blue', 'purple', 'green', 'amber', 'red', 'rainbow'].includes(mode)) return mode;
         } catch {
-            return false;
+            // ignore
         }
+        return 'rainbow';
+    }
+
+    getSfxLightHue(mode) {
+        return {
+            cyan: 195,
+            blue: 220,
+            purple: 275,
+            green: 135,
+            amber: 38,
+            red: 4
+        }[mode] ?? 195;
     }
 
     getBandColor(index) {
-        if (this.isSfxLightsOff()) return '#22d3ee';
+        const mode = this.getSfxLightMode();
+        if (mode === 'off') return '#22d3ee';
+        if (mode !== 'rainbow') {
+            const hue = this.getSfxLightHue(mode);
+            return `hsl(${hue}, 92%, 56%)`;
+        }
         if (!this.rainbow || this.bandCount <= 1) return this.gradient;
-        const cacheKey = `${this.bandCount}:${this.rainbow ? 1 : 0}`;
+        const cacheKey = `${this.bandCount}:${this.rainbow ? 1 : 0}:${mode}`;
         if (this._colorCacheKey !== cacheKey) {
             this._colorCacheKey = cacheKey;
             this._colorCache = Array.from({ length: this.bandCount }, (_, i) => {
