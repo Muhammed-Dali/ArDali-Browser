@@ -32,7 +32,7 @@
     "build:win:zip": "node native/copy-libs.js win32 && npm run -s prepare:win:resources && npm run -s verify:win:artifacts && electron-builder --win zip",
     "build:mac": "node native/copy-libs.js darwin && electron-builder --mac",
     "dist": "npm run build:linux",
-    "dev:linux": "ELECTRON_RUN_AS_NODE= ARDALI_DEV=1 PATH=\"$(pwd)/native-dist:$(pwd)/native/build/Release:$(pwd)/bin:$PATH\" electron . --enable-logging",
+    "dev:linux": "ELECTRON_RUN_AS_NODE= ELECTRON_DISABLE_SANDBOX=1 ARDALI_DEV=1 PATH=\"$(pwd)/native-dist:$(pwd)/native/build/Release:$(pwd)/bin:$PATH\" electron --no-sandbox --enable-logging .",
     "dali:compile:web": "node scripts/compile-dali-web.js",
     "dali:compile:web:wasm": "node scripts/compile-dali-web-wasm.js",
     "dali:compile:web:all": "npm run -s dali:compile:web && npm run -s dali:compile:web:wasm",

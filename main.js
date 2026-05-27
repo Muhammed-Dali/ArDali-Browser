@@ -3,6 +3,8 @@ const { app, BrowserWindow, ipcMain, dialog, nativeImage, Tray, Menu, shell, ses
 // Wayland/Flatpak: App ID synchronization must happen as early as possible.
 const FLATPAK_APP_ID = 'com.ardali.mediaplayer';
 const DESKTOP_FILE_ID = 'com.ardali.mediaplayer.desktop';
+const LINUX_WM_CLASS = 'ardali';
+const LINUX_WAYLAND_APP_ID = FLATPAK_APP_ID;
 
 if (app) {
     app.name = FLATPAK_APP_ID;
@@ -273,10 +275,46 @@ function resolveLinuxRelaunchExecPath() {
     return '';
 }
 
-function buildAppRelaunchOptions() {
-    const args = Array.isArray(process.argv)
+function getAppRelaunchArgs() {
+    return Array.isArray(process.argv)
         ? process.argv.slice(1).filter((arg) => typeof arg === 'string' && arg.length > 0)
         : [];
+}
+
+function shouldUseAppImageExtractAndRunForRelaunch() {
+    if (process.platform !== 'linux' || !app.isPackaged) return false;
+    const appImagePath = String(process.env.APPIMAGE || '').trim();
+    if (!appImagePath || !fs.existsSync(appImagePath)) return false;
+    if (isTruthyEnvFlag('APPIMAGE_EXTRACT_AND_RUN')) return false;
+    try {
+        return !fs.existsSync('/dev/fuse');
+    } catch {
+        return true;
+    }
+}
+
+function relaunchAppImageWithExtractAndRun(args) {
+    const execPath = resolveLinuxRelaunchExecPath();
+    if (!execPath) return false;
+    try {
+        const child = spawn(execPath, Array.isArray(args) ? args : [], {
+            detached: true,
+            stdio: 'ignore',
+            env: {
+                ...process.env,
+                APPIMAGE_EXTRACT_AND_RUN: '1'
+            }
+        });
+        child.unref();
+        return true;
+    } catch (error) {
+        console.error('[APP] AppImage extract-and-run relaunch failed:', error?.message || error);
+        return false;
+    }
+}
+
+function buildAppRelaunchOptions() {
+    const args = getAppRelaunchArgs();
     const execPath = resolveLinuxRelaunchExecPath();
     if (execPath) {
         return { execPath, args };
@@ -872,13 +910,13 @@ function cleanupTransientHomeFiles(context = 'runtime') {
     }
 }
 
-// GNOME/Wayland üst bar & dock ikon eşleştirmesi için (desktop entry ile eşleşme)
-const LINUX_WM_CLASS = 'ardali';
+// GNOME/KDE/Wayland üst bar & dock ikon eşleştirmesi için (desktop entry ile eşleşme)
 if (app && app.commandLine) {
     const startupWebUi = readStartupWebUiSettings();
 
     if (process.platform === 'linux') {
         app.commandLine.appendSwitch('class', LINUX_WM_CLASS);
+        app.commandLine.appendSwitch('name', LINUX_WAYLAND_APP_ID);
     }
     const startupAutoplayPolicy = String(startupWebUi.autoplayPolicy || 'allow').toLowerCase();
     app.commandLine.appendSwitch(
@@ -934,10 +972,9 @@ if (process.platform === 'win32') {
 if (process.platform === 'linux') {
     const flatpakId = String(process.env.FLATPAK_ID || process.env.APP_ID || '').trim();
     if (flatpakId && app && typeof app.setDesktopName === 'function') {
-        // Use the base ID for grouping. Compositors append .desktop to look for files.
-        app.setDesktopName(flatpakId);
+        app.setDesktopName(`${flatpakId.replace(/\.desktop$/i, '')}.desktop`);
     } else if (app && typeof app.setDesktopName === 'function') {
-        app.setDesktopName('com.ardali.mediaplayer');
+        app.setDesktopName(DESKTOP_FILE_ID);
     }
 }
 
@@ -2128,6 +2165,28 @@ function getAppIconImage() {
         return nativeImage.createFromPath(path.join(__dirname, 'icons', 'app', 'ardali_512.png'));
     }
     return img;
+}
+
+function applyLinuxTaskbarGrouping(win) {
+    if (process.platform !== 'linux' || !win || win.isDestroyed?.()) return win;
+    try {
+        if (typeof win.setIcon === 'function') win.setIcon(getAppIconImage());
+    } catch {
+        // best effort
+    }
+    try {
+        if (typeof win.setSkipTaskbar === 'function') win.setSkipTaskbar(false);
+    } catch {
+        // best effort
+    }
+    return win;
+}
+
+function getAuxiliaryWindowDefaults() {
+    return {
+        icon: getAppIconImage(),
+        skipTaskbar: false
+    };
 }
 
 function getSettingsPath() {
@@ -4869,10 +4928,10 @@ function createWindow() {
 
     let rendererRecoveryAttempts = 0;
     mainWindow = new BrowserWindow({
+        ...getAuxiliaryWindowDefaults(),
         width: 1500,
         height: 900,
         backgroundColor: '#121212',
-        icon: getAppIconImage(),
         webPreferences: {
             preload: path.join(__dirname, 'preload.js'),
             nodeIntegration: false,
@@ -4896,9 +4955,7 @@ function createWindow() {
 
     let hasEverBeenShown = false;
 
-    if (process.platform === 'linux' && typeof mainWindow.setIcon === 'function') {
-        mainWindow.setIcon(getAppIconImage());
-    }
+    applyLinuxTaskbarGrouping(mainWindow);
 
     // WebView attach hardening: force isolated guest settings and block preload injection.
     mainWindow.webContents.on('will-attach-webview', (event, webPreferences, params) => {
@@ -5138,11 +5195,11 @@ async function createSettingsWindow(defaultTab = 'playback') {
     let allowSettingsWindowClose = false;
 
     settingsWindow = new BrowserWindow({
+        ...getAuxiliaryWindowDefaults(),
         ...windowBounds,
         minWidth: 980,
         minHeight: 720,
         backgroundColor: '#121212',
-        icon: getAppIconImage(),
         parent: mainWindow && !mainWindow.isDestroyed() ? mainWindow : undefined,
         modal: false,
         show: false,
@@ -5163,9 +5220,7 @@ async function createSettingsWindow(defaultTab = 'playback') {
         }
     });
 
-    if (process.platform === 'linux' && typeof settingsWindow.setIcon === 'function') {
-        settingsWindow.setIcon(getAppIconImage());
-    }
+    applyLinuxTaskbarGrouping(settingsWindow);
 
     settingsWindow.loadFile(path.join(__dirname, 'settings.html'));
 
@@ -5228,12 +5283,12 @@ function createAdblockWindow() {
     }
 
     adblockWindow = new BrowserWindow({
+        ...getAuxiliaryWindowDefaults(),
         width: 1120,
         height: 845,
         minWidth: 920,
         minHeight: 680,
         backgroundColor: '#121212',
-        icon: getAppIconImage(),
         parent: mainWindow && !mainWindow.isDestroyed() ? mainWindow : undefined,
         modal: false,
         show: false,
@@ -5251,9 +5306,7 @@ function createAdblockWindow() {
         }
     });
 
-    if (process.platform === 'linux' && typeof adblockWindow.setIcon === 'function') {
-        adblockWindow.setIcon(getAppIconImage());
-    }
+    applyLinuxTaskbarGrouping(adblockWindow);
 
     adblockWindow.loadFile(path.join(__dirname, 'adblock.html'));
 
@@ -5291,12 +5344,12 @@ function createDownloaderWindow() {
     }
 
     downloaderWindow = new BrowserWindow({
+        ...getAuxiliaryWindowDefaults(),
         width: 1120,
         height: 820,
         minWidth: 760,
         minHeight: 620,
         backgroundColor: '#10141c',
-        icon: getAppIconImage(),
         modal: false,
         show: false,
         title: 'ArDali Dawlod',
@@ -5315,9 +5368,7 @@ function createDownloaderWindow() {
         }
     });
 
-    if (process.platform === 'linux' && typeof downloaderWindow.setIcon === 'function') {
-        downloaderWindow.setIcon(getAppIconImage());
-    }
+    applyLinuxTaskbarGrouping(downloaderWindow);
 
     downloaderWindow.loadFile(path.join(__dirname, 'downloader.html'));
 
@@ -5971,12 +6022,12 @@ function createSoundEffectsWindow(rawScope = 'music') {
 
     soundEffectsWindowScope = scope;
     soundEffectsWindow = new BrowserWindow({
+        ...getAuxiliaryWindowDefaults(),
         width: 1300,
         height: 800,
         minWidth: 1000,
         minHeight: 600,
         backgroundColor: '#0a0a0f',
-        icon: getAppIconImage(),
         parent: mainWindow && !mainWindow.isDestroyed() ? mainWindow : undefined,
         modal: false,
         autoHideMenuBar: true,
@@ -5997,9 +6048,7 @@ function createSoundEffectsWindow(rawScope = 'music') {
         show: false
     });
 
-    if (process.platform === 'linux' && typeof soundEffectsWindow.setIcon === 'function') {
-        soundEffectsWindow.setIcon(getAppIconImage());
-    }
+    applyLinuxTaskbarGrouping(soundEffectsWindow);
 
     soundEffectsWindow.loadFile(htmlPath, { query: { scope } });
 
@@ -6038,12 +6087,12 @@ function createEQPresetsWindow() {
 
     console.log('[createEQPresetsWindow] BrowserWindow oluşturuluyor...');
     eqPresetsWindow = new BrowserWindow({
+        ...getAuxiliaryWindowDefaults(),
         width: 980,
         height: 820,
         minWidth: 980,
         minHeight: 820,
         backgroundColor: '#111115',
-        icon: getAppIconImage(),
         parent: parentWindow,
         modal: false,
         autoHideMenuBar: true,
@@ -6070,9 +6119,7 @@ function createEQPresetsWindow() {
 
     let hasEverBeenShown = false;
 
-    if (process.platform === 'linux' && typeof eqPresetsWindow.setIcon === 'function') {
-        eqPresetsWindow.setIcon(getAppIconImage());
-    }
+    applyLinuxTaskbarGrouping(eqPresetsWindow);
 
     const htmlPath = path.join(__dirname, 'eqPresets.html');
     console.log('[createEQPresetsWindow] HTML dosyası yükleniyor:', htmlPath);
@@ -7057,11 +7104,17 @@ ipcMain.handle('app:relaunch', async () => {
         stopVisualizer();
         // "close to tray" akışı yeniden başlatmayı engellememeli.
         app.isQuitting = true;
-        const relaunchOptions = buildAppRelaunchOptions();
-        if (relaunchOptions) {
-            app.relaunch(relaunchOptions);
+        const relaunchArgs = getAppRelaunchArgs();
+        if (shouldUseAppImageExtractAndRunForRelaunch()) {
+            const launched = relaunchAppImageWithExtractAndRun(relaunchArgs);
+            if (!launched) return false;
         } else {
-            app.relaunch();
+            const relaunchOptions = buildAppRelaunchOptions();
+            if (relaunchOptions) {
+                app.relaunch(relaunchOptions);
+            } else {
+                app.relaunch();
+            }
         }
 
         // before-quit cleanup'larının çalışması için nazik kapanış.
@@ -7354,7 +7407,7 @@ function installWebviewHardening() {
                     return {
                         action: 'allow',
                         overrideBrowserWindowOptions: {
-                            icon: getAppIconImage(),
+                            ...getAuxiliaryWindowDefaults(),
                             title: 'ArDali',
                             autoHideMenuBar: false
                         }
@@ -7364,7 +7417,7 @@ function installWebviewHardening() {
                     return {
                         action: 'allow',
                         overrideBrowserWindowOptions: {
-                            icon: getAppIconImage(),
+                            ...getAuxiliaryWindowDefaults(),
                             title: 'ArDali',
                             autoHideMenuBar: false
                         }
@@ -7426,7 +7479,17 @@ app.whenReady().then(async () => {
     try { installTlsCompatibilityForWebPlatforms(); } catch (e) { console.error('[APP] installTlsCompatibilityForWebPlatforms error:', e); }
     try { initAutoUpdaterBridge(); } catch (e) { console.error('[APP] initAutoUpdaterBridge error:', e); }
     try { installAppMenu(); } catch (e) { console.error('[APP] installAppMenu error:', e); }
-    try { registerPulseIpc({ ipcMain, app, shell, BrowserWindow, getMainWindow: () => mainWindow }); } catch (e) { console.error('[APP] registerPulseIpc error:', e); }
+    try {
+        registerPulseIpc({
+            ipcMain,
+            app,
+            shell,
+            BrowserWindow,
+            getMainWindow: () => mainWindow,
+            getAuxiliaryWindowDefaults,
+            configureWindowForTaskbar: applyLinuxTaskbarGrouping
+        });
+    } catch (e) { console.error('[APP] registerPulseIpc error:', e); }
     try { createWindow(); } catch (e) { console.error('[APP] createWindow error:', e); }
     try { createTray(); } catch (e) { console.error('[APP] createTray error:', e); }
     try { createMPRIS(); } catch (e) { console.error('[APP] createMPRIS error:', e); }

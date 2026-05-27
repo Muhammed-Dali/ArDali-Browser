@@ -32,6 +32,10 @@ package() {
   install -Dm755 "ArDali-${pkgver}-linux-x86_64.AppImage" "${pkgdir}/opt/ardali/ardali.AppImage"
   install -Dm755 /dev/stdin "${pkgdir}/usr/bin/ardali" <<'EOF'
 #!/usr/bin/env bash
+if [[ ! -e /dev/fuse && -z "${APPIMAGE_EXTRACT_AND_RUN:-}" ]]; then
+  export APPIMAGE_EXTRACT_AND_RUN=1
+fi
+export CHROME_DESKTOP="${CHROME_DESKTOP:-com.ardali.mediaplayer.desktop}"
 exec /opt/ardali/ardali.AppImage "$@"
 EOF
 

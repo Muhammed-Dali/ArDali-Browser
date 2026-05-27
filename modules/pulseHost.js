@@ -21,7 +21,15 @@ function createBroadcaster({ BrowserWindow, getMainWindow }) {
     };
 }
 
-function registerPulseIpc({ ipcMain, app, BrowserWindow, getMainWindow, shell }) {
+function registerPulseIpc({
+    ipcMain,
+    app,
+    BrowserWindow,
+    getMainWindow,
+    shell,
+    getAuxiliaryWindowDefaults,
+    configureWindowForTaskbar
+}) {
     const service = new PulseService({ app });
     service.loadPreferences();
     const broadcast = createBroadcaster({ BrowserWindow, getMainWindow });
@@ -47,12 +55,14 @@ function registerPulseIpc({ ipcMain, app, BrowserWindow, getMainWindow, shell })
 
         const parent = typeof getMainWindow === 'function' ? getMainWindow() : null;
         pulseWindow = new BrowserWindow({
+            ...(typeof getAuxiliaryWindowDefaults === 'function'
+                ? getAuxiliaryWindowDefaults()
+                : { icon: path.join(__dirname, '..', 'icons', 'app', 'ardali_512.png'), skipTaskbar: false }),
             width: 1100,
             height: 866,
             minWidth: 780,
             minHeight: 560,
             backgroundColor: '#10151d',
-            icon: path.join(__dirname, '..', 'icons', 'app', 'ardali.png'),
             parent: parent && !parent.isDestroyed() ? parent : undefined,
             modal: false,
             autoHideMenuBar: true,
@@ -69,6 +79,7 @@ function registerPulseIpc({ ipcMain, app, BrowserWindow, getMainWindow, shell })
                 spellcheck: false
             }
         });
+        if (typeof configureWindowForTaskbar === 'function') configureWindowForTaskbar(pulseWindow);
 
         pulseWindow.loadFile(path.join(__dirname, '..', 'pulse.html'));
         pulseWindow.once('ready-to-show', () => {

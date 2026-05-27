@@ -940,6 +940,7 @@ function ensureSidebarMotionSettingRow() {
         anchor.parentNode.insertBefore(hint, anchor);
         anchor.parentNode.insertBefore(label, hint);
     }
+    try { window.i18n?.translatePage?.(); } catch { }
 }
 
 function syncWebDependentSettingsUi() {
@@ -3684,7 +3685,7 @@ function renderAudioOutputOptions() {
     outputs.forEach((output) => {
         const option = document.createElement('option');
         option.value = String(output.id || '');
-        option.textContent = output.badge ? `${output.label} • ${output.badge}` : String(output.label || output.id || '');
+        option.textContent = formatAudioOutputOptionLabel(output);
         if (option.value === currentId) option.selected = true;
         elements.audioOutputSelect.appendChild(option);
     });
@@ -3710,9 +3711,75 @@ function getAudioQuickOutputIcon(output) {
     return '🔉';
 }
 
+function getAudioDeviceKindLabel(value, fallback = '') {
+    const raw = String(value || '').trim();
+    const normalized = raw.toLocaleLowerCase('tr-TR');
+    if (!normalized) return fallback;
+    if (normalized.includes('headphone') || normalized.includes('headset') || normalized.includes('kulaklık')) {
+        return uiT('settings.audio.deviceKindLabel.headphones', 'Headphones');
+    }
+    if (normalized.includes('hoparlör') || normalized.includes('speaker')) {
+        return uiT('settings.audio.deviceKindLabel.speaker', 'Speaker');
+    }
+    if (normalized.includes('bluetooth')) {
+        return uiT('settings.audio.deviceKindLabel.bluetooth', 'Bluetooth');
+    }
+    if (normalized.includes('display') || normalized.includes('monitor') || normalized.includes('hdmi') || normalized.includes('ekran')) {
+        return uiT('settings.audio.deviceKindLabel.display', 'Display audio');
+    }
+    if (normalized.includes('usb')) {
+        return uiT('settings.audio.deviceKindLabel.usb', 'USB');
+    }
+    if (normalized.includes('line out') || normalized.includes('line-out') || normalized.includes('hat çıkışı')) {
+        return uiT('settings.audio.deviceKindLabel.lineOut', 'Line-out');
+    }
+    if (normalized === 'speakers') {
+        return uiT('settings.audio.deviceKindLabel.speakers', 'Speakers');
+    }
+    return raw || fallback;
+}
+
+function formatAudioDeviceNameLabel(name) {
+    const raw = String(name || '').trim();
+    if (!raw) return '';
+    const replacements = [
+        {
+            pattern: /yerleşik ses|built[- ]?in audio/giu,
+            value: uiT('settings.audio.deviceName.builtInAudio', 'Built-in Audio')
+        },
+        {
+            pattern: /dahili ses|internal audio/giu,
+            value: uiT('settings.audio.deviceName.internalAudio', 'Internal Audio')
+        },
+        {
+            pattern: /analog stereo/giu,
+            value: uiT('settings.audio.deviceName.analogStereo', 'Analog Stereo')
+        },
+        {
+            pattern: /\bstereo\b/giu,
+            value: uiT('settings.audio.deviceName.stereo', 'Stereo')
+        },
+        {
+            pattern: /hoparlör|speaker/giu,
+            value: uiT('settings.audio.deviceKindLabel.speaker', 'Speaker')
+        }
+    ];
+    return replacements.reduce((label, replacement) => (
+        label.replace(replacement.pattern, replacement.value)
+    ), raw).replace(/\s{2,}/g, ' ').trim();
+}
+
+function formatAudioOutputOptionLabel(output) {
+    const name = formatAudioDeviceNameLabel(output?.label || output?.id || '');
+    const badge = getAudioDeviceKindLabel(output?.badge || output?.kind || '', '');
+    return badge ? `${name} • ${badge}` : name;
+}
+
 function formatAudioPortLabel(port) {
     const raw = String(port || '').trim();
     if (!raw) return '';
+    const directLabel = getAudioDeviceKindLabel(raw, '');
+    if (directLabel && directLabel !== raw) return directLabel;
     const normalized = raw
         .replace(/^analog-output-/, '')
         .replace(/^analog-input-/, '')
@@ -3788,7 +3855,7 @@ function renderAudioDeviceInsightCard() {
         });
     }
     if (elements.audioDeviceInsightTitle) {
-        elements.audioDeviceInsightTitle.textContent = system.currentOutputName || '-';
+        elements.audioDeviceInsightTitle.textContent = formatAudioDeviceNameLabel(system.currentOutputName) || '-';
     }
     if (elements.audioDeviceInsightSubtitle) {
         const portLabel = formatAudioPortLabel(system.currentOutputPort);
@@ -3803,7 +3870,7 @@ function renderAudioDeviceInsightCard() {
         if (system.currentOutputBadge) {
             chips.push({
                 variant: 'neutral',
-                text: system.currentOutputBadge
+                text: getAudioDeviceKindLabel(system.currentOutputBadge, system.currentOutputBadge)
             });
         }
         const sampleRateLabel = formatSampleRateLabel(system.sampleRateHz);
@@ -3835,7 +3902,9 @@ function renderAudioDeviceInsightCard() {
             if (system.relatedInputName) {
                 chips.push({
                     variant: 'neutral',
-                    text: uiT('settings.audio.deviceCard.micName', 'Mic: {name}', { name: system.relatedInputName })
+                    text: uiT('settings.audio.deviceCard.micName', 'Mic: {name}', {
+                        name: formatAudioDeviceNameLabel(system.relatedInputName)
+                    })
                 });
             }
         }
@@ -3907,8 +3976,8 @@ function renderAudioQuickOutputCards() {
         btn.innerHTML = `
             <span class="settings-audio-quick-icon">${getAudioQuickOutputIcon(output)}</span>
             <span class="settings-audio-quick-meta">
-                <span class="settings-audio-quick-title">${escapeHtml(output.label || output.id || '-')}</span>
-                <span class="settings-audio-quick-sub">${escapeHtml(output.badge || '-')}</span>
+                <span class="settings-audio-quick-title">${escapeHtml(formatAudioDeviceNameLabel(output.label || output.id || '') || '-')}</span>
+                <span class="settings-audio-quick-sub">${escapeHtml(getAudioDeviceKindLabel(output.badge || output.kind || '', '-'))}</span>
             </span>
         `;
         btn.addEventListener('click', async () => {
@@ -4063,19 +4132,25 @@ async function applyNightModeToEngine() {
             await compressor.setMakeupGain(preset.makeup);
             await compressor.setKnee(preset.knee);
         }
-        if (elements.audioNightModeHint) {
-            const detailKey = `settings.audio.night.mode.${String(prefs.nightModeLevel || 'balanced').toLowerCase()}.detail`;
-            const fallbackMap = {
-                light: 'Light mode gently softens sudden peaks without changing the overall feel too much.',
-                balanced: 'Balanced mode is best for film, web video and quiet home listening.',
-                strong: 'Strong mode suppresses peaks harder and keeps the room calmer late at night.'
-            };
-            elements.audioNightModeHint.textContent = uiT(detailKey, fallbackMap[String(prefs.nightModeLevel || 'balanced').toLowerCase()] || fallbackMap.balanced);
-        }
+        updateAudioNightModeHint();
         return true;
     } catch {
         return false;
     }
+}
+
+function updateAudioNightModeHint() {
+    if (!elements.audioNightModeHint) return;
+    const prefs = getAudioOutputSettings();
+    const key = ['light', 'balanced', 'strong'].includes(String(prefs.nightModeLevel || '').toLowerCase())
+        ? String(prefs.nightModeLevel).toLowerCase()
+        : 'balanced';
+    const fallbackMap = {
+        light: 'Light mode gently softens sudden peaks without changing the overall feel too much.',
+        balanced: 'Balanced mode is best for film, web video and quiet home listening.',
+        strong: 'Strong mode suppresses peaks harder and keeps the room calmer late at night.'
+    };
+    elements.audioNightModeHint.textContent = uiT(`settings.audio.night.mode.${key}.detail`, fallbackMap[key] || fallbackMap.balanced);
 }
 
 async function applyLimiterProtectionToEngine() {
@@ -4148,14 +4223,7 @@ async function applySpatialAudioMode(mode, options = {}) {
     prefs.spatialMode = key;
     setAudioSpatialCardState(key);
 
-    if (elements.audioSpatialHint) {
-        const fallbackMap = {
-            mono: 'Mono mode narrows the stage and reduces problematic hard left/right separation.',
-            stereo: 'Stereo mode keeps the original channel image without extra widening or headphone processing.',
-            spatial: 'Spatial mode combines widening and headphone crossfeed for a larger, more immersive stage.'
-        };
-        elements.audioSpatialHint.textContent = uiT(`settings.audio.spatial.${key}.detail`, fallbackMap[key]);
-    }
+    updateAudioSpatialHint(key);
 
     try {
         if (window.ardali?.ipcAudio?.module?.setStereoExpander && Number.isFinite(preset.stereoExpander)) {
@@ -4217,6 +4285,20 @@ async function applySpatialAudioMode(mode, options = {}) {
     }
 
     if (persist) saveSettings().catch(() => { });
+}
+
+function updateAudioSpatialHint(mode) {
+    if (!elements.audioSpatialHint) return;
+    const prefs = getAudioOutputSettings();
+    const key = ['mono', 'stereo', 'spatial'].includes(String(mode || prefs.spatialMode || '').toLowerCase())
+        ? String(mode || prefs.spatialMode).toLowerCase()
+        : 'stereo';
+    const fallbackMap = {
+        mono: 'Mono mode narrows the stage and reduces problematic hard left/right separation.',
+        stereo: 'Stereo mode keeps the original channel image without extra widening or headphone processing.',
+        spatial: 'Spatial mode combines widening and headphone crossfeed for a larger, more immersive stage.'
+    };
+    elements.audioSpatialHint.textContent = uiT(`settings.audio.spatial.${key}.detail`, fallbackMap[key]);
 }
 
 async function applyAudioProfile(profile, options = {}) {
@@ -4305,6 +4387,7 @@ function applySystemAudioStateToUi() {
         );
 
     const systemUiSignature = JSON.stringify({
+        language: document.documentElement?.lang || '',
         outputName: system.currentOutputName || '-',
         outputBadge: system.currentOutputBadge || '-',
         outputHint: outputSelectHint,
@@ -4341,8 +4424,8 @@ function applySystemAudioStateToUi() {
     }
     audioOutputRuntime.systemUiSignature = systemUiSignature;
 
-    setTextIfChanged(elements.audioCurrentOutputName, system.currentOutputName || '-');
-    setTextIfChanged(elements.audioCurrentOutputBadge, system.currentOutputBadge || '-');
+    setTextIfChanged(elements.audioCurrentOutputName, formatAudioDeviceNameLabel(system.currentOutputName) || '-');
+    setTextIfChanged(elements.audioCurrentOutputBadge, getAudioDeviceKindLabel(system.currentOutputBadge, system.currentOutputBadge || '-'));
     renderAudioDeviceInsightCard();
     renderAudioOutputOptions();
     renderAudioQuickOutputCards();
@@ -20350,6 +20433,11 @@ function refreshLanguageSensitiveLibraryUi() {
 
 window.addEventListener('ardali:languageChanged', () => {
     refreshLanguageSensitiveLibraryUi();
+    try { updatePulseQuickModeUi(); } catch {}
+    try { updateOptimizationProfileUi(); } catch {}
+    try { updateAudioNightModeHint(); } catch {}
+    try { updateAudioSpatialHint(); } catch {}
+    try { applySystemAudioStateToUi(); } catch {}
 });
 
 function getFsOnOffLabel(enabled) {

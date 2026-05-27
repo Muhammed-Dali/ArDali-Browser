@@ -215,8 +215,8 @@
                                         <h3 data-i18n="settings.tabs.listen">Dinle</h3>
                                         <div class="settings-group">
                                             <h4 data-i18n="listen.quick.title">ArDali-Pulse Hızlı Dinleme</h4>
-                                            <div class="settings-sub">Bu bölüm sadece ana arayüzdeki hızlı dinleme düğmesinin davranışını ayarlar</div>
-                                            <div class="settings-sub">Tanıma kalitesi açılacak platform ve tekrar davranışı ArDali Dinle penceresindeki Tercihler bölümündedir</div>
+                                            <div class="settings-sub" data-i18n="listen.quick.sharedNote.line1">Dinle sekmesindeki ayarlar, hem Dinle paneli hem de Hızlı Dinle için ortaktır.</div>
+                                            <div class="settings-sub" data-i18n="listen.quick.sharedNote.line2">Hızlı Dinle, ilk doğrulanan sonucu otomatik olarak Web platformunda açar.</div>
                                             <div class="settings-row">
                                                 <div class="settings-row-left">
                                                     <div class="settings-label" data-i18n="listen.quick.toastDuration.label">Dinleme bildirim süresi</div>
@@ -255,7 +255,7 @@
                                             </div>
                                             <div class="settings-sub" id="pulseQuickModeDetails" aria-live="polite"></div>
                                             <div class="settings-sub listen-quick-detected-device" id="pulseQuickDetectedDeviceStatus" aria-live="polite"></div>
-                                            <button class="reset-btn" id="pulseUltraFastPreset">⚡ Ultra Hızlı (3/5)</button>
+                                            <button class="reset-btn" id="pulseUltraFastPreset" data-i18n="listen.quick.preset.ultraFast">⚡ Ultra Hızlı (3/5)</button>
                                             <button class="reset-btn" id="resetListen" data-i18n="listen.buttons.resetDefaults">↻ Dinle Varsayılanları</button>
                                         </div>
                                     </div>
@@ -466,29 +466,29 @@
                                                 </select>
                                             </div>
                                             <div class="setting-row">
-                                                <span>Kenar bar görünümü</span>
+                                                <span data-i18n="ui.startup.sidebarStyle">Kenar bar görünümü</span>
                                                 <select class="settings-select" id="behaviorSidebarStyle">
-                                                    <option value="classic">Klasik Simgeler</option>
-                                                    <option value="minimal">Modern Çizgi</option>
-                                                    <option value="studio">Medya Stüdyo</option>
-                                                    <option value="neonpulse">Neon Pulse</option>
-                                                    <option value="vinyldisc">Vinyl Disk</option>
-                                                    <option value="monotech">Mono Tech</option>
-                                                    <option value="crystal">Kristal Cam</option>
-                                                    <option value="retroblock">Retro Blok</option>
+                                                    <option value="classic" data-i18n="ui.startup.sidebarStyle.options.classic">Klasik Simgeler</option>
+                                                    <option value="minimal" data-i18n="ui.startup.sidebarStyle.options.minimal">Modern Çizgi</option>
+                                                    <option value="studio" data-i18n="ui.startup.sidebarStyle.options.studio">Medya Stüdyo</option>
+                                                    <option value="neonpulse" data-i18n="ui.startup.sidebarStyle.options.neonpulse">Neon Pulse</option>
+                                                    <option value="vinyldisc" data-i18n="ui.startup.sidebarStyle.options.vinyldisc">Vinyl Disk</option>
+                                                    <option value="monotech" data-i18n="ui.startup.sidebarStyle.options.monotech">Mono Tech</option>
+                                                    <option value="crystal" data-i18n="ui.startup.sidebarStyle.options.crystal">Kristal Cam</option>
+                                                    <option value="retroblock" data-i18n="ui.startup.sidebarStyle.options.retroblock">Retro Blok</option>
                                                 </select>
                                             </div>
                                             <div class="setting-row">
-                                                <span>Kenar bar ikon boyutu</span>
+                                                <span data-i18n="ui.startup.sidebarIconScale">Kenar bar ikon boyutu</span>
                                                 <select class="settings-select" id="behaviorSidebarIconScale">
-                                                    <option value="x1">X1 - Küçük</option>
-                                                    <option value="x2">X2 - Kompakt</option>
-                                                    <option value="x3">X3 - Normal</option>
-                                                    <option value="x4">X4 - Büyük</option>
-                                                    <option value="x5">X5 - Çok Büyük</option>
+                                                    <option value="x1" data-i18n="ui.startup.sidebarIconScale.options.x1">X1 - Küçük</option>
+                                                    <option value="x2" data-i18n="ui.startup.sidebarIconScale.options.x2">X2 - Kompakt</option>
+                                                    <option value="x3" data-i18n="ui.startup.sidebarIconScale.options.x3">X3 - Normal</option>
+                                                    <option value="x4" data-i18n="ui.startup.sidebarIconScale.options.x4">X4 - Büyük</option>
+                                                    <option value="x5" data-i18n="ui.startup.sidebarIconScale.options.x5">X5 - Çok Büyük</option>
                                                 </select>
                                             </div>
-                                            <div class="settings-sub">Sol bardaki ana ikonların ve web hızlı ikonlarının boyutunu değiştirir.</div>
+                                            <div class="settings-sub" data-i18n="ui.startup.sidebarIconScale.hint">Sol bardaki ana ikonların ve web hızlı ikonlarının boyutunu değiştirir.</div>
                                             <label class="checkbox-label">
                                                 <input type="checkbox" id="behaviorCloseToTray" checked>
                                                 <span data-i18n="ui.startup.closeToTray">Pencereyi kapatınca sistem tepsisine küçült</span>
@@ -805,7 +805,7 @@
                                                 </label>
                                                 <label class="checkbox-label">
                                                     <input type="checkbox" id="securityEnforceAllowlist">
-                                                    <span>Yalnız izinli platformları aç (allowlist)</span>
+                                                    <span data-i18n="securityPage.enforceAllowlist">Yalnız izinli platformları aç (allowlist)</span>
                                                 </label>
                                                 <div class="setting-row">
                                                     <span data-i18n="securityPage.sessionProfile.label">Web oturum profili</span>
@@ -816,7 +816,7 @@
                                                 </div>
                                                 <div class="security-hint" data-i18n="securityPage.vpnPolicyHint">Öneri: Kapalı bırakın. VPN’de sadece uyarı verilir; izinli platformlar dışı siteler zaten engellenir.</div>
                                                 <div class="security-hint" data-i18n="securityPage.sessionProfile.hint">İzole profil, Web sekmesine ilk girişte çerez/önbelleği temizleyerek temiz oturum açar.</div>
-                                                <div class="security-hint">Kapalıyken Web sekmesinde tüm geçerli http/https siteleri açabilirsiniz.</div>
+                                                <div class="security-hint" data-i18n="securityPage.enforceAllowlist.hint">Kapalıyken Web sekmesinde tüm geçerli http/https siteleri açabilirsiniz.</div>
                                                 <div class="security-hint" data-i18n="securityPage.allowPopupsHint">Not: Pop-up kapalıyken bazı sitelerde giriş/hesap bağlantıları açılmayabilir.</div>
                                             </div>
                                             <div class="security-section">
