@@ -5,7 +5,31 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: https:; media-src 'self' file:; frame-src 'self' https://music.youtube.com https://www.youtube.com https://www.youtube-nocookie.com https://youtube-nocookie.com https://www.deezer.com https://soundcloud.com https://facebook.com https://www.facebook.com https://m.facebook.com https://www.instagram.com https://www.tiktok.com https://x.com https://twitter.com https://www.reddit.com https://www.twitch.tv https://web.whatsapp.com https://web.telegram.org https://accounts.google.com https://*.google.com https://*.googleusercontent.com;">
     <title>ArDali Media Player</title>
+    <script>
+        (() => {
+            document.documentElement.classList.add('material-icons-loading');
+        })();
+    </script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200">
     <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet">
+    <script>
+        (() => {
+            const markReady = () => {
+                document.documentElement.classList.remove('material-icons-loading');
+                document.documentElement.classList.add('material-icons-ready');
+            };
+            if (document.fonts?.load) {
+                Promise.race([
+                    document.fonts.load('24px "Material Symbols Rounded"', 'visibility'),
+                    new Promise((resolve) => setTimeout(resolve, 1200))
+                ]).then(markReady, markReady);
+            } else {
+                markReady();
+            }
+        })();
+    </script>
     <link rel="stylesheet" href="styles/main.css">
 </head>
 <body>
@@ -401,7 +425,10 @@
                         <div class="video-player-shell hidden" id="videoPlayerShell">
                             <div class="video-player-topbar" id="videoPlayerTopbar">
                                 <button class="video-back-btn" id="videoBackToGridBtn" type="button">
-                                    <span class="material-symbols-rounded" aria-hidden="true">arrow_back</span>
+                                    <svg class="video-player-svg-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                                        <path d="M10.6 6.2 4.8 12l5.8 5.8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                        <path d="M5.4 12h13.8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                                    </svg>
                                     <span data-i18n="video.workspace.back">Geri</span>
                                 </button>
                                 <div class="video-player-title-stack">
@@ -421,15 +448,24 @@
                             <div class="video-mini-overlay" id="videoMiniOverlay" aria-hidden="true">
                                 <div class="video-mini-overlay-top">
                                     <button class="video-mini-overlay-btn" id="videoMiniRestoreBtn" type="button" aria-label="Büyük oynatıcı" title="Büyük oynatıcı" data-i18n-aria-label="video.workspace.restore" data-i18n-title="video.workspace.restore">
-                                        <span class="material-symbols-rounded" aria-hidden="true">open_in_full</span>
+                                        <svg class="video-player-svg-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                                            <path d="M8.6 4.8H4.8v3.8M15.4 4.8h3.8v3.8M8.6 19.2H4.8v-3.8M15.4 19.2h3.8v-3.8" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/>
+                                            <path d="M9.4 9.4 5 5M14.6 9.4 19 5M9.4 14.6 5 19M14.6 14.6 19 19" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/>
+                                        </svg>
                                     </button>
                                     <button class="video-mini-overlay-btn video-mini-close-btn" id="videoMiniCloseBtn" type="button" aria-label="Kapat" title="Kapat" data-i18n-aria-label="video.workspace.close" data-i18n-title="video.workspace.close">
-                                        <span class="material-symbols-rounded" aria-hidden="true">close</span>
+                                        <svg class="video-player-svg-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                                            <path d="m7 7 10 10M17 7 7 17" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round"/>
+                                        </svg>
                                     </button>
                                 </div>
                                 <button class="video-mini-play-toggle" id="videoMiniPlayPauseBtn" type="button" aria-label="Oynat / Duraklat" title="Oynat / Duraklat" data-i18n-aria-label="controls.playPause" data-i18n-title="controls.playPause">
-                                    <span class="material-symbols-rounded" id="videoMiniPlayIcon" aria-hidden="true">play_arrow</span>
-                                    <span class="material-symbols-rounded hidden" id="videoMiniPauseIcon" aria-hidden="true">pause</span>
+                                    <svg class="video-player-svg-icon video-mini-state-icon" id="videoMiniPlayIcon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                                        <path d="M8.2 5.9v12.2L17.4 12 8.2 5.9Z" fill="currentColor"/>
+                                    </svg>
+                                    <svg class="video-player-svg-icon video-mini-state-icon hidden" id="videoMiniPauseIcon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                                        <path d="M7.2 5.8h3.5v12.4H7.2V5.8Zm6.1 0h3.5v12.4h-3.5V5.8Z" fill="currentColor"/>
+                                    </svg>
                                 </button>
                                 <div class="video-mini-info">
                                     <div class="video-mini-info-title" id="videoMiniTitle">Video</div>
@@ -494,7 +530,10 @@
                                 <!-- Ses Kontrolü -->
                                 <div class="fs-volume-container">
                                     <button class="fs-icon-btn fs-volume-btn" id="fsMuteBtn" title="Sesi Aç/Kapat">
-                                        <span class="material-symbols-rounded fs-youtube-volume" id="fsYouTubeVolumeIcon">volume_up</span>
+                                        <svg class="fs-svg-icon fs-youtube-volume" id="fsYouTubeVolumeIcon" viewBox="0 0 24 24" aria-hidden="true" focusable="false" data-fs-volume-icon="volume_up">
+                                            <path d="M4 10v4h4l5 4V6l-5 4H4Z" fill="currentColor"/>
+                                            <path d="M16 8a5 5 0 0 1 0 8M18.5 5.5a9 9 0 0 1 0 13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                                        </svg>
                                     </button>
                                     <input type="range" class="rainbow-slider" id="fsVolumeSlider" min="0" max="100" value="70">
                                     <span class="fs-volume-label" id="fsVolumeLabel">70%</span>
@@ -530,7 +569,10 @@
 	                            <!-- Toggle Ayarlar -->
 	                            <div class="yt-settings-item toggle-item">
 	                                <div class="yt-setting-content">
-	                                    <span class="material-symbols-rounded yt-setting-icon">volume_up</span>
+	                                    <svg class="fs-svg-icon yt-setting-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                                            <path d="M4 10v4h4l5 4V6l-5 4H4Z" fill="currentColor"/>
+                                            <path d="M16 8a5 5 0 0 1 0 8M18.5 5.5a9 9 0 0 1 0 13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                                        </svg>
 	                                    <span class="yt-setting-label" data-i18n="videoFs.settings.stableVolume">Sabit ses</span>
 	                                </div>
 	                                <div class="yt-toggle-switch" data-setting="stable-volume">
@@ -540,7 +582,9 @@
                             
 	                            <div class="yt-settings-item toggle-item">
 	                                <div class="yt-setting-content">
-	                                    <span class="material-symbols-rounded yt-setting-icon">graphic_eq</span>
+	                                    <svg class="fs-svg-icon yt-setting-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                                            <path d="M4 14v4M8 9v9M12 5v13M16 10v8M20 7v11" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round"/>
+                                        </svg>
 	                                    <span class="yt-setting-label" data-i18n="videoFs.settings.volumeBoost">Ses artırma</span>
 	                                </div>
 	                                <div class="yt-toggle-switch" data-setting="volume-boost">
@@ -550,7 +594,10 @@
                             
 	                            <div class="yt-settings-item toggle-item">
 	                                <div class="yt-setting-content">
-	                                    <span class="material-symbols-rounded yt-setting-icon">flare</span>
+	                                    <svg class="fs-svg-icon yt-setting-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                                            <path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M18.4 5.6l-2.1 2.1M7.7 16.3l-2.1 2.1" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/>
+                                            <circle cx="12" cy="12" r="3.2" fill="none" stroke="currentColor" stroke-width="1.9"/>
+                                        </svg>
 	                                    <span class="yt-setting-label" data-i18n="videoFs.settings.cinematicLighting">Sinematik ışıklandırma</span>
 	                                </div>
 	                                <div class="yt-toggle-switch active" data-setting="cinematic-lighting">
@@ -560,7 +607,10 @@
                             
 	                            <div class="yt-settings-item toggle-item">
 	                                <div class="yt-setting-content">
-	                                    <span class="material-symbols-rounded yt-setting-icon">announcement</span>
+	                                    <svg class="fs-svg-icon yt-setting-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                                            <path d="M4 6h16v11H8l-4 4V6Z" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round"/>
+                                            <path d="M12 9v3M12 15h.01" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/>
+                                        </svg>
 	                                    <span class="yt-setting-label" data-i18n="videoFs.settings.annotations">Ek Açıklamalar</span>
 	                                </div>
 	                                <div class="yt-toggle-switch active" data-setting="annotations">
@@ -571,45 +621,60 @@
                             <!-- Dropdown Ayarlar -->
 	                            <div class="yt-settings-item dropdown-item" data-setting="subtitles">
 	                                <div class="yt-setting-content">
-	                                    <span class="material-symbols-rounded yt-setting-icon">subtitles</span>
+	                                    <svg class="fs-svg-icon yt-setting-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                                            <rect x="4" y="6" width="16" height="12" rx="2" fill="none" stroke="currentColor" stroke-width="1.9"/>
+                                            <path d="M7.5 13h4M13.5 13h3M7.5 16h7" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/>
+                                        </svg>
 	                                    <span class="yt-setting-label" data-i18n="videoFs.settings.subtitles">Altyazılar (1)</span>
 	                                </div>
 	                                <div class="yt-setting-value">
 	                                    <span id="fsCurrentSubtitles" data-i18n="videoFs.state.off">Kapalı</span>
-	                                    <span class="material-symbols-rounded">chevron_right</span>
+	                                    <svg class="fs-svg-icon yt-chevron-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m9 6 6 6-6 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
 	                                </div>
 	                            </div>
                             
 	                            <div class="yt-settings-item dropdown-item" data-setting="sleep-timer">
 	                                <div class="yt-setting-content">
-	                                    <span class="material-symbols-rounded yt-setting-icon">schedule</span>
+	                                    <svg class="fs-svg-icon yt-setting-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                                            <circle cx="12" cy="12" r="8.3" fill="none" stroke="currentColor" stroke-width="1.9"/>
+                                            <path d="M12 7v5l3.4 2" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/>
+                                        </svg>
 	                                    <span class="yt-setting-label" data-i18n="videoFs.settings.sleepTimer">Uyku modu zamanlayıcı</span>
 	                                </div>
 	                                <div class="yt-setting-value">
 	                                    <span id="fsCurrentSleepTimer" data-i18n="videoFs.state.off">Kapalı</span>
-	                                    <span class="material-symbols-rounded">chevron_right</span>
+	                                    <svg class="fs-svg-icon yt-chevron-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m9 6 6 6-6 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
 	                                </div>
 	                            </div>
                             
 	                            <div class="yt-settings-item dropdown-item" data-setting="playback-speed">
 	                                <div class="yt-setting-content">
-	                                    <span class="material-symbols-rounded yt-setting-icon">speed</span>
+	                                    <svg class="fs-svg-icon yt-setting-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                                            <path d="M4 15a8 8 0 1 1 16 0" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/>
+                                            <path d="m12 15 4-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                                            <circle cx="12" cy="15" r="1.4" fill="currentColor"/>
+                                        </svg>
 	                                    <span class="yt-setting-label" data-i18n="videoFs.settings.playbackSpeed">Çalma hızı</span>
 	                                </div>
 	                                <div class="yt-setting-value">
 	                                    <span id="currentPlaybackSpeed" data-i18n="videoFs.speed.normal">Normal</span>
-	                                    <span class="material-symbols-rounded">chevron_right</span>
+	                                    <svg class="fs-svg-icon yt-chevron-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m9 6 6 6-6 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
 	                                </div>
 	                            </div>
                             
 	                            <div class="yt-settings-item dropdown-item" data-setting="quality">
 	                                <div class="yt-setting-content">
-	                                    <span class="material-symbols-rounded yt-setting-icon">tune</span>
+	                                    <svg class="fs-svg-icon yt-setting-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                                            <path d="M4 7h10M18 7h2M4 12h3M11 12h9M4 17h12M20 17h0" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/>
+                                            <circle cx="16" cy="7" r="2" fill="none" stroke="currentColor" stroke-width="1.9"/>
+                                            <circle cx="9" cy="12" r="2" fill="none" stroke="currentColor" stroke-width="1.9"/>
+                                            <circle cx="18" cy="17" r="2" fill="none" stroke="currentColor" stroke-width="1.9"/>
+                                        </svg>
 	                                    <span class="yt-setting-label" data-i18n="videoFs.settings.quality">Kalite</span>
 	                                </div>
 	                                <div class="yt-setting-value">
 	                                    <span id="currentQuality">Otomatik (720p50)</span>
-	                                    <span class="material-symbols-rounded">chevron_right</span>
+	                                    <svg class="fs-svg-icon yt-chevron-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m9 6 6 6-6 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
 	                                </div>
 	                            </div>
 	                        </div>
@@ -618,13 +683,13 @@
 	                        <div class="yt-settings-submenu hidden" id="fsQualityMenu">
 	                            <div class="yt-submenu-header">
 	                                <button class="yt-back-btn" data-back="main">
-	                                    <span class="material-symbols-rounded">arrow_back</span>
+	                                    <svg class="fs-svg-icon yt-back-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M10.6 6.2 4.8 12l5.8 5.8M5.4 12h13.8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
 	                                </button>
 	                                <span class="yt-submenu-title" data-i18n="videoFs.settings.quality">Kalite</span>
 	                            </div>
 	                            <div class="yt-radio-item active" data-quality="auto">
 	                                <span data-i18n="videoFs.quality.auto">Otomatik</span>
-	                                <span class="material-symbols-rounded yt-check-icon">check</span>
+	                                <svg class="fs-svg-icon yt-check-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m5 12.4 4.2 4.2L19 6.8" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
 	                            </div>
                             <div class="yt-radio-item" data-quality="1080p">
                                 <span>1080p</span>
@@ -644,7 +709,7 @@
 	                        <div class="yt-settings-submenu hidden" id="fsSpeedMenu">
                             <div class="yt-submenu-header">
                                 <button class="yt-back-btn" data-back="main">
-                                    <span class="material-symbols-rounded">arrow_back</span>
+                                    <svg class="fs-svg-icon yt-back-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M10.6 6.2 4.8 12l5.8 5.8M5.4 12h13.8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
                                 </button>
 	                                <span class="yt-submenu-title" data-i18n="videoFs.settings.playbackSpeed">Çalma hızı</span>
                             </div>
@@ -659,7 +724,7 @@
                             </div>
 	                            <div class="yt-radio-item active" data-speed="1">
 	                                <span data-i18n="videoFs.speed.normal">Normal</span>
-	                                <span class="material-symbols-rounded yt-check-icon">check</span>
+	                                <svg class="fs-svg-icon yt-check-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m5 12.4 4.2 4.2L19 6.8" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
 	                            </div>
                             <div class="yt-radio-item" data-speed="1.25">
                                 <span>1.25</span>
@@ -679,13 +744,13 @@
 	                        <div class="yt-settings-submenu hidden" id="fsSubtitlesMenu">
                             <div class="yt-submenu-header">
                                 <button class="yt-back-btn" data-back="main">
-                                    <span class="material-symbols-rounded">arrow_back</span>
+                                    <svg class="fs-svg-icon yt-back-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M10.6 6.2 4.8 12l5.8 5.8M5.4 12h13.8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
                                 </button>
 	                                <span class="yt-submenu-title" data-i18n="videoFs.settings.subtitlesTitle">Altyazılar</span>
 	                            </div>
 	                            <div class="yt-radio-item active" data-subtitles="off">
 	                                <span data-i18n="videoFs.state.off">Kapalı</span>
-	                                <span class="material-symbols-rounded yt-check-icon">check</span>
+	                                <svg class="fs-svg-icon yt-check-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m5 12.4 4.2 4.2L19 6.8" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
 	                            </div>
 	                            <div class="yt-radio-item" data-subtitles="soon">
 	                                <span data-i18n="videoFs.state.soon">Yakında</span>
@@ -696,13 +761,13 @@
 	                        <div class="yt-settings-submenu hidden" id="fsSleepMenu">
                             <div class="yt-submenu-header">
                                 <button class="yt-back-btn" data-back="main">
-                                    <span class="material-symbols-rounded">arrow_back</span>
+                                    <svg class="fs-svg-icon yt-back-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M10.6 6.2 4.8 12l5.8 5.8M5.4 12h13.8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
                                 </button>
 	                                <span class="yt-submenu-title" data-i18n="videoFs.settings.sleepTimer">Uyku modu zamanlayıcı</span>
 	                            </div>
 	                            <div class="yt-radio-item active" data-sleep="off">
 	                                <span data-i18n="videoFs.state.off">Kapalı</span>
-	                                <span class="material-symbols-rounded yt-check-icon">check</span>
+	                                <svg class="fs-svg-icon yt-check-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m5 12.4 4.2 4.2L19 6.8" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
 	                            </div>
 	                            <div class="yt-radio-item" data-sleep="10">
 	                                <span>10</span> <span data-i18n="videoFs.sleep.minutesShort">dk</span>

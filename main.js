@@ -7336,7 +7336,7 @@ function installWebviewHardening() {
                         console.warn('[SCREEN_REC] display media request failed:', error?.message || error);
                         callback({});
                     }
-                });
+                }, { useSystemPicker: true });
             }
 
             if (ses && typeof ses.on === 'function') {

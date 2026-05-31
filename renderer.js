@@ -1248,6 +1248,11 @@ const videoThumbnailInFlight = new Map();
 const VIDEO_STUDIO_PROFILE_STORAGE_KEY = 'ardali_video_studio_profile_v1';
 const VIDEO_STUDIO_RECOVERY_STORAGE_KEY = 'ardali_video_studio_recovery_v1';
 const VIDEO_STUDIO_PORTAL_SOURCE_ID = '__ardali_screen_picker__';
+const VIDEO_STUDIO_PORTAL_SOURCE = Object.freeze({
+    id: VIDEO_STUDIO_PORTAL_SOURCE_ID,
+    name: 'Ekran Yakalama (PipeWire)',
+    type: 'portal'
+});
 let queuedVideoHighlightTimer = null;
 let videoMiniExpandAnimationTimer = null;
 let videoToolActiveJobId = '';
@@ -20569,7 +20574,9 @@ function ensureFsWheelHud() {
         el.id = 'fsVolumeWheelHud';
         el.className = 'fs-wheel-hud left hidden';
         el.innerHTML = `
-            <span class="material-symbols-rounded fs-wheel-hud-icon" aria-hidden="true">volume_up</span>
+            <svg class="fs-svg-icon fs-wheel-hud-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false" data-fs-volume-icon="volume_up">
+                ${getFsVolumeIconMarkup('volume_up')}
+            </svg>
             <span class="fs-wheel-hud-value" id="fsVolumeWheelHudValue">0%</span>
             <div class="fs-wheel-hud-bar" aria-hidden="true"><div class="fs-wheel-hud-bar-fill" id="fsVolumeWheelHudFill"></div></div>
         `;
@@ -20581,7 +20588,10 @@ function ensureFsWheelHud() {
         el.id = 'fsBrightnessWheelHud';
         el.className = 'fs-wheel-hud right hidden';
         el.innerHTML = `
-            <span class="material-symbols-rounded fs-wheel-hud-icon" aria-hidden="true">brightness_6</span>
+            <svg class="fs-svg-icon fs-wheel-hud-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                <path d="M12 3v2.5M12 18.5V21M3 12h2.5M18.5 12H21M5.6 5.6l1.8 1.8M16.6 16.6l1.8 1.8M18.4 5.6l-1.8 1.8M7.4 16.6l-1.8 1.8" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/>
+                <circle cx="12" cy="12" r="4.2" fill="none" stroke="currentColor" stroke-width="1.9"/>
+            </svg>
             <span class="fs-wheel-hud-value" id="fsBrightnessWheelHudValue">100%</span>
             <div class="fs-wheel-hud-bar" aria-hidden="true"><div class="fs-wheel-hud-bar-fill" id="fsBrightnessWheelHudFill"></div></div>
         `;
@@ -20599,7 +20609,15 @@ function showFsWheelHud(type, percent) {
         const icon = hud?.querySelector('.fs-wheel-hud-icon');
         if (!hud || !value) return;
         value.textContent = `${safePercent}%`;
-        if (icon) icon.textContent = safePercent === 0 ? 'volume_off' : (safePercent <= 50 ? 'volume_down' : 'volume_up');
+        if (icon) {
+            const nextIcon = safePercent === 0 ? 'volume_off' : (safePercent <= 50 ? 'volume_down' : 'volume_up');
+            if (icon instanceof SVGElement) {
+                icon.setAttribute('data-fs-volume-icon', nextIcon);
+                icon.innerHTML = getFsVolumeIconMarkup(nextIcon);
+            } else {
+                icon.textContent = nextIcon;
+            }
+        }
         if (fill) fill.style.height = `${clampNumber(safePercent, 0, 100)}%`;
         hud.classList.remove('hidden');
         if (fsHudState.volumeTimer) clearTimeout(fsHudState.volumeTimer);
@@ -21239,7 +21257,27 @@ function handleFsVolumeChange(e) {
     saveSettings();
 }
 
-// Fullscreen ses ikonu (YouTube tarzı Material Symbols)
+function getFsVolumeIconMarkup(iconName = 'volume_up') {
+    const normalized = String(iconName || 'volume_up').trim();
+    if (normalized === 'volume_off') {
+        return `
+            <path d="M4 10v4h4l5 4V6l-5 4H4Z" fill="currentColor"/>
+            <path d="m16 9 5 6M21 9l-5 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+        `;
+    }
+    if (normalized === 'volume_down') {
+        return `
+            <path d="M4 10v4h4l5 4V6l-5 4H4Z" fill="currentColor"/>
+            <path d="M16 9.2a4 4 0 0 1 0 5.6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+        `;
+    }
+    return `
+        <path d="M4 10v4h4l5 4V6l-5 4H4Z" fill="currentColor"/>
+        <path d="M16 8a5 5 0 0 1 0 8M18.5 5.5a9 9 0 0 1 0 13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+    `;
+}
+
+// Fullscreen ses ikonu (YouTube tarzı SVG)
 function updateFsVolumeIcon() {
     const muteBtn = document.getElementById('fsMuteBtn');
     const iconSpan = document.getElementById('fsYouTubeVolumeIcon');
@@ -21255,12 +21293,20 @@ function updateFsVolumeIcon() {
     muteBtn.classList.toggle('is-muted', isMuted);
 
     // İkon tipi (YouTube benzeri)
+    let nextIcon = 'volume_up';
     if (isMuted || volumePercent === 0) {
-        iconSpan.textContent = 'volume_off';
+        nextIcon = 'volume_off';
     } else if (volumePercent <= 50) {
-        iconSpan.textContent = 'volume_down';
+        nextIcon = 'volume_down';
+    }
+
+    if (iconSpan instanceof SVGElement) {
+        if (iconSpan.getAttribute('data-fs-volume-icon') !== nextIcon) {
+            iconSpan.setAttribute('data-fs-volume-icon', nextIcon);
+            iconSpan.innerHTML = getFsVolumeIconMarkup(nextIcon);
+        }
     } else {
-        iconSpan.textContent = 'volume_up';
+        iconSpan.textContent = nextIcon;
     }
 }
 
@@ -33191,26 +33237,20 @@ function removeVideoStudioSource(sourceId) {
 
 async function refreshVideoStudioSources() {
     const sources = await window.ardali?.screenRecording?.getSources?.() || [];
+    const recordableSources = getVideoStudioRecordableSources(sources);
     const studioSelect = document.getElementById('videoStudioSourceSelect');
     const recordSelect = document.getElementById('videoToolRecordSourceSelect');
     const previousValue = String(studioSelect?.value || videoStudioSelectedSourceId || recordSelect?.value || '').trim();
-    const markup = sources.length
-        ? sources.map((source) => {
-            const sourceType = String(source.type || '').toLowerCase() === 'screen'
-                ? uiT('video.tools.record.sourceScreen', 'Ekran')
-                : uiT('video.tools.record.sourceWindow', 'Pencere');
-            return `<option value="${escapeAttribute(source.id)}">${escapeHtml(`${sourceType}: ${source.name || source.id}`)}</option>`;
-        }).join('')
-        : `<option value="${escapeAttribute(VIDEO_STUDIO_PORTAL_SOURCE_ID)}">${escapeHtml(uiT('video.tools.record.portalSource', 'Ekran Yakalama (PipeWire)'))}</option>`;
+    const markup = renderVideoStudioSourceOptions(sources);
     if (studioSelect) studioSelect.innerHTML = markup;
     if (recordSelect) recordSelect.innerHTML = markup;
-    const nextValue = sources.some((source) => source.id === previousValue)
+    const nextValue = recordableSources.some((source) => source.id === previousValue)
         ? previousValue
-        : String(sources[0]?.id || VIDEO_STUDIO_PORTAL_SOURCE_ID).trim();
+        : String(recordableSources[0]?.id || VIDEO_STUDIO_PORTAL_SOURCE_ID).trim();
     if (studioSelect && nextValue) studioSelect.value = nextValue;
     if (recordSelect && nextValue) recordSelect.value = nextValue;
     videoStudioSelectedSourceId = nextValue;
-    return sources;
+    return recordableSources;
 }
 
 function buildVideoStudioMicOptions() {
@@ -33272,6 +33312,96 @@ function syncVideoStudioSourceToRecorder() {
 
 function isPortalScreenSourceId(sourceId) {
     return String(sourceId || '').trim() === VIDEO_STUDIO_PORTAL_SOURCE_ID;
+}
+
+const VIDEO_STUDIO_ICON_PATHS = {
+    add: '<path d="M12 5v14M5 12h14"/>',
+    animation: '<path d="M4 8h16M4 16h16"/><path d="M8 4v16M16 4v16"/>',
+    build: '<path d="M14.7 6.3a4 4 0 0 0-5 5L4 17v3h3l5.7-5.7a4 4 0 0 0 5-5l-2.9 2.9-3-3 2.9-2.9Z"/>',
+    cell_tower: '<path d="M8 17a7 7 0 0 1 0-10M16 7a7 7 0 0 1 0 10"/><path d="M11 13a2 2 0 0 1 0-2M13 11a2 2 0 0 1 0 2"/><path d="M12 13v8M8 21h8"/>',
+    close: '<path d="M6 6l12 12M18 6 6 18"/>',
+    co_present: '<rect x="3" y="5" width="18" height="12" rx="2"/><path d="M8 21h8M12 17v4"/><circle cx="9" cy="11" r="1.7"/><path d="M6.5 15a3 3 0 0 1 5 0"/>',
+    content_copy: '<rect x="8" y="8" width="11" height="13" rx="2"/><path d="M5 16H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>',
+    delete: '<path d="M4 7h16M10 11v6M14 11v6"/><path d="M6 7l1 14h10l1-14M9 7V4h6v3"/>',
+    desktop_windows: '<rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/>',
+    event_available: '<rect x="4" y="5" width="16" height="16" rx="2"/><path d="M8 3v4M16 3v4M4 10h16M8 16l2 2 5-5"/>',
+    event_busy: '<rect x="4" y="5" width="16" height="16" rx="2"/><path d="M8 3v4M16 3v4M4 10h16M9 14l6 5M15 14l-6 5"/>',
+    extension: '<path d="M8 3h5v4a2 2 0 1 0 0 4v4h-4a2 2 0 1 1-4 0H3v-5h4a2 2 0 1 0 0-4V3Z"/>',
+    fact_check: '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M7 10h1M7 14h1M11 10h6M11 14h6"/>',
+    fiber_manual_record: '<circle cx="12" cy="12" r="7" fill="currentColor" stroke="none"/>',
+    fiber_smart_record: '<circle cx="9" cy="12" r="5"/><path d="M14 9h4a3 3 0 0 1 0 6h-4"/>',
+    file_download: '<path d="M12 3v12M7 10l5 5 5-5"/><path d="M5 21h14"/>',
+    file_upload: '<path d="M12 21V9M7 14l5-5 5 5"/><path d="M5 3h14"/>',
+    folder_open: '<path d="M3 7h7l2 2h9v2"/><path d="M3 19l3-8h16l-3 8H3Z"/>',
+    headphones: '<path d="M4 14a8 8 0 0 1 16 0"/><path d="M4 14v4a2 2 0 0 0 2 2h2v-8H6a2 2 0 0 0-2 2ZM20 14v4a2 2 0 0 1-2 2h-2v-8h2a2 2 0 0 1 2 2Z"/>',
+    keyboard_arrow_down: '<path d="m6 9 6 6 6-6"/>',
+    keyboard_arrow_up: '<path d="m6 15 6-6 6 6"/>',
+    layers: '<path d="m12 3 9 5-9 5-9-5 9-5Z"/><path d="m3 12 9 5 9-5"/><path d="m3 16 9 5 9-5"/>',
+    linked_camera: '<path d="M4 8h4l2-3h4l2 3h4v11H4V8Z"/><circle cx="12" cy="14" r="3"/><path d="M17 5h4v4"/>',
+    lock: '<rect x="5" y="10" width="14" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/>',
+    lock_open: '<rect x="5" y="10" width="14" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 7.3-2.2"/>',
+    mic: '<path d="M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3Z"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3M8 21h8"/>',
+    mic_off: '<path d="m4 4 16 16"/><path d="M9 5.8V6v6a3 3 0 0 0 4.7 2.5M15 9.8V6a3 3 0 0 0-5.1-2.1"/><path d="M5 11a7 7 0 0 0 9.7 6.4M19 11a7 7 0 0 1-1 3.6M12 18v3M8 21h8"/>',
+    movie: '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M7 5v14M17 5v14M3 10h18M3 14h18"/>',
+    pause: '<path d="M8 5v14M16 5v14"/>',
+    play_arrow: '<path d="M8 5v14l11-7-11-7Z" fill="currentColor" stroke="none"/>',
+    refresh: '<path d="M20 12a8 8 0 1 1-2.3-5.7"/><path d="M20 4v6h-6"/>',
+    save: '<path d="M5 3h12l2 2v16H5V3Z"/><path d="M8 3v6h8M8 21v-7h8v7"/>',
+    school: '<path d="m12 3 10 5-10 5L2 8l10-5Z"/><path d="M6 10v5c3 3 9 3 12 0v-5"/>',
+    science: '<path d="M9 3h6M10 3v6l-5 9a2 2 0 0 0 1.7 3h10.6a2 2 0 0 0 1.7-3l-5-9V3"/><path d="M8 15h8"/>',
+    sports_esports: '<path d="M7 9h10a5 5 0 0 1 4.8 3.8l.7 3A3 3 0 0 1 17.7 19L15 16H9l-2.7 3a3 3 0 0 1-4.8-3.2l.7-3A5 5 0 0 1 7 9Z"/><path d="M8 12v4M6 14h4M16 13h.01M18 16h.01"/>',
+    stop: '<rect x="6" y="6" width="12" height="12" rx="1" fill="currentColor" stroke="none"/>',
+    stop_circle: '<circle cx="12" cy="12" r="9"/><rect x="9" y="9" width="6" height="6" rx="1" fill="currentColor" stroke="none"/>',
+    sync_alt: '<path d="M7 7h12l-3-3M17 17H5l3 3"/>',
+    videocam: '<rect x="3" y="7" width="12" height="10" rx="2"/><path d="m15 11 6-3v8l-6-3"/>',
+    view_quilt: '<rect x="3" y="4" width="7" height="16" rx="1"/><rect x="12" y="4" width="9" height="7" rx="1"/><rect x="12" y="13" width="9" height="7" rx="1"/>',
+    visibility: '<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/>',
+    visibility_off: '<path d="m4 4 16 16"/><path d="M10.6 10.6A3 3 0 0 0 13.4 13.4"/><path d="M9.9 5.2A10.7 10.7 0 0 1 12 5c6.5 0 10 7 10 7a18.5 18.5 0 0 1-3.1 4.1M6.6 6.8C3.7 8.7 2 12 2 12s3.5 7 10 7c1.7 0 3.2-.5 4.4-1.2"/>',
+    volume_off: '<path d="M4 10v4h4l5 4V6l-5 4H4Z"/><path d="m16 9 5 6M21 9l-5 6"/>',
+    volume_up: '<path d="M4 10v4h4l5 4V6l-5 4H4Z"/><path d="M16 8a5 5 0 0 1 0 8M18.5 5.5a9 9 0 0 1 0 13"/>'
+};
+
+function getVideoStudioSvgIcon(name, extraClass = '') {
+    const iconName = String(name || '').trim();
+    const path = VIDEO_STUDIO_ICON_PATHS[iconName] || VIDEO_STUDIO_ICON_PATHS.layers;
+    const classes = ['video-studio-svg-icon', extraClass].filter(Boolean).join(' ');
+    return `<svg class="${escapeAttribute(classes)}" data-video-studio-icon="${escapeAttribute(iconName)}" viewBox="0 0 24 24" aria-hidden="true" focusable="false">${path}</svg>`;
+}
+
+function replaceVideoStudioMaterialIcons(markup) {
+    return String(markup || '').replace(/<span([^>]*class="([^"]*\bmaterial-symbols-rounded\b[^"]*)"[^>]*)>([^<]*)<\/span>/g, (_match, _attrs, className, iconName) => {
+        const extraClass = String(className || '')
+            .split(/\s+/)
+            .filter((item) => item && item !== 'material-symbols-rounded')
+            .join(' ');
+        return getVideoStudioSvgIcon(iconName, extraClass);
+    });
+}
+
+function setVideoStudioButtonIcon(root, iconName) {
+    if (!root) return;
+    const current = root.querySelector('[data-video-studio-icon], .material-symbols-rounded');
+    if (!current) return;
+    current.outerHTML = getVideoStudioSvgIcon(iconName, String(current.getAttribute('class') || '').replace(/\bmaterial-symbols-rounded\b/g, '').replace(/\bvideo-studio-svg-icon\b/g, '').trim());
+}
+
+function getVideoStudioRecordableSources(sources = []) {
+    const list = Array.isArray(sources) ? sources.filter(Boolean) : [];
+    if (list.some((source) => isPortalScreenSourceId(source?.id))) return list;
+    return [VIDEO_STUDIO_PORTAL_SOURCE, ...list];
+}
+
+function renderVideoStudioSourceOptions(sources = []) {
+    return getVideoStudioRecordableSources(sources).map((source) => {
+        const id = String(source?.id || '').trim();
+        if (isPortalScreenSourceId(id) || String(source?.type || '').toLowerCase() === 'portal') {
+            return `<option value="${escapeAttribute(VIDEO_STUDIO_PORTAL_SOURCE_ID)}">${escapeHtml(uiT('video.tools.record.portalSource', 'Ekran Yakalama (PipeWire)'))}</option>`;
+        }
+        const sourceType = String(source?.type || '').toLowerCase() === 'screen'
+            ? uiT('video.tools.record.sourceScreen', 'Ekran')
+            : uiT('video.tools.record.sourceWindow', 'Pencere');
+        return `<option value="${escapeAttribute(id)}">${escapeHtml(`${sourceType}: ${source?.name || id}`)}</option>`;
+    }).join('');
 }
 
 async function resolveScreenRecordingSourceId() {
@@ -33655,8 +33785,7 @@ function updateVideoStudioMuteButtons() {
         desktopBtn.classList.toggle('is-muted', videoStudioDesktopMuted);
         desktopBtn.title = label;
         desktopBtn.setAttribute('aria-label', label);
-        const icon = desktopBtn.querySelector('.material-symbols-rounded');
-        if (icon) icon.textContent = videoStudioDesktopMuted ? 'volume_off' : 'volume_up';
+        setVideoStudioButtonIcon(desktopBtn, videoStudioDesktopMuted ? 'volume_off' : 'volume_up');
     }
     if (micBtn) {
         const label = videoStudioMicMuted
@@ -33665,8 +33794,7 @@ function updateVideoStudioMuteButtons() {
         micBtn.classList.toggle('is-muted', videoStudioMicMuted);
         micBtn.title = label;
         micBtn.setAttribute('aria-label', label);
-        const icon = micBtn.querySelector('.material-symbols-rounded');
-        if (icon) icon.textContent = videoStudioMicMuted ? 'mic_off' : 'mic';
+        setVideoStudioButtonIcon(micBtn, videoStudioMicMuted ? 'mic_off' : 'mic');
     }
 }
 
@@ -35875,8 +36003,7 @@ function updateVideoStudioStreamStatusUi() {
     if (button) {
         const active = !!videoStudioLiveStreamRecorder && videoStudioLiveStreamRecorder.state !== 'inactive';
         button.classList.toggle('is-danger', active);
-        const icon = button.querySelector('.material-symbols-rounded');
-        if (icon) icon.textContent = active ? 'stop_circle' : 'cell_tower';
+        setVideoStudioButtonIcon(button, active ? 'stop_circle' : 'cell_tower');
         const label = button.querySelector('[data-video-studio-stream-label]');
         if (label) label.textContent = active
             ? uiT('video.tools.stream.stop', 'Yayını Durdur')
@@ -36151,8 +36278,7 @@ function updateVideoStudioVirtualCameraStatusUi() {
     if (button) {
         const active = !!videoStudioVirtualCameraRecorder && videoStudioVirtualCameraRecorder.state !== 'inactive';
         button.classList.toggle('is-danger', active);
-        const icon = button.querySelector('.material-symbols-rounded');
-        if (icon) icon.textContent = active ? 'stop_circle' : 'linked_camera';
+        setVideoStudioButtonIcon(button, active ? 'stop_circle' : 'linked_camera');
         const label = button.querySelector('[data-video-studio-virtual-camera-label]');
         if (label) label.textContent = active
             ? uiT('video.tools.virtualCamera.stop', 'Kamerayı Durdur')
@@ -36568,8 +36694,7 @@ function updateVideoStudioScheduleUi() {
     if (button) {
         const active = !!videoStudioScheduleTimer;
         button.classList.toggle('is-danger', active);
-        const icon = button.querySelector('.material-symbols-rounded');
-        if (icon) icon.textContent = active ? 'event_busy' : 'event_available';
+        setVideoStudioButtonIcon(button, active ? 'event_busy' : 'event_available');
         const label = button.querySelector('[data-video-studio-schedule-label]');
         if (label) label.textContent = active
             ? uiT('video.tools.schedule.cancel', 'Planı iptal et')
@@ -36655,8 +36780,7 @@ function updateVideoStudioReplayBufferUi() {
     const startBtn = document.getElementById('videoStudioReplayBufferStartBtn');
     if (startBtn) {
         startBtn.classList.toggle('is-danger', active);
-        const icon = startBtn.querySelector('.material-symbols-rounded');
-        if (icon) icon.textContent = active ? 'stop_circle' : 'fiber_smart_record';
+        setVideoStudioButtonIcon(startBtn, active ? 'stop_circle' : 'fiber_smart_record');
         const label = startBtn.querySelector('[data-video-studio-replay-start-label]');
         if (label) label.textContent = active
             ? uiT('video.tools.replay.stop', 'Bufferı Durdur')
@@ -36815,19 +36939,14 @@ async function refreshScreenRecordingSources() {
     const select = document.getElementById('videoToolRecordSourceSelect');
     if (!select) return [];
     const sources = await window.ardali?.screenRecording?.getSources?.() || [];
-    select.innerHTML = sources.length
-        ? sources.map((source) => {
-            const sourceType = String(source.type || '').toLowerCase() === 'screen'
-                ? uiT('video.tools.record.sourceScreen', 'Ekran')
-                : uiT('video.tools.record.sourceWindow', 'Pencere');
-            return `<option value="${escapeAttribute(source.id)}">${escapeHtml(`${sourceType}: ${source.name || source.id}`)}</option>`;
-        }).join('')
-        : `<option value="${escapeAttribute(VIDEO_STUDIO_PORTAL_SOURCE_ID)}">${escapeHtml(uiT('video.tools.record.portalSource', 'Ekran Yakalama (PipeWire)'))}</option>`;
-    if (!sources.length) {
-        select.value = VIDEO_STUDIO_PORTAL_SOURCE_ID;
-        videoStudioSelectedSourceId = VIDEO_STUDIO_PORTAL_SOURCE_ID;
-    }
-    return sources;
+    const recordableSources = getVideoStudioRecordableSources(sources);
+    select.innerHTML = renderVideoStudioSourceOptions(sources);
+    const previousValue = String(videoStudioSelectedSourceId || select.value || '').trim();
+    select.value = recordableSources.some((source) => source.id === previousValue)
+        ? previousValue
+        : VIDEO_STUDIO_PORTAL_SOURCE_ID;
+    videoStudioSelectedSourceId = select.value || VIDEO_STUDIO_PORTAL_SOURCE_ID;
+    return recordableSources;
 }
 
 async function refreshVideoStudioFfmpegCapabilities() {
@@ -37445,8 +37564,7 @@ function updateVideoStudioRecordButtons() {
         pauseBtn.classList.toggle('is-paused', isPaused);
         pauseBtn.title = label;
         pauseBtn.setAttribute('aria-label', label);
-        const icon = pauseBtn.querySelector('.material-symbols-rounded');
-        if (icon) icon.textContent = isPaused ? 'play_arrow' : 'pause';
+        setVideoStudioButtonIcon(pauseBtn, isPaused ? 'play_arrow' : 'pause');
     }
     updateVideoStudioQuickActionsPanel();
 }
@@ -38237,7 +38355,7 @@ function buildVideoStudioPanel() {
         : uiT('video.tools.quickActions.noRecording', 'Henüz kayıt yok');
     const preflightSummary = getVideoStudioPreflightSummary();
     loadVideoStudioRecoveryCandidate();
-    return `
+    return replaceVideoStudioMaterialIcons(`
         <section class="video-studio-panel" aria-label="${escapeAttribute(uiT('video.tools.studio.title', 'Kayıt Stüdyosu'))}">
             <div class="video-studio-head">
                 <div class="video-studio-title-wrap">
@@ -39029,7 +39147,7 @@ function buildVideoStudioPanel() {
                 </aside>
             </div>
         </section>
-    `;
+    `);
 }
 
 function buildVideoToolsLibrarySection() {
