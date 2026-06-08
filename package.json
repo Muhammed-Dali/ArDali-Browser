@@ -428,7 +428,7 @@
     "png-to-ico": "3.0.1"
   },
   "dependencies": {
-    "electron-updater": "6.8.3",
+    "electron-updater": "6.8.9",
     "mpris-service": "^2.1.2",
     "node-id3": "0.2.9",
     "systeminformation": "5.31.7"
