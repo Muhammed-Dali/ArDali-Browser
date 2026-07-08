@@ -1227,8 +1227,13 @@ function detectDisplayServer() {
         app.commandLine.appendSwitch('enable-font-antialiasing');
         app.commandLine.appendSwitch('force-device-scale-factor', '1');
 
-        // Bağlam menüsü düzeltmeleri
-        if (isTruthyEnvFlag('ARDALI_DISABLE_GPU_SANDBOX')) {
+        // Bağlam menüsü düzeltmeleri ve Linux Wayland GPU çökmelerini önleme
+        if (process.platform === 'linux') {
+            app.commandLine.appendSwitch('disable-gpu-sandbox');
+            app.commandLine.appendSwitch('no-sandbox');
+            // Vulkan'ı tamamen devre dışı bırak (Wayland ve X11'de sık çökmelere neden oluyor)
+            app.commandLine.appendSwitch('disable-features', 'Vulkan,DefaultANGLEVulkan,VulkanFromANGLE');
+        } else if (isTruthyEnvFlag('ARDALI_DISABLE_GPU_SANDBOX')) {
             app.commandLine.appendSwitch('disable-gpu-sandbox');
         }
     }
