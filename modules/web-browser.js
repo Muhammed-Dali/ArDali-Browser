@@ -1001,11 +1001,16 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             const tab = tabs.find(t => t.id === tabId);
             if (tab) {
-                tab.isLoading = true;
-                tab.loadStartedAt = Date.now();
                 const currentUrl = String(wv.getURL?.() || '').trim();
-                if (parseHttpUrl(currentUrl)) tab.url = currentUrl;
-                scheduleLoadWatchdog(tabId, tab.url);
+                if (currentUrl === BLANK_URL || currentUrl === '') {
+                    tab.isLoading = false;
+                    clearLoadWatchdog(tabId);
+                } else {
+                    tab.isLoading = true;
+                    tab.loadStartedAt = Date.now();
+                    if (parseHttpUrl(currentUrl)) tab.url = currentUrl;
+                    scheduleLoadWatchdog(tabId, tab.url);
+                }
                 if (activeTabId === tabId) renderTabs();
             }
         });
@@ -1055,9 +1060,12 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             if (e?.isMainFrame === false) return;
             const code = Number(e?.errorCode);
-            if (code === -3) return;
-            clearLoadWatchdog(tabId);
             const failedUrl = String(e?.validatedURL || wv.getURL?.() || '').trim();
+            if (code === -3) {
+                setTabLoading(tabId, false, failedUrl);
+                return;
+            }
+            clearLoadWatchdog(tabId);
             const transientCodes = new Set([-6, -7, -21, -105, -106, -118, -137, -202, -324]);
             if (transientCodes.has(code)) {
                 const tab = tabs.find(t => t.id === tabId);
@@ -1386,8 +1394,12 @@ document.addEventListener('DOMContentLoaded', () => {
     // New Tab Page Events
     const ntpSuggestions = document.getElementById('webNtpSuggestions');
     let ntpSuggestionTimeout;
+    let ntpSelectedIndex = -1;
+    let ntpOriginalQuery = '';
 
     ntpSearchInput.addEventListener('input', (e) => {
+        ntpSelectedIndex = -1;
+        ntpOriginalQuery = ntpSearchInput.value;
         clearTimeout(ntpSuggestionTimeout);
         const query = ntpSearchInput.value.trim();
         if (!query || isValidUrl(query)) {
@@ -1406,6 +1418,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     data.forEach(item => {
                         const div = document.createElement('div');
                         div.className = 'web-suggestion-item';
+                        div.dataset.phrase = item.phrase;
                         div.innerHTML = `<span class="material-symbols-rounded">search</span> <span>${item.phrase}</span>`;
                         div.onmousedown = (e) => {
                             e.preventDefault();
@@ -1426,15 +1439,53 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     ntpSearchInput.addEventListener('keydown', (e) => {
+        const items = ntpSuggestions ? ntpSuggestions.querySelectorAll('.web-suggestion-item') : [];
+        if (items.length > 0 && !ntpSuggestions.classList.contains('hidden')) {
+            if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                ntpSelectedIndex = ntpSelectedIndex + 1;
+                if (ntpSelectedIndex >= items.length) ntpSelectedIndex = -1;
+                updateNtpSuggestionSelection(items);
+                return;
+            } else if (e.key === 'ArrowUp') {
+                e.preventDefault();
+                ntpSelectedIndex = ntpSelectedIndex - 1;
+                if (ntpSelectedIndex < -1) ntpSelectedIndex = items.length - 1;
+                updateNtpSuggestionSelection(items);
+                return;
+            }
+        }
+
         if (e.key === 'Enter') {
-            const query = ntpSearchInput.value.trim();
-            if (!query) return;
-            const url = formatUrl(query);
-            safelyLoadWebUrl(url);
+            e.preventDefault();
+            if (ntpSelectedIndex >= 0 && ntpSelectedIndex < items.length && !ntpSuggestions.classList.contains('hidden')) {
+                const phrase = items[ntpSelectedIndex].dataset.phrase;
+                safelyLoadWebUrl(formatUrl(phrase));
+            } else {
+                const query = ntpSearchInput.value.trim();
+                if (!query) return;
+                const url = formatUrl(query);
+                safelyLoadWebUrl(url);
+            }
             ntpSearchInput.value = '';
             if (ntpSuggestions) ntpSuggestions.classList.add('hidden');
+            ntpSelectedIndex = -1;
         }
     });
+
+    function updateNtpSuggestionSelection(items) {
+        items.forEach((item, index) => {
+            if (index === ntpSelectedIndex) {
+                item.classList.add('selected');
+                ntpSearchInput.value = item.dataset.phrase;
+            } else {
+                item.classList.remove('selected');
+            }
+        });
+        if (ntpSelectedIndex === -1) {
+            ntpSearchInput.value = ntpOriginalQuery;
+        }
+    }
 
     ntpSearchInput.addEventListener('focus', () => {
         if (ntpSearchInput.value.trim() && !isValidUrl(ntpSearchInput.value.trim())) {
