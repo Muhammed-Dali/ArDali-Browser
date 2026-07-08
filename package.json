@@ -431,7 +431,7 @@
     "electron-updater": "6.8.9",
     "mpris-service": "^2.1.2",
     "node-id3": "0.2.9",
-    "systeminformation": "5.31.7"
+    "systeminformation": "5.31.8"
   },
   "overrides": {
     "xml2js": "0.6.2"
