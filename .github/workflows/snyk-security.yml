@@ -34,7 +34,7 @@ jobs:
       SNYK_EXCLUDES: ArDali-Medya-Player-Linux,ardali-bin,third_party,visualizer,build-visualizer,chromium.backup_20260328_182612,.semgrep-tmp,node_modules,dist,build,out,squashfs-root,.git,.cache,native-dist
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.ref }}
 
