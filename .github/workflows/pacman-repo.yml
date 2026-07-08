@@ -56,7 +56,7 @@ jobs:
           pkg_dir="${GITHUB_WORKSPACE}/packaging/aur/ardali-bin"
           useradd -m builder
           chown -R builder:builder "${GITHUB_WORKSPACE}"
-          su builder -c "cd '${pkg_dir}' && makepkg -f --noconfirm"
+          su builder -c "cd '${pkg_dir}' && makepkg -f --nodeps --noconfirm"
 
       - name: Generate pacman repo database
         run: |
