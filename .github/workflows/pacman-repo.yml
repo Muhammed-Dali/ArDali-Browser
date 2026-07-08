@@ -47,11 +47,6 @@ jobs:
         run: |
           set -euo pipefail
           pkg_dir="${GITHUB_WORKSPACE}/packaging/aur/ardali-bin"
-          release_version="$(
-            sed -nE 's/^[[:space:]]*"version"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/p' "${GITHUB_WORKSPACE}/package.json" | head -n1
-          )"
-          test -n "${release_version}"
-          sed -i -E "s/^pkgver=.*/pkgver=${release_version}/" "${pkg_dir}/PKGBUILD"
           useradd -m builder
           chown -R builder:builder "${GITHUB_WORKSPACE}"
           su builder -c "cd '${pkg_dir}' && makepkg -f --noconfirm"
@@ -100,7 +95,7 @@ jobs:
           Server = https://muhammed-dali.github.io/ArDali-WebMedia/x86_64</pre>
               <p>Then run:</p>
               <pre>sudo pacman -Sy
-          sudo pacman -S ardali</pre>
+          sudo pacman -S ardali-bin</pre>
               <p><a href="./ardali.repo">Download ardali.repo</a></p>
             </body>
           </html>
