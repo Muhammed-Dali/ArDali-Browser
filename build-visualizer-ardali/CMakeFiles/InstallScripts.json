@@ -1,0 +1,7 @@
+{
+	"InstallScripts" : 
+	[
+		"/home/muhammetdali/ArDali-WebMedia/build-visualizer-ardali/cmake_install.cmake"
+	],
+	"Parallel" : false
+}

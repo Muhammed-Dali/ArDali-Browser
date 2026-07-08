@@ -1,0 +1,8 @@
+/home/muhammetdali/ArDali-WebMedia/build-visualizer-ardali/CMakeFiles/imgui.dir
+/home/muhammetdali/ArDali-WebMedia/build-visualizer-ardali/CMakeFiles/ardali-projectm-visualizer.dir
+/home/muhammetdali/ArDali-WebMedia/build-visualizer-ardali/CMakeFiles/edit_cache.dir
+/home/muhammetdali/ArDali-WebMedia/build-visualizer-ardali/CMakeFiles/rebuild_cache.dir
+/home/muhammetdali/ArDali-WebMedia/build-visualizer-ardali/CMakeFiles/list_install_components.dir
+/home/muhammetdali/ArDali-WebMedia/build-visualizer-ardali/CMakeFiles/install.dir
+/home/muhammetdali/ArDali-WebMedia/build-visualizer-ardali/CMakeFiles/install/local.dir
+/home/muhammetdali/ArDali-WebMedia/build-visualizer-ardali/CMakeFiles/install/strip.dir

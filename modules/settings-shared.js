@@ -41,7 +41,7 @@
 
     function normalizeSidebarStyle(value) {
         const normalized = String(value || '').trim().toLowerCase();
-        if (['classic', 'minimal', 'studio', 'neonpulse', 'vinyldisc', 'monotech', 'crystal', 'retroblock'].includes(normalized)) return normalized;
+        if (['classic', 'minimal', 'studio', 'neonpulse', 'vinyldisc', 'monotech', 'crystal', 'retroblock', 'glass', 'cyber', 'neumorphic', 'gradient'].includes(normalized)) return normalized;
         return 'classic';
     }
 
@@ -372,6 +372,16 @@
         }
         if (elements.behaviorWebStartupDelay) {
             elements.behaviorWebStartupDelay.value = webStartupDelayValue;
+        }
+        if (elements.behaviorWebSearchEngine) {
+            const engineVal = String(state.settings?.web?.searchEngine || 'duckduckgo');
+            elements.behaviorWebSearchEngine.value = engineVal;
+            window.dispatchEvent(new CustomEvent('ardali:settings-changed', {
+                detail: { webSearchEngine: engineVal }
+            }));
+            document.dispatchEvent(new CustomEvent('ardali:settings-changed', {
+                detail: { webSearchEngine: engineVal }
+            }));
         }
         if (elements.behaviorWebAnimationMode) {
             const webAnimMode = String(state.settings?.webUi?.animationMode || 'compact').toLowerCase();
@@ -922,6 +932,10 @@
         state.settings.ui.webStartupLazyDelayMs = webStartupLazyDelayMs;
         if (elements.behaviorWebStartupDelay || elements.libraryWebStartupDelay) {
             state.settings.ui.webStartupDelayManual = true;
+        }
+        if (!state.settings.web) state.settings.web = {};
+        if (elements.behaviorWebSearchEngine) {
+            state.settings.web.searchEngine = elements.behaviorWebSearchEngine.value;
         }
         state.settings.ui.closeToTray =
             (typeof elements.behaviorCloseToTray?.checked === 'boolean')

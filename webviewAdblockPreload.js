@@ -1,4 +1,143 @@
 (function installArDaliWebviewAdblockPreload() {
+    // --- ArDali Zoom Event Handler ---
+    try {
+        const { ipcRenderer } = require('electron');
+        window.addEventListener('wheel', (e) => {
+            if (e.ctrlKey) {
+                // Prevent default scrolling
+                e.preventDefault();
+                // Determine direction: deltaY > 0 is scroll down (zoom out), deltaY < 0 is scroll up (zoom in)
+                const direction = e.deltaY > 0 ? -1 : 1;
+                ipcRenderer.sendToHost('ardali-webview-zoom-scroll', direction);
+            }
+        }, { passive: false, capture: true });
+        window.addEventListener('pointerdown', () => {
+            ipcRenderer.sendToHost('ardali-webview-pointer-down');
+        }, { passive: true, capture: true });
+    } catch (err) {
+        console.error('Failed to init ArDali zoom handler', err);
+    }
+
+    function isCompatibilityIdentityPage() {
+        try {
+            const host = String(location.hostname || '').toLowerCase();
+            return host === 'web.whatsapp.com' ||
+                host === 'whatsapp.com' ||
+                host === 'www.whatsapp.com' ||
+                host.endsWith('.whatsapp.com') ||
+                host === 'open.spotify.com' ||
+                host === 'spotify.com' ||
+                host === 'www.spotify.com' ||
+                host.endsWith('.spotify.com');
+        } catch {
+            return false;
+        }
+    }
+
+    function installCompatibilityBrowserIdentityPatch() {
+        if (!isCompatibilityIdentityPage()) return;
+        const code = `
+            (function installArDaliCompatibilityBrowserIdentity() {
+                if (window.__ardaliCompatibilityBrowserIdentity) return;
+                window.__ardaliCompatibilityBrowserIdentity = true;
+                const ua = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36';
+                const platform = 'Linux x86_64';
+                const brands = [
+                    { brand: 'Chromium', version: '132' },
+                    { brand: 'Google Chrome', version: '132' },
+                    { brand: 'Not A(Brand', version: '99' }
+                ];
+                const defineNavigatorValue = (name, value) => {
+                    try {
+                        Object.defineProperty(Navigator.prototype, name, {
+                            configurable: true,
+                            get: () => value
+                        });
+                    } catch {}
+                    try {
+                        Object.defineProperty(navigator, name, {
+                            configurable: true,
+                            get: () => value
+                        });
+                    } catch {}
+                };
+                defineNavigatorValue('userAgent', ua);
+                defineNavigatorValue('appVersion', ua.replace(/^Mozilla\\//, ''));
+                defineNavigatorValue('platform', platform);
+                defineNavigatorValue('vendor', 'Google Inc.');
+                try {
+                    Object.defineProperty(Navigator.prototype, 'userAgentData', {
+                        configurable: true,
+                        get: () => ({
+                            brands,
+                            mobile: false,
+                            platform: 'Linux',
+                            getHighEntropyValues: async (hints) => {
+                                const values = {
+                                    brands,
+                                    mobile: false,
+                                    platform: 'Linux',
+                                    architecture: 'x86',
+                                    bitness: '64',
+                                    model: '',
+                                    platformVersion: '6.0.0',
+                                    uaFullVersion: '132.0.0.0',
+                                    fullVersionList: brands.map((item) => ({
+                                        brand: item.brand,
+                                        version: item.brand === 'Not A(Brand' ? '99.0.0.0' : '132.0.0.0'
+                                    }))
+                                };
+                                return (Array.isArray(hints) ? hints : []).reduce((out, key) => {
+                                    out[key] = values[key];
+                                    return out;
+                                }, { brands, mobile: false, platform: 'Linux' });
+                            },
+                            toJSON: () => ({ brands, mobile: false, platform: 'Linux' })
+                        })
+                    });
+                } catch {}
+            })();
+        `;
+        try {
+            const { webFrame } = require('electron');
+            if (webFrame && typeof webFrame.executeJavaScript === 'function') {
+                webFrame.executeJavaScript(code, false);
+                return;
+            }
+        } catch {}
+        try {
+            const script = document.createElement('script');
+            script.textContent = code;
+            (document.documentElement || document.head || document.body).appendChild(script);
+            script.remove();
+        } catch {}
+    }
+
+    function isGoogleOwnedPage() {
+        try {
+            const host = String(location.hostname || '').toLowerCase();
+            const path = String(location.pathname || '').toLowerCase();
+            if (host === 'google.com' ||
+                host === 'www.google.com' ||
+                host === 'accounts.google.com' ||
+                host === 'myaccount.google.com' ||
+                host.endsWith('.google.com')) {
+                return true;
+            }
+            return host === 'accounts.google.com' && (
+                path.includes('/servicelogin') ||
+                path.includes('/signin/') ||
+                path.includes('/v3/signin/')
+            );
+        } catch {
+            return false;
+        }
+    }
+
+    installCompatibilityBrowserIdentityPatch();
+
+    if (isGoogleOwnedPage()) return;
+
     function installDeliBlockScriptingBridge() {
         let ipcRenderer = null;
         try {
@@ -853,4 +992,5 @@
         (document.documentElement || document.head || document.body).appendChild(script);
         script.remove();
     } catch {}
+
 }());

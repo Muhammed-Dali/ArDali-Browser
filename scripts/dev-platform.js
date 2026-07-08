@@ -110,6 +110,36 @@ function run(cmd) {
 
 assertElectronBinaryMatchesPlatform();
 
+function prependEnvPath(env, name, dirs) {
+  const delimiter = path.delimiter;
+  const existing = String(env[name] || '').split(delimiter).filter(Boolean);
+  const next = [];
+  for (const dir of dirs || []) {
+    if (!dir || next.includes(dir)) continue;
+    next.push(dir);
+  }
+  for (const dir of existing) {
+    if (!next.includes(dir)) next.push(dir);
+  }
+  env[name] = next.join(delimiter);
+}
+
+function applyNativeRuntimeLibraryPaths(env, root, platform) {
+  const nativeDirs = [
+    path.join(root, 'native', 'build', 'Release'),
+    path.join(root, 'native-dist'),
+    path.join(root, 'native-dist', platform),
+    path.join(root, 'libs', platform),
+    path.join(root, 'bin')
+  ];
+  prependEnvPath(env, 'PATH', nativeDirs);
+  if (platform === 'linux') {
+    prependEnvPath(env, 'LD_LIBRARY_PATH', nativeDirs);
+  } else if (platform === 'darwin') {
+    prependEnvPath(env, 'DYLD_LIBRARY_PATH', nativeDirs);
+  }
+}
+
 function resolveElectronBinary() {
   try {
     const p = require('electron');
@@ -139,6 +169,7 @@ async function runDevPosix(platform) {
   const root = path.resolve(__dirname, '..');
   const env = { ...process.env, ARDALI_DEV: '1' };
   delete env.ELECTRON_RUN_AS_NODE;
+  applyNativeRuntimeLibraryPaths(env, root, platform);
 
   const noSandbox = platform === 'linux' ? shouldDisableElectronSandbox() : false;
   if (noSandbox) {

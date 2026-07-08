@@ -70,6 +70,23 @@ function isTruthyEnvFlag(name) {
     return value === '1' || value === 'true' || value === 'yes' || value === 'on';
 }
 
+function isDisabledEnvFlag(name) {
+    const value = String(process.env?.[name] || '').trim().toLowerCase();
+    return value === '1' || value === 'true' || value === 'yes' || value === 'on';
+}
+
+function shouldEnableLinuxVaapi() {
+    if (process.platform !== 'linux') return false;
+    if (isDisabledEnvFlag('ARDALI_DISABLE_VAAPI')) return false;
+    return true;
+}
+
+function shouldEnableAcceleratedVideoDecode() {
+    if (isDisabledEnvFlag('ARDALI_DISABLE_ACCELERATED_VIDEO_DECODE')) return false;
+    if (process.platform === 'linux') return shouldEnableLinuxVaapi();
+    return isTruthyEnvFlag('ARDALI_ENABLE_ACCELERATED_VIDEO_DECODE');
+}
+
 function appendCommandLineCsvSwitch(name, csv) {
     if (!app?.commandLine || !csv) return;
     try {
@@ -100,9 +117,9 @@ function isFlatpakRuntime() {
 
 function isPackagedLinuxConservativeGpuMode() {
     if (process.platform !== 'linux') return false;
-    // Linux'ta YouTube/webview video takılmalarını azaltmak için agresif GPU
-    // switch'leri varsayılan kapalı tut. İsteyen ileri seviye kullanıcı env ile açabilir.
-    return !isTruthyEnvFlag('ARDALI_FORCE_GPU_TUNING');
+    // YouTube ve sosyal medya platformlarında video/ses takılmalarını çözmek için 
+    // agresif GPU hızlandırma artık varsayılan olarak AÇIK bırakılmıştır.
+    return process.env.ARDALI_FORCE_CONSERVATIVE_GPU === '1';
 }
 
 function shouldEnableWebviewAdblockPreloadOnThisRuntime() {
@@ -928,8 +945,10 @@ if (app && app.commandLine) {
     if (shouldUseRelaxedWebTimers(startupWebUi)) {
         app.commandLine.appendSwitch('disable-background-timer-throttling');
     }
-    app.commandLine.appendSwitch('disable-blink-features', 'AutomationControlled');
-    if (process.platform === 'linux' && !isTruthyEnvFlag('ARDALI_ENABLE_ACCELERATED_VIDEO_DECODE')) {
+    if (isTruthyEnvFlag('ARDALI_MASK_AUTOMATION')) {
+        app.commandLine.appendSwitch('disable-blink-features', 'AutomationControlled');
+    }
+    if (!shouldEnableAcceleratedVideoDecode()) {
         app.commandLine.appendSwitch('disable-accelerated-video-decode');
     } else {
         app.commandLine.appendSwitch('enable-accelerated-video-decode');
@@ -946,12 +965,9 @@ if (app && app.commandLine) {
     if (process.platform === 'win32') {
         disabledFeatures.push('CertVerifierBuiltinFeature');
     }
-    if (process.platform === 'linux' && !isTruthyEnvFlag('ARDALI_ENABLE_VAAPI')) {
-        disabledFeatures.push('VaapiVideoDecoder');
-    }
     app.commandLine.appendSwitch('disable-features', disabledFeatures.join(','));
     if (process.platform === 'linux') {
-        appendCommandLineCsvSwitch('enable-features', isTruthyEnvFlag('ARDALI_ENABLE_VAAPI')
+        appendCommandLineCsvSwitch('enable-features', shouldEnableLinuxVaapi()
             ? 'VaapiVideoDecoder,WebRTCPipeWireCapturer'
             : 'WebRTCPipeWireCapturer');
     }
@@ -1132,7 +1148,7 @@ function detectDisplayServer() {
     // Kullanıcı manuel olarak ayarladıysa kullan
     const forceSoftware = process.env.ARDALI_SOFTWARE_RENDER === '1' || process.env.ARDALI_SOFTWARE_RENDER === 'true';
     const forceGpu = process.env.ARDALI_FORCE_GPU === '1' || process.env.ARDALI_FORCE_GPU === 'true';
-    const enableVaapi = isTruthyEnvFlag('ARDALI_ENABLE_VAAPI');
+    const enableVaapi = shouldEnableLinuxVaapi();
     const conservativeGpuMode = isPackagedLinuxConservativeGpuMode();
 
     const sessionLooksWayland =
@@ -1156,6 +1172,7 @@ function detectDisplayServer() {
         app.commandLine.appendSwitch('ozone-platform-hint', 'wayland');
         app.commandLine.appendSwitch('disable-vulkan');
         app.commandLine.appendSwitch('use-angle', 'gl');
+        appendCsvSwitch('disable-features', 'Vulkan');
         appendCsvSwitch('enable-features', enableVaapi
             ? 'UseOzonePlatform,WaylandWindowDecorations,VaapiVideoDecoder,WebRTCPipeWireCapturer'
             : 'UseOzonePlatform,WaylandWindowDecorations,WebRTCPipeWireCapturer');
@@ -2211,6 +2228,171 @@ function readSettingsFileSafeSync() {
     }
 }
 
+function normalizeMainWindowBounds(rawBounds = {}) {
+    const width = Math.max(1024, Math.min(4096, Math.round(Number(rawBounds.width) || 1500)));
+    const height = Math.max(700, Math.min(2304, Math.round(Number(rawBounds.height) || 900)));
+    const x = Number.isFinite(Number(rawBounds.x)) ? Math.round(Number(rawBounds.x)) : undefined;
+    const y = Number.isFinite(Number(rawBounds.y)) ? Math.round(Number(rawBounds.y)) : undefined;
+    return {
+        ...(Number.isFinite(x) ? { x } : {}),
+        ...(Number.isFinite(y) ? { y } : {}),
+        width,
+        height
+    };
+}
+
+function fitMainWindowBoundsToDisplay(bounds = {}) {
+    const normalized = normalizeMainWindowBounds(bounds);
+    try {
+        const displays = screen.getAllDisplays();
+        const targetDisplay = displays.find((display) => {
+            const area = display.workArea || display.bounds;
+            return Number.isFinite(normalized.x) &&
+                Number.isFinite(normalized.y) &&
+                normalized.x >= area.x - 80 &&
+                normalized.x < area.x + area.width - 80 &&
+                normalized.y >= area.y - 80 &&
+                normalized.y < area.y + area.height - 80;
+        }) || screen.getPrimaryDisplay();
+        const area = targetDisplay.workArea || targetDisplay.bounds;
+        normalized.width = Math.min(normalized.width, area.width);
+        normalized.height = Math.min(normalized.height, area.height);
+        normalized.x = Math.max(area.x, Math.min(
+            Number.isFinite(normalized.x) ? normalized.x : area.x + Math.round((area.width - normalized.width) / 2),
+            area.x + Math.max(0, area.width - normalized.width)
+        ));
+        normalized.y = Math.max(area.y, Math.min(
+            Number.isFinite(normalized.y) ? normalized.y : area.y + Math.round((area.height - normalized.height) / 2),
+            area.y + Math.max(0, area.height - normalized.height)
+        ));
+    } catch {
+        // Screen can be unavailable during very early startup; normalized bounds are still safe.
+    }
+    return normalized;
+}
+
+function getSavedMainWindowStateSync() {
+    const settings = readSettingsFileSafeSync();
+    const windowState = settings?.ui?.mainWindow && typeof settings.ui.mainWindow === 'object'
+        ? settings.ui.mainWindow
+        : {};
+    return {
+        bounds: fitMainWindowBoundsToDisplay(windowState.bounds || windowState),
+        maximized: windowState.maximized === true,
+        fullscreen: windowState.fullscreen === true
+    };
+}
+
+function persistMainWindowStateSync(win = mainWindow) {
+    if (!win || win.isDestroyed?.()) return;
+    try {
+        const settings = readSettingsFileSafeSync();
+        if (!settings || typeof settings !== 'object') return;
+        if (!settings.ui || typeof settings.ui !== 'object') settings.ui = {};
+        const bounds = typeof win.getNormalBounds === 'function'
+            ? win.getNormalBounds()
+            : win.getBounds();
+        settings.ui.mainWindow = {
+            bounds: normalizeMainWindowBounds(bounds),
+            maximized: typeof win.isMaximized === 'function' ? win.isMaximized() : false,
+            fullscreen: typeof win.isFullScreen === 'function' ? win.isFullScreen() : false,
+            updatedAt: Date.now()
+        };
+        writeJsonFileAtomicSync(getSettingsPath(), sanitizeSensitiveSettings(settings));
+    } catch (error) {
+        console.warn('[WINDOW] main window state save failed:', error?.message || error);
+    }
+}
+
+function installMainWindowStatePersistence(win) {
+    if (!win || win.isDestroyed?.()) return;
+    let timer = null;
+    const schedule = () => {
+        if (timer) clearTimeout(timer);
+        timer = setTimeout(() => {
+            timer = null;
+            persistMainWindowStateSync(win);
+        }, 650);
+    };
+    win.on('resize', schedule);
+    win.on('move', schedule);
+    win.on('maximize', schedule);
+    win.on('unmaximize', schedule);
+    win.on('enter-full-screen', schedule);
+    win.on('leave-full-screen', schedule);
+    win.on('close', () => {
+        if (timer) {
+            clearTimeout(timer);
+            timer = null;
+        }
+        persistMainWindowStateSync(win);
+    });
+}
+
+function getDownloadsHistoryPath() {
+    return path.join(app.getPath('userData'), 'downloads.json');
+}
+
+function readDownloadsHistorySync() {
+    try {
+        const data = fs.readFileSync(getDownloadsHistoryPath(), 'utf8');
+        const history = JSON.parse(data);
+        return Array.isArray(history) ? history : [];
+    } catch {
+        return [];
+    }
+}
+
+function saveDownloadsHistorySync(history) {
+    try {
+        writeJsonFileAtomicSync(getDownloadsHistoryPath(), history);
+    } catch (e) {
+        console.warn('Failed to save downloads history:', e);
+    }
+}
+
+function isIncompleteWebDownloadState(state) {
+    return state === 'waiting_for_save' || state === 'downloading' || state === 'paused';
+}
+
+function normalizeDownloadsHistorySync(activeIds = new Set()) {
+    const history = readDownloadsHistorySync();
+    let changed = false;
+    const normalized = history.map((item) => {
+        if (!item || typeof item !== 'object') return item;
+        if (!isIncompleteWebDownloadState(item.state)) return item;
+        if (activeIds.has(item.id)) return item;
+        changed = true;
+        return {
+            ...item,
+            state: 'cancelled',
+            endTime: item.endTime || Date.now(),
+            cancelReason: item.cancelReason || 'app_closed'
+        };
+    });
+    if (changed) saveDownloadsHistorySync(normalized);
+    return normalized;
+}
+
+function markDownloadHistoryItemCancelled(id, reason = 'cancelled') {
+    const targetId = String(id || '');
+    if (!targetId) return null;
+    let updatedItem = null;
+    const history = readDownloadsHistorySync();
+    const nextHistory = history.map((item) => {
+        if (!item || item.id !== targetId) return item;
+        updatedItem = {
+            ...item,
+            state: 'cancelled',
+            endTime: Date.now(),
+            cancelReason: reason
+        };
+        return updatedItem;
+    });
+    if (updatedItem) saveDownloadsHistorySync(nextHistory);
+    return updatedItem;
+}
+
 function shouldClearWebCacheOnQuit() {
     const settings = readSettingsFileSafeSync();
     return settings?.webUi?.clearCacheOnQuit !== false;
@@ -2270,7 +2452,10 @@ function isWebPermissionAllowedBySettings(permission, currentUrl = '', originUrl
     if (
         requestedPermission === 'fullscreen' ||
         requestedPermission === 'pointerLock' ||
-        requestedPermission === 'keyboardLock'
+        requestedPermission === 'keyboardLock' ||
+        requestedPermission === 'clipboard-read' ||
+        requestedPermission === 'clipboard-sanitized-write' ||
+        requestedPermission === 'clipboard-write'
     ) {
         return true;
     }
@@ -3232,6 +3417,26 @@ const ADBLOCK_PLATFORM_CORE_DNR_RULES = Object.freeze([
             resourceTypes: ['stylesheet', 'script', 'font', 'image', 'media', 'xmlhttprequest']
         },
         ruleset: 'ardali-platform-core'
+    },
+    {
+        id: 1010010,
+        priority: 95,
+        action: { type: 'allow' },
+        condition: {
+            initiatorDomains: ['spotify.com', 'www.spotify.com', 'open.spotify.com', 'accounts.spotify.com'],
+            requestDomains: [
+                'spotify.com',
+                'www.spotify.com',
+                'open.spotify.com',
+                'accounts.spotify.com',
+                'scdn.co',
+                'spotifycdn.com',
+                'spotifycdn.net',
+                'akamaized.net'
+            ],
+            resourceTypes: ['stylesheet', 'script', 'font', 'image', 'media', 'xmlhttprequest']
+        },
+        ruleset: 'ardali-platform-core'
     }
 ]);
 
@@ -3575,6 +3780,22 @@ const ADBLOCK_PLATFORM_CORE_DOMAINS = Object.freeze([
     {
         page: ['mixcloud.com'],
         assets: ['mixcloud.com', 'mxcdn.net']
+    },
+    {
+        page: ['spotify.com'],
+        assets: ['spotify.com', 'scdn.co', 'spotifycdn.com', 'spotifycdn.net', 'akamaized.net']
+    },
+    {
+        page: ['duckduckgo.com', 'google.com', 'bing.com', 'brave.com', 'github.com'],
+        assets: [
+            'duckduckgo.com',
+            'google.com',
+            'gstatic.com',
+            'bing.com',
+            'brave.com',
+            'github.com',
+            'githubassets.com'
+        ]
     }
 ]);
 
@@ -3606,6 +3827,42 @@ function getAdblockRequestSourceHostnames(details = {}) {
         .filter(Boolean);
 }
 
+function isWhatsAppWebRequest(details = {}) {
+    const hosts = [
+        getAdblockHostnameFromUrl(details?.url),
+        ...getAdblockRequestSourceHostnames(details)
+    ].filter(Boolean);
+    return hosts.some((host) => adblockDomainMatches(host, 'whatsapp.com') || adblockDomainMatches(host, 'whatsapp.net'));
+}
+
+function isSpotifyWebRequest(details = {}) {
+    const hosts = [
+        getAdblockHostnameFromUrl(details?.url),
+        ...getAdblockRequestSourceHostnames(details)
+    ].filter(Boolean);
+    return hosts.some((host) =>
+        adblockDomainMatches(host, 'spotify.com') ||
+        adblockDomainMatches(host, 'scdn.co') ||
+        adblockDomainMatches(host, 'spotifycdn.com') ||
+        adblockDomainMatches(host, 'spotifycdn.net')
+    );
+}
+
+function getWhatsAppCompatibilityUserAgentMain() {
+    return 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36';
+}
+
+function applyWhatsAppRequestUserAgent(headers = {}) {
+    const out = { ...(headers || {}) };
+    const key = out['User-Agent'] ? 'User-Agent' : (out['user-agent'] ? 'user-agent' : 'User-Agent');
+    out[key] = getWhatsAppCompatibilityUserAgentMain();
+    return out;
+}
+
+function applySpotifyRequestUserAgent(headers = {}) {
+    return applyWhatsAppRequestUserAgent(headers);
+}
+
 function normalizeAdblockWebRequestResourceType(value = '') {
     return String(value || '')
         .trim()
@@ -3625,8 +3882,24 @@ function isThirdPartyWebRequest(details = {}) {
         const targetHost = new URL(String(details?.url || '')).hostname;
         const sourceUrl = String(details?.initiator || details?.documentUrl || details?.referrer || '').trim();
         if (!targetHost || !sourceUrl) return false;
+        
         const sourceHost = new URL(sourceUrl).hostname;
-        return getRegistrableDomainMain(targetHost) !== getRegistrableDomainMain(sourceHost);
+        const targetDomain = getRegistrableDomainMain(targetHost);
+        const sourceDomain = getRegistrableDomainMain(sourceHost);
+        
+        if (targetDomain === sourceDomain) return false;
+        
+        // Eko-sistem akrabalıkları (First-Party Sets / Related Website Sets)
+        const googleDomains = ['google.com', 'youtube.com', 'googlevideo.com', 'ytimg.com', 'googleapis.com', 'gstatic.com', 'googleusercontent.com', 'ggpht.com'];
+        if (googleDomains.includes(targetDomain) && googleDomains.includes(sourceDomain)) return false;
+        
+        const msDomains = ['bing.com', 'microsoft.com', 'live.com', 'office.com', 'office.net', 'msn.com'];
+        if (msDomains.includes(targetDomain) && msDomains.includes(sourceDomain)) return false;
+        
+        const metaDomains = ['facebook.com', 'fbcdn.net', 'instagram.com', 'cdninstagram.com', 'whatsapp.com'];
+        if (metaDomains.includes(targetDomain) && metaDomains.includes(sourceDomain)) return false;
+
+        return true;
     } catch {
         return false;
     }
@@ -3641,7 +3914,6 @@ function isPlatformCoreAssetBypassRequest(details = {}) {
         const sourceHostnames = getAdblockRequestSourceHostnames(details);
         return sourceHostnames.some((sourceHostname) => isAdblockFacebookHostname(sourceHostname));
     }
-    if (isAdblockTikTokCoreAssetHostname(requestHostname)) return true;
     const sourceHostnames = getAdblockRequestSourceHostnames(details);
     if (!sourceHostnames.length) return false;
 
@@ -3733,20 +4005,6 @@ function buildAdblockScriptingInjection(rawUrl = '') {
             proceduralRules,
             scripts,
             sources: ['facebook:cosmetic-bypass']
-        };
-    }
-
-    if (isAdblockTikTokHostname(hostname)) {
-        return {
-            ok: true,
-            reason: 'tiktok-cosmetic-bypass',
-            mode: plan.mode,
-            hostname,
-            css,
-            genericImports,
-            proceduralRules,
-            scripts,
-            sources: ['tiktok:cosmetic-bypass']
         };
     }
 
@@ -4076,7 +4334,13 @@ function installAdblockRequestBlocking() {
                         callback({});
                         return;
                     }
-                    if (String(details?.resourceType || '').toLowerCase() === 'mainframe') {
+                    const resType = String(details?.resourceType || '').toLowerCase();
+                    if (resType === 'mainframe' || resType === 'main_frame') {
+                        callback({});
+                        return;
+                    }
+                    const host = String(new URL(details?.url || 'https://empty').hostname).toLowerCase();
+                    if (host.includes('google.com') || host.includes('duckduckgo.com') || host.includes('bing.com') || host.includes('brave.com')) {
                         callback({});
                         return;
                     }
@@ -4109,6 +4373,14 @@ function installAdblockRequestBlocking() {
                         callback({ requestHeaders: details?.requestHeaders || {} });
                         return;
                     }
+                    if (isWhatsAppWebRequest(details)) {
+                        callback({ requestHeaders: applyWhatsAppRequestUserAgent(details?.requestHeaders || {}) });
+                        return;
+                    }
+                    if (isSpotifyWebRequest(details)) {
+                        callback({ requestHeaders: applySpotifyRequestUserAgent(details?.requestHeaders || {}) });
+                        return;
+                    }
                     if (isPlatformCoreAssetBypassRequest(details)) {
                         callback({ requestHeaders: details?.requestHeaders || {} });
                         return;
@@ -4120,7 +4392,9 @@ function installAdblockRequestBlocking() {
                     }
                     const webPrefs = getWebRuntimeSettingsSync();
                     const headers = { ...(details?.requestHeaders || {}) };
-                    if (webPrefs.reduceReferrers) {
+                    // Sadece üçüncü taraf isteklere giderken referer bilgisini gizle.
+                    // Kendi sitesine (First-party API) giderken referer silinirse CSRF korumasına takılır (örn: Gemini batchexecute).
+                    if (webPrefs.reduceReferrers && isThirdPartyWebRequest(details)) {
                         delete headers.Referer;
                         delete headers.referer;
                     }
@@ -4128,6 +4402,7 @@ function installAdblockRequestBlocking() {
                         delete headers.Cookie;
                         delete headers.cookie;
                     }
+
                     callback({ requestHeaders: headers });
                     return;
                 } catch (error) {
@@ -4150,7 +4425,13 @@ function installAdblockRequestBlocking() {
                         callback({ responseHeaders: details?.responseHeaders || {} });
                         return;
                     }
-                    if (String(details?.resourceType || '').toLowerCase() === 'mainframe') {
+                    const resType = String(details?.resourceType || '').toLowerCase();
+                    if (resType === 'mainframe' || resType === 'main_frame') {
+                        callback({ responseHeaders: details?.responseHeaders || {} });
+                        return;
+                    }
+                    const host = String(new URL(details?.url || 'https://empty').hostname).toLowerCase();
+                    if (host.includes('google.com') || host.includes('duckduckgo.com') || host.includes('bing.com') || host.includes('brave.com')) {
                         callback({ responseHeaders: details?.responseHeaders || {} });
                         return;
                     }
@@ -4259,7 +4540,11 @@ const WEB_ALLOWED_HOSTS_MAIN = new Set([
     'www.telegram.org',
     'web.telegram.org',
     't.me',
-    'www.t.me'
+    'www.t.me',
+    'spotify.com',
+    'www.spotify.com',
+    'open.spotify.com',
+    'accounts.spotify.com'
 ]);
 
 const WEB_ALLOWED_SUFFIXES_MAIN = [
@@ -4276,7 +4561,8 @@ const WEB_ALLOWED_SUFFIXES_MAIN = [
     '.reddit.com',
     '.twitch.tv',
     '.whatsapp.com',
-    '.telegram.org'
+    '.telegram.org',
+    '.spotify.com'
 ];
 
 function parseHttpUrlMain(raw) {
@@ -4309,7 +4595,11 @@ function isAllowedWebHostMain(hostname) {
 const WEB_CERT_TRUST_SUFFIXES_MAIN = [
     '.sndcdn.com',
     '.googlevideo.com',
-    '.gvt1.com'
+    '.gvt1.com',
+    '.scdn.co',
+    '.spotifycdn.com',
+    '.spotifycdn.net',
+    '.akamaized.net'
 ];
 
 function isTrustedWebCertHostMain(hostname) {
@@ -4862,6 +5152,322 @@ function getPersistedMusicSfxEffect(settings, effectName) {
     return settings?.sfxScopes?.music?.[key] || settings?.sfx?.[key] || {};
 }
 
+function callAudioEngine(methodName, ...args) {
+    if (!audioEngine || !isNativeAudioAvailable) return false;
+    const fn = audioEngine[methodName];
+    if (typeof fn !== 'function') return false;
+    try {
+        fn.apply(audioEngine, args);
+        return true;
+    } catch (e) {
+        console.warn(`[SFX] ${methodName} uygulanamadı:`, e?.message || e);
+        return false;
+    }
+}
+
+function boolSetting(value, fallback = false) {
+    return value === undefined ? fallback : value === true;
+}
+
+function numSetting(value, min, max, fallback) {
+    return clampAudioNumber(value, min, max, fallback);
+}
+
+function applyPersistedDynamicsSfx(settings) {
+    const compressor = getPersistedMusicSfxEffect(settings, 'compressor');
+    if (Object.keys(compressor).length > 0) {
+        const enabled = boolSetting(compressor.enabled);
+        callAudioEngine('enableCompressor', enabled);
+        if (enabled) {
+            callAudioEngine('setCompressorThreshold', numSetting(compressor.threshold, -80, 0, -20));
+            callAudioEngine('setCompressorRatio', numSetting(compressor.ratio, 1, 20, 4));
+            callAudioEngine('setCompressorAttack', numSetting(compressor.attack, 0.1, 1000, 10));
+            callAudioEngine('setCompressorRelease', numSetting(compressor.release, 1, 5000, 100));
+            callAudioEngine('setCompressorMakeupGain', numSetting(compressor.makeupGain, -24, 24, 0));
+            callAudioEngine('setCompressorKnee', numSetting(compressor.knee, 0, 24, 3));
+        }
+    }
+
+    const limiter = getPersistedMusicSfxEffect(settings, 'limiter');
+    if (Object.keys(limiter).length > 0) {
+        const enabled = boolSetting(limiter.enabled);
+        callAudioEngine('EnableLimiter', enabled);
+        if (enabled) {
+            callAudioEngine('SetLimiterCeiling', numSetting(limiter.ceiling, -18, 0, -0.3));
+            callAudioEngine('SetLimiterRelease', numSetting(limiter.release, 1, 1000, 50));
+            callAudioEngine('SetLimiterLookahead', numSetting(limiter.lookahead, 0, 25, 5));
+            callAudioEngine('SetLimiterGain', numSetting(limiter.gain, -24, 24, 0));
+        }
+    }
+
+    const noiseGate = getPersistedMusicSfxEffect(settings, 'noisegate');
+    if (Object.keys(noiseGate).length > 0) {
+        const enabled = boolSetting(noiseGate.enabled);
+        callAudioEngine('EnableNoiseGate', enabled);
+        if (enabled) {
+            callAudioEngine('SetNoiseGateThreshold', numSetting(noiseGate.threshold, -100, 0, -40));
+            callAudioEngine('SetNoiseGateAttack', numSetting(noiseGate.attack, 0.1, 1000, 5));
+            callAudioEngine('SetNoiseGateHold', numSetting(noiseGate.hold, 0, 2000, 100));
+            callAudioEngine('SetNoiseGateRelease', numSetting(noiseGate.release, 1, 5000, 150));
+            callAudioEngine('SetNoiseGateRange', numSetting(noiseGate.range, -100, 0, -80));
+        }
+    }
+}
+
+function applyPersistedColorSfx(settings) {
+    const bassBoost = getPersistedMusicSfxEffect(settings, 'bassboost');
+    if (Object.keys(bassBoost).length > 0) {
+        callAudioEngine(
+            'setBassBoostDsp',
+            boolSetting(bassBoost.enabled),
+            numSetting(bassBoost.gain, -24, 24, 6),
+            numSetting(bassBoost.frequency, 20, 500, 80)
+        );
+    }
+
+    const bassEnhancer = getPersistedMusicSfxEffect(settings, 'bass-enhancer');
+    if (Object.keys(bassEnhancer).length > 0) {
+        const enabled = boolSetting(bassEnhancer.enabled);
+        callAudioEngine('EnableBassEnhancer', enabled);
+        if (enabled) {
+            callAudioEngine('SetBassEnhancerFrequency', numSetting(bassEnhancer.frequency, 20, 500, 80));
+            callAudioEngine('SetBassEnhancerGain', numSetting(bassEnhancer.gain, -24, 24, 6));
+            callAudioEngine('SetBassEnhancerHarmonics', numSetting(bassEnhancer.harmonics, 0, 100, 50));
+            callAudioEngine('SetBassEnhancerWidth', numSetting(bassEnhancer.width, 0, 4, 1.5));
+            callAudioEngine('SetBassEnhancerMix', numSetting(bassEnhancer.dryWet ?? bassEnhancer.mix, 0, 100, 50));
+        }
+    }
+
+    const exciter = getPersistedMusicSfxEffect(settings, 'exciter');
+    if (Object.keys(exciter).length > 0) {
+        const enabled = boolSetting(exciter.enabled);
+        callAudioEngine('EnableExciter', enabled);
+        if (enabled) {
+            const typeMap = { odd: 0, even: 1, tape: 2, tube: 3 };
+            const type = Number.isFinite(Number(exciter.type))
+                ? Number(exciter.type)
+                : (typeMap[String(exciter.harmonics || 'odd')] ?? 0);
+            callAudioEngine('SetExciterAmount', numSetting(exciter.amount, 0, 100, 50));
+            callAudioEngine('SetExciterFrequency', numSetting(exciter.frequency, 500, 16000, 3000));
+            callAudioEngine('SetExciterHarmonics', numSetting(exciter.amount, 0, 100, 50));
+            callAudioEngine('SetExciterMix', numSetting(exciter.mix, 0, 100, 30));
+            callAudioEngine('SetExciterType', type);
+        }
+    }
+
+    const tapeSat = getPersistedMusicSfxEffect(settings, 'tapesat');
+    if (Object.keys(tapeSat).length > 0) {
+        const enabled = boolSetting(tapeSat.enabled);
+        callAudioEngine('enableTapeSaturation', enabled);
+        if (enabled) {
+            callAudioEngine('setTapeDrive', numSetting(tapeSat.driveDb, 0, 24, 6));
+            callAudioEngine('setTapeMix', numSetting(tapeSat.mix, 0, 100, 50));
+            callAudioEngine('setTapeTone', numSetting(tapeSat.tone, 0, 100, 50));
+            callAudioEngine('setTapeOutput', numSetting(tapeSat.outputDb, -24, 24, -1));
+            callAudioEngine('setTapeMode', numSetting(tapeSat.mode, 0, 3, 0));
+            callAudioEngine('setTapeHiss', numSetting(tapeSat.hiss, 0, 100, 0));
+        }
+    }
+}
+
+function applyPersistedSpaceSfx(settings) {
+    const reverb = getPersistedMusicSfxEffect(settings, 'reverb');
+    if (Object.keys(reverb).length > 0) {
+        const enabled = boolSetting(reverb.enabled);
+        callAudioEngine('setReverbEnabled', enabled);
+        if (enabled) {
+            callAudioEngine('setReverbRoomSize', numSetting(reverb.roomSize, 1, 10000, 1000));
+            callAudioEngine('setReverbDamping', numSetting(reverb.damping, 0, 1, 0.5));
+            callAudioEngine('setReverbWetDry', numSetting(reverb.wetDry, -96, 12, -10));
+            callAudioEngine('setReverbHFRatio', numSetting(reverb.hfRatio, 0, 1, 0.7));
+            callAudioEngine('setReverbInputGain', numSetting(reverb.inputGain, -24, 24, 0));
+        }
+    }
+
+    const echo = getPersistedMusicSfxEffect(settings, 'echo');
+    const softEcho = getPersistedMusicSfxEffect(settings, 'softecho');
+    const softEnabled = boolSetting(softEcho.enabled);
+    const echoEnabled = boolSetting(echo.enabled) && !softEnabled;
+    if (Object.keys(echo).length > 0 || softEnabled) {
+        callAudioEngine('EnableEchoEffect', echoEnabled);
+        if (echoEnabled) {
+            callAudioEngine('SetEchoDelayTime', numSetting(echo.delay, 1, 3000, 250));
+            callAudioEngine('SetEchoFeedback', numSetting(echo.feedback, 0, 95, 40));
+            callAudioEngine('SetEchoWetMix', numSetting(echo.wetMix ?? echo.wetDry, 0, 100, 30));
+            callAudioEngine('SetEchoDryMix', numSetting(echo.dryMix, 0, 100, 100));
+            callAudioEngine('SetEchoStereoMode', !!(echo.stereo || echo.pingPong));
+            callAudioEngine('SetEchoLowCut', numSetting(echo.lowCut, 20, 500, 80));
+            callAudioEngine('SetEchoHighCut', numSetting(echo.highCut, 2000, 16000, 8000));
+        }
+    }
+    if (Object.keys(softEcho).length > 0) {
+        callAudioEngine('EnableSoftEchoEffect', softEnabled);
+        if (softEnabled) {
+            callAudioEngine('EnableEchoEffect', false);
+            callAudioEngine('SetSoftEchoDelayTime', numSetting(softEcho.delay, 1, 3000, 520));
+            callAudioEngine('SetSoftEchoFeedback', numSetting(softEcho.feedback, 0, 95, 8));
+            callAudioEngine('SetSoftEchoWetMix', numSetting(softEcho.wetMix, 0, 100, 28));
+            callAudioEngine('SetSoftEchoDryMix', numSetting(softEcho.dryMix, 0, 100, 100));
+            callAudioEngine('SetSoftEchoHighCut', numSetting(softEcho.highCut, 2000, 16000, 4200));
+            callAudioEngine('SetSoftEchoStereoMode', !!softEcho.stereo);
+        }
+    }
+
+    const conv = getPersistedMusicSfxEffect(settings, 'convreverb');
+    if (Object.keys(conv).length > 0) {
+        const enabled = boolSetting(conv.enabled);
+        callAudioEngine('EnableConvolutionReverb', enabled);
+        if (enabled) {
+            callAudioEngine('SetConvReverbWetMix', numSetting(conv.mix ?? conv.wetMix, 0, 100, 30));
+            callAudioEngine('SetConvReverbDryMix', numSetting(conv.dryMix, 0, 100, 100));
+            callAudioEngine('SetConvReverbPreDelay', numSetting(conv.predelay ?? conv.preDelay, 0, 500, 20));
+            callAudioEngine('SetConvReverbRoomSize', numSetting(conv.roomSize, 0, 100, 50));
+            callAudioEngine('SetConvReverbDecay', numSetting(conv.decay, 0.1, 30, 1.5));
+            callAudioEngine('SetConvReverbDamping', numSetting(conv.damping, 0, 1, 0.5));
+            if (conv.roomType !== undefined) callAudioEngine('SetConvReverbRoomType', conv.roomType);
+        }
+    }
+}
+
+function applyPersistedStereoSfx(settings) {
+    const stereo = getPersistedMusicSfxEffect(settings, 'stereowidener');
+    if (Object.keys(stereo).length > 0) {
+        const enabled = boolSetting(stereo.enabled);
+        callAudioEngine('EnableStereoWidener', enabled);
+        if (enabled) {
+            callAudioEngine('SetStereoWidth', numSetting(stereo.width, 0, 300, 100));
+            callAudioEngine('SetStereoBassCutoff', numSetting(stereo.bassToMono ?? stereo.bassFreq, 20, 500, 200));
+            callAudioEngine('SetStereoDelay', numSetting(stereo.delay, 0, 40, 0));
+            callAudioEngine('SetStereoBalance', numSetting(stereo.balance, -100, 100, 0));
+            callAudioEngine('SetStereoMonoLow', stereo.monoLow !== false);
+        }
+    }
+
+    const crossfeed = getPersistedMusicSfxEffect(settings, 'crossfeed');
+    if (Object.keys(crossfeed).length > 0) {
+        const enabled = boolSetting(crossfeed.enabled);
+        callAudioEngine('enableCrossfeed', enabled);
+        if (enabled) {
+            callAudioEngine('setCrossfeedLevel', numSetting(crossfeed.level, 0, 100, 30));
+            callAudioEngine('setCrossfeedDelay', numSetting(crossfeed.delay, 0, 2, 0.3));
+            callAudioEngine('setCrossfeedLowCut', numSetting(crossfeed.lowCut, 20, 2000, 700));
+            callAudioEngine('setCrossfeedHighCut', numSetting(crossfeed.highCut, 1000, 12000, 4000));
+            callAudioEngine('setCrossfeedPreset', numSetting(crossfeed.preset, 0, 8, 0));
+        }
+    }
+
+    const surround = getPersistedMusicSfxEffect(settings, 'surround');
+    if (Object.keys(surround).length > 0) {
+        const enabled = boolSetting(surround.enabled);
+        callAudioEngine('EnableSurroundVirtualizer', enabled);
+        if (enabled) {
+            callAudioEngine('SetSurroundCenterLevel', numSetting(surround.center, -24, 24, 0));
+            callAudioEngine('SetSurroundSideLevel', numSetting(surround.surround, -24, 24, 0));
+            callAudioEngine('SetSurroundLfeLevel', numSetting(surround.lfe, -24, 24, 0));
+            callAudioEngine('SetSurroundCrossover', numSetting(surround.crossover, 40, 250, 110));
+            callAudioEngine('SetSurroundRearDelay', numSetting(surround.delay, 0, 50, 8));
+            callAudioEngine('SetSurroundMix', numSetting(surround.mix, 0, 100, 75));
+        }
+    }
+
+    const bassMono = getPersistedMusicSfxEffect(settings, 'bassmono');
+    if (Object.keys(bassMono).length > 0) {
+        const enabled = boolSetting(bassMono.enabled);
+        callAudioEngine('EnableBassMono', enabled);
+        if (enabled) {
+            callAudioEngine('SetBassMonoCutoff', numSetting(bassMono.cutoff, 20, 500, 120));
+            callAudioEngine('SetBassMonoSlope', numSetting(bassMono.slope, 6, 48, 24));
+            callAudioEngine('SetBassMonoStereoWidth', numSetting(bassMono.stereoWidth, 0, 200, 100));
+        }
+    }
+}
+
+function applyPersistedEqToolsSfx(settings) {
+    const peq = getPersistedMusicSfxEffect(settings, 'peq');
+    if (Array.isArray(peq.bands)) {
+        peq.bands.forEach((band, index) => {
+            if (!band || typeof band !== 'object') return;
+            callAudioEngine(
+                'setPEQ',
+                index,
+                boolSetting(peq.enabled),
+                numSetting(band.freq, 20, 22000, 1000),
+                numSetting(band.gain, -24, 24, 0),
+                numSetting(band.q, 0.1, 18, 1)
+            );
+        });
+    }
+
+    const autoGain = getPersistedMusicSfxEffect(settings, 'autogain');
+    if (Object.keys(autoGain).length > 0) {
+        const enabled = boolSetting(autoGain.enabled);
+        callAudioEngine('setAutoGainEnabled', enabled);
+        if (enabled) {
+            callAudioEngine('setAutoGainTarget', numSetting(autoGain.targetLevel, -30, -3, -14));
+            callAudioEngine('setAutoGainMaxGain', numSetting(autoGain.maxGain, 0, 24, 12));
+        }
+    }
+
+    const truePeak = getPersistedMusicSfxEffect(settings, 'truepeak');
+    if (Object.keys(truePeak).length > 0) {
+        const enabled = boolSetting(truePeak.enabled);
+        callAudioEngine('setTruePeakEnabled', enabled);
+        if (enabled) {
+            callAudioEngine('setTruePeakCeiling', numSetting(truePeak.ceiling, -18, 0, -0.1));
+            callAudioEngine('setTruePeakRelease', numSetting(truePeak.release, 1, 1000, 50));
+            callAudioEngine('setTruePeakLookahead', numSetting(truePeak.lookahead, 0, 25, 5));
+            callAudioEngine('setTruePeakInputGain', numSetting(truePeak.drive, -24, 24, 0));
+            callAudioEngine('setTruePeakOversampling', numSetting(truePeak.oversampling, 1, 8, 4));
+            callAudioEngine('setTruePeakLinkChannels', truePeak.linkChannels !== false);
+        }
+    }
+
+    const dynamicEq = getPersistedMusicSfxEffect(settings, 'dynamiceq');
+    if (Object.keys(dynamicEq).length > 0) {
+        const enabled = boolSetting(dynamicEq.enabled);
+        callAudioEngine('enableDynamicEQ', enabled);
+        if (enabled) {
+            callAudioEngine('setDynamicEQFrequency', numSetting(dynamicEq.frequency, 20, 22000, 3500));
+            callAudioEngine('setDynamicEQQ', numSetting(dynamicEq.q, 0.1, 18, 2));
+            callAudioEngine('setDynamicEQThreshold', numSetting(dynamicEq.threshold, -100, 0, -40));
+            callAudioEngine('setDynamicEQGain', numSetting(dynamicEq.gain, -24, 24, -6));
+            callAudioEngine('setDynamicEQRange', numSetting(dynamicEq.range, 0, 24, 12));
+            callAudioEngine('setDynamicEQAttack', numSetting(dynamicEq.attack, 0.1, 1000, 5));
+            callAudioEngine('setDynamicEQRelease', numSetting(dynamicEq.release, 1, 5000, 120));
+        }
+    }
+
+    const bitDither = getPersistedMusicSfxEffect(settings, 'bitdither');
+    if (Object.keys(bitDither).length > 0) {
+        const enabled = boolSetting(bitDither.enabled);
+        callAudioEngine('enableBitDepthDither', enabled);
+        if (enabled) {
+            callAudioEngine('setBitDepth', numSetting(bitDither.bitDepth, 8, 32, 16));
+            callAudioEngine('setDitherType', numSetting(bitDither.dither, 0, 4, 2));
+            callAudioEngine('setNoiseShaping', numSetting(bitDither.shaping, 0, 4, 0));
+            callAudioEngine('setDownsampleFactor', numSetting(bitDither.downsample, 1, 8, 1));
+            callAudioEngine('setBitDitherMix', numSetting(bitDither.mix, 0, 100, 100));
+            callAudioEngine('setBitDitherOutput', numSetting(bitDither.outputDb, -24, 24, 0));
+        }
+    }
+}
+
+async function applyPersistedNonEqMusicSfxFromSettings() {
+    if (!audioEngine || !isNativeAudioAvailable) return;
+
+    try {
+        const settings = await readSettingsFileSafe();
+        applyPersistedDynamicsSfx(settings);
+        applyPersistedColorSfx(settings);
+        applyPersistedSpaceSfx(settings);
+        applyPersistedStereoSfx(settings);
+        applyPersistedEqToolsSfx(settings);
+        console.log('[SFX] Kayıtlı müzik efektleri yeniden uygulandı');
+    } catch (e) {
+        console.warn('[SFX] Müzik efektleri yeniden uygulanamadı:', e?.message || e);
+    }
+}
+
 async function applyPersistedAudiophileSfxFromSettings() {
     if (!audioEngine || !isNativeAudioAvailable) return;
 
@@ -4890,6 +5496,7 @@ async function applyPersistedAudiophileSfxFromSettings() {
 
 async function applyPersistedMusicSfxFromSettings() {
     await applyPersistedEq32SfxFromSettings();
+    await applyPersistedNonEqMusicSfxFromSettings();
     await applyPersistedAudiophileSfxFromSettings();
 }
 
@@ -4925,12 +5532,14 @@ function createWindow() {
     refreshMainWindowBehaviorSettingsSync();
     rendererMediaOpenReady = false;
     const startupWebUi = readStartupWebUiSettings();
+    const savedWindowState = getSavedMainWindowStateSync();
 
     let rendererRecoveryAttempts = 0;
     mainWindow = new BrowserWindow({
         ...getAuxiliaryWindowDefaults(),
-        width: 1500,
-        height: 900,
+        ...savedWindowState.bounds,
+        minWidth: 1024,
+        minHeight: 700,
         backgroundColor: '#121212',
         webPreferences: {
             preload: path.join(__dirname, 'preload.js'),
@@ -4952,6 +5561,12 @@ function createWindow() {
         titleBarStyle: 'default',
         show: false
     });
+    if (savedWindowState.fullscreen) {
+        try { mainWindow.setFullScreen(true); } catch { /* yoksay */ }
+    } else if (savedWindowState.maximized) {
+        try { mainWindow.maximize(); } catch { /* yoksay */ }
+    }
+    installMainWindowStatePersistence(mainWindow);
 
     let hasEverBeenShown = false;
 
@@ -5056,7 +5671,6 @@ function createWindow() {
 
     // İlk açılışta pencereyi zorla görünür yap
     mainWindow.show();
-    mainWindow.center();
     mainWindow.focus();
 
     // Renderer loglarını terminale düşür (çapraz geçiş gibi UI tarafı hata ayıklama için)
@@ -5175,8 +5789,8 @@ function createWindow() {
 
 }
 
-async function createSettingsWindow(defaultTab = 'playback') {
-    const tab = String(defaultTab || 'playback').trim() || 'playback';
+async function createSettingsWindow(defaultTab = 'web') {
+    const tab = String(defaultTab || 'web').trim() || 'web';
 
     if (settingsWindow && !settingsWindow.isDestroyed()) {
         try {
@@ -5526,6 +6140,16 @@ function getDownloaderCookieDomainsForUrl(rawUrl = '') {
     }
     if (host === 'tiktok.com' || host.endsWith('.tiktok.com')) {
         return ['tiktok.com'];
+    }
+    if (/(^|\.)tiktokv\.com$/i.test(host) ||
+        /(^|\.)tiktokcdn(?:-us)?\.com$/i.test(host) ||
+        /(^|\.)ttwstatic\.com$/i.test(host) ||
+        /(^|\.)ibytedtos\.com$/i.test(host) ||
+        /(^|\.)byteoversea\.com$/i.test(host) ||
+        /(^|\.)ibyteimg\.com$/i.test(host) ||
+        /(^|\.)byteimg\.com$/i.test(host) ||
+        /(^|\.)muscdn\.com$/i.test(host)) {
+        return ['tiktok.com', host.replace(/^www\./, '')];
     }
     return [host.replace(/^www\./, '')];
 }
@@ -7098,6 +7722,92 @@ ipcMain.handle('get-system-locale', async () => {
 // ============================================
 // APP KONTROL (YENİDEN BAŞLAT)
 // ============================================
+const activeDownloadsMap = new Map();
+const cancelledWebDownloadIds = new Set();
+
+ipcMain.handle('downloads:pause', (_event, id) => {
+    const item = activeDownloadsMap.get(id);
+    if (item && item.getState() === 'progressing') {
+        item.pause();
+    }
+});
+
+ipcMain.handle('downloads:resume', (_event, id) => {
+    const item = activeDownloadsMap.get(id);
+    if (item && item.isPaused()) {
+        item.resume();
+    }
+});
+
+ipcMain.handle('downloads:cancel', (_event, id) => {
+    const item = activeDownloadsMap.get(id);
+    if (item) {
+        try {
+            item.cancel();
+        } catch (error) {
+            console.warn('[WEB] download cancel failed:', error?.message || error);
+        }
+    }
+    if (item) {
+        cancelledWebDownloadIds.add(id);
+    } else {
+        cancelledWebDownloadIds.delete(id);
+    }
+    activeDownloadsMap.delete(id);
+    const cancelledItem = markDownloadHistoryItemCancelled(id, item ? 'user_cancelled' : 'stale_cancelled');
+    if (cancelledItem && mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('download-done', cancelledItem);
+    }
+    return Boolean(cancelledItem || item);
+});
+
+ipcMain.handle('downloads:getHistory', () => {
+    return normalizeDownloadsHistorySync(new Set(activeDownloadsMap.keys()));
+});
+
+ipcMain.handle('downloads:clearHistory', () => {
+    saveDownloadsHistorySync([]);
+    return true;
+});
+
+ipcMain.handle('downloads:removeItem', (_event, id) => {
+    let history = readDownloadsHistorySync();
+    history = history.filter(d => d.id !== id);
+    saveDownloadsHistorySync(history);
+    return true;
+});
+
+ipcMain.handle('downloads:checkExists', (_event, filePath) => {
+    try {
+        return require('fs').existsSync(filePath);
+    } catch {
+        return false;
+    }
+});
+
+ipcMain.handle('downloads:showInFolder', (_event, filePath) => {
+    try {
+        require('electron').shell.showItemInFolder(filePath);
+    } catch (e) {
+        console.warn('Failed to show item in folder:', e);
+    }
+});
+
+ipcMain.handle('downloads:openDownloadsFolder', async () => {
+    try {
+        const downloadsPath = app.getPath('downloads');
+        const error = await shell.openPath(downloadsPath);
+        if (error) {
+            console.warn('Failed to open downloads folder:', error);
+            return false;
+        }
+        return true;
+    } catch (e) {
+        console.warn('Failed to open downloads folder:', e?.message || e);
+        return false;
+    }
+});
+
 ipcMain.handle('app:relaunch', async () => {
     try {
         // Ayrık native süreçlerin (örn. görselleştirici) yeniden başlatmadan sonra yaşamamasını sağla.
@@ -7283,6 +7993,14 @@ function installWebviewHardening() {
                     const originUrl = String(details?.requestingOrigin || '').trim();
 
                     if (wcType === 'webview') {
+                        // Kopyalama işlemleri web tarayıcısında her zaman serbest olmalı (Brave/Chrome standartı)
+                        if (requestedPermission === 'clipboard-read' || 
+                            requestedPermission === 'clipboard-sanitized-write' || 
+                            requestedPermission === 'clipboard-write') {
+                            callback(true);
+                            return;
+                        }
+
                         // Web platformlarda (allowlist) kullanıcı akışını bozmayacak şekilde
                         // izinleri host bazlı değerlendir.
                         const trustedContext =
@@ -7343,18 +8061,107 @@ function installWebviewHardening() {
                 ses.on('will-download', async (event, item, webContents) => {
                     try {
                         const prefs = getWebRuntimeSettingsSync();
-                        if (!prefs.askDownloadLocation) return;
-                        item.pause();
                         const fileName = String(item?.getFilename?.() || 'download').trim() || 'download';
-                        const result = await dialog.showSaveDialog(BrowserWindow.fromWebContents(webContents) || mainWindow, {
-                            defaultPath: path.join(app.getPath('downloads'), fileName)
-                        });
-                        if (result.canceled || !result.filePath) {
-                            item.cancel();
-                            return;
+                        
+                        if (!prefs.askDownloadLocation) {
+                            item.setSavePath(path.join(app.getPath('downloads'), fileName));
+                        } else {
+                            item.setSaveDialogOptions({
+                                defaultPath: path.join(app.getPath('downloads'), fileName)
+                            });
                         }
-                        item.setSavePath(result.filePath);
-                        item.resume();
+
+                        // Create download record
+                        const downloadId = Date.now().toString() + Math.random().toString(36).substring(7);
+                        activeDownloadsMap.set(downloadId, item);
+                        const downloadItem = {
+                            id: downloadId,
+                            url: item.getURL(),
+                            fileName: fileName,
+                            savePath: item.getSavePath(),
+                            state: prefs.askDownloadLocation && !item.getSavePath() ? 'waiting_for_save' : 'downloading',
+                            startTime: Date.now(),
+                            totalBytes: item.getTotalBytes(),
+                            receivedBytes: 0
+                        };
+
+                        if (!downloadItem.savePath) {
+                            downloadItem.savePath = path.join(app.getPath('downloads'), fileName);
+                        }
+
+                        let history = readDownloadsHistorySync();
+                        history.unshift(downloadItem);
+                        if (history.length > 500) history = history.slice(0, 500);
+                        saveDownloadsHistorySync(history);
+
+                        if (mainWindow && !mainWindow.isDestroyed()) {
+                            mainWindow.webContents.send('download-progress', downloadItem);
+                        }
+
+                        item.on('updated', (event, state) => {
+                            if (cancelledWebDownloadIds.has(downloadId)) {
+                                downloadItem.state = 'cancelled';
+                                if (mainWindow && !mainWindow.isDestroyed()) {
+                                    mainWindow.webContents.send('download-progress', downloadItem);
+                                }
+                                return;
+                            }
+                            const currentSavePath = item.getSavePath();
+                            if (state === 'interrupted') {
+                                downloadItem.state = 'interrupted';
+                            } else if (state === 'progressing') {
+                                if (prefs.askDownloadLocation && !currentSavePath) {
+                                    downloadItem.state = 'waiting_for_save';
+                                } else {
+                                    downloadItem.state = item.isPaused() ? 'paused' : 'downloading';
+                                }
+                                downloadItem.receivedBytes = item.getReceivedBytes();
+                                downloadItem.totalBytes = item.getTotalBytes();
+                                downloadItem.savePath = currentSavePath || downloadItem.savePath;
+                            }
+                            if (mainWindow && !mainWindow.isDestroyed()) {
+                                mainWindow.webContents.send('download-progress', downloadItem);
+                            }
+                        });
+
+                        item.once('done', (event, state) => {
+                            activeDownloadsMap.delete(downloadId);
+                            const wasCancelled = cancelledWebDownloadIds.has(downloadId) || state === 'cancelled';
+                            cancelledWebDownloadIds.delete(downloadId);
+                            downloadItem.state = wasCancelled ? 'cancelled' : state;
+                            downloadItem.savePath = item.getSavePath() || downloadItem.savePath;
+                            
+                            let currentHistory = readDownloadsHistorySync();
+                            const idx = currentHistory.findIndex(d => d.id === downloadId);
+                            if (idx !== -1) {
+                                currentHistory[idx] = downloadItem;
+                                saveDownloadsHistorySync(currentHistory);
+                            }
+
+                            if (mainWindow && !mainWindow.isDestroyed()) {
+                                mainWindow.webContents.send('download-done', downloadItem);
+                            }
+
+                            if (state === 'completed') {
+                                const savePath = downloadItem.savePath;
+                                const { Notification, shell } = require('electron');
+                                const notification = new Notification({
+                                    title: 'İndiriliyor (Bitti)',
+                                    body: `${fileName}, İndirilenler konumuna kaydedildi.\nKlasörde göstermek için tıklayın.`
+                                });
+                                notification.on('click', () => {
+                                    shell.showItemInFolder(savePath);
+                                });
+                                notification.show();
+                            } else if (state === 'interrupted') {
+                                const { Notification } = require('electron');
+                                const notification = new Notification({
+                                    title: 'İndirme Başarısız',
+                                    body: `${fileName} indirilemedi (Durum: ${state}).`
+                                });
+                                notification.show();
+                            }
+                        });
                     } catch (error) {
                         console.warn('[WEB] download prompt failed:', error?.message || error);
                     }
@@ -7462,6 +8269,10 @@ function installTlsCompatibilityForWebPlatforms() {
         callback(false);
     });
 }
+
+// User-Agent maskelemesini global uygulama. WhatsApp gibi ihtiyaç duyan siteler
+// renderer tarafında hedef URL'ye göre özel UA alır; Google/YouTube doğal webview
+// kimliğiyle kalır.
 
 app.whenReady().then(async () => {
     if (!gotSingleInstanceLock) return;
@@ -8892,6 +9703,53 @@ ipcMain.handle('system:getHardwareHints', async () => {
     }
     return { ramGiB, cpuCores, gpuRenderer };
 });
+
+function readLinuxPowerStatus() {
+    if (process.platform !== 'linux') {
+        return { supported: false, onBattery: false, charging: true, level: null, source: process.platform };
+    }
+    const base = '/sys/class/power_supply';
+    try {
+        const names = fs.readdirSync(base);
+        let hasBattery = false;
+        let batteryCharging = false;
+        let batteryLevel = null;
+        let acOnline = false;
+
+        for (const name of names) {
+            const dir = path.join(base, name);
+            const read = (file) => {
+                try { return String(fs.readFileSync(path.join(dir, file), 'utf8')).trim(); } catch { return ''; }
+            };
+            const type = read('type').toLowerCase();
+            if (type === 'mains' || type === 'usb' || /^a(c|dapter)/i.test(name)) {
+                acOnline = read('online') === '1' || acOnline;
+                continue;
+            }
+            if (type === 'battery' || /^bat/i.test(name)) {
+                hasBattery = true;
+                const status = read('status').toLowerCase();
+                batteryCharging = batteryCharging || status === 'charging' || status === 'full';
+                const cap = Number(read('capacity'));
+                if (Number.isFinite(cap)) {
+                    batteryLevel = batteryLevel === null ? cap / 100 : Math.max(batteryLevel, cap / 100);
+                }
+            }
+        }
+
+        return {
+            supported: hasBattery,
+            onBattery: hasBattery ? !acOnline && !batteryCharging : false,
+            charging: hasBattery ? (acOnline || batteryCharging) : true,
+            level: batteryLevel,
+            source: 'linux-sysfs'
+        };
+    } catch {
+        return { supported: false, onBattery: false, charging: true, level: null, source: 'linux-sysfs-error' };
+    }
+}
+
+ipcMain.handle('system:getPowerStatus', async () => readLinuxPowerStatus());
 
 ipcMain.handle('settings:save', async (event, settings) => {
     try {
@@ -11709,6 +12567,13 @@ function listAudioDevicesWithCapabilities() {
     }));
 }
 
+function getFallbackAudioDeviceId() {
+    const devices = listAudioDevicesWithCapabilities();
+    const selected = devices.find((d) => d?.isDefault) || devices[0] || null;
+    const id = Number(selected?.id);
+    return Number.isFinite(id) && id > 0 ? id : null;
+}
+
 function buildAudioPathQuality(status = {}) {
     if (!status.nativeAvailable) {
         return {
@@ -11827,6 +12692,18 @@ ipcMain.handle('audio:configureOutputProfile', (_event, payload = {}) => {
                     deviceSwitchOk = false;
                     deviceSwitchError = String(error?.message || error || 'Çıkış cihazı hatası');
                 }
+                if (!deviceSwitchOk) {
+                    try {
+                        const fallbackDeviceId = getFallbackAudioDeviceId();
+                        const fallbackOk = fallbackDeviceId !== null && audioEngine.setAudioDevice(fallbackDeviceId);
+                        if (fallbackOk) {
+                            appliedDeviceId = String(fallbackDeviceId);
+                            console.warn('[AUDIO] Requested output device failed; fell back to active default device.');
+                        }
+                    } catch (fallbackError) {
+                        console.warn('[AUDIO] Output fallback failed:', fallbackError?.message || fallbackError);
+                    }
+                }
             } else {
                 deviceSwitchOk = false;
                 deviceSwitchError = 'Geçersiz çıkış cihazı.';
@@ -11857,9 +12734,23 @@ ipcMain.handle('audio:getDevices', (event) => {
 ipcMain.handle('audio:setDevice', (event, deviceId) => {
     if (!audioEngine || !isNativeAudioAvailable) return false;
     if (typeof audioEngine.setAudioDevice === 'function') {
-        const ok = audioEngine.setAudioDevice(deviceId);
-        audioOutputProfileState.appliedDeviceId = String(deviceId ?? 'default');
-        audioOutputProfileState.requestedDeviceId = String(deviceId ?? 'default');
+        let ok = audioEngine.setAudioDevice(deviceId);
+        let appliedDeviceId = String(deviceId ?? 'default');
+        if (!ok && String(deviceId ?? 'default') !== 'default') {
+            try {
+                const fallbackDeviceId = getFallbackAudioDeviceId();
+                const fallbackOk = fallbackDeviceId !== null && audioEngine.setAudioDevice(fallbackDeviceId);
+                if (fallbackOk) {
+                    ok = true;
+                    appliedDeviceId = String(fallbackDeviceId);
+                    console.warn('[AUDIO] setDevice failed; fell back to active default device.');
+                }
+            } catch (fallbackError) {
+                console.warn('[AUDIO] setDevice fallback failed:', fallbackError?.message || fallbackError);
+            }
+        }
+        audioOutputProfileState.appliedDeviceId = appliedDeviceId;
+        audioOutputProfileState.requestedDeviceId = ok ? appliedDeviceId : String(deviceId ?? 'default');
         audioOutputProfileState.deviceSwitchOk = !!ok;
         audioOutputProfileState.deviceSwitchError = ok ? '' : 'Çıkış cihazı değiştirilemedi.';
         audioOutputProfileState.lastUpdatedAt = Date.now();

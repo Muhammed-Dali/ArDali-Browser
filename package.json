@@ -1,6 +1,6 @@
 {
   "name": "ardali",
-  "version": "3.2.4",
+  "version": "5.2.0",
   "productName": "ArDali",
   "description": "Open-source Linux media player for music and video with DSP effects, equalizer, and visualizer",
   "main": "main.js",
@@ -32,7 +32,7 @@
     "build:win:zip": "node native/copy-libs.js win32 && npm run -s prepare:win:resources && npm run -s verify:win:artifacts && electron-builder --win zip",
     "build:mac": "node native/copy-libs.js darwin && electron-builder --mac",
     "dist": "npm run build:linux",
-    "dev:linux": "ELECTRON_RUN_AS_NODE= ELECTRON_DISABLE_SANDBOX=1 ARDALI_DEV=1 PATH=\"$(pwd)/native-dist:$(pwd)/native/build/Release:$(pwd)/bin:$PATH\" electron --no-sandbox --enable-logging .",
+    "dev:linux": "ELECTRON_RUN_AS_NODE= ELECTRON_DISABLE_SANDBOX=1 ARDALI_DEV=1 PATH=\"$(pwd)/native/build/Release:$(pwd)/native-dist:$(pwd)/native-dist/linux:$(pwd)/libs/linux:$(pwd)/bin:$PATH\" LD_LIBRARY_PATH=\"$(pwd)/native/build/Release:$(pwd)/native-dist:$(pwd)/native-dist/linux:$(pwd)/libs/linux:${LD_LIBRARY_PATH:-}\" electron --no-sandbox --enable-logging --disable-vulkan --disable-features=Vulkan,DefaultANGLEVulkan,VulkanFromANGLE .",
     "dali:compile:web": "node scripts/compile-dali-web.js",
     "dali:compile:web:wasm": "node scripts/compile-dali-web-wasm.js",
     "dali:compile:web:all": "npm run -s dali:compile:web && npm run -s dali:compile:web:wasm",

@@ -325,7 +325,7 @@ function matchesUrlFilter(rawFilter, urlLower, hostname) {
         .split('')
         .map((char) => {
             if (char === '*') return '.*';
-            if (char === '^') return '[^A-Za-z0-9_.%-]|$';
+            if (char === '^') return '(?:[^A-Za-z0-9_.%-]|$)';
             return char.replace(/[|\\{}()[\]^$+?.]/g, '\\$&');
         })
         .join('');

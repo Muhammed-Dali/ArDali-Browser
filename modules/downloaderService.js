@@ -553,6 +553,34 @@ function getUrlMediaExt(rawUrl = '') {
     }
 }
 
+function isTikTokMediaHost(host = '') {
+    const value = String(host || '').toLowerCase();
+    return /(^|\.)tiktokv\.com$/i.test(value) ||
+        /(^|\.)tiktokcdn(?:-us)?\.com$/i.test(value) ||
+        /(^|\.)ttwstatic\.com$/i.test(value) ||
+        /(^|\.)ibytedtos\.com$/i.test(value) ||
+        /(^|\.)byteoversea\.com$/i.test(value) ||
+        /(^|\.)ibyteimg\.com$/i.test(value) ||
+        /(^|\.)byteimg\.com$/i.test(value) ||
+        /(^|\.)muscdn\.com$/i.test(value);
+}
+
+function isTikTokDirectVideoUrl(rawUrl = '') {
+    try {
+        const parsed = new URL(String(rawUrl || ''));
+        const host = String(parsed.hostname || '').toLowerCase();
+        if (!isTikTokMediaHost(host)) return false;
+        const pathAndSearch = String(parsed.pathname || '') + parsed.search;
+        if (/webmssdk|captcha|verify|analytics|collect|log|report|monitor/i.test(pathAndSearch)) return false;
+        return /(?:^|[?&])mime_type=video/i.test(parsed.search || '') ||
+            /(?:^|[?&])(?:playwm|playaddr|video_id)=/i.test(parsed.search || '') ||
+            /\.(?:mp4|webm|m3u8)(?:$|[?#])/i.test(pathAndSearch) ||
+            /\/(?:video|tos-[^/]+)\/(?:tos-|obj\/|[^?#]+\.(?:mp4|webm|m3u8))/i.test(pathAndSearch);
+    } catch {
+        return false;
+    }
+}
+
 function isLikelyDirectVideoUrl(rawUrl = '') {
     try {
         const parsed = new URL(String(rawUrl || ''));
@@ -569,7 +597,8 @@ function isLikelyDirectVideoUrl(rawUrl = '') {
             host === 'fbsbx.com' ||
             host.endsWith('.fbsbx.com') ||
             host === 'cdninstagram.com' ||
-            host.endsWith('.cdninstagram.com')
+            host.endsWith('.cdninstagram.com') ||
+            isTikTokDirectVideoUrl(rawUrl)
         ) {
             return true;
         }
@@ -615,6 +644,13 @@ function summarizeFormats(formats = [], metadata = {}, pageUrl = '') {
     const audioFormats = [];
     const seenVideo = new Set();
     const seenAudio = new Set();
+    const isDirectVideo = isLikelyDirectVideoUrl(pageUrl);
+    const normalizeDirectVideoExt = (value = '') => {
+        const ext = String(value || '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+        if (!ext || ext === 'unknown' || ext === 'unknownvideo' || ext === 'video') return 'mp4';
+        if (ext === 'm3u8') return 'mp4';
+        return ext;
+    };
 
     for (const format of formats) {
         const id = String(format.format_id || '').trim();
@@ -631,14 +667,20 @@ function summarizeFormats(formats = [], metadata = {}, pageUrl = '') {
 
         if (vcodec !== 'none' && !seenVideo.has(id)) {
             seenVideo.add(id);
+            const looksUnknownDirectVideo = isDirectVideo && (!height || /unknown|none/i.test(vcodec));
+            const displayExt = looksUnknownDirectVideo
+                ? normalizeDirectVideoExt(metadata.ext || getUrlMediaExt(pageUrl) || 'mp4')
+                : (ext || (isDirectVideo ? String(metadata.ext || getUrlMediaExt(pageUrl) || 'mp4').toLowerCase() : ''));
             videoFormats.push({
                 id,
                 height,
-                ext,
+                ext: displayExt,
                 vcodec,
                 acodec,
                 filesize,
-                label: `${height > 0 ? `${height}p${fps ? `${fps}` : ''}` : 'Video'}   | ${ext || 'video'}   | ${sizeText}`
+                label: looksUnknownDirectVideo
+                    ? `Orijinal video   | ${displayExt || 'mp4'}   | ${sizeText}`
+                    : `${height > 0 ? `${height}p${fps ? `${fps}` : ''}` : 'Video'}   | ${displayExt || 'video'}   | ${sizeText}`
             });
         }
 
@@ -659,7 +701,7 @@ function summarizeFormats(formats = [], metadata = {}, pageUrl = '') {
     videoFormats.sort((a, b) => b.height - a.height);
     audioFormats.sort((a, b) => b.abr - a.abr);
 
-    if (!videoFormats.length && isLikelyDirectVideoUrl(pageUrl)) {
+    if (!videoFormats.length && isDirectVideo) {
         const ext = String(metadata.ext || getUrlMediaExt(pageUrl) || 'mp4').toLowerCase();
         const filesize = Number(metadata.filesize || metadata.filesize_approx || 0);
         const sizeText = filesize > 0 ? `${(filesize / 1024 / 1024).toFixed(2)} MB` : '—';
@@ -670,7 +712,20 @@ function summarizeFormats(formats = [], metadata = {}, pageUrl = '') {
             vcodec: String(metadata.vcodec || 'video'),
             acodec: String(metadata.acodec || 'audio'),
             filesize,
-            label: `Video   | ${ext || 'video'}   | ${sizeText}`
+            label: `Orijinal video   | ${ext || 'mp4'}   | ${sizeText}`
+        });
+    }
+
+    if (!audioFormats.length && isDirectVideo) {
+        const ext = String(metadata.acodec || '').toLowerCase().includes('aac') ? 'm4a' : 'audio';
+        audioFormats.push({
+            id: 'best',
+            abr: Number(metadata.abr || metadata.tbr || 0) || 0,
+            ext,
+            acodec: String(metadata.acodec || 'embedded'),
+            filesize: 0,
+            embedded: true,
+            label: `Gömülü ses   | ${ext}   | orijinal`
         });
     }
 
@@ -700,12 +755,15 @@ function getPlatformHttpHeaderArgs(rawUrl = '') {
         host.endsWith('.instagram.com') ||
         host === 'cdninstagram.com' ||
         host.endsWith('.cdninstagram.com');
-    if (!isInstagram) return [];
+    const isTikTok = host === 'tiktok.com' ||
+        host.endsWith('.tiktok.com') ||
+        isTikTokMediaHost(host);
+    if (!isInstagram && !isTikTok) return [];
     return [
         '--user-agent',
         'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36',
         '--referer',
-        'https://www.instagram.com/'
+        isTikTok ? 'https://www.tiktok.com/' : 'https://www.instagram.com/'
     ];
 }
 
@@ -823,6 +881,9 @@ function isCollisionProneDownloadUrl(rawUrl = '') {
         host.endsWith('.fbcdn.com') ||
         host === 'fbsbx.com' ||
         host.endsWith('.fbsbx.com') ||
+        host === 'tiktok.com' ||
+        host.endsWith('.tiktok.com') ||
+        isTikTokMediaHost(host) ||
         isLikelyDirectVideoUrl(rawUrl);
 }
 
@@ -847,14 +908,29 @@ function appendDownloadUniqueKey(title, options = {}) {
     return sanitizeOutputTitle(`${cleanTitle} - ${key}`) || `Video - ${key}`;
 }
 
+function getFixedDirectVideoOutputExt(options = {}) {
+    if (String(options.mode || 'video') !== 'video') return '';
+    if (!isLikelyDirectVideoUrl(options.url)) return '';
+    const ext = String(options.videoFormatExt || getUrlMediaExt(options.url) || 'mp4')
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9]/g, '')
+        .replace(/^unknownvideo$/, '');
+    if (!ext || ext === 'unknown' || ext === 'video') return 'mp4';
+    if (ext === 'm3u8') return 'mp4';
+    return ext;
+}
+
 function getOutputTemplate(downloadDir, options = {}) {
     const titleHint = sanitizeOutputTitle(options.titleHint);
     const title = sanitizeOutputTitle(options.title);
     const preferredTitle = titleHint || (isGenericDownloaderTitle(title) ? '' : title);
+    const fixedExt = getFixedDirectVideoOutputExt(options);
+    const outputExt = fixedExt || '%(ext)s';
     if (isCollisionProneDownloadUrl(options.url) || !preferredTitle) {
-        return path.join(downloadDir, `${appendDownloadUniqueKey(preferredTitle || title || 'Video', options)}.%(ext)s`);
+        return path.join(downloadDir, `${appendDownloadUniqueKey(preferredTitle || title || 'Video', options)}.${outputExt}`);
     }
-    return path.join(downloadDir, `${preferredTitle}.%(ext)s`);
+    return path.join(downloadDir, `${preferredTitle}.${outputExt}`);
 }
 
 function normalizeMediaExt(value) {
@@ -879,6 +955,7 @@ function getVideoMergeFormat(options) {
 }
 
 function buildVideoFormatFallbackSelector(options = {}) {
+    if (isLikelyDirectVideoUrl(options.url)) return 'best';
     const height = Math.max(0, Number(options.videoFormatHeight || 0) || 0);
     const videoExt = String(options.videoFormatExt || '').trim().toLowerCase();
     const audioExt = normalizeMediaExt(options.audioForVideoFormatExt);
@@ -932,9 +1009,15 @@ function buildDownloadArgs(options, settings) {
     const extractFormatLower = extractFormat.toLowerCase();
 
     if (mode === 'video') {
-        const fallbackSelector = buildVideoFormatFallbackSelector(options);
-        args.push('-f', fallbackSelector);
-        args.push('--merge-output-format', getVideoMergeFormat(options));
+        if (isLikelyDirectVideoUrl(options.url)) {
+            // Direct TikTok/CDN URLs are already a single media resource. Passing a
+            // format selector or forcing remux can make yt-dlp's generic extractor
+            // fail even when the resource itself is downloadable.
+        } else {
+            const fallbackSelector = buildVideoFormatFallbackSelector(options);
+            args.push('-f', fallbackSelector);
+            args.push('--merge-output-format', getVideoMergeFormat(options));
+        }
     } else {
         const audioId = String(options.audioFormatId || '').trim();
         if (mode === 'audio' && audioId) args.push('-f', audioId);

@@ -56,7 +56,7 @@ const PULSE_NO_SIGNAL_HINT_TOAST_DEFAULT_SEC = 6;
 const PULSE_QUICK_MODE_DEFAULT = 'background';
 const IS_SETTINGS_DOCUMENT = /\/settings\.html$/i.test(window.location.pathname);
 const STANDALONE_VIEW = String(STARTUP_QUERY.get('view') || '').trim().toLowerCase();
-const STANDALONE_SETTINGS_DEFAULT_TAB = String(STARTUP_QUERY.get('tab') || 'playback').trim().toLowerCase();
+const STANDALONE_SETTINGS_DEFAULT_TAB = String(STARTUP_QUERY.get('tab') || 'web').trim().toLowerCase();
 const STANDALONE_ARG_VIEW = String(PRELOAD_LAUNCH_CONTEXT.view || '').trim().toLowerCase();
 const STANDALONE_ARG_TAB = String(PRELOAD_LAUNCH_CONTEXT.tab || '').trim().toLowerCase();
 let forcedStandaloneSettingsMode =
@@ -125,7 +125,7 @@ function setupSystemThemePreferenceListener() {
     }
 }
 
-async function enterStandaloneSettingsMode(defaultTab = 'playback') {
+async function enterStandaloneSettingsMode(defaultTab = 'web') {
     if (!IS_SETTINGS_DOCUMENT) {
         forcedStandaloneSettingsMode = false;
         document.body.classList.remove('settings-window-mode');
@@ -146,7 +146,7 @@ async function enterStandaloneSettingsMode(defaultTab = 'playback') {
         state.playlist = [];
     }
     loadSettingsToUI();
-    openSettings(defaultTab || 'playback');
+    openSettings(defaultTab || 'web');
 }
 
 function normalizePulsePreferenceState(input) {
@@ -801,6 +801,9 @@ const webLoadRuntime = {
     navToken: 0,
     lastRequestedUrl: '',
     lastRequestedAt: 0,
+    lastReloadUrl: '',
+    lastReloadAt: 0,
+    lastReloadReason: '',
     navigationInFlight: false,
     suspendedUrl: '',
     suspendedPlatform: '',
@@ -1595,15 +1598,18 @@ document.addEventListener('DOMContentLoaded', async () => {
     bindStandaloneSettingsDirtyTracking();
     installStandaloneSettingsLifecycleHooks();
     window.ardali?.onWebReloadActive?.(() => {
-        try {
-            if (elements.webView && typeof elements.webView.reload === 'function') {
-                elements.webView.reload();
-            }
-        } catch {
-            // yoksay
-        }
+        requestWebViewReload('ipc:web:reload-active', { cooldownMs: 1200 });
     });
     window.ardali?.onSettingsReload?.(async (nextSettings, reloadMeta = {}) => {
+        if (nextSettings?.web?.searchEngine) {
+            document.dispatchEvent(new CustomEvent('ardali:settings-changed', {
+                detail: { webSearchEngine: nextSettings.web.searchEngine }
+            }));
+            window.dispatchEvent(new CustomEvent('ardali:settings-changed', {
+                detail: { webSearchEngine: nextSettings.web.searchEngine }
+            }));
+        }
+    
         if (!nextSettings || typeof nextSettings !== 'object') return;
         const reloadSource = String(reloadMeta?.source || '').trim().toLowerCase();
         const prevLibrarySignature = getLibrarySettingsSyncSignature(state.settings);
@@ -1617,7 +1623,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (Date.now() < suppressSettingsReloadUiUntil) {
             return;
         }
-        const activeSettingsTab = getActiveSettingsTabName() || STANDALONE_SETTINGS_DEFAULT_TAB || 'playback';
+        const activeSettingsTab = getActiveSettingsTabName() || STANDALONE_SETTINGS_DEFAULT_TAB || 'web';
         await loadSettings();
         // Ayarlar farklı pencereden kaydedildiğinde ana pencerede görünümü anında uygula.
         applyAppearanceSettingsToRuntime();
@@ -1673,12 +1679,16 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
     window.ardali?.onSettingsNavigate?.(({ tab }) => {
         if (!isStandaloneSettingsMode()) return;
-        const nextTab = String(tab || '').trim().toLowerCase() || 'playback';
-        loadSettingsToUI();
-        activateSettingsTab(nextTab);
+        const nextTab = String(tab || '').trim().toLowerCase() || 'web';
+        if (window.ardali && typeof window.ardali.setSettingsTab === 'function') {
+            window.ardali.setSettingsTab(nextTab).catch(console.error);
+        }
+        if (elements.settingsPage && elements.settingsPage.classList.contains('active')) {
+            switchSettingsTab(nextTab);
+        }
     });
     window.ardali?.onSettingsStandaloneMode?.(({ tab }) => {
-        enterStandaloneSettingsMode(String(tab || 'playback').trim().toLowerCase() || 'playback').catch((e) => {
+        enterStandaloneSettingsMode(String(tab || 'web').trim().toLowerCase() || 'web').catch((e) => {
             console.error('[SETTINGS] standalone enter error:', e);
         });
     });
@@ -1698,7 +1708,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             state.specialPaths = null;
         }
         setupStandaloneSettingsEventListeners();
-        await enterStandaloneSettingsMode(STANDALONE_ARG_TAB || STANDALONE_SETTINGS_DEFAULT_TAB || 'playback');
+        await enterStandaloneSettingsMode(STANDALONE_ARG_TAB || STANDALONE_SETTINGS_DEFAULT_TAB || 'web');
         ensureMainShellVisible();
         resumeSettingsBackgroundWork();
         return;
@@ -1721,6 +1731,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     await loadSettings();
+    if (state.settings?.web?.searchEngine) {
+        window.dispatchEvent(new CustomEvent('ardali:settings-changed', {
+            detail: { webSearchEngine: state.settings.web.searchEngine }
+        }));
+    }
     await applyAdblockRuntimeConfig();
     loadVideoStudioProfile();
     hydrateVideoStudioOutputSettingsFromAppSettings();
@@ -2427,7 +2442,14 @@ function cacheElements() {
 
     // Video ve Web
     elements.videoPlayer = document.getElementById('videoPlayer');
-    elements.webView = document.getElementById('webView');
+    Object.defineProperty(elements, 'webView', {
+        get: function() {
+            if (typeof window.getActiveWebView === 'function') {
+                return window.getActiveWebView();
+            }
+            return null;
+        }
+    });
 
     // Oynatıcı Kontrolleri
     elements.seekSlider = document.getElementById('seekSlider');
@@ -2617,6 +2639,7 @@ function cacheElements() {
     elements.behaviorRememberLastSection = document.getElementById('behaviorRememberLastSection');
     elements.behaviorStartupPage = document.getElementById('behaviorStartupPage');
     elements.behaviorWebStartupDelay = document.getElementById('behaviorWebStartupDelay');
+    elements.behaviorWebSearchEngine = document.getElementById('behaviorWebSearchEngine');
     elements.behaviorWebAnimationMode = document.getElementById('behaviorWebAnimationMode');
     elements.behaviorWebMotionPreset = document.getElementById('behaviorWebMotionPreset');
     elements.behaviorSidebarStyle = document.getElementById('behaviorSidebarStyle');
@@ -2707,6 +2730,28 @@ function cacheElements() {
     elements.audioB.preload = 'metadata';
     // Aktif oynatıcı referansı
     elements.audio = elements.audioA;
+
+    if (elements.behaviorWebSearchEngine) {
+        const dd = elements.behaviorWebSearchEngine;
+        let currentValue = dd.value || state.settings?.web?.searchEngine || 'duckduckgo';
+        if (typeof currentValue !== 'string') currentValue = 'duckduckgo';
+        Object.defineProperty(dd, 'value', {
+            get: function() { return currentValue; },
+            set: function(val) { 
+                currentValue = val;
+                const opt = dd.querySelector(`.custom-dropdown-option[data-value="${val}"]`);
+                if (opt) {
+                    const currentIcon = dd.querySelector('.custom-dropdown-icon');
+                    const currentText = dd.querySelector('.custom-dropdown-text');
+                    dd.querySelectorAll('.custom-dropdown-option').forEach(o => o.classList.remove('selected'));
+                    opt.classList.add('selected');
+                    if (currentIcon && opt.querySelector('img')) currentIcon.src = opt.querySelector('img').src;
+                    if (currentText && opt.querySelector('span')) currentText.textContent = opt.querySelector('span').textContent;
+                }
+            }
+        });
+        dd.value = currentValue;
+    }
 }
 
 function isPageVisible(pageEl) {
@@ -4969,7 +5014,7 @@ async function restorePlaybackStartupState() {
                 if (useNativeAudio && window.ardali?.audio?.loadFile) {
                     const res = await window.ardali.audio.loadFile(item.path);
                     if (res === true || (res && res.success)) {
-                        window.ardali.audio.setVolume?.((state.volume || 0) / 100);
+                        await window.ardali.audio.setVolume?.(Math.max(0, Math.min(1, (Number(state.volume) || 0) / 100)));
                     }
                 } else {
                     const activePlayer = getActiveAudioPlayer();
@@ -5111,11 +5156,7 @@ function bindWebSettingsClearButtons() {
             persistWebClearStatus(resultMessage).catch(() => {});
             safeNotify(resultMessage, 'success');
             if (payload.reloadAfter === true) {
-                if (elements.webView && typeof elements.webView.reload === 'function') {
-                    elements.webView.reload();
-                } else {
-                    await window.ardali?.webSecurity?.reloadActive?.();
-                }
+                requestWebViewReload('web-clear-data', { cooldownMs: 1200 });
             }
         } catch (error) {
             safeNotify(uiT('securityPage.notify.clearError', 'Clearing error: {error}', { error: error?.message || error }), 'error');
@@ -5813,7 +5854,7 @@ function setupEventListeners() {
             }
         });
     }
-    if (elements.settingsBtn) elements.settingsBtn.addEventListener('click', () => openSettings('playback'));
+    if (elements.settingsBtn) elements.settingsBtn.addEventListener('click', () => openSettings('web'));
     if (elements.infoBtn) elements.infoBtn.addEventListener('click', showAbout);
     if (elements.ardaliDawlodBtn) {
         elements.ardaliDawlodBtn.addEventListener('click', async () => {
@@ -6042,6 +6083,69 @@ function setupEventListeners() {
             markSettingsDirty();
         });
     }
+    // Custom Dropdown Event Delegation
+    document.addEventListener('click', (e) => {
+        const trigger = e.target.closest('.custom-dropdown-trigger');
+        if (trigger) {
+            e.stopPropagation();
+            const dd = trigger.closest('.custom-dropdown');
+            if (dd) {
+                document.querySelectorAll('.custom-dropdown.open').forEach(el => {
+                    if (el !== dd) el.classList.remove('open');
+                });
+                dd.classList.toggle('open');
+            }
+            return;
+        }
+
+        const option = e.target.closest('.custom-dropdown-option');
+        if (option) {
+            e.stopPropagation();
+            const dd = option.closest('.custom-dropdown');
+            if (dd) {
+                const val = option.dataset.value;
+                const currentIcon = dd.querySelector('.custom-dropdown-icon');
+                const currentText = dd.querySelector('.custom-dropdown-text');
+                
+                dd.value = val;
+                
+                dd.classList.remove('open');
+                
+                if (dd.id === 'behaviorWebSearchEngine') {
+                    if (!state.settings || typeof state.settings !== 'object') state.settings = {};
+                    if (!state.settings.web || typeof state.settings.web !== 'object') state.settings.web = {};
+                    state.settings.web.searchEngine = val;
+                    if (typeof markSettingsDirty === 'function') markSettingsDirty();
+                    
+                    // Dispatch both ways
+                    window.dispatchEvent(new CustomEvent('ardali:settings-changed', {
+                        detail: { webSearchEngine: val }
+                    }));
+                    document.dispatchEvent(new CustomEvent('ardali:settings-changed', {
+                        detail: { webSearchEngine: val }
+                    }));
+                }
+            }
+            return;
+        }
+
+        document.querySelectorAll('.custom-dropdown.open').forEach(el => el.classList.remove('open'));
+    });
+
+    window.addEventListener('ardali:settings-changed', (e) => {
+        if (e.detail && e.detail.webSearchEngine) {
+            if (elements.behaviorWebSearchEngine && elements.behaviorWebSearchEngine.value !== e.detail.webSearchEngine) {
+                elements.behaviorWebSearchEngine.value = e.detail.webSearchEngine;
+            }
+            if (!state.settings || typeof state.settings !== 'object') state.settings = {};
+            if (!state.settings.web || typeof state.settings.web !== 'object') state.settings.web = {};
+            
+            if (state.settings.web.searchEngine !== e.detail.webSearchEngine) {
+                state.settings.web.searchEngine = e.detail.webSearchEngine;
+                markSettingsDirty();
+            }
+        }
+    });
     if (elements.behaviorStartupPage && elements.libraryStartupPage) {
         elements.behaviorStartupPage.addEventListener('change', () => {
             const nextPage = normalizeMainPageForCurrentMode(elements.behaviorStartupPage.value || 'music', 'music');
@@ -6092,6 +6196,7 @@ function setupEventListeners() {
             if (!state.settings.webUi || typeof state.settings.webUi !== 'object') state.settings.webUi = {};
             state.settings.webUi.lowPowerMode = !!elements.behaviorWebLowPowerMode.checked;
             applyWebUiClasses();
+            if (getActiveDaliScope() === 'web') scheduleApplyWebDaliEngine('web-low-power-toggle', 120);
         });
     }
     if (elements.behaviorWebClearCacheOnQuit) {
@@ -7802,8 +7907,9 @@ function setupEventListeners() {
     startAdblockStatsPolling();
 
     // WebView Gezinti Olayları (YouTube parça değişimi tespiti)
-    if (elements.webView) {
-        elements.webView.addEventListener('did-start-loading', () => {
+    window.bindWebViewEvents = function(webViewInstance) {
+        if (!webViewInstance) return;
+        webViewInstance.addEventListener('did-start-loading', () => {
             webLoadRuntime.navigationInFlight = true;
             triggerAdblockNavBurstRefresh();
             resetWebDaliAttachMetrics('did-start-loading');
@@ -7818,38 +7924,46 @@ function setupEventListeners() {
             const u = getWebViewUrlSafe();
             if (u && u !== 'about:blank') webLoadRuntime.retryMap.delete(u);
         });
-        elements.webView.addEventListener('did-stop-loading', () => {
+        webViewInstance.addEventListener('did-stop-loading', () => {
             webLoadRuntime.navigationInFlight = false;
             triggerAdblockNavBurstRefresh();
+            applyWebSmoothVideoProfileToWebView('did-stop-loading');
         });
-        elements.webView.addEventListener('did-finish-load', () => {
+        webViewInstance.addEventListener('did-finish-load', () => {
             webLoadRuntime.navigationInFlight = false;
             triggerAdblockNavBurstRefresh();
             if (String(state.settings?.webUi?.autoplayPolicy || 'allow').toLowerCase() === 'block') {
-                elements.webView.executeJavaScript(`
-                    try {
-                        for (const media of document.querySelectorAll('audio,video')) {
-                            media.autoplay = false;
-                            media.pause();
-                        }
-                    } catch (e) {}
-                `, true).catch(() => {});
+                try {
+                    const maybe = webViewInstance.executeJavaScript(`
+                        try {
+                            for (const media of document.querySelectorAll('audio,video')) {
+                                media.autoplay = false;
+                                media.pause();
+                            }
+                        } catch (e) {}
+                    `, true);
+                    if (maybe && typeof maybe.catch === 'function') maybe.catch(() => {});
+                } catch {
+                    // WebView dom-ready olmadan komut kabul etmeyebilir.
+                }
             }
             // Sayfa yüklenir yüklenmez DALI pre-arm: ilk tikta ham ses penceresini daralt.
             const preArmDelay = isPackagedLinuxRuntimeRenderer() ? 90 : 40;
             scheduleApplyWebDaliEngine('did-finish-load', preArmDelay);
             scheduleApplyWebDaliEngineBurst('did-finish-load', [0, 70, 180]);
+            applyWebSmoothVideoProfileToWebView('did-finish-load');
         });
-        elements.webView.addEventListener('media-started-playing', () => {
+        webViewInstance.addEventListener('media-started-playing', () => {
             // Ilk sesi kesmeden hizli yakalama:
             // anlik + kisa burst retry; player gec baglansa da hizla yakalar.
             pushAppVolumeToWeb();
             scheduleApplyWebDaliEngineBurst('media-started', [0, 40, 120, 260, 720, 1600, 2800]);
+            applyWebSmoothVideoProfileToWebView('media-started');
         });
 
-        elements.webView.addEventListener('did-navigate', handleWebNavigation);
-        elements.webView.addEventListener('did-navigate-in-page', handleWebNavigation);
-        elements.webView.addEventListener('did-fail-load', (e) => {
+        webViewInstance.addEventListener('did-navigate', handleWebNavigation);
+        webViewInstance.addEventListener('did-navigate-in-page', handleWebNavigation);
+        webViewInstance.addEventListener('did-fail-load', (e) => {
             try {
                 webLoadRuntime.navigationInFlight = false;
                 const code = Number(e?.errorCode);
@@ -7887,9 +8001,9 @@ function setupEventListeners() {
             console.warn('[WEBVIEW] auto recovery:', reason);
             setTimeout(() => safeNavigateWebView(target), 800);
         };
-        elements.webView.addEventListener('render-process-gone', () => recoverWebView('render-process-gone'));
-        elements.webView.addEventListener('crashed', () => recoverWebView('crashed'));
-        elements.webView.addEventListener('new-window', (e) => {
+        webViewInstance.addEventListener('render-process-gone', () => recoverWebView('render-process-gone'));
+        webViewInstance.addEventListener('crashed', () => recoverWebView('crashed'));
+        webViewInstance.addEventListener('new-window', (e) => {
             const target = e?.url;
             const parsed = parseHttpUrl(target);
             if (!parsed) return;
@@ -7897,7 +8011,7 @@ function setupEventListeners() {
             if (isWebAllowlistEnforced() && !isAllowedWebUrl(preferredTarget)) return;
 
             // OAuth/login akışları popup ile çalışır; popup izni açıksa pencereyi engelleme.
-            const popupsEnabled = !!elements.webView?.hasAttribute?.('allowpopups');
+            const popupsEnabled = !!webViewInstance?.hasAttribute?.('allowpopups');
             if (popupsEnabled) return;
 
             e.preventDefault();
@@ -7905,7 +8019,7 @@ function setupEventListeners() {
         });
 
         // Web Senkron Dinleyici (YouTube olaylarını yakala)
-        elements.webView.addEventListener('console-message', (e) => {
+        webViewInstance.addEventListener('console-message', (e) => {
             if (e.message.startsWith('ARDALI_SYNC:')) {
                 try {
                     const data = JSON.parse(e.message.replace('ARDALI_SYNC:', ''));
@@ -7929,19 +8043,54 @@ function setupEventListeners() {
         // WebView Senkron: MediaSession/Video bilgilerini yakala (MPRIS + kapak + web şimdi-çalıyor için).
         // Not: Bazı Chromium sürümlerinde navigator.mediaSession override edilemez (non-configurable).
         // Bu yüzden "disable" yerine güvenli polling + event dinleme ile ARDALI_SYNC mesajları üretiyoruz.
-        elements.webView.addEventListener('dom-ready', () => {
+        webViewInstance.addEventListener('dom-ready', () => {
+            webViewInstance.__ardaliDomReady = true;
             applyEmbeddedUserAgentToWebView();
             const currentUrl = getWebViewUrlSafe();
             if (!shouldInjectWebSync(currentUrl)) {
                 return;
             }
             const webAdblockConfig = getAdblockWebModeProfile();
-            elements.webView.executeJavaScript(`
+            webViewInstance.executeJavaScript(`
                 try {
                     (function() {
+                        if (window.__ardaliWebSyncInstalled) return true;
+                        window.__ardaliWebSyncInstalled = true;
                         const DELIBLOCK = ${JSON.stringify(webAdblockConfig)};
+                        const sentAt = window.__ardaliWebSyncSentAt || new Map();
+                        window.__ardaliWebSyncSentAt = sentAt;
+                        const getSendKey = (payload) => {
+                            try {
+                                const type = String(payload?.type || '');
+                                if (type === 'timeupdate') {
+                                    const ct = Math.floor((Number(payload.currentTime) || 0) / 2) * 2;
+                                    return [type, ct, Math.floor(Number(payload.duration) || 0), payload.paused ? 1 : 0].join('|');
+                                }
+                                if (type === 'metadata') {
+                                    return [type, payload.title || '', payload.artist || '', payload.sourceUrl || ''].join('|');
+                                }
+                                if (type === 'volume') {
+                                    return [type, Math.round((Number(payload.volume) || 0) * 100), payload.muted ? 1 : 0].join('|');
+                                }
+                                if (type === 'pending-title') {
+                                    return [type, payload.title || ''].join('|');
+                                }
+                                return [type, payload.currentTime || '', payload.duration || '', payload.paused ? 1 : 0].join('|');
+                            } catch {
+                                return String(payload?.type || 'event');
+                            }
+                        };
                         const send = (payload) => {
-                            try { console.log('ARDALI_SYNC:' + JSON.stringify(payload)); } catch(e) {}
+                            try {
+                                const now = Date.now();
+                                const key = getSendKey(payload);
+                                const last = Number(sentAt.get(key) || 0);
+                                const type = String(payload?.type || '');
+                                const quietMs = type === 'timeupdate' ? 1400 : 350;
+                                if (last && (now - last) < quietMs) return;
+                                sentAt.set(key, now);
+                                console.log('ARDALI_SYNC:' + JSON.stringify(payload));
+                            } catch(e) {}
                         };
                         const cleanTitle = (raw) => String(raw || '')
                             .replace(/\\s+/g, ' ')
@@ -8103,6 +8252,13 @@ function setupEventListeners() {
                             try {
                                 const h = String(location.hostname || '').toLowerCase();
                                 return h.endsWith('youtube.com') || h.endsWith('youtube-nocookie.com') || h === 'youtu.be';
+                            } catch { return false; }
+                        }
+
+                        function isTikTokHost() {
+                            try {
+                                const h = String(location.hostname || '').toLowerCase();
+                                return h === 'tiktok.com' || h === 'www.tiktok.com' || h === 'm.tiktok.com' || h.endsWith('.tiktok.com');
                             } catch { return false; }
                         }
 
@@ -8322,6 +8478,7 @@ function setupEventListeners() {
                         function scrubGenericAdUi() {
                             if (!DELIBLOCK || (DELIBLOCK.uiScrubLevel | 0) <= 0) return;
                             if (isYouTubeHost()) return;
+                            if (isTikTokHost()) return;
                             const adLikeNodes = document.querySelectorAll(
                                 'iframe[src*="doubleclick"], iframe[src*="googlesyndication"], iframe[src*="adservice"], iframe[src*="taboola"], iframe[src*="outbrain"], .adsbygoogle, [data-ad-client], [data-ad-slot], [data-google-query-id], .ad-slot, .ad-container, .sponsored-post, [aria-label="Sponsored"], [aria-label="Sponsorlu"]'
                             );
@@ -8355,6 +8512,104 @@ function setupEventListeners() {
                                         if (typeof btn.click === 'function') btn.click();
                                     } catch {}
                                 });
+                            }
+                        }
+
+                        function scrubTikTokPromotedUi() {
+                            if (!isTikTokHost()) return;
+                            if (!DELIBLOCK || (DELIBLOCK.uiScrubLevel | 0) <= 0) return;
+                            const isVisible = (node) => {
+                                try {
+                                    const rect = node?.getBoundingClientRect?.();
+                                    return !!rect &&
+                                        rect.width > 8 &&
+                                        rect.height > 8 &&
+                                        rect.bottom > 0 &&
+                                        rect.right > 0 &&
+                                        rect.top < innerHeight &&
+                                        rect.left < innerWidth;
+                                } catch {
+                                    return false;
+                                }
+                            };
+                            const isSponsoredText = (value) => {
+                                const text = String(value || '').replace(/\\s+/g, ' ').trim().toLowerCase();
+                                return text === 'sponsor' ||
+                                    text === 'sponsored' ||
+                                    text === 'promoted' ||
+                                    text === 'reklam' ||
+                                    text.includes('daha fazlasını öğren') ||
+                                    text.includes('daha fazlasini ogren') ||
+                                    text.includes('learn more') ||
+                                    text.includes('shop now') ||
+                                    text.includes('install now');
+                            };
+                            const findVideoCard = (node) => {
+                                let current = node;
+                                for (let depth = 0; current && depth < 14; depth += 1, current = current.parentElement) {
+                                    if (current === document.body || current === document.documentElement) break;
+                                    try {
+                                        if (!current.querySelector?.('video')) continue;
+                                        const rect = current.getBoundingClientRect?.();
+                                        if (!rect || rect.width < 160 || rect.height < 180) continue;
+                                        if (rect.height > innerHeight * 1.7 && depth > 4) continue;
+                                        return current;
+                                    } catch {}
+                                }
+                                return null;
+                            };
+                            const hideAdCard = (card) => {
+                                if (!card || card.dataset?.ardaliDeliblockHidden === '1') return;
+                                try {
+                                    const rect = card.getBoundingClientRect?.();
+                                    const coversViewportCenter = !!rect &&
+                                        rect.top < innerHeight * 0.62 &&
+                                        rect.bottom > innerHeight * 0.32 &&
+                                        rect.left < innerWidth * 0.72 &&
+                                        rect.right > innerWidth * 0.22;
+                                    card.dataset.ardaliDeliblockHidden = '1';
+                                    for (const media of Array.from(card.querySelectorAll?.('video, audio') || [])) {
+                                        try {
+                                            media.pause?.();
+                                            media.muted = true;
+                                            media.removeAttribute('src');
+                                            media.load?.();
+                                        } catch {}
+                                    }
+                                    card.style.setProperty('display', 'none', 'important');
+                                    card.style.setProperty('visibility', 'hidden', 'important');
+                                    card.style.setProperty('opacity', '0', 'important');
+                                    if (coversViewportCenter) {
+                                        const now = Date.now();
+                                        if (!window.__ardaliDeliBlockTikTokSkipAt || (now - window.__ardaliDeliBlockTikTokSkipAt) > 1400) {
+                                            window.__ardaliDeliBlockTikTokSkipAt = now;
+                                            setTimeout(() => {
+                                                try {
+                                                    window.dispatchEvent(new WheelEvent('wheel', {
+                                                        deltaY: Math.max(520, innerHeight * 0.82),
+                                                        bubbles: true,
+                                                        cancelable: true
+                                                    }));
+                                                    window.scrollBy({ top: Math.max(520, innerHeight * 0.82), behavior: 'instant' });
+                                                } catch {}
+                                            }, 40);
+                                        }
+                                    }
+                                } catch {}
+                            };
+                            const candidates = Array.from(document.querySelectorAll(
+                                '[data-e2e*="ad"], [data-e2e*="sponsor"], [aria-label*="Sponsor"], [aria-label*="Sponsored"], span, div, button, a'
+                            )).slice(0, 900);
+                            for (const node of candidates) {
+                                if (!isVisible(node)) continue;
+                                const text = [
+                                    node.getAttribute?.('aria-label'),
+                                    node.getAttribute?.('title'),
+                                    node.innerText,
+                                    node.textContent
+                                ].filter(Boolean).join(' ');
+                                if (!isSponsoredText(text)) continue;
+                                hideAdCard(findVideoCard(node));
                             }
                         }
 
@@ -8460,6 +8715,7 @@ function setupEventListeners() {
                         function tickYouTubeAdSkip() {
                             maybeEmitPageTitleHint();
                             installGenericPendingTitleHint();
+                            scrubTikTokPromotedUi();
                             scrubGenericAdUi();
                             if (!isYouTubeHost()) return;
                             installYouTubePlayerResponsePatch();
@@ -8769,11 +9025,15 @@ function setupEventListeners() {
                             emitVolume(true);
                         }
 
+                        let observerTimer = null;
                         const observer = new MutationObserver(() => {
-                            const media = document.querySelector('video, audio');
-                            if (media) attachEvents(media);
-                            emitMetadata(false);
-                            tickYouTubeAdSkip();
+                            if (observerTimer) return;
+                            observerTimer = setTimeout(() => {
+                                observerTimer = null;
+                                const media = document.querySelector('video, audio');
+                                if (media) attachEvents(media);
+                                emitMetadata(false);
+                            }, 250);
                         });
                         observer.observe(document.documentElement || document.body, { childList: true, subtree: true });
 
@@ -8786,6 +9046,15 @@ function setupEventListeners() {
                             emitTime(false);
                             emitVolume(false);
                             tickYouTubeAdSkip();
+                            if (location.hostname.includes('tiktok.com') && !window.__ARDALI_DALI_WEB__) {
+                                const medias = document.querySelectorAll('video, audio');
+                                const targetVol = typeof window.__ardaliTargetVolume === 'number' ? window.__ardaliTargetVolume : 100;
+                                const targetMuted = typeof window.__ardaliTargetMuted === 'boolean' ? window.__ardaliTargetMuted : false;
+                                for (const m of medias) {
+                                    if (m.muted !== targetMuted) m.muted = targetMuted;
+                                    if (targetMuted === false && m.volume === 0 && targetVol > 0) m.volume = targetVol / 100;
+                                }
+                            }
                         }, syncTickMs);
 
                         emitMetadata(true);
@@ -8816,6 +9085,28 @@ function getWebViewUrlSafe() {
         return String(elements.webView?.getURL?.() || '').trim() || 'about:blank';
     } catch {
         return 'about:blank';
+    }
+}
+
+function runWhenEmbeddedWebViewReady(callback) {
+    const webView = elements.webView;
+    if (!webView || typeof callback !== 'function') return false;
+    if (webView.__ardaliDomReady) {
+        try {
+            callback(webView);
+            return true;
+        } catch {
+            return false;
+        }
+    }
+    try {
+        webView.addEventListener('dom-ready', () => {
+            webView.__ardaliDomReady = true;
+            try { callback(webView); } catch {}
+        }, { once: true });
+        return true;
+    } catch {
+        return false;
     }
 }
 
@@ -8864,9 +9155,14 @@ function isLikelyDownloadableWebUrl(raw) {
         /(^|\.)ibytedtos\.com$/i.test(host) ||
         /(^|\.)byteoversea\.com$/i.test(host) ||
         /(^|\.)ibyteimg\.com$/i.test(host) ||
-        /(^|\.)byteimg\.com$/i.test(host) ||
-        /(^|\.)muscdn\.com$/i.test(host)) {
-        return /video|mime_type=video|mp4|webm|m3u8|playwm|playaddr/i.test(parsed.toString());
+	        /(^|\.)byteimg\.com$/i.test(host) ||
+	        /(^|\.)muscdn\.com$/i.test(host)) {
+	        const pathAndSearch = `${parsed.pathname || ''}${parsed.search || ''}`;
+	        if (/webmssdk|captcha|verify|analytics|collect|log|report|monitor/i.test(pathAndSearch)) return false;
+	        return /(?:^|[?&])mime_type=video/i.test(parsed.search || '') ||
+	            /(?:^|[?&])(?:playwm|playaddr|video_id)=/i.test(parsed.search || '') ||
+	            /\.(?:mp4|webm|m3u8)(?:$|[?#])/i.test(pathAndSearch) ||
+            /\/(?:video|tos-[^/]+)\/(?:tos-|obj\/|[^?#]+\.(?:mp4|webm|m3u8))/i.test(pathAndSearch);
     }
     return true;
 }
@@ -8991,6 +9287,30 @@ function isDirectPlatformMediaAssetUrl(rawUrl) {
         host === 'googlevideo.com' ||
         host.endsWith('.googlevideo.com') ||
         /\/videoplayback\b|mime=video|mime_type=video|\.m3u8\b|\.mp4(?:\?|$)|\.webm(?:\?|$)/i.test(url)
+    );
+}
+
+function isTikTokDirectMediaAssetUrl(rawUrl) {
+    const parsed = parseHttpUrl(rawUrl);
+    if (!parsed) return false;
+    if (isLikelyImageAssetUrl(parsed.toString())) return false;
+    const host = String(parsed.hostname || '').toLowerCase();
+    const pathAndSearch = `${parsed.pathname || ''}${parsed.search || ''}`;
+    if (/webmssdk|captcha|verify|analytics|collect|log|report|monitor/i.test(pathAndSearch)) return false;
+    const isTikTokMediaHost =
+        /(^|\.)tiktokv\.com$/i.test(host) ||
+        /(^|\.)tiktokcdn(?:-us)?\.com$/i.test(host) ||
+        /(^|\.)ttwstatic\.com$/i.test(host) ||
+        /(^|\.)ibytedtos\.com$/i.test(host) ||
+        /(^|\.)byteoversea\.com$/i.test(host) ||
+        /(^|\.)ibyteimg\.com$/i.test(host) ||
+        /(^|\.)byteimg\.com$/i.test(host) ||
+        /(^|\.)muscdn\.com$/i.test(host);
+    return isTikTokMediaHost && (
+        /(?:^|[?&])mime_type=video/i.test(parsed.search || '') ||
+        /(?:^|[?&])(?:playwm|playaddr|video_id)=/i.test(parsed.search || '') ||
+        /\.(?:mp4|webm|m3u8)(?:$|[?#])/i.test(pathAndSearch) ||
+        /\/(?:video|tos-[^/]+)\/(?:tos-|obj\/|[^?#]+\.(?:mp4|webm|m3u8))/i.test(pathAndSearch)
     );
 }
 
@@ -9207,11 +9527,44 @@ async function getActiveWebDownloadUrlFromPage() {
                         }
                     }
                 };
-                const pushTikTokPair = (username, videoId, source, visibleScore = 0) => {
-                    const user = String(username || '').trim().replace(/^@+/, '').replace(/[^\\w.-]/g, '');
-                    const id = String(videoId || '').trim().replace(/[^\\d]/g, '');
-                    if (!user || !id || id.length < 6) return;
-                    push('https://www.tiktok.com/@' + user + '/video/' + id, source, visibleScore);
+	                const pushTikTokPair = (username, videoId, source, visibleScore = 0) => {
+	                    const user = String(username || '').trim().replace(/^@+/, '').replace(/[^\\w.-]/g, '');
+	                    let id = String(videoId || '').trim().replace(/[^\\d]/g, '');
+                        if (id.length > 19) id = id.replace(/^0+/, '') || id;
+	                    if (!id || id.length < 6) return;
+	                    push('https://www.tiktok.com/@' + (user || '_') + '/video/' + id, source, visibleScore);
+	                };
+                const isTikTokMediaAssetString = (raw) => {
+                    try {
+                        const parsed = new URL(normalizeText(raw), location.href);
+                        const mediaHost = /(^|\\.)(tiktokv\\.com|tiktokcdn(?:-us)?\\.com|ttwstatic\\.com|ibytedtos\\.com|byteoversea\\.com|ibyteimg\\.com|byteimg\\.com|muscdn\\.com)$/i.test(parsed.hostname || '');
+                        if (!mediaHost) return false;
+                        const text = String(parsed.pathname || '') + String(parsed.search || '');
+                        if (/webmssdk|captcha|verify|analytics|collect|log|report|monitor/i.test(text)) return false;
+                        return /(?:^|[?&])mime_type=video/i.test(parsed.search || '') ||
+                            /(?:^|[?&])(?:playwm|playaddr|video_id)=/i.test(parsed.search || '') ||
+                            /\\.(?:mp4|webm|m3u8)(?:$|[?#])/i.test(text) ||
+                            /\\/(?:video|tos-[^/]+)\\/(?:tos-|obj\\/|[^?#]+\\.(?:mp4|webm|m3u8))/i.test(text);
+                    } catch {
+                        return false;
+                    }
+                };
+                const pushTikTokString = (raw, source, visibleScore = 0) => {
+                    const value = normalizeText(raw);
+                    if (!value) return;
+                    const urlMatches = value.match(/https?:\\/\\/(?:www\\.)?tiktok\\.com\\/@[^"'<>\\s]+\\/video\\/\\d+/gi) || [];
+                    for (const match of urlMatches.slice(0, 12)) push(normalizeText(match), source + '-url', visibleScore);
+                    const pathMatches = Array.from(value.matchAll(/(?:^|["'\\s])\\/?@([\\w.-]{2,32})\\/video\\/(\\d{6,})/gi)).slice(0, 12);
+                    for (const match of pathMatches) pushTikTokPair(match[1], match[2], source + '-path', visibleScore);
+                    if (/^https?:\\/\\//i.test(value) && isTikTokMediaAssetString(value)) push(value, source + '-media', visibleScore);
+                };
+                const hasTikTokDownloadCandidate = () => {
+                    try {
+                        return out.some((item) => /tiktok\\.com\\/@[^/?#]+\\/video\\/\\d{6,}/i.test(String(item?.url || '')) ||
+                            isTikTokMediaAssetString(item?.url || ''));
+                    } catch {
+                        return false;
+                    }
                 };
                 const pushTikTokObject = (item, source, visibleScore = 0) => {
                     if (!item || typeof item !== 'object') return;
@@ -9224,14 +9577,18 @@ async function getActiveWebDownloadUrlFromPage() {
                         item.authorUniqueId ||
                         item.author_unique_id ||
                         '';
-                    pushTikTokPair(user, id, source, visibleScore);
-                };
+	                    pushTikTokPair(user, id, source, visibleScore);
+	                };
                 const scanTikTokJson = (value, source, visibleScore = 0, limit = 900) => {
                     const stack = [value];
                     const seenObjects = new Set();
                     let scanned = 0;
                     while (stack.length && scanned < limit) {
                         const item = stack.pop();
+                        if (typeof item === 'string') {
+                            pushTikTokString(item, source, visibleScore);
+                            continue;
+                        }
                         if (!item || typeof item !== 'object' || seenObjects.has(item)) continue;
                         seenObjects.add(item);
                         scanned += 1;
@@ -9242,9 +9599,35 @@ async function getActiveWebDownloadUrlFromPage() {
                         }
                         for (const key of Object.keys(item)) {
                             const child = item[key];
-                            if (child && typeof child === 'object') stack.push(child);
+                            if (typeof child === 'string') {
+                                pushTikTokString(child, source + ':' + key, visibleScore);
+                                if (/(^|_)(id|awemeid|itemid|groupid|videoid)$/i.test(String(key || ''))) {
+                                    pushTikTokPair('', child, source + ':' + key, visibleScore - 10);
+                                }
+                            } else if (child && typeof child === 'object') {
+                                stack.push(child);
+                            }
                         }
                     }
+                };
+                const scanTikTokNodeState = (node, source, visibleScore = 0) => {
+                    try {
+                        const seenNodes = new Set();
+                        let current = node;
+                        for (let depth = 0; current && depth < 7 && !hasTikTokDownloadCandidate(); depth += 1, current = current.parentElement) {
+                            if (seenNodes.has(current)) continue;
+                            seenNodes.add(current);
+                            const propNames = Object.getOwnPropertyNames(current)
+                                .filter((name) => /react|fiber|props|internal|memoized/i.test(name))
+                                .slice(0, 6);
+                            for (const prop of propNames) {
+                                try {
+                                    scanTikTokJson(current[prop], source + ':' + prop.replace(/[^A-Za-z0-9_:-]/g, '').slice(0, 40), visibleScore - depth * 2, 520);
+                                    if (hasTikTokDownloadCandidate()) break;
+                                } catch {}
+                            }
+                        }
+                    } catch {}
                 };
                 const selectors = [
                     'a[href*="/video/"]',
@@ -9437,16 +9820,17 @@ async function getActiveWebDownloadUrlFromPage() {
                             if (video.currentTime > 0) score += 20;
                             scoredVideos.push({ video, score });
                         }
-                        scoredVideos.sort((a, b) => b.score - a.score);
-                        for (const entry of scoredVideos.slice(0, 3)) {
-                            let node = entry.video;
-                            for (let depth = 0; node && depth < 10; depth += 1, node = node.parentElement) {
-                                activeContainers.push({ node, score: entry.score - depth * 2 });
-                            }
-                        }
-                    } catch {}
-                    try {
-                        for (const entry of activeContainers.slice(0, 24)) {
+	                        scoredVideos.sort((a, b) => b.score - a.score);
+	                        for (const entry of scoredVideos.slice(0, 1)) {
+                                scanTikTokNodeState(entry.video, 'tiktok-react-active-video', 170 + entry.score);
+	                            let node = entry.video;
+	                            for (let depth = 0; node && depth < 9; depth += 1, node = node.parentElement) {
+	                                activeContainers.push({ node, score: entry.score - depth * 2 });
+	                            }
+	                        }
+	                    } catch {}
+	                    try {
+	                        for (const entry of activeContainers.slice(0, 12)) {
                             const node = entry.node;
                             for (const link of Array.from(node.querySelectorAll?.('a[href*="/@"][href*="/video/"]') || []).slice(0, 20)) {
                                 push(link.getAttribute('href') || link.href || '', 'tiktok-active-container-link', 120 + entry.score);
@@ -9458,11 +9842,13 @@ async function getActiveWebDownloadUrlFromPage() {
                             const text = normalizeText(attrs.concat(node.textContent || '').join('\\n').slice(0, 240000));
                             const urlMatches = text.match(/https?:\\/\\/(?:www\\.)?tiktok\\.com\\/@[^"'<>\\s]+\\/video\\/\\d+/gi) || [];
                             for (const match of urlMatches.slice(0, 20)) push(normalizeText(match), 'tiktok-active-container-url', 115 + entry.score);
-                            const pathMatches = Array.from(text.matchAll(/(?:^|["'\\s])\\/?@([\\w.-]{2,32})\\/video\\/(\\d{6,})/gi)).slice(0, 30);
-                            for (const match of pathMatches) pushTikTokPair(match[1], match[2], 'tiktok-active-container-path', 115 + entry.score);
-                        }
-                    } catch {}
-                    try {
+	                            const pathMatches = Array.from(text.matchAll(/(?:^|["'\\s])\\/?@([\\w.-]{2,32})\\/video\\/(\\d{6,})/gi)).slice(0, 30);
+	                            for (const match of pathMatches) pushTikTokPair(match[1], match[2], 'tiktok-active-container-path', 115 + entry.score);
+	                            const idOnlyMatches = Array.from(text.matchAll(/["'](?:id|awemeId|aweme_id|itemId|item_id|groupId|group_id|videoId|video_id)["']\\s*:\\s*["']?(\\d{8,})/gi)).slice(0, 20);
+	                            for (const match of idOnlyMatches) pushTikTokPair('', match[1], 'tiktok-active-container-id', 95 + entry.score);
+	                        }
+	                    } catch {}
+                    if (!hasTikTokDownloadCandidate()) try {
                         const stateNames = [
                             '__UNIVERSAL_DATA_FOR_REHYDRATION__',
                             'SIGI_STATE',
@@ -9477,7 +9863,7 @@ async function getActiveWebDownloadUrlFromPage() {
                             try { scanTikTokJson(JSON.parse(raw), 'tiktok-script-json', -120); } catch {}
                         }
                     } catch {}
-	                    try {
+	                    if (!hasTikTokDownloadCandidate()) try {
 	                        const viewportCenterX = innerWidth / 2;
 	                        const viewportCenterY = innerHeight / 2;
 	                        const visibleNodes = Array.from(document.querySelectorAll('a[href^="/@"], a[href*="tiktok.com/@"], [data-e2e*="author"], [data-e2e*="user"]')).slice(0, 160);
@@ -9499,7 +9885,7 @@ async function getActiveWebDownloadUrlFromPage() {
 	                        for (const item of scored.slice(0, 8)) activeUsernames.push(item.username);
 	                    } catch {}
 
-	                    try {
+	                    if (!hasTikTokDownloadCandidate()) try {
 	                        const visibleUserSet = new Set(activeUsernames.map((user) => String(user || '').toLowerCase()));
 	                        const pushVisibleTikTokObject = (item, source, visibleScore = 0) => {
 	                            if (!item || typeof item !== 'object') return;
@@ -9513,7 +9899,7 @@ async function getActiveWebDownloadUrlFromPage() {
 	                                item.author_unique_id ||
 	                                '';
 	                            const cleanUser = String(user || '').replace(/^@+/, '').toLowerCase();
-	                            if (!cleanUser || !visibleUserSet.has(cleanUser)) return;
+	                            if (cleanUser && !visibleUserSet.has(cleanUser)) return;
 	                            pushTikTokPair(cleanUser, id, source, visibleScore);
 	                        };
 	                        const scanVisibleTikTokJson = (value, source, limit = 1400) => {
@@ -9553,28 +9939,30 @@ async function getActiveWebDownloadUrlFromPage() {
 	                        }
 	                    } catch {}
 
-	                    const chunks = [];
-                    try { chunks.push(String(document.body?.innerHTML || '')); } catch {}
-                    try {
-                        for (const script of Array.from(document.scripts || []).slice(0, 80)) {
-                            const text = script.textContent || '';
-                            if (text && /tiktok|aweme|video/i.test(text)) chunks.push(text);
+	                    if (!hasTikTokDownloadCandidate()) {
+	                        const chunks = [];
+                        try { chunks.push(String(document.body?.innerHTML || '')); } catch {}
+                        try {
+                            for (const script of Array.from(document.scripts || []).slice(0, 40)) {
+                                const text = script.textContent || '';
+                                if (text && /tiktok|aweme|video/i.test(text)) chunks.push(text);
+                            }
+                        } catch {}
+
+                        const text = normalizeText(chunks.join('\\n').slice(0, 1800000));
+                        const urlMatches = text.match(/https?:\\/\\/(?:www\\.)?tiktok\\.com\\/@[^"'<>\\s]+\\/video\\/\\d+/gi) || [];
+                        for (const match of urlMatches.slice(0, 40)) push(normalizeText(match), 'tiktok-url', 18);
+
+                        const pathRegex = /(?:^|["'\\s])\\/?@([\\w.-]{2,32})\\/video\\/(\\d{6,})/gi;
+                        let pathMatch;
+                        let pathCount = 0;
+                        while ((pathMatch = pathRegex.exec(text)) && pathCount < 60) {
+                            pathCount += 1;
+                            const user = pathMatch[1];
+                            const id = pathMatch[2];
+                            const visibleBoost = activeUsernames.includes(user) ? 60 : 12;
+                            pushTikTokPair(user, id, 'tiktok-path', visibleBoost);
                         }
-                    } catch {}
-
-                    const text = normalizeText(chunks.join('\\n').slice(0, 6000000));
-                    const urlMatches = text.match(/https?:\\/\\/(?:www\\.)?tiktok\\.com\\/@[^"'<>\\s]+\\/video\\/\\d+/gi) || [];
-                    for (const match of urlMatches.slice(0, 80)) push(normalizeText(match), 'tiktok-url', 18);
-
-                    const pathRegex = /(?:^|["'\\s])\\/?@([\\w.-]{2,32})\\/video\\/(\\d{6,})/gi;
-                    let pathMatch;
-                    let pathCount = 0;
-                    while ((pathMatch = pathRegex.exec(text)) && pathCount < 120) {
-                        pathCount += 1;
-                        const user = pathMatch[1];
-                        const id = pathMatch[2];
-                        const visibleBoost = activeUsernames.includes(user) ? 60 : 12;
-                        pushTikTokPair(user, id, 'tiktok-path', visibleBoost);
 	                    }
 	                }
 
@@ -9589,6 +9977,7 @@ async function getActiveWebDownloadUrlFromPage() {
                     const source = String(item?.source || '');
                     const sourceLower = source.toLowerCase();
                     if (isLikelyImageAssetUrl(url)) return null;
+                    if (currentPlatform === 'tiktok' && sourceLower.includes('performance-resource') && !isTikTokDirectMediaAssetUrl(url)) return null;
                     let score = scoreWebDownloadCandidateUrl(url, currentPlatform) +
                         Number(item?.visibleScore || 0) +
                         getWebDownloadCandidateSourcePriority(source);
@@ -9697,11 +10086,38 @@ async function getActiveWebDownloadUrlFromPage() {
 	            if (isTikTokFeed) {
 	                if (isTikTokVideoPageUrl(item.url) && source.includes('tiktok-active-container')) return true;
 	                if (isTikTokVideoPageUrl(item.url) && source.includes('tiktok-visible-json')) return true;
+	                if (isTikTokVideoPageUrl(item.url) && source.includes('tiktok-react')) return true;
 	                return false;
 	            }
 	            return true;
 	        });
-        if (best) return best.url;
+            if (best) return best.url;
+
+            if (isTikTokFeed) {
+                const tiktokPageFallback = ranked.find((item) => {
+                    const source = String(item.source || '').toLowerCase();
+                    return isTikTokVideoPageUrl(item.url) &&
+                        (
+                            source.includes('tiktok-active-container') ||
+                            source.includes('tiktok-visible-json') ||
+                            source.includes('tiktok-react') ||
+                            source.includes('tiktok-window-state') ||
+                            source.includes('tiktok-script-json') ||
+                            source.includes('tiktok-path') ||
+                            source.includes('tiktok-url')
+                        );
+                });
+                if (tiktokPageFallback) return tiktokPageFallback.url;
+
+                const tiktokDirectMedia = ranked.find((item) => {
+                    if (item.score <= 20 || !isTikTokDirectMediaAssetUrl(item.url)) return false;
+                    const source = String(item.source || '').toLowerCase();
+                    return source.includes('media-current-src') ||
+                        source.includes('media-source') ||
+                        source.includes('performance-resource');
+                });
+                if (tiktokDirectMedia) return tiktokDirectMedia.url;
+            }
     } catch {
         // fallback below
     }
@@ -9923,10 +10339,129 @@ async function getActiveWebDownloadTitleHintFromPage(targetUrl = '') {
                     score += Math.min(35, value.length / 4);
                     candidates.push({ text: value, score });
                 };
-                try {
-                    const host = String(location.hostname || '').toLowerCase();
-                    if (host.includes('instagram.com')) {
-                        const isVisible = (node) => {
+	                try {
+	                    const host = String(location.hostname || '').toLowerCase();
+	                    if (host.includes('tiktok.com')) {
+	                        const isVisible = (node) => {
+	                            if (!node || typeof node.getBoundingClientRect !== 'function') return false;
+	                            const rect = node.getBoundingClientRect();
+	                            return rect.width > 0 &&
+	                                rect.height > 0 &&
+	                                rect.bottom > 0 &&
+	                                rect.right > 0 &&
+	                                rect.top < innerHeight &&
+	                                rect.left < innerWidth;
+	                        };
+	                        const isNoiseLine = (line) => {
+	                            const value = clean(line);
+	                            const compact = value.replace(/\\s+/g, '').toLowerCase();
+	                            if (!value || value.length < 4) return true;
+	                            if (value.length > 180) return true;
+	                            if (/^(tiktok|home|search|explore|profile|messages?|inbox|live|upload|more|share|send|save|like|comment|follow|following|takip et|beğen|yorum yap|paylaş|kaydet|canlı yayın|yükle|profil|arkadaşlar|mesajlar|aktivite|senin için|keşfet|takip ediliyor|for you|following|friends)$/i.test(value)) return true;
+	                            if (/^(?:@?[\\w.-]{2,32}|\\d+(?:[.,]\\d+)?\\s*(?:b|bin|m|mn|k)?)$/i.test(value)) return true;
+	                            if (/(sesoynatılıyor|oynatdüğmesisimgesi|duraklatdüğmesisimgesi|audioisplaying|playbuttonicon|pausebuttonicon)/i.test(compact)) return true;
+	                            if (/^\\.{0,3}\\s*(?:devam[ıi]|more|see more|show more|daha fazlası)$/i.test(value)) return true;
+	                            return false;
+	                        };
+	                        const pushTikTokCaption = (text, score) => {
+	                            let value = clean(text)
+	                                .replace(/^\\s*@?[\\w.-]{2,32}\\s+/, '')
+	                                .replace(/\\s+(?:Follow|Following|Takip Et)\\b.*$/i, '')
+	                                .trim();
+	                            if (isNoiseLine(value)) return;
+	                            push(value, score);
+	                        };
+	                        try {
+	                            const viewportCenterX = innerWidth / 2;
+	                            const viewportCenterY = innerHeight / 2;
+	                            const scoredVideos = Array.from(document.querySelectorAll('video'))
+	                                .filter(isVisible)
+	                                .map((video) => {
+	                                    const rect = video.getBoundingClientRect();
+	                                    const visibleWidth = Math.max(0, Math.min(rect.right, innerWidth) - Math.max(rect.left, 0));
+	                                    const visibleHeight = Math.max(0, Math.min(rect.bottom, innerHeight) - Math.max(rect.top, 0));
+	                                    const area = visibleWidth * visibleHeight;
+	                                    if (area <= 0) return null;
+	                                    let score = area / 1800 -
+	                                        Math.abs((rect.left + rect.width / 2) - viewportCenterX) / 18 -
+	                                        Math.abs((rect.top + rect.height / 2) - viewportCenterY) / 18;
+	                                    if (!video.paused) score += 90;
+	                                    if (video.currentTime > 0) score += 20;
+	                                    return { video, rect, score };
+	                                })
+	                                .filter(Boolean)
+	                                .sort((a, b) => b.score - a.score);
+	                            const entry = scoredVideos[0];
+	                            if (entry) {
+	                                const selectors = [
+	                                    '[data-e2e*="video-desc"]',
+	                                    '[data-e2e*="browse-video-desc"]',
+	                                    '[data-e2e*="caption"]',
+	                                    '[data-e2e*="video-author"]',
+	                                    'strong[data-e2e]',
+	                                    'h1',
+	                                    'span, div, a, p'
+	                                ];
+	                                for (const selector of selectors) {
+	                                    for (const node of Array.from(document.querySelectorAll(selector)).slice(0, selector === 'span, div, a, p' ? 800 : 80)) {
+	                                        if (!isVisible(node)) continue;
+	                                        const rect = node.getBoundingClientRect();
+	                                        if (rect.width < 12 || rect.height < 8 || rect.height > 180) continue;
+	                                        const horizontalOverlap = Math.max(0, Math.min(rect.right, entry.rect.right) - Math.max(rect.left, entry.rect.left));
+	                                        const nearBelow = rect.top >= entry.rect.bottom - 260 && rect.top <= entry.rect.bottom + 210 && horizontalOverlap > 18;
+	                                        const nearSide = rect.left <= entry.rect.right + Math.max(420, innerWidth * 0.38) &&
+	                                            rect.right >= entry.rect.left - Math.max(420, innerWidth * 0.38) &&
+	                                            rect.top >= entry.rect.top + entry.rect.height * 0.30 &&
+	                                            rect.top <= entry.rect.bottom + 220;
+	                                        if (!nearBelow && !nearSide && !selector.includes('data-e2e') && selector !== 'h1') continue;
+	                                        const raw = node.innerText || node.textContent || '';
+	                                        for (const line of String(raw).split(/\\n+/).map(clean).filter(Boolean)) {
+	                                            let score = 420 + entry.score;
+	                                            if (selector.includes('video-desc') || selector.includes('caption')) score += 180;
+	                                            if (nearBelow) score += 90;
+	                                            if (/#\\w+/.test(line)) score += 25;
+	                                            pushTikTokCaption(line, score);
+	                                        }
+	                                    }
+	                                }
+	                            }
+	                        } catch {}
+	                        try {
+	                            const stateNames = ['__UNIVERSAL_DATA_FOR_REHYDRATION__', 'SIGI_STATE', '__NEXT_DATA__', '__INITIAL_STATE__', '__INIT_PROPS__'];
+	                            const scan = (root, score = 260, limit = 2200) => {
+	                                const stack = [root];
+	                                const seen = new Set();
+	                                let scanned = 0;
+	                                while (stack.length && scanned < limit) {
+	                                    const item = stack.pop();
+	                                    if (!item || typeof item !== 'object' || seen.has(item)) continue;
+	                                    seen.add(item);
+	                                    scanned += 1;
+	                                    pushTikTokCaption(item.desc || item.description || item.title || item.caption || item.captionText || item.text || '', score);
+	                                    if (Array.isArray(item)) {
+	                                        for (let i = item.length - 1; i >= 0; i -= 1) stack.push(item[i]);
+	                                        continue;
+	                                    }
+	                                    for (const key of Object.keys(item)) {
+	                                        const child = item[key];
+	                                        if (child && typeof child === 'object') stack.push(child);
+	                                    }
+	                                }
+	                            };
+	                            for (const name of stateNames) scan(window[name], 300);
+	                            for (const script of Array.from(document.querySelectorAll('script[type="application/json"], script#__UNIVERSAL_DATA_FOR_REHYDRATION__, script#SIGI_STATE, script#__NEXT_DATA__')).slice(0, 18)) {
+	                                const raw = script.textContent || '';
+	                                if (!raw || !/tiktok|aweme|desc|caption|video/i.test(raw)) continue;
+	                                try { scan(JSON.parse(raw), 260); } catch {}
+	                            }
+	                        } catch {}
+	                        if (candidates.length) {
+	                            candidates.sort((a, b) => b.score - a.score);
+	                            return candidates[0]?.text || '';
+	                        }
+	                    }
+	                    if (host.includes('instagram.com')) {
+	                        const isVisible = (node) => {
                             if (!node || typeof node.getBoundingClientRect !== 'function') return false;
                             const rect = node.getBoundingClientRect();
                             return rect.width > 0 &&
@@ -9938,13 +10473,13 @@ async function getActiveWebDownloadTitleHintFromPage(targetUrl = '') {
                         };
                         const isNoiseLine = (line) => {
                             const value = clean(line);
-                            const compact = value.replace(/\s+/g, '').toLowerCase();
+	                            const compact = value.replace(/\\s+/g, '').toLowerCase();
                             if (!value || value.length < 4) return true;
                             if (value.length > 180) return true;
                             if (/^(reels?|video|photo|instagram|home|search|explore|notifications?|messages?|more|share|send|save|like|comment|follow|following|takip et|beğen|yorum yap|paylaş|kaydet|ses|oynat|durdur|duraklat|mute|unmute|takip ettiklerin|beğenmeler|yorumlar|gönder|paylaşımlar|senin için|senin için önerilenler|for you|for you page|suggested for you)$/i.test(value)) return true;
-                            if (/(ses(?:i)?(?:\s+)?oynatılıyor|oynat(?:\s+)?düğmesi(?:\s+)?simgesi|duraklat(?:\s+)?düğmesi(?:\s+)?simgesi|audio(?:\s+)?is(?:\s+)?playing|play(?:\s+)?button(?:\s+)?icon|pause(?:\s+)?button(?:\s+)?icon)/i.test(value)) return true;
+	                            if (/(ses(?:i)?(?:\\s+)?oynatılıyor|oynat(?:\\s+)?düğmesi(?:\\s+)?simgesi|duraklat(?:\\s+)?düğmesi(?:\\s+)?simgesi|audio(?:\\s+)?is(?:\\s+)?playing|play(?:\\s+)?button(?:\\s+)?icon|pause(?:\\s+)?button(?:\\s+)?icon)/i.test(value)) return true;
                             if (/(sesoynatılıyor|oynatdüğmesisimgesi|duraklatdüğmesisimgesi|audioisplaying|playbuttonicon|pausebuttonicon)/i.test(compact)) return true;
-                            if (/^\.{0,3}\s*(?:devam[ıi]|more|see more|show more)$/i.test(value)) return true;
+	                            if (/^\\.{0,3}\\s*(?:devam[ıi]|more|see more|show more)$/i.test(value)) return true;
                             if (/^(?:devamı|devami|more|seemore|showmore)$/i.test(compact)) return true;
                             if (/^(senin için|senin için önerilenler|takip|takip ettiklerin|for you|for you page|following|suggested for you)$/i.test(value)) return true;
                             if (/^@?[\\w.]{2,32}$/.test(value)) return true;
@@ -10245,6 +10780,12 @@ const webDaliLiveApplyState = {
     pendingReason: '',
     pendingScope: '',
     pendingEffect: ''
+};
+const webDaliPowerRuntime = {
+    initialized: false,
+    onBattery: false,
+    level: null,
+    pollTimer: null
 };
 const webDaliPresetRuntime = {
     sourceText: '',
@@ -13727,7 +14268,8 @@ function createWebDaliInjectScript(payload, presetStages, bassPresetStages) {
                         root.applyDynamicEqCfg(graph, graph.cfg);
                         return true;
                     }
-                    if (fx !== 'audiophile' && fx !== 'sescikisi' && fx !== 'ses-cikisi') return false;
+                    const fastToneFx = new Set(['eq32', 'audiophile', 'sescikisi', 'ses-cikisi']);
+                    if (!fastToneFx.has(fx)) return false;
                     const cfg = { ...(graph.cfg || {}), ...(nextCfg || {}) };
                     graph.cfg = cfg;
                     const ctx = graph.ctx;
@@ -13736,6 +14278,14 @@ function createWebDaliInjectScript(payload, presetStages, bassPresetStages) {
                     graph.autoCompDb = autoCompDb;
                     const compensatedInputGain = preampGainLin * root.dbToLinear(autoCompDb);
                     root.smoothContinuousParam(graph.inputGain?.gain, compensatedInputGain, ctx, root.getSmoothingMs('preamp', 36));
+                    root.smoothParam(graph.bass?.gain, Number(cfg?.bass) || 0, ctx, root.getSmoothingMs('musical', 18));
+                    root.smoothParam(graph.mid?.gain, Number(cfg?.mid) || 0, ctx, root.getSmoothingMs('musical', 18));
+                    root.smoothParam(graph.treble?.gain, Number(cfg?.treble) || 0, ctx, root.getSmoothingMs('musical', 18));
+                    const bands = Array.isArray(cfg?.bands) ? cfg.bands : [];
+                    const bandNodes = Array.isArray(graph.daliBandNodes) ? graph.daliBandNodes : [];
+                    for (let i = 0; i < bandNodes.length; i += 1) {
+                        root.smoothParam(bandNodes[i]?.gain, Number(bands[i]) || 0, ctx, root.getSmoothingMs('eqband', 20));
+                    }
 	                    if (graph.balanceGainL && graph.balanceGainR) {
 	                        const balNorm = Math.max(-1, Math.min(1, (Number(cfg?.balance) || 0) / 100));
 	                        const leftGain = balNorm > 0 ? (1 - balNorm) : 1;
@@ -14864,7 +15414,15 @@ function createWebDaliInjectScript(payload, presetStages, bassPresetStages) {
                     const buildStartedAt = root.perfNow();
                     const AudioCtx = window.AudioContext || window.webkitAudioContext;
                     if (!AudioCtx) return null;
-                    if (!root.ctx) root.ctx = new AudioCtx();
+                    if (!root.ctx) {
+                        try {
+                            root.ctx = new AudioCtx({
+                                latencyHint: cfg?.webProfile ? 'playback' : 'interactive'
+                            });
+                        } catch (_) {
+                            root.ctx = new AudioCtx();
+                        }
+                    }
                     const ctx = root.ctx;
                     try { if (ctx.state === 'suspended') ctx.resume(); } catch (_) {}
                     const configKey = root.buildConfigKey(cfg);
@@ -14889,14 +15447,18 @@ function createWebDaliInjectScript(payload, presetStages, bassPresetStages) {
                         return graph;
                     }
                     root.disconnectGraph(graph);
+                    const batteryGraph = cfg?.webBatteryProfile === true;
+                    const mainAnalyserFftSize = batteryGraph ? 1024 : 2048;
+                    const detectorFftSize = batteryGraph ? 256 : 512;
+                    const truePeakFftSize = batteryGraph ? 512 : 1024;
                     const inputGain = new GainNode(ctx, { gain: Number(cfg.preampGain) || 1.0 });
                     const analyser = new AnalyserNode(ctx, {
-                        fftSize: 2048,
+                        fftSize: mainAnalyserFftSize,
                         smoothingTimeConstant: 0.22,
                         minDecibels: -96,
                         maxDecibels: -12
                     });
-                    const shaperOversample = cfg?.webProfile ? '2x' : '4x';
+                    const shaperOversample = cfg?.webBatteryProfile ? 'none' : (cfg?.webProfile ? '2x' : '4x');
                     const bitCrusherOversample = cfg?.webProfile ? 'none' : '2x';
                     const daliOutput = new GainNode(ctx, { gain: 1.0 });
                     const bass = new BiquadFilterNode(ctx, { type: 'lowshelf', frequency: 72, gain: Number(cfg.bass) || 0, Q: 0.55 });
@@ -14936,7 +15498,7 @@ function createWebDaliInjectScript(payload, presetStages, bassPresetStages) {
                     const deEsserHighGain = new GainNode(ctx, { gain: 1.0 });
                     const deEsserOutputGain = new GainNode(ctx, { gain: 1.0 });
                     const deEsserDetector = new AnalyserNode(ctx, {
-                        fftSize: 512,
+                        fftSize: detectorFftSize,
                         smoothingTimeConstant: 0.2,
                         minDecibels: -96,
                         maxDecibels: -12
@@ -15056,7 +15618,7 @@ function createWebDaliInjectScript(payload, presetStages, bassPresetStages) {
                     const dynamicEqDetectBandR = new BiquadFilterNode(ctx, { type: 'bandpass', frequency: 3500, Q: 2.4 });
                     const dynamicEqDetectSum = new GainNode(ctx, { gain: 1.0 });
                     const dynamicEqDetector = new AnalyserNode(ctx, {
-                        fftSize: 512,
+                        fftSize: detectorFftSize,
                         smoothingTimeConstant: 0.10,
                         minDecibels: -96,
                         maxDecibels: -12
@@ -15078,7 +15640,7 @@ function createWebDaliInjectScript(payload, presetStages, bassPresetStages) {
                     const bitDitherOutputTrim = new GainNode(ctx, { gain: 1.0 });
                     const bitDitherSum = new GainNode(ctx, { gain: 1.0 });
                     const noiseGateDetector = new AnalyserNode(ctx, {
-                        fftSize: 512,
+                        fftSize: detectorFftSize,
                         smoothingTimeConstant: 0.12,
                         minDecibels: -96,
                         maxDecibels: -12
@@ -15090,7 +15652,7 @@ function createWebDaliInjectScript(payload, presetStages, bassPresetStages) {
                     const limiterComp = new DynamicsCompressorNode(ctx, { threshold: 0, ratio: 1, attack: 0.003, release: 0.05, knee: 30 });
                     const clipGuardGain = new GainNode(ctx, { gain: 1.0 });
                     const truePeakMeterAnalyser = new AnalyserNode(ctx, {
-                        fftSize: 1024,
+                        fftSize: truePeakFftSize,
                         smoothingTimeConstant: 0.08,
                         minDecibels: -96,
                         maxDecibels: 0
@@ -15583,20 +16145,22 @@ function createWebDaliInjectScript(payload, presetStages, bassPresetStages) {
                     const truePeakBuffer = new Uint8Array(truePeakMeterAnalyser.fftSize || 2048);
                     const controlRate = root.controlRateProfiles || {};
                     const isWebProfile = !!cfg?.webProfile;
+                    const isLightWebProfile = !!cfg?.webLightVideoProfile;
+                    const isBatteryWebProfile = !!cfg?.webBatteryProfile;
                     const deEsserIntervalMs = isWebProfile
-                        ? Math.max(120, Number(controlRate.deesserMs) || 24)
+                        ? Math.max(isBatteryWebProfile ? 900 : (isLightWebProfile ? 360 : 120), Number(controlRate.deesserMs) || 24)
                         : Math.max(10, Number(controlRate.deesserMs) || 24);
                     const noiseGateIntervalMs = isWebProfile
-                        ? Math.max(90, Number(controlRate.noisegateMs) || 24)
+                        ? Math.max(isBatteryWebProfile ? 760 : (isLightWebProfile ? 320 : 90), Number(controlRate.noisegateMs) || 24)
                         : Math.max(10, Number(controlRate.noisegateMs) || 24);
                     const autoGainIntervalMs = isWebProfile
-                        ? Math.max(160, Number(controlRate.autogainMs) || 60)
+                        ? Math.max(isBatteryWebProfile ? 1200 : (isLightWebProfile ? 500 : 160), Number(controlRate.autogainMs) || 60)
                         : Math.max(20, Number(controlRate.autogainMs) || 60);
                     const dynamicEqIntervalMs = isWebProfile
-                        ? Math.max(220, Number(controlRate.dynamiceqMs) || 24)
+                        ? Math.max(isBatteryWebProfile ? 1400 : (isLightWebProfile ? 650 : 220), Number(controlRate.dynamiceqMs) || 24)
                         : Math.max(10, Number(controlRate.dynamiceqMs) || 24);
                     const truePeakIntervalMs = isWebProfile
-                        ? Math.max(160, Number(controlRate.truepeakMs) || 50)
+                        ? Math.max(isBatteryWebProfile ? 1400 : (isLightWebProfile ? 500 : 160), Number(controlRate.truepeakMs) || 50)
                         : Math.max(20, Number(controlRate.truepeakMs) || 50);
                     const epsLinear = Math.max(0.00001, Number(controlRate.epsilonLinear) || 0.0006);
                     const epsDb = Math.max(0.0001, Number(controlRate.epsilonDb) || 0.04);
@@ -16280,6 +16844,97 @@ function shouldEnableWebDaliForScope(daliScope = getActiveDaliScope()) {
     return true;
 }
 
+function shouldUseWebDaliLightVideoProfile(rawUrl = getWebViewUrlSafe()) {
+    const parsed = parseHttpUrl(rawUrl);
+    if (!parsed) return false;
+    return true;
+}
+
+function initializeWebDaliPowerRuntime() {
+    if (webDaliPowerRuntime.initialized) return;
+    webDaliPowerRuntime.initialized = true;
+    const applyPowerStatus = (status = {}, reason = 'power') => {
+        const nextOnBattery = status?.onBattery === true;
+        const rawLevel = Number(status?.level);
+        const nextLevel = Number.isFinite(rawLevel) ? Math.max(0, Math.min(1, rawLevel)) : null;
+        const changed = webDaliPowerRuntime.onBattery !== nextOnBattery || webDaliPowerRuntime.level !== nextLevel;
+        webDaliPowerRuntime.onBattery = nextOnBattery;
+        webDaliPowerRuntime.level = nextLevel;
+        if (changed && getActiveDaliScope() === 'web') {
+            scheduleApplyWebDaliEngine(`power:${reason}`, 120);
+        }
+    };
+    const refreshNativePower = (reason = 'native') => {
+        try {
+            const maybe = window.ardali?.system?.getPowerStatus?.();
+            if (maybe && typeof maybe.then === 'function') {
+                maybe.then((status) => {
+                    if (status?.supported !== false) applyPowerStatus(status, reason);
+                }).catch(() => {});
+            }
+        } catch {
+            // ignore
+        }
+    };
+    refreshNativePower('init');
+    webDaliPowerRuntime.pollTimer = setInterval(() => refreshNativePower('poll'), 8000);
+    try {
+        if (!navigator || typeof navigator.getBattery !== 'function') return;
+        navigator.getBattery().then((battery) => {
+            if (!battery) return;
+            const update = (reason = 'battery') => {
+                applyPowerStatus({
+                    supported: true,
+                    onBattery: battery.charging === false,
+                    level: battery.level
+                }, reason);
+            };
+            update('init');
+            battery.addEventListener?.('chargingchange', () => update('chargingchange'));
+            battery.addEventListener?.('levelchange', () => update('levelchange'));
+        }).catch(() => {});
+    } catch {
+        // Battery Status API her ortamda yok; yoksa normal web profilini kullan.
+    }
+}
+
+async function refreshWebDaliPowerRuntime(reason = 'refresh') {
+    initializeWebDaliPowerRuntime();
+    try {
+        if (!window.ardali?.system?.getPowerStatus) return false;
+        const status = await window.ardali.system.getPowerStatus();
+        if (status?.supported === false) return false;
+        const nextOnBattery = status?.onBattery === true;
+        const rawLevel = Number(status?.level);
+        const nextLevel = Number.isFinite(rawLevel) ? Math.max(0, Math.min(1, rawLevel)) : null;
+        const changed = webDaliPowerRuntime.onBattery !== nextOnBattery || webDaliPowerRuntime.level !== nextLevel;
+        webDaliPowerRuntime.onBattery = nextOnBattery;
+        webDaliPowerRuntime.level = nextLevel;
+        if (changed && reason !== 'pre-apply' && getActiveDaliScope() === 'web') {
+            scheduleApplyWebDaliEngine(`power:${reason}`, 120);
+        }
+        return true;
+    } catch {
+        return false;
+    }
+}
+
+function applyWebDaliLightVideoProfile(payload = {}, rawUrl = getWebViewUrlSafe()) {
+    if (!payload || typeof payload !== 'object') return payload;
+    if (!shouldUseWebDaliLightVideoProfile(rawUrl)) return payload;
+    initializeWebDaliPowerRuntime();
+    const onBattery = webDaliPowerRuntime.onBattery === true || state.settings?.webUi?.lowPowerMode === true;
+    return {
+        ...payload,
+        // Web DALI motoru tüm web medyasında açık kalır. Bu bayrak sadece graph
+        // scheduler tarafında daha hafif web zamanlaması seçmek için kullanılır;
+        // kullanıcı efekt ayarlarını burada ezmeyiz.
+        webLightVideoProfile: true,
+        webBatteryProfile: onBattery,
+        webBatteryLevel: webDaliPowerRuntime.level
+    };
+}
+
 async function applyWebDaliEngineNow(reason = 'runtime') {
     const daliScope = getActiveDaliScope();
     if (!daliScope) return false;
@@ -16301,7 +16956,12 @@ async function applyWebDaliEngineNow(reason = 'runtime') {
 
     webDaliApplyInFlight = true;
     try {
-        const payload = getWebDaliEq32Settings(daliScope);
+        if (daliScope === 'web') {
+            await refreshWebDaliPowerRuntime('pre-apply');
+        }
+        const payload = daliScope === 'web'
+            ? applyWebDaliLightVideoProfile(getWebDaliEq32Settings(daliScope), getWebViewUrlSafe())
+            : getWebDaliEq32Settings(daliScope);
         const presetStages = await loadWebDaliPresetStages();
         let bassPresetStages = [];
         try {
@@ -16747,7 +17407,7 @@ function scheduleApplyWebDaliEngineBurst(reason = 'runtime-burst', delaysMs = [0
 
 function getWebDaliPlatformProfile(rawUrl = getWebViewUrlSafe()) {
     const platform = detectPlatformFromUrl(rawUrl);
-    if (platform === 'instagram') {
+    if (platform === 'instagram' || platform === 'tiktok') {
         return {
             platform,
             lightAttach: true,
@@ -16786,6 +17446,8 @@ function getWebDaliPlatformProfile(rawUrl = getWebViewUrlSafe()) {
 function installWebDaliAttachHooks() {
     if (!elements.webView || typeof elements.webView.executeJavaScript !== 'function') return;
     if (!shouldEnableWebDaliForScope('web')) return;
+    const rawUrl = getWebViewUrlSafe();
+    if (!shouldInjectWebSync(rawUrl)) return;
     const profile = getWebDaliPlatformProfile();
     const code = `
         (function () {
@@ -17028,7 +17690,8 @@ async function applyWebDaliLiveCfgNow(daliScope, cfg, liveEffect = '') {
     if (!shouldEnableWebDaliForScope('web')) return false;
     const currentUrl = getWebViewUrlSafe();
     if (!shouldInjectWebSync(currentUrl)) return false;
-    const cfgJson = JSON.stringify(cfg || {});
+    await refreshWebDaliPowerRuntime('live-pre-apply');
+    const cfgJson = JSON.stringify(applyWebDaliLightVideoProfile(cfg || {}, currentUrl));
     const effectJson = JSON.stringify(effectName || '');
     try {
         const result = await elements.webView.executeJavaScript(`
@@ -17134,7 +17797,10 @@ function applyScopedSfxLiveParam(payload) {
 
     const activeScope = getActiveDaliScope();
     if (activeScope !== scope) return;
-    const liveIntervalMs = effect === 'eq32' ? 32 : 36;
+    const onBattery = scope === 'web' && webDaliPowerRuntime.onBattery === true;
+    const liveIntervalMs = effect === 'dynamiceq'
+        ? (onBattery ? 320 : 180)
+        : (effect === 'eq32' ? (onBattery ? 110 : 56) : (onBattery ? 150 : 72));
     scheduleApplyWebDaliEngineLive(`live:${scope}:${effect}`, liveIntervalMs, scope, effect);
 }
 
@@ -17599,11 +18265,7 @@ function prepareWebUiForPulseSearch(btn) {
         platform: String(btn?.dataset?.platform || ''),
         currentUrl: getWebViewUrlSafe()
     });
-    try {
-        elements.webView?.setUserAgent?.(getEmbeddedDesktopUserAgent());
-    } catch {
-        // yoksay
-    }
+    applyEmbeddedUserAgentToWebView(getWebViewUrlSafe());
 }
 
 async function navigatePulseSearchInWebView(searchUrl, query, platform, options = {}) {
@@ -18097,15 +18759,91 @@ function webUrlLooksLikeTarget(currentUrl, targetUrl, platform = '') {
     return ch === th;
 }
 
-function applyEmbeddedUserAgentToWebView() {
-    if (!elements.webView || typeof elements.webView.setUserAgent !== 'function') return false;
-    const userAgent = getPreferredWebUserAgent();
+function shouldUseEmbeddedCompatibilityUserAgent(rawUrl = getWebViewUrlSafe()) {
+    const parsed = parseHttpUrl(rawUrl);
+    if (!parsed) return false;
+    const host = String(parsed.hostname || '').toLowerCase();
+    return host === 'web.whatsapp.com' ||
+        host === 'whatsapp.com' ||
+        host === 'www.whatsapp.com' ||
+        host.endsWith('.whatsapp.com') ||
+        host === 'open.spotify.com' ||
+        host === 'spotify.com' ||
+        host === 'www.spotify.com' ||
+        host.endsWith('.spotify.com');
+}
+
+function getNativeWebviewUserAgent() {
+    return String(navigator.userAgent || '')
+        .replace(/\sArDali\/[^\s)]+/gi, '')
+        .replace(/\s{2,}/g, ' ')
+        .trim();
+}
+
+function applyEmbeddedUserAgentToWebView(rawUrl = getWebViewUrlSafe()) {
+    if (!elements.webView) return false;
+    const compatibility = shouldUseEmbeddedCompatibilityUserAgent(rawUrl);
+    const userAgent = compatibility
+        ? getPreferredWebUserAgent()
+        : getNativeWebviewUserAgent();
     if (webLoadRuntime.appliedUserAgent === userAgent) return false;
     try {
-        elements.webView.setUserAgent(userAgent);
-        webLoadRuntime.appliedUserAgent = userAgent;
-        return true;
+        if (compatibility && userAgent) {
+            elements.webView.setAttribute?.('useragent', userAgent);
+        } else {
+            elements.webView.removeAttribute?.('useragent');
+        }
     } catch {
+        // yoksay
+    }
+    try {
+        if (typeof elements.webView.setUserAgent !== 'function') return false;
+        return runWhenEmbeddedWebViewReady((webView) => {
+            if (typeof webView.setUserAgent !== 'function') return;
+            webView.setUserAgent(userAgent);
+            webLoadRuntime.appliedUserAgent = userAgent;
+        });
+    } catch {
+        return false;
+    }
+}
+
+function requestWebViewReload(reason = 'unknown', options = {}) {
+    if (!elements.webView) return false;
+    const cooldownMs = Number.isFinite(Number(options.cooldownMs))
+        ? Math.max(0, Number(options.cooldownMs))
+        : 2500;
+    const force = options.force === true;
+    const url = String(getWebViewUrlSafe() || '').trim();
+    const now = Date.now();
+    const sameUrl = url && url === webLoadRuntime.lastReloadUrl;
+    if (!force && sameUrl && (now - Number(webLoadRuntime.lastReloadAt || 0)) < cooldownMs) {
+        console.log('[WEBVIEW] reload skipped by cooldown', {
+            reason: String(reason || 'unknown'),
+            previousReason: webLoadRuntime.lastReloadReason,
+            url,
+            elapsedMs: now - Number(webLoadRuntime.lastReloadAt || 0)
+        });
+        return true;
+    }
+    webLoadRuntime.lastReloadUrl = url;
+    webLoadRuntime.lastReloadAt = now;
+    webLoadRuntime.lastReloadReason = String(reason || 'unknown');
+    webLoadRuntime.navigationInFlight = true;
+    try {
+        if (options.ignoreCache === true && typeof elements.webView.reloadIgnoringCache === 'function') {
+            elements.webView.reloadIgnoringCache();
+        } else if (typeof elements.webView.reload === 'function') {
+            elements.webView.reload();
+        } else {
+            elements.webView.executeJavaScript('try { location.reload(true); } catch (e) {}');
+        }
+        return true;
+    } catch (e) {
+        console.warn('[WEBVIEW] reload failed', {
+            reason: String(reason || 'unknown'),
+            error: e?.message || String(e || '')
+        });
         return false;
     }
 }
@@ -18120,7 +18858,7 @@ function safeNavigateWebView(url) {
     // Bazı servisler ilk istekte gelen UA'ya göre karar verebiliyor.
     // UA'yı navigasyondan önce ve yalnızca değiştiyse uygula; dom-ready'de tekrar vermek
     // bazı SPA'larda ikinci ana yükleme gibi davranabiliyor.
-    applyEmbeddedUserAgentToWebView();
+    applyEmbeddedUserAgentToWebView(target);
     const now = Date.now();
     if (
         target === webLoadRuntime.lastRequestedUrl
@@ -18360,7 +19098,11 @@ const WEB_ALLOWED_HOSTS = new Set([
     'www.telegram.org',
     'web.telegram.org',
     't.me',
-    'www.t.me'
+    'www.t.me',
+    'spotify.com',
+    'www.spotify.com',
+    'open.spotify.com',
+    'accounts.spotify.com'
 ]);
 
 const WEB_ALLOWED_SUFFIXES = [
@@ -18378,26 +19120,9 @@ const WEB_ALLOWED_SUFFIXES = [
     '.reddit.com',
     '.twitch.tv',
     '.whatsapp.com',
-    '.telegram.org'
+    '.telegram.org',
+    '.spotify.com'
 ];
-
-const WEB_SYNC_ALLOWED_HOSTS = new Set([
-    'youtube.com',
-    'www.youtube.com',
-    'm.youtube.com',
-    'music.youtube.com',
-    'youtu.be',
-    'www.deezer.com',
-    'deezer.com',
-    'soundcloud.com',
-    'www.soundcloud.com',
-    'mixcloud.com',
-    'www.mixcloud.com',
-    'twitch.tv',
-    'www.twitch.tv',
-    'web.whatsapp.com',
-    'web.telegram.org'
-]);
 
 function parseHttpUrl(raw) {
     try {
@@ -18434,6 +19159,7 @@ function detectPlatformFromUrl(raw) {
     if (host === 'web.whatsapp.com' || host === 'whatsapp.com' || host === 'www.whatsapp.com' || host.endsWith('.whatsapp.com')) return 'whatsapp';
     if (host === 'web.telegram.org' || host === 'telegram.org' || host === 'www.telegram.org' || host === 't.me' || host === 'www.t.me' || host.endsWith('.telegram.org')) return 'telegram';
     if (host === 'mixcloud.com' || host === 'www.mixcloud.com' || host.endsWith('.mixcloud.com')) return 'mixcloud';
+    if (host === 'open.spotify.com' || host === 'spotify.com' || host === 'www.spotify.com' || host.endsWith('.spotify.com')) return 'spotify';
     return '';
 }
 
@@ -18622,9 +19348,8 @@ function shouldInjectWebSync(url) {
     if (!parsed) return false;
     const host = String(parsed.hostname || '').toLowerCase();
 
-    // Kimlik dogrulama sayfalarinda script enjeksiyonu yapma.
-    // Bu sayfalardaki fingerprint/policy kontrolleri daha hassas oldugu icin
-    // yalnizca medya senkronu gereken hostlarda enjeksiyon calissin.
+    // Kimlik dogrulama sayfalarinda script enjeksiyonu yapma; bunun disinda
+    // Web DALI genel web ses motorudur ve tum normal http/https medyada calisir.
     if (
         host === 'accounts.google.com' ||
         host === 'myaccount.google.com' ||
@@ -18633,15 +19358,7 @@ function shouldInjectWebSync(url) {
         return false;
     }
 
-    if (WEB_SYNC_ALLOWED_HOSTS.has(host)) return true;
-
-    return host.endsWith('.youtube.com') ||
-        host.endsWith('.deezer.com') ||
-        host.endsWith('.soundcloud.com') ||
-        host.endsWith('.mixcloud.com') ||
-        host.endsWith('.twitch.tv') ||
-        host.endsWith('.whatsapp.com') ||
-        host.endsWith('.telegram.org');
+    return !!host;
 }
 
 async function getSecurityStateSafe() {
@@ -18696,22 +19413,13 @@ function readAdblockSettingsFromUI() {
 
 function reloadWebViewForAdblock(reason = 'unknown', details = {}) {
     if (!elements.webView) return false;
-    try {
-        const url = getWebViewUrlSafe();
-        console.log('[ADBLOCK] platform reload by settings change', {
-            reason: String(reason || 'unknown'),
-            url,
-            ...details
-        });
-        elements.webView.reload();
-        return true;
-    } catch (e) {
-        console.warn('[ADBLOCK] platform reload failed', {
-            reason: String(reason || 'unknown'),
-            error: e?.message || String(e || '')
-        });
-        return false;
-    }
+    const url = getWebViewUrlSafe();
+    console.log('[ADBLOCK] platform reload by settings change', {
+        reason: String(reason || 'unknown'),
+        url,
+        ...details
+    });
+    return requestWebViewReload(`adblock:${String(reason || 'unknown')}`, { cooldownMs: 5000 });
 }
 
 function setAdblockMode(mode) {
@@ -19360,6 +20068,7 @@ async function handleWebNavigation(event) {
         updateMPRISMetadata();
         scheduleApplyWebDaliEngine('navigate', 120);
         scheduleApplyWebDaliEngineBurst('navigate', [0, 90, 220, 500, 1000, 2000, 3200]);
+        applyWebSmoothVideoProfileToWebView('navigate');
     }
 
     // Güvenlik sayfası URL farkındadır
@@ -19639,6 +20348,8 @@ function pushAppVolumeToWeb() {
             const volPct = ${vol};
             const wantMuted = ${muted ? 'true' : 'false'};
             const targetLinear = ${target};
+            window.__ardaliTargetVolume = volPct;
+            window.__ardaliTargetMuted = wantMuted;
             const root = window.__ARDALI_DALI_WEB__;
             const hasRuntimeMaster = !!(root && typeof root.setRuntimeMasterVolume === 'function');
 
@@ -21915,6 +22626,11 @@ function applyWebUiClasses() {
         elements.adblockBtn.classList.toggle('active', !!isWeb);
         elements.adblockBtn.setAttribute('aria-pressed', isWeb ? 'true' : 'false');
     }
+    
+    if (elements.backBtn) elements.backBtn.style.display = isWeb ? 'none' : '';
+    if (elements.forwardBtn) elements.forwardBtn.style.display = isWeb ? 'none' : '';
+    if (elements.refreshBtn) elements.refreshBtn.style.display = isWeb ? 'none' : '';
+
     applyWebPlatformAnimationModeClass();
     updateWebPlatformSpotlight(null);
     updateWebPlatformDockHoverEffect(null);
@@ -22064,8 +22780,89 @@ function getActiveWebOrigin() {
     }
 }
 
+function isWebSmoothVideoBatteryProfileActive() {
+    return cachedPowerState.onBattery === true
+        || webDaliPowerRuntime.onBattery === true
+        || state.settings?.webUi?.lowPowerMode === true;
+}
+
+function applyWebSmoothVideoProfileToWebView(reason = 'runtime') {
+    if (!elements.webView || typeof elements.webView.executeJavaScript !== 'function') return false;
+    const url = String(getWebViewUrlSafe() || '').trim();
+    if (!/^https?:\/\//i.test(url)) return false;
+    const enabled = isWebSmoothVideoBatteryProfileActive();
+    const code = `
+        (function(){
+            try {
+                const enabled = ${JSON.stringify(enabled)};
+                const reason = ${JSON.stringify(String(reason || 'runtime'))};
+                const root = document.documentElement;
+                root.classList.toggle('ardali-video-smooth-battery', enabled);
+                let style = document.getElementById('ardali-video-smooth-style');
+                if (!style) {
+                    style = document.createElement('style');
+                    style.id = 'ardali-video-smooth-style';
+                    style.textContent = [
+                        'html.ardali-video-smooth-battery { scroll-behavior: auto !important; }',
+                        'html.ardali-video-smooth-battery video {',
+                        '  transform: translateZ(0) !important;',
+                        '  backface-visibility: hidden !important;',
+                        '  will-change: transform !important;',
+                        '  contain: paint !important;',
+                        '}',
+                        'html.ardali-video-smooth-battery *:not(video):not(canvas):not(iframe) {',
+                        '  animation-duration: 0.001ms !important;',
+                        '  animation-delay: 0ms !important;',
+                        '  transition-duration: 0.001ms !important;',
+                        '}'
+                    ].join('\\n');
+                    (document.head || document.documentElement).appendChild(style);
+                }
+                const tune = () => {
+                    try {
+                        for (const video of document.querySelectorAll('video')) {
+                            video.style.transform = enabled ? 'translateZ(0)' : '';
+                            video.style.backfaceVisibility = enabled ? 'hidden' : '';
+                            video.style.willChange = enabled ? 'transform' : '';
+                            video.style.contain = enabled ? 'paint' : '';
+                            video.preload = video.preload || 'auto';
+                            if ('disablePictureInPicture' in video && enabled) {
+                                // PiP compositing paths can compete with normal playback on weak battery clocks.
+                                video.disablePictureInPicture = video.disablePictureInPicture === true;
+                            }
+                        }
+                    } catch {}
+                };
+                tune();
+                if (!window.__ardaliVideoSmoothObserver) {
+                    window.__ardaliVideoSmoothObserver = new MutationObserver(() => {
+                        clearTimeout(window.__ardaliVideoSmoothTimer);
+                        window.__ardaliVideoSmoothTimer = setTimeout(tune, 120);
+                    });
+                    window.__ardaliVideoSmoothObserver.observe(document.documentElement, { childList: true, subtree: true });
+                }
+                window.__ardaliVideoSmoothEnabled = enabled;
+                window.__ardaliVideoSmoothReason = reason;
+                return { ok: true, enabled, videos: document.querySelectorAll('video').length };
+            } catch (error) {
+                return { ok: false, error: String(error && error.message || error) };
+            }
+        })();
+    `;
+    try {
+        const maybe = elements.webView.executeJavaScript(code, true);
+        if (maybe && typeof maybe.catch === 'function') {
+            maybe.catch(() => {});
+        }
+        return true;
+    } catch {
+        return false;
+    }
+}
+
 function applyWebRuntimePreferences() {
     document.body?.classList?.toggle?.('web-background-throttle-enabled', state.settings?.webUi?.backgroundThrottle === true);
+    applyWebSmoothVideoProfileToWebView('runtime-preferences');
 }
 
 function isWebUiForceMotionEnabled() {
@@ -22897,28 +23694,32 @@ async function handlePlatformClick(btn, options = {}) {
 
 // Platform logosunu kapak olarak ayarla
 function updatePlatformCover(platform) {
-    const platformCovers = {
-        'youtube': 'icons/platforms/youtube_modern.svg',
-        'soundcloud': 'icons/platforms/soundcloud.svg',
-        'deezer': 'icons/platforms/deezer.svg',
-        'facebook': 'icons/platforms/facebook.svg',
-        'instagram': 'icons/platforms/instagram.svg',
-        'tiktok': 'icons/platforms/tiktok.svg',
-        'x': 'icons/platforms/x.svg',
-        'reddit': 'icons/platforms/reddit.svg',
-        'twitch': 'icons/platforms/twitch.svg',
-        'whatsapp': 'icons/platforms/whatsapp.svg',
-        'telegram': 'icons/platforms/telegram.svg',
-        'tidal': 'icons/ui/nav_internet.svg',
-        'mixcloud': 'icons/ui/nav_internet.svg',
-        'web': 'icons/ui/nav_internet.svg'
+    const platformDomains = {
+        'youtube': 'youtube.com',
+        'soundcloud': 'soundcloud.com',
+        'deezer': 'deezer.com',
+        'facebook': 'facebook.com',
+        'instagram': 'instagram.com',
+        'tiktok': 'tiktok.com',
+        'x': 'x.com',
+        'reddit': 'reddit.com',
+        'twitch': 'twitch.tv',
+        'whatsapp': 'whatsapp.com',
+        'telegram': 'telegram.org'
     };
 
-    const coverUrl = platformCovers[platform] || platformCovers['web'];
+    let coverUrl = 'icons/ui/nav_internet.svg';
+    if (platformDomains[platform]) {
+        coverUrl = `https://icons.duckduckgo.com/ip3/${platformDomains[platform]}.ico`;
+    }
 
     if (elements.coverArt) {
         elements.coverArt.src = coverUrl;
         elements.coverArt.classList.add('default-cover');
+        
+        elements.coverArt.onerror = () => {
+             elements.coverArt.src = 'icons/ui/nav_internet.svg';
+        };
     }
 }
 
@@ -23121,15 +23922,11 @@ async function navigateForward() {
 function refreshCurrentView() {
     const isWeb = state.currentPage === 'web' || state.currentPanel === 'web' || state.activeMedia === 'web';
     if (isWeb && elements.webView) {
-        try {
-            if (typeof elements.webView.reload === 'function') {
-                elements.webView.reload();
-            } else {
-                elements.webView.executeJavaScript('try { location.reload(); } catch (e) {}');
-            }
-        } catch (e) {
-            console.warn('Web yenileme başarısız:', e?.message || e);
-        }
+        requestWebViewReload('toolbar-refresh', {
+            cooldownMs: 900,
+            force: true,
+            ignoreCache: true
+        });
         return;
     }
 
@@ -40467,10 +41264,30 @@ async function playIndex(index) {
             console.log('🔥 BASS Audio Engine hatası:', result.error);
         }
         if (result === true || (result && result.success)) {
-            window.ardali.audio.setVolume((state.volume || 0) / 100);
+            const targetVolume = Math.max(0, Math.min(1, (Number(state.volume) || 0) / 100));
+            await window.ardali.audio.setVolume(targetVolume);
             console.log('🎵 window.ardali.audio.play() çağrılıyor...');
-            window.ardali.audio.play();
-            console.log('🎵 play() çağrıldı, ses çıkması gerekiyor');
+            const playResult = await window.ardali.audio.play();
+            console.log('🎵 play() çağrıldı, ses çıkması gerekiyor', playResult);
+            await new Promise(resolve => setTimeout(resolve, 90));
+            let nativePlaying = true;
+            if (typeof window.ardali.audio.isPlaying === 'function') {
+                nativePlaying = await window.ardali.audio.isPlaying();
+            }
+            if (!nativePlaying) {
+                console.warn('[PLAYINDEX] Native play başlamadı, tekrar deneniyor...');
+                await window.ardali.audio.setVolume(targetVolume);
+                await window.ardali.audio.play();
+                await new Promise(resolve => setTimeout(resolve, 120));
+                if (typeof window.ardali.audio.isPlaying === 'function') {
+                    nativePlaying = await window.ardali.audio.isPlaying();
+                }
+            }
+            if (!nativePlaying) {
+                console.error('[PLAYINDEX] Native audio play başarısız');
+                showNotification('Ses motoru başlatıldı ama oynatma başlamadı.', 'error');
+                return;
+            }
             startNativePositionUpdates();
         } else {
             console.error('C++ Audio Engine dosya yükleyemedi', result);
@@ -42078,7 +42895,7 @@ function toggleRepeatOne() {
 // ============================================
 // AYARLAR MODAL
 // ============================================
-function openSettings(defaultTab = 'playback') {
+function openSettings(defaultTab = 'web') {
     if (!isStandaloneSettingsMode()) {
         window.ardali?.openSettingsWindow?.(defaultTab).catch((e) => {
             console.error('[SETTINGS] settings window open error:', e);
@@ -42742,7 +43559,7 @@ function syncSfxIconSizeShadowStorage(size) {
 
 function normalizeSidebarStyle(value) {
     const normalized = String(value || '').trim().toLowerCase();
-    if (['classic', 'minimal', 'studio', 'neonpulse', 'vinyldisc', 'monotech', 'crystal', 'retroblock'].includes(normalized)) return normalized;
+    if (['classic', 'minimal', 'studio', 'neonpulse', 'vinyldisc', 'monotech', 'crystal', 'retroblock', 'glass', 'cyber', 'neumorphic', 'gradient'].includes(normalized)) return normalized;
     return 'classic';
 }
 
@@ -42837,7 +43654,7 @@ function sidebarSvgDataUri(svg) {
 
 function buildGeneratedSidebarIconSet(theme) {
     const normalized = normalizeSidebarStyle(theme);
-    const generatedThemes = new Set(['neonpulse', 'vinyldisc', 'monotech', 'crystal', 'retroblock']);
+    const generatedThemes = new Set(['neonpulse', 'vinyldisc', 'monotech', 'crystal', 'retroblock', 'glass', 'cyber', 'neumorphic', 'gradient']);
     if (!generatedThemes.has(normalized)) return null;
     const keys = ['files', 'video', 'videoTools', 'music', 'gallery', 'web', 'pulse', 'dawlod', 'soundEffects', 'visualizer'];
     const icons = Object.fromEntries(keys.map((key) => [key, sidebarSvgDataUri(renderSidebarGeneratedSvg(normalized, key))]));
@@ -42865,8 +43682,13 @@ function renderSidebarGeneratedSvg(theme, key) {
         vinyldisc: { a: '#FACC15', b: '#FB7185', c: '#38BDF8', bg: '#111827' },
         monotech: { a: '#E5E7EB', b: '#94A3B8', c: '#CBD5E1', bg: '#020617' },
         crystal: { a: '#BAE6FD', b: '#A78BFA', c: '#67E8F9', bg: '#07111F' },
-        retroblock: { a: '#34D399', b: '#F97316', c: '#60A5FA', bg: '#101014' }
+        retroblock: { a: '#34D399', b: '#F97316', c: '#60A5FA', bg: '#101014' },
+        cyber: { a: '#06b6d4', b: '#ec4899', c: '#22d3ee', bg: '#09090b' },
+        glass: { a: '#ffffff', b: '#e2e8f0', c: '#cbd5e1', bg: 'rgba(255,255,255,0.05)' },
+        neumorphic: { a: '#38bdf8', b: '#94a3b8', c: '#64748b', bg: '#0f172a' },
+        gradient: { a: '#38bdf8', b: '#a855f7', c: '#e879f9', bg: '#1e1b4b' }
     };
+    const shapeTheme = theme === 'cyber' ? 'neonpulse' : theme === 'glass' ? 'crystal' : theme === 'neumorphic' ? 'monotech' : theme === 'gradient' ? 'vinyldisc' : theme;
     const p = palettes[theme] || palettes.neonpulse;
     const line = `stroke="${p.a}" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"`;
     const shell = `<rect x="8" y="8" width="48" height="48" rx="${theme === 'retroblock' ? 6 : 14}" fill="${p.bg}" stroke="${p.b}" stroke-width="3.5"/>`;
@@ -42942,7 +43764,7 @@ function renderSidebarGeneratedSvg(theme, key) {
             retroblock: `${shell}<path d="M18 36h6v10h-6zM27 25h6v21h-6zM36 31h6v15h-6zM45 18h5v28h-5z" fill="${p.b}"/>`
         }
     };
-    return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">${glyphs[key]?.[theme] || glyphs.files.neonpulse}</svg>`;
+    return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">${glyphs[key]?.[shapeTheme] || glyphs.files.neonpulse}</svg>`;
 }
 
 function updateThemeFollowSystemUi() {
@@ -43229,6 +44051,24 @@ function getLowHardwareSystemPreset() {
 }
 
 async function detectPowerState() {
+    try {
+        if (window.ardali?.system?.getPowerStatus) {
+            const nativeStatus = await window.ardali.system.getPowerStatus();
+            if (nativeStatus && nativeStatus.supported !== false) {
+                cachedPowerState = {
+                    available: true,
+                    charging: nativeStatus.charging !== false,
+                    onBattery: nativeStatus.onBattery === true,
+                    level: Number.isFinite(Number(nativeStatus.level)) ? Number(nativeStatus.level) : null
+                };
+                updateOptimizationProfileUi();
+                applyWebSmoothVideoProfileToWebView('native-power-state');
+                return cachedPowerState;
+            }
+        }
+    } catch {
+        // Native pil bilgisi yoksa Battery Status API yedeğine düş.
+    }
     if (!navigator || typeof navigator.getBattery !== 'function') {
         cachedPowerState = {
             available: false,
@@ -43248,6 +44088,7 @@ async function detectPowerState() {
                 level: Number.isFinite(Number(battery.level)) ? Number(battery.level) : null
             };
             updateOptimizationProfileUi();
+            applyWebSmoothVideoProfileToWebView('battery-status-api');
         };
         sync();
         if (!batteryStatusListenerBound) {
@@ -43376,7 +44217,8 @@ function getOptimizationAppearancePreset(profileValue) {
             reduceMotion: false,
             sidebarMotionEnabled: true,
             sfxLights: true,
-            sfxPerfMode: 'full'
+            sfxPerfMode: 'full',
+            webLowPower: false
         };
     }
     if (profile === 'gpu') {
@@ -43389,7 +44231,8 @@ function getOptimizationAppearancePreset(profileValue) {
             reduceMotion: true,
             sidebarMotionEnabled: true,
             sfxLights: false,
-            sfxPerfMode: 'lite'
+            sfxPerfMode: 'lite',
+            webLowPower: true
         };
     }
     if (profile === 'ram') {
@@ -43402,7 +44245,8 @@ function getOptimizationAppearancePreset(profileValue) {
             reduceMotion: true,
             sidebarMotionEnabled: true,
             sfxLights: false,
-            sfxPerfMode: 'lite'
+            sfxPerfMode: 'lite',
+            webLowPower: true
         };
     }
     return {
@@ -43414,7 +44258,8 @@ function getOptimizationAppearancePreset(profileValue) {
         reduceMotion: true,
         sidebarMotionEnabled: true,
         sfxLights: false,
-        sfxPerfMode: 'lite'
+        sfxPerfMode: 'lite',
+        webLowPower: true
     };
 }
 
@@ -43446,6 +44291,14 @@ function applyOptimizationProfileToUi({ updateSystemPreset = false } = {}) {
     if (elements.uiSidebarMotionToggle) elements.uiSidebarMotionToggle.checked = preset.sidebarMotionEnabled !== false;
     if (elements.sfxLightsToggle) elements.sfxLightsToggle.checked = !!preset.sfxLights;
     if (elements.uiSfxPerfModeSelect) elements.uiSfxPerfModeSelect.value = preset.sfxPerfMode;
+    
+    if (elements.behaviorWebLowPowerMode) {
+        elements.behaviorWebLowPowerMode.checked = !!preset.webLowPower;
+        if (!state.settings.webUi) state.settings.webUi = {};
+        state.settings.webUi.lowPowerMode = !!preset.webLowPower;
+        document.body.classList.toggle('web-platform-low-power', state.settings.webUi.lowPowerMode);
+    }
+    
     if (updateSystemPreset) {
         applyHardwareSystemPresetToStateAndUi(getSystemPresetForOptimizationProfile(profile));
     }
@@ -43718,7 +44571,7 @@ function resetListenDefaults() {
 }
 
 function getActiveSettingsTabName() {
-    return Array.from(elements.settingsTabs || []).find((tab) => tab.classList.contains('active'))?.dataset?.tab || 'playback';
+    return Array.from(elements.settingsTabs || []).find((tab) => tab.classList.contains('active'))?.dataset?.tab || 'web';
 }
 
 function getSettingsTabLabel(tabName) {
@@ -43799,6 +44652,19 @@ function resetBehaviorDefaults() {
 }
 
 function resetWebDefaults() {
+    if (elements.behaviorWebSearchEngine) {
+        elements.behaviorWebSearchEngine.value = 'duckduckgo';
+        const dd = elements.behaviorWebSearchEngine;
+        const opt = dd.querySelector('.custom-dropdown-option[data-value="duckduckgo"]');
+        if (opt) {
+            const currentIcon = dd.querySelector('.custom-dropdown-icon');
+            const currentText = dd.querySelector('.custom-dropdown-text');
+            dd.querySelectorAll('.custom-dropdown-option').forEach(o => o.classList.remove('selected'));
+            opt.classList.add('selected');
+            if (currentIcon && opt.querySelector('img')) currentIcon.src = opt.querySelector('img').src;
+            if (currentText && opt.querySelector('span')) currentText.textContent = opt.querySelector('span').textContent;
+        }
+    }
     if (elements.behaviorWebExperienceEnabled) elements.behaviorWebExperienceEnabled.checked = true;
     if (elements.behaviorWebStartupDelay) elements.behaviorWebStartupDelay.value = '0';
     if (elements.libraryWebStartupDelay) elements.libraryWebStartupDelay.value = '0';
@@ -44003,9 +44869,8 @@ async function resetCurrentSettingsTab() {
     else if (activeTab === 'audio') resetAudioDefaults();
     else if (activeTab === 'adblock') resetAdblockDefaults();
 
-    await applySettings();
-    loadSettingsToUI();
-    safeNotify(`${getSettingsTabLabel(activeTab)} varsayılan değerlere döndürüldü ve kaydedildi.`, 'success', 2100);
+    markSettingsDirty();
+    safeNotify(`${getSettingsTabLabel(activeTab)} varsayılan değerlere döndürüldü. Lütfen değişiklikleri uygulamak için 'Kaydet' butonuna basın.`, 'success', 2100);
 }
 
 function formatUpdateCheckedAt(ts) {
@@ -45647,11 +46512,14 @@ async function feedProjectMExternalSpectrum(options = {}) {
     const sourceMode = getProjectMExternalSourceMode();
     if (!sourceMode) return false;
     const force = !!options.force;
-    const fps = Math.max(20, Math.min(60, Number(getEffectiveVisualizerFps()) || 30));
+    const smoothVideoProfile = sourceMode === 'web' && isWebSmoothVideoBatteryProfileActive();
+    const fps = smoothVideoProfile
+        ? Math.max(8, Math.min(12, Number(getEffectiveVisualizerFps()) || 12))
+        : Math.max(20, Math.min(60, Number(getEffectiveVisualizerFps()) || 30));
     const now = performance.now();
     if (!force && now - projectMExternalFeedSentAt < (1000 / fps) * 0.55) return false;
     projectMExternalFeedSentAt = now;
-    const bands = await getProjectMExternalSpectrumBands(128);
+    const bands = await getProjectMExternalSpectrumBands(smoothVideoProfile ? 64 : 128);
     const hasEnergy = bands.some((value) => Number(value) > 0.0035);
     const isPlaying = hasEnergy || (!!state.isPlaying && !state.isMuted && (Number(state.volume) || 0) > 0);
     try {
@@ -46706,7 +47574,7 @@ function activateSettingsTab(tabName) {
         switchSettingsTab(target);
         return;
     }
-    const fallback = Array.from(elements.settingsTabs).find((tab) => tab.dataset.tab === 'playback');
+    const fallback = Array.from(elements.settingsTabs).find((tab) => tab.dataset.tab === 'web');
     if (fallback) switchSettingsTab(fallback);
 }
 
@@ -49047,3 +49915,33 @@ document.addEventListener('DOMContentLoaded', () => {
         AGCController.init();
     }, 100);
 });
+
+window.handleCustomDropdownOptionClick = function(option) {
+    const dd = option.closest('.custom-dropdown');
+    if (dd) {
+        const val = option.dataset.value;
+        dd.value = val;
+        
+        const currentIcon = dd.querySelector('.custom-dropdown-icon');
+        const currentText = dd.querySelector('.custom-dropdown-text');
+        dd.querySelectorAll('.custom-dropdown-option').forEach(o => o.classList.remove('selected'));
+        option.classList.add('selected');
+        if (currentIcon && option.querySelector('img')) currentIcon.src = option.querySelector('img').src;
+        if (currentText && option.querySelector('span')) currentText.textContent = option.querySelector('span').textContent;
+
+        dd.classList.remove('open');
+        if (dd.id === 'behaviorWebSearchEngine') {
+            if (!state.settings || typeof state.settings !== 'object') state.settings = {};
+            if (!state.settings.web || typeof state.settings.web !== 'object') state.settings.web = {};
+            state.settings.web.searchEngine = val;
+            if (typeof markSettingsDirty === 'function') markSettingsDirty();
+            
+            window.dispatchEvent(new CustomEvent('ardali:settings-changed', {
+                detail: { webSearchEngine: val }
+            }));
+            document.dispatchEvent(new CustomEvent('ardali:settings-changed', {
+                detail: { webSearchEngine: val }
+            }));
+        }
+    }
+};

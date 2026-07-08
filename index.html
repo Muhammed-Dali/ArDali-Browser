@@ -3,17 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: https:; media-src 'self' file:; frame-src 'self' https://music.youtube.com https://www.youtube.com https://www.youtube-nocookie.com https://youtube-nocookie.com https://www.deezer.com https://soundcloud.com https://facebook.com https://www.facebook.com https://m.facebook.com https://www.instagram.com https://www.tiktok.com https://x.com https://twitter.com https://www.reddit.com https://www.twitch.tv https://web.whatsapp.com https://web.telegram.org https://accounts.google.com https://*.google.com https://*.googleusercontent.com;">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: https:; media-src 'self' file:; connect-src 'self' https: wss:; frame-src 'self' https:;">
     <title>ArDali Media Player</title>
     <script>
         (() => {
             document.documentElement.classList.add('material-icons-loading');
         })();
     </script>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200">
-    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet">
+    <!-- Local Material Symbols Font (loaded via main.css) -->
     <script>
         (() => {
             const markReady = () => {
@@ -31,6 +28,7 @@
         })();
     </script>
     <link rel="stylesheet" href="styles/main.css">
+    <link rel="stylesheet" href="styles/webDownloads.css">
 </head>
 <body>
     <script>
@@ -51,11 +49,27 @@
         <!-- Sol Sidebar (İkonlar) -->
 	        <nav class="sidebar" id="sidebar">
 	            <div class="sidebar-top">
-                <button class="sidebar-btn active" data-page="files" data-panel="library" title="Dosyalar" data-i18n-title="sidebar.files">
+                <button class="sidebar-btn" data-page="web" data-panel="web" title="Web" data-i18n-title="sidebar.web">
                     <svg class="sidebar-glyph" viewBox="0 0 24 24" aria-hidden="true">
-                        <path d="M3 7.3a2.3 2.3 0 0 1 2.3-2.3h4.5l1.8 1.9h7.1A2.3 2.3 0 0 1 21 9.2v8.5a2.3 2.3 0 0 1-2.3 2.3H5.3A2.3 2.3 0 0 1 3 17.7z"/>
-                        <path d="M3.7 10.2h16.6"/>
+                        <circle cx="12" cy="12" r="8.5"/>
+                        <ellipse cx="12" cy="12" rx="4" ry="8.5"/>
+                        <path d="M3.7 12h16.6"/>
+                        <path d="M5.3 8.1h13.4M5.3 15.9h13.4"/>
                     </svg>
+                </button>
+                <button class="sidebar-btn ardali-dawlod-btn" id="ardaliDawlodBtn" title="ArDali Dawlod" aria-label="ArDali Dawlod">
+                    <img class="sidebar-icon-img ardali-dawlod-icon" src="icons/ui/sidebar-dawlod-premium.svg" alt="" aria-hidden="true">
+                </button>
+                <button class="sidebar-btn" data-page="pulse" data-panel="pulse" title="Dinle">
+                    <svg class="sidebar-glyph" viewBox="0 0 24 24" aria-hidden="true">
+                        <path d="M4.8 13.2v3M8.3 11.2v6.4M12 8.8v11M15.7 11.2v6.4M19.2 13.2v3"/>
+                        <path d="M5.3 7.8a8 8 0 0 1 13.4 0"/>
+                        <path d="M8.1 8.9a4.9 4.9 0 0 1 7.8 0"/>
+                    </svg>
+                </button>
+                <button class="sidebar-btn" data-page="videoTools" data-panel="library" title="Video Düzenleme" data-i18n-title="sidebar.videoTools">
+                    <img class="sidebar-icon-img sidebar-video-tools-icon" src="icons/ui/video_tools_studio.svg" alt="" aria-hidden="true">
+                    <span class="sidebar-badge hidden" id="videoToolsRecordingBadge" aria-label="Kayıt aktif"></span>
                 </button>
                 <button class="sidebar-btn" data-page="video" data-panel="library" title="Videolar" data-i18n-title="sidebar.videos">
                     <svg class="sidebar-glyph" viewBox="0 0 24 24" aria-hidden="true">
@@ -63,10 +77,6 @@
                         <path d="M16.8 10.2 21 7.9v8.2l-4.2-2.3z"/>
                         <circle cx="8" cy="12" r="1.6" class="glyph-dot"/>
                     </svg>
-                </button>
-                <button class="sidebar-btn" data-page="videoTools" data-panel="library" title="Video Düzenleme" data-i18n-title="sidebar.videoTools">
-                    <img class="sidebar-icon-img sidebar-video-tools-icon" src="icons/ui/video_tools_studio.svg" alt="" aria-hidden="true">
-                    <span class="sidebar-badge hidden" id="videoToolsRecordingBadge" aria-label="Kayıt aktif"></span>
                 </button>
                 <button class="sidebar-btn" data-page="music" data-panel="library" title="Müzik" data-i18n-title="sidebar.music">
                     <svg class="sidebar-glyph" viewBox="0 0 24 24" aria-hidden="true">
@@ -83,24 +93,6 @@
                         <path d="M5.8 16.8 10.2 12.4l3.1 3 2.6-2.6 2.4 2.5"/>
                     </svg>
                 </button>
-                <button class="sidebar-btn" data-page="web" data-panel="web" title="Web" data-i18n-title="sidebar.web">
-                    <svg class="sidebar-glyph" viewBox="0 0 24 24" aria-hidden="true">
-                        <circle cx="12" cy="12" r="8.5"/>
-                        <ellipse cx="12" cy="12" rx="4" ry="8.5"/>
-                        <path d="M3.7 12h16.6"/>
-                        <path d="M5.3 8.1h13.4M5.3 15.9h13.4"/>
-                    </svg>
-                </button>
-                <button class="sidebar-btn" data-page="pulse" data-panel="pulse" title="Dinle">
-                    <svg class="sidebar-glyph" viewBox="0 0 24 24" aria-hidden="true">
-                        <path d="M4.8 13.2v3M8.3 11.2v6.4M12 8.8v11M15.7 11.2v6.4M19.2 13.2v3"/>
-                        <path d="M5.3 7.8a8 8 0 0 1 13.4 0"/>
-                        <path d="M8.1 8.9a4.9 4.9 0 0 1 7.8 0"/>
-                    </svg>
-                </button>
-                <button class="sidebar-btn ardali-dawlod-btn" id="ardaliDawlodBtn" title="ArDali Dawlod" aria-label="ArDali Dawlod">
-                    <img class="sidebar-icon-img ardali-dawlod-icon" src="icons/ui/sidebar-dawlod-premium.svg" alt="" aria-hidden="true">
-                </button>
                 <div class="sidebar-web-quick-actions" id="sidebarWebQuickActions" aria-label="Medya hızlı kontroller">
                     <div class="web-utility-actions-home" id="webUtilityActionsHome">
                         <button class="control-btn eq-btn-player" id="eqBtn" title="Ses Efektleri (EQ)" data-i18n-title="controls.eq">
@@ -112,6 +104,12 @@
                         </button>
                     </div>
                 </div>
+                <button class="sidebar-btn active" data-page="files" data-panel="library" title="Dosyalar" data-i18n-title="sidebar.files">
+                    <svg class="sidebar-glyph" viewBox="0 0 24 24" aria-hidden="true">
+                        <path d="M3 7.3a2.3 2.3 0 0 1 2.3-2.3h4.5l1.8 1.9h7.1A2.3 2.3 0 0 1 21 9.2v8.5a2.3 2.3 0 0 1-2.3 2.3H5.3A2.3 2.3 0 0 1 3 17.7z"/>
+                        <path d="M3.7 10.2h16.6"/>
+                    </svg>
+                </button>
 	            </div>
 	            <div class="sidebar-bottom">
 <button class="sidebar-btn" id="settingsBtn" title="Ayarlar" data-i18n-title="sidebar.settings">
@@ -267,50 +265,6 @@
 	                    <span class="panel-title" data-i18n="panel.internet">İNTERNET</span>
 	                </div>
 	                <div class="web-platforms">
-	                    <button class="platform-btn" data-url="https://music.youtube.com/" data-platform="ytmusic">
-	                        <img src="icons/platforms/youtube_music.svg" alt="YT Music">
-	                        <span>YouTube Music</span>
-                    </button>
-                    <button class="platform-btn" data-url="https://www.youtube.com/" data-platform="youtube">
-                        <img src="icons/platforms/youtube_modern.svg" alt="YouTube">
-                        <span>YouTube</span>
-                    </button>
-                    <button class="platform-btn" data-url="https://www.deezer.com/" data-platform="deezer">
-                        <img src="icons/platforms/deezer.svg" alt="Deezer">
-                        <span>Deezer</span>
-                    </button>
-                    <button class="platform-btn" data-url="https://soundcloud.com/" data-platform="soundcloud">
-                        <img src="icons/platforms/soundcloud.svg" alt="SoundCloud">
-                        <span>SoundCloud</span>
-                    </button>
-                    <button class="platform-btn" data-url="https://www.facebook.com/" data-platform="facebook">
-                        <img src="icons/platforms/facebook.svg" alt="Facebook">
-                        <span>Facebook</span>
-                    </button>
-                    <button class="platform-btn" data-url="https://www.instagram.com/" data-platform="instagram">
-                        <img src="icons/platforms/instagram.svg" alt="Instagram">
-                        <span>Instagram</span>
-                    </button>
-                    <button class="platform-btn" data-url="https://www.tiktok.com/" data-platform="tiktok">
-                        <img src="icons/platforms/tiktok.svg" alt="TikTok">
-                        <span>TikTok</span>
-                    </button>
-                    <button class="platform-btn" data-url="https://x.com/" data-platform="x">
-                        <img src="icons/platforms/x.svg" alt="X">
-                        <span>X</span>
-                    </button>
-                    <button class="platform-btn" data-url="https://www.reddit.com/" data-platform="reddit">
-                        <img src="icons/platforms/reddit.svg" alt="Reddit">
-                        <span>Reddit</span>
-                    </button>
-                    <button class="platform-btn" data-url="https://www.twitch.tv/" data-platform="twitch">
-                        <img src="icons/platforms/twitch.svg" alt="Twitch">
-                        <span>Twitch</span>
-                    </button>
-                    <button class="platform-btn" data-url="https://web.telegram.org/" data-platform="telegram">
-                        <img src="icons/platforms/telegram.svg" alt="Telegram">
-                        <span>Telegram</span>
-                    </button>
                     <div class="pulse-found-section hidden" id="pulseFoundSection">
                         <div class="pulse-found-title">Bulunanlar</div>
                         <div class="pulse-found-list" id="pulseFoundList"></div>
@@ -790,7 +744,152 @@
 
                 <!-- Web Sayfası -->
                 <div class="page hidden" id="webPage">
-                    <webview id="webView" src="about:blank" allowpopups partition="persist:ardali-web"></webview>
+                    <div class="web-browser-container">
+                        <div class="web-chrome">
+                            <div class="web-tabs-container">
+                                <div class="web-tabs" id="webTabsList">
+                                    <!-- Tabs will be dynamically created here -->
+                                    <button class="web-tab-new" id="webTabNewBtn" title="Yeni Sekme">
+                                        <span class="material-symbols-rounded">add</span>
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="web-nav-bar">
+                                <button class="web-nav-btn" id="webNavBack" title="Geri">
+                                    <span class="material-symbols-rounded">arrow_back</span>
+                                </button>
+                                <button class="web-nav-btn" id="webNavForward" title="İleri">
+                                    <span class="material-symbols-rounded">arrow_forward</span>
+                                </button>
+                                <button class="web-nav-btn" id="webNavReload" title="Yenile">
+                                    <span class="material-symbols-rounded">refresh</span>
+                                </button>
+                                <button class="web-nav-btn" id="webNavHome" title="Ana Sayfa">
+                                    <span class="material-symbols-rounded">home</span>
+                                </button>
+                                <div class="web-address-bar">
+                                    <button class="web-address-security" title="Site Bilgisi">
+                                        <span class="material-symbols-rounded">lock</span>
+                                    </button>
+                                    <input type="text" class="web-address-input" id="webAddressInput" placeholder="Web'de bir şeyler arayın veya URL girin...">
+                                    <button class="web-address-zoom hidden" id="webAddressZoom" title="Yakınlaştırma: %100">
+                                        <span class="material-symbols-rounded" style="font-size: 18px;">search</span>
+                                    </button>
+                                    <button class="web-address-bookmark" id="webAddressBookmark" title="Yer İşareti Ekle">
+                                        <span class="material-symbols-rounded">star</span>
+                                    </button>
+                                    <div class="web-address-suggestions hidden" id="webAddressSuggestions"></div>
+                                    <div class="site-info-popup hidden" id="siteInfoPopup">
+                                        <div class="site-info-header">
+                                            <span class="material-symbols-rounded site-info-icon" id="siteInfoSecurityIconPopup">lock</span>
+                                            <div class="site-info-title">
+                                                <div class="site-info-domain" id="siteInfoDomain">example.com</div>
+                                                <div class="site-info-status" id="siteInfoStatus">Bağlantı güvenli</div>
+                                            </div>
+                                        </div>
+                                        <div class="site-info-divider"></div>
+                                        <div class="site-info-item" id="siteInfoCookiesBtn">
+                                            <span class="material-symbols-rounded">cookie</span>
+                                            <div class="site-info-item-text">
+                                                <div class="site-info-item-title">Çerezler ve site verileri</div>
+                                                <div class="site-info-item-desc">Yönetin</div>
+                                            </div>
+                                        </div>
+                                        <div class="site-info-item" onclick="if(window.openSettings) window.openSettings('web');">
+                                            <span class="material-symbols-rounded">settings</span>
+                                            <div class="site-info-item-text">
+                                                <div class="site-info-item-title">Site ayarları</div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="web-zoom-popup hidden" id="webZoomPopup">
+                                        <div class="web-zoom-popup-content">
+                                            <button class="web-zoom-btn" id="webZoomOutBtn" title="Uzaklaştır">
+                                                <span class="material-symbols-rounded">remove</span>
+                                            </button>
+                                            <div class="web-zoom-text" id="webZoomText">%100</div>
+                                            <button class="web-zoom-btn" id="webZoomInBtn" title="Yakınlaştır">
+                                                <span class="material-symbols-rounded">add</span>
+                                            </button>
+                                            <button class="web-zoom-reset-btn" id="webZoomResetBtn">Sıfırla</button>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div id="webBookmarksStrip" class="web-bookmarks-strip"></div>
+                                <button class="web-nav-btn" id="webNavDownloads" title="İndirmeler">
+                                    <span class="material-symbols-rounded">download</span>
+                                </button>
+                                <button class="web-nav-btn" id="webNavExtensions" title="Eklentiler">
+                                    <span class="material-symbols-rounded">extension</span>
+                                </button>
+                                <!-- İndirmeler Popup -->
+                                <div class="downloads-popup hidden" id="downloadsPopup">
+                                    <div class="downloads-popup-header">
+                                        <div class="downloads-popup-title">İndirilenler</div>
+                                        <button class="downloads-popup-btn" id="downloadsPopupClearBtn" title="Temizle">
+                                            <span class="material-symbols-rounded">clear_all</span>
+                                        </button>
+                                    </div>
+                                    <div class="downloads-popup-list" id="downloadsPopupList">
+                                        <!-- Items will be injected here -->
+                                    </div>
+                                    <div class="downloads-popup-footer">
+                                        <button id="downloadsPopupShowAllBtn" class="downloads-popup-show-all-btn">Tüm indirilenleri göster</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="web-views-container">
+                            <!-- New Tab Page overlay -->
+                            <div class="web-new-tab-page" id="webNewTabPage">
+                                <img src="icons/app/ardali_256.png" class="web-ntp-logo" alt="ArDali">
+                                <div class="web-ntp-search-container">
+                                    <span class="material-symbols-rounded web-ntp-search-icon">search</span>
+                                    <input type="text" class="web-ntp-search-input" id="webNtpSearchInput" placeholder="Web'de bir şeyler arayın veya URL girin...">
+                                    <div class="custom-dropdown web-ntp-search-engine-dropdown" id="ntpWebSearchEngine">
+                                        <div class="custom-dropdown-trigger" onclick="this.parentElement.classList.toggle('open'); event.stopPropagation();" title="Arama Motoru Seç">
+                                            <img src="https://duckduckgo.com/favicon.ico" class="custom-dropdown-icon" alt="">
+                                            <span class="material-symbols-rounded" style="font-size: 16px; margin-left: -4px;">arrow_drop_down</span>
+                                        </div>
+                                        <div class="custom-dropdown-menu">
+                                            <div class="custom-dropdown-option" data-value="duckduckgo" onclick="if(window.handleCustomDropdownOptionClick) window.handleCustomDropdownOptionClick(this); event.stopPropagation();">
+                                                <img src="https://duckduckgo.com/favicon.ico" alt=""> <span>DuckDuckGo</span>
+                                            </div>
+                                            <div class="custom-dropdown-option" data-value="brave" onclick="if(window.handleCustomDropdownOptionClick) window.handleCustomDropdownOptionClick(this); event.stopPropagation();">
+                                                <img src="https://brave.com/static-assets/images/brave-logo-sans-text.svg" alt=""> <span>Brave</span>
+                                            </div>
+                                            <div class="custom-dropdown-option" data-value="google" onclick="if(window.handleCustomDropdownOptionClick) window.handleCustomDropdownOptionClick(this); event.stopPropagation();">
+                                                <img src="https://www.google.com/s2/favicons?domain=google.com&sz=32" alt=""> <span>Google</span>
+                                            </div>
+                                            <div class="custom-dropdown-option" data-value="bing" onclick="if(window.handleCustomDropdownOptionClick) window.handleCustomDropdownOptionClick(this); event.stopPropagation();">
+                                                <img src="https://www.bing.com/favicon.ico" alt=""> <span>Bing</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="web-ntp-suggestions hidden" id="webNtpSuggestions"></div>
+                                </div>
+                            </div>
+                            <div id="webViewsContainer" class="webviews-container"></div>
+                            
+                            <!-- Downloads Full Page -->
+                            <div class="web-downloads-page hidden" id="webDownloadsPage">
+                                <div class="web-downloads-header">
+                                    <h1>İndirilenler</h1>
+                                    <div class="web-downloads-header-actions">
+                                        <button id="webDownloadsClearAllBtn" class="web-downloads-action-btn" title="Tümünü Temizle">
+                                            <span class="material-symbols-rounded">delete_sweep</span>
+                                        </button>
+                                        <button id="webDownloadsCloseBtn" class="web-downloads-action-btn" title="Kapat">
+                                            <span class="material-symbols-rounded">close</span>
+                                        </button>
+                                    </div>
+                                </div>
+                                <div class="web-downloads-content" id="webDownloadsContent">
+                                    <!-- Grouped items injected here -->
+                                </div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
                 <div class="gallery-lightbox hidden" id="galleryLightbox" aria-hidden="true">
                     <button class="gallery-lightbox-close" id="galleryLightboxClose" type="button" aria-label="Kapat">×</button>
@@ -1570,6 +1669,30 @@
                                         </div>
                                         <div class="settings-group">
                                             <h4 data-i18n="ui.startup.title">Başlangıç Davranışı</h4>
+                                            <div class="setting-row">
+                                                <span data-i18n="settings.web.searchEngine">Arama Motoru</span>
+                                                <div class="custom-dropdown" id="behaviorWebSearchEngine">
+                                                    <div class="custom-dropdown-trigger" onclick="this.parentElement.classList.toggle('open'); event.stopPropagation();">
+                                                        <img src="https://duckduckgo.com/favicon.ico" class="custom-dropdown-icon" alt="">
+                                                        <span class="custom-dropdown-text">DuckDuckGo</span>
+                                                        <span class="material-symbols-rounded">expand_more</span>
+                                                    </div>
+                                                    <div class="custom-dropdown-menu">
+                                                        <div class="custom-dropdown-option" data-value="duckduckgo" onclick="if(window.handleCustomDropdownOptionClick) window.handleCustomDropdownOptionClick(this); event.stopPropagation();">
+                                                            <img src="https://duckduckgo.com/favicon.ico" alt=""> <span>DuckDuckGo</span>
+                                                        </div>
+                                                        <div class="custom-dropdown-option" data-value="google" onclick="if(window.handleCustomDropdownOptionClick) window.handleCustomDropdownOptionClick(this); event.stopPropagation();">
+                                                            <img src="https://www.google.com/favicon.ico" alt=""> <span>Google</span>
+                                                        </div>
+                                                        <div class="custom-dropdown-option" data-value="brave" onclick="if(window.handleCustomDropdownOptionClick) window.handleCustomDropdownOptionClick(this); event.stopPropagation();">
+                                                            <img src="https://brave.com/static-assets/images/brave-logo-sans-text.svg" alt=""> <span>Brave</span>
+                                                        </div>
+                                                        <div class="custom-dropdown-option" data-value="bing" onclick="if(window.handleCustomDropdownOptionClick) window.handleCustomDropdownOptionClick(this); event.stopPropagation();">
+                                                            <img src="https://www.bing.com/favicon.ico" alt=""> <span>Bing</span>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
                                             <label class="checkbox-label">
                                                 <input type="checkbox" id="behaviorWebExperienceEnabled" checked>
                                                 <span data-i18n="ui.startup.webExperienceEnabled">Web deneyimini etkinleştir (isteğe bağlı)</span>
@@ -1622,7 +1745,10 @@
                                                     <option value="vinyldisc">Vinyl Disk</option>
                                                     <option value="monotech">Mono Tech</option>
                                                     <option value="crystal">Kristal Cam</option>
-                                                    <option value="retroblock">Retro Blok</option>
+                                                    <option value="glass">Cam Dokusu (Glassmorphism)</option>
+                                                    <option value="cyber">Siberpunk Neon</option>
+                                                    <option value="neumorphic">Yumuşak Gölgeler</option>
+                                                    <option value="gradient">Renk Geçişli</option>
                                                 </select>
                                             </div>
                                             <div class="setting-row">
@@ -2957,6 +3083,8 @@
     <script src="modules/i18n.js"></script>
     <script src="modules/security-settings.js"></script>
     <script src="modules/settings-shared.js"></script>
+    <script src="modules/web-browser.js"></script>
     <script src="renderer.js"></script>
+    <script src="webDownloadsRenderer.js"></script>
 </body>
 </html>

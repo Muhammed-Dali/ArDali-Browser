@@ -167,15 +167,44 @@ class ArDaliAudioEngine {
         }
 
         try {
-            const result = nativeAudio.initialize();
+            const runInitialize = (deviceId = null) => {
+                return deviceId === null ? nativeAudio.initialize() : nativeAudio.initialize(deviceId);
+            };
+            let result = runInitialize();
             const ok = (result === true) || (result && typeof result === 'object' && result.success === true);
-            this.initialized = ok;
-            if (ok) {
+            if (!ok && process.platform === 'linux' && typeof nativeAudio.getAudioDevices === 'function') {
+                try {
+                    const rawDevices = nativeAudio.getAudioDevices();
+                    const devices = typeof rawDevices === 'string' ? JSON.parse(rawDevices) : rawDevices;
+                    const candidates = Array.isArray(devices)
+                        ? devices
+                            .map((dev) => ({
+                                id: Number(dev?.id),
+                                isDefault: dev?.isDefault === true
+                            }))
+                            .filter((dev) => Number.isFinite(dev.id) && dev.id > 0)
+                            .sort((a, b) => Number(b.isDefault) - Number(a.isDefault))
+                        : [];
+                    for (const dev of candidates) {
+                        result = runInitialize(dev.id);
+                        const retryOk = (result === true) || (result && typeof result === 'object' && result.success === true);
+                        if (retryOk) {
+                            console.log('✓ Audio Engine cihazla başlatıldı:', dev.id);
+                            break;
+                        }
+                    }
+                } catch (retryError) {
+                    console.warn('Audio device retry başarısız:', retryError?.message || retryError);
+                }
+            }
+            const finalOk = (result === true) || (result && typeof result === 'object' && result.success === true);
+            this.initialized = finalOk;
+            if (finalOk) {
                 console.log('✓ ArDali Audio Engine başlatıldı');
             } else if (result && typeof result === 'object' && result.error) {
                 console.warn('⚠ Audio Engine başlatılamadı:', result.error);
             }
-            return ok;
+            return finalOk;
         } catch (error) {
             console.error('Audio Engine başlatma hatası:', error);
             this.initialized = false;

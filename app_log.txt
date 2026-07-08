@@ -1,0 +1,187 @@
+
+> ardali@3.2.4 dev
+> node scripts/dev-platform.js
+
+
+🖥️  Platform: linux 
+
+📦 Copying BASS libraries to build directory...
+   Source: /home/muhammetdali/ArDali-WebMedia/libs/linux
+   Target: /home/muhammetdali/ArDali-WebMedia/native/build/Release 
+
+✅ Copied: libbass.so           (243.2 KB)
+✅ Copied: libbass_fx.so        (83.8 KB)
+✅ Copied: libbass_aac.so       (224.1 KB)
+✅ Copied: libbassape.so        (85.8 KB)
+✅ Copied: libbassflac.so       (54.8 KB)
+✅ Copied: libbasswv.so         (66.9 KB)
+
+📊 Results: 6 copied, 0 failed
+
+🔍 Checking RPATH...
+[RPATH] 0x000000000000001d (RUNPATH)            Kitaplık çalışım yolu: [$ORIGIN:$ORIGIN/..:$ORIGIN/../libs/linux]
+
+✨ All done!
+📁 Kütüphaneler kullanılıyor: libs/linux (RPATH ile)
+💻 Display Server: Wayland
+[GPU] conservative linux mode: accelerated video decode, zero-copy and gpu rasterization disabled
+node-id3 başarıyla yüklendi
+[119046:0702/030558.548661:WARNING:ui/ozone/platform/wayland/common/wayland_object.cc:119] Binding to wl_shm version 1 but version 2 is available.
+[119046:0702/030558.548700:WARNING:ui/ozone/platform/wayland/common/wayland_object.cc:119] Binding to zwp_pointer_gestures_v1 version 1 but version 3 is available.
+[119046:0702/030558.548717:WARNING:ui/ozone/platform/wayland/common/wayland_object.cc:119] Binding to wp_cursor_shape_manager_v1 version 1 but version 2 is available.
+[119046:0702/030558.548730:WARNING:ui/ozone/platform/wayland/common/wayland_object.cc:119] Binding to org_kde_kwin_appmenu_manager version 1 but version 2 is available.
+[119046:0702/030558.548760:WARNING:ui/ozone/platform/wayland/common/wayland_object.cc:119] Binding to wp_color_manager_v1 version 1 but version 2 is available.
+[119046:0702/030558.548772:WARNING:ui/ozone/platform/wayland/common/wayland_object.cc:119] Binding to zwp_linux_dmabuf_v1 version 4 but version 5 is available.
+[GPU] startup conservative mode active (linux)
+[119046:0702/030558.696191:WARNING:ui/ozone/platform/wayland/host/wayland_surface.cc:170] Server doesn't support zcr_alpha_compositing_v1.
+[119046:0702/030558.696208:WARNING:ui/ozone/platform/wayland/host/wayland_surface.cc:185] Server doesn't support overlay_prioritizer.
+✓ MPRIS player başlatıldı (name: ardali, desktopEntry: com.ardali.mediaplayer)
+(electron) 'console-message' arguments are deprecated and will be removed. Please use Event<WebContentsConsoleMessageEventParams> object instead.
+[RENDERER] [PRELOAD] ready | platform=linux (preload.js:1133)
+[119046:0702/030558.882619:INFO:CONSOLE:1133] "[PRELOAD] ready | platform=linux", source: /home/muhammetdali/ArDali-WebMedia/preload.js (1133)
+[RENDERER] [RENDERER] Script başlıyor... (renderer.js:446)
+[119046:0702/030559.768447:INFO:CONSOLE:446] "[RENDERER] Script başlıyor...", source: file:///home/muhammetdali/ArDali-WebMedia/renderer.js (446)
+[RENDERER] [RENDERER] window.ardali: object (renderer.js:446)
+[119046:0702/030559.768570:INFO:CONSOLE:446] "[RENDERER] window.ardali: object", source: file:///home/muhammetdali/ArDali-WebMedia/renderer.js (446)
+[RENDERER] [RENDERER] ardali anahtarları: openFile,openFolder,saveFile,readDirectory,getSpecialPaths,fileExists,isPathWritable,getFileInfo,getStorageStats,getSystemStats,readTextFile,writeTextFile,writeBase64File,writeBufferFile,renameItem,moveToTrash,openContainingFolder,getPathProperties,getAlbumArt,getBestAlbumArt,getVideoThumbnail,getDisplayImagePath,videoTools,screenRecording,library,adblock,saveSettings,loadSettings,openSettingsWindow,launchContext,onSettingsReload,onSettingsNavigate,onSettingsCloseRequest,onWebReloadActive,onScopedSfxLiveParam,confirmSettingsClose,savePlaylist,loadPlaylist,dialog,clipboard,pulse,systemAudio,system,webSecurity,diagnostics,audio,ipcAudio,presets,soundEffects,downloader,electronAPI,app,onOpenMediaFiles,i18n,onMediaControl,updateTrayState,updateMPRISMetadata,onMPRISSeek,onMPRISPosition,platform,version,isNativeAudioAvailable,getHomeDir,getUserName,path (renderer.js:446)
+[119046:0702/030559.768706:INFO:CONSOLE:446] "[RENDERER] ardali anahtarları: openFile,openFolder,saveFile,readDirectory,getSpecialPaths,fileExists,isPathWritable,getFileInfo,getStorageStats,getSystemStats,readTextFile,writeTextFile,writeBase64File,writeBufferFile,renameItem,moveToTrash,openContainingFolder,getPathProperties,getAlbumArt,getBestAlbumArt,getVideoThumbnail,getDisplayImagePath,videoTools,screenRecording,library,adblock,saveSettings,loadSettings,openSettingsWindow,launchContext,onSettingsReload,onSettingsNavigate,onSettingsCloseRequest,onWebReloadActive,onScopedSfxLiveParam,confirmSettingsClose,savePlaylist,loadPlaylist,dialog,clipboard,pulse,systemAudio,system,webSecurity,diagnostics,audio,ipcAudio,presets,soundEffects,downloader,electronAPI,app,onOpenMediaFiles,i18n,onMediaControl,updateTrayState,updateMPRISMetadata,onMPRISSeek,onMPRISPosition,platform,version,isNativeAudioAvailable,getHomeDir,getUserName,path", source: file:///home/muhammetdali/ArDali-WebMedia/renderer.js (446)
+[119046:0702/030559.873097:INFO:CONSOLE:2] "%cElectron Security Warning (Insecure Content-Security-Policy) font-weight: bold; This renderer process has either no Content Security
+  Policy set or a policy with "unsafe-eval" enabled. This exposes users of
+  this app to unnecessary security risks.
+
+For more information and help, consult
+https://electronjs.org/docs/tutorial/security.
+This warning will not show up
+once the app is packaged.", source: node:electron/js2c/sandbox_bundle (2)
+[119085:0702/030600.597330:WARNING:sandbox/policy/linux/sandbox_linux.cc:404] InitializeSandbox() called with multiple threads in process gpu-process.
+[RENDERER] 🎚️ EQ Controller initialized (renderer.js:446)
+[119046:0702/030600.603453:INFO:CONSOLE:446] "🎚️ EQ Controller initialized", source: file:///home/muhammetdali/ArDali-WebMedia/renderer.js (446)
+[RENDERER] 🔊 AGC monitoring started (renderer.js:446)
+[119046:0702/030600.603538:INFO:CONSOLE:446] "🔊 AGC monitoring started", source: file:///home/muhammetdali/ArDali-WebMedia/renderer.js (446)
+[RENDERER] 🎚️ AGC Controller initialized (renderer.js:446)
+[119046:0702/030600.603611:INFO:CONSOLE:446] "🎚️ AGC Controller initialized", source: file:///home/muhammetdali/ArDali-WebMedia/renderer.js (446)
+[RENDERER] Player bar görünürlük kontrolü yapıldı (renderer.js:446)
+[119046:0702/030600.638567:INFO:CONSOLE:446] "Player bar görünürlük kontrolü yapıldı", source: file:///home/muhammetdali/ArDali-WebMedia/renderer.js (446)
+[RENDERER] [PATHS] special paths: [object Object] (renderer.js:446)
+[119046:0702/030600.640363:INFO:CONSOLE:446] "[PATHS] special paths: [object Object]", source: file:///home/muhammetdali/ArDali-WebMedia/renderer.js (446)
+[MAIN] Native audio not available
+[MAIN] Native audio not available
+[RENDERER] Native Audio mevcut: true (renderer.js:446)
+[119046:0702/030600.733863:INFO:CONSOLE:446] "Native Audio mevcut: true", source: file:///home/muhammetdali/ArDali-WebMedia/renderer.js (446)
+✓ ArDali C++ Audio Engine yüklendi: /home/muhammetdali/ArDali-WebMedia/native/build/Release/ardali_audio.node
+✓ BASS AAC Plugin loaded (M4A/AAC support enabled)
+✓ BASS FLAC Plugin loaded
+✓ BASS APE Plugin loaded
+✓ BASS WavePack Plugin loaded
+[AUDIO] UpdateDynamicEQ: en=0, f=3500.0, q=2.0, thr=-40.0, g=-6.0
+[DSP] setDynamicEq: en=0, f=3500.0, q=2.0, thr=-40.0, g=-6.0, r=12.0, a=5.0, rel=120.0
+✓ ArDali Audio Engine başlatıldı
+✓ C++ ArDali Audio Engine aktif
+[RENDERER] Audio Engine init sonucu: [object Object] (renderer.js:446)
+[119046:0702/030600.764984:INFO:CONSOLE:446] "Audio Engine init sonucu: [object Object]", source: file:///home/muhammetdali/ArDali-WebMedia/renderer.js (446)
+[RENDERER] ✓ C++ Audio Engine başarıyla başlatıldı (renderer.js:446)
+[119046:0702/030600.765039:INFO:CONSOLE:446] "✓ C++ Audio Engine başarıyla başlatıldı", source: file:///home/muhammetdali/ArDali-WebMedia/renderer.js (446)
+[AUTO GAIN] Devre dışı
+[RENDERER] AGC devre dışı bırakıldı (renderer.js:446)
+[119046:0702/030600.765283:INFO:CONSOLE:446] "AGC devre dışı bırakıldı", source: file:///home/muhammetdali/ArDali-WebMedia/renderer.js (446)
+[RENDERER] [MAIN WINDOW] Kayıtlı EQ ayarları yükleniyor... (renderer.js:446)
+[119046:0702/030600.765758:INFO:CONSOLE:446] "[MAIN WINDOW] Kayıtlı EQ ayarları yükleniyor...", source: file:///home/muhammetdali/ArDali-WebMedia/renderer.js (446)
+[RENDERER] [MAIN WINDOW] Kayıtlı EQ yok, varsayılan kullanılıyor (renderer.js:446)
+[119046:0702/030600.767412:INFO:CONSOLE:446] "[MAIN WINDOW] Kayıtlı EQ yok, varsayılan kullanılıyor", source: file:///home/muhammetdali/ArDali-WebMedia/renderer.js (446)
+[MAIN] Preamp set to 0
+[COMPRESSOR] Disabled (thresh=-20.0 ratio=4.0 att=10.0 rel=100.0 gain=0.0)
+[LIMITER] Disabled (ceil=-0.3 rel=50.0 look=5.0 gain=0.0)
+[LIMITER] Ceiling: -0.3 dB
+[LIMITER] Release: 50.0 ms
+[LIMITER] Lookahead: 5.0 ms
+[LIMITER] Gain: 0.0 dB
+[NOISE GATE] Disabled (thresh=-40.0 att=5.0 hold=100.0 rel=150.0 range=-80.0)
+[NOISE GATE] Threshold: -40.0 dB
+[NOISE GATE] Attack: 5.0 ms
+[NOISE GATE] Hold: 100.0 ms
+[NOISE GATE] Release: 150.0 ms
+[NOISE GATE] Range: -80.0 dB
+[MAIN] audio:enableDeEsser called with: false
+[MAIN] Calling audioEngine.EnableDeEsser
+[DE-ESSER] Disabled
+[DE-ESSER] Frequency: 7000 Hz
+[DE-ESSER] Threshold: -30.0 dB
+[DE-ESSER] Ratio: 4.0:1
+[DE-ESSER] Range: -12.0 dB
+[DE-ESSER] Listen Mode: OFF
+[EXCITER] Disabled
+[EXCITER] Amount: 50%
+[EXCITER] Frequency: 3000 Hz
+[EXCITER] Harmonics: 50%
+[EXCITER] Mix: 30%
+[STEREO WIDENER] Disabled
+[STEREO WIDENER] Width: 100%
+[STEREO WIDENER] Balance: 0
+[STEREO WIDENER] Haas delay: 0.0 ms
+[STEREO WIDENER] Bass cutoff: 200 Hz
+[ECHO] Disabled
+[ECHO] Delay: 250 ms
+[ECHO] Feedback: 40%
+[ECHO] Wet mix: 30%
+[ECHO] High cut: 8000 Hz
+[SOFT ECHO] Disabled
+[SOFT ECHO] Delay: 520 ms
+[SOFT ECHO] Feedback: 8%
+[SOFT ECHO] Wet mix: 28%
+[SOFT ECHO] High cut: 4200 Hz
+[SOFT ECHO] Stereo mode: Normal
+[AUTO GAIN] Target: -14.0 dBFS
+[AUTO GAIN] Max Gain: 12.0 dB
+[MAIN] audio:setTruePeakEnabled called with: false
+[TRUE PEAK] Stream yok
+[TRUE PEAK] Ceiling: -0.10 dBFS
+[TRUE PEAK] Release: 50 ms
+[TRUE PEAK] Lookahead: 5.0 ms
+[TRUE PEAK] Drive: 0.0 dB
+[TRUE PEAK] Oversampling: 4x
+[TRUE PEAK] Link channels: ON
+[CROSSFEED] Devre dışı (integrated DSP)
+[CROSSFEED] Level: 30%
+[CROSSFEED] Delay: 0.30 ms
+[CROSSFEED] Low cut: 700 Hz
+[CROSSFEED] High cut: 4000 Hz
+[SURROUND] Devre dışı
+[BASS MONO] Devre dışı
+[RENDERER] [MAIN WINDOW] ✓ Kayıtlı ses efektleri startup sırasında uygulandı (renderer.js:446)
+[119046:0702/030600.787269:INFO:CONSOLE:446] "[MAIN WINDOW] ✓ Kayıtlı ses efektleri startup sırasında uygulandı", source: file:///home/muhammetdali/ArDali-WebMedia/renderer.js (446)
+[RENDERER] System tray media control listener kuruldu (renderer.js:446)
+[119046:0702/030600.801938:INFO:CONSOLE:446] "System tray media control listener kuruldu", source: file:///home/muhammetdali/ArDali-WebMedia/renderer.js (446)
+[RENDERER] stopAudio çağrıldı, useNativeAudio: true (renderer.js:446)
+[119046:0702/030600.802374:INFO:CONSOLE:446] "stopAudio çağrıldı, useNativeAudio: true", source: file:///home/muhammetdali/ArDali-WebMedia/renderer.js (446)
+[RENDERER] C++ Audio Engine durduruluyor... (renderer.js:446)
+[119046:0702/030600.802421:INFO:CONSOLE:446] "C++ Audio Engine durduruluyor...", source: file:///home/muhammetdali/ArDali-WebMedia/renderer.js (446)
+[RENDERER] C++ Audio Engine durduruldu (renderer.js:446)
+[119046:0702/030600.802571:INFO:CONSOLE:446] "C++ Audio Engine durduruldu", source: file:///home/muhammetdali/ArDali-WebMedia/renderer.js (446)
+[RENDERER] 🎵 C++ FFT verisi ile Analyzer Container başlatılıyor... (renderer.js:446)
+[119046:0702/030600.872056:INFO:CONSOLE:446] "🎵 C++ FFT verisi ile Analyzer Container başlatılıyor...", source: file:///home/muhammetdali/ArDali-WebMedia/renderer.js (446)
+[RENDERER] ArDali Player başlatıldı (renderer.js:446)
+[119046:0702/030600.872561:INFO:CONSOLE:446] "ArDali Player başlatıldı", source: file:///home/muhammetdali/ArDali-WebMedia/renderer.js (446)
+[RENDERER] 🎵 C++ BASS Audio Engine aktif (renderer.js:446)
+[119046:0702/030600.872654:INFO:CONSOLE:446] "🎵 C++ BASS Audio Engine aktif", source: file:///home/muhammetdali/ArDali-WebMedia/renderer.js (446)
+[119046:0702/030608.073340:ERROR:content/common/zygote/zygote_communication_linux.cc:291] Failed to send GetTerminationStatus message to zygote
+[119046:0702/030608.074669:WARNING:content/common/zygote/zygote_communication_linux.cc:303] Socket closed prematurely.
+Renderer process clean-exit - see https://www.electronjs.org/docs/tutorial/application-debugging for potential debugging information.
+[119046:0702/030608.081006:ERROR:content/browser/network_service_instance_impl.cc:703] Network service crashed or was terminated, restarting service.
+[119046:0702/030608.085949:ERROR:content/common/zygote/zygote_communication_linux.cc:291] Failed to send GetTerminationStatus message to zygote
+[119046:0702/030608.085984:WARNING:content/common/zygote/zygote_communication_linux.cc:303] Socket closed prematurely.
+Renderer process killed - see https://www.electronjs.org/docs/tutorial/application-debugging for potential debugging information.
+[WEB] render-process-gone: { reason: 'killed', exitCode: 15 }
+[119046:0702/030608.094691:ERROR:content/browser/gpu/gpu_process_host.cc:993] GPU process launch failed: error_code=1002
+[119046:0702/030608.094717:WARNING:content/browser/gpu/gpu_process_host.cc:1441] The GPU process has crashed 1 time(s)
+[119046:0702/030608.095434:ERROR:content/browser/gpu/gpu_process_host.cc:993] GPU process launch failed: error_code=1002
+[119046:0702/030608.095453:WARNING:content/browser/gpu/gpu_process_host.cc:1441] The GPU process has crashed 2 time(s)
+[119046:0702/030608.095962:ERROR:content/browser/gpu/gpu_process_host.cc:993] GPU process launch failed: error_code=1002
+[119046:0702/030608.095978:WARNING:content/browser/gpu/gpu_process_host.cc:1441] The GPU process has crashed 3 time(s)
+[119046:0702/030608.096411:ERROR:content/browser/gpu/gpu_process_host.cc:993] GPU process launch failed: error_code=1002
+[119046:0702/030608.096422:WARNING:content/browser/gpu/gpu_process_host.cc:1441] The GPU process has crashed 4 time(s)
+[119046:0702/030608.096865:ERROR:content/browser/gpu/gpu_process_host.cc:993] GPU process launch failed: error_code=1002
+[119046:0702/030608.096874:WARNING:content/browser/gpu/gpu_process_host.cc:1441] The GPU process has crashed 5 time(s)
+[119046:0702/030608.097173:ERROR:content/browser/gpu/gpu_process_host.cc:993] GPU process launch failed: error_code=1002
+[119046:0702/030608.097180:WARNING:content/browser/gpu/gpu_process_host.cc:1441] The GPU process has crashed 6 time(s)
+[119046:0702/030608.097185:FATAL:content/browser/gpu/gpu_data_manager_impl_private.cc:417] GPU process isn't usable. Goodbye.
+[119268:0702/030623.125536:INFO:content/child/child_thread_impl.cc:903] Terminating current process after 15 seconds with no connection.

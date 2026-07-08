@@ -1047,6 +1047,25 @@ const ardaliAPI = {
     version: '2.1.0',
     isNativeAudioAvailable: isNativeAvailable,
     
+    // İndirmeler API
+    downloads: {
+        getHistory: () => ipcRenderer.invoke('downloads:getHistory'),
+        clearHistory: () => ipcRenderer.invoke('downloads:clearHistory'),
+        removeItem: (id) => ipcRenderer.invoke('downloads:removeItem', id),
+        pause: (id) => ipcRenderer.invoke('downloads:pause', id),
+        resume: (id) => ipcRenderer.invoke('downloads:resume', id),
+        cancel: (id) => ipcRenderer.invoke('downloads:cancel', id),
+        checkExists: (filePath) => ipcRenderer.invoke('downloads:checkExists', filePath),
+        showInFolder: (filePath) => ipcRenderer.invoke('downloads:showInFolder', filePath),
+        openDownloadsFolder: () => ipcRenderer.invoke('downloads:openDownloadsFolder'),
+        onProgress: (callback) => {
+            ipcRenderer.on('download-progress', (event, data) => callback(data));
+        },
+        onDone: (callback) => {
+            ipcRenderer.on('download-done', (event, data) => callback(data));
+        }
+    },
+    
     // System Yollar API
     getHomeDir: () => os.homedir(),
     getUserName: () => os.userInfo().username,

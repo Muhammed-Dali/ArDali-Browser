@@ -34,9 +34,33 @@
                             </div>
                             <div class="modal-body">
                                 <div class="settings-sidebar">
-                                    <button class="settings-tab active" data-tab="playback">
+                                    <button class="settings-tab active" data-tab="web">
+                                        <span class="settings-tab-icon settings-tab-icon-globe" aria-hidden="true"></span>
+                                        <span class="settings-tab-label" data-i18n="settings.tabs.web">Web Ayarları</span>
+                                    </button>
+                                    <button class="settings-tab" data-tab="security">
+                                        <span class="settings-tab-icon settings-tab-icon-shield" aria-hidden="true"></span>
+                                        <span class="settings-tab-label" data-i18n="securityPage.title">Güvenlik</span>
+                                    </button>
+                                    <button class="settings-tab" data-tab="behavior">
+                                        <span class="settings-tab-icon settings-tab-icon-tune" aria-hidden="true"></span>
+                                        <span class="settings-tab-label" data-i18n="settings.tabs.behavior">Davranış</span>
+                                    </button>
+                                    <button class="settings-tab" data-tab="audio">
+                                        <span class="settings-tab-icon settings-tab-icon-headphones" aria-hidden="true"></span>
+                                        <span class="settings-tab-label" data-i18n="settings.tabs.audio">Ses Çıkışı</span>
+                                    </button>
+                                    <button class="settings-tab" data-tab="library">
+                                        <span class="settings-tab-icon settings-tab-icon-library" aria-hidden="true"></span>
+                                        <span class="settings-tab-label" data-i18n="settings.tabs.library">Medya Kütüphanesi</span>
+                                    </button>
+                                    <button class="settings-tab" data-tab="playback">
                                         <span class="settings-tab-icon settings-tab-icon-play" aria-hidden="true"></span>
                                         <span class="settings-tab-label" data-i18n="settings.tabs.playback">Oynat</span>
+                                    </button>
+                                    <button class="settings-tab" data-tab="gallery">
+                                        <span class="settings-tab-icon settings-tab-icon-gallery" aria-hidden="true"></span>
+                                        <span class="settings-tab-label" data-i18n="settings.tabs.gallery">Galeri</span>
                                     </button>
                                     <button class="settings-tab" data-tab="shortcuts">
                                         <span class="settings-tab-icon settings-tab-icon-keyboard" aria-hidden="true"></span>
@@ -46,33 +70,9 @@
                                         <span class="settings-tab-icon settings-tab-icon-eq" aria-hidden="true"></span>
                                         <span class="settings-tab-label" data-i18n="settings.tabs.listen">Dinle</span>
                                     </button>
-                                    <button class="settings-tab" data-tab="behavior">
-                                        <span class="settings-tab-icon settings-tab-icon-tune" aria-hidden="true"></span>
-                                        <span class="settings-tab-label" data-i18n="settings.tabs.behavior">Davranış</span>
-                                    </button>
-                                    <button class="settings-tab" data-tab="security">
-                                        <span class="settings-tab-icon settings-tab-icon-shield" aria-hidden="true"></span>
-                                        <span class="settings-tab-label" data-i18n="securityPage.title">Güvenlik</span>
-                                    </button>
-                                    <button class="settings-tab" data-tab="web">
-                                        <span class="settings-tab-icon settings-tab-icon-globe" aria-hidden="true"></span>
-                                        <span class="settings-tab-label" data-i18n="settings.tabs.web">Web Ayarları</span>
-                                    </button>
-                                    <button class="settings-tab" data-tab="library">
-                                        <span class="settings-tab-icon settings-tab-icon-library" aria-hidden="true"></span>
-                                        <span class="settings-tab-label" data-i18n="settings.tabs.library">Medya Kütüphanesi</span>
-                                    </button>
-                                    <button class="settings-tab" data-tab="gallery">
-                                        <span class="settings-tab-icon settings-tab-icon-gallery" aria-hidden="true"></span>
-                                        <span class="settings-tab-label" data-i18n="settings.tabs.gallery">Galeri</span>
-                                    </button>
-                                    <button class="settings-tab" data-tab="audio">
-                                        <span class="settings-tab-icon settings-tab-icon-headphones" aria-hidden="true"></span>
-                                        <span class="settings-tab-label" data-i18n="settings.tabs.audio">Ses Çıkışı</span>
-                                    </button>
                                 </div>
                                 <div class="settings-content">
-                                    <div class="settings-page active" id="playbackSettings">
+                                    <div class="settings-page hidden" id="playbackSettings">
                                         <h3 data-i18n="playback.title">Oynat</h3>
                                         <div class="settings-group">
                                             <h4 data-i18n="playback.crossfade.title">Yumuşak geçiş</h4>
@@ -475,7 +475,10 @@
                                                     <option value="vinyldisc" data-i18n="ui.startup.sidebarStyle.options.vinyldisc">Vinyl Disk</option>
                                                     <option value="monotech" data-i18n="ui.startup.sidebarStyle.options.monotech">Mono Tech</option>
                                                     <option value="crystal" data-i18n="ui.startup.sidebarStyle.options.crystal">Kristal Cam</option>
-                                                    <option value="retroblock" data-i18n="ui.startup.sidebarStyle.options.retroblock">Retro Blok</option>
+                                                    <option value="glass">Cam Dokusu (Glassmorphism)</option>
+                                                    <option value="cyber">Siberpunk Neon</option>
+                                                    <option value="neumorphic">Yumuşak Gölgeler</option>
+                                                    <option value="gradient">Renk Geçişli</option>
                                                 </select>
                                             </div>
                                             <div class="setting-row">
@@ -501,10 +504,34 @@
                                             <div class="settings-sub" data-i18n="ui.startup.notificationsEnabledHint">Kapalıyken uygulama içi bildirimler gösterilmez.</div>
                                         </div>
                                     </div>
-                                    <div class="settings-page hidden" id="webSettings">
+                                    <div class="settings-page active" id="webSettings">
                                         <h3 data-i18n="settings.tabs.web">Web Ayarları</h3>
                                         <div class="settings-group">
                                             <h4 data-i18n="settings.web.sections.general">Genel</h4>
+                                            <div class="setting-row">
+                                                <span data-i18n="settings.web.searchEngine">Arama Motoru</span>
+                                                <div class="custom-dropdown" id="behaviorWebSearchEngine">
+                                                    <div class="custom-dropdown-trigger" onclick="this.parentElement.classList.toggle('open'); event.stopPropagation();">
+                                                        <img src="https://duckduckgo.com/favicon.ico" class="custom-dropdown-icon" alt="">
+                                                        <span class="custom-dropdown-text">DuckDuckGo</span>
+                                                        <span class="material-symbols-rounded">expand_more</span>
+                                                    </div>
+                                                    <div class="custom-dropdown-menu">
+                                                        <div class="custom-dropdown-option" data-value="duckduckgo" onclick="if(window.handleCustomDropdownOptionClick) window.handleCustomDropdownOptionClick(this); event.stopPropagation();">
+                                                            <img src="https://duckduckgo.com/favicon.ico" alt=""> <span>DuckDuckGo</span>
+                                                        </div>
+                                                        <div class="custom-dropdown-option" data-value="google" onclick="if(window.handleCustomDropdownOptionClick) window.handleCustomDropdownOptionClick(this); event.stopPropagation();">
+                                                            <img src="https://www.google.com/favicon.ico" alt=""> <span>Google</span>
+                                                        </div>
+                                                        <div class="custom-dropdown-option" data-value="brave" onclick="if(window.handleCustomDropdownOptionClick) window.handleCustomDropdownOptionClick(this); event.stopPropagation();">
+                                                            <img src="https://brave.com/static-assets/images/brave-logo-sans-text.svg" alt=""> <span>Brave</span>
+                                                        </div>
+                                                        <div class="custom-dropdown-option" data-value="bing" onclick="if(window.handleCustomDropdownOptionClick) window.handleCustomDropdownOptionClick(this); event.stopPropagation();">
+                                                            <img src="https://www.bing.com/favicon.ico" alt=""> <span>Bing</span>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
                                             <label class="checkbox-label">
                                                 <input type="checkbox" id="behaviorWebExperienceEnabled" checked>
                                                 <span data-i18n="ui.startup.webExperienceEnabled">Web deneyimini etkinleştir (isteğe bağlı)</span>

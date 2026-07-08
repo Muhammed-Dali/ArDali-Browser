@@ -1946,7 +1946,9 @@ function emitScopedLiveEffectToMain(effectName, effectSettings = null) {
         ? effectSettings
         : (getSettings(effect) || {});
     const sanitized = sanitizeScopedEffectForApp(effect, scoped);
-    const liveMinIntervalMs = effect === 'dynamiceq' ? 96 : 24;
+    const liveMinIntervalMs = effect === 'dynamiceq'
+        ? 180
+        : (effect === 'eq32' ? 56 : 72);
     dispatchRealtimeParam(
         'scopedlive',
         effect,
@@ -2011,8 +2013,8 @@ document.addEventListener('DOMContentLoaded', () => {
         setupEQPresetListener();
         loadAllSettings();
 
-        // Uygulama ayarlarından EQ32'yi geri yükle (varsa) ve DSP'ye uygula
-        await hydrateEq32FromAppSettings();
+        // Uygulama ayarlarından tüm efektleri ve ses çıkış profilini geri yükle ve uygula
+        await hydrateAllSettingsFromAppSettings();
         if (!SFX_IS_SCOPED_DALI) {
             applyEffect('audiophile');
             // Ses oynatım sırasında toplu re-apply klik/takırtı yapabildiği için,
@@ -2118,6 +2120,7 @@ function setupEventListeners() {
                 window.ardali?.audio.setEffectsEnabled(SFX.masterEnabled);
             }
             if (SFX_IS_SCOPED_DALI) {
+                emitScopedLiveEffectToMain('master', { enabled: SFX.masterEnabled });
                 schedulePersistScopedEffectToAppSettings('master', { enabled: SFX.masterEnabled }, 40);
             }
             syncMeterLoops();
@@ -6126,6 +6129,12 @@ function initEQSliders() {
             currentSettings.bands[band] = value;
             saveSettings('eq32', currentSettings);
 
+            if (SFX_IS_SCOPED_DALI) {
+                emitScopedLiveEffectToMain('eq32', currentSettings);
+                schedulePersistEq32ToAppSettings(currentSettings);
+                return;
+            }
+
             if (window.ardali?.ipcAudio?.eq) {
                 dispatchRealtimeParam('eq32', `band${band}`, () => window.ardali.ipcAudio.eq.setBand(band, value), 16);
             }
@@ -9985,37 +9994,54 @@ async function persistEq32ToAppSettings(eq32Settings) {
     return result;
 }
 
-async function hydrateEq32FromAppSettings() {
+async function hydrateAllSettingsFromAppSettings() {
     if (!window.ardali?.loadSettings) return;
 
     try {
-        dbgEq('[EQ32 HYDRATE] Kayıtlı ayarlar yükleniyor...');
         const appSettings = await window.ardali.loadSettings();
-        const sfxEq32 =
-            appSettings?.sfxScopes?.[SFX_SCOPE]?.eq32 ||
-            (SFX_SCOPE === 'music' ? appSettings?.sfx?.eq32 : null);
-        if (!sfxEq32) {
-            dbgEq('[EQ32 HYDRATE] Kayıtlı ayar yok, varsayılan kullanılacak');
-            return;
+        const scopeSettings = appSettings?.sfxScopes?.[SFX_SCOPE] || (SFX_SCOPE === 'music' ? appSettings?.sfx : null);
+        if (!scopeSettings) return;
+
+        if (scopeSettings.master && typeof scopeSettings.master === 'object') {
+            SFX.masterEnabled = scopeSettings.master.enabled !== false;
+            const masterToggle = document.getElementById('masterEffectsToggle');
+            if (masterToggle) masterToggle.checked = SFX.masterEnabled;
+            updateDSPStatus();
         }
 
-        dbgEq('[EQ32 HYDRATE] Ayarlar bulundu');
+        Object.keys(SFX.defaults).forEach((effectName) => {
+            const savedEffectSettings = scopeSettings[effectName];
+            if (savedEffectSettings) {
+                const settings = getSettings(effectName);
+                Object.keys(savedEffectSettings).forEach((key) => {
+                    settings[key] = savedEffectSettings[key];
+                });
 
-        const settings = getSettings('eq32');
-        if (Array.isArray(sfxEq32.bands)) settings.bands = normalize32Bands(sfxEq32.bands);
-        if (Number.isFinite(sfxEq32.balance)) settings.balance = sfxEq32.balance;
-        if (Number.isFinite(sfxEq32.bass)) settings.bass = sfxEq32.bass;
-        if (Number.isFinite(sfxEq32.mid)) settings.mid = sfxEq32.mid;
-        if (Number.isFinite(sfxEq32.treble)) settings.treble = sfxEq32.treble;
-        if (Number.isFinite(sfxEq32.stereoExpander)) settings.stereoExpander = sfxEq32.stereoExpander;
-        if (sfxEq32.lastPreset) settings.lastPreset = sfxEq32.lastPreset;
+                // EQ32 için özel normalizasyon
+                if (effectName === 'eq32') {
+                    if (Array.isArray(savedEffectSettings.bands)) {
+                        settings.bands = normalize32Bands(savedEffectSettings.bands);
+                    }
+                }
 
-        saveSettings('eq32', settings);
+                saveSettings(effectName, settings);
+            }
+        });
 
-        updateEq32UIFromSettings(settings);
-        dbgEq('[EQ32 HYDRATE] ✓ Kayıtlı ayarlar yüklendi:', settings.lastPreset?.name || 'Düz (Flat)');
+        // Tüm UI elemanlarını güncelle (knob'lar, select'ler vb.)
+        Object.keys(SFX.defaults).forEach((effectName) => {
+            try {
+                updateEffectUIValues(effectName);
+            } catch (uiErr) {
+                // yoksay (aktif çizilmeyen panel olabilir)
+            }
+        });
+
+        if (SFX.settings.eq32) {
+            updateEq32UIFromSettings(SFX.settings.eq32);
+        }
     } catch (e) {
-        console.warn('[EQ32] Yükleme hatası:', e);
+        console.warn('[SFX] Hydration hatası:', e);
     }
 }
 
