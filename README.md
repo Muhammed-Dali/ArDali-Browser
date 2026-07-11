@@ -33,32 +33,71 @@
 
 Click on any module icon in the feature tree below to quickly navigate to its details and screenshots.
 
-```mermaid
-graph LR
-    A["<img src='icons/app/ardali_readme_round.png' width='48' />"]
-    
-    A --> B["<img src='icons/ui/nav_internet.svg' width='32' />"]
-    A --> C["<img src='icons/app/ardali_dawlod.png' width='32' />"]
-    A --> D["<img src='icons/ui/readme_pulse.svg' width='32' />"]
-    A --> E["<img src='icons/ui/video_tools_studio.svg' width='32' />"]
-    A --> F["<img src='icons/ui/nav_video.svg' width='32' />"]
-    A --> G["<img src='icons/ui/readme_music.svg' width='32' />"]
-    A --> H["<img src='icons/ui/readme_gallery.svg' width='32' />"]
-    A --> I["<img src='icons/ui/sound-effects.svg' width='32' />"]
-    A --> J["<img src='icons/ui/readme_projectm.svg' width='32' />"]
-    A --> K["<img src='icons/ui/deliblock.svg' width='32' />"]
-
-    click B "#web-browser" "Web Browser"
-    click C "#media-downloader" "Media Downloader"
-    click D "#song-recognition" "Song Recognition"
-    click E "#screen-recorder" "Screen Recorder"
-    click F "#video-player" "Video Player"
-    click G "#music-player" "Music Player"
-    click H "#gallery" "Gallery"
-    click I "#sound-effects" "Sound Effects"
-    click J "#visualizer" "Visualizer"
-    click K "#ad-blocker" "Ad Blocker"
-```
+<table align="center" style="border: none; background-color: transparent;">
+  <tr style="border: none; background-color: transparent;">
+    <td rowspan="10" align="center" valign="middle" style="border: none; background-color: transparent;">
+      <img src="icons/app/ardali_readme_round.png" width="120" alt="ArDali Medya Player"/>
+    </td>
+    <td align="center" valign="middle" style="border: none; background-color: transparent;"><h2>&rarr;</h2></td>
+    <td align="center" valign="middle" style="border: none; background-color: transparent;">
+      <a href="#web-browser"><img src="icons/ui/nav_internet.svg" width="48" alt="Web Browser"/></a>
+    </td>
+  </tr>
+  <tr style="border: none; background-color: transparent;">
+    <td align="center" valign="middle" style="border: none; background-color: transparent;"><h2>&rarr;</h2></td>
+    <td align="center" valign="middle" style="border: none; background-color: transparent;">
+      <a href="#media-downloader"><img src="icons/app/ardali_dawlod.png" width="48" alt="Media Downloader"/></a>
+    </td>
+  </tr>
+  <tr style="border: none; background-color: transparent;">
+    <td align="center" valign="middle" style="border: none; background-color: transparent;"><h2>&rarr;</h2></td>
+    <td align="center" valign="middle" style="border: none; background-color: transparent;">
+      <a href="#song-recognition"><img src="icons/ui/readme_pulse.svg" width="48" alt="Song Recognition"/></a>
+    </td>
+  </tr>
+  <tr style="border: none; background-color: transparent;">
+    <td align="center" valign="middle" style="border: none; background-color: transparent;"><h2>&rarr;</h2></td>
+    <td align="center" valign="middle" style="border: none; background-color: transparent;">
+      <a href="#screen-recorder"><img src="icons/ui/video_tools_studio.svg" width="48" alt="Screen Recorder"/></a>
+    </td>
+  </tr>
+  <tr style="border: none; background-color: transparent;">
+    <td align="center" valign="middle" style="border: none; background-color: transparent;"><h2>&rarr;</h2></td>
+    <td align="center" valign="middle" style="border: none; background-color: transparent;">
+      <a href="#video-player"><img src="icons/ui/nav_video.svg" width="48" alt="Video Player"/></a>
+    </td>
+  </tr>
+  <tr style="border: none; background-color: transparent;">
+    <td align="center" valign="middle" style="border: none; background-color: transparent;"><h2>&rarr;</h2></td>
+    <td align="center" valign="middle" style="border: none; background-color: transparent;">
+      <a href="#music-player"><img src="icons/ui/readme_music.svg" width="48" alt="Music Player"/></a>
+    </td>
+  </tr>
+  <tr style="border: none; background-color: transparent;">
+    <td align="center" valign="middle" style="border: none; background-color: transparent;"><h2>&rarr;</h2></td>
+    <td align="center" valign="middle" style="border: none; background-color: transparent;">
+      <a href="#gallery"><img src="icons/ui/readme_gallery.svg" width="48" alt="Gallery"/></a>
+    </td>
+  </tr>
+  <tr style="border: none; background-color: transparent;">
+    <td align="center" valign="middle" style="border: none; background-color: transparent;"><h2>&rarr;</h2></td>
+    <td align="center" valign="middle" style="border: none; background-color: transparent;">
+      <a href="#sound-effects"><img src="icons/ui/sound-effects.svg" width="48" alt="Sound Effects"/></a>
+    </td>
+  </tr>
+  <tr style="border: none; background-color: transparent;">
+    <td align="center" valign="middle" style="border: none; background-color: transparent;"><h2>&rarr;</h2></td>
+    <td align="center" valign="middle" style="border: none; background-color: transparent;">
+      <a href="#visualizer"><img src="icons/ui/readme_projectm.svg" width="48" alt="Visualizer"/></a>
+    </td>
+  </tr>
+  <tr style="border: none; background-color: transparent;">
+    <td align="center" valign="middle" style="border: none; background-color: transparent;"><h2>&rarr;</h2></td>
+    <td align="center" valign="middle" style="border: none; background-color: transparent;">
+      <a href="#ad-blocker"><img src="icons/ui/deliblock.svg" width="48" alt="Ad Blocker"/></a>
+    </td>
+  </tr>
+</table>
 
 ---
 
