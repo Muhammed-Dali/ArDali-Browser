@@ -29,94 +29,86 @@
   </a>
 </p>
 
-# ArDali (v3.1.4)
+## 🌳 Feature Tree
 
-Linux için medya oynatıcı, web ses motoru, müzik/video indirici, ekran kaydedici ve projectM görselleştirici tek bir optimize masaüstü uygulamasında birleşir. ArDali, Linux sistemler için geliştirilmiş; üstün optimizasyon ilkeleriyle tasarlanmış, Electron tabanlı gelişmiş bir multimedya ekosistemidir.
-
-Uygulamanın kalbinde, web tabanlı ses akışlarını sıfır gecikmeyle işleyen ve tamamen bu projeye özel olarak derlenmiş bir teknoloji yatmaktadır.
-
----
-
-## 🌳 Özellik Dal Haritası (Feature Tree)
-
-Aşağıdaki özellik ağacından dilediğiniz modüle tıklayarak detaylarına ve ekran görüntülerine hızlıca ulaşabilirsiniz.
+Click on any module icon in the feature tree below to quickly navigate to its details and screenshots.
 
 ```mermaid
 graph LR
-    A((ArDali Medya Player))
+    A["<img src='icons/app/ardali_readme_round.png' width='48' />"]
     
-    A --> B[🌐 Web Tarayıcı]
-    A --> C[⬇️ Medya İndirici]
-    A --> D[🎵 Dinleyerek Şarkı Bulma]
-    A --> E[⏺️ Ekran Kaydedici]
-    A --> F[🎬 Video Oynatıcı]
-    A --> G[🎧 Müzik Çalar]
-    A --> H[🖼️ Galeri]
-    A --> I[🎛️ Ses Efektleri]
-    A --> J[📊 Görselleştirici]
-    A --> K[🛡️ Reklam Engelleme]
+    A --> B["<img src='icons/ui/nav_internet.svg' width='32' />"]
+    A --> C["<img src='icons/app/ardali_dawlod.png' width='32' />"]
+    A --> D["<img src='icons/ui/readme_pulse.svg' width='32' />"]
+    A --> E["<img src='icons/ui/video_tools_studio.svg' width='32' />"]
+    A --> F["<img src='icons/ui/nav_video.svg' width='32' />"]
+    A --> G["<img src='icons/ui/readme_music.svg' width='32' />"]
+    A --> H["<img src='icons/ui/readme_gallery.svg' width='32' />"]
+    A --> I["<img src='icons/ui/sound-effects.svg' width='32' />"]
+    A --> J["<img src='icons/ui/readme_projectm.svg' width='32' />"]
+    A --> K["<img src='icons/ui/deliblock.svg' width='32' />"]
 
-    click B "#web-tarayici"
-    click C "#medya-indirici"
-    click D "#dinleyerek-sarki-bulma"
-    click E "#ekran-kaydedici"
-    click F "#video-oynatici"
-    click G "#muzik-calar"
-    click H "#galeri"
-    click I "#ses-efektleri"
-    click J "#gorsellestirici"
-    click K "#reklam-engelleme"
+    click B "#web-browser" "Web Browser"
+    click C "#media-downloader" "Media Downloader"
+    click D "#song-recognition" "Song Recognition"
+    click E "#screen-recorder" "Screen Recorder"
+    click F "#video-player" "Video Player"
+    click G "#music-player" "Music Player"
+    click H "#gallery" "Gallery"
+    click I "#sound-effects" "Sound Effects"
+    click J "#visualizer" "Visualizer"
+    click K "#ad-blocker" "Ad Blocker"
 ```
 
 ---
 
-## Modüller ve Arayüzler
+## Modules and Interfaces
 
-### <a id="web-tarayici"></a>🌐 Web Tarayıcı
-![Web Arayüzü](assets/screenshots/web_browser.png)
-YouTube, YouTube Music, SoundCloud, Deezer, sosyal platformlar ve genel web gezintisini tek masaüstü uygulamasında birleştirerek harici tarayıcı ihtiyacını ortadan kaldırır.
+### <a id="web-browser"></a>🌐 Web Browser
+![Web Browser Interface](assets/screenshots/web_browser.png)
+Combines YouTube, YouTube Music, SoundCloud, Deezer, social platforms, and general web browsing into a single desktop application, eliminating the need for an external browser.
 
-### <a id="medya-indirici"></a>⬇️ Medya İndirici
-![İndirme Arayüzü](assets/screenshots/downloader.png)
-Desteklenen popüler sosyal medya ve video platformlarından tek tıkla medya indirir. İndirilen içerikleri tamamen yerel kaynaklar üzerinden farklı ses ve video formatlarına dönüştürebilirsiniz.
+### <a id="media-downloader"></a>⬇️ Media Downloader
+![Downloader Interface](assets/screenshots/downloader.png)
+Downloads media with a single click from supported popular social media and video platforms. Downloaded content can be converted entirely through local resources into various audio and video formats.
 
-### <a id="dinleyerek-sarki-bulma"></a>🎵 Dinleyerek Şarkı Bulma
-![Dinleyerek Şarkı Bulma Arayüzü](assets/screenshots/song_recognition.png)
-Ortamda veya sistemde çalan müzikleri gelişmiş akustik parmak izi teknolojisiyle dinleyerek anında tanımlar. Entegre ve hızlı bir Shazam benzeri deneyim sunar.
+### <a id="song-recognition"></a>🎵 Song Recognition
+![Song Recognition Interface](assets/screenshots/song_recognition.png)
+Instantly identifies music playing in your environment or on your system using advanced acoustic fingerprinting technology. Offers an integrated, fast, Shazam-like experience.
 
-### <a id="ekran-kaydedici"></a>⏺️ Ekran Kaydedici
-![Ekran Kaydedici Arayüzü](assets/screenshots/screen_recorder.png)
-Özellikle YouTube içeriği üreten yazılımcılar ve eğitimciler için OBS Studio tarzında çalışan dahili ekran kaydetme altyapısı sunar. Kamera katmanınızı da videonun üzerine anında ekleyebilirsiniz.
+### <a id="screen-recorder"></a>⏺️ Screen Recorder
+![Screen Recorder Interface](assets/screenshots/screen_recorder.png)
+Provides an OBS Studio-style built-in screen recording infrastructure, particularly for developers and educators producing YouTube content. You can instantly overlay your camera layer onto the video.
 
-### <a id="video-oynatici"></a>🎬 Video Oynatıcı
-![Video Oynatıcı Arayüzü](assets/screenshots/video_player.png)
-Geniş codec desteğiyle yerel videolarınızı modern, akıcı ve performanslı bir arayüzde oynatır. Hız, altyazı, uyku zamanlayıcı ve mini oynatıcı destekleri mevcuttur.
+### <a id="video-player"></a>🎬 Video Player
+![Video Player Interface](assets/screenshots/video_player.png)
+Plays your local videos with extensive codec support in a modern, fluid, and high-performance interface. Features include speed control, subtitles, a sleep timer, and mini-player support.
 
-### <a id="muzik-calar"></a>🎧 Müzik Çalar
-![Müzik Çalar Arayüzü](assets/screenshots/music_player.png)
-Yerel müzik kütüphanenizi akıllı etiketleme, çalma listeleri, albüm sanatı ve gelişmiş oynatma kontrolleri eşliğinde profesyonelce yönetir.
+### <a id="music-player"></a>🎧 Music Player
+![Music Player Interface](assets/screenshots/music_player.png)
+Professionally manages your local music library with smart tagging, playlists, album art, and advanced playback controls.
 
-### <a id="galeri"></a>🖼️ Galeri
-![Galeri Arayüzü](assets/screenshots/gallery.png)
-Fotoğrafları ve görselleri detaylı inceler. Yakınlaştırma, döndürme, ekrana sığdırma, slayt modları ve hızlı düzenleme araçlarıyla zengin bir ışık kutusu deneyimi sunar.
+### <a id="gallery"></a>🖼️ Gallery
+![Gallery Interface](assets/screenshots/gallery.png)
+Offers detailed inspection of photos and images. Provides a rich lightbox experience with zooming, rotating, fitting to screen, slideshow modes, and quick editing tools.
 
-### <a id="ses-efektleri"></a>🎛️ Ses Efektleri
-![Ses Efektleri Arayüzü](assets/screenshots/sound_effects.png)
-Donanımsal düzeyde çalışan **32-bant ekolayzır (EQ)** ve sıfır gecikmeli (zero-latency) Dali Ses Motoru ile sesi anında manipüle edin. Web ve yerel müziklerde pürüzsüz uygulanır.
+### <a id="sound-effects"></a>🎛️ Sound Effects
+![Sound Effects Interface](assets/screenshots/sound_effects.png)
+Instantly manipulate audio using the hardware-level **32-band equalizer (EQ)** and zero-latency Dali Audio Engine. Applies smoothly to both web and local music.
 
-### <a id="gorsellestirici"></a>📊 Görselleştirici
-![Görselleştirici Arayüzü](assets/screenshots/visualizer.png)
-projectM entegrasyonu sayesinde çalan müziğin ritmine, frekansına ve enerjisine göre dinamik olarak şekillenen, donanım hızlandırmalı görsel şölenler üretir.
+### <a id="visualizer"></a>📊 Visualizer
+![Visualizer Interface](assets/screenshots/visualizer.png)
+Produces hardware-accelerated visual spectacles that dynamically shape according to the rhythm, frequency, and energy of the playing music, thanks to projectM integration.
 
-### <a id="reklam-engelleme"></a>🛡️ Reklam Engelleme
-![Reklam Engelleme Arayüzü](assets/screenshots/adblocker.png)
-Web tabanlı platformları kullanırken entegre DeliBlock katmanıyla riskli reklamları, izleyicileri ve rahatsız edici pop-up'ları arka planda otomatik olarak filtreler.
+### <a id="ad-blocker"></a>🛡️ Ad Blocker
+![Ad Blocker Interface](assets/screenshots/adblocker.png)
+Automatically filters risky advertisements, trackers, and annoying pop-ups in the background with the integrated DeliBlock layer while using web-based platforms.
 
 ---
 
-## Kurulum ve Destek
+## Installation and Support
 
-Projeyi yerel bilgisayarınızda klonlayıp çalıştırmak için:
+To clone and run the project locally:
 
 ```bash
 git clone https://github.com/Muhammed-Dali/ArDali-WebMedia.git
@@ -125,13 +117,13 @@ npm install
 npm start
 ```
 
-Arch tabanlı Linux sistemler için birincil kurulum talimatı:
+Primary installation instruction for Arch-based Linux systems:
 
 ```bash
 yay -S ardali-bin
 ```
 
-Pacman repo ile kurulum:
+Installation with Pacman repo:
 
 ```ini
 [ardali]
@@ -144,8 +136,8 @@ sudo pacman -Sy
 sudo pacman -S ardali-bin
 ```
 
-Daha fazla bilgi, hata bildirimi ve özellik talepleri için [Issues](https://github.com/Muhammed-Dali/ArDali-WebMedia/issues) sayfasını kullanabilirsiniz.
+For more information, bug reports, and feature requests, you can use the [Issues](https://github.com/Muhammed-Dali/ArDali-WebMedia/issues) page.
 
-## Lisans
+## License
 
-Bu proje GNU GPL v3 Lisansı ile sunulmaktadır. Detaylar için [LICENSE](LICENSE) dosyasına bakabilirsiniz.
+This project is released under the GNU GPL v3 License. See the [LICENSE](LICENSE) file for details.
