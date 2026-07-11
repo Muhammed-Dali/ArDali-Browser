@@ -1410,6 +1410,8 @@ function focusMainWindow() {
     try {
         if (mainWindow.isMinimized()) mainWindow.restore();
         mainWindow.show();
+        applySavedMainWindowDisplayState(mainWindow);
+        setTimeout(() => applySavedMainWindowDisplayState(mainWindow), 120);
         mainWindow.focus();
     } catch {
         // yoksay
@@ -2275,6 +2277,45 @@ function fitMainWindowBoundsToDisplay(bounds = {}) {
     return normalized;
 }
 
+function getDisplayWorkAreaForBounds(bounds = {}) {
+    try {
+        const displays = screen.getAllDisplays();
+        const x = Number(bounds.x);
+        const y = Number(bounds.y);
+        const width = Number(bounds.width);
+        const height = Number(bounds.height);
+        const centerX = Number.isFinite(x) && Number.isFinite(width) ? x + (width / 2) : undefined;
+        const centerY = Number.isFinite(y) && Number.isFinite(height) ? y + (height / 2) : undefined;
+        const targetDisplay = displays.find((display) => {
+            const area = display.workArea || display.bounds;
+            return Number.isFinite(centerX) &&
+                Number.isFinite(centerY) &&
+                centerX >= area.x &&
+                centerX <= area.x + area.width &&
+                centerY >= area.y &&
+                centerY <= area.y + area.height;
+        }) || screen.getDisplayMatching(normalizeMainWindowBounds(bounds)) || screen.getPrimaryDisplay();
+        return targetDisplay?.workArea || targetDisplay?.bounds || null;
+    } catch {
+        return null;
+    }
+}
+
+function isMainWindowBoundsNearWorkArea(bounds = {}) {
+    const area = getDisplayWorkAreaForBounds(bounds);
+    if (!area) return false;
+    const width = Math.round(Number(bounds.width) || 0);
+    const height = Math.round(Number(bounds.height) || 0);
+    const x = Math.round(Number(bounds.x) || 0);
+    const y = Math.round(Number(bounds.y) || 0);
+    if (width < 1024 || height < 700) return false;
+    const widthRatio = width / Math.max(1, Number(area.width) || 1);
+    const heightRatio = height / Math.max(1, Number(area.height) || 1);
+    const leftClose = Math.abs(x - area.x) <= 24;
+    const topClose = Math.abs(y - area.y) <= 48;
+    return widthRatio >= 0.92 && heightRatio >= 0.88 && leftClose && topClose;
+}
+
 function getSavedMainWindowStateSync() {
     const settings = readSettingsFileSafeSync();
     const windowState = settings?.ui?.mainWindow && typeof settings.ui.mainWindow === 'object'
@@ -2287,21 +2328,79 @@ function getSavedMainWindowStateSync() {
     };
 }
 
+function applySavedMainWindowDisplayState(win = mainWindow, savedState = getSavedMainWindowStateSync()) {
+    if (!win || win.isDestroyed?.()) return;
+    try {
+        if (savedState.fullscreen) {
+            if (!win.isFullScreen()) win.setFullScreen(true);
+        } else if (savedState.maximized) {
+            if (!win.isMaximized()) win.maximize();
+            setTimeout(() => {
+                try {
+                    if (!win || win.isDestroyed?.()) return;
+                    if (win.isMaximized?.()) return;
+                    const area = getDisplayWorkAreaForBounds(savedState.bounds || win.getBounds());
+                    if (area) win.setBounds(area, true);
+                } catch {
+                    // best effort fallback for Wayland/KWin maximize reporting.
+                }
+            }, 80);
+        }
+    } catch (error) {
+        console.warn('[WINDOW] saved display state apply failed:', error?.message || error);
+    }
+}
+
+function debugMainWindowStateLog(label, payload = {}) {
+    if (process.env.ARDALI_DEV !== '1') return;
+    try {
+        console.log(`[WINDOW][STATE] ${label}`, JSON.stringify(payload));
+    } catch {
+        console.log(`[WINDOW][STATE] ${label}`);
+    }
+}
+
+function getMainWindowStateSnapshot(win = mainWindow) {
+    if (!win || win.isDestroyed?.()) return null;
+    const currentBounds = win.getBounds();
+    const normalBounds = typeof win.getNormalBounds === 'function'
+        ? win.getNormalBounds()
+        : currentBounds;
+    const nativeMaximized = typeof win.isMaximized === 'function' ? win.isMaximized() : false;
+    const boundsLookMaximized = isMainWindowBoundsNearWorkArea(currentBounds);
+    const bounds = nativeMaximized || boundsLookMaximized ? currentBounds : normalBounds;
+    return {
+        state: {
+            bounds: normalizeMainWindowBounds(bounds),
+            maximized: nativeMaximized || boundsLookMaximized,
+            fullscreen: typeof win.isFullScreen === 'function' ? win.isFullScreen() : false,
+            updatedAt: Date.now()
+        },
+        currentBounds,
+        normalBounds,
+        nativeMaximized,
+        boundsLookMaximized
+    };
+}
+
 function persistMainWindowStateSync(win = mainWindow) {
     if (!win || win.isDestroyed?.()) return;
     try {
         const settings = readSettingsFileSafeSync();
         if (!settings || typeof settings !== 'object') return;
         if (!settings.ui || typeof settings.ui !== 'object') settings.ui = {};
-        const bounds = typeof win.getNormalBounds === 'function'
-            ? win.getNormalBounds()
-            : win.getBounds();
-        settings.ui.mainWindow = {
-            bounds: normalizeMainWindowBounds(bounds),
-            maximized: typeof win.isMaximized === 'function' ? win.isMaximized() : false,
-            fullscreen: typeof win.isFullScreen === 'function' ? win.isFullScreen() : false,
-            updatedAt: Date.now()
-        };
+        const snapshot = getMainWindowStateSnapshot(win);
+        if (!snapshot) return;
+        settings.ui.mainWindow = snapshot.state;
+        debugMainWindowStateLog('persist', {
+            path: getSettingsPath(),
+            currentBounds: snapshot.currentBounds,
+            normalBounds: snapshot.normalBounds,
+            saved: settings.ui.mainWindow,
+            nativeMaximized: snapshot.nativeMaximized,
+            boundsLookMaximized: snapshot.boundsLookMaximized,
+            fullscreen: settings.ui.mainWindow.fullscreen
+        });
         writeJsonFileAtomicSync(getSettingsPath(), sanitizeSensitiveSettings(settings));
     } catch (error) {
         console.warn('[WINDOW] main window state save failed:', error?.message || error);
@@ -2325,6 +2424,13 @@ function installMainWindowStatePersistence(win) {
     win.on('enter-full-screen', schedule);
     win.on('leave-full-screen', schedule);
     win.on('close', () => {
+        if (timer) {
+            clearTimeout(timer);
+            timer = null;
+        }
+        persistMainWindowStateSync(win);
+    });
+    win.on('closed', () => {
         if (timer) {
             clearTimeout(timer);
             timer = null;
@@ -5537,6 +5643,10 @@ function createWindow() {
     rendererMediaOpenReady = false;
     const startupWebUi = readStartupWebUiSettings();
     const savedWindowState = getSavedMainWindowStateSync();
+    debugMainWindowStateLog('startup-read', {
+        path: getSettingsPath(),
+        savedWindowState
+    });
 
     let rendererRecoveryAttempts = 0;
     mainWindow = new BrowserWindow({
@@ -5573,6 +5683,21 @@ function createWindow() {
     installMainWindowStatePersistence(mainWindow);
 
     let hasEverBeenShown = false;
+    let savedMainWindowStateApplyUntil = Date.now() + 3500;
+    let savedMainWindowStateApplied = !savedWindowState.fullscreen && !savedWindowState.maximized;
+    const applySavedMainWindowStateAfterShow = (reason = 'startup') => {
+        if (!mainWindow || mainWindow.isDestroyed()) return;
+        if (savedMainWindowStateApplied) return;
+        if (Date.now() > savedMainWindowStateApplyUntil) return;
+        try {
+            applySavedMainWindowDisplayState(mainWindow, savedWindowState);
+            savedMainWindowStateApplied = savedWindowState.fullscreen
+                ? mainWindow.isFullScreen()
+                : (savedWindowState.maximized ? mainWindow.isMaximized() : true);
+        } catch (error) {
+            console.warn('[WINDOW] saved main window state restore failed:', reason, error?.message || error);
+        }
+    };
 
     applyLinuxTaskbarGrouping(mainWindow);
 
@@ -5676,6 +5801,8 @@ function createWindow() {
     // İlk açılışta pencereyi zorla görünür yap
     mainWindow.show();
     mainWindow.focus();
+    applySavedMainWindowStateAfterShow('initial-show');
+    setTimeout(() => applySavedMainWindowStateAfterShow('initial-show-delayed'), 120);
 
     // Renderer loglarını terminale düşür (çapraz geçiş gibi UI tarafı hata ayıklama için)
     mainWindow.webContents.on('console-message', (_event, _level, message, line, sourceId) => {
@@ -5700,6 +5827,8 @@ function createWindow() {
     // Pencere hazır olduğunda göster (flash önleme)
     mainWindow.once('ready-to-show', () => {
         mainWindow.show();
+        applySavedMainWindowStateAfterShow('ready-to-show');
+        setTimeout(() => applySavedMainWindowStateAfterShow('ready-to-show-delayed'), 120);
         mainWindow.focus();
         hasEverBeenShown = true;
     });
@@ -5709,8 +5838,11 @@ function createWindow() {
         rendererRecoveryAttempts = 0;
         if (!mainWindow.isVisible()) {
             mainWindow.show();
+            applySavedMainWindowStateAfterShow('did-finish-load-show');
             mainWindow.focus();
             hasEverBeenShown = true;
+        } else {
+            applySavedMainWindowStateAfterShow('did-finish-load-visible');
         }
         // Pencereyi öne getir
         mainWindow.setAlwaysOnTop(true);
@@ -5739,6 +5871,7 @@ function createWindow() {
     setTimeout(() => {
         if (mainWindow && !mainWindow.isVisible()) {
             mainWindow.show();
+            applySavedMainWindowStateAfterShow('visibility-fallback');
             mainWindow.focus();
             hasEverBeenShown = true;
         }
@@ -5767,6 +5900,7 @@ function createWindow() {
 
     // Pencere kapatma davranışı: tray'e minimize et
     mainWindow.on('close', (event) => {
+        persistMainWindowStateSync(mainWindow);
         if (!app.isQuitting) {
             if (mainWindowCloseToTray) {
                 event.preventDefault();
@@ -6216,6 +6350,8 @@ function createTray() {
                 mainWindow.hide();
             } else {
                 mainWindow.show();
+                applySavedMainWindowDisplayState(mainWindow);
+                setTimeout(() => applySavedMainWindowDisplayState(mainWindow), 120);
                 mainWindow.focus();
             }
         }
@@ -8336,6 +8472,7 @@ app.on('window-all-closed', () => {
 });
 
 app.on('before-quit', () => {
+    persistMainWindowStateSync();
     clearStartupUpdateRetryTimer();
     stopVisualizer();
     unregisterGlobalMediaShortcuts();
@@ -9783,9 +9920,23 @@ ipcMain.handle('settings:save', async (event, settings) => {
 
         // Merge to preserve keys written by other windows (e.g. sfx.eq32.lastPreset)
         const merged = deepMerge(existing, incoming);
+        if (!merged.ui || typeof merged.ui !== 'object') merged.ui = {};
+        const liveMainWindowState = getMainWindowStateSnapshot(mainWindow)?.state;
+        if (liveMainWindowState) {
+            merged.ui.mainWindow = liveMainWindowState;
+        } else if (existing?.ui?.mainWindow && typeof existing.ui.mainWindow === 'object') {
+            merged.ui.mainWindow = existing.ui.mainWindow;
+        } else {
+            delete merged.ui.mainWindow;
+        }
         const sanitizedMerged = sanitizeSensitiveSettings(merged);
         const nextUiLang = normalizeUiLang(sanitizedMerged?.ui?.language) || '';
         mainWindowCloseToTray = deriveMainWindowCloseToTray(sanitizedMerged);
+        debugMainWindowStateLog('settings-save-preserve', {
+            sourcePath: getSettingsPath(),
+            incomingMainWindow: incoming?.ui?.mainWindow || null,
+            preservedMainWindow: sanitizedMerged?.ui?.mainWindow || null
+        });
         await writeJsonFileAtomic(getSettingsPath(), sanitizedMerged);
         refreshGlobalMediaShortcuts(sanitizedMerged);
 
@@ -14065,43 +14216,109 @@ ipcMain.handle('presets:search', async (event, query) => {
     }
 });
 
+async function loadEqPresetPayload(request) {
+    if (request && typeof request === 'object' && request.preset) {
+        const selectedFilename = String(request.filename || request.preset?.filename || '__preview__').trim() || '__preview__';
+        return {
+            filename: selectedFilename,
+            preset: {
+                ...(request.preset || {}),
+                bands: normalizeEq32BandsForEngine(request.preset?.bands)
+            }
+        };
+    }
+
+    const requested = String(request || '').trim();
+    if (!requested) return null;
+
+    let preset = null;
+    let selectedFilename = requested;
+
+    if (requested === '__flat__') {
+        preset = {
+            name: 'Düz (Flat)',
+            description: 'Tüm bantlar 0.0 dB',
+            category: 'ArDali',
+            preamp: 0,
+            bands: new Array(32).fill(0)
+        };
+    } else if (Object.prototype.hasOwnProperty.call(ARDALI_EQ_BUILTINS, requested)) {
+        preset = ARDALI_EQ_BUILTINS[requested];
+    } else {
+        const safeFilename = sanitizePresetFilename(requested);
+        if (!safeFilename) return null;
+        selectedFilename = safeFilename;
+        const filePath = path.join(presetsPath, safeFilename);
+        const data = await fs.promises.readFile(filePath, 'utf8');
+        preset = JSON.parse(data);
+    }
+
+    return { filename: selectedFilename, preset };
+}
+
+function applyEqPresetBandsToEngine(preset) {
+    const bands = normalizeEq32BandsForEngine(preset?.bands);
+    if (audioEngine && isNativeAudioAvailable) {
+        try {
+            if (typeof audioEngine.setEQBands === 'function') {
+                audioEngine.setEQBands(bands);
+            } else if (typeof audioEngine.setEQBand === 'function') {
+                bands.forEach((v, i) => audioEngine.setEQBand(i, v));
+            }
+        } catch {
+            // en iyi çaba
+        }
+    }
+    return bands;
+}
+
+function sendEqPresetPayloadToWindows(payload) {
+    if (soundEffectsWindow && !soundEffectsWindow.isDestroyed()) {
+        soundEffectsWindow.webContents.send('audio:eqPresetSelected', payload);
+    }
+    if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('audio:eqPresetSelected', payload);
+    }
+}
+
+ipcMain.handle('eqPresets:preview', async (_event, request) => {
+    try {
+        const payload = await loadEqPresetPayload(request);
+        if (!payload) return { success: false, error: 'preset-not-found' };
+        const previewPayload = { ...payload, preview: true };
+        applyEqPresetBandsToEngine(payload.preset);
+        sendEqPresetPayloadToWindows(previewPayload);
+        return { success: true };
+    } catch (error) {
+        console.error('EQ preset önizleme uygulanamadı:', error);
+        return { success: false, error: String(error?.message || error) };
+    }
+});
+
+ipcMain.handle('eqPresets:revertPreview', async (_event, request) => {
+    try {
+        const payload = await loadEqPresetPayload(request || '__flat__');
+        if (!payload) return { success: false, error: 'preset-not-found' };
+        const previewPayload = { ...payload, preview: true, revert: true };
+        applyEqPresetBandsToEngine(payload.preset);
+        sendEqPresetPayloadToWindows(previewPayload);
+        return { success: true };
+    } catch (error) {
+        console.error('EQ preset önizleme geri alınamadı:', error);
+        return { success: false, error: String(error?.message || error) };
+    }
+});
+
 // EQ preset seçimi (Hazır Ayarlar penceresinden)
 ipcMain.handle('eqPresets:select', async (event, filename) => {
     try {
-        const requested = String(filename || '').trim();
-        if (!requested) return null;
-
-        let preset = null;
-        let selectedFilename = requested;
-
-        if (requested === '__flat__') {
-            preset = {
-                name: 'Düz (Flat)',
-                description: 'Tüm bantlar 0.0 dB',
-                category: 'ArDali',
-                preamp: 0,
-                bands: new Array(32).fill(0)
-            };
-        } else if (Object.prototype.hasOwnProperty.call(ARDALI_EQ_BUILTINS, requested)) {
-            preset = ARDALI_EQ_BUILTINS[requested];
-        } else {
-            const safeFilename = sanitizePresetFilename(requested);
-            if (!safeFilename) {
-                return null;
-            }
-            selectedFilename = safeFilename;
-            const filePath = path.join(presetsPath, safeFilename);
-            const data = await fs.promises.readFile(filePath, 'utf8');
-            preset = JSON.parse(data);
-        }
-
-        const payload = {
-            filename: selectedFilename,
-            preset
-        };
+        const payload = await loadEqPresetPayload(filename);
+        if (!payload) return null;
+        const selectedFilename = payload.filename;
+        const preset = payload.preset;
 
         // Kalıcı olarak kaydet (tek kaynak: settings.json)
-        const bands = normalizeEq32BandsForEngine(preset?.bands);
+        const bands = applyEqPresetBandsToEngine(preset);
         const presetName = preset?.name || (selectedFilename === '__flat__' ? 'Düz (Flat)' : String(selectedFilename || ''));
 
         await updateEq32SettingsInFile({
@@ -14112,29 +14329,8 @@ ipcMain.handle('eqPresets:select', async (event, filename) => {
             }
         });
 
-        // Engine'e uygula (Ses Efektleri penceresi kapalı olsa bile geçerli olsun)
-        if (audioEngine && isNativeAudioAvailable) {
-            try {
-                if (typeof audioEngine.setEQBands === 'function') {
-                    audioEngine.setEQBands(bands);
-                } else if (typeof audioEngine.setEQBand === 'function') {
-                    bands.forEach((v, i) => audioEngine.setEQBand(i, v));
-                }
-            } catch {
-                // en iyi çaba
-            }
-        }
-
-        // Sound Effects penceresine gönder
-        if (soundEffectsWindow && !soundEffectsWindow.isDestroyed()) {
-            soundEffectsWindow.webContents.send('audio:eqPresetSelected', payload);
-            soundEffectsWindow.focus();
-        }
-
-        // Ana pencereye de gönder (ileride gerekebilir)
-        if (mainWindow && !mainWindow.isDestroyed()) {
-            mainWindow.webContents.send('audio:eqPresetSelected', payload);
-        }
+        sendEqPresetPayloadToWindows({ ...payload, preview: false, commit: true });
+        if (soundEffectsWindow && !soundEffectsWindow.isDestroyed()) soundEffectsWindow.focus();
 
         // Preset penceresini kapat
         if (eqPresetsWindow && !eqPresetsWindow.isDestroyed()) {

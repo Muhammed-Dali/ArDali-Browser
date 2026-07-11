@@ -45,8 +45,15 @@
             <button id="presetProfilePerformanceBtn" type="button" class="preset-profile-chip" data-profile="performance" aria-checked="false" role="radio">Performans</button>
         </div>
         <div id="presetProfileHint" class="preset-profile-hint" aria-live="polite"></div>
-        <div class="preset-group-chips-wrap">
-            <div id="presetGroupChips" class="preset-group-chips" role="tablist" aria-label="Hazır ayar grubu" data-i18n-aria-label="eqPresets.groupLabel">
+        <div class="preset-group-picker">
+            <button id="presetGroupMenuBtn" type="button" class="preset-group-menu-btn" aria-haspopup="true" aria-expanded="false">
+                <span id="presetGroupMenuLabel">Tümü</span>
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="m7 10 5 5 5-5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" />
+                </svg>
+            </button>
+            <div id="presetGroupMenu" class="preset-group-menu" hidden>
+                <div id="presetGroupChips" class="preset-group-chips" role="menu" aria-label="Hazır ayar grubu" data-i18n-aria-label="eqPresets.groupLabel">
                 <button type="button" class="preset-group-chip is-active" data-group="all" role="tab" aria-selected="true">
                     <span data-i18n="eqPresets.groups.all">Tümü</span>
                 </button>
@@ -83,6 +90,7 @@
                 <button type="button" class="preset-group-chip" data-group="other" role="tab" aria-selected="false">
                     <span data-i18n="eqPresets.groups.other">Diğer</span>
                 </button>
+                </div>
             </div>
         </div>
 

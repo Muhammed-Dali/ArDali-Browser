@@ -249,35 +249,6 @@ html[data-sfx-icon-size='large'] {
     --sfx-nav-row-min-h: 48px;
 }
 
-html[data-sfx-lights='rainbow'],
-html[data-sfx-lights='on'] {
-    --sfx-light-color: #22d3ee;
-}
-
-html[data-sfx-lights='cyan'] {
-    --sfx-light-color: #22d3ee;
-}
-
-html[data-sfx-lights='blue'] {
-    --sfx-light-color: #3b82f6;
-}
-
-html[data-sfx-lights='purple'] {
-    --sfx-light-color: #a855f7;
-}
-
-html[data-sfx-lights='green'] {
-    --sfx-light-color: #22c55e;
-}
-
-html[data-sfx-lights='amber'] {
-    --sfx-light-color: #f59e0b;
-}
-
-html[data-sfx-lights='red'] {
-    --sfx-light-color: #ef4444;
-}
-
 body {
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
     background-color: var(--bg-darkest);
@@ -579,46 +550,6 @@ body.rtl .action-btn .preset-name {
     background: var(--bg-medium);
     border-radius: 20px;
     border: 1px solid var(--border-medium);
-}
-
-.sfx-light-mode-control {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    min-height: 34px;
-    padding: 4px 8px 4px 12px;
-    border: 1px solid color-mix(in srgb, var(--accent-primary) 50%, var(--border-medium));
-    border-radius: 18px;
-    background: linear-gradient(180deg, rgba(20, 38, 68, 0.9), rgba(13, 25, 46, 0.95));
-    box-shadow: 0 0 14px rgba(0, 217, 255, 0.12);
-}
-
-.sfx-light-mode-label {
-    font-size: 11px;
-    font-weight: 600;
-    color: var(--text-secondary);
-    white-space: nowrap;
-}
-
-.sfx-light-mode-select {
-    min-width: 104px;
-    height: 24px;
-    padding: 0 26px 0 10px;
-    border: 1px solid color-mix(in srgb, var(--accent-primary) 48%, var(--border-dark));
-    border-radius: 12px;
-    background:
-        linear-gradient(135deg, color-mix(in srgb, var(--sfx-light-color, #00d9ff) 20%, transparent), transparent),
-        var(--bg-dark);
-    color: var(--text-primary);
-    font-size: 11px;
-    font-weight: 700;
-    outline: none;
-    cursor: pointer;
-}
-
-.sfx-light-mode-select:focus-visible {
-    border-color: var(--sfx-light-color, var(--accent-primary));
-    box-shadow: 0 0 0 2px color-mix(in srgb, var(--sfx-light-color, var(--accent-primary)) 30%, transparent);
 }
 
 .master-toggle input {

@@ -11,7 +11,6 @@ class BarAnalyzer {
         this.ROOF_HOLD = Number.isFinite(this.options.roofHold) ? this.options.roofHold : 32;
         this.FALL_DIVISOR = Number.isFinite(this.options.fallDivisor) ? this.options.fallDivisor : 20;
         this.backgroundColor = String(this.options.backgroundColor || '#12121a');
-        this.rainbow = !!this.options.rainbow;
         this.fixedBands = Number.isFinite(this.options.fixedBands)
             ? Math.max(8, Math.floor(this.options.fixedBands))
             : 0;
@@ -25,8 +24,6 @@ class BarAnalyzer {
         // Colors
         this.baseColor = { r: 0, g: 217, b: 255 }; // Default accent
         this.psychedelic = false;
-        this._colorCacheKey = '';
-        this._colorCache = [];
         
         this.resize();
         window.addEventListener('resize', () => this.resize());
@@ -80,45 +77,22 @@ class BarAnalyzer {
 
     getSfxLightMode() {
         try {
-            const mode = String(document?.documentElement?.dataset?.sfxLights || 'rainbow').toLowerCase();
-            if (['off', 'cyan', 'blue', 'purple', 'green', 'amber', 'red', 'rainbow'].includes(mode)) return mode;
+            const mode = String(document?.documentElement?.dataset?.sfxLights || 'cyan').toLowerCase();
+            if (mode === 'off') return 'off';
         } catch {
             // ignore
         }
-        return 'rainbow';
+        return 'cyan';
     }
 
     getSfxLightHue(mode) {
-        return {
-            cyan: 195,
-            blue: 220,
-            purple: 275,
-            green: 135,
-            amber: 38,
-            red: 4
-        }[mode] ?? 195;
+        return 195;
     }
 
     getBandColor(index) {
         const mode = this.getSfxLightMode();
         if (mode === 'off') return '#22d3ee';
-        if (mode !== 'rainbow') {
-            const hue = this.getSfxLightHue(mode);
-            return `hsl(${hue}, 92%, 56%)`;
-        }
-        if (!this.rainbow || this.bandCount <= 1) return this.gradient;
-        const cacheKey = `${this.bandCount}:${this.rainbow ? 1 : 0}:${mode}`;
-        if (this._colorCacheKey !== cacheKey) {
-            this._colorCacheKey = cacheKey;
-            this._colorCache = Array.from({ length: this.bandCount }, (_, i) => {
-                const t = this.bandCount <= 1 ? 0 : i / (this.bandCount - 1);
-                const hue = 180 + (140 * t);
-                return `hsl(${hue.toFixed(1)}, 92%, 56%)`;
-            });
-        }
-        if (this._colorCache[index]) return this._colorCache[index];
-        const t = index / (this.bandCount - 1);
-        const hue = 180 + (140 * t); // cyan -> magenta
+        const hue = this.getSfxLightHue(mode);
         return `hsl(${hue.toFixed(1)}, 92%, 56%)`;
     }
     
@@ -191,7 +165,7 @@ class BarAnalyzer {
             
             // Draw Roof
             if (this.roofs[i] > 0) {
-                this.ctx.fillStyle = lightsOff ? '#7dd3fc' : (this.rainbow ? this.getBandColor(i) : '#ffffff');
+                this.ctx.fillStyle = lightsOff ? '#7dd3fc' : this.getBandColor(i);
                 // Roof is a single pixel line or small block
                 this.ctx.fillRect(
                     x,

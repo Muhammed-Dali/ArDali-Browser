@@ -129,11 +129,24 @@ function registerPulseIpc({
         }
     });
     ipcMain.handle('pulse:openQueryInApp', (_event, payload = {}) => {
-        broadcast('pulse:open-query', {
+        const queryPayload = {
             query: String(payload.query || '').trim(),
             platform: String(payload.platform || 'youtube').trim().toLowerCase(),
             source: 'ardali-pulse-gui'
-        });
+        };
+        const mainWindow = typeof getMainWindow === 'function' ? getMainWindow() : null;
+        if (mainWindow && !mainWindow.isDestroyed()) {
+            try {
+                if (mainWindow.isMinimized()) mainWindow.restore();
+                mainWindow.show();
+                mainWindow.focus();
+                mainWindow.webContents.send('pulse:open-query', queryPayload);
+            } catch {
+                broadcast('pulse:open-query', queryPayload);
+            }
+        } else {
+            broadcast('pulse:open-query', queryPayload);
+        }
         return { success: true };
     });
 

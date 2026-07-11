@@ -873,6 +873,17 @@ const ardaliAPI = {
     // IPC AUDIO API (Sound Effects Window için - alias)
     ipcAudio: createAudioAPI(),
 
+
+    diagnostics: {
+        getPerformanceSnapshot: () => ipcRenderer.invoke('diagnostics:getPerformanceSnapshot')
+    },
+
+    // C++ AUDIO ENGINE API (IPC-Based)
+    audio: createAudioAPI(),
+
+    // IPC AUDIO API (Sound Effects Window için - alias)
+    ipcAudio: createAudioAPI(),
+
     // AUTOEQ PRESETS API
     presets: {
         loadPresetList: () => ipcRenderer.invoke('presets:loadList'),
@@ -884,7 +895,9 @@ const ardaliAPI = {
         // EQ Hazır Ayarlar penceresi
         openEQPresetsWindow: () => ipcRenderer.invoke('eqPresets:openWindow'),
         closeEQPresetsWindow: () => ipcRenderer.invoke('eqPresets:closeWindow'),
-        selectEQPreset: (filename) => ipcRenderer.invoke('eqPresets:select', filename)
+        selectEQPreset: (filename) => ipcRenderer.invoke('eqPresets:select', filename),
+        previewEQPreset: (filename) => ipcRenderer.invoke('eqPresets:preview', filename),
+        revertEQPresetPreview: (filename) => ipcRenderer.invoke('eqPresets:revertPreview', filename)
     },
 
     // SES EFEKTLERİ PENCERESİ API

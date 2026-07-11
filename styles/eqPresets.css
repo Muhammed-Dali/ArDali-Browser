@@ -187,7 +187,7 @@ body.rtl * {
 .preset-shell {
     height: 100%;
     display: grid;
-    grid-template-rows: auto auto auto auto auto auto 1fr auto;
+    grid-template-rows: auto auto auto auto auto 1fr auto;
     padding: 12px;
     gap: 10px;
     border: none;
@@ -399,58 +399,64 @@ html[data-ardali-theme] .preset-search-input:focus {
     color: #f2fbff;
 }
 
-.preset-group-chips {
-    display: flex;
-    flex-wrap: nowrap;
-    gap: 8px;
-    margin-top: -2px;
-    overflow-x: auto;
-    overflow-y: hidden;
-    padding: 2px 2px 4px;
-    scroll-snap-type: x proximity;
-    -webkit-overflow-scrolling: touch;
-    scrollbar-width: thin;
-    scrollbar-color: rgba(151, 177, 219, 0.35) transparent;
-    max-width: 100%;
-}
-
-.preset-group-chips-wrap {
+.preset-group-picker {
     position: relative;
-    overflow: hidden;
-    min-height: 38px;
+    min-height: 40px;
+    z-index: 8;
 }
 
-.preset-group-chips-wrap::before,
-.preset-group-chips-wrap::after {
-    content: "";
+.preset-group-menu-btn {
+    height: 38px;
+    min-width: 174px;
+    padding: 0 12px 0 16px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    border-radius: 999px;
+    border: 1px solid rgba(85, 223, 255, 0.42);
+    background: linear-gradient(90deg, rgba(57, 216, 255, 0.18), rgba(56, 230, 167, 0.10)), rgba(255, 255, 255, 0.03);
+    color: var(--text);
+    font-weight: 800;
+    font-size: 13px;
+    cursor: pointer;
+}
+
+.preset-group-menu-btn svg {
+    width: 18px;
+    height: 18px;
+    transition: transform 0.14s ease;
+}
+
+.preset-group-menu-btn[aria-expanded="true"] svg {
+    transform: rotate(180deg);
+}
+
+.preset-group-menu {
     position: absolute;
-    top: 0;
-    bottom: 0;
-    width: 24px;
-    pointer-events: none;
-    z-index: 2;
-}
-
-.preset-group-chips-wrap::before {
+    top: calc(100% + 8px);
     left: 0;
-    background: linear-gradient(90deg, rgba(10, 14, 21, 0.96), rgba(10, 14, 21, 0));
+    width: min(360px, calc(100vw - 42px));
+    padding: 8px;
+    border: 1px solid var(--stroke-strong);
+    border-radius: 14px;
+    background: color-mix(in srgb, var(--panel) 94%, #000);
+    box-shadow: 0 18px 48px rgba(0, 0, 0, 0.48);
 }
 
-html[data-ardali-theme] .preset-group-chips-wrap::before {
-    background: linear-gradient(90deg, color-mix(in srgb, var(--bg) 96%, transparent), transparent);
-}
-
-.preset-group-chips-wrap::after {
-    right: 0;
-    background: linear-gradient(270deg, rgba(10, 14, 21, 0.96), rgba(10, 14, 21, 0));
-}
-
-html[data-ardali-theme] .preset-group-chips-wrap::after {
-    background: linear-gradient(270deg, color-mix(in srgb, var(--bg) 96%, transparent), transparent);
+.preset-group-chips {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    max-height: 312px;
+    overflow-y: auto;
+    padding: 2px;
+    scrollbar-width: auto;
+    scrollbar-color: rgba(151, 177, 219, 0.55) rgba(255, 255, 255, 0.04);
 }
 
 .preset-group-chips::-webkit-scrollbar {
-    height: 7px;
+    width: 12px;
 }
 
 .preset-group-chips::-webkit-scrollbar-track {
@@ -463,7 +469,6 @@ html[data-ardali-theme] .preset-group-chips-wrap::after {
 }
 
 .preset-group-chip {
-    flex: 0 0 auto;
     height: 32px;
     padding: 0 13px;
     border-radius: 999px;
@@ -474,7 +479,6 @@ html[data-ardali-theme] .preset-group-chips-wrap::after {
     font-size: 13px;
     line-height: 1;
     white-space: nowrap;
-    scroll-snap-align: start;
     cursor: pointer;
     transition: border-color 0.14s ease, background-color 0.14s ease, color 0.14s ease, box-shadow 0.14s ease;
 }
@@ -511,6 +515,9 @@ html[data-ardali-theme] .preset-group-chips-wrap::after {
     overflow-y: auto;
     overflow-x: hidden;
     padding: 8px;
+    scroll-behavior: auto;
+    overscroll-behavior: contain;
+    scrollbar-width: auto;
 }
 
 html[data-ardali-theme] .preset-list {
@@ -524,7 +531,7 @@ html[data-ardali-theme="black"] .preset-list {
 }
 
 .preset-list::-webkit-scrollbar {
-    width: 10px;
+    width: 14px;
 }
 
 .preset-list::-webkit-scrollbar-track {
@@ -532,14 +539,14 @@ html[data-ardali-theme="black"] .preset-list {
 }
 
 .preset-list::-webkit-scrollbar-thumb {
-    background: rgba(151, 177, 219, 0.28);
+    background: rgba(151, 177, 219, 0.42);
     border: 2px solid transparent;
     border-radius: 999px;
     background-clip: content-box;
 }
 
 .preset-list::-webkit-scrollbar-thumb:hover {
-    background: rgba(151, 177, 219, 0.46);
+    background: rgba(85, 223, 255, 0.62);
     background-clip: content-box;
 }
 
@@ -752,12 +759,7 @@ html[data-ardali-theme] .preset-ok {
 
     .preset-group-chips {
         gap: 6px;
-        scroll-snap-type: x mandatory;
-    }
-
-    .preset-group-chips-wrap::before,
-    .preset-group-chips-wrap::after {
-        width: 16px;
+        grid-template-columns: 1fr;
     }
 
     .preset-group-chip {

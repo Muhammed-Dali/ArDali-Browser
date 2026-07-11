@@ -171,6 +171,59 @@ function normalizePulsePreferenceState(input) {
     };
 }
 
+function normalizeWebSearchEngine(value) {
+    const normalized = String(value || '').trim().toLowerCase();
+    return ['duckduckgo', 'google', 'brave', 'bing'].includes(normalized) ? normalized : 'duckduckgo';
+}
+
+function setCustomDropdownValue(dropdown, value) {
+    if (!dropdown) return;
+    const normalized = String(value || '').trim();
+    try {
+        dropdown.value = normalized;
+    } catch {
+        // Some custom dropdowns are plain divs; attach the value directly below.
+    }
+    dropdown.dataset.value = normalized;
+    const option = dropdown.querySelector(`.custom-dropdown-option[data-value="${normalized}"]`);
+    if (!option) return;
+    const currentIcon = dropdown.querySelector('.custom-dropdown-icon');
+    const currentText = dropdown.querySelector('.custom-dropdown-text');
+    dropdown.querySelectorAll('.custom-dropdown-option').forEach((item) => item.classList.remove('selected'));
+    option.classList.add('selected');
+    const optionIcon = option.querySelector('img');
+    const optionText = option.querySelector('span');
+    if (currentIcon && optionIcon) currentIcon.src = optionIcon.src;
+    if (currentText && optionText) currentText.textContent = optionText.textContent;
+}
+
+function syncWebSearchEngineDropdowns(value) {
+    const normalized = normalizeWebSearchEngine(value);
+    setCustomDropdownValue(elements.behaviorWebSearchEngine, normalized);
+    setCustomDropdownValue(document.getElementById('ntpWebSearchEngine'), normalized);
+}
+
+async function applyWebSearchEngineSelection(value, options = {}) {
+    const normalized = normalizeWebSearchEngine(value);
+    if (!state.settings || typeof state.settings !== 'object') state.settings = {};
+    if (!state.settings.web || typeof state.settings.web !== 'object') state.settings.web = {};
+    const changed = state.settings.web.searchEngine !== normalized;
+    state.settings.web.searchEngine = normalized;
+    syncWebSearchEngineDropdowns(normalized);
+    if (options.markDirty !== false && typeof markSettingsDirty === 'function') markSettingsDirty();
+    if (options.persist !== false && changed) {
+        await saveSettings().catch((error) => {
+            console.warn('[WEB] search engine save failed:', error?.message || error);
+        });
+    }
+    if (options.dispatch !== false) {
+        const detail = { webSearchEngine: normalized };
+        window.dispatchEvent(new CustomEvent('ardali:settings-changed', { detail }));
+        document.dispatchEvent(new CustomEvent('ardali:settings-changed', { detail }));
+    }
+    return normalized;
+}
+
 function normalizeLibraryFolderEntry(entry) {
     if (!entry || typeof entry !== 'object') return null;
     const path = String(entry.path || '').trim();
@@ -2733,13 +2786,13 @@ function cacheElements() {
 
     if (elements.behaviorWebSearchEngine) {
         const dd = elements.behaviorWebSearchEngine;
-        let currentValue = dd.value || state.settings?.web?.searchEngine || 'duckduckgo';
-        if (typeof currentValue !== 'string') currentValue = 'duckduckgo';
+        let currentValue = normalizeWebSearchEngine(dd.value || state.settings?.web?.searchEngine || 'duckduckgo');
         Object.defineProperty(dd, 'value', {
             get: function() { return currentValue; },
             set: function(val) { 
-                currentValue = val;
-                const opt = dd.querySelector(`.custom-dropdown-option[data-value="${val}"]`);
+                currentValue = normalizeWebSearchEngine(val);
+                dd.dataset.value = currentValue;
+                const opt = dd.querySelector(`.custom-dropdown-option[data-value="${currentValue}"]`);
                 if (opt) {
                     const currentIcon = dd.querySelector('.custom-dropdown-icon');
                     const currentText = dd.querySelector('.custom-dropdown-text');
@@ -2752,6 +2805,7 @@ function cacheElements() {
         });
         dd.value = currentValue;
     }
+    syncWebSearchEngineDropdowns(state.settings?.web?.searchEngine || 'duckduckgo');
 }
 
 function isPageVisible(pageEl) {
@@ -6103,27 +6157,12 @@ function setupEventListeners() {
             e.stopPropagation();
             const dd = option.closest('.custom-dropdown');
             if (dd) {
-                const val = option.dataset.value;
-                const currentIcon = dd.querySelector('.custom-dropdown-icon');
-                const currentText = dd.querySelector('.custom-dropdown-text');
-                
-                dd.value = val;
-                
+                const val = option.dataset.value || '';
+                setCustomDropdownValue(dd, val);
                 dd.classList.remove('open');
-                
-                if (dd.id === 'behaviorWebSearchEngine') {
-                    if (!state.settings || typeof state.settings !== 'object') state.settings = {};
-                    if (!state.settings.web || typeof state.settings.web !== 'object') state.settings.web = {};
-                    state.settings.web.searchEngine = val;
-                    if (typeof markSettingsDirty === 'function') markSettingsDirty();
-                    
-                    // Dispatch both ways
-                    window.dispatchEvent(new CustomEvent('ardali:settings-changed', {
-                        detail: { webSearchEngine: val }
-                    }));
-                    document.dispatchEvent(new CustomEvent('ardali:settings-changed', {
-                        detail: { webSearchEngine: val }
-                    }));
+
+                if (dd.id === 'behaviorWebSearchEngine' || dd.id === 'ntpWebSearchEngine') {
+                    applyWebSearchEngineSelection(val, { persist: true }).catch(() => {});
                 }
             }
             return;
@@ -6134,14 +6173,13 @@ function setupEventListeners() {
 
     window.addEventListener('ardali:settings-changed', (e) => {
         if (e.detail && e.detail.webSearchEngine) {
-            if (elements.behaviorWebSearchEngine && elements.behaviorWebSearchEngine.value !== e.detail.webSearchEngine) {
-                elements.behaviorWebSearchEngine.value = e.detail.webSearchEngine;
-            }
+            const nextEngine = normalizeWebSearchEngine(e.detail.webSearchEngine);
+            syncWebSearchEngineDropdowns(nextEngine);
             if (!state.settings || typeof state.settings !== 'object') state.settings = {};
             if (!state.settings.web || typeof state.settings.web !== 'object') state.settings.web = {};
             
-            if (state.settings.web.searchEngine !== e.detail.webSearchEngine) {
-                state.settings.web.searchEngine = e.detail.webSearchEngine;
+            if (state.settings.web.searchEngine !== nextEngine) {
+                state.settings.web.searchEngine = nextEngine;
                 markSettingsDirty();
             }
         }
@@ -18042,6 +18080,13 @@ function getWebPlatformBtnByName(platform) {
     return document.querySelector(`.platform-btn[data-platform="${key}"]:not([data-placeholder="true"])`);
 }
 
+function normalizePulseInAppPlatform(platform, fallback = 'youtube') {
+    const key = String(platform || '').trim().toLowerCase();
+    if (['youtube', 'ytmusic', 'deezer', 'soundcloud'].includes(key)) return key;
+    const fb = String(fallback || '').trim().toLowerCase();
+    return ['youtube', 'ytmusic', 'deezer', 'soundcloud'].includes(fb) ? fb : 'youtube';
+}
+
 function getRestorableWebUrlForPlatform(platform) {
     if (state.settings?.webUi?.restoreLastSession === false) return '';
     const key = String(platform || '').trim().toLowerCase();
@@ -18259,7 +18304,9 @@ function prepareWebUiForPulseSearch(btn) {
     switchPage('web');
     applyWebUiClasses();
     persistCurrentMainSection();
-    elements.platformBtns.forEach((b) => b.classList.remove('active'));
+    if (elements.platformBtns && typeof elements.platformBtns.forEach === 'function') {
+        elements.platformBtns.forEach((b) => b.classList.remove('active'));
+    }
     if (btn) btn.classList.add('active');
     pulseSearchDebug('prepareWebUiForPulseSearch', {
         platform: String(btn?.dataset?.platform || ''),
@@ -18355,14 +18402,8 @@ async function routePulseResultToInAppPlatform(result) {
     pulseQuickRuntime.lastFingerprint = fingerprint;
     pulseQuickRuntime.lastAt = now;
 
-    const preferredOpenPlatform = getPulseOpenPlatformPreference();
-    const btn = getWebPlatformBtnByName(preferredOpenPlatform)
-        || getWebPlatformBtnByName('youtube')
-        || getWebPlatformBtnByName('ytmusic')
-        || getPreferredWebPlatformBtn();
-    if (!btn) return;
-
-    const platform = String(btn.dataset.platform || '').toLowerCase();
+    const platform = normalizePulseInAppPlatform(getPulseOpenPlatformPreference(), 'youtube');
+    const btn = getWebPlatformBtnByName(platform);
     const searchUrl = buildPulseSearchUrl(platform, query);
 
     try {
@@ -18499,17 +18540,13 @@ function addPulseFoundResult(result) {
 async function routePulseQueryToInAppPlatform(payload) {
     const query = String(payload?.query || '').trim();
     if (!query) return;
-    const preferredPlatform = String(payload?.platform || '').trim().toLowerCase();
+    const preferredPlatform = normalizePulseInAppPlatform(payload?.platform, 'youtube');
     // Bu akış kullanıcı tıklamasıyla tetiklenir; dedupe uygulanmamalı.
     pulseQuickRuntime.lastFingerprint = `${preferredPlatform}|manual|${query.toLowerCase()}`;
     pulseQuickRuntime.lastAt = Date.now();
 
-    const btn = getWebPlatformBtnByName(preferredPlatform)
-        || getWebPlatformBtnByName('youtube')
-        || getWebPlatformBtnByName('ytmusic')
-        || getPreferredWebPlatformBtn();
-    if (!btn) return;
-    const platform = String(btn.dataset.platform || '').toLowerCase();
+    const platform = preferredPlatform;
+    const btn = getWebPlatformBtnByName(platform);
     const searchUrl = buildPulseSearchUrl(platform, query);
     try {
         pulseSearchDebug('routeQuery:start', { platform, query, searchUrl, payloadPlatform: preferredPlatform });
@@ -44652,19 +44689,7 @@ function resetBehaviorDefaults() {
 }
 
 function resetWebDefaults() {
-    if (elements.behaviorWebSearchEngine) {
-        elements.behaviorWebSearchEngine.value = 'duckduckgo';
-        const dd = elements.behaviorWebSearchEngine;
-        const opt = dd.querySelector('.custom-dropdown-option[data-value="duckduckgo"]');
-        if (opt) {
-            const currentIcon = dd.querySelector('.custom-dropdown-icon');
-            const currentText = dd.querySelector('.custom-dropdown-text');
-            dd.querySelectorAll('.custom-dropdown-option').forEach(o => o.classList.remove('selected'));
-            opt.classList.add('selected');
-            if (currentIcon && opt.querySelector('img')) currentIcon.src = opt.querySelector('img').src;
-            if (currentText && opt.querySelector('span')) currentText.textContent = opt.querySelector('span').textContent;
-        }
-    }
+    syncWebSearchEngineDropdowns('duckduckgo');
     if (elements.behaviorWebExperienceEnabled) elements.behaviorWebExperienceEnabled.checked = true;
     if (elements.behaviorWebStartupDelay) elements.behaviorWebStartupDelay.value = '0';
     if (elements.libraryWebStartupDelay) elements.libraryWebStartupDelay.value = '0';
@@ -44697,8 +44722,10 @@ function resetWebDefaults() {
     if (browserNavigationHotkeysEnabled) browserNavigationHotkeysEnabled.checked = true;
     if (!state.settings || typeof state.settings !== 'object') state.settings = {};
     if (!state.settings.ui || typeof state.settings.ui !== 'object') state.settings.ui = {};
+    if (!state.settings.web || typeof state.settings.web !== 'object') state.settings.web = {};
     if (!state.settings.webUi || typeof state.settings.webUi !== 'object') state.settings.webUi = {};
     if (!state.settings.security || typeof state.settings.security !== 'object') state.settings.security = {};
+    state.settings.web.searchEngine = 'duckduckgo';
     state.settings.ui.webExperienceEnabled = !!elements.behaviorWebExperienceEnabled?.checked;
     state.settings.ui.webStartupLazyDelayMs = 0;
     state.settings.ui.webStartupDelayManual = true;
@@ -45806,6 +45833,19 @@ let visualizerProjectMRunning = false;
 let projectMExternalFeedPhase = 0;
 let projectMExternalFeedLastAt = 0;
 let projectMExternalFeedSentAt = 0;
+let visualizerAnimationLastAt = 0;
+let visualizerAnimationDelta = 1;
+
+function beginVisualizerAnimationFrame() {
+    const now = performance.now();
+    const elapsed = visualizerAnimationLastAt ? (now - visualizerAnimationLastAt) : 16.6667;
+    visualizerAnimationLastAt = now;
+    visualizerAnimationDelta = Math.max(0.55, Math.min(3.2, elapsed / 16.6667));
+}
+
+function getVisualizerAnimationDelta() {
+    return Math.max(0.55, Math.min(3.2, Number(visualizerAnimationDelta) || 1));
+}
 
 function getVisualizerReleaseDropMultiplier() {
     if (!visualizerReleaseState) return 1;
@@ -46009,7 +46049,7 @@ const BarAnalyzer = {
 
         // Psikedelik mod için hue güncelle
         if (this.psychedelicEnabled) {
-            this.hueOffset = (this.hueOffset + 0.5) % 360;
+            this.hueOffset = (this.hueOffset + (1.45 * getVisualizerAnimationDelta())) % 360;
         }
 
         // Bant sayısına uyması için spektrum verisini enterpole et
@@ -46024,9 +46064,10 @@ const BarAnalyzer = {
             y2 = this.lvlMapper[Math.min(y2, 255)];
 
             // Yumuşak düşüş
+            const downStep = Math.max(Math.abs(this.maxDown), 1) * 1.9 * getVisualizerAnimationDelta();
             const change = y2 - this.barVector[i];
-            if (change < this.maxDown) {
-                y2 = this.barVector[i] + this.maxDown;
+            if (change < -downStep) {
+                y2 = this.barVector[i] - downStep;
             }
 
             // Tavanı güncelle (peak göstergesi)
@@ -46076,7 +46117,7 @@ const BarAnalyzer = {
                     this.roofVector[i] = 0;
                     this.roofVelocityVector[i] = 0;
                 } else {
-                    this.roofVelocityVector[i]++;
+                    this.roofVelocityVector[i] += Math.max(1, Math.round(1.35 * getVisualizerAnimationDelta()));
                 }
             }
         }
@@ -46094,7 +46135,7 @@ const BarAnalyzer = {
             ctx.fillRect(x, canvas.height - 3, this.COLUMN_WIDTH, 3);
         }
 
-        this.hueOffset = (this.hueOffset + 0.2) % 360;
+        this.hueOffset = (this.hueOffset + (0.45 * getVisualizerAnimationDelta())) % 360;
     },
 
     // Spektrum verisini enterpole et
@@ -46173,7 +46214,7 @@ const BlockAnalyzer = {
         }
 
         if (VisualizerSettings.psychedelicEnabled) {
-            this.hueOffset = (this.hueOffset + 0.5) % 360;
+            this.hueOffset = (this.hueOffset + (1.25 * getVisualizerAnimationDelta())) % 360;
         }
 
         // Interpolate spectrum
@@ -46228,7 +46269,7 @@ const BlockAnalyzer = {
             ctx.fillStyle = `hsla(${hue}, 100%, 50%, 0.3)`;
             ctx.fillRect(xPos, canvas.height - this.BLOCK_HEIGHT, this.BLOCK_WIDTH, this.BLOCK_HEIGHT);
         }
-        this.hueOffset = (this.hueOffset + 0.2) % 360;
+        this.hueOffset = (this.hueOffset + (0.45 * getVisualizerAnimationDelta())) % 360;
     },
 
     interpolateSpectrum(data, targetSize) {
@@ -46300,7 +46341,7 @@ const BoomAnalyzer = {
         }
 
         if (VisualizerSettings.psychedelicEnabled) {
-            this.hueOffset = (this.hueOffset + 0.5) % 360;
+            this.hueOffset = (this.hueOffset + (1.25 * getVisualizerAnimationDelta())) % 360;
         }
 
         const scope = this.interpolateSpectrum(spectrumData, this.bandCount);
@@ -46319,7 +46360,7 @@ const BoomAnalyzer = {
                 }
             } else {
                 if (this.barHeight[i] > 0) {
-                    this.barHeight[i] -= this.K_BAR_HEIGHT * getVisualizerReleaseDropMultiplier();
+                    this.barHeight[i] -= this.K_BAR_HEIGHT * 1.85 * getVisualizerAnimationDelta() * getVisualizerReleaseDropMultiplier();
                     if (this.barHeight[i] < 0) this.barHeight[i] = 0;
                 }
             }
@@ -46327,7 +46368,7 @@ const BoomAnalyzer = {
             // Peak handling
             if (this.peakHeight[i] > 0) {
                 this.peakHeight[i] -= this.peakSpeed[i];
-                this.peakSpeed[i] *= this.F_PEAK_SPEED;
+                this.peakSpeed[i] *= Math.pow(this.F_PEAK_SPEED, Math.max(1, getVisualizerAnimationDelta() * 1.4));
                 if (this.peakHeight[i] < this.barHeight[i]) {
                     this.peakHeight[i] = this.barHeight[i];
                 }
@@ -46372,7 +46413,7 @@ const BoomAnalyzer = {
             ctx.fillStyle = `hsla(${hue}, 100%, 50%, 0.3)`;
             ctx.fillRect(x, canvas.height - 3, this.COLUMN_WIDTH, 3);
         }
-        this.hueOffset = (this.hueOffset + 0.2) % 360;
+        this.hueOffset = (this.hueOffset + (0.45 * getVisualizerAnimationDelta())) % 360;
     },
 
     interpolateSpectrum(data, targetSize) {
@@ -46397,6 +46438,7 @@ function getEffectiveVisualizerFps() {
     // Kullanıcının seçtiği FPS ayarlar penceresi açıkken de korunur.
     if (!isVisualizerReactiveMediaMode() || !isVisualizerMediaPlayingNow()) return Math.min(configured, profile.idleVisualizerFps);
     if (VisualizerSettings.currentAnalyzer === 'none') return 2;
+    if (configured >= 60) return 60;
     if (profile.visualMode === 'full') return configured;
     return Math.min(configured, profile.activeVisualizerFps);
 }
@@ -46562,6 +46604,7 @@ async function runVisualizerTick() {
 
     visualizerInFlight = true;
     try {
+        beginVisualizerAnimationFrame();
         if (state.activeMedia !== 'audio') {
             visualizerReleaseFrame = null;
             visualizerReleaseState = null;
@@ -46608,7 +46651,7 @@ const BoomNoLineAnalyzer = {
         }
 
         if (VisualizerSettings.psychedelicEnabled) {
-            this.hueOffset = (this.hueOffset + 0.5) % 360;
+            this.hueOffset = (this.hueOffset + (1.25 * getVisualizerAnimationDelta())) % 360;
         }
 
         const scope = this.interpolateSpectrum(spectrumData, this.bandCount);
@@ -46622,7 +46665,7 @@ const BoomNoLineAnalyzer = {
             if (h > this.barHeight[i]) {
                 this.barHeight[i] = h;
             } else if (this.barHeight[i] > 0) {
-                this.barHeight[i] -= this.K_BAR_HEIGHT * getVisualizerReleaseDropMultiplier();
+                this.barHeight[i] -= this.K_BAR_HEIGHT * 1.85 * getVisualizerAnimationDelta() * getVisualizerReleaseDropMultiplier();
                 if (this.barHeight[i] < 0) this.barHeight[i] = 0;
             }
 
@@ -46700,7 +46743,7 @@ const TurbineAnalyzer = {
         }
 
         if (VisualizerSettings.psychedelicEnabled) {
-            this.hueOffset = (this.hueOffset + 0.5) % 360;
+            this.hueOffset = (this.hueOffset + (1.25 * getVisualizerAnimationDelta())) % 360;
         }
 
         const scope = this.interpolateSpectrum(spectrumData, this.bandCount);
@@ -46719,14 +46762,14 @@ const TurbineAnalyzer = {
                 }
             } else {
                 if (this.barHeight[i] > 0) {
-                    this.barHeight[i] -= this.K_BAR_HEIGHT * getVisualizerReleaseDropMultiplier();
+                    this.barHeight[i] -= this.K_BAR_HEIGHT * 1.85 * getVisualizerAnimationDelta() * getVisualizerReleaseDropMultiplier();
                     if (this.barHeight[i] < 0) this.barHeight[i] = 0;
                 }
             }
 
             if (this.peakHeight[i] > 0) {
                 this.peakHeight[i] -= this.peakSpeed[i];
-                this.peakSpeed[i] *= this.F_PEAK_SPEED;
+                this.peakSpeed[i] *= Math.pow(this.F_PEAK_SPEED, Math.max(1, getVisualizerAnimationDelta() * 1.4));
                 this.peakHeight[i] = Math.max(0, Math.max(this.barHeight[i], this.peakHeight[i]));
             }
 
@@ -46780,7 +46823,7 @@ const TurbineAnalyzer = {
             ctx.fillStyle = `hsla(${hue}, 100%, 50%, 0.3)`;
             ctx.fillRect(x, hd2 - 2, this.COLUMN_WIDTH, 4);
         }
-        this.hueOffset = (this.hueOffset + 0.2) % 360;
+        this.hueOffset = (this.hueOffset + (0.45 * getVisualizerAnimationDelta())) % 360;
     },
 
     interpolateSpectrum(data, targetSize) {
@@ -46867,7 +46910,7 @@ const SonogramAnalyzer = {
             }
         } else {
             if (VisualizerSettings.psychedelicEnabled) {
-                this.hueOffset = (this.hueOffset + 0.5) % 360;
+                this.hueOffset = (this.hueOffset + (1.25 * getVisualizerAnimationDelta())) % 360;
             }
 
             const scope = this.interpolateSpectrum(spectrumData, height);
@@ -46978,7 +47021,7 @@ const RainbowDashAnalyzer = {
         ctx.fillStyle = '#121212';
         ctx.fillRect(0, 0, width, height);
 
-        this.hueOffset = (this.hueOffset + 2) % 360;
+        this.hueOffset = (this.hueOffset + (3.2 * getVisualizerAnimationDelta())) % 360;
         this.waveOffset += 0.1;
 
         const scope = isPlaying && spectrumData
@@ -46994,7 +47037,8 @@ const RainbowDashAnalyzer = {
             if (targetHeight < 5) targetHeight = 5;
 
             // Smooth animation
-            this.barHeight[i] += (targetHeight - this.barHeight[i]) * 0.3;
+            const alpha = Math.min(0.78, 0.46 * getVisualizerAnimationDelta());
+            this.barHeight[i] += (targetHeight - this.barHeight[i]) * alpha;
 
             const barH = this.barHeight[i];
             const y = height - barH;
@@ -47099,9 +47143,9 @@ const NyanalyzerCatAnalyzer = {
         ctx.fillRect(0, 0, width, height);
 
         // Draw moving stars
-        this.hueOffset = (this.hueOffset + 1) % 360;
+        this.hueOffset = (this.hueOffset + (2.1 * getVisualizerAnimationDelta())) % 360;
         for (const star of this.starPositions) {
-            star.x -= star.speed;
+            star.x -= star.speed * 1.8 * getVisualizerAnimationDelta();
             if (star.x < 0) star.x = width;
 
             ctx.fillStyle = `rgba(255, 255, 255, ${0.5 + Math.sin(Date.now() / 200 + star.x) * 0.3})`;
@@ -47120,7 +47164,8 @@ const NyanalyzerCatAnalyzer = {
             let targetHeight = scope[i] * height * 0.7;
             if (targetHeight < 3) targetHeight = 3;
 
-            this.barHeight[i] += (targetHeight - this.barHeight[i]) * 0.25;
+            const alpha = Math.min(0.72, 0.42 * getVisualizerAnimationDelta());
+            this.barHeight[i] += (targetHeight - this.barHeight[i]) * alpha;
 
             const barH = this.barHeight[i];
             const y = height - barH;
@@ -47718,7 +47763,7 @@ function makeAudioLevelFallbackBands(levels, targetCount = 128) {
 
     const count = Math.max(32, Math.min(192, Number(targetCount) || 128));
     const out = new Array(count);
-    audioVisualizerFallbackPhase = (audioVisualizerFallbackPhase + 0.17) % (Math.PI * 2);
+    audioVisualizerFallbackPhase = (audioVisualizerFallbackPhase + (0.34 * getVisualizerAnimationDelta())) % (Math.PI * 2);
     for (let i = 0; i < count; i++) {
         const x = i / Math.max(1, count - 1);
         const bassShape = Math.pow(1 - x, 1.7);
@@ -49919,29 +49964,11 @@ document.addEventListener('DOMContentLoaded', () => {
 window.handleCustomDropdownOptionClick = function(option) {
     const dd = option.closest('.custom-dropdown');
     if (dd) {
-        const val = option.dataset.value;
-        dd.value = val;
-        
-        const currentIcon = dd.querySelector('.custom-dropdown-icon');
-        const currentText = dd.querySelector('.custom-dropdown-text');
-        dd.querySelectorAll('.custom-dropdown-option').forEach(o => o.classList.remove('selected'));
-        option.classList.add('selected');
-        if (currentIcon && option.querySelector('img')) currentIcon.src = option.querySelector('img').src;
-        if (currentText && option.querySelector('span')) currentText.textContent = option.querySelector('span').textContent;
-
+        const val = option.dataset.value || '';
+        setCustomDropdownValue(dd, val);
         dd.classList.remove('open');
-        if (dd.id === 'behaviorWebSearchEngine') {
-            if (!state.settings || typeof state.settings !== 'object') state.settings = {};
-            if (!state.settings.web || typeof state.settings.web !== 'object') state.settings.web = {};
-            state.settings.web.searchEngine = val;
-            if (typeof markSettingsDirty === 'function') markSettingsDirty();
-            
-            window.dispatchEvent(new CustomEvent('ardali:settings-changed', {
-                detail: { webSearchEngine: val }
-            }));
-            document.dispatchEvent(new CustomEvent('ardali:settings-changed', {
-                detail: { webSearchEngine: val }
-            }));
+        if (dd.id === 'behaviorWebSearchEngine' || dd.id === 'ntpWebSearchEngine') {
+            applyWebSearchEngineSelection(val, { persist: true }).catch(() => {});
         }
     }
 };

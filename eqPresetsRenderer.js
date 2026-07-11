@@ -46,6 +46,9 @@ const state = {
     all: [],
     filtered: [],
     selected: null,
+    initialPreset: null,
+    confirmed: false,
+    isInitializing: true,
     renderedCount: 0,
     bandsCache: new Map(),
     loadingBands: new Set(),
@@ -179,6 +182,22 @@ function syncActiveGroupChip() {
         const isActive = chip?.dataset?.group === (state.selectedGroup || 'all');
         chip.classList.toggle('is-active', isActive);
         chip.setAttribute('aria-selected', isActive ? 'true' : 'false');
+        
+        if (isActive) {
+            const labelEl = document.getElementById('presetGroupMenuLabel');
+            if (labelEl) {
+                const textSpan = chip.querySelector('span');
+                if (textSpan) {
+                    labelEl.textContent = textSpan.textContent;
+                    const i18nKey = textSpan.getAttribute('data-i18n');
+                    if (i18nKey) {
+                        labelEl.setAttribute('data-i18n', i18nKey);
+                    } else {
+                        labelEl.removeAttribute('data-i18n');
+                    }
+                }
+            }
+        }
     });
 }
 
@@ -905,6 +924,18 @@ function selectPreset(filename) {
         const c = el.querySelector('.preset-check');
         if (c) c.classList.toggle('checked', isSel);
     });
+
+    if (!state.isInitializing) {
+        try {
+            if (ardali?.presets?.previewEQPreset) {
+                ardali.presets.previewEQPreset(filename);
+            } else if (ardali?.presets?.selectEQPreset) {
+                ardali.presets.selectEQPreset(filename);
+            }
+        } catch {
+            // yoksay
+        }
+    }
 }
 
 function setEmpty(message) {
@@ -1046,9 +1077,14 @@ function focusSelected() {
 
     // Sağlam kaydırma: pencereyi değil liste kapsayıcısını kaydır
     const scrollToCenter = () => {
-        const top = row.offsetTop - (list.clientHeight / 2) + (row.offsetHeight / 2);
-        const maxTop = Math.max(0, list.scrollHeight - list.clientHeight);
-        list.scrollTop = Math.min(maxTop, Math.max(0, top));
+        try {
+            row.scrollIntoView({ behavior: 'auto', block: 'center' });
+        } catch (e) {
+            // Tarayıcı desteklemiyorsa fallback (eski yöntem)
+            const top = row.offsetTop - (list.clientHeight / 2) + (row.offsetHeight / 2);
+            const maxTop = Math.max(0, list.scrollHeight - list.clientHeight);
+            list.scrollTop = Math.min(maxTop, Math.max(0, top));
+        }
     };
 
     // Artımlı render sonrası yerleşim için 1-2 frame bekle
@@ -1056,19 +1092,10 @@ function focusSelected() {
 }
 
 function ensureSelectedNotFilteredOut() {
-    if (!state.selected) return;
-    const inFiltered = state.filtered.some(p => p?.filename === state.selected);
-    if (inFiltered) return;
-
-    // Seçili preset grup filtresi nedeniyle görünmüyorsa:
-    // Filtreyi bozmadan (dropdown'u "Tümü"ne geri almadan) listeden ilk preset'i seç.
-    const first = (state.filtered || []).find(p => p?.filename) || null;
-    if (!first) {
-        state.selected = null;
-        return;
-    }
-    state.selected = first.filename;
-    try { selectPreset(state.selected); } catch { }
+    // Kullanıcı talebi üzerine: Grup değiştirildiğinde veya arama yapıldığında
+    // otomatik olarak listedeki ilk preset'in seçilmesi İPTAL EDİLDİ.
+    // Artık gizlenmiş olsa bile kullanıcının önceki seçimi korunuyor.
+    return;
 }
 
 function renderList(presets) {
@@ -1152,6 +1179,15 @@ async function init() {
         return;
     }
 
+    try {
+        const savedGroup = localStorage.getItem('ardali_eq_presets_group_v1');
+        if (savedGroup) {
+            state.selectedGroup = savedGroup;
+        }
+    } catch {
+        // yoksay
+    }
+
     await applyEqPresetPerformanceProfile();
     let savedProfile = 'balanced';
     try {
@@ -1184,6 +1220,7 @@ async function init() {
     } catch (e) {
         console.warn('[EQ PRESETS] Ayar okunamadı:', e);
     }
+    state.initialPreset = state.selected || '__flat__';
 
     // Tüm AutoEQ presetlerini yükle (tek pencerede göster)
     try {
@@ -1198,26 +1235,79 @@ async function init() {
         state.all = [...base, ...taggedAuto];
         state.totalCount = state.all.length;
 
-        renderList(filterByGroup(state.all));
         if (!state.selected) state.selected = '__flat__';
+        
+        // Seçili preset mevcut grupta yoksa grubunu "Tümü" veya kendi grubuna al
+        const selectedObj = state.all.find(p => p?.filename === state.selected);
+        if (selectedObj && state.selectedGroup !== 'all') {
+            if (!selectedObj.groups?.includes(state.selectedGroup)) {
+                state.selectedGroup = selectedObj.groups?.[0] || 'all';
+                syncActiveGroupChip();
+            }
+        }
+
+        renderList(filterByGroup(state.all));
         selectPreset(state.selected);
-        ensureSelectedNotFilteredOut();
         focusSelected();
     } catch {
         setStatus(tSync('eqPresets.loadError', null, 'AutoEQ yüklenemedi (loglara bakın).'));
         renderList(state.featured);
         if (!state.selected) state.selected = '__flat__';
+        
+        const selectedObj = state.featured.find(p => p?.filename === state.selected);
+        if (selectedObj && state.selectedGroup !== 'all') {
+            if (!selectedObj.groups?.includes(state.selectedGroup)) {
+                state.selectedGroup = selectedObj.groups?.[0] || 'all';
+                syncActiveGroupChip();
+            }
+        }
+        
         selectPreset(state.selected);
-        ensureSelectedNotFilteredOut();
         focusSelected();
     }
 
+    // Menü aç/kapat mantığı
+    const groupMenuBtn = document.getElementById('presetGroupMenuBtn');
+    const groupMenu = document.getElementById('presetGroupMenu');
+    groupMenuBtn?.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const isHidden = groupMenu?.hasAttribute('hidden');
+        if (isHidden) {
+            groupMenu.removeAttribute('hidden');
+            groupMenuBtn.setAttribute('aria-expanded', 'true');
+        } else {
+            groupMenu?.setAttribute('hidden', '');
+            groupMenuBtn.setAttribute('aria-expanded', 'false');
+        }
+    });
+    document.addEventListener('click', (e) => {
+        if (!groupMenuBtn?.contains(e.target) && !groupMenu?.contains(e.target)) {
+            groupMenu?.setAttribute('hidden', '');
+            groupMenuBtn?.setAttribute('aria-expanded', 'false');
+        }
+    });
+
     // Grup chip seçimi
     syncActiveGroupChip();
+    // Başlangıçta seçili chip'i görünür alana kaydır
+    try {
+        const activeChip = groupChips?.querySelector('.preset-group-chip.is-active');
+        if (activeChip) {
+            activeChip.scrollIntoView({ behavior: 'auto', block: 'nearest', inline: 'center' });
+        }
+    } catch {
+        // yoksay
+    }
+
     groupChips?.addEventListener('click', async (e) => {
         const chip = e.target?.closest?.('.preset-group-chip');
         if (!chip) return;
         const nextGroup = chip.dataset.group || 'all';
+        
+        // Menüyü kapat
+        groupMenu?.setAttribute('hidden', '');
+        groupMenuBtn?.setAttribute('aria-expanded', 'false');
+
         if (nextGroup === state.selectedGroup) return;
         try {
             chip.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
@@ -1225,6 +1315,11 @@ async function init() {
             // yoksay
         }
         state.selectedGroup = nextGroup;
+        try {
+            localStorage.setItem('ardali_eq_presets_group_v1', nextGroup);
+        } catch {
+            // yoksay
+        }
         syncActiveGroupChip();
         await runSearch(search?.value || '');
     });
@@ -1256,6 +1351,7 @@ async function init() {
     }
 
     okBtn?.addEventListener('click', async () => {
+        state.confirmed = true;
         const filename = state.selected || '__flat__';
         try {
             await ardali.presets.selectEQPreset(filename);
@@ -1265,9 +1361,27 @@ async function init() {
         window.close();
     });
 
+    window.addEventListener('beforeunload', () => {
+        if (!state.confirmed && state.initialPreset) {
+            if (state.selected !== state.initialPreset) {
+                try {
+                    if (ardali?.presets?.revertEQPresetPreview) {
+                        ardali.presets.revertEQPresetPreview(state.initialPreset);
+                    } else if (ardali?.presets?.selectEQPreset) {
+                        ardali?.presets?.selectEQPreset?.(state.initialPreset);
+                    }
+                } catch {
+                    // yoksay
+                }
+            }
+        }
+    });
+
     if (list) {
         Array.from(list.querySelectorAll('.preset-item')).slice(0, 8).forEach(enqueuePreviewHydration);
     }
+
+    state.isInitializing = false;
 }
 
 document.addEventListener('DOMContentLoaded', () => {

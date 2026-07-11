@@ -15,7 +15,7 @@ class ColorKnob {
         this.wheelDebounceMs = Number.isFinite(config.wheelDebounceMs) ? Math.max(24, config.wheelDebounceMs) : 72;
         this.wheelLiveNotify = config.wheelLiveNotify === true;
         const perf = (typeof window !== 'undefined' && window.__ARDALI_SFX_PERF__) || {};
-        this.animatedHue = config.animatedHue !== false && perf.lowPower !== true;
+        this.animatedHue = config.animatedHue === true && perf.lowPower !== true;
         this.frameMs = Number(config.frameMs || perf.widgetFrameMs || 33) || 33;
         this.lastDrawTime = 0;
         // Drag sensitivity: if set, dragging across this many pixels covers full range
@@ -386,35 +386,23 @@ class ColorKnob {
         return `rgba(${r}, ${g}, ${b}, ${a / 255})`;
     }
     
-    rainbowColor(t, alpha, sat, val) {
-        t = Math.max(0, Math.min(t, 1));
+    accentColor(t, alpha, sat, val) {
         const mode = this.getSfxLightMode();
-        if (mode === 'off') return this.hsvToRgb(195, sat, val, alpha);
-        if (mode !== 'rainbow') return this.hsvToRgb(this.getSfxLightHue(mode), sat, val, alpha);
-        // float hue = fmod(m_shift * 360.0f + t * 300.0f, 360.0f);
-        let hue = (this.shift * 360 + t * 300) % 360;
-        return this.hsvToRgb(hue, sat, val, alpha);
+        return this.hsvToRgb(this.getSfxLightHue(mode), sat, val, alpha);
     }
 
     getSfxLightMode() {
         try {
-            const mode = String(document?.documentElement?.dataset?.sfxLights || 'rainbow').toLowerCase();
-            if (['off', 'cyan', 'blue', 'purple', 'green', 'amber', 'red', 'rainbow'].includes(mode)) return mode;
+            const mode = String(document?.documentElement?.dataset?.sfxLights || 'cyan').toLowerCase();
+            if (mode === 'off') return 'off';
         } catch {
             // ignore
         }
-        return 'rainbow';
+        return 'cyan';
     }
 
     getSfxLightHue(mode) {
-        return {
-            cyan: 195,
-            blue: 220,
-            purple: 275,
-            green: 135,
-            amber: 38,
-            red: 4
-        }[mode] ?? 195;
+        return 195;
     }
 
     isSfxLightsOff() {
@@ -508,7 +496,7 @@ class ColorKnob {
         
         const degToRad = (d) => d * (Math.PI / 180);
         
-        ctx.lineWidth = 6; // Thinner rainbow track (was 8)
+        ctx.lineWidth = 6;
         ctx.lineCap = 'round';
         
         // Draw background segments (Full Range)
@@ -525,7 +513,7 @@ class ColorKnob {
             
             ctx.arc(cx, cy, arcRadius, degToRad(angleStart), degToRad(angleEnd)); // Canvas is CW
             
-            // Background is now dark solid, not rainbow
+            // Background is dark solid.
             ctx.strokeStyle = "rgba(40, 40, 40, 0.6)";
             ctx.stroke();
         }
@@ -544,7 +532,7 @@ class ColorKnob {
             const angleStart = startAngleDeg + (i * segSpan);
             const angleEnd = angleStart + segSpan - 1; // Gap
             ctx.arc(cx, cy, arcRadius, degToRad(angleStart), degToRad(angleEnd));
-            ctx.strokeStyle = this.rainbowColor(t, 235, 235, 255);
+            ctx.strokeStyle = this.accentColor(t, 235, 235, 255);
             ctx.stroke();
         }
         
@@ -558,7 +546,7 @@ class ColorKnob {
             // Handle very small segments
             if (angleEnd > angleStart) {
                 ctx.arc(cx, cy, arcRadius, degToRad(angleStart), degToRad(angleEnd));
-                ctx.strokeStyle = this.rainbowColor(t, 235, 235, 255);
+                ctx.strokeStyle = this.accentColor(t, 235, 235, 255);
                 ctx.stroke();
             }
         }
@@ -590,17 +578,16 @@ class ColorKnob {
         // QRadialGradient glow(dotPos, dotRadius + 8)
         const glowR = dotRadius + 8;
         const grad = ctx.createRadialGradient(dotX, dotY, 0, dotX, dotY, glowR);
-        const dotColorBase = this.rainbowColor(valNorm, 255, 235, 255); 
+        const dotColorBase = this.accentColor(valNorm, 255, 235, 255);
         // Need to parse RGB to add alpha for gradient
         // Assuming hsvToRgb returns rgba(r,g,b, a)
         
-        // Let's modify rainbowColor to return object or helper
-        // Quick dirty parsing or pass alpha to rainbowColor custom
+        // Keep rgba parsing local to avoid changing the drawing helper signature.
         
         // dotColor with glow alpha
         let glowAlpha = this.isDragging ? 235 : (this.isHovered ? 205 : 170);
-        const glowColorStr = this.rainbowColor(valNorm, glowAlpha, 235, 255);
-        const glowColorEnd = this.rainbowColor(valNorm, 0, 235, 255);
+        const glowColorStr = this.accentColor(valNorm, glowAlpha, 235, 255);
+        const glowColorEnd = this.accentColor(valNorm, 0, 235, 255);
         
         grad.addColorStop(0, glowColorStr);
         grad.addColorStop(1, glowColorEnd);
@@ -615,7 +602,7 @@ class ColorKnob {
         ctx.beginPath();
         ctx.arc(dotX, dotY, dotRadius, 0, 2 * Math.PI);
         ctx.lineWidth = ringW;
-        ctx.strokeStyle = this.rainbowColor(valNorm, 255, 235, 255);
+        ctx.strokeStyle = this.accentColor(valNorm, 255, 235, 255);
         ctx.fillStyle = "rgba(18, 18, 18, 0.92)"; // 235 alpha
         ctx.fill();
         ctx.stroke();

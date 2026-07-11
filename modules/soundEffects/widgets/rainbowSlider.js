@@ -11,7 +11,7 @@ class RainbowSlider {
         this.wheelStep = config.wheelStep || 0.5;
         this.frequency = config.frequency;
         const perf = (typeof window !== 'undefined' && window.__ARDALI_SFX_PERF__) || {};
-        this.animatedHue = config.animatedHue !== false && perf.lowPower !== true;
+        this.animatedHue = config.animatedHue === true && perf.lowPower !== true;
         this.frameMs = Number(config.frameMs || perf.widgetFrameMs || 33) || 33;
         this.lastDrawTime = 0;
 
@@ -320,31 +320,21 @@ class RainbowSlider {
     
     colorAtRatio(r, alpha = 255, s = 220, v = 255) {
         const mode = this.getSfxLightMode();
-        if (mode === 'off') return this.hsvToRgb(195, 220, 255, alpha);
-        if (mode !== 'rainbow') return this.hsvToRgb(this.getSfxLightHue(mode), s, v, alpha);
-        let hue = (this.shift * 360.0 + Math.max(0, Math.min(r, 1)) * 300.0) % 360.0;
-        return this.hsvToRgb(hue, s, v, alpha);
+        return this.hsvToRgb(this.getSfxLightHue(mode), s, v, alpha);
     }
 
     getSfxLightMode() {
         try {
-            const mode = String(document?.documentElement?.dataset?.sfxLights || 'rainbow').toLowerCase();
-            if (['off', 'cyan', 'blue', 'purple', 'green', 'amber', 'red', 'rainbow'].includes(mode)) return mode;
+            const mode = String(document?.documentElement?.dataset?.sfxLights || 'cyan').toLowerCase();
+            if (mode === 'off') return 'off';
         } catch {
             // ignore
         }
-        return 'rainbow';
+        return 'cyan';
     }
 
     getSfxLightHue(mode) {
-        return {
-            cyan: 195,
-            blue: 220,
-            purple: 275,
-            green: 135,
-            amber: 38,
-            red: 4
-        }[mode] ?? 195;
+        return 195;
     }
 
     isSfxLightsOff() {
@@ -369,26 +359,15 @@ class RainbowSlider {
         const trackW = 8;
         const trackH = h - 16;
         
-        // Draw track base (dim rainbow / fixed cyan when lights off)
+        // Draw track base with a fixed cyan accent.
         // Gradient: BottomLeft to TopLeft
         const grad = ctx.createLinearGradient(trackX, trackY + trackH, trackX, trackY);
-        const steps = 28;
         const lightMode = this.getSfxLightMode();
-        if (lightMode === 'off') {
-            grad.addColorStop(0, this.hsvToRgb(195, 200, 205, 92));
-            grad.addColorStop(1, this.hsvToRgb(195, 235, 255, 132));
-        } else if (lightMode !== 'rainbow') {
-            const hue = this.getSfxLightHue(lightMode);
-            grad.addColorStop(0, this.hsvToRgb(hue, 170, 165, 76));
-            grad.addColorStop(0.55, this.hsvToRgb(hue, 210, 225, 100));
-            grad.addColorStop(1, this.hsvToRgb(hue, 235, 255, 132));
-        } else {
-            for (let i = 0; i <= steps; ++i) {
-                let t = i / steps;
-                let hue = (this.shift * 360.0 + t * 300.0) % 360.0;
-                grad.addColorStop(t, this.hsvToRgb(hue, 210, 255, 90));
-            }
-        }
+        const baseHue = this.getSfxLightHue(lightMode);
+        const baseAlpha = lightMode === 'off' ? 92 : 76;
+        grad.addColorStop(0, this.hsvToRgb(baseHue, 170, 165, baseAlpha));
+        grad.addColorStop(0.55, this.hsvToRgb(baseHue, 210, 225, lightMode === 'off' ? 104 : 100));
+        grad.addColorStop(1, this.hsvToRgb(baseHue, 235, 255, lightMode === 'off' ? 122 : 132));
         
         ctx.fillStyle = grad;
         
@@ -412,21 +391,9 @@ class RainbowSlider {
         
         if (filledH > 0.5) {
              const brightGrad = ctx.createLinearGradient(trackX, trackY + trackH, trackX, trackY);
-             if (lightMode === 'off') {
-                brightGrad.addColorStop(0, this.hsvToRgb(195, 215, 230, 190));
-                brightGrad.addColorStop(1, this.hsvToRgb(195, 245, 255, 240));
-             } else if (lightMode !== 'rainbow') {
-                const hue = this.getSfxLightHue(lightMode);
-                brightGrad.addColorStop(0, this.hsvToRgb(hue, 205, 225, 180));
-                brightGrad.addColorStop(0.55, this.hsvToRgb(hue, 230, 255, 215));
-                brightGrad.addColorStop(1, this.hsvToRgb(hue, 245, 255, 240));
-             } else {
-                for (let i = 0; i <= steps; ++i) {
-                    let t = i / steps;
-                    let hue = (this.shift * 360.0 + t * 300.0) % 360.0;
-                    brightGrad.addColorStop(t, this.hsvToRgb(hue, 235, 255, 220));
-                }
-             }
+             brightGrad.addColorStop(0, this.hsvToRgb(baseHue, 205, 225, lightMode === 'off' ? 170 : 180));
+             brightGrad.addColorStop(0.55, this.hsvToRgb(baseHue, 230, 255, lightMode === 'off' ? 200 : 215));
+             brightGrad.addColorStop(1, this.hsvToRgb(baseHue, 245, 255, lightMode === 'off' ? 220 : 240));
              
              ctx.save();
              // Clip to filled area
@@ -456,10 +423,7 @@ class RainbowSlider {
         const glowR = radius + 3;
         const glowGrad = ctx.createRadialGradient(handleX, handleY, 0, handleX, handleY, glowR);
         
-        // Calculate handle hue
-        // colorAtRatio(r) uses r for hue shift
-        // float hue = fmod(m_shift * 360.0f + qBound(0.0f, r, 1.0f) * 300.0f, 360.0f);
-        // It uses 'r' (position) to pick color from the rainbow range.
+        // Fixed cyan handle color.
         const handleColorRgb = this.colorAtRatio(r, 255, 220, 255); 
         
         // Parse handleColorRgb to inject alpha

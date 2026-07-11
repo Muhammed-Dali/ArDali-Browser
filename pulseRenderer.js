@@ -562,11 +562,8 @@ function addResult(result) {
         small.textContent = genre;
         text.appendChild(small);
     }
-    const button = document.createElement('button');
-    button.type = 'button';
-    button.textContent = t('listen.results.open', 'Aç');
-    button.title = t('listen.results.openInApp', 'Ana uygulamada ara');
-    button.addEventListener('click', () => openResultInApp(result));
+    const youtubeMusicButton = createResultPlatformButton('ytmusic', result);
+    const youtubeButton = createResultPlatformButton('youtube', result);
     const removeButton = document.createElement('button');
     removeButton.type = 'button';
     removeButton.className = 'delete-result';
@@ -586,18 +583,37 @@ function addResult(result) {
     });
     const controls = document.createElement('div');
     controls.className = 'result-actions';
-    controls.append(button, removeButton);
+    controls.append(youtubeMusicButton, youtubeButton, removeButton);
     item.append(art, text, controls);
     els.results.prepend(item);
     return true;
 }
 
-function openResultInApp(result = {}) {
+function getResultQuery(result = {}) {
     const title = String(result?.title || '').trim();
     const artist = String(result?.artist || '').trim();
-    const query = [artist, title].filter(Boolean).join(' ');
+    return [artist, title].filter(Boolean).join(' ');
+}
+
+function createResultPlatformButton(platform, result = {}) {
+    const normalized = platform === 'ytmusic' ? 'ytmusic' : 'youtube';
+    const label = normalized === 'ytmusic' ? 'YouTube Music' : 'YouTube';
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = `platform-result ${normalized}`;
+    button.title = `${label}: ${t('listen.results.openInApp', 'Ana uygulamada ara')}`;
+    button.setAttribute('aria-label', `${label}: ${t('listen.results.openInApp', 'Ana uygulamada ara')}`);
+    button.innerHTML = normalized === 'ytmusic'
+        ? '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9" fill="#ff0033"></circle><circle cx="12" cy="12" r="5.4" fill="none" stroke="#fff" stroke-width="1.8"></circle><path d="M10.4 8.9v6.2l5.2-3.1-5.2-3.1Z" fill="#fff"></path></svg>'
+        : '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21.2 7.2a3 3 0 0 0-2.1-2.1C17.3 4.6 12 4.6 12 4.6s-5.3 0-7.1.5a3 3 0 0 0-2.1 2.1A31 31 0 0 0 2.3 12a31 31 0 0 0 .5 4.8 3 3 0 0 0 2.1 2.1c1.8.5 7.1.5 7.1.5s5.3 0 7.1-.5a3 3 0 0 0 2.1-2.1 31 31 0 0 0 .5-4.8 31 31 0 0 0-.5-4.8Z" fill="#ff0033"></path><path d="M10 8.6v6.8l5.9-3.4L10 8.6Z" fill="#fff"></path></svg>';
+    button.addEventListener('click', () => openResultInApp(result, normalized));
+    return button;
+}
+
+function openResultInApp(result = {}, platform = selectedOpenPlatform()) {
+    const query = getResultQuery(result);
     if (!query) return;
-    window.ardali?.pulse?.openQueryInApp?.({ query, platform: selectedOpenPlatform(), result });
+    window.ardali?.pulse?.openQueryInApp?.({ query, platform, result });
 }
 
 async function start() {

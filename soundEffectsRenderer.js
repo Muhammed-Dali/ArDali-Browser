@@ -37,8 +37,6 @@ const SFX = {
     noiseGateStatusInterval: null,
     activeAnimationEffect: null,
     sfxLightsEnabled: null,
-    sfxLightsRefreshFrame: 0,
-    sfxLightsRefreshTimer: null,
     eqTopViz: {
         running: false,
         frameId: 0,
@@ -550,32 +548,15 @@ const appearanceSyncChannel = typeof BroadcastChannel === 'function'
     : null;
 
 function normalizeSfxLightMode(value) {
-    if (value === false) return 'off';
-    if (value === true) return 'rainbow';
     const normalized = String(value || '').trim().toLowerCase();
-    const modes = new Set(['off', 'cyan', 'blue', 'purple', 'green', 'amber', 'red', 'rainbow']);
-    if (normalized === '0' || normalized === 'false' || normalized === 'none') return 'off';
-    if (normalized === '1' || normalized === 'true' || normalized === 'on') return 'rainbow';
-    return modes.has(normalized) ? normalized : 'rainbow';
+    if (value === false || normalized === '0' || normalized === 'false' || normalized === 'none' || normalized === 'off') return 'off';
+    return 'cyan';
 }
 
 function normalizeSfxIconSize(value) {
     const normalized = String(value || '').trim().toLowerCase();
     if (normalized === 'compact' || normalized === 'medium' || normalized === 'large') return normalized;
     return 'medium';
-}
-
-function getSfxLightModeFromShadowStorage() {
-    try {
-        const mode = localStorage.getItem('ardali_ui_sfx_lights_mode');
-        if (mode) return normalizeSfxLightMode(mode);
-        const raw = localStorage.getItem('ardali_ui_sfx_lights_enabled');
-        if (raw === '0') return 'off';
-        if (raw === '1') return 'rainbow';
-    } catch {
-        // ignore
-    }
-    return null;
 }
 
 function getSfxIconSizeFromShadowStorage() {
@@ -589,24 +570,7 @@ function getSfxIconSizeFromShadowStorage() {
     return null;
 }
 
-function setSfxLightsHeaderToggle(mode) {
-    const select = document.getElementById('sfxLightsModeSelect');
-    if (!select) return;
-    select.value = normalizeSfxLightMode(mode);
-}
-
-function syncSfxLightsShadowStorage(mode) {
-    const normalized = normalizeSfxLightMode(mode);
-    try {
-        localStorage.setItem('ardali_ui_sfx_lights_mode', normalized);
-        localStorage.setItem('ardali_ui_sfx_lights_enabled', normalized === 'off' ? '0' : '1');
-    } catch {
-        // ignore
-    }
-}
-
 function areSfxLightsEnabled() {
-    if (typeof SFX.sfxLightsEnabled === 'boolean') return SFX.sfxLightsEnabled;
     return document.documentElement.dataset.sfxLights !== 'off';
 }
 
@@ -658,7 +622,6 @@ function redrawSfxLightVisuals() {
             if (inst && typeof inst.draw === 'function') inst.draw();
         });
         if (SFX.barAnalyzer) {
-            SFX.barAnalyzer._colorCacheKey = '';
             if (typeof SFX.barAnalyzer.createGradient === 'function') SFX.barAnalyzer.createGradient();
             const count = Math.max(48, Number(SFX.barAnalyzer?.bandCount) || EQ_TOP_FIXED_BANDS);
             SFX.barAnalyzer.draw(SFX.eqTopViz?.bars || new Uint8Array(count).fill(0));
@@ -668,259 +631,25 @@ function redrawSfxLightVisuals() {
     }
 }
 
-function refreshEq32AnimatedRegionForLights() {
-    const panel = document.getElementById('eq32Panel');
-    const eqSection = panel?.querySelector('.eq-section');
-    const bandsWrapper = document.getElementById('eqBandsWrapper');
-    if (!panel || !eqSection || !bandsWrapper) return;
-
-    stopEqTopVisualizer();
-
-    (SFX.eqSliders || []).forEach((slider) => {
-        if (slider && typeof slider.destroy === 'function') slider.destroy();
-        else if (slider && typeof slider.stopAnimation === 'function') slider.stopAnimation();
-    });
-    SFX.eqSliders = [];
-    SFX.barAnalyzer = null;
-
-    const settings = getSettings('eq32');
-    const previousMinHeight = eqSection.style.minHeight;
-    eqSection.style.minHeight = `${Math.max(eqSection.offsetHeight, 280)}px`;
-
-    const topViz = eqSection.querySelector('.eq-top-visualizer');
-    if (topViz) {
-        topViz.innerHTML = SFX_HAS_EQ_TOP_VISUALIZER
-            ? '<canvas id="barAnalyzerCanvas" class="eq-top-visualizer-canvas"></canvas>'
-            : '';
-    }
-    bandsWrapper.innerHTML = getEQ32BandsMarkup(settings);
-
-    requestAnimationFrame(() => {
-        try {
-            initEQSliders();
-            if (!SFX_ANIM_SAFE_MODE && SFX_RUNTIME_ANIMS_ACTIVE && SFX.currentEffect === 'eq32') {
-                setEffectAnimationsActive('eq32', true);
-            }
-            syncMeterLoops();
-        } catch (e) {
-            console.warn('[SFX] eq32 animated region refresh error:', e?.message || e);
-        } finally {
-            requestAnimationFrame(() => {
-                eqSection.style.minHeight = previousMinHeight;
-            });
-        }
-    });
-}
-
-function restartSfxRuntimeAnimations() {
-    pauseAllEffectAnimations();
-    stopEqTopVisualizer();
-    SFX_RUNTIME_ANIMS_ACTIVE = false;
-
-    requestAnimationFrame(() => {
-        setRuntimeAnimationsActive(true);
-        if (SFX.currentEffect === 'eq32') {
-            (SFX.eqSliders || []).forEach((slider) => {
-                if (!slider) return;
-                if (typeof slider.restartAnimation === 'function') slider.restartAnimation();
-                else if (typeof slider.startAnimation === 'function') slider.startAnimation();
-                if (typeof slider.draw === 'function') slider.draw();
-            });
-        }
-    });
-}
-
-function clearSfxLightsActivationRefresh() {
-    if (SFX.sfxLightsRefreshFrame) {
-        cancelAnimationFrame(SFX.sfxLightsRefreshFrame);
-        SFX.sfxLightsRefreshFrame = 0;
-    }
-    if (SFX.sfxLightsRefreshTimer) {
-        clearTimeout(SFX.sfxLightsRefreshTimer);
-        SFX.sfxLightsRefreshTimer = null;
-    }
-}
-
-function scheduleSfxLightsActivationRefresh() {
-    clearSfxLightsActivationRefresh();
-
-    const refresh = () => {
-        if (document.documentElement.dataset.sfxLights === 'off') return;
-        const activeEffect = SFX.currentEffect || 'eq32';
-        if (!document.hidden) {
-            setRuntimeAnimationsActive(true);
-        }
-        if (activeEffect === 'eq32') {
-            (SFX.eqSliders || []).forEach((slider) => {
-                if (!slider) return;
-                if (typeof slider.restartAnimation === 'function') slider.restartAnimation();
-                else if (typeof slider.startAnimation === 'function') slider.startAnimation();
-                if (typeof slider.draw === 'function') slider.draw();
-                if (slider.canvas) {
-                    slider.canvas.style.transform = 'translateZ(0)';
-                    void slider.canvas.offsetHeight;
-                }
-            });
-        }
-        syncMeterLoops();
-    };
-
-    SFX.sfxLightsRefreshFrame = requestAnimationFrame(() => {
-        SFX.sfxLightsRefreshFrame = requestAnimationFrame(() => {
-            SFX.sfxLightsRefreshFrame = 0;
-            refresh();
-        });
-    });
-
-    SFX.sfxLightsRefreshTimer = setTimeout(() => {
-        SFX.sfxLightsRefreshTimer = null;
-        refresh();
-    }, 140);
-}
-
-async function syncSfxPerformanceProfileForLights(enabled) {
-    try {
-        let nextSettings = null;
-        if (window.ardali?.loadSettings) {
-            const loaded = await window.ardali.loadSettings();
-            nextSettings = (loaded && typeof loaded === 'object')
-                ? JSON.parse(JSON.stringify(loaded))
-                : {};
-        } else {
-            nextSettings = {};
-        }
-        if (!nextSettings.appearance || typeof nextSettings.appearance !== 'object') nextSettings.appearance = {};
-        if (!nextSettings.ui || typeof nextSettings.ui !== 'object') nextSettings.ui = {};
-        nextSettings.appearance.sfxLights = !!enabled;
-        nextSettings.ui.sfxLightsEnabled = !!enabled;
-        await applySfxRuntimePerformanceProfile(nextSettings);
-        if (enabled && SFX.currentEffect === 'eq32') {
-            refreshEq32AnimatedRegionForLights();
-        }
-        setRuntimeAnimationsActive(!!enabled && !document.hidden);
-    } catch {
-        // ignore
-    }
-}
-
 function applySfxLightsRuntimeState(mode) {
     const nextMode = normalizeSfxLightMode(mode);
     const next = nextMode !== 'off';
-    const prev = SFX.sfxLightsEnabled === null
-        ? document.documentElement.dataset.sfxLights !== 'off'
-        : !!SFX.sfxLightsEnabled;
-    const prevMode = normalizeSfxLightMode(document.documentElement.dataset.sfxLights || (prev ? 'rainbow' : 'off'));
-    const changed = prev !== next;
-    const modeChanged = prevMode !== nextMode;
-
     SFX.sfxLightsEnabled = next;
     document.documentElement.dataset.sfxLights = nextMode;
-    setSfxLightsHeaderToggle(nextMode);
     redrawSfxLightVisuals();
-
     if (!next) {
         SFX_RUNTIME_ANIMS_ACTIVE = false;
-        clearSfxLightsActivationRefresh();
-        // Lights off: keep DSP and the audio analyzers alive, but make decorative widget motion static.
         pauseAllEffectAnimations();
         syncMeterLoops();
         refreshSfxStaticVisualState();
         return;
     }
-
-    if (!changed) {
-        // State didn't change; avoid re-triggering heavy animation setup.
-        if (modeChanged) redrawSfxLightVisuals();
-        syncMeterLoops();
-        return;
-    }
-
-    // Lights on: ensure current effect panel is rendered and visible, then activate animations
-    const effectToAnimate = SFX.currentEffect || 'eq32';
-    try {
-        ensureEffectPanelRendered(effectToAnimate);
-        // Ensure panel is visible (in case it was hidden)
-        const wrapper = document.querySelector(`.effect-panel-wrapper[data-effect="${effectToAnimate}"]`);
-        if (wrapper && wrapper.style.display === 'none') {
-            wrapper.style.display = 'block';
-        }
-    } catch (e) {
-        console.warn('[SFX] Panel setup error:', e?.message || e);
-    }
-    
-    // Delay animation start to ensure DOM is fully updated
-    setTimeout(() => {
-        setEffectAnimationsActive(effectToAnimate, true);
-    }, 50);
-    
-    // eq32 special handling: refresh only the animated region so motion starts immediately without visible panel flicker
-    if (effectToAnimate === 'eq32') {
-        refreshEq32AnimatedRegionForLights();
-    }
-
-    restartSfxRuntimeAnimations();
-    scheduleSfxLightsActivationRefresh();
-    
+    SFX_RUNTIME_ANIMS_ACTIVE = true;
     syncMeterLoops();
-    // Don't re-render panel - keeps animations smooth
-}
-
-async function persistSfxLightsToAppSettings(mode) {
-    if (!window.ardali?.loadSettings || !window.ardali?.saveSettings) return false;
-    try {
-        const normalized = normalizeSfxLightMode(mode);
-        const enabled = normalized !== 'off';
-        const current = await window.ardali.loadSettings();
-        const next = (current && typeof current === 'object')
-            ? JSON.parse(JSON.stringify(current))
-            : {};
-        if (!next.appearance || typeof next.appearance !== 'object') next.appearance = {};
-        if (!next.ui || typeof next.ui !== 'object') next.ui = {};
-        next.appearance.sfxLights = enabled;
-        next.appearance.sfxLightsMode = normalized;
-        // Legacy/back-compat key
-        next.ui.sfxLightsEnabled = enabled;
-        next.ui.sfxLightsMode = normalized;
-        await window.ardali.saveSettings(next);
-        return true;
-    } catch {
-        return false;
-    }
 }
 
 async function applySfxLightsFromAppSettings() {
-    try {
-        const shadow = getSfxLightModeFromShadowStorage();
-        if (shadow) {
-            applySfxLightsRuntimeState(shadow);
-            return;
-        }
-        if (!window.ardali?.loadSettings) {
-            // Embedded mode fallback: check BroadcastChannel state from other windows
-            // Try injecting a state request and wait briefly for response
-            if (SFX_EMBEDDED_MODE && appearanceSyncChannel) {
-                let stateReceived = false;
-                const tempHandler = () => { stateReceived = true; };
-                appearanceSyncChannel.addEventListener('message', tempHandler, { once: true });
-                appearanceSyncChannel.postMessage({ type: 'sfx-lights-query' });
-                // Wait max 100ms for response
-                await new Promise(resolve => setTimeout(resolve, 100));
-                appearanceSyncChannel.removeEventListener('message', tempHandler);
-            }
-            applySfxLightsRuntimeState('rainbow');
-            return;
-        }
-        const appSettings = await window.ardali.loadSettings();
-        const mode = normalizeSfxLightMode(
-            appSettings?.appearance?.sfxLightsMode
-            ?? appSettings?.ui?.sfxLightsMode
-            ?? appSettings?.appearance?.sfxLights
-            ?? appSettings?.ui?.sfxLightsEnabled
-        );
-        applySfxLightsRuntimeState(mode);
-    } catch {
-        applySfxLightsRuntimeState('rainbow');
-    }
+    applySfxLightsRuntimeState('cyan');
 }
 
 async function applySfxIconSizeFromAppSettings() {
@@ -2127,34 +1856,15 @@ function setupEventListeners() {
         });
     }
 
-    // SFX ışık rengi seçimi (Ayarlar > Davranış ile aynı değerin yansıması)
-    const sfxLightsSelect = document.getElementById('sfxLightsModeSelect');
-    if (sfxLightsSelect) {
-        sfxLightsSelect.addEventListener('change', (e) => {
-            const mode = normalizeSfxLightMode(e?.target?.value);
-            const enabled = mode !== 'off';
-            applySfxLightsRuntimeState(mode);
-            Promise.resolve(syncSfxPerformanceProfileForLights(enabled)).catch(() => { });
-            syncSfxLightsShadowStorage(mode);
-            appearanceSyncChannel?.postMessage({ type: 'sfx-lights', enabled, mode });
-            Promise.resolve(persistSfxLightsToAppSettings(mode)).catch(() => { });
-        });
-    }
-
-    // Appearance sync: respond to state queries and listen for state changes
+    // Appearance sync: keep legacy external light broadcasts static.
     appearanceSyncChannel?.addEventListener('message', (event) => {
         const eventType = String(event?.data?.type || '').trim().toLowerCase();
-        
-        // Handle state query from other windows
         if (eventType === 'sfx-lights-query') {
-            const currentMode = normalizeSfxLightMode(document.documentElement.dataset.sfxLights);
-            appearanceSyncChannel?.postMessage({ type: 'sfx-lights', enabled: currentMode !== 'off', mode: currentMode });
+            appearanceSyncChannel?.postMessage({ type: 'sfx-lights', enabled: true, mode: 'cyan' });
             return;
         }
-        
-        // Handle state broadcast
         if (eventType !== 'sfx-lights') return;
-        applySfxLightsRuntimeState(event?.data?.mode ?? (event?.data?.enabled !== false));
+        applySfxLightsRuntimeState('cyan');
     });
 
 
@@ -2194,32 +1904,15 @@ function setupEventListeners() {
         syncMeterLoops();
     });
     window.addEventListener('storage', (e) => {
-        if (e.key === 'ardali_ui_sfx_lights_mode' || e.key === 'ardali_ui_sfx_lights_enabled') {
-            const mode = e.key === 'ardali_ui_sfx_lights_mode'
-                ? normalizeSfxLightMode(e.newValue || 'rainbow')
-                : normalizeSfxLightMode(e.newValue === '0' ? 'off' : 'rainbow');
-            applySfxLightsRuntimeState(mode);
-            return;
-        }
         if (e.key === 'ardali_ui_sfx_icon_size') {
             document.documentElement.dataset.sfxIconSize = normalizeSfxIconSize(e.newValue || 'medium');
         }
     });
 
     window.ardali?.onSettingsReload?.((nextSettings) => {
-        const mode = normalizeSfxLightMode(
-            nextSettings?.appearance?.sfxLightsMode
-            ?? nextSettings?.ui?.sfxLightsMode
-            ?? nextSettings?.appearance?.sfxLights
-            ?? nextSettings?.ui?.sfxLightsEnabled
-        );
-        applySfxLightsRuntimeState(mode);
+        applySfxLightsRuntimeState('cyan');
         document.documentElement.dataset.sfxIconSize = normalizeSfxIconSize(nextSettings?.appearance?.sfxSidebarIconSize);
         Promise.resolve(applySfxRuntimePerformanceProfile(nextSettings)).then(() => {
-            // Settings reload can fire after unrelated saves while music is playing.
-            // Rebuilding the EQ canvas here resets smoothing/roof state and causes
-            // periodic analyzer jumps when lights are on; real light toggles already
-            // refresh the animated region through applySfxLightsRuntimeState().
             setRuntimeAnimationsActive(!document.hidden);
         }).catch(() => { });
     });
@@ -6087,7 +5780,6 @@ function initEQSliders() {
             columnWidth: 4,
             spacing: 2,
             backgroundColor: '#000000',
-            rainbow: true,
             fixedBands: EQ_TOP_FIXED_BANDS,
             roofHold: 8,
             fallDivisor: 10
@@ -9924,23 +9616,26 @@ function applyEQPresetPayload(payload) {
 
     const settings = getSettings('eq32');
     settings.bands = bands;
-    settings.lastPreset = {
-        filename: filename || null,
-        name: presetName
-    };
-
-    saveSettings('eq32', settings);
+    
+    if (!payload.preview) {
+        settings.lastPreset = {
+            filename: filename || null,
+            name: presetName
+        };
+        saveSettings('eq32', settings);
+    }
 
     // UI + Engine (tek sefer, event fırtınası olmadan)
     updateEq32UIFromSettings(settings);
     applyEffect('eq32');
 
-    // Buton etiketini kalıcı güncelle
-    updateEqPresetButtonLabel();
+    if (!payload.preview) {
+        // Buton etiketini kalıcı güncelle
+        updateEqPresetButtonLabel();
 
-    // Kalıcı kayıt (preset seçimi kapanıp açılınca da görünsün)
-    schedulePersistEq32ToAppSettings(settings);
-
+        // Kalıcı kayıt (preset seçimi kapanıp açılınca da görünsün)
+        schedulePersistEq32ToAppSettings(settings);
+    }
 }
 
 function updateEqPresetButtonLabel() {
