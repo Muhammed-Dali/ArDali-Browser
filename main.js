@@ -11,7 +11,7 @@ if (app) {
     if (typeof app.setName === 'function') app.setName(FLATPAK_APP_ID);
     // Wayland/Windows: Unified App ID for grouping
     if (typeof app.setAppUserModelId === 'function') app.setAppUserModelId(FLATPAK_APP_ID);
-    
+
     // Wayland: Link process to the .desktop file for icons and grouping
     if (process.platform === 'linux') {
         app.desktopFileName = DESKTOP_FILE_ID;
@@ -117,7 +117,7 @@ function isFlatpakRuntime() {
 
 function isPackagedLinuxConservativeGpuMode() {
     if (process.platform !== 'linux') return false;
-    // YouTube ve sosyal medya platformlarında video/ses takılmalarını çözmek için 
+    // YouTube ve sosyal medya platformlarında video/ses takılmalarını çözmek için
     // agresif GPU hızlandırma artık varsayılan olarak AÇIK bırakılmıştır.
     return process.env.ARDALI_FORCE_CONSERVATIVE_GPU === '1';
 }
@@ -3992,20 +3992,20 @@ function isThirdPartyWebRequest(details = {}) {
         const targetHost = new URL(String(details?.url || '')).hostname;
         const sourceUrl = String(details?.initiator || details?.documentUrl || details?.referrer || '').trim();
         if (!targetHost || !sourceUrl) return false;
-        
+
         const sourceHost = new URL(sourceUrl).hostname;
         const targetDomain = getRegistrableDomainMain(targetHost);
         const sourceDomain = getRegistrableDomainMain(sourceHost);
-        
+
         if (targetDomain === sourceDomain) return false;
-        
+
         // Eko-sistem akrabalıkları (First-Party Sets / Related Website Sets)
         const googleDomains = ['google.com', 'youtube.com', 'googlevideo.com', 'ytimg.com', 'googleapis.com', 'gstatic.com', 'googleusercontent.com', 'ggpht.com'];
         if (googleDomains.includes(targetDomain) && googleDomains.includes(sourceDomain)) return false;
-        
+
         const msDomains = ['bing.com', 'microsoft.com', 'live.com', 'office.com', 'office.net', 'msn.com'];
         if (msDomains.includes(targetDomain) && msDomains.includes(sourceDomain)) return false;
-        
+
         const metaDomains = ['facebook.com', 'fbcdn.net', 'instagram.com', 'cdninstagram.com', 'whatsapp.com'];
         if (metaDomains.includes(targetDomain) && metaDomains.includes(sourceDomain)) return false;
 
@@ -5673,8 +5673,11 @@ function createWindow() {
         },
         frame: true,
         titleBarStyle: 'default',
+        autoHideMenuBar: true,
         show: false
     });
+    // Ana içerik alanını büyüt: yerel uygulama menüsü görünmesin.
+    try { mainWindow.setMenuBarVisibility(false); } catch { /* yoksay */ }
     if (savedWindowState.fullscreen) {
         try { mainWindow.setFullScreen(true); } catch { /* yoksay */ }
     } else if (savedWindowState.maximized) {
@@ -8134,8 +8137,8 @@ function installWebviewHardening() {
 
                     if (wcType === 'webview') {
                         // Kopyalama işlemleri web tarayıcısında her zaman serbest olmalı (Brave/Chrome standartı)
-                        if (requestedPermission === 'clipboard-read' || 
-                            requestedPermission === 'clipboard-sanitized-write' || 
+                        if (requestedPermission === 'clipboard-read' ||
+                            requestedPermission === 'clipboard-sanitized-write' ||
                             requestedPermission === 'clipboard-write') {
                             callback(true);
                             return;
@@ -8202,7 +8205,7 @@ function installWebviewHardening() {
                     try {
                         const prefs = getWebRuntimeSettingsSync();
                         const fileName = String(item?.getFilename?.() || 'download').trim() || 'download';
-                        
+
                         if (!prefs.askDownloadLocation) {
                             item.setSavePath(path.join(app.getPath('downloads'), fileName));
                         } else {
@@ -8270,7 +8273,7 @@ function installWebviewHardening() {
                             cancelledWebDownloadIds.delete(downloadId);
                             downloadItem.state = wasCancelled ? 'cancelled' : state;
                             downloadItem.savePath = item.getSavePath() || downloadItem.savePath;
-                            
+
                             let currentHistory = readDownloadsHistorySync();
                             const idx = currentHistory.findIndex(d => d.id === downloadId);
                             if (idx !== -1) {
@@ -8333,6 +8336,139 @@ function installWebviewHardening() {
         console.warn('[SECURITY] setPermissionRequestHandler failed:', e?.message || e);
     }
 
+    function handleExternalProtocolPrompt(parentWindow, targetUrl) {
+        try {
+            const parsedUrl = new URL(targetUrl);
+            const protocol = parsedUrl.protocol.toLowerCase();
+            const ignoredProtocols = ['about:', 'chrome:', 'devtools:', 'blob:', 'data:', 'file:', 'http:', 'https:'];
+
+            if (ignoredProtocols.includes(protocol)) return;
+
+            const settings = readSettingsFileSafeSync();
+
+            // Eğer daha önceden manuel uygulama seçilmişse onu kullan
+            if (settings?.ui?.customProtocolHandlers?.[protocol]) {
+                const executablePath = settings.ui.customProtocolHandlers[protocol];
+                const { spawn } = require('child_process');
+                spawn(executablePath, [targetUrl], { detached: true, stdio: 'ignore' }).unref();
+                return;
+            }
+
+            if (settings?.ui?.allowedExternalProtocols?.includes(protocol)) {
+                shell.openExternal(targetUrl).catch(() => {
+                    // Eğer başarısız olursa, otomatik izni kaldır ki tekrar sorabilsin
+                    try {
+                        const s = readSettingsFileSafeSync();
+                        if (s?.ui?.allowedExternalProtocols) {
+                            s.ui.allowedExternalProtocols = s.ui.allowedExternalProtocols.filter(p => p !== protocol);
+                            writeJsonFileAtomicSync(getSettingsPath(), sanitizeSensitiveSettings(s));
+                        }
+                    } catch(e) {}
+                    // Başarısız olunduğu için tekrar sor, modalı aç
+                    showPrompt();
+                });
+                return;
+            }
+
+            if (!parentWindow || parentWindow.isDestroyed()) return;
+
+            const sanitizedUrl = targetUrl.replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/\n/g, "");
+            const sanitizedProtocol = protocol.replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/\n/g, "");
+
+            function showPrompt() {
+                const script = `
+                    (function() {
+                        if (document.getElementById('epp-modal')) document.getElementById('epp-modal').remove();
+
+                        const modal = document.createElement('div');
+                        modal.id = 'epp-modal';
+                        Object.assign(modal.style, {
+                            position: 'absolute',
+                            top: '20px',
+                            left: '50%',
+                            transform: 'translateX(-50%)',
+                            background: '#292a2d',
+                            color: '#e8eaed',
+                            borderRadius: '8px',
+                            padding: '24px',
+                            width: '400px',
+                            boxShadow: '0 4px 12px rgba(0,0,0,0.5)',
+                            zIndex: '9999999',
+                            fontFamily: 'system-ui, -apple-system, sans-serif'
+                        });
+
+                        const urlStr = "${sanitizedUrl}";
+                        const protoStr = "${sanitizedProtocol}";
+                        let originHost = "site";
+                        try {
+                            originHost = new URL(location.href).hostname;
+                        } catch(e) {}
+
+                        modal.innerHTML =
+                            '<div style="font-size: 15px; margin-bottom: 12px; font-weight: 400; color: #e8eaed;">xdg-open açılsın mı?</div>' +
+                            '<div style="font-size: 13px; color: #9aa0a6; margin-bottom: 16px;">' +
+                                '<strong style="font-weight: 500; color: #9aa0a6;">' + originHost + '</strong> bu uygulamayı açmak istiyor.' +
+                            '</div>' +
+                            '<label style="display: flex; align-items: flex-start; gap: 12px; font-size: 13px; color: #9aa0a6; margin-bottom: 24px; cursor: pointer;">' +
+                                '<input type="checkbox" id="epp-checkbox" style="margin-top: 2px; accent-color: #8ab4f8; cursor: pointer;">' +
+                                '<span style="line-height: 1.4; user-select: none;">Bu tür bağlantıları ilişkilendirilmiş uygulamada açması için ' + originHost + ' sitesine her zaman izin ver</span>' +
+                            '</label>' +
+                            '<div style="display: flex; justify-content: flex-end; gap: 8px;">' +
+                                '<button id="epp-cancel" style="padding: 6px 16px; border-radius: 16px; border: 1px solid #8ab4f8; background: transparent; color: #8ab4f8; cursor: pointer; font-size: 13px; font-weight: 500; transition: background 0.2s;">İptal</button>' +
+                                '<button id="epp-open" style="padding: 6px 16px; border-radius: 16px; border: none; background: #8ab4f8; color: #202124; cursor: pointer; font-weight: 500; font-size: 13px; transition: background 0.2s;">xdg-open adlı uygulamayı aç</button>' +
+                            '</div>';
+
+                        document.body.appendChild(modal);
+
+                        const btnCancel = document.getElementById('epp-cancel');
+                        btnCancel.onmouseover = () => btnCancel.style.background = 'rgba(138, 180, 248, 0.08)';
+                        btnCancel.onmouseout = () => btnCancel.style.background = 'transparent';
+                        btnCancel.onclick = () => {
+                            modal.remove();
+                        };
+
+                        const btnOpen = document.getElementById('epp-open');
+                        btnOpen.onmouseover = () => btnOpen.style.background = '#9dc2ff';
+                        btnOpen.onmouseout = () => btnOpen.style.background = '#8ab4f8';
+                        btnOpen.onclick = async () => {
+                            const alwaysAllow = document.getElementById('epp-checkbox').checked;
+                            if (alwaysAllow && window.ardali?.saveSettings && window.ardali?.loadSettings) {
+                                try {
+                                    const s = await window.ardali.loadSettings();
+                                    if (!s.ui) s.ui = {};
+                                    if (!Array.isArray(s.ui.allowedExternalProtocols)) s.ui.allowedExternalProtocols = [];
+                                    if (!s.ui.allowedExternalProtocols.includes(protoStr)) {
+                                        s.ui.allowedExternalProtocols.push(protoStr);
+                                        await window.ardali.saveSettings(s);
+                                    }
+                                } catch(e) { console.error('EPP settings error', e); }
+                            }
+                            if (window.ardali?.webSecurity?.chooseAndOpenExternal) {
+                                window.ardali.webSecurity.chooseAndOpenExternal(urlStr, protoStr).catch(console.error);
+                            }
+                            modal.remove();
+                        };
+                    })();
+                `;
+                parentWindow.webContents.executeJavaScript(script).catch(err => {
+                    dialog.showMessageBox(parentWindow, {
+                        type: 'question',
+                        title: 'Harici Uygulama',
+                        message: `Bu bağlantıyı harici bir uygulama ile açmak istiyor musunuz?`,
+                        detail: targetUrl,
+                        buttons: ['İptal', 'Aç'],
+                        defaultId: 1,
+                        cancelId: 0
+                    }).then(result => {
+                        if (result.response === 1) shell.openExternal(targetUrl).catch(() => {});
+                    });
+                });
+            }
+
+            showPrompt();
+        } catch (e) {}
+    }
+
     // Harden all webviews created in this app.
     app.on('web-contents-created', (_event, contents) => {
         const type = contents.getType?.();
@@ -8342,6 +8478,101 @@ function installWebviewHardening() {
         } catch (error) {
             console.warn('[WEB] setBackgroundThrottling failed:', error?.message || error);
         }
+
+        contents.on('context-menu', (event, params) => {
+            const template = [];
+            const { Menu, clipboard } = require('electron');
+
+            if (params.linkURL) {
+                template.push(
+                    {
+                        label: 'Bağlantıyı yeni sekmede aç',
+                        click: () => {
+                            if (contents.hostWebContents) {
+                                contents.hostWebContents.send('web:open-tab', params.linkURL);
+                            }
+                        }
+                    },
+                    {
+                        label: 'Bağlantıyı yeni pencerede aç',
+                        click: () => {
+                            const bw = new BrowserWindow({
+                                ...getAuxiliaryWindowDefaults(),
+                                title: 'ArDali',
+                                autoHideMenuBar: false
+                            });
+                            applyLinuxTaskbarGrouping(bw);
+                            bw.loadURL(params.linkURL);
+                        }
+                    },
+                    {
+                        label: 'Bağlantı adresini kopyala',
+                        click: () => {
+                            clipboard.writeText(params.linkURL);
+                        }
+                    },
+                    { type: 'separator' }
+                );
+            }
+
+            if (params.hasImageContents) {
+                template.push(
+                    {
+                        label: 'Görseli yeni sekmede aç',
+                        click: () => {
+                            if (contents.hostWebContents) {
+                                contents.hostWebContents.send('web:open-tab', params.srcURL);
+                            }
+                        }
+                    },
+                    {
+                        label: 'Görsel adresini kopyala',
+                        click: () => {
+                            clipboard.writeText(params.srcURL);
+                        }
+                    },
+                    { type: 'separator' }
+                );
+            }
+
+            if (params.selectionText) {
+                template.push(
+                    {
+                        label: `Web'de Ara: "${params.selectionText.length > 20 ? params.selectionText.substring(0, 20) + '...' : params.selectionText}"`,
+                        click: () => {
+                            if (contents.hostWebContents) {
+                                contents.hostWebContents.send('web:open-tab', params.selectionText);
+                            }
+                        }
+                    },
+                    { type: 'separator' }
+                );
+            }
+
+            if (params.editFlags.canCopy) {
+                template.push({ role: 'copy', label: 'Kopyala' });
+            }
+            if (params.editFlags.canPaste) {
+                template.push({ role: 'paste', label: 'Yapıştır' });
+            }
+
+            if (template.length > 0 && template[template.length - 1].type !== 'separator') {
+                template.push({ type: 'separator' });
+            }
+
+            template.push({
+                label: 'İncele',
+                click: () => {
+                    contents.inspectElement(params.x, params.y);
+                }
+            });
+
+            const menu = Menu.buildFromTemplate(template);
+            const hostWindow = BrowserWindow.fromWebContents(contents.hostWebContents || contents);
+            if (hostWindow) {
+                menu.popup({ window: hostWindow });
+            }
+        });
 
         // Block opening arbitrary external windows from embedded web content.
         if (typeof contents.setWindowOpenHandler === 'function') {
@@ -8370,14 +8601,23 @@ function installWebviewHardening() {
                         }
                     };
                 }
+
+                // Harici protokol kontrolü (magnet:, mailto: vb.)
+                const parentWindow = BrowserWindow.fromWebContents(contents) || mainWindow;
+                handleExternalProtocolPrompt(parentWindow, popupUrl);
+
                 return { action: 'deny' };
             });
         }
 
-        contents.on('will-navigate', (event, url) => {
+        contents.on('will-navigate', async (event, url) => {
             // WebView içinde https/http gezinmeye izin ver; tehlikeli şemaları engelle.
             if (!parseHttpUrlMain(url)) {
                 event.preventDefault();
+
+                // Harici protokol kontrolü (magnet:, mailto: vb.)
+                const parentWindow = BrowserWindow.fromWebContents(contents) || mainWindow;
+                handleExternalProtocolPrompt(parentWindow, url);
             }
         });
 
@@ -9216,10 +9456,77 @@ ipcMain.handle('web:openExternal', async (_event, url) => {
     if (!u) return false;
     if (!isAllowedWebUrlMain(u)) return false;
     try {
+        const parsedUrl = new URL(u);
+        const protocol = parsedUrl.protocol.toLowerCase();
+        const settings = readSettingsFileSafeSync();
+
+        // Eğer kullanıcı manuel bir uygulama seçmişse onu başlat
+        if (settings?.ui?.customProtocolHandlers?.[protocol]) {
+            const executablePath = settings.ui.customProtocolHandlers[protocol];
+            const { spawn } = require('child_process');
+            spawn(executablePath, [u], { detached: true, stdio: 'ignore' }).unref();
+            return true;
+        }
+
         await shell.openExternal(u);
         return true;
     } catch (e) {
         console.error('[WEB] openExternal error:', e);
+        return false;
+    }
+});
+
+ipcMain.handle('web:chooseAndOpenExternal', async (event, url, protocol) => {
+    const parentWindow = BrowserWindow.fromWebContents(event.sender) || mainWindow;
+
+    // Linux için XDG Desktop Portal üzerinden yerel Uygulama Seçici penceresini (App Chooser) açmayı dene
+    if (process.platform === 'linux') {
+        try {
+            const { execSync } = require('child_process');
+            // gdbus kullanarak XDG portalına ask=true argümanı ile istek at (Brave'in yaptığı gibi OS native seçiciyi açar)
+            // Bu komut asenktron çalışmalıdır, kullanıcının seçimi bitirmesini beklemiyoruz.
+            const { exec } = require('child_process');
+            return new Promise((resolve) => {
+                exec(`gdbus call --session --dest org.freedesktop.portal.Desktop --object-path /org/freedesktop/portal/desktop --method org.freedesktop.portal.OpenURI.OpenURI "" "${url}" "{}"`, async (error) => {
+                    if (!error) {
+                        resolve(true);
+                    } else {
+                        // Eğer gdbus veya portal yoksa fallback yap
+                        resolve(await fallbackCustomFilePicker());
+                    }
+                });
+            });
+        } catch (e) {
+            // Hata olursa fallback
+        }
+    }
+
+    return await fallbackCustomFilePicker();
+
+    async function fallbackCustomFilePicker() {
+        const result = await dialog.showOpenDialog(parentWindow, {
+            title: 'Uygulama Seç',
+            properties: ['openFile'],
+            filters: [{ name: 'Çalıştırılabilir Dosyalar', extensions: ['*'] }]
+        });
+
+        if (!result.canceled && result.filePaths.length > 0) {
+            const executablePath = result.filePaths[0];
+
+            // Ayarlara kaydet
+            const settings = readSettingsFileSafeSync();
+            if (!settings.ui) settings.ui = {};
+            if (!settings.ui.customProtocolHandlers) settings.ui.customProtocolHandlers = {};
+            settings.ui.customProtocolHandlers[protocol] = executablePath;
+            try {
+                writeJsonFileAtomicSync(getSettingsPath(), sanitizeSensitiveSettings(settings));
+            } catch(e) {}
+
+            // Uygulamayı başlat
+            const { spawn } = require('child_process');
+            spawn(executablePath, [url], { detached: true, stdio: 'ignore' }).unref();
+            return true;
+        }
         return false;
     }
 });

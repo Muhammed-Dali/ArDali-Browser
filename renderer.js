@@ -193,7 +193,10 @@ function setCustomDropdownValue(dropdown, value) {
     option.classList.add('selected');
     const optionIcon = option.querySelector('img');
     const optionText = option.querySelector('span');
-    if (currentIcon && optionIcon) currentIcon.src = optionIcon.src;
+    if (currentIcon && optionIcon) {
+        currentIcon.src = optionIcon.src;
+        currentIcon.alt = optionText?.textContent || normalized;
+    }
     if (currentText && optionText) currentText.textContent = optionText.textContent;
 }
 
@@ -1653,6 +1656,13 @@ document.addEventListener('DOMContentLoaded', async () => {
     window.ardali?.onWebReloadActive?.(() => {
         requestWebViewReload('ipc:web:reload-active', { cooldownMs: 1200 });
     });
+    window.ardali?.onWebOpenTab?.((url) => {
+        if (typeof window.createTab === 'function') {
+            // Tarayıcı davranışı: bağlam menüsünden açılan sekme arka planda
+            // yüklenir; kullanıcı bulunduğu sekmede kalır.
+            window.createTab(url, false);
+        }
+    });
     window.ardali?.onSettingsReload?.(async (nextSettings, reloadMeta = {}) => {
         if (nextSettings?.web?.searchEngine) {
             document.dispatchEvent(new CustomEvent('ardali:settings-changed', {
@@ -2695,6 +2705,7 @@ function cacheElements() {
     elements.behaviorWebSearchEngine = document.getElementById('behaviorWebSearchEngine');
     elements.behaviorWebAnimationMode = document.getElementById('behaviorWebAnimationMode');
     elements.behaviorWebMotionPreset = document.getElementById('behaviorWebMotionPreset');
+    elements.behaviorSidebarMode = document.getElementById('behaviorSidebarMode');
     elements.behaviorSidebarStyle = document.getElementById('behaviorSidebarStyle');
     elements.behaviorSidebarIconScale = document.getElementById('behaviorSidebarIconScale');
     elements.behaviorWebLowPowerMode = document.getElementById('behaviorWebLowPowerMode');
@@ -3193,6 +3204,10 @@ async function loadSettings() {
         if (typeof state.settings.appearance.sidebarMotionEnabled !== 'boolean') {
             state.settings.appearance.sidebarMotionEnabled = true;
         }
+        if (!['classic', 'smart'].includes(String(state.settings.appearance.sidebarMode || '').toLowerCase())) {
+            state.settings.appearance.sidebarMode = 'classic';
+        }
+        applySidebarMode(state.settings.appearance.sidebarMode, { persist: false });
         if (typeof state.settings.appearance.sfxLights !== 'boolean') {
             state.settings.appearance.sfxLights = true;
         }
@@ -5872,13 +5887,34 @@ function setupPlaybackShortcutUiBindings() {
 function setupEventListeners() {
     // Kenar çubuğu Gezinti
     elements.sidebarBtns.forEach(btn => {
-        btn.addEventListener('click', () => handleSidebarClick(btn));
+        btn.addEventListener('click', () => {
+            handleSidebarClick(btn);
+            if (document.body.classList.contains('smart-sidebar-mode')) setSmartSidebarOpen(false);
+        });
     });
     if (elements.sidebarToggleBtn) {
         elements.sidebarToggleBtn.addEventListener('click', () => {
-            applyAppSidebarCollapsed(!state.sidebarCollapsed);
+            if (document.body.classList.contains('smart-sidebar-mode')) {
+                setSmartSidebarOpen(!document.body.classList.contains('smart-sidebar-open'));
+            } else {
+                applyAppSidebarCollapsed(!state.sidebarCollapsed);
+            }
         });
     }
+    document.addEventListener('pointerdown', (event) => {
+        if (!document.body.classList.contains('smart-sidebar-open')) return;
+        if (event.target.closest('#sidebar, #sidebarToggleBtn')) return;
+        setSmartSidebarOpen(false);
+    });
+    document.addEventListener('click', (event) => {
+        if (!document.body.classList.contains('smart-sidebar-open')) return;
+        if (event.target.closest('#sidebar .sidebar-btn, #sidebar .control-btn')) setSmartSidebarOpen(false);
+    });
+    document.addEventListener('keydown', (event) => {
+        if (event.key === 'Escape' && document.body.classList.contains('smart-sidebar-open')) {
+            setSmartSidebarOpen(false);
+        }
+    });
 
     if (elements.libraryTabButtons?.length) {
         elements.libraryTabButtons.forEach((button) => {
@@ -6051,6 +6087,12 @@ function setupEventListeners() {
     if (elements.behaviorSidebarStyle) {
         elements.behaviorSidebarStyle.addEventListener('change', () => {
             previewAppearanceSettingsFromUI();
+            markSettingsDirty();
+        });
+    }
+    if (elements.behaviorSidebarMode) {
+        elements.behaviorSidebarMode.addEventListener('change', () => {
+            applySidebarMode(elements.behaviorSidebarMode.value, { persist: true });
             markSettingsDirty();
         });
     }
@@ -8081,7 +8123,7 @@ function setupEventListeners() {
         // WebView Senkron: MediaSession/Video bilgilerini yakala (MPRIS + kapak + web şimdi-çalıyor için).
         // Not: Bazı Chromium sürümlerinde navigator.mediaSession override edilemez (non-configurable).
         // Bu yüzden "disable" yerine güvenli polling + event dinleme ile ARDALI_SYNC mesajları üretiyoruz.
-        webViewInstance.addEventListener('dom-ready', () => {
+        webViewInstance.addEventListener('dom-ready', async () => {
             webViewInstance.__ardaliDomReady = true;
             applyEmbeddedUserAgentToWebView();
             const currentUrl = getWebViewUrlSafe();
@@ -8089,7 +8131,7 @@ function setupEventListeners() {
                 return;
             }
             const webAdblockConfig = getAdblockWebModeProfile();
-            webViewInstance.executeJavaScript(`
+            const syncInstall = webViewInstance.executeJavaScript(`
                 try {
                     (function() {
                         if (window.__ardaliWebSyncInstalled) return true;
@@ -9102,15 +9144,15 @@ function setupEventListeners() {
                     })();
                 } catch(e) { console.error("ARDALI_SYNC error:", e); }
             `);
+            if (syncInstall && typeof syncInstall.then === 'function') {
+                await syncInstall.catch(() => false);
+            }
+            // Graph kökünü play() kancasından önce kur. Aksi halde hızlı başlayan
+            // web medyası ilk sesi işlenmemiş çıkartıp ancak ayar değişince bağlanır.
+            pushAppVolumeToWeb();
+            await applyWebDaliEngineNow('dom-ready-prearm');
             installWebDaliAttachHooks();
-            setTimeout(() => {
-                pushAppVolumeToWeb();
-                // Paketli Linux'ta dom-ready anında agir apply bazi sistemlerde donmaya neden olabiliyor.
-                // Tamamen atlamak yerine daha gec bir "pre-arm" uygula; ilk tikta seviye ziplamasini azaltir.
-                const bootDelay = isPackagedLinuxRuntimeRenderer() ? 90 : 120;
-                scheduleApplyWebDaliEngine('dom-ready', bootDelay);
-                scheduleApplyWebDaliEngineBurst('dom-ready', [20, bootDelay, bootDelay + 140]);
-            }, 120);
+            scheduleApplyWebDaliEngineBurst('dom-ready-post-hook', [0, 40, 120, 300, 700]);
         });
     }
 
@@ -17463,10 +17505,10 @@ function getWebDaliPlatformProfile(rawUrl = getWebViewUrlSafe()) {
             lightAttach: true,
             patchPlay: true,
             prewarmOnLoad: true,
-            attachLimit: 10,
-            observerThrottleMs: 450,
-            minApplyDelayMs: 160,
-            burstLimit: 2
+            attachLimit: 24,
+            observerThrottleMs: 120,
+            minApplyDelayMs: 0,
+            burstLimit: 6
         };
     }
     return {
@@ -19340,6 +19382,10 @@ function syncActivePlatformButtonByUrl(rawUrl) {
     }
 }
 
+// Sekme yöneticisi ayrı bir klasik scriptte çalışıyor. Aktif sekme değiştiğinde
+// platform göstergesini de URL ile eşitleyebilmesi için dar bir köprü sun.
+window.syncActivePlatformButtonByUrl = syncActivePlatformButtonByUrl;
+
 function isYoutubeHost(raw) {
     const parsed = parseHttpUrl(raw);
     if (!parsed) return false;
@@ -19385,8 +19431,9 @@ function shouldInjectWebSync(url) {
     if (!parsed) return false;
     const host = String(parsed.hostname || '').toLowerCase();
 
-    // Kimlik dogrulama sayfalarinda script enjeksiyonu yapma; bunun disinda
-    // Web DALI genel web ses motorudur ve tum normal http/https medyada calisir.
+    // Kimlik doğrulama ve genel alışveriş sayfalarında sürekli medya/DOM
+    // gözlemcileri kurma. Web DALI yalnız desteklenen medya platformlarında
+    // çalışsın; Amazon gibi büyük sayfalar doğal Chromium hızında kalsın.
     if (
         host === 'accounts.google.com' ||
         host === 'myaccount.google.com' ||
@@ -19395,7 +19442,11 @@ function shouldInjectWebSync(url) {
         return false;
     }
 
-    return !!host;
+    const mediaPlatform = detectPlatformFromUrl(parsed.toString());
+    return new Set([
+        'youtube', 'ytmusic', 'deezer', 'soundcloud', 'tiktok',
+        'twitch', 'mixcloud', 'spotify'
+    ]).has(mediaPlatform);
 }
 
 async function getSecurityStateSafe() {
@@ -22644,6 +22695,83 @@ function applyAppSidebarCollapsed(collapsed, options = {}) {
     }
 }
 
+function normalizeSidebarMode(value) {
+    return String(value || '').trim().toLowerCase() === 'smart' ? 'smart' : 'classic';
+}
+
+function setSmartSidebarOpen(open) {
+    const canOpen = document.body.classList.contains('smart-sidebar-mode');
+    const next = !!open && canOpen;
+    clearTimeout(setSmartSidebarOpen.closeTimer);
+    if (setSmartSidebarOpen.openRaf) cancelAnimationFrame(setSmartSidebarOpen.openRaf);
+    setSmartSidebarOpen.openRaf = 0;
+    if (next) {
+        document.body.classList.remove('smart-sidebar-closing');
+        // Önce başlangıç konumunu çiz, sonraki karede açılışı başlat.
+        if (!document.body.classList.contains('smart-sidebar-open')) {
+            setSmartSidebarOpen.openRaf = requestAnimationFrame(() => {
+                setSmartSidebarOpen.openRaf = 0;
+                document.body.classList.add('smart-sidebar-open');
+            });
+        }
+    } else if (document.body.classList.contains('smart-sidebar-open')) {
+        document.body.classList.add('smart-sidebar-closing');
+        document.body.classList.remove('smart-sidebar-open');
+        setSmartSidebarOpen.closeTimer = setTimeout(() => {
+            document.body.classList.remove('smart-sidebar-closing');
+        }, 560);
+    } else {
+        document.body.classList.remove('smart-sidebar-open', 'smart-sidebar-closing');
+    }
+    elements.sidebarToggleBtn?.setAttribute('aria-expanded', next ? 'true' : 'false');
+    elements.sidebarToggleBtn?.setAttribute('title', next ? 'Akıllı kenar panelini kapat' : 'Akıllı kenar panelini aç');
+}
+
+function layoutSmartSidebarButtons() {
+    const sidebar = document.getElementById('sidebar');
+    if (!sidebar) return;
+    const buttons = Array.from(sidebar.querySelectorAll('.sidebar-btn, .sidebar-web-quick-actions .control-btn'));
+    const count = buttons.length;
+    if (!count) return;
+    const radiusX = Math.min(188, Math.max(142, window.innerWidth * 0.115));
+    const radiusY = Math.min(285, Math.max(220, window.innerHeight * 0.31));
+    const startAngle = -78;
+    const endAngle = 78;
+    buttons.forEach((button, index) => {
+        button.classList.add('smart-radial-btn');
+        const progress = count === 1 ? 0.5 : index / (count - 1);
+        const angle = (startAngle + ((endAngle - startAngle) * progress)) * (Math.PI / 180);
+        const x = Math.cos(angle) * radiusX;
+        const y = Math.sin(angle) * radiusY;
+        button.style.setProperty('--smart-x', `${x.toFixed(1)}px`);
+        button.style.setProperty('--smart-y', `${y.toFixed(1)}px`);
+        button.style.setProperty('--smart-delay', `${Math.round(index * 18)}ms`);
+        button.style.setProperty('--smart-close-delay', `${Math.round((count - index - 1) * 14)}ms`);
+    });
+}
+
+function applySidebarMode(mode, options = {}) {
+    const normalized = normalizeSidebarMode(mode);
+    const smart = normalized === 'smart';
+    document.body.classList.toggle('smart-sidebar-mode', smart);
+    if (smart) layoutSmartSidebarButtons();
+    if (!smart) setSmartSidebarOpen(false);
+    if (elements.behaviorSidebarMode) elements.behaviorSidebarMode.value = normalized;
+    if (elements.sidebarToggleBtn) {
+        elements.sidebarToggleBtn.setAttribute('aria-haspopup', smart ? 'menu' : 'false');
+        elements.sidebarToggleBtn.setAttribute('aria-expanded', 'false');
+    }
+    if (state.settings) {
+        if (!state.settings.appearance || typeof state.settings.appearance !== 'object') state.settings.appearance = {};
+        state.settings.appearance.sidebarMode = normalized;
+        if (options.persist !== false) saveSettings().catch(() => {});
+    }
+}
+
+window.addEventListener('resize', () => {
+    if (document.body.classList.contains('smart-sidebar-mode')) layoutSmartSidebarButtons();
+});
+
 function applyWebUiClasses() {
     const isWeb = isPageVisible(elements.webPage) || state.currentPage === 'web' || state.currentPanel === 'web';
     const mediaUtilityInSidebar = ['music', 'video', 'web'].includes(String(state.currentPage || '').trim().toLowerCase());
@@ -22827,6 +22955,21 @@ function applyWebSmoothVideoProfileToWebView(reason = 'runtime') {
     if (!elements.webView || typeof elements.webView.executeJavaScript !== 'function') return false;
     const url = String(getWebViewUrlSafe() || '').trim();
     if (!/^https?:\/\//i.test(url)) return false;
+    if (!shouldInjectWebSync(url)) {
+        try {
+            const cleanup = elements.webView.executeJavaScript(`
+                try {
+                    window.__ardaliVideoSmoothObserver?.disconnect?.();
+                    window.__ardaliVideoSmoothObserver = null;
+                    clearTimeout(window.__ardaliVideoSmoothTimer);
+                    document.documentElement.classList.remove('ardali-video-smooth-battery');
+                    true;
+                } catch (_) { false; }
+            `, true);
+            cleanup?.catch?.(() => {});
+        } catch (_) {}
+        return false;
+    }
     const enabled = isWebSmoothVideoBatteryProfileActive();
     const code = `
         (function(){
@@ -43027,6 +43170,10 @@ function loadSettingsToUI() {
     if (elements.behaviorSidebarStyle) {
         elements.behaviorSidebarStyle.value = normalizeSidebarStyle(state.settings?.appearance?.sidebarStyle);
     }
+    if (elements.behaviorSidebarMode) {
+        elements.behaviorSidebarMode.value = normalizeSidebarMode(state.settings?.appearance?.sidebarMode);
+    }
+    applySidebarMode(state.settings?.appearance?.sidebarMode, { persist: false });
     if (elements.behaviorSidebarIconScale) {
         elements.behaviorSidebarIconScale.value = normalizeSidebarIconScale(state.settings?.appearance?.sidebarIconScale);
     }

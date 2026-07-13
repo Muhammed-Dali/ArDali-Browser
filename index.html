@@ -49,6 +49,10 @@
         <!-- Sol Sidebar (İkonlar) -->
 	        <nav class="sidebar" id="sidebar">
 	            <div class="sidebar-top">
+                <button class="sidebar-btn sidebar-adblock-btn" id="adblockBtn" title="ArDali Kontrol Panelini Aç" aria-label="Reklam engelleme kontrol paneli">
+                    <img class="sidebar-icon-img" src="icons/ui/deliblock.svg" alt="" aria-hidden="true">
+                    <span class="sidebar-badge hidden" id="adblockBlockedBadge">0</span>
+                </button>
                 <button class="sidebar-btn" data-page="web" data-panel="web" title="Web" data-i18n-title="sidebar.web">
                     <svg class="sidebar-glyph" viewBox="0 0 24 24" aria-hidden="true">
                         <circle cx="12" cy="12" r="8.5"/>
@@ -65,6 +69,14 @@
                         <path d="M4.8 13.2v3M8.3 11.2v6.4M12 8.8v11M15.7 11.2v6.4M19.2 13.2v3"/>
                         <path d="M5.3 7.8a8 8 0 0 1 13.4 0"/>
                         <path d="M8.1 8.9a4.9 4.9 0 0 1 7.8 0"/>
+                    </svg>
+                </button>
+                <button class="sidebar-btn sidebar-quick-listen-btn" id="pulseQuickListenBtn" title="Hızlı Dinle" aria-label="Hızlı Dinle">
+                    <svg class="sidebar-glyph pulse-quick-icon" viewBox="0 0 24 24" aria-hidden="true">
+                        <rect x="3" y="10" width="3" height="10" rx="1.2" fill="currentColor"/>
+                        <rect x="8" y="6" width="3" height="14" rx="1.2" fill="currentColor"/>
+                        <rect x="13" y="3" width="3" height="17" rx="1.2" fill="currentColor"/>
+                        <rect x="18" y="8" width="3" height="12" rx="1.2" fill="currentColor"/>
                     </svg>
                 </button>
                 <button class="sidebar-btn" data-page="videoTools" data-panel="library" title="Video Düzenleme" data-i18n-title="sidebar.videoTools">
@@ -128,6 +140,14 @@
                 </button>
             </div>
 	        </nav>
+
+            <button class="nav-btn sidebar-toggle-btn" id="sidebarToggleBtn" type="button" title="Kenar çubuğunu gizle" aria-label="Kenar çubuğunu gizle">
+                <svg class="nav-glyph" viewBox="0 0 24 24" aria-hidden="true">
+                    <rect x="4" y="5" width="16" height="14" rx="2.4"/>
+                    <path d="M10 5.8v12.4"/>
+                    <path class="sidebar-toggle-arrow" d="M15.2 9.2 12.4 12l2.8 2.8"/>
+                </svg>
+            </button>
 
         <!-- Sol Panel Stack -->
         <div class="left-panel" id="leftPanel">
@@ -277,13 +297,6 @@
         <main class="main-content">
             <!-- Üst Gezinme Çubuğu -->
             <div class="nav-bar">
-                <button class="nav-btn sidebar-toggle-btn" id="sidebarToggleBtn" type="button" title="Kenar çubuğunu gizle" aria-label="Kenar çubuğunu gizle">
-                    <svg class="nav-glyph" viewBox="0 0 24 24" aria-hidden="true">
-                        <rect x="4" y="5" width="16" height="14" rx="2.4"/>
-                        <path d="M10 5.8v12.4"/>
-                        <path class="sidebar-toggle-arrow" d="M15.2 9.2 12.4 12l2.8 2.8"/>
-                    </svg>
-                </button>
                 <button class="nav-btn" id="backBtn" title="Geri" data-i18n-title="nav.back">
                     <svg class="nav-glyph" viewBox="0 0 24 24" aria-hidden="true"><path d="M19 12H7.8M11.6 7.7 7.3 12l4.3 4.3"/></svg>
                 </button>
@@ -292,14 +305,6 @@
                 </button>
                 <button class="nav-btn" id="refreshBtn" title="Yenile" data-i18n-title="nav.reload">
                     <svg class="nav-glyph" viewBox="0 0 24 24" aria-hidden="true"><path d="M18.2 8.2A7.3 7.3 0 1 0 19 12"/><path d="M15.5 5.7h3.6v3.6"/></svg>
-                </button>
-                <button class="nav-btn" id="pulseQuickListenBtn" title="Dinle">
-                    <svg class="pulse-quick-icon" viewBox="0 0 24 24" aria-hidden="true">
-                        <rect x="3" y="10" width="3" height="10" rx="1.2" fill="currentColor"/>
-                        <rect x="8" y="6" width="3" height="14" rx="1.2" fill="currentColor"/>
-                        <rect x="13" y="3" width="3" height="17" rx="1.2" fill="currentColor"/>
-                        <rect x="18" y="8" width="3" height="12" rx="1.2" fill="currentColor"/>
-                    </svg>
                 </button>
                 <div class="music-view-quick hidden" id="musicViewQuick" role="group" aria-label="Müzik görünüm modu">
                     <button class="music-view-btn" type="button" data-view-mode="list" title="Liste">
@@ -339,10 +344,6 @@
                         <option value="date-desc">Tarih</option>
                     </select>
                 </div>
-                <button class="nav-btn" id="adblockBtn" title="ArDali Kontrol Panelini Aç">
-                    <img class="nav-icon-img" src="icons/ui/deliblock.svg" alt="DeliBlock">
-                    <span class="nav-badge hidden" id="adblockBlockedBadge">0</span>
-                </button>
                 <div class="nav-platform-strip" id="navPlatformStrip" aria-label="Web platform kısayolları">
                     <div class="nav-platform-spotlight" id="navPlatformSpotlight" aria-hidden="true"></div>
                 </div>
@@ -859,7 +860,7 @@
                                                 <img src="https://brave.com/static-assets/images/brave-logo-sans-text.svg" alt=""> <span>Brave</span>
                                             </div>
                                             <div class="custom-dropdown-option" data-value="google" onclick="if(window.handleCustomDropdownOptionClick) window.handleCustomDropdownOptionClick(this); event.stopPropagation();">
-                                                <img src="https://www.google.com/favicon.ico" alt=""> <span>Google</span>
+                                                <img src="icons/ui/search-google.svg" alt=""> <span>Google</span>
                                             </div>
                                             <div class="custom-dropdown-option" data-value="bing" onclick="if(window.handleCustomDropdownOptionClick) window.handleCustomDropdownOptionClick(this); event.stopPropagation();">
                                                 <img src="https://www.bing.com/favicon.ico" alt=""> <span>Bing</span>
@@ -1682,7 +1683,7 @@
                                                             <img src="https://duckduckgo.com/favicon.ico" alt=""> <span>DuckDuckGo</span>
                                                         </div>
                                                         <div class="custom-dropdown-option" data-value="google" onclick="if(window.handleCustomDropdownOptionClick) window.handleCustomDropdownOptionClick(this); event.stopPropagation();">
-                                                            <img src="https://www.google.com/favicon.ico" alt=""> <span>Google</span>
+                                                            <img src="icons/ui/search-google.svg" alt=""> <span>Google</span>
                                                         </div>
                                                         <div class="custom-dropdown-option" data-value="brave" onclick="if(window.handleCustomDropdownOptionClick) window.handleCustomDropdownOptionClick(this); event.stopPropagation();">
                                                             <img src="https://brave.com/static-assets/images/brave-logo-sans-text.svg" alt=""> <span>Brave</span>
@@ -1735,6 +1736,14 @@
                                                     <option value="lively" data-i18n="ui.startup.webMotionPreset.options.lively">Canlı</option>
                                                 </select>
                                             </div>
+                                            <div class="setting-row">
+                                                <span>Sol bar çalışma biçimi</span>
+                                                <select class="settings-select" id="behaviorSidebarMode">
+                                                    <option value="classic">Klasik Dikey Bar</option>
+                                                    <option value="smart">Akıllı Kenar Paneli</option>
+                                                </select>
+                                            </div>
+                                            <div class="settings-sub">Akıllı modda ince kenar tutamacına tıklayınca ana uygulama düğmeleri açılır.</div>
                                             <div class="setting-row">
                                                 <span>Kenar bar görünümü</span>
                                                 <select class="settings-select" id="behaviorSidebarStyle">
@@ -2925,7 +2934,7 @@
                 <img class="about-logo" src="icons/app/ardali_256.png" alt="ArDali" onerror="this.style.display='none'">
                 <div class="about-title-wrap">
                     <div class="about-title" id="aboutTitle" data-i18n="about.title">ArDali Medya Player</div>
-                    <div class="about-subtitle" data-i18n="about.version">Versiyon: 2.0.0 - Kararlı Sürüm</div>
+                    <div class="about-subtitle">Versiyon: 5.2.13 - Kararlı Sürüm</div>
                 </div>
             </div>
 
@@ -2954,6 +2963,18 @@
                 </div>
                 <div class="about-features-title" data-i18n="about.featuresTitle">Özellikler ve Şeffaflık</div>
                 <div class="about-sections">
+                    <section class="about-section about-section-updates">
+                        <h4>5.2.13 Yenilikleri</h4>
+                        <ul class="about-list">
+                            <li>Bağlantıları arka planda yeni sekmede açma ve sayfayı güvenilir biçimde yükleme düzeltildi.</li>
+                            <li>Animasyonlu Akıllı Kenar Paneli eklendi; klasik ve radyal bar stilleri Davranış ayarından seçilebilir.</li>
+                            <li>Ses Efektleri ve Görselleştirme düğmeleri akıllı panele eklendi; web ses efektlerinin erken devreye girmesi iyileştirildi.</li>
+                            <li>Etkin platform kısayolu belirgin yeşil işaretle gösteriliyor; arama motoru simgesi ve ayar eşitlemesi sağlamlaştırıldı.</li>
+                            <li>Amazon gibi yoğun sitelerde akıcılık artırıldı; reklam engelleme ve medya enjeksiyonu yükü azaltıldı.</li>
+                            <li>Sol bar ve pencere arayüzü sadeleştirildi; reklam engelleme ve Hızlı Dinle kontrolleri yeniden yerleştirildi.</li>
+                            <li>Linux paketleme altyapısı AppImage, DEB ve RPM çıktıları ile daha geniş dağıtım uyumluluğu için güncellendi.</li>
+                        </ul>
+                    </section>
                     <section class="about-section about-section-updates">
                         <h4 data-i18n="about.sections.updates.title">Sürüm ve Güncelleme</h4>
                         <ul class="about-list">

@@ -7,13 +7,13 @@ document.addEventListener('DOMContentLoaded', () => {
     // --- Elements ---
     const webTabsList = document.getElementById('webTabsList');
     const webTabNewBtn = document.getElementById('webTabNewBtn');
-    
+
     const navBack = document.getElementById('webNavBack');
     const navForward = document.getElementById('webNavForward');
     const navReload = document.getElementById('webNavReload');
     const navHome = document.getElementById('webNavHome');
     const addressInput = document.getElementById('webAddressInput');
-    
+
     const newTabPage = document.getElementById('webNewTabPage');
     const ntpSearchInput = document.getElementById('webNtpSearchInput');
     const ntpEngines = document.querySelectorAll('.web-ntp-engine');
@@ -84,7 +84,7 @@ document.addEventListener('DOMContentLoaded', () => {
     function formatUrl(input) {
         if (!input.trim()) return BLANK_URL;
         if (isValidUrl(input)) return input;
-        
+
         // If it looks like a domain but lacks protocol
         if (input.includes('.') && !input.includes(' ')) {
             return `https://${input}`;
@@ -313,6 +313,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         wv.addEventListener('media-started-playing', () => { tab.isPlayingMedia = true; });
         wv.addEventListener('media-paused', () => { tab.isPlayingMedia = false; });
+
         if (activeTabId === tabId) {
             document.querySelectorAll('.webviews-container webview').forEach(w => w.classList.remove('active'));
             wv.classList.add('active');
@@ -419,7 +420,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 closestIndex = i;
             }
         }
-        
+
         let newIndex = closestIndex + direction;
         newIndex = Math.max(0, Math.min(newIndex, ZOOM_STEPS.length - 1));
         return ZOOM_STEPS[newIndex];
@@ -427,11 +428,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function updateZoomUI(zoomFactor) {
         if (!webAddressZoom || !webZoomPopup) return;
-        
+
         const percent = Math.round(zoomFactor * 100);
         webZoomText.textContent = `%${percent}`;
         webAddressZoom.title = `Yakınlaştırma: %${percent}`;
-        
+
         if (zoomFactor !== 1.0) {
             webAddressZoom.classList.remove('hidden');
             webAddressZoom.classList.add('active');
@@ -447,18 +448,18 @@ document.addEventListener('DOMContentLoaded', () => {
     function handleWebviewZoomScroll(tabId, direction) {
         const tab = tabs.find(t => t.id === tabId);
         if (!tab) return;
-        
+
         tab.zoomFactor = getNextZoomFactor(tab.zoomFactor || 1.0, direction);
         const wv = document.getElementById('webview-' + tabId);
         setWebviewZoomFactorSafe(wv, tab.zoomFactor);
-        
+
         if (activeTabId === tabId) {
             updateZoomUI(tab.zoomFactor);
             // Show icon
             webAddressZoom.classList.remove('hidden');
             // Show popup automatically on scroll
             webZoomPopup.classList.remove('hidden');
-            
+
             clearTimeout(window.zoomPopupTimeout);
             window.zoomPopupTimeout = setTimeout(() => {
                 if (activeTabId === tabId) {
@@ -518,33 +519,24 @@ document.addEventListener('DOMContentLoaded', () => {
     function createTab(url = BLANK_URL, makeActive = true) {
         const id = generateId();
         const isDownloadsTab = isDownloadsUrl(url);
-        
-        // Create WebView Element
-        const wv = document.createElement('webview');
-        wv.id = 'webview-' + id;
-        wv.setAttribute('allowpopups', '');
-        wv.setAttribute('partition', 'persist:ardali-web');
-        
-        applyPreferredUserAgent(wv, url);
-        wv.src = isDownloadsTab ? BLANK_URL : url;
-        
-        const container = document.getElementById('webViewsContainer');
-        if (container) {
-            container.appendChild(wv);
-        }
-
-        const tab = { 
-            id, 
-            url, 
-            title: isDownloadsTab ? 'İndirilenler' : (url === BLANK_URL ? NEW_TAB_TITLE : 'Yükleniyor...'), 
+        const tab = {
+            id,
+            url,
+            title: isDownloadsTab ? 'İndirilenler' : (url === BLANK_URL ? NEW_TAB_TITLE : 'Yükleniyor...'),
             isLoading: url !== BLANK_URL && !isDownloadsTab,
             favicon: '',
             zoomFactor: 1.0,
             isPlayingMedia: false,
             lastActive: Date.now()
         };
-        
-        // Attach Events
+
+        // Olayları ve görünürlük durumunu guest oluşturulmadan önce hazırla.
+        // Linux'ta ekran dışında/örtülü eklenen bir webview ilk navigasyonu
+        // askıya alabiliyor; bu nedenle aktif webview DOM'a doğrudan görünür girer.
+        const wv = document.createElement('webview');
+        wv.id = 'webview-' + id;
+        wv.setAttribute('allowpopups', '');
+        wv.setAttribute('partition', 'persist:ardali-web');
         bindWebBrowserEvents(wv, tab.id);
         if (typeof window.bindWebViewEvents === 'function') {
             window.bindWebViewEvents(wv);
@@ -552,17 +544,68 @@ document.addEventListener('DOMContentLoaded', () => {
         wv.addEventListener('media-started-playing', () => { tab.isPlayingMedia = true; });
         wv.addEventListener('media-paused', () => { tab.isPlayingMedia = false; });
 
+        const targetUrl = isDownloadsTab ? BLANK_URL : url;
+        if (targetUrl !== BLANK_URL) {
+            wv.addEventListener('dom-ready', () => {
+                applyPreferredUserAgent(wv, targetUrl);
+                try {
+                    const pending = wv.loadURL(targetUrl);
+                    pending?.catch?.((err) => console.warn(
+                        '[WEB] background tab load failed ' + JSON.stringify({
+                            id,
+                            targetUrl,
+                            error: String(err?.code || err?.message || err || '')
+                        })
+                    ));
+                } catch (err) {
+                    console.warn('[WEB] background tab load threw ' + JSON.stringify({
+                        id,
+                        targetUrl,
+                        error: String(err?.message || err || '')
+                    }));
+                }
+            }, { once: true });
+        }
+
+        if (makeActive) {
+            document.querySelectorAll('.webviews-container webview.active')
+                .forEach((view) => view.classList.remove('active'));
+            wv.classList.add('active');
+            activeTabId = id;
+        }
+        applyPreferredUserAgent(wv, targetUrl);
+        // Electron/Wayland'de hedef URL ile doğrudan eklenen ikinci webview
+        // guest'e bağlanmayabiliyor. Önce blank guest oluştur, URL'yi
+        // did-attach sonrasında yukarıdaki dinleyiciyle yükle.
+        wv.setAttribute('src', BLANK_URL);
+
+        const container = document.getElementById('webViewsContainer');
+        if (!container) return null;
+        container.appendChild(wv);
+
         tabs.push(tab);
         renderTabs();
         if (makeActive) {
             activateTab(tab.id);
+        }
+
+        // did-attach çok erken kaçarsa veya guest gecikirse kontrollü yedek.
+        if (!isDownloadsTab && url !== BLANK_URL) {
+            const ensureCreatedTabLoaded = () => {
+                if (!wv.isConnected) return;
+                try {
+                    const currentUrl = String(wv.getURL?.() || '').trim();
+                    if (currentUrl === BLANK_URL) wv.loadURL(url).catch?.(() => {});
+                } catch (_) {}
+            };
+            setTimeout(ensureCreatedTabLoaded, 500);
         }
         return tab;
     }
 
     function removeTab(id) {
         tabs = tabs.filter(t => t.id !== id);
-        
+
         // Remove Webview from DOM
         const wv = document.getElementById('webview-' + id);
         if (wv) wv.remove();
@@ -581,9 +624,9 @@ document.addEventListener('DOMContentLoaded', () => {
         activeTabId = id;
         const tab = tabs.find(t => t.id === id);
         if (!tab) return;
-        
+
         tab.lastActive = Date.now();
-        
+
         // Re-awaken discarded tab
         let wv = document.getElementById('webview-' + id);
         if (!wv) {
@@ -591,12 +634,15 @@ document.addEventListener('DOMContentLoaded', () => {
             wv.id = 'webview-' + id;
             wv.setAttribute('allowpopups', '');
             wv.setAttribute('partition', 'persist:ardali-web');
-            
-            applyPreferredUserAgent(wv, tab.url);
-            wv.src = isDownloadsUrl(tab.url) ? BLANK_URL : tab.url;
+
             const container = document.getElementById('webViewsContainer');
             if (container) container.appendChild(wv);
-            
+
+            applyPreferredUserAgent(wv, tab.url);
+            setTimeout(() => {
+                if (wv) wv.src = isDownloadsUrl(tab.url) ? BLANK_URL : tab.url;
+            }, 100);
+
             bindWebBrowserEvents(wv, tab.id);
             if (typeof window.bindWebViewEvents === 'function') {
                 window.bindWebViewEvents(wv);
@@ -606,13 +652,14 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         renderTabs();
-        
+
         const allWVs = document.querySelectorAll('.webviews-container webview');
         allWVs.forEach(w => w.classList.remove('active'));
         if (wv) wv.classList.add('active');
-        
+
         updateAddressBar(tab.url);
         updateNewTabPageVisibility(tab.url);
+        window.syncActivePlatformButtonByUrl?.(tab.url);
     }
 
     function getActiveTab() {
@@ -647,7 +694,7 @@ document.addEventListener('DOMContentLoaded', () => {
         } else {
             addressInput.value = url;
         }
-        
+
         // Update Bookmark Icon
         const addressBookmarkBtn = document.getElementById('webAddressBookmark');
         if (addressBookmarkBtn) {
@@ -656,7 +703,7 @@ document.addEventListener('DOMContentLoaded', () => {
             try {
                 bookmarks = JSON.parse(localStorage.getItem('ardali_bookmarks') || '[]');
             } catch(e) {}
-            
+
             if (url !== BLANK_URL && bookmarks.includes(url)) {
                 icon.style.fontVariationSettings = "'FILL' 1";
                 icon.style.color = 'var(--accent-primary, #00ffcc)';
@@ -734,6 +781,25 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             }
         }
+        syncActiveBookmarkIndicator(url);
+    }
+
+    function getComparableBookmarkHost(value) {
+        try {
+            return new URL(String(value || '')).hostname.toLowerCase().replace(/^www\./, '');
+        } catch (_) {
+            return '';
+        }
+    }
+
+    function syncActiveBookmarkIndicator(currentUrl = '') {
+        const activeHost = getComparableBookmarkHost(currentUrl);
+        document.querySelectorAll('#webBookmarksStrip .web-bookmark-btn').forEach((btn) => {
+            const bookmarkHost = getComparableBookmarkHost(btn.dataset.bookmarkUrl);
+            const isActive = !!activeHost && activeHost === bookmarkHost;
+            btn.classList.toggle('active-site', isActive);
+            btn.setAttribute('aria-current', isActive ? 'page' : 'false');
+        });
     }
 
     function updateNewTabPageVisibility(url) {
@@ -741,7 +807,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const wv = window.getActiveWebView();
         const downloadsPage = document.getElementById('webDownloadsPage');
         const tab = getActiveTab();
-        
+
         if (url === 'ardali://downloads') {
             newTabPage.classList.remove('active');
             if (wv) wv.style.visibility = 'hidden';
@@ -764,7 +830,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (wv) wv.style.visibility = 'visible';
             if (downloadsPage) downloadsPage.classList.add('hidden');
         }
-        
+
         // Restore Zoom
         if (tab) {
             setWebviewZoomFactorSafe(wv, tab.zoomFactor || 1.0);
@@ -775,7 +841,7 @@ document.addEventListener('DOMContentLoaded', () => {
     function renderBookmarks() {
         const bookmarksStrip = document.getElementById('webBookmarksStrip');
         if (!bookmarksStrip) return;
-        
+
         const existing = bookmarksStrip.querySelectorAll('.web-bookmark-btn');
         existing.forEach(el => el.remove());
 
@@ -787,14 +853,15 @@ document.addEventListener('DOMContentLoaded', () => {
         bookmarks.forEach(url => {
             const btn = document.createElement('button');
             btn.className = 'web-bookmark-btn';
-            
+            btn.dataset.bookmarkUrl = url;
+
             try {
                 const domain = new URL(url).hostname;
                 btn.title = domain;
             } catch(e) {
                 btn.title = url;
             }
-            
+
             const img = document.createElement('img');
             try {
                 const domain = new URL(url).hostname;
@@ -802,7 +869,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     img.src = 'icons/app/whatsapp.png';
                 } else {
                     img.src = `https://icons.duckduckgo.com/ip3/${domain}.ico`;
-                    img.onerror = () => { 
+                    img.onerror = () => {
                         if (img.src.includes('duckduckgo.com')) {
                             img.src = `https://www.google.com/s2/favicons?domain=${domain}&sz=32`;
                         } else if (img.src.includes('google.com')) {
@@ -813,9 +880,13 @@ document.addEventListener('DOMContentLoaded', () => {
             } catch(e) {
                 img.src = 'icons/app/ardali_256.png';
             }
-            
+
             btn.appendChild(img);
-            
+            const activeIndicator = document.createElement('span');
+            activeIndicator.className = 'web-bookmark-active-indicator';
+            activeIndicator.setAttribute('aria-hidden', 'true');
+            btn.appendChild(activeIndicator);
+
             btn.onclick = () => {
                 const tab = getActiveTab();
                 const wv = window.getActiveWebView();
@@ -830,9 +901,10 @@ document.addEventListener('DOMContentLoaded', () => {
                     createTab(url);
                 }
             };
-            
+
             bookmarksStrip.appendChild(btn);
         });
+        syncActiveBookmarkIndicator(getActiveTab()?.url || '');
     }
 
     // --- Rendering ---
@@ -849,14 +921,14 @@ document.addEventListener('DOMContentLoaded', () => {
         tabs.forEach((tab, index) => {
             const isTabActive = tab.id === activeTabId;
             let tabEl = webTabsList.querySelector(`.web-tab[data-tab-id="${tab.id}"]`);
-            
+
             if (!tabEl) {
                 tabEl = document.createElement('div');
                 tabEl.dataset.tabId = tab.id;
-                
+
                 const titleEl = document.createElement('span');
                 titleEl.className = 'web-tab-title';
-                
+
                 const closeBtn = document.createElement('button');
                 closeBtn.className = 'web-tab-close';
                 closeBtn.innerHTML = '<span class="material-symbols-rounded">close</span>';
@@ -864,15 +936,15 @@ document.addEventListener('DOMContentLoaded', () => {
                     e.stopPropagation();
                     removeTab(tab.id);
                 };
-                
+
                 tabEl.appendChild(titleEl);
                 tabEl.appendChild(closeBtn);
                 tabEl.onclick = () => activateTab(tab.id);
             }
-            
+
             if (webTabsList.children[index] !== tabEl) {
                 webTabsList.insertBefore(tabEl, webTabsList.children[index]);
-                
+
                 // Chrome'un Flexbox animasyonlarını atlamasını kesin olarak engellemek için doğrudan JS ile canlandır
                 try {
                     tabEl.animate([
@@ -886,20 +958,20 @@ document.addEventListener('DOMContentLoaded', () => {
                     console.log('Animation API not supported');
                 }
             }
-            
+
             tabEl.className = `web-tab ${isTabActive ? 'active' : ''}`;
-            
+
             const titleEl = tabEl.querySelector('.web-tab-title');
             if (titleEl.textContent !== tab.title) {
                 titleEl.textContent = tab.title;
             }
-            
+
             const currentSpinner = tabEl.querySelector('.web-tab-icon-spinner');
             const currentImg = tabEl.querySelector('img.web-tab-icon');
             const currentIsLoading = currentSpinner !== null;
             const hasIcon = currentSpinner !== null || currentImg !== null;
             const currentFavicon = currentImg ? currentImg.src : null;
-            
+
             let faviconSrc = 'icons/app/ardali_256.png';
             if (!tab.isLoading) {
                 if (tab.url && isValidUrl(tab.url) && new URL(tab.url).hostname.includes('whatsapp.com')) {
@@ -915,13 +987,13 @@ document.addEventListener('DOMContentLoaded', () => {
                     } catch(e) {}
                 }
             }
-            
+
             const needsUpdate = !hasIcon || tab.isLoading !== currentIsLoading || (!tab.isLoading && faviconSrc !== currentFavicon && !(faviconSrc.includes('ardali_256') && currentFavicon && currentFavicon.includes('ardali_256')));
-            
+
             if (needsUpdate) {
                 if (currentSpinner) currentSpinner.remove();
                 if (currentImg) currentImg.remove();
-                
+
                 let iconEl;
                 if (tab.isLoading) {
                     iconEl = document.createElement('div');
@@ -944,10 +1016,10 @@ document.addEventListener('DOMContentLoaded', () => {
                                 if (domain.includes('whatsapp.com')) {
                                     directUrl = 'icons/app/whatsapp.png';
                                 }
-                                
+
                                 if (iconEl.src.includes('google.com/s2')) iconEl.dataset.triedGoogle = 'true';
                                 if (iconEl.src.includes('favicon.ico')) iconEl.dataset.triedDirect = 'true';
-                                
+
                                 if (!iconEl.dataset.triedDirect) {
                                     iconEl.dataset.triedDirect = 'true';
                                     iconEl.src = directUrl;
@@ -971,7 +1043,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 tabEl.insertBefore(iconEl, titleEl);
             }
         });
-        
+
         if (webTabNewBtn) {
             webTabsList.appendChild(webTabNewBtn);
         }
@@ -1025,7 +1097,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (tab) {
                 tab.isLoading = false;
             }
-            
+
             if (activeTabId === tabId) {
                 isWebviewLoading = false;
                 renderTabs();
@@ -1095,7 +1167,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         wv.addEventListener('new-window', (e) => {
             e.preventDefault();
-            createTab(e.url);
+            createTab(e.url, false);
         });
 
         wv.addEventListener('did-start-navigation', (e) => {
@@ -1130,7 +1202,10 @@ document.addEventListener('DOMContentLoaded', () => {
             const tab = tabs.find(t => t.id === tabId);
             if (!tab) return;
             tab.url = e.url || wv.getURL() || tab.url;
-            if (activeTabId === tabId) updateActiveTabState(tab.url, wv.getTitle());
+            if (activeTabId === tabId) {
+                updateActiveTabState(tab.url, wv.getTitle());
+                window.syncActivePlatformButtonByUrl?.(tab.url);
+            }
         });
 
         wv.addEventListener('did-navigate-in-page', (e) => {
@@ -1142,7 +1217,10 @@ document.addEventListener('DOMContentLoaded', () => {
             const tab = tabs.find(t => t.id === tabId);
             if (!tab) return;
             tab.url = e.url || wv.getURL() || tab.url;
-            if (activeTabId === tabId) updateActiveTabState(tab.url, wv.getTitle());
+            if (activeTabId === tabId) {
+                updateActiveTabState(tab.url, wv.getTitle());
+                window.syncActivePlatformButtonByUrl?.(tab.url);
+            }
         });
 
         wv.addEventListener('render-process-gone', () => recreateWebviewForTab(tabId, 'render-process-gone'));
@@ -1160,7 +1238,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // UI Events
     webTabNewBtn.onclick = () => createTab();
-    
+
     // Zoom UI Events
     if (webAddressZoom) {
         webAddressZoom.addEventListener('click', (e) => {
@@ -1227,7 +1305,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
     });
-    
+
     navBack.onclick = () => { const wv = window.getActiveWebView(); if (wv && wv.canGoBack()) wv.goBack(); };
     navForward.onclick = () => { const wv = window.getActiveWebView(); if (wv && wv.canGoForward()) wv.goForward(); };
     navReload.onclick = () => {
@@ -1256,7 +1334,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const icon = addressBookmarkBtn.querySelector('.material-symbols-rounded');
             const tab = getActiveTab();
             if (!tab || tab.url === BLANK_URL) return;
-            
+
             let bookmarks = [];
             try {
                 bookmarks = JSON.parse(localStorage.getItem('ardali_bookmarks') || '[]');
@@ -1271,12 +1349,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 icon.style.color = 'var(--accent-primary, #00ffcc)';
                 if (!bookmarks.includes(tab.url)) bookmarks.push(tab.url);
             }
-            
+
             localStorage.setItem('ardali_bookmarks', JSON.stringify(bookmarks));
             renderBookmarks();
         };
     }
-    
+
     const securityBtn = document.querySelector('.web-address-security');
     const siteInfoPopup = document.getElementById('siteInfoPopup');
     const siteInfoCookiesBtn = document.getElementById('siteInfoCookiesBtn');
@@ -1330,12 +1408,12 @@ document.addEventListener('DOMContentLoaded', () => {
             addressSuggestions.classList.add('hidden');
             return;
         }
-        
+
         suggestionTimeout = setTimeout(async () => {
             try {
                 const response = await fetch(`https://duckduckgo.com/ac/?q=${encodeURIComponent(query)}`);
                 const data = await response.json();
-                
+
                 if (data && data.length > 0) {
                     addressSuggestions.innerHTML = '';
                     data.forEach(item => {
@@ -1406,13 +1484,13 @@ document.addEventListener('DOMContentLoaded', () => {
             if (ntpSuggestions) ntpSuggestions.classList.add('hidden');
             return;
         }
-        
+
         ntpSuggestionTimeout = setTimeout(async () => {
             if (!ntpSuggestions) return;
             try {
                 const response = await fetch(`https://duckduckgo.com/ac/?q=${encodeURIComponent(query)}`);
                 const data = await response.json();
-                
+
                 if (data && data.length > 0) {
                     ntpSuggestions.innerHTML = '';
                     data.forEach(item => {
@@ -1518,11 +1596,11 @@ document.addEventListener('DOMContentLoaded', () => {
     setInterval(() => {
         const now = Date.now();
         const DISCARD_THRESHOLD_MS = 5 * 60 * 1000; // 5 minutes
-        
+
         tabs.forEach(tab => {
             if (tab.id === activeTabId) return; // Never discard active tab
             if (tab.isPlayingMedia) return; // Never discard media playing tab
-            
+
             if (now - tab.lastActive > DISCARD_THRESHOLD_MS) {
                 const wv = document.getElementById('webview-' + tab.id);
                 if (wv) {

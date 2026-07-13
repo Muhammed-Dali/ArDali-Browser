@@ -617,6 +617,9 @@
         if (elements.behaviorSidebarStyle) {
             elements.behaviorSidebarStyle.value = normalizeSidebarStyle(state.settings?.appearance?.sidebarStyle);
         }
+        if (elements.behaviorSidebarMode) {
+            elements.behaviorSidebarMode.value = String(state.settings?.appearance?.sidebarMode || 'classic') === 'smart' ? 'smart' : 'classic';
+        }
         if (elements.behaviorSidebarIconScale) {
             elements.behaviorSidebarIconScale.value = normalizeSidebarIconScale(state.settings?.appearance?.sidebarIconScale);
         }
@@ -895,6 +898,10 @@
         state.settings.appearance.sidebarStyle = normalizeSidebarStyle(
             elements.behaviorSidebarStyle?.value || state.settings.appearance.sidebarStyle || 'classic'
         );
+        state.settings.appearance.sidebarMode =
+            String(elements.behaviorSidebarMode?.value || state.settings.appearance.sidebarMode || 'classic') === 'smart'
+                ? 'smart'
+                : 'classic';
         state.settings.appearance.sidebarIconScale = normalizeSidebarIconScale(
             elements.behaviorSidebarIconScale?.value || state.settings.appearance.sidebarIconScale || 'x3'
         );

@@ -332,6 +332,17 @@
             const imports = Array.isArray(result?.genericImports) ? result.genericImports : [];
             const hostname = String(result?.hostname || location.hostname || '').toLowerCase();
             const signature = imports.map((item) => String(item?.id || '')).join('|') || 'none';
+            // Amazon'un ürün akışı çok yüksek DOM/class değişimi üretir. Genel
+            // kozmetik tarama burada ana iş parçacığını gereksiz yere yorar;
+            // ağ tabanlı reklam engelleme çalışmaya devam eder.
+            const isHighChurnCommerceHost = hostname === 'amazon.com'
+                || hostname.endsWith('.amazon.com')
+                || hostname === 'amazon.com.tr'
+                || hostname.endsWith('.amazon.com.tr');
+            if (isHighChurnCommerceHost) {
+                resetGenericCosmetics(hostname, 'commerce-performance');
+                return;
+            }
             if (imports.length === 0) {
                 if (genericState.hostname !== hostname || genericState.signature !== signature) {
                     resetGenericCosmetics(hostname, signature);

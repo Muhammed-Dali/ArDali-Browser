@@ -751,6 +751,11 @@ const ardaliAPI = {
         ipcRenderer.on('web:reload-active', handler);
         return () => ipcRenderer.removeListener('web:reload-active', handler);
     },
+    onWebOpenTab: (callback) => {
+        const handler = (_, url) => callback(url);
+        ipcRenderer.on('web:open-tab', handler);
+        return () => ipcRenderer.removeListener('web:open-tab', handler);
+    },
     onScopedSfxLiveParam: (callback) => {
         if (typeof callback !== 'function') return () => {};
         const handler = (_event, payload) => callback(payload);
@@ -855,6 +860,7 @@ const ardaliAPI = {
     // Web Security / Privacy helpers
     webSecurity: {
         openExternal: (url) => ipcRenderer.invoke('web:openExternal', url),
+        chooseAndOpenExternal: (url, protocol) => ipcRenderer.invoke('web:chooseAndOpenExternal', url, protocol),
         clearData: (options) => ipcRenderer.invoke('web:clearData', options),
         reloadActive: () => ipcRenderer.invoke('web:reloadActive'),
         getSecurityState: () => ipcRenderer.invoke('web:getSecurityState'),

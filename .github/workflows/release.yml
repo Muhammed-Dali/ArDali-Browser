@@ -15,8 +15,9 @@ permissions:
 
 jobs:
   build-linux:
-    # Build in Ubuntu 24.04 so GTK4/libadwaita requirements are available.
-    runs-on: ubuntu-24.04
+    # Eski glibc tabanı, üretilen native ikililerin daha fazla dağıtımda
+    # çalışmasını sağlar; paketler yeni sistemlerde ileriye uyumludur.
+    runs-on: ubuntu-22.04
     defaults:
       run:
         shell: bash
@@ -138,11 +139,13 @@ jobs:
           chmod +x native-dist/linux/ardali-projectm-visualizer
 
       - name: Build Linux packages (AppImage/deb/rpm)
-        run: npm run -s build:linux:appimage -- --publish=never
+        run: npm run -s build:linux -- --publish=never
 
       - name: Verify AppImage contains native + bundled app resources
         run: |
           set -euo pipefail
+          compgen -G "dist/*.deb" >/dev/null
+          compgen -G "dist/*.rpm" >/dev/null
           appimage="$(ls -1 dist/*.AppImage | head -n1)"
           test -n "${appimage}"
           chmod +x "${appimage}"

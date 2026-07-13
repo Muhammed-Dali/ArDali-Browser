@@ -731,6 +731,31 @@ body.web-experience-disabled #navPlatformStrip {
     position: relative;
 }
 
+.web-tabs-container {
+    -webkit-app-region: drag;
+}
+
+.web-tab,
+.web-tab-new,
+.web-tab button {
+    -webkit-app-region: no-drag;
+}
+
+/* Sekmeler arasındaki/sonundaki boş alan KDE'nin yerel pencere sürükleme
+   davranışını kullanır. Büyütülmüş pencere aşağı sürüklenince geri alınır. */
+.web-tabs {
+    -webkit-app-region: drag;
+}
+
+.web-nav-bar,
+.web-nav-bar button,
+.web-address-bar,
+.web-address-bar input,
+.nav-platform-strip,
+.nav-platform-strip button {
+    -webkit-app-region: no-drag;
+}
+
 /* ============================================
    SIDEBAR (Sol İkon Çubuğu)
    ============================================ */
@@ -810,6 +835,81 @@ body:not(.sidebar-motion-enabled) .sidebar {
         color var(--theme-btn-transition-effective) var(--theme-motion-ease),
         box-shadow var(--theme-btn-transition-effective) var(--theme-motion-ease);
 }
+
+/* Kenar çubuğu tutamağı ana kapsayıcıdadır; içerik overflow'u tarafından kırpılmaz. */
+.app-container > .sidebar-toggle-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: fixed;
+    left: calc(var(--sidebar-width) - 7px);
+    top: 50%;
+    width: 24px;
+    height: 68px;
+    min-width: 24px;
+    padding: 0;
+    border-radius: 0 10px 10px 0;
+    transform: translateY(-50%);
+    opacity: 1;
+    z-index: 1200;
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+    transition: none;
+}
+
+.app-container > .sidebar-toggle-btn:hover,
+.app-container > .sidebar-toggle-btn:focus-visible {
+    transform: translateY(-50%);
+    background: transparent !important;
+    box-shadow: none !important;
+}
+
+body.sidebar-collapsed .app-container > .sidebar-toggle-btn {
+    left: 0;
+}
+
+.app-container > .sidebar-toggle-btn .nav-glyph {
+    display: none;
+}
+
+.app-container > .sidebar-toggle-btn::after {
+    content: '‹';
+    display: grid;
+    place-items: center;
+    width: 24px;
+    height: 34px;
+    color: rgba(205, 232, 255, 0.78);
+    font-size: 29px;
+    font-weight: 500;
+    line-height: 1;
+    opacity: 0.58;
+    transform: translateX(0);
+    text-shadow: 0 0 7px rgba(79, 190, 255, 0.42);
+    transition: color 200ms ease, opacity 200ms ease, transform 240ms cubic-bezier(0.2, 0.8, 0.2, 1), text-shadow 200ms ease;
+}
+
+body.sidebar-collapsed .app-container > .sidebar-toggle-btn::after {
+    content: '›';
+}
+
+.app-container > .sidebar-toggle-btn:hover::after,
+.app-container > .sidebar-toggle-btn:focus-visible::after {
+    color: #8ee8ff;
+    opacity: 1;
+    transform: translateX(-3px);
+    text-shadow: 0 0 6px rgba(91, 218, 255, 0.9), 0 0 13px rgba(71, 151, 255, 0.7);
+    animation: none;
+}
+
+body.sidebar-collapsed .app-container > .sidebar-toggle-btn:hover::after,
+body.sidebar-collapsed .app-container > .sidebar-toggle-btn:focus-visible::after {
+    transform: translateX(4px);
+    animation: none;
+}
+
+.sidebar-adblock-btn { --icon-accent: #56e4ff; }
+.sidebar-quick-listen-btn { --icon-accent: #79a7ff; }
 
 body:not(.sidebar-motion-enabled) .nav-bar .sidebar-toggle-btn {
     transition: none !important;
@@ -2329,7 +2429,7 @@ body.video-tools-mode .now-playing-bar {
     overflow-x: auto;
     overflow-y: visible;
     padding-top: 2px;
-    padding-bottom: 2px;
+    padding-bottom: 7px;
     padding-left: 4px;
     padding-right: 46px;
     opacity: 0;
@@ -2458,13 +2558,14 @@ body.web-mode.web-drawer-collapsed .nav-platform-strip .platform-btn.platform-bt
     display: none;
     position: absolute;
     left: 50%;
-    bottom: 0;
-    width: 26px;
-    height: 3px;
+    bottom: 2px;
+    width: 18px;
+    height: 6px;
     border-radius: 999px;
     transform: translateX(-50%);
-    background: linear-gradient(90deg, #2dff9a 0%, #59ffc2 48%, #6dd8ff 100%);
-    box-shadow: 0 0 10px rgba(45, 255, 154, 0.85), 0 0 18px rgba(109, 216, 255, 0.55);
+    background: #20f58b;
+    border: 1px solid rgba(210, 255, 234, 0.95);
+    box-shadow: 0 0 5px #20f58b, 0 0 12px rgba(32, 245, 139, 0.95);
     pointer-events: none;
     z-index: 12;
     opacity: 1;
@@ -2473,7 +2574,7 @@ body.web-mode.web-drawer-collapsed .nav-platform-strip .platform-btn.platform-bt
 .nav-platform-strip .platform-btn.platform-btn-docked.active {
     --web-platform-live: #53ffb5;
     background: transparent !important;
-    box-shadow: none !important;
+    box-shadow: inset 0 -2px 0 rgba(32, 245, 139, 0.22) !important;
     animation: none !important;
 }
 
@@ -8410,17 +8511,19 @@ body.video-window-fs-active #videoPage.hide-cursor {
 
 .webviews-container webview {
     position: absolute;
-    top: 0;
-    left: 0;
+    top: -9999px;
+    left: -9999px;
     width: 100%;
     height: 100%;
     display: flex !important;
-    opacity: 0;
+    opacity: 1;
     pointer-events: none;
     z-index: 1;
 }
 
 .webviews-container webview.active {
+    top: 0;
+    left: 0;
     opacity: 1;
     pointer-events: auto;
     z-index: 2;
@@ -8656,6 +8759,9 @@ span.web-tab-icon {
     border: none;
     cursor: pointer;
     transition: background-color 0.2s;
+    position: relative;
+    overflow: visible;
+    padding-bottom: 5px;
 }
 
 .web-bookmark-btn:hover {
@@ -8666,6 +8772,29 @@ span.web-tab-icon {
     width: 16px;
     height: 16px;
     border-radius: 2px;
+}
+
+.web-bookmark-active-indicator {
+    display: none;
+    position: absolute;
+    left: 50%;
+    bottom: 1px;
+    width: 14px;
+    height: 4px;
+    border-radius: 999px;
+    transform: translateX(-50%);
+    background: #20f58b;
+    border: 1px solid rgba(220, 255, 238, 0.95);
+    box-shadow: 0 0 5px #20f58b, 0 0 10px rgba(32, 245, 139, 0.9);
+    pointer-events: none;
+}
+
+.web-bookmark-btn.active-site .web-bookmark-active-indicator {
+    display: block;
+}
+
+.web-bookmark-btn.active-site img {
+    filter: brightness(1.12) saturate(1.2) drop-shadow(0 0 4px rgba(32, 245, 139, 0.7));
 }
 
 .web-nav-btn:disabled {
@@ -16486,4 +16615,144 @@ body.settings-window-mode[data-ardali-theme] #settingsPage .settings-select opti
 .web-zoom-reset-btn:hover {
     background-color: var(--bg-hover);
     border-color: var(--text-primary);
+}
+
+/* ============================================
+   AKILLI KENAR PANELİ — RADYAL MENÜ
+   ============================================ */
+body.smart-sidebar-mode .sidebar,
+body.smart-sidebar-mode.smart-sidebar-open .sidebar,
+body.smart-sidebar-mode.smart-sidebar-closing .sidebar {
+    position: fixed;
+    left: 0;
+    top: 50%;
+    width: 230px !important;
+    min-width: 230px !important;
+    max-width: 230px !important;
+    height: min(680px, calc(100vh - 24px));
+    max-height: none;
+    padding: 0 !important;
+    background: transparent !important;
+    border: 0 !important;
+    outline: 0 !important;
+    box-shadow: none !important;
+    backdrop-filter: none !important;
+    clip-path: none !important;
+    overflow: visible;
+    opacity: 1;
+    transform: translateY(-50%);
+    pointer-events: none;
+    z-index: 1300;
+}
+
+body.smart-sidebar-mode::before,
+body.smart-sidebar-mode.smart-sidebar-open::before,
+body.smart-sidebar-mode.smart-sidebar-closing::before {
+    display: none !important;
+    content: none !important;
+}
+
+body.smart-sidebar-mode .sidebar-top,
+body.smart-sidebar-mode .sidebar-bottom {
+    display: contents;
+}
+
+body.smart-sidebar-mode .sidebar-web-quick-actions,
+body.smart-sidebar-mode .web-utility-actions-home {
+    display: contents !important;
+}
+
+body.smart-sidebar-mode .smart-radial-btn {
+    position: absolute;
+    left: 0;
+    top: 50%;
+    margin: -27px 0 0 -27px;
+    opacity: 0 !important;
+    pointer-events: none !important;
+    transform: translate(4px, 0) scale(0.22) rotate(-18deg) !important;
+    transform-origin: center;
+    filter: blur(1px) brightness(0.8);
+    transition: opacity 280ms ease, transform 420ms cubic-bezier(0.16, 0.82, 0.2, 1), filter 260ms ease !important;
+}
+
+body.smart-sidebar-mode.smart-sidebar-open .smart-radial-btn {
+    opacity: 1 !important;
+    pointer-events: auto !important;
+    transform: translate(var(--smart-x, 150px), var(--smart-y, 0px)) scale(0.9) rotate(0deg) !important;
+    filter: blur(0) brightness(1);
+    transition: opacity 340ms ease var(--smart-delay, 0ms), transform 560ms cubic-bezier(0.16, 0.82, 0.2, 1) var(--smart-delay, 0ms), filter 320ms ease var(--smart-delay, 0ms) !important;
+}
+
+body.smart-sidebar-mode.smart-sidebar-open .smart-radial-btn:hover,
+body.smart-sidebar-mode.smart-sidebar-open .smart-radial-btn:focus-visible {
+    transform: translate(var(--smart-x, 150px), var(--smart-y, 0px)) scale(1.03) !important;
+}
+
+body.smart-sidebar-mode.smart-sidebar-closing .smart-radial-btn {
+    opacity: 0 !important;
+    pointer-events: none !important;
+    transform: translate(4px, 0) scale(0.22) rotate(-18deg) !important;
+    filter: blur(1px) brightness(0.8);
+    transition: opacity 260ms ease var(--smart-close-delay, 0ms), transform 440ms cubic-bezier(0.4, 0, 0.6, 1) var(--smart-close-delay, 0ms), filter 280ms ease var(--smart-close-delay, 0ms) !important;
+}
+
+body.smart-sidebar-mode .app-container > .sidebar-toggle-btn,
+body.smart-sidebar-mode.smart-sidebar-open .app-container > .sidebar-toggle-btn,
+body.smart-sidebar-mode.smart-sidebar-closing .app-container > .sidebar-toggle-btn {
+    display: block !important;
+    visibility: visible !important;
+    position: fixed;
+    left: 0;
+    top: 50%;
+    width: 10px !important;
+    min-width: 10px !important;
+    height: 52px !important;
+    padding: 0;
+    border: 0 !important;
+    border-radius: 0;
+    background: transparent !important;
+    box-shadow: none !important;
+    opacity: 0.7 !important;
+    transform: translateY(-50%);
+    overflow: visible;
+    z-index: 6000 !important;
+}
+
+body.smart-sidebar-mode .app-container > .sidebar-toggle-btn::before {
+    display: block !important;
+    content: '' !important;
+    position: absolute;
+    left: -6px;
+    top: 50%;
+    width: 11px;
+    height: 38px;
+    border-right: 2px solid rgba(176, 222, 248, 0.58);
+    border-radius: 0 50% 50% 0;
+    background: transparent !important;
+    opacity: 1;
+    transform: translateY(-50%);
+    box-shadow: 2px 0 5px rgba(75, 175, 238, 0.14);
+    transition: border-color 180ms ease, box-shadow 180ms ease, transform 220ms ease;
+}
+
+body.smart-sidebar-mode .app-container > .sidebar-toggle-btn::after {
+    display: none !important;
+    content: none !important;
+}
+
+body.smart-sidebar-mode .app-container > .sidebar-toggle-btn:hover,
+body.smart-sidebar-mode .app-container > .sidebar-toggle-btn:focus-visible {
+    opacity: 1 !important;
+}
+
+body.smart-sidebar-mode .app-container > .sidebar-toggle-btn:hover::before,
+body.smart-sidebar-mode .app-container > .sidebar-toggle-btn:focus-visible::before,
+body.smart-sidebar-mode.smart-sidebar-open .app-container > .sidebar-toggle-btn::before {
+    border-right-color: rgba(142, 232, 255, 0.9);
+    box-shadow: 2px 0 7px rgba(75, 190, 255, 0.35);
+    transform: translateY(-50%) translateX(2px);
+}
+
+body.smart-sidebar-mode .left-panel {
+    margin-left: 0;
 }
