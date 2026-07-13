@@ -1,6 +1,6 @@
 pkgbase = ardali-bin
 	pkgdesc = ArDali WebMedia multimedia ecosystem for Linux
-	pkgver = 5.2.13
+	pkgver = 5.2.16
 	pkgrel = 1
 	url = https://ardali.app
 	arch = x86_64
@@ -18,7 +18,7 @@ pkgbase = ardali-bin
 	conflicts = aurivo-bin
 	options = !strip
 	options = !debug
-	source = https://github.com/Muhammed-Dali/ArDali-WebMedia/releases/download/v5.2.13/ArDali-5.2.13-linux-x86_64.AppImage
-	sha256sums = 8f8b1312be7f405193814efe0452f8310ef12ebf96324bef7a9f181e9a0ee9dd
+	source = https://github.com/Muhammed-Dali/ArDali-WebMedia/releases/download/v5.2.16/ArDali-5.2.16-linux-x86_64.AppImage
+	sha256sums = e855bcc324c0a3f34ace1e2f4d2c6ec671df1f2ff715ff2bf97bedd84ced3143
 
 pkgname = ardali-bin
