@@ -4,6 +4,20 @@ Notable user-facing changes to ArDali WebMedia will be documented here. The proj
 
 ## [Unreleased]
 
+## [5.2.17] - 2026-07-14
+
+### Fixed
+
+- Synchronized the published AppImage version and verified SHA-256 with the canonical AUR recipe before Pacman publication.
+- Restored the `Publish Pacman Repo` metadata gate by completing the required post-release AUR phase for v5.2.16.
+- Documented the two-phase release ordering so future Pacman publication waits for the final AppImage digest.
+
+### Release engineering
+
+- Prepared v5.2.17 as a CI/CD and packaging-only follow-up release.
+- Kept Electron at the validated `40.6.1` ABI target; Dependabot PR #44 is not included because it updates only the npm dependency and leaves native/build targets inconsistent.
+- Preserved application behavior, native C++/DSP code, hardware-aware paths, and performance optimizations.
+
 ## [5.2.16] - 2026-07-14
 
 ### Changed

@@ -61,6 +61,12 @@
   </provides>
 
   <releases>
+    <release version="5.2.17" date="2026-07-14">
+      <url>https://github.com/Muhammed-Dali/ArDali-WebMedia/releases/tag/v5.2.17</url>
+      <description>
+        <p>CI/CD, release metadata, AUR, and Pacman package publishing reliability improvements.</p>
+      </description>
+    </release>
     <release version="5.2.16" date="2026-07-14">
       <url>https://github.com/Muhammed-Dali/ArDali-WebMedia/releases/tag/v5.2.16</url>
       <description>

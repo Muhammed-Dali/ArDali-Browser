@@ -19,7 +19,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/Muhammed-Dali/ArDali-WebMedia/releases/latest"><strong>Download v5.2.16</strong></a>
+  <a href="https://github.com/Muhammed-Dali/ArDali-WebMedia/releases/latest"><strong>Download v5.2.17</strong></a>
   · <a href="https://muhammed-dali.github.io/ArDali-WebMedia/">Website</a>
   · <a href="#installation">Install</a>
   · <a href="CONTRIBUTING.md">Contribute</a>

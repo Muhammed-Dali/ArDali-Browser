@@ -21,7 +21,7 @@ body:
     attributes:
       label: ArDali version
       description: Find this in the application About dialog or package metadata.
-      placeholder: "Example: 5.2.16"
+      placeholder: "Example: 5.2.17"
     validations:
       required: true
   - type: dropdown
