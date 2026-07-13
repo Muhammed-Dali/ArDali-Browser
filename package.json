@@ -1,6 +1,6 @@
 {
   "name": "ardali",
-  "version": "5.2.15",
+  "version": "5.2.16",
   "productName": "ArDali",
   "description": "Open-source Linux media player for music and video with DSP effects, equalizer, and visualizer",
   "main": "main.js",
@@ -15,6 +15,7 @@
     "rebuild-native": "npm --prefix native ci && npm --prefix native run rebuild",
     "verify:libs": "node native/verify-libs.js",
     "verify:binary:manifest": "node scripts/verify-binary-manifest.js",
+    "verify:release:metadata": "node scripts/verify-release-metadata.js",
     "release:checksums": "node scripts/generate-release-checksums.js dist",
     "prepare:win:resources": "node scripts/prepare-win-resources.js",
     "locale:coverage": "node scripts/generate-locale-coverage.js",
@@ -68,10 +69,10 @@
   "homepage": "https://ardali.app",
   "repository": {
     "type": "git",
-    "url": "https://github.com/muhammed-ardali-dev/ArDali-Medya-Player-Linux.git"
+    "url": "https://github.com/Muhammed-Dali/ArDali-WebMedia.git"
   },
-  "packageManager": "bun@1.1.0",
-  "license": "MIT",
+  "packageManager": "npm@10.9.0",
+  "license": "GPL-3.0-only",
   "build": {
     "appId": "com.ardali.mediaplayer",
     "productName": "ArDali",
@@ -83,8 +84,8 @@
     },
     "publish": {
       "provider": "github",
-      "owner": "muhammed-ardali-dev",
-      "repo": "ArDali-Medya-Player-Linux",
+      "owner": "Muhammed-Dali",
+      "repo": "ArDali-WebMedia",
       "private": false
     },
     "protocols": [
@@ -423,7 +424,7 @@
     }
   },
   "devDependencies": {
-    "electron": "42.4.0",
+    "electron": "40.6.1",
     "electron-builder": "26.15.3",
     "png-to-ico": "3.0.1"
   },

@@ -1,9 +1,9 @@
 Name:           ardali-media-player
-Version:        0.0.0
+Version:        5.2.16
 Release:        1%{?dist}
 Summary:        ArDali Media Player (Electron)
 
-License:        MIT
+License:        GPL-3.0-only
 URL:            https://ardali.app
 Source0:        %{name}-%{version}.AppImage
 
@@ -30,6 +30,8 @@ ln -sf /opt/ardali/ardali.AppImage %{buildroot}/usr/bin/ardali
 /usr/bin/ardali
 
 %changelog
-* Tue Feb 17 2026 ArDali <support@ardali.app> - 0.0.0-1
-- Initial spec template
+* Tue Jul 14 2026 ArDali <support@ardali.app> - 5.2.16-1
+- Release metadata and packaging consistency update
 
+* Mon Jul 13 2026 ArDali <support@ardali.app> - 5.2.13-1
+- Initial spec template
