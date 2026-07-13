@@ -1,6 +1,6 @@
 # Locale Coverage
 
-Updated: 2026-07-03
+Updated: 2026-07-13
 
 This report summarizes the active UI locale coverage for the main `ArDali Medya Player` application.
 
@@ -31,7 +31,7 @@ These were not part of the active main-app loading path.
 
 ## Summary
 
-- Total used keys: `1316`
+- Total used keys: `1315`
 - Supported locales checked: `22`
 - Effective missing keys across all supported locales: `0`
 
@@ -45,28 +45,28 @@ That means:
 
 | Locale | Raw Present | Raw Missing | Effective Missing | Override |
 | --- | ---: | ---: | ---: | --- |
-| `ar-SA` | 512 | 804 | 0 | yes |
-| `bn-BD` | 264 | 1052 | 0 | yes |
-| `de-DE` | 264 | 1052 | 0 | yes |
-| `el-GR` | 264 | 1052 | 0 | yes |
-| `en-US` | 936 | 380 | 0 | yes |
-| `es-ES` | 258 | 1058 | 0 | yes |
-| `fa-IR` | 264 | 1052 | 0 | yes |
-| `fi-FI` | 264 | 1052 | 0 | yes |
-| `fr-FR` | 258 | 1058 | 0 | yes |
-| `hi-IN` | 264 | 1052 | 0 | yes |
-| `hu-HU` | 264 | 1052 | 0 | yes |
-| `it-IT` | 264 | 1052 | 0 | yes |
-| `ja-JP` | 264 | 1052 | 0 | yes |
-| `ne-NP` | 264 | 1052 | 0 | yes |
-| `pl-PL` | 264 | 1052 | 0 | yes |
-| `pt-BR` | 264 | 1052 | 0 | yes |
-| `ru-RU` | 264 | 1052 | 0 | yes |
-| `tr-TR` | 901 | 415 | 0 | yes |
-| `uk-UA` | 264 | 1052 | 0 | yes |
-| `vi-VN` | 264 | 1052 | 0 | yes |
-| `zh-CN` | 250 | 1066 | 0 | yes |
-| `zh-TW` | 250 | 1066 | 0 | yes |
+| `ar-SA` | 512 | 803 | 0 | yes |
+| `bn-BD` | 264 | 1051 | 0 | yes |
+| `de-DE` | 264 | 1051 | 0 | yes |
+| `el-GR` | 264 | 1051 | 0 | yes |
+| `en-US` | 935 | 380 | 0 | yes |
+| `es-ES` | 258 | 1057 | 0 | yes |
+| `fa-IR` | 264 | 1051 | 0 | yes |
+| `fi-FI` | 264 | 1051 | 0 | yes |
+| `fr-FR` | 258 | 1057 | 0 | yes |
+| `hi-IN` | 264 | 1051 | 0 | yes |
+| `hu-HU` | 264 | 1051 | 0 | yes |
+| `it-IT` | 264 | 1051 | 0 | yes |
+| `ja-JP` | 264 | 1051 | 0 | yes |
+| `ne-NP` | 264 | 1051 | 0 | yes |
+| `pl-PL` | 264 | 1051 | 0 | yes |
+| `pt-BR` | 264 | 1051 | 0 | yes |
+| `ru-RU` | 264 | 1051 | 0 | yes |
+| `tr-TR` | 900 | 415 | 0 | yes |
+| `uk-UA` | 264 | 1051 | 0 | yes |
+| `vi-VN` | 264 | 1051 | 0 | yes |
+| `zh-CN` | 250 | 1065 | 0 | yes |
+| `zh-TW` | 250 | 1065 | 0 | yes |
 
 ## Interpretation
 
