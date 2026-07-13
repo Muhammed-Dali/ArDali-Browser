@@ -1,182 +1,130 @@
+# ArDali WebMedia
+
 <p align="center">
-  <img src="icons/app/ardali_readme_round.png" width="120" height="120" alt="ArDali Medya Player"/>
+  <img src="icons/app/ardali_readme_round.png" width="120" height="120" alt="ArDali WebMedia logo">
 </p>
 
 <p align="center">
-  <a href="https://github.com/Muhammed-Dali/ArDali-WebMedia/releases/latest">
-    <img alt="release" src="https://img.shields.io/github/v/release/Muhammed-Dali/ArDali-WebMedia?display_name=tag&sort=semver&style=for-the-badge&labelColor=0b1220&color=22c55e"/>
-  </a>
-  <a href="https://github.com/Muhammed-Dali/ArDali-WebMedia/releases">
-    <img alt="downloads" src="https://img.shields.io/github/downloads/Muhammed-Dali/ArDali-WebMedia/total?style=for-the-badge&labelColor=0b1220&color=06b6d4"/>
-  </a>
-  <a href="https://github.com/Muhammed-Dali/ArDali-WebMedia/actions/workflows/build-linux.yml">
-    <img alt="build" src="https://img.shields.io/github/actions/workflow/status/Muhammed-Dali/ArDali-WebMedia/build-linux.yml?branch=main&label=build&style=for-the-badge&labelColor=0b1220"/>
-  </a>
-  <a href="https://github.com/Muhammed-Dali/ArDali-WebMedia/blob/main/LICENSE">
-    <img alt="license" src="https://img.shields.io/badge/license-GPL--3.0-6366f1?style=for-the-badge&labelColor=0b1220"/>
-  </a>
+  A feature-rich open-source desktop media workspace for Linux, with local audio and video playback, web media, DSP effects, a 32-band equalizer, projectM visualizations, downloads, screen recording, and music recognition.
 </p>
 
 <p align="center">
-  <a href="https://github.com/Muhammed-Dali/ArDali-WebMedia/releases/latest">
-    <img alt="Download AppImage" src="https://img.shields.io/badge/Download-AppImage-14b8a6?style=for-the-badge&logo=linux&logoColor=ffffff&labelColor=0b1220"/>
-  </a>
-  <a href="https://github.com/Muhammed-Dali/ArDali-WebMedia/releases/tag/pacman-repo">
-    <img alt="Pacman Repo" src="https://img.shields.io/badge/Pacman-Repo-1793d1?style=for-the-badge&logo=archlinux&logoColor=ffffff&labelColor=0b1220"/>
-  </a>
-  <a href="https://aur.archlinux.org/packages/ardali-bin">
-    <img alt="AUR package" src="https://img.shields.io/badge/AUR-ardali--bin-f59e0b?style=for-the-badge&logo=archlinux&logoColor=ffffff&labelColor=0b1220"/>
-  </a>
+  <a href="https://muhammed-dali.github.io/ArDali-WebMedia/"><img alt="Project website" src="https://img.shields.io/badge/website-ArDali%20WebMedia-46e0c1?style=flat-square"></a>
+  <a href="https://github.com/Muhammed-Dali/ArDali-WebMedia/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/Muhammed-Dali/ArDali-WebMedia?display_name=tag&sort=semver&style=flat-square"></a>
+  <a href="https://github.com/Muhammed-Dali/ArDali-WebMedia/actions/workflows/build-linux.yml"><img alt="Linux build" src="https://img.shields.io/github/actions/workflow/status/Muhammed-Dali/ArDali-WebMedia/build-linux.yml?branch=main&label=Linux%20build&style=flat-square"></a>
+  <a href="https://github.com/Muhammed-Dali/ArDali-WebMedia/releases"><img alt="Downloads" src="https://img.shields.io/github/downloads/Muhammed-Dali/ArDali-WebMedia/total?style=flat-square"></a>
+  <a href="https://aur.archlinux.org/packages/ardali-bin"><img alt="AUR version" src="https://img.shields.io/aur/version/ardali-bin?style=flat-square&logo=archlinux"></a>
+  <a href="https://github.com/Muhammed-Dali/ArDali-WebMedia/stargazers"><img alt="GitHub stars" src="https://img.shields.io/github/stars/Muhammed-Dali/ArDali-WebMedia?style=flat-square"></a>
+  <a href="LICENSE"><img alt="License: GPL-3.0" src="https://img.shields.io/badge/license-GPL--3.0-blue?style=flat-square"></a>
 </p>
 
-## 🌳 Feature Tree
+<p align="center">
+  <a href="https://github.com/Muhammed-Dali/ArDali-WebMedia/releases/latest"><strong>Download v5.2.16</strong></a>
+  · <a href="https://muhammed-dali.github.io/ArDali-WebMedia/">Website</a>
+  · <a href="#installation">Install</a>
+  · <a href="CONTRIBUTING.md">Contribute</a>
+</p>
 
-Click on any module icon in the feature tree below to quickly navigate to its details and screenshots.
+> ArDali WebMedia is under active development. For production use, install a published release instead of running the `main` branch.
 
-<table align="center" style="border: none; background-color: transparent;">
-  <tr style="border: none; background-color: transparent;">
-    <td rowspan="10" align="center" valign="middle" style="border: none; background-color: transparent;">
-      <img src="icons/app/ardali_readme_round.png" width="120" alt="ArDali Medya Player"/>
-    </td>
-    <td align="center" valign="middle" style="border: none; background-color: transparent;"><h2>&rarr;</h2></td>
-    <td align="center" valign="middle" style="border: none; background-color: transparent;">
-      <a href="#web-browser"><img src="icons/ui/nav_internet.svg" width="48" alt="Web Browser"/></a>
-    </td>
-  </tr>
-  <tr style="border: none; background-color: transparent;">
-    <td align="center" valign="middle" style="border: none; background-color: transparent;"><h2>&rarr;</h2></td>
-    <td align="center" valign="middle" style="border: none; background-color: transparent;">
-      <a href="#media-downloader"><img src="icons/app/ardali_dawlod.png" width="48" alt="Media Downloader"/></a>
-    </td>
-  </tr>
-  <tr style="border: none; background-color: transparent;">
-    <td align="center" valign="middle" style="border: none; background-color: transparent;"><h2>&rarr;</h2></td>
-    <td align="center" valign="middle" style="border: none; background-color: transparent;">
-      <a href="#song-recognition"><img src="icons/ui/readme_pulse.svg" width="48" alt="Song Recognition"/></a>
-    </td>
-  </tr>
-  <tr style="border: none; background-color: transparent;">
-    <td align="center" valign="middle" style="border: none; background-color: transparent;"><h2>&rarr;</h2></td>
-    <td align="center" valign="middle" style="border: none; background-color: transparent;">
-      <a href="#screen-recorder"><img src="icons/ui/video_tools_studio.svg" width="48" alt="Screen Recorder"/></a>
-    </td>
-  </tr>
-  <tr style="border: none; background-color: transparent;">
-    <td align="center" valign="middle" style="border: none; background-color: transparent;"><h2>&rarr;</h2></td>
-    <td align="center" valign="middle" style="border: none; background-color: transparent;">
-      <a href="#video-player"><img src="icons/ui/nav_video.svg" width="48" alt="Video Player"/></a>
-    </td>
-  </tr>
-  <tr style="border: none; background-color: transparent;">
-    <td align="center" valign="middle" style="border: none; background-color: transparent;"><h2>&rarr;</h2></td>
-    <td align="center" valign="middle" style="border: none; background-color: transparent;">
-      <a href="#music-player"><img src="icons/ui/readme_music.svg" width="48" alt="Music Player"/></a>
-    </td>
-  </tr>
-  <tr style="border: none; background-color: transparent;">
-    <td align="center" valign="middle" style="border: none; background-color: transparent;"><h2>&rarr;</h2></td>
-    <td align="center" valign="middle" style="border: none; background-color: transparent;">
-      <a href="#gallery"><img src="icons/ui/readme_gallery.svg" width="48" alt="Gallery"/></a>
-    </td>
-  </tr>
-  <tr style="border: none; background-color: transparent;">
-    <td align="center" valign="middle" style="border: none; background-color: transparent;"><h2>&rarr;</h2></td>
-    <td align="center" valign="middle" style="border: none; background-color: transparent;">
-      <a href="#sound-effects"><img src="icons/ui/sound-effects.svg" width="48" alt="Sound Effects"/></a>
-    </td>
-  </tr>
-  <tr style="border: none; background-color: transparent;">
-    <td align="center" valign="middle" style="border: none; background-color: transparent;"><h2>&rarr;</h2></td>
-    <td align="center" valign="middle" style="border: none; background-color: transparent;">
-      <a href="#visualizer"><img src="icons/ui/readme_projectm.svg" width="48" alt="Visualizer"/></a>
-    </td>
-  </tr>
-  <tr style="border: none; background-color: transparent;">
-    <td align="center" valign="middle" style="border: none; background-color: transparent;"><h2>&rarr;</h2></td>
-    <td align="center" valign="middle" style="border: none; background-color: transparent;">
-      <a href="#ad-blocker"><img src="icons/ui/deliblock.svg" width="48" alt="Ad Blocker"/></a>
-    </td>
-  </tr>
-</table>
+## Highlights
 
----
+- Local music and video playback with broad format support
+- Hardware-aware Dali Audio Engine, DSP effects, and a 32-band equalizer
+- Hardware-accelerated projectM visualizer
+- Integrated web media workspace with DeliBlock filtering
+- Media downloads and local format conversion
+- Screen recording, music recognition, gallery, playlists, and MPRIS integration
+- Localized interface with multiple language packs
+- Linux packages including AppImage, DEB, RPM, and an AUR package
 
-## Modules and Interfaces
+## Demo and screenshots
 
-### <a id="web-browser"></a>🌐 Web Browser
-![Web Browser Interface](assets/screenshots/web_browser.png)
-Combines YouTube, YouTube Music, SoundCloud, Deezer, social platforms, and general web browsing into a single desktop application, eliminating the need for an external browser.
+![ArDali WebMedia music workspace](assets/screenshots/music_player.png)
 
-### <a id="media-downloader"></a>⬇️ Media Downloader
-![Downloader Interface](assets/screenshots/downloader.png)
-Downloads media with a single click from supported popular social media and video platforms. Downloaded content can be converted entirely through local resources into various audio and video formats.
+> A short, silent 15–25 second demo GIF should be placed here after it is captured from a release build. The production brief and export limits are documented in [Brand and visual assets](docs/BRAND_ASSETS.md#demo-gif).
 
-### <a id="song-recognition"></a>🎵 Song Recognition
-![Song Recognition Interface](assets/screenshots/song_recognition.png)
-Instantly identifies music playing in your environment or on your system using advanced acoustic fingerprinting technology. Offers an integrated, fast, Shazam-like experience.
+| Web media | Music player |
+| --- | --- |
+| ![ArDali web browser](assets/screenshots/web_browser.png) | ![ArDali music player](assets/screenshots/music_player.png) |
 
-### <a id="screen-recorder"></a>⏺️ Screen Recorder
-![Screen Recorder Interface](assets/screenshots/screen_recorder.png)
-Provides an OBS Studio-style built-in screen recording infrastructure, particularly for developers and educators producing YouTube content. You can instantly overlay your camera layer onto the video.
+| Video player | Audio effects |
+| --- | --- |
+| ![ArDali video player](assets/screenshots/video_player.png) | ![ArDali sound effects](assets/screenshots/sound_effects.png) |
 
-### <a id="video-player"></a>🎬 Video Player
-![Video Player Interface](assets/screenshots/video_player.png)
-Plays your local videos with extensive codec support in a modern, fluid, and high-performance interface. Features include speed control, subtitles, a sleep timer, and mini-player support.
+Additional interfaces: [downloader](assets/screenshots/downloader.png), [screen recorder](assets/screenshots/screen_recorder.png), [music recognition](assets/screenshots/song_recognition.png), [gallery](assets/screenshots/gallery.png), [visualizer](assets/screenshots/visualizer.png), and [ad blocker](assets/screenshots/adblocker.png).
 
-### <a id="music-player"></a>🎧 Music Player
-![Music Player Interface](assets/screenshots/music_player.png)
-Professionally manages your local music library with smart tagging, playlists, album art, and advanced playback controls.
+## Installation
 
-### <a id="gallery"></a>🖼️ Gallery
-![Gallery Interface](assets/screenshots/gallery.png)
-Offers detailed inspection of photos and images. Provides a rich lightbox experience with zooming, rotating, fitting to screen, slideshow modes, and quick editing tools.
+### Arch Linux and derivatives (AUR)
 
-### <a id="sound-effects"></a>🎛️ Sound Effects
-![Sound Effects Interface](assets/screenshots/sound_effects.png)
-Instantly manipulate audio using the hardware-level **32-band equalizer (EQ)** and zero-latency Dali Audio Engine. Applies smoothly to both web and local music.
-
-### <a id="visualizer"></a>📊 Visualizer
-![Visualizer Interface](assets/screenshots/visualizer.png)
-Produces hardware-accelerated visual spectacles that dynamically shape according to the rhythm, frequency, and energy of the playing music, thanks to projectM integration.
-
-### <a id="ad-blocker"></a>🛡️ Ad Blocker
-![Ad Blocker Interface](assets/screenshots/adblocker.png)
-Automatically filters risky advertisements, trackers, and annoying pop-ups in the background with the integrated DeliBlock layer while using web-based platforms.
-
----
-
-## Installation and Support
-
-To clone and run the project locally:
-
-```bash
-git clone https://github.com/Muhammed-Dali/ArDali-WebMedia.git
-cd ArDali-WebMedia
-npm install
-npm start
-```
-
-Primary installation instruction for Arch-based Linux systems:
+Install the published binary package with an AUR helper:
 
 ```bash
 yay -S ardali-bin
 ```
 
-Installation with Pacman repo:
+Review the [AUR package page](https://aur.archlinux.org/packages/ardali-bin) before installation. AUR packages are community build recipes and are not installed by `pacman` alone.
 
-```ini
-[ardali]
-SigLevel = Optional TrustAll
-Server = https://muhammed-dali.github.io/ArDali-WebMedia/x86_64
-```
+### AppImage, DEB, and RPM
+
+Download the package for your distribution from [GitHub Releases](https://github.com/Muhammed-Dali/ArDali-WebMedia/releases/latest). Verify downloaded artifacts with the release `SHA256SUMS.txt`; see [release verification](docs/RELEASES.md#verify-a-download).
+
+For AppImage:
 
 ```bash
-sudo pacman -Sy
-sudo pacman -S ardali-bin
+chmod +x ArDali-*-linux-*.AppImage
+./ArDali-*-linux-*.AppImage
 ```
 
-For more information, bug reports, and feature requests, you can use the [Issues](https://github.com/Muhammed-Dali/ArDali-WebMedia/issues) page.
+Some distributions require FUSE 2 for AppImage execution. See [troubleshooting](docs/TROUBLESHOOTING.md) if the application does not start.
 
-## License
+### Flatpak
 
-This project is released under the GNU GPL v3 License. See the [LICENSE](LICENSE) file for details.
+Flatpak packaging metadata and automated validation are available in the repository. Flathub publication is still pending review, so use the documented [local Flatpak build](packaging/flatpak/README.md) instead of treating it as a published store package.
+
+## Build from source
+
+ArDali includes Electron/Node.js components, a native audio addon, and a C++ projectM visualizer. A complete build therefore needs more than a normal `npm install`.
+
+```bash
+git clone https://github.com/Muhammed-Dali/ArDali-WebMedia.git
+cd ArDali-WebMedia
+npm ci
+npm --prefix native ci
+npm start
+```
+
+The development command is Linux-oriented and uses project-specific runtime paths. Read [Building from source](docs/BUILDING.md) for system dependencies, native build steps, and supported commands.
+
+## Documentation
+
+- [Building from source](docs/BUILDING.md)
+- [Architecture overview](docs/ARCHITECTURE.md)
+- [Linux packaging](docs/PACKAGING.md)
+- [Release and artifact verification](docs/RELEASES.md)
+- [Security model](docs/SECURITY.md)
+- [Troubleshooting](docs/TROUBLESHOOTING.md)
+- [Project audit and maintainer recommendations](docs/PROJECT_AUDIT.md)
+- [Brand, banner, and demo guidance](docs/BRAND_ASSETS.md)
+
+## Contributing
+
+Bug reports, documentation improvements, translations, packaging fixes, and focused code contributions are welcome. Start with [CONTRIBUTING.md](CONTRIBUTING.md) and use the repository's issue forms.
+
+Please report suspected vulnerabilities privately as described in [SECURITY.md](SECURITY.md), not in a public issue.
+
+## Community and support
+
+- [Bug reports and feature requests](https://github.com/Muhammed-Dali/ArDali-WebMedia/issues)
+- [Roadmap](ROADMAP.md)
+- [Changelog](CHANGELOG.md)
+- [Code of Conduct](CODE_OF_CONDUCT.md)
+
+When asking for help, include the ArDali version, distribution, desktop session (X11 or Wayland), package type, and relevant logs with secrets removed.
+
+## Legal
+
+ArDali WebMedia is distributed under the [GNU General Public License v3.0](LICENSE). Bundled third-party components remain subject to their respective licenses. See [third-party binary provenance](THIRD_PARTY_BINARIES.md) for tracked native runtime files.
+
+Third-party service names and trademarks belong to their respective owners. ArDali WebMedia is not affiliated with or endorsed by those services. Users are responsible for complying with applicable laws and service terms when accessing or downloading media.

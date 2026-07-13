@@ -1,7 +1,6 @@
 name: Release
 
 on:
-  workflow_dispatch:
   push:
     tags:
       - "v*"
@@ -35,10 +34,10 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
 
       - name: Setup Node.js
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
         with:
           node-version: "22.12.0"
           cache: "npm"
@@ -53,6 +52,9 @@ jobs:
             exit 1
           fi
           echo "Release tag matches package version: ${EXPECTED_TAG}"
+
+      - name: Verify release metadata consistency
+        run: npm run -s verify:release:metadata
 
       - name: Install system dependencies
         run: |
@@ -103,6 +105,7 @@ jobs:
           PROJECTM_VER="4.1.6"
           curl -fsSL -o /tmp/libprojectM-${PROJECTM_VER}.tar.gz \
             "https://sourceforge.net/projects/projectm.mirror/files/v${PROJECTM_VER}/libprojectM-${PROJECTM_VER}.tar.gz/download"
+          echo "1b9e6d56c59fe24e5416da4d42e941a34c982811003e43ac88b5aca8afa52c87  /tmp/libprojectM-${PROJECTM_VER}.tar.gz" | sha256sum -c -
           tar -xzf /tmp/libprojectM-${PROJECTM_VER}.tar.gz -C /tmp
           cmake -S "/tmp/libprojectM-${PROJECTM_VER}" -B /tmp/build-projectm -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \

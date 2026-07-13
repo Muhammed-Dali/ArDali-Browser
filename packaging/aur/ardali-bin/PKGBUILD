@@ -10,7 +10,7 @@ pkgrel=1
 pkgdesc="ArDali WebMedia multimedia ecosystem for Linux"
 arch=('x86_64')
 url="https://ardali.app"
-license=('MIT')
+license=('GPL-3.0-only')
 depends=(
   'alsa-lib'
   'gtk3'
@@ -32,7 +32,7 @@ _appimage="ArDali-${pkgver}-linux-x86_64.AppImage"
 source=(
   "https://github.com/${_owner}/${_repo}/releases/download/${_tag}/${_appimage}"
 )
-sha256sums=('SKIP')
+sha256sums=('8f8b1312be7f405193814efe0452f8310ef12ebf96324bef7a9f181e9a0ee9dd')
 
 build() {
   cd "${srcdir}"

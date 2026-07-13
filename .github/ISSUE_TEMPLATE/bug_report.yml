@@ -1,44 +1,82 @@
 name: Bug report
-description: Bir hata bildir
+description: Report a reproducible problem in ArDali WebMedia
 title: "[Bug]: "
-labels: ["bug"]
+labels: ["bug", "needs-triage"]
 body:
   - type: markdown
     attributes:
       value: |
-        Hata raporu için teşekkürler. Lütfen mümkün olduğunca detay verin.
-  - type: textarea
-    id: what_happened
+        Thanks for helping improve ArDali. Search existing issues first. Do not report security vulnerabilities here; follow SECURITY.md instead.
+  - type: checkboxes
+    id: checks
     attributes:
-      label: Ne oldu?
-      description: Ne bekliyordunuz, ne oldu?
-      placeholder: Adım adım yazın...
+      label: Pre-submission checks
+      options:
+        - label: I searched existing issues and did not find a duplicate.
+          required: true
+        - label: This is not a security vulnerability.
+          required: true
+  - type: input
+    id: version
+    attributes:
+      label: ArDali version
+      description: Find this in the application About dialog or package metadata.
+      placeholder: "Example: 5.2.16"
+    validations:
+      required: true
+  - type: dropdown
+    id: package
+    attributes:
+      label: Installation type
+      options:
+        - AppImage
+        - AUR / ardali-bin
+        - DEB
+        - RPM
+        - Flatpak
+        - Built from source
+        - Other
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      description: Distribution/version, architecture, desktop environment, and X11 or Wayland.
+      placeholder: "Arch Linux, x86_64, KDE Plasma 6, Wayland"
+    validations:
+      required: true
+  - type: textarea
+    id: description
+    attributes:
+      label: Problem description
+      description: What happened and what did you expect instead?
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Open ...
+        2. Select ...
+        3. Observe ...
     validations:
       required: true
   - type: textarea
     id: logs
     attributes:
-      label: Log / Konsol çıktısı
-      description: Varsa ilgili logları yapıştırın.
+      label: Logs and additional context
+      description: Remove tokens, cookies, personal paths, and other sensitive information. Add screenshots if useful.
       render: shell
-    validations:
-      required: false
   - type: dropdown
-    id: os
+    id: frequency
     attributes:
-      label: İşletim sistemi
+      label: Reproducibility
       options:
-        - Windows
-        - Linux (Arch tabanlı)
-        - Linux (Debian/Ubuntu tabanlı)
-        - Linux (Fedora tabanlı)
-        - Linux (openSUSE)
-    validations:
-      required: true
-  - type: input
-    id: version
-    attributes:
-      label: Sürüm
-      placeholder: "Örn: 1.0.5"
+        - Always
+        - Often
+        - Sometimes
+        - Once
     validations:
       required: true

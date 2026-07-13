@@ -1,20 +1,47 @@
 name: Feature request
-description: Yeni özellik öner
+description: Propose an improvement and explain the user problem
 title: "[Feature]: "
-labels: ["enhancement"]
+labels: ["enhancement", "needs-triage"]
 body:
-  - type: textarea
-    id: idea
+  - type: markdown
     attributes:
-      label: Öneri
-      description: Ne eklenmesini istersiniz?
-      placeholder: Detay verin...
+      value: |
+        Please focus on the user need and expected value. Large architecture, dependency, or behavior changes require discussion before implementation.
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Pre-submission checks
+      options:
+        - label: I searched existing issues and did not find this request.
+          required: true
+        - label: I have described the problem, not only a preferred implementation.
+          required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or use case
+      description: What is difficult today, and who is affected?
     validations:
       required: true
   - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed improvement
+      description: Describe the desired behavior and user experience.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Existing workarounds or other approaches you considered.
+  - type: textarea
+    id: impact
+    attributes:
+      label: Compatibility and risk
+      description: Note effects on performance, hardware, packaging, dependencies, security, or existing workflows.
+  - type: textarea
     id: context
     attributes:
-      label: Kullanım senaryosu
-      description: Hangi problemi çözer?
-    validations:
-      required: false
+      label: Additional context
+      description: Mockups, examples, or related projects. Do not include confidential information.

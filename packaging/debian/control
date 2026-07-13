@@ -1,5 +1,5 @@
 Package: ardali-media-player
-Version: 0.0.0
+Version: 5.2.16
 Section: sound
 Priority: optional
 Architecture: amd64
@@ -11,4 +11,3 @@ Description: ArDali Media Player (Electron)
  .
  Not: Projede CI ile üretilen resmi .deb paketi electron-builder tarafından
  oluşturulur. Bu kontrol dosyası referans/alternatif paketleme içindir.
-

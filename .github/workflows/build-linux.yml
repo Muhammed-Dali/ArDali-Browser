@@ -21,8 +21,7 @@ concurrency:
 
 # Required for electron-builder to create/update GitHub Releases and upload assets (on tag builds).
 permissions:
-  contents: write
-  actions: write
+  contents: read
 
 jobs:
   build-linux:
@@ -43,19 +42,22 @@ jobs:
       npm_config_target: "40.6.1"
       npm_config_disturl: "https://electronjs.org/headers"
       npm_config_build_from_source: "true"
-      
+
       # GitHub token for Electron Builder
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
 
       - name: Setup Node.js
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
         with:
           node-version: "22.12.0"
           cache: "npm"
+
+      - name: Verify release metadata consistency
+        run: npm run -s verify:release:metadata
 
       - name: Install system dependencies
         run: |
@@ -101,6 +103,7 @@ jobs:
           echo "Downloading libprojectM v${PROJECTM_VER}..."
           curl -fsSL -o /tmp/libprojectM-${PROJECTM_VER}.tar.gz \
             "https://sourceforge.net/projects/projectm.mirror/files/v${PROJECTM_VER}/libprojectM-${PROJECTM_VER}.tar.gz/download"
+          echo "1b9e6d56c59fe24e5416da4d42e941a34c982811003e43ac88b5aca8afa52c87  /tmp/libprojectM-${PROJECTM_VER}.tar.gz" | sha256sum -c -
           tar -xzf /tmp/libprojectM-${PROJECTM_VER}.tar.gz -C /tmp
 
           echo "Building libprojectM..."
@@ -181,7 +184,7 @@ jobs:
         run: npm run -s build:linux -- --publish=always
 
       - name: Upload dist artifacts
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: linux-dist-${{ github.run_id }}
           path: |
@@ -190,120 +193,3 @@ jobs:
             dist/*.deb
             dist/*.rpm
             dist/*.yml
-
-  trigger-version-release:
-    name: Trigger Version Release
-    needs: build-linux
-    if: >-
-      ${{
-        github.event_name == 'push' &&
-        github.ref == 'refs/heads/main' &&
-        github.actor != 'github-actions[bot]'
-      }}
-    runs-on: ubuntu-24.04
-    permissions:
-      contents: write
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v7
-        with:
-          fetch-depth: 0
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v6
-        with:
-          node-version: "22.12.0"
-
-      - name: Auto bump version, push commit and tag
-        shell: bash
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          RELEASE_TRIGGER_TOKEN: ${{ secrets.RELEASE_TRIGGER_TOKEN }}
-        run: |
-          set -euo pipefail
-
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-
-          # GITHUB_TOKEN ile atilan push/tag olaylari baska workflow'lari her zaman tetiklemez.
-          # Zincirin (Release -> Pacman -> Semgrep -> Snyk) garanti tetiklenmesi icin
-          # repo secret olarak RELEASE_TRIGGER_TOKEN (PAT) kullan.
-          if [ -n "${RELEASE_TRIGGER_TOKEN:-}" ]; then
-            git remote set-url origin "https://x-access-token:${RELEASE_TRIGGER_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
-            echo "Using RELEASE_TRIGGER_TOKEN for release commit/tag push."
-          else
-            echo "::warning::RELEASE_TRIGGER_TOKEN is not set. Release/Pacman/Security workflows may not auto-trigger from bot push."
-          fi
-
-          git fetch --tags origin
-
-          # Public release numbers must never reuse an existing tag. GitHub's
-          # latest release can lag behind tags created by interrupted CI runs,
-          # so compare both the latest published release and the latest tag.
-          LATEST_RELEASE_TAG="$(
-            curl -fsSL \
-              -H "Authorization: Bearer ${GITHUB_TOKEN}" \
-              -H "Accept: application/vnd.github+json" \
-              "https://api.github.com/repos/${GITHUB_REPOSITORY}/releases/latest" \
-              | node -e "let s=''; process.stdin.on('data', d => s += d); process.stdin.on('end', () => { const r = JSON.parse(s); if (!/^v[0-9]+\\.[0-9]+\\.[0-9]+$/.test(r.tag_name || '')) console.log('v0.0.0'); else console.log(r.tag_name); });"
-          )"
-          echo "Latest published release: ${LATEST_RELEASE_TAG}"
-
-          LATEST_TAG="$(
-            git tag -l 'v[0-9]*.[0-9]*.[0-9]*' \
-              | sort -V \
-              | tail -n1
-          )"
-          LATEST_TAG="${LATEST_TAG:-v0.0.0}"
-          echo "Latest release tag in git: ${LATEST_TAG}"
-
-          CURRENT_VERSION="$(node -p "require('./package.json').version")"
-          BASE_VERSION="$(
-            printf '%s\n%s\n' "${LATEST_RELEASE_TAG#v}" "${LATEST_TAG#v}" \
-              | sort -V \
-              | tail -n1
-          )"
-
-          NEW_VERSION="$(
-            node -e "const current='${CURRENT_VERSION}'; const base='${BASE_VERSION}'; const parse=v=>v.split('.').map(Number); const cmp=(a,b)=>{a=parse(a);b=parse(b); for(let i=0;i<3;i++){if(a[i]!==b[i]) return a[i]-b[i];} return 0}; if (/^[0-9]+\\.[0-9]+\\.[0-9]+$/.test(current) && cmp(current, base) > 0) { console.log(current); } else { const p=parse(base); p[2] += 1; console.log(p.join('.')); }"
-          )"
-          TAG="v${NEW_VERSION}"
-          echo "Current package version: ${CURRENT_VERSION}"
-          echo "Base version: ${BASE_VERSION}"
-          echo "Release version candidate: ${NEW_VERSION}"
-          echo "Release tag candidate: ${TAG}"
-
-          npm version "${NEW_VERSION}" --no-git-tag-version --allow-same-version >/dev/null
-
-          git add package.json
-          if [ -f package-lock.json ]; then
-            git add package-lock.json
-          fi
-
-          if [ -f npm-shrinkwrap.json ]; then
-            git add npm-shrinkwrap.json
-          fi
-
-          if git diff --cached --quiet; then
-            echo "::notice::Version files already at ${NEW_VERSION}; no release bump commit needed."
-            if git ls-remote --exit-code --tags origin "refs/tags/${TAG}" >/dev/null 2>&1; then
-              echo "::notice::Release tag already exists: ${TAG}; skipping tag push."
-              exit 0
-            fi
-
-            git tag -a "${TAG}" -m "Release ${TAG}"
-            git push origin "${TAG}"
-            echo "Pushed release tag without version commit: ${TAG}"
-            exit 0
-          fi
-
-          git commit -m "release: bump version to ${NEW_VERSION}"
-          git push origin HEAD:main
-
-          git tag -a "${TAG}" -m "Release ${TAG}"
-          git push origin "${TAG}"
-          echo "Pushed release commit + tag: ${TAG}"
-
-          # release.yml zaten "push tags: v*" ile otomatik tetiklenir.
-          # Bu yüzden ek workflow_dispatch çağrısına gerek yok.
-          echo "Release workflow will be triggered automatically by tag push: ${TAG}"
