@@ -1,0 +1,56 @@
+name: Validate Flatpak
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - ".github/workflows/flatpak.yml"
+      - "packaging/flatpak/**"
+      - "packaging/appstream/**"
+      - "packaging/linux/**"
+      - "scripts/prepare-flathub-pr.sh"
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/flatpak.yml"
+      - "packaging/flatpak/**"
+      - "packaging/appstream/**"
+      - "packaging/linux/**"
+      - "scripts/prepare-flathub-pr.sh"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+
+      - name: Install metadata validators
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends appstream desktop-file-utils python3-yaml
+
+      - name: Validate manifest YAML
+        run: python3 -c "import pathlib, yaml; yaml.safe_load(pathlib.Path('packaging/flatpak/com.ardali.mediaplayer.yml').read_text())"
+
+      - name: Validate AppStream metadata
+        run: appstreamcli validate --no-net packaging/appstream/com.ardali.mediaplayer.metainfo.xml
+
+      - name: Validate desktop entry
+        run: desktop-file-validate packaging/linux/com.ardali.mediaplayer.desktop
+
+      - name: Prepare Flathub submission directory
+        run: bash scripts/prepare-flathub-pr.sh
+
+      - name: Verify submission files
+        run: |
+          test -f .dist/flathub-pr/com.ardali.mediaplayer/com.ardali.mediaplayer.yml
+          test -f .dist/flathub-pr/com.ardali.mediaplayer/com.ardali.mediaplayer.metainfo.xml
+          test -f .dist/flathub-pr/com.ardali.mediaplayer/com.ardali.mediaplayer.desktop

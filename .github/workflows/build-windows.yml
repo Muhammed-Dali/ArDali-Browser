@@ -8,7 +8,7 @@ concurrency:
   cancel-in-progress: true
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   build-windows:
@@ -16,11 +16,11 @@ jobs:
 
     env:
       # Keep these in sync with package.json build.electronVersion
-      ELECTRON_VERSION: "28.3.3"
+      ELECTRON_VERSION: "40.6.1"
 
       # Force node-gyp to build against Electron headers (not the host Node.js)
       npm_config_runtime: "electron"
-      npm_config_target: "28.3.3"
+      npm_config_target: "40.6.1"
       npm_config_disturl: "https://electronjs.org/headers"
       npm_config_build_from_source: "true"
 
@@ -32,17 +32,17 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
 
       - name: Setup Node.js
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
         with:
           node-version: "22.12.0"
           cache: "npm"
 
       - name: Setup MSYS2 (MinGW64)
         id: msys2
-        uses: msys2/setup-msys2@v2
+        uses: msys2/setup-msys2@66cd2cce69caa17b53920067426061ca1de3a884 # v2
         with:
           msystem: MINGW64
           update: true
@@ -107,6 +107,7 @@ jobs:
           PROJECTM_VER="4.1.6"
           curl -fsSL -o /tmp/libprojectM-${PROJECTM_VER}.tar.gz \
             "https://sourceforge.net/projects/projectm.mirror/files/v${PROJECTM_VER}/libprojectM-${PROJECTM_VER}.tar.gz/download"
+          echo "1b9e6d56c59fe24e5416da4d42e941a34c982811003e43ac88b5aca8afa52c87  /tmp/libprojectM-${PROJECTM_VER}.tar.gz" | sha256sum -c -
           tar -xzf /tmp/libprojectM-${PROJECTM_VER}.tar.gz -C /tmp
 
           cmake -S "/tmp/libprojectM-${PROJECTM_VER}" -B /tmp/build-projectm -G Ninja \
@@ -142,7 +143,7 @@ jobs:
         run: npm run -s build:win
 
       - name: Upload dist artifacts
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: windows-dist-${{ github.run_id }}
           path: |

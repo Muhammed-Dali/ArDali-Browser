@@ -34,17 +34,17 @@ jobs:
       SNYK_EXCLUDES: ArDali-Medya-Player-Linux,ardali-bin,third_party,visualizer,build-visualizer,chromium.backup_20260328_182612,.semgrep-tmp,node_modules,dist,build,out,squashfs-root,.git,.cache,native-dist
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
         with:
           ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.ref }}
 
       - name: Setup Node
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
         with:
           node-version: "20"
 
       - name: Install Snyk CLI
-        uses: snyk/actions/setup@master
+        uses: snyk/actions/setup@8e119fbb6c251787721d34ba683ed48eba792766 # master pinned 2026-07-14
 
       - name: Verify Snyk CLI
         run: snyk --version
@@ -85,7 +85,7 @@ jobs:
 
       - name: Upload Snyk reports artifact
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: snyk-reports-${{ github.run_id }}
           path: snyk-reports
@@ -94,14 +94,14 @@ jobs:
 
       - name: Upload Snyk SCA SARIF
         if: always() && hashFiles('snyk-reports/snyk-sca.sarif') != ''
-        uses: github/codeql-action/upload-sarif@v4
+        uses: github/codeql-action/upload-sarif@1ad29ea4a422cce9a242a9fae469541dcd08addc # v4
         with:
           sarif_file: snyk-reports/snyk-sca.sarif
           category: snyk-open-source
 
       - name: Upload Snyk Code SARIF
         if: always() && hashFiles('snyk-reports/snyk-code.sarif') != ''
-        uses: github/codeql-action/upload-sarif@v4
+        uses: github/codeql-action/upload-sarif@1ad29ea4a422cce9a242a9fae469541dcd08addc # v4
         with:
           sarif_file: snyk-reports/snyk-code.sarif
           category: snyk-code
