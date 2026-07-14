@@ -12,7 +12,7 @@
     },
     "dependencies": {
         "node-addon-api": "8.9.0",
-        "node-gyp": "13.0.0"
+        "node-gyp": "13.0.1"
     },
     "os": ["linux", "win32", "darwin"],
     "cpu": ["x64", "arm64"],
