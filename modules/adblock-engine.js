@@ -5,7 +5,7 @@ const ADBLOCK_DEFAULT_CONFIG = Object.freeze({
     mode: 'ideal',
     showBlockedCount: true,
     autoReload: false,
-    strictBlock: false,
+    strictBlock: true,
     developerMode: false
 });
 
@@ -99,6 +99,30 @@ function normalizeConfig(config = {}) {
         developerMode: !!config.developerMode,
         dnrRules: sanitizeDnrRules(config.dnrRules || config.rules)
     };
+}
+
+function getDecisionDnrRules(rules) {
+    if (!Array.isArray(rules)) return [];
+    if (Array.isArray(rules.__ardaliDecisionRules)) return rules.__ardaliDecisionRules;
+    const decisionRules = rules.filter((rule) => String(rule?.action?.type || '') !== 'modifyHeaders');
+    try {
+        Object.defineProperty(rules, '__ardaliDecisionRules', { value: decisionRules, enumerable: false });
+    } catch {
+        // best effort
+    }
+    return decisionRules;
+}
+
+function getHeaderDnrRules(rules) {
+    if (!Array.isArray(rules)) return [];
+    if (Array.isArray(rules.__ardaliHeaderRules)) return rules.__ardaliHeaderRules;
+    const headerRules = rules.filter((rule) => String(rule?.action?.type || '') === 'modifyHeaders');
+    try {
+        Object.defineProperty(rules, '__ardaliHeaderRules', { value: headerRules, enumerable: false });
+    } catch {
+        // best effort
+    }
+    return headerRules;
 }
 
 function domainMatches(hostname, ruleDomain) {
@@ -547,13 +571,14 @@ function findMatchingDnrRules(context, rules, actionType) {
 
 function evaluateDnrRules(rawUrl, resourceType, config, requestDetails = {}) {
     const normalized = normalizeConfig(config);
-    if (!normalized.dnrRules.length) return null;
+    const decisionRules = getDecisionDnrRules(normalized.dnrRules);
+    if (!decisionRules.length) return null;
     const context = getRequestContext(rawUrl, resourceType, requestDetails);
     if (!context.parsed) return null;
     const protocol = String(context.parsed.protocol || '').toLowerCase();
     if (protocol !== 'http:' && protocol !== 'https:') return null;
 
-    const rule = findMatchingDnrRule(context, normalized.dnrRules);
+    const rule = findMatchingDnrRule(context, decisionRules);
     if (!rule) return null;
 
     const actionType = String(rule.action?.type || '');
@@ -620,7 +645,8 @@ function applyHeaderOperations(rawHeaders, operations) {
 
 function evaluateDnrHeaderModifications(rawUrl, resourceType, config, requestDetails = {}, phase = 'response') {
     const normalized = normalizeConfig(config);
-    if (!normalized.dnrRules.length) return null;
+    const headerRules = getHeaderDnrRules(normalized.dnrRules);
+    if (!headerRules.length) return null;
     const context = getRequestContext(rawUrl, resourceType, requestDetails);
     if (!context.parsed) return null;
     const protocol = String(context.parsed.protocol || '').toLowerCase();
@@ -631,7 +657,7 @@ function evaluateDnrHeaderModifications(rawUrl, resourceType, config, requestDet
     const operations = [];
     const matched = [];
 
-    for (const rule of findMatchingDnrRules(context, normalized.dnrRules, 'modifyHeaders')) {
+    for (const rule of findMatchingDnrRules(context, headerRules, 'modifyHeaders')) {
         const ruleOperations = Array.isArray(rule?.action?.[headerKey]) ? rule.action[headerKey] : [];
         if (!ruleOperations.length) continue;
         operations.push(...ruleOperations);

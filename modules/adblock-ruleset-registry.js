@@ -158,10 +158,14 @@ function getActiveRulesetPlan(config = {}) {
         : 'ideal';
     const ids = getModeRulesetIds(mode);
     const strictEnabled = config.strictBlock === true || mode === 'aggressive';
-    const strictIds = strictEnabled
-        ? ids.filter((id) => rulesetAssetExists(id, 'strictblock'))
-        : [];
     const detailsById = new Map(getRulesetDetails().map((item) => [item.id, item]));
+    const strictIds = ids.filter((id) => {
+        if (!rulesetAssetExists(id, 'strictblock')) return false;
+        // Malware, phishing and badware navigation protection is a safety
+        // baseline, not an ad-block preference. The Strict Block toggle only
+        // controls the additional potentially-unwanted-site rulesets.
+        return strictEnabled || detailsById.get(id)?.group === 'malware';
+    });
 
     return {
         mode,

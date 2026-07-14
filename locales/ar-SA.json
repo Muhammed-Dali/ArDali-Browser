@@ -911,13 +911,15 @@
   "securityPage.buttons.exportCookies": "تصدير الكوكيز",
   "securityPage.buttons.importCookies": "استيراد الكوكيز",
   "securityPage.allowPopups": "السماح بالنوافذ المنبثقة (قد يلزم لبعض تسجيلات الدخول)",
-  "securityPage.vpnPolicyLabel": "حظر الويب عند اكتشاف VPN",
-  "securityPage.vpnPolicyHint": "مستحسن: اتركه مغلقًا. عند وجود VPN سيظهر تحذير فقط، والمواقع خارج المنصات المسموحة محجوبة أصلًا.",
+  "securityPage.vpnPolicyLabel": "استخدام اتصال VPN وموقعه في النظام للويب",
+  "securityPage.vpnPolicyHint": "عند تفعيل VPN، يستخدم الويب تلقائيًا مسار النظام وعنوان خروج VPN وموقعه. تبقى حماية المواقع الضارة مفعلة.",
   "securityPage.allowPopupsHint": "ملاحظة: عند تعطيل النوافذ المنبثقة، قد لا تعمل بعض روابط تسجيل الدخول أو الحساب.",
   "securityPage.cleanupHint": "مسح الكوكيز أو الكاش قد يؤدي إلى تسجيل خروجك من بعض المواقع.",
   "securityPage.allowedPlatformsHint": "يستهدف ArDali المنصات التالية في تبويب الويب (CSP/frame-src):",
   "securityPage.cleanupCookiePortHint": "يمكنك نقل الجلسات بين الأجهزة عبر تصدير/استيراد الكوكيز بصيغة JSON.",
   "securityPage.dynamic.vpnUnknown": "VPN: -",
+  "securityPage.dynamic.vpnDetected": "VPN: نشط، يتم استخدام مسار النظام الموثوق ({interfaces})",
+  "securityPage.notify.vpnWarning": "VPN نشط. تستخدم حركة الويب اتصال VPN وموقعه في النظام.",
   "securityPage.notify.cookiesExported": "تم تصدير {count} كوكيز.",
   "securityPage.notify.cookiesImported": "تم استيراد {imported} كوكيز ({skipped} تم تخطيها).",
   "securityPage.notify.cookiesExportFailed": "فشل تصدير الكوكيز: {error}",
@@ -1113,5 +1115,33 @@
   "settings.audio.deviceName.builtInAudio": "الصوت المدمج",
   "settings.audio.deviceName.internalAudio": "الصوت الداخلي",
   "settings.audio.deviceName.analogStereo": "ستيريو تناظري",
-  "settings.audio.deviceName.stereo": "ستيريو"
+  "settings.audio.deviceName.stereo": "ستيريو",
+  "web.contextMenu.openLinkNewTab": "فتح الرابط في علامة تبويب جديدة",
+  "web.contextMenu.openLinkNewWindow": "فتح الرابط في نافذة جديدة",
+  "web.contextMenu.copyLinkAddress": "نسخ عنوان الرابط",
+  "web.contextMenu.openImageNewTab": "فتح الصورة في علامة تبويب جديدة",
+  "web.contextMenu.saveImageAs": "حفظ الصورة باسم...",
+  "web.contextMenu.copyImage": "نسخ الصورة",
+  "web.contextMenu.copyImageAddress": "نسخ عنوان الصورة",
+  "web.contextMenu.searchImageGoogle": "البحث عن الصورة باستخدام Google Lens",
+  "web.contextMenu.searchWeb": "البحث في الويب عن: \"{text}\"",
+  "web.contextMenu.copy": "نسخ",
+  "web.contextMenu.paste": "لصق",
+  "web.contextMenu.inspect": "فحص",
+  "web.externalProtocol.title": "فتح تطبيق خارجي؟",
+  "web.externalProtocol.request": "يريد {site} فتح هذا التطبيق.",
+  "web.externalProtocol.alwaysAllow": "السماح دائمًا لـ {site} بفتح هذا النوع من الروابط في التطبيق المرتبط",
+  "web.externalProtocol.cancel": "إلغاء",
+  "web.externalProtocol.open": "فتح",
+  "web.externalProtocol.openApp": "فتح {app}",
+  "web.externalProtocol.fallbackTitle": "تطبيق خارجي",
+  "web.externalProtocol.fallbackMessage": "هل تريد فتح هذا الرابط باستخدام تطبيق خارجي؟",
+  "web.externalProtocol.chooseApplication": "اختيار تطبيق",
+  "web.externalProtocol.executableFiles": "ملفات قابلة للتنفيذ"
+  ,"ui.startup.sidebarMode": "سلوك الشريط الجانبي"
+  ,"ui.startup.sidebarMode.options.classic": "شريط عمودي كلاسيكي"
+  ,"ui.startup.sidebarMode.options.smart": "لوحة حافة ذكية"
+  ,"ui.startup.sidebarMode.hint": "في الوضع الذكي، انقر على مقبض الحافة الرفيع لإظهار أزرار التطبيق الرئيسية."
+  ,"ui.startup.sidebarMode.open": "فتح لوحة الحافة الذكية"
+  ,"ui.startup.sidebarMode.close": "إغلاق لوحة الحافة الذكية"
 }

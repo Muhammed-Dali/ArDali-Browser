@@ -1598,6 +1598,10 @@
   "listen.quick.mode.detail.max": "Maksimum doğruluk: zor videolar, coverlar ve düşük sesli fon müzikler için en iyi seçim.",
   "securityPage.enforceAllowlist": "Yalnız izinli platformları aç (allowlist)",
   "securityPage.enforceAllowlist.hint": "Kapalıyken Web sekmesinde tüm geçerli http/https siteleri açabilirsiniz.",
+  "securityPage.vpnPolicyLabel": "Sistem VPN bağlantısını ve konumunu Web’de kullan",
+  "securityPage.vpnPolicyHint": "VPN etkinken Web trafiği sistem rotasını, VPN çıkış IP’sini ve VPN konumunu otomatik kullanır. Zararlı site koruması açık kalır.",
+  "securityPage.dynamic.vpnDetected": "VPN: Etkin, güvenilir sistem rotası kullanılıyor ({interfaces})",
+  "securityPage.notify.vpnWarning": "VPN etkin. Web trafiği sistem VPN bağlantısını ve konumunu kullanıyor.",
   "settings.audio.night.mode.light.detail": "Hafif mod ani tepe seslerini genel hissi fazla değiştirmeden yumuşatır.",
   "settings.audio.night.mode.balanced.detail": "Dengeli mod film, web video ve sakin ev dinlemeleri için en uygundur.",
   "settings.audio.night.mode.strong.detail": "Güçlü mod tepe sesleri daha sert bastırır ve gece ortamını daha sakin tutar.",
@@ -1614,5 +1618,33 @@
   "settings.audio.deviceName.builtInAudio": "Yerleşik Ses",
   "settings.audio.deviceName.internalAudio": "Dahili Ses",
   "settings.audio.deviceName.analogStereo": "Analog Stereo",
-  "settings.audio.deviceName.stereo": "Stereo"
+  "settings.audio.deviceName.stereo": "Stereo",
+  "web.contextMenu.openLinkNewTab": "Bağlantıyı yeni sekmede aç",
+  "web.contextMenu.openLinkNewWindow": "Bağlantıyı yeni pencerede aç",
+  "web.contextMenu.copyLinkAddress": "Bağlantı adresini kopyala",
+  "web.contextMenu.openImageNewTab": "Görseli yeni sekmede aç",
+  "web.contextMenu.saveImageAs": "Görseli farklı kaydet...",
+  "web.contextMenu.copyImage": "Görseli kopyala",
+  "web.contextMenu.copyImageAddress": "Görsel adresini kopyala",
+  "web.contextMenu.searchImageGoogle": "Görseli Google Lens ile ara",
+  "web.contextMenu.searchWeb": "Web'de ara: \"{text}\"",
+  "web.contextMenu.copy": "Kopyala",
+  "web.contextMenu.paste": "Yapıştır",
+  "web.contextMenu.inspect": "İncele",
+  "web.externalProtocol.title": "Harici uygulama açılsın mı?",
+  "web.externalProtocol.request": "{site} bu uygulamayı açmak istiyor.",
+  "web.externalProtocol.alwaysAllow": "{site} sitesinin bu tür bağlantıları ilişkili uygulamada açmasına her zaman izin ver",
+  "web.externalProtocol.cancel": "İptal",
+  "web.externalProtocol.open": "Aç",
+  "web.externalProtocol.openApp": "{app} uygulamasını aç",
+  "web.externalProtocol.fallbackTitle": "Harici uygulama",
+  "web.externalProtocol.fallbackMessage": "Bu bağlantıyı harici bir uygulamayla açmak istiyor musunuz?",
+  "web.externalProtocol.chooseApplication": "Uygulama seç",
+  "web.externalProtocol.executableFiles": "Çalıştırılabilir dosyalar"
+  ,"ui.startup.sidebarMode": "Sol bar çalışma biçimi"
+  ,"ui.startup.sidebarMode.options.classic": "Klasik dikey bar"
+  ,"ui.startup.sidebarMode.options.smart": "Akıllı kenar paneli"
+  ,"ui.startup.sidebarMode.hint": "Akıllı modda ince kenar tutamacına tıklayınca ana uygulama düğmeleri açılır."
+  ,"ui.startup.sidebarMode.open": "Akıllı kenar panelini aç"
+  ,"ui.startup.sidebarMode.close": "Akıllı kenar panelini kapat"
 }

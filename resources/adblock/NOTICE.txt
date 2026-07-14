@@ -22,3 +22,11 @@ Included ruleset directories:
 These rulesets originate from upstream filter-list build outputs adapted for
 DeliBlock. Keep this notice with the bundled resources and review upstream
 licenses before redistribution.
+
+Adult-content domain protection:
+- Generated from the domain difference between StevenBlack unified hosts and
+  the unified + porn extension snapshot downloaded 2026-07-15.
+- Source: https://github.com/StevenBlack/hosts
+- The upstream repository code is MIT licensed; the merged source lists retain
+  their individual licenses and attribution documented by the upstream project.
+- Generated file: ../security/adult-domains.txt

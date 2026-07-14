@@ -394,7 +394,7 @@
             elements.behaviorWebLowPowerMode.checked = !!state.settings?.webUi?.lowPowerMode;
         }
         if (elements.behaviorWebClearCacheOnQuit) {
-            elements.behaviorWebClearCacheOnQuit.checked = state.settings?.webUi?.clearCacheOnQuit !== false;
+            elements.behaviorWebClearCacheOnQuit.checked = state.settings?.webUi?.clearCacheOnQuit === true;
         }
         if (elements.behaviorWebClearCookiesOnQuit) {
             elements.behaviorWebClearCookiesOnQuit.checked = state.settings?.webUi?.clearCookiesOnQuit === true;
@@ -618,7 +618,7 @@
             elements.behaviorSidebarStyle.value = normalizeSidebarStyle(state.settings?.appearance?.sidebarStyle);
         }
         if (elements.behaviorSidebarMode) {
-            elements.behaviorSidebarMode.value = String(state.settings?.appearance?.sidebarMode || 'classic') === 'smart' ? 'smart' : 'classic';
+            elements.behaviorSidebarMode.value = String(state.settings?.appearance?.sidebarMode || 'smart') === 'classic' ? 'classic' : 'smart';
         }
         if (elements.behaviorSidebarIconScale) {
             elements.behaviorSidebarIconScale.value = normalizeSidebarIconScale(state.settings?.appearance?.sidebarIconScale);
@@ -899,9 +899,9 @@
             elements.behaviorSidebarStyle?.value || state.settings.appearance.sidebarStyle || 'classic'
         );
         state.settings.appearance.sidebarMode =
-            String(elements.behaviorSidebarMode?.value || state.settings.appearance.sidebarMode || 'classic') === 'smart'
-                ? 'smart'
-                : 'classic';
+            String(elements.behaviorSidebarMode?.value || state.settings.appearance.sidebarMode || 'smart') === 'classic'
+                ? 'classic'
+                : 'smart';
         state.settings.appearance.sidebarIconScale = normalizeSidebarIconScale(
             elements.behaviorSidebarIconScale?.value || state.settings.appearance.sidebarIconScale || 'x3'
         );

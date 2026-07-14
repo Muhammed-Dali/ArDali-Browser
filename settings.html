@@ -466,13 +466,13 @@
                                                 </select>
                                             </div>
                                             <div class="setting-row">
-                                                <span>Sol bar çalışma biçimi</span>
+                                                <span data-i18n="ui.startup.sidebarMode">Sol bar çalışma biçimi</span>
                                                 <select class="settings-select" id="behaviorSidebarMode">
-                                                    <option value="classic">Klasik Dikey Bar</option>
-                                                    <option value="smart">Akıllı Kenar Paneli</option>
+                                                    <option value="classic" data-i18n="ui.startup.sidebarMode.options.classic">Klasik Dikey Bar</option>
+                                                    <option value="smart" selected data-i18n="ui.startup.sidebarMode.options.smart">Akıllı Kenar Paneli</option>
                                                 </select>
                                             </div>
-                                            <div class="settings-sub">Akıllı modda ince kenar tutamacına tıklayınca ana uygulama düğmeleri açılır.</div>
+                                            <div class="settings-sub" data-i18n="ui.startup.sidebarMode.hint">Akıllı modda ince kenar tutamacına tıklayınca ana uygulama düğmeleri açılır.</div>
                                             <div class="setting-row">
                                                 <span data-i18n="ui.startup.sidebarStyle">Kenar bar görünümü</span>
                                                 <select class="settings-select" id="behaviorSidebarStyle">
@@ -589,7 +589,7 @@
                                         <div class="settings-group">
                                             <h4 data-i18n="settings.web.sections.privacy">Gizlilik ve Veri</h4>
                                             <label class="checkbox-label">
-                                                <input type="checkbox" id="behaviorWebClearCacheOnQuit" checked>
+                                                <input type="checkbox" id="behaviorWebClearCacheOnQuit">
                                                 <span class="web-setting-icon web-setting-icon-cache" aria-hidden="true"></span>
                                                 <span data-i18n="ui.startup.webClearCacheOnQuit.label">Uygulama kapanırken web önbelleğini temizle</span>
                                             </label>
@@ -836,7 +836,7 @@
                                                 </label>
                                                 <label class="checkbox-label">
                                                     <input type="checkbox" id="securityStrictVpnBlock">
-                                                    <span data-i18n="securityPage.vpnPolicyLabel">VPN tespit edildiğinde Web erişimini engelle</span>
+                                                    <span data-i18n="securityPage.vpnPolicyLabel">Sistem VPN bağlantısını ve konumunu Web’de kullan</span>
                                                 </label>
                                                 <label class="checkbox-label">
                                                     <input type="checkbox" id="securityEnforceAllowlist">
@@ -849,7 +849,7 @@
                                                         <option value="isolated" data-i18n="securityPage.sessionProfile.options.isolated">İzole (her açılışta temiz başla)</option>
                                                     </select>
                                                 </div>
-                                                <div class="security-hint" data-i18n="securityPage.vpnPolicyHint">Öneri: Kapalı bırakın. VPN’de sadece uyarı verilir; izinli platformlar dışı siteler zaten engellenir.</div>
+                                                <div class="security-hint" data-i18n="securityPage.vpnPolicyHint">VPN etkinken Web trafiği sistem rotasını, VPN çıkış IP’sini ve VPN konumunu otomatik kullanır. Zararlı site koruması açık kalır.</div>
                                                 <div class="security-hint" data-i18n="securityPage.sessionProfile.hint">İzole profil, Web sekmesine ilk girişte çerez/önbelleği temizleyerek temiz oturum açar.</div>
                                                 <div class="security-hint" data-i18n="securityPage.enforceAllowlist.hint">Kapalıyken Web sekmesinde tüm geçerli http/https siteleri açabilirsiniz.</div>
                                                 <div class="security-hint" data-i18n="securityPage.allowPopupsHint">Not: Pop-up kapalıyken bazı sitelerde giriş/hesap bağlantıları açılmayabilir.</div>

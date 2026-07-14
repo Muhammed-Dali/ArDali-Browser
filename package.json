@@ -1,6 +1,6 @@
 {
   "name": "ardali",
-  "version": "5.2.17",
+  "version": "5.3.0",
   "productName": "ArDali",
   "description": "Open-source Linux media player for music and video with DSP effects, equalizer, and visualizer",
   "main": "main.js",
@@ -24,7 +24,7 @@
     "icons:unused": "node scripts/check-unused-icons.js",
     "verify:i18n": "node --check modules/i18n.js && node --check renderer.js && node --check scripts/generate-locale-coverage.js && node --check scripts/verify-i18n.js && node scripts/verify-i18n.js && npm run -s locale:coverage",
     "build": "node native/copy-libs.js && npm run -s patch:dbus-next && electron-builder",
-    "rebuild:electron:linux": "if [ -d node_modules/abstract-socket ]; then (cd node_modules/abstract-socket && npx node-gyp rebuild --target=40.6.1 --dist-url=https://electronjs.org/headers --arch=x64); else echo \"[rebuild:electron:linux] abstract-socket not present; skipping native rebuild\"; fi",
+    "rebuild:electron:linux": "if [ -d node_modules/abstract-socket ]; then (cd node_modules/abstract-socket && npx node-gyp rebuild --target=40.8.5 --dist-url=https://electronjs.org/headers --arch=x64); else echo \"[rebuild:electron:linux] abstract-socket not present; skipping native rebuild\"; fi",
     "build:linux": "node native/copy-libs.js linux && node scripts/verify-linux-artifacts.js && npm run -s rebuild:electron:linux && npm run -s patch:dbus-next && electron-builder --linux -c.npmRebuild=false",
     "build:linux:appimage": "node native/copy-libs.js linux && node scripts/verify-linux-artifacts.js && npm run -s rebuild:electron:linux && npm run -s patch:dbus-next && electron-builder --linux AppImage -c.npmRebuild=false",
     "verify:win:artifacts": "node scripts/verify-win-artifacts.js",
@@ -76,7 +76,7 @@
   "build": {
     "appId": "com.ardali.mediaplayer",
     "productName": "ArDali",
-    "electronVersion": "40.6.1",
+    "electronVersion": "40.8.5",
     "icon": "icons/app/ardali.ico",
     "artifactName": "ArDali-${version}-${os}-${arch}.${ext}",
     "directories": {
@@ -424,7 +424,7 @@
     }
   },
   "devDependencies": {
-    "electron": "40.6.1",
+    "electron": "40.8.5",
     "electron-builder": "26.15.3",
     "png-to-ico": "3.0.1"
   },

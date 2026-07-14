@@ -830,15 +830,16 @@
     "allowPopupsHint": "Note: When pop-ups are disabled, some login/account links may not open.",
     "cleanupHint": "Clearing cookies/cache may sign you out of some sites.",
     "allowedPlatformsHint": "ArDali targets the following platforms in the Web tab (CSP/frame-src):",
-    "vpnPolicyLabel": "Block Web access when VPN is detected",
-    "vpnPolicyHint": "Recommended: keep this off. With VPN, app will warn only; non-approved websites are already blocked.",
+    "vpnPolicyLabel": "Use the system VPN connection and location for Web",
+    "vpnPolicyHint": "When VPN is active, Web automatically uses the system route, VPN exit IP, and VPN location. Malicious-site protection remains active.",
     "dynamic": {
       "urlLine": "URL: {url}",
       "connSecure": "Connection: Secure (HTTPS)",
       "connInsecure": "Connection: Insecure (HTTP)",
       "connUnknown": "Connection: -",
       "vpnUnknown": "VPN: -",
-      "vpnNotDetected": "VPN: Not detected"
+      "vpnNotDetected": "VPN: Not detected",
+      "vpnDetected": "VPN: Active, using trusted system route ({interfaces})"
     },
     "notify": {
       "urlCopied": "URL copied.",
@@ -854,7 +855,7 @@
       "webResetFailed": "Couldn't reset Web: {error}",
       "invalidExternalUrl": "Open a valid web page first (http/https).",
       "vpnBlocked": "VPN detected. Web tab is temporarily blocked for security.",
-      "vpnWarning": "VPN detected. For security, only approved platforms will be allowed.",
+      "vpnWarning": "VPN active. Web traffic is using the system VPN connection and location.",
       "urlBlocked": "This address is blocked by security policy."
     }
   },
@@ -1801,5 +1802,33 @@
   "settings.audio.deviceName.builtInAudio": "Built-in Audio",
   "settings.audio.deviceName.internalAudio": "Internal Audio",
   "settings.audio.deviceName.analogStereo": "Analog Stereo",
-  "settings.audio.deviceName.stereo": "Stereo"
+  "settings.audio.deviceName.stereo": "Stereo",
+  "web.contextMenu.openLinkNewTab": "Open link in new tab",
+  "web.contextMenu.openLinkNewWindow": "Open link in new window",
+  "web.contextMenu.copyLinkAddress": "Copy link address",
+  "web.contextMenu.openImageNewTab": "Open image in new tab",
+  "web.contextMenu.saveImageAs": "Save image as...",
+  "web.contextMenu.copyImage": "Copy image",
+  "web.contextMenu.copyImageAddress": "Copy image address",
+  "web.contextMenu.searchImageGoogle": "Search image with Google Lens",
+  "web.contextMenu.searchWeb": "Search the web for: \"{text}\"",
+  "web.contextMenu.copy": "Copy",
+  "web.contextMenu.paste": "Paste",
+  "web.contextMenu.inspect": "Inspect",
+  "web.externalProtocol.title": "Open external application?",
+  "web.externalProtocol.request": "{site} wants to open this application.",
+  "web.externalProtocol.alwaysAllow": "Always allow {site} to open this type of link in the associated application",
+  "web.externalProtocol.cancel": "Cancel",
+  "web.externalProtocol.open": "Open",
+  "web.externalProtocol.openApp": "Open {app}",
+  "web.externalProtocol.fallbackTitle": "External application",
+  "web.externalProtocol.fallbackMessage": "Do you want to open this link with an external application?",
+  "web.externalProtocol.chooseApplication": "Choose application",
+  "web.externalProtocol.executableFiles": "Executable files"
+  ,"ui.startup.sidebarMode": "Sidebar behavior"
+  ,"ui.startup.sidebarMode.options.classic": "Classic vertical bar"
+  ,"ui.startup.sidebarMode.options.smart": "Smart edge panel"
+  ,"ui.startup.sidebarMode.hint": "In smart mode, click the slim edge handle to open the main application buttons."
+  ,"ui.startup.sidebarMode.open": "Open smart edge panel"
+  ,"ui.startup.sidebarMode.close": "Close smart edge panel"
 }

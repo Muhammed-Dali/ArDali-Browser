@@ -4,6 +4,29 @@ Notable user-facing changes to ArDali WebMedia will be documented here. The proj
 
 ## [Unreleased]
 
+## [5.3.0] - 2026-07-15
+
+### Added
+
+- Made the animated Smart Sidebar the first-install default while preserving the user's saved classic or radial layout choice.
+- Added adaptive light/dark edge-handle contrast and expanded browser-style page, image, and tab context menus.
+- Added local adult-domain protection alongside malicious, phishing, and fraud-domain filtering with a dedicated warning page.
+- Added localized browser commands and external-protocol prompts, including Turkish, English, and Arabic coverage.
+
+### Changed
+
+- Allowed trusted system VPN connections and made web traffic follow the operating system VPN route and location.
+- Improved Amazon and other content-heavy marketplaces with persistent cache use, indexed filtering, first-party resource fast paths, and lighter navigation-state updates.
+- Updated Electron and every native/build target to 40.8.5.
+- Updated README web screenshots and release documentation.
+
+### Fixed
+
+- Fixed background tabs that remained in the loading state after their content had completed.
+- Fixed direct image tabs reloading into a blank page.
+- Reduced Smart Sidebar startup jank and unnecessary animation work.
+- Synchronized release metadata across npm, Electron Builder, GitHub Actions, DEB, RPM, and AppStream.
+
 ## [5.2.17] - 2026-07-14
 
 ### Fixed

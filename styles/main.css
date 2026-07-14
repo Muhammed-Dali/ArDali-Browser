@@ -8594,6 +8594,168 @@ body.video-window-fs-active #videoPage.hide-cursor {
     color: var(--text-primary, #fff);
 }
 
+.web-tab.pinned {
+    flex: 0 0 48px;
+    min-width: 48px;
+    max-width: 48px;
+    justify-content: center;
+}
+
+.web-tab.pinned .web-tab-title,
+.web-tab.pinned .web-tab-close {
+    display: none;
+}
+
+.web-tab.grouped {
+    box-shadow: inset 0 3px 0 color-mix(in srgb, var(--accent-primary, #39c8ff) 82%, #806cff);
+}
+
+.web-tab.muted::after {
+    content: 'volume_off';
+    font-family: 'Material Symbols Rounded';
+    font-size: 13px;
+    opacity: 0.72;
+    margin-left: 4px;
+}
+
+.web-tab-context-menu {
+    position: fixed;
+    z-index: 12000;
+    width: min(370px, calc(100vw - 16px));
+    max-height: calc(100vh - 16px);
+    overflow: auto;
+    padding: 7px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 10px;
+    background: rgba(29, 30, 35, 0.985);
+    color: #e7e8ec;
+    box-shadow: 0 18px 48px rgba(0, 0, 0, 0.52);
+    opacity: 0;
+    transform: translateY(-4px) scale(0.985);
+    transform-origin: top left;
+    transition: opacity 110ms ease, transform 110ms ease;
+    scrollbar-width: thin;
+}
+
+.web-tab-context-menu.visible {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+}
+
+.web-tab-context-item {
+    width: 100%;
+    min-height: 36px;
+    display: grid;
+    grid-template-columns: 22px minmax(0, 1fr) auto auto;
+    align-items: center;
+    gap: 9px;
+    padding: 7px 10px;
+    border: 0;
+    border-radius: 7px;
+    background: transparent;
+    color: inherit;
+    text-align: start;
+    cursor: default;
+    font: inherit;
+    font-size: 13px;
+}
+
+.web-tab-context-item:hover:not(:disabled),
+.web-tab-context-item:focus-visible:not(:disabled) {
+    background: rgba(255, 255, 255, 0.09);
+    outline: none;
+}
+
+.web-tab-context-item:disabled {
+    color: rgba(231, 232, 236, 0.38);
+}
+
+.web-tab-context-item > .material-symbols-rounded {
+    font-size: 18px;
+    color: rgba(210, 226, 239, 0.86);
+}
+
+.web-tab-context-item:disabled > .material-symbols-rounded {
+    color: inherit;
+}
+
+.web-tab-context-label {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.web-tab-context-item kbd,
+.web-tab-context-item small {
+    color: rgba(231, 232, 236, 0.62);
+    font: inherit;
+    font-size: 11px;
+}
+
+.web-tab-context-separator {
+    height: 1px;
+    margin: 6px -7px;
+    background: rgba(255, 255, 255, 0.11);
+}
+
+.webviews-container.web-split-view webview.active,
+.webviews-container.web-split-view webview.split-secondary {
+    top: 0;
+    width: 50%;
+    opacity: 1;
+    pointer-events: auto;
+}
+
+.webviews-container.web-split-view webview.active {
+    left: 0;
+    border-right: 1px solid rgba(130, 190, 225, 0.38);
+}
+
+.webviews-container.web-split-view webview.split-secondary {
+    left: 50%;
+    z-index: 2;
+}
+
+#webPage.web-vertical-tabs .web-tabs-container {
+    position: absolute;
+    left: 0;
+    top: 80px;
+    bottom: 0;
+    width: 220px;
+    height: auto;
+    z-index: 20;
+    align-items: stretch;
+    padding: 8px 6px;
+    border-right: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+#webPage.web-vertical-tabs .web-tabs {
+    height: auto;
+    flex-direction: column;
+    align-items: stretch;
+    overflow-y: auto;
+}
+
+#webPage.web-vertical-tabs .web-tab {
+    width: 100%;
+    max-width: none;
+    min-height: 34px;
+    flex: 0 0 34px;
+    margin: 0 0 4px;
+    border-radius: 7px;
+}
+
+#webPage.web-vertical-tabs .web-tab-new {
+    flex: 0 0 30px;
+}
+
+#webPage.web-vertical-tabs .webviews-container,
+#webPage.web-vertical-tabs .web-new-tab-page,
+#webPage.web-vertical-tabs .web-downloads-page {
+    margin-left: 220px;
+    width: calc(100% - 220px);
+}
+
 .web-tab-icon {
     width: 16px;
     height: 16px;
@@ -16669,31 +16831,36 @@ body.smart-sidebar-mode .smart-radial-btn {
     margin: -27px 0 0 -27px;
     opacity: 0 !important;
     pointer-events: none !important;
-    transform: translate(4px, 0) scale(0.22) rotate(-18deg) !important;
+    transform: translate3d(4px, 0, 0) scale(0.22) rotate(-18deg) !important;
     transform-origin: center;
-    filter: blur(1px) brightness(0.8);
-    transition: opacity 280ms ease, transform 420ms cubic-bezier(0.16, 0.82, 0.2, 1), filter 260ms ease !important;
+    filter: none;
+    backface-visibility: hidden;
+    will-change: transform, opacity;
+    transition: opacity 180ms ease, transform 300ms cubic-bezier(0.16, 0.82, 0.2, 1) !important;
 }
 
 body.smart-sidebar-mode.smart-sidebar-open .smart-radial-btn {
     opacity: 1 !important;
     pointer-events: auto !important;
-    transform: translate(var(--smart-x, 150px), var(--smart-y, 0px)) scale(0.9) rotate(0deg) !important;
-    filter: blur(0) brightness(1);
-    transition: opacity 340ms ease var(--smart-delay, 0ms), transform 560ms cubic-bezier(0.16, 0.82, 0.2, 1) var(--smart-delay, 0ms), filter 320ms ease var(--smart-delay, 0ms) !important;
+    transform: translate3d(var(--smart-x, 150px), var(--smart-y, 0px), 0) scale(0.9) rotate(0deg) !important;
+    transition: opacity 220ms ease var(--smart-delay, 0ms), transform 360ms cubic-bezier(0.16, 0.82, 0.2, 1) var(--smart-delay, 0ms) !important;
 }
 
 body.smart-sidebar-mode.smart-sidebar-open .smart-radial-btn:hover,
 body.smart-sidebar-mode.smart-sidebar-open .smart-radial-btn:focus-visible {
-    transform: translate(var(--smart-x, 150px), var(--smart-y, 0px)) scale(1.03) !important;
+    transform: translate3d(var(--smart-x, 150px), var(--smart-y, 0px), 0) scale(1.03) !important;
 }
 
 body.smart-sidebar-mode.smart-sidebar-closing .smart-radial-btn {
     opacity: 0 !important;
     pointer-events: none !important;
-    transform: translate(4px, 0) scale(0.22) rotate(-18deg) !important;
-    filter: blur(1px) brightness(0.8);
-    transition: opacity 260ms ease var(--smart-close-delay, 0ms), transform 440ms cubic-bezier(0.4, 0, 0.6, 1) var(--smart-close-delay, 0ms), filter 280ms ease var(--smart-close-delay, 0ms) !important;
+    transform: translate3d(4px, 0, 0) scale(0.22) rotate(-18deg) !important;
+    filter: none;
+    transition: opacity 180ms ease var(--smart-close-delay, 0ms), transform 280ms cubic-bezier(0.4, 0, 0.6, 1) var(--smart-close-delay, 0ms) !important;
+}
+
+body.smart-sidebar-mode:not(.sidebar-motion-enabled) .smart-radial-btn {
+    transition: none !important;
 }
 
 body.smart-sidebar-mode .app-container > .sidebar-toggle-btn,
@@ -16704,8 +16871,8 @@ body.smart-sidebar-mode.smart-sidebar-closing .app-container > .sidebar-toggle-b
     position: fixed;
     left: 0;
     top: 50%;
-    width: 10px !important;
-    min-width: 10px !important;
+    width: 16px !important;
+    min-width: 16px !important;
     height: 52px !important;
     padding: 0;
     border: 0 !important;
@@ -16733,6 +16900,30 @@ body.smart-sidebar-mode .app-container > .sidebar-toggle-btn::before {
     transform: translateY(-50%);
     box-shadow: 2px 0 5px rgba(75, 175, 238, 0.14);
     transition: border-color 180ms ease, box-shadow 180ms ease, transform 220ms ease;
+}
+
+/* The web page itself can be light even while the app chrome is dark. Keep
+   the smart edge handle visible without using an alarming red accent. */
+body.web-mode.smart-sidebar-mode.smart-sidebar-on-light-content .app-container > .sidebar-toggle-btn {
+    opacity: 0.94 !important;
+}
+
+body.web-mode.smart-sidebar-mode.smart-sidebar-on-light-content .app-container > .sidebar-toggle-btn::before {
+    width: 12px;
+    border-right-width: 3px;
+    border-right-color: rgba(0, 82, 128, 0.96);
+    box-shadow:
+        2px 0 0 rgba(255, 255, 255, 0.82),
+        4px 0 8px rgba(0, 74, 122, 0.42);
+}
+
+body.web-mode.smart-sidebar-mode.smart-sidebar-on-light-content .app-container > .sidebar-toggle-btn:hover::before,
+body.web-mode.smart-sidebar-mode.smart-sidebar-on-light-content .app-container > .sidebar-toggle-btn:focus-visible::before,
+body.web-mode.smart-sidebar-mode.smart-sidebar-on-light-content.smart-sidebar-open .app-container > .sidebar-toggle-btn::before {
+    border-right-color: rgba(0, 112, 168, 1);
+    box-shadow:
+        2px 0 0 rgba(255, 255, 255, 0.9),
+        4px 0 10px rgba(0, 91, 148, 0.5);
 }
 
 body.smart-sidebar-mode .app-container > .sidebar-toggle-btn::after {

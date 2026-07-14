@@ -32,7 +32,11 @@ document.addEventListener('DOMContentLoaded', () => {
     let isWebviewLoading = false;
     const loadWatchdogs = new Map();
     const blankPageChecks = new Map();
-    const LOAD_STALL_MS = 12000;
+    const closedTabs = [];
+    const mutedSiteHosts = new Set();
+    let splitTabId = null;
+    let verticalTabsEnabled = false;
+    const LOAD_STALL_MS = 30000;
     const BLANK_PAGE_CHECK_MS = 900;
     const BLANK_PAGE_SECOND_CHECK_MS = 2800;
 
@@ -70,6 +74,214 @@ document.addEventListener('DOMContentLoaded', () => {
     // --- Helper Functions ---
     function generateId() {
         return Math.random().toString(36).substring(2, 10);
+    }
+
+    function tabMenuT(key, fallback) {
+        const locale = String(document.documentElement.lang || window.i18n?.getLanguage?.() || 'en-US').toLowerCase();
+        const tr = {
+            newRight: 'Sağa yeni sekme', addGroup: 'Sekmeyi yeni gruba ekle', moveWindow: 'Sekmeyi yeni pencereye taşı',
+            split: 'Sekmeyi yeni bölünmüş görünüme ekle', reload: 'Yeniden yükle', duplicate: 'Yinele', pin: 'Sabitle',
+            unpin: 'Sabitlemeyi kaldır', muteTab: 'Sekmenin sesini kapat', unmuteTab: 'Sekmenin sesini aç',
+            muteSite: 'Sitenin sesini kapat', unmuteSite: 'Sitenin sesini aç', readingList: 'Okuma listesine sekme ekle',
+            close: 'Kapat', closeDuplicates: 'Kopyalanmış sekmeleri kapat', closeOthers: 'Diğer sekmeleri kapat',
+            closeRight: 'Sağdaki sekmeleri kapat', restore: 'Pencereyi geri yükle', bookmarkAll: 'Tüm sekmelere yer işareti koy…',
+            vertical: 'Dikey sekmeleri kullan', groupPrompt: 'Sekme grubu adı', unavailable: 'Yakında'
+        };
+        const ar = {
+            newRight: 'علامة تبويب جديدة إلى اليمين', addGroup: 'إضافة علامة التبويب إلى مجموعة جديدة', moveWindow: 'نقل علامة التبويب إلى نافذة جديدة',
+            split: 'إضافة علامة التبويب إلى عرض منقسم', reload: 'إعادة تحميل', duplicate: 'تكرار', pin: 'تثبيت', unpin: 'إلغاء التثبيت',
+            muteTab: 'كتم علامة التبويب', unmuteTab: 'إلغاء كتم علامة التبويب', muteSite: 'كتم الموقع', unmuteSite: 'إلغاء كتم الموقع',
+            readingList: 'إضافة علامة التبويب إلى قائمة القراءة', close: 'إغلاق', closeDuplicates: 'إغلاق علامات التبويب المكررة',
+            closeOthers: 'إغلاق علامات التبويب الأخرى', closeRight: 'إغلاق علامات التبويب إلى اليمين', restore: 'استعادة علامة التبويب المغلقة',
+            bookmarkAll: 'إضافة جميع علامات التبويب إلى الإشارات المرجعية…', vertical: 'استخدام علامات التبويب العمودية', groupPrompt: 'اسم مجموعة علامات التبويب', unavailable: 'قريبًا'
+        };
+        const table = locale.startsWith('tr') ? tr : (locale.startsWith('ar') ? ar : null);
+        return table?.[key] || fallback;
+    }
+
+    function getTabHost(tab) {
+        try { return new URL(String(tab?.url || '')).hostname.toLowerCase(); } catch (_) { return ''; }
+    }
+
+    function updateSplitView() {
+        const container = document.getElementById('webViewsContainer');
+        if (!container) return;
+        const splitView = splitTabId && splitTabId !== activeTabId ? getTabWebView(splitTabId) : null;
+        container.classList.toggle('web-split-view', !!splitView);
+        container.querySelectorAll('webview.split-secondary').forEach((view) => view.classList.remove('split-secondary'));
+        if (splitView) splitView.classList.add('split-secondary');
+    }
+
+    function addTabToReadingList(tab) {
+        if (!tab || tab.url === BLANK_URL) return;
+        let list = [];
+        try { list = JSON.parse(localStorage.getItem('ardali_reading_list') || '[]'); } catch (_) {}
+        list = Array.isArray(list) ? list : [];
+        if (!list.some((item) => item?.url === tab.url)) {
+            list.unshift({ url: tab.url, title: tab.title || tab.url, addedAt: Date.now() });
+            localStorage.setItem('ardali_reading_list', JSON.stringify(list.slice(0, 250)));
+        }
+    }
+
+    function bookmarkAllTabs() {
+        let bookmarks = [];
+        try { bookmarks = JSON.parse(localStorage.getItem('ardali_bookmarks') || '[]'); } catch (_) {}
+        bookmarks = Array.isArray(bookmarks) ? bookmarks : [];
+        for (const tab of tabs) {
+            if (tab.url !== BLANK_URL && !bookmarks.includes(tab.url)) bookmarks.push(tab.url);
+        }
+        localStorage.setItem('ardali_bookmarks', JSON.stringify(bookmarks));
+        renderBookmarks();
+    }
+
+    function duplicateTab(tab) {
+        if (!tab) return;
+        const sourceIndex = tabs.findIndex((item) => item.id === tab.id);
+        const copy = createTab(tab.url, false);
+        if (!copy) return;
+        const createdIndex = tabs.findIndex((item) => item.id === copy.id);
+        tabs.splice(createdIndex, 1);
+        tabs.splice(sourceIndex + 1, 0, copy);
+        renderTabs();
+        activateTab(copy.id);
+    }
+
+    function createTabToRight(tab) {
+        const sourceIndex = tabs.findIndex((item) => item.id === tab.id);
+        const created = createTab(BLANK_URL, false);
+        if (!created) return;
+        const createdIndex = tabs.findIndex((item) => item.id === created.id);
+        tabs.splice(createdIndex, 1);
+        tabs.splice(sourceIndex + 1, 0, created);
+        renderTabs();
+        activateTab(created.id);
+    }
+
+    function closeTabsByIds(ids) {
+        const unique = Array.from(new Set(ids)).filter((id) => tabs.some((tab) => tab.id === id));
+        unique.forEach((id) => removeTab(id, { keepAtLeastOne: false }));
+        if (!tabs.length) createTab();
+    }
+
+    function restoreClosedTab() {
+        const snapshot = closedTabs.pop();
+        if (!snapshot) return;
+        const tab = createTab(snapshot.url || BLANK_URL, false);
+        if (!tab) return;
+        tab.title = snapshot.title || tab.title;
+        tab.pinned = snapshot.pinned === true;
+        tab.groupName = snapshot.groupName || '';
+        renderTabs();
+        activateTab(tab.id);
+    }
+
+    function closeWebTabContextMenu() {
+        document.getElementById('webTabContextMenu')?.remove();
+    }
+
+    function showWebTabContextMenu(event, tab) {
+        event.preventDefault();
+        event.stopPropagation();
+        closeWebTabContextMenu();
+        const tabIndex = tabs.findIndex((item) => item.id === tab.id);
+        const host = getTabHost(tab);
+        const wv = getTabWebView(tab.id);
+        const menu = document.createElement('div');
+        menu.id = 'webTabContextMenu';
+        menu.className = 'web-tab-context-menu';
+        menu.setAttribute('role', 'menu');
+
+        const addItem = (label, icon, action, options = {}) => {
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.className = 'web-tab-context-item';
+            button.disabled = options.disabled === true;
+            button.setAttribute('role', 'menuitem');
+            button.innerHTML = `<span class="material-symbols-rounded" aria-hidden="true">${icon}</span><span class="web-tab-context-label"></span>${options.shortcut ? `<kbd>${options.shortcut}</kbd>` : ''}${options.note ? `<small>${options.note}</small>` : ''}`;
+            button.querySelector('.web-tab-context-label').textContent = label;
+            button.addEventListener('click', () => {
+                if (button.disabled) return;
+                closeWebTabContextMenu();
+                action?.();
+            });
+            menu.appendChild(button);
+        };
+        const separator = () => {
+            const line = document.createElement('div');
+            line.className = 'web-tab-context-separator';
+            menu.appendChild(line);
+        };
+
+        addItem(tabMenuT('newRight', 'New tab to the right'), 'add', () => createTabToRight(tab));
+        addItem(tabMenuT('addGroup', 'Add tab to new group'), 'tab_group', () => {
+            const name = window.prompt(tabMenuT('groupPrompt', 'Tab group name'), tab.groupName || '');
+            if (name == null) return;
+            tab.groupName = String(name).trim();
+            renderTabs();
+        });
+        addItem(tabMenuT('moveWindow', 'Move tab to new window'), 'open_in_new', async () => {
+            if (!wv || tab.url === BLANK_URL) return;
+            try {
+                const opened = await wv.executeJavaScript(`(() => !!window.open(${JSON.stringify(tab.url)}, '_blank'))()`, true);
+                if (opened) removeTab(tab.id);
+            } catch (_) {
+                notifyWebBrowser(tabMenuT('moveWindow', 'Move tab to new window'), 'error');
+            }
+        }, { disabled: !wv || tab.url === BLANK_URL });
+        addItem(tabMenuT('split', 'Add tab to new split view'), 'vertical_split', () => {
+            if (tab.id === activeTabId) {
+                splitTabId = tabs.find((item) => item.id !== tab.id)?.id || null;
+            } else {
+                splitTabId = tab.id;
+            }
+            updateSplitView();
+        }, { disabled: tabs.length < 2 });
+        separator();
+        addItem(tabMenuT('reload', 'Reload'), 'refresh', () => wv?.reload?.(), { shortcut: 'Ctrl+R' });
+        addItem(tabMenuT('duplicate', 'Duplicate'), 'content_copy', () => duplicateTab(tab));
+        addItem(tabMenuT(tab.pinned ? 'unpin' : 'pin', tab.pinned ? 'Unpin' : 'Pin'), 'keep', () => {
+            tab.pinned = !tab.pinned;
+            tabs.sort((a, b) => Number(b.pinned === true) - Number(a.pinned === true));
+            renderTabs();
+        });
+        addItem(tabMenuT(tab.muted ? 'unmuteTab' : 'muteTab', tab.muted ? 'Unmute tab' : 'Mute tab'), tab.muted ? 'volume_up' : 'volume_off', () => {
+            tab.muted = !tab.muted;
+            try { wv?.setAudioMuted?.(tab.muted); } catch (_) {}
+            renderTabs();
+        });
+        addItem(tabMenuT(host && mutedSiteHosts.has(host) ? 'unmuteSite' : 'muteSite', host && mutedSiteHosts.has(host) ? 'Unmute site' : 'Mute site'), 'language', () => {
+            if (!host) return;
+            const muted = !mutedSiteHosts.has(host);
+            if (muted) mutedSiteHosts.add(host); else mutedSiteHosts.delete(host);
+            tabs.filter((item) => getTabHost(item) === host).forEach((item) => {
+                item.siteMuted = muted;
+                try { getTabWebView(item.id)?.setAudioMuted?.(muted || item.muted === true); } catch (_) {}
+            });
+            renderTabs();
+        }, { disabled: !host });
+        separator();
+        addItem(tabMenuT('readingList', 'Add tab to reading list'), 'menu_book', () => addTabToReadingList(tab), { disabled: tab.url === BLANK_URL });
+        separator();
+        addItem(tabMenuT('close', 'Close'), 'close', () => removeTab(tab.id), { shortcut: 'Ctrl+W' });
+        const duplicateIds = tabs.filter((item, index) => item.url === tab.url && index !== tabIndex).map((item) => item.id);
+        addItem(tabMenuT('closeDuplicates', 'Close duplicate tabs'), 'tab_close', () => closeTabsByIds(duplicateIds), { disabled: !duplicateIds.length });
+        addItem(tabMenuT('closeOthers', 'Close other tabs'), 'close_fullscreen', () => closeTabsByIds(tabs.filter((item) => item.id !== tab.id && !item.pinned).map((item) => item.id)), { disabled: tabs.length < 2 });
+        const rightIds = tabs.slice(tabIndex + 1).filter((item) => !item.pinned).map((item) => item.id);
+        addItem(tabMenuT('closeRight', 'Close tabs to the right'), 'right_panel_close', () => closeTabsByIds(rightIds), { disabled: !rightIds.length });
+        separator();
+        addItem(tabMenuT('restore', 'Restore window'), 'restore', restoreClosedTab, { disabled: !closedTabs.length });
+        addItem(tabMenuT('bookmarkAll', 'Bookmark all tabs…'), 'bookmarks', bookmarkAllTabs, { disabled: !tabs.some((item) => item.url !== BLANK_URL) });
+        separator();
+        addItem(tabMenuT('vertical', 'Use vertical tabs'), 'view_sidebar', () => {
+            verticalTabsEnabled = !verticalTabsEnabled;
+            document.getElementById('webPage')?.classList.toggle('web-vertical-tabs', verticalTabsEnabled);
+        });
+
+        document.body.appendChild(menu);
+        const rect = menu.getBoundingClientRect();
+        menu.style.left = `${Math.max(8, Math.min(event.clientX, window.innerWidth - rect.width - 8))}px`;
+        menu.style.top = `${Math.max(8, Math.min(event.clientY, window.innerHeight - rect.height - 8))}px`;
+        requestAnimationFrame(() => menu.classList.add('visible'));
     }
 
     function isValidUrl(string) {
@@ -230,15 +442,66 @@ document.addEventListener('DOMContentLoaded', () => {
     function scheduleLoadWatchdog(tabId, url) {
         clearLoadWatchdog(tabId);
         if (!parseHttpUrl(url)) return;
-        loadWatchdogs.set(tabId, setTimeout(() => {
+        loadWatchdogs.set(tabId, setTimeout(async () => {
             const tab = tabs.find(t => t.id === tabId);
             const wv = getTabWebView(tabId);
             if (!tab || !wv || !tab.isLoading || tab.url !== url) return;
-            recoverWebviewLoad(tabId, 'load-timeout');
+
+            // Büyük pazaryerleri, reklam ve öneri akışları nedeniyle ağ
+            // bağlantılarını uzun süre açık tutar. Chromium bu sırada hâlâ
+            // "loading" diyebilir; görünür ve kullanılabilir bir belgeyi zorla
+            // yenilemek hem takılma hem de tekrar yükleme döngüsü oluşturur.
+            try {
+                const health = await wv.executeJavaScript(`
+                    (() => {
+                        const body = document.body;
+                        const textLength = String(body?.innerText || '').trim().length;
+                        const elementCount = Number(body?.querySelectorAll?.('*')?.length || 0);
+                        const loadedImages = Array.from(document.images || [])
+                            .filter((img) => img.complete && Number(img.naturalWidth || 0) > 0).length;
+                        return {
+                            ready: String(document.readyState || ''),
+                            href: String(location.href || ''),
+                            textLength,
+                            elementCount,
+                            loadedImages,
+                            hasUsableContent: textLength >= 20 || elementCount >= 8 || loadedImages > 0
+                        };
+                    })()
+                `, true);
+                if (health?.hasUsableContent === true) {
+                    tab.loadRecoveryCount = 0;
+                    tab.hasUsableContent = true;
+                    const liveUrl = String(health.href || wv.getURL?.() || tab.url || '').trim();
+                    const liveTitle = String(wv.getTitle?.() || '').trim();
+                    if (liveUrl && liveUrl !== BLANK_URL) tab.url = liveUrl;
+                    if (liveTitle && liveTitle !== BLANK_URL) tab.title = liveTitle;
+                    // Ağda kalan reklam/telemetri istekleri sekme başlığını
+                    // sonsuza kadar yükleniyor göstermesin; belgeyi durdurma.
+                    setTabLoading(tabId, false, tab.url);
+                    return;
+                }
+            } catch (_) {
+                // Navigasyon sırasında probe reddedilebilir. Gerçek tarayıcı
+                // davranışı için bu durumda sayfayı kendiliğinden yenileme.
+                return;
+            }
+
+            // Yalnızca 30 saniye sonunda hâlâ içerik üretmemiş gerçek boş
+            // belgelerde tek kurtarma girişimine izin ver.
+            if (Number(tab.loadRecoveryCount || 0) === 0) {
+                recoverWebviewLoad(tabId, 'load-timeout');
+            } else {
+                setTabLoading(tabId, false);
+            }
         }, LOAD_STALL_MS));
     }
 
     function isLikelyBlankPageProbe(result) {
+        // Chromium doğrudan bir görsel URL'si açıldığında yalnızca tek bir <img>
+        // içeren yerleşik bir belge üretir. Bu geçerli belgeyi boş sayfa sanıp
+        // yeniden yüklemek resmi kısa süre gösterdikten sonra beyaz ekrana düşürür.
+        if (result?.isImageDocument === true || result?.hasLoadedStandaloneImage === true) return false;
         const ready = String(result?.ready || '');
         const textLength = Number(result?.textLength || 0);
         const visibleTextLength = Number(result?.visibleTextLength || 0);
@@ -360,9 +623,19 @@ document.addEventListener('DOMContentLoaded', () => {
                             }
                         }
                         const bg = window.getComputedStyle(body || doc).backgroundColor || '';
+                        const contentType = String(document.contentType || '').toLowerCase();
+                        const standaloneImage = body?.querySelector?.(':scope > img:only-child') || null;
                         return {
                             ready: document.readyState,
                             href: location.href,
+                            contentType,
+                            isImageDocument: contentType.startsWith('image/'),
+                            hasLoadedStandaloneImage: !!(
+                                standaloneImage
+                                && standaloneImage.complete
+                                && Number(standaloneImage.naturalWidth || 0) > 0
+                                && Number(standaloneImage.naturalHeight || 0) > 0
+                            ),
                             textLength: String(body?.innerText || '').trim().length,
                             childCount: body ? body.children.length : 0,
                             visibleTextLength,
@@ -595,7 +868,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (!wv.isConnected) return;
                 try {
                     const currentUrl = String(wv.getURL?.() || '').trim();
-                    if (currentUrl === BLANK_URL) wv.loadURL(url).catch?.(() => {});
+                    if (currentUrl === BLANK_URL) {
+                        wv.loadURL(url).catch?.(() => {});
+                    }
                 } catch (_) {}
             };
             setTimeout(ensureCreatedTabLoaded, 500);
@@ -603,21 +878,36 @@ document.addEventListener('DOMContentLoaded', () => {
         return tab;
     }
 
-    function removeTab(id) {
+    function removeTab(id, options = {}) {
+        const removed = tabs.find(t => t.id === id);
+        if (removed && options.recordHistory !== false && removed.url !== BLANK_URL) {
+            closedTabs.push({
+                url: removed.url,
+                title: removed.title,
+                pinned: removed.pinned === true,
+                groupName: removed.groupName || ''
+            });
+            if (closedTabs.length > 30) closedTabs.shift();
+        }
         tabs = tabs.filter(t => t.id !== id);
+        if (splitTabId === id) splitTabId = null;
 
         // Remove Webview from DOM
         const wv = document.getElementById('webview-' + id);
         if (wv) wv.remove();
 
-        if (tabs.length === 0) {
+        if (tabs.length === 0 && options.keepAtLeastOne !== false) {
             createTab();
+        } else if (tabs.length === 0) {
+            activeTabId = null;
+            renderTabs();
         } else if (activeTabId === id) {
             // Activate the last tab
             activateTab(tabs[tabs.length - 1].id);
         } else {
             renderTabs();
         }
+        updateSplitView();
     }
 
     function activateTab(id) {
@@ -651,15 +941,41 @@ document.addEventListener('DOMContentLoaded', () => {
             wv.addEventListener('media-paused', () => { tab.isPlayingMedia = false; });
         }
 
+        // Arka planda yüklenen sekmeler Electron olaylarını kullanıcı sekmeye
+        // geçmeden tamamlayabilir. Aktivasyonda görünür modeli guest'in gerçek
+        // URL/başlık/yükleme durumuyla yeniden eşitle.
+        if (wv) {
+            try {
+                const liveUrl = String(wv.getURL?.() || '').trim();
+                const liveTitle = String(wv.getTitle?.() || '').trim();
+                if (liveUrl && liveUrl !== BLANK_URL) tab.url = liveUrl;
+                if (liveTitle && liveTitle !== BLANK_URL) tab.title = liveTitle;
+                if (typeof wv.isLoading === 'function') {
+                    tab.isLoading = !!wv.isLoading() && tab.hasUsableContent !== true;
+                }
+            } catch (_) {}
+        }
+
         renderTabs();
 
         const allWVs = document.querySelectorAll('.webviews-container webview');
         allWVs.forEach(w => w.classList.remove('active'));
         if (wv) wv.classList.add('active');
 
+        scheduleSmartSidebarContrastProbe(wv, id, [40, 450]);
+        updateSplitView();
+
         updateAddressBar(tab.url);
         updateNewTabPageVisibility(tab.url);
         window.syncActivePlatformButtonByUrl?.(tab.url);
+        isWebviewLoading = !!tab.isLoading;
+        navReload.innerHTML = tab.isLoading
+            ? '<span class="material-symbols-rounded">close</span>'
+            : '<span class="material-symbols-rounded">refresh</span>';
+        try {
+            navBack.disabled = !wv?.canGoBack?.();
+            navForward.disabled = !wv?.canGoForward?.();
+        } catch (_) {}
     }
 
     function getActiveTab() {
@@ -940,6 +1256,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 tabEl.appendChild(titleEl);
                 tabEl.appendChild(closeBtn);
                 tabEl.onclick = () => activateTab(tab.id);
+                tabEl.addEventListener('contextmenu', (event) => {
+                    const current = tabs.find((item) => item.id === tabEl.dataset.tabId);
+                    if (current) showWebTabContextMenu(event, current);
+                });
             }
 
             if (webTabsList.children[index] !== tabEl) {
@@ -959,7 +1279,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             }
 
-            tabEl.className = `web-tab ${isTabActive ? 'active' : ''}`;
+            tabEl.className = `web-tab ${isTabActive ? 'active' : ''} ${tab.pinned ? 'pinned' : ''} ${tab.groupName ? 'grouped' : ''} ${(tab.muted || tab.siteMuted) ? 'muted' : ''}`;
+            tabEl.dataset.groupName = tab.groupName || '';
+            tabEl.title = tab.groupName ? `${tab.title} — ${tab.groupName}` : tab.title;
 
             const titleEl = tabEl.querySelector('.web-tab-title');
             if (titleEl.textContent !== tab.title) {
@@ -1051,6 +1373,70 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- Events ---
     // Webview Events
+    function scheduleSmartSidebarContrastProbe(wv, tabId, delays = [80, 650, 1800]) {
+        if (!wv) return;
+        if (Array.isArray(wv.__ardaliContrastTimers)) {
+            wv.__ardaliContrastTimers.forEach((timer) => clearTimeout(timer));
+        }
+        wv.__ardaliContrastTimers = delays.map((delay) => setTimeout(async () => {
+            if (activeTabId !== tabId || !wv.isConnected) return;
+            try {
+                const result = await wv.executeJavaScript(`
+                    (() => {
+                        const parse = (value) => {
+                            const match = String(value || '').match(/rgba?\\(\\s*([\\d.]+)[,\\s]+([\\d.]+)[,\\s]+([\\d.]+)(?:[,/\\s]+([\\d.]+))?\\s*\\)/i);
+                            if (!match) return null;
+                            return {
+                                r: Number(match[1]),
+                                g: Number(match[2]),
+                                b: Number(match[3]),
+                                a: match[4] == null ? 1 : Number(match[4])
+                            };
+                        };
+                        const luminance = (color) => {
+                            const channel = (value) => {
+                                const n = Math.max(0, Math.min(255, value)) / 255;
+                                return n <= 0.04045 ? n / 12.92 : Math.pow((n + 0.055) / 1.055, 2.4);
+                            };
+                            return (0.2126 * channel(color.r)) + (0.7152 * channel(color.g)) + (0.0722 * channel(color.b));
+                        };
+                        const samples = [];
+                        const xPoints = [2, 8, Math.min(28, Math.max(2, innerWidth - 1))];
+                        const yPoints = [innerHeight * 0.42, innerHeight * 0.5, innerHeight * 0.58];
+                        for (const x of xPoints) {
+                            for (const y of yPoints) {
+                                let node = document.elementFromPoint(x, y);
+                                let color = null;
+                                while (node && node !== document) {
+                                    const candidate = parse(getComputedStyle(node).backgroundColor);
+                                    if (candidate && candidate.a >= 0.72) {
+                                        color = candidate;
+                                        break;
+                                    }
+                                    node = node.parentElement;
+                                }
+                                if (!color) {
+                                    color = parse(getComputedStyle(document.body || document.documentElement).backgroundColor)
+                                        || parse(getComputedStyle(document.documentElement).backgroundColor)
+                                        || { r: 255, g: 255, b: 255, a: 1 };
+                                }
+                                samples.push(luminance(color));
+                            }
+                        }
+                        samples.sort((a, b) => a - b);
+                        const median = samples[Math.floor(samples.length / 2)] ?? 0;
+                        return { light: median >= 0.48, luminance: median };
+                    })()
+                `, true);
+                if (activeTabId !== tabId) return;
+                document.body.classList.toggle('smart-sidebar-on-light-content', result?.light === true);
+                document.body.style.setProperty('--smart-content-luminance', String(Number(result?.luminance || 0).toFixed(3)));
+            } catch (_) {
+                // The guest may navigate between scheduling and sampling.
+            }
+        }, Math.max(0, Number(delay) || 0)));
+    }
+
     function bindWebBrowserEvents(wv, tabId) {
         wv.addEventListener('dom-ready', () => {
             wv.__ardaliDomReady = true;
@@ -1059,6 +1445,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 setWebviewZoomFactorSafe(wv, tab.zoomFactor || 1.0);
             }
             scheduleBlankPageRecovery(tabId);
+            scheduleSmartSidebarContrastProbe(wv, tabId, [100, 700, 1900]);
         });
 
         wv.addEventListener('did-start-loading', () => {
@@ -1096,17 +1483,24 @@ document.addEventListener('DOMContentLoaded', () => {
             const tab = tabs.find(t => t.id === tabId);
             if (tab) {
                 tab.isLoading = false;
+                tab.hasUsableContent = true;
+                const currentUrl = String(wv.getURL?.() || '').trim();
+                const currentTitle = String(wv.getTitle?.() || '').trim();
+                if (currentUrl && currentUrl !== BLANK_URL) tab.url = currentUrl;
+                if (currentTitle && currentTitle !== BLANK_URL) tab.title = currentTitle;
             }
 
             if (activeTabId === tabId) {
                 isWebviewLoading = false;
-                renderTabs();
                 navReload.innerHTML = '<span class="material-symbols-rounded">refresh</span>';
                 navBack.disabled = !wv.canGoBack();
                 navForward.disabled = !wv.canGoForward();
                 updateActiveTabState(wv.getURL(), wv.getTitle());
+            } else {
+                renderTabs();
             }
             scheduleBlankPageRecovery(tabId);
+            scheduleSmartSidebarContrastProbe(wv, tabId);
         });
 
         wv.addEventListener('did-finish-load', () => {
@@ -1118,11 +1512,16 @@ document.addEventListener('DOMContentLoaded', () => {
             const tab = tabs.find(t => t.id === tabId);
             if (tab) {
                 tab.isLoading = false;
+                tab.hasUsableContent = true;
                 const currentUrl = wv.getURL();
                 if (currentUrl) tab.url = currentUrl;
+                const currentTitle = String(wv.getTitle?.() || '').trim();
+                if (currentTitle && currentTitle !== BLANK_URL) tab.title = currentTitle;
                 if (activeTabId === tabId) updateActiveTabState(currentUrl, wv.getTitle());
             }
+            if (activeTabId !== tabId) renderTabs();
             scheduleBlankPageRecovery(tabId);
+            scheduleSmartSidebarContrastProbe(wv, tabId);
         });
 
         wv.addEventListener('did-fail-load', (e) => {
@@ -1154,14 +1553,23 @@ document.addEventListener('DOMContentLoaded', () => {
         });
 
         wv.addEventListener('page-title-updated', (e) => {
-            if (activeTabId === tabId) updateActiveTabState(wv.getURL(), e.title);
+            const tab = tabs.find(t => t.id === tabId);
+            if (!tab) return;
+            const currentUrl = String(wv.getURL?.() || tab.url || '').trim();
+            if (currentUrl) tab.url = currentUrl;
+            if (e.title) tab.title = e.title;
+            if (activeTabId === tabId) {
+                updateActiveTabState(tab.url, tab.title);
+            } else {
+                renderTabs();
+            }
         });
 
         wv.addEventListener('page-favicon-updated', (e) => {
             const tab = tabs.find(t => t.id === tabId);
             if (tab && e.favicons && e.favicons.length > 0) {
                 tab.favicon = e.favicons[0];
-                if (activeTabId === tabId) renderTabs();
+                renderTabs();
             }
         });
 
@@ -1176,11 +1584,21 @@ document.addEventListener('DOMContentLoaded', () => {
                 return;
             }
             if (e.isMainFrame) {
+                // Amazon gibi SPA'lar aynı belge içinde History API ile URL'yi
+                // günceller. Chromium bunu in-place navigasyon olarak bildirir;
+                // gerçek bir ağ yüklemesi olmadığı için spinner/watchdog başlatma.
+                if (e.isInPlace === true) {
+                    const tab = tabs.find(t => t.id === tabId);
+                    if (tab && e.url) tab.url = e.url;
+                    if (activeTabId === tabId && e.url) updateAddressBar(e.url);
+                    return;
+                }
                 const tab = tabs.find(t => t.id === tabId);
                 if (tab) {
                     tab.favicon = '';
                     tab.url = e.url || tab.url;
                     tab.isLoading = true;
+                    tab.hasUsableContent = false;
                     tab.loadStartedAt = Date.now();
                     clearBlankPageChecks(tabId);
                     scheduleLoadWatchdog(tabId, tab.url);
@@ -1205,6 +1623,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (activeTabId === tabId) {
                 updateActiveTabState(tab.url, wv.getTitle());
                 window.syncActivePlatformButtonByUrl?.(tab.url);
+                scheduleSmartSidebarContrastProbe(wv, tabId, [120, 700]);
             }
         });
 
@@ -1573,6 +1992,16 @@ document.addEventListener('DOMContentLoaded', () => {
 
     ntpSearchInput.addEventListener('blur', () => {
         if (ntpSuggestions) ntpSuggestions.classList.add('hidden');
+    });
+
+    document.addEventListener('pointerdown', (event) => {
+        const menu = document.getElementById('webTabContextMenu');
+        if (menu && !menu.contains(event.target)) closeWebTabContextMenu();
+    }, true);
+    window.addEventListener('blur', closeWebTabContextMenu);
+    window.addEventListener('resize', closeWebTabContextMenu, { passive: true });
+    document.addEventListener('keydown', (event) => {
+        if (event.key === 'Escape') closeWebTabContextMenu();
     });
 
     function updateNtpSearchEngineUI(engineId) {

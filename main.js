@@ -2505,14 +2505,14 @@ function markDownloadHistoryItemCancelled(id, reason = 'cancelled') {
 
 function shouldClearWebCacheOnQuit() {
     const settings = readSettingsFileSafeSync();
-    return settings?.webUi?.clearCacheOnQuit !== false;
+    return settings?.webUi?.clearCacheOnQuit === true;
 }
 
 function getWebQuitCleanupSettings() {
     const settings = readSettingsFileSafeSync();
     const webUi = settings?.webUi && typeof settings.webUi === 'object' ? settings.webUi : {};
     return {
-        clearCacheOnQuit: webUi.clearCacheOnQuit !== false,
+        clearCacheOnQuit: webUi.clearCacheOnQuit === true,
         clearCookiesOnQuit: webUi.clearCookiesOnQuit === true,
         clearSiteDataOnQuit: webUi.clearSiteDataOnQuit === true,
         clearHistoryOnQuit: webUi.clearHistoryOnQuit === true
@@ -2950,6 +2950,75 @@ async function persistSettingsWindowState(win) {
 }
 
 const WEBVIEW_PARTITION = 'persist:ardali-web';
+const ADULT_DOMAIN_LIST_PATH = path.join(__dirname, 'resources', 'security', 'adult-domains.txt');
+const webProtectionWarningUrls = new Set();
+const adultProtectionDomains = (() => {
+    try {
+        return new Set(
+            fs.readFileSync(ADULT_DOMAIN_LIST_PATH, 'utf8')
+                .split(/\r?\n/)
+                .map((line) => line.trim().toLowerCase().replace(/^\.+|\.+$/g, ''))
+                .filter((line) => line && !line.startsWith('#'))
+        );
+    } catch (error) {
+        console.warn('[WEB PROTECTION] adult domain list unavailable:', error?.message || error);
+        return new Set();
+    }
+})();
+
+function isProtectedAdultHostname(hostname = '') {
+    let candidate = String(hostname || '').trim().toLowerCase().replace(/^\.+|\.+$/g, '');
+    if (!candidate || candidate === 'localhost') return false;
+    while (candidate) {
+        if (adultProtectionDomains.has(candidate)) return true;
+        const dot = candidate.indexOf('.');
+        if (dot === -1) break;
+        candidate = candidate.slice(dot + 1);
+    }
+    return false;
+}
+
+function escapeSecurityPageHtml(value = '') {
+    return String(value).replace(/[&<>"']/g, (char) => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+    })[char]);
+}
+
+function buildWebProtectionWarningUrl(category = 'threat', blockedUrl = '') {
+    const lang = String(getUiLanguageSync?.() || 'en-US').toLowerCase();
+    const isTr = lang.startsWith('tr');
+    const isAr = lang.startsWith('ar');
+    const copy = isTr ? {
+        title: 'Bu site güvenlik nedeniyle engellendi',
+        adult: 'Bu adres yetişkin veya müstehcen içerik engelleme listesiyle eşleşiyor.',
+        threat: 'Bu adres dolandırıcılık, kimlik avı, zararlı yazılım veya güvenilmez yönlendirme listesiyle eşleşiyor.',
+        detail: 'ArDali Web Koruması sayfa yüklenmeden bağlantıyı durdurdu.',
+        back: 'Güvenli sayfaya dön', label: 'Engellenen adres'
+    } : isAr ? {
+        title: 'تم حظر هذا الموقع لأسباب أمنية',
+        adult: 'يتطابق هذا العنوان مع قائمة حظر محتوى البالغين أو المحتوى الصريح.',
+        threat: 'يتطابق هذا العنوان مع قائمة احتيال أو تصيد أو برامج ضارة أو إعادة توجيه غير موثوقة.',
+        detail: 'أوقفت حماية ArDali Web الاتصال قبل تحميل الصفحة.',
+        back: 'العودة إلى صفحة آمنة', label: 'العنوان المحظور'
+    } : {
+        title: 'This site was blocked for your safety',
+        adult: 'This address matches the adult or explicit-content protection list.',
+        threat: 'This address matches a fraud, phishing, malware, or untrusted-redirect protection list.',
+        detail: 'ArDali Web Protection stopped the connection before the page loaded.',
+        back: 'Return to safety', label: 'Blocked address'
+    };
+    const reason = category === 'adult' ? copy.adult : copy.threat;
+    const safeUrl = escapeSecurityPageHtml(String(blockedUrl || '').slice(0, 800));
+    const dir = isAr ? 'rtl' : 'ltr';
+    const html = `<!doctype html><html lang="${escapeSecurityPageHtml(lang)}" dir="${dir}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${copy.title}</title><style>
+body{margin:0;min-height:100vh;display:grid;place-items:center;background:#081019;color:#edf7ff;font:15px/1.55 system-ui,-apple-system,Segoe UI,sans-serif}main{width:min(660px,calc(100vw - 40px));box-sizing:border-box;padding:34px;border:1px solid rgba(70,196,235,.35);border-radius:18px;background:#0d1924;box-shadow:0 30px 90px rgba(0,0,0,.5)}.shield{width:54px;height:54px;display:grid;place-items:center;margin-bottom:18px;border-radius:16px;background:#12364a;color:#69dcff;font-size:30px}h1{margin:0 0 12px;font-size:25px}p{margin:8px 0;color:#bdcad5}.url{margin:20px 0;padding:12px 14px;border-radius:9px;background:#071018;color:#91a8b8;overflow-wrap:anywhere;font-size:12px}.url strong{display:block;margin-bottom:4px;color:#d8e8f3;font-size:12px}button{border:0;border-radius:22px;padding:11px 20px;background:#40bddd;color:#041017;font-weight:700;cursor:pointer}button:hover{background:#68d8f2}</style></head><body><main><div class="shield">&#128737;</div><h1>${copy.title}</h1><p>${reason}</p><p>${copy.detail}</p><div class="url"><strong>${copy.label}</strong>${safeUrl}</div><button onclick="history.length>1?history.back():location.replace('about:blank')">${copy.back}</button></main></body></html>`;
+    const warningUrl = `data:text/html;charset=utf-8,${encodeURIComponent(html)}`;
+    webProtectionWarningUrls.add(warningUrl);
+    while (webProtectionWarningUrls.size > 100) {
+        webProtectionWarningUrls.delete(webProtectionWarningUrls.values().next().value);
+    }
+    return warningUrl;
+}
 const ADBLOCK_STRICTBLOCK_URL = `data:text/html;charset=utf-8,${encodeURIComponent(`<!doctype html>
 <html lang="tr">
 <head>
@@ -3896,6 +3965,33 @@ const ADBLOCK_PLATFORM_CORE_DOMAINS = Object.freeze([
         assets: ['spotify.com', 'scdn.co', 'spotifycdn.com', 'spotifycdn.net', 'akamaized.net']
     },
     {
+        // Amazon pages consist of hundreds of first-party scripts, images and
+        // API calls. Treat its own CDN family as core site assets so cached
+        // resources are not delayed by a full ad-filter scan on every hit.
+        // Third-party advertising hosts continue through normal filtering.
+        page: [
+            'amazon.com.tr',
+            'amazon.com',
+            'amazon.de',
+            'amazon.co.uk',
+            'amazon.fr',
+            'amazon.it',
+            'amazon.es'
+        ],
+        assets: [
+            'amazon.com.tr',
+            'amazon.com',
+            'amazon.de',
+            'amazon.co.uk',
+            'amazon.fr',
+            'amazon.it',
+            'amazon.es',
+            'media-amazon.com',
+            'ssl-images-amazon.com',
+            'a2z.com'
+        ]
+    },
+    {
         page: ['duckduckgo.com', 'google.com', 'bing.com', 'brave.com', 'github.com'],
         assets: [
             'duckduckgo.com',
@@ -4436,6 +4532,17 @@ function installAdblockRequestBlocking() {
         try {
             ses.webRequest.onBeforeRequest({ urls: ['http://*/*', 'https://*/*'] }, (details, callback) => {
                 try {
+                    const resType = String(details?.resourceType || '').toLowerCase();
+                    const isMainFrame = resType === 'mainframe' || resType === 'main_frame';
+                    if (isMainFrame) {
+                        const targetUrl = String(details?.url || '');
+                        const targetHost = getAdblockHostnameFromUrl(targetUrl);
+                        if (isProtectedAdultHostname(targetHost)) {
+                            console.warn('[WEB PROTECTION] blocked adult-content navigation:', targetHost);
+                            callback({ redirectURL: buildWebProtectionWarningUrl('adult', targetUrl) });
+                            return;
+                        }
+                    }
                     if (isGoogleAuthAdblockBypassRequest(details)) {
                         callback({});
                         return;
@@ -4444,13 +4551,8 @@ function installAdblockRequestBlocking() {
                         callback({});
                         return;
                     }
-                    const resType = String(details?.resourceType || '').toLowerCase();
-                    if (resType === 'mainframe' || resType === 'main_frame') {
-                        callback({});
-                        return;
-                    }
                     const host = String(new URL(details?.url || 'https://empty').hostname).toLowerCase();
-                    if (host.includes('google.com') || host.includes('duckduckgo.com') || host.includes('bing.com') || host.includes('brave.com')) {
+                    if (!isMainFrame && (host.includes('google.com') || host.includes('duckduckgo.com') || host.includes('bing.com') || host.includes('brave.com'))) {
                         callback({});
                         return;
                     }
@@ -4461,7 +4563,11 @@ function installAdblockRequestBlocking() {
                             console.log('[ADBLOCK] blocked', adblockRuntime.lastBlocked);
                         }
                         if (match.action === 'redirect' && match.redirectUrl) {
-                            callback({ redirectURL: String(match.redirectUrl) });
+                            callback({
+                                redirectURL: isMainFrame
+                                    ? buildWebProtectionWarningUrl('threat', details?.url)
+                                    : String(match.redirectUrl)
+                            });
                         } else {
                             callback({ cancel: true });
                         }
@@ -4545,13 +4651,8 @@ function installAdblockRequestBlocking() {
                         callback({ responseHeaders: details?.responseHeaders || {} });
                         return;
                     }
-                    const blockMatch = shouldBlockRequest(details?.url, details?.resourceType, adblockRuntime.config, details);
-                    if (blockMatch) {
-                        recordAdblockMatch(details, blockMatch);
-                        callback({ cancel: true });
-                        return;
-                    }
-
+                    // Blocking and redirect decisions already run in onBeforeRequest.
+                    // A second full ruleset scan here stalls resource-heavy sites.
                     const headerMatch = evaluateDnrHeaderModifications(details?.url, details?.resourceType, adblockRuntime.config, details, 'response');
                     if (headerMatch?.responseHeaders) {
                         callback({ responseHeaders: headerMatch.responseHeaders });
@@ -4831,6 +4932,7 @@ function normalizeUiLang(lang) {
 
 function deepGet(obj, pathStr) {
     if (!obj || typeof obj !== 'object') return undefined;
+    if (Object.prototype.hasOwnProperty.call(obj, pathStr)) return obj[pathStr];
     const parts = String(pathStr).split('.').filter(Boolean);
     let cur = obj;
     for (const p of parts) {
@@ -7867,6 +7969,7 @@ ipcMain.handle('get-system-locale', async () => {
 // ============================================
 const activeDownloadsMap = new Map();
 const cancelledWebDownloadIds = new Set();
+const forcedSaveAsUrls = new Set();
 
 ipcMain.handle('downloads:pause', (_event, id) => {
     const item = activeDownloadsMap.get(id);
@@ -8205,8 +8308,14 @@ function installWebviewHardening() {
                     try {
                         const prefs = getWebRuntimeSettingsSync();
                         const fileName = String(item?.getFilename?.() || 'download').trim() || 'download';
+                        const downloadUrls = [
+                            String(item?.getURL?.() || ''),
+                            ...(Array.isArray(item?.getURLChain?.()) ? item.getURLChain() : [])
+                        ];
+                        const forceSaveAs = downloadUrls.some((url) => forcedSaveAsUrls.delete(url));
+                        const askForLocation = prefs.askDownloadLocation || forceSaveAs;
 
-                        if (!prefs.askDownloadLocation) {
+                        if (!askForLocation) {
                             item.setSavePath(path.join(app.getPath('downloads'), fileName));
                         } else {
                             item.setSaveDialogOptions({
@@ -8222,7 +8331,7 @@ function installWebviewHardening() {
                             url: item.getURL(),
                             fileName: fileName,
                             savePath: item.getSavePath(),
-                            state: prefs.askDownloadLocation && !item.getSavePath() ? 'waiting_for_save' : 'downloading',
+                            state: askForLocation && !item.getSavePath() ? 'waiting_for_save' : 'downloading',
                             startTime: Date.now(),
                             totalBytes: item.getTotalBytes(),
                             receivedBytes: 0
@@ -8253,7 +8362,7 @@ function installWebviewHardening() {
                             if (state === 'interrupted') {
                                 downloadItem.state = 'interrupted';
                             } else if (state === 'progressing') {
-                                if (prefs.askDownloadLocation && !currentSavePath) {
+                                if (askForLocation && !currentSavePath) {
                                     downloadItem.state = 'waiting_for_save';
                                 } else {
                                     downloadItem.state = item.isPaused() ? 'paused' : 'downloading';
@@ -8376,6 +8485,14 @@ function installWebviewHardening() {
             const sanitizedProtocol = protocol.replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/\n/g, "");
 
             function showPrompt() {
+                const promptLabels = JSON.stringify({
+                    title: tMainSync('web.externalProtocol.title'),
+                    request: tMainSync('web.externalProtocol.request', { site: '{site}' }),
+                    alwaysAllow: tMainSync('web.externalProtocol.alwaysAllow', { site: '{site}' }),
+                    cancel: tMainSync('web.externalProtocol.cancel'),
+                    openApp: tMainSync('web.externalProtocol.openApp', { app: 'xdg-open' })
+                });
+                const promptDir = ['ar-SA', 'fa-IR'].includes(getUiLanguageSync()) ? 'rtl' : 'ltr';
                 const script = `
                     (function() {
                         if (document.getElementById('epp-modal')) document.getElementById('epp-modal').remove();
@@ -8399,23 +8516,27 @@ function installWebviewHardening() {
 
                         const urlStr = "${sanitizedUrl}";
                         const protoStr = "${sanitizedProtocol}";
+                        const labels = ${promptLabels};
                         let originHost = "site";
                         try {
                             originHost = new URL(location.href).hostname;
                         } catch(e) {}
 
+                        modal.dir = '${promptDir}';
+                        const withSite = (value) => String(value || '').replaceAll('{site}', originHost);
+
                         modal.innerHTML =
-                            '<div style="font-size: 15px; margin-bottom: 12px; font-weight: 400; color: #e8eaed;">xdg-open açılsın mı?</div>' +
+                            '<div style="font-size: 15px; margin-bottom: 12px; font-weight: 400; color: #e8eaed;">' + labels.title + '</div>' +
                             '<div style="font-size: 13px; color: #9aa0a6; margin-bottom: 16px;">' +
-                                '<strong style="font-weight: 500; color: #9aa0a6;">' + originHost + '</strong> bu uygulamayı açmak istiyor.' +
+                                withSite(labels.request) +
                             '</div>' +
                             '<label style="display: flex; align-items: flex-start; gap: 12px; font-size: 13px; color: #9aa0a6; margin-bottom: 24px; cursor: pointer;">' +
                                 '<input type="checkbox" id="epp-checkbox" style="margin-top: 2px; accent-color: #8ab4f8; cursor: pointer;">' +
-                                '<span style="line-height: 1.4; user-select: none;">Bu tür bağlantıları ilişkilendirilmiş uygulamada açması için ' + originHost + ' sitesine her zaman izin ver</span>' +
+                                '<span style="line-height: 1.4; user-select: none;">' + withSite(labels.alwaysAllow) + '</span>' +
                             '</label>' +
                             '<div style="display: flex; justify-content: flex-end; gap: 8px;">' +
-                                '<button id="epp-cancel" style="padding: 6px 16px; border-radius: 16px; border: 1px solid #8ab4f8; background: transparent; color: #8ab4f8; cursor: pointer; font-size: 13px; font-weight: 500; transition: background 0.2s;">İptal</button>' +
-                                '<button id="epp-open" style="padding: 6px 16px; border-radius: 16px; border: none; background: #8ab4f8; color: #202124; cursor: pointer; font-weight: 500; font-size: 13px; transition: background 0.2s;">xdg-open adlı uygulamayı aç</button>' +
+                                '<button id="epp-cancel" style="padding: 6px 16px; border-radius: 16px; border: 1px solid #8ab4f8; background: transparent; color: #8ab4f8; cursor: pointer; font-size: 13px; font-weight: 500; transition: background 0.2s;">' + labels.cancel + '</button>' +
+                                '<button id="epp-open" style="padding: 6px 16px; border-radius: 16px; border: none; background: #8ab4f8; color: #202124; cursor: pointer; font-weight: 500; font-size: 13px; transition: background 0.2s;">' + labels.openApp + '</button>' +
                             '</div>';
 
                         document.body.appendChild(modal);
@@ -8453,10 +8574,10 @@ function installWebviewHardening() {
                 parentWindow.webContents.executeJavaScript(script).catch(err => {
                     dialog.showMessageBox(parentWindow, {
                         type: 'question',
-                        title: 'Harici Uygulama',
-                        message: `Bu bağlantıyı harici bir uygulama ile açmak istiyor musunuz?`,
+                        title: tMainSync('web.externalProtocol.fallbackTitle'),
+                        message: tMainSync('web.externalProtocol.fallbackMessage'),
                         detail: targetUrl,
-                        buttons: ['İptal', 'Aç'],
+                        buttons: [tMainSync('web.externalProtocol.cancel'), tMainSync('web.externalProtocol.open')],
                         defaultId: 1,
                         cancelId: 0
                     }).then(result => {
@@ -8486,7 +8607,7 @@ function installWebviewHardening() {
             if (params.linkURL) {
                 template.push(
                     {
-                        label: 'Bağlantıyı yeni sekmede aç',
+                        label: tMainSync('web.contextMenu.openLinkNewTab'),
                         click: () => {
                             if (contents.hostWebContents) {
                                 contents.hostWebContents.send('web:open-tab', params.linkURL);
@@ -8494,7 +8615,7 @@ function installWebviewHardening() {
                         }
                     },
                     {
-                        label: 'Bağlantıyı yeni pencerede aç',
+                        label: tMainSync('web.contextMenu.openLinkNewWindow'),
                         click: () => {
                             const bw = new BrowserWindow({
                                 ...getAuxiliaryWindowDefaults(),
@@ -8506,7 +8627,7 @@ function installWebviewHardening() {
                         }
                     },
                     {
-                        label: 'Bağlantı adresini kopyala',
+                        label: tMainSync('web.contextMenu.copyLinkAddress'),
                         click: () => {
                             clipboard.writeText(params.linkURL);
                         }
@@ -8518,7 +8639,7 @@ function installWebviewHardening() {
             if (params.hasImageContents) {
                 template.push(
                     {
-                        label: 'Görseli yeni sekmede aç',
+                        label: tMainSync('web.contextMenu.openImageNewTab'),
                         click: () => {
                             if (contents.hostWebContents) {
                                 contents.hostWebContents.send('web:open-tab', params.srcURL);
@@ -8526,9 +8647,43 @@ function installWebviewHardening() {
                         }
                     },
                     {
-                        label: 'Görsel adresini kopyala',
+                        label: tMainSync('web.contextMenu.saveImageAs'),
+                        click: () => {
+                            const imageUrl = String(params.srcURL || '').trim();
+                            if (!imageUrl) return;
+                            forcedSaveAsUrls.add(imageUrl);
+                            setTimeout(() => forcedSaveAsUrls.delete(imageUrl), 30000).unref?.();
+                            try {
+                                contents.downloadURL(imageUrl);
+                            } catch (error) {
+                                forcedSaveAsUrls.delete(imageUrl);
+                                console.warn('[WEB] save image failed:', error?.message || error);
+                            }
+                        }
+                    },
+                    {
+                        label: tMainSync('web.contextMenu.copyImage'),
+                        click: () => {
+                            try {
+                                contents.copyImageAt(params.x, params.y);
+                            } catch (error) {
+                                console.warn('[WEB] copy image failed:', error?.message || error);
+                            }
+                        }
+                    },
+                    {
+                        label: tMainSync('web.contextMenu.copyImageAddress'),
                         click: () => {
                             clipboard.writeText(params.srcURL);
+                        }
+                    },
+                    {
+                        label: tMainSync('web.contextMenu.searchImageGoogle'),
+                        click: () => {
+                            const imageUrl = String(params.srcURL || '').trim();
+                            if (!imageUrl || !contents.hostWebContents) return;
+                            const lensUrl = `https://lens.google.com/uploadbyurl?url=${encodeURIComponent(imageUrl)}`;
+                            contents.hostWebContents.send('web:open-tab', lensUrl);
                         }
                     },
                     { type: 'separator' }
@@ -8538,7 +8693,9 @@ function installWebviewHardening() {
             if (params.selectionText) {
                 template.push(
                     {
-                        label: `Web'de Ara: "${params.selectionText.length > 20 ? params.selectionText.substring(0, 20) + '...' : params.selectionText}"`,
+                        label: tMainSync('web.contextMenu.searchWeb', {
+                            text: params.selectionText.length > 20 ? `${params.selectionText.substring(0, 20)}...` : params.selectionText
+                        }),
                         click: () => {
                             if (contents.hostWebContents) {
                                 contents.hostWebContents.send('web:open-tab', params.selectionText);
@@ -8550,10 +8707,10 @@ function installWebviewHardening() {
             }
 
             if (params.editFlags.canCopy) {
-                template.push({ role: 'copy', label: 'Kopyala' });
+                template.push({ role: 'copy', label: tMainSync('web.contextMenu.copy') });
             }
             if (params.editFlags.canPaste) {
-                template.push({ role: 'paste', label: 'Yapıştır' });
+                template.push({ role: 'paste', label: tMainSync('web.contextMenu.paste') });
             }
 
             if (template.length > 0 && template[template.length - 1].type !== 'separator') {
@@ -8561,7 +8718,7 @@ function installWebviewHardening() {
             }
 
             template.push({
-                label: 'İncele',
+                label: tMainSync('web.contextMenu.inspect'),
                 click: () => {
                     contents.inspectElement(params.x, params.y);
                 }
@@ -8611,6 +8768,7 @@ function installWebviewHardening() {
         }
 
         contents.on('will-navigate', async (event, url) => {
+            if (webProtectionWarningUrls.has(String(url || ''))) return;
             // WebView içinde https/http gezinmeye izin ver; tehlikeli şemaları engelle.
             if (!parseHttpUrlMain(url)) {
                 event.preventDefault();
@@ -8622,6 +8780,7 @@ function installWebviewHardening() {
         });
 
         contents.on('will-redirect', (event, url) => {
+            if (webProtectionWarningUrls.has(String(url || ''))) return;
             // Web platformları sıkça farklı hostlara redirect eder; yalnızca şema bazlı kısıtla.
             if (!parseHttpUrlMain(url)) {
                 event.preventDefault();
@@ -9505,9 +9664,9 @@ ipcMain.handle('web:chooseAndOpenExternal', async (event, url, protocol) => {
 
     async function fallbackCustomFilePicker() {
         const result = await dialog.showOpenDialog(parentWindow, {
-            title: 'Uygulama Seç',
+            title: tMainSync('web.externalProtocol.chooseApplication'),
             properties: ['openFile'],
-            filters: [{ name: 'Çalıştırılabilir Dosyalar', extensions: ['*'] }]
+            filters: [{ name: tMainSync('web.externalProtocol.executableFiles'), extensions: ['*'] }]
         });
 
         if (!result.canceled && result.filePaths.length > 0) {
@@ -9541,15 +9700,25 @@ function detectVpnInterfaces() {
             const hasNet = Array.isArray(entries) && entries.some((e) => e && e.internal === false);
             if (hasNet && suspiciousName.test(n)) hits.push(n);
         }
-        return { detected: hits.length > 0, interfaces: hits };
+        return {
+            detected: hits.length > 0,
+            interfaces: hits,
+            trustedSystemRoute: hits.length > 0,
+            routePolicy: 'follow-system'
+        };
     } catch {
-        return { detected: false, interfaces: [] };
+        return { detected: false, interfaces: [], trustedSystemRoute: false, routePolicy: 'follow-system' };
     }
 }
 
 ipcMain.handle('web:getSecurityState', async () => {
     const vpn = detectVpnInterfaces();
-    return { vpnDetected: vpn.detected, vpnInterfaces: vpn.interfaces };
+    return {
+        vpnDetected: vpn.detected,
+        vpnInterfaces: vpn.interfaces,
+        vpnTrusted: vpn.trustedSystemRoute,
+        vpnRoutePolicy: vpn.routePolicy
+    };
 });
 
 ipcMain.handle('web:clearData', async (_event, options) => {
@@ -10331,8 +10500,12 @@ ipcMain.handle('settings:load', async () => {
         volume: 40,
         shuffle: false,
         repeat: false,
+        appearance: {
+            sidebarMode: 'smart'
+        },
         webUi: {
-            clearCacheOnQuit: true,
+            clearCacheOnQuit: false,
+            cachePolicyVersion: 2,
             clearCookiesOnQuit: false,
             clearSiteDataOnQuit: false,
             clearHistoryOnQuit: false,
@@ -10353,6 +10526,22 @@ ipcMain.handle('settings:load', async () => {
             stripTrackingParams: true,
             blockThirdPartyCookies: false,
             autoRecover: true
+        },
+        adblock: {
+            mode: 'ideal',
+            showBlockedCount: true,
+            autoRefreshOnModeChange: false,
+            strictBlock: true,
+            developerMode: false,
+            protectionPolicyVersion: 1
+        },
+        security: {
+            strictVpnBlock: false,
+            followSystemVpn: true,
+            vpnPolicyVersion: 2,
+            allowPopups: true,
+            enforceAllowlist: false,
+            sessionProfile: 'persistent'
         }
     };
 
@@ -10361,9 +10550,32 @@ ipcMain.handle('settings:load', async () => {
         try {
             const data = await fs.promises.readFile(getSettingsPath(), 'utf8');
             const parsed = JSON.parse(data);
+            let settingsMigrated = false;
+            if (!parsed.webUi || typeof parsed.webUi !== 'object') parsed.webUi = {};
+            if (Number(parsed.webUi.cachePolicyVersion || 0) < 2) {
+                // Eski sürümlerde cache temizleme zorunlu varsayılandı. Normal
+                // tarayıcı performansı için bunu bir kez kapat; kullanıcı daha
+                // sonra ayardan bilinçli olarak yeniden açabilir.
+                parsed.webUi.clearCacheOnQuit = false;
+                parsed.webUi.cachePolicyVersion = 2;
+                settingsMigrated = true;
+            }
+            if (!parsed.adblock || typeof parsed.adblock !== 'object') parsed.adblock = {};
+            if (Number(parsed.adblock.protectionPolicyVersion || 0) < 1) {
+                parsed.adblock.strictBlock = true;
+                parsed.adblock.protectionPolicyVersion = 1;
+                settingsMigrated = true;
+            }
+            if (!parsed.security || typeof parsed.security !== 'object') parsed.security = {};
+            if (Number(parsed.security.vpnPolicyVersion || 0) < 2) {
+                parsed.security.strictVpnBlock = false;
+                parsed.security.followSystemVpn = true;
+                parsed.security.vpnPolicyVersion = 2;
+                settingsMigrated = true;
+            }
             const sanitized = sanitizeSensitiveSettings(parsed);
             mainWindowCloseToTray = deriveMainWindowCloseToTray(sanitized);
-            if (JSON.stringify(parsed) !== JSON.stringify(sanitized)) {
+            if (settingsMigrated || JSON.stringify(parsed) !== JSON.stringify(sanitized)) {
                 await writeJsonFileAtomic(getSettingsPath(), sanitized);
             }
             return sanitized;

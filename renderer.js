@@ -1125,7 +1125,8 @@ const ADBLOCK_DEFAULT_SETTINGS = {
     mode: 'ideal',
     showBlockedCount: true,
     autoRefreshOnModeChange: false,
-    strictBlock: false,
+    strictBlock: true,
+    protectionPolicyVersion: 1,
     developerMode: false
 };
 
@@ -2861,7 +2862,8 @@ async function loadSettings() {
                 animationMode: 'compact',
                 motionPreset: 'balanced',
                 lowPowerMode: false,
-                clearCacheOnQuit: true,
+                clearCacheOnQuit: false,
+                cachePolicyVersion: 2,
                 clearCookiesOnQuit: false,
                 clearSiteDataOnQuit: false,
                 clearHistoryOnQuit: false,
@@ -2888,7 +2890,7 @@ async function loadSettings() {
         state.settings.webUi.motionPreset = normalizeWebUiMotionPreset(state.settings.webUi.motionPreset || 'balanced');
         state.settings.webUi.lowPowerMode = !!state.settings.webUi.lowPowerMode;
         if (typeof state.settings.webUi.clearCacheOnQuit !== 'boolean') {
-            state.settings.webUi.clearCacheOnQuit = true;
+            state.settings.webUi.clearCacheOnQuit = false;
         }
         if (typeof state.settings.webUi.clearCookiesOnQuit !== 'boolean') state.settings.webUi.clearCookiesOnQuit = false;
         if (typeof state.settings.webUi.clearSiteDataOnQuit !== 'boolean') state.settings.webUi.clearSiteDataOnQuit = false;
@@ -3117,11 +3119,23 @@ async function loadSettings() {
         if (!state.settings.security || typeof state.settings.security !== 'object') {
             state.settings.security = {
                 strictVpnBlock: false,
+                followSystemVpn: true,
+                vpnPolicyVersion: 2,
                 allowPopups: true,
                 enforceAllowlist: false,
                 sessionProfile: 'persistent'
             };
         }
+        // VPN is an operating-system network route. Older versions could
+        // blank the Web page when a tunnel interface was detected; migrate
+        // that policy once and always follow the active system route.
+        if (Number(state.settings.security.vpnPolicyVersion || 0) < 2) {
+            state.settings.security.strictVpnBlock = false;
+            state.settings.security.followSystemVpn = true;
+            state.settings.security.vpnPolicyVersion = 2;
+        }
+        state.settings.security.strictVpnBlock = false;
+        state.settings.security.followSystemVpn = true;
         if (typeof state.settings.security.allowPopups !== 'boolean') {
             state.settings.security.allowPopups = true;
         }
@@ -3149,6 +3163,7 @@ async function loadSettings() {
                 lowHardwareMode: false,
                 sfxPerfMode: 'lite',
                 sfxSidebarIconSize: 'medium',
+                sidebarMode: 'smart',
                 sidebarStyle: 'classic',
                 sidebarIconScale: 'x3'
             };
@@ -3205,7 +3220,7 @@ async function loadSettings() {
             state.settings.appearance.sidebarMotionEnabled = true;
         }
         if (!['classic', 'smart'].includes(String(state.settings.appearance.sidebarMode || '').toLowerCase())) {
-            state.settings.appearance.sidebarMode = 'classic';
+            state.settings.appearance.sidebarMode = 'smart';
         }
         applySidebarMode(state.settings.appearance.sidebarMode, { persist: false });
         if (typeof state.settings.appearance.sfxLights !== 'boolean') {
@@ -19458,15 +19473,13 @@ async function getSecurityStateSafe() {
         const data = await Promise.race([securityPromise, timeoutPromise]);
         return {
             vpnDetected: !!data?.vpnDetected,
-            vpnInterfaces: Array.isArray(data?.vpnInterfaces) ? data.vpnInterfaces : []
+            vpnInterfaces: Array.isArray(data?.vpnInterfaces) ? data.vpnInterfaces : [],
+            vpnTrusted: data?.vpnTrusted === true,
+            vpnRoutePolicy: String(data?.vpnRoutePolicy || 'follow-system')
         };
     } catch {
         return { vpnDetected: false, vpnInterfaces: [] };
     }
-}
-
-function isStrictVpnBlockEnabled() {
-    return !!state.settings?.security?.strictVpnBlock;
 }
 
 function isWebAllowlistEnforced() {
@@ -19691,7 +19704,7 @@ async function updateSecurityUIAsync() {
         parseHttpUrl,
         getSecurityState: getSecurityStateSafe,
         translate: uiT,
-        strictVpnBlock: !!state.settings?.security?.strictVpnBlock,
+        followSystemVpn: state.settings?.security?.followSystemVpn !== false,
         enforceAllowlist: !!state.settings?.security?.enforceAllowlist
     });
 }
@@ -19742,7 +19755,10 @@ function setupSecurityUI() {
             if (!state.settings.security || typeof state.settings.security !== 'object') {
                 state.settings.security = {};
             }
-            state.settings.security.strictVpnBlock = !!elements.securityStrictVpnBlock.checked;
+            elements.securityStrictVpnBlock.checked = true;
+            state.settings.security.strictVpnBlock = false;
+            state.settings.security.followSystemVpn = true;
+            state.settings.security.vpnPolicyVersion = 2;
             await saveSettings();
             updateSecurityUI();
         });
@@ -20100,15 +20116,9 @@ async function handleWebNavigation(event) {
     if (state.activeMedia === 'web') {
         const sec = await getSecurityStateSafe();
         if (sec.vpnDetected) {
-            if (isStrictVpnBlockEnabled() && !isYoutubeHost(currentUrl)) {
-                safeNavigateWebView('about:blank');
-                safeNotify(uiT('securityPage.notify.vpnBlocked', 'VPN algılandı. Güvenlik nedeniyle Web sekmesi geçici olarak engellendi.'), 'error');
-                if (isSecuritySettingsVisible()) updateSecurityUI();
-                return;
-            }
             if (!securityRuntime.vpnWarned) {
                 securityRuntime.vpnWarned = true;
-                safeNotify(uiT('securityPage.notify.vpnWarning', 'VPN algılandı. Güvenlik için yalnızca izinli platformlar açılacaktır.'), 'info');
+                safeNotify(uiT('securityPage.notify.vpnWarning', 'VPN etkin. Web trafiği sistem VPN bağlantısını ve konumunu kullanıyor.'), 'info');
             }
         } else {
             securityRuntime.vpnWarned = false;
@@ -22696,7 +22706,7 @@ function applyAppSidebarCollapsed(collapsed, options = {}) {
 }
 
 function normalizeSidebarMode(value) {
-    return String(value || '').trim().toLowerCase() === 'smart' ? 'smart' : 'classic';
+    return String(value || '').trim().toLowerCase() === 'classic' ? 'classic' : 'smart';
 }
 
 function setSmartSidebarOpen(open) {
@@ -22719,12 +22729,17 @@ function setSmartSidebarOpen(open) {
         document.body.classList.remove('smart-sidebar-open');
         setSmartSidebarOpen.closeTimer = setTimeout(() => {
             document.body.classList.remove('smart-sidebar-closing');
-        }, 560);
+        }, 400);
     } else {
         document.body.classList.remove('smart-sidebar-open', 'smart-sidebar-closing');
     }
     elements.sidebarToggleBtn?.setAttribute('aria-expanded', next ? 'true' : 'false');
-    elements.sidebarToggleBtn?.setAttribute('title', next ? 'Akıllı kenar panelini kapat' : 'Akıllı kenar panelini aç');
+    elements.sidebarToggleBtn?.setAttribute(
+        'title',
+        next
+            ? uiT('ui.startup.sidebarMode.close', 'Akıllı kenar panelini kapat')
+            : uiT('ui.startup.sidebarMode.open', 'Akıllı kenar panelini aç')
+    );
 }
 
 function layoutSmartSidebarButtons() {
@@ -22733,6 +22748,12 @@ function layoutSmartSidebarButtons() {
     const buttons = Array.from(sidebar.querySelectorAll('.sidebar-btn, .sidebar-web-quick-actions .control-btn'));
     const count = buttons.length;
     if (!count) return;
+    const layoutKey = `${window.innerWidth}x${window.innerHeight}:${count}`;
+    if (
+        layoutSmartSidebarButtons.lastLayoutKey === layoutKey
+        && buttons.every((button) => button.classList.contains('smart-radial-btn'))
+    ) return;
+    layoutSmartSidebarButtons.lastLayoutKey = layoutKey;
     const radiusX = Math.min(188, Math.max(142, window.innerWidth * 0.115));
     const radiusY = Math.min(285, Math.max(220, window.innerHeight * 0.31));
     const startAngle = -78;
@@ -22745,8 +22766,8 @@ function layoutSmartSidebarButtons() {
         const y = Math.sin(angle) * radiusY;
         button.style.setProperty('--smart-x', `${x.toFixed(1)}px`);
         button.style.setProperty('--smart-y', `${y.toFixed(1)}px`);
-        button.style.setProperty('--smart-delay', `${Math.round(index * 18)}ms`);
-        button.style.setProperty('--smart-close-delay', `${Math.round((count - index - 1) * 14)}ms`);
+        button.style.setProperty('--smart-delay', `${Math.round(index * 10)}ms`);
+        button.style.setProperty('--smart-close-delay', `${Math.round((count - index - 1) * 7)}ms`);
     });
 }
 
@@ -22768,9 +22789,14 @@ function applySidebarMode(mode, options = {}) {
     }
 }
 
+let smartSidebarResizeRaf = 0;
 window.addEventListener('resize', () => {
-    if (document.body.classList.contains('smart-sidebar-mode')) layoutSmartSidebarButtons();
-});
+    if (!document.body.classList.contains('smart-sidebar-mode') || smartSidebarResizeRaf) return;
+    smartSidebarResizeRaf = requestAnimationFrame(() => {
+        smartSidebarResizeRaf = 0;
+        layoutSmartSidebarButtons();
+    });
+}, { passive: true });
 
 function applyWebUiClasses() {
     const isWeb = isPageVisible(elements.webPage) || state.currentPage === 'web' || state.currentPanel === 'web';
@@ -23780,13 +23806,9 @@ async function handlePlatformClick(btn, options = {}) {
         const sec = await getSecurityStateSafe();
         if (isStaleSwitch()) return;
         if (sec.vpnDetected) {
-            if (isStrictVpnBlockEnabled() && !isYoutubeHost(url)) {
-                safeNotify(uiT('securityPage.notify.vpnBlocked', 'VPN algılandı. Güvenlik nedeniyle Web sekmesi geçici olarak engellendi.'), 'error');
-                return;
-            }
             if (!securityRuntime.vpnWarned) {
                 securityRuntime.vpnWarned = true;
-                safeNotify(uiT('securityPage.notify.vpnWarning', 'VPN algılandı. Güvenlik için yalnızca izinli platformlar açılacaktır.'), 'info');
+                safeNotify(uiT('securityPage.notify.vpnWarning', 'VPN etkin. Web trafiği sistem VPN bağlantısını ve konumunu kullanıyor.'), 'info');
             }
         }
         if (isWebAllowlistEnforced() && !isAllowedWebUrl(url)) {
@@ -44879,7 +44901,8 @@ function resetWebDefaults() {
     state.settings.webUi.animationMode = 'compact';
     state.settings.webUi.motionPreset = 'balanced';
     state.settings.webUi.lowPowerMode = false;
-    state.settings.webUi.clearCacheOnQuit = true;
+    state.settings.webUi.clearCacheOnQuit = false;
+    state.settings.webUi.cachePolicyVersion = 2;
     state.settings.webUi.clearCookiesOnQuit = false;
     state.settings.webUi.clearSiteDataOnQuit = false;
     state.settings.webUi.clearHistoryOnQuit = false;
@@ -44910,7 +44933,7 @@ function resetWebDefaults() {
 
 function resetSecurityDefaults() {
     if (elements.securityAllowPopups) elements.securityAllowPopups.checked = true;
-    if (elements.securityStrictVpnBlock) elements.securityStrictVpnBlock.checked = false;
+    if (elements.securityStrictVpnBlock) elements.securityStrictVpnBlock.checked = true;
     if (elements.securityEnforceAllowlist) elements.securityEnforceAllowlist.checked = false;
     if (elements.securitySessionProfile) elements.securitySessionProfile.value = 'persistent';
     webIsolatedSessionPrepared = false;

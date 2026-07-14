@@ -15,7 +15,7 @@
         parseHttpUrl,
         getSecurityState,
         translate,
-        strictVpnBlock,
+        followSystemVpn,
         enforceAllowlist
     }) {
         const url = getUrl();
@@ -37,7 +37,7 @@
             elements.securityAllowPopups.checked = elements.webView.hasAttribute('allowpopups');
         }
         if (elements.securityStrictVpnBlock) {
-            elements.securityStrictVpnBlock.checked = !!strictVpnBlock;
+            elements.securityStrictVpnBlock.checked = followSystemVpn !== false;
         }
         if (elements.securityEnforceAllowlist) {
             elements.securityEnforceAllowlist.checked = !!enforceAllowlist;
@@ -47,7 +47,7 @@
         if (vpnEl) {
             if (sec.vpnDetected) {
                 const list = (sec.vpnInterfaces || []).join(', ');
-                vpnEl.textContent = translate('securityPage.dynamic.vpnDetected', 'VPN: Algılandı ({interfaces})', { interfaces: list || '-' });
+                vpnEl.textContent = translate('securityPage.dynamic.vpnDetected', 'VPN: Etkin ve güvenilir sistem rotası kullanılıyor ({interfaces})', { interfaces: list || '-' });
             } else {
                 vpnEl.textContent = translate('securityPage.dynamic.vpnNotDetected', 'VPN: Algılanmadı');
             }

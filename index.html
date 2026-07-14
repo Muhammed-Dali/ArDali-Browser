@@ -1737,13 +1737,13 @@
                                                 </select>
                                             </div>
                                             <div class="setting-row">
-                                                <span>Sol bar çalışma biçimi</span>
+                                                <span data-i18n="ui.startup.sidebarMode">Sol bar çalışma biçimi</span>
                                                 <select class="settings-select" id="behaviorSidebarMode">
-                                                    <option value="classic">Klasik Dikey Bar</option>
-                                                    <option value="smart">Akıllı Kenar Paneli</option>
+                                                    <option value="classic" data-i18n="ui.startup.sidebarMode.options.classic">Klasik Dikey Bar</option>
+                                                    <option value="smart" selected data-i18n="ui.startup.sidebarMode.options.smart">Akıllı Kenar Paneli</option>
                                                 </select>
                                             </div>
-                                            <div class="settings-sub">Akıllı modda ince kenar tutamacına tıklayınca ana uygulama düğmeleri açılır.</div>
+                                            <div class="settings-sub" data-i18n="ui.startup.sidebarMode.hint">Akıllı modda ince kenar tutamacına tıklayınca ana uygulama düğmeleri açılır.</div>
                                             <div class="setting-row">
                                                 <span>Kenar bar görünümü</span>
                                                 <select class="settings-select" id="behaviorSidebarStyle">
@@ -2934,7 +2934,7 @@
                 <img class="about-logo" src="icons/app/ardali_256.png" alt="ArDali" onerror="this.style.display='none'">
                 <div class="about-title-wrap">
                     <div class="about-title" id="aboutTitle" data-i18n="about.title">ArDali Medya Player</div>
-                    <div class="about-subtitle">Versiyon: 5.2.13 - Kararlı Sürüm</div>
+                    <div class="about-subtitle">Versiyon: 5.3.0 - Kararlı Sürüm</div>
                 </div>
             </div>
 
@@ -2964,15 +2964,17 @@
                 <div class="about-features-title" data-i18n="about.featuresTitle">Özellikler ve Şeffaflık</div>
                 <div class="about-sections">
                     <section class="about-section about-section-updates">
-                        <h4>5.2.13 Yenilikleri</h4>
+                        <h4>5.3.0 Yenilikleri</h4>
                         <ul class="about-list">
-                            <li>Bağlantıları arka planda yeni sekmede açma ve sayfayı güvenilir biçimde yükleme düzeltildi.</li>
-                            <li>Animasyonlu Akıllı Kenar Paneli eklendi; klasik ve radyal bar stilleri Davranış ayarından seçilebilir.</li>
-                            <li>Ses Efektleri ve Görselleştirme düğmeleri akıllı panele eklendi; web ses efektlerinin erken devreye girmesi iyileştirildi.</li>
-                            <li>Etkin platform kısayolu belirgin yeşil işaretle gösteriliyor; arama motoru simgesi ve ayar eşitlemesi sağlamlaştırıldı.</li>
-                            <li>Amazon gibi yoğun sitelerde akıcılık artırıldı; reklam engelleme ve medya enjeksiyonu yükü azaltıldı.</li>
-                            <li>Sol bar ve pencere arayüzü sadeleştirildi; reklam engelleme ve Hızlı Dinle kontrolleri yeniden yerleştirildi.</li>
-                            <li>Linux paketleme altyapısı AppImage, DEB ve RPM çıktıları ile daha geniş dağıtım uyumluluğu için güncellendi.</li>
+                            <li>Yeni Akıllı Kenar Paneli ilk kurulumda varsayılan yapıldı; kullanıcı klasik veya radyal görünümü ayarlardan seçip kalıcı olarak kaydedebilir.</li>
+                            <li>Panelin açılış animasyonu ve çizimi hızlandırıldı; açık ve koyu web sayfalarında görünür kalan uyarlanabilir kenar göstergesi eklendi.</li>
+                            <li>Bağlantı ve görselleri yeni sekmede açma, arka plan sekmelerinin yüklenme durumu ve doğrudan görsel görüntüleme düzeltildi.</li>
+                            <li>Web ve sekme sağ tık menüleri genişletildi; yeni sekme, çoğaltma, sabitleme, sessize alma, kapatma, yeniden açma ve görsel işlemleri eklendi.</li>
+                            <li>Amazon ve benzeri yoğun pazaryerlerinde önbellek, gezinme ve içerik filtreleme yolları iyileştirilerek tekrar yükleme ve takılmalar azaltıldı.</li>
+                            <li>Web menüleri, harici bağlantı bildirimleri ve yeni tarayıcı kontrolleri Türkçe, İngilizce ve Arapça başta olmak üzere uygulama diline bağlandı.</li>
+                            <li>Zararlı, dolandırıcılık ve yetişkin içerikli alan adlarına karşı yerel koruma listeleri ve açıklayıcı engelleme uyarısı eklendi.</li>
+                            <li>VPN politikası yenilendi: güvenilir sistem VPN bağlantıları engellenmez; web trafiği sistemin VPN rotası ve konumuyla uyumlu çalışır.</li>
+                            <li>Electron 40.8.5 sürümüne geçildi; Linux ve Windows derleme metadata değerleri kararlı sürüm için eşitlendi.</li>
                         </ul>
                     </section>
                     <section class="about-section about-section-updates">

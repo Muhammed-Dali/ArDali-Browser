@@ -33,11 +33,18 @@ function getOverrideLocales(modulesI18nText) {
 }
 
 function getUsedKeys() {
-  const html = read(path.join(ROOT, 'index.html'));
-  const js = [
-    read(path.join(ROOT, 'renderer.js')),
-    read(path.join(ROOT, 'modules/i18n.js'))
-  ].join('\n');
+  const rootFiles = fs.readdirSync(ROOT, { withFileTypes: true });
+  const html = rootFiles
+    .filter((entry) => entry.isFile() && entry.name.endsWith('.html'))
+    .map((entry) => read(path.join(ROOT, entry.name)))
+    .join('\n');
+  const rootJs = rootFiles
+    .filter((entry) => entry.isFile() && entry.name.endsWith('.js'))
+    .map((entry) => read(path.join(ROOT, entry.name)));
+  const moduleJs = fs.readdirSync(path.join(ROOT, 'modules'), { withFileTypes: true })
+    .filter((entry) => entry.isFile() && entry.name.endsWith('.js'))
+    .map((entry) => read(path.join(ROOT, 'modules', entry.name)));
+  const js = [...rootJs, ...moduleJs].join('\n');
 
   const keys = new Set();
   const patterns = [
@@ -47,7 +54,8 @@ function getUsedKeys() {
     /data-i18n-aria-label="([^"]+)"/g,
     /uiT\('([^']+)'/g,
     /fsT\('([^']+)'/g,
-    /tSync\('([^']+)'/g
+    /tSync\('([^']+)'/g,
+    /tMainSync\('([^']+)'/g
   ];
 
   for (const src of [html, js]) {

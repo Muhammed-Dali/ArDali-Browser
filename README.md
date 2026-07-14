@@ -19,7 +19,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/Muhammed-Dali/ArDali-WebMedia/releases/latest"><strong>Download v5.2.17</strong></a>
+  <a href="https://github.com/Muhammed-Dali/ArDali-WebMedia/releases/latest"><strong>Download v5.3.0</strong></a>
   · <a href="https://muhammed-dali.github.io/ArDali-WebMedia/">Website</a>
   · <a href="#installation">Install</a>
   · <a href="CONTRIBUTING.md">Contribute</a>
@@ -40,13 +40,13 @@
 
 ## Demo and screenshots
 
-![ArDali WebMedia music workspace](assets/screenshots/music_player.png)
+![ArDali WebMedia web interface](assets/screenshots/web_home.png)
 
 > A short, silent 15–25 second demo GIF should be placed here after it is captured from a release build. The production brief and export limits are documented in [Brand and visual assets](docs/BRAND_ASSETS.md#demo-gif).
 
 | Web media | Music player |
 | --- | --- |
-| ![ArDali web browser](assets/screenshots/web_browser.png) | ![ArDali music player](assets/screenshots/music_player.png) |
+| ![ArDali YouTube web media](assets/screenshots/web_youtube.png) | ![ArDali music player](assets/screenshots/music_player.png) |
 
 | Video player | Audio effects |
 | --- | --- |
