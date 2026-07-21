@@ -7842,6 +7842,21 @@ function getVisualizerExecutablePath() {
     return basePick || ((baseCandidates && baseCandidates[0]) ? baseCandidates[0] : '');
 }
 
+function getLinuxMainWindowX11Id() {
+    if (process.platform !== 'linux' || !mainWindow || mainWindow.isDestroyed()) return '';
+    try {
+        const handle = mainWindow.getNativeWindowHandle?.();
+        if (!Buffer.isBuffer(handle) || handle.length < 4) return '';
+        const xid = handle.length >= 8
+            ? handle.readBigUInt64LE(0)
+            : BigInt(handle.readUInt32LE(0));
+        return xid > 0n ? xid.toString(10) : '';
+    } catch (error) {
+        console.warn('[Visualizer] Electron owner handle unavailable:', error?.message || error);
+        return '';
+    }
+}
+
 function validateVisualizerBinaryForCurrentRuntime(exePath) {
     if (!exePath || !fs.existsSync(exePath)) {
         return { ok: false, reason: 'missing-executable' };
@@ -8066,6 +8081,15 @@ function startVisualizer() {
         } else {
             env.XDG_SESSION_TYPE = process.env.XDG_SESSION_TYPE || (process.env.WAYLAND_DISPLAY ? 'wayland' : 'x11');
             env.SDL_VIDEODRIVER = process.env.WAYLAND_DISPLAY ? 'wayland' : 'x11';
+        }
+
+        // SDL runs in a separate native process, so Electron's BrowserWindow
+        // parent option cannot be passed directly. On X11, transfer the main
+        // BrowserWindow XID and let the native child set WM_TRANSIENT_FOR.
+        // Wayland continues to use the matching desktop app_id above.
+        if (env.SDL_VIDEODRIVER === 'x11') {
+            const parentXid = getLinuxMainWindowX11Id();
+            if (parentXid) env.ARDALI_VIS_PARENT_XID = parentXid;
         }
     }
 
@@ -13000,9 +13024,9 @@ ipcMain.handle('audio:crossfadeTo', async (event, filePath, durationMs) => {
     const res = audioEngine.crossfadeTo(filePath, ms);
     const ok = (res === true) || (res && res.success);
     console.log('[MAIN] crossfadeTo:', ok ? 'ok' : 'fail', 'ms=', ms, filePath);
-    if (ok) {
-        applyPersistedMusicSfxFromSettings().catch(() => { /* yoksay */ });
-    }
+    // Native crossfade yeni stream'in efekt zincirini mevcut motor durumuyla kurar.
+    // Burada ayarları tekrar uygulamak aktif iki kanalın volume slide'larını
+    // sıfırlayıp geçişin ortasında duyulabilir bir kesilmeye neden olur.
     return ok ? { success: true } : { success: false, error: (res && res.error) || 'Crossfade başarısız' };
 });
 

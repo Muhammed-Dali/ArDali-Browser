@@ -213,6 +213,11 @@ target_link_libraries(ardali-projectm-visualizer
 
 # Link libwayland-client on Linux for direct Wayland protocol calls (xdg_toplevel app_id)
 if(UNIX AND NOT APPLE)
+    find_package(X11 REQUIRED)
+    target_include_directories(ardali-projectm-visualizer PRIVATE ${X11_INCLUDE_DIR})
+    target_link_libraries(ardali-projectm-visualizer ${X11_LIBRARIES})
+    target_compile_definitions(ardali-projectm-visualizer PRIVATE ARDALI_HAVE_X11_OWNER=1)
+
     find_library(WAYLAND_CLIENT_LIB wayland-client)
     if(WAYLAND_CLIENT_LIB)
         target_link_libraries(ardali-projectm-visualizer ${WAYLAND_CLIENT_LIB})

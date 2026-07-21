@@ -353,6 +353,13 @@ const SFX_PERF = {
     profile: 'normal',
     reason: 'default'
 };
+let SFX_BOOTSTRAPPING = true;
+
+function markSfxBootStage(stage) {
+    const metrics = window.__ARDALI_SFX_BOOT_METRICS__ || {};
+    metrics.stage = String(stage || '');
+    window.__ARDALI_SFX_BOOT_METRICS__ = metrics;
+}
 
 function applyPresetSettings(settings, preset) {
     if (!settings || typeof settings !== 'object' || !preset || typeof preset !== 'object') return;
@@ -500,14 +507,12 @@ async function applySfxRuntimePerformanceProfile(appSettings = null) {
             settings = null;
         }
     }
-    let hardwareHints = null;
-    try {
-        hardwareHints = await window.ardali?.system?.getHardwareHints?.();
-    } catch {
-        hardwareHints = null;
-    }
-
-    const onBattery = await detectSfxOnBattery();
+    const [hardwareHints, onBattery] = await Promise.all([
+        Promise.resolve()
+            .then(() => window.ardali?.system?.getHardwareHints?.())
+            .catch(() => null),
+        detectSfxOnBattery()
+    ]);
     const decision = shouldUseLowPowerSfxProfile(settings || {}, hardwareHints || {});
     const shape = getSfxPerfShape(settings || {}, decision, hardwareHints || {}, onBattery);
     const lowPower = !!shape.lowPower;
@@ -652,19 +657,19 @@ async function applySfxLightsFromAppSettings() {
     applySfxLightsRuntimeState('cyan');
 }
 
-async function applySfxIconSizeFromAppSettings() {
+async function applySfxIconSizeFromAppSettings(appSettings = null) {
     try {
         const shadow = getSfxIconSizeFromShadowStorage();
         if (shadow) {
             document.documentElement.dataset.sfxIconSize = shadow;
             return;
         }
-        if (!window.ardali?.loadSettings) {
+        if (!appSettings && !window.ardali?.loadSettings) {
             document.documentElement.dataset.sfxIconSize = 'medium';
             return;
         }
-        const appSettings = await window.ardali.loadSettings();
-        const size = normalizeSfxIconSize(appSettings?.appearance?.sfxSidebarIconSize);
+        const settings = appSettings || await window.ardali.loadSettings();
+        const size = normalizeSfxIconSize(settings?.appearance?.sfxSidebarIconSize);
         document.documentElement.dataset.sfxIconSize = size;
     } catch {
         document.documentElement.dataset.sfxIconSize = 'medium';
@@ -1693,12 +1698,39 @@ function emitScopedLiveEffectToMain(effectName, effectSettings = null) {
 // ============================================
 // INITIALIZATION
 // ============================================
-document.addEventListener('DOMContentLoaded', () => {
-    (async () => {
+async function initializeSoundEffectsWindow() {
+    const initStartedAt = performance.now();
+    markSfxBootStage('renderer-init');
+    try {
+        document.documentElement.setAttribute('data-sfx-scope', SFX_SCOPE);
+
+        // The static shell is already visible. Build only lightweight wrappers
+        // and event wiring now; each DSP panel is rendered on first use.
+        initEffects();
+        markSfxBootStage('wrappers-ready');
+        setupEventListeners();
+        markSfxBootStage('listeners-ready');
+        loadAllSettings(['eq32', 'audiophile']);
+        markSfxBootStage('shell-wired');
+
+        const appSettingsPromise = window.ardali?.loadSettings
+            ? window.ardali.loadSettings().catch(() => null)
+            : Promise.resolve(null);
+        const localizationPromise = (async () => {
+            if (!window.i18n?.init) return;
+            await window.i18n.init();
+            await syncEmbeddedLanguageFromParent();
+            try {
+                const baseTitle = await window.i18n.t('sfx.windowTitle');
+                document.title = getScopedWindowTitle(baseTitle);
+            } catch {
+                // ignore
+            }
+        })();
+
         try {
-            document.documentElement.setAttribute('data-sfx-scope', SFX_SCOPE);
             // Uyarı: Native audio engine mevcut değilse ses efektleri çalışmayacak
-            const isNativeAudioAvailable = window.ardali?.audio?.isNativeAvailable?.();
+            const isNativeAudioAvailable = await window.ardali?.audio?.isNativeAvailable?.();
             if (SFX_SCOPE === 'music' && !isNativeAudioAvailable) {
                 const warningDiv = document.createElement('div');
                 warningDiv.style.cssText = `
@@ -1719,32 +1751,47 @@ document.addEventListener('DOMContentLoaded', () => {
                 setTimeout(() => warningDiv.remove(), 8000);
                 console.warn('[SFX] Native audio unavailable - sound effects disabled');
             }
-            
-            if (window.i18n?.init) {
-                await window.i18n.init();
-                await syncEmbeddedLanguageFromParent();
-                try {
-                    const baseTitle = await window.i18n.t('sfx.windowTitle');
-                    document.title = getScopedWindowTitle(baseTitle);
-                } catch {
-                    // ignore
-                }
-            }
         } catch {
             // ignore
         }
 
+        const [appSettings] = await Promise.all([appSettingsPromise, localizationPromise]);
+        markSfxBootStage('settings-localization-ready');
         await applySfxLightsFromAppSettings();
-        await applySfxIconSizeFromAppSettings();
-        await applySfxRuntimePerformanceProfile();
-        initEffects();
-        setupEventListeners();
-        setupEQPresetListener();
-        loadAllSettings();
+        await Promise.all([
+            applySfxIconSizeFromAppSettings(appSettings),
+            applySfxRuntimePerformanceProfile(appSettings)
+        ]);
 
         // Uygulama ayarlarından tüm efektleri ve ses çıkış profilini geri yükle ve uygula
-        await hydrateAllSettingsFromAppSettings();
-        if (!SFX_IS_SCOPED_DALI) {
+        await hydrateAllSettingsFromAppSettings(appSettings);
+        markSfxBootStage('settings-hydrated');
+
+        // Render only the requested panel, after the shell/navigation has
+        // already painted and settings are hydrated.
+        await new Promise((resolve) => requestAnimationFrame(() => resolve()));
+        showEffect('eq32');
+        updateEqPresetButtonLabel();
+        markSfxBootStage('interactive');
+
+        const bootMetrics = window.__ARDALI_SFX_BOOT_METRICS__ || {};
+        bootMetrics.interactiveMs = performance.now() - Number(bootMetrics.startedAt || initStartedAt);
+        window.__ARDALI_SFX_BOOT_METRICS__ = bootMetrics;
+        SFX_BOOTSTRAPPING = false;
+        console.log(
+            `[SFX PERF] interactive=${bootMetrics.interactiveMs.toFixed(1)}ms ` +
+            `renderer-init=${(performance.now() - initStartedAt).toFixed(1)}ms`
+        );
+
+        setTimeout(() => setupEQPresetListener(), 0);
+
+        // Re-applying every DSP is intentionally background work. It must not
+        // delay the first usable EQ panel or make the window look frozen.
+        const syncStartupInBackground = async () => {
+            if (SFX_IS_SCOPED_DALI) {
+                console.log(`[SFX INIT] Startup sync skip (${SFX_SCOPE} scope)`);
+                return;
+            }
             applyEffect('audiophile');
             // Ses oynatım sırasında toplu re-apply klik/takırtı yapabildiği için,
             // startup sync'i yalnızca oynatma yokken yap.
@@ -1761,20 +1808,32 @@ document.addEventListener('DOMContentLoaded', () => {
             } else {
                 console.log('[SFX INIT] Startup sync skip (aktif oynatma var)');
             }
+        };
+        if (typeof requestIdleCallback === 'function') {
+            requestIdleCallback(() => syncStartupInBackground().catch(() => {}), { timeout: 1200 });
         } else {
-            console.log(`[SFX INIT] Startup sync skip (${SFX_SCOPE} scope)`);
+            setTimeout(() => syncStartupInBackground().catch(() => {}), 250);
         }
-
-        // İlk efekti göster (paneli lazy-load eder)
-        showEffect('eq32');
-        await applySfxLightsFromAppSettings();
-        updateEqPresetButtonLabel();
-    })().catch((e) => {
+    } catch (e) {
         console.warn('[SFX INIT] Başlatma hatası (devam ediliyor):', e?.message || e);
         updateEqPresetButtonLabel();
         showEffect('eq32');
-    });
-});
+        SFX_BOOTSTRAPPING = false;
+        const bootMetrics = window.__ARDALI_SFX_BOOT_METRICS__ || {};
+        bootMetrics.interactiveMs = performance.now() - Number(bootMetrics.startedAt || initStartedAt);
+        bootMetrics.error = String(e?.message || e || 'unknown');
+        bootMetrics.stage = 'fallback-interactive';
+        window.__ARDALI_SFX_BOOT_METRICS__ = bootMetrics;
+    }
+}
+
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', () => {
+        initializeSoundEffectsWindow();
+    }, { once: true });
+} else {
+    initializeSoundEffectsWindow();
+}
 
 window.addEventListener('beforeunload', () => {
     try {
@@ -1950,6 +2009,7 @@ function setupEventListeners() {
 
     // Standalone modda global dil değişimlerini canlı uygula.
     window.addEventListener('ardali:languageChanged', () => {
+        if (SFX_BOOTSTRAPPING) return;
         refreshLocalizedRuntimeUi();
     });
 
@@ -9689,12 +9749,12 @@ async function persistEq32ToAppSettings(eq32Settings) {
     return result;
 }
 
-async function hydrateAllSettingsFromAppSettings() {
-    if (!window.ardali?.loadSettings) return;
+async function hydrateAllSettingsFromAppSettings(appSettings = null) {
+    if (!appSettings && !window.ardali?.loadSettings) return;
 
     try {
-        const appSettings = await window.ardali.loadSettings();
-        const scopeSettings = appSettings?.sfxScopes?.[SFX_SCOPE] || (SFX_SCOPE === 'music' ? appSettings?.sfx : null);
+        const settings = appSettings || await window.ardali.loadSettings();
+        const scopeSettings = settings?.sfxScopes?.[SFX_SCOPE] || (SFX_SCOPE === 'music' ? settings?.sfx : null);
         if (!scopeSettings) return;
 
         if (scopeSettings.master && typeof scopeSettings.master === 'object') {

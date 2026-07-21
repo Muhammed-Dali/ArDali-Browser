@@ -1,6 +1,6 @@
 {
   "name": "ardali",
-  "version": "5.4.0",
+  "version": "5.4.1",
   "productName": "ArDali",
   "description": "Open-source Linux media player for music and video with DSP effects, equalizer, and visualizer",
   "main": "main.js",
@@ -43,6 +43,8 @@
     "dali:test:security": "node scripts/dali-security-suite.js",
     "test:credential-vault": "node scripts/test-credential-vault.js",
     "test:electron-security": "node scripts/test-electron-security.js",
+    "test:audio-effects-startup": "node scripts/test-audio-effects-startup.js",
+    "test:projectm-window": "node scripts/test-projectm-window-integration.js",
     "dali:test:wasm": "npm run -s dali:compile:web:wasm && node scripts/dali-wasm-smoke.js",
     "dali:test:parity": "node scripts/dali-ir-parity.js",
     "dali:test:fuzz": "node scripts/dali-fuzz.js",

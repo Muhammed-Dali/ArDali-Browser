@@ -31,6 +31,9 @@
 #if defined(__linux__) && !defined(_WIN32)
 #  include <wayland-client.h>
 #  include <sys/prctl.h>
+#  ifdef ARDALI_HAVE_X11_OWNER
+#    include <X11/Xlib.h>
+#  endif
 #endif
 
 #ifdef SDL_IMAGE_MAJOR_VERSION
@@ -231,6 +234,38 @@ static void setSdlWindowIconFromEnv(SDL_Window* w) {
 
     SDL_SetWindowIcon(w, iconSurf);
     SDL_FreeSurface(iconSurf);
+}
+
+static void applyElectronOwnerWindow(SDL_Window* window) {
+#if defined(__linux__) && !defined(_WIN32) && defined(ARDALI_HAVE_X11_OWNER)
+    if (!window) return;
+    const char* rawParent = std::getenv("ARDALI_VIS_PARENT_XID");
+    if (!rawParent || !*rawParent) return;
+
+    char* end = nullptr;
+    const unsigned long parsed = std::strtoul(rawParent, &end, 10);
+    if (end == rawParent || (end && *end != '\0') || parsed == 0) {
+        std::cerr << "[Window] invalid Electron parent XID" << std::endl;
+        return;
+    }
+
+    SDL_SysWMinfo wmInfo;
+    SDL_VERSION(&wmInfo.version);
+    if (SDL_GetWindowWMInfo(window, &wmInfo) != SDL_TRUE || wmInfo.subsystem != SDL_SYSWM_X11) {
+        return;
+    }
+
+    Display* display = wmInfo.info.x11.display;
+    const Window child = wmInfo.info.x11.window;
+    const Window parent = static_cast<Window>(parsed);
+    if (!display || !child || !parent) return;
+
+    XSetTransientForHint(display, child, parent);
+    XFlush(display);
+    std::cout << "[Window] Electron owner attached: " << parsed << std::endl;
+#else
+    (void)window;
+#endif
 }
 
 #ifdef _WIN32
@@ -3150,6 +3185,7 @@ static bool initMainWindowAndGL() {
 
     // Pencere ikonunu env'den ayarla (ana süreç tarafından geçirilir)
     setSdlWindowIconFromEnv(g.window);
+    applyElectronOwnerWindow(g.window);
 
     // Önce GL 3.3 core dene.
     if (!tryCreateContext(3, 3)) {

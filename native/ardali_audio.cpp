@@ -1016,7 +1016,10 @@ public:
         // End sync yeni stream'e
         BASS_ChannelSetSync(m_stream, BASS_SYNC_END, 0, endCallback, this);
 
-        const float baseVol = computeLinearMasterVolume();
+        // Crossfade hedefi normal oynatma ile aynı etkin ses seviyesine ulaşmalı.
+        // Aksi halde preamp/program leveling kullanan profillerde fade sonunda
+        // ani bir seviye sıçraması oluşur.
+        const float baseVol = computeEffectiveVolume();
 
         // Yeni stream 0 sesle başlasın
         BASS_ChannelSetAttribute(m_stream, BASS_ATTRIB_VOL, 0.0f);
@@ -1073,6 +1076,9 @@ public:
             }
 
             this->m_overlapCrossfadeActive = false;
+            // Fade sırasında ertelenmiş olabilecek master/preamp değişikliklerini
+            // yalnızca rampalar tamamlandıktan sonra ana stream'e uygula.
+            this->applyMasterVolumeToStream(this->m_stream);
         }).detach();
 
         return true;
@@ -3411,6 +3417,10 @@ public:
     }
     
     void updatePreampFx() {
+        // BASS_ChannelSetAttribute aktif volume slide'ı iptal eder. Crossfade
+        // sürerken mevcut rampaları koru; cleanup tamamlandığında etkin seviye
+        // ana stream'e tekrar uygulanır.
+        if (m_overlapCrossfadeActive) return;
         applyMasterVolumeToStream(m_stream);
         applyMasterVolumeToStream(m_prevStream);
     }

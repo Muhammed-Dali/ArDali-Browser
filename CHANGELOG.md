@@ -1,5 +1,17 @@
 # Changelog
 
+## [5.4.1] - 2026-07-22
+
+### Changed
+
+- Rendered the Audio Effects shell and navigation before loading heavy DSP controls, with one-time settings hydration and idle startup synchronization.
+- Attached the native ProjectM visualizer to the main Electron window on X11 while preserving matching Wayland application grouping.
+
+### Fixed
+
+- Removed blocking first-open work that could make the Audio Effects window appear frozen.
+- Prevented native ProjectM from appearing as an unrelated application in supported Linux window managers.
+
 ## [5.4.0] - 2026-07-21
 
 - Added a local AES-256-GCM credential vault with master-password protection, configurable Auto Lock, and secure exact-origin Autofill.
