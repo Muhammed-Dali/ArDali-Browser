@@ -235,6 +235,11 @@ jobs:
             gh release create "$TAG" --generate-notes
           fi
 
+          # Re-publishing an existing version tag can leave its release as a
+          # draft after the tag reference is replaced. Make the public release
+          # state and target explicit before downstream jobs consume its URLs.
+          gh release edit "$TAG" --draft=false --prerelease=false --target "${GITHUB_SHA}"
+
           shopt -s nullglob
           assets=(
             dist/*.AppImage
