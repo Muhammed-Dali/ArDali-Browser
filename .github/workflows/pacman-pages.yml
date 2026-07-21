@@ -1,0 +1,61 @@
+name: Deploy Pacman Pages
+
+on:
+  workflow_run:
+    workflows:
+      - Pre-release Gate
+    types:
+      - completed
+
+permissions:
+  actions: read
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pacman-pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy Pacman repository to GitHub Pages
+    if: >-
+      ${{
+        github.event.workflow_run.conclusion == 'success' &&
+        github.event.workflow_run.head_repository.full_name == github.repository &&
+        startsWith(github.event.workflow_run.head_branch, 'v')
+      }}
+    runs-on: ubuntu-24.04
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Download verified Pacman Pages artifact
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
+        with:
+          name: github-pages
+          path: /tmp/pacman-pages-artifact
+          repository: ${{ github.repository }}
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Restore Pages content
+        shell: bash
+        run: |
+          set -euo pipefail
+          archive="$(find /tmp/pacman-pages-artifact -type f -name 'artifact.tar' -print -quit)"
+          test -n "${archive}"
+          mkdir -p pacman-pages
+          tar -xf "${archive}" -C pacman-pages
+          test -f pacman-pages/index.html
+          test -f pacman-pages/x86_64/ardali.db
+
+      - name: Upload Pages artifact for deployment
+        uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5
+        with:
+          path: pacman-pages
+
+      - name: Deploy Pacman repository to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@cd2ce8fcbc39b97be8ca5fce6e763baed58fa128 # v5
