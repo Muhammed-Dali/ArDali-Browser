@@ -335,9 +335,11 @@
       ]
     },
     "win": {
-      "publisherName": [
-        "Muhammet Dali"
-      ],
+      "signtoolOptions": {
+        "publisherName": [
+          "Muhammet Dali"
+        ]
+      },
       "target": [
         "nsis"
       ],
