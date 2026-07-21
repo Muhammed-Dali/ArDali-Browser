@@ -61,6 +61,12 @@
   </provides>
 
   <releases>
+    <release version="5.4.2" date="2026-07-22">
+      <url>https://github.com/Muhammed-Dali/ArDali-WebMedia/releases/tag/v5.4.2</url>
+      <description>
+        <p>Updated the transitive fast-uri dependency to resolve the release security advisory.</p>
+      </description>
+    </release>
     <release version="5.4.1" date="2026-07-22">
       <url>https://github.com/Muhammed-Dali/ArDali-WebMedia/releases/tag/v5.4.1</url>
       <description>

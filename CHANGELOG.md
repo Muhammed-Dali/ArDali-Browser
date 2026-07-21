@@ -1,5 +1,11 @@
 # Changelog
 
+## [5.4.2] - 2026-07-22
+
+### Security
+
+- Updated the transitive `fast-uri` dependency to 3.1.4 to resolve GHSA-v2hh-gcrm-f6hx in the release security gate.
+
 ## [5.4.1] - 2026-07-22
 
 ### Changed

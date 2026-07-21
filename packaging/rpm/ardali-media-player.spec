@@ -1,5 +1,5 @@
 Name:           ardali-media-player
-Version:        5.4.1
+Version:        5.4.2
 Release:        1%{?dist}
 Summary:        ArDali Media Player (Electron)
 
@@ -30,6 +30,9 @@ ln -sf /opt/ardali/ardali.AppImage %{buildroot}/usr/bin/ardali
 /usr/bin/ardali
 
 %changelog
+* Wed Jul 22 2026 ArDali <support@ardali.app> - 5.4.2-1
+- Update fast-uri to 3.1.4 for the release security gate
+
 * Wed Jul 22 2026 ArDali <support@ardali.app> - 5.4.1-1
 - Faster lazy-loaded Audio Effects startup and owned ProjectM window integration
 
