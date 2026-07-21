@@ -1,5 +1,12 @@
 # Changelog
 
+## [5.4.0] - 2026-07-21
+
+- Added a local AES-256-GCM credential vault with master-password protection, configurable Auto Lock, and secure exact-origin Autofill.
+- Localized the Password Manager and new About security documentation across every supported application locale.
+- Hardened Electron windows, IPC authorization, permission handling, CSP enforcement, and secure OS key storage integration.
+- Added a mandatory pre-release security gate for release builds and package publication.
+
 Notable user-facing changes to ArDali WebMedia will be documented here. The project follows [Semantic Versioning](https://semver.org/) for release identifiers where practical and uses [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) headings.
 
 ## [Unreleased]

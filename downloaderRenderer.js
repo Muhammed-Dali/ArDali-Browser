@@ -1375,7 +1375,7 @@ function renderCompressorFiles() {
         const row = document.createElement('article');
         row.className = 'compressor-file';
         row.dataset.filePath = filePath;
-        row.innerHTML = `
+        window.ardaliSetHTML(row, `
             <div class="compressor-file-thumb-wrap">
                 <img class="compressor-file-thumb" alt="">
             </div>
@@ -1384,7 +1384,7 @@ function renderCompressorFiles() {
                 <span></span>
             </div>
             <button class="ghost" title="${dlt('action.clear')}" aria-label="${dlt('action.clear')}">×</button>
-        `;
+        `);
         row.querySelector('strong').textContent = getBasename(filePath);
         row.querySelector('span').textContent = filePath;
         row.querySelector('.compressor-file-thumb').src = state.compressorThumbs.get(filePath) || 'icons/ui/fallback_video.svg';
@@ -1590,7 +1590,7 @@ function createOrUpdateJob(payload) {
     if (!row) {
         row = document.createElement('article');
         row.className = isDependencyJob ? 'job dependency-job' : 'job';
-        row.innerHTML = `
+        window.ardaliSetHTML(row, `
             <div class="job-thumb-wrap">
                 <img class="job-thumb" alt="">
                 <span class="job-type"></span>
@@ -1609,7 +1609,7 @@ function createOrUpdateJob(payload) {
                 <button class="ghost show-btn hidden">${dlt('jobs.folderShow')}</button>
                 <button class="secondary format-btn hidden">${dlt('jobs.formatBack')}</button>
             </div>
-        `;
+        `);
         row.querySelector('.cancel-btn').addEventListener('click', () => api.cancel(id));
         row.querySelector('.show-btn').addEventListener('click', () => {
             const target = row.dataset.outputPath || '';
@@ -1775,7 +1775,7 @@ function renderHistory() {
         const status = String(item.status || 'done').toLowerCase();
         const row = document.createElement('article');
         row.className = `history-item ${status}`;
-        row.innerHTML = `
+        window.ardaliSetHTML(row, `
             <img class="history-thumb" alt="">
             <div>
                 <strong class="history-title"></strong>
@@ -1787,7 +1787,7 @@ function renderHistory() {
                 <button class="secondary show-history-btn">${dlt('history.show')}</button>
                 <button class="ghost delete-history-btn">${dlt('action.clear')}</button>
             </div>
-        `;
+        `);
         row.querySelector('.history-thumb').src = item.thumbnail || 'icons/app/ardali_dawlod.png';
         row.querySelector('.history-title').textContent = item.title || dlt('action.download');
         const meta = row.querySelector('.history-meta');

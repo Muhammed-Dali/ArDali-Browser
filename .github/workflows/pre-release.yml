@@ -1,0 +1,51 @@
+name: Pre-release Gate
+
+on:
+  push:
+    tags:
+      - "v*"
+
+concurrency:
+  group: pre-release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  pre-release:
+    name: Security and integrity gate
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+
+      - name: Setup Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
+        with:
+          node-version: "22.12.0"
+          cache: npm
+
+      - name: Install locked dependencies
+        run: npm ci
+
+      - name: Run mandatory pre-release checks
+        run: npm run pre-release
+
+  github-release:
+    name: Build and publish GitHub release
+    needs: pre-release
+    permissions:
+      contents: write
+    uses: ./.github/workflows/release.yml
+    secrets: inherit
+
+  pacman:
+    name: Build and publish AUR/Pacman package
+    needs: github-release
+    permissions:
+      contents: write
+      pages: write
+      id-token: write
+    uses: ./.github/workflows/pacman-repo.yml
+    secrets: inherit

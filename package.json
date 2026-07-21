@@ -1,10 +1,11 @@
 {
   "name": "ardali",
-  "version": "5.3.0",
+  "version": "5.4.0",
   "productName": "ArDali",
   "description": "Open-source Linux media player for music and video with DSP effects, equalizer, and visualizer",
   "main": "main.js",
   "scripts": {
+    "pre-release": "node scripts/run-pre-release.js",
     "start": "npm run dev:linux",
     "postinstall": "node scripts/patch-dbus-next-xml2js.js",
     "patch:dbus-next": "node scripts/patch-dbus-next-xml2js.js",
@@ -24,7 +25,7 @@
     "icons:unused": "node scripts/check-unused-icons.js",
     "verify:i18n": "node --check modules/i18n.js && node --check renderer.js && node --check scripts/generate-locale-coverage.js && node --check scripts/verify-i18n.js && node scripts/verify-i18n.js && npm run -s locale:coverage",
     "build": "node native/copy-libs.js && npm run -s patch:dbus-next && electron-builder",
-    "rebuild:electron:linux": "if [ -d node_modules/abstract-socket ]; then (cd node_modules/abstract-socket && npx node-gyp rebuild --target=40.8.5 --dist-url=https://electronjs.org/headers --arch=x64); else echo \"[rebuild:electron:linux] abstract-socket not present; skipping native rebuild\"; fi",
+    "rebuild:electron:linux": "if [ -d node_modules/abstract-socket ]; then (cd node_modules/abstract-socket && npx node-gyp rebuild --target=43.2.0 --dist-url=https://electronjs.org/headers --arch=x64); else echo \"[rebuild:electron:linux] abstract-socket not present; skipping native rebuild\"; fi",
     "build:linux": "node native/copy-libs.js linux && node scripts/verify-linux-artifacts.js && npm run -s rebuild:electron:linux && npm run -s patch:dbus-next && electron-builder --linux -c.npmRebuild=false",
     "build:linux:appimage": "node native/copy-libs.js linux && node scripts/verify-linux-artifacts.js && npm run -s rebuild:electron:linux && npm run -s patch:dbus-next && electron-builder --linux AppImage -c.npmRebuild=false",
     "verify:win:artifacts": "node scripts/verify-win-artifacts.js",
@@ -33,13 +34,15 @@
     "build:win:zip": "node native/copy-libs.js win32 && npm run -s prepare:win:resources && npm run -s verify:win:artifacts && electron-builder --win zip",
     "build:mac": "node native/copy-libs.js darwin && electron-builder --mac",
     "dist": "npm run build:linux",
-    "dev:linux": "ELECTRON_RUN_AS_NODE= ELECTRON_DISABLE_SANDBOX=1 ARDALI_DEV=1 PATH=\"$(pwd)/native/build/Release:$(pwd)/native-dist:$(pwd)/native-dist/linux:$(pwd)/libs/linux:$(pwd)/bin:$PATH\" LD_LIBRARY_PATH=\"$(pwd)/native/build/Release:$(pwd)/native-dist:$(pwd)/native-dist/linux:$(pwd)/libs/linux:${LD_LIBRARY_PATH:-}\" electron --no-sandbox --enable-logging --disable-vulkan --disable-features=Vulkan,DefaultANGLEVulkan,VulkanFromANGLE .",
+    "dev:linux": "ELECTRON_RUN_AS_NODE= ARDALI_DEV=1 PATH=\"$(pwd)/native/build/Release:$(pwd)/native-dist:$(pwd)/native-dist/linux:$(pwd)/libs/linux:$(pwd)/bin:$PATH\" LD_LIBRARY_PATH=\"$(pwd)/native/build/Release:$(pwd)/native-dist:$(pwd)/native-dist/linux:$(pwd)/libs/linux:${LD_LIBRARY_PATH:-}\" electron --enable-logging --disable-vulkan --disable-features=Vulkan,DefaultANGLEVulkan,VulkanFromANGLE .",
     "dali:compile:web": "node scripts/compile-dali-web.js",
     "dali:compile:web:wasm": "node scripts/compile-dali-web-wasm.js",
     "dali:compile:web:all": "npm run -s dali:compile:web && npm run -s dali:compile:web:wasm",
     "dali:test:regression": "node scripts/dali-web-regression.js",
     "dali:test:regression:update": "node scripts/dali-web-regression.js --update",
     "dali:test:security": "node scripts/dali-security-suite.js",
+    "test:credential-vault": "node scripts/test-credential-vault.js",
+    "test:electron-security": "node scripts/test-electron-security.js",
     "dali:test:wasm": "npm run -s dali:compile:web:wasm && node scripts/dali-wasm-smoke.js",
     "dali:test:parity": "node scripts/dali-ir-parity.js",
     "dali:test:fuzz": "node scripts/dali-fuzz.js",
@@ -76,7 +79,7 @@
   "build": {
     "appId": "com.ardali.mediaplayer",
     "productName": "ArDali",
-    "electronVersion": "40.8.5",
+    "electronVersion": "43.2.0",
     "icon": "icons/app/ardali.ico",
     "artifactName": "ArDali-${version}-${os}-${arch}.${ext}",
     "directories": {
@@ -93,6 +96,13 @@
         "name": "ArDali Media Player",
         "schemes": [
           "ardali"
+        ]
+      },
+      {
+        "name": "ArDali Web Browser",
+        "schemes": [
+          "http",
+          "https"
         ]
       }
     ],
@@ -262,14 +272,15 @@
         "rpm"
       ],
       "maintainer": "ArDali <support@ardali.app>",
-      "category": "AudioVideo",
+      "category": "Network",
       "executableName": "ardali",
       "desktop": {
         "entry": {
           "Name": "ArDali",
-          "Comment": "Open-source Linux media player for music and video",
-          "Categories": "AudioVideo;Player;",
-          "Keywords": "Music;Audio;Video;Media;Player;Linux;AppImage;Deb;Rpm;Equalizer;DSP;ArDali;"
+          "Comment": "Media player and privacy-focused web browser",
+          "Categories": "AudioVideo;Player;Network;WebBrowser;",
+          "Keywords": "Music;Audio;Video;Media;Player;Browser;Web;Linux;AppImage;Deb;Rpm;Equalizer;DSP;ArDali;",
+          "MimeType": "x-scheme-handler/http;x-scheme-handler/https;"
         }
       },
       "icon": "icons/app/ardali_512.png",
@@ -324,6 +335,9 @@
       ]
     },
     "win": {
+      "publisherName": [
+        "Muhammet Dali"
+      ],
       "target": [
         "nsis"
       ],
@@ -389,6 +403,8 @@
       ]
     },
     "mac": {
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false,
       "target": [
         "dmg"
       ],
@@ -424,15 +440,16 @@
     }
   },
   "devDependencies": {
-    "electron": "40.8.5",
+    "electron": "43.2.0",
     "electron-builder": "26.15.3",
-    "png-to-ico": "3.0.1"
+    "png-to-ico": "3.0.2"
   },
   "dependencies": {
+    "dompurify": "3.4.12",
     "electron-updater": "6.8.9",
     "mpris-service": "^2.1.2",
     "node-id3": "0.2.9",
-    "systeminformation": "5.31.16"
+    "systeminformation": "5.33.0"
   },
   "overrides": {
     "xml2js": "0.6.2"

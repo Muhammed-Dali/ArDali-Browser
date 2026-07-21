@@ -5,43 +5,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta http-equiv="Content-Security-Policy"
-        content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline';">
+        content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'; frame-src 'none';">
     <title>Ses Efektleri — ArDali Medya Player</title>
-    <script>
-        (() => {
-            try {
-                const allowed = new Set(['aur-renk-efektleri', 'performance-balanced', 'performance-lite', 'ardali', 'dark', 'black', 'light', 'frappe', 'onedark', 'matrix', 'latte', 'solarized-dark', 'neon-night', 'retro-amber', 'deep-ocean', 'forest-mint']);
-                const theme = String(localStorage.getItem('ardali_ui_theme') || localStorage.getItem('theme') || 'black').trim();
-                if (!allowed.has(theme)) return;
-                document.documentElement.dataset.ardaliTheme = theme;
-                document.documentElement.setAttribute('theme', theme);
-            } catch {
-                // ignore
-            }
-        })();
-        (function () {
-            try {
-                const embedded = new URLSearchParams(window.location.search).get('embedded') === '1';
-                if (!embedded) document.documentElement.classList.add('framed-sfx');
-                if (!embedded) return;
-                document.documentElement.classList.add('embedded-sfx');
-                // IMPORTANT: never share the parent's ardali object by reference in embedded mode.
-                // Otherwise video-side effect changes can leak into music/native engine state.
-                window.ardali = {};
-                if (!window.i18n) {
-                    try {
-                        if (window.parent && window.parent !== window && window.parent.i18n) {
-                            window.i18n = window.parent.i18n;
-                        }
-                    } catch {
-                        // ignore
-                    }
-                }
-            } catch {
-                // ignore
-            }
-        })();
-    </script>
+    <script src="modules/local-page-bootstrap.js"></script>
     <link rel="stylesheet" href="styles/soundEffects.css">
 </head>
 
@@ -50,7 +16,7 @@
         <!-- Üst Başlık Barı -->
         <header class="sfx-header">
             <div class="header-left">
-                <img src="icons/app/ardali_256.png" alt="ArDali" class="header-logo" onerror="this.style.display='none'">
+                <img src="icons/app/ardali_256.png" alt="ArDali" class="header-logo">
                 <label class="master-toggle">
                     <input type="checkbox" id="masterEffectsToggle" checked>
                     <span class="toggle-slider"></span>

@@ -73,7 +73,8 @@ function registerPulseIpc({
                 additionalArguments: ['--ardali-view=pulse'],
                 nodeIntegration: false,
                 contextIsolation: true,
-                sandbox: false,
+                sandbox: true,
+                devTools: process.env.ARDALI_DEV === '1',
                 webSecurity: true,
                 allowRunningInsecureContent: false,
                 spellcheck: false

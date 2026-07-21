@@ -8,8 +8,22 @@ const path = require('path');
 
 const CONFIG_NAME = 'ardali-downloader.json';
 const HISTORY_NAME = 'ardali-download-history.json';
-const YTDLP_LATEST_BASE_URL = 'https://github.com/yt-dlp/yt-dlp/releases/latest/download';
+const YTDLP_VERSION = '2026.07.04';
+const YTDLP_RELEASE_BASE_URL = `https://github.com/yt-dlp/yt-dlp/releases/download/${YTDLP_VERSION}`;
 const WINDOWS_FFMPEG_ZIP_URL = 'https://github.com/aandrew-me/ffmpeg-builds/releases/download/v8/ffmpeg_win64.zip';
+const VERIFIED_DOWNLOAD_HOSTS = new Set(['github.com', 'objects.githubusercontent.com', 'release-assets.githubusercontent.com']);
+const FFMPEG_ARTIFACTS = Object.freeze({
+    'win32:x64': Object.freeze({ url: WINDOWS_FFMPEG_ZIP_URL, sha256: 'ee2dbdf33ea7bb1f52b1b83b89c2171c52514234de62e5fcd0f81c137072e5b2', binarySha256: 'a4fdca2e7b28e24f6ad2a26f6486a2942a472a4fa722994ae6be4935ff3bed97', maxBytes: 40 * 1024 * 1024 }),
+    'linux:x64': Object.freeze({ url: 'https://github.com/aandrew-me/ffmpeg-builds/releases/download/v8/ffmpeg_linux_amd64.tar.xz', sha256: '0aa5efcfde21f3fc75a1a685f7bbac6992c6fe2e11702e13f2d4a541d90a94cb', binarySha256: '2adcbe39832be6d666a067cfbc6466e9438f4106ae18398615678a1ea7b9e5e1', maxBytes: 35 * 1024 * 1024 }),
+    'linux:arm64': Object.freeze({ url: 'https://github.com/aandrew-me/ffmpeg-builds/releases/download/v8/ffmpeg_linux_arm64.tar.xz', sha256: 'b8cec4c6d222dc0fbf6ec7e5d8df8b96dc2fa496b02178a9f07713158bfd0db8', binarySha256: 'bdcdb6e3b6af16e14bf66a410a2d42af786ed6bcebcb8c8a92d387386049e441', maxBytes: 35 * 1024 * 1024 })
+});
+const YTDLP_ARTIFACTS = Object.freeze({
+    'win32:x64': Object.freeze({ name: 'yt-dlp.exe', sha256: '52fe3c26dcf71fbdc85b528589020bb0b8e383155cfa81b64dd447bbe35e24b8', maxBytes: 24 * 1024 * 1024 }),
+    'darwin:x64': Object.freeze({ name: 'yt-dlp_macos', sha256: '498bd0dae17855c599d371d68ec5bafc439a9d8640e838be25c765a9792f261b', maxBytes: 40 * 1024 * 1024 }),
+    'darwin:arm64': Object.freeze({ name: 'yt-dlp_macos', sha256: '498bd0dae17855c599d371d68ec5bafc439a9d8640e838be25c765a9792f261b', maxBytes: 40 * 1024 * 1024 }),
+    'linux:x64': Object.freeze({ name: 'yt-dlp_linux', sha256: '6bbb3d314cde4febe36e5fa1d55462e29c974f63444e707871834f6d8cc210ae', maxBytes: 48 * 1024 * 1024 }),
+    'linux:arm64': Object.freeze({ name: 'yt-dlp_linux_aarch64', sha256: 'b6ce97646773070d7a7ffd6bbbdcaecb47c48483909c54c915bf08a7a9b5e0b1', maxBytes: 48 * 1024 * 1024 })
+});
 
 function spawnLowPriority(command, args = [], options = {}, niceValue = 10) {
     if ((process.platform === 'linux' || process.platform === 'darwin') && command) {
@@ -37,6 +51,16 @@ function getManagedFfmpegPath(app) {
     return path.join(getManagedBinDir(app), process.platform === 'win32' ? 'ffmpeg.exe' : 'ffmpeg');
 }
 
+function sha256FileSync(filePath) {
+    try { return crypto.createHash('sha256').update(fs.readFileSync(filePath)).digest('hex'); }
+    catch { return ''; }
+}
+
+function isVerifiedManagedBinary(candidate, managedPath, expectedHash) {
+    if (path.resolve(candidate) !== path.resolve(managedPath)) return true;
+    return !!expectedHash && sha256FileSync(candidate) === expectedHash;
+}
+
 function resolveYtDlpBinary(app) {
     try {
         const result = spawnSync('which', ['yt-dlp'], {
@@ -53,10 +77,12 @@ function resolveYtDlpBinary(app) {
     }
 
     const localName = process.platform === 'win32' ? 'ytdlp.exe' : 'ytdlp';
+    const managedPath = app ? getManagedYtDlpPath(app) : '';
+    const artifact = YTDLP_ARTIFACTS[`${process.platform}:${os.arch()}`];
     const candidates = [
         process.env.ARDALI_YTDLP_PATH,
         process.env.YTDOWNLOADER_YTDLP_PATH,
-        app ? getManagedYtDlpPath(app) : '',
+        managedPath,
         path.join(os.homedir(), '.ardali-dawlod', localName),
         path.join(os.homedir(), '.ardali-dawlod', 'yt-dlp')
     ].filter(Boolean);
@@ -64,6 +90,7 @@ function resolveYtDlpBinary(app) {
     for (const candidate of candidates) {
         try {
             fs.accessSync(candidate, fs.constants.X_OK);
+            if (!isVerifiedManagedBinary(candidate, managedPath, artifact?.sha256)) continue;
             return candidate;
         } catch {
             // keep looking
@@ -75,9 +102,11 @@ function resolveYtDlpBinary(app) {
 
 function resolveFfmpegBinary(app) {
     const envCandidate = process.env.ARDALI_FFMPEG_PATH || process.env.FFMPEG_PATH;
+    const managedPath = app ? getManagedFfmpegPath(app) : '';
+    const artifact = FFMPEG_ARTIFACTS[`${process.platform}:${os.arch()}`];
     const candidates = [
         envCandidate,
-        app ? getManagedFfmpegPath(app) : '',
+        managedPath,
         path.join(__dirname, '..', 'third_party', 'ffmpeg', process.platform === 'win32' ? 'ffmpeg.exe' : 'ffmpeg'),
         path.join(__dirname, '..', 'bin', process.platform === 'win32' ? 'ffmpeg.exe' : 'ffmpeg'),
         path.join(process.resourcesPath || '', 'bin', process.platform === 'win32' ? 'ffmpeg.exe' : 'ffmpeg'),
@@ -104,6 +133,7 @@ function resolveFfmpegBinary(app) {
     for (const candidate of candidates) {
         try {
             fs.accessSync(candidate, fs.constants.X_OK);
+            if (!isVerifiedManagedBinary(candidate, managedPath, artifact?.binarySha256)) continue;
             return candidate;
         } catch {
             // keep looking
@@ -114,23 +144,12 @@ function resolveFfmpegBinary(app) {
 }
 
 function getYtDlpDownloadUrl() {
-    if (process.platform === 'win32') return `${YTDLP_LATEST_BASE_URL}/yt-dlp.exe`;
-    if (process.platform === 'darwin') return `${YTDLP_LATEST_BASE_URL}/yt-dlp_macos`;
-    if (process.platform === 'linux') {
-        const arch = os.arch();
-        if (arch === 'arm64') return `${YTDLP_LATEST_BASE_URL}/yt-dlp_linux_aarch64`;
-        if (arch === 'arm') return `${YTDLP_LATEST_BASE_URL}/yt-dlp_linux_armv7l`;
-        return `${YTDLP_LATEST_BASE_URL}/yt-dlp_linux`;
-    }
-    return `${YTDLP_LATEST_BASE_URL}/yt-dlp`;
+    const artifact = YTDLP_ARTIFACTS[`${process.platform}:${os.arch()}`];
+    return artifact ? `${YTDLP_RELEASE_BASE_URL}/${artifact.name}` : '';
 }
 
 function getLinuxFfmpegArchiveUrl() {
-    if (process.platform !== 'linux') return '';
-    const arch = os.arch();
-    if (arch === 'x64') return 'https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz';
-    if (arch === 'arm64') return 'https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-arm64-static.tar.xz';
-    return '';
+    return FFMPEG_ARTIFACTS[`${process.platform}:${os.arch()}`]?.url || '';
 }
 
 function emitDependencyStatus(emit, tool, state, message, percent = 0) {
@@ -162,37 +181,69 @@ function getDependencyStatus(app) {
     };
 }
 
-function downloadFile(url, destinationPath, onProgress = () => {}, redirectCount = 0) {
+function downloadVerifiedFile(artifact, destinationPath, onProgress = () => {}, redirectCount = 0, temporaryPath = '') {
     return new Promise((resolve, reject) => {
-        const request = https.get(url, (response) => {
+        let parsed;
+        try {
+            parsed = new URL(String(artifact?.url || ''));
+            if (parsed.protocol !== 'https:' || !VERIFIED_DOWNLOAD_HOSTS.has(parsed.hostname)) throw new Error('untrusted-download-url');
+        } catch (error) {
+            reject(error);
+            return;
+        }
+        const temp = temporaryPath || `${destinationPath}.download-${process.pid}-${crypto.randomBytes(6).toString('hex')}`;
+        const cleanup = () => { try { fs.unlinkSync(temp); } catch {} };
+        const request = https.get(parsed, (response) => {
             const statusCode = response.statusCode || 0;
             const location = response.headers.location;
             if ([301, 302, 303, 307, 308].includes(statusCode) && location && redirectCount < 6) {
                 response.resume();
-                downloadFile(location, destinationPath, onProgress, redirectCount + 1).then(resolve).catch(reject);
+                let nextUrl = '';
+                try { nextUrl = new URL(location, parsed).toString(); } catch {}
+                downloadVerifiedFile({ ...artifact, url: nextUrl }, destinationPath, onProgress, redirectCount + 1, temp).then(resolve).catch(reject);
                 return;
             }
             if (statusCode !== 200) {
                 response.resume();
+                cleanup();
                 reject(new Error(`İndirme başarısız. HTTP ${statusCode}`));
                 return;
             }
 
             const totalBytes = Number(response.headers['content-length'] || 0);
+            const maxBytes = Number(artifact.maxBytes || 0);
+            if (!maxBytes || (totalBytes > 0 && totalBytes > maxBytes)) {
+                response.resume(); cleanup(); reject(new Error('download-size-rejected')); return;
+            }
             let downloadedBytes = 0;
-            const output = fs.createWriteStream(destinationPath);
+            const hash = crypto.createHash('sha256');
+            const output = fs.createWriteStream(temp, { flags: 'wx', mode: 0o600 });
             response.on('data', (chunk) => {
                 downloadedBytes += chunk.length;
+                if (downloadedBytes > maxBytes) {
+                    request.destroy(new Error('download-size-rejected'));
+                    output.destroy();
+                    cleanup();
+                    return;
+                }
+                hash.update(chunk);
                 if (totalBytes > 0) onProgress((downloadedBytes / totalBytes) * 100);
             });
             response.pipe(output);
-            output.on('finish', () => output.close(() => resolve(destinationPath)));
-            output.on('error', (error) => output.close(() => reject(error)));
+            output.on('finish', () => output.close(async () => {
+                try {
+                    const actual = hash.digest('hex');
+                    if (actual !== String(artifact.sha256 || '').toLowerCase()) throw new Error('download-integrity-failed');
+                    await fs.promises.rename(temp, destinationPath);
+                    resolve(destinationPath);
+                } catch (error) { cleanup(); reject(error); }
+            }));
+            output.on('error', (error) => output.close(() => { cleanup(); reject(error); }));
         });
         request.setTimeout(120000, () => {
             request.destroy(new Error('İndirme zaman aşımına uğradı.'));
         });
-        request.on('error', reject);
+        request.on('error', (error) => { cleanup(); reject(error); });
     });
 }
 
@@ -258,9 +309,14 @@ async function ensureYtDlpBinary(app, emit) {
     if (existing) return existing;
 
     const targetPath = getManagedYtDlpPath(app);
+    const artifact = YTDLP_ARTIFACTS[`${process.platform}:${os.arch()}`];
+    if (!artifact) throw new Error('Bu platform için doğrulanmış yt-dlp paketi yok.');
     await fs.promises.mkdir(path.dirname(targetPath), { recursive: true });
+    // A legacy managed binary has no trusted provenance. Replace it only after
+    // a fresh pinned artifact passes verification below.
+    await fs.promises.unlink(targetPath).catch((error) => { if (error?.code !== 'ENOENT') throw error; });
     emitDependencyStatus(emit, 'yt-dlp', 'running', 'yt-dlp indiriliyor', 0);
-    await downloadFile(getYtDlpDownloadUrl(), targetPath, (percent) => {
+    await downloadVerifiedFile({ ...artifact, url: getYtDlpDownloadUrl() }, targetPath, (percent) => {
         emitDependencyStatus(emit, 'yt-dlp', 'running', `%${Math.round(percent)}`, percent);
     });
     await makeExecutable(targetPath);
@@ -282,12 +338,15 @@ async function ensureFfmpegBinary(app, emit) {
         await fs.promises.rm(extractDir, { recursive: true, force: true });
         await fs.promises.mkdir(extractDir, { recursive: true });
         emitDependencyStatus(emit, 'ffmpeg', 'running', 'FFmpeg indiriliyor', 0);
-        await downloadFile(WINDOWS_FFMPEG_ZIP_URL, zipPath, (percent) => {
+        const artifact = FFMPEG_ARTIFACTS[`${process.platform}:${os.arch()}`];
+        if (!artifact) throw new Error('Bu platform için doğrulanmış FFmpeg paketi yok.');
+        await downloadVerifiedFile(artifact, zipPath, (percent) => {
             emitDependencyStatus(emit, 'ffmpeg', 'running', `%${Math.round(percent)}`, percent);
         });
         await extractZipWithPowershell(zipPath, extractDir);
         const extracted = findFileRecursiveSync(extractDir, 'ffmpeg.exe');
         if (!extracted) throw new Error('Arşiv içinde ffmpeg.exe bulunamadı.');
+        if (sha256FileSync(extracted) !== artifact.binarySha256) throw new Error('FFmpeg binary bütünlük doğrulaması başarısız.');
         await fs.promises.copyFile(extracted, targetPath);
         await fs.promises.rm(zipPath, { force: true });
         await fs.promises.rm(extractDir, { recursive: true, force: true });
@@ -302,12 +361,15 @@ async function ensureFfmpegBinary(app, emit) {
         await fs.promises.rm(extractDir, { recursive: true, force: true });
         await fs.promises.mkdir(extractDir, { recursive: true });
         emitDependencyStatus(emit, 'ffmpeg', 'running', 'FFmpeg indiriliyor', 0);
-        await downloadFile(linuxArchiveUrl, archivePath, (percent) => {
+        const artifact = FFMPEG_ARTIFACTS[`${process.platform}:${os.arch()}`];
+        if (!artifact) throw new Error('Bu platform için doğrulanmış FFmpeg paketi yok.');
+        await downloadVerifiedFile(artifact, archivePath, (percent) => {
             emitDependencyStatus(emit, 'ffmpeg', 'running', `%${Math.round(percent)}`, percent);
         });
         await extractTarXz(archivePath, extractDir);
         const extracted = findFileRecursiveSync(extractDir, 'ffmpeg');
         if (!extracted) throw new Error('Arşiv içinde ffmpeg bulunamadı.');
+        if (sha256FileSync(extracted) !== artifact.binarySha256) throw new Error('FFmpeg binary bütünlük doğrulaması başarısız.');
         await fs.promises.copyFile(extracted, targetPath);
         await makeExecutable(targetPath);
         await fs.promises.rm(archivePath, { force: true });

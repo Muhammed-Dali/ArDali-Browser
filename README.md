@@ -19,7 +19,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/Muhammed-Dali/ArDali-WebMedia/releases/latest"><strong>Download v5.3.0</strong></a>
+  <a href="https://github.com/Muhammed-Dali/ArDali-WebMedia/releases/latest"><strong>Download v5.4.0</strong></a>
   · <a href="https://muhammed-dali.github.io/ArDali-WebMedia/">Website</a>
   · <a href="#installation">Install</a>
   · <a href="CONTRIBUTING.md">Contribute</a>
@@ -37,6 +37,34 @@
 - Screen recording, music recognition, gallery, playlists, and MPRIS integration
 - Localized interface with multiple language packs
 - Linux packages including AppImage, DEB, RPM, and an AUR package
+
+## 🔐 Password Manager
+
+ArDali's password manager stores credentials only on the local device; credentials are never uploaded to a server. The credential vault is encrypted with AES-256-GCM, integrates with the operating system's secure key storage, and is protected by a master password with configurable automatic locking.
+
+Credential storage and autofill are restricted to HTTPS pages with exact origin matching. Autofill requires user interaction and uses short-lived, single-use authorization so credentials cannot be silently requested by a page. Legacy vault data is migrated automatically to the current encrypted format after a successful unlock.
+
+## 🛡 Security
+
+### Electron security
+
+- Chromium sandboxing, context isolation, and disabled Node.js integration
+- Hardened `BrowserWindow` settings, a strict Content Security Policy, and DOMPurify sanitization
+- Centralized IPC validation with role-based channel permissions
+- Restricted site permissions and securely validated external protocol handling
+
+### Password security
+
+- AES-256-GCM encryption backed by secure OS key storage
+- Brute-force protection with progressive unlock delays
+- Configurable automatic locking and short-lived authorization tokens
+- Secure memory handling that clears sensitive key and plaintext buffers
+
+## 🔄 Secure Release Pipeline
+
+Every versioned release must pass the automated pre-release security gate before publication. The gate runs `npm audit`, Electron Security Tests, Credential Vault Tests, Binary Manifest Verification, Release Metadata Verification, and the Security Suite before the application is built and packaged.
+
+If any critical security check fails, the workflow stops automatically: no GitHub Release or AUR/Pacman package is published.
 
 ## Demo and screenshots
 

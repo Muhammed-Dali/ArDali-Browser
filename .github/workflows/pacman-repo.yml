@@ -1,12 +1,7 @@
 name: Publish Pacman Repo
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - ".github/workflows/pacman-repo.yml"
-      - "packaging/aur/ardali-bin/**"
-  workflow_dispatch:
+  workflow_call:
 
 permissions:
   contents: read
@@ -18,11 +13,6 @@ jobs:
   publish:
     permissions:
       contents: write
-    if: >-
-      ${{
-        github.event_name == 'push' ||
-        github.event_name == 'workflow_dispatch'
-      }}
     runs-on: ubuntu-24.04
     container:
       image: archlinux:latest
@@ -38,6 +28,23 @@ jobs:
           set -euo pipefail
           pacman -Syu --noconfirm
           pacman -S --noconfirm --needed base-devel git curl pacman-contrib ffmpeg fuse2 github-cli nodejs
+
+      - name: Pin package checksum to published AppImage
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          pkg_dir="${GITHUB_WORKSPACE}/packaging/aur/ardali-bin"
+          appimage="ArDali-$(node -p "require('./package.json').version")-linux-x86_64.AppImage"
+          download_dir="$(mktemp -d)"
+          gh release download "${GITHUB_REF_NAME}" --pattern "${appimage}" --dir "${download_dir}"
+          checksum="$(sha256sum "${download_dir}/${appimage}" | cut -d' ' -f1)"
+          test "${#checksum}" -eq 64
+          sed -i -E "s/^sha256sums=\('[0-9a-f]{64}'\)$/sha256sums=('${checksum}')/" "${pkg_dir}/PKGBUILD"
+          sed -i -E "s/^(\s*sha256sums = )[0-9a-f]{64}$/\1${checksum}/" "${pkg_dir}/.SRCINFO"
+          grep -Fqx "sha256sums=('${checksum}')" "${pkg_dir}/PKGBUILD"
+          grep -Eq "^\s*sha256sums = ${checksum}$" "${pkg_dir}/.SRCINFO"
 
       - name: Verify release and AUR metadata consistency
         run: node scripts/verify-release-metadata.js --include-aur

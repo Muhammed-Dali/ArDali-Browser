@@ -12,7 +12,10 @@ document.addEventListener('DOMContentLoaded', () => {
     const navForward = document.getElementById('webNavForward');
     const navReload = document.getElementById('webNavReload');
     const navHome = document.getElementById('webNavHome');
+    const navPasswords = document.getElementById('webNavPasswords');
     const addressInput = document.getElementById('webAddressInput');
+
+    navPasswords?.addEventListener('click', () => window.ardali?.credentialVault?.openManager?.());
 
     const newTabPage = document.getElementById('webNewTabPage');
     const ntpSearchInput = document.getElementById('webNtpSearchInput');
@@ -34,6 +37,13 @@ document.addEventListener('DOMContentLoaded', () => {
     const blankPageChecks = new Map();
     const closedTabs = [];
     const mutedSiteHosts = new Set();
+    const WEB_SESSION_STORAGE_KEY = 'ardali_web_tabs_session_v1';
+    const BOOKMARK_FAVICONS_STORAGE_KEY = 'ardali_bookmark_favicons_v1';
+    const MAX_RESTORED_TABS = 30;
+    let restoreLastSessionEnabled = true;
+    let isRestoringSession = false;
+    let sessionPersistTimer = 0;
+    const restoredTabPreloadTimers = new Set();
     let splitTabId = null;
     let verticalTabsEnabled = false;
     const LOAD_STALL_MS = 30000;
@@ -70,6 +80,222 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     window.createTab = createTab;
+
+    function sanitizeSessionUrl(value) {
+        const raw = String(value || '').trim();
+        if (raw === BLANK_URL || raw === 'ardali://downloads') return raw;
+        try {
+            const parsed = new URL(raw);
+            if (!['http:', 'https:'].includes(parsed.protocol)) return '';
+            parsed.username = '';
+            parsed.password = '';
+            return parsed.toString().slice(0, 4096);
+        } catch (_) {
+            return '';
+        }
+    }
+
+    function sanitizeSessionFavicon(value) {
+        const raw = String(value || '').trim();
+        if (!raw || raw.length > 8192) return '';
+        if (/^icons\/[a-z0-9_./-]+\.(?:png|svg|ico)$/i.test(raw)) return raw;
+        if (/^data:image\/(?:png|jpeg|webp|x-icon);base64,[a-z0-9+/=]+$/i.test(raw) && raw.length <= 8192) return raw;
+        try {
+            const parsed = new URL(raw);
+            return ['http:', 'https:'].includes(parsed.protocol) ? parsed.toString().slice(0, 4096) : '';
+        } catch (_) {
+            return '';
+        }
+    }
+
+    function getFallbackFaviconForUrl(value) {
+        try {
+            const host = new URL(String(value || '')).hostname.toLowerCase();
+            if (!host) return 'icons/app/ardali_256.png';
+            if (host.includes('whatsapp.com')) return 'icons/app/whatsapp.png';
+            return `https://icons.duckduckgo.com/ip3/${encodeURIComponent(host)}.ico`;
+        } catch (_) {
+            return 'icons/app/ardali_256.png';
+        }
+    }
+
+    function readBookmarkFavicons() {
+        try {
+            const saved = JSON.parse(localStorage.getItem(BOOKMARK_FAVICONS_STORAGE_KEY) || '{}');
+            return saved && typeof saved === 'object' && !Array.isArray(saved) ? saved : {};
+        } catch (_) {
+            return {};
+        }
+    }
+
+    function saveBookmarkFavicon(url, favicon) {
+        const safeUrl = sanitizeSessionUrl(url);
+        const safeFavicon = sanitizeSessionFavicon(favicon);
+        if (!safeUrl || !safeFavicon) return;
+        const favicons = readBookmarkFavicons();
+        favicons[safeUrl] = safeFavicon;
+        const limited = Object.fromEntries(Object.entries(favicons).slice(-200));
+        try { localStorage.setItem(BOOKMARK_FAVICONS_STORAGE_KEY, JSON.stringify(limited)); } catch (_) {}
+    }
+
+    function removeBookmarkFavicon(url) {
+        const favicons = readBookmarkFavicons();
+        if (!Object.prototype.hasOwnProperty.call(favicons, url)) return;
+        delete favicons[url];
+        try { localStorage.setItem(BOOKMARK_FAVICONS_STORAGE_KEY, JSON.stringify(favicons)); } catch (_) {}
+    }
+
+    function buildSessionSnapshot() {
+        const cleanTabs = tabs.slice(0, MAX_RESTORED_TABS).map((tab) => ({
+            url: sanitizeSessionUrl(tab.url),
+            title: String(tab.title || NEW_TAB_TITLE).replace(/[\u0000-\u001f\u007f]/g, '').slice(0, 160),
+            favicon: sanitizeSessionFavicon(tab.favicon) || (parseHttpUrl(tab.url) ? getFallbackFaviconForUrl(tab.url) : ''),
+            pinned: tab.pinned === true,
+            groupName: String(tab.groupName || '').replace(/[\u0000-\u001f\u007f]/g, '').slice(0, 60)
+        })).filter((tab) => tab.url);
+        const activeIndex = Math.max(0, tabs.findIndex((tab) => tab.id === activeTabId));
+        return { version: 1, activeIndex: Math.min(activeIndex, Math.max(0, cleanTabs.length - 1)), tabs: cleanTabs, savedAt: Date.now() };
+    }
+
+    function persistTabSession(immediate = false) {
+        if (isRestoringSession || !restoreLastSessionEnabled) return;
+        clearTimeout(sessionPersistTimer);
+        const write = () => {
+            try { localStorage.setItem(WEB_SESSION_STORAGE_KEY, JSON.stringify(buildSessionSnapshot())); } catch (_) {}
+        };
+        if (immediate) write(); else sessionPersistTimer = setTimeout(write, 180);
+    }
+
+    function readRestorableSession() {
+        if (!restoreLastSessionEnabled) return null;
+        try {
+            const parsed = JSON.parse(localStorage.getItem(WEB_SESSION_STORAGE_KEY) || 'null');
+            if (!parsed || parsed.version !== 1 || !Array.isArray(parsed.tabs)) return null;
+            const cleanTabs = parsed.tabs.slice(0, MAX_RESTORED_TABS).map((tab) => ({
+                url: sanitizeSessionUrl(tab?.url),
+                title: String(tab?.title || NEW_TAB_TITLE).replace(/[\u0000-\u001f\u007f]/g, '').slice(0, 160),
+                favicon: sanitizeSessionFavicon(tab?.favicon) || (parseHttpUrl(tab?.url) ? getFallbackFaviconForUrl(tab.url) : ''),
+                pinned: tab?.pinned === true,
+                groupName: String(tab?.groupName || '').replace(/[\u0000-\u001f\u007f]/g, '').slice(0, 60)
+            })).filter((tab) => tab.url);
+            if (!cleanTabs.length) return null;
+            return { tabs: cleanTabs, activeIndex: Math.max(0, Math.min(cleanTabs.length - 1, Number(parsed.activeIndex) || 0)) };
+        } catch (_) {
+            return null;
+        }
+    }
+
+    function restoreTabSession() {
+        const snapshot = readRestorableSession();
+        if (!snapshot) return false;
+        isRestoringSession = true;
+        const created = snapshot.tabs.map((saved) => {
+            const tab = createTab(saved.url, false, { deferLoad: true });
+            if (!tab) return null;
+            tab.title = saved.title || tab.title;
+            tab.restoreTitle = tab.title;
+            tab.favicon = saved.favicon || getFallbackFaviconForUrl(saved.url);
+            tab.pinned = saved.pinned;
+            tab.groupName = saved.groupName;
+            return tab;
+        }).filter(Boolean);
+        if (!created.length) { isRestoringSession = false; return false; }
+        const activeTab = created[Math.min(snapshot.activeIndex, created.length - 1)];
+        renderTabs();
+        activateTab(activeTab.id);
+        scheduleRestoredTabPreloads(created, activeTab.id);
+        isRestoringSession = false;
+        persistTabSession(true);
+        return true;
+    }
+
+    function scheduleRestoredTabPreloads(restoredTabs, activeId) {
+        const waitingTabs = restoredTabs.filter((tab) => (
+            tab.id !== activeId && tab.deferredLoad && parseHttpUrl(tab.pendingRestoreUrl || tab.url)
+        ));
+        waitingTabs.forEach((tab, index) => {
+            const timer = setTimeout(() => {
+                restoredTabPreloadTimers.delete(timer);
+                startDeferredTabLoad(tab.id, { background: true, reason: 'session-preload' });
+            }, 500 + (index * 700));
+            restoredTabPreloadTimers.add(timer);
+        });
+    }
+
+    function startDeferredTabLoad(tabId, options = {}) {
+        const tab = tabs.find((item) => item.id === tabId);
+        const wv = getTabWebView(tabId);
+        if (!tab || !wv || !tab.deferredLoad) return false;
+        const targetUrl = sanitizeSessionUrl(tab.pendingRestoreUrl || tab.url);
+        if (!parseHttpUrl(targetUrl)) {
+            tab.deferredLoad = false;
+            return false;
+        }
+        tab.deferredLoad = false;
+        tab.restoreLoadFailed = false;
+        tab.pendingRestoreUrl = targetUrl;
+        runWhenWebviewReady(wv, () => {
+            if (!wv.isConnected || !tabs.some((item) => item.id === tabId)) return;
+            applyPreferredUserAgent(wv, targetUrl);
+            try {
+                if (options.background === true) {
+                    try { wv.setAudioMuted(true); } catch (_) {}
+                    tab.backgroundPreloadMuted = true;
+                }
+                tab.isLoading = true;
+                tab.loadStartedAt = Date.now();
+                wv.setAttribute('src', targetUrl);
+                scheduleLoadWatchdog(tabId, targetUrl);
+                renderTabs();
+            } catch (_) {
+                tab.restoreLoadFailed = true;
+                tab.deferredLoad = true;
+                tab.isLoading = false;
+                renderTabs();
+            }
+        });
+        return true;
+    }
+
+    async function setupDefaultBrowserBanner() {
+        const banner = document.getElementById('webDefaultBrowserBanner');
+        const button = document.getElementById('webMakeDefaultBrowserBtn');
+        const dismiss = document.getElementById('webDefaultBrowserDismiss');
+        const message = document.getElementById('webDefaultBrowserMessage');
+        if (!banner || !button || !dismiss || !message || !window.ardali?.webSecurity?.getDefaultBrowserStatus) return;
+        const language = String(document.documentElement.lang || navigator.language || 'en').toLowerCase();
+        const tr = language.startsWith('tr');
+        button.textContent = tr ? 'Varsayılan olarak ayarla' : 'Set as default';
+        message.textContent = tr ? 'ArDali varsayılan web tarayıcınız değil' : 'ArDali is not your default browser';
+        dismiss.setAttribute('aria-label', tr ? 'Kapat' : 'Close');
+        if (localStorage.getItem('ardali_default_browser_banner_dismissed') === '1') return;
+        try {
+            const status = await window.ardali.webSecurity.getDefaultBrowserStatus();
+            if (!status?.supported || status?.isDefault) return;
+            banner.classList.remove('hidden');
+        } catch (_) { return; }
+        dismiss.addEventListener('click', () => {
+            localStorage.setItem('ardali_default_browser_banner_dismissed', '1');
+            banner.classList.add('hidden');
+        });
+        button.addEventListener('click', async () => {
+            button.disabled = true;
+            message.textContent = tr ? 'Sistem tarayıcı ayarı güncelleniyor…' : 'Updating the system browser setting…';
+            try {
+                const result = await window.ardali.webSecurity.makeDefaultBrowser();
+                if (result?.isDefault) {
+                    message.textContent = tr ? 'ArDali artık varsayılan tarayıcınız' : 'ArDali is now your default browser';
+                    setTimeout(() => banner.classList.add('hidden'), 1200);
+                } else if (result?.requiresSystemConfirmation) {
+                    message.textContent = tr ? 'Windows ayarlarında ArDali’yi seçin' : 'Choose ArDali in Windows settings';
+                } else {
+                    message.textContent = tr ? 'Varsayılan tarayıcı değiştirilemedi' : 'The default browser could not be changed';
+                }
+            } catch (_) {
+                message.textContent = tr ? 'Varsayılan tarayıcı değiştirilemedi' : 'The default browser could not be changed';
+            } finally { button.disabled = false; }
+        });
+    }
 
     // --- Helper Functions ---
     function generateId() {
@@ -129,6 +355,7 @@ document.addEventListener('DOMContentLoaded', () => {
         bookmarks = Array.isArray(bookmarks) ? bookmarks : [];
         for (const tab of tabs) {
             if (tab.url !== BLANK_URL && !bookmarks.includes(tab.url)) bookmarks.push(tab.url);
+            if (tab.url !== BLANK_URL) saveBookmarkFavicon(tab.url, tab.favicon);
         }
         localStorage.setItem('ardali_bookmarks', JSON.stringify(bookmarks));
         renderBookmarks();
@@ -767,41 +994,53 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
         if (tab) {
+            tab.url = url;
+            tab.deferredLoad = false;
+            tab.restoreLoadFailed = false;
             tab.loadRecoveryCount = 0;
             setTabLoading(tab.id, url !== BLANK_URL, url);
             scheduleLoadWatchdog(tab.id, url);
         }
         applyPreferredUserAgent(wv, url);
-        try {
-            const maybe = wv.loadURL(url);
-            if (maybe && typeof maybe.catch === 'function') {
-                maybe.catch((err) => {
-                    const code = String(err?.code || err?.message || '');
-                    if (code.includes('ERR_ABORTED') || code.includes('-3')) return;
-                    console.warn('[WEB] loadURL failed:', err?.message || err);
-                });
+        runWhenWebviewReady(wv, () => {
+            if (!wv.isConnected || (tab && !tabs.some((item) => item.id === tab.id))) return;
+            try {
+                if (typeof wv.loadURL === 'function') {
+                    const navigation = wv.loadURL(url);
+                    navigation?.catch?.((error) => {
+                        const code = Number(error?.errno || error?.errorCode || 0);
+                        if (code === -3 || !tab || !tabs.some((item) => item.id === tab.id)) return;
+                        console.warn('[WEB] navigation promise rejected:', error?.code || error?.message || 'navigation-error');
+                        setTimeout(() => recoverWebviewLoad(tab.id, 'navigation-rejected'), 120);
+                    });
+                } else {
+                    wv.setAttribute('src', url);
+                }
+            } catch (err) {
+                console.warn('[WEB] navigation failed:', err?.message || err);
+                if (tab) {
+                    setTimeout(() => recoverWebviewLoad(tab.id, 'navigation-threw'), 120);
+                }
             }
-        } catch (err) {
-            const code = String(err?.code || err?.message || '');
-            if (code.includes('ERR_ABORTED') || code.includes('-3')) return;
-            console.warn('[WEB] loadURL failed:', err?.message || err);
-        }
+        });
     }
 
     // --- Tab Management ---
-    function createTab(url = BLANK_URL, makeActive = true) {
+    function createTab(url = BLANK_URL, makeActive = true, options = {}) {
         const id = generateId();
         const isDownloadsTab = isDownloadsUrl(url);
         const tab = {
             id,
             url,
             title: isDownloadsTab ? 'İndirilenler' : (url === BLANK_URL ? NEW_TAB_TITLE : 'Yükleniyor...'),
-            isLoading: url !== BLANK_URL && !isDownloadsTab,
+            isLoading: url !== BLANK_URL && !isDownloadsTab && options.deferLoad !== true,
             favicon: '',
             zoomFactor: 1.0,
             isPlayingMedia: false,
-            lastActive: Date.now()
+            lastActive: Date.now(),
+            deferredLoad: options.deferLoad === true && url !== BLANK_URL && !isDownloadsTab
         };
+        if (tab.deferredLoad) tab.pendingRestoreUrl = url;
 
         // Olayları ve görünürlük durumunu guest oluşturulmadan önce hazırla.
         // Linux'ta ekran dışında/örtülü eklenen bir webview ilk navigasyonu
@@ -818,7 +1057,7 @@ document.addEventListener('DOMContentLoaded', () => {
         wv.addEventListener('media-paused', () => { tab.isPlayingMedia = false; });
 
         const targetUrl = isDownloadsTab ? BLANK_URL : url;
-        if (targetUrl !== BLANK_URL) {
+        if (targetUrl !== BLANK_URL && !tab.deferredLoad) {
             wv.addEventListener('dom-ready', () => {
                 applyPreferredUserAgent(wv, targetUrl);
                 try {
@@ -863,7 +1102,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         // did-attach çok erken kaçarsa veya guest gecikirse kontrollü yedek.
-        if (!isDownloadsTab && url !== BLANK_URL) {
+        if (!isDownloadsTab && url !== BLANK_URL && !tab.deferredLoad) {
             const ensureCreatedTabLoaded = () => {
                 if (!wv.isConnected) return;
                 try {
@@ -875,6 +1114,7 @@ document.addEventListener('DOMContentLoaded', () => {
             };
             setTimeout(ensureCreatedTabLoaded, 500);
         }
+        persistTabSession();
         return tab;
     }
 
@@ -908,6 +1148,7 @@ document.addEventListener('DOMContentLoaded', () => {
             renderTabs();
         }
         updateSplitView();
+        persistTabSession(true);
     }
 
     function activateTab(id) {
@@ -956,6 +1197,13 @@ document.addEventListener('DOMContentLoaded', () => {
             } catch (_) {}
         }
 
+        if (wv && tab.deferredLoad) {
+            startDeferredTabLoad(tab.id, { background: false, reason: 'tab-activated' });
+        }
+        if (wv && tab.backgroundPreloadMuted) {
+            try { wv.setAudioMuted(tab.muted === true || tab.siteMuted === true); } catch (_) {}
+            tab.backgroundPreloadMuted = false;
+        }
         renderTabs();
 
         const allWVs = document.querySelectorAll('.webviews-container webview');
@@ -976,6 +1224,7 @@ document.addEventListener('DOMContentLoaded', () => {
             navBack.disabled = !wv?.canGoBack?.();
             navForward.disabled = !wv?.canGoForward?.();
         } catch (_) {}
+        persistTabSession();
     }
 
     function getActiveTab() {
@@ -989,6 +1238,13 @@ document.addEventListener('DOMContentLoaded', () => {
     function updateActiveTabState(url, title) {
         const tab = getActiveTab();
         if (tab) {
+            const pendingRestoreUrl = sanitizeSessionUrl(tab.pendingRestoreUrl);
+            if (url === BLANK_URL && parseHttpUrl(pendingRestoreUrl)) {
+                updateAddressBar(tab.url);
+                updateNewTabPageVisibility(tab.url);
+                renderTabs();
+                return;
+            }
             tab.url = url;
             if (isDownloadsUrl(url)) {
                 tab.title = 'İndirilenler';
@@ -1001,6 +1257,7 @@ document.addEventListener('DOMContentLoaded', () => {
             renderTabs();
             updateAddressBar(url);
             updateNewTabPageVisibility(url);
+            persistTabSession();
         }
     }
 
@@ -1162,6 +1419,7 @@ document.addEventListener('DOMContentLoaded', () => {
         existing.forEach(el => el.remove());
 
         let bookmarks = [];
+        const savedFavicons = readBookmarkFavicons();
         try {
             bookmarks = JSON.parse(localStorage.getItem('ardali_bookmarks') || '[]');
         } catch(e) {}
@@ -1181,7 +1439,10 @@ document.addEventListener('DOMContentLoaded', () => {
             const img = document.createElement('img');
             try {
                 const domain = new URL(url).hostname;
-                if (domain.includes('whatsapp.com')) {
+                const savedFavicon = sanitizeSessionFavicon(savedFavicons[sanitizeSessionUrl(url)] || savedFavicons[url]);
+                if (savedFavicon) {
+                    img.src = savedFavicon;
+                } else if (domain.includes('whatsapp.com')) {
                     img.src = 'icons/app/whatsapp.png';
                 } else {
                     img.src = `https://icons.duckduckgo.com/ip3/${domain}.ico`;
@@ -1279,9 +1540,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             }
 
-            tabEl.className = `web-tab ${isTabActive ? 'active' : ''} ${tab.pinned ? 'pinned' : ''} ${tab.groupName ? 'grouped' : ''} ${(tab.muted || tab.siteMuted) ? 'muted' : ''}`;
+            tabEl.className = `web-tab ${isTabActive ? 'active' : ''} ${tab.pinned ? 'pinned' : ''} ${tab.groupName ? 'grouped' : ''} ${(tab.muted || tab.siteMuted) ? 'muted' : ''} ${tab.restoreLoadFailed ? 'restore-load-failed' : ''}`;
             tabEl.dataset.groupName = tab.groupName || '';
-            tabEl.title = tab.groupName ? `${tab.title} — ${tab.groupName}` : tab.title;
+            const baseTitle = tab.groupName ? `${tab.title} — ${tab.groupName}` : tab.title;
+            tabEl.title = tab.restoreLoadFailed ? `${baseTitle} — Yüklenemedi, yeniden denemek için tıklayın` : baseTitle;
 
             const titleEl = tabEl.querySelector('.web-tab-title');
             if (titleEl.textContent !== tab.title) {
@@ -1303,10 +1565,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 } else if (tab.favicon) {
                     faviconSrc = tab.favicon;
                 } else if (tab.url !== BLANK_URL && isValidUrl(tab.url)) {
-                    try {
-                        const domain = new URL(tab.url).hostname;
-                        faviconSrc = `https://www.google.com/s2/favicons?domain=${domain}&sz=32`;
-                    } catch(e) {}
+                    faviconSrc = getFallbackFaviconForUrl(tab.url);
                 }
             }
 
@@ -1369,6 +1628,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (webTabNewBtn) {
             webTabsList.appendChild(webTabNewBtn);
         }
+        persistTabSession();
     }
 
     // --- Events ---
@@ -1484,10 +1744,12 @@ document.addEventListener('DOMContentLoaded', () => {
             if (tab) {
                 tab.isLoading = false;
                 tab.hasUsableContent = true;
+                tab.restoreLoadFailed = false;
                 const currentUrl = String(wv.getURL?.() || '').trim();
                 const currentTitle = String(wv.getTitle?.() || '').trim();
                 if (currentUrl && currentUrl !== BLANK_URL) tab.url = currentUrl;
                 if (currentTitle && currentTitle !== BLANK_URL) tab.title = currentTitle;
+                if (currentUrl && currentUrl !== BLANK_URL) tab.pendingRestoreUrl = '';
             }
 
             if (activeTabId === tabId) {
@@ -1513,8 +1775,12 @@ document.addEventListener('DOMContentLoaded', () => {
             if (tab) {
                 tab.isLoading = false;
                 tab.hasUsableContent = true;
+                tab.restoreLoadFailed = false;
                 const currentUrl = wv.getURL();
-                if (currentUrl) tab.url = currentUrl;
+                if (currentUrl && currentUrl !== BLANK_URL) {
+                    tab.url = currentUrl;
+                    tab.pendingRestoreUrl = '';
+                }
                 const currentTitle = String(wv.getTitle?.() || '').trim();
                 if (currentTitle && currentTitle !== BLANK_URL) tab.title = currentTitle;
                 if (activeTabId === tabId) updateActiveTabState(currentUrl, wv.getTitle());
@@ -1547,6 +1813,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             }
             setTabLoading(tabId, false, failedUrl);
+            const failedTab = tabs.find(t => t.id === tabId);
+            if (failedTab?.restoreTitle) failedTab.title = failedTab.restoreTitle;
+            if (failedTab?.restoreTitle && sanitizeSessionUrl(failedTab.url) !== BLANK_URL) {
+                failedTab.restoreLoadFailed = true;
+                failedTab.deferredLoad = true;
+                renderTabs();
+            }
             if (activeTabId === tabId) {
                 notifyWebBrowser(`Sayfa yüklenemedi (${code || 'hata'}).`, 'error');
             }
@@ -1556,8 +1829,8 @@ document.addEventListener('DOMContentLoaded', () => {
             const tab = tabs.find(t => t.id === tabId);
             if (!tab) return;
             const currentUrl = String(wv.getURL?.() || tab.url || '').trim();
-            if (currentUrl) tab.url = currentUrl;
-            if (e.title) tab.title = e.title;
+            if (currentUrl && currentUrl !== BLANK_URL) tab.url = currentUrl;
+            if (e.title && currentUrl !== BLANK_URL) tab.title = e.title;
             if (activeTabId === tabId) {
                 updateActiveTabState(tab.url, tab.title);
             } else {
@@ -1568,7 +1841,13 @@ document.addEventListener('DOMContentLoaded', () => {
         wv.addEventListener('page-favicon-updated', (e) => {
             const tab = tabs.find(t => t.id === tabId);
             if (tab && e.favicons && e.favicons.length > 0) {
-                tab.favicon = e.favicons[0];
+                tab.favicon = sanitizeSessionFavicon(e.favicons[0]) || getFallbackFaviconForUrl(tab.url);
+                let bookmarks = [];
+                try { bookmarks = JSON.parse(localStorage.getItem('ardali_bookmarks') || '[]'); } catch (_) {}
+                if (Array.isArray(bookmarks) && bookmarks.includes(tab.url)) {
+                    saveBookmarkFavicon(tab.url, tab.favicon);
+                    renderBookmarks();
+                }
                 renderTabs();
             }
         });
@@ -1584,6 +1863,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 return;
             }
             if (e.isMainFrame) {
+                const navigationUrl = String(e.url || '').trim();
+                const pendingRestore = parseHttpUrl(getTabById(tabId)?.pendingRestoreUrl);
+                if (navigationUrl === BLANK_URL && pendingRestore) return;
                 // Amazon gibi SPA'lar aynı belge içinde History API ile URL'yi
                 // günceller. Chromium bunu in-place navigasyon olarak bildirir;
                 // gerçek bir ağ yüklemesi olmadığı için spinner/watchdog başlatma.
@@ -1619,7 +1901,9 @@ document.addEventListener('DOMContentLoaded', () => {
             if (e?.isMainFrame === false) return;
             const tab = tabs.find(t => t.id === tabId);
             if (!tab) return;
-            tab.url = e.url || wv.getURL() || tab.url;
+            const navigatedUrl = String(e.url || wv.getURL?.() || '').trim();
+            if (navigatedUrl === BLANK_URL && parseHttpUrl(tab.pendingRestoreUrl)) return;
+            tab.url = navigatedUrl || tab.url;
             if (activeTabId === tabId) {
                 updateActiveTabState(tab.url, wv.getTitle());
                 window.syncActivePlatformButtonByUrl?.(tab.url);
@@ -1651,6 +1935,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 handleWebviewZoomScroll(tabId, direction);
             } else if (e.channel === 'ardali-webview-pointer-down') {
                 window.dispatchEvent(new CustomEvent('ardali:webview-pointer-down', { detail: { tabId } }));
+            } else if (e.channel === 'ardali-vault-stage-status' && activeTabId === tabId) {
+                notifyWebBrowser('E-posta güvenli biçimde hazırlandı; şifre adımı bekleniyor.', 'info', 4200);
+            } else if (e.channel === 'ardali-vault-fill-status' && activeTabId === tabId) {
+                const filled = e.args?.[0]?.state === 'filled';
+                notifyWebBrowser(filled ? 'Kayıtlı giriş bilgisi dolduruldu.' : 'Kayıtlı giriş bilgisi doldurulamadı. Kasanın açık olduğunu kontrol edin.', filled ? 'success' : 'warning', 4200);
             }
         });
     }
@@ -1763,10 +2052,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 icon.style.fontVariationSettings = "'FILL' 0";
                 icon.style.color = '';
                 bookmarks = bookmarks.filter(url => url !== tab.url);
+                removeBookmarkFavicon(tab.url);
             } else {
                 icon.style.fontVariationSettings = "'FILL' 1";
                 icon.style.color = 'var(--accent-primary, #00ffcc)';
                 if (!bookmarks.includes(tab.url)) bookmarks.push(tab.url);
+                saveBookmarkFavicon(tab.url, tab.favicon || getFallbackFaviconForUrl(tab.url));
             }
 
             localStorage.setItem('ardali_bookmarks', JSON.stringify(bookmarks));
@@ -1838,7 +2129,12 @@ document.addEventListener('DOMContentLoaded', () => {
                     data.forEach(item => {
                         const div = document.createElement('div');
                         div.className = 'web-suggestion-item';
-                        div.innerHTML = `<span class="material-symbols-rounded">search</span> <span>${item.phrase}</span>`;
+                        const icon = document.createElement('span');
+                        icon.className = 'material-symbols-rounded';
+                        icon.textContent = 'search';
+                        const label = document.createElement('span');
+                        label.textContent = String(item?.phrase || '').slice(0, 256);
+                        div.append(icon, document.createTextNode(' '), label);
                         div.onmousedown = (e) => {
                             e.preventDefault();
                             addressInput.value = item.phrase;
@@ -1915,8 +2211,13 @@ document.addEventListener('DOMContentLoaded', () => {
                     data.forEach(item => {
                         const div = document.createElement('div');
                         div.className = 'web-suggestion-item';
-                        div.dataset.phrase = item.phrase;
-                        div.innerHTML = `<span class="material-symbols-rounded">search</span> <span>${item.phrase}</span>`;
+                        div.dataset.phrase = String(item?.phrase || '').slice(0, 256);
+                        const icon = document.createElement('span');
+                        icon.className = 'material-symbols-rounded';
+                        icon.textContent = 'search';
+                        const label = document.createElement('span');
+                        label.textContent = div.dataset.phrase;
+                        div.append(icon, document.createTextNode(' '), label);
                         div.onmousedown = (e) => {
                             e.preventDefault();
                             ntpSearchInput.value = '';
@@ -2020,6 +2321,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Initialize UI
     updateNtpSearchEngineUI(currentSearchEngine);
+    setupDefaultBrowserBanner();
 
     // --- Memory Saver (Tab Discarding) ---
     setInterval(() => {
@@ -2040,9 +2342,19 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }, 60 * 1000); // Check every minute
 
-    // Initialize first tab AFTER all scripts are fully loaded
-    setTimeout(() => {
-        createTab();
+    window.addEventListener('beforeunload', () => persistTabSession(true));
+    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') persistTabSession(true); });
+
+    // Initialize tabs after loading the user's existing Web session preference.
+    setTimeout(async () => {
+        try {
+            const loaded = await window.ardali?.loadSettings?.();
+            restoreLastSessionEnabled = loaded?.webUi?.restoreLastSession !== false;
+            if (!restoreLastSessionEnabled) localStorage.removeItem(WEB_SESSION_STORAGE_KEY);
+        } catch (_) {
+            restoreLastSessionEnabled = true;
+        }
+        if (!restoreTabSession()) createTab();
         renderBookmarks();
     }, 50);
 });

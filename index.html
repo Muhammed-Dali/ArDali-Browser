@@ -3,48 +3,15 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: https:; media-src 'self' file:; connect-src 'self' https: wss:; frame-src 'self' https:;">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'nonce-ardali-local-style-v1' 'unsafe-hashes' 'sha256-Bzu+0IbxFxznzOMZ1xC6igPdTNtMnxymTQ7T88lCZhA=' 'sha256-besIW9odNqwbPllfNOeQDc7XZ1yH7l2EFhD0tOZbY0w=' 'sha256-XNfYdUW7S7AWSxlvq47SGsGIxvvzKwvUGdsFQQ/zXf4=' 'sha256-47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU=' 'sha256-biLFinpqYMtWHmXfkA1BPeCY0/fNt46SAZ+BBk5YUog=' 'sha256-iwlYzbq4N5hZ48DjjqB5AfqXAqPKBIjmkTIayo9ehxo=' 'sha256-zTWJkmbC4hSXy17viiraKi9faqhIVPY5/DTS5iv7I2M='; font-src 'self' data:; img-src 'self' data: https:; media-src 'self' file:; connect-src 'self' https: wss:; frame-src https:; object-src 'none'; base-uri 'none'; form-action 'self';">
     <title>ArDali Media Player</title>
-    <script>
-        (() => {
-            document.documentElement.classList.add('material-icons-loading');
-        })();
-    </script>
-    <!-- Local Material Symbols Font (loaded via main.css) -->
-    <script>
-        (() => {
-            const markReady = () => {
-                document.documentElement.classList.remove('material-icons-loading');
-                document.documentElement.classList.add('material-icons-ready');
-            };
-            if (document.fonts?.load) {
-                Promise.race([
-                    document.fonts.load('24px "Material Symbols Rounded"', 'visibility'),
-                    new Promise((resolve) => setTimeout(resolve, 1200))
-                ]).then(markReady, markReady);
-            } else {
-                markReady();
-            }
-        })();
-    </script>
+    <script src="modules/local-page-bootstrap.js"></script>
+    <script src="node_modules/dompurify/dist/purify.min.js"></script>
+    <script src="modules/safe-html.js"></script>
     <link rel="stylesheet" href="styles/main.css">
     <link rel="stylesheet" href="styles/webDownloads.css">
 </head>
 <body>
-    <script>
-        (() => {
-            try {
-                const allowed = new Set(['aur-renk-efektleri', 'performance-balanced', 'performance-lite', 'ardali', 'dark', 'black', 'light', 'frappe', 'onedark', 'matrix', 'latte', 'solarized-dark', 'neon-night', 'retro-amber', 'deep-ocean', 'forest-mint']);
-                const theme = String(localStorage.getItem('ardali_ui_theme') || localStorage.getItem('theme') || '').trim();
-                if (!allowed.has(theme)) return;
-                document.documentElement.dataset.ardaliTheme = theme;
-                document.documentElement.setAttribute('theme', theme);
-                document.body.setAttribute('data-ardali-theme', theme);
-            } catch {
-                // ignore
-            }
-        })();
-    </script>
     <div class="app-container hidden">
         <!-- Sol Sidebar (İkonlar) -->
 	        <nav class="sidebar" id="sidebar">
@@ -774,7 +741,7 @@
                                     </button>
                                     <input type="text" class="web-address-input" id="webAddressInput" placeholder="Web'de bir şeyler arayın veya URL girin...">
                                     <button class="web-address-zoom hidden" id="webAddressZoom" title="Yakınlaştırma: %100">
-                                        <span class="material-symbols-rounded" style="font-size: 18px;">search</span>
+                                        <span class="material-symbols-rounded icon-size-18">search</span>
                                     </button>
                                     <button class="web-address-bookmark" id="webAddressBookmark" title="Yer İşareti Ekle">
                                         <span class="material-symbols-rounded">star</span>
@@ -796,7 +763,7 @@
                                                 <div class="site-info-item-desc">Yönetin</div>
                                             </div>
                                         </div>
-                                        <div class="site-info-item" onclick="if(window.openSettings) window.openSettings('web');">
+                                        <div class="site-info-item" data-open-web-settings>
                                             <span class="material-symbols-rounded">settings</span>
                                             <div class="site-info-item-text">
                                                 <div class="site-info-item-title">Site ayarları</div>
@@ -817,6 +784,9 @@
                                     </div>
                                 </div>
                                 <div id="webBookmarksStrip" class="web-bookmarks-strip"></div>
+                                <button class="web-nav-btn" id="webNavPasswords" title="Şifre Yöneticisi" aria-label="Şifre Yöneticisi">
+                                    <span class="material-symbols-rounded">key</span>
+                                </button>
                                 <button class="web-nav-btn" id="webNavDownloads" title="İndirmeler">
                                     <span class="material-symbols-rounded">download</span>
                                 </button>
@@ -839,36 +809,83 @@
                                     </div>
                                 </div>
                             </div>
+                            <div class="web-default-browser-banner hidden" id="webDefaultBrowserBanner" role="status">
+                                <img src="icons/app/ardali_24.png" alt="" aria-hidden="true">
+                                <span id="webDefaultBrowserMessage">ArDali varsayılan web tarayıcınız değil</span>
+                                <button type="button" id="webMakeDefaultBrowserBtn">Varsayılan olarak ayarla</button>
+                                <button type="button" id="webDefaultBrowserDismiss" class="web-default-browser-dismiss" aria-label="Kapat" title="Kapat"><span class="material-symbols-rounded">close</span></button>
+                            </div>
                         </div>
                         <div class="web-views-container">
                             <!-- New Tab Page overlay -->
                             <div class="web-new-tab-page" id="webNewTabPage">
+                                <div class="web-ntp-backdrop" id="webNtpBackdrop" aria-hidden="true"></div>
+                                <div class="web-ntp-shade" id="webNtpShade" aria-hidden="true"></div>
+                                <button class="web-ntp-customize-btn" id="webNtpCustomizeBtn" type="button" aria-label="Yeni sekmeyi özelleştir" title="Yeni sekmeyi özelleştir">
+                                    <span class="material-symbols-rounded" aria-hidden="true">tune</span>
+                                </button>
+                                <main class="web-ntp-content">
+                                <section class="web-ntp-clock-card" id="webNtpClockCard" aria-live="off">
+                                    <time class="web-ntp-clock" id="webNtpClock">--:--</time>
+                                    <div class="web-ntp-date" id="webNtpDate"></div>
+                                </section>
                                 <img src="icons/app/ardali_256.png" class="web-ntp-logo" alt="ArDali">
-                                <div class="web-ntp-search-container">
+                                <div class="web-ntp-search-container" id="webNtpSearchContainer">
                                     <span class="material-symbols-rounded web-ntp-search-icon">search</span>
                                     <input type="text" class="web-ntp-search-input" id="webNtpSearchInput" placeholder="Web'de bir şeyler arayın veya URL girin...">
                                     <div class="custom-dropdown web-ntp-search-engine-dropdown" id="ntpWebSearchEngine">
-                                        <div class="custom-dropdown-trigger" onclick="this.parentElement.classList.toggle('open'); event.stopPropagation();" title="Arama Motoru Seç">
+                                        <div class="custom-dropdown-trigger" title="Arama Motoru Seç">
                                             <img src="https://duckduckgo.com/favicon.ico" class="custom-dropdown-icon" alt="">
-                                            <span class="material-symbols-rounded" style="font-size: 16px; margin-left: -4px;">arrow_drop_down</span>
+                                            <span class="material-symbols-rounded icon-size-16 icon-offset-left">arrow_drop_down</span>
                                         </div>
                                         <div class="custom-dropdown-menu">
-                                            <div class="custom-dropdown-option" data-value="duckduckgo" onclick="if(window.handleCustomDropdownOptionClick) window.handleCustomDropdownOptionClick(this); event.stopPropagation();">
+                                            <div class="custom-dropdown-option" data-value="duckduckgo">
                                                 <img src="https://duckduckgo.com/favicon.ico" alt=""> <span>DuckDuckGo</span>
                                             </div>
-                                            <div class="custom-dropdown-option" data-value="brave" onclick="if(window.handleCustomDropdownOptionClick) window.handleCustomDropdownOptionClick(this); event.stopPropagation();">
+                                            <div class="custom-dropdown-option" data-value="brave">
                                                 <img src="https://brave.com/static-assets/images/brave-logo-sans-text.svg" alt=""> <span>Brave</span>
                                             </div>
-                                            <div class="custom-dropdown-option" data-value="google" onclick="if(window.handleCustomDropdownOptionClick) window.handleCustomDropdownOptionClick(this); event.stopPropagation();">
+                                            <div class="custom-dropdown-option" data-value="google">
                                                 <img src="icons/ui/search-google.svg" alt=""> <span>Google</span>
                                             </div>
-                                            <div class="custom-dropdown-option" data-value="bing" onclick="if(window.handleCustomDropdownOptionClick) window.handleCustomDropdownOptionClick(this); event.stopPropagation();">
+                                            <div class="custom-dropdown-option" data-value="bing">
                                                 <img src="https://www.bing.com/favicon.ico" alt=""> <span>Bing</span>
                                             </div>
                                         </div>
                                     </div>
                                     <div class="web-ntp-suggestions hidden" id="webNtpSuggestions"></div>
                                 </div>
+                                <section class="web-ntp-module" id="webNtpShortcutsCard">
+                                    <div class="web-ntp-section-heading"><span id="webNtpShortcutsTitle">Hızlı Siteler</span><button type="button" id="webNtpAddShortcutBtn" class="web-ntp-inline-action" title="Hızlı site ekle"><span class="material-symbols-rounded">add</span></button></div>
+                                    <div class="web-ntp-shortcuts" id="webNtpShortcuts"></div>
+                                </section>
+                                <section class="web-ntp-cards" id="webNtpCards">
+                                    <article class="web-ntp-info-card" id="webNtpDownloadsCard"><span class="material-symbols-rounded">download</span><div><strong id="webNtpDownloadsValue">0</strong><span id="webNtpDownloadsLabel">Son indirilenler</span></div></article>
+                                    <article class="web-ntp-info-card" id="webNtpPrivacyCard"><span class="material-symbols-rounded">shield</span><div><strong id="webNtpPrivacyValue">Etkin</strong><span id="webNtpPrivacyLabel">Web koruması</span></div></article>
+                                </section>
+                                </main>
+                                <div class="web-ntp-credit" id="webNtpCredit"></div>
+                                <div class="web-ntp-panel-backdrop hidden" id="webNtpPanelBackdrop"></div>
+                                <aside class="web-ntp-panel hidden" id="webNtpPanel" role="dialog" aria-modal="true" aria-labelledby="webNtpPanelTitle">
+                                    <header><div><small>ArDali</small><h2 id="webNtpPanelTitle">Yeni Sekmeyi Özelleştir</h2></div><button type="button" id="webNtpPanelClose" aria-label="Kapat"><span class="material-symbols-rounded">close</span></button></header>
+                                    <nav class="web-ntp-panel-tabs" aria-label="Özelleştirme bölümleri">
+                                        <button type="button" class="active" data-ntp-panel-tab="background">Arka Plan</button><button type="button" data-ntp-panel-tab="search">Arama</button><button type="button" data-ntp-panel-tab="shortcuts">Siteler</button><button type="button" data-ntp-panel-tab="clock">Saat</button><button type="button" data-ntp-panel-tab="cards">Kartlar</button>
+                                    </nav>
+                                    <div class="web-ntp-panel-body">
+                                        <section class="web-ntp-panel-section active" data-ntp-panel-section="background">
+                                            <label>Arka plan<select id="webNtpBackgroundMode"><option value="packaged">ArDali resimleri</option><option value="gradient">ArDali gradyanı</option><option value="custom">Kişisel resim</option><option value="none">Kapalı</option></select></label>
+                                            <div class="web-ntp-wallpaper-grid" id="webNtpWallpaperGrid"></div>
+                                            <div class="web-ntp-panel-actions"><button type="button" id="webNtpChooseImage">Cihazdan seç</button><button type="button" id="webNtpRemoveImage">Kişisel resmi kaldır</button></div>
+                                            <label>Karartma <output id="webNtpDimValue">36%</output><input id="webNtpDim" type="range" min="0" max="80" step="1"></label>
+                                            <label>Bulanıklık <output id="webNtpBlurValue">0px</output><input id="webNtpBlur" type="range" min="0" max="16" step="1"></label>
+                                        </section>
+                                        <section class="web-ntp-panel-section" data-ntp-panel-section="search"><label class="web-ntp-switch-row"><span>Arama alanını göster</span><input id="webNtpSearchVisible" type="checkbox"></label><p>Arama motorunu arama alanının sağındaki menüden seçebilirsiniz.</p></section>
+                                        <section class="web-ntp-panel-section" data-ntp-panel-section="shortcuts"><label class="web-ntp-switch-row"><span>Hızlı siteleri göster</span><input id="webNtpShortcutsVisible" type="checkbox"></label><div id="webNtpShortcutEditor"></div><button type="button" id="webNtpPanelAddShortcut">Yeni site ekle</button></section>
+                                        <section class="web-ntp-panel-section" data-ntp-panel-section="clock"><label class="web-ntp-switch-row"><span>Saat ve tarihi göster</span><input id="webNtpClockVisible" type="checkbox"></label><label>Saat biçimi<select id="webNtpClockFormat"><option value="24">24 saat</option><option value="12">12 saat</option></select></label><label class="web-ntp-switch-row"><span>Saniyeleri göster</span><input id="webNtpClockSeconds" type="checkbox"></label><label class="web-ntp-switch-row"><span>Tarihi göster</span><input id="webNtpDateVisible" type="checkbox"></label></section>
+                                        <section class="web-ntp-panel-section" data-ntp-panel-section="cards"><label class="web-ntp-switch-row"><span>Son indirilenler</span><input id="webNtpDownloadsVisible" type="checkbox"></label><label class="web-ntp-switch-row"><span>Web koruması</span><input id="webNtpPrivacyVisible" type="checkbox"></label></section>
+                                    </div>
+                                    <footer><span id="webNtpSaveStatus" role="status"></span><button type="button" id="webNtpReset">Varsayılana dön</button></footer>
+                                </aside>
                             </div>
                             <div id="webViewsContainer" class="webviews-container"></div>
                             
@@ -1673,22 +1690,22 @@
                                             <div class="setting-row">
                                                 <span data-i18n="settings.web.searchEngine">Arama Motoru</span>
                                                 <div class="custom-dropdown" id="behaviorWebSearchEngine">
-                                                    <div class="custom-dropdown-trigger" onclick="this.parentElement.classList.toggle('open'); event.stopPropagation();">
+                                                    <div class="custom-dropdown-trigger">
                                                         <img src="https://duckduckgo.com/favicon.ico" class="custom-dropdown-icon" alt="">
                                                         <span class="custom-dropdown-text">DuckDuckGo</span>
                                                         <span class="material-symbols-rounded">expand_more</span>
                                                     </div>
                                                     <div class="custom-dropdown-menu">
-                                                        <div class="custom-dropdown-option" data-value="duckduckgo" onclick="if(window.handleCustomDropdownOptionClick) window.handleCustomDropdownOptionClick(this); event.stopPropagation();">
+                                                        <div class="custom-dropdown-option" data-value="duckduckgo">
                                                             <img src="https://duckduckgo.com/favicon.ico" alt=""> <span>DuckDuckGo</span>
                                                         </div>
-                                                        <div class="custom-dropdown-option" data-value="google" onclick="if(window.handleCustomDropdownOptionClick) window.handleCustomDropdownOptionClick(this); event.stopPropagation();">
+                                                        <div class="custom-dropdown-option" data-value="google">
                                                             <img src="icons/ui/search-google.svg" alt=""> <span>Google</span>
                                                         </div>
-                                                        <div class="custom-dropdown-option" data-value="brave" onclick="if(window.handleCustomDropdownOptionClick) window.handleCustomDropdownOptionClick(this); event.stopPropagation();">
+                                                        <div class="custom-dropdown-option" data-value="brave">
                                                             <img src="https://brave.com/static-assets/images/brave-logo-sans-text.svg" alt=""> <span>Brave</span>
                                                         </div>
-                                                        <div class="custom-dropdown-option" data-value="bing" onclick="if(window.handleCustomDropdownOptionClick) window.handleCustomDropdownOptionClick(this); event.stopPropagation();">
+                                                        <div class="custom-dropdown-option" data-value="bing">
                                                             <img src="https://www.bing.com/favicon.ico" alt=""> <span>Bing</span>
                                                         </div>
                                                     </div>
@@ -2174,7 +2191,7 @@
                                             <h4 data-i18n="settings.audio.main.title">Ana Ses Çıkışı</h4>
                                             <div class="setting-row">
                                                 <span data-i18n="settings.audio.currentDevice">Geçerli çıkış cihazı</span>
-                                                <div style="display:flex; align-items:center; gap:10px; justify-content:flex-end; flex-wrap:wrap;">
+                                                <div class="inline-control-actions">
                                                     <strong id="audioCurrentOutputName">-</strong>
                                                     <span class="settings-chip" id="audioCurrentOutputBadge">-</span>
                                                     <button class="btn settings-action-btn settings-action-btn-secondary" id="audioRefreshState" data-i18n="settings.audio.refresh">Sistemden yenile</button>
@@ -2201,8 +2218,8 @@
                                             </div>
                                             <div class="setting-row">
                                                 <span data-i18n="settings.audio.outputSelect">Çıkış cihazı seç</span>
-                                                <div style="display:flex; align-items:center; gap:12px; min-width:260px;">
-                                                    <select id="audioOutputSelect" class="settings-select" style="flex:1;">
+                                                <div class="inline-control-row inline-control-row-260">
+                                                    <select id="audioOutputSelect" class="settings-select inline-control-grow">
                                                         <option value="">Sistem çıkışları yükleniyor...</option>
                                                     </select>
                                                 </div>
@@ -2233,16 +2250,16 @@
                                             <div class="settings-sub" data-i18n="settings.audio.allow150.hint">Linux'ta varsayılan çıkışı 100% üstüne kadar zorlar. Diğer platformlarda yalnızca uygulama içi ayar olarak saklanır.</div>
                                             <div class="setting-row">
                                                 <span data-i18n="settings.audio.defaultVolume">Varsayılan ses seviyesi</span>
-                                                <div style="display:flex; align-items:center; gap:12px; min-width:260px;">
-                                                    <input type="range" id="audioDefaultVolume" min="0" max="100" step="1" style="flex:1;">
+                                                <div class="inline-control-row inline-control-row-260">
+                                                    <input type="range" id="audioDefaultVolume" min="0" max="100" step="1" class="inline-control-grow">
                                                     <strong id="audioDefaultVolumeValue">40%</strong>
                                                 </div>
                                             </div>
                                             <div class="settings-sub" data-i18n="settings.audio.defaultVolume.hint">Uygulama açıldığında ve ses motoru yüklendiğinde kullanılacak ana ses seviyesi.</div>
-                                            <div class="setting-row" style="margin-top:16px;">
+                                            <div class="setting-row setting-row-spaced-16">
                                                 <span data-i18n="settings.audio.appVolume">ArDali uygulama sesi</span>
-                                                <div style="display:flex; align-items:center; gap:12px; min-width:260px;">
-                                                    <input type="range" id="audioAppVolume" min="0" max="100" step="1" style="flex:1;">
+                                                <div class="inline-control-row inline-control-row-260">
+                                                    <input type="range" id="audioAppVolume" min="0" max="100" step="1" class="inline-control-grow">
                                                     <strong id="audioAppVolumeValue">40%</strong>
                                                 </div>
                                             </div>
@@ -2255,10 +2272,10 @@
                                                 <span data-i18n="settings.audio.limiter.enabled">Limiter koruması</span>
                                             </label>
                                             <div class="settings-sub" data-i18n="settings.audio.limiter.enabled.hint">Yüksek ses, boost ve 150% kullanımında clipping ve patlamayı azaltır.</div>
-                                            <div class="setting-row" style="margin-top: 12px;">
+                                            <div class="setting-row setting-row-spaced-12">
                                                 <span data-i18n="settings.audio.limiter.mode">Koruma seviyesi</span>
-                                                <div style="display:flex; align-items:center; gap:12px; min-width:260px;">
-                                                    <select id="audioLimiterMode" class="settings-select" style="flex:1;">
+                                                <div class="inline-control-row inline-control-row-260">
+                                                    <select id="audioLimiterMode" class="settings-select inline-control-grow">
                                                         <option value="soft" data-i18n="settings.audio.limiter.mode.soft">Yumuşak</option>
                                                         <option value="balanced" data-i18n="settings.audio.limiter.mode.balanced">Dengeli</option>
                                                         <option value="strict" data-i18n="settings.audio.limiter.mode.strict">Sıkı</option>
@@ -2274,10 +2291,10 @@
                                                 <span data-i18n="settings.audio.night.enabled">Gece modu koruması</span>
                                             </label>
                                             <div class="settings-sub" data-i18n="settings.audio.night.enabled.hint">Ani yüksek sesleri bastırır, daha sakin ve ev ortamına uygun bir dinleme sağlar.</div>
-                                            <div class="setting-row" style="margin-top: 12px;">
+                                            <div class="setting-row setting-row-spaced-12">
                                                 <span data-i18n="settings.audio.night.mode">Koruma seviyesi</span>
-                                                <div style="display:flex; align-items:center; gap:12px; min-width:260px;">
-                                                    <select id="audioNightModeLevel" class="settings-select" style="flex:1;">
+                                                <div class="inline-control-row inline-control-row-260">
+                                                    <select id="audioNightModeLevel" class="settings-select inline-control-grow">
                                                         <option value="light" data-i18n="settings.audio.night.mode.light">Hafif</option>
                                                         <option value="balanced" data-i18n="settings.audio.night.mode.balanced">Dengeli</option>
                                                         <option value="strong" data-i18n="settings.audio.night.mode.strong">Güçlü</option>
@@ -2334,8 +2351,8 @@
                                             <h4 data-i18n="settings.audio.sync.title">Video ses senkronu</h4>
                                             <div class="setting-row">
                                                 <span data-i18n="settings.audio.sync.delay">Yerel video ses gecikmesi</span>
-                                                <div style="display:flex; align-items:center; gap:12px; min-width:320px;">
-                                                    <input type="range" id="audioVideoDelay" min="0" max="500" step="10" style="flex:1;">
+                                                <div class="inline-control-row inline-control-row-320">
+                                                    <input type="range" id="audioVideoDelay" min="0" max="500" step="10" class="inline-control-grow">
                                                     <strong id="audioVideoDelayValue">0 ms</strong>
                                                     <button class="btn settings-action-btn settings-action-btn-secondary" id="audioVideoDelayReset" data-i18n="settings.audio.sync.reset">Sıfırla</button>
                                                 </div>
@@ -2419,7 +2436,7 @@
                                             </div>
                                             <div class="setting-row">
                                                 <span data-i18n="settings.gallery.transition.slideshow">Slayt geçiş yumuşaklığı</span>
-                                                <div style="display:flex; align-items:center; gap:12px; min-width:320px;">
+                                                <div class="inline-control-row inline-control-row-320">
                                                     <input
                                                         id="galleryTransitionSlideshowMs"
                                                         type="range"
@@ -2427,14 +2444,14 @@
                                                         max="1100"
                                                         step="20"
                                                         value="440"
-                                                        style="flex:1;"
+                                                        class="inline-control-grow"
                                                     >
                                                     <strong id="galleryTransitionSlideshowMsValue">440 ms</strong>
                                                 </div>
                                             </div>
                                             <div class="setting-row">
                                                 <span data-i18n="settings.gallery.transition.manual">Elle geçiş hızı</span>
-                                                <div style="display:flex; align-items:center; gap:12px; min-width:320px;">
+                                                <div class="inline-control-row inline-control-row-320">
                                                     <input
                                                         id="galleryTransitionManualMs"
                                                         type="range"
@@ -2442,7 +2459,7 @@
                                                         max="500"
                                                         step="10"
                                                         value="190"
-                                                        style="flex:1;"
+                                                        class="inline-control-grow"
                                                     >
                                                     <strong id="galleryTransitionManualMsValue">190 ms</strong>
                                                 </div>
@@ -2544,7 +2561,7 @@
                 <div class="player-bottom">
                     <!-- Kapak Resmi -->
                     <div class="cover-section" id="coverSection">
-                        <img src="icons/app/ardali_256.png" alt="Cover" id="coverArt" onerror="this.src='icons/app/ardali_256.png'">
+                        <img src="icons/app/ardali_256.png" alt="Cover" id="coverArt">
                     </div>
                     <!-- Visualizer -->
                     <div class="visualizer" id="visualizer">
@@ -2931,10 +2948,10 @@
     <div class="modal-overlay hidden" id="aboutModalOverlay" role="presentation">
         <div class="about-modal glass-card" role="dialog" aria-modal="true" aria-labelledby="aboutTitle">
             <div class="about-header">
-                <img class="about-logo" src="icons/app/ardali_256.png" alt="ArDali" onerror="this.style.display='none'">
+                <img class="about-logo" src="icons/app/ardali_256.png" alt="ArDali">
                 <div class="about-title-wrap">
                     <div class="about-title" id="aboutTitle" data-i18n="about.title">ArDali Medya Player</div>
-                    <div class="about-subtitle">Versiyon: 5.3.0 - Kararlı Sürüm</div>
+                    <div class="about-subtitle">v5.4.0</div>
                 </div>
             </div>
 
@@ -2964,17 +2981,11 @@
                 <div class="about-features-title" data-i18n="about.featuresTitle">Özellikler ve Şeffaflık</div>
                 <div class="about-sections">
                     <section class="about-section about-section-updates">
-                        <h4>5.3.0 Yenilikleri</h4>
+                        <h4 data-i18n="about.whatsNew.title">What's new in 5.4.0</h4>
                         <ul class="about-list">
-                            <li>Yeni Akıllı Kenar Paneli ilk kurulumda varsayılan yapıldı; kullanıcı klasik veya radyal görünümü ayarlardan seçip kalıcı olarak kaydedebilir.</li>
-                            <li>Panelin açılış animasyonu ve çizimi hızlandırıldı; açık ve koyu web sayfalarında görünür kalan uyarlanabilir kenar göstergesi eklendi.</li>
-                            <li>Bağlantı ve görselleri yeni sekmede açma, arka plan sekmelerinin yüklenme durumu ve doğrudan görsel görüntüleme düzeltildi.</li>
-                            <li>Web ve sekme sağ tık menüleri genişletildi; yeni sekme, çoğaltma, sabitleme, sessize alma, kapatma, yeniden açma ve görsel işlemleri eklendi.</li>
-                            <li>Amazon ve benzeri yoğun pazaryerlerinde önbellek, gezinme ve içerik filtreleme yolları iyileştirilerek tekrar yükleme ve takılmalar azaltıldı.</li>
-                            <li>Web menüleri, harici bağlantı bildirimleri ve yeni tarayıcı kontrolleri Türkçe, İngilizce ve Arapça başta olmak üzere uygulama diline bağlandı.</li>
-                            <li>Zararlı, dolandırıcılık ve yetişkin içerikli alan adlarına karşı yerel koruma listeleri ve açıklayıcı engelleme uyarısı eklendi.</li>
-                            <li>VPN politikası yenilendi: güvenilir sistem VPN bağlantıları engellenmez; web trafiği sistemin VPN rotası ve konumuyla uyumlu çalışır.</li>
-                            <li>Electron 40.8.5 sürümüne geçildi; Linux ve Windows derleme metadata değerleri kararlı sürüm için eşitlendi.</li>
+                            <li data-i18n="about.whatsNew.passwordManager">Added a local AES-256-GCM Password Manager with master password protection, Auto Lock, and secure Autofill.</li>
+                            <li data-i18n="about.whatsNew.security">Hardened Electron windows, IPC validation, permissions, Content Security Policy, and secure OS key storage.</li>
+                            <li data-i18n="about.whatsNew.releasePipeline">Added a mandatory security gate before release builds and package publication.</li>
                         </ul>
                     </section>
                     <section class="about-section about-section-updates">
@@ -3005,11 +3016,22 @@
                     </section>
 
                     <section class="about-section about-section-security">
+                        <h4 data-i18n="about.sections.passwordManager.title">Password Manager</h4>
+                        <ul class="about-list">
+                            <li data-i18n="about.sections.passwordManager.item1">Credentials stay on this device in an AES-256-GCM encrypted vault.</li>
+                            <li data-i18n="about.sections.passwordManager.item2">A master password and configurable Auto Lock protect the vault.</li>
+                            <li data-i18n="about.sections.passwordManager.item3">Secure Autofill requires user interaction and exact HTTPS origin matching.</li>
+                        </ul>
+                    </section>
+
+                    <section class="about-section about-section-security">
                         <h4 data-i18n="about.sections.security.title">Güvenlik ve Gizlilik</h4>
                         <ul class="about-list">
                             <li data-i18n="about.sections.security.item1">Uygulama ayarlarına e-posta/şifre/token gibi hassas bilgiler kaydedilmez.</li>
                             <li data-i18n="about.sections.security.item2">Web görünümü sandbox, izin kontrolü ve alan adı kısıtlarıyla korunur.</li>
                             <li data-i18n="about.sections.security.item3">Harici tarayıcı açma yalnızca geçerli http/https adreslerinde etkinleşir.</li>
+                            <li data-i18n="about.sections.security.item4">Chromium Sandbox, Context Isolation, strict CSP, and validated IPC harden application windows.</li>
+                            <li data-i18n="about.sections.security.item5">OS Secure Storage protects the local vault's device key.</li>
                         </ul>
                     </section>
 
@@ -3065,7 +3087,7 @@
                 </div>
                 <div class="update-progress hidden" id="updateProgressWrap" aria-label="İndirme ilerlemesi">
                     <div class="update-progress-bar">
-                        <div class="update-progress-fill" id="updateProgressFill" style="width: 0%"></div>
+                        <div class="update-progress-fill" id="updateProgressFill"></div>
                     </div>
                     <div class="update-progress-text" id="updateProgressText">0%</div>
                 </div>
@@ -3106,6 +3128,7 @@
     <script src="modules/i18n.js"></script>
     <script src="modules/security-settings.js"></script>
     <script src="modules/settings-shared.js"></script>
+    <script src="modules/new-tab-customization.js"></script>
     <script src="modules/web-browser.js"></script>
     <script src="renderer.js"></script>
     <script src="webDownloadsRenderer.js"></script>

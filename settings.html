@@ -3,26 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: https:;">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'nonce-ardali-local-style-v1' 'unsafe-hashes' 'sha256-Bzu+0IbxFxznzOMZ1xC6igPdTNtMnxymTQ7T88lCZhA=' 'sha256-besIW9odNqwbPllfNOeQDc7XZ1yH7l2EFhD0tOZbY0w=' 'sha256-XNfYdUW7S7AWSxlvq47SGsGIxvvzKwvUGdsFQQ/zXf4=' 'sha256-47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU=' 'sha256-biLFinpqYMtWHmXfkA1BPeCY0/fNt46SAZ+BBk5YUog=' 'sha256-iwlYzbq4N5hZ48DjjqB5AfqXAqPKBIjmkTIayo9ehxo='; font-src 'self' data:; img-src 'self' data: https:; object-src 'none'; base-uri 'none'; form-action 'self'; frame-src 'none';">
     <title>Tercihler</title>
-    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet">
+    <script src="modules/local-page-bootstrap.js"></script>
+    <script src="node_modules/dompurify/dist/purify.min.js"></script>
+    <script src="modules/safe-html.js"></script>
     <link rel="stylesheet" href="styles/main.css">
 </head>
 <body class="settings-window-mode">
-    <script>
-        (() => {
-            try {
-                const allowed = new Set(['aur-renk-efektleri', 'performance-balanced', 'performance-lite', 'ardali', 'dark', 'black', 'light', 'frappe', 'onedark', 'matrix', 'latte', 'solarized-dark', 'neon-night', 'retro-amber', 'deep-ocean', 'forest-mint']);
-                const theme = String(localStorage.getItem('ardali_ui_theme') || localStorage.getItem('theme') || '').trim();
-                if (!allowed.has(theme)) return;
-                document.documentElement.dataset.ardaliTheme = theme;
-                document.documentElement.setAttribute('theme', theme);
-                document.body.setAttribute('data-ardali-theme', theme);
-            } catch {
-                // ignore
-            }
-        })();
-    </script>
     <div class="app-container">
         <main class="main-content">
             <div class="content-stack">
@@ -519,22 +507,22 @@
                                             <div class="setting-row">
                                                 <span data-i18n="settings.web.searchEngine">Arama Motoru</span>
                                                 <div class="custom-dropdown" id="behaviorWebSearchEngine">
-                                                    <div class="custom-dropdown-trigger" onclick="this.parentElement.classList.toggle('open'); event.stopPropagation();">
+                                                    <div class="custom-dropdown-trigger">
                                                         <img src="https://duckduckgo.com/favicon.ico" class="custom-dropdown-icon" alt="">
                                                         <span class="custom-dropdown-text">DuckDuckGo</span>
                                                         <span class="material-symbols-rounded">expand_more</span>
                                                     </div>
                                                     <div class="custom-dropdown-menu">
-                                                        <div class="custom-dropdown-option" data-value="duckduckgo" onclick="if(window.handleCustomDropdownOptionClick) window.handleCustomDropdownOptionClick(this); event.stopPropagation();">
+                                                        <div class="custom-dropdown-option" data-value="duckduckgo">
                                                             <img src="https://duckduckgo.com/favicon.ico" alt=""> <span>DuckDuckGo</span>
                                                         </div>
-                                                        <div class="custom-dropdown-option" data-value="google" onclick="if(window.handleCustomDropdownOptionClick) window.handleCustomDropdownOptionClick(this); event.stopPropagation();">
+                                                        <div class="custom-dropdown-option" data-value="google">
                                                             <img src="https://www.google.com/favicon.ico" alt=""> <span>Google</span>
                                                         </div>
-                                                        <div class="custom-dropdown-option" data-value="brave" onclick="if(window.handleCustomDropdownOptionClick) window.handleCustomDropdownOptionClick(this); event.stopPropagation();">
+                                                        <div class="custom-dropdown-option" data-value="brave">
                                                             <img src="https://brave.com/static-assets/images/brave-logo-sans-text.svg" alt=""> <span>Brave</span>
                                                         </div>
-                                                        <div class="custom-dropdown-option" data-value="bing" onclick="if(window.handleCustomDropdownOptionClick) window.handleCustomDropdownOptionClick(this); event.stopPropagation();">
+                                                        <div class="custom-dropdown-option" data-value="bing">
                                                             <img src="https://www.bing.com/favicon.ico" alt=""> <span>Bing</span>
                                                         </div>
                                                     </div>
@@ -1206,7 +1194,7 @@
                                             <h4 data-i18n="settings.audio.main.title">Ana Ses Çıkışı</h4>
                                             <div class="setting-row">
                                                 <span data-i18n="settings.audio.currentDevice">Geçerli çıkış cihazı</span>
-                                                <div style="display:flex; align-items:center; gap:10px; justify-content:flex-end; flex-wrap:wrap;">
+                                                <div class="inline-control-actions">
                                                     <strong id="audioCurrentOutputName">-</strong>
                                                     <span class="settings-chip" id="audioCurrentOutputBadge">-</span>
                                                     <button class="btn settings-action-btn settings-action-btn-secondary" id="audioRefreshState" data-i18n="settings.audio.refresh">Sistemden yenile</button>
@@ -1233,8 +1221,8 @@
                                             </div>
                                             <div class="setting-row">
                                                 <span data-i18n="settings.audio.outputSelect">Çıkış cihazı seç</span>
-                                                <div style="display:flex; align-items:center; gap:12px; min-width:260px;">
-                                                    <select id="audioOutputSelect" class="settings-select" style="flex:1;">
+                                                <div class="inline-control-row inline-control-row-260">
+                                                    <select id="audioOutputSelect" class="settings-select inline-control-grow">
                                                         <option value="">Sistem çıkışları yükleniyor...</option>
                                                     </select>
                                                 </div>
@@ -1265,16 +1253,16 @@
                                             <div class="settings-sub" data-i18n="settings.audio.allow150.hint">Linux'ta varsayılan çıkışı 100% üstüne kadar zorlar. Diğer platformlarda yalnızca uygulama içi ayar olarak saklanır.</div>
                                             <div class="setting-row">
                                                 <span data-i18n="settings.audio.defaultVolume">Varsayılan ses seviyesi</span>
-                                                <div style="display:flex; align-items:center; gap:12px; min-width:260px;">
-                                                    <input type="range" id="audioDefaultVolume" min="0" max="100" step="1" style="flex:1;">
+                                                <div class="inline-control-row inline-control-row-260">
+                                                    <input type="range" id="audioDefaultVolume" min="0" max="100" step="1" class="inline-control-grow">
                                                     <strong id="audioDefaultVolumeValue">40%</strong>
                                                 </div>
                                             </div>
                                             <div class="settings-sub" data-i18n="settings.audio.defaultVolume.hint">Uygulama açıldığında ve ses motoru yüklendiğinde kullanılacak ana ses seviyesi.</div>
-                                            <div class="setting-row" style="margin-top:16px;">
+                                            <div class="setting-row setting-row-spaced-16">
                                                 <span data-i18n="settings.audio.appVolume">ArDali uygulama sesi</span>
-                                                <div style="display:flex; align-items:center; gap:12px; min-width:260px;">
-                                                    <input type="range" id="audioAppVolume" min="0" max="100" step="1" style="flex:1;">
+                                                <div class="inline-control-row inline-control-row-260">
+                                                    <input type="range" id="audioAppVolume" min="0" max="100" step="1" class="inline-control-grow">
                                                     <strong id="audioAppVolumeValue">40%</strong>
                                                 </div>
                                             </div>
@@ -1287,10 +1275,10 @@
                                                 <span data-i18n="settings.audio.limiter.enabled">Limiter koruması</span>
                                             </label>
                                             <div class="settings-sub" data-i18n="settings.audio.limiter.enabled.hint">Yüksek ses, boost ve 150% kullanımında clipping ve patlamayı azaltır.</div>
-                                            <div class="setting-row" style="margin-top: 12px;">
+                                            <div class="setting-row setting-row-spaced-12">
                                                 <span data-i18n="settings.audio.limiter.mode">Koruma seviyesi</span>
-                                                <div style="display:flex; align-items:center; gap:12px; min-width:260px;">
-                                                    <select id="audioLimiterMode" class="settings-select" style="flex:1;">
+                                                <div class="inline-control-row inline-control-row-260">
+                                                    <select id="audioLimiterMode" class="settings-select inline-control-grow">
                                                         <option value="soft" data-i18n="settings.audio.limiter.mode.soft">Yumuşak</option>
                                                         <option value="balanced" data-i18n="settings.audio.limiter.mode.balanced">Dengeli</option>
                                                         <option value="strict" data-i18n="settings.audio.limiter.mode.strict">Sıkı</option>
@@ -1306,10 +1294,10 @@
                                                 <span data-i18n="settings.audio.night.enabled">Gece modu koruması</span>
                                             </label>
                                             <div class="settings-sub" data-i18n="settings.audio.night.enabled.hint">Ani yüksek sesleri bastırır, daha sakin ve ev ortamına uygun bir dinleme sağlar.</div>
-                                            <div class="setting-row" style="margin-top: 12px;">
+                                            <div class="setting-row setting-row-spaced-12">
                                                 <span data-i18n="settings.audio.night.mode">Koruma seviyesi</span>
-                                                <div style="display:flex; align-items:center; gap:12px; min-width:260px;">
-                                                    <select id="audioNightModeLevel" class="settings-select" style="flex:1;">
+                                                <div class="inline-control-row inline-control-row-260">
+                                                    <select id="audioNightModeLevel" class="settings-select inline-control-grow">
                                                         <option value="light" data-i18n="settings.audio.night.mode.light">Hafif</option>
                                                         <option value="balanced" data-i18n="settings.audio.night.mode.balanced">Dengeli</option>
                                                         <option value="strong" data-i18n="settings.audio.night.mode.strong">Güçlü</option>
@@ -1366,8 +1354,8 @@
                                             <h4 data-i18n="settings.audio.sync.title">Video ses senkronu</h4>
                                             <div class="setting-row">
                                                 <span data-i18n="settings.audio.sync.delay">Yerel video ses gecikmesi</span>
-                                                <div style="display:flex; align-items:center; gap:12px; min-width:320px;">
-                                                    <input type="range" id="audioVideoDelay" min="0" max="500" step="10" style="flex:1;">
+                                                <div class="inline-control-row inline-control-row-320">
+                                                    <input type="range" id="audioVideoDelay" min="0" max="500" step="10" class="inline-control-grow">
                                                     <strong id="audioVideoDelayValue">0 ms</strong>
                                                     <button class="btn settings-action-btn settings-action-btn-secondary" id="audioVideoDelayReset" data-i18n="settings.audio.sync.reset">Sıfırla</button>
                                                 </div>
@@ -1452,7 +1440,7 @@
                                             </div>
                                             <div class="setting-row">
                                                 <span data-i18n="settings.gallery.transition.slideshow">Slayt geçiş yumuşaklığı</span>
-                                                <div style="display:flex; align-items:center; gap:12px; min-width:320px;">
+                                                <div class="inline-control-row inline-control-row-320">
                                                     <input
                                                         id="galleryTransitionSlideshowMs"
                                                         type="range"
@@ -1460,14 +1448,14 @@
                                                         max="1100"
                                                         step="20"
                                                         value="440"
-                                                        style="flex:1;"
+                                                        class="inline-control-grow"
                                                     >
                                                     <strong id="galleryTransitionSlideshowMsValue">440 ms</strong>
                                                 </div>
                                             </div>
                                             <div class="setting-row">
                                                 <span data-i18n="settings.gallery.transition.manual">Elle geçiş hızı</span>
-                                                <div style="display:flex; align-items:center; gap:12px; min-width:320px;">
+                                                <div class="inline-control-row inline-control-row-320">
                                                     <input
                                                         id="galleryTransitionManualMs"
                                                         type="range"
@@ -1475,7 +1463,7 @@
                                                         max="500"
                                                         step="10"
                                                         value="190"
-                                                        style="flex:1;"
+                                                        class="inline-control-grow"
                                                     >
                                                     <strong id="galleryTransitionManualMsValue">190 ms</strong>
                                                 </div>

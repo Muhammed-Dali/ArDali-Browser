@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, dialog, nativeImage, Tray, Menu, shell, session, screen, globalShortcut, desktopCapturer, clipboard } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, nativeImage, Tray, Menu, shell, session, screen, globalShortcut, desktopCapturer, clipboard, safeStorage, webContents, powerMonitor } = require('electron');
 
 // Wayland/Flatpak: App ID synchronization must happen as early as possible.
 const FLATPAK_APP_ID = 'com.ardali.mediaplayer';
@@ -25,6 +25,90 @@ const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
 const https = require('https');
+
+// IPC is deny-by-default. Local application pages may use the regular bridge;
+// embedded web content only gets the explicitly listed, independently checked
+// guest channels below. Wrapping registration here also covers handlers added
+// by feature modules later in startup.
+const GUEST_IPC_CHANNELS = new Set([
+    'adblock:getScriptingInjection',
+    'vault:guest:bridgeStatus',
+    'vault:guest:stageUsername',
+    'vault:guest:beginFill',
+    'vault:guest:chooseAndFill',
+    'vault:guest:candidate'
+]);
+function isAuthorizedIpcSender(event, channel) {
+    if (isTrustedLocalAppSender(event, channel)) return true;
+    return GUEST_IPC_CHANNELS.has(String(channel || '')) && isTrustedGuestWebviewSender(event);
+}
+const IPC_BINARY_LIMIT = 128 * 1024 * 1024;
+const IPC_STRING_LIMIT = 16 * 1024 * 1024;
+const IPC_FORBIDDEN_KEYS = new Set(['__proto__', 'prototype', 'constructor']);
+function validateIpcValue(value, depth = 0, seen = new WeakSet()) {
+    if (depth > 12) throw new Error('invalid-ipc-depth');
+    if (value == null || typeof value === 'boolean') return;
+    if (typeof value === 'number') {
+        if (!Number.isFinite(value)) throw new Error('invalid-ipc-number');
+        return;
+    }
+    if (typeof value === 'string') {
+        if (Buffer.byteLength(value, 'utf8') > IPC_STRING_LIMIT) throw new Error('invalid-ipc-string-size');
+        return;
+    }
+    if (typeof value === 'bigint') return;
+    if (typeof value !== 'object') throw new Error('invalid-ipc-value');
+    if (ArrayBuffer.isView(value)) {
+        if (value.byteLength > IPC_BINARY_LIMIT) throw new Error('invalid-ipc-binary-size');
+        return;
+    }
+    if (value instanceof ArrayBuffer) {
+        if (value.byteLength > IPC_BINARY_LIMIT) throw new Error('invalid-ipc-binary-size');
+        return;
+    }
+    if (value instanceof Date) {
+        if (!Number.isFinite(value.getTime())) throw new Error('invalid-ipc-date');
+        return;
+    }
+    if (seen.has(value)) throw new Error('invalid-ipc-cycle');
+    seen.add(value);
+    if (Array.isArray(value)) {
+        if (value.length > 100_000) throw new Error('invalid-ipc-array-size');
+        for (const item of value) validateIpcValue(item, depth + 1, seen);
+        return;
+    }
+    const keys = Object.keys(value);
+    if (keys.length > 512) throw new Error('invalid-ipc-object-size');
+    for (const key of keys) {
+        if (IPC_FORBIDDEN_KEYS.has(key) || key.length > 256) throw new Error('invalid-ipc-key');
+        validateIpcValue(value[key], depth + 1, seen);
+    }
+}
+function validateIpcArguments(channel, args) {
+    if (typeof channel !== 'string' || !channel || channel.length > 128 || !/^[a-zA-Z0-9:_-]+$/.test(channel)) {
+        throw new Error('invalid-ipc-channel');
+    }
+    if (!Array.isArray(args) || args.length > 24) throw new Error('invalid-ipc-arguments');
+    for (const value of args) validateIpcValue(value);
+}
+const registerIpcHandler = ipcMain.handle.bind(ipcMain);
+ipcMain.handle = (channel, listener) => registerIpcHandler(channel, async (event, ...args) => {
+    if (!isAuthorizedIpcSender(event, channel)) throw new Error('unauthorized-ipc-sender');
+    validateIpcArguments(channel, args);
+    return listener(event, ...args);
+});
+const registerIpcListener = ipcMain.on.bind(ipcMain);
+ipcMain.on = (channel, listener) => registerIpcListener(channel, (event, ...args) => {
+    if (!isAuthorizedIpcSender(event, channel)) return;
+    try { validateIpcArguments(channel, args); } catch (_) { return; }
+    return listener(event, ...args);
+});
+const registerIpcOnceListener = ipcMain.once.bind(ipcMain);
+ipcMain.once = (channel, listener) => registerIpcOnceListener(channel, (event, ...args) => {
+    if (!isAuthorizedIpcSender(event, channel)) return;
+    try { validateIpcArguments(channel, args); } catch (_) { return; }
+    return listener(event, ...args);
+});
 const { registerPulseIpc } = require('./modules/pulseHost');
 const {
     normalizeAdblockConfig,
@@ -40,6 +124,7 @@ const {
     readJsonFileSafe
 } = require('./modules/adblock-ruleset-registry');
 const { createDownloaderService } = require('./modules/downloaderService');
+const { CredentialVault, validOrigin: validCredentialOrigin } = require('./modules/credential-vault');
 let autoUpdater = null;
 try {
     ({ autoUpdater } = require('electron-updater'));
@@ -194,6 +279,54 @@ function sanitizeIpcPath(value, { requireAbsolute = true } = {}) {
     if (!targetPath || targetPath.includes('\0')) return '';
     if (requireAbsolute && !path.isAbsolute(targetPath)) return '';
     return path.normalize(targetPath);
+}
+
+const rendererPathGrants = new Map();
+function canonicalAccessPath(targetPath) {
+    const normalized = sanitizeIpcPath(targetPath);
+    if (!normalized) return '';
+    try { return fs.realpathSync.native(normalized); } catch {
+        try { return path.join(fs.realpathSync.native(path.dirname(normalized)), path.basename(normalized)); }
+        catch { return path.resolve(normalized); }
+    }
+}
+function grantRendererPath(contents, targetPath, { recursive = false, write = false } = {}) {
+    if (!contents || contents.isDestroyed?.()) return false;
+    const canonical = canonicalAccessPath(targetPath);
+    if (!canonical) return false;
+    const id = Number(contents.id || 0);
+    const firstGrant = !rendererPathGrants.has(id);
+    const grants = rendererPathGrants.get(id) || [];
+    const existing = grants.find((item) => item.path === canonical && item.recursive === recursive);
+    if (existing) existing.write = existing.write || write;
+    else if (grants.length < 256) grants.push({ path: canonical, recursive: recursive === true, write: write === true });
+    rendererPathGrants.set(id, grants);
+    if (firstGrant) contents.once?.('destroyed', () => rendererPathGrants.delete(id));
+    return true;
+}
+function isRendererPathGranted(event, targetPath, { write = false } = {}) {
+    const canonical = canonicalAccessPath(targetPath);
+    if (!canonical || !event?.sender) return false;
+    const grants = rendererPathGrants.get(Number(event.sender.id || 0)) || [];
+    return grants.some((grant) => {
+        if (write && grant.write !== true) return false;
+        return canonical === grant.path || (grant.recursive && canonical.startsWith(`${grant.path}${path.sep}`));
+    });
+}
+function seedMainRendererPathGrants(contents) {
+    const roots = new Set();
+    for (const key of ['music', 'videos', 'downloads', 'pictures', 'documents', 'desktop']) {
+        try { roots.add(app.getPath(key)); } catch {}
+    }
+    try {
+        const settings = readSettingsFileSafeSync();
+        for (const key of ['audioFolders', 'videoFolders', 'imageFolders']) {
+            for (const folder of Array.isArray(settings?.library?.[key]) ? settings.library[key] : []) roots.add(folder);
+        }
+        const lastTrackPath = String(settings?.playback?.startupState?.lastTrackPath || '');
+        if (lastTrackPath) grantRendererPath(contents, lastTrackPath, { recursive: false, write: false });
+    } catch {}
+    for (const root of roots) grantRendererPath(contents, root, { recursive: true, write: true });
 }
 
 function isArDaliBinInstalledViaPacman() {
@@ -829,11 +962,10 @@ const MPRIS_DISABLE_OVERRIDE =
     ['1', 'true', 'yes'].includes(String(process.env.ARDALI_DISABLE_MPRIS || '').trim().toLowerCase());
 const MPRIS_RUNTIME_ENABLED =
     process.platform === 'linux' && (MPRIS_ENABLE_OVERRIDE || !MPRIS_DISABLE_OVERRIDE);
-// Web platformlarının (YouTube, Spotify vb.) CERT_AUTHORITY_INVALID hatasında
-// çalışmaya devam edebilmesi için varsayılan olarak açık.
-// Kapatmak için: ARDALI_DISABLE_CERT_BYPASS=1
+// TLS doğrulama atlaması üretimde kapalıdır. Yalnızca kontrollü kurumsal test
+// ortamında açıkça etkinleştirilebilir.
 const ALLOW_TRUSTED_CERT_BYPASS =
-    !['1', 'true', 'yes'].includes(String(process.env.ARDALI_DISABLE_CERT_BYPASS || '').trim().toLowerCase());
+    ['1', 'true', 'yes'].includes(String(process.env.ARDALI_ALLOW_CERT_BYPASS || '').trim().toLowerCase());
 let Player = null;
 if (MPRIS_RUNTIME_ENABLED) {
     try {
@@ -1325,6 +1457,8 @@ function initNativeAudioEngineSafe({ force = false } = {}) {
 
 let mainWindow;
 let settingsWindow = null;
+let passwordManagerWindow = null;
+let credentialVault = null;
 let adblockWindow = null;
 let downloaderWindow = null;
 let downloaderService = null;
@@ -1354,6 +1488,7 @@ let screenRecordingSystemAudioProc = null;
 let screenRecordingSystemAudioPath = '';
 const screenRecordingLiveOutputs = new Map();
 let pendingOpenMediaFiles = [];
+let pendingOpenWebUrls = [];
 let rendererMediaOpenReady = false;
 function normalizeLaunchFilePath(rawPath) {
     const value = String(rawPath || '').trim();
@@ -1433,6 +1568,35 @@ function dispatchPendingOpenMediaFiles() {
     }
 }
 
+function extractWebUrlsFromArgv(argv) {
+    const urls = [];
+    for (const value of Array.isArray(argv) ? argv : []) {
+        try {
+            const parsed = new URL(String(value || '').trim());
+            if (!['http:', 'https:'].includes(parsed.protocol)) continue;
+            parsed.username = '';
+            parsed.password = '';
+            const clean = parsed.toString().slice(0, 4096);
+            if (!urls.includes(clean)) urls.push(clean);
+        } catch (_) {}
+    }
+    return urls.slice(0, 30);
+}
+
+function queuePendingOpenWebUrls(urls) {
+    for (const url of Array.isArray(urls) ? urls : []) {
+        if (!pendingOpenWebUrls.includes(url) && pendingOpenWebUrls.length < 30) pendingOpenWebUrls.push(url);
+    }
+}
+
+function dispatchPendingOpenWebUrls() {
+    if (!rendererMediaOpenReady || !mainWindow || mainWindow.isDestroyed() || !pendingOpenWebUrls.length) return false;
+    const urls = pendingOpenWebUrls.slice();
+    pendingOpenWebUrls = [];
+    urls.forEach((url, index) => mainWindow.webContents.send('web:open-tab', url, { active: index === urls.length - 1, external: true }));
+    return true;
+}
+
 const gotSingleInstanceLock = app.requestSingleInstanceLock();
 if (!gotSingleInstanceLock) {
     console.warn('[APP] single instance lock failed; exiting secondary instance');
@@ -1441,9 +1605,14 @@ if (!gotSingleInstanceLock) {
 
 app.on('second-instance', (_event, argv) => {
     const paths = extractMediaPathsFromArgv(argv);
+    const urls = extractWebUrlsFromArgv(argv);
     if (paths.length) {
         queuePendingOpenMediaFiles(paths);
         dispatchPendingOpenMediaFiles();
+    }
+    if (urls.length) {
+        queuePendingOpenWebUrls(urls);
+        dispatchPendingOpenWebUrls();
     }
     focusMainWindow();
 });
@@ -1455,7 +1624,17 @@ app.on('open-file', (event, filePath) => {
     focusMainWindow();
 });
 
+app.on('open-url', (event, url) => {
+    event.preventDefault();
+    const urls = extractWebUrlsFromArgv([url]);
+    if (!urls.length) return;
+    queuePendingOpenWebUrls(urls);
+    dispatchPendingOpenWebUrls();
+    focusMainWindow();
+});
+
 queuePendingOpenMediaFiles(extractMediaPathsFromArgv(process.argv));
+queuePendingOpenWebUrls(extractWebUrlsFromArgv(process.argv));
 
 async function getPerformanceSnapshot() {
     const snapshot = {
@@ -2190,6 +2369,16 @@ function getAppIconImage() {
     return img;
 }
 
+function getPasswordManagerIconImage() {
+    const iconName = 'ardali_password_manager_512.png';
+    const image = nativeImage.createFromPath(getResourcePath(path.join('icons', 'app', iconName)));
+    if (!image || image.isEmpty()) {
+        const localImage = nativeImage.createFromPath(path.join(__dirname, 'icons', 'app', iconName));
+        return localImage && !localImage.isEmpty() ? localImage : getAppIconImage();
+    }
+    return image;
+}
+
 function applyLinuxTaskbarGrouping(win) {
     if (process.platform !== 'linux' || !win || win.isDestroyed?.()) return win;
     try {
@@ -2528,7 +2717,7 @@ function getWebRuntimeSettingsSync() {
         allowMicrophone: webUi.allowMicrophone === true,
         allowLocation: webUi.allowLocation === true,
         allowNotifications: webUi.allowNotifications === true,
-        allowPopups: webUi.allowPopups !== false && security.allowPopups !== false,
+        allowPopups: webUi.allowPopups === true && security.allowPopups !== false,
         askDownloadLocation: webUi.askDownloadLocation !== false,
         reduceReferrers: webUi.reduceReferrers !== false,
         blockThirdPartyCookies: webUi.blockThirdPartyCookies === true
@@ -2562,10 +2751,7 @@ function isWebPermissionAllowedBySettings(permission, currentUrl = '', originUrl
     if (
         requestedPermission === 'fullscreen' ||
         requestedPermission === 'pointerLock' ||
-        requestedPermission === 'keyboardLock' ||
-        requestedPermission === 'clipboard-read' ||
-        requestedPermission === 'clipboard-sanitized-write' ||
-        requestedPermission === 'clipboard-write'
+        requestedPermission === 'keyboardLock'
     ) {
         return true;
     }
@@ -2667,7 +2853,7 @@ async function clearCookiesFromSession(ses, origin = '') {
             await ses.cookies.remove(url, cookie.name);
             removed += 1;
         } catch (error) {
-            console.warn('[WEB] cookie remove failed:', cookie.name, error?.message || error);
+            console.warn('[WEB] cookie removal failed:', error?.message || error);
         }
     }
     return removed;
@@ -4856,9 +5042,67 @@ function sanitizeSensitiveSettings(input) {
         delete clone.web.credentials;
         delete clone.web.cookies;
         delete clone.web.auth;
+        clone.web.newTab = sanitizeNewTabSettings(clone.web.newTab);
     }
 
     return clone;
+}
+
+const NEW_TAB_DEFAULT_SHORTCUTS = Object.freeze([
+    { title: 'YouTube', url: 'https://www.youtube.com/' },
+    { title: 'GitHub', url: 'https://github.com/' },
+    { title: 'Wikipedia', url: 'https://www.wikipedia.org/' }
+]);
+
+function sanitizeNewTabHttpUrl(value) {
+    try {
+        const parsed = new URL(String(value || '').trim());
+        if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') return '';
+        parsed.username = '';
+        parsed.password = '';
+        return parsed.toString().slice(0, 2048);
+    } catch {
+        return '';
+    }
+}
+
+function sanitizeNewTabSettings(input) {
+    const source = input && typeof input === 'object' && !Array.isArray(input) ? input : {};
+    const bool = (value, fallback) => typeof value === 'boolean' ? value : fallback;
+    const oneOf = (value, allowed, fallback) => allowed.includes(value) ? value : fallback;
+    const number = (value, min, max, fallback) => {
+        const parsed = Number(value);
+        return Number.isFinite(parsed) ? Math.max(min, Math.min(max, Math.round(parsed))) : fallback;
+    };
+    const shortcuts = Array.isArray(source.shortcuts?.items) ? source.shortcuts.items : NEW_TAB_DEFAULT_SHORTCUTS;
+    const cleanShortcuts = shortcuts.slice(0, 12).map((item) => ({
+        title: String(item?.title || '').replace(/[\u0000-\u001f\u007f]/g, '').trim().slice(0, 40),
+        url: sanitizeNewTabHttpUrl(item?.url)
+    })).filter((item) => item.title && item.url);
+    return {
+        version: 1,
+        background: {
+            mode: oneOf(source.background?.mode, ['packaged', 'gradient', 'custom', 'none'], 'packaged'),
+            packagedId: oneOf(source.background?.packagedId, ['flow-blue', 'aurora-teal', 'cosmic-violet'], 'flow-blue'),
+            dim: number(source.background?.dim, 0, 80, 36),
+            blur: number(source.background?.blur, 0, 16, 0),
+            hasCustom: bool(source.background?.hasCustom, false)
+        },
+        clock: {
+            visible: bool(source.clock?.visible, true),
+            format: oneOf(source.clock?.format, ['12', '24'], '24'),
+            seconds: bool(source.clock?.seconds, false),
+            showDate: bool(source.clock?.showDate, true)
+        },
+        search: { visible: bool(source.search?.visible, true) },
+        shortcuts: { visible: bool(source.shortcuts?.visible, true), items: cleanShortcuts },
+        cards: {
+            downloads: bool(source.cards?.downloads, true),
+            privacy: bool(source.cards?.privacy, true),
+            order: ['downloads', 'privacy']
+        },
+        appearance: { reducedMotion: bool(source.appearance?.reducedMotion, false) }
+    };
 }
 
 // ============================================================
@@ -5219,7 +5463,7 @@ function installAppMenu() {
             label: tMainSync('appMenu.view'),
             submenu: [
                 { role: 'reload', label: tMainSync('appMenu.reload') },
-                { role: 'toggleDevTools', label: tMainSync('appMenu.toggleDevTools') },
+                ...(process.env.ARDALI_DEV === '1' ? [{ role: 'toggleDevTools', label: tMainSync('appMenu.toggleDevTools') }] : []),
                 { type: 'separator' },
                 { role: 'resetZoom', label: tMainSync('appMenu.resetZoom') },
                 { role: 'zoomIn', label: tMainSync('appMenu.zoomIn') },
@@ -5761,9 +6005,8 @@ function createWindow() {
             preload: path.join(__dirname, 'preload.js'),
             nodeIntegration: false,
             contextIsolation: true,
-            // sandbox: false gerekli — preload.js Node.js require() kullanıyor.
-            // Webview'lar için sandbox will-attach-webview içinde ayrıca zorunlu tutuluyor.
-            sandbox: false,
+            sandbox: true,
+            devTools: process.env.ARDALI_DEV === '1',
             webSecurity: true,
             allowRunningInsecureContent: false,
             // Ana pencere ayarlar/yardımcı pencere arkasında kalsa bile Web sekmesindeki
@@ -5778,6 +6021,7 @@ function createWindow() {
         autoHideMenuBar: true,
         show: false
     });
+    seedMainRendererPathGrants(mainWindow.webContents);
     // Ana içerik alanını büyüt: yerel uygulama menüsü görünmesin.
     try { mainWindow.setMenuBarVisibility(false); } catch { /* yoksay */ }
     if (savedWindowState.fullscreen) {
@@ -6067,9 +6311,8 @@ async function createSettingsWindow(defaultTab = 'web') {
             additionalArguments: [`--ardali-view=settings`, `--ardali-settings-tab=${tab}`],
             nodeIntegration: false,
             contextIsolation: true,
-            // sandbox: false gerekli — preload.js Node.js require() kullanıyor.
-            sandbox: false,
-            webviewTag: true,
+            sandbox: true,
+            devTools: process.env.ARDALI_DEV === '1',
             webSecurity: true,
             allowRunningInsecureContent: false,
             plugins: true,
@@ -6156,7 +6399,8 @@ function createAdblockWindow() {
             additionalArguments: ['--ardali-view=adblock'],
             nodeIntegration: false,
             contextIsolation: true,
-            sandbox: false,
+            sandbox: true,
+            devTools: process.env.ARDALI_DEV === '1',
             webSecurity: true,
             allowRunningInsecureContent: false,
             spellcheck: false
@@ -6218,7 +6462,8 @@ function createDownloaderWindow() {
             nodeIntegration: false,
             contextIsolation: true,
             backgroundThrottling: true,
-            sandbox: false,
+            sandbox: true,
+            devTools: process.env.ARDALI_DEV === '1',
             webSecurity: true,
             allowRunningInsecureContent: false,
             spellcheck: false
@@ -6905,8 +7150,8 @@ function createSoundEffectsWindow(rawScope = 'music') {
             additionalArguments: ['--ardali-view=sound-effects'],
             nodeIntegration: false,
             contextIsolation: true,
-            // sandbox: false gerekli — preload.js Node.js require() kullanıyor.
-            sandbox: false,
+            sandbox: true,
+            devTools: process.env.ARDALI_DEV === '1',
             webSecurity: true,
             allowRunningInsecureContent: false,
             backgroundThrottling: true,
@@ -6967,10 +7212,11 @@ function createEQPresetsWindow() {
         autoHideMenuBar: true,
         webPreferences: {
             preload: path.join(__dirname, 'preload.js'),
+            additionalArguments: ['--ardali-view=eq-presets'],
             nodeIntegration: false,
             contextIsolation: true,
-            // sandbox: false gerekli — preload.js Node.js require() kullanıyor.
-            sandbox: false,
+            sandbox: true,
+            devTools: process.env.ARDALI_DEV === '1',
             webSecurity: true,
             allowRunningInsecureContent: false
         },
@@ -8096,6 +8342,7 @@ ipcMain.handle('app:consumePendingOpenMediaFiles', async () => {
 ipcMain.on('app:renderer-media-open-ready', () => {
     rendererMediaOpenReady = true;
     dispatchPendingOpenMediaFiles();
+    dispatchPendingOpenWebUrls();
 });
 
 ipcMain.handle('app:getVersionInfo', async () => {
@@ -8239,24 +8486,18 @@ function installWebviewHardening() {
                     const originUrl = String(details?.requestingOrigin || '').trim();
 
                     if (wcType === 'webview') {
-                        // Kopyalama işlemleri web tarayıcısında her zaman serbest olmalı (Brave/Chrome standartı)
-                        if (requestedPermission === 'clipboard-read' ||
-                            requestedPermission === 'clipboard-sanitized-write' ||
-                            requestedPermission === 'clipboard-write') {
-                            callback(true);
-                            return;
-                        }
-
-                        // Web platformlarda (allowlist) kullanıcı akışını bozmayacak şekilde
-                        // izinleri host bazlı değerlendir.
+                        // Both the top-level document and the actual requesting origin
+                        // must independently satisfy policy. An allowlisted embedder must
+                        // never lend its permissions to an untrusted child frame.
+                        const requestingUrl = originUrl || currentUrl;
                         const trustedContext =
-                            isAllowedWebUrlMain(currentUrl) ||
-                            isAllowedWebUrlMain(originUrl);
+                            isAllowedWebUrlMain(currentUrl) &&
+                            isAllowedWebUrlMain(requestingUrl);
                         if (!trustedContext) {
                             callback(false);
                             return;
                         }
-                        if (!isWebPermissionAllowedBySettings(requestedPermission, currentUrl, originUrl)) {
+                        if (!isWebPermissionAllowedBySettings(requestedPermission, currentUrl, requestingUrl)) {
                             callback(false);
                             return;
                         }
@@ -8277,6 +8518,19 @@ function installWebviewHardening() {
                     }
 
                     callback(false);
+                });
+            }
+            if (ses && typeof ses.setPermissionCheckHandler === 'function') {
+                ses.setPermissionCheckHandler((contents, permission, requestingOrigin, details) => {
+                    const currentUrl = String(contents?.getURL?.() || '').trim();
+                    const originUrl = String(requestingOrigin || details?.requestingOrigin || '').trim();
+                    if (contents?.getType?.() === 'webview') {
+                        const requestingUrl = originUrl || currentUrl;
+                        if (!isAllowedWebUrlMain(currentUrl) || !isAllowedWebUrlMain(requestingUrl)) return false;
+                        return isWebPermissionAllowedBySettings(permission, currentUrl, requestingUrl);
+                    }
+                    const requested = String(permission || '').trim();
+                    return isLocalAppPageUrl(currentUrl) && ['media', 'audioCapture', 'videoCapture', 'display-capture'].includes(requested);
                 });
             }
             if (ses && typeof ses.setDisplayMediaRequestHandler === 'function') {
@@ -8449,150 +8703,51 @@ function installWebviewHardening() {
         try {
             const parsedUrl = new URL(targetUrl);
             const protocol = parsedUrl.protocol.toLowerCase();
-            const ignoredProtocols = ['about:', 'chrome:', 'devtools:', 'blob:', 'data:', 'file:', 'http:', 'https:'];
-
-            if (ignoredProtocols.includes(protocol)) return;
-
-            const settings = readSettingsFileSafeSync();
-
-            // Eğer daha önceden manuel uygulama seçilmişse onu kullan
-            if (settings?.ui?.customProtocolHandlers?.[protocol]) {
-                const executablePath = settings.ui.customProtocolHandlers[protocol];
-                const { spawn } = require('child_process');
-                spawn(executablePath, [targetUrl], { detached: true, stdio: 'ignore' }).unref();
-                return;
-            }
-
-            if (settings?.ui?.allowedExternalProtocols?.includes(protocol)) {
-                shell.openExternal(targetUrl).catch(() => {
-                    // Eğer başarısız olursa, otomatik izni kaldır ki tekrar sorabilsin
-                    try {
-                        const s = readSettingsFileSafeSync();
-                        if (s?.ui?.allowedExternalProtocols) {
-                            s.ui.allowedExternalProtocols = s.ui.allowedExternalProtocols.filter(p => p !== protocol);
-                            writeJsonFileAtomicSync(getSettingsPath(), sanitizeSensitiveSettings(s));
-                        }
-                    } catch(e) {}
-                    // Başarısız olunduğu için tekrar sor, modalı aç
-                    showPrompt();
-                });
-                return;
-            }
-
+            if (!['mailto:', 'tel:', 'sms:', 'magnet:'].includes(protocol)) return;
             if (!parentWindow || parentWindow.isDestroyed()) return;
-
-            const sanitizedUrl = targetUrl.replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/\n/g, "");
-            const sanitizedProtocol = protocol.replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/\n/g, "");
-
-            function showPrompt() {
-                const promptLabels = JSON.stringify({
-                    title: tMainSync('web.externalProtocol.title'),
-                    request: tMainSync('web.externalProtocol.request', { site: '{site}' }),
-                    alwaysAllow: tMainSync('web.externalProtocol.alwaysAllow', { site: '{site}' }),
-                    cancel: tMainSync('web.externalProtocol.cancel'),
-                    openApp: tMainSync('web.externalProtocol.openApp', { app: 'xdg-open' })
-                });
-                const promptDir = ['ar-SA', 'fa-IR'].includes(getUiLanguageSync()) ? 'rtl' : 'ltr';
-                const script = `
-                    (function() {
-                        if (document.getElementById('epp-modal')) document.getElementById('epp-modal').remove();
-
-                        const modal = document.createElement('div');
-                        modal.id = 'epp-modal';
-                        Object.assign(modal.style, {
-                            position: 'absolute',
-                            top: '20px',
-                            left: '50%',
-                            transform: 'translateX(-50%)',
-                            background: '#292a2d',
-                            color: '#e8eaed',
-                            borderRadius: '8px',
-                            padding: '24px',
-                            width: '400px',
-                            boxShadow: '0 4px 12px rgba(0,0,0,0.5)',
-                            zIndex: '9999999',
-                            fontFamily: 'system-ui, -apple-system, sans-serif'
-                        });
-
-                        const urlStr = "${sanitizedUrl}";
-                        const protoStr = "${sanitizedProtocol}";
-                        const labels = ${promptLabels};
-                        let originHost = "site";
-                        try {
-                            originHost = new URL(location.href).hostname;
-                        } catch(e) {}
-
-                        modal.dir = '${promptDir}';
-                        const withSite = (value) => String(value || '').replaceAll('{site}', originHost);
-
-                        modal.innerHTML =
-                            '<div style="font-size: 15px; margin-bottom: 12px; font-weight: 400; color: #e8eaed;">' + labels.title + '</div>' +
-                            '<div style="font-size: 13px; color: #9aa0a6; margin-bottom: 16px;">' +
-                                withSite(labels.request) +
-                            '</div>' +
-                            '<label style="display: flex; align-items: flex-start; gap: 12px; font-size: 13px; color: #9aa0a6; margin-bottom: 24px; cursor: pointer;">' +
-                                '<input type="checkbox" id="epp-checkbox" style="margin-top: 2px; accent-color: #8ab4f8; cursor: pointer;">' +
-                                '<span style="line-height: 1.4; user-select: none;">' + withSite(labels.alwaysAllow) + '</span>' +
-                            '</label>' +
-                            '<div style="display: flex; justify-content: flex-end; gap: 8px;">' +
-                                '<button id="epp-cancel" style="padding: 6px 16px; border-radius: 16px; border: 1px solid #8ab4f8; background: transparent; color: #8ab4f8; cursor: pointer; font-size: 13px; font-weight: 500; transition: background 0.2s;">' + labels.cancel + '</button>' +
-                                '<button id="epp-open" style="padding: 6px 16px; border-radius: 16px; border: none; background: #8ab4f8; color: #202124; cursor: pointer; font-weight: 500; font-size: 13px; transition: background 0.2s;">' + labels.openApp + '</button>' +
-                            '</div>';
-
-                        document.body.appendChild(modal);
-
-                        const btnCancel = document.getElementById('epp-cancel');
-                        btnCancel.onmouseover = () => btnCancel.style.background = 'rgba(138, 180, 248, 0.08)';
-                        btnCancel.onmouseout = () => btnCancel.style.background = 'transparent';
-                        btnCancel.onclick = () => {
-                            modal.remove();
-                        };
-
-                        const btnOpen = document.getElementById('epp-open');
-                        btnOpen.onmouseover = () => btnOpen.style.background = '#9dc2ff';
-                        btnOpen.onmouseout = () => btnOpen.style.background = '#8ab4f8';
-                        btnOpen.onclick = async () => {
-                            const alwaysAllow = document.getElementById('epp-checkbox').checked;
-                            if (alwaysAllow && window.ardali?.saveSettings && window.ardali?.loadSettings) {
-                                try {
-                                    const s = await window.ardali.loadSettings();
-                                    if (!s.ui) s.ui = {};
-                                    if (!Array.isArray(s.ui.allowedExternalProtocols)) s.ui.allowedExternalProtocols = [];
-                                    if (!s.ui.allowedExternalProtocols.includes(protoStr)) {
-                                        s.ui.allowedExternalProtocols.push(protoStr);
-                                        await window.ardali.saveSettings(s);
-                                    }
-                                } catch(e) { console.error('EPP settings error', e); }
-                            }
-                            if (window.ardali?.webSecurity?.chooseAndOpenExternal) {
-                                window.ardali.webSecurity.chooseAndOpenExternal(urlStr, protoStr).catch(console.error);
-                            }
-                            modal.remove();
-                        };
-                    })();
-                `;
-                parentWindow.webContents.executeJavaScript(script).catch(err => {
-                    dialog.showMessageBox(parentWindow, {
-                        type: 'question',
-                        title: tMainSync('web.externalProtocol.fallbackTitle'),
-                        message: tMainSync('web.externalProtocol.fallbackMessage'),
-                        detail: targetUrl,
-                        buttons: [tMainSync('web.externalProtocol.cancel'), tMainSync('web.externalProtocol.open')],
-                        defaultId: 1,
-                        cancelId: 0
-                    }).then(result => {
-                        if (result.response === 1) shell.openExternal(targetUrl).catch(() => {});
-                    });
-                });
-            }
-
-            showPrompt();
+            const displayUrl = String(targetUrl).replace(/[\r\n\u0000-\u001f\u007f]/g, '').slice(0, 2048);
+            dialog.showMessageBox(parentWindow, {
+                type: 'question',
+                title: tMainSync('web.externalProtocol.fallbackTitle'),
+                message: tMainSync('web.externalProtocol.fallbackMessage'),
+                detail: displayUrl,
+                buttons: [tMainSync('web.externalProtocol.cancel'), tMainSync('web.externalProtocol.open')],
+                defaultId: 0,
+                cancelId: 0,
+                noLink: true
+            }).then((result) => {
+                if (result.response === 1) shell.openExternal(parsedUrl.toString()).catch(() => {});
+            });
         } catch (e) {}
     }
 
     // Harden all webviews created in this app.
     app.on('web-contents-created', (_event, contents) => {
         const type = contents.getType?.();
+        if (type === 'window' && !String(contents.getLastWebPreferences?.()?.preload || '')) {
+            // OAuth/pop-up windows never receive an application preload. Keep
+            // them web-only and prevent them from becoming a protocol/file pivot.
+            contents.setWindowOpenHandler(({ url }) => {
+                if (!parseHttpUrlMain(url) && url !== 'about:blank') return { action: 'deny' };
+                return {
+                    action: 'allow',
+                    overrideBrowserWindowOptions: {
+                        ...getAuxiliaryWindowDefaults(),
+                        autoHideMenuBar: true,
+                        webPreferences: { nodeIntegration: false, contextIsolation: true, sandbox: true, devTools: false, webSecurity: true, allowRunningInsecureContent: false }
+                    }
+                };
+            });
+            contents.on('will-navigate', (event, url) => {
+                if (parseHttpUrlMain(url) || url === 'about:blank') return;
+                event.preventDefault();
+                handleExternalProtocolPrompt(BrowserWindow.fromWebContents(contents) || mainWindow, url);
+            });
+            contents.on('will-redirect', (event, url) => {
+                if (!parseHttpUrlMain(url)) event.preventDefault();
+            });
+            return;
+        }
         if (type !== 'webview') return;
         try {
             contents.setBackgroundThrottling?.(false);
@@ -8616,15 +8771,7 @@ function installWebviewHardening() {
                     },
                     {
                         label: tMainSync('web.contextMenu.openLinkNewWindow'),
-                        click: () => {
-                            const bw = new BrowserWindow({
-                                ...getAuxiliaryWindowDefaults(),
-                                title: 'ArDali',
-                                autoHideMenuBar: false
-                            });
-                            applyLinuxTaskbarGrouping(bw);
-                            bw.loadURL(params.linkURL);
-                        }
+                        click: () => contents.hostWebContents?.send('web:open-tab', params.linkURL)
                     },
                     {
                         label: tMainSync('web.contextMenu.copyLinkAddress'),
@@ -8717,12 +8864,12 @@ function installWebviewHardening() {
                 template.push({ type: 'separator' });
             }
 
-            template.push({
-                label: tMainSync('web.contextMenu.inspect'),
-                click: () => {
-                    contents.inspectElement(params.x, params.y);
-                }
-            });
+            if (process.env.ARDALI_DEV === '1') {
+                template.push({
+                    label: tMainSync('web.contextMenu.inspect'),
+                    click: () => contents.inspectElement(params.x, params.y)
+                });
+            }
 
             const menu = Menu.buildFromTemplate(template);
             const hostWindow = BrowserWindow.fromWebContents(contents.hostWebContents || contents);
@@ -8744,7 +8891,8 @@ function installWebviewHardening() {
                         overrideBrowserWindowOptions: {
                             ...getAuxiliaryWindowDefaults(),
                             title: 'ArDali',
-                            autoHideMenuBar: false
+                            autoHideMenuBar: true,
+                            webPreferences: { nodeIntegration: false, contextIsolation: true, sandbox: true, devTools: false, webSecurity: true, allowRunningInsecureContent: false }
                         }
                     };
                 }
@@ -8754,7 +8902,8 @@ function installWebviewHardening() {
                         overrideBrowserWindowOptions: {
                             ...getAuxiliaryWindowDefaults(),
                             title: 'ArDali',
-                            autoHideMenuBar: false
+                            autoHideMenuBar: true,
+                            webPreferences: { nodeIntegration: false, contextIsolation: true, sandbox: true, devTools: false, webSecurity: true, allowRunningInsecureContent: false }
                         }
                     };
                 }
@@ -8809,12 +8958,288 @@ function installTlsCompatibilityForWebPlatforms() {
     });
 }
 
+function isTrustedLocalVaultSender(event) {
+    try {
+        const senderUrl = new URL(String(event?.senderFrame?.url || event?.sender?.getURL?.() || ''));
+        return senderUrl.protocol === 'file:' && path.basename(senderUrl.pathname) === 'password-manager.html' && event.sender === passwordManagerWindow?.webContents;
+    } catch (_) { return false; }
+}
+
+const LOCAL_PAGE_IPC_PREFIXES = Object.freeze({
+    'password-manager.html': ['vault:', 'settings:load', 'i18n:', 'get-system-locale'],
+    'settings.html': ['settings:', 'window:', 'dialog:', 'audio:', 'soundEffects:', 'presets:', 'systemAudio:', 'system:', 'web:', 'app:', 'diagnostics:', 'adblock:', 'downloader:', 'vault:openManager', 'i18n:'],
+    'downloader.html': ['downloader:', 'window:', 'dialog:confirm', 'settings:', 'app:getVersionInfo', 'i18n:'],
+    'adblock.html': ['adblock:', 'window:', 'dialog:confirm', 'settings:', 'i18n:'],
+    'soundEffects.html': ['audio:', 'soundEffects:', 'presets:', 'window:', 'dialog:', 'settings:', 'systemAudio:', 'i18n:'],
+    'eqPresets.html': ['audio:', 'presets:', 'window:', 'dialog:confirm', 'settings:', 'i18n:'],
+    'pulse.html': ['pulse:', 'window:', 'dialog:confirm', 'settings:', 'systemAudio:', 'i18n:']
+});
+
+function isLocalPageChannelAllowed(pageName, channel) {
+    if (pageName === 'index.html') return true;
+    const prefixes = LOCAL_PAGE_IPC_PREFIXES[pageName];
+    return Array.isArray(prefixes) && prefixes.some((prefix) => String(channel || '').startsWith(prefix));
+}
+
+function isTrustedLocalAppSender(event, channel = '') {
+    try {
+        if (!event?.sender || event.sender.isDestroyed?.() || event.sender.getType?.() !== 'window') return false;
+        if (event.senderFrame?.parent) return false;
+        const senderUrl = new URL(String(event.senderFrame?.url || event.sender.getURL?.() || ''));
+        if (senderUrl.protocol !== 'file:') return false;
+        const decoded = decodeURIComponent(senderUrl.pathname || '');
+        const localPath = path.resolve(process.platform === 'win32' && /^\/[A-Za-z]:/.test(decoded) ? decoded.slice(1) : decoded);
+        const appRoot = path.resolve(__dirname);
+        const pageName = path.basename(localPath);
+        return localPath.startsWith(`${appRoot}${path.sep}`) &&
+            BrowserWindow.fromWebContents(event.sender) !== null &&
+            isLocalPageChannelAllowed(pageName, channel);
+    } catch (_) { return false; }
+}
+
+function isTrustedGuestWebviewSender(event) {
+    try {
+        return event?.sender?.getType?.() === 'webview' &&
+            !event.sender.isDestroyed?.() &&
+            event.sender.session === session.fromPartition(WEBVIEW_PARTITION) &&
+            /^https:\/\//i.test(String(event.senderFrame?.url || event.sender.getURL?.() || ''));
+    } catch (_) { return false; }
+}
+
+function getGuestCredentialOrigin(event, claimedOrigin = '') {
+    try {
+        if (event.sender?.getType?.() !== 'webview') return '';
+        if (event.senderFrame?.parent) return '';
+        if (event.sender?.session !== session.fromPartition(WEBVIEW_PARTITION)) return '';
+        const actual = new URL(String(event.senderFrame?.url || event.sender.getURL?.() || '')).origin;
+        const claimed = validCredentialOrigin(claimedOrigin || actual);
+        return actual === claimed ? claimed : '';
+    } catch (_) { return ''; }
+}
+
+function vaultResult(error) {
+    const code = String(error?.message || 'vault-error').replace(/[^a-z0-9-]/gi, '').slice(0, 80) || 'vault-error';
+    throw new Error(code);
+}
+
+const stagedCredentialUsernames = new Map();
+const pendingCredentialPrompts = new Set();
+const pendingVaultUnlockRequests = new Set();
+const pendingCredentialFillAuthorizations = new Map();
+function credentialStageKey(event, origin) { return `${Number(event?.sender?.id || 0)}:${origin}`; }
+function pruneCredentialStages() {
+    const now = Date.now();
+    for (const [key, item] of stagedCredentialUsernames) if (!item || item.expiresAt <= now) stagedCredentialUsernames.delete(key);
+}
+
+function clearCredentialTransientState() {
+    stagedCredentialUsernames.clear();
+    pendingCredentialPrompts.clear();
+    pendingCredentialFillAuthorizations.clear();
+    settleVaultUnlockRequests(new Error('feature-disabled'));
+    for (const contents of webContents.getAllWebContents()) {
+        if (!contents.isDestroyed() && contents.getType?.() === 'webview') {
+            try { contents.send('vault:guest:disable'); } catch (_) {}
+        }
+    }
+}
+
+function settleVaultUnlockRequests(error = null) {
+    for (const request of pendingVaultUnlockRequests) {
+        clearTimeout(request.timer);
+        if (error) request.reject(error); else request.resolve(true);
+    }
+    pendingVaultUnlockRequests.clear();
+}
+
+function requestVaultUnlock() {
+    if (!credentialVault) return Promise.reject(new Error('vault-unavailable'));
+    if (credentialVault.dataKey) return Promise.resolve(true);
+    const promise = new Promise((resolve, reject) => {
+        const request = { resolve, reject, timer: null };
+        request.timer = setTimeout(() => {
+            pendingVaultUnlockRequests.delete(request);
+            reject(new Error('unlock-timeout'));
+        }, 2 * 60 * 1000);
+        pendingVaultUnlockRequests.add(request);
+    });
+    createPasswordManagerWindow();
+    return promise;
+}
+
+async function unlockVaultAndContinue(masterPassword) {
+    const result = await credentialVault.unlock(masterPassword);
+    const shouldCloseUnlockWindow = pendingVaultUnlockRequests.size > 0;
+    settleVaultUnlockRequests();
+    if (shouldCloseUnlockWindow) setTimeout(() => {
+        if (passwordManagerWindow && !passwordManagerWindow.isDestroyed()) passwordManagerWindow.close();
+    }, 350);
+    return result;
+}
+
+function createPasswordManagerWindow() {
+    if (passwordManagerWindow && !passwordManagerWindow.isDestroyed()) {
+        passwordManagerWindow.show(); passwordManagerWindow.focus(); return passwordManagerWindow;
+    }
+    passwordManagerWindow = new BrowserWindow({
+        width: 920, height: 720, minWidth: 720, minHeight: 560, show: false,
+        backgroundColor: '#090d15', autoHideMenuBar: true, icon: getPasswordManagerIconImage(),
+        webPreferences: {
+            preload: path.join(__dirname, 'password-manager-preload.js'),
+            nodeIntegration: false, contextIsolation: true, sandbox: true, devTools: false,
+            webSecurity: true, allowRunningInsecureContent: false, spellcheck: false
+        }
+    });
+    try { passwordManagerWindow.setIcon(getPasswordManagerIconImage()); } catch (_) {}
+    passwordManagerWindow.removeMenu();
+    passwordManagerWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+    passwordManagerWindow.webContents.on('will-navigate', (event) => event.preventDefault());
+    passwordManagerWindow.once('ready-to-show', () => passwordManagerWindow?.show());
+    passwordManagerWindow.on('closed', () => {
+        passwordManagerWindow = null;
+        if (!credentialVault?.dataKey && pendingVaultUnlockRequests.size) settleVaultUnlockRequests(new Error('unlock-cancelled'));
+    });
+    passwordManagerWindow.loadFile(path.join(__dirname, 'password-manager.html'));
+    return passwordManagerWindow;
+}
+
+ipcMain.handle('vault:openManager', (event) => {
+    if (event.sender !== mainWindow?.webContents) throw new Error('untrusted-sender');
+    createPasswordManagerWindow(); return true;
+});
+for (const [channel, operation] of Object.entries({
+    'vault:status': () => credentialVault.status(),
+    'vault:create': (_event, master) => credentialVault.create(master),
+    'vault:unlock': (_event, master) => unlockVaultAndContinue(master),
+    'vault:lock': () => { credentialVault.lock(); return true; },
+    'vault:setLockTimeout': (_event, timeoutMs) => credentialVault.setLockTimeout(timeoutMs),
+    'vault:listMetadata': () => credentialVault.listMetadata(),
+    'vault:authorize': (_event, master) => credentialVault.authorize(master),
+    'vault:reveal': (_event, id, token) => credentialVault.reveal(id, token),
+    'vault:manualSave': (_event, record) => credentialVault.save(record),
+    'vault:update': (_event, id, values, token) => credentialVault.update(id, values, token),
+    'vault:delete': (_event, id, token) => credentialVault.delete(id, token),
+    'vault:changeMasterPassword': (_event, oldPassword, nextPassword, token) => credentialVault.changeMasterPassword(oldPassword, nextPassword, token),
+    'vault:reset': (_event, token) => credentialVault.reset(token)
+})) {
+    ipcMain.handle(channel, async (event, ...args) => {
+        if (!credentialVault || !isTrustedLocalVaultSender(event)) throw new Error('untrusted-sender');
+        try { return await operation(event, ...args); } catch (error) { return vaultResult(error); }
+    });
+}
+
+ipcMain.handle('vault:setEnabled', async (event, enabled, acceptance) => {
+    if (!credentialVault || !isTrustedLocalVaultSender(event)) throw new Error('untrusted-sender');
+    try {
+        const result = credentialVault.setEnabled(enabled === true, acceptance);
+        if (!result) clearCredentialTransientState();
+        return result;
+    } catch (error) { return vaultResult(error); }
+});
+
+ipcMain.handle('vault:guest:bridgeStatus', async (event, claimedOrigin) => {
+    const origin = getGuestCredentialOrigin(event, claimedOrigin);
+    return { enabled: !!origin && credentialVault?.isEnabled() === true };
+});
+
+ipcMain.handle('vault:guest:stageUsername', async (event, payload = {}) => {
+    const origin = getGuestCredentialOrigin(event, payload.origin);
+    const username = String(payload.username || '').trim().slice(0, 320);
+    if (!origin || !username || !credentialVault?.isEnabled()) return false;
+    pruneCredentialStages();
+    stagedCredentialUsernames.set(credentialStageKey(event, origin), { username, expiresAt: Date.now() + 5 * 60 * 1000 });
+    return true;
+});
+ipcMain.handle('vault:guest:beginFill', async (event, claimedOrigin) => {
+    const origin = getGuestCredentialOrigin(event, claimedOrigin);
+    if (!origin || !credentialVault?.isEnabled()) throw new Error('feature-disabled');
+    const now = Date.now();
+    for (const [key, item] of pendingCredentialFillAuthorizations) {
+        if (!item || item.expiresAt <= now) pendingCredentialFillAuthorizations.delete(key);
+    }
+    if (pendingCredentialFillAuthorizations.size >= 64) throw new Error('authorization-busy');
+    const token = crypto.randomBytes(24).toString('hex');
+    pendingCredentialFillAuthorizations.set(token, {
+        senderId: Number(event.sender.id),
+        frameRoutingId: Number(event.senderFrame?.routingId || 0),
+        origin,
+        expiresAt: now + 3000
+    });
+    return token;
+});
+ipcMain.handle('vault:guest:chooseAndFill', async (event, claimedOrigin, authorizationToken) => {
+    const origin = getGuestCredentialOrigin(event, claimedOrigin);
+    if (!origin || !credentialVault?.isEnabled()) throw new Error('feature-disabled');
+    const token = String(authorizationToken || '');
+    const authorization = pendingCredentialFillAuthorizations.get(token);
+    pendingCredentialFillAuthorizations.delete(token);
+    if (!authorization || authorization.expiresAt <= Date.now() ||
+        authorization.senderId !== Number(event.sender.id) ||
+        authorization.frameRoutingId !== Number(event.senderFrame?.routingId || 0) ||
+        authorization.origin !== origin) throw new Error('authorization-required');
+    if (!credentialVault.dataKey) await requestVaultUnlock();
+    const currentOrigin = getGuestCredentialOrigin(event, claimedOrigin);
+    if (currentOrigin !== origin) throw new Error('origin-changed');
+    credentialVault.ensureUnlocked();
+    const accounts = credentialVault.listMetadata(origin);
+    if (!accounts.length) throw new Error('record-not-found');
+    let selectedIndex = 0;
+    if (accounts.length > 1) {
+        const result = await dialog.showMessageBox(mainWindow, {
+            type: 'question', title: 'ArDali Şifre Yöneticisi', message: 'Doldurulacak hesabı seçin',
+            buttons: accounts.map((item) => item.username).concat('Vazgeç'),
+            defaultId: 0, cancelId: accounts.length, noLink: true
+        });
+        if (result.response < 0 || result.response >= accounts.length) return null;
+        selectedIndex = result.response;
+    }
+    const selected = accounts[selectedIndex];
+    const record = credentialVault.vault?.records?.find((item) => item.id === selected.id);
+    if (!record) throw new Error('record-not-found');
+    return credentialVault.decryptRecord(record);
+});
+ipcMain.handle('vault:guest:candidate', async (event, payload = {}) => {
+    const origin = getGuestCredentialOrigin(event, payload.origin);
+    pruneCredentialStages();
+    const stageKey = credentialStageKey(event, origin);
+    const stagedUsername = stagedCredentialUsernames.get(stageKey)?.username || '';
+    const username = String(payload.username || stagedUsername).trim().slice(0, 320);
+    const password = String(payload.password || '');
+    if (!origin || !username || !password || password.length > 4096 || !credentialVault) throw new Error('invalid-candidate');
+    if (!credentialVault.isEnabled()) return { accepted: false };
+    const status = await credentialVault.status();
+    if (status.locked || !status.supported) return { accepted: false };
+    const promptKey = `${stageKey}:${username}`;
+    if (pendingCredentialPrompts.has(promptKey)) return { accepted: false };
+    pendingCredentialPrompts.add(promptKey);
+    const existing = credentialVault.listMetadata(origin).some((item) => item.username === username);
+    try {
+        const choice = await dialog.showMessageBox(mainWindow, {
+            type: 'question', buttons: [existing ? 'Güncelle' : 'Kaydet', 'Şimdi değil'], defaultId: 0, cancelId: 1,
+            title: 'ArDali Şifre Yöneticisi',
+            message: existing ? 'Bu hesap için kayıtlı şifre güncellensin mi?' : 'Bu giriş bilgisi güvenli kasaya kaydedilsin mi?',
+            detail: `${origin}\n${username}`,
+            noLink: true
+        });
+        stagedCredentialUsernames.delete(stageKey);
+        if (choice.response !== 0) return { accepted: false };
+        credentialVault.save({ origin, username, password });
+        return { accepted: true };
+    } finally {
+        pendingCredentialPrompts.delete(promptKey);
+    }
+});
+
 // User-Agent maskelemesini global uygulama. WhatsApp gibi ihtiyaç duyan siteler
 // renderer tarafında hedef URL'ye göre özel UA alır; Google/YouTube doğal webview
 // kimliğiyle kalır.
 
 app.whenReady().then(async () => {
     if (!gotSingleInstanceLock) return;
+    credentialVault = new CredentialVault({ userDataPath: app.getPath('userData'), safeStorage, platform: process.platform });
+    for (const eventName of ['suspend', 'lock-screen']) {
+        try { powerMonitor.on(eventName, () => credentialVault?.lock?.()); } catch (_) {}
+    }
     // GPU ayarları burada uygula
     if (!isPackagedLinuxConservativeGpuMode()) {
         app.commandLine.appendSwitch('enable-gpu-rasterization');
@@ -8871,6 +9296,7 @@ app.on('window-all-closed', () => {
 });
 
 app.on('before-quit', () => {
+    credentialVault?.close?.();
     persistMainWindowStateSync();
     clearStartupUpdateRetryTimer();
     stopVisualizer();
@@ -8905,8 +9331,137 @@ app.on('will-quit', () => {
 // IPC HANDLERS
 // ============================================
 
+function getDefaultBrowserStatus() {
+    if (!app.isPackaged) return { supported: false, isDefault: false, reason: 'development-build' };
+    if (process.platform === 'linux') {
+        const result = spawnSync('xdg-settings', ['get', 'default-web-browser'], { encoding: 'utf8', timeout: 4000, windowsHide: true });
+        if (result.error || result.status !== 0) return { supported: false, isDefault: false, reason: 'xdg-settings-unavailable' };
+        return { supported: true, isDefault: String(result.stdout || '').trim() === DESKTOP_FILE_ID, desktopFile: DESKTOP_FILE_ID };
+    }
+    if (process.platform === 'win32' || process.platform === 'darwin') {
+        return { supported: true, isDefault: app.isDefaultProtocolClient('http') && app.isDefaultProtocolClient('https') };
+    }
+    return { supported: false, isDefault: false, reason: 'unsupported-platform' };
+}
+
+function requestDefaultBrowserRegistration() {
+    if (!app.isPackaged) return { ok: false, ...getDefaultBrowserStatus() };
+    if (process.platform === 'linux') {
+        const setBrowser = spawnSync('xdg-settings', ['set', 'default-web-browser', DESKTOP_FILE_ID], { encoding: 'utf8', timeout: 6000, windowsHide: true });
+        // Some desktop environments honor the MIME database more reliably than
+        // xdg-settings. Both calls use fixed arguments and never invoke a shell.
+        const http = spawnSync('xdg-mime', ['default', DESKTOP_FILE_ID, 'x-scheme-handler/http'], { encoding: 'utf8', timeout: 4000, windowsHide: true });
+        const https = spawnSync('xdg-mime', ['default', DESKTOP_FILE_ID, 'x-scheme-handler/https'], { encoding: 'utf8', timeout: 4000, windowsHide: true });
+        const status = getDefaultBrowserStatus();
+        return { ok: !setBrowser.error && setBrowser.status === 0 && !http.error && http.status === 0 && !https.error && https.status === 0, ...status };
+    }
+    const http = app.setAsDefaultProtocolClient('http');
+    const https = app.setAsDefaultProtocolClient('https');
+    if (process.platform === 'win32') {
+        // Windows requires the user to confirm the final choice in system settings.
+        shell.openExternal('ms-settings:defaultapps').catch(() => {});
+    }
+    const status = getDefaultBrowserStatus();
+    return { ok: http && https, ...status, requiresSystemConfirmation: process.platform === 'win32' && !status.isDefault };
+}
+
+ipcMain.handle('web:getDefaultBrowserStatus', (event) => {
+    if (!isMainRendererSender(event)) return { supported: false, isDefault: false, reason: 'unauthorized' };
+    return getDefaultBrowserStatus();
+});
+
+ipcMain.handle('web:makeDefaultBrowser', (event) => {
+    if (!isMainRendererSender(event)) return { ok: false, supported: false, isDefault: false, reason: 'unauthorized' };
+    return requestDefaultBrowserRegistration();
+});
+
+const NEW_TAB_IMAGE_MAX_BYTES = 12 * 1024 * 1024;
+const NEW_TAB_IMAGE_MAX_PIXELS = 32 * 1024 * 1024;
+const NEW_TAB_IMAGE_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.webp']);
+
+function isMainRendererSender(event) {
+    return !!(mainWindow && !mainWindow.isDestroyed() && event?.sender?.id === mainWindow.webContents.id);
+}
+
+function getNewTabCustomImagePath() {
+    return path.join(app.getPath('userData'), 'new-tab', 'custom-background.png');
+}
+
+async function writeNewTabImageAtomic(target, buffer) {
+    const temp = `${target}.${process.pid}.tmp`;
+    await fs.promises.writeFile(temp, buffer, { mode: 0o600 });
+    await fs.promises.rename(temp, target);
+}
+
+function detectRasterImageFormat(buffer) {
+    if (!Buffer.isBuffer(buffer) || buffer.length < 12) return '';
+    if (buffer.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))) return 'png';
+    if (buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) return 'jpeg';
+    if (buffer.toString('ascii', 0, 4) === 'RIFF' && buffer.toString('ascii', 8, 12) === 'WEBP') return 'webp';
+    return '';
+}
+
+async function readValidatedNewTabImage(filePath) {
+    const stat = await fs.promises.stat(filePath);
+    if (!stat.isFile() || stat.size < 32 || stat.size > NEW_TAB_IMAGE_MAX_BYTES) throw new Error('invalid-size');
+    const buffer = await fs.promises.readFile(filePath);
+    const format = detectRasterImageFormat(buffer);
+    if (!format) throw new Error('invalid-format');
+    const image = nativeImage.createFromBuffer(buffer);
+    if (image.isEmpty()) throw new Error('decode-failed');
+    const size = image.getSize();
+    if (!size.width || !size.height || size.width * size.height > NEW_TAB_IMAGE_MAX_PIXELS) throw new Error('invalid-dimensions');
+    // Normalize the accepted source to PNG. This strips metadata and ensures the
+    // renderer never receives arbitrary bytes with a misleading extension.
+    const normalized = image.toPNG();
+    if (!normalized.length || normalized.length > NEW_TAB_IMAGE_MAX_BYTES * 2) throw new Error('normalized-too-large');
+    return normalized;
+}
+
+ipcMain.handle('newTab:chooseBackground', async (event) => {
+    if (!isMainRendererSender(event)) return { ok: false, error: 'unauthorized' };
+    const result = await dialog.showOpenDialog(mainWindow, {
+        title: 'Yeni sekme arka planı seç',
+        properties: ['openFile'],
+        filters: [{ name: 'Resimler', extensions: Array.from(NEW_TAB_IMAGE_EXTENSIONS, (ext) => ext.slice(1)) }]
+    });
+    if (result.canceled || result.filePaths.length !== 1) return { ok: false, canceled: true };
+    try {
+        const selected = result.filePaths[0];
+        if (!NEW_TAB_IMAGE_EXTENSIONS.has(path.extname(selected).toLowerCase())) throw new Error('invalid-extension');
+        const normalized = await readValidatedNewTabImage(selected);
+        const target = getNewTabCustomImagePath();
+        await fs.promises.mkdir(path.dirname(target), { recursive: true, mode: 0o700 });
+        await writeNewTabImageAtomic(target, normalized);
+        return { ok: true, dataUrl: `data:image/png;base64,${normalized.toString('base64')}` };
+    } catch (error) {
+        console.warn('[NEW TAB] custom background rejected:', error?.message || error);
+        return { ok: false, error: 'invalid-image' };
+    }
+});
+
+ipcMain.handle('newTab:loadBackground', async (event) => {
+    if (!isMainRendererSender(event)) return { ok: false, error: 'unauthorized' };
+    try {
+        const normalized = await readValidatedNewTabImage(getNewTabCustomImagePath());
+        return { ok: true, dataUrl: `data:image/png;base64,${normalized.toString('base64')}` };
+    } catch {
+        return { ok: false, error: 'not-found' };
+    }
+});
+
+ipcMain.handle('newTab:removeBackground', async (event) => {
+    if (!isMainRendererSender(event)) return false;
+    try {
+        await fs.promises.unlink(getNewTabCustomImagePath());
+    } catch (error) {
+        if (error?.code !== 'ENOENT') return false;
+    }
+    return true;
+});
+
 // Dosya/Klasör Seçimi
-ipcMain.handle('dialog:openFile', async () => {
+ipcMain.handle('dialog:openFile', async (event) => {
     const result = await dialog.showOpenDialog(mainWindow, {
         properties: ['openFile', 'multiSelections'],
         filters: [
@@ -8915,10 +9470,11 @@ ipcMain.handle('dialog:openFile', async () => {
             { name: tMainSync('dialog.filters.allFiles'), extensions: ['*'] }
         ]
     });
+    for (const filePath of result.filePaths || []) grantRendererPath(event.sender, filePath, { write: false });
     return result.filePaths;
 });
 
-ipcMain.handle('dialog:openFolder', async (_event, opts) => {
+ipcMain.handle('dialog:openFolder', async (event, opts) => {
     const title = (opts && typeof opts === 'object' && opts.title) ? String(opts.title) : tMainSync('dialog.selectMusicFolder');
     const defaultPath = (opts && typeof opts === 'object' && opts.defaultPath) ? String(opts.defaultPath) : undefined;
     const result = await dialog.showOpenDialog(mainWindow, {
@@ -8933,6 +9489,7 @@ ipcMain.handle('dialog:openFolder', async (_event, opts) => {
 
     const folderPath = result.filePaths[0];
     const folderName = path.basename(folderPath);
+    grantRendererPath(event.sender, folderPath, { recursive: true, write: true });
 
     return {
         path: folderPath,
@@ -8967,6 +9524,8 @@ ipcMain.handle('dialog:openFiles', async (event, filtersOrOpts) => {
     if (result.canceled || result.filePaths.length === 0) {
         return null;
     }
+
+    for (const filePath of result.filePaths) grantRendererPath(event.sender, filePath, { write: false });
 
     return result.filePaths.map(filePath => ({
         path: filePath,
@@ -9008,7 +9567,7 @@ ipcMain.handle('dialog:confirm', async (event, opts) => {
     return result.response === 0;
 });
 
-ipcMain.handle('dialog:saveFile', async (_event, opts) => {
+ipcMain.handle('dialog:saveFile', async (event, opts) => {
     const title = (opts && typeof opts === 'object' && opts.title) ? String(opts.title) : 'Save file';
     const defaultPath = (opts && typeof opts === 'object' && opts.defaultPath) ? String(opts.defaultPath) : undefined;
     const filters = Array.isArray(opts?.filters) ? opts.filters : undefined;
@@ -9018,6 +9577,7 @@ ipcMain.handle('dialog:saveFile', async (_event, opts) => {
         filters
     });
     if (result.canceled || !result.filePath) return null;
+    grantRendererPath(event.sender, result.filePath, { write: true });
     return {
         path: result.filePath,
         name: path.basename(result.filePath)
@@ -9610,82 +10170,16 @@ ipcMain.handle('screenRecording:stopLiveOutput', async (_event, id) => {
 // ============================================================
 // WEB GÜVENLİĞİ / GİZLİLİK
 // ============================================================
-ipcMain.handle('web:openExternal', async (_event, url) => {
+ipcMain.handle('web:openExternal', async (event, url) => {
+    if (!isTrustedLocalAppSender(event, 'web:openExternal')) return false;
     const u = String(url || '').trim();
     if (!u) return false;
     if (!isAllowedWebUrlMain(u)) return false;
     try {
-        const parsedUrl = new URL(u);
-        const protocol = parsedUrl.protocol.toLowerCase();
-        const settings = readSettingsFileSafeSync();
-
-        // Eğer kullanıcı manuel bir uygulama seçmişse onu başlat
-        if (settings?.ui?.customProtocolHandlers?.[protocol]) {
-            const executablePath = settings.ui.customProtocolHandlers[protocol];
-            const { spawn } = require('child_process');
-            spawn(executablePath, [u], { detached: true, stdio: 'ignore' }).unref();
-            return true;
-        }
-
         await shell.openExternal(u);
         return true;
     } catch (e) {
         console.error('[WEB] openExternal error:', e);
-        return false;
-    }
-});
-
-ipcMain.handle('web:chooseAndOpenExternal', async (event, url, protocol) => {
-    const parentWindow = BrowserWindow.fromWebContents(event.sender) || mainWindow;
-
-    // Linux için XDG Desktop Portal üzerinden yerel Uygulama Seçici penceresini (App Chooser) açmayı dene
-    if (process.platform === 'linux') {
-        try {
-            const { execSync } = require('child_process');
-            // gdbus kullanarak XDG portalına ask=true argümanı ile istek at (Brave'in yaptığı gibi OS native seçiciyi açar)
-            // Bu komut asenktron çalışmalıdır, kullanıcının seçimi bitirmesini beklemiyoruz.
-            const { exec } = require('child_process');
-            return new Promise((resolve) => {
-                exec(`gdbus call --session --dest org.freedesktop.portal.Desktop --object-path /org/freedesktop/portal/desktop --method org.freedesktop.portal.OpenURI.OpenURI "" "${url}" "{}"`, async (error) => {
-                    if (!error) {
-                        resolve(true);
-                    } else {
-                        // Eğer gdbus veya portal yoksa fallback yap
-                        resolve(await fallbackCustomFilePicker());
-                    }
-                });
-            });
-        } catch (e) {
-            // Hata olursa fallback
-        }
-    }
-
-    return await fallbackCustomFilePicker();
-
-    async function fallbackCustomFilePicker() {
-        const result = await dialog.showOpenDialog(parentWindow, {
-            title: tMainSync('web.externalProtocol.chooseApplication'),
-            properties: ['openFile'],
-            filters: [{ name: tMainSync('web.externalProtocol.executableFiles'), extensions: ['*'] }]
-        });
-
-        if (!result.canceled && result.filePaths.length > 0) {
-            const executablePath = result.filePaths[0];
-
-            // Ayarlara kaydet
-            const settings = readSettingsFileSafeSync();
-            if (!settings.ui) settings.ui = {};
-            if (!settings.ui.customProtocolHandlers) settings.ui.customProtocolHandlers = {};
-            settings.ui.customProtocolHandlers[protocol] = executablePath;
-            try {
-                writeJsonFileAtomicSync(getSettingsPath(), sanitizeSensitiveSettings(settings));
-            } catch(e) {}
-
-            // Uygulamayı başlat
-            const { spawn } = require('child_process');
-            spawn(executablePath, [url], { detached: true, stdio: 'ignore' }).unref();
-            return true;
-        }
         return false;
     }
 });
@@ -9861,7 +10355,7 @@ ipcMain.handle('web:importCookies', async (_event, filePath) => {
 ipcMain.handle('fs:readDirectory', async (event, dirPath) => {
     try {
         const safeDirPath = sanitizeIpcPath(dirPath);
-        if (!safeDirPath) return [];
+        if (!safeDirPath || !isRendererPathGranted(event, safeDirPath)) return [];
 
         // Windows testleri için: kütüphane/kırpma filtreleri bu uzantılara göre çalışıyor.
         // Not: Bu liste "noktasız" (mp3) tutulur, kontrol `toLowerCase()` ile yapılır.
@@ -10031,7 +10525,7 @@ ipcMain.handle('fs:getSpecialPaths', async () => {
 ipcMain.handle('fs:exists', async (event, filePath) => {
     try {
         const targetPath = sanitizeIpcPath(filePath);
-        if (!targetPath) return false;
+        if (!targetPath || !isRendererPathGranted(event, targetPath)) return false;
         await fs.promises.access(targetPath);
         return true;
     } catch {
@@ -10039,10 +10533,10 @@ ipcMain.handle('fs:exists', async (event, filePath) => {
     }
 });
 
-ipcMain.handle('fs:isWritable', async (_event, filePath) => {
+ipcMain.handle('fs:isWritable', async (event, filePath) => {
     try {
         const targetPath = sanitizeIpcPath(filePath);
-        if (!targetPath) return false;
+        if (!targetPath || !isRendererPathGranted(event, targetPath, { write: true })) return false;
         await fs.promises.access(targetPath, fs.constants.W_OK);
         return true;
     } catch {
@@ -10054,7 +10548,7 @@ ipcMain.handle('fs:isWritable', async (_event, filePath) => {
 ipcMain.handle('fs:getFileInfo', async (event, filePath) => {
     try {
         const targetPath = sanitizeIpcPath(filePath);
-        if (!targetPath) return null;
+        if (!targetPath || !isRendererPathGranted(event, targetPath)) return null;
         const stats = await fs.promises.stat(targetPath);
         return {
             size: stats.size,
@@ -10068,10 +10562,10 @@ ipcMain.handle('fs:getFileInfo', async (event, filePath) => {
     }
 });
 
-ipcMain.handle('fs:getStorageStats', async (_event, targetPath) => {
+ipcMain.handle('fs:getStorageStats', async (event, targetPath) => {
     try {
         let probePath = sanitizeIpcPath(targetPath || app.getPath('videos') || app.getPath('home'));
-        if (!probePath) return null;
+        if (!probePath || !isRendererPathGranted(event, probePath)) return null;
         try {
             const stats = await fs.promises.stat(probePath);
             if (stats.isFile()) probePath = path.dirname(probePath);
@@ -10156,20 +10650,20 @@ ipcMain.handle('screenRecording:listStudioPlugins', async () => {
     };
 });
 
-ipcMain.handle('fs:readText', async (_event, filePath) => {
+ipcMain.handle('fs:readText', async (event, filePath) => {
     try {
         const targetPath = sanitizeIpcPath(filePath);
-        if (!targetPath) return null;
+        if (!targetPath || !isRendererPathGranted(event, targetPath)) return null;
         return await fs.promises.readFile(targetPath, 'utf8');
     } catch (error) {
         return null;
     }
 });
 
-ipcMain.handle('fs:writeText', async (_event, filePath, text) => {
+ipcMain.handle('fs:writeText', async (event, filePath, text) => {
     try {
         const targetPath = sanitizeIpcPath(filePath);
-        if (!targetPath) return false;
+        if (!targetPath || !isRendererPathGranted(event, targetPath, { write: true })) return false;
         await fs.promises.writeFile(targetPath, String(text ?? ''), 'utf8');
         return true;
     } catch (error) {
@@ -10178,11 +10672,11 @@ ipcMain.handle('fs:writeText', async (_event, filePath, text) => {
     }
 });
 
-ipcMain.handle('fs:writeBase64', async (_event, filePath, base64Data) => {
+ipcMain.handle('fs:writeBase64', async (event, filePath, base64Data) => {
     try {
         const target = sanitizeIpcPath(filePath);
         const encoded = String(base64Data || '').trim();
-        if (!target || !encoded) return false;
+        if (!target || !encoded || !isRendererPathGranted(event, target, { write: true })) return false;
         const buffer = Buffer.from(encoded, 'base64');
         await fs.promises.writeFile(target, buffer);
         return true;
@@ -10192,10 +10686,10 @@ ipcMain.handle('fs:writeBase64', async (_event, filePath, base64Data) => {
     }
 });
 
-ipcMain.handle('fs:writeBuffer', async (_event, filePath, arrayBuffer) => {
+ipcMain.handle('fs:writeBuffer', async (event, filePath, arrayBuffer) => {
     try {
         const target = sanitizeIpcPath(filePath);
-        if (!target || !arrayBuffer) return false;
+        if (!target || !arrayBuffer || !isRendererPathGranted(event, target, { write: true })) return false;
         const buffer = Buffer.from(arrayBuffer);
         if (!buffer.length) return false;
         await fs.promises.writeFile(target, buffer);
@@ -10206,11 +10700,11 @@ ipcMain.handle('fs:writeBuffer', async (_event, filePath, arrayBuffer) => {
     }
 });
 
-ipcMain.handle('fs:renameItem', async (_event, sourcePath, nextName) => {
+ipcMain.handle('fs:renameItem', async (event, sourcePath, nextName) => {
     try {
         const src = sanitizeIpcPath(sourcePath);
         const rawName = String(nextName || '').trim();
-        if (!src || !rawName) {
+        if (!src || !rawName || !isRendererPathGranted(event, src, { write: true })) {
             return { ok: false, error: 'invalid-params' };
         }
         if (rawName.includes('/') || rawName.includes('\\') || rawName.includes('\0')) {
@@ -10247,10 +10741,10 @@ ipcMain.handle('fs:renameItem', async (_event, sourcePath, nextName) => {
     }
 });
 
-ipcMain.handle('fs:moveToTrash', async (_event, filePath) => {
+ipcMain.handle('fs:moveToTrash', async (event, filePath) => {
     try {
         const targetPath = sanitizeIpcPath(filePath);
-        if (!targetPath) return false;
+        if (!targetPath || !isRendererPathGranted(event, targetPath, { write: true })) return false;
         if (typeof shell?.trashItem !== 'function') return false;
         await shell.trashItem(targetPath);
         return true;
@@ -10260,10 +10754,10 @@ ipcMain.handle('fs:moveToTrash', async (_event, filePath) => {
     }
 });
 
-ipcMain.handle('fs:openContainingFolder', async (_event, filePath) => {
+ipcMain.handle('fs:openContainingFolder', async (event, filePath) => {
     try {
         const targetPath = sanitizeIpcPath(filePath);
-        if (!targetPath) return false;
+        if (!targetPath || !isRendererPathGranted(event, targetPath)) return false;
 
         try {
             await fs.promises.access(targetPath);
@@ -10280,10 +10774,10 @@ ipcMain.handle('fs:openContainingFolder', async (_event, filePath) => {
     }
 });
 
-ipcMain.handle('fs:getPathProperties', async (_event, filePath) => {
+ipcMain.handle('fs:getPathProperties', async (event, filePath) => {
     try {
         const targetPath = sanitizeIpcPath(filePath);
-        if (!targetPath) return null;
+        if (!targetPath || !isRendererPathGranted(event, targetPath)) return null;
         const stat = await fs.promises.stat(targetPath);
         return {
             path: targetPath,
@@ -10429,7 +10923,7 @@ ipcMain.handle('settings:save', async (event, settings) => {
             savedAt: Date.now()
         };
 
-        for (const targetWindow of [mainWindow, settingsWindow, soundEffectsWindow, adblockWindow]) {
+        for (const targetWindow of [mainWindow, settingsWindow, soundEffectsWindow, adblockWindow, passwordManagerWindow]) {
             if (!targetWindow || targetWindow.isDestroyed()) continue;
             if (event?.sender && targetWindow.webContents === event.sender) continue;
             if (event?.sender?.id && targetWindow.webContents?.id === event.sender.id) continue;
@@ -10542,6 +11036,10 @@ ipcMain.handle('settings:load', async () => {
             allowPopups: true,
             enforceAllowlist: false,
             sessionProfile: 'persistent'
+        },
+        web: {
+            searchEngine: 'duckduckgo',
+            newTab: sanitizeNewTabSettings({})
         }
     };
 

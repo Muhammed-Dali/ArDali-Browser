@@ -1657,11 +1657,14 @@ document.addEventListener('DOMContentLoaded', async () => {
     window.ardali?.onWebReloadActive?.(() => {
         requestWebViewReload('ipc:web:reload-active', { cooldownMs: 1200 });
     });
-    window.ardali?.onWebOpenTab?.((url) => {
+    window.ardali?.onWebOpenTab?.((url, options = {}) => {
         if (typeof window.createTab === 'function') {
-            // Tarayıcı davranışı: bağlam menüsünden açılan sekme arka planda
-            // yüklenir; kullanıcı bulunduğu sekmede kalır.
-            window.createTab(url, false);
+            const shouldActivate = options?.active === true;
+            window.createTab(url, shouldActivate);
+            if (shouldActivate) {
+                const webBtn = document.querySelector('.sidebar-btn[data-page="web"]');
+                if (webBtn && state.currentPage !== 'web') handleSidebarClick(webBtn);
+            }
         }
     });
     window.ardali?.onSettingsReload?.(async (nextSettings, reloadMeta = {}) => {
@@ -8492,6 +8495,7 @@ function setupEventListeners() {
                         function ensureYouTubeAdCss() {
                             if (!isYouTubeHost() || ytAdStyleInjected) return;
                             const style = document.createElement('style');
+                            style.setAttribute('nonce', 'ardali-local-style-v1');
                             style.id = 'ardali-deliblock-yt-css';
                             style.textContent = [
                                 '.ytp-ad-overlay-container, .ytp-ad-overlay-slot { display: none !important; }',
@@ -23007,6 +23011,7 @@ function applyWebSmoothVideoProfileToWebView(reason = 'runtime') {
                 let style = document.getElementById('ardali-video-smooth-style');
                 if (!style) {
                     style = document.createElement('style');
+                    style.setAttribute('nonce', 'ardali-local-style-v1');
                     style.id = 'ardali-video-smooth-style';
                     style.textContent = [
                         'html.ardali-video-smooth-battery { scroll-behavior: auto !important; }',
@@ -40574,11 +40579,11 @@ function renderPlaylist() {
                    <span class="fallback-cover-large-icon" style="${definitelyNoCover ? 'display: flex;' : 'display: none;'}"><img src="${largeFallbackImg}" style="width: 100%; height: 100%; object-fit: contain;"></span>
                </span>`
             : `<span class="item-icon">${icon}</span>`;
-        div.innerHTML = `
+        window.ardaliSetHTML(div, `
             <span class="${statusClass}" aria-label="${isTrackPlaying ? 'playing' : 'paused'}">${statusGlyph}</span>
             ${leadingVisual}
             <span class="item-text">
-                <span class="item-name">${item.name}</span>
+                <span class="item-name">${escapeHtml(item.name)}</span>
                 ${metaParts.length ? `<span class="item-meta">${escapeHtml(metaParts.join(' • '))}</span>` : ''}
                 ${inlineFlowBadges}
             </span>
@@ -40586,7 +40591,7 @@ function renderPlaylist() {
             ${(!perfState.lightweightMode && showMissingCover) ? `<span class="playlist-cover-badge">${escapeHtml(uiT('settings.library.cover.missingBadge', 'Kapak yok'))}</span>` : ''}
             ${queueDragHandle}
             <button class="item-remove" data-index="${index}">✕</button>
-        `;
+        `);
 
         if (showCardCover) {
             queuePlaylistCardCoverLoad(div, item.path);

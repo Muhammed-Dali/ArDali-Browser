@@ -4,10 +4,8 @@
 // Sürüm 2.1 - Tüm Ses Main Process IPC üzerinden
 // ============================================
 
-const ARDALI_VERBOSE_LOGS =
-    typeof process !== 'undefined' &&
-    process?.env &&
-    process.env.ARDALI_VERBOSE_LOGS === '1';
+const preloadArgv = Array.isArray(process?.argv) ? process.argv : [];
+const ARDALI_VERBOSE_LOGS = preloadArgv.includes('--ardali-verbose-preload');
 
 const preloadLog = (...args) => {
     if (ARDALI_VERBOSE_LOGS) console.log(...args);
@@ -16,7 +14,6 @@ const preloadLog = (...args) => {
 preloadLog('[PRELOAD] Script basliyor...');
 
 const { contextBridge, ipcRenderer, clipboard, webUtils } = require('electron');
-const preloadArgv = Array.isArray(process?.argv) ? process.argv : [];
 const preloadStandaloneView = String(
     preloadArgv.find((arg) => String(arg).startsWith('--ardali-view=')) || ''
 ).split('=').slice(1).join('=').trim().toLowerCase();
@@ -26,9 +23,27 @@ const preloadStandaloneTab = String(
 const preloadStandaloneScope = String(
     preloadArgv.find((arg) => String(arg).startsWith('--ardali-settings-scope=')) || ''
 ).split('=').slice(1).join('=').trim().toLowerCase();
-const path = require('path');
-const os = require('os');
 const { pathToFileURL } = require('url');
+
+// Sandboxed preload only gets Electron plus a small Node allowlist. Keep the
+// renderer's legacy, non-I/O path helpers without importing the Node path/os
+// modules, so local BrowserWindows can run with Chromium's sandbox enabled.
+const pathSeparator = process.platform === 'win32' ? '\\' : '/';
+const normalizePathParts = (parts) => {
+    const values = parts.map((part) => String(part ?? '')).filter(Boolean);
+    if (!values.length) return '';
+    const first = values.shift().replace(/[\\/]+$/g, '');
+    const rest = values.map((value) => value.replace(/^[\\/]+|[\\/]+$/g, '')).filter(Boolean);
+    return [first, ...rest].filter(Boolean).join(pathSeparator);
+};
+const basenamePath = (value) => String(value || '').replace(/[\\/]+$/g, '').split(/[\\/]/).pop() || '';
+const dirnamePath = (value) => {
+    const input = String(value || '').replace(/[\\/]+$/g, '');
+    const index = Math.max(input.lastIndexOf('/'), input.lastIndexOf('\\'));
+    if (index < 0) return '.';
+    if (index === 0) return input[0];
+    return input.slice(0, index);
+};
 
 preloadLog('[PRELOAD] Electron modulleri yuklendi');
 
@@ -719,6 +734,11 @@ const ardaliAPI = {
     saveSettings: (settings) => ipcRenderer.invoke('settings:save', settings),
     loadSettings: () => ipcRenderer.invoke('settings:load'),
     openSettingsWindow: (defaultTab) => ipcRenderer.invoke('settings:openWindow', defaultTab),
+    newTab: {
+        chooseBackground: () => ipcRenderer.invoke('newTab:chooseBackground'),
+        loadBackground: () => ipcRenderer.invoke('newTab:loadBackground'),
+        removeBackground: () => ipcRenderer.invoke('newTab:removeBackground')
+    },
     launchContext: {
         view: preloadStandaloneView,
         tab: preloadStandaloneTab,
@@ -752,7 +772,7 @@ const ardaliAPI = {
         return () => ipcRenderer.removeListener('web:reload-active', handler);
     },
     onWebOpenTab: (callback) => {
-        const handler = (_, url) => callback(url);
+        const handler = (_, url, options) => callback(url, options || {});
         ipcRenderer.on('web:open-tab', handler);
         return () => ipcRenderer.removeListener('web:open-tab', handler);
     },
@@ -860,12 +880,13 @@ const ardaliAPI = {
     // Web Security / Privacy helpers
     webSecurity: {
         openExternal: (url) => ipcRenderer.invoke('web:openExternal', url),
-        chooseAndOpenExternal: (url, protocol) => ipcRenderer.invoke('web:chooseAndOpenExternal', url, protocol),
         clearData: (options) => ipcRenderer.invoke('web:clearData', options),
         reloadActive: () => ipcRenderer.invoke('web:reloadActive'),
         getSecurityState: () => ipcRenderer.invoke('web:getSecurityState'),
         exportCookies: (filePath) => ipcRenderer.invoke('web:exportCookies', filePath),
-        importCookies: (filePath) => ipcRenderer.invoke('web:importCookies', filePath)
+        importCookies: (filePath) => ipcRenderer.invoke('web:importCookies', filePath),
+        getDefaultBrowserStatus: () => ipcRenderer.invoke('web:getDefaultBrowserStatus'),
+        makeDefaultBrowser: () => ipcRenderer.invoke('web:makeDefaultBrowser')
     },
 
 
@@ -1084,17 +1105,23 @@ const ardaliAPI = {
             ipcRenderer.on('download-done', (event, data) => callback(data));
         }
     },
+
+    credentialVault: {
+        openManager: () => ipcRenderer.invoke('vault:openManager')
+    },
     
     // System Yollar API
-    getHomeDir: () => os.homedir(),
-    getUserName: () => os.userInfo().username,
+    // Retained for API compatibility. Filesystem locations must be requested
+    // through the validated getSpecialPaths IPC API instead.
+    getHomeDir: () => '',
+    getUserName: () => '',
     
     // Yol utilities
     path: {
-        join: (...args) => path.join(...args),
-        basename: (p) => path.basename(p),
-        dirname: (p) => path.dirname(p),
-        resolve: (...args) => path.resolve(...args),
+        join: (...args) => normalizePathParts(args),
+        basename: (p) => basenamePath(p),
+        dirname: (p) => dirnamePath(p),
+        resolve: (...args) => normalizePathParts(args),
         getPathForFile: (file) => {
             try {
                 if (!file) return '';
@@ -1123,9 +1150,24 @@ const ardaliAPI = {
 preloadLog('[PRELOAD] ardaliAPI objesi olusturuldu');
 preloadLog('[PRELOAD] API anahtarlari:', Object.keys(ardaliAPI));
 
+const STANDALONE_API_KEYS = Object.freeze({
+    settings: Object.freeze(['saveSettings', 'loadSettings', 'openSettingsWindow', 'launchContext', 'onSettingsReload', 'onSettingsNavigate', 'onSettingsCloseRequest', 'confirmSettingsClose', 'dialog', 'clipboard', 'adblock', 'webSecurity', 'diagnostics', 'audio', 'ipcAudio', 'presets', 'soundEffects', 'downloader', 'systemAudio', 'system', 'electronAPI', 'app', 'i18n', 'credentialVault', 'platform', 'version']),
+    adblock: Object.freeze(['adblock', 'saveSettings', 'loadSettings', 'launchContext', 'dialog', 'electronAPI', 'i18n', 'platform', 'version']),
+    downloader: Object.freeze(['downloader', 'launchContext', 'dialog', 'clipboard', 'electronAPI', 'i18n', 'platform', 'version']),
+    'sound-effects': Object.freeze(['audio', 'ipcAudio', 'soundEffects', 'presets', 'saveSettings', 'loadSettings', 'launchContext', 'dialog', 'systemAudio', 'electronAPI', 'i18n', 'platform', 'version']),
+    'eq-presets': Object.freeze(['audio', 'ipcAudio', 'presets', 'saveSettings', 'loadSettings', 'launchContext', 'dialog', 'electronAPI', 'i18n', 'platform', 'version']),
+    pulse: Object.freeze(['pulse', 'saveSettings', 'loadSettings', 'launchContext', 'dialog', 'systemAudio', 'electronAPI', 'i18n', 'platform', 'version'])
+});
+
+const exposedArdaliAPI = (() => {
+    if (!preloadStandaloneView) return ardaliAPI;
+    const allowed = STANDALONE_API_KEYS[preloadStandaloneView] || Object.freeze(['launchContext', 'electronAPI', 'i18n', 'platform', 'version']);
+    return Object.freeze(Object.fromEntries(allowed.filter((key) => Object.hasOwn(ardaliAPI, key)).map((key) => [key, ardaliAPI[key]])));
+})();
+
 // Global fallback
 try {
-    globalThis.ardali = ardaliAPI;
+    globalThis.ardali = exposedArdaliAPI;
     preloadLog('[PRELOAD] globalThis.ardali atandi');
 } catch (e) {
     console.error('[PRELOAD] globalThis hata:', e.message);
@@ -1133,7 +1175,7 @@ try {
 
 // contextBridge ile güvenli expose
 try {
-    contextBridge.exposeInMainWorld('ardali', ardaliAPI);
+    contextBridge.exposeInMainWorld('ardali', exposedArdaliAPI);
     preloadLog('[PRELOAD] contextBridge.exposeInMainWorld basarili');
 } catch (e) {
     console.error('[PRELOAD] contextBridge hata:', e.message);
@@ -1154,14 +1196,14 @@ const appAPI = {
 };
 
 try {
-    globalThis.app = appAPI;
+    if (!preloadStandaloneView) globalThis.app = appAPI;
     preloadLog('[PRELOAD] globalThis.app atandi');
 } catch (e) {
     console.error('[PRELOAD] globalThis.app hata:', e.message);
 }
 
 try {
-    contextBridge.exposeInMainWorld('app', appAPI);
+    if (!preloadStandaloneView) contextBridge.exposeInMainWorld('app', appAPI);
     preloadLog('[PRELOAD] contextBridge.exposeInMainWorld (app) basarili');
 } catch (e) {
     console.error('[PRELOAD] contextBridge (app) hata:', e.message);

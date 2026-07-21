@@ -52,6 +52,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (document.getElementById('brave-download-anims')) return;
         const style = document.createElement('style');
         style.id = 'brave-download-anims';
+        style.setAttribute('nonce', 'ardali-local-style-v1');
         style.textContent = `
             @keyframes braveIndeterminate {
                 0% { transform: translateX(-120%); }
@@ -483,7 +484,7 @@ document.addEventListener('DOMContentLoaded', () => {
         header.className = 'brave-header';
         
         const etaText = isWaiting ? 'Bekleniyor...' : (item.state === 'paused' ? 'Duraklatıldı' : formatEta(item._eta));
-        header.innerHTML = `
+        window.ardaliSetHTML(header, `
             <div style="display:flex; align-items:center; gap:8px;">
                 <span class="material-symbols-rounded" style="color:var(--accent-primary);font-size:18px;">cloud_download</span>
                 <span style="font-weight:600; color:var(--text-primary);">ArDali</span>
@@ -492,7 +493,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 ${etaText}
                 <span class="material-symbols-rounded" style="font-size:18px;">expand_more</span>
             </div>
-        `;
+        `);
         
         const title = document.createElement('div');
         title.style.cssText = "font-size:16px; font-weight:bold; margin-top:12px; color:var(--text-primary);";
@@ -583,7 +584,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const avgSpeed = isWaiting ? 0 : (item._avgSpeed || 0);
         const sizeText = isWaiting ? 'Hesaplanıyor...' : `${formatBytes(item.receivedBytes)} / ${formatBytes(item.totalBytes)}`;
         
-        detailsPanel.innerHTML = `
+        window.ardaliSetHTML(detailsPanel, `
             <div style="display:flex; justify-content:space-between; margin-bottom:12px;">
                 <div>Hız <span style="color:var(--text-primary);">${formatBytes(speed)}/sn</span></div>
                 <div>Ortalama Hız <span style="color:var(--text-primary);">${formatBytes(avgSpeed)}/sn</span></div>
@@ -593,7 +594,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 <div>Hedef:</div><div style="word-break:break-all;color:var(--text-primary);">${isWaiting ? 'Seçilmesi bekleniyor' : item.savePath}</div>
                 <div>Boyut:</div><div style="color:var(--text-primary);">${sizeText}</div>
             </div>
-        `;
+        `);
         
         detailsBtn.onclick = () => {
             isBraveDetailsExpanded = !isBraveDetailsExpanded;

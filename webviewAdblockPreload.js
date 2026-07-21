@@ -136,7 +136,7 @@
 
     installCompatibilityBrowserIdentityPatch();
 
-    if (isGoogleOwnedPage()) return;
+    const skipAdblockScriptingForIdentityPage = isGoogleOwnedPage();
 
     function installDeliBlockScriptingBridge() {
         let ipcRenderer = null;
@@ -724,7 +724,7 @@
         }
     }
 
-    installDeliBlockScriptingBridge();
+    if (!skipAdblockScriptingForIdentityPage) installDeliBlockScriptingBridge();
 
     const code = `
         (function installArDaliDeliBlockEarlyYouTubePatch() {
@@ -989,19 +989,180 @@
         })();
     `;
 
+    let injectedWithWebFrame = false;
     try {
         const { webFrame } = require('electron');
         if (webFrame && typeof webFrame.executeJavaScript === 'function') {
             webFrame.executeJavaScript(code, false);
-            return;
+            injectedWithWebFrame = true;
         }
     } catch {}
 
-    try {
-        const script = document.createElement('script');
-        script.textContent = code;
-        (document.documentElement || document.head || document.body).appendChild(script);
-        script.remove();
-    } catch {}
+    if (!injectedWithWebFrame) {
+        try {
+            const script = document.createElement('script');
+            script.textContent = code;
+            (document.documentElement || document.head || document.body).appendChild(script);
+            script.remove();
+        } catch {}
+    }
+
+    (async function installCredentialFormBridge() {
+        if (window.top !== window || location.protocol !== 'https:') return;
+        let ipcRenderer;
+        try { ({ ipcRenderer } = require('electron')); } catch (_) { return; }
+        if (!ipcRenderer?.invoke) return;
+
+        const origin = location.origin;
+        let bridgeEnabled = false;
+        try {
+            const status = await ipcRenderer.invoke('vault:guest:bridgeStatus', origin);
+            bridgeEnabled = status?.enabled === true;
+        } catch (_) { return; }
+        if (!bridgeEnabled || location.origin !== origin) return;
+        let lastUsername = '';
+        let lastCandidateAt = 0;
+        let stagedNoticeSent = false;
+        const isVisible = (element) => {
+            if (!element || !element.isConnected || !element.getClientRects().length) return false;
+            const style = getComputedStyle(element);
+            return style.visibility !== 'hidden' && style.display !== 'none' && Number(style.opacity || 1) > 0;
+        };
+        const isSafeLoginForm = (form, passwordField) => {
+            if (!(form instanceof HTMLFormElement) || !isVisible(form) || !isVisible(passwordField)) return false;
+            try {
+                const action = new URL(form.getAttribute('action') || location.href, document.baseURI);
+                return action.protocol === 'https:' && action.origin === origin;
+            } catch (_) { return false; }
+        };
+        const findUsername = (form, passwordField) => {
+            const candidates = Array.from((form || document).querySelectorAll('input')).filter((input) => {
+                const type = String(input.type || 'text').toLowerCase();
+                const hint = `${input.autocomplete || ''} ${input.name || ''} ${input.id || ''}`.toLowerCase();
+                return input !== passwordField && !input.disabled && ['email', 'text', 'tel'].includes(type) &&
+                    isVisible(input) && /user|email|login|identifier/.test(hint);
+            });
+            return candidates.reverse().find((input) => {
+                const value = String(input.value || '').trim();
+                return value && value.length <= 320;
+            }) || null;
+        };
+        const stageUsername = (value) => {
+            if (!bridgeEnabled) return;
+            const username = String(value || '').trim();
+            if (!username || username.length > 320 || username === lastUsername) return;
+            lastUsername = username;
+            ipcRenderer.invoke('vault:guest:stageUsername', { origin, username }).then((accepted) => {
+                if (accepted === true && !stagedNoticeSent) {
+                    stagedNoticeSent = true;
+                    ipcRenderer.sendToHost('ardali-vault-stage-status', { state: 'username-ready' });
+                }
+            }).catch(() => {});
+        };
+        const captureCandidate = (scope = document) => {
+            if (!bridgeEnabled) return;
+            const now = Date.now();
+            if (now - lastCandidateAt < 800) return;
+            const passwordField = Array.from(scope.querySelectorAll?.('input[type="password"]') || [])
+                .find((input) => !input.disabled && String(input.value || '').length > 0);
+            if (!passwordField || !isSafeLoginForm(passwordField.form, passwordField)) return;
+            const usernameField = findUsername(passwordField.form || scope, passwordField);
+            const username = String(usernameField?.value || lastUsername || '').trim();
+            const password = String(passwordField.value || '');
+            if (username) stageUsername(username);
+            if (!password || password.length > 4096) return;
+            lastCandidateAt = now;
+            ipcRenderer.invoke('vault:guest:candidate', { origin, username, password }).catch(() => {});
+        };
+        const dispatchInput = (input, value) => {
+            const descriptor = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value');
+            descriptor?.set?.call(input, value);
+            input.dispatchEvent(new Event('input', { bubbles: true }));
+            input.dispatchEvent(new Event('change', { bubbles: true }));
+        };
+
+        document.addEventListener('submit', (event) => {
+            if (!bridgeEnabled) return;
+            const form = event.target instanceof HTMLFormElement ? event.target : null;
+            if (!form) return;
+            captureCandidate(form);
+        }, true);
+        document.addEventListener('input', (event) => {
+            if (!bridgeEnabled) return;
+            const input = event.target;
+            if (!(input instanceof HTMLInputElement) || input.type === 'password') return;
+            const hint = `${input.type || ''} ${input.autocomplete || ''} ${input.name || ''} ${input.id || ''}`.toLowerCase();
+            if (/email|user|login|identifier/.test(hint)) stageUsername(input.value);
+        }, true);
+        document.addEventListener('pointerdown', (event) => {
+            if (!bridgeEnabled) return;
+            const control = event.target?.closest?.('button,input[type="submit"],input[type="button"],[role="button"]');
+            if (control) captureCandidate(control.form || document);
+        }, true);
+        document.addEventListener('keydown', (event) => {
+            if (!bridgeEnabled) return;
+            if (event.key === 'Enter') captureCandidate(event.target?.form || document);
+        }, true);
+
+        let button = null;
+        let activePassword = null;
+        let fillInProgress = false;
+        const hideButton = () => { button?.remove(); button = null; activePassword = null; };
+        ipcRenderer.on('vault:guest:disable', () => {
+            bridgeEnabled = false;
+            lastUsername = '';
+            stagedNoticeSent = false;
+            hideButton();
+        });
+        const fillFromVault = async (event) => {
+            event?.preventDefault?.();
+            event?.stopImmediatePropagation?.();
+            if (event?.isTrusted !== true || navigator.userActivation?.isActive !== true) return;
+            if (!bridgeEnabled || fillInProgress || !activePassword) return;
+            // Kilit penceresi odağı aldığında focusout düğmeyi gizleyebilir.
+            // Kullanıcının ilk tıklamasını tamamlamak için hedef alanı bekleme
+            // boyunca yerel ve doğrulanabilir bir referans olarak koru.
+            const targetPassword = activePassword;
+            fillInProgress = true;
+            try {
+                const authorizationToken = await ipcRenderer.invoke('vault:guest:beginFill', origin);
+                if (!authorizationToken || navigator.userActivation?.isActive !== true) return;
+                const secret = await ipcRenderer.invoke('vault:guest:chooseAndFill', origin, authorizationToken);
+                if (!secret || location.origin !== origin || !isSafeLoginForm(targetPassword.form, targetPassword) ||
+                    !targetPassword.isConnected || targetPassword.type !== 'password') return;
+                const usernameField = findUsername(targetPassword.form, targetPassword);
+                if (usernameField) dispatchInput(usernameField, String(secret.username || ''));
+                dispatchInput(targetPassword, String(secret.password || ''));
+                targetPassword.focus();
+                ipcRenderer.sendToHost('ardali-vault-fill-status', { state: 'filled' });
+            } catch (_) {
+                ipcRenderer.sendToHost('ardali-vault-fill-status', { state: 'failed' });
+            } finally { fillInProgress = false; }
+        };
+        const showButton = (passwordField) => {
+            if (!bridgeEnabled || !isSafeLoginForm(passwordField.form, passwordField)) return;
+            hideButton();
+            const rect = passwordField.getBoundingClientRect();
+            if (!rect.width || !rect.height) return;
+            activePassword = passwordField;
+            button = document.createElement('button');
+            button.type = 'button';
+            button.textContent = '🔑';
+            button.title = 'ArDali güvenli kasadan doldur';
+            button.setAttribute('aria-label', 'ArDali güvenli kasadan doldur');
+            Object.assign(button.style, { position: 'fixed', zIndex: '2147483647', pointerEvents: 'auto', userSelect: 'none', left: `${Math.max(0, rect.right - 34)}px`, top: `${Math.max(0, rect.top + (rect.height - 28) / 2)}px`, width: '28px', height: '28px', border: '0', borderRadius: '8px', background: '#172235', color: '#fff', cursor: 'pointer', fontSize: '15px' });
+            button.addEventListener('pointerdown', fillFromVault, true);
+            button.addEventListener('click', (event) => { event.preventDefault(); event.stopImmediatePropagation(); }, true);
+            document.documentElement.appendChild(button);
+        };
+        document.addEventListener('focusin', (event) => {
+            if (!bridgeEnabled) return;
+            const input = event.target;
+            if (input instanceof HTMLInputElement && input.type === 'password' && isVisible(input)) showButton(input);
+        }, true);
+        document.addEventListener('focusout', () => setTimeout(() => { if (document.activeElement !== button) hideButton(); }, 180), true);
+        window.addEventListener('scroll', hideButton, true);
+        window.addEventListener('beforeunload', hideButton, { once: true });
+    }());
 
 }());

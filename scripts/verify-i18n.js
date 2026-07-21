@@ -11,6 +11,54 @@ function readJson(file) {
   return JSON.parse(read(file));
 }
 
+function findDuplicateJsonKeys(source) {
+  const duplicates = [];
+  const stack = [];
+  let index = 0;
+  const markParentValueComplete = () => {
+    const parent = stack[stack.length - 1];
+    if (parent?.type === 'object') parent.expectingKey = false;
+  };
+  while (index < source.length) {
+    const char = source[index];
+    if (/\s/.test(char)) { index++; continue; }
+    if (char === '"') {
+      const start = index;
+      index++;
+      let escaped = false;
+      while (index < source.length) {
+        const current = source[index++];
+        if (escaped) { escaped = false; continue; }
+        if (current === '\\') { escaped = true; continue; }
+        if (current === '"') break;
+      }
+      const token = source.slice(start, index);
+      let lookahead = index;
+      while (/\s/.test(source[lookahead] || '')) lookahead++;
+      const container = stack[stack.length - 1];
+      if (container?.type === 'object' && container.expectingKey && source[lookahead] === ':') {
+        const key = JSON.parse(token);
+        if (container.keys.has(key)) duplicates.push(key);
+        container.keys.add(key);
+      } else {
+        markParentValueComplete();
+      }
+      continue;
+    }
+    if (char === '{') { stack.push({ type: 'object', keys: new Set(), expectingKey: true }); index++; continue; }
+    if (char === '[') { stack.push({ type: 'array' }); index++; continue; }
+    if (char === '}' || char === ']') { stack.pop(); markParentValueComplete(); index++; continue; }
+    if (char === ',') {
+      const container = stack[stack.length - 1];
+      if (container?.type === 'object') container.expectingKey = true;
+      index++;
+      continue;
+    }
+    index++;
+  }
+  return duplicates;
+}
+
 function deepGet(obj, key) {
   if (!obj || typeof obj !== 'object') return undefined;
   if (Object.prototype.hasOwnProperty.call(obj, key)) return obj[key];
@@ -83,6 +131,13 @@ function main() {
     throw new Error('locales/en-US.json is missing');
   }
   const en = readJson(enPath);
+  const securityKeys = Object.keys(en).filter((key) =>
+    key.startsWith('passwordManager.') ||
+    key.startsWith('about.sections.passwordManager.') ||
+    key.startsWith('about.whatsNew.') ||
+    key === 'about.sections.security.item4' ||
+    key === 'about.sections.security.item5'
+  );
 
   const errors = [];
 
@@ -95,10 +150,22 @@ function main() {
 
     let json;
     try {
-      json = readJson(localePath);
+      const source = read(localePath);
+      const duplicateKeys = findDuplicateJsonKeys(source);
+      if (duplicateKeys.length) {
+        errors.push(`Duplicate keys in locales/${lang}.json: ${[...new Set(duplicateKeys)].join(', ')}`);
+      }
+      json = JSON.parse(source);
     } catch (err) {
       errors.push(`Invalid JSON in locales/${lang}.json: ${err.message}`);
       continue;
+    }
+
+    const missingSecurityKeys = securityKeys.filter((key) =>
+      typeof deepGet(json, key) !== 'string' || !String(deepGet(json, key)).trim()
+    );
+    if (missingSecurityKeys.length) {
+      errors.push(`Locale ${lang} is missing explicit Security window translations: ${missingSecurityKeys.join(', ')}`);
     }
 
     const effectiveMissing = [];
