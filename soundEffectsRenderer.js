@@ -1883,6 +1883,16 @@ function initEffects() {
 }
 
 function setupEventListeners() {
+    // Effect panels are lazy-rendered and may be unloaded in RAM priority mode.
+    // Delegate this action from the stable content host so a freshly rendered
+    // EQ panel never loses its Presets button handler.
+    document.getElementById('effectContent')?.addEventListener('click', (event) => {
+        const presetsButton = event.target.closest?.('#eqPresetsBtn');
+        if (!presetsButton) return;
+        event.preventDefault();
+        showEQPresets();
+    });
+
     // Sidebar efekt seçimi
     document.querySelectorAll('.effect-item').forEach(item => {
         item.addEventListener('click', () => {
@@ -3004,7 +3014,7 @@ function getEQ32Template() {
 	                    <p class="effect-description">${tSync('sfx.eq32.description')}</p>
 	                </div>
 	                <div class="effect-actions">
-	                    <button class="action-btn primary" id="eqPresetsBtn">${tSync('sfx.ui.presets')}</button>
+	                    <button type="button" class="action-btn primary" id="eqPresetsBtn">${tSync('sfx.ui.presets')}</button>
 	                    <button class="action-btn danger" id="eqResetBtn">${tSync('sfx.ui.reset')}</button>
 	                </div>
 	            </div>
@@ -5188,7 +5198,6 @@ function initEffectControls(effectName) {
         // Butonlar
         document.getElementById('eqResetBtn')?.addEventListener('click', () => resetEffect('eq32'));
         document.getElementById('moduleResetBtn')?.addEventListener('click', () => resetArDaliModule());
-        document.getElementById('eqPresetsBtn')?.addEventListener('click', () => showEQPresets());
     } else {
         // Init Canvas Knobs for other panels
         initGenericKnobs(effectName);
@@ -9619,14 +9628,19 @@ function updateCrossfeedVisual() {
 // ============================================
 // EQ PRESETS
 // ============================================
-function showEQPresets() {
+async function showEQPresets() {
     dbgEq('[showEQPresets] Fonksiyon çağrıldı');
     
     if (window.ardali?.presets?.openEQPresetsWindow) {
         dbgEq('[showEQPresets] API bulundu, openEQPresetsWindow çağrılıyor...');
-        window.ardali.presets.openEQPresetsWindow()
-            .then(result => dbgEq('[showEQPresets] Başarılı, sonuç:', result))
-            .catch(err => console.error('[showEQPresets] Hata:', err));
+        try {
+            const result = await window.ardali.presets.openEQPresetsWindow();
+            dbgEq('[showEQPresets] Sonuç:', result);
+            if (result !== true) throw new Error('preset-window-open-failed');
+        } catch (err) {
+            console.error('[showEQPresets] Hata:', err);
+            alert(tSync('errors.presetsWindowOpenFailed'));
+        }
         return;
     }
     console.error('[showEQPresets] HATA: presets API bulunamadı!');

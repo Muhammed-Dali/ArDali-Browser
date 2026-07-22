@@ -5,82 +5,140 @@
 </p>
 
 <p align="center">
-  A feature-rich open-source desktop media workspace for Linux, with local audio and video playback, web media, DSP effects, a 32-band equalizer, projectM visualizations, downloads, screen recording, and music recognition.
+  <strong>A modern, privacy-focused multimedia platform that combines a built-in Chromium browser, native audio technologies, and advanced media tools in one desktop workspace.</strong>
+</p>
+
+<p align="center">
+  Browse with fewer distractions, shape web and local audio in real time, manage downloads, recognize music, visualize playback, and keep credentials in a local encrypted vault.
 </p>
 
 <p align="center">
   <a href="https://muhammed-dali.github.io/ArDali-WebMedia/"><img alt="Project website" src="https://img.shields.io/badge/website-ArDali%20WebMedia-46e0c1?style=flat-square"></a>
   <a href="https://github.com/Muhammed-Dali/ArDali-WebMedia/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/Muhammed-Dali/ArDali-WebMedia?display_name=tag&sort=semver&style=flat-square"></a>
   <a href="https://github.com/Muhammed-Dali/ArDali-WebMedia/actions/workflows/build-linux.yml"><img alt="Linux build" src="https://img.shields.io/github/actions/workflow/status/Muhammed-Dali/ArDali-WebMedia/build-linux.yml?branch=main&label=Linux%20build&style=flat-square"></a>
+  <a href="https://github.com/Muhammed-Dali/ArDali-WebMedia/actions/workflows/pre-release.yml"><img alt="Security checks" src="https://img.shields.io/github/actions/workflow/status/Muhammed-Dali/ArDali-WebMedia/pre-release.yml?branch=main&label=security%20checks&style=flat-square"></a>
   <a href="https://github.com/Muhammed-Dali/ArDali-WebMedia/releases"><img alt="Downloads" src="https://img.shields.io/github/downloads/Muhammed-Dali/ArDali-WebMedia/total?style=flat-square"></a>
+  <img alt="Platforms: Linux and Windows" src="https://img.shields.io/badge/platforms-Linux%20%7C%20Windows-5865f2?style=flat-square">
   <a href="https://aur.archlinux.org/packages/ardali-bin"><img alt="AUR version" src="https://img.shields.io/aur/version/ardali-bin?style=flat-square&logo=archlinux"></a>
-  <a href="https://github.com/Muhammed-Dali/ArDali-WebMedia/stargazers"><img alt="GitHub stars" src="https://img.shields.io/github/stars/Muhammed-Dali/ArDali-WebMedia?style=flat-square"></a>
   <a href="LICENSE"><img alt="License: GPL-3.0" src="https://img.shields.io/badge/license-GPL--3.0-blue?style=flat-square"></a>
 </p>
 
 <p align="center">
-  <a href="https://github.com/Muhammed-Dali/ArDali-WebMedia/releases/latest"><strong>Download v5.4.3</strong></a>
-  · <a href="https://muhammed-dali.github.io/ArDali-WebMedia/">Website</a>
+  <a href="https://github.com/Muhammed-Dali/ArDali-WebMedia/releases/latest"><strong>Download v5.4.4</strong></a>
   · <a href="#installation">Install</a>
+  · <a href="#screenshots">Screenshots</a>
+  · <a href="docs/FEATURES.md">Features</a>
   · <a href="CONTRIBUTING.md">Contribute</a>
 </p>
 
-> ArDali WebMedia is under active development. For production use, install a published release instead of running the `main` branch.
+> ArDali WebMedia is under active development. For everyday use, prefer a published release over the current `main` branch.
 
-## Highlights
+## Screenshots
 
-- Local music and video playback with broad format support
-- Hardware-aware Dali Audio Engine, DSP effects, and a 32-band equalizer
-- Hardware-accelerated projectM visualizer
-- Integrated web media workspace with DeliBlock filtering
-- Media downloads and local format conversion
-- Screen recording, music recognition, gallery, playlists, and MPRIS integration
-- Localized interface with multiple language packs
-- Linux packages including AppImage, DEB, RPM, and an AUR package
+### 1. Built-in Web Browser
 
-## 🔐 Password Manager
+Chromium-based browsing, multiple tabs, quick sites, privacy tools, and media shortcuts in a unified workspace.
 
-ArDali's password manager stores credentials only on the local device; credentials are never uploaded to a server. The credential vault is encrypted with AES-256-GCM, integrates with the operating system's secure key storage, and is protected by a master password with configurable automatic locking.
+![ArDali built-in Chromium web browser and new tab page](docs/images/built-in-web-browser.png)
 
-Credential storage and autofill are restricted to HTTPS pages with exact origin matching. Autofill requires user interaction and uses short-lived, single-use authorization so credentials cannot be silently requested by a page. Legacy vault data is migrated automatically to the current encrypted format after a successful unlock.
+### 2. Password Manager
 
-## 🛡 Security
+The local-only vault combines AES-256-GCM encryption, a master password, automatic locking, secure autofill, and exact HTTPS origin verification.
 
-### Electron security
+![ArDali local encrypted password manager](docs/images/password-manager.png)
 
-- Chromium sandboxing, context isolation, and disabled Node.js integration
-- Hardened `BrowserWindow` settings, a strict Content Security Policy, and DOMPurify sanitization
-- Centralized IPC validation with role-based channel permissions
-- Restricted site permissions and securely validated external protocol handling
+### 3. Built-in Ad Blocker
 
-### Password security
+Built-in filtering supports privacy-focused browsing and a cleaner web experience with selectable protection levels and filter lists.
 
-- AES-256-GCM encryption backed by secure OS key storage
-- Brute-force protection with progressive unlock delays
-- Configurable automatic locking and short-lived authorization tokens
-- Secure memory handling that clears sensitive key and plaintext buffers
+![ArDali built-in DeliBlock ad blocker settings](docs/images/ad-blocker.png)
 
-## 🔄 Secure Release Pipeline
+### 4. Web Audio Effects
 
-Every versioned release must pass the automated pre-release security gate before publication. The gate runs `npm audit`, Electron Security Tests, Credential Vault Tests, Binary Manifest Verification, Release Metadata Verification, and the Security Suite before the application is built and packaged.
+A flagship workflow: process web playback with the Native C++ Audio Engine and Dali Web Audio Engine through real-time DSP and professional audio controls.
 
-If any critical security check fails, the workflow stops automatically: no GitHub Release or AUR/Pacman package is published.
+![YouTube playback beside ArDali professional web audio effects](docs/images/web-audio-effects.png)
 
-## Demo and screenshots
+### 5. Smart Downloader
 
-![ArDali WebMedia web interface](assets/screenshots/web_home.png)
+Automatic URL detection, audio and video downloads, format selection, and support for multiple compatible platforms.
 
-> A short, silent 15–25 second demo GIF should be placed here after it is captured from a release build. The production brief and export limits are documented in [Brand and visual assets](docs/BRAND_ASSETS.md#demo-gif).
+![ArDali smart audio and video downloader](docs/images/smart-downloader.png)
 
-| Web media | Music player |
+### 6. Music Recognition
+
+Shazam-like recognition detects music directly from webpages and presents matches quickly inside the application.
+
+![ArDali webpage music recognition interface](docs/images/music-recognition.png)
+
+### 7. projectM Visualizer
+
+Real-time, natively integrated projectM visualization with hardware-accelerated rendering.
+
+![ArDali native projectM music visualizer](docs/images/projectm-visualizer.png)
+
+### 8. Settings
+
+Centralized controls for the multilingual interface, security and privacy behavior, media features, and application preferences.
+
+![ArDali application settings and preferences](docs/images/settings.png)
+
+## Features at a glance
+
+| Area | Highlights |
 | --- | --- |
-| ![ArDali YouTube web media](assets/screenshots/web_youtube.png) | ![ArDali music player](assets/screenshots/music_player.png) |
+| 🌐 **Browser** | Chromium browser, multiple tabs, new-tab workspace, built-in ad blocker |
+| 🔐 **Security** | Local password vault, AES-256-GCM, secure autofill, automatic lock, HTTPS origin validation |
+| 🎵 **Audio** | Native C++ Audio Engine, Dali Web Audio Engine, 32-band EQ, real-time DSP and audio effects |
+| ⬇ **Downloader** | Smart URL detection, audio/video downloads, format and quality selection |
+| 🎨 **Visualizer** | Native projectM integration and hardware-accelerated real-time rendering |
+| 🎬 **Multimedia** | Music player, video player, photo gallery, screen recorder and playlists |
+| 🌍 **Localization** | Multi-language interface with locale packs and RTL-aware surfaces |
+| ⚡ **Performance** | Native components, optimized startup paths, lazy UI work and sandboxed renderers |
 
-| Video player | Audio effects |
-| --- | --- |
-| ![ArDali video player](assets/screenshots/video_player.png) | ![ArDali sound effects](assets/screenshots/sound_effects.png) |
+See the complete [feature guide](docs/FEATURES.md).
 
-Additional interfaces: [downloader](assets/screenshots/downloader.png), [screen recorder](assets/screenshots/screen_recorder.png), [music recognition](assets/screenshots/song_recognition.png), [gallery](assets/screenshots/gallery.png), [visualizer](assets/screenshots/visualizer.png), and [ad blocker](assets/screenshots/adblocker.png).
+## Security
+
+ArDali uses Chromium sandboxing, context isolation, strict Content Security Policies, validated IPC boundaries, and a local-only password vault. Credential autofill is limited to verified HTTPS origins and short-lived user-authorized operations. Automated checks include Electron security tests, credential-vault tests, `npm audit`, and CI security workflows.
+
+These controls reduce risk; they are not a claim that the application is vulnerability-free. Read the [security model](docs/SECURITY.md) and use the private process in [SECURITY.md](SECURITY.md) to report a vulnerability.
+
+## Audio engines
+
+Local playback can use the native C++ engine and its real-time DSP chain, while web playback uses the Dali Web Audio Engine to build controlled audio-processing graphs. This provides application-level EQ, dynamics, spatial, and restoration tools beyond the controls normally exposed by a webpage.
+
+Read [Audio Engine](docs/AUDIO_ENGINE.md) for the processing model and boundaries.
+
+## Dali language
+
+ArDali includes a small audio DSL for `.dali` and `.dl` presets, with a compiler, guarded runtime targets, command-line tooling, and a VS Code extension.
+
+```dali
+preset "Clean Boost" {
+  input web;
+  output speakers;
+  chain { preamp gain=2db; limiter ceiling=-1db; }
+}
+```
+
+Read [Dali Language](docs/DALI_LANGUAGE.md) for supported syntax, compiler targets, validation, and editor setup.
+
+## Architecture
+
+```text
+Browser and Media UI
+          ↓
+Electron + isolated preload bridges
+          ↓
+Native C++ Audio Engine + Dali Web Audio Engine
+          ↓
+Real-time DSP processing
+          ↓
+Audio output and projectM visualization
+```
+
+See the full [architecture overview](docs/ARCHITECTURE.md).
 
 ## Installation
 
@@ -96,9 +154,7 @@ Review the [AUR package page](https://aur.archlinux.org/packages/ardali-bin) bef
 
 ### AppImage, DEB, and RPM
 
-Download the package for your distribution from [GitHub Releases](https://github.com/Muhammed-Dali/ArDali-WebMedia/releases/latest). Verify downloaded artifacts with the release `SHA256SUMS.txt`; see [release verification](docs/RELEASES.md#verify-a-download).
-
-For AppImage:
+Download the package for your distribution from [GitHub Releases](https://github.com/Muhammed-Dali/ArDali-WebMedia/releases/latest). Verify artifacts with the published `SHA256SUMS.txt`; see [release verification](docs/RELEASES.md#verify-a-download).
 
 ```bash
 chmod +x ArDali-*-linux-*.AppImage
@@ -109,11 +165,11 @@ Some distributions require FUSE 2 for AppImage execution. See [troubleshooting](
 
 ### Flatpak
 
-Flatpak packaging metadata and automated validation are available in the repository. Flathub publication is still pending review, so use the documented [local Flatpak build](packaging/flatpak/README.md) instead of treating it as a published store package.
+Flatpak metadata and automated validation are included. Flathub publication is pending review, so follow the documented [local Flatpak build](packaging/flatpak/README.md).
 
 ## Build from source
 
-ArDali includes Electron/Node.js components, a native audio addon, and a C++ projectM visualizer. A complete build therefore needs more than a normal `npm install`.
+ArDali combines desktop UI code, a native audio addon, and a C++ projectM visualizer. Install the documented system dependencies before building.
 
 ```bash
 git clone https://github.com/Muhammed-Dali/ArDali-WebMedia.git
@@ -123,36 +179,42 @@ npm --prefix native ci
 npm start
 ```
 
-The development command is Linux-oriented and uses project-specific runtime paths. Read [Building from source](docs/BUILDING.md) for system dependencies, native build steps, and supported commands.
+Read [Building from source](docs/BUILDING.md) for native dependencies, supported commands, Linux packaging, and Windows guidance.
 
 ## Documentation
 
+- [Features](docs/FEATURES.md)
+- [Architecture](docs/ARCHITECTURE.md)
+- [Security model](docs/SECURITY.md)
+- [Audio Engine](docs/AUDIO_ENGINE.md)
+- [Dali Language](docs/DALI_LANGUAGE.md)
 - [Building from source](docs/BUILDING.md)
-- [Architecture overview](docs/ARCHITECTURE.md)
 - [Linux packaging](docs/PACKAGING.md)
 - [Release and artifact verification](docs/RELEASES.md)
-- [Security model](docs/SECURITY.md)
 - [Troubleshooting](docs/TROUBLESHOOTING.md)
-- [Project audit and maintainer recommendations](docs/PROJECT_AUDIT.md)
-- [Brand, banner, and demo guidance](docs/BRAND_ASSETS.md)
+- [Brand and visual assets](docs/BRAND_ASSETS.md)
 
-## Contributing
+## Contributing and credits
 
-Bug reports, documentation improvements, translations, packaging fixes, and focused code contributions are welcome. Start with [CONTRIBUTING.md](CONTRIBUTING.md) and use the repository's issue forms.
+Bug reports, documentation improvements, translations, packaging fixes, and focused code contributions are welcome. Start with [CONTRIBUTING.md](CONTRIBUTING.md), follow the [Code of Conduct](CODE_OF_CONDUCT.md), and review the repository's [contributors](https://github.com/Muhammed-Dali/ArDali-WebMedia/graphs/contributors).
 
-Please report suspected vulnerabilities privately as described in [SECURITY.md](SECURITY.md), not in a public issue.
+ArDali is built with open-source technologies and third-party runtime components. Their licenses and binary provenance remain documented in [THIRD_PARTY_BINARIES.md](THIRD_PARTY_BINARIES.md). Project changes and release history are preserved in the [changelog](CHANGELOG.md) and [release notes](https://github.com/Muhammed-Dali/ArDali-WebMedia/releases).
 
 ## Community and support
 
 - [Bug reports and feature requests](https://github.com/Muhammed-Dali/ArDali-WebMedia/issues)
 - [Roadmap](ROADMAP.md)
 - [Changelog](CHANGELOG.md)
-- [Code of Conduct](CODE_OF_CONDUCT.md)
+- [Security reporting](SECURITY.md)
 
 When asking for help, include the ArDali version, distribution, desktop session (X11 or Wayland), package type, and relevant logs with secrets removed.
 
 ## Legal
 
-ArDali WebMedia is distributed under the [GNU General Public License v3.0](LICENSE). Bundled third-party components remain subject to their respective licenses. See [third-party binary provenance](THIRD_PARTY_BINARIES.md) for tracked native runtime files.
+ArDali WebMedia is distributed under the [GNU General Public License v3.0](LICENSE). Bundled third-party components remain subject to their respective licenses.
 
 Third-party service names and trademarks belong to their respective owners. ArDali WebMedia is not affiliated with or endorsed by those services. Users are responsible for complying with applicable laws and service terms when accessing or downloading media.
+
+## Recommended GitHub topics
+
+Repository maintainers may consider: `electron`, `chromium`, `browser`, `media-player`, `audio`, `audio-engine`, `cpp`, `multimedia`, `music`, `video`, `password-manager`, `security`, `visualizer`, `projectm`, `linux`, `windows`, `cross-platform`, `privacy`, `dsp`.

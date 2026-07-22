@@ -2515,13 +2515,35 @@ function isMainWindowBoundsNearWorkArea(bounds = {}) {
     return widthRatio >= 0.92 && heightRatio >= 0.88 && leftClose && topClose;
 }
 
+function getRestorableMainWindowBounds(bounds = {}) {
+    const normalized = fitMainWindowBoundsToDisplay(bounds);
+    if (!isMainWindowBoundsNearWorkArea(normalized)) return normalized;
+
+    const area = getDisplayWorkAreaForBounds(normalized);
+    if (!area) return normalizeMainWindowBounds({ width: 1500, height: 900 });
+
+    const width = Math.max(1024, Math.min(1500, Math.round(area.width * 0.82)));
+    const height = Math.max(700, Math.min(900, Math.round(area.height * 0.84)));
+    return normalizeMainWindowBounds({
+        x: area.x + Math.round((area.width - width) / 2),
+        y: area.y + Math.round((area.height - height) / 2),
+        width,
+        height
+    });
+}
+
 function getSavedMainWindowStateSync() {
     const settings = readSettingsFileSafeSync();
     const windowState = settings?.ui?.mainWindow && typeof settings.ui.mainWindow === 'object'
         ? settings.ui.mainWindow
         : {};
     return {
-        bounds: fitMainWindowBoundsToDisplay(windowState.bounds || windowState),
+        // Saved bounds represent the normal (restored) geometry. Older
+        // versions sometimes persisted the maximized work-area rectangle;
+        // repair that value so unmaximize visibly returns to a smaller window.
+        bounds: windowState.maximized === true
+            ? getRestorableMainWindowBounds(windowState.bounds || windowState)
+            : fitMainWindowBoundsToDisplay(windowState.bounds || windowState),
         maximized: windowState.maximized === true,
         fullscreen: windowState.fullscreen === true
     };
@@ -2567,7 +2589,9 @@ function getMainWindowStateSnapshot(win = mainWindow) {
         : currentBounds;
     const nativeMaximized = typeof win.isMaximized === 'function' ? win.isMaximized() : false;
     const boundsLookMaximized = isMainWindowBoundsNearWorkArea(currentBounds);
-    const bounds = nativeMaximized || boundsLookMaximized ? currentBounds : normalBounds;
+    const bounds = nativeMaximized || boundsLookMaximized
+        ? getRestorableMainWindowBounds(normalBounds)
+        : normalBounds;
     return {
         state: {
             bounds: normalizeMainWindowBounds(bounds),
@@ -7197,8 +7221,10 @@ function createEQPresetsWindow() {
     // Pencere zaten açıksa, önne getir
     if (eqPresetsWindow && !eqPresetsWindow.isDestroyed()) {
         console.log('[createEQPresetsWindow] Pencere zaten açık, focus yapılıyor');
+        if (eqPresetsWindow.isMinimized()) eqPresetsWindow.restore();
+        if (!eqPresetsWindow.isVisible()) eqPresetsWindow.show();
         eqPresetsWindow.focus();
-        return;
+        return eqPresetsWindow;
     }
 
     // Üst pencere: ses efektleri penceresini bul; yoksa ana pencereyi kullan
@@ -7222,7 +7248,9 @@ function createEQPresetsWindow() {
         minHeight: 820,
         backgroundColor: '#111115',
         parent: parentWindow,
-        modal: false,
+        // This chooser must remain above its owner. Wayland may place a
+        // non-modal child behind the effects window, making it look unopened.
+        modal: Boolean(parentWindow),
         autoHideMenuBar: true,
         webPreferences: {
             preload: path.join(__dirname, 'preload.js'),
@@ -7258,6 +7286,8 @@ function createEQPresetsWindow() {
             console.log('[createEQPresetsWindow] HTML yükleme başarılı, pencere gösteriliyor');
             if (eqPresetsWindow && !eqPresetsWindow.isDestroyed()) {
                 eqPresetsWindow.show();
+                if (typeof eqPresetsWindow.moveTop === 'function') eqPresetsWindow.moveTop();
+                eqPresetsWindow.focus();
             }
         })
         .catch(err => {
@@ -7271,6 +7301,8 @@ function createEQPresetsWindow() {
     eqPresetsWindow.on('closed', () => {
         eqPresetsWindow = null;
     });
+
+    return eqPresetsWindow;
 }
 
 // Ses Efektleri Penceresini Aç
@@ -9005,11 +9037,11 @@ function isTrustedLocalVaultSender(event) {
 
 const LOCAL_PAGE_IPC_PREFIXES = Object.freeze({
     'password-manager.html': ['vault:', 'settings:load', 'i18n:', 'get-system-locale'],
-    'settings.html': ['settings:', 'window:', 'dialog:', 'audio:', 'soundEffects:', 'presets:', 'systemAudio:', 'system:', 'web:', 'app:', 'diagnostics:', 'adblock:', 'downloader:', 'vault:openManager', 'i18n:'],
+    'settings.html': ['settings:', 'window:', 'dialog:', 'audio:', 'soundEffects:', 'presets:', 'eqPresets:', 'systemAudio:', 'system:', 'web:', 'app:', 'diagnostics:', 'adblock:', 'downloader:', 'vault:openManager', 'i18n:'],
     'downloader.html': ['downloader:', 'window:', 'dialog:confirm', 'settings:', 'app:getVersionInfo', 'i18n:'],
     'adblock.html': ['adblock:', 'window:', 'dialog:confirm', 'settings:', 'i18n:'],
-    'soundEffects.html': ['audio:', 'soundEffects:', 'presets:', 'window:', 'dialog:', 'settings:', 'systemAudio:', 'i18n:'],
-    'eqPresets.html': ['audio:', 'presets:', 'window:', 'dialog:confirm', 'settings:', 'i18n:'],
+    'soundEffects.html': ['audio:', 'soundEffects:', 'presets:', 'eqPresets:', 'window:', 'dialog:', 'settings:', 'systemAudio:', 'i18n:'],
+    'eqPresets.html': ['audio:', 'presets:', 'eqPresets:', 'window:', 'dialog:confirm', 'settings:', 'i18n:'],
     'pulse.html': ['pulse:', 'window:', 'dialog:confirm', 'settings:', 'systemAudio:', 'i18n:']
 });
 

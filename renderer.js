@@ -25569,8 +25569,6 @@ function loadPlaylistCardCoverNow(itemElement, filePath = '') {
     const img = itemElement?.querySelector('.playlist-card-cover-img');
     const key = String(filePath || '').trim();
     if (!img || !key) return;
-    if (getLibraryPerformanceState().lightweightMode) return;
-
     if (img.dataset.coverErrorBound !== '1') {
         img.dataset.coverErrorBound = '1';
         img.addEventListener('error', () => {
@@ -25602,8 +25600,6 @@ function queuePlaylistCardCoverLoad(itemElement, filePath = '') {
     const img = itemElement?.querySelector('.playlist-card-cover-img');
     const key = String(filePath || '').trim();
     if (!itemElement || !img || !key) return;
-    if (getLibraryPerformanceState().lightweightMode) return;
-
     itemElement.dataset.coverPath = key;
     const known = getKnownPlaylistCardCover(key);
     if (known) {
@@ -40584,7 +40580,10 @@ function renderPlaylist() {
         const icon = isVideoFile(item.name) ? '🎬' : '🎵';
         const statusGlyph = isAudioCurrent ? (isTrackPlaying ? '❚❚' : '▶') : String(visualOrder + 1);
         const statusClass = isAudioCurrent ? 'item-index playback-state' : 'item-index';
-        const showCardCover = isCardView && !isVideoFile(item.name) && !perfState.lightweightMode;
+        // Covers are lazy-loaded only for visible cards, so keeping them in
+        // lightweight mode has a bounded cost and avoids an unexpectedly
+        // coverless music library.
+        const showCardCover = isCardView && !isVideoFile(item.name);
         const showMissingCover = !largePlaylistMode && getCoverPreferenceState().markMissing && item.hasCover === false;
         const metaParts = [artist, album].filter(Boolean);
         const baseTitle = metaParts.length ? `${item.name}\n${metaParts.join(' • ')}` : item.name;
@@ -41971,10 +41970,6 @@ async function extractAlbumArt(filePath) {
 
     try {
         const perf = getLibraryPerformanceState();
-        if (perf.lightweightMode) {
-            updateCoverArt(null, 'audio');
-            return;
-        }
         const cachedCover = readCachedAlbumArt(filePath);
         if (cachedCover) {
             updateCoverArt(cachedCover, 'audio');
@@ -42054,11 +42049,11 @@ function updateCoverArt(imageData, mediaType) {
     } else {
         // Varsayılan ikonları göster (mevcut dosyaları kullan)
         if (mediaType === 'video') {
-            coverImg.src = '../icons/ui/nav_video.svg';
+            coverImg.src = 'icons/ui/nav_video.svg';
         } else if (mediaType === 'web') {
-            coverImg.src = '../icons/ui/nav_internet.svg';
+            coverImg.src = 'icons/ui/nav_internet.svg';
         } else {
-            coverImg.src = '../icons/app/ardali_256.png';
+            coverImg.src = 'icons/app/ardali_256.png';
         }
         coverImg.classList.add('default-cover');
     }

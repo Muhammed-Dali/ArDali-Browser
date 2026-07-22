@@ -59,8 +59,25 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
+    window.addEventListener('ardali:languageChanged', () => {
+        tabs.forEach((tab) => {
+            if (tab.url === BLANK_URL) tab.title = browserText('newTab');
+            else if (isDownloadsUrl(tab.url)) tab.title = browserText('downloads');
+        });
+        renderTabs();
+    });
+
     const BLANK_URL = 'about:blank';
-    const NEW_TAB_TITLE = 'Yeni Sekme';
+    const browserText = (key) => {
+        const lang = String(document.documentElement.lang || navigator.language || 'en').toLowerCase();
+        const locale = lang.startsWith('tr') ? 'tr' : (lang.startsWith('ar') ? 'ar' : 'en');
+        const text = {
+            tr: { newTab: 'Yeni Sekme', downloads: 'İndirilenler', loading: 'Yükleniyor...' },
+            en: { newTab: 'New Tab', downloads: 'Downloads', loading: 'Loading...' },
+            ar: { newTab: 'علامة تبويب جديدة', downloads: 'التنزيلات', loading: 'جارٍ التحميل...' }
+        };
+        return text[locale][key];
+    };
 
     function recordSiteVisit(tab, rawUrl, rawTitle) {
         const parsed = parseHttpUrl(rawUrl);
@@ -169,7 +186,7 @@ document.addEventListener('DOMContentLoaded', () => {
     function buildSessionSnapshot() {
         const cleanTabs = tabs.slice(0, MAX_RESTORED_TABS).map((tab) => ({
             url: sanitizeSessionUrl(tab.url),
-            title: String(tab.title || NEW_TAB_TITLE).replace(/[\u0000-\u001f\u007f]/g, '').slice(0, 160),
+            title: String(tab.title || browserText('newTab')).replace(/[\u0000-\u001f\u007f]/g, '').slice(0, 160),
             favicon: sanitizeSessionFavicon(tab.favicon) || (parseHttpUrl(tab.url) ? getFallbackFaviconForUrl(tab.url) : ''),
             pinned: tab.pinned === true,
             groupName: String(tab.groupName || '').replace(/[\u0000-\u001f\u007f]/g, '').slice(0, 60)
@@ -194,7 +211,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!parsed || parsed.version !== 1 || !Array.isArray(parsed.tabs)) return null;
             const cleanTabs = parsed.tabs.slice(0, MAX_RESTORED_TABS).map((tab) => ({
                 url: sanitizeSessionUrl(tab?.url),
-                title: String(tab?.title || NEW_TAB_TITLE).replace(/[\u0000-\u001f\u007f]/g, '').slice(0, 160),
+                title: String(tab?.title || browserText('newTab')).replace(/[\u0000-\u001f\u007f]/g, '').slice(0, 160),
                 favicon: sanitizeSessionFavicon(tab?.favicon) || (parseHttpUrl(tab?.url) ? getFallbackFaviconForUrl(tab.url) : ''),
                 pinned: tab?.pinned === true,
                 groupName: String(tab?.groupName || '').replace(/[\u0000-\u001f\u007f]/g, '').slice(0, 60)
@@ -660,7 +677,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!tab) return;
         if (url) tab.url = url;
         tab.isLoading = !!loading;
-        if (loading && tab.url !== BLANK_URL) tab.title = 'Yükleniyor...';
+        if (loading && tab.url !== BLANK_URL) tab.title = browserText('loading');
         if (loading) tab.loadStartedAt = Date.now();
         if (activeTabId === tabId) {
             isWebviewLoading = !!loading;
@@ -1002,7 +1019,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (tab) {
                 clearLoadWatchdog(tab.id);
                 tab.url = url;
-                tab.title = 'İndirilenler';
+                tab.title = browserText('downloads');
                 tab.isLoading = false;
                 renderTabs();
             }
@@ -1053,7 +1070,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const tab = {
             id,
             url,
-            title: isDownloadsTab ? 'İndirilenler' : (url === BLANK_URL ? NEW_TAB_TITLE : 'Yükleniyor...'),
+            title: isDownloadsTab ? browserText('downloads') : (url === BLANK_URL ? browserText('newTab') : browserText('loading')),
             isLoading: url !== BLANK_URL && !isDownloadsTab && options.deferLoad !== true,
             favicon: '',
             zoomFactor: 1.0,
@@ -1268,10 +1285,10 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             tab.url = url;
             if (isDownloadsUrl(url)) {
-                tab.title = 'İndirilenler';
+                tab.title = browserText('downloads');
                 tab.isLoading = false;
             } else if (url === BLANK_URL) {
-                tab.title = NEW_TAB_TITLE;
+                tab.title = browserText('newTab');
             } else if (title) {
                 tab.title = title;
             }
@@ -1408,7 +1425,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (downloadsPage) downloadsPage.classList.remove('hidden');
             if (tab) {
                 clearLoadWatchdog(tab.id);
-                tab.title = 'İndirilenler';
+                tab.title = browserText('downloads');
                 tab.isLoading = false;
             }
             isWebviewLoading = false;
@@ -2049,7 +2066,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const tab = getActiveTab();
         if (tab) {
             tab.url = BLANK_URL;
-            tab.title = NEW_TAB_TITLE;
+            tab.title = browserText('newTab');
             const wv = window.getActiveWebView();
             if (wv) wv.src = BLANK_URL;
             updateAddressBar(BLANK_URL);

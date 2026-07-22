@@ -61,6 +61,12 @@
   </provides>
 
   <releases>
+    <release version="5.4.4" date="2026-07-22">
+      <url>https://github.com/Muhammed-Dali/ArDali-WebMedia/releases/tag/v5.4.4</url>
+      <description>
+        <p>Fixed window behavior, EQ presets, album artwork, and web localization, with refreshed project documentation and screenshots.</p>
+      </description>
+    </release>
     <release version="5.4.3" date="2026-07-22">
       <url>https://github.com/Muhammed-Dali/ArDali-WebMedia/releases/tag/v5.4.3</url>
       <description>

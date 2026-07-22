@@ -1,5 +1,18 @@
 # Changelog
 
+## [5.4.4] - 2026-07-22
+
+### Added
+
+- Added complete English and Arabic localization for the browser new-tab interface and customization panel.
+- Added comprehensive feature, architecture, security, audio engine, and Dali language documentation with a new screenshot set.
+
+### Fixed
+
+- Made the EQ preset chooser reliably open above the Audio Effects window.
+- Restored a practical window size when leaving a previously maximized main window.
+- Restored embedded album artwork in the music library and player cover view.
+
 ## [5.4.3] - 2026-07-22
 
 ### Fixed

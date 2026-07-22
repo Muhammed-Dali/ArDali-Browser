@@ -27,8 +27,9 @@
         appearance: { reducedMotion: false }
     });
     const TEXT = {
-        tr: { title: 'Yeni Sekmeyi Özelleştir', shortcuts: 'Hızlı Siteler', downloads: 'Son indirilenler', privacy: 'Web koruması', active: 'Etkin', saved: 'Kaydedildi', failed: 'Kaydedilemedi', invalidUrl: 'Yalnızca http/https adresleri kullanılabilir.', imageFailed: 'Resim güvenlik doğrulamasından geçemedi.', siteTitle: 'Site adı', siteUrl: 'https://ornek.com', confirmReset: 'Yeni sekme ayarları varsayılana döndürülsün mü?' },
-        en: { title: 'Customize New Tab', shortcuts: 'Quick Sites', downloads: 'Recent downloads', privacy: 'Web protection', active: 'Active', saved: 'Saved', failed: 'Could not save', invalidUrl: 'Only http/https addresses are allowed.', imageFailed: 'The image did not pass security validation.', siteTitle: 'Site name', siteUrl: 'https://example.com', confirmReset: 'Reset new tab settings to defaults?' }
+        tr: { title: 'Yeni Sekmeyi Özelleştir', newTab: 'Yeni Sekme', address: "Web'de bir şeyler arayın veya URL girin...", shortcuts: 'Hızlı Siteler', downloads: 'Son indirilenler', privacy: 'Web koruması', active: 'Etkin', background: 'Arka Plan', search: 'Arama', sites: 'Siteler', clock: 'Saat', cards: 'Kartlar', backgroundLabel: 'Arka plan', packaged: 'ArDali resimleri', gradient: 'ArDali gradyanı', custom: 'Kişisel resim', off: 'Kapalı', choose: 'Cihazdan seç', removeImage: 'Kişisel resmi kaldır', fit: 'Resmi yerleştirme', cover: 'Alanı doldur (önerilen)', contain: 'Resmin tamamını sığdır', stretch: 'Alana uzat', position: 'Resmin konumu', center: 'Merkez', top: 'Üst', bottom: 'Alt', left: 'Sol', right: 'Sağ', dim: 'Karartma', blur: 'Bulanıklık', showSearch: 'Arama alanını göster', searchHint: 'Arama motorunu arama alanının sağındaki menüden seçebilirsiniz.', showSites: 'Hızlı siteleri göster', autoSites: 'En çok ziyaret edilenleri otomatik ekle', addSite: 'Yeni site ekle', showClock: 'Saat ve tarihi göster', clockStyle: 'Saat stili', modern: 'Modern', flip: 'Kapaklı', analog: 'Analog', written: 'Yazılı', clockFormat: 'Saat biçimi', hour24: '24 saat', hour12: '12 saat', showSeconds: 'Saniyeleri göster', showDate: 'Tarihi göster', cardsPosition: 'Kartların konumu', reset: 'Varsayılana dön', close: 'Kapat', customize: 'Yeni sekmeyi özelleştir', addQuickSite: 'Hızlı site ekle', saved: 'Kaydedildi', failed: 'Kaydedilemedi', invalidUrl: 'Yalnızca http/https adresleri kullanılabilir.', imageFailed: 'Resim güvenlik doğrulamasından geçemedi.', siteTitle: 'Site adı', siteUrl: 'https://ornek.com', confirmReset: 'Yeni sekme ayarları varsayılana döndürülsün mü?', personalBackground: 'Kişisel arka plan', removeSite: 'Siteyi kaldır', remove: 'Kaldır', newSite: 'Yeni Site' },
+        en: { title: 'Customize New Tab', newTab: 'New Tab', address: 'Search the web or enter a URL...', shortcuts: 'Quick Sites', downloads: 'Recent downloads', privacy: 'Web protection', active: 'Active', background: 'Background', search: 'Search', sites: 'Sites', clock: 'Clock', cards: 'Cards', backgroundLabel: 'Background', packaged: 'ArDali images', gradient: 'ArDali gradient', custom: 'Custom image', off: 'Off', choose: 'Choose from device', removeImage: 'Remove custom image', fit: 'Image fit', cover: 'Fill area (recommended)', contain: 'Fit entire image', stretch: 'Stretch to area', position: 'Image position', center: 'Center', top: 'Top', bottom: 'Bottom', left: 'Left', right: 'Right', dim: 'Dimming', blur: 'Blur', showSearch: 'Show search box', searchHint: 'Choose the search engine from the menu on the right of the search box.', showSites: 'Show quick sites', autoSites: 'Automatically add most visited sites', addSite: 'Add new site', showClock: 'Show clock and date', clockStyle: 'Clock style', modern: 'Modern', flip: 'Flip', analog: 'Analog', written: 'Written', clockFormat: 'Time format', hour24: '24-hour', hour12: '12-hour', showSeconds: 'Show seconds', showDate: 'Show date', cardsPosition: 'Card position', reset: 'Restore defaults', close: 'Close', customize: 'Customize new tab', addQuickSite: 'Add quick site', saved: 'Saved', failed: 'Could not save', invalidUrl: 'Only http/https addresses are allowed.', imageFailed: 'The image did not pass security validation.', siteTitle: 'Site name', siteUrl: 'https://example.com', confirmReset: 'Reset new tab settings to defaults?', personalBackground: 'Personal background', removeSite: 'Remove site', remove: 'Remove', newSite: 'New Site' },
+        ar: { title: 'تخصيص علامة تبويب جديدة', newTab: 'علامة تبويب جديدة', address: 'ابحث في الويب أو أدخل عنوان URL...', shortcuts: 'المواقع السريعة', downloads: 'التنزيلات الأخيرة', privacy: 'حماية الويب', active: 'نشط', background: 'الخلفية', search: 'البحث', sites: 'المواقع', clock: 'الساعة', cards: 'البطاقات', backgroundLabel: 'الخلفية', packaged: 'صور ArDali', gradient: 'تدرج ArDali', custom: 'صورة مخصصة', off: 'إيقاف', choose: 'اختيار من الجهاز', removeImage: 'إزالة الصورة المخصصة', fit: 'ملاءمة الصورة', cover: 'ملء المساحة (موصى به)', contain: 'إظهار الصورة كاملة', stretch: 'تمديد إلى المساحة', position: 'موضع الصورة', center: 'الوسط', top: 'أعلى', bottom: 'أسفل', left: 'يسار', right: 'يمين', dim: 'التعتيم', blur: 'الضبابية', showSearch: 'إظهار مربع البحث', searchHint: 'يمكنك اختيار محرك البحث من القائمة الموجودة على يمين مربع البحث.', showSites: 'إظهار المواقع السريعة', autoSites: 'إضافة المواقع الأكثر زيارة تلقائياً', addSite: 'إضافة موقع جديد', showClock: 'إظهار الساعة والتاريخ', clockStyle: 'نمط الساعة', modern: 'حديث', flip: 'قَلّاب', analog: 'تناظري', written: 'كتابي', clockFormat: 'تنسيق الوقت', hour24: '24 ساعة', hour12: '12 ساعة', showSeconds: 'إظهار الثواني', showDate: 'إظهار التاريخ', cardsPosition: 'موضع البطاقات', reset: 'استعادة الإعدادات الافتراضية', close: 'إغلاق', customize: 'تخصيص علامة التبويب الجديدة', addQuickSite: 'إضافة موقع سريع', saved: 'تم الحفظ', failed: 'تعذر الحفظ', invalidUrl: 'يُسمح فقط بعناوين http/https.', imageFailed: 'لم تجتز الصورة التحقق الأمني.', siteTitle: 'اسم الموقع', siteUrl: 'https://example.com', confirmReset: 'هل تريد إعادة إعدادات علامة التبويب الجديدة إلى الوضع الافتراضي؟', personalBackground: 'خلفية مخصصة', removeSite: 'إزالة الموقع', remove: 'إزالة', newSite: 'موقع جديد' }
     };
 
     let settings = structuredCloneSafe(DEFAULTS);
@@ -37,7 +38,7 @@
     let saveTimer = 0;
 
     function structuredCloneSafe(value) { return JSON.parse(JSON.stringify(value)); }
-    function localeKey() { return String(document.documentElement.lang || navigator.language || 'en').toLowerCase().startsWith('tr') ? 'tr' : 'en'; }
+    function localeKey() { const lang = String(document.documentElement.lang || navigator.language || 'en').toLowerCase(); return lang.startsWith('tr') ? 'tr' : (lang.startsWith('ar') ? 'ar' : 'en'); }
     function t(key) { return TEXT[localeKey()][key] || TEXT.en[key] || key; }
     function byId(id) { return document.getElementById(id); }
     function bool(value, fallback) { return typeof value === 'boolean' ? value : fallback; }
@@ -91,7 +92,7 @@
         const bg = settings.background;
         let image = ''; let label = '';
         if (bg.mode === 'packaged') { const selected = WALLPAPERS.find((item) => item.id === bg.packagedId) || WALLPAPERS[0]; image = `url("${selected.src}")`; label = selected.credit; }
-        else if (bg.mode === 'custom' && customImageDataUrl) { image = `url("${customImageDataUrl}")`; label = localeKey() === 'tr' ? 'Kişisel arka plan' : 'Personal background'; }
+        else if (bg.mode === 'custom' && customImageDataUrl) { image = `url("${customImageDataUrl}")`; label = t('personalBackground'); }
         else if (bg.mode === 'gradient' || (bg.mode === 'custom' && !customImageDataUrl)) image = 'radial-gradient(circle at 18% 20%,#114c67 0,transparent 38%),radial-gradient(circle at 80% 78%,#4d1768 0,transparent 42%),linear-gradient(145deg,#05080d,#101729)';
         else image = 'none';
         backdrop.style.backgroundImage = image;
@@ -193,7 +194,7 @@
                 icon.appendChild(image);
             }
             const title = document.createElement('span'); title.textContent = item.title;
-            const remove = document.createElement('span'); remove.className = 'web-ntp-shortcut-remove'; remove.textContent = '×'; remove.title = localeKey() === 'tr' ? 'Siteyi kaldır' : 'Remove site'; remove.setAttribute('role', 'button'); remove.tabIndex = 0;
+            const remove = document.createElement('span'); remove.className = 'web-ntp-shortcut-remove'; remove.textContent = '×'; remove.title = t('removeSite'); remove.setAttribute('role', 'button'); remove.tabIndex = 0;
             const removeItem = (event) => { event.preventDefault(); event.stopPropagation(); removeShortcut(item); };
             remove.addEventListener('click', removeItem); remove.addEventListener('keydown', (event) => { if (event.key === 'Enter' || event.key === ' ') removeItem(event); });
             button.append(icon, title, remove); button.addEventListener('click', () => navigate(item.url)); host.appendChild(button);
@@ -205,14 +206,14 @@
             const row = document.createElement('div'); row.className = 'web-ntp-shortcut-editor-row';
             const title = document.createElement('input'); title.type = 'text'; title.maxLength = 40; title.placeholder = t('siteTitle'); title.value = item.title;
             const url = document.createElement('input'); url.type = 'url'; url.maxLength = 2048; url.placeholder = t('siteUrl'); url.value = item.url;
-            const remove = document.createElement('button'); remove.type = 'button'; remove.title = localeKey() === 'tr' ? 'Kaldır' : 'Remove'; remove.textContent = '×';
+            const remove = document.createElement('button'); remove.type = 'button'; remove.title = t('remove'); remove.textContent = '×';
             title.addEventListener('change', () => { settings.shortcuts.items[index].title = title.value.trim().slice(0, 40) || item.title; renderShortcuts(); persist(); });
             url.addEventListener('change', () => { const clean = safeUrl(url.value); if (!clean) { url.setCustomValidity(t('invalidUrl')); url.reportValidity(); url.value = item.url; return; } url.setCustomValidity(''); settings.shortcuts.items[index].url = clean; renderShortcuts(); persist(); });
             remove.addEventListener('click', () => { settings.shortcuts.items.splice(index, 1); renderShortcuts(); renderEditor(); persist(); });
             row.append(title, url, remove); host.appendChild(row);
         });
     }
-    function addShortcut() { if (settings.shortcuts.items.length >= 12) return; settings.shortcuts.items.push({ title: localeKey() === 'tr' ? 'Yeni Site' : 'New Site', url: 'https://example.com/' }); renderShortcuts(); renderEditor(); persist(); }
+    function addShortcut() { if (settings.shortcuts.items.length >= 12) return; settings.shortcuts.items.push({ title: t('newSite'), url: 'https://example.com/' }); renderShortcuts(); renderEditor(); persist(); }
     async function refreshCards() {
         try { const history = await window.ardali?.downloads?.getHistory?.(); const value = byId('webNtpDownloadsValue'); if (value) value.textContent = String(Array.isArray(history) ? history.slice(0, 5).length : 0); } catch (_) {}
         try { const stats = await window.ardali?.adblock?.getStats?.(); const value = byId('webNtpPrivacyValue'); const blocked = Number(stats?.totalBlocked); if (value) value.textContent = Number.isFinite(blocked) ? String(blocked) : t('active'); } catch (_) {}
@@ -240,6 +241,39 @@
         const host = byId('webNtpWallpaperGrid'); if (!host) return;
         WALLPAPERS.forEach((item) => { const button = document.createElement('button'); button.type = 'button'; button.className = 'web-ntp-wallpaper'; button.dataset.wallpaperId = item.id; button.title = item.credit; button.style.backgroundImage = `url("${item.src}")`; button.addEventListener('click', () => { settings.background.mode = 'packaged'; settings.background.packagedId = item.id; applyAll(); persist(); }); host.appendChild(button); });
     }
+    function applyLocalization() {
+        const setText = (id, key) => { const el = byId(id); if (el) el.textContent = t(key); };
+        const setPlaceholder = (id, key) => { const el = byId(id); if (el) el.placeholder = t(key); };
+        const setTitle = (id, key) => { const el = byId(id); if (el) { el.title = t(key); el.setAttribute('aria-label', t(key)); } };
+        const setLabel = (controlId, key) => {
+            const label = byId(controlId)?.closest('label');
+            const node = label && Array.from(label.childNodes).find((item) => item.nodeType === Node.TEXT_NODE && item.textContent.trim());
+            if (node) node.textContent = `${t(key)} `;
+        };
+        const setSwitch = (controlId, key) => { const span = byId(controlId)?.closest('label')?.querySelector('span'); if (span) span.textContent = t(key); };
+        const setOptions = (id, keys) => { const select = byId(id); keys.forEach((key, index) => { if (select?.options[index]) select.options[index].textContent = t(key); }); };
+
+        setPlaceholder('webAddressInput', 'address'); setPlaceholder('webNtpSearchInput', 'address');
+        setText('webNtpPanelTitle', 'title'); setText('webNtpShortcutsTitle', 'shortcuts'); setText('webNtpDownloadsLabel', 'downloads'); setText('webNtpPrivacyLabel', 'privacy');
+        setTitle('webNtpCustomizeBtn', 'customize'); setTitle('webNtpPanelClose', 'close'); setTitle('webNtpAddShortcutBtn', 'addQuickSite');
+        const tabs = { background: 'background', search: 'search', shortcuts: 'sites', clock: 'clock', cards: 'cards' };
+        document.querySelectorAll('[data-ntp-panel-tab]').forEach((button) => { button.textContent = t(tabs[button.dataset.ntpPanelTab]); });
+        setLabel('webNtpBackgroundMode', 'backgroundLabel'); setOptions('webNtpBackgroundMode', ['packaged', 'gradient', 'custom', 'off']);
+        setText('webNtpChooseImage', 'choose'); setText('webNtpRemoveImage', 'removeImage');
+        setLabel('webNtpBackgroundFit', 'fit'); setOptions('webNtpBackgroundFit', ['cover', 'contain', 'stretch']);
+        setLabel('webNtpBackgroundPosition', 'position'); setOptions('webNtpBackgroundPosition', ['center', 'top', 'bottom', 'left', 'right']);
+        setLabel('webNtpDim', 'dim'); setLabel('webNtpBlur', 'blur');
+        setSwitch('webNtpSearchVisible', 'showSearch');
+        const searchHint = byId('webNtpSearchVisible')?.closest('section')?.querySelector('p'); if (searchHint) searchHint.textContent = t('searchHint');
+        setSwitch('webNtpShortcutsVisible', 'showSites'); setSwitch('webNtpAutoTopSites', 'autoSites'); setText('webNtpPanelAddShortcut', 'addSite');
+        setSwitch('webNtpClockVisible', 'showClock');
+        const styleLabel = byId('webNtpClockStyleGrid')?.previousElementSibling; if (styleLabel) styleLabel.textContent = t('clockStyle');
+        ['modern', 'flip', 'analog', 'written'].forEach((key, index) => { const el = document.querySelectorAll('.web-ntp-clock-style small')[index]; if (el) el.textContent = t(key); });
+        setLabel('webNtpClockFormat', 'clockFormat'); setOptions('webNtpClockFormat', ['hour24', 'hour12']); setSwitch('webNtpClockSeconds', 'showSeconds'); setSwitch('webNtpDateVisible', 'showDate');
+        setLabel('webNtpCardsPosition', 'cardsPosition'); setOptions('webNtpCardsPosition', ['left', 'center', 'right']); setSwitch('webNtpDownloadsVisible', 'downloads'); setSwitch('webNtpPrivacyVisible', 'privacy'); setText('webNtpReset', 'reset');
+        const page = byId('webNewTabPage'); if (page) page.dir = localeKey() === 'ar' ? 'rtl' : 'ltr';
+        renderShortcuts(); renderEditor(); scheduleClock();
+    }
     function bind() {
         byId('webNtpCustomizeBtn')?.addEventListener('click', openPanel); byId('webNtpPanelClose')?.addEventListener('click', closePanel); byId('webNtpPanelBackdrop')?.addEventListener('click', closePanel);
         document.addEventListener('keydown', (event) => {
@@ -264,6 +298,7 @@
         byId('webNtpReset')?.addEventListener('click', async () => { if (!window.confirm(t('confirmReset'))) return; settings = structuredCloneSafe(DEFAULTS); applyAll(); await persist(true); });
         document.querySelectorAll('.web-ntp-clock-style').forEach((button) => button.addEventListener('click', () => { settings.clock.style = allowed(button.dataset.clockStyle, ['digital', 'flip', 'analog', 'written'], 'digital'); applyAll(); persist(); }));
         window.addEventListener('ardali:web-visit-recorded', () => { if (settings.shortcuts.autoTopSites) renderShortcuts(); });
+        window.addEventListener('ardali:languageChanged', applyLocalization);
     }
     async function init() {
         if (!byId('webNewTabPage')) return;
@@ -271,7 +306,7 @@
         try { const loaded = await window.ardali?.loadSettings?.(); settings = normalize(loaded?.web?.newTab); } catch (_) { settings = structuredCloneSafe(DEFAULTS); }
         chooseSessionWallpaper();
         if (settings.background.hasCustom) { try { const result = await window.ardali?.newTab?.loadBackground?.(); if (result?.ok && String(result.dataUrl || '').startsWith('data:image/png;base64,')) customImageDataUrl = result.dataUrl; else settings.background.hasCustom = false; } catch (_) { settings.background.hasCustom = false; } }
-        const textMap = { webNtpPanelTitle: 'title', webNtpShortcutsTitle: 'shortcuts', webNtpDownloadsLabel: 'downloads', webNtpPrivacyLabel: 'privacy' }; Object.entries(textMap).forEach(([id, key]) => { if (byId(id)) byId(id).textContent = t(key); });
+        applyLocalization();
         applyAll();
     }
     document.addEventListener('DOMContentLoaded', init, { once: true });

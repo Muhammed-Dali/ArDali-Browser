@@ -48,6 +48,8 @@ assert.match(guestPreload, /vault:guest:beginFill/);
 assert.match(main, /isAllowedWebUrlMain\(currentUrl\) &&\s*isAllowedWebUrlMain\(requestingUrl\)/);
 assert.match(main, /LOCAL_PAGE_IPC_PREFIXES/);
 assert.match(main, /'password-manager\.html': \['vault:', 'settings:load', 'i18n:', 'get-system-locale'\]/);
+assert.match(main, /'soundEffects\.html': \[[^\]]*'eqPresets:'/);
+assert.match(main, /'eqPresets\.html': \[[^\]]*'eqPresets:'/);
 assert.match(main, /passwordManagerWindow/);
 assert.match(main, /event\.senderFrame\?\.parent/);
 assert.match(main, /isRendererPathGranted/);
