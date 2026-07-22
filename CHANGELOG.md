@@ -1,5 +1,15 @@
 # Changelog
 
+## [5.4.3] - 2026-07-22
+
+### Fixed
+
+- Restored packaged Web DALI graph loading after renderer path hardening and applied saved web effects as soon as web media starts playing.
+- Kept new-tab customization changes after restart and displayed search suggestions above shortcut cards.
+- Removed new-tab background overflow scrollbars and added reliable image fitting for local backgrounds.
+- Improved quick-site favicon clarity, removal controls, card placement, and most-visited shortcut handling.
+- Added selectable clock presentations to the new-tab customization panel.
+
 ## [5.4.2] - 2026-07-22
 
 ### Security

@@ -282,6 +282,10 @@ function sanitizeIpcPath(value, { requireAbsolute = true } = {}) {
 }
 
 const rendererPathGrants = new Map();
+const WEB_DALI_RUNTIME_ASSETS = Object.freeze([
+    path.join(__dirname, 'dali-lang', 'examples', 'web-eq32-reference.dl.generated.js'),
+    path.join(__dirname, 'dali-lang', 'examples', 'web-bass-enhancer.dl.generated.js')
+]);
 function canonicalAccessPath(targetPath) {
     const normalized = sanitizeIpcPath(targetPath);
     if (!normalized) return '';
@@ -327,6 +331,12 @@ function seedMainRendererPathGrants(contents) {
         if (lastTrackPath) grantRendererPath(contents, lastTrackPath, { recursive: false, write: false });
     } catch {}
     for (const root of roots) grantRendererPath(contents, root, { recursive: true, write: true });
+    // Web ses motoru bu iki derlenmiş .dl grafiğini çalışma anında okur. Genel
+    // uygulama dizinini açmadan yalnızca sabit, paket-içi varlıklara salt-okunur
+    // izin vererek sandbox/path denetimini koru.
+    for (const assetPath of WEB_DALI_RUNTIME_ASSETS) {
+        grantRendererPath(contents, assetPath, { recursive: false, write: false });
+    }
 }
 
 function isArDaliBinInstalledViaPacman() {
@@ -5084,21 +5094,25 @@ function sanitizeNewTabSettings(input) {
         background: {
             mode: oneOf(source.background?.mode, ['packaged', 'gradient', 'custom', 'none'], 'packaged'),
             packagedId: oneOf(source.background?.packagedId, ['flow-blue', 'aurora-teal', 'cosmic-violet'], 'flow-blue'),
+            fit: oneOf(source.background?.fit, ['cover', 'contain', 'stretch'], 'cover'),
+            position: oneOf(source.background?.position, ['center', 'top', 'bottom', 'left', 'right'], 'center'),
             dim: number(source.background?.dim, 0, 80, 36),
             blur: number(source.background?.blur, 0, 16, 0),
             hasCustom: bool(source.background?.hasCustom, false)
         },
         clock: {
             visible: bool(source.clock?.visible, true),
+            style: oneOf(source.clock?.style, ['digital', 'flip', 'analog', 'written'], 'digital'),
             format: oneOf(source.clock?.format, ['12', '24'], '24'),
             seconds: bool(source.clock?.seconds, false),
             showDate: bool(source.clock?.showDate, true)
         },
         search: { visible: bool(source.search?.visible, true) },
-        shortcuts: { visible: bool(source.shortcuts?.visible, true), items: cleanShortcuts },
+        shortcuts: { visible: bool(source.shortcuts?.visible, true), autoTopSites: bool(source.shortcuts?.autoTopSites, false), items: cleanShortcuts },
         cards: {
             downloads: bool(source.cards?.downloads, true),
             privacy: bool(source.cards?.privacy, true),
+            position: oneOf(source.cards?.position, ['left', 'center', 'right'], 'center'),
             order: ['downloads', 'privacy']
         },
         appearance: { reducedMotion: bool(source.appearance?.reducedMotion, false) }

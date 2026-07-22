@@ -9,6 +9,7 @@ const read = (file) => fs.readFileSync(path.join(root, file), 'utf8');
 const html = read('soundEffects.html');
 const boot = read('modules/soundEffects/boot.js');
 const renderer = read('soundEffectsRenderer.js');
+const mainRenderer = read('renderer.js');
 
 assert.match(html, /<script src="modules\/soundEffects\/boot\.js"><\/script>/);
 assert.doesNotMatch(html, /<script src="soundEffectsRenderer\.js"><\/script>/);
@@ -22,5 +23,8 @@ assert.match(renderer, /loadAllSettings\(\['eq32', 'audiophile'\]\)/);
 assert.match(renderer, /requestIdleCallback/);
 assert.match(renderer, /setupEQPresetListener\(\)/);
 assert.match(renderer, /interactiveMs/);
+assert.match(mainRenderer, /applyWebDaliLiveCfgNow\('web', startupPayload, 'startup-attach'\)/);
+assert.match(mainRenderer, /reasonLower\.startsWith\(prefix\)/);
+assert.match(mainRenderer, /webDaliLastApplySignature = ''/);
 
 console.log('audio effects startup invariants: ok');

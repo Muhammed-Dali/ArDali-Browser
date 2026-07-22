@@ -86,6 +86,17 @@ const externalMediaOpenQueue = [];
 let externalMediaOpenDrainActive = false;
 let galleryUiClickAudioCtx = null;
 
+// The new-tab customization module saves a scoped patch directly. Mirror that
+// patch into the main renderer state so subsequent full settings saves cannot
+// restore stale new-tab values.
+window.addEventListener('ardali:new-tab-settings-changed', (event) => {
+    const next = event?.detail;
+    if (!next || typeof next !== 'object') return;
+    if (!state.settings || typeof state.settings !== 'object') state.settings = {};
+    if (!state.settings.web || typeof state.settings.web !== 'object') state.settings.web = {};
+    state.settings.web.newTab = JSON.parse(JSON.stringify(next));
+});
+
 function isStandaloneSettingsMode() {
     return forcedStandaloneSettingsMode;
 }
@@ -8055,6 +8066,14 @@ function setupEventListeners() {
             // Ilk sesi kesmeden hizli yakalama:
             // anlik + kisa burst retry; player gec baglansa da hizla yakalar.
             pushAppVolumeToWeb();
+            // YouTube sayfa açılışında oynatıcı media elementini değiştirebilir.
+            // Ayar sürgüsünün yaptığı canlı uygulamayı ilk gerçek oynatmada da
+            // çalıştır; böylece kayıtlı efektler kullanıcı dokunmadan bağlanır.
+            webDaliLastApplySignature = '';
+            const startupPayload = getWebDaliEq32Settings('web');
+            applyWebDaliLiveCfgNow('web', startupPayload, 'startup-attach').then((connected) => {
+                if (!connected) scheduleApplyWebDaliEngine('media-started-live-fallback', 0);
+            }).catch(() => scheduleApplyWebDaliEngine('media-started-live-fallback', 0));
             scheduleApplyWebDaliEngineBurst('media-started', [0, 40, 120, 260, 720, 1600, 2800]);
             applyWebSmoothVideoProfileToWebView('media-started');
         });
@@ -17069,7 +17088,18 @@ async function applyWebDaliEngineNow(reason = 'runtime') {
             console.warn('[DALI WEB] bass preset fallback:', bassLoadError?.message || bassLoadError);
             bassPresetStages = [];
         }
-        const skipCacheReasons = new Set(['dom-ready', 'navigate', 'media-started']);
+        // Media lifecycle reasons must always re-scan the page. Sites such as
+        // YouTube can replace their <video> element without changing URL/config.
+        const reasonLower = String(reason || '').toLowerCase();
+        const mustRescanMedia = [
+            'dom-ready',
+            'navigate',
+            'media-started',
+            'media-hook',
+            'no-media-retry',
+            'web-tab-activate',
+            'sidebar-web-tab'
+        ].some((prefix) => reasonLower.startsWith(prefix));
         const applySignature = JSON.stringify({
             scope: daliScope,
             url: daliScope === 'web' ? getWebViewUrlSafe() : String(state.currentVideoPath || ''),
@@ -17077,7 +17107,7 @@ async function applyWebDaliEngineNow(reason = 'runtime') {
             presetLen: Array.isArray(presetStages) ? presetStages.length : 0,
             bassPresetLen: Array.isArray(bassPresetStages) ? bassPresetStages.length : 0
         });
-        if (!skipCacheReasons.has(String(reason || '').toLowerCase()) && applySignature === webDaliLastApplySignature) {
+        if (!mustRescanMedia && applySignature === webDaliLastApplySignature) {
             if (ARDALI_VERBOSE_LOGS) {
                 console.log('[DALI WEB] apply skipped (unchanged):', reason, daliScope);
             }

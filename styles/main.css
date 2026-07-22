@@ -9192,13 +9192,14 @@ span.web-tab-icon {
     align-items: center;
     padding: 0;
     z-index: 10;
+    overflow-x: hidden;
     overflow-y: auto;
 }
 
-.web-ntp-backdrop,.web-ntp-shade{position:absolute;inset:-18px;pointer-events:none}.web-ntp-backdrop{z-index:0;background:radial-gradient(circle at 18% 20%,#114c67 0,transparent 38%),radial-gradient(circle at 80% 78%,#4d1768 0,transparent 42%),linear-gradient(145deg,#05080d,#101729);background-size:cover;background-position:center;transition:opacity .3s ease,filter .3s ease}.web-ntp-shade{z-index:1;background:rgba(2,5,10,.36)}
+.web-ntp-backdrop,.web-ntp-shade{position:absolute;inset:0;pointer-events:none}.web-ntp-backdrop{z-index:0;background:radial-gradient(circle at 18% 20%,#114c67 0,transparent 38%),radial-gradient(circle at 80% 78%,#4d1768 0,transparent 42%),linear-gradient(145deg,#05080d,#101729);background-size:cover;background-position:center;background-repeat:no-repeat;transition:opacity .3s ease,filter .3s ease}.web-ntp-shade{z-index:1;background:rgba(2,5,10,.36)}
 .web-ntp-content{position:relative;z-index:2;width:min(760px,calc(100% - 48px));margin:clamp(54px,8vh,110px) auto 48px;display:flex;flex-direction:column;align-items:center}.web-ntp-customize-btn{position:absolute;z-index:5;right:22px;top:20px;width:44px;height:44px;border-radius:15px;border:1px solid rgba(255,255,255,.16);color:#fff;background:rgba(8,13,24,.64);backdrop-filter:blur(18px);display:grid;place-items:center;cursor:pointer}.web-ntp-customize-btn:hover{background:rgba(24,35,56,.9);transform:translateY(-1px)}
 .web-ntp-clock-card{text-align:center;color:#fff;margin-bottom:18px;text-shadow:0 3px 18px rgba(0,0,0,.7)}.web-ntp-clock{display:block;font-size:clamp(48px,7vw,82px);font-weight:300;line-height:1;letter-spacing:-.045em}.web-ntp-date{margin-top:7px;font-size:15px;color:rgba(255,255,255,.8);text-transform:capitalize}.web-ntp-logo{width:58px;height:58px;margin-bottom:16px;filter:drop-shadow(0 8px 18px rgba(0,0,0,.35))}
-.web-ntp-content .web-ntp-search-container{background:rgba(7,13,24,.72);border-color:rgba(255,255,255,.16);backdrop-filter:blur(18px);box-shadow:0 12px 34px rgba(0,0,0,.22)}.web-ntp-module{width:100%;max-width:620px;margin-top:8px;padding:16px 18px;border:1px solid rgba(255,255,255,.13);border-radius:20px;background:rgba(7,13,24,.56);backdrop-filter:blur(18px);color:#fff}.web-ntp-section-heading{display:flex;align-items:center;justify-content:space-between;font-size:13px;font-weight:650;color:rgba(255,255,255,.78);margin-bottom:12px}.web-ntp-inline-action{width:30px;height:30px;border:0;border-radius:10px;background:rgba(255,255,255,.1);color:#fff;display:grid;place-items:center;cursor:pointer}.web-ntp-inline-action .material-symbols-rounded{font-size:18px}.web-ntp-shortcuts{display:flex;gap:12px;overflow-x:auto;padding-bottom:3px}.web-ntp-shortcut{position:relative;flex:0 0 76px;display:flex;flex-direction:column;align-items:center;gap:7px;border:0;background:transparent;color:#fff;cursor:pointer;padding:5px}.web-ntp-shortcut-icon{width:46px;height:46px;display:grid;place-items:center;border:1px solid rgba(255,255,255,.14);border-radius:15px;background:rgba(255,255,255,.1);font-weight:750;font-size:17px}.web-ntp-shortcut span:last-child{width:76px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:12px;text-align:center}.web-ntp-cards{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;width:100%;max-width:620px;margin-top:12px}.web-ntp-info-card{display:flex;gap:12px;align-items:center;padding:14px 16px;border:1px solid rgba(255,255,255,.12);border-radius:18px;background:rgba(7,13,24,.52);backdrop-filter:blur(16px);color:#fff}.web-ntp-info-card>span{color:#63ddff}.web-ntp-info-card div{display:flex;flex-direction:column}.web-ntp-info-card strong{font-size:16px}.web-ntp-info-card div span{font-size:11px;color:rgba(255,255,255,.62)}.web-ntp-credit{position:absolute;z-index:2;left:16px;bottom:12px;color:rgba(255,255,255,.55);font-size:11px}
+.web-ntp-content .web-ntp-search-container{background:rgba(7,13,24,.72);border-color:rgba(255,255,255,.16);backdrop-filter:blur(18px);box-shadow:0 12px 34px rgba(0,0,0,.22)}.web-ntp-module{width:100%;max-width:620px;margin-top:8px;padding:16px 18px;border:1px solid rgba(255,255,255,.13);border-radius:20px;background:rgba(7,13,24,.56);backdrop-filter:blur(18px);color:#fff}.web-ntp-section-heading{display:flex;align-items:center;justify-content:space-between;font-size:13px;font-weight:650;color:rgba(255,255,255,.78);margin-bottom:12px}.web-ntp-inline-action{width:30px;height:30px;border:0;border-radius:10px;background:rgba(255,255,255,.1);color:#fff;display:grid;place-items:center;cursor:pointer}.web-ntp-inline-action .material-symbols-rounded{font-size:18px}.web-ntp-shortcuts{display:flex;gap:12px;overflow-x:auto;padding-bottom:3px}.web-ntp-shortcut{position:relative;flex:0 0 76px;display:flex;flex-direction:column;align-items:center;gap:7px;border:0;background:transparent;color:#fff;cursor:pointer;padding:5px}.web-ntp-shortcut-icon{width:46px;height:46px;display:grid;place-items:center;overflow:hidden;border:1px solid rgba(255,255,255,.14);border-radius:15px;background:rgba(255,255,255,.1);font-weight:750;font-size:17px}.web-ntp-shortcut-icon.has-favicon{font-size:0}.web-ntp-shortcut-favicon{width:28px;height:28px;display:block;object-fit:contain}.web-ntp-shortcut span:last-child{width:76px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:12px;text-align:center}.web-ntp-cards{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;width:100%;max-width:620px;margin-top:12px}.web-ntp-info-card{display:flex;gap:12px;align-items:center;padding:14px 16px;border:1px solid rgba(255,255,255,.12);border-radius:18px;background:rgba(7,13,24,.52);backdrop-filter:blur(16px);color:#fff}.web-ntp-info-card>span{color:#63ddff}.web-ntp-info-card div{display:flex;flex-direction:column}.web-ntp-info-card strong{font-size:16px}.web-ntp-info-card div span{font-size:11px;color:rgba(255,255,255,.62)}.web-ntp-credit{position:absolute;z-index:2;left:16px;bottom:12px;color:rgba(255,255,255,.55);font-size:11px}
 .web-ntp-panel-backdrop{position:absolute;inset:0;z-index:20;background:rgba(0,0,0,.38)}.web-ntp-panel{position:absolute;z-index:21;right:18px;top:18px;bottom:18px;width:min(460px,calc(100% - 36px));display:flex;flex-direction:column;border:1px solid rgba(255,255,255,.14);border-radius:24px;background:rgba(9,13,22,.94);box-shadow:0 24px 80px rgba(0,0,0,.55);backdrop-filter:blur(28px);color:#f5f7fb;overflow:hidden}.web-ntp-panel.hidden,.web-ntp-panel-backdrop.hidden{display:none}.web-ntp-panel header{display:flex;justify-content:space-between;align-items:center;padding:20px 22px 14px}.web-ntp-panel header small{color:#62dfff;font-weight:700}.web-ntp-panel h2{font-size:20px;margin:2px 0 0}.web-ntp-panel header button{border:0;background:rgba(255,255,255,.08);color:#fff;width:36px;height:36px;border-radius:12px;cursor:pointer}.web-ntp-panel-tabs{display:flex;gap:6px;padding:0 16px 14px;overflow:auto}.web-ntp-panel-tabs button{border:1px solid transparent;border-radius:12px;padding:9px 11px;background:transparent;color:#aeb7c8;cursor:pointer;white-space:nowrap}.web-ntp-panel-tabs button.active{color:#fff;background:rgba(57,196,255,.14);border-color:rgba(72,210,255,.25)}.web-ntp-panel-body{flex:1;overflow:auto;padding:0 18px 18px}.web-ntp-panel-section{display:none}.web-ntp-panel-section.active{display:flex;flex-direction:column;gap:14px}.web-ntp-panel-section label{display:flex;flex-direction:column;gap:8px;font-size:13px;color:#c9d0dc}.web-ntp-panel-section select,.web-ntp-panel-section input[type=text],.web-ntp-panel-section input[type=url]{width:100%;border:1px solid rgba(255,255,255,.12);border-radius:12px;background:#151b28;color:#fff;padding:10px 12px}.web-ntp-switch-row{flex-direction:row!important;align-items:center;justify-content:space-between}.web-ntp-panel input[type=checkbox]{width:19px;height:19px;accent-color:#35c9ff}.web-ntp-panel input[type=range]{accent-color:#35c9ff}.web-ntp-wallpaper-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:9px}.web-ntp-wallpaper{aspect-ratio:16/10;border:2px solid transparent;border-radius:12px;background-size:cover;background-position:center;cursor:pointer}.web-ntp-wallpaper.active{border-color:#50d7ff;box-shadow:0 0 0 2px rgba(80,215,255,.18)}.web-ntp-panel-actions{display:flex;gap:8px}.web-ntp-panel button{font:inherit}.web-ntp-panel-actions button,#webNtpPanelAddShortcut,.web-ntp-panel footer button{border:1px solid rgba(255,255,255,.13);border-radius:11px;background:#1a2333;color:#fff;padding:9px 12px;cursor:pointer}.web-ntp-shortcut-editor-row{display:grid;grid-template-columns:1fr 1.5fr auto;gap:7px;margin-bottom:8px}.web-ntp-shortcut-editor-row button{border:0;background:transparent;color:#ff8891;cursor:pointer}.web-ntp-panel footer{display:flex;align-items:center;justify-content:flex-end;gap:12px;padding:14px 18px;border-top:1px solid rgba(255,255,255,.1)}#webNtpSaveStatus{margin-right:auto;font-size:12px;color:#7fe5a8}
 @media(max-width:720px){.web-ntp-content{width:calc(100% - 28px);margin-top:72px}.web-ntp-clock{font-size:48px}.web-ntp-logo{display:none}.web-ntp-cards{grid-template-columns:1fr}.web-ntp-panel{inset:10px;width:auto}.web-ntp-shortcut-editor-row{grid-template-columns:1fr}.web-ntp-credit{display:none}}@media(prefers-reduced-motion:reduce){.web-ntp-backdrop,.web-ntp-customize-btn{transition:none!important}.web-ntp-customize-btn:hover{transform:none}}
 
@@ -9250,6 +9251,103 @@ span.web-tab-icon {
     display: flex;
     flex-direction: column;
 }
+
+/* Suggestions must paint above the shortcut and information cards below it. */
+.web-ntp-content .web-ntp-search-container {
+    z-index: 10;
+}
+
+.web-ntp-content[data-cards-position="left"] .web-ntp-clock-card,
+.web-ntp-content[data-cards-position="left"] .web-ntp-module,
+.web-ntp-content[data-cards-position="left"] .web-ntp-cards { align-self: flex-start; }
+.web-ntp-content[data-cards-position="center"] .web-ntp-clock-card,
+.web-ntp-content[data-cards-position="center"] .web-ntp-module,
+.web-ntp-content[data-cards-position="center"] .web-ntp-cards { align-self: center; }
+.web-ntp-content[data-cards-position="right"] .web-ntp-clock-card,
+.web-ntp-content[data-cards-position="right"] .web-ntp-module,
+.web-ntp-content[data-cards-position="right"] .web-ntp-cards { align-self: flex-end; }
+
+/* Clean shortcut artwork with an intentional, discoverable remove action. */
+.web-ntp-shortcut-icon {
+    width: 58px;
+    height: 58px;
+    border: 0;
+    background: transparent;
+    border-radius: 12px;
+}
+.web-ntp-shortcuts { gap: 16px; padding: 10px 2px 5px; }
+.web-ntp-shortcut { flex-basis: 92px; min-height: 88px; padding: 4px 7px; }
+.web-ntp-shortcut-favicon {
+    width: 44px;
+    height: 44px;
+    image-rendering: auto;
+}
+.web-ntp-shortcut > span:not(.web-ntp-shortcut-icon):not(.web-ntp-shortcut-remove) {
+    width: 92px;
+    overflow: hidden;
+    color: #fff;
+    font-size: 12px;
+    text-align: center;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.web-ntp-shortcut-remove {
+    position: absolute;
+    top: 1px;
+    right: 3px;
+    width: 24px !important;
+    height: 24px;
+    display: grid;
+    place-items: center;
+    border-radius: 0;
+    background: transparent;
+    filter: drop-shadow(0 1px 2px rgba(0, 0, 0, .95));
+    color: #fff;
+    font-size: 23px !important;
+    font-weight: 500;
+    line-height: 1;
+    overflow: visible !important;
+    opacity: 0;
+    transform: scale(.72);
+    transition: opacity .14s ease, transform .14s ease;
+    pointer-events: none;
+}
+.web-ntp-shortcut:hover .web-ntp-shortcut-remove,
+.web-ntp-shortcut:focus-within .web-ntp-shortcut-remove {
+    opacity: 1;
+    transform: scale(1);
+    pointer-events: auto;
+}
+
+/* Clock style gallery and runtime clock variants. */
+.web-ntp-control-label { display: block; margin-bottom: 8px; color: #c9d0dc; font-size: 13px; }
+.web-ntp-clock-style-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; }
+.web-ntp-clock-style {
+    min-height: 92px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    border: 1px solid rgba(255, 255, 255, .12);
+    border-radius: 14px;
+    background: #151b28;
+    color: #fff;
+    cursor: pointer;
+}
+.web-ntp-clock-style.active { border-color: #50d7ff; box-shadow: 0 0 0 2px rgba(80, 215, 255, .16); }
+.web-ntp-clock-style small { color: #aeb7c8; }
+.clock-preview-digital { font-size: 25px; font-weight: 300; }
+.clock-preview-flip { display: flex; gap: 5px; }
+.clock-preview-flip b { padding: 7px 8px; border-radius: 6px; background: #05070c; font-size: 19px; }
+.clock-preview-analog { position: relative; width: 42px; height: 42px; border: 2px solid #dbe5ef; border-radius: 50%; }
+.clock-preview-analog i,.clock-preview-analog b { position: absolute; left: 19px; bottom: 20px; width: 2px; height: 13px; background: #68ddff; transform-origin: bottom; transform: rotate(35deg); }
+.clock-preview-analog b { height: 10px; background: #fff; transform: rotate(130deg); }
+.clock-preview-written { font-size: 14px; line-height: 1.15; text-align: center; }
+.web-ntp-clock.style-flip { display: flex; align-items: center; gap: 10px; font-size: 38px; }
+.web-ntp-clock.style-flip > span { min-width: 88px; padding: 12px 14px; border-radius: 13px; background: rgba(4, 7, 12, .78); box-shadow: inset 0 -1px rgba(255,255,255,.14), 0 12px 28px rgba(0,0,0,.25); }
+.web-ntp-written-time { display: block; max-width: 620px; font-size: clamp(34px, 5vw, 64px); line-height: 1.05; text-transform: capitalize; }
+.web-ntp-analog-clock { display: block; width: 150px; height: 150px; filter: drop-shadow(0 8px 18px rgba(0,0,0,.32)); }
 
 .web-ntp-suggestions.hidden {
     display: none;

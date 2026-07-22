@@ -39,6 +39,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const mutedSiteHosts = new Set();
     const WEB_SESSION_STORAGE_KEY = 'ardali_web_tabs_session_v1';
     const BOOKMARK_FAVICONS_STORAGE_KEY = 'ardali_bookmark_favicons_v1';
+    const NTP_SITE_VISITS_STORAGE_KEY = 'ardali_ntp_site_visits_v1';
     const MAX_RESTORED_TABS = 30;
     let restoreLastSessionEnabled = true;
     let isRestoringSession = false;
@@ -60,6 +61,26 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const BLANK_URL = 'about:blank';
     const NEW_TAB_TITLE = 'Yeni Sekme';
+
+    function recordSiteVisit(tab, rawUrl, rawTitle) {
+        const parsed = parseHttpUrl(rawUrl);
+        if (!parsed || !tab) return;
+        const host = String(parsed.hostname || '').toLowerCase().replace(/^www\./, '');
+        if (!host) return;
+        const visitKey = `${host}${parsed.pathname}`;
+        const now = Date.now();
+        if (tab.lastRecordedVisitKey === visitKey && now - Number(tab.lastRecordedVisitAt || 0) < 10000) return;
+        tab.lastRecordedVisitKey = visitKey; tab.lastRecordedVisitAt = now;
+        try {
+            const visits = JSON.parse(localStorage.getItem(NTP_SITE_VISITS_STORAGE_KEY) || '{}');
+            const previous = visits[host] && typeof visits[host] === 'object' ? visits[host] : {};
+            const title = String(rawTitle || previous.title || host).replace(/[\u0000-\u001f\u007f]/g, '').trim().slice(0, 60);
+            visits[host] = { host, title: title || host, count: Math.min(100000, Number(previous.count || 0) + 1), lastVisit: now };
+            const trimmed = Object.fromEntries(Object.entries(visits).sort((a, b) => Number(b[1]?.lastVisit) - Number(a[1]?.lastVisit)).slice(0, 200));
+            localStorage.setItem(NTP_SITE_VISITS_STORAGE_KEY, JSON.stringify(trimmed));
+            window.dispatchEvent(new CustomEvent('ardali:web-visit-recorded', { detail: visits[host] }));
+        } catch (_) {}
+    }
 
     // Search Engine Definitions
     const searchEngines = {
@@ -1784,6 +1805,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 const currentTitle = String(wv.getTitle?.() || '').trim();
                 if (currentTitle && currentTitle !== BLANK_URL) tab.title = currentTitle;
                 if (activeTabId === tabId) updateActiveTabState(currentUrl, wv.getTitle());
+                if (activeTabId === tabId) recordSiteVisit(tab, currentUrl, currentTitle);
             }
             if (activeTabId !== tabId) renderTabs();
             scheduleBlankPageRecovery(tabId);

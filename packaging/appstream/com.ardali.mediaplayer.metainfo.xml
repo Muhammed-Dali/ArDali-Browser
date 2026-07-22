@@ -61,6 +61,12 @@
   </provides>
 
   <releases>
+    <release version="5.4.3" date="2026-07-22">
+      <url>https://github.com/Muhammed-Dali/ArDali-WebMedia/releases/tag/v5.4.3</url>
+      <description>
+        <p>Restored packaged Web DALI startup and fixed new-tab customization persistence, layering, shortcuts, clocks, and background fitting.</p>
+      </description>
+    </release>
     <release version="5.4.2" date="2026-07-22">
       <url>https://github.com/Muhammed-Dali/ArDali-WebMedia/releases/tag/v5.4.2</url>
       <description>
