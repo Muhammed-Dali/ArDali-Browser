@@ -19,6 +19,6 @@ pkgbase = ardali-bin
 	options = !strip
 	options = !debug
 	source = https://github.com/Muhammed-Dali/ArDali-WebMedia/releases/download/v5.4.4/ArDali-5.4.4-linux-x86_64.AppImage
-	sha256sums = 41620976b8d1e8d12e9c35fbadc18b1a007058bfcd682f24deef7ede1fddde07
+	sha256sums = 7e454f5ea21f07762d4b371efa54287579a1931da2a8c84a067d28674fbfd30f
 
 pkgname = ardali-bin

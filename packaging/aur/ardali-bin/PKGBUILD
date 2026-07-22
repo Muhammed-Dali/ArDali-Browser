@@ -32,7 +32,7 @@ _appimage="ArDali-${pkgver}-linux-x86_64.AppImage"
 source=(
   "https://github.com/${_owner}/${_repo}/releases/download/${_tag}/${_appimage}"
 )
-sha256sums=('41620976b8d1e8d12e9c35fbadc18b1a007058bfcd682f24deef7ede1fddde07')
+sha256sums=('7e454f5ea21f07762d4b371efa54287579a1931da2a8c84a067d28674fbfd30f')
 
 build() {
   cd "${srcdir}"

@@ -2,12 +2,25 @@ name: Publish Pacman Repo
 
 on:
   workflow_call:
+    inputs:
+      release_tag:
+        description: Release tag whose AppImage will be packaged
+        required: false
+        type: string
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Release tag whose AppImage will be packaged
+        required: true
+        default: v5.4.4
+        type: string
 
 permissions:
   contents: read
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+  RELEASE_TAG: ${{ inputs.release_tag || github.ref_name }}
 
 jobs:
   publish:
@@ -38,7 +51,7 @@ jobs:
           pkg_dir="${GITHUB_WORKSPACE}/packaging/aur/ardali-bin"
           appimage="ArDali-$(node -p "require('./package.json').version")-linux-x86_64.AppImage"
           download_dir="$(mktemp -d)"
-          gh release download "${GITHUB_REF_NAME}" --pattern "${appimage}" --dir "${download_dir}"
+          gh release download "${RELEASE_TAG}" --pattern "${appimage}" --dir "${download_dir}"
           checksum="$(sha256sum "${download_dir}/${appimage}" | cut -d' ' -f1)"
           test "${#checksum}" -eq 64
           sed -i -E "s/^sha256sums=\('[0-9a-f]{64}'\)$/sha256sums=('${checksum}')/" "${pkg_dir}/PKGBUILD"
@@ -49,13 +62,20 @@ jobs:
       - name: Verify release and AUR metadata consistency
         run: node scripts/verify-release-metadata.js --include-aur
 
-      - name: Build ardali-bin package
+      - name: Build ardali Pacman package
         run: |
           set -euo pipefail
-          pkg_dir="${GITHUB_WORKSPACE}/packaging/aur/ardali-bin"
+          pkg_dir="${GITHUB_WORKSPACE}/.pacman-build/ardali"
+          mkdir -p "${pkg_dir}"
+          cp -a "${GITHUB_WORKSPACE}/packaging/aur/ardali-bin/." "${pkg_dir}/"
+          sed -i -E 's/^pkgname=ardali-bin$/pkgname=ardali/' "${pkg_dir}/PKGBUILD"
+          sed -i -E "s/^provides=.*/provides=('ardali-bin' 'ardali-webmedia')/" "${pkg_dir}/PKGBUILD"
+          sed -i -E "s/^conflicts=.*/conflicts=('ardali-bin' 'aurivo-bin')/" "${pkg_dir}/PKGBUILD"
+          grep -Fqx 'pkgname=ardali' "${pkg_dir}/PKGBUILD"
           useradd -m builder
           chown -R builder:builder "${GITHUB_WORKSPACE}"
           su builder -c "cd '${pkg_dir}' && makepkg -f --nodeps --noconfirm"
+          echo "PACMAN_PKG_DIR=${pkg_dir}" >> "${GITHUB_ENV}"
 
       - name: Generate pacman repo database
         run: |
@@ -66,7 +86,7 @@ jobs:
           cp -a "${GITHUB_WORKSPACE}/site/." "${repo_root}/"
           install -Dm644 "${GITHUB_WORKSPACE}/icons/app/ardali_readme_round.png" "${repo_root}/assets/ardali-logo.png"
 
-          pkg_path="$(find "${GITHUB_WORKSPACE}/packaging/aur/ardali-bin" -maxdepth 1 -type f -name "ardali-*.pkg.tar.zst" | head -n1)"
+          pkg_path="$(find "${PACMAN_PKG_DIR}" -maxdepth 1 -type f -name "ardali-[0-9]*.pkg.tar.zst" | head -n1)"
           test -n "${pkg_path}"
           cp -f "${pkg_path}" "${out_dir}/"
 
@@ -93,7 +113,7 @@ jobs:
           if ! gh release view pacman-repo >/dev/null 2>&1; then
             gh release create pacman-repo \
               --title "ArDali Pacman Repo" \
-              --notes "Pacman repository assets (ardali.db + ardali-bin package)."
+              --notes "Pacman repository assets (ardali.db + ardali package)."
           fi
 
           gh release upload pacman-repo \

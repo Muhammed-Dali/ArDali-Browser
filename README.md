@@ -152,6 +152,14 @@ yay -S ardali-bin
 
 Review the [AUR package page](https://aur.archlinux.org/packages/ardali-bin) before installation. AUR packages are community build recipes and are not installed by `pacman` alone.
 
+### ArDali Pacman repository
+
+After adding the official [ArDali repository configuration](https://muhammed-dali.github.io/ArDali-WebMedia/ardali.repo) to Pacman, install the repository package with:
+
+```bash
+sudo pacman -Syu ardali
+```
+
 ### AppImage, DEB, and RPM
 
 Download the package for your distribution from [GitHub Releases](https://github.com/Muhammed-Dali/ArDali-WebMedia/releases/latest). Verify artifacts with the published `SHA256SUMS.txt`; see [release verification](docs/RELEASES.md#verify-a-download).
