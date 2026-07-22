@@ -6,6 +6,12 @@ on:
       - Pre-release Gate
     types:
       - completed
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: Successful Publish Pacman Repo run containing the github-pages artifact
+        required: true
+        type: string
 
 permissions:
   actions: read
@@ -22,9 +28,12 @@ jobs:
     name: Deploy Pacman repository to GitHub Pages
     if: >-
       ${{
-        github.event.workflow_run.conclusion == 'success' &&
-        github.event.workflow_run.head_repository.full_name == github.repository &&
-        startsWith(github.event.workflow_run.head_branch, 'v')
+        github.event_name == 'workflow_dispatch' ||
+        (
+          github.event.workflow_run.conclusion == 'success' &&
+          github.event.workflow_run.head_repository.full_name == github.repository &&
+          startsWith(github.event.workflow_run.head_branch, 'v')
+        )
       }}
     runs-on: ubuntu-24.04
     environment:
@@ -37,7 +46,7 @@ jobs:
           name: github-pages
           path: /tmp/pacman-pages-artifact
           repository: ${{ github.repository }}
-          run-id: ${{ github.event.workflow_run.id }}
+          run-id: ${{ inputs.run_id || github.event.workflow_run.id }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Restore Pages content
