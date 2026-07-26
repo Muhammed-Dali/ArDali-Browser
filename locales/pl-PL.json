@@ -925,7 +925,7 @@
   "about.sections.passwordManager.item3": "Bezpieczne autouzupełnianie wymaga interakcji użytkownika i dokładnego dopasowania pochodzenia HTTPS.",
   "about.sections.security.item4": "Chromium Sandbox, izolacja kontekstu, rygorystyczne CSP i zatwierdzone przez IPC wzmacniają okna aplikacji.",
   "about.sections.security.item5": "OS Secure Storage chroni klucz urządzenia lokalnego skarbca.",
-  "about.whatsNew.title": "Co nowego w wersji v5.5.0",
+  "about.whatsNew.title": "Co nowego w wersji v5.5.1",
   "about.whatsNew.passwordManager": "Dodano lokalnego menedżera haseł AES-256-GCM z ochroną hasłem głównym, automatyczną blokadą i bezpiecznym automatycznym wypełnianiem.",
   "about.whatsNew.security": "Wzmocnione okna Electron, weryfikacja IPC, uprawnienia, polityka bezpieczeństwa treści i bezpieczne przechowywanie kluczy systemu operacyjnego.",
   "about.whatsNew.releasePipeline": "Dodano obowiązkową bramkę bezpieczeństwa przed kompilacją wersji i publikacją pakietu.",

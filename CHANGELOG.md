@@ -1,5 +1,20 @@
 # Changelog
 
+## [5.5.1] - 2026-07-26
+
+### Added
+
+- Added the complete Web Settings surface to the Workspace Tabs settings page.
+
+### Changed
+
+- Improved Web Settings coverage, Screen Recorder, Gallery, Audio Effects, Song Finder, memory usage, performance, and stability.
+
+### Fixed
+
+- Fixed the missing Web Settings tab and restored its persistence, permission, session, privacy, and lifecycle controls.
+- Fixed minor settings UI regressions while preserving established application behavior.
+
 ## [5.5.0] - 2026-07-26
 
 ### Added

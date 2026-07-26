@@ -31,7 +31,7 @@ These were not part of the active main-app loading path.
 
 ## Summary
 
-- Total used keys: `1922`
+- Total used keys: `1919`
 - Supported locales checked: `22`
 - Effective missing keys across all supported locales: `0`
 
@@ -45,28 +45,28 @@ That means:
 
 | Locale | Raw Present | Raw Missing | Effective Missing | Override |
 | --- | ---: | ---: | ---: | --- |
-| `ar-SA` | 846 | 1076 | 0 | yes |
-| `bn-BD` | 430 | 1492 | 0 | yes |
-| `de-DE` | 430 | 1492 | 0 | yes |
-| `el-GR` | 430 | 1492 | 0 | yes |
-| `en-US` | 1325 | 597 | 0 | yes |
-| `es-ES` | 408 | 1514 | 0 | yes |
-| `fa-IR` | 430 | 1492 | 0 | yes |
-| `fi-FI` | 430 | 1492 | 0 | yes |
-| `fr-FR` | 408 | 1514 | 0 | yes |
-| `hi-IN` | 430 | 1492 | 0 | yes |
-| `hu-HU` | 430 | 1492 | 0 | yes |
-| `it-IT` | 430 | 1492 | 0 | yes |
-| `ja-JP` | 430 | 1492 | 0 | yes |
-| `ne-NP` | 430 | 1492 | 0 | yes |
-| `pl-PL` | 430 | 1492 | 0 | yes |
-| `pt-BR` | 430 | 1492 | 0 | yes |
-| `ru-RU` | 430 | 1492 | 0 | yes |
-| `tr-TR` | 1240 | 682 | 0 | yes |
-| `uk-UA` | 430 | 1492 | 0 | yes |
-| `vi-VN` | 430 | 1492 | 0 | yes |
-| `zh-CN` | 400 | 1522 | 0 | yes |
-| `zh-TW` | 400 | 1522 | 0 | yes |
+| `ar-SA` | 843 | 1076 | 0 | yes |
+| `bn-BD` | 427 | 1492 | 0 | yes |
+| `de-DE` | 427 | 1492 | 0 | yes |
+| `el-GR` | 427 | 1492 | 0 | yes |
+| `en-US` | 1322 | 597 | 0 | yes |
+| `es-ES` | 405 | 1514 | 0 | yes |
+| `fa-IR` | 427 | 1492 | 0 | yes |
+| `fi-FI` | 427 | 1492 | 0 | yes |
+| `fr-FR` | 405 | 1514 | 0 | yes |
+| `hi-IN` | 427 | 1492 | 0 | yes |
+| `hu-HU` | 427 | 1492 | 0 | yes |
+| `it-IT` | 427 | 1492 | 0 | yes |
+| `ja-JP` | 427 | 1492 | 0 | yes |
+| `ne-NP` | 427 | 1492 | 0 | yes |
+| `pl-PL` | 427 | 1492 | 0 | yes |
+| `pt-BR` | 427 | 1492 | 0 | yes |
+| `ru-RU` | 427 | 1492 | 0 | yes |
+| `tr-TR` | 1237 | 682 | 0 | yes |
+| `uk-UA` | 427 | 1492 | 0 | yes |
+| `vi-VN` | 427 | 1492 | 0 | yes |
+| `zh-CN` | 397 | 1522 | 0 | yes |
+| `zh-TW` | 397 | 1522 | 0 | yes |
 
 ## Interpretation
 

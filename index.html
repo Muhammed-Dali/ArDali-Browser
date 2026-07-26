@@ -1316,7 +1316,11 @@
                             </div>
                             <div class="modal-body">
                                 <div class="settings-sidebar">
-                                    <button class="settings-tab active" data-tab="playback">
+                                    <button class="settings-tab active" data-tab="web">
+                                        <span class="settings-tab-icon settings-tab-icon-globe" aria-hidden="true"></span>
+                                        <span class="settings-tab-label" data-i18n="settings.tabs.web">Web Ayarları</span>
+                                    </button>
+                                    <button class="settings-tab" data-tab="playback">
                                         <span class="settings-tab-icon settings-tab-icon-play" aria-hidden="true"></span>
                                         <span class="settings-tab-label" data-i18n="settings.tabs.playback">Oynat</span>
                                     </button>
@@ -1342,7 +1346,83 @@
                                     </button>
                                 </div>
                                 <div class="settings-content">
-                                    <div class="settings-page active" id="playbackSettings">
+                                    <div class="settings-page active" id="webSettings">
+                                        <h3 data-i18n="settings.tabs.web">Web Ayarları</h3>
+                                        <div class="settings-group">
+                                            <h4 data-i18n="settings.web.sections.general">Genel</h4>
+                                            <label class="checkbox-label"><input type="checkbox" id="behaviorWebSuspendWhenInactive" checked><span data-i18n="settings.web.suspendWhenInactive">Web sekmesi pasifken oynatmayı duraklat</span></label>
+                                        </div>
+                                        <div class="settings-group">
+                                            <h4 data-i18n="settings.web.sections.privacy">Gizlilik ve Veri</h4>
+                                            <label class="checkbox-label"><input type="checkbox" id="behaviorWebClearCacheOnQuit"><span class="web-setting-icon web-setting-icon-cache" aria-hidden="true"></span><span data-i18n="ui.startup.webClearCacheOnQuit.label">Uygulama kapanırken web önbelleğini temizle</span></label>
+                                            <div class="settings-sub" data-i18n="ui.startup.webClearCacheOnQuit.hint">Cache, GPUCache ve Code Cache klasörleri kapanışta sessizce temizlenir.</div>
+                                            <label class="checkbox-label"><input type="checkbox" id="behaviorWebClearCookiesOnQuit"><span class="web-setting-icon web-setting-icon-cookie" aria-hidden="true"></span><span data-i18n="settings.web.clearCookiesOnQuit">Kapanışta web çerezlerini temizle</span></label>
+                                            <label class="checkbox-label"><input type="checkbox" id="behaviorWebClearSiteDataOnQuit"><span class="web-setting-icon web-setting-icon-database" aria-hidden="true"></span><span data-i18n="settings.web.clearSiteDataOnQuit">Kapanışta site verilerini temizle</span></label>
+                                            <label class="checkbox-label"><input type="checkbox" id="behaviorWebClearHistoryOnQuit"><span class="web-setting-icon web-setting-icon-history" aria-hidden="true"></span><span data-i18n="settings.web.clearHistoryOnQuit">Kapanışta son web adresini unut</span></label>
+                                            <div class="settings-row"><div class="settings-row-left"><div class="settings-label" data-i18n="settings.web.clearNow.label">Tüm web verilerini şimdi temizle</div><div class="settings-sub" id="webClearLastStatus" data-i18n="settings.web.clearStatus.never">Henüz temizlik yapılmadı.</div></div><div class="settings-inline"><button type="button" class="settings-btn" id="webClearCacheNowBtn" data-i18n="settings.web.clearCacheNow">Önbellek</button><button type="button" class="settings-btn" id="webClearCookiesNowBtn" data-i18n="settings.web.clearCookiesNow">Çerezler</button><button type="button" class="settings-btn" id="webClearSiteDataNowBtn" data-i18n="settings.web.clearSiteDataNow">Site verisi</button><button type="button" class="settings-btn" id="webClearAllDataNowBtn" data-i18n="settings.web.clearAllNow">Tümü</button></div></div>
+                                        </div>
+                                        <div class="settings-group">
+                                            <h4 data-i18n="settings.web.sections.security">Güvenlik</h4>
+                                            <label class="checkbox-label"><input type="checkbox" id="behaviorWebPreferHttps" checked><span class="web-setting-icon web-setting-icon-lock" aria-hidden="true"></span><span data-i18n="settings.web.preferHttps">HTTP adreslerini HTTPS olarak dene</span></label>
+                                            <label class="checkbox-label"><input type="checkbox" id="behaviorWebReduceWebRtcIpLeaks" checked><span class="web-setting-icon web-setting-icon-eye-lock" aria-hidden="true"></span><span data-i18n="settings.web.reduceWebRtcIpLeaks">WebRTC yerel IP sızıntısını azalt</span></label>
+                                            <div class="settings-sub" data-i18n="settings.web.reduceWebRtcIpLeaks.hint">Bu ayar uygulama yeniden başlatıldıktan sonra Chromium ağına tam uygulanır.</div>
+                                            <div class="setting-row"><span data-i18n="settings.web.sessionProfile">Web oturum profili</span><select class="settings-select" id="behaviorWebSessionProfile"><option value="persistent" data-i18n="securityPage.sessionProfile.options.persistent">Kalıcı (çerezleri sakla)</option><option value="isolated" data-i18n="securityPage.sessionProfile.options.isolated">İzole (her açılışta temiz başla)</option></select></div>
+                                            <label class="checkbox-label"><input type="checkbox" id="behaviorWebAutoRecover" checked><span class="web-setting-icon web-setting-icon-restart" aria-hidden="true"></span><span data-i18n="settings.web.autoRecover">Web donarsa veya çökerse otomatik kurtar</span></label>
+                                        </div>
+                                        <div class="settings-group">
+                                            <h4 data-i18n="settings.web.sections.permissions">Site İzinleri</h4>
+                                            <label class="settings-row"><span class="web-setting-icon web-setting-icon-camera" aria-hidden="true"></span><span data-i18n="settings.web.permissions.camera">Kameraya izin ver</span><select class="settings-select web-permission-mode" id="behaviorWebAllowCamera"><option value="ask">Sor</option><option value="allow">İzin ver</option><option value="block">Engelle</option></select></label>
+                                            <label class="settings-row"><span class="web-setting-icon web-setting-icon-mic" aria-hidden="true"></span><span data-i18n="settings.web.permissions.microphone">Mikrofona izin ver</span><select class="settings-select web-permission-mode" id="behaviorWebAllowMicrophone"><option value="ask">Sor</option><option value="allow">İzin ver</option><option value="block">Engelle</option></select></label>
+                                            <label class="settings-row"><span class="web-setting-icon web-setting-icon-location" aria-hidden="true"></span><span data-i18n="settings.web.permissions.location">Konuma izin ver</span><select class="settings-select web-permission-mode" id="behaviorWebAllowLocation"><option value="ask">Sor</option><option value="allow">İzin ver</option><option value="block">Engelle</option></select></label>
+                                            <label class="settings-row"><span class="web-setting-icon web-setting-icon-bell" aria-hidden="true"></span><span data-i18n="settings.web.permissions.notifications">Site bildirimlerine izin ver</span><select class="settings-select web-permission-mode" id="behaviorWebAllowNotifications"><option value="ask">Sor</option><option value="allow">İzin ver</option><option value="block">Engelle</option></select></label>
+                                            <label class="settings-row"><span class="web-setting-icon web-setting-icon-popup" aria-hidden="true"></span><span data-i18n="settings.web.permissions.popups">Pop-up pencerelerine izin ver</span><select class="settings-select web-permission-mode" id="behaviorWebAllowPopups"><option value="ask">Sor</option><option value="allow">İzin ver</option><option value="block">Engelle</option></select></label>
+                                            <label class="settings-row"><span class="material-symbols-rounded">present_to_all</span><span data-i18n="settings.web.permissions.displayCapture">Ekran paylaşımı</span><select class="settings-select web-permission-mode" id="behaviorWebAllowDisplayCapture"><option value="ask">Sor</option><option value="allow">İzin ver</option><option value="block">Engelle</option></select></label>
+                                            <label class="settings-row"><span class="material-symbols-rounded">content_paste</span><span data-i18n="settings.web.permissions.clipboardRead">Pano okuma</span><select class="settings-select web-permission-mode" id="behaviorWebAllowClipboardRead"><option value="ask">Sor</option><option value="allow">İzin ver</option><option value="block">Engelle</option></select></label>
+                                            <label class="settings-row"><span class="material-symbols-rounded">download</span><span data-i18n="settings.web.permissions.automaticDownloads">Otomatik çoklu indirme</span><select class="settings-select web-permission-mode" id="behaviorWebAllowAutomaticDownloads"><option value="ask">Sor</option><option value="allow">İzin ver</option><option value="block">Engelle</option></select></label>
+                                        </div>
+                                        <div class="settings-group">
+                                            <h4 data-i18n="settings.web.sections.siteData">Aktif Site Verisi</h4>
+                                            <div class="settings-row">
+                                                <div class="settings-row-left">
+                                                    <div class="settings-label" data-i18n="settings.web.activeSitePermissions.label">Aktif site izinleri</div>
+                                                    <div class="settings-sub" id="webActiveSitePermissionStatus" data-i18n="settings.web.activeSitePermissions.hint">Açık site için özel izin tercihi kaydedilebilir.</div>
+                                                </div>
+                                                <div class="settings-inline web-site-permission-controls">
+                                                    <label>Kamera <select class="settings-select web-site-permission-mode" id="webActiveSiteAllowCamera"><option value="inherit">Ana ayar</option><option value="ask">Sor</option><option value="allow">İzin ver</option><option value="block">Engelle</option></select></label>
+                                                    <label>Mikrofon <select class="settings-select web-site-permission-mode" id="webActiveSiteAllowMicrophone"><option value="inherit">Ana ayar</option><option value="ask">Sor</option><option value="allow">İzin ver</option><option value="block">Engelle</option></select></label>
+                                                    <label>Konum <select class="settings-select web-site-permission-mode" id="webActiveSiteAllowLocation"><option value="inherit">Ana ayar</option><option value="ask">Sor</option><option value="allow">İzin ver</option><option value="block">Engelle</option></select></label>
+                                                    <label>Bildirim <select class="settings-select web-site-permission-mode" id="webActiveSiteAllowNotifications"><option value="inherit">Ana ayar</option><option value="ask">Sor</option><option value="allow">İzin ver</option><option value="block">Engelle</option></select></label>
+                                                    <label>Pop-up <select class="settings-select web-site-permission-mode" id="webActiveSiteAllowPopups"><option value="inherit">Ana ayar</option><option value="ask">Sor</option><option value="allow">İzin ver</option><option value="block">Engelle</option></select></label>
+                                                    <label>Ekran <select class="settings-select web-site-permission-mode" id="webActiveSiteAllowDisplayCapture"><option value="inherit">Ana ayar</option><option value="ask">Sor</option><option value="allow">İzin ver</option><option value="block">Engelle</option></select></label>
+                                                    <label>Pano <select class="settings-select web-site-permission-mode" id="webActiveSiteAllowClipboardRead"><option value="inherit">Ana ayar</option><option value="ask">Sor</option><option value="allow">İzin ver</option><option value="block">Engelle</option></select></label>
+                                                    <label>İndirme <select class="settings-select web-site-permission-mode" id="webActiveSiteAllowAutomaticDownloads"><option value="inherit">Ana ayar</option><option value="ask">Sor</option><option value="allow">İzin ver</option><option value="block">Engelle</option></select></label>
+                                                    <label>Otomatik oynatma <select class="settings-select web-site-permission-mode" id="webActiveSiteAutoplayPolicy"><option value="inherit">Ana ayar</option><option value="allow">İzin ver</option><option value="gesture">Etkileşim iste</option><option value="block">Engelle</option></select></label>
+                                                    <button type="button" class="settings-btn settings-btn-with-icon" id="webSaveActiveSitePermissionsBtn"><span class="settings-button-icon settings-button-icon-save-card" aria-hidden="true"></span><span data-i18n="settings.web.activeSitePermissions.save">Kaydet</span></button>
+                                                    <button type="button" class="settings-btn" id="webResetActiveSitePermissionsBtn" data-i18n="settings.web.activeSitePermissions.reset">Ana ayara dön</button>
+                                                </div>
+                                            </div>
+                                            <div class="settings-row"><div class="settings-row-left"><div class="settings-label" data-i18n="settings.web.savedSitePermissions.label">Kayıtlı site izinleri</div><div class="settings-sub" data-i18n="settings.web.savedSitePermissions.hint">Özel izin kaydı bulunan siteleri yönetin.</div></div><div id="webSavedSitePermissions" class="settings-inline"></div></div>
+                                            <div class="settings-row"><div class="settings-row-left"><div class="settings-label" data-i18n="settings.web.currentSiteData.label">Aktif sitenin verilerini temizle</div><div class="settings-sub" id="webCurrentSiteClearStatus" data-i18n="settings.web.currentSiteData.hint">Yalnızca açık olan web sitesinin çerezleri veya site verisi temizlenir.</div></div><div class="settings-inline"><button type="button" class="settings-btn" id="webClearCurrentSiteCookiesBtn" data-i18n="settings.web.clearCookiesNow">Çerezler</button><button type="button" class="settings-btn" id="webClearCurrentSiteDataBtn" data-i18n="settings.web.clearSiteDataNow">Site verisi</button></div></div>
+                                        </div>
+                                        <div class="settings-group">
+                                            <h4 data-i18n="settings.web.sections.browserBehavior">Tarayıcı Davranışı</h4>
+                                            <div class="setting-row"><span data-i18n="settings.web.userAgentMode">Kullanıcı ajanı modu</span><select class="settings-select" id="behaviorWebUserAgentMode"><option value="desktop" data-i18n="settings.web.userAgentMode.desktop">Masaüstü</option><option value="mobile" data-i18n="settings.web.userAgentMode.mobile">Mobil</option><option value="default" data-i18n="settings.web.userAgentMode.default">Varsayılan</option></select></div>
+                                            <div class="setting-row"><span data-i18n="settings.web.autoplayPolicy">Web otomatik oynatma</span><select class="settings-select" id="behaviorWebAutoplayPolicy"><option value="allow" data-i18n="settings.web.autoplayPolicy.allow">İzin ver</option><option value="gesture" data-i18n="settings.web.autoplayPolicy.gesture">Kullanıcı etkileşimi iste</option><option value="block" data-i18n="settings.web.autoplayPolicy.block">Engelle</option></select></div>
+                                            <label class="checkbox-label"><input type="checkbox" id="behaviorWebAskDownloadLocation" checked><span class="web-setting-icon web-setting-icon-download" aria-hidden="true"></span><span data-i18n="settings.web.askDownloadLocation">Web indirmelerinde konum sor</span></label>
+                                        </div>
+                                        <div class="settings-group">
+                                            <h4 data-i18n="settings.web.sections.advancedPrivacy">Gelişmiş Gizlilik</h4>
+                                            <label class="checkbox-label"><input type="checkbox" id="behaviorWebReduceReferrers" checked><span class="web-setting-icon web-setting-icon-link-off" aria-hidden="true"></span><span data-i18n="settings.web.reduceReferrers">Referer bilgisini azalt</span></label>
+                                            <label class="checkbox-label"><input type="checkbox" id="behaviorWebStripTrackingParams" checked><span class="web-setting-icon web-setting-icon-filter-off" aria-hidden="true"></span><span data-i18n="settings.web.stripTrackingParams">Takip parametrelerini temizle</span></label>
+                                            <label class="checkbox-label"><input type="checkbox" id="behaviorWebBlockThirdPartyCookies"><span class="web-setting-icon web-setting-icon-cookie-off" aria-hidden="true"></span><span data-i18n="settings.web.blockThirdPartyCookies">Üçüncü taraf çerezlerini engelle</span></label>
+                                        </div>
+                                        <div class="settings-group">
+                                            <h4 data-i18n="settings.web.sections.performance">Performans</h4>
+                                            <label class="checkbox-label"><input type="checkbox" id="behaviorWebBackgroundThrottle" checked><span class="web-setting-icon web-setting-icon-battery" aria-hidden="true"></span><span data-i18n="settings.web.backgroundThrottle">Web arka plandayken güç kullanımını azalt</span></label>
+                                            <div class="settings-sub" data-i18n="settings.web.backgroundThrottle.hint">Tam Chromium zamanlayıcı davranışı uygulama yeniden başlatıldıktan sonra uygulanır.</div>
+                                        </div>
+                                    </div>
+                                    <div class="settings-page hidden" id="playbackSettings">
                                         <h3 data-i18n="playback.title">Oynat</h3>
                                         <div class="settings-group">
                                             <h4 data-i18n="playback.shortcuts.quickAccess.title">Kısayol Hızlı Erişim</h4>
@@ -1541,6 +1621,12 @@
                                                 <input type="text" id="shortcutPlatformTelegram" class="settings-input" data-i18n-placeholder="playback.shortcuts.unassigned" placeholder="Atanmamış" readonly>
                                                 <button type="button" class="btn btn-small shortcut-capture-btn" data-shortcut-target="shortcutPlatformTelegram" data-i18n="playback.shortcuts.actions.assign">Ata</button>
                                                 <button type="button" class="btn btn-small shortcut-clear-btn" data-shortcut-target="shortcutPlatformTelegram" data-i18n="playback.shortcuts.actions.clear">Temizle</button>
+                                            </div>
+                                            <div class="setting-row">
+                                                <span>WhatsApp</span>
+                                                <input type="text" id="shortcutPlatformWhatsapp" class="settings-input" data-i18n-placeholder="playback.shortcuts.unassigned" placeholder="Atanmamış" readonly>
+                                                <button type="button" class="btn btn-small shortcut-capture-btn" data-shortcut-target="shortcutPlatformWhatsapp" data-i18n="playback.shortcuts.actions.assign">Ata</button>
+                                                <button type="button" class="btn btn-small shortcut-clear-btn" data-shortcut-target="shortcutPlatformWhatsapp" data-i18n="playback.shortcuts.actions.clear">Temizle</button>
                                             </div>
                                             <h5 class="settings-subtitle" data-i18n="settings.shortcuts.groups.gallery">Galeri Kısayolları</h5>
                                             <label class="checkbox-label">
@@ -2978,7 +3064,7 @@
                 <img class="about-logo" src="icons/app/ardali_256.png" alt="ArDali">
                 <div class="about-title-wrap">
                     <div class="about-title" id="aboutTitle" data-i18n="about.title">ArDali Medya Player</div>
-                    <div class="about-subtitle">v5.5.0</div>
+                    <div class="about-subtitle">v5.5.1</div>
                 </div>
             </div>
 
@@ -3016,11 +3102,20 @@
                 <div class="about-features-title" data-i18n="about.featuresTitle">Özellikler ve Şeffaflık</div>
                 <div class="about-sections">
                     <section class="about-section about-section-updates">
-                        <h4 data-i18n="about.whatsNew.title">What's new in v5.5.0</h4>
+                        <h4 data-i18n="about.whatsNew.title">What's new in v5.5.1</h4>
                         <ul class="about-list">
-                            <li data-i18n="about.whatsNew.workspace">New tab workspace architecture with persistent tabs and improved lifecycle handling.</li>
-                            <li data-i18n="about.whatsNew.media">Improved Password Manager, Ad Block, Gallery, Music, Song Finder, Audio Effects, and projectM workflows.</li>
-                            <li data-i18n="about.whatsNew.performance">Reduced unnecessary background work with better memory cleanup, stability, and security validation.</li>
+                            <li>Workspace Tabs Architecture</li>
+                            <li>Password Manager</li>
+                            <li>Professional Ad Block</li>
+                            <li>Web Settings Improvements</li>
+                            <li>Screen Recorder Improvements</li>
+                            <li>Gallery Improvements</li>
+                            <li>Audio Effects Improvements</li>
+                            <li>Song Finder Improvements</li>
+                            <li>Performance Optimizations</li>
+                            <li>Memory Optimizations</li>
+                            <li>Stability Improvements</li>
+                            <li>Bug Fixes</li>
                         </ul>
                     </section>
                     <section class="about-section about-section-updates">

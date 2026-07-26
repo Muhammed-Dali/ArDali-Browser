@@ -925,7 +925,7 @@
   "about.sections.passwordManager.item3": "Безпечне автозаповнення вимагає взаємодії з користувачем і точної відповідності джерела HTTPS.",
   "about.sections.security.item4": "Пісочниця Chromium, ізоляція контексту, строгий CSP і перевірений IPC посилюють вікна програм.",
   "about.sections.security.item5": "OS Secure Storage захищає ключ пристрою локального сховища.",
-  "about.whatsNew.title": "Що нового в v5.5.0",
+  "about.whatsNew.title": "Що нового в v5.5.1",
   "about.whatsNew.passwordManager": "Додано локальний менеджер паролів AES-256-GCM із захистом головним паролем, автоматичним блокуванням і безпечним автозаповненням.",
   "about.whatsNew.security": "Захищені вікна Electron, перевірка IPC, дозволи, політика безпеки вмісту та безпечне зберігання ключів ОС.",
   "about.whatsNew.releasePipeline": "Додано обов’язковий захисний шлюз перед випуском збірок і публікацією пакетів.",

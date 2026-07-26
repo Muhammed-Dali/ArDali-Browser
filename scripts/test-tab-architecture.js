@@ -14,12 +14,32 @@ const main = read('main.js');
 const preload = read('preload.js');
 const renderer = read('renderer.js');
 const tabs = read('modules/web-browser.js');
+const index = read('index.html');
 const eqPresetsRenderer = read('eqPresetsRenderer.js');
 const pulseHost = read('modules/pulseHost.js');
 const bridge = read('modules/embedded-api-bridge.js');
 const newTab = read('modules/new-tab-customization.js');
 const adblockWindow = read('adblockWindow.js');
 
+assert.match(index, /class="settings-tab active" data-tab="web"/, 'workspace Settings sidebar must expose Web Settings');
+assert.match(index, /class="settings-page active" id="webSettings"/, 'workspace Settings must provide the browser settings module target');
+assert.match(index, /<script src="modules\/browser-settings-system\.js"><\/script>/, 'workspace Settings must load the browser settings implementation');
+for (const id of [
+    'behaviorWebSuspendWhenInactive',
+    'behaviorWebClearCacheOnQuit',
+    'webClearAllDataNowBtn',
+    'behaviorWebPreferHttps',
+    'behaviorWebReduceWebRtcIpLeaks',
+    'behaviorWebSessionProfile',
+    'behaviorWebAutoRecover',
+    'behaviorWebAllowCamera',
+    'webActiveSitePermissionStatus',
+    'behaviorWebUserAgentMode',
+    'behaviorWebReduceReferrers',
+    'behaviorWebBackgroundThrottle'
+]) {
+    assert.match(index, new RegExp(`id="${id}"`), `workspace Web Settings must expose ${id}`);
+}
 assert.match(renderer, /applicationModuleLifecycle\.register\('videoTools'/);
 assert.match(main, /settingPath === 'security\.sessionProfile'/);
 assert.match(main, /String\(value \|\| ''\)\.toLowerCase\(\) === 'isolated' \? 'isolated' : 'persistent'/);

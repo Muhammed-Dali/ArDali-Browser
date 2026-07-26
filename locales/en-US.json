@@ -1951,7 +1951,7 @@
   "about.sections.passwordManager.item3": "Secure Autofill requires user interaction and exact HTTPS origin matching.",
   "about.sections.security.item4": "Chromium Sandbox, Context Isolation, strict CSP, and validated IPC harden application windows.",
   "about.sections.security.item5": "OS Secure Storage protects the local vault's device key.",
-  "about.whatsNew.title": "What's new in v5.5.0",
+  "about.whatsNew.title": "What's new in v5.5.1",
   "about.whatsNew.workspace": "New tab workspace architecture with persistent tabs and improved lifecycle handling.",
   "about.whatsNew.media": "Improved Password Manager, Ad Block, Gallery, Music, Song Finder, Audio Effects, and projectM workflows.",
   "about.whatsNew.performance": "Reduced unnecessary background work with better memory cleanup, stability, and security validation.",

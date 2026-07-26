@@ -24,7 +24,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/Muhammed-Dali/ArDali-WebMedia/releases/tag/v5.5.0"><strong>Download v5.5.0</strong></a>
+  <a href="https://github.com/Muhammed-Dali/ArDali-WebMedia/releases/tag/v5.5.1"><strong>Download v5.5.1</strong></a>
   · <a href="#documentation">Documentation</a>
   · <a href="https://github.com/Muhammed-Dali/ArDali-WebMedia/issues/new?template=bug_report.yml">Report Bug</a>
   · <a href="https://github.com/Muhammed-Dali/ArDali-WebMedia/issues/new?template=feature_request.yml">Request Feature</a>
@@ -33,12 +33,12 @@
 
 > ArDali WebMedia is under active development. For everyday use, prefer a published release over the current `main` branch.
 
-## What's New in v5.5.0
+## What's New in v5.5.1
 
-- Introduces the new tab workspace architecture with persistent workspace tabs and more predictable lifecycle handling.
-- Integrates the local encrypted Password Manager and expands the professional Ad Block controls.
-- Improves Gallery, Music, Song Finder, Audio Effects, and projectM workflows without changing their established behavior.
-- Reduces unnecessary background work and improves memory cleanup, startup responsiveness, stability, and Electron security validation.
+- Restores and completes Web Settings inside the Workspace Tabs interface.
+- Retains the local encrypted Password Manager and professional Ad Block controls.
+- Improves Screen Recorder, Gallery, Audio Effects, Song Finder, memory usage, performance, and stability.
+- Includes targeted bug fixes without changing established media workflows.
 
 ## Screenshots
 
@@ -94,14 +94,15 @@ Centralized controls for the multilingual interface, security and privacy behavi
 
 | Area | Highlights |
 | --- | --- |
-| 🌐 **Browser & Workspace Tabs** | Chromium browser, persistent workspace tabs, new-tab workspace, professional Ad Block engine |
+| 🌐 **Browser & Workspace Tabs** | Chromium browser, persistent Workspace Tabs, complete Web Settings, new-tab workspace, Professional Ad Block engine |
 | 🔐 **Password Manager** | Local AES-256-GCM vault, secure autofill, automatic lock and exact HTTPS origin validation |
 | 🎵 **Music & Audio Effects** | Music player, Native C++ Audio Engine, Dali Web Audio Engine, 32-band EQ and real-time DSP |
 | 🎬 **Video & Gallery** | Video player, photo gallery, playlists and Screen Recorder |
-| ⬇ **Downloads & Song Finder** | Smart audio/video downloads, format selection and webpage music recognition |
-| 🎨 **ProjectM Visualization** | Native projectM integration and hardware-accelerated real-time rendering |
-| 🌍 **Localization** | Multi-language interface with locale packs and RTL-aware surfaces |
-| ⚡ **Performance** | Native components, optimized startup paths, lazy UI work and sandboxed renderers |
+| ⬇ **Downloads & Song Finder** | Smart audio/video downloads, format selection and Shazam-style Song Finder |
+| 🎨 **ProjectM Visualizer** | Native ProjectM Visualizer integration and hardware-accelerated real-time rendering |
+| 🌍 **Multi Language / Localization** | Multi Language interface with locale packs and RTL-aware surfaces |
+| 🛡️ **Security** | Electron Sandbox, context isolation, strict CSP, validated IPC and permission controls |
+| ⚡ **Performance Improvements** | Native components, optimized startup paths, lazy UI work and memory cleanup |
 
 See the complete [feature guide](docs/FEATURES.md).
 
@@ -148,6 +149,20 @@ Audio output and projectM visualization
 See the full [architecture overview](docs/ARCHITECTURE.md).
 
 ## Installation
+
+### Quick Install
+
+#### Arch Linux (Official Repository)
+
+```bash
+sudo pacman -S ardali
+```
+
+#### Arch Linux (AUR)
+
+```bash
+yay -S ardali-bin
+```
 
 ### Arch Linux and derivatives (AUR)
 

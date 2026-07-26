@@ -50,7 +50,7 @@ Object.defineProperty(dd, 'value', {
     get: function() { return currentValue; },
     set: function(val) { 
         currentValue = val;
-        const opt = dd.querySelector(\`.custom-dropdown-option[data-value="\${val}"]\`);
+        const opt = dd.querySelector(`.custom-dropdown-option[data-value="${val}"]`);
         if (opt) {
             const currentIcon = dd.querySelector('.custom-dropdown-icon');
             const currentText = dd.querySelector('.custom-dropdown-text');

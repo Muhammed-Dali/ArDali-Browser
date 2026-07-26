@@ -925,7 +925,7 @@
   "about.sections.passwordManager.item3": "O preenchimento automático seguro requer interação do usuário e correspondência exata de origem HTTPS.",
   "about.sections.security.item4": "Chromium Sandbox, isolamento de contexto, CSP estrito e janelas de aplicativos de proteção IPC validadas.",
   "about.sections.security.item5": "O OS Secure Storage protege a chave do dispositivo do cofre local.",
-  "about.whatsNew.title": "O que há de novo em v5.5.0",
+  "about.whatsNew.title": "O que há de novo em v5.5.1",
   "about.whatsNew.passwordManager": "Adicionado um gerenciador de senhas AES-256-GCM local com proteção por senha mestra, bloqueio automático e preenchimento automático seguro.",
   "about.whatsNew.security": "Janelas Hardened Electron, validação IPC, permissões, política de segurança de conteúdo e armazenamento seguro de chaves do sistema operacional.",
   "about.whatsNew.releasePipeline": "Adicionado um portão de segurança obrigatório antes da versão compilada e da publicação do pacote.",

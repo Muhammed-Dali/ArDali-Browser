@@ -925,7 +925,7 @@
   "about.sections.passwordManager.item3": "Tự động điền an toàn yêu cầu sự tương tác của người dùng và đối sánh nguồn gốc HTTPS chính xác.",
   "about.sections.security.item4": "Hộp cát Chrome, Cách ly bối cảnh, CSP nghiêm ngặt và IPC đã xác thực làm cứng các cửa sổ ứng dụng.",
   "about.sections.security.item5": "OS Secure Storage bảo vệ khóa thiết bị của vault cục bộ.",
-  "about.whatsNew.title": "Có gì mới trong v5.5.0",
+  "about.whatsNew.title": "Có gì mới trong v5.5.1",
   "about.whatsNew.passwordManager": "Đã thêm Trình quản lý mật khẩu AES-256-GCM cục bộ với tính năng bảo vệ bằng mật khẩu chính, Tự động khóa và Tự động điền an toàn.",
   "about.whatsNew.security": "Cửa sổ Electron cứng, xác thực IPC, quyền, Chính sách bảo mật nội dung và lưu trữ khóa hệ điều hành an toàn.",
   "about.whatsNew.releasePipeline": "Đã thêm cổng bảo mật bắt buộc trước khi phát hành bản dựng và xuất bản gói.",

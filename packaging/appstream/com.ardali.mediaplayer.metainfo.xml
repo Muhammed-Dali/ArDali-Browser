@@ -61,6 +61,12 @@
   </provides>
 
   <releases>
+    <release version="5.5.1" date="2026-07-26">
+      <url>https://github.com/Muhammed-Dali/ArDali-WebMedia/releases/tag/v5.5.1</url>
+      <description>
+        <p>Restored complete Web Settings with persistence, permission, privacy, session, performance, and stability improvements.</p>
+      </description>
+    </release>
     <release version="5.5.0" date="2026-07-26">
       <url>https://github.com/Muhammed-Dali/ArDali-WebMedia/releases/tag/v5.5.0</url>
       <description>

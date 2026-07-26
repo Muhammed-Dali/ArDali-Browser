@@ -925,7 +925,7 @@
   "about.sections.passwordManager.item3": "تکمیل خودکار ایمن به تعامل کاربر و تطابق دقیق مبدا HTTPS نیاز دارد.",
   "about.sections.security.item4": "Chromium Sandbox، Context Isolation، CSP سختگیرانه، و IPC معتبر پنجره های برنامه را سخت می کند.",
   "about.sections.security.item5": "OS Secure Storage از کلید دستگاه صندوق محلی محافظت می کند.",
-  "about.whatsNew.title": "موارد جدید در v5.5.0",
+  "about.whatsNew.title": "موارد جدید در v5.5.1",
   "about.whatsNew.passwordManager": "یک مدیر رمز عبور محلی AES-256-GCM با محافظت از رمز عبور اصلی، قفل خودکار و تکمیل خودکار ایمن اضافه شد.",
   "about.whatsNew.security": "ویندوزهای Electron سخت شده، اعتبارسنجی IPC، مجوزها، خط مشی امنیتی محتوا و ذخیره کلید ایمن سیستم عامل.",
   "about.whatsNew.releasePipeline": "یک گیت امنیتی اجباری قبل از انتشار و انتشار بسته اضافه شده است.",

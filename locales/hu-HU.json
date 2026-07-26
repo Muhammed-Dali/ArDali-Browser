@@ -925,7 +925,7 @@
   "about.sections.passwordManager.item3": "A biztonságos automatikus kitöltéshez felhasználói beavatkozásra és pontos HTTPS-eredetegyeztetésre van szükség.",
   "about.sections.security.item4": "Chromium Sandbox, Context Isolation, szigorú CSP és validált IPC harden alkalmazás ablakok.",
   "about.sections.security.item5": "Az OS Secure Storage védi a helyi tároló eszközkulcsát.",
-  "about.whatsNew.title": "Az v5.5.0 újdonságai",
+  "about.whatsNew.title": "Az v5.5.1 újdonságai",
   "about.whatsNew.passwordManager": "Helyi AES-256-GCM Jelszókezelő hozzáadva fő jelszavas védelemmel, automatikus zárolással és biztonságos automatikus kitöltéssel.",
   "about.whatsNew.security": "Megerősített Electron ablakok, IPC-ellenőrzés, engedélyek, tartalombiztonsági házirend és biztonságos operációs rendszer kulcstároló.",
   "about.whatsNew.releasePipeline": "Hozzáadott egy kötelező biztonsági kaput a kiadás buildjei és a csomag közzététele előtt.",

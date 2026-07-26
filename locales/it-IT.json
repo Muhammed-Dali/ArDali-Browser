@@ -925,7 +925,7 @@
   "about.sections.passwordManager.item3": "La compilazione automatica sicura richiede l'interazione dell'utente e la corrispondenza esatta dell'origine HTTPS.",
   "about.sections.security.item4": "Chromium Sandbox, isolamento del contesto, CSP rigoroso e finestre delle applicazioni rafforzate IPC convalidate.",
   "about.sections.security.item5": "OS Secure Storage protegge la chiave del dispositivo dell'archivio protetto locale.",
-  "about.whatsNew.title": "Novità nella versione v5.5.0",
+  "about.whatsNew.title": "Novità nella versione v5.5.1",
   "about.whatsNew.passwordManager": "Aggiunto un gestore password AES-256-GCM locale con protezione tramite password principale, blocco automatico e riempimento automatico sicuro.",
   "about.whatsNew.security": "Finestre Electron rafforzate, convalida IPC, autorizzazioni, policy di sicurezza dei contenuti e archiviazione sicura delle chiavi del sistema operativo.",
   "about.whatsNew.releasePipeline": "Aggiunto un cancello di sicurezza obbligatorio prima delle build di rilascio e della pubblicazione del pacchetto.",

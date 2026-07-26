@@ -880,7 +880,7 @@
   "about.sections.passwordManager.item3": "安全自动填充需要用户交互和精确的 HTTPS 源匹配。",
   "about.sections.security.item4": "Chromium 沙盒、上下文隔离、严格的 CSP 和经过验证的 IPC 强化应用程序窗口。",
   "about.sections.security.item5": "操作系统安全存储保护本地保管库的设备密钥。",
-  "about.whatsNew.title": "v5.5.0 中的新增功能",
+  "about.whatsNew.title": "v5.5.1 中的新增功能",
   "about.whatsNew.passwordManager": "添加了本地 AES-256-GCM 密码管理器，具有主密码保护、自动锁定和安全自动填充功能。",
   "about.whatsNew.security": "强化 Electron 窗口、IPC 验证、权限、内容安全策略和安全操作系统密钥存储。",
   "about.whatsNew.releasePipeline": "在发布版本和包发布之前添加了强制安全门。",

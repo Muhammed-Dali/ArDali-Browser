@@ -1241,7 +1241,7 @@
   "about.sections.passwordManager.item3": "يتطلب الملء التلقائي الآمن تفاعل المستخدم والمطابقة الدقيقة لأصل HTTPS.",
   "about.sections.security.item4": "Chromium Sandbox، وContext Isolation، وCSP الصارم، ونوافذ تطبيق IPC التي تم التحقق من صحتها.",
   "about.sections.security.item5": "يحمي نظام التخزين الآمن لنظام التشغيل مفتاح جهاز المخزن المحلي.",
-  "about.whatsNew.title": "ما الجديد في v5.5.0",
+  "about.whatsNew.title": "ما الجديد في v5.5.1",
   "about.whatsNew.workspace": "بنية جديدة لمساحة عمل علامات التبويب مع علامات تبويب دائمة وإدارة محسّنة لدورة الحياة.",
   "about.whatsNew.media": "تحسين مدير كلمات المرور وحظر الإعلانات والمعرض والموسيقى والبحث عن الأغاني والمؤثرات الصوتية وprojectM.",
   "about.whatsNew.performance": "تقليل العمل غير الضروري في الخلفية مع تحسين تنظيف الذاكرة والاستقرار والتحقق الأمني.",

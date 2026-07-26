@@ -6,7 +6,7 @@ function fixFile(file) {
     // Add onclick to trigger
     content = content.replace(
         /<div class="custom-dropdown-trigger">/g,
-        '<div class="custom-dropdown-trigger" onclick="this.parentElement.classList.toggle(\\'open\\'); event.stopPropagation();">'
+        `<div class="custom-dropdown-trigger" onclick="this.parentElement.classList.toggle('open'); event.stopPropagation();">`
     );
     
     // Add onclick to options
