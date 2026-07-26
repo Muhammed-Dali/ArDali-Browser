@@ -5,11 +5,16 @@ const { spawnSync } = require("node:child_process");
 const npm = process.platform === "win32" ? "npm.cmd" : "npm";
 const checks = [
   ["npm audit", ["audit"]],
+  ["npm ls", ["ls", "--all"]],
   ["verify:libs", ["run", "-s", "verify:libs"]],
   ["verify:binary:manifest", ["run", "-s", "verify:binary:manifest"]],
   ["verify:release:metadata", ["run", "-s", "verify:release:metadata"]],
+  ["verify:release:docs", ["run", "-s", "verify:release:docs"]],
   ["test:electron-security", ["run", "-s", "test:electron-security"]],
   ["test:credential-vault", ["run", "-s", "test:credential-vault"]],
+  ["test:tab-architecture", ["run", "-s", "test:tab-architecture"]],
+  ["test:projectm-window", ["run", "-s", "test:projectm-window"]],
+  ["test:audio-effects-startup", ["run", "-s", "test:audio-effects-startup"]],
   ["dali:test:security", ["run", "-s", "dali:test:security"]],
 ];
 

@@ -581,6 +581,9 @@ function areSfxLightsEnabled() {
 
 function isSfxWindowForeground() {
     if (document.hidden) return false;
+    if (SFX_EMBEDDED_MODE) {
+        return !document.hidden;
+    }
     if (typeof document.hasFocus === 'function' && !document.hasFocus()) return false;
     return true;
 }
@@ -690,7 +693,10 @@ function postEmbeddedVideoUpdate(payload) {
 }
 
 function installEmbeddedVideoBridge() {
-    if (!SFX_EMBEDDED_MODE) return;
+    // Video sekmesindeki gömülü SFX kendi WebAudio köprüsünü kullanır.
+    // Ana çalışma alanındaki müzik SFX sekmesi ise parent preload'daki gerçek
+    // ses motorunu kullanmaya devam etmelidir.
+    if (!SFX_EMBEDDED_MODE || SFX_SCOPE !== 'video') return;
 
     const safeLoad = async () => {
         try {
@@ -1883,16 +1889,6 @@ function initEffects() {
 }
 
 function setupEventListeners() {
-    // Effect panels are lazy-rendered and may be unloaded in RAM priority mode.
-    // Delegate this action from the stable content host so a freshly rendered
-    // EQ panel never loses its Presets button handler.
-    document.getElementById('effectContent')?.addEventListener('click', (event) => {
-        const presetsButton = event.target.closest?.('#eqPresetsBtn');
-        if (!presetsButton) return;
-        event.preventDefault();
-        showEQPresets();
-    });
-
     // Sidebar efekt seçimi
     document.querySelectorAll('.effect-item').forEach(item => {
         item.addEventListener('click', () => {
@@ -2026,10 +2022,7 @@ function setupEventListeners() {
     // Window controls (frameless pencere için)
     document.getElementById('closeBtn')?.addEventListener('click', () => {
         if (SFX_EMBEDDED_MODE) {
-            try {
-                const targetOrigin = window.location.origin || 'null';
-                window.parent?.postMessage({ type: 'sfx:closeEmbedded' }, targetOrigin);
-            } catch { }
+            window.ardali?.electronAPI?.closeWindow?.();
             return;
         }
         if (window.ardali?.electronAPI) {
@@ -3014,7 +3007,6 @@ function getEQ32Template() {
 	                    <p class="effect-description">${tSync('sfx.eq32.description')}</p>
 	                </div>
 	                <div class="effect-actions">
-	                    <button type="button" class="action-btn primary" id="eqPresetsBtn">${tSync('sfx.ui.presets')}</button>
 	                    <button class="action-btn danger" id="eqResetBtn">${tSync('sfx.ui.reset')}</button>
 	                </div>
 	            </div>
@@ -7362,6 +7354,11 @@ function resetEffect(effectName) {
             filename: '__flat__',
             name: tSync('eqPresets.flatName') || 'Düz (Flat)'
         };
+        try {
+            localStorage.setItem('ardali_eq_presets_selected_v1', '__flat__');
+        } catch {
+            // Kalıcı uygulama ayarı aşağıda yine kaydedilir.
+        }
         saveSettings('eq32', settings);
 
         updateEqPresetButtonLabel();

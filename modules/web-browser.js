@@ -4,9 +4,22 @@
  */
 
 document.addEventListener('DOMContentLoaded', () => {
+    let resolveWorkspaceTabsReady;
+    window.ardaliWorkspaceTabsReady = new Promise((resolve) => {
+        resolveWorkspaceTabsReady = resolve;
+    });
+
     // --- Elements ---
     const webTabsList = document.getElementById('webTabsList');
     const webTabNewBtn = document.getElementById('webTabNewBtn');
+    const workspaceTabStrip = webTabsList?.closest('.web-tabs-container');
+    const mainContent = document.querySelector('.main-content');
+    const mainNavBar = mainContent?.querySelector(':scope > .nav-bar');
+    if (workspaceTabStrip && mainContent && mainNavBar) {
+        workspaceTabStrip.classList.add('workspace-tab-strip');
+        mainNavBar.insertAdjacentElement('afterend', workspaceTabStrip);
+        document.body.classList.add('workspace-tabs-enabled');
+    }
 
     const navBack = document.getElementById('webNavBack');
     const navForward = document.getElementById('webNavForward');
@@ -31,6 +44,8 @@ document.addEventListener('DOMContentLoaded', () => {
     // --- State ---
     let tabs = [];
     let activeTabId = null;
+    let lastActiveWebTabId = null;
+    let lastPlayingWebTabId = null;
     let currentSearchEngine = window.state?.settings?.web?.searchEngine || 'duckduckgo';
     let isWebviewLoading = false;
     const loadWatchdogs = new Map();
@@ -44,7 +59,7 @@ document.addEventListener('DOMContentLoaded', () => {
     let restoreLastSessionEnabled = true;
     let isRestoringSession = false;
     let sessionPersistTimer = 0;
-    const restoredTabPreloadTimers = new Set();
+    const restoredTabPreloadTimers = new Map();
     let splitTabId = null;
     let verticalTabsEnabled = false;
     const LOAD_STALL_MS = 30000;
@@ -58,6 +73,15 @@ document.addEventListener('DOMContentLoaded', () => {
             updateNtpSearchEngineUI(currentSearchEngine);
         }
     });
+    window.addEventListener('ardali:toggle-pin-current', () => {
+        const tab = getActiveTab();
+        if (!tab) return;
+        tab.pinned = !tab.pinned;
+        tabs.sort((a, b) => Number(b.pinned === true) - Number(a.pinned === true));
+        renderTabs(); persistTabSession(true);
+        window.dispatchEvent(new Event('ardali:pinned-tabs-changed'));
+    });
+    window.ardali?.onWebTogglePinCurrent?.(() => window.dispatchEvent(new Event('ardali:toggle-pin-current')));
 
     window.addEventListener('ardali:languageChanged', () => {
         tabs.forEach((tab) => {
@@ -66,6 +90,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
         renderTabs();
     });
+    window.addEventListener('ardali:bookmarks-changed', () => renderBookmarks());
 
     const BLANK_URL = 'about:blank';
     const browserText = (key) => {
@@ -112,12 +137,80 @@ document.addEventListener('DOMContentLoaded', () => {
         return document.getElementById('webview-' + activeTabId);
     };
 
+    window.getLastActiveWebView = function() {
+        if (!lastActiveWebTabId) return null;
+        return document.getElementById('webview-' + lastActiveWebTabId);
+    };
+
+    window.getPlayingWebView = function() {
+        const remembered = tabs.find((tab) =>
+            tab.id === lastPlayingWebTabId &&
+            tab.kind !== 'app' &&
+            tab.isPlayingMedia === true
+        );
+        const playing = remembered || tabs
+            .filter((tab) => tab.kind !== 'app' && tab.isPlayingMedia === true)
+            .sort((a, b) => Number(b.lastActive || 0) - Number(a.lastActive || 0))[0];
+        return playing ? document.getElementById('webview-' + playing.id) : null;
+    };
+
+    function bindTabMediaState(wv, tab) {
+        wv.addEventListener('media-started-playing', () => {
+            tab.isPlayingMedia = true;
+            lastPlayingWebTabId = tab.id;
+        });
+        wv.addEventListener('media-paused', () => {
+            tab.isPlayingMedia = false;
+            if (lastPlayingWebTabId === tab.id) lastPlayingWebTabId = null;
+        });
+    }
+
     window.getActiveTabUrl = function() {
         const tab = getActiveTab();
         return tab ? tab.url : null;
     };
 
     window.createTab = createTab;
+    window.openAppWorkspaceTab = openAppWorkspaceTab;
+    window.updateAppWorkspaceTabMeta = (appKey, options = {}) => {
+        const key = String(appKey || '').trim();
+        const tab = tabs.find((item) => item.kind === 'app' && item.appKey === key);
+        if (!tab) return false;
+        if (options.title) tab.title = String(options.title);
+        if (options.icon) tab.favicon = String(options.icon);
+        renderTabs();
+        schedulePersistSession();
+        return true;
+    };
+    window.closeAppWorkspaceTab = (appKey) => {
+        const key = String(appKey || '').trim();
+        const tab = tabs.find((item) => item.kind === 'app' && item.appKey === key);
+        if (!tab) return false;
+        removeTab(tab.id);
+        return true;
+    };
+    window.getPinnedWebTabs = () => tabs.filter((tab) => tab.pinned === true).map((tab) => ({
+        id: String(tab.id || ''), title: String(tab.title || '').slice(0, 160),
+        url: sanitizeSessionUrl(tab.url), favicon: sanitizeSessionFavicon(tab.favicon)
+    })).filter((tab) => tab.id && tab.url);
+    window.unpinWebTab = (tabId) => {
+        const tab = tabs.find((item) => item.id === String(tabId || ''));
+        if (!tab || tab.pinned !== true) return false;
+        tab.pinned = false; renderTabs(); persistTabSession(true);
+        window.dispatchEvent(new Event('ardali:pinned-tabs-changed'));
+        return true;
+    };
+    window.reorderPinnedWebTabs = (orderedIds) => {
+        if (!Array.isArray(orderedIds)) return false;
+        const pinned = tabs.filter((tab) => tab.pinned === true);
+        const byId = new Map(pinned.map((tab) => [String(tab.id), tab]));
+        const ordered = orderedIds.map((id) => byId.get(String(id))).filter(Boolean);
+        pinned.forEach((tab) => { if (!ordered.includes(tab)) ordered.push(tab); });
+        tabs = [...ordered, ...tabs.filter((tab) => tab.pinned !== true)];
+        renderTabs(); persistTabSession(true);
+        window.dispatchEvent(new Event('ardali:pinned-tabs-changed'));
+        return true;
+    };
 
     function sanitizeSessionUrl(value) {
         const raw = String(value || '').trim();
@@ -184,15 +277,30 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function buildSessionSnapshot() {
-        const cleanTabs = tabs.slice(0, MAX_RESTORED_TABS).map((tab) => ({
-            url: sanitizeSessionUrl(tab.url),
-            title: String(tab.title || browserText('newTab')).replace(/[\u0000-\u001f\u007f]/g, '').slice(0, 160),
-            favicon: sanitizeSessionFavicon(tab.favicon) || (parseHttpUrl(tab.url) ? getFallbackFaviconForUrl(tab.url) : ''),
-            pinned: tab.pinned === true,
-            groupName: String(tab.groupName || '').replace(/[\u0000-\u001f\u007f]/g, '').slice(0, 60)
-        })).filter((tab) => tab.url);
+        const cleanTabs = tabs.slice(0, MAX_RESTORED_TABS).map((tab) => {
+            if (tab.kind === 'app') {
+                const appKey = String(tab.appKey || '').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 40);
+                if (!appKey) return null;
+                return {
+                    kind: 'app',
+                    appKey,
+                    title: String(tab.title || appKey).replace(/[\u0000-\u001f\u007f]/g, '').slice(0, 160),
+                    favicon: sanitizeSessionFavicon(tab.favicon)
+                };
+            }
+            const url = sanitizeSessionUrl(tab.url);
+            if (!url) return null;
+            return {
+                kind: 'web',
+                url,
+                title: String(tab.title || browserText('newTab')).replace(/[\u0000-\u001f\u007f]/g, '').slice(0, 160),
+                favicon: sanitizeSessionFavicon(tab.favicon) || (parseHttpUrl(tab.url) ? getFallbackFaviconForUrl(tab.url) : ''),
+                pinned: tab.pinned === true,
+                groupName: String(tab.groupName || '').replace(/[\u0000-\u001f\u007f]/g, '').slice(0, 60)
+            };
+        }).filter(Boolean);
         const activeIndex = Math.max(0, tabs.findIndex((tab) => tab.id === activeTabId));
-        return { version: 1, activeIndex: Math.min(activeIndex, Math.max(0, cleanTabs.length - 1)), tabs: cleanTabs, savedAt: Date.now() };
+        return { version: 2, activeIndex: Math.min(activeIndex, Math.max(0, cleanTabs.length - 1)), tabs: cleanTabs, savedAt: Date.now() };
     }
 
     function persistTabSession(immediate = false) {
@@ -208,16 +316,38 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!restoreLastSessionEnabled) return null;
         try {
             const parsed = JSON.parse(localStorage.getItem(WEB_SESSION_STORAGE_KEY) || 'null');
-            if (!parsed || parsed.version !== 1 || !Array.isArray(parsed.tabs)) return null;
-            const cleanTabs = parsed.tabs.slice(0, MAX_RESTORED_TABS).map((tab) => ({
-                url: sanitizeSessionUrl(tab?.url),
-                title: String(tab?.title || browserText('newTab')).replace(/[\u0000-\u001f\u007f]/g, '').slice(0, 160),
-                favicon: sanitizeSessionFavicon(tab?.favicon) || (parseHttpUrl(tab?.url) ? getFallbackFaviconForUrl(tab.url) : ''),
-                pinned: tab?.pinned === true,
-                groupName: String(tab?.groupName || '').replace(/[\u0000-\u001f\u007f]/g, '').slice(0, 60)
-            })).filter((tab) => tab.url);
-            if (!cleanTabs.length) return null;
-            return { tabs: cleanTabs, activeIndex: Math.max(0, Math.min(cleanTabs.length - 1, Number(parsed.activeIndex) || 0)) };
+            if (!parsed || ![1, 2].includes(parsed.version) || !Array.isArray(parsed.tabs)) return null;
+            const cleanTabs = parsed.tabs.slice(0, MAX_RESTORED_TABS).map((tab) => {
+                if (parsed.version === 2 && tab?.kind === 'app') {
+                    const appKey = String(tab.appKey || '').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 40);
+                    if (!appKey) return null;
+                    return {
+                        kind: 'app',
+                        appKey,
+                        title: String(tab.title || appKey).replace(/[\u0000-\u001f\u007f]/g, '').slice(0, 160),
+                        favicon: sanitizeSessionFavicon(tab.favicon)
+                    };
+                }
+                const url = sanitizeSessionUrl(tab?.url);
+                if (!url) return null;
+                return {
+                    kind: 'web',
+                    url,
+                    title: String(tab?.title || browserText('newTab')).replace(/[\u0000-\u001f\u007f]/g, '').slice(0, 160),
+                    favicon: sanitizeSessionFavicon(tab?.favicon) || (parseHttpUrl(tab?.url) ? getFallbackFaviconForUrl(tab.url) : ''),
+                    pinned: tab?.pinned === true,
+                    groupName: String(tab?.groupName || '').replace(/[\u0000-\u001f\u007f]/g, '').slice(0, 60)
+                };
+            }).filter(Boolean);
+            const seenAppKeys = new Set();
+            const uniqueTabs = cleanTabs.filter((tab) => {
+                if (tab.kind !== 'app') return true;
+                if (seenAppKeys.has(tab.appKey)) return false;
+                seenAppKeys.add(tab.appKey);
+                return true;
+            });
+            if (!uniqueTabs.length) return null;
+            return { tabs: uniqueTabs, activeIndex: Math.max(0, Math.min(uniqueTabs.length - 1, Number(parsed.activeIndex) || 0)) };
         } catch (_) {
             return null;
         }
@@ -228,6 +358,21 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!snapshot) return false;
         isRestoringSession = true;
         const created = snapshot.tabs.map((saved) => {
+            if (saved.kind === 'app') {
+                const tab = {
+                    id: `app-${saved.appKey}`,
+                    kind: 'app',
+                    appKey: saved.appKey,
+                    url: `ardali-app://${saved.appKey}`,
+                    title: saved.title || saved.appKey,
+                    favicon: saved.favicon || 'icons/app/ardali_256.png',
+                    isLoading: false,
+                    isPlayingMedia: false,
+                    lastActive: Date.now()
+                };
+                tabs.push(tab);
+                return tab;
+            }
             const tab = createTab(saved.url, false, { deferLoad: true });
             if (!tab) return null;
             tab.title = saved.title || tab.title;
@@ -253,10 +398,10 @@ document.addEventListener('DOMContentLoaded', () => {
         ));
         waitingTabs.forEach((tab, index) => {
             const timer = setTimeout(() => {
-                restoredTabPreloadTimers.delete(timer);
+                restoredTabPreloadTimers.delete(tab.id);
                 startDeferredTabLoad(tab.id, { background: true, reason: 'session-preload' });
             }, 500 + (index * 700));
-            restoredTabPreloadTimers.add(timer);
+            restoredTabPreloadTimers.set(tab.id, timer);
         });
     }
 
@@ -477,6 +622,15 @@ document.addEventListener('DOMContentLoaded', () => {
             menu.appendChild(line);
         };
 
+        if (tab.kind === 'app') {
+            addItem('Sekmeyi kapat', 'close', () => removeTab(tab.id));
+            document.body.appendChild(menu);
+            const rect = menu.getBoundingClientRect();
+            menu.style.left = `${Math.max(8, Math.min(event.clientX, window.innerWidth - rect.width - 8))}px`;
+            menu.style.top = `${Math.max(8, Math.min(event.clientY, window.innerHeight - rect.height - 8))}px`;
+            return;
+        }
+
         addItem(tabMenuT('newRight', 'New tab to the right'), 'add', () => createTabToRight(tab));
         addItem(tabMenuT('addGroup', 'Add tab to new group'), 'tab_group', () => {
             const name = window.prompt(tabMenuT('groupPrompt', 'Tab group name'), tab.groupName || '');
@@ -508,6 +662,8 @@ document.addEventListener('DOMContentLoaded', () => {
             tab.pinned = !tab.pinned;
             tabs.sort((a, b) => Number(b.pinned === true) - Number(a.pinned === true));
             renderTabs();
+            persistTabSession(true);
+            window.dispatchEvent(new Event('ardali:pinned-tabs-changed'));
         });
         addItem(tabMenuT(tab.muted ? 'unmuteTab' : 'muteTab', tab.muted ? 'Unmute tab' : 'Mute tab'), tab.muted ? 'volume_up' : 'volume_off', () => {
             tab.muted = !tab.muted;
@@ -839,8 +995,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (typeof window.bindWebViewEvents === 'function') {
             window.bindWebViewEvents(wv);
         }
-        wv.addEventListener('media-started-playing', () => { tab.isPlayingMedia = true; });
-        wv.addEventListener('media-paused', () => { tab.isPlayingMedia = false; });
+        bindTabMediaState(wv, tab);
 
         if (activeTabId === tabId) {
             document.querySelectorAll('.webviews-container webview').forEach(w => w.classList.remove('active'));
@@ -1064,18 +1219,84 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // --- Tab Management ---
+    function openAppWorkspaceTab(appKey, options = {}) {
+        const key = String(appKey || '').trim();
+        if (!key) return null;
+        let tab = tabs.find((item) => item.kind === 'app' && item.appKey === key);
+        if (!tab) {
+            const active = getActiveTab();
+            const activeWebview = active?.kind !== 'app' ? getTabWebView(active?.id) : null;
+            let liveUrl = '';
+            try {
+                liveUrl = String(activeWebview?.getURL?.() || active?.url || '').trim();
+            } catch {
+                liveUrl = String(active?.url || '').trim();
+            }
+            const canReuseActiveBlank =
+                !!active &&
+                active.kind !== 'app' &&
+                active.url === BLANK_URL &&
+                (!liveUrl || liveUrl === BLANK_URL) &&
+                !active.pendingRestoreUrl &&
+                active.isLoading !== true;
+            if (canReuseActiveBlank) {
+                clearLoadWatchdog(active.id);
+                clearBlankPageChecks(active.id);
+                activeWebview?.remove();
+                tab = active;
+                Object.assign(tab, {
+                    kind: 'app',
+                    appKey: key,
+                    url: `ardali-app://${key}`,
+                    title: String(options.title || key),
+                    favicon: String(options.icon || 'icons/app/ardali_256.png'),
+                    isLoading: false,
+                    isPlayingMedia: false,
+                    lastActive: Date.now()
+                });
+                if (lastActiveWebTabId === tab.id) {
+                    const fallbackWebTab = tabs
+                        .filter((item) => item.id !== tab.id && item.kind !== 'app')
+                        .sort((a, b) => Number(b.lastActive || 0) - Number(a.lastActive || 0))[0];
+                    lastActiveWebTabId = fallbackWebTab?.id || null;
+                }
+            } else {
+                tab = {
+                    id: `app-${key}`,
+                    kind: 'app',
+                    appKey: key,
+                    url: `ardali-app://${key}`,
+                    title: String(options.title || key),
+                    favicon: String(options.icon || 'icons/app/ardali_256.png'),
+                    isLoading: false,
+                    isPlayingMedia: false,
+                    lastActive: Date.now()
+                };
+                tabs.push(tab);
+            }
+        } else {
+            if (options.title) tab.title = String(options.title);
+            if (options.icon) tab.favicon = String(options.icon);
+        }
+        activateTab(tab.id);
+        return tab;
+    }
+
     function createTab(url = BLANK_URL, makeActive = true, options = {}) {
         const id = generateId();
         const isDownloadsTab = isDownloadsUrl(url);
         const tab = {
             id,
             url,
-            title: isDownloadsTab ? browserText('downloads') : (url === BLANK_URL ? browserText('newTab') : browserText('loading')),
+            title: String(options.title || (
+                isDownloadsTab ? browserText('downloads') : (url === BLANK_URL ? browserText('newTab') : browserText('loading'))
+            )),
             isLoading: url !== BLANK_URL && !isDownloadsTab && options.deferLoad !== true,
             favicon: '',
             zoomFactor: 1.0,
             isPlayingMedia: false,
             lastActive: Date.now(),
+            localDownload: options.localDownload === true,
             deferredLoad: options.deferLoad === true && url !== BLANK_URL && !isDownloadsTab
         };
         if (tab.deferredLoad) tab.pendingRestoreUrl = url;
@@ -1091,8 +1312,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (typeof window.bindWebViewEvents === 'function') {
             window.bindWebViewEvents(wv);
         }
-        wv.addEventListener('media-started-playing', () => { tab.isPlayingMedia = true; });
-        wv.addEventListener('media-paused', () => { tab.isPlayingMedia = false; });
+        bindTabMediaState(wv, tab);
 
         const targetUrl = isDownloadsTab ? BLANK_URL : url;
         if (targetUrl !== BLANK_URL && !tab.deferredLoad) {
@@ -1122,6 +1342,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 .forEach((view) => view.classList.remove('active'));
             wv.classList.add('active');
             activeTabId = id;
+            lastActiveWebTabId = id;
         }
         applyPreferredUserAgent(wv, targetUrl);
         // Electron/Wayland'de hedef URL ile doğrudan eklenen ikinci webview
@@ -1158,7 +1379,22 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function removeTab(id, options = {}) {
         const removed = tabs.find(t => t.id === id);
-        if (removed && options.recordHistory !== false && removed.url !== BLANK_URL) {
+        clearLoadWatchdog(id);
+        clearBlankPageChecks(id);
+        const restoredTimer = restoredTabPreloadTimers.get(id);
+        if (restoredTimer) clearTimeout(restoredTimer);
+        restoredTabPreloadTimers.delete(id);
+        if (removed?.kind === 'app') {
+            if (activeTabId === removed.id) {
+                window.dispatchEvent(new CustomEvent('ardali:app-tab-deactivated', {
+                    detail: { key: removed.appKey, id: removed.id }
+                }));
+            }
+            window.dispatchEvent(new CustomEvent('ardali:app-tab-closed', {
+                detail: { key: removed.appKey, id: removed.id }
+            }));
+        }
+        if (removed && removed.kind !== 'app' && options.recordHistory !== false && removed.url !== BLANK_URL) {
             closedTabs.push({
                 url: removed.url,
                 title: removed.title,
@@ -1190,11 +1426,38 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function activateTab(id) {
-        activeTabId = id;
         const tab = tabs.find(t => t.id === id);
         if (!tab) return;
+        const previous = tabs.find((item) => item.id === activeTabId);
+        activeTabId = id;
 
         tab.lastActive = Date.now();
+        if (previous?.kind === 'app' && previous.id !== tab.id) {
+            window.dispatchEvent(new CustomEvent('ardali:app-tab-deactivated', {
+                detail: {
+                    key: previous.appKey,
+                    id: previous.id,
+                    nextKey: tab.kind === 'app' ? tab.appKey : 'web'
+                }
+            }));
+        }
+        if (tab.kind === 'app') {
+            document.body.classList.add('workspace-app-tab-active');
+            document.querySelectorAll('.webviews-container webview.active')
+                .forEach((view) => view.classList.remove('active'));
+            renderTabs();
+            updateSplitView();
+            window.dispatchEvent(new CustomEvent('ardali:app-tab-activated', {
+                detail: { key: tab.appKey, id: tab.id }
+            }));
+            persistTabSession();
+            return;
+        }
+        document.body.classList.remove('workspace-app-tab-active');
+        lastActiveWebTabId = tab.id;
+        window.dispatchEvent(new CustomEvent('ardali:web-tab-activated', {
+            detail: { id: tab.id, url: tab.url }
+        }));
 
         // Re-awaken discarded tab
         let wv = document.getElementById('webview-' + id);
@@ -1216,8 +1479,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (typeof window.bindWebViewEvents === 'function') {
                 window.bindWebViewEvents(wv);
             }
-            wv.addEventListener('media-started-playing', () => { tab.isPlayingMedia = true; });
-            wv.addEventListener('media-paused', () => { tab.isPlayingMedia = false; });
+            bindTabMediaState(wv, tab);
         }
 
         // Arka planda yüklenen sekmeler Electron olaylarını kullanıcı sekmeye
@@ -1554,6 +1816,24 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 tabEl.appendChild(titleEl);
                 tabEl.appendChild(closeBtn);
+                tabEl.draggable = true;
+                tabEl.addEventListener('dragstart', (event) => {
+                    event.dataTransfer?.setData('text/x-ardali-tab', tabEl.dataset.tabId || '');
+                    if (event.dataTransfer) event.dataTransfer.effectAllowed = 'move';
+                });
+                tabEl.addEventListener('dragover', (event) => event.preventDefault());
+                tabEl.addEventListener('drop', (event) => {
+                    event.preventDefault();
+                    const sourceId = event.dataTransfer?.getData('text/x-ardali-tab') || '';
+                    const targetId = tabEl.dataset.tabId || '';
+                    const sourceIndex = tabs.findIndex(item => item.id === sourceId);
+                    const targetIndex = tabs.findIndex(item => item.id === targetId);
+                    if (sourceIndex < 0 || targetIndex < 0 || sourceIndex === targetIndex) return;
+                    const [moved] = tabs.splice(sourceIndex, 1);
+                    tabs.splice(targetIndex, 0, moved);
+                    renderTabs();
+                    persistTabSession(true);
+                });
                 tabEl.onclick = () => activateTab(tab.id);
                 tabEl.addEventListener('contextmenu', (event) => {
                     const current = tabs.find((item) => item.id === tabEl.dataset.tabId);
@@ -1594,7 +1874,9 @@ document.addEventListener('DOMContentLoaded', () => {
             const hasIcon = currentSpinner !== null || currentImg !== null;
             const currentFavicon = currentImg ? currentImg.src : null;
 
-            let faviconSrc = 'icons/app/ardali_256.png';
+            let faviconSrc = tab.kind === 'app' && tab.favicon
+                ? tab.favicon
+                : 'icons/app/ardali_256.png';
             if (!tab.isLoading) {
                 if (tab.url && isValidUrl(tab.url) && new URL(tab.url).hostname.includes('whatsapp.com')) {
                     faviconSrc = 'icons/app/whatsapp.png';
@@ -1893,7 +2175,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         wv.addEventListener('new-window', (e) => {
             e.preventDefault();
-            createTab(e.url, false);
+            createTab(e.url, true);
         });
 
         wv.addEventListener('did-start-navigation', (e) => {
@@ -1979,6 +2261,10 @@ document.addEventListener('DOMContentLoaded', () => {
             } else if (e.channel === 'ardali-vault-fill-status' && activeTabId === tabId) {
                 const filled = e.args?.[0]?.state === 'filled';
                 notifyWebBrowser(filled ? 'Kayıtlı giriş bilgisi dolduruldu.' : 'Kayıtlı giriş bilgisi doldurulamadı. Kasanın açık olduğunu kontrol edin.', filled ? 'success' : 'warning', 4200);
+            } else if (e.channel === 'ardali-adblock-user-filter' && activeTabId === tabId) {
+                window.dispatchEvent(new CustomEvent('ardali:adblock-user-filter', {
+                    detail: e.args?.[0] || {}
+                }));
             }
         });
     }
@@ -2381,11 +2667,20 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }, 60 * 1000); // Check every minute
 
-    window.addEventListener('beforeunload', () => persistTabSession(true));
+    window.addEventListener('beforeunload', () => {
+        persistTabSession(true);
+        for (const timer of restoredTabPreloadTimers.values()) clearTimeout(timer);
+        restoredTabPreloadTimers.clear();
+        for (const tab of tabs) {
+            clearLoadWatchdog(tab.id);
+            clearBlankPageChecks(tab.id);
+        }
+    });
     document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') persistTabSession(true); });
 
     // Initialize tabs after loading the user's existing Web session preference.
     setTimeout(async () => {
+        let restored = false;
         try {
             const loaded = await window.ardali?.loadSettings?.();
             restoreLastSessionEnabled = loaded?.webUi?.restoreLastSession !== false;
@@ -2393,7 +2688,14 @@ document.addEventListener('DOMContentLoaded', () => {
         } catch (_) {
             restoreLastSessionEnabled = true;
         }
-        if (!restoreTabSession()) createTab();
+        restored = restoreTabSession();
+        if (!restored) createTab();
         renderBookmarks();
+        resolveWorkspaceTabsReady?.({
+            restored,
+            activeKind: getActiveTab()?.kind || '',
+            activeAppKey: getActiveTab()?.appKey || '',
+            tabCount: tabs.length
+        });
     }, 50);
 });

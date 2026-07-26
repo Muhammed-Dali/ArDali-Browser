@@ -332,6 +332,11 @@ button, input, select {
     background: #2a3548;
 }
 
+html[data-embedded="true"] #minimizeBtn,
+html[data-embedded="true"] #maximizeBtn {
+    display: none;
+}
+
 .shell {
     position: relative;
     padding: 24px 28px 18px;

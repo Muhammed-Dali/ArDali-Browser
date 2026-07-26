@@ -97,6 +97,25 @@ window.addEventListener('ardali:new-tab-settings-changed', (event) => {
     state.settings.web.newTab = JSON.parse(JSON.stringify(next));
 });
 
+// Browser Settings saves scoped patches through the existing settings IPC.
+// Mirror the same patch into this window's canonical in-memory state before
+// the footer Save button can perform a full save with stale values.
+window.addEventListener('ardali:browser-settings-patch', (event) => {
+    const patch = event?.detail;
+    if (!patch || typeof patch !== 'object' || Array.isArray(patch)) return;
+    const merge = (base, next) => {
+        const output = base && typeof base === 'object' && !Array.isArray(base) ? { ...base } : {};
+        if (!next || typeof next !== 'object' || Array.isArray(next)) return output;
+        Object.entries(next).forEach(([key, value]) => {
+            output[key] = value && typeof value === 'object' && !Array.isArray(value)
+                ? merge(output[key], value)
+                : value;
+        });
+        return output;
+    };
+    state.settings = merge(state.settings, patch);
+});
+
 function isStandaloneSettingsMode() {
     return forcedStandaloneSettingsMode;
 }
@@ -1104,6 +1123,7 @@ const appUpdateRuntime = {
     currentVersion: '',
     electronVersion: '',
     chromiumVersion: '',
+    nodeVersion: '',
     supported: false,
     aurUpdateSupported: false,
     aurPackageInstalled: false,
@@ -1138,7 +1158,14 @@ const ADBLOCK_DEFAULT_SETTINGS = {
     autoRefreshOnModeChange: false,
     strictBlock: true,
     protectionPolicyVersion: 1,
-    developerMode: false
+    developerMode: false,
+    userFilters: [],
+    sitePolicies: {},
+    enabledRulesetIds: [],
+    rulesetSelectionConfigured: false,
+    rulesetMetadata: {},
+    autoUpdateRulesets: true,
+    statistics: { totalBlocked: 0, trackersBlocked: 0, estimatedBytesSaved: 0, whitelistAllowedRequests: 0, daily: {} }
 };
 
 function normalizeAdblockMode(mode) {
@@ -1174,6 +1201,15 @@ function ensureAdblockSettings() {
     if (typeof state.settings.adblock.developerMode !== 'boolean') {
         state.settings.adblock.developerMode = ADBLOCK_DEFAULT_SETTINGS.developerMode;
     }
+    if (!Array.isArray(state.settings.adblock.userFilters)) state.settings.adblock.userFilters = [];
+    if (!state.settings.adblock.sitePolicies || typeof state.settings.adblock.sitePolicies !== 'object' || Array.isArray(state.settings.adblock.sitePolicies)) {
+        state.settings.adblock.sitePolicies = {};
+    }
+    if (!Array.isArray(state.settings.adblock.enabledRulesetIds)) state.settings.adblock.enabledRulesetIds = [];
+    state.settings.adblock.rulesetSelectionConfigured = state.settings.adblock.rulesetSelectionConfigured === true;
+    if (!state.settings.adblock.statistics || typeof state.settings.adblock.statistics !== 'object') {
+        state.settings.adblock.statistics = { totalBlocked: 0, trackersBlocked: 0, estimatedBytesSaved: 0, whitelistAllowedRequests: 0, daily: {} };
+    }
 
     return state.settings.adblock;
 }
@@ -1185,20 +1221,180 @@ function getAdblockBridgeConfig() {
         autoReload: !!adblock.autoRefreshOnModeChange,
         showBlockedCount: !!adblock.showBlockedCount,
         strictBlock: !!adblock.strictBlock,
-        developerMode: !!adblock.developerMode
+        developerMode: !!adblock.developerMode,
+        userFilters: adblock.userFilters,
+        sitePolicies: adblock.sitePolicies,
+        enabledRulesetIds: adblock.enabledRulesetIds,
+        rulesetSelectionConfigured: adblock.rulesetSelectionConfigured,
+        statistics: adblock.statistics
     };
 }
 
-function getAdblockWebModeProfile() {
+function normalizeAdblockHostname(value = '') {
+    const raw = String(value || '').trim();
+    if (!raw) return '';
+    try {
+        return String(new URL(/^[a-z][a-z0-9+.-]*:\/\//i.test(raw) ? raw : `https://${raw}`).hostname || '')
+            .toLowerCase()
+            .replace(/^\.+|\.+$/g, '');
+    } catch {
+        return raw.toLowerCase().replace(/^\.+|\.+$/g, '');
+    }
+}
+
+function getAdblockPolicyForHostname(hostname = '') {
+    const policies = ensureAdblockSettings().sitePolicies || {};
+    const parts = normalizeAdblockHostname(hostname).split('.').filter(Boolean);
+    for (let index = 0; index < parts.length - 1; index += 1) {
+        const candidate = parts.slice(index).join('.');
+        if (policies[candidate]) return { hostname: candidate, policy: policies[candidate] };
+    }
+    return null;
+}
+
+function getActiveAdblockHostname() {
+    return normalizeAdblockHostname(window.getActiveTabUrl?.() || elements.webView?.getURL?.() || '');
+}
+
+async function setAdblockSiteWhitelist(hostname, enabled) {
+    const requestedHostname = normalizeAdblockHostname(hostname);
+    if (!requestedHostname) return false;
+    const adblock = ensureAdblockSettings();
+    const matched = getAdblockPolicyForHostname(requestedHostname);
+    const key = matched?.hostname || requestedHostname;
+    const current = matched?.policy && typeof matched.policy === 'object'
+        ? matched.policy
+        : { adBlocking: true, trackerProtection: true, temporaryDisabledUntil: 0 };
+    if (enabled) {
+        if (current.whitelisted !== true) {
+            current.whitelistPrevious = {
+                adBlocking: current.adBlocking !== false,
+                trackerProtection: current.trackerProtection !== false,
+                temporaryDisabledUntil: Math.max(0, Number(current.temporaryDisabledUntil) || 0)
+            };
+        }
+        current.whitelisted = true;
+    } else {
+        const previous = current.whitelistPrevious;
+        if (previous && typeof previous === 'object') {
+            current.adBlocking = previous.adBlocking !== false;
+            current.trackerProtection = previous.trackerProtection !== false;
+            current.temporaryDisabledUntil = Math.max(0, Number(previous.temporaryDisabledUntil) || 0);
+        }
+        current.whitelisted = false;
+        current.whitelistPrevious = null;
+    }
+    adblock.sitePolicies[key] = current;
+    await applyAdblockRuntimeConfig();
+    await saveSettings();
+    await refreshAdblockStats(false);
+    return true;
+}
+
+async function setAdblockSiteProtection(hostname, field, enabled) {
+    const requestedHostname = normalizeAdblockHostname(hostname);
+    if (!requestedHostname || !['adBlocking', 'trackerProtection'].includes(field)) return false;
+    const adblock = ensureAdblockSettings();
+    const matched = getAdblockPolicyForHostname(requestedHostname);
+    const key = matched?.hostname || requestedHostname;
+    const current = matched?.policy && typeof matched.policy === 'object'
+        ? matched.policy
+        : { adBlocking: true, trackerProtection: true, temporaryDisabledUntil: 0 };
+    if (current.whitelisted === true) return false;
+    current[field] = enabled !== false;
+    adblock.sitePolicies[key] = current;
+    await applyAdblockRuntimeConfig();
+    await saveSettings();
+    await refreshAdblockStats(false);
+    return true;
+}
+
+window.addEventListener('ardali:adblock-user-filter', async (event) => {
+    const detail = event?.detail || {};
+    const texts = (Array.isArray(detail.texts) ? detail.texts : [detail.text])
+        .map((value) => String(value || '').trim())
+        .filter(Boolean);
+    if (!texts.length) return;
+    const hostname = normalizeAdblockHostname(detail.hostname);
+    if (hostname && getAdblockPolicyForHostname(hostname)?.policy?.whitelisted === true) return;
+    const adblock = ensureAdblockSettings();
+    const now = Date.now();
+    const existing = new Set(adblock.userFilters.map((entry) => String(entry?.text || entry || '').trim()));
+    const accepted = [];
+    let duplicateCount = Math.max(0, Number(detail.duplicateCount) || 0);
+    for (const text of texts) {
+        const validation = await window.ardali?.adblock?.validateUserFilter?.(text);
+        if (!validation?.ok || (detail.mode === 'filter' && validation.kind !== 'cosmetic')) {
+            safeNotify('Geçersiz kullanıcı filtresi.', 'error', 2600);
+            return;
+        }
+        if (existing.has(text) || accepted.includes(text)) {
+            duplicateCount += 1;
+            continue;
+        }
+        accepted.push(text);
+    }
+    if (!accepted.length) {
+        safeNotify('Bu filtre zaten mevcut.', 'info', 2400);
+        return;
+    }
+    accepted.forEach((text, index) => {
+        adblock.userFilters.push({
+            id: `picker-${now.toString(36)}-${index}`,
+            text,
+            enabled: true,
+            createdAt: now,
+            updatedAt: now
+        });
+    });
+    await window.ardali?.adblock?.setConfig?.({
+        ...getAdblockBridgeConfig(),
+        userFilterLogEntries: accepted
+    });
+    await saveSettings();
+    safeNotify(
+        duplicateCount > 0
+            ? `${accepted.length} filtre kaydedildi. ${duplicateCount} mevcut filtre atlandı.`
+            : `${accepted.length} kullanıcı filtresi kaydedildi.`,
+        'success',
+        2600
+    );
+});
+
+window.ardali?.adblock?.onWhitelistSite?.((payload) => {
+    const action = String(payload?.action || 'whitelist').trim().toLowerCase();
+    const hostname = normalizeAdblockHostname(payload?.hostname || getActiveAdblockHostname());
+    let operation;
+    if (action === 'toggle-ads') {
+        const current = getAdblockPolicyForHostname(hostname)?.policy;
+        operation = setAdblockSiteProtection(hostname, 'adBlocking', current?.adBlocking === false);
+    } else if (action === 'toggle-trackers') {
+        const current = getAdblockPolicyForHostname(hostname)?.policy;
+        operation = setAdblockSiteProtection(hostname, 'trackerProtection', current?.trackerProtection === false);
+    } else if (action === 'element-picker') {
+        operation = Promise.resolve(openActiveDeliBlockElementPicker());
+    } else if (action === 'open-sites') {
+        operation = openAdblockDashboardPanel('sites');
+    } else {
+        operation = setAdblockSiteWhitelist(hostname, payload?.whitelisted !== false);
+    }
+    Promise.resolve(operation).catch((error) => {
+        console.warn('[ADBLOCK] whitelist site error:', error?.message || error);
+    });
+});
+
+function getAdblockWebModeProfile(hostname = getActiveAdblockHostname()) {
     const adblock = ensureAdblockSettings();
     const mode = normalizeAdblockMode(adblock.mode);
+    const whitelisted = getAdblockPolicyForHostname(hostname)?.policy?.whitelisted === true;
     if (mode === 'basic') {
         return {
             tickIntervalMs: 1200,
             uiScrubLevel: 1,
             deepSponsoredScan: false,
             adSignalLevel: 1,
-            forceSeekAds: false
+            forceSeekAds: false,
+            whitelisted
         };
     }
     if (mode === 'aggressive') {
@@ -1207,7 +1403,8 @@ function getAdblockWebModeProfile() {
             uiScrubLevel: 2,
             deepSponsoredScan: false,
             adSignalLevel: 2,
-            forceSeekAds: false
+            forceSeekAds: false,
+            whitelisted
         };
     }
     return {
@@ -1215,7 +1412,8 @@ function getAdblockWebModeProfile() {
         uiScrubLevel: 1,
         deepSponsoredScan: false,
         adSignalLevel: 1,
-        forceSeekAds: false
+        forceSeekAds: false,
+        whitelisted
     };
 }
 
@@ -1308,12 +1506,15 @@ let galleryRedEyePrewarmTimer = null;
 let galleryBottomViewMenuOpen = false;
 let galleryBottomViewPreviewBackup = null;
 let galleryUiHideTimer = null;
+let galleryBrightnessHudTimer = null;
 let galleryGridReflowTimer = null;
 const GALLERY_UI_AUTOHIDE_MS = 2000;
 let galleryUiFreezeHiddenUntilPointer = false;
 const galleryThumbnailRotationDegByPath = new Map();
 const galleryDisplayImageUrlCache = new Map();
 const galleryDisplayImageFallbackInFlight = new Map();
+let galleryDisplayResourceGeneration = 0;
+let galleryDisplayResourcesOpen = false;
 const videoThumbnailUrlCache = new Map();
 const videoThumbnailInFlight = new Map();
 const VIDEO_STUDIO_PROFILE_STORAGE_KEY = 'ardali_video_studio_profile_v1';
@@ -1334,6 +1535,8 @@ let videoToolSourcePath = '';
 let videoToolPreviewPath = '';
 let videoToolsProgressUnsubscribe = null;
 let screenRecorder = null;
+let screenRecordingStopPromise = null;
+let resolveScreenRecordingStop = null;
 let screenRecordingStream = null;
 let screenRecordingChunks = [];
 let screenRecordingBytes = 0;
@@ -1809,6 +2012,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     await loadSettings();
+    // Web sekmesi henüz boşken DALI/DL preset varlıklarını belleğe al.
+    // İlk YouTube oynatımında disk okuma/parsing beklenmez.
+    prewarmWebDaliRuntimeAssets();
     if (state.settings?.web?.searchEngine) {
         window.dispatchEvent(new CustomEvent('ardali:settings-changed', {
             detail: { webSearchEngine: state.settings.web.searchEngine }
@@ -1828,6 +2034,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         renderPlaylist();
     }
     setupEventListeners();
+    setupDeliBlockQuickAccess();
     setupPulseQuickListeners();
     setupUtilityWindowIndicators();
     window.addEventListener('beforeunload', () => {
@@ -1855,7 +2062,18 @@ document.addEventListener('DOMContentLoaded', async () => {
             // yoksay
         }
     });
-    restoreLastMainSection();
+    let workspaceTabSession = null;
+    try {
+        workspaceTabSession = await window.ardaliWorkspaceTabsReady;
+    } catch {
+        workspaceTabSession = null;
+    }
+    // Sekme yöneticisi kayıtlı oturumu geri yüklediyse son sayfayı ayrıca
+    // açmak yinelenen/önceden kapatılmış (özellikle Müzik) sekmeler üretir.
+    // Yalnızca geri yüklenecek bir sekme oturumu yoksa başlangıç sayfasını aç.
+    if (!workspaceTabSession?.restored) {
+        restoreLastMainSection();
+    }
     preloadLastWebPlatformOnStartup();
     // Son kapatılan sekme geri yüklendikten sonra ana kabuğu göster:
     // açılışta anlık "yanlış sekme" parlamasını engeller.
@@ -2288,6 +2506,7 @@ function cacheElements() {
     elements.aboutAppVersionValue = document.getElementById('aboutAppVersionValue');
     elements.aboutElectronVersionValue = document.getElementById('aboutElectronVersionValue');
     elements.aboutChromiumVersionValue = document.getElementById('aboutChromiumVersionValue');
+    elements.aboutNodeVersionValue = document.getElementById('aboutNodeVersionValue');
     elements.aboutLastUpdateCheckValue = document.getElementById('aboutLastUpdateCheckValue');
     elements.updateModalOverlay = document.getElementById('updateModalOverlay');
     elements.updateModalClose = document.getElementById('updateModalClose');
@@ -2409,6 +2628,8 @@ function cacheElements() {
     elements.galleryLightboxPrev = document.getElementById('galleryLightboxPrev');
     elements.galleryLightboxNext = document.getElementById('galleryLightboxNext');
     elements.galleryLightboxStage = document.getElementById('galleryLightboxStage');
+    elements.galleryBrightnessHud = document.getElementById('galleryBrightnessHud');
+    elements.galleryBrightnessHudValue = document.getElementById('galleryBrightnessHudValue');
     elements.galleryCropLayer = document.getElementById('galleryCropLayer');
     elements.galleryCropRect = document.getElementById('galleryCropRect');
     elements.galleryAnnotationCanvas = document.getElementById('galleryAnnotationCanvas');
@@ -2523,7 +2744,10 @@ function cacheElements() {
     Object.defineProperty(elements, 'webView', {
         get: function() {
             if (typeof window.getActiveWebView === 'function') {
-                return window.getActiveWebView();
+                return window.getActiveWebView() ||
+                    window.getPlayingWebView?.() ||
+                    window.getLastActiveWebView?.() ||
+                    null;
             }
             return null;
         }
@@ -2742,6 +2966,12 @@ function cacheElements() {
     elements.webActiveSiteAllowLocation = document.getElementById('webActiveSiteAllowLocation');
     elements.webActiveSiteAllowNotifications = document.getElementById('webActiveSiteAllowNotifications');
     elements.webActiveSiteAllowPopups = document.getElementById('webActiveSiteAllowPopups');
+    elements.webActiveSiteAllowDisplayCapture = document.getElementById('webActiveSiteAllowDisplayCapture');
+    elements.webActiveSiteAllowClipboardRead = document.getElementById('webActiveSiteAllowClipboardRead');
+    elements.webActiveSiteAllowAutomaticDownloads = document.getElementById('webActiveSiteAllowAutomaticDownloads');
+    elements.webActiveSiteAutoplayPolicy = document.getElementById('webActiveSiteAutoplayPolicy');
+    elements.webResetActiveSitePermissionsBtn = document.getElementById('webResetActiveSitePermissionsBtn');
+    elements.webSavedSitePermissions = document.getElementById('webSavedSitePermissions');
     elements.webSaveActiveSitePermissionsBtn = document.getElementById('webSaveActiveSitePermissionsBtn');
     elements.behaviorWebPreferHttps = document.getElementById('behaviorWebPreferHttps');
     elements.behaviorWebReduceWebRtcIpLeaks = document.getElementById('behaviorWebReduceWebRtcIpLeaks');
@@ -2752,6 +2982,9 @@ function cacheElements() {
     elements.behaviorWebAllowLocation = document.getElementById('behaviorWebAllowLocation');
     elements.behaviorWebAllowNotifications = document.getElementById('behaviorWebAllowNotifications');
     elements.behaviorWebAllowPopups = document.getElementById('behaviorWebAllowPopups');
+    elements.behaviorWebAllowDisplayCapture = document.getElementById('behaviorWebAllowDisplayCapture');
+    elements.behaviorWebAllowClipboardRead = document.getElementById('behaviorWebAllowClipboardRead');
+    elements.behaviorWebAllowAutomaticDownloads = document.getElementById('behaviorWebAllowAutomaticDownloads');
     elements.behaviorWebUserAgentMode = document.getElementById('behaviorWebUserAgentMode');
     elements.behaviorWebAutoplayPolicy = document.getElementById('behaviorWebAutoplayPolicy');
     elements.behaviorWebAskDownloadLocation = document.getElementById('behaviorWebAskDownloadLocation');
@@ -2863,7 +3096,9 @@ async function loadSettings() {
     if (window.ardali) {
         state.settings = await window.ardali.loadSettings();
         if (!state.settings) state.settings = {};
-        state.volume = state.settings.volume || 40;
+        state.volume = Number.isFinite(Number(state.settings.volume))
+            ? Math.max(0, Math.min(100, Number(state.settings.volume)))
+            : 40;
         state.isShuffle = state.settings.shuffle || false;
         state.isRepeat = state.settings.repeat || false;
         state.isRepeatOne = state.settings.repeatOne || false;
@@ -2914,10 +3149,9 @@ async function loadSettings() {
         if (typeof state.settings.webUi.backgroundThrottle !== 'boolean') state.settings.webUi.backgroundThrottle = true;
         if (typeof state.settings.webUi.restoreLastSession !== 'boolean') state.settings.webUi.restoreLastSession = true;
         if (typeof state.settings.webUi.suspendWhenInactive !== 'boolean') state.settings.webUi.suspendWhenInactive = true;
-        if (typeof state.settings.webUi.allowCamera !== 'boolean') state.settings.webUi.allowCamera = false;
-        if (typeof state.settings.webUi.allowMicrophone !== 'boolean') state.settings.webUi.allowMicrophone = false;
-        if (typeof state.settings.webUi.allowLocation !== 'boolean') state.settings.webUi.allowLocation = false;
-        if (typeof state.settings.webUi.allowNotifications !== 'boolean') state.settings.webUi.allowNotifications = false;
+        for (const key of ['allowCamera', 'allowMicrophone', 'allowLocation', 'allowNotifications', 'allowPopups', 'allowDisplayCapture', 'allowClipboardRead', 'allowAutomaticDownloads']) {
+            state.settings.webUi[key] = normalizeWebPermissionMode(state.settings.webUi[key], 'ask');
+        }
         if (!['desktop', 'mobile', 'default'].includes(String(state.settings.webUi.userAgentMode || '').toLowerCase())) state.settings.webUi.userAgentMode = 'desktop';
         if (!['allow', 'gesture', 'block'].includes(String(state.settings.webUi.autoplayPolicy || '').toLowerCase())) state.settings.webUi.autoplayPolicy = 'allow';
         if (typeof state.settings.webUi.askDownloadLocation !== 'boolean') state.settings.webUi.askDownloadLocation = true;
@@ -3157,10 +3391,8 @@ async function loadSettings() {
             state.settings.security.enforceAllowlist = false;
         }
         state.settings.security.sessionProfile = normalizeWebSessionProfile(state.settings.security.sessionProfile, 'persistent');
-        if (typeof state.settings.webUi.allowPopups !== 'boolean') {
-            state.settings.webUi.allowPopups = state.settings.security.allowPopups !== false;
-        }
-        state.settings.security.allowPopups = state.settings.webUi.allowPopups !== false;
+        state.settings.webUi.allowPopups = normalizeWebPermissionMode(state.settings.webUi.allowPopups, state.settings.security.allowPopups === false ? 'block' : 'ask');
+        state.settings.security.allowPopups = state.settings.webUi.allowPopups !== 'block';
         if (!state.settings.appearance || typeof state.settings.appearance !== 'object') {
             state.settings.appearance = {
                 theme: 'black',
@@ -3367,7 +3599,11 @@ async function loadSettings() {
 
 async function saveSettings() {
     if (window.ardali && state.settings) {
-        state.settings.volume = state.volume;
+        // Web oynatıcıları (özellikle YouTube) kendi ses seviyelerini bildirir.
+        // Bu geçici web seviyesi yerel müzik/video ana ses tercihini ezmemeli.
+        if (state.activeMedia !== 'web') {
+            state.settings.volume = state.volume;
+        }
         state.settings.shuffle = state.isShuffle;
         state.settings.repeat = state.isRepeat;
         state.settings.repeatOne = state.isRepeatOne;
@@ -5188,6 +5424,18 @@ function bindActiveWebSitePermissionControls() {
             await saveActiveWebSitePermissions();
         });
     }
+    if (elements.webResetActiveSitePermissionsBtn) {
+        elements.webResetActiveSitePermissionsBtn.addEventListener('click', async (event) => {
+            event.preventDefault();
+            const origin = getActiveWebOrigin();
+            if (origin) {
+                delete getWebSitePermissionStore()[origin];
+                await saveSettings();
+            }
+            renderActiveWebSitePermissions();
+            safeNotify('Aktif site izinleri ana ayarlara döndürüldü.', 'success');
+        });
+    }
     renderActiveWebSitePermissions();
 }
 
@@ -5357,6 +5605,14 @@ async function persistWebClearStatus(message = '') {
     await saveSettings();
 }
 
+function normalizeWebPermissionMode(value, fallback = 'ask', allowInherit = false) {
+    if (value === true) return 'allow';
+    if (value === false) return 'block';
+    const mode = String(value || '').trim().toLowerCase();
+    if (allowInherit && mode === 'inherit') return 'inherit';
+    return ['ask', 'allow', 'block'].includes(mode) ? mode : fallback;
+}
+
 function renderWebClearStatusFromSettings() {
     const lastClearAt = state.settings?.webUi?.lastClearAt;
     const lastClearSummary = String(state.settings?.webUi?.lastClearSummary || '').trim();
@@ -5396,12 +5652,22 @@ function renderActiveWebSitePermissions() {
         [elements.webActiveSiteAllowMicrophone, 'allowMicrophone'],
         [elements.webActiveSiteAllowLocation, 'allowLocation'],
         [elements.webActiveSiteAllowNotifications, 'allowNotifications'],
-        [elements.webActiveSiteAllowPopups, 'allowPopups']
+        [elements.webActiveSiteAllowPopups, 'allowPopups'],
+        [elements.webActiveSiteAllowDisplayCapture, 'allowDisplayCapture'],
+        [elements.webActiveSiteAllowClipboardRead, 'allowClipboardRead'],
+        [elements.webActiveSiteAllowAutomaticDownloads, 'allowAutomaticDownloads']
     ];
     for (const [control, key] of controls) {
         if (!control) continue;
         control.disabled = !origin;
-        control.checked = entry?.[key] === true;
+        control.value = Object.prototype.hasOwnProperty.call(entry, key)
+            ? normalizeWebPermissionMode(entry[key], 'inherit', true)
+            : 'inherit';
+    }
+    if (elements.webActiveSiteAutoplayPolicy) {
+        elements.webActiveSiteAutoplayPolicy.disabled = !origin;
+        const autoplay = String(entry?.autoplayPolicy || 'inherit').toLowerCase();
+        elements.webActiveSiteAutoplayPolicy.value = ['inherit', 'allow', 'gesture', 'block'].includes(autoplay) ? autoplay : 'inherit';
     }
     if (elements.webSaveActiveSitePermissionsBtn) {
         elements.webSaveActiveSitePermissionsBtn.disabled = !origin;
@@ -5410,6 +5676,37 @@ function renderActiveWebSitePermissions() {
         elements.webActiveSitePermissionStatus.textContent = origin
             ? uiT('settings.web.activeSitePermissions.status', 'Active site: {origin}', { origin })
             : uiT('settings.web.activeSitePermissions.noSite', 'Open a valid web page first.');
+    }
+    renderSavedWebSitePermissions();
+}
+
+function renderSavedWebSitePermissions() {
+    const host = elements.webSavedSitePermissions;
+    if (!host) return;
+    host.replaceChildren();
+    const origins = Object.keys(getWebSitePermissionStore()).sort();
+    if (!origins.length) {
+        const empty = document.createElement('span');
+        empty.className = 'settings-sub';
+        empty.textContent = uiT('settings.web.savedSitePermissions.empty', 'No custom site permissions saved.');
+        host.appendChild(empty);
+        return;
+    }
+    for (const origin of origins) {
+        const row = document.createElement('div');
+        row.className = 'settings-inline';
+        const label = document.createElement('span');
+        label.textContent = origin;
+        const remove = document.createElement('button');
+        remove.type = 'button';
+        remove.className = 'settings-btn';
+        remove.textContent = uiT('settings.web.activeSitePermissions.reset', 'Use defaults');
+        remove.addEventListener('click', async () => {
+            delete getWebSitePermissionStore()[origin];
+            await saveSettings();
+            renderActiveWebSitePermissions();
+        });
+        row.append(label, remove); host.appendChild(row);
     }
 }
 
@@ -5422,13 +5719,21 @@ async function saveActiveWebSitePermissions() {
     }
     const store = getWebSitePermissionStore();
     store[origin] = {
-        allowCamera: elements.webActiveSiteAllowCamera?.checked === true,
-        allowMicrophone: elements.webActiveSiteAllowMicrophone?.checked === true,
-        allowLocation: elements.webActiveSiteAllowLocation?.checked === true,
-        allowNotifications: elements.webActiveSiteAllowNotifications?.checked === true,
-        allowPopups: elements.webActiveSiteAllowPopups?.checked === true,
+        allowCamera: normalizeWebPermissionMode(elements.webActiveSiteAllowCamera?.value, 'inherit', true),
+        allowMicrophone: normalizeWebPermissionMode(elements.webActiveSiteAllowMicrophone?.value, 'inherit', true),
+        allowLocation: normalizeWebPermissionMode(elements.webActiveSiteAllowLocation?.value, 'inherit', true),
+        allowNotifications: normalizeWebPermissionMode(elements.webActiveSiteAllowNotifications?.value, 'inherit', true),
+        allowPopups: normalizeWebPermissionMode(elements.webActiveSiteAllowPopups?.value, 'inherit', true),
+        allowDisplayCapture: normalizeWebPermissionMode(elements.webActiveSiteAllowDisplayCapture?.value, 'inherit', true),
+        allowClipboardRead: normalizeWebPermissionMode(elements.webActiveSiteAllowClipboardRead?.value, 'inherit', true),
+        allowAutomaticDownloads: normalizeWebPermissionMode(elements.webActiveSiteAllowAutomaticDownloads?.value, 'inherit', true),
+        autoplayPolicy: ['allow', 'gesture', 'block'].includes(String(elements.webActiveSiteAutoplayPolicy?.value || '').toLowerCase()) ? String(elements.webActiveSiteAutoplayPolicy.value).toLowerCase() : 'inherit',
         updatedAt: new Date().toISOString()
     };
+    for (const key of Object.keys(store[origin])) {
+        if (store[origin][key] === 'inherit') delete store[origin][key];
+    }
+    if (Object.keys(store[origin]).every((key) => key === 'updatedAt')) delete store[origin];
     await saveSettings();
     renderActiveWebSitePermissions();
     safeNotify(uiT('settings.web.activeSitePermissions.saved', 'Active site permissions saved.'), 'success');
@@ -5921,6 +6226,10 @@ function setupEventListeners() {
             if (document.body.classList.contains('smart-sidebar-mode')) setSmartSidebarOpen(false);
         });
     });
+    document.getElementById('eqPresetsQuickBtn')?.addEventListener('click', () => {
+        openMainWorkspaceTab('eqPresets');
+        if (document.body.classList.contains('smart-sidebar-mode')) setSmartSidebarOpen(false);
+    });
     if (elements.sidebarToggleBtn) {
         elements.sidebarToggleBtn.addEventListener('click', () => {
             if (document.body.classList.contains('smart-sidebar-mode')) {
@@ -5973,24 +6282,25 @@ function setupEventListeners() {
             }
         });
     }
-    if (elements.settingsBtn) elements.settingsBtn.addEventListener('click', () => openSettings('web'));
-    if (elements.infoBtn) elements.infoBtn.addEventListener('click', showAbout);
+    if (elements.settingsBtn) elements.settingsBtn.addEventListener('click', () => {
+        if (!openMainWorkspaceTab('settings')) openSettings('web');
+    });
+    if (elements.infoBtn) elements.infoBtn.addEventListener('click', () => {
+        if (!openMainWorkspaceTab('about')) showAbout();
+    });
     if (elements.ardaliDawlodBtn) {
         elements.ardaliDawlodBtn.addEventListener('click', async () => {
             const url = await getActiveWebDownloadUrl();
-            if (!url) {
-                const ok = await window.ardali?.downloader?.openWindow?.('');
-                if (!ok) {
-                    safeNotify('ArDali Dawlod penceresi açılamadı.', 'error', 2600);
-                    return;
-                }
-                safeNotify('İndirilebilir içerik bulunamadı. Önce bir video veya şarkı açın.', 'error', 3200);
-                return;
-            }
-            const titleHint = (await getActiveWebDownloadTitleHintFromPage(url)) || buildWebDownloadFallbackTitleHint(url);
-            const ok = await window.ardali?.downloader?.openWindow?.({ url, titleHint });
-            if (!ok) {
-                safeNotify('ArDali Dawlod penceresi açılamadı.', 'error', 2600);
+            const titleHint = url
+                ? ((await getActiveWebDownloadTitleHintFromPage(url)) || buildWebDownloadFallbackTitleHint(url))
+                : '';
+            workspaceDownloaderLaunch = {
+                url: String(url || ''),
+                titleHint: String(titleHint || ''),
+                error: url ? '' : 'İndirilebilir içerik bulunamadı. Önce bir video veya şarkı açın.'
+            };
+            if (!openMainWorkspaceTab('downloader')) {
+                safeNotify('ArDali Dawlod sekmesi açılamadı.', 'error', 2600);
             }
         });
     }
@@ -6328,11 +6638,6 @@ function setupEventListeners() {
         ['behaviorWebRestoreLastSession', 'restoreLastSession', true],
         ['behaviorWebSuspendWhenInactive', 'suspendWhenInactive', true],
         ['behaviorWebAutoRecover', 'autoRecover', true],
-        ['behaviorWebAllowCamera', 'allowCamera', false],
-        ['behaviorWebAllowMicrophone', 'allowMicrophone', false],
-        ['behaviorWebAllowLocation', 'allowLocation', false],
-        ['behaviorWebAllowNotifications', 'allowNotifications', false],
-        ['behaviorWebAllowPopups', 'allowPopups', true],
         ['behaviorWebAskDownloadLocation', 'askDownloadLocation', true],
         ['behaviorWebReduceReferrers', 'reduceReferrers', true],
         ['behaviorWebStripTrackingParams', 'stripTrackingParams', true],
@@ -6355,6 +6660,30 @@ function setupEventListeners() {
             }
             if (settingKey === 'reduceWebRtcIpLeaks' || settingKey === 'backgroundThrottle') {
                 safeNotify(uiT('settings.web.notify.restartRequired', 'This Web setting is fully applied after restarting the app.'), 'info', 2600);
+            }
+            markSettingsDirty();
+        });
+    });
+    [
+        ['behaviorWebAllowCamera', 'allowCamera'],
+        ['behaviorWebAllowMicrophone', 'allowMicrophone'],
+        ['behaviorWebAllowLocation', 'allowLocation'],
+        ['behaviorWebAllowNotifications', 'allowNotifications'],
+        ['behaviorWebAllowPopups', 'allowPopups'],
+        ['behaviorWebAllowDisplayCapture', 'allowDisplayCapture'],
+        ['behaviorWebAllowClipboardRead', 'allowClipboardRead'],
+        ['behaviorWebAllowAutomaticDownloads', 'allowAutomaticDownloads']
+    ].forEach(([elementKey, settingKey]) => {
+        const element = elements[elementKey];
+        if (!element) return;
+        element.addEventListener('change', () => {
+            if (!state.settings.webUi || typeof state.settings.webUi !== 'object') state.settings.webUi = {};
+            state.settings.webUi[settingKey] = normalizeWebPermissionMode(element.value);
+            if (settingKey === 'allowPopups') {
+                if (!state.settings.security || typeof state.settings.security !== 'object') state.settings.security = {};
+                state.settings.security.allowPopups = state.settings.webUi.allowPopups !== 'block';
+                if (elements.securityAllowPopups) elements.securityAllowPopups.checked = state.settings.security.allowPopups;
+                applySecuritySettingsToRuntime();
             }
             markSettingsDirty();
         });
@@ -6436,6 +6765,14 @@ function setupEventListeners() {
         if (menu) menu.classList.add('hidden');
         const playlistMenu = document.getElementById('playlistContextMenu');
         if (playlistMenu && !playlistMenu.contains(e.target)) hidePlaylistContextMenu();
+        const galleryShareMenu = document.getElementById('galleryShareMenu');
+        if (
+            galleryShareMenu &&
+            !galleryShareMenu.contains(e.target) &&
+            !e.target?.closest?.('[data-gallery-action="share"]')
+        ) {
+            hideGalleryShareMenu();
+        }
 
         const galleryItem = e.target?.closest?.('.gallery-item[data-gallery-path]');
         if (galleryItem) {
@@ -6443,6 +6780,11 @@ function setupEventListeners() {
             const label = galleryItem.querySelector('.gallery-item-name')?.textContent || '';
             const action = String(e.target?.closest?.('[data-gallery-action]')?.dataset?.galleryAction || '').trim().toLowerCase();
             if (path && action) {
+                if (action === 'share') {
+                    state.currentImagePath = path;
+                    showGalleryShareMenu(e.target.closest('[data-gallery-action="share"]'), path, label);
+                    return;
+                }
                 if (action === 'rotate-left') {
                     rotateGalleryThumbnail(path, -90);
                     return;
@@ -6713,6 +7055,14 @@ function setupEventListeners() {
         });
     }
     if (elements.galleryLightboxStage) {
+        elements.galleryLightboxStage.addEventListener('dblclick', (event) => {
+            const target = event.target;
+            if (target instanceof HTMLElement && target.closest('button, input, select, textarea, .gallery-edit-panel, .gallery-lightbox-context-menu, .gallery-lightbox-bottom-bar')) return;
+            if (state.galleryCrop?.enabled || state.galleryRedEye?.mode || state.galleryAnnotation?.drawing) return;
+            event.preventDefault();
+            event.stopPropagation();
+            toggleGalleryFullscreenFromSurface().catch(() => {});
+        });
         elements.galleryLightboxStage.addEventListener('contextmenu', (event) => {
             if (!elements.galleryLightbox || elements.galleryLightbox.classList.contains('hidden')) return;
             event.preventDefault();
@@ -6729,7 +7079,14 @@ function setupEventListeners() {
             event.preventDefault();
             event.stopPropagation();
             const direction = event.deltaY < 0 ? 1 : -1;
-            zoomGalleryByWheelStep(direction);
+            if (isGalleryLightboxFullscreenActive()) {
+                const currentBrightness = normalizeGalleryEditValue('brightness', state.galleryEdit?.brightness);
+                const nextBrightness = normalizeGalleryEditValue('brightness', currentBrightness + (direction * 5));
+                setGalleryEditValue('brightness', nextBrightness);
+                showGalleryBrightnessHud(nextBrightness);
+            } else {
+                zoomGalleryByWheelStep(direction);
+            }
         }, { passive: false });
     }
     if (elements.galleryLightboxImage) {
@@ -7224,6 +7581,7 @@ function setupEventListeners() {
             renderGalleryAnnotationOverlay();
         });
     }
+    setupGalleryEditRangeControls();
     if (elements.galleryBackgroundMode) {
         elements.galleryBackgroundMode.addEventListener('change', (event) => {
             applyGalleryBackgroundMode(event?.target?.value, { persist: true });
@@ -7414,7 +7772,12 @@ function setupEventListeners() {
         if (isEditingText) return;
         if (state.galleryCrop?.enabled || state.galleryRedEye?.mode || state.galleryAnnotation?.drawing) return;
 
-        const galleryAction = detectGalleryShortcutAction(event);
+        const plainDirectionKey = !event.ctrlKey && !event.altKey && !event.metaKey && !event.shiftKey
+            ? String(event.code || event.key || '')
+            : '';
+        const galleryAction = plainDirectionKey === 'ArrowLeft'
+            ? 'prev'
+            : (plainDirectionKey === 'ArrowRight' ? 'next' : detectGalleryShortcutAction(event));
         if (!galleryAction) return;
 
         if (galleryAction === 'first') {
@@ -8018,6 +8381,8 @@ function setupEventListeners() {
     // WebView Gezinti Olayları (YouTube parça değişimi tespiti)
     window.bindWebViewEvents = function(webViewInstance) {
         if (!webViewInstance) return;
+        if (webViewInstance.__ardaliRendererEventsBound) return;
+        webViewInstance.__ardaliRendererEventsBound = true;
         webViewInstance.addEventListener('did-start-loading', () => {
             webLoadRuntime.navigationInFlight = true;
             triggerAdblockNavBurstRefresh();
@@ -8167,7 +8532,14 @@ function setupEventListeners() {
             if (!shouldInjectWebSync(currentUrl)) {
                 return;
             }
-            const webAdblockConfig = getAdblockWebModeProfile();
+            // DALI'yi genel web senkronizasyonundan önce başlat. YouTube hızlı
+            // autoplay yaptığında play() ilk ham ses karesinden önce yakalansın.
+            pushAppVolumeToWeb();
+            installWebDaliAttachHooks();
+            await syncPersistentWebSfxScope();
+            webDaliLastApplySignature = '';
+            const daliPrearmPromise = applyWebDaliEngineNow('dom-ready-prearm');
+            const webAdblockConfig = getAdblockWebModeProfile(currentUrl);
             const syncInstall = webViewInstance.executeJavaScript(`
                 try {
                     (function() {
@@ -8833,6 +9205,7 @@ function setupEventListeners() {
                         function tickYouTubeAdSkip() {
                             maybeEmitPageTitleHint();
                             installGenericPendingTitleHint();
+                            if (DELIBLOCK?.whitelisted === true) return;
                             scrubTikTokPromotedUi();
                             scrubGenericAdUi();
                             if (!isYouTubeHost()) return;
@@ -9185,14 +9558,16 @@ function setupEventListeners() {
             if (syncInstall && typeof syncInstall.then === 'function') {
                 await syncInstall.catch(() => false);
             }
-            // Graph kökünü play() kancasından önce kur. Aksi halde hızlı başlayan
-            // web medyası ilk sesi işlenmemiş çıkartıp ancak ayar değişince bağlanır.
-            pushAppVolumeToWeb();
-            await applyWebDaliEngineNow('dom-ready-prearm');
+            await daliPrearmPromise;
             installWebDaliAttachHooks();
             scheduleApplyWebDaliEngineBurst('dom-ready-post-hook', [0, 40, 120, 300, 700]);
         });
     }
+    // Web sekmeleri DOMContentLoaded sırasında bu bağlayıcıdan önce geri
+    // yüklenmiş olabilir. Yeni sekmeler kadar mevcut WebView'leri de bağla.
+    document.querySelectorAll('.webviews-container webview').forEach((webview) => {
+        window.bindWebViewEvents(webview);
+    });
 
     // Sistem Tepsisi Medya Kontrol Dinleyicisi
     setupSystemTrayControl();
@@ -10917,6 +11292,28 @@ const webDaliBassPresetRuntime = {
     stages: null,
     loadPromise: null
 };
+let webSfxPersistentSyncPromise = null;
+
+async function syncPersistentWebSfxScope() {
+    if (!window.ardali?.loadSettings) return false;
+    if (webSfxPersistentSyncPromise) return webSfxPersistentSyncPromise;
+    webSfxPersistentSyncPromise = (async () => {
+        try {
+            const persisted = await window.ardali.loadSettings();
+            const persistedWebScope = persisted?.sfxScopes?.web;
+            if (!persistedWebScope || typeof persistedWebScope !== 'object') return false;
+            state.settings = state.settings || {};
+            state.settings.sfxScopes = state.settings.sfxScopes || {};
+            state.settings.sfxScopes.web = structuredClone(persistedWebScope);
+            return true;
+        } catch {
+            return false;
+        } finally {
+            webSfxPersistentSyncPromise = null;
+        }
+    })();
+    return webSfxPersistentSyncPromise;
+}
 
 function resetWebDaliAttachMetrics(reason = 'reset') {
     webDaliAttachMetrics.sessionId += 1;
@@ -11093,6 +11490,15 @@ async function loadWebDaliBassPresetStages() {
     }
     webDaliBassPresetRuntime.stages = stages;
     return stages;
+}
+
+function prewarmWebDaliRuntimeAssets() {
+    Promise.all([
+        loadWebDaliPresetStages(),
+        loadWebDaliBassPresetStages()
+    ]).catch((error) => {
+        console.warn('[DALI WEB] runtime asset prewarm failed:', error?.message || error);
+    });
 }
 
 function getWebDaliEq32Settings(scope = 'web') {
@@ -17603,7 +18009,15 @@ function installWebDaliAttachHooks() {
                 const ensureDaliGraph = async (media) => {
                     try {
                         if (!media) return false;
-                        const root = window.__ARDALI_DALI_WEB__;
+                        let root = window.__ARDALI_DALI_WEB__;
+                        const waitStartedAt = performance.now();
+                        while (
+                            (!root || typeof root.ensureGraph !== 'function') &&
+                            (performance.now() - waitStartedAt) < 480
+                        ) {
+                            await new Promise((resolve) => setTimeout(resolve, 8));
+                            root = window.__ARDALI_DALI_WEB__;
+                        }
                         if (!root || typeof root.ensureGraph !== 'function') return false;
                         if (media.__ardaliDaliGraph) return true;
                         let pending = prewarmMap.get(media);
@@ -17785,8 +18199,11 @@ function primeWebDaliOnWebTabActivation(reason = 'web-tab-activate') {
     if (!elements.webView || typeof elements.webView.executeJavaScript !== 'function') return;
     const currentUrl = getWebViewUrlSafe();
     if (!shouldInjectWebSync(currentUrl)) return;
-    scheduleApplyWebDaliEngine(`${reason}:single`, 0);
-    scheduleApplyWebDaliEngineBurst(`${reason}:burst`, [0, 70, 180, 420, 900, 1600, 2600]);
+    syncPersistentWebSfxScope().finally(() => {
+        webDaliLastApplySignature = '';
+        scheduleApplyWebDaliEngine(`${reason}:single`, 0);
+        scheduleApplyWebDaliEngineBurst(`${reason}:burst`, [0, 70, 180, 420, 900, 1600, 2600]);
+    });
 }
 
 async function applyWebDaliLiveCfgNow(daliScope, cfg, liveEffect = '') {
@@ -17942,9 +18359,9 @@ function updatePulseQuickBtnUi() {
     elements.pulseQuickListenBtn.classList.toggle('searching', !!pulseQuickRuntime.searching);
     elements.pulseQuickListenBtn.title = pulseQuickRuntime.running
         ? (pulseQuickRuntime.searching
-            ? `ArDali-Pulse ${modeLabel}: Dinliyor... (aramaya devam ediyor)`
-            : `ArDali-Pulse ${modeLabel}: Açık (durdurmak için tıkla)`)
-        : `ArDali-Pulse ${modeLabel}: Kapalı (başlatmak için tıkla)`;
+            ? uiT('pulseQuick.button.searching', 'ArDali-Pulse {mode}: Listening... (search continues)', { mode: modeLabel })
+            : uiT('pulseQuick.button.running', 'ArDali-Pulse {mode}: On (click to stop)', { mode: modeLabel }))
+        : uiT('pulseQuick.button.stopped', 'ArDali-Pulse {mode}: Off (click to start)', { mode: modeLabel });
 }
 
 function clearPulseNoSignalHintTimer() {
@@ -18406,6 +18823,21 @@ function prepareWebUiForPulseSearch(btn) {
     applyEmbeddedUserAgentToWebView(getWebViewUrlSafe());
 }
 
+function openPulseSearchFromWorkspaceTab(searchUrl, btn) {
+    const activeTabUrl = String(window.getActiveTabUrl?.() || '').trim();
+    if (!activeTabUrl.startsWith('ardali-app://')) return false;
+    if (typeof window.createTab !== 'function') return false;
+
+    prepareWebUiForPulseSearch(btn);
+    const created = window.createTab(searchUrl, true);
+    pulseSearchDebug('workspace-target-tab', {
+        activeTabUrl,
+        searchUrl,
+        created: !!created
+    });
+    return !!created;
+}
+
 async function navigatePulseSearchInWebView(searchUrl, query, platform, options = {}) {
     if (!elements.webView) return;
     if (!isAllowedWebUrl(searchUrl)) return;
@@ -18499,6 +18931,10 @@ async function routePulseResultToInAppPlatform(result) {
 
     try {
         pulseSearchDebug('routeResult:start', { platform, query, searchUrl });
+        if (openPulseSearchFromWorkspaceTab(searchUrl, btn)) {
+            pulseSearchDebug('routeResult:end-workspace-tab', { platform, query, searchUrl });
+            return;
+        }
         const alreadyOpen = isPulseTargetPlatformAlreadyOpen(platform);
         if (!alreadyOpen) prepareWebUiForPulseSearch(btn);
         await navigatePulseSearchInWebView(searchUrl, query, platform, { fastPath: true });
@@ -18628,6 +19064,80 @@ function addPulseFoundResult(result) {
     renderPulseFoundList();
 }
 
+function openPulseResultFromNotification(result, platform) {
+    const query = buildPulseResultQuery(result);
+    if (!query) return false;
+    const targetPlatform = normalizePulseInAppPlatform(platform, 'youtube');
+    const searchUrl = buildPulseSearchUrl(targetPlatform, query);
+    if (typeof window.createTab === 'function') {
+        window.createTab(searchUrl, true);
+        return true;
+    }
+    routePulseQueryToInAppPlatform({
+        query,
+        platform: targetPlatform,
+        source: 'ardali-pulse-notification'
+    });
+    return true;
+}
+
+function showPulseResultNotification(result) {
+    const title = String(result?.title || '').trim();
+    const artist = String(result?.artist || result?.subtitle || '').trim();
+    const coverUrl = String(result?.coverUrl || result?.artwork || '').trim();
+    const label = [artist, title].filter(Boolean).join(' - ')
+        || uiT('pulseQuick.notification.unknownTrack', 'Track found');
+    const container = ensureNotificationContainer();
+    const item = document.createElement('div');
+    item.className = 'ardali-notify ardali-notify-success ardali-pulse-result-notify';
+
+    const art = createPulseFoundArt(coverUrl);
+    art.className = 'ardali-pulse-result-art';
+
+    const content = document.createElement('span');
+    content.className = 'ardali-pulse-result-content';
+    const heading = document.createElement('strong');
+    heading.textContent = uiT('pulseQuick.notification.foundTitle', 'Song found');
+    const text = document.createElement('span');
+    text.className = 'ardali-notify-text';
+    text.textContent = label;
+    const actions = document.createElement('span');
+    actions.className = 'ardali-pulse-result-actions';
+
+    const dismiss = () => {
+        item.classList.remove('show');
+        item.classList.add('hide');
+        setTimeout(() => item.remove(), 280);
+    };
+    const addPlatformButton = (platform, buttonLabel, iconPath) => {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'ardali-pulse-result-action';
+        const icon = document.createElement('img');
+        icon.src = iconPath;
+        icon.alt = '';
+        icon.setAttribute('aria-hidden', 'true');
+        const caption = document.createElement('span');
+        caption.textContent = buttonLabel;
+        button.append(icon, caption);
+        button.addEventListener('click', (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            openPulseResultFromNotification(result, platform);
+            dismiss();
+        });
+        actions.appendChild(button);
+    };
+    addPlatformButton('youtube', uiT('pulseQuick.notification.openYoutube', 'YouTube'), 'icons/platforms/youtube.svg');
+    addPlatformButton('ytmusic', uiT('pulseQuick.notification.openYoutubeMusic', 'YouTube Music'), 'icons/platforms/youtube-music.svg');
+    content.append(heading, text, actions);
+    item.append(art, content);
+    container.appendChild(item);
+    if (areAppNotificationsEnabled()) playNotificationSound();
+    requestAnimationFrame(() => item.classList.add('show'));
+    setTimeout(dismiss, 12000);
+}
+
 async function routePulseQueryToInAppPlatform(payload) {
     const query = String(payload?.query || '').trim();
     if (!query) return;
@@ -18641,6 +19151,10 @@ async function routePulseQueryToInAppPlatform(payload) {
     const searchUrl = buildPulseSearchUrl(platform, query);
     try {
         pulseSearchDebug('routeQuery:start', { platform, query, searchUrl, payloadPlatform: preferredPlatform });
+        if (openPulseSearchFromWorkspaceTab(searchUrl, btn)) {
+            pulseSearchDebug('routeQuery:end-workspace-tab', { platform, query, searchUrl });
+            return;
+        }
         const alreadyOpen = isPulseTargetPlatformAlreadyOpen(platform);
         if (!alreadyOpen) prepareWebUiForPulseSearch(btn);
         await navigatePulseSearchInWebView(searchUrl, query, platform, { fastPath: true });
@@ -18653,7 +19167,7 @@ async function routePulseQueryToInAppPlatform(payload) {
 
 async function togglePulseQuickListen() {
     if (!window.ardali?.pulse) {
-        safeNotify('ArDali-Pulse bu oturumda hazır değil.', 'warning', 2400);
+        safeNotify(uiT('pulseQuick.notification.unavailable', 'ArDali-Pulse is not available in this session.'), 'warning', 2400);
         return;
     }
 
@@ -18667,7 +19181,7 @@ async function togglePulseQuickListen() {
         pulseQuickRuntime.startedAt = 0;
         clearPulseNoSignalHintTimer();
         updatePulseQuickBtnUi();
-        safeNotify('ArDali-Pulse durduruldu.', 'info', 1600);
+        safeNotify(uiT('pulseQuick.notification.stopped', 'ArDali-Pulse stopped.'), 'info', 1600);
         return;
     }
 
@@ -18696,7 +19210,11 @@ async function togglePulseQuickListen() {
         pulseQuickRuntime.startedAt = 0;
         clearPulseNoSignalHintTimer();
         updatePulseQuickBtnUi();
-        safeNotify(`ArDali-Pulse başlatılamadı: ${res?.error || 'bilinmeyen hata'}`, 'error', 3200);
+        safeNotify(uiT(
+            'pulseQuick.notification.startFailed',
+            'ArDali-Pulse could not start: {error}',
+            { error: res?.error || uiT('common.unknownError', 'unknown error') }
+        ), 'error', 3200);
         return;
     }
 
@@ -18709,7 +19227,11 @@ async function togglePulseQuickListen() {
     }
 
     schedulePulseNoSignalHint();
-    safeNotify(`ArDali-Pulse ${getPulseQuickModeLabel(pulseMode.mode)}: dinliyor...`, 'info', 1800);
+    safeNotify(uiT(
+        'pulseQuick.notification.listening',
+        'ArDali-Pulse {mode}: listening...',
+        { mode: getPulseQuickModeLabel(pulseMode.mode) }
+    ), 'info', 1800);
 }
 
 
@@ -18731,9 +19253,9 @@ function setupPulseQuickListeners() {
                     pulseQuickRuntime.lastWarningAt = now;
                     const lowered = warningText.toLowerCase();
                     if (lowered.includes('429') || lowered.includes('too many') || lowered.includes('rate')) {
-                        safeNotify('ArDali-Pulse: Shazam istek limiti. 1-2 dakika bekleyip tekrar deneyin.', 'warning', 3200);
+                        safeNotify(uiT('pulseQuick.notification.rateLimit', 'ArDali-Pulse: Shazam request limit reached. Wait 1–2 minutes and try again.'), 'warning', 3200);
                     } else if (lowered.includes('network') || lowered.includes('unreachable') || lowered.includes('timeout')) {
-                        safeNotify('ArDali-Pulse: ağ hatası. İnternet bağlantısını kontrol edin.', 'warning', 3200);
+                        safeNotify(uiT('pulseQuick.notification.networkError', 'ArDali-Pulse: network error. Check your internet connection.'), 'warning', 3200);
                     }
                 }
             }
@@ -18766,16 +19288,12 @@ function setupPulseQuickListeners() {
             clearPulseNoSignalHintTimer();
             const title = String(result?.title || '').trim();
             const artist = String(result?.artist || '').trim();
-            const label = [artist, title].filter(Boolean).join(' - ') || 'Parça';
+            const label = [artist, title].filter(Boolean).join(' - ')
+                || uiT('pulseQuick.notification.unknownTrackShort', 'Track');
             addPulseFoundResult(result);
-            safeNotify(`Bulundu: ${label}`, 'success', 2600);
-            const shouldAutoOpen = !!pulseQuickRuntime.ownedByQuickButton;
-            if (shouldAutoOpen) {
-                Promise.resolve(routePulseResultToInAppPlatform(result))
-                    .catch((e) => {
-                        pulseSearchDebug('routeResult:error-from-quick-button', String(e?.message || e));
-                    });
-            }
+            const foundByQuickButton = !!pulseQuickRuntime.ownedByQuickButton;
+            if (foundByQuickButton) showPulseResultNotification(result);
+            else safeNotify(uiT('pulseQuick.notification.found', 'Found: {track}', { track: label }), 'success', 2600);
             pulseQuickRuntime.searching = false;
             updatePulseQuickBtnUi();
 
@@ -18796,7 +19314,7 @@ function setupPulseQuickListeners() {
                         clearPulseNoSignalHintTimer();
                         updatePulseQuickBtnUi();
                         if (!PULSE_HIDE_AUTO_STOP_NOTICE) {
-                            safeNotify('Bulundu. Dinleme otomatik durduruldu.', 'info', 1800);
+                            safeNotify(uiT('pulseQuick.notification.autoStopped', 'Found. Listening stopped automatically.'), 'info', 1800);
                         }
                     })
                     .catch(() => {
@@ -19222,6 +19740,7 @@ const WEB_ALLOWED_HOSTS = new Set([
     'whatsapp.com',
     'www.whatsapp.com',
     'web.whatsapp.com',
+    'wa.me',
     'telegram.org',
     'www.telegram.org',
     'web.telegram.org',
@@ -19230,7 +19749,9 @@ const WEB_ALLOWED_HOSTS = new Set([
     'spotify.com',
     'www.spotify.com',
     'open.spotify.com',
-    'accounts.spotify.com'
+    'accounts.spotify.com',
+    'pinterest.com',
+    'www.pinterest.com'
 ]);
 
 const WEB_ALLOWED_SUFFIXES = [
@@ -19249,7 +19770,8 @@ const WEB_ALLOWED_SUFFIXES = [
     '.twitch.tv',
     '.whatsapp.com',
     '.telegram.org',
-    '.spotify.com'
+    '.spotify.com',
+    '.pinterest.com'
 ];
 
 function parseHttpUrl(raw) {
@@ -19608,13 +20130,19 @@ async function refreshAdblockStats(showToast = false) {
     const inWeb = state.currentPage === 'web' || state.currentPanel === 'web' || state.activeMedia === 'web';
     const key = getActiveAdblockCounterKey();
     try {
+        const activeHostname = getActiveAdblockHostname();
+        await window.ardali?.adblock?.setActiveHostname?.(activeHostname);
         const stats = await window.ardali?.adblock?.getStats?.();
         const absoluteBlocked = Number(stats?.blocked ?? stats?.totalBlocked ?? 0) || 0;
         adblockRuntime.lastAbsoluteBlocked = absoluteBlocked;
+        renderDeliBlockQuickAccess(stats);
 
         if (elements.adblockStatusText) {
             const mode = normalizeAdblockMode(stats?.mode || ensureAdblockSettings().mode);
-            elements.adblockStatusText.textContent = `DeliBlock: ${mode}`;
+            const whitelisted = getAdblockPolicyForHostname(activeHostname)?.policy?.whitelisted === true;
+            elements.adblockStatusText.textContent = whitelisted
+                ? 'Bu site Beyaz Listede, koruma uygulanmıyor.'
+                : `DeliBlock: ${mode}`;
         }
 
         if (!inWeb || !key) {
@@ -19638,18 +20166,131 @@ async function refreshAdblockStats(showToast = false) {
         return stats;
     } catch (e) {
         console.warn('[ADBLOCK] refreshStats error:', e?.message || e);
+        renderDeliBlockQuickAccess();
         return null;
     }
 }
 
-async function openAdblockDashboardPanel() {
+async function openAdblockDashboardPanel(tab = '') {
     try {
-        const opened = await window.ardali?.adblock?.openWindow?.();
+        const opened = await window.ardali?.adblock?.openWindow?.(tab ? { tab } : undefined);
         if (opened) return true;
     } catch (e) {
         console.warn('[ADBLOCK] open window error:', e?.message || e);
     }
     return false;
+}
+
+function getDeliBlockQuickElements() {
+    return {
+        button: document.getElementById('webAddressDeliBlock'),
+        panel: document.getElementById('deliBlockQuickPanel'),
+        host: document.getElementById('deliBlockQuickHost'),
+        blocked: document.getElementById('deliBlockQuickBlocked'),
+        ads: document.getElementById('deliBlockQuickAds'),
+        trackers: document.getElementById('deliBlockQuickTrackers'),
+        whitelist: document.getElementById('deliBlockQuickWhitelist'),
+        notice: document.getElementById('deliBlockQuickNotice'),
+        picker: document.getElementById('deliBlockQuickPicker'),
+        logger: document.getElementById('deliBlockQuickLogger'),
+        open: document.getElementById('deliBlockQuickOpen')
+    };
+}
+
+function renderDeliBlockQuickAccess(stats = null) {
+    const ui = getDeliBlockQuickElements();
+    if (!ui.button) return;
+    const hostname = getActiveAdblockHostname();
+    const policy = getAdblockPolicyForHostname(hostname)?.policy || null;
+    const whitelisted = policy?.whitelisted === true;
+    const blocked = Math.max(0, Number(stats?.blocked ?? stats?.totalBlocked ?? adblockRuntime.lastAbsoluteBlocked) || 0);
+    const hasHost = !!hostname;
+    if (ui.host) ui.host.textContent = hostname || '—';
+    if (ui.blocked) ui.blocked.textContent = String(blocked);
+    if (ui.ads) {
+        ui.ads.checked = policy?.adBlocking !== false;
+        ui.ads.disabled = !hasHost || whitelisted;
+    }
+    if (ui.trackers) {
+        ui.trackers.checked = policy?.trackerProtection !== false;
+        ui.trackers.disabled = !hasHost || whitelisted;
+    }
+    if (ui.whitelist) {
+        ui.whitelist.checked = whitelisted;
+        ui.whitelist.disabled = !hasHost;
+    }
+    if (ui.picker) ui.picker.disabled = !hasHost || whitelisted;
+    ui.notice?.classList.toggle('hidden', !whitelisted);
+    ui.button.disabled = !hasHost;
+    ui.button.classList.toggle('whitelisted', whitelisted);
+    ui.button.title = [
+        'DeliBlock',
+        hostname || 'Aktif site yok',
+        whitelisted ? 'Beyaz Listede' : 'Koruma Açık',
+        whitelisted ? 'Koruma uygulanmıyor.' : `${blocked} istek engellendi`
+    ].join('\n');
+}
+
+function openActiveDeliBlockElementPicker() {
+    const hostname = getActiveAdblockHostname();
+    if (!hostname || getAdblockPolicyForHostname(hostname)?.policy?.whitelisted === true) return false;
+    const webview = window.getActiveWebView?.() || elements.webView;
+    if (!webview || typeof webview.send !== 'function') return false;
+    try {
+        webview.send('adblock:startElementPicker', { mode: 'hide' });
+        getDeliBlockQuickElements().panel?.classList.add('hidden');
+        return true;
+    } catch {
+        return false;
+    }
+}
+
+function setupDeliBlockQuickAccess() {
+    const ui = getDeliBlockQuickElements();
+    if (!ui.button || !ui.panel || ui.button.dataset.bound === 'true') return;
+    const closePanel = () => {
+        ui.panel.classList.add('hidden');
+        ui.button.classList.remove('active');
+        ui.button.setAttribute('aria-expanded', 'false');
+    };
+    ui.button.dataset.bound = 'true';
+    ui.button.addEventListener('click', async (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        const opening = ui.panel.classList.contains('hidden');
+        ui.panel.classList.toggle('hidden', !opening);
+        ui.button.classList.toggle('active', opening);
+        ui.button.setAttribute('aria-expanded', opening ? 'true' : 'false');
+        if (opening) renderDeliBlockQuickAccess(await refreshAdblockStats(false));
+    });
+    ui.panel.addEventListener('click', (event) => event.stopPropagation());
+    ui.ads?.addEventListener('change', () => {
+        setAdblockSiteProtection(getActiveAdblockHostname(), 'adBlocking', ui.ads.checked).catch(() => {});
+    });
+    ui.trackers?.addEventListener('change', () => {
+        setAdblockSiteProtection(getActiveAdblockHostname(), 'trackerProtection', ui.trackers.checked).catch(() => {});
+    });
+    ui.whitelist?.addEventListener('change', () => {
+        setAdblockSiteWhitelist(getActiveAdblockHostname(), ui.whitelist.checked).catch(() => {});
+    });
+    ui.picker?.addEventListener('click', () => {
+        closePanel();
+        openActiveDeliBlockElementPicker();
+    });
+    ui.logger?.addEventListener('click', () => {
+        closePanel();
+        openAdblockDashboardPanel('logger');
+    });
+    ui.open?.addEventListener('click', () => {
+        closePanel();
+        openAdblockDashboardPanel();
+    });
+    document.addEventListener('click', closePanel);
+    window.addEventListener('ardali:tab-url-changed', () => {
+        renderDeliBlockQuickAccess();
+        refreshAdblockStats(false);
+    });
+    renderDeliBlockQuickAccess();
 }
 
 
@@ -21279,13 +21920,55 @@ function refreshLanguageSensitiveLibraryUi() {
     } catch {}
 }
 
+function localizeWebPermissionControls() {
+    const optionLabels = {
+        ask: uiT('settings.web.permissions.mode.ask', 'Ask'),
+        allow: uiT('settings.web.permissions.mode.allow', 'Allow'),
+        block: uiT('settings.web.permissions.mode.block', 'Block'),
+        inherit: uiT('settings.web.permissions.mode.inherit', 'Use default'),
+        gesture: uiT('settings.web.permissions.mode.gesture', 'Require interaction')
+    };
+    document.querySelectorAll('.web-permission-mode option, .web-site-permission-mode option').forEach((option) => {
+        const label = optionLabels[String(option.value || '')];
+        if (label) option.textContent = label;
+    });
+
+    const controlLabels = {
+        webActiveSiteAllowCamera: uiT('settings.web.permissions.camera.short', 'Camera'),
+        webActiveSiteAllowMicrophone: uiT('settings.web.permissions.microphone.short', 'Microphone'),
+        webActiveSiteAllowLocation: uiT('settings.web.permissions.location.short', 'Location'),
+        webActiveSiteAllowNotifications: uiT('settings.web.permissions.notifications.short', 'Notifications'),
+        webActiveSiteAllowPopups: uiT('settings.web.permissions.popups.short', 'Pop-ups'),
+        webActiveSiteAllowDisplayCapture: uiT('settings.web.permissions.displayCapture.short', 'Screen'),
+        webActiveSiteAllowClipboardRead: uiT('settings.web.permissions.clipboardRead.short', 'Clipboard'),
+        webActiveSiteAllowAutomaticDownloads: uiT('settings.web.permissions.automaticDownloads.short', 'Downloads'),
+        webActiveSiteAutoplayPolicy: uiT('settings.web.permissions.autoplay.short', 'Autoplay')
+    };
+    Object.entries(controlLabels).forEach(([id, label]) => {
+        const select = document.getElementById(id);
+        const host = select?.closest('label');
+        const textNode = host ? [...host.childNodes].find((node) => node.nodeType === Node.TEXT_NODE) : null;
+        if (textNode) textNode.nodeValue = `${label} `;
+    });
+}
+
 window.addEventListener('ardali:languageChanged', () => {
-    refreshLanguageSensitiveLibraryUi();
+    try { refreshLanguageSensitiveLibraryUi(); } catch {}
     try { updatePulseQuickModeUi(); } catch {}
     try { updateOptimizationProfileUi(); } catch {}
     try { updateAudioNightModeHint(); } catch {}
     try { updateAudioSpatialHint(); } catch {}
     try { applySystemAudioStateToUi(); } catch {}
+    try { localizeWebPermissionControls(); } catch {}
+    try {
+        Object.keys(APP_WORKSPACE_TAB_META).forEach((key) => {
+            const meta = getLocalizedWorkspaceTabMeta(key);
+            window.updateAppWorkspaceTabMeta?.(key, meta);
+            const frame = document.querySelector(`#workspace-${key}-page .workspace-embedded-frame`);
+            if (frame && meta?.title) frame.title = meta.title;
+        });
+        updatePulseQuickBtnUi();
+    } catch {}
 });
 
 function getFsOnOffLabel(enabled) {
@@ -23436,9 +24119,236 @@ function setupUtilityWindowIndicators() {
         .catch(() => setUtilityRunningState('pulse', false));
 }
 
-function handleSidebarClick(btn) {
+const APP_WORKSPACE_TAB_META = Object.freeze({
+    music: { titleKey: 'workspace.tabs.music', title: 'Music', icon: 'icons/ui/readme_music.svg' },
+    video: { titleKey: 'workspace.tabs.video', title: 'Videos', icon: 'icons/ui/nav_video.svg' },
+    videoTools: { titleKey: 'workspace.tabs.videoTools', title: 'Screen Recorder', icon: 'icons/ui/video_tools_studio.svg' },
+    gallery: { titleKey: 'workspace.tabs.gallery', title: 'Gallery', icon: 'icons/ui/readme_gallery.svg' },
+    pulse: { titleKey: 'workspace.tabs.pulse', title: 'Find Song', icon: 'icons/ui/song-find.svg' },
+    downloader: { titleKey: 'workspace.tabs.downloader', title: 'ArDali Dawlod', icon: 'icons/ui/sidebar-dawlod-premium.svg' },
+    settings: { titleKey: 'workspace.tabs.settings', title: 'Settings', icon: 'icons/ui/settings-gear.svg' },
+    about: { titleKey: 'workspace.tabs.about', title: 'About', icon: 'icons/app/ardali_256.png' },
+    soundEffects: { titleKey: 'workspace.tabs.soundEffects', title: 'Sound Effects', icon: 'icons/ui/sound-effects.svg' },
+    eqPresets: { titleKey: 'workspace.tabs.eqPresets', title: 'EQ Presets', icon: 'icons/ui/eq-presets.svg' }
+});
+
+function getLocalizedWorkspaceTabMeta(page) {
+    const meta = APP_WORKSPACE_TAB_META[page];
+    if (!meta) return null;
+    return {
+        ...meta,
+        title: uiT(meta.titleKey, meta.title)
+    };
+}
+let workspaceDownloaderLaunch = { url: '', titleHint: '', error: '' };
+let workspaceSfxScope = 'music';
+let workspaceSettingsSurface = 'settings';
+let workspaceAdblockTab = 'settings';
+let workspacePendingAppKey = '';
+let activePlaybackPreservingWorkspaceKey = '';
+const PLAYBACK_PRESERVING_WORKSPACE_KEYS = new Set([
+    'gallery',
+    'settings',
+    'soundEffects',
+    'eqPresets',
+    'pulse',
+    'downloader'
+]);
+
+function shouldPreserveWorkspacePlayback() {
+    return PLAYBACK_PRESERVING_WORKSPACE_KEYS.has(workspacePendingAppKey) ||
+        PLAYBACK_PRESERVING_WORKSPACE_KEYS.has(activePlaybackPreservingWorkspaceKey);
+}
+window.ardali?.onOpenApplicationTab?.(({ appKey, payload = {} } = {}) => {
+    const key = String(appKey || '').trim();
+    if (!APP_WORKSPACE_TAB_META[key]) return;
+    if (key === 'downloader') {
+        workspaceDownloaderLaunch = {
+            url: String(payload.url || ''),
+            titleHint: String(payload.titleHint || ''),
+            error: String(payload.error || '')
+        };
+    } else if (key === 'soundEffects') {
+        syncWorkspaceSfxScope(payload.scope);
+    } else if (key === 'settings') {
+        workspaceSettingsSurface = payload.surface === 'adblock' ? 'adblock' : 'settings';
+        if (workspaceSettingsSurface === 'adblock') {
+            const requested = String(payload.defaultTab || '').trim().toLowerCase();
+            workspaceAdblockTab = ['sites', 'logger', 'settings', 'filters', 'rulesets', 'statistics', 'about'].includes(requested)
+                ? requested
+                : 'settings';
+        }
+    }
+    openMainWorkspaceTab(key);
+    if (key === 'settings' && payload.defaultTab) {
+        activateSettingsTab(String(payload.defaultTab));
+    }
+});
+window.ardali?.onCloseApplicationTab?.(({ appKey } = {}) => {
+    window.closeAppWorkspaceTab?.(String(appKey || '').trim());
+});
+
+const applicationModuleLifecycle = (() => {
+    const modules = new Map();
+    const safeCall = async (entry, phase) => {
+        try {
+            await entry?.handlers?.[phase]?.();
+        } catch (error) {
+            console.warn(`[MODULE LIFECYCLE] ${entry?.key || 'unknown'} ${phase} failed:`, error?.message || error);
+        }
+    };
+    const register = (key, handlers = {}) => {
+        const normalized = String(key || '').trim();
+        if (!normalized) return;
+        modules.set(normalized, {
+            key: normalized,
+            handlers,
+            active: false,
+            suspended: true,
+            closed: true,
+            closePromise: null
+        });
+    };
+    const activate = async (key) => {
+        const entry = modules.get(String(key || ''));
+        if (!entry) return;
+        if (entry.closePromise) await entry.closePromise;
+        if (entry.closed) {
+            entry.closed = false;
+            await safeCall(entry, 'activate');
+        }
+        if (entry.suspended) {
+            await safeCall(entry, 'resume');
+            entry.suspended = false;
+        }
+        entry.active = true;
+    };
+    const deactivate = async (key) => {
+        const entry = modules.get(String(key || ''));
+        if (!entry || entry.closed || !entry.active) return;
+        entry.active = false;
+        await safeCall(entry, 'deactivate');
+    };
+    const suspend = async (key) => {
+        const entry = modules.get(String(key || ''));
+        if (!entry || entry.closed || entry.suspended) return;
+        await safeCall(entry, 'suspend');
+        entry.suspended = true;
+    };
+    const close = async (key) => {
+        const entry = modules.get(String(key || ''));
+        if (!entry || entry.closed) return;
+        if (entry.closePromise) return entry.closePromise;
+        entry.closePromise = (async () => {
+            if (entry.active) await deactivate(entry.key);
+            if (!entry.suspended) await suspend(entry.key);
+            await safeCall(entry, 'close');
+            entry.active = false;
+            entry.suspended = true;
+            entry.closed = true;
+        })().finally(() => {
+            entry.closePromise = null;
+        });
+        return entry.closePromise;
+    };
+    return Object.freeze({ register, activate, deactivate, suspend, close });
+})();
+
+function syncWorkspaceSfxScope(scope) {
+    const next = String(scope || '').trim().toLowerCase();
+    if (next !== 'music' && next !== 'video' && next !== 'web') return;
+    workspaceSfxScope = next;
+}
+
+function openMainWorkspaceTab(page) {
+    const meta = getLocalizedWorkspaceTabMeta(page);
+    if (!meta || typeof window.openAppWorkspaceTab !== 'function') return false;
+    // activateTab() önce mevcut sekmenin deactivation olayını senkron olarak
+    // yayınlar. Hedef anahtar bazı eski/geri yüklenmiş sekme yollarında eksik
+    // kalabildiği için gerçek hedefi çağrı boyunca ayrıca koruyoruz.
+    workspacePendingAppKey = page;
+    if (PLAYBACK_PRESERVING_WORKSPACE_KEYS.has(page)) {
+        activePlaybackPreservingWorkspaceKey = page;
+    }
+    try {
+        window.openAppWorkspaceTab(page, meta);
+    } finally {
+        queueMicrotask(() => {
+            if (workspacePendingAppKey === page) workspacePendingAppKey = '';
+        });
+    }
+    return true;
+}
+
+function ensureEmbeddedWorkspacePage(key, source, title) {
+    const stack = document.querySelector('.content-stack');
+    if (!stack) return null;
+    const target = new URL(source, window.location.href);
+    target.searchParams.set('embedded', '1');
+    let page = document.getElementById(`workspace-${key}-page`);
+    if (!page) {
+        page = document.createElement('div');
+        page.id = `workspace-${key}-page`;
+        page.className = 'page hidden workspace-embedded-page';
+        const frame = document.createElement('webview');
+        frame.className = 'workspace-embedded-frame';
+        frame.title = title;
+        frame.dataset.source = source;
+        frame.src = target.href;
+        frame.setAttribute('webpreferences', 'contextIsolation=yes, nodeIntegration=no, sandbox=yes');
+        frame.addEventListener('dom-ready', () => {
+            if (key === 'downloader') {
+                postEmbeddedWorkspaceMessage(frame, {
+                    type: 'downloader:loadUrl',
+                    payload: workspaceDownloaderLaunch
+                });
+            } else if (key === 'adblock') {
+                postEmbeddedWorkspaceMessage(frame, {
+                    type: 'workspace:lifecycle',
+                    phase: 'activate'
+                });
+            }
+        });
+        page.appendChild(frame);
+        stack.appendChild(page);
+    }
+    const frame = page.querySelector('webview');
+    if (frame) {
+        if (String(frame.src || '') !== target.href) frame.src = target.href;
+    }
+    return page;
+}
+
+function postEmbeddedWorkspaceMessage(frame, payload) {
+    if (!frame?.executeJavaScript || !payload || typeof payload !== 'object') return Promise.resolve(false);
+    const serialized = JSON.stringify(payload).replace(/\u2028/g, '\\u2028').replace(/\u2029/g, '\\u2029');
+    const script = payload.type === 'downloader:loadUrl'
+        ? `(() => {
+            const message = ${serialized};
+            const nextPayload = message && typeof message.payload === 'object' ? message.payload : {};
+            if (typeof window.__ardaliHandleEmbeddedDownloaderPayload === 'function') {
+                window.__ardaliHandleEmbeddedDownloaderPayload(nextPayload);
+            } else {
+                window.__ardaliPendingEmbeddedDownloaderPayload = nextPayload;
+            }
+            return true;
+        })()`
+        : `window.postMessage(${serialized}, window.location.origin); true;`;
+    return frame.executeJavaScript(script, true)
+        .catch(() => false);
+}
+
+function handleSidebarClick(btn, options = {}) {
     const page = btn.dataset.page;
     const panel = btn.dataset.panel;
+    if (page === 'web') syncWorkspaceSfxScope('web');
+    else if (page === 'music') syncWorkspaceSfxScope('music');
+    else if (page === 'video' || page === 'videoTools') syncWorkspaceSfxScope('video');
+    if (!options.fromWorkspaceTab && page !== 'web' && APP_WORKSPACE_TAB_META[page]) {
+        if (page === 'settings') workspaceSettingsSurface = 'settings';
+        openMainWorkspaceTab(page);
+        return;
+    }
     if (page === 'web' && !isWebExperienceEnabled()) {
         safeNotify(uiT('ui.startup.webExperienceEnabled.notifyDisabled', 'Web experience is off. You can enable it in Settings.'), 'info');
         return;
@@ -23452,6 +24362,34 @@ function handleSidebarClick(btn) {
 
     // "Pulse" sekmesi: Dinleme modunu aç/kapat, aktif sekmeyi bozma.
     if (page === 'pulse') {
+        if (options.fromWorkspaceTab) {
+            document.body.classList.add('workspace-pulse-tab-active');
+            elements.pages.forEach((item) => {
+                item.classList.add('hidden');
+                item.classList.remove('active');
+            });
+            document.querySelectorAll('.workspace-embedded-page').forEach((item) => {
+                item.classList.add('hidden');
+                item.classList.remove('active');
+            });
+            elements.libraryPanel?.classList.add('hidden');
+            elements.webPanel?.classList.add('hidden');
+            // Pulse, çalan kaynağı dinleyen yardımcı bir yüzeydir. Web/müzik/video
+            // kaynağını durdurmadan yalnızca kendi çalışma alanını göster.
+            stopGallerySlideshow();
+            const pulsePage = ensureEmbeddedWorkspacePage(
+                'pulse',
+                'pulse.html',
+                uiT('workspace.tabs.pulse', 'Find Song')
+            );
+            pulsePage?.classList.remove('hidden');
+            pulsePage?.classList.add('active');
+            elements.sidebarBtns.forEach((item) => item.classList.remove('active'));
+            btn.classList.add('active');
+            state.currentPage = 'pulse';
+            updateAppWindowTitle('pulse');
+            return;
+        }
         const prevActive = document.querySelector('.sidebar-btn[data-page].active');
         Promise.resolve(window.ardali?.pulse?.openWindow?.())
             .then(() => {
@@ -23468,16 +24406,6 @@ function handleSidebarClick(btn) {
     // Kenar çubuğu butonlarını güncelle
     elements.sidebarBtns.forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
-
-    // Video sekmesine geçildiğinde müziği durdur
-    if ((page === 'video' || page === 'videoTools') && state.isPlaying && state.activeMedia === 'audio') {
-        stopAudio();
-        state.isPlaying = false;
-        updatePlayPauseIcon(false);
-        updateCoverArt(null, 'video'); // Video ikonunu göster
-        updateTrayState();
-        updateMPRISMetadata();
-    }
 
     // Media filtresini ayarla
     if (page === 'music') {
@@ -23557,6 +24485,406 @@ function handleSidebarClick(btn) {
     }
 }
 
+function activateWorkspaceUtilityPage(key) {
+    closeAboutModal();
+    document.getElementById('eqModal')?.classList.add('hidden');
+    if (key === 'settings') {
+        document.body.classList.add('workspace-settings-tab-active');
+        if (workspaceSettingsSurface === 'adblock') {
+            elements.pages.forEach((page) => {
+                page.classList.add('hidden');
+                page.classList.remove('active');
+            });
+            elements.libraryPanel?.classList.add('hidden');
+            elements.webPanel?.classList.add('hidden');
+            isolateMediaSection('workspace');
+            const adblockPage = ensureEmbeddedWorkspacePage(
+                'adblock',
+                `adblock.html?tab=${encodeURIComponent(workspaceAdblockTab)}`,
+                'DeliBlock'
+            );
+            adblockPage?.classList.remove('hidden');
+            adblockPage?.classList.add('active');
+            const adblockFrame = adblockPage?.querySelector('webview');
+            if (adblockFrame) {
+                postEmbeddedWorkspaceMessage(adblockFrame, {
+                    type: 'workspace:lifecycle',
+                    phase: 'activate'
+                });
+            }
+            state.currentPage = 'settings';
+            updateAppWindowTitle('settings');
+            return true;
+        }
+        elements.pages.forEach((page) => {
+            page.classList.add('hidden');
+            page.classList.remove('active');
+        });
+        elements.libraryPanel?.classList.add('hidden');
+        elements.webPanel?.classList.add('hidden');
+        isolateMediaSection('workspace');
+        showUtilityPage(elements.settingsPage, elements.settingsBtn);
+        loadSettingsToUI();
+        activateSettingsTab('web');
+        state.currentPage = 'settings';
+        updateAppWindowTitle('settings');
+        return true;
+    }
+    if (key === 'about') {
+        isolateMediaSection('workspace');
+        showAbout();
+        return true;
+    }
+    if (key === 'soundEffects') {
+        document.body.classList.add('workspace-sfx-tab-active');
+        elements.pages.forEach((page) => {
+            page.classList.add('hidden');
+            page.classList.remove('active');
+        });
+        elements.libraryPanel?.classList.add('hidden');
+        elements.webPanel?.classList.add('hidden');
+        // Ses Efektleri kaynak medyanın yardımcı kontrol yüzeyidir. Buraya
+        // geçerken müzik/video/web sesini durdurma; kullanıcı değişikliği
+        // çalan kaynak üzerinde anlık duymalıdır.
+        stopGallerySlideshow();
+        const sfxPage = ensureEmbeddedWorkspacePage(
+            'sound-effects',
+            `soundEffects.html?scope=${workspaceSfxScope}&embedded=1`,
+            'Ses Efektleri'
+        );
+        sfxPage?.classList.remove('hidden');
+        sfxPage?.classList.add('active');
+        state.currentPage = 'soundEffects';
+        updateAppWindowTitle('soundEffects');
+        return true;
+    }
+    if (key === 'eqPresets') {
+        document.body.classList.add('workspace-eq-presets-tab-active');
+        document.getElementById('eqPresetsQuickBtn')?.classList.add('active');
+        elements.pages.forEach((page) => {
+            page.classList.add('hidden');
+            page.classList.remove('active');
+        });
+        elements.libraryPanel?.classList.add('hidden');
+        elements.webPanel?.classList.add('hidden');
+        stopGallerySlideshow();
+        const presetsPage = ensureEmbeddedWorkspacePage(
+            'eq-presets',
+            'eqPresets.html',
+            'EQ Hazır Ayarlar'
+        );
+        presetsPage?.classList.remove('hidden');
+        presetsPage?.classList.add('active');
+        state.currentPage = 'eqPresets';
+        updateAppWindowTitle('soundEffects');
+        return true;
+    }
+    if (key === 'downloader') {
+        elements.pages.forEach((page) => {
+            page.classList.add('hidden');
+            page.classList.remove('active');
+        });
+        elements.libraryPanel?.classList.add('hidden');
+        elements.webPanel?.classList.add('hidden');
+        // İndirme ekranı açılırken kaynak WebView yaşamaya devam etmeli.
+        // Kaynağı kapatmak URL'yi about:blank yapar ve web oynatımını keser.
+        stopGallerySlideshow();
+        const downloaderPage = ensureEmbeddedWorkspacePage(
+            'downloader',
+            'downloader.html?embedded=1',
+            'ArDali Dawlod'
+        );
+        downloaderPage?.classList.remove('hidden');
+        downloaderPage?.classList.add('active');
+        state.currentPage = 'downloader';
+        updateAppWindowTitle('downloader');
+        const frame = downloaderPage?.querySelector('webview');
+        if (frame) {
+            postEmbeddedWorkspaceMessage(frame, {
+                type: 'downloader:loadUrl',
+                payload: workspaceDownloaderLaunch
+            });
+        }
+        return true;
+    }
+    return false;
+}
+
+window.addEventListener('ardali:app-tab-activated', (event) => {
+    const key = String(event.detail?.key || '');
+    activePlaybackPreservingWorkspaceKey = PLAYBACK_PRESERVING_WORKSPACE_KEYS.has(key) ? key : '';
+    applicationModuleLifecycle.activate(key).catch(() => {});
+    if (key === 'music') syncWorkspaceSfxScope('music');
+    else if (key === 'video' || key === 'videoTools') syncWorkspaceSfxScope('video');
+    if (activateWorkspaceUtilityPage(key)) return;
+    const btn = document.querySelector(`.sidebar-btn[data-page="${key}"]`);
+    if (btn) handleSidebarClick(btn, { fromWorkspaceTab: true });
+});
+
+window.addEventListener('ardali:app-tab-deactivated', (event) => {
+    const key = String(event.detail?.key || '');
+    const nextKey = String(workspacePendingAppKey || event.detail?.nextKey || '');
+    const preserveSourceForUtility =
+        ['music', 'video'].includes(key) &&
+        ['gallery', 'settings', 'soundEffects', 'eqPresets', 'pulse', 'downloader', 'videoTools'].includes(nextKey);
+    if (!preserveSourceForUtility) {
+        applicationModuleLifecycle.deactivate(key).catch(() => {});
+        applicationModuleLifecycle.suspend(key).catch(() => {});
+    }
+    if (key === 'settings') {
+        document.body.classList.remove('workspace-settings-tab-active');
+        stopSettingsBackgroundWork();
+        hideUtilityPage(elements.settingsPage, elements.settingsBtn);
+        const adblockPage = document.getElementById('workspace-adblock-page');
+        const adblockFrame = adblockPage?.querySelector('webview');
+        if (adblockFrame) {
+            postEmbeddedWorkspaceMessage(adblockFrame, {
+                type: 'workspace:lifecycle',
+                phase: 'deactivate'
+            });
+        }
+        adblockPage?.classList.add('hidden');
+        adblockPage?.classList.remove('active');
+    } else if (key === 'about') {
+        closeAboutModal();
+    } else if (key === 'soundEffects') {
+        document.body.classList.remove('workspace-sfx-tab-active');
+        const page = document.getElementById('workspace-sound-effects-page');
+        page?.classList.add('hidden');
+        page?.classList.remove('active');
+        requestAnimationFrame(() => {
+            syncVisualizerCanvasSizeFromLayout(true);
+            startVisualizerLoop();
+        });
+    } else if (key === 'eqPresets') {
+        document.body.classList.remove('workspace-eq-presets-tab-active');
+        document.getElementById('eqPresetsQuickBtn')?.classList.remove('active');
+        const page = document.getElementById('workspace-eq-presets-page');
+        page?.classList.add('hidden');
+        page?.classList.remove('active');
+        requestAnimationFrame(() => {
+            syncVisualizerCanvasSizeFromLayout(true);
+            startVisualizerLoop();
+        });
+    } else if (key === 'pulse') {
+        document.body.classList.remove('workspace-pulse-tab-active');
+        const page = document.getElementById('workspace-pulse-page');
+        page?.classList.add('hidden');
+        page?.classList.remove('active');
+    } else if (key === 'downloader') {
+        const page = document.getElementById('workspace-downloader-page');
+        page?.classList.add('hidden');
+        page?.classList.remove('active');
+    }
+});
+
+window.addEventListener('ardali:app-tab-closed', (event) => {
+    const key = String(event.detail?.key || '');
+    applicationModuleLifecycle.close(key).catch(() => {});
+    if (key === 'pulse') {
+        document.body.classList.remove('workspace-pulse-tab-active');
+        const frame = document.querySelector('#workspace-pulse-page webview');
+        if (frame) frame.src = 'about:blank';
+        Promise.resolve(window.ardali?.pulse?.stopListening?.()).catch(() => {});
+        Promise.resolve(window.ardali?.pulse?.stopLevelPreview?.()).catch(() => {});
+    } else if (key === 'downloader') {
+        const frame = document.querySelector('#workspace-downloader-page webview');
+        if (frame) frame.src = 'about:blank';
+    }
+});
+
+const applicationModuleLifecycleNoop = () => {};
+
+applicationModuleLifecycle.register('music', {
+    deactivate: () => {
+        if (shouldPreserveWorkspacePlayback()) return;
+        if (state.activeMedia !== 'audio' || !state.isPlaying) return;
+        try {
+            if (useNativeAudio) window.ardali?.audio?.pause?.();
+            else getActiveAudioPlayer()?.pause?.();
+        } catch {}
+        stopNativePositionUpdates();
+        state.isPlaying = false;
+        updatePlayPauseIcon(false);
+    },
+    activate: applicationModuleLifecycleNoop,
+    suspend: applicationModuleLifecycleNoop,
+    resume: applicationModuleLifecycleNoop,
+    close: () => stopAudio()
+});
+let suspendedVideoPlaybackState = null;
+applicationModuleLifecycle.register('video', {
+    activate: applicationModuleLifecycleNoop,
+    deactivate: () => {
+        if (shouldPreserveWorkspacePlayback()) return;
+        if (state.activeMedia === 'video' && state.isPlaying) elements.videoPlayer?.pause?.();
+    },
+    suspend: () => {
+        const player = elements.videoPlayer;
+        const source = String(player?.currentSrc || player?.src || '').trim();
+        if (!player || !source) return;
+        suspendedVideoPlaybackState = {
+            source,
+            currentTime: Math.max(0, Number(player.currentTime) || 0),
+            volume: Number(player.volume),
+            muted: !!player.muted
+        };
+        player.pause();
+        player.removeAttribute('src');
+        player.load();
+        clearVideoPlaybackPerformanceMode();
+    },
+    resume: () => {
+        const player = elements.videoPlayer;
+        const saved = suspendedVideoPlaybackState;
+        if (!player || !saved?.source) return;
+        suspendedVideoPlaybackState = null;
+        player.src = saved.source;
+        if (Number.isFinite(saved.volume)) player.volume = saved.volume;
+        player.muted = saved.muted;
+        player.addEventListener('loadedmetadata', () => {
+            try { player.currentTime = Math.min(saved.currentTime, Number(player.duration) || saved.currentTime); } catch {}
+        }, { once: true });
+        player.load();
+    },
+    close: () => {
+        suspendedVideoPlaybackState = null;
+        stopVideo();
+    }
+});
+applicationModuleLifecycle.register('gallery', {
+    activate: () => {
+        galleryDisplayResourcesOpen = true;
+    },
+    deactivate: () => stopGallerySlideshow(),
+    suspend: () => resetPlaylistCardCoverObserver(),
+    resume: applicationModuleLifecycleNoop,
+    close: () => {
+        galleryDisplayResourcesOpen = false;
+        stopGallerySlideshow();
+        resetPlaylistCardCoverObserver();
+        hideGalleryShareMenu();
+        closeGalleryBottomViewModeMenu();
+        closeGalleryLightboxContextMenu();
+        closeGalleryConverterModal();
+        closeGalleryLightbox();
+        clearGalleryUiHideTimer();
+        galleryDisplayResourceGeneration += 1;
+        galleryDisplayImageUrlCache.clear();
+        galleryDisplayImageFallbackInFlight.clear();
+    }
+});
+applicationModuleLifecycle.register('videoTools', {
+    activate: applicationModuleLifecycleNoop,
+    deactivate: () => releaseVideoStudioIdleRuntime(),
+    suspend: () => {
+        if (!screenRecorder || screenRecorder.state === 'inactive') {
+            releaseVideoToolIdleResources({ force: true });
+        }
+    },
+    resume: applicationModuleLifecycleNoop,
+    close: async () => {
+        await stopVideoStudioStreamOutput();
+        await stopVideoStudioVirtualCamera();
+        await stopVideoStudioReplayBuffer();
+        await stopScreenRecording();
+        await Promise.resolve(releaseVideoToolIdleResources({ force: true }));
+        releaseVideoStudioIdleRuntime();
+        stopVideoStudioLiveAudioMeters();
+        stopVideoStudioGlobalCursorTracking();
+        releaseVideoToolsProgressListener();
+    }
+});
+applicationModuleLifecycle.register('settings', {
+    activate: applicationModuleLifecycleNoop,
+    deactivate: () => stopSettingsBackgroundWork(),
+    suspend: applicationModuleLifecycleNoop,
+    resume: applicationModuleLifecycleNoop,
+    close: () => {
+        document.body.classList.remove('workspace-settings-tab-active');
+        stopSettingsBackgroundWork();
+        hideUtilityPage(elements.settingsPage, elements.settingsBtn);
+        const frame = document.querySelector('#workspace-adblock-page webview');
+        if (frame) {
+            postEmbeddedWorkspaceMessage(frame, {
+                type: 'workspace:lifecycle',
+                phase: 'close'
+            });
+            frame.src = 'about:blank';
+        }
+    }
+});
+applicationModuleLifecycle.register('about', {
+    activate: applicationModuleLifecycleNoop,
+    deactivate: applicationModuleLifecycleNoop,
+    suspend: applicationModuleLifecycleNoop,
+    resume: applicationModuleLifecycleNoop,
+    close: () => closeAboutModal()
+});
+applicationModuleLifecycle.register('soundEffects', {
+    activate: applicationModuleLifecycleNoop,
+    deactivate: applicationModuleLifecycleNoop,
+    suspend: applicationModuleLifecycleNoop,
+    resume: applicationModuleLifecycleNoop,
+    close: () => {
+        document.body.classList.remove('workspace-sfx-tab-active');
+        const frame = document.querySelector('#workspace-sound-effects-page webview');
+        if (frame) frame.src = 'about:blank';
+    }
+});
+applicationModuleLifecycle.register('eqPresets', {
+    activate: applicationModuleLifecycleNoop,
+    deactivate: applicationModuleLifecycleNoop,
+    suspend: applicationModuleLifecycleNoop,
+    resume: applicationModuleLifecycleNoop,
+    close: () => {
+        document.body.classList.remove('workspace-eq-presets-tab-active');
+        document.getElementById('eqPresetsQuickBtn')?.classList.remove('active');
+        const frame = document.querySelector('#workspace-eq-presets-page webview');
+        if (frame) frame.src = 'about:blank';
+    }
+});
+applicationModuleLifecycle.register('pulse', {
+    activate: applicationModuleLifecycleNoop,
+    deactivate: () => window.ardali?.pulse?.stopLevelPreview?.(),
+    suspend: applicationModuleLifecycleNoop,
+    resume: applicationModuleLifecycleNoop,
+    close: async () => {
+        const frame = document.querySelector('#workspace-pulse-page webview');
+        if (frame) frame.src = 'about:blank';
+        await window.ardali?.pulse?.stopListening?.();
+        await window.ardali?.pulse?.stopLevelPreview?.();
+    }
+});
+applicationModuleLifecycle.register('downloader', {
+    activate: applicationModuleLifecycleNoop,
+    deactivate: applicationModuleLifecycleNoop,
+    suspend: applicationModuleLifecycleNoop,
+    resume: applicationModuleLifecycleNoop,
+    close: () => {
+        const frame = document.querySelector('#workspace-downloader-page webview');
+        if (frame) frame.src = 'about:blank';
+    }
+});
+
+Object.defineProperty(window, '__ardaliPrepareForApplicationClose', {
+    configurable: false,
+    writable: false,
+    value: async () => {
+        await applicationModuleLifecycle.close('videoTools');
+        await Promise.resolve(releaseVideoToolIdleResources({ force: true }));
+        return true;
+    }
+});
+
+window.addEventListener('ardali:web-tab-activated', () => {
+    syncWorkspaceSfxScope('web');
+    const webBtn = document.querySelector('.sidebar-btn[data-page="web"]');
+    if (webBtn && state.currentPage !== 'web') {
+        handleSidebarClick(webBtn, { fromWorkspaceTab: true });
+    }
+});
+
 // Sekme izolasyonu - RAM tasarrufu için diğer medyaları tamamen kapat
 function isolateMediaSection(targetPage) {
     if (targetPage !== 'gallery') {
@@ -23564,59 +24892,86 @@ function isolateMediaSection(targetPage) {
     }
     // Müzik sekmesine geçiliyorsa
     if (targetPage === 'music') {
-        // Video'yu tamamen kapat
-        stopVideo();
-        // Web'i tamamen kapat
-        stopWeb();
+        applicationModuleLifecycle.suspend('video').catch(() => {});
+        const previousActiveMedia = state.activeMedia;
+        const keepAudioPlaying = state.activeMedia === 'audio' && state.isPlaying;
+        elements.videoPlayer?.pause?.();
+        softPauseWebPlayback();
         state.activeMedia = 'audio';
+        state.isPlaying = keepAudioPlaying;
+        if (previousActiveMedia !== 'audio') {
+            const savedMusicVolume = Number(state.settings?.volume);
+            if (Number.isFinite(savedMusicVolume)) {
+                setAppMasterVolume(savedMusicVolume, {
+                    persist: false,
+                    syncSettingsSlider: true,
+                    syncMainSlider: true
+                });
+            }
+        }
+        updatePlayPauseIcon(keepAudioPlaying);
     }
     // Video sekmesine geçiliyorsa
     else if (targetPage === 'video') {
-        // Müziği tamamen kapat
-        stopAudio();
-        // Web'i tamamen kapat
-        stopWeb();
+        applicationModuleLifecycle.suspend('music').catch(() => {});
+        const keepVideoPlaying = state.activeMedia === 'video' && state.isPlaying;
+        try {
+            if (useNativeAudio) window.ardali?.audio?.pause?.();
+            else getActiveAudioPlayer()?.pause?.();
+        } catch {}
+        stopNativePositionUpdates();
+        softPauseWebPlayback();
         state.activeMedia = 'video';
+        state.isPlaying = keepVideoPlaying;
+        updatePlayPauseIcon(keepVideoPlaying);
     }
     else if (targetPage === 'videoTools') {
         // Düzenleme araçları aktif videoyu kaynak olarak kullanabilir; videoyu durdurma.
-        stopAudio();
-        stopWeb();
+        try {
+            if (useNativeAudio) window.ardali?.audio?.pause?.();
+            else getActiveAudioPlayer()?.pause?.();
+        } catch {}
+        stopNativePositionUpdates();
+        softPauseWebPlayback();
         if (!state.activeMedia || state.activeMedia === 'audio' || state.activeMedia === 'web') {
             state.activeMedia = 'video';
         }
     }
     // Web sekmesine geçiliyorsa
     else if (targetPage === 'web') {
-        // Müziği tamamen kapat
-        stopAudio();
-        // Video'yu tamamen kapat
-        stopVideo();
+        applicationModuleLifecycle.suspend('music').catch(() => {});
+        applicationModuleLifecycle.suspend('video').catch(() => {});
+        const keepWebPlaying = state.activeMedia === 'web' && state.isPlaying;
+        try {
+            if (useNativeAudio) window.ardali?.audio?.pause?.();
+            else getActiveAudioPlayer()?.pause?.();
+        } catch {}
+        stopNativePositionUpdates();
+        elements.videoPlayer?.pause?.();
         state.activeMedia = 'web';
+        state.isPlaying = keepWebPlaying;
+        updatePlayPauseIcon(keepWebPlaying);
     } else if (targetPage === 'gallery') {
-        const wasAudioActive = state.activeMedia === 'audio';
-        const wasAudioPlaying = wasAudioActive && state.isPlaying;
-
-        // Galeri fotoğraf odaklıdır: web ve video arkada çalışmasın.
-        // Müzik çalıyorsa korunur; kullanıcı fotoğraflara bakarken müzik devam edebilir.
-        stopWeb();
-        if (state.activeMedia === 'video' || String(elements.videoPlayer?.currentSrc || elements.videoPlayer?.src || '').trim()) {
-            stopVideo();
-        }
-
-        if (wasAudioActive) {
-            state.activeMedia = 'audio';
-            state.isPlaying = wasAudioPlaying;
-            updatePlayPauseIcon(wasAudioPlaying);
-            updateTrayState();
-            updateMPRISMetadata();
-        } else {
-            state.activeMedia = 'none';
-            state.isPlaying = false;
-            updatePlayPauseIcon(false);
-            updateTrayState();
-            updateMPRISMetadata();
-        }
+        // Galeri sessiz bir yardımcı çalışma alanıdır. Müzik, yerel video veya
+        // web içeriği arka planda kesintisiz devam eder; aktif medya kimliği ve
+        // oynatma durumu burada kesinlikle değiştirilmez.
+        return;
+    } else if (targetPage === 'workspace') {
+        // Ayarlar, Ses Efektleri ve EQ Hazır Ayarlar kaynak medyanın üzerinde
+        // çalışan yardımcı yüzeylerdir. Görsel sayfaları izole et fakat aktif
+        // müzik/video/web akışına ve oynatma durumuna kesinlikle dokunma.
+        return;
+    } else {
+        applicationModuleLifecycle.suspend('music').catch(() => {});
+        applicationModuleLifecycle.suspend('video').catch(() => {});
+        try {
+            if (useNativeAudio) window.ardali?.audio?.pause?.();
+            else getActiveAudioPlayer()?.pause?.();
+        } catch {}
+        stopNativePositionUpdates();
+        elements.videoPlayer?.pause?.();
+        softPauseWebPlayback();
+        state.activeMedia = 'none';
     }
 }
 
@@ -26289,18 +27644,37 @@ function updateMusicViewQuickControlUi() {
     });
 }
 
+function persistLibraryViewMode(mode = 'list') {
+    const nextMode = ['list', 'compact', 'comfortable', 'cards'].includes(String(mode || '').toLowerCase())
+        ? String(mode).toLowerCase()
+        : 'list';
+    if (!window.ardali?.saveSettings) return Promise.resolve(false);
+    // Yalnızca görünüm tercihini yazar. Böylece başka bir pencerenin eski
+    // ayar kopyası müzik kart boyutunu yanlışlıkla geri alamaz.
+    return window.ardali.saveSettings({
+        library: {
+            viewMode: nextMode
+        }
+    });
+}
+
 function setLibraryViewMode(mode = 'list', options = {}) {
     const nextMode = ['list', 'compact', 'comfortable', 'cards'].includes(String(mode || '').toLowerCase())
         ? String(mode).toLowerCase()
         : 'list';
     const persist = options?.persist !== false;
     const currentMode = getLibraryViewPreferenceState().mode;
+    ensureLibrarySettings().viewMode = nextMode;
+    if (persist) {
+        persistLibraryViewMode(nextMode).catch((error) => {
+            console.warn('[LIBRARY] view mode save failed:', error?.message || error);
+        });
+    }
     if (currentMode === nextMode) {
         updateMusicViewQuickControlUi();
         return;
     }
 
-    ensureLibrarySettings().viewMode = nextMode;
     if (elements.libraryViewMode) {
         elements.libraryViewMode.value = nextMode;
     }
@@ -26310,9 +27684,6 @@ function setLibraryViewMode(mode = 'list', options = {}) {
         renderPlaylist();
     }
     updateMusicViewQuickControlUi();
-    if (persist) {
-        saveSettings().catch(() => {});
-    }
 }
 
 function cycleLibraryViewMode(step = 1, options = {}) {
@@ -27788,6 +29159,50 @@ function positionFloatingContextMenu(menu, x, y) {
     const maxTop = Math.max(pad, window.innerHeight - rect.height - pad);
     menu.style.left = Math.max(pad, Math.min(x, maxLeft)) + 'px';
     menu.style.top = Math.max(pad, Math.min(y, maxTop)) + 'px';
+    updatePlaylistContextSubmenuPlacement(menu);
+    requestAnimationFrame(() => {
+        if (!menu.isConnected) return;
+        const settledRect = menu.getBoundingClientRect();
+        let left = Number.parseFloat(menu.style.left) || pad;
+        let top = Number.parseFloat(menu.style.top) || pad;
+        if (settledRect.right > window.innerWidth - pad) {
+            menu.style.left = 'auto';
+            menu.style.right = `${pad}px`;
+        } else {
+            menu.style.right = 'auto';
+            menu.style.left = `${Math.max(pad, Math.round(left))}px`;
+        }
+        if (settledRect.bottom > window.innerHeight - pad) {
+            top -= settledRect.bottom - (window.innerHeight - pad);
+        }
+        menu.style.top = `${Math.max(pad, Math.round(top))}px`;
+        updatePlaylistContextSubmenuPlacement(menu);
+    });
+}
+
+function updatePlaylistContextSubmenuPlacement(menu) {
+    if (!menu) return;
+    const pad = 10;
+    const menuRect = menu.getBoundingClientRect();
+    menu.querySelectorAll('.context-menu-item.has-submenu > .context-submenu').forEach((submenu) => {
+        const estimatedWidth = Math.max(240, Number(submenu.scrollWidth) || 0);
+        submenu.classList.toggle('open-left', menuRect.right + estimatedWidth > window.innerWidth - pad);
+        const fitVertically = () => {
+            submenu.style.top = '-6px';
+            const submenuRect = submenu.getBoundingClientRect();
+            if (!submenuRect.height) return;
+            let top = -6;
+            if (submenuRect.bottom > window.innerHeight - pad) {
+                top -= submenuRect.bottom - (window.innerHeight - pad);
+            }
+            const itemRect = submenu.parentElement?.getBoundingClientRect();
+            const projectedTop = Number(itemRect?.top || 0) + top;
+            if (projectedTop < pad) top += pad - projectedTop;
+            submenu.style.top = `${Math.round(top)}px`;
+        };
+        submenu.parentElement?.addEventListener('mouseenter', () => requestAnimationFrame(fitVertically));
+        submenu.parentElement?.addEventListener('focusin', () => requestAnimationFrame(fitVertically));
+    });
 }
 
 function sanitizePlaylistSearchQuery(item) {
@@ -27810,9 +29225,15 @@ function buildPlaylistContextMenuItem(label, options = {}) {
     const item = document.createElement('div');
     item.className = 'context-menu-item';
     if (options.disabled) item.classList.add('disabled');
+    if (options.active) item.classList.add('active');
+    if (options.role) item.setAttribute('role', options.role);
+    if (options.role === 'menuitemradio') {
+        item.setAttribute('aria-checked', options.active ? 'true' : 'false');
+    }
     item.innerHTML = `
         <span class="context-menu-icon">${options.icon || '•'}</span>
         <span>${label}</span>
+        ${options.active ? '<span class="context-menu-check" aria-hidden="true">✓</span>' : ''}
     `;
     if (!options.disabled && typeof options.onClick === 'function') {
         item.addEventListener('click', async (e) => {
@@ -27859,34 +29280,119 @@ function buildPlaylistContextSubmenuItem(label, options = {}) {
     return item;
 }
 
-async function searchPlaylistItemOnYouTube(index) {
+function getPlaylistPlatformSearchUrl(index, platform = 'youtube') {
     const item = state.playlist[index];
     const query = sanitizePlaylistSearchQuery(item);
-    if (!item || !query) return;
+    if (!item || !query) return '';
+    return buildPulseSearchUrl(platform, query);
+}
 
-    const btn = getWebPlatformBtnByName('youtube') || getPreferredWebPlatformBtn();
-    if (!btn) {
-        safeNotify(uiT('playlist.context.notify.youtubeUnavailable', 'YouTube platform button is unavailable.'), 'error', 2000);
-        return;
+function openPlaylistUrlInNewTab(url, successMessage) {
+    if (!url || !isAllowedWebUrl(url) || typeof window.createTab !== 'function') {
+        safeNotify(uiT('playlist.context.notify.newTabFailed', "Couldn't open a new web tab."), 'error', 2200);
+        return false;
     }
 
-    const searchUrl = buildPulseSearchUrl('youtube', query);
-    prepareWebUiForPulseSearch(btn);
-    await navigatePulseSearchInWebView(searchUrl, query, 'youtube', { fastPath: true });
-    safeNotify(uiT('playlist.context.notify.youtubeSearch', 'Opening in YouTube: {query}', { query }), 'info', 2200);
+    try {
+        window.createTab(url, true);
+        if (successMessage) safeNotify(successMessage, 'info', 2200);
+        return true;
+    } catch (e) {
+        console.warn('[Playlist] Web tab could not be opened:', e);
+        safeNotify(uiT('playlist.context.notify.newTabFailed', "Couldn't open a new web tab."), 'error', 2200);
+        return false;
+    }
+}
+
+function searchPlaylistItemOnPlatform(index, platform) {
+    const item = state.playlist[index];
+    const query = sanitizePlaylistSearchQuery(item);
+    const searchUrl = getPlaylistPlatformSearchUrl(index, platform);
+    if (!query || !searchUrl) return false;
+
+    const isYouTubeMusic = platform === 'ytmusic';
+    return openPlaylistUrlInNewTab(
+        searchUrl,
+        isYouTubeMusic
+            ? uiT('playlist.context.notify.youtubeMusicSearch', 'Opening in YouTube Music: {query}', { query })
+            : uiT('playlist.context.notify.youtubeSearch', 'Opening in YouTube: {query}', { query })
+    );
+}
+
+function searchPlaylistItemOnYouTube(index) {
+    return searchPlaylistItemOnPlatform(index, 'youtube');
 }
 
 function getPlaylistItemYouTubeSearchUrl(index) {
-    const item = state.playlist[index];
-    const query = sanitizePlaylistSearchQuery(item);
-    if (!query) return '';
-    return buildPulseSearchUrl('youtube', query);
+    return getPlaylistPlatformSearchUrl(index, 'youtube');
 }
 
-function copyPlaylistItemYouTubeLink(index) {
+function getPlaylistShareTargetUrl(index, target) {
+    const item = state.playlist[index];
+    const title = sanitizePlaylistSearchQuery(item);
+    const searchUrl = getPlaylistItemYouTubeSearchUrl(index);
+    if (!title || !searchUrl) return '';
+
+    const encodedTitle = encodeURIComponent(title);
+    const encodedUrl = encodeURIComponent(searchUrl);
+    const encodedMessage = encodeURIComponent(`${title}\n${searchUrl}`);
+
+    switch (target) {
+        case 'whatsapp':
+            return `https://wa.me/?text=${encodedMessage}`;
+        case 'telegram':
+            return `https://t.me/share/url?url=${encodedUrl}&text=${encodedTitle}`;
+        case 'facebook':
+            return `https://www.facebook.com/sharer/sharer.php?u=${encodedUrl}`;
+        case 'x':
+            return `https://twitter.com/intent/tweet?text=${encodedTitle}&url=${encodedUrl}`;
+        case 'gmail':
+            return `https://mail.google.com/mail/?view=cm&fs=1&su=${encodedTitle}&body=${encodedMessage}`;
+        default:
+            return '';
+    }
+}
+
+function sharePlaylistItemVia(index, target) {
+    const url = getPlaylistShareTargetUrl(index, target);
+    return openPlaylistUrlInNewTab(
+        url,
+        uiT('playlist.context.notify.shareOpened', 'Share page opened: {target}', { target })
+    );
+}
+
+async function copyTextToClipboardVerified(text = '') {
+    const value = String(text ?? '');
+    if (!value) return false;
+    try {
+        const written = await Promise.resolve(
+            window.ardali?.clipboard?.writeText
+                ? window.ardali.clipboard.writeText(value)
+                : window.ardali?.clipboard?.setText?.(value)
+        );
+        if (written) {
+            const readBack = await Promise.resolve(
+                window.ardali?.clipboard?.readText
+                    ? window.ardali.clipboard.readText()
+                    : window.ardali?.clipboard?.getText?.()
+            );
+            if (String(readBack ?? '') === value) return true;
+        }
+    } catch {
+        // navigator.clipboard fallback below
+    }
+    try {
+        await navigator.clipboard?.writeText?.(value);
+        return true;
+    } catch {
+        return false;
+    }
+}
+
+async function copyPlaylistItemYouTubeLink(index) {
     const url = getPlaylistItemYouTubeSearchUrl(index);
     if (!url) return;
-    const ok = !!window.ardali?.clipboard?.setText?.(url);
+    const ok = await copyTextToClipboardVerified(url);
     safeNotify(
         ok
             ? uiT('playlist.context.notify.youtubeLinkCopied', 'YouTube search link copied.')
@@ -27920,10 +29426,10 @@ async function openPlaylistItemOnYouTubeInBrowser(index) {
     }
 }
 
-function copyPlaylistItemName(index) {
+async function copyPlaylistItemName(index) {
     const item = state.playlist[index];
     if (!item?.name) return;
-    const ok = !!window.ardali?.clipboard?.setText?.(item.name);
+    const ok = await copyTextToClipboardVerified(item.name);
     safeNotify(
         ok
             ? uiT('playlist.context.notify.nameCopied', 'Track name copied.')
@@ -27933,10 +29439,10 @@ function copyPlaylistItemName(index) {
     );
 }
 
-function copyPlaylistItemPath(index) {
+async function copyPlaylistItemPath(index) {
     const item = state.playlist[index];
     if (!item?.path) return;
-    const ok = !!window.ardali?.clipboard?.setText?.(item.path);
+    const ok = await copyTextToClipboardVerified(item.path);
     safeNotify(
         ok
             ? uiT('playlist.context.notify.pathCopied', 'File path copied.')
@@ -27948,15 +29454,13 @@ function copyPlaylistItemPath(index) {
 
 async function openPlaylistItemFolder(index) {
     const item = state.playlist[index];
-    const dir = item?.path && window.ardali?.path?.dirname?.(item.path);
-    const url = dir && window.ardali?.path?.toFileUrl?.(dir);
-    if (!dir || !url || !window.ardali?.webSecurity?.openExternal) {
+    if (!item?.path || !window.ardali?.openContainingFolder) {
         safeNotify(uiT('playlist.context.notify.folderOpenFailed', "Couldn't open file location."), 'error', 2200);
         return;
     }
 
     try {
-        const ok = await window.ardali.webSecurity.openExternal(url);
+        const ok = await window.ardali.openContainingFolder(item.path);
         safeNotify(
             ok
                 ? uiT('playlist.context.notify.folderOpened', 'File location opened.')
@@ -27971,6 +29475,44 @@ async function openPlaylistItemFolder(index) {
             2200
         );
     }
+}
+
+async function showPlaylistItemProperties(index) {
+    const item = state.playlist[index];
+    if (!item?.path || !window.ardali?.getPathProperties) {
+        safeNotify(uiT('playlist.context.notify.propertiesFailed', 'Dosya özellikleri okunamadı.'), 'error', 2200);
+        return;
+    }
+    const info = await window.ardali.getPathProperties(item.path);
+    if (!info) {
+        safeNotify(uiT('playlist.context.notify.propertiesFailed', 'Dosya özellikleri okunamadı.'), 'error', 2200);
+        return;
+    }
+    const detail = [
+        `${uiT('playlist.context.properties.path', 'Yol')}: ${info.path || '-'}`,
+        `${uiT('playlist.context.properties.folder', 'Klasör')}: ${info.directory || '-'}`,
+        `${uiT('playlist.context.properties.type', 'Tür')}: ${info.extension ? `.${info.extension}` : '-'}`,
+        `${uiT('playlist.context.properties.size', 'Boyut')}: ${formatFileSizeHuman(info.size)} (${Number(info.size || 0)} B)`,
+        `${uiT('playlist.context.properties.modified', 'Değiştirilme')}: ${info.modified ? new Date(info.modified).toLocaleString() : '-'}`,
+        `${uiT('playlist.context.properties.created', 'Oluşturulma')}: ${info.created ? new Date(info.created).toLocaleString() : '-'}`
+    ].join('\n');
+    await window.ardali?.dialog?.confirm?.({
+        title: uiT('playlist.context.properties', 'Özellikler'),
+        message: String(info.name || item.name || 'audio'),
+        detail,
+        okLabel: uiT('common.ok', 'Tamam'),
+        cancelLabel: uiT('common.close', 'Kapat')
+    });
+}
+
+async function confirmAndClearPlaylistAll() {
+    const approved = await window.ardali?.dialog?.confirm?.({
+        title: uiT('playlist.context.clearTitle', 'Çalma listesini temizle'),
+        message: uiT('playlist.context.clearConfirm', 'Çalma listesindeki tüm parçalar kaldırılsın mı? Dosyalar silinmez.'),
+        okLabel: uiT('playlist.context.clearAll', 'Çalma listesini temizle'),
+        cancelLabel: uiT('common.cancel', 'İptal')
+    });
+    if (approved) clearPlaylistAll();
 }
 
 function queuePlaylistItemNext(index) {
@@ -28029,6 +29571,45 @@ function showPlaylistContextMenu(x, y, index) {
             ? uiT('playlist.context.pause', 'Pause')
             : uiT('playlist.context.resume', 'Resume'))
         : uiT('playlist.context.playNow', 'Play now');
+    const activeViewMode = getLibraryViewPreferenceState().mode;
+    const platformIcon = (name) => `<img class="context-menu-platform-icon" src="icons/platforms/${name}.svg" alt="" aria-hidden="true">`;
+    const actionIcon = (content) => `<svg class="context-menu-action-icon" viewBox="0 0 24 24" aria-hidden="true">${content}</svg>`;
+    const shareIcon = '<svg class="context-menu-share-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M8.7 10.4l6.6-3.2M8.7 13.6l6.6 3.2"/><circle cx="6" cy="12" r="2.4"/><circle cx="18" cy="6" r="2.4"/><circle cx="18" cy="18" r="2.4"/></svg>';
+    const linkIcon = actionIcon('<path d="M10 13a5 5 0 007.1.1l2-2a5 5 0 00-7.1-7.1l-1.1 1.1M14 11a5 5 0 00-7.1-.1l-2 2A5 5 0 0012 20l1.1-1.1"/>');
+    const copyIcon = actionIcon('<rect x="8" y="8" width="11" height="11" rx="2"/><path d="M16 8V6a2 2 0 00-2-2H6a2 2 0 00-2 2v8a2 2 0 002 2h2"/>');
+    const clipboardIcon = actionIcon('<rect x="5" y="5" width="14" height="16" rx="2"/><path d="M9 5V3h6v2M9 10h6M9 14h6M9 18h4"/>');
+    const folderIcon = actionIcon('<path d="M3 7a2 2 0 012-2h5l2 2h7a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z"/>');
+    const infoIcon = actionIcon('<circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7h.01"/>');
+    const trashIcon = actionIcon('<path d="M4 7h16M9 7V4h6v3M7 7l1 13h8l1-13M10 11v5M14 11v5"/>');
+    const clearIcon = actionIcon('<path d="M12 3l1.2 4.3L17.5 8.5l-4.3 1.2L12 14l-1.2-4.3-4.3-1.2 4.3-1.2zM18.5 15l.7 2.3 2.3.7-2.3.7-.7 2.3-.7-2.3-2.3-.7 2.3-.7z"/>');
+    const viewModeEntries = [
+        {
+            mode: 'list',
+            label: uiT('settings.library.view.mode.list', 'Liste'),
+            icon: '<svg class="context-menu-view-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 7h14M5 12h14M5 17h14"/></svg>'
+        },
+        {
+            mode: 'compact',
+            label: uiT('settings.library.view.mode.compact', 'Kompakt'),
+            icon: '<svg class="context-menu-view-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7h12M7 12h12M7 17h12"/><path d="M4.5 7h.1M4.5 12h.1M4.5 17h.1"/></svg>'
+        },
+        {
+            mode: 'comfortable',
+            label: uiT('settings.library.view.mode.comfortable', 'Rahat'),
+            icon: '<svg class="context-menu-view-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 6h14M5 12h14M5 18h14"/></svg>'
+        },
+        {
+            mode: 'cards',
+            label: uiT('settings.library.view.mode.cards', 'Kart'),
+            icon: '<svg class="context-menu-view-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="4.5" y="5" width="6.5" height="6" rx="1"/><rect x="13" y="5" width="6.5" height="6" rx="1"/><rect x="4.5" y="13" width="6.5" height="6" rx="1"/><rect x="13" y="13" width="6.5" height="6" rx="1"/></svg>'
+        }
+    ].map((entry) => ({
+        label: entry.label,
+        icon: entry.icon,
+        role: 'menuitemradio',
+        active: activeViewMode === entry.mode,
+        onClick: () => setLibraryViewMode(entry.mode, { persist: true })
+    }));
 
     const items = [
         buildPlaylistContextMenuItem(primaryLabel, {
@@ -28058,50 +29639,85 @@ function showPlaylistContextMenu(x, y, index) {
                 );
             }
         }),
+        buildPlaylistContextSubmenuItem(uiT('playlist.context.view', 'Görünüm'), {
+            icon: '▦',
+            submenu: viewModeEntries
+        }),
         buildPlaylistContextMenuItem('', { separator: true }),
         buildPlaylistContextMenuItem(uiT('playlist.context.searchYoutube', 'Search on YouTube'), {
-            icon: '📺',
-            onClick: () => searchPlaylistItemOnYouTube(index)
+            icon: platformIcon('youtube'),
+            onClick: () => searchPlaylistItemOnPlatform(index, 'youtube')
+        }),
+        buildPlaylistContextMenuItem(uiT('playlist.context.searchYoutubeMusic', 'Search on YouTube Music'), {
+            icon: platformIcon('youtube-music'),
+            onClick: () => searchPlaylistItemOnPlatform(index, 'ytmusic')
         }),
         buildPlaylistContextSubmenuItem(uiT('playlist.context.share', 'Share'), {
-            icon: '↗',
+            icon: shareIcon,
             submenu: [
                 {
+                    label: uiT('playlist.context.shareWhatsapp', 'WhatsApp'),
+                    icon: platformIcon('whatsapp'),
+                    onClick: () => sharePlaylistItemVia(index, 'whatsapp')
+                },
+                {
+                    label: uiT('playlist.context.shareTelegram', 'Telegram'),
+                    icon: platformIcon('telegram'),
+                    onClick: () => sharePlaylistItemVia(index, 'telegram')
+                },
+                {
+                    label: uiT('playlist.context.shareFacebook', 'Facebook'),
+                    icon: platformIcon('facebook'),
+                    onClick: () => sharePlaylistItemVia(index, 'facebook')
+                },
+                {
+                    label: uiT('playlist.context.shareX', 'X'),
+                    icon: platformIcon('x'),
+                    onClick: () => sharePlaylistItemVia(index, 'x')
+                },
+                {
+                    label: uiT('playlist.context.shareGmail', 'Gmail'),
+                    icon: platformIcon('gmail'),
+                    onClick: () => sharePlaylistItemVia(index, 'gmail')
+                },
+                {
+                    label: '',
+                    separator: true
+                },
+                {
                     label: uiT('playlist.context.copyYoutubeLink', 'Copy YouTube search link'),
-                    icon: '🔗',
+                    icon: linkIcon,
                     onClick: () => copyPlaylistItemYouTubeLink(index)
                 },
                 {
-                    label: uiT('playlist.context.openYoutubeBrowser', 'Open YouTube in browser'),
-                    icon: '🌐',
-                    onClick: () => openPlaylistItemOnYouTubeInBrowser(index)
-                },
-                {
                     label: uiT('playlist.context.copyName', 'Copy track name'),
-                    icon: '⧉',
+                    icon: copyIcon,
                     onClick: () => copyPlaylistItemName(index)
                 },
                 {
                     label: uiT('playlist.context.copyPath', 'Copy file path'),
-                    icon: '📋',
+                    icon: clipboardIcon,
                     onClick: () => copyPlaylistItemPath(index)
-                },
-                {
-                    label: uiT('playlist.context.openFolder', 'Open file location'),
-                    icon: '📂',
-                    onClick: () => openPlaylistItemFolder(index)
                 }
             ]
         }),
+        buildPlaylistContextMenuItem(uiT('playlist.context.openFolder', 'Open file location'), {
+            icon: folderIcon,
+            onClick: () => openPlaylistItemFolder(index)
+        }),
+        buildPlaylistContextMenuItem(uiT('playlist.context.properties', 'Özellikler'), {
+            icon: infoIcon,
+            onClick: () => showPlaylistItemProperties(index)
+        }),
         buildPlaylistContextMenuItem('', { separator: true }),
         buildPlaylistContextMenuItem(uiT('playlist.context.remove', 'Remove from playlist'), {
-            icon: '🗑',
+            icon: trashIcon,
             onClick: () => removeFromPlaylist(index)
         }),
         buildPlaylistContextMenuItem(uiT('playlist.context.clearAll', 'Clear playlist'), {
-            icon: '✦',
+            icon: clearIcon,
             disabled: state.playlist.length === 0,
-            onClick: () => clearPlaylistAll()
+            onClick: () => confirmAndClearPlaylistAll()
         })
     ];
 
@@ -28591,6 +30207,7 @@ function prefersGalleryImageConversion(pathLike = '') {
 async function resolveGalleryDisplayImageUrl(pathLike = '', options = {}) {
     const sourcePath = String(pathLike || '').trim();
     if (!sourcePath) return '';
+    const resourceGeneration = galleryDisplayResourceGeneration;
     const forceConvert = options?.forceConvert === true;
     const fromCache = galleryDisplayImageUrlCache.get(sourcePath);
     if (fromCache && !forceConvert) return fromCache;
@@ -28598,7 +30215,7 @@ async function resolveGalleryDisplayImageUrl(pathLike = '', options = {}) {
     const mustConvert = forceConvert || prefersGalleryImageConversion(sourcePath);
     if (!mustConvert) {
         const nativeUrl = toLocalFileUrl(sourcePath);
-        if (nativeUrl) galleryDisplayImageUrlCache.set(sourcePath, nativeUrl);
+        if (nativeUrl && galleryDisplayResourcesOpen) galleryDisplayImageUrlCache.set(sourcePath, nativeUrl);
         return nativeUrl;
     }
 
@@ -28610,6 +30227,7 @@ async function resolveGalleryDisplayImageUrl(pathLike = '', options = {}) {
     const task = (async () => {
         try {
             const resolvedPath = await window.ardali?.getDisplayImagePath?.(sourcePath, { forceConvert });
+            if (resourceGeneration !== galleryDisplayResourceGeneration || !galleryDisplayResourcesOpen) return '';
             const finalPath = String(resolvedPath || '').trim();
             if (finalPath) {
                 const convertedUrl = toLocalFileUrl(finalPath);
@@ -28621,6 +30239,7 @@ async function resolveGalleryDisplayImageUrl(pathLike = '', options = {}) {
         } catch {
             // yoksay
         }
+        if (resourceGeneration !== galleryDisplayResourceGeneration || !galleryDisplayResourcesOpen) return '';
         const fallbackUrl = toLocalFileUrl(sourcePath);
         if (fallbackUrl) galleryDisplayImageUrlCache.set(sourcePath, fallbackUrl);
         return fallbackUrl;
@@ -28630,7 +30249,9 @@ async function resolveGalleryDisplayImageUrl(pathLike = '', options = {}) {
     try {
         return await task;
     } finally {
-        galleryDisplayImageFallbackInFlight.delete(inFlightKey);
+        if (galleryDisplayImageFallbackInFlight.get(inFlightKey) === task) {
+            galleryDisplayImageFallbackInFlight.delete(inFlightKey);
+        }
     }
 }
 
@@ -29033,6 +30654,18 @@ function isGalleryLightboxFullscreenActive() {
         !!fsWindowFullscreenActive ||
         !!lightbox?.classList?.contains('gallery-fs-active')
     );
+}
+
+async function toggleGalleryFullscreenFromSurface() {
+    if (isGalleryWindowFullscreenActive()) {
+        await toggleGalleryWindowFullscreen();
+        return;
+    }
+    if (isGalleryLightboxFullscreenActive()) {
+        await toggleGalleryLightboxFullscreen();
+        return;
+    }
+    await toggleGalleryWindowFullscreen();
 }
 
 async function toggleGalleryLightboxFullscreen() {
@@ -30014,6 +31647,28 @@ function syncGalleryEditUi() {
     updateGalleryAnnotationToolButtonsUi();
 }
 
+function hideGalleryBrightnessHud() {
+    if (galleryBrightnessHudTimer) {
+        clearTimeout(galleryBrightnessHudTimer);
+        galleryBrightnessHudTimer = null;
+    }
+    elements.galleryBrightnessHud?.classList.add('hidden');
+}
+
+function showGalleryBrightnessHud(value) {
+    const brightness = normalizeGalleryEditValue('brightness', value);
+    if (elements.galleryBrightnessHudValue) {
+        elements.galleryBrightnessHudValue.textContent = `${brightness}%`;
+    }
+    if (!elements.galleryBrightnessHud) return;
+    elements.galleryBrightnessHud.classList.remove('hidden');
+    if (galleryBrightnessHudTimer) clearTimeout(galleryBrightnessHudTimer);
+    galleryBrightnessHudTimer = setTimeout(() => {
+        galleryBrightnessHudTimer = null;
+        elements.galleryBrightnessHud?.classList.add('hidden');
+    }, 900);
+}
+
 function applyGalleryImageFilter() {
     if (!elements.galleryLightboxImage) return;
     elements.galleryLightboxImage.style.filter = buildGalleryImageFilter();
@@ -30029,6 +31684,63 @@ function setGalleryEditValue(kind, value) {
     state.galleryEdit[kind] = normalizeGalleryEditValue(kind, value);
     syncGalleryEditUi();
     applyGalleryImageFilter();
+}
+
+function adjustGalleryEditRangeInput(input, direction) {
+    if (!(input instanceof HTMLInputElement) || input.type !== 'range') return false;
+    const minimum = Number.isFinite(Number(input.min)) ? Number(input.min) : 0;
+    const maximum = Number.isFinite(Number(input.max)) ? Number(input.max) : 100;
+    const step = Math.max(Number(input.step) || 1, Number.EPSILON);
+    const current = Number.isFinite(Number(input.value)) ? Number(input.value) : minimum;
+    const next = Math.max(minimum, Math.min(maximum, current + (direction < 0 ? -step : step)));
+    if (Math.abs(next - current) < Number.EPSILON) return false;
+
+    const stepText = String(input.step || '1');
+    const precision = stepText.includes('.') ? stepText.split('.')[1].length : 0;
+    input.value = String(Number(next.toFixed(precision)));
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    return true;
+}
+
+function setupGalleryEditRangeControls() {
+    if (!elements.galleryEditPanel) return;
+    elements.galleryEditPanel.querySelectorAll('.gallery-edit-row input[type="range"]').forEach((input) => {
+        if (input.closest('.gallery-edit-range-control')) return;
+
+        const row = input.closest('.gallery-edit-row');
+        const label = String(row?.querySelector('span')?.textContent || '').trim();
+        const control = document.createElement('div');
+        control.className = 'gallery-edit-range-control';
+
+        const createStepButton = (direction) => {
+            const button = document.createElement('button');
+            const increasing = direction > 0;
+            button.type = 'button';
+            button.className = 'gallery-edit-range-step';
+            button.textContent = increasing ? '+' : '−';
+            const directionLabel = increasing
+                ? uiT('gallery.editor.adjust.increase', 'Increase')
+                : uiT('gallery.editor.adjust.decrease', 'Decrease');
+            button.setAttribute('aria-label', `${label || uiT('gallery.editor.adjust.value', 'Value')} ${directionLabel}`);
+            button.title = directionLabel;
+            button.addEventListener('click', (event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                adjustGalleryEditRangeInput(input, direction);
+            });
+            return button;
+        };
+
+        input.before(control);
+        control.append(createStepButton(-1), input, createStepButton(1));
+
+        row?.addEventListener('wheel', (event) => {
+            if (event.ctrlKey) return;
+            event.preventDefault();
+            event.stopPropagation();
+            adjustGalleryEditRangeInput(input, event.deltaY < 0 ? 1 : -1);
+        }, { passive: false });
+    });
 }
 
 function resetGalleryEditValues() {
@@ -31146,6 +32858,7 @@ function closeGalleryLightbox() {
     state.galleryAnnotation.draft = null;
     state.galleryRedEye.mode = false;
     clearGalleryUiHideTimer();
+    hideGalleryBrightnessHud();
     galleryUiFreezeHiddenUntilPointer = false;
     setGalleryLightboxUiHidden(false);
     galleryInlineFullscreenActive = false;
@@ -31444,6 +33157,127 @@ function hydrateGalleryPreviewFallbacks() {
     });
 }
 
+function hideGalleryShareMenu() {
+    document.getElementById('galleryShareMenu')?.remove();
+    document.getElementById('galleryShareMenuPosition')?.remove();
+}
+
+function getGalleryShareTargetUrl(target, imageName = '') {
+    const title = encodeURIComponent(String(imageName || '').trim() || uiT('gallery.share.defaultTitle', 'Fotoğraf'));
+    switch (String(target || '').toLowerCase()) {
+        case 'whatsapp': return 'https://web.whatsapp.com/';
+        case 'telegram': return 'https://web.telegram.org/a/';
+        case 'facebook': return 'https://www.facebook.com/';
+        case 'instagram': return 'https://www.instagram.com/';
+        case 'x': return `https://x.com/compose/post?text=${title}`;
+        case 'reddit': return `https://www.reddit.com/submit?type=IMAGE&title=${title}`;
+        case 'gmail': return `https://mail.google.com/mail/?view=cm&fs=1&su=${title}`;
+        case 'google-photos': return 'https://photos.google.com/';
+        case 'pinterest': return 'https://www.pinterest.com/pin-creation-tool/';
+        default: return '';
+    }
+}
+
+async function shareGalleryImageVia(imagePath, imageName, target, targetLabel) {
+    hideGalleryShareMenu();
+    const normalizedPath = String(imagePath || '').trim();
+    const targetUrl = getGalleryShareTargetUrl(target, imageName);
+    if (!normalizedPath || !targetUrl || !isAllowedWebUrl(targetUrl)) {
+        safeNotify(uiT('gallery.share.openFailed', 'Paylaşım hedefi açılamadı.'), 'error', 2200);
+        return false;
+    }
+
+    let copied = await window.ardali?.clipboard?.setImageFromPath?.(normalizedPath);
+    if (!copied?.success) {
+        const displayPath = await window.ardali?.getDisplayImagePath?.(normalizedPath, { forceConvert: true });
+        if (displayPath && String(displayPath) !== normalizedPath) {
+            copied = await window.ardali?.clipboard?.setImageFromPath?.(String(displayPath));
+        }
+    }
+    if (!copied?.success) {
+        safeNotify(uiT('gallery.share.copyFailed', 'Fotoğraf panoya kopyalanamadı.'), 'error', 2400);
+        return false;
+    }
+
+    if (typeof window.createTab !== 'function') {
+        safeNotify(uiT('gallery.share.openFailed', 'Paylaşım hedefi açılamadı.'), 'error', 2200);
+        return false;
+    }
+
+    try {
+        window.createTab(targetUrl, true);
+        const needsFilePicker = ['facebook', 'instagram', 'reddit', 'google-photos', 'pinterest'].includes(target);
+        if (needsFilePicker) {
+            void window.ardali?.openContainingFolder?.(normalizedPath);
+        }
+        safeNotify(
+            needsFilePicker
+                ? uiT(
+                    'gallery.share.readyFile',
+                    '{target} açıldı. Fotoğraf panoya kopyalandı ve dosya konumu hazırlandı.',
+                    { target: targetLabel }
+                )
+                : uiT(
+                    'gallery.share.readyPaste',
+                    '{target} açıldı. Fotoğrafı paylaşım alanına Ctrl+V ile yapıştırın.',
+                    { target: targetLabel }
+                ),
+            'success',
+            4200
+        );
+        return true;
+    } catch (error) {
+        console.warn('[Gallery Share] Target could not be opened:', error);
+        safeNotify(uiT('gallery.share.openFailed', 'Paylaşım hedefi açılamadı.'), 'error', 2200);
+        return false;
+    }
+}
+
+function showGalleryShareMenu(anchor, imagePath, imageName) {
+    if (!(anchor instanceof HTMLElement)) return;
+    hideGalleryShareMenu();
+
+    const platformIcon = (name) => `<img class="context-menu-platform-icon" src="icons/platforms/${name}.svg" alt="" aria-hidden="true">`;
+    const targets = [
+        { id: 'whatsapp', label: 'WhatsApp', icon: 'whatsapp' },
+        { id: 'telegram', label: 'Telegram', icon: 'telegram' },
+        { id: 'facebook', label: 'Facebook', icon: 'facebook' },
+        { id: 'instagram', label: 'Instagram', icon: 'instagram' },
+        { id: 'x', label: 'X', icon: 'x' },
+        { id: 'reddit', label: 'Reddit', icon: 'reddit' },
+        { id: 'gmail', label: 'Gmail', icon: 'gmail' },
+        { id: 'google-photos', label: uiT('gallery.share.googlePhotos', 'Google Fotoğraflar'), icon: 'google-photos' },
+        { id: 'pinterest', label: 'Pinterest', icon: 'pinterest' }
+    ];
+
+    const menu = document.createElement('div');
+    menu.id = 'galleryShareMenu';
+    menu.className = 'context-menu gallery-share-menu';
+    menu.setAttribute('role', 'menu');
+    menu.setAttribute('aria-label', uiT('gallery.share.menuLabel', 'Fotoğrafı paylaş'));
+    targets.forEach((target) => {
+        menu.appendChild(buildPlaylistContextMenuItem(target.label, {
+            icon: platformIcon(target.icon),
+            onClick: () => shareGalleryImageVia(imagePath, imageName, target.id, target.label)
+        }));
+    });
+    document.body.appendChild(menu);
+
+    const anchorRect = anchor.getBoundingClientRect();
+    const menuRect = menu.getBoundingClientRect();
+    const left = Math.max(8, Math.min(anchorRect.right - menuRect.width, window.innerWidth - menuRect.width - 8));
+    const preferredTop = anchorRect.bottom + 6;
+    const top = preferredTop + menuRect.height <= window.innerHeight - 8
+        ? preferredTop
+        : Math.max(8, anchorRect.top - menuRect.height - 6);
+    const positionStyle = document.createElement('style');
+    positionStyle.id = 'galleryShareMenuPosition';
+    positionStyle.setAttribute('nonce', 'ardali-local-style-v1');
+    positionStyle.textContent = `#galleryShareMenu{left:${Math.round(left)}px;top:${Math.round(top)}px;}`;
+    document.head.appendChild(positionStyle);
+    menu.querySelector('.context-menu-item:not(.disabled)')?.focus?.({ preventScroll: true });
+}
+
 function renderImageGallery(files = [], options = {}) {
     if (!elements.playlist) return;
     elements.musicPage?.classList?.remove('workspace-bg-visible');
@@ -31508,6 +33342,7 @@ function renderImageGallery(files = [], options = {}) {
         const previewSrc = escapeAttribute(galleryDisplayImageUrlCache.get(String(file?.path || '').trim()) || toLocalFileUrl(file.path));
         const openImageLabel = escapeAttribute(uiT('gallery.card.openImage', 'Open image'));
         const quickActionsLabel = escapeAttribute(uiT('gallery.card.quickActions', 'Gallery quick actions'));
+        const shareImageLabel = escapeAttribute(uiT('gallery.card.shareImage', 'Fotoğrafı paylaş'));
         const openFullscreenLabel = escapeAttribute(uiT('gallery.card.openFullscreen', 'Open in fullscreen'));
         const saveRotationLabel = escapeAttribute(uiT('gallery.card.saveRotation', 'Save rotation'));
         const rotateLeftLabel = escapeAttribute(uiT('gallery.card.rotateLeft', 'Rotate left'));
@@ -31517,6 +33352,9 @@ function renderImageGallery(files = [], options = {}) {
                 <div class="gallery-item-preview-wrap" data-gallery-action="open" aria-label="${openImageLabel}">
                     <img class="gallery-item-preview-image" data-gallery-path="${safePath}" src="${previewSrc}" alt="${safeName}" loading="lazy" decoding="async" style="transform: rotate(${rotationDeg}deg);">
                     <div class="gallery-item-hover-actions" role="group" aria-label="${quickActionsLabel}">
+                        <button type="button" class="gallery-item-action gallery-item-share-action" data-gallery-action="share" title="${shareImageLabel}" aria-label="${shareImageLabel}" aria-haspopup="menu">
+                            <svg class="gallery-share-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M8.7 10.4l6.6-3.2M8.7 13.6l6.6 3.2"/><circle cx="6" cy="12" r="2.4"/><circle cx="18" cy="6" r="2.4"/><circle cx="18" cy="18" r="2.4"/></svg>
+                        </button>
                         <button type="button" class="gallery-item-action" data-gallery-action="open-fullscreen" title="${openFullscreenLabel}" aria-label="${openFullscreenLabel}">
                             <span class="material-symbols-rounded" aria-hidden="true">fullscreen</span>
                         </button>
@@ -36382,13 +38220,17 @@ function handleVideoToolChangeEvent(event) {
 
 function releaseVideoToolIdleResources({ force = false, keepBatch = false, keepSources = false } = {}) {
     const mode = getVideoToolMode();
-    const recordingActive = screenRecorder && screenRecorder.state === 'recording';
+    const recordingActive = !!screenRecorder || !!screenRecordingStopPromise;
     if (force) {
         stopVideoStudioPreview();
         clearVideoStudioScheduleTimer();
     }
     if (force || (mode !== 'record' && recordingActive)) {
-        stopScreenRecording().catch(() => {});
+        if (recordingActive) {
+            return Promise.resolve(stopScreenRecording())
+                .catch(() => {})
+                .then(() => releaseVideoToolIdleResources({ force, keepBatch, keepSources }));
+        }
     }
     if (force || (!recordingActive && mode !== 'record')) {
         if (screenRecordingTimer) {
@@ -38627,29 +40469,27 @@ function updateScreenRecordingElapsed() {
 }
 
 async function stopScreenRecording() {
-    if (!screenRecorder || screenRecorder.state === 'inactive') return;
+    const recorder = screenRecorder;
+    if (!recorder) return screenRecordingStopPromise;
+    if (recorder.state === 'inactive') return screenRecordingStopPromise;
     try {
         clearScreenRecordingAutoStopTimer();
         clearScreenRecordingTestStopTimer();
-        if (screenRecorder.state === 'recording') {
+        if (recorder.state === 'recording') {
             try {
-                screenRecorder.requestData();
+                recorder.requestData();
             } catch {
                 // yoksay
             }
         }
-        setTimeout(() => {
-            try {
-                if (screenRecorder && screenRecorder.state !== 'inactive') {
-                    screenRecorder.stop();
-                }
-            } catch {
-                // yoksay
-            }
-        }, 120);
-    } catch {
-        // yoksay
+        if (recorder.state !== 'inactive') recorder.stop();
+    } catch (error) {
+        console.warn('[VIDEO TOOLS] MediaRecorder.stop failed; finalizing buffered data:', error?.message || error);
+        if (screenRecorder === recorder && typeof recorder.onstop === 'function') {
+            Promise.resolve(recorder.onstop()).catch(() => {});
+        }
     }
+    return screenRecordingStopPromise;
 }
 
 function toggleScreenRecordingPause() {
@@ -38862,6 +40702,11 @@ async function startScreenRecording(options = {}) {
             videoBitsPerSecond: recordingSettings.bitrateKbps * 1000
         };
         screenRecorder = new MediaRecorder(recordingStream, recorderOptions);
+        const recorderForSession = screenRecorder;
+        let recordingFinalizationStarted = false;
+        screenRecordingStopPromise = new Promise((resolve) => {
+            resolveScreenRecordingStop = resolve;
+        });
         screenRecorder.ondataavailable = (event) => {
             if (event.data && event.data.size > 0) {
                 screenRecordingChunks.push(event.data);
@@ -38886,35 +40731,40 @@ async function startScreenRecording(options = {}) {
             updateVideoStudioRecordButtons();
         };
         screenRecorder.onstop = async () => {
-            clearScreenRecordingAutoStopTimer();
-            clearScreenRecordingTestStopTimer();
-            if (screenRecordingTimer) {
-                clearInterval(screenRecordingTimer);
-                screenRecordingTimer = null;
-            }
-            try {
-                screenRecordingStream?.getTracks?.().forEach((track) => track.stop());
-            } catch {
-                // yoksay
-            }
-                updateVideoToolStatus(testMode ? 'Test kaydı hazırlanıyor...' : uiT('video.tools.record.saving.prepare', 'Kayıt hazırlanıyor...'), 'running', 10);
-            const systemAudioResult = await stopScreenRecordingSystemAudioCapture();
-            const separateAudioTracks = await stopScreenRecordingSeparateAudioRecorders();
-            releaseScreenRecordingAudioGraph();
-            screenRecordingStream = null;
-            if (wantsSeparateAudioTracks && systemAudioResult?.path) {
-                separateAudioTracks.unshift({
-                    path: systemAudioResult.path,
-                    kind: 'desktop',
-                    label: uiT('video.tools.audioTracks.desktop', 'Masaüstü')
-                });
-            }
-            const blob = new Blob(screenRecordingChunks, { type: mimeType || 'video/webm' });
-            screenRecordingChunks = [];
-            screenRecordingBytes = blob.size || screenRecordingBytes;
-            updateVideoStudioStatsPanel();
-            let ok = false;
+            if (recordingFinalizationStarted) return;
+            recordingFinalizationStarted = true;
             let captureWritten = false;
+            let pendingRecordingBlob = null;
+            try {
+                clearScreenRecordingAutoStopTimer();
+                clearScreenRecordingTestStopTimer();
+                if (screenRecordingTimer) {
+                    clearInterval(screenRecordingTimer);
+                    screenRecordingTimer = null;
+                }
+                try {
+                    screenRecordingStream?.getTracks?.().forEach((track) => track.stop());
+                } catch {
+                    // yoksay
+                }
+                updateVideoToolStatus(testMode ? 'Test kaydı hazırlanıyor...' : uiT('video.tools.record.saving.prepare', 'Kayıt hazırlanıyor...'), 'running', 10);
+                const systemAudioResult = await stopScreenRecordingSystemAudioCapture();
+                const separateAudioTracks = await stopScreenRecordingSeparateAudioRecorders();
+                releaseScreenRecordingAudioGraph();
+                screenRecordingStream = null;
+                if (wantsSeparateAudioTracks && systemAudioResult?.path) {
+                    separateAudioTracks.unshift({
+                        path: systemAudioResult.path,
+                        kind: 'desktop',
+                        label: uiT('video.tools.audioTracks.desktop', 'Masaüstü')
+                    });
+                }
+                const blob = new Blob(screenRecordingChunks, { type: mimeType || 'video/webm' });
+                pendingRecordingBlob = blob;
+                screenRecordingChunks = [];
+                screenRecordingBytes = blob.size || screenRecordingBytes;
+                updateVideoStudioStatsPanel();
+                let ok = false;
             if (!blob.size || blob.size < 128) {
                 updateVideoToolStatus(uiT('video.tools.record.noFrames', 'Kayıt dosyası boş kaldı; lütfen PipeWire ekranını seçip birkaç saniye kaydedin.'), 'error', 0);
                 safeNotify(uiT('video.tools.record.noFrames', 'Kayıt dosyası boş kaldı; lütfen PipeWire ekranını seçip birkaç saniye kaydedin.'), 'warning', 3600);
@@ -38985,17 +40835,63 @@ async function startScreenRecording(options = {}) {
                 updateVideoToolStatus(uiT('video.tools.record.saveFailed', 'Ekran kaydı kaydedilemedi.'), 'error', 0);
                 addVideoStudioLog(uiT('video.tools.logs.recordFailed', 'Kayıt kaydedilemedi.'), 'error');
             }
-            const runBtn = document.getElementById('videoToolRunBtn');
-            const stopBtn = document.getElementById('videoToolStopRecordBtn');
-            if (runBtn) runBtn.disabled = false;
-            if (stopBtn) stopBtn.classList.add('hidden');
-            screenRecorder = null;
-            videoStudioTestRecordingActive = false;
-            screenRecordingPausedAt = 0;
-            screenRecordingPausedMs = 0;
-            updateVideoStudioStatsPanel();
-            updateVideoStudioRecordButtons();
-            releaseVideoToolIdleResources({ keepSources: getVideoToolMode() === 'record' });
+            } catch (error) {
+                console.error('[VIDEO TOOLS] recording finalization failed:', error);
+                updateVideoToolStatus(uiT('video.tools.record.saveFailed', 'Ekran kaydı kaydedilemedi.'), 'error', 0);
+                addVideoStudioLog(`${uiT('video.tools.logs.recordFailed', 'Kayıt kaydedilemedi.')}: ${error?.message || error}`, 'error');
+                if (!captureWritten && pendingRecordingBlob?.size >= 128) {
+                    try {
+                        const emergencyBuffer = await pendingRecordingBlob.arrayBuffer();
+                        captureWritten = window.ardali?.writeBufferFile
+                            ? await window.ardali.writeBufferFile(capturePath, emergencyBuffer)
+                            : await window.ardali?.writeBase64File?.(capturePath, arrayBufferToBase64(emergencyBuffer));
+                    } catch (recoveryError) {
+                        console.error('[VIDEO TOOLS] emergency capture write failed:', recoveryError);
+                    }
+                }
+                if (!captureWritten) {
+                    saveVideoStudioRecoveryCandidate({
+                        ...getVideoStudioRecoveryCandidate(),
+                        stage: 'finalization-failed',
+                        capturePath,
+                        outputPath
+                    });
+                } else {
+                    saveVideoStudioRecoveryCandidate({
+                        ...getVideoStudioRecoveryCandidate(),
+                        stage: 'captured',
+                        capturePath,
+                        outputPath,
+                        bytes: pendingRecordingBlob?.size || 0
+                    });
+                }
+            } finally {
+                try {
+                    screenRecordingStream?.getTracks?.().forEach((track) => track.stop());
+                } catch {}
+                await Promise.allSettled([
+                    stopScreenRecordingSystemAudioCapture(),
+                    stopScreenRecordingSeparateAudioRecorders()
+                ]);
+                releaseScreenRecordingAudioGraph();
+                screenRecordingStream = null;
+                screenRecordingChunks = [];
+                const runBtn = document.getElementById('videoToolRunBtn');
+                const stopBtn = document.getElementById('videoToolStopRecordBtn');
+                if (runBtn) runBtn.disabled = false;
+                if (stopBtn) stopBtn.classList.add('hidden');
+                if (screenRecorder === recorderForSession) screenRecorder = null;
+                videoStudioTestRecordingActive = false;
+                screenRecordingPausedAt = 0;
+                screenRecordingPausedMs = 0;
+                updateVideoStudioStatsPanel();
+                updateVideoStudioRecordButtons();
+                const resolveStop = resolveScreenRecordingStop;
+                resolveScreenRecordingStop = null;
+                screenRecordingStopPromise = null;
+                resolveStop?.();
+                releaseVideoToolIdleResources({ keepSources: getVideoToolMode() === 'record' });
+            }
         };
 
         const runBtn = document.getElementById('videoToolRunBtn');
@@ -39054,6 +40950,10 @@ async function startScreenRecording(options = {}) {
         screenRecordingPausedAt = 0;
         screenRecordingPausedMs = 0;
         screenRecorder = null;
+        const resolveStop = resolveScreenRecordingStop;
+        resolveScreenRecordingStop = null;
+        screenRecordingStopPromise = null;
+        resolveStop?.();
         videoStudioTestRecordingActive = false;
         clearVideoStudioRecoveryCandidate();
         updateVideoStudioStatsPanel();
@@ -40977,11 +42877,18 @@ function resetPlaylistOrderToInitialAdded(options = {}) {
 }
 
 function removeFromPlaylist(index) {
+    const removingCurrentTrack = index === state.currentIndex && state.activeMedia === 'audio';
+    if (removingCurrentTrack) {
+        try {
+            stopAudio();
+        } catch {
+            // yoksay
+        }
+    }
     state.playlist.splice(index, 1);
 
     // Çalan parça kaldırıldıysa
     if (index === state.currentIndex) {
-        elements.audio.pause();
         state.currentIndex = -1;
         state.isPlaying = false;
         updatePlayPauseIcon(false);
@@ -43243,11 +45150,14 @@ function loadSettingsToUI() {
     if (elements.behaviorWebUserAgentMode) elements.behaviorWebUserAgentMode.value = getWebUserAgentMode();
     if (elements.behaviorWebAutoplayPolicy) elements.behaviorWebAutoplayPolicy.value = ['allow', 'gesture', 'block'].includes(String(state.settings?.webUi?.autoplayPolicy || '').toLowerCase()) ? String(state.settings.webUi.autoplayPolicy).toLowerCase() : 'allow';
     if (elements.behaviorWebAutoRecover) elements.behaviorWebAutoRecover.checked = state.settings?.webUi?.autoRecover !== false;
-    if (elements.behaviorWebAllowCamera) elements.behaviorWebAllowCamera.checked = state.settings?.webUi?.allowCamera === true;
-    if (elements.behaviorWebAllowMicrophone) elements.behaviorWebAllowMicrophone.checked = state.settings?.webUi?.allowMicrophone === true;
-    if (elements.behaviorWebAllowLocation) elements.behaviorWebAllowLocation.checked = state.settings?.webUi?.allowLocation === true;
-    if (elements.behaviorWebAllowNotifications) elements.behaviorWebAllowNotifications.checked = state.settings?.webUi?.allowNotifications === true;
-    if (elements.behaviorWebAllowPopups) elements.behaviorWebAllowPopups.checked = state.settings?.webUi?.allowPopups !== false && state.settings?.security?.allowPopups !== false;
+    if (elements.behaviorWebAllowCamera) elements.behaviorWebAllowCamera.value = normalizeWebPermissionMode(state.settings?.webUi?.allowCamera);
+    if (elements.behaviorWebAllowMicrophone) elements.behaviorWebAllowMicrophone.value = normalizeWebPermissionMode(state.settings?.webUi?.allowMicrophone);
+    if (elements.behaviorWebAllowLocation) elements.behaviorWebAllowLocation.value = normalizeWebPermissionMode(state.settings?.webUi?.allowLocation);
+    if (elements.behaviorWebAllowNotifications) elements.behaviorWebAllowNotifications.value = normalizeWebPermissionMode(state.settings?.webUi?.allowNotifications);
+    if (elements.behaviorWebAllowPopups) elements.behaviorWebAllowPopups.value = normalizeWebPermissionMode(state.settings?.webUi?.allowPopups);
+    if (elements.behaviorWebAllowDisplayCapture) elements.behaviorWebAllowDisplayCapture.value = normalizeWebPermissionMode(state.settings?.webUi?.allowDisplayCapture);
+    if (elements.behaviorWebAllowClipboardRead) elements.behaviorWebAllowClipboardRead.value = normalizeWebPermissionMode(state.settings?.webUi?.allowClipboardRead);
+    if (elements.behaviorWebAllowAutomaticDownloads) elements.behaviorWebAllowAutomaticDownloads.value = normalizeWebPermissionMode(state.settings?.webUi?.allowAutomaticDownloads);
     if (elements.behaviorWebAskDownloadLocation) elements.behaviorWebAskDownloadLocation.checked = state.settings?.webUi?.askDownloadLocation !== false;
     if (elements.behaviorWebReduceReferrers) elements.behaviorWebReduceReferrers.checked = state.settings?.webUi?.reduceReferrers !== false;
     if (elements.behaviorWebStripTrackingParams) elements.behaviorWebStripTrackingParams.checked = state.settings?.webUi?.stripTrackingParams !== false;
@@ -43390,11 +45300,14 @@ async function applySettings() {
         : 'allow';
     const selectedWebAdvanced = {
         autoRecover: elements.behaviorWebAutoRecover?.checked !== false,
-        allowCamera: elements.behaviorWebAllowCamera?.checked === true,
-        allowMicrophone: elements.behaviorWebAllowMicrophone?.checked === true,
-        allowLocation: elements.behaviorWebAllowLocation?.checked === true,
-        allowNotifications: elements.behaviorWebAllowNotifications?.checked === true,
-        allowPopups: elements.behaviorWebAllowPopups?.checked !== false,
+        allowCamera: normalizeWebPermissionMode(elements.behaviorWebAllowCamera?.value),
+        allowMicrophone: normalizeWebPermissionMode(elements.behaviorWebAllowMicrophone?.value),
+        allowLocation: normalizeWebPermissionMode(elements.behaviorWebAllowLocation?.value),
+        allowNotifications: normalizeWebPermissionMode(elements.behaviorWebAllowNotifications?.value),
+        allowPopups: normalizeWebPermissionMode(elements.behaviorWebAllowPopups?.value),
+        allowDisplayCapture: normalizeWebPermissionMode(elements.behaviorWebAllowDisplayCapture?.value),
+        allowClipboardRead: normalizeWebPermissionMode(elements.behaviorWebAllowClipboardRead?.value),
+        allowAutomaticDownloads: normalizeWebPermissionMode(elements.behaviorWebAllowAutomaticDownloads?.value),
         askDownloadLocation: elements.behaviorWebAskDownloadLocation?.checked !== false,
         reduceReferrers: elements.behaviorWebReduceReferrers?.checked !== false,
         stripTrackingParams: elements.behaviorWebStripTrackingParams?.checked !== false,
@@ -43466,7 +45379,7 @@ async function applySettings() {
     });
     if (!state.settings.security || typeof state.settings.security !== 'object') state.settings.security = {};
     state.settings.security.sessionProfile = selectedWebSessionProfile;
-    state.settings.security.allowPopups = selectedWebAdvanced.allowPopups;
+    state.settings.security.allowPopups = selectedWebAdvanced.allowPopups !== 'block';
     if (nextLowHardwareMode || nextEffectiveOptimizationProfile === 'ram' || nextEffectiveOptimizationProfile === 'battery') {
         applyLowHardwareModeToStateAndUi();
         needsPostApplySave = true;
@@ -43501,7 +45414,7 @@ async function applySettings() {
         autoplayPolicy: selectedWebAutoplayPolicy
     });
     state.settings.security.sessionProfile = selectedWebSessionProfile;
-    state.settings.security.allowPopups = selectedWebAdvanced.allowPopups;
+    state.settings.security.allowPopups = selectedWebAdvanced.allowPopups !== 'block';
     if (elements.behaviorWebStartupDelay) elements.behaviorWebStartupDelay.value = String(selectedWebStartupDelay);
     if (elements.libraryWebStartupDelay) elements.libraryWebStartupDelay.value = String(selectedWebStartupDelay);
     if (elements.behaviorWebAnimationMode) elements.behaviorWebAnimationMode.value = selectedWebAnimationMode;
@@ -43521,12 +45434,15 @@ async function applySettings() {
     if (elements.behaviorWebUserAgentMode) elements.behaviorWebUserAgentMode.value = selectedWebUserAgentMode;
     if (elements.behaviorWebAutoplayPolicy) elements.behaviorWebAutoplayPolicy.value = selectedWebAutoplayPolicy;
     if (elements.behaviorWebAutoRecover) elements.behaviorWebAutoRecover.checked = selectedWebAdvanced.autoRecover;
-    if (elements.behaviorWebAllowCamera) elements.behaviorWebAllowCamera.checked = selectedWebAdvanced.allowCamera;
-    if (elements.behaviorWebAllowMicrophone) elements.behaviorWebAllowMicrophone.checked = selectedWebAdvanced.allowMicrophone;
-    if (elements.behaviorWebAllowLocation) elements.behaviorWebAllowLocation.checked = selectedWebAdvanced.allowLocation;
-    if (elements.behaviorWebAllowNotifications) elements.behaviorWebAllowNotifications.checked = selectedWebAdvanced.allowNotifications;
-    if (elements.behaviorWebAllowPopups) elements.behaviorWebAllowPopups.checked = selectedWebAdvanced.allowPopups;
-    if (elements.securityAllowPopups) elements.securityAllowPopups.checked = selectedWebAdvanced.allowPopups;
+    if (elements.behaviorWebAllowCamera) elements.behaviorWebAllowCamera.value = selectedWebAdvanced.allowCamera;
+    if (elements.behaviorWebAllowMicrophone) elements.behaviorWebAllowMicrophone.value = selectedWebAdvanced.allowMicrophone;
+    if (elements.behaviorWebAllowLocation) elements.behaviorWebAllowLocation.value = selectedWebAdvanced.allowLocation;
+    if (elements.behaviorWebAllowNotifications) elements.behaviorWebAllowNotifications.value = selectedWebAdvanced.allowNotifications;
+    if (elements.behaviorWebAllowPopups) elements.behaviorWebAllowPopups.value = selectedWebAdvanced.allowPopups;
+    if (elements.behaviorWebAllowDisplayCapture) elements.behaviorWebAllowDisplayCapture.value = selectedWebAdvanced.allowDisplayCapture;
+    if (elements.behaviorWebAllowClipboardRead) elements.behaviorWebAllowClipboardRead.value = selectedWebAdvanced.allowClipboardRead;
+    if (elements.behaviorWebAllowAutomaticDownloads) elements.behaviorWebAllowAutomaticDownloads.value = selectedWebAdvanced.allowAutomaticDownloads;
+    if (elements.securityAllowPopups) elements.securityAllowPopups.checked = selectedWebAdvanced.allowPopups !== 'block';
     if (elements.behaviorWebAskDownloadLocation) elements.behaviorWebAskDownloadLocation.checked = selectedWebAdvanced.askDownloadLocation;
     if (elements.behaviorWebReduceReferrers) elements.behaviorWebReduceReferrers.checked = selectedWebAdvanced.reduceReferrers;
     if (elements.behaviorWebStripTrackingParams) elements.behaviorWebStripTrackingParams.checked = selectedWebAdvanced.stripTrackingParams;
@@ -44906,11 +46822,9 @@ function resetWebDefaults() {
     if (elements.behaviorWebSuspendWhenInactive) elements.behaviorWebSuspendWhenInactive.checked = true;
     if (elements.behaviorWebSessionProfile) elements.behaviorWebSessionProfile.value = 'persistent';
     if (elements.behaviorWebAutoRecover) elements.behaviorWebAutoRecover.checked = true;
-    if (elements.behaviorWebAllowCamera) elements.behaviorWebAllowCamera.checked = false;
-    if (elements.behaviorWebAllowMicrophone) elements.behaviorWebAllowMicrophone.checked = false;
-    if (elements.behaviorWebAllowLocation) elements.behaviorWebAllowLocation.checked = false;
-    if (elements.behaviorWebAllowNotifications) elements.behaviorWebAllowNotifications.checked = false;
-    if (elements.behaviorWebAllowPopups) elements.behaviorWebAllowPopups.checked = true;
+    for (const control of [elements.behaviorWebAllowCamera, elements.behaviorWebAllowMicrophone, elements.behaviorWebAllowLocation, elements.behaviorWebAllowNotifications, elements.behaviorWebAllowPopups, elements.behaviorWebAllowDisplayCapture, elements.behaviorWebAllowClipboardRead, elements.behaviorWebAllowAutomaticDownloads]) {
+        if (control) control.value = 'ask';
+    }
     if (elements.behaviorWebUserAgentMode) elements.behaviorWebUserAgentMode.value = 'desktop';
     if (elements.behaviorWebAutoplayPolicy) elements.behaviorWebAutoplayPolicy.value = 'allow';
     if (elements.behaviorWebAskDownloadLocation) elements.behaviorWebAskDownloadLocation.checked = true;
@@ -44941,11 +46855,14 @@ function resetWebDefaults() {
     state.settings.webUi.backgroundThrottle = true;
     state.settings.webUi.restoreLastSession = true;
     state.settings.webUi.suspendWhenInactive = true;
-    state.settings.webUi.allowCamera = false;
-    state.settings.webUi.allowMicrophone = false;
-    state.settings.webUi.allowLocation = false;
-    state.settings.webUi.allowNotifications = false;
-    state.settings.webUi.allowPopups = true;
+    state.settings.webUi.allowCamera = 'ask';
+    state.settings.webUi.allowMicrophone = 'ask';
+    state.settings.webUi.allowLocation = 'ask';
+    state.settings.webUi.allowNotifications = 'ask';
+    state.settings.webUi.allowPopups = 'ask';
+    state.settings.webUi.allowDisplayCapture = 'ask';
+    state.settings.webUi.allowClipboardRead = 'ask';
+    state.settings.webUi.allowAutomaticDownloads = 'ask';
     state.settings.webUi.userAgentMode = 'desktop';
     state.settings.webUi.autoplayPolicy = 'allow';
     state.settings.webUi.askDownloadLocation = true;
@@ -44956,6 +46873,7 @@ function resetWebDefaults() {
     state.settings.webUi.sitePermissions = {};
     state.settings.security.sessionProfile = 'persistent';
     state.settings.security.allowPopups = true;
+    window.dispatchEvent(new CustomEvent('ardali:browser-settings-reset-defaults'));
     applyWebExperienceMode({ forceSwitch: false });
     applyWebUiClasses();
     applyWebRuntimePreferences();
@@ -45125,6 +47043,9 @@ function syncAboutVersionInfoUi() {
     }
     if (elements.aboutChromiumVersionValue) {
         elements.aboutChromiumVersionValue.textContent = appUpdateRuntime.chromiumVersion || '-';
+    }
+    if (elements.aboutNodeVersionValue) {
+        elements.aboutNodeVersionValue.textContent = appUpdateRuntime.nodeVersion || '-';
     }
     if (elements.aboutLastUpdateCheckValue) {
         const fallback = Number(localStorage.getItem('ardali_last_update_check_at') || 0);
@@ -45412,6 +47333,7 @@ async function initAppUpdateUi() {
             appUpdateRuntime.currentVersion = String(versionInfo.appVersion || appUpdateRuntime.currentVersion || '').trim();
             appUpdateRuntime.electronVersion = String(versionInfo.electronVersion || '').trim();
             appUpdateRuntime.chromiumVersion = String(versionInfo.chromiumVersion || '').trim();
+            appUpdateRuntime.nodeVersion = String(versionInfo.nodeVersion || '').trim();
             appUpdateRuntime.aurUpdateSupported = !!versionInfo?.aur?.aurUpdateSupported;
             appUpdateRuntime.aurPackageInstalled = !!versionInfo?.aur?.aurPackageInstalled;
             if (versionInfo.update && typeof versionInfo.update === 'object') {
@@ -48681,16 +50603,13 @@ const EQController = {
     setupEventListeners() {
         // EQ button to open Sound Effects window
         if (this.elements.eqButton) {
-            this.elements.eqButton.addEventListener('click', async () => {
-                // Web/Müzik/Video için daima ayrı Ses Efektleri penceresi aç.
-                if (window.ardali && window.ardali.soundEffects) {
-                    const page = String(state.currentPage || '').toLowerCase();
-                    const scope = page === 'web' ? 'web' : (page === 'video' ? 'video' : 'music');
-                    await window.ardali.soundEffects.openWindow({ scope });
-                    console.log('🎛️ Ses Efektleri penceresi açılıyor...', { scope });
-                    return;
-                }
-                console.warn('[SFX] soundEffects API bulunamadı, pencere açılamadı');
+            this.elements.eqButton.addEventListener('click', () => {
+                const currentPage = String(state.currentPage || '').toLowerCase();
+                workspaceSfxScope = currentPage === 'web' || state.activeMedia === 'web'
+                    ? 'web'
+                    : (currentPage === 'video' || state.activeMedia === 'video' ? 'video' : 'music');
+                if (openMainWorkspaceTab('soundEffects')) return;
+                this.elements.modal?.classList.remove('hidden');
             });
         }
 

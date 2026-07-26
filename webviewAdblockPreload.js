@@ -113,21 +113,20 @@
         } catch {}
     }
 
-    function isGoogleOwnedPage() {
+    function isGoogleIdentityPage() {
         try {
             const host = String(location.hostname || '').toLowerCase();
             const path = String(location.pathname || '').toLowerCase();
-            if (host === 'google.com' ||
-                host === 'www.google.com' ||
-                host === 'accounts.google.com' ||
+            if (host === 'accounts.google.com' ||
                 host === 'myaccount.google.com' ||
-                host.endsWith('.google.com')) {
+                host === 'oauth2.googleapis.com' ||
+                host === 'accounts.youtube.com') {
                 return true;
             }
-            return host === 'accounts.google.com' && (
+            return (host === 'google.com' || host === 'www.google.com') && (
                 path.includes('/servicelogin') ||
-                path.includes('/signin/') ||
-                path.includes('/v3/signin/')
+                path.includes('/signin') ||
+                path.includes('/accountchooser')
             );
         } catch {
             return false;
@@ -136,7 +135,7 @@
 
     installCompatibilityBrowserIdentityPatch();
 
-    const skipAdblockScriptingForIdentityPage = isGoogleOwnedPage();
+    const skipAdblockScriptingForIdentityPage = isGoogleIdentityPage();
 
     function installDeliBlockScriptingBridge() {
         let ipcRenderer = null;
@@ -175,6 +174,12 @@
             executed: new Set(),
             webFrame: null
         };
+        const cosmeticStyleState = {
+            css: '',
+            insertionKey: '',
+            generation: 0,
+            webFrame: null
+        };
 
         function getCurrentUrl() {
             try { return String(location.href || ''); } catch { return ''; }
@@ -194,15 +199,71 @@
             return style;
         }
 
-        function applyCss(cssList) {
-            const style = ensureStyleElement();
-            if (!style) return;
+        function getCosmeticWebFrame() {
+            if (cosmeticStyleState.webFrame !== null) return cosmeticStyleState.webFrame;
+            try {
+                cosmeticStyleState.webFrame = require('electron')?.webFrame || null;
+            } catch {
+                cosmeticStyleState.webFrame = null;
+            }
+            return cosmeticStyleState.webFrame;
+        }
+
+        async function applyCss(cssList) {
             const css = (Array.isArray(cssList) ? cssList : [])
                 .map((item) => String(item || '').trim())
                 .filter(Boolean)
                 .join('\n\n');
-            if (style.textContent === css) return;
-            style.textContent = css;
+            if (cosmeticStyleState.css === css) return;
+            cosmeticStyleState.css = css;
+            const generation = ++cosmeticStyleState.generation;
+            const webFrame = getCosmeticWebFrame();
+
+            try {
+                const result = await ipcRenderer.invoke('adblock:applyCosmeticCss', { css });
+                if (generation !== cosmeticStyleState.generation) return;
+                if (result?.ok === true) {
+                    cosmeticStyleState.insertionKey = String(result.key || '');
+                    const fallbackStyle = document.getElementById(styleId);
+                    if (fallbackStyle) fallbackStyle.textContent = '';
+                    return;
+                }
+            } catch {
+                // Fall through to the renderer-local compatibility path.
+            }
+
+            if (webFrame && typeof webFrame.insertCSS === 'function') {
+                const previousKey = cosmeticStyleState.insertionKey;
+                cosmeticStyleState.insertionKey = '';
+                if (previousKey && typeof webFrame.removeInsertedCSS === 'function') {
+                    try { await webFrame.removeInsertedCSS(previousKey); } catch {}
+                }
+                if (generation !== cosmeticStyleState.generation) return;
+                if (css) {
+                    try {
+                        const key = await webFrame.insertCSS(css, { cssOrigin: 'user' });
+                        if (generation !== cosmeticStyleState.generation) {
+                            if (key && typeof webFrame.removeInsertedCSS === 'function') {
+                                try { await webFrame.removeInsertedCSS(key); } catch {}
+                            }
+                            return;
+                        }
+                        cosmeticStyleState.insertionKey = String(key || '');
+                        const fallbackStyle = document.getElementById(styleId);
+                        if (fallbackStyle) fallbackStyle.textContent = '';
+                        return;
+                    } catch {
+                        // Older Electron builds fall back to the existing style element.
+                    }
+                } else {
+                    const fallbackStyle = document.getElementById(styleId);
+                    if (fallbackStyle) fallbackStyle.textContent = '';
+                    return;
+                }
+            }
+
+            const style = ensureStyleElement();
+            if (style) style.textContent = css;
         }
 
         function hashFromString(type, text) {
@@ -671,7 +732,14 @@
             try {
                 const result = await ipcRenderer.invoke('adblock:getScriptingInjection', { url, reason });
                 if (!result || result.ok !== true) return;
-                applyCss(result.css);
+                const whitelisted = result.reason === 'whitelist';
+                globalThis.__ardaliDeliBlockWhitelist = whitelisted;
+                try {
+                    globalThis.dispatchEvent(new CustomEvent('ardali:adblock-whitelist-state', {
+                        detail: { whitelisted }
+                    }));
+                } catch {}
+                await applyCss(result.css);
                 installGenericCosmetics(result);
                 installProceduralCosmetics(result);
                 installScriptlets(result);
@@ -697,6 +765,15 @@
         }
 
         scheduleRefresh('pre-dom');
+        addEventListener('ardali:adblock-refresh', () => scheduleRefresh('settings-change'), true);
+        addEventListener('beforeunload', () => {
+            try { ipcRenderer.invoke('adblock:applyCosmeticCss', { css: '' }).catch(() => {}); } catch {}
+            const webFrame = getCosmeticWebFrame();
+            const key = cosmeticStyleState.insertionKey;
+            if (key && webFrame && typeof webFrame.removeInsertedCSS === 'function') {
+                try { webFrame.removeInsertedCSS(key); } catch {}
+            }
+        }, { once: true });
 
         if (document.readyState === 'loading') {
             document.addEventListener('DOMContentLoaded', () => scheduleRefresh('dom'), { once: true });
@@ -726,6 +803,7 @@
 
     if (!skipAdblockScriptingForIdentityPage) installDeliBlockScriptingBridge();
 
+    function injectEarlyYouTubePatch() {
     const code = `
         (function installArDaliDeliBlockEarlyYouTubePatch() {
             if (window.__ardaliDeliBlockEarlyYouTubePatch) return;
@@ -1006,6 +1084,23 @@
             script.remove();
         } catch {}
     }
+    }
+
+    (async function installEarlyYouTubePatchWhenAllowed() {
+        if (skipAdblockScriptingForIdentityPage) return;
+        try {
+            const { ipcRenderer } = require('electron');
+            const url = String(location.href || '');
+            const result = await ipcRenderer.invoke('adblock:getScriptingInjection', {
+                url,
+                reason: 'early-youtube-gate'
+            });
+            if (result?.ok === true && result.reason === 'whitelist') return;
+        } catch {
+            // Preserve the existing fail-open startup behavior if IPC is unavailable.
+        }
+        injectEarlyYouTubePatch();
+    })();
 
     (async function installCredentialFormBridge() {
         if (window.top !== window || location.protocol !== 'https:') return;
@@ -1163,6 +1258,436 @@
         document.addEventListener('focusout', () => setTimeout(() => { if (document.activeElement !== button) hideButton(); }, 180), true);
         window.addEventListener('scroll', hideButton, true);
         window.addEventListener('beforeunload', hideButton, { once: true });
+    }());
+
+    (function installDeliBlockElementPicker() {
+        let ipcRenderer;
+        try { ({ ipcRenderer } = require('electron')); } catch { return; }
+        let cleanupActivePicker = null;
+
+        function cssEscape(value) {
+            if (globalThis.CSS?.escape) return globalThis.CSS.escape(String(value || ''));
+            return String(value || '').replace(/[^a-z0-9_-]/gi, (char) => `\\${char}`);
+        }
+
+        function uniqueSelector(element) {
+            if (!(element instanceof Element)) return '';
+            const id = String(element.id || '').trim();
+            if (id) {
+                const selector = `#${cssEscape(id)}`;
+                try { if (document.querySelectorAll(selector).length === 1) return selector; } catch {}
+            }
+            const segments = [];
+            let node = element;
+            while (node && node.nodeType === 1 && node !== document.documentElement && segments.length < 6) {
+                let segment = node.localName;
+                const stableClasses = Array.from(node.classList || [])
+                    .filter((name) => name.length < 64 && !/\d{5,}|^(active|selected|hover|focus)$/i.test(name))
+                    .slice(0, 3);
+                if (stableClasses.length) segment += stableClasses.map((name) => `.${cssEscape(name)}`).join('');
+                const parent = node.parentElement;
+                if (parent) {
+                    try {
+                        const same = Array.from(parent.children).filter((child) => child.localName === node.localName);
+                        if (same.length > 1) segment += `:nth-of-type(${same.indexOf(node) + 1})`;
+                    } catch {}
+                }
+                segments.unshift(segment);
+                const candidate = segments.join(' > ');
+                try { if (document.querySelectorAll(candidate).length === 1) return candidate; } catch {}
+                node = parent;
+            }
+            return segments.join(' > ');
+        }
+
+        function startPicker(payload = {}) {
+            if (globalThis.__ardaliDeliBlockWhitelist === true) return;
+            cleanupActivePicker?.();
+            const mode = ['block', 'filter'].includes(payload.mode) ? payload.mode : 'hide';
+            const overlay = document.createElement('div');
+            const panel = document.createElement('div');
+            const panelTitle = document.createElement('strong');
+            const validationMessage = document.createElement('div');
+            const panelBar = document.createElement('div');
+            const selectionSummary = document.createElement('strong');
+            const expandButton = document.createElement('button');
+            const selectionList = document.createElement('div');
+            const actions = document.createElement('div');
+            const previewButton = document.createElement('button');
+            const undoButton = document.createElement('button');
+            const saveButton = document.createElement('button');
+            const cancelButton = document.createElement('button');
+            const selections = new Map();
+            let hovered = null;
+            let previewed = false;
+            let listExpanded = false;
+            const existingFilters = new Set(
+                (Array.isArray(payload.existingFilters) ? payload.existingFilters : [])
+                    .map((value) => String(value || '').trim())
+                    .filter(Boolean)
+            );
+
+            overlay.setAttribute('data-ardali-picker-ui', 'true');
+            panel.setAttribute('data-ardali-picker-ui', 'true');
+            Object.assign(overlay.style, {
+                position: 'fixed', zIndex: '2147483646', pointerEvents: 'none',
+                border: '2px solid #5cf2c4', background: 'rgba(92,242,196,.15)',
+                boxSizing: 'border-box', display: 'none'
+            });
+            Object.assign(panel.style, {
+                position: 'fixed', zIndex: '2147483647', left: '16px', right: '16px', bottom: '16px',
+                display: 'flex', flexDirection: 'column', gap: '8px', padding: '10px 12px',
+                border: '1px solid #3a4b62', borderRadius: '10px', background: '#10141b',
+                color: '#fff', boxShadow: '0 12px 40px rgba(0,0,0,.55)', font: '13px sans-serif',
+                maxHeight: 'min(42vh, 360px)'
+            });
+            Object.assign(panelBar.style, {
+                display: 'flex', gap: '8px', alignItems: 'center', minHeight: '34px', minWidth: '0'
+            });
+            panelTitle.textContent = mode === 'filter' ? 'Kullanıcı Filtresi' : 'Element Picker';
+            Object.assign(panelTitle.style, { fontSize: '14px', color: '#fff' });
+            validationMessage.setAttribute('aria-live', 'polite');
+            Object.assign(validationMessage.style, {
+                minHeight: '16px', color: '#ffb4b4', fontSize: '12px', display: 'none'
+            });
+            selectionSummary.setAttribute('aria-live', 'polite');
+            Object.assign(selectionSummary.style, {
+                flex: '0 0 auto', alignSelf: 'center', whiteSpace: 'nowrap', padding: '4px'
+            });
+            selectionList.setAttribute('aria-label', 'Selected element selectors');
+            Object.assign(selectionList.style, {
+                minWidth: '120px', maxHeight: '240px', overflow: 'auto',
+                display: 'none', flexDirection: 'column', gap: '5px'
+            });
+            Object.assign(actions.style, {
+                marginLeft: 'auto', flex: '0 0 auto', display: 'flex', gap: '8px', alignItems: 'center'
+            });
+            const setupButton = (button, text, primary = false) => {
+                button.type = 'button';
+                button.textContent = text;
+                Object.assign(button.style, {
+                    padding: '8px 12px', borderRadius: '6px', cursor: 'pointer',
+                    border: '1px solid #4b607d', background: primary ? '#176b55' : '#1b2635', color: '#fff'
+                });
+            };
+            setupButton(previewButton, 'Preview');
+            setupButton(undoButton, 'Undo');
+            setupButton(saveButton, 'Save', true);
+            setupButton(cancelButton, 'Cancel');
+            setupButton(expandButton, '▴');
+            expandButton.setAttribute('aria-label', 'Seçilen öğeleri göster');
+            expandButton.setAttribute('aria-expanded', 'false');
+            expandButton.title = 'Seçilen öğeleri göster';
+            Object.assign(expandButton.style, {
+                padding: '3px 8px', minWidth: '30px', fontSize: '12px', lineHeight: '18px'
+            });
+            actions.append(previewButton, undoButton, saveButton, cancelButton);
+            panelBar.append(selectionSummary, expandButton, actions);
+            panel.append(panelTitle, selectionList, validationMessage, panelBar);
+            document.documentElement.append(overlay, panel);
+
+            const positionMarker = (marker, element) => {
+                if (!(element instanceof Element) || !element.isConnected) {
+                    marker.style.display = 'none';
+                    return;
+                }
+                const rect = element.getBoundingClientRect();
+                Object.assign(marker.style, {
+                    display: rect.width > 0 || rect.height > 0 ? 'block' : 'none',
+                    left: `${rect.left}px`,
+                    top: `${rect.top}px`,
+                    width: `${rect.width}px`,
+                    height: `${rect.height}px`
+                });
+            };
+            const refreshMarkers = () => {
+                for (const entry of selections.values()) positionMarker(entry.marker, entry.element);
+                if (hovered) {
+                    const rect = hovered.getBoundingClientRect();
+                    Object.assign(overlay.style, {
+                        display: rect.width > 0 || rect.height > 0 ? 'block' : 'none',
+                        left: `${rect.left}px`,
+                        top: `${rect.top}px`,
+                        width: `${rect.width}px`,
+                        height: `${rect.height}px`
+                    });
+                }
+            };
+            const updateHover = (element) => {
+                if (!(element instanceof Element) || element.closest?.('[data-ardali-picker-ui]')) return;
+                hovered = element;
+                const rect = element.getBoundingClientRect();
+                Object.assign(overlay.style, {
+                    display: 'block', left: `${rect.left}px`, top: `${rect.top}px`,
+                    width: `${rect.width}px`, height: `${rect.height}px`
+                });
+            };
+            const restoreEntry = (entry) => {
+                if (!entry?.previewState || !(entry.element instanceof Element)) return;
+                if (entry.previewState.hadStyle) entry.element.setAttribute('style', entry.previewState.value);
+                else entry.element.removeAttribute('style');
+                entry.previewState = null;
+            };
+            const undo = () => {
+                if (!previewed) return;
+                for (const entry of selections.values()) restoreEntry(entry);
+                previewed = false;
+                refreshMarkers();
+                renderSelections();
+            };
+            const removeSelection = (selector) => {
+                const entry = selections.get(selector);
+                if (!entry) return;
+                restoreEntry(entry);
+                entry.marker.remove();
+                selections.delete(selector);
+                renderSelections();
+                refreshMarkers();
+            };
+            const renderSelections = () => {
+                const count = selections.size;
+                selectionSummary.textContent = `${count} öğe seçildi`;
+                expandButton.disabled = count === 0;
+                if (count === 0) listExpanded = false;
+                selectionList.style.display = listExpanded ? 'flex' : 'none';
+                expandButton.textContent = listExpanded ? '▾' : '▴';
+                expandButton.setAttribute('aria-expanded', String(listExpanded));
+                expandButton.setAttribute(
+                    'aria-label',
+                    listExpanded ? 'Seçilen öğeleri gizle' : 'Seçilen öğeleri göster'
+                );
+                expandButton.title = listExpanded ? 'Seçilen öğeleri gizle' : 'Seçilen öğeleri göster';
+                expandButton.style.opacity = count === 0 ? '.5' : '1';
+                expandButton.style.cursor = count === 0 ? 'default' : 'pointer';
+                selectionList.replaceChildren();
+                for (const entry of selections.values()) {
+                    const row = document.createElement('div');
+                    const selectorText = mode === 'filter'
+                        ? document.createElement('textarea')
+                        : document.createElement('code');
+                    const removeButton = document.createElement('button');
+                    row.setAttribute('data-ardali-picker-ui', 'true');
+                    Object.assign(row.style, {
+                        display: 'flex', gap: '7px', alignItems: 'center', minWidth: '0',
+                        padding: '5px 7px', borderRadius: '6px', background: '#172231'
+                    });
+                    if (mode === 'filter') {
+                        selectorText.value = entry.filterText;
+                        selectorText.rows = 2;
+                        selectorText.spellcheck = false;
+                        selectorText.addEventListener('input', () => {
+                            entry.filterText = selectorText.value;
+                            validationMessage.style.display = 'none';
+                        });
+                    } else {
+                        selectorText.textContent = entry.selector;
+                    }
+                    selectorText.title = mode === 'filter' ? entry.filterText : entry.selector;
+                    Object.assign(selectorText.style, {
+                        flex: '1', minWidth: '0', overflow: 'hidden',
+                        textOverflow: 'ellipsis', whiteSpace: mode === 'filter' ? 'pre-wrap' : 'nowrap',
+                        color: '#cfe4ff',
+                        background: mode === 'filter' ? '#0e1722' : 'transparent',
+                        border: mode === 'filter' ? '1px solid #42536b' : '0',
+                        borderRadius: mode === 'filter' ? '5px' : '0',
+                        padding: mode === 'filter' ? '6px' : '0',
+                        resize: mode === 'filter' ? 'vertical' : 'none'
+                    });
+                    setupButton(removeButton, '×');
+                    removeButton.setAttribute('aria-label', `Remove ${entry.selector}`);
+                    removeButton.title = 'Remove';
+                    Object.assign(removeButton.style, {
+                        padding: '1px 7px', borderColor: '#6d4050', background: '#35202a'
+                    });
+                    removeButton.addEventListener('click', () => removeSelection(entry.selector));
+                    row.append(selectorText, removeButton);
+                    selectionList.appendChild(row);
+                }
+                previewButton.disabled = count === 0 || previewed;
+                undoButton.disabled = !previewed;
+                saveButton.disabled = count === 0;
+                for (const button of [previewButton, undoButton, saveButton]) {
+                    button.style.opacity = button.disabled ? '.5' : '1';
+                    button.style.cursor = button.disabled ? 'default' : 'pointer';
+                }
+            };
+            expandButton.addEventListener('click', () => {
+                if (!selections.size) return;
+                listExpanded = !listExpanded;
+                renderSelections();
+            });
+            const addSelection = (element) => {
+                if (!(element instanceof Element)) return;
+                if (previewed) undo();
+                const selector = uniqueSelector(element);
+                if (!selector || /[{}@]/.test(selector)) return;
+                if (selections.has(selector)) {
+                    removeSelection(selector);
+                    return;
+                }
+                try {
+                    if (!document.querySelector(selector)) return;
+                } catch {
+                    return;
+                }
+                const marker = document.createElement('div');
+                marker.setAttribute('data-ardali-picker-ui', 'true');
+                marker.setAttribute('aria-hidden', 'true');
+                Object.assign(marker.style, {
+                    position: 'fixed', zIndex: '2147483645', pointerEvents: 'none',
+                    border: '2px solid #4a9eff', background: 'rgba(74,158,255,.14)',
+                    boxSizing: 'border-box'
+                });
+                document.documentElement.appendChild(marker);
+                selections.set(selector, {
+                    selector,
+                    filterText: `${location.hostname}##${selector}`,
+                    element,
+                    marker,
+                    previewState: null
+                });
+                positionMarker(marker, element);
+                renderSelections();
+            };
+            const onPointerMove = (event) => updateHover(document.elementFromPoint(event.clientX, event.clientY));
+            const onPointerDown = (event) => {
+                if (event.target?.closest?.('[data-ardali-picker-ui]')) return;
+                event.preventDefault();
+                event.stopImmediatePropagation();
+                if (event.button !== 0) return;
+                updateHover(event.target);
+                addSelection(event.target);
+            };
+            const onClick = (event) => {
+                if (event.target?.closest?.('[data-ardali-picker-ui]')) return;
+                event.preventDefault();
+                event.stopImmediatePropagation();
+            };
+            const cleanup = () => {
+                document.removeEventListener('pointermove', onPointerMove, true);
+                document.removeEventListener('pointerdown', onPointerDown, true);
+                document.removeEventListener('click', onClick, true);
+                document.removeEventListener('keydown', onKeyDown, true);
+                window.removeEventListener('scroll', refreshMarkers, true);
+                window.removeEventListener('resize', refreshMarkers, true);
+                for (const entry of selections.values()) entry.marker.remove();
+                overlay.remove();
+                panel.remove();
+                cleanupActivePicker = null;
+            };
+            const cancel = () => {
+                undo();
+                cleanup();
+                selections.clear();
+            };
+            const onKeyDown = (event) => {
+                if (event.key === 'Escape') {
+                    event.preventDefault();
+                    event.stopImmediatePropagation();
+                    cancel();
+                }
+            };
+            previewButton.addEventListener('click', () => {
+                if (!selections.size || previewed) return;
+                for (const entry of selections.values()) {
+                    const element = entry.element;
+                    if (!(element instanceof Element) || !element.isConnected) continue;
+                    entry.previewState = {
+                        hadStyle: element.hasAttribute('style'),
+                        value: element.getAttribute('style') || ''
+                    };
+                    element.style.setProperty('display', 'none', 'important');
+                }
+                previewed = true;
+                overlay.style.display = 'none';
+                renderSelections();
+                refreshMarkers();
+            });
+            undoButton.addEventListener('click', undo);
+            cancelButton.addEventListener('click', cancel);
+            saveButton.addEventListener('click', () => {
+                if (!selections.size) return;
+                const entries = Array.from(selections.values());
+                if (mode === 'filter') {
+                    const texts = [];
+                    let duplicateCount = 0;
+                    for (const entry of entries) {
+                        const text = String(entry.filterText || '').trim();
+                        const match = /^([a-z0-9.*_-]+(?:,[a-z0-9.*_-]+)*)##(.+)$/i.exec(text);
+                        if (!match) {
+                            validationMessage.textContent = 'Geçersiz kozmetik filtre. Beklenen biçim: example.com##.selector';
+                            validationMessage.style.display = 'block';
+                            return;
+                        }
+                        const selector = match[2].trim();
+                        if (!selector || /[{}@]/.test(selector)) {
+                            validationMessage.textContent = 'Geçersiz CSS selector.';
+                            validationMessage.style.display = 'block';
+                            return;
+                        }
+                        try { document.querySelector(selector); } catch {
+                            validationMessage.textContent = 'Geçersiz CSS selector.';
+                            validationMessage.style.display = 'block';
+                            return;
+                        }
+                        if (existingFilters.has(text) || texts.includes(text)) {
+                            duplicateCount += 1;
+                            continue;
+                        }
+                        texts.push(text);
+                    }
+                    if (!texts.length) {
+                        validationMessage.textContent = 'Bu filtre zaten mevcut.';
+                        validationMessage.style.display = 'block';
+                        return;
+                    }
+                    undo();
+                    ipcRenderer.sendToHost('ardali-adblock-user-filter', {
+                        texts,
+                        hostname: location.hostname,
+                        mode,
+                        duplicateCount
+                    });
+                    cleanup();
+                    return;
+                }
+                const selectors = entries.map((entry) => entry.selector);
+                undo();
+                for (const selector of selectors) {
+                    ipcRenderer.sendToHost('ardali-adblock-user-filter', {
+                        text: `${location.hostname}##${selector}`,
+                        hostname: location.hostname,
+                        selector,
+                        mode
+                    });
+                }
+                cleanup();
+            });
+            document.addEventListener('pointermove', onPointerMove, true);
+            document.addEventListener('pointerdown', onPointerDown, true);
+            document.addEventListener('click', onClick, true);
+            document.addEventListener('keydown', onKeyDown, true);
+            window.addEventListener('scroll', refreshMarkers, true);
+            window.addEventListener('resize', refreshMarkers, true);
+            cleanupActivePicker = cancel;
+            renderSelections();
+            const initialElement = document.elementFromPoint(Number(payload.x) || innerWidth / 2, Number(payload.y) || innerHeight / 2);
+            updateHover(initialElement);
+            if (mode === 'filter' && initialElement instanceof Element && !initialElement.closest?.('[data-ardali-picker-ui]')) {
+                addSelection(initialElement);
+                listExpanded = true;
+                renderSelections();
+            }
+        }
+
+        ipcRenderer.on('adblock:startElementPicker', (_event, payload) => startPicker(payload));
+        globalThis.addEventListener('ardali:adblock-whitelist-state', (event) => {
+            if (event?.detail?.whitelisted === true) cleanupActivePicker?.();
+        });
+        ipcRenderer.on('adblock:refreshScripting', () => {
+            try { globalThis.dispatchEvent(new CustomEvent('ardali:adblock-refresh')); } catch {}
+        });
+        window.addEventListener('beforeunload', () => cleanupActivePicker?.(), { once: true });
     }());
 
 }());

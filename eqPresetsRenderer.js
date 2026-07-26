@@ -13,6 +13,7 @@ const PRESET_PERF = {
     reason: 'default'
 };
 const PRESET_PROFILE_STORAGE_KEY = 'ardali_eq_presets_preview_profile_v1';
+const PRESET_SELECTION_STORAGE_KEY = 'ardali_eq_presets_selected_v1';
 const EQ_PRESET_ALLOWED_THEMES = new Set([
     'aur-renk-efektleri',
     'performance-balanced',
@@ -1209,8 +1210,21 @@ async function init() {
 
     // Kayıtlı seçimi (uygulama ayarları) oku
     try {
-        const appSettings = await ardali.loadSettings?.();
-        const saved = appSettings?.sfx?.eq32?.lastPreset?.filename;
+        const locallyConfirmed = String(localStorage.getItem(PRESET_SELECTION_STORAGE_KEY) || '').trim();
+        const persistedSelection = await ardali.presets.getSelectedEQPreset?.();
+        let saved = String(persistedSelection?.filename || '').trim();
+        if (!saved) {
+            const appSettings = await ardali.loadSettings?.();
+            saved = String(
+                appSettings?.sfxScopes?.music?.eq32?.lastPreset?.filename ||
+                appSettings?.sfx?.eq32?.lastPreset?.filename ||
+                ''
+            ).trim();
+        }
+        // Aynı görünen ada sahip presetler bulunabildiği için son onaylanan
+        // satırın kesin dosya kimliğini bu sayfanın oturumunda da koru.
+        // Ana süreç eski bir ayar anlık görüntüsü döndürse bile seçim kaybolmaz.
+        if (locallyConfirmed) saved = locallyConfirmed;
         if (saved) {
             state.selected = saved;
             console.log('[EQ PRESETS] Kayıtlı seçim:', saved);
@@ -1351,14 +1365,21 @@ async function init() {
     }
 
     okBtn?.addEventListener('click', async () => {
-        state.confirmed = true;
         const filename = state.selected || '__flat__';
         try {
-            await ardali.presets.selectEQPreset(filename);
-        } catch {
-            // yoksay
+            okBtn.disabled = true;
+            const result = await ardali.presets.selectEQPreset(filename);
+            if (!result?.success) {
+                throw new Error(result?.error || 'preset-save-failed');
+            }
+            localStorage.setItem(PRESET_SELECTION_STORAGE_KEY, filename);
+            state.confirmed = true;
+            window.ardali?.electronAPI?.closeWindow?.();
+        } catch (error) {
+            console.error('[EQ PRESETS] Seçim kaydedilemedi:', error);
+            setStatus(tSync('eqPresets.saveError', null, 'Hazır ayar kaydedilemedi. Lütfen tekrar deneyin.'));
+            okBtn.disabled = false;
         }
-        window.close();
     });
 
     window.addEventListener('beforeunload', () => {

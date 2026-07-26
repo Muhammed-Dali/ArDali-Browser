@@ -925,8 +925,13 @@
   "about.sections.passwordManager.item3": "Tự động điền an toàn yêu cầu sự tương tác của người dùng và đối sánh nguồn gốc HTTPS chính xác.",
   "about.sections.security.item4": "Hộp cát Chrome, Cách ly bối cảnh, CSP nghiêm ngặt và IPC đã xác thực làm cứng các cửa sổ ứng dụng.",
   "about.sections.security.item5": "OS Secure Storage bảo vệ khóa thiết bị của vault cục bộ.",
-  "about.whatsNew.title": "Có gì mới trong 5.4.0",
+  "about.whatsNew.title": "Có gì mới trong v5.5.0",
   "about.whatsNew.passwordManager": "Đã thêm Trình quản lý mật khẩu AES-256-GCM cục bộ với tính năng bảo vệ bằng mật khẩu chính, Tự động khóa và Tự động điền an toàn.",
   "about.whatsNew.security": "Cửa sổ Electron cứng, xác thực IPC, quyền, Chính sách bảo mật nội dung và lưu trữ khóa hệ điều hành an toàn.",
-  "about.whatsNew.releasePipeline": "Đã thêm cổng bảo mật bắt buộc trước khi phát hành bản dựng và xuất bản gói."
+  "about.whatsNew.releasePipeline": "Đã thêm cổng bảo mật bắt buộc trước khi phát hành bản dựng và xuất bản gói.",
+  "about.whatsNew.workspace": "Kiến trúc không gian làm việc tab mới với các tab được duy trì và quản lý vòng đời tốt hơn.",
+  "about.whatsNew.media": "Cải thiện Trình quản lý mật khẩu, chặn quảng cáo, Thư viện, Âm nhạc, Song Finder, hiệu ứng âm thanh và projectM.",
+  "about.whatsNew.performance": "Giảm tác vụ nền không cần thiết nhờ dọn dẹp bộ nhớ, độ ổn định và xác thực bảo mật tốt hơn.",
+  "about.badges.node": "Node.js",
+  "about.badges.license": "License"
 }

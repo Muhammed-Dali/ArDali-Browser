@@ -15,6 +15,9 @@
             <button type="button" class="adblock-tab-button active" data-adblock-tab="settings" data-i18n="adblock.tabs.settings">Ayarlar</button>
             <button type="button" class="adblock-tab-button" data-adblock-tab="rulesets" data-i18n="adblock.tabs.rulesets">Filtre listeleri</button>
             <button type="button" class="adblock-tab-button" data-adblock-tab="filters" data-i18n="adblock.tabs.filters">Özel filtreler</button>
+            <button type="button" class="adblock-tab-button" data-adblock-tab="sites" data-i18n="adblock.tabs.sites">Siteler</button>
+            <button type="button" class="adblock-tab-button" data-adblock-tab="statistics" data-i18n="adblock.tabs.statistics">İstatistikler</button>
+            <button type="button" class="adblock-tab-button" data-adblock-tab="logger" data-i18n="adblock.tabs.logger">İstek günlüğü</button>
             <button type="button" class="adblock-tab-button adblock-develop-tab" data-adblock-tab="develop" data-i18n="adblock.tabs.develop">Geliştir</button>
             <button type="button" class="adblock-tab-button" data-adblock-tab="about" data-i18n="adblock.tabs.about">Hakkında</button>
         </nav>
@@ -104,6 +107,12 @@
                 <div class="adblock-ruleset-breakdown" id="adblockRulesetBreakdown">
                     <p class="adblock-log-empty" data-i18n="adblock.rulesets.empty">Ruleset eşleşmesi bekleniyor.</p>
                 </div>
+                <div class="adblock-action-row">
+                    <button class="btn btn-small" id="adblockRulesetUpdateBtn" data-i18n="adblock.rulesets.update">Seçilenleri güncelle</button>
+                    <label class="checkbox-label"><input type="checkbox" id="adblockRulesetAutoUpdate"><span data-i18n="adblock.rulesets.autoUpdate">Otomatik güncelle</span></label>
+                    <span class="adblock-muted" id="adblockRulesetUpdateStatus"></span>
+                </div>
+                <div class="adblock-manager-list" id="adblockRulesetCatalog"></div>
             </div>
         </section>
 
@@ -115,7 +124,79 @@
                         <p data-i18n="adblock.filters.hint">Bu bölüm bir sonraki adımda DeliBlock özel filtre ekleme alanı için hazırlandı.</p>
                     </div>
                 </div>
-                <textarea class="adblock-filter-editor" spellcheck="false" placeholder="Örnek: ||example.com/ads^" data-i18n-placeholder="adblock.filters.placeholder"></textarea>
+                <textarea class="adblock-filter-editor" id="adblockUserFilterEditor" spellcheck="false" placeholder="Örnek: ||example.com/ads^" data-i18n-placeholder="adblock.filters.placeholder"></textarea>
+                <div class="adblock-action-row">
+                    <button class="btn btn-small" id="adblockUserFilterAddBtn" data-i18n="adblock.filters.add">Filtre ekle</button>
+                    <button class="btn btn-small" id="adblockUserFilterImportBtn" data-i18n="adblock.filters.import">İçe aktar</button>
+                    <button class="btn btn-small" id="adblockUserFilterExportBtn" data-i18n="adblock.filters.export">Dışa aktar</button>
+                    <input type="file" id="adblockUserFilterImportInput" accept=".txt,text/plain" hidden>
+                    <span class="adblock-muted" id="adblockUserFilterValidation"></span>
+                </div>
+                <h3 data-i18n="adblock.hidden.title">Gizlenen elementler ve kullanıcı filtreleri</h3>
+                <div class="adblock-manager-list" id="adblockUserFilterList"></div>
+            </div>
+        </section>
+
+        <section class="adblock-tab-panel" data-adblock-panel="sites">
+            <div class="settings-group adblock-dashboard-section">
+                <h3 data-i18n="adblock.sites.title">Site koruması ve izin listesi</h3>
+                <p class="adblock-muted" id="adblockActiveSiteStatus"></p>
+                <div class="adblock-action-row">
+                    <input class="settings-input" id="adblockSiteHostname" type="text" placeholder="Aktif web sekmesi yok" readonly aria-readonly="true">
+                    <label class="checkbox-label"><input type="checkbox" id="adblockSiteWhitelist"><span data-i18n="adblock.whitelist.option">Bu siteyi Beyaz Listeye Al (Whitelist)</span></label>
+                    <label class="checkbox-label"><input type="checkbox" id="adblockSiteAds" checked><span data-i18n="adblock.sites.ads">Reklam engelleme</span></label>
+                    <label class="checkbox-label"><input type="checkbox" id="adblockSiteTrackers" checked><span data-i18n="adblock.sites.trackers">İzleyici koruması</span></label>
+                    <button class="btn btn-small" id="adblockSiteSaveBtn" data-i18n="settings.buttons.save">Kaydet</button>
+                </div>
+                <div class="adblock-manager-list" id="adblockSitePolicyList"></div>
+            </div>
+        </section>
+
+        <section class="adblock-tab-panel" data-adblock-panel="statistics">
+            <div class="adblock-dashboard-summary adblock-popup-stats">
+                <div class="adblock-stat"><span data-i18n="adblock.stats.today">Bugün</span><strong id="adblockStatsToday">0</strong></div>
+                <div class="adblock-stat"><span data-i18n="adblock.stats.week">Bu hafta</span><strong id="adblockStatsWeek">0</strong></div>
+                <div class="adblock-stat"><span data-i18n="adblock.stats.month">Bu ay</span><strong id="adblockStatsMonth">0</strong></div>
+                <div class="adblock-stat"><span data-i18n="adblock.stats.total">Toplam</span><strong id="adblockStatsTotal">0</strong></div>
+                <div class="adblock-stat"><span data-i18n="adblock.stats.trackers">İzleyiciler</span><strong id="adblockStatsTrackers">0</strong></div>
+                <div class="adblock-stat"><span data-i18n="adblock.stats.saved">Tasarruf</span><strong id="adblockStatsSaved">0 B</strong></div>
+                <div class="adblock-stat"><span data-i18n="adblock.stats.speed">Tahmini hızlanma</span><strong id="adblockStatsSpeed">0%</strong></div>
+                <div class="adblock-stat"><span data-i18n="adblock.whitelist.siteCount">Whitelist site sayısı</span><strong id="adblockStatsWhitelistSites">0</strong></div>
+                <div class="adblock-stat"><span data-i18n="adblock.whitelist.allowedCount">Whitelist ile izin verilen</span><strong id="adblockStatsWhitelistAllowed">0</strong></div>
+            </div>
+            <div class="settings-group adblock-dashboard-section">
+                <h3 data-i18n="adblock.stats.topSites">En çok engellenen siteler</h3>
+                <div class="adblock-ruleset-breakdown" id="adblockTopSites"></div>
+                <h3 data-i18n="adblock.stats.topLists">En etkin filtre listeleri</h3>
+                <div class="adblock-ruleset-breakdown" id="adblockTopLists"></div>
+            </div>
+        </section>
+
+        <section class="adblock-tab-panel" data-adblock-panel="logger">
+            <div class="settings-group adblock-dashboard-section">
+                <div class="adblock-section-heading">
+                    <div><h3 data-i18n="adblock.logger.title">Ağ istek günlüğü</h3></div>
+                    <input class="settings-input" id="adblockLoggerSearch" type="search" placeholder="URL, kural veya liste ara">
+                </div>
+                <div class="adblock-action-row">
+                    <select class="settings-select" id="adblockLoggerAction">
+                        <option value="all" data-i18n="adblock.logger.all">Tümü</option>
+                        <option value="block" data-i18n="adblock.logger.blocked">Engellenen</option>
+                        <option value="allow" data-i18n="adblock.logger.allowed">İzin verilen</option>
+                    </select>
+                </div>
+                <div class="adblock-log-list" id="adblockNetworkLog"></div>
+            </div>
+            <div class="settings-group adblock-dashboard-section">
+                <h3 data-i18n="adblock.diagnostics.title">Performans ve teşhis</h3>
+                <div class="adblock-dashboard-summary adblock-popup-stats">
+                    <div class="adblock-stat"><span data-i18n="adblock.diagnostics.loaded">Yüklü filtre</span><strong id="adblockDiagLoaded">0</strong></div>
+                    <div class="adblock-stat"><span data-i18n="adblock.diagnostics.active">Aktif liste</span><strong id="adblockDiagActive">0</strong></div>
+                    <div class="adblock-stat"><span data-i18n="adblock.logger.blocked">Engellenen</span><strong id="adblockDiagBlocked">0</strong></div>
+                    <div class="adblock-stat"><span data-i18n="adblock.logger.allowed">İzin verilen</span><strong id="adblockDiagAllowed">0</strong></div>
+                    <div class="adblock-stat"><span data-i18n="adblock.diagnostics.time">İşleme süresi</span><strong id="adblockDiagTime">0 ms</strong></div>
+                    <div class="adblock-stat"><span data-i18n="adblock.diagnostics.memory">Bellek</span><strong id="adblockDiagMemory">0 MB</strong></div>
+                </div>
             </div>
         </section>
 
@@ -162,6 +243,7 @@
             </div>
         </section>
     </main>
+    <script src="modules/embedded-api-bridge.js"></script>
     <script src="modules/i18n.js"></script>
     <script src="adblockWindow.js"></script>
 </body>

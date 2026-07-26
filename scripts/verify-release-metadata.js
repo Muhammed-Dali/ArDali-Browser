@@ -32,6 +32,27 @@ if (packageJson.devDependencies?.electron !== electronVersion) {
   fail(`Electron dependency ${packageJson.devDependencies?.electron} does not match build.electronVersion ${electronVersion}`);
 }
 
+for (const workflowPath of [
+  '.github/workflows/build-linux.yml',
+  '.github/workflows/build-windows.yml',
+  '.github/workflows/release.yml'
+]) {
+  const workflow = read(workflowPath);
+  const declaredElectronVersions = [
+    ...workflow.matchAll(/(?:ELECTRON_VERSION|npm_config_target):\s*['"]?(\d+\.\d+\.\d+)['"]?/g)
+  ].map((match) => match[1]);
+
+  if (declaredElectronVersions.length === 0) {
+    fail(`${workflowPath} does not declare an Electron build target`);
+    continue;
+  }
+  for (const declaredVersion of declaredElectronVersions) {
+    if (declaredVersion !== electronVersion) {
+      fail(`${workflowPath} Electron target ${declaredVersion} does not match ${electronVersion}`);
+    }
+  }
+}
+
 const repositoryUrl = packageJson.repository?.url || '';
 if (!repositoryUrl.includes('Muhammed-Dali/ArDali-WebMedia')) fail(`unexpected repository URL: ${repositoryUrl}`);
 if (packageJson.build?.publish?.owner !== 'Muhammed-Dali' || packageJson.build?.publish?.repo !== 'ArDali-WebMedia') {

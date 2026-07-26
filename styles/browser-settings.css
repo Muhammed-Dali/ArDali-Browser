@@ -1,0 +1,25 @@
+.browser-settings-center { display: grid; gap: 10px; margin-bottom: 18px; }
+.browser-settings-hero { display: flex; justify-content: space-between; align-items: center; gap: 16px; padding: 18px; border: 1px solid var(--border-color, #444); border-radius: 16px; background: linear-gradient(135deg, rgba(95, 70, 220, .18), transparent); }
+.browser-settings-hero h3 { display: flex; gap: 8px; align-items: center; margin: 0; }
+.browser-settings-hero p { margin: 5px 0 0; opacity: .7; }
+.browser-settings-hero input { max-width: 280px; }
+.browser-settings-section { border: 1px solid var(--border-color, #444); border-radius: 13px; background: rgba(255, 255, 255, .025); overflow: hidden; }
+.browser-settings-section > summary { display: flex; align-items: center; gap: 10px; padding: 14px 16px; cursor: pointer; font-weight: 700; list-style: none; }
+.browser-settings-section > summary .chevron { margin-left: auto; }
+.browser-settings-section[open] > summary .chevron { transform: rotate(180deg); }
+.browser-settings-body { display: grid; gap: 11px; padding: 2px 16px 16px; }
+.browser-setting-row { display: flex; align-items: center; justify-content: space-between; gap: 15px; padding: 5px 0; }
+.browser-setting-row > div { display: grid; }
+.browser-setting-row small, .browser-note { opacity: .68; }
+.browser-note.error { color: #ff6b6b; opacity: 1; }
+.browser-toggle { display: flex; align-items: center; gap: 8px; }
+.browser-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.browser-list { display: grid; gap: 7px; }
+.browser-list > div { display: flex; align-items: center; gap: 9px; padding: 9px; border: 1px solid var(--border-color, #444); border-radius: 10px; }
+.browser-list > div > div, .browser-list strong { flex: 1; }
+.browser-list small { display: block; max-width: 420px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; opacity: .65; }
+.browser-sort > div { cursor: grab; }
+@media (max-width: 760px) {
+    .browser-settings-hero, .browser-setting-row { align-items: stretch; flex-direction: column; }
+    .browser-settings-hero input { max-width: none; }
+}

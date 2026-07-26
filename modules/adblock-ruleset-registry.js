@@ -156,7 +156,10 @@ function getActiveRulesetPlan(config = {}) {
     const mode = ['basic', 'ideal', 'aggressive'].includes(String(config.mode || '').toLowerCase())
         ? String(config.mode).toLowerCase()
         : 'ideal';
-    const ids = getModeRulesetIds(mode);
+    const requestedIds = Array.isArray(config.enabledRulesetIds)
+        ? uniqueIds(config.enabledRulesetIds).filter((id) => rulesetAssetExists(id, 'main'))
+        : [];
+    const ids = config.rulesetSelectionConfigured === true ? requestedIds : getModeRulesetIds(mode);
     const strictEnabled = config.strictBlock === true || mode === 'aggressive';
     const detailsById = new Map(getRulesetDetails().map((item) => [item.id, item]));
     const strictIds = ids.filter((id) => {

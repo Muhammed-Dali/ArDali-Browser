@@ -925,8 +925,13 @@
   "about.sections.passwordManager.item3": "सुरक्षित स्वत: भरण प्रयोगकर्ता अन्तरक्रिया र सटीक HTTPS मूल मिल्दो आवश्यकता छ।",
   "about.sections.security.item4": "क्रोमियम स्यान्डबक्स, कन्टेक्स्ट आइसोलेशन, कडा CSP, र मान्य IPC कडा एप्लिकेसन विन्डोजहरू।",
   "about.sections.security.item5": "OS सुरक्षित भण्डारणले स्थानीय भल्टको उपकरण कुञ्जीलाई सुरक्षित गर्दछ।",
-  "about.whatsNew.title": "5.4.0 मा नयाँ के छ",
+  "about.whatsNew.title": "v5.5.0 मा नयाँ के छ",
   "about.whatsNew.passwordManager": "मास्टर पासवर्ड सुरक्षा, अटो लक, र सुरक्षित अटोफिलको साथ स्थानीय AES-256-GCM पासवर्ड प्रबन्धक थपियो।",
   "about.whatsNew.security": "कडा इलेक्ट्रोन विन्डोज, IPC प्रमाणीकरण, अनुमति, सामग्री सुरक्षा नीति, र सुरक्षित OS कुञ्जी भण्डारण।",
-  "about.whatsNew.releasePipeline": "रिलीज निर्माण र प्याकेज प्रकाशन अघि अनिवार्य सुरक्षा गेट थपियो।"
+  "about.whatsNew.releasePipeline": "रिलीज निर्माण र प्याकेज प्रकाशन अघि अनिवार्य सुरक्षा गेट थपियो।",
+  "about.whatsNew.workspace": "स्थायी ट्याब र सुधारिएको जीवनचक्र व्यवस्थापनसहित नयाँ ट्याब कार्यस्थान संरचना।",
+  "about.whatsNew.media": "पासवर्ड प्रबन्धक, विज्ञापन अवरोध, ग्यालरी, सङ्गीत, Song Finder, अडियो प्रभाव र projectM कार्यप्रवाह सुधार गरियो।",
+  "about.whatsNew.performance": "राम्रो मेमोरी सफाइ, स्थिरता र सुरक्षा प्रमाणीकरणमार्फत अनावश्यक पृष्ठभूमि काम घटाइयो।",
+  "about.badges.node": "Node.js",
+  "about.badges.license": "License"
 }

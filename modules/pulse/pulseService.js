@@ -372,7 +372,13 @@ class PulseService extends EventEmitter {
         }
         const requestedDevice = String(options.audioDevice || '').trim();
         const preferredMonitor = this.getPreferredOutputMonitor();
-        const audioDevice = requestedDevice || preferredMonitor.audioDevice || '';
+        const shouldFollowOutput = options.autoSwitchOutputMonitor !== false;
+        // Otomatik kip her zaman o anda etkin çıkışın monitorünü izler.
+        // Böylece uygulama açıkken kulaklık takıldığında eski kayıtlı hoparlör
+        // monitorü yerine kulaklığın varsayılan monitorü seçilir.
+        const audioDevice = shouldFollowOutput && preferredMonitor.audioDevice
+            ? preferredMonitor.audioDevice
+            : (requestedDevice || preferredMonitor.audioDevice || '');
         const requestedInterval = Number(options.requestIntervalSecs);
         const requestedBuffer = Number(options.bufferSizeSecs);
         if (Number.isFinite(requestedInterval) || Number.isFinite(requestedBuffer)) {
@@ -382,7 +388,7 @@ class PulseService extends EventEmitter {
                 ...(Number.isFinite(requestedBuffer) ? { buffer_size_secs: requestedBuffer } : {})
             });
         }
-        this.autoSwitchOutputMonitor = options.autoSwitchOutputMonitor !== false
+        this.autoSwitchOutputMonitor = shouldFollowOutput
             && this.shouldAutoSwitchOutputMonitor(requestedDevice, audioDevice, preferredMonitor.devices);
         if (options.contextMetadata && typeof options.contextMetadata === 'object') {
             this.setContextMetadata(options.contextMetadata);

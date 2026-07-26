@@ -9,6 +9,7 @@
     <script src="node_modules/dompurify/dist/purify.min.js"></script>
     <script src="modules/safe-html.js"></script>
     <link rel="stylesheet" href="styles/main.css">
+    <link rel="stylesheet" href="styles/browser-settings.css">
 </head>
 <body class="settings-window-mode">
     <div class="app-container">
@@ -638,31 +639,34 @@
                                         </div>
                                         <div class="settings-group">
                                             <h4 data-i18n="settings.web.sections.permissions">Site İzinleri</h4>
-                                            <label class="checkbox-label">
-                                                <input type="checkbox" id="behaviorWebAllowCamera">
+                                            <label class="settings-row">
                                                 <span class="web-setting-icon web-setting-icon-camera" aria-hidden="true"></span>
                                                 <span data-i18n="settings.web.permissions.camera">Kameraya izin ver</span>
+                                                <select class="settings-select web-permission-mode" id="behaviorWebAllowCamera"><option value="ask">Sor</option><option value="allow">İzin ver</option><option value="block">Engelle</option></select>
                                             </label>
-                                            <label class="checkbox-label">
-                                                <input type="checkbox" id="behaviorWebAllowMicrophone">
+                                            <label class="settings-row">
                                                 <span class="web-setting-icon web-setting-icon-mic" aria-hidden="true"></span>
                                                 <span data-i18n="settings.web.permissions.microphone">Mikrofona izin ver</span>
+                                                <select class="settings-select web-permission-mode" id="behaviorWebAllowMicrophone"><option value="ask">Sor</option><option value="allow">İzin ver</option><option value="block">Engelle</option></select>
                                             </label>
-                                            <label class="checkbox-label">
-                                                <input type="checkbox" id="behaviorWebAllowLocation">
+                                            <label class="settings-row">
                                                 <span class="web-setting-icon web-setting-icon-location" aria-hidden="true"></span>
                                                 <span data-i18n="settings.web.permissions.location">Konuma izin ver</span>
+                                                <select class="settings-select web-permission-mode" id="behaviorWebAllowLocation"><option value="ask">Sor</option><option value="allow">İzin ver</option><option value="block">Engelle</option></select>
                                             </label>
-                                            <label class="checkbox-label">
-                                                <input type="checkbox" id="behaviorWebAllowNotifications">
+                                            <label class="settings-row">
                                                 <span class="web-setting-icon web-setting-icon-bell" aria-hidden="true"></span>
                                                 <span data-i18n="settings.web.permissions.notifications">Site bildirimlerine izin ver</span>
+                                                <select class="settings-select web-permission-mode" id="behaviorWebAllowNotifications"><option value="ask">Sor</option><option value="allow">İzin ver</option><option value="block">Engelle</option></select>
                                             </label>
-                                            <label class="checkbox-label">
-                                                <input type="checkbox" id="behaviorWebAllowPopups" checked>
+                                            <label class="settings-row">
                                                 <span class="web-setting-icon web-setting-icon-popup" aria-hidden="true"></span>
                                                 <span data-i18n="settings.web.permissions.popups">Pop-up pencerelerine izin ver</span>
+                                                <select class="settings-select web-permission-mode" id="behaviorWebAllowPopups"><option value="ask">Sor</option><option value="allow">İzin ver</option><option value="block">Engelle</option></select>
                                             </label>
+                                            <label class="settings-row"><span class="material-symbols-rounded">present_to_all</span><span data-i18n="settings.web.permissions.displayCapture">Ekran paylaşımı</span><select class="settings-select web-permission-mode" id="behaviorWebAllowDisplayCapture"><option value="ask">Sor</option><option value="allow">İzin ver</option><option value="block">Engelle</option></select></label>
+                                            <label class="settings-row"><span class="material-symbols-rounded">content_paste</span><span data-i18n="settings.web.permissions.clipboardRead">Pano okuma</span><select class="settings-select web-permission-mode" id="behaviorWebAllowClipboardRead"><option value="ask">Sor</option><option value="allow">İzin ver</option><option value="block">Engelle</option></select></label>
+                                            <label class="settings-row"><span class="material-symbols-rounded">download</span><span data-i18n="settings.web.permissions.automaticDownloads">Otomatik çoklu indirme</span><select class="settings-select web-permission-mode" id="behaviorWebAllowAutomaticDownloads"><option value="ask">Sor</option><option value="allow">İzin ver</option><option value="block">Engelle</option></select></label>
                                         </div>
                                         <div class="settings-group">
                                             <h4 data-i18n="settings.web.sections.siteData">Aktif Site Verisi</h4>
@@ -671,38 +675,24 @@
                                                     <div class="settings-label" data-i18n="settings.web.activeSitePermissions.label">Aktif site izinleri</div>
                                                     <div class="settings-sub" id="webActiveSitePermissionStatus" data-i18n="settings.web.activeSitePermissions.hint">Açık site için özel izin tercihi kaydedilebilir.</div>
                                                 </div>
-                                                <div class="settings-inline">
-                                                    <label class="checkbox-label compact">
-                                                        <input type="checkbox" id="webActiveSiteAllowCamera">
-                                                        <span class="web-setting-icon web-setting-icon-camera" aria-hidden="true"></span>
-                                                        <span data-i18n="settings.web.permissions.camera.short">Kamera</span>
-                                                    </label>
-                                                    <label class="checkbox-label compact">
-                                                        <input type="checkbox" id="webActiveSiteAllowMicrophone">
-                                                        <span class="web-setting-icon web-setting-icon-mic" aria-hidden="true"></span>
-                                                        <span data-i18n="settings.web.permissions.microphone.short">Mikrofon</span>
-                                                    </label>
-                                                    <label class="checkbox-label compact">
-                                                        <input type="checkbox" id="webActiveSiteAllowLocation">
-                                                        <span class="web-setting-icon web-setting-icon-location" aria-hidden="true"></span>
-                                                        <span data-i18n="settings.web.permissions.location.short">Konum</span>
-                                                    </label>
-                                                    <label class="checkbox-label compact">
-                                                        <input type="checkbox" id="webActiveSiteAllowNotifications">
-                                                        <span class="web-setting-icon web-setting-icon-bell" aria-hidden="true"></span>
-                                                        <span data-i18n="settings.web.permissions.notifications.short">Bildirim</span>
-                                                    </label>
-                                                    <label class="checkbox-label compact">
-                                                        <input type="checkbox" id="webActiveSiteAllowPopups">
-                                                        <span class="web-setting-icon web-setting-icon-popup" aria-hidden="true"></span>
-                                                        <span data-i18n="settings.web.permissions.popups.short">Pop-up</span>
-                                                    </label>
+                                                <div class="settings-inline web-site-permission-controls">
+                                                    <label>Kamera <select class="settings-select web-site-permission-mode" id="webActiveSiteAllowCamera"><option value="inherit">Ana ayar</option><option value="ask">Sor</option><option value="allow">İzin ver</option><option value="block">Engelle</option></select></label>
+                                                    <label>Mikrofon <select class="settings-select web-site-permission-mode" id="webActiveSiteAllowMicrophone"><option value="inherit">Ana ayar</option><option value="ask">Sor</option><option value="allow">İzin ver</option><option value="block">Engelle</option></select></label>
+                                                    <label>Konum <select class="settings-select web-site-permission-mode" id="webActiveSiteAllowLocation"><option value="inherit">Ana ayar</option><option value="ask">Sor</option><option value="allow">İzin ver</option><option value="block">Engelle</option></select></label>
+                                                    <label>Bildirim <select class="settings-select web-site-permission-mode" id="webActiveSiteAllowNotifications"><option value="inherit">Ana ayar</option><option value="ask">Sor</option><option value="allow">İzin ver</option><option value="block">Engelle</option></select></label>
+                                                    <label>Pop-up <select class="settings-select web-site-permission-mode" id="webActiveSiteAllowPopups"><option value="inherit">Ana ayar</option><option value="ask">Sor</option><option value="allow">İzin ver</option><option value="block">Engelle</option></select></label>
+                                                    <label>Ekran <select class="settings-select web-site-permission-mode" id="webActiveSiteAllowDisplayCapture"><option value="inherit">Ana ayar</option><option value="ask">Sor</option><option value="allow">İzin ver</option><option value="block">Engelle</option></select></label>
+                                                    <label>Pano <select class="settings-select web-site-permission-mode" id="webActiveSiteAllowClipboardRead"><option value="inherit">Ana ayar</option><option value="ask">Sor</option><option value="allow">İzin ver</option><option value="block">Engelle</option></select></label>
+                                                    <label>İndirme <select class="settings-select web-site-permission-mode" id="webActiveSiteAllowAutomaticDownloads"><option value="inherit">Ana ayar</option><option value="ask">Sor</option><option value="allow">İzin ver</option><option value="block">Engelle</option></select></label>
+                                                    <label>Otomatik oynatma <select class="settings-select web-site-permission-mode" id="webActiveSiteAutoplayPolicy"><option value="inherit">Ana ayar</option><option value="allow">İzin ver</option><option value="gesture">Etkileşim iste</option><option value="block">Engelle</option></select></label>
                                                     <button type="button" class="settings-btn settings-btn-with-icon" id="webSaveActiveSitePermissionsBtn">
                                                         <span class="settings-button-icon settings-button-icon-save-card" aria-hidden="true"></span>
                                                         <span data-i18n="settings.web.activeSitePermissions.save">Kaydet</span>
                                                     </button>
+                                                    <button type="button" class="settings-btn" id="webResetActiveSitePermissionsBtn" data-i18n="settings.web.activeSitePermissions.reset">Ana ayara dön</button>
                                                 </div>
                                             </div>
+                                            <div class="settings-row"><div class="settings-row-left"><div class="settings-label" data-i18n="settings.web.savedSitePermissions.label">Kayıtlı site izinleri</div><div class="settings-sub" data-i18n="settings.web.savedSitePermissions.hint">Özel izin kaydı bulunan siteleri yönetin.</div></div><div id="webSavedSitePermissions" class="settings-inline"></div></div>
                                             <div class="settings-row">
                                                 <div class="settings-row-left">
                                                     <div class="settings-label" data-i18n="settings.web.currentSiteData.label">Aktif sitenin verilerini temizle</div>
@@ -1533,5 +1523,6 @@
     <script src="modules/settings-shared.js"></script>
     <script src="modules/settings-window.js"></script>
     <script src="renderer.js"></script>
+    <script src="modules/browser-settings-system.js"></script>
 </body>
 </html>

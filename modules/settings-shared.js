@@ -424,11 +424,15 @@
             elements.behaviorWebSessionProfile.value = String(state.settings?.security?.sessionProfile || 'persistent').toLowerCase() === 'isolated' ? 'isolated' : 'persistent';
         }
         if (elements.behaviorWebAutoRecover) elements.behaviorWebAutoRecover.checked = state.settings?.webUi?.autoRecover !== false;
-        if (elements.behaviorWebAllowCamera) elements.behaviorWebAllowCamera.checked = state.settings?.webUi?.allowCamera === true;
-        if (elements.behaviorWebAllowMicrophone) elements.behaviorWebAllowMicrophone.checked = state.settings?.webUi?.allowMicrophone === true;
-        if (elements.behaviorWebAllowLocation) elements.behaviorWebAllowLocation.checked = state.settings?.webUi?.allowLocation === true;
-        if (elements.behaviorWebAllowNotifications) elements.behaviorWebAllowNotifications.checked = state.settings?.webUi?.allowNotifications === true;
-        if (elements.behaviorWebAllowPopups) elements.behaviorWebAllowPopups.checked = state.settings?.webUi?.allowPopups !== false && state.settings?.security?.allowPopups !== false;
+        const permissionMode = (value, fallback = 'ask') => value === true ? 'allow' : value === false ? 'block' : (['ask', 'allow', 'block'].includes(String(value || '').toLowerCase()) ? String(value).toLowerCase() : fallback);
+        if (elements.behaviorWebAllowCamera) elements.behaviorWebAllowCamera.value = permissionMode(state.settings?.webUi?.allowCamera);
+        if (elements.behaviorWebAllowMicrophone) elements.behaviorWebAllowMicrophone.value = permissionMode(state.settings?.webUi?.allowMicrophone);
+        if (elements.behaviorWebAllowLocation) elements.behaviorWebAllowLocation.value = permissionMode(state.settings?.webUi?.allowLocation);
+        if (elements.behaviorWebAllowNotifications) elements.behaviorWebAllowNotifications.value = permissionMode(state.settings?.webUi?.allowNotifications);
+        if (elements.behaviorWebAllowPopups) elements.behaviorWebAllowPopups.value = permissionMode(state.settings?.webUi?.allowPopups, 'ask');
+        if (elements.behaviorWebAllowDisplayCapture) elements.behaviorWebAllowDisplayCapture.value = permissionMode(state.settings?.webUi?.allowDisplayCapture);
+        if (elements.behaviorWebAllowClipboardRead) elements.behaviorWebAllowClipboardRead.value = permissionMode(state.settings?.webUi?.allowClipboardRead);
+        if (elements.behaviorWebAllowAutomaticDownloads) elements.behaviorWebAllowAutomaticDownloads.value = permissionMode(state.settings?.webUi?.allowAutomaticDownloads);
         if (elements.behaviorWebUserAgentMode) {
             const mode = String(state.settings?.webUi?.userAgentMode || 'desktop').toLowerCase();
             elements.behaviorWebUserAgentMode.value = ['desktop', 'mobile', 'default'].includes(mode) ? mode : 'desktop';
@@ -975,11 +979,14 @@
         state.settings.webUi.restoreLastSession = elements.behaviorWebRestoreLastSession?.checked !== false;
         state.settings.webUi.suspendWhenInactive = elements.behaviorWebSuspendWhenInactive?.checked !== false;
         state.settings.webUi.autoRecover = elements.behaviorWebAutoRecover?.checked !== false;
-        state.settings.webUi.allowCamera = elements.behaviorWebAllowCamera?.checked === true;
-        state.settings.webUi.allowMicrophone = elements.behaviorWebAllowMicrophone?.checked === true;
-        state.settings.webUi.allowLocation = elements.behaviorWebAllowLocation?.checked === true;
-        state.settings.webUi.allowNotifications = elements.behaviorWebAllowNotifications?.checked === true;
-        state.settings.webUi.allowPopups = elements.behaviorWebAllowPopups?.checked !== false;
+        state.settings.webUi.allowCamera = elements.behaviorWebAllowCamera?.value || 'ask';
+        state.settings.webUi.allowMicrophone = elements.behaviorWebAllowMicrophone?.value || 'ask';
+        state.settings.webUi.allowLocation = elements.behaviorWebAllowLocation?.value || 'ask';
+        state.settings.webUi.allowNotifications = elements.behaviorWebAllowNotifications?.value || 'ask';
+        state.settings.webUi.allowPopups = elements.behaviorWebAllowPopups?.value || 'ask';
+        state.settings.webUi.allowDisplayCapture = elements.behaviorWebAllowDisplayCapture?.value || 'ask';
+        state.settings.webUi.allowClipboardRead = elements.behaviorWebAllowClipboardRead?.value || 'ask';
+        state.settings.webUi.allowAutomaticDownloads = elements.behaviorWebAllowAutomaticDownloads?.value || 'ask';
         state.settings.webUi.userAgentMode = ['desktop', 'mobile', 'default'].includes(String(elements.behaviorWebUserAgentMode?.value || '').toLowerCase())
             ? String(elements.behaviorWebUserAgentMode.value).toLowerCase()
             : 'desktop';
@@ -991,7 +998,7 @@
         state.settings.webUi.stripTrackingParams = elements.behaviorWebStripTrackingParams?.checked !== false;
         state.settings.webUi.blockThirdPartyCookies = elements.behaviorWebBlockThirdPartyCookies?.checked === true;
         if (!state.settings.security || typeof state.settings.security !== 'object') state.settings.security = {};
-        state.settings.security.allowPopups = elements.behaviorWebAllowPopups ? state.settings.webUi.allowPopups : !!elements.securityAllowPopups?.checked;
+        state.settings.security.allowPopups = elements.behaviorWebAllowPopups ? state.settings.webUi.allowPopups !== 'block' : !!elements.securityAllowPopups?.checked;
         state.settings.security.enforceAllowlist = !!elements.securityEnforceAllowlist?.checked;
         state.settings.security.sessionProfile =
             String(elements.behaviorWebSessionProfile?.value || elements.securitySessionProfile?.value || state.settings.security.sessionProfile || 'persistent').toLowerCase() === 'isolated'

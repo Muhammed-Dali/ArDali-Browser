@@ -136,14 +136,36 @@
     }
     function scheduleClock() { clearInterval(clockTimer); updateClock(); clockTimer = setInterval(updateClock, settings.clock.seconds ? 1000 : 60000); }
     function navigate(url) { if (!safeUrl(url)) return; if (typeof window.createTab === 'function') window.createTab(url, true); else { const input = byId('webNtpSearchInput'); if (input) { input.value = url; input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); } } }
+    function shortcutLocalFaviconUrl(rawUrl) {
+        try {
+            const host = new URL(safeUrl(rawUrl)).hostname.toLowerCase().replace(/^www\./, '');
+            const exact = {
+                'youtube.com': 'icons/platforms/youtube.svg',
+                'music.youtube.com': 'icons/platforms/youtube-music.svg',
+                'github.com': 'icons/platforms/github.svg',
+                'wikipedia.org': 'icons/platforms/wikipedia.svg',
+                'facebook.com': 'icons/platforms/facebook.svg',
+                'instagram.com': 'icons/platforms/instagram.svg',
+                'reddit.com': 'icons/platforms/reddit.svg',
+                'x.com': 'icons/platforms/x.svg',
+                'twitter.com': 'icons/platforms/x.svg',
+                'web.whatsapp.com': 'icons/platforms/whatsapp.svg',
+                'telegram.org': 'icons/platforms/telegram.svg'
+            };
+            if (exact[host]) return exact[host];
+            if (host.endsWith('.wikipedia.org')) return 'icons/platforms/wikipedia.svg';
+            return '';
+        } catch (_) { return ''; }
+    }
     function shortcutFaviconUrls(rawUrl) {
         try {
             const url = new URL(safeUrl(rawUrl));
             return [
+                shortcutLocalFaviconUrl(rawUrl),
                 `https://www.google.com/s2/favicons?domain_url=${encodeURIComponent(url.origin)}&sz=128`,
                 `${url.origin}/favicon.ico`,
                 `https://icons.duckduckgo.com/ip3/${encodeURIComponent(url.hostname)}.ico`
-            ];
+            ].filter(Boolean);
         } catch (_) { return []; }
     }
     function readJsonStorage(key, fallback) { try { const value = JSON.parse(localStorage.getItem(key) || 'null'); return value ?? fallback; } catch (_) { return fallback; } }
@@ -180,14 +202,21 @@
                 const image = document.createElement('img');
                 image.className = 'web-ntp-shortcut-favicon';
                 image.alt = '';
-                image.loading = 'lazy';
-                image.decoding = 'async';
+                const hasLocalFavicon = faviconUrls[0].startsWith('icons/');
+                image.loading = hasLocalFavicon ? 'eager' : 'lazy';
+                image.decoding = hasLocalFavicon ? 'sync' : 'async';
+                if (hasLocalFavicon) icon.classList.add('has-favicon');
                 image.referrerPolicy = 'no-referrer';
                 let candidateIndex = 0;
                 image.addEventListener('load', () => icon.classList.add('has-favicon'));
                 image.addEventListener('error', () => {
                     candidateIndex += 1;
-                    if (candidateIndex < faviconUrls.length) image.src = faviconUrls[candidateIndex];
+                    if (candidateIndex < faviconUrls.length) {
+                        icon.classList.remove('has-favicon');
+                        image.loading = 'eager';
+                        image.decoding = 'async';
+                        image.src = faviconUrls[candidateIndex];
+                    }
                     else image.remove();
                 });
                 image.src = faviconUrls[candidateIndex];

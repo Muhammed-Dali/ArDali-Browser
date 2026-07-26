@@ -888,8 +888,13 @@
   "about.sections.passwordManager.item3": "Autocompletar seguro requiere la interacción del usuario y una coincidencia exacta del origen HTTPS.",
   "about.sections.security.item4": "Chromium Sandbox, aislamiento de contexto, CSP estricto y ventanas de aplicaciones de refuerzo IPC validadas.",
   "about.sections.security.item5": "OS Secure Storage protege la clave del dispositivo de la bóveda local.",
-  "about.whatsNew.title": "¿Qué hay de nuevo en 5.4.0?",
+  "about.whatsNew.title": "¿Qué hay de nuevo en v5.5.0?",
   "about.whatsNew.passwordManager": "Se agregó un administrador de contraseñas AES-256-GCM local con protección de contraseña maestra, bloqueo automático y autocompletar seguro.",
   "about.whatsNew.security": "Ventanas electrónicas reforzadas, validación de IPC, permisos, política de seguridad de contenido y almacenamiento seguro de claves del sistema operativo.",
-  "about.whatsNew.releasePipeline": "Se agregó una puerta de seguridad obligatoria antes de las versiones y la publicación del paquete."
+  "about.whatsNew.releasePipeline": "Se agregó una puerta de seguridad obligatoria antes de las versiones y la publicación del paquete.",
+  "about.whatsNew.workspace": "Nueva arquitectura de espacio de trabajo con pestañas persistentes y mejor gestión del ciclo de vida.",
+  "about.whatsNew.media": "Mejoras en Gestor de contraseñas, bloqueo de anuncios, Galería, Música, Song Finder, efectos de audio y projectM.",
+  "about.whatsNew.performance": "Menos trabajo innecesario en segundo plano gracias a una mejor limpieza de memoria, estabilidad y validación de seguridad.",
+  "about.badges.node": "Node.js",
+  "about.badges.license": "License"
 }

@@ -12,7 +12,7 @@ on:
       release_tag:
         description: Release tag whose AppImage will be packaged
         required: true
-        default: v5.4.4
+        default: v5.5.0
         type: string
 
 permissions:

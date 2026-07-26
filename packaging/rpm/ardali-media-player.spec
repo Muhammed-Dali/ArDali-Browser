@@ -1,5 +1,5 @@
 Name:           ardali-media-player
-Version:        5.4.4
+Version:        5.5.0
 Release:        1%{?dist}
 Summary:        ArDali Media Player (Electron)
 
@@ -30,6 +30,9 @@ ln -sf /opt/ardali/ardali.AppImage %{buildroot}/usr/bin/ardali
 /usr/bin/ardali
 
 %changelog
+* Sun Jul 26 2026 ArDali <support@ardali.app> - 5.5.0-1
+- Workspace tabs, media workflows, performance, stability, security and release dependency update
+
 * Wed Jul 22 2026 ArDali <support@ardali.app> - 5.4.4-1
 - Fix window behavior, EQ presets, album artwork, localization, and refresh documentation
 

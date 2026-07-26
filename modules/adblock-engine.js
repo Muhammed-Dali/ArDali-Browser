@@ -9,6 +9,67 @@ const ADBLOCK_DEFAULT_CONFIG = Object.freeze({
     developerMode: false
 });
 
+function sanitizeHostname(value) {
+    return String(value || '').trim().toLowerCase().replace(/^\.+|\.+$/g, '');
+}
+
+function sanitizeUserFilters(value) {
+    if (!Array.isArray(value)) return [];
+    return value.slice(0, 5000).map((entry, index) => {
+        const item = typeof entry === 'string' ? { text: entry } : entry;
+        if (!item || typeof item !== 'object') return null;
+        const text = String(item.text || '').trim().slice(0, 8192);
+        if (!text) return null;
+        return {
+            id: String(item.id || `user-${index + 1}`).replace(/[^a-z0-9_.-]/gi, '').slice(0, 80) || `user-${index + 1}`,
+            text,
+            enabled: item.enabled !== false,
+            createdAt: Math.max(0, Number(item.createdAt) || 0),
+            updatedAt: Math.max(0, Number(item.updatedAt) || 0)
+        };
+    }).filter(Boolean);
+}
+
+function sanitizeSitePolicies(value) {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+    const out = {};
+    for (const [rawHost, rawPolicy] of Object.entries(value).slice(0, 2000)) {
+        const hostname = sanitizeHostname(rawHost);
+        if (!hostname || !rawPolicy || typeof rawPolicy !== 'object' || Array.isArray(rawPolicy)) continue;
+        out[hostname] = {
+            adBlocking: rawPolicy.adBlocking !== false,
+            trackerProtection: rawPolicy.trackerProtection !== false,
+            temporaryDisabledUntil: Math.max(0, Number(rawPolicy.temporaryDisabledUntil) || 0),
+            whitelisted: rawPolicy.whitelisted === true,
+            whitelistPrevious: rawPolicy.whitelistPrevious && typeof rawPolicy.whitelistPrevious === 'object'
+                ? {
+                    adBlocking: rawPolicy.whitelistPrevious.adBlocking !== false,
+                    trackerProtection: rawPolicy.whitelistPrevious.trackerProtection !== false,
+                    temporaryDisabledUntil: Math.max(0, Number(rawPolicy.whitelistPrevious.temporaryDisabledUntil) || 0)
+                }
+                : null
+        };
+    }
+    return out;
+}
+
+function sanitizeStatistics(value) {
+    const input = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+    const daily = {};
+    if (input.daily && typeof input.daily === 'object' && !Array.isArray(input.daily)) {
+        for (const [day, count] of Object.entries(input.daily).slice(-120)) {
+            if (/^\d{4}-\d{2}-\d{2}$/.test(day)) daily[day] = Math.max(0, Number(count) || 0);
+        }
+    }
+    return {
+        totalBlocked: Math.max(0, Number(input.totalBlocked) || 0),
+        trackersBlocked: Math.max(0, Number(input.trackersBlocked) || 0),
+        estimatedBytesSaved: Math.max(0, Number(input.estimatedBytesSaved) || 0),
+        whitelistAllowedRequests: Math.max(0, Number(input.whitelistAllowedRequests) || 0),
+        daily
+    };
+}
+
 const RESOURCE_TYPE_MAP = Object.freeze({
     mainFrame: 'main_frame',
     subFrame: 'sub_frame',
@@ -53,6 +114,7 @@ const REDIRECT_RESOURCE_URLS = Object.freeze({
 
 const REGEX_CACHE_LIMIT = 1600;
 const dnrRegexCache = new Map();
+const dnrCandidateCache = new WeakMap();
 
 const COMMON_SECOND_LEVEL_TLDS = new Set([
     'ac', 'co', 'com', 'edu', 'gov', 'net', 'org', 'mil'
@@ -97,8 +159,37 @@ function normalizeConfig(config = {}) {
         autoReload: !!config.autoReload,
         strictBlock: !!config.strictBlock,
         developerMode: !!config.developerMode,
+        userFilters: sanitizeUserFilters(config.userFilters),
+        sitePolicies: sanitizeSitePolicies(config.sitePolicies || config.whitelist),
+        enabledRulesetIds: Array.isArray(config.enabledRulesetIds)
+            ? Array.from(new Set(config.enabledRulesetIds.map((id) => String(id || '').replace(/[^a-z0-9_.-]/gi, '')).filter(Boolean))).slice(0, 256)
+            : [],
+        rulesetSelectionConfigured: config.rulesetSelectionConfigured === true,
+        statistics: sanitizeStatistics(config.statistics),
         dnrRules: sanitizeDnrRules(config.dnrRules || config.rules)
     };
+}
+
+function getPolicyHostname(requestDetails = {}, rawUrl = '') {
+    const source = requestDetails.initiator || requestDetails.documentUrl || requestDetails.referrer || rawUrl;
+    return getHostnameFromUrl(source);
+}
+
+function getSitePolicy(config, requestDetails, rawUrl) {
+    const hostname = getPolicyHostname(requestDetails, rawUrl);
+    if (!hostname) return null;
+    const policies = config?.sitePolicies || {};
+    for (const candidate of getHostnameVariantsForPolicy(hostname)) {
+        if (policies[candidate]) return policies[candidate];
+    }
+    return null;
+}
+
+function getHostnameVariantsForPolicy(hostname) {
+    const parts = sanitizeHostname(hostname).split('.').filter(Boolean);
+    const out = [];
+    for (let index = 0; index < parts.length - 1; index += 1) out.push(parts.slice(index).join('.'));
+    return out;
 }
 
 function getDecisionDnrRules(rules) {
@@ -549,7 +640,7 @@ function getDnrRedirectUrl(rule, context) {
 
 function findMatchingDnrRule(context, rules) {
     const matches = [];
-    for (const rule of rules) {
+    for (const rule of getCandidateDnrRules(context, rules)) {
         if (!dnrConditionMatches(rule.condition, context)) continue;
         matches.push(rule);
     }
@@ -560,13 +651,35 @@ function findMatchingDnrRule(context, rules) {
 
 function findMatchingDnrRules(context, rules, actionType) {
     const matches = [];
-    for (const rule of rules) {
-        if (String(rule?.action?.type || '') !== actionType) continue;
+    for (const rule of getCandidateDnrRules(context, rules, actionType)) {
         if (!dnrConditionMatches(rule.condition, context)) continue;
         matches.push(rule);
     }
     matches.sort(compareDnrRuleRank);
     return matches;
+}
+
+function getCandidateDnrRules(context, rules, actionType = '') {
+    if (!Array.isArray(rules) || !rules.length) return [];
+    let cache = dnrCandidateCache.get(rules);
+    if (!cache) {
+        cache = new Map();
+        dnrCandidateCache.set(rules, cache);
+    }
+    const resourceType = String(context?.resourceType || 'other');
+    const key = `${String(actionType || '*')}\n${resourceType}`;
+    if (cache.has(key)) return cache.get(key);
+    const candidates = rules.filter((rule) => {
+        if (actionType && String(rule?.action?.type || '') !== actionType) return false;
+        const condition = rule?.condition || {};
+        if (Array.isArray(condition.resourceTypes) && condition.resourceTypes.length &&
+            !condition.resourceTypes.includes(resourceType)) return false;
+        if (Array.isArray(condition.excludedResourceTypes) &&
+            condition.excludedResourceTypes.includes(resourceType)) return false;
+        return true;
+    });
+    cache.set(key, candidates);
+    return candidates;
 }
 
 function evaluateDnrRules(rawUrl, resourceType, config, requestDetails = {}) {
@@ -645,6 +758,7 @@ function applyHeaderOperations(rawHeaders, operations) {
 
 function evaluateDnrHeaderModifications(rawUrl, resourceType, config, requestDetails = {}, phase = 'response') {
     const normalized = normalizeConfig(config);
+    if (getSitePolicy(normalized, requestDetails, rawUrl)?.whitelisted === true) return null;
     const headerRules = getHeaderDnrRules(normalized.dnrRules);
     if (!headerRules.length) return null;
     const context = getRequestContext(rawUrl, resourceType, requestDetails);
@@ -677,6 +791,8 @@ function evaluateDnrHeaderModifications(rawUrl, resourceType, config, requestDet
 
 function shouldBlockRequest(rawUrl, resourceType, config, requestDetails = {}) {
     const normalized = normalizeConfig(config);
+    const policy = getSitePolicy(normalized, requestDetails, rawUrl);
+    if (policy && (policy.whitelisted === true || policy.adBlocking === false || policy.temporaryDisabledUntil > Date.now())) return null;
     if (normalized.mode === 'basic' && resourceType === 'mainFrame') return null;
 
     let parsed;
@@ -689,6 +805,10 @@ function shouldBlockRequest(rawUrl, resourceType, config, requestDetails = {}) {
     if (protocol !== 'http:' && protocol !== 'https:') return null;
 
     const dnrMatch = evaluateDnrRules(rawUrl, resourceType, normalized, requestDetails);
+    if (
+        policy?.trackerProtection === false &&
+        /(?:easyprivacy|spyware|tracking|privacy)/i.test(String(dnrMatch?.ruleset || ''))
+    ) return null;
     if (dnrMatch?.action === 'allow') return null;
     if (dnrMatch?.action === 'block' || dnrMatch?.action === 'redirect') return dnrMatch;
 

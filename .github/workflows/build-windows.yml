@@ -16,11 +16,11 @@ jobs:
 
     env:
       # Keep these in sync with package.json build.electronVersion
-      ELECTRON_VERSION: "40.8.5"
+      ELECTRON_VERSION: "43.2.0"
 
       # Force node-gyp to build against Electron headers (not the host Node.js)
       npm_config_runtime: "electron"
-      npm_config_target: "40.8.5"
+      npm_config_target: "43.2.0"
       npm_config_disturl: "https://electronjs.org/headers"
       npm_config_build_from_source: "true"
 

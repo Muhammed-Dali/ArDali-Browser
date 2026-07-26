@@ -25,6 +25,28 @@ document.addEventListener('DOMContentLoaded', () => {
     const animatedDownloads = new Set();
     let downloadsPageSignature = '';
 
+    function openInternalDownloadTab(payload) {
+        const url = String(payload?.url || '').trim();
+        if (payload?.mode !== 'tab' || !url.startsWith('file://') || typeof window.createTab !== 'function') {
+            return false;
+        }
+        window.createTab(url, true, {
+            title: String(payload?.title || 'Dosya'),
+            localDownload: true
+        });
+        return true;
+    }
+
+    async function openDownloadedItem(item) {
+        const result = await api.openFile(item?.savePath);
+        if (openInternalDownloadTab(result)) return true;
+        return result?.success === true;
+    }
+
+    api.onOpenInTab?.((payload) => {
+        openInternalDownloadTab(payload);
+    });
+
     function isActiveDownloadState(state) {
         return state === 'downloading' || state === 'paused' || state === 'waiting_for_save';
     }
@@ -405,12 +427,13 @@ document.addEventListener('DOMContentLoaded', () => {
         el.appendChild(infoDiv);
         el.appendChild(actionsDiv);
 
-        // Click to open file if completed and exists
+        // Tamamlanan dosyayı aç. Tarayıcının desteklediği güvenli biçimler
+        // ArDali sekmesinde, diğer biçimler sistem uygulamasında açılır.
         el.onclick = async () => {
             if (item.state === 'completed') {
                 const exists = await api.checkExists(item.savePath);
                 if (exists) {
-                    api.showInFolder(item.savePath); // Fallback behavior
+                    await openDownloadedItem(item);
                 }
             }
         };

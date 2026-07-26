@@ -721,19 +721,40 @@ const ardaliAPI = {
         }
     },
     adblock: {
-        openWindow: () => ipcRenderer.invoke('adblock:openWindow'),
+        openWindow: (options) => ipcRenderer.invoke('adblock:openWindow', options && typeof options === 'object' ? {
+            tab: String(options.tab || '')
+        } : {}),
         setConfig: (config) => ipcRenderer.invoke('adblock:setConfig', config || {}),
+        setActiveHostname: (hostname) => ipcRenderer.invoke('adblock:setActiveHostname', String(hostname || '')),
         getStats: () => ipcRenderer.invoke('adblock:getStats'),
         resetStats: () => ipcRenderer.invoke('adblock:resetStats'),
         listDevelopSources: () => ipcRenderer.invoke('adblock:listDevelopSources'),
         readDevelopSource: (sourceId) => ipcRenderer.invoke('adblock:readDevelopSource', sourceId),
-        getScriptingInjection: (payload) => ipcRenderer.invoke('adblock:getScriptingInjection', payload || {})
+        getScriptingInjection: (payload) => ipcRenderer.invoke('adblock:getScriptingInjection', payload || {}),
+        validateUserFilter: (text) => ipcRenderer.invoke('adblock:validateUserFilter', String(text || '')),
+        getRulesetCatalog: () => ipcRenderer.invoke('adblock:getRulesetCatalog'),
+        refreshRulesets: () => ipcRenderer.invoke('adblock:refreshRulesets'),
+        onWhitelistSite: (callback) => {
+            const handler = (_event, payload) => callback(payload || {});
+            ipcRenderer.on('adblock:whitelist-site', handler);
+            return () => ipcRenderer.removeListener('adblock:whitelist-site', handler);
+        }
     },
 
     // Ayarlar
     saveSettings: (settings) => ipcRenderer.invoke('settings:save', settings),
     loadSettings: () => ipcRenderer.invoke('settings:load'),
     openSettingsWindow: (defaultTab) => ipcRenderer.invoke('settings:openWindow', defaultTab),
+    onOpenApplicationTab: (callback) => {
+        const handler = (_event, payload) => callback(payload || {});
+        ipcRenderer.on('workspace:open-application-tab', handler);
+        return () => ipcRenderer.removeListener('workspace:open-application-tab', handler);
+    },
+    onCloseApplicationTab: (callback) => {
+        const handler = (_event, payload) => callback(payload || {});
+        ipcRenderer.on('workspace:close-application-tab', handler);
+        return () => ipcRenderer.removeListener('workspace:close-application-tab', handler);
+    },
     newTab: {
         chooseBackground: () => ipcRenderer.invoke('newTab:chooseBackground'),
         loadBackground: () => ipcRenderer.invoke('newTab:loadBackground'),
@@ -776,6 +797,11 @@ const ardaliAPI = {
         ipcRenderer.on('web:open-tab', handler);
         return () => ipcRenderer.removeListener('web:open-tab', handler);
     },
+    onWebTogglePinCurrent: (callback) => {
+        const handler = () => callback();
+        ipcRenderer.on('web:toggle-pin-current', handler);
+        return () => ipcRenderer.removeListener('web:toggle-pin-current', handler);
+    },
     onScopedSfxLiveParam: (callback) => {
         if (typeof callback !== 'function') return () => {};
         const handler = (_event, payload) => callback(payload);
@@ -802,7 +828,10 @@ const ardaliAPI = {
         },
         setText: (text) => {
             try { clipboard.writeText(String(text ?? '')); return true; } catch { return false; }
-        }
+        },
+        readText: () => ipcRenderer.invoke('clipboard:readText'),
+        writeText: (text) => ipcRenderer.invoke('clipboard:writeText', String(text ?? '')),
+        setImageFromPath: (filePath) => ipcRenderer.invoke('gallery:copyImageToClipboard', String(filePath || ''))
     },
 
     pulse: {
@@ -886,7 +915,14 @@ const ardaliAPI = {
         exportCookies: (filePath) => ipcRenderer.invoke('web:exportCookies', filePath),
         importCookies: (filePath) => ipcRenderer.invoke('web:importCookies', filePath),
         getDefaultBrowserStatus: () => ipcRenderer.invoke('web:getDefaultBrowserStatus'),
-        makeDefaultBrowser: () => ipcRenderer.invoke('web:makeDefaultBrowser')
+        makeDefaultBrowser: () => ipcRenderer.invoke('web:makeDefaultBrowser'),
+        getStarredUrls: () => ipcRenderer.invoke('web:getStarredUrls'),
+        setStarredUrls: (urls) => ipcRenderer.invoke('web:setStarredUrls', urls),
+        togglePinCurrent: () => ipcRenderer.invoke('web:togglePinCurrent'),
+        getPinnedTabs: () => ipcRenderer.invoke('web:getPinnedTabs'),
+        unpinTab: (tabId) => ipcRenderer.invoke('web:unpinTab', tabId),
+        reorderPinnedTabs: (tabIds) => ipcRenderer.invoke('web:reorderPinnedTabs', tabIds),
+        setDevToolsEnabled: (enabled) => ipcRenderer.invoke('web:setDevToolsEnabled', enabled === true)
     },
 
 
@@ -922,6 +958,7 @@ const ardaliAPI = {
         // EQ Hazır Ayarlar penceresi
         openEQPresetsWindow: () => ipcRenderer.invoke('eqPresets:openWindow'),
         closeEQPresetsWindow: () => ipcRenderer.invoke('eqPresets:closeWindow'),
+        getSelectedEQPreset: () => ipcRenderer.invoke('eqPresets:getSelection'),
         selectEQPreset: (filename) => ipcRenderer.invoke('eqPresets:select', filename),
         previewEQPreset: (filename) => ipcRenderer.invoke('eqPresets:preview', filename),
         revertEQPresetPreview: (filename) => ipcRenderer.invoke('eqPresets:revertPreview', filename)
@@ -1097,7 +1134,13 @@ const ardaliAPI = {
         cancel: (id) => ipcRenderer.invoke('downloads:cancel', id),
         checkExists: (filePath) => ipcRenderer.invoke('downloads:checkExists', filePath),
         showInFolder: (filePath) => ipcRenderer.invoke('downloads:showInFolder', filePath),
+        openFile: (filePath) => ipcRenderer.invoke('downloads:openFile', filePath),
         openDownloadsFolder: () => ipcRenderer.invoke('downloads:openDownloadsFolder'),
+        onOpenInTab: (callback) => {
+            const handler = (_event, data) => callback(data);
+            ipcRenderer.on('downloads-open-in-tab', handler);
+            return () => ipcRenderer.removeListener('downloads-open-in-tab', handler);
+        },
         onProgress: (callback) => {
             ipcRenderer.on('download-progress', (event, data) => callback(data));
         },
@@ -1152,10 +1195,10 @@ preloadLog('[PRELOAD] API anahtarlari:', Object.keys(ardaliAPI));
 
 const STANDALONE_API_KEYS = Object.freeze({
     settings: Object.freeze(['saveSettings', 'loadSettings', 'openSettingsWindow', 'launchContext', 'onSettingsReload', 'onSettingsNavigate', 'onSettingsCloseRequest', 'confirmSettingsClose', 'dialog', 'clipboard', 'adblock', 'webSecurity', 'diagnostics', 'audio', 'ipcAudio', 'presets', 'soundEffects', 'downloader', 'systemAudio', 'system', 'electronAPI', 'app', 'i18n', 'credentialVault', 'platform', 'version']),
-    adblock: Object.freeze(['adblock', 'saveSettings', 'loadSettings', 'launchContext', 'dialog', 'electronAPI', 'i18n', 'platform', 'version']),
-    downloader: Object.freeze(['downloader', 'launchContext', 'dialog', 'clipboard', 'electronAPI', 'i18n', 'platform', 'version']),
-    'sound-effects': Object.freeze(['audio', 'ipcAudio', 'soundEffects', 'presets', 'saveSettings', 'loadSettings', 'launchContext', 'dialog', 'systemAudio', 'electronAPI', 'i18n', 'platform', 'version']),
-    'eq-presets': Object.freeze(['audio', 'ipcAudio', 'presets', 'saveSettings', 'loadSettings', 'launchContext', 'dialog', 'electronAPI', 'i18n', 'platform', 'version']),
+    adblock: Object.freeze(['adblock', 'saveSettings', 'loadSettings', 'launchContext', 'onSettingsReload', 'onSettingsNavigate', 'dialog', 'electronAPI', 'i18n', 'platform', 'version']),
+    downloader: Object.freeze(['app', 'downloader', 'launchContext', 'onSettingsReload', 'dialog', 'clipboard', 'electronAPI', 'i18n', 'platform', 'version']),
+    'sound-effects': Object.freeze(['audio', 'ipcAudio', 'soundEffects', 'presets', 'pulse', 'saveSettings', 'loadSettings', 'onSettingsReload', 'launchContext', 'dialog', 'system', 'systemAudio', 'electronAPI', 'i18n', 'platform', 'version']),
+    'eq-presets': Object.freeze(['audio', 'ipcAudio', 'presets', 'saveSettings', 'loadSettings', 'launchContext', 'dialog', 'electronAPI', 'i18n', 'platform', 'system', 'version']),
     pulse: Object.freeze(['pulse', 'saveSettings', 'loadSettings', 'launchContext', 'dialog', 'systemAudio', 'electronAPI', 'i18n', 'platform', 'version'])
 });
 

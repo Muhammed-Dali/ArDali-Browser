@@ -1,6 +1,6 @@
 {
   "name": "ardali",
-  "version": "5.4.4",
+  "version": "5.5.0",
   "productName": "ArDali",
   "description": "Open-source Linux media player for music and video with DSP effects, equalizer, and visualizer",
   "main": "main.js",
@@ -17,6 +17,7 @@
     "verify:libs": "node native/verify-libs.js",
     "verify:binary:manifest": "node scripts/verify-binary-manifest.js",
     "verify:release:metadata": "node scripts/verify-release-metadata.js",
+    "verify:release:docs": "node scripts/verify-release-docs.js",
     "release:checksums": "node scripts/generate-release-checksums.js dist",
     "prepare:win:resources": "node scripts/prepare-win-resources.js",
     "locale:coverage": "node scripts/generate-locale-coverage.js",
@@ -25,7 +26,7 @@
     "icons:unused": "node scripts/check-unused-icons.js",
     "verify:i18n": "node --check modules/i18n.js && node --check renderer.js && node --check scripts/generate-locale-coverage.js && node --check scripts/verify-i18n.js && node scripts/verify-i18n.js && npm run -s locale:coverage",
     "build": "node native/copy-libs.js && npm run -s patch:dbus-next && electron-builder",
-    "rebuild:electron:linux": "if [ -d node_modules/abstract-socket ]; then (cd node_modules/abstract-socket && npx node-gyp rebuild --target=43.2.0 --dist-url=https://electronjs.org/headers --arch=x64); else echo \"[rebuild:electron:linux] abstract-socket not present; skipping native rebuild\"; fi",
+    "rebuild:electron:linux": "if [ -d node_modules/usocket ]; then (cd node_modules/usocket && npx node-gyp rebuild --target=43.2.0 --dist-url=https://electronjs.org/headers --arch=x64); else echo \"[rebuild:electron:linux] usocket not present; skipping native rebuild\"; fi",
     "build:linux": "node native/copy-libs.js linux && node scripts/verify-linux-artifacts.js && npm run -s rebuild:electron:linux && npm run -s patch:dbus-next && electron-builder --linux -c.npmRebuild=false",
     "build:linux:appimage": "node native/copy-libs.js linux && node scripts/verify-linux-artifacts.js && npm run -s rebuild:electron:linux && npm run -s patch:dbus-next && electron-builder --linux AppImage -c.npmRebuild=false",
     "verify:win:artifacts": "node scripts/verify-win-artifacts.js",
@@ -45,6 +46,7 @@
     "test:electron-security": "node scripts/test-electron-security.js",
     "test:audio-effects-startup": "node scripts/test-audio-effects-startup.js",
     "test:projectm-window": "node scripts/test-projectm-window-integration.js",
+    "test:tab-architecture": "node scripts/test-tab-architecture.js",
     "dali:test:wasm": "npm run -s dali:compile:web:wasm && node scripts/dali-wasm-smoke.js",
     "dali:test:parity": "node scripts/dali-ir-parity.js",
     "dali:test:fuzz": "node scripts/dali-fuzz.js",
@@ -445,7 +447,7 @@
   },
   "devDependencies": {
     "electron": "43.2.0",
-    "electron-builder": "26.15.3",
+    "electron-builder": "26.15.7",
     "png-to-ico": "3.0.2"
   },
   "dependencies": {
@@ -456,6 +458,14 @@
     "systeminformation": "5.33.0"
   },
   "overrides": {
+    "brace-expansion": "5.0.8",
+    "dbus-next": "0.10.2",
+    "tar": "7.5.22",
+    "usocket": "1.1.0",
     "xml2js": "0.6.2"
+  },
+  "allowScripts": {
+    "electron-winstaller@5.4.0": true,
+    "usocket@1.1.0": true
   }
 }

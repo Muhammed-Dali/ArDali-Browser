@@ -1,5 +1,15 @@
 const api = window.ardali?.downloader;
 const electronApi = window.ardali?.electronAPI;
+const DOWNLOADER_EMBEDDED_MODE = (() => {
+    try {
+        return new URLSearchParams(window.location.search).get('embedded') === '1';
+    } catch {
+        return false;
+    }
+})();
+if (DOWNLOADER_EMBEDDED_MODE) {
+    document.documentElement.dataset.embedded = 'true';
+}
 
 const DOWNLOADER_LOCALES = {
     'en-US': {
@@ -1685,11 +1695,24 @@ async function analyzeUrl(url, options = {}) {
 
 async function startDownload() {
     if (!state.info) return;
+    const payload = buildDownloadPayload();
     setStatus('busy', dlt('status.downloadPreparing'), dlt('status.downloadPreparingDetail'));
-    const result = await api.start(buildDownloadPayload());
+    const result = await api.start(payload);
     if (!result?.success) {
         setStatus('error', dlt('status.downloadStartFailed'), result?.error || dlt('common.unknownError'));
         return;
+    }
+    if (result.job?.id && !state.jobs.has(result.job.id)) {
+        createOrUpdateJob({
+            id: result.job.id,
+            state: 'running',
+            title: payload.title || state.info?.title || dlt('action.download'),
+            percent: 0,
+            message: dlt('status.downloadPreparing'),
+            detail: dlt('status.downloadPreparingDetail'),
+            thumbnail: payload.thumbnail || state.info?.thumbnail || '',
+            mode: payload.mode || state.mode
+        });
     }
     showProcessingHome();
 }
@@ -1706,6 +1729,18 @@ async function startExtractDownload() {
         setStatus('error', dlt('status.extractFailed'), result?.error || dlt('common.unknownError'));
         return;
     }
+    if (result.job?.id && !state.jobs.has(result.job.id)) {
+        createOrUpdateJob({
+            id: result.job.id,
+            state: 'running',
+            title: payload.title || state.info?.title || dlt('action.download'),
+            percent: 0,
+            message: dlt('status.extractPreparing'),
+            detail: dlt('status.downloadPreparingDetail'),
+            thumbnail: payload.thumbnail || state.info?.thumbnail || '',
+            mode: 'extract'
+        });
+    }
     showProcessingHome();
 }
 
@@ -1720,6 +1755,18 @@ async function startPlaylistDownload() {
     if (!result?.success) {
         setStatus('error', dlt('status.playlistFailed'), result?.error || dlt('common.unknownError'));
         return;
+    }
+    if (result.job?.id && !state.jobs.has(result.job.id)) {
+        createOrUpdateJob({
+            id: result.job.id,
+            state: 'running',
+            title: payload.title || dlt('action.download'),
+            percent: 0,
+            message: dlt('status.playlistDownloading'),
+            detail: dlt('status.playlistDownloadingDetail'),
+            thumbnail: payload.thumbnail || '',
+            mode: payload.mode || 'playlist-video'
+        });
     }
     setStatus('idle', dlt('status.playlistDownloading'), dlt('status.playlistDownloadingDetail'));
 }
@@ -1868,9 +1915,19 @@ async function init() {
     setPlaylistMode('playlist-video');
     applyTheme(getDownloaderThemePreference());
 
-    els.minimizeBtn.addEventListener('click', () => electronApi?.minimizeWindow());
-    els.maximizeBtn.addEventListener('click', () => electronApi?.maximizeWindow());
-    els.closeBtn.addEventListener('click', () => electronApi?.closeWindow());
+    els.minimizeBtn.addEventListener('click', () => {
+        if (!DOWNLOADER_EMBEDDED_MODE) electronApi?.minimizeWindow();
+    });
+    els.maximizeBtn.addEventListener('click', () => {
+        if (!DOWNLOADER_EMBEDDED_MODE) electronApi?.maximizeWindow();
+    });
+    els.closeBtn.addEventListener('click', () => {
+        if (DOWNLOADER_EMBEDDED_MODE) {
+            electronApi?.closeWindow();
+            return;
+        }
+        electronApi?.closeWindow();
+    });
     els.analyzeBtn.addEventListener('click', analyze);
     els.urlInput.addEventListener('keydown', (event) => {
         if (event.key === 'Enter') analyze();
@@ -2104,6 +2161,37 @@ async function init() {
             setStatus('error', dlt('error.analysisFailed'), String(error?.message || error || dlt('common.unknownError')));
         });
     });
+    if (DOWNLOADER_EMBEDDED_MODE) {
+        let lastEmbeddedPayloadSignature = '';
+        let lastEmbeddedPayloadAt = 0;
+        const handleEmbeddedDownloaderPayload = (payload = {}) => {
+            const url = String(payload?.url || '').trim();
+            const titleHint = String(payload?.titleHint || '').trim();
+            const signature = `${url}\n${titleHint}\n${String(payload?.error || '').trim()}`;
+            const now = Date.now();
+            if (signature === lastEmbeddedPayloadSignature && now - lastEmbeddedPayloadAt < 1500) return;
+            lastEmbeddedPayloadSignature = signature;
+            lastEmbeddedPayloadAt = now;
+            if (!/^https?:\/\//i.test(url)) {
+                showNoUrlNotice(payload?.error);
+                return;
+            }
+            analyzeUrl(url, { titleHint }).catch((error) => {
+                setStatus('error', dlt('error.analysisFailed'), String(error?.message || error || dlt('common.unknownError')));
+            });
+        };
+        window.__ardaliHandleEmbeddedDownloaderPayload = handleEmbeddedDownloaderPayload;
+        window.addEventListener('message', (event) => {
+            if (event.source !== window.parent || event.data?.type !== 'downloader:loadUrl') return;
+            handleEmbeddedDownloaderPayload(event.data?.payload || {});
+        });
+        const pendingEmbeddedPayload = window.__ardaliPendingEmbeddedDownloaderPayload;
+        delete window.__ardaliPendingEmbeddedDownloaderPayload;
+        if (pendingEmbeddedPayload && typeof pendingEmbeddedPayload === 'object') {
+            handleEmbeddedDownloaderPayload(pendingEmbeddedPayload);
+        }
+        window.parent?.postMessage({ type: 'downloader:embeddedReady' }, '*');
+    }
     const pendingNotice = await api.getPendingNotice?.();
     if (pendingNotice) {
         if (/^https?:\/\//i.test(String(pendingNotice.url || '').trim())) {

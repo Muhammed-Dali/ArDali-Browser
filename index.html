@@ -3,12 +3,13 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'nonce-ardali-local-style-v1' 'unsafe-hashes' 'sha256-Bzu+0IbxFxznzOMZ1xC6igPdTNtMnxymTQ7T88lCZhA=' 'sha256-besIW9odNqwbPllfNOeQDc7XZ1yH7l2EFhD0tOZbY0w=' 'sha256-XNfYdUW7S7AWSxlvq47SGsGIxvvzKwvUGdsFQQ/zXf4=' 'sha256-47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU=' 'sha256-biLFinpqYMtWHmXfkA1BPeCY0/fNt46SAZ+BBk5YUog=' 'sha256-iwlYzbq4N5hZ48DjjqB5AfqXAqPKBIjmkTIayo9ehxo=' 'sha256-zTWJkmbC4hSXy17viiraKi9faqhIVPY5/DTS5iv7I2M='; font-src 'self' data:; img-src 'self' data: https:; media-src 'self' file:; connect-src 'self' https: wss:; frame-src https:; object-src 'none'; base-uri 'none'; form-action 'self';">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'nonce-ardali-local-style-v1' 'unsafe-hashes' 'sha256-Bzu+0IbxFxznzOMZ1xC6igPdTNtMnxymTQ7T88lCZhA=' 'sha256-besIW9odNqwbPllfNOeQDc7XZ1yH7l2EFhD0tOZbY0w=' 'sha256-XNfYdUW7S7AWSxlvq47SGsGIxvvzKwvUGdsFQQ/zXf4=' 'sha256-47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU=' 'sha256-biLFinpqYMtWHmXfkA1BPeCY0/fNt46SAZ+BBk5YUog=' 'sha256-iwlYzbq4N5hZ48DjjqB5AfqXAqPKBIjmkTIayo9ehxo=' 'sha256-zTWJkmbC4hSXy17viiraKi9faqhIVPY5/DTS5iv7I2M='; font-src 'self' data:; img-src 'self' data: https:; media-src 'self' file:; connect-src 'self' https: wss:; frame-src 'self' https:; object-src 'none'; base-uri 'none'; form-action 'self';">
     <title>ArDali Media Player</title>
     <script src="modules/local-page-bootstrap.js"></script>
     <script src="node_modules/dompurify/dist/purify.min.js"></script>
     <script src="modules/safe-html.js"></script>
     <link rel="stylesheet" href="styles/main.css">
+    <link rel="stylesheet" href="styles/browser-settings.css">
     <link rel="stylesheet" href="styles/webDownloads.css">
 </head>
 <body>
@@ -76,6 +77,9 @@
                     <div class="web-utility-actions-home" id="webUtilityActionsHome">
                         <button class="control-btn eq-btn-player" id="eqBtn" title="Ses Efektleri (EQ)" data-i18n-title="controls.eq">
                             <img class="sound-effects-icon" src="icons/ui/sound-effects.svg" alt="" aria-hidden="true">
+                        </button>
+                        <button class="control-btn eq-btn-player" id="eqPresetsQuickBtn" title="EQ Hazır Ayarlar" aria-label="EQ Hazır Ayarlar" data-i18n-title="workspace.tabs.eqPresets" data-i18n-aria-label="workspace.tabs.eqPresets">
+                            <img class="eq-presets-icon" src="icons/ui/eq-presets.svg" alt="" aria-hidden="true">
                         </button>
                         <button class="control-btn eq-btn-player" id="visualizer-btn" title="Görsel" data-i18n-title="controls.visual">
                             <img class="visualizer-spectrum-icon" src="icons/ui/visualizer-spectrum.svg" alt="" aria-hidden="true">
@@ -746,6 +750,23 @@
                                     <button class="web-address-bookmark" id="webAddressBookmark" title="Yer İşareti Ekle">
                                         <span class="material-symbols-rounded">star</span>
                                     </button>
+                                    <button class="web-address-deliblock" id="webAddressDeliBlock" type="button" aria-label="DeliBlock" aria-expanded="false">
+                                        <span aria-hidden="true">🛡</span>
+                                    </button>
+                                    <div class="deliblock-quick-panel hidden" id="deliBlockQuickPanel" role="dialog" aria-label="DeliBlock hızlı erişim" data-i18n-aria-label="adblock.quick.ariaLabel">
+                                        <div class="deliblock-quick-title"><span aria-hidden="true">🛡</span><strong>DeliBlock</strong></div>
+                                        <div class="deliblock-quick-site-label" data-i18n="adblock.quick.activeSite">Aktif Site:</div>
+                                        <strong class="deliblock-quick-host" id="deliBlockQuickHost">—</strong>
+                                        <div class="deliblock-quick-count"><span data-i18n="adblock.quick.blockedRequests">Engellenen istek:</span> <strong id="deliBlockQuickBlocked">0</strong></div>
+                                        <label><input type="checkbox" id="deliBlockQuickAds"> <span data-i18n="adblock.sites.ads">Reklam Engelleme</span></label>
+                                        <label><input type="checkbox" id="deliBlockQuickTrackers"> <span data-i18n="adblock.sites.trackers">İzleyici Koruması</span></label>
+                                        <label><input type="checkbox" id="deliBlockQuickWhitelist"> <span data-i18n="adblock.whitelist.option">Beyaz Liste</span></label>
+                                        <div class="deliblock-quick-notice hidden" id="deliBlockQuickNotice" data-i18n="adblock.quick.whitelisted">Beyaz Listede · Koruma uygulanmıyor.</div>
+                                        <div class="deliblock-quick-divider"></div>
+                                        <button type="button" id="deliBlockQuickPicker" data-i18n="adblock.quick.openPicker">🎯 Element Gizleyiciyi Aç</button>
+                                        <button type="button" id="deliBlockQuickLogger" data-i18n="adblock.quick.openLogger">📊 İstek Günlüğü</button>
+                                        <button type="button" id="deliBlockQuickOpen" data-i18n="adblock.quick.openSettings">⚙ DeliBlock'u Aç</button>
+                                    </div>
                                     <div class="web-address-suggestions hidden" id="webAddressSuggestions"></div>
                                     <div class="site-info-popup hidden" id="siteInfoPopup">
                                         <div class="site-info-header">
@@ -930,6 +951,10 @@
                             <canvas id="galleryMiniNavCanvas" width="180" height="108"></canvas>
                             <div class="gallery-mini-nav-viewport" id="galleryMiniNavViewport"></div>
                         </div>
+                    </div>
+                    <div class="gallery-brightness-hud hidden" id="galleryBrightnessHud" role="status" aria-live="polite">
+                        <span class="material-symbols-rounded" aria-hidden="true">light_mode</span>
+                        <strong id="galleryBrightnessHudValue">100%</strong>
                     </div>
                     <div class="gallery-lightbox-caption" id="galleryLightboxCaption"></div>
                     <div class="gallery-lightbox-bottom-bar" id="galleryLightboxBottomBar">
@@ -2953,7 +2978,7 @@
                 <img class="about-logo" src="icons/app/ardali_256.png" alt="ArDali">
                 <div class="about-title-wrap">
                     <div class="about-title" id="aboutTitle" data-i18n="about.title">ArDali Medya Player</div>
-                    <div class="about-subtitle">v5.4.4</div>
+                    <div class="about-subtitle">v5.5.0</div>
                 </div>
             </div>
 
@@ -2976,6 +3001,14 @@
                         <span class="about-badge-value" id="aboutChromiumVersionValue">-</span>
                     </div>
                     <div class="about-badge subtle">
+                        <span class="about-badge-label" data-i18n="about.badges.node">Node.js</span>
+                        <span class="about-badge-value" id="aboutNodeVersionValue">-</span>
+                    </div>
+                    <div class="about-badge subtle">
+                        <span class="about-badge-label" data-i18n="about.badges.license">License</span>
+                        <span class="about-badge-value">GPL-3.0-only</span>
+                    </div>
+                    <div class="about-badge subtle">
                         <span class="about-badge-label" data-i18n="about.badges.lastUpdateCheck">Son Güncelleme Kontrolü</span>
                         <span class="about-badge-value" id="aboutLastUpdateCheckValue">-</span>
                     </div>
@@ -2983,11 +3016,11 @@
                 <div class="about-features-title" data-i18n="about.featuresTitle">Özellikler ve Şeffaflık</div>
                 <div class="about-sections">
                     <section class="about-section about-section-updates">
-                        <h4 data-i18n="about.whatsNew.title">What's new in 5.4.0</h4>
+                        <h4 data-i18n="about.whatsNew.title">What's new in v5.5.0</h4>
                         <ul class="about-list">
-                            <li data-i18n="about.whatsNew.passwordManager">Added a local AES-256-GCM Password Manager with master password protection, Auto Lock, and secure Autofill.</li>
-                            <li data-i18n="about.whatsNew.security">Hardened Electron windows, IPC validation, permissions, Content Security Policy, and secure OS key storage.</li>
-                            <li data-i18n="about.whatsNew.releasePipeline">Added a mandatory security gate before release builds and package publication.</li>
+                            <li data-i18n="about.whatsNew.workspace">New tab workspace architecture with persistent tabs and improved lifecycle handling.</li>
+                            <li data-i18n="about.whatsNew.media">Improved Password Manager, Ad Block, Gallery, Music, Song Finder, Audio Effects, and projectM workflows.</li>
+                            <li data-i18n="about.whatsNew.performance">Reduced unnecessary background work with better memory cleanup, stability, and security validation.</li>
                         </ul>
                     </section>
                     <section class="about-section about-section-updates">
@@ -3069,7 +3102,7 @@
             </div>
 
             <div class="about-actions">
-                <div class="about-footer" data-i18n="about.footer">© 2026 Muhammet Dali. MIT Lisansı ile korunmaktadır.</div>
+                <div class="about-footer" data-i18n="about.footer">© 2026 Muhammet Dali. Licensed under GPL-3.0-only.</div>
                 <button class="btn primary about-close-btn" id="aboutCloseBtn" type="button" data-i18n="about.close">Kapat</button>
             </div>
         </div>
@@ -3133,6 +3166,7 @@
     <script src="modules/new-tab-customization.js"></script>
     <script src="modules/web-browser.js"></script>
     <script src="renderer.js"></script>
+    <script src="modules/browser-settings-system.js"></script>
     <script src="webDownloadsRenderer.js"></script>
 </body>
 </html>

@@ -490,10 +490,15 @@ async function refreshDevices() {
     renderDevices(res?.devices || []);
     const pref = await window.ardali?.pulse?.getPreferredDevice?.().catch(() => null);
     const defaultMonitor = lastDevices.find((device) => device.isDefaultMonitor);
-    if (preferences.remember_audio_device !== false && pref?.audioDevice && lastDevices.some((device) => device.id === pref.audioDevice)) {
-        els.device.value = pref.audioDevice;
-    } else if (defaultMonitor?.id) {
+    const rememberedDevice = lastDevices.find((device) => device.id === pref?.audioDevice);
+    // Takılan kulaklık/aktif çıkış değişmiş olabilir. Güncel varsayılan çıkış
+    // monitorü, daha önce kaydedilmiş monitor seçiminden önce gelir.
+    if (defaultMonitor?.id) {
         els.device.value = defaultMonitor.id;
+    } else if (preferences.remember_audio_device !== false && rememberedDevice?.isMonitor) {
+        els.device.value = pref.audioDevice;
+    } else if (rememberedDevice?.id) {
+        els.device.value = rememberedDevice.id;
     }
     setStatusKey(
         (res?.devices || []).length ? 'listen.status.ready' : 'listen.status.noDevice',

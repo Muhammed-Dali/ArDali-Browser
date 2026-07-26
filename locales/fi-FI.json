@@ -925,8 +925,13 @@
   "about.sections.passwordManager.item3": "Suojattu automaattinen täyttö vaatii käyttäjän toimia ja tarkan HTTPS-alkuperän vastaavuuden.",
   "about.sections.security.item4": "Chromium Sandbox, Context Isolation, tiukka CSP ja validoidut IPC harden sovellusikkunat.",
   "about.sections.security.item5": "OS Secure Storage suojaa paikallisen varaston laiteavainta.",
-  "about.whatsNew.title": "Mitä uutta versiossa 5.4.0",
+  "about.whatsNew.title": "Mitä uutta versiossa v5.5.0",
   "about.whatsNew.passwordManager": "Lisätty paikallinen AES-256-GCM Password Manager, jossa on pääsalasanasuojaus, automaattinen lukitus ja suojattu automaattinen täyttö.",
   "about.whatsNew.security": "Hardened Electron -ikkunat, IPC-vahvistus, käyttöoikeudet, sisällön suojauskäytäntö ja suojattu käyttöjärjestelmän avainten tallennus.",
-  "about.whatsNew.releasePipeline": "Lisätty pakollinen turvaportti ennen julkaisun koontiversioita ja paketin julkaisemista."
+  "about.whatsNew.releasePipeline": "Lisätty pakollinen turvaportti ennen julkaisun koontiversioita ja paketin julkaisemista.",
+  "about.whatsNew.workspace": "Uusi välilehtityötilan arkkitehtuuri pysyvillä välilehdillä ja parannetulla elinkaaren hallinnalla.",
+  "about.whatsNew.media": "Parannetut työnkulut salasanojen hallintaan, mainosten estoon, galleriaan, musiikkiin, Song Finderiin, äänitehosteisiin ja projectM:ään.",
+  "about.whatsNew.performance": "Vähemmän tarpeetonta taustatyötä paremman muistinsiivouksen, vakauden ja turvallisuuden tarkistuksen ansiosta.",
+  "about.badges.node": "Node.js",
+  "about.badges.license": "License"
 }

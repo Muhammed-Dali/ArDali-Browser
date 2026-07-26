@@ -1,6 +1,6 @@
 # Locale Coverage
 
-Updated: 2026-07-21
+Updated: 2026-07-26
 
 This report summarizes the active UI locale coverage for the main `ArDali Medya Player` application.
 
@@ -31,7 +31,7 @@ These were not part of the active main-app loading path.
 
 ## Summary
 
-- Total used keys: `1818`
+- Total used keys: `1922`
 - Supported locales checked: `22`
 - Effective missing keys across all supported locales: `0`
 
@@ -45,28 +45,28 @@ That means:
 
 | Locale | Raw Present | Raw Missing | Effective Missing | Override |
 | --- | ---: | ---: | ---: | --- |
-| `ar-SA` | 744 | 1074 | 0 | yes |
-| `bn-BD` | 428 | 1390 | 0 | yes |
-| `de-DE` | 428 | 1390 | 0 | yes |
-| `el-GR` | 428 | 1390 | 0 | yes |
-| `en-US` | 1264 | 554 | 0 | yes |
-| `es-ES` | 406 | 1412 | 0 | yes |
-| `fa-IR` | 428 | 1390 | 0 | yes |
-| `fi-FI` | 428 | 1390 | 0 | yes |
-| `fr-FR` | 406 | 1412 | 0 | yes |
-| `hi-IN` | 428 | 1390 | 0 | yes |
-| `hu-HU` | 428 | 1390 | 0 | yes |
-| `it-IT` | 428 | 1390 | 0 | yes |
-| `ja-JP` | 428 | 1390 | 0 | yes |
-| `ne-NP` | 428 | 1390 | 0 | yes |
-| `pl-PL` | 428 | 1390 | 0 | yes |
-| `pt-BR` | 428 | 1390 | 0 | yes |
-| `ru-RU` | 428 | 1390 | 0 | yes |
-| `tr-TR` | 1179 | 639 | 0 | yes |
-| `uk-UA` | 428 | 1390 | 0 | yes |
-| `vi-VN` | 428 | 1390 | 0 | yes |
-| `zh-CN` | 398 | 1420 | 0 | yes |
-| `zh-TW` | 398 | 1420 | 0 | yes |
+| `ar-SA` | 846 | 1076 | 0 | yes |
+| `bn-BD` | 430 | 1492 | 0 | yes |
+| `de-DE` | 430 | 1492 | 0 | yes |
+| `el-GR` | 430 | 1492 | 0 | yes |
+| `en-US` | 1325 | 597 | 0 | yes |
+| `es-ES` | 408 | 1514 | 0 | yes |
+| `fa-IR` | 430 | 1492 | 0 | yes |
+| `fi-FI` | 430 | 1492 | 0 | yes |
+| `fr-FR` | 408 | 1514 | 0 | yes |
+| `hi-IN` | 430 | 1492 | 0 | yes |
+| `hu-HU` | 430 | 1492 | 0 | yes |
+| `it-IT` | 430 | 1492 | 0 | yes |
+| `ja-JP` | 430 | 1492 | 0 | yes |
+| `ne-NP` | 430 | 1492 | 0 | yes |
+| `pl-PL` | 430 | 1492 | 0 | yes |
+| `pt-BR` | 430 | 1492 | 0 | yes |
+| `ru-RU` | 430 | 1492 | 0 | yes |
+| `tr-TR` | 1240 | 682 | 0 | yes |
+| `uk-UA` | 430 | 1492 | 0 | yes |
+| `vi-VN` | 430 | 1492 | 0 | yes |
+| `zh-CN` | 400 | 1522 | 0 | yes |
+| `zh-TW` | 400 | 1522 | 0 | yes |
 
 ## Interpretation
 

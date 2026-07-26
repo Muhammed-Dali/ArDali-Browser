@@ -1,5 +1,24 @@
 # Changelog
 
+## [5.5.0] - 2026-07-26
+
+### Added
+
+- Added the new tab workspace architecture with persistent workspace tabs and explicit lifecycle handling.
+- Integrated the local encrypted Password Manager and expanded professional Ad Block controls.
+- Added unified browser settings and hardened embedded application API boundaries.
+
+### Changed
+
+- Improved Gallery, Music, Song Finder, Audio Effects, Downloads, Settings, and projectM workflows.
+- Reduced unnecessary background processing and improved memory cleanup and workspace stability.
+- Aligned Electron 43.2.0 across package and CI metadata and updated the compatible Electron Builder chain.
+
+### Security
+
+- Strengthened Electron, IPC, sandbox, context-isolation, credential-vault, and Ad Block release validation.
+- Remediated all reported npm dependency advisories without forced or breaking upgrades.
+
 ## [5.4.4] - 2026-07-22
 
 ### Added

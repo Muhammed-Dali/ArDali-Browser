@@ -24,14 +24,21 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/Muhammed-Dali/ArDali-WebMedia/releases/latest"><strong>Download v5.4.4</strong></a>
-  · <a href="#installation">Install</a>
-  · <a href="#screenshots">Screenshots</a>
-  · <a href="docs/FEATURES.md">Features</a>
-  · <a href="CONTRIBUTING.md">Contribute</a>
+  <a href="https://github.com/Muhammed-Dali/ArDali-WebMedia/releases/tag/v5.5.0"><strong>Download v5.5.0</strong></a>
+  · <a href="#documentation">Documentation</a>
+  · <a href="https://github.com/Muhammed-Dali/ArDali-WebMedia/issues/new?template=bug_report.yml">Report Bug</a>
+  · <a href="https://github.com/Muhammed-Dali/ArDali-WebMedia/issues/new?template=feature_request.yml">Request Feature</a>
+  · <a href="https://github.com/Muhammed-Dali/ArDali-WebMedia/releases">Releases</a>
 </p>
 
 > ArDali WebMedia is under active development. For everyday use, prefer a published release over the current `main` branch.
+
+## What's New in v5.5.0
+
+- Introduces the new tab workspace architecture with persistent workspace tabs and more predictable lifecycle handling.
+- Integrates the local encrypted Password Manager and expands the professional Ad Block controls.
+- Improves Gallery, Music, Song Finder, Audio Effects, and projectM workflows without changing their established behavior.
+- Reduces unnecessary background work and improves memory cleanup, startup responsiveness, stability, and Electron security validation.
 
 ## Screenshots
 
@@ -87,12 +94,12 @@ Centralized controls for the multilingual interface, security and privacy behavi
 
 | Area | Highlights |
 | --- | --- |
-| 🌐 **Browser** | Chromium browser, multiple tabs, new-tab workspace, built-in ad blocker |
-| 🔐 **Security** | Local password vault, AES-256-GCM, secure autofill, automatic lock, HTTPS origin validation |
-| 🎵 **Audio** | Native C++ Audio Engine, Dali Web Audio Engine, 32-band EQ, real-time DSP and audio effects |
-| ⬇ **Downloader** | Smart URL detection, audio/video downloads, format and quality selection |
-| 🎨 **Visualizer** | Native projectM integration and hardware-accelerated real-time rendering |
-| 🎬 **Multimedia** | Music player, video player, photo gallery, screen recorder and playlists |
+| 🌐 **Browser & Workspace Tabs** | Chromium browser, persistent workspace tabs, new-tab workspace, professional Ad Block engine |
+| 🔐 **Password Manager** | Local AES-256-GCM vault, secure autofill, automatic lock and exact HTTPS origin validation |
+| 🎵 **Music & Audio Effects** | Music player, Native C++ Audio Engine, Dali Web Audio Engine, 32-band EQ and real-time DSP |
+| 🎬 **Video & Gallery** | Video player, photo gallery, playlists and Screen Recorder |
+| ⬇ **Downloads & Song Finder** | Smart audio/video downloads, format selection and webpage music recognition |
+| 🎨 **ProjectM Visualization** | Native projectM integration and hardware-accelerated real-time rendering |
 | 🌍 **Localization** | Multi-language interface with locale packs and RTL-aware surfaces |
 | ⚡ **Performance** | Native components, optimized startup paths, lazy UI work and sandboxed renderers |
 

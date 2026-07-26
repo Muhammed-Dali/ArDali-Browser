@@ -61,6 +61,12 @@
   </provides>
 
   <releases>
+    <release version="5.5.0" date="2026-07-26">
+      <url>https://github.com/Muhammed-Dali/ArDali-WebMedia/releases/tag/v5.5.0</url>
+      <description>
+        <p>Workspace tabs, integrated privacy tools, media workflow refinements, performance, stability, security, and dependency improvements.</p>
+      </description>
+    </release>
     <release version="5.4.4" date="2026-07-22">
       <url>https://github.com/Muhammed-Dali/ArDali-WebMedia/releases/tag/v5.4.4</url>
       <description>

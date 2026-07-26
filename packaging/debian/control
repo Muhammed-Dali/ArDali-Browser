@@ -1,5 +1,5 @@
 Package: ardali-media-player
-Version: 5.4.4
+Version: 5.5.0
 Section: sound
 Priority: optional
 Architecture: amd64

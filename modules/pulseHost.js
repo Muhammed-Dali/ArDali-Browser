@@ -1,19 +1,31 @@
 'use strict';
 
-const path = require('path');
 const { PulseService } = require('./pulse/pulseService');
 
-function createBroadcaster({ BrowserWindow, getMainWindow }) {
+function createBroadcaster({ BrowserWindow, webContents, getMainWindow }) {
     return function broadcast(channel, payload) {
         const targets = BrowserWindow.getAllWindows()
-            .filter((win) => win && !win.isDestroyed());
+            .filter((win) => win && !win.isDestroyed())
+            .map((win) => win.webContents);
         const mainWindow = typeof getMainWindow === 'function' ? getMainWindow() : null;
-        if (mainWindow && !mainWindow.isDestroyed() && !targets.includes(mainWindow)) {
-            targets.push(mainWindow);
+        if (mainWindow && !mainWindow.isDestroyed() && !targets.includes(mainWindow.webContents)) {
+            targets.push(mainWindow.webContents);
         }
-        for (const win of targets) {
+        const pulseViews = webContents?.getAllWebContents?.().filter((contents) => {
+            if (!contents || contents.isDestroyed?.()) return false;
             try {
-                win.webContents.send(channel, payload);
+                const parsed = new URL(String(contents.getURL?.() || ''));
+                return parsed.protocol === 'file:' && /\/pulse\.html$/i.test(decodeURIComponent(parsed.pathname || ''));
+            } catch {
+                return false;
+            }
+        }) || [];
+        for (const contents of pulseViews) {
+            if (!targets.includes(contents)) targets.push(contents);
+        }
+        for (const contents of targets) {
+            try {
+                contents.send(channel, payload);
             } catch {
                 // best effort
             }
@@ -25,14 +37,16 @@ function registerPulseIpc({
     ipcMain,
     app,
     BrowserWindow,
+    webContents,
     getMainWindow,
     shell,
+    openApplicationTab,
     getAuxiliaryWindowDefaults,
     configureWindowForTaskbar
 }) {
     const service = new PulseService({ app });
     service.loadPreferences();
-    const broadcast = createBroadcaster({ BrowserWindow, getMainWindow });
+    const broadcast = createBroadcaster({ BrowserWindow, webContents, getMainWindow });
     let pulseWindow = null;
 
     const sendWindowState = () => {
@@ -46,64 +60,20 @@ function registerPulseIpc({
     service.on('uncertain', (payload) => broadcast('pulse:uncertain', payload));
 
     function createPulseWindow() {
-        if (pulseWindow && !pulseWindow.isDestroyed()) {
-            pulseWindow.show();
-            pulseWindow.focus();
-            sendWindowState();
-            return pulseWindow;
-        }
-
-        const parent = typeof getMainWindow === 'function' ? getMainWindow() : null;
-        pulseWindow = new BrowserWindow({
-            ...(typeof getAuxiliaryWindowDefaults === 'function'
-                ? getAuxiliaryWindowDefaults()
-                : { icon: path.join(__dirname, '..', 'icons', 'app', 'ardali_512.png'), skipTaskbar: false }),
-            width: 1100,
-            height: 866,
-            minWidth: 780,
-            minHeight: 560,
-            backgroundColor: '#10151d',
-            parent: parent && !parent.isDestroyed() ? parent : undefined,
-            modal: false,
-            autoHideMenuBar: true,
-            show: false,
-            title: 'ArDali Dinle',
-            webPreferences: {
-                preload: path.join(__dirname, '..', 'preload.js'),
-                additionalArguments: ['--ardali-view=pulse'],
-                nodeIntegration: false,
-                contextIsolation: true,
-                sandbox: true,
-                devTools: process.env.ARDALI_DEV === '1',
-                webSecurity: true,
-                allowRunningInsecureContent: false,
-                spellcheck: false
-            }
-        });
-        if (typeof configureWindowForTaskbar === 'function') configureWindowForTaskbar(pulseWindow);
-
-        pulseWindow.loadFile(path.join(__dirname, '..', 'pulse.html'));
-        pulseWindow.once('ready-to-show', () => {
-            if (!pulseWindow || pulseWindow.isDestroyed()) return;
-            pulseWindow.show();
-            pulseWindow.focus();
-            service.emitState();
-            sendWindowState();
-        });
-        pulseWindow.on('closed', () => {
-            pulseWindow = null;
-            sendWindowState();
-        });
-        sendWindowState();
-        return pulseWindow;
+        if (typeof openApplicationTab === 'function') openApplicationTab('pulse');
+        return typeof getMainWindow === 'function' ? getMainWindow() : null;
     }
 
     ipcMain.handle('pulse:openWindow', () => {
-        createPulseWindow();
-        return true;
+        return typeof openApplicationTab === 'function'
+            ? openApplicationTab('pulse')
+            : false;
     });
     ipcMain.handle('pulse:closeWindow', () => {
-        if (pulseWindow && !pulseWindow.isDestroyed()) pulseWindow.close();
+        const mainWindow = typeof getMainWindow === 'function' ? getMainWindow() : null;
+        if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send('workspace:close-application-tab', { appKey: 'pulse' });
+        }
         return true;
     });
     ipcMain.handle('pulse:getWindowState', () => ({ open: !!(pulseWindow && !pulseWindow.isDestroyed()) }));
