@@ -24,7 +24,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/Muhammed-Dali/ArDali-WebMedia/releases/tag/v5.5.1"><strong>Download v5.5.1</strong></a>
+  <a href="https://github.com/Muhammed-Dali/ArDali-WebMedia/releases/tag/v5.5.2"><strong>Download v5.5.2</strong></a>
   · <a href="#documentation">Documentation</a>
   · <a href="https://github.com/Muhammed-Dali/ArDali-WebMedia/issues/new?template=bug_report.yml">Report Bug</a>
   · <a href="https://github.com/Muhammed-Dali/ArDali-WebMedia/issues/new?template=feature_request.yml">Request Feature</a>
@@ -33,12 +33,11 @@
 
 > ArDali WebMedia is under active development. For everyday use, prefer a published release over the current `main` branch.
 
-## What's New in v5.5.1
+## What's New in v5.5.2
 
-- Restores and completes Web Settings inside the Workspace Tabs interface.
-- Retains the local encrypted Password Manager and professional Ad Block controls.
-- Improves Screen Recorder, Gallery, Audio Effects, Song Finder, memory usage, performance, and stability.
-- Includes targeted bug fixes without changing established media workflows.
+- Updates the native addon build chain from `tar@7.5.19` to `tar@7.5.22`.
+- Resolves GHSA-r292-9mhp-454m without changing application runtime behavior.
+- Revalidates dependency, Electron security, packaging, and pre-release gates.
 
 ## Screenshots
 

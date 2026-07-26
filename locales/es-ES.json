@@ -888,7 +888,7 @@
   "about.sections.passwordManager.item3": "Autocompletar seguro requiere la interacción del usuario y una coincidencia exacta del origen HTTPS.",
   "about.sections.security.item4": "Chromium Sandbox, aislamiento de contexto, CSP estricto y ventanas de aplicaciones de refuerzo IPC validadas.",
   "about.sections.security.item5": "OS Secure Storage protege la clave del dispositivo de la bóveda local.",
-  "about.whatsNew.title": "¿Qué hay de nuevo en v5.5.1?",
+  "about.whatsNew.title": "¿Qué hay de nuevo en v5.5.2?",
   "about.whatsNew.passwordManager": "Se agregó un administrador de contraseñas AES-256-GCM local con protección de contraseña maestra, bloqueo automático y autocompletar seguro.",
   "about.whatsNew.security": "Ventanas electrónicas reforzadas, validación de IPC, permisos, política de seguridad de contenido y almacenamiento seguro de claves del sistema operativo.",
   "about.whatsNew.releasePipeline": "Se agregó una puerta de seguridad obligatoria antes de las versiones y la publicación del paquete.",

@@ -61,6 +61,12 @@
   </provides>
 
   <releases>
+    <release version="5.5.2" date="2026-07-26">
+      <url>https://github.com/Muhammed-Dali/ArDali-WebMedia/releases/tag/v5.5.2</url>
+      <description>
+        <p>Updates the native build dependency chain and resolves GHSA-r292-9mhp-454m.</p>
+      </description>
+    </release>
     <release version="5.5.1" date="2026-07-26">
       <url>https://github.com/Muhammed-Dali/ArDali-WebMedia/releases/tag/v5.5.1</url>
       <description>

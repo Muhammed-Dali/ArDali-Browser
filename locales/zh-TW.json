@@ -880,7 +880,7 @@
   "about.sections.passwordManager.item3": "安全自動填入需要使用者互動和精確的 HTTPS 來源匹配。",
   "about.sections.security.item4": "Chromium 沙盒、情境隔離、嚴格的 CSP 和經過驗證的 IPC 強化應用程式視窗。",
   "about.sections.security.item5": "作業系統安全儲存保護本機保管庫的裝置金鑰。",
-  "about.whatsNew.title": "v5.5.1 中的新增功能",
+  "about.whatsNew.title": "v5.5.2 中的新增功能",
   "about.whatsNew.passwordManager": "新增了本機 AES-256-GCM 密碼管理器，具有主密碼保護、自動鎖定和安全自動填入功能。",
   "about.whatsNew.security": "強化 Electron 視窗、IPC 驗證、權限、內容安全策略和安全作業系統金鑰儲存。",
   "about.whatsNew.releasePipeline": "在發布版本和套件發布之前添加了強制安全門。",

@@ -925,7 +925,7 @@
   "about.sections.passwordManager.item3": "安全な自動入力には、ユーザーの操作と HTTPS オリジンの正確な一致が必要です。",
   "about.sections.security.item4": "Chromium サンドボックス、コンテキスト分離、厳格な CSP、および検証済み IPC により、アプリケーション ウィンドウが強化されます。",
   "about.sections.security.item5": "OS Secure Storage は、ローカル保管庫のデバイス キーを保護します。",
-  "about.whatsNew.title": "v5.5.1の新機能",
+  "about.whatsNew.title": "v5.5.2の新機能",
   "about.whatsNew.passwordManager": "マスターパスワード保護、自動ロック、安全な自動入力を備えたローカル AES-256-GCM パスワード マネージャーを追加しました。",
   "about.whatsNew.security": "強化された Electron ウィンドウ、IPC 検証、権限、コンテンツ セキュリティ ポリシー、安全な OS キー ストレージ。",
   "about.whatsNew.releasePipeline": "リリースビルドとパッケージ公開の前に必須のセキュリティゲートを追加しました。",

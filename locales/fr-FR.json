@@ -888,7 +888,7 @@
   "about.sections.passwordManager.item3": "La saisie automatique sécurisée nécessite une interaction de l'utilisateur et une correspondance exacte de l'origine HTTPS.",
   "about.sections.security.item4": "Chromium Sandbox, l'isolation du contexte, le CSP strict et les fenêtres d'application renforcées IPC validées.",
   "about.sections.security.item5": "OS Secure Storage protège la clé de périphérique du coffre-fort local.",
-  "about.whatsNew.title": "Quoi de neuf dans la version v5.5.1",
+  "about.whatsNew.title": "Quoi de neuf dans la version v5.5.2",
   "about.whatsNew.passwordManager": "Ajout d'un gestionnaire de mots de passe AES-256-GCM local avec protection par mot de passe principal, verrouillage automatique et remplissage automatique sécurisé.",
   "about.whatsNew.security": "Fenêtres Electron renforcées, validation IPC, autorisations, politique de sécurité du contenu et stockage sécurisé des clés du système d'exploitation.",
   "about.whatsNew.releasePipeline": "Ajout d'une porte de sécurité obligatoire avant la construction de la version et la publication du package.",

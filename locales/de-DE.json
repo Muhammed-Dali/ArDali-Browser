@@ -925,7 +925,7 @@
   "about.sections.passwordManager.item3": "Secure Autofill erfordert Benutzerinteraktion und eine genaue Übereinstimmung des HTTPS-Ursprungs.",
   "about.sections.security.item4": "Chromium Sandbox, Kontextisolierung, strikter CSP und validiertes IPC härten Anwendungsfenster.",
   "about.sections.security.item5": "OS Secure Storage schützt den Geräteschlüssel des lokalen Tresors.",
-  "about.whatsNew.title": "Was ist neu in v5.5.1?",
+  "about.whatsNew.title": "Was ist neu in v5.5.2?",
   "about.whatsNew.passwordManager": "Ein lokaler AES-256-GCM-Passwort-Manager mit Master-Passwortschutz, automatischer Sperre und sicherem Autofill hinzugefügt.",
   "about.whatsNew.security": "Gehärtete Electron-Fenster, IPC-Validierung, Berechtigungen, Inhaltssicherheitsrichtlinie und sichere Speicherung von Betriebssystemschlüsseln.",
   "about.whatsNew.releasePipeline": "Vor Release-Builds und Paketveröffentlichung wurde ein obligatorisches Sicherheitstor hinzugefügt.",

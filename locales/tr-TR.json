@@ -1767,7 +1767,7 @@
   "about.sections.passwordManager.item3": "Güvenli Otomatik Doldurma, kullanıcı etkileşimi ve tam HTTPS kaynağı eşleşmesi gerektirir.",
   "about.sections.security.item4": "Chromium Sandbox, Bağlam Yalıtımı, katı CSP ve doğrulanmış IPC uygulama pencerelerini güçlendirir.",
   "about.sections.security.item5": "İşletim Sistemi Güvenli Depolama, yerel kasanın cihaz anahtarını korur.",
-  "about.whatsNew.title": "v5.5.1'daki yenilikler",
+  "about.whatsNew.title": "v5.5.2'daki yenilikler",
   "about.whatsNew.workspace": "Kalıcı sekmeler ve iyileştirilmiş yaşam döngüsü yönetimiyle yeni sekme çalışma alanı mimarisi.",
   "about.whatsNew.media": "Parola Yöneticisi, Reklam Engelleme, Galeri, Müzik, Şarkı Bulucu, Ses Efektleri ve projectM iş akışları iyileştirildi.",
   "about.whatsNew.performance": "Daha iyi bellek temizliği, kararlılık ve güvenlik doğrulamasıyla gereksiz arka plan işi azaltıldı.",

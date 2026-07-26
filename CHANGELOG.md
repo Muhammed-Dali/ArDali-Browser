@@ -1,5 +1,12 @@
 # Changelog
 
+## [5.5.2] - 2026-07-26
+
+### Security
+
+- Updated the native `node-gyp` build chain from `tar@7.5.19` to `tar@7.5.22`.
+- Resolved GHSA-r292-9mhp-454m and restored a zero-advisory dependency audit.
+
 ## [5.5.1] - 2026-07-26
 
 ### Added
