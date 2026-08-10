@@ -11,7 +11,7 @@
         "clean": "node-gyp clean && node -e \"require('fs').rmSync('build', {recursive:true, force:true})\""
     },
     "dependencies": {
-        "node-addon-api": "8.9.0",
+        "node-addon-api": "8.9.1",
         "node-gyp": "13.0.1"
     },
     "os": ["linux", "win32", "darwin"],
