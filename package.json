@@ -451,7 +451,7 @@
     "png-to-ico": "3.0.2"
   },
   "dependencies": {
-    "dompurify": "3.4.12",
+    "dompurify": "3.4.13",
     "electron-updater": "6.8.9",
     "mpris-service": "^2.1.2",
     "node-id3": "0.2.9",
