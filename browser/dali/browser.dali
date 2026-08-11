@@ -1,0 +1,32 @@
+// ArDaliBrowser browser-manifest proposal. This is declarative input for the
+// forthcoming DALI browser compiler; it is not accepted by the current audio
+// DSL parser yet.
+browser "ArDaliBrowser" {
+  engine chromium {
+    embedder qt_webengine;
+    sandbox strict;
+    process_model multi_process;
+  }
+
+  tabs {
+    ownership single_live_page;
+    detach preserve_context;
+    attach preserve_context;
+    tab_strip native_pointer;
+  }
+
+  capabilities {
+    allow window.create;
+    allow window.reparent_live_page;
+    allow navigation.http_https;
+    allow downloads.prompt;
+    allow session.restore;
+    deny filesystem.unscoped;
+    deny process.spawn;
+    deny popup.unrequested;
+  }
+
+  platform wayland {
+    attach require_verified_global_coordinates;
+  }
+}

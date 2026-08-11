@@ -1,0 +1,17 @@
+# Build directories
+build/
+browser/build/
+
+# Node dependencies & logs
+node_modules/
+npm-debug.log*
+
+# Generated temporary files
+/tmp/
+*.generated.js
+*.worklet.generated.js
+*.wasm.generated.js
+
+# VS Code local state
+.vscode/compile_commands.json
+.vscode/.cmaketools/

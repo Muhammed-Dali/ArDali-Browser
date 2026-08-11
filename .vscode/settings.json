@@ -1,0 +1,9 @@
+{
+  "cmake.sourceDirectory": "${workspaceFolder}/browser",
+  "cmake.buildDirectory": "${workspaceFolder}/browser/build",
+  "C_Cpp.default.compileCommands": "${workspaceFolder}/browser/build/compile_commands.json",
+  "files.associations": {
+    "*.dali": "dali",
+    "*.dl": "dali"
+  }
+}

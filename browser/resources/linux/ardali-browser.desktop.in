@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=ArDali Browser
+Comment=ArDali web browser
+Exec=@CMAKE_INSTALL_FULL_BINDIR@/ardali-browser %U
+TryExec=@CMAKE_INSTALL_FULL_BINDIR@/ardali-browser
+Icon=ardali-browser
+Terminal=false
+Categories=Network;WebBrowser;
+StartupWMClass=ArDaliBrowser
+MimeType=x-scheme-handler/http;x-scheme-handler/https;text/html;
+
