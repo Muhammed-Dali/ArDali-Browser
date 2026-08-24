@@ -84,6 +84,7 @@ jobs:
           test -n "${pkg_path}"
           install -Dm644 "${pkg_path}" "${out_dir}/$(basename "${pkg_path}")"
           repo-add "${out_dir}/ardali.db.tar.gz" "${out_dir}"/*.pkg.tar.zst
+          rm -f "${out_dir}/ardali.db" "${out_dir}/ardali.files"
           cp -f "${out_dir}/ardali.db.tar.gz" "${out_dir}/ardali.db"
           cp -f "${out_dir}/ardali.files.tar.gz" "${out_dir}/ardali.files"
 
