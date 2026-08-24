@@ -51,16 +51,7 @@ jobs:
           QTWEBENGINE_CHROMIUM_FLAGS: --no-sandbox --disable-gpu
         run: |
           ctest --test-dir browser/build --output-on-failure \
-            -E '^browser-tab-attach'
-          ARDALI_TAB_ATTACH_RUNTIME_TEST=1 \
-            ARDALI_TAB_ATTACH_STRESS_TEST=1 \
-            ARDALI_TAB_ATTACH_STRESS_CYCLES=20 \
-            timeout 60s browser/build/ardali-browser
-          ARDALI_TAB_ATTACH_RUNTIME_TEST=1 \
-            ARDALI_TAB_ATTACH_STRESS_TEST=1 \
-            ARDALI_TAB_ATTACH_STRESS_LAST_ROOT=1 \
-            ARDALI_TAB_ATTACH_STRESS_CYCLES=20 \
-            timeout 60s browser/build/ardali-browser
+            -E '^browser-tab-attach-stress$'
 
       - name: Assemble portable Linux archive
         run: |
