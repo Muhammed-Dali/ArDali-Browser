@@ -230,15 +230,21 @@ target_compile_definitions(ardali-browser PRIVATE
 if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
   target_compile_options(ardali-browser PRIVATE -Wall -Wextra)
 endif()
-add_dependencies(ardali-browser ardali-browser-policy ardali-web-output-dali)
-
-# Keep raw upstream JSON data as files.  Development builds receive the same
+# Keep raw upstream JSON data as files. Development builds receive the same
 # layout as installed builds, so the application never depends on a developer
-# checkout or an absolute HOME path at runtime.
-add_custom_command(TARGET ardali-browser POST_BUILD
+# checkout or an absolute HOME path at runtime. Copy the shared directory once
+# to avoid parallel targets racing while replacing the same destination.
+add_custom_target(ardali-eq-presets-runtime ALL
   COMMAND ${CMAKE_COMMAND} -E copy_directory
     ${CMAKE_CURRENT_SOURCE_DIR}/resources/eq-presets
-    $<TARGET_FILE_DIR:ardali-browser>/eq-presets)
+    ${CMAKE_CURRENT_BINARY_DIR}/eq-presets
+  VERBATIM
+)
+add_dependencies(ardali-browser
+  ardali-browser-policy
+  ardali-web-output-dali
+  ardali-eq-presets-runtime
+)
 
 install(TARGETS ardali-browser RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 install(FILES ${DALI_POLICY_JSON} DESTINATION ${CMAKE_INSTALL_BINDIR})
@@ -348,19 +354,13 @@ target_compile_definitions(ardali-browser-web-audio-effects-controller-test PRIV
   ARDALI_WEB_AUTO_GAIN_DALI_MODULE_RELATIVE_PATH="dali/web-auto-gain.generated.js"
 )
 add_dependencies(ardali-browser-web-audio-effects-controller-test ardali-web-output-dali)
-add_custom_command(TARGET ardali-browser-web-audio-effects-controller-test POST_BUILD
-  COMMAND ${CMAKE_COMMAND} -E copy_directory
-    ${CMAKE_CURRENT_SOURCE_DIR}/resources/eq-presets
-    $<TARGET_FILE_DIR:ardali-browser-web-audio-effects-controller-test>/eq-presets)
+add_dependencies(ardali-browser-web-audio-effects-controller-test ardali-eq-presets-runtime)
 qt_add_executable(ardali-browser-eq-preset-repository-test
   native/tests/eq_preset_repository_test.cpp
   native/eq/eq_preset_repository.cpp
 )
 target_link_libraries(ardali-browser-eq-preset-repository-test PRIVATE Qt6::Core)
-add_custom_command(TARGET ardali-browser-eq-preset-repository-test POST_BUILD
-  COMMAND ${CMAKE_COMMAND} -E copy_directory
-    ${CMAKE_CURRENT_SOURCE_DIR}/resources/eq-presets
-    $<TARGET_FILE_DIR:ardali-browser-eq-preset-repository-test>/eq-presets)
+add_dependencies(ardali-browser-eq-preset-repository-test ardali-eq-presets-runtime)
 qt_add_executable(ardali-browser-tab-throbber-test
   native/tests/tab_throbber_test.cpp
   native/tabs/tab_throbber.cpp
