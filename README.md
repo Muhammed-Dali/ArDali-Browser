@@ -81,10 +81,16 @@ Tune browser media with modular output processing and equalizer tools.
 
 ### Arch Linux package recipe
 
-The repository includes a native source package recipe in
-[`packaging/archlinux/PKGBUILD`](packaging/archlinux/PKGBUILD). Until the new
-`ardali-browser` AUR listing is published, build it from the repository rather
-than assuming that a `yay` package is already available:
+The native source package is published in the
+[`ardali-browser` AUR listing](https://aur.archlinux.org/packages/ardali-browser):
+
+```bash
+yay -S ardali-browser
+```
+
+The same recipe is kept in
+[`packaging/archlinux/PKGBUILD`](packaging/archlinux/PKGBUILD) and can be built
+directly from the repository:
 
 ```bash
 cd packaging/archlinux
@@ -100,7 +106,7 @@ On Arch Linux, install the verified native build dependencies:
 
 ```bash
 sudo pacman -S --needed base-devel cmake ninja nodejs openssl ffmpeg \
-  qt6-base qt6-svg qt6-webengine
+  qt6-base qt6-imageformats qt6-svg qt6-webengine
 ```
 
 Configure, build, and test:

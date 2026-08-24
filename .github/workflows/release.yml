@@ -3,6 +3,12 @@ name: Release
 on:
   push:
     tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      release_ref:
+        description: Existing v-prefixed release tag to build and publish
+        required: true
+        default: v6.0.0
 
 permissions:
   contents: write
@@ -11,20 +17,24 @@ jobs:
   linux:
     runs-on: ubuntu-latest
     container: archlinux:base-devel
+    env:
+      RELEASE_REF: ${{ inputs.release_ref || github.ref_name }}
     steps:
       - name: Install release dependencies
         run: |
           pacman -Syu --noconfirm --needed \
             cmake ffmpeg git github-cli ninja nodejs openssl \
-            qt6-base qt6-svg qt6-webengine
+            qt6-base qt6-imageformats qt6-svg qt6-webengine
 
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.release_ref || github.ref_name }}
 
       - name: Validate tag and version
         run: |
           version="$(node -p "require('./package.json').version")"
-          test "${GITHUB_REF_NAME}" = "v${version}"
+          test "${RELEASE_REF}" = "v${version}"
 
       - name: Configure and build
         run: |
@@ -38,11 +48,23 @@ jobs:
         env:
           QT_QPA_PLATFORM: offscreen
           QTWEBENGINE_DISABLE_SANDBOX: "1"
-        run: ctest --test-dir browser/build --output-on-failure
+          QTWEBENGINE_CHROMIUM_FLAGS: --no-sandbox --disable-gpu
+        run: |
+          ctest --test-dir browser/build --output-on-failure \
+            -E '^browser-tab-attach'
+          ARDALI_TAB_ATTACH_RUNTIME_TEST=1 \
+            ARDALI_TAB_ATTACH_STRESS_TEST=1 \
+            ARDALI_TAB_ATTACH_STRESS_CYCLES=20 \
+            timeout 60s browser/build/ardali-browser
+          ARDALI_TAB_ATTACH_RUNTIME_TEST=1 \
+            ARDALI_TAB_ATTACH_STRESS_TEST=1 \
+            ARDALI_TAB_ATTACH_STRESS_LAST_ROOT=1 \
+            ARDALI_TAB_ATTACH_STRESS_CYCLES=20 \
+            timeout 60s browser/build/ardali-browser
 
       - name: Assemble portable Linux archive
         run: |
-          version="${GITHUB_REF_NAME#v}"
+          version="${RELEASE_REF#v}"
           stage="${GITHUB_WORKSPACE}/release-root"
           DESTDIR="${stage}" cmake --install browser/build
           install -dm755 "${stage}/usr/bin"
@@ -54,9 +76,9 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "${GITHUB_REF_NAME}" \
+          gh release create "${RELEASE_REF}" \
             --repo "${GITHUB_REPOSITORY}" \
-            --title "ArDali Browser ${GITHUB_REF_NAME#v}" \
-            --notes-file "docs/RELEASE_NOTES_v${GITHUB_REF_NAME#v}.md" \
-            "ardali-browser-${GITHUB_REF_NAME#v}-linux-x86_64.tar.zst" \
+            --title "ArDali Browser ${RELEASE_REF#v}" \
+            --notes-file "docs/RELEASE_NOTES_v${RELEASE_REF#v}.md" \
+            "ardali-browser-${RELEASE_REF#v}-linux-x86_64.tar.zst" \
             SHA256SUMS
