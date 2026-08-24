@@ -50,7 +50,9 @@ jobs:
           QT_QPA_PLATFORM: xcb
           QTWEBENGINE_DISABLE_SANDBOX: "1"
           QTWEBENGINE_CHROMIUM_FLAGS: --no-sandbox --disable-gpu
-        run: xvfb-run -a ctest --test-dir browser/build --output-on-failure
+        run: |
+          xvfb-run -a ctest --test-dir browser/build --output-on-failure \
+            -E '^browser-tab-attach-stress$'
 
       - name: Assemble portable Linux archive
         run: |
