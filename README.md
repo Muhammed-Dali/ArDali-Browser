@@ -30,8 +30,9 @@ vault. Linux is the verified release platform for version 6.0.0.
 - **Native browsing:** Qt WebEngine rendering in a native Qt Widgets shell.
 - **Modern tabs:** Reordering, detachable tabs, hover previews, session
   restoration, and internal application pages.
-- **ArDali Blocker:** Built-in advertisement and tracker protection with
-  per-site controls, configurable rulesets, cosmetic filtering, and logs.
+- **ArDali Blocker:** ArDali Browser's built-in advertising and tracker
+  protection system, with site-specific controls, configurable filter lists,
+  cosmetic and extended filtering, and logs.
 - **ArDali Pulse:** Identify music captured from system audio or a microphone
   and open matching results on configured music services.
 - **Password Manager:** Encrypted local credential vault with explicit unlock
@@ -54,8 +55,12 @@ WebEngine content rendering.
 
 ### ArDali Blocker
 
-Manage protection modes, per-site behavior, filters, logs, and developer
-inspection from the built-in blocker interface.
+ArDali Blocker is ArDali Browser's built-in advertising and tracker protection
+engine. Its native filtering engine is developed as part of ArDali Browser.
+
+It provides network filtering, tracker protection, site-specific controls,
+configurable filter lists, cosmetic and extended filtering, logs, and developer
+inspection through the built-in blocker interface.
 
 ![ArDali Blocker](docs/images/ardali-blocker.png)
 
@@ -196,7 +201,7 @@ the binding license text.
 
 ## Third-party components
 
-Bundled third-party code, generated rulesets, data, and resources retain their
-own copyright and license notices. ArDali Blocker's uBO Lite-derived generated
-assets and other list sources are documented separately in
-[`browser/resources/adblock/NOTICE.txt`](browser/resources/adblock/NOTICE.txt).
+Bundled third-party filter data, generated rulesets, scriptlets, and resources
+retain their respective copyright and license notices. See
+[`browser/resources/adblock/NOTICE.txt`](browser/resources/adblock/NOTICE.txt)
+for attribution details.
