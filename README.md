@@ -93,6 +93,12 @@ The native source package is published in the
 yay -S ardali-browser
 ```
 
+For the prebuilt native binary package instead:
+
+```bash
+yay -S ardali-bin
+```
+
 The same recipe is kept in
 [`packaging/archlinux/PKGBUILD`](packaging/archlinux/PKGBUILD) and can be built
 directly from the repository:
@@ -102,8 +108,9 @@ cd packaging/archlinux
 makepkg -si
 ```
 
-The package replaces the historical `ardali-bin`/`ardali-webmedia` package
-identity and installs the new `ardali-browser` executable.
+Both AUR variants install the `ardali-browser` executable. Choose either the
+source-built `ardali-browser` package or the prebuilt `ardali-bin` package;
+they intentionally conflict so that only one variant is installed at a time.
 
 ### ArDali pacman repository
 
