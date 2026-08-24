@@ -105,6 +105,16 @@ makepkg -si
 The package replaces the historical `ardali-bin`/`ardali-webmedia` package
 identity and installs the new `ardali-browser` executable.
 
+### ArDali pacman repository
+
+Existing repository users can install the prebuilt native package as `ardali`:
+
+```bash
+curl -fsSL https://muhammed-dali.github.io/ArDali-Browser/ardali.repo | \
+  sudo tee -a /etc/pacman.conf
+sudo pacman -Syu ardali
+```
+
 ### Build from source
 
 On Arch Linux, install the verified native build dependencies:
