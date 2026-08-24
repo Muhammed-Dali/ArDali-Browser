@@ -21,7 +21,8 @@ jobs:
         run: |
           pacman -Syu --noconfirm --needed \
             cmake ffmpeg git ninja nodejs openssl \
-            qt6-base qt6-imageformats qt6-svg qt6-webengine
+            qt6-base qt6-imageformats qt6-svg qt6-webengine \
+            xorg-server-xvfb xorg-xauth
 
       - name: Checkout
         uses: actions/checkout@v4
@@ -36,12 +37,6 @@ jobs:
 
       - name: Test
         env:
-          QT_QPA_PLATFORM: offscreen
+          QT_QPA_PLATFORM: xcb
           QTWEBENGINE_DISABLE_SANDBOX: "1"
-        run: |
-          # The multi-window synthetic cursor path is covered by the local and
-          # clean-package gates. GitHub's offscreen runner can leave its first
-          # renderer callback pending indefinitely; the last-root attach stress
-          # variant remains enabled here as the compositor-independent gate.
-          ctest --test-dir browser/build --output-on-failure \
-            -E '^browser-tab-attach-stress$'
+        run: xvfb-run -a ctest --test-dir browser/build --output-on-failure

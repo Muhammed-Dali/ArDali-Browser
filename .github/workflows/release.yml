@@ -24,7 +24,8 @@ jobs:
         run: |
           pacman -Syu --noconfirm --needed \
             cmake ffmpeg git github-cli ninja nodejs openssl \
-            qt6-base qt6-imageformats qt6-svg qt6-webengine
+            qt6-base qt6-imageformats qt6-svg qt6-webengine \
+            xorg-server-xvfb xorg-xauth
 
       - name: Checkout
         uses: actions/checkout@v4
@@ -46,12 +47,10 @@ jobs:
 
       - name: Test
         env:
-          QT_QPA_PLATFORM: offscreen
+          QT_QPA_PLATFORM: xcb
           QTWEBENGINE_DISABLE_SANDBOX: "1"
           QTWEBENGINE_CHROMIUM_FLAGS: --no-sandbox --disable-gpu
-        run: |
-          ctest --test-dir browser/build --output-on-failure \
-            -E '^browser-tab-attach-stress$'
+        run: xvfb-run -a ctest --test-dir browser/build --output-on-failure
 
       - name: Assemble portable Linux archive
         run: |
