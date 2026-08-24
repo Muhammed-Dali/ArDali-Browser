@@ -5,14 +5,15 @@
 #include <QList>
 #include <QSettings>
 #include <QUrl>
+#if QT_VERSION >= QT_VERSION_CHECK(6, 8, 0)
 #include <QWebEnginePermission>
+#endif
 
 #include <optional>
 #include <memory>
 
 class BrowserPolicy;
 class QWebEngineDownloadRequest;
-class QWebEnginePermission;
 class QWebEngineProfile;
 class QWebEngineUrlRequestInterceptor;
 class NewTabBackgroundStore;
@@ -61,7 +62,9 @@ class BrowserProfileService final : public QObject {
   CredentialVaultManager *credentialVault() const;
 
   void handleDownload(QWebEngineDownloadRequest *download);
+#if QT_VERSION >= QT_VERSION_CHECK(6, 8, 0)
   void handlePermission(const QWebEnginePermission &permission);
+#endif
 
   bool stripsTrackingParameters() const;
   void setStripsTrackingParameters(bool enabled);
@@ -73,8 +76,10 @@ class BrowserProfileService final : public QObject {
   void clearHttpCache();
   void clearCookies();
 
+#if QT_VERSION >= QT_VERSION_CHECK(6, 8, 0)
   QList<QWebEnginePermission> sitePermissions() const;
   bool resetSitePermission(const QUrl &origin, QWebEnginePermission::PermissionType type);
+#endif
 
   void recordHistory(const QUrl &url, const QString &title);
   QList<BrowserHistoryEntry> recentHistory() const;

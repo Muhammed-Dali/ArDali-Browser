@@ -79,7 +79,9 @@
 #include <QUrlQuery>
 #include <QVBoxLayout>
 #include <QWebEnginePage>
+#if QT_VERSION >= QT_VERSION_CHECK(6, 8, 0)
 #include <QWebEnginePermission>
+#endif
 #include <QWebEngineProfile>
 #include <QWebEngineScript>
 #include <QWebEngineScriptCollection>
@@ -444,9 +446,32 @@ class BrowserPage final : public QWebEnginePage {
               CredentialGenerateHandler credentialGenerateHandler, QObject *parent)
       : QWebEnginePage(profile, parent), policy_(policy), profileService_(profileService),
         newTabFactory_(std::move(newTabFactory)), navigationPrepare_(std::move(navigationPrepare)), credentialCandidateHandler_(std::move(credentialCandidateHandler)), credentialStageHandler_(std::move(credentialStageHandler)), credentialSuccessHandler_(std::move(credentialSuccessHandler)), credentialFillHandler_(std::move(credentialFillHandler)), credentialGenerateHandler_(std::move(credentialGenerateHandler)) {
+#if QT_VERSION >= QT_VERSION_CHECK(6, 8, 0)
     connect(this, &QWebEnginePage::permissionRequested, this, [this](const QWebEnginePermission &permission) {
       if (profileService_) profileService_->handlePermission(permission); else permission.deny();
     });
+#else
+    connect(this, &QWebEnginePage::featurePermissionRequested, this,
+            [this](const QUrl &origin, QWebEnginePage::Feature feature) {
+      QString featureName = QStringLiteral("bu özellik");
+      switch (feature) {
+        case QWebEnginePage::MediaAudioCapture: featureName = QStringLiteral("mikrofon"); break;
+        case QWebEnginePage::MediaVideoCapture: featureName = QStringLiteral("kamera"); break;
+        case QWebEnginePage::MediaAudioVideoCapture: featureName = QStringLiteral("kamera ve mikrofon"); break;
+        case QWebEnginePage::DesktopVideoCapture: featureName = QStringLiteral("ekran paylaşımı"); break;
+        case QWebEnginePage::DesktopAudioVideoCapture: featureName = QStringLiteral("ekran ve ses paylaşımı"); break;
+        case QWebEnginePage::Notifications: featureName = QStringLiteral("bildirim"); break;
+        case QWebEnginePage::Geolocation: featureName = QStringLiteral("konum"); break;
+        default: break;
+      }
+      const auto answer = QMessageBox::question(
+          QApplication::activeWindow(), QStringLiteral("Site izni"),
+          QStringLiteral("%1, %2 iznini istiyor.").arg(origin.toDisplayString(), featureName),
+          QMessageBox::Yes | QMessageBox::No, QMessageBox::No);
+      setFeaturePermission(origin, feature, answer == QMessageBox::Yes
+          ? QWebEnginePage::PermissionGrantedByUser : QWebEnginePage::PermissionDeniedByUser);
+    });
+#endif
   }
 
  protected:

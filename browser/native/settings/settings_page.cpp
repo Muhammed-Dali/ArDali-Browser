@@ -26,7 +26,9 @@
 #include <QStackedWidget>
 #include <QStandardPaths>
 #include <QVBoxLayout>
+#if QT_VERSION >= QT_VERSION_CHECK(6, 8, 0)
 #include <QWebEnginePermission>
+#endif
 #include <QWebEngineProfile>
 
 #include <algorithm>
@@ -150,6 +152,7 @@ QWidget *placeholderPanel(QWidget *parent, BrowserIcon icon, const QString &titl
   return card;
 }
 
+#if QT_VERSION >= QT_VERSION_CHECK(6, 8, 0)
 QString permissionText(QWebEnginePermission::PermissionType type) {
   switch (type) {
     case QWebEnginePermission::PermissionType::MediaAudioCapture: return QStringLiteral("Mikrofon");
@@ -173,6 +176,7 @@ QString permissionState(const QWebEnginePermission &permission) {
     default: return QStringLiteral("Sorulacak");
   }
 }
+#endif
 
 QString settingsStyleSheet() {
   return QStringLiteral(R"CSS(
@@ -417,6 +421,11 @@ QWidget *SettingsPage::createPrivacySection() {
   addRow(privacyCard, settingRow(privacyCard, QStringLiteral("Çerezler ve site verileri"), QStringLiteral("Bu profile ait tüm çerezleri kullanıcı onayıyla siler."), cookies));
   section.layout->addWidget(privacyCard);
 
+  connect(strip, &QCheckBox::toggled, this, [this](bool enabled) { profileService_->setStripsTrackingParameters(enabled); });
+  connect(cache, &QPushButton::clicked, this, [this] { profileService_->clearHttpCache(); QMessageBox::information(this, QStringLiteral("Önbellek"), QStringLiteral("HTTP önbelleği temizleme isteği gönderildi.")); });
+  connect(cookies, &QPushButton::clicked, this, [this] { if (QMessageBox::question(this, QStringLiteral("Çerezleri temizle"), QStringLiteral("Bu profilin tüm çerezleri silinsin mi?")) == QMessageBox::Yes) profileService_->clearCookies(); });
+
+#if QT_VERSION >= QT_VERSION_CHECK(6, 8, 0)
   auto *permissionsCard = makeCard(section.page, QStringLiteral("SİTE İZİNLERİ"));
   auto *list = new QListWidget(permissionsCard); list->setObjectName(QStringLiteral("settings-data-list")); list->setAccessibleName(QStringLiteral("Kalıcı site izinleri")); list->setMinimumHeight(180);
   auto *reset = new QPushButton(QStringLiteral("Seçili izni sıfırla"), permissionsCard); reset->setProperty("danger", true);
@@ -424,10 +433,13 @@ QWidget *SettingsPage::createPrivacySection() {
   addRow(permissionsCard, listContainer);
   section.layout->addWidget(permissionsCard); section.layout->addStretch();
   const auto refresh = [this, list] { list->clear(); for (const QWebEnginePermission &permission : profileService_->sitePermissions()) { if (!permission.isValid()) continue; auto *item = new QListWidgetItem(BrowserIcons::icon(BrowserIcon::Privacy), QStringLiteral("%1 — %2\n%3").arg(permission.origin().host(), permissionText(permission.permissionType()), permissionState(permission)), list); item->setData(Qt::UserRole, permission.origin()); item->setData(Qt::UserRole + 1, static_cast<int>(permission.permissionType())); item->setSizeHint(QSize(0, 54)); } if (!list->count()) { auto *item = new QListWidgetItem(QStringLiteral("Kalıcı site izni yok"), list); item->setFlags(Qt::NoItemFlags); } }; refresh();
-  connect(strip, &QCheckBox::toggled, this, [this](bool enabled) { profileService_->setStripsTrackingParameters(enabled); });
-  connect(cache, &QPushButton::clicked, this, [this] { profileService_->clearHttpCache(); QMessageBox::information(this, QStringLiteral("Önbellek"), QStringLiteral("HTTP önbelleği temizleme isteği gönderildi.")); });
-  connect(cookies, &QPushButton::clicked, this, [this] { if (QMessageBox::question(this, QStringLiteral("Çerezleri temizle"), QStringLiteral("Bu profilin tüm çerezleri silinsin mi?")) == QMessageBox::Yes) profileService_->clearCookies(); });
   connect(reset, &QPushButton::clicked, this, [this, list, refresh] { auto *item = list->currentItem(); if (!item) return; if (profileService_->resetSitePermission(item->data(Qt::UserRole).toUrl(), static_cast<QWebEnginePermission::PermissionType>(item->data(Qt::UserRole + 1).toInt()))) refresh(); });
+#else
+  section.layout->addWidget(placeholderPanel(
+      section.page, BrowserIcon::Privacy, QStringLiteral("Site izinleri"),
+      QStringLiteral("Bu Qt sürümünde kamera, mikrofon ve diğer site izinleri istek sırasında yönetilir.")));
+  section.layout->addStretch();
+#endif
   return section.page;
 }
 

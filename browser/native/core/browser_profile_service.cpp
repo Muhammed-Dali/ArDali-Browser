@@ -13,7 +13,9 @@
 #include <QUrlQuery>
 #include <QWebEngineDownloadRequest>
 #include <QWebEngineCookieStore>
+#if QT_VERSION >= QT_VERSION_CHECK(6, 8, 0)
 #include <QWebEnginePermission>
+#endif
 #include <QWebEngineProfile>
 #include <QWebEngineSettings>
 #include <QWebEngineUrlRequestInfo>
@@ -63,6 +65,7 @@ class TrackingParameterInterceptor final : public QWebEngineUrlRequestIntercepto
   bool enabled_ = true;
 };
 
+#if QT_VERSION >= QT_VERSION_CHECK(6, 8, 0)
 QString permissionName(QWebEnginePermission::PermissionType type) {
   switch (type) {
     case QWebEnginePermission::PermissionType::MediaAudioCapture: return QStringLiteral("mikrofon");
@@ -76,6 +79,7 @@ QString permissionName(QWebEnginePermission::PermissionType type) {
     default: return QStringLiteral("bu özellik");
   }
 }
+#endif
 
 QString frequentSiteKey(const QUrl &url) {
   QString host = url.host().toLower();
@@ -108,7 +112,9 @@ BrowserProfileService::BrowserProfileService(const QString &dataDirectory, const
   profile_->setCachePath(dataDirectory + "/cache");
   profile_->setHttpCacheType(QWebEngineProfile::DiskHttpCache);
   profile_->setPersistentCookiesPolicy(QWebEngineProfile::ForcePersistentCookies);
+#if QT_VERSION >= QT_VERSION_CHECK(6, 8, 0)
   profile_->setPersistentPermissionsPolicy(QWebEngineProfile::PersistentPermissionsPolicy::StoreOnDisk);
+#endif
   profile_->setDownloadPath(downloadDirectory());
   profile_->setSpellCheckEnabled(true);
   profile_->setSpellCheckLanguages({QStringLiteral("tr-TR"), QStringLiteral("en-US")});
@@ -173,6 +179,7 @@ void BrowserProfileService::handleDownload(QWebEngineDownloadRequest *download) 
   });
 }
 
+#if QT_VERSION >= QT_VERSION_CHECK(6, 8, 0)
 void BrowserProfileService::handlePermission(const QWebEnginePermission &permission) {
   if (!permission.isValid()) return;
   if (permission.state() == QWebEnginePermission::State::Granted || permission.state() == QWebEnginePermission::State::Denied) return;
@@ -182,6 +189,7 @@ void BrowserProfileService::handlePermission(const QWebEnginePermission &permiss
       QMessageBox::Yes | QMessageBox::No, QMessageBox::No);
   if (answer == QMessageBox::Yes) permission.grant(); else permission.deny();
 }
+#endif
 
 bool BrowserProfileService::stripsTrackingParameters() const {
   return preferences_.value(QStringLiteral("privacy/stripTrackingParameters"), true).toBool();
@@ -221,6 +229,7 @@ void BrowserProfileService::clearCookies() {
   if (auto *cookies = profile_->cookieStore()) cookies->deleteAllCookies();
 }
 
+#if QT_VERSION >= QT_VERSION_CHECK(6, 8, 0)
 QList<QWebEnginePermission> BrowserProfileService::sitePermissions() const {
   return profile_ ? profile_->listAllPermissions() : QList<QWebEnginePermission>{};
 }
@@ -232,6 +241,7 @@ bool BrowserProfileService::resetSitePermission(const QUrl &origin, QWebEnginePe
   permission.reset();
   return true;
 }
+#endif
 
 void BrowserProfileService::recordHistory(const QUrl &url, const QString &title) {
   if (!url.isValid() || (url.scheme() != QLatin1String("http") && url.scheme() != QLatin1String("https"))) return;
