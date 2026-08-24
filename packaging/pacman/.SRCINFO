@@ -20,6 +20,6 @@ pkgbase = ardali
 	replaces = ardali-bin
 	replaces = ardali-webmedia
 	source = ardali-browser-6.1.2-linux-x86_64.tar.zst::https://github.com/Muhammed-Dali/ArDali-Browser/releases/download/v6.1.2/ardali-browser-6.1.2-linux-x86_64.tar.zst
-	sha256sums = SKIP
+	sha256sums = 875abcb74cf0a08ba54c08240c26bdc70f11607880bbca7d13a63b31773bbd38
 
 pkgname = ardali
