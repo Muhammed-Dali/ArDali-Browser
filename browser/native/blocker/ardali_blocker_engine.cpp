@@ -645,7 +645,9 @@ bool ArDaliBlockerEngine::urlFilterMatches(const QString &rawFilter, const QStri
                                            bool caseSensitive) const {
   QString filter = rawFilter.trimmed();
   if (!caseSensitive) filter = filter.toLower();
-  const QString cacheKey = QStringLiteral("url:%1:%2").arg(caseSensitive ? QLatin1Char('s') : QLatin1Char('i'), filter);
+  const QString cacheKey = QStringLiteral("url:%1:%2")
+                               .arg(caseSensitive ? QLatin1Char('s') : QLatin1Char('i'))
+                               .arg(filter);
   if (filter.isEmpty()) return true;
 
   if (filter.startsWith(QStringLiteral("||"))) {
@@ -873,8 +875,9 @@ RequestDecision ArDaliBlockerEngine::evaluate(const QUrl &url, ArDaliBlockerReso
 
     // Check Regex filter
     if (!rule.regexFilter.isEmpty()) {
-      const QString regexKey = QStringLiteral("regex:%1:%2").arg(
-          rule.isCaseSensitive ? QLatin1Char('s') : QLatin1Char('i'), rule.regexFilter);
+      const QString regexKey = QStringLiteral("regex:%1:%2")
+                                   .arg(rule.isCaseSensitive ? QLatin1Char('s') : QLatin1Char('i'))
+                                   .arg(rule.regexFilter);
       if (!regexCache_.contains(regexKey)) {
         regexCache_.insert(regexKey, QRegularExpression(rule.regexFilter,
             rule.isCaseSensitive ? QRegularExpression::NoPatternOption : QRegularExpression::CaseInsensitiveOption));
