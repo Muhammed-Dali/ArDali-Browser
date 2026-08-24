@@ -84,7 +84,9 @@ Tune browser media with modular output processing and equalizer tools.
 
 ## Installation
 
-### Arch Linux (AUR)
+### Arch Linux and derivatives
+
+#### Install from AUR (recommended)
 
 Install ArDali Browser directly from its
 [`ardali` AUR package](https://aur.archlinux.org/packages/ardali):
@@ -93,28 +95,39 @@ Install ArDali Browser directly from its
 yay -S ardali
 ```
 
-The AUR package downloads the published native binary release. The matching
-recipe is kept in [`packaging/aur/ardali/PKGBUILD`](packaging/aur/ardali/PKGBUILD).
-For a local source build, use the separate recipe in
-[`packaging/archlinux/PKGBUILD`](packaging/archlinux/PKGBUILD):
+The package name is `ardali`; `ardali-browser` and `ardali-bin` are not needed
+in the install command. The AUR package downloads the published native binary
+release and installs the `ardali-browser` executable.
+
+#### Install from the ArDali pacman repository
+
+Alternatively, add the ArDali binary repository once and install the same
+`ardali` package with pacman:
+
+```bash
+curl -fsSL https://muhammed-dali.github.io/ArDali-Browser/ardali.repo | \
+  sudo tee -a /etc/pacman.conf
+sudo pacman -Syy
+sudo pacman -S ardali
+```
+
+The repository database and package are hosted remotely; these commands do not
+build ArDali from the local source tree.
+
+#### Local source package build
+
+For maintainers who specifically want to compile the Arch package locally, use
+the separate source recipe:
 
 ```bash
 cd packaging/archlinux
 makepkg -si
 ```
 
-The package name is `ardali`; the installed application executable remains
-`ardali-browser`.
-
-### ArDali pacman repository
-
-Existing repository users can install the prebuilt native package as `ardali`:
-
-```bash
-curl -fsSL https://muhammed-dali.github.io/ArDali-Browser/ardali.repo | \
-  sudo tee -a /etc/pacman.conf
-sudo pacman -Syu ardali
-```
+The published AUR recipe is kept in
+[`packaging/aur/ardali/PKGBUILD`](packaging/aur/ardali/PKGBUILD), and the local
+source-build recipe is in
+[`packaging/archlinux/PKGBUILD`](packaging/archlinux/PKGBUILD).
 
 ### Build from source
 
