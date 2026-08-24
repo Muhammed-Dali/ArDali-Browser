@@ -5733,9 +5733,11 @@ class BrowserWindow final : public QMainWindow {
         }
       }
     });
+#if QT_VERSION >= QT_VERSION_CHECK(6, 8, 0)
     connect(view->page(), &QWebEnginePage::zoomFactorChanged, this, [this, view](qreal) {
       if (view == currentView()) updateZoomControls();
     });
+#endif
     connect(view, &QWebEngineView::loadStarted, this, [this, view] {
       const QString viewPrefix = QString::number(reinterpret_cast<quintptr>(view)) + QLatin1Char(':');
       for (auto it = credentialFillTokens_.begin(); it != credentialFillTokens_.end();) {
