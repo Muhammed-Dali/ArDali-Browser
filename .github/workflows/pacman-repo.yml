@@ -9,7 +9,7 @@ on:
       release_tag:
         description: Published v-prefixed release tag to package
         required: true
-        default: v6.0.1
+        default: v6.1.2
         type: string
 
 permissions:

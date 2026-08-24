@@ -1,13 +1,13 @@
 cmake_minimum_required(VERSION 3.21)
-project(ArDaliBrowser VERSION 6.0.1 LANGUAGES CXX)
+project(ArDaliBrowser VERSION 6.1.2 LANGUAGES CXX)
 
 enable_testing()
 
 include(GNUInstallDirs)
 
 configure_file(
-  resources/linux/ardali-browser.desktop.in
-  ${CMAKE_CURRENT_BINARY_DIR}/ardali-browser.desktop
+  resources/linux/ardali.desktop.in
+  ${CMAKE_CURRENT_BINARY_DIR}/ardali.desktop
   @ONLY
 )
 
@@ -284,13 +284,13 @@ install(FILES
 )
 
 if(UNIX AND NOT APPLE)
-  install(FILES ${CMAKE_CURRENT_BINARY_DIR}/ardali-browser.desktop
+  install(FILES ${CMAKE_CURRENT_BINARY_DIR}/ardali.desktop
     DESTINATION ${CMAKE_INSTALL_DATADIR}/applications
   )
   foreach(ICON_SIZE 16 24 32 48 64 128 256 512)
     install(FILES assets/icons/ardali-browser-${ICON_SIZE}.png
       DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/${ICON_SIZE}x${ICON_SIZE}/apps
-      RENAME ardali-browser.png
+      RENAME ardali.png
     )
   endforeach()
 endif()

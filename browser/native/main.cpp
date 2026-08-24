@@ -6534,7 +6534,8 @@ int main(int argc, char *argv[]) {
   QApplication app(argc, argv);
   app.setQuitOnLastWindowClosed(false);
   QApplication::setApplicationName("ArDaliBrowser");
-  QGuiApplication::setDesktopFileName(QStringLiteral("ardali-browser"));
+  QApplication::setApplicationDisplayName(QStringLiteral("ArDali"));
+  QGuiApplication::setDesktopFileName(QStringLiteral("ardali"));
   const QIcon appIcon(QStringLiteral(":/assets/icons/ardali-browser-256.png"));
   if (appIcon.isNull()) qWarning("ArDaliBrowser application icon could not be loaded");
   else QApplication::setWindowIcon(appIcon);

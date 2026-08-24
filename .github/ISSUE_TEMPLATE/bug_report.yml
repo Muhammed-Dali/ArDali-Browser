@@ -16,7 +16,7 @@ body:
     id: version
     attributes:
       label: ArDali Browser version
-      placeholder: "6.0.1"
+      placeholder: "6.1.2"
     validations:
       required: true
   - type: input

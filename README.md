@@ -12,7 +12,7 @@
 
 <p align="center">
   <a href="https://github.com/Muhammed-Dali/ArDali-Browser/actions/workflows/ci.yml"><img alt="Native CI" src="https://github.com/Muhammed-Dali/ArDali-Browser/actions/workflows/ci.yml/badge.svg"></a>
-  <a href="https://github.com/Muhammed-Dali/ArDali-Browser/releases/tag/v6.0.1"><img alt="Release 6.0.1" src="https://img.shields.io/badge/release-v6.0.1-21b7d8"></a>
+  <a href="https://github.com/Muhammed-Dali/ArDali-Browser/releases/tag/v6.1.2"><img alt="Release 6.1.2" src="https://img.shields.io/badge/release-v6.1.2-21b7d8"></a>
   <a href="LICENSE"><img alt="License GPL-3.0-only" src="https://img.shields.io/badge/license-GPL--3.0--only-blue"></a>
   <img alt="Platform Linux" src="https://img.shields.io/badge/platform-Linux-FCC624?logo=linux&logoColor=111">
   <img alt="Qt 6" src="https://img.shields.io/badge/Qt-6.4%2B-41CD52?logo=qt&logoColor=white">
@@ -23,7 +23,7 @@
 ArDali Browser is an open-source desktop browser built with C++20, Qt 6, and
 Qt WebEngine. It combines modern tabbed browsing with local privacy controls,
 media-focused audio processing, music recognition, and an encrypted credential
-vault. Linux is the verified release platform for version 6.0.1.
+vault. Linux is the verified release platform for version 6.1.2.
 
 ## Highlights
 
@@ -180,7 +180,7 @@ cmake --install browser/build --prefix /usr/local
   LTS, Fedora, and Arch Linux. The portable release uses a Debian 12 baseline
   for broader compatibility across current Linux distributions.
 - **Windows:** The source tree contains Windows resource integration, but no
-  official 6.0.1 Windows artifact is promised until its build pipeline is
+  official 6.1.2 Windows artifact is promised until its build pipeline is
   independently verified.
 
 ## Project structure
