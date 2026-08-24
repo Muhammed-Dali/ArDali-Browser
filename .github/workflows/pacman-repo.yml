@@ -88,6 +88,14 @@ jobs:
           cp -f "${out_dir}/ardali.db.tar.gz" "${out_dir}/ardali.db"
           cp -f "${out_dir}/ardali.files.tar.gz" "${out_dir}/ardali.files"
 
+          # Keep both historical Pages server layouts working. Older users may
+          # have configured the Pages root, while newer configs use /x86_64.
+          cp -f "${out_dir}/ardali.db.tar.gz" "${repo_root}/ardali.db.tar.gz"
+          cp -f "${out_dir}/ardali.db" "${repo_root}/ardali.db"
+          cp -f "${out_dir}/ardali.files.tar.gz" "${repo_root}/ardali.files.tar.gz"
+          cp -f "${out_dir}/ardali.files" "${repo_root}/ardali.files"
+          cp -f "${pkg_path}" "${repo_root}/$(basename "${pkg_path}")"
+
       - name: Publish pacman repository release assets
         env:
           GH_TOKEN: ${{ github.token }}

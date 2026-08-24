@@ -84,33 +84,27 @@ Tune browser media with modular output processing and equalizer tools.
 
 ## Installation
 
-### Arch Linux package recipe
+### Arch Linux (AUR)
 
-The native source package is published in the
-[`ardali-browser` AUR listing](https://aur.archlinux.org/packages/ardali-browser):
-
-```bash
-yay -S ardali-browser
-```
-
-For the prebuilt native binary package instead:
+Install ArDali Browser directly from its
+[`ardali` AUR package](https://aur.archlinux.org/packages/ardali):
 
 ```bash
-yay -S ardali-bin
+yay -S ardali
 ```
 
-The same recipe is kept in
-[`packaging/archlinux/PKGBUILD`](packaging/archlinux/PKGBUILD) and can be built
-directly from the repository:
+The AUR package downloads the published native binary release. The matching
+recipe is kept in [`packaging/aur/ardali/PKGBUILD`](packaging/aur/ardali/PKGBUILD).
+For a local source build, use the separate recipe in
+[`packaging/archlinux/PKGBUILD`](packaging/archlinux/PKGBUILD):
 
 ```bash
 cd packaging/archlinux
 makepkg -si
 ```
 
-Both AUR variants install the `ardali-browser` executable. Choose either the
-source-built `ardali-browser` package or the prebuilt `ardali-bin` package;
-they intentionally conflict so that only one variant is installed at a time.
+The package name is `ardali`; the installed application executable remains
+`ardali-browser`.
 
 ### ArDali pacman repository
 
