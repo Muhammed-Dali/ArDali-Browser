@@ -14,21 +14,23 @@ permissions:
   contents: write
 
 jobs:
-  linux:
+  linux-release:
+    name: Portable Linux release (Debian 12 baseline)
     runs-on: ubuntu-latest
-    container: archlinux:base-devel
+    container: debian:12
     env:
       RELEASE_REF: ${{ inputs.release_ref || github.ref_name }}
     steps:
       - name: Install release dependencies
         run: |
-          pacman -Syu --noconfirm --needed \
-            cmake ffmpeg git github-cli ninja nodejs openssl \
-            qt6-base qt6-imageformats qt6-svg qt6-webengine \
-            xorg-server-xvfb xorg-xauth
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            build-essential ca-certificates cmake ffmpeg gh git ninja-build nodejs \
+            libssl-dev qt6-base-dev qt6-image-formats-plugins qt6-svg-dev \
+            qt6-webengine-dev xauth xvfb zstd
 
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ inputs.release_ref || github.ref_name }}
 

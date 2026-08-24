@@ -15,7 +15,7 @@
   <a href="https://github.com/Muhammed-Dali/ArDali-Browser/releases/tag/v6.0.1"><img alt="Release 6.0.1" src="https://img.shields.io/badge/release-v6.0.1-21b7d8"></a>
   <a href="LICENSE"><img alt="License GPL-3.0-only" src="https://img.shields.io/badge/license-GPL--3.0--only-blue"></a>
   <img alt="Platform Linux" src="https://img.shields.io/badge/platform-Linux-FCC624?logo=linux&logoColor=111">
-  <img alt="Qt 6" src="https://img.shields.io/badge/Qt-6.5%2B-41CD52?logo=qt&logoColor=white">
+  <img alt="Qt 6" src="https://img.shields.io/badge/Qt-6.4%2B-41CD52?logo=qt&logoColor=white">
 </p>
 
 ## About
@@ -124,7 +124,23 @@ sudo pacman -Syu ardali
 
 ### Build from source
 
-On Arch Linux, install the verified native build dependencies:
+Install the native build dependencies for your distribution.
+
+Debian 12 and Ubuntu 24.04 LTS:
+
+```bash
+sudo apt install build-essential cmake ninja-build nodejs libssl-dev ffmpeg \
+  qt6-base-dev qt6-image-formats-plugins qt6-svg-dev qt6-webengine-dev
+```
+
+Fedora:
+
+```bash
+sudo dnf install gcc-c++ cmake ninja-build nodejs openssl-devel ffmpeg-free \
+  qt6-qtbase-devel qt6-qtimageformats qt6-qtsvg-devel qt6-qtwebengine-devel
+```
+
+Arch Linux and derivatives:
 
 ```bash
 sudo pacman -S --needed base-devel cmake ninja nodejs openssl ffmpeg \
@@ -153,8 +169,9 @@ cmake --install browser/build --prefix /usr/local
 
 ### Platform status
 
-- **Linux:** Verified build, test, desktop integration, and Arch packaging
-  target for 6.0.1.
+- **Linux:** Source builds and tests are verified on Debian 12, Ubuntu 24.04
+  LTS, Fedora, and Arch Linux. The portable release uses a Debian 12 baseline
+  for broader compatibility across current Linux distributions.
 - **Windows:** The source tree contains Windows resource integration, but no
   official 6.0.1 Windows artifact is promised until its build pipeline is
   independently verified.

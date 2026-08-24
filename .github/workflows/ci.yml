@@ -1,4 +1,4 @@
-name: Native CI
+name: Linux CI
 
 on:
   push:
@@ -9,15 +9,54 @@ permissions:
   contents: read
 
 concurrency:
-  group: native-ci-${{ github.ref }}
+  group: linux-ci-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  arch-linux:
+  linux-compatibility:
+    name: Linux compatibility (${{ matrix.distribution }})
     runs-on: ubuntu-latest
-    container: archlinux:base-devel
+    container: ${{ matrix.container }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - distribution: Ubuntu 24.04 LTS
+            container: ubuntu:24.04
+            package_family: apt
+          - distribution: Debian 12
+            container: debian:12
+            package_family: apt
+          - distribution: Fedora
+            container: fedora:latest
+            package_family: dnf
+          - distribution: Arch Linux
+            container: archlinux:base-devel
+            package_family: pacman
+
     steps:
-      - name: Install build dependencies
+      - name: Install Debian/Ubuntu build dependencies
+        if: ${{ matrix.package_family == 'apt' }}
+        shell: bash
+        run: |
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            build-essential ca-certificates cmake ffmpeg git ninja-build nodejs \
+            libssl-dev qt6-base-dev qt6-image-formats-plugins qt6-svg-dev \
+            qt6-webengine-dev xauth xvfb
+
+      - name: Install Fedora build dependencies
+        if: ${{ matrix.package_family == 'dnf' }}
+        shell: bash
+        run: |
+          dnf install -y \
+            cmake ffmpeg-free gcc-c++ git ninja-build nodejs openssl-devel \
+            qt6-qtbase-devel qt6-qtimageformats qt6-qtsvg-devel \
+            qt6-qtwebengine-devel xorg-x11-server-Xvfb xorg-x11-xauth
+
+      - name: Install Arch build dependencies
+        if: ${{ matrix.package_family == 'pacman' }}
+        shell: bash
         run: |
           pacman -Syu --noconfirm --needed \
             cmake ffmpeg git ninja nodejs openssl \
@@ -25,7 +64,7 @@ jobs:
             xorg-server-xvfb xorg-xauth
 
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           submodules: false
 
@@ -39,8 +78,9 @@ jobs:
         env:
           QT_QPA_PLATFORM: xcb
           QTWEBENGINE_DISABLE_SANDBOX: "1"
+          QTWEBENGINE_CHROMIUM_FLAGS: --no-sandbox --disable-gpu
         run: |
           # The three-window fixture is covered by the local and clean-package
-          # gates; GitHub's nested container never starts its third renderer.
+          # gates; nested CI containers do not reliably start its third renderer.
           xvfb-run -a ctest --test-dir browser/build --output-on-failure \
             -E '^browser-tab-attach-stress$'

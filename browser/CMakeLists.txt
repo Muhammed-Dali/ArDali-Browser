@@ -30,7 +30,7 @@ include_directories(
   ${CMAKE_CURRENT_SOURCE_DIR}/native/session
 )
 
-find_package(Qt6 6.5 REQUIRED COMPONENTS Widgets WebEngineWidgets Network Svg Concurrent)
+find_package(Qt6 6.4 REQUIRED COMPONENTS Widgets WebEngineWidgets Network Svg Concurrent)
 find_package(OpenSSL REQUIRED)
 find_program(NODE_EXECUTABLE node REQUIRED)
 
