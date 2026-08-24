@@ -2,6 +2,23 @@
 
 All notable release-facing changes to ArDali Browser are documented here.
 
+## [6.0.1] - 2026-08-24
+
+### Changed
+
+- Clarified that ArDali Blocker is ArDali Browser's built-in advertising and
+  tracker protection engine, while third-party filter and ruleset resources
+  retain separate attribution in `NOTICE.txt`.
+- Added the Qt image-format runtime dependency required for bundled WebP
+  handling in Arch Linux packages.
+- Stabilized GitHub CI and release builds with an Xvfb-backed Qt test
+  environment and explicit release re-run support.
+
+### Fixed
+
+- Corrected release automation and Arch package metadata discovered during the
+  6.0.0 publication verification.
+
 ## [6.0.0] - 2026-08-24
 
 ### Changed

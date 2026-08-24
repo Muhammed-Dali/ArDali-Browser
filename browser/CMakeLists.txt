@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.21)
-project(ArDaliBrowser VERSION 6.0.0 LANGUAGES CXX)
+project(ArDaliBrowser VERSION 6.0.1 LANGUAGES CXX)
 
 enable_testing()
 
