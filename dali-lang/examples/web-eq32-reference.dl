@@ -1,0 +1,60 @@
+preset "Web EQ32 Reference v2" {
+  engine {
+    input: web;
+    output: speakers;
+    safety: strict;
+    profile: realtime;
+  }
+
+  chain {
+    preamp {
+      gain: -1.5db;
+    }
+
+    eq32 {
+      band(20hz) = 0.0db;
+      band(25hz) = 0.0db;
+      band(31hz) = 0.0db;
+      band(40hz) = 0.0db;
+      band(50hz) = 0.0db;
+      band(63hz) = 0.0db;
+      band(80hz) = 0.0db;
+      band(100hz) = 0.0db;
+      band(125hz) = 0.0db;
+      band(160hz) = 0.0db;
+      band(200hz) = 0.0db;
+      band(250hz) = 0.0db;
+      band(315hz) = 0.0db;
+      band(400hz) = 0.0db;
+      band(500hz) = 0.0db;
+      band(630hz) = 0.0db;
+      band(800hz) = 0.0db;
+      band(1000hz) = 0.0db;
+      band(1300hz) = 0.0db;
+      band(1600hz) = 0.0db;
+      band(2000hz) = 0.0db;
+      band(2500hz) = 0.0db;
+      band(3200hz) = 0.0db;
+      band(4000hz) = 0.0db;
+      band(5000hz) = 0.0db;
+      band(6300hz) = 0.0db;
+      band(8000hz) = 0.0db;
+      band(10000hz) = 0.0db;
+      band(12500hz) = 0.0db;
+      band(16000hz) = 0.0db;
+      band(20000hz) = 0.0db;
+      band(22000hz) = 0.0db;
+    }
+
+    limiter {
+      ceiling: -0.8db;
+      release: 60ms;
+    }
+  }
+
+  quality {
+    sample_rate: 48000;
+    max_latency_ms: 20;
+    true_peak_protection: on;
+  }
+}

@@ -1,72 +1,196 @@
-# ArDali Ecosystem Monorepo
+![ArDali Browser](docs/images/ardali-browser-main.png)
 
-Welcome to the **ArDali** monorepo repository. ArDali brings together a native C++20 desktop browser and the DALI audio/DSP domain-specific language toolchain into a unified, modular architecture.
+<p align="center">
+  <img src="browser/assets/icons/ardali-browser-128.png" width="112" height="112" alt="ArDali Browser icon">
+</p>
 
----
+<h1 align="center">ArDali Browser</h1>
 
-## Architecture Overview
+<p align="center">
+  A native, privacy-oriented desktop browser with integrated media tools.
+</p>
 
+<p align="center">
+  <a href="https://github.com/Muhammed-Dali/ArDali-Browser/actions/workflows/ci.yml"><img alt="Native CI" src="https://github.com/Muhammed-Dali/ArDali-Browser/actions/workflows/ci.yml/badge.svg"></a>
+  <a href="https://github.com/Muhammed-Dali/ArDali-Browser/releases/tag/v6.0.0"><img alt="Release 6.0.0" src="https://img.shields.io/badge/release-v6.0.0-21b7d8"></a>
+  <a href="LICENSE"><img alt="License GPL-3.0-only" src="https://img.shields.io/badge/license-GPL--3.0--only-blue"></a>
+  <img alt="Platform Linux" src="https://img.shields.io/badge/platform-Linux-FCC624?logo=linux&logoColor=111">
+  <img alt="Qt 6" src="https://img.shields.io/badge/Qt-6.5%2B-41CD52?logo=qt&logoColor=white">
+</p>
+
+## About
+
+ArDali Browser is an open-source desktop browser built with C++20, Qt 6, and
+Qt WebEngine. It combines modern tabbed browsing with local privacy controls,
+media-focused audio processing, music recognition, and an encrypted credential
+vault. Linux is the verified release platform for version 6.0.0.
+
+## Highlights
+
+- **Native browsing:** Qt WebEngine rendering in a native Qt Widgets shell.
+- **Modern tabs:** Reordering, detachable tabs, hover previews, session
+  restoration, and internal application pages.
+- **ArDali Blocker:** Built-in advertisement and tracker protection with
+  per-site controls, configurable rulesets, cosmetic filtering, and logs.
+- **ArDali Pulse:** Identify music captured from system audio or a microphone
+  and open matching results on configured music services.
+- **Password Manager:** Encrypted local credential vault with explicit unlock
+  and fill controls.
+- **Audio tools:** Output processing, equalizer presets, compressor, limiter,
+  bass enhancement, and automatic gain controls.
+- **Custom new tab:** Search, shortcuts, cards, background choices, and layout
+  controls.
+- **Browser settings:** Native settings for browsing, privacy, content,
+  passwords, Pulse, downloads, accessibility, and appearance.
+
+## Screenshots
+
+### Native browsing
+
+The main browser window uses native chrome, multi-tab navigation, and Qt
+WebEngine content rendering.
+
+![ArDali Browser main window](docs/images/ardali-browser-main.png)
+
+### ArDali Blocker
+
+Manage protection modes, per-site behavior, filters, logs, and developer
+inspection from the built-in blocker interface.
+
+![ArDali Blocker](docs/images/ardali-blocker.png)
+
+### ArDali Pulse
+
+Recognize music from system audio or a microphone without leaving the browser.
+
+![ArDali Pulse](docs/images/ardali-pulse.png)
+
+### Password Manager
+
+Credentials are stored in an encrypted local vault that starts locked.
+
+![ArDali Password Manager](docs/images/password-manager.png)
+
+### Audio effects
+
+Tune browser media with modular output processing and equalizer tools.
+
+![ArDali audio effects](docs/images/audio-effects.png)
+
+## Installation
+
+### Arch Linux package recipe
+
+The repository includes a native source package recipe in
+[`packaging/archlinux/PKGBUILD`](packaging/archlinux/PKGBUILD). Until the new
+`ardali-browser` AUR listing is published, build it from the repository rather
+than assuming that a `yay` package is already available:
+
+```bash
+cd packaging/archlinux
+makepkg -si
 ```
+
+The package replaces the historical `ardali-bin`/`ardali-webmedia` package
+identity and installs the new `ardali-browser` executable.
+
+### Build from source
+
+On Arch Linux, install the verified native build dependencies:
+
+```bash
+sudo pacman -S --needed base-devel cmake ninja nodejs openssl ffmpeg \
+  qt6-base qt6-svg qt6-webengine
+```
+
+Configure, build, and test:
+
+```bash
+cmake -S browser -B browser/build -G Ninja -DCMAKE_BUILD_TYPE=Release
+cmake --build browser/build -j"$(nproc)"
+ctest --test-dir browser/build --output-on-failure
+```
+
+Run the development build:
+
+```bash
+./browser/build/ardali-browser
+```
+
+Or install into a chosen prefix:
+
+```bash
+cmake --install browser/build --prefix /usr/local
+```
+
+### Platform status
+
+- **Linux:** Verified build, test, desktop integration, and Arch packaging
+  target for 6.0.0.
+- **Windows:** The source tree contains Windows resource integration, but no
+  official 6.0.0 Windows artifact is promised until its build pipeline is
+  independently verified.
+
+## Project structure
+
+```text
 ArDali/
-├── browser/         # C++20 + Qt6 + QtWebEngine Native Desktop Browser
-├── dali-lang/       # DALI Language, Compiler, Security Validator & Audio DSP Toolchain
-├── cmake/           # Shared CMake utilities
-├── tools/           # Integration tests & build helpers
-└── .vscode/         # Monorepo workspace configuration
+├── browser/
+│   ├── native/
+│   │   ├── main.cpp
+│   │   ├── audio/
+│   │   ├── blocker/
+│   │   ├── core/
+│   │   ├── eq/
+│   │   ├── newtab/
+│   │   ├── passwords/
+│   │   ├── pulse/
+│   │   ├── session/
+│   │   ├── settings/
+│   │   ├── sidebar/
+│   │   └── tabs/
+│   ├── resources/
+│   └── CMakeLists.txt
+├── dali-lang/
+├── docs/
+├── packaging/
+└── CMakeLists.txt
 ```
 
-### Responsibility Breakdown:
-- **`browser/`**: Native desktop GUI, tab management, QtWebEngine integration, and runtime security policy enforcement (`BrowserPolicy` reading `browser_policy.json`). 
-- **`dali-lang/`**: Independent DALI DSL compiler/toolchain, parsing `.dali`/`.dl` files, producing WebAudio JS, AudioWorklet JS, WASM modules, Native C DSP code, and compiling `browser.dali` manifests into `browser_policy.json` at build time.
+The DALI toolchain compiles the browser's declarative audio and policy inputs
+during the native CMake build.
 
----
+## Privacy and security
 
-## Build & Test Instructions
+- Blocking and cosmetic filtering are performed locally from bundled rulesets.
+- The credential vault encrypts stored records and starts locked.
+- Internal pages use explicit capability boundaries in the native tab model.
+- ArDali Pulse sends captured fingerprints to its configured recognition
+  backend only when recognition is initiated.
 
-### Official Build Directory:
-The official supported build directory is `browser/build`.
+No browser can guarantee complete privacy or protection. Review the source,
+settings, and enabled rulesets for your environment.
 
-```bash
-# 1. Navigate to browser module
-cd browser
+## Contributing
 
-# 2. Configure with CMake (exports compile_commands.json automatically)
-mkdir -p build && cd build
-cmake -DCMAKE_EXPORT_COMPILE_COMMANDS=ON ..
+Issues and pull requests are welcome. Please include reproducible steps for bug
+reports, run the relevant CTest targets, and avoid committing generated build
+output or personal data. Use GitHub's private security-advisory form for
+vulnerabilities.
 
-# 3. Build executable
-make -j$(nproc)
+## Support ArDali Browser
 
-# 4. Run CTest suite (9/9 tests)
-ctest --output-on-failure
-```
+ArDali Browser is an independent open-source project. If you find it useful,
+you can support its continued development through the Sponsor button.
 
-### Running DALI Toolchain & Security Suite:
+## License
 
-```bash
-cd dali-lang
+ArDali Browser is licensed under **GPL-3.0-only**. See [LICENSE](LICENSE) for
+the binding license text.
 
-# Run security test suite (7/7 cases)
-node scripts/dali-security-suite.js
+## Third-party components
 
-# Run internal DALI manifest unit test
-node scripts/dali-browser-manifest-test.js
-
-# Compile sample DALI audio preset to WebAudio
-node src/cli.js examples/web-bass-enhancer.dali /tmp/web-bass-enhancer.generated.js
-```
-
-### Running Monorepo Integration Test:
-
-```bash
-node tools/integration-manifest-test.js
-```
-
----
-
-## VS Code Setup
-
-Opening `/home/muhammetdali/ArDali` as the single workspace root automatically configures:
-- C/C++ IntelliSense via `browser/build/compile_commands.json`
-- CMake Tools pointing to `${workspaceFolder}/browser`
-- DALI `.dali` / `.dl` file associations
+Bundled third-party code, generated rulesets, data, and resources retain their
+own copyright and license notices. ArDali Blocker's uBO Lite-derived generated
+assets and other list sources are documented separately in
+[`browser/resources/adblock/NOTICE.txt`](browser/resources/adblock/NOTICE.txt).

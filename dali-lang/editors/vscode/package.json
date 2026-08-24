@@ -1,0 +1,74 @@
+{
+  "name": "dali-language",
+  "displayName": "DALI Language",
+  "description": "Syntax highlighting for .dali and .dl audio DSL files.",
+  "version": "0.1.10",
+  "publisher": "aurivo-dev",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/aurivo-dev/dali-lang.git"
+  },
+  "license": "MIT",
+  "main": "./extension.js",
+  "activationEvents": [
+    "onLanguage:dali"
+  ],
+  "engines": {
+    "vscode": "^1.74.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "contributes": {
+    "languages": [
+      {
+        "id": "dali",
+        "aliases": [
+          "DALI",
+          "dali"
+        ],
+        "extensions": [
+          ".dali",
+          ".dl"
+        ],
+        "filenames": [],
+        "firstLine": "^\\s*preset\\s+",
+        "icon": {
+          "light": "./media/dali-icon-letter-light.svg",
+          "dark": "./media/dali-icon-letter-dark.svg"
+        }
+      }
+    ],
+    "grammars": [
+      {
+        "language": "dali",
+        "scopeName": "source.dali",
+        "path": "./syntaxes/dali.tmLanguage.json"
+      }
+    ],
+    "snippets": [
+      {
+        "language": "dali",
+        "path": "./snippets/dali.code-snippets"
+      }
+    ],
+    "iconThemes": [
+      {
+        "id": "dali-icons",
+        "label": "Dali DSP Icons",
+        "path": "./media/dali-file-icons.json"
+      }
+    ],
+    "themes": [
+      {
+        "label": "Dali DSP Theme",
+        "uiTheme": "vs-dark",
+        "path": "./themes/dali-color-theme.json"
+      }
+    ]
+  },
+  "icon": "media/dali-icon.png",
+  "devDependencies": {
+    "@vscode/vsce": "^3.7.1"
+  }
+}

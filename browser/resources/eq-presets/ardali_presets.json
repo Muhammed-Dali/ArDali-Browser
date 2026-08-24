@@ -1,0 +1,113 @@
+{
+  "version": 1,
+  "minDb": -12,
+  "maxDb": 12,
+  "presets": [
+    {
+      "id": "__ardali_bass__",
+      "name": "ArDali Bass",
+      "description": "Bas ağırlıklı, dengeli mid/treble",
+      "points": [
+        { "i": 0, "v": 5.5 },
+        { "i": 4, "v": 5.0 },
+        { "i": 7, "v": 4.2 },
+        { "i": 10, "v": 2.5 },
+        { "i": 14, "v": 0.0 },
+        { "i": 18, "v": -0.8 },
+        { "i": 22, "v": -0.2 },
+        { "i": 26, "v": 1.0 },
+        { "i": 31, "v": 1.2 }
+      ]
+    },
+    {
+      "id": "__ardali_pop__",
+      "name": "ArDali Pop",
+      "description": "Hafif V-shape; enerjik bas ve parlak tiz",
+      "points": [
+        { "i": 0, "v": 3.5 },
+        { "i": 5, "v": 3.2 },
+        { "i": 9, "v": 2.2 },
+        { "i": 14, "v": -1.2 },
+        { "i": 18, "v": -1.0 },
+        { "i": 22, "v": 0.8 },
+        { "i": 26, "v": 2.6 },
+        { "i": 31, "v": 3.0 }
+      ]
+    },
+    {
+      "id": "__ardali_rock__",
+      "name": "ArDali Rock",
+      "description": "Daha dolgun gitar/vokal; kontrollü parlaklık",
+      "points": [
+        { "i": 0, "v": 2.5 },
+        { "i": 5, "v": 2.2 },
+        { "i": 9, "v": 1.4 },
+        { "i": 13, "v": -0.5 },
+        { "i": 17, "v": 0.8 },
+        { "i": 20, "v": 1.6 },
+        { "i": 24, "v": 2.0 },
+        { "i": 31, "v": 1.6 }
+      ]
+    },
+    {
+      "id": "__ardali_vocal__",
+      "name": "ArDali Vocal",
+      "description": "Vokal ve konuşma netliği; mid/upper-mid öne çıkar",
+      "points": [
+        { "i": 0, "v": -0.8 },
+        { "i": 6, "v": -0.5 },
+        { "i": 10, "v": 0.0 },
+        { "i": 14, "v": 1.8 },
+        { "i": 18, "v": 3.2 },
+        { "i": 22, "v": 2.4 },
+        { "i": 26, "v": 1.0 },
+        { "i": 31, "v": 0.6 }
+      ]
+    },
+    {
+      "id": "__ardali_jazz__",
+      "name": "ArDali Jazz",
+      "description": "Sıcak ve doğal; yumuşak tiz",
+      "points": [
+        { "i": 0, "v": 1.8 },
+        { "i": 6, "v": 1.5 },
+        { "i": 10, "v": 1.0 },
+        { "i": 14, "v": 0.4 },
+        { "i": 18, "v": 0.8 },
+        { "i": 22, "v": 1.2 },
+        { "i": 27, "v": 1.6 },
+        { "i": 31, "v": 1.4 }
+      ]
+    },
+    {
+      "id": "__ardali_classical__",
+      "name": "ArDali Classical",
+      "description": "Daha nötr; sahne ve hava için hafif tiz artışı",
+      "points": [
+        { "i": 0, "v": 0.6 },
+        { "i": 8, "v": 0.2 },
+        { "i": 14, "v": 0.0 },
+        { "i": 18, "v": 0.6 },
+        { "i": 22, "v": 1.2 },
+        { "i": 26, "v": 2.0 },
+        { "i": 31, "v": 2.2 }
+      ]
+    },
+    {
+      "id": "__ardali_electronic__",
+      "name": "ArDali Electronic",
+      "description": "Güçlü sub-bass + parlak tiz; club hissi",
+      "points": [
+        { "i": 0, "v": 6.5 },
+        { "i": 4, "v": 6.0 },
+        { "i": 7, "v": 5.2 },
+        { "i": 12, "v": 1.2 },
+        { "i": 16, "v": -1.6 },
+        { "i": 20, "v": -1.2 },
+        { "i": 24, "v": 1.8 },
+        { "i": 28, "v": 3.2 },
+        { "i": 31, "v": 3.6 }
+      ]
+    }
+  ]
+}

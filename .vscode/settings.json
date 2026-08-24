@@ -5,5 +5,10 @@
   "files.associations": {
     "*.dali": "dali",
     "*.dl": "dali"
-  }
+  },
+  "clangd.arguments": [
+    "--compile-commands-dir=${workspaceFolder}/browser/build",
+    "--background-index",
+    "-j=4"
+  ]
 }

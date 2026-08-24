@@ -1,12 +1,18 @@
 {
   "name": "ardali-browser",
   "private": true,
-  "version": "0.1.0",
-  "description": "ArDaliBrowser native Qt WebEngine development commands",
+  "version": "6.0.0",
+  "license": "GPL-3.0-only",
+  "description": "ArDali Browser native Qt WebEngine development commands",
   "scripts": {
     "start": "node scripts/dev-linux.js",
     "dev:linux": "node scripts/dev-linux.js",
     "build:linux": "cmake -S . -B build -G Ninja && cmake --build build",
     "test:runtime": "cmake --build build && ./build/ardali-browser-policy-test && ./build/ardali-browser-tab-manager-test && ./build/ardali-browser-state-test"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Muhammed-Dali/ArDali-Browser.git",
+    "directory": "browser"
   }
 }

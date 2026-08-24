@@ -1,0 +1,64 @@
+name: Publish DALI VS Code Extension
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "dali-vscode-v*"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  publish-vscode:
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: editors/vscode/package.json
+
+      - name: Validate tag matches extension version
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          set -euo pipefail
+          EXT_VERSION="$(node -p "require('./editors/vscode/package.json').version")"
+          EXPECTED_TAG="dali-vscode-v${EXT_VERSION}"
+          if [ "${GITHUB_REF_NAME}" != "${EXPECTED_TAG}" ]; then
+            echo "Tag/version mismatch: expected ${EXPECTED_TAG}, got ${GITHUB_REF_NAME}"
+            exit 1
+          fi
+
+      - name: Package extension (.vsix)
+        run: |
+          set -euo pipefail
+          cd editors/vscode
+          npx --yes @vscode/vsce package --allow-star-activation
+
+      - name: Upload VSIX artifact
+        uses: actions/upload-artifact@v6
+        with:
+          name: dali-vscode-vsix-${{ github.run_id }}
+          path: editors/vscode/*.vsix
+
+      - name: Publish to VS Code Marketplace
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+        run: |
+          set -euo pipefail
+          if [ -z "${VSCE_PAT:-}" ]; then
+            echo "Missing required secret: VSCE_PAT"
+            exit 1
+          fi
+          cd editors/vscode
+          npx --yes @vscode/vsce publish --no-dependencies --pat "${VSCE_PAT}"

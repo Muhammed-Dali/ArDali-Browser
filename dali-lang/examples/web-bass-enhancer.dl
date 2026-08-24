@@ -1,0 +1,19 @@
+preset "Web Bass Enhancer Native Match v1" {
+  input web;
+  output speakers;
+
+  chain {
+    preamp gain=-4.5db;
+    low_shelf freq=58hz gain=9.0db q=0.72;
+    peaking freq=86hz gain=5.0db q=0.95;
+    peaking freq=145hz gain=2.2db q=1.05;
+    compressor threshold=-22db ratio=3.2 attack=12ms release=220ms makeup=1.4db;
+    limiter ceiling=-1.2db;
+  }
+
+  quality {
+    sample_rate 48000;
+    max_latency_ms 15;
+    true_peak_protection on;
+  }
+}

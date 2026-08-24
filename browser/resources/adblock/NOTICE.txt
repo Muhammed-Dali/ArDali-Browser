@@ -1,0 +1,45 @@
+ArDali DeliBlock includes bundled prebuilt DeliBlock ruleset JSON and scripting
+assets for local request filtering, cosmetic filtering, scriptlet execution, and
+developer inspection.
+
+Source snapshot:
+DeliBlock-compatible rulesets exported from a local reference checkout.
+
+Included ruleset metadata:
+- ruleset-details.json
+
+Included ruleset directories:
+- main/*.json
+- regex/*.json
+- strictblock/*.json
+- scripting/generic/*.js
+- scripting/generichigh/*.css
+- scripting/specific/*.js
+- scripting/procedural/*.js
+- scripting/scriptlet/main/*.js
+- scripting/scriptlet/isolated/*.js
+
+These rulesets originate from upstream filter-list build outputs adapted for
+DeliBlock. Keep this notice with the bundled resources and review upstream
+licenses before redistribution.
+
+uBlock Origin Lite generated assets:
+- Project: uBO Lite (uBOL) by Raymond Hill and contributors
+- Source: https://github.com/uBlockOrigin/uBOL-home
+- License: GNU General Public License v3.0
+- Directly bundled content includes generated ruleset JSON, cosmetic filtering
+  data, scriptlet bundles, and web-accessible resources under `rulesets/` and
+  `web_accessible_resources/`.
+- `doubleclick_instream_ad_status.js` is also represented by the equivalent
+  local, non-networking safe resource `window.google_ad_status = 1;`.
+- ArDali's native request-filtering engine is a separate C++ implementation;
+  this notice attributes the bundled third-party assets and does not define or
+  replace ArDali's main project license.
+
+Adult-content domain protection:
+- Generated from the domain difference between StevenBlack unified hosts and
+  the unified + porn extension snapshot downloaded 2026-07-15.
+- Source: https://github.com/StevenBlack/hosts
+- The upstream repository code is MIT licensed; the merged source lists retain
+  their individual licenses and attribution documented by the upstream project.
+- Generated file: ../security/adult-domains.txt

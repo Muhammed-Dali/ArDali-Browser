@@ -1,0 +1,18 @@
+preset "Web Output Audiophile v1" {
+  engine {
+    input: web;
+    output: speakers;
+    safety: strict;
+    profile: realtime;
+  }
+
+  chain {
+    preamp {
+      gain: 0.0db;
+    }
+  }
+
+  quality {
+    max_latency_ms: 20;
+  }
+}

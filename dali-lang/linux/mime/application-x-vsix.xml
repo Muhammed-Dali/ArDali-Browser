@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mime-info xmlns='http://www.freedesktop.org/standards/shared-mime-info'>
+  <mime-type type="application/x-vsix">
+    <comment>VS Code Extension Package</comment>
+    <glob pattern="*.vsix" weight="90"/>
+    <sub-class-of type="application/zip"/>
+    <icon name="application-x-vsix"/>
+    <generic-icon name="package-x-generic"/>
+  </mime-type>
+</mime-info>

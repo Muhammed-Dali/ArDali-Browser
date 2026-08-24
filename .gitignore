@@ -1,6 +1,13 @@
 # Build directories
 build/
 browser/build/
+compile_commands.json
+*.pkg.tar.zst
+*.pkg.tar.zst.sig
+*.tar.zst
+packaging/archlinux/src/
+packaging/archlinux/pkg/
+packaging/archlinux/*.tar.gz
 
 # Node dependencies & logs
 node_modules/
@@ -15,3 +22,6 @@ npm-debug.log*
 # VS Code local state
 .vscode/compile_commands.json
 .vscode/.cmaketools/
+
+# Local assistant/editor state
+.claude/

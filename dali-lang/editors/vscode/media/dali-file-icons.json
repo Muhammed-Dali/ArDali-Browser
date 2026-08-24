@@ -1,0 +1,15 @@
+{
+  "version": "1.0",
+  "iconDefinitions": {
+    "dali-file": {
+      "iconPath": "./dali-icon-letter-dark.svg",
+      "light": "./dali-icon-letter-light.svg"
+    }
+  },  "file": "dali-file",  "fileExtensions": {
+    "dali": "dali-file",
+    "dl": "dali-file"
+  },
+  "languageIds": {
+    "dali": "dali-file"
+  }
+}

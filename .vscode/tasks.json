@@ -1,0 +1,28 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "ArDali: Build Browser",
+      "type": "shell",
+      "command": "cmake -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -B browser/build -S browser && cmake --build browser/build",
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "problemMatcher": ["$gcc"]
+    },
+    {
+      "label": "ArDali: Run Browser",
+      "type": "shell",
+      "command": "./browser/build/ardali-browser",
+      "dependsOn": ["ArDali: Build Browser"],
+      "problemMatcher": []
+    },
+    {
+      "label": "DALI: Run Security Suite",
+      "type": "shell",
+      "command": "node dali-lang/scripts/dali-security-suite.js",
+      "problemMatcher": []
+    }
+  ]
+}

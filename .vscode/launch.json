@@ -1,0 +1,18 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "ArDaliBrowser (F5 ile Çalıştır)",
+      "type": "cppdbg",
+      "request": "launch",
+      "program": "${workspaceFolder}/browser/build/ardali-browser",
+      "args": [],
+      "stopAtEntry": false,
+      "cwd": "${workspaceFolder}/browser/build",
+      "environment": [],
+      "externalConsole": false,
+      "MIMode": "gdb",
+      "preLaunchTask": "ArDali: Build Browser"
+    }
+  ]
+}

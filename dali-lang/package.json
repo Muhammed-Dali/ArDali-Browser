@@ -1,0 +1,50 @@
+{
+  "name": "aurivo-dali-lang",
+  "version": "0.1.4",
+  "description": "DALI audio DSL parser/compiler for web and Electron audio pipelines.",
+  "license": "MIT",
+  "main": "src/index.js",
+  "bin": {
+    "dali": "src/cli.js"
+  },
+  "files": [
+    "src",
+    "spec/grammar.md",
+    "spec/capability-policy.json",
+    "examples/**/*.dali",
+    "examples/**/*.dl",
+    "README.md"
+  ],
+  "keywords": [
+    "dali",
+    "dsl",
+    "audio",
+    "webaudio",
+    "audioworklet",
+    "wasm",
+    "eq"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/muhammed-aurivo-dev/dali-lang.git"
+  },
+  "homepage": "https://github.com/muhammed-aurivo-dev/dali-lang",
+  "bugs": {
+    "url": "https://github.com/muhammed-aurivo-dev/dali-lang/issues"
+  },
+  "scripts": {
+    "check": "node --check src/index.js && node --check src/cli.js",
+    "compile:web": "node src/cli.js examples/web-bass-enhancer.dali /tmp/web-bass-enhancer.generated.js",
+    "compile:wasm": "node src/cli.js examples/web-bass-enhancer.dali /tmp/web-bass-enhancer.wasm.generated.js --target wasm",
+    "dali:ir:v2": "node src/cli.js ir examples/web-bass-enhancer.dali /tmp/web-bass-enhancer.ir.json --json",
+    "dali:test:golden": "node scripts/dali-golden-regression.js",
+    "dali:test:golden:update": "node scripts/dali-golden-regression.js --update",
+    "dali:bench:perf": "node scripts/dali-perf-bench.js 30",
+    "dali:test:security": "node scripts/dali-security-suite.js",
+    "dali:install:filetype:linux": "bash scripts/install-dali-filetype-linux.sh",
+    "dali:test:browser-manifest": "node scripts/dali-browser-manifest-test.js"
+  }
+}

@@ -1,0 +1,89 @@
+name: DALI Multi-Arch CI
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ "main" ]
+    paths:
+      - "src/**"
+      - "spec/**"
+      - "examples/**"
+      - "editors/**"
+      - "assets/**"
+      - "linux/**"
+      - "scripts/**"
+      - "package.json"
+      - "README.md"
+      - ".github/workflows/dali-multi-arch-ci.yml"
+  pull_request:
+    paths:
+      - "src/**"
+      - "spec/**"
+      - "examples/**"
+      - "editors/**"
+      - "assets/**"
+      - "linux/**"
+      - "scripts/**"
+      - "package.json"
+      - "README.md"
+      - ".github/workflows/dali-multi-arch-ci.yml"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  dali-native-matrix:
+    name: DALI native smoke (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-14, windows-2025]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: "20"
+
+      - name: Compile JS sample
+        run: node src/cli.js examples/web-bass-enhancer.dl /tmp/dali-native-smoke.generated.js --strict
+
+      - name: Run security suite
+        run: node scripts/dali-security-suite.js
+
+      - name: DALI setup smoke (skip editor install)
+        run: node src/cli.js setup --skip-editor-install
+
+  dali-linux-portable-arch:
+    name: DALI portable arch smoke (linux amd64+arm64)
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup QEMU
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm64,amd64
+
+      - name: Run smoke tests in Node container for each architecture
+        run: |
+          set -euo pipefail
+          for platform in linux/amd64 linux/arm64; do
+            echo "===> running DALI smoke on ${platform}"
+            docker run --rm \
+              --platform "${platform}" \
+              -v "${PWD}:/work" \
+              -w /work \
+              node:20-bookworm \
+              bash -lc "node -v && npm -v && node src/cli.js examples/web-eq32-reference.dl /tmp/dali-${platform##*/}.generated.js --strict"
+          done

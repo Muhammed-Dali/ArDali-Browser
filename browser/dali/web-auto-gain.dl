@@ -1,0 +1,34 @@
+preset "Web Auto Gain Normalize v1" {
+  engine {
+    input: web;
+    output: speakers;
+    safety: strict;
+    profile: realtime;
+  }
+
+  // The legacy Web runtime owns the RMS detector and adaptive GainNode.  The
+  // neutral preamp keeps this DALI preset compiler/package compatible while the
+  // module block below remains the source-of-truth declaration for Stage 7.
+  chain {
+    preamp {
+      gain: 0db;
+    }
+  }
+
+  autogain {
+    enabled: off;
+    target_level: -14db;
+    max_gain: 12db;
+    speed: medium;
+    detector: rms_dbfs;
+    detector_window: 2048;
+    envelope_rise: 35ms;
+    envelope_fall: 240ms;
+  }
+
+  quality {
+    sample_rate: 48000;
+    max_latency_ms: 20;
+    true_peak_protection: on;
+  }
+}

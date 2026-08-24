@@ -1,0 +1,24 @@
+preset "Web Dynamic Compressor v1" {
+  engine {
+    input: web;
+    output: speakers;
+    safety: strict;
+    profile: realtime;
+  }
+
+  chain {
+    compressor {
+      threshold: -20db;
+      ratio: 4;
+      attack: 10ms;
+      release: 100ms;
+      makeup: 0db;
+      knee: 3db;
+    }
+  }
+
+  quality {
+    sample_rate: 48000;
+    max_latency_ms: 20;
+  }
+}

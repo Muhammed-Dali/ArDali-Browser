@@ -1,0 +1,179 @@
+preset "Music EQ32 Reference v1" {
+  engine {
+    input: music;
+    output: speakers;
+    safety: strict;
+    profile: realtime;
+  }
+
+  chain {
+    preamp {
+      gain: -1.8db;
+    }
+
+    eq32 {
+      band(20hz) = 1.8db;
+      band(25hz) = 1.6db;
+      band(31hz) = 1.4db;
+      band(40hz) = 1.2db;
+      band(50hz) = 1.0db;
+      band(63hz) = 0.8db;
+      band(80hz) = 0.6db;
+      band(100hz) = 0.4db;
+      band(125hz) = 0.2db;
+      band(160hz) = 0.0db;
+      band(200hz) = -0.2db;
+      band(250hz) = -0.3db;
+      band(315hz) = -0.4db;
+      band(400hz) = -0.3db;
+      band(500hz) = -0.2db;
+      band(630hz) = 0.0db;
+      band(800hz) = 0.1db;
+      band(1000hz) = 0.2db;
+      band(1300hz) = 0.3db;
+      band(1600hz) = 0.3db;
+      band(2000hz) = 0.2db;
+      band(2500hz) = 0.1db;
+      band(3200hz) = 0.0db;
+      band(4000hz) = 0.1db;
+      band(5000hz) = 0.2db;
+      band(6300hz) = 0.3db;
+      band(8000hz) = 0.4db;
+      band(10000hz) = 0.4db;
+      band(12500hz) = 0.3db;
+      band(16000hz) = 0.2db;
+      band(20000hz) = 0.1db;
+      band(22000hz) = 0.0db;
+    }
+  }
+
+  module {
+    bass: 2.0db;
+    mid: 0.4db;
+    treble: 0.6db;
+    stereo_expander: 108;
+    balance: 0;
+  }
+
+  compressor {
+    enabled: on;
+    threshold: -22db;
+    ratio: 3.2;
+    attack: 9ms;
+    release: 130ms;
+    knee: 6db;
+    makeup_gain: 1.0db;
+  }
+
+  limiter {
+    enabled: on;
+    ceiling: -0.8db;
+    release: 60ms;
+    gain: 0db;
+  }
+
+  reverb {
+    enabled: off;
+    room_size: 900ms;
+    damping: 0.52;
+    wet_dry: -12db;
+    hf_ratio: 0.72;
+    input_gain: 0db;
+  }
+
+  bassboost {
+    enabled: on;
+    frequency: 80hz;
+    gain: 5.5db;
+  }
+
+  deesser {
+    enabled: off;
+    frequency: 6800hz;
+    threshold: -30db;
+    ratio: 3.8;
+  }
+
+  exciter {
+    enabled: off;
+    frequency: 3200hz;
+    amount: 46;
+    mix: 28;
+  }
+
+  stereowidener {
+    enabled: on;
+    width: 108;
+  }
+
+  echo {
+    enabled: off;
+    delay: 220ms;
+    feedback: 22;
+    wet: 18%;
+    high_cut: 7000hz;
+  }
+
+  noisegate {
+    enabled: off;
+    threshold: -42db;
+    attack: 4ms;
+    release: 140ms;
+  }
+
+  autogain {
+    enabled: off;
+    target_level: -14db;
+    max_gain: 10db;
+  }
+
+  truepeak {
+    enabled: on;
+    ceiling: -0.2db;
+    release: 45ms;
+  }
+
+  dynamiceq {
+    enabled: off;
+    frequency: 3400hz;
+    q: 2.2;
+    gain: -4db;
+  }
+
+  crossfeed {
+    enabled: off;
+    level: 30;
+    delay: 0.3ms;
+    high_cut: 4000hz;
+  }
+
+  surround {
+    enabled: off;
+    mix: 75;
+    side: 0db;
+  }
+
+  bassmono {
+    enabled: off;
+    cutoff: 120hz;
+    stereo_width: 100;
+  }
+
+  tapesat {
+    enabled: off;
+    drive: 6db;
+    mix: 45;
+  }
+
+  bitdither {
+    enabled: off;
+    bit_depth: 16;
+    mix: 100;
+  }
+
+  quality {
+    sample_rate: 48000;
+    max_latency_ms: 20;
+    true_peak_protection: on;
+  }
+}

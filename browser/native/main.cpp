@@ -9,6 +9,7 @@
 #include <QCompleter>
 #include <QCursor>
 #include <QDir>
+#include <QDial>
 #include <QDrag>
 #include <QDragEnterEvent>
 #include <QDropEvent>
@@ -19,12 +20,14 @@
 #include <QFileDialog>
 #include <QFileInfo>
 #include <QFormLayout>
+#include <QFutureWatcher>
 #include <QFrame>
 #include <QGuiApplication>
 #include <QHash>
 #include <QHideEvent>
 #include <QHBoxLayout>
 #include <QIcon>
+#include <QInputDialog>
 #include <QImage>
 #include <QLabel>
 #include <QLineEdit>
@@ -49,6 +52,7 @@
 #include <QPainter>
 #include <QPainterPath>
 #include <QRegularExpression>
+#include <QRandomGenerator>
 #include <QResizeEvent>
 #include <QScrollArea>
 #include <QScrollBar>
@@ -71,14 +75,18 @@
 #include <QToolBar>
 #include <QToolButton>
 #include <QUrl>
+#include <QUuid>
 #include <QUrlQuery>
 #include <QVBoxLayout>
 #include <QWebEnginePage>
 #include <QWebEnginePermission>
 #include <QWebEngineProfile>
+#include <QWebEngineScript>
+#include <QWebEngineScriptCollection>
 #include <QWebEngineHistory>
 #include <QWebEngineContextMenuRequest>
 #include <QWebEngineView>
+#include <QtConcurrent>
 #include <QWheelEvent>
 #include <QWindow>
 #include <QStyle>
@@ -90,15 +98,31 @@
 #include <memory>
 #include <optional>
 
-#include "tab_manager.h"
-#include "browser_policy.h"
-#include "browser_profile_service.h"
-#include "browser_icons.h"
-#include "new_tab_scheme.h"
-#include "new_tab_html.h"
-#include "new_tab_background_store.h"
-#include "session_store.h"
-#include "settings_page.h"
+#include "tabs/tab_manager.h"
+#include "tabs/tab_throbber.h"
+#include "tabs/tab_hover_card.h"
+#include "core/browser_policy.h"
+#include "core/browser_profile_service.h"
+#include "core/browser_icons.h"
+#include "sidebar/side_widget.h"
+#include "newtab/new_tab_scheme.h"
+#include "newtab/new_tab_background_store.h"
+#include "session/session_store.h"
+#include "settings/settings_page.h"
+#include "audio/audio_effects_page.h"
+#include "audio/web_audio_effects_controller.h"
+#include "eq/eq_preset_page.h"
+#include "blocker/ardali_blocker_service.h"
+#include "blocker/ardali_blocker_page.h"
+#include "blocker/ardali_blocker_shield_button.h"
+#include "passwords/credential_vault.h"
+#include "passwords/credential_vault_manager.h"
+#include "passwords/password_manager_page.h"
+#include "pulse/song_finder_settings.h"
+#include "pulse/song_recognition_service.h"
+#include "pulse/song_finder_page.h"
+#include "pulse/song_finder_settings_page.h"
+#include "pulse/pulse_toolbar_button.h"
 
 namespace {
 
@@ -128,8 +152,11 @@ QString searchUrlFor(const QString &engine, const QString &query) {
 QUrl resolveAddressInput(const QString &input, const QString &engine) {
   const QString text = input.trimmed();
   if (text.isEmpty()) return {};
+  if (text.startsWith(QStringLiteral("ardali://"), Qt::CaseInsensitive)) {
+    return QUrl(text);
+  }
   const QUrl direct(text);
-  if (direct.isValid() && (direct.scheme() == QLatin1String("http") || direct.scheme() == QLatin1String("https"))) return direct;
+  if (direct.isValid() && (direct.scheme() == QLatin1String("http") || direct.scheme() == QLatin1String("https") || direct.scheme() == QLatin1String("ardali"))) return direct;
   if (!text.contains(QRegularExpression("\\s")) && (text.contains('.') || text == QLatin1String("localhost")))
     return QUrl::fromUserInput(QStringLiteral("https://") + text);
   return QUrl(searchUrlFor(engine, text));
@@ -179,6 +206,110 @@ QString frequentSiteDisplayName(const QUrl &url) {
   if (brandNames.contains(platform)) return brandNames.value(platform);
   if (!platform.isEmpty()) platform[0] = platform.at(0).toUpper();
   return platform;
+}
+
+QWebEngineScript credentialCandidateCaptureScript() {
+  QWebEngineScript script;
+  script.setName(QStringLiteral("ardali-credential-candidate-capture"));
+  script.setWorldId(QWebEngineScript::ApplicationWorld);
+  script.setInjectionPoint(QWebEngineScript::DocumentCreation);
+  script.setRunsOnSubFrames(false);
+  script.setSourceCode(QStringLiteral(R"JS((() => {
+    if (window.top !== window || window.__ardaliCredentialCaptureInstalled) return;
+    Object.defineProperty(window, '__ardaliCredentialCaptureInstalled', { value: true });
+    const visible = element => { if (!element || !element.isConnected || !element.getClientRects().length) return false; const style = getComputedStyle(element); return element.type !== 'hidden' && !element.disabled && style.display !== 'none' && style.visibility !== 'hidden' && Number(style.opacity || 1) > 0; };
+    const safeLoginForm = (form, password) => { if (!(form instanceof HTMLFormElement) || !visible(form) || !visible(password)) return false; try { const action = new URL(form.getAttribute('action') || location.href, document.baseURI); return action.protocol === 'https:' && action.origin === location.origin; } catch (_) { return false; } };
+    const findUsername = (form, password) => [...(form || document).querySelectorAll('input')].filter(input => input !== password && visible(input) && /^(text|email|tel)$/i.test(input.type || 'text') && /(user|email|login|identifier)/i.test(`${input.autocomplete || ''} ${input.name || ''} ${input.id || ''}`)).reverse().find(input => String(input.value || '').trim() && String(input.value || '').trim().length <= 320);
+    let lastCandidateAt = 0;
+    let lastUsername = '';
+    let candidatePendingAt = 0;
+    const stageUsername = value => { const username = String(value || '').trim(); if (!username || username.length > 320 || username === lastUsername) return; lastUsername = username; console.info('ARDALI_CREDENTIAL_STAGE:' + JSON.stringify({ origin: location.origin, username })); };
+    const capture = scope => { try {
+      const now = Date.now(); if (now - lastCandidateAt < 800) return;
+      const root = scope && typeof scope.querySelectorAll === 'function' ? scope : document;
+      const password = [...root.querySelectorAll('input[type="password"]')].find(input => visible(input) && input.value); if (!password || !safeLoginForm(password.form, password)) return;
+      const username = String(findUsername(password.form || root, password)?.value || lastUsername || '').trim();
+      if (username) stageUsername(username);
+      lastCandidateAt = now;
+      candidatePendingAt = now;
+      console.info('ARDALI_CREDENTIAL_CANDIDATE:' + JSON.stringify({ origin: location.origin, username: String(username).slice(0, 320), password: String(password.value).slice(0, 4096) }));
+    } catch (_) {} };
+    const successHint = () => { if (!candidatePendingAt || Date.now() - candidatePendingAt > 45000) return; console.info('ARDALI_CREDENTIAL_SUCCESS_HINT:' + JSON.stringify({ origin: location.origin })); candidatePendingAt = 0; };
+    const observeSuccess = () => setTimeout(() => { if (!candidatePendingAt) return; const hasVisiblePassword = [...document.querySelectorAll('input[type="password"]')].some(visible); if (!hasVisiblePassword) successHint(); }, 300);
+    document.addEventListener('submit', event => { if (event.isTrusted) capture(event.target); }, true);
+    document.addEventListener('input', event => { if (!event.isTrusted) return; const input = event.target; if (!(input instanceof HTMLInputElement) || input.type === 'password') return; const hint = `${input.type || ''} ${input.autocomplete || ''} ${input.name || ''} ${input.id || ''}`.toLowerCase(); if (/email|user|login|identifier/.test(hint)) stageUsername(input.value); }, true);
+    document.addEventListener('pointerdown', event => { if (!event.isTrusted) return; const control = event.target?.closest?.('button,input[type="submit"],input[type="button"],[role="button"]'); if (control) capture(control.form || document); }, true);
+    document.addEventListener('keydown', event => { if (event.isTrusted && event.key === 'Enter') capture(event.target?.form || document); }, true);
+    new MutationObserver(observeSuccess).observe(document, { childList: true, subtree: true, attributes: true, attributeFilter: ['style', 'class', 'hidden', 'type'] });
+    addEventListener('popstate', observeSuccess, true);
+    for (const name of ['pushState', 'replaceState']) { const original = history[name]; if (typeof original !== 'function') continue; history[name] = function(...args) { const value = original.apply(this, args); observeSuccess(); return value; }; }
+  })())JS"));
+  return script;
+}
+
+QString credentialFillButtonScript(const QString &token) {
+  const QString payload = QString::fromUtf8(QJsonDocument(QJsonObject{{QStringLiteral("token"), token}}).toJson(QJsonDocument::Compact));
+  return QStringLiteral(R"JS((() => {
+    if (window.top !== window || window.__ardaliCredentialFillButtonInstalled) return;
+    Object.defineProperty(window, '__ardaliCredentialFillButtonInstalled', { value: true });
+    const payload = %1;
+    const visible = element => { if (!element || !element.isConnected || !element.getClientRects().length) return false; const style = getComputedStyle(element); return element.type !== 'hidden' && !element.disabled && style.display !== 'none' && style.visibility !== 'hidden' && Number(style.opacity || 1) > 0; };
+    const safeLoginForm = (form, password) => { if (!(form instanceof HTMLFormElement) || !visible(form) || !visible(password)) return false; try { const action = new URL(form.getAttribute('action') || location.href, document.baseURI); return action.protocol === 'https:' && action.origin === location.origin; } catch (_) { return false; } };
+    let button = null; let activePassword = null;
+    const hide = () => { button?.remove(); button = null; activePassword = null; };
+    const show = password => { if (!safeLoginForm(password?.form, password)) return; hide(); const rect = password.getBoundingClientRect(); if (!rect.width || !rect.height) return; activePassword = password; button = document.createElement('button'); button.type = 'button'; button.textContent = '🔑'; button.title = 'ArDali güvenli kasadan doldur'; button.setAttribute('aria-label', button.title); Object.assign(button.style, { position: 'fixed', zIndex: '2147483647', pointerEvents: 'auto', userSelect: 'none', left: `${Math.max(0, rect.right - 34)}px`, top: `${Math.max(0, rect.top + (rect.height - 28) / 2)}px`, width: '28px', height: '28px', padding: '0', border: '0', borderRadius: '8px', background: '#172235', color: '#fff', cursor: 'pointer', fontSize: '15px', lineHeight: '28px' }); button.addEventListener('pointerdown', event => { event.preventDefault(); event.stopImmediatePropagation(); if (event.isTrusted === true && navigator.userActivation?.isActive === true && activePassword?.isConnected) console.info('ARDALI_CREDENTIAL_FILL_REQUEST:' + JSON.stringify({ origin: location.origin, token: payload.token })); }, true); button.addEventListener('click', event => { event.preventDefault(); event.stopImmediatePropagation(); }, true); document.documentElement.appendChild(button); };
+    document.addEventListener('focusin', event => { const input = event.target; if (input instanceof HTMLInputElement && input.type === 'password' && visible(input)) show(input); }, true);
+    document.addEventListener('focusout', () => setTimeout(() => { if (document.activeElement !== button) hide(); }, 180), true);
+    window.addEventListener('scroll', hide, true); window.addEventListener('beforeunload', hide, { once: true });
+    const first = [...document.querySelectorAll('input[type="password"]')].find(input => visible(input)); if (first) show(first);
+    new MutationObserver(() => { if (!button) { const password = [...document.querySelectorAll('input[type="password"]')].find(input => visible(input)); if (password) show(password); } }).observe(document, { childList: true, subtree: true, attributes: true, attributeFilter: ['style', 'class', 'hidden', 'type'] });
+  })())JS").arg(payload);
+}
+
+QString credentialGenerateButtonScript(const QString &token) {
+  const QString payload = QString::fromUtf8(QJsonDocument(QJsonObject{{QStringLiteral("token"), token}}).toJson(QJsonDocument::Compact));
+  return QStringLiteral(R"JS((() => {
+    if (window.top !== window || window.__ardaliCredentialGenerateButtonInstalled) return;
+    Object.defineProperty(window, '__ardaliCredentialGenerateButtonInstalled', { value: true });
+    const payload = %1;
+    const visible = element => { if (!element || !element.isConnected || !element.getClientRects().length) return false; const style = getComputedStyle(element); return element.type !== 'hidden' && !element.disabled && style.display !== 'none' && style.visibility !== 'hidden' && Number(style.opacity || 1) > 0; };
+    const safe = password => { if (!(password?.form instanceof HTMLFormElement) || !visible(password.form)) return false; try { const action = new URL(password.form.getAttribute('action') || location.href, document.baseURI); return action.protocol === 'https:' && action.origin === location.origin; } catch (_) { return false; } };
+    const fieldsFor = password => { if (!safe(password)) return []; const fields = [...password.form.querySelectorAll('input[type="password"]')].filter(field => visible(field) && safe(field)); const hinted = fields.filter(field => /new-password/i.test(field.autocomplete || '') || /(new|confirm|repeat|signup|register|create)/i.test(`${field.name || ''} ${field.id || ''}`)); return hinted.length ? hinted : (fields.length >= 2 && fields.some(field => /(confirm|repeat|again)/i.test(`${field.name || ''} ${field.id || ''}`)) ? fields : []); };
+    let button = null; let activeFields = [];
+    const hide = () => { button?.remove(); button = null; activeFields = []; };
+    const show = password => { const fields = fieldsFor(password); if (!fields.length) return; hide(); const rect = fields[0].getBoundingClientRect(); if (!rect.width || !rect.height) return; activeFields = fields; button = document.createElement('button'); button.type = 'button'; button.textContent = '✦'; button.title = 'ArDali güçlü parola öner'; button.setAttribute('aria-label', button.title); Object.assign(button.style, { position: 'fixed', zIndex: '2147483647', pointerEvents: 'auto', userSelect: 'none', left: `${Math.max(0, rect.right - 66)}px`, top: `${Math.max(0, rect.top + (rect.height - 28) / 2)}px`, width: '28px', height: '28px', padding: '0', border: '0', borderRadius: '8px', background: '#5336a8', color: '#fff', cursor: 'pointer', fontSize: '18px', lineHeight: '28px' }); button.addEventListener('pointerdown', event => { event.preventDefault(); event.stopImmediatePropagation(); if (event.isTrusted === true && navigator.userActivation?.isActive === true && activeFields.every(field => field.isConnected)) console.info('ARDALI_CREDENTIAL_GENERATE_REQUEST:' + JSON.stringify({ origin: location.origin, token: payload.token })); }, true); button.addEventListener('click', event => { event.preventDefault(); event.stopImmediatePropagation(); }, true); document.documentElement.appendChild(button); };
+    document.addEventListener('focusin', event => { const input = event.target; if (input instanceof HTMLInputElement && input.type === 'password' && visible(input)) show(input); }, true);
+    document.addEventListener('focusout', () => setTimeout(() => { if (document.activeElement !== button) hide(); }, 180), true);
+    window.addEventListener('scroll', hide, true); window.addEventListener('beforeunload', hide, { once: true });
+    const first = [...document.querySelectorAll('input[type="password"]')].find(password => fieldsFor(password).length); if (first) show(first);
+    new MutationObserver(() => { if (!button) { const password = [...document.querySelectorAll('input[type="password"]')].find(candidate => fieldsFor(candidate).length); if (password) show(password); } }).observe(document, { childList: true, subtree: true, attributes: true, attributeFilter: ['style', 'class', 'hidden', 'type'] });
+  })())JS").arg(payload);
+}
+
+QString generatedCredentialSuggestion() {
+  const QString upper = QStringLiteral("ABCDEFGHJKLMNPQRSTUVWXYZ");
+  const QString lower = QStringLiteral("abcdefghijkmnopqrstuvwxyz");
+  const QString digits = QStringLiteral("23456789");
+  const QString symbols = QStringLiteral("!@#$%^&*_-+=");
+  const QString alphabet = upper + lower + digits + symbols;
+  auto *rng = QRandomGenerator::system();
+  QString value;
+  value.reserve(24);
+  for (const QString &set : {upper, lower, digits, symbols}) value += set.at(rng->bounded(set.size()));
+  while (value.size() < 24) value += alphabet.at(rng->bounded(alphabet.size()));
+  for (int index = value.size() - 1; index > 0; --index) {
+    const int other = rng->bounded(index + 1);
+    const QChar current = value.at(index); value[index] = value.at(other); value[other] = current;
+  }
+  return value;
+}
+
+QString credentialIconPngBase64(const QIcon &icon) {
+  const QPixmap pixmap = icon.pixmap(32, 32);
+  if (pixmap.isNull()) return {};
+  QByteArray bytes; QBuffer buffer(&bytes);
+  if (!buffer.open(QIODevice::WriteOnly) || !pixmap.save(&buffer, "PNG") || bytes.size() > 12 * 1024) return {};
+  return QString::fromLatin1(bytes.toBase64());
 }
 
 QIcon bookmarkIcon(bool bookmarked) {
@@ -300,9 +431,19 @@ class AddressSuggestionDelegate final : public QStyledItemDelegate {
 class BrowserPage final : public QWebEnginePage {
  public:
   using NewTabFactory = std::function<QWebEnginePage *(WebWindowType)>;
+  using NavigationPrepare = std::function<void(QWebEnginePage *, const QUrl &)>;
+  using CredentialCandidateHandler = std::function<void(QWebEnginePage *, const QString &)>;
+  using CredentialStageHandler = std::function<void(QWebEnginePage *, const QString &)>;
+  using CredentialSuccessHandler = std::function<void(QWebEnginePage *, const QString &)>;
+  using CredentialFillHandler = std::function<void(QWebEnginePage *, const QString &)>;
+  using CredentialGenerateHandler = std::function<void(QWebEnginePage *, const QString &)>;
 
-  BrowserPage(QWebEngineProfile *profile, const BrowserPolicy *policy, BrowserProfileService *profileService, NewTabFactory newTabFactory, QObject *parent)
-      : QWebEnginePage(profile, parent), policy_(policy), profileService_(profileService), newTabFactory_(std::move(newTabFactory)) {
+  BrowserPage(QWebEngineProfile *profile, const BrowserPolicy *policy, BrowserProfileService *profileService,
+              NewTabFactory newTabFactory, NavigationPrepare navigationPrepare, CredentialCandidateHandler credentialCandidateHandler,
+              CredentialStageHandler credentialStageHandler, CredentialSuccessHandler credentialSuccessHandler, CredentialFillHandler credentialFillHandler,
+              CredentialGenerateHandler credentialGenerateHandler, QObject *parent)
+      : QWebEnginePage(profile, parent), policy_(policy), profileService_(profileService),
+        newTabFactory_(std::move(newTabFactory)), navigationPrepare_(std::move(navigationPrepare)), credentialCandidateHandler_(std::move(credentialCandidateHandler)), credentialStageHandler_(std::move(credentialStageHandler)), credentialSuccessHandler_(std::move(credentialSuccessHandler)), credentialFillHandler_(std::move(credentialFillHandler)), credentialGenerateHandler_(std::move(credentialGenerateHandler)) {
     connect(this, &QWebEnginePage::permissionRequested, this, [this](const QWebEnginePermission &permission) {
       if (profileService_) profileService_->handlePermission(permission); else permission.deny();
     });
@@ -314,6 +455,29 @@ class BrowserPage final : public QWebEnginePage {
     // can load its bundled Flow Blue image. This is deliberately narrower than
     // allowing arbitrary file:// navigation.
     if (isMainFrame && !isNewTabUrl(url) && (!policy_ || !policy_->allowsNavigation(url))) return false;
+
+    // Popup and unsolicited navigation interception
+    if (profileService_ && profileService_->adBlockService()) {
+      auto *adblock = profileService_->adBlockService();
+      if (adblock->settings()->protectionEnabled() && adblock->settings()->popupBlock()) {
+        if (type == NavigationTypeOther && !isNewTabUrl(url) &&
+            (url.scheme() == QLatin1String("http") || url.scheme() == QLatin1String("https"))) {
+          const QString reqHost = url.host().toLower();
+          const QString currentHost = this->url().host().toLower();
+          SitePolicy pol = adblock->settings()->sitePolicy(currentHost.isEmpty() ? reqHost : currentHost);
+          if (!pol.whitelisted && pol.adBlocking) {
+            auto decision = adblock->filterEngine()->evaluate(
+                url, isMainFrame ? ArDaliBlockerResourceType::MainFrame : ArDaliBlockerResourceType::SubFrame,
+                currentHost, adblock->settings()->mode(), pol, QStringLiteral("GET"));
+            if (decision.action == ArDaliBlockerAction::Block) {
+              return false;
+            }
+          }
+        }
+      }
+    }
+
+    if (isMainFrame && navigationPrepare_) navigationPrepare_(this, url);
     return QWebEnginePage::acceptNavigationRequest(url, type, isMainFrame);
   }
 
@@ -324,10 +488,46 @@ class BrowserPage final : public QWebEnginePage {
     return newTabFactory_ ? newTabFactory_(type) : nullptr;
   }
 
+  void javaScriptConsoleMessage(JavaScriptConsoleMessageLevel level, const QString &message, int lineNumber, const QString &sourceId) override {
+    Q_UNUSED(level); Q_UNUSED(lineNumber); Q_UNUSED(sourceId);
+    static constexpr auto kPrefix = "ARDALI_CREDENTIAL_CANDIDATE:";
+    static constexpr auto kStagePrefix = "ARDALI_CREDENTIAL_STAGE:";
+    static constexpr auto kSuccessPrefix = "ARDALI_CREDENTIAL_SUCCESS_HINT:";
+    static constexpr auto kFillPrefix = "ARDALI_CREDENTIAL_FILL_REQUEST:";
+    static constexpr auto kGeneratePrefix = "ARDALI_CREDENTIAL_GENERATE_REQUEST:";
+    if (message.startsWith(QLatin1String(kPrefix)) && credentialCandidateHandler_) {
+      credentialCandidateHandler_(this, message.mid(int(std::char_traits<char>::length(kPrefix))));
+      return;
+    }
+    if (message.startsWith(QLatin1String(kStagePrefix)) && credentialStageHandler_) {
+      credentialStageHandler_(this, message.mid(int(std::char_traits<char>::length(kStagePrefix))));
+      return;
+    }
+    if (message.startsWith(QLatin1String(kSuccessPrefix)) && credentialSuccessHandler_) {
+      credentialSuccessHandler_(this, message.mid(int(std::char_traits<char>::length(kSuccessPrefix))));
+      return;
+    }
+    if (message.startsWith(QLatin1String(kFillPrefix)) && credentialFillHandler_) {
+      credentialFillHandler_(this, message.mid(int(std::char_traits<char>::length(kFillPrefix))));
+      return;
+    }
+    if (message.startsWith(QLatin1String(kGeneratePrefix)) && credentialGenerateHandler_) {
+      credentialGenerateHandler_(this, message.mid(int(std::char_traits<char>::length(kGeneratePrefix))));
+      return;
+    }
+    QWebEnginePage::javaScriptConsoleMessage(level, message, lineNumber, sourceId);
+  }
+
  private:
   const BrowserPolicy *policy_ = nullptr;
   BrowserProfileService *profileService_ = nullptr;
   NewTabFactory newTabFactory_;
+  NavigationPrepare navigationPrepare_;
+  CredentialCandidateHandler credentialCandidateHandler_;
+  CredentialStageHandler credentialStageHandler_;
+  CredentialSuccessHandler credentialSuccessHandler_;
+  CredentialFillHandler credentialFillHandler_;
+  CredentialGenerateHandler credentialGenerateHandler_;
 };
 
 class BrowserTabBar final : public QTabBar {
@@ -340,6 +540,15 @@ class BrowserTabBar final : public QTabBar {
     setExpanding(false);
     setDocumentMode(true);
     setUsesScrollButtons(false);
+    setMouseTracking(true);
+    connect(&hoverTimer_, &QTimer::timeout, this, [this] { triggerHoverCard(); });
+  }
+
+  void cancelHover() {
+    hoverTimer_.stop();
+    hoveredIndex_ = -1;
+    cardActive_ = false;
+    emit tabHoverLeave();
   }
 
   void setDetachEnabled(bool enabled) { detachEnabled_ = enabled; }
@@ -381,8 +590,15 @@ signals:
   void tabReorderFinished();
   void externalDragFinished();
   void externalWindowMoveStarted(QPoint pointerOffsetInWindow);
+  void tabHovered(int index, QPoint globalPos, QRect globalTabRect);
+  void tabHoverLeave();
 
  protected:
+  void leaveEvent(QEvent *event) override {
+    cancelHover();
+    QTabBar::leaveEvent(event);
+  }
+
   void tabInserted(int index) override {
     QTabBar::tabInserted(index);
     auto *closeButton = new QToolButton(this);
@@ -404,6 +620,7 @@ signals:
   }
 
   void mousePressEvent(QMouseEvent *event) override {
+    cancelHover();
     if (event->button() == Qt::LeftButton) {
       pressedTab_ = tabAt(event->position().toPoint());
       pressGlobal_ = event->globalPosition().toPoint();
@@ -421,7 +638,26 @@ signals:
   }
 
   void mouseMoveEvent(QMouseEvent *event) override {
+    if (pressedTab_ < 0 && !(event->buttons() & Qt::LeftButton)) {
+      const QPoint localPos = event->position().toPoint();
+      const int tab = tabAt(localPos);
+      if (tab >= 0 && tab < count()) {
+        if (hoveredIndex_ != tab) {
+          hoveredIndex_ = tab;
+          hoverGlobalPos_ = event->globalPosition().toPoint();
+          hoverGlobalTabRect_ = QRect(mapToGlobal(tabRect(tab).topLeft()), tabRect(tab).size());
+          if (cardActive_) {
+            triggerHoverCard();
+          } else {
+            hoverTimer_.start(500);
+          }
+        }
+      } else {
+        cancelHover();
+      }
+    }
     if (pressedTab_ >= 0 && (event->buttons() & Qt::LeftButton)) {
+      cancelHover();
       const QPoint global = event->globalPosition().toPoint();
       if (externalAttachDragEnabled_ && (event->position().toPoint() - pressLocal_).manhattanLength() >= QApplication::startDragDistance()) {
         const int tab = pressedTab_;
@@ -508,6 +744,7 @@ signals:
   }
 
   void mouseReleaseEvent(QMouseEvent *event) override {
+    cancelHover();
     if (mouseGrabber() == this) releaseMouse();
     if (pressedTab_ >= 0) {
       if (dragStarted_) {
@@ -536,6 +773,13 @@ signals:
   }
 
  private:
+  void triggerHoverCard() {
+    if (hoveredIndex_ >= 0 && hoveredIndex_ < count()) {
+      cardActive_ = true;
+      emit tabHovered(hoveredIndex_, hoverGlobalPos_, hoverGlobalTabRect_);
+    }
+  }
+
   int insertionIndex(const QPoint &position) const {
     // The source is temporarily removed so its stationary QTabBar widget does
     // not remain under the drag proxy.  Keep using the pre-removal geometry
@@ -562,6 +806,7 @@ signals:
   }
 
   void beginDragProxy() {
+    cancelHover();
     dragStarted_ = true;
     dragSourceIndex_ = pressedTab_;
     dragSourceText_ = tabText(pressedTab_);
@@ -628,6 +873,12 @@ signals:
   bool dragSourceWasCurrent_ = false;
   bool detachEnabled_ = true;
   bool externalAttachDragEnabled_ = false;
+
+  QTimer hoverTimer_;
+  int hoveredIndex_ = -1;
+  QPoint hoverGlobalPos_;
+  QRect hoverGlobalTabRect_;
+  bool cardActive_ = false;
 };
 
 class TabStripScrollArea final : public QScrollArea {
@@ -728,6 +979,11 @@ class TabTransferTransaction {
 class BrowserWindow final : public QMainWindow {
   Q_OBJECT
  public:
+  ~BrowserWindow() override {
+    *javaScriptCallbacksAlive_ = false;
+    suggestionWatchTimer_.stop();
+  }
+
   BrowserWindow(QWebEngineProfile *profile, BrowserProfileService *profileService, TabManager *tabManager, const BrowserPolicy *policy,
                 SessionStore *sessionStore, BrowserWindow *mainWindow, bool createInitial)
       : profile_(profile), profileService_(profileService), tabManager_(tabManager), policy_(policy), sessionStore_(sessionStore), mainWindow_(mainWindow) {
@@ -744,6 +1000,16 @@ class BrowserWindow final : public QMainWindow {
     setWindowTitle("ArDaliBrowser");
     setWindowIcon(qApp->windowIcon());
     qApp->installEventFilter(this);
+    if (profileService_ && profileService_->credentialVault()) {
+      auto *vault = profileService_->credentialVault();
+      connect(vault, &CredentialVaultManager::lockStateChanged, this, [this](bool locked) {
+        if (locked) { credentialFillTokens_.clear(); return; }
+        QTimer::singleShot(0, this, [this] { refreshCredentialFillButtons(); });
+      });
+      connect(vault, &CredentialVaultManager::changed, this, [this] {
+        QTimer::singleShot(0, this, [this] { refreshCredentialFillButtons(); });
+      });
+    }
     if (transferDiagnosticsEnabled()) {
       const quint64 destroyedWindowId = windowDebugId_;
       const bool destroyedDetachedMode = detachedMode;
@@ -759,6 +1025,7 @@ class BrowserWindow final : public QMainWindow {
     zoomWatchTimer_.setInterval(120);
     connect(&zoomWatchTimer_, &QTimer::timeout, this, [this] { updateZoomControls(); });
     zoomWatchTimer_.start();
+    connect(&TabThrobber::instance(), &TabThrobber::throbberTick, this, &BrowserWindow::updateThrobberUi);
     suggestionWatchTimer_.setInterval(180);
     connect(&suggestionWatchTimer_, &QTimer::timeout, this, &BrowserWindow::pollNewTabSuggestionQuery);
     suggestionWatchTimer_.start();
@@ -843,6 +1110,9 @@ class BrowserWindow final : public QMainWindow {
     attachMarker_ = new QFrame(tabScroll_->viewport());
     attachMarker_->setObjectName("attach-marker");
     attachMarker_->hide();
+
+    songFinderSettings_ = new SongFinderSettings(this);
+    songRecognitionService_ = new SongRecognitionService(songFinderSettings_, this);
 
     auto *toolbar = new QToolBar(root);
     toolbar->setObjectName("navigation-bar");
@@ -931,6 +1201,57 @@ class BrowserWindow final : public QMainWindow {
     QSettings settings;
     const int savedEngine = searchEngine_->findText(settings.value("browser/searchEngine", "Google").toString());
     searchEngine_->setCurrentIndex(savedEngine >= 0 ? savedEngine : 0);
+    adBlockShield_ = new ArDaliBlockerShieldButton(profileService_ ? profileService_->adBlockService() : nullptr, toolbar);
+    toolbar->addWidget(adBlockShield_);
+    pulseButton_ = new PulseToolbarButton(songRecognitionService_, songFinderSettings_, toolbar);
+    toolbar->addWidget(pulseButton_);
+    connect(pulseButton_, &PulseToolbarButton::openUrlRequested, this, [this](const QUrl &url) {
+      addNewTab(url, url.host());
+    });
+    connect(pulseButton_, &PulseToolbarButton::openFullPageRequested, this, &BrowserWindow::showSongFinder);
+    connect(pulseButton_, &PulseToolbarButton::openSettingsRequested, this, &BrowserWindow::showSongFinderSettings);
+    connect(adBlockShield_, &ArDaliBlockerShieldButton::openSettingsRequested, this, [this] { showArDaliBlockerSettings(ArDaliBlockerPage::Tab::Settings); });
+    connect(adBlockShield_, &ArDaliBlockerShieldButton::openLoggerRequested, this, [this] { showArDaliBlockerSettings(ArDaliBlockerPage::Tab::Logger); });
+    connect(adBlockShield_, &ArDaliBlockerShieldButton::reloadRequested, this, [this] {
+      if (auto *view = currentView()) {
+        prepareAdBlockScripts(view->page(), view->url(), true);
+        view->reload();
+      }
+    });
+
+    if (profileService_ && profileService_->adBlockService()) {
+      connect(profileService_->adBlockService(), &ArDaliBlockerService::tabStatsChanged, this, [this](quint64 tabId, const TabBlockerStats &stats) {
+        if (auto *view = currentView()) {
+          const quint64 currentId = reinterpret_cast<quintptr>(view);
+          if (tabId == currentId && adBlockShield_) {
+            adBlockShield_->setBlockedCount(stats.blockedRequests);
+          }
+        }
+      });
+      connect(profileService_->adBlockService(), &ArDaliBlockerService::autoReloadRequested, this, [this]() {
+        if (auto *target = targetWebTabForReload()) {
+          prepareAdBlockScripts(target->page(), target->url(), true);
+          target->reload();
+        }
+      });
+      connect(profileService_->adBlockService()->settings(),
+              &ArDaliBlockerSettings::protectionEnabledChanged, this, [this](bool) {
+        // The master switch governs every layer. Reinstall/remove scripts
+        // before reloading every web tab so already-open documents cannot
+        // retain cosmetic or YouTube protection in the wrong state.
+        for (int index = 0; index < pages_->count(); ++index) {
+          auto *view = qobject_cast<QWebEngineView *>(pages_->widget(index));
+          if (!view || !view->page()) continue;
+          prepareAdBlockScripts(view->page(), view->url(), true);
+          view->reload();
+        }
+      });
+    }
+
+    passwords_ = toolbar->addAction(BrowserIcons::icon(BrowserIcon::Password), QString());
+    passwords_->setToolTip(QStringLiteral("Şifre Yöneticisi"));
+    connect(passwords_, &QAction::triggered, this, [this] { showPasswords(); });
+
     settings_ = toolbar->addAction("☰");
     settings_->setToolTip("Ana menü");
     settings_->setText(QStringLiteral("☰"));
@@ -953,6 +1274,29 @@ class BrowserWindow final : public QMainWindow {
 
     pages_ = new QStackedWidget(root);
     layout->addWidget(pages_, 1);
+
+    webAudioEffects_ = new WebAudioEffectsController(this);
+    sideWidget_ = new SideWidget(root);
+    browserRoot_->installEventFilter(this);
+    connect(sideWidget_, &SideWidget::toolRequested, this, [this](SideTool tool) {
+      if (tool == SideTool::AudioEffects) {
+        showAudioEffects();
+        return;
+      }
+      if (tool == SideTool::EqPresets) {
+        showEqPresetBrowser();
+        return;
+      }
+      if (tool == SideTool::WebProtection) {
+        showArDaliBlockerSettings(ArDaliBlockerPage::Tab::Settings);
+        return;
+      }
+      if (tool == SideTool::SongFinder || tool == SideTool::QuickListen) {
+        showSongFinder();
+        return;
+      }
+      qDebug().noquote() << QStringLiteral("[BrowserWindow] Tool requested:") << static_cast<int>(tool);
+    });
     setCentralWidget(root);
     setStyleSheet(R"CSS(
       QMainWindow { background: #202124; }
@@ -1000,6 +1344,28 @@ class BrowserWindow final : public QMainWindow {
     )CSS");
 
     connect(newTabButton_, &QToolButton::clicked, this, [this] { addNewTab(); });
+    tabHoverCard_ = new TabHoverCard(this);
+    connect(tabBar_, &BrowserTabBar::tabHovered, this, [this](int index, QPoint globalPos, QRect globalTabRect) {
+      Q_UNUSED(globalPos);
+      if (!tabHoverCard_ || index < 0 || !pages_ || index >= pages_->count()) return;
+      auto *view = qobject_cast<QWebEngineView *>(pages_->widget(index));
+      const auto id = tabManager_->idForContent(pages_->widget(index));
+      const TabManager::TabRecord *record = tabManager_->record(id);
+      const QString title = record ? record->title : (view ? view->title() : QString());
+      const QUrl url = record ? record->url : (view ? view->url() : QUrl());
+      const QIcon icon = tabIconForRecord(record, view);
+
+      QVector<QWebEngineView *> allViews;
+      for (int i = 0; i < pages_->count(); ++i) {
+        if (auto *v = qobject_cast<QWebEngineView *>(pages_->widget(i))) {
+          allViews.append(v);
+        }
+      }
+      tabHoverCard_->showForTab(title, url, icon, view, allViews, globalTabRect, tabBar_);
+    });
+    connect(tabBar_, &BrowserTabBar::tabHoverLeave, this, [this] {
+      if (tabHoverCard_) tabHoverCard_->hideCard();
+    });
     connect(minimizeButton_, &QToolButton::clicked, this, &QWidget::showMinimized);
     connect(maximizeButton_, &QToolButton::clicked, this, &BrowserWindow::toggleMaximized);
     connect(closeWindowButton_, &QToolButton::clicked, this, &QWidget::close);
@@ -1362,6 +1728,10 @@ class BrowserWindow final : public QMainWindow {
     if (tabBar_->count() == 0) addNewTab();
   }
 
+  void openStartupUrl(const QUrl &url) {
+    if (url.isValid() && !url.isEmpty()) navigateCurrent(url);
+  }
+
   void runTabAttachStressTest(int iterations) {
     if (!qEnvironmentVariableIsSet("ARDALI_TAB_ATTACH_STRESS_TEST") || iterations < 1) return;
     const auto fail = [](const QString &reason) {
@@ -1436,7 +1806,11 @@ class BrowserWindow final : public QMainWindow {
             const int requestedInsertIndex = completed % (tabBar_->count() + 1);
             const int targetX = requestedInsertIndex < tabBar_->count()
                 ? tabBar_->tabRect(requestedInsertIndex).left() + 8
-                : tabBar_->tabRect(tabBar_->count() - 1).right() + 8;
+                // The end insertion target is the narrow empty gap immediately
+                // before the + button.  Using +8 could land inside that button
+                // after a layout pass and make the offscreen stress fixture
+                // alternate between a valid candidate and "not a drop target".
+                : tabBar_->tabRect(tabBar_->count() - 1).right() + 2;
             const QPoint target = tabBar_->mapToGlobal(QPoint(targetX, tabBar_->height() / 2));
             const int expectedPreviewWidth = detached->currentTabVisualWidth();
             detached->runtimeTestBeginInitialMoveAt(outside);
@@ -1459,7 +1833,7 @@ class BrowserWindow final : public QMainWindow {
             QTimer::singleShot(120, this, [guardedDetached, target] {
               if (guardedDetached) guardedDetached->runtimeTestSnapCurrentToMain(target);
             });
-            QTimer::singleShot(150, this, [this, requestedInsertIndex, expectedPreviewWidth, fail] {
+            QTimer::singleShot(220, this, [this, requestedInsertIndex, expectedPreviewWidth, fail] {
               if (!hasAttachPreview(requestedInsertIndex, expectedPreviewWidth)) {
                 fail(QStringLiteral("insertion preview did not match the current candidate"));
               }
@@ -1468,10 +1842,10 @@ class BrowserWindow final : public QMainWindow {
             // after the target probe has moved. Model the physical release
             // explicitly; production release delivery still goes through the
             // event filter/timer path above.
-            QTimer::singleShot(170, this, [guardedDetached] {
+            QTimer::singleShot(250, this, [guardedDetached] {
               if (guardedDetached) guardedDetached->finishDetachedWindowMove();
             });
-            QTimer::singleShot(360, this, [this, completed, requestedInsertIndex, movedView, movedPage, movedId, guardedDetached, fail, cycle] {
+            QTimer::singleShot(440, this, [this, completed, requestedInsertIndex, movedView, movedPage, movedId, guardedDetached, fail, cycle] {
               const TabManager::TabRecord *attached = tabManager_->record(movedId);
               QString reason;
               if (!attached || attached->ownerWindow != this || attached->detached || attached->view != movedView || attached->page != movedPage
@@ -1559,6 +1933,10 @@ class BrowserWindow final : public QMainWindow {
     if (!settingsSidebar->currentItem() || settingsSidebar->currentItem()->text() != QStringLiteral("İndirilenler")) {
       fail("direct settings category open failed"); return;
     }
+    settingsPage->setCategory(SettingsPage::Category::Blocker);
+    if (!settingsSidebar->currentItem() || settingsSidebar->currentItem()->text() != QStringLiteral("ArDali Blocker")) {
+      fail("direct blocker settings category open failed"); return;
+    }
     settingsSearch->setText(QStringLiteral("öneri servisine"));
     if (!settingsSidebar->currentItem() || settingsSidebar->currentItem()->text() != QStringLiteral("Arama motoru")) {
       fail("settings search did not select matching category"); return;
@@ -1603,6 +1981,1448 @@ class BrowserWindow final : public QMainWindow {
     }
     qInfo("settings internal tab runtime lifecycle: ok");
     qApp->exit(0);
+  }
+
+  void runAudioEffectsRuntimeTest() {
+    if (!qEnvironmentVariableIsSet("ARDALI_AUDIO_EFFECTS_RUNTIME_TEST")) return;
+    const auto fail = [](const char *reason) {
+      qCritical("audio effects runtime test failed: %s", reason);
+      std::fprintf(stderr, "audio effects runtime test failed: %s\n", reason);
+      qApp->exit(2);
+    };
+    const QUrl testUrl(qEnvironmentVariable("ARDALI_AUDIO_EFFECTS_TEST_URL"));
+    const bool expectVideo = qEnvironmentVariableIsSet("ARDALI_AUDIO_EFFECTS_EXPECT_VIDEO");
+    const int attachWaitMs = std::clamp(qEnvironmentVariableIntValue("ARDALI_AUDIO_EFFECTS_RUNTIME_WAIT_MS"), 1000, 20000);
+    auto *web = currentView();
+    if (!web || !testUrl.isValid() || !webAudioEffects_) { fail("test web URL or controller missing"); return; }
+    const int initialCount = pages_->count();
+    const bool originalEnabled = webAudioEffects_->enabled();
+    const double originalPreamp = webAudioEffects_->preampDb();
+    const QVector<double> originalEqBands = webAudioEffects_->equalizerBands();
+    const double originalBass = webAudioEffects_->bassDb();
+    const double originalMid = webAudioEffects_->midDb();
+    const double originalTreble = webAudioEffects_->trebleDb();
+    const double originalStereoExpander = webAudioEffects_->stereoExpanderPercent();
+    const double originalBalance = webAudioEffects_->balance();
+    const QString originalAcousticSpace = webAudioEffects_->acousticSpace();
+    const QString originalReverbPreset = webAudioEffects_->reverbPreset();
+    QToolButton *audioEffectsButton = nullptr;
+    if (sideWidget_) {
+        const auto buttons = sideWidget_->findChildren<QToolButton *>();
+        for (QToolButton *candidate : buttons) {
+            if (candidate->accessibleName() == QStringLiteral("Ses Efektleri & DSP")) {
+                audioEffectsButton = candidate;
+                break;
+            }
+        }
+    }
+    if (!audioEffectsButton) {
+        fail("SideWidget audio-effects button not found");
+        return;
+    }
+    audioEffectsButton->click();
+    const auto firstId = tabManager_->findInternal(this, QStringLiteral("audio-effects"));
+    auto *effectsPage = firstId.isNull() ? nullptr : qobject_cast<AudioEffectsPage *>(tabManager_->record(firstId)->content.data());
+    auto *effectsNav = effectsPage ? effectsPage->findChild<QListWidget *>(QStringLiteral("audio-effects-navigation")) : nullptr;
+    auto *effectsStack = effectsPage ? effectsPage->findChild<QStackedWidget *>(QStringLiteral("audio-effects-module-pages")) : nullptr;
+    const QPointer<QCheckBox> masterToggle = effectsPage
+        ? effectsPage->findChild<QCheckBox *>(QStringLiteral("audio-effects-global-toggle")) : nullptr;
+    const QPointer<QCheckBox> reverbToggle = effectsPage
+        ? effectsPage->findChild<QCheckBox *>(QStringLiteral("audio-effects-reverb-toggle")) : nullptr;
+    const QPointer<QCheckBox> compressorToggle = effectsPage
+        ? effectsPage->findChild<QCheckBox *>(QStringLiteral("audio-effects-compressor-toggle")) : nullptr;
+    const QPointer<QProgressBar> compressorMeter = effectsPage
+        ? effectsPage->findChild<QProgressBar *>(QStringLiteral("audio-effects-compressor-meter")) : nullptr;
+    const QPointer<QCheckBox> limiterToggle = effectsPage
+        ? effectsPage->findChild<QCheckBox *>(QStringLiteral("audio-effects-limiter-toggle")) : nullptr;
+    const QPointer<QProgressBar> limiterMeter = effectsPage
+        ? effectsPage->findChild<QProgressBar *>(QStringLiteral("audio-effects-limiter-meter")) : nullptr;
+    const QPointer<QCheckBox> bassEnhancerToggle = effectsPage
+        ? effectsPage->findChild<QCheckBox *>(QStringLiteral("audio-effects-bass-enhancer-toggle")) : nullptr;
+    const QPointer<QPushButton> bassEnhancerDeep = effectsPage
+        ? effectsPage->findChild<QPushButton *>(QStringLiteral("audio-effects-bass-enhancer-deep")) : nullptr;
+    const QPointer<QCheckBox> autoGainToggle = effectsPage
+        ? effectsPage->findChild<QCheckBox *>(QStringLiteral("audio-effects-auto-gain-toggle")) : nullptr;
+    const auto clickMasterToggle = [masterToggle]() {
+      if (!masterToggle || !masterToggle->isEnabled()) return false;
+      masterToggle->click();
+      return true;
+    };
+    const auto clickReverbToggle = [reverbToggle]() {
+      if (!reverbToggle || !reverbToggle->isEnabled()) return false;
+      reverbToggle->click();
+      return true;
+    };
+    int eqSliderCount = 0;
+    int eqDialCount = 0;
+    int compressorDialCount = 0;
+    int compressorPresetCount = 0;
+    int limiterDialCount = 0;
+    int limiterPresetCount = 0;
+    int bassEnhancerDialCount = 0;
+    int autoGainDialCount = 0;
+    int autoGainPresetCount = 0;
+    int moduleToggleCount = 0;
+    bool hasModuleReset = false;
+    if (effectsPage) {
+      for (QSlider *slider : effectsPage->findChildren<QSlider *>()) {
+        if (slider->objectName() == QStringLiteral("audio-effects-eq-slider")) ++eqSliderCount;
+      }
+      for (QDial *dial : effectsPage->findChildren<QDial *>()) {
+        if (dial->accessibleName() == QStringLiteral("Stereo Expander")) ++eqDialCount;
+        if (dial->objectName() == QStringLiteral("audio-effects-compressor-dial")) ++compressorDialCount;
+        if (dial->objectName() == QStringLiteral("audio-effects-limiter-dial")) ++limiterDialCount;
+        if (dial->objectName() == QStringLiteral("audio-effects-bass-enhancer-dial")) ++bassEnhancerDialCount;
+        if (dial->objectName() == QStringLiteral("audio-effects-auto-gain-dial")) ++autoGainDialCount;
+      }
+      compressorPresetCount = effectsPage->findChildren<QPushButton *>(QStringLiteral("audio-effects-compressor-preset")).size();
+      limiterPresetCount = effectsPage->findChildren<QPushButton *>(QStringLiteral("audio-effects-limiter-preset")).size();
+      autoGainPresetCount = effectsPage->findChildren<QPushButton *>(QStringLiteral("audio-effects-auto-gain-preset")).size();
+      for (QCheckBox *toggle : effectsPage->findChildren<QCheckBox *>(QStringLiteral("audio-effects-module-toggle"))) {
+        if (toggle) ++moduleToggleCount;
+      }
+      hasModuleReset = effectsPage->findChild<QPushButton *>(QStringLiteral("audio-effects-module-reset")) != nullptr;
+    }
+    if (!effectsPage || !effectsNav || !effectsStack || !masterToggle || !reverbToggle || !compressorToggle || !compressorMeter
+        || !limiterToggle || !limiterMeter || !bassEnhancerToggle || !bassEnhancerDeep || !autoGainToggle
+        || effectsNav->count() != 22 || effectsStack->count() != 22 || eqSliderCount != 32 || eqDialCount != 1
+        || compressorDialCount != 6 || compressorPresetCount != 5 || limiterDialCount != 4 || limiterPresetCount != 5
+        || bassEnhancerDialCount != 5 || autoGainDialCount != 2 || autoGainPresetCount != 4
+        || moduleToggleCount != 15 || !hasModuleReset
+        || pages_->count() != initialCount + 1 || effectsStack->widget(0)->findChild<QCheckBox *>()
+        || effectsStack->widget(1)->findChild<QCheckBox *>()
+        || effectsStack->widget(3)->findChild<QCheckBox *>(QStringLiteral("audio-effects-compressor-toggle")) != compressorToggle
+        || effectsStack->widget(4)->findChild<QCheckBox *>(QStringLiteral("audio-effects-limiter-toggle")) != limiterToggle
+        || effectsStack->widget(5)->findChild<QCheckBox *>(QStringLiteral("audio-effects-bass-enhancer-toggle")) != bassEnhancerToggle
+        || effectsStack->widget(6)->findChild<QCheckBox *>(QStringLiteral("audio-effects-auto-gain-toggle")) != autoGainToggle
+        || !effectsStack->widget(7)->findChild<QCheckBox *>(QStringLiteral("audio-effects-module-toggle"))) {
+      fail("audio effects internal tab or module navigation invalid"); return;
+    }
+    for (int row = 0; row < effectsNav->count(); ++row) {
+      effectsNav->setCurrentRow(row);
+      if (effectsStack->currentIndex() != row) { fail("audio effects module navigation did not switch pages"); return; }
+    }
+    if (effectsNav->verticalScrollBar()->maximum() <= 0) { fail("audio effects module navigation is not scrollable"); return; }
+    showAudioEffects();
+    if (pages_->count() != initialCount + 1 || tabManager_->findInternal(this, QStringLiteral("audio-effects")) != firstId) {
+      fail("audio effects singleton violated"); return;
+    }
+    webAudioEffects_->setEnabled(true);
+    webAudioEffects_->setPreampDb(6.0);
+    webAudioEffects_->setEqualizerBand(0, -12.0);
+    webAudioEffects_->setEqualizerBand(17, 6.5);
+    webAudioEffects_->setEqualizerBand(31, 12.0);
+    webAudioEffects_->setBassDb(4.0);
+    webAudioEffects_->setMidDb(-2.5);
+    webAudioEffects_->setTrebleDb(3.0);
+    webAudioEffects_->setStereoExpanderPercent(145.0);
+    webAudioEffects_->setBalance(10.0);
+    if (webAudioEffects_->reverbEnabled() && !clickReverbToggle()) {
+      fail("Reverb module toggle did not disable default state"); return;
+    }
+    if (!clickReverbToggle() || !webAudioEffects_->reverbEnabled()) {
+      fail("Reverb module toggle did not enable controller state"); return;
+    }
+    webAudioEffects_->setReverbRoomSizeMs(1850.0);
+    webAudioEffects_->setReverbDamping(0.35);
+    webAudioEffects_->setReverbWetDryDb(-8.0);
+    webAudioEffects_->setReverbHfRatio(0.82);
+    webAudioEffects_->setReverbInputGainDb(1.5);
+    webAudioEffects_->setCompressorEnabled(true);
+    webAudioEffects_->setCompressorThresholdDb(-30.0);
+    webAudioEffects_->setCompressorRatio(8.0);
+    webAudioEffects_->setCompressorAttackMs(5.0);
+    webAudioEffects_->setCompressorReleaseMs(180.0);
+    webAudioEffects_->setCompressorMakeupDb(3.0);
+    webAudioEffects_->setCompressorKneeDb(4.0);
+    webAudioEffects_->setLimiterEnabled(true);
+    webAudioEffects_->setLimiterCeilingDb(-6.0);
+    webAudioEffects_->setLimiterReleaseMs(120.0);
+    webAudioEffects_->setLimiterLookaheadMs(8.0);
+    webAudioEffects_->setLimiterGainDb(12.0);
+    webAudioEffects_->setBassEnhancerEnabled(true);
+    webAudioEffects_->setBassEnhancerFrequencyHz(80.0);
+    webAudioEffects_->setBassEnhancerGainDb(12.0);
+    webAudioEffects_->setBassEnhancerHarmonicsPercent(80.0);
+    webAudioEffects_->setBassEnhancerWidth(2.2);
+    webAudioEffects_->setBassEnhancerMixPercent(70.0);
+    // Keep Limiter visible for its Stage-5 reduction meter assertion; Bass
+    // Enhancer DSP is browser-scoped and must run regardless of the UI page.
+    effectsNav->setCurrentRow(4);
+    web->load(testUrl);
+    QTimer::singleShot(qEnvironmentVariableIsSet("ARDALI_AUDIO_EFFECTS_RUNTIME_WAIT_MS") ? attachWaitMs : 2600, this, [this, web, expectVideo, originalEnabled, originalPreamp, originalEqBands, originalBass, originalMid, originalTreble, originalStereoExpander, originalBalance, originalAcousticSpace, originalReverbPreset, reverbToggle, compressorMeter, limiterMeter, clickReverbToggle, clickMasterToggle, fail] {
+      if (!web || !web->page()) { fail("test web tab disappeared"); return; }
+      web->page()->runJavaScript(QStringLiteral(R"JS(
+        (function () {
+          const mediaElements = Array.from(document.querySelectorAll('audio,video'));
+          const media = mediaElements[0] || null;
+          const root = window.__ARDALI_WEB_DALI_OUTPUT__;
+          const graph = media && root && root.graphs ? root.graphs.get(media) : null;
+          const video = mediaElements.find(function(element) { return element.tagName === 'VIDEO'; }) || null;
+          const videoGraph = video && root && root.graphs ? root.graphs.get(video) : null;
+          if (graph && graph.compressorNode) graph._runtimeCompressorNode = graph.compressorNode;
+          if (graph && graph.userLimiterNode) {
+            graph._runtimeUserLimiterNode = graph.userLimiterNode;
+            graph._runtimeUserLimiterContext = graph.ctx;
+          }
+          if (graph && graph.bassEnhancerFilter) {
+            graph._runtimeBassEnhancerFilter = graph.bassEnhancerFilter;
+            graph._runtimeBassEnhancerSaturator = graph.bassEnhancerSaturator;
+            graph._runtimeBassEnhancerContext = graph.ctx;
+          }
+          let limiterOutputPeakDb = -96;
+          if (graph && graph.userLimiterMeterAnalyser) {
+            const samples = new Float32Array(graph.userLimiterMeterAnalyser.fftSize);
+            graph.userLimiterMeterAnalyser.getFloatTimeDomainData(samples);
+            let peak = 0;
+            for (const sample of samples) peak = Math.max(peak, Math.abs(sample));
+            limiterOutputPeakDb = 20 * Math.log10(Math.max(0.000001, peak));
+          }
+          return {
+            hasMedia: !!media,
+            hasVideo: !!video,
+            videoGraphAttached: !!(videoGraph && videoGraph.graph && !videoGraph.bypass),
+            currentTime: media ? Number(media.currentTime || 0) : 0,
+            graphAttached: !!(graph && graph.graph && !graph.bypass),
+            gain: graph && graph.runtimeGain ? Number(graph.runtimeGain.gain.value) : 0,
+            sampleRate: graph && graph.ctx ? Number(graph.ctx.sampleRate || 0) : 0,
+            contextState: graph && graph.ctx ? String(graph.ctx.state || '') : '',
+            eqBandCount: graph && graph.eqBandNodes ? graph.eqBandNodes.length : 0,
+            lowGain: graph && graph.eqBandNodes ? Number(graph.eqBandNodes[0].gain.value) : 0,
+            midGain: graph && graph.eqBandNodes ? Number(graph.eqBandNodes[17].gain.value) : 0,
+            highGain: graph && graph.eqBandNodes ? Number(graph.eqBandNodes[31].gain.value) : 0,
+            bassGain: graph && graph.bass ? Number(graph.bass.gain.value) : 0,
+            toneTrimGain: graph && graph.toneTrim ? Number(graph.toneTrim.gain.value) : 0,
+            stereoWidth: graph && graph.stereoSideWidth ? Number(graph.stereoSideWidth.gain.value) : 0,
+            balanceLeft: graph && graph.balanceGainL ? Number(graph.balanceGainL.gain.value) : 0,
+            balanceRight: graph && graph.balanceGainR ? Number(graph.balanceGainR.gain.value) : 0,
+            reverbRoute: !!(graph && graph.moduleNodes && graph.moduleNodes.reverb && graph.reverbDelay && graph.reverbWetGain),
+            reverbEnabled: !!(graph && graph.reverbEnabled),
+            reverbBypassed: !!(graph && graph.reverbBypassed),
+            reverbInput: graph && graph.reverbInputGain ? Number(graph.reverbInputGain.gain.value) : 0,
+            reverbDry: graph && graph.reverbDryGain ? Number(graph.reverbDryGain.gain.value) : 0,
+            reverbWet: graph && graph.reverbWetGain ? Number(graph.reverbWetGain.gain.value) : 0,
+            reverbFeedback: graph && graph.reverbFeedbackGain ? Number(graph.reverbFeedbackGain.gain.value) : 0,
+            reverbDelay: graph && graph.reverbDelay ? Number(graph.reverbDelay.delayTime.value) : 0,
+            reverbLowpass: graph && graph.reverbLowpass ? Number(graph.reverbLowpass.frequency.value) : 0,
+            compressorRoute: !!(graph && graph.moduleNodes && graph.moduleNodes.compressor
+              && graph.compressorNode instanceof DynamicsCompressorNode && graph.compressorMakeupGain instanceof GainNode),
+            compressorEnabled: !!(graph && graph.compressorEnabled),
+            compressorBypassed: !!(graph && graph.compressorBypassed),
+            compressorThreshold: graph && graph.compressorNode ? Number(graph.compressorNode.threshold.value) : 0,
+            compressorRatio: graph && graph.compressorNode ? Number(graph.compressorNode.ratio.value) : 0,
+            compressorAttack: graph && graph.compressorNode ? Number(graph.compressorNode.attack.value) : 0,
+            compressorRelease: graph && graph.compressorNode ? Number(graph.compressorNode.release.value) : 0,
+            compressorKnee: graph && graph.compressorNode ? Number(graph.compressorNode.knee.value) : 0,
+            compressorMakeup: graph && graph.compressorMakeupGain ? Number(graph.compressorMakeupGain.gain.value) : 0,
+            compressorReduction: graph && graph.compressorNode ? Number(graph.compressorNode.reduction) : 0,
+            videoCompressorRoute: !!(videoGraph && videoGraph.compressorNode instanceof DynamicsCompressorNode
+              && videoGraph.compressorMakeupGain instanceof GainNode),
+            limiterRoute: !!(graph && graph.moduleNodes && graph.moduleNodes.limiter
+              && graph.userLimiterNode instanceof DynamicsCompressorNode && graph.userLimiterInputGain instanceof GainNode),
+            limiterDistinctFromSafety: !!(graph && graph.safetyLimiter instanceof DynamicsCompressorNode
+              && graph.userLimiterNode instanceof DynamicsCompressorNode && graph.safetyLimiter !== graph.userLimiterNode),
+            limiterEnabled: !!(graph && graph.userLimiterEnabled),
+            limiterBypassed: !!(graph && graph.userLimiterBypassed),
+            limiterCeiling: graph && graph.userLimiterNode ? Number(graph.userLimiterNode.threshold.value) : 0,
+            limiterRatio: graph && graph.userLimiterNode ? Number(graph.userLimiterNode.ratio.value) : 0,
+            limiterAttack: graph && graph.userLimiterNode ? Number(graph.userLimiterNode.attack.value) : 0,
+            limiterRelease: graph && graph.userLimiterNode ? Number(graph.userLimiterNode.release.value) : 0,
+            limiterGain: graph && graph.userLimiterInputGain ? Number(graph.userLimiterInputGain.gain.value) : 0,
+            limiterReduction: graph && graph.userLimiterNode ? Number(graph.userLimiterNode.reduction) : 0,
+            limiterOutputPeakDb: limiterOutputPeakDb,
+            videoLimiterRoute: !!(videoGraph && videoGraph.userLimiterNode instanceof DynamicsCompressorNode
+              && videoGraph.userLimiterInputGain instanceof GainNode),
+            bassEnhancerRoute: !!(graph && graph.moduleNodes && graph.moduleNodes.bassEnhancer
+              && graph.bassEnhancerFilter instanceof BiquadFilterNode
+              && graph.bassEnhancerSaturator instanceof WaveShaperNode),
+            bassEnhancerEnabled: !!(graph && graph.bassEnhancerEnabled),
+            bassEnhancerBypassed: !!(graph && graph.bassEnhancerBypassed),
+            bassEnhancerFrequency: graph && graph.bassEnhancerFilter ? Number(graph.bassEnhancerFilter.frequency.value) : 0,
+            bassEnhancerShelfGain: graph && graph.bassEnhancerFilter ? Number(graph.bassEnhancerFilter.gain.value) : 0,
+            bassEnhancerWidth: graph && graph.bassEnhancerFilter ? Number(graph.bassEnhancerFilter.Q.value) : 0,
+            bassEnhancerSubGain: graph && graph.bassEnhancerSubPeak ? Number(graph.bassEnhancerSubPeak.gain.value) : 0,
+            bassEnhancerHarmonicDrive: graph && graph.bassEnhancerHarmonicsDrive ? Number(graph.bassEnhancerHarmonicsDrive.gain.value) : 0,
+            bassEnhancerCurveAmount: graph && graph.bassEnhancerState ? Number(graph.bassEnhancerState.curveAmount) : -1,
+            bassEnhancerDry: graph && graph.bassEnhancerDryGain ? Number(graph.bassEnhancerDryGain.gain.value) : 0,
+            bassEnhancerWet: graph && graph.bassEnhancerWetGain ? Number(graph.bassEnhancerWetGain.gain.value) : 0,
+            videoBassEnhancerRoute: !!(videoGraph && videoGraph.bassEnhancerFilter instanceof BiquadFilterNode
+              && videoGraph.bassEnhancerSaturator instanceof WaveShaperNode),
+            autoGainRoute: !!(graph && graph.moduleNodes && graph.moduleNodes.autoGain
+              && graph.autoGainAnalyser instanceof AnalyserNode && graph.autoGainNode instanceof GainNode),
+            videoAutoGainRoute: !!(videoGraph && videoGraph.autoGainAnalyser instanceof AnalyserNode
+              && videoGraph.autoGainNode instanceof GainNode),
+            moduleRouteIds: graph && graph.moduleNodes ? Object.keys(graph.moduleNodes).sort() : []
+          };
+        })()
+      )JS"), [this, web, expectVideo, originalEnabled, originalPreamp, originalEqBands, originalBass, originalMid, originalTreble, originalStereoExpander, originalBalance, originalAcousticSpace, originalReverbPreset, reverbToggle, compressorMeter, limiterMeter, clickReverbToggle, clickMasterToggle, fail](const QVariant &value) {
+        const QVariantMap result = value.toMap();
+        const QVariantList moduleRouteIds = result.value(QStringLiteral("moduleRouteIds")).toList();
+        if (!result.value(QStringLiteral("hasMedia")).toBool() || !result.value(QStringLiteral("graphAttached")).toBool()
+            || result.value(QStringLiteral("sampleRate")).toInt() <= 0 || result.value(QStringLiteral("contextState")).toString() != QStringLiteral("running")
+            || result.value(QStringLiteral("gain")).toDouble() < 1.8
+            || result.value(QStringLiteral("eqBandCount")).toInt() != 32 || result.value(QStringLiteral("lowGain")).toDouble() > -11.5
+            || result.value(QStringLiteral("midGain")).toDouble() < 6.0 || result.value(QStringLiteral("highGain")).toDouble() < 11.5
+            || result.value(QStringLiteral("bassGain")).toDouble() < 3.5 || result.value(QStringLiteral("toneTrimGain")).toDouble() > 0.90
+            || result.value(QStringLiteral("toneTrimGain")).toDouble() < 0.80 || result.value(QStringLiteral("stereoWidth")).toDouble() < 1.4 || result.value(QStringLiteral("balanceLeft")).toDouble() > 0.95
+            || result.value(QStringLiteral("balanceRight")).toDouble() < 0.99
+            || !result.value(QStringLiteral("reverbRoute")).toBool() || !result.value(QStringLiteral("reverbEnabled")).toBool()
+            || result.value(QStringLiteral("reverbBypassed")).toBool() || result.value(QStringLiteral("reverbInput")).toDouble() < 1.15
+            || result.value(QStringLiteral("reverbDry")).toDouble() > 0.90 || result.value(QStringLiteral("reverbWet")).toDouble() < 0.35
+            || result.value(QStringLiteral("reverbFeedback")).toDouble() < 0.52 || result.value(QStringLiteral("reverbDelay")).toDouble() < 0.16
+            || result.value(QStringLiteral("reverbLowpass")).toDouble() < 10500
+            || !result.value(QStringLiteral("compressorRoute")).toBool() || !result.value(QStringLiteral("compressorEnabled")).toBool()
+            || result.value(QStringLiteral("compressorBypassed")).toBool()
+            || qAbs(result.value(QStringLiteral("compressorThreshold")).toDouble() + 30.0) > 0.2
+            || qAbs(result.value(QStringLiteral("compressorRatio")).toDouble() - 8.0) > 0.2
+            || qAbs(result.value(QStringLiteral("compressorAttack")).toDouble() - 0.005) > 0.003
+            || qAbs(result.value(QStringLiteral("compressorRelease")).toDouble() - 0.180) > 0.01
+            || qAbs(result.value(QStringLiteral("compressorKnee")).toDouble() - 4.0) > 0.2
+            || qAbs(result.value(QStringLiteral("compressorMakeup")).toDouble() - std::pow(10.0, 3.0 / 20.0)) > 0.03
+            || result.value(QStringLiteral("compressorReduction")).toDouble() > -0.05
+            || !result.value(QStringLiteral("limiterRoute")).toBool()
+            || !result.value(QStringLiteral("limiterDistinctFromSafety")).toBool()
+            || !result.value(QStringLiteral("limiterEnabled")).toBool() || result.value(QStringLiteral("limiterBypassed")).toBool()
+            || qAbs(result.value(QStringLiteral("limiterCeiling")).toDouble() + 6.0) > 0.2
+            || qAbs(result.value(QStringLiteral("limiterRatio")).toDouble() - 20.0) > 0.2
+            || qAbs(result.value(QStringLiteral("limiterAttack")).toDouble() - 0.008) > 0.003
+            || qAbs(result.value(QStringLiteral("limiterRelease")).toDouble() - 0.120) > 0.01
+            || qAbs(result.value(QStringLiteral("limiterGain")).toDouble() - std::pow(10.0, 12.0 / 20.0)) > 0.06
+            || result.value(QStringLiteral("limiterReduction")).toDouble() > -0.05
+            // DynamicsCompressorNode can overshoot its threshold by a few
+            // tenths on a freshly started low-frequency cycle. Reject actual
+            // gross clipping while keeping this real-time probe deterministic.
+            || result.value(QStringLiteral("limiterOutputPeakDb")).toDouble() > 0.5
+            || !limiterMeter || limiterMeter->value() <= 0
+            || !result.value(QStringLiteral("bassEnhancerRoute")).toBool()
+            || !result.value(QStringLiteral("bassEnhancerEnabled")).toBool() || result.value(QStringLiteral("bassEnhancerBypassed")).toBool()
+            || qAbs(result.value(QStringLiteral("bassEnhancerFrequency")).toDouble() - 80.0) > 0.5
+            || result.value(QStringLiteral("bassEnhancerShelfGain")).toDouble() < 12.0
+            || qAbs(result.value(QStringLiteral("bassEnhancerWidth")).toDouble() - 2.2) > 0.05
+            || result.value(QStringLiteral("bassEnhancerSubGain")).toDouble() < 9.5
+            || result.value(QStringLiteral("bassEnhancerHarmonicDrive")).toDouble() < 1.01
+            || qAbs(result.value(QStringLiteral("bassEnhancerCurveAmount")).toDouble() - 80.0) > 0.1
+            || result.value(QStringLiteral("bassEnhancerDry")).toDouble() > 0.94
+            || result.value(QStringLiteral("bassEnhancerWet")).toDouble() <= 0.005
+            || !result.value(QStringLiteral("autoGainRoute")).toBool()
+            || moduleRouteIds.size() != 5 || moduleRouteIds[0].toString() != QStringLiteral("autoGain")
+            || moduleRouteIds[1].toString() != QStringLiteral("bassEnhancer")
+            || moduleRouteIds[2].toString() != QStringLiteral("compressor")
+            || moduleRouteIds[3].toString() != QStringLiteral("limiter")
+            || moduleRouteIds[4].toString() != QStringLiteral("reverb")
+            || (expectVideo && (!result.value(QStringLiteral("hasVideo")).toBool()
+                || !result.value(QStringLiteral("videoGraphAttached")).toBool()
+                || !result.value(QStringLiteral("videoCompressorRoute")).toBool()
+                || !result.value(QStringLiteral("videoLimiterRoute")).toBool()
+                || !result.value(QStringLiteral("videoBassEnhancerRoute")).toBool()
+                || !result.value(QStringLiteral("videoAutoGainRoute")).toBool()))) {
+          std::fprintf(stderr, "audio effects initial graph: %s\n",
+                       QJsonDocument::fromVariant(result).toJson(QJsonDocument::Compact).constData());
+          fail("DALI Web Audio graph did not attach to HTML media"); return;
+        }
+        const auto continueWithGlobalBypassTest = [this, web, originalEnabled, originalPreamp, originalEqBands, originalBass, originalMid, originalTreble, originalStereoExpander, originalBalance, originalAcousticSpace, clickMasterToggle, fail] {
+        if (!clickMasterToggle() || webAudioEffects_->enabled()) {
+          fail("global DSP toggle did not disable controller"); return;
+        }
+        QTimer::singleShot(260, this, [this, web, originalEnabled, originalPreamp, originalEqBands, originalBass, originalMid, originalTreble, originalStereoExpander, originalBalance, originalAcousticSpace, clickMasterToggle, fail] {
+          web->page()->runJavaScript(QStringLiteral(R"JS(
+            (function () {
+              const media = document.querySelector('audio,video');
+              const root = window.__ARDALI_WEB_DALI_OUTPUT__;
+              const graph = media && root && root.graphs ? root.graphs.get(media) : null;
+              return {
+                bypass: !!(graph && graph.bypass),
+                reverbEnabled: !!(graph && graph.reverbEnabled),
+                reverbWet: graph && graph.reverbWetGain ? Number(graph.reverbWetGain.gain.value) : 0,
+                reverbConfigEnabled: !!(root && root.currentConfig && root.currentConfig.reverb && root.currentConfig.reverb.enabled),
+                compressorEnabled: !!(graph && graph.compressorEnabled),
+                compressorConfigEnabled: !!(root && root.currentConfig && root.currentConfig.compressor && root.currentConfig.compressor.enabled),
+                compressorRatio: graph && graph.compressorNode ? Number(graph.compressorNode.ratio.value) : 0,
+                compressorMakeup: graph && graph.compressorMakeupGain ? Number(graph.compressorMakeupGain.gain.value) : 0,
+                limiterEnabled: !!(graph && graph.userLimiterEnabled),
+                limiterConfigEnabled: !!(root && root.currentConfig && root.currentConfig.limiter && root.currentConfig.limiter.enabled),
+                limiterCeiling: graph && graph.userLimiterNode ? Number(graph.userLimiterNode.threshold.value) : 0,
+                limiterGain: graph && graph.userLimiterInputGain ? Number(graph.userLimiterInputGain.gain.value) : 0,
+                bassEnhancerEnabled: !!(graph && graph.bassEnhancerEnabled),
+                bassEnhancerConfigEnabled: !!(root && root.currentConfig && root.currentConfig.bassEnhancer && root.currentConfig.bassEnhancer.enabled),
+                bassEnhancerFrequency: graph && graph.bassEnhancerFilter ? Number(graph.bassEnhancerFilter.frequency.value) : 0,
+                bassEnhancerCurve: graph && graph.bassEnhancerState ? Number(graph.bassEnhancerState.curveAmount) : -1
+              };
+            })()
+          )JS"), [this, web, originalEnabled, originalPreamp, originalEqBands, originalBass, originalMid, originalTreble, originalStereoExpander, originalBalance, originalAcousticSpace, clickMasterToggle, fail](const QVariant &value) {
+            if (!value.toMap().value(QStringLiteral("bypass")).toBool() || !value.toMap().value(QStringLiteral("reverbEnabled")).toBool()
+                || !value.toMap().value(QStringLiteral("reverbConfigEnabled")).toBool() || value.toMap().value(QStringLiteral("reverbWet")).toDouble() < 0.35
+                || !value.toMap().value(QStringLiteral("compressorEnabled")).toBool()
+                || !value.toMap().value(QStringLiteral("compressorConfigEnabled")).toBool()
+                || qAbs(value.toMap().value(QStringLiteral("compressorRatio")).toDouble() - 8.0) > 0.2
+                || qAbs(value.toMap().value(QStringLiteral("compressorMakeup")).toDouble() - std::pow(10.0, 3.0 / 20.0)) > 0.03
+                || !value.toMap().value(QStringLiteral("limiterEnabled")).toBool()
+                || !value.toMap().value(QStringLiteral("limiterConfigEnabled")).toBool()
+                || qAbs(value.toMap().value(QStringLiteral("limiterCeiling")).toDouble() + 6.0) > 0.2
+                || qAbs(value.toMap().value(QStringLiteral("limiterGain")).toDouble() - std::pow(10.0, 12.0 / 20.0)) > 0.06
+                || !value.toMap().value(QStringLiteral("bassEnhancerEnabled")).toBool()
+                || !value.toMap().value(QStringLiteral("bassEnhancerConfigEnabled")).toBool()
+                || qAbs(value.toMap().value(QStringLiteral("bassEnhancerFrequency")).toDouble() - 95.0) > 0.5
+                || qAbs(value.toMap().value(QStringLiteral("bassEnhancerCurve")).toDouble() - 65.0) > 0.1
+                || !webAudioEffects_->reverbEnabled() || webAudioEffects_->preampDb() != 6.0
+                || !webAudioEffects_->compressorEnabled() || webAudioEffects_->compressorThresholdDb() != -30.0
+                || !webAudioEffects_->limiterEnabled() || webAudioEffects_->limiterCeilingDb() != -6.0
+                || !webAudioEffects_->bassEnhancerEnabled() || webAudioEffects_->bassEnhancerFrequencyHz() != 95.0
+                || webAudioEffects_->bassEnhancerGainDb() != 9.0 || webAudioEffects_->bassEnhancerHarmonicsPercent() != 65.0
+                || webAudioEffects_->bassEnhancerWidth() != 2.5 || webAudioEffects_->bassEnhancerMixPercent() != 35.0
+                || webAudioEffects_->equalizerBand(17) != 6.5 || webAudioEffects_->balance() != 10.0) {
+              fail("global bypass did not retain output state"); return;
+            }
+            // Streaming sites regularly replace their <audio> node while a
+            // route is bypassed.  Reproduce that exact lifecycle without a
+            // document reload: re-enable must attach the replacement too.
+            web->page()->runJavaScript(QStringLiteral(R"JS(
+              (function () {
+                const oldAudio = document.querySelector('audio');
+                if (!oldAudio || !oldAudio.parentNode) return false;
+                const replacement = oldAudio.cloneNode(true);
+                replacement.autoplay = true;
+                oldAudio.replaceWith(replacement);
+                replacement.play().catch(function () {});
+                return document.querySelector('audio') === replacement;
+              })()
+            )JS"));
+            QTimer::singleShot(180, this, [this, web, originalEnabled, originalPreamp, originalEqBands, originalBass, originalMid, originalTreble, originalStereoExpander, originalBalance, originalAcousticSpace, clickMasterToggle, fail] {
+              if (!clickMasterToggle() || !webAudioEffects_->enabled()) {
+                fail("global DSP toggle did not re-enable controller"); return;
+              }
+              QTimer::singleShot(420, this, [this, web, originalEnabled, originalPreamp, originalEqBands, originalBass, originalMid, originalTreble, originalStereoExpander, originalBalance, originalAcousticSpace, fail] {
+              if (!web || !web->page()) { fail("web tab disappeared while re-enabling DSP"); return; }
+              web->page()->runJavaScript(QStringLiteral(R"JS(
+                (function () {
+                  const media = document.querySelector('audio,video');
+                  const root = window.__ARDALI_WEB_DALI_OUTPUT__;
+                  const graph = media && root && root.graphs ? root.graphs.get(media) : null;
+                  return {
+                    attached: !!(graph && graph.graph && !graph.bypass),
+                    wet: graph && graph.wetGain ? Number(graph.wetGain.gain.value) : 0,
+                    dry: graph && graph.dryGain ? Number(graph.dryGain.gain.value) : 1,
+                    contextState: graph && graph.ctx ? String(graph.ctx.state || '') : '',
+                    bass: graph && graph.bass ? Number(graph.bass.gain.value) : 0,
+                    eqMid: graph && graph.eqBandNodes ? Number(graph.eqBandNodes[17].gain.value) : 0,
+                    restoreSerial: graph ? Number(graph.restoreSerial || 0) : 0,
+                    reverbEnabled: !!(graph && graph.reverbEnabled),
+                    reverbBypassed: !!(graph && graph.reverbBypassed),
+                    reverbWet: graph && graph.reverbWetGain ? Number(graph.reverbWetGain.gain.value) : 0,
+                    reverbFeedback: graph && graph.reverbFeedbackGain ? Number(graph.reverbFeedbackGain.gain.value) : 0,
+                    compressorEnabled: !!(graph && graph.compressorEnabled),
+                    compressorBypassed: !!(graph && graph.compressorBypassed),
+                    compressorThreshold: graph && graph.compressorNode ? Number(graph.compressorNode.threshold.value) : 0,
+                    compressorRatio: graph && graph.compressorNode ? Number(graph.compressorNode.ratio.value) : 0,
+                    compressorMakeup: graph && graph.compressorMakeupGain ? Number(graph.compressorMakeupGain.gain.value) : 0,
+                    limiterEnabled: !!(graph && graph.userLimiterEnabled),
+                    limiterBypassed: !!(graph && graph.userLimiterBypassed),
+                    limiterCeiling: graph && graph.userLimiterNode ? Number(graph.userLimiterNode.threshold.value) : 0,
+                    limiterGain: graph && graph.userLimiterInputGain ? Number(graph.userLimiterInputGain.gain.value) : 0,
+                    bassEnhancerEnabled: !!(graph && graph.bassEnhancerEnabled),
+                    bassEnhancerBypassed: !!(graph && graph.bassEnhancerBypassed),
+                    bassEnhancerFrequency: graph && graph.bassEnhancerFilter ? Number(graph.bassEnhancerFilter.frequency.value) : 0,
+                    bassEnhancerWidth: graph && graph.bassEnhancerFilter ? Number(graph.bassEnhancerFilter.Q.value) : 0,
+                    bassEnhancerCurve: graph && graph.bassEnhancerState ? Number(graph.bassEnhancerState.curveAmount) : -1
+                  };
+                })()
+              )JS"), [this, web, originalEnabled, originalPreamp, originalEqBands, originalBass, originalMid, originalTreble, originalStereoExpander, originalBalance, originalAcousticSpace, fail](const QVariant &reEnabled) {
+                const QVariantMap restored = reEnabled.toMap();
+                if (!restored.value(QStringLiteral("attached")).toBool() || restored.value(QStringLiteral("wet")).toDouble() < 0.98
+                    || restored.value(QStringLiteral("dry")).toDouble() > 0.02 || restored.value(QStringLiteral("bass")).toDouble() < 3.5
+                    || restored.value(QStringLiteral("contextState")).toString() != QStringLiteral("running")
+                    || restored.value(QStringLiteral("eqMid")).toDouble() < 6.0 || restored.value(QStringLiteral("restoreSerial")).toInt() < 1
+                    || !restored.value(QStringLiteral("reverbEnabled")).toBool() || restored.value(QStringLiteral("reverbBypassed")).toBool()
+                    || restored.value(QStringLiteral("reverbWet")).toDouble() < 0.35 || restored.value(QStringLiteral("reverbFeedback")).toDouble() < 0.52
+                    || !restored.value(QStringLiteral("compressorEnabled")).toBool() || restored.value(QStringLiteral("compressorBypassed")).toBool()
+                    || qAbs(restored.value(QStringLiteral("compressorThreshold")).toDouble() + 30.0) > 0.2
+                    || qAbs(restored.value(QStringLiteral("compressorRatio")).toDouble() - 8.0) > 0.2
+                    || qAbs(restored.value(QStringLiteral("compressorMakeup")).toDouble() - std::pow(10.0, 3.0 / 20.0)) > 0.03
+                    || !restored.value(QStringLiteral("limiterEnabled")).toBool() || restored.value(QStringLiteral("limiterBypassed")).toBool()
+                    || qAbs(restored.value(QStringLiteral("limiterCeiling")).toDouble() + 6.0) > 0.2
+                    || qAbs(restored.value(QStringLiteral("limiterGain")).toDouble() - std::pow(10.0, 12.0 / 20.0)) > 0.06
+                    || !restored.value(QStringLiteral("bassEnhancerEnabled")).toBool()
+                    || restored.value(QStringLiteral("bassEnhancerBypassed")).toBool()
+                    || qAbs(restored.value(QStringLiteral("bassEnhancerFrequency")).toDouble() - 95.0) > 0.5
+                    || qAbs(restored.value(QStringLiteral("bassEnhancerWidth")).toDouble() - 2.5) > 0.05
+                    || qAbs(restored.value(QStringLiteral("bassEnhancerCurve")).toDouble() - 65.0) > 0.1
+                    || !webAudioEffects_->reverbEnabled() || !webAudioEffects_->compressorEnabled()
+                    || !webAudioEffects_->limiterEnabled() || !webAudioEffects_->bassEnhancerEnabled()) {
+                  fail("global DSP bypass did not restore active settings after media replacement"); return;
+                }
+                webAudioEffects_->resetEqualizer();
+                webAudioEffects_->resetOutput();
+                if (webAudioEffects_->preampDb() != 0.0 || !webAudioEffects_->enabled()
+                    || QSettings().value(QStringLiteral("audioEffects/web/output/preampDb")).toDouble() != 0.0
+                    || webAudioEffects_->equalizerBand(17) != 0.0 || webAudioEffects_->bassDb() != 0.0 || webAudioEffects_->balance() != 0.0) {
+                  fail("output reset changed global state or persistence"); return;
+                }
+                const auto effectsId = tabManager_->findInternal(this, QStringLiteral("audio-effects"));
+                const TabManager::TabRecord *effectsRecord = tabManager_->record(effectsId);
+                const int effectsIndex = effectsRecord && effectsRecord->content ? pages_->indexOf(effectsRecord->content) : -1;
+                if (effectsIndex < 0) { fail("audio effects tab vanished before close lifecycle check"); return; }
+                closeTab(effectsIndex);
+                if (!tabManager_->findInternal(this, QStringLiteral("audio-effects")).isNull() || !webAudioEffects_->enabled()
+                    || !webAudioEffects_->reverbEnabled() || !webAudioEffects_->compressorEnabled()
+                    || !webAudioEffects_->limiterEnabled() || !webAudioEffects_->bassEnhancerEnabled()) {
+                  fail("closing audio effects UI changed browser-level DSP state"); return;
+                }
+                QTimer::singleShot(220, this, [this, web, originalEnabled, originalPreamp, originalEqBands, originalBass, originalMid, originalTreble, originalStereoExpander, originalBalance, originalAcousticSpace, fail] {
+                  if (!web || !web->page()) { fail("web tab disappeared after audio effects UI close"); return; }
+                  web->page()->runJavaScript(QStringLiteral(R"JS(
+                    (function () {
+                      const media = document.querySelector('audio,video');
+                      const root = window.__ARDALI_WEB_DALI_OUTPUT__;
+                      const graph = media && root && root.graphs ? root.graphs.get(media) : null;
+                      return {
+                        attached: !!(graph && graph.graph && !graph.bypass),
+                        reverbEnabled: !!(graph && graph.reverbEnabled),
+                        reverbBypassed: !!(graph && graph.reverbBypassed),
+                        reverbWet: graph && graph.reverbWetGain ? Number(graph.reverbWetGain.gain.value) : 0,
+                        compressorEnabled: !!(graph && graph.compressorEnabled),
+                        compressorBypassed: !!(graph && graph.compressorBypassed),
+                        compressorThreshold: graph && graph.compressorNode ? Number(graph.compressorNode.threshold.value) : 0,
+                        limiterEnabled: !!(graph && graph.userLimiterEnabled),
+                        limiterBypassed: !!(graph && graph.userLimiterBypassed),
+                        limiterCeiling: graph && graph.userLimiterNode ? Number(graph.userLimiterNode.threshold.value) : 0,
+                        bassEnhancerEnabled: !!(graph && graph.bassEnhancerEnabled),
+                        bassEnhancerBypassed: !!(graph && graph.bassEnhancerBypassed),
+                        bassEnhancerFrequency: graph && graph.bassEnhancerFilter ? Number(graph.bassEnhancerFilter.frequency.value) : 0,
+                        bassEnhancerCurve: graph && graph.bassEnhancerState ? Number(graph.bassEnhancerState.curveAmount) : -1
+                      };
+                    })()
+                  )JS"), [this, originalEnabled, originalPreamp, originalEqBands, originalBass, originalMid, originalTreble, originalStereoExpander, originalBalance, originalAcousticSpace, fail](const QVariant &stillActive) {
+                    if (!stillActive.toMap().value(QStringLiteral("attached")).toBool()
+                        || !stillActive.toMap().value(QStringLiteral("reverbEnabled")).toBool()
+                        || stillActive.toMap().value(QStringLiteral("reverbBypassed")).toBool()
+                        || stillActive.toMap().value(QStringLiteral("reverbWet")).toDouble() < 0.35
+                        || !stillActive.toMap().value(QStringLiteral("compressorEnabled")).toBool()
+                        || stillActive.toMap().value(QStringLiteral("compressorBypassed")).toBool()
+                        || qAbs(stillActive.toMap().value(QStringLiteral("compressorThreshold")).toDouble() + 30.0) > 0.2
+                        || !stillActive.toMap().value(QStringLiteral("limiterEnabled")).toBool()
+                        || stillActive.toMap().value(QStringLiteral("limiterBypassed")).toBool()
+                        || qAbs(stillActive.toMap().value(QStringLiteral("limiterCeiling")).toDouble() + 6.0) > 0.2
+                        || !stillActive.toMap().value(QStringLiteral("bassEnhancerEnabled")).toBool()
+                        || stillActive.toMap().value(QStringLiteral("bassEnhancerBypassed")).toBool()
+                        || qAbs(stillActive.toMap().value(QStringLiteral("bassEnhancerFrequency")).toDouble() - 95.0) > 0.5
+                        || qAbs(stillActive.toMap().value(QStringLiteral("bassEnhancerCurve")).toDouble() - 65.0) > 0.1) {
+                      fail("DALI graph stopped after audio effects UI close"); return;
+                    }
+                    for (int index = 0; index < originalEqBands.size(); ++index) webAudioEffects_->setEqualizerBand(index, originalEqBands[index]);
+                    webAudioEffects_->setBassDb(originalBass);
+                    webAudioEffects_->setMidDb(originalMid);
+                    webAudioEffects_->setTrebleDb(originalTreble);
+                    webAudioEffects_->setStereoExpanderPercent(originalStereoExpander);
+                    webAudioEffects_->setBalance(originalBalance);
+                    webAudioEffects_->setAcousticSpace(originalAcousticSpace);
+                    webAudioEffects_->setBassDb(originalBass);
+                    webAudioEffects_->setMidDb(originalMid);
+                    webAudioEffects_->setTrebleDb(originalTreble);
+                    webAudioEffects_->setStereoExpanderPercent(originalStereoExpander);
+                    webAudioEffects_->setPreampDb(originalPreamp);
+                    webAudioEffects_->setEnabled(originalEnabled);
+                    qInfo("audio effects DALI web runtime: ok");
+                    qApp->exit(0);
+                  });
+                });
+              });
+            });
+          });
+        });
+      });
+        };
+        // Reverb's module switch must bypass only its own branch.  Keep this
+        // separate from the master bypass test below: here the full DSP graph
+        // remains live while dry/wet/feedback are switched at the module.
+        if (!clickReverbToggle() || webAudioEffects_->reverbEnabled()) {
+          fail("Reverb module toggle did not disable controller state"); return;
+        }
+        QTimer::singleShot(220, this, [this, web, reverbToggle, clickReverbToggle, continueWithGlobalBypassTest, fail] {
+          if (!web || !web->page()) { fail("web tab disappeared while bypassing Reverb"); return; }
+          web->page()->runJavaScript(QStringLiteral(R"JS(
+            (function () {
+              const media = document.querySelector('audio,video');
+              const root = window.__ARDALI_WEB_DALI_OUTPUT__;
+              const graph = media && root && root.graphs ? root.graphs.get(media) : null;
+              return {
+                graphAttached: !!(graph && graph.graph && !graph.bypass),
+                enabled: !!(graph && graph.reverbEnabled),
+                bypassed: !!(graph && graph.reverbBypassed),
+                input: graph && graph.reverbInputGain ? Number(graph.reverbInputGain.gain.value) : 0,
+                dry: graph && graph.reverbDryGain ? Number(graph.reverbDryGain.gain.value) : 0,
+                wet: graph && graph.reverbWetGain ? Number(graph.reverbWetGain.gain.value) : 1,
+                feedback: graph && graph.reverbFeedbackGain ? Number(graph.reverbFeedbackGain.gain.value) : 1
+              };
+            })()
+          )JS"), [this, web, reverbToggle, clickReverbToggle, continueWithGlobalBypassTest, fail](const QVariant &disabled) {
+            const QVariantMap result = disabled.toMap();
+            if (!result.value(QStringLiteral("graphAttached")).toBool() || result.value(QStringLiteral("enabled")).toBool()
+                || !result.value(QStringLiteral("bypassed")).toBool() || result.value(QStringLiteral("input")).toDouble() > 1.01
+                || result.value(QStringLiteral("dry")).toDouble() < 0.99 || result.value(QStringLiteral("wet")).toDouble() > 0.01
+                || result.value(QStringLiteral("feedback")).toDouble() > 0.01 || webAudioEffects_->reverbEnabled()
+                || webAudioEffects_->reverbRoomSizeMs() != 1850.0 || webAudioEffects_->reverbDamping() != 0.35
+                || webAudioEffects_->reverbWetDryDb() != -8.0 || webAudioEffects_->reverbHfRatio() != 0.82
+                || webAudioEffects_->reverbInputGainDb() != 1.5) {
+              fail("Reverb module bypass did not retain its parameters"); return;
+            }
+            if (!clickReverbToggle() || !webAudioEffects_->reverbEnabled()) {
+              fail("Reverb module toggle did not restore controller state"); return;
+            }
+            QTimer::singleShot(220, this, [this, web, continueWithGlobalBypassTest, fail] {
+              if (!web || !web->page()) { fail("web tab disappeared while restoring Reverb"); return; }
+              web->page()->runJavaScript(QStringLiteral(R"JS(
+                (function () {
+                  const media = document.querySelector('audio,video');
+                  const root = window.__ARDALI_WEB_DALI_OUTPUT__;
+                  const graph = media && root && root.graphs ? root.graphs.get(media) : null;
+                  return {
+                    enabled: !!(graph && graph.reverbEnabled),
+                    bypassed: !!(graph && graph.reverbBypassed),
+                    input: graph && graph.reverbInputGain ? Number(graph.reverbInputGain.gain.value) : 0,
+                    dry: graph && graph.reverbDryGain ? Number(graph.reverbDryGain.gain.value) : 1,
+                    wet: graph && graph.reverbWetGain ? Number(graph.reverbWetGain.gain.value) : 0,
+                    feedback: graph && graph.reverbFeedbackGain ? Number(graph.reverbFeedbackGain.gain.value) : 0
+                  };
+                })()
+              )JS"), [this, web, continueWithGlobalBypassTest, fail](const QVariant &enabled) {
+                const QVariantMap result = enabled.toMap();
+                if (!result.value(QStringLiteral("enabled")).toBool() || result.value(QStringLiteral("bypassed")).toBool()
+                    || result.value(QStringLiteral("input")).toDouble() < 1.15 || result.value(QStringLiteral("dry")).toDouble() > 0.90
+                    || result.value(QStringLiteral("wet")).toDouble() < 0.35 || result.value(QStringLiteral("feedback")).toDouble() < 0.52
+                    || !webAudioEffects_->reverbEnabled() || webAudioEffects_->reverbRoomSizeMs() != 1850.0) {
+                  fail("Reverb module did not restore retained parameters"); return;
+                }
+                // Dynamic Compressor owns only its own live node parameters.
+                // Disable/enable must retain all six values, preserve Reverb,
+                // and never rebuild the media source or AudioContext.
+                webAudioEffects_->setCompressorEnabled(false);
+                QTimer::singleShot(240, this, [this, web, continueWithGlobalBypassTest, fail] {
+                  web->page()->runJavaScript(QStringLiteral(R"JS(
+                    (function () {
+                      const media = document.querySelector('audio,video');
+                      const root = window.__ARDALI_WEB_DALI_OUTPUT__;
+                      const graph = media && root && root.graphs ? root.graphs.get(media) : null;
+                      return {
+                        attached: !!(graph && graph.graph && !graph.bypass),
+                        sameNode: !!(graph && graph._runtimeCompressorNode === graph.compressorNode),
+                        enabled: !!(graph && graph.compressorEnabled),
+                        bypassed: !!(graph && graph.compressorBypassed),
+                        threshold: graph && graph.compressorNode ? Number(graph.compressorNode.threshold.value) : -99,
+                        ratio: graph && graph.compressorNode ? Number(graph.compressorNode.ratio.value) : 0,
+                        makeup: graph && graph.compressorMakeupGain ? Number(graph.compressorMakeupGain.gain.value) : 0,
+                        reverbEnabled: !!(graph && graph.reverbEnabled)
+                      };
+                    })()
+                  )JS"), [this, web, continueWithGlobalBypassTest, fail](const QVariant &disabledValue) {
+                    const QVariantMap disabled = disabledValue.toMap();
+                    if (!disabled.value(QStringLiteral("attached")).toBool() || !disabled.value(QStringLiteral("sameNode")).toBool()
+                        || disabled.value(QStringLiteral("enabled")).toBool() || !disabled.value(QStringLiteral("bypassed")).toBool()
+                        || qAbs(disabled.value(QStringLiteral("threshold")).toDouble()) > 0.2
+                        || qAbs(disabled.value(QStringLiteral("ratio")).toDouble() - 1.0) > 0.05
+                        || qAbs(disabled.value(QStringLiteral("makeup")).toDouble() - 1.0) > 0.02
+                        || !disabled.value(QStringLiteral("reverbEnabled")).toBool() || webAudioEffects_->compressorEnabled()
+                        || webAudioEffects_->compressorThresholdDb() != -30.0 || webAudioEffects_->compressorRatio() != 8.0
+                        || webAudioEffects_->compressorAttackMs() != 5.0 || webAudioEffects_->compressorReleaseMs() != 180.0
+                        || webAudioEffects_->compressorMakeupDb() != 3.0 || webAudioEffects_->compressorKneeDb() != 4.0) {
+                      fail("Dynamic Compressor bypass did not retain isolated parameters"); return;
+                    }
+                    webAudioEffects_->setCompressorEnabled(true);
+                    QTimer::singleShot(240, this, [this, web, continueWithGlobalBypassTest, fail] {
+                      web->page()->runJavaScript(QStringLiteral(R"JS(
+                        (function () {
+                          const media = document.querySelector('audio,video');
+                          const root = window.__ARDALI_WEB_DALI_OUTPUT__;
+                          const graph = media && root && root.graphs ? root.graphs.get(media) : null;
+                          return {
+                            attached: !!(graph && graph.graph && !graph.bypass),
+                            sameNode: !!(graph && graph._runtimeCompressorNode === graph.compressorNode),
+                            enabled: !!(graph && graph.compressorEnabled),
+                            bypassed: !!(graph && graph.compressorBypassed),
+                            threshold: graph && graph.compressorNode ? Number(graph.compressorNode.threshold.value) : 0,
+                            ratio: graph && graph.compressorNode ? Number(graph.compressorNode.ratio.value) : 0,
+                            makeup: graph && graph.compressorMakeupGain ? Number(graph.compressorMakeupGain.gain.value) : 0,
+                            reverbEnabled: !!(graph && graph.reverbEnabled)
+                          };
+                        })()
+                      )JS"), [this, web, continueWithGlobalBypassTest, fail](const QVariant &enabledValue) {
+                        const QVariantMap enabled = enabledValue.toMap();
+                        if (!enabled.value(QStringLiteral("attached")).toBool() || !enabled.value(QStringLiteral("sameNode")).toBool()
+                            || !enabled.value(QStringLiteral("enabled")).toBool() || enabled.value(QStringLiteral("bypassed")).toBool()
+                            || qAbs(enabled.value(QStringLiteral("threshold")).toDouble() + 30.0) > 0.2
+                            || qAbs(enabled.value(QStringLiteral("ratio")).toDouble() - 8.0) > 0.2
+                            || qAbs(enabled.value(QStringLiteral("makeup")).toDouble() - std::pow(10.0, 3.0 / 20.0)) > 0.03
+                            || !enabled.value(QStringLiteral("reverbEnabled")).toBool() || !webAudioEffects_->compressorEnabled()) {
+                          fail("Dynamic Compressor did not restore retained parameters"); return;
+                        }
+                        webAudioEffects_->setLimiterCeilingDb(-5.5);
+                        QTimer::singleShot(240, this, [this, web, continueWithGlobalBypassTest, fail] {
+                          web->page()->runJavaScript(QStringLiteral(R"JS(
+                            (function () {
+                              const media = document.querySelector('audio,video');
+                              const root = window.__ARDALI_WEB_DALI_OUTPUT__;
+                              const graph = media && root && root.graphs ? root.graphs.get(media) : null;
+                              return {
+                                attached: !!(graph && graph.graph && !graph.bypass),
+                                sameNode: !!(graph && graph._runtimeUserLimiterNode === graph.userLimiterNode),
+                                sameContext: !!(graph && graph._runtimeUserLimiterContext === graph.ctx),
+                                ceiling: graph && graph.userLimiterNode ? Number(graph.userLimiterNode.threshold.value) : 0
+                              };
+                            })()
+                          )JS"), [this, web, continueWithGlobalBypassTest, fail](const QVariant &knobValue) {
+                            const QVariantMap knob = knobValue.toMap();
+                            if (!knob.value(QStringLiteral("attached")).toBool() || !knob.value(QStringLiteral("sameNode")).toBool()
+                                || !knob.value(QStringLiteral("sameContext")).toBool()
+                                || qAbs(knob.value(QStringLiteral("ceiling")).toDouble() + 5.5) > 0.2) {
+                              fail("Limiter knob update rebuilt graph or did not reach the live node"); return;
+                            }
+                            webAudioEffects_->setLimiterCeilingDb(-6.0);
+                            webAudioEffects_->setLimiterEnabled(false);
+                            QTimer::singleShot(240, this, [this, web, continueWithGlobalBypassTest, fail] {
+                              web->page()->runJavaScript(QStringLiteral(R"JS(
+                                (function () {
+                                  const media = document.querySelector('audio,video');
+                                  const root = window.__ARDALI_WEB_DALI_OUTPUT__;
+                                  const graph = media && root && root.graphs ? root.graphs.get(media) : null;
+                                  return {
+                                    attached: !!(graph && graph.graph && !graph.bypass),
+                                    sameNode: !!(graph && graph._runtimeUserLimiterNode === graph.userLimiterNode),
+                                    sameContext: !!(graph && graph._runtimeUserLimiterContext === graph.ctx),
+                                    enabled: !!(graph && graph.userLimiterEnabled),
+                                    bypassed: !!(graph && graph.userLimiterBypassed),
+                                    threshold: graph && graph.userLimiterNode ? Number(graph.userLimiterNode.threshold.value) : -99,
+                                    ratio: graph && graph.userLimiterNode ? Number(graph.userLimiterNode.ratio.value) : 0,
+                                    gain: graph && graph.userLimiterInputGain ? Number(graph.userLimiterInputGain.gain.value) : 0,
+                                    compressorEnabled: !!(graph && graph.compressorEnabled),
+                                    reverbEnabled: !!(graph && graph.reverbEnabled)
+                                  };
+                                })()
+                              )JS"), [this, web, continueWithGlobalBypassTest, fail](const QVariant &disabledValue) {
+                                const QVariantMap disabled = disabledValue.toMap();
+                                if (!disabled.value(QStringLiteral("attached")).toBool() || !disabled.value(QStringLiteral("sameNode")).toBool()
+                                    || !disabled.value(QStringLiteral("sameContext")).toBool() || disabled.value(QStringLiteral("enabled")).toBool()
+                                    || !disabled.value(QStringLiteral("bypassed")).toBool()
+                                    || qAbs(disabled.value(QStringLiteral("threshold")).toDouble()) > 0.2
+                                    || qAbs(disabled.value(QStringLiteral("ratio")).toDouble() - 1.0) > 0.05
+                                    || qAbs(disabled.value(QStringLiteral("gain")).toDouble() - 1.0) > 0.02
+                                    || !disabled.value(QStringLiteral("compressorEnabled")).toBool()
+                                    || !disabled.value(QStringLiteral("reverbEnabled")).toBool() || webAudioEffects_->limiterEnabled()
+                                    || webAudioEffects_->limiterCeilingDb() != -6.0 || webAudioEffects_->limiterReleaseMs() != 120.0
+                                    || webAudioEffects_->limiterLookaheadMs() != 8.0 || webAudioEffects_->limiterGainDb() != 12.0) {
+                                  fail("Limiter module bypass did not retain isolated parameters"); return;
+                                }
+                                webAudioEffects_->setLimiterEnabled(true);
+                                QTimer::singleShot(240, this, [this, web, continueWithGlobalBypassTest, fail] {
+                                  web->page()->runJavaScript(QStringLiteral(R"JS(
+                                    (function () {
+                                      const media = document.querySelector('audio,video');
+                                      const root = window.__ARDALI_WEB_DALI_OUTPUT__;
+                                      const graph = media && root && root.graphs ? root.graphs.get(media) : null;
+                                      return {
+                                        attached: !!(graph && graph.graph && !graph.bypass),
+                                        sameNode: !!(graph && graph._runtimeUserLimiterNode === graph.userLimiterNode),
+                                        sameContext: !!(graph && graph._runtimeUserLimiterContext === graph.ctx),
+                                        enabled: !!(graph && graph.userLimiterEnabled),
+                                        bypassed: !!(graph && graph.userLimiterBypassed),
+                                        threshold: graph && graph.userLimiterNode ? Number(graph.userLimiterNode.threshold.value) : 0,
+                                        ratio: graph && graph.userLimiterNode ? Number(graph.userLimiterNode.ratio.value) : 0,
+                                        attack: graph && graph.userLimiterNode ? Number(graph.userLimiterNode.attack.value) : 0,
+                                        release: graph && graph.userLimiterNode ? Number(graph.userLimiterNode.release.value) : 0,
+                                        gain: graph && graph.userLimiterInputGain ? Number(graph.userLimiterInputGain.gain.value) : 0
+                                      };
+                                    })()
+                                  )JS"), [this, web, continueWithGlobalBypassTest, fail](const QVariant &enabledValue) {
+                                    const QVariantMap limiter = enabledValue.toMap();
+                                    if (!limiter.value(QStringLiteral("attached")).toBool() || !limiter.value(QStringLiteral("sameNode")).toBool()
+                                        || !limiter.value(QStringLiteral("sameContext")).toBool() || !limiter.value(QStringLiteral("enabled")).toBool()
+                                        || limiter.value(QStringLiteral("bypassed")).toBool()
+                                        || qAbs(limiter.value(QStringLiteral("threshold")).toDouble() + 6.0) > 0.2
+                                        || qAbs(limiter.value(QStringLiteral("ratio")).toDouble() - 20.0) > 0.2
+                                        || qAbs(limiter.value(QStringLiteral("attack")).toDouble() - 0.008) > 0.003
+                                        || qAbs(limiter.value(QStringLiteral("release")).toDouble() - 0.120) > 0.01
+                                        || qAbs(limiter.value(QStringLiteral("gain")).toDouble() - std::pow(10.0, 12.0 / 20.0)) > 0.06
+                                        || !webAudioEffects_->limiterEnabled()) {
+                                      fail("Limiter did not restore retained parameters"); return;
+                                    }
+                                    // Deep is the legacy Web DALI preset. It changes all five
+                                    // controls without rebuilding the permanent harmonic branch.
+                                    webAudioEffects_->applyBassEnhancerDeep();
+                                    QTimer::singleShot(280, this, [this, web, continueWithGlobalBypassTest, fail] {
+                                      web->page()->runJavaScript(QStringLiteral(R"JS(
+                                        (function () {
+                                          const media = document.querySelector('audio,video');
+                                          const root = window.__ARDALI_WEB_DALI_OUTPUT__;
+                                          const graph = media && root && root.graphs ? root.graphs.get(media) : null;
+                                          return {
+                                            attached: !!(graph && graph.graph && !graph.bypass),
+                                            sameFilter: !!(graph && graph._runtimeBassEnhancerFilter === graph.bassEnhancerFilter),
+                                            sameShaper: !!(graph && graph._runtimeBassEnhancerSaturator === graph.bassEnhancerSaturator),
+                                            sameContext: !!(graph && graph._runtimeBassEnhancerContext === graph.ctx),
+                                            enabled: !!(graph && graph.bassEnhancerEnabled),
+                                            deep: !!(graph && graph.bassEnhancerDeep),
+                                            frequency: graph && graph.bassEnhancerFilter ? Number(graph.bassEnhancerFilter.frequency.value) : 0,
+                                            width: graph && graph.bassEnhancerFilter ? Number(graph.bassEnhancerFilter.Q.value) : 0,
+                                            curve: graph && graph.bassEnhancerState ? Number(graph.bassEnhancerState.curveAmount) : -1,
+                                            dry: graph && graph.bassEnhancerDryGain ? Number(graph.bassEnhancerDryGain.gain.value) : 0,
+                                            wet: graph && graph.bassEnhancerWetGain ? Number(graph.bassEnhancerWetGain.gain.value) : 0
+                                          };
+                                        })()
+                                      )JS"), [this, web, continueWithGlobalBypassTest, fail](const QVariant &deepValue) {
+                                        const QVariantMap deep = deepValue.toMap();
+                                        if (!deep.value(QStringLiteral("attached")).toBool() || !deep.value(QStringLiteral("sameFilter")).toBool()
+                                            || !deep.value(QStringLiteral("sameShaper")).toBool() || !deep.value(QStringLiteral("sameContext")).toBool()
+                                            || !deep.value(QStringLiteral("enabled")).toBool() || !deep.value(QStringLiteral("deep")).toBool()
+                                            || qAbs(deep.value(QStringLiteral("frequency")).toDouble() - 68.0) > 0.5
+                                            || qAbs(deep.value(QStringLiteral("width")).toDouble() - 1.2) > 0.05
+                                            || qAbs(deep.value(QStringLiteral("curve")).toDouble() - 14.0) > 0.1
+                                            || deep.value(QStringLiteral("dry")).toDouble() > 0.93
+                                            || deep.value(QStringLiteral("wet")).toDouble() < 0.001
+                                            || !webAudioEffects_->bassEnhancerEnabled() || !webAudioEffects_->bassEnhancerDeep()
+                                            || webAudioEffects_->bassEnhancerGainDb() != 17.5
+                                            || webAudioEffects_->bassEnhancerHarmonicsPercent() != 14.0
+                                            || webAudioEffects_->bassEnhancerMixPercent() != 82.0) {
+                                          fail("Bass Enhancer Deep preset did not reach the live DALI branch"); return;
+                                        }
+                                        webAudioEffects_->setBassEnhancerFrequencyHz(95.0);
+                                        webAudioEffects_->setBassEnhancerGainDb(9.0);
+                                        webAudioEffects_->setBassEnhancerHarmonicsPercent(65.0);
+                                        webAudioEffects_->setBassEnhancerWidth(2.5);
+                                        webAudioEffects_->setBassEnhancerMixPercent(35.0);
+                                        QTimer::singleShot(300, this, [this, web, continueWithGlobalBypassTest, fail] {
+                                          web->page()->runJavaScript(QStringLiteral(R"JS(
+                                            (function () {
+                                              const media = document.querySelector('audio,video');
+                                              const root = window.__ARDALI_WEB_DALI_OUTPUT__;
+                                              const graph = media && root && root.graphs ? root.graphs.get(media) : null;
+                                              return {
+                                                sameFilter: !!(graph && graph._runtimeBassEnhancerFilter === graph.bassEnhancerFilter),
+                                                sameShaper: !!(graph && graph._runtimeBassEnhancerSaturator === graph.bassEnhancerSaturator),
+                                                sameContext: !!(graph && graph._runtimeBassEnhancerContext === graph.ctx),
+                                                frequency: graph && graph.bassEnhancerFilter ? Number(graph.bassEnhancerFilter.frequency.value) : 0,
+                                                shelfGain: graph && graph.bassEnhancerFilter ? Number(graph.bassEnhancerFilter.gain.value) : 0,
+                                                width: graph && graph.bassEnhancerFilter ? Number(graph.bassEnhancerFilter.Q.value) : 0,
+                                                subFrequency: graph && graph.bassEnhancerSubPeak ? Number(graph.bassEnhancerSubPeak.frequency.value) : 0,
+                                                subGain: graph && graph.bassEnhancerSubPeak ? Number(graph.bassEnhancerSubPeak.gain.value) : 0,
+                                                curve: graph && graph.bassEnhancerState ? Number(graph.bassEnhancerState.curveAmount) : -1,
+                                                drive: graph && graph.bassEnhancerHarmonicsDrive ? Number(graph.bassEnhancerHarmonicsDrive.gain.value) : 0,
+                                                dry: graph && graph.bassEnhancerDryGain ? Number(graph.bassEnhancerDryGain.gain.value) : 0,
+                                                wet: graph && graph.bassEnhancerWetGain ? Number(graph.bassEnhancerWetGain.gain.value) : 0,
+                                                deep: !!(graph && graph.bassEnhancerDeep)
+                                              };
+                                            })()
+                                          )JS"), [this, web, continueWithGlobalBypassTest, fail](const QVariant &knobValue) {
+                                            const QVariantMap knob = knobValue.toMap();
+                                            if (!knob.value(QStringLiteral("sameFilter")).toBool() || !knob.value(QStringLiteral("sameShaper")).toBool()
+                                                || !knob.value(QStringLiteral("sameContext")).toBool()
+                                                || qAbs(knob.value(QStringLiteral("frequency")).toDouble() - 95.0) > 0.5
+                                                || knob.value(QStringLiteral("shelfGain")).toDouble() < 12.0
+                                                || qAbs(knob.value(QStringLiteral("width")).toDouble() - 2.5) > 0.05
+                                                || qAbs(knob.value(QStringLiteral("subFrequency")).toDouble() - 66.5) > 0.7
+                                                || knob.value(QStringLiteral("subGain")).toDouble() < 8.5
+                                                || knob.value(QStringLiteral("subGain")).toDouble() > 10.0
+                                                || qAbs(knob.value(QStringLiteral("curve")).toDouble() - 65.0) > 0.1
+                                                || knob.value(QStringLiteral("drive")).toDouble() < 1.01
+                                                || qAbs(knob.value(QStringLiteral("dry")).toDouble() - 0.952) > 0.02
+                                                || knob.value(QStringLiteral("wet")).toDouble() < 0.002
+                                                || knob.value(QStringLiteral("deep")).toBool() || webAudioEffects_->bassEnhancerDeep()) {
+                                              fail("Bass Enhancer knob update rebuilt graph or missed a DSP parameter"); return;
+                                            }
+                                            webAudioEffects_->setBassEnhancerEnabled(false);
+                                            QTimer::singleShot(280, this, [this, web, continueWithGlobalBypassTest, fail] {
+                                              web->page()->runJavaScript(QStringLiteral(R"JS(
+                                                (function () {
+                                                  const media = document.querySelector('audio,video');
+                                                  const root = window.__ARDALI_WEB_DALI_OUTPUT__;
+                                                  const graph = media && root && root.graphs ? root.graphs.get(media) : null;
+                                                  return {
+                                                    attached: !!(graph && graph.graph && !graph.bypass),
+                                                    sameFilter: !!(graph && graph._runtimeBassEnhancerFilter === graph.bassEnhancerFilter),
+                                                    sameContext: !!(graph && graph._runtimeBassEnhancerContext === graph.ctx),
+                                                    enabled: !!(graph && graph.bassEnhancerEnabled),
+                                                    bypassed: !!(graph && graph.bassEnhancerBypassed),
+                                                    input: graph && graph.bassEnhancerInputGain ? Number(graph.bassEnhancerInputGain.gain.value) : 0,
+                                                    shelf: graph && graph.bassEnhancerFilter ? Number(graph.bassEnhancerFilter.gain.value) : -1,
+                                                    sub: graph && graph.bassEnhancerSubPeak ? Number(graph.bassEnhancerSubPeak.gain.value) : -1,
+                                                    presence: graph && graph.bassEnhancerPresencePeak ? Number(graph.bassEnhancerPresencePeak.gain.value) : -1,
+                                                    dry: graph && graph.bassEnhancerDryGain ? Number(graph.bassEnhancerDryGain.gain.value) : 0,
+                                                    wet: graph && graph.bassEnhancerWetGain ? Number(graph.bassEnhancerWetGain.gain.value) : 1,
+                                                    dip: graph && graph.bassEnhancerBodyDip ? Number(graph.bassEnhancerBodyDip.gain.value) : -1,
+                                                    output: graph && graph.bassEnhancerOutputTrim ? Number(graph.bassEnhancerOutputTrim.gain.value) : 0,
+                                                    limiter: !!(graph && graph.userLimiterEnabled),
+                                                    compressor: !!(graph && graph.compressorEnabled),
+                                                    reverb: !!(graph && graph.reverbEnabled)
+                                                  };
+                                                })()
+                                              )JS"), [this, web, continueWithGlobalBypassTest, fail](const QVariant &disabledValue) {
+                                                const QVariantMap disabled = disabledValue.toMap();
+                                                if (!disabled.value(QStringLiteral("attached")).toBool() || !disabled.value(QStringLiteral("sameFilter")).toBool()
+                                                    || !disabled.value(QStringLiteral("sameContext")).toBool() || disabled.value(QStringLiteral("enabled")).toBool()
+                                                    || !disabled.value(QStringLiteral("bypassed")).toBool()
+                                                    || qAbs(disabled.value(QStringLiteral("input")).toDouble() - 1.0) > 0.02
+                                                    || qAbs(disabled.value(QStringLiteral("shelf")).toDouble()) > 0.05
+                                                    || qAbs(disabled.value(QStringLiteral("sub")).toDouble()) > 0.05
+                                                    || qAbs(disabled.value(QStringLiteral("presence")).toDouble()) > 0.05
+                                                    || disabled.value(QStringLiteral("dry")).toDouble() < 0.98
+                                                    || disabled.value(QStringLiteral("wet")).toDouble() > 0.01
+                                                    || qAbs(disabled.value(QStringLiteral("dip")).toDouble()) > 0.05
+                                                    || qAbs(disabled.value(QStringLiteral("output")).toDouble() - 1.0) > 0.02
+                                                    || !disabled.value(QStringLiteral("limiter")).toBool()
+                                                    || !disabled.value(QStringLiteral("compressor")).toBool()
+                                                    || !disabled.value(QStringLiteral("reverb")).toBool()
+                                                    || webAudioEffects_->bassEnhancerEnabled()
+                                                    || webAudioEffects_->bassEnhancerFrequencyHz() != 95.0
+                                                    || webAudioEffects_->bassEnhancerGainDb() != 9.0
+                                                    || webAudioEffects_->bassEnhancerHarmonicsPercent() != 65.0
+                                                    || webAudioEffects_->bassEnhancerWidth() != 2.5
+                                                    || webAudioEffects_->bassEnhancerMixPercent() != 35.0) {
+                                                  std::fprintf(stderr, "Bass Enhancer disabled graph: %s\n",
+                                                               QJsonDocument::fromVariant(disabled).toJson(QJsonDocument::Compact).constData());
+                                                  fail("Bass Enhancer bypass was not transparent and isolated"); return;
+                                                }
+                                                webAudioEffects_->setBassEnhancerEnabled(true);
+                                                QTimer::singleShot(280, this, [this, web, continueWithGlobalBypassTest, fail] {
+                                                  web->page()->runJavaScript(QStringLiteral(R"JS(
+                                                    (function () {
+                                                      const media = document.querySelector('audio,video');
+                                                      const root = window.__ARDALI_WEB_DALI_OUTPUT__;
+                                                      const graph = media && root && root.graphs ? root.graphs.get(media) : null;
+                                                      return {
+                                                        sameFilter: !!(graph && graph._runtimeBassEnhancerFilter === graph.bassEnhancerFilter),
+                                                        sameContext: !!(graph && graph._runtimeBassEnhancerContext === graph.ctx),
+                                                        enabled: !!(graph && graph.bassEnhancerEnabled),
+                                                        bypassed: !!(graph && graph.bassEnhancerBypassed),
+                                                        frequency: graph && graph.bassEnhancerFilter ? Number(graph.bassEnhancerFilter.frequency.value) : 0,
+                                                        width: graph && graph.bassEnhancerFilter ? Number(graph.bassEnhancerFilter.Q.value) : 0,
+                                                        curve: graph && graph.bassEnhancerState ? Number(graph.bassEnhancerState.curveAmount) : -1,
+                                                        dry: graph && graph.bassEnhancerDryGain ? Number(graph.bassEnhancerDryGain.gain.value) : 0,
+                                                        wet: graph && graph.bassEnhancerWetGain ? Number(graph.bassEnhancerWetGain.gain.value) : 0
+                                                      };
+                                                    })()
+                                                  )JS"), [this, continueWithGlobalBypassTest, fail](const QVariant &restoredValue) {
+                                                    const QVariantMap restored = restoredValue.toMap();
+                                                    if (!restored.value(QStringLiteral("sameFilter")).toBool()
+                                                        || !restored.value(QStringLiteral("sameContext")).toBool()
+                                                        || !restored.value(QStringLiteral("enabled")).toBool()
+                                                        || restored.value(QStringLiteral("bypassed")).toBool()
+                                                        || qAbs(restored.value(QStringLiteral("frequency")).toDouble() - 95.0) > 0.5
+                                                        || qAbs(restored.value(QStringLiteral("width")).toDouble() - 2.5) > 0.05
+                                                        || qAbs(restored.value(QStringLiteral("curve")).toDouble() - 65.0) > 0.1
+                                                        || qAbs(restored.value(QStringLiteral("dry")).toDouble() - 0.952) > 0.02
+                                                        || restored.value(QStringLiteral("wet")).toDouble() < 0.002
+                                                        || !webAudioEffects_->bassEnhancerEnabled()) {
+                                                      fail("Bass Enhancer did not restore retained parameters"); return;
+                                                    }
+                                                    continueWithGlobalBypassTest();
+                                                  });
+                                                });
+                                              });
+                                            });
+                                          });
+                                        });
+                                      });
+                                    });
+                                  });
+                                });
+                              });
+                            });
+                          });
+                        });
+                      });
+                    });
+                  });
+                });
+              });
+            });
+          });
+        });
+      });
+    });
+  }
+
+  void runEqPresetBrowserRuntimeTest() {
+    if (!qEnvironmentVariableIsSet("ARDALI_EQ_PRESET_BROWSER_RUNTIME_TEST")) return;
+    const auto fail = [](const char *reason) {
+      qCritical("EQ preset browser runtime test failed: %s", reason);
+      std::fprintf(stderr, "EQ preset browser runtime test failed: %s\n", reason);
+      qApp->exit(2);
+    };
+
+    QToolButton *presetButton = nullptr;
+    if (sideWidget_) {
+      for (QToolButton *candidate : sideWidget_->findChildren<QToolButton *>()) {
+        if (candidate->accessibleName() == QStringLiteral("Hazır Ses Efektleri")) {
+          presetButton = candidate;
+          break;
+        }
+      }
+    }
+    if (!presetButton) { fail("curved-toolbar preset button not found"); return; }
+    presetButton->click();
+
+    const auto id = tabManager_->findInternal(this, QStringLiteral("eq-presets"));
+    const TabManager::TabRecord *record = id.isNull() ? nullptr : tabManager_->record(id);
+    const int index = record && record->content ? pages_->indexOf(record->content) : -1;
+    auto *presetPage = record ? qobject_cast<EqPresetPage *>(record->content) : nullptr;
+    if (!record || index < 0 || !presetPage) {
+      fail("click did not open the preset browser"); return;
+    }
+    if (tabBar_->tabText(index) != QStringLiteral("Hazır Ses Efektleri")) {
+      fail("preset browser tab title is incorrect"); return;
+    }
+    auto *saveButton = presetPage->findChild<QPushButton *>(QStringLiteral("eq-preset-ok"));
+    if (!saveButton || saveButton->text() != QStringLiteral("Kaydet")) {
+      fail("preset browser save button is incorrect"); return;
+    }
+    saveButton->click();
+    if (pages_->widget(index) != presetPage || !presetPage->isVisible()) {
+      fail("saving closed the preset browser"); return;
+    }
+    qInfo("EQ preset browser curved-toolbar action: ok");
+    qApp->exit(0);
+  }
+
+  void runAutoGainRuntimeTest() {
+    if (!qEnvironmentVariableIsSet("ARDALI_AUTO_GAIN_RUNTIME_TEST")) return;
+    const auto fail = [](const char *reason) {
+      qCritical("auto gain runtime test failed: %s", reason);
+      std::fprintf(stderr, "auto gain runtime test failed: %s\n", reason);
+      qApp->exit(2);
+    };
+    const QUrl testUrl(qEnvironmentVariable("ARDALI_AUDIO_EFFECTS_TEST_URL"));
+    const bool expectVideo = qEnvironmentVariableIsSet("ARDALI_AUDIO_EFFECTS_EXPECT_VIDEO");
+    auto *web = currentView();
+    if (!web || !web->page() || !testUrl.isValid() || !webAudioEffects_) {
+      fail("test web URL or controller missing"); return;
+    }
+    const bool originalGlobal = webAudioEffects_->enabled();
+    const bool originalEnabled = webAudioEffects_->autoGainEnabled();
+    const double originalTarget = webAudioEffects_->autoGainTargetDbfs();
+    const double originalMaxGain = webAudioEffects_->autoGainMaxGainDb();
+    const QString originalPreset = webAudioEffects_->autoGainPreset();
+    const auto restore = [this, originalGlobal, originalEnabled, originalTarget, originalMaxGain, originalPreset] {
+      webAudioEffects_->applyAutoGainPreset(originalPreset);
+      webAudioEffects_->setAutoGainTargetDbfs(originalTarget);
+      webAudioEffects_->setAutoGainMaxGainDb(originalMaxGain);
+      webAudioEffects_->setAutoGainEnabled(originalEnabled);
+      webAudioEffects_->setEnabled(originalGlobal);
+    };
+
+    webAudioEffects_->setEnabled(true);
+    webAudioEffects_->resetAutoGain();
+    webAudioEffects_->setAutoGainTargetDbfs(0.0);
+    webAudioEffects_->setAutoGainMaxGainDb(6.0);
+    webAudioEffects_->setAutoGainEnabled(true);
+    showAudioEffects();
+    const auto effectsId = tabManager_->findInternal(this, QStringLiteral("audio-effects"));
+    const TabManager::TabRecord *effectsRecord = tabManager_->record(effectsId);
+    auto *effectsPage = effectsRecord ? qobject_cast<AudioEffectsPage *>(effectsRecord->content.data()) : nullptr;
+    auto *effectsNav = effectsPage ? effectsPage->findChild<QListWidget *>(QStringLiteral("audio-effects-navigation")) : nullptr;
+    auto *effectsToggle = effectsPage ? effectsPage->findChild<QCheckBox *>(QStringLiteral("audio-effects-auto-gain-toggle")) : nullptr;
+    if (!effectsPage || !effectsNav || !effectsToggle || !effectsToggle->isChecked()) {
+      restore(); fail("Auto Gain UI did not reflect the enabled runtime state"); return;
+    }
+    effectsNav->setCurrentRow(6);
+    const int effectsIndex = pages_->indexOf(effectsRecord->content);
+    if (effectsIndex < 0 || effectsNav->currentRow() != 6) {
+      restore(); fail("Auto Gain UI page could not be selected"); return;
+    }
+    closeTab(effectsIndex);
+    if (!webAudioEffects_->autoGainEnabled() || !tabManager_->findInternal(this, QStringLiteral("audio-effects")).isNull()) {
+      restore(); fail("closing the Audio Effects UI changed Auto Gain state"); return;
+    }
+    web->load(testUrl);
+    QTimer::singleShot(3000, this, [this, web, expectVideo, restore, fail] {
+      web->page()->runJavaScript(QStringLiteral(R"JS(
+        (function () {
+          const root = window.__ARDALI_WEB_DALI_OUTPUT__;
+          return Array.from(document.querySelectorAll('audio,video')).map(function (media) {
+            media.volume = 0.25;
+            media.play().catch(function () {});
+            const graph = root && root.graphs ? root.graphs.get(media) : null;
+            if (graph) {
+              graph._autoGainRuntimeNode = graph.autoGainNode;
+              graph._autoGainRuntimeAnalyser = graph.autoGainAnalyser;
+              graph._autoGainRuntimeContext = graph.ctx;
+              graph._autoGainRuntimeTimer = graph.autoGainTimer;
+            }
+            return { tag: media.tagName, route: !!(graph && graph.moduleNodes && graph.moduleNodes.autoGain
+              && graph.autoGainNode instanceof GainNode && graph.autoGainAnalyser instanceof AnalyserNode),
+              downstreamLimiter: !!(graph && graph.userLimiterNode instanceof DynamicsCompressorNode) };
+          });
+        })()
+      )JS"), [this, web, expectVideo, restore, fail](const QVariant &routesValue) {
+        const QVariantList routes = routesValue.toList();
+        bool hasAudio = false;
+        bool hasVideo = false;
+        for (const QVariant &item : routes) {
+          const QVariantMap route = item.toMap();
+          hasAudio = hasAudio || route.value(QStringLiteral("tag")).toString() == QStringLiteral("AUDIO");
+          hasVideo = hasVideo || route.value(QStringLiteral("tag")).toString() == QStringLiteral("VIDEO");
+          if (!route.value(QStringLiteral("route")).toBool() || !route.value(QStringLiteral("downstreamLimiter")).toBool()) {
+            restore(); fail("permanent Auto Gain route or downstream safety limiter missing"); return;
+          }
+        }
+        if (!hasAudio || (expectVideo && !hasVideo)) { restore(); fail("audio/video fixture missing"); return; }
+        QTimer::singleShot(1600, this, [this, web, restore, fail] {
+          web->page()->runJavaScript(QStringLiteral(R"JS(
+            (function () {
+              const root = window.__ARDALI_WEB_DALI_OUTPUT__;
+              return Array.from(document.querySelectorAll('audio,video')).map(function (media) {
+                const graph = root && root.graphs ? root.graphs.get(media) : null;
+                const state = graph && graph.autoGainState;
+                return { tag: media.tagName, reads: state ? Number(state.detectorReadCount) : 0,
+                  inputDb: state ? Number(state.lastInputDb) : -120,
+                  currentDb: state ? Number(state.currentGainDb) : 0,
+                  gain: graph && graph.autoGainNode ? Number(graph.autoGainNode.gain.value) : 0,
+                  enabled: !!(graph && graph.autoGainEnabled), bypassed: !!(graph && graph.autoGainBypassed),
+                  sameNode: !!(graph && graph._autoGainRuntimeNode === graph.autoGainNode),
+                  sameAnalyser: !!(graph && graph._autoGainRuntimeAnalyser === graph.autoGainAnalyser),
+                  sameContext: !!(graph && graph._autoGainRuntimeContext === graph.ctx),
+                  sameTimer: !!(graph && graph._autoGainRuntimeTimer === graph.autoGainTimer),
+                  target: state ? Number(state.targetDbfs) : -999, maxGain: state ? Number(state.maxGainDb) : -999,
+                  speed: state ? String(state.speed) : '' };
+              });
+            })()
+          )JS"), [this, web, restore, fail](const QVariant &boostedValue) {
+            const QVariantList boosted = boostedValue.toList();
+            for (const QVariant &item : boosted) {
+              const QVariantMap state = item.toMap();
+              if (state.value(QStringLiteral("reads")).toInt() < 8
+                  || !std::isfinite(state.value(QStringLiteral("inputDb")).toDouble())
+                  || state.value(QStringLiteral("inputDb")).toDouble() <= -90.0
+                  || state.value(QStringLiteral("currentDb")).toDouble() < 0.25
+                  || state.value(QStringLiteral("currentDb")).toDouble() > 6.05
+                  || state.value(QStringLiteral("gain")).toDouble() <= 1.02
+                  || !state.value(QStringLiteral("enabled")).toBool() || state.value(QStringLiteral("bypassed")).toBool()
+                  || !state.value(QStringLiteral("sameNode")).toBool() || !state.value(QStringLiteral("sameAnalyser")).toBool()
+                  || !state.value(QStringLiteral("sameContext")).toBool() || !state.value(QStringLiteral("sameTimer")).toBool()
+                  || state.value(QStringLiteral("target")).toDouble() != 0.0
+                  || state.value(QStringLiteral("maxGain")).toDouble() != 6.0
+                  || state.value(QStringLiteral("speed")).toString() != QStringLiteral("medium")) {
+                restore(); fail("RMS detector did not produce a bounded real gain change"); return;
+              }
+            }
+            webAudioEffects_->setAutoGainTargetDbfs(-24.0);
+            web->page()->runJavaScript(QStringLiteral(
+                "document.querySelectorAll('audio,video').forEach(function(m){m.volume=1;m.play().catch(function(){});});"));
+            QTimer::singleShot(1700, this, [this, web, boosted, restore, fail] {
+              web->page()->runJavaScript(QStringLiteral(R"JS(
+                (function () {
+                  const root = window.__ARDALI_WEB_DALI_OUTPUT__;
+                  return Array.from(document.querySelectorAll('audio,video')).map(function (media) {
+                    const graph = root && root.graphs ? root.graphs.get(media) : null;
+                    const state = graph && graph.autoGainState;
+                    return { tag: media.tagName, currentDb: state ? Number(state.currentGainDb) : 99,
+                      inputDb: state ? Number(state.lastInputDb) : -120, reads: state ? Number(state.detectorReadCount) : 0,
+                      sameNode: !!(graph && graph._autoGainRuntimeNode === graph.autoGainNode),
+                      sameContext: !!(graph && graph._autoGainRuntimeContext === graph.ctx),
+                      target: state ? Number(state.targetDbfs) : 99 };
+                  });
+                })()
+              )JS"), [this, web, boosted, restore, fail](const QVariant &loweredValue) {
+                const QVariantList lowered = loweredValue.toList();
+                if (lowered.size() != boosted.size()) { restore(); fail("media graph count changed during target update"); return; }
+                for (int index = 0; index < lowered.size(); ++index) {
+                  const QVariantMap low = lowered[index].toMap();
+                  const QVariantMap high = boosted[index].toMap();
+                  if (low.value(QStringLiteral("target")).toDouble() != -24.0
+                      || low.value(QStringLiteral("currentDb")).toDouble() >= high.value(QStringLiteral("currentDb")).toDouble() - 0.2
+                      || low.value(QStringLiteral("reads")).toInt() <= high.value(QStringLiteral("reads")).toInt()
+                      || !low.value(QStringLiteral("sameNode")).toBool() || !low.value(QStringLiteral("sameContext")).toBool()) {
+                    std::fprintf(stderr, "Auto Gain boosted: %s lowered: %s\n",
+                                 QJsonDocument::fromVariant(high).toJson(QJsonDocument::Compact).constData(),
+                                 QJsonDocument::fromVariant(low).toJson(QJsonDocument::Compact).constData());
+                    restore(); fail("live target change did not reduce gain without rebuilding"); return;
+                  }
+                }
+                webAudioEffects_->setAutoGainTargetDbfs(0.0);
+                webAudioEffects_->setAutoGainMaxGainDb(2.0);
+                web->page()->runJavaScript(QStringLiteral("document.querySelectorAll('audio,video').forEach(function(m){m.pause();});"));
+                QTimer::singleShot(1000, this, [this, web, restore, fail] {
+                  web->page()->runJavaScript(QStringLiteral(R"JS(
+                    (function () {
+                      const root = window.__ARDALI_WEB_DALI_OUTPUT__;
+                      return Array.from(document.querySelectorAll('audio,video')).map(function (media) {
+                        const graph = root && root.graphs ? root.graphs.get(media) : null;
+                        const state = graph && graph.autoGainState;
+                        return { inputDb: state ? Number(state.lastInputDb) : 0,
+                          currentDb: state ? Number(state.currentGainDb) : 99,
+                          finite: !!(state && Number.isFinite(state.currentGainDb)),
+                          sameNode: !!(graph && graph._autoGainRuntimeNode === graph.autoGainNode) };
+                      });
+                    })()
+                  )JS"), [this, web, restore, fail](const QVariant &silenceValue) {
+                    for (const QVariant &item : silenceValue.toList()) {
+                      const QVariantMap silence = item.toMap();
+                      if (!silence.value(QStringLiteral("finite")).toBool()
+                          || silence.value(QStringLiteral("inputDb")).toDouble() > -80.0
+                          || silence.value(QStringLiteral("currentDb")).toDouble() > 2.05
+                          || !silence.value(QStringLiteral("sameNode")).toBool()) {
+                        restore(); fail("silence handling or max-gain bound failed"); return;
+                      }
+                    }
+                    webAudioEffects_->setAutoGainEnabled(false);
+                    QTimer::singleShot(260, this, [this, web, restore, fail] {
+                      web->page()->runJavaScript(QStringLiteral(R"JS(
+                        (function () {
+                          const media = document.querySelector('audio,video');
+                          const root = window.__ARDALI_WEB_DALI_OUTPUT__;
+                          const graph = media && root && root.graphs ? root.graphs.get(media) : null;
+                          return { enabled: !!(graph && graph.autoGainEnabled), bypassed: !!(graph && graph.autoGainBypassed),
+                            gain: graph && graph.autoGainNode ? Number(graph.autoGainNode.gain.value) : 0,
+                            currentDb: graph && graph.autoGainState ? Number(graph.autoGainState.currentGainDb) : 99,
+                            sameNode: !!(graph && graph._autoGainRuntimeNode === graph.autoGainNode) };
+                        })()
+                      )JS"), [this, web, restore, fail](const QVariant &disabledValue) {
+                        const QVariantMap disabled = disabledValue.toMap();
+                        if (disabled.value(QStringLiteral("enabled")).toBool() || !disabled.value(QStringLiteral("bypassed")).toBool()
+                            || qAbs(disabled.value(QStringLiteral("gain")).toDouble() - 1.0) > 0.02
+                            || qAbs(disabled.value(QStringLiteral("currentDb")).toDouble()) > 0.01
+                            || !disabled.value(QStringLiteral("sameNode")).toBool()) {
+                          restore(); fail("module bypass was not transparent or retained its graph"); return;
+                        }
+                        webAudioEffects_->setAutoGainEnabled(true);
+                        const auto presetIds = std::make_shared<QStringList>(QStringList{
+                            QStringLiteral("balanced"), QStringLiteral("night"),
+                            QStringLiteral("loud"), QStringLiteral("speech")});
+                        const auto targets = std::make_shared<QVector<double>>(QVector<double>{-15.0, -20.0, -12.0, -14.0});
+                        const auto maxima = std::make_shared<QVector<double>>(QVector<double>{10.0, 16.0, 8.0, 14.0});
+                        const auto speeds = std::make_shared<QStringList>(QStringList{
+                            QStringLiteral("medium"), QStringLiteral("slow"),
+                            QStringLiteral("fast"), QStringLiteral("medium")});
+                        const auto presetIndex = std::make_shared<int>(0);
+                        auto verifyPreset = std::make_shared<std::function<void()>>();
+                        *verifyPreset = [this, web, restore, fail, presetIds, targets, maxima, speeds,
+                                         presetIndex, verifyPreset] {
+                          if (*presetIndex >= presetIds->size()) {
+                            *verifyPreset = {};
+                            webAudioEffects_->resetAutoGain();
+                            if (!webAudioEffects_->autoGainEnabled() || webAudioEffects_->autoGainTargetDbfs() != -14.0
+                                || webAudioEffects_->autoGainMaxGainDb() != 12.0
+                                || webAudioEffects_->autoGainSpeed() != QStringLiteral("medium")
+                                || webAudioEffects_->autoGainPreset() != QStringLiteral("balanced")) {
+                              restore(); fail("reset did not preserve the module switch"); return;
+                            }
+                            web->page()->runJavaScript(QStringLiteral(
+                                "document.querySelectorAll('audio,video').forEach(function(m){m.volume=.25;m.play().catch(function(){});});"));
+                            QTimer::singleShot(1200, this, [this, web, restore, fail] {
+                              web->page()->runJavaScript(QStringLiteral(R"JS(
+                                (function () {
+                                  const media = document.querySelector('audio,video');
+                                  const root = window.__ARDALI_WEB_DALI_OUTPUT__;
+                                  const graph = media && root && root.graphs ? root.graphs.get(media) : null;
+                                  const state = graph && graph.autoGainState;
+                                  return { playing: !!(media && !media.paused && Number(media.currentTime) > 0),
+                                    inputDb: state ? Number(state.lastInputDb) : -120,
+                                    currentDb: state ? Number(state.currentGainDb) : 0,
+                                    reads: state ? Number(state.detectorReadCount) : 0,
+                                    sameNode: !!(graph && graph._autoGainRuntimeNode === graph.autoGainNode),
+                                    sameContext: !!(graph && graph._autoGainRuntimeContext === graph.ctx) };
+                                })()
+                              )JS"), [this, web, restore, fail](const QVariant &resumedValue) {
+                                const QVariantMap resumed = resumedValue.toMap();
+                                if (!resumed.value(QStringLiteral("playing")).toBool()
+                                    || resumed.value(QStringLiteral("inputDb")).toDouble() <= -90.0
+                                    || !std::isfinite(resumed.value(QStringLiteral("currentDb")).toDouble())
+                                    || resumed.value(QStringLiteral("reads")).toInt() < 8
+                                    || !resumed.value(QStringLiteral("sameNode")).toBool()
+                                    || !resumed.value(QStringLiteral("sameContext")).toBool()) {
+                                  restore(); fail("signal did not recover after the silence interval"); return;
+                                }
+                                // Matrix row: global OFF + module ON. User
+                                // configuration must stay persisted while the
+                                // live branch becomes a unity dry bypass.
+                                webAudioEffects_->setEnabled(false);
+                                QTimer::singleShot(360, this, [this, web, restore, fail] {
+                                  web->page()->runJavaScript(QStringLiteral(R"JS(
+                                    (function () {
+                                      const media = document.querySelector('audio,video');
+                                      const root = window.__ARDALI_WEB_DALI_OUTPUT__;
+                                      const graph = media && root && root.graphs ? root.graphs.get(media) : null;
+                                      return { graphBypass: !!(graph && graph.bypass), wet: graph && graph.wetGain ? Number(graph.wetGain.gain.value) : 1,
+                                        dry: graph && graph.dryGain ? Number(graph.dryGain.gain.value) : 0,
+                                        gain: graph && graph.autoGainNode ? Number(graph.autoGainNode.gain.value) : 0,
+                                        sameNode: !!(graph && graph._autoGainRuntimeNode === graph.autoGainNode),
+                                        sameContext: !!(graph && graph._autoGainRuntimeContext === graph.ctx) };
+                                    })()
+                                  )JS"), [this, web, restore, fail](const QVariant &masterOffValue) {
+                                    const QVariantMap masterOff = masterOffValue.toMap();
+                                    if (!masterOff.value(QStringLiteral("graphBypass")).toBool()
+                                        || masterOff.value(QStringLiteral("wet")).toDouble() > 0.02
+                                        || masterOff.value(QStringLiteral("dry")).toDouble() < 0.98
+                                        || qAbs(masterOff.value(QStringLiteral("gain")).toDouble() - 1.0) > 0.03
+                                        || !masterOff.value(QStringLiteral("sameNode")).toBool()
+                                        || !masterOff.value(QStringLiteral("sameContext")).toBool()
+                                        || !webAudioEffects_->autoGainEnabled()
+                                        || webAudioEffects_->autoGainTargetDbfs() != -14.0
+                                        || webAudioEffects_->autoGainMaxGainDb() != 12.0
+                                        || !QSettings().value(QStringLiteral("audioEffects/web/autogain/enabled")).toBool()) {
+                                      restore(); fail("global OFF did not bypass Auto Gain while retaining its state"); return;
+                                    }
+                                    // Matrix row: global OFF + module OFF.
+                                    webAudioEffects_->setAutoGainEnabled(false);
+                                    if (webAudioEffects_->enabled() || webAudioEffects_->autoGainEnabled()) {
+                                      restore(); fail("module OFF changed the global bypass state"); return;
+                                    }
+                                    // Matrix row: global ON + module OFF.
+                                    webAudioEffects_->setEnabled(true);
+                                    QTimer::singleShot(1000, this, [this, web, restore, fail] {
+                                      web->page()->runJavaScript(QStringLiteral(R"JS(
+                                        (function () {
+                                          const media = document.querySelector('audio,video');
+                                          const root = window.__ARDALI_WEB_DALI_OUTPUT__;
+                                          const graph = media && root && root.graphs ? root.graphs.get(media) : null;
+                                          return { graphBypass: !!(graph && graph.bypass), enabled: !!(graph && graph.autoGainEnabled),
+                                            bypassed: !!(graph && graph.autoGainBypassed), gain: graph && graph.autoGainNode ? Number(graph.autoGainNode.gain.value) : 0,
+                                            sameNode: !!(graph && graph._autoGainRuntimeNode === graph.autoGainNode),
+                                            sameContext: !!(graph && graph._autoGainRuntimeContext === graph.ctx) };
+                                        })()
+                                      )JS"), [this, web, restore, fail](const QVariant &moduleOffValue) {
+                                        const QVariantMap moduleOff = moduleOffValue.toMap();
+                                        if (moduleOff.value(QStringLiteral("graphBypass")).toBool()
+                                            || moduleOff.value(QStringLiteral("enabled")).toBool()
+                                            || !moduleOff.value(QStringLiteral("bypassed")).toBool()
+                                            || qAbs(moduleOff.value(QStringLiteral("gain")).toDouble() - 1.0) > 0.03
+                                            || !moduleOff.value(QStringLiteral("sameNode")).toBool()
+                                            || !moduleOff.value(QStringLiteral("sameContext")).toBool()) {
+                                          restore(); fail("global ON + module OFF matrix row failed"); return;
+                                        }
+                                        // Matrix row: global ON + module ON.
+                                        webAudioEffects_->setAutoGainEnabled(true);
+                                        QTimer::singleShot(1200, this, [this, web, restore, fail] {
+                                          web->page()->runJavaScript(QStringLiteral(R"JS(
+                                            (function () {
+                                              const media = document.querySelector('audio,video');
+                                              const root = window.__ARDALI_WEB_DALI_OUTPUT__;
+                                              const graph = media && root && root.graphs ? root.graphs.get(media) : null;
+                                              const state = graph && graph.autoGainState;
+                                              return { enabled: !!(graph && graph.autoGainEnabled), bypassed: !!(graph && graph.autoGainBypassed),
+                                                currentDb: state ? Number(state.currentGainDb) : 0,
+                                                gain: graph && graph.autoGainNode ? Number(graph.autoGainNode.gain.value) : 0,
+                                                sameNode: !!(graph && graph._autoGainRuntimeNode === graph.autoGainNode),
+                                                sameContext: !!(graph && graph._autoGainRuntimeContext === graph.ctx) };
+                                            })()
+                                          )JS"), [this, web, restore, fail](const QVariant &bothOnValue) {
+                                            const QVariantMap bothOn = bothOnValue.toMap();
+                                            if (!bothOn.value(QStringLiteral("enabled")).toBool()
+                                                || bothOn.value(QStringLiteral("bypassed")).toBool()
+                                                || qAbs(bothOn.value(QStringLiteral("currentDb")).toDouble()) < 0.20
+                                                || qAbs(bothOn.value(QStringLiteral("gain")).toDouble() - 1.0) < 0.02
+                                                || !bothOn.value(QStringLiteral("sameNode")).toBool()
+                                                || !bothOn.value(QStringLiteral("sameContext")).toBool()) {
+                                              restore(); fail("global ON + module ON matrix row failed"); return;
+                                            }
+                                            if (qEnvironmentVariableIsSet("ARDALI_AUTO_GAIN_FAULT_TEST")) {
+                                              showAudioEffects();
+                                              const auto effectsId = tabManager_->findInternal(this, QStringLiteral("audio-effects"));
+                                              const TabManager::TabRecord *effectsRecord = tabManager_->record(effectsId);
+                                              auto *effectsPage = effectsRecord
+                                                  ? qobject_cast<AudioEffectsPage *>(effectsRecord->content.data()) : nullptr;
+                                              auto *navigation = effectsPage
+                                                  ? effectsPage->findChild<QListWidget *>(QStringLiteral("audio-effects-navigation")) : nullptr;
+                                              const QPointer<QCheckBox> toggle = effectsPage
+                                                  ? effectsPage->findChild<QCheckBox *>(QStringLiteral("audio-effects-auto-gain-toggle")) : nullptr;
+                                              if (!navigation || !toggle) {
+                                                restore(); fail("fault test could not open the Auto Gain UI"); return;
+                                              }
+                                              navigation->setCurrentRow(6);
+                                              web->page()->runJavaScript(QStringLiteral(R"JS(
+                                                (function () {
+                                                  const media = document.querySelector('audio,video');
+                                                  const root = window.__ARDALI_WEB_DALI_OUTPUT__;
+                                                  const graph = media && root && root.graphs ? root.graphs.get(media) : null;
+                                                  if (!graph) return false;
+                                                  graph.autoGainAnalyser = { getByteTimeDomainData: function () {
+                                                    throw new Error('injected Auto Gain detector failure');
+                                                  }};
+                                                  return true;
+                                                })()
+                                              )JS"));
+                                              QTimer::singleShot(1600, this, [this, web, toggle, restore, fail] {
+                                                web->page()->runJavaScript(QStringLiteral(R"JS(
+                                                  (function () {
+                                                    const media = document.querySelector('audio,video');
+                                                    const root = window.__ARDALI_WEB_DALI_OUTPUT__;
+                                                    const graph = media && root && root.graphs ? root.graphs.get(media) : null;
+                                                    return { enabled: !!(graph && graph.autoGainEnabled),
+                                                      bypassed: !!(graph && graph.autoGainBypassed),
+                                                      gain: graph && graph.autoGainNode ? Number(graph.autoGainNode.gain.value) : 0,
+                                                      error: root ? String(root.lastRuntimeError || '') : '' };
+                                                  })()
+                                                )JS"), [this, toggle, restore, fail](const QVariant &faultValue) {
+                                                  const QVariantMap fault = faultValue.toMap();
+                                                  const auto status = webAudioEffects_->status();
+                                                  if (!toggle || toggle->isEnabled()
+                                                      || toggle->text() != QStringLiteral("Kullanılamıyor")
+                                                      || fault.value(QStringLiteral("enabled")).toBool()
+                                                      || !fault.value(QStringLiteral("bypassed")).toBool()
+                                                      || qAbs(fault.value(QStringLiteral("gain")).toDouble() - 1.0) > 0.03
+                                                      || !fault.value(QStringLiteral("error")).toString().contains(QStringLiteral("injected Auto Gain"))
+                                                      || !status.detail.contains(QStringLiteral("DALI Web Audio hatası"))) {
+                                                    restore(); fail("runtime fault was not safely bypassed and surfaced in the UI"); return;
+                                                  }
+                                                  restore();
+                                                  qInfo("Auto Gain DALI fault handling runtime: ok");
+                                                  qApp->exit(0);
+                                                });
+                                              });
+                                              return;
+                                            }
+                                            restore();
+                                            qInfo("Auto Gain DALI Web audio/video runtime: ok");
+                                            qApp->exit(0);
+                                          });
+                                        });
+                                      });
+                                    });
+                                  });
+                                });
+                              });
+                            });
+                            return;
+                          }
+                          const int index = *presetIndex;
+                          webAudioEffects_->applyAutoGainPreset(presetIds->at(index));
+                          QTimer::singleShot(260, this, [web, restore, fail, presetIds, targets, maxima,
+                                                        speeds, presetIndex, verifyPreset, index] {
+                            web->page()->runJavaScript(QStringLiteral(R"JS(
+                              (function () {
+                                const media = document.querySelector('audio,video');
+                                const root = window.__ARDALI_WEB_DALI_OUTPUT__;
+                                const graph = media && root && root.graphs ? root.graphs.get(media) : null;
+                                const state = graph && graph.autoGainState;
+                                const cfg = root && root.currentConfig ? root.currentConfig.autoGain : null;
+                                return { enabled: !!(graph && graph.autoGainEnabled), target: state ? Number(state.targetDbfs) : 0,
+                                  maxGain: state ? Number(state.maxGainDb) : 0, speed: state ? String(state.speed) : '',
+                                  preset: cfg ? String(cfg.preset) : '', sameNode: !!(graph && graph._autoGainRuntimeNode === graph.autoGainNode) };
+                              })()
+                            )JS"), [restore, fail, presetIds, targets, maxima, speeds, presetIndex,
+                                     verifyPreset, index](const QVariant &presetValue) {
+                              const QVariantMap preset = presetValue.toMap();
+                              if (!preset.value(QStringLiteral("enabled")).toBool()
+                                  || preset.value(QStringLiteral("target")).toDouble() != targets->at(index)
+                                  || preset.value(QStringLiteral("maxGain")).toDouble() != maxima->at(index)
+                                  || preset.value(QStringLiteral("speed")).toString() != speeds->at(index)
+                                  || preset.value(QStringLiteral("preset")).toString() != presetIds->at(index)
+                                  || !preset.value(QStringLiteral("sameNode")).toBool()) {
+                                *verifyPreset = {};
+                                restore(); fail("live preset did not reach the existing DSP graph"); return;
+                              }
+                              ++*presetIndex;
+                              (*verifyPreset)();
+                            });
+                          });
+                        };
+                        (*verifyPreset)();
+                      });
+                    });
+                  });
+                });
+              });
+            });
+          });
+        });
+      });
+    });
   }
 
   void runNewTabCustomizationRuntimeTest() {
@@ -1666,7 +3486,11 @@ class BrowserWindow final : public QMainWindow {
         const reopened=api.isOpen()&&document.querySelectorAll('#customization-modal').length===1;
         api.close();
         const icons=[...document.querySelectorAll('.category-button img,.customize img,.modal-close img')].every(icon=>icon.complete&&icon.naturalWidth>0);
+        const brandIcon=document.querySelector('.brand img');const searchBrandIcon=document.querySelector('.search-icon img');
+        const brandRect=document.querySelector('.brand').getBoundingClientRect();
         return JSON.stringify({ready:true,opened,categories:categoryResults,escapeClosed,reopened,icons,
+          brandIcon:!!brandIcon&&brandIcon.complete&&brandIcon.naturalWidth>0,searchBrandIcon:!!searchBrandIcon&&searchBrandIcon.complete&&searchBrandIcon.naturalWidth>0,
+          brandSize:{width:brandRect.width,height:brandRect.height},
           customizeLabel:customize.getAttribute('aria-label'),closeLabel:document.getElementById('customization-close').getAttribute('aria-label'),
           modalCount:document.querySelectorAll('#customization-modal').length,state:JSON.parse(localStorage.getItem('ardali.newtab')||'{}'),engine:document.getElementById('engine').value,
           managed:!!window.ardaliManagedBackgroundAvailable,frequentCount:(window.ardaliTopSiteSources.frequent||[]).length,bookmarkCount:(window.ardaliTopSiteSources.bookmarks||[]).length,
@@ -1681,7 +3505,11 @@ class BrowserWindow final : public QMainWindow {
       const QJsonObject state = result.value(QStringLiteral("state")).toObject();
       if (!result.value(QStringLiteral("ready")).toBool() || !result.value(QStringLiteral("opened")).toBool()
           || !result.value(QStringLiteral("escapeClosed")).toBool() || !result.value(QStringLiteral("reopened")).toBool()
-          || !result.value(QStringLiteral("icons")).toBool() || result.value(QStringLiteral("modalCount")).toInt() != 1
+          || !result.value(QStringLiteral("icons")).toBool() || !result.value(QStringLiteral("brandIcon")).toBool()
+          || !result.value(QStringLiteral("searchBrandIcon")).toBool()
+          || result.value(QStringLiteral("brandSize")).toObject().value(QStringLiteral("width")).toDouble() < 100.0
+          || result.value(QStringLiteral("brandSize")).toObject().value(QStringLiteral("height")).toDouble() < 100.0
+          || result.value(QStringLiteral("modalCount")).toInt() != 1
           || result.value(QStringLiteral("customizeLabel")).toString().isEmpty() || result.value(QStringLiteral("closeLabel")).toString().isEmpty()) {
         fail("modal lifecycle, icon, or accessibility contract failed"); return;
       }
@@ -1751,19 +3579,24 @@ class BrowserWindow final : public QMainWindow {
           if (guardedView) { fail("closed new-tab widget remained alive"); return; }
           addNewTab();
           const QPointer<QWebEngineView> reopenedView(currentView());
-          QTimer::singleShot(450, this, [this, fail, reopenedView] {
+          const auto checkReplacement = [this, fail, reopenedView](int retries, auto self) -> void {
             if (!reopenedView || !reopenedView->page() || !isNewTabUrl(reopenedView->url())) {
               fail("replacement new-tab did not load"); return;
             }
             reopenedView->page()->runJavaScript(QStringLiteral("JSON.stringify({ready:document.documentElement.dataset.customizationReady==='true',modalCount:document.querySelectorAll('#customization-modal').length,state:JSON.parse(localStorage.getItem('ardali.newtab')||'{}'),backgroundHidden:document.body.classList.contains('background-hidden'),searchHidden:document.getElementById('search').hidden,cardsHidden:document.getElementById('cards').hidden,managed:!!window.ardaliManagedBackgroundAvailable})"),
-                [this, fail, reopenedView](const QVariant &replacementValue) {
+                [this, fail, reopenedView, retries, self](const QVariant &replacementValue) {
               const QJsonObject replacement = QJsonDocument::fromJson(replacementValue.toString().toUtf8()).object();
+              if (!replacement.value(QStringLiteral("ready")).toBool() && retries > 0) {
+                QTimer::singleShot(250, this, [=]() { self(retries - 1, self); });
+                return;
+              }
               const QJsonObject replacementState = replacement.value(QStringLiteral("state")).toObject();
               if (!replacement.value(QStringLiteral("ready")).toBool() || replacement.value(QStringLiteral("modalCount")).toInt() != 1
                   || !replacement.value(QStringLiteral("backgroundHidden")).toBool() || !replacement.value(QStringLiteral("searchHidden")).toBool()
                   || !replacement.value(QStringLiteral("cardsHidden")).toBool() || !replacement.value(QStringLiteral("managed")).toBool()
                   || replacementState.value(QStringLiteral("clockFormat")).toString() != QLatin1String("24")
                   || replacementState.value(QStringLiteral("topSitesSource")).toString() != QLatin1String("bookmarks")) {
+                std::fprintf(stderr, "replacement new tab verification failed with payload: %s\n", replacementValue.toString().toUtf8().constData());
                 fail("replacement new-tab modal lifecycle failed"); return;
               }
               reopenedView->page()->runJavaScript(QStringLiteral("window.ardaliNewTabCommand={type:'removeBackground',nonce:Date.now()}"));
@@ -1779,15 +3612,97 @@ class BrowserWindow final : public QMainWindow {
                       || removed.value(QStringLiteral("source")).toString() != QLatin1String("builtin")) {
                     fail("renderer did not fall back after managed removal"); return;
                   }
-                  qInfo("new-tab customization runtime: ok");
+                  std::puts("new-tab customization runtime: ok");
                   qApp->exit(0);
                 });
               });
             });
-          });
+          };
+          QTimer::singleShot(500, this, [=]() { checkReplacement(8, checkReplacement); });
         });
       });
     });
+  }
+
+  void runNewTabFaviconRuntimeTest() {
+    if (!qEnvironmentVariableIsSet("ARDALI_NEW_TAB_FAVICON_RUNTIME_TEST")) return;
+    const auto fail = [](const char *reason) {
+      qCritical("new-tab favicon runtime failed: %s", reason);
+      std::fprintf(stderr, "new-tab favicon runtime failed: %s\n", reason);
+      qApp->exit(2);
+    };
+
+    if (tabBar_->count() == 0) { fail("initial tab missing"); return; }
+    const QIcon tab0Icon = tabBar_->tabIcon(0);
+    if (tab0Icon.isNull()) { fail("initial new tab icon is null"); return; }
+    const QIcon appIcon = BrowserIcons::appIcon();
+    const QIcon genericIcon = BrowserIcons::icon(BrowserIcon::Window);
+    const QImage genericImg = genericIcon.pixmap(16, 16).toImage();
+    const QImage tab0Img = tab0Icon.pixmap(16, 16).toImage();
+
+    if (tab0Img == genericImg) { fail("new tab showed generic window icon instead of app icon"); return; }
+
+    for (int i = 0; i < 4; ++i) {
+      addNewTab();
+    }
+    if (tabBar_->count() < 5) { fail("failed to create 5 new tabs"); return; }
+    for (int i = 0; i < 5; ++i) {
+      const QIcon icon = tabBar_->tabIcon(i);
+      if (icon.isNull()) { fail("multi-tab icon is null"); return; }
+      if (icon.pixmap(16, 16).toImage() == genericImg) { fail("multi-tab icon showed generic icon"); return; }
+    }
+
+    if (QWebEngineView *view = currentView()) {
+      view->reload();
+    }
+    const QIcon reloadedIcon = tabBar_->tabIcon(tabBar_->currentIndex());
+    if (reloadedIcon.pixmap(16, 16).toImage() == genericImg) { fail("reloaded new tab showed generic icon"); return; }
+
+    qInfo("new-tab favicon runtime: ok");
+    qApp->exit(0);
+  }
+
+  void runTabHoverCardRuntimeTest() {
+    if (!qEnvironmentVariableIsSet("ARDALI_TAB_HOVER_CARD_RUNTIME_TEST")) return;
+    const auto fail = [](const char *reason) {
+      qCritical("tab hover card runtime failed: %s", reason);
+      std::fprintf(stderr, "tab hover card runtime failed: %s\n", reason);
+      qApp->exit(2);
+    };
+
+    if (!tabBar_ || tabBar_->count() == 0 || !tabHoverCard_) {
+      fail("tab bar or hover card component missing");
+      return;
+    }
+
+    if (tabHoverCard_->isVisible()) { fail("card initially visible"); return; }
+
+    const QRect tabRect = tabBar_->tabRect(0);
+    const QPoint globalPos = tabBar_->mapToGlobal(tabRect.center());
+    const QRect globalTabRect(tabBar_->mapToGlobal(tabRect.topLeft()), tabRect.size());
+
+    emit tabBar_->tabHovered(0, globalPos, globalTabRect);
+
+    if (!tabHoverCard_->isVisible()) { fail("card did not show on tabHovered"); return; }
+
+    emit tabBar_->tabHoverLeave();
+    if (tabHoverCard_->isVisible()) { fail("card did not hide on tabHoverLeave"); return; }
+
+    showSettings();
+    const int settingsIndex = tabBar_->currentIndex();
+    if (settingsIndex < 0) { fail("settings tab failed to open"); return; }
+
+    const QRect settingsTabRect = tabBar_->tabRect(settingsIndex);
+    const QRect settingsGlobalTabRect(tabBar_->mapToGlobal(settingsTabRect.topLeft()), settingsTabRect.size());
+
+    emit tabBar_->tabHovered(settingsIndex, tabBar_->mapToGlobal(settingsTabRect.center()), settingsGlobalTabRect);
+    if (!tabHoverCard_->isVisible()) { fail("card did not show for internal settings tab"); return; }
+
+    tabBar_->cancelHover();
+    if (tabHoverCard_->isVisible()) { fail("cancelHover did not hide card"); return; }
+
+    qInfo("tab hover card runtime: ok");
+    qApp->exit(0);
   }
 
   void saveSessionNow() {
@@ -1810,20 +3725,34 @@ class BrowserWindow final : public QMainWindow {
         && record->page == view->page() && record->detached == (mainWindow_ != nullptr);
   }
 
+  QIcon tabIconForRecord(const TabManager::TabRecord *record, const QWebEngineView *view) const {
+    if (record && record->kind == TabManager::TabKind::Internal && !record->icon.isNull()) {
+      return record->icon;
+    }
+    const bool isNewTab = (view && (isNewTabUrl(view->url()) || view->property("ardali-is-newtab-intent").toBool()))
+                       || (record && isNewTabUrl(record->url));
+    if (isNewTab) {
+      return BrowserIcons::appIcon();
+    }
+    if (record && !record->icon.isNull()) {
+      return record->icon;
+    }
+    if (view) {
+      const QIcon cached = TabThrobber::instance().cachedFavicon(view);
+      if (!cached.isNull()) return cached;
+      if (!view->icon().isNull()) return view->icon();
+    }
+    return BrowserIcons::icon(BrowserIcon::Window);
+  }
+
   int insertRegisteredTab(QWidget *content, TabManager::TabId id, const QString &title, int requestedIndex = -1) {
     if (!content || id.isNull() || !tabManager_->record(id)) return -1;
     const int index = std::clamp(requestedIndex < 0 ? pages_->count() : requestedIndex, 0, pages_->count());
     pages_->insertWidget(index, content);
     tabBar_->insertTab(index, title);
     const TabManager::TabRecord *const record = tabManager_->record(id);
-    if (record && !record->icon.isNull()) {
-      tabBar_->setTabIcon(index, record->icon);
-    } else if (auto *view = qobject_cast<QWebEngineView *>(content); view && !view->icon().isNull()) {
-      tabBar_->setTabIcon(index, view->icon());
-      tabManager_->updateIcon(id, view->icon());
-    } else {
-      tabBar_->setTabIcon(index, BrowserIcons::icon(BrowserIcon::Window));
-    }
+    auto *view = qobject_cast<QWebEngineView *>(content);
+    tabBar_->setTabIcon(index, tabIconForRecord(record, view));
     tabBar_->setTabData(index, tabManager_->record(id)->capabilities.detachable);
     // QTabBar emits currentChanged synchronously. Establish both visual
     // containers before any observer can validate the active tab state.
@@ -1838,6 +3767,11 @@ class BrowserWindow final : public QMainWindow {
       order.push_back(tabManager_->idForContent(pages_->widget(pageIndex)));
     if (!tabManager_->reorder(this, order)) qWarning("Registered tab insertion could not update model order");
     tabManager_->activate(id);
+    if (view && profileService_ && profileService_->adBlockService()) {
+      const quint64 tabId = reinterpret_cast<quintptr>(view);
+      profileService_->adBlockService()->registerTab(tabId, view->url());
+      profileService_->adBlockService()->setActiveTabId(tabId);
+    }
     validateTabState();
     refreshTabStripWidth();
     updateChrome();
@@ -1918,6 +3852,15 @@ class BrowserWindow final : public QMainWindow {
         wheel->accept();
         return true;
       }
+    }
+    if (event->type() == QEvent::KeyPress) {
+      auto *keyEvent = static_cast<QKeyEvent *>(event);
+      if (keyEvent->key() == Qt::Key_Escape && sideWidget_ && sideWidget_->isOpen()) {
+        if (sideWidget_->handleEscKey()) return true;
+      }
+    }
+    if (watched == browserRoot_ && event->type() == QEvent::Resize) {
+      updateSideWidgetGeometry();
     }
     return QMainWindow::eventFilter(watched, event);
   }
@@ -2162,14 +4105,20 @@ class BrowserWindow final : public QMainWindow {
   }
 
   void closeTab(int index) {
+    if (tabHoverCard_) tabHoverCard_->hideCard();
     if (index < 0 || index >= pages_->count()) return;
     QWidget *content = pages_->widget(index);
     const auto id = tabManager_->idForContent(content);
     const TabManager::TabRecord *record = tabManager_->record(id);
     if (!record || !record->capabilities.closable) return;
     beginTabTransfer();
-    if (record->kind == TabManager::TabKind::Web && profileService_ && record->view)
+    if (record->kind == TabManager::TabKind::Web && profileService_ && record->view) {
       profileService_->rememberClosedTab(record->view->url(), record->view->title());
+      if (profileService_->adBlockService()) {
+        const quint64 tabId = reinterpret_cast<quintptr>(record->view.data());
+        profileService_->adBlockService()->unregisterTab(tabId);
+      }
+    }
     pages_->removeWidget(content);
     tabBar_->removeTab(index);
     tabManager_->remove(id);
@@ -2182,9 +4131,26 @@ class BrowserWindow final : public QMainWindow {
   }
 
  private:
+  SideWidget *sideWidget_ = nullptr;
+  WebAudioEffectsController *webAudioEffects_ = nullptr;
+  SongFinderSettings *songFinderSettings_ = nullptr;
+  SongRecognitionService *songRecognitionService_ = nullptr;
   struct DragReorderVisual {
     QRect rect;
     QPixmap pixmap;
+  };
+  struct StagedCredentialUsername {
+    QString username;
+    QDateTime expiresAt;
+  };
+  struct PendingCredentialCandidate {
+    CredentialSecret secret;
+    QUrl sourceUrl;
+    QDateTime expiresAt;
+  };
+  struct PendingCredentialIconUpdate {
+    QString id;
+    QString origin;
   };
 
   static bool transferDiagnosticsEnabled() {
@@ -2273,6 +4239,30 @@ class BrowserWindow final : public QMainWindow {
   BrowserWindow *rootWindow() { return mainWindow_ ? mainWindow_.data() : this; }
   QWebEngineView *currentView() const { return qobject_cast<QWebEngineView *>(pages_->currentWidget()); }
 
+  QWebEngineView *targetWebTabForReload() const {
+    if (auto *view = currentView()) {
+      const QUrl u = view->url();
+      if (!isNewTabUrl(u) && u.scheme() != QLatin1String("ardali") && u.isValid()) {
+        return view;
+      }
+    }
+    if (lastActiveWebView_ && pages_->indexOf(lastActiveWebView_) >= 0) {
+      const QUrl u = lastActiveWebView_->url();
+      if (!isNewTabUrl(u) && u.scheme() != QLatin1String("ardali") && u.isValid()) {
+        return lastActiveWebView_.data();
+      }
+    }
+    for (int i = 0; i < pages_->count(); ++i) {
+      if (auto *view = qobject_cast<QWebEngineView *>(pages_->widget(i))) {
+        const QUrl u = view->url();
+        if (!isNewTabUrl(u) && u.scheme() != QLatin1String("ardali") && u.isValid()) {
+          return view;
+        }
+      }
+    }
+    return nullptr;
+  }
+
   void toggleMaximized() {
     if (isFullScreen()) return;
     isMaximized() ? showNormal() : showMaximized();
@@ -2325,7 +4315,12 @@ class BrowserWindow final : public QMainWindow {
     addShortcut(QKeySequence::New, [this] { addNewTab(); });
     addShortcut(QKeySequence::Close, [this] { closeTab(tabBar_->currentIndex()); });
     addShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_T), [this] { reopenMostRecentClosedTab(); });
-    addShortcut(QKeySequence::Refresh, [this] { if (auto *view = currentView()) view->reload(); });
+    addShortcut(QKeySequence::Refresh, [this] {
+      if (auto *view = currentView()) {
+        prepareAdBlockScripts(view->page(), view->url());
+        view->reload();
+      }
+    });
     addShortcut(QKeySequence(Qt::CTRL | Qt::Key_L), [this] {
       address_->setFocus(Qt::ShortcutFocusReason);
       address_->selectAll();
@@ -2362,11 +4357,15 @@ class BrowserWindow final : public QMainWindow {
     if (!url.isEmpty() && !policy_->allowsNavigation(url)) return;
     auto *view = new QWebEngineView;
     view->setPage(createBrowserPage(view));
+    if (url.isEmpty() || isNewTabUrl(url)) {
+      view->setProperty("ardali-is-newtab-intent", true);
+    }
     adoptView(view, title);
     if (url.isEmpty()) {
       loadNewTabPage(view);
       return;
     }
+    prepareAdBlockScripts(view->page(), url);
     view->load(url);
   }
 
@@ -2396,14 +4395,222 @@ class BrowserWindow final : public QMainWindow {
     hooks.refreshBookmarks = [this] { renderBookmarks(); };
     auto *page = new SettingsPage(profileService_, std::move(hooks));
     page->setCategory(category);
-    connect(page, &SettingsPage::navigateRequested, this, [this](const QUrl &url) { addNewTab(url, url.host()); });
+    connect(page, &SettingsPage::navigateRequested, this, [this](const QUrl &url) { if (url == QUrl(QStringLiteral("ardali://passwords"))) showPasswords(); else addNewTab(url, url.host()); });
     const TabManager::TabCapabilities capabilities{true, true, false, false};
     const auto id = tabManager_->registerInternalTab(page, this, QStringLiteral("Ayarlar"), QStringLiteral("settings"), capabilities);
     if (id.isNull()) { page->deleteLater(); return; }
     const int index = insertRegisteredTab(page, id, QStringLiteral("Ayarlar"));
     if (index < 0) { tabManager_->remove(id); page->deleteLater(); return; }
+    tabManager_->updateIcon(id, BrowserIcons::icon(BrowserIcon::Settings));
     tabBar_->setTabIcon(index, BrowserIcons::icon(BrowserIcon::Settings));
     tabBar_->setTabToolTip(index, QStringLiteral("ardali://settings"));
+  }
+
+  void showAudioEffects() {
+    const auto existingId = tabManager_->findInternal(this, QStringLiteral("audio-effects"));
+    if (!existingId.isNull()) {
+      const TabManager::TabRecord *record = tabManager_->record(existingId);
+      const int index = record && record->content ? pages_->indexOf(record->content) : -1;
+      if (index >= 0) {
+        tabBar_->setCurrentIndex(index);
+        return;
+      }
+    }
+    auto *page = new AudioEffectsPage(webAudioEffects_);
+    connect(page, &AudioEffectsPage::eqPresetBrowserRequested, this, &BrowserWindow::showEqPresetBrowser);
+    const TabManager::TabCapabilities capabilities{true, true, false, false};
+    const auto id = tabManager_->registerInternalTab(page, this, QStringLiteral("Ses Efektleri"), QStringLiteral("audio-effects"), capabilities);
+    if (id.isNull()) { page->deleteLater(); return; }
+    const int index = insertRegisteredTab(page, id, QStringLiteral("Ses Efektleri"));
+    if (index < 0) { tabManager_->remove(id); page->deleteLater(); return; }
+    tabManager_->updateIcon(id, QIcon(QStringLiteral(":/side-widget-icons/sound-effects.svg")));
+    tabBar_->setTabIcon(index, QIcon(QStringLiteral(":/side-widget-icons/sound-effects.svg")));
+    tabBar_->setTabToolTip(index, QStringLiteral("ardali://audio-effects"));
+  }
+
+  void showEqPresetBrowser() {
+    const auto existingId = tabManager_->findInternal(this, QStringLiteral("eq-presets"));
+    if (!existingId.isNull()) {
+      const TabManager::TabRecord *record = tabManager_->record(existingId);
+      const int index = record && record->content ? pages_->indexOf(record->content) : -1;
+      if (index >= 0) { tabBar_->setCurrentIndex(index); return; }
+    }
+    auto *page = new EqPresetPage(webAudioEffects_);
+    const TabManager::TabCapabilities capabilities{true, true, false, false};
+    const auto id = tabManager_->registerInternalTab(page, this, QStringLiteral("Hazır Ses Efektleri"), QStringLiteral("eq-presets"), capabilities);
+    if (id.isNull()) { page->deleteLater(); return; }
+    const int index = insertRegisteredTab(page, id, QStringLiteral("Hazır Ses Efektleri"));
+    if (index < 0) { tabManager_->remove(id); page->deleteLater(); return; }
+    tabManager_->updateIcon(id, QIcon(QStringLiteral(":/side-widget-icons/eq-presets.svg")));
+    tabBar_->setTabIcon(index, QIcon(QStringLiteral(":/side-widget-icons/eq-presets.svg")));
+    tabBar_->setTabToolTip(index, QStringLiteral("ardali://eq-presets"));
+  }
+
+  void showPasswords() {
+    const auto existingId = tabManager_->findInternal(this, QStringLiteral("passwords"));
+    if (!existingId.isNull()) {
+      const TabManager::TabRecord *record = tabManager_->record(existingId);
+      const int index = record && record->content ? pages_->indexOf(record->content) : -1;
+      if (index >= 0) { tabBar_->setCurrentIndex(index); return; }
+    }
+    if (!profileService_ || !profileService_->credentialVault()) return;
+    auto *page = new PasswordManagerPage(profileService_->credentialVault());
+    const TabManager::TabCapabilities capabilities{true, true, false, false};
+    const auto id = tabManager_->registerInternalTab(page, this, QStringLiteral("Şifre Yöneticisi"), QStringLiteral("passwords"), capabilities);
+    if (id.isNull()) { page->deleteLater(); return; }
+    const int index = insertRegisteredTab(page, id, QStringLiteral("Şifre Yöneticisi"));
+    if (index < 0) { tabManager_->remove(id); page->deleteLater(); return; }
+    const QIcon icon = BrowserIcons::icon(BrowserIcon::Password);
+    tabManager_->updateIcon(id, icon); tabBar_->setTabIcon(index, icon); tabBar_->setTabToolTip(index, QStringLiteral("ardali://passwords"));
+  }
+
+  void fillCurrentPageFromVault() {
+    fillPageFromVault(currentView());
+  }
+
+  void fillPageFromVault(QWebEngineView *view) {
+    CredentialVaultManager *vault = profileService_ ? profileService_->credentialVault() : nullptr;
+    if (!view || !vault) return;
+    const QVector<CredentialMetadata> choices = vault->forOrigin(view->url());
+    if (choices.isEmpty()) {
+      const QVector<VaultMetadata> possibleVaults = vault->vaultsForOrigin(view->url());
+      if (possibleVaults.isEmpty()) { QMessageBox::information(this, QStringLiteral("Şifre Yöneticisi"), QStringLiteral("Bu HTTPS origin için kayıtlı kimlik bilgisi yok.")); return; }
+      QStringList labels; for (const VaultMetadata &item : possibleVaults) labels << (item.name + (item.locked ? QStringLiteral(" · kilitli") : QStringLiteral(" · kayıt yok")));
+      bool ok = false; const QString selection = QInputDialog::getItem(this, QStringLiteral("Kasayı seçin"), QStringLiteral("Kayıtlı girişin bulunduğu kasa"), labels, 0, false, &ok); if (!ok) return;
+      const int index = labels.indexOf(selection); if (index < 0 || !vault->setActiveVault(possibleVaults.at(index).id)) return;
+      if (possibleVaults.at(index).locked) { unlockVaultForFill(view); return; }
+      QMessageBox::information(this, QStringLiteral("Şifre Yöneticisi"), QStringLiteral("Bu kasada bu site için kayıtlı kimlik bilgisi yok.")); return;
+    }
+    CredentialMetadata selected = choices.front();
+    if (choices.size() > 1) {
+      QStringList labels; for (const auto &choice : choices) labels << QStringLiteral("%1 — %2").arg(choice.vaultName, choice.username);
+      bool ok = false; const QString label = QInputDialog::getItem(this, QStringLiteral("Hesabı seçin"), QStringLiteral("Kasa ve kullanıcı adı"), labels, 0, false, &ok); if (!ok) return;
+      selected = choices.at(labels.indexOf(label));
+    }
+    CredentialSecret secret; if (!vault->reveal(selected.id, &secret)) return;
+    const QJsonObject values{{QStringLiteral("username"), secret.username}, {QStringLiteral("password"), secret.password}};
+    const QString json = QString::fromUtf8(QJsonDocument(values).toJson(QJsonDocument::Compact));
+    // Only the top-level frame is addressed.  There is no QWebChannel or page
+    // API, and hidden/disabled fields are intentionally excluded.
+    const QString script = QStringLiteral(R"JS((() => { const v=%1; const visible=e=>{const s=getComputedStyle(e),r=e.getBoundingClientRect();return e.type!=='hidden'&&!e.disabled&&s.display!=='none'&&s.visibility!=='hidden'&&r.width>0&&r.height>0}; const safe=e=>{if(!(e?.form instanceof HTMLFormElement)||!visible(e.form))return false;try{const a=new URL(e.form.getAttribute('action')||location.href,document.baseURI);return a.protocol==='https:'&&a.origin===location.origin}catch(_){return false}}; const p=[...document.querySelectorAll('input[type="password"]')].find(e=>visible(e)&&safe(e)); if(!p)return false; const u=[...p.form.querySelectorAll('input')].filter(e=>visible(e)&&e!==p&&/^(text|email|tel)$/i.test(e.type||'text')).find(e=>/(user|email|login|account|identifier)/i.test(e.name+' '+e.id+' '+e.autocomplete)); if(u){u.focus();u.value=v.username;u.dispatchEvent(new Event('input',{bubbles:true}));u.dispatchEvent(new Event('change',{bubbles:true}));} p.focus();p.value=v.password;p.dispatchEvent(new Event('input',{bubbles:true}));p.dispatchEvent(new Event('change',{bubbles:true}));return true;})())JS").arg(json);
+    view->page()->runJavaScript(script, [this](const QVariant &result) { if (!result.toBool()) QMessageBox::information(this, QStringLiteral("Şifre Yöneticisi"), QStringLiteral("Güvenli bir görünür giriş formu bulunamadı.")); });
+  }
+
+  void unlockVaultForFill(QWebEngineView *view) {
+    CredentialVaultManager *vault = profileService_ ? profileService_->credentialVault() : nullptr;
+    if (!view || !vault) return;
+    if (!vault->exists()) {
+      QMessageBox::information(this, QStringLiteral("Şifre Yöneticisi"), QStringLiteral("Önce Şifre Yöneticisi sekmesinden bir kasa oluşturun."));
+      return;
+    }
+    const quintptr viewId = reinterpret_cast<quintptr>(view);
+    if (pendingVaultFillUnlocks_.contains(viewId)) return;
+    bool accepted = false;
+    const QString masterPassword = QInputDialog::getText(this, QStringLiteral("Şifre Yöneticisi"),
+                                                          QStringLiteral("Kayıtlı girişi doldurmak için ana parola"),
+                                                          QLineEdit::Password, {}, &accepted);
+    if (!accepted || masterPassword.isEmpty()) return;
+    pendingVaultFillUnlocks_.insert(viewId);
+    auto *watcher = new QFutureWatcher<bool>(this);
+    QPointer<QWebEngineView> guardedView(view);
+    connect(watcher, &QFutureWatcher<bool>::finished, this, [this, watcher, guardedView, viewId] {
+      const bool unlocked = watcher->result();
+      watcher->deleteLater();
+      pendingVaultFillUnlocks_.remove(viewId);
+      if (!unlocked) {
+        CredentialVaultManager *vault = profileService_ ? profileService_->credentialVault() : nullptr;
+        QMessageBox::warning(this, QStringLiteral("Şifre Yöneticisi"), QStringLiteral("Kasa açılamadı: %1").arg(vault ? vault->lastError() : QStringLiteral("unavailable")));
+        return;
+      }
+      if (guardedView) fillPageFromVault(guardedView);
+    });
+    watcher->setFuture(QtConcurrent::run([vault, masterPassword] { return vault->unlock(masterPassword); }));
+  }
+
+  void showArDaliBlockerSettings(ArDaliBlockerPage::Tab tab = ArDaliBlockerPage::Tab::Settings) {
+    QString host;
+    if (auto *view = currentView()) host = view->url().host().toLower();
+    else if (lastActiveWebView_) host = lastActiveWebView_->url().host().toLower();
+
+    auto existingId = tabManager_->findInternal(this, QStringLiteral("blocker"));
+    if (existingId.isNull()) existingId = tabManager_->findInternal(this, QStringLiteral("adblock"));
+    if (!existingId.isNull()) {
+      const TabManager::TabRecord *record = tabManager_->record(existingId);
+      const int index = record && record->content ? pages_->indexOf(record->content) : -1;
+      if (index >= 0) {
+        tabBar_->setCurrentIndex(index);
+        if (auto *page = qobject_cast<ArDaliBlockerPage *>(record->content.data())) {
+          page->setActiveTab(tab);
+          if (!host.isEmpty()) {
+            page->setActiveHost(host);
+          }
+        }
+        return;
+      }
+    }
+    if (!profileService_ || !profileService_->adBlockService()) return;
+    auto *page = new ArDaliBlockerPage(profileService_->adBlockService());
+    page->setActiveTab(tab);
+    if (!host.isEmpty()) {
+      page->setActiveHost(host);
+    }
+    const TabManager::TabCapabilities capabilities{true, true, false, false};
+    const auto id = tabManager_->registerInternalTab(page, this, QStringLiteral("ArDali Blocker"), QStringLiteral("blocker"), capabilities);
+    if (id.isNull()) { page->deleteLater(); return; }
+    const int index = insertRegisteredTab(page, id, QStringLiteral("ArDali Blocker"));
+    if (index < 0) { tabManager_->remove(id); page->deleteLater(); return; }
+    tabManager_->updateIcon(id, QIcon(QStringLiteral(":/side-widget-icons/deliblock.svg")));
+    tabBar_->setTabIcon(index, QIcon(QStringLiteral(":/side-widget-icons/deliblock.svg")));
+    tabBar_->setTabToolTip(index, QStringLiteral("ardali://blocker"));
+  }
+
+  void showSongFinder() {
+    const auto existingId = tabManager_->findInternal(this, QStringLiteral("song-finder"));
+    if (!existingId.isNull()) {
+      const TabManager::TabRecord *record = tabManager_->record(existingId);
+      const int index = record && record->content ? pages_->indexOf(record->content) : -1;
+      if (index >= 0) {
+        tabBar_->setCurrentIndex(index);
+        return;
+      }
+    }
+    auto *page = new SongFinderPage(songRecognitionService_);
+    connect(page, &SongFinderPage::openPreferencesRequested, this, &BrowserWindow::showSongFinderSettings);
+    connect(page, &SongFinderPage::openUrlRequested, this, [this](const QUrl &url) {
+      addNewTab(url, url.host());
+    });
+    const TabManager::TabCapabilities capabilities{true, true, false, false};
+    const auto id = tabManager_->registerInternalTab(page, this, QStringLiteral("ArDali Pulse"), QStringLiteral("song-finder"), capabilities);
+    if (id.isNull()) { page->deleteLater(); return; }
+    const int index = insertRegisteredTab(page, id, QStringLiteral("ArDali Pulse"));
+    if (index < 0) { tabManager_->remove(id); page->deleteLater(); return; }
+    tabManager_->updateIcon(id, QIcon(QStringLiteral(":/side-widget-icons/pulse.svg")));
+    tabBar_->setTabIcon(index, QIcon(QStringLiteral(":/side-widget-icons/pulse.svg")));
+    tabBar_->setTabToolTip(index, QStringLiteral("ardali://listen"));
+  }
+
+  void showSongFinderSettings() {
+    const auto existingId = tabManager_->findInternal(this, QStringLiteral("song-finder-settings"));
+    if (!existingId.isNull()) {
+      const TabManager::TabRecord *record = tabManager_->record(existingId);
+      const int index = record && record->content ? pages_->indexOf(record->content) : -1;
+      if (index >= 0) {
+        tabBar_->setCurrentIndex(index);
+        return;
+      }
+    }
+    auto *page = new SongFinderSettingsPage(songFinderSettings_);
+    connect(page, &SongFinderSettingsPage::closeTabRequested, this, [this]() {
+      showSongFinder();
+    });
+    const TabManager::TabCapabilities capabilities{true, true, false, false};
+    const auto id = tabManager_->registerInternalTab(page, this, QStringLiteral("Pulse Ayarları"), QStringLiteral("song-finder-settings"), capabilities);
+    if (id.isNull()) { page->deleteLater(); return; }
+    const int index = insertRegisteredTab(page, id, QStringLiteral("Pulse Ayarları"));
+    if (index < 0) { tabManager_->remove(id); page->deleteLater(); return; }
+    tabManager_->updateIcon(id, BrowserIcons::icon(BrowserIcon::Settings));
+    tabBar_->setTabIcon(index, BrowserIcons::icon(BrowserIcon::Settings));
+    tabBar_->setTabToolTip(index, QStringLiteral("ardali://listen-settings"));
   }
 
   void showMainMenu() {
@@ -2416,7 +4623,8 @@ class BrowserWindow final : public QMainWindow {
     incognito->setToolTip(QStringLiteral("Gizli profil desteği henüz mevcut değil."));
     menu.addSeparator();
     QAction *passwords = menu.addAction(BrowserIcons::icon(BrowserIcon::Password), QStringLiteral("Şifreler ve otomatik doldurma"));
-    passwords->setEnabled(false); // TODO: Integrate ArDali Password Manager.
+    QAction *fillPassword = menu.addAction(BrowserIcons::icon(BrowserIcon::Password), QStringLiteral("Bu sayfayı kayıtlı girişle doldur"));
+    fillPassword->setEnabled(currentView() && profileService_ && profileService_->credentialVault() && !profileService_->credentialVault()->isLocked());
     QAction *history = menu.addAction(BrowserIcons::icon(BrowserIcon::History), QStringLiteral("Geçmiş"));
     QAction *bookmarks = menu.addAction(BrowserIcons::icon(BrowserIcon::Bookmark), QStringLiteral("Yer işaretleri"));
     QAction *downloads = menu.addAction(BrowserIcons::icon(BrowserIcon::Download), QStringLiteral("İndirilenler"));
@@ -2436,25 +4644,283 @@ class BrowserWindow final : public QMainWindow {
     QAction *tools = menu.addAction(BrowserIcons::icon(BrowserIcon::Tools), QStringLiteral("Diğer araçlar")); tools->setEnabled(false);
     menu.addSeparator();
     QAction *help = menu.addAction(BrowserIcons::icon(BrowserIcon::Help), QStringLiteral("Yardım")); help->setEnabled(false);
+    QAction *pulseAction = menu.addAction(QIcon(QStringLiteral(":/side-widget-icons/pulse.svg")), QStringLiteral("ArDali Pulse"));
+    QAction *adblockAction = menu.addAction(QIcon(QStringLiteral(":/side-widget-icons/deliblock.svg")), QStringLiteral("Reklam Engelleyici"));
     QAction *settings = menu.addAction(BrowserIcons::icon(BrowserIcon::Settings), QStringLiteral("Ayarlar"));
     QAction *quit = menu.addAction(BrowserIcons::icon(BrowserIcon::Exit), QStringLiteral("Çıkış"));
     connect(newTab, &QAction::triggered, this, [this] { addNewTab(); });
     connect(newWindow, &QAction::triggered, this, [this] { auto *window = new BrowserWindow(profile_, profileService_, tabManager_, policy_, nullptr, nullptr, true); window->setAttribute(Qt::WA_DeleteOnClose); window->show(); });
+    connect(passwords, &QAction::triggered, this, &BrowserWindow::showPasswords);
+    connect(fillPassword, &QAction::triggered, this, &BrowserWindow::fillCurrentPageFromVault);
     connect(history, &QAction::triggered, this, &BrowserWindow::showHistoryMenu);
     connect(bookmarks, &QAction::triggered, this, [this] { showSettings(SettingsPage::Category::Bookmarks); });
     connect(downloads, &QAction::triggered, this, &BrowserWindow::showDownloadsMenu);
     connect(zoomOut, &QAction::triggered, this, [this] { changeCurrentZoom(-0.1); });
     connect(zoomReset, &QAction::triggered, this, [this] { setCurrentZoom(1.0); });
     connect(zoomIn, &QAction::triggered, this, [this] { changeCurrentZoom(0.1); });
+    connect(pulseAction, &QAction::triggered, this, &BrowserWindow::showSongFinder);
+    connect(adblockAction, &QAction::triggered, this, [this] { showArDaliBlockerSettings(); });
     connect(settings, &QAction::triggered, this, [this] { showSettings(); });
     connect(quit, &QAction::triggered, qApp, &QCoreApplication::quit);
     menu.exec(QCursor::pos());
   }
 
   QWebEnginePage *createBrowserPage(QWebEngineView *view) {
-    return new BrowserPage(profile_, policy_, profileService_, [this](QWebEnginePage::WebWindowType type) {
+    auto *page = new BrowserPage(profile_, policy_, profileService_, [this](QWebEnginePage::WebWindowType type) {
       return createPopupTabPage(type);
-    }, view);
+    }, [this](QWebEnginePage *page, const QUrl &url) {
+      prepareAdBlockScripts(page, url);
+    }, [this](QWebEnginePage *page, const QString &payload) { handleCredentialCandidate(page, payload); },
+       [this](QWebEnginePage *page, const QString &payload) { handleCredentialStage(page, payload); },
+       [this](QWebEnginePage *page, const QString &payload) { handleCredentialSuccessHint(page, payload); },
+       [this](QWebEnginePage *page, const QString &payload) { handleCredentialFillRequest(page, payload); },
+       [this](QWebEnginePage *page, const QString &payload) { handleCredentialGenerateRequest(page, payload); }, view);
+    page->scripts().insert(credentialCandidateCaptureScript());
+    return page;
+  }
+
+  QString credentialStageKey(QWebEngineView *view, const QString &origin) const {
+    return QString::number(reinterpret_cast<quintptr>(view)) + QLatin1Char(':') + origin;
+  }
+
+  QString credentialCandidateKey(QWebEngineView *view, const QString &origin, const QString &username) const {
+    return credentialStageKey(view, origin) + QLatin1Char(':') + username;
+  }
+
+  void installCredentialFillButton(QWebEngineView *view) {
+    CredentialVaultManager *vault = profileService_ ? profileService_->credentialVault() : nullptr;
+    if (!view || !vault || !vault->exists()) return;
+    if (vault->forOrigin(view->url()).isEmpty() && vault->vaultsForOrigin(view->url()).isEmpty()) return;
+    const QString origin = CredentialVault::canonicalHttpsOrigin(view->url());
+    if (origin.isEmpty()) return;
+    const QString token = QUuid::createUuid().toString(QUuid::WithoutBraces);
+    credentialFillTokens_.insert(credentialStageKey(view, origin), token);
+    view->page()->runJavaScript(credentialFillButtonScript(token), QWebEngineScript::ApplicationWorld);
+  }
+
+  void installCredentialGenerateButton(QWebEngineView *view) {
+    if (!view || CredentialVault::canonicalHttpsOrigin(view->url()).isEmpty()) return;
+    const QString origin = CredentialVault::canonicalHttpsOrigin(view->url());
+    const QString token = QUuid::createUuid().toString(QUuid::WithoutBraces);
+    credentialGenerateTokens_.insert(credentialStageKey(view, origin), token);
+    view->page()->runJavaScript(credentialGenerateButtonScript(token), QWebEngineScript::ApplicationWorld);
+  }
+
+  void refreshCredentialFillButtons() {
+    for (int index = 0; pages_ && index < pages_->count(); ++index) {
+      if (auto *view = qobject_cast<QWebEngineView *>(pages_->widget(index))) {
+        installCredentialFillButton(view);
+        backfillCredentialIconsForOrigin(view);
+      }
+    }
+  }
+
+  void handleCredentialFillRequest(QWebEnginePage *page, const QString &payload) {
+    auto *view = page ? qobject_cast<QWebEngineView *>(page->parent()) : nullptr;
+    if (!view) return;
+    const QJsonObject request = QJsonDocument::fromJson(payload.toUtf8()).object();
+    const QString origin = CredentialVault::canonicalHttpsOrigin(view->url());
+    const QString key = credentialStageKey(view, origin);
+    if (origin.isEmpty() || request.value(QStringLiteral("origin")).toString() != origin
+        || request.value(QStringLiteral("token")).toString() != credentialFillTokens_.value(key)) return;
+    fillPageFromVault(view);
+  }
+
+  void handleCredentialGenerateRequest(QWebEnginePage *page, const QString &payload) {
+    auto *view = page ? qobject_cast<QWebEngineView *>(page->parent()) : nullptr;
+    if (!view) return;
+    const QJsonObject request = QJsonDocument::fromJson(payload.toUtf8()).object();
+    const QString origin = CredentialVault::canonicalHttpsOrigin(view->url());
+    const QString key = credentialStageKey(view, origin);
+    if (origin.isEmpty() || request.value(QStringLiteral("origin")).toString() != origin
+        || request.value(QStringLiteral("token")).toString() != credentialGenerateTokens_.value(key)) return;
+    QString password = generatedCredentialSuggestion();
+    QString values = QString::fromUtf8(QJsonDocument(QJsonObject{{QStringLiteral("origin"), origin}, {QStringLiteral("password"), password}}).toJson(QJsonDocument::Compact));
+    const QString script = QStringLiteral(R"JS((() => { const value=%1; if (location.origin !== value.origin) return false; const visible=e=>{const s=getComputedStyle(e),r=e.getBoundingClientRect();return e.type!=='hidden'&&!e.disabled&&s.display!=='none'&&s.visibility!=='hidden'&&r.width>0&&r.height>0}; const safe=e=>{if(!(e?.form instanceof HTMLFormElement)||!visible(e.form))return false;try{const a=new URL(e.form.getAttribute('action')||location.href,document.baseURI);return a.protocol==='https:'&&a.origin===location.origin}catch(_){return false}}; const fields=[...document.querySelectorAll('input[type="password"]')].filter(e=>visible(e)&&safe(e)); const marked=fields.filter(e=>/new-password/i.test(e.autocomplete||'')||/(new|confirm|repeat|signup|register|create)/i.test(`${e.name||''} ${e.id||''}`)); const targets=marked.length?marked:(fields.length>=2&&fields.some(e=>/(confirm|repeat|again)/i.test(`${e.name||''} ${e.id||''}`))?fields:[]); if(!targets.length)return false; for(const target of targets){target.focus();target.value=value.password;target.dispatchEvent(new Event('input',{bubbles:true}));target.dispatchEvent(new Event('change',{bubbles:true}));} targets[0].focus(); return true;})())JS").arg(values);
+    password.fill(QChar()); values.fill(QChar());
+    view->page()->runJavaScript(script, [this](const QVariant &result) {
+      if (!result.toBool()) QMessageBox::information(this, QStringLiteral("Şifre Yöneticisi"), QStringLiteral("Güvenli bir kayıt parolası alanı bulunamadı."));
+    });
+  }
+
+  void capturePendingCredentialIcon(QWebEngineView *view, const QIcon &icon) {
+    if (!view || icon.isNull()) return;
+    const quintptr viewId = reinterpret_cast<quintptr>(view);
+    const auto pending = pendingCredentialIconUpdates_.value(viewId);
+    if (pending.id.isEmpty() || pending.origin != CredentialVault::canonicalHttpsOrigin(view->url())) return;
+    const QString iconData = credentialIconPngBase64(icon);
+    CredentialVaultManager *vault = profileService_ ? profileService_->credentialVault() : nullptr;
+    if (iconData.isEmpty() || !vault || vault->isLocked()) return;
+    CredentialSecret secret;
+    if (!vault->reveal(pending.id, &secret) || secret.origin != pending.origin) return;
+    secret.iconPngBase64 = iconData;
+    if (vault->update(pending.id, secret)) pendingCredentialIconUpdates_.remove(viewId);
+  }
+
+  void backfillCredentialIconsForOrigin(QWebEngineView *view) {
+    CredentialVaultManager *vault = profileService_ ? profileService_->credentialVault() : nullptr;
+    if (!view || !vault || vault->isLocked()) return;
+    const QString iconData = credentialIconPngBase64(view->icon());
+    if (iconData.isEmpty()) return;
+    for (const CredentialMetadata &record : vault->forOrigin(view->url())) {
+      if (!record.iconPngBase64.isEmpty()) continue;
+      CredentialSecret secret;
+      if (vault->reveal(record.id, &secret)) { secret.iconPngBase64 = iconData; vault->update(record.id, secret); }
+    }
+  }
+
+  void pruneCredentialStages() {
+    const QDateTime now = QDateTime::currentDateTimeUtc();
+    for (auto it = stagedCredentialUsernames_.begin(); it != stagedCredentialUsernames_.end();) {
+      if (it->expiresAt <= now) it = stagedCredentialUsernames_.erase(it); else ++it;
+    }
+  }
+
+  void pruneCredentialCandidates() {
+    const QDateTime now = QDateTime::currentDateTimeUtc();
+    for (auto it = pendingCredentialCandidates_.begin(); it != pendingCredentialCandidates_.end();) {
+      if (it->expiresAt <= now) it = pendingCredentialCandidates_.erase(it); else ++it;
+    }
+  }
+
+  void handleCredentialStage(QWebEnginePage *page, const QString &payload) {
+    auto *view = page ? qobject_cast<QWebEngineView *>(page->parent()) : nullptr;
+    CredentialVaultManager *vault = profileService_ ? profileService_->credentialVault() : nullptr;
+    const QVector<VaultMetadata> availableVaults = vault ? vault->vaults() : QVector<VaultMetadata>{};
+    if (!view || !vault || std::all_of(availableVaults.cbegin(), availableVaults.cend(), [](const VaultMetadata &item) { return item.locked; })) return;
+    const QJsonObject staged = QJsonDocument::fromJson(payload.toUtf8()).object();
+    const QString origin = CredentialVault::canonicalHttpsOrigin(view->url());
+    const QString claimedOrigin = staged.value(QStringLiteral("origin")).toString();
+    const QString username = staged.value(QStringLiteral("username")).toString().trimmed().left(320);
+    if (origin.isEmpty() || claimedOrigin != origin || username.isEmpty()) return;
+    pruneCredentialStages();
+    stagedCredentialUsernames_.insert(credentialStageKey(view, origin), {username, QDateTime::currentDateTimeUtc().addSecs(5 * 60)});
+  }
+
+  void handleCredentialCandidate(QWebEnginePage *page, const QString &payload) {
+    auto *view = page ? qobject_cast<QWebEngineView *>(page->parent()) : nullptr;
+    CredentialVaultManager *vault = profileService_ ? profileService_->credentialVault() : nullptr;
+    const QVector<VaultMetadata> availableVaults = vault ? vault->vaults() : QVector<VaultMetadata>{};
+    if (!view || !vault || std::all_of(availableVaults.cbegin(), availableVaults.cend(), [](const VaultMetadata &item) { return item.locked; })) return;
+    const QJsonDocument document = QJsonDocument::fromJson(payload.toUtf8());
+    const QJsonObject candidate = document.object();
+    const QString origin = CredentialVault::canonicalHttpsOrigin(view->url());
+    const QString claimedOrigin = candidate.value(QStringLiteral("origin")).toString();
+    QString username = candidate.value(QStringLiteral("username")).toString().trimmed().left(320);
+    const QString password = candidate.value(QStringLiteral("password")).toString();
+    if (origin.isEmpty() || claimedOrigin != origin || password.isEmpty() || password.size() > 4096) return;
+    pruneCredentialStages();
+    if (username.isEmpty()) username = stagedCredentialUsernames_.value(credentialStageKey(view, origin)).username;
+    if (username.isEmpty()) return;
+    const QString candidateKey = credentialCandidateKey(view, origin, username);
+    if (pendingCredentialPrompts_.contains(candidateKey)) return;
+    const QDateTime expiresAt = QDateTime::currentDateTimeUtc().addSecs(45);
+    pendingCredentialCandidates_.insert(candidateKey, {{origin, username, password, {}}, view->url(), expiresAt});
+    QPointer<BrowserWindow> guardedThis(this);
+    QPointer<QWebEngineView> guardedView(view);
+    QTimer::singleShot(46000, this, [guardedThis, guardedView, candidateKey] {
+      if (!guardedThis || !guardedView) return;
+      const auto it = guardedThis->pendingCredentialCandidates_.find(candidateKey);
+      if (it != guardedThis->pendingCredentialCandidates_.end() && it->expiresAt <= QDateTime::currentDateTimeUtc()) guardedThis->pendingCredentialCandidates_.erase(it);
+    });
+  }
+
+  void promptCredentialCandidate(QWebEngineView *view, const QString &candidateKey) {
+    if (!view || pendingCredentialPrompts_.contains(candidateKey)) return;
+    pruneCredentialCandidates();
+    const auto it = pendingCredentialCandidates_.find(candidateKey);
+    if (it == pendingCredentialCandidates_.end()) return;
+    const PendingCredentialCandidate candidate = it.value();
+    const QString currentOrigin = CredentialVault::canonicalHttpsOrigin(view->url());
+    CredentialVaultManager *vault = profileService_ ? profileService_->credentialVault() : nullptr;
+    if (!vault || currentOrigin != candidate.secret.origin) return;
+    QVector<VaultMetadata> unlockedVaults; for (const VaultMetadata &item : vault->vaults()) if (!item.locked) unlockedVaults.append(item);
+    if (unlockedVaults.isEmpty()) return;
+    pendingCredentialPrompts_.insert(candidateKey);
+    const QVector<CredentialMetadata> existingRecords = vault->forOrigin(view->url());
+    const bool existing = std::any_of(existingRecords.cbegin(), existingRecords.cend(), [&candidate](const CredentialMetadata &item) { return item.username == candidate.secret.username; });
+    QMessageBox prompt(QMessageBox::Question, QStringLiteral("ArDali Şifre Yöneticisi"),
+                        existing ? QStringLiteral("Bu hesap için kayıtlı şifre güncellensin mi?") : QStringLiteral("Bu giriş bilgisi güvenli kasaya kaydedilsin mi?"),
+                        QMessageBox::NoButton, this);
+    prompt.setInformativeText(QStringLiteral("%1\n%2").arg(candidate.secret.origin, candidate.secret.username));
+    auto *accept = prompt.addButton(existing ? QStringLiteral("Güncelle") : QStringLiteral("Kaydet"), QMessageBox::AcceptRole);
+    prompt.addButton(QStringLiteral("Şimdi değil"), QMessageBox::RejectRole);
+    QComboBox *vaultPicker = nullptr;
+    if (unlockedVaults.size() > 1) {
+      vaultPicker = new QComboBox(&prompt); for (const VaultMetadata &item : unlockedVaults) vaultPicker->addItem(item.name, item.id);
+      prompt.setInformativeText(QStringLiteral("%1\n%2\n\nKaydedilecek kasa:").arg(candidate.secret.origin, candidate.secret.username));
+      prompt.layout()->addWidget(vaultPicker);
+    }
+    prompt.exec();
+    stagedCredentialUsernames_.remove(credentialStageKey(view, candidate.secret.origin));
+    if (prompt.clickedButton() == accept) {
+      CredentialSecret saved = candidate.secret;
+      saved.iconPngBase64 = credentialIconPngBase64(view->icon());
+      bool updated = false;
+      const QString destinationVaultId = vaultPicker ? vaultPicker->currentData().toString() : unlockedVaults.front().id;
+      if (vault->saveToVault(destinationVaultId, saved, &updated) && saved.iconPngBase64.isEmpty()) {
+        const QVector<CredentialMetadata> savedRecords = vault->forOrigin(view->url());
+        for (const CredentialMetadata &record : savedRecords) {
+          if (record.vaultId == destinationVaultId && record.username == saved.username) {
+            pendingCredentialIconUpdates_.insert(reinterpret_cast<quintptr>(view), {record.id, saved.origin});
+            break;
+          }
+        }
+      }
+    }
+    pendingCredentialCandidates_.remove(candidateKey);
+    pendingCredentialPrompts_.remove(candidateKey);
+  }
+
+  void handleCredentialSuccessHint(QWebEnginePage *page, const QString &payload) {
+    auto *view = page ? qobject_cast<QWebEngineView *>(page->parent()) : nullptr;
+    const QJsonObject hint = QJsonDocument::fromJson(payload.toUtf8()).object();
+    const QString origin = CredentialVault::canonicalHttpsOrigin(view ? view->url() : QUrl{});
+    if (!view || origin.isEmpty() || hint.value(QStringLiteral("origin")).toString() != origin) return;
+    const QString prefix = credentialStageKey(view, origin) + QLatin1Char(':');
+    QString newestKey; QDateTime newest;
+    for (auto it = pendingCredentialCandidates_.cbegin(); it != pendingCredentialCandidates_.cend(); ++it) {
+      if (it.key().startsWith(prefix) && it->expiresAt > newest) { newest = it->expiresAt; newestKey = it.key(); }
+    }
+    if (!newestKey.isEmpty()) promptCredentialCandidate(view, newestKey);
+  }
+
+  void handleCredentialSuccessfulNavigation(QWebEngineView *view) {
+    if (!view) return;
+    pruneCredentialCandidates();
+    const QString origin = CredentialVault::canonicalHttpsOrigin(view->url());
+    if (origin.isEmpty()) return;
+    const QString prefix = credentialStageKey(view, origin) + QLatin1Char(':');
+    QString newestKey; QDateTime newest;
+    for (auto it = pendingCredentialCandidates_.cbegin(); it != pendingCredentialCandidates_.cend(); ++it) {
+      if (it.key().startsWith(prefix) && it->sourceUrl != view->url() && it->expiresAt > newest) { newest = it->expiresAt; newestKey = it.key(); }
+    }
+    if (!newestKey.isEmpty()) promptCredentialCandidate(view, newestKey);
+  }
+
+    void prepareAdBlockScripts(QWebEnginePage *page, const QUrl &url, bool force = false) { prepareBlockerScripts(page, url, force); }
+  void prepareBlockerScripts(QWebEnginePage *page, const QUrl &url, bool force = false) {
+    if (!page) return;
+    const QString planKey = QStringLiteral("%1://%2")
+                                .arg(url.scheme().toLower(), url.host().toLower());
+    if (!force && page->property("ardali-adblock-script-plan").toString() == planKey) return;
+    page->setProperty("ardali-adblock-script-plan", planKey);
+    static const QStringList names = {
+        QStringLiteral("ardali-adblock-cosmetic"),
+        QStringLiteral("ardali-adblock-scriptlets-main"),
+        QStringLiteral("ardali-adblock-scriptlets-isolated"),
+        QStringLiteral("ardali-adblock-procedural")};
+    for (const QString &name : names) {
+      const auto installed = page->scripts().find(name);
+      for (const QWebEngineScript &script : installed) page->scripts().remove(script);
+    }
+    if (!profileService_ || !profileService_->adBlockService()) return;
+    const QString scheme = url.scheme().toLower();
+    if (scheme != QLatin1String("http") && scheme != QLatin1String("https")) return;
+    for (const QWebEngineScript &script :
+         profileService_->adBlockService()->createScriptingScriptsForHost(url.host().toLower())) {
+      page->scripts().insert(script);
+    }
   }
 
   QWebEnginePage *createPopupTabPage(QWebEnginePage::WebWindowType type) {
@@ -2477,12 +4943,52 @@ class BrowserWindow final : public QMainWindow {
     QUrlQuery query;
     query.addQueryItem(QStringLiteral("engine"), searchEngine_->currentText());
     newTabUrl.setQuery(query);
+    prepareAdBlockScripts(view->page(), newTabUrl);
     view->load(newTabUrl);
   }
 
   void navigateCurrent(const QUrl &url) {
-    if (url.isEmpty() || !policy_->allowsNavigation(url)) return;
-    if (auto *view = currentView()) view->load(url);
+    if (url.isEmpty()) return;
+    if (url.scheme().compare(QLatin1String("ardali"), Qt::CaseInsensitive) == 0) {
+      const QString host = url.host().toLower();
+      if (host == QLatin1String("blocker") || host == QLatin1String("adblock")) {
+        showArDaliBlockerSettings();
+        return;
+      }
+      if (host == QLatin1String("settings")) {
+        showSettings();
+        return;
+      }
+      if (host == QLatin1String("audio-effects")) {
+        showAudioEffects();
+        return;
+      }
+      if (host == QLatin1String("passwords") || host == QLatin1String("password-manager")) {
+        showPasswords();
+        return;
+      }
+      if (host == QLatin1String("eq-presets")) {
+        showEqPresetBrowser();
+        return;
+      }
+      if (host == QLatin1String("listen") || host == QLatin1String("song-finder") || host == QLatin1String("pulse")) {
+        showSongFinder();
+        return;
+      }
+      if (host == QLatin1String("listen-settings") || host == QLatin1String("song-finder-settings") || host == QLatin1String("pulse-settings")) {
+        showSongFinderSettings();
+        return;
+      }
+      if (host == QLatin1String("newtab")) {
+        if (auto *view = currentView()) loadNewTabPage(view);
+        return;
+      }
+    }
+    if (!policy_->allowsNavigation(url)) return;
+    if (auto *view = currentView()) {
+      prepareAdBlockScripts(view->page(), url);
+      view->load(url);
+    }
   }
 
   void setCurrentZoom(qreal factor) {
@@ -2755,8 +5261,13 @@ class BrowserWindow final : public QMainWindow {
     QWebEngineView *const view = currentView();
     if (!view || !isNewTabUrl(view->url()) || !view->page()) return;
     view->page()->runJavaScript(QStringLiteral("(() => { const input = document.getElementById('query'); const engine = document.getElementById('engine'); const command=window.ardaliNewTabCommand||null;window.ardaliNewTabCommand=null;return input && engine ? JSON.stringify({query:input.value.trim(), engine:engine.value, consent:localStorage.getItem('ardali.searchSuggestions')||'', newTabSettings:localStorage.getItem('ardali.newtab')||'',command}) : ''; })()"),
-        [this, guardedView = QPointer<QWebEngineView>(view)](const QVariant &value) {
-          if (!guardedView || guardedView != currentView() || !isNewTabUrl(guardedView->url())) return;
+        [this, callbacksAlive = javaScriptCallbacksAlive_, guardedPages = QPointer<QStackedWidget>(pages_),
+         guardedView = QPointer<QWebEngineView>(view)](const QVariant &value) {
+          // QWebEnginePage resolves pending JavaScript callbacks while its
+          // parent hierarchy is being destroyed. The stacked widget can be
+          // gone at that point even though the view has not cleared yet.
+          if (!*callbacksAlive || !guardedPages || !guardedView || guardedPages->currentWidget() != guardedView
+              || !isNewTabUrl(guardedView->url())) return;
           const QJsonDocument document = QJsonDocument::fromJson(value.toString().toUtf8());
           if (!document.isObject()) return;
           const QJsonObject query = document.object();
@@ -3001,7 +5512,7 @@ class BrowserWindow final : public QMainWindow {
       QAction *empty = menu.addAction(QStringLiteral("Geçmiş henüz boş"));
       empty->setEnabled(false);
     } else {
-      for (const BrowserHistoryEntry &entry : entries.first(std::min<qsizetype>(30, entries.size()))) {
+      for (const BrowserHistoryEntry &entry : entries.mid(0, std::min<qsizetype>(30, entries.size()))) {
         const QString label = entry.title.isEmpty() ? entry.url.host() : entry.title;
         QAction *action = menu.addAction(label.left(90));
         action->setToolTip(QStringLiteral("%1\n%2").arg(entry.url.toDisplayString(), entry.visitedAt.toLocalTime().toString(QStringLiteral("dd.MM.yyyy HH:mm"))));
@@ -3024,7 +5535,7 @@ class BrowserWindow final : public QMainWindow {
       QAction *empty = menu.addAction(QStringLiteral("Bu oturumda indirme yok"));
       empty->setEnabled(false);
     } else {
-      for (const BrowserDownloadEntry &entry : entries.first(std::min<qsizetype>(20, entries.size()))) {
+      for (const BrowserDownloadEntry &entry : entries.mid(0, std::min<qsizetype>(20, entries.size()))) {
         QAction *action = menu.addAction(QStringLiteral("%1 — %2").arg(entry.fileName.left(65), entry.state));
         action->setEnabled(false);
         action->setToolTip(entry.path);
@@ -3073,6 +5584,33 @@ class BrowserWindow final : public QMainWindow {
     bookmarkBar_->setVisible(!bookmarkBar_->actions().isEmpty());
   }
 
+  void updateSideWidgetGeometry() {
+    if (!sideWidget_ || !pages_ || !browserRoot_) return;
+    const QRect pagesRect = pages_->geometry();
+    sideWidget_->setGeometry(pagesRect.x(), pagesRect.y(), pagesRect.width(), pagesRect.height());
+    sideWidget_->raise();
+  }
+
+  void updateThrobberUi() {
+    if (!tabManager_ || !pages_ || !tabBar_) return;
+    const QVector<TabManager::TabRecord> records = tabManager_->recordsFor(this);
+    for (const auto &record : records) {
+      if (record.kind != TabManager::TabKind::Web || !record.view) continue;
+      const QWebEngineView *view = record.view.data();
+      const int index = pages_->indexOf(record.view);
+      if (index < 0) continue;
+
+      if (TabThrobber::instance().isThrobberVisible(view)) {
+        const bool active = (view == currentView());
+        const QIcon throbberIcon = TabThrobber::renderThrobberIcon(
+            TabThrobber::instance().frameStep(), palette(), active, devicePixelRatioF());
+        tabBar_->setTabIcon(index, throbberIcon);
+      } else if (!TabThrobber::instance().isLoading(view)) {
+        tabBar_->setTabIcon(index, tabIconForRecord(&record, view));
+      }
+    }
+  }
+
   void syncLoadProgress(QWebEngineView *view) {
     if (!loadProgress_ || !view || view != currentView()) return;
     const bool loading = view->property("ardali-loading").toBool();
@@ -3105,6 +5643,8 @@ class BrowserWindow final : public QMainWindow {
       view->removeEventFilter(previousOwner);
     }
     view->setProperty("ardali-owner", QVariant::fromValue(static_cast<QObject *>(this)));
+    if (webAudioEffects_) webAudioEffects_->registerWebView(view);
+    TabThrobber::instance().updateOwner(view, this);
     view->installEventFilter(this);
     view->setContextMenuPolicy(Qt::CustomContextMenu);
     connect(view, &QWidget::customContextMenuRequested, this, [this, view](const QPoint &position) {
@@ -3116,41 +5656,102 @@ class BrowserWindow final : public QMainWindow {
       tabManager_->updateTitle(tabManager_->idFor(view), title);
       refreshTabStripWidth();
       scheduleSessionSave();
-      if (view == currentView()) setWindowTitle(title.isEmpty() ? QStringLiteral("ArDaliBrowser") : title);
+      if (view == currentView()) {
+        setWindowTitle(title.isEmpty() ? QStringLiteral("ArDaliBrowser") : title);
+        if (songRecognitionService_) {
+          QString cleanTitle = title.trimmed();
+          if (cleanTitle.endsWith(QStringLiteral(" - YouTube"), Qt::CaseInsensitive)) cleanTitle.chop(10);
+          const QStringList parts = cleanTitle.split(QStringLiteral(" - "));
+          if (parts.size() >= 2) {
+            songRecognitionService_->setWebContextMetadata(parts.mid(1).join(QStringLiteral(" - ")).trimmed(), parts.first().trimmed());
+          } else {
+            songRecognitionService_->setWebContextMetadata(cleanTitle, QString());
+          }
+        }
+      }
     });
     connect(view, &QWebEngineView::urlChanged, this, [this, view](const QUrl &url) {
-      tabManager_->updateUrl(tabManager_->idFor(view), url);
+      const auto id = tabManager_->idFor(view);
+      tabManager_->updateUrl(id, url);
+      if (profileService_ && profileService_->adBlockService()) {
+        const quint64 tabId = reinterpret_cast<quintptr>(view);
+        profileService_->adBlockService()->updateTabUrl(tabId, url);
+      }
+      if (isNewTabUrl(url)) {
+        tabManager_->updateIcon(id, QIcon());
+      } else {
+        view->setProperty("ardali-is-newtab-intent", false);
+      }
+      if (!TabThrobber::instance().isThrobberVisible(view)) {
+        const int index = pages_->indexOf(view);
+        if (index >= 0) {
+          tabBar_->setTabIcon(index, tabIconForRecord(tabManager_->record(id), view));
+        }
+      }
       scheduleSessionSave();
       if (view == currentView()) updateChrome();
     });
     connect(view, &QWebEngineView::iconChanged, this, [this, view](const QIcon &icon) {
+      capturePendingCredentialIcon(view, icon);
+      backfillCredentialIconsForOrigin(view);
       const auto id = tabManager_->idFor(view);
-      if (!icon.isNull()) {
-        tabManager_->updateIcon(id, icon);
+      if (!isNewTabUrl(view->url())) {
+        if (!icon.isNull()) {
+          tabManager_->updateIcon(id, icon);
+        }
+        TabThrobber::instance().cacheFavicon(view, icon);
       }
-      const int index = pages_->indexOf(view);
-      if (index >= 0) {
-        const TabManager::TabRecord *record = tabManager_->record(id);
-        const QIcon displayIcon = (record && !record->icon.isNull())
-            ? record->icon
-            : (!icon.isNull() ? icon : BrowserIcons::icon(BrowserIcon::Window));
-        tabBar_->setTabIcon(index, displayIcon);
+      if (!TabThrobber::instance().isThrobberVisible(view)) {
+        const int index = pages_->indexOf(view);
+        if (index >= 0) {
+          tabBar_->setTabIcon(index, tabIconForRecord(tabManager_->record(id), view));
+        }
       }
     });
     connect(view->page(), &QWebEnginePage::zoomFactorChanged, this, [this, view](qreal) {
       if (view == currentView()) updateZoomControls();
     });
     connect(view, &QWebEngineView::loadStarted, this, [this, view] {
+      const QString viewPrefix = QString::number(reinterpret_cast<quintptr>(view)) + QLatin1Char(':');
+      for (auto it = credentialFillTokens_.begin(); it != credentialFillTokens_.end();) {
+        if (it.key().startsWith(viewPrefix)) it = credentialFillTokens_.erase(it); else ++it;
+      }
+      for (auto it = credentialGenerateTokens_.begin(); it != credentialGenerateTokens_.end();) {
+        if (it.key().startsWith(viewPrefix)) it = credentialGenerateTokens_.erase(it); else ++it;
+      }
+      if (!isNewTabUrl(view->url())) {
+        view->setProperty("ardali-is-newtab-intent", false);
+      }
+      if (profileService_ && profileService_->adBlockService()) {
+        const quint64 tabId = reinterpret_cast<quintptr>(view);
+        profileService_->adBlockService()->updateTabUrl(tabId, view->url());
+      }
+      TabThrobber::instance().startLoading(view, this);
       setLoadState(view, true, 0);
     });
     connect(view, &QWebEngineView::loadProgress, this, [this, view](int progress) {
       setLoadState(view, true, progress);
     });
     connect(view, &QWebEngineView::loadFinished, this, [this, view](bool success) {
+      TabThrobber::instance().finishLoading(view, success);
       setLoadState(view, false, 100);
+      const auto id = tabManager_->idFor(view);
+      if (isNewTabUrl(view->url())) {
+        tabManager_->updateIcon(id, QIcon());
+      }
+      const int index = pages_->indexOf(view);
+      if (index >= 0) {
+        tabBar_->setTabIcon(index, tabIconForRecord(tabManager_->record(id), view));
+      }
       if (success && isNewTabUrl(view->url())) {
         view->page()->runJavaScript(newTabSuggestionScript());
         syncFrequentSites(view);
+      }
+      if (success) {
+        handleCredentialSuccessfulNavigation(view);
+        installCredentialFillButton(view);
+        installCredentialGenerateButton(view);
+        backfillCredentialIconsForOrigin(view);
       }
       if (success && profileService_) profileService_->recordHistory(view->url(), view->title());
       if (view == currentView()) updateChrome();
@@ -3222,6 +5823,9 @@ class BrowserWindow final : public QMainWindow {
 
   void updateChrome() {
     if (auto *view = currentView()) {
+      if (!isNewTabUrl(view->url()) && view->url().scheme() != QLatin1String("ardali") && view->url().isValid()) {
+        lastActiveWebView_ = view;
+      }
       address_->setReadOnly(false);
       address_->setText(isNewTabUrl(view->url()) ? QString() : view->url().toDisplayString());
       setWindowTitle(view->title().isEmpty() ? QStringLiteral("ArDaliBrowser") : view->title());
@@ -3232,12 +5836,53 @@ class BrowserWindow final : public QMainWindow {
       const bool starred = profileService_ && profileService_->isBookmarked(view->url());
       bookmark_->setToolTip(starred ? QStringLiteral("Yer imi kaldır") : QStringLiteral("Yer imi ekle"));
       bookmark_->setIcon(bookmarkIcon(starred));
+      if (adBlockShield_) {
+        const QString host = view->url().host().toLower();
+        adBlockShield_->setActiveHost(host);
+        const quint64 currentId = reinterpret_cast<quintptr>(view);
+        if (profileService_ && profileService_->adBlockService()) {
+          const auto stats = profileService_->adBlockService()->statsForTab(currentId);
+          adBlockShield_->setBlockedCount(stats.blockedRequests);
+        }
+      }
       updateZoomControls();
       syncLoadProgress(view);
     } else {
       address_->setReadOnly(true);
-      address_->setText(QStringLiteral("ardali://settings"));
-      setWindowTitle(QStringLiteral("Ayarlar — ArDaliBrowser"));
+      const auto internalId = tabManager_->idForContent(pages_->currentWidget());
+      const TabManager::TabRecord *record = tabManager_->record(internalId);
+      const bool audioEffects = record && record->internalId == QStringLiteral("audio-effects");
+      const bool eqPresets = record && record->internalId == QStringLiteral("eq-presets");
+      const bool blocker = record && (record->internalId == QStringLiteral("blocker") || record->internalId == QStringLiteral("adblock"));
+      const bool passwords = record && record->internalId == QStringLiteral("passwords");
+      const bool songFinder = record && record->internalId == QStringLiteral("song-finder");
+      const bool songFinderSettings = record && record->internalId == QStringLiteral("song-finder-settings");
+      if (blocker) {
+        address_->setText(QStringLiteral("ardali://blocker"));
+        setWindowTitle(QStringLiteral("ArDali Blocker — ArDaliBrowser"));
+      } else if (songFinder) {
+        address_->setText(QStringLiteral("ardali://listen"));
+        setWindowTitle(QStringLiteral("ArDali Pulse — ArDaliBrowser"));
+      } else if (songFinderSettings) {
+        address_->setText(QStringLiteral("ardali://listen-settings"));
+        setWindowTitle(QStringLiteral("Pulse Ayarları — ArDaliBrowser"));
+      } else if (eqPresets) {
+        address_->setText(QStringLiteral("ardali://eq-presets"));
+        setWindowTitle(QStringLiteral("Hazır Ses Efektleri — ArDaliBrowser"));
+      } else if (audioEffects) {
+        address_->setText(QStringLiteral("ardali://audio-effects"));
+        setWindowTitle(QStringLiteral("Ses Efektleri — ArDaliBrowser"));
+      } else if (passwords) {
+        address_->setText(QStringLiteral("ardali://passwords"));
+        setWindowTitle(QStringLiteral("Şifre Yöneticisi — ArDaliBrowser"));
+      } else {
+        address_->setText(QStringLiteral("ardali://settings"));
+        setWindowTitle(QStringLiteral("Ayarlar — ArDaliBrowser"));
+      }
+      if (adBlockShield_) {
+        adBlockShield_->setActiveHost(QString());
+        adBlockShield_->setBlockedCount(0);
+      }
       back_->setEnabled(false);
       forward_->setEnabled(false);
       reload_->setEnabled(false);
@@ -3677,11 +6322,13 @@ class BrowserWindow final : public QMainWindow {
     if (attachPreviewIndex_ != index || attachPreviewWidth_ != expectedWidth) return false;
     // The last-root regression fixture deliberately hides its destination
     // root. Its candidate state is still meaningful, but no child preview can
-    // be visible until attach restores that top-level window. A synthetic
-    // Wayland native move likewise cannot be used to assert compositor paint
-    // delivery; its state transition is covered here and paint is asserted by
-    // the offscreen/X11 fixture.
-    if (!isVisible() || QGuiApplication::platformName().contains(QLatin1String("wayland"), Qt::CaseInsensitive)) return true;
+    // be visible until attach restores that top-level window. Synthetic
+    // Wayland and offscreen moves likewise cannot prove compositor paint
+    // delivery; their state transition is covered here, while X11 asserts the
+    // actual overlay visibility below.
+    const QString platform = QGuiApplication::platformName();
+    if (!isVisible() || platform == QLatin1String("offscreen")
+        || platform.contains(QLatin1String("wayland"), Qt::CaseInsensitive)) return true;
     return attachPreviewOverlay_ && attachPreviewOverlay_->isVisible()
         && tabBar_ && tabBar_->isVisible()
         && newTabButton_ && newTabButton_->isVisible();
@@ -3753,6 +6400,7 @@ class BrowserWindow final : public QMainWindow {
   const BrowserPolicy *policy_ = nullptr;
   SessionStore *sessionStore_ = nullptr;
   QPointer<BrowserWindow> mainWindow_;
+  std::shared_ptr<bool> javaScriptCallbacksAlive_ = std::make_shared<bool>(true);
   QWidget *tabStrip_ = nullptr;
   QWidget *browserRoot_ = nullptr;
   QHBoxLayout *tabStripLayout_ = nullptr;
@@ -3776,7 +6424,11 @@ class BrowserWindow final : public QMainWindow {
   QAction *forward_ = nullptr;
   QAction *reload_ = nullptr;
   QAction *bookmark_ = nullptr;
+  QAction *passwords_ = nullptr;
   QAction *settings_ = nullptr;
+  ArDaliBlockerShieldButton *adBlockShield_ = nullptr;
+  PulseToolbarButton *pulseButton_ = nullptr;
+  TabHoverCard *tabHoverCard_ = nullptr;
   QFrame *attachMarker_ = nullptr;
   QLabel *attachPreviewOverlay_ = nullptr;
   QLabel *dragTabProxy_ = nullptr;
@@ -3803,6 +6455,14 @@ class BrowserWindow final : public QMainWindow {
   int draggedTabRight_ = 0;
   int pendingMainAttachIndex_ = -1;
   QPointer<QWebEngineView> pendingMainAttachView_;
+  QPointer<QWebEngineView> lastActiveWebView_;
+  QSet<QString> pendingCredentialPrompts_;
+  QHash<QString, StagedCredentialUsername> stagedCredentialUsernames_;
+  QHash<QString, PendingCredentialCandidate> pendingCredentialCandidates_;
+  QHash<QString, QString> credentialFillTokens_;
+  QHash<QString, QString> credentialGenerateTokens_;
+  QHash<quintptr, PendingCredentialIconUpdate> pendingCredentialIconUpdates_;
+  QSet<quintptr> pendingVaultFillUnlocks_;
   TabManager::TabId pendingMainAttachId_;
   int attachPreviewIndex_ = -1;
   int attachPreviewWidth_ = 0;
@@ -3854,8 +6514,13 @@ int main(int argc, char *argv[]) {
   std::unique_ptr<QTemporaryDir> runtimeTestData;
   if (qEnvironmentVariableIsSet("ARDALI_SETTINGS_RUNTIME_TEST")
       || qEnvironmentVariableIsSet("ARDALI_NEW_TAB_CUSTOMIZATION_RUNTIME_TEST")
+      || qEnvironmentVariableIsSet("ARDALI_NEW_TAB_FAVICON_RUNTIME_TEST")
+      || qEnvironmentVariableIsSet("ARDALI_TAB_HOVER_CARD_RUNTIME_TEST")
       || qEnvironmentVariableIsSet("ARDALI_TAB_ATTACH_RUNTIME_TEST")
-      || qEnvironmentVariableIsSet("ARDALI_TAB_ATTACH_STRESS_TEST")) {
+      || qEnvironmentVariableIsSet("ARDALI_TAB_ATTACH_STRESS_TEST")
+      || qEnvironmentVariableIsSet("ARDALI_AUDIO_EFFECTS_RUNTIME_TEST")
+      || qEnvironmentVariableIsSet("ARDALI_EQ_PRESET_BROWSER_RUNTIME_TEST")
+      || qEnvironmentVariableIsSet("ARDALI_AUTO_GAIN_RUNTIME_TEST")) {
     runtimeTestData = std::make_unique<QTemporaryDir>();
     QSettings::setPath(QSettings::NativeFormat, QSettings::UserScope, runtimeTestData->path());
   }
@@ -3879,6 +6544,21 @@ int main(int argc, char *argv[]) {
     mainWindow.restoreSession(sessionStore.load());
   }
   mainWindow.ensureInitialTab();
+  QUrl startupUrl;
+  for (int i = 1; i < argc; ++i) {
+    const QString argument = QString::fromLocal8Bit(argv[i]).trimmed();
+    if (argument.startsWith(QLatin1Char('-'))) continue;
+    const QUrl candidate = QUrl::fromUserInput(argument);
+    const QString scheme = candidate.scheme().toLower();
+    if (candidate.isValid() && (scheme == QLatin1String("http") || scheme == QLatin1String("https")
+                                || scheme == QLatin1String("ardali"))) {
+      startupUrl = candidate;
+      break;
+    }
+  }
+  if (startupUrl.isValid()) {
+    QTimer::singleShot(0, &mainWindow, [&mainWindow, startupUrl] { mainWindow.openStartupUrl(startupUrl); });
+  }
   QObject::connect(&app, &QCoreApplication::aboutToQuit, &mainWindow, [&mainWindow] { mainWindow.saveSessionNow(); });
   if (qEnvironmentVariableIsSet("ARDALI_TAB_TRANSFER_DIAGNOSTICS")) {
     QObject::connect(&app, &QGuiApplication::lastWindowClosed, &app, [] {
@@ -3894,6 +6574,21 @@ int main(int argc, char *argv[]) {
   }
   if (qEnvironmentVariableIsSet("ARDALI_NEW_TAB_CUSTOMIZATION_RUNTIME_TEST")) {
     QTimer::singleShot(450, &mainWindow, [&mainWindow] { mainWindow.runNewTabCustomizationRuntimeTest(); });
+  }
+  if (qEnvironmentVariableIsSet("ARDALI_NEW_TAB_FAVICON_RUNTIME_TEST")) {
+    QTimer::singleShot(400, &mainWindow, [&mainWindow] { mainWindow.runNewTabFaviconRuntimeTest(); });
+  }
+  if (qEnvironmentVariableIsSet("ARDALI_TAB_HOVER_CARD_RUNTIME_TEST")) {
+    QTimer::singleShot(400, &mainWindow, [&mainWindow] { mainWindow.runTabHoverCardRuntimeTest(); });
+  }
+  if (qEnvironmentVariableIsSet("ARDALI_AUDIO_EFFECTS_RUNTIME_TEST")) {
+    QTimer::singleShot(400, &mainWindow, [&mainWindow] { mainWindow.runAudioEffectsRuntimeTest(); });
+  }
+  if (qEnvironmentVariableIsSet("ARDALI_EQ_PRESET_BROWSER_RUNTIME_TEST")) {
+    QTimer::singleShot(400, &mainWindow, [&mainWindow] { mainWindow.runEqPresetBrowserRuntimeTest(); });
+  }
+  if (qEnvironmentVariableIsSet("ARDALI_AUTO_GAIN_RUNTIME_TEST")) {
+    QTimer::singleShot(400, &mainWindow, [&mainWindow] { mainWindow.runAutoGainRuntimeTest(); });
   }
   if (qEnvironmentVariableIsSet("ARDALI_TAB_ATTACH_STRESS_TEST")) {
     const int iterations = std::clamp(qEnvironmentVariableIntValue("ARDALI_TAB_ATTACH_STRESS_CYCLES"), 1, 50);

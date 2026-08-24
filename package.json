@@ -1,0 +1,19 @@
+{
+  "name": "ardali-monorepo",
+  "version": "6.0.0",
+  "description": "Native Qt/C++ desktop browser with integrated privacy and media tools",
+  "license": "GPL-3.0-only",
+  "private": true,
+  "scripts": {
+    "start": "./browser/build/ardali-browser",
+    "build": "cmake -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -B browser/build -S browser && cmake --build browser/build",
+    "test": "ctest --test-dir browser/build --output-on-failure",
+    "test:dali": "cd dali-lang && node scripts/dali-security-suite.js",
+    "test:integration": "node tools/integration-manifest-test.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Muhammed-Dali/ArDali-Browser.git"
+  },
+  "homepage": "https://github.com/Muhammed-Dali/ArDali-Browser"
+}

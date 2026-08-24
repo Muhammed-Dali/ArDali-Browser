@@ -1,0 +1,27 @@
+[
+{
+ "action": {
+  "redirect": {
+   "regexSubstitution": "/strictblock.html#\\0"
+  },
+  "type": "redirect"
+ },
+ "condition": {
+  "regexFilter": "^https?://.*",
+  "requestDomains": [
+   "investopedia.today",
+   "klik.zeus.fun",
+   "klik4.me",
+   "lockerimage.com",
+   "lolhello.com",
+   "macory.com",
+   "shortbioo.com"
+  ],
+  "resourceTypes": [
+   "main_frame"
+  ]
+ },
+ "id": 1,
+ "priority": 29
+}
+]

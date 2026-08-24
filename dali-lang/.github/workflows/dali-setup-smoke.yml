@@ -1,0 +1,47 @@
+name: DALI Setup Smoke
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ "main" ]
+    paths:
+      - "src/cli.js"
+      - "editors/vscode/**"
+      - ".github/workflows/dali-setup-smoke.yml"
+  pull_request:
+    paths:
+      - "src/cli.js"
+      - "editors/vscode/**"
+      - ".github/workflows/dali-setup-smoke.yml"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  setup-smoke:
+    name: setup smoke (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-14, windows-2025]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: "20"
+
+      - name: Verify setup command (non-interactive)
+        run: node src/cli.js setup --skip-editor-install
+
+      - name: Verify extension package metadata
+        run: |
+          node -e "const pkg=require('./editors/vscode/package.json');if(!pkg.name||!pkg.publisher||!pkg.version||!pkg.engines?.vscode){throw new Error('vscode package metadata missing')}console.log('ok:',pkg.name,pkg.version)"

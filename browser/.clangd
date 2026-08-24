@@ -1,0 +1,9 @@
+CompileFlags:
+  Remove:
+    - "-mno-direct-extern-access"
+    - "-fno-canonical-system-headers"
+    - "-Wno-psabi"
+  Add:
+    - "-Wno-unknown-warning-option"
+    - "-Wno-unused-command-line-argument"
+    - "-Qunused-arguments"

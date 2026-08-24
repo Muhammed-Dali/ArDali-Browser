@@ -1,0 +1,52 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-04-09T21:55:17.735Z",
+  "moduleCount": 4,
+  "modules": {
+    "examples/web-bass-enhancer.dali": {
+      "source": "examples/web-bass-enhancer.dali",
+      "js": {
+        "sha256": "2d2a144bef6ba4d194e9b7ef0df412d48b355c24ea468bc9c5d381a65fb2ff47",
+        "lineCount": 154
+      },
+      "wasm": {
+        "sha256": "da3475469cac21ee96f421d1f9e9981172ce8207e9865132e91f03f235054600",
+        "lineCount": 599
+      }
+    },
+    "examples/web-bass-enhancer.dl": {
+      "source": "examples/web-bass-enhancer.dl",
+      "js": {
+        "sha256": "2d2a144bef6ba4d194e9b7ef0df412d48b355c24ea468bc9c5d381a65fb2ff47",
+        "lineCount": 154
+      },
+      "wasm": {
+        "sha256": "c21eddf79211a7e0605c3853fdea743ccfb68927e1de7a3dc3b90457155525fd",
+        "lineCount": 599
+      }
+    },
+    "examples/web-eq32-reference.dl": {
+      "source": "examples/web-eq32-reference.dl",
+      "js": {
+        "sha256": "e1510fd1f3498e1aedfcbf5759f1998c9cee0dc12ff8fca29bfac0e727e8da99",
+        "lineCount": 383
+      },
+      "wasm": {
+        "sha256": "18ce75d552f7ef81addf59c3d99ac0cdc386158da7291da4ca9d18f2b509e865",
+        "lineCount": 1860
+      }
+    },
+    "examples/web-smart-task-reference.dl": {
+      "source": "examples/web-smart-task-reference.dl",
+      "js": {
+        "sha256": "73c120c902970eb5fb2fa3af48965d46107586e941c185733c14a8e9c2cd058e",
+        "lineCount": 130
+      },
+      "wasm": {
+        "sha256": "dc119f9894641b3791104f9fbac6387ad17e13e52c1bdc6d7a792552132b24b8",
+        "lineCount": 677
+      }
+    }
+  },
+  "snapshotHash": "026485931794a098efee85a708d3f94f1f67397a2c959b42fdc7df83131f3998"
+}

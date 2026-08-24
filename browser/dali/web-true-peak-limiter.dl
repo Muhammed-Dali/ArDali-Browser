@@ -1,0 +1,22 @@
+preset "Web True Peak Limiter v1" {
+  engine {
+    input: web;
+    output: speakers;
+    safety: strict;
+    profile: realtime;
+  }
+
+  chain {
+    limiter {
+      ceiling: -0.1db;
+      attack: 0.5ms;
+      release: 50ms;
+    }
+  }
+
+  quality {
+    sample_rate: 48000;
+    max_latency_ms: 10;
+    true_peak_protection: on;
+  }
+}

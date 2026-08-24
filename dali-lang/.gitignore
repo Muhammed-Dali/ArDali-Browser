@@ -1,0 +1,28 @@
+# Generated outputs
+generated/
+*.c
+*.h
+
+# Build artifacts
+node_modules/
+dist/
+build/
+
+# OS files
+.DS_Store
+Thumbs.db
+*.swp
+*~
+
+# IDE
+.vscode/settings.json
+.idea/
+*.code-workspace
+
+# Logs
+*.log
+npm-debug.log*
+
+# Extensions
+*.vsix
+bass_enhancer

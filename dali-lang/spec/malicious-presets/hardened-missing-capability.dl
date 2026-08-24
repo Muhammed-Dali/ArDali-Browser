@@ -1,0 +1,20 @@
+preset "Reference Hardened Capability Case" {
+  engine {
+    input: web;
+    output: speakers;
+    safety: strict;
+    profile: realtime;
+  }
+
+  chain {
+    preamp {
+      gain: -1db;
+    }
+  }
+
+  quality {
+    sample_rate: 48000;
+    max_latency_ms: 20;
+    safety: strict;
+  }
+}

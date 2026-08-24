@@ -1,0 +1,62 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  linux:
+    runs-on: ubuntu-latest
+    container: archlinux:base-devel
+    steps:
+      - name: Install release dependencies
+        run: |
+          pacman -Syu --noconfirm --needed \
+            cmake ffmpeg git github-cli ninja nodejs openssl \
+            qt6-base qt6-svg qt6-webengine
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate tag and version
+        run: |
+          version="$(node -p "require('./package.json').version")"
+          test "${GITHUB_REF_NAME}" = "v${version}"
+
+      - name: Configure and build
+        run: |
+          cmake -S browser -B browser/build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_PREFIX=/usr \
+            -DCMAKE_INSTALL_BINDIR=lib/ardali-browser
+          cmake --build browser/build --parallel 2
+
+      - name: Test
+        env:
+          QT_QPA_PLATFORM: offscreen
+          QTWEBENGINE_DISABLE_SANDBOX: "1"
+        run: ctest --test-dir browser/build --output-on-failure
+
+      - name: Assemble portable Linux archive
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          stage="${GITHUB_WORKSPACE}/release-root"
+          DESTDIR="${stage}" cmake --install browser/build
+          install -dm755 "${stage}/usr/bin"
+          ln -s ../lib/ardali-browser/ardali-browser "${stage}/usr/bin/ardali-browser"
+          tar --zstd -C "${stage}" -cf "ardali-browser-${version}-linux-x86_64.tar.zst" usr
+          sha256sum "ardali-browser-${version}-linux-x86_64.tar.zst" > SHA256SUMS
+
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${GITHUB_REF_NAME}" \
+            --repo "${GITHUB_REPOSITORY}" \
+            --title "ArDali Browser ${GITHUB_REF_NAME#v}" \
+            --notes-file "docs/RELEASE_NOTES_v${GITHUB_REF_NAME#v}.md" \
+            "ardali-browser-${GITHUB_REF_NAME#v}-linux-x86_64.tar.zst" \
+            SHA256SUMS
