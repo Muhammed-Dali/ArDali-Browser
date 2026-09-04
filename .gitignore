@@ -34,3 +34,6 @@ npm-debug.log*
 .env.*
 *~
 *.swp
+browser/native/dragging/
+browser/native/tab-strip/
+browser/native/tabs-complete/
