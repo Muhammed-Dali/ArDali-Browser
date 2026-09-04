@@ -37,3 +37,5 @@ npm-debug.log*
 browser/native/dragging/
 browser/native/tab-strip/
 browser/native/tabs-complete/
+
+scratch/
