@@ -54,6 +54,9 @@ class ArDaliBlockerShieldButton final : public QToolButton {
   void setActiveHost(const QString &host);
   QString activeHost() const { return currentHost_; }
 
+  void setInternalPage(bool internal);
+  bool isInternalPage() const { return isInternalPage_; }
+
  signals:
   void openSettingsRequested();
   void openLoggerRequested();
@@ -70,6 +73,7 @@ class ArDaliBlockerShieldButton final : public QToolButton {
   quint64 blockedCount_ = 0;
   QString currentHost_;
   bool showBadge_ = true;
+  bool isInternalPage_ = false;
 };
 
 using AdBlockShieldButton = ArDaliBlockerShieldButton;

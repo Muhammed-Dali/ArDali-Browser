@@ -1,13 +1,13 @@
 {
-  "cmake.sourceDirectory": "${workspaceFolder}/browser",
-  "cmake.buildDirectory": "${workspaceFolder}/browser/build",
-  "C_Cpp.default.compileCommands": "${workspaceFolder}/browser/build/compile_commands.json",
+  "cmake.sourceDirectory": "${workspaceFolder}",
+  "cmake.buildDirectory": "${workspaceFolder}/build",
+  "C_Cpp.default.compileCommands": "${workspaceFolder}/build/compile_commands.json",
   "files.associations": {
     "*.dali": "dali",
     "*.dl": "dali"
   },
   "clangd.arguments": [
-    "--compile-commands-dir=${workspaceFolder}/browser/build",
+    "--compile-commands-dir=${workspaceFolder}/build",
     "--background-index",
     "-j=4"
   ]

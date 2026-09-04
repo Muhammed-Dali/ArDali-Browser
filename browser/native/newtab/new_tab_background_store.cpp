@@ -26,6 +26,7 @@ bool isSupportedFormat(const QByteArray &format) {
 NewTabBackgroundStore::NewTabBackgroundStore(const QString &profileDataDirectory)
     : directory_(QDir(profileDataDirectory).filePath(QStringLiteral("new-tab-backgrounds"))) {
   QDir().mkpath(directory_);
+  QFile::setPermissions(directory_, QFileDevice::ReadOwner | QFileDevice::WriteOwner | QFileDevice::ExeOwner);
 }
 
 NewTabBackgroundStore::ImportResult NewTabBackgroundStore::importImage(const QString &sourcePath) {
@@ -93,5 +94,7 @@ bool NewTabBackgroundStore::writeImageAtomically(const QString &path, const QIma
   if (!file.open(QIODevice::WriteOnly)) return false;
   QImageWriter writer(&file, format);
   if (quality >= 0) writer.setQuality(quality);
-  return writer.write(image) && file.commit();
+  const bool ok = writer.write(image) && file.commit();
+  if (ok) QFile::setPermissions(path, QFileDevice::ReadOwner | QFileDevice::WriteOwner);
+  return ok;
 }

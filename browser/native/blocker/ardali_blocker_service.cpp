@@ -16,6 +16,7 @@
 ArDaliBlockerService::ArDaliBlockerService(const QString &dataDir, QObject *parent)
     : QObject(parent), dataDir_(dataDir) {
   settings_ = new ArDaliBlockerSettings(dataDir + QStringLiteral("/adblock-settings.ini"), this);
+  QFile::setPermissions(dataDir + QStringLiteral("/adblock-settings.ini"), QFileDevice::ReadOwner | QFileDevice::WriteOwner);
   filterEngine_ = new ArDaliBlockerEngine();
   listManager_ = new ArDaliBlockerListManager(dataDir, this);
   interceptor_ = new ArDaliBlockerRequestInterceptor(this, this);
@@ -76,6 +77,9 @@ void ArDaliBlockerService::reloadRules() {
 
   filterEngine_->applyCompiledPlan(ArDaliBlockerEngine::compilePlan(
       std::move(rules), listCosmeticCss, customLines));
+  if (qEnvironmentVariableIntValue("ARDALI_FEATURE_DIAGNOSTICS") == 1) {
+    qInfo().noquote() << "[BLOCKER] filters loaded";
+  }
 }
 
 void ArDaliBlockerService::updateFiltersAsync() {
@@ -195,9 +199,22 @@ void ArDaliBlockerService::updateTabUrl(quint64 tabId, const QUrl &url) {
     return;
   }
   TabRequestContext &ctx = tabRegistry_[tabId];
+  const QString newHost = url.host().toLower();
+  const QString scheme = url.scheme().toLower();
+  const bool wentInternal = (scheme == QLatin1String("ardali") ||
+                             scheme == QLatin1String("about") ||
+                             scheme == QLatin1String("data") ||
+                             scheme == QLatin1String("file"));
+  const bool hostChanged = (!ctx.currentHost.isEmpty() && !newHost.isEmpty() && ctx.currentHost != newHost);
+
   ctx.currentUrl = url;
-  ctx.currentHost = url.host().toLower();
+  ctx.currentHost = newHost;
   ctx.lastActiveTimestamp = QDateTime::currentMSecsSinceEpoch();
+
+  if (hostChanged || wentInternal) {
+    locker.unlock();
+    clearTabStats(tabId);
+  }
 }
 
 void ArDaliBlockerService::setActiveTabId(quint64 tabId) {
@@ -292,6 +309,17 @@ RequestDecision ArDaliBlockerService::evaluateRequest(const QUrl &requestUrl, in
   if (!policy.whitelisted && !siteHost.isEmpty()) {
     const SitePolicy siteSelfPolicy = settings_->sitePolicy(siteHost);
     if (siteSelfPolicy.whitelisted) policy = siteSelfPolicy;
+  }
+
+  const QString firstScheme = firstPartyUrl.scheme().toLower();
+  const QString reqScheme = requestUrl.scheme().toLower();
+  if (firstScheme == QLatin1String("ardali") || firstScheme == QLatin1String("about") ||
+      firstScheme == QLatin1String("data") || firstScheme == QLatin1String("file") ||
+      reqScheme == QLatin1String("ardali") || reqScheme == QLatin1String("about") ||
+      reqScheme == QLatin1String("data") || reqScheme == QLatin1String("file") ||
+      reqScheme == QLatin1String("qrc")) {
+    return RequestDecision{ArDaliBlockerAction::Allow, QStringLiteral("internal-scheme"),
+                           0, QStringLiteral("ardali-internal"), QString()};
   }
 
   RequestDecision decision;
@@ -502,6 +530,7 @@ void ArDaliBlockerService::persistStats() {
   }
   persisted.endArray();
   persisted.sync();
+  QFile::setPermissions(dataDir_ + QStringLiteral("/adblock-statistics.ini"), QFileDevice::ReadOwner | QFileDevice::WriteOwner);
   if (persisted.status() != QSettings::NoError) statsDirty_ = true;
 }
 

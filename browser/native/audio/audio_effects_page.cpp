@@ -310,6 +310,9 @@ AudioEffectsPage::AudioEffectsPage(WebAudioEffectsController *controller, QWidge
 
   connect(navigation_, &QListWidget::currentRowChanged, pages_, &QStackedWidget::setCurrentIndex);
   connect(navigation_, &QListWidget::currentRowChanged, this, [this] {
+    if (controller_) {
+      controller_->setPanelVisible(isVisible(), currentSubpanelId());
+    }
     updateCompressorMeterPolling();
     updateLimiterMeterPolling();
     updateAutoGainStatusPolling();
@@ -477,14 +480,29 @@ void AudioEffectsPage::scheduleControllerSync() {
   if (!controllerSyncTimer_.isActive()) controllerSyncTimer_.start();
 }
 
+QString AudioEffectsPage::currentSubpanelId() const {
+  if (!navigation_) return QStringLiteral("output");
+  const int row = navigation_->currentRow();
+  if (row >= 0 && row < static_cast<int>(kModules.size())) {
+    return QString::fromLatin1(kModules[row].id);
+  }
+  return QStringLiteral("output");
+}
+
 void AudioEffectsPage::showEvent(QShowEvent *event) {
   QWidget::showEvent(event);
+  if (controller_) {
+    controller_->setPanelVisible(true, currentSubpanelId());
+  }
   updateCompressorMeterPolling();
   updateLimiterMeterPolling();
   updateAutoGainStatusPolling();
 }
 
 void AudioEffectsPage::hideEvent(QHideEvent *event) {
+  if (controller_) {
+    controller_->setPanelVisible(false);
+  }
   compressorMeterTimer_.stop();
   limiterMeterTimer_.stop();
   autoGainStatusTimer_.stop();

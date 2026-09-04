@@ -13,6 +13,10 @@ class QLineEdit;
 class QListWidget;
 class QStackedWidget;
 
+namespace ardali {
+class TabPerformanceManager;
+}
+
 // Trusted native browser chrome. It is never loaded into a web renderer and
 // intentionally exposes no QObject or settings bridge to web content.
 class SettingsPage final : public QWidget {
@@ -21,6 +25,7 @@ class SettingsPage final : public QWidget {
   enum class Category {
     Startup,
     Appearance,
+    Performance,
     Content,
     Privacy,
     Blocker,
@@ -43,6 +48,8 @@ class SettingsPage final : public QWidget {
     std::function<void(const QString &)> setSearchEngine;
     std::function<void()> syncNewTabs;
     std::function<void()> refreshBookmarks;
+    std::function<void()> refreshTabStyle;
+    std::function<ardali::TabPerformanceManager *()> performanceManager;
   };
 
   SettingsPage(BrowserProfileService *profileService, Hooks hooks, QWidget *parent = nullptr);
@@ -56,6 +63,7 @@ class SettingsPage final : public QWidget {
  private:
   QWidget *createStartupSection();
   QWidget *createAppearanceSection();
+  QWidget *createPerformanceSection();
   QWidget *createContentSection();
   QWidget *createPrivacySection();
   QWidget *createBlockerSection();

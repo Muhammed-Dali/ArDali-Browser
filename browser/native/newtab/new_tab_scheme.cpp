@@ -23,15 +23,18 @@ class NewTabSchemeHandler final : public QWebEngineUrlSchemeHandler {
   void requestStarted(QWebEngineUrlRequestJob *job) override {
     const QUrl url = job->requestUrl();
     if (url.host() == QLatin1String("bypass-strictblock")) {
+      if (!isAuthorizedStrictBlockBypass(url, job->initiator())) {
+        job->fail(QWebEngineUrlRequestJob::RequestDenied);
+        return;
+      }
       const QUrlQuery query(url);
-      const QString domain = query.queryItemValue(QStringLiteral("domain"));
-      QString target = query.queryItemValue(QStringLiteral("target"));
-      if (target.isEmpty()) target = QStringLiteral("https://%1").arg(domain);
+      const QString domain = query.queryItemValue(QStringLiteral("domain"), QUrl::FullyDecoded);
+      const QUrl target = validatedStrictBlockTarget(domain, query.queryItemValue(QStringLiteral("target"), QUrl::FullyDecoded));
       const QString redirectHtml = QStringLiteral(
           "<!doctype html><html><head><meta http-equiv=\"refresh\" content=\"0;url=%1\"></head>"
           "<body style=\"background:#0c1017;color:#fff;font-family:sans-serif;display:grid;place-items:center;height:100vh;\">"
           "<p>Geçici izin sağlandı, yönlendiriliyor...</p></body></html>"
-      ).arg(target.toHtmlEscaped());
+      ).arg(target.toString(QUrl::FullyEncoded).toHtmlEscaped());
       auto *buffer = new QBuffer(job);
       buffer->setData(redirectHtml.toUtf8());
       buffer->open(QIODevice::ReadOnly);
@@ -43,8 +46,12 @@ class NewTabSchemeHandler final : public QWebEngineUrlSchemeHandler {
     if (requested.isEmpty() || requested == QLatin1String("/")) {
       const QUrlQuery query(url);
       if (query.hasQueryItem(QStringLiteral("strictblock"))) {
-        const QString domain = query.queryItemValue(QStringLiteral("domain"));
-        const QString targetUrl = query.queryItemValue(QStringLiteral("url"));
+        const QString domain = query.queryItemValue(QStringLiteral("domain"), QUrl::FullyDecoded);
+        const QString targetUrl = query.queryItemValue(QStringLiteral("url"), QUrl::FullyDecoded);
+        if (!validatedStrictBlockTarget(domain, targetUrl).isValid()) {
+          job->fail(QWebEngineUrlRequestJob::RequestDenied);
+          return;
+        }
         auto *buffer = new QBuffer(job);
         buffer->setData(strictBlockWarningHtml(domain, targetUrl).toUtf8());
         buffer->open(QIODevice::ReadOnly);
@@ -101,6 +108,9 @@ class NewTabSchemeHandler final : public QWebEngineUrlSchemeHandler {
 void registerArdaliUrlSchemes() {
   QWebEngineUrlScheme scheme("ardali");
   scheme.setSyntax(QWebEngineUrlScheme::Syntax::Host);
+  // LocalAccessAllowed is required for relative packaged assets on this
+  // scheme. Profile-wide LocalContentCanAccessFileUrls remains disabled, and
+  // the handler itself serves only an explicit path allow-list.
   scheme.setFlags(QWebEngineUrlScheme::SecureScheme | QWebEngineUrlScheme::LocalScheme
       | QWebEngineUrlScheme::LocalAccessAllowed);
   QWebEngineUrlScheme::registerScheme(scheme);

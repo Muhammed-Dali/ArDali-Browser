@@ -10,6 +10,8 @@
 
 class QWebEngineView;
 
+#include "../desktop_tabs/tab_performance_manager.h"
+
 class WebAudioEffectsController final : public QObject {
   Q_OBJECT
 
@@ -30,11 +32,14 @@ class WebAudioEffectsController final : public QObject {
   static const QVector<int> &equalizerFrequencies();
   QVector<double> equalizerBands() const { return equalizerBands_; }
   double equalizerBand(int index) const;
+  bool isEqualizerActive() const;
   double bassDb() const { return bassDb_; }
   double midDb() const { return midDb_; }
   double trebleDb() const { return trebleDb_; }
+  bool isToneActive() const;
   double stereoExpanderPercent() const { return stereoExpanderPercent_; }
   double balance() const { return balance_; }
+  bool isSpatialActive() const;
   QString acousticSpace() const { return acousticSpace_; }
   // Module state is deliberately separate from the master Web DSP switch.
   // Stages 3-6 give Reverb, Dynamic Compressor, Limiter and Bass Enhancer processing
@@ -73,9 +78,13 @@ class WebAudioEffectsController final : public QObject {
   double autoGainMaxGainDb() const { return autoGainMaxGainDb_; }
   QString autoGainSpeed() const { return autoGainSpeed_; }
   QString autoGainPreset() const { return autoGainPreset_; }
+  ardali::PerformancePolicyMode performancePolicyMode() const { return policyMode_; }
+  bool isPanelVisible() const { return panelVisible_; }
+  QString activeSubpanelId() const { return activeSubpanelId_; }
   Status status() const { return status_; }
 
   void registerWebView(QWebEngineView *view);
+  void applyToView(QWebEngineView *view);
 
  public slots:
   void setEnabled(bool enabled);
@@ -135,7 +144,12 @@ class WebAudioEffectsController final : public QObject {
   void setAutoGainMaxGainDb(double value);
   void applyAutoGainPreset(const QString &presetId);
   void resetAutoGain();
+  void setPerformancePolicyMode(ardali::PerformancePolicyMode mode);
+  void setPanelVisible(bool visible, const QString &activeSubpanelId = QString());
   void applyToAllWebViews();
+  QString injectionScript() const;
+  QString parameterUpdateScript() const;
+  QString equalizerBandUpdateScript(int index) const;
 
  signals:
   void stateChanged();
@@ -150,10 +164,6 @@ class WebAudioEffectsController final : public QObject {
   QString daliLimiterModuleSource() const;
   QString daliBassEnhancerModuleSource() const;
   QString daliAutoGainModuleSource() const;
-  QString injectionScript() const;
-  QString parameterUpdateScript() const;
-  QString equalizerBandUpdateScript(int index) const;
-  void applyToView(QWebEngineView *view);
   void applyEqualizerBandToView(QWebEngineView *view, int index);
   void bootstrapView(QWebEngineView *view);
   void installDocumentBootstrap(QWebEngineView *view);
@@ -214,6 +224,9 @@ class WebAudioEffectsController final : public QObject {
   double autoGainMaxGainDb_ = 12.0;
   QString autoGainSpeed_ = QStringLiteral("medium");
   QString autoGainPreset_ = QStringLiteral("balanced");
+  ardali::PerformancePolicyMode policyMode_ = ardali::PerformancePolicyMode::Balanced;
+  bool panelVisible_ = false;
+  QString activeSubpanelId_;
   Status status_;
   mutable QString daliModuleSource_;
   mutable QString daliEqModuleSource_;
@@ -223,6 +236,7 @@ class WebAudioEffectsController final : public QObject {
   mutable QString daliAutoGainModuleSource_;
   QTimer persistTimer_;
   QTimer applyTimer_;
+  friend int main(int argc, char *argv[]);
 };
 
 Q_DECLARE_METATYPE(WebAudioEffectsController::Status)

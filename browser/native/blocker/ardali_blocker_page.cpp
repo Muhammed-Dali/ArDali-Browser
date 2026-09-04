@@ -22,6 +22,7 @@
 #include <QPlainTextEdit>
 #include <QProgressBar>
 #include <QPushButton>
+#include <QSaveFile>
 #include <QScrollArea>
 #include <QTableWidget>
 #include <QVBoxLayout>
@@ -469,9 +470,10 @@ void ArDaliBlockerPage::createSettingsTab() {
     if (!service_) return;
     const QString path = QFileDialog::getSaveFileName(this, QStringLiteral("Reklam Engelleyici Ayarlarını Yedekle"), QStringLiteral("deliblock-settings.json"), QStringLiteral("JSON Dosyası (*.json)"));
     if (path.isEmpty()) return;
-    QFile file(path);
-    if (file.open(QIODevice::WriteOnly)) {
-      file.write(QJsonDocument(service_->settings()->exportBackupJson()).toJson(QJsonDocument::Indented));
+    QSaveFile file(path);
+    const QByteArray bytes = QJsonDocument(service_->settings()->exportBackupJson()).toJson(QJsonDocument::Indented);
+    if (file.open(QIODevice::WriteOnly) && file.write(bytes) == bytes.size() && file.commit()) {
+      QFile::setPermissions(path, QFileDevice::ReadOwner | QFileDevice::WriteOwner);
       QMessageBox::information(this, QStringLiteral("Yedekleme Başarılı"), QStringLiteral("Ayarlar başarıyla dosyaya yedeklendi."));
     }
   });
@@ -877,10 +879,10 @@ void ArDaliBlockerPage::createCustomFiltersTab() {
     if (!service_) return;
     const QString path = QFileDialog::getSaveFileName(this, QStringLiteral("Özel Filtreleri Dışa Aktar"), QStringLiteral("ardali-user-filters.txt"), QStringLiteral("Metin Dosyası (*.txt)"));
     if (path.isEmpty()) return;
-    QFile file(path);
-    if (file.open(QIODevice::WriteOnly)) {
-      const QString data = service_->settings()->customFilters().join(QStringLiteral("\n"));
-      file.write(data.toUtf8());
+    QSaveFile file(path);
+    const QByteArray bytes = service_->settings()->customFilters().join(QStringLiteral("\n")).toUtf8();
+    if (file.open(QIODevice::WriteOnly) && file.write(bytes) == bytes.size() && file.commit()) {
+      QFile::setPermissions(path, QFileDevice::ReadOwner | QFileDevice::WriteOwner);
       QMessageBox::information(this, QStringLiteral("Dışa Aktarıldı"), QStringLiteral("Özel filtreler başarıyla kaydedildi."));
     }
   });

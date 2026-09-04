@@ -1,5 +1,51 @@
 #include "new_tab_html.h"
 
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QUrlQuery>
+
+namespace {
+QString normalizedStrictBlockHost(QString host) {
+  host = host.trimmed().toLower();
+  while (host.endsWith(QLatin1Char('.'))) host.chop(1);
+  return host;
+}
+
+QString jsonStringLiteral(const QString &value) {
+  const QByteArray array = QJsonDocument(QJsonArray{value}).toJson(QJsonDocument::Compact);
+  return QString::fromUtf8(array.mid(1, array.size() - 2));
+}
+}  // namespace
+
+QUrl validatedStrictBlockTarget(const QString &domain, const QString &targetUrl) {
+  const QString expectedHost = normalizedStrictBlockHost(domain);
+  if (expectedHost.isEmpty()) return {};
+
+  QUrl target(targetUrl);
+  if (targetUrl.isEmpty()) {
+    target.setScheme(QStringLiteral("https"));
+    target.setHost(expectedHost);
+  }
+  const QString scheme = target.scheme().toLower();
+  if (!target.isValid() || (scheme != QLatin1String("http") && scheme != QLatin1String("https"))
+      || normalizedStrictBlockHost(target.host()) != expectedHost
+      || !target.userName().isEmpty() || !target.password().isEmpty()) {
+    return {};
+  }
+  return target;
+}
+
+bool isAuthorizedStrictBlockBypass(const QUrl &requestUrl, const QUrl &initiator) {
+  if (!requestUrl.isValid() || requestUrl.scheme() != QLatin1String("ardali")
+      || requestUrl.host() != QLatin1String("bypass-strictblock")
+      || initiator.scheme() != QLatin1String("ardali") || initiator.host() != QLatin1String("newtab")) {
+    return false;
+  }
+  const QUrlQuery query(requestUrl);
+  return validatedStrictBlockTarget(query.queryItemValue(QStringLiteral("domain"), QUrl::FullyDecoded),
+                                    query.queryItemValue(QStringLiteral("target"), QUrl::FullyDecoded)).isValid();
+}
+
 QString newTabHtml(const QString &defaultEngine) {
   const QString google = defaultEngine == QLatin1String("Google") ? QStringLiteral(" selected") : QString();
   const QString duck = defaultEngine == QLatin1String("DuckDuckGo") ? QStringLiteral(" selected") : QString();
@@ -240,7 +286,7 @@ document.addEventListener('keydown',event=>{if(event.key==='Escape'){if(!overlay
 window.ardaliCustomization={open:openCustomization,close:closeCustomization,select:selectCategory,isOpen:()=>!overlay.hidden,category:()=>selectedCategory};
 document.documentElement.dataset.customizationReady='true';
 
-$('#search').onsubmit=event=>{event.preventDefault();let value=$('#query').value.trim();if(!value)return;if(/^https?:\/\//.test(value)||(!/\s/.test(value)&&(/\./.test(value)||value==='localhost')))location.href=/^https?:/.test(value)?value:'https://'+value;else{const base={Google:'https://www.google.com/search?q=',DuckDuckGo:'https://duckduckgo.com/?q=','Brave Search':'https://search.brave.com/search?q=',Bing:'https://www.bing.com/search?q='}[$('#engine').value];location.href=base+encodeURIComponent(value)}};
+$('#search').onsubmit=event=>{event.preventDefault();let value=$('#query').value.trim();if(!value)return;if(/^https?:\/\//i.test(value)||value.startsWith('ardali://')||(!/\s/.test(value)&&(/\./.test(value)||value==='localhost')))location.href=/^https?:/i.test(value)||value.startsWith('ardali://')?value:'https://'+value;else{const base={Google:'https://www.google.com/search?q=',DuckDuckGo:'https://duckduckgo.com/?q=','Brave Search':'https://search.brave.com/search?q=',Bing:'https://www.bing.com/search?q='}[$('#engine').value];location.href=base+encodeURIComponent(value)}};
 $('#engine-current').onclick=event=>{event.preventDefault();$('#engine-menu').hidden=!$('#engine-menu').hidden};
 document.querySelectorAll('.engine-option').forEach(button=>button.onclick=()=>setEngine(button.dataset.engine,true));
 document.addEventListener('pointerdown',event=>{if(!event.target.closest('.engine-picker'))$('#engine-menu').hidden=true});
@@ -255,14 +301,17 @@ setEngine($('#engine').value);applyFrequentConfig();tick();setInterval(tick,1000
 
 QString strictBlockWarningHtml(const QString &domain, const QString &targetUrl) {
   const QString safeDomain = domain.toHtmlEscaped();
-  const QString safeTargetUrl = targetUrl.toHtmlEscaped();
-  const QString bypassTarget = targetUrl.isEmpty() ? QStringLiteral("https://%1").arg(domain) : targetUrl;
+  const QUrl bypassTarget = validatedStrictBlockTarget(domain, targetUrl);
+  if (!bypassTarget.isValid()) return {};
+  const QString domainLiteral = jsonStringLiteral(domain);
+  const QString targetLiteral = jsonStringLiteral(bypassTarget.toString(QUrl::FullyEncoded));
 
   return QString::fromUtf8(R"SBW(<!doctype html>
 <html lang="tr">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'">
 <title>Site Engellendi — ArDali Koruması</title>
 <style>
 :root { color-scheme: dark; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Ubuntu, sans-serif; }
@@ -293,14 +342,16 @@ button { border: 0; border-radius: 8px; padding: 10px 22px; font-size: 13px; fon
   </div>
 </div>
 <script>
+const bypassDomain = %2;
+const bypassTarget = %3;
 function goBack() {
   if (window.history.length > 1) window.history.back();
   else window.location.href = 'ardali://newtab';
 }
 function proceedBypass() {
-  window.location.href = 'ardali://bypass-strictblock?domain=' + encodeURIComponent('%1') + '&target=' + encodeURIComponent('%2');
+  window.location.href = 'ardali://bypass-strictblock?domain=' + encodeURIComponent(bypassDomain) + '&target=' + encodeURIComponent(bypassTarget);
 }
 </script>
 </body>
-</html>)SBW").arg(safeDomain, safeTargetUrl);
+</html>)SBW").arg(safeDomain, domainLiteral, targetLiteral);
 }

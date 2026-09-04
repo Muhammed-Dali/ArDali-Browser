@@ -33,7 +33,10 @@ BrowserPolicy BrowserPolicy::load(const QString &path, QString *error) {
 bool BrowserPolicy::allowsNavigation(const QUrl &url) const {
   if (!valid_ || !allowed_.contains("navigation.http_https")) return false;
   const QString scheme = url.scheme().toLower();
-  return scheme == QStringLiteral("http") || scheme == QStringLiteral("https") || scheme == QStringLiteral("ardali");
+  if (scheme == QStringLiteral("http") || scheme == QStringLiteral("https")) return true;
+  if (scheme != QStringLiteral("ardali")) return false;
+  const QString host = url.host().toLower();
+  return host == QStringLiteral("newtab") || host == QStringLiteral("bypass-strictblock");
 }
 
 bool BrowserPolicy::allowsDownloadPrompt() const {

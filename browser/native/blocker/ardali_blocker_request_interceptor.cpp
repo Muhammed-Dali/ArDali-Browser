@@ -3,6 +3,7 @@
 #include <QUrl>
 #include <QUrlQuery>
 #include "ardali_blocker_service.h"
+#include "new_tab_html.h"
 
 ArDaliBlockerRequestInterceptor::ArDaliBlockerRequestInterceptor(ArDaliBlockerService *service, QObject *parent)
     : QWebEngineUrlRequestInterceptor(parent), service_(service) {}
@@ -14,8 +15,12 @@ void ArDaliBlockerRequestInterceptor::interceptRequest(QWebEngineUrlRequestInfo 
   const QString scheme = requestUrl.scheme().toLower();
   if (scheme == QLatin1String("ardali")) {
     if (requestUrl.host() == QLatin1String("bypass-strictblock")) {
-      const QString domain = QUrlQuery(requestUrl).queryItemValue(QStringLiteral("domain"));
-      if (!domain.isEmpty() && service_) {
+      if (!isAuthorizedStrictBlockBypass(requestUrl, info.initiator())) {
+        info.block(true);
+        return;
+      }
+      const QString domain = QUrlQuery(requestUrl).queryItemValue(QStringLiteral("domain"), QUrl::FullyDecoded);
+      if (service_) {
         service_->allowTemporaryStrictBypass(domain, 15);
       }
     }
@@ -60,6 +65,9 @@ void ArDaliBlockerRequestInterceptor::interceptRequest(QWebEngineUrlRequestInfo 
       requestUrl, resourceTypeInt, firstPartyUrl, 0, QString::fromLatin1(info.requestMethod()).toLower());
 
   if (decision.action == ArDaliBlockerAction::Block) {
+    if (qEnvironmentVariableIntValue("ARDALI_FEATURE_DIAGNOSTICS") == 1) {
+      qInfo().noquote() << "[BLOCKER] request blocked";
+    }
     info.block(true);
     return;
   }

@@ -24,9 +24,11 @@
 #include <algorithm>
 
 #include "browser_policy.h"
+#include "security_utils.h"
 #include "new_tab_scheme.h"
 #include "new_tab_background_store.h"
 #include "credential_vault_manager.h"
+#include "translate/translate_service.h"
 
 namespace {
 
@@ -105,8 +107,12 @@ QUrl frequentSiteRootUrl(const QUrl &url) {
 #include "ardali_blocker_service.h"
 
 BrowserProfileService::BrowserProfileService(const QString &dataDirectory, const BrowserPolicy *policy, QObject *parent)
-    : QObject(parent), policy_(policy), preferences_(dataDirectory + "/browser-preferences.ini", QSettings::IniFormat) {
+    : QObject(parent), policy_(policy), dataDirectory_(QFileInfo(dataDirectory).absoluteFilePath()),
+      preferences_(dataDirectory_ + "/browser-preferences.ini", QSettings::IniFormat) {
   QDir().mkpath(dataDirectory);
+  QFile::setPermissions(dataDirectory_, QFileDevice::ReadOwner | QFileDevice::WriteOwner | QFileDevice::ExeOwner);
+  QFile::setPermissions(dataDirectory_ + QStringLiteral("/browser-preferences.ini"), QFileDevice::ReadOwner | QFileDevice::WriteOwner);
+  sanitizeStoredPersistentUrls();
   profile_ = new QWebEngineProfile(QStringLiteral("ardali-browser"), this);
   profile_->setPersistentStoragePath(dataDirectory + "/profile");
   profile_->setCachePath(dataDirectory + "/cache");
@@ -120,13 +126,22 @@ BrowserProfileService::BrowserProfileService(const QString &dataDirectory, const
   profile_->setSpellCheckLanguages({QStringLiteral("tr-TR"), QStringLiteral("en-US")});
   auto *settings = profile_->settings();
   settings->setAttribute(QWebEngineSettings::JavascriptCanOpenWindows, false);
+  settings->setAttribute(QWebEngineSettings::JavascriptCanAccessClipboard, false);
+  settings->setAttribute(QWebEngineSettings::LocalContentCanAccessFileUrls, false);
   settings->setAttribute(QWebEngineSettings::AllowRunningInsecureContent, false);
   settings->setAttribute(QWebEngineSettings::WebRTCPublicInterfacesOnly, true);
+  settings->setAttribute(QWebEngineSettings::FullScreenSupportEnabled, true);
+  settings->setUnknownUrlSchemePolicy(QWebEngineSettings::DisallowUnknownUrlSchemes);
 
   blockerService_ = new ArDaliBlockerService(dataDirectory, this);
   credentialVault_ = new CredentialVaultManager(dataDirectory, this);
+  translateService_ = new TranslateService(this, nullptr, credentialVault_);
+  translateService_->loadPreferences(preferences_);
   interceptor_ = blockerService_->requestInterceptor();
   profile_->setUrlRequestInterceptor(interceptor_);
+  if (qEnvironmentVariableIntValue("ARDALI_FEATURE_DIAGNOSTICS") == 1) {
+    qInfo().noquote() << "[BLOCKER] interceptor attached";
+  }
 
   newTabBackgroundStore_ = std::make_unique<NewTabBackgroundStore>(dataDirectory);
   profile_->installUrlSchemeHandler("ardali", createNewTabSchemeHandler(
@@ -138,11 +153,13 @@ BrowserProfileService::BrowserProfileService(const QString &dataDirectory, const
 BrowserProfileService::~BrowserProfileService() = default;
 
 QWebEngineProfile *BrowserProfileService::profile() const { return profile_; }
+QString BrowserProfileService::dataDirectory() const { return dataDirectory_; }
 
 NewTabBackgroundStore *BrowserProfileService::newTabBackgroundStore() const { return newTabBackgroundStore_.get(); }
 
 ArDaliBlockerService *BrowserProfileService::blockerService() const { return blockerService_; }
 CredentialVaultManager *BrowserProfileService::credentialVault() const { return credentialVault_; }
+TranslateService *BrowserProfileService::translateService() const { return translateService_; }
 
 QString BrowserProfileService::downloadDirectory() const {
   const QString configured = preferences_.value(QStringLiteral("downloads/directory")).toString();
@@ -152,7 +169,8 @@ QString BrowserProfileService::downloadDirectory() const {
 
 void BrowserProfileService::handleDownload(QWebEngineDownloadRequest *download) {
   if (!download || !policy_ || !policy_->allowsDownloadPrompt()) { if (download) download->cancel(); return; }
-  const QString suggested = downloadDirectory() + QLatin1Char('/') + download->suggestedFileName();
+  const QString safeFileName = BrowserSecurity::sanitizeDownloadFileName(download->suggestedFileName());
+  const QString suggested = QDir(downloadDirectory()).filePath(safeFileName);
   const bool ask = preferences_.value(QStringLiteral("downloads/askLocation"), true).toBool();
   QString target = suggested;
   if (ask) target = QFileDialog::getSaveFileName(QApplication::activeWindow(), QStringLiteral("İndirmeyi kaydet"), suggested);
@@ -244,11 +262,12 @@ bool BrowserProfileService::resetSitePermission(const QUrl &origin, QWebEnginePe
 #endif
 
 void BrowserProfileService::recordHistory(const QUrl &url, const QString &title) {
-  if (!url.isValid() || (url.scheme() != QLatin1String("http") && url.scheme() != QLatin1String("https"))) return;
+  const QUrl persistentUrl = BrowserSecurity::sanitizeUrlForPersistence(url);
+  if (!persistentUrl.isValid() || (persistentUrl.scheme() != QLatin1String("http") && persistentUrl.scheme() != QLatin1String("https"))) return;
   QJsonArray values;
   const QJsonDocument existing = QJsonDocument::fromJson(preferences_.value(QStringLiteral("history/entries")).toByteArray());
   if (existing.isArray()) values = existing.array();
-  const QString normalized = url.adjusted(QUrl::RemoveFragment).toString(QUrl::FullyEncoded);
+  const QString normalized = persistentUrl.adjusted(QUrl::RemoveFragment).toString(QUrl::FullyEncoded);
   QJsonArray next;
   QJsonObject current{{QStringLiteral("url"), normalized}, {QStringLiteral("title"), title.left(180)},
                       {QStringLiteral("visitedAt"), QDateTime::currentDateTimeUtc().toString(Qt::ISODate)}};
@@ -286,11 +305,11 @@ void BrowserProfileService::recordHistory(const QUrl &url, const QString &title)
       sites.insert(key, site);
     }
   }
-  const QString siteKey = frequentSiteKey(url);
+  const QString siteKey = frequentSiteKey(persistentUrl);
   if (!siteKey.isEmpty()) {
     QJsonObject site = sites.value(siteKey);
     site.insert(QStringLiteral("key"), siteKey);
-    site.insert(QStringLiteral("url"), frequentSiteRootUrl(url).toString(QUrl::FullyEncoded));
+    site.insert(QStringLiteral("url"), frequentSiteRootUrl(persistentUrl).toString(QUrl::FullyEncoded));
     site.insert(QStringLiteral("iconLookupUrl"), normalized);
     site.insert(QStringLiteral("title"), title.left(180));
     site.insert(QStringLiteral("visitCount"), site.value(QStringLiteral("visitCount")).toInt() + 1);
@@ -317,7 +336,7 @@ QList<BrowserHistoryEntry> BrowserProfileService::recentHistory() const {
   if (!document.isArray()) return entries;
   for (const QJsonValue &value : document.array()) {
     const QJsonObject item = value.toObject();
-    const QUrl url(item.value(QStringLiteral("url")).toString());
+    const QUrl url = BrowserSecurity::sanitizeUrlForPersistence(QUrl(item.value(QStringLiteral("url")).toString()));
     if (!url.isValid()) continue;
     entries.append({item.value(QStringLiteral("title")).toString(), url,
                     QDateTime::fromString(item.value(QStringLiteral("visitedAt")).toString(), Qt::ISODate)});
@@ -332,8 +351,8 @@ QList<BrowserFrequentSite> BrowserProfileService::frequentSites(int limit) const
   if (document.isArray()) {
     for (const QJsonValue &value : document.array()) {
       const QJsonObject item = value.toObject();
-      const QUrl url(item.value(QStringLiteral("url")).toString());
-      const QUrl iconLookupUrl(item.value(QStringLiteral("iconLookupUrl")).toString());
+      const QUrl url = BrowserSecurity::sanitizeUrlForPersistence(QUrl(item.value(QStringLiteral("url")).toString()));
+      const QUrl iconLookupUrl = BrowserSecurity::sanitizeUrlForPersistence(QUrl(item.value(QStringLiteral("iconLookupUrl")).toString()));
       const int visitCount = item.value(QStringLiteral("visitCount")).toInt();
       if (!url.isValid() || visitCount <= 0) continue;
       sites.append({item.value(QStringLiteral("title")).toString(), url,
@@ -376,27 +395,55 @@ void BrowserProfileService::rememberClosedTab(const QUrl &url, const QString &ti
   if (!url.isValid()) return;
   closedTabs_.prepend({title.left(180), url, QDateTime::currentDateTimeUtc()});
   while (closedTabs_.size() > 25) closedTabs_.removeLast();
+  emit closedTabsChanged();
 }
 
 bool BrowserProfileService::hasClosedTabs() const { return !closedTabs_.isEmpty(); }
 
 std::optional<ClosedTabEntry> BrowserProfileService::takeMostRecentClosedTab() {
   if (closedTabs_.isEmpty()) return std::nullopt;
-  return closedTabs_.takeFirst();
+  const auto entry = closedTabs_.takeFirst();
+  emit closedTabsChanged();
+  return entry;
 }
+
+const QList<ClosedTabEntry> &BrowserProfileService::closedTabs() const {
+  return closedTabs_;
+}
+
+std::optional<ClosedTabEntry> BrowserProfileService::takeClosedTab(int index) {
+  if (index < 0 || index >= closedTabs_.size()) return std::nullopt;
+  const auto entry = closedTabs_.takeAt(index);
+  emit closedTabsChanged();
+  return entry;
+}
+
+QString BrowserProfileService::searchEngine() const {
+  return preferences_.value(QStringLiteral("browser/searchEngine"), QStringLiteral("Google")).toString();
+}
+
+void BrowserProfileService::setSearchEngine(const QString &engine) {
+  const QString trimmed = engine.trimmed();
+  if (trimmed.isEmpty()) return;
+  if (searchEngine() == trimmed) return;
+  preferences_.setValue(QStringLiteral("browser/searchEngine"), trimmed);
+  preferences_.sync();
+  emit searchEngineChanged(trimmed);
+}
+
 
 QList<QUrl> BrowserProfileService::bookmarks() const {
   QList<QUrl> result;
   const QStringList stored = preferences_.value(QStringLiteral("bookmarks/urls")).toStringList();
   for (const QString &value : stored) {
-    const QUrl url(value);
+    const QUrl url = BrowserSecurity::sanitizeUrlForPersistence(QUrl(value));
     if (url.isValid() && (url.scheme() == QLatin1String("http") || url.scheme() == QLatin1String("https"))) result.append(url);
   }
   return result;
 }
 
 bool BrowserProfileService::isBookmarked(const QUrl &url) const {
-  const QString normalized = url.adjusted(QUrl::RemoveFragment).toString(QUrl::FullyEncoded);
+  const QString normalized = BrowserSecurity::sanitizeUrlForPersistence(url).adjusted(QUrl::RemoveFragment).toString(QUrl::FullyEncoded);
   for (const QUrl &bookmark : bookmarks()) {
     if (bookmark.adjusted(QUrl::RemoveFragment).toString(QUrl::FullyEncoded) == normalized) return true;
   }
@@ -404,8 +451,9 @@ bool BrowserProfileService::isBookmarked(const QUrl &url) const {
 }
 
 bool BrowserProfileService::toggleBookmark(const QUrl &url) {
-  if (!url.isValid() || (url.scheme() != QLatin1String("http") && url.scheme() != QLatin1String("https"))) return false;
-  const QString normalized = url.adjusted(QUrl::RemoveFragment).toString(QUrl::FullyEncoded);
+  const QUrl persistentUrl = BrowserSecurity::sanitizeUrlForPersistence(url);
+  if (!persistentUrl.isValid() || (persistentUrl.scheme() != QLatin1String("http") && persistentUrl.scheme() != QLatin1String("https"))) return false;
+  const QString normalized = persistentUrl.adjusted(QUrl::RemoveFragment).toString(QUrl::FullyEncoded);
   QStringList values;
   bool removed = false;
   for (const QUrl &bookmark : bookmarks()) {
@@ -418,4 +466,53 @@ bool BrowserProfileService::toggleBookmark(const QUrl &url) {
   preferences_.sync();
   emit bookmarksChanged();
   return !removed;
+}
+
+void BrowserProfileService::sanitizeStoredPersistentUrls() {
+  const auto isPersistentWebUrl = [](const QUrl &url) {
+    return url.isValid() && (url.scheme() == QLatin1String("http") || url.scheme() == QLatin1String("https"));
+  };
+  bool changed = false;
+  QJsonArray history;
+  const QJsonDocument historyDocument = QJsonDocument::fromJson(preferences_.value(QStringLiteral("history/entries")).toByteArray());
+  if (historyDocument.isArray()) {
+    for (const QJsonValue &value : historyDocument.array()) {
+      QJsonObject item = value.toObject();
+      const QString original = item.value(QStringLiteral("url")).toString();
+      const QUrl safe = BrowserSecurity::sanitizeUrlForPersistence(QUrl(original));
+      if (!isPersistentWebUrl(safe)) { changed = true; continue; }
+      const QString encoded = safe.toString(QUrl::FullyEncoded);
+      if (encoded != original) { item.insert(QStringLiteral("url"), encoded); changed = true; }
+      history.append(item);
+    }
+    if (changed) preferences_.setValue(QStringLiteral("history/entries"), QJsonDocument(history).toJson(QJsonDocument::Compact));
+  }
+
+  bool frequentChanged = false;
+  QJsonArray frequent;
+  const QJsonDocument frequentDocument = QJsonDocument::fromJson(preferences_.value(QStringLiteral("history/frequentSites")).toByteArray());
+  if (frequentDocument.isArray()) {
+    for (const QJsonValue &value : frequentDocument.array()) {
+      QJsonObject item = value.toObject();
+      for (const QString &field : {QStringLiteral("url"), QStringLiteral("iconLookupUrl")}) {
+        const QString original = item.value(field).toString();
+        if (original.isEmpty()) continue;
+        const QUrl safe = BrowserSecurity::sanitizeUrlForPersistence(QUrl(original));
+        if (!isPersistentWebUrl(safe)) { item.remove(field); frequentChanged = true; continue; }
+        const QString encoded = safe.toString(QUrl::FullyEncoded);
+        if (encoded != original) { item.insert(field, encoded); frequentChanged = true; }
+      }
+      frequent.append(item);
+    }
+    if (frequentChanged) preferences_.setValue(QStringLiteral("history/frequentSites"), QJsonDocument(frequent).toJson(QJsonDocument::Compact));
+  }
+
+  QStringList safeBookmarks;
+  const QStringList bookmarks = preferences_.value(QStringLiteral("bookmarks/urls")).toStringList();
+  for (const QString &original : bookmarks) {
+    const QUrl safe = BrowserSecurity::sanitizeUrlForPersistence(QUrl(original));
+    if (isPersistentWebUrl(safe)) safeBookmarks.append(safe.toString(QUrl::FullyEncoded));
+  }
+  if (safeBookmarks != bookmarks) { preferences_.setValue(QStringLiteral("bookmarks/urls"), safeBookmarks); changed = true; }
+  if (changed || frequentChanged) preferences_.sync();
 }

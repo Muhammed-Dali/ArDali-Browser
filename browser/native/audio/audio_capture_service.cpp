@@ -1,9 +1,21 @@
 #include "audio_capture_service.h"
 
+#include "security_utils.h"
+
+#include <QCoreApplication>
 #include <QDebug>
+#include <QDir>
 
 AudioCaptureService::AudioCaptureService(QObject *parent)
     : QObject(parent), systemBuffer_(16000, 12), micBuffer_(16000, 12) {
+#if defined(Q_OS_WIN)
+  const QString executableName = QStringLiteral("ffmpeg.exe");
+#else
+  const QString executableName = QStringLiteral("ffmpeg");
+#endif
+  const QString appDir = QCoreApplication::applicationDirPath();
+  ffmpegPath_ = BrowserSecurity::resolveTrustedExecutable(
+      executableName, {QDir(appDir).filePath(executableName), QDir(appDir).filePath(QStringLiteral("bin/") + executableName)});
   levelTimer_ = new QTimer(this);
   levelTimer_->setInterval(50);  // ~20 FPS for responsive real-time VU meter
   connect(levelTimer_, &QTimer::timeout, this, &AudioCaptureService::onLevelTimerTimeout);
@@ -46,7 +58,10 @@ const SlidingPcmBuffer &AudioCaptureService::activeBuffer() const {
 }
 
 QProcess *AudioCaptureService::spawnFfmpegProcess(const QString &deviceId) {
-  if (deviceId.isEmpty()) return nullptr;
+  if (deviceId.isEmpty() || ffmpegPath_.isEmpty()) {
+    if (ffmpegPath_.isEmpty()) emit errorOccurred(QStringLiteral("Güvenilir ffmpeg executable bulunamadı."));
+    return nullptr;
+  }
 
   auto *proc = new QProcess(this);
   proc->setProcessChannelMode(QProcess::SeparateChannels);
@@ -61,7 +76,7 @@ QProcess *AudioCaptureService::spawnFfmpegProcess(const QString &deviceId) {
       QStringLiteral("-f"), QStringLiteral("f32le"),
       QStringLiteral("pipe:1")};
 
-  proc->start(QStringLiteral("ffmpeg"), args);
+  proc->start(ffmpegPath_, args);
   if (!proc->waitForStarted(2000)) {
     const QString err = proc->errorString();
     proc->deleteLater();

@@ -25,3 +25,12 @@ npm-debug.log*
 
 # Local assistant/editor state
 .claude/
+
+# Secrets and local credentials
+*.vault
+*.key
+*.pem
+.env
+.env.*
+*~
+*.swp

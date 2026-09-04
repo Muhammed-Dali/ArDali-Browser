@@ -1,7 +1,12 @@
 #include "song_recognition_service.h"
 
+#include "security_utils.h"
+
 #include <QDateTime>
 #include <QDebug>
+#include <QDir>
+#include <QFile>
+#include <QFileInfo>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QNetworkReply>
@@ -12,6 +17,14 @@
 
 namespace {
 constexpr qint64 kWebContextTtlMs = 2 * 60 * 1000;     // 2 minutes
+
+void hardenSongHistoryStorage(QSettings *settings) {
+  if (!settings) return;
+  const QFileInfo file(settings->fileName());
+  QDir().mkpath(file.absolutePath());
+  QFile::setPermissions(file.absolutePath(), QFileDevice::ReadOwner | QFileDevice::WriteOwner | QFileDevice::ExeOwner);
+  if (file.exists()) QFile::setPermissions(file.absoluteFilePath(), QFileDevice::ReadOwner | QFileDevice::WriteOwner);
+}
 }  // namespace
 
 SongRecognitionService::SongRecognitionService(SongFinderSettings *settings, QObject *parent)
@@ -45,7 +58,9 @@ SongRecognitionService::~SongRecognitionService() {
 
 void SongRecognitionService::loadHistory() {
   QSettings s(QStringLiteral("ArDali"), QStringLiteral("SongFinderHistory"));
+  hardenSongHistoryStorage(&s);
   const int count = s.beginReadArray(QStringLiteral("history"));
+  bool sanitizedStoredUrl = false;
   history_.clear();
   recentTrackKeys_.clear();
   for (int i = 0; i < count; ++i) {
@@ -55,7 +70,9 @@ void SongRecognitionService::loadHistory() {
     res.artist = s.value(QStringLiteral("artist")).toString();
     res.album = s.value(QStringLiteral("album")).toString();
     res.genre = s.value(QStringLiteral("genre")).toString();
-    res.coverUrl = s.value(QStringLiteral("coverUrl")).toString();
+    const QString storedCoverUrl = s.value(QStringLiteral("coverUrl")).toString();
+    res.coverUrl = BrowserSecurity::sanitizeUrlForPersistence(QUrl(storedCoverUrl)).toString(QUrl::FullyEncoded);
+    sanitizedStoredUrl = sanitizedStoredUrl || res.coverUrl != storedCoverUrl;
     res.trackKey = s.value(QStringLiteral("trackKey")).toString();
     res.source = static_cast<SongResult::Source>(s.value(QStringLiteral("source"), 0).toInt());
     res.timestamp = s.value(QStringLiteral("timestamp")).toDateTime();
@@ -65,6 +82,7 @@ void SongRecognitionService::loadHistory() {
     }
   }
   s.endArray();
+  if (sanitizedStoredUrl) saveHistory();
 }
 
 void SongRecognitionService::saveHistory() {
@@ -77,13 +95,15 @@ void SongRecognitionService::saveHistory() {
     s.setValue(QStringLiteral("artist"), res.artist);
     s.setValue(QStringLiteral("album"), res.album);
     s.setValue(QStringLiteral("genre"), res.genre);
-    s.setValue(QStringLiteral("coverUrl"), res.coverUrl);
+    s.setValue(QStringLiteral("coverUrl"), BrowserSecurity::sanitizeUrlForPersistence(
+        QUrl(res.coverUrl)).toString(QUrl::FullyEncoded));
     s.setValue(QStringLiteral("trackKey"), res.trackKey);
     s.setValue(QStringLiteral("source"), static_cast<int>(res.source));
     s.setValue(QStringLiteral("timestamp"), res.timestamp);
   }
   s.endArray();
   s.sync();
+  hardenSongHistoryStorage(&s);
 }
 
 bool SongRecognitionService::isListening() const {
@@ -205,6 +225,9 @@ bool SongRecognitionService::startListening(const QString &requestedDeviceId) {
   recognitionTimer_->start();
 
   setState(State::Listening, QStringLiteral("Dinliyorum"));
+  if (qEnvironmentVariableIntValue("ARDALI_FEATURE_DIAGNOSTICS") == 1) {
+    qInfo().noquote() << "[PULSE] capture started";
+  }
   return true;
 }
 
@@ -224,6 +247,12 @@ void SongRecognitionService::setState(State state, const QString &message) {
 
 void SongRecognitionService::onCaptureVolumeChanged(double levelPercent, double bufferFillPercent, AudioCaptureService::ActiveSourceType sourceType, const QString &sourceName) {
   Q_UNUSED(sourceType);
+  static int s_pulseFrameLogCount = 0;
+  if (qEnvironmentVariableIntValue("ARDALI_FEATURE_DIAGNOSTICS") == 1) {
+    if (++s_pulseFrameLogCount % 20 == 1) {
+      qInfo().noquote() << "[PULSE] audio frames received";
+    }
+  }
   emit volumeChanged(levelPercent, bufferFillPercent, sourceName);
 }
 
@@ -278,6 +307,11 @@ void SongRecognitionService::processBufferForRecognition() {
         isProcessing_ = false;
         setState(State::Listening, QStringLiteral("Dinliyorum"));
         return;
+      }
+
+      if (qEnvironmentVariableIntValue("ARDALI_FEATURE_DIAGNOSTICS") == 1) {
+        qInfo().noquote() << "[PULSE] fingerprint generated";
+        qInfo().noquote() << "[PULSE] recognition request started";
       }
 
       sendShazamRequest(fpResult.uri, fpResult.sampleMs);
@@ -398,6 +432,9 @@ void SongRecognitionService::handleShazamResponse(const QByteArray &data, int st
       hasActiveResult_ = true;
       activeResult_ = result;
       emit activeResultChanged(activeResult_, true);
+      if (qEnvironmentVariableIntValue("ARDALI_FEATURE_DIAGNOSTICS") == 1) {
+        qInfo().noquote() << "[PULSE] result received:" << result.title << "-" << result.artist;
+      }
       // FIRST emit songFound so UI has card in list before state becomes Found
       emit songFound(result);
       setState(State::Found, QStringLiteral("Şarkı bulundu: %1 - %2").arg(result.artist, result.title));

@@ -20,6 +20,7 @@ class NewTabBackgroundStore;
 class ArDaliBlockerService;
 using AdBlockService = ArDaliBlockerService;
 class CredentialVaultManager;
+class TranslateService;
 
 struct BrowserHistoryEntry {
   QString title;
@@ -60,6 +61,8 @@ class BrowserProfileService final : public QObject {
   ArDaliBlockerService *blockerService() const;
   ArDaliBlockerService *adBlockService() const { return blockerService(); }
   CredentialVaultManager *credentialVault() const;
+  TranslateService *translateService() const;
+  QString dataDirectory() const;
 
   void handleDownload(QWebEngineDownloadRequest *download);
 #if QT_VERSION >= QT_VERSION_CHECK(6, 8, 0)
@@ -91,6 +94,11 @@ class BrowserProfileService final : public QObject {
   void rememberClosedTab(const QUrl &url, const QString &title);
   bool hasClosedTabs() const;
   std::optional<ClosedTabEntry> takeMostRecentClosedTab();
+  const QList<ClosedTabEntry> &closedTabs() const;
+  std::optional<ClosedTabEntry> takeClosedTab(int index);
+
+  QString searchEngine() const;
+  void setSearchEngine(const QString &engine);
 
   QList<QUrl> bookmarks() const;
   bool isBookmarked(const QUrl &url) const;
@@ -100,15 +108,20 @@ class BrowserProfileService final : public QObject {
   void downloadsChanged();
   void bookmarksChanged();
   void trackingProtectionChanged();
+  void searchEngineChanged(const QString &engine);
+  void closedTabsChanged();
 
  private:
   QString downloadDirectory() const;
+  void sanitizeStoredPersistentUrls();
 
   const BrowserPolicy *policy_ = nullptr;
+  QString dataDirectory_;
   QSettings preferences_;
   QWebEngineProfile *profile_ = nullptr;
   ArDaliBlockerService *blockerService_ = nullptr;
   CredentialVaultManager *credentialVault_ = nullptr;
+  TranslateService *translateService_ = nullptr;
   QWebEngineUrlRequestInterceptor *interceptor_ = nullptr;
   std::unique_ptr<NewTabBackgroundStore> newTabBackgroundStore_;
   QList<BrowserDownloadEntry> downloads_;

@@ -232,6 +232,10 @@ WebAudioEffectsController::WebAudioEffectsController(QObject *parent) : QObject(
   QSettings settings;
   enabled_ = settings.value(QStringLiteral("audioEffects/web/global/enabled"), true).toBool();
   preampDb_ = std::clamp(settings.value(QStringLiteral("audioEffects/web/output/preampDb"), 0.0).toDouble(), kMinPreampDb, kMaxPreampDb);
+  if (qEnvironmentVariableIntValue("ARDALI_FEATURE_DIAGNOSTICS") == 1) {
+    qInfo().noquote() << "[AUDIO] DALI runtime initialized";
+    qInfo().noquote() << "[AUDIO] DSP module loaded:" << ARDALI_WEB_OUTPUT_DALI_MODULE_RELATIVE_PATH;
+  }
   equalizerBands_.resize(equalizerFrequencies().size());
   for (int index = 0; index < equalizerBands_.size(); ++index) {
     equalizerBands_[index] = std::clamp(
@@ -352,6 +356,21 @@ double WebAudioEffectsController::equalizerBand(int index) const {
   return index >= 0 && index < equalizerBands_.size() ? equalizerBands_[index] : 0.0;
 }
 
+bool WebAudioEffectsController::isEqualizerActive() const {
+  for (const double band : equalizerBands_) {
+    if (std::abs(band) > 0.01) return true;
+  }
+  return false;
+}
+
+bool WebAudioEffectsController::isToneActive() const {
+  return std::abs(bassDb_) > 0.01 || std::abs(midDb_) > 0.01 || std::abs(trebleDb_) > 0.01;
+}
+
+bool WebAudioEffectsController::isSpatialActive() const {
+  return std::abs(stereoExpanderPercent_ - 100.0) > 0.5 || std::abs(balance_) > 0.5;
+}
+
 bool WebAudioEffectsController::moduleEnabled(const QString &moduleId) const {
   return moduleEnabledStates_.value(moduleId.trimmed().toLower(), false);
 }
@@ -376,11 +395,32 @@ bool WebAudioEffectsController::autoGainEnabled() const {
   return moduleEnabled(QLatin1String(kAutoGainModuleId));
 }
 
+void WebAudioEffectsController::setPerformancePolicyMode(ardali::PerformancePolicyMode mode) {
+  if (policyMode_ == mode) return;
+  policyMode_ = mode;
+  if (policyMode_ == ardali::PerformancePolicyMode::MemorySaver) {
+    applyToAllWebViews();
+  }
+}
+
+void WebAudioEffectsController::setPanelVisible(bool visible, const QString &activeSubpanelId) {
+  if (panelVisible_ == visible && activeSubpanelId_ == activeSubpanelId) return;
+  panelVisible_ = visible;
+  activeSubpanelId_ = activeSubpanelId;
+  if (!panelVisible_) {
+    compressorMeterRequestPending_ = false;
+    limiterMeterRequestPending_ = false;
+  }
+}
+
 void WebAudioEffectsController::registerWebView(QWebEngineView *view) {
   if (!view) return;
   const auto known = std::find_if(views_.cbegin(), views_.cend(), [view](const QPointer<QWebEngineView> &item) { return item == view; });
   if (known != views_.cend()) return;
   views_.push_back(view);
+  if (qEnvironmentVariableIntValue("ARDALI_FEATURE_DIAGNOSTICS") == 1) {
+    qInfo().noquote() << "[AUDIO] page registered:" << view;
+  }
   installDocumentBootstrap(view);
   connect(view, &QObject::destroyed, this, [this, view] {
     bootstrapViews_.remove(view);
@@ -1175,7 +1215,6 @@ QString WebAudioEffectsController::parameterUpdateScript() const {
       {QStringLiteral("ceilingDb"), limiterCeilingDb_},
       {QStringLiteral("releaseMs"), limiterReleaseMs_},
       {QStringLiteral("lookaheadMs"), limiterLookaheadMs_},
-      {QStringLiteral("gainDb"), limiterGainDb_},
   };
   const QString limiterConfigJson = QString::fromUtf8(QJsonDocument(limiterConfig).toJson(QJsonDocument::Compact));
   const QJsonObject bassEnhancerConfig{
@@ -1196,26 +1235,45 @@ QString WebAudioEffectsController::parameterUpdateScript() const {
       {QStringLiteral("preset"), autoGainPreset_},
   };
   const QString autoGainConfigJson = QString::fromUtf8(QJsonDocument(autoGainConfig).toJson(QJsonDocument::Compact));
+  const QString policyModeStr = policyMode_ == ardali::PerformancePolicyMode::MemorySaver
+      ? QStringLiteral("memory_saver")
+      : (policyMode_ == ardali::PerformancePolicyMode::MaximumPerformance
+             ? QStringLiteral("maximum_performance")
+             : QStringLiteral("balanced"));
+
   return QStringLiteral(R"JS(
 (function() {
   try {
     const enabled = %1;
-    const cfg = { outputPreampDb: %2, bands: %3, bassDb: %4, midDb: %5, trebleDb: %6,
-                  stereoExpanderPercent: %7, balance: %8, reverb: %9, compressor: %10, limiter: %11,
-                  bassEnhancer: %13, autoGain: %14, forceRefresh: %12 };
+    const cfg = {
+      outputPreampDb: %2,
+      bands: %3,
+      eqActive: %4,
+      bassDb: %5,
+      midDb: %6,
+      trebleDb: %7,
+      toneActive: %8,
+      stereoExpanderPercent: %9,
+      balance: %10,
+      spatialActive: %11,
+      reverb: %12,
+      compressor: %13,
+      limiter: %14,
+      bassEnhancer: %15,
+      autoGain: %16,
+      policyMode: '%17',
+      panelVisible: %18,
+      activeSubpanel: '%19',
+      forceRefresh: %20
+    };
     const root = window.__ARDALI_WEB_DALI_OUTPUT__;
     if (!root || !root.processMedia) {
       return { ok: false, enabled: enabled, mediaCount: 0, sampleRates: [], moduleLoaded: false, needsBootstrap: enabled };
     }
     const fullCfg = Object.assign(cfg, { enabled: enabled });
-    // This is the master-switch path.  It deliberately scans the document
-    // even when an older graph is present, so a player that replaced its
-    // <audio>/<video> element while disabled is picked up without reload.
     if (enabled && fullCfg.forceRefresh && root.forceActivate) {
       return root.forceActivate(fullCfg);
     }
-    // Page scans and media-source creation only belong to bootstrap/new-media
-    // events.  Live EQ/tone drags touch the already attached graphs directly.
     const hasActiveGraph = !!(root.graphList && root.graphList.size > 0
       && Array.from(root.graphList).some(function(graph) { return graph && graph.graph && !graph.bypass && graph.runtimeGain; }));
     if (enabled && hasActiveGraph && root.applyActiveParams) {
@@ -1231,17 +1289,23 @@ QString WebAudioEffectsController::parameterUpdateScript() const {
       .arg(enabledJson)
       .arg(QString::number(preampDb_, 'f', 2))
       .arg(jsonNumberArray(equalizerBands_))
+      .arg(isEqualizerActive() ? QStringLiteral("true") : QStringLiteral("false"))
       .arg(QString::number(bassDb_, 'f', 2))
       .arg(QString::number(midDb_, 'f', 2))
       .arg(QString::number(trebleDb_, 'f', 2))
+      .arg(isToneActive() ? QStringLiteral("true") : QStringLiteral("false"))
       .arg(QString::number(stereoExpanderPercent_, 'f', 2))
       .arg(QString::number(balance_, 'f', 2))
+      .arg(isSpatialActive() ? QStringLiteral("true") : QStringLiteral("false"))
       .arg(reverbConfigJson)
       .arg(compressorConfigJson)
       .arg(limiterConfigJson)
-      .arg(forceRefreshJson)
       .arg(bassEnhancerConfigJson)
-      .arg(autoGainConfigJson);
+      .arg(autoGainConfigJson)
+      .arg(policyModeStr)
+      .arg(panelVisible_ ? QStringLiteral("true") : QStringLiteral("false"))
+      .arg(activeSubpanelId_)
+      .arg(forceRefreshJson);
 }
 
 QString WebAudioEffectsController::equalizerBandUpdateScript(int index) const {
@@ -1254,7 +1318,14 @@ QString WebAudioEffectsController::equalizerBandUpdateScript(int index) const {
     const root = window.__ARDALI_WEB_DALI_OUTPUT__;
     if (!root || !root.graphList || !root.smoothParam) return;
     for (const graph of root.graphList) {
-      if (!graph || !graph.graph || graph.bypass || !graph.eqBandNodes) continue;
+      if (!graph || graph.bypass) continue;
+      if (!graph.eqBandNodes || graph.eqBandNodes.length === 0) {
+        if (root.currentConfig && root.applyActiveParams) {
+          root.currentConfig.bands[index] = value;
+          root.applyActiveParams(root.currentConfig);
+        }
+        continue;
+      }
       const band = graph.eqBandNodes[index];
       if (!band || !band.gain) continue;
       const prior = graph._ardaliBands || (graph._ardaliBands = []);
@@ -1328,6 +1399,12 @@ QString WebAudioEffectsController::injectionScript() const {
       {QStringLiteral("preset"), autoGainPreset_},
   };
   const QString autoGainConfigJson = QString::fromUtf8(QJsonDocument(autoGainConfig).toJson(QJsonDocument::Compact));
+  const QString policyModeStr = policyMode_ == ardali::PerformancePolicyMode::MemorySaver
+      ? QStringLiteral("memory_saver")
+      : (policyMode_ == ardali::PerformancePolicyMode::MaximumPerformance
+             ? QStringLiteral("maximum_performance")
+             : QStringLiteral("balanced"));
+
   return QStringLiteral(R"JS(
 (async function() {
   try {
@@ -1340,22 +1417,27 @@ QString WebAudioEffectsController::injectionScript() const {
     const enabled = %3;
     const outputPreampDb = %4;
     const bands = %5;
-    const bassDb = %6;
-    const midDb = %7;
-    const trebleDb = %8;
-    const stereoExpanderPercent = %9;
-    const balance = %10;
-    const reverb = %11;
-    const compressor = %14;
-    const limiter = %16;
-    const bassEnhancer = %18;
-    const autoGain = %20;
+    const eqActive = %6;
+    const bassDb = %7;
+    const midDb = %8;
+    const trebleDb = %9;
+    const toneActive = %10;
+    const stereoExpanderPercent = %11;
+    const balance = %13;
+    const spatialActive = %14;
+    const reverb = %16;
+    const compressor = %18;
+    const limiter = %20;
+    const bassEnhancer = %21;
+    const autoGain = %22;
+    const policyMode = '%23';
+    const panelVisible = %24;
+    const activeSubpanel = '%25';
+
     const root = window.__ARDALI_WEB_DALI_OUTPUT__ = window.__ARDALI_WEB_DALI_OUTPUT__ || {};
     root.graphs = root.graphs || new WeakMap();
-    // A WeakMap lets us find a graph from a media element; this small set lets
-    // live controls update already-connected media without re-querying a busy
-    // page's DOM on every slider pixel.
     root.graphList = root.graphList || new Set();
+
     root.dbToGain = root.dbToGain || function(db) { return Math.pow(10, (Number(db) || 0) / 20); };
     root.smoothParam = root.smoothParam || function(param, value, ctx, rampSeconds) {
       if (!param || !ctx || !Number.isFinite(Number(value))) return;
@@ -1378,6 +1460,7 @@ QString WebAudioEffectsController::injectionScript() const {
         }
       }
     };
+
     root.makeBassSaturationCurve = root.makeBassSaturationCurve || function(amountPercent) {
       const amount = Math.max(0, Math.min(100, Number(amountPercent) || 0));
       const norm = amount / 100;
@@ -1391,10 +1474,28 @@ QString WebAudioEffectsController::injectionScript() const {
       }
       return curve;
     };
+
+    root.pruneStaleGraphs = root.pruneStaleGraphs || function() {
+      if (!root.graphList) return;
+      const toRemove = [];
+      for (const graph of root.graphList) {
+        if (!graph || !graph.element || !graph.element.isConnected || !document.documentElement.contains(graph.element)) {
+          toRemove.push(graph);
+        }
+      }
+      for (const dead of toRemove) {
+        root.disconnectEqGraph(dead);
+        if (dead.element) {
+          try { root.graphs.delete(dead.element); } catch (_) {}
+        }
+        root.graphList.delete(dead);
+      }
+    };
+
     if (!root.buildOutputGraph && outputModuleCode) {
       const module = { exports: {} };
       const exports = module.exports;
-      %13
+      %26
       root.buildOutputGraph = module.exports.buildGraph || module.exports.buildGraphSafe || null;
     }
     if (!root.eqTemplate && eqModuleCode) {
@@ -1486,6 +1587,7 @@ QString WebAudioEffectsController::injectionScript() const {
         console.error('[ArDali DSP] ' + root.autoGainTemplateError);
       }
     }
+
     root.disconnectEqGraph = root.disconnectEqGraph || function(graph) {
       if (!graph) return;
       if (graph.autoGainTimer) {
@@ -1501,12 +1603,15 @@ QString WebAudioEffectsController::injectionScript() const {
       graph.safetyLimiter = null;
       graph.compressorNode = null;
       graph.compressorMakeupGain = null;
+      graph.compressorEnabled = false;
       graph.autoGainAnalyser = null;
       graph.autoGainNode = null;
       graph.autoGainBuffer = null;
+      graph.autoGainEnabled = false;
       graph.userLimiterInputGain = null;
       graph.userLimiterNode = null;
       graph.userLimiterMeterAnalyser = null;
+      graph.userLimiterEnabled = false;
       graph.bassEnhancerInputGain = null;
       graph.bassEnhancerDryGain = null;
       graph.bassEnhancerFilter = null;
@@ -1519,6 +1624,7 @@ QString WebAudioEffectsController::injectionScript() const {
       graph.bassEnhancerSum = null;
       graph.bassEnhancerBodyDip = null;
       graph.bassEnhancerOutputTrim = null;
+      graph.bassEnhancerEnabled = false;
       graph.reverbInputGain = null;
       graph.reverbDryGain = null;
       graph.reverbDelay = null;
@@ -1526,8 +1632,55 @@ QString WebAudioEffectsController::injectionScript() const {
       graph.reverbFeedbackGain = null;
       graph.reverbWetGain = null;
       graph.reverbSum = null;
+      graph.reverbEnabled = false;
+      graph.bass = null;
+      graph.mid = null;
+      graph.treble = null;
+      graph.toneTrim = null;
+      graph.stereoSideWidth = null;
+      graph.balanceGainL = null;
+      graph.balanceGainR = null;
       graph.moduleNodes = {};
     };
+
+    root.needsGraphRebuild = root.needsGraphRebuild || function(graph, cfg) {
+      if (!graph || !graph.graph || !graph.eqNodes || graph.eqNodes.length === 0) return true;
+      const bands = (cfg && cfg.bands) || [];
+      const eqActive = (cfg && !!cfg.eqActive) || bands.some(function(b) { return Math.abs(Number(b) || 0) > 0.01; });
+      const hasEqBands = !!(graph.eqBandNodes && graph.eqBandNodes.length > 0);
+      if (eqActive !== hasEqBands) return true;
+
+      const compressorActive = !!(cfg && cfg.compressor && cfg.compressor.enabled);
+      if (compressorActive !== !!graph.compressorEnabled) return true;
+
+      const limiterActive = !!(cfg && cfg.limiter && cfg.limiter.enabled);
+      if (limiterActive !== !!graph.userLimiterEnabled) return true;
+
+      const bassActive = !!(cfg && cfg.bassEnhancer && cfg.bassEnhancer.enabled);
+      if (bassActive !== !!graph.bassEnhancerEnabled) return true;
+
+      const reverbActive = !!(cfg && cfg.reverb && cfg.reverb.enabled);
+      if (reverbActive !== !!graph.reverbEnabled) return true;
+
+      const autoGainActive = !!(cfg && cfg.autoGain && cfg.autoGain.enabled);
+      if (autoGainActive !== !!graph.autoGainEnabled) return true;
+
+      const bassDb = Number(cfg && cfg.bassDb) || 0;
+      const midDb = Number(cfg && cfg.midDb) || 0;
+      const trebleDb = Number(cfg && cfg.trebleDb) || 0;
+      const toneActive = (cfg && !!cfg.toneActive) || (Math.abs(bassDb) > 0.01 || Math.abs(midDb) > 0.01 || Math.abs(trebleDb) > 0.01);
+      const hasTone = !!graph.bass;
+      if (toneActive !== hasTone) return true;
+
+      const stereoPercent = Number(cfg && cfg.stereoExpanderPercent) || 100;
+      const balance = Number(cfg && cfg.balance) || 0;
+      const spatialActive = (cfg && !!cfg.spatialActive) || (Math.abs(stereoPercent - 100) > 0.5 || Math.abs(balance) > 0.5);
+      const hasSpatial = !!graph.stereoSideWidth;
+      if (spatialActive !== hasSpatial) return true;
+
+      return false;
+    };
+
     root.computeAutoGainStep = root.computeAutoGainStep || function(state, inputDb, stepMs) {
       const safeStepMs = Math.max(10, Number(stepMs) || 60);
       const level = Number.isFinite(Number(inputDb)) ? Number(inputDb) : -120;
@@ -1544,8 +1697,9 @@ QString WebAudioEffectsController::injectionScript() const {
       state.currentGainDb = Math.max(-12, Math.min(state.maxGainDb, state.currentGainDb));
       return state.currentGainDb;
     };
+
     root.runAutoGainStep = root.runAutoGainStep || function(graph) {
-      if (!graph || !graph.ctx || !graph.autoGainNode || !graph.autoGainState) return;
+      if (!graph || !graph.ctx || !graph.autoGainNode || !graph.autoGainState || !graph.autoGainAnalyser) return;
       const state = graph.autoGainState;
       if (graph.bypass || !state.enabled) {
         state.currentGainDb = 0;
@@ -1583,9 +1737,11 @@ QString WebAudioEffectsController::injectionScript() const {
         state.lastAppliedGainDb = state.currentGainDb;
       }
     };
-    root.buildEqGraph = root.buildEqGraph || function(graph) {
+
+    root.buildEqGraph = root.buildEqGraph || function(graph, cfg) {
       const ctx = graph.ctx;
       const template = root.eqTemplate;
+      if (!template) return;
       graph.eqInput = new GainNode(ctx, { gain: 1 });
       graph.outputGraph = root.buildOutputGraph(ctx, graph.source, graph.eqInput);
       const nodes = [graph.eqInput];
@@ -1593,193 +1749,303 @@ QString WebAudioEffectsController::injectionScript() const {
       nodes.push(eqPreamp);
       graph.eqInput.connect(eqPreamp);
       let previous = eqPreamp;
-      graph.eqBandNodes = template.bands.map(function(stage) {
-        const node = new BiquadFilterNode(ctx, { type: stage.type, frequency: stage.frequency, gain: stage.gain, Q: stage.q });
-        previous.connect(node);
-        previous = node;
-        nodes.push(node);
-        return node;
-      });
-      // Fixed Stage-2 safety guard; never exposed as the user Limiter module.
+
+      // 1. Equalizer 32-Band - Lazy allocation
+      const bands = (cfg && cfg.bands) || [];
+      const eqIsActive = (cfg && !!cfg.eqActive) || bands.some(function(b) { return Math.abs(Number(b) || 0) > 0.01; });
+      if (eqIsActive && template.bands && template.bands.length > 0) {
+        graph.eqBandNodes = template.bands.map(function(stage, idx) {
+          const gainVal = Number(bands[idx]) || 0;
+          const node = new BiquadFilterNode(ctx, { type: stage.type, frequency: stage.frequency, gain: gainVal, Q: stage.q });
+          previous.connect(node);
+          previous = node;
+          nodes.push(node);
+          return node;
+        });
+      } else {
+        graph.eqBandNodes = [];
+      }
+
+      // 2. Fixed Stage-2 safety guard
       const safetyLimiter = new DynamicsCompressorNode(ctx, template.limiter);
-      const compressorTemplate = root.compressorTemplate;
-      const compressorNode = new DynamicsCompressorNode(ctx, {
-        threshold: compressorTemplate.threshold, ratio: compressorTemplate.ratio,
-        attack: compressorTemplate.attack, release: compressorTemplate.release, knee: compressorTemplate.knee
-      });
-      const compressorMakeupGain = new GainNode(ctx, { gain: compressorTemplate.makeupGain });
-      const autoGainTemplate = root.autoGainTemplate;
-      const autoGainAnalyser = new AnalyserNode(ctx, {
-        fftSize: autoGainTemplate.fftSize,
-        smoothingTimeConstant: autoGainTemplate.detectorSmoothing,
-        minDecibels: -96,
-        maxDecibels: -12
-      });
-      const autoGainNode = new GainNode(ctx, { gain: 1 });
-      const userLimiterTemplate = root.userLimiterTemplate;
-      const userLimiterInputGain = new GainNode(ctx, { gain: 1 });
-      const userLimiterNode = new DynamicsCompressorNode(ctx, {
-        threshold: userLimiterTemplate.threshold, ratio: userLimiterTemplate.ratio,
-        attack: userLimiterTemplate.attack, release: userLimiterTemplate.release, knee: userLimiterTemplate.knee
-      });
-      const userLimiterMeterAnalyser = new AnalyserNode(ctx, { fftSize: 2048, smoothingTimeConstant: 0.12 });
-      // Keep the bass voicing aligned with the native ArDali engine: one broad
-      // 100 Hz shelf.  Stacking sub/bass-body filters made a +dB setting sound
-      // boomy and forced a fast compressor to work audibly.
-      const bass = new BiquadFilterNode(ctx, { type: 'lowshelf', frequency: 100, gain: 0, Q: 0.70 });
-      const mid = new BiquadFilterNode(ctx, { type: 'peaking', frequency: 1200, gain: 0, Q: 1.0 });
-      const treble = new BiquadFilterNode(ctx, { type: 'highshelf', frequency: 10000, gain: 0, Q: 0.707 });
-      // The native engine gently compensates a positive bass boost at master
-      // level.  A gain node preserves that full, deep character without the
-      // pumping and crackle of a second aggressive compressor.
-      const toneTrim = new GainNode(ctx, { gain: 1 });
-      // The Stage-6 Bass Enhancer is the legacy Web DALI branch, positioned
-      // after the tone/EQ controls and before the spatial/Reverb stages.
-      // Every node stays connected for the media lifetime; module bypass and
-      // all five controls are AudioParam/curve updates only.
-      const bassTemplate = root.bassEnhancerTemplate;
-      const bassEnhancerInputGain = new GainNode(ctx, { gain: 1 });
-      const bassEnhancerDryGain = new GainNode(ctx, { gain: 1 });
-      const bassEnhancerFilter = new BiquadFilterNode(ctx, {
-        type: 'lowshelf', frequency: 80, gain: 0, Q: bassTemplate.lowShelf.q
-      });
-      const bassEnhancerSubPeak = new BiquadFilterNode(ctx, {
-        type: 'peaking', frequency: 60, gain: 0, Q: 0.65
-      });
-      const bassEnhancerPresencePeak = new BiquadFilterNode(ctx, {
-        type: 'peaking', frequency: 118, gain: 0, Q: 0.95
-      });
-      const bassEnhancerHarmonicLowpass = new BiquadFilterNode(ctx, {
-        type: 'lowpass', frequency: 180, Q: 0.707
-      });
-      const bassEnhancerHarmonicsDrive = new GainNode(ctx, { gain: 1 });
-      const bassEnhancerSaturator = new WaveShaperNode(ctx, {
-        curve: root.makeBassSaturationCurve(0), oversample: '2x'
-      });
-      const bassEnhancerWetGain = new GainNode(ctx, { gain: 0 });
-      const bassEnhancerSum = new GainNode(ctx, { gain: 1 });
-      const bassEnhancerBodyDip = new BiquadFilterNode(ctx, {
-        type: 'peaking', frequency: 260, gain: 0, Q: 0.8
-      });
-      const bassEnhancerOutputTrim = new GainNode(ctx, { gain: 1 });
-      // Reverb is a self-contained module branch.  It remains physically
-      // connected so toggling it never recreates a MediaElementSource, while
-      // its dry/wet/feedback gains make the branch a true transparent bypass
-      // when the independently persisted module state is off.
-      const reverbInputGain = new GainNode(ctx, { gain: 1 });
-      const reverbDryGain = new GainNode(ctx, { gain: 1 });
-      const reverbDelay = new DelayNode(ctx, { maxDelayTime: 0.35, delayTime: 0.09 });
-      const reverbLowpass = new BiquadFilterNode(ctx, { type: 'lowpass', frequency: 9300, Q: 0.707 });
-      const reverbFeedbackGain = new GainNode(ctx, { gain: 0 });
-      const reverbWetGain = new GainNode(ctx, { gain: 0 });
-      const reverbSum = new GainNode(ctx, { gain: 1 });
-      const stereoSplit = new ChannelSplitterNode(ctx, { numberOfOutputs: 2 });
-      const midL = new GainNode(ctx, { gain: 0.5 });
-      const midR = new GainNode(ctx, { gain: 0.5 });
-      const midSum = new GainNode(ctx, { gain: 1 });
-      const sideL = new GainNode(ctx, { gain: 0.5 });
-      const sideRInverted = new GainNode(ctx, { gain: -0.5 });
-      const sideSum = new GainNode(ctx, { gain: 1 });
-      const stereoSideWidth = new GainNode(ctx, { gain: 1 });
-      const midToLeft = new GainNode(ctx, { gain: 1 });
-      const midToRight = new GainNode(ctx, { gain: 1 });
-      const sideToLeft = new GainNode(ctx, { gain: 1 });
-      const sideToRight = new GainNode(ctx, { gain: -1 });
-      const stereoMerge = new ChannelMergerNode(ctx, { numberOfInputs: 2 });
-      const split = new ChannelSplitterNode(ctx, { numberOfOutputs: 2 });
-      const gainL = new GainNode(ctx, { gain: 1 });
-      const gainR = new GainNode(ctx, { gain: 1 });
-      const merge = new ChannelMergerNode(ctx, { numberOfInputs: 2 });
-      graph.runtimeGain = graph.runtimeGain || new GainNode(ctx, { gain: 1 });
+      nodes.push(safetyLimiter);
+      previous.connect(safetyLimiter);
+      previous = safetyLimiter;
+      graph.safetyLimiter = safetyLimiter;
+
+      // 3. Dynamic Compressor - Lazy allocation
+      const compressorCfg = cfg && cfg.compressor;
+      if (compressorCfg && compressorCfg.enabled && root.compressorTemplate) {
+        const cTemplate = root.compressorTemplate;
+        const compressorNode = new DynamicsCompressorNode(ctx, {
+          threshold: compressorCfg.thresholdDb !== undefined ? compressorCfg.thresholdDb : cTemplate.threshold,
+          ratio: compressorCfg.ratio !== undefined ? compressorCfg.ratio : cTemplate.ratio,
+          attack: (compressorCfg.attackMs !== undefined ? compressorCfg.attackMs : 10) / 1000,
+          release: (compressorCfg.releaseMs !== undefined ? compressorCfg.releaseMs : 100) / 1000,
+          knee: compressorCfg.kneeDb !== undefined ? compressorCfg.kneeDb : cTemplate.knee
+        });
+        const compressorMakeupGain = new GainNode(ctx, {
+          gain: root.dbToGain(compressorCfg.makeupDb !== undefined ? compressorCfg.makeupDb : (Number(cTemplate.makeupGain) || 0))
+        });
+        nodes.push(compressorNode, compressorMakeupGain);
+        previous.connect(compressorNode);
+        compressorNode.connect(compressorMakeupGain);
+        previous = compressorMakeupGain;
+        graph.compressorNode = compressorNode;
+        graph.compressorMakeupGain = compressorMakeupGain;
+        graph.compressorEnabled = true;
+      } else {
+        graph.compressorNode = null;
+        graph.compressorMakeupGain = null;
+        graph.compressorEnabled = false;
+      }
+
+      // 4. Tone controls (Bass, Mid, Treble) - Lazy allocation
+      const bassDb = Number(cfg && cfg.bassDb) || 0;
+      const midDb = Number(cfg && cfg.midDb) || 0;
+      const trebleDb = Number(cfg && cfg.trebleDb) || 0;
+      const toneIsActive = (cfg && !!cfg.toneActive) || (Math.abs(bassDb) > 0.01 || Math.abs(midDb) > 0.01 || Math.abs(trebleDb) > 0.01);
+      if (toneIsActive) {
+        const bass = new BiquadFilterNode(ctx, { type: 'lowshelf', frequency: 100, gain: bassDb, Q: 0.70 });
+        const mid = new BiquadFilterNode(ctx, { type: 'peaking', frequency: 1200, gain: midDb, Q: 1.0 });
+        const treble = new BiquadFilterNode(ctx, { type: 'highshelf', frequency: 10000, gain: trebleDb, Q: 0.707 });
+        const toneTrim = new GainNode(ctx, { gain: root.dbToGain(-Math.max(0, bassDb) * 0.333) });
+        nodes.push(bass, mid, treble, toneTrim);
+        previous.connect(bass); bass.connect(mid); mid.connect(treble); treble.connect(toneTrim);
+        previous = toneTrim;
+        graph.bass = bass; graph.mid = mid; graph.treble = treble; graph.toneTrim = toneTrim;
+      } else {
+        graph.bass = null; graph.mid = null; graph.treble = null; graph.toneTrim = null;
+      }
+
+      // 5. Stage-6 Bass Enhancer - Lazy allocation
+      const bassCfg = cfg && cfg.bassEnhancer;
+      if (bassCfg && bassCfg.enabled && root.bassEnhancerTemplate) {
+        const bTemplate = root.bassEnhancerTemplate;
+        const bParams = root.computeBassEnhancerParams({
+          enabled: true, frequencyHz: bassCfg.frequencyHz, gainDb: bassCfg.gainDb,
+          harmonicsPercent: bassCfg.harmonicsPercent, width: bassCfg.width, mixPercent: bassCfg.mixPercent,
+          template: bTemplate
+        });
+        const bassEnhancerInputGain = new GainNode(ctx, { gain: bParams.inputGain });
+        const bassEnhancerDryGain = new GainNode(ctx, { gain: bParams.dryGain });
+        const bassEnhancerFilter = new BiquadFilterNode(ctx, {
+          type: 'lowshelf', frequency: bParams.frequencyHz, gain: bParams.shelfGain, Q: bTemplate.lowShelf.q
+        });
+        const bassEnhancerSubPeak = new BiquadFilterNode(ctx, {
+          type: 'peaking', frequency: bParams.subFrequency, gain: bParams.subGain, Q: bParams.subQ
+        });
+        const bassEnhancerPresencePeak = new BiquadFilterNode(ctx, {
+          type: 'peaking', frequency: bParams.presenceFrequency, gain: bParams.presenceGain, Q: bParams.presenceQ
+        });
+        const bassEnhancerHarmonicLowpass = new BiquadFilterNode(ctx, {
+          type: 'lowpass', frequency: bParams.harmonicCutoff, Q: 0.707
+        });
+        const bassEnhancerHarmonicsDrive = new GainNode(ctx, { gain: bParams.harmonicDrive });
+        const bassEnhancerSaturator = new WaveShaperNode(ctx, {
+          curve: root.makeBassSaturationCurve(bParams.curveAmount), oversample: '2x'
+        });
+        const bassEnhancerWetGain = new GainNode(ctx, { gain: bParams.wetGain });
+        const bassEnhancerSum = new GainNode(ctx, { gain: 1 });
+        const bassEnhancerBodyDip = new BiquadFilterNode(ctx, {
+          type: 'peaking', frequency: bParams.dipFrequency, gain: bParams.dipGain, Q: bParams.dipQ
+        });
+        const bassEnhancerOutputTrim = new GainNode(ctx, { gain: bParams.outputGain });
+
+        nodes.push(bassEnhancerInputGain, bassEnhancerDryGain, bassEnhancerFilter,
+                   bassEnhancerSubPeak, bassEnhancerPresencePeak, bassEnhancerHarmonicLowpass,
+                   bassEnhancerHarmonicsDrive, bassEnhancerSaturator, bassEnhancerWetGain, bassEnhancerSum,
+                   bassEnhancerBodyDip, bassEnhancerOutputTrim);
+
+        previous.connect(bassEnhancerInputGain);
+        bassEnhancerInputGain.connect(bassEnhancerFilter);
+        bassEnhancerFilter.connect(bassEnhancerSubPeak);
+        bassEnhancerSubPeak.connect(bassEnhancerPresencePeak);
+        bassEnhancerPresencePeak.connect(bassEnhancerDryGain); bassEnhancerDryGain.connect(bassEnhancerSum);
+        bassEnhancerPresencePeak.connect(bassEnhancerHarmonicLowpass);
+        bassEnhancerHarmonicLowpass.connect(bassEnhancerHarmonicsDrive);
+        bassEnhancerHarmonicsDrive.connect(bassEnhancerSaturator);
+        bassEnhancerSaturator.connect(bassEnhancerWetGain); bassEnhancerWetGain.connect(bassEnhancerSum);
+        bassEnhancerSum.connect(bassEnhancerBodyDip); bassEnhancerBodyDip.connect(bassEnhancerOutputTrim);
+        previous = bassEnhancerOutputTrim;
+
+        graph.bassEnhancerInputGain = bassEnhancerInputGain; graph.bassEnhancerDryGain = bassEnhancerDryGain;
+        graph.bassEnhancerFilter = bassEnhancerFilter; graph.bassEnhancerSubPeak = bassEnhancerSubPeak;
+        graph.bassEnhancerPresencePeak = bassEnhancerPresencePeak;
+        graph.bassEnhancerHarmonicLowpass = bassEnhancerHarmonicLowpass;
+        graph.bassEnhancerHarmonicsDrive = bassEnhancerHarmonicsDrive;
+        graph.bassEnhancerSaturator = bassEnhancerSaturator; graph.bassEnhancerWetGain = bassEnhancerWetGain;
+        graph.bassEnhancerSum = bassEnhancerSum; graph.bassEnhancerBodyDip = bassEnhancerBodyDip;
+        graph.bassEnhancerOutputTrim = bassEnhancerOutputTrim;
+        graph.bassEnhancerState = { curveAmount: bParams.curveAmount };
+        graph.bassEnhancerEnabled = true;
+      } else {
+        graph.bassEnhancerInputGain = null; graph.bassEnhancerFilter = null;
+        graph.bassEnhancerEnabled = false;
+      }
+
+      // 6. Reverb - Lazy allocation
+      const reverbCfg = cfg && cfg.reverb;
+      if (reverbCfg && reverbCfg.enabled) {
+        const roomSizeMs = Math.max(0, Math.min(3000, Number(reverbCfg.roomSizeMs) || 1000));
+        const damping = Math.max(0, Math.min(1, Number(reverbCfg.damping) || 0.5));
+        const wetDryDb = Math.max(-96, Math.min(0, Number(reverbCfg.wetDryDb) || -10));
+        const hfRatio = Math.max(0.001, Math.min(0.999, Number(reverbCfg.hfRatio) || 0.7));
+        const inputGainDb = Math.max(-96, Math.min(12, Number(reverbCfg.inputGainDb) || 0));
+
+        const reverbInputGain = new GainNode(ctx, { gain: root.dbToGain(inputGainDb) });
+        const wetVal = root.dbToGain(wetDryDb);
+        const reverbDryGain = new GainNode(ctx, { gain: Math.max(0.55, Math.min(1, 1 - wetVal * 0.35)) });
+        const reverbDelay = new DelayNode(ctx, { maxDelayTime: 0.35, delayTime: Math.max(0.01, Math.min(0.28, (roomSizeMs / 1000) * 0.09)) });
+        const reverbLowpass = new BiquadFilterNode(ctx, { type: 'lowpass', frequency: Math.max(900, Math.min(18000, 900 + hfRatio * 12000)), Q: 0.707 });
+        const reverbFeedbackGain = new GainNode(ctx, { gain: Math.max(0.15, Math.min(0.78, 0.18 + (1 - damping) * 0.55)) });
+        const reverbWetGain = new GainNode(ctx, { gain: wetVal });
+        const reverbSum = new GainNode(ctx, { gain: 1 });
+
+        nodes.push(reverbInputGain, reverbDryGain, reverbDelay, reverbLowpass, reverbFeedbackGain, reverbWetGain, reverbSum);
+        previous.connect(reverbInputGain);
+        reverbInputGain.connect(reverbDryGain); reverbDryGain.connect(reverbSum);
+        reverbInputGain.connect(reverbDelay); reverbDelay.connect(reverbLowpass); reverbLowpass.connect(reverbWetGain);
+        reverbWetGain.connect(reverbSum); reverbLowpass.connect(reverbFeedbackGain); reverbFeedbackGain.connect(reverbDelay);
+        previous = reverbSum;
+
+        graph.reverbInputGain = reverbInputGain; graph.reverbDryGain = reverbDryGain; graph.reverbDelay = reverbDelay;
+        graph.reverbLowpass = reverbLowpass; graph.reverbFeedbackGain = reverbFeedbackGain;
+        graph.reverbWetGain = reverbWetGain; graph.reverbSum = reverbSum;
+        graph.reverbEnabled = true;
+      } else {
+        graph.reverbInputGain = null; graph.reverbDelay = null;
+        graph.reverbEnabled = false;
+      }
+
+      // 7. Stereo Expander & Balance - Lazy allocation
+      const stereoPercent = Number(cfg && cfg.stereoExpanderPercent) || 100;
+      const balanceVal = Number(cfg && cfg.balance) || 0;
+      const spatialIsActive = (cfg && !!cfg.spatialActive) || (Math.abs(stereoPercent - 100) > 0.5 || Math.abs(balanceVal) > 0.5);
+      if (spatialIsActive) {
+        const stereoSplit = new ChannelSplitterNode(ctx, { numberOfOutputs: 2 });
+        const midL = new GainNode(ctx, { gain: 0.5 });
+        const midR = new GainNode(ctx, { gain: 0.5 });
+        const midSum = new GainNode(ctx, { gain: 1 });
+        const sideL = new GainNode(ctx, { gain: 0.5 });
+        const sideRInverted = new GainNode(ctx, { gain: -0.5 });
+        const sideSum = new GainNode(ctx, { gain: 1 });
+        const stereoSideWidth = new GainNode(ctx, { gain: Math.max(0, Math.min(2, stereoPercent / 100)) });
+        const midToLeft = new GainNode(ctx, { gain: 1 });
+        const midToRight = new GainNode(ctx, { gain: 1 });
+        const sideToLeft = new GainNode(ctx, { gain: 1 });
+        const sideToRight = new GainNode(ctx, { gain: -1 });
+        const stereoMerge = new ChannelMergerNode(ctx, { numberOfInputs: 2 });
+        const split = new ChannelSplitterNode(ctx, { numberOfOutputs: 2 });
+        const normBal = Math.max(-1, Math.min(1, balanceVal / 100));
+        const gainL = new GainNode(ctx, { gain: normBal > 0 ? 1 - normBal : 1 });
+        const gainR = new GainNode(ctx, { gain: normBal < 0 ? 1 + normBal : 1 });
+        const merge = new ChannelMergerNode(ctx, { numberOfInputs: 2 });
+
+        nodes.push(stereoSplit, midL, midR, midSum, sideL, sideRInverted, sideSum,
+                   stereoSideWidth, midToLeft, midToRight, sideToLeft, sideToRight, stereoMerge, split, gainL, gainR, merge);
+
+        previous.connect(stereoSplit);
+        stereoSplit.connect(midL, 0); stereoSplit.connect(midR, 1); midL.connect(midSum); midR.connect(midSum);
+        stereoSplit.connect(sideL, 0); stereoSplit.connect(sideRInverted, 1); sideL.connect(sideSum); sideRInverted.connect(sideSum);
+        midSum.connect(midToLeft); midSum.connect(midToRight); sideSum.connect(stereoSideWidth);
+        stereoSideWidth.connect(sideToLeft); stereoSideWidth.connect(sideToRight);
+        midToLeft.connect(stereoMerge, 0, 0); sideToLeft.connect(stereoMerge, 0, 0);
+        midToRight.connect(stereoMerge, 0, 1); sideToRight.connect(stereoMerge, 0, 1);
+        stereoMerge.connect(split);
+        split.connect(gainL, 0); split.connect(gainR, 1); gainL.connect(merge, 0, 0); gainR.connect(merge, 0, 1);
+        previous = merge;
+
+        graph.stereoSideWidth = stereoSideWidth;
+        graph.balanceGainL = gainL; graph.balanceGainR = gainR;
+      } else {
+        graph.stereoSideWidth = null; graph.balanceGainL = null; graph.balanceGainR = null;
+      }
+
+      // 8. Auto Gain - Lazy allocation & Timer Gating
+      const autoGainCfg = cfg && cfg.autoGain;
+      if (autoGainCfg && autoGainCfg.enabled && root.autoGainTemplate) {
+        const autoGainTemplate = root.autoGainTemplate;
+        const autoGainAnalyser = new AnalyserNode(ctx, {
+          fftSize: autoGainTemplate.fftSize,
+          smoothingTimeConstant: autoGainTemplate.detectorSmoothing,
+          minDecibels: -96,
+          maxDecibels: -12
+        });
+        const autoGainNode = new GainNode(ctx, { gain: 1 });
+        nodes.push(autoGainNode);
+        previous.connect(autoGainNode);
+        previous = autoGainNode;
+        graph.source.connect(autoGainAnalyser);
+
+        graph.autoGainAnalyser = autoGainAnalyser;
+        graph.autoGainNode = autoGainNode;
+        graph.autoGainBuffer = new Uint8Array(autoGainAnalyser.fftSize);
+        graph.autoGainState = {
+          enabled: true, targetDbfs: autoGainCfg.targetDbfs !== undefined ? autoGainCfg.targetDbfs : -14,
+          maxGainDb: autoGainCfg.maxGainDb !== undefined ? autoGainCfg.maxGainDb : 12,
+          speed: autoGainCfg.speed || 'medium', preset: autoGainCfg.preset || 'balanced',
+          currentGainDb: 0, envDb: -120, lastAppliedGainDb: 0, lastInputDb: -120,
+          detectorReadCount: 0, controlIntervalMs: autoGainTemplate.controlIntervalMs,
+          runtimeAvailable: true
+        };
+        graph.autoGainEnabled = true;
+        graph.autoGainTimer = setInterval(function() { root.runAutoGainStep(graph); },
+                                          autoGainTemplate.controlIntervalMs);
+      } else {
+        graph.autoGainAnalyser = null;
+        graph.autoGainNode = null;
+        graph.autoGainBuffer = null;
+        graph.autoGainState = { enabled: false };
+        graph.autoGainEnabled = false;
+        graph.autoGainTimer = null;
+      }
+
+      // 9. User Limiter - Lazy allocation
+      const limiterCfg = cfg && cfg.limiter;
+      if (limiterCfg && limiterCfg.enabled && root.userLimiterTemplate) {
+        const userLimiterTemplate = root.userLimiterTemplate;
+        const userLimiterInputGain = new GainNode(ctx, { gain: root.dbToGain(limiterCfg.gainDb || 0) });
+        const userLimiterNode = new DynamicsCompressorNode(ctx, {
+          threshold: limiterCfg.ceilingDb !== undefined ? limiterCfg.ceilingDb : userLimiterTemplate.threshold,
+          ratio: userLimiterTemplate.ratio || 20,
+          attack: (limiterCfg.lookaheadMs !== undefined ? Math.max(0.5, limiterCfg.lookaheadMs) : 5) / 1000,
+          release: (limiterCfg.releaseMs !== undefined ? Math.max(5, limiterCfg.releaseMs) : 50) / 1000,
+          knee: userLimiterTemplate.knee || 0
+        });
+        nodes.push(userLimiterInputGain, userLimiterNode);
+        previous.connect(userLimiterInputGain);
+        userLimiterInputGain.connect(userLimiterNode);
+        previous = userLimiterNode;
+
+        graph.userLimiterInputGain = userLimiterInputGain;
+        graph.userLimiterNode = userLimiterNode;
+        graph.userLimiterEnabled = true;
+      } else {
+        graph.userLimiterInputGain = null;
+        graph.userLimiterNode = null;
+        graph.userLimiterEnabled = false;
+      }
+
+      // 10. Runtime Gain & Master Output
+      graph.runtimeGain = graph.runtimeGain || new GainNode(ctx, { gain: root.dbToGain(cfg && cfg.outputPreampDb) });
       const wetGain = new GainNode(ctx, { gain: 1 });
       const dryGain = new GainNode(ctx, { gain: 0 });
-      nodes.push(safetyLimiter, compressorNode, compressorMakeupGain, autoGainAnalyser, autoGainNode,
-                 userLimiterInputGain, userLimiterNode, userLimiterMeterAnalyser,
-                 bass, mid, treble, toneTrim, bassEnhancerInputGain, bassEnhancerDryGain, bassEnhancerFilter,
-                 bassEnhancerSubPeak, bassEnhancerPresencePeak, bassEnhancerHarmonicLowpass,
-                 bassEnhancerHarmonicsDrive, bassEnhancerSaturator, bassEnhancerWetGain, bassEnhancerSum,
-                 bassEnhancerBodyDip, bassEnhancerOutputTrim, reverbInputGain, reverbDryGain, reverbDelay, reverbLowpass,
-                 reverbFeedbackGain, reverbWetGain, reverbSum, stereoSplit, midL, midR, midSum, sideL, sideRInverted, sideSum,
-                 stereoSideWidth, midToLeft, midToRight, sideToLeft, sideToRight, stereoMerge, split, gainL, gainR,
-                 merge, graph.runtimeGain, wetGain, dryGain);
-      previous.connect(safetyLimiter); safetyLimiter.connect(compressorNode); compressorNode.connect(bass);
-      bass.connect(mid); mid.connect(treble); treble.connect(toneTrim);
-      toneTrim.connect(bassEnhancerInputGain);
-      bassEnhancerInputGain.connect(bassEnhancerFilter);
-      bassEnhancerFilter.connect(bassEnhancerSubPeak);
-      bassEnhancerSubPeak.connect(bassEnhancerPresencePeak);
-      bassEnhancerPresencePeak.connect(bassEnhancerDryGain); bassEnhancerDryGain.connect(bassEnhancerSum);
-      bassEnhancerPresencePeak.connect(bassEnhancerHarmonicLowpass);
-      bassEnhancerHarmonicLowpass.connect(bassEnhancerHarmonicsDrive);
-      bassEnhancerHarmonicsDrive.connect(bassEnhancerSaturator);
-      bassEnhancerSaturator.connect(bassEnhancerWetGain); bassEnhancerWetGain.connect(bassEnhancerSum);
-      bassEnhancerSum.connect(bassEnhancerBodyDip); bassEnhancerBodyDip.connect(bassEnhancerOutputTrim);
-      bassEnhancerOutputTrim.connect(reverbInputGain);
-      reverbInputGain.connect(reverbDryGain); reverbDryGain.connect(reverbSum);
-      reverbInputGain.connect(reverbDelay); reverbDelay.connect(reverbLowpass); reverbLowpass.connect(reverbWetGain);
-      reverbWetGain.connect(reverbSum); reverbLowpass.connect(reverbFeedbackGain); reverbFeedbackGain.connect(reverbDelay);
-      reverbSum.connect(stereoSplit);
-      stereoSplit.connect(midL, 0); stereoSplit.connect(midR, 1); midL.connect(midSum); midR.connect(midSum);
-      stereoSplit.connect(sideL, 0); stereoSplit.connect(sideRInverted, 1); sideL.connect(sideSum); sideRInverted.connect(sideSum);
-      midSum.connect(midToLeft); midSum.connect(midToRight); sideSum.connect(stereoSideWidth);
-      stereoSideWidth.connect(sideToLeft); stereoSideWidth.connect(sideToRight);
-      midToLeft.connect(stereoMerge, 0, 0); sideToLeft.connect(stereoMerge, 0, 0);
-      midToRight.connect(stereoMerge, 0, 1); sideToRight.connect(stereoMerge, 0, 1);
-      stereoMerge.connect(split);
-      split.connect(gainL, 0); split.connect(gainR, 1); gainL.connect(merge, 0, 0); gainR.connect(merge, 0, 1);
-      merge.connect(compressorMakeupGain); compressorMakeupGain.connect(autoGainNode);
-      autoGainNode.connect(userLimiterInputGain);
-      userLimiterInputGain.connect(userLimiterNode); userLimiterNode.connect(userLimiterMeterAnalyser);
-      userLimiterMeterAnalyser.connect(graph.runtimeGain);
-      graph.runtimeGain.connect(wetGain); wetGain.connect(ctx.destination);
-      // Keep a dry route permanently connected.  Toggling effects then only
-      // crossfades gains instead of disconnecting/recreating a media source.
-      graph.source.connect(dryGain); dryGain.connect(ctx.destination);
-      graph.source.connect(autoGainAnalyser);
+      nodes.push(graph.runtimeGain, wetGain, dryGain);
+
+      previous.connect(graph.runtimeGain);
+      graph.runtimeGain.connect(wetGain);
+      wetGain.connect(ctx.destination);
+
+      graph.source.connect(dryGain);
+      dryGain.connect(ctx.destination);
+
       graph.eqNodes = nodes;
-      graph.safetyLimiter = safetyLimiter;
-      graph.bass = bass; graph.mid = mid; graph.treble = treble; graph.toneTrim = toneTrim;
-      graph.compressorNode = compressorNode; graph.compressorMakeupGain = compressorMakeupGain;
-      graph.autoGainAnalyser = autoGainAnalyser; graph.autoGainNode = autoGainNode;
-      graph.autoGainBuffer = new Uint8Array(autoGainAnalyser.fftSize);
-      graph.autoGainState = {
-        enabled: false, targetDbfs: -14, maxGainDb: 12, speed: 'medium', preset: 'balanced',
-        currentGainDb: 0, envDb: -120, lastAppliedGainDb: 0, lastInputDb: -120,
-        detectorReadCount: 0, controlIntervalMs: autoGainTemplate.controlIntervalMs,
-        runtimeAvailable: true
-      };
-      graph.userLimiterInputGain = userLimiterInputGain; graph.userLimiterNode = userLimiterNode;
-      graph.userLimiterMeterAnalyser = userLimiterMeterAnalyser;
-      graph.bassEnhancerInputGain = bassEnhancerInputGain; graph.bassEnhancerDryGain = bassEnhancerDryGain;
-      graph.bassEnhancerFilter = bassEnhancerFilter; graph.bassEnhancerSubPeak = bassEnhancerSubPeak;
-      graph.bassEnhancerPresencePeak = bassEnhancerPresencePeak;
-      graph.bassEnhancerHarmonicLowpass = bassEnhancerHarmonicLowpass;
-      graph.bassEnhancerHarmonicsDrive = bassEnhancerHarmonicsDrive;
-      graph.bassEnhancerSaturator = bassEnhancerSaturator; graph.bassEnhancerWetGain = bassEnhancerWetGain;
-      graph.bassEnhancerSum = bassEnhancerSum; graph.bassEnhancerBodyDip = bassEnhancerBodyDip;
-      graph.bassEnhancerOutputTrim = bassEnhancerOutputTrim;
-      graph.bassEnhancerState = { curveAmount: -1 };
-      graph.reverbInputGain = reverbInputGain; graph.reverbDryGain = reverbDryGain; graph.reverbDelay = reverbDelay;
-      graph.reverbLowpass = reverbLowpass; graph.reverbFeedbackGain = reverbFeedbackGain;
-      graph.reverbWetGain = reverbWetGain; graph.reverbSum = reverbSum;
-      graph.moduleNodes = {
-        reverb: { input: reverbInputGain, dry: reverbDryGain, delay: reverbDelay,
-                  lowpass: reverbLowpass, feedback: reverbFeedbackGain, wet: reverbWetGain },
-        compressor: { compressor: compressorNode, makeup: compressorMakeupGain },
-        limiter: { inputGain: userLimiterInputGain, limiter: userLimiterNode, meter: userLimiterMeterAnalyser },
-        autoGain: { detector: autoGainAnalyser, gain: autoGainNode },
-        bassEnhancer: { input: bassEnhancerInputGain, shelf: bassEnhancerFilter, subPeak: bassEnhancerSubPeak,
-                        presencePeak: bassEnhancerPresencePeak, harmonicLowpass: bassEnhancerHarmonicLowpass,
-                        shaper: bassEnhancerSaturator, dry: bassEnhancerDryGain, wet: bassEnhancerWetGain,
-                        output: bassEnhancerOutputTrim }
-      };
-      graph.wetGain = wetGain; graph.dryGain = dryGain;
-      graph.stereoSideWidth = stereoSideWidth;
-      graph.balanceGainL = gainL; graph.balanceGainR = gainR;
+      graph.wetGain = wetGain;
+      graph.dryGain = dryGain;
       graph.graph = { disconnect: function() { root.disconnectEqGraph(graph); } };
-      graph.autoGainTimer = setInterval(function() { root.runAutoGainStep(graph); },
-                                        autoGainTemplate.controlIntervalMs);
     };
+
     root.computeBassEnhancerParams = root.computeBassEnhancerParams || function(input) {
       const clamp = function(value, minimum, maximum, fallback) {
         const numeric = Number(value);
@@ -1829,6 +2095,7 @@ QString WebAudioEffectsController::injectionScript() const {
         outputGain: root.dbToGain(outputTrimDb), curveAmount: enabled ? harmonics : 0
       };
     };
+
     root.applyBassEnhancerParams = root.applyBassEnhancerParams || function(graph, cfg, force) {
       if (!graph || graph.bypass || !graph.bassEnhancerFilter || !root.bassEnhancerTemplate) return;
       const source = cfg && cfg.bassEnhancer ? cfg.bassEnhancer : {};
@@ -1875,6 +2142,7 @@ QString WebAudioEffectsController::injectionScript() const {
       graph.bassEnhancerBypassed = !source.enabled;
       graph.bassEnhancerDeep = !!source.deep;
     };
+
     root.applyCompressorParams = root.applyCompressorParams || function(graph, cfg, force) {
       if (!graph || graph.bypass || !graph.compressorNode || !graph.compressorMakeupGain) return;
       const source = cfg && cfg.compressor ? cfg.compressor : {};
@@ -1896,8 +2164,6 @@ QString WebAudioEffectsController::injectionScript() const {
         graph[key] = value;
         root.smoothParam(param, value, graph.ctx, rampSeconds);
       };
-      // Ratio 1:1 plus unity makeup is the Web Audio equivalent of a
-      // transparent module bypass and preserves the live node/context.
       update('_ardaliCompressorThreshold', graph.compressorNode.threshold, enabled ? thresholdDb : 0, 0.010);
       update('_ardaliCompressorRatio', graph.compressorNode.ratio, enabled ? ratio : 1, 0.010);
       update('_ardaliCompressorAttack', graph.compressorNode.attack, enabled ? attackMs / 1000 : 0.003, 0.008);
@@ -1907,6 +2173,7 @@ QString WebAudioEffectsController::injectionScript() const {
       graph.compressorEnabled = enabled;
       graph.compressorBypassed = !enabled;
     };
+
     root.applyUserLimiterParams = root.applyUserLimiterParams || function(graph, cfg, force) {
       if (!graph || graph.bypass || !graph.userLimiterInputGain || !graph.userLimiterNode) return;
       const source = cfg && cfg.limiter ? cfg.limiter : {};
@@ -1926,8 +2193,6 @@ QString WebAudioEffectsController::injectionScript() const {
         graph[key] = value;
         root.smoothParam(param, value, graph.ctx, rampSeconds);
       };
-      // Legacy Web DALI maps the Lookahead control to the compressor attack
-      // time. The input GainNode drives the limiter before its 20:1 ceiling.
       update('_ardaliUserLimiterGain', graph.userLimiterInputGain.gain, enabled ? root.dbToGain(gainDb) : 1, 0.012);
       update('_ardaliUserLimiterThreshold', graph.userLimiterNode.threshold, enabled ? ceilingDb : 0, 0.010);
       update('_ardaliUserLimiterRatio', graph.userLimiterNode.ratio, enabled ? 20 : 1, 0.010);
@@ -1939,6 +2204,7 @@ QString WebAudioEffectsController::injectionScript() const {
       graph.userLimiterEnabled = enabled;
       graph.userLimiterBypassed = !enabled;
     };
+
     root.applyReverbParams = root.applyReverbParams || function(graph, cfg, force) {
       if (!graph || graph.bypass || !graph.reverbInputGain || !graph.reverbDryGain || !graph.reverbDelay
           || !graph.reverbLowpass || !graph.reverbFeedbackGain || !graph.reverbWetGain) return;
@@ -1975,8 +2241,9 @@ QString WebAudioEffectsController::injectionScript() const {
       graph.reverbEnabled = enabled;
       graph.reverbBypassed = !enabled;
     };
+
     root.applyAutoGainParams = root.applyAutoGainParams || function(graph, cfg, force) {
-      if (!graph || graph.bypass || !graph.autoGainNode || !graph.autoGainAnalyser || !graph.autoGainState) return;
+      if (!graph || graph.bypass || !graph.autoGainNode || !graph.autoGainState) return;
       const source = cfg && cfg.autoGain ? cfg.autoGain : {};
       const clamp = function(value, minimum, maximum, fallback) {
         const numeric = Number(value);
@@ -2005,6 +2272,7 @@ QString WebAudioEffectsController::injectionScript() const {
       graph.autoGainEnabled = state.enabled;
       graph.autoGainBypassed = !state.enabled;
     };
+
     root.applyEqParams = root.applyEqParams || function(graph, cfg) {
       if (!graph || graph.bypass) return;
       const ctx = graph.ctx;
@@ -2028,8 +2296,6 @@ QString WebAudioEffectsController::injectionScript() const {
       graph._ardaliBands = nextBands;
       const bassDb = Number(cfg.bassDb) || 0;
       update('_ardaliBassDb', graph.bass && graph.bass.gain, bassDb, 0.115);
-      // Match the legacy bass-protection gain law: positive bass is softened
-      // by one third at the output, keeping the boost deep rather than loud.
       update('_ardaliToneTrim', graph.toneTrim && graph.toneTrim.gain,
              root.dbToGain(-Math.max(0, bassDb) * 0.333), 0.140);
       update('_ardaliMidDb', graph.mid && graph.mid.gain, Number(cfg.midDb) || 0, 0.115);
@@ -2044,23 +2310,36 @@ QString WebAudioEffectsController::injectionScript() const {
       root.applyReverbParams(graph, cfg, force);
       root.applyAutoGainParams(graph, cfg, force);
       root.applyUserLimiterParams(graph, cfg, force);
-    }
+    };
+
     root.applyActiveParams = root.applyActiveParams || function(cfg) {
+      root.pruneStaleGraphs();
       root.currentConfig = cfg;
       let attached = 0;
       const rates = [];
       const contextStates = [];
       for (const graph of root.graphList) {
-        if (!graph || graph.bypass || !graph.runtimeGain) continue;
-        root.applyEqParams(graph, cfg);
+        if (!graph) continue;
+        if (root.needsGraphRebuild(graph, cfg)) {
+          root.rebuildActiveGraph(graph, cfg);
+        } else if (!graph.bypass && graph.runtimeGain) {
+          root.applyEqParams(graph, cfg);
+        }
         attached += 1;
         rates.push(Math.round(Number(graph.ctx && graph.ctx.sampleRate) || 0));
         contextStates.push(String(graph.ctx && graph.ctx.state || 'unknown'));
       }
-      return { ok: !!root.buildOutputGraph && !!root.eqTemplate && !!root.compressorTemplate && !!root.userLimiterTemplate && !!root.bassEnhancerTemplate && !!root.autoGainTemplate, enabled: !!cfg.enabled, mediaCount: attached, sampleRates: rates,
-               moduleLoaded: !!root.buildOutputGraph && !!root.eqTemplate && !!root.compressorTemplate && !!root.userLimiterTemplate && !!root.bassEnhancerTemplate && !!root.autoGainTemplate, eqBandCount: root.eqTemplate ? root.eqTemplate.bands.length : 0,
-               contextStates: contextStates, error: root.autoGainTemplateError || root.bassEnhancerTemplateError || root.compressorTemplateError || root.userLimiterTemplateError || root.lastRuntimeError || '', needsBootstrap: false };
+      return {
+        ok: !!root.buildOutputGraph && !!root.eqTemplate,
+        enabled: !!cfg.enabled, mediaCount: attached, sampleRates: rates,
+        moduleLoaded: !!root.buildOutputGraph && !!root.eqTemplate,
+        eqBandCount: root.eqTemplate ? root.eqTemplate.bands.length : 0,
+        contextStates: contextStates,
+        error: root.autoGainTemplateError || root.bassEnhancerTemplateError || root.compressorTemplateError || root.userLimiterTemplateError || root.lastRuntimeError || '',
+        needsBootstrap: false
+      };
     };
+
     root.setMasterGain = root.setMasterGain || function(param, value, ctx) {
       if (!param || !ctx) return;
       const now = Number(ctx.currentTime) || 0;
@@ -2072,55 +2351,48 @@ QString WebAudioEffectsController::injectionScript() const {
         param.linearRampToValueAtTime(target, now + 0.035);
       } catch (_) { try { param.value = target; } catch (_) {} }
     };
+
     root.resumeGraph = root.resumeGraph || function(graph) {
       if (!graph || !graph.ctx || graph.ctx.state === 'closed') return false;
-      // A document can keep its media element alive while Chromium has
-      // suspended the associated AudioContext (for example during a player
-      // hand-off or a background tab transition).  Resuming is harmless for a
-      // running context and is essential before fading the wet path back in.
       if (graph.ctx.state === 'suspended' && typeof graph.ctx.resume === 'function') {
         try { Promise.resolve(graph.ctx.resume()).catch(function () {}); } catch (_) {}
       }
       return true;
     };
+
     root.setGraphBypass = root.setGraphBypass || function(graph, bypass) {
       if (!graph || !graph.ctx || !graph.wetGain || !graph.dryGain) return false;
-      // A short equal-power-like crossfade preserves continuous playback when
-      // the global switch is changed, without an audible disconnect.
       root.setMasterGain(graph.wetGain.gain, bypass ? 0 : 1, graph.ctx);
       root.setMasterGain(graph.dryGain.gain, bypass ? 1 : 0, graph.ctx);
       if (!bypass) root.resumeGraph(graph);
       graph.bypass = !!bypass;
-      console.log('[ArDali DSP] bypass=' + graph.bypass + ' wet=' + (bypass ? 0 : 1) + ' dry=' + (bypass ? 1 : 0)
-        + ' restoreRequired=' + !!graph.restoreRequired);
       return true;
     };
+
     root.rebuildActiveGraph = root.rebuildActiveGraph || function(graph, cfg) {
-      if (!graph || !graph.source || !root.buildOutputGraph || !root.eqTemplate || !root.compressorTemplate || !root.userLimiterTemplate || !root.bassEnhancerTemplate || !root.autoGainTemplate) return false;
+      if (!graph || !graph.source || !root.buildOutputGraph || !root.eqTemplate) return false;
       try {
-        // A MediaElementSource may be reused, but after a global bypass we
-        // deliberately rebuild its processing branch.  This mirrors the
-        // native engine's setDSPEnabled(true): all retained settings become
-        // active again, rather than trusting a previously faded graph.
         try { graph.source.disconnect(); } catch (_) {}
         root.disconnectEqGraph(graph);
         graph.graph = null;
         graph.bypass = false;
-        root.buildEqGraph(graph);
+        root.buildEqGraph(graph, cfg);
         graph.restoreRequired = false;
         root.applyEqParams(graph, cfg);
         root.setGraphBypass(graph, false);
         graph.restoreSerial = (Number(graph.restoreSerial) || 0) + 1;
-        console.log('[ArDali DSP] graph rebuilt serial=' + graph.restoreSerial + ' bass=' + Number(cfg.bassDb || 0)
-          + ' mid=' + Number(cfg.midDb || 0) + ' eqBands=' + (cfg.bands || []).length);
         return true;
-      } catch (_) {
+      } catch (err) {
         graph.bypass = true;
-        console.log('[ArDali DSP] graph rebuild failed');
+        try { graph.source.disconnect(); } catch (_) {}
+        try { graph.source.connect(graph.ctx.destination); } catch (_) {}
+        console.error('[ArDali DSP] graph rebuild error: ' + String(err && err.message ? err.message : err));
         return false;
       }
     };
+
     root.processMedia = root.processMedia || function(cfg) {
+      root.pruneStaleGraphs();
       root.currentConfig = cfg;
       const media = Array.from(document.querySelectorAll('audio, video'));
       let attached = 0;
@@ -2135,7 +2407,7 @@ QString WebAudioEffectsController::injectionScript() const {
           try {
             const ctx = new Ctx();
             const source = ctx.createMediaElementSource(element);
-            graph = { ctx: ctx, source: source, graph: null, bypass: false };
+            graph = { ctx: ctx, source: source, graph: null, bypass: false, element: element };
             root.graphs.set(element, graph);
             root.graphList.add(graph);
           } catch (error) {
@@ -2143,42 +2415,46 @@ QString WebAudioEffectsController::injectionScript() const {
             console.error('[ArDali DSP] ' + root.lastRuntimeError);
             continue;
           }
+        } else {
+          graph.element = element;
         }
-        if (cfg.enabled && root.buildOutputGraph && root.eqTemplate && root.compressorTemplate && root.userLimiterTemplate && root.bassEnhancerTemplate && root.autoGainTemplate) {
-          if (!graph.graph) root.rebuildActiveGraph(graph, cfg);
-          else if (graph.bypass) root.setGraphBypass(graph, false);
-          else root.resumeGraph(graph);
+
+        if (cfg.enabled && root.buildOutputGraph && root.eqTemplate) {
+          if (!graph.graph || root.needsGraphRebuild(graph, cfg)) {
+            root.rebuildActiveGraph(graph, cfg);
+          } else if (graph.bypass) {
+            root.setGraphBypass(graph, false);
+          } else {
+            root.resumeGraph(graph);
+          }
           if (!graph.bypass && graph.runtimeGain) {
             root.applyEqParams(graph, cfg);
             attached += 1;
             rates.push(Math.round(Number(graph.ctx.sampleRate) || 0));
             contextStates.push(String(graph.ctx.state || 'unknown'));
           }
-        } else if (graph && !graph.bypass) {
-          if (!root.setGraphBypass(graph, true)) {
-            try {
-              if (graph.graph && typeof graph.graph.disconnect === 'function') graph.graph.disconnect();
-              graph.graph = null;
-              graph.source.disconnect();
-              graph.source.connect(graph.ctx.destination);
-              graph.bypass = true;
-            } catch (_) {}
+        } else if (graph) {
+          if (!graph.bypass || graph.graph) {
+            root.disconnectEqGraph(graph);
+            graph.graph = null;
+            try { graph.source.disconnect(); } catch (_) {}
+            try { graph.source.connect(graph.ctx.destination); } catch (_) {}
+            graph.bypass = true;
           }
-          // Keep the live graph and MediaElementSource intact.  Reconnecting a
-          // media source after bypass is unreliable on streaming pages; only
-          // the two master gains change while the source keeps flowing.
           graph.restoreRequired = false;
         }
       }
-      console.log('[ArDali DSP] process enabled=' + !!cfg.enabled + ' attached=' + attached
-        + ' graphs=' + root.graphList.size);
-      return { ok: !!root.buildOutputGraph && !!root.eqTemplate && !!root.compressorTemplate && !!root.userLimiterTemplate && !!root.bassEnhancerTemplate && !!root.autoGainTemplate, enabled: !!cfg.enabled, mediaCount: attached, sampleRates: rates,
-               moduleLoaded: !!root.buildOutputGraph && !!root.eqTemplate && !!root.compressorTemplate && !!root.userLimiterTemplate && !!root.bassEnhancerTemplate && !!root.autoGainTemplate, eqBandCount: root.eqTemplate ? root.eqTemplate.bands.length : 0,
-               contextStates: contextStates, error: root.autoGainTemplateError || root.bassEnhancerTemplateError || root.compressorTemplateError || root.userLimiterTemplateError || root.lastRuntimeError || '', needsBootstrap: false };
+      return {
+        ok: !!root.buildOutputGraph && !!root.eqTemplate,
+        enabled: !!cfg.enabled, mediaCount: attached, sampleRates: rates,
+        moduleLoaded: !!root.buildOutputGraph && !!root.eqTemplate,
+        eqBandCount: root.eqTemplate ? root.eqTemplate.bands.length : 0,
+        contextStates: contextStates,
+        error: root.autoGainTemplateError || root.bassEnhancerTemplateError || root.compressorTemplateError || root.userLimiterTemplateError || root.lastRuntimeError || '',
+        needsBootstrap: false
+      };
     };
-    // Master enable is intentionally stronger than a normal slider update:
-    // it reuses every existing graph, activates its wet path, and applies all
-    // retained parameters in one pass.  No source or node is disconnected.
+
     root.forceActivate = function(cfg) {
       const forcedCfg = Object.assign({}, cfg, { enabled: true, forceRefresh: true });
       const result = root.processMedia(forcedCfg);
@@ -2190,6 +2466,7 @@ QString WebAudioEffectsController::injectionScript() const {
       }
       return result;
     };
+
     if (!root.mediaObserver && document.documentElement) {
       root.queueMediaScan = function() {
         if (root.mediaScanQueued) return;
@@ -2219,10 +2496,13 @@ QString WebAudioEffectsController::injectionScript() const {
         if (event.target && event.target.matches && event.target.matches('audio,video')) root.queueMediaScan();
       }, true);
     }
-    return root.processMedia({ enabled: enabled, outputPreampDb: outputPreampDb, bands: bands, bassDb: bassDb, midDb: midDb,
-                               trebleDb: trebleDb, stereoExpanderPercent: stereoExpanderPercent, balance: balance,
-                               reverb: reverb, compressor: compressor, limiter: limiter, bassEnhancer: bassEnhancer,
-                               autoGain: autoGain });
+    return root.processMedia({
+      enabled: enabled, outputPreampDb: outputPreampDb, bands: bands, eqActive: eqActive,
+      bassDb: bassDb, midDb: midDb, trebleDb: trebleDb, toneActive: toneActive,
+      stereoExpanderPercent: stereoExpanderPercent, balance: balance, spatialActive: spatialActive,
+      reverb: reverb, compressor: compressor, limiter: limiter, bassEnhancer: bassEnhancer,
+      autoGain: autoGain, policyMode: policyMode, panelVisible: panelVisible, activeSubpanel: activeSubpanel
+    });
   } catch (error) {
     return { ok: false, enabled: %3, mediaCount: 0, sampleRates: [], error: String(error && error.message ? error.message : error) };
   }
@@ -2233,25 +2513,31 @@ QString WebAudioEffectsController::injectionScript() const {
       .arg(enabledJson)
       .arg(QString::number(preampDb_, 'f', 2))
       .arg(jsonNumberArray(equalizerBands_))
+      .arg(isEqualizerActive() ? QStringLiteral("true") : QStringLiteral("false"))
       .arg(QString::number(bassDb_, 'f', 2))
       .arg(QString::number(midDb_, 'f', 2))
       .arg(QString::number(trebleDb_, 'f', 2))
+      .arg(isToneActive() ? QStringLiteral("true") : QStringLiteral("false"))
       .arg(QString::number(stereoExpanderPercent_, 'f', 2))
-      .arg(QString::number(balance_, 'f', 2))
-      .arg(reverbConfigJson)
       .arg(compressorModuleJson)
-      .arg(outputModuleSource)
-      .arg(compressorConfigJson)
+      .arg(QString::number(balance_, 'f', 2))
+      .arg(isSpatialActive() ? QStringLiteral("true") : QStringLiteral("false"))
       .arg(limiterModuleJson)
-      .arg(limiterConfigJson)
+      .arg(reverbConfigJson)
       .arg(bassEnhancerModuleJson)
-      .arg(bassEnhancerConfigJson)
+      .arg(compressorConfigJson)
       .arg(autoGainModuleJson)
-      .arg(autoGainConfigJson);
+      .arg(limiterConfigJson)
+      .arg(bassEnhancerConfigJson)
+      .arg(autoGainConfigJson)
+      .arg(policyModeStr)
+      .arg(panelVisible_ ? QStringLiteral("true") : QStringLiteral("false"))
+      .arg(activeSubpanelId_)
+      .arg(outputModuleSource);
 }
 
 void WebAudioEffectsController::requestCompressorGainReduction() {
-  if (compressorMeterRequestPending_) return;
+  if (compressorMeterRequestPending_ || !panelVisible_ || !compressorEnabled()) return;
   views_.erase(std::remove_if(views_.begin(), views_.end(), [](const QPointer<QWebEngineView> &item) { return item.isNull(); }), views_.end());
   QVector<QPointer<QWebEngineView>> liveViews;
   for (const QPointer<QWebEngineView> &view : views_) {
@@ -2317,7 +2603,7 @@ void WebAudioEffectsController::requestCompressorGainReduction() {
 }
 
 void WebAudioEffectsController::requestLimiterReduction() {
-  if (limiterMeterRequestPending_) return;
+  if (limiterMeterRequestPending_ || !panelVisible_ || !limiterEnabled()) return;
   views_.erase(std::remove_if(views_.begin(), views_.end(), [](const QPointer<QWebEngineView> &item) { return item.isNull(); }), views_.end());
   QVector<QPointer<QWebEngineView>> liveViews;
   for (const QPointer<QWebEngineView> &view : views_) if (view && view->page()) liveViews.push_back(view);
@@ -2382,9 +2668,14 @@ void WebAudioEffectsController::requestLimiterReduction() {
 
 void WebAudioEffectsController::applyToView(QWebEngineView *view) {
   if (!view || !view->page()) return;
+  if (qEnvironmentVariableIntValue("ARDALI_FEATURE_DIAGNOSTICS") == 1) {
+    qInfo().noquote() << "[AUDIO] effect parameter updated";
+  }
+  const QPointer<WebAudioEffectsController> guardedController(this);
   const QPointer<QWebEngineView> guardedView(view);
-  view->page()->runJavaScript(parameterUpdateScript(), QWebEngineScript::MainWorld, [this, guardedView](const QVariant &result) {
-    updateStatusFromResult(result);
+  view->page()->runJavaScript(parameterUpdateScript(), QWebEngineScript::MainWorld, [guardedController, guardedView](const QVariant &result) {
+    if (!guardedController) return;
+    guardedController->updateStatusFromResult(result);
     if (qEnvironmentVariableIsSet("ARDALI_AUDIO_EFFECTS_TRACE")) {
       const QVariantMap map = result.toMap();
       QStringList contextStates;
@@ -2395,7 +2686,9 @@ void WebAudioEffectsController::applyToView(QWebEngineView *view) {
                         << "contexts=" << contextStates.join(QLatin1Char(','))
                         << "error=" << map.value(QStringLiteral("error")).toString();
     }
-    if (guardedView && result.toMap().value(QStringLiteral("needsBootstrap")).toBool()) bootstrapView(guardedView);
+    if (guardedView && result.toMap().value(QStringLiteral("needsBootstrap")).toBool()) {
+      guardedController->bootstrapView(guardedView);
+    }
   });
 }
 
@@ -2432,10 +2725,12 @@ void WebAudioEffectsController::bootstrapView(QWebEngineView *view) {
     return;
   }
   bootstrapViews_.insert(view);
+  const QPointer<WebAudioEffectsController> guardedController(this);
   const QPointer<QWebEngineView> guardedView(view);
-  view->page()->runJavaScript(injectionScript(), QWebEngineScript::MainWorld, [this, guardedView](const QVariant &result) {
-    if (guardedView) bootstrapViews_.remove(guardedView);
-    updateStatusFromResult(result);
+  view->page()->runJavaScript(injectionScript(), QWebEngineScript::MainWorld, [guardedController, guardedView](const QVariant &result) {
+    if (!guardedController) return;
+    if (guardedView) guardedController->bootstrapViews_.remove(guardedView);
+    guardedController->updateStatusFromResult(result);
   });
 }
 

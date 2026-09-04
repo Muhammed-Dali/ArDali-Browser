@@ -60,6 +60,7 @@ class AudioCaptureService final : public QObject {
   QString currentDeviceId_;
   QString systemMonitorId_;
   QString microphoneId_;
+  QString ffmpegPath_;
 
   QProcess *systemProcess_ = nullptr;
   QProcess *micProcess_ = nullptr;

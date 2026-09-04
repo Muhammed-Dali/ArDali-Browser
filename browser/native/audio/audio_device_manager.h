@@ -81,8 +81,6 @@ class AudioDeviceManager final : public QObject {
   AutoRouteInfo resolveAutoRoute(const QVector<AudioDeviceInfo> &devices);
   QString pickBestDeviceId(const QVector<AudioDeviceInfo> &devices, const QString &preferredId = QString()) const;
 
-  static QString executeCommand(const QString &program, const QStringList &arguments, int timeoutMs = 2500);
-
  signals:
   void devicesChanged(const QVector<AudioDeviceInfo> &devices, const AutoRouteInfo &route);
 
@@ -90,10 +88,12 @@ class AudioDeviceManager final : public QObject {
   void checkDeviceChanges();
 
  private:
+  QString executeCommand(const QStringList &arguments, int timeoutMs = 2500) const;
   QString getDefaultPulseSourceName();
   QString getDefaultPulseSinkName();
 
   QTimer *pollTimer_ = nullptr;
   QString lastDefaultSink_;
   QString lastDefaultSource_;
+  QString pactlPath_;
 };

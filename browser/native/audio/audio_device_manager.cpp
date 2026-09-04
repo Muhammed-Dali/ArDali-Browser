@@ -1,5 +1,9 @@
 #include "audio_device_manager.h"
 
+#include "security_utils.h"
+
+#include <QCoreApplication>
+#include <QDir>
 #include <QHash>
 #include <QProcess>
 #include <QRegularExpression>
@@ -7,6 +11,14 @@
 #include <algorithm>
 
 AudioDeviceManager::AudioDeviceManager(QObject *parent) : QObject(parent) {
+#if defined(Q_OS_WIN)
+  const QString executableName = QStringLiteral("pactl.exe");
+#else
+  const QString executableName = QStringLiteral("pactl");
+#endif
+  const QString appDir = QCoreApplication::applicationDirPath();
+  pactlPath_ = BrowserSecurity::resolveTrustedExecutable(
+      executableName, {QDir(appDir).filePath(executableName), QDir(appDir).filePath(QStringLiteral("bin/") + executableName)});
   pollTimer_ = new QTimer(this);
   pollTimer_->setInterval(1500);  // Check route changes every 1.5s
   connect(pollTimer_, &QTimer::timeout, this, &AudioDeviceManager::checkDeviceChanges);
@@ -22,9 +34,10 @@ AudioDeviceManager::~AudioDeviceManager() {
   }
 }
 
-QString AudioDeviceManager::executeCommand(const QString &program, const QStringList &arguments, int timeoutMs) {
+QString AudioDeviceManager::executeCommand(const QStringList &arguments, int timeoutMs) const {
+  if (pactlPath_.isEmpty()) return {};
   QProcess process;
-  process.start(program, arguments);
+  process.start(pactlPath_, arguments);
   if (!process.waitForFinished(timeoutMs)) {
     process.kill();
     process.waitForFinished(500);
@@ -37,7 +50,7 @@ QString AudioDeviceManager::executeCommand(const QString &program, const QString
 }
 
 QString AudioDeviceManager::getDefaultPulseSourceName() {
-  const QString info = executeCommand(QStringLiteral("pactl"), {QStringLiteral("info")});
+  const QString info = executeCommand({QStringLiteral("info")});
   const QStringList lines = info.split(QRegularExpression(QStringLiteral("[\r\n]+")), Qt::SkipEmptyParts);
   for (const QString &line : lines) {
     if (line.startsWith(QStringLiteral("Default Source:"), Qt::CaseInsensitive)) {
@@ -48,7 +61,7 @@ QString AudioDeviceManager::getDefaultPulseSourceName() {
 }
 
 QString AudioDeviceManager::getDefaultPulseSinkName() {
-  const QString info = executeCommand(QStringLiteral("pactl"), {QStringLiteral("info")});
+  const QString info = executeCommand({QStringLiteral("info")});
   const QStringList lines = info.split(QRegularExpression(QStringLiteral("[\r\n]+")), Qt::SkipEmptyParts);
   for (const QString &line : lines) {
     if (line.startsWith(QStringLiteral("Default Sink:"), Qt::CaseInsensitive)) {
@@ -74,7 +87,7 @@ QVector<AudioDeviceInfo> AudioDeviceManager::listDevices() {
   const QString defaultSinkMonitor = defaultSink.isEmpty() ? QString() : (defaultSink + QStringLiteral(".monitor"));
 
   QHash<QString, SourceDetail> detailedDescriptions;
-  const QString fullList = executeCommand(QStringLiteral("pactl"), {QStringLiteral("list"), QStringLiteral("sources")});
+  const QString fullList = executeCommand({QStringLiteral("list"), QStringLiteral("sources")});
   if (!fullList.isEmpty()) {
     const QStringList blocks = fullList.split(QRegularExpression(QStringLiteral("(?=Source #)")), Qt::SkipEmptyParts);
     for (const QString &block : blocks) {
@@ -112,7 +125,7 @@ QVector<AudioDeviceInfo> AudioDeviceManager::listDevices() {
     }
   }
 
-  const QString shortList = executeCommand(QStringLiteral("pactl"), {QStringLiteral("list"), QStringLiteral("short"), QStringLiteral("sources")});
+  const QString shortList = executeCommand({QStringLiteral("list"), QStringLiteral("short"), QStringLiteral("sources")});
   QVector<AudioDeviceInfo> devices;
 
   if (!shortList.isEmpty()) {
@@ -186,17 +199,18 @@ AutoRouteInfo AudioDeviceManager::resolveAutoRoute(const QVector<AudioDeviceInfo
 
   // 1. Find matching System Audio Monitor for active sink
   const AudioDeviceInfo *matchedMonitor = nullptr;
-  if (!defaultSinkMonitor.isEmpty()) {
-    for (const auto &dev : devices) {
-      if (dev.isMonitor && (dev.id == defaultSinkMonitor || dev.monitorOfSink == defaultSink)) {
-        matchedMonitor = &dev;
-        break;
-      }
+  // The supplied snapshot is authoritative when it already identifies the
+  // default monitor. Only consult the live pactl route as a fallback; it may
+  // have changed after the snapshot was collected.
+  for (const auto &dev : devices) {
+    if (dev.isDefaultMonitor) {
+      matchedMonitor = &dev;
+      break;
     }
   }
-  if (!matchedMonitor) {
+  if (!matchedMonitor && !defaultSinkMonitor.isEmpty()) {
     for (const auto &dev : devices) {
-      if (dev.isDefaultMonitor) {
+      if (dev.isMonitor && (dev.id == defaultSinkMonitor || dev.monitorOfSink == defaultSink)) {
         matchedMonitor = &dev;
         break;
       }

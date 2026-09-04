@@ -1,19 +1,19 @@
 {
-  "name": "ardali-monorepo",
-  "version": "6.1.2",
-  "description": "Native Qt/C++ desktop browser with integrated privacy and media tools",
-  "license": "GPL-3.0-only",
+  "name": "ardali-test-browser",
+  "version": "1.0.0",
+  "description": "Test Web Browser with Chromium parity tabs, window management and Google search engine",
   "private": true,
   "scripts": {
-    "start": "./browser/build/ardali-browser",
-    "build": "cmake -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -B browser/build -S browser && cmake --build browser/build",
-    "test": "ctest --test-dir browser/build --output-on-failure",
-    "test:dali": "cd dali-lang && node scripts/dali-security-suite.js",
-    "test:integration": "node tools/integration-manifest-test.js"
+    "start": "node scripts/dev-linux.js",
+    "build": "cmake -S . -B build -G Ninja && cmake --build build"
   },
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/Muhammed-Dali/ArDali-Browser.git"
-  },
-  "homepage": "https://github.com/Muhammed-Dali/ArDali-Browser"
+  "keywords": [
+    "browser",
+    "chromium",
+    "qt6",
+    "c++",
+    "desktop-tabs"
+  ],
+  "author": "Muhammet Dali",
+  "license": "GPL-3.0-only"
 }

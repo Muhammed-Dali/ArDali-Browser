@@ -44,6 +44,7 @@ class AudioEffectsPage final : public QWidget {
   void updateCompressorMeterPolling();
   void updateLimiterMeterPolling();
   void updateAutoGainStatusPolling();
+  QString currentSubpanelId() const;
 
   WebAudioEffectsController *controller_ = nullptr;
   QCheckBox *globalToggle_ = nullptr;

@@ -4,7 +4,7 @@
     {
       "label": "ArDali: Build Browser",
       "type": "shell",
-      "command": "cmake -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -B browser/build -S browser && cmake --build browser/build",
+      "command": "cmake -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -B build -S . && cmake --build build",
       "group": {
         "kind": "build",
         "isDefault": true
@@ -14,7 +14,7 @@
     {
       "label": "ArDali: Run Browser",
       "type": "shell",
-      "command": "./browser/build/ardali-browser",
+      "command": "./build/ardali-browser",
       "dependsOn": ["ArDali: Build Browser"],
       "problemMatcher": []
     },

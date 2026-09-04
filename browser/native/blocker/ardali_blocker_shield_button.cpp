@@ -254,6 +254,16 @@ void ArDaliBlockerShieldButton::setActiveHost(const QString &host) {
   currentHost_ = host.trimmed().toLower();
 }
 
+void ArDaliBlockerShieldButton::setInternalPage(bool internal) {
+  if (isInternalPage_ == internal) return;
+  isInternalPage_ = internal;
+  if (isInternalPage_) {
+    blockedCount_ = 0;
+    currentHost_.clear();
+  }
+  update();
+}
+
 void ArDaliBlockerShieldButton::showQuickPopup() {
   if (!popup_) {
     popup_ = new ArDaliBlockerQuickPopup(service_, window());
@@ -286,7 +296,8 @@ void ArDaliBlockerShieldButton::paintEvent(QPaintEvent *event) {
     p.drawPath(path);
   }
 
-  if (!showBadge_ || blockedCount_ == 0) return;
+  // Internal pages or disabled setting: do not draw badge
+  if (isInternalPage_ || !showBadge_ || blockedCount_ == 0) return;
 
   const QString text = blockedCount_ > 99 ? QStringLiteral("99+") : QString::number(blockedCount_);
   QFont f = p.font();

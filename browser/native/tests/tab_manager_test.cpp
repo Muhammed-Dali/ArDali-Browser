@@ -64,7 +64,18 @@ int main(int argc, char *argv[]) {
     return 1;
   }
 
+  // Test removing the last remaining tab for an owner
+  if (!manager.remove(secondId)) return 1;
+  if (!manager.recordsFor(&mainOwner).isEmpty() || !manager.activeFor(&mainOwner).isNull()) return 1;
+  if (!manager.reorder(&mainOwner, {})) return 1;
+  if (!manager.validate(&reason)) {
+    std::cerr << reason.toStdString() << '\n';
+    return 1;
+  }
+  if (!sessions.save(manager, &mainOwner) || !sessions.load().isEmpty()) return 1;
+
   std::cout << "tab manager ownership invariants: ok\n";
   std::cout << "tab manager icon persistence: ok\n";
+  std::cout << "tab manager empty owner invariants: ok\n";
   return 0;
 }

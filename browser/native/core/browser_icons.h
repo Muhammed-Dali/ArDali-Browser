@@ -5,6 +5,7 @@
 enum class BrowserIcon {
   Startup,
   Appearance,
+  Performance,
   Content,
   Privacy,
   Search,
@@ -12,6 +13,7 @@ enum class BrowserIcon {
   Bookmark,
   Download,
   Language,
+  Translate,
   Accessibility,
   Settings,
   Reset,
@@ -31,10 +33,17 @@ enum class BrowserIcon {
   Grid,
   Clock,
   Cards,
+  Video,
+  Music,
+  Play,
+  Clipboard,
+  More,
   Minimize,
   Maximize,
   Restore,
-  Close
+  Close,
+  Audio,
+  Memory
 };
 
 namespace BrowserIcons {
@@ -42,5 +51,6 @@ QIcon icon(BrowserIcon id);
 QIcon appIcon();
 QIcon youtubeIcon();
 QIcon youtubeMusicIcon();
+QIcon searchEngineIcon(const QString &engineName);
 QString resourcePath(BrowserIcon id);
 }  // namespace BrowserIcons

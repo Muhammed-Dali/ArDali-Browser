@@ -406,6 +406,17 @@ int main(int argc, char *argv[]) {
     assert(warningHtml.contains(QStringLiteral("Bu Site ArDali Koruması Tarafından Engellendi")));
     assert(warningHtml.contains(QStringLiteral("dangerous-phishing.com")));
     assert(warningHtml.contains(QStringLiteral("Engeli Aş ve Devam Et")));
+    const QString injection = QStringLiteral("https://dangerous-phishing.com/');window.ardaliOwned=true;//");
+    const QString hardenedWarning = strictBlockWarningHtml(QStringLiteral("dangerous-phishing.com"), injection);
+    assert(!hardenedWarning.isEmpty());
+    assert(hardenedWarning.contains(QStringLiteral("const bypassTarget = \"https://dangerous-phishing.com/")));
+    assert(!hardenedWarning.contains(QStringLiteral("const bypassTarget = '")));
+    assert(!hardenedWarning.contains(QStringLiteral("encodeURIComponent('https://dangerous-phishing.com/');")));
+    assert(strictBlockWarningHtml(QStringLiteral("dangerous-phishing.com"), QStringLiteral("file:///etc/passwd")).isEmpty());
+    assert(strictBlockWarningHtml(QStringLiteral("dangerous-phishing.com"), QStringLiteral("https://different.example/")).isEmpty());
+    const QUrl bypass(QStringLiteral("ardali://bypass-strictblock?domain=dangerous-phishing.com&target=https%3A%2F%2Fdangerous-phishing.com%2Flogin"));
+    assert(isAuthorizedStrictBlockBypass(bypass, QUrl(QStringLiteral("ardali://newtab"))));
+    assert(!isAuthorizedStrictBlockBypass(bypass, QUrl(QStringLiteral("https://attacker.example"))));
 
     // 3. User proceeds -> Temporary Bypass activated
     assert(!service.isStrictBypassActive(QStringLiteral("dangerous-phishing.com")));
