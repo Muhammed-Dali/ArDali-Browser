@@ -1010,6 +1010,11 @@ static void testDetachChromeTabStayAndSettleOnRelease() {
 }
 
 int main(int argc, char *argv[]) {
+  if (!qEnvironmentVariableIsSet("QT_QPA_PLATFORM") &&
+      qEnvironmentVariableIsSet("DISPLAY") &&
+      qgetenv("XDG_SESSION_TYPE") == "wayland") {
+    qputenv("QT_QPA_PLATFORM", "xcb");
+  }
   QApplication app(argc, argv);
 
   QTemporaryDir settingsDirectory;

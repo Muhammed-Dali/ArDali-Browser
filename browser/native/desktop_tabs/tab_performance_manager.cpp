@@ -5,6 +5,7 @@
 #include <QWidget>
 #include <algorithm>
 #include <chrono>
+#include <limits>
 
 namespace ardali {
 
@@ -790,6 +791,8 @@ void TabPerformanceManager::wirePageSignals(TabManager::TabId id, QWebEnginePage
           this, &TabPerformanceManager::onPageLifecycleStateChanged, Qt::UniqueConnection);
   connect(page, &QWebEnginePage::loadStarted,
           this, &TabPerformanceManager::onPageLoadStarted, Qt::UniqueConnection);
+  connect(page, &QWebEnginePage::loadFinished,
+          this, &TabPerformanceManager::onPageLoadFinished, Qt::UniqueConnection);
   connect(page, &QWebEnginePage::urlChanged,
           this, &TabPerformanceManager::onPageUrlChanged, Qt::UniqueConnection);
 }
@@ -876,6 +879,11 @@ void TabPerformanceManager::onPageLoadStarted() {
   }
 }
 
+void TabPerformanceManager::onPageLoadFinished(bool ok) {
+  Q_UNUSED(ok);
+  scheduleNextDeadlineCheck();
+}
+
 void TabPerformanceManager::recomputeProtectedReasons(
     TabPerformanceMetadata &meta, const TabManager::TabRecord *record) {
   ProtectedReasons reasons = ProtectedReason::None;
@@ -954,6 +962,10 @@ bool TabPerformanceManager::isLifecycleEligible(const TabManager::TabRecord *rec
   return isSupportedWebScheme(record->url);
 }
 
+int TabPerformanceManager::scheduledDeadlineDelayMs() const {
+  return deadlineTimer_ && deadlineTimer_->isActive() ? deadlineTimer_->remainingTime() : -1;
+}
+
 void TabPerformanceManager::scheduleNextDeadlineCheck() {
   if (isTearingDown_ || !deadlineTimer_) return;
 
@@ -976,8 +988,16 @@ void TabPerformanceManager::scheduleNextDeadlineCheck() {
         isAggressiveStatePermitted(id, QWebEnginePage::LifecycleState::Frozen)) {
       const int64_t remainingFreeze = backgroundFreezeDelayMs_ - elapsed;
       if (remainingFreeze <= 0) {
-        minRemainingMs = 0;
-        break;
+        // Keep scheduler and executor eligibility aligned. A loading page is
+        // temporarily ineligible; retry at a bounded interval instead of
+        // creating a zero-delay event-loop spin.
+        const TabManager::TabRecord *record = tabManager_ ? tabManager_->record(id) : nullptr;
+        const int retryMs = canFreeze(id)
+            ? kReadyDeadlineDispatchMs
+            : (record && record->page && record->page->isLoading()
+                   ? kMinimumDeadlineRetryMs : -1);
+        if (retryMs > 0)
+          minRemainingMs = minRemainingMs < 0 ? retryMs : std::min<int64_t>(minRemainingMs, retryMs);
       } else {
         if (minRemainingMs < 0 || remainingFreeze < minRemainingMs) {
           minRemainingMs = remainingFreeze;
@@ -994,8 +1014,13 @@ void TabPerformanceManager::scheduleNextDeadlineCheck() {
         // If memory pressure condition is satisfied, immediate deadline
         if (discardRequirement_ == DiscardPolicyRequirement::IdleOnly ||
             (memoryMonitor_ && memoryMonitor_->currentPressureLevel() != MemoryPressureLevel::Normal)) {
-          minRemainingMs = 0;
-          break;
+          const TabManager::TabRecord *record = tabManager_ ? tabManager_->record(id) : nullptr;
+          const int retryMs = canDiscard(id)
+              ? kReadyDeadlineDispatchMs
+              : (record && record->page && record->page->isLoading()
+                     ? kMinimumDeadlineRetryMs : -1);
+          if (retryMs > 0)
+            minRemainingMs = minRemainingMs < 0 ? retryMs : std::min<int64_t>(minRemainingMs, retryMs);
         }
       } else {
         if (minRemainingMs < 0 || remainingDiscard < minRemainingMs) {
@@ -1005,10 +1030,9 @@ void TabPerformanceManager::scheduleNextDeadlineCheck() {
     }
   }
 
-  if (minRemainingMs == 0) {
-    deadlineTimer_->start(0);
-  } else if (minRemainingMs > 0) {
-    deadlineTimer_->start(static_cast<int>(minRemainingMs));
+  if (minRemainingMs > 0) {
+    deadlineTimer_->start(static_cast<int>(std::min<int64_t>(
+        minRemainingMs, std::numeric_limits<int>::max())));
   } else {
     deadlineTimer_->stop();
   }
@@ -1016,6 +1040,7 @@ void TabPerformanceManager::scheduleNextDeadlineCheck() {
 
 void TabPerformanceManager::onDeadlineTimeout() {
   if (isTearingDown_) return;
+  ++deadlineCheckCount_;
 
   const int64_t now = currentMonotonicMs();
   const QList<TabManager::TabId> ids = metadataMap_.keys();

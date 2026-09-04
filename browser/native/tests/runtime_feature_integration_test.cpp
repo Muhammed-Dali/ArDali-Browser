@@ -30,13 +30,24 @@ int main(int argc, char *argv[]) {
     auto *page = new QWebEnginePage(QWebEngineProfile::defaultProfile(), view);
     view->setPage(page);
 
-    audioController->registerWebView(view);
+    audioController->registerWebView(view, QUrl(QStringLiteral("https://www.youtube.com/watch?v=test")));
 
     // Verify document bootstrap was installed into page scripts
     QWebEngineScriptCollection &scripts = page->scripts();
     const auto installed = scripts.find(QStringLiteral("ardali-web-audio-document-bootstrap"));
     assert(!installed.isEmpty());
     assert(installed.first().name() == QStringLiteral("ardali-web-audio-document-bootstrap"));
+    assert(installed.first().sourceCode().contains(QStringLiteral("hostname === domain")));
+
+    auto *normalView = new QWebEngineView();
+    auto *normalPage = new QWebEnginePage(QWebEngineProfile::defaultProfile(), normalView);
+    normalView->setPage(normalPage);
+    audioController->registerWebView(normalView, QUrl(QStringLiteral("https://amazon.com/")));
+    assert(normalPage->scripts().find(QStringLiteral("ardali-web-audio-document-bootstrap")).isEmpty());
+    emit normalView->urlChanged(QUrl(QStringLiteral("https://music.youtube.com/")));
+    assert(!normalPage->scripts().find(QStringLiteral("ardali-web-audio-document-bootstrap")).isEmpty());
+    emit normalView->urlChanged(QUrl(QStringLiteral("https://amazon.com/")));
+    assert(normalPage->scripts().find(QStringLiteral("ardali-web-audio-document-bootstrap")).isEmpty());
 
     // Verify parameter adjustments
     audioController->setEnabled(true);
@@ -45,6 +56,7 @@ int main(int argc, char *argv[]) {
     assert(audioController->bassDb() == 12.0);
     assert(audioController->equalizerBands().value(0) == 6.0);
 
+    delete normalView;
     delete view;
     std::cout << "PASS: Audio Effects Controller & View Registration" << std::endl;
   }
@@ -86,6 +98,9 @@ int main(int argc, char *argv[]) {
     auto *songService = new SongRecognitionService(settings, &app);
 
     assert(songService->state() == SongRecognitionService::State::Ready);
+    assert(!songService->isDeviceMonitoringActive());
+    assert(songService->deviceManager()->pollCheckCount() == 0);
+    assert(songService->deviceManager()->processLaunchCount() == 0);
 
     songService->setWebContextMetadata(QStringLiteral("Bohemian Rhapsody"), QStringLiteral("Queen"));
     // Service state transition

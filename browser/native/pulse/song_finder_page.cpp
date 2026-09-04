@@ -481,6 +481,7 @@ SongFinderPage::SongFinderPage(SongRecognitionService *service, QWidget *parent)
   setupUi();
 
   if (service_) {
+    service_->beginDeviceUiUse();
     connect(service_, &SongRecognitionService::stateChanged, this, &SongFinderPage::onServiceStateChanged);
     connect(service_, &SongRecognitionService::volumeChanged, this, &SongFinderPage::onServiceVolumeChanged);
     connect(service_, &SongRecognitionService::songFound, this, &SongFinderPage::onServiceSongFound);
@@ -515,6 +516,7 @@ SongFinderPage::~SongFinderPage() {
   if (service_ && service_->isListening()) {
     service_->stopListening();
   }
+  if (service_) service_->endDeviceUiUse();
 }
 
 void SongFinderPage::setupUi() {

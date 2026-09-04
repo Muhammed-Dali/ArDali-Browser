@@ -5,6 +5,8 @@
 
 #include <QCoreApplication>
 #include <QDebug>
+#include <QEventLoop>
+#include <QTimer>
 #include <cmath>
 #include <numbers>
 
@@ -336,6 +338,28 @@ bool testSessionIdAndStateTransitions() {
   return true;
 }
 
+bool testIdleDeviceMonitoringLifecycle() {
+  SongFinderSettings settings;
+  SongRecognitionService service(&settings);
+  ASSERT_TRUE(!service.isDeviceMonitoringActive(), "Device monitoring must start idle");
+  ASSERT_EQUAL(service.deviceManager()->processLaunchCount(), quint64(0),
+               "Construction must not launch pactl");
+
+  QEventLoop idleWindow;
+  QTimer::singleShot(1700, &idleWindow, &QEventLoop::quit);
+  idleWindow.exec();
+  ASSERT_EQUAL(service.deviceManager()->pollCheckCount(), quint64(0),
+               "Normal browsing must not poll pactl");
+  ASSERT_EQUAL(service.deviceManager()->processLaunchCount(), quint64(0),
+               "Normal browsing must not launch pactl");
+
+  service.beginDeviceUiUse();
+  ASSERT_TRUE(service.isDeviceMonitoringActive(), "Opening Song Finder must enable device monitoring");
+  service.endDeviceUiUse();
+  ASSERT_TRUE(!service.isDeviceMonitoringActive(), "Closing idle Song Finder must stop device monitoring");
+  return true;
+}
+
 bool testHistoryRemovalAndReRecognition() {
   SongFinderSettings settings;
   SongRecognitionService service(&settings);
@@ -435,6 +459,12 @@ int main(int argc, char *argv[]) {
     return 1;
   }
   qInfo() << "PASS: testSessionIdAndStateTransitions";
+
+  if (!testIdleDeviceMonitoringLifecycle()) {
+    qCritical() << "testIdleDeviceMonitoringLifecycle failed!";
+    return 1;
+  }
+  qInfo() << "PASS: testIdleDeviceMonitoringLifecycle";
 
   if (!testHistoryRemovalAndReRecognition()) {
     qCritical() << "testHistoryRemovalAndReRecognition failed!";

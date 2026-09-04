@@ -883,6 +883,7 @@ void TabStripWidget::enterEvent(QEnterEvent *event) {
 
 void TabStripWidget::mousePressEvent(QMouseEvent *event) {
   if (event->button() == Qt::LeftButton) {
+    cancelHover();
     const QPoint localPos = event->position().toPoint();
     pressGlobalPos_ = event->globalPosition().toPoint();
     pressLocalPos_ = localPos;
@@ -967,8 +968,7 @@ void TabStripWidget::mouseMoveEvent(QMouseEvent *event) {
     if (manhattanDist >= layoutModel_.metrics().horizontalStartDragThreshold && draggedIndex_ < 0) {
       const auto geoms = currentGeometries();
       if (pressedIndex_ < geoms.size()) {
-        hoverTimer_.stop();
-        setHoveredIndex(-1);
+        cancelHover();
         const QSize tabSize = geoms[pressedIndex_].visualRect.size();
         emit dragInitiated(pressedIndex_, pressGlobalPos_, dragOffsetInTab_, tabSize);
         if (TabDragController::instance().isActive()) {

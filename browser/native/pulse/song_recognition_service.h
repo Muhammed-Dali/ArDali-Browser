@@ -106,6 +106,10 @@ class SongRecognitionService final : public QObject {
   bool startListening(const QString &requestedDeviceId = QString());
   void stopListening();
   QVector<AudioDeviceInfo> refreshDevices();
+  void beginDeviceUiUse();
+  void endDeviceUiUse();
+  bool isDeviceMonitoringActive() const;
+  int deviceUiConsumerCount() const { return deviceUiConsumerCount_; }
 
   uint64_t currentSessionId() const { return currentSessionId_; }
 
@@ -160,4 +164,5 @@ class SongRecognitionService final : public QObject {
 
   bool hasActiveResult_ = false;
   SongResult activeResult_;
+  int deviceUiConsumerCount_ = 0;
 };

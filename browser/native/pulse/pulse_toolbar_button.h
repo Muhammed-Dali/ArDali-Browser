@@ -48,7 +48,7 @@ class PulseQuickPopup final : public QFrame {
   explicit PulseQuickPopup(SongRecognitionService *service,
                            SongFinderSettings *settings,
                            QWidget *parent = nullptr);
-  ~PulseQuickPopup() override = default;
+  ~PulseQuickPopup() override;
 
   void refreshState();
   static QUrl buildSearchUrl(SongFinderSettings::OpenPlatform platform, const QString &query);
@@ -87,6 +87,7 @@ class PulseQuickPopup final : public QFrame {
   QVBoxLayout *resultsLayout_ = nullptr;
   QLabel *emptyLabel_ = nullptr;
   QPushButton *openFullBtn_ = nullptr;
+  bool deviceUseHeld_ = false;
 };
 
 class PulseToolbarButton final : public QToolButton {

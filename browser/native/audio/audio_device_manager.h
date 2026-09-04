@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QObject>
+#include <QPair>
 #include <QString>
 #include <QVector>
 
@@ -80,6 +81,11 @@ class AudioDeviceManager final : public QObject {
   QVector<AudioDeviceInfo> listDevices();
   AutoRouteInfo resolveAutoRoute(const QVector<AudioDeviceInfo> &devices);
   QString pickBestDeviceId(const QVector<AudioDeviceInfo> &devices, const QString &preferredId = QString()) const;
+  void startMonitoring();
+  void stopMonitoring();
+  bool isMonitoring() const;
+  quint64 pollCheckCount() const { return pollCheckCount_; }
+  quint64 processLaunchCount() const { return processLaunchCount_; }
 
  signals:
   void devicesChanged(const QVector<AudioDeviceInfo> &devices, const AutoRouteInfo &route);
@@ -89,11 +95,12 @@ class AudioDeviceManager final : public QObject {
 
  private:
   QString executeCommand(const QStringList &arguments, int timeoutMs = 2500) const;
-  QString getDefaultPulseSourceName();
-  QString getDefaultPulseSinkName();
+  QPair<QString, QString> queryDefaultPulseRoute() const;
 
   QTimer *pollTimer_ = nullptr;
   QString lastDefaultSink_;
   QString lastDefaultSource_;
   QString pactlPath_;
+  quint64 pollCheckCount_ = 0;
+  mutable quint64 processLaunchCount_ = 0;
 };

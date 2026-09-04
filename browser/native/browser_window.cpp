@@ -35,7 +35,12 @@
 #include "desktop_tabs/tab_group_model.h"
 #include "desktop_tabs/tab_group_popup.h"
 #include "desktop_tabs/tab_group_launcher_popup.h"
+#include "desktop_tabs/tab_hover_card.h"
+#include "desktop_tabs/tab_performance_manager.h"
 #include "core/browser_icons.h"
+#if QT_VERSION < QT_VERSION_CHECK(6, 8, 0)
+#include "core/browser_permission_policy.h"
+#endif
 #include "core/browser_ui_metrics.h"
 #include "blocker/ardali_blocker_service.h"
 #include "passwords/credential_vault_manager.h"
@@ -289,6 +294,11 @@ BrowserWindow::BrowserWindow(const BrowserServices &services, bool isCaptureShel
 }
 
 BrowserWindow::~BrowserWindow() {
+  if (hoverCard_) {
+    hoverCard_->hideCard();
+    delete hoverCard_;
+    hoverCard_ = nullptr;
+  }
   ardali::desktop_tabs::TabWindowRegistry::instance().unregisterWindow(this);
 }
 
@@ -754,8 +764,15 @@ void BrowserWindow::setupTabStripSignals() {
     moveTab(from, to);
   });
 
+  connect(tabStrip_, &ardali::desktop_tabs::TabStripWidget::tabHovered, this,
+          &BrowserWindow::onTabHovered);
+
+  connect(tabStrip_, &ardali::desktop_tabs::TabStripWidget::tabHoverLeave, this,
+          &BrowserWindow::onTabHoverLeave);
+
   connect(tabStrip_, &ardali::desktop_tabs::TabStripWidget::dragInitiated, this,
           [this](int index, const QPoint &screenPosition, const QPoint &pressOffsetInTab, const QSize &) {
+    if (hoverCard_) hoverCard_->hideCard();
     if (index < 0 || index >= tabs_.size()) return;
     const QPoint offsetInWindow = mapFromGlobal(screenPosition);
     ardali::desktop_tabs::TabDragController::instance().handleMousePress(
@@ -815,7 +832,7 @@ int BrowserWindow::addNewTab(const QUrl &url, int insertIndex) {
 
   // Audio Effects registration
   if (services_.audioEffects) {
-    services_.audioEffects->registerWebView(view);
+    services_.audioEffects->registerWebView(view, targetUrl);
   }
 
   // Blocker tab registration
@@ -836,7 +853,18 @@ int BrowserWindow::addNewTab(const QUrl &url, int insertIndex) {
 #else
     connect(view->page(), &QWebEnginePage::featurePermissionRequested, this,
             [view](const QUrl &origin, QWebEnginePage::Feature feature) {
-      view->page()->setFeaturePermission(origin, feature, QWebEnginePage::PermissionGrantedByUser);
+      if (!view || !view->page()) return;
+      const auto answer = QMessageBox::question(
+          view->window(), QStringLiteral("Site izni"),
+          QStringLiteral("%1, %2 iznini istiyor.")
+              .arg(origin.toDisplayString(), BrowserPermissionPolicy::featureName(feature)),
+          QMessageBox::Yes | QMessageBox::No, QMessageBox::No);
+      const auto decision = BrowserPermissionPolicy::decisionForExplicitUserChoice(answer == QMessageBox::Yes);
+      view->page()->setFeaturePermission(
+          origin, feature,
+          decision == BrowserPermissionPolicy::Decision::Grant
+              ? QWebEnginePage::PermissionGrantedByUser
+              : QWebEnginePage::PermissionDeniedByUser);
     });
 #endif
   }
@@ -898,6 +926,8 @@ int BrowserWindow::addInternalTab(QWidget *page, const QString &title, const QIc
 }
 
 void BrowserWindow::closeTab(int index) {
+  if (hoverCard_) hoverCard_->hideCard();
+  if (tabStrip_) tabStrip_->cancelHover();
   if (index < 0 || index >= tabs_.size()) return;
 
   BrowserTabInfo info = tabs_.takeAt(index);
@@ -937,6 +967,7 @@ void BrowserWindow::closeTab(int index) {
 }
 
 void BrowserWindow::switchTab(int index) {
+  if (hoverCard_) hoverCard_->hideCard();
   if (index < 0 || index >= tabs_.size()) return;
 
   tabStrip_->setCurrentIndex(index);
@@ -978,6 +1009,7 @@ void BrowserWindow::switchTab(int index) {
 }
 
 void BrowserWindow::moveTab(int fromIndex, int toIndex) {
+  if (hoverCard_) hoverCard_->hideCard();
   if (fromIndex < 0 || fromIndex >= tabs_.size() ||
       toIndex < 0 || toIndex >= tabs_.size() || fromIndex == toIndex) {
     return;
@@ -1048,7 +1080,7 @@ void BrowserWindow::adoptTab(BrowserTabInfo info, int targetIndex) {
     pageStack_->insertWidget(idx, info.view);
     wireViewSignals(info.view, info.id);
     if (services_.audioEffects) {
-      services_.audioEffects->registerWebView(info.view.data());
+      services_.audioEffects->registerWebView(info.view.data(), info.url);
       services_.audioEffects->applyToView(info.view.data());
     }
     if (services_.profileService && services_.profileService->adBlockService()) {
@@ -1061,6 +1093,23 @@ void BrowserWindow::adoptTab(BrowserTabInfo info, int targetIndex) {
       connect(info.view->page(), &QWebEnginePage::permissionRequested, this, [this](const QWebEnginePermission &permission) {
         if (services_.profileService) services_.profileService->handlePermission(permission);
         else permission.deny();
+      });
+#else
+      auto *view = info.view.data();
+      connect(view->page(), &QWebEnginePage::featurePermissionRequested, this,
+              [view](const QUrl &origin, QWebEnginePage::Feature feature) {
+        if (!view || !view->page()) return;
+        const auto answer = QMessageBox::question(
+            view->window(), QStringLiteral("Site izni"),
+            QStringLiteral("%1, %2 iznini istiyor.")
+                .arg(origin.toDisplayString(), BrowserPermissionPolicy::featureName(feature)),
+            QMessageBox::Yes | QMessageBox::No, QMessageBox::No);
+        const auto decision = BrowserPermissionPolicy::decisionForExplicitUserChoice(answer == QMessageBox::Yes);
+        view->page()->setFeaturePermission(
+            origin, feature,
+            decision == BrowserPermissionPolicy::Decision::Grant
+                ? QWebEnginePage::PermissionGrantedByUser
+                : QWebEnginePage::PermissionDeniedByUser);
       });
 #endif
     }
@@ -1561,6 +1610,7 @@ void BrowserWindow::openStartupUrl(const QUrl &url) {
 // Window events, Edge Resizing & Window Caption Controls
 // -----------------------------------------------------------------
 void BrowserWindow::closeEvent(QCloseEvent *event) {
+  if (hoverCard_) hoverCard_->hideCard();
   saveSessionNow();
   ardali::desktop_tabs::TabWindowRegistry::instance().unregisterWindow(this);
   QMainWindow::closeEvent(event);
@@ -1628,11 +1678,15 @@ void BrowserWindow::changeEvent(QEvent *event) {
     if (maxBtn_) {
       maxBtn_->setText(isMaximized() ? QString::fromUtf8("❐") : QString::fromUtf8("□"));
     }
+    if (hoverCard_) hoverCard_->hideCard();
+  } else if (event->type() == QEvent::ActivationChange && !isActiveWindow()) {
+    if (hoverCard_) hoverCard_->hideCard();
   }
   QMainWindow::changeEvent(event);
 }
 
 void BrowserWindow::resizeEvent(QResizeEvent *event) {
+  if (hoverCard_) hoverCard_->hideCard();
   QMainWindow::resizeEvent(event);
   if (!isMaximized() && !isFullScreen() && !(windowState() & (Qt::WindowMaximized | Qt::WindowFullScreen))) {
     lastNormalSize_ = size();
@@ -1642,6 +1696,7 @@ void BrowserWindow::resizeEvent(QResizeEvent *event) {
 }
 
 void BrowserWindow::moveEvent(QMoveEvent *event) {
+  if (hoverCard_) hoverCard_->hideCard();
   QMainWindow::moveEvent(event);
   if (!isMaximized() && !isFullScreen() && !(windowState() & (Qt::WindowMaximized | Qt::WindowFullScreen))) {
     lastNormalGeometry_ = geometry();
@@ -2248,4 +2303,72 @@ std::optional<ardali::desktop_tabs::TabGroup> BrowserWindow::groupForTab(uint64_
   const auto optGid = groupModel_->groupIdForTab(tabId);
   if (!optGid.has_value() || optGid->isNull()) return std::nullopt;
   return groupModel_->group(*optGid);
+}
+
+void BrowserWindow::onTabHovered(int index, const QPoint &globalPos, const QRect &globalTabRect) {
+  Q_UNUSED(globalPos);
+  if (index < 0 || index >= tabs_.size()) {
+    if (hoverCard_) hoverCard_->hideCard();
+    return;
+  }
+  if (ardali::desktop_tabs::TabDragController::instance().isActive()) {
+    if (hoverCard_) hoverCard_->hideCard();
+    return;
+  }
+
+  const auto &info = tabs_[index];
+  if (!hoverCard_) {
+    hoverCard_ = new TabHoverCard(this);
+  }
+
+  // 1. Authoritative lifecycle state source: TabPerformanceManager
+  const QUuid tabUuid = info.uuid;
+  QPointer<QWebEngineView> viewPtr = info.view;
+  auto lifecycleProvider = [this, tabUuid, viewPtr]() -> QWebEnginePage::LifecycleState {
+    if (services_.tabManager && services_.tabManager->performanceManager()) {
+      auto *perf = services_.tabManager->performanceManager();
+      if (perf->hasMetadata(tabUuid)) {
+        return perf->metadata(tabUuid).lifecycleState;
+      }
+    }
+    if (viewPtr && viewPtr->page()) {
+      return viewPtr->page()->lifecycleState();
+    }
+    return QWebEnginePage::LifecycleState::Active;
+  };
+
+  const auto allViews = collectAllWebViewsAcrossWindows();
+
+  hoverCard_->showForTab(info.title, info.url, tabIconForRecord(info),
+                         info.view.data(), allViews,
+                         globalTabRect, tabStrip_,
+                         lifecycleProvider, info.isInternal);
+}
+
+void BrowserWindow::onTabHoverLeave() {
+  if (hoverCard_) {
+    hoverCard_->hideCard();
+  }
+}
+
+QVector<QPointer<QWebEngineView>> BrowserWindow::collectAllWebViewsAcrossWindows() const {
+  QVector<QPointer<QWebEngineView>> views;
+  const auto regWindows = ardali::desktop_tabs::TabWindowRegistry::instance().registeredWindows();
+  for (const auto &rw : regWindows) {
+    if (rw.window.isNull()) continue;
+    if (!rw.window->isVisible()) continue;
+    auto *bw = qobject_cast<BrowserWindow *>(rw.window.data());
+    if (!bw) continue;
+
+    for (int i = 0; i < bw->tabCount(); ++i) {
+      const auto &info = bw->tabInfo(i);
+      if (info.isInternal) continue;
+      if (info.view.isNull()) continue;
+      QWebEngineView *v = info.view.data();
+      if (!v || !v->page()) continue;
+      if (v->parent() == nullptr && v != bw->currentView()) continue;
+      views.append(v);
+    }
+  }
+  return views;
 }

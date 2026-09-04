@@ -359,6 +359,7 @@ RequestDecision ArDaliBlockerService::evaluateRequest(const QUrl &requestUrl, in
     evaluationCount_++;
     totalEvaluationTimeMs_ += elapsedMs;
     lastEvaluationTimeMs_ = elapsedMs;
+    maxEvaluationTimeMs_ = std::max(maxEvaluationTimeMs_, elapsedMs);
   }
 
   // Update tab and global statistics
@@ -442,6 +443,11 @@ double ArDaliBlockerService::averageEvaluationTimeMs() const {
 double ArDaliBlockerService::lastEvaluationTimeMs() const {
   QMutexLocker locker(&timingMutex_);
   return lastEvaluationTimeMs_;
+}
+
+double ArDaliBlockerService::maxEvaluationTimeMs() const {
+  QMutexLocker locker(&timingMutex_);
+  return maxEvaluationTimeMs_;
 }
 
 quint64 ArDaliBlockerService::evaluationCount() const {
@@ -568,6 +574,7 @@ void ArDaliBlockerService::resetAllStats() {
     evaluationCount_ = 0;
     totalEvaluationTimeMs_ = 0.0;
     lastEvaluationTimeMs_ = 0.0;
+    maxEvaluationTimeMs_ = 0.0;
   }
   emit globalStatsChanged(0, 0);
 }

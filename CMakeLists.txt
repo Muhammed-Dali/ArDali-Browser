@@ -119,6 +119,8 @@ add_custom_target(ardali-browser-policy DEPENDS ${DALI_POLICY_JSON})
 # -------------------------------------------------------------
 set(CORE_SOURCES
   browser/native/core/browser_profile_service.cpp
+  browser/native/core/browser_permission_policy.cpp
+  browser/native/core/performance_diagnostics.cpp
   browser/native/core/browser_policy.cpp
   browser/native/core/security_utils.cpp
   browser/native/core/web_engine_hardware_acceleration.cpp
@@ -162,6 +164,7 @@ set(SETTINGS_SOURCES
 )
 
 set(AUDIO_SOURCES
+  browser/native/audio/audio_platform_policy.cpp
   browser/native/audio/web_audio_effects_controller.cpp
   browser/native/audio/audio_effects_page.cpp
   browser/native/audio/audio_device_manager.cpp
@@ -480,6 +483,7 @@ add_executable(ardali-browser-desktop-tab-system-test
 )
 target_link_libraries(ardali-browser-desktop-tab-system-test PRIVATE Qt6::Widgets Qt6::Gui)
 add_test(NAME browser-desktop-tab-system COMMAND ardali-browser-desktop-tab-system-test)
+set_tests_properties(browser-desktop-tab-system PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=xcb")
 
 add_executable(ardali-browser-tab-drag-controller-test
   browser/native/tests/tab_drag_controller_test.cpp
@@ -496,6 +500,7 @@ add_executable(ardali-browser-tab-drag-controller-test
 )
 target_link_libraries(ardali-browser-tab-drag-controller-test PRIVATE Qt6::Widgets Qt6::Gui)
 add_test(NAME browser-tab-drag-controller COMMAND ardali-browser-tab-drag-controller-test)
+set_tests_properties(browser-tab-drag-controller PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=xcb")
 
 add_executable(ardali-browser-critical-tab-drag-scenario-test
   browser/native/tests/critical_tab_drag_scenario_test.cpp
@@ -515,6 +520,7 @@ add_test(NAME browser-critical-tab-drag-scenario COMMAND ardali-browser-critical
 
 add_executable(ardali-browser-runtime-feature-integration-test
   browser/native/tests/runtime_feature_integration_test.cpp
+  browser/native/audio/audio_platform_policy.cpp
   browser/native/audio/web_audio_effects_controller.cpp
   browser/native/blocker/ardali_blocker_service.cpp
   browser/native/blocker/ardali_blocker_engine.cpp
@@ -543,3 +549,33 @@ target_compile_definitions(ardali-browser-runtime-feature-integration-test PRIVA
   ARDALI_WEB_AUTO_GAIN_DALI_MODULE_RELATIVE_PATH="dali/web-auto-gain.generated.js"
 )
 add_test(NAME browser-runtime-feature-integration COMMAND ardali-browser-runtime-feature-integration-test)
+
+add_executable(ardali-browser-phase2a-policy-test
+  browser/native/tests/phase2a_policy_test.cpp
+  browser/native/audio/audio_platform_policy.cpp
+  browser/native/audio/audio_device_manager.cpp
+  browser/native/core/browser_permission_policy.cpp
+  browser/native/core/security_utils.cpp
+)
+target_link_libraries(ardali-browser-phase2a-policy-test PRIVATE Qt6::Core Qt6::WebEngineWidgets)
+add_test(NAME browser-phase2a-policy COMMAND ardali-browser-phase2a-policy-test)
+
+add_executable(ardali-browser-tab-scheduler-retry-test
+  browser/native/tests/tab_scheduler_retry_test.cpp
+  browser/native/desktop_tabs/tab_manager.cpp
+  browser/native/desktop_tabs/tab_performance_manager.cpp
+  browser/native/desktop_tabs/system_memory_pressure_monitor.cpp
+)
+target_link_libraries(ardali-browser-tab-scheduler-retry-test PRIVATE Qt6::Widgets Qt6::WebEngineWidgets)
+add_test(NAME browser-tab-scheduler-retry COMMAND ardali-browser-tab-scheduler-retry-test)
+set_tests_properties(browser-tab-scheduler-retry PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QTWEBENGINE_CHROMIUM_FLAGS=--no-sandbox --disable-gpu")
+
+add_executable(ardali-browser-tab-hover-card-test
+  browser/native/tests/tab_hover_card_test.cpp
+  browser/native/desktop_tabs/tab_hover_card.cpp
+  browser/native/core/browser_icons.cpp
+)
+target_link_libraries(ardali-browser-tab-hover-card-test PRIVATE Qt6::Widgets Qt6::WebEngineWidgets Qt6::Svg)
+add_test(NAME browser-tab-hover-card COMMAND ardali-browser-tab-hover-card-test)
+set_tests_properties(browser-tab-hover-card PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QTWEBENGINE_CHROMIUM_FLAGS=--no-sandbox --disable-gpu")
+

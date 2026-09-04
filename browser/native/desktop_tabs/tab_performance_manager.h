@@ -110,6 +110,8 @@ class TabPerformanceManager : public QObject {
   static constexpr int64_t kDefaultBackgroundFreezeDelayMs = 0;
   static constexpr int64_t kDefaultBackgroundDiscardDelayMs = 60 * 1000;
   static constexpr int kMaxDiscardPerEvaluation = 2;                           // Rate limiting burst max
+  static constexpr int kReadyDeadlineDispatchMs = 1;
+  static constexpr int kMinimumDeadlineRetryMs = 1000;
 
   explicit TabPerformanceManager(TabManager *tabManager, QObject *parent = nullptr);
   ~TabPerformanceManager() override;
@@ -161,6 +163,8 @@ class TabPerformanceManager : public QObject {
   bool isTabDiscarded(TabManager::TabId id) const;
   bool isTabLifecycleEligible(TabManager::TabId id) const;
   static bool isSupportedWebScheme(const QUrl &url);
+  quint64 deadlineCheckCount() const { return deadlineCheckCount_; }
+  int scheduledDeadlineDelayMs() const;
 
   // Site allowlist model
   static QString normalizeSitePattern(const QString &pattern);
@@ -206,6 +210,7 @@ class TabPerformanceManager : public QObject {
   void onPageRecommendedStateChanged(QWebEnginePage::LifecycleState state);
   void onPageLifecycleStateChanged(QWebEnginePage::LifecycleState state);
   void onPageLoadStarted();
+  void onPageLoadFinished(bool ok);
   void onPageUrlChanged(const QUrl &url);
   void onDeadlineTimeout();
 
@@ -225,6 +230,7 @@ class TabPerformanceManager : public QObject {
 
   QTimer *deadlineTimer_ = nullptr;
   bool isTearingDown_ = false;
+  quint64 deadlineCheckCount_ = 0;
 
   QStringList siteAllowlist_;
 

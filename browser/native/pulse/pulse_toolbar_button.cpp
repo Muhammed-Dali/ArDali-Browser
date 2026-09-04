@@ -375,6 +375,10 @@ PulseQuickPopup::PulseQuickPopup(SongRecognitionService *service,
   }
 }
 
+PulseQuickPopup::~PulseQuickPopup() {
+  if (service_ && deviceUseHeld_) service_->endDeviceUiUse();
+}
+
 void PulseQuickPopup::setupUi() {
   auto *rootLayout = new QVBoxLayout(this);
   rootLayout->setContentsMargins(14, 12, 14, 12);
@@ -477,10 +481,18 @@ void PulseQuickPopup::refreshState() {
 
 void PulseQuickPopup::showEvent(QShowEvent *event) {
   QFrame::showEvent(event);
+  if (service_ && !deviceUseHeld_) {
+    deviceUseHeld_ = true;
+    service_->beginDeviceUiUse();
+  }
   refreshState();
 }
 
 void PulseQuickPopup::hideEvent(QHideEvent *event) {
+  if (service_ && deviceUseHeld_) {
+    deviceUseHeld_ = false;
+    service_->endDeviceUiUse();
+  }
   QFrame::hideEvent(event);
 }
 

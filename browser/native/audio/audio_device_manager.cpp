@@ -22,10 +22,6 @@ AudioDeviceManager::AudioDeviceManager(QObject *parent) : QObject(parent) {
   pollTimer_ = new QTimer(this);
   pollTimer_->setInterval(1500);  // Check route changes every 1.5s
   connect(pollTimer_, &QTimer::timeout, this, &AudioDeviceManager::checkDeviceChanges);
-  pollTimer_->start();
-
-  lastDefaultSink_ = getDefaultPulseSinkName();
-  lastDefaultSource_ = getDefaultPulseSourceName();
 }
 
 AudioDeviceManager::~AudioDeviceManager() {
@@ -37,6 +33,7 @@ AudioDeviceManager::~AudioDeviceManager() {
 QString AudioDeviceManager::executeCommand(const QStringList &arguments, int timeoutMs) const {
   if (pactlPath_.isEmpty()) return {};
   QProcess process;
+  ++processLaunchCount_;
   process.start(pactlPath_, arguments);
   if (!process.waitForFinished(timeoutMs)) {
     process.kill();
@@ -49,26 +46,31 @@ QString AudioDeviceManager::executeCommand(const QStringList &arguments, int tim
   return QString::fromUtf8(process.readAllStandardOutput()).trimmed();
 }
 
-QString AudioDeviceManager::getDefaultPulseSourceName() {
+QPair<QString, QString> AudioDeviceManager::queryDefaultPulseRoute() const {
   const QString info = executeCommand({QStringLiteral("info")});
+  QString sink;
+  QString source;
   const QStringList lines = info.split(QRegularExpression(QStringLiteral("[\r\n]+")), Qt::SkipEmptyParts);
   for (const QString &line : lines) {
     if (line.startsWith(QStringLiteral("Default Source:"), Qt::CaseInsensitive)) {
-      return line.section(QLatin1Char(':'), 1).trimmed();
+      source = line.section(QLatin1Char(':'), 1).trimmed();
+    } else if (line.startsWith(QStringLiteral("Default Sink:"), Qt::CaseInsensitive)) {
+      sink = line.section(QLatin1Char(':'), 1).trimmed();
     }
   }
-  return {};
+  return {sink, source};
 }
 
-QString AudioDeviceManager::getDefaultPulseSinkName() {
-  const QString info = executeCommand({QStringLiteral("info")});
-  const QStringList lines = info.split(QRegularExpression(QStringLiteral("[\r\n]+")), Qt::SkipEmptyParts);
-  for (const QString &line : lines) {
-    if (line.startsWith(QStringLiteral("Default Sink:"), Qt::CaseInsensitive)) {
-      return line.section(QLatin1Char(':'), 1).trimmed();
-    }
-  }
-  return {};
+void AudioDeviceManager::startMonitoring() {
+  if (pollTimer_ && !pollTimer_->isActive()) pollTimer_->start();
+}
+
+void AudioDeviceManager::stopMonitoring() {
+  if (pollTimer_) pollTimer_->stop();
+}
+
+bool AudioDeviceManager::isMonitoring() const {
+  return pollTimer_ && pollTimer_->isActive();
 }
 
 struct SourceDetail {
@@ -82,8 +84,11 @@ struct SourceDetail {
 };
 
 QVector<AudioDeviceInfo> AudioDeviceManager::listDevices() {
-  const QString defaultSource = getDefaultPulseSourceName();
-  const QString defaultSink = getDefaultPulseSinkName();
+  const auto defaults = queryDefaultPulseRoute();
+  const QString defaultSink = defaults.first;
+  const QString defaultSource = defaults.second;
+  lastDefaultSink_ = defaultSink;
+  lastDefaultSource_ = defaultSource;
   const QString defaultSinkMonitor = defaultSink.isEmpty() ? QString() : (defaultSink + QStringLiteral(".monitor"));
 
   QHash<QString, SourceDetail> detailedDescriptions;
@@ -193,8 +198,8 @@ QVector<AudioDeviceInfo> AudioDeviceManager::listDevices() {
 
 AutoRouteInfo AudioDeviceManager::resolveAutoRoute(const QVector<AudioDeviceInfo> &devices) {
   AutoRouteInfo route;
-  const QString defaultSink = getDefaultPulseSinkName();
-  const QString defaultSource = getDefaultPulseSourceName();
+  const QString defaultSink = lastDefaultSink_;
+  const QString defaultSource = lastDefaultSource_;
   const QString defaultSinkMonitor = defaultSink.isEmpty() ? QString() : (defaultSink + QStringLiteral(".monitor"));
 
   // 1. Find matching System Audio Monitor for active sink
@@ -300,8 +305,10 @@ QString AudioDeviceManager::pickBestDeviceId(const QVector<AudioDeviceInfo> &dev
 }
 
 void AudioDeviceManager::checkDeviceChanges() {
-  const QString currentSink = getDefaultPulseSinkName();
-  const QString currentSource = getDefaultPulseSourceName();
+  ++pollCheckCount_;
+  const auto defaults = queryDefaultPulseRoute();
+  const QString currentSink = defaults.first;
+  const QString currentSource = defaults.second;
 
   if (currentSink != lastDefaultSink_ || currentSource != lastDefaultSource_) {
     lastDefaultSink_ = currentSink;

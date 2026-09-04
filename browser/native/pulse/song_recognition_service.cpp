@@ -48,7 +48,6 @@ SongRecognitionService::SongRecognitionService(SongFinderSettings *settings, QOb
   });
 
   loadHistory();
-  QTimer::singleShot(0, this, [this] { refreshDevices(); });
 }
 
 SongRecognitionService::~SongRecognitionService() {
@@ -121,6 +120,22 @@ QVector<AudioDeviceInfo> SongRecognitionService::refreshDevices() {
   return cachedDevices_;
 }
 
+void SongRecognitionService::beginDeviceUiUse() {
+  ++deviceUiConsumerCount_;
+  if (deviceUiConsumerCount_ != 1) return;
+  deviceManager_->startMonitoring();
+  refreshDevices();
+}
+
+void SongRecognitionService::endDeviceUiUse() {
+  if (deviceUiConsumerCount_ > 0) --deviceUiConsumerCount_;
+  if (deviceUiConsumerCount_ == 0 && !isListening()) deviceManager_->stopMonitoring();
+}
+
+bool SongRecognitionService::isDeviceMonitoringActive() const {
+  return deviceManager_ && deviceManager_->isMonitoring();
+}
+
 void SongRecognitionService::dismissActiveResult() {
   hasActiveResult_ = false;
   activeResult_ = SongResult();
@@ -179,9 +194,8 @@ void SongRecognitionService::clearWebContextMetadata() {
 }
 
 bool SongRecognitionService::startListening(const QString &requestedDeviceId) {
-  if (cachedDevices_.isEmpty()) {
-    refreshDevices();
-  }
+  deviceManager_->startMonitoring();
+  if (cachedDevices_.isEmpty()) refreshDevices();
 
   QString targetDeviceId = requestedDeviceId.trimmed();
   if (targetDeviceId.isEmpty()) {
@@ -212,6 +226,7 @@ bool SongRecognitionService::startListening(const QString &requestedDeviceId) {
   }
 
   if (!started) {
+    if (deviceUiConsumerCount_ == 0) deviceManager_->stopMonitoring();
     setState(State::Error, QStringLiteral("Ses yakalama başlatılamadı."));
     return false;
   }
@@ -236,6 +251,7 @@ void SongRecognitionService::stopListening() {
   recognitionTimer_->stop();
   captureService_->stop();
   isProcessing_ = false;
+  if (deviceUiConsumerCount_ == 0) deviceManager_->stopMonitoring();
   setState(State::Ready, QStringLiteral("Dinlemeye hazır"));
 }
 

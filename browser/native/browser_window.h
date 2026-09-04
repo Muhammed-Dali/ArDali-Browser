@@ -45,6 +45,7 @@ class QStackedWidget;
 class QToolButton;
 class QToolBar;
 class QProgressBar;
+class TabHoverCard;
 
 namespace ardali::desktop_tabs {
 class TabStripWidget;
@@ -184,6 +185,8 @@ private slots:
   void onMinimizeClicked();
   void onMaximizeRestoreClicked();
   void onCloseWindowClicked();
+  void onTabHovered(int index, const QPoint &globalPos, const QRect &globalTabRect);
+  void onTabHoverLeave();
 
 private:
   void setupUi();
@@ -194,6 +197,7 @@ private:
   void updateOmniboxForCurrentTab();
   Qt::Edges calculateEdges(const QPoint &pos) const;
   void updateCursorShape(const QPoint &pos);
+  QVector<QPointer<QWebEngineView>> collectAllWebViewsAcrossWindows() const;
 
   BrowserServices services_;
   bool isCaptureShell_ = false;
@@ -203,6 +207,7 @@ private:
   QWidget *topBar_ = nullptr;
   QToolButton *tabSearchBtn_ = nullptr;
   ardali::desktop_tabs::TabStripWidget *tabStrip_ = nullptr;
+  QPointer<TabHoverCard> hoverCard_;
   QToolButton *minBtn_ = nullptr;
   QToolButton *maxBtn_ = nullptr;
   QToolButton *closeBtn_ = nullptr;

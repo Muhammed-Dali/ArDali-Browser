@@ -6,6 +6,7 @@
 #include <QSet>
 #include <QString>
 #include <QTimer>
+#include <QUrl>
 #include <QVector>
 
 class QWebEngineView;
@@ -83,8 +84,10 @@ class WebAudioEffectsController final : public QObject {
   QString activeSubpanelId() const { return activeSubpanelId_; }
   Status status() const { return status_; }
 
-  void registerWebView(QWebEngineView *view);
+  void registerWebView(QWebEngineView *view, const QUrl &initialUrl = QUrl());
   void applyToView(QWebEngineView *view);
+  int audioEnabledWebViewCount() const;
+  int activeGraphViewCount() const;
 
  public slots:
   void setEnabled(bool enabled);
@@ -166,7 +169,8 @@ class WebAudioEffectsController final : public QObject {
   QString daliAutoGainModuleSource() const;
   void applyEqualizerBandToView(QWebEngineView *view, int index);
   void bootstrapView(QWebEngineView *view);
-  void installDocumentBootstrap(QWebEngineView *view);
+  void installDocumentBootstrap(QWebEngineView *view, const QUrl &url);
+  void updateAudioPolicyForView(QWebEngineView *view, const QUrl &url);
   void updateStatusFromResult(const QVariant &result);
   void persist();
   void schedulePersist();

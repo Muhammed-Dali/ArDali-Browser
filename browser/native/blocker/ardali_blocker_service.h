@@ -82,6 +82,7 @@ class ArDaliBlockerService final : public QObject {
   // Real Diagnostic Performance & Memory Metrics
   double averageEvaluationTimeMs() const;
   double lastEvaluationTimeMs() const;
+  double maxEvaluationTimeMs() const;
   quint64 evaluationCount() const;
   quint64 estimatedMemoryBytes() const;
 
@@ -146,6 +147,7 @@ class ArDaliBlockerService final : public QObject {
   quint64 evaluationCount_ = 0;
   double totalEvaluationTimeMs_ = 0.0;
   double lastEvaluationTimeMs_ = 0.0;
+  double maxEvaluationTimeMs_ = 0.0;
 
   // Strict block bypass map (host -> expiry msecs)
   mutable QMutex bypassMutex_;

@@ -33,7 +33,7 @@ QString formatBytes(qint64 bytes) {
 }  // namespace
 
 TabHoverCard::TabHoverCard(QWidget *parent) : QFrame(parent) {
-  setWindowFlags(Qt::ToolTip | Qt::FramelessWindowHint | Qt::NoDropShadowWindowHint);
+  setWindowFlags(Qt::ToolTip | Qt::FramelessWindowHint | Qt::NoDropShadowWindowHint | Qt::WindowTransparentForInput);
   setAttribute(Qt::WA_ShowWithoutActivating, true);
   setAttribute(Qt::WA_TransparentForMouseEvents, true);
 
@@ -114,6 +114,23 @@ TabHoverCard::TabHoverCard(QWidget *parent) : QFrame(parent) {
   audioLayout->addWidget(audioTextLabel_, 1, Qt::AlignLeft | Qt::AlignVCenter);
   mainLayout->addWidget(audioContainer_);
 
+  // Lifecycle status row
+  lifecycleContainer_ = new QWidget(this);
+  auto *lifeLayout = new QHBoxLayout(lifecycleContainer_);
+  lifeLayout->setContentsMargins(0, 1, 0, 1);
+  lifeLayout->setSpacing(6);
+
+  lifecycleIconLabel_ = new QLabel(lifecycleContainer_);
+  lifecycleIconLabel_->setFixedSize(14, 14);
+  lifecycleIconLabel_->setPixmap(BrowserIcons::icon(BrowserIcon::Performance).pixmap(14, 14));
+
+  lifecycleTextLabel_ = new QLabel(lifecycleContainer_);
+  lifecycleTextLabel_->setObjectName(QStringLiteral("hover-status-text"));
+
+  lifeLayout->addWidget(lifecycleIconLabel_, 0, Qt::AlignLeft | Qt::AlignVCenter);
+  lifeLayout->addWidget(lifecycleTextLabel_, 1, Qt::AlignLeft | Qt::AlignVCenter);
+  mainLayout->addWidget(lifecycleContainer_);
+
   // Memory usage row
   memoryContainer_ = new QWidget(this);
   auto *memLayout = new QHBoxLayout(memoryContainer_);
@@ -134,7 +151,13 @@ TabHoverCard::TabHoverCard(QWidget *parent) : QFrame(parent) {
   setFixedWidth(300);
 
   pollTimer_.setInterval(1500);
-  connect(&pollTimer_, &QTimer::timeout, this, &TabHoverCard::refreshCardInfo);
+  connect(&pollTimer_, &QTimer::timeout, this, [this]() {
+    if (!isVisible()) {
+      pollTimer_.stop();
+      return;
+    }
+    refreshCardInfo();
+  });
 }
 
 QString TabHoverCard::extractDomain(const QUrl &url) {
@@ -185,7 +208,7 @@ QString TabHoverCard::extractDomain(const QUrl &url) {
   return QStringLiteral("ArDaliBrowser");
 }
 
-TabMemoryInfo TabHoverCard::measureMemory(QWebEnginePage *page, const QVector<QWebEngineView *> &allViews) {
+TabMemoryInfo TabHoverCard::measureMemory(QWebEnginePage *page, const QVector<QPointer<QWebEngineView>> &allViews) {
   TabMemoryInfo info;
   if (!page) return info;
 
@@ -193,12 +216,13 @@ TabMemoryInfo TabHoverCard::measureMemory(QWebEnginePage *page, const QVector<QW
   if (pid <= 0) return info;
 
   int sharedCount = 0;
-  for (const QWebEngineView *v : allViews) {
+  for (const auto &v : allViews) {
     if (v && v->page() && v->page()->renderProcessPid() == pid) {
       ++sharedCount;
     }
   }
   info.isShared = (sharedCount > 1);
+  info.sharedCount = std::max(1, sharedCount);
 
 #if defined(Q_OS_WIN)
   HANDLE process = OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, FALSE, static_cast<DWORD>(pid));
@@ -209,9 +233,11 @@ TabMemoryInfo TabHoverCard::measureMemory(QWebEnginePage *page, const QVector<QW
       info.bytes = static_cast<qint64>(pmc.WorkingSetSize);
       info.isRssFallback = false;
       if (info.isShared) {
-        info.text = QStringLiteral("Renderer belleği: %1 (paylaşılan)").arg(formatBytes(info.bytes));
+        info.text = QStringLiteral("Renderer belleği: %1 (%2 sekme tarafından paylaşılıyor)")
+            .arg(formatBytes(info.bytes))
+            .arg(info.sharedCount);
       } else {
-        info.text = QStringLiteral("Bellek kullanımı: %1").arg(formatBytes(info.bytes));
+        info.text = QStringLiteral("Renderer belleği: %1").arg(formatBytes(info.bytes));
       }
       CloseHandle(process);
       return info;
@@ -243,9 +269,11 @@ TabMemoryInfo TabHoverCard::measureMemory(QWebEnginePage *page, const QVector<QW
       info.bytes = pssKb * 1024;
       info.isRssFallback = false;
       if (info.isShared) {
-        info.text = QStringLiteral("Renderer belleği: %1 (paylaşılan)").arg(formatBytes(info.bytes));
+        info.text = QStringLiteral("Renderer PSS: %1 (%2 sekme tarafından paylaşılıyor)")
+            .arg(formatBytes(info.bytes))
+            .arg(info.sharedCount);
       } else {
-        info.text = QStringLiteral("Bellek kullanımı: %1").arg(formatBytes(info.bytes));
+        info.text = QStringLiteral("Renderer PSS: %1").arg(formatBytes(info.bytes));
       }
       return info;
     }
@@ -268,9 +296,11 @@ TabMemoryInfo TabHoverCard::measureMemory(QWebEnginePage *page, const QVector<QW
       info.bytes = rssBytes;
       info.isRssFallback = true;
       if (info.isShared) {
-        info.text = QStringLiteral("Renderer RSS: %1 (paylaşılan)").arg(formatBytes(info.bytes));
+        info.text = QStringLiteral("Renderer RSS: %1 (%2 sekme tarafından paylaşılıyor)")
+            .arg(formatBytes(info.bytes))
+            .arg(info.sharedCount);
       } else {
-        info.text = QStringLiteral("Bellek kullanımı (RSS): %1").arg(formatBytes(info.bytes));
+        info.text = QStringLiteral("Renderer RSS: %1").arg(formatBytes(info.bytes));
       }
       return info;
     }
@@ -278,15 +308,61 @@ TabMemoryInfo TabHoverCard::measureMemory(QWebEnginePage *page, const QVector<QW
 #endif
 
   info.valid = false;
-  info.text = QStringLiteral("Bellek kullanımı: Kullanılamıyor");
+  info.text = QStringLiteral("Renderer belleği: Kullanılamıyor");
   return info;
 }
 
+TabMemoryInfo TabHoverCard::measureMemory(QWebEnginePage *page, const QVector<QWebEngineView *> &allViews) {
+  QVector<QPointer<QWebEngineView>> ptrViews;
+  ptrViews.reserve(allViews.size());
+  for (auto *v : allViews) {
+    if (v) ptrViews.append(v);
+  }
+  return measureMemory(page, ptrViews);
+}
+
 void TabHoverCard::refreshCardInfo() {
+  if (isInternal_) {
+    audioContainer_->hide();
+    lifecycleTextLabel_->setText(QStringLiteral("Durum: Dahili Sekme"));
+    lifecycleContainer_->show();
+    memoryTextLabel_->setText(QStringLiteral("Dahili arayüz sekmesi"));
+    memoryContainer_->show();
+    separator_->show();
+    adjustSize();
+    return;
+  }
+
+  if (lifecycleProvider_) {
+    currentLifecycleState_ = lifecycleProvider_();
+  } else if (currentView_ && currentView_->page()) {
+    currentLifecycleState_ = currentView_->page()->lifecycleState();
+  }
+
+  // Lifecycle status
+  switch (currentLifecycleState_) {
+    case QWebEnginePage::LifecycleState::Active:
+      lifecycleTextLabel_->setText(QStringLiteral("Durum: Aktif (Active)"));
+      break;
+    case QWebEnginePage::LifecycleState::Frozen:
+      lifecycleTextLabel_->setText(QStringLiteral("Durum: Donduruldu (Frozen)"));
+      break;
+    case QWebEnginePage::LifecycleState::Discarded:
+      lifecycleTextLabel_->setText(QStringLiteral("Durum: Boşaltıldı (Discarded)"));
+      break;
+  }
+  lifecycleContainer_->show();
+
   if (!currentView_ || !currentView_->page()) {
     audioContainer_->hide();
-    memoryContainer_->hide();
-    separator_->hide();
+    if (currentLifecycleState_ == QWebEnginePage::LifecycleState::Discarded) {
+      memoryTextLabel_->setText(QStringLiteral("Renderer belleği: Boşaltıldı"));
+    } else {
+      memoryTextLabel_->setText(QStringLiteral("Renderer belleği: Hazırlanıyor..."));
+    }
+    memoryContainer_->show();
+    separator_->show();
+    adjustSize();
     return;
   }
 
@@ -295,25 +371,35 @@ void TabHoverCard::refreshCardInfo() {
   audioContainer_->setVisible(isAudible);
 
   // Memory usage
-  const TabMemoryInfo info = measureMemory(currentView_->page(), currentAllViews_);
-  if (info.valid && !info.text.isEmpty()) {
-    memoryTextLabel_->setText(info.text);
+  if (currentLifecycleState_ == QWebEnginePage::LifecycleState::Discarded) {
+    memoryTextLabel_->setText(QStringLiteral("Renderer belleği: Boşaltıldı"));
     memoryContainer_->show();
   } else {
-    memoryContainer_->hide();
+    const TabMemoryInfo info = measureMemory(currentView_->page(), currentAllViews_);
+    if (info.valid && !info.text.isEmpty()) {
+      memoryTextLabel_->setText(info.text);
+      memoryContainer_->show();
+    } else {
+      memoryTextLabel_->setText(QStringLiteral("Renderer belleği: Hazırlanıyor..."));
+      memoryContainer_->show();
+    }
   }
 
   // Separator visibility
-  separator_->setVisible(audioContainer_->isVisible() || memoryContainer_->isVisible());
+  separator_->setVisible(audioContainer_->isVisible() || memoryContainer_->isVisible() || lifecycleContainer_->isVisible());
   adjustSize();
 }
 
 void TabHoverCard::showForTab(const QString &title, const QUrl &url, const QIcon &icon,
-                              QWebEngineView *view, const QVector<QWebEngineView *> &allViews,
-                              const QRect &globalTabRect, QWidget *anchorWidget) {
+                              QWebEngineView *view, const QVector<QPointer<QWebEngineView>> &allViews,
+                              const QRect &globalTabRect, QWidget *anchorWidget,
+                              LifecycleProvider lifecycleProvider,
+                              bool isInternal) {
   Q_UNUSED(anchorWidget);
   currentView_ = view;
   currentAllViews_ = allViews;
+  lifecycleProvider_ = std::move(lifecycleProvider);
+  isInternal_ = isInternal;
 
   const QString displayTitle = title.isEmpty() ? QStringLiteral("Yeni Sekme") : title;
   titleLabel_->setText(displayTitle);
@@ -330,7 +416,7 @@ void TabHoverCard::showForTab(const QString &title, const QUrl &url, const QIcon
   refreshCardInfo();
   adjustSize();
 
-  // Position Card below tab
+  // Position Card below tab without overlapping to avoid flicker
   const int cardWidth = width();
   const int cardHeight = height();
   int targetX = globalTabRect.left() + 8;
@@ -360,11 +446,34 @@ void TabHoverCard::showForTab(const QString &title, const QUrl &url, const QIcon
   }
 }
 
+void TabHoverCard::showForTab(const QString &title, const QUrl &url, const QIcon &icon,
+                              QWebEngineView *view, const QVector<QWebEngineView *> &allViews,
+                              const QRect &globalTabRect, QWidget *anchorWidget,
+                              QWebEnginePage::LifecycleState lifecycleState,
+                              bool isInternal) {
+  QVector<QPointer<QWebEngineView>> ptrViews;
+  ptrViews.reserve(allViews.size());
+  for (auto *v : allViews) {
+    if (v) ptrViews.append(v);
+  }
+  showForTab(title, url, icon, view, ptrViews, globalTabRect, anchorWidget,
+             [lifecycleState]() { return lifecycleState; }, isInternal);
+}
+
 void TabHoverCard::hideCard() {
   pollTimer_.stop();
   currentView_ = nullptr;
   currentAllViews_.clear();
+  lifecycleProvider_ = nullptr;
   hide();
+}
+
+void TabHoverCard::hideEvent(QHideEvent *event) {
+  pollTimer_.stop();
+  currentView_ = nullptr;
+  currentAllViews_.clear();
+  lifecycleProvider_ = nullptr;
+  QFrame::hideEvent(event);
 }
 
 void TabHoverCard::paintEvent(QPaintEvent *event) {

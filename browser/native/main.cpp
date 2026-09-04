@@ -11,6 +11,7 @@
 
 #include "browser_window.h"
 #include "core/browser_icons.h"
+#include "core/performance_diagnostics.h"
 #include "desktop_tabs/tab_drag_controller.h"
 #include "newtab/new_tab_scheme.h"
 
@@ -73,6 +74,11 @@ int main(int argc, char *argv[]) {
   auto *songFinderSettings = new SongFinderSettings(&app);
   auto *songRecognition = new SongRecognitionService(songFinderSettings, &app);
   auto *mediaDownload = new MediaDownloadService(dataDir, &app);
+  if (qEnvironmentVariableIntValue("ARDALI_FEATURE_DIAGNOSTICS") == 1) {
+    auto *diagnostics = new PerformanceDiagnostics(
+        &tabManager, profileService.adBlockService(), audioEffects, songRecognition, &app);
+    diagnostics->start();
+  }
 
   BrowserServices services;
   services.profile = profileService.profile();
