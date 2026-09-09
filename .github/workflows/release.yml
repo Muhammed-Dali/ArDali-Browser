@@ -8,7 +8,7 @@ on:
       release_ref:
         description: Existing v-prefixed release tag to build and publish
         required: true
-        default: v6.1.2
+        default: v7.0.0
 
 permissions:
   contents: write
@@ -26,7 +26,7 @@ jobs:
           apt-get update
           DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
             build-essential ca-certificates cmake ffmpeg gh git ninja-build nodejs \
-            libssl-dev qt6-base-dev qt6-image-formats-plugins qt6-svg-dev \
+            libssl-dev libpsl-dev pkg-config qt6-base-dev qt6-image-formats-plugins qt6-svg-dev \
             qt6-webengine-dev xauth xvfb zstd
 
       - name: Checkout
@@ -41,11 +41,11 @@ jobs:
 
       - name: Configure and build
         run: |
-          cmake -S browser -B browser/build -G Ninja \
+          cmake -S . -B build -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_INSTALL_PREFIX=/usr \
             -DCMAKE_INSTALL_BINDIR=lib/ardali-browser
-          cmake --build browser/build --parallel 2
+          cmake --build build --parallel 2
 
       - name: Test
         env:
@@ -53,16 +53,16 @@ jobs:
           QTWEBENGINE_DISABLE_SANDBOX: "1"
           QTWEBENGINE_CHROMIUM_FLAGS: --no-sandbox --disable-gpu
         run: |
-          xvfb-run -a ctest --test-dir browser/build --output-on-failure \
+          xvfb-run -a ctest --test-dir build --output-on-failure \
             -E '^browser-tab-attach-stress$'
 
       - name: Assemble portable Linux archive
         run: |
           version="${RELEASE_REF#v}"
           stage="${GITHUB_WORKSPACE}/release-root"
-          DESTDIR="${stage}" cmake --install browser/build
+          DESTDIR="${stage}" cmake --install build
           install -dm755 "${stage}/usr/bin"
-          ln -s ../lib/ardali-browser/ardali-browser "${stage}/usr/bin/ardali-browser"
+          ln -sf ../lib/ardali-browser/ardali-browser "${stage}/usr/bin/ardali-browser"
           tar --zstd -C "${stage}" -cf "ardali-browser-${version}-linux-x86_64.tar.zst" usr
           sha256sum "ardali-browser-${version}-linux-x86_64.tar.zst" > SHA256SUMS
 
@@ -74,5 +74,6 @@ jobs:
             --repo "${GITHUB_REPOSITORY}" \
             --title "ArDali Browser ${RELEASE_REF#v}" \
             --notes-file "docs/RELEASE_NOTES_v${RELEASE_REF#v}.md" \
+            --clobber \
             "ardali-browser-${RELEASE_REF#v}-linux-x86_64.tar.zst" \
             SHA256SUMS

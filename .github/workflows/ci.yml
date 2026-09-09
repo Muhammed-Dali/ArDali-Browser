@@ -42,7 +42,7 @@ jobs:
           apt-get update
           DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
             build-essential ca-certificates cmake ffmpeg git ninja-build nodejs \
-            libssl-dev qt6-base-dev qt6-image-formats-plugins qt6-svg-dev \
+            libssl-dev libpsl-dev pkg-config qt6-base-dev qt6-image-formats-plugins qt6-svg-dev \
             qt6-webengine-dev xauth xvfb
 
       - name: Install Fedora build dependencies
@@ -51,6 +51,7 @@ jobs:
         run: |
           dnf install -y \
             cmake ffmpeg-free gcc-c++ git ninja-build nodejs openssl-devel \
+            libpsl-devel pkgconf-pkg-config \
             qt6-qtbase-devel qt6-qtimageformats qt6-qtsvg-devel \
             qt6-qtwebengine-devel xorg-x11-server-Xvfb xorg-x11-xauth
 
@@ -59,7 +60,7 @@ jobs:
         shell: bash
         run: |
           pacman -Syu --noconfirm --needed \
-            cmake ffmpeg git ninja nodejs openssl \
+            cmake ffmpeg git ninja nodejs openssl libpsl pkgconf \
             qt6-base qt6-imageformats qt6-svg qt6-webengine \
             xorg-server-xvfb xorg-xauth
 
@@ -69,10 +70,10 @@ jobs:
           submodules: false
 
       - name: Configure
-        run: cmake -S browser -B browser/build -G Ninja -DCMAKE_BUILD_TYPE=Release
+        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
 
       - name: Build
-        run: cmake --build browser/build --parallel 2
+        run: cmake --build build --parallel 2
 
       - name: Test
         env:
@@ -82,5 +83,5 @@ jobs:
         run: |
           # The three-window fixture is covered by the local and clean-package
           # gates; nested CI containers do not reliably start its third renderer.
-          xvfb-run -a ctest --test-dir browser/build --output-on-failure \
+          xvfb-run -a ctest --test-dir build --output-on-failure \
             -E '^browser-tab-attach-stress$'

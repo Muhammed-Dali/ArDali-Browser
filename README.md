@@ -5,146 +5,144 @@
 <h1 align="center">ArDali Browser</h1>
 
 <p align="center">
-  <strong>Gizlilik odaklı, yüksek performanslı ve entegre odyofil ses motoruna sahip modern Qt 6 / C++20 masaüstü web tarayıcısı</strong>
+  <strong>A privacy-focused, high-performance Qt 6 / C++20 desktop web browser featuring an adaptive parallel download engine and an integrated audiophile DSP sound system.</strong>
 </p>
 
 <p align="center">
-  <a href="https://github.com/Muhammed-Dali/ArDali-Browser/releases/tag/v7.0.0"><img src="https://img.shields.io/badge/release-v7.0.0-007ACC.svg?style=flat-square" alt="Sürüm v7.0.0"></a>
-  <a href="LICENSE"><img src="https://img.shields.io/badge/license-GPL--3.0--only-success.svg?style=flat-square" alt="Lisans GPL-3.0"></a>
+  <a href="https://github.com/Muhammed-Dali/ArDali-Browser/releases/tag/v7.0.0"><img src="https://img.shields.io/badge/release-v7.0.0-007ACC.svg?style=flat-square" alt="Release v7.0.0"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-GPL--3.0--only-success.svg?style=flat-square" alt="License GPL-3.0"></a>
   <img src="https://img.shields.io/badge/C%2B%2B-20-00599C.svg?style=flat-square&logo=c%2B%2B" alt="C++20">
   <img src="https://img.shields.io/badge/Qt-6.4+-41CD52.svg?style=flat-square&logo=qt" alt="Qt 6">
   <img src="https://img.shields.io/badge/Platform-Linux-FCC624.svg?style=flat-square&logo=linux&logoColor=black" alt="Linux">
-  <img src="https://img.shields.io/badge/Tests-27%2F27%20Passed-brightgreen.svg?style=flat-square" alt="Test Durumu">
+  <img src="https://img.shields.io/badge/Tests-27%2F27%20Passed-brightgreen.svg?style=flat-square" alt="Test Status">
   <img src="https://img.shields.io/badge/AutoEQ%20Presets-1757-9cf.svg?style=flat-square" alt="AutoEQ">
 </p>
 
 ---
 
-### Hızlı İndirme ve Kurulum Seçenekleri
+### Quick Download & Installation Options
 
-| Kurulum Yöntemi | Komut / Kaynak | Açıklama |
+| Installation Method | Command / Source | Description |
 |---|---|---|
-| **AUR (Binary)** | `yay -S ardali-bin` | Arch Linux / Manjaro için hızlı ikili kurulum |
-| **AUR (Kaynak Kod)** | `yay -S ardali` | Yerel derleme ile sisteminize optimize paket |
-| **ArDali Pacman Deposu** | `sudo pacman -Sy ardali` | Doğrudan resmi pacman repository kurulumu *(repo tanımı gerektirir)* |
-| **GitHub Releases** | [Releases Sayfası](https://github.com/Muhammed-Dali/ArDali-Browser/releases) | Precompiled `.tar.zst` arşivleri ve kaynak kod paketleri |
+| **AUR (Binary)** | `yay -S ardali-bin` | Fast precompiled binary package for Arch Linux / Manjaro |
+| **AUR (Source)** | `yay -S ardali` | Builds natively on your machine, optimized for your CPU |
+| **Official Pacman Repo** | `sudo pacman -Sy ardali` | Direct updates from the official ArDali pacman repository *(requires repo entry)* |
+| **GitHub Releases** | [Releases Page](https://github.com/Muhammed-Dali/ArDali-Browser/releases) | Precompiled standalone `.tar.zst` bundles and source tarballs |
 
 ---
 
 <p align="center">
-  <img src="docs/images/ardali-browser.png" width="100%" alt="ArDali Browser Ana Arayüzü">
+  <img src="docs/images/ardali-browser.png" width="100%" alt="ArDali Browser Hero Interface">
 </p>
 
 ---
 
-## Proje Hakkında
+## About the Project
 
-**ArDali Browser**, modern web standartlarını yerel masaüstü performansı, sıkı kullanıcı gizliliği ve stüdyo kalitesinde ses işleme yetenekleriyle birleştiren bağımsız bir Qt 6 / C++20 masaüstü web tarayıcısıdır.
+**ArDali Browser** is an independent, native Qt 6 / C++20 desktop web browser engineered to unite modern web standards, rigorous personal privacy, high-throughput file downloading, and studio-grade sound reproduction.
 
-Chromium tabanlı modern **Qt WebEngine** çekirdeği üzerine inşa edilen ArDali Browser; harici eklentilere veya üçüncü taraf bulut servislerine bağımlı kalmadan tam donanımlı bir internet deneyimi sunar. Yerleşik reklam/takip engelleyicisi, adaptif parçalı indirme motoru, yerel şifrelenmiş parola kasası, anlık müzik tanıma teknolojisi ve 1.750'den fazla kulaklık için kalibre edilmiş AutoEQ profillerine sahip 32-bant stüdyo ekolayzırı tek bir entegre mimaride buluşur.
-
----
-
-## Öne Çıkan Özellikler ve Avantajlar
-
-- **Yerel Qt 6 & C++20 Mimarisi:** Web tabanlı arayüz hantallığı olmadan, düşük bellek tüketimi ve anında tepki veren Fusion karanlık tema tasarımı.
-- **Donanım Hızlandırmalı Web Çekirdeği:** Sıfır kopyalı GPU video kod çözümü, alt süreç bellek politikası ve bellek baskısı izleyicisi ile optimize kaynak yönetimi.
-- **GeneralDownloadManager (Adaptif Çoklu Bağlantı):** İndirme hızını katlayan 1 → 2 → 4 → 8 adaptif paralel bağlantı motoru, iş çalma (work stealing), dinamik parça tahsisi ve otomatik hata kurtarma.
-- **Akıllı Omnibox & Çoklu Arama:** Geçmiş, yer imleri ve sık ziyaret edilen siteleri anında puanlayan akıllı adres çubuğu; DuckDuckGo, Google, Brave ve Bing arama önerileri.
-- **ArDali Blocker & Gizlilik Kalkanı:** Temel, İdeal ve Kapsamlı modlarıyla ağ istek filtreleme, DOM kozmetik filtreleme, YouTube scriptlet izolasyonu ve izleme parametresi temizliği.
-- **Sıfır-Bulut Parola Yöneticisi:** PBKDF2-HMAC-SHA256 ve AES-256-GCM ile tamamen cihazınızda şifrelenen yerel kasa; otomatik form doldurma ve kayıt baloncuğu.
-- **Hassas İzin Yönetimi (Site Controls):** Kamera, mikrofon, konum, bildirimler ve açılır pencereler için alan adı bazlı anlık izin denetimi ve otomatik izin sıfırlama.
-- **DALI Web Audio & 1.757 AutoEQ Profili:** 32-bant peaking ekolayzır, BASS FX Reverb, Dynamic Compressor, Limiter, Stereo Widener ve popüler kulaklıklar için fabrikasyon kalibrasyon profilleri.
-- **ArDali Pulse (Müzik Tanıma):** Tarayıcıda veya sistemde çalan şarkıları doğrudan mikrofon veya sistem çıkışından tanıyan yerleşik ses analiz aracı.
-- **Kusursuz Linux Entegrasyonu:** XDG `.desktop` uyumluluğu, 16px'ten 1024px'e hicolor simge seti ve Wayland/X11 tam desteği.
+Built on top of the Chromium-powered **Qt WebEngine** foundation, ArDali Browser delivers a full-featured internet experience without relying on bloated third-party extensions or intrusive cloud synchronizations. Everything operates locally on your device: an ad and tracking blocker, an adaptive segmented download manager, an encrypted password vault, instant music recognition, and a 32-band peaking equalizer with over 1,750 calibrated AutoEQ headphone correction profiles.
 
 ---
 
-## Ekran Görüntüleri ve Detaylı Özellik İncelemesi
+## Key Features and Advantages
 
-### 1. Modern Ana Arayüz ve Akıllı Yeni Sekme Deneyimi
+- **Native Qt 6 & C++20 Architecture:** Zero Electron or web-wrapper overhead. Fast startup, minimal idle RAM consumption, and a responsive Fusion dark theme designed specifically for Linux desktop environments.
+- **Hardware-Accelerated WebEngine:** Zero-copy GPU video decoding pipelines, early driver initialization, a child subprocess memory allocator, and active memory pressure monitoring.
+- **GeneralDownloadManager (Adaptive Parallel Engine):** Multi-stream downloader that automatically scales connections from **1 → 2 → 4 → 8** parallel streams, featuring dynamic work-stealing, chunk pre-allocation, part-level retries, and HTTP 429 throttling backoff.
+- **Smart Omnibox Navigation:** Composite candidate ranking engine combining browser history, bookmarks, and frequent sites with domain normalization and real-time search suggestions (DuckDuckGo, Google, Brave, Bing).
+- **ArDali Blocker & Privacy Shield:** Three protection modes (Basic, Balanced, and Aggressive) supporting network request interception, CSS cosmetic filtering, scriptlet injection, and tracking parameter stripping.
+- **Zero-Cloud Encrypted Password Vault:** AES-256-GCM encryption with PBKDF2-HMAC-SHA256 key derivation. Completely local, zero-leak credential storage with intelligent in-page autofill and save prompts.
+- **Granular Origin Permissions (Site Controls):** Instant toolbar bubble to monitor and toggle permissions per site for Camera, Microphone, Geolocation, Notifications, Popups, and JavaScript optimization, backed by automatic hygiene policies.
+- **DALI Web Audio & 1,757 AutoEQ Presets:** 32-band peaking equalizer, BASS FX Reverb, Dynamic Compressor, Brickwall Limiter, Stereo Widener, and factory-calibrated frequency curves for thousands of audiophile headphones.
+- **ArDali Pulse (Song Recognition):** Built-in audio analyzer that identifies playing music directly from system audio or microphone input without third-party services.
+- **Seamless Linux Desktop Integration:** Strict XDG desktop standards, complete hicolor icon sets (16px through 1024px), and Wayland/X11 compatibility.
 
-![ArDali Browser Ana Arayüz](docs/images/ardali-browser.png)
+---
 
-> **Ana Tarayıcı Penceresi & Yeni Sekme Sayfası (`ardali://newtab`)**
+## Screenshots & Feature Walkthrough
+
+### 1. Modern Desktop Interface & Smart New Tab Experience
+
+![ArDali Browser Main Interface](docs/images/ardali-browser.png)
+
+> **Main Browser Window & New Tab Page (`ardali://newtab`)**
 >
-> ArDali Browser, odaklanmayı kolaylaştıran modern bir karanlık arayüz sunar. Özelleştirilebilir yeni sekme ekranında dijital saat, hızlı arama çubuğu, tek tıkla erişilebilen sık kullanılan siteler, aktif indirme durumu ve izleme parametresi koruma kartları yer alır. Üst araç çubuğunda sekmelerin anlık bellek tüketimini gösteren akıllı sekme kartları, donanım ivmeli throbber animasyonları ve yer imleri çubuğu bulunur.
+> ArDali Browser features a distraction-free dark interface. The customizable New Tab page provides an integrated digital clock, a search bar with fast engine switching, one-click speed dials, active download widgets, and real-time tracking parameter protection metrics. The top tab strip features active memory hover cards, GPU-accelerated throbber animations, and a sleek bookmarks bar.
 
 ---
 
-### 2. ArDali Blocker — Yerleşik Reklam ve Takip Koruması
+### 2. ArDali Blocker — Integrated Ad and Tracker Protection
 
 ![ArDali Blocker](docs/images/ardali-blocker.png)
 
-> **ArDali Blocker Denetim Merkezi (`ardali://blocker`)**
+> **ArDali Blocker Dashboard (`ardali://blocker`)**
 >
-> Kullanıcı gizliliğini en üst düzeyde korumak için tasarlanan ArDali Blocker; **Temel (%35 - Hafif)**, **İdeal (%65 - Dengeli)** ve **Kapsamlı (%95 - Güçlü)** olmak üzere 3 farklı filtreleme kademesi sunar. EasyList, EasyPrivacy, Peter Lowe ve özel Türkçe filtre kurallarını yerel olarak işler. Web sayfalarındaki reklam alanlarını DOM üzerinden temizleyen kozmetik filtreler, istenmeyen açılır pencereleri kapatan koruma mekanizmaları ve katı alan adı engelleme desteği mevcuttur.
+> Designed to preserve bandwidth and privacy, ArDali Blocker offers three distinct operational tiers: **Basic (35% - Light)**, **Ideal (65% - Balanced)**, and **Comprehensive (95% - Strict)**. It evaluates EasyList, EasyPrivacy, Peter Lowe, and regional filter lists locally. Advanced cosmetic filtering eliminates blank ad spaces, scriptlet injection mitigates anti-adblock mechanisms, and strict blocking prevents unwanted popups.
 
 ---
 
-### 3. Şifre Yöneticisi — Yerel Şifrelenmiş Güvenli Kasa
+### 3. Password Manager — Encrypted Local Credential Vault
 
-![Şifre Yöneticisi](docs/images/password-manager.png)
+![Password Manager](docs/images/password-manager.png)
 
-> **Güvenli Kimlik Bilgisi Kasası (`ardali://passwords`)**
+> **Secure Local Vault (`ardali://passwords`)**
 >
-> Kullanıcı parolalarınız hiçbir bulut sunucusuna gönderilmez ve cihazlar arasında paylaşılmaz. ArDali Güvenli Kasa, **PBKDF2** anahtar türetimi ve **AES-256-GCM** kriptografik şifreleme ile verilerinizi yerel diskte izole biçimde muhafaza eder. Oturum açma alanları tespit edildiğinde güvenli otomatik doldurma (autofill) sunulur ve yeni şifreler ana parolayla kilitlenen kasaya tek tıkla kaydedilebilir.
+> Your passwords are never transmitted to cloud servers. ArDali's Credential Vault uses **PBKDF2** key derivation and **AES-256-GCM** encryption to safeguard credentials in isolated disk storage. When login fields are detected, the browser securely offers autofill options, while newly entered credentials can be added to the master-password-protected vault with a single click.
 
 ---
 
-### 4. ArDali Pulse — Entegre Şarkı ve Ses Tanıma
+### 4. ArDali Pulse — Real-Time Music & Audio Recognition
 
 ![ArDali Pulse](docs/images/ardali-pulse.png)
 
-> **Şarkı Bulucu & Frekans Analizörü (`ardali://song-finder`)**
+> **Song Finder & Spectrum Analyzer (`ardali://song-finder`)**
 >
-> Web'de gezinirken veya masaüstünüzdeki herhangi bir uygulamada çalan müziği merak ettiğinizde harici eklenti aramanıza gerek kalmaz. ArDali Pulse; sistem ses çıkışını veya mikrofonu dinleyerek çalan parçayı saniyeler içinde analiz eder, şarkı adı, sanatçı ve albüm bilgilerini geçmiş listenize kaydeder.
+> Whether music is playing in a browser tab or any other desktop application, ArDali Pulse captures and identifies the track within seconds using system audio or microphone input. Recognition history, artist names, and album details are archived locally for quick reference.
 
 ---
 
-### 5. Gelişmiş İndirme Yöneticisi ve Adaptif İndirme Motoru
+### 5. Advanced Download Manager & Adaptive Parallel Engine
 
-![İndirme Yöneticisi](docs/images/downloads.png)
+![Downloads Manager](docs/images/downloads.png)
 
-> **İndirmeler Merkezi (`ardali://downloads`) ve Toolbar İndirme Açılır Penceresi**
+> **Downloads Center (`ardali://downloads`) & Toolbar Download Popup**
 >
-> Tarayıcının çekirdeğinde yer alan **GeneralDownloadManager**, indirme bağlantılarını analiz ederek sunucu `Range` başlığını destekliyorsa dosyayı otomatik olarak parçalara böler. Ağ durumuna göre bağlantı sayısını dinamik olarak **1 → 2 → 4 → 8** akışına yükseltir. Sunucu kısıtlamalarında geriye dönük hız adaptasyonu yapar, kesilen indirmeleri kaldığı bayttan devam ettirir ve parça düzeyinde otomatik yeniden deneme (part-level retry) uygular.
+> Powered by the **GeneralDownloadManager** engine, the browser analyzes incoming links and leverages HTTP `Range` headers to split files into concurrent chunks. The engine dynamically ramps connection counts from **1 → 2 → 4 → 8** streams depending on latency and server capabilities, resumes interrupted downloads from the exact byte, and performs automatic chunk-level retries.
 
 ---
 
-### 6. 32-Bant Profesyonel Ekolayzır & 1.757 AutoEQ Profili
+### 6. 32-Band Studio Equalizer & 1,757 AutoEQ Presets
 
-![Ses Efektleri ve Ekolayzır](docs/images/audio-effects.png)
+![Audio Effects and Equalizer](docs/images/audio-effects.png)
 
-> **DALI Web Audio Ses İşleme Laboratuvarı (`ardali://audio-effects` & `ardali://eq-presets`)**
+> **DALI Web Audio Processing Suite (`ardali://audio-effects` & `ardali://eq-presets`)**
 >
-> Odyofiller ve müzikseverler için geliştirilen ses motoru, web üzerindeki tüm medya oynatımlarını yüksek çözünürlüklü 32-bant peaking filtreleri ile işler. Sistemde **BASS FX Reverb, Dinamik Kompresör, Brickwall Limiter, True Peak Limiter, Parametrik EQ, Dynamic EQ, Netleştirici (Exciter), De-esser, Akıllı Noise Gate, Stereo Widener v2 ve Echo** modülleri yer alır. Ayrıca Sony, Sennheiser, AKG, Beyerdynamic, Apple, Bose ve Audio-Technica gibi markaların binlerce kulaklığı için hazırlanmış **1.757 adet AutoEQ frekans düzeltme profili** pakete dahil olarak gelir.
+> Geared toward audiophiles, this system routes web media through 32 precision peaking filters. The suite features **BASS FX Reverb, Dynamic Compressor, Brickwall Limiter, True Peak Limiter, Parametric EQ, Dynamic EQ, Harmonic Exciter, De-esser, Intelligent Noise Gate, Stereo Widener v2, and Echo**. Furthermore, **1,757 calibrated AutoEQ headphone profiles** (covering Sony, Sennheiser, AKG, Beyerdynamic, Apple, Bose, and Audio-Technica) are bundled out of the box.
 
 ---
 
-## Kurulum Yöntemleri
+## Installation Methods
 
 ### 1. Arch Linux / Manjaro (AUR)
 
-ArDali Browser, Arch User Repository (AUR) üzerinde resmi olarak paketlenmiştir:
+ArDali Browser is officially packaged in the Arch User Repository:
 
-**Hazır derlenmiş ikili (binary) paket:**
+**Precompiled binary package:**
 ```bash
 yay -S ardali-bin
 ```
 
-**Kaynak koddan derlenen AUR paketi:**
+**Source package (compiled locally):**
 ```bash
 yay -S ardali
 ```
 
 ---
 
-### 2. ArDali Pacman Deposu ile Kurulum
+### 2. Official ArDali Pacman Repository
 
-ArDali pacman deposunu kullanarak doğrudan sistem güncelleme kanalına dahil edebilirsiniz.
-
-`/etc/pacman.conf` dosyanızın sonuna aşağıdaki satırları ekleyin:
+To receive regular updates directly through `pacman`, append the following lines to `/etc/pacman.conf`:
 
 ```ini
 [ardali]
@@ -152,7 +150,7 @@ SigLevel = Optional TrustAll
 Server = https://github.com/Muhammed-Dali/ArDali-Browser/releases/download/pacman-repo
 ```
 
-Ardından paket veritabanını güncelleyip tarayıcıyı yükleyin:
+Then update your package databases and install:
 
 ```bash
 sudo pacman -Sy ardali
@@ -160,12 +158,12 @@ sudo pacman -Sy ardali
 
 ---
 
-### 3. GitHub Releases Üzerinden Kurulum
+### 3. Standalone GitHub Releases Archive
 
-Doğrudan derlenmiş arşiv ile kurulum yapmak için:
+For a direct, package-manager-free installation:
 
-1. [GitHub Releases](https://github.com/Muhammed-Dali/ArDali-Browser/releases) sayfasından en son `ardali-browser-7.0.0-linux-x86_64.tar.zst` arşivini indirin.
-2. Arşivi açıp sistem kök dizinine kopyalayın:
+1. Download the latest `ardali-browser-7.0.0-linux-x86_64.tar.zst` from the [GitHub Releases](https://github.com/Muhammed-Dali/ArDali-Browser/releases) page.
+2. Extract the archive and merge the directory tree into `/usr`:
 
 ```bash
 tar -I zstd -xvf ardali-browser-7.0.0-linux-x86_64.tar.zst
@@ -174,17 +172,17 @@ sudo cp -r usr/* /usr/
 
 ---
 
-## Kaynak Koddan Derleme (Source Build)
+## Building from Source
 
-### 1. Sistem Bağımlılıkları
+### 1. System Prerequisites
 
-ArDali Browser'ı derlemek için C++20 destekli bir derleyici, CMake, Ninja ve Qt 6 geliştirme kütüphaneleri gereklidir:
+Building ArDali Browser requires a C++20-compliant compiler, CMake, Ninja, and Qt 6 development libraries:
 
 **Arch Linux / Manjaro:**
 ```bash
 sudo pacman -S --needed base-devel cmake ninja git nodejs \
   qt6-base qt6-webengine qt6-svg qt6-imageformats \
-  openssl libpsl ffmpeg
+  openssl libpsl pkgconf ffmpeg
 ```
 
 **Ubuntu 24.04+ / Debian 13+:**
@@ -192,47 +190,47 @@ sudo pacman -S --needed base-devel cmake ninja git nodejs \
 sudo apt update
 sudo apt install build-essential cmake ninja-build git nodejs \
   qt6-base-dev qt6-webengine-dev libqt6svg6-dev libqt6webenginewidgets6 \
-  libssl-dev libpsl-dev ffmpeg
+  libssl-dev libpsl-dev pkg-config ffmpeg
 ```
 
 **Fedora 39+:**
 ```bash
 sudo dnf install gcc-c++ cmake ninja-build git nodejs \
   qt6-qtbase-devel qt6-qtwebengine-devel qt6-qtsvg-devel \
-  openssl-devel libpsl-devel ffmpeg-free
+  openssl-devel libpsl-devel pkgconf-pkg-config ffmpeg-free
 ```
 
 ---
 
-### 2. Derleme Adımları
+### 2. Compilation Steps
 
 ```bash
-# Depoyu klonlayın
+# Clone the repository
 git clone https://github.com/Muhammed-Dali/ArDali-Browser.git
 cd ArDali-Browser
 
-# CMake ile Release konfigürasyonunu oluşturun
+# Configure with CMake (Release mode)
 cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
 
-# Çoklu çekirdekle derleyin
+# Compile across all available CPU cores
 cmake --build build -j$(nproc)
 ```
 
-### 3. Çalıştırma ve Test
+### 3. Running & Verifying
 
-Derleme tamamlandıktan sonra tarayıcıyı doğrudan derleme dizininden çalıştırabilirsiniz:
+Run the browser directly from the build directory:
 
 ```bash
 ./build/ardali-browser
 ```
 
-Tüm otomatik test süitini (27 test) çalıştırmak için:
+Execute the full automated test suite (27 standalone test targets):
 
 ```bash
 ctest --test-dir build --output-on-failure
 ```
 
-Sisteme kurmak için:
+Install directly to the system prefix:
 
 ```bash
 sudo cmake --install build
@@ -240,23 +238,23 @@ sudo cmake --install build
 
 ---
 
-## Geliştirici Bölümü (Development)
+## Developer Section & Project Architecture
 
-ArDali Browser modüler ve temiz bir C++ mimarisine sahiptir:
+ArDali Browser employs a clean, decoupled C++ module structure:
 
-- **`browser/native/core/`**: Profil yönetimi, akıllı adres çözümleyici, arama önerileri ve donanım hızlandırma ayarları.
-- **`browser/native/desktop_tabs/`**: Sekme şeridi, sürükle-bırak denetleyicisi, hover kartları ve bellek baskı monitörü.
-- **`browser/native/downloads/`**: `GeneralDownloadManager` adaptif paralel indirme motoru, UI modeli ve platform kayıt defteri.
-- **`browser/native/blocker/`**: `ArDaliBlockerEngine`, kural seti yöneticisi, kozmetik runtime ve kalkan butonu.
-- **`browser/native/passwords/`**: Şifrelenmiş `CredentialVault`, otomatik doldurma denetleyicisi ve kilit açma diyalogları.
-- **`browser/native/audio/` & `browser/native/eq/`**: Web Audio DSP entegrasyonu, 32-bant PEQ ve 1.757 AutoEQ JSON deposu.
-- **`browser/resources/`**: AdBlock kuralları, hazır AutoEQ JSON dosyaları ve Linux `.desktop` şablonu.
-- **`packaging/`**: Arch Linux PKGBUILD, AUR tanımları ve pacman repo konfigürasyonları.
+- **`browser/native/core/`**: Profile lifecycle, smart address input resolver, async search suggestions, and GPU hardware acceleration.
+- **`browser/native/desktop_tabs/`**: Tab layout engine, tab drag-and-drop controller, tab hover memory cards, and memory pressure monitoring.
+- **`browser/native/downloads/`**: `GeneralDownloadManager` adaptive multi-connection engine, transfer UI models, and platform registries.
+- **`browser/native/blocker/`**: `ArDaliBlockerEngine`, cosmetic CSS injection runtime, ruleset list manager, and toolbar shield button.
+- **`browser/native/passwords/`**: Encrypted `CredentialVault`, autofill coordinator, unlock dialogs, and credential save bubbles.
+- **`browser/native/audio/` & `browser/native/eq/`**: Web Audio DSP pipeline, 32-band peaking equalizer, and 1,757 AutoEQ JSON profiles.
+- **`browser/resources/`**: AdBlock filter catalogs, AutoEQ frequency JSON files, and Linux `.desktop.in` templates.
+- **`packaging/`**: Arch Linux PKGBUILD recipes, AUR manifests, and pacman repository publication definitions.
 
 ---
 
-## Lisans ve Telif Hakları
+## License & Third-Party Notices
 
-- **ArDali Browser**: [GNU General Public License v3.0](LICENSE) kapsamında lisanslanmıştır.
-- **AdBlock Kural Setleri & Filtreler**: EasyList, EasyPrivacy, Peter Lowe ve topluluk filtreleri kendi lisanslarına tabidir. Detaylı telif bildirimleri için [NOTICE.txt](browser/resources/adblock/NOTICE.txt) dosyasını inceleyebilirsiniz.
-- **AutoEQ Veritabanı**: Jaakko Pasanen ve AutoEQ topluluğu tarafından sunulan açık kaynaklı kulaklık düzeltme eğrilerine dayanır.
+- **ArDali Browser**: Licensed under the [GNU General Public License v3.0](LICENSE).
+- **AdBlock Filters & Rulesets**: EasyList, EasyPrivacy, Peter Lowe, and community filter lists retain their respective copyrights and licenses. See [NOTICE.txt](browser/resources/adblock/NOTICE.txt) for full details.
+- **AutoEQ Profiles**: Derived from calibrated headphone frequency response curves curated by Jaakko Pasanen and the AutoEQ project.
