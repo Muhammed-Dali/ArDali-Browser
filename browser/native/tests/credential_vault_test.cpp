@@ -32,8 +32,8 @@ int main() {
   assert(vault.save({QStringLiteral("https://example.com"), QStringLiteral("test-user"), QStringLiteral("synthetic-secret-B"), QString{}}, &updated) && updated);
   file.close(); assert(file.open(QIODevice::ReadOnly)); const QString secondNonce = QJsonDocument::fromJson(file.readAll()).object().value(QStringLiteral("records")).toArray().at(0).toObject().value(QStringLiteral("nonce")).toString();
   assert(firstNonce != secondNonce);
-  CredentialSecret revealed; assert(vault.reveal(first.id, &revealed) && revealed.password == QStringLiteral("synthetic-secret-B") && revealed.iconPngBase64 == QStringLiteral("aWNvbg=="));
-  assert(vault.list().front().iconPngBase64 == QStringLiteral("aWNvbg=="));
+  CredentialSecret revealed; assert(vault.reveal(first.id, &revealed) && revealed.password == QStringLiteral("synthetic-secret-B") && revealed.iconPngBase64.isEmpty());
+  assert(vault.list().front().iconPngBase64.isEmpty());
   const QString changedMaster = QStringLiteral("ChangedSynthetic#2027");
   assert(vault.changeMasterPassword(master, changedMaster));
   vault.lock(); assert(vault.isLocked() && vault.list().isEmpty());

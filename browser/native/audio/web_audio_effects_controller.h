@@ -85,6 +85,7 @@ class WebAudioEffectsController final : public QObject {
   Status status() const { return status_; }
 
   void registerWebView(QWebEngineView *view, const QUrl &initialUrl = QUrl());
+  void unregisterWebView(QWebEngineView *view);
   void applyToView(QWebEngineView *view);
   int audioEnabledWebViewCount() const;
   int activeGraphViewCount() const;

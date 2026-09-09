@@ -1,4 +1,5 @@
 #include "browser_icons.h"
+#include "search_engine_definition.h"
 
 #include <QGuiApplication>
 #include <QPainter>
@@ -63,6 +64,33 @@ QString BrowserIcons::resourcePath(BrowserIcon id) {
     case BrowserIcon::Close: return QStringLiteral(":/browser-icons/close.svg");
     case BrowserIcon::Audio: return QStringLiteral(":/browser-icons/audio.svg");
     case BrowserIcon::Memory: return QStringLiteral(":/browser-icons/memory.svg");
+    case BrowserIcon::Location: return QStringLiteral(":/browser-icons/location.svg");
+    case BrowserIcon::Camera: return QStringLiteral(":/browser-icons/camera.svg");
+    case BrowserIcon::Microphone: return QStringLiteral(":/browser-icons/microphone.svg");
+    case BrowserIcon::Notification: return QStringLiteral(":/browser-icons/notification.svg");
+    case BrowserIcon::Cookie: return QStringLiteral(":/browser-icons/cookie.svg");
+    case BrowserIcon::Javascript: return QStringLiteral(":/browser-icons/javascript.svg");
+    case BrowserIcon::Image: return QStringLiteral(":/browser-icons/image.svg");
+    case BrowserIcon::Popup: return QStringLiteral(":/browser-icons/popup.svg");
+    case BrowserIcon::ChevronRight: return QStringLiteral(":/browser-icons/chevron-right.svg");
+    case BrowserIcon::ChevronDown: return QStringLiteral(":/browser-icons/chevron-down.svg");
+    case BrowserIcon::Fonts: return QStringLiteral(":/browser-icons/fonts.svg");
+    case BrowserIcon::Mouse: return QStringLiteral(":/browser-icons/mouse.svg");
+    case BrowserIcon::Pdf: return QStringLiteral(":/browser-icons/pdf.svg");
+    case BrowserIcon::LocationSlash: return QStringLiteral(":/browser-icons/location-slash.svg");
+    case BrowserIcon::CameraSlash: return QStringLiteral(":/browser-icons/camera-slash.svg");
+    case BrowserIcon::MicrophoneSlash: return QStringLiteral(":/browser-icons/microphone-slash.svg");
+    case BrowserIcon::NotificationSlash: return QStringLiteral(":/browser-icons/notification-slash.svg");
+    case BrowserIcon::ArrowLeft: return QStringLiteral(":/browser-icons/arrow-left.svg");
+    case BrowserIcon::JavascriptSlash: return QStringLiteral(":/browser-icons/javascript-slash.svg");
+    case BrowserIcon::ImageSlash: return QStringLiteral(":/browser-icons/image-slash.svg");
+    case BrowserIcon::PopupSlash: return QStringLiteral(":/browser-icons/popup-slash.svg");
+    case BrowserIcon::ProtectedContent: return QStringLiteral(":/browser-icons/protected-content.svg");
+    case BrowserIcon::InsecureContent: return QStringLiteral(":/browser-icons/insecure-content.svg");
+    case BrowserIcon::SiteData: return QStringLiteral(":/browser-icons/site-data.svg");
+    case BrowserIcon::JsOptimize: return QStringLiteral(":/browser-icons/js-optimize.svg");
+    case BrowserIcon::Fullscreen: return QStringLiteral(":/browser-icons/fullscreen.svg");
+    case BrowserIcon::Tune: return QStringLiteral(":/browser-icons/tune.svg");
   }
   return {};
 }
@@ -158,44 +186,26 @@ QIcon BrowserIcons::youtubeMusicIcon() {
 }
 
 QIcon BrowserIcons::searchEngineIcon(const QString &engineName) {
-  const QString lower = engineName.trimmed().toLower();
-  QString svgPath;
-  QString icoPath;
-  if (lower.contains(QLatin1String("google"))) {
-    svgPath = QStringLiteral(":/search-engines/google.svg");
-    icoPath = QStringLiteral(":/search-engines/google.ico");
-  } else if (lower.contains(QLatin1String("duckduckgo")) || lower.contains(QLatin1String("duck"))) {
-    svgPath = QStringLiteral(":/search-engines/duckduckgo.svg");
-    icoPath = QStringLiteral(":/search-engines/duckduckgo.ico");
-  } else if (lower.contains(QLatin1String("brave"))) {
-    svgPath = QStringLiteral(":/search-engines/brave.svg");
-    icoPath = QStringLiteral(":/search-engines/brave.ico");
-  } else if (lower.contains(QLatin1String("bing"))) {
-    svgPath = QStringLiteral(":/search-engines/bing.svg");
-    icoPath = QStringLiteral(":/search-engines/bing.ico");
-  }
-
-  if (!svgPath.isEmpty()) {
-    QSvgRenderer renderer(svgPath);
-    if (renderer.isValid()) {
-      QIcon result;
-      for (const int size : {16, 18, 20, 24, 32, 36, 48, 64}) {
-        QPixmap pm(size, size);
-        pm.fill(Qt::transparent);
-        QPainter p(&pm);
-        p.setRenderHint(QPainter::Antialiasing);
-        p.setRenderHint(QPainter::SmoothPixmapTransform);
-        renderer.render(&p, QRectF(0, 0, size, size));
-        result.addPixmap(pm);
-      }
-      return result;
-    }
-  }
-
-  if (!icoPath.isEmpty()) {
-    QIcon icon(icoPath);
-    if (!icon.isNull()) return icon;
-  }
+  QIcon engineIcon(ardali::core::searchEngineResourcePath(engineName));
+  if (!engineIcon.isNull()) return engineIcon;
 
   return icon(BrowserIcon::Search);
+}
+
+QIcon BrowserIcons::combinedMediaCaptureIcon() {
+  QIcon result;
+  for (const int size : {16, 18, 20, 24, 32, 48}) {
+    QPixmap px(size, size);
+    px.fill(Qt::transparent);
+    QPainter p(&px);
+    p.setRenderHint(QPainter::Antialiasing);
+    const int subSize = size * 11 / 20;
+    QPixmap cam = renderTinted(resourcePath(BrowserIcon::Camera), subSize, QColor(QStringLiteral("#58a6c7")));
+    QPixmap mic = renderTinted(resourcePath(BrowserIcon::Microphone), subSize, QColor(QStringLiteral("#58a6c7")));
+    p.drawPixmap(0, (size - subSize) / 2, cam);
+    p.drawPixmap(size - subSize, (size - subSize) / 2, mic);
+    p.end();
+    result.addPixmap(px);
+  }
+  return result;
 }

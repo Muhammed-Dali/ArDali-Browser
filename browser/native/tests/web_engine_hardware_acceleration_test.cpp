@@ -67,7 +67,8 @@ int main(int argc, char *argv[]) {
 
     const QStringList flags = WebEngineHardwareAcceleration::standardHardwareFlags(status);
     assert(!flags.isEmpty());
-    assert(flags.contains(QStringLiteral("--enable-features=AcceleratedVideoDecoder,AcceleratedVideoDecodeLinuxGL,AcceleratedVideoDecodeLinuxZeroCopyGL")));
+    assert(flags.contains(QStringLiteral("--enable-features=AcceleratedVideoDecoder,AcceleratedVideoDecodeLinuxGL")));
+    assert(!flags.contains(QStringLiteral("AcceleratedVideoDecodeLinuxZeroCopyGL")));
     assert(flags.contains(QStringLiteral("--use-gl=angle")));
     assert(flags.contains(QStringLiteral("--use-angle=gl")));
     assert(flags.contains(QStringLiteral("--enable-gpu-rasterization")));
@@ -88,7 +89,7 @@ int main(int argc, char *argv[]) {
   {
     const QString existing = QStringLiteral("--remote-debugging-port=9222 --enable-features=ExistingFeatA,ExistingFeatB --disable-features=OldDisable --custom-flag");
     const QStringList hwFlags = {
-        QStringLiteral("--enable-features=AcceleratedVideoDecoder,AcceleratedVideoDecodeLinuxGL,AcceleratedVideoDecodeLinuxZeroCopyGL"),
+        QStringLiteral("--enable-features=AcceleratedVideoDecoder,AcceleratedVideoDecodeLinuxGL"),
         QStringLiteral("--use-gl=angle"),
         QStringLiteral("--use-angle=gl"),
         QStringLiteral("--enable-gpu-rasterization"),
@@ -99,7 +100,7 @@ int main(int argc, char *argv[]) {
     // Check that existing features and new features are merged into single --enable-features and --disable-features
     assert(merged.contains(QStringLiteral("AcceleratedVideoDecoder")));
     assert(merged.contains(QStringLiteral("AcceleratedVideoDecodeLinuxGL")));
-    assert(merged.contains(QStringLiteral("AcceleratedVideoDecodeLinuxZeroCopyGL")));
+    assert(!merged.contains(QStringLiteral("AcceleratedVideoDecodeLinuxZeroCopyGL")));
     assert(merged.contains(QStringLiteral("ExistingFeatA")));
     assert(merged.contains(QStringLiteral("ExistingFeatB")));
     assert(merged.contains(QStringLiteral("OldDisable")));
@@ -131,7 +132,8 @@ int main(int argc, char *argv[]) {
     assert(envFlags.contains(QStringLiteral("--initial-user-flag")));
     if (cached.videoDecodeCapability == HardwareVideoDecodeCapability::Supported) {
       assert(envFlags.contains(QStringLiteral("AcceleratedVideoDecoder")));
-      assert(envFlags.contains(QStringLiteral("AcceleratedVideoDecodeLinuxZeroCopyGL")));
+      assert(envFlags.contains(QStringLiteral("AcceleratedVideoDecodeLinuxGL")));
+      assert(!envFlags.contains(QStringLiteral("AcceleratedVideoDecodeLinuxZeroCopyGL")));
     }
   }
 

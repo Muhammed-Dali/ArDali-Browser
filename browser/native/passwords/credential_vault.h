@@ -2,10 +2,14 @@
 
 #include <QDateTime>
 #include <QObject>
+#include <QSet>
 #include <QString>
 #include <QUrl>
 #include <QVector>
 #include <QRecursiveMutex>
+
+#include <chrono>
+#include <functional>
 
 class QTimer;
 
@@ -15,6 +19,8 @@ struct CredentialMetadata {
   QString username;
   QDateTime createdAt;
   QDateTime updatedAt;
+  // Compatibility-only field. Favicon bytes are resolved from the browser's
+  // local favicon database and are never persisted in the credential vault.
   QString iconPngBase64;
   QString vaultId;
   QString vaultName;
@@ -37,6 +43,7 @@ class CredentialVault final : public QObject {
 
   static QString canonicalHttpsOrigin(const QUrl &url);
   static bool isStrongMasterPassword(const QString &password);
+  static int cooldownForAttempt(int attempts);
 
   bool exists() const;
   bool isLocked() const;
@@ -54,6 +61,13 @@ class CredentialVault final : public QObject {
   QVector<CredentialMetadata> list() const;
   bool reveal(const QString &id, CredentialSecret *secret) const;
   QVector<CredentialMetadata> forOrigin(const QUrl &url) const;
+  bool hasOrigin(const QString &origin) const;
+
+  bool isUnlockRateLimited() const;
+  int remainingUnlockCooldownSeconds() const;
+  int failedUnlockAttempts() const;
+  void resetFailedUnlockAttempts();
+  void setTimeProviderForTesting(std::function<qint64()> provider);
 
  signals:
   void lockStateChanged(bool locked);
@@ -69,8 +83,21 @@ class CredentialVault final : public QObject {
   void touch() const;
   void secureClear(QByteArray *value) const;
 
+  void loadSecurityState();
+  void persistSecurityState();
+  void clearPersistedSecurityState();
+  void recordFailedUnlockAttempt();
+  qint64 nowEpochMs() const;
+
+  static QString originHash(const QString &canonicalOrigin);
+  void loadOriginIndex();
+  void persistOriginIndex();
+  void clearPersistedOriginIndex();
+
   QString directory_;
   QString path_;
+  QString securityStatePath_;
+  QString originIndexPath_;
   mutable QString lastError_;
   QByteArray salt_;
   QByteArray wrappedKey_;
@@ -78,8 +105,12 @@ class CredentialVault final : public QObject {
   QByteArray wrappedTag_;
   mutable QByteArray dataKey_;
   QVector<Record> records_;
-  mutable qint64 nextUnlockAtMs_ = 0;
+  mutable QSet<QString> storedOriginHashes_;
   mutable int failedUnlocks_ = 0;
+  mutable qint64 cooldownExpiryEpochMs_ = 0;
+  mutable std::chrono::steady_clock::time_point cooldownExpirySteady_{};
+  mutable bool hasSteadyExpiry_ = false;
+  std::function<qint64()> timeProvider_;
   mutable qint64 lastActivityMs_ = 0;
   mutable QRecursiveMutex mutex_;
   int autoLockTimeoutMs_ = 5 * 60 * 1000;

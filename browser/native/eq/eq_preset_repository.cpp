@@ -21,8 +21,15 @@ QString presetRoot() {
   const QDir executable(QCoreApplication::applicationDirPath());
   const QString local = executable.filePath(QStringLiteral("eq-presets"));
   if (QFile::exists(local)) return local;
-  // install(TARGETS ... bin) + install(DIRECTORY ... share/ardali-browser)
-  return executable.filePath(QStringLiteral("../share/ardali-browser/eq-presets"));
+  const QString share1 = executable.filePath(QStringLiteral("../share/ardali-browser/eq-presets"));
+  if (QFile::exists(share1)) return share1;
+  const QString share2 = executable.filePath(QStringLiteral("../../share/ardali-browser/eq-presets"));
+  if (QFile::exists(share2)) return share2;
+  const QString sysShare = QStringLiteral("/usr/share/ardali-browser/eq-presets");
+  if (QFile::exists(sysShare)) return sysShare;
+  const QString localShare = QStringLiteral("/usr/local/share/ardali-browser/eq-presets");
+  if (QFile::exists(localShare)) return localShare;
+  return share1;
 }
 
 QString normalizedText(const EqPreset &preset) {

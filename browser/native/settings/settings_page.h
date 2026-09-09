@@ -12,6 +12,7 @@ class BrowserProfileService;
 class QLineEdit;
 class QListWidget;
 class QStackedWidget;
+class PrivacyDetailSubpage;
 
 namespace ardali {
 class TabPerformanceManager;
@@ -48,6 +49,7 @@ class SettingsPage final : public QWidget {
     std::function<void(const QString &)> setSearchEngine;
     std::function<void()> syncNewTabs;
     std::function<void()> refreshBookmarks;
+    std::function<void()> refreshBookmarkBarVisibility;
     std::function<void()> refreshTabStyle;
     std::function<ardali::TabPerformanceManager *()> performanceManager;
   };
@@ -89,6 +91,9 @@ class SettingsPage final : public QWidget {
   QListWidget *sidebar_ = nullptr;
   QStackedWidget *content_ = nullptr;
   QLineEdit *search_ = nullptr;
+  QStackedWidget *privacyStack_ = nullptr;
+  PrivacyDetailSubpage *privacySubpage_ = nullptr;
+  std::function<void()> updatePrivacySubtitles_;
   QHash<Category, int> categoryIndexes_;
   QHash<int, QString> searchKeywords_;
   QHash<int, int> contentSidebarRows_;

@@ -2,6 +2,7 @@
 
 #include "browser_icons.h"
 #include "browser_profile_service.h"
+#include "general_download_manager.h"
 #include "security_utils.h"
 
 #include <QAction>
@@ -32,6 +33,7 @@
 #include <QProgressBar>
 #include <QPushButton>
 #include <QPixmap>
+#include <QResizeEvent>
 #include <QSaveFile>
 #include <QScrollArea>
 #include <QSignalBlocker>
@@ -52,8 +54,8 @@ QWidget *card(QWidget *parent, const QString &title, QVBoxLayout **content = nul
   auto *widget = new QFrame(parent);
   widget->setObjectName(QStringLiteral("media-download-card"));
   auto *layout = new QVBoxLayout(widget);
-  layout->setContentsMargins(20, 18, 20, 20);
-  layout->setSpacing(13);
+  layout->setContentsMargins(16, 14, 16, 16);
+  layout->setSpacing(10);
   auto *headingRow = new QHBoxLayout;
   headingRow->setSpacing(8);
   auto *heading = new QLabel(title, widget);
@@ -118,10 +120,56 @@ QString friendlyEngineStatus(const QString &message) {
   return message;
 }
 
+bool isMediaNotFoundMessage(const QString &message) {
+  const QString lowered = message.toLower();
+  return lowered.contains(QStringLiteral("video veya ses bulunamadı"))
+      || lowered.contains(QStringLiteral("indirilebilir medya bulunamadı"))
+      || lowered.contains(QStringLiteral("desteklenen"))
+      || lowered.contains(QStringLiteral("unsupported url"));
+}
+
+bool isDirectGeneralFileUrl(const QUrl &url) {
+  if (!url.isValid()) return false;
+  const QString scheme = url.scheme().toLower();
+  if (scheme != QLatin1String("http") && scheme != QLatin1String("https")) return false;
+
+  static const QSet<QString> generalExtensions{
+    QStringLiteral("iso"), QStringLiteral("img"), QStringLiteral("vhd"), QStringLiteral("dmg"),
+    QStringLiteral("zip"), QStringLiteral("rar"), QStringLiteral("7z"), QStringLiteral("tar"),
+    QStringLiteral("gz"), QStringLiteral("tgz"), QStringLiteral("bz2"), QStringLiteral("xz"),
+    QStringLiteral("exe"), QStringLiteral("msi"), QStringLiteral("apk"), QStringLiteral("deb"),
+    QStringLiteral("rpm"), QStringLiteral("appimage"), QStringLiteral("pkg"), QStringLiteral("bin"),
+    QStringLiteral("pdf"), QStringLiteral("doc"), QStringLiteral("docx"), QStringLiteral("xls"),
+    QStringLiteral("xlsx"), QStringLiteral("ppt"), QStringLiteral("pptx"), QStringLiteral("epub"),
+    QStringLiteral("png"), QStringLiteral("jpg"), QStringLiteral("jpeg"), QStringLiteral("gif"),
+    QStringLiteral("webp"), QStringLiteral("svg"), QStringLiteral("ico"), QStringLiteral("bmp"),
+    QStringLiteral("tiff")
+  };
+
+  const QString path = url.path().toLower();
+  const int lastDot = path.lastIndexOf(QLatin1Char('.'));
+  if (lastDot >= 0 && lastDot < path.length() - 1) {
+    const QString ext = path.mid(lastDot + 1);
+    if (generalExtensions.contains(ext)) return true;
+  }
+
+  const QString query = url.query().toLower();
+  if (!query.isEmpty()) {
+    for (const QString &ext : generalExtensions) {
+      if (query.contains(QLatin1Char('.') + ext)) return true;
+    }
+  }
+
+  return false;
+}
+
 QString friendlyFailure(const QString &message) {
   const QString lowered = message.toLower();
   if (lowered.contains(QStringLiteral("yt-dlp")) || lowered.contains(QStringLiteral("executable")))
     return QStringLiteral("İndirme motoru hazırlanamadı.");
+  if (lowered.contains(QStringLiteral("unsupported url"))
+      || lowered.contains(QStringLiteral("desteklenen indirilebilir medya bulunamadı")))
+    return QStringLiteral("Bu bağlantıda desteklenen video veya ses bulunamadı.");
   return message;
 }
 
@@ -149,25 +197,28 @@ QPushButton *actionButton(BrowserIcon icon, const QString &text, const QString &
 QWidget *emptyState(const QIcon &icon, const QString &title, const QString &description, QWidget *parent) {
   auto *container = new QWidget(parent);
   container->setObjectName(QStringLiteral("media-empty-state"));
-  auto *layout = new QVBoxLayout(container);
-  layout->setContentsMargins(16, 15, 16, 15);
-  layout->setSpacing(7);
+  auto *layout = new QHBoxLayout(container);
+  layout->setContentsMargins(10, 8, 10, 8);
+  layout->setSpacing(10);
   auto *iconLabel = new QLabel(container);
   iconLabel->setObjectName(QStringLiteral("media-empty-icon"));
-  iconLabel->setPixmap(icon.pixmap(28, 28));
+  iconLabel->setPixmap(icon.pixmap(22, 22));
+  iconLabel->setFixedSize(28, 28);
   iconLabel->setAlignment(Qt::AlignCenter);
   auto *titleLabel = new QLabel(title, container);
   titleLabel->setObjectName(QStringLiteral("media-empty-title"));
-  titleLabel->setAlignment(Qt::AlignCenter);
   auto *descriptionLabel = new QLabel(description, container);
   descriptionLabel->setObjectName(QStringLiteral("media-empty-description"));
-  descriptionLabel->setAlignment(Qt::AlignCenter);
   descriptionLabel->setWordWrap(true);
+  auto *textLayout = new QVBoxLayout;
+  textLayout->setContentsMargins(0, 0, 0, 0);
+  textLayout->setSpacing(2);
+  textLayout->addWidget(titleLabel);
+  textLayout->addWidget(descriptionLabel);
   layout->addWidget(iconLabel);
-  layout->addWidget(titleLabel);
-  layout->addWidget(descriptionLabel);
+  layout->addLayout(textLayout, 1);
   container->setAccessibleName(title + QStringLiteral(". ") + description);
-  container->setMinimumHeight(120);
+  container->setMinimumHeight(52);
   return container;
 }
 
@@ -177,6 +228,7 @@ MediaDownloadPage::MediaDownloadPage(MediaDownloadService *service,
                                      BrowserProfileService *profileService,
                                      QWidget *parent)
     : QWidget(parent), service_(service), profileService_(profileService) {
+  generalDownloads_ = profileService_ ? profileService_->downloadManager() : nullptr;
   setObjectName(QStringLiteral("media-download-page"));
   setAccessibleName(QStringLiteral("İndirmeler ve medya indirici"));
   setProperty("lightTheme", QGuiApplication::styleHints()->colorScheme() == Qt::ColorScheme::Light);
@@ -198,12 +250,21 @@ MediaDownloadPage::MediaDownloadPage(MediaDownloadService *service,
   scroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
   auto *content = new QWidget(scroll);
   content->setObjectName(QStringLiteral("media-download-content"));
-  content->setMinimumWidth(360);
-  auto *layout = new QVBoxLayout(content);
-  layout->setContentsMargins(30, 26, 30, 36);
-  layout->setSpacing(16);
+  content->setMinimumWidth(320);
+  viewportLayout_ = new QHBoxLayout(content);
+  viewportLayout_->setContentsMargins(18, 20, 18, 28);
+  viewportLayout_->setSpacing(0);
+  pageColumn_ = new QWidget(content);
+  pageColumn_->setObjectName(QStringLiteral("media-download-column"));
+  pageColumn_->setMaximumWidth(1160);
+  pageColumn_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+  auto *layout = new QVBoxLayout(pageColumn_);
+  layout->setContentsMargins(0, 0, 0, 0);
+  layout->setSpacing(12);
+  viewportLayout_->addWidget(pageColumn_);
+  viewportLayout_->setAlignment(pageColumn_, Qt::AlignHCenter | Qt::AlignTop);
 
-  auto *hero = new QWidget(content);
+  auto *hero = new QWidget(pageColumn_);
   hero->setObjectName(QStringLiteral("media-download-hero"));
   auto *heroLayout = new QVBoxLayout(hero);
   heroLayout->setContentsMargins(2, 0, 2, 4);
@@ -219,44 +280,46 @@ MediaDownloadPage::MediaDownloadPage(MediaDownloadService *service,
   layout->addWidget(hero);
 
   QVBoxLayout *sourceLayout = nullptr;
-  QWidget *sourceCard = card(content, QStringLiteral("MEDYA İNDİR"), &sourceLayout);
+  QWidget *sourceCard = card(pageColumn_, QStringLiteral("BAĞLANTIDAN İNDİR"), &sourceLayout);
   sourceCard->setObjectName(QStringLiteral("media-source-card"));
   auto *sourceHint = new QLabel(
-      QStringLiteral("Bir bağlantı yapıştırın veya web sayfasındayken araç çubuğundaki İndir düğmesini kullanın."), sourceCard);
+      QStringLiteral("Bir medya veya doğrudan dosya bağlantısı yapıştırın."), sourceCard);
   sourceHint->setObjectName(QStringLiteral("media-source-hint"));
   sourceHint->setWordWrap(true);
   sourceLayout->addWidget(sourceHint);
-  auto *sourceGrid = new QGridLayout;
-  sourceGrid->setHorizontalSpacing(8);
-  sourceGrid->setVerticalSpacing(9);
+  sourceGrid_ = new QGridLayout;
+  sourceGrid_->setContentsMargins(0, 0, 0, 0);
+  sourceGrid_->setHorizontalSpacing(8);
+  sourceGrid_->setVerticalSpacing(8);
   urlInput_ = new QLineEdit(sourceCard);
   urlInput_->setObjectName(QStringLiteral("media-url-input"));
-  urlInput_->setPlaceholderText(QStringLiteral("Medya bağlantısını buraya yapıştırın"));
-  urlInput_->setAccessibleName(QStringLiteral("Medya bağlantısı"));
-  urlInput_->setAccessibleDescription(QStringLiteral("HTTP veya HTTPS medya bağlantısı"));
+  urlInput_->setPlaceholderText(QStringLiteral("Medya veya doğrudan dosya bağlantısını buraya yapıştırın"));
+  urlInput_->setAccessibleName(QStringLiteral("İndirme bağlantısı"));
+  urlInput_->setAccessibleDescription(QStringLiteral("HTTP veya HTTPS medya veya dosya bağlantısı"));
   auto *paste = actionButton(BrowserIcon::Clipboard, QStringLiteral("Yapıştır"),
                              QStringLiteral("Panodaki bağlantıyı yapıştır ve analiz et"), sourceCard);
   paste->setObjectName(QStringLiteral("media-paste-button"));
+  paste->setProperty("tertiary", true);
   analyzeButton_ = actionButton(BrowserIcon::Search, QStringLiteral("Analiz Et"),
-                                QStringLiteral("Bağlantıdaki medyayı analiz et"), sourceCard, "secondary");
+                                QStringLiteral("Bağlantıdaki medyayı analiz et"), sourceCard, "primary");
   analyzeButton_->setObjectName(QStringLiteral("media-analyze-button"));
   cancelAnalysisButton_ = actionButton(BrowserIcon::Close, QStringLiteral("İptal"),
                                        QStringLiteral("Devam eden analizi iptal et"), sourceCard, "danger");
   cancelAnalysisButton_->setObjectName(QStringLiteral("media-cancel-analysis-button"));
   cancelAnalysisButton_->hide();
-  sourceGrid->addWidget(urlInput_, 0, 0, 1, 3);
-  sourceGrid->addWidget(paste, 1, 0);
-  sourceGrid->addWidget(analyzeButton_, 1, 1);
-  sourceGrid->addWidget(cancelAnalysisButton_, 1, 2);
-  sourceGrid->setColumnStretch(2, 1);
-  sourceLayout->addLayout(sourceGrid);
+  sourceGrid_->addWidget(urlInput_, 0, 0);
+  sourceGrid_->addWidget(paste, 0, 1);
+  sourceGrid_->addWidget(analyzeButton_, 0, 2);
+  sourceGrid_->addWidget(cancelAnalysisButton_, 0, 3);
+  sourceGrid_->setColumnStretch(0, 1);
+  sourceLayout->addLayout(sourceGrid_);
   auto *statusRow = new QHBoxLayout;
   statusRow->setSpacing(10);
   analysisProgress_ = new QProgressBar(sourceCard);
   analysisProgress_->setObjectName(QStringLiteral("media-analysis-progress"));
   analysisProgress_->setTextVisible(false);
   analysisProgress_->setRange(0, 0);
-  analysisProgress_->setFixedSize(64, 5);
+  analysisProgress_->setFixedSize(120, 6);
   analysisProgress_->hide();
   statusLabel_ = new QLabel(sourceCard);
   statusLabel_->setObjectName(QStringLiteral("media-status-label"));
@@ -270,17 +333,21 @@ MediaDownloadPage::MediaDownloadPage(MediaDownloadService *service,
   layout->addWidget(sourceCard);
 
   QVBoxLayout *analysisLayout = nullptr;
-  analysisCard_ = card(content, QStringLiteral("İÇERİK VE İNDİRME SEÇENEKLERİ"), &analysisLayout);
+  analysisCard_ = card(pageColumn_, QStringLiteral("İÇERİK VE İNDİRME SEÇENEKLERİ"), &analysisLayout);
   analysisCard_->setObjectName(QStringLiteral("media-analysis-card"));
-  auto *summary = new QHBoxLayout;
-  summary->setSpacing(16);
+  summaryGrid_ = new QGridLayout;
+  summaryGrid_->setContentsMargins(0, 0, 0, 0);
+  summaryGrid_->setHorizontalSpacing(14);
+  summaryGrid_->setVerticalSpacing(9);
   thumbnailLabel_ = new QLabel(analysisCard_);
-  thumbnailLabel_->setFixedSize(176, 100);
+  thumbnailLabel_->setFixedSize(160, 90);
   thumbnailLabel_->setAlignment(Qt::AlignCenter);
   thumbnailLabel_->setPixmap(BrowserIcons::icon(BrowserIcon::Video).pixmap(40, 40));
   thumbnailLabel_->setAccessibleName(QStringLiteral("Medya önizlemesi"));
   thumbnailLabel_->setObjectName(QStringLiteral("media-thumbnail"));
-  auto *summaryText = new QVBoxLayout;
+  summaryText_ = new QWidget(analysisCard_);
+  auto *summaryText = new QVBoxLayout(summaryText_);
+  summaryText->setContentsMargins(0, 1, 0, 0);
   summaryText->setSpacing(5);
   titleLabel_ = new QLabel(analysisCard_);
   titleLabel_->setObjectName(QStringLiteral("media-title"));
@@ -293,19 +360,21 @@ MediaDownloadPage::MediaDownloadPage(MediaDownloadService *service,
   summaryText->addWidget(titleLabel_);
   summaryText->addWidget(detailsLabel_);
   summaryText->addStretch();
-  summary->addWidget(thumbnailLabel_);
-  summary->addLayout(summaryText, 1);
-  analysisLayout->addLayout(summary);
+  summaryGrid_->addWidget(thumbnailLabel_, 0, 0);
+  summaryGrid_->addWidget(summaryText_, 0, 1);
+  summaryGrid_->setColumnStretch(1, 1);
+  analysisLayout->addLayout(summaryGrid_);
 
   analysisOptions_ = new QWidget(analysisCard_);
   analysisOptions_->setObjectName(QStringLiteral("media-analysis-options"));
   auto *optionsLayout = new QVBoxLayout(analysisOptions_);
-  optionsLayout->setContentsMargins(0, 6, 0, 0);
-  optionsLayout->setSpacing(14);
+  optionsLayout->setContentsMargins(0, 3, 0, 0);
+  optionsLayout->setSpacing(10);
   auto *typeLabel = new QLabel(QStringLiteral("Ne indirmek istiyorsunuz?"), analysisOptions_);
   typeLabel->setObjectName(QStringLiteral("media-option-label"));
   optionsLayout->addWidget(typeLabel);
   auto *typeRow = new QHBoxLayout;
+  typeRow->setContentsMargins(0, 0, 0, 0);
   typeRow->setSpacing(8);
   videoModeButton_ = actionButton(BrowserIcon::Video, QStringLiteral("Video"),
                                   QStringLiteral("Videoyu görüntü ve ses olarak indir"), analysisOptions_);
@@ -314,7 +383,8 @@ MediaDownloadPage::MediaDownloadPage(MediaDownloadService *service,
   for (QPushButton *button : {videoModeButton_, audioModeButton_}) {
     button->setCheckable(true);
     button->setProperty("segment", true);
-    button->setMinimumHeight(44);
+    button->setMinimumSize(112, 34);
+    button->setMaximumWidth(150);
     typeRow->addWidget(button, 1);
   }
   videoModeButton_->setObjectName(QStringLiteral("media-video-mode"));
@@ -338,15 +408,15 @@ MediaDownloadPage::MediaDownloadPage(MediaDownloadService *service,
 
   auto *audioFormatPanel = new QWidget(analysisOptions_);
   audioFormatPanel->setObjectName(QStringLiteral("audio-format-panel"));
-  auto *audioFormatLayout = new QGridLayout(audioFormatPanel);
-  audioFormatLayout->setContentsMargins(0, 0, 0, 0);
-  audioFormatLayout->setHorizontalSpacing(8);
-  audioFormatLayout->setVerticalSpacing(8);
+  audioFormatChoicesLayout_ = new QGridLayout(audioFormatPanel);
+  audioFormatChoicesLayout_->setContentsMargins(0, 0, 0, 0);
+  audioFormatChoicesLayout_->setHorizontalSpacing(7);
+  audioFormatChoicesLayout_->setVerticalSpacing(7);
   const QList<QPair<QString, QString>> primaryAudioFormats{
-      {QStringLiteral("original"), QStringLiteral("Orijinal\nEn hızlı")},
-      {QStringLiteral("mp3"), QStringLiteral("MP3\nEn uyumlu")},
-      {QStringLiteral("m4a"), QStringLiteral("M4A\nYüksek kalite")},
-      {QStringLiteral("opus"), QStringLiteral("Opus\nVerimli")}};
+      {QStringLiteral("original"), QStringLiteral("Orijinal · En hızlı")},
+      {QStringLiteral("mp3"), QStringLiteral("MP3 · Uyumlu")},
+      {QStringLiteral("m4a"), QStringLiteral("M4A · Kaliteli")},
+      {QStringLiteral("opus"), QStringLiteral("Opus · Verimli")}};
   auto *audioFormatGroup = new QButtonGroup(audioFormatPanel);
   audioFormatGroup->setExclusive(true);
   int audioColumn = 0;
@@ -356,7 +426,7 @@ MediaDownloadPage::MediaDownloadPage(MediaDownloadService *service,
     button->setProperty("audioMode", mode);
     button->setProperty("formatChip", true);
     button->setCheckable(true);
-    button->setMinimumHeight(58);
+    button->setMinimumHeight(38);
     button->setAccessibleName(label.section(QLatin1Char('\n'), 0, 0) + QStringLiteral(" ses formatı"));
     if (mode != QLatin1String("original") && !service_->ffmpegAvailable()) {
       button->setEnabled(false);
@@ -364,7 +434,7 @@ MediaDownloadPage::MediaDownloadPage(MediaDownloadService *service,
       button->setAccessibleDescription(QStringLiteral("Medya dönüştürme bileşeni kullanılamadığı için devre dışı"));
     }
     audioFormatGroup->addButton(button);
-    audioFormatLayout->addWidget(button, 0, audioColumn++);
+    audioFormatChoicesLayout_->addWidget(button, 0, audioColumn++);
     connect(button, &QPushButton::clicked, this, [this, mode] { setMode(mode); });
   }
   moreAudioFormats_ = new QComboBox(audioFormatPanel);
@@ -377,7 +447,7 @@ MediaDownloadPage::MediaDownloadPage(MediaDownloadService *service,
   moreAudioFormats_->setEnabled(service_->ffmpegAvailable());
   if (!service_->ffmpegAvailable())
     moreAudioFormats_->setToolTip(QStringLiteral("Ek ses formatları için medya dönüştürme bileşeni gerekli."));
-  audioFormatLayout->addWidget(moreAudioFormats_, 1, 0, 1, 4);
+  audioFormatChoicesLayout_->addWidget(moreAudioFormats_, 1, 0, 1, 4);
   audioFormatPanel->hide();
   optionsLayout->addWidget(audioFormatPanel);
 
@@ -402,21 +472,21 @@ MediaDownloadPage::MediaDownloadPage(MediaDownloadService *service,
 
   advancedOptions_ = new QWidget(analysisOptions_);
   advancedOptions_->setObjectName(QStringLiteral("media-advanced-options"));
-  auto *advancedLayout = new QGridLayout(advancedOptions_);
-  advancedLayout->setContentsMargins(14, 13, 14, 14);
-  advancedLayout->setHorizontalSpacing(10);
-  advancedLayout->setVerticalSpacing(10);
-  auto *detailsFormatLabel = new QLabel(QStringLiteral("Codec / container ayrıntısı"), advancedOptions_);
+  advancedLayout_ = new QGridLayout(advancedOptions_);
+  advancedLayout_->setContentsMargins(12, 10, 12, 11);
+  advancedLayout_->setHorizontalSpacing(9);
+  advancedLayout_->setVerticalSpacing(8);
+  detailsFormatLabel_ = new QLabel(QStringLiteral("Codec / container ayrıntısı"), advancedOptions_);
   formatBox_ = new QComboBox(advancedOptions_);
   formatBox_->setObjectName(QStringLiteral("media-format-details"));
   formatBox_->setAccessibleName(QStringLiteral("Ayrıntılı format seçimi"));
-  advancedLayout->addWidget(detailsFormatLabel, 0, 0);
-  advancedLayout->addWidget(formatBox_, 0, 1, 1, 3);
+  advancedLayout_->addWidget(detailsFormatLabel_, 0, 0);
+  advancedLayout_->addWidget(formatBox_, 0, 1, 1, 3);
   subtitlesBox_ = new QCheckBox(QStringLiteral("Altyazıları da indir"), advancedOptions_);
   subtitlesBox_->setObjectName(QStringLiteral("media-subtitles-option"));
   subtitlesBox_->setAccessibleName(QStringLiteral("Mevcut altyazıları da indir"));
-  advancedLayout->addWidget(subtitlesBox_, 1, 0, 1, 2);
-  auto *sectionLabel = new QLabel(QStringLiteral("Zaman aralığı"), advancedOptions_);
+  advancedLayout_->addWidget(subtitlesBox_, 1, 0, 1, 2);
+  sectionLabel_ = new QLabel(QStringLiteral("Zaman aralığı"), advancedOptions_);
   sectionStartBox_ = new QSpinBox(advancedOptions_);
   sectionStartBox_->setRange(0, 604800);
   sectionStartBox_->setSpecialValueText(QStringLiteral("Baştan"));
@@ -427,9 +497,9 @@ MediaDownloadPage::MediaDownloadPage(MediaDownloadService *service,
   sectionEndBox_->setSpecialValueText(QStringLiteral("Sona kadar"));
   sectionEndBox_->setPrefix(QStringLiteral("Bitiş: "));
   sectionEndBox_->setAccessibleName(QStringLiteral("Bölüm bitişi, saniye"));
-  advancedLayout->addWidget(sectionLabel, 2, 0);
-  advancedLayout->addWidget(sectionStartBox_, 2, 1);
-  advancedLayout->addWidget(sectionEndBox_, 2, 2, 1, 2);
+  advancedLayout_->addWidget(sectionLabel_, 2, 0);
+  advancedLayout_->addWidget(sectionStartBox_, 2, 1);
+  advancedLayout_->addWidget(sectionEndBox_, 2, 2, 1, 2);
   playlistBox_ = new QCheckBox(QStringLiteral("Tüm playlist'i indir"), advancedOptions_);
   playlistBox_->setObjectName(QStringLiteral("media-playlist-option"));
   playlistBox_->setToolTip(QStringLiteral("Kapalıyken playlist bağlantılarında yalnızca açık medya indirilir."));
@@ -444,25 +514,25 @@ MediaDownloadPage::MediaDownloadPage(MediaDownloadService *service,
   playlistEndBox_->setPrefix(QStringLiteral("Son öğe: "));
   playlistStartBox_->hide();
   playlistEndBox_->hide();
-  advancedLayout->addWidget(playlistBox_, 3, 0);
-  advancedLayout->addWidget(playlistStartBox_, 3, 1);
-  advancedLayout->addWidget(playlistEndBox_, 3, 2, 1, 2);
-  auto *playlistActionLabel = new QLabel(QStringLiteral("Playlist aracı"), advancedOptions_);
+  advancedLayout_->addWidget(playlistBox_, 3, 0);
+  advancedLayout_->addWidget(playlistStartBox_, 3, 1);
+  advancedLayout_->addWidget(playlistEndBox_, 3, 2, 1, 2);
+  playlistActionLabel_ = new QLabel(QStringLiteral("Playlist aracı"), advancedOptions_);
   playlistActionBox_ = new QComboBox(advancedOptions_);
   playlistActionBox_->setObjectName(QStringLiteral("media-playlist-action"));
   playlistActionBox_->setAccessibleName(QStringLiteral("Playlist için gelişmiş işlem"));
   playlistActionBox_->addItem(QStringLiteral("Medya indir"), QString{});
   playlistActionBox_->addItem(QStringLiteral("Kapak görsellerini indir"), QStringLiteral("playlist-thumbnails"));
   playlistActionBox_->addItem(QStringLiteral("Bağlantıları metin dosyasına kaydet"), QStringLiteral("playlist-links"));
-  advancedLayout->addWidget(playlistActionLabel, 4, 0);
-  advancedLayout->addWidget(playlistActionBox_, 4, 1, 1, 3);
+  advancedLayout_->addWidget(playlistActionLabel_, 4, 0);
+  advancedLayout_->addWidget(playlistActionBox_, 4, 1, 1, 3);
   advancedOptions_->hide();
   optionsLayout->addWidget(advancedOptions_);
 
   auto *targetPanel = new QFrame(analysisOptions_);
   targetPanel->setObjectName(QStringLiteral("media-target-panel"));
   auto *targetLayout = new QHBoxLayout(targetPanel);
-  targetLayout->setContentsMargins(13, 11, 13, 11);
+  targetLayout->setContentsMargins(11, 8, 10, 8);
   auto *targetIcon = new QLabel(targetPanel);
   targetIcon->setPixmap(BrowserIcons::icon(BrowserIcon::Folder).pixmap(24, 24));
   targetIcon->setAccessibleName(QStringLiteral("Hedef klasör"));
@@ -473,6 +543,8 @@ MediaDownloadPage::MediaDownloadPage(MediaDownloadService *service,
   targetPathLabel_ = new QLabel(targetPanel);
   targetPathLabel_->setObjectName(QStringLiteral("media-target-path"));
   targetPathLabel_->setTextInteractionFlags(Qt::TextSelectableByKeyboard | Qt::TextSelectableByMouse);
+  targetPathLabel_->setMinimumWidth(0);
+  targetPathLabel_->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
   targetText->addWidget(targetNameLabel_);
   targetText->addWidget(targetPathLabel_);
   auto *changeTarget = new QPushButton(QStringLiteral("Değiştir"), targetPanel);
@@ -496,7 +568,7 @@ MediaDownloadPage::MediaDownloadPage(MediaDownloadService *service,
   downloadButton_ = actionButton(BrowserIcon::Download, QStringLiteral("İndir"),
                                  QStringLiteral("Seçilen formatı indirmeye başla"), analysisOptions_, "primary");
   downloadButton_->setObjectName(QStringLiteral("media-primary-download"));
-  downloadButton_->setMinimumSize(138, 46);
+  downloadButton_->setMinimumSize(124, 40);
   downloadRow->addLayout(selectionText, 1);
   downloadRow->addWidget(downloadButton_);
   optionsLayout->addLayout(downloadRow);
@@ -505,7 +577,7 @@ MediaDownloadPage::MediaDownloadPage(MediaDownloadService *service,
   layout->addWidget(analysisCard_);
 
   QVBoxLayout *activeLayout = nullptr;
-  QWidget *activeCard = card(content, QStringLiteral("AKTİF İNDİRMELER"), &activeLayout);
+  QWidget *activeCard = card(pageColumn_, QStringLiteral("AKTİF İNDİRMELER"), &activeLayout);
   activeCard->setObjectName(QStringLiteral("media-active-downloads-card"));
   auto *activeContainer = new QWidget(activeCard);
   activeContainer->setObjectName(QStringLiteral("media-active-jobs"));
@@ -515,7 +587,7 @@ MediaDownloadPage::MediaDownloadPage(MediaDownloadService *service,
   activeLayout->addWidget(activeContainer);
   layout->addWidget(activeCard);
 
-  exportButton_ = new QToolButton(content);
+  exportButton_ = new QToolButton(pageColumn_);
   exportButton_->setObjectName(QStringLiteral("media-export-menu-button"));
   exportButton_->setIcon(BrowserIcons::icon(BrowserIcon::More));
   exportButton_->setText(QStringLiteral("Daha Fazla"));
@@ -531,7 +603,7 @@ MediaDownloadPage::MediaDownloadPage(MediaDownloadService *service,
   exportJson->setToolTip(QStringLiteral("İndirme geçmişini yapılandırılmış veri olarak dışa aktar"));
   exportButton_->setMenu(exportMenu);
   QVBoxLayout *historyLayout = nullptr;
-  QWidget *historyCard = card(content, QStringLiteral("TAMAMLANANLAR VE GEÇMİŞ"), &historyLayout, exportButton_);
+  QWidget *historyCard = card(pageColumn_, QStringLiteral("TAMAMLANANLAR VE GEÇMİŞ"), &historyLayout, exportButton_);
   historyCard->setObjectName(QStringLiteral("media-history-card"));
   auto *historyContainer = new QWidget(historyCard);
   historyContainer->setObjectName(QStringLiteral("media-history-jobs"));
@@ -542,80 +614,90 @@ MediaDownloadPage::MediaDownloadPage(MediaDownloadService *service,
   layout->addWidget(historyCard);
 
   QVBoxLayout *browserLayout = nullptr;
-  QWidget *browserCard = card(content, QStringLiteral("DOSYA İNDİRMELERİ"), &browserLayout);
-  browserCard->setObjectName(QStringLiteral("browser-downloads-card"));
-  auto *browserHint = new QLabel(QStringLiteral("Web sayfalarından indirilen normal dosyalar burada görünür."), browserCard);
+  browserDownloadsCard_ = card(pageColumn_, QStringLiteral("DOSYA İNDİRMELERİ"), &browserLayout);
+  browserDownloadsCard_->setObjectName(QStringLiteral("browser-downloads-card"));
+  auto *browserHint = new QLabel(QStringLiteral("WebEngine tarafından güvenli fallback ile indirilen dosyalar."), browserDownloadsCard_);
   browserHint->setObjectName(QStringLiteral("media-section-hint"));
   browserLayout->addWidget(browserHint);
-  auto *browserContainer = new QWidget(browserCard);
+  auto *browserContainer = new QWidget(browserDownloadsCard_);
   browserContainer->setObjectName(QStringLiteral("browser-downloads-list"));
   browserDownloadsLayout_ = new QVBoxLayout(browserContainer);
   browserDownloadsLayout_->setContentsMargins(0, 0, 0, 0);
   browserDownloadsLayout_->setSpacing(8);
   browserLayout->addWidget(browserContainer);
-  layout->addWidget(browserCard);
+  layout->addWidget(browserDownloadsCard_);
   layout->addStretch();
   scroll->setWidget(content);
   outer->addWidget(scroll);
 
   setStyleSheet(QStringLiteral(R"CSS(
-    #media-download-page, #media-download-content, #media-download-scroll { background:#10151c; color:#edf2f7; border:0; }
-    #media-download-title { color:#f4f7fb; font-size:28px; font-weight:750; }
+    #media-download-page, #media-download-content, #media-download-column,
+    #media-download-scroll { background:#10151c; color:#edf2f7; border:0; }
+    #media-download-title { color:#f4f7fb; font-size:24px; font-weight:750; }
     #media-download-subtitle, #media-source-hint, #media-section-hint, #media-details,
     #media-target-path, #media-status-label { color:#9eabba; font-size:13px; }
-    QFrame#media-source-card, QFrame#media-analysis-card, QFrame#media-active-downloads-card,
-    QFrame#media-history-card, QFrame#browser-downloads-card { background:#181f28; border:1px solid #293440; border-radius:15px; }
+    QFrame#media-source-card, QFrame#media-analysis-card { background:#181f28; border:1px solid #283441; border-radius:12px; }
+    QFrame#media-active-downloads-card, QFrame#media-history-card,
+    QFrame#browser-downloads-card { background:#151c24; border:0; border-radius:12px; }
     #media-download-heading { color:#8ab4f8; font-size:11px; font-weight:750; letter-spacing:1px; }
-    #media-title { color:#f2f6fa; font-size:18px; font-weight:720; }
-    #media-thumbnail { background:#0f151c; border:1px solid #303c49; border-radius:11px; color:#778697; }
+    #media-title { color:#f2f6fa; font-size:17px; font-weight:720; }
+    #media-thumbnail { background:#0f151c; border:0; border-radius:10px; color:#778697; }
     #media-option-label, #media-target-name, #media-selection-summary { color:#edf3f8; font-size:13px; font-weight:650; }
     #media-selection-label { color:#8290a0; font-size:11px; font-weight:650; }
-    QLineEdit, QComboBox, QSpinBox { background:#10171f; color:#edf3f8; border:1px solid #344454; border-radius:9px; padding:7px 10px; min-height:24px; }
-    QLineEdit:focus, QComboBox:focus, QSpinBox:focus { border-color:#8ab4f8; }
+    QLineEdit, QComboBox, QSpinBox { background:#10171f; color:#edf3f8; border:1px solid #344454; border-radius:9px; padding:6px 10px; min-height:22px; }
+    QLineEdit:hover, QComboBox:hover, QSpinBox:hover { border-color:#465a6d; }
+    QLineEdit:focus, QComboBox:focus, QSpinBox:focus { border-color:#70b4f4; }
     QComboBox QAbstractItemView { background:#1b232d; color:#edf3f8; selection-background-color:#30445a; }
-    QPushButton, QToolButton { background:#242e39; color:#e9f0f7; border:1px solid #354352; border-radius:9px; padding:7px 12px; }
+    QPushButton, QToolButton { background:#242e39; color:#e9f0f7; border:1px solid #354352; border-radius:9px; padding:6px 11px; }
     QPushButton:hover, QToolButton:hover { background:#2d3a47; border-color:#4a5d70; }
-    QPushButton:focus, QToolButton:focus { border:1px solid #8ab4f8; }
+    QPushButton:focus, QToolButton:focus { border:1px solid #70b4f4; }
     QPushButton:pressed, QToolButton:pressed { background:#1d2731; }
-    QPushButton[primary="true"] { background:#2476c7; color:#ffffff; border-color:#3188dc; font-size:14px; font-weight:700; }
+    QPushButton[primary="true"] { background:#2476c7; color:#ffffff; border-color:#2476c7; font-size:13px; font-weight:700; }
     QPushButton[primary="true"]:hover { background:#2e86d9; }
+    QPushButton[primary="true"]:pressed { background:#1d65ad; }
     QPushButton[secondary="true"] { background:#263c52; border-color:#3c6489; }
     QPushButton[tertiary="true"] { background:transparent; border-color:#384655; }
     QPushButton[danger="true"] { background:#38262a; color:#ffb3ba; border-color:#624047; }
     QPushButton:disabled, QToolButton:disabled { color:#677481; background:#1a222b; border-color:#29333e; }
-    QPushButton[segment="true"] { background:#111820; min-height:30px; font-size:14px; font-weight:650; }
-    QPushButton[segment="true"]:checked { background:#203e5d; color:#d8ebff; border:2px solid #5da8ef; }
-    QPushButton[formatChip="true"], QPushButton[qualityChip="true"] { background:#111820; text-align:left; min-width:105px; }
-    QPushButton[formatChip="true"]:checked, QPushButton[qualityChip="true"]:checked { background:#213d58; color:#e3f2ff; border:2px solid #5da8ef; }
-    #media-advanced-options { background:#121922; border:1px solid #2d3946; border-radius:11px; }
-    QFrame#media-target-panel { background:#121a23; border:1px solid #2d3a47; border-radius:11px; }
-    QFrame#media-job-card, QFrame#browser-download-row { background:#111820; border:1px solid #2b3743; border-radius:12px; }
+    QPushButton[segment="true"] { background:#111820; min-height:28px; font-size:13px; font-weight:650; }
+    QPushButton[segment="true"]:checked { background:#23496c; color:#e7f3ff; border-color:#5da8ef; }
+    QPushButton[formatChip="true"], QPushButton[qualityChip="true"] { background:#111820; text-align:center; min-width:0; min-height:26px; }
+    QPushButton[formatChip="true"]:checked, QPushButton[qualityChip="true"]:checked { background:#23496c; color:#e7f3ff; border-color:#5da8ef; font-weight:650; }
+    #media-advanced-options { background:#121922; border:0; border-radius:10px; }
+    QFrame#media-target-panel { background:#121a23; border:0; border-radius:10px; }
+    QFrame#media-job-card, QFrame#browser-download-row { background:#111820; border:0; border-radius:10px; }
+    QFrame#general-download-card { background:#111820; border:0; border-radius:10px; }
     QFrame#media-job-card[state="completed"] { border-color:#285444; }
     QFrame#media-job-card[state="failed"] { border-color:#704048; }
-    #media-job-title, #browser-download-title { color:#edf3f8; font-size:14px; font-weight:680; }
-    #media-job-meta, #media-job-progress-text, #browser-download-meta { color:#91a0b0; font-size:12px; }
+    #media-job-title, #general-download-title, #browser-download-title { color:#edf3f8; font-size:14px; font-weight:680; }
+    #media-job-meta, #general-download-meta, #media-job-progress-text,
+    #general-download-progress-text, #browser-download-meta { color:#91a0b0; font-size:12px; }
     #media-job-status { color:#a9cfff; font-size:12px; font-weight:650; }
+    #general-download-status { color:#a9cfff; font-size:12px; font-weight:650; }
     #media-job-error { color:#ffabb4; font-size:12px; }
+    #media-empty-state { background:transparent; }
     #media-empty-title { color:#c9d4de; font-size:13px; font-weight:650; }
     #media-empty-description { color:#8795a4; font-size:12px; }
-    QProgressBar#media-analysis-progress, QProgressBar#media-job-progress { background:#25313d; border:0; border-radius:3px; min-height:5px; max-height:7px; }
-    QProgressBar#media-analysis-progress::chunk, QProgressBar#media-job-progress::chunk { background:#4e9fe8; border-radius:3px; }
+    QProgressBar#media-analysis-progress, QProgressBar#media-job-progress { background:#2b3947; border:0; border-radius:3px; min-height:6px; max-height:7px; }
+    QProgressBar#media-analysis-progress::chunk { background:#68b8f5; border-radius:3px; }
+    QProgressBar#media-job-progress::chunk { background:#4e9fe8; border-radius:3px; }
     QCheckBox { color:#dce5ee; spacing:8px; }
     QMenu { background:#1b232d; color:#edf3f8; border:1px solid #384756; border-radius:9px; padding:6px; }
     QMenu::item { min-height:26px; padding:5px 28px; border-radius:6px; }
     QMenu::item:selected { background:#2b3a48; }
     #media-download-page[lightTheme="true"], #media-download-page[lightTheme="true"] #media-download-content,
-    #media-download-page[lightTheme="true"] #media-download-scroll { background:#f4f7fa; color:#18222d; }
+    #media-download-page[lightTheme="true"] #media-download-scroll,
+    #media-download-page[lightTheme="true"] #media-download-column { background:#f4f7fa; color:#18222d; }
     #media-download-page[lightTheme="true"] #media-download-title,
     #media-download-page[lightTheme="true"] #media-title,
     #media-download-page[lightTheme="true"] #media-option-label,
     #media-download-page[lightTheme="true"] #media-target-name,
     #media-download-page[lightTheme="true"] #media-selection-summary { color:#17212c; }
     #media-download-page[lightTheme="true"] QFrame#media-source-card,
-    #media-download-page[lightTheme="true"] QFrame#media-analysis-card,
+    #media-download-page[lightTheme="true"] QFrame#media-analysis-card { background:#ffffff; border-color:#d9e1e8; }
     #media-download-page[lightTheme="true"] QFrame#media-active-downloads-card,
     #media-download-page[lightTheme="true"] QFrame#media-history-card,
-    #media-download-page[lightTheme="true"] QFrame#browser-downloads-card { background:#ffffff; border-color:#d9e1e8; }
+    #media-download-page[lightTheme="true"] QFrame#browser-downloads-card { background:#ffffff; border:0; }
     #media-download-page[lightTheme="true"] #media-download-subtitle,
     #media-download-page[lightTheme="true"] #media-source-hint,
     #media-download-page[lightTheme="true"] #media-section-hint,
@@ -624,13 +706,17 @@ MediaDownloadPage::MediaDownloadPage(MediaDownloadService *service,
     #media-download-page[lightTheme="true"] #media-status-label { color:#5d6b79; }
     #media-download-page[lightTheme="true"] #media-empty-title,
     #media-download-page[lightTheme="true"] #media-job-title,
+    #media-download-page[lightTheme="true"] #general-download-title,
     #media-download-page[lightTheme="true"] #browser-download-title { color:#17212c; }
     #media-download-page[lightTheme="true"] #media-empty-description,
     #media-download-page[lightTheme="true"] #media-job-meta,
     #media-download-page[lightTheme="true"] #media-job-progress-text,
+    #media-download-page[lightTheme="true"] #general-download-meta,
+    #media-download-page[lightTheme="true"] #general-download-progress-text,
     #media-download-page[lightTheme="true"] #browser-download-meta { color:#5d6b79; }
     #media-download-page[lightTheme="true"] #media-download-heading { color:#1764a8; }
     #media-download-page[lightTheme="true"] #media-job-status { color:#205f95; }
+    #media-download-page[lightTheme="true"] #general-download-status { color:#205f95; }
     #media-download-page[lightTheme="true"] #media-job-error { color:#a92f3a; }
     #media-download-page[lightTheme="true"] QLineEdit,
     #media-download-page[lightTheme="true"] QComboBox,
@@ -639,6 +725,7 @@ MediaDownloadPage::MediaDownloadPage(MediaDownloadService *service,
     #media-download-page[lightTheme="true"] QPushButton[formatChip="true"],
     #media-download-page[lightTheme="true"] QPushButton[qualityChip="true"],
     #media-download-page[lightTheme="true"] QFrame#media-job-card,
+    #media-download-page[lightTheme="true"] QFrame#general-download-card,
     #media-download-page[lightTheme="true"] QFrame#browser-download-row,
     #media-download-page[lightTheme="true"] QFrame#media-target-panel,
     #media-download-page[lightTheme="true"] #media-advanced-options { background:#f7f9fb; color:#17212c; border-color:#d5dee6; }
@@ -745,8 +832,25 @@ MediaDownloadPage::MediaDownloadPage(MediaDownloadService *service,
   });
   connect(service_, &MediaDownloadService::analysisFailed, this, [this](const QString &message) {
     setAnalysisLoading(false);
-    statusLabel_->setText(friendlyFailure(message));
     if (analysis_.title.isEmpty()) analysisCard_->hide();
+
+    const bool mediaNotFound = isMediaNotFoundMessage(message);
+    const QUrl currentUrl = sourceUrl();
+
+    if (mediaNotFound) {
+      if (handleGeneralDownloadIfDirectFile(currentUrl)) {
+        return;
+      }
+      if (hasActiveOrCompletedGeneralDownload(currentUrl)) {
+        statusLabel_->setText(service_ && service_->ytDlpAvailable()
+            ? QStringLiteral("İndirmeye hazır")
+            : QStringLiteral("İndirme motoru hazır."));
+        return;
+      }
+      statusLabel_->setText(QStringLiteral("Bu bağlantıda desteklenen video veya ses bulunamadı."));
+    } else {
+      statusLabel_->setText(friendlyFailure(message));
+    }
   });
   connect(service_, &MediaDownloadService::analysisCancelled, this, [this] {
     setAnalysisLoading(false);
@@ -754,11 +858,127 @@ MediaDownloadPage::MediaDownloadPage(MediaDownloadService *service,
     if (analysis_.title.isEmpty()) analysisCard_->hide();
   });
   connect(service_, &MediaDownloadService::jobsChanged, this, &MediaDownloadPage::refreshJobs);
+  if (generalDownloads_)
+    connect(generalDownloads_, &GeneralDownloadManager::jobsChanged, this, &MediaDownloadPage::refreshJobs);
   if (profileService_)
     connect(profileService_, &BrowserProfileService::downloadsChanged, this, &MediaDownloadPage::refreshBrowserDownloads);
   refreshTargetDirectory();
   refreshJobs();
   refreshBrowserDownloads();
+  updateResponsiveLayout();
+}
+
+void MediaDownloadPage::resizeEvent(QResizeEvent *event) {
+  QWidget::resizeEvent(event);
+  updateResponsiveLayout();
+}
+
+void MediaDownloadPage::updateResponsiveLayout() {
+  if (!sourceGrid_ || !summaryGrid_ || !advancedLayout_) return;
+  if (viewportLayout_) {
+    const int horizontalMargin = std::max(14, (width() - 1160) / 2);
+    viewportLayout_->setContentsMargins(horizontalMargin, 20, horizontalMargin, 28);
+    if (pageColumn_)
+      pageColumn_->setMinimumWidth(std::min(1160, std::max(0, width() - (horizontalMargin * 2))));
+  }
+  const bool narrow = width() < 640;
+  const bool stackedSummary = width() < 560;
+  auto *pasteButton = findChild<QPushButton *>(QStringLiteral("media-paste-button"));
+
+  for (QWidget *widget : {static_cast<QWidget *>(urlInput_), static_cast<QWidget *>(pasteButton),
+                          static_cast<QWidget *>(analyzeButton_),
+                          static_cast<QWidget *>(cancelAnalysisButton_)})
+    if (widget) sourceGrid_->removeWidget(widget);
+  if (narrow) {
+    sourceGrid_->addWidget(urlInput_, 0, 0, 1, 4);
+    sourceGrid_->addWidget(pasteButton, 1, 0);
+    sourceGrid_->addWidget(analyzeButton_, 1, 1);
+    sourceGrid_->addWidget(cancelAnalysisButton_, 1, 2);
+    sourceGrid_->setColumnStretch(0, 0);
+    sourceGrid_->setColumnStretch(1, 0);
+    sourceGrid_->setColumnStretch(2, 0);
+    sourceGrid_->setColumnStretch(3, 1);
+  } else {
+    sourceGrid_->addWidget(urlInput_, 0, 0);
+    sourceGrid_->addWidget(pasteButton, 0, 1);
+    sourceGrid_->addWidget(analyzeButton_, 0, 2);
+    sourceGrid_->addWidget(cancelAnalysisButton_, 0, 3);
+    sourceGrid_->setColumnStretch(0, 1);
+    sourceGrid_->setColumnStretch(1, 0);
+    sourceGrid_->setColumnStretch(2, 0);
+    sourceGrid_->setColumnStretch(3, 0);
+  }
+
+  summaryGrid_->removeWidget(thumbnailLabel_);
+  summaryGrid_->removeWidget(summaryText_);
+  if (stackedSummary) {
+    summaryGrid_->addWidget(thumbnailLabel_, 0, 0, Qt::AlignLeft);
+    summaryGrid_->addWidget(summaryText_, 1, 0);
+    summaryGrid_->setColumnStretch(1, 0);
+  } else {
+    summaryGrid_->addWidget(thumbnailLabel_, 0, 0);
+    summaryGrid_->addWidget(summaryText_, 0, 1);
+    summaryGrid_->setColumnStretch(1, 1);
+  }
+
+  const QList<QWidget *> advancedWidgets{
+      detailsFormatLabel_, formatBox_, subtitlesBox_, sectionLabel_, sectionStartBox_, sectionEndBox_,
+      playlistBox_, playlistStartBox_, playlistEndBox_, playlistActionLabel_, playlistActionBox_};
+  for (QWidget *widget : advancedWidgets) advancedLayout_->removeWidget(widget);
+  if (narrow) {
+    advancedLayout_->addWidget(detailsFormatLabel_, 0, 0, 1, 2);
+    advancedLayout_->addWidget(formatBox_, 1, 0, 1, 2);
+    advancedLayout_->addWidget(subtitlesBox_, 2, 0, 1, 2);
+    advancedLayout_->addWidget(sectionLabel_, 3, 0, 1, 2);
+    advancedLayout_->addWidget(sectionStartBox_, 4, 0);
+    advancedLayout_->addWidget(sectionEndBox_, 4, 1);
+    advancedLayout_->addWidget(playlistBox_, 5, 0, 1, 2);
+    advancedLayout_->addWidget(playlistStartBox_, 6, 0);
+    advancedLayout_->addWidget(playlistEndBox_, 6, 1);
+    advancedLayout_->addWidget(playlistActionLabel_, 7, 0, 1, 2);
+    advancedLayout_->addWidget(playlistActionBox_, 8, 0, 1, 2);
+  } else {
+    advancedLayout_->addWidget(detailsFormatLabel_, 0, 0);
+    advancedLayout_->addWidget(formatBox_, 0, 1, 1, 3);
+    advancedLayout_->addWidget(subtitlesBox_, 1, 0, 1, 2);
+    advancedLayout_->addWidget(sectionLabel_, 2, 0);
+    advancedLayout_->addWidget(sectionStartBox_, 2, 1);
+    advancedLayout_->addWidget(sectionEndBox_, 2, 2, 1, 2);
+    advancedLayout_->addWidget(playlistBox_, 3, 0);
+    advancedLayout_->addWidget(playlistStartBox_, 3, 1);
+    advancedLayout_->addWidget(playlistEndBox_, 3, 2, 1, 2);
+    advancedLayout_->addWidget(playlistActionLabel_, 4, 0);
+    advancedLayout_->addWidget(playlistActionBox_, 4, 1, 1, 3);
+  }
+
+  reflowChoiceGrids(width() < 560 ? 2 : width() < 900 ? 3 : 6);
+}
+
+void MediaDownloadPage::reflowChoiceGrids(int columns) {
+  if (formatButtonGroup_ && formatChoicesLayout_) {
+    QList<QAbstractButton *> buttons = formatButtonGroup_->buttons();
+    std::sort(buttons.begin(), buttons.end(), [this](QAbstractButton *left, QAbstractButton *right) {
+      return formatButtonGroup_->id(left) < formatButtonGroup_->id(right);
+    });
+    for (QAbstractButton *button : buttons) formatChoicesLayout_->removeWidget(button);
+    for (int index = 0; index < buttons.size(); ++index)
+      formatChoicesLayout_->addWidget(buttons.at(index), index / columns, index % columns);
+  }
+
+  if (!audioFormatChoicesLayout_) return;
+  const QStringList modes{QStringLiteral("original"), QStringLiteral("mp3"),
+                          QStringLiteral("m4a"), QStringLiteral("opus")};
+  const int audioColumns = columns >= 3 ? 4 : 2;
+  QList<QPushButton *> audioButtons;
+  for (const QString &mode : modes)
+    if (auto *button = findChild<QPushButton *>(QStringLiteral("media-audio-format-%1").arg(mode)))
+      audioButtons.append(button);
+  for (QPushButton *button : audioButtons) audioFormatChoicesLayout_->removeWidget(button);
+  audioFormatChoicesLayout_->removeWidget(moreAudioFormats_);
+  for (int index = 0; index < audioButtons.size(); ++index)
+    audioFormatChoicesLayout_->addWidget(audioButtons.at(index), index / audioColumns, index % audioColumns);
+  const int comboRow = (audioButtons.size() + audioColumns - 1) / audioColumns;
+  audioFormatChoicesLayout_->addWidget(moreAudioFormats_, comboRow, 0, 1, audioColumns);
 }
 
 void MediaDownloadPage::setSourceUrl(const QUrl &url, bool analyzeImmediately) {
@@ -893,17 +1113,17 @@ void MediaDownloadPage::refreshFormatChoices() {
                                      : QStringLiteral("En iyi kaynak");
       subtitle = format.extension.toUpper();
     }
-    auto *button = new QPushButton(title + QLatin1Char('\n') + subtitle, formatChoices_);
+    auto *button = new QPushButton(title + QStringLiteral(" · ") + subtitle, formatChoices_);
     button->setObjectName(QStringLiteral("media-format-choice-%1").arg(index));
     button->setProperty("qualityChip", true);
     button->setProperty("qualityKey", qualityKey);
     button->setCheckable(true);
-    button->setMinimumHeight(58);
+    button->setMinimumHeight(36);
     button->setToolTip(format.label);
     button->setAccessibleName(title + QStringLiteral(" kalite seçeneği"));
     button->setAccessibleDescription(format.label);
     formatButtonGroup_->addButton(button, index);
-    formatChoicesLayout_->addWidget(button, visibleIndex / 3, visibleIndex % 3);
+    formatChoicesLayout_->addWidget(button, visibleIndex / 6, visibleIndex % 6);
     button->show();
     if (visibleIndex == 0) button->setChecked(true);
     ++visibleIndex;
@@ -924,6 +1144,7 @@ void MediaDownloadPage::refreshFormatChoices() {
     formatChoicesLayout_->addWidget(missing, 0, 0, 1, 3);
     missing->show();
   }
+  reflowChoiceGrids(width() < 560 ? 2 : width() < 900 ? 3 : 6);
   updateSelectionSummary();
 }
 
@@ -1096,14 +1317,143 @@ QWidget *MediaDownloadPage::createJobCard(const MediaDownloadJob &job, QWidget *
   return jobCard;
 }
 
+QWidget *MediaDownloadPage::createGeneralJobCard(const GeneralDownloadJob &job, QWidget *parent) {
+  auto *card = new QFrame(parent);
+  card->setObjectName(QStringLiteral("general-download-card"));
+  card->setAccessibleName(QStringLiteral("%1, %2").arg(job.fileName, job.statusText));
+  auto *layout = new QVBoxLayout(card);
+  layout->setContentsMargins(14, 11, 14, 11);
+  layout->setSpacing(7);
+
+  auto *header = new QHBoxLayout;
+  auto *icon = new QLabel(card);
+  icon->setPixmap(BrowserIcons::icon(BrowserIcon::Download).pixmap(26, 26));
+  icon->setFixedSize(34, 34);
+  icon->setAlignment(Qt::AlignCenter);
+  auto *text = new QVBoxLayout;
+  text->setSpacing(2);
+  auto *title = new QLabel(job.fileName, card);
+  title->setObjectName(QStringLiteral("general-download-title"));
+  title->setToolTip(job.targetPath);
+  auto *meta = new QLabel(QStringLiteral("Dosya • %1 bağlantı").arg(job.connections), card);
+  meta->setObjectName(QStringLiteral("general-download-meta"));
+  auto *status = new QLabel(job.statusText, card);
+  status->setObjectName(QStringLiteral("general-download-status"));
+  text->addWidget(title);
+  text->addWidget(meta);
+  header->addWidget(icon);
+  header->addLayout(text, 1);
+  header->addWidget(status, 0, Qt::AlignTop);
+  layout->addLayout(header);
+
+  const bool active = job.state == GeneralDownloadState::Queued
+      || job.state == GeneralDownloadState::Probing
+      || job.state == GeneralDownloadState::Downloading
+      || job.state == GeneralDownloadState::Paused;
+  if (active) {
+    auto *progress = new QProgressBar(card);
+    progress->setObjectName(QStringLiteral("media-job-progress"));
+    progress->setTextVisible(false);
+    if (job.totalBytes <= 0 && job.state != GeneralDownloadState::Paused) progress->setRange(0, 0);
+    else if (job.totalBytes <= 0) { progress->setRange(0, 1); progress->setValue(0); }
+    else {
+      progress->setRange(0, 1000);
+      progress->setValue(static_cast<int>(std::clamp<qint64>(
+          job.downloadedBytes * 1000 / std::max<qint64>(1, job.totalBytes), 0, 1000)));
+    }
+    layout->addWidget(progress);
+    QStringList parts;
+    if (job.totalBytes > 0)
+      parts << QStringLiteral("%1 / %2").arg(formatBytes(job.downloadedBytes), formatBytes(job.totalBytes));
+    else if (job.downloadedBytes > 0) parts << formatBytes(job.downloadedBytes);
+    if (job.bytesPerSecond > 0) parts << QStringLiteral("%1/s").arg(formatBytes(job.bytesPerSecond));
+    if (job.etaSeconds >= 0) parts << QStringLiteral("%1 sn kaldı").arg(job.etaSeconds);
+    auto *progressText = new QLabel(parts.isEmpty() ? QStringLiteral("Hazırlanıyor…")
+                                                    : parts.join(QStringLiteral(" • ")), card);
+    progressText->setObjectName(QStringLiteral("general-download-progress-text"));
+    layout->addWidget(progressText);
+  } else if (job.state == GeneralDownloadState::Failed && !job.errorText.isEmpty()) {
+    auto *error = new QLabel(job.errorText, card);
+    error->setObjectName(QStringLiteral("media-job-error"));
+    error->setWordWrap(true);
+    layout->addWidget(error);
+  }
+
+  auto *actions = new QHBoxLayout;
+  actions->setSpacing(7);
+  actions->addStretch();
+  if (job.state == GeneralDownloadState::Downloading || job.state == GeneralDownloadState::Probing) {
+    auto *pause = new QPushButton(QStringLiteral("Duraklat"), card);
+    pause->setAccessibleName(QStringLiteral("İndirmeyi duraklat"));
+    auto *cancelButton = actionButton(BrowserIcon::Close, QStringLiteral("İptal"),
+                                      QStringLiteral("İndirmeyi iptal et"), card, "danger");
+    connect(pause, &QPushButton::clicked, this, [this, id = job.id] { generalDownloads_->pause(id); });
+    connect(cancelButton, &QPushButton::clicked, this, [this, id = job.id] { generalDownloads_->cancel(id); });
+    actions->addWidget(pause);
+    actions->addWidget(cancelButton);
+  } else if (job.state == GeneralDownloadState::Paused) {
+    auto *resumeButton = actionButton(BrowserIcon::Reset, QStringLiteral("Devam Et"),
+                                      QStringLiteral("İndirmeye devam et"), card, "secondary");
+    auto *cancelButton = actionButton(BrowserIcon::Close, QStringLiteral("İptal"),
+                                      QStringLiteral("İndirmeyi iptal et"), card, "danger");
+    connect(resumeButton, &QPushButton::clicked, this, [this, id = job.id] { generalDownloads_->resume(id); });
+    connect(cancelButton, &QPushButton::clicked, this, [this, id = job.id] { generalDownloads_->cancel(id); });
+    actions->addWidget(resumeButton);
+    actions->addWidget(cancelButton);
+  } else if (job.state == GeneralDownloadState::Completed) {
+    auto *open = actionButton(BrowserIcon::Play, QStringLiteral("Aç"), QStringLiteral("Dosyayı aç"), card);
+    auto *folder = actionButton(BrowserIcon::Folder, QStringLiteral("Klasörde göster"),
+                                QStringLiteral("Dosyanın klasörünü aç"), card);
+    open->setEnabled(QFileInfo::exists(job.targetPath));
+    const QString folderPath = QFileInfo(job.targetPath).absolutePath();
+    folder->setEnabled(QFileInfo(folderPath).isDir());
+    connect(open, &QPushButton::clicked, this, [path = job.targetPath] {
+      if (QFileInfo::exists(path)) QDesktopServices::openUrl(QUrl::fromLocalFile(path));
+    });
+    connect(folder, &QPushButton::clicked, this, [folderPath] {
+      if (QFileInfo(folderPath).isDir()) QDesktopServices::openUrl(QUrl::fromLocalFile(folderPath));
+    });
+    actions->addWidget(open);
+    actions->addWidget(folder);
+  } else {
+    auto *retryButton = actionButton(BrowserIcon::Reset, QStringLiteral("Tekrar Dene"),
+                                     QStringLiteral("Dosyayı yeniden indir"), card, "secondary");
+    connect(retryButton, &QPushButton::clicked, this, [this, id = job.id] { generalDownloads_->retry(id); });
+    actions->addWidget(retryButton);
+  }
+  if (!active) {
+    auto *removeButton = actionButton(BrowserIcon::Trash, QStringLiteral("Listeden kaldır"),
+                                      QStringLiteral("İndirme kaydını kaldır"), card, "tertiary");
+    connect(removeButton, &QPushButton::clicked, this, [this, id = job.id] { generalDownloads_->remove(id); });
+    actions->addWidget(removeButton);
+  }
+  layout->addLayout(actions);
+  return card;
+}
+
 void MediaDownloadPage::refreshJobs() {
   clearLayout(activeJobsLayout_);
   clearLayout(historyJobsLayout_);
   int activeCount = 0;
   int historyCount = 0;
+  int mediaHistoryCount = 0;
   for (const MediaDownloadJob &job : service_->jobs()) {
-    if (terminalState(job.state)) { historyJobsLayout_->addWidget(createJobCard(job, historyJobsLayout_->parentWidget())); ++historyCount; }
+    if (terminalState(job.state)) { historyJobsLayout_->addWidget(createJobCard(job, historyJobsLayout_->parentWidget())); ++historyCount; ++mediaHistoryCount; }
     else { activeJobsLayout_->addWidget(createJobCard(job, activeJobsLayout_->parentWidget())); ++activeCount; }
+  }
+  if (generalDownloads_) {
+    for (const GeneralDownloadJob &job : generalDownloads_->jobs()) {
+      const bool finished = job.state == GeneralDownloadState::Completed
+          || job.state == GeneralDownloadState::Failed
+          || job.state == GeneralDownloadState::Cancelled;
+      if (finished) {
+        historyJobsLayout_->addWidget(createGeneralJobCard(job, historyJobsLayout_->parentWidget()));
+        ++historyCount;
+      } else {
+        activeJobsLayout_->addWidget(createGeneralJobCard(job, activeJobsLayout_->parentWidget()));
+        ++activeCount;
+      }
+    }
   }
   if (!activeCount) {
     activeEmptyLabel_ = emptyState(BrowserIcons::icon(BrowserIcon::Download), QStringLiteral("Şu anda aktif indirme yok"),
@@ -1112,16 +1462,90 @@ void MediaDownloadPage::refreshJobs() {
   }
   if (!historyCount) {
     historyEmptyLabel_ = emptyState(BrowserIcons::icon(BrowserIcon::History), QStringLiteral("Henüz indirme yok"),
-        QStringLiteral("Bir medya sayfasındayken araç çubuğundaki İndir düğmesini kullanın veya bağlantı yapıştırın."),
+        QStringLiteral("Bir medya veya doğrudan dosya bağlantısı yapıştırın veya web sayfasındayken İndir düğmesini kullanın."),
         historyJobsLayout_->parentWidget());
     historyJobsLayout_->addWidget(historyEmptyLabel_);
   }
-  exportButton_->setEnabled(historyCount > 0);
+  exportButton_->setEnabled(mediaHistoryCount > 0);
+
+  if (isMediaNotFoundMessage(statusLabel_->text())) {
+    const QUrl currentUrl = sourceUrl();
+    if (hasActiveOrCompletedGeneralDownload(currentUrl)) {
+      statusLabel_->setText(service_ && service_->ytDlpAvailable()
+          ? QStringLiteral("İndirmeye hazır")
+          : QStringLiteral("İndirme motoru hazır."));
+    }
+  }
+}
+
+bool MediaDownloadPage::hasActiveOrCompletedGeneralDownload(const QUrl &url) const {
+  if (generalDownloads_) {
+    const QVector<GeneralDownloadJob> jobs = generalDownloads_->jobs();
+    const QString host = url.isValid() ? url.host().toLower() : QString{};
+    const QString urlStr = url.isValid() ? url.toString(QUrl::FullyEncoded) : QString{};
+
+    for (const GeneralDownloadJob &job : jobs) {
+      const bool isActive = (job.state == GeneralDownloadState::Downloading
+          || job.state == GeneralDownloadState::Probing
+          || job.state == GeneralDownloadState::Queued
+          || job.state == GeneralDownloadState::Paused);
+      const bool isCompleted = (job.state == GeneralDownloadState::Completed);
+
+      if (!isActive && !isCompleted) continue;
+
+      if (!urlStr.isEmpty()) {
+        if (job.url == url || job.url.toString(QUrl::FullyEncoded) == urlStr)
+          return true;
+        const auto req = generalDownloads_->request(job.id);
+        if (!req.referrer.isEmpty()) {
+          const QUrl ref = QUrl::fromEncoded(req.referrer);
+          if (ref == url || ref.toString(QUrl::FullyEncoded) == urlStr)
+            return true;
+          if (!host.isEmpty() && ref.host().compare(host, Qt::CaseInsensitive) == 0)
+            return true;
+        }
+        if (!host.isEmpty() && job.url.host().compare(host, Qt::CaseInsensitive) == 0)
+          return true;
+      }
+
+      if (isActive) return true;
+    }
+  }
+
+  if (profileService_) {
+    for (const BrowserDownloadEntry &entry : profileService_->nativeDownloads()) {
+      if (entry.state == QLatin1String("İndiriliyor")) return true;
+    }
+  }
+
+  return false;
+}
+
+bool MediaDownloadPage::handleGeneralDownloadIfDirectFile(const QUrl &url) {
+  if (!generalDownloads_ || !isDirectGeneralFileUrl(url)) return false;
+  GeneralDownloadRequest req;
+  req.url = url;
+  QString fileName = QFileInfo(url.path()).fileName();
+  if (fileName.isEmpty()) fileName = QStringLiteral("download");
+  req.suggestedFileName = fileName;
+  QString directory = profileService_ ? profileService_->configuredDownloadDirectory()
+                                      : (service_ ? service_->defaultDownloadDirectory() : QString{});
+  if (directory.isEmpty()) directory = QStandardPaths::writableLocation(QStandardPaths::DownloadLocation);
+  req.targetDirectory = directory;
+  req.connectionCount = 4;
+  req.allowParallel = true;
+  const QUuid id = generalDownloads_->enqueue(req);
+  if (!id.isNull()) {
+    statusLabel_->setText(QStringLiteral("Dosya indirmesi başlatıldı."));
+    return true;
+  }
+  return false;
 }
 
 void MediaDownloadPage::refreshBrowserDownloads() {
   clearLayout(browserDownloadsLayout_);
-  const QList<BrowserDownloadEntry> downloads = profileService_ ? profileService_->recentDownloads() : QList<BrowserDownloadEntry>{};
+  const QList<BrowserDownloadEntry> downloads = profileService_ ? profileService_->nativeDownloads() : QList<BrowserDownloadEntry>{};
+  if (browserDownloadsCard_) browserDownloadsCard_->setVisible(!downloads.isEmpty());
   for (const BrowserDownloadEntry &entry : downloads) {
     auto *row = new QFrame(browserDownloadsLayout_->parentWidget());
     row->setObjectName(QStringLiteral("browser-download-row"));
@@ -1142,11 +1566,6 @@ void MediaDownloadPage::refreshBrowserDownloads() {
     rowLayout->addWidget(icon);
     rowLayout->addLayout(text, 1);
     browserDownloadsLayout_->addWidget(row);
-  }
-  if (downloads.isEmpty()) {
-    browserEmptyLabel_ = emptyState(BrowserIcons::icon(BrowserIcon::Folder), QStringLiteral("Dosya indirmesi yok"),
-        QStringLiteral("Web sayfalarından indirdiğiniz dosyalar burada listelenecek."), browserDownloadsLayout_->parentWidget());
-    browserDownloadsLayout_->addWidget(browserEmptyLabel_);
   }
 }
 

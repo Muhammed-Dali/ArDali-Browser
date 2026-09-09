@@ -58,7 +58,10 @@ void ArDaliBlockerRequestInterceptor::interceptRequest(QWebEngineUrlRequestInfo 
   // 2. Evaluate with ArDali Blocker Service
   if (!service_) return;
 
-  const QUrl firstPartyUrl = info.firstPartyUrl();
+  QUrl firstPartyUrl = info.firstPartyUrl();
+  if (!firstPartyUrl.isValid() || firstPartyUrl.host().isEmpty()) {
+    firstPartyUrl = info.initiator();
+  }
   const int resourceTypeInt = static_cast<int>(info.resourceType());
 
   RequestDecision decision = service_->evaluateRequest(

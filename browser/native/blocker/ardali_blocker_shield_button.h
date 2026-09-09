@@ -1,5 +1,6 @@
 #pragma once
 
+#include <QComboBox>
 #include <QFrame>
 #include <QIcon>
 #include <QPainter>
@@ -18,6 +19,7 @@ class ArDaliBlockerQuickPopup final : public QFrame {
 
  signals:
   void openSettingsRequested();
+  void openRulesetsRequested();
   void openLoggerRequested();
   void reloadRequested();
 
@@ -32,12 +34,25 @@ class ArDaliBlockerQuickPopup final : public QFrame {
   quint64 blockedCount_ = 0;
 
   QLabel *hostLabel_ = nullptr;
+  QLabel *statusSubtitleLabel_ = nullptr;
   QLabel *countLabel_ = nullptr;
+  QLabel *countTextLabel_ = nullptr;
   QCheckBox *masterCheck_ = nullptr;
+  QCheckBox *siteProtectionCheck_ = nullptr;
   QCheckBox *adsCheck_ = nullptr;
   QCheckBox *trackersCheck_ = nullptr;
-  QCheckBox *siteProtectionCheck_ = nullptr;
   QLabel *noticeLabel_ = nullptr;
+
+  // Advanced collapsible options
+  QWidget *advancedContainer_ = nullptr;
+  QLabel *advancedChevron_ = nullptr;
+  QLabel *blockedBadge_ = nullptr;
+  QComboBox *adsModeCombo_ = nullptr;
+  QCheckBox *httpsCheck_ = nullptr;
+  QCheckBox *scriptsCheck_ = nullptr;
+  QCheckBox *fingerprintCheck_ = nullptr;
+  QComboBox *cookieCombo_ = nullptr;
+  QCheckBox *forgetOnCloseCheck_ = nullptr;
 };
 
 using AdBlockQuickPopup = ArDaliBlockerQuickPopup;
@@ -59,6 +74,7 @@ class ArDaliBlockerShieldButton final : public QToolButton {
 
  signals:
   void openSettingsRequested();
+  void openRulesetsRequested();
   void openLoggerRequested();
   void reloadRequested();
 

@@ -59,6 +59,7 @@ class ArDaliBlockerEngine final {
                            const QString &requestMethod = QStringLiteral("get")) const;
 
   QString cosmeticCssForHost(const QString &host) const;
+  QString applyCosmeticExceptions(const QString &host, const QString &css) const;
   QJsonArray customProceduralRulesForHost(const QString &host) const;
   int ruleCount() const;
   int customRuleCount() const;

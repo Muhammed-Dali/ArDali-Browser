@@ -1,3 +1,5 @@
+#include <libpsl.h>
+#include <QHostAddress>
 #include "ardali_blocker_engine.h"
 #include "ardali_blocker_list_manager.h"
 
@@ -156,7 +158,7 @@ QString transformedRedirectUrl(const FilterRule &rule, const QUrl &sourceUrl) {
     return target.toString();
   }
   if (!rule.regexSubstitution.isEmpty() && !rule.regexFilter.isEmpty()) {
-    const QRegularExpression expression(rule.regexFilter,
+    const QRegularExpression expression(QStringLiteral("(*LIMIT_MATCH=100000)(*LIMIT_DEPTH=1000)") + rule.regexFilter,
         rule.isCaseSensitive ? QRegularExpression::NoPatternOption : QRegularExpression::CaseInsensitiveOption);
     if (expression.isValid()) {
       QString replacement = rule.regexSubstitution;
@@ -563,6 +565,9 @@ QString ArDaliBlockerEngine::validateCustomFilterLine(const QString &rawLine) {
     const bool exception = exceptionIndex >= 0;
     const int index = exception ? exceptionIndex : cosmeticIndex;
     const QString expression = line.mid(index + delimiterLength).trimmed();
+    if (expression.contains(QLatin1Char('{')) || expression.contains(QLatin1Char('}')) ||
+        expression.contains(QStringLiteral("url("), Qt::CaseInsensitive) || expression.contains(QStringLiteral("@import"), Qt::CaseInsensitive))
+      return QStringLiteral("Kozmetik filtre yalnızca güvenli seçiciler ve yerel stil işlemleri içerebilir.");
     if (expression.isEmpty())
       return QStringLiteral("Kozmetik seçici boş olamaz.");
     if (firstProceduralOperator(expression) >= 0) {
@@ -619,21 +624,12 @@ bool ArDaliBlockerEngine::domainMatches(const QString &host, const QString &rule
 }
 
 QString ArDaliBlockerEngine::getSiteDomain(const QString &host) const {
-  const QString clean = host.trimmed().toLower();
-  if (clean.isEmpty()) return QString();
-
-  for (const QString &tld : kCommonTlds) {
-    if (clean.endsWith(QLatin1Char('.') + tld)) {
-      const QString rest = clean.left(clean.length() - tld.length() - 1);
-      const int dot = rest.lastIndexOf(QLatin1Char('.'));
-      if (dot != -1) return rest.mid(dot + 1) + QLatin1Char('.') + tld;
-      return clean;
-    }
-  }
-
-  const QStringList parts = clean.split(QLatin1Char('.'));
-  if (parts.size() <= 2) return clean;
-  return parts.at(parts.size() - 2) + QLatin1Char('.') + parts.last();
+  QString clean = host.trimmed().toLower();
+  if (clean.endsWith(QLatin1Char('.'))) clean.chop(1);
+  if (!QHostAddress(clean).isNull()) return clean;
+  const QByteArray ace = QUrl::toAce(clean);
+  const char *registrable = psl_registrable_domain(psl_builtin(), ace.constData());
+  return registrable ? QString::fromUtf8(registrable) : clean;
 }
 
 bool ArDaliBlockerEngine::isSameSite(const QString &hostA, const QString &hostB) const {
@@ -742,10 +738,10 @@ RequestDecision ArDaliBlockerEngine::evaluate(const QUrl &url, ArDaliBlockerReso
   if (resourceType != ArDaliBlockerResourceType::MainFrame && !initiatorHost.isEmpty()) {
     const QString targetHost = url.host().toLower();
     const QString initHost = initiatorHost.toLower();
-    if ((initHost.contains(QLatin1String("google.com")) || initHost.contains(QLatin1String("duckduckgo.com")) ||
-         initHost.contains(QLatin1String("bing.com")) || initHost.contains(QLatin1String("brave.com"))) &&
-        (targetHost.contains(QLatin1String("google.com")) || targetHost.contains(QLatin1String("duckduckgo.com")) ||
-         targetHost.contains(QLatin1String("bing.com")) || targetHost.contains(QLatin1String("brave.com")))) {
+    if (((initHost == QLatin1String("google.com") || initHost.endsWith(QLatin1String(".google.com"))) || (initHost == QLatin1String("duckduckgo.com") || initHost.endsWith(QLatin1String(".duckduckgo.com"))) ||
+         (initHost == QLatin1String("bing.com") || initHost.endsWith(QLatin1String(".bing.com"))) || (initHost == QLatin1String("brave.com") || initHost.endsWith(QLatin1String(".brave.com")))) &&
+        ((targetHost == QLatin1String("google.com") || targetHost.endsWith(QLatin1String(".google.com"))) || (targetHost == QLatin1String("duckduckgo.com") || targetHost.endsWith(QLatin1String(".duckduckgo.com"))) ||
+         (targetHost == QLatin1String("bing.com") || targetHost.endsWith(QLatin1String(".bing.com"))) || (targetHost == QLatin1String("brave.com") || targetHost.endsWith(QLatin1String(".brave.com"))))) {
       return RequestDecision{ArDaliBlockerAction::Allow, QStringLiteral("search-engine-subresource-allow"), 0, QString(), QString()};
     }
   }
@@ -785,7 +781,7 @@ RequestDecision ArDaliBlockerEngine::evaluate(const QUrl &url, ArDaliBlockerReso
     if (!rule.urlFilter.isEmpty() &&
         !urlFilterMatches(rule.urlFilter, candidateUrl, host, rule.isCaseSensitive)) return false;
     if (!rule.regexFilter.isEmpty()) {
-      const QRegularExpression expression(rule.regexFilter,
+      const QRegularExpression expression(QStringLiteral("(*LIMIT_MATCH=100000)(*LIMIT_DEPTH=1000)") + rule.regexFilter,
           rule.isCaseSensitive ? QRegularExpression::NoPatternOption : QRegularExpression::CaseInsensitiveOption);
       if (!expression.match(candidateUrl).hasMatch()) return false;
     }
@@ -879,7 +875,7 @@ RequestDecision ArDaliBlockerEngine::evaluate(const QUrl &url, ArDaliBlockerReso
                                    .arg(rule.isCaseSensitive ? QLatin1Char('s') : QLatin1Char('i'))
                                    .arg(rule.regexFilter);
       if (!regexCache_.contains(regexKey)) {
-        regexCache_.insert(regexKey, QRegularExpression(rule.regexFilter,
+        regexCache_.insert(regexKey, QRegularExpression(QStringLiteral("(*LIMIT_MATCH=100000)(*LIMIT_DEPTH=1000)") + rule.regexFilter,
             rule.isCaseSensitive ? QRegularExpression::NoPatternOption : QRegularExpression::CaseInsensitiveOption));
       }
       if (!regexCache_.value(regexKey).match(urlForRule).hasMatch()) continue;
@@ -963,6 +959,39 @@ QJsonArray ArDaliBlockerEngine::customProceduralRulesForHost(const QString &host
         exceptions.contains(rule.signature) || seen.contains(rule.signature)) continue;
     result.append(rule.rule);
     seen.insert(rule.signature);
+  }
+  return result;
+}
+
+QString ArDaliBlockerEngine::applyCosmeticExceptions(const QString &host, const QString &css) const {
+  QMutexLocker locker(&mutex_);
+  QSet<QString> exceptions;
+  for (const auto &rule : cosmeticRules_)
+    if (rule.isException && cosmeticDomainApplies(host.toLower(), rule.domain)) exceptions.insert(rule.selector);
+  if (exceptions.isEmpty()) return css;
+  QString result;
+  int position = 0;
+  while (position < css.size()) {
+    const int open = css.indexOf(QLatin1Char('{'), position);
+    const int close = css.indexOf(QLatin1Char('}'), open + 1);
+    if (open < 0 || close < 0) { result += css.mid(position); break; }
+    const QString group = css.mid(position, open - position);
+    QStringList selectors;
+    int start = 0, depth = 0; QChar quote;
+    for (int i = 0; i <= group.size(); ++i) {
+      const QChar c = i < group.size() ? group.at(i) : QLatin1Char(',');
+      if (!quote.isNull()) { if(c == quote && (i == 0 || group.at(i-1) != QLatin1Char('\\'))) quote = QChar(); continue; }
+      if (c == QLatin1Char('\"') || c == QLatin1Char('\'')) { quote = c; continue; }
+      if (c == QLatin1Char('(') || c == QLatin1Char('[')) ++depth;
+      if (c == QLatin1Char(')') || c == QLatin1Char(']')) --depth;
+      if (c == QLatin1Char(',') && depth == 0) {
+        const QString selector = group.mid(start, i-start).trimmed();
+        if (!selector.isEmpty() && !exceptions.contains(selector)) selectors.append(selector);
+        start = i+1;
+      }
+    }
+    if (!selectors.isEmpty()) result += selectors.join(QStringLiteral(",\n")) + css.mid(open,close-open+1) + QLatin1Char('\n');
+    position = close+1;
   }
   return result;
 }

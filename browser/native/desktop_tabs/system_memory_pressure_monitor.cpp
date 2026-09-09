@@ -2,12 +2,17 @@
 
 #include <QFile>
 #include <QTextStream>
+#include <QTimer>
 
 namespace ardali {
 
 SystemMemoryPressureMonitor::SystemMemoryPressureMonitor(QObject *parent)
     : QObject(parent) {
   evaluateSystemPressure();
+  pollTimer_ = new QTimer(this);
+  pollTimer_->setInterval(15000);
+  connect(pollTimer_, &QTimer::timeout, this, &SystemMemoryPressureMonitor::evaluateSystemPressure);
+  pollTimer_->start();
 }
 
 MemoryPressureLevel SystemMemoryPressureMonitor::currentPressureLevel() const {

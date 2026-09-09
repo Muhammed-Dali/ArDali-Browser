@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(ArDaliBrowser VERSION 6.1.2 LANGUAGES CXX)
+project(ArDaliBrowser VERSION 7.0.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -20,6 +20,9 @@ find_package(Qt6 6.4 REQUIRED COMPONENTS
   DBus
 )
 find_package(OpenSSL REQUIRED)
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(PSL REQUIRED IMPORTED_TARGET libpsl)
+link_libraries(PkgConfig::PSL)
 find_program(NODE_EXECUTABLE node REQUIRED)
 
 include_directories(
@@ -93,7 +96,7 @@ foreach(NTP_ASSET ardali-flow-blue.png google.ico duckduckgo.ico brave.ico bing.
     COPYONLY
   )
 endforeach()
-foreach(NTP_ICON appearance.svg search.svg grid.svg clock.svg cards.svg close.svg)
+foreach(NTP_ICON appearance.svg settings.svg search.svg grid.svg clock.svg cards.svg close.svg)
   configure_file(
     ${CMAKE_CURRENT_SOURCE_DIR}/browser/assets/browser-icons/${NTP_ICON}
     ${CMAKE_CURRENT_BINARY_DIR}/assets/new-tab/icons/${NTP_ICON}
@@ -120,12 +123,22 @@ add_custom_target(ardali-browser-policy DEPENDS ${DALI_POLICY_JSON})
 set(CORE_SOURCES
   browser/native/core/browser_profile_service.cpp
   browser/native/core/browser_permission_policy.cpp
+  browser/native/core/site_permission_prompt_bubble.cpp
+  browser/native/core/site_controls_bubble.cpp
   browser/native/core/performance_diagnostics.cpp
   browser/native/core/browser_policy.cpp
   browser/native/core/security_utils.cpp
   browser/native/core/web_engine_hardware_acceleration.cpp
   browser/native/core/web_engine_memory_policy.cpp
   browser/native/core/browser_icons.cpp
+  browser/native/core/search_engine_definition.cpp
+  browser/native/core/search_suggestion_service.cpp
+  browser/native/core/domain_normalizer.cpp
+  browser/native/core/history_candidate_provider.cpp
+  browser/native/core/bookmark_candidate_provider.cpp
+  browser/native/core/frequent_sites_candidate_provider.cpp
+  browser/native/core/composite_navigation_candidate_provider.cpp
+  browser/native/core/address_input_resolver.cpp
 )
 
 set(NEWTAB_SOURCES
@@ -189,6 +202,9 @@ set(BLOCKER_SOURCES
 set(PASSWORDS_SOURCES
   browser/native/passwords/credential_vault.cpp
   browser/native/passwords/credential_vault_manager.cpp
+  browser/native/passwords/credential_autofill_controller.cpp
+  browser/native/passwords/credential_save_bubble.cpp
+  browser/native/passwords/vault_unlock_dialog.cpp
   browser/native/passwords/password_manager_page.cpp
 )
 
@@ -205,7 +221,11 @@ set(PULSE_SOURCES
 set(DOWNLOADS_SOURCES
   browser/native/downloads/media_download_service.cpp
   browser/native/downloads/media_download_page.cpp
+  browser/native/downloads/general_download_manager.cpp
+  browser/native/downloads/download_ui_model.cpp
+  browser/native/downloads/download_toolbar_ui.cpp
   browser/native/downloads/yt_dlp_update_manager.cpp
+  browser/native/downloads/media_platform_registry.cpp
 )
 
 set(TRANSLATE_SOURCES
@@ -330,16 +350,39 @@ qt_add_resources(ardali-browser "browser_icons"
     browser/assets/browser-icons/close.svg
     browser/assets/browser-icons/audio.svg
     browser/assets/browser-icons/memory.svg
+    browser/assets/browser-icons/location.svg
+    browser/assets/browser-icons/camera.svg
+    browser/assets/browser-icons/microphone.svg
+    browser/assets/browser-icons/notification.svg
+    browser/assets/browser-icons/cookie.svg
+    browser/assets/browser-icons/javascript.svg
+    browser/assets/browser-icons/image.svg
+    browser/assets/browser-icons/popup.svg
+    browser/assets/browser-icons/chevron-right.svg
+    browser/assets/browser-icons/chevron-down.svg
+    browser/assets/browser-icons/fonts.svg
+    browser/assets/browser-icons/mouse.svg
+    browser/assets/browser-icons/pdf.svg
+    browser/assets/browser-icons/location-slash.svg
+    browser/assets/browser-icons/camera-slash.svg
+    browser/assets/browser-icons/microphone-slash.svg
+    browser/assets/browser-icons/notification-slash.svg
+    browser/assets/browser-icons/arrow-left.svg
+    browser/assets/browser-icons/javascript-slash.svg
+    browser/assets/browser-icons/image-slash.svg
+    browser/assets/browser-icons/popup-slash.svg
+    browser/assets/browser-icons/protected-content.svg
+    browser/assets/browser-icons/insecure-content.svg
+    browser/assets/browser-icons/site-data.svg
+    browser/assets/browser-icons/js-optimize.svg
+    browser/assets/browser-icons/fullscreen.svg
+    browser/assets/browser-icons/tune.svg
 )
 
 qt_add_resources(ardali-browser "search_engine_icons"
   PREFIX "/search-engines"
   BASE browser/assets/new-tab
   FILES
-    browser/assets/new-tab/google.svg
-    browser/assets/new-tab/duckduckgo.svg
-    browser/assets/new-tab/brave.svg
-    browser/assets/new-tab/bing.svg
     browser/assets/new-tab/google.ico
     browser/assets/new-tab/duckduckgo.ico
     browser/assets/new-tab/brave.ico
@@ -447,6 +490,37 @@ add_executable(ardali-browser-credential-vault-test
 target_link_libraries(ardali-browser-credential-vault-test PRIVATE Qt6::Widgets OpenSSL::Crypto)
 add_test(NAME browser-credential-vault-test COMMAND ardali-browser-credential-vault-test)
 
+add_executable(ardali-browser-password-autofill-test
+  browser/native/tests/password_autofill_test.cpp
+  browser/native/passwords/credential_vault.cpp
+  browser/native/passwords/credential_vault_manager.cpp
+  browser/native/passwords/credential_autofill_controller.cpp
+  browser/native/passwords/credential_save_bubble.cpp
+  browser/native/passwords/vault_unlock_dialog.cpp
+  browser/native/core/browser_icons.cpp
+  browser/native/core/search_engine_definition.cpp
+)
+target_link_libraries(ardali-browser-password-autofill-test PRIVATE Qt6::Widgets Qt6::WebEngineWidgets Qt6::Concurrent Qt6::Svg OpenSSL::Crypto)
+qt_add_resources(ardali-browser-password-autofill-test "password_autofill_icons"
+    PREFIX "/browser-icons"
+    BASE_DIR "browser/assets/browser-icons"
+    FILES
+    browser/assets/browser-icons/password.svg
+)
+add_test(NAME browser-password-autofill-test COMMAND ardali-browser-password-autofill-test)
+set_tests_properties(browser-password-autofill-test PROPERTIES
+  ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QTWEBENGINE_DISABLE_SANDBOX=1;QTWEBENGINE_CHROMIUM_FLAGS=--no-sandbox --disable-gpu")
+
+add_executable(ardali-password-manager-page-test
+  browser/native/tests/password_manager_page_test.cpp
+  browser/native/passwords/password_manager_page.cpp
+  browser/native/passwords/credential_vault.cpp
+  browser/native/passwords/credential_vault_manager.cpp
+)
+target_link_libraries(ardali-password-manager-page-test PRIVATE Qt6::Widgets Qt6::WebEngineCore Qt6::Concurrent OpenSSL::Crypto)
+add_test(NAME browser-password-manager-page-test COMMAND ardali-password-manager-page-test)
+set_tests_properties(browser-password-manager-page-test PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+
 add_executable(ardali-browser-song-finder-test
   browser/native/tests/song_finder_test.cpp
   browser/native/pulse/song_finder_settings.cpp
@@ -467,6 +541,27 @@ add_executable(ardali-browser-media-download-service-test
 )
 target_link_libraries(ardali-browser-media-download-service-test PRIVATE Qt6::Core Qt6::Network)
 add_test(NAME browser-media-download-service COMMAND ardali-browser-media-download-service-test)
+
+add_executable(ardali-browser-general-download-manager-test
+  browser/native/tests/general_download_manager_test.cpp
+  browser/native/downloads/general_download_manager.cpp
+  browser/native/core/security_utils.cpp
+)
+target_link_libraries(ardali-browser-general-download-manager-test PRIVATE Qt6::Core Qt6::Network)
+add_test(NAME browser-general-download-manager COMMAND ardali-browser-general-download-manager-test)
+
+add_executable(ardali-browser-download-ui-model-test
+  browser/native/tests/download_ui_model_test.cpp
+)
+target_link_libraries(ardali-browser-download-ui-model-test PRIVATE Qt6::Core)
+add_test(NAME browser-download-ui-model COMMAND ardali-browser-download-ui-model-test)
+
+add_executable(ardali-browser-media-platform-registry-test
+  browser/native/tests/media_platform_registry_test.cpp
+  browser/native/downloads/media_platform_registry.cpp
+)
+target_link_libraries(ardali-browser-media-platform-registry-test PRIVATE Qt6::Core)
+add_test(NAME browser-media-platform-registry COMMAND ardali-browser-media-platform-registry-test)
 
 add_executable(ardali-browser-desktop-tab-system-test
   browser/native/tests/desktop_tab_system_test.cpp
@@ -535,6 +630,8 @@ add_executable(ardali-browser-runtime-feature-integration-test
   browser/native/newtab/new_tab_scheme.cpp
   browser/native/newtab/new_tab_html.cpp
   browser/native/core/security_utils.cpp
+  browser/native/core/search_engine_definition.cpp
+  browser/native/core/search_suggestion_service.cpp
   browser/native/downloads/media_download_service.cpp
   browser/native/downloads/yt_dlp_update_manager.cpp
   browser/native/blocker/ardali_blocker_shield_button.cpp
@@ -574,8 +671,190 @@ add_executable(ardali-browser-tab-hover-card-test
   browser/native/tests/tab_hover_card_test.cpp
   browser/native/desktop_tabs/tab_hover_card.cpp
   browser/native/core/browser_icons.cpp
+  browser/native/core/search_engine_definition.cpp
+  browser/native/core/search_suggestion_service.cpp
 )
 target_link_libraries(ardali-browser-tab-hover-card-test PRIVATE Qt6::Widgets Qt6::WebEngineWidgets Qt6::Svg)
 add_test(NAME browser-tab-hover-card COMMAND ardali-browser-tab-hover-card-test)
 set_tests_properties(browser-tab-hover-card PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QTWEBENGINE_CHROMIUM_FLAGS=--no-sandbox --disable-gpu")
 
+add_executable(ardali-browser-address-input-resolver-test
+  browser/native/core/search_engine_definition.cpp
+  browser/native/tests/address_input_resolver_test.cpp
+  browser/native/core/address_input_resolver.cpp
+)
+target_link_libraries(ardali-browser-address-input-resolver-test PRIVATE Qt6::Core Qt6::Network)
+add_test(NAME browser-address-input-resolver COMMAND ardali-browser-address-input-resolver-test)
+
+add_executable(ardali-browser-omnibox-navigation-integration-test
+  browser/native/core/search_engine_definition.cpp
+  browser/native/tests/omnibox_navigation_integration_test.cpp
+  browser/native/core/address_input_resolver.cpp
+)
+target_compile_definitions(ardali-browser-omnibox-navigation-integration-test PRIVATE ARDALI_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
+target_link_libraries(ardali-browser-omnibox-navigation-integration-test PRIVATE Qt6::Core Qt6::Network)
+add_test(NAME browser-omnibox-navigation-integration COMMAND ardali-browser-omnibox-navigation-integration-test)
+
+add_executable(ardali-browser-smart-omnibox-phase2-test
+  browser/native/core/search_engine_definition.cpp
+  browser/native/tests/smart_omnibox_phase2_test.cpp
+  browser/native/core/address_input_resolver.cpp
+  browser/native/core/domain_normalizer.cpp
+  browser/native/core/history_candidate_provider.cpp
+  browser/native/core/bookmark_candidate_provider.cpp
+  browser/native/core/frequent_sites_candidate_provider.cpp
+  browser/native/core/composite_navigation_candidate_provider.cpp
+)
+target_link_libraries(ardali-browser-smart-omnibox-phase2-test PRIVATE Qt6::Core Qt6::Network)
+add_test(NAME browser-smart-omnibox-phase2 COMMAND ardali-browser-smart-omnibox-phase2-test)
+
+add_executable(smart_omnibox_phase2_1_test
+  browser/native/tests/smart_omnibox_phase2_1_test.cpp
+  browser/native/core/browser_profile_service.cpp
+  browser/native/downloads/general_download_manager.cpp
+  browser/native/core/search_engine_definition.cpp
+  browser/native/core/search_suggestion_service.cpp
+  browser/native/core/browser_policy.cpp
+  browser/native/core/security_utils.cpp
+  browser/native/newtab/new_tab_html.cpp
+  browser/native/newtab/new_tab_scheme.cpp
+  browser/native/newtab/new_tab_background_store.cpp
+  browser/native/blocker/ardali_blocker_settings.cpp
+  browser/native/blocker/ardali_blocker_engine.cpp
+  browser/native/blocker/ardali_blocker_list_manager.cpp
+  browser/native/blocker/ardali_blocker_request_interceptor.cpp
+  browser/native/blocker/ardali_blocker_service.cpp
+  browser/native/passwords/credential_vault.cpp
+  browser/native/passwords/credential_vault_manager.cpp
+  browser/native/translate/translate_service.cpp
+  browser/native/translate/translation_secret_store.cpp
+  browser/native/translate/providers/libretranslate_provider.cpp
+  browser/native/translate/providers/deepl_provider.cpp
+  browser/native/translate/providers/google_cloud_provider.cpp
+  browser/native/translate/providers/google_gtx_provider.cpp
+)
+target_link_libraries(smart_omnibox_phase2_1_test PRIVATE
+  Qt6::Core
+  Qt6::Gui
+  Qt6::Widgets
+  Qt6::WebEngineWidgets
+  Qt6::Network
+  Qt6::Concurrent
+  OpenSSL::Crypto
+)
+add_test(NAME smart_omnibox_phase2_1_test COMMAND smart_omnibox_phase2_1_test)
+set_tests_properties(smart_omnibox_phase2_1_test PROPERTIES
+  ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QTWEBENGINE_CHROMIUM_FLAGS=--no-sandbox --disable-gpu")
+
+add_executable(ardali-phase22d-test
+  browser/native/tests/phase22d_test.cpp
+  browser/native/newtab/new_tab_html.cpp
+  browser/native/core/search_engine_definition.cpp
+  browser/native/core/search_suggestion_service.cpp
+  browser/native/blocker/ardali_blocker_settings.cpp
+  browser/native/blocker/ardali_blocker_engine.cpp
+  browser/native/blocker/ardali_blocker_list_manager.cpp
+  browser/native/blocker/ardali_blocker_service.cpp
+  browser/native/blocker/ardali_blocker_request_interceptor.cpp
+  browser/native/blocker/ardali_blocker_shield_button.cpp
+  browser/native/core/security_utils.cpp
+)
+target_link_libraries(ardali-phase22d-test PRIVATE Qt6::Core Qt6::Widgets Qt6::Network Qt6::WebEngineWidgets Qt6::Concurrent)
+add_test(NAME ardali-phase22d COMMAND ardali-phase22d-test)
+set_tests_properties(ardali-phase22d PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QTWEBENGINE_CHROMIUM_FLAGS=--no-sandbox --disable-gpu" TIMEOUT 90)
+
+# Release verification must execute assertions in the existing standalone tests.
+get_property(ARDALI_TEST_TARGETS DIRECTORY PROPERTY BUILDSYSTEM_TARGETS)
+foreach(ARDALI_TEST_TARGET IN LISTS ARDALI_TEST_TARGETS)
+  if(ARDALI_TEST_TARGET MATCHES "[-_]test$")
+    target_compile_options(${ARDALI_TEST_TARGET} PRIVATE -UNDEBUG)
+  endif()
+endforeach()
+
+# Exercise the actual native window and privileged New Tab bridge as well as
+# the downloader's independent unit fixtures.
+get_target_property(ARDALI_PHASE22D_INTEGRATION_SOURCES ardali-browser SOURCES)
+list(REMOVE_ITEM ARDALI_PHASE22D_INTEGRATION_SOURCES browser/native/main.cpp)
+add_executable(ardali-phase22d-integration-test
+  ${ARDALI_PHASE22D_INTEGRATION_SOURCES}
+  browser/native/tests/phase22d_integration_test.cpp)
+get_target_property(ARDALI_PHASE22D_LIBRARIES ardali-browser LINK_LIBRARIES)
+get_target_property(ARDALI_PHASE22D_DEFINITIONS ardali-browser COMPILE_DEFINITIONS)
+target_link_libraries(ardali-phase22d-integration-test PRIVATE ${ARDALI_PHASE22D_LIBRARIES})
+target_compile_definitions(ardali-phase22d-integration-test PRIVATE ${ARDALI_PHASE22D_DEFINITIONS})
+target_compile_options(ardali-phase22d-integration-test PRIVATE -UNDEBUG)
+add_dependencies(ardali-phase22d-integration-test ardali-browser-policy ardali-web-output-dali)
+add_test(NAME ardali-phase22d-integration COMMAND ardali-phase22d-integration-test)
+set_tests_properties(ardali-phase22d-integration PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QTWEBENGINE_CHROMIUM_FLAGS=--no-sandbox --disable-gpu" TIMEOUT 90)
+
+get_target_property(ARDALI_BROWSER_FULL_SOURCES ardali-browser SOURCES)
+list(REMOVE_ITEM ARDALI_BROWSER_FULL_SOURCES browser/native/main.cpp)
+add_executable(ardali-browser-site-permission-test
+  ${ARDALI_BROWSER_FULL_SOURCES}
+  browser/native/tests/site_permission_system_test.cpp)
+get_target_property(ARDALI_BROWSER_FULL_LIBS ardali-browser LINK_LIBRARIES)
+get_target_property(ARDALI_BROWSER_FULL_DEFS ardali-browser COMPILE_DEFINITIONS)
+target_link_libraries(ardali-browser-site-permission-test PRIVATE ${ARDALI_BROWSER_FULL_LIBS})
+if(ARDALI_BROWSER_FULL_DEFS)
+  target_compile_definitions(ardali-browser-site-permission-test PRIVATE ${ARDALI_BROWSER_FULL_DEFS})
+endif()
+target_compile_options(ardali-browser-site-permission-test PRIVATE -UNDEBUG)
+add_dependencies(ardali-browser-site-permission-test ardali-browser-policy ardali-web-output-dali)
+add_test(NAME browser-site-permission COMMAND ardali-browser-site-permission-test)
+set_tests_properties(browser-site-permission PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QTWEBENGINE_CHROMIUM_FLAGS=--no-sandbox --disable-gpu" TIMEOUT 90)
+
+set_tests_properties(smart_omnibox_phase2_1_test PROPERTIES TIMEOUT 90)
+
+# -------------------------------------------------------------
+# Installation Rules
+# -------------------------------------------------------------
+include(GNUInstallDirs)
+
+install(TARGETS ardali-browser
+  RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+)
+
+if(TARGET ardali-webengine-process)
+  install(TARGETS ardali-webengine-process
+    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+  )
+endif()
+
+configure_file(
+  ${CMAKE_CURRENT_SOURCE_DIR}/browser/resources/linux/ardali.desktop.in
+  ${CMAKE_CURRENT_BINARY_DIR}/ardali.desktop
+  @ONLY
+)
+
+install(FILES ${CMAKE_CURRENT_BINARY_DIR}/ardali.desktop
+  DESTINATION ${CMAKE_INSTALL_DATADIR}/applications
+)
+
+# Application icons
+install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/browser/assets/icons/ardali-browser-16.png
+  DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/16x16/apps RENAME ardali.png)
+install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/browser/assets/icons/ardali-browser-24.png
+  DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/24x24/apps RENAME ardali.png)
+install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/browser/assets/icons/ardali-browser-32.png
+  DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/32x32/apps RENAME ardali.png)
+install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/browser/assets/icons/ardali-browser-48.png
+  DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/48x48/apps RENAME ardali.png)
+install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/browser/assets/icons/ardali-browser-64.png
+  DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/64x64/apps RENAME ardali.png)
+install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/browser/assets/icons/ardali-browser-128.png
+  DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/128x128/apps RENAME ardali.png)
+install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/browser/assets/icons/ardali-browser-256.png
+  DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/256x256/apps RENAME ardali.png)
+install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/browser/assets/icons/ardali-browser-512.png
+  DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/512x512/apps RENAME ardali.png)
+install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/browser/assets/icons/ardali-browser.png
+  DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/1024x1024/apps RENAME ardali.png)
+
+# AutoEQ presets & adblock resources
+install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/browser/resources/eq-presets
+  DESTINATION ${CMAKE_INSTALL_DATADIR}/ardali-browser
+)
+
+install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/browser/resources/adblock
+  DESTINATION ${CMAKE_INSTALL_DATADIR}/ardali-browser/resources
+)

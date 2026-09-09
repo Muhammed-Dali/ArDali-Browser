@@ -4,6 +4,8 @@
 #include <cstdint>
 #include <optional>
 
+class QTimer;
+
 namespace ardali {
 
 enum class MemoryPressureLevel {
@@ -50,6 +52,7 @@ class SystemMemoryPressureMonitor : public QObject {
  private:
   void evaluateSystemPressure();
 
+  QTimer *pollTimer_ = nullptr;
   MemoryPressureLevel currentLevel_ = MemoryPressureLevel::Normal;
   std::optional<MemoryPressureLevel> simulatedLevel_;
   int64_t availableMemoryMb_ = -1;

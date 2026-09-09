@@ -65,6 +65,12 @@ int main(int argc, char **argv) {
   assert(parsed.videoFormats.size() == 2 && parsed.videoFormats.front().height == 1080);
   assert(parsed.audioFormats.size() == 1 && parsed.audioFormats.front().id == QStringLiteral("a1"));
 
+  MediaAnalysisResult emptyParsed;
+  QString emptyReason;
+  const QByteArray noMediaMetadata = R"JSON({"id":"nomedia","title":"Webpage with no media","formats":[]})JSON";
+  assert(!MediaDownloadService::parseAnalysisJson(noMediaMetadata, QUrl(QStringLiteral("https://example.com")), &emptyParsed, &emptyReason));
+  assert(emptyReason == QStringLiteral("Bu bağlantıda desteklenen video veya ses bulunamadı."));
+
   QTemporaryDir temporary;
   assert(temporary.isValid());
   const QString binDir = QDir(temporary.path()).filePath(QStringLiteral("bin"));

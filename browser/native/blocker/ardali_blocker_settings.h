@@ -5,6 +5,8 @@
 #include <QObject>
 #include <QSet>
 #include <QSettings>
+#include <QRecursiveMutex>
+#include <optional>
 #include <QStringList>
 
 #include "ardali_blocker_types.h"
@@ -56,6 +58,8 @@ class ArDaliBlockerSettings final : public QObject {
   QStringList customFilters() const;
   void setCustomFilters(const QStringList &filters);
 
+  static QString normalizeSiteHost(const QString &host);
+  static std::optional<SitePolicy> findSitePolicy(const QString &host, const QHash<QString, SitePolicy> &policies);
   QHash<QString, SitePolicy> sitePolicies() const;
   SitePolicy sitePolicy(const QString &host) const;
   void setSitePolicy(const QString &host, const SitePolicy &policy);
@@ -89,6 +93,7 @@ class ArDaliBlockerSettings final : public QObject {
   void save();
   QString sanitizeHost(const QString &host) const;
 
+  mutable QRecursiveMutex mutex_;
   mutable QSettings settings_;
   ArDaliBlockerMode mode_ = ArDaliBlockerDefaults::Mode;
   bool protectionEnabled_ = ArDaliBlockerDefaults::ProtectionEnabled;

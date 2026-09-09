@@ -2,6 +2,7 @@
 
 #include <QDateTime>
 #include <QHash>
+#include <QCache>
 #include <QJsonObject>
 #include <QList>
 #include <QMutex>
@@ -59,8 +60,8 @@ class ArDaliBlockerListManager final : public QObject {
   QString dataDir_;
   mutable QMutex mutex_;
   QList<FilterListInfo> lists_;
-  mutable QHash<QString, QString> scriptingSourceCache_;
-  mutable QHash<QString, QJsonObject> scriptingJsonCache_;
+  mutable QCache<QString, QString> scriptingSourceCache_{16 * 1024 * 1024};
+  mutable QCache<QString, QJsonObject> scriptingJsonCache_{16 * 1024 * 1024};
   mutable QHash<QString, bool> scriptingApplicabilityCache_;
 };
 

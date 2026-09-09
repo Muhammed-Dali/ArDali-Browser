@@ -43,7 +43,34 @@ enum class BrowserIcon {
   Restore,
   Close,
   Audio,
-  Memory
+  Memory,
+  Location,
+  Camera,
+  Microphone,
+  Notification,
+  Cookie,
+  Javascript,
+  Image,
+  Popup,
+  ChevronRight,
+  ChevronDown,
+  Fonts,
+  Mouse,
+  Pdf,
+  LocationSlash,
+  CameraSlash,
+  MicrophoneSlash,
+  NotificationSlash,
+  ArrowLeft,
+  JavascriptSlash,
+  ImageSlash,
+  PopupSlash,
+  ProtectedContent,
+  InsecureContent,
+  SiteData,
+  JsOptimize,
+  Fullscreen,
+  Tune
 };
 
 namespace BrowserIcons {
@@ -52,5 +79,6 @@ QIcon appIcon();
 QIcon youtubeIcon();
 QIcon youtubeMusicIcon();
 QIcon searchEngineIcon(const QString &engineName);
+QIcon combinedMediaCaptureIcon();
 QString resourcePath(BrowserIcon id);
 }  // namespace BrowserIcons

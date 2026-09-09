@@ -4,6 +4,7 @@
 #include <QEasingCurve>
 #include <QFontMetrics>
 #include <QLinearGradient>
+#include <QKeyEvent>
 #include <QPainter>
 #include <QPointer>
 #include <QVariantAnimation>
@@ -17,6 +18,7 @@ class GlowToggleSwitch final : public QCheckBox {
       : QCheckBox(text, parent) {
     setCursor(Qt::PointingHandCursor);
     setAttribute(Qt::WA_Hover, true);
+    setFocusPolicy(Qt::StrongFocus);
     animationProgress_ = isChecked() ? 1.0 : 0.0;
     connect(this, &QCheckBox::toggled, this, [this](bool checked) { startAnimation(checked); });
   }
@@ -33,16 +35,35 @@ class GlowToggleSwitch final : public QCheckBox {
   }
 
  protected:
+  // QCheckBox's style hit rectangle describes the native indicator, not our
+  // custom 50px track. The complete widget (including its label) is one button.
+  bool hitButton(const QPoint &point) const override { return rect().contains(point); }
+
+  void keyPressEvent(QKeyEvent *event) override {
+    if (event->key() == Qt::Key_Return || event->key() == Qt::Key_Enter) {
+      if (!event->isAutoRepeat()) click();
+      event->accept();
+      return;
+    }
+    QCheckBox::keyPressEvent(event);
+  }
+
   void paintEvent(QPaintEvent *) override {
     QPainter painter(this);
     painter.setRenderHints(QPainter::Antialiasing | QPainter::SmoothPixmapTransform |
                            QPainter::TextAntialiasing);
+    if (hasFocus()) {
+      painter.setPen(QPen(QColor("#4ec9ff"), 1, Qt::DashLine));
+      painter.setBrush(Qt::NoBrush);
+      painter.drawRoundedRect(rect().adjusted(1, 1, -1, -1), 5, 5);
+    }
 
     constexpr int trackWidth = 50;
     constexpr int trackHeight = 26;
     const qreal radius = trackHeight / 2.0;
     const int offsetY = (height() - trackHeight) / 2;
-    const QRectF trackRect(1, offsetY, trackWidth, trackHeight);
+    const bool trailing = property("trailingTrack").toBool() && !text().isEmpty();
+    const QRectF trackRect(trailing ? width() - trackWidth - 2 : 1, offsetY, trackWidth, trackHeight);
 
     // setChecked() is intentionally used under QSignalBlocker while settings
     // are loaded. In that path toggled() does not run, so paint from the real
@@ -105,7 +126,7 @@ class GlowToggleSwitch final : public QCheckBox {
       labelFont.setBold(true);
       labelFont.setPointSize(10);
       painter.setFont(labelFont);
-      painter.drawText(QRectF(trackWidth + 10, 0, width() - (trackWidth + 10), height()),
+      painter.drawText(QRectF(trailing ? 2 : trackWidth + 10, 0, width() - (trackWidth + 12), height()),
                        Qt::AlignLeft | Qt::AlignVCenter, text());
     }
   }

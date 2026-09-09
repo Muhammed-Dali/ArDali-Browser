@@ -5,6 +5,8 @@
 #include "media_download_service.h"
 
 class BrowserProfileService;
+class GeneralDownloadManager;
+struct GeneralDownloadJob;
 class QLabel;
 class QLineEdit;
 class QPushButton;
@@ -15,8 +17,10 @@ class QNetworkAccessManager;
 class QNetworkReply;
 class QButtonGroup;
 class QGridLayout;
+class QHBoxLayout;
 class QLayout;
 class QProgressBar;
+class QResizeEvent;
 class QToolButton;
 class QVBoxLayout;
 
@@ -30,6 +34,9 @@ class MediaDownloadPage final : public QWidget {
   void setSourceUrl(const QUrl &url, bool analyzeImmediately = true);
   QUrl sourceUrl() const;
 
+ protected:
+  void resizeEvent(QResizeEvent *event) override;
+
  private:
   void analyzeInput();
   void applyAnalysis(const MediaAnalysisResult &result);
@@ -42,20 +49,33 @@ class MediaDownloadPage final : public QWidget {
   void refreshJobs();
   void refreshBrowserDownloads();
   QWidget *createJobCard(const MediaDownloadJob &job, QWidget *parent);
+  QWidget *createGeneralJobCard(const GeneralDownloadJob &job, QWidget *parent);
   void loadThumbnail(const QUrl &url);
   void exportHistory(bool csv);
+  void updateResponsiveLayout();
+  void reflowChoiceGrids(int columns);
+  bool hasActiveOrCompletedGeneralDownload(const QUrl &url) const;
+  bool handleGeneralDownloadIfDirectFile(const QUrl &url);
   static void clearLayout(QLayout *layout);
   static QString formatBytes(qint64 bytes);
 
   MediaDownloadService *service_ = nullptr;
   BrowserProfileService *profileService_ = nullptr;
+  GeneralDownloadManager *generalDownloads_ = nullptr;
   QLineEdit *urlInput_ = nullptr;
   QPushButton *analyzeButton_ = nullptr;
   QPushButton *cancelAnalysisButton_ = nullptr;
   QLabel *statusLabel_ = nullptr;
   QProgressBar *analysisProgress_ = nullptr;
+  QHBoxLayout *viewportLayout_ = nullptr;
+  QWidget *pageColumn_ = nullptr;
+  QGridLayout *sourceGrid_ = nullptr;
+  QGridLayout *summaryGrid_ = nullptr;
+  QGridLayout *advancedLayout_ = nullptr;
+  QGridLayout *audioFormatChoicesLayout_ = nullptr;
   QWidget *analysisCard_ = nullptr;
   QWidget *analysisOptions_ = nullptr;
+  QWidget *summaryText_ = nullptr;
   QLabel *thumbnailLabel_ = nullptr;
   QLabel *titleLabel_ = nullptr;
   QLabel *detailsLabel_ = nullptr;
@@ -68,6 +88,9 @@ class MediaDownloadPage final : public QWidget {
   QGridLayout *formatChoicesLayout_ = nullptr;
   QButtonGroup *formatButtonGroup_ = nullptr;
   QComboBox *moreAudioFormats_ = nullptr;
+  QLabel *detailsFormatLabel_ = nullptr;
+  QLabel *sectionLabel_ = nullptr;
+  QLabel *playlistActionLabel_ = nullptr;
   QComboBox *playlistActionBox_ = nullptr;
   QWidget *advancedOptions_ = nullptr;
   QPushButton *advancedToggle_ = nullptr;
@@ -84,6 +107,7 @@ class MediaDownloadPage final : public QWidget {
   QVBoxLayout *activeJobsLayout_ = nullptr;
   QVBoxLayout *historyJobsLayout_ = nullptr;
   QVBoxLayout *browserDownloadsLayout_ = nullptr;
+  QWidget *browserDownloadsCard_ = nullptr;
   QWidget *activeEmptyLabel_ = nullptr;
   QWidget *historyEmptyLabel_ = nullptr;
   QWidget *browserEmptyLabel_ = nullptr;

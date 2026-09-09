@@ -483,7 +483,7 @@ void ArDaliBlockerPage::createSettingsTab() {
     const QString path = QFileDialog::getOpenFileName(this, QStringLiteral("Yedekten Geri Yükle"), QString(), QStringLiteral("JSON Dosyası (*.json)"));
     if (path.isEmpty()) return;
     QFile file(path);
-    if (file.open(QIODevice::ReadOnly)) {
+    if (file.open(QIODevice::ReadOnly) && file.size() <= 8 * 1024 * 1024) {
       QJsonParseError err;
       const QJsonDocument doc = QJsonDocument::fromJson(file.readAll(), &err);
       if (err.error == QJsonParseError::NoError && doc.isObject()) {
@@ -499,7 +499,7 @@ void ArDaliBlockerPage::createSettingsTab() {
 
   connect(resetBtn, &QPushButton::clicked, this, [this]() {
     if (!service_) return;
-    if (QMessageBox::question(this, QStringLiteral("Sıfırlama Onayı"), QStringLiteral("Tüm reklam engelleme ayarları varsayılanlara sıfırlansın mı?")) == QMessageBox::Yes) {
+    if (QMessageBox::question(this, QStringLiteral("Sıfırlama Onayı"), QStringLiteral("Genel koruma ayarları, filtre listesi tercihleri, özel filtreler ve tüm site istisnaları fabrika varsayılanlarına sıfırlansın mı?")) == QMessageBox::Yes) {
       service_->settings()->resetToDefaults();
       refreshAll();
       QMessageBox::information(this, QStringLiteral("Sıfırlandı"), QStringLiteral("Reklam engelleyici varsayılan ayarlara döndürüldü."));

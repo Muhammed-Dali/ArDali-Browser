@@ -42,10 +42,12 @@ class ArDaliBlockerService final : public QObject {
   ArDaliBlockerEngine *filterEngine() const;
   ArDaliBlockerListManager *listManager() const;
   ArDaliBlockerRequestInterceptor *requestInterceptor() const;
+  SitePolicy sitePolicy(const QString &host) const;
 
   // Tab Context Registry (Thread-safe tab resolution from IO interceptor)
   void registerTab(quint64 tabId, const QUrl &url = QUrl());
   void unregisterTab(quint64 tabId);
+  bool shouldForgetClosedHost(const QString &host) const;
   void updateTabUrl(quint64 tabId, const QUrl &url);
   void setActiveTabId(quint64 tabId);
   quint64 activeTabId() const;
@@ -57,6 +59,12 @@ class ArDaliBlockerService final : public QObject {
                                   const QString &requestMethod = QStringLiteral("get"));
 
   // Tab stats management
+  void reportBlockedEvent(quint64 tabId, ArDaliBlockType type, quint64 count = 1,
+                          const QString &ruleOrUrl = QString());
+  void reportCosmeticBlock(quint64 tabId, quint64 count = 1,
+                           const QString &ruleOrSelector = QStringLiteral("cosmetic")) {
+    reportBlockedEvent(tabId, ArDaliBlockType::Cosmetic, count, ruleOrSelector);
+  }
   TabBlockerStats statsForTab(quint64 tabId) const;
   void clearTabStats(quint64 tabId);
   void resetAllStats();
@@ -101,6 +109,8 @@ class ArDaliBlockerService final : public QObject {
   bool isUpdatingFilters() const;
 
  signals:
+  void siteClosed(const QString &host);
+  void siteOpened(const QString &host);
   void tabStatsChanged(quint64 tabId, const TabBlockerStats &stats);
   void globalStatsChanged(quint64 sessionBlocked, quint64 totalBlocked);
   void requestLogged(const NetworkLogEntry &entry);

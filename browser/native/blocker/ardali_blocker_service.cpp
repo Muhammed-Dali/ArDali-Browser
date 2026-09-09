@@ -1,9 +1,11 @@
+#include "cosmetic_runtime.h"
 #include "ardali_blocker_service.h"
 
 #include <QDate>
 #include <QElapsedTimer>
 #include <QFile>
 #include <QFileInfo>
+#include <QHostAddress>
 #include <QJsonDocument>
 #include <QJsonParseError>
 #include <QMutexLocker>
@@ -58,6 +60,9 @@ ArDaliBlockerSettings *ArDaliBlockerService::settings() const { return settings_
 ArDaliBlockerEngine *ArDaliBlockerService::filterEngine() const { return filterEngine_; }
 ArDaliBlockerListManager *ArDaliBlockerService::listManager() const { return listManager_; }
 ArDaliBlockerRequestInterceptor *ArDaliBlockerService::requestInterceptor() const { return interceptor_; }
+SitePolicy ArDaliBlockerService::sitePolicy(const QString &host) const {
+  return settings_ ? settings_->sitePolicy(host) : SitePolicy{};
+}
 
 QStringList ArDaliBlockerService::activeRulesetIds() const {
   return listManager_->resolveRulesetIds(settings_->mode(), settings_->enabledRulesetIds(),
@@ -169,6 +174,7 @@ void ArDaliBlockerService::registerTab(quint64 tabId, const QUrl &url) {
   ctx.tabId = tabId;
   ctx.currentUrl = url;
   ctx.currentHost = url.host().toLower();
+  emit siteOpened(ArDaliBlockerSettings::normalizeSiteHost(ctx.currentHost));
   ctx.lastActiveTimestamp = QDateTime::currentMSecsSinceEpoch();
   tabRegistry_[tabId] = ctx;
   if (activeTabId_ == 0) activeTabId_ = tabId;
@@ -176,14 +182,20 @@ void ArDaliBlockerService::registerTab(quint64 tabId, const QUrl &url) {
 
 void ArDaliBlockerService::unregisterTab(quint64 tabId) {
   if (tabId == 0) return;
+  QString closedHost;
   {
     QMutexLocker locker(&tabRegistryMutex_);
+    closedHost = ArDaliBlockerSettings::normalizeSiteHost(tabRegistry_.value(tabId).currentHost);
     tabRegistry_.remove(tabId);
+    for (const auto &context : std::as_const(tabRegistry_)) {
+      if (ArDaliBlockerSettings::normalizeSiteHost(context.currentHost) == closedHost) { closedHost.clear(); break; }
+    }
     if (activeTabId_ == tabId) {
       activeTabId_ = tabRegistry_.isEmpty() ? 0 : tabRegistry_.keys().first();
     }
   }
   clearTabStats(tabId);
+  if (!closedHost.isEmpty()) emit siteClosed(closedHost);
 }
 
 void ArDaliBlockerService::updateTabUrl(quint64 tabId, const QUrl &url) {
@@ -200,12 +212,15 @@ void ArDaliBlockerService::updateTabUrl(quint64 tabId, const QUrl &url) {
   }
   TabRequestContext &ctx = tabRegistry_[tabId];
   const QString newHost = url.host().toLower();
+  emit siteOpened(ArDaliBlockerSettings::normalizeSiteHost(newHost));
   const QString scheme = url.scheme().toLower();
   const bool wentInternal = (scheme == QLatin1String("ardali") ||
                              scheme == QLatin1String("about") ||
                              scheme == QLatin1String("data") ||
                              scheme == QLatin1String("file"));
-  const bool hostChanged = (!ctx.currentHost.isEmpty() && !newHost.isEmpty() && ctx.currentHost != newHost);
+  const QString oldNorm = ArDaliBlockerSettings::normalizeSiteHost(ctx.currentHost);
+  const QString newNorm = ArDaliBlockerSettings::normalizeSiteHost(newHost);
+  const bool hostChanged = (!oldNorm.isEmpty() && !newNorm.isEmpty() && oldNorm != newNorm);
 
   ctx.currentUrl = url;
   ctx.currentHost = newHost;
@@ -247,12 +262,17 @@ quint64 ArDaliBlockerService::resolveTabId(const QUrl &firstPartyUrl, const QUrl
     }
   }
 
-  // 2. Match on firstParty host with most recent activity
+  // 2. Match on firstParty host with most recent activity (normalized and subdomain matching)
   if (!firstPartyHost.isEmpty()) {
+    const QString firstPartyNorm = ArDaliBlockerSettings::normalizeSiteHost(firstPartyHost);
     quint64 bestTab = 0;
     qint64 latestTs = -1;
     for (auto it = tabRegistry_.constBegin(); it != tabRegistry_.constEnd(); ++it) {
-      if (it.value().currentHost == firstPartyHost) {
+      const QString tabNorm = ArDaliBlockerSettings::normalizeSiteHost(it.value().currentHost);
+      if (it.value().currentHost == firstPartyHost || tabNorm == firstPartyNorm ||
+          (!firstPartyNorm.isEmpty() && !tabNorm.isEmpty() &&
+           (firstPartyNorm.endsWith(QLatin1String(".") + tabNorm) ||
+            tabNorm.endsWith(QLatin1String(".") + firstPartyNorm)))) {
         if (it.value().lastActiveTimestamp > latestTs) {
           latestTs = it.value().lastActiveTimestamp;
           bestTab = it.key();
@@ -262,10 +282,13 @@ quint64 ArDaliBlockerService::resolveTabId(const QUrl &firstPartyUrl, const QUrl
     if (bestTab != 0) return bestTab;
   }
 
-  // 3. Match on requestHost for main frame navigations
+  // 3. Match on requestHost for main frame navigations or direct requests
   if (!requestHost.isEmpty()) {
+    const QString requestNorm = ArDaliBlockerSettings::normalizeSiteHost(requestHost);
     for (auto it = tabRegistry_.constBegin(); it != tabRegistry_.constEnd(); ++it) {
-      if (it.value().currentHost == requestHost) {
+      const QString tabNorm = ArDaliBlockerSettings::normalizeSiteHost(it.value().currentHost);
+      if (it.value().currentHost == requestHost ||
+          (!requestNorm.isEmpty() && tabNorm == requestNorm)) {
         return it.key();
       }
     }
@@ -323,12 +346,35 @@ RequestDecision ArDaliBlockerService::evaluateRequest(const QUrl &requestUrl, in
   }
 
   RequestDecision decision;
+  bool isLocal = false;
+  const QString reqHost = requestUrl.host().toLower();
+  if (reqHost.isEmpty() || reqHost == QLatin1String("localhost") || reqHost.endsWith(QLatin1String(".local")) ||
+      reqHost.endsWith(QLatin1String(".test")) || reqHost.endsWith(QLatin1String(".invalid")) ||
+      reqHost.endsWith(QLatin1String(".onion"))) {
+    isLocal = true;
+  } else {
+    const QHostAddress addr(reqHost);
+    if (!addr.isNull() || reqHost.contains(QLatin1Char(':'))) {
+      isLocal = true;
+    }
+  }
+
   if (!settings_->protectionEnabled()) {
     decision = RequestDecision{ArDaliBlockerAction::Allow, QStringLiteral("global-protection-disabled"),
                                0, QStringLiteral("ardali-global"), QString()};
+  } else if (!policy.whitelisted && policy.upgradeHttps && reqScheme == QLatin1String("http") && !isLocal && !requestUrl.isLocalFile()) {
+    QUrl upgraded = requestUrl;
+    upgraded.setScheme(QStringLiteral("https"));
+    decision = RequestDecision{ArDaliBlockerAction::Redirect, QStringLiteral("https-upgrade-by-policy"),
+                               0, QStringLiteral("ardali-https-upgrade"), upgraded.toString()};
+  } else if (!policy.whitelisted && policy.blockScripts && resType == ArDaliBlockerResourceType::Script) {
+    decision = RequestDecision{ArDaliBlockerAction::Block, QStringLiteral("scripts-blocked-by-policy"),
+                               0, QStringLiteral("ardali-script-block"), QString()};
   } else {
+    const ArDaliBlockerMode activeMode = (policy.perSiteMode >= 0) ?
+        static_cast<ArDaliBlockerMode>(policy.perSiteMode) : settings_->mode();
     decision = filterEngine_->evaluate(
-        requestUrl, resType, initiatorHost, settings_->mode(), policy, requestMethod);
+        requestUrl, resType, initiatorHost, activeMode, policy, requestMethod);
   }
 
   // Strict blocking redirection logic for dangerous/strict-block matches
@@ -363,55 +409,44 @@ RequestDecision ArDaliBlockerService::evaluateRequest(const QUrl &requestUrl, in
   }
 
   // Update tab and global statistics
-  bool statsChanged = false;
-  bool persistNeeded = false;
-  TabBlockerStats changedStats;
-  quint64 changedSessionBlocked = 0;
-  quint64 changedTotalBlocked = 0;
-  {
-    QMutexLocker locker(&statsMutex_);
-    TabBlockerStats &tStats = tabStats_[resolvedTab];
-    const QString todayKey = QDate::currentDate().toString(Qt::ISODate);
-
-    if (decision.action == ArDaliBlockerAction::Block || decision.action == ArDaliBlockerAction::Redirect) {
-      if (decision.action == ArDaliBlockerAction::Block) {
-        tStats.blockedRequests++;
-        sessionBlocked_++;
-        totalBlocked_++;
-        dailyBlocked_[todayKey]++;
-        if (decision.rulesetId.contains(QStringLiteral("privacy"), Qt::CaseInsensitive) ||
-            decision.rulesetId.contains(QStringLiteral("tracker"), Qt::CaseInsensitive)) {
-          tStats.blockedTrackers++;
-          totalTrackersBlocked_++;
-        } else {
-          tStats.blockedAds++;
-        }
-        recordHostBlock(siteHost.isEmpty() ? initiatorHost : siteHost);
-      } else {
+  if (decision.action == ArDaliBlockerAction::Block) {
+    const bool isTracker = decision.rulesetId.contains(QStringLiteral("privacy"), Qt::CaseInsensitive) ||
+                           decision.rulesetId.contains(QStringLiteral("tracker"), Qt::CaseInsensitive);
+    reportBlockedEvent(resolvedTab, isTracker ? ArDaliBlockType::Tracker : ArDaliBlockType::NetworkAd, 1,
+                       decision.rulesetId.isEmpty() ? QStringLiteral("default") : decision.rulesetId);
+  } else {
+    bool statsChanged = false;
+    bool persistNeeded = false;
+    TabBlockerStats changedStats;
+    quint64 changedSessionBlocked = 0;
+    quint64 changedTotalBlocked = 0;
+    {
+      QMutexLocker locker(&statsMutex_);
+      TabBlockerStats &tStats = tabStats_[resolvedTab];
+      if (decision.action == ArDaliBlockerAction::Redirect) {
         tStats.redirectedRequests++;
         totalRedirected_++;
-      }
-      recordRulesetMatch(decision.rulesetId.isEmpty() ? QStringLiteral("default") : decision.rulesetId);
-      statsChanged = true;
-      changedStats = tStats;
-      changedSessionBlocked = sessionBlocked_;
-      changedTotalBlocked = totalBlocked_;
-      persistNeeded = true;
-    } else {
-      tStats.allowedRequests++;
-      totalAllowed_++;
-      if (decision.reason == QLatin1String("site-whitelisted")) {
-        whitelistAllowed_++;
+        recordRulesetMatch(decision.rulesetId.isEmpty() ? QStringLiteral("default") : decision.rulesetId);
+        statsChanged = true;
+        changedStats = tStats;
+        changedSessionBlocked = sessionBlocked_;
+        changedTotalBlocked = totalBlocked_;
         persistNeeded = true;
+      } else {
+        tStats.allowedRequests++;
+        totalAllowed_++;
+        if (decision.reason == QLatin1String("site-whitelisted")) {
+          whitelistAllowed_++;
+          persistNeeded = true;
+        }
       }
+      if (persistNeeded) statsDirty_ = true;
     }
-    if (persistNeeded) statsDirty_ = true;
-  }
-  if (persistNeeded) scheduleStatsPersistence();
-  // Never invoke UI or other observers while the statistics mutex is held.
-  if (statsChanged) {
-    emit tabStatsChanged(resolvedTab, changedStats);
-    emit globalStatsChanged(changedSessionBlocked, changedTotalBlocked);
+    if (persistNeeded) scheduleStatsPersistence();
+    if (statsChanged) {
+      emit tabStatsChanged(resolvedTab, changedStats);
+      emit globalStatsChanged(changedSessionBlocked, changedTotalBlocked);
+    }
   }
 
   // Log to ring buffer
@@ -424,7 +459,7 @@ RequestDecision ArDaliBlockerService::evaluateRequest(const QUrl &requestUrl, in
   entry.topLevelSite = firstPartyUrl.host().toLower();
   entry.requestMethod = requestMethod.trimmed().toUpper();
   entry.resourceTypeStr = resourceTypeToString(resType);
-  entry.requestUrl = requestUrl.toString();
+  entry.requestUrl = requestUrl.adjusted(QUrl::RemoveUserInfo | QUrl::RemoveQuery | QUrl::RemoveFragment).toString();
   entry.action = decision.action;
   entry.reason = decision.reason;
   entry.rulesetId = decision.rulesetId;
@@ -538,6 +573,86 @@ void ArDaliBlockerService::persistStats() {
   persisted.sync();
   QFile::setPermissions(dataDir_ + QStringLiteral("/adblock-statistics.ini"), QFileDevice::ReadOwner | QFileDevice::WriteOwner);
   if (persisted.status() != QSettings::NoError) statsDirty_ = true;
+}
+
+void ArDaliBlockerService::reportBlockedEvent(quint64 tabId, ArDaliBlockType type, quint64 count,
+                                             const QString &ruleOrUrl) {
+  if (count == 0 || !settings_->protectionEnabled()) return;
+
+  QString tabHost;
+  {
+    QMutexLocker locker(&tabRegistryMutex_);
+    if (tabId != 0 && tabRegistry_.contains(tabId)) {
+      tabHost = tabRegistry_.value(tabId).currentHost;
+    } else if (activeTabId_ != 0 && tabRegistry_.contains(activeTabId_)) {
+      tabHost = tabRegistry_.value(activeTabId_).currentHost;
+      tabId = activeTabId_;
+    }
+  }
+
+  const QString normHost = ArDaliBlockerSettings::normalizeSiteHost(tabHost);
+  if (!normHost.isEmpty()) {
+    const SitePolicy policy = settings_->sitePolicy(normHost);
+    if (policy.whitelisted) return;
+    if (policy.temporaryDisabledUntil > QDateTime::currentMSecsSinceEpoch()) return;
+    if ((type == ArDaliBlockType::NetworkAd || type == ArDaliBlockType::Cosmetic) && !policy.adBlocking) return;
+    if (type == ArDaliBlockType::Tracker && !policy.trackerProtection) return;
+  }
+
+  bool statsChanged = false;
+  TabBlockerStats changedStats;
+  quint64 changedSessionBlocked = 0;
+  quint64 changedTotalBlocked = 0;
+
+  {
+    QMutexLocker locker(&statsMutex_);
+    TabBlockerStats &tStats = tabStats_[tabId];
+    const QString todayKey = QDate::currentDate().toString(Qt::ISODate);
+
+    switch (type) {
+      case ArDaliBlockType::NetworkAd:
+        tStats.blockedRequests += count;
+        tStats.blockedAds += count;
+        break;
+      case ArDaliBlockType::Tracker:
+        tStats.blockedRequests += count;
+        tStats.blockedTrackers += count;
+        totalTrackersBlocked_ += count;
+        break;
+      case ArDaliBlockType::Cosmetic:
+        tStats.blockedCosmetics += count;
+        tStats.blockedAds += count;
+        break;
+      case ArDaliBlockType::Scriptlet:
+        tStats.blockedScriptlets += count;
+        tStats.blockedAds += count;
+        break;
+    }
+
+    sessionBlocked_ += count;
+    totalBlocked_ += count;
+    dailyBlocked_[todayKey] += count;
+
+    if (!normHost.isEmpty()) {
+      for (quint64 i = 0; i < count; ++i) recordHostBlock(normHost);
+    }
+    if (!ruleOrUrl.isEmpty()) {
+      for (quint64 i = 0; i < count; ++i) recordRulesetMatch(ruleOrUrl);
+    }
+
+    statsChanged = true;
+    changedStats = tStats;
+    changedSessionBlocked = sessionBlocked_;
+    changedTotalBlocked = totalBlocked_;
+    statsDirty_ = true;
+  }
+
+  scheduleStatsPersistence();
+
+  if (statsChanged) {
+    emit tabStatsChanged(tabId, changedStats);
+    emit globalStatsChanged(changedSessionBlocked, changedTotalBlocked);
+  }
 }
 
 TabBlockerStats ArDaliBlockerService::statsForTab(quint64 tabId) const {
@@ -669,7 +784,13 @@ QList<QPair<QString, quint64>> ArDaliBlockerService::topMatchedRulesets(int limi
 
 QString ArDaliBlockerService::cosmeticCssForHost(const QString &host) const {
   if (!settings_->protectionEnabled()) return {};
-  return filterEngine_->cosmeticCssForHost(host);
+  QString css = filterEngine_->cosmeticCssForHost(host);
+  if (listManager_) {
+    const QString specificCss = listManager_->loadSpecificCosmeticCssForHost(
+        host, activeRulesetIds(), true);
+    if (!specificCss.isEmpty()) css += (css.isEmpty() ? QString() : QStringLiteral("\n")) + specificCss;
+  }
+  return filterEngine_->applyCosmeticExceptions(host, css);
 }
 
 QWebEngineScript ArDaliBlockerService::createCosmeticScriptForHost(const QString &host) const {
@@ -690,38 +811,18 @@ QWebEngineScript ArDaliBlockerService::createCosmeticScriptForHost(const QString
       policy.temporaryDisabledUntil > QDateTime::currentMSecsSinceEpoch()) {
     return script;
   }
-  QString css = filterEngine_->cosmeticCssForHost(host);
-  const QString specificCss = listManager_->loadSpecificCosmeticCssForHost(
-      host, activeRulesetIds(), true);
-  if (!specificCss.isEmpty()) css += (css.isEmpty() ? QString() : QStringLiteral("\n")) + specificCss;
+  const QString css = cosmeticCssForHost(host);
 
-  QString js;
-  if (!css.isEmpty()) {
-    QString escaped = css;
-    escaped.replace(QLatin1Char('\\'), QStringLiteral("\\\\"))
-           .replace(QLatin1Char('\''), QStringLiteral("\\'"))
-           .replace(QLatin1Char('\n'), QStringLiteral("\\n"));
+  // CSS automatically re-evaluates recycled nodes, including attribute/text
+  // replacement; no sticky per-node hidden flag or destructive inline style.
+  QString combined = css;
+  const QString json = QString::fromUtf8(QJsonDocument(QJsonArray{combined}).toJson(QJsonDocument::Compact));
+  script.setWorldId(QWebEngineScript::ApplicationWorld);
+  const QString expectedHost = QString::fromUtf8(QJsonDocument(QJsonArray{lowerHost}).toJson(QJsonDocument::Compact));
+  script.setSourceCode(QStringLiteral("(()=>{const start=()=>{const h=location.hostname.toLowerCase();const exp=%1[0];if(h===exp||h.replace(/^www\\./,'')===exp.replace(/^www\\./,'')||h.endsWith('.'+exp.replace(/^www\\./,''))){\n").arg(expectedHost) +
+      QString::fromUtf8(kArDaliCosmeticRuntime).arg(json + QStringLiteral("[0]")) +
+      QStringLiteral("\n}};if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',start,{once:true});start();})();"));
 
-    js += QStringLiteral(
-        "(function() {\n"
-        "  function inject() {\n"
-        "    var st = document.getElementById('ardali-adblock-cosmetic');\n"
-        "    if (!st) {\n"
-        "      st = document.createElement('style');\n"
-        "      st.id = 'ardali-adblock-cosmetic';\n"
-        "      (document.head || document.documentElement).appendChild(st);\n"
-        "    }\n"
-        "    st.textContent = '%1';\n"
-        "  }\n"
-        "  if (document.head || document.documentElement) inject();\n"
-        "  else document.addEventListener('DOMContentLoaded', inject, { once: true });\n"
-        "})();\n"
-    ).arg(escaped);
-  }
-
-  if (js.trimmed().isEmpty()) return script;
-
-  script.setSourceCode(js);
   return script;
 }
 
@@ -732,6 +833,27 @@ QList<QWebEngineScript> ArDaliBlockerService::createScriptingScriptsForHost(cons
   if (!cosmetic.sourceCode().isEmpty()) scripts.append(cosmetic);
 
   const SitePolicy policy = settings_->sitePolicy(host);
+  if (!policy.whitelisted && policy.temporaryDisabledUntil <= QDateTime::currentMSecsSinceEpoch()) {
+    if (policy.blockFingerprinting) {
+      QWebEngineScript privacy;
+      privacy.setName(QStringLiteral("ardali-fingerprint-protection"));
+      privacy.setInjectionPoint(QWebEngineScript::DocumentCreation);
+      privacy.setWorldId(QWebEngineScript::MainWorld);
+      privacy.setRunsOnSubFrames(true);
+      privacy.setSourceCode(QStringLiteral(R"JS((()=>{
+        const deny=()=>{throw new DOMException('Canvas readback blocked by site privacy policy','SecurityError')};
+        for(const [prototype,names] of [[HTMLCanvasElement.prototype,['toDataURL','toBlob']],[CanvasRenderingContext2D.prototype,['getImageData']]]){
+          for(const name of names)try{Object.defineProperty(prototype,name,{value:deny,writable:false,configurable:false})}catch(_){}
+        }
+        for(const prototype of [window.WebGLRenderingContext?.prototype,window.WebGL2RenderingContext?.prototype]){
+          if(!prototype)continue;const original=prototype.getParameter;
+          try{Object.defineProperty(prototype,'getParameter',{value:function(p){if(p===37445||p===37446)return 'ArDali';return original.call(this,p)},writable:false,configurable:false})}catch(_){}
+        }
+      })())JS"));
+      scripts.append(privacy);
+    }
+
+  }
   if (policy.whitelisted || !policy.adBlocking ||
       policy.temporaryDisabledUntil > QDateTime::currentMSecsSinceEpoch()) {
     return scripts;
@@ -750,43 +872,35 @@ QList<QWebEngineScript> ArDaliBlockerService::createScriptingScriptsForHost(cons
     scripts.append(script);
   }
 
-  const QString lowerHost = host.trimmed().toLower();
-  const bool isYouTube = lowerHost == QLatin1String("youtube.com") ||
-                         lowerHost.endsWith(QLatin1String(".youtube.com")) ||
-                         lowerHost == QLatin1String("youtu.be");
-  // Keep the generic procedural executor off YouTube's player DOM. The
-  // generated uBOL host-specific cosmetic/scriptlet assets above own that site.
-  QJsonArray proceduralRules;
-  if (!isYouTube) {
-    proceduralRules = listManager_->loadProceduralRulesForHost(host, activeRulesetIds(), true);
-    const QJsonArray customProcedural = filterEngine_->customProceduralRulesForHost(host);
-    for (const QJsonValue &rule : customProcedural) proceduralRules.append(rule);
-  }
+  QJsonArray proceduralRules = listManager_->loadProceduralRulesForHost(host, activeRulesetIds(), true);
+  const QJsonArray customProcedural = filterEngine_->customProceduralRulesForHost(host);
+  for (const QJsonValue &rule : customProcedural) proceduralRules.append(rule);
   if (!proceduralRules.isEmpty()) {
     const QString json = QString::fromUtf8(QJsonDocument(proceduralRules).toJson(QJsonDocument::Compact));
     QWebEngineScript procedural;
     procedural.setName(QStringLiteral("ardali-adblock-procedural"));
     procedural.setInjectionPoint(QWebEngineScript::DocumentCreation);
-    procedural.setWorldId(QWebEngineScript::MainWorld);
+    procedural.setWorldId(QWebEngineScript::ApplicationWorld);
     procedural.setRunsOnSubFrames(false);
     // This is the procedural subset used by the legacy webview preload:
     // selector/tasks/action plus re-evaluation on SPA DOM mutation. Unknown
     // task names fail closed (do not hide content), never as broad selectors.
     procedural.setSourceCode(QStringLiteral(R"JS(
 (function(){
- if(window.__ardaliProceduralRules)return;window.__ardaliProceduralRules=1;
+ const runtime=window.__ardaliCosmeticRuntime;
+ if(!runtime||window.__ardaliProceduralRules)return;window.__ardaliProceduralRules=1;
  const rules=%1;
- const rx=v=>{const s=String(v||'');const m=/^\/([\s\S]*)\/([a-z]*)$/i.exec(s);try{return m?new RegExp(m[1],m[2]):new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g,'\\$&'),'i')}catch(_){return /^$/}};
- const query=(root,sel)=>{try{if(!sel)return root&&root.nodeType===1?[root]:[];return Array.from((root||document).querySelectorAll(sel))}catch(_){return[]}};
+ const rx=v=>{const s=String(v||'');const m=/^\/([\s\S]*)\/([a-z]*)$/i.exec(s);if(s.length>512||(m&&/[(){}]/.test(m[1])))return /$a/;try{return m?new RegExp(m[1],m[2]):new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g,'\\$&'),'i')}catch(_){return /^$/}};
+ const query=(root,sel)=>{try{if(!sel)return root&&root.nodeType===1?[root]:[];if(sel==='*')return [];const list=Array.from((root||document).querySelectorAll(sel)).slice(0,512);if(root?.nodeType===1&&root.matches(sel))list.unshift(root);return list}catch(_){return[]}};
  const relative=(node,sel)=>{try{if(/^[>+~]/.test(sel))return Array.from(node.parentElement.querySelectorAll(':scope '+sel));return query(node,sel)}catch(_){return[]}};
  const filter=(nodes,tasks)=>{let out=nodes.filter(Boolean);for(const task of(tasks||[])){const n=String(task[0]||''),a=task[1],next=[];for(const node of out){try{
-  if(n==='has-text'){if(rx(a).test(String(node.textContent||'')))next.push(node)}
+  if(n==='has-text'){if(rx(a).test(String(node.textContent||'').slice(0,8192)))next.push(node)}
   else if(n==='matches-path'){if(rx(a).test(location.pathname+location.search))next.push(node)}
   else if(n==='matches-media'){if(matchMedia(String(a||'')).matches)next.push(node)}
   else if(n==='matches-css'||n==='matches-css-before'||n==='matches-css-after'){const pseudo=n.endsWith('before')?'::before':n.endsWith('after')?'::after':null;const st=getComputedStyle(node,pseudo);if(rx(a&&a.value).test(st.getPropertyValue(a&&a.name)))next.push(node)}
   else if(n==='matches-attr'){const nr=rx(a&&a.attr),vr=rx(a&&a.value);if(Array.from(node.attributes||[]).some(x=>nr.test(x.name)&&vr.test(x.value)))next.push(node)}
   else if(n==='matches-prop'){try{let v=node;for(const p of String(a&&a.attr||'').split('.'))v=v==null?undefined:v[p];if(rx(a&&a.value).test(String(v??'')))next.push(node)}catch(_){}}
-  else if(n==='min-text-length'){if(String(node.textContent||'').length>=Number(a||0))next.push(node)}
+  else if(n==='min-text-length'){if(String(node.textContent||'').slice(0,8192).length>=Number(a||0))next.push(node)}
   else if(n==='has'||n==='if'){const o=a&&typeof a==='object'?a:{selector:String(a||'*'),tasks:[]};if(filter(relative(node,o.selector||'*'),o.tasks).length)next.push(node)}
   else if(n==='not'||n==='if-not'){const o=a&&typeof a==='object'?a:{selector:String(a||''),tasks:[]};if(!filter(o.selector?relative(node,o.selector):[node],o.tasks).length)next.push(node)}
   else if(n==='upward'){let x=node;if(typeof a==='number'){for(let i=0;i<a&&x;i++)x=x.parentElement}else x=node.closest(String(a||''));if(x)next.push(x)}
@@ -796,10 +910,31 @@ QList<QWebEngineScript> ArDaliBlockerService::createScriptingScriptsForHost(cons
   else if(n==='others'){if(node.parentElement)next.push(...Array.from(node.parentElement.children).filter(x=>x!==node))}
   else if(n==='watch-attr')next.push(node)
  }catch(_){}}out=[...new Set(next)];if(!out.length)break}return out};
- const apply=(node,rule)=>{try{const a=Array.isArray(rule.action)?rule.action:['style','display:none!important;'];if(a[0]==='remove')node.remove();else if(a[0]==='remove-attr')node.removeAttribute(String(a[1]||''));else if(a[0]==='remove-class')node.classList.remove(...String(a[1]||'').split(/\s+/));else if(a[0]==='style')node.style.cssText+=';'+String(a[1]||'display:none!important;');else node.style.setProperty('display','none','important')}catch(_){}};
- let scheduled=false;const run=()=>{scheduled=false;const deadline=performance.now()+12;for(const r of rules){if(performance.now()>deadline){schedule();return}for(const n of filter(query(document,r.selector||'*'),r.tasks))apply(n,r)}};
- const schedule=()=>{if(!scheduled){scheduled=true;setTimeout(run,90)}};schedule();
- try{new MutationObserver(schedule).observe(document.documentElement||document,{childList:true,subtree:true,attributes:true,attributeFilter:['class','id','style']})}catch(_){}
+  const apply=(node,rule)=>{try{
+   if(runtime.hiddenNodes&&!runtime.hiddenNodes.has(node)){
+    runtime.hiddenNodes.add(node);
+    if(runtime.reportBlock)runtime.reportBlock(1,'procedural');
+   }
+   const a=Array.isArray(rule.action)?rule.action:['style','display:none!important;'];
+   if(a[0]==='remove')node.remove();
+   else if(a[0]==='remove-attr')node.removeAttribute(String(a[1]||''));
+   else if(a[0]==='remove-class')node.classList.remove(...String(a[1]||'').split(/\s+/));
+   else if(a[0]==='style')node.style.cssText=String(a[1]||'display:none!important;');
+   else node.style.setProperty('display','none','important');
+  }catch(_){}};
+ let cursor=0;
+ runtime.callbacks.push((roots)=>{
+  const deadline=performance.now()+12;let count=0;
+  while(count<rules.length){
+   const r=rules[cursor];cursor=(cursor+1)%rules.length;count++;
+   const candidates=new Set();
+   for(const root of roots){for(const node of query(root===document?document:(root?.parentElement||root),r.selector||''))candidates.add(node);if(candidates.size>=512)break;}
+   for(const n of filter(Array.from(candidates).slice(0,512),r.tasks).slice(0,512))apply(n,r);
+   // Resume at the next rule on a later DOM event, never a timer loop.
+   if(performance.now()>deadline)break;
+  }
+ });
+ runtime.schedule(document);
 })();
 )JS").arg(json));
     scripts.append(procedural);
@@ -820,4 +955,14 @@ QList<NetworkLogEntry> ArDaliBlockerService::recentLogs(int maxCount) const {
   QMutexLocker locker(&logMutex_);
   if (maxCount <= 0 || maxCount >= logsRingBuffer_.size()) return logsRingBuffer_;
   return logsRingBuffer_.mid(0, maxCount);
+}
+
+bool ArDaliBlockerService::shouldForgetClosedHost(const QString &host) const {
+  const QString key = ArDaliBlockerSettings::normalizeSiteHost(host);
+  const auto policy = settings_->sitePolicy(key);
+  if (key.isEmpty() || !settings_->protectionEnabled() || policy.whitelisted || !policy.forgetOnClose) return false;
+  QMutexLocker locker(&tabRegistryMutex_);
+  for (const auto &context : tabRegistry_)
+    if (ArDaliBlockerSettings::normalizeSiteHost(context.currentHost) == key) return false;
+  return true;
 }

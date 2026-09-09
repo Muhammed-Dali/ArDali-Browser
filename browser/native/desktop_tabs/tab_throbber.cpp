@@ -136,14 +136,13 @@ QIcon TabThrobber::renderThrobberIcon(int frameStep, const QPalette &palette, bo
   QColor strokeColor;
   if (activeTab) {
     strokeColor = palette.color(QPalette::Highlight);
-    if (!strokeColor.isValid() || strokeColor.alpha() == 0) {
-      strokeColor = palette.color(QPalette::WindowText);
+    if (!strokeColor.isValid() || strokeColor.alpha() == 0 || strokeColor == palette.color(QPalette::WindowText)) {
+      strokeColor = QColor(QStringLiteral("#8ab4f8"));
     }
   } else {
     strokeColor = palette.color(QPalette::PlaceholderText);
-    if (!strokeColor.isValid() || strokeColor.alpha() == 0) {
-      strokeColor = palette.color(QPalette::WindowText);
-      strokeColor.setAlpha(150);
+    if (!strokeColor.isValid() || strokeColor.alpha() == 0 || strokeColor == palette.color(QPalette::WindowText)) {
+      strokeColor = QColor(QStringLiteral("#9aa0a6"));
     }
   }
 

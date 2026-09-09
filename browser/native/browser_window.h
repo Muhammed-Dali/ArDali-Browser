@@ -1,7 +1,9 @@
 #ifndef BROWSER_WINDOW_H_
 #define BROWSER_WINDOW_H_
 
+#include <memory>
 #include <QFrame>
+#include <QCache>
 #include <QIcon>
 #include <QLabel>
 #include <QList>
@@ -14,6 +16,10 @@
 #include <QWebEngineProfile>
 #include <QWebEngineView>
 
+namespace ardali::core {
+class INavigationCandidateProvider;
+}
+
 #include "audio/audio_effects_page.h"
 #include "audio/web_audio_effects_controller.h"
 #include "blocker/ardali_blocker_page.h"
@@ -24,6 +30,7 @@
 #include "desktop_tabs/tab_group_model.h"
 #include "downloads/media_download_page.h"
 #include "downloads/media_download_service.h"
+#include "downloads/media_platform_registry.h"
 #include "eq/eq_preset_page.h"
 #include "eq/eq_preset_repository.h"
 #include "passwords/password_manager_page.h"
@@ -35,17 +42,52 @@
 #include "settings/settings_page.h"
 #include "translate/page_translator.h"
 #include "translate/translate_bubble_popup.h"
+#include "site_permission_prompt_bubble.h"
+#include "site_controls_bubble.h"
+
+struct TabSessionPermissionKey {
+  uint64_t tabId = 0;
+  QString canonicalOrigin;
+  QString permissionKey;
+
+  bool operator==(const TabSessionPermissionKey &other) const {
+    return tabId == other.tabId && canonicalOrigin == other.canonicalOrigin && permissionKey == other.permissionKey;
+  }
+};
+
+inline size_t qHash(const TabSessionPermissionKey &key, size_t seed = 0) {
+  return qHash(key.tabId, seed) ^ qHash(key.canonicalOrigin, seed) ^ qHash(key.permissionKey, seed);
+}
+
+#if QT_VERSION >= QT_VERSION_CHECK(6, 8, 0)
+struct PendingPermissionRequest {
+  QWebEnginePermission permission;
+  QPointer<QWebEngineView> view;
+  QPointer<QWebEnginePage> page;
+  uint64_t tabId = 0;
+  QUrl requestedOrigin;
+  QString canonicalOrigin;
+  QWebEnginePermission::PermissionType type;
+  QDateTime requestedAt;
+};
+#endif
 
 class ArDaliBlockerService;
 class CredentialVaultManager;
+class CredentialAutofillController;
 class SongFinderSettingsPage;
 class TranslateService;
 class QLineEdit;
+class QCompleter;
+class QStandardItemModel;
 class QStackedWidget;
 class QToolButton;
 class QToolBar;
 class QProgressBar;
 class TabHoverCard;
+class DownloadUiModel;
+class DownloadPopup;
+class DownloadToolbarButton;
 
 namespace ardali::desktop_tabs {
 class TabStripWidget;
@@ -55,6 +97,7 @@ class TabGroupLauncherPopup;
 } // namespace ardali::desktop_tabs
 
 struct BrowserServices {
+  std::shared_ptr<BrowserProfileService> privateProfileOwner;
   QWebEngineProfile *profile = nullptr;
   BrowserProfileService *profileService = nullptr;
   TabManager *tabManager = nullptr;
@@ -78,6 +121,9 @@ struct BrowserTabInfo {
   bool isInternal = false;
   QString internalId;
   std::optional<QUuid> groupId;
+  QUrl expectedTypedUrl;
+  bool activeCamera = false;
+  bool activeMicrophone = false;
 };
 
 class BrowserWindow : public QMainWindow {
@@ -113,6 +159,9 @@ public:
   QWebEngineView *currentView() const;
 
   QString currentSearchEngine() const;
+  void navigateFromUserInput(const QString &rawInput, const QString &searchEngine = QString{});
+  ardali::core::INavigationCandidateProvider *candidateProvider() const { return candidateProvider_.get(); }
+  void requestNewTabSuggestions(QWebEnginePage *page, const QString &query, int requestId);
   void setSearchEngine(const QString &engine);
   void updateSearchEngineIcon();
   void toggleTabSearchPopup();
@@ -151,8 +200,30 @@ public:
   void showDownloadsMenu();
   void toggleCurrentBookmark();
   void renderBookmarks();
+  bool isCurrentTabNewTab() const;
+  void updateBookmarkBarVisibility();
+  void toggleBookmarkBar();
   void fillCurrentPageFromVault();
+  CredentialAutofillController *autofillController() const { return autofillController_.get(); }
+  void updateSaveBubblePosition();
+  void dismissCredentialSaveBubble();
   QIcon tabIconForRecord(const BrowserTabInfo &info) const;
+
+  // Tab-scoped session permission management
+  void clearTabSessionPermissions(uint64_t tabId);
+  void clearTabSessionPermissionsForOrigin(uint64_t tabId, const QString &canonicalOrigin);
+  void clearAllTabSessionPermissionsForOrigin(const QString &canonicalOrigin);
+  void grantTabSessionPermission(uint64_t tabId, const QString &canonicalOrigin, const QString &permissionKey);
+  bool hasTabSessionPermission(uint64_t tabId, const QString &canonicalOrigin, const QString &permissionKey) const;
+
+  // Site controls & omnibox leading icon
+  SiteControlsBubble *siteControlsBubble() const { return siteControlsBubble_.data(); }
+  void toggleSiteControlsBubble();
+  void dismissSiteControlsBubble();
+  bool isInsideSiteControls(QWidget *target, const QPoint &globalPos) const;
+  void updateOmniboxLeadingIcon();
+  QAction *omniboxLeadingAction() const { return searchEngineAction_; }
+  void setTabActiveMediaForTesting(int tabIndex, bool camera, bool mic);
 
   void prepareAdBlockScripts(QWebEnginePage *page, const QUrl &url,
                              bool force = false);
@@ -167,6 +238,7 @@ public:
   void updateBlockerControls();
 
 protected:
+  bool eventFilter(QObject *watched, QEvent *event) override;
   void closeEvent(QCloseEvent *event) override;
   void keyPressEvent(QKeyEvent *event) override;
   void changeEvent(QEvent *event) override;
@@ -197,7 +269,10 @@ private:
   void updateOmniboxForCurrentTab();
   Qt::Edges calculateEdges(const QPoint &pos) const;
   void updateCursorShape(const QPoint &pos);
+  void handleManualResize(const QPoint &globalPos);
   QVector<QPointer<QWebEngineView>> collectAllWebViewsAcrossWindows() const;
+  void syncNewTabViews();
+  void onThrobberTick();
 
   BrowserServices services_;
   bool isCaptureShell_ = false;
@@ -220,6 +295,15 @@ private:
   QToolButton *homeBtn_ = nullptr;
   QToolButton *bookmarkBtn_ = nullptr;
   QLineEdit *omnibox_ = nullptr;
+  QCompleter *suggestionCompleter_ = nullptr;
+  QStandardItemModel *suggestionModel_ = nullptr;
+  bool suggestionActivated_ = false;
+  QCache<QString, QIcon> suggestionIconCache_{64};
+  int pendingSuggestionIcons_ = 0;
+  QJsonArray searchRows(const QString &query, const QStringList &remote) const;
+  void updateOmniboxSuggestions(const QString &query);
+  void activateSuggestion(const QUrl &url);
+  bool beginForgetClosedView(QWebEngineView *view);
   QAction *searchEngineAction_ = nullptr;
   QToolBar *bookmarkBar_ = nullptr;
   QToolButton *appsBtn_ = nullptr;
@@ -237,19 +321,47 @@ private:
   QToolButton *translateButton_ = nullptr;
   ArDaliBlockerShieldButton *adBlockShield_ = nullptr;
   PulseToolbarButton *pulseButton_ = nullptr;
-  QToolButton *mediaDownload_ = nullptr;
+  DownloadToolbarButton *mediaDownload_ = nullptr;
+  DownloadUiModel *downloadUiModel_ = nullptr;
+  DownloadPopup *downloadPopup_ = nullptr;
   QToolButton *passwordsBtn_ = nullptr;
   QToolButton *mainMenuBtn_ = nullptr;
+  std::unique_ptr<CredentialAutofillController> autofillController_;
+
+  void updateDownloadToolbar();
+  void showDownloadStartedAnimation();
+  bool downloadAnimationsEnabled() const;
 
   TranslateBubblePopup *translateBubble_ = nullptr;
   PageTranslator *pageTranslator_ = nullptr;
 
+  QPointer<SitePermissionPromptBubble> permissionBubble_;
+  QPointer<SiteControlsBubble> siteControlsBubble_;
+  QSet<TabSessionPermissionKey> tabSessionGrants_;
+  void updateSiteControlsBubblePosition();
+#if QT_VERSION >= QT_VERSION_CHECK(6, 8, 0)
+  QList<PendingPermissionRequest> pendingPermissionQueue_;
+  std::optional<PendingPermissionRequest> currentActivePermissionRequest_;
+  void handleTabPermissionRequested(QWebEngineView *view, const QWebEnginePermission &permission);
+  void processNextPermissionRequest();
+  void resolveActivePermissionRequest(SitePermissionChoice choice);
+  void dismissActivePermissionPrompt(bool cancelRequest = true);
+  void updatePermissionBubblePosition();
+  void syncProfilePermissionsForTab(uint64_t tabId);
+#endif
+
   bool resizing_ = false;
   Qt::Edges resizeEdges_{};
+  QPoint resizeStartPos_;
+  QRect resizeStartGeometry_;
+  bool hasOverrideCursor_ = false;
+  Qt::CursorShape currentOverrideShape_ = Qt::ArrowCursor;
 
   QSize lastNormalSize_{1280, 800};
   QRect lastNormalGeometry_{100, 100, 1280, 800};
   QUrl lastActiveWebUrl_;
+
+  std::unique_ptr<ardali::core::INavigationCandidateProvider> candidateProvider_;
 };
 
 #endif // BROWSER_WINDOW_H_

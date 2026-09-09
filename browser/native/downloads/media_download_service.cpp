@@ -191,7 +191,7 @@ bool MediaDownloadService::isSupportedMediaUrl(const QUrl &url, QString *reason)
   if (!url.isValid() || url.isEmpty()) return reject(QStringLiteral("Geçerli bir bağlantı girin."));
   if (url.scheme().compare(QStringLiteral("http"), Qt::CaseInsensitive) != 0
       && url.scheme().compare(QStringLiteral("https"), Qt::CaseInsensitive) != 0) {
-    return reject(QStringLiteral("Yalnızca HTTP veya HTTPS medya bağlantıları desteklenir."));
+    return reject(QStringLiteral("Yalnızca HTTP veya HTTPS bağlantıları desteklenir."));
   }
   if (!url.userName().isEmpty() || !url.password().isEmpty()) {
     return reject(QStringLiteral("Kimlik bilgisi içeren bağlantılar güvenlik nedeniyle reddedildi."));
@@ -265,7 +265,7 @@ bool MediaDownloadService::parseAnalysisJson(const QByteArray &json, const QUrl 
     return a.audioBitrate > b.audioBitrate;
   });
   if (parsed.title.isEmpty() || (parsed.videoFormats.isEmpty() && parsed.audioFormats.isEmpty())) {
-    if (error) *error = QStringLiteral("Bu sayfada desteklenen indirilebilir medya bulunamadı.");
+    if (error) *error = QStringLiteral("Bu bağlantıda desteklenen video veya ses bulunamadı.");
     return false;
   }
   *result = parsed;
@@ -276,12 +276,12 @@ bool MediaDownloadService::parseAnalysisJson(const QByteArray &json, const QUrl 
 QStringList MediaDownloadService::buildDownloadArguments(const MediaDownloadRequest &request,
                                                          const QString &ffmpegPath,
                                                          const QString &jsRuntimeArgument) {
-  QStringList args{QStringLiteral("--newline"), QStringLiteral("--no-config"),
+  QStringList args{QStringLiteral("--newline"), QStringLiteral("--no-colors"), QStringLiteral("--no-config"),
                    QStringLiteral("--no-update"),
                    QStringLiteral("--no-mtime"), QStringLiteral("--no-overwrites"),
                    QStringLiteral("--windows-filenames"), QStringLiteral("--trim-filenames"), QStringLiteral("200"),
                    QStringLiteral("--progress-template"),
-                   QStringLiteral("download:ARDALI_PROGRESS:%(progress._percent_str)s|%(progress.downloaded_bytes)s|%(progress.total_bytes_estimate)s|%(progress.speed)s|%(progress.eta)s"),
+                   QStringLiteral("download:ARDALI_PROGRESS:%(progress._percent_str)s|%(progress.downloaded_bytes)s|%(progress.total_bytes)s|%(progress.total_bytes_estimate)s|%(progress.speed)s|%(progress.eta)s"),
                    QStringLiteral("--progress-template"), QStringLiteral("postprocess:ARDALI_POST:%(progress.status)s"),
                    QStringLiteral("--print"), QStringLiteral("after_move:ARDALI_FILE:%(filepath)s")};
   if (request.playlist) {
@@ -592,6 +592,7 @@ QUuid MediaDownloadService::enqueue(const MediaDownloadRequest &candidate) {
   jobs_.prepend(job);
   requests_.insert(job.id, request);
   queue_.enqueue(job.id);
+  emit jobEnqueued(job.id);
   emit jobsChanged();
   startNextDownload();
   return job.id;
@@ -694,11 +695,20 @@ void MediaDownloadService::processDownloadOutput(QByteArray *buffer, const QByte
   if (!buffer) return;
   *buffer += chunk;
   while (true) {
-    const qsizetype newline = buffer->indexOf('\n');
-    if (newline < 0) break;
-    const QByteArray line = buffer->left(newline);
-    buffer->remove(0, newline + 1);
-    processDownloadLine(QString::fromUtf8(line).trimmed());
+    const qsizetype nl = buffer->indexOf('\n');
+    const qsizetype cr = buffer->indexOf('\r');
+    qsizetype splitPos = -1;
+    if (nl >= 0 && cr >= 0) splitPos = std::min(nl, cr);
+    else if (nl >= 0) splitPos = nl;
+    else if (cr >= 0) splitPos = cr;
+    else break;
+
+    const QByteArray line = buffer->left(splitPos);
+    buffer->remove(0, splitPos + 1);
+    const QString text = QString::fromUtf8(line).trimmed();
+    if (!text.isEmpty()) {
+      processDownloadLine(text);
+    }
   }
   if (buffer->size() > 64 * 1024) *buffer = buffer->right(64 * 1024);
 }
@@ -708,14 +718,42 @@ void MediaDownloadService::processDownloadLine(const QString &line) {
   if (index < 0 || line.isEmpty()) return;
   if (line.startsWith(QStringLiteral("ARDALI_PROGRESS:"))) {
     const QStringList fields = line.mid(16).split(QLatin1Char('|'));
-    if (!fields.isEmpty()) {
-      QString percent = fields.value(0).trimmed();
-      percent.remove(QLatin1Char('%'));
-      jobs_[index].percent = std::clamp(percent.toDouble(), 0.0, 100.0);
-      jobs_[index].downloadedBytes = fields.value(1).toLongLong();
-      jobs_[index].totalBytes = fields.value(2).toLongLong();
-      jobs_[index].bytesPerSecond = fields.value(3).toLongLong();
-      jobs_[index].etaSeconds = fields.value(4).toInt();
+    if (fields.size() >= 5) {
+      QString cleanPercent;
+      for (const QChar c : fields.value(0)) {
+        if (c.isDigit() || c == QLatin1Char('.')) cleanPercent.append(c);
+      }
+      bool ok = false;
+      const double parsedPercent = cleanPercent.toDouble(&ok);
+      const qint64 downloaded = fields.value(1).toLongLong();
+
+      qint64 total = 0;
+      qint64 speed = 0;
+      int eta = -1;
+
+      if (fields.size() >= 6) {
+        total = fields.value(2).toLongLong();
+        if (total <= 0) total = fields.value(3).toLongLong();
+        speed = fields.value(4).toLongLong();
+        eta = fields.value(5).toInt();
+      } else {
+        total = fields.value(2).toLongLong();
+        speed = fields.value(3).toLongLong();
+        eta = fields.value(4).toInt();
+      }
+
+      double finalPercent = 0.0;
+      if (total > 0 && downloaded > 0) {
+        finalPercent = std::clamp(100.0 * static_cast<double>(downloaded) / static_cast<double>(total), 0.0, 100.0);
+      } else if (ok && parsedPercent > 0.0) {
+        finalPercent = std::clamp(parsedPercent, 0.0, 100.0);
+      }
+
+      jobs_[index].percent = finalPercent;
+      jobs_[index].downloadedBytes = downloaded;
+      jobs_[index].totalBytes = total;
+      jobs_[index].bytesPerSecond = speed;
+      jobs_[index].etaSeconds = eta;
       jobs_[index].state = MediaDownloadState::Downloading;
       jobs_[index].statusText = stateText(jobs_[index].state);
       emit jobsChanged();
@@ -723,16 +761,19 @@ void MediaDownloadService::processDownloadLine(const QString &line) {
     return;
   }
   if (line.startsWith(QStringLiteral("ARDALI_POST:"))) {
-    jobs_[index].state = MediaDownloadState::Processing;
-    const MediaDownloadRequest request = requests_.value(currentJobId_);
-    if (request.kind == MediaDownloadKind::AudioConvert) {
-      jobs_[index].statusText = QStringLiteral("Dönüştürülüyor");
-    } else if (request.kind == MediaDownloadKind::Video && !request.formatHasAudio) {
-      jobs_[index].statusText = QStringLiteral("Birleştiriliyor");
-    } else {
-      jobs_[index].statusText = stateText(jobs_[index].state);
+    const QString status = line.mid(12).trimmed();
+    if (status != QLatin1String("finished")) {
+      jobs_[index].state = MediaDownloadState::Processing;
+      const MediaDownloadRequest request = requests_.value(currentJobId_);
+      if (request.kind == MediaDownloadKind::AudioConvert) {
+        jobs_[index].statusText = QStringLiteral("Dönüştürülüyor");
+      } else if (request.kind == MediaDownloadKind::Video && !request.formatHasAudio) {
+        jobs_[index].statusText = QStringLiteral("Birleştiriliyor");
+      } else {
+        jobs_[index].statusText = stateText(jobs_[index].state);
+      }
+      emit jobsChanged();
     }
-    emit jobsChanged();
     return;
   }
   if (line.startsWith(QStringLiteral("ARDALI_FILE:"))) {
@@ -777,7 +818,7 @@ void MediaDownloadService::finishCurrent(MediaDownloadState state, const QString
 QString MediaDownloadService::categorizedError(const QByteArray &stderrOutput, int exitCode) {
   const QString text = QString::fromUtf8(stderrOutput).toLower();
   if (text.contains(QStringLiteral("analysis-timeout"))) return QStringLiteral("Medya analizi zaman aşımına uğradı.");
-  if (text.contains(QStringLiteral("unsupported url"))) return QStringLiteral("Bu sayfada desteklenen indirilebilir medya bulunamadı.");
+  if (text.contains(QStringLiteral("unsupported url"))) return QStringLiteral("Bu bağlantıda desteklenen video veya ses bulunamadı.");
   if (text.contains(QStringLiteral("private video")) || text.contains(QStringLiteral("login")) || text.contains(QStringLiteral("sign in")))
     return QStringLiteral("İçerik özel veya oturum açmayı gerektiriyor.");
   if (text.contains(QStringLiteral("no space left"))) return QStringLiteral("Hedef diskte yeterli alan yok.");

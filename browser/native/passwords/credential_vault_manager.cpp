@@ -62,6 +62,7 @@ bool CredentialVaultManager::loadIndex() {
   const auto add = [this](const QString &id, const QString &name, bool legacy) {
     if (id.isEmpty() || name.isEmpty() || entries_.size() >= kMaxVaults) return false;
     auto *vault = new CredentialVault(dataDirectory_, this, legacy ? QString{} : id);
+    if (timeProvider_) vault->setTimeProviderForTesting(timeProvider_);
     entries_.append({id, name, vault, legacy}); attach(&entries_.last()); return true;
   };
   QFile file(indexPath_);
@@ -99,21 +100,71 @@ bool CredentialVaultManager::persistIndex() {
 QVector<VaultMetadata> CredentialVaultManager::vaults() const { QVector<VaultMetadata> result; result.reserve(entries_.size()); for (const Entry &candidate : entries_) result.append({candidate.id, candidate.name, candidate.vault->isLocked()}); return result; }
 QString CredentialVaultManager::activeVaultId() const { return activeId_; }
 bool CredentialVaultManager::setActiveVault(const QString &id) { if (!entry(id)) return setError(QStringLiteral("vault-not-found")); activeId_ = id; if (!persistIndex()) return false; emit changed(); return true; }
-bool CredentialVaultManager::exists() const { return !entries_.isEmpty(); }
+bool CredentialVaultManager::exists() const {
+  if (entries_.isEmpty()) return false;
+  for (const Entry &candidate : entries_) {
+    if (candidate.vault && candidate.vault->exists()) return true;
+  }
+  return false;
+}
 bool CredentialVaultManager::isLocked() const { const Entry *candidate = activeEntry(); return !candidate || candidate->vault->isLocked(); }
 bool CredentialVaultManager::isVaultLocked(const QString &id) const { const Entry *candidate = entry(id); return !candidate || candidate->vault->isLocked(); }
 QString CredentialVaultManager::lastError() const { if (!lastError_.isEmpty()) return lastError_; const Entry *candidate = activeEntry(); return candidate ? candidate->vault->lastError() : QStringLiteral("vault-not-found"); }
 int CredentialVaultManager::autoLockTimeoutMs() const { const Entry *candidate = activeEntry(); return candidate ? candidate->vault->autoLockTimeoutMs() : 5 * 60000; }
 bool CredentialVaultManager::setAutoLockTimeoutMs(int timeoutMs) { Entry *candidate = activeEntry(); return candidate ? candidate->vault->setAutoLockTimeoutMs(timeoutMs) : setError(QStringLiteral("vault-not-found")); }
+
+bool CredentialVaultManager::isUnlockRateLimited() const {
+  const Entry *candidate = activeEntry();
+  return candidate && candidate->vault ? candidate->vault->isUnlockRateLimited() : false;
+}
+
+bool CredentialVaultManager::isVaultUnlockRateLimited(const QString &vaultId) const {
+  const Entry *candidate = entry(vaultId);
+  return candidate && candidate->vault ? candidate->vault->isUnlockRateLimited() : false;
+}
+
+int CredentialVaultManager::remainingUnlockCooldownSeconds() const {
+  const Entry *candidate = activeEntry();
+  return candidate && candidate->vault ? candidate->vault->remainingUnlockCooldownSeconds() : 0;
+}
+
+int CredentialVaultManager::remainingVaultUnlockCooldownSeconds(const QString &vaultId) const {
+  const Entry *candidate = entry(vaultId);
+  return candidate && candidate->vault ? candidate->vault->remainingUnlockCooldownSeconds() : 0;
+}
+
+int CredentialVaultManager::failedUnlockAttempts() const {
+  const Entry *candidate = activeEntry();
+  return candidate && candidate->vault ? candidate->vault->failedUnlockAttempts() : 0;
+}
+
+void CredentialVaultManager::resetFailedUnlockAttempts() {
+  Entry *candidate = activeEntry();
+  if (candidate && candidate->vault) {
+    candidate->vault->resetFailedUnlockAttempts();
+  }
+}
+
+void CredentialVaultManager::setTimeProviderForTesting(std::function<qint64()> provider) {
+  timeProvider_ = provider;
+  for (Entry &candidate : entries_) {
+    if (candidate.vault) {
+      candidate.vault->setTimeProviderForTesting(provider);
+    }
+  }
+}
+
 bool CredentialVaultManager::create(const QString &masterPassword) { return createVault(QStringLiteral("Kişisel"), masterPassword); }
 bool CredentialVaultManager::createVault(const QString &rawName, const QString &masterPassword, QString *id) {
   const QString name = normalizedName(rawName); if (name.isEmpty() || entries_.size() >= kMaxVaults) return setError(QStringLiteral("invalid-vault-name"));
   for (const Entry &candidate : entries_) if (candidate.name.compare(name, Qt::CaseInsensitive) == 0) return setError(QStringLiteral("duplicate-vault-name"));
   const QString vaultId = QUuid::createUuid().toString(QUuid::WithoutBraces); auto *vault = new CredentialVault(dataDirectory_, this, vaultId);
+  if (timeProvider_) vault->setTimeProviderForTesting(timeProvider_);
   if (!vault->create(masterPassword)) { lastError_ = vault->lastError(); vault->deleteLater(); return false; }
   entries_.append({vaultId, name, vault, false}); attach(&entries_.last()); activeId_ = vaultId;
   if (!persistIndex()) { vault->reset(); entries_.removeLast(); return false; }
   if (id) *id = vaultId;
+  emit vaultCreated(vaultId);
   emit lockStateChanged(false); emit changed(); return true;
 }
 bool CredentialVaultManager::unlock(const QString &masterPassword) { return unlockVault(activeId_, masterPassword); }
@@ -151,7 +202,9 @@ bool CredentialVaultManager::importBackup(const QString &filePath, const QString
     bool duplicate = name.isEmpty(); for (const Entry &candidate : entries_) duplicate = duplicate || candidate.name.compare(name, Qt::CaseInsensitive) == 0; for (const Entry &candidate : imported) duplicate = duplicate || candidate.name.compare(name, Qt::CaseInsensitive) == 0;
     if (duplicate || bytes.isEmpty() || bytes.size() > 16 * 1024 * 1024 || !validEnvelope(bytes)) continue;
     const QString id = QUuid::createUuid().toString(QUuid::WithoutBraces); const QString path = dataDirectory_ + QStringLiteral("/credential-vault/vaults/") + id; QDir().mkpath(path); QFile::setPermissions(path, QFileDevice::ReadOwner | QFileDevice::WriteOwner | QFileDevice::ExeOwner); QSaveFile target(path + QStringLiteral("/vault-v2.json")); if (!target.open(QIODevice::WriteOnly) || target.write(bytes) != bytes.size() || !target.commit()) { for (const Entry &created : imported) QDir(dataDirectory_ + QStringLiteral("/credential-vault/vaults/") + created.id).removeRecursively(); return setError(QStringLiteral("backup-import-write-failed")); } QFile::setPermissions(path + QStringLiteral("/vault-v2.json"), QFileDevice::ReadOwner | QFileDevice::WriteOwner);
-    auto *vault = new CredentialVault(dataDirectory_, this, id); imported.append({id, name, vault, false});
+    auto *vault = new CredentialVault(dataDirectory_, this, id);
+    if (timeProvider_) vault->setTimeProviderForTesting(timeProvider_);
+    imported.append({id, name, vault, false});
   }
   if (imported.isEmpty()) return setError(QStringLiteral("backup-no-new-vaults"));
   for (Entry &candidate : imported) { entries_.append(candidate); attach(&entries_.last()); if (importedVaultNames) importedVaultNames->append(candidate.name); }
@@ -168,4 +221,26 @@ bool CredentialVaultManager::reset() { return deleteVault(activeId_); }
 QVector<CredentialMetadata> CredentialVaultManager::list() const { const Entry *candidate = activeEntry(); if (!candidate) return {}; QVector<CredentialMetadata> result = candidate->vault->list(); for (CredentialMetadata &record : result) { record.id = namespacedId(candidate->id, record.id); record.vaultId = candidate->id; record.vaultName = candidate->name; } return result; }
 bool CredentialVaultManager::reveal(const QString &id, CredentialSecret *secret) const { QString vaultId, recordId; if (!splitId(id, &vaultId, &recordId)) { vaultId = activeId_; recordId = id; } const Entry *candidate = entry(vaultId); if (!candidate) return setError(QStringLiteral("vault-not-found")); const bool ok = candidate->vault->reveal(recordId, secret); if (!ok) lastError_ = candidate->vault->lastError(); return ok; }
 QVector<CredentialMetadata> CredentialVaultManager::forOrigin(const QUrl &url) const { QVector<CredentialMetadata> result; const QString origin = canonicalHttpsOrigin(url); if (origin.isEmpty()) return result; for (const Entry &candidate : entries_) { if (candidate.vault->isLocked()) continue; for (CredentialMetadata record : candidate.vault->forOrigin(url)) { record.id = namespacedId(candidate.id, record.id); record.vaultId = candidate.id; record.vaultName = candidate.name; result.append(std::move(record)); } } return result; }
-QVector<VaultMetadata> CredentialVaultManager::vaultsForOrigin(const QUrl &url) const { QVector<VaultMetadata> result; const QString origin = canonicalHttpsOrigin(url); if (origin.isEmpty()) return result; for (const Entry &candidate : entries_) { if (candidate.vault->isLocked()) { result.append({candidate.id, candidate.name, true}); continue; } if (!candidate.vault->forOrigin(url).isEmpty()) result.append({candidate.id, candidate.name, false}); } return result; }
+QVector<VaultMetadata> CredentialVaultManager::vaultsForOrigin(const QUrl &url) const {
+  QVector<VaultMetadata> result;
+  const QString origin = canonicalHttpsOrigin(url);
+  if (origin.isEmpty()) return result;
+  for (const Entry &candidate : entries_) {
+    if (!candidate.vault || !candidate.vault->exists()) continue;
+    if (candidate.vault->hasOrigin(origin)) {
+      result.append({candidate.id, candidate.name, candidate.vault->isLocked()});
+    }
+  }
+  return result;
+}
+bool CredentialVaultManager::hasMatchingCredential(const QUrl &url) const {
+  if (!exists()) return false;
+  const QString origin = canonicalHttpsOrigin(url);
+  if (origin.isEmpty()) return false;
+  for (const Entry &candidate : entries_) {
+    if (candidate.vault && candidate.vault->exists() && candidate.vault->hasOrigin(origin)) {
+      return true;
+    }
+  }
+  return false;
+}

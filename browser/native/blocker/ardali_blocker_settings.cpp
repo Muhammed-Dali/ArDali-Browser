@@ -1,3 +1,6 @@
+#include <QMutexLocker>
+#include <libpsl.h>
+#include <QHostAddress>
 #include "ardali_blocker_settings.h"
 
 #include <QJsonArray>
@@ -13,9 +16,11 @@ ArDaliBlockerSettings::ArDaliBlockerSettings(const QString &iniPath, QObject *pa
   load();
 }
 
-ArDaliBlockerMode ArDaliBlockerSettings::mode() const { return mode_; }
+ArDaliBlockerMode ArDaliBlockerSettings::mode() const {
+  QMutexLocker locker(&mutex_); return mode_; }
 
 void ArDaliBlockerSettings::setMode(ArDaliBlockerMode mode) {
+  QMutexLocker locker(&mutex_);
   if (mode_ == mode && (settings_.contains(QStringLiteral("blocker/mode")) || settings_.contains(QStringLiteral("adblock/mode")))) return;
   mode_ = mode;
   settings_.setValue(QStringLiteral("blocker/mode"), modeToString(mode_));
@@ -26,9 +31,11 @@ void ArDaliBlockerSettings::setMode(ArDaliBlockerMode mode) {
   emit settingsChanged();
 }
 
-bool ArDaliBlockerSettings::protectionEnabled() const { return protectionEnabled_; }
+bool ArDaliBlockerSettings::protectionEnabled() const {
+  QMutexLocker locker(&mutex_); return protectionEnabled_; }
 
 void ArDaliBlockerSettings::setProtectionEnabled(bool enabled) {
+  QMutexLocker locker(&mutex_);
   if (protectionEnabled_ == enabled &&
       (settings_.contains(QStringLiteral("blocker/protectionEnabled")) || settings_.contains(QStringLiteral("adblock/protectionEnabled")))) return;
   protectionEnabled_ = enabled;
@@ -39,9 +46,11 @@ void ArDaliBlockerSettings::setProtectionEnabled(bool enabled) {
   emit settingsChanged();
 }
 
-bool ArDaliBlockerSettings::autoReloadOnModeChange() const { return autoReload_; }
+bool ArDaliBlockerSettings::autoReloadOnModeChange() const {
+  QMutexLocker locker(&mutex_); return autoReload_; }
 
 void ArDaliBlockerSettings::setAutoReloadOnModeChange(bool enable) {
+  QMutexLocker locker(&mutex_);
   if (autoReload_ == enable && (settings_.contains(QStringLiteral("blocker/autoReload")) || settings_.contains(QStringLiteral("adblock/autoReload")))) return;
   autoReload_ = enable;
   settings_.setValue(QStringLiteral("blocker/autoReload"), autoReload_);
@@ -50,9 +59,11 @@ void ArDaliBlockerSettings::setAutoReloadOnModeChange(bool enable) {
   emit settingsChanged();
 }
 
-bool ArDaliBlockerSettings::showBlockedCountOnToolbar() const { return showCount_; }
+bool ArDaliBlockerSettings::showBlockedCountOnToolbar() const {
+  QMutexLocker locker(&mutex_); return showCount_; }
 
 void ArDaliBlockerSettings::setShowBlockedCountOnToolbar(bool enable) {
+  QMutexLocker locker(&mutex_);
   if (showCount_ == enable && (settings_.contains(QStringLiteral("blocker/showBlockedCount")) || settings_.contains(QStringLiteral("adblock/showBlockedCount")))) return;
   showCount_ = enable;
   settings_.setValue(QStringLiteral("blocker/showBlockedCount"), showCount_);
@@ -62,9 +73,11 @@ void ArDaliBlockerSettings::setShowBlockedCountOnToolbar(bool enable) {
   emit settingsChanged();
 }
 
-bool ArDaliBlockerSettings::strictBlock() const { return strictBlock_; }
+bool ArDaliBlockerSettings::strictBlock() const {
+  QMutexLocker locker(&mutex_); return strictBlock_; }
 
 void ArDaliBlockerSettings::setStrictBlock(bool enable) {
+  QMutexLocker locker(&mutex_);
   if (strictBlock_ == enable && (settings_.contains(QStringLiteral("blocker/strictBlock")) || settings_.contains(QStringLiteral("adblock/strictBlock")))) return;
   strictBlock_ = enable;
   settings_.setValue(QStringLiteral("blocker/strictBlock"), strictBlock_);
@@ -74,9 +87,11 @@ void ArDaliBlockerSettings::setStrictBlock(bool enable) {
   emit settingsChanged();
 }
 
-bool ArDaliBlockerSettings::popupBlock() const { return popupBlock_; }
+bool ArDaliBlockerSettings::popupBlock() const {
+  QMutexLocker locker(&mutex_); return popupBlock_; }
 
 void ArDaliBlockerSettings::setPopupBlock(bool enable) {
+  QMutexLocker locker(&mutex_);
   if (popupBlock_ == enable && (settings_.contains(QStringLiteral("blocker/popupBlock")) || settings_.contains(QStringLiteral("adblock/popupBlock")))) return;
   popupBlock_ = enable;
   settings_.setValue(QStringLiteral("blocker/popupBlock"), popupBlock_);
@@ -86,9 +101,11 @@ void ArDaliBlockerSettings::setPopupBlock(bool enable) {
   emit settingsChanged();
 }
 
-bool ArDaliBlockerSettings::developerMode() const { return developerMode_; }
+bool ArDaliBlockerSettings::developerMode() const {
+  QMutexLocker locker(&mutex_); return developerMode_; }
 
 void ArDaliBlockerSettings::setDeveloperMode(bool enable) {
+  QMutexLocker locker(&mutex_);
   if (developerMode_ == enable && (settings_.contains(QStringLiteral("blocker/developerMode")) || settings_.contains(QStringLiteral("adblock/developerMode")))) return;
   developerMode_ = enable;
   settings_.setValue(QStringLiteral("blocker/developerMode"), developerMode_);
@@ -97,9 +114,11 @@ void ArDaliBlockerSettings::setDeveloperMode(bool enable) {
   emit settingsChanged();
 }
 
-bool ArDaliBlockerSettings::autoUpdateRulesets() const { return autoUpdateRulesets_; }
+bool ArDaliBlockerSettings::autoUpdateRulesets() const {
+  QMutexLocker locker(&mutex_); return autoUpdateRulesets_; }
 
 void ArDaliBlockerSettings::setAutoUpdateRulesets(bool enable) {
+  QMutexLocker locker(&mutex_);
   if (autoUpdateRulesets_ == enable && (settings_.contains(QStringLiteral("blocker/autoUpdateRulesets")) || settings_.contains(QStringLiteral("adblock/autoUpdateRulesets")))) return;
   autoUpdateRulesets_ = enable;
   settings_.setValue(QStringLiteral("blocker/autoUpdateRulesets"), autoUpdateRulesets_);
@@ -108,9 +127,11 @@ void ArDaliBlockerSettings::setAutoUpdateRulesets(bool enable) {
   emit settingsChanged();
 }
 
-QStringList ArDaliBlockerSettings::customFilters() const { return customFilters_; }
+QStringList ArDaliBlockerSettings::customFilters() const {
+  QMutexLocker locker(&mutex_); return customFilters_; }
 
 void ArDaliBlockerSettings::setCustomFilters(const QStringList &filters) {
+  QMutexLocker locker(&mutex_);
   customFilters_ = filters;
   settings_.setValue(QStringLiteral("blocker/customFilters"), customFilters_);
   settings_.setValue(QStringLiteral("adblock/customFilters"), customFilters_);
@@ -120,34 +141,55 @@ void ArDaliBlockerSettings::setCustomFilters(const QStringList &filters) {
   emit settingsChanged();
 }
 
-QHash<QString, SitePolicy> ArDaliBlockerSettings::sitePolicies() const { return sitePolicies_; }
+QHash<QString, SitePolicy> ArDaliBlockerSettings::sitePolicies() const {
+  QMutexLocker locker(&mutex_); return sitePolicies_; }
 
-QString ArDaliBlockerSettings::sanitizeHost(const QString &host) const {
-  QString clean = host.trimmed().toLower();
-  if (clean.startsWith(QStringLiteral("http://")) || clean.startsWith(QStringLiteral("https://"))) {
-    clean = QUrl(clean).host().toLower();
-  }
+QString ArDaliBlockerSettings::normalizeSiteHost(const QString &host) {
+  const QString input = host.trimmed();
+  if (input.isEmpty() || input.size() > 2048) return {};
+  const QHostAddress directAddress(input);
+  if (!directAddress.isNull()) return directAddress.toString();
+  QUrl url(input.contains(QStringLiteral("://")) ? input : QStringLiteral("https://") + input,
+           QUrl::StrictMode);
+  if (!url.isValid() || (url.scheme() != QLatin1String("http") && url.scheme() != QLatin1String("https")) ||
+      !url.userInfo().isEmpty() || url.hasQuery() || url.hasFragment() ||
+      (!url.path().isEmpty() && url.path() != QLatin1String("/"))) return {};
+  const QHostAddress address(url.host());
+  if (!address.isNull()) return address.toString();
+  QString clean = QString::fromLatin1(QUrl::toAce(url.host())).toLower();
+  if (clean.endsWith(QLatin1Char('.'))) clean.chop(1);
   if (clean.startsWith(QStringLiteral("www."))) clean.remove(0, 4);
+  if (clean.isEmpty() || clean.size() > 253 || clean.contains(QStringLiteral(".."))) return {};
+  if (psl_is_public_suffix(psl_builtin(), clean.toUtf8().constData())) return {};
   return clean;
 }
 
-SitePolicy ArDaliBlockerSettings::sitePolicy(const QString &rawHost) const {
-  const QString clean = sanitizeHost(rawHost);
-  if (clean.isEmpty()) return SitePolicy{};
-  // Policy lookup walks from the full hostname toward its parents, so
-  // a policy for example.com also governs www.example.com and deeper hosts.
-  QString candidate = clean;
+QString ArDaliBlockerSettings::sanitizeHost(const QString &host) const {
+  return normalizeSiteHost(host);
+}
+
+std::optional<SitePolicy> ArDaliBlockerSettings::findSitePolicy(const QString &rawHost, const QHash<QString, SitePolicy> &policies) {
+  QString candidate = normalizeSiteHost(rawHost);
+  if (candidate.isEmpty()) return std::nullopt;
+  const bool address = !QHostAddress(candidate).isNull();
   while (!candidate.isEmpty()) {
-    const auto it = sitePolicies_.constFind(candidate);
-    if (it != sitePolicies_.constEnd()) return it.value();
+    const auto it = policies.constFind(candidate);
+    if (it != policies.constEnd()) return it.value();
+    if (address) break; // Never walk DNS parents of an IP literal.
     const int dot = candidate.indexOf(QLatin1Char('.'));
-    if (dot < 0) break;
+    if (dot < 0 || psl_is_public_suffix(psl_builtin(), candidate.mid(dot + 1).toUtf8().constData())) break;
     candidate.remove(0, dot + 1);
   }
-  return SitePolicy{};
+  return std::nullopt;
+}
+
+SitePolicy ArDaliBlockerSettings::sitePolicy(const QString &rawHost) const {
+  QMutexLocker locker(&mutex_);
+  return findSitePolicy(rawHost, sitePolicies_).value_or(SitePolicy{});
 }
 
 void ArDaliBlockerSettings::setSitePolicy(const QString &rawHost, const SitePolicy &policy) {
+  QMutexLocker locker(&mutex_);
   const QString clean = sanitizeHost(rawHost);
   if (clean.isEmpty()) return;
   sitePolicies_[clean] = policy;
@@ -157,6 +199,7 @@ void ArDaliBlockerSettings::setSitePolicy(const QString &rawHost, const SitePoli
 }
 
 void ArDaliBlockerSettings::removeSitePolicy(const QString &rawHost) {
+  QMutexLocker locker(&mutex_);
   const QString clean = sanitizeHost(rawHost);
   if (clean.isEmpty() || !sitePolicies_.contains(clean)) return;
   sitePolicies_.remove(clean);
@@ -165,10 +208,13 @@ void ArDaliBlockerSettings::removeSitePolicy(const QString &rawHost) {
   emit settingsChanged();
 }
 
-QStringList ArDaliBlockerSettings::enabledRulesetIds() const { return enabledRulesetIds_; }
-bool ArDaliBlockerSettings::rulesetSelectionConfigured() const { return rulesetSelectionConfigured_; }
+QStringList ArDaliBlockerSettings::enabledRulesetIds() const {
+  QMutexLocker locker(&mutex_); return enabledRulesetIds_; }
+bool ArDaliBlockerSettings::rulesetSelectionConfigured() const {
+  QMutexLocker locker(&mutex_); return rulesetSelectionConfigured_; }
 
 void ArDaliBlockerSettings::setEnabledRulesetIds(const QStringList &ids) {
+  QMutexLocker locker(&mutex_);
   enabledRulesetIds_ = ids;
   rulesetSelectionConfigured_ = true;
   settings_.setValue(QStringLiteral("blocker/enabledRulesetIds"), enabledRulesetIds_);
@@ -182,6 +228,7 @@ void ArDaliBlockerSettings::setEnabledRulesetIds(const QStringList &ids) {
 }
 
 void ArDaliBlockerSettings::load() {
+  QMutexLocker locker(&mutex_);
   auto readSetting = [this](const QString &suffix, const QVariant &def) {
     if (settings_.contains(QStringLiteral("blocker/") + suffix)) {
       return settings_.value(QStringLiteral("blocker/") + suffix, def);
@@ -221,7 +268,14 @@ void ArDaliBlockerSettings::load() {
       p.trackerProtection = obj.value(QStringLiteral("trackerProtection")).toBool(true);
       p.whitelisted = obj.value(QStringLiteral("whitelisted")).toBool(false);
       p.temporaryDisabledUntil = obj.value(QStringLiteral("temporaryDisabledUntil")).toVariant().toLongLong();
-      sitePolicies_[host] = p;
+      p.perSiteMode = obj.value(QStringLiteral("perSiteMode")).toInt(-1);
+      p.blockScripts = obj.value(QStringLiteral("blockScripts")).toBool(false);
+      p.blockFingerprinting = obj.value(QStringLiteral("blockFingerprinting")).toBool(false);
+      p.upgradeHttps = obj.value(QStringLiteral("upgradeHttps")).toBool(SitePolicy{}.upgradeHttps);
+      p.forgetOnClose = obj.value(QStringLiteral("forgetOnClose")).toBool(false);
+      p.cookiePolicy = obj.value(QStringLiteral("cookiePolicy")).toString(QStringLiteral("third_party"));
+      const QString key = normalizeSiteHost(host);
+      if (!key.isEmpty()) sitePolicies_[key] = p;
     }
     settings_.endGroup();
     return true;
@@ -233,6 +287,7 @@ void ArDaliBlockerSettings::load() {
 }
 
 void ArDaliBlockerSettings::save() {
+  QMutexLocker locker(&mutex_);
   auto writeSites = [this](const QString &group) {
     settings_.remove(group);
     settings_.beginGroup(group);
@@ -242,6 +297,12 @@ void ArDaliBlockerSettings::save() {
       obj[QStringLiteral("trackerProtection")] = it.value().trackerProtection;
       obj[QStringLiteral("whitelisted")] = it.value().whitelisted;
       obj[QStringLiteral("temporaryDisabledUntil")] = it.value().temporaryDisabledUntil;
+      obj[QStringLiteral("perSiteMode")] = it.value().perSiteMode;
+      obj[QStringLiteral("blockScripts")] = it.value().blockScripts;
+      obj[QStringLiteral("blockFingerprinting")] = it.value().blockFingerprinting;
+      obj[QStringLiteral("upgradeHttps")] = it.value().upgradeHttps;
+      obj[QStringLiteral("forgetOnClose")] = it.value().forgetOnClose;
+      obj[QStringLiteral("cookiePolicy")] = it.value().cookiePolicy;
       settings_.setValue(it.key(), obj);
     }
     settings_.endGroup();
@@ -253,6 +314,7 @@ void ArDaliBlockerSettings::save() {
 }
 
 QJsonObject ArDaliBlockerSettings::exportBackupJson() const {
+  QMutexLocker locker(&mutex_);
   QJsonObject root;
   root[QStringLiteral("format")] = QString::fromLatin1(kFormatName);
   root[QStringLiteral("version")] = kFormatVersion;
@@ -275,6 +337,12 @@ QJsonObject ArDaliBlockerSettings::exportBackupJson() const {
     s[QStringLiteral("trackerProtection")] = it.value().trackerProtection;
     s[QStringLiteral("whitelisted")] = it.value().whitelisted;
     s[QStringLiteral("temporaryDisabledUntil")] = it.value().temporaryDisabledUntil;
+    s[QStringLiteral("perSiteMode")] = it.value().perSiteMode;
+    s[QStringLiteral("blockScripts")] = it.value().blockScripts;
+    s[QStringLiteral("blockFingerprinting")] = it.value().blockFingerprinting;
+    s[QStringLiteral("upgradeHttps")] = it.value().upgradeHttps;
+    s[QStringLiteral("forgetOnClose")] = it.value().forgetOnClose;
+    s[QStringLiteral("cookiePolicy")] = it.value().cookiePolicy;
     sitesObj[it.key()] = s;
   }
   root[QStringLiteral("sitePolicies")] = sitesObj;
@@ -282,6 +350,7 @@ QJsonObject ArDaliBlockerSettings::exportBackupJson() const {
 }
 
 bool ArDaliBlockerSettings::importBackupJson(const QJsonObject &json) {
+  QMutexLocker locker(&mutex_);
   // Support "ardali-blocker-settings", "ardali-deliblock-settings" and legacy formats
   const QString fmt = json.value(QStringLiteral("format")).toString();
   if (!fmt.isEmpty() && fmt != QLatin1String(kFormatName) && fmt != QLatin1String("ardali-deliblock-settings") && fmt != QLatin1String("ardali-adblock-settings")) {
@@ -341,7 +410,14 @@ bool ArDaliBlockerSettings::importBackupJson(const QJsonObject &json) {
     p.trackerProtection = s.value(QStringLiteral("trackerProtection")).toBool(true);
     p.whitelisted = s.value(QStringLiteral("whitelisted")).toBool(false);
     p.temporaryDisabledUntil = s.value(QStringLiteral("temporaryDisabledUntil")).toVariant().toLongLong();
-    sitePolicies_[it.key()] = p;
+    p.perSiteMode = s.value(QStringLiteral("perSiteMode")).toInt(-1);
+    p.blockScripts = s.value(QStringLiteral("blockScripts")).toBool(false);
+    p.blockFingerprinting = s.value(QStringLiteral("blockFingerprinting")).toBool(false);
+    p.upgradeHttps = s.value(QStringLiteral("upgradeHttps")).toBool(SitePolicy{}.upgradeHttps);
+    p.forgetOnClose = s.value(QStringLiteral("forgetOnClose")).toBool(false);
+    p.cookiePolicy = s.value(QStringLiteral("cookiePolicy")).toString(QStringLiteral("third_party"));
+    const QString key = normalizeSiteHost(it.key());
+    if (!key.isEmpty()) sitePolicies_[key] = p;
   }
   save();
   settings_.setValue(QStringLiteral("blocker/mode"), modeToString(mode_));
@@ -387,6 +463,7 @@ bool ArDaliBlockerSettings::importBackupJson(const QJsonObject &json) {
 }
 
 void ArDaliBlockerSettings::resetToDefaults() {
+  QMutexLocker locker(&mutex_);
   mode_ = ArDaliBlockerDefaults::Mode;
   protectionEnabled_ = ArDaliBlockerDefaults::ProtectionEnabled;
   autoReload_ = ArDaliBlockerDefaults::AutoReload;

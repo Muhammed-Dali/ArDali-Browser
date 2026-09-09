@@ -1,5 +1,6 @@
 #include "credential_vault.h"
 
+#include <QCryptographicHash>
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
@@ -23,7 +24,6 @@ constexpr int kNonceBytes = 12;
 constexpr int kTagBytes = 16;
 constexpr qint64 kMaxVaultBytes = 16 * 1024 * 1024;
 constexpr int kMaxRecords = 1000;
-constexpr int kMaxIconBase64Chars = 16 * 1024;
 
 QByteArray b64(const QByteArray &value) { return value.toBase64(); }
 QByteArray fromB64(const QJsonValue &value) { return QByteArray::fromBase64(value.toString().toLatin1()); }
@@ -55,14 +55,201 @@ QString recordAad(const QString &id) { return QStringLiteral("ardali-vault-recor
 }
 
 CredentialVault::CredentialVault(const QString &dataDirectory, QObject *parent, const QString &storageId)
-    : QObject(parent), directory_(storageId.isEmpty() ? dataDirectory + QStringLiteral("/credential-vault") : dataDirectory + QStringLiteral("/credential-vault/vaults/") + storageId), path_(directory_ + QStringLiteral("/vault-v2.json")) {
+    : QObject(parent),
+      directory_(storageId.isEmpty() ? dataDirectory + QStringLiteral("/credential-vault") : dataDirectory + QStringLiteral("/credential-vault/vaults/") + storageId),
+      path_(directory_ + QStringLiteral("/vault-v2.json")),
+      securityStatePath_(directory_ + QStringLiteral("/security-state.json")),
+      originIndexPath_(directory_ + QStringLiteral("/origin-index.json")) {
   const int configured = QSettings().value(QStringLiteral("browser/passwords/autoLockMs"), autoLockTimeoutMs_).toInt();
   if (configured == 60000 || configured == 5 * 60000 || configured == 15 * 60000 || configured == 30 * 60000) autoLockTimeoutMs_ = configured;
   idleTimer_ = new QTimer(this); idleTimer_->setInterval(15000);
   connect(idleTimer_, &QTimer::timeout, this, [this] { if (!isLocked() && QDateTime::currentMSecsSinceEpoch() - lastActivityMs_ >= autoLockTimeoutMs_) lock(); });
   idleTimer_->start();
+  loadSecurityState();
+  loadOriginIndex();
 }
 CredentialVault::~CredentialVault() { lock(); }
+
+int CredentialVault::cooldownForAttempt(int attempts) {
+  if (attempts <= 4) return 0;
+  switch (attempts) {
+    case 5: return 30;
+    case 6: return 60;
+    case 7: return 120;
+    case 8: return 300;
+    case 9: return 900;
+    default: return 1800;
+  }
+}
+
+qint64 CredentialVault::nowEpochMs() const {
+  if (timeProvider_) {
+    return timeProvider_();
+  }
+  return QDateTime::currentMSecsSinceEpoch();
+}
+
+void CredentialVault::loadSecurityState() {
+  QFile file(securityStatePath_);
+  if (!file.exists() || !file.open(QIODevice::ReadOnly)) {
+    return;
+  }
+  const QByteArray data = file.readAll();
+  const QJsonDocument doc = QJsonDocument::fromJson(data);
+  if (!doc.isObject()) {
+    return;
+  }
+  const QJsonObject root = doc.object();
+  const int attempts = root.value(QStringLiteral("failedAttempts")).toInt();
+  const qint64 expiry = root.value(QStringLiteral("cooldownExpiryEpochMs")).toVariant().toLongLong();
+
+  failedUnlocks_ = std::clamp(attempts, 0, 10000);
+  const qint64 now = nowEpochMs();
+  if (expiry > now) {
+    const qint64 remainingMs = expiry - now;
+    const qint64 clampedSecs = std::clamp<qint64>((remainingMs + 999) / 1000, 1, 1800);
+    cooldownExpiryEpochMs_ = now + (clampedSecs * 1000LL);
+    cooldownExpirySteady_ = std::chrono::steady_clock::now() + std::chrono::seconds(clampedSecs);
+    hasSteadyExpiry_ = true;
+  } else {
+    cooldownExpiryEpochMs_ = 0;
+    hasSteadyExpiry_ = false;
+  }
+}
+
+void CredentialVault::persistSecurityState() {
+  QDir().mkpath(directory_);
+  QJsonObject root;
+  root.insert(QStringLiteral("version"), 1);
+  root.insert(QStringLiteral("failedAttempts"), failedUnlocks_);
+  root.insert(QStringLiteral("cooldownExpiryEpochMs"), cooldownExpiryEpochMs_);
+  root.insert(QStringLiteral("updatedAt"), nowEpochMs());
+
+  QSaveFile file(securityStatePath_);
+  if (file.open(QIODevice::WriteOnly)) {
+    file.write(QJsonDocument(root).toJson(QJsonDocument::Compact));
+    if (file.commit()) {
+      QFile::setPermissions(securityStatePath_, QFileDevice::ReadOwner | QFileDevice::WriteOwner);
+    }
+  }
+}
+
+void CredentialVault::clearPersistedSecurityState() {
+  if (QFile::exists(securityStatePath_)) {
+    QFile::remove(securityStatePath_);
+  }
+}
+
+QString CredentialVault::originHash(const QString &canonicalOrigin) {
+  return QString::fromLatin1(QCryptographicHash::hash(canonicalOrigin.toUtf8(), QCryptographicHash::Sha256).toHex());
+}
+
+void CredentialVault::loadOriginIndex() {
+  QFile file(originIndexPath_);
+  if (!file.exists() || !file.open(QIODevice::ReadOnly)) {
+    return;
+  }
+  const QJsonObject root = QJsonDocument::fromJson(file.readAll()).object();
+  const QJsonArray arr = root.value(QStringLiteral("originHashes")).toArray();
+  storedOriginHashes_.clear();
+  for (const QJsonValue &v : arr) {
+    const QString h = v.toString().trimmed();
+    if (!h.isEmpty()) {
+      storedOriginHashes_.insert(h);
+    }
+  }
+}
+
+void CredentialVault::persistOriginIndex() {
+  QDir().mkpath(directory_);
+  QJsonArray arr;
+  for (const QString &h : storedOriginHashes_) {
+    arr.append(h);
+  }
+  QJsonObject root;
+  root.insert(QStringLiteral("version"), 1);
+  root.insert(QStringLiteral("originHashes"), arr);
+
+  QSaveFile file(originIndexPath_);
+  if (file.open(QIODevice::WriteOnly)) {
+    file.write(QJsonDocument(root).toJson(QJsonDocument::Compact));
+    if (file.commit()) {
+      QFile::setPermissions(originIndexPath_, QFileDevice::ReadOwner | QFileDevice::WriteOwner);
+    }
+  }
+}
+
+void CredentialVault::clearPersistedOriginIndex() {
+  if (QFile::exists(originIndexPath_)) {
+    QFile::remove(originIndexPath_);
+  }
+}
+
+void CredentialVault::recordFailedUnlockAttempt() {
+  failedUnlocks_++;
+  const int cooldownSecs = cooldownForAttempt(failedUnlocks_);
+  if (cooldownSecs > 0) {
+    const qint64 now = nowEpochMs();
+    cooldownExpiryEpochMs_ = now + (static_cast<qint64>(cooldownSecs) * 1000LL);
+    cooldownExpirySteady_ = std::chrono::steady_clock::now() + std::chrono::seconds(cooldownSecs);
+    hasSteadyExpiry_ = true;
+  } else {
+    cooldownExpiryEpochMs_ = 0;
+    hasSteadyExpiry_ = false;
+  }
+  persistSecurityState();
+}
+
+void CredentialVault::resetFailedUnlockAttempts() {
+  failedUnlocks_ = 0;
+  cooldownExpiryEpochMs_ = 0;
+  hasSteadyExpiry_ = false;
+  clearPersistedSecurityState();
+}
+
+bool CredentialVault::isUnlockRateLimited() const {
+  return remainingUnlockCooldownSeconds() > 0;
+}
+
+int CredentialVault::remainingUnlockCooldownSeconds() const {
+  QMutexLocker locker(&mutex_);
+  if (cooldownExpiryEpochMs_ <= 0) {
+    return 0;
+  }
+  if (timeProvider_) {
+    const qint64 now = timeProvider_();
+    if (now >= cooldownExpiryEpochMs_) {
+      return 0;
+    }
+    const qint64 diffMs = cooldownExpiryEpochMs_ - now;
+    return static_cast<int>(std::clamp<qint64>((diffMs + 999) / 1000, 1, 1800));
+  }
+  if (hasSteadyExpiry_) {
+    const auto nowSteady = std::chrono::steady_clock::now();
+    if (nowSteady >= cooldownExpirySteady_) {
+      return 0;
+    }
+    const auto remSteady = std::chrono::duration_cast<std::chrono::seconds>(cooldownExpirySteady_ - nowSteady).count();
+    return static_cast<int>(std::clamp<qint64>(remSteady, 1, 1800));
+  }
+  const qint64 nowEpoch = QDateTime::currentMSecsSinceEpoch();
+  if (nowEpoch >= cooldownExpiryEpochMs_) {
+    return 0;
+  }
+  const qint64 diffMs = cooldownExpiryEpochMs_ - nowEpoch;
+  return static_cast<int>(std::clamp<qint64>((diffMs + 999) / 1000, 1, 1800));
+}
+
+int CredentialVault::failedUnlockAttempts() const {
+  QMutexLocker locker(&mutex_);
+  return failedUnlocks_;
+}
+
+void CredentialVault::setTimeProviderForTesting(std::function<qint64()> provider) {
+  QMutexLocker locker(&mutex_);
+  timeProvider_ = std::move(provider);
+  loadSecurityState();
+}
 
 QString CredentialVault::canonicalHttpsOrigin(const QUrl &url) {
   if (!url.isValid() || url.scheme().compare(QStringLiteral("https"), Qt::CaseInsensitive) != 0 || url.host().isEmpty() || url.userName().size() || url.password().size()) return {};
@@ -71,6 +258,22 @@ QString CredentialVault::canonicalHttpsOrigin(const QUrl &url) {
 }
 bool CredentialVault::isStrongMasterPassword(const QString &p) { return p.size() >= 12 && p.size() <= 256 && p.contains(QRegularExpression("[a-z]")) && p.contains(QRegularExpression("[A-Z]")) && p.contains(QRegularExpression("[0-9]")) && p.contains(QRegularExpression("[^A-Za-z0-9\\s]")); }
 bool CredentialVault::exists() const { return QFileInfo::exists(path_); }
+bool CredentialVault::hasOrigin(const QString &origin) const {
+  QMutexLocker locker(&mutex_);
+  if (!exists()) return false;
+  const QString canonical = canonicalHttpsOrigin(QUrl(origin));
+  if (canonical.isEmpty()) return false;
+  if (!isLocked()) {
+    for (const Record &r : records_) {
+      CredentialSecret s;
+      if (decryptRecord(r, &s) && s.origin == canonical) {
+        return true;
+      }
+    }
+    return false;
+  }
+  return storedOriginHashes_.contains(originHash(canonical));
+}
 bool CredentialVault::isLocked() const { QMutexLocker locker(&mutex_); return dataKey_.isEmpty(); }
 int CredentialVault::autoLockTimeoutMs() const { QMutexLocker locker(&mutex_); return autoLockTimeoutMs_; }
 bool CredentialVault::setAutoLockTimeoutMs(int timeoutMs) {
@@ -89,7 +292,9 @@ bool CredentialVault::create(const QString &masterPassword) {
   if (!isStrongMasterPassword(masterPassword)) return setError(QStringLiteral("weak-master-password"));
   QByteArray wrapKey, rawKey; if (!randomBytes(&salt_, 16) || !deriveKey(masterPassword, salt_, &wrapKey) || !randomBytes(&rawKey, kKeyBytes) || !randomBytes(&wrappedNonce_, kNonceBytes)) { secureClear(&wrapKey); secureClear(&rawKey); return setError(QStringLiteral("crypto-failed")); }
   if (!aesGcm(true, wrapKey, wrappedNonce_, rawKey, QByteArrayLiteral("ardali-vault-key-v2"), &wrappedKey_, &wrappedTag_)) { secureClear(&wrapKey); secureClear(&rawKey); return setError(QStringLiteral("crypto-failed")); }
-  secureClear(&wrapKey); dataKey_ = rawKey; records_.clear(); touch();
+  secureClear(&wrapKey); dataKey_ = rawKey; records_.clear(); storedOriginHashes_.clear(); touch();
+  resetFailedUnlockAttempts();
+  clearPersistedOriginIndex();
   if (!persist()) { lock(); return false; } emit lockStateChanged(false); emit changed(); return true;
 }
 bool CredentialVault::loadEnvelope() {
@@ -111,16 +316,36 @@ bool CredentialVault::loadEnvelope() {
 }
 bool CredentialVault::unlock(const QString &masterPassword) {
   QMutexLocker locker(&mutex_);
-  const qint64 now = QDateTime::currentMSecsSinceEpoch(); if (now < nextUnlockAtMs_) return setError(QStringLiteral("unlock-rate-limited"));
+  if (isUnlockRateLimited()) return setError(QStringLiteral("unlock-rate-limited"));
   if (!exists() || !loadEnvelope()) return false;
   QByteArray wrapKey, key;
   const bool ok = deriveKey(masterPassword, salt_, &wrapKey) && aesGcm(false, wrapKey, wrappedNonce_, wrappedKey_, QByteArrayLiteral("ardali-vault-key-v2"), &key, &wrappedTag_) && key.size() == kKeyBytes;
-  secureClear(&wrapKey); if (!ok) { secureClear(&key); failedUnlocks_ = std::min(8, failedUnlocks_ + 1); nextUnlockAtMs_ = now + std::min<qint64>(30000, 500 * (1LL << (failedUnlocks_ - 1))); return setError(QStringLiteral("invalid-master-password")); }
-  lock(); dataKey_ = key; failedUnlocks_ = 0; nextUnlockAtMs_ = 0; touch(); emit lockStateChanged(false); return true;
+  secureClear(&wrapKey);
+  if (!ok) {
+    secureClear(&key);
+    recordFailedUnlockAttempt();
+    return setError(QStringLiteral("invalid-master-password"));
+  }
+  // Re-verification of an already open vault must not broadcast a transient
+  // locked state: autofill authorization listens for lock events and would
+  // otherwise cancel its own in-flight dialog.  The old key is still wiped
+  // before the newly verified key becomes available.
+  secureClear(&dataKey_);
+  dataKey_ = key;
+  resetFailedUnlockAttempts();
+  touch();
+  storedOriginHashes_.clear();
+  for (const Record &r : records_) {
+    CredentialSecret s;
+    if (decryptRecord(r, &s)) storedOriginHashes_.insert(originHash(s.origin));
+  }
+  persistOriginIndex();
+  emit lockStateChanged(false);
+  return true;
 }
 void CredentialVault::lock() { QMutexLocker locker(&mutex_); const bool wasUnlocked = !dataKey_.isEmpty(); secureClear(&dataKey_); lastActivityMs_ = 0; if (wasUnlocked) emit lockStateChanged(true); }
-bool CredentialVault::encryptRecord(Record *record, const CredentialSecret &secret) { const QString icon = secret.iconPngBase64.left(kMaxIconBase64Chars); QByteArray plain = QJsonDocument(QJsonObject{{"origin", secret.origin}, {"username", secret.username}, {"password", secret.password}, {"icon", icon}}).toJson(QJsonDocument::Compact); if (!randomBytes(&record->nonce, kNonceBytes) || !aesGcm(true, dataKey_, record->nonce, plain, recordAad(record->id).toUtf8(), &record->encrypted, &record->tag)) { secureClear(&plain); return false; } secureClear(&plain); return true; }
-bool CredentialVault::decryptRecord(const Record &record, CredentialSecret *secret) const { if (!secret || isLocked()) return false; QByteArray plain, tag = record.tag; if (!aesGcm(false, dataKey_, record.nonce, record.encrypted, recordAad(record.id).toUtf8(), &plain, &tag)) { secureClear(&plain); return false; } const QJsonObject o = QJsonDocument::fromJson(plain).object(); secureClear(&plain); const QUrl origin(o.value("origin").toString()); const QString canonical = canonicalHttpsOrigin(origin); const QString username = o.value("username").toString(); const QString password = o.value("password").toString(); const QString icon = o.value("icon").toString(); if (canonical.isEmpty() || username.isEmpty() || password.isEmpty() || password.size() > 4096 || icon.size() > kMaxIconBase64Chars) return false; *secret = {canonical, username, password, icon}; return true; }
+bool CredentialVault::encryptRecord(Record *record, const CredentialSecret &secret) { QByteArray plain = QJsonDocument(QJsonObject{{"origin", secret.origin}, {"username", secret.username}, {"password", secret.password}}).toJson(QJsonDocument::Compact); if (!randomBytes(&record->nonce, kNonceBytes) || !aesGcm(true, dataKey_, record->nonce, plain, recordAad(record->id).toUtf8(), &record->encrypted, &record->tag)) { secureClear(&plain); return false; } secureClear(&plain); return true; }
+bool CredentialVault::decryptRecord(const Record &record, CredentialSecret *secret) const { if (!secret || isLocked()) return false; QByteArray plain, tag = record.tag; if (!aesGcm(false, dataKey_, record.nonce, record.encrypted, recordAad(record.id).toUtf8(), &plain, &tag)) { secureClear(&plain); return false; } const QJsonObject o = QJsonDocument::fromJson(plain).object(); secureClear(&plain); const QUrl origin(o.value("origin").toString()); const QString canonical = canonicalHttpsOrigin(origin); const QString username = o.value("username").toString(); const QString password = o.value("password").toString(); if (canonical.isEmpty() || username.isEmpty() || password.isEmpty() || password.size() > 4096) return false; *secret = {canonical, username, password, {}}; return true; }
 bool CredentialVault::persist() {
   QDir().mkpath(directory_); QFile::setPermissions(directory_, QFileDevice::ReadOwner | QFileDevice::WriteOwner | QFileDevice::ExeOwner);
   QJsonArray records; for (const Record &r : records_) records.append(QJsonObject{{"id", r.id}, {"createdAt", QString::number(r.createdAt)}, {"updatedAt", QString::number(r.updatedAt)}, {"ciphertext", QString::fromLatin1(b64(r.encrypted))}, {"nonce", QString::fromLatin1(b64(r.nonce))}, {"tag", QString::fromLatin1(b64(r.tag))}});
@@ -136,12 +361,14 @@ bool CredentialVault::save(const CredentialSecret &input, bool *updated) {
   const QString origin = canonicalHttpsOrigin(QUrl(input.origin));
   const QString username = input.username.trimmed();
   if (origin.isEmpty() || username.isEmpty() || input.password.isEmpty() || input.password.size() > 4096) return setError(QStringLiteral("invalid-credential"));
-  Record *target = nullptr; QString existingIcon;
-  for (Record &r : records_) { CredentialSecret old; if (!decryptRecord(r, &old)) return setError(QStringLiteral("corrupt-vault")); if (old.origin == origin && old.username == username) { target = &r; existingIcon = old.iconPngBase64; break; } }
+  Record *target = nullptr;
+  for (Record &r : records_) { CredentialSecret old; if (!decryptRecord(r, &old)) return setError(QStringLiteral("corrupt-vault")); if (old.origin == origin && old.username == username) { target = &r; break; } }
   const qint64 now = QDateTime::currentMSecsSinceEpoch(); const bool isUpdate = target != nullptr;
   if (!target) { if (records_.size() >= kMaxRecords) return setError(QStringLiteral("vault-full")); Record added; added.id = QUuid::createUuid().toString(QUuid::WithoutBraces); added.createdAt = now; added.updatedAt = now; records_.append(std::move(added)); target = &records_.last(); }
   target->updatedAt = now;
-  if (!encryptRecord(target, {origin, username, input.password, input.iconPngBase64.isEmpty() ? existingIcon : input.iconPngBase64}) || !persist()) return setError(QStringLiteral("write-failed"));
+  if (!encryptRecord(target, {origin, username, input.password, {}}) || !persist()) return setError(QStringLiteral("write-failed"));
+  storedOriginHashes_.insert(originHash(origin));
+  persistOriginIndex();
   if (updated) *updated = isUpdate;
   touch();
   emit changed();
@@ -152,16 +379,22 @@ bool CredentialVault::update(const QString &id, const CredentialSecret &input) {
   if (isLocked()) return setError(QStringLiteral("vault-locked"));
   const QString origin = canonicalHttpsOrigin(QUrl(input.origin)); const QString username = input.username.trimmed();
   if (origin.isEmpty() || username.isEmpty() || input.password.isEmpty() || input.password.size() > 4096) return setError(QStringLiteral("invalid-credential"));
-  Record *target = nullptr; QString existingIcon;
+  Record *target = nullptr;
   for (Record &record : records_) {
     CredentialSecret current;
     if (!decryptRecord(record, &current)) return setError(QStringLiteral("corrupt-vault"));
-    if (record.id == id) { target = &record; existingIcon = current.iconPngBase64; }
+    if (record.id == id) { target = &record; }
     if (record.id != id && current.origin == origin && current.username == username) return setError(QStringLiteral("duplicate-credential"));
   }
   if (!target) return setError(QStringLiteral("record-not-found"));
   target->updatedAt = QDateTime::currentMSecsSinceEpoch();
-  if (!encryptRecord(target, {origin, username, input.password, input.iconPngBase64.isEmpty() ? existingIcon : input.iconPngBase64}) || !persist()) return setError(QStringLiteral("write-failed"));
+  if (!encryptRecord(target, {origin, username, input.password, {}}) || !persist()) return setError(QStringLiteral("write-failed"));
+  storedOriginHashes_.clear();
+  for (const Record &r : records_) {
+    CredentialSecret s;
+    if (decryptRecord(r, &s)) storedOriginHashes_.insert(originHash(s.origin));
+  }
+  persistOriginIndex();
   touch(); emit changed(); return true;
 }
 bool CredentialVault::changeMasterPassword(const QString &currentPassword, const QString &nextPassword) {
@@ -184,6 +417,40 @@ bool CredentialVault::changeMasterPassword(const QString &currentPassword, const
 }
 QVector<CredentialMetadata> CredentialVault::list() const { QMutexLocker locker(&mutex_); QVector<CredentialMetadata> result; if (isLocked()) return result; for (const Record &r : records_) { CredentialSecret s; if (!decryptRecord(r, &s)) { setError(QStringLiteral("corrupt-vault")); return {}; } result.append({r.id, s.origin, s.username, QDateTime::fromMSecsSinceEpoch(r.createdAt), QDateTime::fromMSecsSinceEpoch(r.updatedAt), s.iconPngBase64, {}, {}}); } touch(); return result; }
 bool CredentialVault::reveal(const QString &id, CredentialSecret *secret) const { QMutexLocker locker(&mutex_); if (isLocked()) return setError(QStringLiteral("vault-locked")); for (const Record &r : records_) if (r.id == id) { if (!decryptRecord(r, secret)) return setError(QStringLiteral("corrupt-vault")); touch(); return true; } return setError(QStringLiteral("record-not-found")); }
-bool CredentialVault::remove(const QString &id) { QMutexLocker locker(&mutex_); if (isLocked()) return setError(QStringLiteral("vault-locked")); for (int i = 0; i < records_.size(); ++i) if (records_[i].id == id) { records_.removeAt(i); if (!persist()) return false; emit changed(); return true; } return setError(QStringLiteral("record-not-found")); }
-bool CredentialVault::reset() { QMutexLocker locker(&mutex_); lock(); records_.clear(); secureClear(&salt_); secureClear(&wrappedKey_); secureClear(&wrappedNonce_); secureClear(&wrappedTag_); const bool primary = !QFile::exists(path_) || QFile::remove(path_); const bool backup = !QFile::exists(path_ + QStringLiteral(".bak")) || QFile::remove(path_ + QStringLiteral(".bak")); if (!primary || !backup) return setError(QStringLiteral("reset-failed")); emit changed(); return true; }
+bool CredentialVault::remove(const QString &id) {
+  QMutexLocker locker(&mutex_);
+  if (isLocked()) return setError(QStringLiteral("vault-locked"));
+  for (int i = 0; i < records_.size(); ++i) {
+    if (records_[i].id == id) {
+      records_.removeAt(i);
+      storedOriginHashes_.clear();
+      for (const Record &r : records_) {
+        CredentialSecret s;
+        if (decryptRecord(r, &s)) storedOriginHashes_.insert(originHash(s.origin));
+      }
+      persistOriginIndex();
+      if (!persist()) return false;
+      emit changed();
+      return true;
+    }
+  }
+  return setError(QStringLiteral("record-not-found"));
+}
+bool CredentialVault::reset() {
+  QMutexLocker locker(&mutex_);
+  lock();
+  records_.clear();
+  storedOriginHashes_.clear();
+  secureClear(&salt_);
+  secureClear(&wrappedKey_);
+  secureClear(&wrappedNonce_);
+  secureClear(&wrappedTag_);
+  resetFailedUnlockAttempts();
+  clearPersistedOriginIndex();
+  const bool primary = !QFile::exists(path_) || QFile::remove(path_);
+  const bool backup = !QFile::exists(path_ + QStringLiteral(".bak")) || QFile::remove(path_ + QStringLiteral(".bak"));
+  if (!primary || !backup) return setError(QStringLiteral("reset-failed"));
+  emit changed();
+  return true;
+}
 QVector<CredentialMetadata> CredentialVault::forOrigin(const QUrl &url) const { QMutexLocker locker(&mutex_); const QString origin = canonicalHttpsOrigin(url); QVector<CredentialMetadata> result; if (origin.isEmpty()) return result; for (const CredentialMetadata &meta : list()) if (meta.origin == origin) result.append(meta); return result; }

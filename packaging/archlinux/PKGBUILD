@@ -1,7 +1,7 @@
 # Maintainer: Muhammed Dali <support@ardali.app>
 
 pkgname=ardali-browser
-pkgver=6.1.2
+pkgver=7.0.0
 pkgrel=1
 pkgdesc="Native Qt/C++ desktop browser with integrated privacy and media tools"
 arch=('x86_64')
@@ -29,7 +29,7 @@ sha256sums=('SKIP')
 
 build() {
   cmake \
-    -S "ArDali-Browser-${pkgver}/browser" \
+    -S "ArDali-Browser-${pkgver}" \
     -B build \
     -G Ninja \
     -DCMAKE_BUILD_TYPE=Release \

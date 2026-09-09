@@ -1,3 +1,4 @@
+
 CompileFlags:
   Remove:
     - "-mno-direct-extern-access"
@@ -7,3 +8,7 @@ CompileFlags:
     - "-Wno-unknown-warning-option"
     - "-Wno-unused-command-line-argument"
     - "-Qunused-arguments"
+
+Diagnostics:
+  UnusedIncludes: None
+  MissingIncludes: None

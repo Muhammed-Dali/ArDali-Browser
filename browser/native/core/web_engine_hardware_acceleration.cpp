@@ -90,9 +90,10 @@ QStringList WebEngineHardwareAcceleration::standardHardwareFlags(const HardwareA
   }
 
   return QStringList{
-      // Qt 6.11 embeds Chromium 140. These are the Chromium 140 Linux media
-      // feature names; the former VaapiVideo* names are obsolete and ignored.
-      QStringLiteral("--enable-features=AcceleratedVideoDecoder,AcceleratedVideoDecodeLinuxGL,AcceleratedVideoDecodeLinuxZeroCopyGL"),
+      // Qt 6.11 embeds Chromium 140. Standard stable VA-API Linux hardware video decode
+      // without experimental zero-copy DMABUF surface import mode (which fails with
+      // "vaCreateSurfaces (import mode) failed, VA error: resource allocation failed").
+      QStringLiteral("--enable-features=AcceleratedVideoDecoder,AcceleratedVideoDecodeLinuxGL"),
       QStringLiteral("--use-gl=angle"),
       QStringLiteral("--use-angle=gl"),
       QStringLiteral("--enable-gpu-rasterization")

@@ -10,9 +10,9 @@ struct BrowserChromeMetrics {
   static constexpr int navigationButtonSize = 32;
   static constexpr int navigationIconSize = 20;
   static constexpr int omniboxHeight = 34;
-  static constexpr int bookmarkBarHeight = 32;
-  static constexpr int bookmarkIconSize = 18;
-  static constexpr int bookmarkButtonHeight = 28;
+  static constexpr int bookmarkBarHeight = 34;
+  static constexpr int bookmarkIconSize = 16;
+  static constexpr int bookmarkButtonHeight = 26;
   static constexpr int tabSearchButtonSize = 32;
 };
 

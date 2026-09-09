@@ -136,6 +136,7 @@ class MediaDownloadService final : public QObject {
   void analysisCancelled();
   void enginePreparationStatus(const QString &message, int percent);
   void jobsChanged();
+  void jobEnqueued(const QUuid &id);
 
  private:
   int jobIndex(const QUuid &id) const;

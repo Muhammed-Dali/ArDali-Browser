@@ -6,6 +6,8 @@
 #include <QStringList>
 #include <QVector>
 
+#include <functional>
+
 struct VaultMetadata {
   QString id;
   QString name;
@@ -33,6 +35,14 @@ class CredentialVaultManager final : public QObject {
   int autoLockTimeoutMs() const;
   bool setAutoLockTimeoutMs(int timeoutMs);
 
+  bool isUnlockRateLimited() const;
+  bool isVaultUnlockRateLimited(const QString &vaultId) const;
+  int remainingUnlockCooldownSeconds() const;
+  int remainingVaultUnlockCooldownSeconds(const QString &vaultId) const;
+  int failedUnlockAttempts() const;
+  void resetFailedUnlockAttempts();
+  void setTimeProviderForTesting(std::function<qint64()> provider);
+
   bool create(const QString &masterPassword);
   bool createVault(const QString &name, const QString &masterPassword, QString *id = nullptr);
   bool unlock(const QString &masterPassword);
@@ -54,10 +64,12 @@ class CredentialVaultManager final : public QObject {
   bool reveal(const QString &recordId, CredentialSecret *secret) const;
   QVector<CredentialMetadata> forOrigin(const QUrl &url) const;
   QVector<VaultMetadata> vaultsForOrigin(const QUrl &url) const;
+  bool hasMatchingCredential(const QUrl &url) const;
 
  signals:
   void lockStateChanged(bool locked);
   void changed();
+  void vaultCreated(const QString &vaultId);
 
  private:
   struct Entry { QString id; QString name; CredentialVault *vault = nullptr; bool legacyStorage = false; };
@@ -77,4 +89,5 @@ class CredentialVaultManager final : public QObject {
   QVector<Entry> entries_;
   QString activeId_;
   mutable QString lastError_;
+  std::function<qint64()> timeProvider_;
 };

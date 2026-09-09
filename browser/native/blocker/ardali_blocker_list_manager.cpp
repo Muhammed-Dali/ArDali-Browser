@@ -21,7 +21,14 @@ QString ArDaliBlockerListManager::rulesetDir() const {
       dataDir_ + QStringLiteral("/adblock/rulesets"),
       dataDir_ + QStringLiteral("/rulesets"),
       QCoreApplication::applicationDirPath() + QStringLiteral("/resources/adblock/rulesets"),
-      QCoreApplication::applicationDirPath() + QStringLiteral("/../resources/adblock/rulesets")
+      QCoreApplication::applicationDirPath() + QStringLiteral("/../resources/adblock/rulesets"),
+      QCoreApplication::applicationDirPath() + QStringLiteral("/../share/ardali-browser/resources/adblock/rulesets"),
+      QCoreApplication::applicationDirPath() + QStringLiteral("/../../share/ardali-browser/resources/adblock/rulesets"),
+      QStringLiteral("/usr/share/ardali-browser/resources/adblock/rulesets"),
+      QStringLiteral("/usr/local/share/ardali-browser/resources/adblock/rulesets"),
+      QCoreApplication::applicationDirPath() + QStringLiteral("/../browser/resources/adblock/rulesets"),
+      QDir::currentPath() + QStringLiteral("/browser/resources/adblock/rulesets"),
+      QDir::currentPath() + QStringLiteral("/build/resources/adblock/rulesets")
   };
   for (const QString &path : candidates) {
     if (QDir(path).exists()) return path;
@@ -55,7 +62,7 @@ void ArDaliBlockerListManager::initRulesetCatalog() {
     const QDateTime packageTimestamp = detailsInfo.lastModified();
     QFile file(detailsPath);
     if (file.open(QIODevice::ReadOnly)) {
-      const QJsonDocument doc = QJsonDocument::fromJson(file.readAll());
+      const QJsonDocument doc = QJsonDocument::fromJson(file.read(32 * 1024 * 1024 + 1));
       if (doc.isArray()) {
         for (const auto &val : doc.array()) {
           if (!val.isObject()) continue;
@@ -144,11 +151,12 @@ QStringList ArDaliBlockerListManager::resolveRulesetIds(ArDaliBlockerMode mode, 
 QList<FilterRule> ArDaliBlockerListManager::parseRulesetFile(const QString &filePath, const QString &rulesetId) {
   QList<FilterRule> out;
   QFile file(filePath);
-  if (!file.open(QIODevice::ReadOnly)) return out;
-  const QJsonDocument doc = QJsonDocument::fromJson(file.readAll());
+  if (!file.open(QIODevice::ReadOnly) || file.size() > 32 * 1024 * 1024) return out;
+  const QJsonDocument doc = QJsonDocument::fromJson(file.read(32 * 1024 * 1024 + 1));
   if (!doc.isArray()) return out;
 
   const QJsonArray arr = doc.array();
+  if (arr.size() > 200000) return out;
   qint64 idCounter = 1;
   for (const auto &val : arr) {
     if (!val.isObject()) continue;
@@ -164,6 +172,8 @@ QList<FilterRule> ArDaliBlockerListManager::parseRulesetFile(const QString &file
     rule.urlFilter = condition.value(QStringLiteral("urlFilter")).toString();
     rule.regexFilter = condition.value(QStringLiteral("regexFilter")).toString();
     rule.isCaseSensitive = condition.value(QStringLiteral("isUrlFilterCaseSensitive")).toBool(false);
+    if (rule.urlFilter.size() > 8192 || rule.regexFilter.size() > 2048 ||
+        (!rule.regexFilter.isEmpty() && !QRegularExpression(rule.regexFilter).isValid())) continue;
     rule.rulesetId = rulesetId;
     rule.domainType = condition.value(QStringLiteral("domainType")).toString();
 
@@ -186,7 +196,7 @@ QList<FilterRule> ArDaliBlockerListManager::parseRulesetFile(const QString &file
             const QString mime = QMimeDatabase().mimeTypeForFile(name).name();
             rule.redirectUrl = QStringLiteral("data:%1;base64,%2")
                 .arg(mime.isEmpty() ? QStringLiteral("application/octet-stream") : mime,
-                     QString::fromLatin1(resource.readAll().toBase64()));
+                     QString::fromLatin1(resource.read(1024 * 1024).toBase64()));
           }
         }
       }
@@ -262,7 +272,7 @@ bool generatedScriptletAppliesToHost(const QString &source, const QString &rawHo
   const QJsonArray regexEntries = generatedArray(source, QStringLiteral("$scriptletFromRegexes$"));
   for (int i = 0; i + 2 < regexEntries.size(); i += 3) {
     if (!host.contains(regexEntries.at(i).toString())) continue;
-    const QRegularExpression expression(regexEntries.at(i + 1).toString());
+    const QRegularExpression expression(QStringLiteral("(*LIMIT_MATCH=100000)(*LIMIT_DEPTH=1000)") + regexEntries.at(i + 1).toString());
     if (expression.isValid() && expression.match(host).hasMatch()) return true;
   }
   return false;
@@ -604,14 +614,13 @@ void ArDaliBlockerListManager::invalidateCaches() {
 QJsonObject ArDaliBlockerListManager::cachedScriptingJson(const QString &path) const {
   {
     QMutexLocker locker(&mutex_);
-    const auto found = scriptingJsonCache_.constFind(path);
-    if (found != scriptingJsonCache_.constEnd()) return found.value();
+    if (const auto *found = scriptingJsonCache_.object(path)) return *found;
   }
   QFile file(path);
   QJsonObject object;
-  if (file.open(QIODevice::ReadOnly)) object = QJsonDocument::fromJson(file.readAll()).object();
+  if (file.open(QIODevice::ReadOnly) && file.size() <= 8 * 1024 * 1024) object = QJsonDocument::fromJson(file.read(8 * 1024 * 1024)).object();
   QMutexLocker locker(&mutex_);
-  scriptingJsonCache_.insert(path, object);
+  scriptingJsonCache_.insert(path, new QJsonObject(object), qMax<qint64>(1, file.size() * 3));
   return object;
 }
 
@@ -627,10 +636,11 @@ QString ArDaliBlockerListManager::loadCosmeticCssForSelection(const QStringList 
       targetIds = {QStringLiteral("easylist"), QStringLiteral("annoyances-others"), QStringLiteral("ublock-filters")};
     }
     for (const QString &id : targetIds) {
+      if (!QRegularExpression(QStringLiteral("^[a-zA-Z0-9_-]{1,80}$")).match(id).hasMatch()) continue;
       const QString cssFile = genericHighDir + QStringLiteral("/") + id + QStringLiteral(".css");
       QFile f(cssFile);
       if (f.exists() && f.open(QIODevice::ReadOnly | QIODevice::Text)) {
-        combinedCss += QString::fromUtf8(f.readAll()) + QStringLiteral("\n\n");
+        combinedCss += QString::fromUtf8(f.read(8 * 1024 * 1024)) + QStringLiteral("\n\n");
       }
     }
   }
@@ -640,9 +650,9 @@ QString ArDaliBlockerListManager::loadCosmeticCssForSelection(const QStringList 
 QString ArDaliBlockerListManager::loadSpecificCosmeticCssForHost(const QString &rawHost,
                                                                   const QStringList &enabledIds,
                                                                   bool selectionConfigured) const {
-  const QString baseDir = rulesetDir();
   const QString host = rawHost.trimmed().toLower();
-  if (baseDir.isEmpty() || host.isEmpty()) return QString();
+  if (host.isEmpty()) return QString();
+  const QString baseDir = rulesetDir();
 
   QStringList ids = enabledIds;
   if (!selectionConfigured && ids.isEmpty()) ids = {QStringLiteral("ublock-filters"), QStringLiteral("easylist"),
@@ -663,15 +673,20 @@ QString ArDaliBlockerListManager::loadSpecificCosmeticCssForHost(const QString &
       if (resolved < 0 || resolved >= sourceSelectors.size()) continue;
       const QString selector = sourceSelectors.at(resolved).toString().trimmed();
       if (selector.isEmpty()) continue;
+      // Procedural rules formatted as JSON (e.g. {"selector":..., "tasks":...})
+      // must not be mixed into standard CSS stylesheets.
+      if (selector.startsWith(QLatin1Char('{'))) continue;
       if (selectorIndex >= 0) selectors.insert(selector);
       else exceptions.insert(selector);
     }
   };
 
-  for (const QString &id : ids) {
-    const QJsonObject data = cachedScriptingJson(
-        baseDir + QStringLiteral("/scripting/specific/") + id + QStringLiteral(".json"));
-    if (data.isEmpty()) continue;
+  if (!baseDir.isEmpty()) {
+    for (const QString &id : ids) {
+    if (!QRegularExpression(QStringLiteral("^[a-zA-Z0-9_-]{1,80}$")).match(id).hasMatch()) continue;
+      const QJsonObject data = cachedScriptingJson(
+          baseDir + QStringLiteral("/scripting/specific/") + id + QStringLiteral(".json"));
+      if (data.isEmpty()) continue;
     const QJsonArray hostnames = data.value(QStringLiteral("hostnames")).toArray();
     const QJsonArray refs = data.value(QStringLiteral("selectorListRefs")).toArray();
     if (hostnames.size() != refs.size()) continue;
@@ -703,9 +718,73 @@ QString ArDaliBlockerListManager::loadSpecificCosmeticCssForHost(const QString &
     const QJsonArray regexes = data.value(QStringLiteral("regexes")).toArray();
     for (int i = 0; i + 2 < regexes.size(); i += 3) {
       if (!host.contains(regexes.at(i).toString())) continue;
-      const QRegularExpression regex(regexes.at(i + 1).toString());
+      const QRegularExpression regex(QStringLiteral("(*LIMIT_MATCH=100000)(*LIMIT_DEPTH=1000)") + regexes.at(i + 1).toString());
       if (regex.isValid() && regex.match(host).hasMatch()) addList(data, regexes.at(i + 2).toInt(-1));
     }
+  }
+  }
+
+  const bool isYouTubeHost = host == QLatin1String("youtube.com") ||
+                             host == QLatin1String("www.youtube.com") ||
+                             host == QLatin1String("m.youtube.com") ||
+                             host == QLatin1String("music.youtube.com") ||
+                             host.endsWith(QLatin1String(".youtube.com")) ||
+                             host == QLatin1String("youtu.be");
+  if (isYouTubeHost) {
+    static const QStringList kYouTubeAdSelectors = {
+        QStringLiteral("ytd-rich-item-renderer:has(ytd-ad-slot-renderer)"),
+        QStringLiteral("ytd-rich-item-renderer:has(ytd-in-feed-ad-layout-renderer)"),
+        QStringLiteral("ytd-rich-item-renderer:has(.ytd-in-feed-ad-layout-renderer)"),
+        QStringLiteral("ytd-rich-item-renderer:has(#ad-badge)"),
+        QStringLiteral("ytd-rich-item-renderer:has(.badge-style-type-ad)"),
+        QStringLiteral("ytd-rich-item-renderer:has([badge-style-type=\"BADGE_STYLE_TYPE_AD\"])"),
+        QStringLiteral("ytd-rich-item-renderer:has(ytd-promoted-sparkles-web-renderer)"),
+        QStringLiteral("ytd-rich-item-renderer:has(ytd-promoted-video-renderer)"),
+        QStringLiteral("ytd-rich-item-renderer:has(ytd-display-ad-renderer)"),
+        QStringLiteral("ytd-rich-section-renderer:has(ytd-ad-slot-renderer)"),
+        QStringLiteral("ytd-rich-section-renderer:has(ytd-in-feed-ad-layout-renderer)"),
+        QStringLiteral("ytd-rich-section-renderer:has(#masthead-ad)"),
+        QStringLiteral("ytd-ad-slot-renderer"),
+        QStringLiteral("ytd-in-feed-ad-layout-renderer"),
+        QStringLiteral("#masthead-ad"),
+        QStringLiteral("ytd-masthead-ad-v3-renderer"),
+        QStringLiteral("ytd-video-masthead-ad-v3-renderer"),
+        QStringLiteral("ytd-promoted-sparkles-web-renderer"),
+        QStringLiteral("ytd-compact-promoted-video-renderer"),
+        QStringLiteral("ytd-promoted-video-renderer"),
+        QStringLiteral("ytd-display-ad-renderer"),
+        QStringLiteral("ytd-search-pyv-renderer"),
+        QStringLiteral("#player-ads")
+    };
+    for (const QString &sel : kYouTubeAdSelectors) {
+      selectors.insert(sel);
+    }
+  }
+
+  if (host == QLatin1String("facebook.com") || host.endsWith(QLatin1String(".facebook.com"))) {
+    for (const QString &selector : {
+        QStringLiteral("[role=\"article\"]:has(a[href*=\"/ads/about/\"])"),
+        QStringLiteral("[role=\"article\"]:has(a[href*=\"/ads/why_am_i_seeing_this_ad/\"])"),
+        QStringLiteral("[role=\"article\"]:has([data-ad-preview=\"message\"])"),
+        QStringLiteral("[role=\"article\"]:has([data-ad-comet-preview])"),
+        QStringLiteral("[role=\"article\"]:has(a[aria-label=\"Sponsored\"])"),
+        QStringLiteral("[role=\"article\"]:has(a[aria-label=\"Sponsorlu\"])"),
+        QStringLiteral("[role=\"feed\"] [role=\"article\"]:has(a[href*=\"/ads/about/\"])"),
+        QStringLiteral("[role=\"feed\"] [role=\"article\"]:has(a[href*=\"/ads/why_am_i_seeing_this_ad/\"])"),
+        QStringLiteral("[role=\"feed\"] [role=\"article\"]:has([data-ad-preview=\"message\"])"),
+        QStringLiteral("[role=\"feed\"] [role=\"article\"]:has(a[aria-label=\"Sponsored\"])"),
+        QStringLiteral("[role=\"feed\"] [role=\"article\"]:has(a[aria-label=\"Sponsorlu\"])"),
+        QStringLiteral("div[data-pagelet*=\"Reel\"]:has(a[href*=\"/ads/about/\"])"),
+        QStringLiteral("div[data-pagelet*=\"Reel\"]:has(a[aria-label=\"Sponsored\"])"),
+        QStringLiteral("div[data-pagelet*=\"Reel\"]:has(a[aria-label=\"Sponsorlu\"])"),
+        QStringLiteral("div[data-pagelet*=\"FeedUnit\"]:has(a[href*=\"/ads/about/\"])"),
+        QStringLiteral("div[data-pagelet*=\"FeedUnit\"]:has(a[aria-label=\"Sponsored\"])"),
+        QStringLiteral("div[data-pagelet*=\"FeedUnit\"]:has(a[aria-label=\"Sponsorlu\"])"),
+        QStringLiteral("div[data-ad-preview]"),
+        QStringLiteral("div[data-ad-comet-preview]"),
+        QStringLiteral("div[data-pagelet*=\"sponsored\"]"),
+        QStringLiteral("div[data-pagelet*=\"Sponsored\"]"),
+        QStringLiteral("div[data-pagelet*=\"ad_\"]")}) selectors.insert(selector);
   }
   for (const QString &exception : exceptions) selectors.remove(exception);
   return selectors.isEmpty() ? QString() : selectors.values().join(QStringLiteral(",\n")) +
@@ -744,6 +823,7 @@ QJsonArray ArDaliBlockerListManager::loadProceduralRulesForHost(const QString &r
     return left < right ? -1 : 1;
   };
   for (const QString &id : ids) {
+    if (!QRegularExpression(QStringLiteral("^[a-zA-Z0-9_-]{1,80}$")).match(id).hasMatch()) continue;
     const QJsonObject data = cachedScriptingJson(
         baseDir + QStringLiteral("/scripting/procedural/") + id + QStringLiteral(".json"));
     if (data.isEmpty()) continue;
@@ -770,7 +850,7 @@ QJsonArray ArDaliBlockerListManager::loadProceduralRulesForHost(const QString &r
     const QJsonArray regexes = data.value(QStringLiteral("regexes")).toArray();
     for (int i = 0; i + 2 < regexes.size(); i += 3) {
       if (!host.contains(regexes.at(i).toString())) continue;
-      const QRegularExpression regex(regexes.at(i + 1).toString());
+      const QRegularExpression regex(QStringLiteral("(*LIMIT_MATCH=100000)(*LIMIT_DEPTH=1000)") + regexes.at(i + 1).toString());
       if (regex.isValid() && regex.match(host).hasMatch()) addList(data, regexes.at(i + 2).toInt(-1));
     }
   }
@@ -814,14 +894,13 @@ QList<QPair<QString, QString>> ArDaliBlockerListManager::loadScriptingSourcesFor
   auto readAsset = [this](const QString &path) {
     {
       QMutexLocker locker(&mutex_);
-      const auto found = scriptingSourceCache_.constFind(path);
-      if (found != scriptingSourceCache_.constEnd()) return found.value();
+      if (const auto *found = scriptingSourceCache_.object(path)) return *found;
     }
     QFile file(path);
     QString source;
-    if (file.open(QIODevice::ReadOnly | QIODevice::Text)) source = QString::fromUtf8(file.readAll());
+    if (file.open(QIODevice::ReadOnly | QIODevice::Text) && file.size() <= 8 * 1024 * 1024) source = QString::fromUtf8(file.read(8 * 1024 * 1024));
     QMutexLocker locker(&mutex_);
-    scriptingSourceCache_.insert(path, source);
+    scriptingSourceCache_.insert(path, new QString(source), qMax<qsizetype>(1, source.size() * 2));
     return source;
   };
   auto appendMappedAsset = [this, &readAsset, &host](QString &target, const QString &path) {
@@ -840,6 +919,7 @@ QList<QPair<QString, QString>> ArDaliBlockerListManager::loadScriptingSourcesFor
     if (!cached) {
       applies = generatedScriptletAppliesToHost(source, host);
       QMutexLocker locker(&mutex_);
+      if (scriptingApplicabilityCache_.size() >= 1024) scriptingApplicabilityCache_.clear();
       scriptingApplicabilityCache_.insert(cacheKey, applies);
     }
     if (applies) target += source + QStringLiteral("\n;\n");
@@ -849,6 +929,7 @@ QList<QPair<QString, QString>> ArDaliBlockerListManager::loadScriptingSourcesFor
     if (!source.trimmed().isEmpty()) target += source + QStringLiteral("\n;\n");
   };
   for (const QString &id : ids) {
+    if (!QRegularExpression(QStringLiteral("^[a-zA-Z0-9_-]{1,80}$")).match(id).hasMatch()) continue;
     appendMappedAsset(mainSource, baseDir + QStringLiteral("/scripting/scriptlet/main/") + id + QStringLiteral(".js"));
     appendMappedAsset(isolatedSource, baseDir + QStringLiteral("/scripting/scriptlet/isolated/") + id + QStringLiteral(".js"));
     appendGenericAsset(isolatedSource, baseDir + QStringLiteral("/scripting/generic/") + id + QStringLiteral(".js"));

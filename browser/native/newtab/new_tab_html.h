@@ -1,9 +1,16 @@
 #pragma once
 
+#include <QJsonArray>
 #include <QString>
 #include <QUrl>
 
-QString newTabHtml(const QString &defaultEngine);
+QString searchEnginePlaceholder(const QString &engine);
+
+QString newTabHtml(const QString &defaultEngine,
+                   const QJsonArray &frequentSites = {},
+                   const QJsonArray &bookmarks = {});
+QString newTabTopSitesUpdateScript(const QJsonArray &frequentSites,
+                                   const QJsonArray &bookmarks);
 QString strictBlockWarningHtml(const QString &domain, const QString &targetUrl);
 QUrl validatedStrictBlockTarget(const QString &domain, const QString &targetUrl);
 bool isAuthorizedStrictBlockBypass(const QUrl &requestUrl, const QUrl &initiator);

@@ -3,6 +3,11 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QUrlQuery>
+#include "core/search_engine_definition.h"
+
+QString searchEnginePlaceholder(const QString &engine) {
+  return ardali::core::searchEnginePlaceholderText(engine);
+}
 
 namespace {
 QString normalizedStrictBlockHost(QString host) {
@@ -14,6 +19,15 @@ QString normalizedStrictBlockHost(QString host) {
 QString jsonStringLiteral(const QString &value) {
   const QByteArray array = QJsonDocument(QJsonArray{value}).toJson(QJsonDocument::Compact);
   return QString::fromUtf8(array.mid(1, array.size() - 2));
+}
+
+QString jsonForInlineScript(const QJsonArray &values) {
+  QString json = QString::fromUtf8(QJsonDocument(values).toJson(QJsonDocument::Compact));
+  if (json.isEmpty()) json = QStringLiteral("[]");
+  json.replace(QLatin1String("</"), QLatin1String("<\\/"));
+  json.replace(QChar(0x2028), QStringLiteral("\\u2028"));
+  json.replace(QChar(0x2029), QStringLiteral("\\u2029"));
+  return json;
 }
 }  // namespace
 
@@ -46,12 +60,17 @@ bool isAuthorizedStrictBlockBypass(const QUrl &requestUrl, const QUrl &initiator
                                     query.queryItemValue(QStringLiteral("target"), QUrl::FullyDecoded)).isValid();
 }
 
-QString newTabHtml(const QString &defaultEngine) {
+QString newTabHtml(const QString &defaultEngine,
+                   const QJsonArray &frequentSites,
+                   const QJsonArray &bookmarks) {
   const QString google = defaultEngine == QLatin1String("Google") ? QStringLiteral(" selected") : QString();
   const QString duck = defaultEngine == QLatin1String("DuckDuckGo") ? QStringLiteral(" selected") : QString();
   const QString brave = defaultEngine == QLatin1String("Brave Search") ? QStringLiteral(" selected") : QString();
   const QString bing = defaultEngine == QLatin1String("Bing") ? QStringLiteral(" selected") : QString();
-  return QString::fromUtf8(R"NTP(<!doctype html>
+
+  const QString freqJson = jsonForInlineScript(frequentSites);
+  const QString bkmkJson = jsonForInlineScript(bookmarks);
+  QString html = QString::fromUtf8(R"NTP(<!doctype html>
 <html lang="tr">
 <head>
 <meta charset="utf-8">
@@ -67,12 +86,16 @@ body:before{content:'';position:fixed;inset:0;background:rgba(2,8,18,var(--overl
 button,input,select{font:inherit}
 button{color:inherit}
 [hidden]{display:none!important}
-.page{position:relative;width:min(620px,calc(100% - 32px));margin:clamp(70px,14vh,145px) auto;text-align:center}
+.page{position:relative;width:min(760px,calc(100% - 32px));margin:clamp(70px,14vh,145px) auto;text-align:center}
 .clock{font-size:clamp(54px,7vw,82px);font-weight:300;letter-spacing:-.06em}
 .date{margin:10px 0 20px;color:#d4ddec}
 .brand{width:112px;height:112px;margin:8px auto 15px;display:grid;place-items:center;background:transparent}
 .brand img{display:block;width:100%;height:100%;object-fit:contain;filter:drop-shadow(0 8px 16px #0008)}
-.search{position:relative;z-index:20;display:flex;height:52px;border:2px solid #11c5fa;border-radius:28px;background:#05080bdd;overflow:visible}
+.suggestion-list{position:absolute;left:0;right:0;top:calc(100% + 8px);padding:6px;background:#111b29;border:1px solid #354b62;border-radius:16px;max-height:380px;overflow:auto;box-shadow:0 12px 32px #0008}
+.suggestion-row{display:flex;align-items:center;gap:12px;width:100%;border:0;border-radius:10px;background:transparent;color:#e5efff;padding:10px 14px;text-align:left;font:inherit;cursor:pointer}
+.suggestion-row[aria-selected="true"],.suggestion-row:hover{background:#253e56}.suggestion-row img{width:20px;height:20px;object-fit:contain}.suggestion-row span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.search{position:relative;z-index:20;display:flex;width:min(620px,100%);height:52px;margin:0 auto;border:2px solid #11c5fa;border-radius:28px;background:#05080bdd;overflow:visible;transition:width .2s ease,height .2s ease,transform .2s ease,box-shadow .2s ease}
+.page.search-focused .search{width:min(700px,100%);height:56px;transform:translateY(34px);box-shadow:0 14px 35px #0008}
 .search>.search-icon{width:48px;flex:0 0 48px;display:grid;place-items:center;padding-left:5px}
 .search>.search-icon img{width:30px;height:30px;object-fit:contain}
 .search input{flex:1;min-width:0;border:0;outline:0;background:transparent;color:#fff;padding:0 13px 0 2px;font-size:16px}
@@ -86,25 +109,21 @@ button{color:inherit}
 .engine-logo{display:grid;place-items:center;width:22px;height:22px}
 .engine-logo img{display:block;width:22px;height:22px;object-fit:contain}
 .engine-option-label{font-size:13px;line-height:22px}
-.module{position:relative;margin-top:30px;padding:17px;text-align:left;background:rgba(12,20,34,var(--frequent-panel-alpha));border:1px solid rgba(44,60,83,var(--frequent-panel-alpha));border-radius:18px;transition:background .16s,border-color .16s}
-.head{display:flex;align-items:center;justify-content:space-between;font-weight:700}
-.frequent-settings{width:30px;height:30px;margin:-8px;border:0;border-radius:9px;background:#263750dd;cursor:pointer;opacity:0;transform:scale(.92);transition:.16s;display:grid;place-items:center}
-.frequent-settings img{width:17px;height:17px}
-.module:hover .frequent-settings,.module:focus-within .frequent-settings{opacity:1;transform:none}
-.frequent-settings:hover{background:#36506f}
-.frequent-settings:focus-visible{opacity:1;transform:none;outline:2px solid var(--accent)}
-.shortcuts{display:flex;gap:18px;margin-top:22px;overflow:visible}
-.shortcut-wrap{position:relative;width:72px;min-width:72px}
-.shortcut{width:100%;border:0;background:transparent;color:#fff;cursor:pointer;padding:0;text-align:center}
-.shortcut:hover .shortcut-icon{box-shadow:0 5px 16px #0008}
-.shortcut-icon{display:grid;place-items:center;width:44px;height:44px;margin:auto auto 8px;border-radius:50%;background:rgba(255,255,255,var(--frequent-icon-alpha));color:#101827;font-size:20px;font-weight:700;overflow:hidden;transition:box-shadow .16s}
+.top-sites-strip{position:relative;margin-top:24px;transition:opacity .2s ease,transform .2s ease,visibility 0s linear 0s}
+.page.search-focused .top-sites-strip{opacity:0;transform:translateY(-10px);visibility:hidden;pointer-events:none;transition:opacity .18s ease,transform .2s ease,visibility 0s linear .2s}
+.shortcuts{display:flex;justify-content:center;gap:12px;overflow-x:auto;overflow-y:hidden;padding:4px 2px 8px;scrollbar-width:thin}
+.shortcut-wrap{position:relative;width:104px;min-width:104px}
+.shortcut{width:100%;height:88px;border:1px solid rgba(255,255,255,.10);border-radius:16px;background:rgba(18,26,36,var(--frequent-panel-alpha));color:#fff;cursor:pointer;padding:10px 8px 8px;text-align:center;transition:background .16s ease,border-color .16s ease,transform .16s ease,box-shadow .16s ease}
+.shortcut:hover{background:rgba(35,49,66,.9);border-color:rgba(255,255,255,.2);transform:translateY(-2px);box-shadow:0 8px 20px #0007}
+.shortcut:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.shortcut-icon{display:grid;place-items:center;width:42px;height:42px;margin:auto auto 7px;border-radius:12px;background:rgba(255,255,255,var(--frequent-icon-alpha));color:#101827;font-size:20px;font-weight:700;overflow:hidden}
 .shortcut-icon img{display:block;width:100%;height:100%;padding:7px;object-fit:contain}
 .shortcut-name{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px}
 .shortcut-remove{position:absolute;z-index:3;right:-4px;top:-10px;width:22px;height:22px;padding:0;border:0;display:grid;place-items:center;background:transparent;color:#dce7f5;font-size:19px;line-height:1;cursor:pointer;opacity:0;filter:drop-shadow(0 1px 2px #000);transition:opacity .14s,color .14s}
 .shortcut-wrap:hover .shortcut-remove,.shortcut-remove:focus-visible{opacity:1}
 .shortcut-remove:hover{color:#ff6978}
-.shortcut-empty{color:#aebbd0;padding:8px 0}
-.cards{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:14px}
+.cards{position:relative;display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:14px;transition:opacity .2s ease,transform .2s ease,visibility 0s linear 0s}
+.page.search-focused .cards{opacity:0;transform:translateY(-10px);visibility:hidden;pointer-events:none;transition:opacity .18s ease,transform .2s ease,visibility 0s linear .2s}
 .cards article{padding:15px;text-align:left;background:#0c1422e8;border:1px solid #2c3c53;border-radius:18px}
 .customize{position:fixed;z-index:40;right:22px;top:22px;width:46px;height:46px;border:1px solid #485469;border-radius:17px;background:#101827dd;cursor:pointer;display:grid;place-items:center;transition:background .15s,border-color .15s,transform .15s}
 .customize img{width:21px;height:21px}
@@ -170,12 +189,12 @@ input[type=range]:focus-visible{outline:2px solid #8ed2ed;outline-offset:4px;bor
 .restore:hover:not(:disabled){background:#293a49;border-color:#637a91}
 .restore:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .restore:disabled{opacity:.45;cursor:default}
-@media(max-width:680px){.customization-overlay{padding:12px}.customization-modal{width:calc(100vw - 24px);height:calc(100vh - 24px)}.modal-body{grid-template-columns:164px minmax(0,1fr)}.category-sidebar{padding:12px 8px}.category-button{padding:0 9px;gap:8px}.modal-content{padding:22px 20px}.setting-row{gap:14px;padding:14px}.setting-select{min-width:150px}.shortcuts{gap:10px;overflow-x:auto;overflow-y:visible;padding-top:10px;margin-top:12px}.shortcut-wrap{width:64px;min-width:64px}}
+@media(max-width:680px){.customization-overlay{padding:12px}.customization-modal{width:calc(100vw - 24px);height:calc(100vh - 24px)}.modal-body{grid-template-columns:164px minmax(0,1fr)}.category-sidebar{padding:12px 8px}.category-button{padding:0 9px;gap:8px}.modal-content{padding:22px 20px}.setting-row{gap:14px;padding:14px}.setting-select{min-width:150px}.shortcuts{justify-content:flex-start;gap:10px}.shortcut-wrap{width:92px;min-width:92px}.page.search-focused .search{transform:translateY(26px)}}
 @media(max-width:520px){.modal-header{padding-left:17px}.modal-header h2{font-size:17px}.modal-body{display:flex;flex-direction:column}.category-sidebar{flex:0 0 auto;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px;overflow-x:hidden;border-right:0;border-bottom:1px solid #2d3947}.category-button{width:100%;min-width:0;padding:0 11px}.category-button span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.category-button[aria-selected=true]:before{left:10px;right:10px;top:auto;bottom:0;width:auto;height:3px}.modal-content{padding:20px 16px}.setting-row{align-items:flex-start;flex-wrap:wrap}.setting-row>.switch,.setting-row>.themes,.setting-row>.setting-select,.setting-row>.restore{margin-left:auto}.background-grid,.cards{grid-template-columns:1fr}.customize{right:12px}}
 </style>
 </head>
 <body>
-<button class="customize" id="customize" type="button" title="Yeni sekme sayfasını özelleştir" aria-label="Yeni sekme sayfasını özelleştir" aria-haspopup="dialog" aria-controls="customization-modal" aria-expanded="false"><img src="icons/appearance.svg" alt=""></button>
+<button class="customize" id="customize" type="button" title="Yeni sekme ayarları" aria-label="Yeni sekme ayarlarını aç" aria-haspopup="dialog" aria-controls="customization-modal" aria-expanded="false"><img src="icons/settings.svg" alt=""></button>
 
 <div class="customization-overlay" id="customization-overlay" hidden>
   <section class="customization-modal" id="customization-modal" role="dialog" aria-modal="true" aria-labelledby="customization-title" tabindex="-1">
@@ -206,7 +225,7 @@ input[type=range]:focus-visible{outline:2px solid #8ed2ed;outline-offset:4px;bor
           <h3>Ara</h3><p class="category-intro">Yeni sekme aramasında kullanılan mevcut tarayıcı tercihlerini yönetin.</p>
           <div class="settings-card">
             <div class="setting-row"><div class="setting-copy"><label class="setting-title" for="search-toggle">Arama kutusunu göster</label><span class="setting-description">Yeni sekmedeki arama kutusunu gizler; adres çubuğu etkilenmez.</span></div><label class="switch"><input id="search-toggle" type="checkbox" aria-label="Arama kutusunu göster"><span class="switch-track"></span></label></div>
-            <div class="radio-list" id="engine-radio-list" role="radiogroup" aria-label="Varsayılan arama motoru"><label class="radio-option"><input type="radio" name="custom-engine" value="Google"><img src="google.ico" alt=""><span class="radio-copy"><strong>Google</strong><small>Adres çubuğu ve yeni sekme</small></span></label><label class="radio-option"><input type="radio" name="custom-engine" value="DuckDuckGo"><img src="duckduckgo.ico" alt=""><span class="radio-copy"><strong>DuckDuckGo</strong><small>Adres çubuğu ve yeni sekme</small></span></label><label class="radio-option"><input type="radio" name="custom-engine" value="Brave Search"><img src="brave.ico" alt=""><span class="radio-copy"><strong>Brave Search</strong><small>Adres çubuğu ve yeni sekme</small></span></label><label class="radio-option"><input type="radio" name="custom-engine" value="Bing"><img src="bing.ico" alt=""><span class="radio-copy"><strong>Bing</strong><small>Adres çubuğu ve yeni sekme</small></span></label></div>
+            <div class="radio-list" id="engine-radio-list" role="radiogroup" aria-label="Varsayılan arama motoru"><label class="radio-option"><input type="radio" name="custom-engine" value="Google"><img src="__GOOGLE_ENGINE_ICON__" alt=""><span class="radio-copy"><strong>Google</strong><small>Adres çubuğu ve yeni sekme</small></span></label><label class="radio-option"><input type="radio" name="custom-engine" value="DuckDuckGo"><img src="__DUCKDUCKGO_ENGINE_ICON__" alt=""><span class="radio-copy"><strong>DuckDuckGo</strong><small>Adres çubuğu ve yeni sekme</small></span></label><label class="radio-option"><input type="radio" name="custom-engine" value="Brave Search"><img src="__BRAVE_SEARCH_ENGINE_ICON__" alt=""><span class="radio-copy"><strong>Brave Search</strong><small>Adres çubuğu ve yeni sekme</small></span></label><label class="radio-option"><input type="radio" name="custom-engine" value="Bing"><img src="__BING_ENGINE_ICON__" alt=""><span class="radio-copy"><strong>Bing</strong><small>Adres çubuğu ve yeni sekme</small></span></label></div>
             <div class="setting-row"><div class="setting-copy"><label class="setting-title" for="suggestions-toggle">Arama önerileri</label><span class="setting-description">Etkin olduğunda yazdığınız sorgu seçili arama motorunun öneri servisine gönderilebilir.</span></div><label class="switch"><input id="suggestions-toggle" type="checkbox" aria-label="Arama önerilerini etkinleştir"><span class="switch-track"></span></label></div>
           </div>
         </section>
@@ -237,23 +256,24 @@ input[type=range]:focus-visible{outline:2px solid #8ed2ed;outline-offset:4px;bor
   </section>
 </div>
 
-<main class="page"><div class="clock" id="clock"></div><div class="date" id="date"></div><div class="brand"><img src="ardali-browser.png" alt="ArDali Browser"></div><form class="search" id="search"><span class="search-icon"><img src="ardali-browser.png" alt=""></span><input id="query" autofocus placeholder="Web'de bir şeyler arayın veya URL girin..."><select id="engine" hidden><option%1>Google</option><option%2>DuckDuckGo</option><option%3>Brave Search</option><option%4>Bing</option></select><div class="engine-picker"><button id="engine-current" class="engine-current" type="button" aria-label="Arama motorunu seç"><span class="engine-logo"><img id="engine-current-icon" src="google.ico" alt="Google"></span></button><div class="engine-menu" id="engine-menu" hidden><button class="engine-option" data-engine="Google" type="button"><span class="engine-logo"><img src="google.ico" alt="Google"></span><span class="engine-option-label">Google</span></button><button class="engine-option" data-engine="DuckDuckGo" type="button"><span class="engine-logo"><img src="duckduckgo.ico" alt="DuckDuckGo"></span><span class="engine-option-label">DuckDuckGo</span></button><button class="engine-option" data-engine="Brave Search" type="button"><span class="engine-logo"><img src="brave.ico" alt="Brave Search"></span><span class="engine-option-label">Brave Search</span></button><button class="engine-option" data-engine="Bing" type="button"><span class="engine-logo"><img src="bing.ico" alt="Bing"></span><span class="engine-option-label">Bing</span></button></div></div></form><section class="module" id="shortcuts"><div class="head"><span id="top-sites-title">Sık Ziyaret Edilen Siteler</span><button class="frequent-settings" id="frequent-settings" type="button" title="En iyi siteleri özelleştir" aria-label="En iyi siteleri özelleştir"><img src="icons/appearance.svg" alt=""></button></div><div class="shortcuts" id="shortcut-list"></div></section><section class="cards" id="cards"><article><b id="downloads-card-value">0</b><br><small>Son indirmeler</small></article><article><b id="protection-card-value">Etkin</b><br><small>İzleme parametresi koruması</small></article></section></main>
+<main class="page" id="page"><div class="clock" id="clock"></div><div class="date" id="date"></div><div class="brand"><img src="ardali-browser.png" alt="ArDali Browser"></div><form class="search" id="search"><span class="search-icon"><img src="ardali-browser.png" alt=""></span><input id="query" placeholder="__SEARCH_PLACEHOLDER__"><select id="engine" hidden><option%1>Google</option><option%2>DuckDuckGo</option><option%3>Brave Search</option><option%4>Bing</option></select><div class="engine-picker"><button id="engine-current" class="engine-current" type="button" aria-label="Arama motorunu seç"><span class="engine-logo"><img id="engine-current-icon" src="__GOOGLE_ENGINE_ICON__" alt="Google"></span></button><div class="engine-menu" id="engine-menu" hidden><button class="engine-option" data-engine="Google" type="button"><span class="engine-logo"><img src="__GOOGLE_ENGINE_ICON__" alt="Google"></span><span class="engine-option-label">Google</span></button><button class="engine-option" data-engine="DuckDuckGo" type="button"><span class="engine-logo"><img src="__DUCKDUCKGO_ENGINE_ICON__" alt="DuckDuckGo"></span><span class="engine-option-label">DuckDuckGo</span></button><button class="engine-option" data-engine="Brave Search" type="button"><span class="engine-logo"><img src="__BRAVE_SEARCH_ENGINE_ICON__" alt="Brave Search"></span><span class="engine-option-label">Brave Search</span></button><button class="engine-option" data-engine="Bing" type="button"><span class="engine-logo"><img src="__BING_ENGINE_ICON__" alt="Bing"></span><span class="engine-option-label">Bing</span></button></div></div></form><section class="top-sites-strip" id="shortcuts" aria-label="Sık ziyaret edilen siteler"><div class="shortcuts" id="shortcut-list"></div></section><section class="cards" id="cards"><article><b id="downloads-card-value">0</b><br><small>Son indirmeler</small></article><article><b id="protection-card-value">Etkin</b><br><small>İzleme parametresi koruması</small></article></section></main>
 <script>
 const $=selector=>document.querySelector(selector);
-const engineIcons={Google:'google.ico',DuckDuckGo:'duckduckgo.ico','Brave Search':'brave.ico',Bing:'bing.ico'};
-function setEngine(value,notify=false){if(!engineIcons[value])value='Google';const select=$('#engine');const changed=select.value!==value;select.value=value;document.querySelectorAll('input[name="custom-engine"]').forEach(input=>input.checked=input.value===value);const icon=$('#engine-current-icon');icon.src=engineIcons[value];icon.alt=value;$('#engine-current').setAttribute('aria-label',value+' arama motoru');$('#engine-menu').hidden=true;if(notify&&changed)select.dispatchEvent(new Event('change',{bubbles:true}))}
-window.ardaliSetSearchEngine=value=>setEngine(value,false);
+const searchPlaceholders=__SEARCH_PLACEHOLDERS__;
+const engineIcons=__SEARCH_ENGINE_ICONS__;
+function setEngine(value,notify=false){if(!engineIcons[value])value='Google';const select=$('#engine');const changed=select.value!==value;select.value=value;$('#query').placeholder=searchPlaceholders[value];document.querySelectorAll('input[name="custom-engine"]').forEach(input=>input.checked=input.value===value);const icon=$('#engine-current-icon');icon.src=engineIcons[value];icon.alt=value;$('#engine-current').setAttribute('aria-label',value+' arama motoru');$('#engine-menu').hidden=true;if(notify&&changed){select.dispatchEvent(new Event('change',{bubbles:true}));location.href='ardali://search-engine?engine='+encodeURIComponent(value)+'&cap='+encodeURIComponent(suggestionCapability)}}
+window.ardaliSetSearchEngine=value=>{setEngine(value,false);if(window.ardaliSuggestionBridge&&document.activeElement===$('#query'))requestSuggestions()};
 const defaults={theme:'flow',backgroundVisible:true,backgroundSource:'builtin',searchVisible:true,dim:38,clock:true,date:true,clockFormat:'auto',shortcuts:true,topSitesSource:'frequent',cards:true,frequentPanelOpacity:72,frequentIconOpacity:82,hiddenFrequentSites:[]};
 let stored={};try{stored=JSON.parse(localStorage.getItem('ardali.newtab')||'{}')}catch{}
 let p=Object.assign({},defaults,stored);if(!Array.isArray(p.hiddenFrequentSites))p.hiddenFrequentSites=[];const clamp=value=>Math.max(0,Math.min(100,Number(value)||0));const save=()=>localStorage.setItem('ardali.newtab',JSON.stringify(p));
-window.ardaliFrequentSites=Array.isArray(window.ardaliFrequentSites)?window.ardaliFrequentSites:[];
+window.ardaliFrequentSites=__ARDALI_FREQUENT_SITES__;
 window.ardaliFrequentSiteIcons=window.ardaliFrequentSiteIcons||{};
-window.ardaliTopSiteSources=window.ardaliTopSiteSources||{frequent:window.ardaliFrequentSites,bookmarks:[]};
+window.ardaliTopSiteSources={frequent:window.ardaliFrequentSites,bookmarks:__ARDALI_BOOKMARKS__};
 window.ardaliCardData=window.ardaliCardData||{downloads:0,protection:true};
 function settingsChanged(){save();window.dispatchEvent(new Event('ardali-frequent-settings-changed'))}
 function removeFrequentSite(site){if(p.topSitesSource!=='frequent')return;if(!p.hiddenFrequentSites.includes(site.url))p.hiddenFrequentSites.push(site.url);settingsChanged();render()}
-function renderFrequentSites(){const list=$('#shortcut-list');list.replaceChildren();const source=p.topSitesSource==='bookmarks'?'bookmarks':'frequent';const hidden=new Set(source==='frequent'?p.hiddenFrequentSites:[]);const sites=(window.ardaliTopSiteSources[source]||[]).filter(site=>!hidden.has(site.url)).slice(0,6);$('#top-sites-title').textContent=source==='bookmarks'?'Yer İmleri':'Sık Ziyaret Edilen Siteler';if(!sites.length){const empty=document.createElement('div');empty.className='shortcut-empty';empty.textContent=source==='bookmarks'?'Yer imi eklediğinizde siteler burada görünecek.':'Ziyaret ettikçe en sık kullandığınız siteler burada görünecek.';list.appendChild(empty);return}for(const site of sites){const wrap=document.createElement('div');wrap.className='shortcut-wrap';const button=document.createElement('button');button.type='button';button.className='shortcut';button.title=source==='frequent'?(site.title||site.name)+' · '+site.visitCount+' ziyaret':site.title||site.name;const remove=document.createElement('button');remove.type='button';remove.className='shortcut-remove';remove.textContent='×';remove.title=(site.name||'Site')+' listesinden kaldır';remove.setAttribute('aria-label',remove.title);remove.hidden=source!=='frequent';remove.onclick=event=>{event.preventDefault();event.stopPropagation();removeFrequentSite(site)};const badge=document.createElement('span');badge.className='shortcut-icon';const iconData=window.ardaliFrequentSiteIcons[site.url];if(iconData){const image=document.createElement('img');image.src=iconData;image.alt='';image.onerror=()=>{image.remove();badge.textContent=(site.name||'?').charAt(0).toLocaleUpperCase('tr-TR')};badge.appendChild(image)}else badge.textContent=(site.name||'?').charAt(0).toLocaleUpperCase('tr-TR');const label=document.createElement('span');label.className='shortcut-name';label.textContent=site.name;button.append(badge,label);button.onclick=()=>location.href=site.url;wrap.append(button,remove);list.appendChild(wrap)}}
-function render(){p.frequentPanelOpacity=clamp(p.frequentPanelOpacity);p.frequentIconOpacity=clamp(p.frequentIconOpacity);if(!['builtin','custom'].includes(p.backgroundSource))p.backgroundSource='builtin';if(!['auto','12','24'].includes(p.clockFormat))p.clockFormat='auto';if(!['frequent','bookmarks'].includes(p.topSitesSource))p.topSitesSource='frequent';document.body.classList.toggle('plain',p.theme==='plain');document.body.classList.toggle('background-hidden',!p.backgroundVisible);document.documentElement.style.setProperty('--new-tab-background',p.backgroundSource==='custom'&&window.ardaliManagedBackgroundAvailable?"url('managed-background')":"url('ardali-flow-blue.png')");document.documentElement.style.setProperty('--overlay',p.dim/100);document.documentElement.style.setProperty('--frequent-panel-alpha',p.frequentPanelOpacity/100);document.documentElement.style.setProperty('--frequent-icon-alpha',p.frequentIconOpacity/100);$('#clock').hidden=!p.clock;$('#date').hidden=!p.date;$('#search').hidden=!p.searchVisible;$('#shortcuts').hidden=!p.shortcuts;$('#cards').hidden=!p.cards;$('#dim').value=p.dim;$('#dim-value').textContent=p.dim+'%';$('#clock-toggle').checked=p.clock;$('#date-toggle').checked=p.date;$('#background-toggle').checked=p.backgroundVisible;$('#search-toggle').checked=p.searchVisible;$('#shortcuts-toggle').checked=p.shortcuts;$('#cards-toggle').checked=p.cards;$('#clock-format').value=p.clockFormat;$('#frequent-panel-opacity').value=p.frequentPanelOpacity;$('#frequent-icon-opacity').value=p.frequentIconOpacity;$('#frequent-panel-value').textContent=p.frequentPanelOpacity+'%';$('#frequent-icon-value').textContent=p.frequentIconOpacity+'%';$('#restore-frequent-sites').disabled=!p.hiddenFrequentSites.length;$('#restore-frequent-sites').closest('.setting-row').hidden=p.topSitesSource!=='frequent';$('#suggestions-toggle').checked=localStorage.getItem('ardali.searchSuggestions')==='enabled';$('#custom-background-card').hidden=!window.ardaliManagedBackgroundAvailable;$('#background-remove').hidden=!window.ardaliManagedBackgroundAvailable;document.querySelectorAll('[data-background]').forEach(button=>{const selected=button.dataset.background===p.backgroundSource;button.classList.toggle('selected',selected);button.setAttribute('aria-pressed',String(selected))});document.querySelectorAll('input[name="top-sites-source"]').forEach(input=>input.checked=input.value===p.topSitesSource);document.querySelectorAll('[data-theme]').forEach(button=>{const active=button.dataset.theme===p.theme;button.classList.toggle('active',active);button.setAttribute('aria-pressed',String(active))});$('#downloads-card-value').textContent=String(window.ardaliCardData.downloads||0);$('#protection-card-value').textContent=window.ardaliCardData.protection?'Etkin':'Kapalı';renderFrequentSites();tick()}
+function renderFrequentSites(){const strip=$('#shortcuts');const list=$('#shortcut-list');list.replaceChildren();const source=p.topSitesSource==='bookmarks'?'bookmarks':'frequent';const hidden=new Set(source==='frequent'?p.hiddenFrequentSites:[]);const sites=(window.ardaliTopSiteSources[source]||[]).filter(site=>!hidden.has(site.url)).slice(0,6);strip.hidden=!p.shortcuts||!sites.length;if(!sites.length)return;for(const site of sites){const wrap=document.createElement('div');wrap.className='shortcut-wrap';const button=document.createElement('button');button.type='button';button.className='shortcut';button.title=source==='frequent'?(site.title||site.name)+' · '+site.visitCount+' ziyaret':site.title||site.name;const remove=document.createElement('button');remove.type='button';remove.className='shortcut-remove';remove.textContent='×';remove.title=(site.name||'Site')+' listesinden kaldır';remove.setAttribute('aria-label',remove.title);remove.hidden=source!=='frequent';remove.onclick=event=>{event.preventDefault();event.stopPropagation();removeFrequentSite(site)};const badge=document.createElement('span');badge.className='shortcut-icon';const iconData=site.icon||window.ardaliFrequentSiteIcons[site.url];if(iconData){const image=document.createElement('img');image.src=iconData;image.alt='';image.onerror=()=>{image.remove();badge.textContent=(site.name||'?').charAt(0).toLocaleUpperCase('tr-TR')};badge.appendChild(image)}else badge.textContent=(site.name||'?').charAt(0).toLocaleUpperCase('tr-TR');const label=document.createElement('span');label.className='shortcut-name';label.textContent=site.name;button.append(badge,label);button.onclick=()=>location.href=site.url;wrap.append(button,remove);list.appendChild(wrap)}}
+function render(){p.frequentPanelOpacity=clamp(p.frequentPanelOpacity);p.frequentIconOpacity=clamp(p.frequentIconOpacity);if(!['builtin','custom'].includes(p.backgroundSource))p.backgroundSource='builtin';if(!['auto','12','24'].includes(p.clockFormat))p.clockFormat='auto';if(!['frequent','bookmarks'].includes(p.topSitesSource))p.topSitesSource='frequent';document.body.classList.toggle('plain',p.theme==='plain');document.body.classList.toggle('background-hidden',!p.backgroundVisible);document.documentElement.style.setProperty('--new-tab-background',p.backgroundSource==='custom'&&window.ardaliManagedBackgroundAvailable?"url('managed-background')":"url('ardali-flow-blue.png')");document.documentElement.style.setProperty('--overlay',p.dim/100);document.documentElement.style.setProperty('--frequent-panel-alpha',p.frequentPanelOpacity/100);document.documentElement.style.setProperty('--frequent-icon-alpha',p.frequentIconOpacity/100);$('#clock').hidden=!p.clock;$('#date').hidden=!p.date;$('#search').hidden=!p.searchVisible;$('#shortcuts').hidden=!p.shortcuts;$('#cards').hidden=!p.cards;$('#dim').value=p.dim;$('#dim-value').textContent=p.dim+'%';$('#clock-toggle').checked=p.clock;$('#date-toggle').checked=p.date;$('#background-toggle').checked=p.backgroundVisible;$('#search-toggle').checked=p.searchVisible;$('#shortcuts-toggle').checked=p.shortcuts;$('#cards-toggle').checked=p.cards;$('#clock-format').value=p.clockFormat;$('#frequent-panel-opacity').value=p.frequentPanelOpacity;$('#frequent-icon-opacity').value=p.frequentIconOpacity;$('#frequent-panel-value').textContent=p.frequentPanelOpacity+'%';$('#frequent-icon-value').textContent=p.frequentIconOpacity+'%';$('#restore-frequent-sites').disabled=!p.hiddenFrequentSites.length;$('#restore-frequent-sites').closest('.setting-row').hidden=p.topSitesSource!=='frequent';$('#suggestions-toggle').checked=window.ardaliSuggestionsEnabled===true;$('#custom-background-card').hidden=!window.ardaliManagedBackgroundAvailable;$('#background-remove').hidden=!window.ardaliManagedBackgroundAvailable;document.querySelectorAll('[data-background]').forEach(button=>{const selected=button.dataset.background===p.backgroundSource;button.classList.toggle('selected',selected);button.setAttribute('aria-pressed',String(selected))});document.querySelectorAll('input[name="top-sites-source"]').forEach(input=>input.checked=input.value===p.topSitesSource);document.querySelectorAll('[data-theme]').forEach(button=>{const active=button.dataset.theme===p.theme;button.classList.toggle('active',active);button.setAttribute('aria-pressed',String(active))});$('#downloads-card-value').textContent=String(window.ardaliCardData.downloads||0);$('#protection-card-value').textContent=window.ardaliCardData.protection?'Etkin':'Kapalı';renderFrequentSites();tick()}
 function applyFrequentConfig(){const config=window.ardaliFrequentSiteConfig;if(config&&typeof config==='object'){p.shortcuts=config.visible!==false;p.frequentPanelOpacity=clamp(config.panelOpacity);p.frequentIconOpacity=clamp(config.iconOpacity);p.hiddenFrequentSites=Array.isArray(config.hiddenSites)?config.hiddenSites:[];p.backgroundVisible=config.backgroundVisible!==false;p.backgroundSource=config.backgroundSource==='custom'?'custom':'builtin';p.searchVisible=config.searchVisible!==false;p.topSitesSource=config.topSitesSource==='bookmarks'?'bookmarks':'frequent';p.clockFormat=['12','24'].includes(config.clockFormat)?config.clockFormat:'auto';p.theme=config.theme==='plain'?'plain':'flow';p.dim=Math.max(0,Math.min(80,Number(config.dim)||0));p.clock=config.clock!==false;p.date=config.date!==false;p.cards=config.cards!==false;window.ardaliManagedBackgroundAvailable=!!config.managedBackgroundAvailable;if(!window.ardaliManagedBackgroundAvailable&&p.backgroundSource==='custom')p.backgroundSource='builtin';save()}render()}
 function tick(){const date=new Date();const locale=(navigator.languages&&navigator.languages[0])||navigator.language||undefined;const options={hour:'numeric',minute:'2-digit'};if(p.clockFormat==='12')options.hour12=true;else if(p.clockFormat==='24')options.hour12=false;$('#clock').textContent=date.toLocaleTimeString(locale,options);$('#date').textContent=date.toLocaleDateString(locale,{weekday:'long',day:'numeric',month:'long'})}
 for(const [id,key] of [['clock-toggle','clock'],['date-toggle','date'],['cards-toggle','cards']])$('#'+id).onchange=event=>{p[key]=event.target.checked;settingsChanged();render()};
@@ -271,25 +291,50 @@ $('#clock-format').onchange=event=>{p.clockFormat=event.target.value;settingsCha
 $('#background-upload').onclick=()=>{window.ardaliNewTabCommand={type:'pickBackground',nonce:Date.now()};$('#background-status').textContent='Dosya seçici açılıyor…'};
 $('#background-remove').onclick=()=>{window.ardaliNewTabCommand={type:'removeBackground',nonce:Date.now()}};
 window.ardaliBackgroundResult=(ok,message,available)=>{window.ardaliManagedBackgroundAvailable=!!available;const status=$('#background-status');status.textContent=message||'';status.classList.toggle('error',!ok);if(ok&&available)p.backgroundSource='custom';if(!available&&p.backgroundSource==='custom')p.backgroundSource='builtin';settingsChanged();render()};
-$('#suggestions-toggle').onchange=event=>{localStorage.setItem('ardali.searchSuggestions',event.target.checked?'enabled':'disabled');window.dispatchEvent(new Event('ardali-suggestion-consent-changed'));render()};
+$('#suggestions-toggle').onchange=event=>{suggestionCommand('consent',{enabled:String(event.target.checked)});};
 
 const overlay=$('#customization-overlay');const modal=$('#customization-modal');const categoryButtons=[...document.querySelectorAll('[data-category]')];let selectedCategory='background';let lastModalFocus=null;
+const query=$('#query');const engineMenu=$('#engine-menu');
+let suggestionCapability='',suggestionId=0,suggestionIndex=-1,suggestionRows=[];
+const suggestionList=document.createElement('div');suggestionList.className='suggestion-list';suggestionList.id='search-suggestions';suggestionList.setAttribute('role','listbox');suggestionList.hidden=true;$('#search').append(suggestionList);
+query.setAttribute('role','combobox');query.setAttribute('aria-autocomplete','list');query.setAttribute('aria-controls','search-suggestions');query.setAttribute('aria-expanded','false');query.autocomplete='off';
+function suggestionCommand(op,params={}){if(!suggestionCapability)return;location.href='ardali://suggest?'+new URLSearchParams({op,cap:suggestionCapability,...params}).toString().replace(/\+/g,'%20')}
+function closeSuggestions(){suggestionList.hidden=true;query.setAttribute('aria-expanded','false');query.removeAttribute('aria-activedescendant');suggestionIndex=-1;}
+function requestSuggestions(){++suggestionId;closeSuggestions();if(document.activeElement!==query)return;suggestionCommand('query',{q:query.value.slice(0,256),id:String(suggestionId)})}
+function selectSuggestion(index){const row=suggestionRows[index];if(!row)return;let url;try{url=new URL(row.url)}catch(_){return}if(!['https:','http:'].includes(url.protocol)||url.username||url.password)return;closeSuggestions();location.href=url.href}
+function highlightSuggestion(index){suggestionIndex=index;Array.from(suggestionList.children).forEach((row,i)=>row.setAttribute('aria-selected',String(i===index)));if(index>=0){query.setAttribute('aria-activedescendant','suggestion-'+index);suggestionList.children[index]?.scrollIntoView({block:'nearest'})}}
+window.ardaliSuggestionBridge=cap=>{suggestionCapability=cap;if(document.activeElement===query)requestSuggestions()};
+window.ardaliSuggestionConsent=(enabled,allowed=true)=>{window.ardaliSuggestionsEnabled=enabled===true;$('#suggestions-toggle').disabled=!allowed;render();++suggestionId;closeSuggestions();if(document.activeElement===query)requestSuggestions()};
+window.ardaliShowSuggestions=(id,text,rows)=>{
+ if(id!==suggestionId||text!==query.value||document.activeElement!==query||!Array.isArray(rows))return;
+ suggestionRows=rows.slice(0,12);suggestionList.replaceChildren();suggestionIndex=-1;
+ suggestionRows.forEach((row,index)=>{const button=document.createElement('button');button.type='button';button.className='suggestion-row';button.id='suggestion-'+index;button.setAttribute('role','option');button.setAttribute('aria-selected','false');
+ const icon=document.createElement('img');icon.alt='';icon.src=engineIcons[$('#engine').value];
+ if(!['remote','search'].includes(row.type)&&typeof row.icon==='string'&&row.icon.startsWith('ardali://newtab/favicon?')){icon.src=row.icon;icon.onerror=()=>{icon.onerror=null;icon.src=engineIcons[$('#engine').value]};}
+ const label=document.createElement('span');label.textContent=String(row.text||'');button.append(icon,label);button.onpointerdown=event=>event.preventDefault();button.onmouseenter=()=>highlightSuggestion(index);button.onclick=()=>selectSuggestion(index);suggestionList.append(button)});
+ suggestionList.hidden=!suggestionRows.length;query.setAttribute('aria-expanded',String(!!suggestionRows.length));
+};
+query.addEventListener('input',requestSuggestions);query.addEventListener('focus',requestSuggestions);query.addEventListener('blur',closeSuggestions);
+query.addEventListener('keydown',event=>{if(event.key==='Escape'){++suggestionId;closeSuggestions();return}if(suggestionList.hidden)return;if(event.key==='ArrowDown'||event.key==='ArrowUp'){event.preventDefault();const delta=event.key==='ArrowDown'?1:-1;highlightSuggestion((suggestionIndex+delta+suggestionRows.length)%suggestionRows.length)}else if(event.key==='Enter'&&suggestionIndex>=0){event.preventDefault();selectSuggestion(suggestionIndex)}});
+$('#engine').addEventListener('change',()=>{++suggestionId;closeSuggestions()});
+
+function updateSearchMode(){const pickerActive=!!document.activeElement.closest?.('.engine-picker');const active=document.activeElement===query||pickerActive||!engineMenu.hidden||query.value.length>0;$('#page').classList.toggle('search-focused',active)}
+query.addEventListener('focus',()=>$('#page').classList.add('search-focused'));query.addEventListener('input',updateSearchMode);query.addEventListener('blur',()=>setTimeout(updateSearchMode,0));
 function selectCategory(category,focus=false){if(!categoryButtons.some(button=>button.dataset.category===category))category='background';selectedCategory=category;categoryButtons.forEach(button=>{const selected=button.dataset.category===category;button.setAttribute('aria-selected',String(selected));if(selected&&focus)button.focus()});document.querySelectorAll('[data-category-panel]').forEach(panel=>panel.hidden=panel.dataset.categoryPanel!==category)}
 function openCustomization(category=selectedCategory){lastModalFocus=document.activeElement;document.body.classList.add('customization-open');overlay.hidden=false;$('#customize').setAttribute('aria-expanded','true');selectCategory(category);requestAnimationFrame(()=>categoryButtons.find(button=>button.dataset.category===selectedCategory).focus())}
 function closeCustomization(){if(overlay.hidden)return;document.body.classList.remove('customization-open');overlay.hidden=true;$('#customize').setAttribute('aria-expanded','false');(lastModalFocus&&document.contains(lastModalFocus)?lastModalFocus:$('#customize')).focus()}
 categoryButtons.forEach(button=>button.onclick=()=>selectCategory(button.dataset.category,true));
 $('#customization-close').onclick=closeCustomization;
 $('#customize').onclick=()=>overlay.hidden?openCustomization():closeCustomization();
-$('#frequent-settings').onclick=()=>openCustomization('topsites');
 overlay.addEventListener('pointerdown',event=>{if(event.target===overlay)closeCustomization()});
-document.addEventListener('keydown',event=>{if(event.key==='Escape'){if(!overlay.hidden){event.preventDefault();closeCustomization()}else $('#engine-menu').hidden=true;return}if(event.key!=='Tab'||overlay.hidden)return;const focusable=[...modal.querySelectorAll('button:not(:disabled),input:not(:disabled),select:not(:disabled),[tabindex]:not([tabindex="-1"])')].filter(item=>!item.closest('[hidden]'));if(!focusable.length)return;const first=focusable[0],last=focusable.at(-1);if(event.shiftKey&&document.activeElement===first){event.preventDefault();last.focus()}else if(!event.shiftKey&&document.activeElement===last){event.preventDefault();first.focus()}});
+document.addEventListener('keydown',event=>{if(event.key==='Escape'){if(!overlay.hidden){event.preventDefault();closeCustomization()}else{engineMenu.hidden=true;if(!query.value){query.blur();document.activeElement.blur?.()}updateSearchMode()}return}if(event.key!=='Tab'||overlay.hidden)return;const focusable=[...modal.querySelectorAll('button:not(:disabled),input:not(:disabled),select:not(:disabled),[tabindex]:not([tabindex="-1"])')].filter(item=>!item.closest('[hidden]'));if(!focusable.length)return;const first=focusable[0],last=focusable.at(-1);if(event.shiftKey&&document.activeElement===first){event.preventDefault();last.focus()}else if(!event.shiftKey&&document.activeElement===last){event.preventDefault();first.focus()}});
 window.ardaliCustomization={open:openCustomization,close:closeCustomization,select:selectCategory,isOpen:()=>!overlay.hidden,category:()=>selectedCategory};
 document.documentElement.dataset.customizationReady='true';
 
-$('#search').onsubmit=event=>{event.preventDefault();let value=$('#query').value.trim();if(!value)return;if(/^https?:\/\//i.test(value)||value.startsWith('ardali://')||(!/\s/.test(value)&&(/\./.test(value)||value==='localhost')))location.href=/^https?:/i.test(value)||value.startsWith('ardali://')?value:'https://'+value;else{const base={Google:'https://www.google.com/search?q=',DuckDuckGo:'https://duckduckgo.com/?q=','Brave Search':'https://search.brave.com/search?q=',Bing:'https://www.bing.com/search?q='}[$('#engine').value];location.href=base+encodeURIComponent(value)}};
-$('#engine-current').onclick=event=>{event.preventDefault();$('#engine-menu').hidden=!$('#engine-menu').hidden};
-document.querySelectorAll('.engine-option').forEach(button=>button.onclick=()=>setEngine(button.dataset.engine,true));
-document.addEventListener('pointerdown',event=>{if(!event.target.closest('.engine-picker'))$('#engine-menu').hidden=true});
+$('#search').onsubmit=event=>{event.preventDefault();const value=$('#query').value.trim();if(!value)return;const engine=$('#engine').value||'Google';location.href='ardali://navigate?q='+encodeURIComponent(value)+'&engine='+encodeURIComponent(engine)+'&cap='+encodeURIComponent(suggestionCapability);};
+$('#engine-current').onclick=event=>{event.preventDefault();engineMenu.hidden=!engineMenu.hidden;updateSearchMode()};
+document.querySelectorAll('.engine-option').forEach(button=>button.onclick=()=>{setEngine(button.dataset.engine,true);query.focus();updateSearchMode()});
+document.addEventListener('pointerdown',event=>{if(!event.target.closest('.engine-picker')){engineMenu.hidden=true;setTimeout(updateSearchMode,0)}});
 window.addEventListener('ardali-frequent-sites',applyFrequentConfig);
 window.addEventListener('ardali-frequent-site-icons',renderFrequentSites);
 window.addEventListener('ardali-settings-search-suggestions',render);
@@ -297,6 +342,36 @@ setEngine($('#engine').value);applyFrequentConfig();tick();setInterval(tick,1000
 </script>
 </body>
 </html>)NTP").arg(google, duck, brave, bing);
+  html.replace(QLatin1String("__SEARCH_PLACEHOLDER__"), searchEnginePlaceholder(defaultEngine).toHtmlEscaped());
+  QStringList placeholders;
+  QStringList engineIcons;
+  for (const auto &definition : ardali::core::searchEngineDefinitions()) {
+    const QString engine = QString::fromLatin1(definition.id);
+    const QString iconAsset = QString::fromLatin1(definition.iconAsset);
+    placeholders.append(jsonStringLiteral(engine) + QLatin1Char(':') + jsonStringLiteral(searchEnginePlaceholder(engine)));
+    engineIcons.append(jsonStringLiteral(engine) + QLatin1Char(':') + jsonStringLiteral(iconAsset));
+    QString token = engine.toUpper();
+    token.replace(QLatin1Char(' '), QLatin1Char('_'));
+    html.replace(QStringLiteral("__%1_ENGINE_ICON__").arg(token), iconAsset.toHtmlEscaped());
+  }
+  QString placeholderJson = QLatin1Char('{') + placeholders.join(QLatin1Char(',')) + QLatin1Char('}');
+  placeholderJson.replace(QLatin1String("</"), QLatin1String("<\\/"));
+  html.replace(QLatin1String("__SEARCH_PLACEHOLDERS__"), placeholderJson);
+  html.replace(QLatin1String("__SEARCH_ENGINE_ICONS__"),
+               QLatin1Char('{') + engineIcons.join(QLatin1Char(',')) + QLatin1Char('}'));
+  html.replace(QLatin1String("__ARDALI_FREQUENT_SITES__"), freqJson);
+  html.replace(QLatin1String("__ARDALI_BOOKMARKS__"), bkmkJson);
+  return html;
+}
+
+QString newTabTopSitesUpdateScript(const QJsonArray &frequentSites,
+                                   const QJsonArray &bookmarks) {
+  return QStringLiteral(
+      "(()=>{const frequent=%1;const bookmarks=%2;"
+      "window.ardaliFrequentSites=frequent;"
+      "window.ardaliTopSiteSources={frequent,bookmarks};"
+      "if(typeof window.renderFrequentSites==='function')window.renderFrequentSites();})()")
+      .arg(jsonForInlineScript(frequentSites), jsonForInlineScript(bookmarks));
 }
 
 QString strictBlockWarningHtml(const QString &domain, const QString &targetUrl) {

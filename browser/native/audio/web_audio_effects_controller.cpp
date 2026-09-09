@@ -437,6 +437,15 @@ void WebAudioEffectsController::registerWebView(QWebEngineView *view, const QUrl
           [this, view](const QUrl &url) { updateAudioPolicyForView(view, url); });
 }
 
+void WebAudioEffectsController::unregisterWebView(QWebEngineView *view) {
+  if (!view) return;
+  disconnect(view, nullptr, this, nullptr);
+  bootstrapViews_.remove(view);
+  views_.erase(std::remove_if(views_.begin(), views_.end(), [view](const QPointer<QWebEngineView> &item) {
+    return item.isNull() || item == view;
+  }), views_.end());
+}
+
 int WebAudioEffectsController::audioEnabledWebViewCount() const {
   return static_cast<int>(std::count_if(views_.cbegin(), views_.cend(), [](const QPointer<QWebEngineView> &view) {
     return view && ardali::audio::isSupportedAudioPlatform(view->url());
@@ -2382,6 +2391,18 @@ QString WebAudioEffectsController::injectionScript() const {
     root.resumeGraph = root.resumeGraph || function(graph) {
       if (!graph || !graph.ctx || graph.ctx.state === 'closed') return false;
       if (graph.ctx.state === 'suspended' && typeof graph.ctx.resume === 'function') {
+        if (graph.element && graph.element.paused) {
+          if (!graph.playListenerAttached) {
+            graph.playListenerAttached = true;
+            const onPlay = function() {
+              if (graph.ctx && graph.ctx.state === 'suspended') {
+                try { Promise.resolve(graph.ctx.resume()).catch(function () {}); } catch (_) {}
+              }
+            };
+            graph.element.addEventListener('play', onPlay, { once: true });
+          }
+          return false;
+        }
         try { Promise.resolve(graph.ctx.resume()).catch(function () {}); } catch (_) {}
       }
       return true;

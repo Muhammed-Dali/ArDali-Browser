@@ -51,6 +51,12 @@ struct SitePolicy {
   bool trackerProtection = true;
   bool whitelisted = false;
   qint64 temporaryDisabledUntil = 0;
+  int perSiteMode = -1; // -1: global, 0: Basic (Standart), 1: Ideal (Standart), 2: Aggressive
+  bool blockScripts = false;
+  bool blockFingerprinting = false;
+  bool upgradeHttps = false;
+  bool forgetOnClose = false;
+  QString cookiePolicy = QStringLiteral("third_party"); // "third_party", "allow_all", "block_all"
 };
 
 struct FilterRule {
@@ -88,12 +94,25 @@ struct RequestDecision {
 
 using BlockerDecision = RequestDecision;
 
+enum class ArDaliBlockType {
+  NetworkAd,
+  Tracker,
+  Cosmetic,
+  Scriptlet
+};
+
 struct TabBlockerStats {
   quint64 blockedRequests = 0;
   quint64 allowedRequests = 0;
   quint64 redirectedRequests = 0;
   quint64 blockedAds = 0;
   quint64 blockedTrackers = 0;
+  quint64 blockedCosmetics = 0;
+  quint64 blockedScriptlets = 0;
+
+  quint64 totalBlocked() const {
+    return blockedRequests + blockedCosmetics + blockedScriptlets;
+  }
 };
 
 using TabAdBlockStats = TabBlockerStats;

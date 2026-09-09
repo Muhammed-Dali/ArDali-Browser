@@ -12,6 +12,8 @@
 #include "browser_window.h"
 #include "core/browser_icons.h"
 #include "core/performance_diagnostics.h"
+#include "core/web_engine_hardware_acceleration.h"
+#include "core/web_engine_memory_policy.h"
 #include "desktop_tabs/tab_drag_controller.h"
 #include "newtab/new_tab_scheme.h"
 
@@ -23,12 +25,20 @@ int main(int argc, char *argv[]) {
     qputenv("QT_QPA_PLATFORM", "xcb");
   }
 
+  // Configure WebEngine subprocess allocator policy (MALLOC_ARENA_MAX=2, MALLOC_TRIM_THRESHOLD=128KB)
+  // before QtWebEngine process is spawned.
+  const QString appDir = QFileInfo(QString::fromLocal8Bit(argv[0])).dir().absolutePath();
+  ardali::WebEngineMemoryPolicy::configureSubprocessLauncher(appDir);
+
+  // Initialize hardware video decoding and GPU flags early before QApplication / QtWebEngine init
+  ardali::WebEngineHardwareAcceleration::initializeEarlyRuntime();
+
   // Register ardali:// URL scheme before QGuiApplication
   registerArdaliUrlSchemes();
 
   QApplication app(argc, argv);
   app.setApplicationName(QStringLiteral("ArDaliBrowser"));
-  app.setApplicationVersion(QStringLiteral("6.1.2"));
+  app.setApplicationVersion(QStringLiteral(ARDALI_BROWSER_VERSION));
   app.setOrganizationName(QStringLiteral("ArDali"));
 
   const QIcon appIcon = BrowserIcons::appIcon();
@@ -99,7 +109,7 @@ int main(int argc, char *argv[]) {
       [services](QWidget *originWin, uint64_t /*tabId*/) -> QWidget * {
         auto *origin = dynamic_cast<BrowserWindow *>(originWin);
         if (!origin) return nullptr;
-        auto *captureShell = new BrowserWindow(services, /*isCaptureShell=*/true);
+        auto *captureShell = new BrowserWindow(origin->services(), /*isCaptureShell=*/true);
         return captureShell;
       });
 
@@ -128,6 +138,11 @@ int main(int argc, char *argv[]) {
 
   // Launch initial browser window
   auto *window = new BrowserWindow(services);
+  const QByteArray savedWindowGeometry =
+      QSettings().value(QStringLiteral("browser/mainWindowGeometry")).toByteArray();
+  if (!savedWindowGeometry.isEmpty()) {
+    window->restoreGeometry(savedWindowGeometry);
+  }
 
   // Restore session or ensure initial tab
   bool restored = false;
@@ -157,6 +172,9 @@ int main(int argc, char *argv[]) {
 
   QObject::connect(&app, &QCoreApplication::aboutToQuit, window, [window] {
     window->saveSessionNow();
+    QSettings settings;
+    settings.setValue(QStringLiteral("browser/mainWindowGeometry"), window->saveGeometry());
+    settings.sync();
   });
 
   window->show();
