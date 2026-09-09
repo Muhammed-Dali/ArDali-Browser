@@ -8,8 +8,7 @@
 #include <QSet>
 #include <QTimer>
 #include <QUuid>
-
-class QWebEngineView;
+#include <QWebEngineView>
 
 class TabThrobber final : public QObject {
   Q_OBJECT

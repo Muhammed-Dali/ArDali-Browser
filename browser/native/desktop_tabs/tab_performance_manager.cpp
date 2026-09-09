@@ -2,6 +2,7 @@
 
 #include <QSettings>
 #include <QWebEnginePage>
+#include <QWebEngineView>
 #include <QWidget>
 #include <algorithm>
 #include <chrono>

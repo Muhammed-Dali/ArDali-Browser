@@ -6,11 +6,10 @@
 #include <QPointer>
 #include <QUrl>
 #include <QUuid>
-#include <QVector>
+#include <QWebEngineView>
 #include <memory>
 
 class QWebEnginePage;
-class QWebEngineView;
 class QWidget;
 
 namespace ardali {

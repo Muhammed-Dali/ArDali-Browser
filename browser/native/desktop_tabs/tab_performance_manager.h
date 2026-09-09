@@ -10,6 +10,7 @@
 #include <QUuid>
 #include <QUrl>
 #include <QWebEnginePage>
+#include <QWebEngineView>
 #include <cstdint>
 #include <memory>
 
