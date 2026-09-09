@@ -231,6 +231,7 @@ MediaDownloadPage::MediaDownloadPage(MediaDownloadService *service,
   generalDownloads_ = profileService_ ? profileService_->downloadManager() : nullptr;
   setObjectName(QStringLiteral("media-download-page"));
   setAccessibleName(QStringLiteral("İndirmeler ve medya indirici"));
+#if QT_VERSION >= QT_VERSION_CHECK(6, 5, 0)
   setProperty("lightTheme", QGuiApplication::styleHints()->colorScheme() == Qt::ColorScheme::Light);
   connect(QGuiApplication::styleHints(), &QStyleHints::colorSchemeChanged, this,
           [this](Qt::ColorScheme scheme) {
@@ -240,6 +241,9 @@ MediaDownloadPage::MediaDownloadPage(MediaDownloadService *service,
     setStyleSheet(sheet);
     update();
   });
+#else
+  setProperty("lightTheme", false);
+#endif
 
   auto *outer = new QVBoxLayout(this);
   outer->setContentsMargins(0, 0, 0, 0);
