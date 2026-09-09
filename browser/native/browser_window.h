@@ -339,6 +339,7 @@ private:
   QPointer<SiteControlsBubble> siteControlsBubble_;
   QSet<TabSessionPermissionKey> tabSessionGrants_;
   void updateSiteControlsBubblePosition();
+  void updatePermissionBubblePosition();
 #if QT_VERSION >= QT_VERSION_CHECK(6, 8, 0)
   QList<PendingPermissionRequest> pendingPermissionQueue_;
   std::optional<PendingPermissionRequest> currentActivePermissionRequest_;
@@ -346,7 +347,6 @@ private:
   void processNextPermissionRequest();
   void resolveActivePermissionRequest(SitePermissionChoice choice);
   void dismissActivePermissionPrompt(bool cancelRequest = true);
-  void updatePermissionBubblePosition();
   void syncProfilePermissionsForTab(uint64_t tabId);
 #endif
 
