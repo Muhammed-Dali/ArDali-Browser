@@ -14,8 +14,10 @@ QString featureName(QWebEnginePage::Feature feature) {
     case QWebEnginePage::DesktopVideoCapture: return QStringLiteral("ekran paylaşımı");
     case QWebEnginePage::DesktopAudioVideoCapture: return QStringLiteral("ekran ve ses paylaşımı");
     case QWebEnginePage::Notifications: return QStringLiteral("bildirim");
+#if QT_VERSION >= QT_VERSION_CHECK(6, 5, 0)
     case QWebEnginePage::ClipboardReadWrite: return QStringLiteral("pano erişimi");
     case QWebEnginePage::LocalFontsAccess: return QStringLiteral("yerel yazı tipleri");
+#endif
   }
   return QStringLiteral("site özelliği");
 }

@@ -57,7 +57,9 @@ int main(int argc, char *argv[]) {
       QWebEnginePage::DesktopVideoCapture,
       QWebEnginePage::DesktopAudioVideoCapture,
       QWebEnginePage::Notifications,
+#if QT_VERSION >= QT_VERSION_CHECK(6, 5, 0)
       QWebEnginePage::ClipboardReadWrite,
+#endif
   };
   for (const auto feature : sensitiveFeatures)
     assert(!BrowserPermissionPolicy::featureName(feature).isEmpty());
