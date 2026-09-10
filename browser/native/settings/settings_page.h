@@ -9,6 +9,7 @@
 #include <functional>
 
 class BrowserProfileService;
+class QComboBox;
 class QLineEdit;
 class QListWidget;
 class QStackedWidget;
@@ -85,12 +86,14 @@ class SettingsPage final : public QWidget {
   void addSidebarSeparator();
   void selectCategory(int index);
   void applyFilter(const QString &query);
+  void retranslateUi();
 
   BrowserProfileService *profileService_ = nullptr;
   Hooks hooks_;
   QListWidget *sidebar_ = nullptr;
   QStackedWidget *content_ = nullptr;
   QLineEdit *search_ = nullptr;
+  QComboBox *uiLangCombo_ = nullptr;
   QStackedWidget *privacyStack_ = nullptr;
   PrivacyDetailSubpage *privacySubpage_ = nullptr;
   std::function<void()> updatePrivacySubtitles_;

@@ -9,6 +9,7 @@ QString searchEnginePlaceholder(const QString &engine);
 QString newTabHtml(const QString &defaultEngine,
                    const QJsonArray &frequentSites = {},
                    const QJsonArray &bookmarks = {});
+QString incognitoNewTabHtml(const QString &defaultEngine);
 QString newTabTopSitesUpdateScript(const QJsonArray &frequentSites,
                                    const QJsonArray &bookmarks);
 QString strictBlockWarningHtml(const QString &domain, const QString &targetUrl);

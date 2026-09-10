@@ -76,9 +76,15 @@ void PageTranslator::detectLanguage() {
 
         guardedThis->sourceLanguage_ = detected;
         if (LanguageDetector::isTranslatable(detected, guardedThis->targetLanguage_)) {
+          if (guardedThis->service_ && guardedThis->service_->shouldNeverTranslate(detected)) {
+            return;
+          }
           guardedThis->state_ = State::Detected;
           emit guardedThis->languageDetected(detected, guardedThis->targetLanguage_);
           emit guardedThis->stateChanged(guardedThis->state_);
+          if (guardedThis->service_ && guardedThis->service_->shouldAutoTranslate(detected)) {
+            guardedThis->translatePage(guardedThis->targetLanguage_);
+          }
         }
       });
 }

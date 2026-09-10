@@ -76,6 +76,7 @@ enum class BrowserIcon {
 namespace BrowserIcons {
 QIcon icon(BrowserIcon id);
 QIcon appIcon();
+QIcon incognitoIcon();
 QIcon youtubeIcon();
 QIcon youtubeMusicIcon();
 QIcon searchEngineIcon(const QString &engineName);

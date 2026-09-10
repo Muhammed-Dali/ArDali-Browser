@@ -6,6 +6,17 @@
 #include "providers/google_cloud_provider.h"
 #include "providers/google_gtx_provider.h"
 
+namespace {
+QString normalizeLangCode(QString lang) {
+  lang = lang.trimmed().toLower();
+  const int hyphen = lang.indexOf(QLatin1Char('-'));
+  if (hyphen > 0) lang = lang.left(hyphen);
+  const int underscore = lang.indexOf(QLatin1Char('_'));
+  if (underscore > 0) lang = lang.left(underscore);
+  return lang.trimmed();
+}
+}  // namespace
+
 TranslateService::TranslateService(QObject *parent, QNetworkAccessManager *network, CredentialVaultManager *vaultManager)
     : QObject(parent), network_(network), ownsNetwork_(network == nullptr),
       providerId_(QStringLiteral("none")), secretStore_(vaultManager, this) {
@@ -34,6 +45,54 @@ void TranslateService::setEnabled(bool enabled) {
 
 void TranslateService::setDefaultTargetLanguage(const QString &lang) {
   if (!lang.trimmed().isEmpty()) defaultTargetLanguage_ = lang.trimmed();
+}
+
+void TranslateService::setAutoTranslateLanguages(const QStringList &langs) {
+  autoTranslateLanguages_ = langs;
+}
+
+void TranslateService::addAutoTranslateLanguage(const QString &lang) {
+  const QString clean = lang.trimmed();
+  if (!clean.isEmpty() && !autoTranslateLanguages_.contains(clean)) {
+    autoTranslateLanguages_.append(clean);
+  }
+}
+
+void TranslateService::removeAutoTranslateLanguage(const QString &lang) {
+  autoTranslateLanguages_.removeAll(lang.trimmed());
+}
+
+void TranslateService::setNeverTranslateLanguages(const QStringList &langs) {
+  neverTranslateLanguages_ = langs;
+}
+
+void TranslateService::addNeverTranslateLanguage(const QString &lang) {
+  const QString clean = lang.trimmed();
+  if (!clean.isEmpty() && !neverTranslateLanguages_.contains(clean)) {
+    neverTranslateLanguages_.append(clean);
+  }
+}
+
+void TranslateService::removeNeverTranslateLanguage(const QString &lang) {
+  neverTranslateLanguages_.removeAll(lang.trimmed());
+}
+
+bool TranslateService::shouldAutoTranslate(const QString &sourceLang) const {
+  if (!enabled_) return false;
+  const QString norm = normalizeLangCode(sourceLang);
+  for (const QString &lang : autoTranslateLanguages_) {
+    if (normalizeLangCode(lang) == norm) return true;
+  }
+  return false;
+}
+
+bool TranslateService::shouldNeverTranslate(const QString &sourceLang) const {
+  if (!enabled_) return true;
+  const QString norm = normalizeLangCode(sourceLang);
+  for (const QString &lang : neverTranslateLanguages_) {
+    if (normalizeLangCode(lang) == norm) return true;
+  }
+  return false;
 }
 
 void TranslateService::setProvider(const QString &id) {
@@ -103,7 +162,17 @@ void TranslateService::clearCache() {
 void TranslateService::loadPreferences(QSettings &prefs) {
   enabled_ = prefs.value(QStringLiteral("translation/enabled"), true).toBool();
   defaultTargetLanguage_ = prefs.value(QStringLiteral("translation/targetLanguage"), QStringLiteral("tr")).toString();
-  providerId_ = prefs.value(QStringLiteral("translation/provider"), QStringLiteral("none")).toString();
+  providerId_ = prefs.value(QStringLiteral("translation/provider"), QStringLiteral("google_gtx")).toString();
+  if (providerId_ == QLatin1String("none")) {
+    providerId_ = QStringLiteral("google_gtx");
+  }
+
+  autoTranslateLanguages_ = prefs.value(QStringLiteral("translation/autoTranslateLanguages")).toStringList();
+  if (prefs.contains(QStringLiteral("translation/neverTranslateLanguages"))) {
+    neverTranslateLanguages_ = prefs.value(QStringLiteral("translation/neverTranslateLanguages")).toStringList();
+  } else {
+    neverTranslateLanguages_ = {QStringLiteral("tr")};
+  }
 
   libreTranslateEndpoint_ = QUrl(prefs.value(QStringLiteral("translation/libretranslateEndpoint")).toString());
   deepLIsPro_ = prefs.value(QStringLiteral("translation/deeplPlan"), QStringLiteral("free")).toString() == QLatin1String("pro");
@@ -119,6 +188,8 @@ void TranslateService::savePreferences(QSettings &prefs) {
   prefs.setValue(QStringLiteral("translation/enabled"), enabled_);
   prefs.setValue(QStringLiteral("translation/targetLanguage"), defaultTargetLanguage_);
   prefs.setValue(QStringLiteral("translation/provider"), providerId_);
+  prefs.setValue(QStringLiteral("translation/autoTranslateLanguages"), autoTranslateLanguages_);
+  prefs.setValue(QStringLiteral("translation/neverTranslateLanguages"), neverTranslateLanguages_);
 
   if (libreTranslateEndpoint_.isValid()) {
     prefs.setValue(QStringLiteral("translation/libretranslateEndpoint"), libreTranslateEndpoint_.toString());
@@ -229,23 +300,18 @@ void TranslateService::translateBatch(const QStringList &texts, const QString &s
     return;
   }
 
-  if (!activeProvider_) {
+  if (!activeProvider_ || providerId_ == QLatin1String("none")) {
     instantiateProvider();
   }
 
-  if (activeProvider_->requiresApiKey() && !activeProvider_->isConfigured()) {
-    QString err;
-    if (secretStore_.isVaultLocked()) {
-      err = QStringLiteral("Çeviri API anahtarına erişmek için güvenli kasanın kilidini açın.");
-    } else {
-      err = QStringLiteral("Seçilen çeviri sağlayıcısı için API anahtarı yapılandırılmamış.");
-    }
-    emit translationFailed(err);
-    if (callback) callback(false, {}, err);
-    return;
+  ITranslationProvider *providerToUse = activeProvider_.get();
+  std::shared_ptr<GoogleGtxProvider> fallbackProvider;
+  if (!providerToUse || (providerToUse->requiresApiKey() && !providerToUse->isConfigured()) || providerId_ == QLatin1String("none")) {
+    fallbackProvider = std::make_shared<GoogleGtxProvider>(network_);
+    providerToUse = fallbackProvider.get();
   }
 
-  activeProvider_->translateBatch(uncachedTexts, effectiveSrc, effectiveTarget, [this, results, uncachedIndices, uncachedTexts, effectiveSrc, effectiveTarget, callback](const TranslationResult &res) mutable {
+  providerToUse->translateBatch(uncachedTexts, effectiveSrc, effectiveTarget, [this, results, uncachedIndices, uncachedTexts, effectiveSrc, effectiveTarget, callback, fallbackProvider](const TranslationResult &res) mutable {
     if (!res.success || res.translatedTexts.size() != uncachedTexts.size()) {
       QString err = res.errorMessage;
       if (err.isEmpty()) {

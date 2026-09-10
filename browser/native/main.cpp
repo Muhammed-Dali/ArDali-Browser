@@ -15,6 +15,8 @@
 #include "core/web_engine_hardware_acceleration.h"
 #include "core/web_engine_memory_policy.h"
 #include "desktop_tabs/tab_drag_controller.h"
+#include "i18n/i18n.h"
+#include "i18n/language_manager.h"
 #include "newtab/new_tab_scheme.h"
 
 int main(int argc, char *argv[]) {
@@ -40,6 +42,9 @@ int main(int argc, char *argv[]) {
   app.setApplicationName(QStringLiteral("ArDaliBrowser"));
   app.setApplicationVersion(QStringLiteral(ARDALI_BROWSER_VERSION));
   app.setOrganizationName(QStringLiteral("ArDali"));
+
+  // Initialize central i18n / multi-language system
+  ardali::i18n::LanguageManager::instance().initialize();
 
   const QIcon appIcon = BrowserIcons::appIcon();
   if (!appIcon.isNull()) {

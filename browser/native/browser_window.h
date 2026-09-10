@@ -124,6 +124,7 @@ struct BrowserTabInfo {
   QUrl expectedTypedUrl;
   bool activeCamera = false;
   bool activeMicrophone = false;
+  bool isPinned = false;
 };
 
 class BrowserWindow : public QMainWindow {
@@ -151,6 +152,18 @@ public:
   void adoptTab(BrowserTabInfo info, int targetIndex);
   int findIndexByTabId(uint64_t tabId) const;
   uint64_t findTabIdByIndex(int index) const;
+
+  // Tab Context Menu & Actions
+  void onTabContextMenuRequested(int index, const QPoint &globalPos);
+  void toggleTabPin(int index);
+  void closeOtherTabs(int index);
+  void closeTabsToRight(int index);
+  BrowserWindow *openIncognitoWindow(const QUrl &url = QUrl());
+  bool isIncognito() const {
+    return (services_.profile && services_.profile->isOffTheRecord()) || services_.privateProfileOwner != nullptr;
+  }
+  void openDevToolsForPage(QWebEnginePage *page);
+  void showBookmarkContextMenu(const QUrl &url, const QString &title, const QPoint &globalPos);
 
   ardali::desktop_tabs::TabStripWidget *tabStrip() const { return tabStrip_; }
   int tabCount() const { return tabs_.size(); }
@@ -266,6 +279,7 @@ private:
   void setupTabStripSignals();
   void wireViewSignals(QWebEngineView *view, uint64_t tabId);
   void updateNavButtons();
+  void retranslateUi();
   void updateOmniboxForCurrentTab();
   Qt::Edges calculateEdges(const QPoint &pos) const;
   void updateCursorShape(const QPoint &pos);

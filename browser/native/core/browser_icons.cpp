@@ -115,6 +115,17 @@ QIcon BrowserIcons::appIcon() {
   return icon;
 }
 
+QIcon BrowserIcons::incognitoIcon() {
+  QIcon result;
+  const QString path = resourcePath(BrowserIcon::Incognito);
+  for (const int size : {16, 18, 20, 24, 32, 36, 48, 64}) {
+    result.addPixmap(renderTinted(path, size, QColor(QStringLiteral("#ffffff"))), QIcon::Normal, QIcon::Off);
+    result.addPixmap(renderTinted(path, size, QColor(QStringLiteral("#eff7ff"))), QIcon::Selected, QIcon::Off);
+    result.addPixmap(renderTinted(path, size, QColor(QStringLiteral("#8899aa"))), QIcon::Disabled, QIcon::Off);
+  }
+  return result;
+}
+
 QIcon BrowserIcons::youtubeIcon() {
   QIcon icon;
   for (const int size : {16, 18, 20, 24, 32, 36, 48, 64}) {

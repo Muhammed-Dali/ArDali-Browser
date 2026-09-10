@@ -145,7 +145,7 @@ class NewTabSchemeHandler final : public QWebEngineUrlSchemeHandler {
       job->fail(QWebEngineUrlRequestJob::RequestDenied);
       return;
     }
-    if (url.host() != QLatin1String("newtab")) { job->fail(QWebEngineUrlRequestJob::UrlNotFound); return; }
+    if (url.host() != QLatin1String("newtab") && url.host() != QLatin1String("incognito")) { job->fail(QWebEngineUrlRequestJob::UrlNotFound); return; }
     const QString requested = url.path();
     if (requested == QLatin1String("/favicon")) {
       const QUrl page = BrowserSecurity::sanitizeUrlForPersistence(
@@ -211,6 +211,18 @@ class NewTabSchemeHandler final : public QWebEngineUrlSchemeHandler {
           && engine != QLatin1String("Brave Search") && engine != QLatin1String("Bing")) {
         engine = QStringLiteral("Google");
       }
+
+      const bool isIncognitoSession = (webProfile_ && webProfile_->isOffTheRecord())
+                                      || url.host() == QLatin1String("incognito")
+                                      || query.hasQueryItem(QStringLiteral("incognito"));
+      if (isIncognitoSession) {
+        auto *buffer = new QBuffer(job);
+        buffer->setData(incognitoNewTabHtml(engine).toUtf8());
+        buffer->open(QIODevice::ReadOnly);
+        job->reply("text/html; charset=utf-8", buffer);
+        return;
+      }
+
       const QJsonArray frequentSitesArray = collectNewTabFrequentSites(profileData_);
       const QJsonArray bookmarksArray = collectNewTabBookmarks(profileData_);
       auto *buffer = new QBuffer(job);

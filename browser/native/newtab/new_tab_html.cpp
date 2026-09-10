@@ -430,3 +430,275 @@ function proceedBypass() {
 </body>
 </html>)SBW").arg(safeDomain, domainLiteral, targetLiteral);
 }
+
+QString incognitoNewTabHtml(const QString &defaultEngine) {
+  const QString engine = (defaultEngine == QLatin1String("DuckDuckGo") ||
+                          defaultEngine == QLatin1String("Brave Search") ||
+                          defaultEngine == QLatin1String("Bing"))
+                             ? defaultEngine
+                             : QStringLiteral("Google");
+  const QString placeholder = QStringLiteral("%1'da gizli ara veya URL yazın").arg(engine);
+
+  return QString::fromUtf8(R"INCOGNITO(<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Yeni Gizli Sekme</title>
+<style>
+:root {
+  color-scheme: dark;
+  --bg-dark: #090e15;
+  --card-bg: rgba(18, 25, 36, 0.78);
+  --card-border: rgba(255, 255, 255, 0.08);
+  --accent-cyan: #38bdf8;
+  --accent-glow: rgba(56, 189, 248, 0.18);
+  --text-main: #f1f5f9;
+  --text-muted: #94a3b8;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  min-height: 100vh;
+  background-color: var(--bg-dark);
+  background: radial-gradient(ellipse 900px 520px at 50% 120px, rgba(24, 38, 58, 0.55) 0%, var(--bg-dark) 85%);
+  color: var(--text-main);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 20px;
+}
+.container {
+  width: min(740px, 100%);
+  text-align: center;
+  animation: fadeIn 0.35s ease-out;
+}
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.badge-wrap {
+  width: 96px;
+  height: 96px;
+  border-radius: 50%;
+  background: linear-gradient(145deg, #182332, #101722);
+  border: 2px solid rgba(56, 189, 248, 0.3);
+  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.55), 0 0 30px var(--accent-glow);
+  display: grid;
+  place-items: center;
+  margin: 0 auto 22px;
+}
+.badge-wrap svg {
+  width: 52px;
+  height: 52px;
+  stroke: #f8fafc;
+}
+h1 {
+  font-size: 28px;
+  font-weight: 700;
+  margin: 0 0 10px;
+  letter-spacing: -0.02em;
+  color: #ffffff;
+}
+.intro {
+  font-size: 14.5px;
+  line-height: 1.6;
+  color: var(--text-muted);
+  max-width: 620px;
+  margin: 0 auto 28px;
+}
+.search-bar {
+  position: relative;
+  display: flex;
+  align-items: center;
+  width: min(580px, 100%);
+  height: 50px;
+  margin: 0 auto 34px;
+  border: 1.5px solid rgba(56, 189, 248, 0.45);
+  border-radius: 26px;
+  background: rgba(13, 19, 29, 0.9);
+  padding: 0 16px;
+  box-shadow: 0 8px 25px rgba(0,0,0,0.45);
+  transition: border-color 0.2s, box-shadow 0.2s, transform 0.2s;
+}
+.search-bar:focus-within {
+  border-color: #38bdf8;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.55), 0 0 20px var(--accent-glow);
+  transform: translateY(-1px);
+}
+.search-icon {
+  width: 20px;
+  height: 20px;
+  margin-right: 12px;
+  opacity: 0.75;
+}
+.search-input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: #fff;
+  font-size: 15px;
+}
+.search-input::placeholder {
+  color: #64748b;
+}
+.search-btn {
+  background: rgba(56, 189, 248, 0.15);
+  border: 1px solid rgba(56, 189, 248, 0.35);
+  color: #38bdf8;
+  border-radius: 16px;
+  padding: 6px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.search-btn:hover {
+  background: rgba(56, 189, 248, 0.28);
+}
+.grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  text-align: left;
+  margin-bottom: 16px;
+}
+@media (max-width: 640px) {
+  .grid { grid-template-columns: 1fr; }
+}
+.card {
+  background: var(--card-bg);
+  backdrop-filter: blur(16px);
+  border: 1px solid var(--card-border);
+  border-radius: 16px;
+  padding: 20px 22px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.3);
+  transition: border-color 0.2s, transform 0.2s;
+}
+.card:hover {
+  border-color: rgba(56, 189, 248, 0.25);
+  transform: translateY(-1px);
+}
+.card h2 {
+  font-size: 14.5px;
+  font-weight: 650;
+  margin: 0 0 14px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.card.danger h2 { color: #f87171; }
+.card.info h2 { color: #38bdf8; }
+.icon-indicator {
+  font-size: 13px;
+  font-weight: bold;
+}
+ul {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 13.5px;
+  line-height: 1.7;
+  color: #cbd5e1;
+}
+.shield-card {
+  grid-column: 1 / -1;
+  border-left: 3px solid #38bdf8;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 16px 20px;
+}
+.shield-icon {
+  flex: 0 0 28px;
+  display: grid;
+  place-items: center;
+}
+.shield-icon svg {
+  stroke: #38bdf8;
+}
+.shield-content {
+  flex: 1;
+}
+.shield-content h3 {
+  font-size: 14px;
+  font-weight: 650;
+  margin: 0 0 4px;
+  color: #f1f5f9;
+}
+.shield-content p {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="badge-wrap">
+    <svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+      <path d="m5 10 2-6h10l2 6M3 10h18"/>
+      <circle cx="7" cy="15" r="3.2"/>
+      <circle cx="17" cy="15" r="3.2"/>
+      <path d="M10.2 15h3.6"/>
+    </svg>
+  </div>
+  <h1>Gizli Moddasınız</h1>
+  <p class="intro">Etkinliğiniz bu cihazı kullanan diğer kişiler tarafından görülmediğinden daha gizli bir şekilde göz atabilirsiniz. İndirdiğiniz dosyalar ve oluşturduğunuz yer işaretleri kaydedilir.</p>
+
+  <form class="search-bar" id="incognitoSearchForm" action="#" method="get">
+    <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+    <input type="text" class="search-input" id="searchQuery" placeholder="%1" autocomplete="off" autofocus>
+    <button type="submit" class="search-btn">Ara</button>
+  </form>
+
+  <div class="grid">
+    <div class="card danger">
+      <h2><span class="icon-indicator">✕</span> ArDali şunları kaydetmez:</h2>
+      <ul>
+        <li>Tarama ve arama geçmişiniz</li>
+        <li>Çerezler ve site verileri</li>
+        <li>Formlara ve giriş alanlarına yazılan bilgiler</li>
+        <li>Oturum şifreleri ve geçici önbellek</li>
+      </ul>
+    </div>
+    <div class="card info">
+      <h2><span class="icon-indicator">ℹ</span> Etkinliğiniz şunlar tarafından görülebilir:</h2>
+      <ul>
+        <li>Ziyaret ettiğiniz web siteleri</li>
+        <li>İşvereniniz veya okul ağ yöneticiniz</li>
+        <li>İnternet servis sağlayıcınız (ISS)</li>
+      </ul>
+    </div>
+    <div class="card shield-card">
+      <div class="shield-icon">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+      </div>
+      <div class="shield-content">
+        <h3>ArDali Kalkanı Gizlilik Koruması</h3>
+        <p>Üçüncü taraf takipçiler, izleme kodları ve reklamlar ArDali Kalkanı tarafından bu gizli oturumda da otomatik olarak engellenir.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+let suggestionCapability = '';
+window.ardaliSuggestionBridge = function(cap) {
+  suggestionCapability = cap;
+};
+const activeEngine = %2;
+document.getElementById('incognitoSearchForm').onsubmit = function(event) {
+  event.preventDefault();
+  const q = document.getElementById('searchQuery').value.trim();
+  if (!q) return;
+  location.href = 'ardali://navigate?q=' + encodeURIComponent(q) + '&engine=' + encodeURIComponent(activeEngine) + '&cap=' + encodeURIComponent(suggestionCapability);
+};
+</script>
+</body>
+</html>)INCOGNITO").arg(placeholder, jsonStringLiteral(engine));
+}
+

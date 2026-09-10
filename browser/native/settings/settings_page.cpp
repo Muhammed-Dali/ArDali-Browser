@@ -8,13 +8,17 @@
 #include "system_memory_pressure_monitor.h"
 #include "desktop_tabs/tab_appearance.h"
 #include "translate/translate_service.h"
+#include "translate/language_detector.h"
 #include "glow_toggle_switch.h"
+#include "i18n/i18n.h"
+#include "i18n/language_manager.h"
 
 #include <QAbstractButton>
 #include <QApplication>
 #include <QButtonGroup>
 #include <QCheckBox>
 #include <QComboBox>
+#include <QDesktopServices>
 #include <QDialog>
 #include <QFileDialog>
 #include <QFrame>
@@ -22,6 +26,7 @@
 #include <QLabel>
 #include <QLineEdit>
 #include <QListWidget>
+#include <QMenu>
 #include <QMessageBox>
 #include <QMouseEvent>
 #include <QPointer>
@@ -44,6 +49,7 @@
 #include <QWebEngineProfile>
 
 #include <algorithm>
+#include <memory>
 
 namespace {
 constexpr int kContentMaxWidth = 920;
@@ -505,6 +511,15 @@ QString settingsStyleSheet() {
     #settings-site-row:hover { background:#1e2935; }
     #settings-add-btn { min-height:28px; background:#223344; color:#edf5fc; border:1px solid #3d5368; border-radius:6px; padding:0 14px; font-weight:600; font-size:12px; }
     #settings-add-btn:hover { background:#2a4156; border-color:#506d86; }
+    #settings-pill-btn { min-height:28px; background:#222a35; color:#edf5fc; border:1px solid #3d4f62; border-radius:14px; padding:0 16px; font-weight:550; font-size:12px; }
+    #settings-pill-btn:hover { background:#2c3a4a; border-color:#536b84; }
+    #settings-pill-btn:focus { border:1px solid #62a9c8; outline:none; }
+    #settings-more-btn { min-width:28px; max-width:28px; min-height:28px; max-height:28px; background:transparent; border:0; border-radius:14px; padding:0; color:#bdc9d7; font-size:16px; font-weight:bold; }
+    #settings-more-btn:hover { background:#263240; color:#f3f7fc; }
+    #settings-icon-del-btn { min-width:28px; max-width:28px; min-height:28px; max-height:28px; background:transparent; border:0; border-radius:6px; padding:0; color:#8e9fae; font-size:13px; }
+    #settings-icon-del-btn:hover { background:#382229; color:#f28b82; }
+    #settings-chevron-btn { min-width:28px; max-width:28px; min-height:28px; max-height:28px; background:transparent; border:0; border-radius:6px; padding:0; color:#8e9fae; font-size:18px; font-weight:bold; }
+    #settings-chevron-btn:hover { background:#263240; color:#f3f7fc; }
   )CSS");
 }
 }  // namespace
@@ -567,10 +582,10 @@ SettingsPage::SettingsPage(BrowserProfileService *profileService, Hooks hooks, Q
   addCategory(Category::Search, BrowserIcon::Search, QStringLiteral("Arama motoru"), QStringLiteral("öneri Google DuckDuckGo Brave Bing"), createSearchSection());
   addSidebarSeparator();
   addCategory(Category::Passwords, BrowserIcon::Password, QStringLiteral("Şifreler ve otomatik doldurma"), QStringLiteral("password manager parola yakında"), createPasswordsSection());
+  addCategory(Category::Languages, BrowserIcon::Language, QStringLiteral("Diller"), QStringLiteral("dil language lisan dil seçimi arayüz dili uygulama dili Türkçe İngilizce Arapça yazım denetimi spellcheck çeviri translate"), createLanguagesSection());
+  addCategory(Category::Downloads, BrowserIcon::Download, QStringLiteral("İndirilenler"), QStringLiteral("klasör konum dosya DALI"), createDownloadsSection());
   addCategory(Category::Bookmarks, BrowserIcon::Bookmark, QStringLiteral("Yer işaretleri"), QStringLiteral("yer imi kaydedilmiş sayfa"), createBookmarksSection());
   addCategory(Category::History, BrowserIcon::History, QStringLiteral("Geçmiş"), QStringLiteral("ziyaret tarih saat temizle"), createHistorySection());
-  addCategory(Category::Downloads, BrowserIcon::Download, QStringLiteral("İndirilenler"), QStringLiteral("klasör konum dosya DALI"), createDownloadsSection());
-  addCategory(Category::Languages, BrowserIcon::Language, QStringLiteral("Diller"), QStringLiteral("Türkçe İngilizce yazım denetimi spellcheck"), createLanguagesSection());
   addCategory(Category::Accessibility, BrowserIcon::Accessibility, QStringLiteral("Erişilebilirlik"), QStringLiteral("klavye odak kontrast"), createAccessibilitySection());
   addSidebarSeparator();
   addCategory(Category::System, BrowserIcon::Settings, QStringLiteral("Sistem"), QStringLiteral("Chromium profil runtime"), createSystemSection());
@@ -585,8 +600,11 @@ SettingsPage::SettingsPage(BrowserProfileService *profileService, Hooks hooks, Q
     if (item) selectCategory(sidebar_->row(item));
   });
   connect(search_, &QLineEdit::textChanged, this, &SettingsPage::applyFilter);
+  connect(&ardali::i18n::LanguageManager::instance(), &ardali::i18n::LanguageManager::languageChanged,
+          this, [this] { retranslateUi(); });
   setTabOrder(search_, sidebar_);
   setCategory(Category::Startup);
+  retranslateUi();
 }
 
 void SettingsPage::addCategory(Category category, BrowserIcon icon, const QString &name,
@@ -606,6 +624,46 @@ void SettingsPage::addCategory(Category category, BrowserIcon icon, const QStrin
   categoryIndexes_.insert(category, sidebarRow);
   contentSidebarRows_.insert(contentIndex, sidebarRow);
   searchKeywords_.insert(contentIndex, name + QLatin1Char(' ') + keywords);
+}
+
+void SettingsPage::retranslateUi() {
+  const auto updateItem = [this](Category cat, const QString &textKey, const QString &fallback) {
+    const int row = categoryIndexes_.value(cat, -1);
+    if (row >= 0 && row < sidebar_->count()) {
+      auto *item = sidebar_->item(row);
+      if (item) {
+        const QString txt = I18n::text(textKey, fallback);
+        item->setText(txt);
+        item->setToolTip(txt);
+      }
+    }
+  };
+
+  updateItem(Category::Startup, QStringLiteral("settings.category.startup"), QStringLiteral("Başlangıç"));
+  updateItem(Category::Appearance, QStringLiteral("settings.category.appearance"), QStringLiteral("Görünüm"));
+  updateItem(Category::Performance, QStringLiteral("settings.category.performance"), QStringLiteral("Performans"));
+  updateItem(Category::Content, QStringLiteral("settings.category.content"), QStringLiteral("İçerik"));
+  updateItem(Category::Privacy, QStringLiteral("settings.category.privacy"), QStringLiteral("Gizlilik ve güvenlik"));
+  updateItem(Category::Blocker, QStringLiteral("settings.category.blocker"), QStringLiteral("ArDali Blocker"));
+  updateItem(Category::Search, QStringLiteral("settings.category.search"), QStringLiteral("Arama motoru"));
+  updateItem(Category::Passwords, QStringLiteral("settings.category.passwords"), QStringLiteral("Şifreler ve otomatik doldurma"));
+  updateItem(Category::Bookmarks, QStringLiteral("settings.category.bookmarks"), QStringLiteral("Yer işaretleri"));
+  updateItem(Category::History, QStringLiteral("settings.category.history"), QStringLiteral("Geçmiş"));
+  updateItem(Category::Downloads, QStringLiteral("settings.category.downloads"), QStringLiteral("İndirilenler"));
+  updateItem(Category::Languages, QStringLiteral("settings.category.languages"), QStringLiteral("Diller"));
+  updateItem(Category::Accessibility, QStringLiteral("settings.category.accessibility"), QStringLiteral("Erişilebilirlik"));
+  updateItem(Category::System, QStringLiteral("settings.category.system"), QStringLiteral("Sistem"));
+  updateItem(Category::Listening, QStringLiteral("settings.category.listening"), QStringLiteral("Pulse"));
+  updateItem(Category::Reset, QStringLiteral("settings.category.reset"), QStringLiteral("Ayarları sıfırla"));
+  updateItem(Category::About, QStringLiteral("settings.category.about"), QStringLiteral("ArDaliBrowser hakkında"));
+
+  if (search_) {
+    search_->setPlaceholderText(I18n::text(QStringLiteral("settings.search_placeholder"), QStringLiteral("Ayarlarda ara")));
+  }
+
+  if (uiLangCombo_) {
+    uiLangCombo_->setItemText(0, ardali::i18n::LanguageManager::instance().formatSystemLanguageLabel());
+  }
 }
 
 void SettingsPage::addSidebarSeparator() {
@@ -2930,54 +2988,790 @@ QWidget *SettingsPage::createHistorySection() {
   return section.page;
 }
 
+namespace {
+struct LanguageMeta {
+  QString code;
+  QString displayName;
+  QString spellCheckCode;
+};
+
+static const QList<LanguageMeta> kLanguagesList = {
+  {QStringLiteral("tr"), QStringLiteral("Türkçe"), QStringLiteral("tr-TR")},
+  {QStringLiteral("en-US"), QStringLiteral("İngilizce (Amerika Birleşik Devletleri)"), QStringLiteral("en-US")},
+  {QStringLiteral("en"), QStringLiteral("İngilizce"), QStringLiteral("en-GB")},
+  {QStringLiteral("en-GB"), QStringLiteral("İngilizce (Birleşik Krallık)"), QStringLiteral("en-GB")},
+  {QStringLiteral("de"), QStringLiteral("Almanca"), QStringLiteral("de-DE")},
+  {QStringLiteral("fr"), QStringLiteral("Fransızca"), QStringLiteral("fr-FR")},
+  {QStringLiteral("es"), QStringLiteral("İspanyolca"), QStringLiteral("es-ES")},
+  {QStringLiteral("it"), QStringLiteral("İtalyanca"), QStringLiteral("it-IT")},
+  {QStringLiteral("ar"), QStringLiteral("Arapça"), QStringLiteral("ar")},
+  {QStringLiteral("ru"), QStringLiteral("Rusça"), QStringLiteral("ru-RU")},
+  {QStringLiteral("ja"), QStringLiteral("Japonca"), QStringLiteral("ja")},
+  {QStringLiteral("zh-CN"), QStringLiteral("Çince (Basitleştirilmiş)"), QStringLiteral("zh-CN")},
+  {QStringLiteral("ko"), QStringLiteral("Korece"), QStringLiteral("ko")},
+  {QStringLiteral("pt-BR"), QStringLiteral("Portekizce (Brezilya)"), QStringLiteral("pt-BR")},
+  {QStringLiteral("pt"), QStringLiteral("Portekizce"), QStringLiteral("pt-PT")},
+  {QStringLiteral("nl"), QStringLiteral("Felemenkçe"), QStringLiteral("nl-NL")},
+  {QStringLiteral("pl"), QStringLiteral("Lehçe"), QStringLiteral("pl-PL")},
+  {QStringLiteral("uk"), QStringLiteral("Ukraynaca"), QStringLiteral("uk-UA")},
+  {QStringLiteral("az"), QStringLiteral("Azerice"), QStringLiteral("az")},
+  {QStringLiteral("el"), QStringLiteral("Yunanca"), QStringLiteral("el-GR")},
+  {QStringLiteral("hi"), QStringLiteral("Hintçe"), QStringLiteral("hi-IN")},
+  {QStringLiteral("sv"), QStringLiteral("İsveççe"), QStringLiteral("sv-SE")},
+  {QStringLiteral("no"), QStringLiteral("Norveççe"), QStringLiteral("nb-NO")},
+  {QStringLiteral("da"), QStringLiteral("Danca"), QStringLiteral("da-DK")},
+  {QStringLiteral("fi"), QStringLiteral("Fince"), QStringLiteral("fi-FI")},
+  {QStringLiteral("cs"), QStringLiteral("Çekçe"), QStringLiteral("cs-CZ")},
+  {QStringLiteral("hu"), QStringLiteral("Macarca"), QStringLiteral("hu-HU")},
+  {QStringLiteral("ro"), QStringLiteral("Rumence"), QStringLiteral("ro-RO")},
+  {QStringLiteral("id"), QStringLiteral("Endonezce"), QStringLiteral("id-ID")},
+  {QStringLiteral("vi"), QStringLiteral("Vietnamca"), QStringLiteral("vi-VN")}
+};
+
+static QString getLanguageDisplayName(const QString &code) {
+  for (const auto &item : kLanguagesList) {
+    if (item.code.compare(code, Qt::CaseInsensitive) == 0) {
+      return item.displayName;
+    }
+  }
+  return LanguageDetector::languageDisplayName(code);
+}
+
+static QString getSpellCheckCode(const QString &code) {
+  for (const auto &item : kLanguagesList) {
+    if (item.code.compare(code, Qt::CaseInsensitive) == 0) {
+      return item.spellCheckCode;
+    }
+  }
+  return code;
+}
+
+class AddLanguageDialog : public QDialog {
+ public:
+  explicit AddLanguageDialog(const QStringList &excludeCodes, QWidget *parent = nullptr)
+      : QDialog(parent) {
+    setWindowTitle(QStringLiteral("Dil ekle"));
+    setMinimumWidth(380);
+    setMinimumHeight(440);
+    setStyleSheet(QStringLiteral(
+        "QDialog { background: #171e27; color: #e8eef6; }"
+        "QLineEdit { min-height: 32px; background: #111820; color: #e6edf5; border: 1px solid #3a4958; border-radius: 7px; padding: 0 10px; }"
+        "QLineEdit:focus { border: 2px solid #58a6c7; }"
+        "QListWidget { background: #121820; color: #e1e8f0; border: 1px solid #2e3b49; border-radius: 8px; outline: 0; padding: 4px; }"
+        "QListWidget::item { min-height: 34px; padding: 4px 8px; border-radius: 5px; }"
+        "QListWidget::item:hover { background: #202b36; }"
+        "QPushButton { min-height: 30px; border-radius: 7px; padding: 2px 14px; font-weight: 550; font-size: 12px; }"
+        "#dlg-cancel-btn { background: #253342; color: #edf5fc; border: 1px solid #3c4f63; }"
+        "#dlg-cancel-btn:hover { background: #2f4052; }"
+        "#dlg-add-btn { background: #1a73e8; color: #ffffff; border: 0; }"
+        "#dlg-add-btn:hover { background: #1b66ca; }"
+    ));
+
+    auto *layout = new QVBoxLayout(this);
+    layout->setContentsMargins(18, 18, 18, 18);
+    layout->setSpacing(12);
+
+    auto *search = new QLineEdit(this);
+    search->setPlaceholderText(QStringLiteral("Dillerde ara"));
+    search->setClearButtonEnabled(true);
+    layout->addWidget(search);
+
+    auto *listWidget = new QListWidget(this);
+    layout->addWidget(listWidget, 1);
+
+    for (const auto &item : kLanguagesList) {
+      if (excludeCodes.contains(item.code, Qt::CaseInsensitive)) continue;
+      auto *listItem = new QListWidgetItem(item.displayName, listWidget);
+      listItem->setData(Qt::UserRole, item.code);
+      listItem->setFlags(listItem->flags() | Qt::ItemIsUserCheckable);
+      listItem->setCheckState(Qt::Unchecked);
+    }
+
+    connect(search, &QLineEdit::textChanged, this, [listWidget](const QString &filter) {
+      for (int i = 0; i < listWidget->count(); ++i) {
+        auto *it = listWidget->item(i);
+        const bool match = filter.isEmpty() || it->text().contains(filter, Qt::CaseInsensitive)
+                           || it->data(Qt::UserRole).toString().contains(filter, Qt::CaseInsensitive);
+        it->setHidden(!match);
+      }
+    });
+
+    auto *btnRow = new QHBoxLayout();
+    btnRow->addStretch();
+    auto *cancelBtn = new QPushButton(QStringLiteral("İptal"), this);
+    cancelBtn->setObjectName(QStringLiteral("dlg-cancel-btn"));
+    connect(cancelBtn, &QPushButton::clicked, this, &QDialog::reject);
+    btnRow->addWidget(cancelBtn);
+
+    auto *addBtn = new QPushButton(QStringLiteral("Ekle"), this);
+    addBtn->setObjectName(QStringLiteral("dlg-add-btn"));
+    connect(addBtn, &QPushButton::clicked, this, [this, listWidget]() {
+      for (int i = 0; i < listWidget->count(); ++i) {
+        auto *it = listWidget->item(i);
+        if (it->checkState() == Qt::Checked) {
+          selectedCodes_.append(it->data(Qt::UserRole).toString());
+        }
+      }
+      accept();
+    });
+    btnRow->addWidget(addBtn);
+    layout->addLayout(btnRow);
+  }
+
+  QStringList selectedCodes() const { return selectedCodes_; }
+
+ private:
+  QStringList selectedCodes_;
+};
+
+class CustomizeSpellCheckDialog : public QDialog {
+ public:
+  explicit CustomizeSpellCheckDialog(QWidget *parent = nullptr) : QDialog(parent) {
+    setWindowTitle(QStringLiteral("Yazım denetimini özelleştir"));
+    setMinimumWidth(400);
+    setMinimumHeight(440);
+    setStyleSheet(QStringLiteral(
+        "QDialog { background: #171e27; color: #e8eef6; }"
+        "QLineEdit { min-height: 32px; background: #111820; color: #e6edf5; border: 1px solid #3a4958; border-radius: 7px; padding: 0 10px; }"
+        "QLineEdit:focus { border: 2px solid #58a6c7; }"
+        "QListWidget { background: #121820; color: #e1e8f0; border: 1px solid #2e3b49; border-radius: 8px; outline: 0; padding: 4px; }"
+        "QListWidget::item { min-height: 34px; padding: 4px 8px; border-radius: 5px; }"
+        "QPushButton { min-height: 30px; border-radius: 7px; padding: 2px 14px; font-weight: 550; font-size: 12px; }"
+        "#dlg-add-word-btn { background: #1a73e8; color: #ffffff; border: 0; }"
+        "#dlg-add-word-btn:hover { background: #1b66ca; }"
+        "#dlg-close-btn { background: #253342; color: #edf5fc; border: 1px solid #3c4f63; }"
+        "#dlg-close-btn:hover { background: #2f4052; }"
+    ));
+
+    auto *layout = new QVBoxLayout(this);
+    layout->setContentsMargins(18, 18, 18, 18);
+    layout->setSpacing(12);
+
+    auto *desc = new QLabel(QStringLiteral("Özel sözcükler ekleyin. Bu sözcükler web sayfalarında metin yazarken yazım denetiminde yanlış olarak işaretlenmez."), this);
+    desc->setWordWrap(true);
+    desc->setStyleSheet(QStringLiteral("color: #91a1b2; font-size: 12px;"));
+    layout->addWidget(desc);
+
+    auto *inputRow = new QHBoxLayout();
+    auto *wordEdit = new QLineEdit(this);
+    wordEdit->setPlaceholderText(QStringLiteral("Sözcük ekle"));
+    inputRow->addWidget(wordEdit, 1);
+
+    auto *addBtn = new QPushButton(QStringLiteral("Ekle"), this);
+    addBtn->setObjectName(QStringLiteral("dlg-add-word-btn"));
+    inputRow->addWidget(addBtn);
+    layout->addLayout(inputRow);
+
+    auto *listWidget = new QListWidget(this);
+    layout->addWidget(listWidget, 1);
+
+    auto *btnRow = new QHBoxLayout();
+    btnRow->addStretch();
+    auto *closeBtn = new QPushButton(QStringLiteral("Kapat"), this);
+    closeBtn->setObjectName(QStringLiteral("dlg-close-btn"));
+    connect(closeBtn, &QPushButton::clicked, this, &QDialog::accept);
+    btnRow->addWidget(closeBtn);
+    layout->addLayout(btnRow);
+
+    QSettings settings;
+    auto words = std::make_shared<QStringList>(settings.value(QStringLiteral("spellcheck/customWords")).toStringList());
+
+    const auto refreshList = [listWidget, words]() {
+      listWidget->clear();
+      for (const QString &w : *words) {
+        auto *item = new QListWidgetItem(listWidget);
+        auto *wgt = new QWidget();
+        auto *h = new QHBoxLayout(wgt);
+        h->setContentsMargins(8, 2, 8, 2);
+        auto *lbl = new QLabel(w, wgt);
+        lbl->setStyleSheet(QStringLiteral("color: #e8eef6; font-size: 13px;"));
+        h->addWidget(lbl, 1);
+        auto *delBtn = new QPushButton(QStringLiteral("✕"), wgt);
+        delBtn->setObjectName(QStringLiteral("settings-icon-del-btn"));
+        delBtn->setToolTip(QStringLiteral("Kaldır"));
+        QObject::connect(delBtn, &QPushButton::clicked, [w, words, listWidget]() {
+          words->removeAll(w);
+          QSettings s;
+          s.setValue(QStringLiteral("spellcheck/customWords"), *words);
+          for (int i = 0; i < listWidget->count(); ++i) {
+            if (listWidget->item(i)->data(Qt::UserRole).toString() == w) {
+              delete listWidget->takeItem(i);
+              break;
+            }
+          }
+        });
+        h->addWidget(delBtn);
+        item->setData(Qt::UserRole, w);
+        item->setSizeHint(wgt->sizeHint());
+        listWidget->setItemWidget(item, wgt);
+      }
+    };
+
+    refreshList();
+
+    connect(addBtn, &QPushButton::clicked, this, [wordEdit, words, refreshList]() {
+      const QString txt = wordEdit->text().trimmed();
+      if (!txt.isEmpty() && !words->contains(txt)) {
+        words->append(txt);
+        QSettings s;
+        s.setValue(QStringLiteral("spellcheck/customWords"), *words);
+        wordEdit->clear();
+        refreshList();
+      }
+    });
+    connect(wordEdit, &QLineEdit::returnPressed, addBtn, &QPushButton::click);
+  }
+};
+}  // namespace
+
 QWidget *SettingsPage::createLanguagesSection() {
-  Section section = makeSection(QStringLiteral("Diller ve Çeviri"), QStringLiteral("Web sayfası çevirisi, varsayılan hedef dil ve çeviri sağlayıcısı yapılandırması."));
+  Section section = makeSection(I18n::text(QStringLiteral("settings.language.header"), QStringLiteral("Diller")),
+                                I18n::text(QStringLiteral("settings.language.subtitle"), QStringLiteral("Tercih edilen web sitesi dilleri, yazım denetimi ve sayfa çevirisi yapılandırması.")));
+
+  QSettings settings;
+  auto preferredLangs = std::make_shared<QStringList>(settings.value(QStringLiteral("language/preferredLanguages")).toStringList());
+  if (preferredLangs->isEmpty()) {
+    *preferredLangs = {QStringLiteral("tr"), QStringLiteral("en-US"), QStringLiteral("en")};
+  }
 
   auto *translateSvc = profileService_ ? profileService_->translateService() : nullptr;
 
-  auto *card = makeCard(section.page, QStringLiteral("SAYFA ÇEVİRİSİ"));
+  auto syncAcceptLanguage = [this](const QStringList &langs) {
+    QStringList parts;
+    double q = 1.0;
+    for (int i = 0; i < langs.size(); ++i) {
+      if (i == 0) {
+        parts.append(langs[i]);
+      } else {
+        parts.append(QStringLiteral("%1;q=%2").arg(langs[i], QString::number(q, 'f', 1)));
+      }
+      q = std::max(0.1, q - 0.1);
+    }
+    if (profileService_ && profileService_->profile()) {
+      profileService_->profile()->setHttpAcceptLanguage(parts.join(QStringLiteral(",")));
+    }
+  };
 
-  // 1. Sayfa çevirisini etkinleştir
-  auto *enableCheck = new QCheckBox(card);
-  enableCheck->setObjectName(QStringLiteral("settings-translation-enabled"));
-  enableCheck->setAccessibleName(QStringLiteral("Sayfa çevirisini etkinleştir"));
-  enableCheck->setChecked(translateSvc ? translateSvc->isEnabled() : true);
-  connect(enableCheck, &QCheckBox::toggled, this, [translateSvc](bool checked) {
+  syncAcceptLanguage(*preferredLangs);
+
+  // =========================================================================
+  // 1. TERCİH EDİLEN DİLLER
+  // =========================================================================
+  auto *prefHeading = new QLabel(QStringLiteral("Tercih edilen diller"), section.page);
+  prefHeading->setStyleSheet(QStringLiteral("font-size: 15px; font-weight: 650; color: #f2f6fb; margin-top: 10px; margin-bottom: 6px;"));
+  section.layout->addWidget(prefHeading);
+
+  auto *prefCard = makeCard(section.page);
+
+  // --- Uygulama Arayüz Dili Satırı ---
+  auto *uiLangCombo = new QComboBox(prefCard);
+  uiLangCombo_ = uiLangCombo;
+  uiLangCombo->setObjectName(QStringLiteral("settings-ui-language-combo"));
+  uiLangCombo->addItem(ardali::i18n::LanguageManager::instance().formatSystemLanguageLabel(), QStringLiteral("system"));
+  for (const auto &info : ardali::i18n::LanguageManager::instance().supportedLanguages()) {
+    uiLangCombo->addItem(info.nativeName, info.code);
+  }
+  const QString currentPref = ardali::i18n::LanguageManager::instance().languagePreference();
+  int prefIdx = uiLangCombo->findData(currentPref);
+  if (prefIdx >= 0) uiLangCombo->setCurrentIndex(prefIdx);
+  else uiLangCombo->setCurrentIndex(0);
+
+  connect(uiLangCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [uiLangCombo](int idx) {
+    if (idx >= 0) {
+      const QString chosen = uiLangCombo->itemData(idx).toString();
+      ardali::i18n::LanguageManager::instance().setLanguagePreference(chosen);
+    }
+  });
+
+  auto *uiLangRow = settingRow(prefCard,
+                               QStringLiteral("Uygulama Dili"),
+                               QStringLiteral("Menüler, ayarlar ve tarayıcı arayüzü için kullanılacak dili belirler."),
+                               uiLangCombo, BrowserIcon::Language, true);
+  addRow(prefCard, uiLangRow);
+
+  auto *addLangBtn = new QPushButton(QStringLiteral("Dil ekle"), prefCard);
+  addLangBtn->setObjectName(QStringLiteral("settings-pill-btn"));
+
+  auto *topRow = settingRow(prefCard,
+                            QStringLiteral("Konuştuğunuz dillerdeki web siteleri"),
+                            QStringLiteral("Konuştuğunuz dilleri web sitelerine bildirin. Mümkün olduğunda bu dillerde içerik gösterirler."),
+                            addLangBtn);
+  addRow(prefCard, topRow);
+
+  auto *langsContainer = new QWidget(prefCard);
+  auto *langsLayout = new QVBoxLayout(langsContainer);
+  langsLayout->setContentsMargins(0, 0, 0, 0);
+  langsLayout->setSpacing(0);
+  addRow(prefCard, langsContainer);
+
+  section.layout->addWidget(prefCard);
+
+  // =========================================================================
+  // 2. YAZIM DENETİMİ
+  // =========================================================================
+  auto *spellHeading = new QLabel(QStringLiteral("Yazım denetimi"), section.page);
+  spellHeading->setStyleSheet(QStringLiteral("font-size: 15px; font-weight: 650; color: #f2f6fb; margin-top: 24px; margin-bottom: 6px;"));
+  section.layout->addWidget(spellHeading);
+
+  auto *spellCard = makeCard(section.page);
+
+  auto *spellMasterSwitch = new GlowToggleSwitch(spellCard);
+  const bool initialSpellEnabled = profileService_ && profileService_->profile() ? profileService_->profile()->isSpellCheckEnabled() : true;
+  spellMasterSwitch->setChecked(initialSpellEnabled);
+  addRow(spellCard, settingRow(spellCard,
+                               QStringLiteral("Web sayfalarında metin yazarken yazım hatalarını kontrol et"),
+                               QString{},
+                               spellMasterSwitch));
+
+  auto *spellSubhead = new QLabel(QStringLiteral("Şu diller için yazım denetimi kullan:"), spellCard);
+  spellSubhead->setStyleSheet(QStringLiteral("color: #91a1b2; font-size: 13px; font-weight: 550; padding: 12px 18px 4px;"));
+  cardLayout(spellCard)->addWidget(spellSubhead);
+
+  auto *spellLangsContainer = new QWidget(spellCard);
+  auto *spellLangsLayout = new QVBoxLayout(spellLangsContainer);
+  spellLangsLayout->setContentsMargins(0, 0, 0, 0);
+  spellLangsLayout->setSpacing(0);
+  addRow(spellCard, spellLangsContainer);
+
+  auto *customDictBtn = new QPushButton(QStringLiteral("›"), spellCard);
+  customDictBtn->setObjectName(QStringLiteral("settings-chevron-btn"));
+  auto *customDictRow = settingRow(spellCard, QStringLiteral("Yazım denetimini özelleştir"), QString{}, customDictBtn);
+  addRow(spellCard, customDictRow);
+
+  connect(customDictBtn, &QPushButton::clicked, this, [this]() {
+    CustomizeSpellCheckDialog dlg(this);
+    dlg.exec();
+  });
+
+  section.layout->addWidget(spellCard);
+
+  // =========================================================================
+  // 3. ARDALI ÇEVİRİ
+  // =========================================================================
+  auto *translateHeading = new QLabel(QStringLiteral("ArDali Çeviri"), section.page);
+  translateHeading->setStyleSheet(QStringLiteral("font-size: 15px; font-weight: 650; color: #f2f6fb; margin-top: 24px; margin-bottom: 6px;"));
+  section.layout->addWidget(translateHeading);
+
+  auto *transCard = makeCard(section.page);
+
+  auto *transMasterSwitch = new GlowToggleSwitch(transCard);
+  transMasterSwitch->setChecked(translateSvc ? translateSvc->isEnabled() : true);
+  addRow(transCard, settingRow(transCard,
+                               QStringLiteral("ArDali Çeviri'yi kullan"),
+                               QStringLiteral("Bu ayar açıkken ArDali Çeviri, siteleri tercih ettiğiniz dile çevirmeyi önerir. Ayrıca, siteleri otomatik olarak da çevirebilir."),
+                               transMasterSwitch));
+
+  auto *targetCombo = new QComboBox(transCard);
+  for (const auto &item : kLanguagesList) {
+    targetCombo->addItem(item.displayName, item.code);
+  }
+  const QString curTarget = translateSvc ? translateSvc->defaultTargetLanguage() : QStringLiteral("tr");
+  int targetIdx = targetCombo->findData(curTarget);
+  if (targetIdx < 0) {
+    for (int i = 0; i < targetCombo->count(); ++i) {
+      if (targetCombo->itemData(i).toString().startsWith(curTarget, Qt::CaseInsensitive)) {
+        targetIdx = i;
+        break;
+      }
+    }
+  }
+  if (targetIdx >= 0) targetCombo->setCurrentIndex(targetIdx);
+
+  connect(targetCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [translateSvc, targetCombo](int idx) {
+    if (translateSvc && idx >= 0) {
+      translateSvc->setDefaultTargetLanguage(targetCombo->itemData(idx).toString());
+      QSettings s;
+      translateSvc->savePreferences(s);
+    }
+  });
+  addRow(transCard, settingRow(transCard, QStringLiteral("Şu dile çevir"), QString{}, targetCombo));
+
+  auto *addAutoBtn = new QPushButton(QStringLiteral("Dil ekle"), transCard);
+  addAutoBtn->setObjectName(QStringLiteral("settings-pill-btn"));
+  addRow(transCard, settingRow(transCard, QStringLiteral("Şu dilleri otomatik olarak çevir"), QString{}, addAutoBtn));
+
+  auto *autoLangsContainer = new QWidget(transCard);
+  auto *autoLangsLayout = new QVBoxLayout(autoLangsContainer);
+  autoLangsLayout->setContentsMargins(0, 0, 0, 6);
+  autoLangsLayout->setSpacing(0);
+  addRow(transCard, autoLangsContainer);
+
+  auto *addNeverBtn = new QPushButton(QStringLiteral("Dil ekle"), transCard);
+  addNeverBtn->setObjectName(QStringLiteral("settings-pill-btn"));
+  addRow(transCard, settingRow(transCard, QStringLiteral("Şu dilleri çevirmeyi hiçbir zaman önerme"), QString{}, addNeverBtn));
+
+  auto *neverLangsContainer = new QWidget(transCard);
+  auto *neverLangsLayout = new QVBoxLayout(neverLangsContainer);
+  neverLangsLayout->setContentsMargins(0, 0, 0, 6);
+  neverLangsLayout->setSpacing(0);
+  addRow(transCard, neverLangsContainer);
+
+  section.layout->addWidget(transCard);
+
+  // Dynamic Refreshers
+  auto refreshSpellLangs = std::make_shared<std::function<void()>>();
+  auto refreshPreferredLangs = std::make_shared<std::function<void()>>();
+
+  *refreshSpellLangs = [this, spellLangsContainer, spellLangsLayout, preferredLangs]() {
+    while (QLayoutItem *item = spellLangsLayout->takeAt(0)) {
+      delete item->widget();
+      delete item;
+    }
+    QStringList activeSpellLangs;
+    if (profileService_ && profileService_->profile()) {
+      activeSpellLangs = profileService_->profile()->spellCheckLanguages();
+    }
+    for (const QString &code : *preferredLangs) {
+      const QString disp = getLanguageDisplayName(code);
+      const QString spellCode = getSpellCheckCode(code);
+      auto *row = new QWidget(spellLangsContainer);
+      row->setObjectName(QStringLiteral("settings-row"));
+      auto *h = new QHBoxLayout(row);
+      h->setContentsMargins(18, 10, 18, 10);
+      auto *lbl = new QLabel(disp, row);
+      lbl->setObjectName(QStringLiteral("settings-row-title"));
+      h->addWidget(lbl, 1);
+
+      auto *toggle = new GlowToggleSwitch(row);
+      toggle->setChecked(activeSpellLangs.contains(spellCode, Qt::CaseInsensitive) || activeSpellLangs.contains(code, Qt::CaseInsensitive));
+      QObject::connect(toggle, &QCheckBox::toggled, [this, spellCode](bool checked) {
+        if (!profileService_ || !profileService_->profile()) return;
+        QStringList cur = profileService_->profile()->spellCheckLanguages();
+        if (checked) {
+          if (!cur.contains(spellCode, Qt::CaseInsensitive)) cur.append(spellCode);
+        } else {
+          cur.removeAll(spellCode);
+        }
+        profileService_->profile()->setSpellCheckLanguages(cur);
+        QSettings s;
+        s.setValue(QStringLiteral("spellcheck/languages"), cur);
+      });
+      h->addWidget(toggle, 0, Qt::AlignVCenter);
+      spellLangsLayout->addWidget(row);
+    }
+  };
+
+  *refreshPreferredLangs = [this, langsContainer, langsLayout, preferredLangs, syncAcceptLanguage, refreshSpellLangs, refreshPreferredLangs, translateSvc, targetCombo]() {
+    while (QLayoutItem *item = langsLayout->takeAt(0)) {
+      delete item->widget();
+      delete item;
+    }
+    for (int i = 0; i < preferredLangs->size(); ++i) {
+      const QString code = (*preferredLangs)[i];
+      const QString disp = getLanguageDisplayName(code);
+      auto *row = new QWidget(langsContainer);
+      row->setObjectName(QStringLiteral("settings-row"));
+      auto *h = new QHBoxLayout(row);
+      h->setContentsMargins(18, 10, 18, 10);
+      h->setSpacing(12);
+
+      auto *textWgt = new QWidget(row);
+      auto *v = new QVBoxLayout(textWgt);
+      v->setContentsMargins(0, 0, 0, 0);
+      v->setSpacing(2);
+
+      auto *titleLbl = new QLabel(QStringLiteral("%1. %2").arg(i + 1).arg(disp), textWgt);
+      titleLbl->setObjectName(QStringLiteral("settings-row-title"));
+      v->addWidget(titleLbl);
+
+      if (i == 0) {
+        auto *subLbl = new QLabel(QStringLiteral("Bu dil, sayfalar çevrilirken kullanılır"), textWgt);
+        subLbl->setObjectName(QStringLiteral("settings-row-description"));
+        v->addWidget(subLbl);
+      }
+      h->addWidget(textWgt, 1);
+
+      auto *moreBtn = new QPushButton(QStringLiteral("⋮"), row);
+      moreBtn->setObjectName(QStringLiteral("settings-more-btn"));
+      moreBtn->setToolTip(QStringLiteral("Daha fazla işlem"));
+
+      QObject::connect(moreBtn, &QPushButton::clicked, [this, moreBtn, i, code, disp, preferredLangs, syncAcceptLanguage, refreshPreferredLangs, translateSvc, targetCombo]() {
+        auto *menu = new QMenu(moreBtn);
+        menu->setStyleSheet(QStringLiteral(
+            "QMenu { background: #202a36; color: #e8eef6; border: 1px solid #3a4958; border-radius: 8px; padding: 4px; }"
+            "QMenu::item { padding: 6px 20px; border-radius: 5px; font-size: 13px; }"
+            "QMenu::item:selected { background: #2f4052; color: #ffffff; }"
+            "QMenu::item:disabled { color: #6b7a8a; }"
+            "QMenu::separator { height: 1px; background: #2e3b49; margin: 4px 6px; }"
+        ));
+
+        // 1. ArDali Browser'ı bu dilde görüntüle
+        const QString currentPref = ardali::i18n::LanguageManager::instance().languagePreference();
+        QString targetUiCode = code.toLower();
+        if (targetUiCode.startsWith(QLatin1String("tr"))) targetUiCode = QStringLiteral("tr");
+        else if (targetUiCode.startsWith(QLatin1String("en"))) targetUiCode = QStringLiteral("en");
+        else if (targetUiCode.startsWith(QLatin1String("ar"))) targetUiCode = QStringLiteral("ar");
+
+        auto *uiAct = menu->addAction(QStringLiteral("ArDali Browser'ı bu dilde görüntüle"));
+        uiAct->setCheckable(true);
+        const bool isCurrentUi = (currentPref == targetUiCode || (currentPref == QLatin1String("system") && targetUiCode == ardali::i18n::LanguageManager::instance().activeLanguage().code));
+        uiAct->setChecked(isCurrentUi);
+        if (isCurrentUi) {
+          uiAct->setEnabled(false);
+        } else {
+          QObject::connect(uiAct, &QAction::triggered, [targetUiCode]() {
+            ardali::i18n::LanguageManager::instance().setLanguagePreference(targetUiCode);
+          });
+        }
+
+        menu->addSeparator();
+
+        // 2. En üste taşı
+        auto *topAct = menu->addAction(QStringLiteral("En üste taşı"));
+        topAct->setEnabled(i > 0);
+        QObject::connect(topAct, &QAction::triggered, [preferredLangs, i, syncAcceptLanguage, refreshPreferredLangs, translateSvc, targetCombo]() {
+          preferredLangs->move(i, 0);
+          QSettings s;
+          s.setValue(QStringLiteral("language/preferredLanguages"), *preferredLangs);
+          syncAcceptLanguage(*preferredLangs);
+          if (translateSvc) {
+            translateSvc->setDefaultTargetLanguage(preferredLangs->first());
+            translateSvc->savePreferences(s);
+            int idx = targetCombo->findData(preferredLangs->first());
+            if (idx >= 0) targetCombo->setCurrentIndex(idx);
+          }
+          (*refreshPreferredLangs)();
+        });
+
+        // 3. Yukarı taşı
+        auto *upAct = menu->addAction(QStringLiteral("Yukarı taşı"));
+        upAct->setEnabled(i > 0);
+        QObject::connect(upAct, &QAction::triggered, [preferredLangs, i, syncAcceptLanguage, refreshPreferredLangs]() {
+          preferredLangs->swapItemsAt(i, i - 1);
+          QSettings s;
+          s.setValue(QStringLiteral("language/preferredLanguages"), *preferredLangs);
+          syncAcceptLanguage(*preferredLangs);
+          (*refreshPreferredLangs)();
+        });
+
+        // 4. Aşağı taşı
+        auto *downAct = menu->addAction(QStringLiteral("Aşağı taşı"));
+        downAct->setEnabled(i < preferredLangs->size() - 1);
+        QObject::connect(downAct, &QAction::triggered, [preferredLangs, i, syncAcceptLanguage, refreshPreferredLangs]() {
+          preferredLangs->swapItemsAt(i, i + 1);
+          QSettings s;
+          s.setValue(QStringLiteral("language/preferredLanguages"), *preferredLangs);
+          syncAcceptLanguage(*preferredLangs);
+          (*refreshPreferredLangs)();
+        });
+
+        // 5. Kaldır
+        auto *removeAct = menu->addAction(QStringLiteral("Kaldır"));
+        removeAct->setEnabled(preferredLangs->size() > 1);
+        QObject::connect(removeAct, &QAction::triggered, [preferredLangs, i, syncAcceptLanguage, refreshPreferredLangs]() {
+          preferredLangs->removeAt(i);
+          QSettings s;
+          s.setValue(QStringLiteral("language/preferredLanguages"), *preferredLangs);
+          syncAcceptLanguage(*preferredLangs);
+          (*refreshPreferredLangs)();
+        });
+
+        menu->addSeparator();
+
+        // 6. Bu dildeki sayfaları çevirmeyi öner
+        auto *offerAct = menu->addAction(QStringLiteral("Bu dildeki sayfaları çevirmeyi öner"));
+        offerAct->setCheckable(true);
+        const bool never = translateSvc && translateSvc->neverTranslateLanguages().contains(code);
+        offerAct->setChecked(!never);
+        QObject::connect(offerAct, &QAction::triggered, [translateSvc, code](bool checked) {
+          if (translateSvc) {
+            if (checked) {
+              translateSvc->removeNeverTranslateLanguage(code);
+            } else {
+              translateSvc->addNeverTranslateLanguage(code);
+            }
+            QSettings s;
+            translateSvc->savePreferences(s);
+          }
+        });
+
+        menu->exec(moreBtn->mapToGlobal(QPoint(0, moreBtn->height())));
+        menu->deleteLater();
+      });
+
+      h->addWidget(moreBtn, 0, Qt::AlignVCenter);
+      langsLayout->addWidget(row);
+    }
+    (*refreshSpellLangs)();
+  };
+
+  // Auto-translate list refresher
+  auto refreshAutoTranslateList = [autoLangsContainer, autoLangsLayout, translateSvc]() {
+    while (QLayoutItem *item = autoLangsLayout->takeAt(0)) {
+      delete item->widget();
+      delete item;
+    }
+    const QStringList autoLangs = translateSvc ? translateSvc->autoTranslateLanguages() : QStringList{};
+    if (autoLangs.isEmpty()) {
+      auto *emptyLbl = new QLabel(QStringLiteral("Dil eklenmedi"), autoLangsContainer);
+      emptyLbl->setStyleSheet(QStringLiteral("color: #7b8c9d; font-size: 13px; padding-left: 18px; padding-top: 4px; padding-bottom: 8px;"));
+      autoLangsLayout->addWidget(emptyLbl);
+    } else {
+      for (const QString &code : autoLangs) {
+        auto *row = new QWidget(autoLangsContainer);
+        row->setObjectName(QStringLiteral("settings-row"));
+        auto *h = new QHBoxLayout(row);
+        h->setContentsMargins(18, 6, 18, 6);
+        auto *lbl = new QLabel(getLanguageDisplayName(code), row);
+        lbl->setObjectName(QStringLiteral("settings-row-title"));
+        h->addWidget(lbl, 1);
+
+        auto *delBtn = new QPushButton(QStringLiteral("🗑"), row);
+        delBtn->setObjectName(QStringLiteral("settings-icon-del-btn"));
+        delBtn->setToolTip(QStringLiteral("Kaldır"));
+        QObject::connect(delBtn, &QPushButton::clicked, [translateSvc, code, autoLangsContainer, autoLangsLayout]() {
+          if (translateSvc) {
+            translateSvc->removeAutoTranslateLanguage(code);
+            QSettings s;
+            translateSvc->savePreferences(s);
+            for (int i = 0; i < autoLangsLayout->count(); ++i) {
+              auto *w = autoLangsLayout->itemAt(i)->widget();
+              if (w) {
+                auto *l = w->findChild<QLabel *>();
+                if (l && l->text() == getLanguageDisplayName(code)) {
+                  delete autoLangsLayout->takeAt(i)->widget();
+                  break;
+                }
+              }
+            }
+            if (translateSvc->autoTranslateLanguages().isEmpty()) {
+              auto *emptyLbl = new QLabel(QStringLiteral("Dil eklenmedi"), autoLangsContainer);
+              emptyLbl->setStyleSheet(QStringLiteral("color: #7b8c9d; font-size: 13px; padding-left: 18px; padding-top: 4px; padding-bottom: 8px;"));
+              autoLangsLayout->addWidget(emptyLbl);
+            }
+          }
+        });
+        h->addWidget(delBtn, 0, Qt::AlignVCenter);
+        autoLangsLayout->addWidget(row);
+      }
+    }
+  };
+
+  // Never-translate list refresher
+  auto refreshNeverTranslateList = [neverLangsContainer, neverLangsLayout, translateSvc]() {
+    while (QLayoutItem *item = neverLangsLayout->takeAt(0)) {
+      delete item->widget();
+      delete item;
+    }
+    const QStringList neverLangs = translateSvc ? translateSvc->neverTranslateLanguages() : QStringList{QStringLiteral("tr")};
+    if (neverLangs.isEmpty()) {
+      auto *emptyLbl = new QLabel(QStringLiteral("Dil eklenmedi"), neverLangsContainer);
+      emptyLbl->setStyleSheet(QStringLiteral("color: #7b8c9d; font-size: 13px; padding-left: 18px; padding-top: 4px; padding-bottom: 8px;"));
+      neverLangsLayout->addWidget(emptyLbl);
+    } else {
+      for (const QString &code : neverLangs) {
+        auto *row = new QWidget(neverLangsContainer);
+        row->setObjectName(QStringLiteral("settings-row"));
+        auto *h = new QHBoxLayout(row);
+        h->setContentsMargins(18, 6, 18, 6);
+        auto *lbl = new QLabel(getLanguageDisplayName(code), row);
+        lbl->setObjectName(QStringLiteral("settings-row-title"));
+        h->addWidget(lbl, 1);
+
+        auto *delBtn = new QPushButton(QStringLiteral("🗑"), row);
+        delBtn->setObjectName(QStringLiteral("settings-icon-del-btn"));
+        delBtn->setToolTip(QStringLiteral("Kaldır"));
+        QObject::connect(delBtn, &QPushButton::clicked, [translateSvc, code, neverLangsContainer, neverLangsLayout]() {
+          if (translateSvc) {
+            translateSvc->removeNeverTranslateLanguage(code);
+            QSettings s;
+            translateSvc->savePreferences(s);
+            for (int i = 0; i < neverLangsLayout->count(); ++i) {
+              auto *w = neverLangsLayout->itemAt(i)->widget();
+              if (w) {
+                auto *l = w->findChild<QLabel *>();
+                if (l && l->text() == getLanguageDisplayName(code)) {
+                  delete neverLangsLayout->takeAt(i)->widget();
+                  break;
+                }
+              }
+            }
+            if (translateSvc->neverTranslateLanguages().isEmpty()) {
+              auto *emptyLbl = new QLabel(QStringLiteral("Dil eklenmedi"), neverLangsContainer);
+              emptyLbl->setStyleSheet(QStringLiteral("color: #7b8c9d; font-size: 13px; padding-left: 18px; padding-top: 4px; padding-bottom: 8px;"));
+              neverLangsLayout->addWidget(emptyLbl);
+            }
+          }
+        });
+        h->addWidget(delBtn, 0, Qt::AlignVCenter);
+        neverLangsLayout->addWidget(row);
+      }
+    }
+  };
+
+  (*refreshPreferredLangs)();
+  refreshAutoTranslateList();
+  refreshNeverTranslateList();
+
+  // Connections for Add Language buttons
+  connect(addLangBtn, &QPushButton::clicked, this, [this, preferredLangs, syncAcceptLanguage, refreshPreferredLangs]() {
+    AddLanguageDialog dlg(*preferredLangs, this);
+    if (dlg.exec() == QDialog::Accepted) {
+      for (const QString &c : dlg.selectedCodes()) {
+        if (!preferredLangs->contains(c)) preferredLangs->append(c);
+      }
+      QSettings s;
+      s.setValue(QStringLiteral("language/preferredLanguages"), *preferredLangs);
+      syncAcceptLanguage(*preferredLangs);
+      (*refreshPreferredLangs)();
+    }
+  });
+
+  connect(addAutoBtn, &QPushButton::clicked, this, [this, translateSvc, refreshAutoTranslateList]() {
+    const QStringList existing = translateSvc ? translateSvc->autoTranslateLanguages() : QStringList{};
+    AddLanguageDialog dlg(existing, this);
+    if (dlg.exec() == QDialog::Accepted) {
+      if (translateSvc) {
+        for (const QString &c : dlg.selectedCodes()) translateSvc->addAutoTranslateLanguage(c);
+        QSettings s;
+        translateSvc->savePreferences(s);
+        refreshAutoTranslateList();
+      }
+    }
+  });
+
+  connect(addNeverBtn, &QPushButton::clicked, this, [this, translateSvc, refreshNeverTranslateList]() {
+    const QStringList existing = translateSvc ? translateSvc->neverTranslateLanguages() : QStringList{};
+    AddLanguageDialog dlg(existing, this);
+    if (dlg.exec() == QDialog::Accepted) {
+      if (translateSvc) {
+        for (const QString &c : dlg.selectedCodes()) translateSvc->addNeverTranslateLanguage(c);
+        QSettings s;
+        translateSvc->savePreferences(s);
+        refreshNeverTranslateList();
+      }
+    }
+  });
+
+  connect(spellMasterSwitch, &QCheckBox::toggled, this, [this, spellLangsContainer, customDictRow](bool checked) {
+    if (profileService_ && profileService_->profile()) {
+      profileService_->profile()->setSpellCheckEnabled(checked);
+    }
+    QSettings s;
+    s.setValue(QStringLiteral("spellcheck/enabled"), checked);
+    spellLangsContainer->setEnabled(checked);
+    customDictRow->setEnabled(checked);
+  });
+
+  connect(transMasterSwitch, &QCheckBox::toggled, this, [translateSvc, targetCombo, addAutoBtn, autoLangsContainer, addNeverBtn, neverLangsContainer](bool checked) {
     if (translateSvc) {
       translateSvc->setEnabled(checked);
-      QSettings prefs;
-      translateSvc->savePreferences(prefs);
+      QSettings s;
+      translateSvc->savePreferences(s);
     }
+    targetCombo->setEnabled(checked);
+    addAutoBtn->setEnabled(checked);
+    autoLangsContainer->setEnabled(checked);
+    addNeverBtn->setEnabled(checked);
+    neverLangsContainer->setEnabled(checked);
   });
-  addRow(card, settingRow(card, QStringLiteral("Sayfa çevirisini etkinleştir"),
-                          QStringLiteral("Yabancı dildeki web siteleri açıldığında adres çubuğunda çeviri önerisi sunar."),
-                          enableCheck, BrowserIcon::Language, true));
 
-  // 2. Varsayılan hedef dil
-  auto *targetLangCombo = new QComboBox(card);
-  targetLangCombo->setObjectName(QStringLiteral("settings-translation-target-lang"));
-  targetLangCombo->addItem(QStringLiteral("Türkçe"), QStringLiteral("tr"));
-  targetLangCombo->addItem(QStringLiteral("İngilizce"), QStringLiteral("en"));
-  targetLangCombo->addItem(QStringLiteral("Almanca"), QStringLiteral("de"));
-  targetLangCombo->addItem(QStringLiteral("Fransızca"), QStringLiteral("fr"));
-  targetLangCombo->addItem(QStringLiteral("İspanyolca"), QStringLiteral("es"));
-  const QString currentTarget = translateSvc ? translateSvc->defaultTargetLanguage() : QStringLiteral("tr");
-  int langIdx = targetLangCombo->findData(currentTarget);
-  if (langIdx >= 0) targetLangCombo->setCurrentIndex(langIdx);
+  // =========================================================================
+  // 4. ÇEVİRİ SAĞLAYICISI VE API YAPILANDIRMASI
+  // =========================================================================
+  auto *configCard = makeCard(section.page, QStringLiteral("ÇEVİRİ SAĞLAYICISI VE API YAPILANDIRMASI"));
 
-  connect(targetLangCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [translateSvc, targetLangCombo](int idx) {
-    if (translateSvc) {
-      translateSvc->setDefaultTargetLanguage(targetLangCombo->itemData(idx).toString());
-      QSettings prefs;
-      translateSvc->savePreferences(prefs);
-    }
-  });
-  addRow(card, settingRow(card, QStringLiteral("Varsayılan hedef dil"),
-                          QStringLiteral("Web sayfalarının otomatik çevrileceği birincil dil."),
-                          targetLangCombo));
-
-  // 3. Çeviri sağlayıcısı seçimi
-  auto *providerCombo = new QComboBox(card);
+  auto *providerCombo = new QComboBox(configCard);
   providerCombo->setObjectName(QStringLiteral("settings-translation-provider"));
   providerCombo->addItem(QStringLiteral("Yapılandırılmamış"), QStringLiteral("none"));
   providerCombo->addItem(QStringLiteral("LibreTranslate"), QStringLiteral("libretranslate"));
@@ -2985,18 +3779,22 @@ QWidget *SettingsPage::createLanguagesSection() {
   providerCombo->addItem(QStringLiteral("Google Cloud Translation"), QStringLiteral("google_cloud"));
   providerCombo->addItem(QStringLiteral("Google Translate (Experimental / Unofficial)"), QStringLiteral("google_gtx"));
 
-  const QString currentProviderId = translateSvc ? translateSvc->providerId() : QStringLiteral("none");
+  QString currentProviderId = translateSvc ? translateSvc->providerId() : QStringLiteral("google_gtx");
+  if (currentProviderId == QLatin1String("none")) {
+    currentProviderId = QStringLiteral("google_gtx");
+    if (translateSvc) {
+      translateSvc->setProvider(currentProviderId);
+      QSettings prefs;
+      translateSvc->savePreferences(prefs);
+    }
+  }
   int pIdx = providerCombo->findData(currentProviderId);
   if (pIdx >= 0) providerCombo->setCurrentIndex(pIdx);
 
-  addRow(card, settingRow(card, QStringLiteral("Çeviri sağlayıcısı"),
-                          QStringLiteral("Sayfaların metinlerini çevirecek backend servisi."),
-                          providerCombo));
+  addRow(configCard, settingRow(configCard, QStringLiteral("Çeviri sağlayıcısı"),
+                                QStringLiteral("Sayfaların metinlerini çevirecek backend servisi."),
+                                providerCombo));
 
-  section.layout->addWidget(card);
-
-  // Dynamic Provider Config Cards (Stacked Widget)
-  auto *configCard = makeCard(section.page, QStringLiteral("SAĞLAYICI YAPILANDIRMASI"));
   auto *stacked = new QStackedWidget(configCard);
   stacked->setObjectName(QStringLiteral("settings-translation-config-stack"));
 
@@ -3098,7 +3896,6 @@ QWidget *SettingsPage::createLanguagesSection() {
   gtxLayout->addWidget(gtxNotice);
   stacked->addWidget(gtxPage);
 
-  // Update Stack based on combo
   const auto updateStack = [stacked, providerCombo]() {
     const QString p = providerCombo->currentData().toString();
     if (p == QLatin1String("libretranslate")) stacked->setCurrentIndex(1);
@@ -3110,7 +3907,6 @@ QWidget *SettingsPage::createLanguagesSection() {
 
   updateStack();
 
-  // Handle provider changes & auto-saving
   connect(providerCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [translateSvc, providerCombo, updateStack]() {
     updateStack();
     if (translateSvc) {
@@ -3154,7 +3950,6 @@ QWidget *SettingsPage::createLanguagesSection() {
     }
   });
 
-  // Test button connections
   connect(ltTestBtn, &QPushButton::clicked, this, [translateSvc, ltStatusLabel]() {
     ltStatusLabel->setText(QStringLiteral("⏳ Test ediliyor..."));
     if (translateSvc) {
@@ -3376,17 +4171,103 @@ QWidget *SettingsPage::createListeningSection() {
 }
 
 QWidget *SettingsPage::createAboutSection() {
-  Section section = makeSection(QStringLiteral("ArDaliBrowser hakkında"), QStringLiteral("Sürüm ve çalışma ortamı bilgileri."));
+  Section section = makeSection(QStringLiteral("ArDaliBrowser hakkında"), QStringLiteral("Sürüm, geliştirici ve çalışma ortamı bilgileri."));
   auto *card = makeCard(section.page);
-  auto *about = new QWidget(card); auto *layout = new QHBoxLayout(about); layout->setContentsMargins(24, 22, 24, 22); layout->setSpacing(20);
-  auto *logo = new QLabel(about); logo->setPixmap(qApp->windowIcon().pixmap(72, 72)); logo->setFixedSize(76, 76); logo->setAccessibleName(QStringLiteral("ArDaliBrowser logosu"));
+  auto *about = new QWidget(card);
+  auto *layout = new QHBoxLayout(about);
+  layout->setContentsMargins(24, 22, 24, 22);
+  layout->setSpacing(20);
+
+  auto *logo = new QLabel(about);
+  logo->setPixmap(qApp->windowIcon().pixmap(72, 72));
+  logo->setFixedSize(76, 76);
+  logo->setAccessibleName(QStringLiteral("ArDaliBrowser logosu"));
+
   QString engine = QStringLiteral("Qt WebEngine (Chromium tabanlı)");
-  const QRegularExpressionMatch match = QRegularExpression(QStringLiteral("Chrome/([0-9.]+)")).match(profileService_->profile()->httpUserAgent());
-  if (match.hasMatch()) engine = QStringLiteral("Chromium %1").arg(match.captured(1));
-  auto *details = new QLabel(QStringLiteral("<h2>ArDaliBrowser</h2><p>Sürüm: %1<br>Tarayıcı motoru: %2<br>Qt sürümü: %3</p>").arg(QStringLiteral(ARDALI_BROWSER_VERSION), engine, QString::fromLatin1(qVersion())), about);
-  details->setObjectName(QStringLiteral("settings-heading")); details->setWordWrap(true); details->setTextInteractionFlags(Qt::TextSelectableByMouse);
-  layout->addWidget(logo, 0, Qt::AlignTop); layout->addWidget(details, 1); addRow(card, about);
-  section.layout->addWidget(card); section.layout->addStretch(); return section.page;
+  if (profileService_ && profileService_->profile()) {
+    const QRegularExpressionMatch match = QRegularExpression(QStringLiteral("Chrome/([0-9.]+)")).match(profileService_->profile()->httpUserAgent());
+    if (match.hasMatch()) engine = QStringLiteral("Chromium %1").arg(match.captured(1));
+  }
+
+  auto *details = new QLabel(
+      QStringLiteral("<h2>ArDaliBrowser</h2>"
+                     "<p style='line-height: 1.6; font-size: 13px;'>"
+                     "<b>Sürüm:</b> %1<br>"
+                     "<b>Tarayıcı motoru:</b> %2<br>"
+                     "<b>Qt sürümü:</b> %3<br>"
+                     "<b>Geliştirici:</b> Muhammed Dali<br>"
+                     "<b>GitHub:</b> <a style='color: #58a6ff; text-decoration: none; font-weight: 600;' href='https://github.com/Muhammed-Dali'>github.com/Muhammed-Dali</a><br>"
+                     "<b>Proje Kaynak Kodu:</b> <a style='color: #58a6ff; text-decoration: none; font-weight: 600;' href='https://github.com/Muhammed-Dali/ArDali-Browser'>github.com/Muhammed-Dali/ArDali-Browser</a>"
+                     "</p>")
+          .arg(QStringLiteral(ARDALI_BROWSER_VERSION), engine, QString::fromLatin1(qVersion())),
+      about);
+  details->setObjectName(QStringLiteral("settings-heading"));
+  details->setWordWrap(true);
+  details->setTextInteractionFlags(Qt::TextBrowserInteraction);
+  details->setOpenExternalLinks(true);
+
+  layout->addWidget(logo, 0, Qt::AlignTop);
+  layout->addWidget(details, 1);
+  addRow(card, about);
+  section.layout->addWidget(card);
+
+  // GitHub Hızlı Bağlantılar Kartı
+  auto *linksCard = makeCard(section.page, QStringLiteral("GELİŞTİRİCİ & AÇIK KAYNAK"));
+  auto *btnContainer = new QWidget(linksCard);
+  auto *btnLayout = new QHBoxLayout(btnContainer);
+  btnLayout->setContentsMargins(18, 12, 18, 14);
+  btnLayout->setSpacing(12);
+
+  auto *profileBtn = new QPushButton(QStringLiteral("  Muhammed Dali (GitHub Profili)"), linksCard);
+  profileBtn->setIcon(BrowserIcons::icon(BrowserIcon::Privacy));
+  profileBtn->setCursor(Qt::PointingHandCursor);
+  profileBtn->setStyleSheet(QStringLiteral(
+      "QPushButton {"
+      "  background-color: #21262d;"
+      "  color: #c9d1d9;"
+      "  border: 1px solid #30363d;"
+      "  border-radius: 8px;"
+      "  padding: 8px 16px;"
+      "  font-weight: 600;"
+      "  font-size: 13px;"
+      "}"
+      "QPushButton:hover {"
+      "  background-color: #30363d;"
+      "  color: #ffffff;"
+      "  border-color: #8b949e;"
+      "}"));
+  connect(profileBtn, &QPushButton::clicked, this, [] {
+    QDesktopServices::openUrl(QUrl(QStringLiteral("https://github.com/Muhammed-Dali")));
+  });
+
+  auto *repoBtn = new QPushButton(QStringLiteral("  ArDali-Browser GitHub Deposu"), linksCard);
+  repoBtn->setIcon(BrowserIcons::icon(BrowserIcon::Save));
+  repoBtn->setCursor(Qt::PointingHandCursor);
+  repoBtn->setStyleSheet(QStringLiteral(
+      "QPushButton {"
+      "  background-color: #1f6feb;"
+      "  color: #ffffff;"
+      "  border: 1px solid #388bfd;"
+      "  border-radius: 8px;"
+      "  padding: 8px 16px;"
+      "  font-weight: 600;"
+      "  font-size: 13px;"
+      "}"
+      "QPushButton:hover {"
+      "  background-color: #388bfd;"
+      "}"));
+  connect(repoBtn, &QPushButton::clicked, this, [] {
+    QDesktopServices::openUrl(QUrl(QStringLiteral("https://github.com/Muhammed-Dali/ArDali-Browser")));
+  });
+
+  btnLayout->addWidget(profileBtn);
+  btnLayout->addWidget(repoBtn);
+  btnLayout->addStretch();
+  addRow(linksCard, btnContainer);
+
+  section.layout->addWidget(linksCard);
+  section.layout->addStretch();
+  return section.page;
 }
 
 void SettingsPage::applyFilter(const QString &query) {

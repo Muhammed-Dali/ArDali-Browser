@@ -31,6 +31,19 @@ class TranslateService : public QObject {
   QString defaultTargetLanguage() const { return defaultTargetLanguage_; }
   void setDefaultTargetLanguage(const QString &lang);
 
+  QStringList autoTranslateLanguages() const { return autoTranslateLanguages_; }
+  void setAutoTranslateLanguages(const QStringList &langs);
+  void addAutoTranslateLanguage(const QString &lang);
+  void removeAutoTranslateLanguage(const QString &lang);
+
+  QStringList neverTranslateLanguages() const { return neverTranslateLanguages_; }
+  void setNeverTranslateLanguages(const QStringList &langs);
+  void addNeverTranslateLanguage(const QString &lang);
+  void removeNeverTranslateLanguage(const QString &lang);
+
+  bool shouldAutoTranslate(const QString &sourceLang) const;
+  bool shouldNeverTranslate(const QString &sourceLang) const;
+
   QString providerId() const { return providerId_; }
   void setProvider(const QString &id);
 
@@ -69,6 +82,8 @@ class TranslateService : public QObject {
 
   bool enabled_ = true;
   QString defaultTargetLanguage_ = QStringLiteral("tr");
+  QStringList autoTranslateLanguages_;
+  QStringList neverTranslateLanguages_{QStringLiteral("tr")};
   QString providerId_ = QStringLiteral("none");
 
   QUrl libreTranslateEndpoint_;

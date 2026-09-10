@@ -6,6 +6,11 @@
 #include "core/search_suggestion_service.h"
 #include "core/search_engine_definition.h"
 #include "browser_window.h"
+#include "i18n/i18n.h"
+#include "i18n/language_manager.h"
+
+using ardali::i18n::LanguageManager;
+using ardali::i18n::I18n;
 
 #include <QApplication>
 #include <QHBoxLayout>
@@ -14,7 +19,11 @@
 #include <QLineEdit>
 #include <QMenu>
 #include <QAction>
+#include <QClipboard>
+#include <QContextMenuEvent>
+#include <QWebEngineContextMenuRequest>
 #include <QMessageBox>
+#include <QInputDialog>
 #include <QMouseEvent>
 #include <QProgressBar>
 #include <QStackedWidget>
@@ -79,7 +88,8 @@ static std::atomic<uint64_t> s_tabIdSequence{1};
 bool isNewTabUrl(const QUrl &url) {
   const QString scheme = url.scheme().toLower();
   const QString host = url.host().toLower();
-  return scheme == QLatin1String("ardali") && host == QLatin1String("newtab") &&
+  return scheme == QLatin1String("ardali") &&
+      (host == QLatin1String("newtab") || host == QLatin1String("incognito")) &&
       (url.path().isEmpty() || url.path() == QLatin1String("/")) &&
       !url.hasQuery() && !url.hasFragment() && url.userInfo().isEmpty() && url.port() == -1;
 }
@@ -507,8 +517,229 @@ class BrowserWebPage final : public QWebEnginePage {
     scripts().insert(script);
   }
 
+  QWebEnginePage *createWindow(WebWindowType type) override {
+    if (!window_) return nullptr;
+    if (type == WebBrowserWindow) {
+      auto *newWin = new BrowserWindow(window_->services());
+      newWin->addNewTab();
+      newWin->show();
+      return newWin->currentView() ? newWin->currentView()->page() : nullptr;
+    }
+    int newIdx = window_->addNewTab();
+    if (newIdx >= 0 && newIdx < window_->tabCount()) {
+      auto v = window_->allTabs()[newIdx].view;
+      if (v) return v->page();
+    }
+    return nullptr;
+  }
+
   QPointer<BrowserWindow> window_;
   std::function<void(bool, bool)> onMediaCaptureChanged_;
+};
+
+class BrowserWebView final : public QWebEngineView {
+ public:
+  explicit BrowserWebView(BrowserWindow *window, QWidget *parent = nullptr)
+      : QWebEngineView(parent), window_(window) {}
+
+ protected:
+  void contextMenuEvent(QContextMenuEvent *event) override {
+    const auto *req = lastContextMenuRequest();
+    if (req && !req->linkUrl().isEmpty() && req->linkUrl().isValid()) {
+      showLinkContextMenu(req->linkUrl(), req->linkText(), event->globalPos());
+      event->accept();
+      return;
+    }
+    if (req && !req->selectedText().trimmed().isEmpty()) {
+      showSelectionContextMenu(req->selectedText().trimmed(), event->globalPos());
+      event->accept();
+      return;
+    }
+    showPageContextMenu(event->globalPos());
+    event->accept();
+  }
+
+ private:
+  void showLinkContextMenu(const QUrl &linkUrl, const QString &linkText, const QPoint &globalPos) {
+    QMenu menu(this);
+    menu.setStyleSheet(QStringLiteral(
+        "QMenu { background-color: #1b232d; color: #e8eef5; border: 1px solid #3a4857; border-radius: 9px; padding: 6px 4px; font-size: 13px; }"
+        "QMenu::item { min-height: 25px; padding: 4px 26px 4px 12px; border-radius: 6px; margin: 1px 3px; }"
+        "QMenu::item:selected { background-color: #2b3947; color: #ffffff; }"
+        "QMenu::item:disabled { color: #6f7b87; background-color: transparent; }"
+        "QMenu::separator { height: 1px; background-color: #33404d; margin: 5px 8px; }"
+        "QMenu::icon { padding-left: 6px; }"
+    ));
+
+    // 1. Bağlantıyı yeni sekmede aç
+    QAction *openTabAct = menu.addAction(BrowserIcons::icon(BrowserIcon::NewTab), I18n::text(QStringLiteral("context.open_link_tab"), QStringLiteral("Bağlantıyı yeni sekmede aç")));
+    QObject::connect(openTabAct, &QAction::triggered, [this, linkUrl] {
+      if (window_) {
+        int nextSlot = window_->tabStrip() ? window_->tabStrip()->currentIndex() + 1 : -1;
+        window_->addNewTab(linkUrl, nextSlot);
+      }
+    });
+
+    // 2. Bağlantıyı yeni pencerede aç
+    QAction *openWinAct = menu.addAction(BrowserIcons::icon(BrowserIcon::Window), I18n::text(QStringLiteral("context.open_link_window"), QStringLiteral("Bağlantıyı yeni pencerede aç")));
+    QObject::connect(openWinAct, &QAction::triggered, [this, linkUrl] {
+      if (window_) {
+        auto *newWin = new BrowserWindow(window_->services());
+        newWin->addNewTab(linkUrl);
+        newWin->show();
+      }
+    });
+
+    // 3. Bağlantıyı bölünmüş görünümde aç
+    QAction *splitAct = menu.addAction(BrowserIcons::icon(BrowserIcon::Cards), I18n::text(QStringLiteral("context.open_link_split"), QStringLiteral("Bağlantıyı bölünmüş görünümde aç")));
+    splitAct->setEnabled(false);
+
+    // 4. Bağlantıyı Gizli pencerede aç
+    QAction *incognitoAct = menu.addAction(BrowserIcons::icon(BrowserIcon::Incognito), I18n::text(QStringLiteral("context.open_link_incognito"), QStringLiteral("Bağlantıyı Gizli pencerede aç")));
+    QObject::connect(incognitoAct, &QAction::triggered, [this, linkUrl] {
+      if (window_) {
+        window_->openIncognitoWindow(linkUrl);
+      }
+    });
+
+    // 5. Bağlantıyı farklı aç
+    QAction *openAsAct = menu.addAction(I18n::text(QStringLiteral("context.open_link_as"), QStringLiteral("Bağlantıyı farklı aç")));
+    openAsAct->setEnabled(false);
+
+    menu.addSeparator();
+
+    // 6. Bağlantıyı farklı kaydet...
+    QAction *saveAct = menu.addAction(BrowserIcons::icon(BrowserIcon::Save), I18n::text(QStringLiteral("context.save_link_as"), QStringLiteral("Bağlantıyı farklı kaydet...")));
+    QObject::connect(saveAct, &QAction::triggered, [this, linkUrl] {
+      if (page()) {
+        page()->download(linkUrl);
+      }
+    });
+
+    // 7. Bağlantı adresini kopyala
+    QAction *copyAct = menu.addAction(BrowserIcons::icon(BrowserIcon::Clipboard), I18n::text(QStringLiteral("context.copy_link_address"), QStringLiteral("Bağlantı adresini kopyala")));
+    QObject::connect(copyAct, &QAction::triggered, [linkUrl] {
+      QGuiApplication::clipboard()->setText(linkUrl.toString());
+    });
+
+    // 8. Bağlantıyı okuma listesine ekle
+    QAction *readingListAct = menu.addAction(BrowserIcons::icon(BrowserIcon::Bookmark), I18n::text(QStringLiteral("context.add_link_reading_list"), QStringLiteral("Bağlantıyı okuma listesine ekle")));
+    QObject::connect(readingListAct, &QAction::triggered, [this, linkUrl] {
+      if (window_ && window_->services().profileService) {
+        window_->services().profileService->toggleBookmark(linkUrl);
+        window_->updateBookmarkButtonState();
+        window_->renderBookmarks();
+      }
+    });
+
+    menu.addSeparator();
+
+    // 9. İncele
+    QAction *inspectAct = menu.addAction(BrowserIcons::icon(BrowserIcon::Tools), I18n::text(QStringLiteral("context.inspect"), QStringLiteral("İncele")));
+    QObject::connect(inspectAct, &QAction::triggered, [this] {
+      if (window_ && page()) {
+        window_->openDevToolsForPage(page());
+      }
+    });
+
+    menu.exec(globalPos);
+  }
+
+  void showSelectionContextMenu(const QString &selectedText, const QPoint &globalPos) {
+    QMenu menu(this);
+    menu.setStyleSheet(QStringLiteral(
+        "QMenu { background-color: #1b232d; color: #e8eef5; border: 1px solid #3a4857; border-radius: 9px; padding: 6px 4px; font-size: 13px; }"
+        "QMenu::item { min-height: 25px; padding: 4px 26px 4px 12px; border-radius: 6px; margin: 1px 3px; }"
+        "QMenu::item:selected { background-color: #2b3947; color: #ffffff; }"
+        "QMenu::item:disabled { color: #6f7b87; background-color: transparent; }"
+        "QMenu::separator { height: 1px; background-color: #33404d; margin: 5px 8px; }"
+        "QMenu::icon { padding-left: 6px; }"
+    ));
+
+    QAction *copyAct = menu.addAction(BrowserIcons::icon(BrowserIcon::Clipboard), I18n::text(QStringLiteral("context.copy"), QStringLiteral("Kopyala")));
+    copyAct->setShortcut(QKeySequence::Copy);
+    QObject::connect(copyAct, &QAction::triggered, [selectedText] {
+      QGuiApplication::clipboard()->setText(selectedText);
+    });
+
+    const QString engine = window_ ? window_->currentSearchEngine() : QStringLiteral("Google");
+    const QString truncated = selectedText.length() > 24 ? selectedText.left(21) + QStringLiteral("...") : selectedText;
+    QAction *searchAct = menu.addAction(BrowserIcons::icon(BrowserIcon::Search),
+                                        I18n::text(QStringLiteral("context.search_for"), QStringLiteral("%1 ile \"%2\" ara")).arg(engine, truncated));
+    QObject::connect(searchAct, &QAction::triggered, [this, selectedText] {
+      if (window_) {
+        int nextSlot = window_->tabStrip() ? window_->tabStrip()->currentIndex() + 1 : -1;
+        window_->addNewTab(QUrl(QStringLiteral("ardali://newtab/")), nextSlot);
+        window_->navigateFromUserInput(selectedText);
+      }
+    });
+
+    menu.addSeparator();
+
+    QAction *inspectAct = menu.addAction(BrowserIcons::icon(BrowserIcon::Tools), I18n::text(QStringLiteral("context.inspect"), QStringLiteral("İncele")));
+    QObject::connect(inspectAct, &QAction::triggered, [this] {
+      if (window_ && page()) {
+        window_->openDevToolsForPage(page());
+      }
+    });
+
+    menu.exec(globalPos);
+  }
+
+  void showPageContextMenu(const QPoint &globalPos) {
+    QMenu menu(this);
+    menu.setStyleSheet(QStringLiteral(
+        "QMenu { background-color: #1b232d; color: #e8eef5; border: 1px solid #3a4857; border-radius: 9px; padding: 6px 4px; font-size: 13px; }"
+        "QMenu::item { min-height: 25px; padding: 4px 26px 4px 12px; border-radius: 6px; margin: 1px 3px; }"
+        "QMenu::item:selected { background-color: #2b3947; color: #ffffff; }"
+        "QMenu::item:disabled { color: #6f7b87; background-color: transparent; }"
+        "QMenu::separator { height: 1px; background-color: #33404d; margin: 5px 8px; }"
+        "QMenu::icon { padding-left: 6px; }"
+    ));
+
+    QAction *backAct = menu.addAction(BrowserIcons::icon(BrowserIcon::ArrowLeft), I18n::text(QStringLiteral("context.back"), QStringLiteral("Geri")));
+    backAct->setEnabled(history() ? history()->canGoBack() : false);
+    QObject::connect(backAct, &QAction::triggered, this, &QWebEngineView::back);
+
+    QAction *forwardAct = menu.addAction(I18n::text(QStringLiteral("context.forward"), QStringLiteral("İleri")));
+    forwardAct->setEnabled(history() ? history()->canGoForward() : false);
+    QObject::connect(forwardAct, &QAction::triggered, this, &QWebEngineView::forward);
+
+    QAction *reloadAct = menu.addAction(I18n::text(QStringLiteral("context.reload"), QStringLiteral("Yeniden Yükle")));
+    reloadAct->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_R));
+    QObject::connect(reloadAct, &QAction::triggered, this, &QWebEngineView::reload);
+
+    menu.addSeparator();
+
+    QAction *savePageAct = menu.addAction(BrowserIcons::icon(BrowserIcon::Save), I18n::text(QStringLiteral("context.save_page_as"), QStringLiteral("Farklı kaydet...")));
+    savePageAct->setShortcut(QKeySequence::Save);
+    QObject::connect(savePageAct, &QAction::triggered, [this] {
+      if (page()) page()->triggerAction(QWebEnginePage::SavePage);
+    });
+
+    QAction *printAct = menu.addAction(BrowserIcons::icon(BrowserIcon::Print), I18n::text(QStringLiteral("context.print"), QStringLiteral("Yazdır...")));
+    printAct->setShortcut(QKeySequence::Print);
+    printAct->setEnabled(false);
+
+    menu.addSeparator();
+
+    QAction *viewSourceAct = menu.addAction(I18n::text(QStringLiteral("context.view_source"), QStringLiteral("Sayfa kaynağını görüntüle")));
+    viewSourceAct->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_U));
+    QObject::connect(viewSourceAct, &QAction::triggered, [this] {
+      if (page()) page()->triggerAction(QWebEnginePage::ViewSource);
+    });
+
+    QAction *inspectAct = menu.addAction(BrowserIcons::icon(BrowserIcon::Tools), I18n::text(QStringLiteral("context.inspect"), QStringLiteral("İncele")));
+    QObject::connect(inspectAct, &QAction::triggered, [this] {
+      if (window_ && page()) {
+        window_->openDevToolsForPage(page());
+      }
+    });
+
+    menu.exec(globalPos);
+  }
+
+  QPointer<BrowserWindow> window_;
 };
 }  // namespace
 
@@ -868,6 +1099,10 @@ void BrowserWindow::setupUi() {
     bookmarkBar_->layout()->setContentsMargins(6, 0, 6, 0);
     bookmarkBar_->layout()->setSpacing(3);
   }
+  bookmarkBar_->setContextMenuPolicy(Qt::CustomContextMenu);
+  connect(bookmarkBar_, &QWidget::customContextMenuRequested, this, [this](const QPoint &pos) {
+    showBookmarkContextMenu(QUrl(), QString(), bookmarkBar_->mapToGlobal(pos));
+  });
   rootLayout->addWidget(bookmarkBar_);
 
   // Seed default bookmarks if empty on startup
@@ -1179,6 +1414,45 @@ void BrowserWindow::setupTabStripSignals() {
     ardali::desktop_tabs::TabDragController::instance().handleMousePress(
         this, tabStrip_, index, screenPosition, pressOffsetInTab, offsetInWindow);
   });
+
+  connect(tabStrip_, &ardali::desktop_tabs::TabStripWidget::tabContextMenuRequested,
+          this, &BrowserWindow::onTabContextMenuRequested);
+
+  connect(&LanguageManager::instance(), &LanguageManager::languageChanged,
+          this, &BrowserWindow::retranslateUi);
+  retranslateUi();
+}
+
+void BrowserWindow::retranslateUi() {
+  if (backBtn_) {
+    backBtn_->setToolTip(I18n::text(QStringLiteral("toolbar.back"), QStringLiteral("Geri (Alt+Sol)")));
+  }
+  if (forwardBtn_) {
+    forwardBtn_->setToolTip(I18n::text(QStringLiteral("toolbar.forward"), QStringLiteral("İleri (Alt+Sağ)")));
+  }
+  if (reloadBtn_) {
+    reloadBtn_->setToolTip(I18n::text(QStringLiteral("toolbar.reload"), QStringLiteral("Yenile (Ctrl+R)")));
+  }
+  if (zoomButton_) {
+    zoomButton_->setToolTip(I18n::text(QStringLiteral("toolbar.zoom"), QStringLiteral("Sayfa yakınlaştırma")));
+  }
+  if (translateButton_) {
+    translateButton_->setToolTip(I18n::text(QStringLiteral("toolbar.translate_page"), QStringLiteral("Bu sayfayı çevir")));
+  }
+  if (passwordsBtn_) {
+    passwordsBtn_->setToolTip(I18n::text(QStringLiteral("toolbar.passwords"), QStringLiteral("Şifre Yöneticisi")));
+  }
+  if (mainMenuBtn_) {
+    mainMenuBtn_->setToolTip(I18n::text(QStringLiteral("toolbar.main_menu"), QStringLiteral("Ana menü")));
+  }
+  if (omnibox_) {
+    // Keep Omnibox / address bar / URL input strictly LeftToRight even in RTL languages
+    omnibox_->setLayoutDirection(Qt::LeftToRight);
+    omnibox_->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
+  }
+  updateBookmarkButtonState();
+  updateBlockerControls();
+  updateOmniboxLeadingIcon();
 }
 
 void BrowserWindow::prepareAdBlockScripts(QWebEnginePage *page, const QUrl &url, bool force) {
@@ -1236,7 +1510,7 @@ int BrowserWindow::addNewTab(const QUrl &url, int insertIndex) {
     if (host == QLatin1String("listen-settings")) { showSongFinderSettings(); return tabStrip_->currentIndex(); }
   }
 
-  auto *view = new QWebEngineView(pageStack_);
+  auto *view = new BrowserWebView(this, pageStack_);
   auto *page = new BrowserWebPage(services_.profile ? services_.profile : QWebEngineProfile::defaultProfile(), this, view);
   view->setPage(page);
 
@@ -1288,11 +1562,11 @@ int BrowserWindow::addNewTab(const QUrl &url, int insertIndex) {
   const uint64_t tabId = s_tabIdSequence.fetch_add(1);
   BrowserTabInfo info;
   info.id = tabId;
-  info.title = QStringLiteral("Yeni Sekme");
+  info.title = isIncognito() ? QStringLiteral("Yeni Gizli Sekme") : QStringLiteral("Yeni Sekme");
   info.url = targetUrl;
   info.view = view;
   info.isInternal = false;
-  info.icon = BrowserIcons::appIcon();
+  info.icon = isIncognito() ? BrowserIcons::incognitoIcon() : BrowserIcons::appIcon();
   info.uuid = services_.tabManager
       ? services_.tabManager->registerTab(view, this, false, info.title)
       : QUuid::createUuid();
@@ -1327,7 +1601,7 @@ int BrowserWindow::addNewTab(const QUrl &url, int insertIndex) {
 
   tabs_.insert(index, info);
   pageStack_->insertWidget(index, view);
-  tabStrip_->insertTab(index, tabId, info.title, info.icon);
+  tabStrip_->insertTab(index, tabId, info.title, info.icon, info.isPinned);
 
   prepareAdBlockScripts(view->page(), targetUrl);
   view->load(targetUrl);
@@ -1617,7 +1891,7 @@ void BrowserWindow::adoptTab(BrowserTabInfo info, int targetIndex) {
     pageStack_->insertWidget(idx, info.content);
   }
 
-  tabStrip_->insertTab(idx, info.id, info.title, info.icon);
+  tabStrip_->insertTab(idx, info.id, info.title, info.icon, info.isPinned);
   if (info.groupId.has_value() && groupModel_ && groupModel_->hasGroup(*info.groupId)) {
     groupModel_->setTabGroup(info.id, *info.groupId);
   }
@@ -1654,7 +1928,11 @@ void BrowserWindow::wireViewSignals(QWebEngineView *view, uint64_t tabId) {
   connect(view, &QWebEngineView::titleChanged, this, [this, tabId, view](const QString &title) {
     const int idx = findIndexByTabId(tabId);
     if (idx >= 0 && tabs_[idx].view == view) {
-      tabs_[idx].title = title.isEmpty() ? QStringLiteral("Yeni Sekme") : title;
+      if (title.isEmpty() || isNewTabUrl(view->url()) || title == QLatin1String("Yeni Sekme")) {
+        tabs_[idx].title = isIncognito() ? QStringLiteral("Yeni Gizli Sekme") : QStringLiteral("Yeni Sekme");
+      } else {
+        tabs_[idx].title = title;
+      }
       tabStrip_->setTabText(idx, tabs_[idx].title);
       if (services_.tabManager && !tabs_[idx].uuid.isNull()) {
         services_.tabManager->updateTitle(tabs_[idx].uuid, tabs_[idx].title);
@@ -1693,7 +1971,7 @@ void BrowserWindow::wireViewSignals(QWebEngineView *view, uint64_t tabId) {
         tabs_[idx].icon = icon;
         TabThrobber::instance().cacheFavicon(view, icon);
       } else {
-        tabs_[idx].icon = BrowserIcons::appIcon();
+        tabs_[idx].icon = isIncognito() ? BrowserIcons::incognitoIcon() : BrowserIcons::appIcon();
       }
       if (!TabThrobber::instance().isLoading(view)) {
         tabStrip_->setTabIcon(idx, tabs_[idx].icon);
@@ -1733,7 +2011,7 @@ void BrowserWindow::wireViewSignals(QWebEngineView *view, uint64_t tabId) {
       }
 #endif
       if (isNewTabUrl(url) || url.isEmpty()) {
-        tabs_[idx].icon = BrowserIcons::appIcon();
+        tabs_[idx].icon = isIncognito() ? BrowserIcons::incognitoIcon() : BrowserIcons::appIcon();
         tabStrip_->setTabIcon(idx, tabs_[idx].icon);
       }
       if (!isNewTabUrl(url) && url.scheme() != QLatin1String("ardali") && url.isValid()) {
@@ -1814,7 +2092,9 @@ void BrowserWindow::wireViewSignals(QWebEngineView *view, uint64_t tabId) {
         QIcon finalIcon;
         if (!cachedLoadIcon.isNull()) {
           finalIcon = cachedLoadIcon;
-        } else if (!tabs_[idx].icon.isNull() && tabs_[idx].icon.cacheKey() != BrowserIcons::appIcon().cacheKey()) {
+        } else if (!tabs_[idx].icon.isNull() &&
+                   tabs_[idx].icon.cacheKey() != BrowserIcons::appIcon().cacheKey() &&
+                   tabs_[idx].icon.cacheKey() != BrowserIcons::incognitoIcon().cacheKey()) {
           finalIcon = tabs_[idx].icon;
         } else {
           const QIcon pIcon = platformIconForBookmark(view->url());
@@ -1826,7 +2106,7 @@ void BrowserWindow::wireViewSignals(QWebEngineView *view, uint64_t tabId) {
         if (!finalIcon.isNull()) {
           tabs_[idx].icon = finalIcon;
         } else {
-          tabs_[idx].icon = BrowserIcons::appIcon();
+          tabs_[idx].icon = isIncognito() ? BrowserIcons::incognitoIcon() : BrowserIcons::appIcon();
         }
         tabStrip_->setTabIcon(idx, tabs_[idx].icon);
 
@@ -1849,7 +2129,7 @@ void BrowserWindow::wireViewSignals(QWebEngineView *view, uint64_t tabId) {
           });
         }
       } else {
-        tabs_[idx].icon = BrowserIcons::appIcon();
+        tabs_[idx].icon = isIncognito() ? BrowserIcons::incognitoIcon() : BrowserIcons::appIcon();
         tabStrip_->setTabIcon(idx, tabs_[idx].icon);
       }
 
@@ -2692,7 +2972,9 @@ void BrowserWindow::updateBookmarkButtonState() {
   const QUrl url = currentView() ? currentView()->url() : (tabStrip_->currentIndex() >= 0 && tabStrip_->currentIndex() < tabs_.size() ? tabs_[tabStrip_->currentIndex()].url : QUrl{});
   const bool bookmarked = services_.profileService && !isNewTabUrl(url) && url.isValid() && services_.profileService->isBookmarked(url);
   bookmarkBtn_->setIcon(bookmarkIcon(bookmarked));
-  bookmarkBtn_->setToolTip(bookmarked ? QStringLiteral("Yer imi kaldır") : QStringLiteral("Yer imi ekle"));
+  bookmarkBtn_->setToolTip(bookmarked
+      ? I18n::text(QStringLiteral("toolbar.bookmark_remove"), QStringLiteral("Yer imi kaldır"))
+      : I18n::text(QStringLiteral("toolbar.bookmark_add"), QStringLiteral("Yer imi ekle")));
 }
 
 void BrowserWindow::updateBlockerControls() {
@@ -2709,7 +2991,7 @@ void BrowserWindow::updateBlockerControls() {
     adBlockShield_->setInternalPage(true);
     adBlockShield_->setActiveHost(QString());
     adBlockShield_->setBlockedCount(0);
-    adBlockShield_->setToolTip(QStringLiteral("ArDali Koruma (Reklam Engelleyici)"));
+    adBlockShield_->setToolTip(I18n::text(QStringLiteral("toolbar.adblock"), QStringLiteral("ArDali Koruma (Reklam Engelleyici)")));
     return;
   }
 
@@ -2726,11 +3008,11 @@ void BrowserWindow::updateBlockerControls() {
     const quint64 total = stats.totalBlocked();
     adBlockShield_->setBlockedCount(total);
     adBlockShield_->setToolTip(total > 0
-        ? QStringLiteral("ArDali Koruma: %1 (%2 öğe engellendi)").arg(host).arg(total)
-        : QStringLiteral("ArDali Koruma: %1 (Etkin)").arg(host));
+        ? I18n::text(QStringLiteral("toolbar.adblock_status"), QStringLiteral("ArDali Koruma: %1")).arg(host) + QStringLiteral(" (") + I18n::text(QStringLiteral("toolbar.adblock_blocked_count"), QStringLiteral("%1 öğe engellendi")).arg(total) + QStringLiteral(")")
+        : I18n::text(QStringLiteral("toolbar.adblock_status"), QStringLiteral("ArDali Koruma: %1")).arg(host));
   } else {
     adBlockShield_->setBlockedCount(0);
-    adBlockShield_->setToolTip(QStringLiteral("ArDali Koruma: %1").arg(host));
+    adBlockShield_->setToolTip(I18n::text(QStringLiteral("toolbar.adblock_status"), QStringLiteral("ArDali Koruma: %1")).arg(host));
   }
 }
 
@@ -2757,6 +3039,12 @@ void BrowserWindow::renderBookmarks() {
   appsBtn_->setIconSize(QSize(Metrics::bookmarkIconSize,
                               Metrics::bookmarkIconSize));
   appsBtn_->setAutoRaise(true);
+  const bool showTabGroups = QSettings().value(QStringLiteral("browser/showTabGroupsOnBookmarkBar"), true).toBool();
+  appsBtn_->setVisible(showTabGroups);
+  appsBtn_->setContextMenuPolicy(Qt::CustomContextMenu);
+  connect(appsBtn_, &QWidget::customContextMenuRequested, this, [this](const QPoint &pos) {
+    showBookmarkContextMenu(QUrl(), QString(), appsBtn_->mapToGlobal(pos));
+  });
   connect(appsBtn_, &QToolButton::clicked, this, &BrowserWindow::toggleTabGroupLauncher);
   bookmarkBar_->addWidget(appsBtn_);
 
@@ -2764,6 +3052,7 @@ void BrowserWindow::renderBookmarks() {
   for (const QUrl &url : services_.profileService->bookmarks()) {
     const QString title = bookmarkDisplayName(url);
     auto *item = new QWidget(bookmarkBar_);
+    item->setContextMenuPolicy(Qt::CustomContextMenu);
     auto *itemLayout = new QHBoxLayout(item);
     itemLayout->setContentsMargins(0, 0, 0, 0);
     itemLayout->setSpacing(0);
@@ -2777,6 +3066,15 @@ void BrowserWindow::renderBookmarks() {
     btn->setIconSize(QSize(Metrics::bookmarkIconSize, Metrics::bookmarkIconSize));
     btn->setFixedHeight(Metrics::bookmarkButtonHeight);
     btn->setCursor(Qt::PointingHandCursor);
+    btn->setContextMenuPolicy(Qt::CustomContextMenu);
+
+    connect(btn, &QWidget::customContextMenuRequested, this, [this, url, title, btn](const QPoint &pos) {
+      showBookmarkContextMenu(url, title, btn->mapToGlobal(pos));
+    });
+    connect(item, &QWidget::customContextMenuRequested, this, [this, url, title, item](const QPoint &pos) {
+      showBookmarkContextMenu(url, title, item->mapToGlobal(pos));
+    });
+
     auto *remove = new QToolButton(item);
     remove->setObjectName(QStringLiteral("bookmarkRemoveButton"));
     remove->setIcon(BrowserIcons::icon(BrowserIcon::Close));
@@ -2877,37 +3175,37 @@ void BrowserWindow::showMainMenu() {
   QMenu menu(this);
   menu.setStyleSheet(QStringLiteral("QMenu{background:#1b232d;color:#e8eef5;border:1px solid #3a4857;border-radius:9px;padding:6px;} QMenu::item{min-height:25px;padding:5px 30px 5px 30px;border-radius:6px;} QMenu::item:selected{background:#2b3947;} QMenu::item:disabled{color:#6f7b87;} QMenu::separator{height:1px;background:#33404d;margin:6px 8px;} QMenu::icon{padding-left:7px;}"));
 
-  QAction *newTab = menu.addAction(BrowserIcons::icon(BrowserIcon::NewTab), QStringLiteral("Yeni sekme"));
+  QAction *newTab = menu.addAction(BrowserIcons::icon(BrowserIcon::NewTab), I18n::text(QStringLiteral("menu.new_tab"), QStringLiteral("Yeni sekme")));
   newTab->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_T));
-  QAction *newWindow = menu.addAction(BrowserIcons::icon(BrowserIcon::Window), QStringLiteral("Yeni pencere"));
+  QAction *newWindow = menu.addAction(BrowserIcons::icon(BrowserIcon::Window), I18n::text(QStringLiteral("menu.new_window"), QStringLiteral("Yeni pencere")));
   newWindow->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_N));
-  QAction *incognito = menu.addAction(BrowserIcons::icon(BrowserIcon::Incognito), QStringLiteral("Yeni gizli pencere"));
+  QAction *incognito = menu.addAction(BrowserIcons::icon(BrowserIcon::Incognito), I18n::text(QStringLiteral("menu.new_incognito_window"), QStringLiteral("Yeni gizli pencere")));
   incognito->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_N));
-  incognito->setToolTip(QStringLiteral("Yeni gizli pencere aç (Ctrl+Shift+N)"));
+  incognito->setToolTip(I18n::text(QStringLiteral("menu.new_incognito_tooltip"), QStringLiteral("Yeni gizli pencere aç (Ctrl+Shift+N)")));
 
   menu.addSeparator();
-  QAction *passwords = menu.addAction(BrowserIcons::icon(BrowserIcon::Password), QStringLiteral("Şifreler ve otomatik doldurma"));
-  QAction *fillPassword = menu.addAction(BrowserIcons::icon(BrowserIcon::Password), QStringLiteral("Bu sayfayı kayıtlı girişle doldur"));
+  QAction *passwords = menu.addAction(BrowserIcons::icon(BrowserIcon::Password), I18n::text(QStringLiteral("menu.passwords"), QStringLiteral("Şifreler ve otomatik doldurma")));
+  QAction *fillPassword = menu.addAction(BrowserIcons::icon(BrowserIcon::Password), I18n::text(QStringLiteral("menu.fill_password"), QStringLiteral("Bu sayfayı kayıtlı girişle doldur")));
   fillPassword->setEnabled(currentView() != nullptr && services_.profileService && services_.profileService->credentialVault() && !services_.profileService->credentialVault()->isLocked());
-  QAction *history = menu.addAction(BrowserIcons::icon(BrowserIcon::History), QStringLiteral("Geçmiş"));
+  QAction *history = menu.addAction(BrowserIcons::icon(BrowserIcon::History), I18n::text(QStringLiteral("menu.history"), QStringLiteral("Geçmiş")));
   history->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_H));
 
-  QMenu *bookmarksMenu = menu.addMenu(BrowserIcons::icon(BrowserIcon::Bookmark), QStringLiteral("Yer işaretleri"));
-  QAction *toggleBar = bookmarksMenu->addAction(QStringLiteral("Yer işaretleri çubuğunu göster"));
+  QMenu *bookmarksMenu = menu.addMenu(BrowserIcons::icon(BrowserIcon::Bookmark), I18n::text(QStringLiteral("menu.bookmarks"), QStringLiteral("Yer işaretleri")));
+  QAction *toggleBar = bookmarksMenu->addAction(I18n::text(QStringLiteral("menu.bookmarks_bar"), QStringLiteral("Yer işaretleri çubuğunu göster")));
   toggleBar->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_B));
   toggleBar->setCheckable(true);
   const QString bmMode = QSettings().value(QStringLiteral("browser/bookmarkBarVisibility"), QStringLiteral("new_tab")).toString();
   toggleBar->setChecked(bmMode == QLatin1String("always") || (bmMode == QLatin1String("new_tab") && isCurrentTabNewTab()));
   connect(toggleBar, &QAction::triggered, this, &BrowserWindow::toggleBookmarkBar);
 
-  QAction *bookmarks = bookmarksMenu->addAction(BrowserIcons::icon(BrowserIcon::Bookmark), QStringLiteral("Yer işaretleri yöneticisi"));
+  QAction *bookmarks = bookmarksMenu->addAction(BrowserIcons::icon(BrowserIcon::Bookmark), I18n::text(QStringLiteral("menu.bookmarks_manager"), QStringLiteral("Yer işaretleri yöneticisi")));
   bookmarks->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_O));
 
-  QAction *downloads = menu.addAction(BrowserIcons::icon(BrowserIcon::Download), QStringLiteral("İndirilenler"));
+  QAction *downloads = menu.addAction(BrowserIcons::icon(BrowserIcon::Download), I18n::text(QStringLiteral("menu.downloads"), QStringLiteral("İndirilenler")));
   downloads->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_J));
 
   menu.addSeparator();
-  QMenu *zoom = menu.addMenu(BrowserIcons::icon(BrowserIcon::Zoom), QStringLiteral("Yakınlaştır"));
+  QMenu *zoom = menu.addMenu(BrowserIcons::icon(BrowserIcon::Zoom), I18n::text(QStringLiteral("menu.zoom"), QStringLiteral("Yakınlaştır")));
   QAction *zoomOut = zoom->addAction(QStringLiteral("−"));
   QAction *zoomReset = zoom->addAction(QStringLiteral("%%%1").arg(currentView() ? qRound(currentView()->zoomFactor() * 100.0) : 100));
   QAction *zoomIn = zoom->addAction(QStringLiteral("+"));
@@ -2917,17 +3215,17 @@ void BrowserWindow::showMainMenu() {
   zoomIn->setEnabled(hasWebContent);
 
   menu.addSeparator();
-  QAction *print = menu.addAction(BrowserIcons::icon(BrowserIcon::Print), QStringLiteral("Yazdır")); print->setEnabled(false);
-  QAction *find = menu.addAction(BrowserIcons::icon(BrowserIcon::Search), QStringLiteral("Bul ve düzenle")); find->setEnabled(false);
-  QAction *save = menu.addAction(BrowserIcons::icon(BrowserIcon::Save), QStringLiteral("Kaydet ve paylaş")); save->setEnabled(false);
-  QAction *tools = menu.addAction(BrowserIcons::icon(BrowserIcon::Tools), QStringLiteral("Diğer araçlar")); tools->setEnabled(false);
+  QAction *print = menu.addAction(BrowserIcons::icon(BrowserIcon::Print), I18n::text(QStringLiteral("menu.print"), QStringLiteral("Yazdır"))); print->setEnabled(false);
+  QAction *find = menu.addAction(BrowserIcons::icon(BrowserIcon::Search), I18n::text(QStringLiteral("menu.find"), QStringLiteral("Bul ve düzenle"))); find->setEnabled(false);
+  QAction *save = menu.addAction(BrowserIcons::icon(BrowserIcon::Save), I18n::text(QStringLiteral("menu.save"), QStringLiteral("Kaydet ve paylaş"))); save->setEnabled(false);
+  QAction *tools = menu.addAction(BrowserIcons::icon(BrowserIcon::Tools), I18n::text(QStringLiteral("menu.other_tools"), QStringLiteral("Diğer araçlar"))); tools->setEnabled(false);
 
   menu.addSeparator();
-  QAction *help = menu.addAction(BrowserIcons::icon(BrowserIcon::Help), QStringLiteral("Yardım")); help->setEnabled(false);
-  QAction *audioEffectsAction = menu.addAction(QIcon(QStringLiteral(":/side-widget-icons/sound-effects.svg")), QStringLiteral("Ses Efektleri"));
-  QAction *eqPresetsAction = menu.addAction(QIcon(QStringLiteral(":/side-widget-icons/eq-presets.svg")), QStringLiteral("Hazır Ses Efektleri"));
-  QAction *settings = menu.addAction(BrowserIcons::icon(BrowserIcon::Settings), QStringLiteral("Ayarlar"));
-  QAction *quit = menu.addAction(BrowserIcons::icon(BrowserIcon::Exit), QStringLiteral("Çıkış"));
+  QAction *help = menu.addAction(BrowserIcons::icon(BrowserIcon::Help), I18n::text(QStringLiteral("menu.help"), QStringLiteral("Yardım"))); help->setEnabled(false);
+  QAction *audioEffectsAction = menu.addAction(QIcon(QStringLiteral(":/side-widget-icons/sound-effects.svg")), I18n::text(QStringLiteral("menu.audio_effects"), QStringLiteral("Ses Efektleri")));
+  QAction *eqPresetsAction = menu.addAction(QIcon(QStringLiteral(":/side-widget-icons/eq-presets.svg")), I18n::text(QStringLiteral("menu.eq_presets"), QStringLiteral("Hazır Ses Efektleri")));
+  QAction *settings = menu.addAction(BrowserIcons::icon(BrowserIcon::Settings), I18n::text(QStringLiteral("menu.settings"), QStringLiteral("Ayarlar")));
+  QAction *quit = menu.addAction(BrowserIcons::icon(BrowserIcon::Exit), I18n::text(QStringLiteral("menu.exit"), QStringLiteral("Çıkış")));
 
   connect(newTab, &QAction::triggered, this, [this] { addNewTab(); });
   connect(newWindow, &QAction::triggered, this, [this] {
@@ -2936,23 +3234,7 @@ void BrowserWindow::showMainMenu() {
     window->show();
   });
   connect(incognito, &QAction::triggered, this, [this] {
-    auto incognitoServices = services_;
-    const auto directory = std::make_shared<QTemporaryDir>();
-    if (!directory->isValid()) return;
-    auto privateOwner = std::shared_ptr<BrowserProfileService>(
-        new BrowserProfileService(directory->path(), services_.policy, nullptr, true),
-        [directory](BrowserProfileService *service) { delete service; });
-    auto *privateService = privateOwner.get();
-    incognitoServices.privateProfileOwner = privateOwner;
-    incognitoServices.profileService = privateService;
-    incognitoServices.profile = privateService->profile();
-    incognitoServices.sessionStore = nullptr;
-    auto *window = new BrowserWindow(incognitoServices);
-
-    window->setAttribute(Qt::WA_DeleteOnClose);
-    window->setWindowTitle(QStringLiteral("Gizli Pencere — ArDaliBrowser"));
-    window->ensureInitialTab();
-    window->show();
+    openIncognitoWindow();
   });
   connect(passwords, &QAction::triggered, this, &BrowserWindow::showPasswords);
   connect(fillPassword, &QAction::triggered, this, &BrowserWindow::fillCurrentPageFromVault);
@@ -2977,7 +3259,7 @@ void BrowserWindow::showHistoryMenu() {
   menu.setStyleSheet(QStringLiteral("QMenu{background:#1b232d;color:#e8eef5;border:1px solid #3a4857;border-radius:9px;padding:6px;} QMenu::item{min-height:25px;padding:5px 30px 5px 30px;border-radius:6px;} QMenu::item:disabled{color:#6f7b87;}"));
   const auto entries = services_.profileService->recentHistory();
   if (entries.isEmpty()) {
-    QAction *empty = menu.addAction(QStringLiteral("Geçmiş henüz boş"));
+    QAction *empty = menu.addAction(I18n::text(QStringLiteral("menu.history_empty"), QStringLiteral("Geçmiş henüz boş")));
     empty->setEnabled(false);
   } else {
     for (const auto &entry : entries.mid(0, std::min<qsizetype>(30, entries.size()))) {
@@ -2993,7 +3275,7 @@ void BrowserWindow::showHistoryMenu() {
       });
     }
     menu.addSeparator();
-    QAction *clear = menu.addAction(QStringLiteral("Geçmişi temizle"));
+    QAction *clear = menu.addAction(I18n::text(QStringLiteral("menu.clear_history"), QStringLiteral("Geçmişi temizle")));
     connect(clear, &QAction::triggered, this, [this] {
       if (services_.profileService) services_.profileService->clearHistory();
     });
@@ -3044,7 +3326,7 @@ void BrowserWindow::updateOmniboxLeadingIcon() {
   const int idx = tabStrip_ ? tabStrip_->currentIndex() : -1;
   if (idx < 0 || idx >= tabs_.size()) {
     searchEngineAction_->setIcon(BrowserIcons::searchEngineIcon(currentSearchEngine()));
-    searchEngineAction_->setToolTip(QStringLiteral("Arama motoru: %1").arg(currentSearchEngine()));
+    searchEngineAction_->setToolTip(I18n::text(QStringLiteral("toolbar.search_engine"), QStringLiteral("Arama motoru: %1")).arg(currentSearchEngine()));
     return;
   }
 
@@ -3054,7 +3336,7 @@ void BrowserWindow::updateOmniboxLeadingIcon() {
 
   if (!isWeb) {
     searchEngineAction_->setIcon(BrowserIcons::searchEngineIcon(currentSearchEngine()));
-    searchEngineAction_->setToolTip(QStringLiteral("Arama motoru: %1").arg(currentSearchEngine()));
+    searchEngineAction_->setToolTip(I18n::text(QStringLiteral("toolbar.search_engine"), QStringLiteral("Arama motoru: %1")).arg(currentSearchEngine()));
     return;
   }
 
@@ -3062,19 +3344,19 @@ void BrowserWindow::updateOmniboxLeadingIcon() {
 
   if (tab.activeCamera && tab.activeMicrophone) {
     searchEngineAction_->setIcon(BrowserIcons::combinedMediaCaptureIcon());
-    searchEngineAction_->setToolTip(QStringLiteral("Kamera ve mikrofon kullanımda — %1").arg(host));
+    searchEngineAction_->setToolTip(I18n::text(QStringLiteral("toolbar.camera_mic_in_use"), QStringLiteral("Kamera ve mikrofon kullanımda — %1")).arg(host));
   } else if (tab.activeCamera) {
     searchEngineAction_->setIcon(BrowserIcons::icon(BrowserIcon::Camera));
-    searchEngineAction_->setToolTip(QStringLiteral("Kamera kullanımda — %1").arg(host));
+    searchEngineAction_->setToolTip(I18n::text(QStringLiteral("toolbar.camera_in_use"), QStringLiteral("Kamera kullanımda — %1")).arg(host));
   } else if (tab.activeMicrophone) {
     searchEngineAction_->setIcon(BrowserIcons::icon(BrowserIcon::Microphone));
-    searchEngineAction_->setToolTip(QStringLiteral("Mikrofon kullanımda — %1").arg(host));
+    searchEngineAction_->setToolTip(I18n::text(QStringLiteral("toolbar.mic_in_use"), QStringLiteral("Mikrofon kullanımda — %1")).arg(host));
   } else if (tab.url.scheme() == QLatin1String("http")) {
     searchEngineAction_->setIcon(BrowserIcons::icon(BrowserIcon::InsecureContent));
-    searchEngineAction_->setToolTip(QStringLiteral("Bağlantı güvenli değil — %1").arg(host));
+    searchEngineAction_->setToolTip(I18n::text(QStringLiteral("toolbar.insecure_connection"), QStringLiteral("Bağlantı güvenli değil — %1")).arg(host));
   } else {
     searchEngineAction_->setIcon(BrowserIcons::icon(BrowserIcon::Tune));
-    searchEngineAction_->setToolTip(QStringLiteral("Site bilgilerini ve izinlerini görüntüle — %1").arg(host));
+    searchEngineAction_->setToolTip(I18n::text(QStringLiteral("toolbar.site_info"), QStringLiteral("Site bilgilerini ve izinlerini görüntüle — %1")).arg(host));
   }
 }
 
@@ -4225,3 +4507,483 @@ void BrowserWindow::dismissActivePermissionPrompt(bool cancelRequest) {
   processNextPermissionRequest();
 }
 #endif
+
+BrowserWindow *BrowserWindow::openIncognitoWindow(const QUrl &url) {
+  auto incognitoServices = services_;
+  const auto directory = std::make_shared<QTemporaryDir>();
+  if (!directory->isValid()) return nullptr;
+  auto privateOwner = std::shared_ptr<BrowserProfileService>(
+      new BrowserProfileService(directory->path(), services_.policy, nullptr, true),
+      [directory](BrowserProfileService *service) { delete service; });
+  auto *privateService = privateOwner.get();
+  incognitoServices.privateProfileOwner = privateOwner;
+  incognitoServices.profileService = privateService;
+  incognitoServices.profile = privateService->profile();
+  incognitoServices.sessionStore = nullptr;
+  auto *window = new BrowserWindow(incognitoServices);
+
+  window->setAttribute(Qt::WA_DeleteOnClose);
+  window->setWindowTitle(QStringLiteral("Gizli Pencere — ArDaliBrowser"));
+  if (url.isValid() && !url.isEmpty()) {
+    window->addNewTab(url);
+  } else {
+    window->ensureInitialTab();
+  }
+  window->show();
+  return window;
+}
+
+void BrowserWindow::openDevToolsForPage(QWebEnginePage *page) {
+  if (!page) return;
+  auto *devWindow = new QMainWindow(this);
+  devWindow->setAttribute(Qt::WA_DeleteOnClose);
+  devWindow->setWindowTitle(QStringLiteral("Geliştirici Araçları (İncele) — ArDaliBrowser"));
+  devWindow->resize(960, 640);
+  devWindow->setStyleSheet(QStringLiteral("QMainWindow { background: #121820; color: #e6edf3; }"));
+  auto *devView = new QWebEngineView(devWindow);
+  devWindow->setCentralWidget(devView);
+  page->setDevToolsPage(devView->page());
+  page->triggerAction(QWebEnginePage::InspectElement);
+  connect(page, &QObject::destroyed, devWindow, &QWidget::close);
+  devWindow->show();
+  devWindow->raise();
+  devWindow->activateWindow();
+}
+
+void BrowserWindow::toggleTabPin(int index) {
+  if (index < 0 || index >= tabs_.size()) return;
+  const bool willBePinned = !tabs_[index].isPinned;
+  tabs_[index].isPinned = willBePinned;
+  tabStrip_->setTabPinned(index, willBePinned);
+
+  if (willBePinned) {
+    int targetSlot = 0;
+    for (int i = 0; i < tabs_.size(); ++i) {
+      if (i != index && tabs_[i].isPinned) {
+        targetSlot++;
+      }
+    }
+    if (index != targetSlot) {
+      tabStrip_->moveTab(index, targetSlot);
+      switchTab(targetSlot);
+    }
+  } else {
+    int firstUnpinnedSlot = 0;
+    for (int i = 0; i < tabs_.size(); ++i) {
+      if (i != index && tabs_[i].isPinned) {
+        firstUnpinnedSlot++;
+      }
+    }
+    if (index != firstUnpinnedSlot) {
+      tabStrip_->moveTab(index, firstUnpinnedSlot);
+      switchTab(firstUnpinnedSlot);
+    }
+  }
+}
+
+void BrowserWindow::closeOtherTabs(int index) {
+  if (index < 0 || index >= tabs_.size()) return;
+  const uint64_t keepId = tabs_[index].id;
+  for (int i = tabs_.size() - 1; i >= 0; --i) {
+    if (tabs_[i].id != keepId && !tabs_[i].isPinned) {
+      closeTab(i);
+    }
+  }
+}
+
+void BrowserWindow::closeTabsToRight(int index) {
+  if (index < 0 || index >= tabs_.size()) return;
+  for (int i = tabs_.size() - 1; i > index; --i) {
+    if (!tabs_[i].isPinned) {
+      closeTab(i);
+    }
+  }
+}
+
+void BrowserWindow::onTabContextMenuRequested(int index, const QPoint &globalPos) {
+  if (index < 0 || index >= tabs_.size()) return;
+  const auto &tab = tabs_[index];
+  const uint64_t tabId = tab.id;
+
+  QMenu menu(this);
+  menu.setStyleSheet(QStringLiteral(
+      "QMenu { background-color: #1b232d; color: #e8eef5; border: 1px solid #3a4857; border-radius: 9px; padding: 6px 4px; font-size: 13px; }"
+      "QMenu::item { min-height: 25px; padding: 4px 26px 4px 12px; border-radius: 6px; margin: 1px 3px; }"
+      "QMenu::item:selected { background-color: #2b3947; color: #ffffff; }"
+      "QMenu::item:disabled { color: #6f7b87; background-color: transparent; }"
+      "QMenu::separator { height: 1px; background-color: #33404d; margin: 5px 8px; }"
+      "QMenu::icon { padding-left: 6px; }"
+  ));
+
+  // 1. Sağa yeni sekme
+  QAction *newTabRight = menu.addAction(BrowserIcons::icon(BrowserIcon::NewTab), I18n::text(QStringLiteral("tab.context.new_tab_right"), QStringLiteral("Sağa yeni sekme")));
+  connect(newTabRight, &QAction::triggered, this, [this, index] {
+    addNewTab(QUrl(QStringLiteral("ardali://newtab/")), index + 1);
+  });
+
+  // 2. Mevcut sekmeyle yeni bölünmüş görünüm
+  QAction *splitViewAction = menu.addAction(BrowserIcons::icon(BrowserIcon::Cards), I18n::text(QStringLiteral("tab.context.split_view"), QStringLiteral("Mevcut sekmeyle yeni bölünmüş görünüm")));
+  splitViewAction->setEnabled(false);
+
+  // 3. Sekmeyi yeni gruba ekle / Sekmeyi gruptan çıkar / Gruplar alt menüsü
+  if (tab.groupId.has_value() && groupModel_ && groupModel_->hasGroup(*tab.groupId)) {
+    QAction *ungroup = menu.addAction(BrowserIcons::icon(BrowserIcon::Grid), I18n::text(QStringLiteral("tab.context.ungroup"), QStringLiteral("Sekmeyi gruptan çıkar")));
+    connect(ungroup, &QAction::triggered, this, [this, tabId] {
+      if (groupModel_) {
+        const int idx = findIndexByTabId(tabId);
+        if (idx >= 0 && tabs_[idx].groupId.has_value()) {
+          const QUuid gid = *tabs_[idx].groupId;
+          groupModel_->removeTabFromGroup(tabId);
+          tabs_[idx].groupId = std::nullopt;
+          if (groupModel_->groupTabCount(gid) == 0) {
+            groupModel_->removeGroup(gid);
+          }
+          tabStrip_->update();
+        }
+      }
+    });
+  } else {
+    const auto groups = groupModel_ ? groupModel_->allGroups() : QList<ardali::desktop_tabs::TabGroup>{};
+    if (groups.isEmpty()) {
+      QAction *newGroup = menu.addAction(BrowserIcons::icon(BrowserIcon::Grid), I18n::text(QStringLiteral("tab.context.add_to_new_group"), QStringLiteral("Sekmeyi yeni gruba ekle")));
+      connect(newGroup, &QAction::triggered, this, [this, tabId] {
+        createGroupFromExistingTab(tabId);
+      });
+    } else {
+      QMenu *groupSub = menu.addMenu(BrowserIcons::icon(BrowserIcon::Grid), I18n::text(QStringLiteral("tab.context.add_to_group"), QStringLiteral("Sekmeyi gruba ekle")));
+      groupSub->setStyleSheet(menu.styleSheet());
+      QAction *createGroupAct = groupSub->addAction(I18n::text(QStringLiteral("tab.context.new_group"), QStringLiteral("Yeni grup")));
+      connect(createGroupAct, &QAction::triggered, this, [this, tabId] {
+        createGroupFromExistingTab(tabId);
+      });
+      groupSub->addSeparator();
+      for (const auto &g : groups) {
+        QString title = g.name.trimmed().isEmpty() ? I18n::text(QStringLiteral("tab.context.new_group"), QStringLiteral("Grup")) : g.name;
+        QAction *gAct = groupSub->addAction(title);
+        const QUuid gid = g.id;
+        connect(gAct, &QAction::triggered, this, [this, tabId, gid] {
+          if (groupModel_) {
+            const int idx = findIndexByTabId(tabId);
+            if (idx >= 0) {
+              tabs_[idx].groupId = gid;
+              groupModel_->setTabGroup(tabId, gid);
+              tabStrip_->update();
+            }
+          }
+        });
+      }
+    }
+  }
+
+  // 4. Sekmeyi yeni pencereye taşı
+  QAction *moveWindow = menu.addAction(BrowserIcons::icon(BrowserIcon::Window), I18n::text(QStringLiteral("tab.context.move_to_new_window"), QStringLiteral("Sekmeyi yeni pencereye taşı")));
+  moveWindow->setEnabled(tabs_.size() > 1);
+  connect(moveWindow, &QAction::triggered, this, [this, tabId] {
+    auto *newWin = new BrowserWindow(services_);
+    newWin->show();
+    transferTabTo(tabId, newWin, 0);
+  });
+
+  menu.addSeparator();
+
+  // 5. Yeniden Yükle
+  QAction *reloadAct = menu.addAction(I18n::text(QStringLiteral("tab.context.reload"), QStringLiteral("Yeniden Yükle")));
+  reloadAct->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_R));
+  connect(reloadAct, &QAction::triggered, this, [this, tabId] {
+    const int idx = findIndexByTabId(tabId);
+    if (idx >= 0 && tabs_[idx].view) {
+      tabs_[idx].view->reload();
+    }
+  });
+
+  // 6. Yinele
+  QAction *duplicateAct = menu.addAction(I18n::text(QStringLiteral("tab.context.duplicate"), QStringLiteral("Yinele")));
+  connect(duplicateAct, &QAction::triggered, this, [this, tabId] {
+    const int idx = findIndexByTabId(tabId);
+    if (idx >= 0) {
+      addNewTab(tabs_[idx].url, idx + 1);
+    }
+  });
+
+  // 7. Sabitle / Sabitlemeyi kaldır
+  const bool isPinned = tab.isPinned;
+  QAction *pinAct = menu.addAction(isPinned
+      ? I18n::text(QStringLiteral("tab.context.unpin"), QStringLiteral("Sabitlemeyi kaldır"))
+      : I18n::text(QStringLiteral("tab.context.pin"), QStringLiteral("Sabitle")));
+  connect(pinAct, &QAction::triggered, this, [this, tabId] {
+    const int idx = findIndexByTabId(tabId);
+    if (idx >= 0) {
+      toggleTabPin(idx);
+    }
+  });
+
+  // 8. Sitenin sesini kapat / Sitenin sesini aç
+  bool isMuted = tab.view && tab.view->page() && tab.view->page()->isAudioMuted();
+  QAction *muteAct = menu.addAction(BrowserIcons::icon(BrowserIcon::Audio),
+                                    isMuted
+                                        ? I18n::text(QStringLiteral("tab.context.unmute"), QStringLiteral("Sitenin sesini aç"))
+                                        : I18n::text(QStringLiteral("tab.context.mute"), QStringLiteral("Sitenin sesini kapat")));
+  connect(muteAct, &QAction::triggered, this, [this, tabId, isMuted] {
+    const int idx = findIndexByTabId(tabId);
+    if (idx >= 0 && tabs_[idx].view && tabs_[idx].view->page()) {
+      const bool newMuted = !isMuted;
+      tabs_[idx].view->page()->setAudioMuted(newMuted);
+      tabStrip_->setTabAudible(idx, !newMuted && tabs_[idx].view->page()->recentlyAudible());
+    }
+  });
+
+  menu.addSeparator();
+
+  // 9. Okuma listesine sekme ekle
+  QAction *readingListAct = menu.addAction(BrowserIcons::icon(BrowserIcon::Bookmark), I18n::text(QStringLiteral("tab.context.add_to_reading_list"), QStringLiteral("Okuma listesine sekme ekle")));
+  connect(readingListAct, &QAction::triggered, this, [this, tabId] {
+    const int idx = findIndexByTabId(tabId);
+    if (idx >= 0 && services_.profileService) {
+      services_.profileService->toggleBookmark(tabs_[idx].url);
+      updateBookmarkButtonState();
+      renderBookmarks();
+    }
+  });
+
+  // 10. Cihazıma gönder
+  QAction *sendDeviceAct = menu.addAction(I18n::text(QStringLiteral("tab.context.send_to_device"), QStringLiteral("Cihazıma gönder")));
+  sendDeviceAct->setEnabled(false);
+
+  menu.addSeparator();
+
+  // 11. Sekmeleri dikey olarak göster
+  QAction *verticalTabsAct = menu.addAction(I18n::text(QStringLiteral("tab.context.vertical_tabs"), QStringLiteral("Sekmeleri dikey olarak göster")));
+  verticalTabsAct->setEnabled(false);
+
+  menu.addSeparator();
+
+  // 12. Kapat
+  QAction *closeAct = menu.addAction(BrowserIcons::icon(BrowserIcon::Close), I18n::text(QStringLiteral("tab.context.close"), QStringLiteral("Kapat")));
+  closeAct->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_W));
+  connect(closeAct, &QAction::triggered, this, [this, tabId] {
+    const int idx = findIndexByTabId(tabId);
+    if (idx >= 0) {
+      closeTab(idx);
+    }
+  });
+
+  // 13. Diğer sekmeleri kapat
+  QAction *closeOthersAct = menu.addAction(I18n::text(QStringLiteral("tab.context.close_others"), QStringLiteral("Diğer sekmeleri kapat")));
+  closeOthersAct->setEnabled(tabs_.size() > 1);
+  connect(closeOthersAct, &QAction::triggered, this, [this, tabId] {
+    const int idx = findIndexByTabId(tabId);
+    if (idx >= 0) {
+      closeOtherTabs(idx);
+    }
+  });
+
+  // 14. Sağdaki sekmeleri kapat
+  QAction *closeRightAct = menu.addAction(I18n::text(QStringLiteral("tab.context.close_right"), QStringLiteral("Sağdaki sekmeleri kapat")));
+  closeRightAct->setEnabled(index < tabs_.size() - 1);
+  connect(closeRightAct, &QAction::triggered, this, [this, tabId] {
+    const int idx = findIndexByTabId(tabId);
+    if (idx >= 0) {
+      closeTabsToRight(idx);
+    }
+  });
+
+  menu.exec(globalPos);
+}
+
+void BrowserWindow::showBookmarkContextMenu(const QUrl &url, const QString &title, const QPoint &globalPos) {
+  Q_UNUSED(title);
+  QMenu menu(this);
+  menu.setStyleSheet(QStringLiteral(
+      "QMenu { background-color: #1b232d; color: #e8eef5; border: 1px solid #3a4857; border-radius: 9px; padding: 6px 4px; font-size: 13px; }"
+      "QMenu::item { min-height: 25px; padding: 4px 26px 4px 12px; border-radius: 6px; margin: 1px 3px; }"
+      "QMenu::item:selected { background-color: #2b3947; color: #ffffff; }"
+      "QMenu::item:disabled { color: #6f7b87; background-color: transparent; }"
+      "QMenu::separator { height: 1px; background-color: #33404d; margin: 5px 8px; }"
+  ));
+
+  const bool hasUrl = url.isValid() && !url.isEmpty();
+
+  if (hasUrl) {
+    // 1. Yeni sekmede aç
+    QAction *newTabAct = menu.addAction(I18n::text(QStringLiteral("bookmark.open_tab"), QStringLiteral("Yeni sekmede aç")));
+    connect(newTabAct, &QAction::triggered, this, [this, url] {
+      addNewTab(url);
+    });
+
+    // 2. Yeni pencerede aç
+    QAction *newWinAct = menu.addAction(I18n::text(QStringLiteral("bookmark.open_window"), QStringLiteral("Yeni pencerede aç")));
+    connect(newWinAct, &QAction::triggered, this, [this, url] {
+      auto *newWin = new BrowserWindow(services_);
+      newWin->addNewTab(url);
+      newWin->show();
+    });
+
+    // 3. Bölünmüş görünümde aç
+    QAction *splitAct = menu.addAction(I18n::text(QStringLiteral("bookmark.open_split"), QStringLiteral("Bölünmüş görünümde aç")));
+    splitAct->setEnabled(false);
+
+    // 4. Gizli pencerede aç
+    QAction *incognitoAct = menu.addAction(I18n::text(QStringLiteral("bookmark.open_incognito"), QStringLiteral("Gizli pencerede aç")));
+    connect(incognitoAct, &QAction::triggered, this, [this, url] {
+      openIncognitoWindow(url);
+    });
+
+    menu.addSeparator();
+
+    // 5. Düzenle...
+    QAction *editAct = menu.addAction(I18n::text(QStringLiteral("bookmark.edit"), QStringLiteral("Düzenle...")));
+    connect(editAct, &QAction::triggered, this, [this, url] {
+      QInputDialog dlg(this);
+      dlg.setWindowTitle(I18n::text(QStringLiteral("bookmark.edit_dialog_title"), QStringLiteral("Yer işaretini düzenle")));
+      dlg.setLabelText(I18n::text(QStringLiteral("bookmark.url_label"), QStringLiteral("URL:")));
+      dlg.setTextValue(url.toString());
+      dlg.setStyleSheet(QStringLiteral(
+          "QDialog { background-color: #1b232d; color: #e8eef5; border: 1px solid #3a4857; border-radius: 8px; }"
+          "QLabel { color: #e8eef5; font-size: 13px; }"
+          "QLineEdit { background: #121820; color: #ffffff; border: 1px solid #3a4857; border-radius: 6px; padding: 6px; font-size: 13px; }"
+          "QPushButton { background: #263342; color: #ffffff; border: 1px solid #3a4857; border-radius: 6px; padding: 6px 14px; font-size: 13px; }"
+          "QPushButton:hover { background: #324458; }"
+      ));
+      if (dlg.exec() == QDialog::Accepted) {
+        const QString newText = dlg.textValue().trimmed();
+        if (!newText.isEmpty()) {
+          const QUrl newUrl = QUrl::fromUserInput(newText);
+          if (newUrl.isValid() && services_.profileService) {
+            services_.profileService->toggleBookmark(url);
+            services_.profileService->toggleBookmark(newUrl);
+            updateBookmarkButtonState();
+            renderBookmarks();
+          }
+        }
+      }
+    });
+
+    menu.addSeparator();
+
+    // 6. Kes
+    QAction *cutAct = menu.addAction(I18n::text(QStringLiteral("bookmark.cut"), QStringLiteral("Kes")));
+    connect(cutAct, &QAction::triggered, this, [this, url] {
+      QGuiApplication::clipboard()->setText(url.toString());
+      if (services_.profileService) {
+        services_.profileService->toggleBookmark(url);
+        updateBookmarkButtonState();
+        renderBookmarks();
+      }
+    });
+
+    // 7. Kopyala
+    QAction *copyAct = menu.addAction(I18n::text(QStringLiteral("bookmark.copy"), QStringLiteral("Kopyala")));
+    connect(copyAct, &QAction::triggered, this, [url] {
+      QGuiApplication::clipboard()->setText(url.toString());
+    });
+  }
+
+  // 8. Yapıştır
+  const QString clipText = QGuiApplication::clipboard()->text().trimmed();
+  const QUrl clipUrl = QUrl::fromUserInput(clipText);
+  const bool canPaste = !clipText.isEmpty() && clipUrl.isValid() &&
+                        (clipUrl.scheme() == QLatin1String("http") || clipUrl.scheme() == QLatin1String("https"));
+  QAction *pasteAct = menu.addAction(I18n::text(QStringLiteral("bookmark.paste"), QStringLiteral("Yapıştır")));
+  pasteAct->setEnabled(canPaste);
+  connect(pasteAct, &QAction::triggered, this, [this, clipUrl] {
+    if (services_.profileService && !services_.profileService->isBookmarked(clipUrl)) {
+      services_.profileService->toggleBookmark(clipUrl);
+      updateBookmarkButtonState();
+      renderBookmarks();
+    }
+  });
+
+  if (hasUrl) {
+    menu.addSeparator();
+
+    // 9. Sil
+    QAction *deleteAct = menu.addAction(I18n::text(QStringLiteral("bookmark.delete"), QStringLiteral("Sil")));
+    connect(deleteAct, &QAction::triggered, this, [this, url] {
+      if (services_.profileService) {
+        services_.profileService->toggleBookmark(url);
+        updateBookmarkButtonState();
+        renderBookmarks();
+      }
+    });
+  }
+
+  menu.addSeparator();
+
+  // 10. Sayfa ekle...
+  QAction *addPageAct = menu.addAction(I18n::text(QStringLiteral("bookmark.add_page"), QStringLiteral("Sayfa ekle...")));
+  connect(addPageAct, &QAction::triggered, this, [this] {
+    QInputDialog dlg(this);
+    dlg.setWindowTitle(I18n::text(QStringLiteral("bookmark.add_page_title"), QStringLiteral("Sayfa ekle")));
+    dlg.setLabelText(I18n::text(QStringLiteral("bookmark.url_label"), QStringLiteral("URL:")));
+    const QUrl cur = currentView() ? currentView()->url() : QUrl{};
+    dlg.setTextValue(cur.isValid() && !isNewTabUrl(cur) ? cur.toString() : QStringLiteral("https://"));
+    dlg.setStyleSheet(QStringLiteral(
+        "QDialog { background-color: #1b232d; color: #e8eef5; border: 1px solid #3a4857; border-radius: 8px; }"
+        "QLabel { color: #e8eef5; font-size: 13px; }"
+        "QLineEdit { background: #121820; color: #ffffff; border: 1px solid #3a4857; border-radius: 6px; padding: 6px; font-size: 13px; }"
+        "QPushButton { background: #263342; color: #ffffff; border: 1px solid #3a4857; border-radius: 6px; padding: 6px 14px; font-size: 13px; }"
+        "QPushButton:hover { background: #324458; }"
+    ));
+    if (dlg.exec() == QDialog::Accepted) {
+      const QString newText = dlg.textValue().trimmed();
+      if (!newText.isEmpty()) {
+        const QUrl newUrl = QUrl::fromUserInput(newText);
+        if (newUrl.isValid() && (newUrl.scheme() == QLatin1String("http") || newUrl.scheme() == QLatin1String("https"))) {
+          if (services_.profileService && !services_.profileService->isBookmarked(newUrl)) {
+            services_.profileService->toggleBookmark(newUrl);
+            updateBookmarkButtonState();
+            renderBookmarks();
+          }
+        }
+      }
+    }
+  });
+
+  // 11. Klasör ekle...
+  QAction *addFolderAct = menu.addAction(I18n::text(QStringLiteral("bookmark.add_folder"), QStringLiteral("Klasör ekle...")));
+  addFolderAct->setEnabled(false);
+
+  menu.addSeparator();
+
+  // 12. Yer işareti yöneticisini aç
+  QAction *managerAct = menu.addAction(I18n::text(QStringLiteral("bookmark.open_manager"), QStringLiteral("Yer işareti yöneticisini aç")));
+  connect(managerAct, &QAction::triggered, this, [this] {
+    showSettings(SettingsPage::Category::Bookmarks);
+  });
+
+  // 13. Uygulamalar kısayolunu göster
+  QAction *appsShortcutAct = menu.addAction(I18n::text(QStringLiteral("bookmark.show_apps_shortcut"), QStringLiteral("Uygulamalar kısayolunu göster")));
+  appsShortcutAct->setCheckable(true);
+  const bool showApps = QSettings().value(QStringLiteral("browser/showAppsShortcut"), false).toBool();
+  appsShortcutAct->setChecked(showApps);
+  connect(appsShortcutAct, &QAction::toggled, this, [](bool checked) {
+    QSettings settings;
+    settings.setValue(QStringLiteral("browser/showAppsShortcut"), checked);
+    settings.sync();
+  });
+
+  // 14. Sekme gruplarını göster
+  QAction *tabGroupsAct = menu.addAction(I18n::text(QStringLiteral("bookmark.show_tab_groups"), QStringLiteral("Sekme gruplarını göster")));
+  tabGroupsAct->setCheckable(true);
+  const bool showGroups = QSettings().value(QStringLiteral("browser/showTabGroupsOnBookmarkBar"), true).toBool();
+  tabGroupsAct->setChecked(showGroups);
+  connect(tabGroupsAct, &QAction::toggled, this, [this](bool checked) {
+    QSettings settings;
+    settings.setValue(QStringLiteral("browser/showTabGroupsOnBookmarkBar"), checked);
+    settings.sync();
+    if (appsBtn_) {
+      appsBtn_->setVisible(checked);
+    }
+  });
+
+  // 15. Yer işaretleri çubuğunu göster
+  QAction *toggleBarAct = menu.addAction(I18n::text(QStringLiteral("bookmark.show_bar"), QStringLiteral("Yer işaretleri çubuğunu göster")));
+  toggleBarAct->setCheckable(true);
+  const QString bmMode = QSettings().value(QStringLiteral("browser/bookmarkBarVisibility"), QStringLiteral("new_tab")).toString();
+  const bool barVisible = (bmMode == QLatin1String("always") || (bmMode == QLatin1String("new_tab") && isCurrentTabNewTab()));
+  toggleBarAct->setChecked(barVisible);
+  connect(toggleBarAct, &QAction::triggered, this, &BrowserWindow::toggleBookmarkBar);
+
+  menu.exec(globalPos);
+}
+

@@ -39,6 +39,7 @@ include_directories(
   ${CMAKE_CURRENT_SOURCE_DIR}/browser/native/session
   ${CMAKE_CURRENT_SOURCE_DIR}/browser/native/downloads
   ${CMAKE_CURRENT_SOURCE_DIR}/browser/native/translate
+  ${CMAKE_CURRENT_SOURCE_DIR}/browser/native/i18n
 )
 
 # -------------------------------------------------------------
@@ -88,6 +89,8 @@ file(MAKE_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/assets/new-tab)
 file(MAKE_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/assets/new-tab/icons)
 file(COPY ${CMAKE_CURRENT_SOURCE_DIR}/browser/resources/adblock
      DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/resources)
+file(COPY ${CMAKE_CURRENT_SOURCE_DIR}/i18n
+     DESTINATION ${CMAKE_CURRENT_BINARY_DIR})
 
 foreach(NTP_ASSET ardali-flow-blue.png google.ico duckduckgo.ico brave.ico bing.ico)
   configure_file(
@@ -240,6 +243,10 @@ set(TRANSLATE_SOURCES
   browser/native/translate/translate_bubble_popup.cpp
 )
 
+set(I18N_SOURCES
+  browser/native/i18n/language_manager.cpp
+)
+
 set(BROWSER_SOURCES
   ${CORE_SOURCES}
   ${NEWTAB_SOURCES}
@@ -253,6 +260,7 @@ set(BROWSER_SOURCES
   ${PULSE_SOURCES}
   ${DOWNLOADS_SOURCES}
   ${TRANSLATE_SOURCES}
+  ${I18N_SOURCES}
   browser/native/browser_window.cpp
   browser/native/main.cpp
 )
@@ -394,6 +402,16 @@ qt_add_resources(ardali-browser "translate_scripts"
   BASE browser/native/translate/resources
   FILES
     browser/native/translate/resources/translate_engine.js
+)
+
+qt_add_resources(ardali-browser "i18n_resources"
+  PREFIX "/i18n"
+  BASE i18n
+  FILES
+    i18n/languages.json
+    i18n/translations/en.json
+    i18n/translations/tr.json
+    i18n/translations/ar.json
 )
 
 target_link_libraries(ardali-browser PRIVATE
@@ -803,7 +821,41 @@ add_dependencies(ardali-browser-site-permission-test ardali-browser-policy ardal
 add_test(NAME browser-site-permission COMMAND ardali-browser-site-permission-test)
 set_tests_properties(browser-site-permission PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QTWEBENGINE_CHROMIUM_FLAGS=--no-sandbox --disable-gpu" TIMEOUT 90)
 
+add_executable(ardali-browser-context-menu-test
+  ${ARDALI_BROWSER_FULL_SOURCES}
+  browser/native/tests/tab_and_link_context_menu_test.cpp)
+target_link_libraries(ardali-browser-context-menu-test PRIVATE ${ARDALI_BROWSER_FULL_LIBS})
+if(ARDALI_BROWSER_FULL_DEFS)
+  target_compile_definitions(ardali-browser-context-menu-test PRIVATE ${ARDALI_BROWSER_FULL_DEFS})
+endif()
+target_compile_options(ardali-browser-context-menu-test PRIVATE -UNDEBUG)
+add_dependencies(ardali-browser-context-menu-test ardali-browser-policy ardali-web-output-dali)
+add_test(NAME browser-context-menu COMMAND ardali-browser-context-menu-test)
+set_tests_properties(browser-context-menu PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QTWEBENGINE_CHROMIUM_FLAGS=--no-sandbox --disable-gpu" TIMEOUT 90)
+
 set_tests_properties(smart_omnibox_phase2_1_test PROPERTIES TIMEOUT 90)
+
+add_executable(ardali-language-manager-test
+  ${I18N_SOURCES}
+  browser/native/tests/language_manager_test.cpp
+)
+qt_add_resources(ardali-language-manager-test "i18n_resources_test"
+  PREFIX "/i18n"
+  BASE i18n
+  FILES
+    i18n/languages.json
+    i18n/translations/en.json
+    i18n/translations/tr.json
+    i18n/translations/ar.json
+)
+target_link_libraries(ardali-language-manager-test PRIVATE
+  Qt6::Core
+  Qt6::Gui
+  Qt6::Widgets
+)
+target_compile_options(ardali-language-manager-test PRIVATE -UNDEBUG)
+add_test(NAME language-manager-test COMMAND ardali-language-manager-test)
+set_tests_properties(language-manager-test PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen" TIMEOUT 30)
 
 # -------------------------------------------------------------
 # Installation Rules
@@ -812,6 +864,10 @@ include(GNUInstallDirs)
 
 install(TARGETS ardali-browser
   RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+)
+
+install(DIRECTORY i18n
+  DESTINATION ${CMAKE_INSTALL_DATADIR}/ardali-browser
 )
 
 if(TARGET ardali-webengine-process)
