@@ -1,53 +1,87 @@
-# ArDali Browser 7.0.0 FINAL RELEASE
+# ArDali Browser 7.0.0
 
-Released on 10 September 2026.
+Released on 11 September 2026.
 
-ArDali Browser 7.0.0 is a major milestone release that elevates the native Qt 6 / C++20 browser platform with an adaptive segmented download engine, intelligent Omnibox navigation, granular site permissions, hardware acceleration, full AutoEQ headphone preset integration, and a production-grade packaging foundation.
+ArDali Browser 7.0.0 is a major release built from every completed, release-ready change since the last public release, v6.1.2. It expands the native Qt 6 / C++20 browser across privacy, media downloads, language support, permissions, navigation, desktop tabs, audio, credentials, performance, packaging, and the official website.
 
-## Key Highlights
+## Highlights
 
-### 1. GeneralDownloadManager & Adaptive Parallel Engine
-- **Adaptive Stream Scaling**: Dynamic connection ramp-up (1 → 2 → 4 → 8 parallel streams) adapting to network latency and bandwidth.
-- **Resilient Transfer Pipeline**: Robust pause, resume, cancel, and segment-level automatic retry with direct-offset preallocation and chunk-level integrity verification.
-- **Bandwidth & Concurrency Controls**: Intelligent global slot concurrency budgeting, anti-thrashing heuristics, and HTTP 429 backoff.
-- **Download UI & Management**: Dedicated toolbar download popup (`DownloadToolbarUI`) with live speed metering and a full-featured internal downloads page (`ardali://downloads`).
+- A redesigned native desktop-tab architecture with detach/attach, drag sessions, tab groups, search, hover cards, animations, memory-pressure handling, and lifecycle-safe session restore.
+- A full media downloader powered by yt-dlp and ffmpeg, plus an adaptive parallel engine for regular downloads.
+- Centralized English, Turkish, and Arabic localization with runtime switching, RTL/LTR metadata, system-language detection, and persistent language preferences.
+- Modern site controls, permission prompts, an encrypted local password vault, secure autofill, and hardened URL/path handling.
+- ArDali Listen music recognition with system-audio capture, device discovery, live levels, persistent settings, and dedicated internal pages.
+- The official static ArDali Browser website in English, Turkish, and Arabic, with no tracking or external runtime dependencies.
 
-### 2. Smart Omnibox & Address Input Resolution
-- **Composite Candidate Architecture**: Seamlessly merges history candidates, bookmark matches, and frequent sites with weighted relevance scoring.
-- **Domain Normalization**: Robust host and URL parsing with IPv4/IPv6 sanitization.
-- **Multi-Engine Search Suggestions**: Real-time asynchronous suggestion provider supporting DuckDuckGo, Google, Brave, and Bing.
+## Privacy & Ad Blocking
 
-### 3. Site Permissions & Security Bubble
-- **Granular Origin Permissions**: Per-site control over camera, microphone, geolocation, desktop notifications, popups, insecure content, and JavaScript optimization.
-- **Site Controls Bubble**: Intuitive toolbar popup displaying active permissions, tracker stats, and quick reset actions.
-- **Permission Hygiene**: Automatic revocation of dormant permissions for enhanced privacy.
+- Made ArDali Blocker statistics tab-scoped and thread-safe, including request, cosmetic, and scriptlet hit accounting.
+- Prevented duplicate cosmetic counters, preserved counts across SPA navigation, handled subdomain changes correctly, and cleaned state when tabs close.
+- Added initiator-based first-party URL fallback and expanded rules for Facebook, Reels, article layouts, and sponsored content.
+- Reflected cosmetic blocking totals correctly in the shield and site-controls UI.
+- Expanded bundled filter, cosmetic, procedural, scriptlet, anti-adblock, and regional ruleset integration while retaining third-party notices.
 
-### 4. Encrypted Local Password Vault & Autofill
-- **Zero-Cloud Local Storage**: Credentials protected via AES-256-GCM encryption and PBKDF2-HMAC-SHA256 key derivation.
-- **Native Autofill Controller**: In-page credential detection, secure login autofill, and automatic credential save bubbles.
-- **Protected Vault Management**: Dedicated `ardali://passwords` interface with master password authentication and experimental vault locking.
+## Downloads & Media
 
-### 5. ArDali Blocker & Content Filter
-- **Three-Tier Filtering**: Temel (Light 35%), İdeal (Balanced 65%), and Kapsamlı (Aggressive 95%) protection modes.
-- **Cosmetic & Procedural Filtering**: Injected stylesheet runtime, DOM mutation observers, scriptlet isolation, and anti-adblock mitigation.
-- **Full Ruleset Catalog**: Bundled EasyList, EasyPrivacy, Peter Lowe, regional filters, and web-accessible mock resources.
+- Added a yt-dlp media analysis pipeline with metadata and thumbnail retrieval, format and quality selection, video/audio handling, and adaptive-stream merging through ffmpeg.
+- Added audio conversion, metadata embedding, cover art, subtitles, time-range downloads, playlist support, queues, progress reporting, cancellation, retry, persistent history, and export.
+- Isolated helper-process execution and hardened URL, option, filename, and output-path validation.
+- Added automatic yt-dlp discovery/update handling and platform capability reporting.
+- Added `GeneralDownloadManager`, an adaptive 1 → 2 → 4 → 8 connection engine with preallocation, pause/resume/cancel, part-level retry, rate-limit backoff, and live-speed UI.
+- Added the toolbar download popup and the `ardali://downloads` management page.
 
-### 6. Audiophile Sound Engine & 1,757 AutoEQ Presets
-- **32-Band Studio Equalizer**: High-precision peaking filters driven by DALI Web Audio DSP.
-- **Comprehensive Audio Suite**: BASS FX Reverb, Dynamic Compressor, Brickwall Limiter, True Peak Limiter, Parametric EQ, Dynamic EQ, Exciter, De-esser, Noise Gate, Stereo Widener v2, and Echo.
-- **1,757 Calibrated Headphone Profiles**: Complete AutoEQ database bundled directly into the application for studio-grade frequency response calibration.
+## Languages & Translation
 
-### 7. Desktop Integration & Packaging
-- **Clean Linux Integration**: XDG `.desktop` specifications, full hicolor icon resolution set (16px to 1024px), and MIME associations.
-- **Packaging Parity**: Verified PKGBUILDs and `.SRCINFO` for Arch Linux, AUR (`ardali`, `ardali-bin`), and pacman repository.
-- **CMake Install Standard**: Complete GNUInstallDirs compliance distributing executables, icons, AutoEQ presets, and adblock filters.
+- Added the centralized `LanguageManager` with English, Turkish, and Arabic JSON catalogs, semantic keys, English fallback, `QLocale::system()` detection, `QSettings` persistence, and live language switching.
+- Added metadata-driven RTL/LTR behavior across browser chrome, settings, menus, context menus, and the new-tab page.
+- Added a Brave-style Languages center for preferred-language ordering, `Accept-Language`, display-language selection, spell-check languages, and custom dictionary controls.
+- Added ArDali Translate settings for target, automatic, and never-translate languages, plus selectable translation providers.
+- Integrated page-language detection, translation injection, provider adapters, secrets storage, and the translation bubble.
 
-## Verification & Platform Status
+## Permissions & Security
 
-- **Build Target**: Linux x86_64 (Qt 6.4+, GCC 12+ / Clang 15+).
-- **Test Suite**: 27/27 CTest suites passing (100% pass rate) with strict assertion verification (`-UNDEBUG`).
-- **Packaging Invariants**: Verified clean destination install tree with all 1,757 AutoEQ JSON files and filter rulesets.
+- Added a modern per-origin permission architecture and inspection APIs for camera, microphone, geolocation, notifications, popups, insecure content, and JavaScript optimization.
+- Added permission prompts and the site-controls bubble with session/persistent decisions, active-permission inspection, quick reset, and dormant-permission cleanup.
+- Added a local AES-256-GCM credential vault with PBKDF2-HMAC-SHA256 derivation, master-password unlock, origin-bound autofill, save prompts, and in-memory secret cleanup.
+- Hardened URL parsing, local-network checks, helper-process environments, path handling, and translation-provider secret storage.
 
-## License
+## Tabs & Navigation
 
-ArDali Browser is licensed under GPL-3.0-only. Third-party adblock filters and ruleset resources retain their respective copyright and license notices in `browser/resources/adblock/NOTICE.txt`.
+- Added smart address resolution that distinguishes URLs, hosts, localhost addresses, and searches safely.
+- Added a composite omnibox architecture that ranks history, bookmarks, frequent sites, and live suggestions from configured search engines.
+- Rebuilt desktop tabs around explicit layout, drag-session, window-registry, detach/attach, animation, appearance, group, search, and hover-card components.
+- Added audible/fullscreen state handling, tab/link context menus, retry scheduling, discard/restore support, and session-compatible lifecycle cleanup.
+
+## ArDali Listen / Song Finder
+
+- Added PipeWire and PulseAudio device discovery with policy-based input selection.
+- Added ffmpeg-backed 16 kHz mono PCM capture, live input levels, persistent device settings, and recognition lifecycle cleanup.
+- Added `ardali://listen` and `ardali://listen-settings`, single-instance internal-tab behavior, and browser menu/toolbar integration.
+
+## Website
+
+- Added the official `website/` distribution in English, Turkish, and Arabic with responsive RTL support.
+- Added Download, Features, Privacy, and Open Source content using real ArDali screenshots and local assets.
+- Added a strict CSP/security-header template, SEO metadata, sitemap, robots policy, and zero tracking or external runtime dependencies.
+
+## Performance & Reliability
+
+- Added WebEngine hardware-acceleration policy, early GPU/process flags, memory-pressure monitoring, and tab resource diagnostics.
+- Added tab memory usage to hover cards and strengthened discard/restore behavior under pressure.
+- Expanded the web-audio effects pipeline, platform audio policy, and the bundled 1,757-profile AutoEQ catalog.
+- Unified the top-level CMake build, resource discovery, install layout, desktop integration, and Arch/AUR/pacman package metadata.
+- Preserved Qt 6.4 compatibility by guarding newer WebEngine and color-scheme APIs and fixing complete-type and permission-bubble build issues.
+
+## Tests & Quality
+
+- Added regression coverage for blocker accounting, song recognition, downloader services and UI, permissions, address resolution, omnibox ranking, translation, i18n, tab dragging, tab lifecycle, memory policy, hardware acceleration, security utilities, password autofill, and runtime integration.
+- Verified a clean Linux Release build with Qt 6 and all 29 CTest suites passing.
+- Updated CI and release automation for the unified source layout, Debian 12 release builds, Xvfb-backed Qt tests, version validation, checksums, and Arch repository publication.
+
+## Platform status
+
+Linux x86_64 is the verified build, test, packaging, and release platform. The portable archive is built against the Debian 12 baseline and published with `SHA256SUMS`.
+
+## License and third-party components
+
+ArDali Browser is licensed under GPL-3.0-only. Bundled third-party filters and generated ruleset resources retain their respective copyright and license notices in `browser/resources/adblock/NOTICE.txt`.

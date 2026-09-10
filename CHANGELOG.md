@@ -2,7 +2,7 @@
 
 All notable release-facing changes to ArDali Browser are documented here.
 
-## [7.0.0] - 2026-09-10
+## [7.0.0] - 2026-09-11
 
 ### Added
 
@@ -14,12 +14,24 @@ All notable release-facing changes to ArDali Browser are documented here.
 - **Hardware-Accelerated WebEngine**: Zero-copy video decoding pipelines, early GPU runtime flags, subprocess memory policy, tab memory hover cards, and tab memory pressure monitor.
 - **AutoEQ Presets Integration**: Bundled 1,757 calibrated AutoEQ headphone correction profiles for audiophile hardware in `browser/resources/eq-presets/autoeq` and CMake install rules.
 - **CMake & Packaging Integration**: Complete `GNUInstallDirs` support, unified `.desktop` specification, full hicolor icon resolution suite (16px to 1024px), and updated PKGBUILDs for Arch Linux and AUR.
+- **ArDali Listen**: PipeWire/PulseAudio discovery, ffmpeg-backed 16 kHz mono capture, live input levels, persistent settings, dedicated `ardali://listen` pages, and single-instance tab integration.
+- **Media Downloader**: yt-dlp analysis, metadata and thumbnails, selectable audio/video formats, adaptive-stream merging, conversion, embedded metadata and cover art, subtitles, ranges, playlists, queues, retry, cancellation, history, and export.
+- **Desktop Tab Architecture**: Detach/attach, cross-window drag sessions, groups, search, animations, hover cards, audible/fullscreen state, memory-pressure handling, and lifecycle-safe restore.
+- **Languages & Translation**: Centralized English, Turkish, and Arabic catalogs, runtime switching, system-locale detection, persistent preferences, RTL/LTR metadata, preferred-language ordering, spell check, custom dictionary, and page translation providers.
+- **Official Website**: Security-first static English, Turkish, and Arabic site with responsive RTL support, real product screenshots, local-only assets, CSP/security headers, SEO, and no tracking.
 
 ### Changed
 
 - Updated version metadata to 7.0.0 across CMake, application runtime, package manifests, and Arch/AUR packaging.
 - Enhanced resource search paths to reliably locate AutoEQ presets and AdBlock rulesets in portable, build, and system-installed `/usr/share/ardali-browser/` environments.
-- Enforced strict assertions (`-UNDEBUG`) across all 27 automated test suites.
+- Enforced strict assertions (`-UNDEBUG`) across all automated test suites.
+- Expanded the verified suite to 29 CTest targets covering blocker accounting, song finding, downloads, permissions, omnibox behavior, translation, i18n, tab lifecycle, performance, credentials, and security.
+
+### Fixed
+
+- Made blocker hit statistics tab-scoped and thread-safe, prevented duplicate cosmetic counts, preserved SPA counters, corrected subdomain and initiator handling, and cleaned state on tab close.
+- Corrected cosmetic blocking totals shown in browser UI and expanded Facebook, Reels, article, and sponsored-content filtering.
+- Preserved the Qt 6.4 build baseline by guarding newer WebEngine and color-scheme APIs and fixing complete-type and permission-bubble declarations.
 
 ## [6.1.2] - 2026-08-24
 
