@@ -1,0 +1,5 @@
+# robots.txt for ArDali Browser Website
+User-agent: *
+Allow: /
+
+Sitemap: https://ardali-browser.pages.dev/sitemap.xml

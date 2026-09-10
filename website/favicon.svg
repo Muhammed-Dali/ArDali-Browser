@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0f172a"/>
+      <stop offset="100%" stop-color="#020617"/>
+    </linearGradient>
+    <linearGradient id="shieldGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#38bdf8"/>
+      <stop offset="50%" stop-color="#0284c7"/>
+      <stop offset="100%" stop-color="#0369a1"/>
+    </linearGradient>
+    <linearGradient id="glowGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#7dd3fc"/>
+      <stop offset="100%" stop-color="#38bdf8"/>
+    </linearGradient>
+  </defs>
+  <rect width="64" height="64" rx="16" fill="url(#bgGrad)"/>
+  <rect width="62" height="62" x="1" y="1" rx="15" fill="none" stroke="#38bdf8" stroke-width="1.5" stroke-opacity="0.3"/>
+  <path d="M32 10 L50 18 V33 C50 44 42 51 32 55 C22 51 14 44 14 33 V18 Z" fill="url(#shieldGrad)" filter="drop-shadow(0 2px 6px rgba(56, 189, 248, 0.4))"/>
+  <path d="M32 16 L44 22 V33 C44 41 38 46 32 49 C26 46 20 41 20 33 V22 Z" fill="#0b1329" fill-opacity="0.9"/>
+  <!-- Stylized "A" and speed wings -->
+  <path d="M32 20 L24 38 H29 L32 31 L35 38 H40 L32 20 Z M32 25 L34.2 30 H29.8 Z" fill="url(#glowGrad)"/>
+</svg>

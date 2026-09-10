@@ -1,0 +1,669 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  
+  <!-- Security-First Content Security Policy -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self'; media-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; worker-src 'none'; manifest-src 'self';">
+  <meta name="referrer" content="no-referrer">
+  
+  <title>متصفح ArDali — الخصوصية. السرعة. التحكم. | متصفح ويب أصلي لسطح المكتب مبني بـ Qt 6</title>
+  <meta name="description" content="متصفح ArDali هو متصفح ويب أصلي لسطح المكتب يركز على الخصوصية، تم تطويره بلغة C++20 وإطار عمل Qt 6، مزود بمحرك تنزيل متوازي متكيف ونظام صوتي احترافي بمعادِل 32 نطاقاً.">
+  
+  <!-- Canonical & Multilingual Alternates -->
+  <link rel="canonical" href="https://ardali-browser.pages.dev/ar/">
+  <link rel="alternate" hreflang="en" href="https://ardali-browser.pages.dev/">
+  <link rel="alternate" hreflang="tr" href="https://ardali-browser.pages.dev/tr/">
+  <link rel="alternate" hreflang="ar" href="https://ardali-browser.pages.dev/ar/">
+  <link rel="alternate" hreflang="x-default" href="https://ardali-browser.pages.dev/">
+  
+  <!-- Open Graph / Facebook -->
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://ardali-browser.pages.dev/ar/">
+  <meta property="og:title" content="متصفح ArDali — الخصوصية. السرعة. التحكم.">
+  <meta property="og:description" content="متصفح أصلي لسطح المكتب بتقنية Qt 6 و C++20 مع حظر مدمج للإعلانات ومحرك تنزيل متكيف ومعادل صوتي فائق الدقة.">
+  <meta property="og:image" content="https://ardali-browser.pages.dev/assets/images/hero-browser.png">
+  <meta property="og:site_name" content="متصفح ArDali">
+  
+  <!-- Twitter Cards -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:url" content="https://ardali-browser.pages.dev/ar/">
+  <meta name="twitter:title" content="متصفح ArDali — الخصوصية. السرعة. التحكم.">
+  <meta name="twitter:description" content="متصفح أصلي لسطح المكتب يركز على الخصوصية بدون تتبع سحابي أو حزم زائدة.">
+  <meta name="twitter:image" content="https://ardali-browser.pages.dev/assets/images/hero-browser.png">
+
+  <!-- Icons -->
+  <link rel="icon" type="image/svg+xml" href="../favicon.svg">
+  <link rel="icon" type="image/png" sizes="32x32" href="../favicon.png">
+
+  <!-- Local Stylesheet (Zero external CDNs or Google Fonts) -->
+  <link rel="stylesheet" href="../assets/css/main.css">
+</head>
+<body>
+  <!-- Accessibility Skip Link -->
+  <a href="#main-content" class="skip-link">الانتقال إلى المحتوى الرئيسي</a>
+
+  <!-- Header & Navigation -->
+  <header class="site-header">
+    <div class="container nav-wrapper">
+      <a href="./" class="brand-link" aria-label="الصفحة الرئيسية لمتصفح ArDali">
+        <img src="../assets/images/ardali-logo-128.png" alt="شعار متصفح ArDali" class="brand-logo" width="38" height="38">
+        <span>ArDali</span>
+        <span class="brand-badge">v7.0</span>
+      </a>
+
+      <nav class="site-nav" aria-label="القائمة الرئيسية">
+        <ul class="nav-links">
+          <li><a href="#features">المميزات</a></li>
+          <li><a href="#showcase">واجهة المستخدم</a></li>
+          <li><a href="#privacy">الخصوصية</a></li>
+          <li><a href="#open-source">المصدر المفتوح</a></li>
+          <li><a href="#download">التنزيل</a></li>
+        </ul>
+
+        <div class="nav-actions">
+          <div class="lang-selector" role="navigation" aria-label="اختيار اللغة">
+            <a href="../" class="lang-btn" title="English">EN</a>
+            <a href="../tr/" class="lang-btn" title="Türkçe">TR</a>
+            <a href="./" class="lang-btn active" aria-current="page" title="العربية">AR</a>
+          </div>
+
+          <a href="https://github.com/Muhammed-Dali/ArDali-Browser" class="btn btn-secondary" target="_blank" rel="noopener noreferrer" aria-label="عرض المصدر على GitHub">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" clip-rule="evenodd" d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.53 1.032 1.53 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z"/></svg>
+            <span>GitHub</span>
+          </a>
+
+          <a href="#download" class="btn btn-primary">
+            <span>تنزيل المتصفح</span>
+          </a>
+        </div>
+      </nav>
+
+      <button type="button" class="mobile-nav-toggle" aria-label="تبديل القائمة" aria-expanded="false">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
+      </button>
+    </div>
+  </header>
+
+  <!-- Main Content Container -->
+  <main id="main-content">
+    
+    <!-- Hero Section -->
+    <section class="hero">
+      <div class="container">
+        <div class="hero-pill">
+          <span class="hero-pill-dot"></span>
+          <span>تقنية Qt 6 و C++20 • الخصوصية أولاً • ترخيص GPL-3.0 المفتوح</span>
+        </div>
+
+        <h1 class="hero-title">
+          الخصوصية. السرعة. التحكم.<br>
+          <span class="gradient-text">متصفح الويب الأصلي لسطح المكتب</span>
+        </h1>
+
+        <p class="hero-tagline">
+          يجمع متصفح ArDali بين معايير الويب الحديثة، والخصوصية الفردية الصارمة، والتنزيل المتوازي عالي السرعة، مع نظام صوتي متكامل للاستماع فائق الدقة. تم تصميمه محلياً بلغة C++20 دون إرهاق إلكترون ودون أي تتبع سحابي.
+        </p>
+
+        <div class="hero-cta">
+          <a href="#download" class="btn btn-primary btn-lg">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12m-5-5 5 5 5-5M4 20h16"/></svg>
+            <span>تنزيل ArDali</span>
+          </a>
+          <a href="https://github.com/Muhammed-Dali/ArDali-Browser" class="btn btn-secondary btn-lg" target="_blank" rel="noopener noreferrer">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" clip-rule="evenodd" d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.53 1.032 1.53 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z"/></svg>
+            <span>استعراض على GitHub</span>
+          </a>
+        </div>
+
+        <div class="hero-platforms">
+          <span class="platform-item">
+            <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12.001 2c-2.42 0-4.382 1.96-4.382 4.38 0 1.258.531 2.39 1.383 3.19-.244.606-.525 1.272-.806 1.954-1.398 3.39-2.696 6.54-2.696 8.476 0 .552.448 1 1 1h11c.552 0 1-.448 1-1 0-1.936-1.298-5.086-2.696-8.476-.281-.682-.562-1.348-.806-1.954.852-.8 1.383-1.932 1.383-3.19C16.383 3.96 14.421 2 12.001 2zm-1.5 5a1 1 0 110-2 1 1 0 010 2zm3 0a1 1 0 110-2 1 1 0 010 2z"/></svg>
+            Linux (Arch AUR، Pacman، حزم مستقلة)
+          </span>
+          <span class="platform-item">
+            <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M3 5.479l7.377-1.016v7.127H3V5.479zm0 13.042l7.377 1.018v-7.04H3v6.022zm8.32 1.149L21 21V11.59h-9.68v8.08zm0-15.341v8.092H21V3l-9.68 1.329z"/></svg>
+            Windows
+          </span>
+        </div>
+
+        <!-- Browser Mockup -->
+        <div class="browser-mockup">
+          <div class="mockup-toolbar">
+            <div class="mockup-controls">
+              <span class="mockup-dot close"></span>
+              <span class="mockup-dot minimize"></span>
+              <span class="mockup-dot maximize"></span>
+            </div>
+            <div class="mockup-address-bar">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
+              <span>ardali://newtab</span>
+            </div>
+          </div>
+          <img src="../assets/images/hero-browser.png" alt="واجهة متصفح ArDali الأصلية" class="mockup-image" width="1342" height="821" fetchpriority="high">
+        </div>
+      </div>
+    </section>
+
+    <!-- Core Features Section -->
+    <section id="features" class="section">
+      <div class="container">
+        <div class="section-header">
+          <span class="section-subtitle">أداء فائق وتحكم مطلق</span>
+          <h2 class="section-title">قدرات مدمجة، بدون إضافات تثقل المتصفح</h2>
+          <p class="section-desc">
+            كل ميزة في ArDali مدمجة ومبرمجة مباشرة في نواة C++ الأصلية، مما يمنحك استجابة فائقة دون الحاجة إلى تثبيت عشرات إضافات المتصفح الخارجية.
+          </p>
+        </div>
+
+        <div class="features-grid">
+          <!-- Feature 1: Ad & Tracker Blocker -->
+          <article class="feature-card">
+            <div class="feature-icon-wrapper">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 3 20 6v5c0 5-3 8-8 10-5-2-8-5-8-10V6Z"/><path d="m8.5 12 2.2 2.2 4.8-5"/></svg>
+            </div>
+            <h3 class="feature-title">درع ArDali وحظر الإعلانات</h3>
+            <p class="feature-text">
+              ثلاثة مستويات حماية (أساسي %35، متوازن %65، شامل %95) مع تقييم محلي لقوائم التصفية، وإخفاء مساحات الإعلانات، وتجريد معلمات التتبع تلقائياً.
+            </p>
+            <div class="feature-tags">
+              <span class="feature-tag">اعتراض على مستوى الشبكة</span>
+              <span class="feature-tag">تطهير معلمات التتبع</span>
+            </div>
+          </article>
+
+          <!-- Feature 2: Parallel Download Engine -->
+          <article class="feature-card">
+            <div class="feature-icon-wrapper">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 3v12m-5-5 5 5 5-5M4 20h16"/></svg>
+            </div>
+            <h3 class="feature-title">محرك التنزيل المتوازي المتكيف</h3>
+            <p class="feature-text">
+              يقوم محرك GeneralDownloadManager بتوسيع اتصالات التنزيل تلقائياً من 1 إلى 8 مسارات متزامنة، مع توزيع ديناميكي للأجزاء واستئناف فوري من النقطة الأخيرة.
+            </p>
+            <div class="feature-tags">
+              <span class="feature-tag">تنزيل متعدد المسارات</span>
+              <span class="feature-tag">استئناف دقيق</span>
+            </div>
+          </article>
+
+          <!-- Feature 3: Encrypted Password Vault -->
+          <article class="feature-card">
+            <div class="feature-icon-wrapper">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
+            </div>
+            <h3 class="feature-title">خزينة كلمات المرور المشفرة محلياً</h3>
+            <p class="feature-text">
+              حماية بيانات الدخول محلياً بتشفير AES-256-GCM واشتقاق المفاتيح عبر PBKDF2. بدون أي إرسال سحابي، وبدون تتبع، مع ملء تلقائي آمن داخل الصفحات.
+            </p>
+            <div class="feature-tags">
+              <span class="feature-tag">تشفير AES-256-GCM</span>
+              <span class="feature-tag">تخزين محلي %100</span>
+            </div>
+          </article>
+
+          <!-- Feature 4: Granular Site Permissions -->
+          <article class="feature-card">
+            <div class="feature-icon-wrapper">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+            </div>
+            <h3 class="feature-title">أذونات دقيقة لكل موقع ويب</h3>
+            <p class="feature-text">
+              تحكم فوري من شريط العناوين في وصول المواقع إلى الكاميرا، الميكروفون، الموقع الجغرافي، الإشعارات، والنوافذ المنبثقة، وسياسات تحسين جافاسكريبت.
+            </p>
+            <div class="feature-tags">
+              <span class="feature-tag">تحكم مباشر من الشريط</span>
+              <span class="feature-tag">تطهير تلقائي للأذونات</span>
+            </div>
+          </article>
+
+          <!-- Feature 5: Smart Omnibox & Tab Strip -->
+          <article class="feature-card">
+            <div class="feature-icon-wrapper">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+            </div>
+            <h3 class="feature-title">شريط عناوين ذكي وإدارة التبويبات</h3>
+            <p class="feature-text">
+              محرك تصنيف ذكي يدمج السجل والإشارات المرجعية واقتراحات البحث. بطاقات استهلاك الذاكرة عند التمرير، ورسوم متحركة سلسة عبر كرت الشاشة، واستعادة الجلسة بعد الإغلاق.
+            </p>
+            <div class="feature-tags">
+              <span class="feature-tag">اقتراحات بحث سريعة</span>
+              <span class="feature-tag">استعادة الجلسات</span>
+            </div>
+          </article>
+
+          <!-- Feature 6: Centralized i18n & Translation -->
+          <article class="feature-card">
+            <div class="feature-icon-wrapper">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m5 8 6 6m-7 0 6-6 2-3M2 5h12M7 2h1m14 20-5-10-5 10m2-4h6"/></svg>
+            </div>
+            <h3 class="feature-title">نظام تعدّد اللغات والترجمة الفورية</h3>
+            <p class="feature-text">
+              إمكانية تغيير لغة واجهة المتصفح بضغطة زر دون الحاجة لإعادة التشغيل. دعم متكامل للترجمة السريعة لصفحات الويب الخارجية بين لغات العالم المختلفة.
+            </p>
+            <div class="feature-tags">
+              <span class="feature-tag">أكثر من 13 لغة مدعومة</span>
+              <span class="feature-tag">ترجمة صفحات مباشرة</span>
+            </div>
+          </article>
+
+          <!-- Feature 7: 32-Band Studio Equalizer -->
+          <article class="feature-card">
+            <div class="feature-icon-wrapper">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 2v20M17 5v14M7 9v6M22 8v8M2 11v2"/></svg>
+            </div>
+            <h3 class="feature-title">معادل استوديو بـ 32 نطاقاً و AutoEQ</h3>
+            <p class="feature-text">
+              نظام صوتي مخصص لعشاق الصوت النقي مع معادل صوتي بـ 32 نطاقاً، ومحدد ذروة Brickwall، وموسع ستيريو، وأكثر من 1,757 ملف تصحيح AutoEQ لسماعات الرأس.
+            </p>
+            <div class="feature-tags">
+              <span class="feature-tag">1,757 ملف AutoEQ جاهز</span>
+              <span class="feature-tag">مؤثرات DSP متقدمة</span>
+            </div>
+          </article>
+
+          <!-- Feature 8: ArDali Pulse -->
+          <article class="feature-card">
+            <div class="feature-icon-wrapper">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+            </div>
+            <h3 class="feature-title">ArDali Pulse (التعرف على الصوت)</h3>
+            <p class="feature-text">
+              محلل طيف صوتي يتعرف على الموسيقى المشغلة في أي تبويب أو تطبيق نظام مباشرة عبر إشارات الصوت المحلية دون استدعاء خدمات تتبع خارجية.
+            </p>
+            <div class="feature-tags">
+              <span class="feature-tag">تحليل صوت النظام</span>
+              <span class="feature-tag">سجل محلي للتعرف</span>
+            </div>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <!-- Visual Showcase / Screenshots Section -->
+    <section id="showcase" class="section">
+      <div class="container">
+        <div class="section-header">
+          <span class="section-subtitle">جولة بصرية</span>
+          <h2 class="section-title">واجهات احترافية لبيئة سطح المكتب</h2>
+          <p class="section-desc">
+            استكشف واجهات متصفح ArDali الحقيقية العاملة على بيئات لينكس وويندوز.
+          </p>
+        </div>
+
+        <div class="spotlight-wrapper">
+          <!-- Spotlight 1: Blocker -->
+          <div class="spotlight-row">
+            <div class="spotlight-content">
+              <span class="spotlight-pill">درع منع الإعلانات والتعقب</span>
+              <h3 class="spotlight-title">تصفح نقي خالٍ من الإزعاج</h3>
+              <p class="spotlight-desc">
+                يقوم مانع ArDali بفحص الطلبات محلياً بالاعتماد على قوائم موثوقة مثل EasyList و EasyPrivacy. يخفي مساحات الإعلانات الفارغة ويمنع النوافذ المنبثقة غير المرغوب فيها.
+              </p>
+              <ul class="spotlight-bullets">
+                <li class="spotlight-bullet">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                  <span>ثلاثة مستويات حماية: خفيف، متوازن، وشامل.</span>
+                </li>
+                <li class="spotlight-bullet">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                  <span>تطهير معلمات التتبع (fbclid, gclid, utm_*) قبل خروج الطلب من جهازك.</span>
+                </li>
+              </ul>
+            </div>
+            <div class="spotlight-preview">
+              <img src="../assets/images/ardali-blocker.png" alt="واجهة مانع الإعلانات في ArDali" width="1425" height="941" loading="lazy">
+            </div>
+          </div>
+
+          <!-- Spotlight 2: Parallel Download Engine -->
+          <div class="spotlight-row reverse">
+            <div class="spotlight-content">
+              <span class="spotlight-pill">GeneralDownloadManager</span>
+              <h3 class="spotlight-title">تسريع ذكي متعدد المسارات</h3>
+              <p class="spotlight-desc">
+                لا تفقد تقدم التنزيل بعد اليوم. يقسم محرك التنزيل المتكيف الملفات إلى أجزاء متزامنة مستفيداً من ترويسات HTTP Range، متكيفاً مع سرعة الخادم.
+              </p>
+              <ul class="spotlight-bullets">
+                <li class="spotlight-bullet">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                  <span>توسيع ديناميكي من مسار واحد إلى 8 مسارات تنزيل متوازية.</span>
+                </li>
+                <li class="spotlight-bullet">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                  <span>معالجة تلقائية لتقييد الخوادم HTTP 429 وإعادة محاولة تنزيل الأجزاء المتعثرة.</span>
+                </li>
+              </ul>
+            </div>
+            <div class="spotlight-preview">
+              <img src="../assets/images/downloads.png" alt="مركز التنزيل في ArDali" width="1425" height="940" loading="lazy">
+            </div>
+          </div>
+
+          <!-- Spotlight 3: Password Vault -->
+          <div class="spotlight-row">
+            <div class="spotlight-content">
+              <span class="spotlight-pill">أمان محلي صارم</span>
+              <h3 class="spotlight-title">خزينة مشفرة بمعيار AES-256-GCM</h3>
+              <p class="spotlight-desc">
+                بيانات تسجيل دخولك لا تغادر وسيط التخزين المحلي أبداً. يقوم المتصفح بحمايتها عبر اشتقاق المفاتيح بـ PBKDF2 والتشفير القوي AES-256-GCM.
+              </p>
+              <ul class="spotlight-bullets">
+                <li class="spotlight-bullet">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                  <span>صفر مزامنة سحابية: البيانات محفوظة داخل جهازك فقط.</span>
+                </li>
+                <li class="spotlight-bullet">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                  <span>حماية بكلمة مرور رئيسية مع ملء تلقائي فوري وآمن داخل النماذج.</span>
+                </li>
+              </ul>
+            </div>
+            <div class="spotlight-preview">
+              <img src="../assets/images/password-manager.png" alt="مدير كلمات المرور في ArDali" width="1600" height="900" loading="lazy">
+            </div>
+          </div>
+
+          <!-- Spotlight 4: Equalizer & Sound Studio -->
+          <div class="spotlight-row reverse">
+            <div class="spotlight-content">
+              <span class="spotlight-pill">صوت ويب فائق الجودة</span>
+              <h3 class="spotlight-title">معادل استوديو بـ 32 نطاقاً ومعالجة DSP</h3>
+              <p class="spotlight-desc">
+                استمع إلى وسائط الويب بدقة استوديوهات الصوت. يمرر المتصفح الصوت عبر 32 مرشحاً دقيقاً مع ملفات تصحيح AutoEQ المعايرة لأكثر من 1,750 طراز سماعة.
+              </p>
+              <ul class="spotlight-bullets">
+                <li class="spotlight-bullet">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                  <span>منحنيات جاهزة لسماعات Sony و Sennheiser و Beyerdynamic و AKG و Apple.</span>
+                </li>
+                <li class="spotlight-bullet">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                  <span>مؤثرات فورية: تردد BASS FX، محدد Brickwall، وموسع النطاق الفراغي للستيريو.</span>
+                </li>
+              </ul>
+            </div>
+            <div class="spotlight-preview">
+              <img src="../assets/images/audio-effects.png" alt="استوديو الصوت في ArDali" width="1425" height="944" loading="lazy">
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Privacy by Design Section -->
+    <section id="privacy" class="section privacy-section">
+      <div class="container">
+        <div class="privacy-card">
+          <div class="section-header">
+            <span class="section-subtitle">ضمانات معمارية</span>
+            <h2 class="section-title">الخصوصية مبدأ أساسي، وليست فكرة لاحقة</h2>
+            <p class="section-desc">
+              نصمم برمجياتنا بأصغر مساحة هجوم ممكنة، ونلتزم بوعود تقنية قابلة للفحص والتأكيد بدلاً من الشعارات التسويقية المضللة.
+            </p>
+          </div>
+
+          <div class="privacy-grid">
+            <div class="privacy-item">
+              <div class="privacy-item-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"></polyline></svg>
+              </div>
+              <div class="privacy-item-content">
+                <h3>صفر تتبع على موقع الويب</h3>
+                <p>هذا الموقع التعريفي لا يحتوي على Google Analytics، ولا متتبعات خارجية، ولا ملفات تعريف ارتباط، ولا نصوص بصمات المتصفح.</p>
+              </div>
+            </div>
+
+            <div class="privacy-item">
+              <div class="privacy-item-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"></polyline></svg>
+              </div>
+              <div class="privacy-item-content">
+                <h3>بدون شبكات CDN خارجية</h3>
+                <p>جميع ملفات التنسيق والنصوص البرمجية والأيقونات والصور يتم استضافتها محلياً على هذا النطاق الساكن دون تحميل خطوط أو مكتبات خارجية.</p>
+              </div>
+            </div>
+
+            <div class="privacy-item">
+              <div class="privacy-item-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"></polyline></svg>
+              </div>
+              <div class="privacy-item-content">
+                <h3>لا يُشترط إنشاء حساب</h3>
+                <p>لا يتطلب ArDali تسجيل الدخول أو إنشاء حساب لاستخدام المتصفح أو حفظ الإشارات المرجعية أو تشغيل مدير التنزيل.</p>
+              </div>
+            </div>
+
+            <div class="privacy-item">
+              <div class="privacy-item-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"></polyline></svg>
+              </div>
+              <div class="privacy-item-content">
+                <h3>بنية محلية أولاً</h3>
+                <p>كلمات المرور والسجل والأذونات ومضبوطات الصوت تبقى بالكامل على جهازك باستخدام مسارات XDG القياسية وواجهات النظام الآمنة.</p>
+              </div>
+            </div>
+
+            <div class="privacy-item">
+              <div class="privacy-item-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"></polyline></svg>
+              </div>
+              <div class="privacy-item-content">
+                <h3>سياسة أمان محتوى صارمة (CSP)</h3>
+                <p>الموقع محمي بترويسات أمان متقدمة وسياسات تقييد الأذونات Permissions-Policy وسياسة no-referrer للخصوصية.</p>
+              </div>
+            </div>
+
+            <div class="privacy-item">
+              <div class="privacy-item-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"></polyline></svg>
+              </div>
+              <div class="privacy-item-content">
+                <h3>مصدر مفتوح خاضع للتدقيق</h3>
+                <p>كل سطر برمجي في متصفح ArDali متاح للعامة ويمكن مراجعته والتدقيق فيه بموجب ترخيص GNU العام v3.0.</p>
+              </div>
+            </div>
+          </div>
+
+          <div class="privacy-badge-note">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>
+            <span>ملاحظة مهمة: نحن نتجنب استخدام ادعاءات مضللة مثل "مستحيل الاختراق" أو "آمن بنسبة 100%". الأمان الحقيقي يتحقق بتقليص مساحة الهجوم، والمراجعة الشفافة للشفرة، والمعالجة المحلية للبيانات.</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Open Source Section -->
+    <section id="open-source" class="section">
+      <div class="container">
+        <div class="open-source-card">
+          <div class="open-source-content">
+            <span class="license-pill">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
+              <span>ترخيص جنو العام (GPL-3.0)</span>
+            </span>
+            <h2>مشروع حر ومفتوح المصدر</h2>
+            <p>
+              يتم تطوير متصفح ArDali بشفافية تامة على GitHub. يمكنك استعراض بنية البرنامج، وتجميعه محلياً باستخدام خيارات المترجم التي تفضلها، والمساهمة في تطويره مع المجتمع البرمجي.
+            </p>
+            <a href="https://github.com/Muhammed-Dali/ArDali-Browser" class="btn btn-primary btn-lg" target="_blank" rel="noopener noreferrer">
+              <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" clip-rule="evenodd" d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.53 1.032 1.53 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z"/></svg>
+              <span>عرض المصدر على GitHub</span>
+            </a>
+          </div>
+
+          <div class="open-source-stats">
+            <div class="stat-row">
+              <span class="stat-label">لغة البرمجة</span>
+              <span class="stat-value">C++20</span>
+            </div>
+            <div class="stat-row">
+              <span class="stat-label">إطار الواجهة</span>
+              <span class="stat-value">Qt 6.4+ (أصلي)</span>
+            </div>
+            <div class="stat-row">
+              <span class="stat-label">محرك الويب</span>
+              <span class="stat-value">Chromium / QtWebEngine</span>
+            </div>
+            <div class="stat-row">
+              <span class="stat-label">نظام معالجة الصوت</span>
+              <span class="stat-value">DALI Web Audio + BASS</span>
+            </div>
+            <div class="stat-row">
+              <span class="stat-label">الترخيص</span>
+              <span class="stat-value">GPL-3.0-only</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Download Section -->
+    <section id="download" class="section">
+      <div class="container">
+        <div class="section-header">
+          <span class="section-subtitle">ابدأ الآن</span>
+          <h2 class="section-title">تنزيل متصفح ArDali</h2>
+          <p class="section-desc">
+            اختر نظام تشغيل سطح المكتب الخاص بك. نوفر حزم مستودعات سريعة وحزم إصدارات مستقلة على GitHub.
+          </p>
+        </div>
+
+        <div class="download-grid">
+          <!-- Linux Card -->
+          <div class="download-card">
+            <div class="download-card-header">
+              <div class="platform-icon">
+                <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12.001 2c-2.42 0-4.382 1.96-4.382 4.38 0 1.258.531 2.39 1.383 3.19-.244.606-.525 1.272-.806 1.954-1.398 3.39-2.696 6.54-2.696 8.476 0 .552.448 1 1 1h11c.552 0 1-.448 1-1 0-1.936-1.298-5.086-2.696-8.476-.281-.682-.562-1.348-.806-1.954.852-.8 1.383-1.932 1.383-3.19C16.383 3.96 14.421 2 12.001 2zm-1.5 5a1 1 0 110-2 1 1 0 010 2zm3 0a1 1 0 110-2 1 1 0 010 2z"/></svg>
+              </div>
+              <div>
+                <h3 class="download-card-title">Linux</h3>
+                <span class="download-card-subtitle">Arch Linux و Manjaro وتوزيعات دبيان والحزم المستقلة</span>
+              </div>
+            </div>
+
+            <div class="install-methods">
+              <div class="install-method">
+                <span class="install-method-label">AUR (حزمة مجمعة وجاهزة)</span>
+                <div class="code-box">
+                  <code id="cmd-aur-bin">yay -S ardali-bin</code>
+                  <button type="button" class="copy-btn" data-target="cmd-aur-bin" data-copied="تم النسخ!">نسخ</button>
+                </div>
+              </div>
+
+              <div class="install-method">
+                <span class="install-method-label">AUR (بناء من المصدر)</span>
+                <div class="code-box">
+                  <code id="cmd-aur-src">yay -S ardali</code>
+                  <button type="button" class="copy-btn" data-target="cmd-aur-src" data-copied="تم النسخ!">نسخ</button>
+                </div>
+              </div>
+            </div>
+
+            <div class="download-card-cta">
+              <a href="https://github.com/Muhammed-Dali/ArDali-Browser/releases" class="btn btn-primary" style="width: 100%;" target="_blank" rel="noopener noreferrer">
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12m-5-5 5 5 5-5M4 20h16"/></svg>
+                <span>تنزيل الحزمة المستقلة (.tar.zst)</span>
+              </a>
+              <p class="download-note">تستضاف الإصدارات بأمان عبر GitHub Releases</p>
+            </div>
+          </div>
+
+          <!-- Windows Card -->
+          <div class="download-card">
+            <div class="download-card-header">
+              <div class="platform-icon">
+                <svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 5.479l7.377-1.016v7.127H3V5.479zm0 13.042l7.377 1.018v-7.04H3v6.022zm8.32 1.149L21 21V11.59h-9.68v8.08zm0-15.341v8.092H21V3l-9.68 1.329z"/></svg>
+              </div>
+              <div>
+                <h3 class="download-card-title">Windows</h3>
+                <span class="download-card-subtitle">Windows 10 / 11 (64-بت)</span>
+              </div>
+            </div>
+
+            <div class="install-methods">
+              <div class="install-method">
+                <span class="install-method-label">حزم الإصدارات المستقلة</span>
+                <p style="font-size: 0.85rem; color: var(--text-secondary); margin-top: 0.25rem;">
+                  يتم نشر حزم zip المحمولة وملفات التثبيت الآلية تزامناً مع كل إصدار مستقر.
+                </p>
+              </div>
+            </div>
+
+            <div class="download-card-cta">
+              <a href="https://github.com/Muhammed-Dali/ArDali-Browser/releases" class="btn btn-primary" style="width: 100%;" target="_blank" rel="noopener noreferrer">
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12m-5-5 5 5 5-5M4 20h16"/></svg>
+                <span>عرض الإصدارات على GitHub</span>
+              </a>
+              <p class="download-note">تستضاف الإصدارات بأمان عبر GitHub Releases</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- Site Footer -->
+  <footer class="site-footer">
+    <div class="container">
+      <div class="footer-top">
+        <div class="footer-brand">
+          <a href="./" class="brand-link">
+            <img src="../assets/images/ardali-logo-128.png" alt="شعار ArDali" width="30" height="30">
+            <span>متصفح ArDali</span>
+          </a>
+          <p class="footer-desc">
+            متصفح ويب مستقل يركز على الخصوصية، مصمم بـ Qt 6 و C++20 لتحقيق السرعة والحرية والدقة الصوتية.
+          </p>
+        </div>
+
+        <div class="footer-column">
+          <h4>التنقل</h4>
+          <ul>
+            <li><a href="#features">المميزات</a></li>
+            <li><a href="#showcase">واجهة المستخدم</a></li>
+            <li><a href="#privacy">الخصوصية</a></li>
+            <li><a href="#download">التنزيل</a></li>
+          </ul>
+        </div>
+
+        <div class="footer-column">
+          <h4>المصدر المفتوح</h4>
+          <ul>
+            <li><a href="https://github.com/Muhammed-Dali/ArDali-Browser" target="_blank" rel="noopener noreferrer">مستودع GitHub</a></li>
+            <li><a href="https://github.com/Muhammed-Dali/ArDali-Browser/releases" target="_blank" rel="noopener noreferrer">الإصدارات وسجل التغييرات</a></li>
+            <li><a href="https://github.com/Muhammed-Dali/ArDali-Browser/blob/main/LICENSE" target="_blank" rel="noopener noreferrer">ترخيص GPL-3.0</a></li>
+            <li><a href="https://github.com/Muhammed-Dali/ArDali-Browser/issues" target="_blank" rel="noopener noreferrer">متتبع البلاغات (Issues)</a></li>
+          </ul>
+        </div>
+
+        <div class="footer-column">
+          <h4>اللغات</h4>
+          <ul>
+            <li><a href="../">English</a></li>
+            <li><a href="../tr/">Türkçe</a></li>
+            <li><a href="./">العربية (الحالية)</a></li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="footer-bottom">
+        <div>
+          <span>© 2026 مشروع متصفح ArDali. تم النشر بموجب ترخيص GNU العام v3.0.</span>
+        </div>
+        <div>
+          <button type="button" class="back-to-top" aria-label="التمرير إلى الأعلى">
+            <span>العودة للأعلى</span>
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><polyline points="18 15 12 9 6 15"></polyline></svg>
+          </button>
+        </div>
+      </div>
+    </div>
+  </footer>
+
+  <!-- Minimal Vanilla JavaScript -->
+  <script src="../assets/js/main.js"></script>
+</body>
+</html>
