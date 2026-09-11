@@ -43,7 +43,7 @@ jobs:
           DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
             build-essential ca-certificates cmake ffmpeg git ninja-build nodejs \
             libssl-dev libpsl-dev pkg-config qt6-base-dev qt6-image-formats-plugins qt6-svg-dev \
-            qt6-webengine-dev xauth xvfb dbus
+            qt6-webengine-dev xauth xvfb dbus dbus-x11
 
       - name: Install Fedora build dependencies
         if: ${{ matrix.package_family == 'dnf' }}
@@ -53,7 +53,7 @@ jobs:
             cmake ffmpeg-free gcc-c++ git ninja-build nodejs openssl-devel \
             libpsl-devel pkgconf-pkg-config \
             qt6-qtbase-devel qt6-qtimageformats qt6-qtsvg-devel \
-            qt6-qtwebengine-devel xorg-x11-server-Xvfb xorg-x11-xauth dbus
+            qt6-qtwebengine-devel xorg-x11-server-Xvfb xorg-x11-xauth dbus dbus-x11
 
       - name: Install Arch build dependencies
         if: ${{ matrix.package_family == 'pacman' }}
@@ -75,20 +75,63 @@ jobs:
       - name: Build
         run: cmake --build build --parallel 2
 
-      - name: Setup D-Bus for tests
+      - name: Setup system for tests
         shell: bash
         run: |
-          # Start dbus daemon for suggestion service
-          mkdir -p /run/dbus
-          dbus-daemon --system --fork --print-address
+          # Create necessary D-Bus directories and files
+          mkdir -p /run/dbus /var/lib/dbus /etc/dbus-1/system.d
+          
+          # Generate machine ID if it doesn't exist
+          if [ ! -f /etc/machine-id ]; then
+            dbus-uuidgen --ensure=/etc/machine-id 2>/dev/null || true
+          fi
+          
+          # Start D-Bus daemon properly
+          echo "Starting D-Bus daemon..."
+          dbus-daemon --system --print-address > /tmp/dbus-address.txt 2>&1 &
+          DBUS_PID=$!
+          
+          # Wait for D-Bus to be ready
+          for i in {1..30}; do
+            if [ -S /run/dbus/system_bus_socket ]; then
+              echo "D-Bus is ready (attempt $i)"
+              break
+            fi
+            echo "Waiting for D-Bus... (attempt $i)"
+            sleep 0.2
+          done
+          
+          # Verify D-Bus is running
+          ps aux | grep dbus-daemon || echo "Warning: dbus-daemon not found in ps"
+          ls -la /run/dbus/ || echo "Warning: /run/dbus does not exist"
+          
+          # Store PID for later cleanup
+          echo $DBUS_PID > /tmp/dbus.pid
 
       - name: Test
         env:
           QT_QPA_PLATFORM: xcb
+          QT_QPA_PLATFORM_PLUGIN_PATH: /usr/lib/x86_64-linux-gnu/qt6/plugins
           QTWEBENGINE_DISABLE_SANDBOX: "1"
-          QTWEBENGINE_CHROMIUM_FLAGS: --no-sandbox --disable-gpu
+          QTWEBENGINE_CHROMIUM_FLAGS: --no-sandbox --disable-gpu --disable-web-resources
+          DBUS_SYSTEM_BUS_ADDRESS: unix:path=/run/dbus/system_bus_socket
         run: |
+          # Verify D-Bus one more time
+          ls -la /run/dbus/system_bus_socket || echo "Warning: D-Bus socket not found"
+          
           # The three-window fixture is covered by the local and clean-package
           # gates; nested CI containers do not reliably start its third renderer.
-          xvfb-run -a ctest --test-dir build --output-on-failure \
-            -E '^browser-tab-attach-stress$'
+          xvfb-run -a --error-file=/tmp/xvfb-error.log \
+            ctest --test-dir build --output-on-failure \
+            -E '^browser-tab-attach-stress$' \
+            --timeout 120
+
+      - name: Cleanup
+        if: always()
+        shell: bash
+        run: |
+          # Kill D-Bus daemon if it was started
+          if [ -f /tmp/dbus.pid ]; then
+            kill $(cat /tmp/dbus.pid) 2>/dev/null || true
+            wait $(cat /tmp/dbus.pid) 2>/dev/null || true
+          fi
