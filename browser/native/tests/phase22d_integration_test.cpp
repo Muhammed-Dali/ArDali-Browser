@@ -3,6 +3,7 @@
 #endif
 #include <QApplication>
 #include <QEventLoop>
+#include <QElapsedTimer>
 #include <QTimer>
 #include <QTemporaryDir>
 #include <QSettings>
@@ -28,6 +29,7 @@
 
 static void wait(int ms){QEventLoop loop;QTimer::singleShot(ms,&loop,&QEventLoop::quit);loop.exec();}
 static QVariant js(QWebEnginePage *page,const QString &code){QVariant result;QEventLoop loop;page->runJavaScript(code,[&](const QVariant &v){result=v;loop.quit();});QTimer::singleShot(5000,&loop,&QEventLoop::quit);loop.exec();return result;}
+static bool waitForJs(QWebEnginePage *page,const QString &condition,int timeoutMs=5000){QElapsedTimer timer;timer.start();do{if(js(page,condition).toBool())return true;wait(50);}while(timer.elapsed()<timeoutMs);return false;}
 static void key(QWidget *widget,int code){QKeyEvent press(QEvent::KeyPress,code,Qt::NoModifier),release(QEvent::KeyRelease,code,Qt::NoModifier);QApplication::sendEvent(widget,&press);QApplication::sendEvent(widget,&release);}
 int main(int argc,char **argv){
   registerArdaliUrlSchemes();QApplication app(argc,argv);app.setApplicationName("ArDaliPhase22dIntegration");app.setOrganizationName("ArDaliTest");
@@ -124,8 +126,9 @@ int main(int argc,char **argv){
   window.closeTab(youtubeIndex);wait(100);
   const int selectionIndex=window.addNewTab();wait(400);
   auto *selectionView=window.currentView();selectionView->setFocus();
-  js(selectionView->page(),"document.querySelector('#query').focus();document.querySelector('#query').value='choose';document.querySelector('#query').dispatchEvent(new Event('input')); ");wait(350);
-  assert(js(selectionView->page(),"document.querySelectorAll('.suggestion-row').length>1").toBool());
+  assert(waitForJs(selectionView->page(),"typeof window.ardaliSuggestionBridge==='function'&&!!document.querySelector('#query')"));
+  js(selectionView->page(),"document.querySelector('#query').focus();document.querySelector('#query').value='choose';document.querySelector('#query').dispatchEvent(new Event('input',{bubbles:true}));");
+  assert(waitForJs(selectionView->page(),"document.querySelectorAll('.suggestion-row').length>1"));
   js(selectionView->page(),"document.querySelector('#query').dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowDown',bubbles:true}));document.querySelector('#query').dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true}));");wait(50);
   assert(selectionView->page()->requestedUrl().host()==QStringLiteral("www.google.com"));
   selectionView->stop();window.closeTab(selectionIndex);wait(100);
