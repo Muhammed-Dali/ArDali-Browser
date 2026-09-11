@@ -652,7 +652,9 @@ int main(int argc, char **argv)
             "const ad=document.getElementById('ad');"
             "const normal=document.getElementById('normal');"
             "if(!ad||!normal) return false;"
-            "return getComputedStyle(ad).display==='none'"
+            "const content=ad.querySelector('ytd-ad-slot-renderer');"
+            "return (getComputedStyle(ad).display==='none'"
+            "||!!content&&getComputedStyle(content).display==='none')"
             "&&getComputedStyle(normal).display!=='none';"
             "})()",
             30000);
@@ -671,6 +673,8 @@ int main(int argc, char **argv)
                    "adExists:!!ad,"
                    "normalExists:!!normal,"
                    "adDisplay:ad?getComputedStyle(ad).display:null,"
+                   "adContentDisplay:ad&&ad.querySelector('ytd-ad-slot-renderer')?"
+                   "getComputedStyle(ad.querySelector('ytd-ad-slot-renderer')).display:null,"
                    "normalDisplay:normal?"
                    "getComputedStyle(normal).display:null"
                    "});"

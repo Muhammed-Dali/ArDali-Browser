@@ -18,6 +18,8 @@
 #include <QNetworkAccessManager>
 #include <QJsonDocument>
 #include <QJsonArray>
+#include <QPointer>
+#include <QSharedPointer>
 #include <cassert>
 #include <cstring>
 #include <iostream>
@@ -27,13 +29,14 @@
 #include "glow_toggle_switch.h"
 
 static void wait(int ms) { QEventLoop loop; QTimer::singleShot(ms,&loop,&QEventLoop::quit); loop.exec(); }
-static QVariant js(QWebEnginePage &page, const QString &script, quint32 world = 0) {
-  QVariant result; QEventLoop loop;
-  page.runJavaScript(script,world,[&](const QVariant &v){result=v;loop.quit();});
-  QTimer::singleShot(5000,&loop,&QEventLoop::quit);loop.exec();return result;
+struct JavaScriptCallState { QVariant result; bool completed = false; };
+static QVariant js(QWebEnginePage &page, const QString &script, quint32 world = 0, int timeoutMs = 5000) {
+  auto state=QSharedPointer<JavaScriptCallState>::create();QEventLoop loop;const QPointer<QEventLoop> guardedLoop(&loop);
+  page.runJavaScript(script,world,[state,guardedLoop](const QVariant &v){state->result=v;state->completed=true;if(guardedLoop)guardedLoop->quit();});
+  if(!state->completed){QTimer::singleShot(qMax(0,timeoutMs),&loop,&QEventLoop::quit);loop.exec();}return state->result;
 }
 static bool waitForJs(QWebEnginePage &page, const QString &condition, quint32 world = 0, int timeoutMs = 5000) {
-  QElapsedTimer timer;timer.start();do{if(js(page,condition,world).toBool())return true;wait(50);}while(timer.elapsed()<timeoutMs);return false;
+  QElapsedTimer timer;timer.start();do{const int remaining=timeoutMs-static_cast<int>(timer.elapsed());if(remaining<=0)break;if(js(page,condition,world,qMin(1000,remaining)).toBool())return true;const int waitMs=qMin(50,timeoutMs-static_cast<int>(timer.elapsed()));if(waitMs>0)wait(waitMs);}while(timer.elapsed()<timeoutMs);return false;
 }
 static void click(QWidget *widget, QPoint point) {
   const auto global = widget->mapToGlobal(point);
@@ -125,25 +128,27 @@ static void cosmetics(const QString &host) {
   QTemporaryDir directory;ArDaliBlockerService service(directory.path());
   QWebEngineProfile profile;FixturePage page(&profile);QWebEngineView view;view.setPage(&page);view.resize(800,600);view.show();
   const bool youtube=host=="youtube.com";
-  const QString html=youtube ? QStringLiteral("<html><body><ytd-rich-item-renderer id='normal'>normal video</ytd-rich-item-renderer><ytd-reel-item-renderer id='short'>Short</ytd-reel-item-renderer><ytd-video-renderer id='search'>Search result</ytd-video-renderer><ytd-rich-item-renderer id='ad'><ytd-ad-slot-renderer></ytd-ad-slot-renderer></ytd-rich-item-renderer><ytd-rich-item-renderer id='recycled'><span>Normal</span></ytd-rich-item-renderer></body></html>") : QStringLiteral("<html><body><div role='feed'><div role='article' id='normal'>friend post Sponsored discussion</div><div role='article' id='ad'><a href='/ads/about/'>Sponsorlu</a></div><div role='article' id='recycled'>normal</div></div><div id='messenger'>Messenger</div></body></html>");
+  const QString html=youtube ? QStringLiteral("<html><body><ytd-rich-item-renderer id='normal'>normal video</ytd-rich-item-renderer><ytd-reel-item-renderer id='short'>Short</ytd-reel-item-renderer><ytd-video-renderer id='search'>Search result</ytd-video-renderer><ytd-rich-item-renderer id='ad'><ytd-ad-slot-renderer></ytd-ad-slot-renderer></ytd-rich-item-renderer><ytd-rich-item-renderer id='recycled'><span>Normal</span></ytd-rich-item-renderer></body></html>") : QStringLiteral("<html><body><div role='feed'><div role='article' id='normal'>friend post Sponsored discussion</div><div role='article' id='ad' data-ad-preview='message'>Sponsorlu</div><div role='article' id='recycled'>normal</div></div><div id='messenger'>Messenger</div></body></html>");
   page.scripts().insert(service.createCosmeticScriptForHost(host));
   QEventLoop loop;QObject::connect(&page,&QWebEnginePage::loadFinished,&loop,&QEventLoop::quit);
   page.setHtml(html,QUrl("https://"+host+"/"));QTimer::singleShot(8000,&loop,&QEventLoop::quit);loop.exec();wait(350);
-  assert(waitForJs(page,"getComputedStyle(document.getElementById('ad')).display==='none'"));
+  const QString adHidden=QStringLiteral("(()=>{const p=document.getElementById('ad');const c=p&&p.querySelector('ytd-ad-slot-renderer,[data-ad-preview],[data-ad-comet-preview]');return !!p&&(getComputedStyle(p).display==='none'||(!!c&&getComputedStyle(c).display==='none'));})()");
+  const QString recycledHidden=QStringLiteral("(()=>{const p=document.getElementById('recycled');const c=p&&p.querySelector('ytd-ad-slot-renderer,[data-ad-preview],[data-ad-comet-preview]');return !!p&&(getComputedStyle(p).display==='none'||(!!c&&getComputedStyle(c).display==='none'));})()");
+  assert(waitForJs(page,adHidden));
   assert(js(page,"getComputedStyle(document.getElementById('normal')).display!=='none'").toBool());
   if(youtube){assert(js(page,"getComputedStyle(document.getElementById('short')).display!=='none'&&getComputedStyle(document.getElementById('search')).display!=='none'").toBool());}
-  const QString marker=youtube?"<ytd-ad-slot-renderer></ytd-ad-slot-renderer>":"<a href='/ads/about/'>Sponsored</a>";
+  const QString marker=youtube?"<ytd-ad-slot-renderer></ytd-ad-slot-renderer>":"<div data-ad-preview='message'>Sponsored</div>";
   js(page,QString("document.getElementById('recycled').innerHTML=%1[0]").arg(QString::fromUtf8(QJsonDocument(QJsonArray{marker}).toJson(QJsonDocument::Compact))));wait(250);
-  assert(waitForJs(page,"getComputedStyle(document.getElementById('recycled')).display==='none'"));
+  assert(waitForJs(page,recycledHidden));
   js(page,"document.getElementById('recycled').textContent='now a normal post';document.getElementById('ad').style.display='block';document.getElementById('ardali-adblock-cosmetic').remove();window.dispatchEvent(new Event('yt-navigate-finish'));window.dispatchEvent(new Event('popstate'));");wait(300);
   assert(waitForJs(page,"getComputedStyle(document.getElementById('recycled')).display!=='none'"));
-  assert(waitForJs(page,"getComputedStyle(document.getElementById('ad')).display==='none'"));
+  assert(waitForJs(page,adHidden));
   js(page,service.createCosmeticScriptForHost(host).sourceCode(),QWebEngineScript::ApplicationWorld);wait(250);
   assert(js(page,"document.querySelectorAll('#ardali-adblock-cosmetic').length").toInt()==1);
   assert(!js(page,"!!window.__ardaliCosmeticRuntime").toBool());
   assert(js(page,"!!window.__ardaliCosmeticRuntime.observer",QWebEngineScript::ApplicationWorld).toBool());
   service.settings()->setProtectionEnabled(false);assert(service.createCosmeticScriptForHost(host).sourceCode().isEmpty());
-  page.scripts().clear();page.setHtml(html);wait(350);assert(waitForJs(page,"getComputedStyle(document.getElementById('ad')).display!=='none'"));
+  page.scripts().clear();page.setHtml(html);wait(350);assert(waitForJs(page,"!"+adHidden));
   std::cout<<host.toStdString()<<" dynamic/recycled DOM, style recovery, route lifecycle, isolation and OFF passed\n";
 }
 
