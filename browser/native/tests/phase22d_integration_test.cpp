@@ -646,37 +646,77 @@ int main(int argc, char **argv)
     const int requestsBeforeSelection =
         network.requests;
 
-    js(
-        selectionView->page(),
-        "document.querySelector('#query').value='choose';"
-        "document.querySelector('#query').dispatchEvent("
-        "new Event('input',{bubbles:true}));");
+    bool selectionSuggestionsReady = false;
 
-    assert(
-        waitForJs(
+    for (int attempt = 0;
+         attempt < 3 && !selectionSuggestionsReady;
+         ++attempt) {
+
+        selectionView->setFocus(Qt::MouseFocusReason);
+
+        js(
             selectionView->page(),
-            "document.querySelector('#query').value==='choose'",
-            5000));
+            "(() => {"
+            "const query=document.querySelector('#query');"
+            "if(!query) return false;"
+            "query.focus();"
+            "query.value='choose';"
+            "query.dispatchEvent("
+            "new Event('input',{bubbles:true}));"
+            "return true;"
+            "})()");
 
-    QElapsedTimer requestTimer;
-    requestTimer.start();
+        assert(
+            waitForJs(
+                selectionView->page(),
+                "document.querySelector('#query')"
+                "&&document.querySelector('#query').value==='choose'",
+                5000));
 
-    while (
-        network.requests <= requestsBeforeSelection &&
-        requestTimer.elapsed() < 10000) {
-        wait(50);
+        selectionSuggestionsReady =
+            waitForJs(
+                selectionView->page(),
+                "(() => {"
+                "const rows=Array.from("
+                "document.querySelectorAll('.suggestion-row'));"
+                "const text=rows.map("
+                "x=>x.textContent.trim());"
+                "return rows.length>1"
+                "&&text.includes('choose one')"
+                "&&text.includes('choose two');"
+                "})()",
+                5000);
+
+        if (!selectionSuggestionsReady)
+            wait(100);
     }
 
     assert(
         network.requests > requestsBeforeSelection);
 
-    // Wait for suggestion rows to be populated in DOM with extended timeout for CI
-    // The suggestion service processes async and needs time for rendering
-    assert(
-        waitForJs(
-            selectionView->page(),
-            "document.querySelectorAll('.suggestion-row').length>1",
-            15000));  // Extended from 10000 for CI latency
+    if (!selectionSuggestionsReady) {
+        std::cerr
+            << "selection suggestion timeout: requests="
+            << network.requests
+            << " lastUrl="
+            << network.last.url().toString().toStdString()
+            << " js="
+            << js(
+                   selectionView->page(),
+                   "JSON.stringify({"
+                   "focus:document.hasFocus(),"
+                   "active:document.activeElement?.id,"
+                   "value:document.querySelector('#query')?.value,"
+                   "rows:Array.from("
+                   "document.querySelectorAll('.suggestion-row'))"
+                   ".map(x=>x.textContent)"
+                   "})")
+                   .toString()
+                   .toStdString()
+            << std::endl;
+    }
+
+    assert(selectionSuggestionsReady);
 
     js(
         selectionView->page(),
