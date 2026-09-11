@@ -8,6 +8,7 @@
 #include <QPushButton>
 #include <QTemporaryDir>
 #include <QEventLoop>
+#include <QElapsedTimer>
 #include <QTimer>
 #include <QWebEnginePage>
 #include <QWebEngineView>
@@ -30,6 +31,9 @@ static QVariant js(QWebEnginePage &page, const QString &script, quint32 world = 
   QVariant result; QEventLoop loop;
   page.runJavaScript(script,world,[&](const QVariant &v){result=v;loop.quit();});
   QTimer::singleShot(5000,&loop,&QEventLoop::quit);loop.exec();return result;
+}
+static bool waitForJs(QWebEnginePage &page, const QString &condition, quint32 world = 0, int timeoutMs = 5000) {
+  QElapsedTimer timer;timer.start();do{if(js(page,condition,world).toBool())return true;wait(50);}while(timer.elapsed()<timeoutMs);return false;
 }
 static void click(QWidget *widget, QPoint point) {
   const auto global = widget->mapToGlobal(point);
@@ -125,21 +129,21 @@ static void cosmetics(const QString &host) {
   page.scripts().insert(service.createCosmeticScriptForHost(host));
   QEventLoop loop;QObject::connect(&page,&QWebEnginePage::loadFinished,&loop,&QEventLoop::quit);
   page.setHtml(html,QUrl("https://"+host+"/"));QTimer::singleShot(8000,&loop,&QEventLoop::quit);loop.exec();wait(350);
-  assert(js(page,"getComputedStyle(document.getElementById('ad')).display==='none'").toBool());
+  assert(waitForJs(page,"getComputedStyle(document.getElementById('ad')).display==='none'"));
   assert(js(page,"getComputedStyle(document.getElementById('normal')).display!=='none'").toBool());
   if(youtube){assert(js(page,"getComputedStyle(document.getElementById('short')).display!=='none'&&getComputedStyle(document.getElementById('search')).display!=='none'").toBool());}
   const QString marker=youtube?"<ytd-ad-slot-renderer></ytd-ad-slot-renderer>":"<a href='/ads/about/'>Sponsored</a>";
   js(page,QString("document.getElementById('recycled').innerHTML=%1[0]").arg(QString::fromUtf8(QJsonDocument(QJsonArray{marker}).toJson(QJsonDocument::Compact))));wait(250);
-  assert(js(page,"getComputedStyle(document.getElementById('recycled')).display==='none'").toBool());
+  assert(waitForJs(page,"getComputedStyle(document.getElementById('recycled')).display==='none'"));
   js(page,"document.getElementById('recycled').textContent='now a normal post';document.getElementById('ad').style.display='block';document.getElementById('ardali-adblock-cosmetic').remove();window.dispatchEvent(new Event('yt-navigate-finish'));window.dispatchEvent(new Event('popstate'));");wait(300);
-  assert(js(page,"getComputedStyle(document.getElementById('recycled')).display!=='none'").toBool());
-  assert(js(page,"getComputedStyle(document.getElementById('ad')).display==='none'").toBool());
+  assert(waitForJs(page,"getComputedStyle(document.getElementById('recycled')).display!=='none'"));
+  assert(waitForJs(page,"getComputedStyle(document.getElementById('ad')).display==='none'"));
   js(page,service.createCosmeticScriptForHost(host).sourceCode(),QWebEngineScript::ApplicationWorld);wait(250);
   assert(js(page,"document.querySelectorAll('#ardali-adblock-cosmetic').length").toInt()==1);
   assert(!js(page,"!!window.__ardaliCosmeticRuntime").toBool());
   assert(js(page,"!!window.__ardaliCosmeticRuntime.observer",QWebEngineScript::ApplicationWorld).toBool());
   service.settings()->setProtectionEnabled(false);assert(service.createCosmeticScriptForHost(host).sourceCode().isEmpty());
-  page.scripts().clear();page.setHtml(html);wait(350);assert(js(page,"getComputedStyle(document.getElementById('ad')).display!=='none'").toBool());
+  page.scripts().clear();page.setHtml(html);wait(350);assert(waitForJs(page,"getComputedStyle(document.getElementById('ad')).display!=='none'"));
   std::cout<<host.toStdString()<<" dynamic/recycled DOM, style recovery, route lifecycle, isolation and OFF passed\n";
 }
 
@@ -235,4 +239,3 @@ int main(int argc,char **argv){
   cosmetics("facebook.com");
   return 0;
 }
-

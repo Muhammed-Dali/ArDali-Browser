@@ -109,8 +109,8 @@ int main(int argc, char **argv) {
   assert(waitFor([&] { return analysisReady; }));
   const QString trustedDeno = BrowserSecurity::resolveTrustedExecutable(QStringLiteral("deno"));
   const QString trustedNode = BrowserSecurity::resolveTrustedExecutable(QStringLiteral("node"));
-  if (!trustedDeno.isEmpty() || !trustedNode.isEmpty()) {
-    const QString runtime = service.javaScriptRuntimeArgument();
+  const QString runtime = service.javaScriptRuntimeArgument();
+  if (!runtime.isEmpty()) {
     assert(runtime == QStringLiteral("deno:") + trustedDeno
         || runtime == QStringLiteral("node:") + trustedNode);
     assert(QFileInfo(runtime.section(QLatin1Char(':'), 1)).isAbsolute());

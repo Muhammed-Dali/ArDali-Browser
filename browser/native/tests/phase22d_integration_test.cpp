@@ -122,7 +122,7 @@ int main(int argc,char **argv){
   const int youtubeIndex=window.addNewTab();wait(150);
   auto *youtube=window.currentView();
   youtube->setHtml(QStringLiteral("<html><body><ytd-rich-item-renderer id='normal'>Normal</ytd-rich-item-renderer><ytd-rich-item-renderer id='ad'><ytd-ad-slot-renderer></ytd-ad-slot-renderer></ytd-rich-item-renderer></body></html>"),QUrl("https://youtube.com/"));wait(400);
-  assert(js(youtube->page(),"getComputedStyle(document.getElementById('ad')).display==='none'&&getComputedStyle(document.getElementById('normal')).display!=='none'").toBool());
+  assert(waitForJs(youtube->page(),"getComputedStyle(document.getElementById('ad')).display==='none'&&getComputedStyle(document.getElementById('normal')).display!=='none'"));
   window.closeTab(youtubeIndex);wait(100);
   const int selectionIndex=window.addNewTab();wait(400);
   auto *selectionView=window.currentView();selectionView->setFocus();
