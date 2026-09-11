@@ -787,8 +787,17 @@ QString ArDaliBlockerListManager::loadSpecificCosmeticCssForHost(const QString &
         QStringLiteral("div[data-pagelet*=\"ad_\"]")}) selectors.insert(selector);
   }
   for (const QString &exception : exceptions) selectors.remove(exception);
-  return selectors.isEmpty() ? QString() : selectors.values().join(QStringLiteral(",\n")) +
-      QStringLiteral(" { display: none !important; }");
+  if (selectors.isEmpty()) return {};
+
+  // Keep selectors in independent rules. Older Qt WebEngine versions reject
+  // an entire comma-separated selector list when one entry (notably :has())
+  // is unsupported, which also disables otherwise compatible direct rules.
+  QStringList cssRules;
+  cssRules.reserve(selectors.size());
+  for (const QString &selector : selectors) {
+    cssRules.append(selector + QStringLiteral(" { display: none !important; }"));
+  }
+  return cssRules.join(QLatin1Char('\n'));
 }
 
 QJsonArray ArDaliBlockerListManager::loadProceduralRulesForHost(const QString &rawHost,
