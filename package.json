@@ -1,6 +1,6 @@
 {
   "name": "ardali-browser",
-  "version": "7.0.0",
+  "version": "7.0.1",
   "description": "ArDali Browser - Modern Qt/C++ desktop browser with integrated privacy, advanced download manager, and audiophile sound engine",
   "private": true,
   "scripts": {

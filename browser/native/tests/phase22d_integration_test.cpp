@@ -13,6 +13,8 @@
 #include <QAbstractItemView>
 #include <QJsonArray>
 #include <QJsonDocument>
+#include <QPointer>
+#include <QSharedPointer>
 #include <QWebEnginePage>
 #include <QWebEngineProfile>
 #include <QGuiApplication>
@@ -37,22 +39,41 @@ static void wait(int ms)
     loop.exec();
 }
 
-static QVariant js(QWebEnginePage *page, const QString &code)
+struct JavaScriptCallState
 {
     QVariant result;
+    bool completed = false;
+};
+
+static QVariant js(
+    QWebEnginePage *page,
+    const QString &code,
+    int timeoutMs = 5000)
+{
+    auto state =
+        QSharedPointer<JavaScriptCallState>::create();
     QEventLoop loop;
+    const QPointer<QEventLoop> guardedLoop(&loop);
 
     page->runJavaScript(
         code,
-        [&](const QVariant &v) {
-            result = v;
-            loop.quit();
+        [state, guardedLoop](const QVariant &value) {
+            state->result = value;
+            state->completed = true;
+
+            if (guardedLoop)
+                guardedLoop->quit();
         });
 
-    QTimer::singleShot(5000, &loop, &QEventLoop::quit);
-    loop.exec();
+    if (!state->completed) {
+        QTimer::singleShot(
+            qMax(0, timeoutMs),
+            &loop,
+            &QEventLoop::quit);
+        loop.exec();
+    }
 
-    return result;
+    return state->result;
 }
 
 static bool waitForJs(
@@ -64,10 +85,31 @@ static bool waitForJs(
     timer.start();
 
     do {
-        if (js(page, condition).toBool())
+        const int remainingMs =
+            timeoutMs - static_cast<int>(timer.elapsed());
+
+        if (remainingMs <= 0)
+            break;
+
+        // Bound each renderer round trip so a delayed callback cannot consume
+        // the entire polling budget. js() keeps its callback state alive if
+        // this probe times out and Qt WebEngine invokes it later.
+        constexpr int probeTimeoutMs = 1000;
+
+        if (js(
+                page,
+                condition,
+                qMin(probeTimeoutMs, remainingMs))
+                .toBool())
             return true;
 
-        wait(50);
+        const int waitMs =
+            qMin(
+                50,
+                timeoutMs - static_cast<int>(timer.elapsed()));
+
+        if (waitMs > 0)
+            wait(waitMs);
     } while (timer.elapsed() < timeoutMs);
 
     return false;
@@ -701,12 +743,17 @@ int main(int argc, char **argv)
             "return true;"
             "})()");
 
-        assert(
+        const bool selectionInputReady =
             waitForJs(
                 selectionView->page(),
                 "document.querySelector('#query')"
                 "&&document.querySelector('#query').value==='choose'",
-                5000));
+                5000);
+
+        if (!selectionInputReady) {
+            wait(100);
+            continue;
+        }
 
         selectionSuggestionsReady =
             waitForJs(
@@ -725,9 +772,6 @@ int main(int argc, char **argv)
         if (!selectionSuggestionsReady)
             wait(100);
     }
-
-    assert(
-        network.requests > requestsBeforeSelection);
 
     if (!selectionSuggestionsReady) {
         std::cerr
@@ -752,6 +796,8 @@ int main(int argc, char **argv)
     }
 
     assert(selectionSuggestionsReady);
+    assert(
+        network.requests > requestsBeforeSelection);
 
     js(
         selectionView->page(),

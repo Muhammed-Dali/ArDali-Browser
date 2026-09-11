@@ -2,6 +2,18 @@
 
 All notable release-facing changes to ArDali Browser are documented here.
 
+## [7.0.1] - 2026-09-11
+
+### Fixed
+
+- Removed a late-callback lifetime hazard from the Qt WebEngine JavaScript test
+  helper and made JavaScript polling honor one bounded deadline.
+- Made the new-tab suggestion selection retry path tolerate transient renderer
+  timing without bypassing its final correctness assertions.
+- Made the changed-resource download resume regression deterministic while
+  preserving strict checks for progress, pause/resume state transitions,
+  notifications, and byte-for-byte replacement content.
+
 ## [7.0.0] - 2026-09-11
 
 ### Added

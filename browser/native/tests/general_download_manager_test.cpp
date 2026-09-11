@@ -395,6 +395,18 @@ class DownloadFixture final : public QObject {
         + QByteArray::number(end) + "/" + QByteArray::number(body.size()) + "\r\n";
     response += "Connection: close\r\n\r\n";
     socket->write(response);
+    if (path.startsWith("/range?changed")) {
+      // Keep this response genuinely in flight until the queued pause runs.
+      // Writing the complete loopback response here lets QNetworkReply reach
+      // finished before QTimer::singleShot(0) is dispatched on fast or busy
+      // runners, so the test never exercises resume at all.
+      ThrottledStream stream;
+      stream.socket = socket;
+      stream.data = body.mid(start, length);
+      stream.bytesPerTick = 48 * 1024;
+      activeStreams.append(stream);
+      return;
+    }
     if (failure) socket->write(body.mid(0, body.size() / 3));
     else socket->write(body.mid(start, length));
     socket->disconnectFromHost();
@@ -496,22 +508,37 @@ int main(int argc, char **argv) {
   const QUuid changedId = manager.enqueue(requestFor(fixture.url(QStringLiteral("/range?changed")), temporary.path(),
                                                     QStringLiteral("changed.zip")));
   bool changedPauseScheduled = false;
+  bool changedPaused = false;
+  bool changedResumeQueued = false;
   bool changedResumed = false;
+  qint64 changedBytesBeforePause = 0;
   QObject::connect(&manager, &GeneralDownloadManager::jobsChanged, &app, [&] {
     const GeneralDownloadJob current = manager.job(changedId);
+    if (current.state == GeneralDownloadState::Paused) changedPaused = true;
+    if (changedPaused && current.state == GeneralDownloadState::Queued)
+      changedResumeQueued = true;
     if (!changedPauseScheduled && current.state == GeneralDownloadState::Downloading
         && current.downloadedBytes > 0) {
       changedPauseScheduled = true;
       QTimer::singleShot(0, &app, [&] {
-        if (!manager.pause(changedId)) return;
+        changedBytesBeforePause = manager.job(changedId).downloadedBytes;
+        assert(changedBytesBeforePause > 0);
+        assert(manager.pause(changedId));
+        assert(manager.job(changedId).state == GeneralDownloadState::Paused);
         fixture.payload.fill('Z');
         fixture.etag = QByteArrayLiteral("\"fixture-v2\"");
         changedResumed = manager.resume(changedId);
+        assert(changedResumed);
+        assert(manager.job(changedId).state == GeneralDownloadState::Queued);
       });
     }
   });
   assert(waitFor([&] { return manager.job(changedId).state == GeneralDownloadState::Completed; }));
+  assert(changedPauseScheduled);
+  assert(changedPaused);
+  assert(changedResumeQueued);
   assert(changedResumed);
+  assert(manager.job(changedId).downloadedBytes == fixture.payload.size());
   assert(readAll(manager.job(changedId).targetPath) == fixture.payload);
 
   const QUuid fallbackId = manager.enqueue(requestFor(fixture.url(QStringLiteral("/fallback?token=secret&keep=1")), temporary.path(),

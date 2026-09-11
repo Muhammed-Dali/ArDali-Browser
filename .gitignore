@@ -1,5 +1,8 @@
 # Build directories
 build/
+build-release-*/
+release-root-*/
+dist/
 browser/build/
 compile_commands.json
 *.pkg.tar.zst

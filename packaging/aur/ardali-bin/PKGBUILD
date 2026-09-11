@@ -1,7 +1,7 @@
 # Maintainer: Muhammed Dali <support@ardali.app>
 
 pkgname=ardali-bin
-pkgver=7.0.0
+pkgver=7.0.1
 pkgrel=1
 pkgdesc="ArDali Browser native binary package"
 arch=('x86_64')

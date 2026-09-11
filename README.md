@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/Muhammed-Dali/ArDali-Browser/releases/tag/v7.0.0"><img src="https://img.shields.io/badge/release-v7.0.0-007ACC.svg?style=flat-square" alt="Release v7.0.0"></a>
+  <a href="https://github.com/Muhammed-Dali/ArDali-Browser/releases/tag/v7.0.1"><img src="https://img.shields.io/badge/release-v7.0.1-007ACC.svg?style=flat-square" alt="Release v7.0.1"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-GPL--3.0--only-success.svg?style=flat-square" alt="License GPL-3.0"></a>
   <img src="https://img.shields.io/badge/C%2B%2B-20-00599C.svg?style=flat-square&logo=c%2B%2B" alt="C++20">
   <img src="https://img.shields.io/badge/Qt-6.4+-41CD52.svg?style=flat-square&logo=qt" alt="Qt 6">
@@ -162,11 +162,11 @@ sudo pacman -Sy ardali
 
 For a direct, package-manager-free installation:
 
-1. Download the latest `ardali-browser-7.0.0-linux-x86_64.tar.zst` from the [GitHub Releases](https://github.com/Muhammed-Dali/ArDali-Browser/releases) page.
+1. Download the latest `ardali-browser-7.0.1-linux-x86_64.tar.zst` from the [GitHub Releases](https://github.com/Muhammed-Dali/ArDali-Browser/releases) page.
 2. Extract the archive and merge the directory tree into `/usr`:
 
 ```bash
-tar -I zstd -xvf ardali-browser-7.0.0-linux-x86_64.tar.zst
+tar -I zstd -xvf ardali-browser-7.0.1-linux-x86_64.tar.zst
 sudo cp -r usr/* /usr/
 ```
 
