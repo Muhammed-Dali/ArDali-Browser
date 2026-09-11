@@ -778,6 +778,12 @@ add_executable(ardali-phase22d-test
   browser/native/core/security_utils.cpp
 )
 target_link_libraries(ardali-phase22d-test PRIVATE Qt6::Core Qt6::Widgets Qt6::Network Qt6::WebEngineWidgets Qt6::Concurrent)
+qt_add_resources(ardali-phase22d-test "phase22d_test_side_widget_icons"
+  PREFIX "/side-widget-icons"
+  BASE browser/assets/side-widget-icons
+  FILES
+    browser/assets/side-widget-icons/deliblock.svg
+)
 add_test(NAME ardali-phase22d COMMAND ardali-phase22d-test)
 set_tests_properties(ardali-phase22d PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QTWEBENGINE_CHROMIUM_FLAGS=--no-sandbox --disable-gpu" TIMEOUT 90)
 
