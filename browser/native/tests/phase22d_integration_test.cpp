@@ -598,12 +598,47 @@ int main(int argc, char **argv)
             "&&!!document.getElementById('normal')",
             10000));
 
-    assert(
+    // Cosmetic filtering is installed asynchronously by the navigation/blocker
+    // pipeline. Slower Qt WebEngine builds used by Debian/Ubuntu CI may finish
+    // loading the synthetic document before the cosmetic plan reaches the
+    // renderer, so wait for the observable filtering result rather than relying
+    // on fixed post-load timing.
+    const bool youtubeCosmeticApplied =
         waitForJs(
             youtube->page(),
-            "getComputedStyle(document.getElementById('ad')).display==='none'"
-            "&&getComputedStyle(document.getElementById('normal')).display!=='none'",
-            10000));
+            "(() => {"
+            "const ad=document.getElementById('ad');"
+            "const normal=document.getElementById('normal');"
+            "if(!ad||!normal) return false;"
+            "return getComputedStyle(ad).display==='none'"
+            "&&getComputedStyle(normal).display!=='none';"
+            "})()",
+            30000);
+
+    if (!youtubeCosmeticApplied) {
+        std::cerr
+            << "youtube cosmetic filter timeout: "
+            << js(
+                   youtube->page(),
+                   "(() => {"
+                   "const ad=document.getElementById('ad');"
+                   "const normal=document.getElementById('normal');"
+                   "return JSON.stringify({"
+                   "ready:document.readyState,"
+                   "url:location.href,"
+                   "adExists:!!ad,"
+                   "normalExists:!!normal,"
+                   "adDisplay:ad?getComputedStyle(ad).display:null,"
+                   "normalDisplay:normal?"
+                   "getComputedStyle(normal).display:null"
+                   "});"
+                   "})()")
+                   .toString()
+                   .toStdString()
+            << std::endl;
+    }
+
+    assert(youtubeCosmeticApplied);
 
     window.closeTab(youtubeIndex);
     wait(100);
