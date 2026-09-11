@@ -43,7 +43,7 @@ jobs:
           DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
             build-essential ca-certificates cmake ffmpeg git ninja-build nodejs \
             libssl-dev libpsl-dev pkg-config qt6-base-dev qt6-image-formats-plugins qt6-svg-dev \
-            qt6-webengine-dev xauth xvfb
+            qt6-webengine-dev xauth xvfb dbus
 
       - name: Install Fedora build dependencies
         if: ${{ matrix.package_family == 'dnf' }}
@@ -53,7 +53,7 @@ jobs:
             cmake ffmpeg-free gcc-c++ git ninja-build nodejs openssl-devel \
             libpsl-devel pkgconf-pkg-config \
             qt6-qtbase-devel qt6-qtimageformats qt6-qtsvg-devel \
-            qt6-qtwebengine-devel xorg-x11-server-Xvfb xorg-x11-xauth
+            qt6-qtwebengine-devel xorg-x11-server-Xvfb xorg-x11-xauth dbus
 
       - name: Install Arch build dependencies
         if: ${{ matrix.package_family == 'pacman' }}
@@ -62,7 +62,7 @@ jobs:
           pacman -Syu --noconfirm --needed \
             cmake ffmpeg git ninja nodejs openssl libpsl pkgconf \
             qt6-base qt6-imageformats qt6-svg qt6-webengine \
-            xorg-server-xvfb xorg-xauth
+            xorg-server-xvfb xorg-xauth dbus
 
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -74,6 +74,13 @@ jobs:
 
       - name: Build
         run: cmake --build build --parallel 2
+
+      - name: Setup D-Bus for tests
+        shell: bash
+        run: |
+          # Start dbus daemon for suggestion service
+          mkdir -p /run/dbus
+          dbus-daemon --system --fork --print-address
 
       - name: Test
         env:
