@@ -42,10 +42,12 @@ static QVariant js(QWebEnginePage *page, const QString &code)
     QVariant result;
     QEventLoop loop;
 
-    page->runJavaScript(code, [&](const QVariant &v) {
-        result = v;
-        loop.quit();
-    });
+    page->runJavaScript(
+        code,
+        [&](const QVariant &v) {
+            result = v;
+            loop.quit();
+        });
 
     QTimer::singleShot(5000, &loop, &QEventLoop::quit);
     loop.exec();
@@ -53,9 +55,10 @@ static QVariant js(QWebEnginePage *page, const QString &code)
     return result;
 }
 
-static bool waitForJs(QWebEnginePage *page,
-                      const QString &condition,
-                      int timeoutMs = 5000)
+static bool waitForJs(
+    QWebEnginePage *page,
+    const QString &condition,
+    int timeoutMs = 5000)
 {
     QElapsedTimer timer;
     timer.start();
@@ -75,14 +78,12 @@ static void key(QWidget *widget, int code)
     QKeyEvent press(
         QEvent::KeyPress,
         code,
-        Qt::NoModifier
-    );
+        Qt::NoModifier);
 
     QKeyEvent release(
         QEvent::KeyRelease,
         code,
-        Qt::NoModifier
-    );
+        Qt::NoModifier);
 
     QApplication::sendEvent(widget, &press);
     QApplication::sendEvent(widget, &release);
@@ -102,8 +103,7 @@ int main(int argc, char **argv)
     QSettings::setPath(
         QSettings::IniFormat,
         QSettings::UserScope,
-        root.path()
-    );
+        root.path());
 
     Network network;
 
@@ -112,8 +112,7 @@ int main(int argc, char **argv)
         nullptr,
         nullptr,
         false,
-        &network
-    );
+        &network);
 
     BrowserServices services;
     services.profile = profile.profile();
@@ -126,57 +125,27 @@ int main(int argc, char **argv)
 
     wait(1000);
 
-    // Unified native download bubble stays anchored
-    // and reuses one popup widget.
+    // Unified native download bubble stays anchored and reuses one popup widget.
     auto *downloadButton =
-        window.findChild<DownloadToolbarButton *>(
-            "mediaDownloadButton"
-        );
+        window.findChild<DownloadToolbarButton *>("mediaDownloadButton");
 
     auto *downloadPopup =
         window.findChild<DownloadPopup *>();
 
     assert(downloadButton && downloadPopup);
 
-    downloadButton->setModelState(
-        1,
-        0.0,
-        false,
-        false
-    );
-
+    downloadButton->setModelState(1, 0.0, false, false);
     assert(downloadButton->displayedProgress() == 0.0);
 
-    downloadButton->setModelState(
-        1,
-        50.0,
-        false,
-        false
-    );
-
+    downloadButton->setModelState(1, 50.0, false, false);
     assert(downloadButton->displayedProgress() == 50.0);
 
-    downloadButton->setModelState(
-        1,
-        100.0,
-        false,
-        false
-    );
-
+    downloadButton->setModelState(1, 100.0, false, false);
     assert(downloadButton->displayedProgress() == 100.0);
 
-    downloadButton->setModelState(
-        0,
-        0.0,
-        false,
-        false
-    );
+    downloadButton->setModelState(0, 0.0, false, false);
 
-    downloadPopup->showAnchored(
-        downloadButton,
-        false
-    );
-
+    downloadPopup->showAnchored(downloadButton, false);
     wait(30);
 
     assert(downloadPopup->isVisible());
@@ -185,51 +154,31 @@ int main(int argc, char **argv)
         downloadButton->mapToGlobal(
             QPoint(
                 downloadButton->width(),
-                downloadButton->height()
-            )
-        );
+                downloadButton->height()));
 
     QRect available =
-        QGuiApplication::primaryScreen()
-            ->availableGeometry();
+        QGuiApplication::primaryScreen()->availableGeometry();
 
     assert(
         available
             .adjusted(-1, -1, 1, 1)
-            .contains(
-                downloadPopup
-                    ->geometry()
-                    .topLeft()
-            )
-    );
+            .contains(downloadPopup->geometry().topLeft()));
 
     assert(
         available
             .adjusted(-1, -1, 1, 1)
-            .contains(
-                downloadPopup
-                    ->geometry()
-                    .bottomRight()
-            )
-    );
+            .contains(downloadPopup->geometry().bottomRight()));
 
-    if (
-        available.contains(downloadEdge) &&
-        downloadEdge.x() - downloadPopup->width()
-            >= available.left()
-    ) {
+    if (available.contains(downloadEdge) &&
+        downloadEdge.x() - downloadPopup->width() >= available.left()) {
         assert(
             std::abs(
-                downloadPopup->geometry().right()
-                - downloadEdge.x()
-            ) <= 2
-        );
+                downloadPopup->geometry().right() -
+                downloadEdge.x()) <= 2);
     }
 
     window.resize(920, 640);
-    window.move(
-        window.pos() + QPoint(7, 5)
-    );
+    window.move(window.pos() + QPoint(7, 5));
 
     wait(30);
 
@@ -237,86 +186,55 @@ int main(int argc, char **argv)
         downloadButton->mapToGlobal(
             QPoint(
                 downloadButton->width(),
-                downloadButton->height()
-            )
-        );
+                downloadButton->height()));
 
     assert(
         available
             .adjusted(-1, -1, 1, 1)
-            .contains(
-                downloadPopup
-                    ->geometry()
-                    .topLeft()
-            )
-    );
+            .contains(downloadPopup->geometry().topLeft()));
 
     assert(
         available
             .adjusted(-1, -1, 1, 1)
-            .contains(
-                downloadPopup
-                    ->geometry()
-                    .bottomRight()
-            )
-    );
+            .contains(downloadPopup->geometry().bottomRight()));
 
-    if (
-        available.contains(downloadEdge) &&
-        downloadEdge.x() - downloadPopup->width()
-            >= available.left()
-    ) {
+    if (available.contains(downloadEdge) &&
+        downloadEdge.x() - downloadPopup->width() >= available.left()) {
         assert(
             std::abs(
-                downloadPopup->geometry().right()
-                - downloadEdge.x()
-            ) <= 2
-        );
+                downloadPopup->geometry().right() -
+                downloadEdge.x()) <= 2);
     }
 
     for (int i = 0; i < 12; ++i) {
         downloadPopup->hide();
-        downloadPopup->showAnchored(
-            downloadButton,
-            false
-        );
+        downloadPopup->showAnchored(downloadButton, false);
     }
 
     assert(
-        window
-            .findChildren<DownloadPopup *>()
-            .size() == 1
-    );
+        window.findChildren<DownloadPopup *>().size() == 1);
 
     downloadPopup->hide();
 
-    auto *page =
-        window.currentView()->page();
+    auto *page = window.currentView()->page();
 
     assert(
         js(
             page,
-            "typeof window.ardaliSuggestionBridge"
-        ).toString()
-        == "function"
-    );
+            "typeof window.ardaliSuggestionBridge")
+            .toString() == "function");
 
     assert(
         !page
-            ->property("ardali-suggest-capability")
-            .toString()
-            .isEmpty()
-    );
+             ->property("ardali-suggest-capability")
+             .toString()
+             .isEmpty());
 
     profile.toggleBookmark(
-        QUrl("https://fixture.example/")
-    );
+        QUrl("https://fixture.example/"));
 
     auto input = [&](const QString &text) {
-        window.currentView()
-            ->setFocus(
-                Qt::MouseFocusReason
-            );
+        window.currentView()->setFocus(Qt::MouseFocusReason);
 
         wait(30);
 
@@ -325,20 +243,14 @@ int main(int argc, char **argv)
             QString(
                 "document.querySelector('#query').focus();"
                 "document.querySelector('#query').value=%1[0];"
-                "document.querySelector('#query')"
-                ".dispatchEvent("
-                "new Event('input',{bubbles:true})"
-                ");"
-            ).arg(
-                QString::fromUtf8(
-                    QJsonDocument(
-                        QJsonArray{text}
-                    ).toJson(
-                        QJsonDocument::Compact
-                    )
-                )
-            )
-        );
+                "document.querySelector('#query').dispatchEvent("
+                "new Event('input',{bubbles:true}));")
+                .arg(
+                    QString::fromUtf8(
+                        QJsonDocument(
+                            QJsonArray{text})
+                            .toJson(
+                                QJsonDocument::Compact))));
     };
 
     input("fixture");
@@ -349,94 +261,54 @@ int main(int argc, char **argv)
     assert(
         js(
             page,
-            "document.querySelectorAll("
-            "'.suggestion-row'"
-            ").length>=2"
-        ).toBool()
-    );
+            "document.querySelectorAll('.suggestion-row').length>=2")
+            .toBool());
 
     js(
         page,
-        "document.querySelector('#query')"
-        ".dispatchEvent("
-        "new KeyboardEvent("
-        "'keydown',"
-        "{key:'ArrowDown',bubbles:true}"
-        ")"
-        ");"
-    );
+        "document.querySelector('#query').dispatchEvent("
+        "new KeyboardEvent('keydown',{key:'ArrowDown',bubbles:true}));");
 
     assert(
         js(
             page,
-            "document.querySelector('#query')"
-            ".getAttribute("
-            "'aria-activedescendant'"
-            ")"
-        ).toString()
-        == "suggestion-0"
-    );
+            "document.querySelector('#query').getAttribute("
+            "'aria-activedescendant')")
+            .toString() == "suggestion-0");
 
     js(
         page,
-        "document.querySelector('#query')"
-        ".dispatchEvent("
-        "new KeyboardEvent("
-        "'keydown',"
-        "{key:'Escape',bubbles:true}"
-        ")"
-        ");"
-    );
+        "document.querySelector('#query').dispatchEvent("
+        "new KeyboardEvent('keydown',{key:'Escape',bubbles:true}));");
 
     assert(
         js(
             page,
-            "document.querySelector("
-            "'#search-suggestions'"
-            ").hidden"
-        ).toBool()
-    );
+            "document.querySelector('#search-suggestions').hidden")
+            .toBool());
 
-    // Consent uses the native allowlisted bridge,
-    // not a separate localStorage key.
+    // Consent uses the native allowlisted bridge, not a separate localStorage key.
     js(
         page,
-        "document.querySelector("
-        "'#suggestions-toggle'"
-        ").checked=true;"
-        "document.querySelector("
-        "'#suggestions-toggle'"
-        ").dispatchEvent("
-        "new Event('change')"
-        ");"
-    );
+        "document.querySelector('#suggestions-toggle').checked=true;"
+        "document.querySelector('#suggestions-toggle').dispatchEvent("
+        "new Event('change'));");
 
     wait(100);
 
     assert(
-        profile
-            .searchSuggestions()
-            ->isEnabled()
-    );
+        profile.searchSuggestions()->isEnabled());
 
     input("hav");
     wait(450);
 
     std::cerr
         << "bridge state: enabled="
-        << profile
-               .searchSuggestions()
-               ->isEnabled()
+        << profile.searchSuggestions()->isEnabled()
         << " nativeFocus="
-        << window
-               .currentView()
-               ->hasFocus()
+        << window.currentView()->hasFocus()
         << " nativeId="
-        << page
-               ->property(
-                   "ardali-suggest-id"
-               )
-               .toInt()
+        << page->property("ardali-suggest-id").toInt()
         << " js="
         << js(
                page,
@@ -444,11 +316,8 @@ int main(int argc, char **argv)
                "id:suggestionId,"
                "focus:document.hasFocus(),"
                "active:document.activeElement?.id,"
-               "rows:document.querySelectorAll("
-               "'.suggestion-row'"
-               ").length"
-               "})"
-           )
+               "rows:document.querySelectorAll('.suggestion-row').length"
+               "})")
                .toString()
                .toStdString()
         << std::endl;
@@ -457,49 +326,28 @@ int main(int argc, char **argv)
 
     const QString snapshotPath =
         qEnvironmentVariable(
-            "ARDALI_PHASE22D_SNAPSHOT"
-        );
+            "ARDALI_PHASE22D_SNAPSHOT");
 
     if (!snapshotPath.isEmpty()) {
         assert(
-            window
-                .grab()
-                .save(snapshotPath)
-        );
+            window.grab().save(snapshotPath));
     }
 
     assert(
         js(
             page,
-            "Array.from("
-            "document.querySelectorAll("
-            "'.suggestion-row'"
-            ")"
-            ").some("
-            "x=>x.textContent==='hava durumu'"
-            ")"
-        ).toBool()
-    );
+            "Array.from(document.querySelectorAll('.suggestion-row'))"
+            ".some(x=>x.textContent==='hava durumu')")
+            .toBool());
 
     input("hava durumu");
     wait(450);
 
     assert(
-        network
-            .last
-            .url()
-            .query()
-            .contains("hava durumu")
-        ||
-        network
-            .last
-            .url()
-            .toString()
-            .contains("hava durumu")
-    );
+        network.last.url().query().contains("hava durumu") ||
+        network.last.url().toString().contains("hava durumu"));
 
-    // Untrusted suggestion HTML is displayed
-    // as text, never parsed as markup.
+    // Untrusted suggestion HTML is displayed as text, never parsed as markup.
     network.body =
         R"JSON(["markup",["<img src=x onerror=alert(1)>"]])JSON";
 
@@ -508,27 +356,19 @@ int main(int argc, char **argv)
 
     assert(
         !js(
-            page,
-            "!!document.querySelector("
-            "'.suggestion-row img[onerror]'"
-            ")"
-        ).toBool()
-    );
+             page,
+             "!!document.querySelector('.suggestion-row img[onerror]')")
+             .toBool());
 
     js(
         page,
-        "location.href="
-        "'ardali://suggest?"
-        "op=consent&enabled=false&cap=wrong'"
-    );
+        "location.href='ardali://suggest?"
+        "op=consent&enabled=false&cap=wrong'");
 
     wait(100);
 
     assert(
-        profile
-            .searchSuggestions()
-            ->isEnabled()
-    );
+        profile.searchSuggestions()->isEnabled());
 
     profile.setSearchSuggestionsEnabled(false);
 
@@ -539,22 +379,16 @@ int main(int argc, char **argv)
     wait(350);
 
     assert(
-        network.requests == before
-    );
+        network.requests == before);
 
-    // Both surfaces use the same transport;
-    // the native completion model retains
-    // types and local rows.
+    // Both surfaces use the same transport; the native completion model
+    // retains types and local rows.
     auto *omnibox =
-        window.findChild<QLineEdit *>(
-            "omnibox"
-        );
+        window.findChild<QLineEdit *>("omnibox");
 
     if (!omnibox) {
-        for (
-            auto *edit :
-            window.findChildren<QLineEdit *>()
-        ) {
+        for (auto *edit :
+             window.findChildren<QLineEdit *>()) {
             if (edit->completer()) {
                 omnibox = edit;
                 break;
@@ -576,11 +410,7 @@ int main(int argc, char **argv)
         omnibox,
         "textEdited",
         Qt::DirectConnection,
-        Q_ARG(
-            QString,
-            QString("hav")
-        )
-    );
+        Q_ARG(QString, QString("hav")));
 
     wait(450);
 
@@ -591,51 +421,31 @@ int main(int argc, char **argv)
         << "omnibox focus="
         << omnibox->hasFocus()
         << " rows="
-        << (
-               completer
-                   ? completer
-                         ->model()
-                         ->rowCount()
-                   : -1
-           )
+        << (completer
+                ? completer->model()->rowCount()
+                : -1)
         << " requests="
         << network.requests
         << " popup="
-        << (
-               completer
-               &&
-               completer
-                   ->popup()
-                   ->isVisible()
-           )
+        << (completer &&
+            completer->popup()->isVisible())
         << std::endl;
 
     assert(
-        completer
-        &&
-        completer
-            ->model()
-            ->rowCount() >= 3
-    );
+        completer &&
+        completer->model()->rowCount() >= 3);
 
     bool remote = false;
 
-    for (
-        int row = 0;
-        row < completer
-                  ->model()
-                  ->rowCount();
-        ++row
-    ) {
+    for (int row = 0;
+         row < completer->model()->rowCount();
+         ++row) {
         remote |=
             completer
                 ->model()
                 ->index(row, 0)
-                .data(
-                    Qt::UserRole + 2
-                )
-                .toString()
-            == "remote";
+                .data(Qt::UserRole + 2)
+                .toString() == "remote";
     }
 
     assert(remote);
@@ -647,9 +457,7 @@ int main(int argc, char **argv)
 
     const QUrl selectedUrl =
         chosen
-            .data(
-                Qt::UserRole + 1
-            )
+            .data(Qt::UserRole + 1)
             .toUrl();
 
     completer
@@ -658,22 +466,18 @@ int main(int argc, char **argv)
 
     key(
         omnibox,
-        Qt::Key_Return
-    );
+        Qt::Key_Return);
 
     wait(50);
 
     assert(
-        page->requestedUrl()
-        == selectedUrl
-    );
+        page->requestedUrl() ==
+        selectedUrl);
 
     page->triggerAction(
-        QWebEnginePage::Stop
-    );
+        QWebEnginePage::Stop);
 
-    // A renderer changing history/reloading
-    // must not trigger the close-only policy.
+    // A renderer changing history/reloading must not trigger the close-only policy.
     profile
         .blockerService()
         ->settings()
@@ -687,8 +491,7 @@ int main(int argc, char **argv)
         ->settings()
         ->setSitePolicy(
             "forget.example",
-            forget
-        );
+            forget);
 
     const int forgetIndex =
         window.addNewTab();
@@ -702,58 +505,41 @@ int main(int argc, char **argv)
         QStringLiteral(
             "<html><body>"
             "Storage fixture"
-            "</body></html>"
-        );
+            "</body></html>");
 
     forgetView->setHtml(
         fixture,
-        QUrl("https://forget.example/")
-    );
+        QUrl("https://forget.example/"));
 
     wait(300);
 
     assert(
         js(
             forgetView->page(),
-            "localStorage.setItem("
-            "'phase22d','keep'"
-            ");true"
-        ).toBool()
-    );
+            "localStorage.setItem('phase22d','keep');true")
+            .toBool());
 
     js(
         forgetView->page(),
-        "history.pushState("
-        "null,'','/route'"
-        ")"
-    );
+        "history.pushState(null,'','/route')");
 
     assert(
         js(
             forgetView->page(),
-            "localStorage.getItem("
-            "'phase22d'"
-            ")"
-        ).toString()
-        == "keep"
-    );
+            "localStorage.getItem('phase22d')")
+            .toString() == "keep");
 
     forgetView->setHtml(
         fixture,
-        QUrl("https://forget.example/")
-    );
+        QUrl("https://forget.example/"));
 
     wait(300);
 
     assert(
         js(
             forgetView->page(),
-            "localStorage.getItem("
-            "'phase22d'"
-            ")"
-        ).toString()
-        == "keep"
-    );
+            "localStorage.getItem('phase22d')")
+            .toString() == "keep");
 
     window.closeTab(forgetIndex);
     wait(700);
@@ -767,30 +553,20 @@ int main(int argc, char **argv)
         .currentView()
         ->setHtml(
             fixture,
-            QUrl(
-                "https://forget.example/"
-            )
-        );
+            QUrl("https://forget.example/"));
 
     wait(300);
 
     assert(
         js(
-            window
-                .currentView()
-                ->page(),
-            "localStorage.getItem("
-            "'phase22d'"
-            ")===null"
-        ).toBool()
-    );
+            window.currentView()->page(),
+            "localStorage.getItem('phase22d')===null")
+            .toBool());
 
     window.closeTab(reopen);
     wait(250);
 
-    // A first navigation from New Tab
-    // must install the destination's
-    // cosmetic plan.
+    // A first navigation from New Tab must install the destination's cosmetic plan.
     const int youtubeIndex =
         window.addNewTab();
 
@@ -811,25 +587,23 @@ int main(int argc, char **argv)
             "<ytd-ad-slot-renderer>"
             "</ytd-ad-slot-renderer>"
             "</ytd-rich-item-renderer>"
-            "</body></html>"
-        ),
-        QUrl("https://youtube.com/")
-    );
-
-    wait(400);
+            "</body></html>"),
+        QUrl("https://youtube.com/"));
 
     assert(
         waitForJs(
             youtube->page(),
-            "getComputedStyle("
-            "document.getElementById('ad')"
-            ").display==='none'"
-            "&&"
-            "getComputedStyle("
-            "document.getElementById('normal')"
-            ").display!=='none'"
-        )
-    );
+            "document.readyState==='complete'"
+            "&&!!document.getElementById('ad')"
+            "&&!!document.getElementById('normal')",
+            10000));
+
+    assert(
+        waitForJs(
+            youtube->page(),
+            "getComputedStyle(document.getElementById('ad')).display==='none'"
+            "&&getComputedStyle(document.getElementById('normal')).display!=='none'",
+            10000));
 
     window.closeTab(youtubeIndex);
     wait(100);
@@ -852,60 +626,35 @@ int main(int argc, char **argv)
     assert(
         waitForJs(
             selectionView->page(),
-            "typeof "
-            "window.ardaliSuggestionBridge"
-            "==='function'"
-            "&&"
-            "!!document.querySelector("
-            "'#query'"
-            ")",
-            10000
-        )
-    );
+            "typeof window.ardaliSuggestionBridge==='function'"
+            "&&!!document.querySelector('#query')",
+            10000));
 
     js(
         selectionView->page(),
         "document.querySelector('#query').focus();"
         "document.querySelector('#query').value='choose';"
         "document.querySelector('#query').dispatchEvent("
-        "new Event('input',{bubbles:true})"
-        ");"
-    );
+        "new Event('input',{bubbles:true}));");
 
     assert(
         waitForJs(
             selectionView->page(),
-            "document.querySelectorAll("
-            "'.suggestion-row'"
-            ").length>1",
-            10000
-        )
-    );
+            "document.querySelectorAll('.suggestion-row').length>1",
+            10000));
 
     js(
         selectionView->page(),
-        "document.querySelector('#query')"
-        ".dispatchEvent("
+        "document.querySelector('#query').dispatchEvent("
         "new KeyboardEvent("
         "'keydown',"
-        "{"
-        "key:'ArrowDown',"
-        "bubbles:true"
-        "}"
-        ")"
-        ");"
-        "document.querySelector('#query')"
-        ".dispatchEvent("
+        "{key:'ArrowDown',bubbles:true}"
+        "));"
+        "document.querySelector('#query').dispatchEvent("
         "new KeyboardEvent("
         "'keydown',"
-        "{"
-        "key:'Enter',"
-        "bubbles:true,"
-        "cancelable:true"
-        "}"
-        ")"
-        ");"
-    );
+        "{key:'Enter',bubbles:true,cancelable:true}"
+        "));");
 
     wait(50);
 
@@ -913,70 +662,53 @@ int main(int argc, char **argv)
         selectionView
             ->page()
             ->requestedUrl()
-            .host()
-        == QStringLiteral(
-            "www.google.com"
-        )
-    );
+            .host() ==
+        QStringLiteral("www.google.com"));
 
     selectionView->stop();
 
     window.closeTab(selectionIndex);
     wait(100);
 
-    // Profile objects, stores, counters
-    // and suggestion policy stay separate.
+    // Profile objects, stores, counters and suggestion policy stay separate.
     BrowserProfileService privateProfile(
         root.path() + "/private",
         nullptr,
         nullptr,
-        true
-    );
+        true);
 
     assert(
         privateProfile
             .profile()
-            ->isOffTheRecord()
-    );
+            ->isOffTheRecord());
 
     assert(
         privateProfile
             .recentHistory()
-            .isEmpty()
-    );
+            .isEmpty());
 
     assert(
         privateProfile
             .bookmarks()
-            .isEmpty()
-    );
+            .isEmpty());
 
     assert(
         !privateProfile
-            .searchSuggestions()
-            ->isEnabled()
-    );
+             .searchSuggestions()
+             ->isEnabled());
 
     privateProfile.recordHistory(
-        QUrl(
-            "https://private.example/"
-        ),
+        QUrl("https://private.example/"),
         "Private",
-        true
-    );
+        true);
 
-    for (
-        const auto &entry :
-        profile.recentHistory()
-    ) {
+    for (const auto &entry :
+         profile.recentHistory()) {
         assert(
             entry
                 .url
-                .host()
-            != QStringLiteral(
-                "private.example"
-            )
-        );
+                .host() !=
+            QStringLiteral("private.example"));
     }
 
     SitePolicy privatePolicy;
@@ -987,18 +719,14 @@ int main(int argc, char **argv)
         ->settings()
         ->setSitePolicy(
             "private.example",
-            privatePolicy
-        );
+            privatePolicy);
 
     assert(
         !profile
              .blockerService()
              ->settings()
-             ->sitePolicy(
-                 "private.example"
-             )
-             .whitelisted
-    );
+             ->sitePolicy("private.example")
+             .whitelisted);
 
     BrowserServices privateServices;
     privateServices.profile =
@@ -1008,19 +736,18 @@ int main(int argc, char **argv)
 
     BrowserWindow privateWindow(
         privateServices,
-        true
-    );
+        true);
 
     assert(
         !window.transferTabTo(
             window.findTabIdByIndex(0),
             &privateWindow,
-            0
-        )
-    );
+            0));
 
     std::cout
         << "New Tab bridge/consent, local and remote results, "
            "whitespace, keyboard, injection defense, omnibox "
            "and profile isolation passed\n";
+
+    return 0;
 }
