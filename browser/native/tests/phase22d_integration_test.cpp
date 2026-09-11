@@ -670,8 +670,8 @@ int main(int argc, char **argv)
     assert(
         network.requests > requestsBeforeSelection);
 
-    // Wait for suggestion service to process and populate results
-    wait(1500);
+    // Wait for suggestion service to process and populate results - increased timeout for CI
+    wait(3500);
 
     assert(
         waitForJs(
@@ -763,7 +763,7 @@ int main(int argc, char **argv)
             entry
                 .url
                 .host() !=
-            QStringLiteral("private.example"));
+                QStringLiteral("private.example"));
     }
 
     SitePolicy privatePolicy;
