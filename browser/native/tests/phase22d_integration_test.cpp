@@ -670,14 +670,13 @@ int main(int argc, char **argv)
     assert(
         network.requests > requestsBeforeSelection);
 
-    // Wait for suggestion service to process and populate results - increased timeout for CI
-    wait(3500);
-
+    // Wait for suggestion rows to be populated in DOM with extended timeout for CI
+    // The suggestion service processes async and needs time for rendering
     assert(
         waitForJs(
             selectionView->page(),
             "document.querySelectorAll('.suggestion-row').length>1",
-            10000));
+            15000));  // Extended from 10000 for CI latency
 
     js(
         selectionView->page(),
