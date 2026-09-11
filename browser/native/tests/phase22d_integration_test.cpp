@@ -670,6 +670,9 @@ int main(int argc, char **argv)
     assert(
         network.requests > requestsBeforeSelection);
 
+    // Wait for suggestion service to process and populate results
+    wait(1500);
+
     assert(
         waitForJs(
             selectionView->page(),
