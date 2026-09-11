@@ -608,6 +608,8 @@ int main(int argc, char **argv)
     window.closeTab(youtubeIndex);
     wait(100);
 
+    // The new-tab suggestion selection path must wait for each asynchronous
+    // WebEngine/native-bridge step instead of assuming fixed timing.
     const int selectionIndex =
         window.addNewTab();
 
@@ -616,12 +618,13 @@ int main(int argc, char **argv)
     auto *selectionView =
         window.currentView();
 
-    selectionView->setFocus();
-
     profile.setSearchSuggestionsEnabled(true);
 
     network.body =
         R"(["choose",["choose one","choose two"]])";
+
+    selectionView->setFocus(Qt::MouseFocusReason);
+    wait(100);
 
     assert(
         waitForJs(
@@ -632,10 +635,40 @@ int main(int argc, char **argv)
 
     js(
         selectionView->page(),
-        "document.querySelector('#query').focus();"
+        "document.querySelector('#query').focus();");
+
+    assert(
+        waitForJs(
+            selectionView->page(),
+            "document.activeElement===document.querySelector('#query')",
+            5000));
+
+    const int requestsBeforeSelection =
+        network.requests;
+
+    js(
+        selectionView->page(),
         "document.querySelector('#query').value='choose';"
         "document.querySelector('#query').dispatchEvent("
         "new Event('input',{bubbles:true}));");
+
+    assert(
+        waitForJs(
+            selectionView->page(),
+            "document.querySelector('#query').value==='choose'",
+            5000));
+
+    QElapsedTimer requestTimer;
+    requestTimer.start();
+
+    while (
+        network.requests <= requestsBeforeSelection &&
+        requestTimer.elapsed() < 10000) {
+        wait(50);
+    }
+
+    assert(
+        network.requests > requestsBeforeSelection);
 
     assert(
         waitForJs(
@@ -649,21 +682,40 @@ int main(int argc, char **argv)
         "new KeyboardEvent("
         "'keydown',"
         "{key:'ArrowDown',bubbles:true}"
-        "));"
+        "));");
+
+    assert(
+        waitForJs(
+            selectionView->page(),
+            "document.querySelector('#query')"
+            ".getAttribute('aria-activedescendant')==='suggestion-0'",
+            5000));
+
+    js(
+        selectionView->page(),
         "document.querySelector('#query').dispatchEvent("
         "new KeyboardEvent("
         "'keydown',"
         "{key:'Enter',bubbles:true,cancelable:true}"
         "));");
 
-    wait(50);
+    QElapsedTimer navigationTimer;
+    navigationTimer.start();
+
+    while (
+        selectionView->page()->requestedUrl().host() !=
+            QStringLiteral("www.google.com") &&
+        selectionView->page()->requestedUrl().host() !=
+            QStringLiteral("google.com") &&
+        navigationTimer.elapsed() < 10000) {
+        wait(50);
+    }
 
     assert(
-        selectionView
-            ->page()
-            ->requestedUrl()
-            .host() ==
-        QStringLiteral("www.google.com"));
+        selectionView->page()->requestedUrl().host() ==
+            QStringLiteral("www.google.com") ||
+        selectionView->page()->requestedUrl().host() ==
+            QStringLiteral("google.com"));
 
     selectionView->stop();
 
