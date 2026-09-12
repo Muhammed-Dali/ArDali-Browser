@@ -1,0 +1,65 @@
+name: Publish AUR ardali
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Published release to submit to the ardali AUR package
+        required: true
+        default: v7.0.1
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      AUR_SSH_PRIVATE_KEY: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
+    steps:
+      - name: Validate release and AUR credentials
+        run: |
+          set -euo pipefail
+          test -n "${AUR_SSH_PRIVATE_KEY}" || { echo 'Set repository secret AUR_SSH_PRIVATE_KEY first' >&2; exit 1; }
+          gh release view "${{ inputs.release_tag }}" >/dev/null
+
+      - name: Checkout release packaging recipe
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.release_tag }}
+
+      - name: Download archive and prepare AUR metadata
+        run: |
+          set -euo pipefail
+          version="${{ inputs.release_tag }}"
+          version="${version#v}"
+          test "${{ inputs.release_tag }}" = "v${version}"
+          test "$(sed -n 's/^pkgver=//p' packaging/aur/ardali/PKGBUILD)" = "${version}"
+          archive="ardali-browser-${version}-linux-x86_64.tar.zst"
+          gh release download "${{ inputs.release_tag }}" --pattern "${archive}" --dir "${RUNNER_TEMP}"
+          checksum="$(sha256sum "${RUNNER_TEMP}/${archive}" | cut -d' ' -f1)"
+          cp packaging/aur/ardali/PKGBUILD "${RUNNER_TEMP}/PKGBUILD"
+          cp packaging/aur/ardali/.SRCINFO "${RUNNER_TEMP}/.SRCINFO"
+          sed -i "s/^sha256sums=('SKIP')$/sha256sums=('${checksum}')/" "${RUNNER_TEMP}/PKGBUILD"
+          sed -i "s/sha256sums = SKIP/sha256sums = ${checksum}/" "${RUNNER_TEMP}/.SRCINFO"
+          grep -F "sha256sums=('${checksum}')" "${RUNNER_TEMP}/PKGBUILD"
+          grep -F "sha256sums = ${checksum}" "${RUNNER_TEMP}/.SRCINFO"
+
+      - name: Push the AUR package
+        run: |
+          set -euo pipefail
+          install -dm700 "${HOME}/.ssh"
+          printf '%s\n' "${AUR_SSH_PRIVATE_KEY}" > "${HOME}/.ssh/id_ed25519"
+          chmod 600 "${HOME}/.ssh/id_ed25519"
+          ssh-keyscan -H aur.archlinux.org >> "${HOME}/.ssh/known_hosts"
+          git clone ssh://aur@aur.archlinux.org/ardali.git "${RUNNER_TEMP}/aur-ardali"
+          cp "${RUNNER_TEMP}/PKGBUILD" "${RUNNER_TEMP}/aur-ardali/PKGBUILD"
+          cp "${RUNNER_TEMP}/.SRCINFO" "${RUNNER_TEMP}/aur-ardali/.SRCINFO"
+          git -C "${RUNNER_TEMP}/aur-ardali" add PKGBUILD .SRCINFO
+          if git -C "${RUNNER_TEMP}/aur-ardali" diff --cached --quiet; then exit 0; fi
+          git -C "${RUNNER_TEMP}/aur-ardali" -c user.name='Muhammed Dali' \
+            -c user.email='support@ardali.app' commit -m "Update ardali to ${{ inputs.release_tag }}"
+          git -C "${RUNNER_TEMP}/aur-ardali" push origin HEAD

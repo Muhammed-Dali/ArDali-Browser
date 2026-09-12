@@ -1,6 +1,6 @@
 # ArDali Browser 7.0.1
 
-Released on 11 September 2026.
+Released on 12 September 2026.
 
 ArDali Browser 7.0.1 is a reliability release for the Linux test and release
 pipeline.
@@ -22,9 +22,10 @@ pipeline.
 
 ## Verification
 
-- All 29 CTest targets pass in the local Linux Release validation suite.
-- The General Download Manager integration test passes in three consecutive
-  runs.
+- All 29 CTest targets pass in GitHub Actions on Ubuntu 24.04, Debian 12,
+  Fedora and Arch Linux.
+- Stabilized the adaptive download ramp fixture so it reaches eight connections
+  on Arch, and ran the new-tab suggestion selection before renderer-heavy cases.
 
 ## Platform status
 

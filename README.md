@@ -24,9 +24,8 @@
 
 | Installation Method | Command / Source | Description |
 |---|---|---|
-| **AUR (Binary)** | `yay -S ardali-bin` | Fast precompiled binary package for Arch Linux / Manjaro |
-| **AUR (Source)** | `yay -S ardali` | Builds natively on your machine, optimized for your CPU |
-| **Official Pacman Repo** | `sudo pacman -Sy ardali` | Direct updates from the official ArDali pacman repository *(requires repo entry)* |
+| **AUR** | `yay -S ardali` | Precompiled Linux x86_64 package from the Arch User Repository |
+| **ArDali Pacman Repo** | `sudo pacman -Syu ardali` | Binary package from the ArDali repository *(configure it first)* |
 | **GitHub Releases** | [Releases Page](https://github.com/Muhammed-Dali/ArDali-Browser/releases) | Precompiled standalone `.tar.zst` bundles and source tarballs |
 
 ---
@@ -128,12 +127,8 @@ Built on top of the Chromium-powered **Qt WebEngine** foundation, ArDali Browser
 
 ArDali Browser is officially packaged in the Arch User Repository:
 
-**Precompiled binary package:**
-```bash
-yay -S ardali-bin
-```
+Install the precompiled x86_64 package:
 
-**Source package (compiled locally):**
 ```bash
 yay -S ardali
 ```
@@ -153,7 +148,7 @@ Server = https://github.com/Muhammed-Dali/ArDali-Browser/releases/download/pacma
 Then update your package databases and install:
 
 ```bash
-sudo pacman -Sy ardali
+sudo pacman -Syu ardali
 ```
 
 ---
