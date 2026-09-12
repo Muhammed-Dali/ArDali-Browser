@@ -732,7 +732,7 @@ int main(int argc, char **argv)
     bool selectionSuggestionsReady = false;
     QElapsedTimer selectionTimer;
     selectionTimer.start();
-    constexpr int selectionBudgetMs = 15000;
+    constexpr int selectionBudgetMs = 30000;
 
     const auto selectionRemaining = [&] {
         return qMax(

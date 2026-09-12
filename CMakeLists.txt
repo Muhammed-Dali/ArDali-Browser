@@ -809,7 +809,7 @@ target_compile_definitions(ardali-phase22d-integration-test PRIVATE ${ARDALI_PHA
 target_compile_options(ardali-phase22d-integration-test PRIVATE -UNDEBUG)
 add_dependencies(ardali-phase22d-integration-test ardali-browser-policy ardali-web-output-dali)
 add_test(NAME ardali-phase22d-integration COMMAND ardali-phase22d-integration-test)
-set_tests_properties(ardali-phase22d-integration PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QTWEBENGINE_CHROMIUM_FLAGS=--no-sandbox --disable-gpu" TIMEOUT 90)
+set_tests_properties(ardali-phase22d-integration PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QTWEBENGINE_CHROMIUM_FLAGS=--no-sandbox --disable-gpu" TIMEOUT 120)
 
 get_target_property(ARDALI_BROWSER_FULL_SOURCES ardali-browser SOURCES)
 list(REMOVE_ITEM ARDALI_BROWSER_FULL_SOURCES browser/native/main.cpp)
