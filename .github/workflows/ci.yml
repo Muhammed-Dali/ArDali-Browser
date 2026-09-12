@@ -70,7 +70,7 @@ jobs:
           submodules: false
 
       - name: Configure
-        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DARDALI_PHASE22D_TEST_TIMEOUT=${{ matrix.package_family == 'pacman' && '180' || '120' }}
 
       - name: Build
         run: cmake --build build --parallel 2
