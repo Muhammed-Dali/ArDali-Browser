@@ -74,6 +74,5 @@ jobs:
             --repo "${GITHUB_REPOSITORY}" \
             --title "ArDali Browser ${RELEASE_REF#v}" \
             --notes-file "docs/RELEASE_NOTES_v${RELEASE_REF#v}.md" \
-            --clobber \
             "ardali-browser-${RELEASE_REF#v}-linux-x86_64.tar.zst" \
             SHA256SUMS
