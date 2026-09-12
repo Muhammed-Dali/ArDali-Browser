@@ -47,3 +47,17 @@ jobs:
 
       - name: Dispatch tagged release build
         run: gh workflow run release.yml --ref v7.0.1 -f release_ref=v7.0.1
+
+  pacman:
+    if: >-
+      github.event.head_commit.message == 'release: publish 7.0.1 pacman package'
+    runs-on: ubuntu-24.04
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - name: Dispatch package publication for the verified v7.0.1 release
+        run: |
+          set -euo pipefail
+          test "$(gh release view v7.0.1 --json isDraft --jq .isDraft)" = 'false'
+          gh workflow run pacman-repo.yml --ref main -f release_tag=v7.0.1
