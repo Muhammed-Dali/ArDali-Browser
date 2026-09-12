@@ -838,8 +838,6 @@ int main(int argc, char **argv)
             << selectionView->page()->url().toString().toStdString()
             << " requestedUrl="
             << selectionView->page()->requestedUrl().toString().toStdString()
-            << " loading="
-            << selectionView->isLoading()
             << " nativeId="
             << selectionView->page()->property("ardali-suggest-id").toInt()
             << " js="
