@@ -27,6 +27,7 @@
 | **AUR** | `yay -S ardali` | Precompiled Linux x86_64 package from the Arch User Repository |
 | **ArDali Pacman Repo** | `sudo pacman -Syu ardali` | Binary package from the ArDali repository *(configure it first)* |
 | **GitHub Releases** | [Releases Page](https://github.com/Muhammed-Dali/ArDali-Browser/releases) | Precompiled standalone `.tar.zst` bundles and source tarballs |
+| **Official Website** | [ArDali Browser Website](https://muhammed-dali.github.io/ArDali-Browser/) | Product overview, features, screenshots, and download links |
 
 ---
 
@@ -63,11 +64,9 @@ Built on top of the Chromium-powered **Qt WebEngine** foundation, ArDali Browser
 
 ### 1. Modern Desktop Interface & Smart New Tab Experience
 
-![ArDali Browser Main Interface](docs/images/ardali-browser.png)
-
 > **Main Browser Window & New Tab Page (`ardali://newtab`)**
 >
-> ArDali Browser features a distraction-free dark interface. The customizable New Tab page provides an integrated digital clock, a search bar with fast engine switching, one-click speed dials, active download widgets, and real-time tracking parameter protection metrics. The top tab strip features active memory hover cards, GPU-accelerated throbber animations, and a sleek bookmarks bar.
+> The hero image above presents ArDali Browser's distraction-free desktop interface and customizable New Tab page. Users can choose colorful backgrounds, clock styles and positions, switch search engines, recall saved searches through autocomplete, open frequently visited sites, and monitor real-time blocked-request statistics. The top tab strip adds memory-aware hover cards, animated loading indicators, and an optional bookmarks bar.
 
 ---
 

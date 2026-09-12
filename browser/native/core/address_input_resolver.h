@@ -61,13 +61,13 @@ class AddressInputResolver {
   // Main resolution entry points
   static AddressResolutionResult resolve(
       const QString &rawInput,
-      const QString &searchEngine = QStringLiteral("Google"),
+      const QString &searchEngine = QStringLiteral("DuckDuckGo"),
       const QLocale &locale = QLocale::system(),
       const INavigationCandidateProvider *candidateProvider = nullptr);
 
   static QUrl resolveUrl(
       const QString &rawInput,
-      const QString &searchEngine = QStringLiteral("Google"),
+      const QString &searchEngine = QStringLiteral("DuckDuckGo"),
       const QLocale &locale = QLocale::system(),
       const INavigationCandidateProvider *candidateProvider = nullptr);
 

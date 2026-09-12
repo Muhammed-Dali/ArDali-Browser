@@ -2,4 +2,4 @@
 User-agent: *
 Allow: /
 
-Sitemap: https://ardali-browser.pages.dev/sitemap.xml
+Sitemap: https://muhammed-dali.github.io/ArDali-Browser/sitemap.xml

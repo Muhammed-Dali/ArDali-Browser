@@ -21,7 +21,8 @@ const SearchEngineDefinition &searchEngineDefinition(const QString &engineName) 
     return definitions[1];
   if (lower.contains(QLatin1String("brave"))) return definitions[2];
   if (lower.contains(QLatin1String("bing"))) return definitions[3];
-  return definitions[0];
+  if (lower.contains(QLatin1String("google"))) return definitions[0];
+  return definitions[1];
 }
 
 QString searchEngineIconAsset(const QString &engineName) {

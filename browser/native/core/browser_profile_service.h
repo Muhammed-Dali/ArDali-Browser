@@ -139,6 +139,9 @@ class BrowserProfileService final : public QObject, public ardali::core::IBrowse
   bool updateHistoryTitle(const QUrl &url, const QString &title);
   QList<BrowserHistoryEntry> recentHistory() const override;
   QList<BrowserFrequentSite> frequentSites(int limit = 6) const override;
+  void recordSearch(const QString &query);
+  QStringList recentSearches(const QString &query = QString{}, int limit = 8) const;
+  void clearSearchHistory();
   void clearHistory();
 
   QList<BrowserDownloadEntry> recentDownloads() const;
@@ -153,6 +156,7 @@ class BrowserProfileService final : public QObject, public ardali::core::IBrowse
   SearchSuggestionService *searchSuggestions() const;
   void setSearchSuggestionsEnabled(bool enabled);
   QString searchEngine() const override;
+  quint64 totalBlockedCount() const override;
   void setSearchEngine(const QString &engine);
 
   QList<QUrl> bookmarks() const override;

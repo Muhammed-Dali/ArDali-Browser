@@ -43,24 +43,18 @@ website/
 
 ---
 
-## 3. Production Deployment: Cloudflare Pages (Recommended)
+## 3. Production Deployment: GitHub Pages
 
-Cloudflare Pages is the recommended hosting platform because it provides native, edge-level support for custom security headers via the `_headers` file, unlimited bandwidth, and global Anycast CDN caching.
+The production site is published at `https://muhammed-dali.github.io/ArDali-Browser/` by the repository's `website-pages.yml` workflow. The same deployment preserves the historical pacman repository files alongside the website.
 
-### Step-by-Step Cloudflare Pages Setup:
+### Automatic deployment
 
-1. Log in to the [Cloudflare Dashboard](https://dash.cloudflare.com/).
-2. Navigate to **Workers & Pages** → **Create application** → **Pages** → **Connect to Git**.
-3. Select the `Muhammed-Dali/ArDali-Browser` repository.
-4. Configure Build settings:
-   - **Framework preset:** `None`
-   - **Build command:** *(leave empty)*
-   - **Build output directory:** `website`
-5. Click **Save and Deploy**.
-6. Cloudflare will generate a free HTTPS URL such as `https://ardali-browser.pages.dev`.
+1. Push a change under `website/` or run the **Publish Website** workflow manually.
+2. The workflow combines the static website with the current pacman repository assets.
+3. GitHub Pages deploys the result without a separate build system or external hosting account.
 
-### Custom Domain (Optional):
-You can attach any custom domain (e.g. `ardalibrowser.com`) under **Custom Domains** tab without changing any code.
+### Custom Domain (Optional)
+You can attach a custom domain in the repository's **Settings → Pages** screen without changing the static site structure.
 
 ### Security Headers Configured (`_headers`):
 - `Content-Security-Policy`: Restricts scripts, styles, and assets to `'self'`.
@@ -74,14 +68,7 @@ You can attach any custom domain (e.g. `ardalibrowser.com`) under **Custom Domai
 
 ---
 
-## 4. Fallback Deployment: GitHub Pages
-
-ArDali Browser website is fully compatible with GitHub Pages as a fallback:
-
-1. In GitHub, open **Settings** → **Pages**.
-2. Under **Build and deployment** → **Source**, choose **Deploy from a branch**.
-3. Select your deployment branch and target folder (e.g., `/website` or a dedicated `gh-pages` branch).
-4. Save to deploy.
+## 4. Security headers
 
 > **Technical Security Note on GitHub Pages:**  
 > Unlike Cloudflare Pages, standard GitHub Pages does not evaluate the `_headers` file to emit custom HTTP response headers. To safeguard the site on GitHub Pages, equivalent `<meta http-equiv="Content-Security-Policy">` and `<meta name="referrer" content="no-referrer">` tags are already embedded directly within every HTML file.
@@ -90,12 +77,12 @@ ArDali Browser website is fully compatible with GitHub Pages as a fallback:
 
 ## 5. GitHub Repository Website Configuration
 
-Once deployed on Cloudflare Pages (e.g., `https://ardali-browser.pages.dev`), update your GitHub repository's **About** panel:
+After deployment, update the GitHub repository's **About** panel:
 
 1. Navigate to `https://github.com/Muhammed-Dali/ArDali-Browser`.
 2. Click the gear icon next to **About** in the right sidebar.
 3. In the **Website** field, enter the production URL:
    ```text
-   https://ardali-browser.pages.dev
+   https://muhammed-dali.github.io/ArDali-Browser/
    ```
 4. Save changes.

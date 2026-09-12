@@ -702,7 +702,7 @@ void SettingsPage::refreshPreferences() {
     restore->setEnabled(!settings.value(QStringLiteral("browser/hiddenFrequentSites")).toStringList().isEmpty());
   if (auto *engine = findChild<QComboBox *>(QStringLiteral("settings-search-engine"))) {
     const QSignalBlocker blocker(engine);
-    engine->setCurrentText(settings.value(QStringLiteral("browser/searchEngine"), QStringLiteral("Google")).toString());
+    engine->setCurrentText(settings.value(QStringLiteral("browser/searchEngine"), QStringLiteral("DuckDuckGo")).toString());
   }
   if (auto *suggestions = findChild<QCheckBox *>(QStringLiteral("settings-search-suggestions"))) {
     const QSignalBlocker blocker(suggestions);
@@ -2890,13 +2890,16 @@ QWidget *SettingsPage::createBlockerSection() {
 QWidget *SettingsPage::createSearchSection() {
   Section section = makeSection(QStringLiteral("Arama motoru"), QStringLiteral("Adres çubuğu ve yeni sekmede kullanılan web aramasını yönetin."));
   auto *card = makeCard(section.page, QStringLiteral("ARAMA"));
-  auto *engine = new QComboBox(card); engine->setObjectName(QStringLiteral("settings-search-engine")); engine->setAccessibleName(QStringLiteral("Varsayılan arama motoru")); engine->addItems({QStringLiteral("Google"), QStringLiteral("DuckDuckGo"), QStringLiteral("Brave Search"), QStringLiteral("Bing")}); engine->setCurrentText(hooks_.searchEngine ? hooks_.searchEngine() : QStringLiteral("Google"));
+  auto *engine = new QComboBox(card); engine->setObjectName(QStringLiteral("settings-search-engine")); engine->setAccessibleName(QStringLiteral("Varsayılan arama motoru")); engine->addItems({QStringLiteral("DuckDuckGo"), QStringLiteral("Google"), QStringLiteral("Brave Search"), QStringLiteral("Bing")}); engine->setCurrentText(hooks_.searchEngine ? hooks_.searchEngine() : QStringLiteral("DuckDuckGo"));
   addRow(card, settingRow(card, QStringLiteral("Varsayılan arama motoru"), QStringLiteral("Adres çubuğuna yazılan arama sorgularında kullanılacak servis."), engine, BrowserIcon::Search, true));
   auto *suggestions = new QCheckBox(card); suggestions->setObjectName(QStringLiteral("settings-search-suggestions")); suggestions->setAccessibleName(QStringLiteral("Arama önerilerini etkinleştir")); suggestions->setChecked(profileService_ ? profileService_->searchSuggestions()->isEnabled() : QSettings().value(QStringLiteral("browser/searchSuggestionsEnabled"), false).toBool()); suggestions->setEnabled(!profileService_ || !profileService_->profile()->isOffTheRecord());
   addRow(card, settingRow(card, QStringLiteral("Arama önerileri"), QStringLiteral("Etkinleştirildiğinde yazdığınız sorgu seçili arama motorunun öneri servisine gönderilebilir."), suggestions));
+  auto *clearSearches = new QPushButton(QStringLiteral("Temizle"), card); clearSearches->setProperty("danger", true); clearSearches->setAccessibleName(QStringLiteral("Arama geçmişini temizle")); clearSearches->setEnabled(profileService_ && !profileService_->profile()->isOffTheRecord());
+  addRow(card, settingRow(card, QStringLiteral("Arama geçmişi"), QStringLiteral("Adres çubuğu ve yeni sekmede otomatik tamamlamada kullanılan kayıtlı aramaları siler."), clearSearches, BrowserIcon::History, true));
   section.layout->addWidget(card); section.layout->addStretch();
   connect(engine, &QComboBox::currentTextChanged, this, [this](const QString &value) { QSettings().setValue(QStringLiteral("browser/searchEngine"), value); if (hooks_.setSearchEngine) hooks_.setSearchEngine(value); });
   connect(suggestions, &QCheckBox::toggled, this, [this](bool value) { if (profileService_) profileService_->setSearchSuggestionsEnabled(value); else QSettings().setValue(QStringLiteral("browser/searchSuggestionsEnabled"), value); if (hooks_.syncNewTabs) hooks_.syncNewTabs(); });
+  connect(clearSearches, &QPushButton::clicked, this, [this] { if (profileService_) profileService_->clearSearchHistory(); if (hooks_.syncNewTabs) hooks_.syncNewTabs(); });
   return section.page;
 }
 

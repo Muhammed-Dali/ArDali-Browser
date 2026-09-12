@@ -427,7 +427,7 @@ class BrowserWebPage final : public QWebEnginePage {
       } else if (window_) {
         validatedEngine = window_->currentSearchEngine();
       } else {
-        validatedEngine = QStringLiteral("Google");
+        validatedEngine = QStringLiteral("DuckDuckGo");
       }
 
       // Revalidate the current native owner at execution time (tabs may move).
@@ -662,7 +662,7 @@ class BrowserWebView final : public QWebEngineView {
       QGuiApplication::clipboard()->setText(selectedText);
     });
 
-    const QString engine = window_ ? window_->currentSearchEngine() : QStringLiteral("Google");
+    const QString engine = window_ ? window_->currentSearchEngine() : QStringLiteral("DuckDuckGo");
     const QString truncated = selectedText.length() > 24 ? selectedText.left(21) + QStringLiteral("...") : selectedText;
     QAction *searchAct = menu.addAction(BrowserIcons::icon(BrowserIcon::Search),
                                         I18n::text(QStringLiteral("context.search_for"), QStringLiteral("%1 ile \"%2\" ara")).arg(engine, truncated));
@@ -804,6 +804,15 @@ BrowserWindow::BrowserWindow(const BrowserServices &services, bool isCaptureShel
       syncNewTabViews();
       if (omnibox_->hasFocus()) updateOmniboxSuggestions(omnibox_->text());
     });
+    if (auto *blocker = services_.profileService->blockerService()) {
+      connect(blocker, &ArDaliBlockerService::globalStatsChanged, this,
+              [this](quint64, quint64 totalBlocked) {
+        const QString script = newTabProtectionStatsUpdateScript(totalBlocked);
+        for (const BrowserTabInfo &tab : std::as_const(tabs_)) {
+          if (tab.view && isNewTabUrl(tab.view->url())) tab.view->page()->runJavaScript(script);
+        }
+      });
+    }
   }
 
   connect(&TabThrobber::instance(), &TabThrobber::throbberTick, this, &BrowserWindow::onThrobberTick);
@@ -1142,7 +1151,10 @@ void BrowserWindow::setupUi() {
   suggestionCompleter_->setMaxVisibleItems(10);
   omnibox_->setCompleter(suggestionCompleter_);
   connect(suggestionCompleter_, qOverload<const QModelIndex &>(&QCompleter::activated), this,
-          [this](const QModelIndex &index) { activateSuggestion(index.data(Qt::UserRole + 1).toUrl()); });
+          [this](const QModelIndex &index) {
+            activateSuggestion(index.data(Qt::UserRole + 1).toUrl(), index.data(Qt::DisplayRole).toString(),
+                               index.data(Qt::UserRole + 2).toString());
+          });
   connect(omnibox_, &QLineEdit::textEdited, this, &BrowserWindow::updateOmniboxSuggestions);
   connect(omnibox_, &QLineEdit::returnPressed, this, &BrowserWindow::onOmniboxReturnPressed);
 
@@ -2159,9 +2171,12 @@ void BrowserWindow::syncNewTabViews() {
   const QString script = newTabTopSitesUpdateScript(
       collectNewTabFrequentSites(services_.profileService),
       collectNewTabBookmarks(services_.profileService));
+  const QString protectionScript = newTabProtectionStatsUpdateScript(
+      services_.profileService->totalBlockedCount());
   for (const BrowserTabInfo &tab : std::as_const(tabs_)) {
     if (!tab.view || !isNewTabUrl(tab.view->url())) continue;
     tab.view->page()->runJavaScript(script);
+    tab.view->page()->runJavaScript(protectionScript);
     const bool enabled = services_.profileService->searchSuggestions()->isEnabled() && !tab.view->page()->profile()->isOffTheRecord();
     tab.view->page()->runJavaScript(QStringLiteral("if(window.ardaliSuggestionConsent)window.ardaliSuggestionConsent(%1,%2);")
         .arg(enabled ? QStringLiteral("true") : QStringLiteral("false"), tab.view->page()->profile()->isOffTheRecord() ? QStringLiteral("false") : QStringLiteral("true")));
@@ -2172,7 +2187,8 @@ void BrowserWindow::onOmniboxReturnPressed() {
   if (suggestionActivated_) return;
   const auto index = suggestionCompleter_->popup()->currentIndex();
   if (suggestionCompleter_->popup()->isVisible() && index.isValid()) {
-    activateSuggestion(index.data(Qt::UserRole + 1).toUrl());
+    activateSuggestion(index.data(Qt::UserRole + 1).toUrl(), index.data(Qt::DisplayRole).toString(),
+                       index.data(Qt::UserRole + 2).toString());
     return;
   }
   navigateFromUserInput(omnibox_->text());
@@ -2214,6 +2230,12 @@ void BrowserWindow::navigateFromUserInput(const QString &rawInput, const QString
       input, engine, QLocale::system(), candidateProvider_.get());
   const QUrl url = resolution.url;
   if (!url.isValid() || url.isEmpty()) return;
+
+  if (resolution.classification == ardali::core::AddressInputClassification::Search &&
+      services_.profileService && services_.profile == services_.profileService->profile() &&
+      !services_.profile->isOffTheRecord()) {
+    services_.profileService->recordSearch(resolution.searchQuery.isEmpty() ? input : resolution.searchQuery);
+  }
 
   if (auto *view = currentView()) {
     const int idx = tabStrip_->currentIndex();
@@ -3297,7 +3319,7 @@ QString BrowserWindow::currentSearchEngine() const {
   if (services_.profileService) {
     return services_.profileService->searchEngine();
   }
-  return QSettings().value(QStringLiteral("browser/searchEngine"), QStringLiteral("Google")).toString();
+  return QSettings().value(QStringLiteral("browser/searchEngine"), QStringLiteral("DuckDuckGo")).toString();
 }
 
 void BrowserWindow::setSearchEngine(const QString &engine) {
@@ -3462,6 +3484,14 @@ bool BrowserWindow::isInsideSiteControls(QWidget *target, const QPoint &globalPo
 }
 
 bool BrowserWindow::eventFilter(QObject *watched, QEvent *event) {
+  if (watched == omnibox_ && event->type() == QEvent::FocusIn && omnibox_->text().trimmed().isEmpty()) {
+    QTimer::singleShot(0, this, [this] {
+      if (omnibox_ && omnibox_->hasFocus() && omnibox_->text().trimmed().isEmpty()) {
+        updateOmniboxSuggestions(QString{});
+      }
+    });
+  }
+
   if (siteControlsBubble_ && siteControlsBubble_->isVisible()) {
     if (event->type() == QEvent::MouseButtonPress) {
       auto *mouseEvent = static_cast<QMouseEvent *>(event);
@@ -3925,7 +3955,8 @@ void BrowserWindow::onThrobberTick() {
 
 QJsonArray BrowserWindow::searchRows(const QString &query, const QStringList &remote) const {
   QJsonArray rows;
-  if (query.trimmed().isEmpty() || query.size() > 256) return rows;
+  if (query.size() > 256) return rows;
+  const QString cleanQuery = query.trimmed();
   QSet<QString> seen;
   auto append = [&](const QString &text, const QUrl &url, const QString &type) {
     if (rows.size() >= 12 || !url.isValid() || url.host().isEmpty() || !url.userInfo().isEmpty() ||
@@ -3934,46 +3965,55 @@ QJsonArray BrowserWindow::searchRows(const QString &query, const QStringList &re
     if (seen.contains(key)) return;
     seen.insert(key);
     QJsonObject row{{"text",text.left(256)},{"url",key},{"type",type}};
-    if (type != QLatin1String("remote") && type != QLatin1String("search"))
+    if (type != QLatin1String("remote") && type != QLatin1String("search") &&
+        type != QLatin1String("search-history"))
       row.insert(QStringLiteral("icon"), newTabFaviconUrl(services_.profileService, url));
     rows.append(row);
   };
   const auto search = [&](const QString &text, const QString &type) {
     append(text, ardali::core::AddressInputResolver::searchUrlForEngine(currentSearchEngine(), text), type);
   };
-  search(query, QStringLiteral("search"));
+  if (!cleanQuery.isEmpty()) search(cleanQuery, QStringLiteral("search"));
   // Local data is available only to its owning regular profile.
   if (services_.profileService && services_.profile == services_.profileService->profile() && !services_.profile->isOffTheRecord()) {
+    for (const QString &savedQuery : services_.profileService->recentSearches(cleanQuery, 8)) {
+      search(savedQuery, QStringLiteral("search-history"));
+    }
     for (const auto &tab : tabs_) {
-      if (tab.title.contains(query, Qt::CaseInsensitive) || tab.url.host().contains(query, Qt::CaseInsensitive))
+      if (!cleanQuery.isEmpty() && (tab.title.contains(cleanQuery, Qt::CaseInsensitive) || tab.url.host().contains(cleanQuery, Qt::CaseInsensitive)))
         append(tab.title.isEmpty() ? tab.url.host() : tab.title, tab.url, QStringLiteral("tab"));
       if (rows.size() >= 3) break;
     }
     for (const auto &url : services_.profileService->bookmarks()) {
-      if (url.host().contains(query, Qt::CaseInsensitive)) append(url.host(), url, QStringLiteral("bookmark"));
+      if (!cleanQuery.isEmpty() && url.host().contains(cleanQuery, Qt::CaseInsensitive)) append(url.host(), url, QStringLiteral("bookmark"));
       if (rows.size() >= 4) break;
     }
     for (const auto &site : services_.profileService->frequentSites(30)) {
-      if (site.title.contains(query, Qt::CaseInsensitive) || site.url.host().contains(query, Qt::CaseInsensitive))
+      if (!cleanQuery.isEmpty() && (site.title.contains(cleanQuery, Qt::CaseInsensitive) || site.url.host().contains(cleanQuery, Qt::CaseInsensitive)))
         append(site.title.isEmpty() ? site.url.host() : site.title, site.url, QStringLiteral("frequent"));
       if (rows.size() >= 5) break;
     }
     for (const auto &entry : services_.profileService->recentHistory()) {
-      if (entry.title.contains(query, Qt::CaseInsensitive) || entry.url.host().contains(query, Qt::CaseInsensitive))
+      if (!cleanQuery.isEmpty() && (entry.title.contains(cleanQuery, Qt::CaseInsensitive) || entry.url.host().contains(cleanQuery, Qt::CaseInsensitive)))
         append(entry.title.isEmpty() ? entry.url.host() : entry.title, entry.url, QStringLiteral("history"));
       if (rows.size() >= 6) break;
     }
   }
-  for (const auto &text : remote) search(text, QStringLiteral("remote"));
+  if (!cleanQuery.isEmpty()) for (const auto &text : remote) search(text, QStringLiteral("remote"));
   return rows;
 }
 
-void BrowserWindow::activateSuggestion(const QUrl &url) {
+void BrowserWindow::activateSuggestion(const QUrl &url, const QString &text, const QString &type) {
   if (suggestionActivated_ || !url.isValid() || url.host().isEmpty() || !url.userInfo().isEmpty() ||
       (url.scheme() != QLatin1String("https") && url.scheme() != QLatin1String("http"))) return;
   suggestionActivated_ = true;
   QTimer::singleShot(0, this, [this] { suggestionActivated_ = false; });
   suggestionCompleter_->popup()->hide();
+  if ((type == QLatin1String("search") || type == QLatin1String("remote") ||
+       type == QLatin1String("search-history")) && services_.profileService &&
+      services_.profile == services_.profileService->profile() && !services_.profile->isOffTheRecord()) {
+    services_.profileService->recordSearch(text);
+  }
   navigateFromUserInput(url.toString(QUrl::FullyEncoded));
 }
 
@@ -3989,7 +4029,8 @@ void BrowserWindow::updateOmniboxSuggestions(const QString &query) {
       item->setData(QUrl(row.value("url").toString()), Qt::UserRole + 1);
       item->setData(row.value("type").toString(), Qt::UserRole + 2);
       guard->suggestionModel_->appendRow(item);
-      if (row.value("type") != QLatin1String("remote") && row.value("type") != QLatin1String("search")) {
+      if (row.value("type") != QLatin1String("remote") && row.value("type") != QLatin1String("search") &&
+          row.value("type") != QLatin1String("search-history")) {
         const QString key = row.value("url").toString();
         if (const auto *cached = guard->suggestionIconCache_.object(key)) {
           if (!cached->isNull()) item->setIcon(*cached);
@@ -4986,4 +5027,3 @@ void BrowserWindow::showBookmarkContextMenu(const QUrl &url, const QString &titl
 
   menu.exec(globalPos);
 }
-

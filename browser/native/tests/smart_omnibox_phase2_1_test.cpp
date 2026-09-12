@@ -129,6 +129,30 @@ void testBackwardCompatibleTypedCount() {
   assert(sites.first().typedCount == 0);
 }
 
+void testSearchHistoryPersistenceAndClearing() {
+  QTemporaryDir directory;
+  assert(directory.isValid());
+  BrowserProfileService service(directory.path(), nullptr);
+
+  service.recordSearch(QStringLiteral("  arch   aur giriş  "));
+  service.recordSearch(QStringLiteral("youtube müzik"));
+  service.recordSearch(QStringLiteral("arch aur giriş"));
+  const QStringList recent = service.recentSearches();
+  assert(recent.size() == 2);
+  assert(recent.first() == QStringLiteral("arch aur giriş"));
+  assert(service.recentSearches(QStringLiteral("aur"), 5) == QStringList{QStringLiteral("arch aur giriş")});
+
+  service.clearSearchHistory();
+  assert(service.recentSearches().isEmpty());
+  service.recordSearch(QStringLiteral("temizlenecek sorgu"));
+  service.clearHistory();
+  assert(service.recentSearches().isEmpty());
+
+  BrowserProfileService privateService(directory.path() + QStringLiteral("/private"), nullptr, nullptr, true);
+  privateService.recordSearch(QStringLiteral("gizli sorgu"));
+  assert(privateService.recentSearches().isEmpty());
+}
+
 void testAntiPoisoningConfidence() {
   ardali::core::NavigationCandidate passive;
   passive.hasExactTokenMatch = true;
@@ -189,14 +213,19 @@ void testNewTabDataAndScriptSafety() {
   const QJsonArray malicious{QJsonObject{{QStringLiteral("url"), QStringLiteral("https://safe.example/")},
                                          {QStringLiteral("name"), maliciousTitle},
                                          {QStringLiteral("title"), maliciousTitle}}};
-  const QString html = newTabHtml(QStringLiteral("Google"), malicious, bookmarks);
+  const QString html = newTabHtml(QStringLiteral("Google"), malicious, bookmarks, 37);
+  assert(html.contains(QStringLiteral("search-history")));
+  assert(html.contains(QStringLiteral("requestSubmit")));
   assert(html.contains(QStringLiteral("attack<\\/script><script>alert(1)<\\/script>")));
   assert(!html.contains(maliciousTitle));
   assert(html.contains(QStringLiteral("window.ardaliTopSiteSources")));
+  assert(html.contains(QStringLiteral("id=\"protection-card-value\">37")));
+  assert(html.contains(QStringLiteral("Toplam engellenen öğe")));
 
   const QString updateScript = newTabTopSitesUpdateScript(frequent, bookmarks);
   assert(updateScript.contains(QStringLiteral("window.renderFrequentSites")));
   assert(updateScript.contains(QStringLiteral("https://example.com/")));
+  assert(newTabProtectionStatsUpdateScript(91).contains(QStringLiteral("ardaliSetProtectionStats(91)")));
 }
 
 }  // namespace
@@ -213,6 +242,7 @@ static void testPlaceholdersAndCachedFavicon() {
   assert(searchEnginePlaceholder(QStringLiteral("Bing")) == QStringLiteral("Bing'de arayın veya URL'yi yazın"));
   QTemporaryDir dir;
   BrowserProfileService service(dir.path(), nullptr);
+  assert(service.searchEngine() == QStringLiteral("DuckDuckGo"));
   service.setSearchEngine(QStringLiteral("DuckDuckGo"));
   QImage image(32, 32, QImage::Format_ARGB32);
   image.fill(Qt::green);
@@ -267,7 +297,7 @@ static void testPlaceholdersAndCachedFavicon() {
   loadLoop.exec();
   QEventLoop evalLoop;
   bool passed = false;
-  page.runJavaScript(QStringLiteral("JSON.stringify({placeholder:document.querySelector('#query')?.placeholder,fallback:Array.from(document.querySelectorAll('.shortcut-icon')).some(x=>x.textContent==='U'&&!x.querySelector('img')),width:document.querySelector('.shortcut-icon img')?.naturalWidth,strip:document.querySelector('#shortcuts')?.classList.contains('top-sites-strip'),siteCards:document.querySelectorAll('#shortcut-list .shortcut').length,oldPanel:!!document.querySelector('#top-sites-title, #frequent-settings, .module'),gear:document.querySelector('#customize img')?.getAttribute('src')})"),
+  page.runJavaScript(QStringLiteral("JSON.stringify({placeholder:document.querySelector('#query')?.placeholder,fallback:Array.from(document.querySelectorAll('.shortcut-icon')).some(x=>x.textContent==='U'&&!x.querySelector('img')),width:document.querySelector('.shortcut-icon img')?.naturalWidth,strip:document.querySelector('#shortcuts')?.classList.contains('top-sites-strip'),siteCards:document.querySelectorAll('#shortcut-list .shortcut').length,oldPanel:!!document.querySelector('#top-sites-title, #frequent-settings, .module'),gear:document.querySelector('#customize img')?.getAttribute('src'),backgroundHidden:document.body.classList.contains('background-hidden'),backgroundToggle:document.querySelector('#background-toggle')?.checked,colorBackgrounds:document.querySelectorAll('.color-background-card').length,uploadIcon:!!document.querySelector('#background-upload .upload-icon path'),clockToggle:document.querySelector('#clock-toggle')?.checked,clockCentered:document.querySelector('#clock-widget')?.classList.contains('position-center'),clockStyles:document.querySelectorAll('[data-clock-style]').length,clockPositions:document.querySelectorAll('[data-clock-position]').length})"),
       [&](const QVariant &value) {
         std::cerr << "New Tab evidence: " << value.toString().toStdString() << std::endl;
         const auto result = QJsonDocument::fromJson(value.toString().toUtf8()).object();
@@ -277,7 +307,15 @@ static void testPlaceholdersAndCachedFavicon() {
             && result.value(QStringLiteral("strip")).toBool()
             && result.value(QStringLiteral("siteCards")).toInt() > 0
             && !result.value(QStringLiteral("oldPanel")).toBool()
-            && result.value(QStringLiteral("gear")).toString() == QStringLiteral("icons/settings.svg");
+            && result.value(QStringLiteral("gear")).toString() == QStringLiteral("icons/settings.svg")
+            && result.value(QStringLiteral("backgroundHidden")).toBool()
+            && !result.value(QStringLiteral("backgroundToggle")).toBool()
+            && result.value(QStringLiteral("colorBackgrounds")).toInt() == 8
+            && result.value(QStringLiteral("uploadIcon")).toBool()
+            && result.value(QStringLiteral("clockToggle")).toBool()
+            && result.value(QStringLiteral("clockCentered")).toBool()
+            && result.value(QStringLiteral("clockStyles")).toInt() == 4
+            && result.value(QStringLiteral("clockPositions")).toInt() == 6;
         evalLoop.quit();
       });
   QTimer::singleShot(5000, &evalLoop, &QEventLoop::quit);
@@ -289,6 +327,17 @@ static void testPlaceholdersAndCachedFavicon() {
   bool runtimePassed = false;
   page.runJavaScript(QStringLiteral(R"JS((()=>{
     const input=document.querySelector('#query');
+    const clockWidget=document.querySelector('#clock-widget');
+    const colorfulBackground=document.querySelector('[data-background="gradient-violet"]');
+    colorfulBackground.click();
+    if(!clockWidget.classList.contains('position-top-left'))return false;
+    document.querySelector('[data-clock-style="digital"]').click();
+    document.querySelector('[data-clock-position="bottom-right"]').click();
+    document.querySelector('#clock-toggle').click();
+    if(!clockWidget.hidden)return false;
+    document.querySelector('#clock-toggle').click();
+    const saved=JSON.parse(localStorage.getItem('ardali.newtab')||'{}');
+    if(!saved.backgroundVisible||!saved.backgroundPreferenceSet||saved.backgroundSource!=='gradient-violet'||document.body.classList.contains('background-hidden')||saved.clockStyle!=='digital'||saved.clockPosition!=='bottom-right'||!saved.clock||!clockWidget.classList.contains('style-digital')||!clockWidget.classList.contains('position-bottom-right'))return false;
     window.ardaliSetSearchEngine('Google');
     if(input.placeholder!=="Google'da arayın veya URL'yi yazın" || !input.matches(':placeholder-shown'))return false;
     input.value='keep this text';
@@ -459,7 +508,8 @@ static void testPhase2_2C_NewTabCardHidingOnSearchFocus() {
   assert(html.contains(QStringLiteral("id=\"downloads-card-value\"")));
   assert(html.contains(QStringLiteral("id=\"protection-card-value\"")));
   assert(html.contains(QStringLiteral("Son indirmeler")));
-  assert(html.contains(QStringLiteral("İzleme parametresi koruması")));
+  assert(html.contains(QStringLiteral("Toplam engellenen öğe")));
+  assert(!html.contains(QStringLiteral("İzleme parametresi koruması")));
   assert(html.contains(QStringLiteral("query.addEventListener('focus'")));
   assert(html.contains(QStringLiteral("classList.add('search-focused')")));
   assert(html.contains(QStringLiteral("query.addEventListener('blur'")));
@@ -585,6 +635,8 @@ int main(int argc, char *argv[]) {
   testHistoryTitleAndTypedEvidence();
   std::cerr << "Running testBackwardCompatibleTypedCount" << std::endl;
   testBackwardCompatibleTypedCount();
+  std::cerr << "Running testSearchHistoryPersistenceAndClearing" << std::endl;
+  testSearchHistoryPersistenceAndClearing();
   std::cerr << "Running testAntiPoisoningConfidence" << std::endl;
   testAntiPoisoningConfidence();
   std::cerr << "Running testNewTabDataAndScriptSafety" << std::endl;

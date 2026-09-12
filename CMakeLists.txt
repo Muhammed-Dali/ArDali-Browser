@@ -877,6 +877,11 @@ install(DIRECTORY i18n
   DESTINATION ${CMAKE_INSTALL_DATADIR}/ardali-browser
 )
 
+# Runtime images and SVG controls served by ardali://newtab.
+install(DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/assets/new-tab/
+  DESTINATION ${CMAKE_INSTALL_DATADIR}/ardali-browser/new-tab
+)
+
 if(TARGET ardali-webengine-process)
   install(TARGETS ardali-webengine-process
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}

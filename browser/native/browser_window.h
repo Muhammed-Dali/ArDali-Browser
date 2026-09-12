@@ -316,7 +316,7 @@ private:
   int pendingSuggestionIcons_ = 0;
   QJsonArray searchRows(const QString &query, const QStringList &remote) const;
   void updateOmniboxSuggestions(const QString &query);
-  void activateSuggestion(const QUrl &url);
+  void activateSuggestion(const QUrl &url, const QString &text = QString{}, const QString &type = QString{});
   bool beginForgetClosedView(QWebEngineView *view);
   QAction *searchEngineAction_ = nullptr;
   QToolBar *bookmarkBar_ = nullptr;

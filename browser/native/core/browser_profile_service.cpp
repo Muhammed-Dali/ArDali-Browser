@@ -213,8 +213,13 @@ BrowserProfileService::BrowserProfileService(const QString &dataDirectory, const
   }
 
   newTabBackgroundStore_ = std::make_unique<NewTabBackgroundStore>(dataDirectory);
+  QString newTabAssetsDirectory = QCoreApplication::applicationDirPath() + QStringLiteral("/assets/new-tab");
+  if (!QDir(newTabAssetsDirectory).exists()) {
+    newTabAssetsDirectory = QDir(QCoreApplication::applicationDirPath()).absoluteFilePath(
+        QStringLiteral("../share/ardali-browser/new-tab"));
+  }
   profile_->installUrlSchemeHandler("ardali", createNewTabSchemeHandler(
-      QCoreApplication::applicationDirPath() + "/assets/new-tab", newTabBackgroundStore_->managedImagePath(),
+      newTabAssetsDirectory, newTabBackgroundStore_->managedImagePath(),
       newTabBackgroundStore_->thumbnailPath(), this, this, profile_));
   generalDownloadManager_ = new GeneralDownloadManager(
       dataDirectory_ + QStringLiteral("/general-downloads.json"), nullptr, this);
@@ -1174,9 +1179,68 @@ QList<BrowserFrequentSite> BrowserProfileService::frequentSites(int limit) const
   return sites.mid(0, count);
 }
 
+void BrowserProfileService::recordSearch(const QString &query) {
+  const QString cleanQuery = query.simplified().left(256);
+  if (cleanQuery.isEmpty() || profile_->isOffTheRecord()) return;
+
+  QJsonArray existingValues;
+  const QJsonDocument existing = QJsonDocument::fromJson(
+      preferences_.value(QStringLiteral("search/history")).toByteArray());
+  if (existing.isArray()) existingValues = existing.array();
+
+  int useCount = 1;
+  for (const QJsonValue &value : existingValues) {
+    const QJsonObject item = value.toObject();
+    if (item.value(QStringLiteral("query")).toString().compare(cleanQuery, Qt::CaseInsensitive) == 0) {
+      useCount = std::max(0, item.value(QStringLiteral("useCount")).toInt()) + 1;
+      break;
+    }
+  }
+
+  QJsonArray next;
+  next.append(QJsonObject{
+      {QStringLiteral("query"), cleanQuery},
+      {QStringLiteral("searchedAt"), QDateTime::currentDateTimeUtc().toString(Qt::ISODate)},
+      {QStringLiteral("useCount"), useCount}});
+  for (const QJsonValue &value : existingValues) {
+    const QJsonObject item = value.toObject();
+    const QString storedQuery = item.value(QStringLiteral("query")).toString().simplified().left(256);
+    if (storedQuery.isEmpty() || storedQuery.compare(cleanQuery, Qt::CaseInsensitive) == 0) continue;
+    next.append(item);
+    if (next.size() >= 100) break;
+  }
+  preferences_.setValue(QStringLiteral("search/history"),
+                        QJsonDocument(next).toJson(QJsonDocument::Compact));
+  preferences_.sync();
+  emit historyChanged();
+}
+
+QStringList BrowserProfileService::recentSearches(const QString &query, int limit) const {
+  QStringList result;
+  if (limit <= 0 || profile_->isOffTheRecord()) return result;
+  const QString needle = query.simplified();
+  const QJsonDocument document = QJsonDocument::fromJson(
+      preferences_.value(QStringLiteral("search/history")).toByteArray());
+  if (!document.isArray()) return result;
+  for (const QJsonValue &value : document.array()) {
+    const QString storedQuery = value.toObject().value(QStringLiteral("query")).toString().simplified().left(256);
+    if (storedQuery.isEmpty() || (!needle.isEmpty() && !storedQuery.contains(needle, Qt::CaseInsensitive))) continue;
+    result.append(storedQuery);
+    if (result.size() >= limit) break;
+  }
+  return result;
+}
+
+void BrowserProfileService::clearSearchHistory() {
+  preferences_.remove(QStringLiteral("search/history"));
+  preferences_.sync();
+  emit historyChanged();
+}
+
 void BrowserProfileService::clearHistory() {
   preferences_.remove(QStringLiteral("history/entries"));
   preferences_.remove(QStringLiteral("history/frequentSites"));
+  preferences_.remove(QStringLiteral("search/history"));
   preferences_.sync();
   emit historyChanged();
 }
@@ -1220,7 +1284,11 @@ std::optional<ClosedTabEntry> BrowserProfileService::takeClosedTab(int index) {
 }
 
 QString BrowserProfileService::searchEngine() const {
-  return preferences_.value(QStringLiteral("browser/searchEngine"), QStringLiteral("Google")).toString();
+  return preferences_.value(QStringLiteral("browser/searchEngine"), QStringLiteral("DuckDuckGo")).toString();
+}
+
+quint64 BrowserProfileService::totalBlockedCount() const {
+  return blockerService_ ? blockerService_->totalBlockedCount() : 0;
 }
 
 void BrowserProfileService::setSearchEngine(const QString &engine) {

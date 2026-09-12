@@ -206,10 +206,10 @@ class NewTabSchemeHandler final : public QWebEngineUrlSchemeHandler {
         job->reply("text/html; charset=utf-8", buffer);
         return;
       }
-      QString engine = profileData_ ? profileData_->searchEngine() : QStringLiteral("Google");
+      QString engine = profileData_ ? profileData_->searchEngine() : QStringLiteral("DuckDuckGo");
       if (engine != QLatin1String("Google") && engine != QLatin1String("DuckDuckGo")
           && engine != QLatin1String("Brave Search") && engine != QLatin1String("Bing")) {
-        engine = QStringLiteral("Google");
+        engine = QStringLiteral("DuckDuckGo");
       }
 
       const bool isIncognitoSession = (webProfile_ && webProfile_->isOffTheRecord())
@@ -226,7 +226,8 @@ class NewTabSchemeHandler final : public QWebEngineUrlSchemeHandler {
       const QJsonArray frequentSitesArray = collectNewTabFrequentSites(profileData_);
       const QJsonArray bookmarksArray = collectNewTabBookmarks(profileData_);
       auto *buffer = new QBuffer(job);
-      buffer->setData(newTabHtml(engine, frequentSitesArray, bookmarksArray).toUtf8());
+      buffer->setData(newTabHtml(engine, frequentSitesArray, bookmarksArray,
+                                 profileData_ ? profileData_->totalBlockedCount() : 0).toUtf8());
       buffer->open(QIODevice::ReadOnly);
       job->reply("text/html; charset=utf-8", buffer);
       return;

@@ -3,6 +3,7 @@
 #include <QDateTime>
 #include <QList>
 #include <QString>
+#include <QtGlobal>
 #include <QUrl>
 
 #ifndef BROWSER_HISTORY_ENTRY_DEFINED
@@ -31,7 +32,8 @@ class IBrowserProfileDataProvider {
   virtual QList<BrowserHistoryEntry> recentHistory() const = 0;
   virtual QList<BrowserFrequentSite> frequentSites(int limit = 6) const = 0;
   virtual QList<QUrl> bookmarks() const = 0;
-  virtual QString searchEngine() const { return QStringLiteral("Google"); }
+  virtual QString searchEngine() const { return QStringLiteral("DuckDuckGo"); }
+  virtual quint64 totalBlockedCount() const { return 0; }
 };
 
 }  // namespace ardali::core
