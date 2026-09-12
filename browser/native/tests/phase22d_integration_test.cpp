@@ -726,12 +726,29 @@ int main(int argc, char **argv)
 
     const int requestsBeforeSelection =
         network.requests;
+    const int responsesBeforeSelection =
+        network.responses;
 
     bool selectionSuggestionsReady = false;
+    QElapsedTimer selectionTimer;
+    selectionTimer.start();
+    constexpr int selectionBudgetMs = 15000;
+
+    const auto selectionRemaining = [&] {
+        return qMax(
+            0,
+            selectionBudgetMs -
+                static_cast<int>(selectionTimer.elapsed()));
+    };
 
     for (int attempt = 0;
-         attempt < 3 && !selectionSuggestionsReady;
+         attempt < 3 &&
+         !selectionSuggestionsReady &&
+         selectionRemaining() > 0;
          ++attempt) {
+
+        const int requestsBeforeAttempt =
+            network.requests;
 
         selectionView->setFocus(Qt::MouseFocusReason);
 
@@ -752,12 +769,39 @@ int main(int argc, char **argv)
                 selectionView->page(),
                 "document.querySelector('#query')"
                 "&&document.querySelector('#query').value==='choose'",
-                5000);
+                qMin(2500, selectionRemaining()));
 
         if (!selectionInputReady) {
-            wait(100);
             continue;
         }
+
+        while (
+            network.requests == requestsBeforeAttempt &&
+            selectionRemaining() > 0) {
+            wait(qMin(25, selectionRemaining()));
+        }
+
+        if (network.requests == requestsBeforeAttempt)
+            continue;
+
+        const int selectionRequest =
+            network.requests;
+
+        while (
+            network.lastResponseRequest != selectionRequest &&
+            selectionRemaining() > 0) {
+            wait(qMin(25, selectionRemaining()));
+        }
+
+        if (network.lastResponseRequest != selectionRequest)
+            continue;
+
+        // The fake reply has completed and the native completion has queued
+        // ardaliShowSuggestions. Let that renderer task run before DOM polling;
+        // redispatching the same value here would increment suggestionId and
+        // deliberately make the completed response stale.
+        if (selectionRemaining() > 0)
+            wait(qMin(150, selectionRemaining()));
 
         selectionSuggestionsReady =
             waitForJs(
@@ -771,25 +815,43 @@ int main(int argc, char **argv)
                 "&&text.includes('choose one')"
                 "&&text.includes('choose two');"
                 "})()",
-                5000);
+                selectionRemaining());
 
-        if (!selectionSuggestionsReady)
-            wait(100);
+        // A completed response owns the rest of the shared deadline. Starting
+        // another request would invalidate its id while rendering is delayed.
+        break;
     }
 
     if (!selectionSuggestionsReady) {
         std::cerr
             << "selection suggestion timeout: requests="
             << network.requests
+            << " responses="
+            << network.responses
+            << " responsesBefore="
+            << responsesBeforeSelection
+            << " lastResponseRequest="
+            << network.lastResponseRequest
             << " lastUrl="
             << network.last.url().toString().toStdString()
+            << " pageUrl="
+            << selectionView->page()->url().toString().toStdString()
+            << " requestedUrl="
+            << selectionView->page()->requestedUrl().toString().toStdString()
+            << " loading="
+            << selectionView->isLoading()
+            << " nativeId="
+            << selectionView->page()->property("ardali-suggest-id").toInt()
             << " js="
             << js(
                    selectionView->page(),
                    "JSON.stringify({"
+                   "ready:document.readyState,"
                    "focus:document.hasFocus(),"
                    "active:document.activeElement?.id,"
+                   "queryExists:!!document.querySelector('#query'),"
                    "value:document.querySelector('#query')?.value,"
+                   "suggestionId:suggestionId,"
                    "rows:Array.from("
                    "document.querySelectorAll('.suggestion-row'))"
                    ".map(x=>x.textContent)"

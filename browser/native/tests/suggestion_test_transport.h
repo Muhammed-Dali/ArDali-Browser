@@ -18,10 +18,11 @@ class Reply final : public QNetworkReply {
 };
 class Network final : public QNetworkAccessManager {
  public:
-  int requests=0,delay=30;QByteArray body=R"JSON(["hav",["hava","hava durumu","hava","javascript:alert(1)","file:///etc/passwd"]])JSON";
+  int requests=0,responses=0,lastResponseRequest=0,delay=30;QByteArray body=R"JSON(["hav",["hava","hava durumu","hava","javascript:alert(1)","file:///etc/passwd"]])JSON";
   QNetworkRequest last;
  protected:
   QNetworkReply *createRequest(Operation, const QNetworkRequest &request,QIODevice *) override {
-    ++requests;last=request;return new Reply(request,body,delay,this);
+    const int requestNumber=++requests;last=request;auto *reply=new Reply(request,body,delay,this);
+    connect(reply,&QNetworkReply::finished,this,[this,requestNumber]{++responses;lastResponseRequest=requestNumber;});return reply;
   }
 };
