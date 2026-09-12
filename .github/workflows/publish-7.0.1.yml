@@ -13,7 +13,8 @@ permissions:
 jobs:
   release:
     # This one-time bootstrap runs only for its publication commit.
-    if: github.event.head_commit.message == 'release: start 7.0.1 publication'
+    if: >-
+      github.event.head_commit.message == 'release: start 7.0.1 publication'
     runs-on: ubuntu-24.04
     env:
       GH_TOKEN: ${{ github.token }}
