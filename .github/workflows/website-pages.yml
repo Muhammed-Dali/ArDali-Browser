@@ -39,9 +39,13 @@ jobs:
           # Preserve the historical Pages package paths while the official
           # pacman configuration continues to use GitHub Release assets.
           if gh release view pacman-repo >/dev/null 2>&1; then
+            version="$(node -p "require('./package.json').version")"
             download_dir="${RUNNER_TEMP}/pacman-assets"
             install -dm755 "${download_dir}"
-            gh release download pacman-repo --dir "${download_dir}"
+            gh release download pacman-repo --dir "${download_dir}" \
+              --pattern 'ardali.db*' \
+              --pattern 'ardali.files*' \
+              --pattern "ardali-${version}-*.pkg.tar.zst"
             find "${download_dir}" -maxdepth 1 -type f -exec cp -f {} "${page_root}/" \;
             find "${download_dir}" -maxdepth 1 -type f -exec cp -f {} "${page_root}/x86_64/" \;
           fi
