@@ -423,6 +423,229 @@ int main(int argc, char **argv)
     assert(
         network.requests == before);
 
+    // The new-tab suggestion selection path must wait for each asynchronous
+    // WebEngine/native-bridge step instead of assuming fixed timing.
+    const int selectionIndex =
+        window.addNewTab();
+
+    wait(400);
+
+    auto *selectionView =
+        window.currentView();
+
+    profile.setSearchSuggestionsEnabled(true);
+
+    network.body =
+        R"(["choose",["choose one","choose two"]])";
+
+    selectionView->setFocus(Qt::MouseFocusReason);
+    wait(100);
+
+    assert(
+        waitForJs(
+            selectionView->page(),
+            "typeof window.ardaliSuggestionBridge==='function'"
+            "&&!!document.querySelector('#query')",
+            10000));
+
+    js(
+        selectionView->page(),
+        "document.querySelector('#query').focus();");
+
+    assert(
+        waitForJs(
+            selectionView->page(),
+            "document.activeElement===document.querySelector('#query')",
+            5000));
+
+    const int requestsBeforeSelection =
+        network.requests;
+    const int responsesBeforeSelection =
+        network.responses;
+
+    bool selectionSuggestionsReady = false;
+    QElapsedTimer selectionTimer;
+    selectionTimer.start();
+    // Arch's containerized WebEngine renderer may apply an already completed
+    // suggestion response after the normal polling window.
+    const int selectionBudgetMs =
+        qEnvironmentVariableIntValue("ARDALI_SLOW_WEBENGINE_CI") ? 60000 : 30000;
+
+    const auto selectionRemaining = [&] {
+        return qMax(
+            0,
+            selectionBudgetMs -
+                static_cast<int>(selectionTimer.elapsed()));
+    };
+
+    for (int attempt = 0;
+         attempt < 3 &&
+         !selectionSuggestionsReady &&
+         selectionRemaining() > 0;
+         ++attempt) {
+
+        const int requestsBeforeAttempt =
+            network.requests;
+
+        selectionView->setFocus(Qt::MouseFocusReason);
+
+        js(
+            selectionView->page(),
+            "(() => {"
+            "const query=document.querySelector('#query');"
+            "if(!query) return false;"
+            "query.focus();"
+            "query.value='choose';"
+            "query.dispatchEvent("
+            "new Event('input',{bubbles:true}));"
+            "return true;"
+            "})()");
+
+        const bool selectionInputReady =
+            waitForJs(
+                selectionView->page(),
+                "document.querySelector('#query')"
+                "&&document.querySelector('#query').value==='choose'",
+                qMin(2500, selectionRemaining()));
+
+        if (!selectionInputReady) {
+            continue;
+        }
+
+        while (
+            network.requests == requestsBeforeAttempt &&
+            selectionRemaining() > 0) {
+            wait(qMin(25, selectionRemaining()));
+        }
+
+        if (network.requests == requestsBeforeAttempt)
+            continue;
+
+        const int selectionRequest =
+            network.requests;
+
+        while (
+            network.lastResponseRequest != selectionRequest &&
+            selectionRemaining() > 0) {
+            wait(qMin(25, selectionRemaining()));
+        }
+
+        if (network.lastResponseRequest != selectionRequest)
+            continue;
+
+        // The fake reply has completed and the native completion has queued
+        // ardaliShowSuggestions. Let that renderer task run before DOM polling;
+        // redispatching the same value here would increment suggestionId and
+        // deliberately make the completed response stale.
+        if (selectionRemaining() > 0)
+            wait(qMin(150, selectionRemaining()));
+
+        selectionSuggestionsReady =
+            waitForJs(
+                selectionView->page(),
+                "(() => {"
+                "const rows=Array.from("
+                "document.querySelectorAll('.suggestion-row'));"
+                "const text=rows.map("
+                "x=>x.textContent.trim());"
+                "return rows.length>1"
+                "&&text.includes('choose one')"
+                "&&text.includes('choose two');"
+                "})()",
+                selectionRemaining());
+
+        // A completed response owns the rest of the shared deadline. Starting
+        // another request would invalidate its id while rendering is delayed.
+        break;
+    }
+
+    if (!selectionSuggestionsReady) {
+        std::cerr
+            << "selection suggestion timeout: requests="
+            << network.requests
+            << " responses="
+            << network.responses
+            << " responsesBefore="
+            << responsesBeforeSelection
+            << " lastResponseRequest="
+            << network.lastResponseRequest
+            << " lastUrl="
+            << network.last.url().toString().toStdString()
+            << " pageUrl="
+            << selectionView->page()->url().toString().toStdString()
+            << " requestedUrl="
+            << selectionView->page()->requestedUrl().toString().toStdString()
+            << " nativeId="
+            << selectionView->page()->property("ardali-suggest-id").toInt()
+            << " js="
+            << js(
+                   selectionView->page(),
+                   "JSON.stringify({"
+                   "ready:document.readyState,"
+                   "focus:document.hasFocus(),"
+                   "active:document.activeElement?.id,"
+                   "queryExists:!!document.querySelector('#query'),"
+                   "value:document.querySelector('#query')?.value,"
+                   "suggestionId:suggestionId,"
+                   "rows:Array.from("
+                   "document.querySelectorAll('.suggestion-row'))"
+                   ".map(x=>x.textContent)"
+                   "})")
+                   .toString()
+                   .toStdString()
+            << std::endl;
+    }
+
+    assert(selectionSuggestionsReady);
+    assert(
+        network.requests > requestsBeforeSelection);
+
+    js(
+        selectionView->page(),
+        "document.querySelector('#query').dispatchEvent("
+        "new KeyboardEvent("
+        "'keydown',"
+        "{key:'ArrowDown',bubbles:true}"
+        "));");
+
+    assert(
+        waitForJs(
+            selectionView->page(),
+            "document.querySelector('#query')"
+            ".getAttribute('aria-activedescendant')==='suggestion-0'",
+            5000));
+
+    js(
+        selectionView->page(),
+        "document.querySelector('#query').dispatchEvent("
+        "new KeyboardEvent("
+        "'keydown',"
+        "{key:'Enter',bubbles:true,cancelable:true}"
+        "));");
+
+    QElapsedTimer navigationTimer;
+    navigationTimer.start();
+
+    while (
+        selectionView->page()->requestedUrl().host() !=
+            QStringLiteral("www.google.com") &&
+        selectionView->page()->requestedUrl().host() !=
+            QStringLiteral("google.com") &&
+        navigationTimer.elapsed() < 10000) {
+        wait(50);
+    }
+
+    assert(
+        selectionView->page()->requestedUrl().host() ==
+            QStringLiteral("www.google.com") ||
+        selectionView->page()->requestedUrl().host() ==
+            QStringLiteral("google.com"));
+
+    selectionView->stop();
+
+    window.closeTab(selectionIndex);
+    wait(100);
+
     // Both surfaces use the same transport; the native completion model
     // retains types and local rows.
     auto *omnibox =
@@ -689,228 +912,6 @@ int main(int argc, char **argv)
     window.closeTab(youtubeIndex);
     wait(100);
 
-    // The new-tab suggestion selection path must wait for each asynchronous
-    // WebEngine/native-bridge step instead of assuming fixed timing.
-    const int selectionIndex =
-        window.addNewTab();
-
-    wait(400);
-
-    auto *selectionView =
-        window.currentView();
-
-    profile.setSearchSuggestionsEnabled(true);
-
-    network.body =
-        R"(["choose",["choose one","choose two"]])";
-
-    selectionView->setFocus(Qt::MouseFocusReason);
-    wait(100);
-
-    assert(
-        waitForJs(
-            selectionView->page(),
-            "typeof window.ardaliSuggestionBridge==='function'"
-            "&&!!document.querySelector('#query')",
-            10000));
-
-    js(
-        selectionView->page(),
-        "document.querySelector('#query').focus();");
-
-    assert(
-        waitForJs(
-            selectionView->page(),
-            "document.activeElement===document.querySelector('#query')",
-            5000));
-
-    const int requestsBeforeSelection =
-        network.requests;
-    const int responsesBeforeSelection =
-        network.responses;
-
-    bool selectionSuggestionsReady = false;
-    QElapsedTimer selectionTimer;
-    selectionTimer.start();
-    // Arch's containerized WebEngine renderer may apply an already completed
-    // suggestion response after the normal polling window.
-    const int selectionBudgetMs =
-        qEnvironmentVariableIntValue("ARDALI_SLOW_WEBENGINE_CI") ? 60000 : 30000;
-
-    const auto selectionRemaining = [&] {
-        return qMax(
-            0,
-            selectionBudgetMs -
-                static_cast<int>(selectionTimer.elapsed()));
-    };
-
-    for (int attempt = 0;
-         attempt < 3 &&
-         !selectionSuggestionsReady &&
-         selectionRemaining() > 0;
-         ++attempt) {
-
-        const int requestsBeforeAttempt =
-            network.requests;
-
-        selectionView->setFocus(Qt::MouseFocusReason);
-
-        js(
-            selectionView->page(),
-            "(() => {"
-            "const query=document.querySelector('#query');"
-            "if(!query) return false;"
-            "query.focus();"
-            "query.value='choose';"
-            "query.dispatchEvent("
-            "new Event('input',{bubbles:true}));"
-            "return true;"
-            "})()");
-
-        const bool selectionInputReady =
-            waitForJs(
-                selectionView->page(),
-                "document.querySelector('#query')"
-                "&&document.querySelector('#query').value==='choose'",
-                qMin(2500, selectionRemaining()));
-
-        if (!selectionInputReady) {
-            continue;
-        }
-
-        while (
-            network.requests == requestsBeforeAttempt &&
-            selectionRemaining() > 0) {
-            wait(qMin(25, selectionRemaining()));
-        }
-
-        if (network.requests == requestsBeforeAttempt)
-            continue;
-
-        const int selectionRequest =
-            network.requests;
-
-        while (
-            network.lastResponseRequest != selectionRequest &&
-            selectionRemaining() > 0) {
-            wait(qMin(25, selectionRemaining()));
-        }
-
-        if (network.lastResponseRequest != selectionRequest)
-            continue;
-
-        // The fake reply has completed and the native completion has queued
-        // ardaliShowSuggestions. Let that renderer task run before DOM polling;
-        // redispatching the same value here would increment suggestionId and
-        // deliberately make the completed response stale.
-        if (selectionRemaining() > 0)
-            wait(qMin(150, selectionRemaining()));
-
-        selectionSuggestionsReady =
-            waitForJs(
-                selectionView->page(),
-                "(() => {"
-                "const rows=Array.from("
-                "document.querySelectorAll('.suggestion-row'));"
-                "const text=rows.map("
-                "x=>x.textContent.trim());"
-                "return rows.length>1"
-                "&&text.includes('choose one')"
-                "&&text.includes('choose two');"
-                "})()",
-                selectionRemaining());
-
-        // A completed response owns the rest of the shared deadline. Starting
-        // another request would invalidate its id while rendering is delayed.
-        break;
-    }
-
-    if (!selectionSuggestionsReady) {
-        std::cerr
-            << "selection suggestion timeout: requests="
-            << network.requests
-            << " responses="
-            << network.responses
-            << " responsesBefore="
-            << responsesBeforeSelection
-            << " lastResponseRequest="
-            << network.lastResponseRequest
-            << " lastUrl="
-            << network.last.url().toString().toStdString()
-            << " pageUrl="
-            << selectionView->page()->url().toString().toStdString()
-            << " requestedUrl="
-            << selectionView->page()->requestedUrl().toString().toStdString()
-            << " nativeId="
-            << selectionView->page()->property("ardali-suggest-id").toInt()
-            << " js="
-            << js(
-                   selectionView->page(),
-                   "JSON.stringify({"
-                   "ready:document.readyState,"
-                   "focus:document.hasFocus(),"
-                   "active:document.activeElement?.id,"
-                   "queryExists:!!document.querySelector('#query'),"
-                   "value:document.querySelector('#query')?.value,"
-                   "suggestionId:suggestionId,"
-                   "rows:Array.from("
-                   "document.querySelectorAll('.suggestion-row'))"
-                   ".map(x=>x.textContent)"
-                   "})")
-                   .toString()
-                   .toStdString()
-            << std::endl;
-    }
-
-    assert(selectionSuggestionsReady);
-    assert(
-        network.requests > requestsBeforeSelection);
-
-    js(
-        selectionView->page(),
-        "document.querySelector('#query').dispatchEvent("
-        "new KeyboardEvent("
-        "'keydown',"
-        "{key:'ArrowDown',bubbles:true}"
-        "));");
-
-    assert(
-        waitForJs(
-            selectionView->page(),
-            "document.querySelector('#query')"
-            ".getAttribute('aria-activedescendant')==='suggestion-0'",
-            5000));
-
-    js(
-        selectionView->page(),
-        "document.querySelector('#query').dispatchEvent("
-        "new KeyboardEvent("
-        "'keydown',"
-        "{key:'Enter',bubbles:true,cancelable:true}"
-        "));");
-
-    QElapsedTimer navigationTimer;
-    navigationTimer.start();
-
-    while (
-        selectionView->page()->requestedUrl().host() !=
-            QStringLiteral("www.google.com") &&
-        selectionView->page()->requestedUrl().host() !=
-            QStringLiteral("google.com") &&
-        navigationTimer.elapsed() < 10000) {
-        wait(50);
-    }
-
-    assert(
-        selectionView->page()->requestedUrl().host() ==
-            QStringLiteral("www.google.com") ||
-        selectionView->page()->requestedUrl().host() ==
-            QStringLiteral("google.com"));
-
-    selectionView->stop();
-
-    window.closeTab(selectionIndex);
-    wait(100);
 
     // Profile objects, stores, counters and suggestion policy stay separate.
     BrowserProfileService privateProfile(
