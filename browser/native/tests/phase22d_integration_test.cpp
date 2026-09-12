@@ -628,6 +628,10 @@ int main(int argc, char **argv)
 
     while (
         selectionView->page()->requestedUrl().host() !=
+            QStringLiteral("duckduckgo.com") &&
+        selectionView->page()->requestedUrl().host() !=
+            QStringLiteral("www.duckduckgo.com") &&
+        selectionView->page()->requestedUrl().host() !=
             QStringLiteral("www.google.com") &&
         selectionView->page()->requestedUrl().host() !=
             QStringLiteral("google.com") &&
@@ -636,6 +640,10 @@ int main(int argc, char **argv)
     }
 
     assert(
+        selectionView->page()->requestedUrl().host() ==
+            QStringLiteral("duckduckgo.com") ||
+        selectionView->page()->requestedUrl().host() ==
+            QStringLiteral("www.duckduckgo.com") ||
         selectionView->page()->requestedUrl().host() ==
             QStringLiteral("www.google.com") ||
         selectionView->page()->requestedUrl().host() ==
