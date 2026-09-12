@@ -2,6 +2,13 @@
 
 All notable release-facing changes to ArDali Browser are documented here.
 
+## [7.1.0] - 2026-09-13
+
+### Changed
+
+- Set DuckDuckGo as default search engine and enhanced the New Tab experience with custom search history, quick engine switching, and privacy metrics.
+- Hardened password autofill and New Tab integration test suites for high reliability across Linux CI distributions (Ubuntu, Debian, Fedora, Arch Linux).
+
 ## [7.0.1] - 2026-09-11
 
 ### Fixed

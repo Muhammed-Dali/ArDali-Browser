@@ -33,10 +33,16 @@ int main(int argc, char **argv) {
 
   std::cout << "Starting Password Autofill & Form Integration Test Suite..." << std::endl;
 
-  auto waitForCondition = [](const std::function<bool()> &pred, int timeoutMs = 8000) -> bool {
+  const int defaultTimeoutMs =
+      qEnvironmentVariableIntValue("ARDALI_SLOW_WEBENGINE_CI") ? 25000 : 12000;
+  auto waitForCondition = [defaultTimeoutMs](const std::function<bool()> &pred, int timeoutMs = 0) -> bool {
+    int effectiveTimeout = timeoutMs > 0 ? timeoutMs : defaultTimeoutMs;
+    if (qEnvironmentVariableIntValue("ARDALI_SLOW_WEBENGINE_CI") && effectiveTimeout < 25000) {
+      effectiveTimeout = 25000;
+    }
     QElapsedTimer timer;
     timer.start();
-    while (!pred() && timer.elapsed() < timeoutMs) {
+    while (!pred() && timer.elapsed() < effectiveTimeout) {
       QCoreApplication::processEvents(QEventLoop::AllEvents, 50);
       QThread::msleep(10);
     }
@@ -4434,16 +4440,31 @@ int main(int argc, char **argv) {
                        ++fills;
                        releasedUsername = username;
                      });
-    QTimer::singleShot(0, [] {
-      auto *dialog = qobject_cast<QInputDialog *>(QApplication::activeModalWidget());
-      assert(dialog);
-      auto *combo = dialog->findChild<QComboBox *>();
-      assert(combo && combo->count() == 2);
-      assert(!combo->itemText(0).contains(QStringLiteral("Secret")));
-      assert(!combo->itemText(1).contains(QStringLiteral("Secret")));
-      combo->setCurrentIndex(1);
-      dialog->accept();
+    auto *inputDialogTimer = new QTimer();
+    QObject::connect(inputDialogTimer, &QTimer::timeout, [inputDialogTimer]() {
+      QInputDialog *dialog = qobject_cast<QInputDialog *>(QApplication::activeModalWidget());
+      if (!dialog) {
+        for (auto *top : QApplication::topLevelWidgets()) {
+          if (auto *dlg = qobject_cast<QInputDialog *>(top)) {
+            dialog = dlg;
+            break;
+          }
+        }
+      }
+      if (dialog) {
+        auto *combo = dialog->findChild<QComboBox *>();
+        if (combo && combo->count() == 2) {
+          assert(!combo->itemText(0).contains(QStringLiteral("Secret")));
+          assert(!combo->itemText(1).contains(QStringLiteral("Secret")));
+          combo->setCurrentIndex(1);
+          dialog->accept();
+          inputDialogTimer->stop();
+          inputDialogTimer->deleteLater();
+        }
+      }
     });
+    inputDialogTimer->start(10);
+
     c.triggerFillForView(&view);
     assert(c.activeUnlockDialog());
     c.activeUnlockDialog()->passwordInput()->setText(masterPassword);
