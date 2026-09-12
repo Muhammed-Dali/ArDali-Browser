@@ -53,6 +53,10 @@ class DownloadFixture final : public QObject {
     for (qsizetype index = 0; index < largePayload.size(); ++index)
       largePayload[index] = static_cast<char>((index * 37 + 23) & 0xff);
 
+    // Keep the exact 1->2->4->8 ramp alive long enough for a throughput
+    // evaluation on slower CI hosts; other scenarios retain the 16 MiB fixture.
+    rampPayload = largePayload.repeated(4);
+
     assert(server.listen(QHostAddress::LocalHost));
     connect(&server, &QTcpServer::newConnection, this, [this] {
       while (QTcpSocket *socket = server.nextPendingConnection()) {
@@ -110,6 +114,7 @@ class DownloadFixture final : public QObject {
 
   QByteArray payload;
   QByteArray largePayload;
+  QByteArray rampPayload;
   QByteArray etag = QByteArrayLiteral("\"fixture-v1\"");
   int rangeResponses = 0;
   int ignoredRangeResponses = 0;
@@ -140,7 +145,8 @@ class DownloadFixture final : public QObject {
     const bool isLarge = (path.startsWith("/adaptive-") || path.startsWith("/capped-")
         || path.startsWith("/error-at-") || path.startsWith("/drop-adaptive")
         || path.startsWith("/work-steal-") || path.startsWith("/real-world-ramp")) && !path.startsWith("/work-steal-small");
-    const QByteArray body = isLarge ? largePayload
+    const QByteArray body = path == "/real-world-ramp" ? rampPayload
+        : isLarge ? largePayload
         : (path.startsWith("/work-steal-small") ? payload.left(300 * 1024)
         : (path.startsWith("/small") ? payload.left(64 * 1024) : payload));
     QByteArray range;
@@ -1127,7 +1133,7 @@ int main(int argc, char **argv) {
                                                        temporary.path(), QStringLiteral("real_world_ramp.iso")));
   assert(!rampId.isNull());
   assert(waitFor([&] { return manager.job(rampId).state == GeneralDownloadState::Completed; }, 35000));
-  assert(readAll(manager.job(rampId).targetPath) == fixture.largePayload);
+  assert(readAll(manager.job(rampId).targetPath) == fixture.rampPayload);
   assert(maxRampConnections == 8); // 1->2->4->8 tam adaptasyon gerçekleşti! 2 bağlantıda kilitlenmedi!
   QObject::disconnect(rampTracker);
 

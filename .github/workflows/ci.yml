@@ -115,6 +115,7 @@ jobs:
           QTWEBENGINE_DISABLE_SANDBOX: "1"
           QTWEBENGINE_CHROMIUM_FLAGS: --no-sandbox --disable-gpu --disable-web-resources
           DBUS_SYSTEM_BUS_ADDRESS: unix:path=/run/dbus/system_bus_socket
+          ARDALI_SLOW_WEBENGINE_CI: ${{ matrix.package_family == 'pacman' && '1' || '0' }}
         run: |
           # Verify D-Bus one more time
           ls -la /run/dbus/system_bus_socket || echo "Warning: D-Bus socket not found"
@@ -124,7 +125,7 @@ jobs:
           xvfb-run -a --error-file=/tmp/xvfb-error.log \
             ctest --test-dir build --output-on-failure \
             -E '^browser-tab-attach-stress$' \
-            --timeout 120
+            --timeout ${{ matrix.package_family == 'pacman' && '180' || '120' }}
 
       - name: Cleanup
         if: always()

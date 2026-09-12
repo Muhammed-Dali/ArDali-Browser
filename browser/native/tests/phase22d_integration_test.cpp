@@ -732,7 +732,10 @@ int main(int argc, char **argv)
     bool selectionSuggestionsReady = false;
     QElapsedTimer selectionTimer;
     selectionTimer.start();
-    constexpr int selectionBudgetMs = 30000;
+    // Arch's containerized WebEngine renderer may apply an already completed
+    // suggestion response after the normal polling window.
+    const int selectionBudgetMs =
+        qEnvironmentVariableIntValue("ARDALI_SLOW_WEBENGINE_CI") ? 60000 : 30000;
 
     const auto selectionRemaining = [&] {
         return qMax(
