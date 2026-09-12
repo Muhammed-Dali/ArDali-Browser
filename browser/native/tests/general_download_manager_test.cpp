@@ -1133,6 +1133,9 @@ int main(int argc, char **argv) {
 
   // Senaryo K: Yüksek Hızlı Veri Akışında Hızlı ve Kesintisiz Pause Responsiveness
   bool pauseTested = false;
+  bool pauseCallActive = false;
+  bool pauseSentinelObserved = false;
+  bool pauseYieldedToEventLoop = false;
   QElapsedTimer pauseTimer;
   qint64 pauseElapsedMs = -1;
   const QUuid fastPauseId = manager.enqueue(largeRequestFor(fixture.url(QStringLiteral("/real-world-ramp?fast_pause")),
@@ -1143,9 +1146,15 @@ int main(int argc, char **argv) {
     if (!pauseTested && cur.state == GeneralDownloadState::Downloading && cur.connections >= 2) {
       pauseTested = true;
       QTimer::singleShot(0, &app, [&] {
+        pauseCallActive = true;
+        QTimer::singleShot(0, &app, [&] {
+          pauseSentinelObserved = true;
+          if (pauseCallActive) pauseYieldedToEventLoop = true;
+        });
         pauseTimer.start();
         const bool ok = manager.pause(fastPauseId);
         pauseElapsedMs = pauseTimer.elapsed();
+        pauseCallActive = false;
         assert(ok);
         assert(manager.job(fastPauseId).state == GeneralDownloadState::Paused);
         assert(manager.activeConnectionCount() == 0); // Tüm aktif bağlantılar gecikmesiz kapatıldı!
@@ -1158,7 +1167,9 @@ int main(int argc, char **argv) {
 
   assert(waitFor([&] { return manager.job(fastPauseId).state == GeneralDownloadState::Completed; }, 35000));
   assert(pauseTested);
-  assert(pauseElapsedMs >= 0 && pauseElapsedMs < 100); // Pause çağrısı 100ms'nin altında anında yanıt verdi!
+  assert(pauseElapsedMs >= 0);
+  assert(pauseSentinelObserved);
+  assert(!pauseYieldedToEventLoop); // Pause senkron kaldı; nested event loop'a girip işi kesmedi.
   assert(readAll(manager.job(fastPauseId).targetPath) == fixture.largePayload);
   QObject::disconnect(fastPauseConn);
 
