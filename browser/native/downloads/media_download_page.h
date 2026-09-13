@@ -3,6 +3,7 @@
 #include <QWidget>
 
 #include "media_download_service.h"
+#include "local_media_routing.h"
 
 class BrowserProfileService;
 class GeneralDownloadManager;
@@ -34,6 +35,9 @@ class MediaDownloadPage final : public QWidget {
   void setSourceUrl(const QUrl &url, bool analyzeImmediately = true);
   QUrl sourceUrl() const;
 
+ signals:
+  void internalMediaOpenRequested(const LocalMediaOpenRequest &request);
+
  protected:
   void resizeEvent(QResizeEvent *event) override;
 
@@ -58,6 +62,9 @@ class MediaDownloadPage final : public QWidget {
   bool handleGeneralDownloadIfDirectFile(const QUrl &url);
   static void clearLayout(QLayout *layout);
   static QString formatBytes(qint64 bytes);
+  void openMediaDownload(const MediaDownloadJob &job);
+  void openGeneralDownload(const GeneralDownloadJob &job);
+  void openWithSystemApplication(const QString &path);
 
   MediaDownloadService *service_ = nullptr;
   BrowserProfileService *profileService_ = nullptr;

@@ -119,14 +119,19 @@ int main(int argc, char **argv) {
   MediaDownloadRequest request;
   request.url = QUrl(QStringLiteral("https://example.com/watch?q=kept&code=synthetic-code&text=%24%28touch%20never%29"));
   request.title = QStringLiteral("Fixture Video");
+  request.source = QStringLiteral("Fixture");
+  request.thumbnailUrl = QStringLiteral("https://example.com/thumb.jpg");
   request.targetDirectory = outputDir;
   request.kind = MediaDownloadKind::Video;
   request.formatId = QStringLiteral("v1080");
   request.formatExtension = QStringLiteral("mp4");
   request.formatHasAudio = false;
+  request.estimatedBytes = 2048;
   const QStringList args = MediaDownloadService::buildDownloadArguments(request, ffmpeg);
   assert(args.contains(request.url.toString(QUrl::FullyEncoded)));
   assert(args.contains(QStringLiteral("--no-config")));
+  assert(args.contains(QStringLiteral("--progress-delta")) && args.contains(QStringLiteral("0.05")));
+  assert(args.indexOf(QStringLiteral("--no-quiet")) > args.indexOf(QStringLiteral("--print")));
   assert(args.contains(QStringLiteral("--ffmpeg-location")) && args.contains(ffmpeg));
   assert(!args.contains(QStringLiteral("sh")) && !args.contains(QStringLiteral("-c")));
   assert(args.contains(QStringLiteral("--no-playlist")) && !args.contains(QStringLiteral("--yes-playlist")));
@@ -189,6 +194,14 @@ int main(int argc, char **argv) {
   });
   const QUuid id = service.enqueue(request);
   assert(!id.isNull());
+  bool sawInitialEstimate = false;
+  for (const auto &job : service.jobs()) {
+    if (job.id == id && job.totalBytes == request.estimatedBytes) {
+      sawInitialEstimate = true;
+      break;
+    }
+  }
+  assert(sawInitialEstimate);
   assert(waitFor([&] {
     for (const auto &job : service.jobs()) if (job.id == id) return job.state == MediaDownloadState::Completed;
     return false;
@@ -276,8 +289,23 @@ int main(int argc, char **argv) {
   const QByteArray historyBytes = history.readAll();
   assert(!historyBytes.contains("synthetic-code"));
   assert(historyBytes.contains("q=kept"));
+  assert(historyBytes.contains("\"source\":\"Fixture\""));
+  assert(historyBytes.contains("\"thumbnailUrl\":\"https://example.com/thumb.jpg\""));
   const auto permissions = QFileInfo(historyPath).permissions();
   assert(!(permissions & (QFileDevice::ReadGroup | QFileDevice::WriteGroup | QFileDevice::ReadOther | QFileDevice::WriteOther)));
+
+  MediaDownloadService restored(outputDir, nullptr, {ytDlp}, {ffmpeg}, historyPath);
+  bool restoredMetadata = false;
+  for (const MediaDownloadJob &job : restored.jobs()) {
+    if (job.title == QStringLiteral("Fixture Video")
+        && job.source == QStringLiteral("Fixture")
+        && job.thumbnailUrl == QStringLiteral("https://example.com/thumb.jpg")
+        && !job.outputPath.isEmpty()) {
+      restoredMetadata = true;
+      break;
+    }
+  }
+  assert(restoredMetadata);
 
   std::cout << "media downloader URL, metadata, arguments, queue/cancel lifecycle and persistence: ok\n";
   return 0;

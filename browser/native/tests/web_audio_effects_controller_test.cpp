@@ -85,6 +85,7 @@ int main(int argc, char *argv[]) {
         || controller.autoGainPreset() != QStringLiteral("balanced")) return 1;
     const QString runtime = controller.injectionScript();
     if (!runtime.contains(QStringLiteral("latencyHint: 'playback'"))
+        || !runtime.contains(QStringLiteral("protocol === 'file:'"))
         || !runtime.contains(QStringLiteral("element.readyState < 2 && element.paused"))
         || !runtime.contains(QStringLiteral("root.audioContext = ctx"))
         || !runtime.contains(QStringLiteral("document.addEventListener('canplay'"))) return 1;

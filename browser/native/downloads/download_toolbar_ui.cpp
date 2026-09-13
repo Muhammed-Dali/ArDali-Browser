@@ -49,8 +49,14 @@ QString progressLabel(const DownloadUiItem &item) {
     return !item.statusText.isEmpty() ? item.statusText : QStringLiteral("Dönüştürülüyor");
   }
   QStringList parts;
-  if (item.totalBytes > 0 || item.percent > 0.0)
+  if (item.source == DownloadUiSource::Media
+      && (item.state == DownloadUiState::Queued || item.state == DownloadUiState::Downloading))
     parts << QStringLiteral("%1%").arg(qRound(std::clamp(item.percent, 0.0, 100.0)));
+  else if (item.totalBytes > 0 || item.percent > 0.0)
+    parts << QStringLiteral("%1%").arg(qRound(std::clamp(item.percent, 0.0, 100.0)));
+  if (item.source == DownloadUiSource::Media && item.state == DownloadUiState::Downloading
+      && item.downloadedBytes <= 0)
+    parts << QStringLiteral("Medya akışı bekleniyor");
   if (item.totalBytes > 0) parts << QStringLiteral("%1 / %2").arg(bytesLabel(item.downloadedBytes), bytesLabel(item.totalBytes));
   else if (item.downloadedBytes > 0) parts << bytesLabel(item.downloadedBytes);
   if (item.bytesPerSecond > 0) parts << QStringLiteral("%1/s").arg(bytesLabel(item.bytesPerSecond));
@@ -103,7 +109,7 @@ void DownloadToolbarButton::paintEvent(QPaintEvent *event) {
   QToolButton::paintEvent(event);
   QPainter painter(this);
   painter.setRenderHint(QPainter::Antialiasing);
-  QRectF ring = rect().adjusted(2.5, 2.5, -2.5, -2.5);
+  const QRectF ring = QRectF(rect()).adjusted(2.5, 2.5, -2.5, -2.5);
   if (activeCount_ > 0 || paused_ || error_ || pulse_ > 0.0) {
     QPen base(QColor(85, 105, 122, 150), 2.2 + pulse_ * 1.2, Qt::SolidLine, Qt::RoundCap);
     painter.setPen(base);
@@ -287,7 +293,8 @@ void DownloadPopup::refresh() {
       if (auto *progress = card->findChild<QProgressBar *>(QStringLiteral("download-popup-progress"))) {
         if (found->converting || found->state == DownloadUiState::Processing) {
           progress->setRange(0, 0);
-        } else if (found->totalBytes <= 0 && found->percent <= 0.0) {
+        } else if (found->source != DownloadUiSource::Media
+                   && found->totalBytes <= 0 && found->percent <= 0.0) {
           progress->setRange(0, 0);
         } else {
           progress->setRange(0, 1000);
@@ -318,7 +325,8 @@ void DownloadPopup::refresh() {
         || item.state == DownloadUiState::Processing || item.state == DownloadUiState::Queued) {
       auto *progress = new QProgressBar(card); progress->setObjectName(QStringLiteral("download-popup-progress")); progress->setTextVisible(false);
       if (item.converting || item.state == DownloadUiState::Processing) progress->setRange(0, 0);
-      else if (item.totalBytes <= 0 && item.percent <= 0.0) progress->setRange(0, 0);
+      else if (item.source != DownloadUiSource::Media
+               && item.totalBytes <= 0 && item.percent <= 0.0) progress->setRange(0, 0);
       else { progress->setRange(0, 1000); progress->setValue(qRound(item.percent * 10.0)); }
       layout->addWidget(progress);
     }

@@ -16,9 +16,10 @@ if(NOT install_result EQUAL 0)
   message(FATAL_ERROR "staged install failed:\n${install_output}\n${install_error}")
 endif()
 
-set(executable_root "${stage}/usr/${ARDALI_INSTALL_BINDIR}")
+set(executable_root "${stage}/usr/lib/ardali-browser")
 set(required_files
   "${executable_root}/ardali-browser"
+  "${stage}/usr/bin/ardali-browser"
   "${executable_root}/browser_policy.json"
   "${executable_root}/dali/web-output-audiophile.generated.js"
   "${executable_root}/dali/web-equalizer-32.generated.js"
@@ -41,6 +42,20 @@ foreach(required_file IN LISTS required_files)
   file(SIZE "${required_file}" required_size)
   if(required_size EQUAL 0)
     message(FATAL_ERROR "installed runtime asset is empty: ${required_file}")
+  endif()
+endforeach()
+
+file(READ "${stage}/usr/share/applications/ardali.desktop" desktop_entry)
+foreach(expected_line
+    "Name=ArDali"
+    "Exec=/usr/bin/ardali-browser %U"
+    "TryExec=/usr/bin/ardali-browser"
+    "Icon=ardali"
+    "StartupWMClass=ArDaliBrowser"
+    "StartupNotify=true")
+  string(FIND "${desktop_entry}" "${expected_line}" line_position)
+  if(line_position EQUAL -1)
+    message(FATAL_ERROR "desktop integration mismatch; missing: ${expected_line}")
   endif()
 endforeach()
 

@@ -8,8 +8,14 @@
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QDateTime>
+#include <QMessageBox>
+#include <QProcess>
+#include <QPushButton>
+#include <QTimer>
 
 #include "browser_window.h"
+#include "core/application_identity.h"
 #include "core/browser_icons.h"
 #include "core/performance_diagnostics.h"
 #include "core/web_engine_hardware_acceleration.h"
@@ -18,6 +24,124 @@
 #include "i18n/i18n.h"
 #include "i18n/language_manager.h"
 #include "newtab/new_tab_scheme.h"
+
+namespace {
+
+constexpr auto kArDaliDesktopFile = "ardali.desktop";
+constexpr auto kDefaultBrowserPromptDisabled = "browser/defaultBrowserPromptDisabled";
+constexpr auto kDefaultBrowserLastPromptUtc = "browser/defaultBrowserLastPromptUtc";
+
+void openDefaultApplicationsSettings(QWidget *parent) {
+#if defined(Q_OS_LINUX)
+  if (QFileInfo(QStringLiteral("/usr/bin/systemsettings")).isExecutable()
+      && QProcess::startDetached(QStringLiteral("/usr/bin/systemsettings"),
+                                 {QStringLiteral("kcm_componentchooser")})) {
+    return;
+  }
+#endif
+  QMessageBox::information(parent, QStringLiteral("Varsayılan tarayıcı"),
+      QStringLiteral("Sistem Ayarları > Öntanımlı Uygulamalar bölümünden "
+                     "web tarayıcısı olarak ArDali'yi seçin."));
+}
+
+void verifyDefaultBrowser(QWidget *parent) {
+  auto *verify = new QProcess(parent);
+  verify->setProgram(QStringLiteral("/usr/bin/xdg-settings"));
+  verify->setArguments({QStringLiteral("get"), QStringLiteral("default-web-browser")});
+  QObject::connect(verify, qOverload<int, QProcess::ExitStatus>(&QProcess::finished), parent,
+                   [parent, verify](int exitCode, QProcess::ExitStatus exitStatus) {
+    const QString desktopFile = QString::fromUtf8(verify->readAllStandardOutput()).trimmed();
+    const bool accepted = exitStatus == QProcess::NormalExit && exitCode == 0
+        && desktopFile == QString::fromLatin1(kArDaliDesktopFile);
+    verify->deleteLater();
+    if (accepted) {
+      QSettings settings;
+      settings.remove(QString::fromLatin1(kDefaultBrowserPromptDisabled));
+      settings.remove(QString::fromLatin1(kDefaultBrowserLastPromptUtc));
+      QMessageBox::information(parent, QStringLiteral("Varsayılan tarayıcı"),
+          QStringLiteral("ArDali varsayılan web tarayıcısı yapıldı."));
+    } else {
+      openDefaultApplicationsSettings(parent);
+    }
+  });
+  verify->start();
+}
+
+void requestDefaultBrowser(QWidget *parent) {
+  auto *setDefault = new QProcess(parent);
+  setDefault->setProgram(QStringLiteral("/usr/bin/xdg-settings"));
+  setDefault->setArguments({QStringLiteral("set"), QStringLiteral("default-web-browser"),
+                            QString::fromLatin1(kArDaliDesktopFile)});
+  QObject::connect(setDefault, qOverload<int, QProcess::ExitStatus>(&QProcess::finished), parent,
+                   [parent, setDefault](int exitCode, QProcess::ExitStatus exitStatus) {
+    const bool commandSucceeded = exitStatus == QProcess::NormalExit && exitCode == 0;
+    setDefault->deleteLater();
+    if (commandSucceeded) verifyDefaultBrowser(parent);
+    else openDefaultApplicationsSettings(parent);
+  });
+  QObject::connect(setDefault, &QProcess::errorOccurred, parent,
+                   [parent](QProcess::ProcessError error) {
+    if (error == QProcess::FailedToStart) openDefaultApplicationsSettings(parent);
+  });
+  setDefault->start();
+}
+
+void showDefaultBrowserPrompt(QWidget *parent) {
+  auto *dialog = new QMessageBox(QMessageBox::Question,
+      QStringLiteral("ArDali'yi varsayılan tarayıcı yap"),
+      QStringLiteral("Web bağlantıları ArDali ile açılsın mı?\n\n"
+                     "Bu seçim yalnızca web bağlantılarını etkiler; müzik, video ve PDF "
+                     "uygulamalarınız değiştirilmez."),
+      QMessageBox::NoButton, parent);
+  QPushButton *makeDefault = dialog->addButton(QStringLiteral("Varsayılan yap"), QMessageBox::AcceptRole);
+  QPushButton *later = dialog->addButton(QStringLiteral("Şimdi değil"), QMessageBox::RejectRole);
+  QPushButton *never = dialog->addButton(QStringLiteral("Bir daha sorma"), QMessageBox::DestructiveRole);
+  dialog->setDefaultButton(makeDefault);
+  dialog->setEscapeButton(later);
+  dialog->setAttribute(Qt::WA_DeleteOnClose);
+  QObject::connect(dialog, &QMessageBox::finished, parent,
+                   [parent, dialog, makeDefault, never](int) {
+    QSettings settings;
+    if (dialog->clickedButton() == makeDefault) {
+      requestDefaultBrowser(parent);
+    } else if (dialog->clickedButton() == never) {
+      settings.setValue(QString::fromLatin1(kDefaultBrowserPromptDisabled), true);
+    } else {
+      settings.setValue(QString::fromLatin1(kDefaultBrowserLastPromptUtc),
+                        QDateTime::currentDateTimeUtc());
+    }
+  });
+  dialog->open();
+}
+
+void checkDefaultBrowser(QWidget *parent) {
+#if defined(Q_OS_LINUX)
+  const QSettings settings;
+  if (settings.value(QString::fromLatin1(kDefaultBrowserPromptDisabled), false).toBool()) return;
+  const QDateTime lastPrompt = settings.value(QString::fromLatin1(kDefaultBrowserLastPromptUtc)).toDateTime();
+  if (lastPrompt.isValid() && lastPrompt.daysTo(QDateTime::currentDateTimeUtc()) < 7) return;
+  if (!QFileInfo(QStringLiteral("/usr/bin/xdg-settings")).isExecutable()) {
+    showDefaultBrowserPrompt(parent);
+    return;
+  }
+  auto *check = new QProcess(parent);
+  check->setProgram(QStringLiteral("/usr/bin/xdg-settings"));
+  check->setArguments({QStringLiteral("get"), QStringLiteral("default-web-browser")});
+  QObject::connect(check, qOverload<int, QProcess::ExitStatus>(&QProcess::finished), parent,
+                   [parent, check](int exitCode, QProcess::ExitStatus exitStatus) {
+    const QString desktopFile = QString::fromUtf8(check->readAllStandardOutput()).trimmed();
+    const bool alreadyDefault = exitStatus == QProcess::NormalExit && exitCode == 0
+        && desktopFile == QString::fromLatin1(kArDaliDesktopFile);
+    check->deleteLater();
+    if (!alreadyDefault) showDefaultBrowserPrompt(parent);
+  });
+  check->start();
+#else
+  Q_UNUSED(parent);
+#endif
+}
+
+}  // namespace
 
 int main(int argc, char *argv[]) {
   // Ensure Wayland / XWayland coordinate parity for window moves and tab dragging
@@ -39,9 +163,8 @@ int main(int argc, char *argv[]) {
   registerArdaliUrlSchemes();
 
   QApplication app(argc, argv);
-  app.setApplicationName(QStringLiteral("ArDaliBrowser"));
+  ardali::application_identity::apply();
   app.setApplicationVersion(QStringLiteral(ARDALI_BROWSER_VERSION));
-  app.setOrganizationName(QStringLiteral("ArDali"));
 
   // Initialize central i18n / multi-language system
   ardali::i18n::LanguageManager::instance().initialize();
@@ -183,6 +306,7 @@ int main(int argc, char *argv[]) {
   });
 
   window->show();
+  QTimer::singleShot(1200, window, [window] { checkDefaultBrowser(window); });
 
   const int exitCode = app.exec();
   const auto topLevelWidgets = QApplication::topLevelWidgets();

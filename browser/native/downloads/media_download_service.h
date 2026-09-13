@@ -59,12 +59,15 @@ struct MediaAnalysisResult {
 struct MediaDownloadRequest {
   QUrl url;
   QString title;
+  QString source;
+  QString thumbnailUrl;
   QString targetDirectory;
   MediaDownloadKind kind = MediaDownloadKind::Video;
   QString formatId;
   QString formatExtension;
   int formatHeight = 0;
   bool formatHasAudio = false;
+  qint64 estimatedBytes = 0;
   QString audioFormat = QStringLiteral("mp3");
   QString auxiliaryOutputPath;
   bool subtitles = false;
@@ -81,6 +84,9 @@ struct MediaDownloadJob {
   QString title;
   QString targetDirectory;
   QString outputPath;
+  QString mimeType;
+  QString source;
+  QString thumbnailUrl;
   MediaDownloadKind kind = MediaDownloadKind::Video;
   bool playlist = false;
   MediaDownloadState state = MediaDownloadState::Queued;

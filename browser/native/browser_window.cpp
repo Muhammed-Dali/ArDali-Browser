@@ -1,4 +1,5 @@
 #include <QEventLoopLocker>
+#include <QFileInfo>
 #include <QTemporaryDir>
 #include <QCompleter>
 #include <QStandardItemModel>
@@ -79,6 +80,7 @@ using ardali::i18n::I18n;
 #include "pulse/song_finder_settings_page.h"
 #include "downloads/download_toolbar_ui.h"
 #include "downloads/download_ui_model.h"
+#include "downloads/local_media_player_page.h"
 #include "translate/translate_service.h"
 #include <QShortcut>
 
@@ -2589,10 +2591,51 @@ void BrowserWindow::showMediaDownloads(const QUrl &sourceUrl, bool analyzeImmedi
     }
   }
   auto *page = new MediaDownloadPage(services_.mediaDownload, services_.profileService);
+  connect(page, &MediaDownloadPage::internalMediaOpenRequested,
+          this, &BrowserWindow::openLocalMedia);
   if (!targetUrl.isEmpty()) {
     page->setSourceUrl(targetUrl, shouldAnalyze);
   }
   addInternalTab(page, QStringLiteral("İndirmeler"), BrowserIcons::icon(BrowserIcon::Download), QStringLiteral("downloads"));
+}
+
+void BrowserWindow::openLocalMedia(const LocalMediaOpenRequest &request) {
+  if (!LocalMediaRouting::isSafeDownloadedFile(request.path, request.allowedRoot)
+      || request.playerKind == LocalMediaPlayerKind::External) {
+    return;
+  }
+  const QString canonicalPath = QFileInfo(request.path).canonicalFilePath();
+  const QString id = QStringLiteral("local-media-player");
+  const bool audio = request.playerKind == LocalMediaPlayerKind::Audio;
+  const QString title = request.title.trimmed().isEmpty()
+      ? QFileInfo(canonicalPath).completeBaseName() : request.title;
+  const QIcon icon = BrowserIcons::icon(audio ? BrowserIcon::Music : BrowserIcon::Video);
+  if (services_.tabManager) {
+    const QUuid existingId = services_.tabManager->findInternal(this, id);
+    if (!existingId.isNull()) {
+      const auto *record = services_.tabManager->record(existingId);
+      const int index = record && record->content ? pageStack_->indexOf(record->content) : -1;
+      if (index >= 0) {
+        if (auto *page = qobject_cast<LocalMediaPlayerPage *>(record->content.data())) {
+          page->loadMedia(request);
+        }
+        tabs_[index].title = title.left(80);
+        tabs_[index].icon = icon;
+        tabStrip_->setTabTitle(index, tabs_[index].title);
+        tabStrip_->setTabIcon(index, icon);
+        services_.tabManager->updateTitle(existingId, tabs_[index].title);
+        services_.tabManager->updateIcon(existingId, icon);
+        switchTab(index);
+        return;
+      }
+    }
+  }
+  auto *page = new LocalMediaPlayerPage(
+      request, services_.profile, services_.audioEffects,
+      services_.mediaDownload ? services_.mediaDownload->ffmpegPath() : QString{});
+  connect(page, &LocalMediaPlayerPage::audioEffectsRequested,
+          this, &BrowserWindow::showAudioEffects);
+  addInternalTab(page, title.left(80), icon, id);
 }
 
 void BrowserWindow::showTranslatePopup() {

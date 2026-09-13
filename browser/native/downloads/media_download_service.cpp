@@ -10,6 +10,7 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QMimeDatabase>
 #include <QProcess>
 #include <QProcessEnvironment>
 #include <QPointer>
@@ -280,10 +281,14 @@ QStringList MediaDownloadService::buildDownloadArguments(const MediaDownloadRequ
                    QStringLiteral("--no-update"),
                    QStringLiteral("--no-mtime"), QStringLiteral("--no-overwrites"),
                    QStringLiteral("--windows-filenames"), QStringLiteral("--trim-filenames"), QStringLiteral("200"),
+                   QStringLiteral("--progress-delta"), QStringLiteral("0.05"),
                    QStringLiteral("--progress-template"),
                    QStringLiteral("download:ARDALI_PROGRESS:%(progress._percent_str)s|%(progress.downloaded_bytes)s|%(progress.total_bytes)s|%(progress.total_bytes_estimate)s|%(progress.speed)s|%(progress.eta)s"),
                    QStringLiteral("--progress-template"), QStringLiteral("postprocess:ARDALI_POST:%(progress.status)s"),
-                   QStringLiteral("--print"), QStringLiteral("after_move:ARDALI_FILE:%(filepath)s")};
+                   QStringLiteral("--print"), QStringLiteral("after_move:ARDALI_FILE:%(filepath)s"),
+                   // yt-dlp's --print implicitly enables --quiet. Explicitly
+                   // undo it so download progress continues to reach the UI.
+                   QStringLiteral("--no-quiet")};
   if (request.playlist) {
     args << QStringLiteral("--yes-playlist") << QStringLiteral("--playlist-start")
          << QString::number(std::max(1, request.playlistStart));
@@ -583,8 +588,11 @@ QUuid MediaDownloadService::enqueue(const MediaDownloadRequest &candidate) {
   job.title = request.title.trimmed().left(240);
   if (job.title.isEmpty()) job.title = QStringLiteral("Medya indirmesi");
   job.targetDirectory = request.targetDirectory;
+  job.source = request.source.trimmed().left(120);
+  job.thumbnailUrl = request.thumbnailUrl.left(2048);
   job.kind = request.kind;
   job.playlist = request.playlist;
+  job.totalBytes = std::max<qint64>(0, request.estimatedBytes);
   if (request.kind == MediaDownloadKind::PlaylistLinks) job.outputPath = request.auxiliaryOutputPath;
   job.state = MediaDownloadState::Queued;
   job.statusText = stateText(job.state);
@@ -734,11 +742,11 @@ void MediaDownloadService::processDownloadLine(const QString &line) {
       if (fields.size() >= 6) {
         total = fields.value(2).toLongLong();
         if (total <= 0) total = fields.value(3).toLongLong();
-        speed = fields.value(4).toLongLong();
+        speed = static_cast<qint64>(fields.value(4).toDouble());
         eta = fields.value(5).toInt();
       } else {
         total = fields.value(2).toLongLong();
-        speed = fields.value(3).toLongLong();
+        speed = static_cast<qint64>(fields.value(3).toDouble());
         eta = fields.value(4).toInt();
       }
 
@@ -751,7 +759,7 @@ void MediaDownloadService::processDownloadLine(const QString &line) {
 
       jobs_[index].percent = finalPercent;
       jobs_[index].downloadedBytes = downloaded;
-      jobs_[index].totalBytes = total;
+      if (total > 0) jobs_[index].totalBytes = total;
       jobs_[index].bytesPerSecond = speed;
       jobs_[index].etaSeconds = eta;
       jobs_[index].state = MediaDownloadState::Downloading;
@@ -797,7 +805,18 @@ void MediaDownloadService::finishCurrent(MediaDownloadState state, const QString
     jobs_[index].state = state;
     jobs_[index].statusText = stateText(state);
     jobs_[index].errorText = error;
-    if (state == MediaDownloadState::Completed) jobs_[index].percent = 100.0;
+    if (state == MediaDownloadState::Completed) {
+      jobs_[index].percent = 100.0;
+      const QFileInfo output(jobs_[index].outputPath);
+      if (output.isFile()) {
+        QMimeDatabase database;
+        QMimeType mime = database.mimeTypeForFile(output, QMimeDatabase::MatchContent);
+        if (!mime.isValid() || mime.name() == QLatin1String("application/octet-stream")) {
+          mime = database.mimeTypeForFile(output, QMimeDatabase::MatchExtension);
+        }
+        jobs_[index].mimeType = mime.name().toLower();
+      }
+    }
   }
   if (request.kind == MediaDownloadKind::PlaylistLinks && !request.auxiliaryOutputPath.isEmpty()) {
     if (state == MediaDownloadState::Completed) {
@@ -839,10 +858,14 @@ void MediaDownloadService::persistHistory() const {
     entries.append(QJsonObject{{QStringLiteral("id"), job.id.toString(QUuid::WithoutBraces)},
         {QStringLiteral("url"), BrowserSecurity::sanitizeUrlForPersistence(job.url).toString(QUrl::FullyEncoded)},
         {QStringLiteral("title"), job.title}, {QStringLiteral("targetDirectory"), job.targetDirectory},
-        {QStringLiteral("outputPath"), job.outputPath}, {QStringLiteral("kind"), static_cast<int>(job.kind)},
+        {QStringLiteral("outputPath"), job.outputPath}, {QStringLiteral("mimeType"), job.mimeType},
+        {QStringLiteral("source"), job.source}, {QStringLiteral("thumbnailUrl"), job.thumbnailUrl},
+        {QStringLiteral("kind"), static_cast<int>(job.kind)},
         {QStringLiteral("playlist"), job.playlist}, {QStringLiteral("formatId"), request.formatId},
         {QStringLiteral("formatExtension"), request.formatExtension}, {QStringLiteral("formatHeight"), request.formatHeight},
-        {QStringLiteral("formatHasAudio"), request.formatHasAudio}, {QStringLiteral("audioFormat"), request.audioFormat},
+        {QStringLiteral("formatHasAudio"), request.formatHasAudio},
+        {QStringLiteral("estimatedBytes"), request.estimatedBytes},
+        {QStringLiteral("audioFormat"), request.audioFormat},
         {QStringLiteral("auxiliaryOutputPath"), request.auxiliaryOutputPath},
         {QStringLiteral("subtitles"), request.subtitles}, {QStringLiteral("playlistStart"), request.playlistStart},
         {QStringLiteral("sectionStartSeconds"), request.sectionStartSeconds},
@@ -854,7 +877,7 @@ void MediaDownloadService::persistHistory() const {
   }
   QDir().mkpath(QFileInfo(historyPath_).absolutePath());
   QSaveFile file(historyPath_);
-  const QByteArray bytes = QJsonDocument(QJsonObject{{QStringLiteral("version"), 1},
+  const QByteArray bytes = QJsonDocument(QJsonObject{{QStringLiteral("version"), 2},
       {QStringLiteral("jobs"), entries}}).toJson(QJsonDocument::Compact);
   if (file.open(QIODevice::WriteOnly)
       && file.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner)
@@ -878,6 +901,9 @@ void MediaDownloadService::loadHistory() {
     job.title = object.value(QStringLiteral("title")).toString().left(240);
     job.targetDirectory = object.value(QStringLiteral("targetDirectory")).toString();
     job.outputPath = object.value(QStringLiteral("outputPath")).toString();
+    job.mimeType = object.value(QStringLiteral("mimeType")).toString().left(160).toLower();
+    job.source = object.value(QStringLiteral("source")).toString().left(120);
+    job.thumbnailUrl = object.value(QStringLiteral("thumbnailUrl")).toString().left(2048);
     job.kind = static_cast<MediaDownloadKind>(object.value(QStringLiteral("kind")).toInt());
     job.playlist = object.value(QStringLiteral("playlist")).toBool();
     job.state = static_cast<MediaDownloadState>(object.value(QStringLiteral("state")).toInt());
@@ -889,6 +915,8 @@ void MediaDownloadService::loadHistory() {
     MediaDownloadRequest request;
     request.url = job.url;
     request.title = job.title;
+    request.source = job.source;
+    request.thumbnailUrl = job.thumbnailUrl;
     request.targetDirectory = job.targetDirectory;
     request.kind = job.kind;
     request.playlist = job.playlist;
@@ -896,6 +924,7 @@ void MediaDownloadService::loadHistory() {
     request.formatExtension = object.value(QStringLiteral("formatExtension")).toString();
     request.formatHeight = object.value(QStringLiteral("formatHeight")).toInt();
     request.formatHasAudio = object.value(QStringLiteral("formatHasAudio")).toBool();
+    request.estimatedBytes = object.value(QStringLiteral("estimatedBytes")).toInteger();
     request.audioFormat = object.value(QStringLiteral("audioFormat")).toString(QStringLiteral("mp3"));
     request.auxiliaryOutputPath = object.value(QStringLiteral("auxiliaryOutputPath")).toString();
     request.subtitles = object.value(QStringLiteral("subtitles")).toBool();

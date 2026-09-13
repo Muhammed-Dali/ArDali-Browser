@@ -3,6 +3,7 @@
 #include "browser_icons.h"
 #include "browser_profile_service.h"
 #include "general_download_manager.h"
+#include "local_media_routing.h"
 #include "security_utils.h"
 
 #include <QAction>
@@ -31,6 +32,7 @@
 #include <QNetworkReply>
 #include <QNetworkRequest>
 #include <QProgressBar>
+#include <QProcess>
 #include <QPushButton>
 #include <QPixmap>
 #include <QResizeEvent>
@@ -1198,6 +1200,8 @@ void MediaDownloadPage::startSelectedDownload() {
   MediaDownloadRequest request;
   request.url = analysis_.url;
   request.title = analysis_.title;
+  request.source = analysis_.source;
+  request.thumbnailUrl = analysis_.thumbnailUrl;
   request.targetDirectory = directory;
   if (!auxiliaryPlaylist) {
     const MediaFormatOption &format = formats.at(index);
@@ -1205,6 +1209,7 @@ void MediaDownloadPage::startSelectedDownload() {
     request.formatExtension = format.extension;
     request.formatHeight = format.height;
     request.formatHasAudio = format.hasAudio;
+    request.estimatedBytes = format.estimatedBytes;
   }
   request.subtitles = subtitlesBox_->isChecked();
   request.sectionStartSeconds = sectionStartBox_->value();
@@ -1260,18 +1265,22 @@ QWidget *MediaDownloadPage::createJobCard(const MediaDownloadJob &job, QWidget *
     auto *progress = new QProgressBar(jobCard);
     progress->setObjectName(QStringLiteral("media-job-progress"));
     progress->setTextVisible(false);
-    if (job.totalBytes <= 0 && job.percent <= 0.0) progress->setRange(0, 0);
+    if (job.state == MediaDownloadState::Processing) progress->setRange(0, 0);
     else { progress->setRange(0, 100); progress->setValue(qRound(job.percent)); }
     progress->setAccessibleName(QStringLiteral("İndirme ilerlemesi yüzde %1").arg(qRound(job.percent)));
     layout->addWidget(progress);
     QStringList progressParts;
-    if (job.percent > 0.0) progressParts << QStringLiteral("%1%").arg(qRound(job.percent));
+    if (job.state == MediaDownloadState::Queued || job.state == MediaDownloadState::Downloading)
+      progressParts << QStringLiteral("%1%").arg(qRound(job.percent));
+    if (job.state == MediaDownloadState::Downloading && job.downloadedBytes <= 0)
+      progressParts << QStringLiteral("Medya akışı bekleniyor");
     if (job.downloadedBytes > 0) progressParts << (job.totalBytes > 0
         ? QStringLiteral("%1 / %2").arg(formatBytes(job.downloadedBytes), formatBytes(job.totalBytes))
         : formatBytes(job.downloadedBytes));
+    else if (job.totalBytes > 0) progressParts << QStringLiteral("Toplam %1").arg(formatBytes(job.totalBytes));
     if (job.bytesPerSecond > 0) progressParts << QStringLiteral("%1/s").arg(formatBytes(job.bytesPerSecond));
     if (job.etaSeconds >= 0) progressParts << QStringLiteral("%1 sn kaldı").arg(job.etaSeconds);
-    auto *progressText = new QLabel(progressParts.isEmpty() ? QStringLiteral("Hazırlanıyor…") : progressParts.join(QStringLiteral(" • ")), jobCard);
+    auto *progressText = new QLabel(progressParts.isEmpty() ? QStringLiteral("İşleniyor…") : progressParts.join(QStringLiteral(" • ")), jobCard);
     progressText->setObjectName(QStringLiteral("media-job-progress-text"));
     layout->addWidget(progressText);
   } else if (job.state == MediaDownloadState::Failed && !job.errorText.isEmpty()) {
@@ -1290,7 +1299,7 @@ QWidget *MediaDownloadPage::createJobCard(const MediaDownloadJob &job, QWidget *
   } else if (job.state == MediaDownloadState::Completed) {
     auto *open = actionButton(BrowserIcon::Play, QStringLiteral("Aç"), QStringLiteral("İndirilen dosyayı aç"), jobCard);
     open->setEnabled(QFileInfo::exists(job.outputPath));
-    connect(open, &QPushButton::clicked, this, [path = job.outputPath] { if (QFileInfo::exists(path)) QDesktopServices::openUrl(QUrl::fromLocalFile(path)); });
+    connect(open, &QPushButton::clicked, this, [this, job] { openMediaDownload(job); });
     auto *folder = actionButton(BrowserIcon::Folder, QStringLiteral("Klasörde göster"), QStringLiteral("İndirilen dosyanın klasörünü aç"), jobCard);
     const QString folderPath = job.outputPath.isEmpty() ? job.targetDirectory : QFileInfo(job.outputPath).absolutePath();
     folder->setEnabled(QFileInfo(folderPath).isDir());
@@ -1303,6 +1312,11 @@ QWidget *MediaDownloadPage::createJobCard(const MediaDownloadJob &job, QWidget *
     more->setToolTip(QStringLiteral("Tamamlanan indirme için daha fazla işlem"));
     more->setAccessibleName(QStringLiteral("Tamamlanan indirme için daha fazla işlem"));
     auto *menu = new QMenu(more);
+    QAction *systemOpen = menu->addAction(BrowserIcons::icon(BrowserIcon::Play),
+                                           QStringLiteral("Sistem uygulamasıyla aç"));
+    connect(systemOpen, &QAction::triggered, this,
+            [this, path = job.outputPath] { openWithSystemApplication(path); });
+    menu->addSeparator();
     QAction *remove = menu->addAction(BrowserIcons::icon(BrowserIcon::Trash), QStringLiteral("Listeden kaldır"));
     connect(remove, &QAction::triggered, this, [this, id = job.id] { service_->remove(id); });
     more->setMenu(menu);
@@ -1411,9 +1425,7 @@ QWidget *MediaDownloadPage::createGeneralJobCard(const GeneralDownloadJob &job, 
     open->setEnabled(QFileInfo::exists(job.targetPath));
     const QString folderPath = QFileInfo(job.targetPath).absolutePath();
     folder->setEnabled(QFileInfo(folderPath).isDir());
-    connect(open, &QPushButton::clicked, this, [path = job.targetPath] {
-      if (QFileInfo::exists(path)) QDesktopServices::openUrl(QUrl::fromLocalFile(path));
-    });
+    connect(open, &QPushButton::clicked, this, [this, job] { openGeneralDownload(job); });
     connect(folder, &QPushButton::clicked, this, [folderPath] {
       if (QFileInfo(folderPath).isDir()) QDesktopServices::openUrl(QUrl::fromLocalFile(folderPath));
     });
@@ -1595,6 +1607,89 @@ void MediaDownloadPage::loadThumbnail(const QUrl &url) {
       thumbnailLabel_->setPixmap(image.scaled(thumbnailLabel_->size(), Qt::KeepAspectRatio, Qt::SmoothTransformation));
     reply->deleteLater();
   });
+}
+
+void MediaDownloadPage::openMediaDownload(const MediaDownloadJob &job) {
+  if (!LocalMediaRouting::isSafeDownloadedFile(job.outputPath, job.targetDirectory)) {
+    statusLabel_->setText(QStringLiteral("İndirilen dosya güvenli indirme klasöründe bulunamadı."));
+    return;
+  }
+  const LocalMediaPlayerKind kind = LocalMediaRouting::classify(job.outputPath, job.mimeType, &job.kind);
+  if (kind == LocalMediaPlayerKind::External) {
+    QDesktopServices::openUrl(QUrl::fromLocalFile(job.outputPath));
+    return;
+  }
+  LocalMediaOpenRequest request;
+  request.path = QFileInfo(job.outputPath).canonicalFilePath();
+  request.allowedRoot = QFileInfo(job.targetDirectory).canonicalFilePath();
+  request.title = job.title;
+  request.mimeType = LocalMediaRouting::detectedMimeType(job.outputPath, job.mimeType);
+  request.thumbnailUrl = job.thumbnailUrl;
+  request.playerKind = kind;
+  emit internalMediaOpenRequested(request);
+}
+
+void MediaDownloadPage::openGeneralDownload(const GeneralDownloadJob &job) {
+  const QString root = QFileInfo(job.targetPath).absolutePath();
+  if (!LocalMediaRouting::isSafeDownloadedFile(job.targetPath, root)) {
+    statusLabel_->setText(QStringLiteral("İndirilen dosya bulunamadı veya okunamıyor."));
+    return;
+  }
+  const LocalMediaPlayerKind kind = LocalMediaRouting::classify(job.targetPath, job.mimeType);
+  if (kind == LocalMediaPlayerKind::External) {
+    QDesktopServices::openUrl(QUrl::fromLocalFile(job.targetPath));
+    return;
+  }
+  LocalMediaOpenRequest request;
+  request.path = QFileInfo(job.targetPath).canonicalFilePath();
+  request.allowedRoot = QFileInfo(root).canonicalFilePath();
+  request.title = job.fileName;
+  request.mimeType = LocalMediaRouting::detectedMimeType(job.targetPath, job.mimeType);
+  request.playerKind = kind;
+  emit internalMediaOpenRequested(request);
+}
+
+void MediaDownloadPage::openWithSystemApplication(const QString &path) {
+  const QFileInfo file(path);
+  if (!file.isFile()) {
+    statusLabel_->setText(QStringLiteral("İndirilen dosya bulunamadı."));
+    return;
+  }
+
+#if defined(Q_OS_LINUX)
+  // Always ask here. The user may have associated media files with ArDali,
+  // in which case QDesktopServices would route straight back into this
+  // browser instead of opening an external player.
+  const QString portalClient = QStringLiteral("/usr/bin/gdbus");
+  if (QFileInfo(portalClient).isExecutable()) {
+    auto *process = new QProcess(this);
+    process->setProgram(portalClient);
+    process->setArguments({QStringLiteral("call"), QStringLiteral("--session"),
+        QStringLiteral("--dest"), QStringLiteral("org.freedesktop.portal.Desktop"),
+        QStringLiteral("--object-path"), QStringLiteral("/org/freedesktop/portal/desktop"),
+        QStringLiteral("--method"), QStringLiteral("org.freedesktop.portal.OpenURI.OpenURI"),
+        QString{}, QUrl::fromLocalFile(file.absoluteFilePath()).toString(QUrl::FullyEncoded),
+        QStringLiteral("{'ask': <true>}")});
+    connect(process, qOverload<int, QProcess::ExitStatus>(&QProcess::finished), this,
+            [this, process](int exitCode, QProcess::ExitStatus exitStatus) {
+      if (exitStatus != QProcess::NormalExit || exitCode != 0)
+        statusLabel_->setText(QStringLiteral("Sistem uygulaması seçicisi açılamadı."));
+      process->deleteLater();
+    });
+    connect(process, &QProcess::errorOccurred, this,
+            [this, process](QProcess::ProcessError error) {
+      if (error == QProcess::FailedToStart) {
+        statusLabel_->setText(QStringLiteral("Sistem uygulaması seçicisi açılamadı."));
+        process->deleteLater();
+      }
+    });
+    process->start();
+    return;
+  }
+#endif
+
+  if (!QDesktopServices::openUrl(QUrl::fromLocalFile(file.absoluteFilePath())))
+    statusLabel_->setText(QStringLiteral("Dosya sistem uygulamasıyla açılamadı."));
 }
 
 void MediaDownloadPage::clearLayout(QLayout *layout) {

@@ -1,7 +1,7 @@
 # Maintainer: Muhammed Dali <support@ardali.app>
 
 pkgname=ardali-browser
-pkgver=7.1.1
+pkgver=7.1.2
 pkgrel=1
 pkgdesc="Native Qt/C++ desktop browser with integrated privacy and media tools"
 arch=('x86_64')
@@ -47,7 +47,7 @@ package() {
   DESTDIR="${pkgdir}" cmake --install build
 
   install -dm755 "${pkgdir}/usr/bin"
-  ln -s ../lib/ardali-browser/ardali-browser "${pkgdir}/usr/bin/ardali-browser"
+  ln -sf ../lib/ardali-browser/ardali-browser "${pkgdir}/usr/bin/ardali-browser"
 
   sed -i \
     -e 's|^Exec=.*|Exec=/usr/bin/ardali-browser %U|' \

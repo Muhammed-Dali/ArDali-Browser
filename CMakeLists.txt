@@ -1,5 +1,9 @@
 cmake_minimum_required(VERSION 3.20)
-project(ArDaliBrowser VERSION 7.1.1 LANGUAGES CXX)
+project(ArDaliBrowser VERSION 7.1.2 LANGUAGES CXX)
+
+if(CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT)
+  set(CMAKE_INSTALL_PREFIX "/usr" CACHE PATH "Default install prefix" FORCE)
+endif()
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -124,6 +128,7 @@ add_custom_target(ardali-browser-policy DEPENDS ${DALI_POLICY_JSON})
 # Source list
 # -------------------------------------------------------------
 set(CORE_SOURCES
+  browser/native/core/application_identity.cpp
   browser/native/core/browser_profile_service.cpp
   browser/native/core/browser_permission_policy.cpp
   browser/native/core/site_permission_prompt_bubble.cpp
@@ -225,6 +230,8 @@ set(PULSE_SOURCES
 set(DOWNLOADS_SOURCES
   browser/native/downloads/media_download_service.cpp
   browser/native/downloads/media_download_page.cpp
+  browser/native/downloads/local_media_routing.cpp
+  browser/native/downloads/local_media_player_page.cpp
   browser/native/downloads/general_download_manager.cpp
   browser/native/downloads/download_ui_model.cpp
   browser/native/downloads/download_toolbar_ui.cpp
@@ -623,6 +630,21 @@ add_executable(ardali-browser-download-ui-model-test
 target_link_libraries(ardali-browser-download-ui-model-test PRIVATE Qt6::Core)
 add_test(NAME browser-download-ui-model COMMAND ardali-browser-download-ui-model-test)
 
+add_executable(ardali-browser-local-media-routing-test
+  browser/native/tests/local_media_routing_test.cpp
+  browser/native/downloads/local_media_routing.cpp)
+target_link_libraries(ardali-browser-local-media-routing-test PRIVATE Qt6::Core)
+add_test(NAME browser-local-media-routing COMMAND ardali-browser-local-media-routing-test)
+
+add_executable(ardali-browser-application-identity-test
+  browser/native/tests/application_identity_test.cpp
+  browser/native/core/application_identity.cpp)
+target_compile_definitions(ardali-browser-application-identity-test PRIVATE
+  ARDALI_DESKTOP_FILE="${CMAKE_CURRENT_BINARY_DIR}/ardali.desktop")
+target_link_libraries(ardali-browser-application-identity-test PRIVATE Qt6::Core Qt6::Gui Qt6::Widgets)
+add_test(NAME browser-application-identity COMMAND ardali-browser-application-identity-test)
+set_tests_properties(browser-application-identity PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+
 add_executable(ardali-browser-media-platform-registry-test
   browser/native/tests/media_platform_registry_test.cpp
   browser/native/downloads/media_platform_registry.cpp
@@ -919,8 +941,10 @@ set_tests_properties(language-manager-test PROPERTIES ENVIRONMENT "QT_QPA_PLATFO
 # -------------------------------------------------------------
 include(GNUInstallDirs)
 
+set(ARDALI_RUNTIME_INSTALL_DIR "lib/ardali-browser")
+
 install(TARGETS ardali-browser
-  RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+  RUNTIME DESTINATION ${ARDALI_RUNTIME_INSTALL_DIR}
 )
 
 # The Web Audio engine is compiled from the checked-in .dl sources.  Keep the
@@ -935,12 +959,12 @@ install(FILES
   ${DALI_WEB_LIMITER_MODULE}
   ${DALI_WEB_BASS_ENHANCER_MODULE}
   ${DALI_WEB_AUTO_GAIN_MODULE}
-  DESTINATION ${CMAKE_INSTALL_BINDIR}/dali
+  DESTINATION ${ARDALI_RUNTIME_INSTALL_DIR}/dali
 )
 
 # The policy follows the same executable-relative lookup used by main.cpp.
 install(FILES ${DALI_POLICY_JSON}
-  DESTINATION ${CMAKE_INSTALL_BINDIR}
+  DESTINATION ${ARDALI_RUNTIME_INSTALL_DIR}
 )
 
 install(DIRECTORY i18n
@@ -954,9 +978,19 @@ install(DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/assets/new-tab/
 
 if(TARGET ardali-webengine-process)
   install(TARGETS ardali-webengine-process
-    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+    RUNTIME DESTINATION ${ARDALI_RUNTIME_INSTALL_DIR}
   )
 endif()
+
+configure_file(
+  ${CMAKE_CURRENT_SOURCE_DIR}/browser/resources/linux/ardali-browser.in
+  ${CMAKE_CURRENT_BINARY_DIR}/ardali-browser-launcher
+  @ONLY
+)
+install(PROGRAMS ${CMAKE_CURRENT_BINARY_DIR}/ardali-browser-launcher
+  DESTINATION bin
+  RENAME ardali-browser
+)
 
 configure_file(
   ${CMAKE_CURRENT_SOURCE_DIR}/browser/resources/linux/ardali.desktop.in

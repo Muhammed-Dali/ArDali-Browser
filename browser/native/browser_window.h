@@ -30,6 +30,7 @@ class INavigationCandidateProvider;
 #include "desktop_tabs/tab_group_model.h"
 #include "downloads/media_download_page.h"
 #include "downloads/media_download_service.h"
+#include "downloads/local_media_routing.h"
 #include "downloads/media_platform_registry.h"
 #include "eq/eq_preset_page.h"
 #include "eq/eq_preset_repository.h"
@@ -204,6 +205,7 @@ public:
   void showSongFinderSettings();
   void showMediaDownloads(const QUrl &sourceUrl = {},
                           bool analyzeImmediately = false);
+  void openLocalMedia(const LocalMediaOpenRequest &request);
   void showTranslatePopup();
   void showZoomPopup();
   void changeCurrentZoom(qreal delta);

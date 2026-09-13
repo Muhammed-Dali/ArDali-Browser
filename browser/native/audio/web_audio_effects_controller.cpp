@@ -22,6 +22,12 @@
 #include <cmath>
 
 namespace {
+bool isAudioEligibleView(const QWebEngineView *view, const QUrl &url) {
+  return ardali::audio::isSupportedAudioPlatform(url)
+      || (view && view->property("ardali-trusted-local-media").toBool()
+          && url.isLocalFile());
+}
+
 constexpr double kMinPreampDb = -24.0;
 constexpr double kMaxPreampDb = 24.0;
 constexpr double kMinEqDb = -12.0;
@@ -470,7 +476,7 @@ void WebAudioEffectsController::unregisterWebView(QWebEngineView *view) {
 
 int WebAudioEffectsController::audioEnabledWebViewCount() const {
   return static_cast<int>(std::count_if(views_.cbegin(), views_.cend(), [](const QPointer<QWebEngineView> &view) {
-    return view && ardali::audio::isSupportedAudioPlatform(view->url());
+    return view && isAudioEligibleView(view, view->url());
   }));
 }
 
@@ -1457,8 +1463,10 @@ QString WebAudioEffectsController::injectionScript() const {
     const supportedDomains = %27;
     const protocol = String(location.protocol || '').toLowerCase();
     const hostname = String(location.hostname || '').toLowerCase();
-    const supported = (protocol === 'http:' || protocol === 'https:')
-      && supportedDomains.some((domain) => hostname === domain || hostname.endsWith('.' + domain));
+    // file: documents receive this bootstrap only when the native view is the
+    // root-confined ArDali local player (see isAudioEligibleView()).
+    const supported = protocol === 'file:' || ((protocol === 'http:' || protocol === 'https:')
+      && supportedDomains.some((domain) => hostname === domain || hostname.endsWith('.' + domain)));
     if (!supported) {
       return { ok: true, supported: false, moduleLoaded: false, enabled: false,
                mediaCount: 0, sampleRates: [], contextStates: [] };
@@ -2753,7 +2761,7 @@ void WebAudioEffectsController::requestLimiterReduction() {
 
 void WebAudioEffectsController::applyToView(QWebEngineView *view) {
   if (!view || !view->page()) return;
-  if (!ardali::audio::isSupportedAudioPlatform(view->url())) {
+  if (!isAudioEligibleView(view, view->url())) {
     view->setProperty("ardali-audio-graph-active", false);
     return;
   }
@@ -2764,7 +2772,7 @@ void WebAudioEffectsController::applyToView(QWebEngineView *view) {
   const QPointer<QWebEngineView> guardedView(view);
   view->page()->runJavaScript(parameterUpdateScript(), QWebEngineScript::MainWorld, [guardedController, guardedView](const QVariant &result) {
     if (!guardedController) return;
-    if (guardedView && ardali::audio::isSupportedAudioPlatform(guardedView->url())) {
+    if (guardedView && isAudioEligibleView(guardedView, guardedView->url())) {
       const QVariantMap map = result.toMap();
       guardedView->setProperty("ardali-audio-graph-active",
                                map.value(QStringLiteral("ok")).toBool()
@@ -2791,7 +2799,7 @@ void WebAudioEffectsController::applyToView(QWebEngineView *view) {
 
 void WebAudioEffectsController::applyEqualizerBandToView(QWebEngineView *view, int index) {
   if (!view || !view->page()) return;
-  if (!ardali::audio::isSupportedAudioPlatform(view->url())) return;
+  if (!isAudioEligibleView(view, view->url())) return;
   const QString script = equalizerBandUpdateScript(index);
   if (!script.isEmpty()) view->page()->runJavaScript(script, QWebEngineScript::MainWorld);
 }
@@ -2801,7 +2809,7 @@ void WebAudioEffectsController::installDocumentBootstrap(QWebEngineView *view, c
   constexpr auto kScriptName = "ardali-web-audio-document-bootstrap";
   QWebEngineScriptCollection &scripts = view->page()->scripts();
   for (const QWebEngineScript &existing : scripts.find(QString::fromLatin1(kScriptName))) scripts.remove(existing);
-  if (!ardali::audio::isSupportedAudioPlatform(url)) return;
+  if (!isAudioEligibleView(view, url)) return;
   QWebEngineScript script;
   script.setName(QString::fromLatin1(kScriptName));
   script.setSourceCode(injectionScript());
@@ -2813,7 +2821,7 @@ void WebAudioEffectsController::installDocumentBootstrap(QWebEngineView *view, c
 
 void WebAudioEffectsController::updateAudioPolicyForView(QWebEngineView *view, const QUrl &url) {
   if (!view || !view->page()) return;
-  const bool supported = ardali::audio::isSupportedAudioPlatform(url);
+  const bool supported = isAudioEligibleView(view, url);
   if (!supported) {
     bootstrapViews_.remove(view);
     view->setProperty("ardali-audio-graph-active", false);
@@ -2823,7 +2831,7 @@ void WebAudioEffectsController::updateAudioPolicyForView(QWebEngineView *view, c
 
 void WebAudioEffectsController::bootstrapView(QWebEngineView *view) {
   if (!view || !view->page() || bootstrapViews_.contains(view)) return;
-  if (!ardali::audio::isSupportedAudioPlatform(view->url())) return;
+  if (!isAudioEligibleView(view, view->url())) return;
   if (daliModuleSource().isEmpty() || daliEqModuleSource().isEmpty() || daliCompressorModuleSource().isEmpty()
       || daliLimiterModuleSource().isEmpty() || daliBassEnhancerModuleSource().isEmpty()
       || daliAutoGainModuleSource().isEmpty()) {
@@ -2840,7 +2848,7 @@ void WebAudioEffectsController::bootstrapView(QWebEngineView *view) {
   view->page()->runJavaScript(injectionScript(), QWebEngineScript::MainWorld, [guardedController, guardedView](const QVariant &result) {
     if (!guardedController) return;
     if (guardedView) guardedController->bootstrapViews_.remove(guardedView);
-    if (guardedView && ardali::audio::isSupportedAudioPlatform(guardedView->url())) {
+    if (guardedView && isAudioEligibleView(guardedView, guardedView->url())) {
       const QVariantMap map = result.toMap();
       guardedView->setProperty("ardali-audio-graph-active",
                                map.value(QStringLiteral("ok")).toBool()

@@ -2,6 +2,19 @@
 
 All notable release-facing changes to ArDali Browser are documented here.
 
+## [7.1.2] - 2026-09-13
+
+### Added
+
+- Added internal media player support (`ardali://player`) and local media routing for downloaded audio and video files.
+- Enabled DALI Web Audio DSP processing and equalizer effects for internal playback of downloaded media.
+- Added launcher wrapper and taskbar icon grouping integration via `StartupWMClass=ArDaliBrowser` and default browser prompt handling.
+
+### Fixed
+
+- Resolved download manager progress delta and status reporting for streaming downloads.
+- Improved persistence of download jobs, thumbnails, and origin metadata.
+
 ## [7.1.1] - 2026-09-13
 
 ### Fixed
