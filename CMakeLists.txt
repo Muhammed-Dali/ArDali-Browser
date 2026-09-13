@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(ArDaliBrowser VERSION 7.1.0 LANGUAGES CXX)
+project(ArDaliBrowser VERSION 7.1.1 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -145,6 +145,7 @@ set(CORE_SOURCES
 )
 
 set(NEWTAB_SOURCES
+  browser/native/newtab/new_tab_asset_resolver.cpp
   browser/native/newtab/new_tab_html.cpp
   browser/native/newtab/new_tab_scheme.cpp
   browser/native/newtab/new_tab_background_store.cpp
@@ -397,6 +398,13 @@ qt_add_resources(ardali-browser "search_engine_icons"
     browser/assets/new-tab/bing.ico
 )
 
+qt_add_resources(ardali-browser "new_tab_asset_fallbacks"
+  PREFIX "/new-tab"
+  BASE browser/assets/new-tab
+  FILES
+    browser/assets/new-tab/ardali-flow-blue.png
+)
+
 qt_add_resources(ardali-browser "translate_scripts"
   PREFIX "/translate"
   BASE browser/native/translate/resources
@@ -568,6 +576,13 @@ add_executable(ardali-browser-general-download-manager-test
 target_link_libraries(ardali-browser-general-download-manager-test PRIVATE Qt6::Core Qt6::Network)
 add_test(NAME browser-general-download-manager COMMAND ardali-browser-general-download-manager-test)
 
+add_executable(ardali-browser-new-tab-asset-resolver-test
+  browser/native/tests/new_tab_asset_resolver_test.cpp
+  browser/native/newtab/new_tab_asset_resolver.cpp
+)
+target_link_libraries(ardali-browser-new-tab-asset-resolver-test PRIVATE Qt6::Core)
+add_test(NAME browser-new-tab-asset-resolver COMMAND ardali-browser-new-tab-asset-resolver-test)
+
 add_executable(ardali-browser-download-ui-model-test
   browser/native/tests/download_ui_model_test.cpp
 )
@@ -735,6 +750,7 @@ add_executable(smart_omnibox_phase2_1_test
   browser/native/core/browser_policy.cpp
   browser/native/core/security_utils.cpp
   browser/native/newtab/new_tab_html.cpp
+  browser/native/newtab/new_tab_asset_resolver.cpp
   browser/native/newtab/new_tab_scheme.cpp
   browser/native/newtab/new_tab_background_store.cpp
   browser/native/blocker/ardali_blocker_settings.cpp

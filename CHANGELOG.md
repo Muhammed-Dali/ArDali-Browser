@@ -2,6 +2,14 @@
 
 All notable release-facing changes to ArDali Browser are documented here.
 
+## [7.1.1] - 2026-09-13
+
+### Fixed
+
+- Corrected New Tab asset discovery for installed Linux packages whose executable lives under `/usr/lib/ardali-browser` while runtime assets live under `/usr/share/ardali-browser`.
+- Added embedded fallbacks for the New Tab logo, background, search-engine artwork, and interface icons so a missing external asset can no longer produce broken-image placeholders.
+- Added installed, portable, and build-tree asset-layout regression coverage.
+
 ## [7.1.0] - 2026-09-13
 
 ### Changed

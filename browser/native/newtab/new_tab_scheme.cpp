@@ -253,8 +253,25 @@ class NewTabSchemeHandler final : public QWebEngineUrlSchemeHandler {
             ? "image/x-icon" : iconPaths.contains(requested) ? "image/svg+xml"
             : managedImage ? "image/png" : managedThumbnail ? "image/jpeg" : QByteArray{};
     if (mimeType.isEmpty()) { job->fail(QWebEngineUrlRequestJob::UrlNotFound); return; }
-    QFile file(managedImage ? managedBackgroundPath_ : managedThumbnail ? managedThumbnailPath_ : assetsDirectory_ + requested);
-    if (!file.open(QIODevice::ReadOnly)) { job->fail(QWebEngineUrlRequestJob::UrlNotFound); return; }
+    QFile file(managedImage ? managedBackgroundPath_
+                            : managedThumbnail ? managedThumbnailPath_ : assetsDirectory_ + requested);
+    if (!file.open(QIODevice::ReadOnly) && !managedImage && !managedThumbnail) {
+      QString embeddedPath;
+      if (requested == QLatin1String("/ardali-flow-blue.png")) {
+        embeddedPath = QStringLiteral(":/new-tab/ardali-flow-blue.png");
+      } else if (requested == QLatin1String("/ardali-browser.png")) {
+        embeddedPath = QStringLiteral(":/assets/icons/ardali-browser-128.png");
+      } else if (requested.endsWith(QLatin1String(".ico"))) {
+        embeddedPath = QStringLiteral(":/search-engines") + requested;
+      } else if (iconPaths.contains(requested)) {
+        embeddedPath = QStringLiteral(":/browser-icons") + requested.mid(6);
+      }
+      if (!embeddedPath.isEmpty()) {
+        file.setFileName(embeddedPath);
+        if (!file.open(QIODevice::ReadOnly)) file.setFileName(QString());
+      }
+    }
+    if (!file.isOpen()) { job->fail(QWebEngineUrlRequestJob::UrlNotFound); return; }
     auto *buffer = new QBuffer(job);
     buffer->setData(file.readAll());
     buffer->open(QIODevice::ReadOnly);

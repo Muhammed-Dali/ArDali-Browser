@@ -29,6 +29,7 @@
 
 #include "browser_policy.h"
 #include "security_utils.h"
+#include "new_tab_asset_resolver.h"
 #include "new_tab_scheme.h"
 #include "new_tab_background_store.h"
 #include "credential_vault_manager.h"
@@ -213,11 +214,8 @@ BrowserProfileService::BrowserProfileService(const QString &dataDirectory, const
   }
 
   newTabBackgroundStore_ = std::make_unique<NewTabBackgroundStore>(dataDirectory);
-  QString newTabAssetsDirectory = QCoreApplication::applicationDirPath() + QStringLiteral("/assets/new-tab");
-  if (!QDir(newTabAssetsDirectory).exists()) {
-    newTabAssetsDirectory = QDir(QCoreApplication::applicationDirPath()).absoluteFilePath(
-        QStringLiteral("../share/ardali-browser/new-tab"));
-  }
+  const QString newTabAssetsDirectory = resolveNewTabAssetsDirectory(
+      QCoreApplication::applicationDirPath());
   profile_->installUrlSchemeHandler("ardali", createNewTabSchemeHandler(
       newTabAssetsDirectory, newTabBackgroundStore_->managedImagePath(),
       newTabBackgroundStore_->thumbnailPath(), this, this, profile_));
