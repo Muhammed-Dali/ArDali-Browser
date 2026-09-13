@@ -66,7 +66,7 @@ int main(int argc, char *argv[]) {
   {
     WebAudioEffectsController controller;
     const QVector<int> &frequencies = WebAudioEffectsController::equalizerFrequencies();
-    if (!controller.enabled() || controller.preampDb() != 0.0 || frequencies.size() != 32
+    if (controller.enabled() || controller.preampDb() != 0.0 || frequencies.size() != 32
         || frequencies.front() != 20 || frequencies[18] != 1300 || frequencies.back() != 22000
         || controller.reverbEnabled() || controller.reverbRoomSizeMs() != 1000.0 || controller.reverbDamping() != 0.5
         || controller.reverbWetDryDb() != -10.0 || controller.reverbHfRatio() != 0.7 || controller.reverbInputGainDb() != 0.0
@@ -83,6 +83,11 @@ int main(int argc, char *argv[]) {
         || controller.autoGainEnabled() || controller.autoGainTargetDbfs() != -14.0
         || controller.autoGainMaxGainDb() != 12.0 || controller.autoGainSpeed() != QStringLiteral("medium")
         || controller.autoGainPreset() != QStringLiteral("balanced")) return 1;
+    const QString runtime = controller.injectionScript();
+    if (!runtime.contains(QStringLiteral("latencyHint: 'playback'"))
+        || !runtime.contains(QStringLiteral("element.readyState < 2 && element.paused"))
+        || !runtime.contains(QStringLiteral("root.audioContext = ctx"))
+        || !runtime.contains(QStringLiteral("document.addEventListener('canplay'"))) return 1;
     controller.setEnabled(false);
     controller.setPreampDb(7.3);
     controller.setEqualizerBand(0, -12.0);
@@ -771,7 +776,7 @@ int main(int argc, char *argv[]) {
     controller.commitEqualizerBands(manual);
     {
       EqPresetPage page(&controller);
-      if (page.repositoryForView().presets().size() != 1765) return 1;
+      if (page.repositoryForView().presets().size() != 1776) return 1;
       page.resize(1920, 950);
       page.show();
       app.processEvents();

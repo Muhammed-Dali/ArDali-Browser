@@ -508,6 +508,40 @@ target_link_libraries(ardali-browser-eq-preset-repository-test PRIVATE Qt6::Core
 add_dependencies(ardali-browser-eq-preset-repository-test ardali-eq-presets-runtime)
 add_test(NAME browser-eq-preset-repository COMMAND ardali-browser-eq-preset-repository-test)
 
+add_executable(ardali-browser-web-audio-effects-test
+  browser/native/tests/web_audio_effects_controller_test.cpp
+  browser/native/audio/audio_platform_policy.cpp
+  browser/native/audio/web_audio_effects_controller.cpp
+  browser/native/audio/audio_effects_page.cpp
+  browser/native/eq/eq_preset_repository.cpp
+  browser/native/eq/eq_preset_page.cpp
+)
+target_link_libraries(ardali-browser-web-audio-effects-test PRIVATE
+  Qt6::Core Qt6::Gui Qt6::Widgets Qt6::WebEngineWidgets Qt6::Svg
+)
+target_compile_definitions(ardali-browser-web-audio-effects-test PRIVATE
+  ARDALI_WEB_OUTPUT_DALI_MODULE_RELATIVE_PATH="dali/web-output-audiophile.generated.js"
+  ARDALI_WEB_EQ32_DALI_MODULE_RELATIVE_PATH="dali/web-equalizer-32.generated.js"
+  ARDALI_WEB_COMPRESSOR_DALI_MODULE_RELATIVE_PATH="dali/web-dynamic-compressor.generated.js"
+  ARDALI_WEB_LIMITER_DALI_MODULE_RELATIVE_PATH="dali/web-limiter.generated.js"
+  ARDALI_WEB_BASS_ENHANCER_DALI_MODULE_RELATIVE_PATH="dali/web-bass-enhancer.generated.js"
+  ARDALI_WEB_AUTO_GAIN_DALI_MODULE_RELATIVE_PATH="dali/web-auto-gain.generated.js"
+)
+add_dependencies(ardali-browser-web-audio-effects-test ardali-web-output-dali ardali-eq-presets-runtime)
+add_test(NAME browser-web-audio-effects COMMAND ardali-browser-web-audio-effects-test)
+set_tests_properties(browser-web-audio-effects PROPERTIES
+  ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QTWEBENGINE_DISABLE_SANDBOX=1;QTWEBENGINE_CHROMIUM_FLAGS=--no-sandbox --disable-gpu"
+  TIMEOUT 60
+)
+
+add_test(NAME browser-installed-package-layout
+  COMMAND ${CMAKE_COMMAND}
+    -DARDALI_BUILD_DIR=${CMAKE_CURRENT_BINARY_DIR}
+    -DARDALI_INSTALL_BINDIR=${CMAKE_INSTALL_BINDIR}
+    -P ${CMAKE_CURRENT_SOURCE_DIR}/browser/cmake/verify_install_layout.cmake
+)
+set_tests_properties(browser-installed-package-layout PROPERTIES TIMEOUT 90)
+
 add_executable(ardali-browser-credential-vault-test
   browser/native/tests/credential_vault_test.cpp
   browser/native/passwords/credential_vault.cpp
@@ -887,6 +921,26 @@ include(GNUInstallDirs)
 
 install(TARGETS ardali-browser
   RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+)
+
+# The Web Audio engine is compiled from the checked-in .dl sources.  Keep the
+# generated modules beside the installed executable: WebAudioEffectsController
+# deliberately loads these trusted modules from disk before injecting them into
+# supported media pages.  Omitting this directory made development builds work
+# while distro/AUR installs silently had no DSP engine.
+install(FILES
+  ${DALI_WEB_OUTPUT_MODULE}
+  ${DALI_WEB_EQ32_MODULE}
+  ${DALI_WEB_COMPRESSOR_MODULE}
+  ${DALI_WEB_LIMITER_MODULE}
+  ${DALI_WEB_BASS_ENHANCER_MODULE}
+  ${DALI_WEB_AUTO_GAIN_MODULE}
+  DESTINATION ${CMAKE_INSTALL_BINDIR}/dali
+)
+
+# The policy follows the same executable-relative lookup used by main.cpp.
+install(FILES ${DALI_POLICY_JSON}
+  DESTINATION ${CMAKE_INSTALL_BINDIR}
 )
 
 install(DIRECTORY i18n

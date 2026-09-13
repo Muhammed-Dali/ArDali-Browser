@@ -16,6 +16,7 @@
 #include <QPainterPath>
 #include <QPushButton>
 #include <QSettings>
+#include <QSignalBlocker>
 #include <QStyledItemDelegate>
 #include <QStyleOptionViewItem>
 #include <QVBoxLayout>
@@ -155,14 +156,34 @@ EqPresetPage::EqPresetPage(WebAudioEffectsController *controller, QWidget *paren
   auto *modes = new QHBoxLayout; fullButton_ = new QPushButton(QStringLiteral("Tam"), this); balancedButton_ = new QPushButton(QStringLiteral("Dengeli"), this); minimumButton_ = new QPushButton(QStringLiteral("Minimum"), this);
   for (QPushButton *button : {fullButton_, balancedButton_, minimumButton_}) { button->setCheckable(true); button->setObjectName(QStringLiteral("eq-preset-mode")); modes->addWidget(button); } modes->addStretch(); layout->addLayout(modes);
   performanceHint_ = new QLabel(this); performanceHint_->setObjectName(QStringLiteral("eq-preset-hint")); layout->addWidget(performanceHint_);
-  group_ = new QComboBox(this); group_->setObjectName(QStringLiteral("eq-preset-group")); for (const QString &id : EqPresetRepository::groupOrder()) group_->addItem(groupName(id), id); layout->addWidget(group_, 0, Qt::AlignLeft);
+  group_ = new QComboBox(this);
+  group_->setObjectName(QStringLiteral("eq-preset-group"));
+  for (const QString &id : EqPresetRepository::groupOrder()) {
+    int count = 0;
+    for (const EqPreset &preset : repository_.presets()) {
+      if (id == QLatin1String("all") || preset.groups.contains(id)) ++count;
+    }
+    group_->addItem(QStringLiteral("%1 (%2)").arg(groupName(id)).arg(count), id);
+  }
+  group_->setToolTip(QStringLiteral("Kategori seçildiğinde marka/model araması temizlenir."));
+  layout->addWidget(group_, 0, Qt::AlignLeft);
   status_ = new QLabel(this); status_->setObjectName(QStringLiteral("eq-preset-status")); layout->addWidget(status_);
   list_ = new QListView(this); list_->setObjectName(QStringLiteral("eq-preset-list")); list_->setUniformItemSizes(true); list_->setSelectionMode(QAbstractItemView::SingleSelection); list_->setItemDelegate(new PresetDelegate(this)); list_->setModel(new PresetModel(this)); layout->addWidget(list_, 1);
   auto *footer = new QHBoxLayout; footer->addStretch();
   auto *ok = new QPushButton(QStringLiteral("Kaydet"), this); ok->setObjectName(QStringLiteral("eq-preset-ok")); ok->setFixedSize(112, 36); footer->addWidget(ok); layout->addLayout(footer);
   group_->setMinimumWidth(172);
   setStyleSheet(QStringLiteral("#eq-preset-page{background:#030303}#eq-preset-title{color:#edf4f7;font-size:28px;font-weight:800}#eq-preset-rule{background:#00aeca}#eq-preset-search,#eq-preset-group{background:#090b0d;border:1px solid #2c363d;border-radius:20px;padding:10px;color:#e8f4f5;font-size:14px}#eq-preset-mode{border:1px solid #2d343a;border-radius:16px;padding:6px 14px;background:#090b0d;color:#e6edf2}#eq-preset-mode:checked{background:#083941;border-color:#18bfd0}#eq-preset-hint,#eq-preset-status{color:#a4b0b9}#eq-preset-list{background:#050607;border:1px solid #202a30;border-radius:12px}#eq-preset-ok{background:#20d7bd;color:#001b1c;font-size:14px;font-weight:800;border:0;border-radius:9px;padding:0 18px}#eq-preset-ok:hover{background:#35e4c9}#eq-preset-ok:pressed{background:#18bda7}"));
-  connect(search_, &QLineEdit::textChanged, this, [this] { applyFilter(); }); connect(group_, qOverload<int>(&QComboBox::currentIndexChanged), this, [this] { applyFilter(); });
+  connect(search_, &QLineEdit::textChanged, this, [this] { applyFilter(); });
+  connect(group_, qOverload<int>(&QComboBox::currentIndexChanged), this, [this] {
+    // A device search such as "Sony" should not make musical categories look
+    // empty.  Choosing a category is a new browsing action, so reveal that
+    // category's complete preset collection.
+    if (!search_->text().isEmpty()) {
+      const QSignalBlocker blocker(search_);
+      search_->clear();
+    }
+    applyFilter();
+  });
   connect(list_, &QListView::clicked, this, &EqPresetPage::preview); connect(ok, &QPushButton::clicked, this, &EqPresetPage::commit);
   connect(fullButton_, &QPushButton::clicked, this, [this] { setPerformanceMode(0); });
   connect(balancedButton_, &QPushButton::clicked, this, [this] { setPerformanceMode(1); });

@@ -3,6 +3,7 @@
 #include "audio_platform_policy.h"
 
 #include <QFile>
+#include <QDir>
 #include <QCoreApplication>
 #include <QDebug>
 #include <QJsonArray>
@@ -221,6 +222,25 @@ struct CompressorMeterAggregation {
   double reductionDb = 0.0;
   bool available = false;
 };
+
+QString resolveDaliModulePath(const QString &relativeSubPath) {
+  const QDir appDir(QCoreApplication::applicationDirPath());
+  const QStringList candidates{
+      appDir.absoluteFilePath(relativeSubPath),
+      appDir.absoluteFilePath(QStringLiteral("../lib/ardali-browser/") + relativeSubPath),
+      appDir.absoluteFilePath(QStringLiteral("../lib64/ardali-browser/") + relativeSubPath),
+      QStringLiteral("/usr/lib/ardali-browser/") + relativeSubPath,
+      QStringLiteral("/usr/local/lib/ardali-browser/") + relativeSubPath,
+      appDir.absoluteFilePath(QStringLiteral("../share/ardali-browser/") + relativeSubPath),
+      QStringLiteral("/usr/share/ardali-browser/") + relativeSubPath,
+  };
+  for (const QString &candidate : candidates) {
+    if (QFile::exists(candidate)) {
+      return candidate;
+    }
+  }
+  return appDir.absoluteFilePath(relativeSubPath);
+}
 }  // namespace
 
 WebAudioEffectsController::WebAudioEffectsController(QObject *parent) : QObject(parent) {
@@ -232,7 +252,9 @@ WebAudioEffectsController::WebAudioEffectsController(QObject *parent) : QObject(
   applyTimer_.setInterval(kApplyCoalesceMs);
   connect(&applyTimer_, &QTimer::timeout, this, &WebAudioEffectsController::applyToAllWebViews);
   QSettings settings;
-  enabled_ = settings.value(QStringLiteral("audioEffects/web/global/enabled"), true).toBool();
+  // Audio processing is opt-in.  Once the user enables it the value is
+  // persisted immediately by setEnabled(), including for installed builds.
+  enabled_ = settings.value(QStringLiteral("audioEffects/web/global/enabled"), false).toBool();
   preampDb_ = std::clamp(settings.value(QStringLiteral("audioEffects/web/output/preampDb"), 0.0).toDouble(), kMinPreampDb, kMaxPreampDb);
   if (qEnvironmentVariableIntValue("ARDALI_FEATURE_DIAGNOSTICS") == 1) {
     qInfo().noquote() << "[AUDIO] DALI runtime initialized";
@@ -1143,6 +1165,7 @@ void WebAudioEffectsController::persist() {
   settings.setValue(QStringLiteral("audioEffects/web/autoGain/maxGainDb"), autoGainMaxGainDb_);
   settings.setValue(QStringLiteral("audioEffects/web/autoGain/speed"), autoGainSpeed_);
   settings.setValue(QStringLiteral("audioEffects/web/autoGain/preset"), autoGainPreset_);
+  settings.sync();
 }
 
 void WebAudioEffectsController::schedulePersist() {
@@ -1156,8 +1179,7 @@ void WebAudioEffectsController::scheduleApply() {
 
 QString WebAudioEffectsController::daliModuleSource() const {
   if (!daliModuleSource_.isEmpty()) return daliModuleSource_;
-  const QString path = QCoreApplication::applicationDirPath()
-      + QStringLiteral("/") + QStringLiteral(ARDALI_WEB_OUTPUT_DALI_MODULE_RELATIVE_PATH);
+  const QString path = resolveDaliModulePath(QStringLiteral(ARDALI_WEB_OUTPUT_DALI_MODULE_RELATIVE_PATH));
   QFile file(path);
   if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) return {};
   daliModuleSource_ = QString::fromUtf8(file.readAll());
@@ -1166,8 +1188,7 @@ QString WebAudioEffectsController::daliModuleSource() const {
 
 QString WebAudioEffectsController::daliEqModuleSource() const {
   if (!daliEqModuleSource_.isEmpty()) return daliEqModuleSource_;
-  const QString path = QCoreApplication::applicationDirPath()
-      + QStringLiteral("/") + QStringLiteral(ARDALI_WEB_EQ32_DALI_MODULE_RELATIVE_PATH);
+  const QString path = resolveDaliModulePath(QStringLiteral(ARDALI_WEB_EQ32_DALI_MODULE_RELATIVE_PATH));
   QFile file(path);
   if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) return {};
   daliEqModuleSource_ = QString::fromUtf8(file.readAll());
@@ -1176,8 +1197,7 @@ QString WebAudioEffectsController::daliEqModuleSource() const {
 
 QString WebAudioEffectsController::daliCompressorModuleSource() const {
   if (!daliCompressorModuleSource_.isEmpty()) return daliCompressorModuleSource_;
-  const QString path = QCoreApplication::applicationDirPath()
-      + QStringLiteral("/") + QStringLiteral(ARDALI_WEB_COMPRESSOR_DALI_MODULE_RELATIVE_PATH);
+  const QString path = resolveDaliModulePath(QStringLiteral(ARDALI_WEB_COMPRESSOR_DALI_MODULE_RELATIVE_PATH));
   QFile file(path);
   if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) return {};
   daliCompressorModuleSource_ = QString::fromUtf8(file.readAll());
@@ -1186,8 +1206,7 @@ QString WebAudioEffectsController::daliCompressorModuleSource() const {
 
 QString WebAudioEffectsController::daliLimiterModuleSource() const {
   if (!daliLimiterModuleSource_.isEmpty()) return daliLimiterModuleSource_;
-  const QString path = QCoreApplication::applicationDirPath()
-      + QStringLiteral("/") + QStringLiteral(ARDALI_WEB_LIMITER_DALI_MODULE_RELATIVE_PATH);
+  const QString path = resolveDaliModulePath(QStringLiteral(ARDALI_WEB_LIMITER_DALI_MODULE_RELATIVE_PATH));
   QFile file(path);
   if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) return {};
   daliLimiterModuleSource_ = QString::fromUtf8(file.readAll());
@@ -1196,8 +1215,8 @@ QString WebAudioEffectsController::daliLimiterModuleSource() const {
 
 QString WebAudioEffectsController::daliBassEnhancerModuleSource() const {
   if (!daliBassEnhancerModuleSource_.isEmpty()) return daliBassEnhancerModuleSource_;
-  QFile file(QCoreApplication::applicationDirPath()
-      + QStringLiteral("/") + QStringLiteral(ARDALI_WEB_BASS_ENHANCER_DALI_MODULE_RELATIVE_PATH));
+  const QString path = resolveDaliModulePath(QStringLiteral(ARDALI_WEB_BASS_ENHANCER_DALI_MODULE_RELATIVE_PATH));
+  QFile file(path);
   if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) return {};
   daliBassEnhancerModuleSource_ = QString::fromUtf8(file.readAll());
   return daliBassEnhancerModuleSource_;
@@ -1205,8 +1224,8 @@ QString WebAudioEffectsController::daliBassEnhancerModuleSource() const {
 
 QString WebAudioEffectsController::daliAutoGainModuleSource() const {
   if (!daliAutoGainModuleSource_.isEmpty()) return daliAutoGainModuleSource_;
-  QFile file(QCoreApplication::applicationDirPath()
-      + QStringLiteral("/") + QStringLiteral(ARDALI_WEB_AUTO_GAIN_DALI_MODULE_RELATIVE_PATH));
+  const QString path = resolveDaliModulePath(QStringLiteral(ARDALI_WEB_AUTO_GAIN_DALI_MODULE_RELATIVE_PATH));
+  QFile file(path);
   if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) return {};
   daliAutoGainModuleSource_ = QString::fromUtf8(file.readAll());
   return daliAutoGainModuleSource_;
@@ -1521,9 +1540,6 @@ QString WebAudioEffectsController::injectionScript() const {
       }
       for (const dead of toRemove) {
         root.disconnectEqGraph(dead);
-        if (dead.element) {
-          try { root.graphs.delete(dead.element); } catch (_) {}
-        }
         root.graphList.delete(dead);
       }
     };
@@ -2447,13 +2463,26 @@ QString WebAudioEffectsController::injectionScript() const {
       const rates = [];
       const contextStates = [];
       for (const element of media) {
+        // Do not take ownership of YouTube's media element while its MSE
+        // pipeline is still being prepared.  Attaching at HAVE_CURRENT_DATA
+        // (or once playback has started) avoids an intermittent endless
+        // spinner; canplay/playing listeners below trigger a fresh scan.
+        if (element.readyState < 2 && element.paused) continue;
         let graph = root.graphs.get(element);
         if (!graph) {
           if (!cfg.enabled) continue;
           const Ctx = window.AudioContext || window.webkitAudioContext;
           if (!Ctx) continue;
           try {
-            const ctx = new Ctx();
+            // Use one playback-tuned context per document.  The default
+            // interactive latency uses a much smaller output buffer and can
+            // produce periodic clicks under a busy video page.
+            let ctx = root.audioContext;
+            if (!ctx || ctx.state === 'closed') {
+              try { ctx = new Ctx({ latencyHint: 'playback' }); }
+              catch (_) { ctx = new Ctx(); }
+              root.audioContext = ctx;
+            }
             const source = ctx.createMediaElementSource(element);
             graph = { ctx: ctx, source: source, graph: null, bypass: false, element: element };
             root.graphs.set(element, graph);
@@ -2465,6 +2494,7 @@ QString WebAudioEffectsController::injectionScript() const {
           }
         } else {
           graph.element = element;
+          root.graphList.add(graph);
         }
 
         if (cfg.enabled && root.buildOutputGraph && root.eqTemplate) {
@@ -2541,6 +2571,12 @@ QString WebAudioEffectsController::injectionScript() const {
         if (event.target && event.target.matches && event.target.matches('audio,video')) root.queueMediaScan();
       }, true);
       document.addEventListener('loadedmetadata', function(event) {
+        if (event.target && event.target.matches && event.target.matches('audio,video')) root.queueMediaScan();
+      }, true);
+      document.addEventListener('canplay', function(event) {
+        if (event.target && event.target.matches && event.target.matches('audio,video')) root.queueMediaScan();
+      }, true);
+      document.addEventListener('play', function(event) {
         if (event.target && event.target.matches && event.target.matches('audio,video')) root.queueMediaScan();
       }, true);
     }
