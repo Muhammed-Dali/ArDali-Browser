@@ -34,8 +34,8 @@
   <meta name="twitter:image" content="https://muhammed-dali.github.io/ArDali-Browser/assets/images/hero-browser.png">
 
   <!-- Icons -->
-  <link rel="icon" type="image/svg+xml" href="favicon.svg">
-  <link rel="icon" type="image/png" sizes="32x32" href="favicon.png">
+  <link rel="icon" type="image/png" sizes="128x128" href="assets/images/ardali-logo-128.png">
+  <link rel="apple-touch-icon" href="assets/images/ardali-logo-128.png">
 
   <!-- Local Stylesheet (Zero external CDNs or Google Fonts) -->
   <link rel="stylesheet" href="assets/css/main.css">
@@ -50,7 +50,7 @@
       <a href="./" class="brand-link" aria-label="ArDali Browser Home">
         <img src="assets/images/ardali-logo-128.png" alt="ArDali Browser Logo" class="brand-logo" width="38" height="38">
         <span>ArDali</span>
-        <span class="brand-badge">v7.0</span>
+        <span class="brand-badge">v7.1</span>
       </a>
 
       <nav class="site-nav" aria-label="Main Navigation">
@@ -119,11 +119,11 @@
 
         <div class="hero-platforms">
           <span class="platform-item">
-            <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12.001 2c-2.42 0-4.382 1.96-4.382 4.38 0 1.258.531 2.39 1.383 3.19-.244.606-.525 1.272-.806 1.954-1.398 3.39-2.696 6.54-2.696 8.476 0 .552.448 1 1 1h11c.552 0 1-.448 1-1 0-1.936-1.298-5.086-2.696-8.476-.281-.682-.562-1.348-.806-1.954.852-.8 1.383-1.932 1.383-3.19C16.383 3.96 14.421 2 12.001 2zm-1.5 5a1 1 0 110-2 1 1 0 010 2zm3 0a1 1 0 110-2 1 1 0 010 2z"/></svg>
+            <img src="assets/icons/linux.svg" alt="" aria-hidden="true" width="16" height="16">
             Linux (Arch AUR, Pacman, Standalone)
           </span>
           <span class="platform-item">
-            <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M3 5.479l7.377-1.016v7.127H3V5.479zm0 13.042l7.377 1.018v-7.04H3v6.022zm8.32 1.149L21 21V11.59h-9.68v8.08zm0-15.341v8.092H21V3l-9.68 1.329z"/></svg>
+            <img src="assets/icons/windows.svg" alt="" aria-hidden="true" width="16" height="16">
             Windows
           </span>
         </div>
@@ -535,7 +535,7 @@
           <div class="download-card">
             <div class="download-card-header">
               <div class="platform-icon">
-                <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12.001 2c-2.42 0-4.382 1.96-4.382 4.38 0 1.258.531 2.39 1.383 3.19-.244.606-.525 1.272-.806 1.954-1.398 3.39-2.696 6.54-2.696 8.476 0 .552.448 1 1 1h11c.552 0 1-.448 1-1 0-1.936-1.298-5.086-2.696-8.476-.281-.682-.562-1.348-.806-1.954.852-.8 1.383-1.932 1.383-3.19C16.383 3.96 14.421 2 12.001 2zm-1.5 5a1 1 0 110-2 1 1 0 010 2zm3 0a1 1 0 110-2 1 1 0 010 2z"/></svg>
+                <img src="assets/icons/linux.svg" alt="Linux" width="24" height="24">
               </div>
               <div>
                 <h3 class="download-card-title">Linux</h3>
@@ -545,18 +545,18 @@
 
             <div class="install-methods">
               <div class="install-method">
-                <span class="install-method-label">AUR (Precompiled Binary)</span>
+                <span class="install-method-label">Official Pacman Repository (Recommended)</span>
                 <div class="code-box">
-                  <code id="cmd-aur-bin">yay -S ardali-bin</code>
-                  <button type="button" class="copy-btn" data-target="cmd-aur-bin" data-copied="Copied!">Copy</button>
+                  <code id="cmd-pacman">curl -fsSL https://muhammed-dali.github.io/ArDali-Browser/ardali.repo | sudo tee -a /etc/pacman.conf &gt;/dev/null &amp;&amp; sudo pacman -Syu ardali</code>
+                  <button type="button" class="copy-btn" data-target="cmd-pacman" data-copied="Copied!">Copy</button>
                 </div>
               </div>
 
               <div class="install-method">
-                <span class="install-method-label">AUR (Build from Source)</span>
+                <span class="install-method-label">AUR Package</span>
                 <div class="code-box">
-                  <code id="cmd-aur-src">yay -S ardali</code>
-                  <button type="button" class="copy-btn" data-target="cmd-aur-src" data-copied="Copied!">Copy</button>
+                  <code id="cmd-aur">yay -S ardali-bin</code>
+                  <button type="button" class="copy-btn" data-target="cmd-aur" data-copied="Copied!">Copy</button>
                 </div>
               </div>
             </div>
@@ -574,7 +574,7 @@
           <div class="download-card">
             <div class="download-card-header">
               <div class="platform-icon">
-                <svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 5.479l7.377-1.016v7.127H3V5.479zm0 13.042l7.377 1.018v-7.04H3v6.022zm8.32 1.149L21 21V11.59h-9.68v8.08zm0-15.341v8.092H21V3l-9.68 1.329z"/></svg>
+                <img src="assets/icons/windows.svg" alt="Windows" width="24" height="24">
               </div>
               <div>
                 <h3 class="download-card-title">Windows</h3>
@@ -586,7 +586,7 @@
               <div class="install-method">
                 <span class="install-method-label">Standalone Release Package</span>
                 <p style="font-size: 0.85rem; color: var(--text-secondary); margin-top: 0.25rem;">
-                  Portable zip bundles and automated installers are published alongside every stable tag.
+                  A Windows package is not included in v7.1.0 yet. Follow GitHub Releases for future Windows builds.
                 </p>
               </div>
             </div>

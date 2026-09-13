@@ -1,3 +1,13 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true">
-  <path d="M12.001 2c-2.42 0-4.382 1.96-4.382 4.38 0 1.258.531 2.39 1.383 3.19-.244.606-.525 1.272-.806 1.954-1.398 3.39-2.696 6.54-2.696 8.476 0 .552.448 1 1 1h11c.552 0 1-.448 1-1 0-1.936-1.298-5.086-2.696-8.476-.281-.682-.562-1.348-.806-1.954.852-.8 1.383-1.932 1.383-3.19C16.383 3.96 14.421 2 12.001 2zm-1.5 5a1 1 0 110-2 1 1 0 010 2zm3 0a1 1 0 110-2 1 1 0 010 2z"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="Linux">
+  <ellipse cx="32" cy="34" rx="19" ry="25" fill="#17191c"/>
+  <ellipse cx="32" cy="39" rx="13" ry="18" fill="#f4f6f8"/>
+  <ellipse cx="25.5" cy="20" rx="6" ry="7" fill="#f4f6f8"/>
+  <ellipse cx="38.5" cy="20" rx="6" ry="7" fill="#f4f6f8"/>
+  <circle cx="27" cy="20" r="2.1" fill="#17191c"/>
+  <circle cx="37" cy="20" r="2.1" fill="#17191c"/>
+  <path d="M32 23l-7 5 7 4 7-4z" fill="#f4a62a"/>
+  <path d="M20 51c-7 0-11 3-12 7 5 1 12 0 17-3z" fill="#f4a62a"/>
+  <path d="M44 51c7 0 11 3 12 7-5 1-12 0-17-3z" fill="#f4a62a"/>
+  <path d="M15 31c-6 5-7 13-4 18l8-7z" fill="#17191c"/>
+  <path d="M49 31c6 5 7 13 4 18l-8-7z" fill="#17191c"/>
 </svg>

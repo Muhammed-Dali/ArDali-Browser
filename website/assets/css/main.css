@@ -405,10 +405,11 @@ img, svg {
   gap: 0.4rem;
 }
 
-.platform-item svg {
+.platform-item svg,
+.platform-item img {
   width: 16px;
   height: 16px;
-  color: var(--text-secondary);
+  object-fit: contain;
 }
 
 /* Browser Mockup Showcase */
@@ -888,9 +889,11 @@ img, svg {
   color: var(--accent-cyan);
 }
 
-.platform-icon svg {
+.platform-icon svg,
+.platform-icon img {
   width: 24px;
   height: 24px;
+  object-fit: contain;
 }
 
 .download-card-title {
