@@ -138,27 +138,15 @@ yay -S ardali
 
 All packages and repository databases are cryptographically signed with the official GPG release key (`BC741FD0AC804351B0DDBB86FDFEC60C11202588`).
 
-**Step 1: Import and trust the signing key in pacman keyring**
+You can automatically import the GPG signing key, register the repository into `/etc/pacman.conf`, and install ArDali Browser without manually editing configuration files:
 
 ```bash
-# Download and import the ArDali GPG public key
+# 1. Import and locally trust the official GPG signing key
 curl -sL https://github.com/Muhammed-Dali/ArDali-Browser/releases/download/pacman-repo/ardali.gpg | sudo pacman-key --add -
-
-# Locally sign/trust the key
 sudo pacman-key --lsign-key BC741FD0AC804351B0DDBB86FDFEC60C11202588
-```
 
-**Step 2: Add repository to `/etc/pacman.conf`**
-
-```ini
-[ardali]
-SigLevel = Required DatabaseOptional
-Server = https://github.com/Muhammed-Dali/ArDali-Browser/releases/download/pacman-repo
-```
-
-**Step 3: Synchronize databases and install**
-
-```bash
+# 2. Add the repository to pacman.conf and install
+echo -e "\n[ardali]\nSigLevel = Required DatabaseOptional\nServer = https://github.com/Muhammed-Dali/ArDali-Browser/releases/download/pacman-repo" | sudo tee -a /etc/pacman.conf
 sudo pacman -Syu ardali
 ```
 
