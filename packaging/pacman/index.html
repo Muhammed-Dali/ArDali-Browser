@@ -7,11 +7,14 @@
 </head>
 <body>
   <h1>ArDali Pacman Repository</h1>
+  <p>All packages are cryptographically signed. First, import and trust the GPG signing key:</p>
+  <pre><code>curl -sL https://github.com/Muhammed-Dali/ArDali-Browser/releases/download/pacman-repo/ardali.gpg | sudo pacman-key --add -
+sudo pacman-key --lsign-key BC741FD0AC804351B0DDBB86FDFEC60C11202588</code></pre>
   <p>Add the following repository to <code>/etc/pacman.conf</code>:</p>
   <pre>[ardali]
-SigLevel = Optional TrustAll
+SigLevel = Required DatabaseOptional
 Server = https://github.com/Muhammed-Dali/ArDali-Browser/releases/download/pacman-repo</pre>
   <p>Then install with <code>sudo pacman -Syu ardali</code>.</p>
-  <p><a href="ardali.repo">Download ardali.repo</a></p>
+  <p><a href="ardali.gpg">Download GPG Public Key (ardali.gpg)</a> | <a href="ardali.repo">Download ardali.repo</a></p>
 </body>
 </html>

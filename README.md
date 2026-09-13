@@ -134,17 +134,29 @@ yay -S ardali
 
 ---
 
-### 2. Official ArDali Pacman Repository
+### 2. Official ArDali Pacman Repository (Signed)
 
-To receive regular updates directly through `pacman`, append the following lines to `/etc/pacman.conf`:
+All packages and repository databases are cryptographically signed with the official GPG release key (`BC741FD0AC804351B0DDBB86FDFEC60C11202588`).
+
+**Step 1: Import and trust the signing key in pacman keyring**
+
+```bash
+# Download and import the ArDali GPG public key
+curl -sL https://github.com/Muhammed-Dali/ArDali-Browser/releases/download/pacman-repo/ardali.gpg | sudo pacman-key --add -
+
+# Locally sign/trust the key
+sudo pacman-key --lsign-key BC741FD0AC804351B0DDBB86FDFEC60C11202588
+```
+
+**Step 2: Add repository to `/etc/pacman.conf`**
 
 ```ini
 [ardali]
-SigLevel = Optional TrustAll
+SigLevel = Required DatabaseOptional
 Server = https://github.com/Muhammed-Dali/ArDali-Browser/releases/download/pacman-repo
 ```
 
-Then update your package databases and install:
+**Step 3: Synchronize databases and install**
 
 ```bash
 sudo pacman -Syu ardali
