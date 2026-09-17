@@ -47,3 +47,14 @@ Testing/
 # Local build directories
 /build-step2-*/
 /build-step2-*.log
+
+# Local build artifacts
+/build/
+/build-ci-local/
+/build-release-*/
+/build-step2-*/
+/release-root-*/
+/dist/
+
+/build-*.log
+/build-step2-*.log
