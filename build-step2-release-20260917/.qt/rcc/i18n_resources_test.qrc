@@ -1,0 +1,9 @@
+<RCC>
+  <qresource prefix="/i18n">
+    <file alias="languages.json">/home/muhammetdli/ArDali/i18n/languages.json</file>
+    <file alias="translations/en.json">/home/muhammetdli/ArDali/i18n/translations/en.json</file>
+    <file alias="translations/tr.json">/home/muhammetdli/ArDali/i18n/translations/tr.json</file>
+    <file alias="translations/ar.json">/home/muhammetdli/ArDali/i18n/translations/ar.json</file>
+  </qresource>
+</RCC>
+

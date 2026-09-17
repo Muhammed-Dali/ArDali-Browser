@@ -97,6 +97,8 @@ class SettingsPage final : public QWidget {
   QStackedWidget *privacyStack_ = nullptr;
   PrivacyDetailSubpage *privacySubpage_ = nullptr;
   std::function<void()> updatePrivacySubtitles_;
+  std::function<void()> refreshHistory_;
+  std::function<void()> refreshBookmarks_;
   QHash<Category, int> categoryIndexes_;
   QHash<int, QString> searchKeywords_;
   QHash<int, int> contentSidebarRows_;

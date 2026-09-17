@@ -147,6 +147,10 @@ class BrowserProfileService final : public QObject, public ardali::core::IBrowse
   QList<BrowserDownloadEntry> recentDownloads() const;
   QList<BrowserDownloadEntry> nativeDownloads() const;
 
+  QList<BrowserHistoryEntry> searchHistory(const QString &query, int maxResults = 100) const;
+  bool removeHistoryEntry(const QUrl &url, const QDateTime &visitedAt = QDateTime{});
+  bool removeHistoryEntriesForUrl(const QUrl &url);
+
   void rememberClosedTab(const QUrl &url, const QString &title);
   bool hasClosedTabs() const;
   std::optional<ClosedTabEntry> takeMostRecentClosedTab();
@@ -163,6 +167,29 @@ class BrowserProfileService final : public QObject, public ardali::core::IBrowse
   bool isBookmarked(const QUrl &url) const;
   bool toggleBookmark(const QUrl &url);
 
+  struct BookmarkItem {
+    QString title;
+    QUrl url;
+    QString folder;
+    QDateTime dateAdded;
+  };
+  QList<BookmarkItem> bookmarkItems() const;
+  bool addBookmark(const QUrl &url, const QString &title = QString{}, const QString &folder = QString{});
+  bool removeBookmark(const QUrl &url);
+  bool createBookmarkFolder(const QString &folderName);
+  bool removeBookmarkFolder(const QString &folderName, bool deleteContents = true);
+  bool moveBookmarkToFolder(const QUrl &url, const QString &targetFolder);
+  bool renameBookmarkFolder(const QString &oldName, const QString &newName);
+  QStringList bookmarkFolders() const;
+  QString exportBookmarksToHtml() const;
+  int importBookmarksFromHtml(const QString &htmlContent);
+
+  QString secureDnsMode() const;
+  void setSecureDnsMode(const QString &mode);
+  QString secureDnsTemplate() const;
+  void setSecureDnsTemplate(const QString &templateUrl);
+  void applySecureDnsSettings();
+
  signals:
   void downloadsChanged();
   void bookmarksChanged();
@@ -173,6 +200,7 @@ class BrowserProfileService final : public QObject, public ardali::core::IBrowse
   void searchSuggestionsChanged(bool enabled);
   void searchEngineChanged(const QString &engine);
   void closedTabsChanged();
+  void secureDnsChanged();
 
  private:
   QString downloadDirectory() const;

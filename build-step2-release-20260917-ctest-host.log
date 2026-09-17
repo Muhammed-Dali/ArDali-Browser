@@ -1,0 +1,73 @@
+Test project /home/muhammetdli/ArDali/build-step2-release-20260917
+      Start  1: browser-policy-test
+ 1/34 Test  #1: browser-policy-test ........................   Passed    0.07 sec
+      Start  2: browser-security-utils
+ 2/34 Test  #2: browser-security-utils .....................   Passed    0.01 sec
+      Start  3: browser-web-engine-hardware-acceleration
+ 3/34 Test  #3: browser-web-engine-hardware-acceleration ...   Passed    0.01 sec
+      Start  4: browser-web-engine-memory-policy
+ 4/34 Test  #4: browser-web-engine-memory-policy ...........   Passed    0.01 sec
+      Start  5: browser-eq-preset-repository
+ 5/34 Test  #5: browser-eq-preset-repository ...............   Passed    0.05 sec
+      Start  6: browser-web-audio-effects
+ 6/34 Test  #6: browser-web-audio-effects ..................   Passed    0.33 sec
+      Start  7: browser-installed-package-layout
+ 7/34 Test  #7: browser-installed-package-layout ...........   Passed    0.13 sec
+      Start  8: browser-credential-vault-test
+ 8/34 Test  #8: browser-credential-vault-test ..............   Passed    4.06 sec
+      Start  9: browser-password-autofill-test
+ 9/34 Test  #9: browser-password-autofill-test .............   Passed   66.82 sec
+      Start 10: browser-password-manager-page-test
+10/34 Test #10: browser-password-manager-page-test .........   Passed    0.39 sec
+      Start 11: browser-song-finder
+11/34 Test #11: browser-song-finder ........................   Passed    1.84 sec
+      Start 12: browser-media-download-service
+12/34 Test #12: browser-media-download-service .............   Passed    0.20 sec
+      Start 13: browser-general-download-manager
+13/34 Test #13: browser-general-download-manager ...........   Passed   50.88 sec
+      Start 14: browser-new-tab-asset-resolver
+14/34 Test #14: browser-new-tab-asset-resolver .............   Passed    0.00 sec
+      Start 15: browser-download-ui-model
+15/34 Test #15: browser-download-ui-model ..................   Passed    0.00 sec
+      Start 16: browser-local-media-routing
+16/34 Test #16: browser-local-media-routing ................   Passed    0.00 sec
+      Start 17: browser-application-identity
+17/34 Test #17: browser-application-identity ...............   Passed    0.01 sec
+      Start 18: browser-media-platform-registry
+18/34 Test #18: browser-media-platform-registry ............   Passed    0.00 sec
+      Start 19: browser-desktop-tab-system
+19/34 Test #19: browser-desktop-tab-system .................   Passed    1.45 sec
+      Start 20: browser-tab-drag-controller
+20/34 Test #20: browser-tab-drag-controller ................   Passed    0.23 sec
+      Start 21: browser-critical-tab-drag-scenario
+21/34 Test #21: browser-critical-tab-drag-scenario .........   Passed    0.05 sec
+      Start 22: browser-runtime-feature-integration
+22/34 Test #22: browser-runtime-feature-integration ........   Passed    0.95 sec
+      Start 23: browser-phase2a-policy
+23/34 Test #23: browser-phase2a-policy .....................   Passed    0.06 sec
+      Start 24: browser-tab-scheduler-retry
+24/34 Test #24: browser-tab-scheduler-retry ................   Passed    0.39 sec
+      Start 25: browser-tab-hover-card
+25/34 Test #25: browser-tab-hover-card .....................   Passed    0.24 sec
+      Start 26: browser-address-input-resolver
+26/34 Test #26: browser-address-input-resolver .............   Passed    0.01 sec
+      Start 27: browser-omnibox-navigation-integration
+27/34 Test #27: browser-omnibox-navigation-integration .....   Passed    0.01 sec
+      Start 28: browser-smart-omnibox-phase2
+28/34 Test #28: browser-smart-omnibox-phase2 ...............   Passed    0.04 sec
+      Start 29: smart_omnibox_phase2_1_test
+29/34 Test #29: smart_omnibox_phase2_1_test ................   Passed    3.04 sec
+      Start 30: ardali-phase22d
+30/34 Test #30: ardali-phase22d ............................   Passed   12.52 sec
+      Start 31: ardali-phase22d-integration
+31/34 Test #31: ardali-phase22d-integration ................   Passed    8.96 sec
+      Start 32: browser-site-permission
+32/34 Test #32: browser-site-permission ....................   Passed   17.46 sec
+      Start 33: browser-context-menu
+33/34 Test #33: browser-context-menu .......................   Passed    1.02 sec
+      Start 34: language-manager-test
+34/34 Test #34: language-manager-test ......................   Passed    0.12 sec
+
+100% tests passed out of 34
+
+Total Test time (real) = 171.39 sec

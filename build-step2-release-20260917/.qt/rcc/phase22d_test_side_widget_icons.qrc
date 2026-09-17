@@ -1,0 +1,6 @@
+<RCC>
+  <qresource prefix="/side-widget-icons">
+    <file alias="deliblock.svg">/home/muhammetdli/ArDali/browser/assets/side-widget-icons/deliblock.svg</file>
+  </qresource>
+</RCC>
+

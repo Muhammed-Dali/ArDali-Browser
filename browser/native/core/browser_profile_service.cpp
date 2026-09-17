@@ -20,6 +20,8 @@
 #if QT_VERSION >= QT_VERSION_CHECK(6, 8, 0)
 #include <QWebEnginePermission>
 #endif
+#include <QtWebEngineCore/qwebengineglobalsettings.h>
+#include <QRegularExpression>
 #include <QWebEngineProfile>
 #include <QWebEngineSettings>
 #include <QWebEngineUrlRequestInfo>
@@ -168,6 +170,7 @@ BrowserProfileService::BrowserProfileService(const QString &dataDirectory, const
   credentialVault_ = new CredentialVaultManager(dataDirectory, this);
   translateService_ = new TranslateService(this, nullptr, credentialVault_);
   translateService_->loadPreferences(preferences_);
+  applySecureDnsSettings();
   connect(blockerService_->settings(), &ArDaliBlockerSettings::settingsChanged, this, &BrowserProfileService::refreshCookieFilter);
   connect(this, &BrowserProfileService::contentSettingsChanged, this, &BrowserProfileService::refreshCookieFilter);
   refreshCookieFilter();
@@ -1318,21 +1321,11 @@ bool BrowserProfileService::isBookmarked(const QUrl &url) const {
 }
 
 bool BrowserProfileService::toggleBookmark(const QUrl &url) {
-  const QUrl persistentUrl = BrowserSecurity::sanitizeUrlForPersistence(url);
-  if (!persistentUrl.isValid() || (persistentUrl.scheme() != QLatin1String("http") && persistentUrl.scheme() != QLatin1String("https"))) return false;
-  const QString normalized = persistentUrl.adjusted(QUrl::RemoveFragment).toString(QUrl::FullyEncoded);
-  QStringList values;
-  bool removed = false;
-  for (const QUrl &bookmark : bookmarks()) {
-    const QString existing = bookmark.adjusted(QUrl::RemoveFragment).toString(QUrl::FullyEncoded);
-    if (existing == normalized) { removed = true; continue; }
-    values.append(existing);
+  if (isBookmarked(url)) {
+    removeBookmark(url);
+    return false;
   }
-  if (!removed) values.append(normalized);
-  preferences_.setValue(QStringLiteral("bookmarks/urls"), values);
-  preferences_.sync();
-  emit bookmarksChanged();
-  return !removed;
+  return addBookmark(url, url.host(), QString{});
 }
 
 void BrowserProfileService::sanitizeStoredPersistentUrls() {
@@ -1408,3 +1401,490 @@ void BrowserProfileService::refreshCookieFilter() {
     return effective == QLatin1String("allow_all") || !request.thirdParty;
   });
 }
+
+QList<BrowserHistoryEntry> BrowserProfileService::searchHistory(const QString &query, int maxResults) const {
+  const auto all = recentHistory();
+  const QString cleanQuery = query.trimmed();
+  if (cleanQuery.isEmpty()) {
+    return all.mid(0, maxResults);
+  }
+  const QStringList tokens = cleanQuery.split(QRegularExpression(QStringLiteral("\\s+")), Qt::SkipEmptyParts);
+  QList<BrowserHistoryEntry> matched;
+  for (const auto &entry : all) {
+    const QString title = entry.title;
+    const QString urlStr = entry.url.toString();
+    const QString displayStr = entry.url.toDisplayString();
+    const QString host = entry.url.host();
+    const QString path = entry.url.path();
+
+    bool allMatch = true;
+    for (const QString &tok : tokens) {
+      if (!title.contains(tok, Qt::CaseInsensitive) &&
+          !urlStr.contains(tok, Qt::CaseInsensitive) &&
+          !displayStr.contains(tok, Qt::CaseInsensitive) &&
+          !host.contains(tok, Qt::CaseInsensitive) &&
+          !path.contains(tok, Qt::CaseInsensitive)) {
+        allMatch = false;
+        break;
+      }
+    }
+    if (allMatch) {
+      matched.append(entry);
+      if (matched.size() >= maxResults) break;
+    }
+  }
+  return matched;
+}
+
+bool BrowserProfileService::removeHistoryEntry(const QUrl &url, const QDateTime &visitedAt) {
+  const QJsonDocument existing = QJsonDocument::fromJson(preferences_.value(QStringLiteral("history/entries")).toByteArray());
+  if (!existing.isArray()) return false;
+  QJsonArray next;
+  bool removed = false;
+  const QString targetIso = visitedAt.isValid() ? visitedAt.toUTC().toString(Qt::ISODate) : QString();
+  const QString targetUrlStr = url.toString(QUrl::FullyEncoded);
+  const QString targetUrlPlain = url.toString();
+  const QUrl cleanTargetUrl = url.adjusted(QUrl::RemoveFragment);
+
+  for (const QJsonValue &val : existing.array()) {
+    const QJsonObject obj = val.toObject();
+    const QString itemUrl = obj.value(QStringLiteral("url")).toString();
+    const QString itemTime = obj.value(QStringLiteral("visitedAt")).toString();
+    const QUrl parsedItem(itemUrl);
+
+    const bool urlMatches = (itemUrl == targetUrlStr || itemUrl == targetUrlPlain ||
+                             parsedItem == url || parsedItem.adjusted(QUrl::RemoveFragment) == cleanTargetUrl);
+
+    bool timeMatches = targetIso.isEmpty();
+    if (!timeMatches && !itemTime.isEmpty()) {
+      if (itemTime == targetIso) {
+        timeMatches = true;
+      } else {
+        const QDateTime itemDt = QDateTime::fromString(itemTime, Qt::ISODate);
+        if (itemDt.isValid() && visitedAt.isValid()) {
+          timeMatches = (itemDt == visitedAt || qAbs(itemDt.toSecsSinceEpoch() - visitedAt.toSecsSinceEpoch()) <= 2);
+        }
+      }
+    }
+
+    if (!removed && urlMatches && timeMatches) {
+      removed = true;
+      continue;
+    }
+    next.append(val);
+  }
+
+  if (removed) {
+    preferences_.setValue(QStringLiteral("history/entries"), QJsonDocument(next).toJson(QJsonDocument::Compact));
+    bool hasRemaining = false;
+    for (const QJsonValue &val : next) {
+      const QString remainingUrl = val.toObject().value(QStringLiteral("url")).toString();
+      if (remainingUrl == targetUrlStr || remainingUrl == targetUrlPlain || QUrl(remainingUrl) == url) {
+        hasRemaining = true;
+        break;
+      }
+    }
+    if (!hasRemaining) {
+      const QJsonDocument freqDoc = QJsonDocument::fromJson(preferences_.value(QStringLiteral("history/frequentSites")).toByteArray());
+      if (freqDoc.isArray()) {
+        QJsonArray nextFreq;
+        for (const QJsonValue &fVal : freqDoc.array()) {
+          const QJsonObject fObj = fVal.toObject();
+          const QString fUrl = fObj.value(QStringLiteral("url")).toString();
+          const QString fIcon = fObj.value(QStringLiteral("iconLookupUrl")).toString();
+          if (fUrl != targetUrlStr && fUrl != targetUrlPlain && QUrl(fUrl) != url &&
+              fIcon != targetUrlStr && fIcon != targetUrlPlain && QUrl(fIcon) != url) {
+            nextFreq.append(fVal);
+          }
+        }
+        preferences_.setValue(QStringLiteral("history/frequentSites"), QJsonDocument(nextFreq).toJson(QJsonDocument::Compact));
+      }
+    }
+    preferences_.sync();
+    emit historyChanged();
+  }
+  return removed;
+}
+
+bool BrowserProfileService::removeHistoryEntriesForUrl(const QUrl &url) {
+  return removeHistoryEntry(url, QDateTime{});
+}
+
+QList<BrowserProfileService::BookmarkItem> BrowserProfileService::bookmarkItems() const {
+  QList<BookmarkItem> result;
+  QSet<QString> urlsSeen;
+
+  const QJsonDocument doc = QJsonDocument::fromJson(preferences_.value(QStringLiteral("bookmarks/items")).toByteArray());
+  if (doc.isArray()) {
+    for (const QJsonValue &val : doc.array()) {
+      const QJsonObject obj = val.toObject();
+      const QUrl url = BrowserSecurity::sanitizeUrlForPersistence(QUrl(obj.value(QStringLiteral("url")).toString()));
+      if (url.isValid() && (url.scheme() == QLatin1String("http") || url.scheme() == QLatin1String("https"))) {
+        BookmarkItem item;
+        item.url = url;
+        item.title = obj.value(QStringLiteral("title")).toString();
+        if (item.title.isEmpty()) item.title = url.host();
+        item.folder = obj.value(QStringLiteral("folder")).toString();
+        item.dateAdded = QDateTime::fromString(obj.value(QStringLiteral("dateAdded")).toString(), Qt::ISODate);
+        if (!item.dateAdded.isValid()) item.dateAdded = QDateTime::currentDateTimeUtc();
+        result.append(item);
+        urlsSeen.insert(url.toString(QUrl::FullyEncoded));
+      }
+    }
+  }
+
+  for (const QUrl &bmUrl : bookmarks()) {
+    const QString encoded = bmUrl.toString(QUrl::FullyEncoded);
+    if (!urlsSeen.contains(encoded)) {
+      BookmarkItem item;
+      item.url = bmUrl;
+      item.title = bmUrl.host();
+      item.folder = QString();
+      item.dateAdded = QDateTime::currentDateTimeUtc();
+      result.append(item);
+      urlsSeen.insert(encoded);
+    }
+  }
+
+  return result;
+}
+
+bool BrowserProfileService::addBookmark(const QUrl &url, const QString &title, const QString &folder) {
+  const QUrl persistentUrl = BrowserSecurity::sanitizeUrlForPersistence(url);
+  if (!persistentUrl.isValid() || (persistentUrl.scheme() != QLatin1String("http") && persistentUrl.scheme() != QLatin1String("https"))) return false;
+
+  const QString normalized = persistentUrl.adjusted(QUrl::RemoveFragment).toString(QUrl::FullyEncoded);
+  const QString effectiveTitle = title.isEmpty() ? persistentUrl.host() : title;
+
+  QStringList urls = preferences_.value(QStringLiteral("bookmarks/urls")).toStringList();
+  if (!urls.contains(normalized)) {
+    urls.append(normalized);
+    preferences_.setValue(QStringLiteral("bookmarks/urls"), urls);
+  }
+
+  QList<BookmarkItem> items = bookmarkItems();
+  bool found = false;
+  for (auto &item : items) {
+    if (item.url.adjusted(QUrl::RemoveFragment).toString(QUrl::FullyEncoded) == normalized) {
+      item.title = effectiveTitle;
+      item.folder = folder;
+      found = true;
+      break;
+    }
+  }
+  if (!found) {
+    BookmarkItem newItem;
+    newItem.url = persistentUrl;
+    newItem.title = effectiveTitle;
+    newItem.folder = folder;
+    newItem.dateAdded = QDateTime::currentDateTimeUtc();
+    items.append(newItem);
+  }
+
+  QJsonArray arr;
+  for (const auto &item : items) {
+    QJsonObject obj;
+    obj.insert(QStringLiteral("url"), item.url.toString(QUrl::FullyEncoded));
+    obj.insert(QStringLiteral("title"), item.title);
+    obj.insert(QStringLiteral("folder"), item.folder);
+    obj.insert(QStringLiteral("dateAdded"), item.dateAdded.toUTC().toString(Qt::ISODate));
+    arr.append(obj);
+  }
+  preferences_.setValue(QStringLiteral("bookmarks/items"), QJsonDocument(arr).toJson(QJsonDocument::Compact));
+  preferences_.sync();
+  emit bookmarksChanged();
+  return true;
+}
+
+bool BrowserProfileService::removeBookmark(const QUrl &url) {
+  const QUrl persistentUrl = BrowserSecurity::sanitizeUrlForPersistence(url);
+  if (!persistentUrl.isValid()) return false;
+  const QString normalized = persistentUrl.adjusted(QUrl::RemoveFragment).toString(QUrl::FullyEncoded);
+
+  QStringList urls = preferences_.value(QStringLiteral("bookmarks/urls")).toStringList();
+  const int removedCount = urls.removeAll(normalized);
+
+  const QJsonDocument doc = QJsonDocument::fromJson(preferences_.value(QStringLiteral("bookmarks/items")).toByteArray());
+  QJsonArray nextArr;
+  if (doc.isArray()) {
+    for (const QJsonValue &val : doc.array()) {
+      const QJsonObject obj = val.toObject();
+      const QString itemUrl = obj.value(QStringLiteral("url")).toString();
+      if (itemUrl != normalized && QUrl(itemUrl).adjusted(QUrl::RemoveFragment).toString(QUrl::FullyEncoded) != normalized) {
+        nextArr.append(val);
+      }
+    }
+  }
+  preferences_.setValue(QStringLiteral("bookmarks/urls"), urls);
+  preferences_.setValue(QStringLiteral("bookmarks/items"), QJsonDocument(nextArr).toJson(QJsonDocument::Compact));
+  preferences_.sync();
+  emit bookmarksChanged();
+  return removedCount > 0;
+}
+
+bool BrowserProfileService::createBookmarkFolder(const QString &folderName) {
+  const QString clean = folderName.trimmed();
+  if (clean.isEmpty()) return false;
+  QStringList folders = preferences_.value(QStringLiteral("bookmarks/folders")).toStringList();
+  if (!folders.contains(clean)) {
+    folders.append(clean);
+    folders.sort();
+    preferences_.setValue(QStringLiteral("bookmarks/folders"), folders);
+    preferences_.sync();
+    emit bookmarksChanged();
+    return true;
+  }
+  return false;
+}
+
+bool BrowserProfileService::removeBookmarkFolder(const QString &folderName, bool deleteContents) {
+  const QString clean = folderName.trimmed();
+  if (clean.isEmpty()) return false;
+  QStringList folders = preferences_.value(QStringLiteral("bookmarks/folders")).toStringList();
+  folders.removeAll(clean);
+  preferences_.setValue(QStringLiteral("bookmarks/folders"), folders);
+
+  QList<BookmarkItem> items = bookmarkItems();
+  QList<BookmarkItem> nextItems;
+  QStringList urls = preferences_.value(QStringLiteral("bookmarks/urls")).toStringList();
+
+  for (auto item : items) {
+    if (item.folder.trimmed() == clean) {
+      if (deleteContents) {
+        urls.removeAll(item.url.adjusted(QUrl::RemoveFragment).toString(QUrl::FullyEncoded));
+        continue;
+      } else {
+        item.folder = QString();
+        nextItems.append(item);
+      }
+    } else {
+      nextItems.append(item);
+    }
+  }
+
+  QJsonArray arr;
+  for (const auto &item : nextItems) {
+    QJsonObject obj;
+    obj.insert(QStringLiteral("url"), item.url.toString(QUrl::FullyEncoded));
+    obj.insert(QStringLiteral("title"), item.title);
+    obj.insert(QStringLiteral("folder"), item.folder);
+    obj.insert(QStringLiteral("dateAdded"), item.dateAdded.toUTC().toString(Qt::ISODate));
+    arr.append(obj);
+  }
+  preferences_.setValue(QStringLiteral("bookmarks/urls"), urls);
+  preferences_.setValue(QStringLiteral("bookmarks/items"), QJsonDocument(arr).toJson(QJsonDocument::Compact));
+  preferences_.sync();
+  emit bookmarksChanged();
+  return true;
+}
+
+bool BrowserProfileService::moveBookmarkToFolder(const QUrl &url, const QString &targetFolder) {
+  const QUrl persistentUrl = BrowserSecurity::sanitizeUrlForPersistence(url);
+  if (!persistentUrl.isValid()) return false;
+  const QString normalized = persistentUrl.adjusted(QUrl::RemoveFragment).toString(QUrl::FullyEncoded);
+
+  QList<BookmarkItem> items = bookmarkItems();
+  bool found = false;
+  for (auto &item : items) {
+    if (item.url.adjusted(QUrl::RemoveFragment).toString(QUrl::FullyEncoded) == normalized) {
+      item.folder = targetFolder.trimmed();
+      found = true;
+      break;
+    }
+  }
+  if (!found) return false;
+
+  if (!targetFolder.trimmed().isEmpty()) {
+    createBookmarkFolder(targetFolder.trimmed());
+  }
+
+  QJsonArray arr;
+  for (const auto &item : items) {
+    QJsonObject obj;
+    obj.insert(QStringLiteral("url"), item.url.toString(QUrl::FullyEncoded));
+    obj.insert(QStringLiteral("title"), item.title);
+    obj.insert(QStringLiteral("folder"), item.folder);
+    obj.insert(QStringLiteral("dateAdded"), item.dateAdded.toUTC().toString(Qt::ISODate));
+    arr.append(obj);
+  }
+  preferences_.setValue(QStringLiteral("bookmarks/items"), QJsonDocument(arr).toJson(QJsonDocument::Compact));
+  preferences_.sync();
+  emit bookmarksChanged();
+  return true;
+}
+
+bool BrowserProfileService::renameBookmarkFolder(const QString &oldName, const QString &newName) {
+  const QString cleanOld = oldName.trimmed();
+  const QString cleanNew = newName.trimmed();
+  if (cleanOld.isEmpty() || cleanNew.isEmpty() || cleanOld == cleanNew) return false;
+
+  QStringList folders = preferences_.value(QStringLiteral("bookmarks/folders")).toStringList();
+  folders.removeAll(cleanOld);
+  if (!folders.contains(cleanNew)) folders.append(cleanNew);
+  folders.sort();
+  preferences_.setValue(QStringLiteral("bookmarks/folders"), folders);
+
+  QList<BookmarkItem> items = bookmarkItems();
+  for (auto &item : items) {
+    if (item.folder.trimmed() == cleanOld) {
+      item.folder = cleanNew;
+    }
+  }
+
+  QJsonArray arr;
+  for (const auto &item : items) {
+    QJsonObject obj;
+    obj.insert(QStringLiteral("url"), item.url.toString(QUrl::FullyEncoded));
+    obj.insert(QStringLiteral("title"), item.title);
+    obj.insert(QStringLiteral("folder"), item.folder);
+    obj.insert(QStringLiteral("dateAdded"), item.dateAdded.toUTC().toString(Qt::ISODate));
+    arr.append(obj);
+  }
+  preferences_.setValue(QStringLiteral("bookmarks/items"), QJsonDocument(arr).toJson(QJsonDocument::Compact));
+  preferences_.sync();
+  emit bookmarksChanged();
+  return true;
+}
+
+QStringList BrowserProfileService::bookmarkFolders() const {
+  QSet<QString> folders;
+  const QStringList savedFolders = preferences_.value(QStringLiteral("bookmarks/folders")).toStringList();
+  for (const QString &f : savedFolders) {
+    if (!f.trimmed().isEmpty()) folders.insert(f.trimmed());
+  }
+  for (const auto &item : bookmarkItems()) {
+    if (!item.folder.trimmed().isEmpty()) {
+      folders.insert(item.folder.trimmed());
+    }
+  }
+  QStringList list = folders.values();
+  list.sort();
+  return list;
+}
+
+QString BrowserProfileService::exportBookmarksToHtml() const {
+  QString html = QStringLiteral("<!DOCTYPE NETSCAPE-Bookmark-file-1>\n"
+                                "<!-- This is an automatically generated file. -->\n"
+                                "<META HTTP-EQUIV=\"Content-Type\" CONTENT=\"text/html; charset=UTF-8\">\n"
+                                "<TITLE>Bookmarks</TITLE>\n"
+                                "<H1>Bookmarks</H1>\n"
+                                "<DL><p>\n");
+  const auto items = bookmarkItems();
+  QMap<QString, QList<BookmarkItem>> grouped;
+  for (const auto &item : items) {
+    grouped[item.folder].append(item);
+  }
+  const QStringList allFolders = bookmarkFolders();
+  for (const QString &f : allFolders) {
+    if (!grouped.contains(f)) grouped[f] = {};
+  }
+
+  if (grouped.contains(QString())) {
+    for (const auto &item : grouped.value(QString())) {
+      const qint64 ts = item.dateAdded.isValid() ? item.dateAdded.toSecsSinceEpoch() : QDateTime::currentSecsSinceEpoch();
+      html += QStringLiteral("    <DT><A HREF=\"%1\" ADD_DATE=\"%2\">%3</A>\n")
+                  .arg(item.url.toString(QUrl::FullyEncoded).toHtmlEscaped())
+                  .arg(ts)
+                  .arg(item.title.toHtmlEscaped());
+    }
+  }
+
+  for (auto it = grouped.begin(); it != grouped.end(); ++it) {
+    if (it.key().isEmpty()) continue;
+    html += QStringLiteral("    <DT><H3 ADD_DATE=\"%1\">%2</H3>\n    <DL><p>\n")
+                .arg(QDateTime::currentSecsSinceEpoch())
+                .arg(it.key().toHtmlEscaped());
+    for (const auto &item : it.value()) {
+      const qint64 ts = item.dateAdded.isValid() ? item.dateAdded.toSecsSinceEpoch() : QDateTime::currentSecsSinceEpoch();
+      html += QStringLiteral("        <DT><A HREF=\"%1\" ADD_DATE=\"%2\">%3</A>\n")
+                  .arg(item.url.toString(QUrl::FullyEncoded).toHtmlEscaped())
+                  .arg(ts)
+                  .arg(item.title.toHtmlEscaped());
+    }
+    html += QStringLiteral("    </DL><p>\n");
+  }
+
+  html += QStringLiteral("</DL><p>\n");
+  return html;
+}
+
+int BrowserProfileService::importBookmarksFromHtml(const QString &htmlContent) {
+  int importedCount = 0;
+  QString currentFolder;
+  const QStringList lines = htmlContent.split(QLatin1Char('\n'));
+  static const QRegularExpression folderRegex(QStringLiteral("<H3[^>]*>([^<]+)</H3>"), QRegularExpression::CaseInsensitiveOption);
+  static const QRegularExpression bookmarkRegex(QStringLiteral("<A\\s+[^>]*HREF=[\"']([^\"']+)[\"'][^>]*>([^<]*)</A>"), QRegularExpression::CaseInsensitiveOption);
+  static const QRegularExpression closeDlRegex(QStringLiteral("</DL>"), QRegularExpression::CaseInsensitiveOption);
+
+  for (const QString &line : lines) {
+    const QString trimmed = line.trimmed();
+    auto folderMatch = folderRegex.match(trimmed);
+    if (folderMatch.hasMatch()) {
+      currentFolder = folderMatch.captured(1).trimmed();
+      if (!currentFolder.isEmpty()) {
+        createBookmarkFolder(currentFolder);
+      }
+      continue;
+    }
+    if (closeDlRegex.match(trimmed).hasMatch()) {
+      currentFolder.clear();
+      continue;
+    }
+    auto bmMatch = bookmarkRegex.match(trimmed);
+    if (bmMatch.hasMatch()) {
+      const QUrl url(bmMatch.captured(1).trimmed());
+      QString title = bmMatch.captured(2).trimmed();
+      if (title.isEmpty()) title = url.host();
+      if (url.isValid() && (url.scheme() == QLatin1String("http") || url.scheme() == QLatin1String("https"))) {
+        if (addBookmark(url, title, currentFolder)) {
+          importedCount++;
+        }
+      }
+    }
+  }
+  return importedCount;
+}
+
+QString BrowserProfileService::secureDnsMode() const {
+  return preferences_.value(QStringLiteral("security/secureDnsMode"), QStringLiteral("system")).toString();
+}
+
+void BrowserProfileService::setSecureDnsMode(const QString &mode) {
+  preferences_.setValue(QStringLiteral("security/secureDnsMode"), mode);
+  preferences_.sync();
+  applySecureDnsSettings();
+  emit secureDnsChanged();
+}
+
+QString BrowserProfileService::secureDnsTemplate() const {
+  return preferences_.value(QStringLiteral("security/secureDnsTemplate"), QStringLiteral("https://cloudflare-dns.com/dns-query")).toString();
+}
+
+void BrowserProfileService::setSecureDnsTemplate(const QString &templateUrl) {
+  preferences_.setValue(QStringLiteral("security/secureDnsTemplate"), templateUrl);
+  preferences_.sync();
+  applySecureDnsSettings();
+  emit secureDnsChanged();
+}
+
+void BrowserProfileService::applySecureDnsSettings() {
+  const QString mode = secureDnsMode();
+  QWebEngineGlobalSettings::DnsMode dnsMode;
+  if (mode == QLatin1String("secure")) {
+    dnsMode.secureMode = QWebEngineGlobalSettings::SecureDnsMode::SecureOnly;
+    const QString templ = secureDnsTemplate().trimmed();
+    if (!templ.isEmpty()) {
+      dnsMode.serverTemplates = QStringList{templ};
+    }
+  } else if (mode == QLatin1String("fallback")) {
+    dnsMode.secureMode = QWebEngineGlobalSettings::SecureDnsMode::SecureWithFallback;
+    const QString templ = secureDnsTemplate().trimmed();
+    if (!templ.isEmpty()) {
+      dnsMode.serverTemplates = QStringList{templ};
+    }
+  } else {
+    dnsMode.secureMode = QWebEngineGlobalSettings::SecureDnsMode::SystemOnly;
+  }
+  QWebEngineGlobalSettings::setDnsMode(dnsMode);
+}
+

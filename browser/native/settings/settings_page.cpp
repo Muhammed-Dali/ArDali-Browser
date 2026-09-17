@@ -41,7 +41,11 @@
 #include <QSlider>
 #include <QSpinBox>
 #include <QStackedWidget>
+#include <QClipboard>
 #include <QStandardPaths>
+#include <QTreeWidget>
+#include <QHeaderView>
+#include <QInputDialog>
 #include <QVBoxLayout>
 #if QT_VERSION >= QT_VERSION_CHECK(6, 8, 0)
 #include <QWebEnginePermission>
@@ -602,6 +606,14 @@ SettingsPage::SettingsPage(BrowserProfileService *profileService, Hooks hooks, Q
   connect(search_, &QLineEdit::textChanged, this, &SettingsPage::applyFilter);
   connect(&ardali::i18n::LanguageManager::instance(), &ardali::i18n::LanguageManager::languageChanged,
           this, [this] { retranslateUi(); });
+  if (profileService_) {
+    connect(profileService_, &BrowserProfileService::historyChanged, this, [this] {
+      if (refreshHistory_) refreshHistory_();
+    });
+    connect(profileService_, &BrowserProfileService::bookmarksChanged, this, [this] {
+      if (refreshBookmarks_) refreshBookmarks_();
+    });
+  }
   setTabOrder(search_, sidebar_);
   setCategory(Category::Startup);
   retranslateUi();
@@ -723,6 +735,12 @@ void SettingsPage::selectCategory(int row) {
     if (privacyStack_ && row == categoryIndexes_.value(Category::Privacy, -1)) {
       privacyStack_->setCurrentIndex(0);
       if (updatePrivacySubtitles_) updatePrivacySubtitles_();
+    }
+    if (row == categoryIndexes_.value(Category::History, -1)) {
+      if (refreshHistory_) refreshHistory_();
+    }
+    if (row == categoryIndexes_.value(Category::Bookmarks, -1)) {
+      if (refreshBookmarks_) refreshBookmarks_();
     }
   }
 }
@@ -2846,6 +2864,82 @@ QWidget *SettingsPage::createPrivacySection() {
   });
 #endif
 
+  // =========================================================================
+  // 5. GÜVENLİ DNS (DNS-OVER-HTTPS)
+  // =========================================================================
+  auto *dnsCard = makeCard(section.page, QStringLiteral("GÜVENLİ DNS (DNS-OVER-HTTPS)"));
+  auto *dnsModeCombo = new QComboBox(dnsCard);
+  dnsModeCombo->addItem(QStringLiteral("Sistem Varsayılanı"), QStringLiteral("system"));
+  dnsModeCombo->addItem(QStringLiteral("Otomatik (Varsa Güvenli DNS, Gerekirse Geri Dön)"), QStringLiteral("fallback"));
+  dnsModeCombo->addItem(QStringLiteral("Her Zaman Güvenli DNS Kullan (DoH)"), QStringLiteral("secure"));
+
+  const QString curMode = profileService_->secureDnsMode();
+  int dIdx = dnsModeCombo->findData(curMode);
+  if (dIdx >= 0) dnsModeCombo->setCurrentIndex(dIdx);
+
+  addRow(dnsCard, settingRow(
+      dnsCard,
+      QStringLiteral("Güvenli DNS Modu"),
+      QStringLiteral("DNS sorgularınızı şifreleyerek ISS veya ağ dinleyicilerine karşı gizliliği korur."),
+      dnsModeCombo,
+      BrowserIcon::Privacy));
+
+  auto *dnsProviderCombo = new QComboBox(dnsCard);
+  dnsProviderCombo->addItem(QStringLiteral("Cloudflare (1.1.1.1)"), QStringLiteral("https://cloudflare-dns.com/dns-query"));
+  dnsProviderCombo->addItem(QStringLiteral("Google Public DNS (8.8.8.8)"), QStringLiteral("https://dns.google/dns-query"));
+  dnsProviderCombo->addItem(QStringLiteral("Quad9 (9.9.9.9)"), QStringLiteral("https://dns.quad9.net/dns-query"));
+  dnsProviderCombo->addItem(QStringLiteral("Özel Sağlayıcı"), QStringLiteral("custom"));
+
+  const QString curTpl = profileService_->secureDnsTemplate();
+  int pIdx = dnsProviderCombo->findData(curTpl);
+  if (pIdx >= 0) {
+    dnsProviderCombo->setCurrentIndex(pIdx);
+  } else {
+    dnsProviderCombo->setCurrentIndex(3);
+  }
+
+  auto *customDnsEdit = new QLineEdit(dnsCard);
+  customDnsEdit->setPlaceholderText(QStringLiteral("https://example.com/dns-query"));
+  customDnsEdit->setText(curTpl);
+  customDnsEdit->setVisible(dnsProviderCombo->currentIndex() == 3);
+
+  addRow(dnsCard, settingRow(
+      dnsCard,
+      QStringLiteral("DNS Sağlayıcısı"),
+      QStringLiteral("Şifreli DNS çözümlemesi için kullanılacak güvenli sağlayıcı şablonu."),
+      dnsProviderCombo,
+      BrowserIcon::Privacy));
+
+  addRow(dnsCard, settingRow(
+      dnsCard,
+      QStringLiteral("Özel DoH Şablonu"),
+      QStringLiteral("RFC 8484 uyumlu HTTPS DNS sorgu uç noktası."),
+      customDnsEdit,
+      BrowserIcon::Privacy));
+
+  connect(dnsModeCombo, qOverload<int>(&QComboBox::currentIndexChanged), this, [this, dnsModeCombo] {
+    profileService_->setSecureDnsMode(dnsModeCombo->currentData().toString());
+  });
+
+  connect(dnsProviderCombo, qOverload<int>(&QComboBox::currentIndexChanged), this, [this, dnsProviderCombo, customDnsEdit] {
+    const QString data = dnsProviderCombo->currentData().toString();
+    if (data == QLatin1String("custom")) {
+      customDnsEdit->setVisible(true);
+      profileService_->setSecureDnsTemplate(customDnsEdit->text().trimmed());
+    } else {
+      customDnsEdit->setVisible(false);
+      customDnsEdit->setText(data);
+      profileService_->setSecureDnsTemplate(data);
+    }
+  });
+
+  connect(customDnsEdit, &QLineEdit::editingFinished, this, [this, customDnsEdit] {
+    if (!customDnsEdit->text().trimmed().isEmpty()) {
+      profileService_->setSecureDnsTemplate(customDnsEdit->text().trimmed());
+    }
+  });
+
+  section.layout->addWidget(dnsCard);
   section.layout->addStretch();
 
   privacyStack_->addWidget(section.page);
@@ -2967,27 +3061,295 @@ QWidget *SettingsPage::createBookmarksSection() {
       true));
   section.layout->addWidget(barCard);
 
-  auto *card = makeCard(section.page, QStringLiteral("KAYDEDİLMİŞ SAYFALAR"));
-  auto *list = new QListWidget(card); list->setObjectName(QStringLiteral("settings-data-list")); list->setAccessibleName(QStringLiteral("Yer işaretleri listesi")); list->setMinimumHeight(260);
-  auto *remove = new QPushButton(QStringLiteral("Seçili yer imini kaldır"), card); remove->setProperty("danger", true);
-  auto *container = new QWidget(card); auto *layout = new QVBoxLayout(container); layout->setContentsMargins(18, 10, 18, 14); layout->setSpacing(10); layout->addWidget(list); layout->addWidget(remove, 0, Qt::AlignLeft); addRow(card, container);
-  section.layout->addWidget(card); section.layout->addStretch();
-  const auto refresh = [this, list] { list->clear(); for (const QUrl &url : profileService_->bookmarks()) { auto *item = new QListWidgetItem(BrowserIcons::icon(BrowserIcon::Bookmark), QStringLiteral("%1\n%2").arg(url.host(), url.toDisplayString()), list); item->setData(Qt::UserRole, url); item->setToolTip(url.toDisplayString()); item->setSizeHint(QSize(0, 54)); } if (!list->count()) { auto *item = new QListWidgetItem(QStringLiteral("Yer imi yok"), list); item->setFlags(Qt::NoItemFlags); } }; refresh();
-  connect(list, &QListWidget::itemActivated, this, [this](QListWidgetItem *item) { const QUrl url = item->data(Qt::UserRole).toUrl(); if (url.isValid()) emit navigateRequested(url); });
-  connect(remove, &QPushButton::clicked, this, [this, list, refresh] { auto *item = list->currentItem(); const QUrl url = item ? item->data(Qt::UserRole).toUrl() : QUrl{}; if (!url.isValid()) return; profileService_->toggleBookmark(url); refresh(); if (hooks_.refreshBookmarks) hooks_.refreshBookmarks(); });
+  auto *card = makeCard(section.page, QStringLiteral("KAYDEDİLMİŞ SAYFALAR VE KLASÖRLER"));
+  auto *tree = new QTreeWidget(card);
+  tree->setObjectName(QStringLiteral("settings-bookmark-tree"));
+  tree->setColumnCount(2);
+  tree->setHeaderLabels({QStringLiteral("Yer İşareti / Klasör"), QStringLiteral("URL / Konum")});
+  tree->header()->setSectionResizeMode(0, QHeaderView::Stretch);
+  tree->header()->setSectionResizeMode(1, QHeaderView::Stretch);
+  tree->setMinimumHeight(280);
+
+  auto *addFolderBtn = new QPushButton(QStringLiteral("Yeni Klasör..."), card);
+  auto *addBmBtn = new QPushButton(QStringLiteral("Yeni Yer İmi..."), card);
+  auto *moveToFolderBtn = new QPushButton(QStringLiteral("Klasöre Taşı..."), card);
+  auto *remove = new QPushButton(QStringLiteral("Seçiliyi Sil"), card);
+  remove->setProperty("danger", true);
+  auto *importBtn = new QPushButton(QStringLiteral("HTML İçe Aktar..."), card);
+  auto *exportBtn = new QPushButton(QStringLiteral("HTML Dışa Aktar..."), card);
+
+  auto *btnLayout = new QHBoxLayout;
+  btnLayout->setContentsMargins(0, 0, 0, 0);
+  btnLayout->setSpacing(8);
+  btnLayout->addWidget(addFolderBtn);
+  btnLayout->addWidget(addBmBtn);
+  btnLayout->addWidget(moveToFolderBtn);
+  btnLayout->addWidget(remove);
+  btnLayout->addWidget(importBtn);
+  btnLayout->addWidget(exportBtn);
+  btnLayout->addStretch();
+
+  auto *container = new QWidget(card);
+  auto *layout = new QVBoxLayout(container);
+  layout->setContentsMargins(18, 10, 18, 14);
+  layout->setSpacing(10);
+  layout->addWidget(tree);
+  layout->addLayout(btnLayout);
+  addRow(card, container);
+  section.layout->addWidget(card);
+  section.layout->addStretch();
+
+  const auto refresh = [this, tree] {
+    tree->clear();
+    if (!profileService_) return;
+
+    const QStringList folders = profileService_->bookmarkFolders();
+    const auto items = profileService_->bookmarkItems();
+
+    QHash<QString, QTreeWidgetItem *> folderTreeItems;
+    for (const QString &folderName : folders) {
+      auto *folderItem = new QTreeWidgetItem(tree);
+      folderItem->setText(0, folderName);
+      folderItem->setText(1, QStringLiteral("(Klasör)"));
+      folderItem->setIcon(0, BrowserIcons::icon(BrowserIcon::Folder));
+      folderItem->setData(0, Qt::UserRole, folderName);
+      folderItem->setData(0, Qt::UserRole + 2, true); // isFolder = true
+      folderTreeItems.insert(folderName, folderItem);
+    }
+
+    for (const auto &item : items) {
+      QTreeWidgetItem *parent = item.folder.isEmpty() ? nullptr : folderTreeItems.value(item.folder, nullptr);
+      auto *bmItem = parent ? new QTreeWidgetItem(parent) : new QTreeWidgetItem(tree);
+      const QString title = item.title.isEmpty() ? item.url.host() : item.title;
+      bmItem->setText(0, title);
+      bmItem->setText(1, item.url.toDisplayString());
+      bmItem->setIcon(0, BrowserIcons::icon(BrowserIcon::Bookmark));
+      bmItem->setData(0, Qt::UserRole, item.url);
+      bmItem->setData(0, Qt::UserRole + 1, item.folder);
+      bmItem->setData(0, Qt::UserRole + 2, false); // isFolder = false
+      bmItem->setToolTip(0, item.url.toDisplayString());
+      bmItem->setToolTip(1, item.url.toDisplayString());
+    }
+
+    tree->expandAll();
+  };
+  refreshBookmarks_ = refresh;
+  refresh();
+
+  connect(tree, &QTreeWidget::itemActivated, this, [this](QTreeWidgetItem *item) {
+    if (!item) return;
+    const bool isFolder = item->data(0, Qt::UserRole + 2).toBool();
+    if (isFolder) {
+      item->setExpanded(!item->isExpanded());
+    } else {
+      const QUrl url = item->data(0, Qt::UserRole).toUrl();
+      if (url.isValid()) emit navigateRequested(url);
+    }
+  });
+
+  connect(addFolderBtn, &QPushButton::clicked, this, [this, refresh] {
+    bool ok = false;
+    const QString name = QInputDialog::getText(this, QStringLiteral("Yeni Klasör"), QStringLiteral("Klasör Adı:"), QLineEdit::Normal, QString(), &ok);
+    if (ok && !name.trimmed().isEmpty() && profileService_) {
+      profileService_->createBookmarkFolder(name.trimmed());
+      refresh();
+      if (hooks_.refreshBookmarks) hooks_.refreshBookmarks();
+    }
+  });
+
+  connect(addBmBtn, &QPushButton::clicked, this, [this, refresh] {
+    if (!profileService_) return;
+    bool ok = false;
+    const QString urlStr = QInputDialog::getText(this, QStringLiteral("Yer İmi Ekle"), QStringLiteral("URL:"), QLineEdit::Normal, QStringLiteral("https://"), &ok);
+    if (!ok || urlStr.trimmed().isEmpty()) return;
+    const QUrl url = QUrl::fromUserInput(urlStr.trimmed());
+    if (!url.isValid()) return;
+
+    QStringList folders = {QStringLiteral("(Kök Dizin)")};
+    folders.append(profileService_->bookmarkFolders());
+    const QString chosen = QInputDialog::getItem(this, QStringLiteral("Klasör Seçin"), QStringLiteral("Hedef Klasör:"), folders, 0, false, &ok);
+    const QString folder = (ok && chosen != QStringLiteral("(Kök Dizin)")) ? chosen : QString();
+
+    profileService_->addBookmark(url, url.host(), folder);
+    refresh();
+    if (hooks_.refreshBookmarks) hooks_.refreshBookmarks();
+  });
+
+  connect(moveToFolderBtn, &QPushButton::clicked, this, [this, tree, refresh] {
+    auto *item = tree->currentItem();
+    if (!item || !profileService_) return;
+    const bool isFolder = item->data(0, Qt::UserRole + 2).toBool();
+    if (isFolder) return;
+    const QUrl url = item->data(0, Qt::UserRole).toUrl();
+    if (!url.isValid()) return;
+
+    QStringList folders = {QStringLiteral("(Kök Dizin)")};
+    folders.append(profileService_->bookmarkFolders());
+    bool ok = false;
+    const QString chosen = QInputDialog::getItem(this, QStringLiteral("Klasöre Taşı"), QStringLiteral("Hedef Klasör:"), folders, 0, false, &ok);
+    if (ok) {
+      const QString folder = (chosen == QStringLiteral("(Kök Dizin)")) ? QString() : chosen;
+      profileService_->moveBookmarkToFolder(url, folder);
+      refresh();
+      if (hooks_.refreshBookmarks) hooks_.refreshBookmarks();
+    }
+  });
+
+  connect(remove, &QPushButton::clicked, this, [this, tree, refresh] {
+    auto *item = tree->currentItem();
+    if (!item || !profileService_) return;
+    const bool isFolder = item->data(0, Qt::UserRole + 2).toBool();
+    if (isFolder) {
+      const QString folderName = item->data(0, Qt::UserRole).toString();
+      profileService_->removeBookmarkFolder(folderName, true);
+    } else {
+      const QUrl url = item->data(0, Qt::UserRole).toUrl();
+      if (url.isValid()) profileService_->removeBookmark(url);
+    }
+    refresh();
+    if (hooks_.refreshBookmarks) hooks_.refreshBookmarks();
+  });
+
+  connect(importBtn, &QPushButton::clicked, this, [this, refresh] {
+    const QString filePath = QFileDialog::getOpenFileName(this, QStringLiteral("Yer İşaretlerini İçe Aktar"), QDir::homePath(), QStringLiteral("HTML Dosyaları (*.html *.htm)"));
+    if (filePath.isEmpty() || !profileService_) return;
+    QFile file(filePath);
+    if (file.open(QIODevice::ReadOnly | QIODevice::Text)) {
+      profileService_->importBookmarksFromHtml(QString::fromUtf8(file.readAll()));
+      refresh();
+      if (hooks_.refreshBookmarks) hooks_.refreshBookmarks();
+    }
+  });
+
+  connect(exportBtn, &QPushButton::clicked, this, [this] {
+    if (!profileService_) return;
+    const QString filePath = QFileDialog::getSaveFileName(this, QStringLiteral("Yer İşaretlerini Dışa Aktar"), QDir::homePath() + QStringLiteral("/bookmarks.html"), QStringLiteral("HTML Dosyaları (*.html *.htm)"));
+    if (filePath.isEmpty()) return;
+    QFile file(filePath);
+    if (file.open(QIODevice::WriteOnly | QIODevice::Text)) {
+      file.write(profileService_->exportBookmarksToHtml().toUtf8());
+    }
+  });
+
   return section.page;
 }
 
 QWidget *SettingsPage::createHistorySection() {
-  Section section = makeSection(QStringLiteral("Geçmiş"), QStringLiteral("Son ziyaret edilen sayfaları açın veya tarama geçmişini temizleyin."));
+  Section section = makeSection(QStringLiteral("Geçmiş"), QStringLiteral("Son ziyaret edilen sayfaları açın, arayın veya tarama geçmişini temizleyin."));
   auto *card = makeCard(section.page, QStringLiteral("SON ZİYARETLER"));
-  auto *list = new QListWidget(card); list->setObjectName(QStringLiteral("settings-data-list")); list->setAccessibleName(QStringLiteral("Tarama geçmişi")); list->setMinimumHeight(280);
-  auto *clear = new QPushButton(QStringLiteral("Geçmişi temizle"), card); clear->setProperty("danger", true);
-  auto *container = new QWidget(card); auto *layout = new QVBoxLayout(container); layout->setContentsMargins(18, 10, 18, 14); layout->setSpacing(10); layout->addWidget(list); layout->addWidget(clear, 0, Qt::AlignLeft); addRow(card, container);
-  section.layout->addWidget(card); section.layout->addStretch();
-  const auto refresh = [this, list] { list->clear(); for (const BrowserHistoryEntry &entry : profileService_->recentHistory()) { const QString title = entry.title.isEmpty() ? entry.url.host() : entry.title; auto *item = new QListWidgetItem(BrowserIcons::icon(BrowserIcon::History), QStringLiteral("%1\n%2  ·  %3").arg(title, entry.url.toDisplayString(), entry.visitedAt.toLocalTime().toString(QStringLiteral("dd.MM.yyyy HH:mm"))), list); item->setData(Qt::UserRole, entry.url); item->setToolTip(entry.url.toDisplayString()); item->setSizeHint(QSize(0, 56)); } if (!list->count()) { auto *item = new QListWidgetItem(QStringLiteral("Geçmiş henüz boş"), list); item->setFlags(Qt::NoItemFlags); } }; refresh();
-  connect(list, &QListWidget::itemActivated, this, [this](QListWidgetItem *item) { const QUrl url = item->data(Qt::UserRole).toUrl(); if (url.isValid()) emit navigateRequested(url); });
-  connect(clear, &QPushButton::clicked, this, [this, refresh] { profileService_->clearHistory(); refresh(); if (hooks_.syncNewTabs) hooks_.syncNewTabs(); });
+
+  auto *searchEdit = new QLineEdit(card);
+  searchEdit->setObjectName(QStringLiteral("history-search-input"));
+  searchEdit->setPlaceholderText(QStringLiteral("Geçmişte ara..."));
+  searchEdit->setClearButtonEnabled(true);
+
+  auto *list = new QListWidget(card);
+  list->setObjectName(QStringLiteral("history-list-widget"));
+  list->setAccessibleName(QStringLiteral("Tarama geçmişi"));
+  list->setMinimumHeight(280);
+  list->setContextMenuPolicy(Qt::CustomContextMenu);
+
+  auto *removeSelected = new QPushButton(QStringLiteral("Seçili kaydı sil"), card);
+  removeSelected->setObjectName(QStringLiteral("history-delete-selected-button"));
+  removeSelected->setProperty("danger", true);
+  auto *clear = new QPushButton(QStringLiteral("Geçmişi temizle"), card);
+  clear->setObjectName(QStringLiteral("history-clear-all-button"));
+  clear->setProperty("danger", true);
+
+  auto *btnLayout = new QHBoxLayout;
+  btnLayout->setContentsMargins(0, 0, 0, 0);
+  btnLayout->setSpacing(8);
+  btnLayout->addWidget(removeSelected);
+  btnLayout->addWidget(clear);
+  btnLayout->addStretch();
+
+  auto *container = new QWidget(card);
+  auto *layout = new QVBoxLayout(container);
+  layout->setContentsMargins(18, 10, 18, 14);
+  layout->setSpacing(10);
+  layout->addWidget(searchEdit);
+  layout->addWidget(list);
+  layout->addLayout(btnLayout);
+  addRow(card, container);
+  section.layout->addWidget(card);
+  section.layout->addStretch();
+
+  const auto refresh = [this, list, searchEdit] {
+    list->clear();
+    if (!profileService_) return;
+    const QString q = searchEdit->text().trimmed();
+    const auto entries = q.isEmpty() ? profileService_->recentHistory() : profileService_->searchHistory(q);
+    for (const BrowserHistoryEntry &entry : entries) {
+      const QString title = entry.title.isEmpty() ? entry.url.host() : entry.title;
+      const QString timeStr = entry.visitedAt.isValid()
+          ? entry.visitedAt.toLocalTime().toString(QStringLiteral("dd.MM.yyyy HH:mm"))
+          : QStringLiteral("-");
+      auto *item = new QListWidgetItem(BrowserIcons::icon(BrowserIcon::History),
+          QStringLiteral("%1\n%2  ·  %3").arg(title, entry.url.toDisplayString(), timeStr), list);
+      item->setData(Qt::UserRole, entry.url);
+      item->setData(Qt::UserRole + 1, entry.visitedAt);
+      item->setToolTip(entry.url.toDisplayString());
+      item->setSizeHint(QSize(0, 56));
+    }
+    if (!list->count()) {
+      auto *item = new QListWidgetItem(q.isEmpty() ? QStringLiteral("Geçmiş henüz boş") : QStringLiteral("Aramayla eşleşen geçmiş bulunamadı"), list);
+      item->setFlags(Qt::NoItemFlags);
+    }
+  };
+  refreshHistory_ = refresh;
+  refresh();
+
+  connect(searchEdit, &QLineEdit::textChanged, this, [refresh] { refresh(); });
+  connect(list, &QListWidget::itemActivated, this, [this](QListWidgetItem *item) {
+    if (!item) return;
+    const QUrl url = item->data(Qt::UserRole).toUrl();
+    if (url.isValid()) emit navigateRequested(url);
+  });
+
+  const auto deleteCurrentItem = [this, list, refresh] {
+    auto *item = list->currentItem();
+    if (!item || !profileService_) return;
+    const QUrl url = item->data(Qt::UserRole).toUrl();
+    const QDateTime dt = item->data(Qt::UserRole + 1).toDateTime();
+    if (url.isValid()) {
+      profileService_->removeHistoryEntry(url, dt);
+      refresh();
+      if (hooks_.syncNewTabs) hooks_.syncNewTabs();
+    }
+  };
+
+  connect(removeSelected, &QPushButton::clicked, this, deleteCurrentItem);
+  connect(clear, &QPushButton::clicked, this, [this, refresh] {
+    if (!profileService_) return;
+    profileService_->clearHistory();
+    refresh();
+    if (hooks_.syncNewTabs) hooks_.syncNewTabs();
+  });
+
+  connect(list, &QListWidget::customContextMenuRequested, this, [this, list, deleteCurrentItem](const QPoint &pos) {
+    auto *item = list->itemAt(pos);
+    if (!item) return;
+    const QUrl url = item->data(Qt::UserRole).toUrl();
+    if (!url.isValid()) return;
+
+    QMenu menu(this);
+    menu.setStyleSheet(QStringLiteral("QMenu{background:#1b232d;color:#e8eef5;border:1px solid #3a4857;border-radius:6px;padding:4px;} QMenu::item{padding:4px 20px;} QMenu::item:selected{background:#2a3644;}"));
+    QAction *openAct = menu.addAction(QStringLiteral("Aç"));
+    QAction *copyAct = menu.addAction(QStringLiteral("Bağlantı Adresini Kopyala"));
+    menu.addSeparator();
+    QAction *deleteAct = menu.addAction(BrowserIcons::icon(BrowserIcon::Close), QStringLiteral("Geçmişten Kaldır"));
+
+    QAction *chosen = menu.exec(list->mapToGlobal(pos));
+    if (chosen == openAct) {
+      emit navigateRequested(url);
+    } else if (chosen == copyAct) {
+      QGuiApplication::clipboard()->setText(url.toDisplayString());
+    } else if (chosen == deleteAct) {
+      list->setCurrentItem(item);
+      deleteCurrentItem();
+    }
+  });
+
   return section.page;
 }
 

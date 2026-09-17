@@ -15,9 +15,14 @@
 #include <QUuid>
 #include <QWebEngineProfile>
 #include <QWebEngineView>
+#include <QWebEngineFullScreenRequest>
 
 namespace ardali::core {
 class INavigationCandidateProvider;
+}
+
+namespace ardali::desktop_tabs {
+class FindBarWidget;
 }
 
 #include "audio/audio_effects_page.h"
@@ -144,6 +149,7 @@ public:
   int addInternalTab(QWidget *page, const QString &title, const QIcon &icon,
                      const QString &internalId, int insertIndex = -1);
   void closeTab(int index);
+  void restoreLastClosedTab();
   void switchTab(int index);
   void moveTab(int fromIndex, int toIndex);
 
@@ -165,6 +171,12 @@ public:
   }
   void openDevToolsForPage(QWebEnginePage *page);
   void showBookmarkContextMenu(const QUrl &url, const QString &title, const QPoint &globalPos);
+
+  void showFindBar();
+  void hideFindBar();
+  void printCurrentPage();
+  void printCurrentPageToPdf();
+  void handleFullScreenRequest(QWebEngineView *view, const QWebEngineFullScreenRequest &request);
 
   ardali::desktop_tabs::TabStripWidget *tabStrip() const { return tabStrip_; }
   int tabCount() const { return tabs_.size(); }
@@ -312,6 +324,7 @@ private:
   QToolButton *bookmarkBtn_ = nullptr;
   QLineEdit *omnibox_ = nullptr;
   QCompleter *suggestionCompleter_ = nullptr;
+  QPointer<QAbstractItemView> suggestionPopup_;
   QStandardItemModel *suggestionModel_ = nullptr;
   bool suggestionActivated_ = false;
   QCache<QString, QIcon> suggestionIconCache_{64};
@@ -378,6 +391,15 @@ private:
   QUrl lastActiveWebUrl_;
 
   std::unique_ptr<ardali::core::INavigationCandidateProvider> candidateProvider_;
+
+  QPointer<ardali::desktop_tabs::FindBarWidget> findBar_;
+  void updateFindBarPosition();
+  void handleFindRequest(const QString &text, bool forward, bool caseSensitive);
+  void handleClearFind();
+
+  bool isWebFullScreen_ = false;
+  Qt::WindowStates windowStateBeforeFullScreen_;
+  QRect geometryBeforeFullScreen_;
 };
 
 #endif // BROWSER_WINDOW_H_

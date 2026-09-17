@@ -167,6 +167,7 @@ set(DESKTOP_TABS_SOURCES
   browser/native/desktop_tabs/tab_strip_animator.cpp
   browser/native/desktop_tabs/tab_strip_widget.cpp
   browser/native/desktop_tabs/tab_search_popup.cpp
+  browser/native/desktop_tabs/find_bar_widget.cpp
   browser/native/desktop_tabs/tab_group_model.cpp
   browser/native/desktop_tabs/tab_group_popup.cpp
   browser/native/desktop_tabs/tab_group_launcher_popup.cpp
@@ -911,6 +912,18 @@ target_compile_options(ardali-browser-context-menu-test PRIVATE -UNDEBUG)
 add_dependencies(ardali-browser-context-menu-test ardali-browser-policy ardali-web-output-dali)
 add_test(NAME browser-context-menu COMMAND ardali-browser-context-menu-test)
 set_tests_properties(browser-context-menu PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QTWEBENGINE_CHROMIUM_FLAGS=--no-sandbox --disable-gpu" TIMEOUT 90)
+
+add_executable(ardali-browser-step5-test
+  ${ARDALI_BROWSER_FULL_SOURCES}
+  browser/native/tests/step5_essential_features_test.cpp)
+target_link_libraries(ardali-browser-step5-test PRIVATE ${ARDALI_BROWSER_FULL_LIBS})
+if(ARDALI_BROWSER_FULL_DEFS)
+  target_compile_definitions(ardali-browser-step5-test PRIVATE ${ARDALI_BROWSER_FULL_DEFS})
+endif()
+target_compile_options(ardali-browser-step5-test PRIVATE -UNDEBUG)
+add_dependencies(ardali-browser-step5-test ardali-browser-policy ardali-web-output-dali)
+add_test(NAME browser-step5-essential-features COMMAND ardali-browser-step5-test)
+set_tests_properties(browser-step5-essential-features PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QTWEBENGINE_CHROMIUM_FLAGS=--no-sandbox --disable-gpu" TIMEOUT 90)
 
 set_tests_properties(smart_omnibox_phase2_1_test PROPERTIES TIMEOUT 90)
 

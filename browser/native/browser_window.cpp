@@ -82,7 +82,12 @@ using ardali::i18n::I18n;
 #include "downloads/download_ui_model.h"
 #include "downloads/local_media_player_page.h"
 #include "translate/translate_service.h"
+#include "desktop_tabs/find_bar_widget.h"
 #include <QShortcut>
+#include <QPrinter>
+#include <QPrintDialog>
+#include <QFileDialog>
+#include <QWebEngineFindTextResult>
 
 namespace {
 static std::atomic<uint64_t> s_tabIdSequence{1};
@@ -721,7 +726,10 @@ class BrowserWebView final : public QWebEngineView {
 
     QAction *printAct = menu.addAction(BrowserIcons::icon(BrowserIcon::Print), I18n::text(QStringLiteral("context.print"), QStringLiteral("Yazdır...")));
     printAct->setShortcut(QKeySequence::Print);
-    printAct->setEnabled(false);
+    printAct->setEnabled(true);
+    QObject::connect(printAct, &QAction::triggered, [this] {
+      if (window_) window_->printCurrentPage();
+    });
 
     menu.addSeparator();
 
@@ -932,6 +940,48 @@ void BrowserWindow::setupUi() {
 
   auto *bookmarkBarShortcut = new QShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_B), this);
   connect(bookmarkBarShortcut, &QShortcut::activated, this, &BrowserWindow::toggleBookmarkBar);
+
+  auto *newTabShortcut = new QShortcut(QKeySequence(Qt::CTRL | Qt::Key_T), this);
+  connect(newTabShortcut, &QShortcut::activated, this, [this] {
+    addNewTab(QUrl(QStringLiteral("ardali://newtab/")));
+  });
+
+  auto *closeTabShortcut = new QShortcut(QKeySequence(Qt::CTRL | Qt::Key_W), this);
+  connect(closeTabShortcut, &QShortcut::activated, this, [this] {
+    if (tabStrip_ && tabStrip_->currentIndex() >= 0 && tabStrip_->currentIndex() < tabs_.size()) {
+      closeTab(tabStrip_->currentIndex());
+    }
+  });
+
+  auto *reopenClosedTabShortcut = new QShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_T), this);
+  connect(reopenClosedTabShortcut, &QShortcut::activated, this, &BrowserWindow::restoreLastClosedTab);
+
+  auto *findShortcut = new QShortcut(QKeySequence::Find, this);
+  connect(findShortcut, &QShortcut::activated, this, &BrowserWindow::showFindBar);
+
+  auto *findNextShortcut = new QShortcut(QKeySequence::FindNext, this);
+  connect(findNextShortcut, &QShortcut::activated, this, [this] {
+    if (findBar_ && findBar_->isVisible()) {
+      handleFindRequest(findBar_->findText(), true, findBar_->isCaseSensitive());
+    } else {
+      showFindBar();
+    }
+  });
+
+  auto *findPrevShortcut = new QShortcut(QKeySequence::FindPrevious, this);
+  connect(findPrevShortcut, &QShortcut::activated, this, [this] {
+    if (findBar_ && findBar_->isVisible()) {
+      handleFindRequest(findBar_->findText(), false, findBar_->isCaseSensitive());
+    }
+  });
+
+  auto *printShortcut = new QShortcut(QKeySequence::Print, this);
+  connect(printShortcut, &QShortcut::activated, this, &BrowserWindow::printCurrentPage);
+
+  auto *historyShortcut = new QShortcut(QKeySequence(Qt::CTRL | Qt::Key_H), this);
+  connect(historyShortcut, &QShortcut::activated, this, [this] {
+    showSettings(SettingsPage::Category::History);
+  });
 
   // Tab Strip (Chromium TabStripWidget)
   tabStrip_ = new ardali::desktop_tabs::TabStripWidget(topBar_);
@@ -1151,6 +1201,7 @@ void BrowserWindow::setupUi() {
   suggestionCompleter_ = new QCompleter(suggestionModel_, this);
   suggestionCompleter_->setCompletionMode(QCompleter::UnfilteredPopupCompletion);
   suggestionCompleter_->setMaxVisibleItems(10);
+  suggestionPopup_ = suggestionCompleter_->popup();
   omnibox_->setCompleter(suggestionCompleter_);
   connect(suggestionCompleter_, qOverload<const QModelIndex &>(&QCompleter::activated), this,
           [this](const QModelIndex &index) {
@@ -1543,6 +1594,10 @@ int BrowserWindow::addNewTab(const QUrl &url, int insertIndex) {
   // Permission handling (microphone, media capture, fullscreen)
   if (view->page()) {
     view->page()->settings()->setAttribute(QWebEngineSettings::FullScreenSupportEnabled, true);
+    connect(view->page(), &QWebEnginePage::fullScreenRequested, this,
+            [this, view](const QWebEngineFullScreenRequest &request) {
+      handleFullScreenRequest(view, request);
+    });
 #if QT_VERSION >= QT_VERSION_CHECK(6, 8, 0)
     connect(view->page(), &QWebEnginePage::permissionRequested, this,
             [this, view](const QWebEnginePermission &permission) {
@@ -1724,6 +1779,7 @@ void BrowserWindow::closeTab(int index) {
 void BrowserWindow::switchTab(int index) {
   dismissSiteControlsBubble();
   dismissCredentialSaveBubble();
+  if (suggestionCompleter_ && suggestionCompleter_->popup()) suggestionCompleter_->popup()->hide();
   if (hoverCard_) hoverCard_->hideCard();
   if (index < 0 || index >= tabs_.size()) return;
 
@@ -1734,6 +1790,13 @@ void BrowserWindow::switchTab(int index) {
     pageStack_->setCurrentWidget(info.view);
     updateOmniboxForCurrentTab();
     updateNavButtons();
+    if (findBar_ && findBar_->isVisible()) {
+      if (!findBar_->findText().isEmpty()) {
+        handleFindRequest(findBar_->findText(), true, findBar_->isCaseSensitive());
+      } else {
+        findBar_->clearMatchCount();
+      }
+    }
     if (bookmarkBtn_ && services_.profileService) {
       const bool bm = services_.profileService->isBookmarked(info.url);
       bookmarkBtn_->setToolTip(bm ? QStringLiteral("Yer imi kaldır") : QStringLiteral("Yer imi ekle"));
@@ -2727,17 +2790,33 @@ void BrowserWindow::closeEvent(QCloseEvent *event) {
 }
 
 void BrowserWindow::keyPressEvent(QKeyEvent *event) {
+  if (event->key() == Qt::Key_Escape && isWebFullScreen_) {
+    if (auto *view = currentView()) {
+      if (view->page()) {
+        view->page()->triggerAction(QWebEnginePage::ExitFullScreen);
+      }
+    }
+    isWebFullScreen_ = false;
+    if (topBar_) topBar_->show();
+    if (navBar_) navBar_->show();
+    const QString bmMode = QSettings().value(QStringLiteral("browser/bookmarkBarVisibility"), QStringLiteral("new_tab")).toString();
+    const bool barVisible = (bmMode == QLatin1String("always") || (bmMode == QLatin1String("new_tab") && isCurrentTabNewTab()));
+    if (bookmarkBar_ && barVisible) {
+      bookmarkBar_->show();
+    }
+    const Qt::WindowStates prevState = windowStateBeforeFullScreen_ & ~Qt::WindowFullScreen;
+    if (prevState.testFlag(Qt::WindowMaximized)) {
+      showMaximized();
+    } else {
+      showNormal();
+      if (!geometryBeforeFullScreen_.isNull()) {
+        setGeometry(geometryBeforeFullScreen_);
+      }
+    }
+    event->accept();
+    return;
+  }
   if (event->modifiers() & Qt::ControlModifier) {
-    if (event->key() == Qt::Key_T) {
-      addNewTab(QUrl(QStringLiteral("ardali://newtab/")));
-      event->accept();
-      return;
-    }
-    if (event->key() == Qt::Key_W) {
-      closeTab(tabStrip_->currentIndex());
-      event->accept();
-      return;
-    }
     if (event->key() == Qt::Key_R) {
       onReloadOrStopClicked();
       event->accept();
@@ -2825,6 +2904,7 @@ void BrowserWindow::resizeEvent(QResizeEvent *event) {
   updatePermissionBubblePosition();
   updateSiteControlsBubblePosition();
   updateSaveBubblePosition();
+  updateFindBarPosition();
   if (downloadPopup_ && downloadPopup_->isVisible()) downloadPopup_->reposition(mediaDownload_);
   if (!isMaximized() && !isFullScreen() && !(windowState() & (Qt::WindowMaximized | Qt::WindowFullScreen))) {
     lastNormalSize_ = size();
@@ -3113,8 +3193,96 @@ void BrowserWindow::renderBookmarks() {
   connect(appsBtn_, &QToolButton::clicked, this, &BrowserWindow::toggleTabGroupLauncher);
   bookmarkBar_->addWidget(appsBtn_);
 
-  // 2. Bookmark items with icon, site name, and a directly accessible remove button.
+  // 2. Bookmark Folders
+  const QStringList folders = services_.profileService->bookmarkFolders();
+  const auto allItems = services_.profileService->bookmarkItems();
+
+  for (const QString &folderName : folders) {
+    auto *folderBtn = new QToolButton(bookmarkBar_);
+    folderBtn->setObjectName(QStringLiteral("bookmarkFolderButton"));
+    folderBtn->setText(folderName);
+    folderBtn->setToolTip(QStringLiteral("%1 (Klasör)").arg(folderName));
+    folderBtn->setIcon(BrowserIcons::icon(BrowserIcon::Folder));
+    folderBtn->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+    folderBtn->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
+    folderBtn->setIconSize(QSize(Metrics::bookmarkIconSize, Metrics::bookmarkIconSize));
+    folderBtn->setFixedHeight(Metrics::bookmarkButtonHeight);
+    folderBtn->setCursor(Qt::PointingHandCursor);
+    folderBtn->setPopupMode(QToolButton::InstantPopup);
+
+    auto *menu = new QMenu(folderBtn);
+    menu->setStyleSheet(QStringLiteral("QMenu{background:#1b232d;color:#e8eef5;border:1px solid #3a4857;border-radius:6px;padding:4px;} QMenu::item{padding:4px 24px;} QMenu::item:selected{background:#2a3644;}"));
+
+    int count = 0;
+    for (const auto &item : allItems) {
+      if (item.folder.trimmed() == folderName) {
+        count++;
+        const QString title = item.title.isEmpty() ? bookmarkDisplayName(item.url) : item.title;
+        QAction *act = menu->addAction(platformIconForBookmark(item.url), title);
+        act->setToolTip(item.url.toDisplayString());
+        connect(act, &QAction::triggered, this, [this, url = item.url] {
+          if (auto *view = currentView()) {
+            const int idx = tabStrip_->currentIndex();
+            if (idx >= 0 && idx < tabs_.size()) {
+              tabs_[idx].url = url;
+              updateBookmarkBarVisibility();
+            }
+            prepareAdBlockScripts(view->page(), url);
+            view->load(url);
+          } else {
+            addNewTab(url);
+          }
+        });
+      }
+    }
+    if (count == 0) {
+      QAction *empty = menu->addAction(QStringLiteral("(Klasör boş)"));
+      empty->setEnabled(false);
+    }
+    folderBtn->setMenu(menu);
+
+    folderBtn->setContextMenuPolicy(Qt::CustomContextMenu);
+    connect(folderBtn, &QWidget::customContextMenuRequested, this, [this, folderName, folderBtn](const QPoint &pos) {
+      QMenu ctxMenu(folderBtn);
+      ctxMenu.setStyleSheet(QStringLiteral("QMenu{background:#1b232d;color:#e8eef5;border:1px solid #3a4857;border-radius:6px;padding:4px;} QMenu::item{padding:4px 20px;} QMenu::item:selected{background:#2a3644;}"));
+      QAction *openAll = ctxMenu.addAction(QStringLiteral("Tümünü Yeni Sekmelerde Aç"));
+      ctxMenu.addSeparator();
+      QAction *delFolder = ctxMenu.addAction(BrowserIcons::icon(BrowserIcon::Close), QStringLiteral("Klasörü Sil"));
+      QAction *chosen = ctxMenu.exec(folderBtn->mapToGlobal(pos));
+      if (chosen == openAll) {
+        for (const auto &item : services_.profileService->bookmarkItems()) {
+          if (item.folder.trimmed() == folderName) addNewTab(item.url);
+        }
+      } else if (chosen == delFolder) {
+        services_.profileService->removeBookmarkFolder(folderName, true);
+        renderBookmarks();
+      }
+    });
+
+    bookmarkBar_->addWidget(folderBtn);
+  }
+
+  // 3. Root Bookmark items with icon, site name, and remove button.
+  QList<QUrl> rootUrls;
+  for (const auto &item : allItems) {
+    if (item.folder.isEmpty() && !rootUrls.contains(item.url)) {
+      rootUrls.append(item.url);
+    }
+  }
   for (const QUrl &url : services_.profileService->bookmarks()) {
+    bool inFolder = false;
+    for (const auto &item : allItems) {
+      if (item.url == url && !item.folder.isEmpty()) {
+        inFolder = true;
+        break;
+      }
+    }
+    if (!inFolder && !rootUrls.contains(url)) {
+      rootUrls.append(url);
+    }
+  }
+
+  for (const QUrl &url : rootUrls) {
     const QString title = bookmarkDisplayName(url);
     auto *item = new QWidget(bookmarkBar_);
     item->setContextMenuPolicy(Qt::CustomContextMenu);
@@ -3175,8 +3343,9 @@ void BrowserWindow::renderBookmarks() {
     });
     connect(remove, &QToolButton::clicked, this, [this, url] {
       if (!services_.profileService || !services_.profileService->isBookmarked(url)) return;
-      services_.profileService->toggleBookmark(url);
+      services_.profileService->removeBookmark(url);
       updateBookmarkButtonState();
+      renderBookmarks();
     });
   }
 }
@@ -3266,6 +3435,43 @@ void BrowserWindow::showMainMenu() {
   QAction *bookmarks = bookmarksMenu->addAction(BrowserIcons::icon(BrowserIcon::Bookmark), I18n::text(QStringLiteral("menu.bookmarks_manager"), QStringLiteral("Yer işaretleri yöneticisi")));
   bookmarks->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_O));
 
+  bookmarksMenu->addSeparator();
+  QAction *importBookmarksAct = bookmarksMenu->addAction(I18n::text(QStringLiteral("menu.import_bookmarks"), QStringLiteral("Yer işaretlerini içe aktar...")));
+  connect(importBookmarksAct, &QAction::triggered, this, [this] {
+    if (!services_.profileService) return;
+    const QString filePath = QFileDialog::getOpenFileName(this,
+        I18n::text(QStringLiteral("bookmarks.import_title"), QStringLiteral("Yer İşaretlerini İçe Aktar")),
+        QDir::homePath(),
+        QStringLiteral("HTML Dosyaları (*.html *.htm)"));
+    if (filePath.isEmpty()) return;
+    QFile file(filePath);
+    if (file.open(QIODevice::ReadOnly | QIODevice::Text)) {
+      const QString content = QString::fromUtf8(file.readAll());
+      const int count = services_.profileService->importBookmarksFromHtml(content);
+      QMessageBox::information(this,
+          I18n::text(QStringLiteral("bookmarks.import_title"), QStringLiteral("Yer İşaretleri")),
+          I18n::text(QStringLiteral("bookmarks.imported_count"), QStringLiteral("%1 yer işareti başarıyla içe aktarıldı.")).arg(count));
+    }
+  });
+
+  QAction *exportBookmarksAct = bookmarksMenu->addAction(I18n::text(QStringLiteral("menu.export_bookmarks"), QStringLiteral("Yer işaretlerini dışa aktar...")));
+  connect(exportBookmarksAct, &QAction::triggered, this, [this] {
+    if (!services_.profileService) return;
+    const QString filePath = QFileDialog::getSaveFileName(this,
+        I18n::text(QStringLiteral("bookmarks.export_title"), QStringLiteral("Yer İşaretlerini Dışa Aktar")),
+        QDir::homePath() + QStringLiteral("/bookmarks.html"),
+        QStringLiteral("HTML Dosyaları (*.html *.htm)"));
+    if (filePath.isEmpty()) return;
+    QFile file(filePath);
+    if (file.open(QIODevice::WriteOnly | QIODevice::Text)) {
+      const QString html = services_.profileService->exportBookmarksToHtml();
+      file.write(html.toUtf8());
+      QMessageBox::information(this,
+          I18n::text(QStringLiteral("bookmarks.export_title"), QStringLiteral("Yer İşaretleri")),
+          I18n::text(QStringLiteral("bookmarks.exported_success"), QStringLiteral("Yer işaretleri başarıyla dışa aktarıldı.")));
+    }
+  });
+
   QAction *downloads = menu.addAction(BrowserIcons::icon(BrowserIcon::Download), I18n::text(QStringLiteral("menu.downloads"), QStringLiteral("İndirilenler")));
   downloads->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_J));
 
@@ -3280,9 +3486,29 @@ void BrowserWindow::showMainMenu() {
   zoomIn->setEnabled(hasWebContent);
 
   menu.addSeparator();
-  QAction *print = menu.addAction(BrowserIcons::icon(BrowserIcon::Print), I18n::text(QStringLiteral("menu.print"), QStringLiteral("Yazdır"))); print->setEnabled(false);
-  QAction *find = menu.addAction(BrowserIcons::icon(BrowserIcon::Search), I18n::text(QStringLiteral("menu.find"), QStringLiteral("Bul ve düzenle"))); find->setEnabled(false);
-  QAction *save = menu.addAction(BrowserIcons::icon(BrowserIcon::Save), I18n::text(QStringLiteral("menu.save"), QStringLiteral("Kaydet ve paylaş"))); save->setEnabled(false);
+  QAction *print = menu.addAction(BrowserIcons::icon(BrowserIcon::Print), I18n::text(QStringLiteral("menu.print"), QStringLiteral("Yazdır...")));
+  print->setShortcut(QKeySequence::Print);
+  print->setEnabled(hasWebContent);
+  connect(print, &QAction::triggered, this, &BrowserWindow::printCurrentPage);
+
+  QAction *printPdf = menu.addAction(I18n::text(QStringLiteral("menu.print_pdf"), QStringLiteral("PDF Olarak Kaydet...")));
+  printPdf->setEnabled(hasWebContent);
+  connect(printPdf, &QAction::triggered, this, &BrowserWindow::printCurrentPageToPdf);
+
+  QAction *find = menu.addAction(BrowserIcons::icon(BrowserIcon::Search), I18n::text(QStringLiteral("menu.find"), QStringLiteral("Sayfada Bul...")));
+  find->setShortcut(QKeySequence::Find);
+  find->setEnabled(hasWebContent);
+  connect(find, &QAction::triggered, this, &BrowserWindow::showFindBar);
+
+  QAction *save = menu.addAction(BrowserIcons::icon(BrowserIcon::Save), I18n::text(QStringLiteral("menu.save"), QStringLiteral("Sayfayı Farklı Kaydet...")));
+  save->setShortcut(QKeySequence::Save);
+  save->setEnabled(hasWebContent);
+  connect(save, &QAction::triggered, this, [this] {
+    if (auto *view = currentView()) {
+      if (view->page()) view->page()->triggerAction(QWebEnginePage::SavePage);
+    }
+  });
+
   QAction *tools = menu.addAction(BrowserIcons::icon(BrowserIcon::Tools), I18n::text(QStringLiteral("menu.other_tools"), QStringLiteral("Diğer araçlar"))); tools->setEnabled(false);
 
   menu.addSeparator();
@@ -3303,7 +3529,7 @@ void BrowserWindow::showMainMenu() {
   });
   connect(passwords, &QAction::triggered, this, &BrowserWindow::showPasswords);
   connect(fillPassword, &QAction::triggered, this, &BrowserWindow::fillCurrentPageFromVault);
-  connect(history, &QAction::triggered, this, [this] { showHistoryMenu(); });
+  connect(history, &QAction::triggered, this, [this] { showSettings(SettingsPage::Category::History); });
   connect(bookmarks, &QAction::triggered, this, [this] { showSettings(SettingsPage::Category::Bookmarks); });
   connect(downloads, &QAction::triggered, this, [this] { showDownloadsMenu(); });
   connect(zoomOut, &QAction::triggered, this, [this] { changeCurrentZoom(-0.1); });
@@ -3322,6 +3548,21 @@ void BrowserWindow::showHistoryMenu() {
   if (!services_.profileService) return;
   QMenu menu(this);
   menu.setStyleSheet(QStringLiteral("QMenu{background:#1b232d;color:#e8eef5;border:1px solid #3a4857;border-radius:9px;padding:6px;} QMenu::item{min-height:25px;padding:5px 30px 5px 30px;border-radius:6px;} QMenu::item:disabled{color:#6f7b87;}"));
+
+  QAction *openAllHistory = menu.addAction(BrowserIcons::icon(BrowserIcon::History),
+      I18n::text(QStringLiteral("menu.show_full_history"), QStringLiteral("Tüm geçmişi yönet...")) + QStringLiteral("\tCtrl+H"));
+  connect(openAllHistory, &QAction::triggered, this, [this] {
+    showSettings(SettingsPage::Category::History);
+  });
+  menu.addSeparator();
+
+  if (!isIncognito() && services_.profileService->hasClosedTabs()) {
+    QAction *restoreTab = menu.addAction(BrowserIcons::icon(BrowserIcon::History),
+        I18n::text(QStringLiteral("menu.reopen_closed_tab"), QStringLiteral("Son kapatılan sekmeyi yeniden aç")) + QStringLiteral("\tCtrl+Shift+T"));
+    connect(restoreTab, &QAction::triggered, this, &BrowserWindow::restoreLastClosedTab);
+    menu.addSeparator();
+  }
+
   const auto entries = services_.profileService->recentHistory();
   if (entries.isEmpty()) {
     QAction *empty = menu.addAction(I18n::text(QStringLiteral("menu.history_empty"), QStringLiteral("Geçmiş henüz boş")));
@@ -3329,13 +3570,25 @@ void BrowserWindow::showHistoryMenu() {
   } else {
     for (const auto &entry : entries.mid(0, std::min<qsizetype>(30, entries.size()))) {
       const QString label = entry.title.isEmpty() ? entry.url.host() : entry.title;
-      QAction *action = menu.addAction(label.left(90));
-      action->setToolTip(QStringLiteral("%1\n%2").arg(entry.url.toDisplayString(), entry.visitedAt.toLocalTime().toString(QStringLiteral("dd.MM.yyyy HH:mm"))));
-      connect(action, &QAction::triggered, this, [this, url = entry.url] {
+      QMenu *itemMenu = menu.addMenu(label.left(90));
+      itemMenu->setStyleSheet(menu.styleSheet());
+      QAction *openAct = itemMenu->addAction(I18n::text(QStringLiteral("menu.open"), QStringLiteral("Aç")));
+      openAct->setToolTip(QStringLiteral("%1\n%2").arg(entry.url.toDisplayString(), entry.visitedAt.toLocalTime().toString(QStringLiteral("dd.MM.yyyy HH:mm"))));
+      connect(openAct, &QAction::triggered, this, [this, url = entry.url] {
         if (auto *view = currentView()) {
           view->load(url);
         } else {
           addNewTab(url);
+        }
+      });
+      QAction *openNewTabAct = itemMenu->addAction(I18n::text(QStringLiteral("menu.open_in_new_tab"), QStringLiteral("Yeni sekmede aç")));
+      connect(openNewTabAct, &QAction::triggered, this, [this, url = entry.url] {
+        addNewTab(url);
+      });
+      QAction *deleteAct = itemMenu->addAction(BrowserIcons::icon(BrowserIcon::Close), I18n::text(QStringLiteral("menu.delete_from_history"), QStringLiteral("Geçmişten kaldır")));
+      connect(deleteAct, &QAction::triggered, this, [this, url = entry.url, visitedAt = entry.visitedAt] {
+        if (services_.profileService) {
+          services_.profileService->removeHistoryEntry(url, visitedAt);
         }
       });
     }
@@ -3527,12 +3780,69 @@ bool BrowserWindow::isInsideSiteControls(QWidget *target, const QPoint &globalPo
 }
 
 bool BrowserWindow::eventFilter(QObject *watched, QEvent *event) {
+  static thread_local bool inEventFilter = false;
+  if (inEventFilter) return false;
+  struct FilterGuard {
+    bool &flag;
+    FilterGuard(bool &f) : flag(f) { flag = true; }
+    ~FilterGuard() { flag = false; }
+  } filterGuard(inEventFilter);
+
   if (watched == omnibox_ && event->type() == QEvent::FocusIn && omnibox_->text().trimmed().isEmpty()) {
     QTimer::singleShot(0, this, [this] {
       if (omnibox_ && omnibox_->hasFocus() && omnibox_->text().trimmed().isEmpty()) {
         updateOmniboxSuggestions(QString{});
       }
     });
+  }
+
+  if (watched == omnibox_ && event->type() == QEvent::FocusOut) {
+    QTimer::singleShot(150, this, [this] {
+      if (!omnibox_) return;
+      if (suggestionPopup_ && suggestionPopup_->isVisible()) {
+        if (!omnibox_->hasFocus() && !suggestionPopup_->hasFocus()) {
+          suggestionPopup_->hide();
+        }
+      }
+    });
+  }
+
+  if (event->type() == QEvent::KeyPress) {
+    auto *keyEvent = static_cast<QKeyEvent *>(event);
+    if (keyEvent->key() == Qt::Key_Escape) {
+      if (suggestionPopup_ && suggestionPopup_->isVisible()) {
+        suggestionPopup_->hide();
+        return true;
+      }
+    }
+  }
+
+  if (suggestionPopup_ && suggestionPopup_->isVisible()) {
+    if (event->type() == QEvent::MouseButtonPress) {
+      auto *mouseEvent = static_cast<QMouseEvent *>(event);
+      const QPoint globalPos = mouseEvent->globalPosition().toPoint();
+      auto *widget = qobject_cast<QWidget *>(watched);
+
+      bool isOmniOrPopup = false;
+      if (widget == omnibox_ || widget == suggestionPopup_ || suggestionPopup_->isAncestorOf(widget)) {
+        isOmniOrPopup = true;
+      } else {
+        if (omnibox_) {
+          const QRect omniRect(omnibox_->mapToGlobal(QPoint(0, 0)), omnibox_->size());
+          if (omniRect.contains(globalPos)) isOmniOrPopup = true;
+        }
+        if (suggestionPopup_) {
+          const QRect popupRect(suggestionPopup_->mapToGlobal(QPoint(0, 0)), suggestionPopup_->size());
+          if (popupRect.contains(globalPos)) isOmniOrPopup = true;
+        }
+      }
+
+      if (!isOmniOrPopup) {
+        suggestionPopup_->hide();
+      }
+    } else if (event->type() == QEvent::WindowDeactivate) {
+      suggestionPopup_->hide();
+    }
   }
 
   if (siteControlsBubble_ && siteControlsBubble_->isVisible()) {
@@ -4842,14 +5152,20 @@ void BrowserWindow::onTabContextMenuRequested(int index, const QPoint &globalPos
   menu.addSeparator();
 
   // 12. Kapat
-  QAction *closeAct = menu.addAction(BrowserIcons::icon(BrowserIcon::Close), I18n::text(QStringLiteral("tab.context.close"), QStringLiteral("Kapat")));
-  closeAct->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_W));
+  QAction *closeAct = menu.addAction(BrowserIcons::icon(BrowserIcon::Close),
+      I18n::text(QStringLiteral("tab.context.close"), QStringLiteral("Kapat")) + QStringLiteral("\tCtrl+W"));
   connect(closeAct, &QAction::triggered, this, [this, tabId] {
     const int idx = findIndexByTabId(tabId);
     if (idx >= 0) {
       closeTab(idx);
     }
   });
+
+  // Kapatılan sekmeyi yeniden aç
+  QAction *reopenClosedAct = menu.addAction(BrowserIcons::icon(BrowserIcon::History),
+      I18n::text(QStringLiteral("tab.context.reopen_closed"), QStringLiteral("Kapatılan sekmeyi yeniden aç")) + QStringLiteral("\tCtrl+Shift+T"));
+  reopenClosedAct->setEnabled(!isIncognito() && services_.profileService && services_.profileService->hasClosedTabs());
+  connect(reopenClosedAct, &QAction::triggered, this, &BrowserWindow::restoreLastClosedTab);
 
   // 13. Diğer sekmeleri kapat
   QAction *closeOthersAct = menu.addAction(I18n::text(QStringLiteral("tab.context.close_others"), QStringLiteral("Diğer sekmeleri kapat")));
@@ -4989,6 +5305,34 @@ void BrowserWindow::showBookmarkContextMenu(const QUrl &url, const QString &titl
         renderBookmarks();
       }
     });
+
+    // 9b. Klasöre taşı...
+    QAction *moveToFolderAct = menu.addAction(QStringLiteral("Klasöre taşı..."));
+    connect(moveToFolderAct, &QAction::triggered, this, [this, url] {
+      if (!services_.profileService) return;
+      QStringList folderOptions = services_.profileService->bookmarkFolders();
+      folderOptions.prepend(QStringLiteral("(Ana Dizin / Kök)"));
+      folderOptions.append(QStringLiteral("+ Yeni Klasör Oluştur..."));
+      bool ok = false;
+      const QString choice = QInputDialog::getItem(
+          this, QStringLiteral("Klasöre Taşı"), QStringLiteral("Hedef klasörü seçin:"), folderOptions, 0, false, &ok);
+      if (ok) {
+        QString targetFolder;
+        if (choice == QStringLiteral("+ Yeni Klasör Oluştur...")) {
+          const QString newF = QInputDialog::getText(
+              this, QStringLiteral("Yeni Klasör"), QStringLiteral("Klasör adı:"), QLineEdit::Normal, QString(), &ok);
+          if (ok && !newF.trimmed().isEmpty()) {
+            targetFolder = newF.trimmed();
+          } else {
+            return;
+          }
+        } else if (choice != QStringLiteral("(Ana Dizin / Kök)")) {
+          targetFolder = choice;
+        }
+        services_.profileService->moveBookmarkToFolder(url, targetFolder);
+        renderBookmarks();
+      }
+    });
   }
 
   menu.addSeparator();
@@ -5025,7 +5369,20 @@ void BrowserWindow::showBookmarkContextMenu(const QUrl &url, const QString &titl
 
   // 11. Klasör ekle...
   QAction *addFolderAct = menu.addAction(I18n::text(QStringLiteral("bookmark.add_folder"), QStringLiteral("Klasör ekle...")));
-  addFolderAct->setEnabled(false);
+  connect(addFolderAct, &QAction::triggered, this, [this] {
+    bool ok = false;
+    const QString folderName = QInputDialog::getText(
+        this,
+        I18n::text(QStringLiteral("bookmark.add_folder_title"), QStringLiteral("Yeni Klasör")),
+        I18n::text(QStringLiteral("bookmark.folder_name_prompt"), QStringLiteral("Klasör adı:")),
+        QLineEdit::Normal,
+        QString(),
+        &ok);
+    if (ok && !folderName.trimmed().isEmpty() && services_.profileService) {
+      services_.profileService->createBookmarkFolder(folderName.trimmed());
+      renderBookmarks();
+    }
+  });
 
   menu.addSeparator();
 
@@ -5070,3 +5427,155 @@ void BrowserWindow::showBookmarkContextMenu(const QUrl &url, const QString &titl
 
   menu.exec(globalPos);
 }
+
+void BrowserWindow::restoreLastClosedTab() {
+  if (isIncognito() || !services_.profileService) return;
+  const auto closed = services_.profileService->takeMostRecentClosedTab();
+  if (!closed.has_value()) return;
+  addNewTab(closed->url);
+}
+
+void BrowserWindow::showFindBar() {
+  if (!findBar_) {
+    findBar_ = new ardali::desktop_tabs::FindBarWidget(this);
+    connect(findBar_, &ardali::desktop_tabs::FindBarWidget::findRequested,
+            this, &BrowserWindow::handleFindRequest);
+    connect(findBar_, &ardali::desktop_tabs::FindBarWidget::clearFindRequested,
+            this, &BrowserWindow::handleClearFind);
+    connect(findBar_, &ardali::desktop_tabs::FindBarWidget::closeRequested,
+            this, &BrowserWindow::hideFindBar);
+  }
+  updateFindBarPosition();
+  findBar_->show();
+  findBar_->raise();
+
+  if (auto *view = currentView()) {
+    const QString selected = view->selectedText().trimmed();
+    if (!selected.isEmpty() && !selected.contains(QLatin1Char('\n'))) {
+      findBar_->setFindText(selected);
+      handleFindRequest(selected, true, findBar_->isCaseSensitive());
+    }
+  }
+  findBar_->focusAndSelectAll();
+}
+
+void BrowserWindow::hideFindBar() {
+  if (findBar_) {
+    findBar_->hide();
+  }
+  handleClearFind();
+  if (auto *view = currentView()) {
+    view->setFocus();
+  }
+}
+
+void BrowserWindow::updateFindBarPosition() {
+  if (!findBar_) return;
+  const int w = findBar_->width();
+  const int h = findBar_->height();
+  const int top = (navBar_ ? navBar_->geometry().bottom() : 80) + 6;
+  const int right = width() - w - 24;
+  findBar_->setGeometry(std::max(10, right), top, w, h);
+}
+
+void BrowserWindow::handleFindRequest(const QString &text, bool forward, bool caseSensitive) {
+  auto *view = currentView();
+  if (!view || !view->page()) return;
+
+  if (text.isEmpty()) {
+    handleClearFind();
+    return;
+  }
+
+  QWebEnginePage::FindFlags flags;
+  if (!forward) flags |= QWebEnginePage::FindBackward;
+  if (caseSensitive) flags |= QWebEnginePage::FindCaseSensitively;
+
+  view->page()->findText(text, flags, [this](const QWebEngineFindTextResult &result) {
+    if (findBar_) {
+      findBar_->setMatchCount(result.activeMatch(), result.numberOfMatches());
+    }
+  });
+}
+
+void BrowserWindow::handleClearFind() {
+  if (auto *view = currentView()) {
+    if (view->page()) {
+      view->page()->findText(QString());
+    }
+  }
+  if (findBar_) {
+    findBar_->clearMatchCount();
+  }
+}
+
+void BrowserWindow::printCurrentPage() {
+  auto *view = currentView();
+  if (!view || !view->page()) return;
+  auto printer = std::make_shared<QPrinter>(QPrinter::HighResolution);
+  QPrintDialog dialog(printer.get(), this);
+  dialog.setWindowTitle(I18n::text(QStringLiteral("print.dialog_title"), QStringLiteral("Yazdır")));
+  if (dialog.exec() == QDialog::Accepted) {
+    auto conn = std::make_shared<QMetaObject::Connection>();
+    *conn = connect(view, &QWebEngineView::printFinished, view, [printer, conn](bool success) {
+      Q_UNUSED(success);
+      QObject::disconnect(*conn);
+    });
+    view->print(printer.get());
+  }
+}
+
+void BrowserWindow::printCurrentPageToPdf() {
+  auto *view = currentView();
+  if (!view || !view->page()) return;
+  QString title = view->title().trimmed();
+  if (title.isEmpty()) title = QStringLiteral("sayfa");
+  title.replace(QRegularExpression(QStringLiteral("[/\\\\?%*:|\"<>]")), QStringLiteral("_"));
+  const QString defaultPath = QDir::homePath() + QLatin1Char('/') + title + QStringLiteral(".pdf");
+  const QString filePath = QFileDialog::getSaveFileName(this,
+      I18n::text(QStringLiteral("print.pdf_save_title"), QStringLiteral("PDF Olarak Kaydet")),
+      defaultPath,
+      QStringLiteral("PDF Dosyaları (*.pdf)"));
+  if (!filePath.isEmpty()) {
+    view->page()->printToPdf(filePath);
+  }
+}
+
+void BrowserWindow::handleFullScreenRequest(QWebEngineView *view, const QWebEngineFullScreenRequest &request) {
+  Q_UNUSED(view);
+  auto req = const_cast<QWebEngineFullScreenRequest &>(request);
+  req.accept();
+
+  if (req.toggleOn()) {
+    if (!isWebFullScreen_) {
+      windowStateBeforeFullScreen_ = windowState();
+      geometryBeforeFullScreen_ = geometry();
+      isWebFullScreen_ = true;
+      if (topBar_) topBar_->hide();
+      if (navBar_) navBar_->hide();
+      if (bookmarkBar_) bookmarkBar_->hide();
+      showFullScreen();
+    }
+  } else {
+    if (isWebFullScreen_) {
+      isWebFullScreen_ = false;
+      if (topBar_) topBar_->show();
+      if (navBar_) navBar_->show();
+      const QString bmMode = QSettings().value(QStringLiteral("browser/bookmarkBarVisibility"), QStringLiteral("new_tab")).toString();
+      const bool barVisible = (bmMode == QLatin1String("always") || (bmMode == QLatin1String("new_tab") && isCurrentTabNewTab()));
+      if (bookmarkBar_ && barVisible) {
+        bookmarkBar_->show();
+      }
+      const Qt::WindowStates prevState = windowStateBeforeFullScreen_ & ~Qt::WindowFullScreen;
+      if (prevState.testFlag(Qt::WindowMaximized)) {
+        showMaximized();
+      } else {
+        showNormal();
+        if (!geometryBeforeFullScreen_.isNull()) {
+          setGeometry(geometryBeforeFullScreen_);
+        }
+      }
+    }
+  }
+}
+
