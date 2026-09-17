@@ -1,6 +1,0 @@
-<RCC>
-  <qresource prefix="/new-tab">
-    <file alias="ardali-flow-blue.png">/home/muhammetdli/ArDali/browser/assets/new-tab/ardali-flow-blue.png</file>
-  </qresource>
-</RCC>
-

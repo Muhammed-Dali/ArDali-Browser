@@ -1,9 +1,0 @@
-<RCC>
-  <qresource prefix="/">
-    <file alias="assets/icons/ardali-browser-16.png">/home/muhammetdli/ArDali/browser/assets/icons/ardali-browser-16.png</file>
-    <file alias="assets/icons/ardali-browser-32.png">/home/muhammetdli/ArDali/browser/assets/icons/ardali-browser-32.png</file>
-    <file alias="assets/icons/ardali-browser-128.png">/home/muhammetdli/ArDali/browser/assets/icons/ardali-browser-128.png</file>
-    <file alias="assets/icons/ardali-browser-256.png">/home/muhammetdli/ArDali/browser/assets/icons/ardali-browser-256.png</file>
-  </qresource>
-</RCC>
-

@@ -43,3 +43,7 @@ browser/native/tabs-complete/
 
 scratch/
 Testing/
+
+# Local build directories
+/build-step2-*/
+/build-step2-*.log

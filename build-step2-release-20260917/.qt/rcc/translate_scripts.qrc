@@ -1,6 +1,0 @@
-<RCC>
-  <qresource prefix="/translate">
-    <file alias="translate_engine.js">/home/muhammetdli/ArDali/browser/native/translate/resources/translate_engine.js</file>
-  </qresource>
-</RCC>
-

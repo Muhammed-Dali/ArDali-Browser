@@ -1,9 +1,0 @@
-<RCC>
-  <qresource prefix="/search-engines">
-    <file alias="google.ico">/home/muhammetdli/ArDali/browser/assets/new-tab/google.ico</file>
-    <file alias="duckduckgo.ico">/home/muhammetdli/ArDali/browser/assets/new-tab/duckduckgo.ico</file>
-    <file alias="brave.ico">/home/muhammetdli/ArDali/browser/assets/new-tab/brave.ico</file>
-    <file alias="bing.ico">/home/muhammetdli/ArDali/browser/assets/new-tab/bing.ico</file>
-  </qresource>
-</RCC>
-
