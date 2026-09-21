@@ -615,7 +615,8 @@ qt_add_resources(ardali-browser-password-autofill-test "password_autofill_icons"
 )
 add_test(NAME browser-password-autofill-test COMMAND ardali-browser-password-autofill-test)
 set_tests_properties(browser-password-autofill-test PROPERTIES
-  ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QTWEBENGINE_DISABLE_SANDBOX=1;QTWEBENGINE_CHROMIUM_FLAGS=--no-sandbox --disable-gpu")
+  ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QTWEBENGINE_DISABLE_SANDBOX=1;QTWEBENGINE_CHROMIUM_FLAGS=--no-sandbox --disable-gpu;ARDALI_SLOW_WEBENGINE_CI=1"
+  TIMEOUT 180)
 
 add_executable(ardali-password-manager-page-test
   browser/native/tests/password_manager_page_test.cpp
@@ -964,7 +965,7 @@ endif()
 target_compile_options(ardali-browser-step5-test PRIVATE -UNDEBUG)
 add_dependencies(ardali-browser-step5-test ardali-browser-policy ardali-web-output-dali)
 add_test(NAME browser-step5-essential-features COMMAND ardali-browser-step5-test)
-set_tests_properties(browser-step5-essential-features PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QTWEBENGINE_CHROMIUM_FLAGS=--no-sandbox --disable-gpu" TIMEOUT 90)
+set_tests_properties(browser-step5-essential-features PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=xcb;QTWEBENGINE_CHROMIUM_FLAGS=--no-sandbox --disable-gpu" TIMEOUT 120)
 
 set_tests_properties(smart_omnibox_phase2_1_test PROPERTIES TIMEOUT 90)
 

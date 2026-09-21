@@ -111,7 +111,7 @@ jobs:
       - name: Test
         env:
           QT_QPA_PLATFORM: xcb
-          QT_QPA_PLATFORM_PLUGIN_PATH: /usr/lib/x86_64-linux-gnu/qt6/plugins
+          QT_QPA_PLATFORM_PLUGIN_PATH: ${{ matrix.package_family == 'apt' && '/usr/lib/x86_64-linux-gnu/qt6/plugins' || (matrix.package_family == 'dnf' && '/usr/lib64/qt6/plugins' || '/usr/lib/qt6/plugins') }}
           QTWEBENGINE_DISABLE_SANDBOX: "1"
           QTWEBENGINE_CHROMIUM_FLAGS: --no-sandbox --disable-gpu --disable-web-resources
           DBUS_SYSTEM_BUS_ADDRESS: unix:path=/run/dbus/system_bus_socket

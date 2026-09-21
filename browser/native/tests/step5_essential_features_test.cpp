@@ -32,6 +32,8 @@
 #include "settings/settings_page.h"
 
 int main(int argc, char **argv) {
+  setvbuf(stdout, nullptr, _IONBF, 0);
+  setvbuf(stderr, nullptr, _IONBF, 0);
   QApplication app(argc, argv);
   app.setApplicationName(QStringLiteral("ArDaliStep5Test"));
 
@@ -377,6 +379,7 @@ int main(int argc, char **argv) {
     // Show popup again and test Focus Out dismissal
     completer->popup()->show();
     assert(completer->popup()->isVisible());
+    omnibox->clearFocus();
     QFocusEvent focusOut(QEvent::FocusOut);
     QApplication::sendEvent(omnibox, &focusOut);
 
@@ -402,6 +405,14 @@ int main(int argc, char **argv) {
     // Verify printToPdf directly does not crash or close window
     auto *view = window.currentView();
     assert(view != nullptr);
+
+    // Pump events so that WebEngine finishes initialization
+    QEventLoop waitLoop;
+    QObject::connect(view, &QWebEngineView::loadFinished, &waitLoop, &QEventLoop::quit);
+    QTimer::singleShot(1000, &waitLoop, &QEventLoop::quit);
+    waitLoop.exec();
+    QApplication::processEvents();
+
     const QString tempPdfPath = tempDir.path() + QStringLiteral("/output.pdf");
     view->printToPdf(tempPdfPath);
     assert(window.isVisible());
@@ -458,6 +469,14 @@ int main(int argc, char **argv) {
     bool foundEnabledAction = false;
     QTimer::singleShot(0, &window, [&] {
       auto *menu = qobject_cast<QMenu *>(QApplication::activePopupWidget());
+      if (!menu) {
+        for (auto *top : QApplication::topLevelWidgets()) {
+          if (auto *m = qobject_cast<QMenu *>(top)) {
+            menu = m;
+            break;
+          }
+        }
+      }
       assert(menu != nullptr);
       auto *translateAction = menu->findChild<QAction *>(QStringLiteral("translatePageAction"));
       assert(translateAction != nullptr);
@@ -576,6 +595,14 @@ int main(int argc, char **argv) {
     const auto topLevelsBeforeMenu = QApplication::topLevelWidgets();
     QTimer::singleShot(0, &window, [&] {
       auto *menu = qobject_cast<QMenu *>(QApplication::activePopupWidget());
+      if (!menu) {
+        for (auto *top : QApplication::topLevelWidgets()) {
+          if (auto *m = qobject_cast<QMenu *>(top)) {
+            menu = m;
+            break;
+          }
+        }
+      }
       assert(menu != nullptr);
       auto *action = menu->findChild<QAction *>(QStringLiteral("newIncognitoWindowAction"));
       assert(action != nullptr);

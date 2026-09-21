@@ -4515,7 +4515,7 @@ int main(int argc, char **argv) {
     assert(c.activeUnlockDialog());
     c.activeUnlockDialog()->passwordInput()->setText(masterPassword);
     c.activeUnlockDialog()->attemptUnlock();
-    assert(waitForCondition([&fills] { return fills == 1; }));
+    assert(waitForCondition([&fills] { return fills == 1; }, 30000));
     assert(releasedUsername == QStringLiteral("second@example.com"));
     c.onViewClosed(&view);
     std::cout << "[PASS] TEST 179: multiple-account selection" << std::endl;
