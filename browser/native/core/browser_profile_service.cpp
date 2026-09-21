@@ -20,7 +20,9 @@
 #if QT_VERSION >= QT_VERSION_CHECK(6, 8, 0)
 #include <QWebEnginePermission>
 #endif
+#if QT_VERSION >= QT_VERSION_CHECK(6, 6, 0)
 #include <QtWebEngineCore/qwebengineglobalsettings.h>
+#endif
 #include <QRegularExpression>
 #include <QWebEngineProfile>
 #include <QWebEngineSettings>
@@ -1985,6 +1987,7 @@ void BrowserProfileService::setSecureDnsTemplate(const QString &templateUrl) {
 }
 
 void BrowserProfileService::applySecureDnsSettings() {
+#if QT_VERSION >= QT_VERSION_CHECK(6, 6, 0)
   const QString mode = secureDnsMode();
   QWebEngineGlobalSettings::DnsMode dnsMode;
   if (mode == QLatin1String("secure")) {
@@ -2003,4 +2006,5 @@ void BrowserProfileService::applySecureDnsSettings() {
     dnsMode.secureMode = QWebEngineGlobalSettings::SecureDnsMode::SystemOnly;
   }
   QWebEngineGlobalSettings::setDnsMode(dnsMode);
+#endif
 }
