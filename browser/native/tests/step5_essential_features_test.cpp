@@ -21,6 +21,7 @@
 #include <QTimer>
 #include <QToolBar>
 #include <QTreeWidget>
+#include <QWebEnginePage>
 
 #include "browser_window.h"
 #include "core/browser_profile_service.h"
@@ -414,9 +415,29 @@ int main(int argc, char **argv) {
     QApplication::processEvents();
 
     const QString tempPdfPath = tempDir.path() + QStringLiteral("/output.pdf");
+    bool pdfFinished = false;
+    bool pdfSucceeded = false;
+    QEventLoop pdfLoop;
+    QObject::connect(view->page(), &QWebEnginePage::pdfPrintingFinished,
+                     &pdfLoop, [&](const QString &filePath, bool success) {
+      if (filePath != tempPdfPath) return;
+      pdfFinished = true;
+      pdfSucceeded = success;
+      pdfLoop.quit();
+    });
     view->printToPdf(tempPdfPath);
     assert(window.isVisible());
     assert(window.tabCount() == 1);
+
+    // Keep the page alive until Chromium completes the asynchronous PDF job.
+    // Destroying QWebEnginePage with a pending print traps on the Qt WebEngine
+    // versions shipped by Debian 12 and Ubuntu 24.04.
+    if (!pdfFinished) {
+      QTimer::singleShot(10000, &pdfLoop, &QEventLoop::quit);
+      pdfLoop.exec();
+    }
+    assert(pdfFinished);
+    assert(pdfSucceeded);
 
     // Verify QPrinter asynchronous lifetime pattern
     auto printer = std::make_shared<QPrinter>(QPrinter::HighResolution);
