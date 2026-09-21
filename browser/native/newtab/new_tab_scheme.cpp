@@ -1,4 +1,5 @@
 #include <QCache>
+#include <QSettings>
 #include "new_tab_scheme.h"
 
 #include <QBuffer>
@@ -111,7 +112,8 @@ class NewTabSchemeHandler final : public QWebEngineUrlSchemeHandler {
       : QWebEngineUrlSchemeHandler(parent), assetsDirectory_(assetsDirectory),
         managedBackgroundPath_(managedBackgroundPath), managedThumbnailPath_(managedThumbnailPath),
         profileData_(profileData), webProfile_(webProfile),
-        faviconCapability_(QUuid::createUuid().toString(QUuid::WithoutBraces)) {
+        faviconCapability_(QUuid::createUuid().toString(QUuid::WithoutBraces)),
+        managedBackgroundCapability_(QUuid::createUuid().toString(QUuid::WithoutBraces)) {
     if (profileData_) faviconCapabilities.insert(profileData_, faviconCapability_);
   }
 
@@ -207,10 +209,6 @@ class NewTabSchemeHandler final : public QWebEngineUrlSchemeHandler {
         return;
       }
       QString engine = profileData_ ? profileData_->searchEngine() : QStringLiteral("DuckDuckGo");
-      if (engine != QLatin1String("Google") && engine != QLatin1String("DuckDuckGo")
-          && engine != QLatin1String("Brave Search") && engine != QLatin1String("Bing")) {
-        engine = QStringLiteral("DuckDuckGo");
-      }
 
       const bool isIncognitoSession = (webProfile_ && webProfile_->isOffTheRecord())
                                       || url.host() == QLatin1String("incognito")
@@ -225,9 +223,21 @@ class NewTabSchemeHandler final : public QWebEngineUrlSchemeHandler {
 
       const QJsonArray frequentSitesArray = collectNewTabFrequentSites(profileData_);
       const QJsonArray bookmarksArray = collectNewTabBookmarks(profileData_);
+      QSettings settings;
+      const bool legacyCards = settings.value(QStringLiteral("browser/cards"), true).toBool();
+      const bool showDownloadsCard = settings.value(QStringLiteral("browser/showDownloadsCard"), legacyCards).toBool();
+      const bool showBlockedCard = settings.value(QStringLiteral("browser/showBlockedCard"), legacyCards).toBool();
+      const QString blockedCounterMode = settings.value(QStringLiteral("browser/blockedCounterMode"), QStringLiteral("all_time")).toString();
+
       auto *buffer = new QBuffer(job);
       buffer->setData(newTabHtml(engine, frequentSitesArray, bookmarksArray,
-                                 profileData_ ? profileData_->totalBlockedCount() : 0).toUtf8());
+                                 profileData_ ? profileData_->totalBlockedCount() : 0,
+                                 profileData_ ? profileData_->recentDownloadCount() : 0,
+                                 profileData_ ? profileData_->sessionBlockedCount() : 0,
+                                 showDownloadsCard,
+                                 showBlockedCard,
+                                 blockedCounterMode,
+                                 managedBackgroundCapability_).toUtf8());
       buffer->open(QIODevice::ReadOnly);
       job->reply("text/html; charset=utf-8", buffer);
       return;
@@ -241,8 +251,8 @@ class NewTabSchemeHandler final : public QWebEngineUrlSchemeHandler {
         QStringLiteral("/icons/settings.svg")};
     const bool managedImage = requested == QLatin1String("/managed-background");
     const bool managedThumbnail = requested == QLatin1String("/managed-background-thumbnail");
-    if ((managedImage || managedThumbnail)
-        && (job->initiator().scheme() != QLatin1String("ardali") || job->initiator().host() != QLatin1String("newtab"))) {
+    if ((managedImage || managedThumbnail) &&
+        QUrlQuery(url).queryItemValue(QStringLiteral("cap")) != managedBackgroundCapability_) {
       job->fail(QWebEngineUrlRequestJob::RequestDenied);
       return;
     }
@@ -285,6 +295,7 @@ class NewTabSchemeHandler final : public QWebEngineUrlSchemeHandler {
   ardali::core::IBrowserProfileDataProvider *profileData_ = nullptr;
   QPointer<QWebEngineProfile> webProfile_;
   QString faviconCapability_;
+  QString managedBackgroundCapability_;
   QCache<QString, QByteArray> faviconCache_{64};
   int pendingFavicons_ = 0;
 };

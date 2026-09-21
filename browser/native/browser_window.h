@@ -116,6 +116,12 @@ struct BrowserServices {
   MediaDownloadService *mediaDownload = nullptr;
 };
 
+// Authoritative tab state held within a BrowserWindow.
+// INVARIANT (Dual-Identity Tab Model):
+// - `id` (uint64_t): Window-scoped monotonic identifier for fast tab strip
+//   lookup, tab drag/transfer routing, and TabSessionPermission grants.
+// - `uuid` (QUuid): Global application-scoped identifier matching
+//   TabManager::TabRecord::id and TabPerformanceManager tracking across windows.
 struct BrowserTabInfo {
   uint64_t id = 0;
   QUuid uuid;
@@ -131,6 +137,9 @@ struct BrowserTabInfo {
   bool activeCamera = false;
   bool activeMicrophone = false;
   bool isPinned = false;
+  bool translationOffered = false;
+  QPointer<PageTranslator> translator;
+  bool isLoading = false;
 };
 
 class BrowserWindow : public QMainWindow {
@@ -145,7 +154,8 @@ public:
 
   // Tab management
   int addNewTab(const QUrl &url = QUrl(QStringLiteral("ardali://newtab/")),
-                int insertIndex = -1);
+                int insertIndex = -1, bool initiallyPinned = false,
+                const QString &initialTitle = QString{});
   int addInternalTab(QWidget *page, const QString &title, const QIcon &icon,
                      const QString &internalId, int insertIndex = -1);
   void closeTab(int index);
@@ -165,6 +175,7 @@ public:
   void toggleTabPin(int index);
   void closeOtherTabs(int index);
   void closeTabsToRight(int index);
+  BrowserWindow *openNewWindow(const QUrl &url = QUrl());
   BrowserWindow *openIncognitoWindow(const QUrl &url = QUrl());
   bool isIncognito() const {
     return (services_.profile && services_.profile->isOffTheRecord()) || services_.privateProfileOwner != nullptr;
@@ -176,6 +187,8 @@ public:
   void hideFindBar();
   void printCurrentPage();
   void printCurrentPageToPdf();
+  void captureVisiblePage();
+  void showReaderMode();
   void handleFullScreenRequest(QWebEngineView *view, const QWebEngineFullScreenRequest &request);
 
   ardali::desktop_tabs::TabStripWidget *tabStrip() const { return tabStrip_; }
@@ -189,6 +202,10 @@ public:
   ardali::core::INavigationCandidateProvider *candidateProvider() const { return candidateProvider_.get(); }
   void requestNewTabSuggestions(QWebEnginePage *page, const QString &query, int requestId);
   void setSearchEngine(const QString &engine);
+  void syncNewTabViews();
+  void handleNewTabBackgroundCommand(QWebEnginePage *sourcePage,
+                                     const QString &command,
+                                     const QString &capability);
   void updateSearchEngineIcon();
   void toggleTabSearchPopup();
 
@@ -230,6 +247,19 @@ public:
   bool isCurrentTabNewTab() const;
   void updateBookmarkBarVisibility();
   void toggleBookmarkBar();
+  QToolBar *bookmarkBar() const { return bookmarkBar_; }
+  void notifyNavigationStarted(QWebEngineView *view, const QUrl &url);
+
+  bool isCurrentTabLoading() const;
+  void updateReloadStopButton(bool isLoading);
+
+public slots:
+  void onBackClicked();
+  void onForwardClicked();
+  void onReloadOrStopClicked();
+  void onHomeClicked();
+
+public:
   void fillCurrentPageFromVault();
   CredentialAutofillController *autofillController() const { return autofillController_.get(); }
   void updateSaveBubblePosition();
@@ -268,6 +298,7 @@ protected:
   bool eventFilter(QObject *watched, QEvent *event) override;
   void closeEvent(QCloseEvent *event) override;
   void keyPressEvent(QKeyEvent *event) override;
+  void showEvent(QShowEvent *event) override;
   void changeEvent(QEvent *event) override;
   void resizeEvent(QResizeEvent *event) override;
   void moveEvent(QMoveEvent *event) override;
@@ -277,10 +308,6 @@ protected:
 
 private slots:
   void onOmniboxReturnPressed();
-  void onBackClicked();
-  void onForwardClicked();
-  void onReloadOrStopClicked();
-  void onHomeClicked();
   void onMinimizeClicked();
   void onMaximizeRestoreClicked();
   void onCloseWindowClicked();
@@ -299,11 +326,11 @@ private:
   void updateCursorShape(const QPoint &pos);
   void handleManualResize(const QPoint &globalPos);
   QVector<QPointer<QWebEngineView>> collectAllWebViewsAcrossWindows() const;
-  void syncNewTabViews();
   void onThrobberTick();
 
   BrowserServices services_;
   bool isCaptureShell_ = false;
+  bool isMovingTab_ = false;
   QList<BrowserTabInfo> tabs_;
 
   // Frameless Top Bar
@@ -363,6 +390,7 @@ private:
 
   TranslateBubblePopup *translateBubble_ = nullptr;
   PageTranslator *pageTranslator_ = nullptr;
+  PageTranslator *getOrCreatePageTranslator(int tabIndex);
 
   QPointer<SitePermissionPromptBubble> permissionBubble_;
   QPointer<SiteControlsBubble> siteControlsBubble_;
@@ -396,6 +424,7 @@ private:
   void updateFindBarPosition();
   void handleFindRequest(const QString &text, bool forward, bool caseSensitive);
   void handleClearFind();
+  void toggleBrowserFullScreen();
 
   bool isWebFullScreen_ = false;
   Qt::WindowStates windowStateBeforeFullScreen_;

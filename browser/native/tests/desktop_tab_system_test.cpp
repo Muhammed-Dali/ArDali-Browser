@@ -30,33 +30,77 @@ static void testTabAppearanceAndPersistence() {
          TabStyle::ArDaliSignature);
   assert(tabStyleFromPreference(QStringLiteral("modern_pill")) ==
          TabStyle::FloatingPill);
+  assert(tabStyleFromPreference(QStringLiteral("ardali_connected")) ==
+         TabStyle::ArDaliConnected);
+  assert(tabStyleFromPreference(QStringLiteral("connected")) ==
+         TabStyle::ArDaliConnected);
+  assert(tabStyleFromPreference(QStringLiteral("ardali_baglantili")) ==
+         TabStyle::ArDaliConnected);
+  assert(tabStyleFromPreference(QStringLiteral("standart")) ==
+         TabStyle::ChromeCurved);
+  assert(tabStyleFromPreference(QStringLiteral("standard")) ==
+         TabStyle::ChromeCurved);
+  assert(tabStyleFromPreference(QStringLiteral("")) ==
+         TabStyle::ArDaliConnected);
+  assert(tabStyleFromPreference(QStringLiteral("unknown_value")) ==
+         TabStyle::ArDaliConnected);
   assert(tabStylePreferenceValue(TabStyle::FloatingPill) ==
          QStringLiteral("floating_pill"));
+  assert(tabStylePreferenceValue(TabStyle::ArDaliConnected) ==
+         QStringLiteral("ardali_connected"));
 
   const auto &chrome = tabAppearance(TabStyle::ChromeCurved);
   const auto &ardali = tabAppearance(TabStyle::ArDaliSignature);
   const auto &pill = tabAppearance(TabStyle::FloatingPill);
+  const auto &connected = tabAppearance(TabStyle::ArDaliConnected);
   assert(chrome.layout.tabHeight == 40);
   assert(chrome.layout.preferredTabWidth == 240);
   assert(chrome.layout.faviconSize == 18);
   assert(chrome.connectsToToolbar);
   assert(ardali.paintsSignatureAccent);
   assert(!pill.connectsToToolbar);
+  assert(!connected.connectsToToolbar);
+  assert(connected.layout.preferredTabWidth == 236);
 
   const QRectF bounds(100, 0, 240, 40);
   const QPainterPath chromePath = tabSurfacePath(
       bounds, 40, TabStyle::ChromeCurved, true);
   const QPainterPath pillPath = tabSurfacePath(
       bounds, 40, TabStyle::FloatingPill, true);
+  const QPainterPath connectedPath = tabSurfacePath(
+      bounds, 40, TabStyle::ArDaliConnected, true);
   assert(chromePath.boundingRect().left() < bounds.left());
   assert(chromePath.boundingRect().bottom() > bounds.bottom());
   assert(pillPath.boundingRect().left() > bounds.left());
   assert(pillPath.boundingRect().bottom() < bounds.bottom());
+  assert(connectedPath.boundingRect().bottom() == 40.0);
+  assert(connectedPath.boundingRect().right() > bounds.right() - 4.0);
 
   QSettings settings;
+  // 1. Fresh profile test: no saved preference -> defaults to ArDaliConnected
+  settings.remove(QStringLiteral("browser/tabStyle"));
+  settings.sync();
+  TabStripWidget freshStrip;
+  assert(freshStrip.tabStyle() == TabStyle::ArDaliConnected);
+
+  // 2. Select Standart ("chrome_curved") -> simulated restart preserves Standart
+  settings.setValue(QStringLiteral("browser/tabStyle"),
+                    QStringLiteral("chrome_curved"));
+  settings.sync();
+  freshStrip.loadSettings();
+  assert(freshStrip.tabStyle() == TabStyle::ChromeCurved);
+
+  // 3. Select another style ("floating_pill") -> simulated restart preserves that style
   settings.setValue(QStringLiteral("browser/tabStyle"),
                     QStringLiteral("floating_pill"));
   settings.sync();
+  freshStrip.loadSettings();
+  assert(freshStrip.tabStyle() == TabStyle::FloatingPill);
+
+  // 4. Existing explicit saved preference is preserved and never overwritten
+  assert(settings.value(QStringLiteral("browser/tabStyle")).toString() ==
+         QStringLiteral("floating_pill"));
+
   TabStripWidget firstWindowStrip;
   assert(firstWindowStrip.tabStyle() == TabStyle::FloatingPill);
   assert(firstWindowStrip.layoutModel().metrics().preferredTabWidth ==
@@ -68,8 +112,14 @@ static void testTabAppearanceAndPersistence() {
   firstWindowStrip.loadSettings();
   assert(firstWindowStrip.tabStyle() == TabStyle::ArDaliSignature);
 
+  settings.setValue(QStringLiteral("browser/tabStyle"),
+                    QStringLiteral("ardali_connected"));
+  settings.sync();
+  firstWindowStrip.loadSettings();
+  assert(firstWindowStrip.tabStyle() == TabStyle::ArDaliConnected);
+
   TabStripWidget newWindowStrip;
-  assert(newWindowStrip.tabStyle() == TabStyle::ArDaliSignature);
+  assert(newWindowStrip.tabStyle() == TabStyle::ArDaliConnected);
 
   QWidget firstWindow;
   QWidget secondWindow;
@@ -124,15 +174,21 @@ static void testDistinctPaintingHoverAndNewTabHitArea() {
   const QImage ardaliImage = renderTabStrip(strip);
   strip.setTabStyle(TabStyle::FloatingPill);
   const QImage pillImage = renderTabStrip(strip);
+  strip.setTabStyle(TabStyle::ArDaliConnected);
+  const QImage connectedImage = renderTabStrip(strip);
   assert(chromeImage != ardaliImage);
   assert(chromeImage != pillImage);
+  assert(chromeImage != connectedImage);
   assert(ardaliImage != pillImage);
+  assert(ardaliImage != connectedImage);
+  assert(pillImage != connectedImage);
   const QString snapshotDirectory = qEnvironmentVariable(
       "ARDALI_TAB_SNAPSHOT_DIR");
   if (!snapshotDirectory.isEmpty()) {
     chromeImage.save(snapshotDirectory + QStringLiteral("/chrome-curved.png"));
     ardaliImage.save(snapshotDirectory + QStringLiteral("/ardali-signature.png"));
     pillImage.save(snapshotDirectory + QStringLiteral("/floating-pill.png"));
+    connectedImage.save(snapshotDirectory + QStringLiteral("/ardali-connected.png"));
   }
 
   strip.setTabStyle(TabStyle::ChromeCurved);
@@ -169,9 +225,9 @@ static void testTabLayoutModel() {
   TabLayoutModel model;
 
   QVector<TabModelItem> items;
-  items.append(TabModelItem{1, QStringLiteral("Tab 1"), QIcon(), false, false, false});
-  items.append(TabModelItem{2, QStringLiteral("Tab 2"), QIcon(), false, false, false});
-  items.append(TabModelItem{3, QStringLiteral("Tab 3"), QIcon(), false, false, false});
+  items.append(TabModelItem{1, QStringLiteral("Tab 1"), QIcon(), false, false, false, {}});
+  items.append(TabModelItem{2, QStringLiteral("Tab 2"), QIcon(), false, false, false, {}});
+  items.append(TabModelItem{3, QStringLiteral("Tab 3"), QIcon(), false, false, false, {}});
 
   // Test 1: Layout bounds for 3 unpinned tabs in 1000px strip
   auto geoms = model.computeLayout(1000, items, 0);
@@ -203,7 +259,7 @@ static void testTabLayoutModel() {
   // Test 5: Squeezed tabs under constrained width
   QVector<TabModelItem> manyItems;
   for (int i = 0; i < 20; ++i) {
-    manyItems.append(TabModelItem{static_cast<uint64_t>(i + 1), QStringLiteral("Tab %1").arg(i + 1), QIcon(), false, false, false});
+    manyItems.append(TabModelItem{static_cast<uint64_t>(i + 1), QStringLiteral("Tab %1").arg(i + 1), QIcon(), false, false, false, {}});
   }
   auto squeezedGeoms = model.computeLayout(800, manyItems, 0);
   assert(squeezedGeoms.size() == 20);

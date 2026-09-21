@@ -20,6 +20,12 @@
 
 int main(int argc, char **argv) {
   QApplication app(argc, argv);
+  QTemporaryDir settingsRoot;
+  assert(settingsRoot.isValid());
+  QSettings::setDefaultFormat(QSettings::IniFormat);
+  QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, settingsRoot.path());
+  app.setOrganizationName(QStringLiteral("ArDaliTest"));
+  app.setApplicationName(QStringLiteral("PasswordManagerPageTest"));
   const QString consentKey = QStringLiteral("browser/passwords/experimentalConsentAccepted");
   QSettings settings;
   const bool hadConsent = settings.contains(consentKey);
@@ -39,7 +45,6 @@ int main(int argc, char **argv) {
   auto *notice = page.findChild<QCheckBox *>(QStringLiteral("vault-notice-acknowledgement"));
   auto *activation = page.findChild<QCheckBox *>(QStringLiteral("vault-activation-acknowledgement"));
   auto *enable = page.findChild<QPushButton *>(QStringLiteral("vault-enable-experimental"));
-  auto *later = page.findChild<QPushButton *>(); // will check below
   assert(card && checkboxSection && row1 && row2);
   assert(notice && activation && enable && !enable->isEnabled());
   assert(!notice->isEnabled() && !activation->isEnabled());
@@ -67,7 +72,6 @@ int main(int argc, char **argv) {
     // Rule 1: Politika scroll alanı ile checkbox bölümü arasında >= 12 px boşluk
     const int scrollBottom = noticeScroll->mapTo(card, QPoint(0, noticeScroll->height())).y();
     const int row1Top = row1->mapTo(card, QPoint(0, 0)).y();
-    const int sectionTop = checkboxSection->mapTo(card, QPoint(0, 0)).y();
     const int scrollGap = row1Top - scrollBottom;
     assert(scrollGap >= 12);
 

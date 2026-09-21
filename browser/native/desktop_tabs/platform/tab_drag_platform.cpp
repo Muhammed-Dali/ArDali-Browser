@@ -9,7 +9,7 @@
 
 namespace {
 
-bool diagnosticsEnabled() {
+[[maybe_unused]] bool diagnosticsEnabled() {
   return qEnvironmentVariableIntValue("ARDALI_DESKTOP_TAB_DIAGNOSTICS") == 1 ||
          qEnvironmentVariableIntValue("ARDALI_TAB_DIAGNOSTICS") == 1;
 }

@@ -390,12 +390,44 @@ PasswordManagerPage::PasswordManagerPage(CredentialVaultManager *vault,
 
 void PasswordManagerPage::refresh() {
   while (auto *item = layout()->takeAt(3)) { if (item->widget()) item->widget()->deleteLater(); delete item; }
+  if (webProfile_ && webProfile_->isOffTheRecord()) {
+    showPrivateBrowsingNotice();
+    return;
+  }
   if (!vault_->exists()) {
     if (!QSettings().value(QStringLiteral("browser/passwords/experimentalConsentAccepted"), false).toBool()) showConsent(); else showSetup();
   } else if (vault_->isLocked()) showUnlock(); else showRecords();
   for (QAbstractButton *button : findChildren<QAbstractButton *>()) {
     button->setCursor(Qt::PointingHandCursor);
   }
+}
+
+void PasswordManagerPage::showPrivateBrowsingNotice() {
+  status_->setText(QStringLiteral("Gizli gezinti modu"));
+  auto *card = new QFrame(this);
+  card->setObjectName(QStringLiteral("vault-private-notice-card"));
+  card->setMinimumWidth(560);
+  card->setMaximumWidth(680);
+  card->setStyleSheet(QStringLiteral("QFrame#vault-private-notice-card{background:#181f2a;border:1px solid #2d3748;border-radius:16px;}"));
+  auto *content = new QVBoxLayout(card);
+  content->setContentsMargins(28, 24, 28, 24);
+  content->setSpacing(12);
+
+  auto *badge = new QLabel(QStringLiteral("GİZLİ PENCERE"), card);
+  badge->setStyleSheet(QStringLiteral("color:#38bdf8;font-weight:700;border:1px solid #0284c7;border-radius:10px;padding:3px 9px;"));
+  content->addWidget(badge, 0, Qt::AlignLeft);
+
+  auto *heading = new QLabel(QStringLiteral("Gizli Gezintide Şifre Yöneticisi Kullanılamaz"), card);
+  heading->setStyleSheet(QStringLiteral("font-size:20px;font-weight:700;color:#eef4fb;"));
+  content->addWidget(heading);
+
+  auto *body = new QLabel(QStringLiteral("Gizli pencerelerdeki tüm veriler pencere kapatıldığında bellekten ve geçici depolamadan tamamen silinir. Veri kaybını ve gizlilik ihlallerini önlemek amacıyla, şifre kasaları gizli modda oluşturulamaz ve düzenlenemez. Şifrelerinizi görüntülemek ve yönetmek için lütfen normal bir pencere kullanın."), card);
+  body->setWordWrap(true);
+  body->setStyleSheet(QStringLiteral("color:#94a3b8;font-size:13px;line-height:1.5;"));
+  content->addWidget(body);
+
+  static_cast<QVBoxLayout *>(layout())->addWidget(card);
+  layout()->addItem(new QSpacerItem(1, 1, QSizePolicy::Minimum, QSizePolicy::Expanding));
 }
 
 void PasswordManagerPage::setFaviconLookupForTesting(FaviconLookup lookup) {
@@ -802,4 +834,17 @@ void PasswordManagerPage::addCredential(const QString &id) {
   auto *generator = new QWidget(&dialog); auto *generatorLayout = new QHBoxLayout(generator); generatorLayout->setContentsMargins(0, 0, 0, 0); auto *length = new QSpinBox(generator); length->setRange(8, 128); length->setValue(20); auto *upper = new QCheckBox(QStringLiteral("A-Z"), generator); auto *lower = new QCheckBox(QStringLiteral("a-z"), generator); auto *digits = new QCheckBox(QStringLiteral("0-9"), generator); auto *symbols = new QCheckBox(QStringLiteral("Semboller"), generator); upper->setChecked(true); lower->setChecked(true); digits->setChecked(true); symbols->setChecked(true); auto *generate = new QPushButton(QStringLiteral("Üret"), generator); generatorLayout->addWidget(length); generatorLayout->addWidget(upper); generatorLayout->addWidget(lower); generatorLayout->addWidget(digits); generatorLayout->addWidget(symbols); generatorLayout->addWidget(generate);
   form->addRow(QStringLiteral("HTTPS origin"), origin); form->addRow(QStringLiteral("Kullanıcı adı"), username); form->addRow(QStringLiteral("Parola"), password); form->addRow(QStringLiteral("Güvenli üretici"), generator); auto *buttons = new QDialogButtonBox(QDialogButtonBox::Save | QDialogButtonBox::Cancel, &dialog); form->addRow(buttons); connect(generate, &QPushButton::clicked, &dialog, [password, length, upper, lower, digits, symbols] { password->setText(generatedPassword(length->value(), upper->isChecked(), lower->isChecked(), digits->isChecked(), symbols->isChecked())); }); connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept); connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject); if (dialog.exec() != QDialog::Accepted) return; bool update = false; const CredentialSecret candidate{origin->text(), username->text(), password->text(), {}}; const bool saved = id.isEmpty() ? vault_->save(candidate, &update) : vault_->update(id, candidate); password->clear(); if (!saved) QMessageBox::warning(this, QStringLiteral("Şifre Yöneticisi"), QStringLiteral("Kayıt başarısız: %1").arg(vault_->lastError()));
 }
-void PasswordManagerPage::copyPassword(const QString &id) { CredentialSecret secret; if (!vault_->reveal(id, &secret)) return; QClipboard *clipboard = QGuiApplication::clipboard(); clipboard->setText(secret.password); QTimer::singleShot(30000, this, [clipboard, value = secret.password] { if (clipboard->text() == value) clipboard->clear(); }); }
+void PasswordManagerPage::copyPassword(const QString &id) {
+  CredentialSecret secret;
+  if (!vault_->reveal(id, &secret)) return;
+  QClipboard *clipboard = QGuiApplication::clipboard();
+  clipboard->setText(secret.password);
+  const QString copiedValue = secret.password;
+  secret.wipe();
+  QTimer::singleShot(30000, qApp, [copiedValue] {
+    QClipboard *cb = QGuiApplication::clipboard();
+    if (cb && cb->text() == copiedValue) {
+      cb->clear();
+    }
+  });
+}

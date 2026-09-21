@@ -15,7 +15,11 @@ constexpr int kMutationPollIntervalMs = 400;
 }
 
 PageTranslator::PageTranslator(QWebEngineView *view, TranslateService *service, QObject *parent)
-    : QObject(parent ? parent : static_cast<QObject *>(view)), view_(view), service_(service) {}
+    : QObject(parent ? parent : static_cast<QObject *>(view)), view_(view), service_(service) {
+  if (service_ && !service_->defaultTargetLanguage().isEmpty()) {
+    targetLanguage_ = service_->defaultTargetLanguage();
+  }
+}
 
 PageTranslator::~PageTranslator() {
   stopDynamicMutationWatcher();
@@ -93,6 +97,8 @@ void PageTranslator::translatePage(const QString &targetLang) {
   if (!view_ || !view_->page() || !service_) return;
   if (!targetLang.isEmpty()) targetLanguage_ = targetLang;
 
+  stopDynamicMutationWatcher();
+
   state_ = State::Translating;
   lastError_.clear();
   emit stateChanged(state_);
@@ -102,8 +108,12 @@ void PageTranslator::translatePage(const QString &targetLang) {
   const uint64_t generation = ++currentGeneration_;
   QPointer<PageTranslator> guardedThis(this);
 
+  const QString extractCall = QStringLiteral(
+      "window.__ardaliTranslate ? window.__ardaliTranslate.extractNodes(%1) : null;")
+      .arg(QString::fromUtf8(QJsonDocument(QJsonObject{{QStringLiteral("lang"), targetLanguage_}}).toJson(QJsonDocument::Compact)));
+
   view_->page()->runJavaScript(
-      QStringLiteral("window.__ardaliTranslate ? window.__ardaliTranslate.extractNodes() : null;"),
+      extractCall,
       QWebEngineScript::ApplicationWorld,
       [guardedThis, generation](const QVariant &result) {
         if (!guardedThis || guardedThis->currentGeneration_ != generation) return;
@@ -138,8 +148,11 @@ void PageTranslator::dispatchTranslationBatches(const QList<BatchItem> &items, u
     if (!isDynamic) {
       state_ = State::Translated;
       if (view_ && view_->page()) {
+        const QString startObsCall = QStringLiteral(
+            "window.__ardaliTranslate ? window.__ardaliTranslate.startObserving(%1) : null;")
+            .arg(QString::fromUtf8(QJsonDocument(QJsonObject{{QStringLiteral("lang"), targetLanguage_}}).toJson(QJsonDocument::Compact)));
         view_->page()->runJavaScript(
-            QStringLiteral("window.__ardaliTranslate ? window.__ardaliTranslate.startObserving() : null;"),
+            startObsCall,
             QWebEngineScript::ApplicationWorld);
       }
       startDynamicMutationWatcher();
@@ -222,8 +235,11 @@ void PageTranslator::dispatchTranslationBatches(const QList<BatchItem> &items, u
             } else {
               guardedThis->state_ = State::Translated;
               if (guardedThis->view_ && guardedThis->view_->page()) {
+                const QString startObsCall = QStringLiteral(
+                    "window.__ardaliTranslate ? window.__ardaliTranslate.startObserving(%1) : null;")
+                    .arg(QString::fromUtf8(QJsonDocument(QJsonObject{{QStringLiteral("lang"), guardedThis->targetLanguage_}}).toJson(QJsonDocument::Compact)));
                 guardedThis->view_->page()->runJavaScript(
-                    QStringLiteral("window.__ardaliTranslate ? window.__ardaliTranslate.startObserving() : null;"),
+                    startObsCall,
                     QWebEngineScript::ApplicationWorld);
               }
               guardedThis->startDynamicMutationWatcher();
@@ -296,6 +312,7 @@ void PageTranslator::handleSpaNavigation(const QUrl &newUrl) {
 
 void PageTranslator::restoreOriginal() {
   stopDynamicMutationWatcher();
+  currentGeneration_++;
   if (view_ && view_->page()) {
     view_->page()->runJavaScript(
         QStringLiteral("window.__ardaliTranslate ? window.__ardaliTranslate.restoreOriginal() : null;"),
@@ -316,6 +333,11 @@ void PageTranslator::reset() {
   }
   state_ = State::Idle;
   sourceLanguage_.clear();
+  if (service_ && !service_->defaultTargetLanguage().isEmpty()) {
+    targetLanguage_ = service_->defaultTargetLanguage();
+  } else {
+    targetLanguage_ = QStringLiteral("tr");
+  }
   lastError_.clear();
   emit stateChanged(state_);
 }

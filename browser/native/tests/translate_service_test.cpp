@@ -157,21 +157,32 @@ class FakeTranslateNetworkAccessManager final : public QNetworkAccessManager {
       } else if (reqBody_.startsWith("q=")) {
         QUrlQuery q(QString::fromUtf8(reqBody_));
         const QString qStr = q.queryItemValue(QStringLiteral("q"), QUrl::FullyDecoded);
+        const QString tl = QUrlQuery(req_.url()).queryItemValue(QStringLiteral("tl"), QUrl::FullyDecoded);
         const QStringList parts = qStr.split(QStringLiteral("___ARDALI_SPLIT___"));
         QJsonArray segments;
         for (int i = 0; i < parts.size(); ++i) {
           const QString trimmed = parts.at(i).trimmed();
           QString translated;
-          if (trimmed == QLatin1String("Hello world")) translated = QStringLiteral("Merhaba dünya");
-          else if (trimmed == QLatin1String("This is a test page.")) translated = QStringLiteral("Bu bir test sayfasıdır.");
-          else if (trimmed == QLatin1String("New dynamic content")) translated = QStringLiteral("Yeni dinamik içerik");
-          else if (trimmed == QLatin1String("Search repository")) translated = QStringLiteral("Depoda ara");
-          else if (trimmed == QLatin1String("Hello")) translated = QStringLiteral("Merhaba");
-          else translated = QStringLiteral("Çeviri: ") + trimmed;
+          if (tl == QLatin1String("ar")) {
+            if (trimmed == QLatin1String("Hello world")) translated = QString::fromUtf8("مرحبا بالعالم");
+            else if (trimmed == QLatin1String("Search repository")) translated = QString::fromUtf8("ابحث في المستودع");
+            else translated = QString::fromUtf8("ترجمة: ") + trimmed;
+          } else {
+            if (trimmed == QLatin1String("Hello world")) translated = QStringLiteral("Merhaba dünya");
+            else if (trimmed == QLatin1String("This is a test page.")) translated = QStringLiteral("Bu bir test sayfasıdır.");
+            else if (trimmed == QLatin1String("New dynamic content")) translated = QStringLiteral("Yeni dinamik içerik");
+            else if (trimmed == QLatin1String("Search repository")) translated = QStringLiteral("Depoda ara");
+            else if (trimmed == QLatin1String("Hello")) translated = QStringLiteral("Merhaba");
+            else translated = QStringLiteral("Çeviri: ") + trimmed;
+          }
 
           QJsonArray seg;
           if (i < parts.size() - 1) {
-            seg.append(translated + QStringLiteral("\n___ARDALI_SPLIT___\n"));
+            if (tl == QLatin1String("ar")) {
+              seg.append(translated + QString::fromUtf8("\n__أردالي_سبليت___\n"));
+            } else {
+              seg.append(translated + QStringLiteral("\n___ARDALI_SPLIT___\n"));
+            }
           } else {
             seg.append(translated);
           }
@@ -280,19 +291,26 @@ void testProviderFactoryAndNoneDefault() {
   assert(service.currentProvider()->isConfigured() == false);
 
   bool callbackCalled = false;
-  bool success = true;
+  bool success = false;
+  QStringList translated;
   QString err;
   service.translateBatch({QStringLiteral("Hello world")}, QStringLiteral("en"), QStringLiteral("tr"),
-                         [&](bool s, const QStringList &, const QString &e) {
+                         [&](bool s, const QStringList &result, const QString &e) {
                            callbackCalled = true;
                            success = s;
+                           translated = result;
                            err = e;
                          });
 
+  QEventLoop loop;
+  QTimer::singleShot(1000, &loop, &QEventLoop::quit);
+  QObject::connect(fakeNam, &QNetworkAccessManager::finished, &loop, &QEventLoop::quit);
+  loop.exec();
   assert(callbackCalled == true);
-  assert(success == false);
-  assert(err.contains(QStringLiteral("yapılandırılmamış")));
-  assert(fakeNam->requestCount() == 0);
+  assert(success == true);
+  assert(err.isEmpty());
+  assert(translated == QStringList{QStringLiteral("Merhaba dünya")});
+  assert(fakeNam->requestCount() == 1);
 
   std::cout << "[Test] testProviderFactoryAndNoneDefault passed!" << std::endl;
 }
@@ -742,6 +760,70 @@ void testV2DynamicBatchingAndRerender() {
   std::cout << "[Test] testV2DynamicBatchingAndRerender passed!" << std::endl;
 }
 
+static void testLanguageCodeMappingAcrossProviders() {
+  // Google GTX: lowercase normalization, locale handling
+  assert(TranslateService::mapLanguageForProvider(QStringLiteral("google_gtx"), QStringLiteral("ar"), true) == QStringLiteral("ar"));
+  assert(TranslateService::mapLanguageForProvider(QStringLiteral("google_gtx"), QStringLiteral("AR"), true) == QStringLiteral("ar"));
+  assert(TranslateService::mapLanguageForProvider(QStringLiteral("google_gtx"), QStringLiteral("en-US"), true) == QStringLiteral("en"));
+  assert(TranslateService::mapLanguageForProvider(QStringLiteral("google_gtx"), QStringLiteral("en-GB"), true) == QStringLiteral("en"));
+  assert(TranslateService::mapLanguageForProvider(QStringLiteral("google_gtx"), QStringLiteral("zh-CN"), true) == QStringLiteral("zh-CN"));
+  assert(TranslateService::mapLanguageForProvider(QStringLiteral("google_gtx"), QStringLiteral("pt-BR"), true) == QStringLiteral("pt"));
+  assert(TranslateService::mapLanguageForProvider(QStringLiteral("google_gtx"), QStringLiteral("tr"), true) == QStringLiteral("tr"));
+
+  // DeepL: target language specificity & uppercase
+  assert(TranslateService::mapLanguageForProvider(QStringLiteral("deepl"), QStringLiteral("ar"), true) == QStringLiteral("AR"));
+  assert(TranslateService::mapLanguageForProvider(QStringLiteral("deepl"), QStringLiteral("en"), true) == QStringLiteral("EN-US"));
+  assert(TranslateService::mapLanguageForProvider(QStringLiteral("deepl"), QStringLiteral("en-US"), true) == QStringLiteral("EN-US"));
+  assert(TranslateService::mapLanguageForProvider(QStringLiteral("deepl"), QStringLiteral("en-GB"), true) == QStringLiteral("EN-GB"));
+  assert(TranslateService::mapLanguageForProvider(QStringLiteral("deepl"), QStringLiteral("pt"), true) == QStringLiteral("PT-PT"));
+  assert(TranslateService::mapLanguageForProvider(QStringLiteral("deepl"), QStringLiteral("pt-BR"), true) == QStringLiteral("PT-BR"));
+  assert(TranslateService::mapLanguageForProvider(QStringLiteral("deepl"), QStringLiteral("zh-CN"), true) == QStringLiteral("ZH"));
+  assert(TranslateService::mapLanguageForProvider(QStringLiteral("deepl"), QStringLiteral("zh"), true) == QStringLiteral("ZH"));
+  assert(TranslateService::mapLanguageForProvider(QStringLiteral("deepl"), QStringLiteral("en-US"), false) == QStringLiteral("EN"));
+
+  // Google Cloud
+  assert(TranslateService::mapLanguageForProvider(QStringLiteral("google_cloud"), QStringLiteral("ar"), true) == QStringLiteral("ar"));
+  assert(TranslateService::mapLanguageForProvider(QStringLiteral("google_cloud"), QStringLiteral("en-US"), true) == QStringLiteral("en"));
+  assert(TranslateService::mapLanguageForProvider(QStringLiteral("google_cloud"), QStringLiteral("zh-CN"), true) == QStringLiteral("zh-CN"));
+
+  // LibreTranslate
+  assert(TranslateService::mapLanguageForProvider(QStringLiteral("libretranslate"), QStringLiteral("ar"), true) == QStringLiteral("ar"));
+  assert(TranslateService::mapLanguageForProvider(QStringLiteral("libretranslate"), QStringLiteral("en-US"), true) == QStringLiteral("en"));
+  assert(TranslateService::mapLanguageForProvider(QStringLiteral("libretranslate"), QStringLiteral("zh-CN"), true) == QStringLiteral("zh"));
+
+  std::cout << "[Test] testLanguageCodeMappingAcrossProviders passed!" << std::endl;
+}
+
+static void testGoogleGtxArabicBatchTransliteration() {
+  auto *fakeNam = new FakeTranslateNetworkAccessManager(FakeTranslateNetworkAccessManager::Mode::Success);
+  TranslateService service(nullptr, fakeNam);
+  service.setProvider(QStringLiteral("google_gtx"));
+
+  const QStringList batch = {
+      QStringLiteral("Hello world"),
+      QStringLiteral("Search repository")
+  };
+
+  QEventLoop loop;
+  bool successResult = false;
+  QStringList resultsList;
+
+  service.translateBatch(batch, QStringLiteral("en"), QStringLiteral("ar"),
+                         [&](bool success, const QStringList &results, const QString &) {
+                           successResult = success;
+                           resultsList = results;
+                           loop.quit();
+                         });
+  loop.exec();
+
+  assert(successResult == true);
+  assert(resultsList.size() == 2);
+  assert(resultsList.at(0) == QString::fromUtf8("مرحبا بالعالم"));
+  assert(resultsList.at(1) == QString::fromUtf8("ابحث في المستودع"));
+
+  std::cout << "[Test] testGoogleGtxArabicBatchTransliteration passed!" << std::endl;
+}
+
 }  // namespace
 
 int main(int argc, char **argv) {
@@ -760,6 +842,8 @@ int main(int argc, char **argv) {
   testTestConnectionFeature();
   testV2DynamicEngineFeatures();
   testV2DynamicBatchingAndRerender();
+  testLanguageCodeMappingAcrossProviders();
+  testGoogleGtxArabicBatchTransliteration();
 
   std::cout << "All ArDali Translation Provider & Credential Vault Security Tests passed successfully!" << std::endl;
   return 0;

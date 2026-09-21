@@ -26,6 +26,7 @@
 namespace {
 
 constexpr qsizetype kMaximumMetadataBytes = 32 * 1024 * 1024;
+constexpr int kMaximumPersistedJobs = 200;
 
 QString executableName(const QString &base) {
 #if defined(Q_OS_WIN)
@@ -859,7 +860,9 @@ void MediaDownloadService::persistHistory() const {
         {QStringLiteral("url"), BrowserSecurity::sanitizeUrlForPersistence(job.url).toString(QUrl::FullyEncoded)},
         {QStringLiteral("title"), job.title}, {QStringLiteral("targetDirectory"), job.targetDirectory},
         {QStringLiteral("outputPath"), job.outputPath}, {QStringLiteral("mimeType"), job.mimeType},
-        {QStringLiteral("source"), job.source}, {QStringLiteral("thumbnailUrl"), job.thumbnailUrl},
+        {QStringLiteral("source"), job.source},
+        {QStringLiteral("thumbnailUrl"), BrowserSecurity::sanitizeUrlForPersistence(
+            QUrl(job.thumbnailUrl)).toString(QUrl::FullyEncoded)},
         {QStringLiteral("kind"), static_cast<int>(job.kind)},
         {QStringLiteral("playlist"), job.playlist}, {QStringLiteral("formatId"), request.formatId},
         {QStringLiteral("formatExtension"), request.formatExtension}, {QStringLiteral("formatHeight"), request.formatHeight},
@@ -873,7 +876,7 @@ void MediaDownloadService::persistHistory() const {
         {QStringLiteral("playlistEnd"), request.playlistEnd},
         {QStringLiteral("state"), static_cast<int>(job.state)}, {QStringLiteral("error"), job.errorText},
         {QStringLiteral("createdAt"), job.createdAt.toString(Qt::ISODate)}});
-    if (entries.size() >= 200) break;
+    if (entries.size() >= kMaximumPersistedJobs) break;
   }
   QDir().mkpath(QFileInfo(historyPath_).absolutePath());
   QSaveFile file(historyPath_);
@@ -891,6 +894,7 @@ void MediaDownloadService::loadHistory() {
   if (!file.open(QIODevice::ReadOnly)) return;
   const QJsonDocument document = QJsonDocument::fromJson(file.readAll());
   for (const QJsonValue &value : document.object().value(QStringLiteral("jobs")).toArray()) {
+    if (jobs_.size() >= kMaximumPersistedJobs) break;
     const QJsonObject object = value.toObject();
     const QUrl url = BrowserSecurity::sanitizeUrlForPersistence(QUrl(object.value(QStringLiteral("url")).toString()));
     if (!isSupportedMediaUrl(url)) continue;
@@ -903,10 +907,17 @@ void MediaDownloadService::loadHistory() {
     job.outputPath = object.value(QStringLiteral("outputPath")).toString();
     job.mimeType = object.value(QStringLiteral("mimeType")).toString().left(160).toLower();
     job.source = object.value(QStringLiteral("source")).toString().left(120);
-    job.thumbnailUrl = object.value(QStringLiteral("thumbnailUrl")).toString().left(2048);
-    job.kind = static_cast<MediaDownloadKind>(object.value(QStringLiteral("kind")).toInt());
+    job.thumbnailUrl = BrowserSecurity::sanitizeUrlForPersistence(
+        QUrl(object.value(QStringLiteral("thumbnailUrl")).toString())).toString(QUrl::FullyEncoded).left(2048);
+    const int storedKind = object.value(QStringLiteral("kind")).toInt(-1);
+    if (storedKind < static_cast<int>(MediaDownloadKind::Video)
+        || storedKind > static_cast<int>(MediaDownloadKind::PlaylistLinks)) continue;
+    job.kind = static_cast<MediaDownloadKind>(storedKind);
     job.playlist = object.value(QStringLiteral("playlist")).toBool();
-    job.state = static_cast<MediaDownloadState>(object.value(QStringLiteral("state")).toInt());
+    const int storedState = object.value(QStringLiteral("state")).toInt(-1);
+    if (storedState < static_cast<int>(MediaDownloadState::Completed)
+        || storedState > static_cast<int>(MediaDownloadState::Cancelled)) continue;
+    job.state = static_cast<MediaDownloadState>(storedState);
     if (!isTerminal(job.state)) continue;
     job.statusText = stateText(job.state);
     job.errorText = object.value(QStringLiteral("error")).toString();

@@ -2,6 +2,7 @@
 #include <QEventLoop>
 #include <QSettings>
 #include <QTimer>
+#include <QTemporaryDir>
 #include <QWebEnginePage>
 #include <QWebEngineView>
 #include <QWidget>
@@ -13,6 +14,13 @@
 int main(int argc, char *argv[]) {
   qputenv("QT_QPA_PLATFORM", QByteArray("offscreen"));
   QApplication app(argc, argv);
+
+  QTemporaryDir settingsRoot;
+  assert(settingsRoot.isValid());
+  QSettings::setDefaultFormat(QSettings::IniFormat);
+  QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, settingsRoot.path());
+  app.setOrganizationName(QStringLiteral("ArDaliTest"));
+  app.setApplicationName(QStringLiteral("TabPerformanceManagerTest"));
 
   QSettings testSettings;
   testSettings.remove(QStringLiteral("performance/policyMode"));
@@ -890,6 +898,7 @@ int main(int argc, char *argv[]) {
     const auto idA = manager.registerTab(viewA, &owner, false, QStringLiteral("Tab A"));
     const auto idB = manager.registerTab(viewB, &owner, false, QStringLiteral("Tab B"));
     const auto idC = manager.registerTab(viewC, &owner, false, QStringLiteral("Tab C"));
+    assert(!idA.isNull() && !idB.isNull() && !idC.isNull());
 
     perf->setBackgroundFreezeDelayMs(0);
     perf->setBackgroundDiscardDelayMs(0);
@@ -928,6 +937,7 @@ int main(int argc, char *argv[]) {
     const auto id1 = manager.registerTab(view1, &owner, false, QStringLiteral("Tab 1"));
     const auto id2 = manager.registerTab(view2, &owner, false, QStringLiteral("Tab 2"));
     const auto id3 = manager.registerTab(view3, &owner, false, QStringLiteral("Tab 3"));
+    assert(!id1.isNull() && !id2.isNull() && !id3.isNull());
 
     perf->setBackgroundFreezeDelayMs(0);
     perf->setBackgroundDiscardDelayMs(0);
@@ -1015,6 +1025,7 @@ int main(int argc, char *argv[]) {
 
     const auto id1 = manager.registerTab(view1, &owner, false, QStringLiteral("Tab 1"));
     const auto id2 = manager.registerTab(view2, &owner, false, QStringLiteral("Tab 2"));
+    assert(!id1.isNull() && !id2.isNull());
 
     perf->setBackgroundDiscardDelayMs(0);
     perf->setDiscardPolicyRequirement(DiscardPolicyRequirement::IdleOnly);

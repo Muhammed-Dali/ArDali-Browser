@@ -34,6 +34,8 @@ class IBrowserProfileDataProvider {
   virtual QList<QUrl> bookmarks() const = 0;
   virtual QString searchEngine() const { return QStringLiteral("DuckDuckGo"); }
   virtual quint64 totalBlockedCount() const { return 0; }
+  virtual quint64 sessionBlockedCount() const { return 0; }
+  virtual int recentDownloadCount() const { return 0; }
 };
 
 }  // namespace ardali::core

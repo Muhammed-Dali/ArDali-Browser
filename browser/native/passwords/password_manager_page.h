@@ -27,6 +27,7 @@ class PasswordManagerPage final : public QWidget {
  private:
   void showSetup();
   void showConsent();
+  void showPrivateBrowsingNotice();
   void showUnlock();
   void showRecords();
   void createVault();

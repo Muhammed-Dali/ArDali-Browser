@@ -35,8 +35,22 @@ void GoogleGtxProvider::translateBatch(
     return;
   }
 
-  const QString effectiveSrc = sourceLang.isEmpty() ? QStringLiteral("auto") : sourceLang;
-  const QString effectiveTarget = targetLang.isEmpty() ? QStringLiteral("tr") : targetLang;
+  QString effectiveSrc = sourceLang.isEmpty() ? QStringLiteral("auto") : sourceLang.trimmed().toLower();
+  QString effectiveTarget = targetLang.isEmpty() ? QStringLiteral("tr") : targetLang.trimmed();
+
+  const QString targetLower = effectiveTarget.toLower();
+  if (targetLower == QLatin1String("en-us") || targetLower == QLatin1String("en-gb")) {
+    effectiveTarget = QStringLiteral("en");
+  } else if (targetLower.startsWith(QLatin1String("zh-")) || targetLower == QLatin1String("zh")) {
+    effectiveTarget = QStringLiteral("zh-CN");
+  } else if (targetLower == QLatin1String("pt-br")) {
+    effectiveTarget = QStringLiteral("pt");
+  } else {
+    const int dash = effectiveTarget.indexOf(QLatin1Char('-'));
+    if (dash > 0) effectiveTarget = effectiveTarget.left(dash);
+    const int under = effectiveTarget.indexOf(QLatin1Char('_'));
+    if (under > 0) effectiveTarget = effectiveTarget.left(under);
+  }
 
   QUrl url(kGoogleGtxEndpoint);
   QUrlQuery query;
@@ -98,30 +112,84 @@ void GoogleGtxProvider::translateBatch(
       return;
     }
 
-    QString fullTranslatedText;
+    QStringList translatedList;
+    QString currentItem;
     const QJsonArray outer = doc.array();
     if (outer.at(0).isArray()) {
       const QJsonArray segments = outer.at(0).toArray();
+      static const QStringList kKnownSplitTokens = {
+          kSplitToken,
+          QStringLiteral("__أردالي_سبليت___"),
+          QStringLiteral("___أردالي_سبليت___"),
+          QStringLiteral("__اردالي_سبليت___"),
+          QStringLiteral("___اردالي_سبليت___")
+      };
+
       for (const QJsonValue &segVal : segments) {
-        if (segVal.isArray() && !segVal.toArray().isEmpty()) {
-          fullTranslatedText.append(segVal.toArray().at(0).toString());
+        if (!segVal.isArray() || segVal.toArray().isEmpty()) continue;
+        const QJsonArray segArray = segVal.toArray();
+        const QString trans = segArray.at(0).toString();
+        const QString orig = segArray.size() > 1 ? segArray.at(1).toString() : QString();
+
+        bool splitFound = false;
+        if (orig.trimmed() == kSplitToken) {
+          translatedList.append(currentItem.trimmed());
+          currentItem.clear();
+          splitFound = true;
+        } else {
+          for (const QString &token : kKnownSplitTokens) {
+            if (trans.contains(token)) {
+              const QStringList parts = trans.split(token);
+              for (int pIdx = 0; pIdx < parts.size(); ++pIdx) {
+                currentItem.append(parts.at(pIdx));
+                if (pIdx < parts.size() - 1) {
+                  translatedList.append(currentItem.trimmed());
+                  currentItem.clear();
+                }
+              }
+              splitFound = true;
+              break;
+            }
+          }
+        }
+
+        if (!splitFound) {
+          currentItem.append(trans);
         }
       }
-    }
-
-    if (fullTranslatedText.isEmpty()) {
-      if (callback) {
-        callback({false, {}, TranslationError::InvalidResponse, QStringLiteral("Google GTX boş yanıt döndürdü.")});
+      if (!currentItem.isEmpty() || translatedList.size() < expectedCount) {
+        translatedList.append(currentItem.trimmed());
       }
-      return;
     }
 
-    QStringList translatedList = fullTranslatedText.split(kSplitToken);
-    for (int i = 0; i < translatedList.size(); ++i) {
-      QString item = translatedList.at(i);
-      while (item.startsWith(QLatin1Char('\n')) || item.startsWith(QLatin1Char(' '))) item.remove(0, 1);
-      while (item.endsWith(QLatin1Char('\n')) || item.endsWith(QLatin1Char(' '))) item.chop(1);
-      translatedList[i] = item;
+    if (translatedList.size() != expectedCount) {
+      // Fallback check using raw concatenated text
+      QString fullTranslatedText;
+      if (outer.at(0).isArray()) {
+        const QJsonArray segments = outer.at(0).toArray();
+        for (const QJsonValue &segVal : segments) {
+          if (segVal.isArray() && !segVal.toArray().isEmpty()) {
+            fullTranslatedText.append(segVal.toArray().at(0).toString());
+          }
+        }
+      }
+      static const QStringList kFallbackSplitTokens = {
+          kSplitToken,
+          QStringLiteral("__أردالي_سبليت___"),
+          QStringLiteral("___أردالي_سبليت___"),
+          QStringLiteral("__اردالي_سبليت___"),
+          QStringLiteral("___اردالي_سبليت___")
+      };
+      for (const QString &token : kFallbackSplitTokens) {
+        const QStringList fallbackList = fullTranslatedText.split(token);
+        if (fallbackList.size() == expectedCount) {
+          translatedList.clear();
+          for (const QString &item : fallbackList) {
+            translatedList.append(item.trimmed());
+          }
+          break;
+        }
+      }
     }
 
     if (translatedList.size() != expectedCount) {

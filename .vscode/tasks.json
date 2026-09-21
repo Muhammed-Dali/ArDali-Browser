@@ -23,6 +23,16 @@
       "type": "shell",
       "command": "node dali-lang/scripts/dali-security-suite.js",
       "problemMatcher": []
+    },
+    {
+      "label": "ArDali: Run All CTests",
+      "type": "shell",
+      "command": "ctest --test-dir build --output-on-failure",
+      "group": {
+        "kind": "test",
+        "isDefault": true
+      },
+      "problemMatcher": []
     }
   ]
 }

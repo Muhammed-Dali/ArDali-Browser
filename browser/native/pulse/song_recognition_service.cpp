@@ -7,6 +7,7 @@
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QNetworkReply>
@@ -15,8 +16,12 @@
 #include <QUuid>
 #include <QtConcurrent>
 
+#include <algorithm>
+
 namespace {
 constexpr qint64 kWebContextTtlMs = 2 * 60 * 1000;     // 2 minutes
+constexpr int kAutoPrunedHistoryLimit = 10;
+constexpr int kMaximumHistoryEntries = 200;
 
 void hardenSongHistoryStorage(QSettings *settings) {
   if (!settings) return;
@@ -27,8 +32,10 @@ void hardenSongHistoryStorage(QSettings *settings) {
 }
 }  // namespace
 
-SongRecognitionService::SongRecognitionService(SongFinderSettings *settings, QObject *parent)
-    : QObject(parent), settings_(settings ? settings : new SongFinderSettings(this)) {
+SongRecognitionService::SongRecognitionService(SongFinderSettings *settings, QObject *parent,
+                                               bool historyPersistenceEnabled)
+    : QObject(parent), settings_(settings ? settings : new SongFinderSettings(this)),
+      historyPersistenceEnabled_(historyPersistenceEnabled) {
   captureService_ = new AudioCaptureService(this);
   deviceManager_ = new AudioDeviceManager(this);
   networkManager_ = new QNetworkAccessManager(this);
@@ -56,13 +63,14 @@ SongRecognitionService::~SongRecognitionService() {
 }
 
 void SongRecognitionService::loadHistory() {
+  if (!historyPersistenceEnabled_) return;
   QSettings s(QStringLiteral("ArDali"), QStringLiteral("SongFinderHistory"));
   hardenSongHistoryStorage(&s);
   const int count = s.beginReadArray(QStringLiteral("history"));
   bool sanitizedStoredUrl = false;
   history_.clear();
   recentTrackKeys_.clear();
-  for (int i = 0; i < count; ++i) {
+  for (int i = 0; i < count && history_.size() < kMaximumHistoryEntries; ++i) {
     s.setArrayIndex(i);
     SongResult res;
     res.title = s.value(QStringLiteral("title")).toString();
@@ -85,9 +93,11 @@ void SongRecognitionService::loadHistory() {
 }
 
 void SongRecognitionService::saveHistory() {
+  if (!historyPersistenceEnabled_) return;
   QSettings s(QStringLiteral("ArDali"), QStringLiteral("SongFinderHistory"));
-  s.beginWriteArray(QStringLiteral("history"), history_.size());
-  for (int i = 0; i < history_.size(); ++i) {
+  const int storedCount = std::min(static_cast<int>(history_.size()), kMaximumHistoryEntries);
+  s.beginWriteArray(QStringLiteral("history"), storedCount);
+  for (int i = 0; i < storedCount; ++i) {
     s.setArrayIndex(i);
     const auto &res = history_.at(i);
     s.setValue(QStringLiteral("title"), res.title);
@@ -210,6 +220,7 @@ bool SongRecognitionService::startListening(const QString &requestedDeviceId) {
 
   ++currentSessionId_;
   sessionStartedAt_ = QDateTime::currentMSecsSinceEpoch();
+  dismissActiveResult();
   clearWebContextMetadata();
   consecutiveNoSignal_ = 0;
   consecutiveNoMatch_ = 0;
@@ -249,6 +260,10 @@ bool SongRecognitionService::startListening(const QString &requestedDeviceId) {
 void SongRecognitionService::stopListening() {
   ++currentSessionId_;
   recognitionTimer_->stop();
+  if (activeReply_) {
+    activeReply_->abort();
+    activeReply_.clear();
+  }
   captureService_->stop();
   isProcessing_ = false;
   if (deviceUiConsumerCount_ == 0) deviceManager_->stopMonitoring();
@@ -370,7 +385,9 @@ void SongRecognitionService::sendShazamRequest(const QString &signatureUri, int 
   request.setRawHeader("User-Agent", "ArDali-Pulse/1.0");
 
   QNetworkReply *reply = networkManager_->post(request, payload);
+  activeReply_ = reply;
   connect(reply, &QNetworkReply::finished, this, [this, reply, sessionId]() {
+    if (activeReply_ == reply) activeReply_.clear();
     reply->deleteLater();
     if (sessionId != currentSessionId_ || !isListening()) {
       isProcessing_ = false;
@@ -430,6 +447,19 @@ void SongRecognitionService::handleShazamResponse(const QByteArray &data, int st
 
     const QJsonObject genres = track.value(QStringLiteral("genres")).toObject();
     result.genre = genres.value(QStringLiteral("primary")).toString();
+    const QJsonArray sections = track.value(QStringLiteral("sections")).toArray();
+    for (const QJsonValue &sectionValue : sections) {
+      const QJsonArray metadata = sectionValue.toObject().value(QStringLiteral("metadata")).toArray();
+      for (const QJsonValue &metadataValue : metadata) {
+        const QJsonObject entry = metadataValue.toObject();
+        if (entry.value(QStringLiteral("title")).toString().compare(
+                QStringLiteral("Album"), Qt::CaseInsensitive) == 0) {
+          result.album = entry.value(QStringLiteral("text")).toString().trimmed();
+          break;
+        }
+      }
+      if (!result.album.isEmpty()) break;
+    }
   }
 
   if (result.isValid()) {
@@ -440,10 +470,11 @@ void SongRecognitionService::handleShazamResponse(const QByteArray &data, int st
     if (!settings_->noDuplicates() || !duplicate) {
       history_.prepend(result);
       if (settings_->autoPruneHistory()) {
-        while (history_.size() > 10) {
+        while (history_.size() > kAutoPrunedHistoryLimit) {
           history_.removeLast();
         }
       }
+      while (history_.size() > kMaximumHistoryEntries) history_.removeLast();
       saveHistory();
       hasActiveResult_ = true;
       activeResult_ = result;
@@ -488,10 +519,11 @@ void SongRecognitionService::handleShazamResponse(const QByteArray &data, int st
         if (!settings_->noDuplicates() || !duplicate) {
           history_.prepend(fallbackResult);
           if (settings_->autoPruneHistory()) {
-            while (history_.size() > 10) {
+            while (history_.size() > kAutoPrunedHistoryLimit) {
               history_.removeLast();
             }
           }
+          while (history_.size() > kMaximumHistoryEntries) history_.removeLast();
           saveHistory();
           hasActiveResult_ = true;
           activeResult_ = fallbackResult;

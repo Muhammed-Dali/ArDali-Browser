@@ -1,7 +1,7 @@
 # Maintainer: Muhammed Dali <support@ardali.app>
 
 pkgname=ardali-browser
-pkgver=7.1.2
+pkgver=7.2.0
 pkgrel=1
 pkgdesc="Native Qt/C++ desktop browser with integrated privacy and media tools"
 arch=('x86_64')

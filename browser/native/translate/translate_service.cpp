@@ -263,6 +263,74 @@ void TranslateService::testConnection(const QString &testProviderId, std::functi
   });
 }
 
+QString TranslateService::mapLanguageForProvider(const QString &providerId, const QString &lang, bool isTarget) {
+  const QString clean = lang.trimmed();
+  if (clean.isEmpty()) {
+    return isTarget ? QStringLiteral("tr") : QStringLiteral("auto");
+  }
+  if (clean.compare(QLatin1String("auto"), Qt::CaseInsensitive) == 0) {
+    return (providerId == QLatin1String("google_cloud") || providerId == QLatin1String("deepl")) ? QString() : QStringLiteral("auto");
+  }
+
+  const QString lower = clean.toLower();
+  const QString pid = providerId.trimmed().toLower();
+
+  if (pid == QLatin1String("deepl")) {
+    if (isTarget) {
+      if (lower == QLatin1String("en") || lower == QLatin1String("en-us")) return QStringLiteral("EN-US");
+      if (lower == QLatin1String("en-gb")) return QStringLiteral("EN-GB");
+      if (lower == QLatin1String("pt") || lower == QLatin1String("pt-pt")) return QStringLiteral("PT-PT");
+      if (lower == QLatin1String("pt-br")) return QStringLiteral("PT-BR");
+      if (lower.startsWith(QLatin1String("zh"))) return QStringLiteral("ZH");
+      if (lower == QLatin1String("ar")) return QStringLiteral("AR");
+      if (lower == QLatin1String("tr")) return QStringLiteral("TR");
+      const int dash = lower.indexOf(QLatin1Char('-'));
+      const QString base = (dash > 0) ? lower.left(dash) : lower;
+      return base.toUpper();
+    } else {
+      if (lower.startsWith(QLatin1String("en"))) return QStringLiteral("EN");
+      if (lower.startsWith(QLatin1String("pt"))) return QStringLiteral("PT");
+      if (lower.startsWith(QLatin1String("zh"))) return QStringLiteral("ZH");
+      const int dash = lower.indexOf(QLatin1Char('-'));
+      const QString base = (dash > 0) ? lower.left(dash) : lower;
+      return base.toUpper();
+    }
+  }
+
+  if (pid == QLatin1String("google_cloud")) {
+    if (!isTarget && (lower == QLatin1String("auto") || lower.isEmpty())) return QString();
+    if (lower == QLatin1String("en-us") || lower == QLatin1String("en-gb")) return QStringLiteral("en");
+    if (lower.startsWith(QLatin1String("zh-")) || lower == QLatin1String("zh")) return QStringLiteral("zh-CN");
+    if (lower == QLatin1String("pt-br")) return QStringLiteral("pt");
+    const int dash = lower.indexOf(QLatin1Char('-'));
+    return (dash > 0) ? lower.left(dash) : lower;
+  }
+
+  if (pid == QLatin1String("libretranslate")) {
+    if (lower == QLatin1String("en-us") || lower == QLatin1String("en-gb")) return QStringLiteral("en");
+    if (lower.startsWith(QLatin1String("zh"))) return QStringLiteral("zh");
+    if (lower.startsWith(QLatin1String("pt"))) return QStringLiteral("pt");
+    const int dash = lower.indexOf(QLatin1Char('-'));
+    return (dash > 0) ? lower.left(dash) : lower;
+  }
+
+  // Default / google_gtx
+  if (isTarget) {
+    if (lower == QLatin1String("en-us") || lower == QLatin1String("en-gb")) return QStringLiteral("en");
+    if (lower.startsWith(QLatin1String("zh-")) || lower == QLatin1String("zh")) return QStringLiteral("zh-CN");
+    if (lower == QLatin1String("pt-br")) return QStringLiteral("pt");
+    const int dash = lower.indexOf(QLatin1Char('-'));
+    return (dash > 0) ? lower.left(dash) : lower;
+  } else {
+    if (lower == QLatin1String("auto")) return QStringLiteral("auto");
+    if (lower == QLatin1String("en-us") || lower == QLatin1String("en-gb")) return QStringLiteral("en");
+    if (lower.startsWith(QLatin1String("zh-")) || lower == QLatin1String("zh")) return QStringLiteral("zh-CN");
+    if (lower == QLatin1String("pt-br")) return QStringLiteral("pt");
+    const int dash = lower.indexOf(QLatin1Char('-'));
+    return (dash > 0) ? lower.left(dash) : lower;
+  }
+}
+
 void TranslateService::translateBatch(const QStringList &texts, const QString &sourceLang, const QString &targetLang, TranslationCallback callback) {
   if (!enabled_) {
     if (callback) callback(false, {}, QStringLiteral("Sayfa çevirisi ayarlardan devre dışı bırakılmış."));
@@ -306,12 +374,25 @@ void TranslateService::translateBatch(const QStringList &texts, const QString &s
 
   ITranslationProvider *providerToUse = activeProvider_.get();
   std::shared_ptr<GoogleGtxProvider> fallbackProvider;
-  if (!providerToUse || (providerToUse->requiresApiKey() && !providerToUse->isConfigured()) || providerId_ == QLatin1String("none")) {
+  if (providerToUse && providerToUse->requiresApiKey() &&
+      !providerToUse->isConfigured() && secretStore_.isVaultLocked()) {
+    const QString error = QStringLiteral(
+        "Çeviri API anahtarına erişmek için güvenli kasanın kilidini açın.");
+    emit translationFailed(error);
+    if (callback) callback(false, {}, error);
+    return;
+  }
+  if (!providerToUse || (providerToUse->requiresApiKey() && !providerToUse->isConfigured()) ||
+      providerId_ == QLatin1String("none")) {
     fallbackProvider = std::make_shared<GoogleGtxProvider>(network_);
     providerToUse = fallbackProvider.get();
   }
 
-  providerToUse->translateBatch(uncachedTexts, effectiveSrc, effectiveTarget, [this, results, uncachedIndices, uncachedTexts, effectiveSrc, effectiveTarget, callback, fallbackProvider](const TranslationResult &res) mutable {
+  const QString effectiveProviderId = (providerToUse == fallbackProvider.get()) ? QStringLiteral("google_gtx") : providerId_;
+  const QString mappedSrc = mapLanguageForProvider(effectiveProviderId, effectiveSrc, false);
+  const QString mappedTarget = mapLanguageForProvider(effectiveProviderId, effectiveTarget, true);
+
+  providerToUse->translateBatch(uncachedTexts, mappedSrc, mappedTarget, [this, results, uncachedIndices, uncachedTexts, effectiveSrc, effectiveTarget, callback, fallbackProvider](const TranslationResult &res) mutable {
     if (!res.success || res.translatedTexts.size() != uncachedTexts.size()) {
       QString err = res.errorMessage;
       if (err.isEmpty()) {

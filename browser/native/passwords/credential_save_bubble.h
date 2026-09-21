@@ -22,7 +22,7 @@ class CredentialSaveBubble : public QFrame {
   Q_OBJECT
  public:
   explicit CredentialSaveBubble(QWidget *parent = nullptr);
-  ~CredentialSaveBubble() override = default;
+  ~CredentialSaveBubble() override;
 
   void setupPrompt(CredentialSaveMode mode, const QString &origin, const QString &username);
 

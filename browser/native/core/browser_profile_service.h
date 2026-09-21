@@ -41,6 +41,11 @@ struct ClosedTabEntry {
   QDateTime closedAt;
 };
 
+struct CustomSearchEngine {
+  QString name;
+  QString urlTemplate;
+};
+
 // Owns the persistent Chromium profile and the browser-wide policies that are
 // independent of an individual tab or window.
 class BrowserProfileService final : public QObject, public ardali::core::IBrowserProfileDataProvider {
@@ -141,10 +146,12 @@ class BrowserProfileService final : public QObject, public ardali::core::IBrowse
   QList<BrowserFrequentSite> frequentSites(int limit = 6) const override;
   void recordSearch(const QString &query);
   QStringList recentSearches(const QString &query = QString{}, int limit = 8) const;
+  bool removeSearchHistory(const QString &query);
   void clearSearchHistory();
   void clearHistory();
 
   QList<BrowserDownloadEntry> recentDownloads() const;
+  int recentDownloadCount() const override;
   QList<BrowserDownloadEntry> nativeDownloads() const;
 
   QList<BrowserHistoryEntry> searchHistory(const QString &query, int maxResults = 100) const;
@@ -161,7 +168,14 @@ class BrowserProfileService final : public QObject, public ardali::core::IBrowse
   void setSearchSuggestionsEnabled(bool enabled);
   QString searchEngine() const override;
   quint64 totalBlockedCount() const override;
+  quint64 sessionBlockedCount() const override;
   void setSearchEngine(const QString &engine);
+  QList<CustomSearchEngine> customSearchEngines() const;
+  bool saveCustomSearchEngine(const QString &name, const QString &urlTemplate,
+                              const QString &previousName = QString{});
+  bool removeCustomSearchEngine(const QString &name);
+  QUrl searchUrlForEngine(const QString &engine, const QString &query) const;
+  static bool isValidSearchTemplate(const QString &urlTemplate);
 
   QList<QUrl> bookmarks() const override;
   bool isBookmarked(const QUrl &url) const;

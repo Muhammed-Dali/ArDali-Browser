@@ -872,20 +872,29 @@ QList<QWebEngineScript> ArDaliBlockerService::createScriptingScriptsForHost(cons
     scripts.append(script);
   }
 
-  QJsonArray proceduralRules = listManager_->loadProceduralRulesForHost(host, activeRulesetIds(), true);
-  const QJsonArray customProcedural = filterEngine_->customProceduralRulesForHost(host);
-  for (const QJsonValue &rule : customProcedural) proceduralRules.append(rule);
-  if (!proceduralRules.isEmpty()) {
-    const QString json = QString::fromUtf8(QJsonDocument(proceduralRules).toJson(QJsonDocument::Compact));
-    QWebEngineScript procedural;
-    procedural.setName(QStringLiteral("ardali-adblock-procedural"));
-    procedural.setInjectionPoint(QWebEngineScript::DocumentCreation);
-    procedural.setWorldId(QWebEngineScript::ApplicationWorld);
-    procedural.setRunsOnSubFrames(false);
-    // This is the procedural subset used by the legacy webview preload:
-    // selector/tasks/action plus re-evaluation on SPA DOM mutation. Unknown
-    // task names fail closed (do not hide content), never as broad selectors.
-    procedural.setSourceCode(QStringLiteral(R"JS(
+  const QString lowerHost = host.trimmed().toLower();
+  const bool isYouTubeHost = lowerHost == QLatin1String("youtube.com") ||
+                             lowerHost == QLatin1String("www.youtube.com") ||
+                             lowerHost == QLatin1String("m.youtube.com") ||
+                             lowerHost == QLatin1String("music.youtube.com") ||
+                             lowerHost.endsWith(QLatin1String(".youtube.com")) ||
+                             lowerHost == QLatin1String("youtu.be");
+
+  if (!isYouTubeHost) {
+    QJsonArray proceduralRules = listManager_->loadProceduralRulesForHost(host, activeRulesetIds(), true);
+    const QJsonArray customProcedural = filterEngine_->customProceduralRulesForHost(host);
+    for (const QJsonValue &rule : customProcedural) proceduralRules.append(rule);
+    if (!proceduralRules.isEmpty()) {
+      const QString json = QString::fromUtf8(QJsonDocument(proceduralRules).toJson(QJsonDocument::Compact));
+      QWebEngineScript procedural;
+      procedural.setName(QStringLiteral("ardali-adblock-procedural"));
+      procedural.setInjectionPoint(QWebEngineScript::DocumentCreation);
+      procedural.setWorldId(QWebEngineScript::ApplicationWorld);
+      procedural.setRunsOnSubFrames(false);
+      // This is the procedural subset used by the legacy webview preload:
+      // selector/tasks/action plus re-evaluation on SPA DOM mutation. Unknown
+      // task names fail closed (do not hide content), never as broad selectors.
+      procedural.setSourceCode(QStringLiteral(R"JS(
 (function(){
  const runtime=window.__ardaliCosmeticRuntime;
  if(!runtime||window.__ardaliProceduralRules)return;window.__ardaliProceduralRules=1;
@@ -911,10 +920,9 @@ QList<QWebEngineScript> ArDaliBlockerService::createScriptingScriptsForHost(cons
   else if(n==='watch-attr')next.push(node)
  }catch(_){}}out=[...new Set(next)];if(!out.length)break}return out};
   const apply=(node,rule)=>{try{
-   if(runtime.hiddenNodes&&!runtime.hiddenNodes.has(node)){
-    runtime.hiddenNodes.add(node);
-    if(runtime.reportBlock)runtime.reportBlock(1,'procedural');
-   }
+   if(runtime.hiddenNodes&&runtime.hiddenNodes.has(node))return;
+   if(runtime.hiddenNodes)runtime.hiddenNodes.add(node);
+   if(runtime.reportBlock)runtime.reportBlock(1,'procedural');
    const a=Array.isArray(rule.action)?rule.action:['style','display:none!important;'];
    if(a[0]==='remove')node.remove();
    else if(a[0]==='remove-attr')node.removeAttribute(String(a[1]||''));
@@ -937,7 +945,8 @@ QList<QWebEngineScript> ArDaliBlockerService::createScriptingScriptsForHost(cons
  runtime.schedule(document);
 })();
 )JS").arg(json));
-    scripts.append(procedural);
+      scripts.append(procedural);
+    }
   }
   return scripts;
 }

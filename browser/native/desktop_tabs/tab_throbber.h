@@ -44,7 +44,7 @@ class TabThrobber final : public QObject {
   bool isTimerActive() const { return animationTimer_.isActive(); }
   int frameStep() const { return frameStep_; }
 
-  static QIcon renderThrobberIcon(int frameStep, const QPalette &palette, bool activeTab, qreal dpr = 1.0);
+  static QIcon renderThrobberIcon(int frameStep, const QPalette &palette, bool activeTab, qreal dpr = 1.0, int baseSize = 16);
 
  signals:
   void throbberTick();

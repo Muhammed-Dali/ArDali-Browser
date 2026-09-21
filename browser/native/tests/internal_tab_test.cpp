@@ -18,7 +18,7 @@
 int main(int argc, char *argv[]) {
   QApplication app(argc, argv);
   QObject owner;
-  QWebEngineProfile profile(QStringLiteral("ardali-internal-tab-test"), &app);
+  QWebEngineProfile profile(&app);
   QWebEngineView web;
   web.setPage(new QWebEnginePage(&profile, &web));
   TabManager manager;

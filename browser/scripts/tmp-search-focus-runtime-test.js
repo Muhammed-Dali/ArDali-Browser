@@ -36,7 +36,7 @@ socket.onopen = async () => {
     await evaluate(`new Promise((resolve, reject) => {
       const started = Date.now();
       const check = () => {
-        if (document.getElementById('search') && document.getElementById('ardali-native-suggestions')) resolve(true);
+        if (document.getElementById('search') && document.getElementById('search-suggestions')) resolve(true);
         else if (Date.now() - started > 5000) reject(new Error('new-tab search did not initialize'));
         else setTimeout(check, 50);
       };
@@ -45,16 +45,16 @@ socket.onopen = async () => {
     const normal = await evaluate(`(() => {
       const search = document.getElementById('search').getBoundingClientRect();
       const shortcuts = document.getElementById('shortcuts');
-      return {width:search.width, top:search.top, focused:document.body.classList.contains('ardali-search-focused'), shortcutsOpacity:getComputedStyle(shortcuts).opacity, shortcutsVisibility:getComputedStyle(shortcuts).visibility};
+      return {width:search.width, top:search.top, focused:document.getElementById('page').classList.contains('search-focused'), shortcutsOpacity:getComputedStyle(shortcuts).opacity, shortcutsVisibility:getComputedStyle(shortcuts).visibility};
     })()`);
     const focused = await evaluate(`new Promise(resolve => {
       const input = document.getElementById('query');
       input.focus();
-      if (!document.body.classList.contains('ardali-search-focused')) input.dispatchEvent(new FocusEvent('focus'));
+      if (!document.getElementById('page').classList.contains('search-focused')) input.dispatchEvent(new FocusEvent('focus'));
       setTimeout(() => {
         const search = document.getElementById('search').getBoundingClientRect();
         const shortcuts = document.getElementById('shortcuts');
-        resolve({width:search.width, top:search.top, focused:document.body.classList.contains('ardali-search-focused'), shortcutsOpacity:getComputedStyle(shortcuts).opacity, shortcutsVisibility:getComputedStyle(shortcuts).visibility});
+        resolve({width:search.width, top:search.top, focused:document.getElementById('page').classList.contains('search-focused'), shortcutsOpacity:getComputedStyle(shortcuts).opacity, shortcutsVisibility:getComputedStyle(shortcuts).visibility});
       }, 450);
     })`);
     const restored = await evaluate(`new Promise(resolve => {
@@ -63,7 +63,7 @@ socket.onopen = async () => {
       setTimeout(() => {
         const search = document.getElementById('search').getBoundingClientRect();
         const shortcuts = document.getElementById('shortcuts');
-        resolve({width:search.width, top:search.top, focused:document.body.classList.contains('ardali-search-focused'), shortcutsOpacity:getComputedStyle(shortcuts).opacity, shortcutsVisibility:getComputedStyle(shortcuts).visibility});
+        resolve({width:search.width, top:search.top, focused:document.getElementById('page').classList.contains('search-focused'), shortcutsOpacity:getComputedStyle(shortcuts).opacity, shortcutsVisibility:getComputedStyle(shortcuts).visibility});
       }, 450);
     })`);
     console.log(JSON.stringify({ normal, focused, restored }, null, 2));

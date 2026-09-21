@@ -78,6 +78,7 @@ class CredentialAutofillController final : public QObject {
 
   // Save prompt and bubble management
   CredentialSaveBubble *activeSaveBubble() const;
+  QWebEngineView *activeBubbleView() const;
   void dismissSaveBubble();
   void promptCandidate(QWebEngineView *view, const QString &candidateKey);
 
@@ -237,4 +238,5 @@ class CredentialAutofillController final : public QObject {
   QPointer<CredentialSaveBubble> activeSaveBubble_;
   QPointer<QWebEngineView> activeBubbleView_;
   QString activeBubbleCandidateKey_;
+  bool isPruning_ = false;
 };

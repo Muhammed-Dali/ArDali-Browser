@@ -130,6 +130,34 @@ int main(int argc, char *argv[]) {
     if (restored.enabled() || restored.preampDb() != 0.0) return 1;
   }
   {
+    WebAudioEffectsController baseline;
+    const bool enabled = baseline.enabled();
+    const double preamp = baseline.preampDb();
+    {
+      WebAudioEffectsController privateController(nullptr, false);
+      privateController.setEnabled(!enabled);
+      privateController.setPreampDb(preamp == 5.5 ? -5.5 : 5.5);
+    }
+    WebAudioEffectsController restored;
+    if (restored.enabled() != enabled || restored.preampDb() != preamp) return 1;
+  }
+  {
+    QSettings settings;
+    const double nan = std::numeric_limits<double>::quiet_NaN();
+    settings.setValue(QStringLiteral("audioEffects/web/output/preampDb"), nan);
+    settings.setValue(QStringLiteral("audioEffects/web/equalizer/band0"), nan);
+    settings.setValue(QStringLiteral("audioEffects/web/equalizer/bassDb"), nan);
+    settings.setValue(QStringLiteral("audioEffects/web/equalizer/stereoExpanderPercent"), nan);
+    settings.setValue(QStringLiteral("audioEffects/web/reverb/roomSizeMs"), nan);
+    settings.sync();
+    WebAudioEffectsController sanitized;
+    if (!std::isfinite(sanitized.preampDb()) || sanitized.preampDb() != 0.0
+        || !std::isfinite(sanitized.equalizerBand(0)) || sanitized.equalizerBand(0) != 0.0
+        || !std::isfinite(sanitized.bassDb()) || sanitized.bassDb() != 0.0
+        || !std::isfinite(sanitized.stereoExpanderPercent()) || sanitized.stereoExpanderPercent() != 100.0
+        || !std::isfinite(sanitized.reverbRoomSizeMs()) || sanitized.reverbRoomSizeMs() != 1000.0) return 1;
+  }
+  {
     WebAudioEffectsController controller;
     controller.setAcousticSpace(QStringLiteral("medium"));
     controller.setBalance(8.0);

@@ -55,11 +55,17 @@ void DeepLProvider::translateBatch(
 
   QJsonObject payload;
   payload.insert(QStringLiteral("text"), QJsonArray::fromStringList(texts));
-  if (!sourceLang.isEmpty() && sourceLang != QLatin1String("auto")) {
-    payload.insert(QStringLiteral("source_lang"), sourceLang.toUpper());
+  if (!sourceLang.isEmpty() && sourceLang.compare(QLatin1String("auto"), Qt::CaseInsensitive) != 0) {
+    QString srcUpper = sourceLang.trimmed().toUpper();
+    const int dash = srcUpper.indexOf(QLatin1Char('-'));
+    if (dash > 0) srcUpper = srcUpper.left(dash);
+    payload.insert(QStringLiteral("source_lang"), srcUpper);
   }
-  const QString targetUpper = (targetLang.isEmpty() ? QStringLiteral("tr") : targetLang).toUpper();
-  payload.insert(QStringLiteral("target_lang"), targetUpper);
+  QString targetMapped = (targetLang.isEmpty() ? QStringLiteral("TR") : targetLang.trimmed().toUpper());
+  if (targetMapped == QLatin1String("EN")) targetMapped = QStringLiteral("EN-US");
+  else if (targetMapped == QLatin1String("PT")) targetMapped = QStringLiteral("PT-PT");
+  else if (targetMapped.startsWith(QLatin1String("ZH"))) targetMapped = QStringLiteral("ZH");
+  payload.insert(QStringLiteral("target_lang"), targetMapped);
 
   QNetworkRequest request(endpointUrl());
   request.setHeader(QNetworkRequest::ContentTypeHeader, QStringLiteral("application/json"));

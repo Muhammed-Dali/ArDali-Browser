@@ -26,6 +26,7 @@
 #include "core/navigation_candidate.h"
 #include "core/search_engine_definition.h"
 #include "newtab/new_tab_html.h"
+#include "newtab/new_tab_background_store.h"
 #include "newtab/new_tab_scheme.h"
 #include "blocker/ardali_blocker_service.h"
 #include "blocker/ardali_blocker_settings.h"
@@ -141,6 +142,13 @@ void testSearchHistoryPersistenceAndClearing() {
   assert(recent.size() == 2);
   assert(recent.first() == QStringLiteral("arch aur giriş"));
   assert(service.recentSearches(QStringLiteral("aur"), 5) == QStringList{QStringLiteral("arch aur giriş")});
+  assert(service.removeSearchHistory(QStringLiteral("youtube müzik")));
+  assert(!service.removeSearchHistory(QStringLiteral("bulunmayan sorgu")));
+  assert(service.recentSearches() == QStringList{QStringLiteral("arch aur giriş")});
+  {
+    BrowserProfileService reloaded(directory.path(), nullptr);
+    assert(reloaded.recentSearches() == QStringList{QStringLiteral("arch aur giriş")});
+  }
 
   service.clearSearchHistory();
   assert(service.recentSearches().isEmpty());
@@ -213,24 +221,43 @@ void testNewTabDataAndScriptSafety() {
   const QJsonArray malicious{QJsonObject{{QStringLiteral("url"), QStringLiteral("https://safe.example/")},
                                          {QStringLiteral("name"), maliciousTitle},
                                          {QStringLiteral("title"), maliciousTitle}}};
-  const QString html = newTabHtml(QStringLiteral("Google"), malicious, bookmarks, 37);
+  const QString html = newTabHtml(QStringLiteral("Google"), malicious, bookmarks, 37, 4);
   assert(html.contains(QStringLiteral("search-history")));
-  assert(html.contains(QStringLiteral("requestSubmit")));
+  assert(html.contains(QStringLiteral("suggestionCommand('activate'")));
+  assert(html.contains(QStringLiteral("suggestion-remove")));
+  assert(html.contains(QStringLiteral("suggestionCommandUrl('delete-history'")));
   assert(html.contains(QStringLiteral("attack<\\/script><script>alert(1)<\\/script>")));
   assert(!html.contains(maliciousTitle));
   assert(html.contains(QStringLiteral("window.ardaliTopSiteSources")));
   assert(html.contains(QStringLiteral("id=\"protection-card-value\">37")));
-  assert(html.contains(QStringLiteral("Toplam engellenen öğe")));
+  assert(html.contains(QStringLiteral("Engellenen öğeler")));
+  assert(html.contains(QStringLiteral("id=\"downloads-card-value\">4")));
+  assert(html.contains(QStringLiteral("İstatistik kartlarını göster")));
+  assert(html.contains(QStringLiteral("const button=document.createElement('a')")));
+  assert(html.contains(QStringLiteral("button.href=suggestionCommandUrl('activate'")));
+  assert(html.contains(QStringLiteral("button.onpointerdown=event=>")));
+  assert(html.contains(QStringLiteral("remove.onpointerdown=event=>")));
+  assert(html.contains(QStringLiteral("query.addEventListener('input',scheduleSuggestions)")));
+  assert(html.contains(QStringLiteral("suggestionRequestTimer=setTimeout(requestSuggestions,80)")));
+  assert(html.contains(QStringLiteral("if(document.activeElement!==query&&!suggestionList.matches(':hover'))closeSuggestions()")));
+  assert(html.contains(QStringLiteral("query.setSelectionRange(suggestionTypedValue.length,completion.length)")));
 
   const QString updateScript = newTabTopSitesUpdateScript(frequent, bookmarks);
   assert(updateScript.contains(QStringLiteral("window.renderFrequentSites")));
   assert(updateScript.contains(QStringLiteral("https://example.com/")));
-  assert(newTabProtectionStatsUpdateScript(91).contains(QStringLiteral("ardaliSetProtectionStats(91)")));
+  assert(newTabProtectionStatsUpdateScript(91, 6).contains(QStringLiteral("ardaliSetProtectionStats(91,6)")));
 }
 
 }  // namespace
 
 static void testPlaceholdersAndCachedFavicon() {
+  const QString generatedNewTab = newTabHtml(
+      QStringLiteral("DuckDuckGo"), {}, {}, 0, 0, 0, true, true,
+      QStringLiteral("all_time"), QStringLiteral("asset-capability"));
+  assert(generatedNewTab.contains(QStringLiteral("ardali://newtab-background?op=")));
+  assert(generatedNewTab.contains(QStringLiteral("const managedBackgroundCapability=\"asset-capability\"")));
+  assert(generatedNewTab.contains(QStringLiteral("managed-background-thumbnail'+managedQuery")));
+  assert(!generatedNewTab.contains(QStringLiteral("window.ardaliNewTabCommand=")));
   assert(ardali::core::searchEngineIconAsset(QStringLiteral("Google")) == QStringLiteral("google.ico"));
   assert(ardali::core::searchEngineIconAsset(QStringLiteral("DuckDuckGo")) == QStringLiteral("duckduckgo.ico"));
   assert(ardali::core::searchEngineIconAsset(QStringLiteral("Brave Search")) == QStringLiteral("brave.ico"));
@@ -246,6 +273,9 @@ static void testPlaceholdersAndCachedFavicon() {
   service.setSearchEngine(QStringLiteral("DuckDuckGo"));
   QImage image(32, 32, QImage::Format_ARGB32);
   image.fill(Qt::green);
+  const QString managedBackgroundFixture = dir.path() + QStringLiteral("/managed-background.png");
+  assert(image.save(managedBackgroundFixture, "PNG"));
+  assert(service.newTabBackgroundStore()->importImage(managedBackgroundFixture).ok());
   QByteArray png;
   QBuffer buffer(&png);
   buffer.open(QIODevice::WriteOnly);
@@ -336,8 +366,16 @@ static void testPlaceholdersAndCachedFavicon() {
     document.querySelector('#clock-toggle').click();
     if(!clockWidget.hidden)return false;
     document.querySelector('#clock-toggle').click();
+    document.querySelector('#cards-toggle').click();
     const saved=JSON.parse(localStorage.getItem('ardali.newtab')||'{}');
-    if(!saved.backgroundVisible||!saved.backgroundPreferenceSet||saved.backgroundSource!=='gradient-violet'||document.body.classList.contains('background-hidden')||saved.clockStyle!=='digital'||saved.clockPosition!=='bottom-right'||!saved.clock||!clockWidget.classList.contains('style-digital')||!clockWidget.classList.contains('position-bottom-right'))return false;
+    if(!saved.backgroundVisible||!saved.backgroundPreferenceSet||saved.backgroundSource!=='gradient-violet'||document.body.classList.contains('background-hidden')||saved.clockStyle!=='digital'||saved.clockPosition!=='bottom-right'||!saved.clock||saved.cards!==false||!document.querySelector('#cards').hidden||!clockWidget.classList.contains('style-digital')||!clockWidget.classList.contains('position-bottom-right'))return false;
+    window.ardaliBackgroundResult(true,'',true,123,true);
+    if(JSON.parse(localStorage.getItem('ardali.newtab')).backgroundSource!=='custom'||!document.documentElement.style.getPropertyValue('--new-tab-background').includes('managed-background?v=123')||document.querySelector('#custom-background-card').hidden||document.querySelector('#background-remove').hidden)return false;
+    document.querySelector('#background-toggle').click();
+    if(JSON.parse(localStorage.getItem('ardali.newtab')).backgroundSource!=='custom'||!document.body.classList.contains('background-hidden'))return false;
+    document.querySelector('[data-background="builtin"]').click();
+    document.querySelector('[data-background="custom"]').click();
+    if(JSON.parse(localStorage.getItem('ardali.newtab')).backgroundSource!=='custom'||document.body.classList.contains('background-hidden'))return false;
     window.ardaliSetSearchEngine('Google');
     if(input.placeholder!=="Google'da arayın veya URL'yi yazın" || !input.matches(':placeholder-shown'))return false;
     input.value='keep this text';
@@ -349,6 +387,24 @@ static void testPlaceholdersAndCachedFavicon() {
   QTimer::singleShot(5000, &runtimeLoop, &QEventLoop::quit);
   runtimeLoop.exec();
   assert(runtimePassed);
+
+  QEventLoop backgroundImageLoop;
+  QTimer backgroundPoll;
+  backgroundPoll.setInterval(50);
+  bool backgroundImageLoaded = false;
+  QObject::connect(&backgroundPoll, &QTimer::timeout, &page, [&] {
+    page.runJavaScript(QStringLiteral("document.querySelector('#custom-background-thumbnail')?.naturalWidth>0"),
+        [&](const QVariant &value) {
+          if (!value.toBool()) return;
+          backgroundImageLoaded = true;
+          backgroundImageLoop.quit();
+        });
+  });
+  QTimer::singleShot(5000, &backgroundImageLoop, &QEventLoop::quit);
+  backgroundPoll.start();
+  backgroundImageLoop.exec();
+  backgroundPoll.stop();
+  assert(backgroundImageLoaded);
 
   QEventLoop focusLoop;
   bool focusPassed = false;
@@ -507,8 +563,8 @@ static void testPhase2_2C_NewTabCardHidingOnSearchFocus() {
   assert(html.contains(QStringLiteral("id=\"cards\"")));
   assert(html.contains(QStringLiteral("id=\"downloads-card-value\"")));
   assert(html.contains(QStringLiteral("id=\"protection-card-value\"")));
-  assert(html.contains(QStringLiteral("Son indirmeler")));
-  assert(html.contains(QStringLiteral("Toplam engellenen öğe")));
+  assert(html.contains(QStringLiteral("İndirmeler")));
+  assert(html.contains(QStringLiteral("Engellenen öğeler")));
   assert(!html.contains(QStringLiteral("İzleme parametresi koruması")));
   assert(html.contains(QStringLiteral("query.addEventListener('focus'")));
   assert(html.contains(QStringLiteral("classList.add('search-focused')")));

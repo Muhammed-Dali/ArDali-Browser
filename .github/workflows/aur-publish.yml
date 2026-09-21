@@ -6,7 +6,7 @@ on:
       release_tag:
         description: Published release to submit to the AUR packages
         required: true
-        default: v7.1.2
+        default: v7.2.0
         type: string
 
 permissions:

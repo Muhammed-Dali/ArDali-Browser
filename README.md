@@ -9,12 +9,12 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/Muhammed-Dali/ArDali-Browser/releases/tag/v7.1.2"><img src="https://img.shields.io/badge/release-v7.1.2-007ACC.svg?style=flat-square" alt="Release v7.1.2"></a>
+  <a href="https://github.com/Muhammed-Dali/ArDali-Browser/releases/tag/v7.2.0"><img src="https://img.shields.io/badge/release-v7.2.0-007ACC.svg?style=flat-square" alt="Release v7.2.0"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-GPL--3.0--only-success.svg?style=flat-square" alt="License GPL-3.0"></a>
   <img src="https://img.shields.io/badge/C%2B%2B-20-00599C.svg?style=flat-square&logo=c%2B%2B" alt="C++20">
   <img src="https://img.shields.io/badge/Qt-6.4+-41CD52.svg?style=flat-square&logo=qt" alt="Qt 6">
   <img src="https://img.shields.io/badge/Platform-Linux-FCC624.svg?style=flat-square&logo=linux&logoColor=black" alt="Linux">
-  <img src="https://img.shields.io/badge/Tests-27%2F27%20Passed-brightgreen.svg?style=flat-square" alt="Test Status">
+  <img src="https://img.shields.io/badge/Tests-Passing-brightgreen.svg?style=flat-square" alt="Test Status">
   <img src="https://img.shields.io/badge/AutoEQ%20Presets-1757-9cf.svg?style=flat-square" alt="AutoEQ">
 </p>
 
@@ -156,11 +156,11 @@ sudo pacman -Syu ardali
 
 For a direct, package-manager-free installation:
 
-1. Download the latest `ardali-browser-7.1.2-linux-x86_64.tar.zst` from the [GitHub Releases](https://github.com/Muhammed-Dali/ArDali-Browser/releases) page.
+1. Download the latest `ardali-browser-7.2.0-linux-x86_64.tar.zst` from the [GitHub Releases](https://github.com/Muhammed-Dali/ArDali-Browser/releases) page.
 2. Extract the archive and merge the directory tree into `/usr`:
 
 ```bash
-tar -I zstd -xvf ardali-browser-7.1.2-linux-x86_64.tar.zst
+tar -I zstd -xvf ardali-browser-7.2.0-linux-x86_64.tar.zst
 sudo cp -r usr/* /usr/
 ```
 
@@ -176,7 +176,7 @@ Building ArDali Browser requires a C++20-compliant compiler, CMake, Ninja, and Q
 ```bash
 sudo pacman -S --needed base-devel cmake ninja git nodejs \
   qt6-base qt6-webengine qt6-svg qt6-imageformats \
-  openssl libpsl pkgconf ffmpeg
+  openssl libpsl pkgconf ffmpeg libsecret
 ```
 
 **Ubuntu 24.04+ / Debian 13+:**
@@ -184,14 +184,14 @@ sudo pacman -S --needed base-devel cmake ninja git nodejs \
 sudo apt update
 sudo apt install build-essential cmake ninja-build git nodejs \
   qt6-base-dev qt6-webengine-dev libqt6svg6-dev libqt6webenginewidgets6 \
-  libssl-dev libpsl-dev pkg-config ffmpeg
+  libssl-dev libpsl-dev pkg-config ffmpeg libsecret-1-dev
 ```
 
 **Fedora 39+:**
 ```bash
 sudo dnf install gcc-c++ cmake ninja-build git nodejs \
   qt6-qtbase-devel qt6-qtwebengine-devel qt6-qtsvg-devel \
-  openssl-devel libpsl-devel pkgconf-pkg-config ffmpeg-free
+  openssl-devel libpsl-devel pkgconf-pkg-config ffmpeg-free libsecret-devel
 ```
 
 ---
@@ -218,7 +218,7 @@ Run the browser directly from the build directory:
 ./build/ardali-browser
 ```
 
-Execute the full automated test suite (27 standalone test targets):
+Execute the full automated test suite:
 
 ```bash
 ctest --test-dir build --output-on-failure
@@ -232,7 +232,42 @@ sudo cmake --install build
 
 ---
 
-## Developer Section & Project Architecture
+## Developer & Contributor Documentation
+
+For detailed technical guides, architecture design documents, and contribution workflows:
+
+- **[Architecture Guide](docs/ARCHITECTURE.md):** Subsystem architecture, process startup sequence, ownership and lifetime models, and source map.
+- **[Building Guide](docs/BUILDING.md):** Detailed build dependencies, distro package lists, and optional integration fallbacks.
+- **[Testing Guide](docs/TESTING.md):** CTest test suites, running targeted test binaries, and headless CI execution.
+- **[Debugging Guide](docs/DEBUGGING.md):** Terminal diagnostics, remote Chromium inspection, GDB backtraces, and subsystem logging.
+- **[Contributing Guide](CONTRIBUTING.md):** Development guidelines, coding conventions, and pull request workflows.
+- **[Security Policy](SECURITY.md):** Vulnerability reporting and security architecture summary.
+
+### Contributor Workflow
+
+Major native modules live under `browser/native/` (with subsystem directories such as
+`core/`, `desktop_tabs/`, `downloads/`, `blocker/`, `passwords/`, `audio/`, `eq/`,
+and `pulse/`); runtime assets are in `browser/resources/`, tests are in
+`browser/native/tests/`, and release recipes are in `packaging/`.
+
+Configure and build a Release tree with:
+
+```bash
+cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+cmake --build build -j$(nproc)
+```
+
+During development, run a focused test by name or label, for example:
+
+```bash
+ctest --test-dir build -R 'password|credential-vault' --output-on-failure
+```
+
+Before final submission, run the complete suite with `ctest --test-dir build
+--output-on-failure`. Prefer small, understandable changes and pull requests that
+address one concern.
+
+### Core Source Layout
 
 ArDali Browser employs a clean, decoupled C++ module structure:
 
@@ -240,8 +275,9 @@ ArDali Browser employs a clean, decoupled C++ module structure:
 - **`browser/native/desktop_tabs/`**: Tab layout engine, tab drag-and-drop controller, tab hover memory cards, and memory pressure monitoring.
 - **`browser/native/downloads/`**: `GeneralDownloadManager` adaptive multi-connection engine, transfer UI models, and platform registries.
 - **`browser/native/blocker/`**: `ArDaliBlockerEngine`, cosmetic CSS injection runtime, ruleset list manager, and toolbar shield button.
-- **`browser/native/passwords/`**: Encrypted `CredentialVault`, autofill coordinator, unlock dialogs, and credential save bubbles.
+- **`browser/native/passwords/`**: Encrypted `CredentialVault`, `DeviceKeyring` OS secret service binding, autofill coordinator, and credential save bubbles.
 - **`browser/native/audio/` & `browser/native/eq/`**: Web Audio DSP pipeline, 32-band peaking equalizer, and 1,757 AutoEQ JSON profiles.
+- **`browser/native/pulse/`**: `SongRecognitionService` real-time audio capture and music recognition.
 - **`browser/resources/`**: AdBlock filter catalogs, AutoEQ frequency JSON files, and Linux `.desktop.in` templates.
 - **`packaging/`**: Arch Linux PKGBUILD recipes, AUR manifests, and pacman repository publication definitions.
 

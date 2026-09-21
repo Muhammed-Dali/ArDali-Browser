@@ -30,6 +30,8 @@ class PageTranslator : public QObject {
   QString targetLanguage() const;
   QString lastError() const;
   uint64_t currentGeneration() const;
+  QWebEngineView *view() const { return view_.data(); }
+  TranslateService *service() const { return service_; }
 
   void detectLanguage();
   void translatePage(const QString &targetLang = QStringLiteral("tr"));

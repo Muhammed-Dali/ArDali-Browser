@@ -445,7 +445,7 @@ QList<FilterRule> getBuiltinCoreRules() {
     FilterRule r;
     r.id = 1000009; r.priority = 110; r.actionType = QStringLiteral("block");
     r.initiatorDomains = kYouTubeInitiators;
-    r.urlFilter = QStringLiteral("ctier=l");
+    r.regexFilter = QStringLiteral(R"([?&]ctier=l(?:&|$))");
     r.requestDomains = {QStringLiteral("googlevideo.com")};
     r.resourceTypes = {ArDaliBlockerResourceType::Xhr, ArDaliBlockerResourceType::Media};
     r.rulesetId = QStringLiteral("ardali-youtube");
@@ -455,7 +455,17 @@ QList<FilterRule> getBuiltinCoreRules() {
     FilterRule r;
     r.id = 1000010; r.priority = 110; r.actionType = QStringLiteral("block");
     r.initiatorDomains = kYouTubeInitiators;
-    r.urlFilter = QStringLiteral("adformat=");
+    r.regexFilter = QStringLiteral(R"([?&]adformat=)");
+    r.requestDomains = {QStringLiteral("googlevideo.com")};
+    r.resourceTypes = {ArDaliBlockerResourceType::Xhr, ArDaliBlockerResourceType::Media};
+    r.rulesetId = QStringLiteral("ardali-youtube");
+    list.append(r);
+  }
+  {
+    FilterRule r;
+    r.id = 1000012; r.priority = 110; r.actionType = QStringLiteral("block");
+    r.initiatorDomains = kYouTubeInitiators;
+    r.regexFilter = QStringLiteral(R"([?&]source=web_video_ads(?:&|$))");
     r.requestDomains = {QStringLiteral("googlevideo.com")};
     r.resourceTypes = {ArDaliBlockerResourceType::Xhr, ArDaliBlockerResourceType::Media};
     r.rulesetId = QStringLiteral("ardali-youtube");
@@ -912,8 +922,14 @@ QList<QPair<QString, QString>> ArDaliBlockerListManager::loadScriptingSourcesFor
     scriptingSourceCache_.insert(path, new QString(source), qMax<qsizetype>(1, source.size() * 2));
     return source;
   };
-  auto appendMappedAsset = [this, &readAsset, &host](QString &target, const QString &path) {
+  auto appendMappedAsset = [this, &readAsset, &host, isYouTubeHost](QString &target, const QString &path) {
     const QString source = readAsset(path);
+    // YouTube fail-safe: Never inject scriptlets containing player reload/seek loops
+    // (e.g. serverContract / loadVideoById / statsForNerds mutation observers) that destabilize playback.
+    if (isYouTubeHost && (source.contains(QLatin1String("serverContract")) ||
+                         source.contains(QLatin1String("loadVideoById")))) {
+      return;
+    }
     const QString cacheKey = path + QLatin1Char('\n') + host.toLower();
     bool applies = false;
     bool cached = false;

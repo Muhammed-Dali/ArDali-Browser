@@ -139,6 +139,8 @@ VaultUnlockDialog *CredentialAutofillController::activeUnlockDialog() const {
 }
 
 void CredentialAutofillController::pruneExpiredData() {
+  if (isPruning_) return;
+  isPruning_ = true;
   const QDateTime now = QDateTime::currentDateTimeUtc();
   for (auto it = stagedUsernames_.begin(); it != stagedUsernames_.end();) {
     if (it->expiresAt <= now) {
@@ -148,7 +150,9 @@ void CredentialAutofillController::pruneExpiredData() {
     }
   }
   for (auto it = pendingCandidates_.begin(); it != pendingCandidates_.end();) {
-    if (it->expiresAt <= now) {
+    const bool isActivelyPrompted = (it.key() == activeBubbleCandidateKey_ &&
+                                     activeSaveBubble_ != nullptr);
+    if (!isActivelyPrompted && it->expiresAt <= now) {
       it->password.fill(QChar());
       it = pendingCandidates_.erase(it);
     } else {
@@ -163,6 +167,7 @@ void CredentialAutofillController::pruneExpiredData() {
     cancelPendingSaveFlow(key, QStringLiteral("timeout"));
   }
   stopConfirmationTimerIfIdle();
+  isPruning_ = false;
 }
 
 void CredentialAutofillController::clearAllSensitiveData() {
@@ -336,13 +341,9 @@ void CredentialAutofillController::onUrlChanged(QWebEngineView *view, const QUrl
     }
   }
 
-  if (activeSaveBubble_ && (activeBubbleCandidateKey_.startsWith(prefix) || activeBubbleView_ == view)) {
-    if (!origin.isEmpty()) {
-      const auto it = pendingCandidates_.find(activeBubbleCandidateKey_);
-      const QString bubbleOrigin = (it != pendingCandidates_.end()) ? it->origin : QString();
-      if (!bubbleOrigin.isEmpty() && !isSameSiteOrOrigin(origin, bubbleOrigin)) {
-        dismissSaveBubble();
-      }
+  if (activeSaveBubble_ && activeBubbleView_ == view) {
+    if (activeSaveBubble_->mode() == CredentialSaveMode::Verifying) {
+      promptCandidate(view, activeBubbleCandidateKey_);
     }
   }
 
@@ -375,8 +376,10 @@ void CredentialAutofillController::onUrlChanged(QWebEngineView *view, const QUrl
     }
   }
   // Clear candidates only if they belong to a completely different site (not same-site)
+  // and are not actively presented to the user for a save decision.
   for (auto it = pendingCandidates_.begin(); it != pendingCandidates_.end();) {
-    if (it.key().startsWith(prefix) && !isSameSiteOrOrigin(it->origin, origin)) {
+    const bool isActivelyPrompted = (it.key() == activeBubbleCandidateKey_ && activeSaveBubble_ != nullptr);
+    if (!isActivelyPrompted && it.key().startsWith(prefix) && !isSameSiteOrOrigin(it->origin, origin)) {
       it->password.fill(QChar());
       it = pendingCandidates_.erase(it);
     } else {
@@ -405,6 +408,12 @@ void CredentialAutofillController::onPageLoadFinished(QWebEngineView *view, bool
   if (!view || !success) return;
   trackView(view);
   pruneExpiredData();
+
+  if (activeSaveBubble_ && activeBubbleView_ == view) {
+    if (activeSaveBubble_->mode() == CredentialSaveMode::Verifying) {
+      promptCandidate(view, activeBubbleCandidateKey_);
+    }
+  }
 
   const QString origin = CredentialVault::canonicalHttpsOrigin(view->url());
   if (origin.isEmpty()) {
@@ -1151,6 +1160,13 @@ void CredentialAutofillController::handleSubmit(QWebEnginePage *page, const QStr
 
   if (origin.isEmpty() || claimedOrigin != origin) return;
 
+  if (activeSaveBubble_) {
+    const auto it = pendingCandidates_.find(activeBubbleCandidateKey_);
+    if (it != pendingCandidates_.end() && (it->origin != origin || (!username.isEmpty() && it->username != username))) {
+      return;
+    }
+  }
+
   recordLoginAttemptSubmit(view, origin, nonce, username);
 }
 
@@ -1195,6 +1211,21 @@ void CredentialAutofillController::handleCandidate(QWebEnginePage *page, const Q
   }
 
   const QString key = candidateKey(view, origin, username);
+  if (activeSaveBubble_) {
+    if (activeBubbleCandidateKey_ == key) {
+      auto it = pendingCandidates_.find(key);
+      if (it != pendingCandidates_.end()) {
+        it->password = password;
+        it->expiresAt = QDateTime::currentDateTimeUtc().addSecs(120);
+      }
+      password.fill(QChar());
+      return;
+    } else {
+      password.fill(QChar());
+      return;
+    }
+  }
+
   if (activePrompts_.contains(key) || hasSaveFlowForCandidate(key)) {
     password.fill(QChar());
     return;
@@ -1213,7 +1244,10 @@ void CredentialAutofillController::handleCandidate(QWebEnginePage *page, const Q
   QTimer::singleShot(121000, this, [guardedThis, guardedView, key] {
     if (!guardedThis) return;
     const auto it = guardedThis->pendingCandidates_.find(key);
-    if (it != guardedThis->pendingCandidates_.end() && it->expiresAt <= QDateTime::currentDateTimeUtc()) {
+    const bool isActivelyPrompted = (guardedThis->activeBubbleCandidateKey_ == key &&
+                                     guardedThis->activeSaveBubble_ != nullptr);
+    if (it != guardedThis->pendingCandidates_.end() && !isActivelyPrompted &&
+        it->expiresAt <= QDateTime::currentDateTimeUtc()) {
       it->password.fill(QChar());
       guardedThis->pendingCandidates_.erase(it);
     }
@@ -1545,7 +1579,11 @@ void CredentialAutofillController::beginFillReauthentication(QWebEngineView *vie
 }
 
 void CredentialAutofillController::promptCandidate(QWebEngineView *view, const QString &candidateKey) {
-  if (!view) return;
+  QWebEngineView *targetView = view ? view : activeBubbleView_.data();
+  if (!targetView && !dialogParent_) {
+    const auto candCheck = pendingCandidates_.constFind(candidateKey);
+    if (candCheck != pendingCandidates_.cend()) targetView = candCheck->view.data();
+  }
   const bool updatingVerifyingBubble = activeSaveBubble_ &&
                                         activeBubbleCandidateKey_ == candidateKey &&
                                         activeSaveBubble_->mode() == CredentialSaveMode::Verifying;
@@ -1556,15 +1594,12 @@ void CredentialAutofillController::promptCandidate(QWebEngineView *view, const Q
   if (it == pendingCandidates_.end()) return;
 
   PendingCandidate &candidate = it.value();
-  const QString currentOrigin = CredentialVault::canonicalHttpsOrigin(view->url());
-  if (!vaultManager_ || !vaultManager_->exists() ||
-      (!currentOrigin.isEmpty() && !isSameSiteOrOrigin(currentOrigin, candidate.origin))) {
+  if (!vaultManager_ || !vaultManager_->exists()) {
     return;
   }
 
   // Deduplication: if active save bubble is already showing for this key, avoid duplicate
-  if (activeSaveBubble_ && activeSaveBubble_->isVisible() &&
-      activeBubbleCandidateKey_ == candidateKey && !updatingVerifyingBubble) {
+  if (activeSaveBubble_ && activeBubbleCandidateKey_ == candidateKey && !updatingVerifyingBubble) {
     return;
   }
 
@@ -1615,9 +1650,9 @@ void CredentialAutofillController::promptCandidate(QWebEngineView *view, const Q
 
   activePrompts_.insert(candidateKey);
   activeBubbleCandidateKey_ = candidateKey;
-  activeBubbleView_ = view;
+  activeBubbleView_ = targetView;
 
-  QWidget *parentWidget = dialogParent_ ? dialogParent_ : (view ? view->window() : nullptr);
+  QWidget *parentWidget = dialogParent_ ? dialogParent_ : (targetView ? targetView->window() : nullptr);
   auto *bubble = new CredentialSaveBubble(parentWidget);
   activeSaveBubble_ = bubble;
 
@@ -1858,6 +1893,10 @@ CredentialSaveBubble *CredentialAutofillController::activeSaveBubble() const {
   return activeSaveBubble_.data();
 }
 
+QWebEngineView *CredentialAutofillController::activeBubbleView() const {
+  return activeBubbleView_.data();
+}
+
 void CredentialAutofillController::dismissSaveBubble() {
   if (activeSaveBubble_) {
     activeSaveBubble_->hide();
@@ -1940,7 +1979,10 @@ void CredentialAutofillController::showVerifyingBubble(const QString &attemptKey
   const auto candidateIt = pendingCandidates_.constFind(flowIt->candidateKey);
   if (candidateIt == pendingCandidates_.cend()) return;
 
-  if (activeSaveBubble_ && activeBubbleCandidateKey_ == flowIt->candidateKey) return;
+  if (activeSaveBubble_) {
+    if (activeBubbleCandidateKey_ == flowIt->candidateKey) return;
+    return;
+  }
   dismissSaveBubble();
   activePrompts_.insert(flowIt->candidateKey);
   activeBubbleCandidateKey_ = flowIt->candidateKey;
@@ -1983,6 +2025,21 @@ void CredentialAutofillController::cancelPendingSaveFlow(const QString &attemptK
     return;
   }
   const QString candidateKey = flowIt->candidateKey;
+  QPointer<QWebEngineView> view = flowIt->view;
+  const bool isBubbleActive = (activeBubbleCandidateKey_ == candidateKey && activeSaveBubble_ != nullptr);
+  if (isBubbleActive && reasonCode != QLatin1String("tab_close")) {
+    const bool wasVerifying = (activeSaveBubble_->mode() == CredentialSaveMode::Verifying);
+    loginAttempts_.remove(attemptKey);
+    pendingSaveFlows_.erase(flowIt);
+    lastSaveFlowEndReason_ = reasonCode;
+    emit saveFlowEnded(reasonCode);
+    stopConfirmationTimerIfIdle();
+    if (wasVerifying) {
+      promptCandidate(view.data(), candidateKey);
+    }
+    return;
+  }
+
   if (activeBubbleCandidateKey_ == candidateKey) dismissSaveBubble();
   activePrompts_.remove(candidateKey);
   const auto candidateIt = pendingCandidates_.find(candidateKey);

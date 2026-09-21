@@ -17,7 +17,8 @@ constexpr char kKeyRememberAudioDevice[] = "rememberAudioDevice";
 constexpr char kKeySavedDeviceId[] = "savedDeviceId";
 }  // namespace
 
-SongFinderSettings::SongFinderSettings(QObject *parent) : QObject(parent) {
+SongFinderSettings::SongFinderSettings(QObject *parent, bool persistenceEnabled)
+    : QObject(parent), persistenceEnabled_(persistenceEnabled) {
   load();
 }
 
@@ -125,6 +126,7 @@ void SongFinderSettings::load() {
 }
 
 void SongFinderSettings::save() {
+  if (!persistenceEnabled_) return;
   QSettings settings;
   settings.beginGroup(QString::fromLatin1(kGroup));
   settings.setValue(QString::fromLatin1(kKeyOpenPlatform), platformToString(openPlatform_));

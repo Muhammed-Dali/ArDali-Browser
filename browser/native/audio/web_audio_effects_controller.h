@@ -25,10 +25,11 @@ class WebAudioEffectsController final : public QObject {
     QString detail;
   };
 
-  explicit WebAudioEffectsController(QObject *parent = nullptr);
+  explicit WebAudioEffectsController(QObject *parent = nullptr, bool persistenceEnabled = true);
   ~WebAudioEffectsController() override;
 
   bool enabled() const { return enabled_; }
+  bool persistenceEnabled() const { return persistenceEnabled_; }
   double preampDb() const { return preampDb_; }
   static const QVector<int> &equalizerFrequencies();
   QVector<double> equalizerBands() const { return equalizerBands_; }
@@ -241,6 +242,7 @@ class WebAudioEffectsController final : public QObject {
   mutable QString daliAutoGainModuleSource_;
   QTimer persistTimer_;
   QTimer applyTimer_;
+  bool persistenceEnabled_ = true;
   friend int main(int argc, char *argv[]);
 };
 

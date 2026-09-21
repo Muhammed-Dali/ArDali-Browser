@@ -1676,9 +1676,9 @@ int main(int argc, char **argv) {
     std::cout << "[PASS] TEST 75: pending credential tab close -> discarded" << std::endl;
   }
 
-  // TEST 76: pending credential origin change -> discarded
+  // TEST 76: pending credential save decision preserved across navigation -> explicit Save resolves it
   {
-    std::cout << "[RUN] TEST 76: pending credential origin change -> discarded" << std::endl;
+    std::cout << "[RUN] TEST 76: pending credential save decision preserved across navigation -> explicit Save" << std::endl;
     QTemporaryDir dir76;
     assert(dir76.isValid());
     CredentialVaultManager manager76(dir76.path());
@@ -1692,17 +1692,39 @@ int main(int argc, char **argv) {
     controller76.handleConsoleMessage(testView->page(), candMsg);
     controller76.handleConsoleMessage(testView->page(), QStringLiteral("ARDALI_CREDENTIAL_SUCCESS_HINT:{\"origin\":\"https://www.facebook.com\"}"));
     assert(controller76.activeSaveBubble() != nullptr);
+    assert(controller76.activeSaveBubble()->origin() == QStringLiteral("https://www.facebook.com"));
+    assert(controller76.activeSaveBubble()->username() == QStringLiteral("user@facebook.com"));
 
-    // User navigates to twitter
-    testView->setUrl(QUrl(QStringLiteral("https://twitter.com/home")));
+    // User navigates / page redirects to another site or path
+    testView->setUrl(QUrl(QStringLiteral("https://accounts.example.net/success")));
     controller76.onUrlChanged(testView, testView->url());
+    controller76.onPageLoadFinished(testView, true);
 
+    // Pending save decision STILL EXISTS!
+    assert(controller76.activeSaveBubble() != nullptr);
+    assert(controller76.pendingCandidateCount() == 1);
+    // Origin is NOT mutated to the redirect destination!
+    assert(controller76.activeSaveBubble()->origin() == QStringLiteral("https://www.facebook.com"));
+    assert(controller76.activeSaveBubble()->username() == QStringLiteral("user@facebook.com"));
+    assert(controller76.activeSaveBubble()->isPrimaryButtonEnabled());
+
+    // Explicit Save resolves it
+    controller76.activeSaveBubble()->clickPrimary();
     assert(controller76.activeSaveBubble() == nullptr);
     assert(controller76.pendingCandidateCount() == 0);
 
+    // Verify it was saved under the ORIGINAL origin in the vault
+    const auto records = manager76.forOrigin(QUrl(QStringLiteral("https://www.facebook.com")));
+    assert(records.size() == 1);
+    assert(records[0].username == QStringLiteral("user@facebook.com"));
+
+    // And verify NOTHING was saved under the redirect destination
+    const auto redirectRecords = manager76.forOrigin(QUrl(QStringLiteral("https://accounts.example.net")));
+    assert(redirectRecords.isEmpty());
+
     controller76.onViewClosed(testView);
     delete testView;
-    std::cout << "[PASS] TEST 76: pending credential origin change -> discarded" << std::endl;
+    std::cout << "[PASS] TEST 76: pending credential save decision preserved across navigation -> explicit Save" << std::endl;
   }
 
   // TEST 77: vault exists + unlocked + new credential -> save bubble shown
@@ -2100,9 +2122,9 @@ int main(int argc, char **argv) {
     std::cout << "[PASS] TEST 88: tab switch -> save bubble dismissed safely" << std::endl;
   }
 
-  // TEST 89: navigation race -> stale credential cannot save
+  // TEST 89: redirect to untrusted site -> origin binding preserved, no leak to evil site
   {
-    std::cout << "[RUN] TEST 89: navigation race -> stale credential cannot save" << std::endl;
+    std::cout << "[RUN] TEST 89: redirect to untrusted site -> origin binding preserved, no leak to evil site" << std::endl;
     QTemporaryDir dir89;
     assert(dir89.isValid());
     CredentialVaultManager manager89(dir89.path());
@@ -2115,17 +2137,32 @@ int main(int argc, char **argv) {
     const QString candMsg = QStringLiteral("ARDALI_CREDENTIAL_CANDIDATE:{\"origin\":\"https://www.facebook.com\",\"username\":\"user@fb.com\",\"password\":\"FbSecret#2026\",\"submitted\":true}");
     controller89.handleConsoleMessage(testView->page(), candMsg);
     controller89.handleConsoleMessage(testView->page(), QStringLiteral("ARDALI_CREDENTIAL_SUCCESS_HINT:{\"origin\":\"https://www.facebook.com\"}"));
+    assert(controller89.activeSaveBubble() != nullptr);
+    assert(controller89.activeSaveBubble()->origin() == QStringLiteral("https://www.facebook.com"));
 
     // Navigated to evil site before user interacted
     testView->setUrl(QUrl(QStringLiteral("https://evil.com/phish")));
     controller89.onUrlChanged(testView, testView->url());
 
+    // Prompt MUST NOT be silently dismissed, AND origin MUST NOT be hijacked by evil.com
+    assert(controller89.activeSaveBubble() != nullptr);
+    assert(controller89.activeSaveBubble()->origin() == QStringLiteral("https://www.facebook.com"));
+    assert(controller89.activeSaveBubble()->username() == QStringLiteral("user@fb.com"));
+
+    // User chooses to save
+    controller89.activeSaveBubble()->clickPrimary();
     assert(controller89.activeSaveBubble() == nullptr);
+
+    // Verified: Credential saved for https://www.facebook.com
+    assert(manager89.hasMatchingCredential(QUrl(QStringLiteral("https://www.facebook.com"))));
+
+    // Security invariant: Absolutely NO credential associated with https://evil.com!
     assert(!manager89.hasMatchingCredential(testView->url()));
+    assert(manager89.forOrigin(QUrl(QStringLiteral("https://evil.com"))).isEmpty());
 
     controller89.onViewClosed(testView);
     delete testView;
-    std::cout << "[PASS] TEST 89: navigation race -> stale credential cannot save" << std::endl;
+    std::cout << "[PASS] TEST 89: redirect to untrusted site -> origin binding preserved, no leak to evil site" << std::endl;
   }
 
   // TEST 90: cross-origin iframe login -> no credential save prompt
@@ -3319,6 +3356,11 @@ int main(int argc, char **argv) {
       QThread::msleep(500);
     }
     assert(!controller132.hasActiveSubmittedLoginAttempt(view, QStringLiteral("https://timeout.example")));
+    // Bounded confirmation timeout stops login attempt polling, but once the save prompt
+    // is visible as a pending user decision, it remains until explicit resolution.
+    assert(controller132.activeSaveBubble() != nullptr);
+    assert(controller132.activeSaveBubble()->isPrimaryButtonEnabled());
+    controller132.activeSaveBubble()->clickSecondary();
     assert(controller132.activeSaveBubble() == nullptr);
     controller132.onViewClosed(view);
     delete view;
@@ -3584,9 +3626,9 @@ int main(int argc, char **argv) {
     std::cout << "[PASS] TEST 144: explicit failure cancels flow" << std::endl;
   }
 
-  // TEST 145: verification timeout -> flow cancelled
+  // TEST 145: verification timeout -> pending user decision preserved until explicit resolution
   {
-    std::cout << "[RUN] TEST 145: verification timeout cancels flow" << std::endl;
+    std::cout << "[RUN] TEST 145: verification timeout preserves pending decision until user resolution" << std::endl;
     QTemporaryDir dir;
     CredentialVaultManager manager(dir.path());
     assert(manager.create(masterPassword));
@@ -3599,12 +3641,16 @@ int main(int argc, char **argv) {
     assert(waitForCondition([&loaded] { return loaded; }));
     c.handleConsoleMessage(view->page(), candidateMessage(origin, QStringLiteral("user145@example.com"), QStringLiteral("Secret#145"), true));
     assert(waitForCondition([&c, view, origin] { return !c.hasPendingCredentialSaveFlow(view, origin); }, 14000));
-    assert(c.pendingCandidateCount() == 0);
-    assert(c.activeSaveBubble() == nullptr);
     assert(c.lastSaveFlowEndReason() == QStringLiteral("timeout"));
+    // Once shown, bubble remains visible as a pending user decision until explicit user resolution
+    assert(c.activeSaveBubble() != nullptr);
+    assert(c.activeSaveBubble()->isPrimaryButtonEnabled());
+    c.activeSaveBubble()->clickSecondary(); // User clicks "Şimdi Değil"
+    assert(c.activeSaveBubble() == nullptr);
+    assert(c.pendingCandidateCount() == 0);
     c.onViewClosed(view);
     delete view;
-    std::cout << "[PASS] TEST 145: verification timeout cancels flow" << std::endl;
+    std::cout << "[PASS] TEST 145: verification timeout preserves pending decision until user resolution" << std::endl;
   }
 
   // TEST 146: eye toggle -> no flow
@@ -4473,6 +4519,146 @@ int main(int argc, char **argv) {
     assert(releasedUsername == QStringLiteral("second@example.com"));
     c.onViewClosed(&view);
     std::cout << "[PASS] TEST 179: multiple-account selection" << std::endl;
+  }
+
+  // TEST 180: pending save decision -> navigation -> explicit Not Now rejects and cleans up
+  {
+    std::cout << "[RUN] TEST 180: pending save -> navigation -> explicit Not Now" << std::endl;
+    QTemporaryDir dir180;
+    CredentialVaultManager manager180(dir180.path());
+    assert(manager180.create(masterPassword));
+    CredentialAutofillController c180(&manager180);
+    auto *view = new QWebEngineView();
+    const QString origin = QStringLiteral("https://login.example.com");
+    view->setUrl(QUrl(origin + QStringLiteral("/login")));
+    c180.handleConsoleMessage(view->page(), candidateMessage(origin, QStringLiteral("user180@example.com"), QStringLiteral("Secret#180"), true));
+    assert(waitForCondition([&c180] { return c180.activeSaveBubble() != nullptr; }, 1000));
+    assert(c180.activeSaveBubble()->origin() == origin);
+
+    // Page redirects to another domain/path
+    view->setUrl(QUrl(QStringLiteral("https://accounts.example.net/dashboard")));
+    c180.onUrlChanged(view, view->url());
+    c180.onPageLoadFinished(view, true);
+
+    // Pending decision still visible, bound to original origin
+    assert(c180.activeSaveBubble() != nullptr);
+    assert(c180.activeSaveBubble()->origin() == origin);
+    assert(c180.activeSaveBubble()->username() == QStringLiteral("user180@example.com"));
+
+    // Explicit Not Now ("Şimdi Değil")
+    c180.activeSaveBubble()->clickSecondary();
+    assert(c180.activeSaveBubble() == nullptr);
+    assert(c180.pendingCandidateCount() == 0);
+
+    // Verify nothing saved to vault
+    assert(manager180.forOrigin(QUrl(origin)).isEmpty());
+    assert(manager180.forOrigin(QUrl(QStringLiteral("https://accounts.example.net"))).isEmpty());
+
+    c180.onViewClosed(view);
+    delete view;
+    std::cout << "[PASS] TEST 180: pending save -> navigation -> explicit Not Now" << std::endl;
+  }
+
+  // TEST 181: multiple candidates: candidate while decision pending retains existing decision
+  {
+    std::cout << "[RUN] TEST 181: candidate while decision pending retains existing decision" << std::endl;
+    QTemporaryDir dir181;
+    CredentialVaultManager manager181(dir181.path());
+    assert(manager181.create(masterPassword));
+    CredentialAutofillController c181(&manager181);
+    auto *view = new QWebEngineView();
+    const QString origin = QStringLiteral("https://service.example.org");
+    view->setUrl(QUrl(origin + QStringLiteral("/login")));
+
+    c181.handleConsoleMessage(view->page(), candidateMessage(origin, QStringLiteral("userA@example.org"), QStringLiteral("PassA#181"), true));
+    assert(waitForCondition([&c181] { return c181.activeSaveBubble() != nullptr; }, 1000));
+    assert(c181.activeSaveBubble()->username() == QStringLiteral("userA@example.org"));
+
+    // Second candidate arrives for different user while decision pending
+    c181.handleConsoleMessage(view->page(), candidateMessage(origin, QStringLiteral("userB@example.org"), QStringLiteral("PassB#181"), true));
+
+    // Active pending decision MUST NOT be overwritten with different credentials
+    assert(c181.activeSaveBubble() != nullptr);
+    assert(c181.activeSaveBubble()->username() == QStringLiteral("userA@example.org"));
+
+    // Page finishes loading
+    c181.onPageLoadFinished(view, true);
+    assert(c181.activeSaveBubble()->isPrimaryButtonEnabled());
+
+    // User saves the pending decision
+    c181.activeSaveBubble()->clickPrimary();
+    assert(c181.activeSaveBubble() == nullptr);
+
+    // Verify only userA is in vault
+    const auto records = manager181.forOrigin(QUrl(origin));
+    assert(records.size() == 1);
+    assert(records[0].username == QStringLiteral("userA@example.org"));
+
+    c181.onViewClosed(view);
+    delete view;
+    std::cout << "[PASS] TEST 181: candidate while decision pending retains existing decision" << std::endl;
+  }
+
+  // TEST 182: form submit with post-login error state retains pending save bubble until user decision
+  {
+    std::cout << "[RUN] TEST 182: post-login error state retains pending save bubble" << std::endl;
+    QTemporaryDir dir182;
+    CredentialVaultManager manager182(dir182.path());
+    assert(manager182.create(masterPassword));
+    CredentialAutofillController c182(&manager182);
+    auto *view = new QWebEngineView();
+    const QString origin = QStringLiteral("https://www.facebook.com");
+    view->setUrl(QUrl(origin + QStringLiteral("/login")));
+
+    c182.handleConsoleMessage(view->page(), candidateMessage(origin, QStringLiteral("muhammeddali1453@gmail.com"), QStringLiteral("MyPassword123!"), true));
+    assert(waitForCondition([&c182] { return c182.activeSaveBubble() != nullptr; }, 1000));
+
+    // Page finishes load and DOM reports error banner (e.g. "The login information you entered is incorrect")
+    c182.onPageLoadFinished(view, true);
+    c182.handleConsoleMessage(view->page(), QStringLiteral("ARDALI_CREDENTIAL_STATE:{\"origin\":\"https://www.facebook.com\",\"loginFormVisible\":true,\"passwordFieldVisible\":true,\"errorStateObserved\":true}"));
+
+    // Bubble MUST NOT disappear! It remains visible and active for the user's decision
+    assert(c182.activeSaveBubble() != nullptr);
+    assert(c182.activeSaveBubble()->origin() == origin);
+    assert(c182.activeSaveBubble()->username() == QStringLiteral("muhammeddali1453@gmail.com"));
+    assert(c182.activeSaveBubble()->isPrimaryButtonEnabled());
+
+    // User chooses to save
+    c182.activeSaveBubble()->clickPrimary();
+    assert(c182.activeSaveBubble() == nullptr);
+    assert(c182.pendingCandidateCount() == 0);
+
+    const auto records = manager182.forOrigin(QUrl(origin));
+    assert(records.size() == 1);
+    assert(records[0].username == QStringLiteral("muhammeddali1453@gmail.com"));
+
+    c182.onViewClosed(view);
+    delete view;
+    std::cout << "[PASS] TEST 182: post-login error state retains pending save bubble" << std::endl;
+  }
+
+  // TEST 183: owning view destruction securely cleans up pending candidate and save bubble
+  {
+    std::cout << "[RUN] TEST 183: owning view destruction cleans up pending candidate" << std::endl;
+    QTemporaryDir dir183;
+    CredentialVaultManager manager183(dir183.path());
+    assert(manager183.create(masterPassword));
+    CredentialAutofillController c183(&manager183);
+    auto *view = new QWebEngineView();
+    const QString origin = QStringLiteral("https://destroy.example.com");
+    view->setUrl(QUrl(origin + QStringLiteral("/login")));
+
+    c183.handleConsoleMessage(view->page(), candidateMessage(origin, QStringLiteral("user183@example.com"), QStringLiteral("Secret#183"), true));
+    assert(waitForCondition([&c183] { return c183.activeSaveBubble() != nullptr; }, 1000));
+    assert(c183.pendingCandidateCount() == 1);
+
+    // Owning view closed/destroyed
+    c183.onViewClosed(view);
+    assert(c183.activeSaveBubble() == nullptr);
+    assert(c183.pendingCandidateCount() == 0);
+
+    delete view;
+    std::cout << "[PASS] TEST 183: owning view destruction cleans up pending candidate" << std::endl;
   }
 
   std::cout << "\nAll Password Autofill, Security, and Submit-Centered Credential Save UX tests PASSED successfully!" << std::endl;

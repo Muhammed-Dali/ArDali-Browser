@@ -54,7 +54,8 @@ enum class EndDragReason {
 enum class TabStyle {
   ChromeCurved,
   ArDaliSignature,
-  FloatingPill
+  FloatingPill,
+  ArDaliConnected
 };
 
 struct TabGeometry {

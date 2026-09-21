@@ -79,7 +79,8 @@ class SongRecognitionService final : public QObject {
     Error
   };
 
-  explicit SongRecognitionService(SongFinderSettings *settings, QObject *parent = nullptr);
+  explicit SongRecognitionService(SongFinderSettings *settings, QObject *parent = nullptr,
+                                  bool historyPersistenceEnabled = true);
   ~SongRecognitionService() override;
 
   SongFinderSettings *settings() const { return settings_; }
@@ -142,6 +143,7 @@ class SongRecognitionService final : public QObject {
   AudioCaptureService *captureService_ = nullptr;
   AudioDeviceManager *deviceManager_ = nullptr;
   QNetworkAccessManager *networkManager_ = nullptr;
+  QPointer<QNetworkReply> activeReply_;
   QTimer *recognitionTimer_ = nullptr;
 
   State state_ = State::Ready;
@@ -165,4 +167,5 @@ class SongRecognitionService final : public QObject {
   bool hasActiveResult_ = false;
   SongResult activeResult_;
   int deviceUiConsumerCount_ = 0;
+  bool historyPersistenceEnabled_ = true;
 };

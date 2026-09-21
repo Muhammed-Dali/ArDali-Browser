@@ -11,6 +11,8 @@
 #include <QJsonObject>
 #include <QSaveFile>
 
+#include <climits>
+
 namespace {
 // The audio runtime harness serves its disposable fixture on this endpoint.
 // It must never become a user's restored browser session.
@@ -54,7 +56,8 @@ QVector<SavedTab> SessionStore::load() const {
     const QColor gcolor = entry.contains("groupColor") ? QColor(entry.value("groupColor").toString()) : QColor();
     const bool gcol = entry.value("groupCollapsed").toBool();
 
-    result.push_back({url, entry.value("title").toString(), entry.value("active").toBool(), gid, gname, gcolor, gcol});
+    result.push_back({url, entry.value("title").toString(), entry.value("active").toBool(),
+                      entry.value("pinned").toBool(), gid, gname, gcolor, gcol});
   }
   if (storageChanged) {
     QSaveFile sanitized(path_);
@@ -68,7 +71,15 @@ QVector<SavedTab> SessionStore::load() const {
 
 bool SessionStore::save(const TabManager &tabs, QObject *ownerWindow, QString *error) const {
   QJsonArray savedTabs;
-  const QVector<TabManager::TabRecord> records = tabs.recordsFor(ownerWindow);
+  QVector<TabManager::TabRecord> records = tabs.recordsFor(ownerWindow);
+  if (const auto *bw = qobject_cast<const BrowserWindow *>(ownerWindow)) {
+    QHash<QUuid, int> visualOrder;
+    const auto &visibleTabs = bw->allTabs();
+    for (int i = 0; i < visibleTabs.size(); ++i) visualOrder.insert(visibleTabs[i].uuid, i);
+    std::stable_sort(records.begin(), records.end(), [&visualOrder](const auto &left, const auto &right) {
+      return visualOrder.value(left.id, INT_MAX) < visualOrder.value(right.id, INT_MAX);
+    });
+  }
   TabManager::TabId activePersistent;
   TabManager::TabId mostRecentPersistent;
   quint64 newestActivation = 0;
@@ -99,7 +110,9 @@ bool SessionStore::save(const TabManager &tabs, QObject *ownerWindow, QString *e
       const auto *bw = qobject_cast<const BrowserWindow*>(ownerWindow);
       if (bw) {
         for (const auto &info : bw->allTabs()) {
-          if (info.uuid == record.id && info.groupId.has_value() && !info.groupId->isNull()) {
+          if (info.uuid != record.id) continue;
+          tabObj.insert(QStringLiteral("pinned"), info.isPinned);
+          if (info.groupId.has_value() && !info.groupId->isNull()) {
             tabObj.insert(QStringLiteral("groupId"), info.groupId->toString());
             const auto optGroup = bw->groupForTab(info.id);
             if (optGroup.has_value()) {
@@ -107,8 +120,8 @@ bool SessionStore::save(const TabManager &tabs, QObject *ownerWindow, QString *e
               tabObj.insert(QStringLiteral("groupColor"), optGroup->color.name());
               tabObj.insert(QStringLiteral("groupCollapsed"), optGroup->collapsed);
             }
-            break;
           }
+          break;
         }
       }
     }

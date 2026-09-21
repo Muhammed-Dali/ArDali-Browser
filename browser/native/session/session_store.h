@@ -14,6 +14,7 @@ struct SavedTab final {
   QUrl url;
   QString title;
   bool active = false;
+  bool pinned = false;
   std::optional<QUuid> groupId;
   QString groupName;
   QColor groupColor;

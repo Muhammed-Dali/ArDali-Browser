@@ -88,6 +88,7 @@ class PulseQuickPopup final : public QFrame {
   QLabel *emptyLabel_ = nullptr;
   QPushButton *openFullBtn_ = nullptr;
   bool deviceUseHeld_ = false;
+  bool handingOffToFullPage_ = false;
 };
 
 class PulseToolbarButton final : public QToolButton {

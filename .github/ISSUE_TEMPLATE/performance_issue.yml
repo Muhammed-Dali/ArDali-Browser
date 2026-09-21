@@ -1,0 +1,48 @@
+name: Performance Issue
+description: Report a CPU spike, excessive memory consumption, or GPU slowdown
+title: "[Performance]: "
+labels: ["performance", "needs-triage"]
+body:
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Pre-submission checks
+      options:
+        - label: I verified this on the latest stable or git master build.
+          required: true
+        - label: This is not a security vulnerability.
+          required: true
+  - type: input
+    id: version
+    attributes:
+      label: ArDali Browser version
+      placeholder: "7.2.0"
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Hardware & Desktop Environment
+      description: CPU, RAM size, GPU model, graphics driver, desktop environment (KDE, GNOME), and Wayland or X11.
+      placeholder: "Intel i7-12700K, 32GB RAM, Intel UHD 770 (iHD), KDE Plasma 6, Wayland"
+    validations:
+      required: true
+  - type: textarea
+    id: workload
+    attributes:
+      label: Workload & Trigger
+      description: What specific sites, number of tabs, audio playback, or actions trigger the performance issue?
+      placeholder: |
+        1. Open 15 tabs with media playback
+        2. Enable 32-band equalizer on ardali://audio-effects
+        3. Observe CPU usage
+    validations:
+      required: true
+  - type: textarea
+    id: metrics
+    attributes:
+      label: Measurements & Observations
+      description: Measured RAM/CPU/GPU metrics (e.g. from htop, ps, radeontop, or ARDALI_FEATURE_DIAGNOSTICS=1).
+      render: shell
+    validations:
+      required: true

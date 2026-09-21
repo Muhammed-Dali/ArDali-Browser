@@ -2,6 +2,30 @@
 
 All notable release-facing changes to ArDali Browser are documented here.
 
+## [7.2.0] - 2026-09-21
+
+### Added
+
+- Added the **ArDali Bağlantılı** tab style with a connected active-tab accent, made it the default for new profiles, and exposed persistent tab-style selection in Settings.
+- Added Linux Secret Service-backed device keyring integration for stronger local credential-vault protection and migration coverage.
+- Added focused contributor, architecture, build, testing, debugging, security, and issue-reporting documentation.
+
+### Changed
+
+- Refined tab geometry, drag/layout behavior, loading indicators, toolbar icons, keyboard shortcuts, and Reload/Stop state transitions for clearer navigation feedback.
+- Expanded New Tab customization with separate download/protection card controls, counter scopes, improved search-history suggestions, and persistent custom backgrounds synchronized across open New Tab pages.
+- Improved page translation provider handling, dynamic-content translation, translated-content restoration, target-language selection, and protected translation-secret storage.
+- Refined settings, downloads, local media playback, audio effects, and Pulse song-recognition behavior.
+- Split large browser-window and settings implementations into smaller subsystem-focused modules to make maintenance and review easier.
+
+### Fixed
+
+- Fixed custom New Tab background upload, preview, immediate application, replacement, removal, restart persistence, and safe PNG/JPEG/WebP validation without exposing unrestricted local-file access.
+- Prevented ArDali Blocker from breaking normal YouTube playback by narrowing ad-stream matching and suppressing destabilizing YouTube procedural/scriptlet behavior.
+- Hardened credential autofill, save prompts, vault migration, origin validation, private-profile isolation, and sensitive-memory cleanup.
+- Corrected blocker accounting and ruleset updates, session restoration, translation lifecycle handling, and several asynchronous WebEngine lifetime paths.
+- Expanded deterministic regression coverage across passwords, translation, blocker, media, audio, tabs, performance settings, omnibox, and internal pages.
+
 ## [7.1.2] - 2026-09-13
 
 ### Added

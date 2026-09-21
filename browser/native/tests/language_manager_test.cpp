@@ -19,6 +19,10 @@ int main(int argc, char **argv) {
   QApplication app(argc, argv);
   app.setOrganizationName(QStringLiteral("ArDaliTestOrg"));
   app.setApplicationName(QStringLiteral("LanguageManagerTest"));
+  QTemporaryDir settingsRoot;
+  assert(settingsRoot.isValid());
+  QSettings::setDefaultFormat(QSettings::IniFormat);
+  QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, settingsRoot.path());
 
   // Reset any previous settings
   {

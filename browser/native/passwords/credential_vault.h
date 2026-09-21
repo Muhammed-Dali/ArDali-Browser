@@ -31,6 +31,27 @@ struct CredentialSecret {
   QString username;
   QString password;
   QString iconPngBase64;
+
+  CredentialSecret() = default;
+  CredentialSecret(const QString &o, const QString &u, const QString &p, const QString &icon = {})
+      : origin(o), username(u), password(p), iconPngBase64(icon) {}
+  CredentialSecret(const CredentialSecret &) = default;
+  CredentialSecret(CredentialSecret &&) noexcept = default;
+  CredentialSecret &operator=(const CredentialSecret &) = default;
+  CredentialSecret &operator=(CredentialSecret &&) noexcept = default;
+  ~CredentialSecret() {
+    wipe();
+  }
+
+  void wipe() {
+    password.fill(QChar());
+    password.clear();
+    username.fill(QChar());
+    username.clear();
+    origin.fill(QChar());
+    origin.clear();
+    iconPngBase64.clear();
+  }
 };
 
 // Native-only encrypted credential store.  No web renderer is given a QObject,
@@ -63,6 +84,13 @@ class CredentialVault final : public QObject {
   QVector<CredentialMetadata> forOrigin(const QUrl &url) const;
   bool hasOrigin(const QString &origin) const;
 
+  int schemaVersion() const;
+  bool isDeviceBound() const;
+  QString deviceBinding() const;
+  QString storageId() const;
+  QByteArray deviceSecret() const;
+  bool importDeviceSecret(const QByteArray &secret);
+
   bool isUnlockRateLimited() const;
   int remainingUnlockCooldownSeconds() const;
   int failedUnlockAttempts() const;
@@ -94,11 +122,18 @@ class CredentialVault final : public QObject {
   void persistOriginIndex();
   void clearPersistedOriginIndex();
 
+  QString vaultKeyringId() const;
+  bool obtainDeviceSecret(QByteArray *outSecret) const;
+
   QString directory_;
+  QString storageId_;
   QString path_;
   QString securityStatePath_;
   QString originIndexPath_;
   mutable QString lastError_;
+  int schemaVersion_ = 3;
+  QString deviceBinding_ = QStringLiteral("none");
+  mutable QByteArray cachedDeviceSecret_;
   QByteArray salt_;
   QByteArray wrappedKey_;
   QByteArray wrappedNonce_;

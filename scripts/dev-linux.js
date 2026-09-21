@@ -32,7 +32,7 @@ const binaryPath = path.join(buildDir, 'ardali-browser');
 console.log(`[START] Tarayıcı başlatılıyor: ${binaryPath}`);
 
 const child = spawnSync(binaryPath, [], {
-  cwd: rootDir,
+  cwd: buildDir,   // Run from build dir so runtime artifacts don't pollute the source tree
   env,
   stdio: 'inherit'
 });

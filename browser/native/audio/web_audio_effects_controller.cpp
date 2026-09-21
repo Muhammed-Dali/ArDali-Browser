@@ -249,7 +249,8 @@ QString resolveDaliModulePath(const QString &relativeSubPath) {
 }
 }  // namespace
 
-WebAudioEffectsController::WebAudioEffectsController(QObject *parent) : QObject(parent) {
+WebAudioEffectsController::WebAudioEffectsController(QObject *parent, bool persistenceEnabled)
+    : QObject(parent), persistenceEnabled_(persistenceEnabled) {
   qRegisterMetaType<WebAudioEffectsController::Status>();
   persistTimer_.setSingleShot(true);
   persistTimer_.setInterval(180);
@@ -261,23 +262,29 @@ WebAudioEffectsController::WebAudioEffectsController(QObject *parent) : QObject(
   // Audio processing is opt-in.  Once the user enables it the value is
   // persisted immediately by setEnabled(), including for installed builds.
   enabled_ = settings.value(QStringLiteral("audioEffects/web/global/enabled"), false).toBool();
-  preampDb_ = std::clamp(settings.value(QStringLiteral("audioEffects/web/output/preampDb"), 0.0).toDouble(), kMinPreampDb, kMaxPreampDb);
+  preampDb_ = finiteClamped(settings.value(QStringLiteral("audioEffects/web/output/preampDb"), 0.0).toDouble(),
+                            kMinPreampDb, kMaxPreampDb, 0.0);
   if (qEnvironmentVariableIntValue("ARDALI_FEATURE_DIAGNOSTICS") == 1) {
     qInfo().noquote() << "[AUDIO] DALI runtime initialized";
     qInfo().noquote() << "[AUDIO] DSP module loaded:" << ARDALI_WEB_OUTPUT_DALI_MODULE_RELATIVE_PATH;
   }
   equalizerBands_.resize(equalizerFrequencies().size());
   for (int index = 0; index < equalizerBands_.size(); ++index) {
-    equalizerBands_[index] = std::clamp(
-        settings.value(QStringLiteral("audioEffects/web/equalizer/band%1").arg(index), 0.0).toDouble(), kMinEqDb, kMaxEqDb);
+    equalizerBands_[index] = finiteClamped(
+        settings.value(QStringLiteral("audioEffects/web/equalizer/band%1").arg(index), 0.0).toDouble(),
+        kMinEqDb, kMaxEqDb, 0.0);
   }
-  bassDb_ = std::clamp(settings.value(QStringLiteral("audioEffects/web/equalizer/bassDb"), 0.0).toDouble(), kMinEqDb, kMaxEqDb);
-  midDb_ = std::clamp(settings.value(QStringLiteral("audioEffects/web/equalizer/midDb"), 0.0).toDouble(), kMinEqDb, kMaxEqDb);
-  trebleDb_ = std::clamp(settings.value(QStringLiteral("audioEffects/web/equalizer/trebleDb"), 0.0).toDouble(), kMinEqDb, kMaxEqDb);
-  stereoExpanderPercent_ = std::clamp(
+  bassDb_ = finiteClamped(settings.value(QStringLiteral("audioEffects/web/equalizer/bassDb"), 0.0).toDouble(),
+                           kMinEqDb, kMaxEqDb, 0.0);
+  midDb_ = finiteClamped(settings.value(QStringLiteral("audioEffects/web/equalizer/midDb"), 0.0).toDouble(),
+                          kMinEqDb, kMaxEqDb, 0.0);
+  trebleDb_ = finiteClamped(settings.value(QStringLiteral("audioEffects/web/equalizer/trebleDb"), 0.0).toDouble(),
+                             kMinEqDb, kMaxEqDb, 0.0);
+  stereoExpanderPercent_ = finiteClamped(
       settings.value(QStringLiteral("audioEffects/web/equalizer/stereoExpanderPercent"), 100.0).toDouble(),
-      kMinStereoExpanderPercent, kMaxStereoExpanderPercent);
-  balance_ = std::clamp(settings.value(QStringLiteral("audioEffects/web/equalizer/balance"), 0.0).toDouble(), kMinBalance, kMaxBalance);
+      kMinStereoExpanderPercent, kMaxStereoExpanderPercent, 100.0);
+  balance_ = finiteClamped(settings.value(QStringLiteral("audioEffects/web/equalizer/balance"), 0.0).toDouble(),
+                            kMinBalance, kMaxBalance, 0.0);
   acousticSpace_ = settings.value(QStringLiteral("audioEffects/web/equalizer/acousticSpace"), QStringLiteral("off")).toString();
   if (acousticSpace_ != QStringLiteral("small") && acousticSpace_ != QStringLiteral("medium")
       && acousticSpace_ != QStringLiteral("large") && acousticSpace_ != QStringLiteral("hall")) {
@@ -287,16 +294,16 @@ WebAudioEffectsController::WebAudioEffectsController(QObject *parent) : QObject(
     moduleEnabledStates_.insert(moduleId,
                                 settings.value(QStringLiteral("audioEffects/web/%1/enabled").arg(moduleId), false).toBool());
   }
-  reverbRoomSizeMs_ = std::clamp(settings.value(QStringLiteral("audioEffects/web/reverb/roomSizeMs"), 1000.0).toDouble(),
-                                  kMinReverbRoomSizeMs, kMaxReverbRoomSizeMs);
-  reverbDamping_ = std::clamp(settings.value(QStringLiteral("audioEffects/web/reverb/damping"), 0.5).toDouble(),
-                               kMinReverbDamping, kMaxReverbDamping);
-  reverbWetDryDb_ = std::clamp(settings.value(QStringLiteral("audioEffects/web/reverb/wetDryDb"), -10.0).toDouble(),
-                                kMinReverbWetDryDb, kMaxReverbWetDryDb);
-  reverbHfRatio_ = std::clamp(settings.value(QStringLiteral("audioEffects/web/reverb/hfRatio"), 0.7).toDouble(),
-                               kMinReverbHfRatio, kMaxReverbHfRatio);
-  reverbInputGainDb_ = std::clamp(settings.value(QStringLiteral("audioEffects/web/reverb/inputGainDb"), 0.0).toDouble(),
-                                   kMinReverbInputGainDb, kMaxReverbInputGainDb);
+  reverbRoomSizeMs_ = finiteClamped(settings.value(QStringLiteral("audioEffects/web/reverb/roomSizeMs"), 1000.0).toDouble(),
+                                     kMinReverbRoomSizeMs, kMaxReverbRoomSizeMs, 1000.0);
+  reverbDamping_ = finiteClamped(settings.value(QStringLiteral("audioEffects/web/reverb/damping"), 0.5).toDouble(),
+                                  kMinReverbDamping, kMaxReverbDamping, 0.5);
+  reverbWetDryDb_ = finiteClamped(settings.value(QStringLiteral("audioEffects/web/reverb/wetDryDb"), -10.0).toDouble(),
+                                   kMinReverbWetDryDb, kMaxReverbWetDryDb, -10.0);
+  reverbHfRatio_ = finiteClamped(settings.value(QStringLiteral("audioEffects/web/reverb/hfRatio"), 0.7).toDouble(),
+                                  kMinReverbHfRatio, kMaxReverbHfRatio, 0.7);
+  reverbInputGainDb_ = finiteClamped(settings.value(QStringLiteral("audioEffects/web/reverb/inputGainDb"), 0.0).toDouble(),
+                                      kMinReverbInputGainDb, kMaxReverbInputGainDb, 0.0);
   reverbPreset_ = settings.value(QStringLiteral("audioEffects/web/reverb/preset")).toString().trimmed();
   if (!reverbPresetDefinition(reverbPreset_)) reverbPreset_.clear();
   compressorThresholdDb_ = finiteClamped(
@@ -368,7 +375,7 @@ WebAudioEffectsController::WebAudioEffectsController(QObject *parent) : QObject(
 }
 
 WebAudioEffectsController::~WebAudioEffectsController() {
-  if (persistTimer_.isActive()) {
+  if (persistenceEnabled_ && persistTimer_.isActive()) {
     persistTimer_.stop();
     persist();
   }
@@ -1128,6 +1135,7 @@ void WebAudioEffectsController::applyToAllWebViews() {
 }
 
 void WebAudioEffectsController::persist() {
+  if (!persistenceEnabled_) return;
   QSettings settings;
   settings.setValue(QStringLiteral("audioEffects/web/global/enabled"), enabled_);
   settings.setValue(QStringLiteral("audioEffects/web/output/preampDb"), preampDb_);

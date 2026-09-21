@@ -43,8 +43,14 @@ void LibreTranslateProvider::translateBatch(
     return;
   }
 
-  const QString effectiveSrc = sourceLang.isEmpty() ? QStringLiteral("auto") : sourceLang;
-  const QString effectiveTarget = targetLang.isEmpty() ? QStringLiteral("tr") : targetLang;
+  QString effectiveSrc = sourceLang.isEmpty() ? QStringLiteral("auto") : sourceLang.trimmed().toLower();
+  if (effectiveSrc != QLatin1String("auto")) {
+    const int dash = effectiveSrc.indexOf(QLatin1Char('-'));
+    if (dash > 0) effectiveSrc = effectiveSrc.left(dash);
+  }
+  QString effectiveTarget = targetLang.isEmpty() ? QStringLiteral("tr") : targetLang.trimmed().toLower();
+  const int dash = effectiveTarget.indexOf(QLatin1Char('-'));
+  if (dash > 0) effectiveTarget = effectiveTarget.left(dash);
 
   QJsonObject payload;
   payload.insert(QStringLiteral("q"), QJsonArray::fromStringList(texts));

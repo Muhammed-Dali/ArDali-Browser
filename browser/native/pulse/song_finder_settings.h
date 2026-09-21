@@ -20,7 +20,7 @@ class SongFinderSettings final : public QObject {
     YouTubeMusic
   };
 
-  explicit SongFinderSettings(QObject *parent = nullptr);
+  explicit SongFinderSettings(QObject *parent = nullptr, bool persistenceEnabled = true);
 
   // Getters
   OpenPlatform openPlatform() const { return openPlatform_; }
@@ -74,4 +74,5 @@ class SongFinderSettings final : public QObject {
   bool autoPruneHistory_ = true;
   bool rememberAudioDevice_ = true;
   QString savedDeviceId_;
+  bool persistenceEnabled_ = true;
 };

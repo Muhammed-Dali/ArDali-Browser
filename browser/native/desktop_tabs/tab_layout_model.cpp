@@ -240,21 +240,28 @@ int TabLayoutModel::computeInsertionSlot(
   const int minSlot = isPinned ? 0 : pinnedCount;
   const int maxSlot = isPinned ? std::max(0, pinnedCount - 1) : (count - 1);
 
-  // Calculate slot midpoints
+  // Compute center X of each slot
+  QVector<int> slotCenters(count);
   int currentX = 0;
-  const int cursorX = draggedLocalPoint.x();
-
-  for (int slot = 0; slot < count; ++slot) {
-    const int itemWidth = (slot < pinnedCount) ? metrics_.pinnedTabWidth : unpinnedWidth;
-    const int slotMidpoint = currentX + itemWidth / 2;
-
-    if (cursorX < slotMidpoint) {
-      return std::clamp(slot, minSlot, maxSlot);
-    }
+  for (int s = 0; s < count; ++s) {
+    const int itemWidth = (s < pinnedCount) ? metrics_.pinnedTabWidth : unpinnedWidth;
+    slotCenters[s] = currentX + itemWidth / 2;
     currentX += itemWidth;
   }
 
-  return maxSlot;
+  const int cursorX = draggedLocalPoint.x();
+
+  // Find slot using midpoints between adjacent slot centers as transition boundaries
+  int targetSlot = count - 1;
+  for (int s = 0; s < count - 1; ++s) {
+    const int transitionBoundary = (slotCenters[s] + slotCenters[s + 1]) / 2;
+    if (cursorX < transitionBoundary) {
+      targetSlot = s;
+      break;
+    }
+  }
+
+  return std::clamp(targetSlot, minSlot, maxSlot);
 }
 
 int TabLayoutModel::computeExternalInsertionIndex(

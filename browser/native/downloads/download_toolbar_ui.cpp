@@ -260,7 +260,7 @@ void DownloadPopup::showAnchored(QWidget *anchor, bool transient) {
 }
 
 void DownloadPopup::reposition(QWidget *anchor) {
-  if (!anchor || !isVisible() && anchor_ != anchor) return;
+  if (!anchor || (!isVisible() && anchor_ != anchor)) return;
   const QPoint below = anchor->mapToGlobal(QPoint(anchor->width(), anchor->height() + 6));
   QScreen *screen = QGuiApplication::screenAt(below);
   if (!screen) screen = anchor->screen();

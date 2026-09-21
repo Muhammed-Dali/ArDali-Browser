@@ -1,32 +1,36 @@
 #include "translate_bubble_popup.h"
 #include "language_detector.h"
+#include "translate_service.h"
 
-#include <QGraphicsDropShadowEffect>
 #include <QHBoxLayout>
 #include <QGuiApplication>
 #include <QScreen>
 #include <QAction>
+#include <QPainter>
+#include <QPainterPath>
 
 TranslateBubblePopup::TranslateBubblePopup(QWidget *parent)
-    : QFrame(parent, Qt::Popup | Qt::FramelessWindowHint) {
-  setAttribute(Qt::WA_TranslucentBackground);
+    : QFrame(parent, Qt::Popup | Qt::FramelessWindowHint | Qt::NoDropShadowWindowHint) {
+  setAttribute(Qt::WA_TranslucentBackground, true);
+  setAttribute(Qt::WA_StyledBackground, false);
   setObjectName(QStringLiteral("translate-bubble-popup"));
-  setFixedWidth(300);
+  setFixedWidth(290);
 
   setStyleSheet(QStringLiteral(
       "QFrame#translate-bubble-popup {"
-      "  background-color: #282a2d;"
-      "  border: 1px solid #3c4043;"
-      "  border-radius: 8px;"
+      "  background: transparent;"
       "}"
       "QPushButton, QToolButton {"
       "  font-family: system-ui, -apple-system, sans-serif;"
       "}"
       "QPushButton#source-lang-btn, QPushButton#target-lang-btn {"
       "  font-size: 13px;"
-      "  padding: 6px 12px;"
-      "  border-radius: 4px;"
       "  font-weight: 500;"
+      "  padding: 6px 10px;"
+      "  background: transparent;"
+      "  border: none;"
+      "  border-bottom: 2px solid transparent;"
+      "  border-radius: 0px;"
       "  min-height: 22px;"
       "}"
       "QPushButton#settings-btn {"
@@ -34,7 +38,7 @@ TranslateBubblePopup::TranslateBubblePopup(QWidget *parent)
       "  color: #8ab4f8;"
       "  border: 1px solid #5f6368;"
       "  border-radius: 4px;"
-      "  padding: 4px 8px;"
+      "  padding: 5px 8px;"
       "  font-size: 12px;"
       "}"
       "QPushButton#settings-btn:hover {"
@@ -46,24 +50,28 @@ TranslateBubblePopup::TranslateBubblePopup(QWidget *parent)
       "  border: none;"
       "  color: #9aa0a6;"
       "  font-size: 15px;"
-      "  padding: 4px 6px;"
+      "  padding: 3px 5px;"
       "  border-radius: 4px;"
       "}"
       "QToolButton#more-btn:hover, QToolButton#close-btn:hover {"
       "  background-color: #35363a;"
       "  color: #ffffff;"
       "}"
+      "QToolButton::menu-indicator {"
+      "  image: none;"
+      "  width: 0px;"
+      "}"
       "QLabel#status-label {"
       "  font-size: 11px;"
       "  color: #9aa0a6;"
       "  font-family: system-ui, sans-serif;"
-      "  padding-left: 4px;"
+      "  padding-right: 2px;"
       "}"
       "QLabel#brand-label {"
       "  font-size: 11px;"
       "  color: #80868b;"
       "  font-family: system-ui, sans-serif;"
-      "  padding-left: 4px;"
+      "  padding-left: 2px;"
       "}"
       "QMenu {"
       "  background-color: #282a2d;"
@@ -82,19 +90,14 @@ TranslateBubblePopup::TranslateBubblePopup(QWidget *parent)
       "}"
   ));
 
-  auto *effect = new QGraphicsDropShadowEffect(this);
-  effect->setBlurRadius(16);
-  effect->setColor(QColor(0, 0, 0, 180));
-  effect->setOffset(0, 6);
-  setGraphicsEffect(effect);
-
   auto *mainLayout = new QVBoxLayout(this);
-  mainLayout->setContentsMargins(10, 10, 10, 8);
+  mainLayout->setContentsMargins(12, 10, 12, 10);
   mainLayout->setSpacing(6);
 
-  // Top Tabs Row: [ Source ] [ Target ] [ ⋮ ] [ ✕ ]
+  // Top Tabs Row: [ Source ] [ Target ] [stretch] [ ⋮ ] [ ✕ ]
   auto *tabsLayout = new QHBoxLayout;
   tabsLayout->setSpacing(4);
+  tabsLayout->setContentsMargins(0, 0, 0, 0);
 
   sourceLangBtn_ = new QPushButton(QStringLiteral("İngilizce"), this);
   sourceLangBtn_->setObjectName(QStringLiteral("source-lang-btn"));
@@ -118,7 +121,7 @@ TranslateBubblePopup::TranslateBubblePopup(QWidget *parent)
 
   tabsLayout->addWidget(sourceLangBtn_);
   tabsLayout->addWidget(targetLangBtn_);
-  tabsLayout->addSpacing(2);
+  tabsLayout->addStretch();
   tabsLayout->addWidget(moreBtn_);
   tabsLayout->addWidget(closeBtn_);
   mainLayout->addLayout(tabsLayout);
@@ -136,10 +139,11 @@ TranslateBubblePopup::TranslateBubblePopup(QWidget *parent)
 
   // Bottom Status / Brand Row
   auto *bottomLayout = new QHBoxLayout;
-  statusLabel_ = new QLabel(this);
-  statusLabel_->setObjectName(QStringLiteral("status-label"));
+  bottomLayout->setContentsMargins(0, 0, 0, 0);
   brandLabel_ = new QLabel(QStringLiteral("ArDali Çeviri"), this);
   brandLabel_->setObjectName(QStringLiteral("brand-label"));
+  statusLabel_ = new QLabel(this);
+  statusLabel_->setObjectName(QStringLiteral("status-label"));
 
   bottomLayout->addWidget(brandLabel_);
   bottomLayout->addStretch();
@@ -154,11 +158,31 @@ TranslateBubblePopup::TranslateBubblePopup(QWidget *parent)
 
   connect(targetLangBtn_, &QPushButton::clicked, this, [this] {
     if (translator_) {
-      translator_->translatePage(QStringLiteral("tr"));
+      const QString target = translator_->targetLanguage().isEmpty() ? QStringLiteral("tr") : translator_->targetLanguage();
+      translator_->translatePage(target);
     }
   });
 
   setupMoreMenu();
+}
+
+void TranslateBubblePopup::paintEvent(QPaintEvent *event) {
+  Q_UNUSED(event);
+  QPainter painter(this);
+  painter.setRenderHint(QPainter::Antialiasing);
+
+  const QRectF r = QRectF(rect()).adjusted(0.5, 0.5, -0.5, -0.5);
+  QPainterPath path;
+  path.addRoundedRect(r, 8.0, 8.0);
+
+  // 100% solid, fully opaque dark background - prevents any page bleed-through
+  painter.fillPath(path, QColor(0x28, 0x2a, 0x2d));
+
+  // 1px crisp subtle border
+  QPen pen(QColor(0x3c, 0x40, 0x43));
+  pen.setWidthF(1.0);
+  painter.setPen(pen);
+  painter.drawPath(path);
 }
 
 void TranslateBubblePopup::setupMoreMenu() {
@@ -194,8 +218,29 @@ void TranslateBubblePopup::setupMoreMenu() {
   auto *neverSiteAct = moreMenu_->addAction(QStringLiteral("Bu siteyi hiçbir zaman çevirme"));
   auto *neverLangAct = moreMenu_->addAction(QStringLiteral("Bu dili hiçbir zaman çevirme"));
 
+  connect(moreMenu_, &QMenu::aboutToShow, this, [this, alwaysTranslateAct] {
+    if (translator_ && translator_->service() && !translator_->sourceLanguage().isEmpty()) {
+      alwaysTranslateAct->setChecked(translator_->service()->shouldAutoTranslate(translator_->sourceLanguage()));
+    }
+  });
+
+  connect(alwaysTranslateAct, &QAction::toggled, this, [this](bool checked) {
+    if (translator_ && translator_->service() && !translator_->sourceLanguage().isEmpty()) {
+      if (checked) {
+        translator_->service()->addAutoTranslateLanguage(translator_->sourceLanguage());
+      } else {
+        translator_->service()->removeAutoTranslateLanguage(translator_->sourceLanguage());
+      }
+    }
+  });
+
   connect(neverSiteAct, &QAction::triggered, this, [this] { close(); });
-  connect(neverLangAct, &QAction::triggered, this, [this] { close(); });
+  connect(neverLangAct, &QAction::triggered, this, [this] {
+    if (translator_ && translator_->service() && !translator_->sourceLanguage().isEmpty()) {
+      translator_->service()->addNeverTranslateLanguage(translator_->sourceLanguage());
+    }
+    close();
+  });
 
   moreMenu_->addSeparator();
   auto *settingsAct = moreMenu_->addAction(QStringLiteral("Çeviri Ayarları..."));
@@ -229,44 +274,81 @@ void TranslateBubblePopup::setTranslator(PageTranslator *translator) {
 }
 
 void TranslateBubblePopup::updateUi() {
-  if (!translator_) {
-    sourceLangBtn_->setText(QStringLiteral("Orijinal"));
-    targetLangBtn_->setText(QStringLiteral("Türkçe"));
-    statusLabel_->setText(QString());
-    openSettingsBtn_->hide();
-    return;
+  QString srcCode = translator_ ? translator_->sourceLanguage() : QString();
+  QString targetCode = translator_ ? translator_->targetLanguage() : QStringLiteral("tr");
+
+  QString srcLangName = LanguageDetector::languageDisplayName(srcCode);
+  if (srcLangName.isEmpty() || srcLangName == srcCode) {
+    if (srcCode.isEmpty()) {
+      srcLangName = QStringLiteral("Orijinal");
+    } else {
+      srcLangName = srcCode.toUpper();
+    }
   }
 
-  const QString srcLangName = LanguageDetector::languageDisplayName(translator_->sourceLanguage());
-  const QString targetLangName = LanguageDetector::languageDisplayName(translator_->targetLanguage());
+  QString targetLangName = LanguageDetector::languageDisplayName(targetCode);
+  if (targetLangName.isEmpty()) {
+    targetLangName = QStringLiteral("Türkçe");
+  }
 
-  sourceLangBtn_->setText(srcLangName.isEmpty() ? QStringLiteral("Orijinal") : srcLangName);
-  targetLangBtn_->setText(targetLangName.isEmpty() ? QStringLiteral("Türkçe") : targetLangName);
+  sourceLangBtn_->setText(srcLangName);
+  targetLangBtn_->setText(targetLangName);
+
+  if (translator_ && translator_->service()) {
+    const QString pid = translator_->service()->providerId();
+    if (pid == QLatin1String("google_cloud") || pid == QLatin1String("google_gtx")) {
+      brandLabel_->setText(QStringLiteral("Google Translate"));
+    } else if (pid == QLatin1String("libretranslate")) {
+      brandLabel_->setText(QStringLiteral("LibreTranslate"));
+    } else if (pid == QLatin1String("deepl")) {
+      brandLabel_->setText(QStringLiteral("DeepL"));
+    } else {
+      brandLabel_->setText(QStringLiteral("ArDali Çeviri"));
+    }
+  } else {
+    brandLabel_->setText(QStringLiteral("ArDali Çeviri"));
+  }
 
   const QString kActiveTabStyle = QStringLiteral(
       "QPushButton {"
       "  color: #8ab4f8;"
-      "  border: 1.5px solid #8ab4f8;"
-      "  background-color: rgba(138, 180, 248, 0.08);"
+      "  border: none;"
+      "  border-bottom: 2px solid #8ab4f8;"
+      "  background: transparent;"
+      "  border-radius: 0px;"
       "  font-weight: 600;"
+      "  font-size: 13px;"
+      "  padding: 6px 10px;"
       "}"
       "QPushButton:hover {"
-      "  background-color: rgba(138, 180, 248, 0.16);"
+      "  background-color: rgba(138, 180, 248, 0.08);"
       "}"
   );
 
   const QString kInactiveTabStyle = QStringLiteral(
       "QPushButton {"
-      "  color: #e8eaed;"
-      "  border: 1.5px solid transparent;"
+      "  color: #9aa0a6;"
+      "  border: none;"
+      "  border-bottom: 2px solid transparent;"
       "  background: transparent;"
-      "  font-weight: normal;"
+      "  border-radius: 0px;"
+      "  font-weight: 500;"
+      "  font-size: 13px;"
+      "  padding: 6px 10px;"
       "}"
       "QPushButton:hover {"
-      "  background-color: #35363a;"
-      "  color: #ffffff;"
+      "  color: #e8eaed;"
+      "  background-color: rgba(255, 255, 255, 0.06);"
       "}"
   );
+
+  if (!translator_) {
+    sourceLangBtn_->setStyleSheet(kActiveTabStyle);
+    targetLangBtn_->setStyleSheet(kInactiveTabStyle);
+    statusLabel_->setText(QString());
+    openSettingsBtn_->hide();
+    return;
+  }
 
   switch (translator_->state()) {
     case PageTranslator::State::Idle:
@@ -283,7 +365,7 @@ void TranslateBubblePopup::updateUi() {
       sourceLangBtn_->setStyleSheet(kInactiveTabStyle);
       targetLangBtn_->setStyleSheet(kActiveTabStyle);
       statusLabel_->setText(QStringLiteral("Çevriliyor..."));
-      statusLabel_->setStyleSheet(QStringLiteral("color: #8ab4f8;"));
+      statusLabel_->setStyleSheet(QStringLiteral("color: #8ab4f8; font-size: 11px;"));
       sourceLangBtn_->setEnabled(false);
       targetLangBtn_->setEnabled(false);
       openSettingsBtn_->hide();
@@ -293,7 +375,7 @@ void TranslateBubblePopup::updateUi() {
       sourceLangBtn_->setStyleSheet(kInactiveTabStyle);
       targetLangBtn_->setStyleSheet(kActiveTabStyle);
       statusLabel_->setText(QStringLiteral("✓ Çevrildi"));
-      statusLabel_->setStyleSheet(QStringLiteral("color: #81c995;"));
+      statusLabel_->setStyleSheet(QStringLiteral("color: #81c995; font-size: 11px;"));
       sourceLangBtn_->setEnabled(true);
       targetLangBtn_->setEnabled(true);
       openSettingsBtn_->hide();
@@ -303,14 +385,14 @@ void TranslateBubblePopup::updateUi() {
       sourceLangBtn_->setStyleSheet(kActiveTabStyle);
       targetLangBtn_->setStyleSheet(kInactiveTabStyle);
       const QString err = translator_->lastError();
-      if (err.contains(QStringLiteral("yapılandırılmamış"), Qt::CaseInsensitive)) {
+      if (err.contains(QStringLiteral("yapılandırılmamış"), Qt::CaseInsensitive) ||
+          err.contains(QStringLiteral("seçilmedi"), Qt::CaseInsensitive)) {
         statusLabel_->setText(QStringLiteral("⚠ Sağlayıcı seçilmedi"));
-        openSettingsBtn_->show();
       } else {
         statusLabel_->setText(QStringLiteral("⚠ Hata"));
-        openSettingsBtn_->show();
       }
-      statusLabel_->setStyleSheet(QStringLiteral("color: #f28b82;"));
+      statusLabel_->setStyleSheet(QStringLiteral("color: #f28b82; font-size: 11px;"));
+      openSettingsBtn_->show();
       sourceLangBtn_->setEnabled(true);
       targetLangBtn_->setEnabled(true);
       break;
@@ -325,7 +407,9 @@ void TranslateBubblePopup::showAtAnchor(const QPoint &globalPos) {
   if (const QScreen *screen = QGuiApplication::screenAt(globalPos)) {
     const QRect geom = screen->availableGeometry();
     if (pos.x() + width() > geom.right()) pos.setX(geom.right() - width() - 8);
+    if (pos.x() < geom.left() + 8) pos.setX(geom.left() + 8);
     if (pos.y() + height() > geom.bottom()) pos.setY(pos.y() - height() - 36);
+    if (pos.y() < geom.top() + 8) pos.setY(geom.top() + 8);
   }
 
   move(pos);

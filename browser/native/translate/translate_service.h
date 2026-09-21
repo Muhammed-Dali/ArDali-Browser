@@ -23,6 +23,8 @@ class TranslateService : public QObject {
 
   using TranslationCallback = std::function<void(bool success, const QStringList &translatedTexts, const QString &error)>;
 
+  static QString mapLanguageForProvider(const QString &providerId, const QString &lang, bool isTarget);
+
   void translateBatch(const QStringList &texts, const QString &sourceLang, const QString &targetLang, TranslationCallback callback);
 
   bool isEnabled() const { return enabled_; }

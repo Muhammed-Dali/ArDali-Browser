@@ -4,6 +4,8 @@
 #include <QRect>
 #include <QWidget>
 
+#include <memory>
+
 #include "local_media_routing.h"
 
 class QLabel;
@@ -13,6 +15,7 @@ class QProcess;
 class QPushButton;
 class QWebEngineProfile;
 class QWebEngineView;
+class QTemporaryDir;
 class WebAudioEffectsController;
 
 class LocalMediaPlayerPage final : public QWidget {
@@ -23,6 +26,7 @@ class LocalMediaPlayerPage final : public QWidget {
                        WebAudioEffectsController *audioEffects,
                        const QString &ffmpegPath,
                        QWidget *parent = nullptr);
+  ~LocalMediaPlayerPage() override;
 
   void loadMedia(const LocalMediaOpenRequest &request);
   QString mediaPath() const { return mediaPath_; }
@@ -53,4 +57,5 @@ class LocalMediaPlayerPage final : public QWidget {
   Qt::WindowStates windowStateBeforeFullScreen_ = Qt::WindowNoState;
   QRect windowGeometryBeforeFullScreen_;
   bool mediaFullScreen_ = false;
+  std::unique_ptr<QTemporaryDir> privateArtworkDirectory_;
 };

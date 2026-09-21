@@ -6,6 +6,7 @@
 #include <QEventLoop>
 #include <QFile>
 #include <QFileInfo>
+#include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QTemporaryDir>
@@ -306,6 +307,32 @@ int main(int argc, char **argv) {
     }
   }
   assert(restoredMetadata);
+
+  const QString malformedHistoryPath = QDir(temporary.path()).filePath(QStringLiteral("malformed-history.json"));
+  QJsonArray malformedJobs;
+  for (int i = 0; i < 205; ++i) {
+    malformedJobs.append(QJsonObject{
+        {QStringLiteral("id"), QUuid::createUuid().toString(QUuid::WithoutBraces)},
+        {QStringLiteral("url"), QStringLiteral("https://example.com/media/%1").arg(i)},
+        {QStringLiteral("title"), QStringLiteral("Stored %1").arg(i)},
+        {QStringLiteral("thumbnailUrl"), QStringLiteral("https://user:secret@example.com/cover.jpg")},
+        {QStringLiteral("kind"), static_cast<int>(MediaDownloadKind::Video)},
+        {QStringLiteral("state"), static_cast<int>(MediaDownloadState::Completed)}});
+  }
+  malformedJobs.prepend(QJsonObject{
+      {QStringLiteral("url"), QStringLiteral("https://example.com/invalid-state")},
+      {QStringLiteral("kind"), 999}, {QStringLiteral("state"), 999}});
+  QFile malformedHistory(malformedHistoryPath);
+  assert(malformedHistory.open(QIODevice::WriteOnly));
+  assert(malformedHistory.write(QJsonDocument(QJsonObject{
+      {QStringLiteral("version"), 2}, {QStringLiteral("jobs"), malformedJobs}})
+      .toJson(QJsonDocument::Compact)) > 0);
+  malformedHistory.close();
+  MediaDownloadService boundedRestore(outputDir, nullptr, {ytDlp}, {ffmpeg}, malformedHistoryPath);
+  assert(boundedRestore.jobs().size() == 200);
+  for (const MediaDownloadJob &job : boundedRestore.jobs()) {
+    assert(job.thumbnailUrl == QStringLiteral("https://example.com/cover.jpg"));
+  }
 
   std::cout << "media downloader URL, metadata, arguments, queue/cancel lifecycle and persistence: ok\n";
   return 0;

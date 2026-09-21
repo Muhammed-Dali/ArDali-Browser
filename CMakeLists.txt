@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(ArDaliBrowser VERSION 7.1.2 LANGUAGES CXX)
+project(ArDaliBrowser VERSION 7.2.0 LANGUAGES CXX)
 
 if(CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT)
   set(CMAKE_INSTALL_PREFIX "/usr" CACHE PATH "Default install prefix" FORCE)
@@ -12,6 +12,23 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)
 set(CMAKE_AUTOUIC ON)
+
+option(ARDALI_ENABLE_ASAN "Enable AddressSanitizer for developer builds" OFF)
+option(ARDALI_ENABLE_UBSAN "Enable UndefinedBehaviorSanitizer for developer builds" OFF)
+if(ARDALI_ENABLE_ASAN OR ARDALI_ENABLE_UBSAN)
+  if(NOT CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    message(FATAL_ERROR "ArDali sanitizer options currently support GCC and Clang only")
+  endif()
+  set(ARDALI_SANITIZER_FLAGS)
+  if(ARDALI_ENABLE_ASAN)
+    list(APPEND ARDALI_SANITIZER_FLAGS -fsanitize=address)
+  endif()
+  if(ARDALI_ENABLE_UBSAN)
+    list(APPEND ARDALI_SANITIZER_FLAGS -fsanitize=undefined)
+  endif()
+  add_compile_options(${ARDALI_SANITIZER_FLAGS} -fno-omit-frame-pointer)
+  add_link_options(${ARDALI_SANITIZER_FLAGS})
+endif()
 
 find_package(Qt6 6.4 REQUIRED COMPONENTS
   Core
@@ -27,6 +44,11 @@ find_package(OpenSSL REQUIRED)
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(PSL REQUIRED IMPORTED_TARGET libpsl)
 link_libraries(PkgConfig::PSL)
+pkg_check_modules(LIBSECRET IMPORTED_TARGET libsecret-1)
+if(LIBSECRET_FOUND)
+  add_compile_definitions(ARDALI_HAS_LIBSECRET=1)
+  link_libraries(PkgConfig::LIBSECRET)
+endif()
 find_program(NODE_EXECUTABLE node REQUIRED)
 
 include_directories(
@@ -184,6 +206,10 @@ set(SESSION_SOURCES
 
 set(SETTINGS_SOURCES
   browser/native/settings/settings_page.cpp
+  browser/native/settings/settings_content_section.cpp
+  browser/native/settings/settings_performance_section.cpp
+  browser/native/settings/settings_privacy_section.cpp
+  browser/native/settings/settings_languages_section.cpp
 )
 
 set(AUDIO_SOURCES
@@ -210,6 +236,7 @@ set(BLOCKER_SOURCES
 )
 
 set(PASSWORDS_SOURCES
+  browser/native/passwords/device_keyring.cpp
   browser/native/passwords/credential_vault.cpp
   browser/native/passwords/credential_vault_manager.cpp
   browser/native/passwords/credential_autofill_controller.cpp
@@ -256,6 +283,12 @@ set(I18N_SOURCES
   browser/native/i18n/language_manager.cpp
 )
 
+set(WINDOW_SOURCES
+  browser/native/browser_window.cpp
+  browser/native/browser_window_menus.cpp
+  browser/native/browser_window_page_actions.cpp
+)
+
 set(BROWSER_SOURCES
   ${CORE_SOURCES}
   ${NEWTAB_SOURCES}
@@ -270,7 +303,7 @@ set(BROWSER_SOURCES
   ${DOWNLOADS_SOURCES}
   ${TRANSLATE_SOURCES}
   ${I18N_SOURCES}
-  browser/native/browser_window.cpp
+  ${WINDOW_SOURCES}
   browser/native/main.cpp
 )
 
@@ -284,6 +317,9 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
 endif()
 
 add_executable(ardali-browser ${BROWSER_SOURCES})
+if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+  target_compile_options(ardali-browser PRIVATE -Wall -Wextra -Wno-unused-parameter)
+endif()
 
 qt_add_resources(ardali-browser "app_icons"
   PREFIX "/"
@@ -552,14 +588,16 @@ set_tests_properties(browser-installed-package-layout PROPERTIES TIMEOUT 90)
 
 add_executable(ardali-browser-credential-vault-test
   browser/native/tests/credential_vault_test.cpp
+  browser/native/passwords/device_keyring.cpp
   browser/native/passwords/credential_vault.cpp
   browser/native/passwords/credential_vault_manager.cpp
 )
-target_link_libraries(ardali-browser-credential-vault-test PRIVATE Qt6::Widgets OpenSSL::Crypto)
+target_link_libraries(ardali-browser-credential-vault-test PRIVATE Qt6::Widgets Qt6::DBus OpenSSL::Crypto)
 add_test(NAME browser-credential-vault-test COMMAND ardali-browser-credential-vault-test)
 
 add_executable(ardali-browser-password-autofill-test
   browser/native/tests/password_autofill_test.cpp
+  browser/native/passwords/device_keyring.cpp
   browser/native/passwords/credential_vault.cpp
   browser/native/passwords/credential_vault_manager.cpp
   browser/native/passwords/credential_autofill_controller.cpp
@@ -568,7 +606,7 @@ add_executable(ardali-browser-password-autofill-test
   browser/native/core/browser_icons.cpp
   browser/native/core/search_engine_definition.cpp
 )
-target_link_libraries(ardali-browser-password-autofill-test PRIVATE Qt6::Widgets Qt6::WebEngineWidgets Qt6::Concurrent Qt6::Svg OpenSSL::Crypto)
+target_link_libraries(ardali-browser-password-autofill-test PRIVATE Qt6::Widgets Qt6::WebEngineWidgets Qt6::Concurrent Qt6::Svg Qt6::DBus OpenSSL::Crypto)
 qt_add_resources(ardali-browser-password-autofill-test "password_autofill_icons"
     PREFIX "/browser-icons"
     BASE_DIR "browser/assets/browser-icons"
@@ -582,10 +620,11 @@ set_tests_properties(browser-password-autofill-test PROPERTIES
 add_executable(ardali-password-manager-page-test
   browser/native/tests/password_manager_page_test.cpp
   browser/native/passwords/password_manager_page.cpp
+  browser/native/passwords/device_keyring.cpp
   browser/native/passwords/credential_vault.cpp
   browser/native/passwords/credential_vault_manager.cpp
 )
-target_link_libraries(ardali-password-manager-page-test PRIVATE Qt6::Widgets Qt6::WebEngineCore Qt6::Concurrent OpenSSL::Crypto)
+target_link_libraries(ardali-password-manager-page-test PRIVATE Qt6::Widgets Qt6::WebEngineCore Qt6::Concurrent Qt6::DBus OpenSSL::Crypto)
 add_test(NAME browser-password-manager-page-test COMMAND ardali-password-manager-page-test)
 set_tests_properties(browser-password-manager-page-test PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
 
@@ -815,6 +854,7 @@ add_executable(smart_omnibox_phase2_1_test
   browser/native/blocker/ardali_blocker_list_manager.cpp
   browser/native/blocker/ardali_blocker_request_interceptor.cpp
   browser/native/blocker/ardali_blocker_service.cpp
+  browser/native/passwords/device_keyring.cpp
   browser/native/passwords/credential_vault.cpp
   browser/native/passwords/credential_vault_manager.cpp
   browser/native/translate/translate_service.cpp
@@ -831,6 +871,7 @@ target_link_libraries(smart_omnibox_phase2_1_test PRIVATE
   Qt6::WebEngineWidgets
   Qt6::Network
   Qt6::Concurrent
+  Qt6::DBus
   OpenSSL::Crypto
 )
 add_test(NAME smart_omnibox_phase2_1_test COMMAND smart_omnibox_phase2_1_test)
@@ -948,6 +989,220 @@ target_link_libraries(ardali-language-manager-test PRIVATE
 target_compile_options(ardali-language-manager-test PRIVATE -UNDEBUG)
 add_test(NAME language-manager-test COMMAND ardali-language-manager-test)
 set_tests_properties(language-manager-test PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen" TIMEOUT 30)
+
+# Standalone regression programs which predate CTest registration. Keep each
+# executable independent so a failure identifies the affected subsystem.
+add_executable(ardali-browser-new-tab-background-store-test
+  browser/native/tests/new_tab_background_store_test.cpp
+  browser/native/newtab/new_tab_background_store.cpp)
+target_link_libraries(ardali-browser-new-tab-background-store-test PRIVATE Qt6::Core Qt6::Gui)
+add_test(NAME browser-new-tab-background-store COMMAND ardali-browser-new-tab-background-store-test)
+
+add_executable(ardali-browser-tab-throbber-test
+  browser/native/tests/tab_throbber_test.cpp
+  browser/native/desktop_tabs/tab_throbber.cpp)
+target_link_libraries(ardali-browser-tab-throbber-test PRIVATE Qt6::Widgets Qt6::WebEngineWidgets)
+add_test(NAME browser-tab-throbber COMMAND ardali-browser-tab-throbber-test)
+set_tests_properties(browser-tab-throbber PROPERTIES
+  ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QTWEBENGINE_CHROMIUM_FLAGS=--no-sandbox --disable-gpu")
+
+add_executable(ardali-browser-tab-manager-test
+  ${ARDALI_BROWSER_FULL_SOURCES}
+  browser/native/tests/tab_manager_test.cpp)
+target_link_libraries(ardali-browser-tab-manager-test PRIVATE ${ARDALI_BROWSER_FULL_LIBS})
+if(ARDALI_BROWSER_FULL_DEFS)
+  target_compile_definitions(ardali-browser-tab-manager-test PRIVATE ${ARDALI_BROWSER_FULL_DEFS})
+endif()
+add_dependencies(ardali-browser-tab-manager-test ardali-browser-policy ardali-web-output-dali)
+add_test(NAME browser-tab-manager COMMAND ardali-browser-tab-manager-test)
+set_tests_properties(browser-tab-manager PROPERTIES
+  ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QTWEBENGINE_CHROMIUM_FLAGS=--no-sandbox --disable-gpu")
+
+add_executable(ardali-browser-internal-tab-test
+  ${ARDALI_BROWSER_FULL_SOURCES}
+  browser/native/tests/internal_tab_test.cpp)
+target_link_libraries(ardali-browser-internal-tab-test PRIVATE ${ARDALI_BROWSER_FULL_LIBS})
+if(ARDALI_BROWSER_FULL_DEFS)
+  target_compile_definitions(ardali-browser-internal-tab-test PRIVATE ${ARDALI_BROWSER_FULL_DEFS})
+endif()
+add_dependencies(ardali-browser-internal-tab-test ardali-browser-policy ardali-web-output-dali)
+add_test(NAME browser-internal-tab COMMAND ardali-browser-internal-tab-test)
+set_tests_properties(browser-internal-tab PROPERTIES
+  ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QTWEBENGINE_CHROMIUM_FLAGS=--no-sandbox --disable-gpu")
+
+add_executable(ardali-browser-tab-performance-manager-test
+  browser/native/tests/tab_performance_manager_test.cpp
+  browser/native/desktop_tabs/tab_manager.cpp
+  browser/native/desktop_tabs/tab_performance_manager.cpp
+  browser/native/desktop_tabs/system_memory_pressure_monitor.cpp)
+target_link_libraries(ardali-browser-tab-performance-manager-test PRIVATE Qt6::Widgets Qt6::WebEngineWidgets)
+add_test(NAME browser-tab-performance-manager COMMAND ardali-browser-tab-performance-manager-test)
+set_tests_properties(browser-tab-performance-manager PROPERTIES
+  ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QTWEBENGINE_CHROMIUM_FLAGS=--no-sandbox --disable-gpu" TIMEOUT 90)
+
+add_executable(ardali-browser-page-translator-test
+  browser/native/tests/page_translator_test.cpp
+  browser/native/translate/page_translator.cpp
+  browser/native/translate/translate_service.cpp
+  browser/native/translate/translation_secret_store.cpp
+  browser/native/translate/language_detector.cpp
+  browser/native/translate/providers/libretranslate_provider.cpp
+  browser/native/translate/providers/deepl_provider.cpp
+  browser/native/translate/providers/google_cloud_provider.cpp
+  browser/native/translate/providers/google_gtx_provider.cpp
+  browser/native/passwords/device_keyring.cpp
+  browser/native/passwords/credential_vault.cpp
+  browser/native/passwords/credential_vault_manager.cpp
+  browser/native/core/security_utils.cpp)
+target_link_libraries(ardali-browser-page-translator-test PRIVATE
+  Qt6::Widgets Qt6::WebEngineWidgets Qt6::Network Qt6::Concurrent Qt6::DBus OpenSSL::Crypto)
+add_test(NAME browser-page-translator COMMAND ardali-browser-page-translator-test)
+set_tests_properties(browser-page-translator PROPERTIES
+  ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QTWEBENGINE_CHROMIUM_FLAGS=--no-sandbox --disable-gpu")
+
+add_executable(ardali-browser-state-transfer-test
+  browser/native/tests/state_transfer_test.cpp)
+target_link_libraries(ardali-browser-state-transfer-test PRIVATE Qt6::Widgets Qt6::WebEngineWidgets)
+add_test(NAME browser-state-transfer COMMAND ardali-browser-state-transfer-test)
+set_tests_properties(browser-state-transfer PROPERTIES
+  ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QTWEBENGINE_CHROMIUM_FLAGS=--no-sandbox --disable-gpu" TIMEOUT 90)
+
+add_executable(ardali-browser-translate-service-test
+  browser/native/tests/translate_service_test.cpp
+  browser/native/translate/translate_service.cpp
+  browser/native/translate/translation_secret_store.cpp
+  browser/native/translate/language_detector.cpp
+  browser/native/translate/providers/libretranslate_provider.cpp
+  browser/native/translate/providers/deepl_provider.cpp
+  browser/native/translate/providers/google_cloud_provider.cpp
+  browser/native/translate/providers/google_gtx_provider.cpp
+  browser/native/passwords/device_keyring.cpp
+  browser/native/passwords/credential_vault.cpp
+  browser/native/passwords/credential_vault_manager.cpp
+  browser/native/core/security_utils.cpp)
+target_link_libraries(ardali-browser-translate-service-test PRIVATE
+  Qt6::Core Qt6::Network Qt6::Concurrent Qt6::DBus OpenSSL::Crypto)
+add_test(NAME browser-translate-service COMMAND ardali-browser-translate-service-test)
+
+add_executable(ardali-browser-yt-dlp-fixture-v1 browser/native/tests/yt_dlp_version_fixture.cpp)
+target_compile_definitions(ardali-browser-yt-dlp-fixture-v1 PRIVATE ARDALI_YTDLP_FIXTURE_VERSION="2099.01.01")
+add_executable(ardali-browser-yt-dlp-fixture-v2 browser/native/tests/yt_dlp_version_fixture.cpp)
+target_compile_definitions(ardali-browser-yt-dlp-fixture-v2 PRIVATE ARDALI_YTDLP_FIXTURE_VERSION="2099.02.02")
+add_executable(ardali-browser-yt-dlp-update-manager-test
+  browser/native/tests/yt_dlp_update_manager_test.cpp
+  browser/native/downloads/yt_dlp_update_manager.cpp
+  browser/native/downloads/media_download_service.cpp
+  browser/native/core/security_utils.cpp)
+target_link_libraries(ardali-browser-yt-dlp-update-manager-test PRIVATE Qt6::Core Qt6::Network)
+add_test(NAME browser-yt-dlp-update-manager COMMAND ardali-browser-yt-dlp-update-manager-test
+  $<TARGET_FILE:ardali-browser-yt-dlp-fixture-v1>
+  $<TARGET_FILE:ardali-browser-yt-dlp-fixture-v2>)
+add_dependencies(ardali-browser-yt-dlp-update-manager-test
+  ardali-browser-yt-dlp-fixture-v1 ardali-browser-yt-dlp-fixture-v2)
+set_tests_properties(browser-yt-dlp-update-manager PROPERTIES TIMEOUT 90)
+
+add_executable(ardali-browser-adaptive-audio-dsp-test
+  browser/native/tests/adaptive_audio_dsp_test.cpp
+  browser/native/audio/audio_platform_policy.cpp
+  browser/native/audio/web_audio_effects_controller.cpp
+  browser/native/audio/audio_effects_page.cpp
+  browser/native/eq/eq_preset_repository.cpp
+  browser/native/eq/eq_preset_page.cpp
+  browser/native/desktop_tabs/tab_manager.cpp
+  browser/native/desktop_tabs/tab_performance_manager.cpp
+  browser/native/desktop_tabs/system_memory_pressure_monitor.cpp)
+target_link_libraries(ardali-browser-adaptive-audio-dsp-test PRIVATE
+  Qt6::Core Qt6::Gui Qt6::Widgets Qt6::WebEngineWidgets Qt6::Svg)
+target_compile_definitions(ardali-browser-adaptive-audio-dsp-test PRIVATE
+  ARDALI_WEB_OUTPUT_DALI_MODULE_RELATIVE_PATH="dali/web-output-audiophile.generated.js"
+  ARDALI_WEB_EQ32_DALI_MODULE_RELATIVE_PATH="dali/web-equalizer-32.generated.js"
+  ARDALI_WEB_COMPRESSOR_DALI_MODULE_RELATIVE_PATH="dali/web-dynamic-compressor.generated.js"
+  ARDALI_WEB_LIMITER_DALI_MODULE_RELATIVE_PATH="dali/web-limiter.generated.js"
+  ARDALI_WEB_BASS_ENHANCER_DALI_MODULE_RELATIVE_PATH="dali/web-bass-enhancer.generated.js"
+  ARDALI_WEB_AUTO_GAIN_DALI_MODULE_RELATIVE_PATH="dali/web-auto-gain.generated.js")
+add_dependencies(ardali-browser-adaptive-audio-dsp-test ardali-web-output-dali ardali-eq-presets-runtime)
+add_test(NAME browser-adaptive-audio-dsp COMMAND ardali-browser-adaptive-audio-dsp-test)
+set_tests_properties(browser-adaptive-audio-dsp PROPERTIES
+  ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QTWEBENGINE_CHROMIUM_FLAGS=--no-sandbox --disable-gpu")
+
+add_executable(ardali-browser-blocker-test
+  browser/native/tests/ardali_blocker_test.cpp
+  ${BLOCKER_SOURCES}
+  browser/native/newtab/new_tab_html.cpp
+  browser/native/core/search_engine_definition.cpp
+  browser/native/core/security_utils.cpp)
+target_link_libraries(ardali-browser-blocker-test PRIVATE
+  Qt6::Core Qt6::Gui Qt6::Widgets Qt6::WebEngineWidgets Qt6::Network Qt6::Concurrent Qt6::Svg)
+target_compile_definitions(ardali-browser-blocker-test PRIVATE
+  ARDALI_BROWSER_VERSION="${PROJECT_VERSION}")
+add_test(NAME browser-blocker COMMAND ardali-browser-blocker-test)
+set_tests_properties(browser-blocker PROPERTIES
+  ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QTWEBENGINE_CHROMIUM_FLAGS=--no-sandbox --disable-gpu" TIMEOUT 90)
+
+# These two UI tests intentionally use the application source set because the
+# Settings and profile objects coordinate multiple subsystem hooks.
+add_executable(ardali-browser-performance-settings-test
+  ${ARDALI_BROWSER_FULL_SOURCES}
+  browser/native/tests/performance_settings_test.cpp)
+target_link_libraries(ardali-browser-performance-settings-test PRIVATE ${ARDALI_BROWSER_FULL_LIBS})
+if(ARDALI_BROWSER_FULL_DEFS)
+  target_compile_definitions(ardali-browser-performance-settings-test PRIVATE ${ARDALI_BROWSER_FULL_DEFS})
+endif()
+add_dependencies(ardali-browser-performance-settings-test ardali-browser-policy ardali-web-output-dali)
+add_test(NAME browser-performance-settings COMMAND ardali-browser-performance-settings-test)
+set_tests_properties(browser-performance-settings PROPERTIES
+  ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QTWEBENGINE_CHROMIUM_FLAGS=--no-sandbox --disable-gpu" TIMEOUT 90)
+
+add_executable(ardali-browser-tab-audible-fullscreen-test
+  ${ARDALI_BROWSER_FULL_SOURCES}
+  browser/native/tests/tab_audible_and_fullscreen_test.cpp)
+target_link_libraries(ardali-browser-tab-audible-fullscreen-test PRIVATE ${ARDALI_BROWSER_FULL_LIBS})
+if(ARDALI_BROWSER_FULL_DEFS)
+  target_compile_definitions(ardali-browser-tab-audible-fullscreen-test PRIVATE ${ARDALI_BROWSER_FULL_DEFS})
+endif()
+add_dependencies(ardali-browser-tab-audible-fullscreen-test ardali-browser-policy ardali-web-output-dali)
+add_test(NAME browser-tab-audible-fullscreen COMMAND ardali-browser-tab-audible-fullscreen-test)
+set_tests_properties(browser-tab-audible-fullscreen PROPERTIES
+  ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QTWEBENGINE_CHROMIUM_FLAGS=--no-sandbox --disable-gpu" TIMEOUT 90)
+
+# Keep assertions enabled in Release and apply the same conservative warning
+# coverage used by the application to all ArDali-owned test executables.
+get_property(ARDALI_ALL_TEST_TARGETS DIRECTORY PROPERTY BUILDSYSTEM_TARGETS)
+foreach(ARDALI_TEST_TARGET IN LISTS ARDALI_ALL_TEST_TARGETS)
+  if(ARDALI_TEST_TARGET MATCHES "[-_]test$")
+    target_compile_options(${ARDALI_TEST_TARGET} PRIVATE -UNDEBUG)
+    if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+      target_compile_options(${ARDALI_TEST_TARGET} PRIVATE -Wall -Wextra -Wno-unused-parameter)
+    endif()
+  endif()
+endforeach()
+
+set_tests_properties(
+  browser-credential-vault-test browser-password-autofill-test
+  browser-password-manager-page-test browser-security-utils
+  PROPERTIES LABELS "security;passwords")
+set_tests_properties(
+  browser-web-audio-effects browser-adaptive-audio-dsp
+  PROPERTIES LABELS "audio;webengine")
+set_tests_properties(
+  browser-runtime-feature-integration ardali-phase22d-integration
+  browser-site-permission browser-context-menu browser-step5-essential-features
+  browser-page-translator browser-state-transfer browser-tab-audible-fullscreen
+  PROPERTIES LABELS "integration;webengine")
+
+# WebEngine's Linux namespace sandbox cannot start in common containerized CI
+# runners. CTest already uses disposable profiles and disables GPU rendering;
+# explicitly disable the Chromium sandbox for these isolated test processes.
+set_property(TEST
+  browser-web-audio-effects browser-password-autofill-test
+  browser-runtime-feature-integration browser-phase2a-policy
+  browser-tab-scheduler-retry browser-tab-hover-card smart_omnibox_phase2_1_test
+  ardali-phase22d ardali-phase22d-integration browser-site-permission
+  browser-context-menu browser-step5-essential-features browser-tab-throbber
+  browser-tab-manager browser-internal-tab browser-tab-performance-manager
+  browser-page-translator browser-state-transfer browser-adaptive-audio-dsp
+  browser-blocker browser-performance-settings browser-tab-audible-fullscreen
+  APPEND PROPERTY ENVIRONMENT "QTWEBENGINE_DISABLE_SANDBOX=1")
 
 # -------------------------------------------------------------
 # Installation Rules

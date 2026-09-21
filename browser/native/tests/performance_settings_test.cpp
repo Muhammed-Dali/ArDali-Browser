@@ -23,11 +23,14 @@ using namespace ardali;
 int main(int argc, char **argv) {
   QApplication app(argc, argv);
 
-  // Backup existing settings
+  QTemporaryDir settingsRoot;
+  assert(settingsRoot.isValid());
+  QSettings::setDefaultFormat(QSettings::IniFormat);
+  QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, settingsRoot.path());
+  app.setOrganizationName(QStringLiteral("ArDaliTest"));
+  app.setApplicationName(QStringLiteral("PerformanceSettingsTest"));
+
   QSettings settings;
-  const QVariant origMode = settings.value(QStringLiteral("performance/policyMode"));
-  const QVariant origDiscard = settings.value(QStringLiteral("performance/discardEnabled"));
-  const QVariant origAllowlist = settings.value(QStringLiteral("performance/siteAllowlist"));
 
   // Reset to clean test state
   settings.setValue(QStringLiteral("performance/policyMode"), QStringLiteral("balanced"));
@@ -281,14 +284,6 @@ int main(int argc, char **argv) {
       assert(!lbl->text().contains(term, Qt::CaseInsensitive));
     }
   }
-
-  // Restore original settings
-  if (origMode.isValid()) settings.setValue(QStringLiteral("performance/policyMode"), origMode);
-  else settings.remove(QStringLiteral("performance/policyMode"));
-  if (origDiscard.isValid()) settings.setValue(QStringLiteral("performance/discardEnabled"), origDiscard);
-  else settings.remove(QStringLiteral("performance/discardEnabled"));
-  if (origAllowlist.isValid()) settings.setValue(QStringLiteral("performance/siteAllowlist"), origAllowlist);
-  else settings.remove(QStringLiteral("performance/siteAllowlist"));
 
   return 0;
 }

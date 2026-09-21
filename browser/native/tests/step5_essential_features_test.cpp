@@ -5,23 +5,30 @@
 #include <iostream>
 #include <QApplication>
 #include <QCompleter>
+#include <QElapsedTimer>
 #include <QEventLoop>
 #include <QFocusEvent>
 #include <QHeaderView>
 #include <QKeyEvent>
 #include <QLineEdit>
+#include <QMenu>
 #include <QMouseEvent>
 #include <QPrinter>
 #include <QSettings>
+#include <QShortcut>
 #include <QTableWidget>
 #include <QTemporaryDir>
 #include <QTimer>
+#include <QToolBar>
 #include <QTreeWidget>
 
 #include "browser_window.h"
 #include "core/browser_profile_service.h"
 #include "desktop_tabs/find_bar_widget.h"
 #include "desktop_tabs/tab_strip_widget.h"
+#include "passwords/credential_autofill_controller.h"
+#include "passwords/credential_save_bubble.h"
+#include "passwords/credential_vault_manager.h"
 #include "settings/settings_page.h"
 
 int main(int argc, char **argv) {
@@ -53,14 +60,20 @@ int main(int argc, char **argv) {
     window.addNewTab(QUrl(QStringLiteral("https://example.com/page3")));
     assert(window.tabCount() == 3);
 
-    // Trigger close on active tab (index 2)
+    QShortcut *closeShortcut = nullptr;
+    for (auto *shortcut : window.findChildren<QShortcut *>()) {
+      if (shortcut->key() == QKeySequence(Qt::CTRL | Qt::Key_W)) closeShortcut = shortcut;
+    }
+    assert(closeShortcut != nullptr);
+
+    // Dispatch through the persistent shortcut. One activation must close one
+    // tab, rather than reaching closeTab through duplicate handlers.
     const int initialCount = window.tabCount();
-    window.closeTab(window.tabStrip()->currentIndex());
+    Q_EMIT closeShortcut->activated();
     assert(window.tabCount() == initialCount - 1);
     assert(window.tabCount() == 2);
 
-    // Close another tab
-    window.closeTab(window.tabStrip()->currentIndex());
+    Q_EMIT closeShortcut->activated();
     assert(window.tabCount() == 1);
     std::cout << "     PASS: Ctrl+W closes exactly one tab per invocation.\n";
   }
@@ -94,13 +107,19 @@ int main(int argc, char **argv) {
     assert(window.tabCount() == 1);
     assert(profileService.closedTabs().first().url == urlGamma);
 
-    // Restore most recently closed (should be Gamma)
-    window.restoreLastClosedTab();
+    QShortcut *restoreShortcut = nullptr;
+    for (auto *shortcut : window.findChildren<QShortcut *>()) {
+      if (shortcut->key() == QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_T)) restoreShortcut = shortcut;
+    }
+    assert(restoreShortcut != nullptr);
+
+    // Restore through Ctrl+Shift+T dispatch (should be Gamma).
+    Q_EMIT restoreShortcut->activated();
     assert(window.tabCount() == 2);
     assert(window.allTabs()[1].url == urlGamma);
 
     // Restore next closed (should be Beta)
-    window.restoreLastClosedTab();
+    Q_EMIT restoreShortcut->activated();
     assert(window.tabCount() == 3);
     assert(window.allTabs()[2].url == urlBeta);
 
@@ -297,8 +316,14 @@ int main(int argc, char **argv) {
     window.show();
     window.addNewTab(QUrl(QStringLiteral("https://example.com/test")));
 
-    // Show find bar
-    window.showFindBar();
+    QShortcut *findShortcut = nullptr;
+    for (auto *shortcut : window.findChildren<QShortcut *>()) {
+      if (shortcut->key() == QKeySequence::Find) findShortcut = shortcut;
+    }
+    assert(findShortcut != nullptr);
+
+    // Show find bar through Ctrl+F dispatch.
+    Q_EMIT findShortcut->activated();
     assert(window.findChild<ardali::desktop_tabs::FindBarWidget *>() != nullptr);
     auto *findBar = window.findChild<ardali::desktop_tabs::FindBarWidget *>();
     assert(!findBar->isHidden());
@@ -395,6 +420,391 @@ int main(int argc, char **argv) {
     std::cout << "     PASS: Print and PDF execution lifetime safety verified without window closure.\n";
   }
 
-  std::cout << "\n>>> ALL STEP 5 ESSENTIAL FEATURE TESTS PASSED SUCCESSFULLY! <<<\n";
+  // =========================================================================
+  // STEP 6: Custom Search Engines — validation, persistence and resolution
+  // =========================================================================
+  {
+    std::cout << "  -> Testing custom search engine validation and persistence...\n";
+    assert(!BrowserProfileService::isValidSearchTemplate(QStringLiteral("javascript:alert(%s)")));
+    assert(!BrowserProfileService::isValidSearchTemplate(QStringLiteral("https://example.com/search")));
+    assert(!BrowserProfileService::isValidSearchTemplate(QStringLiteral("https://user:pass@example.com/?q=%s")));
+    assert(BrowserProfileService::isValidSearchTemplate(QStringLiteral("https://search.example/?q=%s")));
+    assert(profileService.saveCustomSearchEngine(QStringLiteral("Example Search"),
+                                                 QStringLiteral("https://search.example/?q=%s")));
+    profileService.setSearchEngine(QStringLiteral("Example Search"));
+    assert(profileService.searchEngine() == QStringLiteral("Example Search"));
+    assert(profileService.searchUrlForEngine(QStringLiteral("Example Search"), QStringLiteral("qt webengine"))
+               == QUrl(QStringLiteral("https://search.example/?q=qt%20webengine")));
+    {
+      BrowserProfileService reopened(tempDir.path() + QStringLiteral("/profile"), nullptr, nullptr, false);
+      assert(reopened.searchEngine() == QStringLiteral("Example Search"));
+      assert(reopened.customSearchEngines().size() == 1);
+    }
+    assert(profileService.removeCustomSearchEngine(QStringLiteral("Example Search")));
+    assert(profileService.searchEngine() == QStringLiteral("DuckDuckGo"));
+    std::cout << "     PASS: Custom engines validate, resolve, persist and safely reset.\n";
+  }
+
+  // =========================================================================
+  // STEP 6: Page Translation is discoverable and reaches the existing popup
+  // =========================================================================
+  {
+    std::cout << "  -> Testing Page Translation hamburger-menu entry point...\n";
+    BrowserWindow window(services, true);
+    window.resize(1000, 700);
+    window.show();
+    window.addNewTab(QUrl(QStringLiteral("https://example.com/translation-test")));
+
+    bool foundEnabledAction = false;
+    QTimer::singleShot(0, &window, [&] {
+      auto *menu = qobject_cast<QMenu *>(QApplication::activePopupWidget());
+      assert(menu != nullptr);
+      auto *translateAction = menu->findChild<QAction *>(QStringLiteral("translatePageAction"));
+      assert(translateAction != nullptr);
+      foundEnabledAction = translateAction->isEnabled();
+      translateAction->trigger();
+      menu->close();
+    });
+    window.showMainMenu();
+
+    assert(foundEnabledAction);
+    auto *translatePopup = window.findChild<TranslateBubblePopup *>();
+    assert(translatePopup != nullptr);
+    translatePopup->close();
+    std::cout << "     PASS: Sayfayı Çevir is visible for web pages and opens the existing translation popup.\n";
+  }
+
+  // =========================================================================
+  // STEP 6: Session restore keeps pinned/normal tab presentation coherent
+  // =========================================================================
+  {
+    std::cout << "  -> Testing restored pinned/normal tab order, presentation and active state...\n";
+    TabManager manager;
+    SessionStore store(tempDir.path() + QStringLiteral("/step6-tabs.session.json"));
+    BrowserServices sessionServices = services;
+    sessionServices.tabManager = &manager;
+    sessionServices.sessionStore = &store;
+    BrowserWindow window(sessionServices, true);
+    window.resize(1000, 700);
+    window.show();
+    window.addNewTab(QUrl(QStringLiteral("ardali://newtab/")));
+    window.addNewTab(QUrl(QStringLiteral("ardali://newtab/")));
+    window.addNewTab(QUrl(QStringLiteral("ardali://newtab/")));
+    // Pin the middle-created tab. Interactive pinning moves it to visual slot
+    // zero; the session must persist that visual order, not insertion order.
+    window.toggleTabPin(1);
+    window.switchTab(2); // Leave a normal tab active.
+    window.saveSessionNow();
+    const auto saved = store.load();
+    assert(saved.size() == 3);
+    assert(saved[0].pinned);
+    assert(!saved[1].pinned && !saved[2].pinned);
+    assert(saved[2].active);
+
+    BrowserWindow restored(sessionServices, true);
+    restored.resize(1000, 700);
+    restored.show();
+    restored.restoreSession(saved);
+    QEventLoop settle;
+    QTimer::singleShot(250, &settle, &QEventLoop::quit);
+    settle.exec();
+    assert(restored.tabCount() == 3);
+    assert(restored.allTabs()[0].isPinned);
+    assert(restored.tabStrip()->isTabPinned(0));
+    assert(!restored.allTabs()[1].isPinned && !restored.tabStrip()->isTabPinned(1));
+    assert(!restored.allTabs()[2].isPinned && !restored.tabStrip()->isTabPinned(2));
+    assert(restored.tabStrip()->tabId(0) == restored.allTabs()[0].id);
+    assert(restored.tabStrip()->tabId(1) == restored.allTabs()[1].id);
+    assert(restored.tabStrip()->tabId(2) == restored.allTabs()[2].id);
+    assert(restored.tabStrip()->tabText(1) == QStringLiteral("Yeni Sekme"));
+    assert(restored.tabStrip()->tabText(2) == QStringLiteral("Yeni Sekme"));
+    assert(restored.tabStrip()->tabRect(1).width() > restored.tabStrip()->tabRect(0).width());
+    assert(restored.tabStrip()->tabRect(2).width() > restored.tabStrip()->tabRect(0).width());
+    assert(restored.tabStrip()->currentIndex() == 2);
+    std::cout << "     PASS: Restored normal tabs retain title and normal-width geometry.\n";
+  }
+
+  // =========================================================================
+  // Test 14: Window-Level Shortcuts — Ctrl+Shift+N (Private) & Ctrl+N (New Window)
+  // =========================================================================
+  {
+    std::cout << "  -> Testing Ctrl+Shift+N and Ctrl+N window-level shortcuts...\n";
+    BrowserWindow window(services, true);
+    window.resize(1000, 700);
+    window.show();
+
+    // Verify persistent QShortcut registration
+    const auto shortcuts = window.findChildren<QShortcut*>();
+    QShortcut *incognitoShortcut = nullptr;
+    QShortcut *newWindowShortcut = nullptr;
+    for (auto *sc : shortcuts) {
+      if (sc->key() == QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_N)) {
+        incognitoShortcut = sc;
+      } else if (sc->key() == QKeySequence(Qt::CTRL | Qt::Key_N)) {
+        newWindowShortcut = sc;
+      }
+    }
+    assert(incognitoShortcut != nullptr);
+    assert(newWindowShortcut != nullptr);
+    assert(incognitoShortcut->context() == Qt::WindowShortcut);
+    assert(newWindowShortcut->context() == Qt::WindowShortcut);
+
+    // Activating Ctrl+Shift+N must create exactly one private window backed by
+    // an off-the-record profile distinct from the normal profile.
+    const auto topLevelsBefore = QApplication::topLevelWidgets();
+    Q_EMIT incognitoShortcut->activated();
+
+    BrowserWindow *spawnedIncognito = nullptr;
+    int spawnedBrowserWindows = 0;
+    for (auto *w : QApplication::topLevelWidgets()) {
+      if (!topLevelsBefore.contains(w)) {
+        if (auto *bw = qobject_cast<BrowserWindow*>(w)) {
+          ++spawnedBrowserWindows;
+          spawnedIncognito = bw;
+        }
+      }
+    }
+    assert(spawnedBrowserWindows == 1);
+    assert(spawnedIncognito != nullptr);
+    assert(spawnedIncognito->isIncognito());
+    assert(spawnedIncognito->services().profile != services.profile);
+    assert(spawnedIncognito->services().profile->isOffTheRecord());
+    assert(spawnedIncognito->tabCount() >= 1);
+    delete spawnedIncognito;
+
+    // The menu command must reach the same authoritative creation behavior.
+    const auto topLevelsBeforeMenu = QApplication::topLevelWidgets();
+    QTimer::singleShot(0, &window, [&] {
+      auto *menu = qobject_cast<QMenu *>(QApplication::activePopupWidget());
+      assert(menu != nullptr);
+      auto *action = menu->findChild<QAction *>(QStringLiteral("newIncognitoWindowAction"));
+      assert(action != nullptr);
+      action->trigger();
+      menu->close();
+    });
+    window.showMainMenu();
+    BrowserWindow *menuIncognito = nullptr;
+    spawnedBrowserWindows = 0;
+    for (auto *w : QApplication::topLevelWidgets()) {
+      if (!topLevelsBeforeMenu.contains(w)) {
+        if (auto *bw = qobject_cast<BrowserWindow *>(w)) {
+          ++spawnedBrowserWindows;
+          menuIncognito = bw;
+        }
+      }
+    }
+    assert(spawnedBrowserWindows == 1);
+    assert(menuIncognito != nullptr && menuIncognito->isIncognito());
+    assert(menuIncognito->services().profile->isOffTheRecord());
+    delete menuIncognito;
+
+    // Activating Ctrl+N shortcut must create a new normal window
+    const auto topLevelsBeforeNormal = QApplication::topLevelWidgets();
+    Q_EMIT newWindowShortcut->activated();
+
+    BrowserWindow *spawnedNormal = nullptr;
+    for (auto *w : QApplication::topLevelWidgets()) {
+      if (!topLevelsBeforeNormal.contains(w)) {
+        if (auto *bw = qobject_cast<BrowserWindow*>(w)) {
+          spawnedNormal = bw;
+          break;
+        }
+      }
+    }
+    assert(spawnedNormal != nullptr);
+    assert(!spawnedNormal->isIncognito());
+    assert(spawnedNormal->tabCount() >= 1);
+    delete spawnedNormal;
+
+    std::cout << "     PASS: Ctrl+Shift+N and Ctrl+N persistent shortcuts create private and normal windows.\n";
+  }
+
+  // =========================================================================
+  // Test 15: Remaining shortcut dispatch — Ctrl+T and Ctrl+L
+  // =========================================================================
+  {
+    std::cout << "  -> Testing Ctrl+T and Ctrl+L observable dispatch...\n";
+    BrowserWindow window(services, true);
+    window.resize(1000, 700);
+    window.show();
+    window.addNewTab(QUrl(QStringLiteral("ardali://newtab/")));
+
+    QShortcut *newTabShortcut = nullptr;
+    QShortcut *locationShortcut = nullptr;
+    for (auto *shortcut : window.findChildren<QShortcut *>()) {
+      if (shortcut->key() == QKeySequence(Qt::CTRL | Qt::Key_T)) newTabShortcut = shortcut;
+      if (shortcut->key() == QKeySequence(Qt::CTRL | Qt::Key_L)) locationShortcut = shortcut;
+    }
+    assert(newTabShortcut != nullptr && locationShortcut != nullptr);
+
+    const int before = window.tabCount();
+    Q_EMIT newTabShortcut->activated();
+    assert(window.tabCount() == before + 1);
+
+    auto *omnibox = window.findChild<QLineEdit *>(QStringLiteral("omnibox"));
+    assert(omnibox != nullptr);
+    omnibox->setText(QStringLiteral("https://example.test/path"));
+    Q_EMIT locationShortcut->activated();
+    assert(omnibox->hasSelectedText());
+    assert(omnibox->selectedText() == omnibox->text());
+    std::cout << "     PASS: Ctrl+T creates one tab and Ctrl+L selects the location.\n";
+  }
+
+  // =========================================================================
+  // Test 16: Pending credential decision follows its owning tab
+  // =========================================================================
+  {
+    std::cout << "  -> Testing credential decision hide/re-show across tab switches...\n";
+    auto *vault = profileService.credentialVault();
+    assert(vault != nullptr);
+    if (!vault->exists()) assert(vault->create(QStringLiteral("Step11SyntheticMaster#2026")));
+
+    BrowserWindow window(services, true);
+    window.resize(1000, 700);
+    window.show();
+    window.addNewTab(QUrl(QStringLiteral("https://login.example.com/form")));
+    window.addNewTab(QUrl(QStringLiteral("https://other.example.net/")));
+    auto *ownerView = window.allTabs().at(0).view.data();
+    assert(ownerView != nullptr && window.autofillController() != nullptr);
+    ownerView->setUrl(QUrl(QStringLiteral("https://login.example.com/form")));
+    assert(ownerView->url() == QUrl(QStringLiteral("https://login.example.com/form")));
+
+    window.autofillController()->handleConsoleMessage(
+        ownerView->page(),
+        QStringLiteral("ARDALI_CREDENTIAL_CANDIDATE:{\"origin\":\"https://login.example.com\",\"username\":\"step11-user\",\"password\":\"SyntheticSecret#2026\",\"submitted\":true,\"nonce\":\"step11-flow\"}"));
+    const QString candidateKey = window.autofillController()->candidateKey(
+        ownerView, QStringLiteral("https://login.example.com"), QStringLiteral("step11-user"));
+    assert(window.autofillController()->pendingCandidateCount() == 1);
+    window.autofillController()->promptCandidate(ownerView, candidateKey);
+    QElapsedTimer bubbleWait;
+    bubbleWait.start();
+    while (!window.autofillController()->activeSaveBubble() && bubbleWait.elapsed() < 1500) {
+      QApplication::processEvents(QEventLoop::AllEvents, 20);
+    }
+    auto *bubble = window.autofillController()->activeSaveBubble();
+    assert(bubble != nullptr);
+    assert(bubble->origin() == QStringLiteral("https://login.example.com"));
+
+    window.switchTab(0);
+    assert(!bubble->isHidden());
+    window.switchTab(1);
+    assert(bubble->isHidden());
+    assert(window.autofillController()->activeSaveBubble() == bubble);
+    window.switchTab(0);
+    assert(!bubble->isHidden());
+    assert(bubble->origin() == QStringLiteral("https://login.example.com"));
+
+    bubble->clickSecondary();
+    assert(window.autofillController()->activeSaveBubble() == nullptr);
+    std::cout << "     PASS: Pending decision survives tab switches and remains origin-bound.\n";
+  }
+
+  // =========================================================================
+  // Test 17: Bookmark Bar Visibility Regression Test
+  // =========================================================================
+  {
+    std::cout << "  -> Testing Bookmark bar visibility across tabs, navigation, and session restore...\n";
+    BrowserWindow window(services, true);
+    window.resize(1000, 700);
+    window.show();
+
+    // 1. Initial state with New Tab: Bookmark bar must be VISIBLE
+    window.ensureInitialTab();
+    assert(window.isCurrentTabNewTab());
+    assert(window.bookmarkBar() && !window.bookmarkBar()->isHidden());
+
+    // 2. Add normal website (YouTube): Bookmark bar must be HIDDEN immediately
+    const int ytIdx = window.addNewTab(QUrl(QStringLiteral("https://www.youtube.com/")));
+    assert(!window.isCurrentTabNewTab());
+    assert(window.bookmarkBar() && window.bookmarkBar()->isHidden());
+
+    // 3. Switch back to New Tab: Bookmark bar must show immediately
+    window.switchTab(0);
+    assert(window.isCurrentTabNewTab());
+    assert(window.bookmarkBar() && !window.bookmarkBar()->isHidden());
+
+    // 4. Switch to YouTube tab: Bookmark bar must hide immediately
+    window.switchTab(ytIdx);
+    assert(!window.isCurrentTabNewTab());
+    assert(window.bookmarkBar() && window.bookmarkBar()->isHidden());
+
+    // 5. Navigate New Tab to website: Bookmark bar must hide immediately
+    window.switchTab(0);
+    assert(window.bookmarkBar() && !window.bookmarkBar()->isHidden());
+    window.navigateFromUserInput(QStringLiteral("https://www.google.com/"));
+    assert(!window.isCurrentTabNewTab());
+    assert(window.bookmarkBar() && window.bookmarkBar()->isHidden());
+
+    // 6. Search results page: Bookmark bar must be HIDDEN
+    window.navigateFromUserInput(QStringLiteral("ardali test search"), QStringLiteral("Google"));
+    assert(!window.isCurrentTabNewTab());
+    assert(window.bookmarkBar() && window.bookmarkBar()->isHidden());
+
+    // 7. Internal non-New-Tab page: Bookmark bar must be HIDDEN
+    const int internalIdx = window.addNewTab(QUrl(QStringLiteral("ardali://settings")));
+    (void)internalIdx;
+    assert(!window.isCurrentTabNewTab());
+    assert(window.bookmarkBar() && window.bookmarkBar()->isHidden());
+
+    // 8. Local page: Bookmark bar must be HIDDEN
+    const int localIdx = window.addNewTab(QUrl(QStringLiteral("file:///tmp/sample.html")));
+    (void)localIdx;
+    assert(!window.isCurrentTabNewTab());
+    assert(window.bookmarkBar() && window.bookmarkBar()->isHidden());
+
+    // 9. Navigating home / back to New Tab: Bookmark bar must show again
+    window.navigateFromUserInput(QStringLiteral("ardali://newtab/"));
+    assert(window.isCurrentTabNewTab());
+    assert(window.bookmarkBar() && !window.bookmarkBar()->isHidden());
+
+    // 10. Session restore: Restored normal website (YouTube active) must hide bookmark bar
+    SavedTab tabYt;
+    tabYt.url = QUrl(QStringLiteral("https://www.youtube.com/"));
+    tabYt.title = QStringLiteral("YouTube");
+    tabYt.pinned = false;
+    tabYt.active = true;
+
+    SavedTab tabNew;
+    tabNew.url = QUrl(QStringLiteral("ardali://newtab/"));
+    tabNew.title = QStringLiteral("Yeni Sekme");
+    tabNew.pinned = false;
+    tabNew.active = false;
+
+    QVector<SavedTab> savedTabs{tabYt, tabNew};
+
+    BrowserWindow restoredWin(services, true);
+    restoredWin.resize(1000, 700);
+    restoredWin.restoreSession(savedTabs);
+    restoredWin.show();
+    assert(!restoredWin.isCurrentTabNewTab());
+    assert(restoredWin.bookmarkBar() && restoredWin.bookmarkBar()->isHidden());
+
+    // Switch to restored new tab: shows
+    restoredWin.switchTab(1);
+    assert(restoredWin.isCurrentTabNewTab());
+    assert(restoredWin.bookmarkBar() && !restoredWin.bookmarkBar()->isHidden());
+
+    // Switch back to restored YouTube: hides
+    restoredWin.switchTab(0);
+    assert(!restoredWin.isCurrentTabNewTab());
+    assert(restoredWin.bookmarkBar() && restoredWin.bookmarkBar()->isHidden());
+
+    // Toggle bookmark bar to never: hides even on New Tab
+    restoredWin.switchTab(1);
+    assert(!restoredWin.bookmarkBar()->isHidden());
+    restoredWin.toggleBookmarkBar();
+    assert(restoredWin.bookmarkBar()->isHidden());
+    restoredWin.toggleBookmarkBar();
+    assert(!restoredWin.bookmarkBar()->isHidden());
+
+    // Clean up settings to default "new_tab"
+    QSettings settings;
+    settings.setValue(QStringLiteral("browser/bookmarkBarVisibility"), QStringLiteral("new_tab"));
+    settings.sync();
+
+    std::cout << "     PASS: Bookmark bar visibility strictly enforced for New Tab only.\n";
+  }
+
+  std::cout << "\n>>> STEP 5 REGRESSIONS AND STEP 6 UX TESTS PASSED SUCCESSFULLY! <<<\n";
   return 0;
 }

@@ -6,6 +6,8 @@
 #include <QPainterPath>
 #include <QSvgRenderer>
 
+#include <cmath>
+
 namespace {
 QPixmap renderTinted(const QString &path, int size, const QColor &color) {
   QSvgRenderer renderer(path);
@@ -82,6 +84,9 @@ QString BrowserIcons::resourcePath(BrowserIcon id) {
     case BrowserIcon::MicrophoneSlash: return QStringLiteral(":/browser-icons/microphone-slash.svg");
     case BrowserIcon::NotificationSlash: return QStringLiteral(":/browser-icons/notification-slash.svg");
     case BrowserIcon::ArrowLeft: return QStringLiteral(":/browser-icons/arrow-left.svg");
+    case BrowserIcon::ArrowRight: return {};
+    case BrowserIcon::Reload: return {};
+    case BrowserIcon::Stop: return QStringLiteral(":/browser-icons/close.svg");
     case BrowserIcon::JavascriptSlash: return QStringLiteral(":/browser-icons/javascript-slash.svg");
     case BrowserIcon::ImageSlash: return QStringLiteral(":/browser-icons/image-slash.svg");
     case BrowserIcon::PopupSlash: return QStringLiteral(":/browser-icons/popup-slash.svg");
@@ -95,11 +100,197 @@ QString BrowserIcons::resourcePath(BrowserIcon id) {
   return {};
 }
 
+QIcon BrowserIcons::backIcon() {
+  QIcon icon;
+  for (const int size : {16, 18, 20, 24, 32, 36, 40, 48, 64}) {
+    const auto renderForColor = [size](const QColor &color) {
+      const qreal S = size;
+      const qreal stroke = std::max(1.5, S * (2.0 / 24.0));
+      QPixmap pm(size, size);
+      pm.fill(Qt::transparent);
+      QPainter p(&pm);
+      p.setRenderHint(QPainter::Antialiasing);
+      QPen pen(color);
+      pen.setWidthF(stroke);
+      pen.setCapStyle(Qt::RoundCap);
+      pen.setJoinStyle(Qt::RoundJoin);
+      p.setPen(pen);
+
+      const qreal cx = S * 0.5;
+      const qreal cy = S * 0.5;
+      p.drawLine(QPointF(cx + S * 0.28, cy), QPointF(cx - S * 0.26, cy));
+      QPainterPath chevron;
+      chevron.moveTo(cx - S * 0.02, cy - S * 0.25);
+      chevron.lineTo(cx - S * 0.26, cy);
+      chevron.lineTo(cx - S * 0.02, cy + S * 0.25);
+      p.drawPath(chevron);
+      return pm;
+    };
+
+    icon.addPixmap(renderForColor(QColor(QStringLiteral("#e8eaed"))), QIcon::Normal, QIcon::Off);
+    icon.addPixmap(renderForColor(QColor(QStringLiteral("#ffffff"))), QIcon::Active, QIcon::Off);
+    icon.addPixmap(renderForColor(QColor(QStringLiteral("#ffffff"))), QIcon::Selected, QIcon::Off);
+    icon.addPixmap(renderForColor(QColor(QStringLiteral("#687584"))), QIcon::Disabled, QIcon::Off);
+  }
+  return icon;
+}
+
+QIcon BrowserIcons::forwardIcon() {
+  QIcon icon;
+  for (const int size : {16, 18, 20, 24, 32, 36, 40, 48, 64}) {
+    const auto renderForColor = [size](const QColor &color) {
+      const qreal S = size;
+      const qreal stroke = std::max(1.5, S * (2.0 / 24.0));
+      QPixmap pm(size, size);
+      pm.fill(Qt::transparent);
+      QPainter p(&pm);
+      p.setRenderHint(QPainter::Antialiasing);
+      QPen pen(color);
+      pen.setWidthF(stroke);
+      pen.setCapStyle(Qt::RoundCap);
+      pen.setJoinStyle(Qt::RoundJoin);
+      p.setPen(pen);
+
+      const qreal cx = S * 0.5;
+      const qreal cy = S * 0.5;
+      p.drawLine(QPointF(cx - S * 0.28, cy), QPointF(cx + S * 0.26, cy));
+      QPainterPath chevron;
+      chevron.moveTo(cx + S * 0.02, cy - S * 0.25);
+      chevron.lineTo(cx + S * 0.26, cy);
+      chevron.lineTo(cx + S * 0.02, cy + S * 0.25);
+      p.drawPath(chevron);
+      return pm;
+    };
+
+    icon.addPixmap(renderForColor(QColor(QStringLiteral("#e8eaed"))), QIcon::Normal, QIcon::Off);
+    icon.addPixmap(renderForColor(QColor(QStringLiteral("#ffffff"))), QIcon::Active, QIcon::Off);
+    icon.addPixmap(renderForColor(QColor(QStringLiteral("#ffffff"))), QIcon::Selected, QIcon::Off);
+    icon.addPixmap(renderForColor(QColor(QStringLiteral("#687584"))), QIcon::Disabled, QIcon::Off);
+  }
+  return icon;
+}
+
+QIcon BrowserIcons::reloadIcon() {
+  QIcon icon;
+  for (const int size : {16, 18, 20, 24, 32, 36, 40, 48, 64}) {
+    const auto renderForColor = [size](const QColor &color) {
+      const qreal S = size;
+      const qreal stroke = std::max(1.5, S * (2.0 / 24.0));
+      QPixmap pm(size, size);
+      pm.fill(Qt::transparent);
+      QPainter p(&pm);
+      p.setRenderHint(QPainter::Antialiasing);
+
+      const qreal cx = S * 0.5;
+      const qreal cy = S * 0.5;
+      const qreal r  = S * 0.29;
+      const QRectF bounds(cx - r, cy - r, 2 * r, 2 * r);
+
+      // --- Arc ---
+      // Qt drawArc: 0° = 3 o'clock, angles increase CCW, negative span = CW sweep.
+      // Start at 90° (12 o'clock), sweep 295° clockwise → ends at ~10-11 o'clock.
+      // The gap (≈65°) sits at the top of the circle where the arrowhead will be.
+      QPen pen(color);
+      pen.setWidthF(stroke);
+      pen.setCapStyle(Qt::RoundCap);
+      pen.setJoinStyle(Qt::RoundJoin);
+      p.setPen(pen);
+      p.setBrush(Qt::NoBrush);
+      p.drawArc(bounds, 90 * 16, -295 * 16);
+
+      // --- Arrowhead ---
+      // Position: arc START = 90° in Qt = 12 o'clock = (cx, cy - r)
+      // CW tangent formula at Qt angle θ (derived from d/dθ of circle pos, negated):
+      //   t = (sin(θ), cos(θ))  in screen coords (Y-down)
+      // Verified:  θ=90°  → (1,  0) = rightward  ✓ (CW at 12 o'clock)
+      //            θ=0°   → (0,  1) = downward    ✓ (CW at  3 o'clock)
+      //            θ=270° → (-1, 0) = leftward    ✓ (CW at  6 o'clock)
+      //            θ=180° → (0, -1) = upward      ✓ (CW at  9 o'clock)
+      const qreal arrowRad = 90.0 * M_PI / 180.0;  // 12 o'clock
+
+      const qreal tipX = cx + r * std::cos(arrowRad);       // = cx
+      const qreal tipY = cy - r * std::sin(arrowRad);       // = cy - r  (top)
+
+      // CW tangent: (sin θ, cos θ) in screen coords
+      const qreal tx = std::sin(arrowRad);   //  1.0  (rightward)
+      const qreal ty = std::cos(arrowRad);   //  0.0
+
+      // Inward normal (toward center, perpendicular to tangent, rotated 90° CCW from tangent):
+      // n = (-cos θ, sin θ)
+      const qreal nx = -std::cos(arrowRad);  //  0.0
+      const qreal ny =  std::sin(arrowRad);  //  1.0  (downward = toward center from top)
+
+      // Triangle: tip points in CW direction, base extends behind + sideways
+      const qreal ahead = S * 0.145;   // depth (along tangent, behind tip)
+      const qreal aside = S * 0.090;   // half-width (perpendicular)
+
+      QPointF pt0(tipX, tipY);
+      QPointF pt1(tipX - tx * ahead + nx * aside, tipY - ty * ahead + ny * aside);
+      QPointF pt2(tipX - tx * ahead - nx * aside, tipY - ty * ahead - ny * aside);
+
+      p.setPen(Qt::NoPen);
+      p.setBrush(color);
+      QPolygonF arrow;
+      arrow << pt0 << pt1 << pt2;
+      p.drawPolygon(arrow);
+
+      return pm;
+    };
+
+    icon.addPixmap(renderForColor(QColor(QStringLiteral("#e8eaed"))), QIcon::Normal,   QIcon::Off);
+    icon.addPixmap(renderForColor(QColor(QStringLiteral("#ffffff"))), QIcon::Active,   QIcon::Off);
+    icon.addPixmap(renderForColor(QColor(QStringLiteral("#ffffff"))), QIcon::Selected, QIcon::Off);
+    icon.addPixmap(renderForColor(QColor(QStringLiteral("#687584"))), QIcon::Disabled, QIcon::Off);
+  }
+  return icon;
+}
+
+
+QIcon BrowserIcons::stopIcon() {
+  QIcon icon;
+  for (const int size : {16, 18, 20, 24, 32, 36, 40, 48, 64}) {
+    const auto renderForColor = [size](const QColor &color) {
+      const qreal S = size;
+      const qreal stroke = std::max(1.5, S * (2.0 / 24.0));
+      QPixmap pm(size, size);
+      pm.fill(Qt::transparent);
+      QPainter p(&pm);
+      p.setRenderHint(QPainter::Antialiasing);
+      QPen pen(color);
+      pen.setWidthF(stroke);
+      pen.setCapStyle(Qt::RoundCap);
+      pen.setJoinStyle(Qt::RoundJoin);
+      p.setPen(pen);
+
+      const qreal cx = S * 0.5;
+      const qreal cy = S * 0.5;
+      const qreal half = S * 0.20;
+      p.drawLine(QPointF(cx - half, cy - half), QPointF(cx + half, cy + half));
+      p.drawLine(QPointF(cx + half, cy - half), QPointF(cx - half, cy + half));
+      return pm;
+    };
+
+    icon.addPixmap(renderForColor(QColor(QStringLiteral("#e8eaed"))), QIcon::Normal, QIcon::Off);
+    icon.addPixmap(renderForColor(QColor(QStringLiteral("#ffffff"))), QIcon::Active, QIcon::Off);
+    icon.addPixmap(renderForColor(QColor(QStringLiteral("#ffffff"))), QIcon::Selected, QIcon::Off);
+    icon.addPixmap(renderForColor(QColor(QStringLiteral("#687584"))), QIcon::Disabled, QIcon::Off);
+  }
+  return icon;
+}
+
 QIcon BrowserIcons::icon(BrowserIcon id) {
+  switch (id) {
+    case BrowserIcon::ArrowLeft: return backIcon();
+    case BrowserIcon::ArrowRight: return forwardIcon();
+    case BrowserIcon::Reload: return reloadIcon();
+    case BrowserIcon::Stop: return stopIcon();
+    default: break;
+  }
   QIcon result;
   const QString path = resourcePath(id);
   for (const int size : {16, 18, 20, 24, 32, 36, 48, 64}) {
     result.addPixmap(renderTinted(path, size, QColor(QStringLiteral("#b8c5d6"))), QIcon::Normal, QIcon::Off);
+    result.addPixmap(renderTinted(path, size, QColor(QStringLiteral("#eff7ff"))), QIcon::Active, QIcon::Off);
     result.addPixmap(renderTinted(path, size, QColor(QStringLiteral("#eff7ff"))), QIcon::Selected, QIcon::Off);
     result.addPixmap(renderTinted(path, size, QColor(QStringLiteral("#687584"))), QIcon::Disabled, QIcon::Off);
   }

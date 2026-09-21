@@ -21,16 +21,18 @@ inline QString translateEngineScript() {
 (function () {
   if (window.__ardaliTranslate) return;
 
-  const originalTexts = new WeakMap();
-  const nodeMeta = new WeakMap();
-  const nodeMap = new Map();
-  const pendingNewNodes = new Map();
+  const originalTexts = new WeakMap(); // Node/Element -> string (for text node) or { [attr]: string } (for element)
+  const nodeMeta = new WeakMap(); // Text Node -> { state: 'original'|'pending'|'translated', originalText: string, translatedText: string, targetLang: string }
+  const attrMeta = new WeakMap(); // Element -> { [attr]: { state: 'original'|'pending'|'translated', originalText: string, translatedText: string, targetLang: string } }
+  const nodeMap = new Map(); // id -> Node | { element: Element, attr: string }
+  const pendingNewNodes = new Map(); // id -> { id, text, type, attr, node }
   
   let nextNodeId = 1;
   let observer = null;
   let isTranslating = false;
   let isApplyingBatch = false;
   let hasPendingMutations = false;
+  let currentTargetLanguage = '';
 
   function isIgnoredElement(el) {
     if (!el || el.nodeType !== 1) return false;
@@ -40,6 +42,7 @@ inline QString translateEngineScript() {
         tag === 'SELECT' || tag === 'OPTION') {
       return true;
     }
+    // Form and password protection
     if (tag === 'INPUT') {
       const inputType = (el.getAttribute('type') || 'text').toLowerCase();
       if (inputType === 'password' || inputType === 'hidden' || inputType === 'submit' || inputType === 'button' || inputType === 'file') {
@@ -55,8 +58,10 @@ inline QString translateEngineScript() {
 
   function shouldTranslateTextNode(node) {
     if (!node || node.nodeType !== 3) return false;
-    const text = node.nodeValue ? node.nodeValue.trim() : '';
+    const orig = originalTexts.get(node);
+    const text = (orig !== undefined ? orig : (node.nodeValue || '')).trim();
     if (!text || text.length < 2) return false;
+    // Check if pure numbers/punctuation
     if (/^[\d\s\p{P}+<=>~$^|\\/]+$/u.test(text)) return false;
 
     let parent = node.parentElement;
@@ -69,7 +74,8 @@ inline QString translateEngineScript() {
 
   function shouldTranslateAttribute(el, attrName) {
     if (!el || el.nodeType !== 1 || isIgnoredElement(el)) return false;
-    const val = el.getAttribute(attrName);
+    const origMap = originalTexts.get(el);
+    const val = (origMap && origMap[attrName] !== undefined) ? origMap[attrName] : el.getAttribute(attrName);
     if (!val || typeof val !== 'string') return false;
     const trimmed = val.trim();
     if (!trimmed || trimmed.length < 2) return false;
@@ -79,43 +85,85 @@ inline QString translateEngineScript() {
 
   function registerTextNode(node) {
     if (!node || node.nodeType !== 3) return null;
-    const text = node.nodeValue;
-    if (!text || !text.trim()) return null;
+    const currentVal = node.nodeValue;
+    if (!currentVal || !currentVal.trim()) return null;
 
     let id = node.__ardali_id;
+    let origText = currentVal;
     if (!id) {
       id = nextNodeId++;
       node.__ardali_id = id;
-      originalTexts.set(node, text);
+      originalTexts.set(node, currentVal);
       nodeMeta.set(node, {
         state: 'original',
-        originalText: text,
-        translatedText: ''
+        originalText: currentVal,
+        translatedText: '',
+        targetLang: ''
       });
+    } else {
+      const saved = originalTexts.get(node);
+      if (saved !== undefined) {
+        origText = saved;
+      }
     }
     nodeMap.set(id, node);
-    return { id: id, type: 'text', text: text };
+    return { id: id, type: 'text', text: origText };
   }
 
   function registerAttribute(el, attrName) {
     if (!el || el.nodeType !== 1) return null;
-    const val = el.getAttribute(attrName);
-    if (!val || !val.trim()) return null;
+    const currentVal = el.getAttribute(attrName);
+    if (!currentVal || !currentVal.trim()) return null;
 
     let attrKey = '__ardali_id_' + attrName;
     let id = el[attrKey];
+    let origVal = currentVal;
+    let origMap = originalTexts.get(el);
     if (!id) {
       id = nextNodeId++;
       el[attrKey] = id;
-      let origMap = originalTexts.get(el);
       if (!origMap || typeof origMap !== 'object') {
         origMap = {};
         originalTexts.set(el, origMap);
       }
-      origMap[attrName] = val;
+      origMap[attrName] = currentVal;
+      let metaMap = attrMeta.get(el);
+      if (!metaMap) {
+        metaMap = {};
+        attrMeta.set(el, metaMap);
+      }
+      metaMap[attrName] = {
+        state: 'original',
+        originalText: currentVal,
+        translatedText: '',
+        targetLang: ''
+      };
+    } else {
+      if (origMap && origMap[attrName] !== undefined) {
+        origVal = origMap[attrName];
+      }
     }
     nodeMap.set(id, { element: el, attr: attrName });
-    return { id: id, type: 'attr', attr: attrName, text: val };
+    return { id: id, type: 'attr', attr: attrName, text: origVal };
+  }
+
+  function isItemTranslatedForCurrentTarget(item) {
+    if (!item) return true;
+    if (!currentTargetLanguage) return false;
+    const entry = nodeMap.get(item.id);
+    if (!entry) return false;
+    if (item.type === 'attr' || (entry.element && entry.attr)) {
+      const el = entry.element || entry;
+      const attr = item.attr || entry.attr;
+      const metaMap = attrMeta.get(el);
+      if (!metaMap || !metaMap[attr]) return false;
+      return metaMap[attr].state === 'translated' && metaMap[attr].targetLang === currentTargetLanguage;
+    } else if (entry.nodeType === 3) {
+      const meta = nodeMeta.get(entry);
+      if (!meta) return false;
+      return meta.state === 'translated' && meta.targetLang === currentTargetLanguage;
+    }
+    return false;
   }
 
   function traverseNode(root, collectList) {
@@ -132,6 +180,7 @@ inline QString translateEngineScript() {
     if (root.nodeType === 1) {
       if (isIgnoredElement(root)) return;
 
+      // Safe UI Attributes
       const safeAttrs = ['title', 'placeholder', 'aria-label'];
       for (const attr of safeAttrs) {
         if (shouldTranslateAttribute(root, attr)) {
@@ -140,10 +189,12 @@ inline QString translateEngineScript() {
         }
       }
 
+      // Check open Shadow DOM root
       if (root.shadowRoot && root.shadowRoot.mode === 'open') {
         traverseNode(root.shadowRoot, collectList);
       }
 
+      // Check same-origin iframes
       if (root.tagName === 'IFRAME') {
         try {
           const doc = root.contentDocument;
@@ -151,10 +202,12 @@ inline QString translateEngineScript() {
             traverseNode(doc.body, collectList);
           }
         } catch (e) {
+          // Cross-origin iframe: skip silently
         }
       }
     }
 
+    // Traverse children via TreeWalker
     const walker = document.createTreeWalker(
       root,
       NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT,
@@ -201,13 +254,10 @@ inline QString translateEngineScript() {
         for (const added of mut.addedNodes) {
           if (added.nodeType === 3) {
             if (shouldTranslateTextNode(added)) {
-              const meta = nodeMeta.get(added);
-              if (!meta || meta.state === 'original') {
-                const item = registerTextNode(added);
-                if (item) {
-                  pendingNewNodes.set(item.id, item);
-                  foundNew = true;
-                }
+              const item = registerTextNode(added);
+              if (item && !isItemTranslatedForCurrentTarget(item)) {
+                pendingNewNodes.set(item.id, item);
+                foundNew = true;
               }
             }
           } else if (added.nodeType === 1) {
@@ -215,10 +265,7 @@ inline QString translateEngineScript() {
               const list = [];
               traverseNode(added, list);
               for (const item of list) {
-                const node = nodeMap.get(item.id);
-                const actualNode = (item.type === 'attr') ? (node && node.element) : node;
-                const meta = actualNode ? nodeMeta.get(actualNode) : null;
-                if (!meta || meta.state !== 'translated') {
+                if (!isItemTranslatedForCurrentTarget(item)) {
                   pendingNewNodes.set(item.id, item);
                   foundNew = true;
                 }
@@ -233,9 +280,12 @@ inline QString translateEngineScript() {
           const currentVal = node.nodeValue;
           if (meta) {
             if (currentVal !== meta.translatedText && currentVal !== meta.originalText) {
+              // Text was updated by page script
               originalTexts.set(node, currentVal);
               meta.originalText = currentVal;
               meta.state = 'original';
+              meta.translatedText = '';
+              meta.targetLang = '';
               const item = registerTextNode(node);
               if (item) {
                 pendingNewNodes.set(item.id, item);
@@ -244,7 +294,7 @@ inline QString translateEngineScript() {
             }
           } else {
             const item = registerTextNode(node);
-            if (item) {
+            if (item && !isItemTranslatedForCurrentTarget(item)) {
               pendingNewNodes.set(item.id, item);
               foundNew = true;
             }
@@ -256,6 +306,19 @@ inline QString translateEngineScript() {
     if (foundNew) {
       hasPendingMutations = true;
     }
+  }
+
+  function handleSpaNavigation() {
+    if (!isTranslating) return;
+    setTimeout(function () {
+      const list = [];
+      traverseNode(document.body || document.documentElement, list);
+      for (const item of list) {
+        if (!isItemTranslatedForCurrentTarget(item)) {
+          pendingNewNodes.set(item.id, item);
+        }
+      }
+    }, 150);
   }
 
   window.__ardaliTranslate = {
@@ -294,16 +357,64 @@ inline QString translateEngineScript() {
       };
     },
 
-    extractNodes: function () {
+    extractNodes: function (options) {
+      const targetLang = (typeof options === 'string' ? options : (options && options.lang)) || '';
+      if (targetLang) {
+        currentTargetLanguage = targetLang;
+      }
+      pendingNewNodes.clear();
+      hasPendingMutations = false;
+
       const result = [];
       const root = document.body || document.documentElement;
       if (!root) return { nodes: [] };
 
       traverseNode(root, result);
+
+      if (currentTargetLanguage) {
+        for (const item of result) {
+          const node = nodeMap.get(item.id);
+          if (item.type === 'attr') {
+            const actualNode = node && node.element;
+            if (actualNode) {
+              let metaMap = attrMeta.get(actualNode);
+              if (!metaMap) {
+                metaMap = {};
+                attrMeta.set(actualNode, metaMap);
+              }
+              metaMap[item.attr] = {
+                state: 'pending',
+                originalText: item.text,
+                translatedText: '',
+                targetLang: currentTargetLanguage
+              };
+            }
+          } else if (node && node.nodeType === 3) {
+            let meta = nodeMeta.get(node);
+            if (!meta) {
+              meta = {
+                state: 'pending',
+                originalText: item.text,
+                translatedText: '',
+                targetLang: currentTargetLanguage
+              };
+              nodeMeta.set(node, meta);
+            } else {
+              meta.state = 'pending';
+              meta.targetLang = currentTargetLanguage;
+            }
+          }
+        }
+      }
+
       return { nodes: result };
     },
 
-    startObserving: function () {
+    startObserving: function (options) {
+      const targetLang = (typeof options === 'string' ? options : (options && options.lang)) || '';
+      if (targetLang) {
+        currentTargetLanguage = targetLang;
+      }
       isTranslating = true;
       if (!observer) {
         observer = new MutationObserver(onMutations);
@@ -351,13 +462,33 @@ inline QString translateEngineScript() {
             const attr = item.attr || entry.attr;
             if (el && el.nodeType === 1) {
               el.setAttribute(attr, item.translated);
+              let metaMap = attrMeta.get(el);
+              if (!metaMap) {
+                metaMap = {};
+                attrMeta.set(el, metaMap);
+              }
+              metaMap[attr] = {
+                state: 'translated',
+                originalText: originalTexts.get(el) ? originalTexts.get(el)[attr] : '',
+                translatedText: item.translated,
+                targetLang: currentTargetLanguage
+              };
             }
           } else if (entry.nodeType === 3) {
             entry.nodeValue = item.translated;
-            const meta = nodeMeta.get(entry);
-            if (meta) {
+            let meta = nodeMeta.get(entry);
+            if (!meta) {
+              meta = {
+                state: 'translated',
+                originalText: originalTexts.get(entry) || '',
+                translatedText: item.translated,
+                targetLang: currentTargetLanguage
+              };
+              nodeMeta.set(entry, meta);
+            } else {
               meta.state = 'translated';
               meta.translatedText = item.translated;
+              meta.targetLang = currentTargetLanguage;
             }
           }
         }
@@ -370,6 +501,7 @@ inline QString translateEngineScript() {
     restoreOriginal: function () {
       isApplyingBatch = true;
       isTranslating = false;
+      currentTargetLanguage = '';
       try {
         for (const [id, entry] of nodeMap.entries()) {
           if (!entry) continue;
@@ -380,6 +512,12 @@ inline QString translateEngineScript() {
             if (orig && orig[attr] !== undefined) {
               el.setAttribute(attr, orig[attr]);
             }
+            let metaMap = attrMeta.get(el);
+            if (metaMap && metaMap[attr]) {
+              metaMap[attr].state = 'original';
+              metaMap[attr].translatedText = '';
+              metaMap[attr].targetLang = '';
+            }
           } else if (entry.nodeType === 3) {
             const orig = originalTexts.get(entry);
             if (orig !== undefined) {
@@ -387,6 +525,8 @@ inline QString translateEngineScript() {
               const meta = nodeMeta.get(entry);
               if (meta) {
                 meta.state = 'original';
+                meta.translatedText = '';
+                meta.targetLang = '';
               }
             }
           }
@@ -403,68 +543,30 @@ inline QString translateEngineScript() {
       this.stopObserving();
       nodeMap.clear();
       pendingNewNodes.clear();
-      nextNodeId = 1;
+      currentTargetLanguage = '';
       hasPendingMutations = false;
     }
   };
 
+  // Setup SPA pushState / replaceState / popstate hooks
   if (typeof history !== 'undefined' && history.pushState && !history.__ardali_patched) {
     history.__ardali_patched = true;
     const origPush = history.pushState;
     history.pushState = function () {
       const res = origPush.apply(this, arguments);
-      if (isTranslating) {
-        setTimeout(function () {
-          const list = [];
-          traverseNode(document.body || document.documentElement, list);
-          for (const item of list) {
-            const node = nodeMap.get(item.id);
-            const actualNode = (item.type === 'attr') ? (node && node.element) : node;
-            const meta = actualNode ? nodeMeta.get(actualNode) : null;
-            if (!meta || meta.state !== 'translated') {
-              pendingNewNodes.set(item.id, item);
-            }
-          }
-        }, 150);
-      }
+      handleSpaNavigation();
       return res;
     };
 
     const origReplace = history.replaceState;
     history.replaceState = function () {
       const res = origReplace.apply(this, arguments);
-      if (isTranslating) {
-        setTimeout(function () {
-          const list = [];
-          traverseNode(document.body || document.documentElement, list);
-          for (const item of list) {
-            const node = nodeMap.get(item.id);
-            const actualNode = (item.type === 'attr') ? (node && node.element) : node;
-            const meta = actualNode ? nodeMeta.get(actualNode) : null;
-            if (!meta || meta.state !== 'translated') {
-              pendingNewNodes.set(item.id, item);
-            }
-          }
-        }, 150);
-      }
+      handleSpaNavigation();
       return res;
     };
 
     window.addEventListener('popstate', function () {
-      if (isTranslating) {
-        setTimeout(function () {
-          const list = [];
-          traverseNode(document.body || document.documentElement, list);
-          for (const item of list) {
-            const node = nodeMap.get(item.id);
-            const actualNode = (item.type === 'attr') ? (node && node.element) : node;
-            const meta = actualNode ? nodeMeta.get(actualNode) : null;
-            if (!meta || meta.state !== 'translated') {
-              pendingNewNodes.set(item.id, item);
-            }
-          }
-        }, 150);
-      }
+      handleSpaNavigation();
     });
   }
 })();

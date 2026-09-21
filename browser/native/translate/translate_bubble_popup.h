@@ -23,6 +23,9 @@ class TranslateBubblePopup : public QFrame {
  signals:
   void openSettingsRequested();
 
+ protected:
+  void paintEvent(QPaintEvent *event) override;
+
  private:
   void updateUi();
   void setupMoreMenu();

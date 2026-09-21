@@ -6,6 +6,8 @@
 #include <QCoreApplication>
 #include <QDebug>
 #include <QEventLoop>
+#include <QSettings>
+#include <QTemporaryDir>
 #include <QTimer>
 #include <cmath>
 #include <numbers>
@@ -381,8 +383,57 @@ bool testHistoryRemovalAndReRecognition() {
   return true;
 }
 
+bool testPrivateHistoryIsolationAndBoundedLoad() {
+  QSettings persisted(QStringLiteral("ArDali"), QStringLiteral("SongFinderHistory"));
+  persisted.clear();
+  persisted.beginWriteArray(QStringLiteral("history"), 250);
+  for (int i = 0; i < 250; ++i) {
+    persisted.setArrayIndex(i);
+    persisted.setValue(QStringLiteral("title"), QStringLiteral("Song %1").arg(i));
+    persisted.setValue(QStringLiteral("artist"), QStringLiteral("Artist %1").arg(i));
+    persisted.setValue(QStringLiteral("trackKey"), QStringLiteral("track-%1").arg(i));
+    persisted.setValue(QStringLiteral("timestamp"), QDateTime::currentDateTimeUtc());
+  }
+  persisted.endArray();
+  persisted.sync();
+
+  SongFinderSettings privateSettings(nullptr, false);
+  SongRecognitionService privateService(&privateSettings, nullptr, false);
+  ASSERT_TRUE(privateService.foundHistory().isEmpty(), "Private service must not load normal history");
+  privateService.clearHistory();
+
+  SongFinderSettings normalSettings;
+  SongRecognitionService normalService(&normalSettings);
+  ASSERT_EQUAL(normalService.foundHistory().size(), 200, "Persistent recognition history must be bounded");
+  normalService.clearHistory();
+  return true;
+}
+
+bool testPrivateSettingsDoNotPersist() {
+  SongFinderSettings normal;
+  normal.resetToDefaults();
+  normal.setOpenPlatform(SongFinderSettings::OpenPlatform::YouTube);
+  normal.save();
+
+  SongFinderSettings privateSettings(nullptr, false);
+  privateSettings.setOpenPlatform(SongFinderSettings::OpenPlatform::YouTubeMusic);
+  privateSettings.setSavedDeviceId(QStringLiteral("private-microphone"));
+  privateSettings.save();
+
+  SongFinderSettings restored;
+  ASSERT_EQUAL(static_cast<int>(restored.openPlatform()),
+               static_cast<int>(SongFinderSettings::OpenPlatform::YouTube),
+               "Private settings must not overwrite normal preferences");
+  ASSERT_TRUE(restored.savedDeviceId().isEmpty(), "Private device selection must not persist");
+  return true;
+}
+
 int main(int argc, char *argv[]) {
   QCoreApplication app(argc, argv);
+  QTemporaryDir settingsDirectory;
+  if (!settingsDirectory.isValid()) return 1;
+  QSettings::setDefaultFormat(QSettings::IniFormat);
+  QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, settingsDirectory.path());
   app.setOrganizationName(QStringLiteral("ArDali"));
   app.setApplicationName(QStringLiteral("ArDaliBrowser-Test"));
 
@@ -471,6 +522,18 @@ int main(int argc, char *argv[]) {
     return 1;
   }
   qInfo() << "PASS: testHistoryRemovalAndReRecognition";
+
+  if (!testPrivateHistoryIsolationAndBoundedLoad()) {
+    qCritical() << "testPrivateHistoryIsolationAndBoundedLoad failed!";
+    return 1;
+  }
+  qInfo() << "PASS: testPrivateHistoryIsolationAndBoundedLoad";
+
+  if (!testPrivateSettingsDoNotPersist()) {
+    qCritical() << "testPrivateSettingsDoNotPersist failed!";
+    return 1;
+  }
+  qInfo() << "PASS: testPrivateSettingsDoNotPersist";
 
   qInfo() << "All Song Finder unit tests passed successfully!";
   return 0;

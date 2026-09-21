@@ -161,6 +161,8 @@ int main(int argc, char **argv)
     services.profileService = &profile;
 
     BrowserWindow window(services, true);
+    // A fresh profile must not be populated with product/personal bookmarks.
+    assert(profile.bookmarks().isEmpty());
     window.resize(1000, 700);
     window.show();
     window.addNewTab();
@@ -303,30 +305,8 @@ int main(int argc, char **argv)
     assert(
         js(
             page,
-            "document.querySelectorAll('.suggestion-row').length>=2")
-            .toBool());
-
-    js(
-        page,
-        "document.querySelector('#query').dispatchEvent("
-        "new KeyboardEvent('keydown',{key:'ArrowDown',bubbles:true}));");
-
-    assert(
-        js(
-            page,
-            "document.querySelector('#query').getAttribute("
-            "'aria-activedescendant')")
-            .toString() == "suggestion-0");
-
-    js(
-        page,
-        "document.querySelector('#query').dispatchEvent("
-        "new KeyboardEvent('keydown',{key:'Escape',bubbles:true}));");
-
-    assert(
-        js(
-            page,
-            "document.querySelector('#search-suggestions').hidden")
+            "document.querySelectorAll('.suggestion-row').length===0"
+            "&&document.querySelector('#search-suggestions').hidden")
             .toBool());
 
     // Consent uses the native allowlisted bridge, not a separate localStorage key.
@@ -422,6 +402,9 @@ int main(int argc, char **argv)
 
     assert(
         network.requests == before);
+    assert(js(page,
+              "document.querySelectorAll('.suggestion-row').length===0"
+              "&&document.querySelector('#search-suggestions').hidden").toBool());
 
     // The new-tab suggestion selection path must wait for each asynchronous
     // WebEngine/native-bridge step instead of assuming fixed timing.
@@ -608,11 +591,22 @@ int main(int argc, char **argv)
         "{key:'ArrowDown',bubbles:true}"
         "));");
 
+    js(
+        selectionView->page(),
+        "document.querySelector('#query').dispatchEvent("
+        "new KeyboardEvent("
+        "'keydown',"
+        "{key:'ArrowDown',bubbles:true}"
+        "));");
+
     assert(
         waitForJs(
             selectionView->page(),
             "document.querySelector('#query')"
-            ".getAttribute('aria-activedescendant')==='suggestion-0'",
+            ".getAttribute('aria-activedescendant')==='suggestion-1'"
+            "&&document.querySelector('#query').value==='choose one'"
+            "&&document.querySelector('#query').selectionStart===6"
+            "&&document.querySelector('#query').selectionEnd===10",
             5000));
 
     js(
@@ -652,6 +646,65 @@ int main(int argc, char **argv)
     selectionView->stop();
 
     window.closeTab(selectionIndex);
+    wait(100);
+
+    // Pointer activation commits immediately while retaining input focus long
+    // enough for the trusted New Tab navigation bridge to validate the source.
+    profile.recordSearch(QStringLiteral("mouse choice"));
+    profile.recordSearch(QStringLiteral("remove me"));
+    const int pointerIndex = window.addNewTab();
+    wait(400);
+    auto *pointerView = window.currentView();
+    assert(waitForJs(pointerView->page(),
+                     "typeof window.ardaliSuggestionBridge==='function'"
+                     "&&!!document.querySelector('#query')", 10000));
+    assert(js(pointerView->page(),
+       "(()=>{const query=document.querySelector('#query');query.focus();query.value='focus';"
+       "suggestionTypedValue='focus';window.ardaliShowSuggestions(suggestionId,'focus',["
+       "{text:'focus result',url:'https://duckduckgo.com/?q=focus%20result',type:'search-history'}]);"
+       "query.dispatchEvent(new Event('blur'));return document.activeElement===query})()").toBool());
+    wait(325);
+    assert(js(pointerView->page(),
+              "!document.querySelector('#search-suggestions').hidden").toBool());
+    assert(js(pointerView->page(),
+       "(()=>{const query=document.querySelector('#query');query.focus();query.value='stable';"
+       "suggestionTypedValue='stable';window.ardaliShowSuggestions(suggestionId,'stable',["
+       "{text:'stable result',url:'https://duckduckgo.com/?q=stable%20result',type:'search-history'}]);"
+       "query.value='stable x';query.dispatchEvent(new Event('input',{bubbles:true}));"
+       "const stayedOpen=!document.querySelector('#search-suggestions').hidden;"
+       "clearTimeout(suggestionRequestTimer);return stayedOpen})()").toBool());
+    assert(js(pointerView->page(),
+       "(()=>{const query=document.querySelector('#query');query.focus();query.value='remove';"
+       "suggestionTypedValue='remove';window.ardaliShowSuggestions(suggestionId,'remove',["
+       "{text:'remove me',url:'https://duckduckgo.com/?q=remove%20me',type:'search-history'}]);"
+       "const remove=document.querySelector('.suggestion-remove');query.blur();"
+       "if(document.querySelector('#search-suggestions').hidden)return false;"
+       "remove.dispatchEvent(new PointerEvent('pointerdown',{button:0,bubbles:true,cancelable:true}));return true})()").toBool());
+    QElapsedTimer deletionTimer;
+    deletionTimer.start();
+    while (profile.recentSearches().contains(QStringLiteral("remove me"))
+           && deletionTimer.elapsed() < 5000) {
+        wait(25);
+    }
+    assert(!profile.recentSearches().contains(QStringLiteral("remove me")));
+    assert(pointerView->page()->requestedUrl().host() == QStringLiteral("newtab"));
+
+    assert(js(pointerView->page(),
+       "(()=>{const query=document.querySelector('#query');query.focus();query.value='mouse';"
+       "suggestionTypedValue='mouse';window.ardaliShowSuggestions(suggestionId,'mouse',["
+       "{text:'mouse choice',url:'https://duckduckgo.com/?q=mouse%20choice',type:'search-history'}]);"
+       "const action=document.querySelector('.suggestion-action');query.blur();"
+       "if(document.querySelector('#search-suggestions').hidden)return false;"
+       "action.dispatchEvent(new PointerEvent('pointerdown',{button:0,bubbles:true,cancelable:true}));return true})()").toBool());
+    QElapsedTimer pointerNavigationTimer;
+    pointerNavigationTimer.start();
+    while (pointerView->page()->requestedUrl().host() != QStringLiteral("duckduckgo.com")
+           && pointerNavigationTimer.elapsed() < 10000) {
+        wait(50);
+    }
+    assert(pointerView->page()->requestedUrl().host() == QStringLiteral("duckduckgo.com"));
+    pointerView->stop();
+    window.closeTab(pointerIndex);
     wait(100);
 
     // Both surfaces use the same transport; the native completion model

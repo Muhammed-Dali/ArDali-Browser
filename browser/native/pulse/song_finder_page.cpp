@@ -868,6 +868,9 @@ void SongFinderPage::showActiveResult(const SongResult &result) {
   activeArtistLabel_->setText(result.artist.isEmpty() ? QStringLiteral("Bilinmeyen Sanatçı") : result.artist);
 
   QString metaStr = result.timestamp.toString(QStringLiteral("dd.MM.yyyy hh:mm"));
+  if (!result.album.isEmpty()) {
+    metaStr += QStringLiteral(" • ") + result.album;
+  }
   if (!result.genre.isEmpty()) {
     metaStr += QStringLiteral(" • ") + result.genre;
   }
@@ -1087,6 +1090,9 @@ void SongFinderPage::addResultCard(const SongResult &result) {
   textLayout->addWidget(artistLabel);
 
   QString metaStr = result.timestamp.toString(QStringLiteral("dd.MM.yyyy hh:mm"));
+  if (!result.album.isEmpty()) {
+    metaStr += QStringLiteral(" • ") + result.album;
+  }
   if (!result.genre.isEmpty()) {
     metaStr += QStringLiteral(" • ") + result.genre;
   }

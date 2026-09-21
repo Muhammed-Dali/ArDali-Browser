@@ -30,6 +30,7 @@
 #include <algorithm>
 
 #include "browser_policy.h"
+#include "search_engine_definition.h"
 #include "security_utils.h"
 #include "new_tab_asset_resolver.h"
 #include "new_tab_scheme.h"
@@ -75,21 +76,6 @@ class TrackingParameterInterceptor final : public QWebEngineUrlRequestIntercepto
   bool enabled_ = true;
 };
 
-#if QT_VERSION >= QT_VERSION_CHECK(6, 8, 0)
-QString permissionName(QWebEnginePermission::PermissionType type) {
-  switch (type) {
-    case QWebEnginePermission::PermissionType::MediaAudioCapture: return QStringLiteral("mikrofon");
-    case QWebEnginePermission::PermissionType::MediaVideoCapture: return QStringLiteral("kamera");
-    case QWebEnginePermission::PermissionType::MediaAudioVideoCapture: return QStringLiteral("kamera ve mikrofon");
-    case QWebEnginePermission::PermissionType::DesktopVideoCapture: return QStringLiteral("ekran paylaşımı");
-    case QWebEnginePermission::PermissionType::DesktopAudioVideoCapture: return QStringLiteral("ekran ve ses paylaşımı");
-    case QWebEnginePermission::PermissionType::Notifications: return QStringLiteral("bildirim");
-    case QWebEnginePermission::PermissionType::Geolocation: return QStringLiteral("konum");
-    case QWebEnginePermission::PermissionType::ClipboardReadWrite: return QStringLiteral("pano erişimi");
-    default: return QStringLiteral("bu özellik");
-  }
-}
-#endif
 
 QString frequentSiteKey(const QUrl &url) {
   QString host = url.host().toLower();
@@ -1232,6 +1218,31 @@ QStringList BrowserProfileService::recentSearches(const QString &query, int limi
   return result;
 }
 
+bool BrowserProfileService::removeSearchHistory(const QString &query) {
+  if (profile_->isOffTheRecord()) return false;
+  const QString cleanQuery = query.simplified().left(256);
+  if (cleanQuery.isEmpty()) return false;
+  const QJsonDocument document = QJsonDocument::fromJson(
+      preferences_.value(QStringLiteral("search/history")).toByteArray());
+  if (!document.isArray()) return false;
+  QJsonArray remaining;
+  bool removed = false;
+  for (const QJsonValue &value : document.array()) {
+    const QString storedQuery = value.toObject().value(QStringLiteral("query")).toString().simplified();
+    if (storedQuery.compare(cleanQuery, Qt::CaseInsensitive) == 0) {
+      removed = true;
+      continue;
+    }
+    remaining.append(value);
+  }
+  if (!removed) return false;
+  preferences_.setValue(QStringLiteral("search/history"),
+                        QJsonDocument(remaining).toJson(QJsonDocument::Compact));
+  preferences_.sync();
+  emit historyChanged();
+  return true;
+}
+
 void BrowserProfileService::clearSearchHistory() {
   preferences_.remove(QStringLiteral("search/history"));
   preferences_.sync();
@@ -1253,6 +1264,10 @@ QList<BrowserDownloadEntry> BrowserProfileService::recentDownloads() const {
       result.prepend({job.fileName, job.targetPath, GeneralDownloadManager::stateText(job.state)});
   }
   return result;
+}
+
+int BrowserProfileService::recentDownloadCount() const {
+  return static_cast<int>(recentDownloads().size());
 }
 
 QList<BrowserDownloadEntry> BrowserProfileService::nativeDownloads() const { return downloads_; }
@@ -1285,20 +1300,122 @@ std::optional<ClosedTabEntry> BrowserProfileService::takeClosedTab(int index) {
 }
 
 QString BrowserProfileService::searchEngine() const {
-  return preferences_.value(QStringLiteral("browser/searchEngine"), QStringLiteral("DuckDuckGo")).toString();
+  const QString stored = preferences_.value(QStringLiteral("browser/searchEngine"), QStringLiteral("DuckDuckGo")).toString();
+  static const QStringList builtIns{QStringLiteral("DuckDuckGo"), QStringLiteral("Google"),
+                                    QStringLiteral("Brave Search"), QStringLiteral("Bing")};
+  if (builtIns.contains(stored)) return stored;
+  for (const auto &custom : customSearchEngines()) if (custom.name == stored) return stored;
+  return QStringLiteral("DuckDuckGo");
 }
 
 quint64 BrowserProfileService::totalBlockedCount() const {
   return blockerService_ ? blockerService_->totalBlockedCount() : 0;
 }
 
+quint64 BrowserProfileService::sessionBlockedCount() const {
+  return blockerService_ ? blockerService_->sessionBlockedCount() : 0;
+}
+
 void BrowserProfileService::setSearchEngine(const QString &engine) {
   const QString trimmed = engine.trimmed();
   if (trimmed.isEmpty()) return;
+  static const QStringList builtIns{QStringLiteral("DuckDuckGo"), QStringLiteral("Google"),
+                                    QStringLiteral("Brave Search"), QStringLiteral("Bing")};
+  bool known = builtIns.contains(trimmed);
+  for (const auto &custom : customSearchEngines()) known = known || custom.name == trimmed;
+  if (!known) return;
   if (searchEngine() == trimmed) return;
   preferences_.setValue(QStringLiteral("browser/searchEngine"), trimmed);
   preferences_.sync();
   emit searchEngineChanged(trimmed);
+}
+
+QList<CustomSearchEngine> BrowserProfileService::customSearchEngines() const {
+  QList<CustomSearchEngine> result;
+  const QJsonArray stored = QJsonDocument::fromJson(
+      preferences_.value(QStringLiteral("browser/customSearchEngines")).toByteArray()).array();
+  for (const QJsonValue &value : stored) {
+    const QJsonObject item = value.toObject();
+    const QString name = item.value(QStringLiteral("name")).toString().trimmed();
+    const QString urlTemplate = item.value(QStringLiteral("template")).toString().trimmed();
+    if (!name.isEmpty() && isValidSearchTemplate(urlTemplate)) result.push_back({name, urlTemplate});
+  }
+  return result;
+}
+
+bool BrowserProfileService::isValidSearchTemplate(const QString &urlTemplate) {
+  const QString value = urlTemplate.trimmed();
+  if (value.count(QStringLiteral("%s")) != 1) return false;
+  QString probe = value;
+  probe.replace(QStringLiteral("%s"), QStringLiteral("ardali-query"));
+  const QUrl url(probe, QUrl::StrictMode);
+  return url.isValid() && !url.host().isEmpty() && url.userInfo().isEmpty()
+      && (url.scheme() == QLatin1String("https") || url.scheme() == QLatin1String("http"));
+}
+
+bool BrowserProfileService::saveCustomSearchEngine(const QString &name, const QString &urlTemplate,
+                                                   const QString &previousName) {
+  const QString cleanName = name.trimmed().left(80);
+  const QString cleanTemplate = urlTemplate.trimmed();
+  static const QStringList builtIns{QStringLiteral("DuckDuckGo"), QStringLiteral("Google"),
+                                    QStringLiteral("Brave Search"), QStringLiteral("Bing")};
+  if (cleanName.isEmpty() || builtIns.contains(cleanName, Qt::CaseInsensitive)
+      || !isValidSearchTemplate(cleanTemplate)) return false;
+  const bool replacingDefault = !previousName.isEmpty()
+      && preferences_.value(QStringLiteral("browser/searchEngine")).toString() == previousName;
+  auto engines = customSearchEngines();
+  int replaceIndex = -1;
+  for (int i = 0; i < engines.size(); ++i) {
+    if ((!previousName.isEmpty() && engines[i].name == previousName)
+        || engines[i].name.compare(cleanName, Qt::CaseInsensitive) == 0) {
+      replaceIndex = i;
+      break;
+    }
+  }
+  if (replaceIndex >= 0) engines[replaceIndex] = {cleanName, cleanTemplate};
+  else engines.push_back({cleanName, cleanTemplate});
+  QJsonArray json;
+  for (const auto &engine : engines)
+    json.append(QJsonObject{{QStringLiteral("name"), engine.name}, {QStringLiteral("template"), engine.urlTemplate}});
+  preferences_.setValue(QStringLiteral("browser/customSearchEngines"), QJsonDocument(json).toJson(QJsonDocument::Compact));
+  if (replacingDefault) {
+    preferences_.setValue(QStringLiteral("browser/searchEngine"), cleanName);
+    emit searchEngineChanged(cleanName);
+  }
+  preferences_.sync();
+  return true;
+}
+
+bool BrowserProfileService::removeCustomSearchEngine(const QString &name) {
+  auto engines = customSearchEngines();
+  const qsizetype before = engines.size();
+  engines.removeIf([&](const CustomSearchEngine &engine) { return engine.name == name; });
+  if (engines.size() == before) return false;
+  QJsonArray json;
+  for (const auto &engine : engines)
+    json.append(QJsonObject{{QStringLiteral("name"), engine.name}, {QStringLiteral("template"), engine.urlTemplate}});
+  preferences_.setValue(QStringLiteral("browser/customSearchEngines"), QJsonDocument(json).toJson(QJsonDocument::Compact));
+  if (preferences_.value(QStringLiteral("browser/searchEngine")).toString() == name) {
+    preferences_.setValue(QStringLiteral("browser/searchEngine"), QStringLiteral("DuckDuckGo"));
+    emit searchEngineChanged(QStringLiteral("DuckDuckGo"));
+  }
+  preferences_.sync();
+  return true;
+}
+
+QUrl BrowserProfileService::searchUrlForEngine(const QString &engine, const QString &query) const {
+  for (const auto &custom : customSearchEngines()) {
+    if (custom.name != engine) continue;
+    QString resolved = custom.urlTemplate;
+    resolved.replace(QStringLiteral("%s"), QString::fromLatin1(QUrl::toPercentEncoding(query.trimmed())));
+    const QUrl url(resolved, QUrl::StrictMode);
+    return isValidSearchTemplate(custom.urlTemplate) ? url : QUrl{};
+  }
+  QUrl url(QString::fromLatin1(ardali::core::searchEngineDefinition(engine).searchUrl));
+  QUrlQuery parameters;
+  parameters.addQueryItem(QStringLiteral("q"), query.trimmed());
+  url.setQuery(parameters);
+  return url;
 }
 
 
@@ -1887,4 +2004,3 @@ void BrowserProfileService::applySecureDnsSettings() {
   }
   QWebEngineGlobalSettings::setDnsMode(dnsMode);
 }
-

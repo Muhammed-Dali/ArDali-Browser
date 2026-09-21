@@ -887,6 +887,18 @@ RequestDecision ArDaliBlockerEngine::evaluate(const QUrl &url, ArDaliBlockerReso
     }
     if ((trackerRule && !policy.trackerProtection) || (!trackerRule && !policy.adBlocking)) continue;
     if (rule.actionType == QLatin1String("block")) {
+      // YouTube Playback Fail-Safe: Never block genuine user video streams on googlevideo.com
+      // even if a generic/downstream rule misclassifies them. Only genuine ad streams
+      // (ctier=l, adformat, source=web_video_ads) or explicit ad endpoints should be blocked.
+      if (host.endsWith(QLatin1String("googlevideo.com")) &&
+          (resourceType == ArDaliBlockerResourceType::Media || resourceType == ArDaliBlockerResourceType::Xhr)) {
+        static const QRegularExpression kAdStreamParamRx(
+            QStringLiteral(R"((?:[?&]ctier=l(?:&|$)|[?&]adformat=|[?&]source=web_video_ads(?:&|$)))"),
+            QRegularExpression::CaseInsensitiveOption);
+        if (!kAdStreamParamRx.match(urlString).hasMatch()) {
+          return RequestDecision{ArDaliBlockerAction::Allow, QStringLiteral("youtube-playback-failsafe"), 1000011, QStringLiteral("ardali-youtube-core"), QString()};
+        }
+      }
       return RequestDecision{ArDaliBlockerAction::Block, QStringLiteral("dnr-block"), rule.id, rule.rulesetId, QString()};
     }
     if (rule.actionType == QLatin1String("redirect")) {

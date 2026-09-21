@@ -17,6 +17,12 @@ CredentialSaveBubble::CredentialSaveBubble(QWidget *parent) : QFrame(parent) {
   qApp->installEventFilter(this);
 }
 
+CredentialSaveBubble::~CredentialSaveBubble() {
+  if (qApp) {
+    qApp->removeEventFilter(this);
+  }
+}
+
 void CredentialSaveBubble::initializeUi() {
   setFixedWidth(360);
   setStyleSheet(QStringLiteral(
@@ -231,12 +237,7 @@ void CredentialSaveBubble::clickClose() {
 bool CredentialSaveBubble::eventFilter(QObject *watched, QEvent *event) {
   Q_UNUSED(watched);
   if (!isVisible()) return false;
-  if (event->type() == QEvent::MouseButtonPress) {
-    const auto *mouse = static_cast<QMouseEvent *>(event);
-    if (!rect().contains(mapFromGlobal(mouse->globalPosition().toPoint()))) {
-      clickClose();
-    }
-  } else if (event->type() == QEvent::KeyPress) {
+  if (event->type() == QEvent::KeyPress) {
     const auto *key = static_cast<QKeyEvent *>(event);
     if (key->key() == Qt::Key_Escape) {
       clickClose();

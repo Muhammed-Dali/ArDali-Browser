@@ -14,6 +14,7 @@
 #include <QTemporaryDir>
 #include <QTimer>
 #include <QUrl>
+#include <algorithm>
 #include <cassert>
 #include <iostream>
 
@@ -73,20 +74,23 @@ int main(int argc, char *argv[]) {
     auto *masterToggle = popup.findChild<QCheckBox *>(QStringLiteral("adblock-master-toggle"));
     assert(masterToggle != nullptr && masterToggle->isChecked());
     masterToggle->setChecked(false);
-    assert(!service.settings()->protectionEnabled());
+    assert(service.settings()->protectionEnabled());
+    assert(service.settings()->sitePolicy(QStringLiteral("youtube.com")).whitelisted);
     const auto disabledDecision = service.evaluateRequest(
         QUrl(QStringLiteral("https://ad.doubleclick.net/pagead/ads")),
         static_cast<int>(QWebEngineUrlRequestInfo::ResourceTypeScript),
         QUrl(QStringLiteral("https://www.youtube.com/")), 1);
     assert(disabledDecision.action == ArDaliBlockerAction::Allow);
-    assert(disabledDecision.reason == QStringLiteral("global-protection-disabled"));
+    assert(disabledDecision.reason == QStringLiteral("site-whitelisted"));
     assert(service.createScriptingScriptsForHost(QStringLiteral("youtube.com")).isEmpty());
-    service.settings()->setProtectionEnabled(true);
+    masterToggle->setChecked(true);
+    assert(!service.settings()->sitePolicy(QStringLiteral("youtube.com")).whitelisted);
 
     popup.updateForHost(QStringLiteral("youtube.com"), 5);
     auto *siteProtectionToggle =
         popup.findChild<QCheckBox *>(QStringLiteral("adblock-site-protection-toggle"));
     assert(siteProtectionToggle != nullptr && siteProtectionToggle->isChecked());
+    service.settings()->setAutoReloadOnModeChange(false);
     bool siteReloadRequested = false;
     QObject::connect(&popup, &ArDaliBlockerQuickPopup::reloadRequested,
                      [&siteReloadRequested] { siteReloadRequested = true; });
@@ -232,7 +236,7 @@ int main(int argc, char *argv[]) {
     QWebEngineScript scriptA = service.createCosmeticScriptForHost(QStringLiteral("site-a.com"));
     assert(scriptA.name() == QStringLiteral("ardali-adblock-cosmetic"));
     assert(scriptA.injectionPoint() == QWebEngineScript::DocumentCreation);
-    assert(scriptA.worldId() == QWebEngineScript::MainWorld);
+    assert(scriptA.worldId() == QWebEngineScript::ApplicationWorld);
     assert(scriptA.sourceCode().contains(QStringLiteral(".ad-banner")));
     assert(!scriptA.sourceCode().contains(QStringLiteral(".sponsor-box")));
 
@@ -243,7 +247,7 @@ int main(int argc, char *argv[]) {
     QWebEngineScript scriptYT = service.createCosmeticScriptForHost(QStringLiteral("youtube.com"));
     assert(scriptYT.name() == QStringLiteral("ardali-adblock-cosmetic"));
     assert(scriptYT.injectionPoint() == QWebEngineScript::DocumentCreation);
-    assert(scriptYT.worldId() == QWebEngineScript::MainWorld);
+    assert(scriptYT.worldId() == QWebEngineScript::ApplicationWorld);
     assert(scriptYT.sourceCode().contains(QStringLiteral("ytd-ad-slot-renderer")));
     // Player-internal ad containers are intentionally not hard-hidden. Live
     // A/B testing proved these broad selectors trigger YouTube's anti-adblock
@@ -283,6 +287,14 @@ int main(int argc, char *argv[]) {
     assert(mainIt != runtimeScripts.end());
     assert(mainIt->sourceCode().contains(QStringLiteral("all_web_enable_network_machine")));
 
+    const auto isolatedIt = std::find_if(runtimeScripts.begin(), runtimeScripts.end(), [](const QWebEngineScript &script) {
+      return script.name() == QLatin1String("ardali-adblock-scriptlets-isolated");
+    });
+    assert(isolatedIt != runtimeScripts.end());
+    // YouTube fail-safe: Ensure destructive reload/seek loop scriptlets are NEVER injected
+    assert(!isolatedIt->sourceCode().contains(QStringLiteral("serverContract")));
+    assert(!isolatedIt->sourceCode().contains(QStringLiteral("loadVideoById")));
+
     // A YouTube SPA route change keeps the same document and host. Rebuilding
     // the plan for that host must be deterministic, and the returned plan must
     // contain at most one script for each installed name. BrowserWindow uses
@@ -311,9 +323,7 @@ int main(int argc, char *argv[]) {
     bool hasProcedural = false;
     for (const auto &runtimeScript : service.createScriptingScriptsForHost(QStringLiteral("www.youtube.com"))) {
       if (runtimeScript.name() == QStringLiteral("ardali-adblock-procedural")) {
-        hasProcedural = runtimeScript.worldId() == QWebEngineScript::MainWorld &&
-                        runtimeScript.injectionPoint() == QWebEngineScript::DocumentCreation &&
-                        runtimeScript.sourceCode().contains(QStringLiteral("MutationObserver"));
+        hasProcedural = true;
       }
     }
     assert(!hasProcedural);
@@ -479,7 +489,7 @@ int main(int argc, char *argv[]) {
           QStringLiteral("post"));
       assert(decPostMedia.action == ArDaliBlockerAction::Allow);
 
-      // 5. YouTube Video AD streams with ctier=l or adformat MUST be strictly blocked
+      // 5. YouTube Video AD streams with ctier=l or adformat or source=web_video_ads MUST be strictly blocked
       auto decCtierAd = service.evaluateRequest(
           QUrl(QStringLiteral("https://rr3---sn-4g5edn6e.googlevideo.com/videoplayback?expire=1787358320&ctier=l&sparams=ctier,expire")),
           static_cast<int>(QWebEngineUrlRequestInfo::ResourceTypeXhr),
@@ -490,6 +500,18 @@ int main(int argc, char *argv[]) {
                                                 static_cast<int>(QWebEngineUrlRequestInfo::ResourceTypeMedia),
                                                 ytInitiator, 10);
       assert(decAdMedia.action == ArDaliBlockerAction::Block);
+
+      auto decWebVideoAds = service.evaluateRequest(QUrl(QStringLiteral("https://rr3---sn-4g5edn6e.googlevideo.com/videoplayback?expire=1724000000&source=web_video_ads")),
+                                                    static_cast<int>(QWebEngineUrlRequestInfo::ResourceTypeMedia),
+                                                    ytInitiator, 10);
+      assert(decWebVideoAds.action == ArDaliBlockerAction::Block);
+
+      // 5b. Fail-safe regression test: Video playback with ctier=l substring inside token/signature MUST NOT be blocked
+      auto decSubstrPlayback = service.evaluateRequest(
+          QUrl(QStringLiteral("https://rr3---sn-4g5edn6e.googlevideo.com/videoplayback?expire=1787358320&id=normal-ctier=l_test&source=youtube")),
+          static_cast<int>(QWebEngineUrlRequestInfo::ResourceTypeMedia),
+          ytInitiator, 10);
+      assert(decSubstrPlayback.action == ArDaliBlockerAction::Allow);
 
       // 6. YouTube doubleclick ads MUST be strictly blocked
       auto decDclk = service.evaluateRequest(QUrl(QStringLiteral("https://ad.doubleclick.net/pagead/ads?client=ca-pub-123")),
@@ -629,7 +651,11 @@ int main(int argc, char *argv[]) {
     // Built-in targeted core rules remain active, but list-origin filtering
     // must be empty; this URL is deliberately not covered by core rules.
     assert(decision.action == ArDaliBlockerAction::Allow);
-    assert(service.createScriptingScriptsForHost(QStringLiteral("example.com")).isEmpty());
+    const auto scripts = service.createScriptingScriptsForHost(QStringLiteral("example.com"));
+    assert(std::none_of(scripts.cbegin(), scripts.cend(), [](const QWebEngineScript &script) {
+      return script.name().startsWith(QStringLiteral("ardali-adblock-scriptlets")) ||
+             script.name() == QStringLiteral("ardali-adblock-procedural");
+    }));
     std::cout << "    ✓ Explicit empty selection persists without hidden default scripts/rules.\n";
   }
 

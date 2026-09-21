@@ -62,6 +62,9 @@ enum class BrowserIcon {
   MicrophoneSlash,
   NotificationSlash,
   ArrowLeft,
+  ArrowRight,
+  Reload,
+  Stop,
   JavascriptSlash,
   ImageSlash,
   PopupSlash,
@@ -75,6 +78,10 @@ enum class BrowserIcon {
 
 namespace BrowserIcons {
 QIcon icon(BrowserIcon id);
+QIcon backIcon();
+QIcon forwardIcon();
+QIcon reloadIcon();
+QIcon stopIcon();
 QIcon appIcon();
 QIcon incognitoIcon();
 QIcon youtubeIcon();

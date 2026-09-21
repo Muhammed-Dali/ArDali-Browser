@@ -298,6 +298,9 @@ PulseResultCard::PulseResultCard(const SongResult &result,
   metaRow->setSpacing(6);
 
   QString metaStr = QStringLiteral("%1 • %2").arg(result.timestamp.toString(QStringLiteral("hh:mm:ss")), result.sourceDisplayName());
+  if (!result.album.isEmpty()) {
+    metaStr += QStringLiteral(" • %1").arg(result.album);
+  }
   if (!result.genre.isEmpty()) {
     metaStr += QStringLiteral(" • %1").arg(result.genre);
   }
@@ -376,6 +379,7 @@ PulseQuickPopup::PulseQuickPopup(SongRecognitionService *service,
 }
 
 PulseQuickPopup::~PulseQuickPopup() {
+  if (service_ && service_->isListening() && !handingOffToFullPage_) service_->stopListening();
   if (service_ && deviceUseHeld_) service_->endDeviceUiUse();
 }
 
@@ -465,8 +469,10 @@ void PulseQuickPopup::setupUi() {
   openFullBtn_->setCursor(Qt::PointingHandCursor);
   openFullBtn_->setToolTip(QStringLiteral("Tam ArDali Pulse sayfasını aç"));
   connect(openFullBtn_, &QPushButton::clicked, this, [this]() {
+    handingOffToFullPage_ = true;
     emit openFullPageRequested();
     hide();
+    handingOffToFullPage_ = false;
   });
   rootLayout->addWidget(openFullBtn_);
 }
@@ -489,6 +495,9 @@ void PulseQuickPopup::showEvent(QShowEvent *event) {
 }
 
 void PulseQuickPopup::hideEvent(QHideEvent *event) {
+  if (service_ && service_->isListening() && !handingOffToFullPage_) {
+    service_->stopListening();
+  }
   if (service_ && deviceUseHeld_) {
     deviceUseHeld_ = false;
     service_->endDeviceUiUse();

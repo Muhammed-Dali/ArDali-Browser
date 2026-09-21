@@ -134,7 +134,7 @@ class TabStripWidget : public QWidget {
   QPoint dragOffsetInTab_;
   std::optional<QPoint> draggedTopLeft_;
 
-  TabStyle tabStyle_ = TabStyle::ChromeCurved;
+  TabStyle tabStyle_ = TabStyle::ArDaliConnected;
   TabLayoutModel layoutModel_;
   TabStripAnimator animator_;
 

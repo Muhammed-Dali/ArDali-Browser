@@ -10,7 +10,6 @@ TabThrobber &TabThrobber::instance() {
   static TabThrobber singleInstance;
   return singleInstance;
 }
-
 TabThrobber::TabThrobber(QObject *parent) : QObject(parent) {
   animationTimer_.setInterval(33); // ~30 FPS
   connect(&animationTimer_, &QTimer::timeout, this, &TabThrobber::onTimerTick);
@@ -122,9 +121,8 @@ void TabThrobber::onTimerTick() {
   emit throbberTick();
 }
 
-QIcon TabThrobber::renderThrobberIcon(int frameStep, const QPalette &palette, bool activeTab, qreal dpr) {
+QIcon TabThrobber::renderThrobberIcon(int frameStep, const QPalette &palette, bool activeTab, qreal dpr, int baseSize) {
   const qreal scale = (dpr > 0.0) ? dpr : 1.0;
-  const int baseSize = 16;
   const int size = static_cast<int>(baseSize * scale);
   QPixmap pixmap(size, size);
   pixmap.setDevicePixelRatio(scale);
@@ -133,30 +131,42 @@ QIcon TabThrobber::renderThrobberIcon(int frameStep, const QPalette &palette, bo
   QPainter painter(&pixmap);
   painter.setRenderHint(QPainter::Antialiasing, true);
 
+  // Color: accent for active tab, muted for inactive
   QColor strokeColor;
   if (activeTab) {
     strokeColor = palette.color(QPalette::Highlight);
-    if (!strokeColor.isValid() || strokeColor.alpha() == 0 || strokeColor == palette.color(QPalette::WindowText)) {
-      strokeColor = QColor(QStringLiteral("#8ab4f8"));
+    if (!strokeColor.isValid() || strokeColor.alpha() == 0 ||
+        strokeColor == palette.color(QPalette::WindowText)) {
+      strokeColor = QColor(QStringLiteral("#4d90fe")); // Chrome blue
     }
   } else {
     strokeColor = palette.color(QPalette::PlaceholderText);
-    if (!strokeColor.isValid() || strokeColor.alpha() == 0 || strokeColor == palette.color(QPalette::WindowText)) {
+    if (!strokeColor.isValid() || strokeColor.alpha() == 0 ||
+        strokeColor == palette.color(QPalette::WindowText)) {
       strokeColor = QColor(QStringLiteral("#9aa0a6"));
     }
   }
 
-  QPen pen(strokeColor);
-  pen.setWidthF(2.0);
-  pen.setCapStyle(Qt::RoundCap);
-  painter.setPen(pen);
+  // Track (background circle) — very faint
+  QColor trackColor = strokeColor;
+  trackColor.setAlphaF(0.15);
+  QPen trackPen(trackColor);
+  trackPen.setWidthF(1.6 * scale);
+  trackPen.setCapStyle(Qt::RoundCap);
+  painter.setPen(trackPen);
+  const qreal margin = 2.5 * scale;
+  const QRectF bounds(margin, margin, size - 2 * margin, size - 2 * margin);
+  painter.drawEllipse(bounds);
 
-  const int margin = 2;
-  const QRectF bounds(margin, margin, baseSize - 2 * margin, baseSize - 2 * margin);
+  // Spinner arc — fixed 270° span, rotates at constant speed
+  QPen spinPen(strokeColor);
+  spinPen.setWidthF(1.6 * scale);
+  spinPen.setCapStyle(Qt::RoundCap);
+  painter.setPen(spinPen);
 
-  const int startAngleDeg = 360 - ((frameStep * 14) % 360);
-  const double wave = (1.0 + std::sin(frameStep * 0.18)) * 0.5;
-  const int spanAngleDeg = -static_cast<int>(50.0 + 200.0 * wave);
+  // 14° per frame → one full revolution in ~25.7 frames ≈ 0.85s at 30fps
+  const int startAngleDeg = (360 - (frameStep * 14) % 360);
+  const int spanAngleDeg  = -270; // fixed 270° arc, Chrome-style
 
   painter.drawArc(bounds, startAngleDeg * 16, spanAngleDeg * 16);
   painter.end();

@@ -19,6 +19,7 @@
 #include <QProcess>
 #include <QPushButton>
 #include <QStandardPaths>
+#include <QTemporaryDir>
 #include <QUrl>
 #include <QVBoxLayout>
 #include <QWebEngineFullScreenRequest>
@@ -82,6 +83,9 @@ LocalMediaPlayerPage::LocalMediaPlayerPage(const LocalMediaOpenRequest &request,
                                            QWidget *parent)
     : QWidget(parent), mediaPath_(QFileInfo(request.path).canonicalFilePath()),
       ffmpegPath_(ffmpegPath), playerKind_(request.playerKind), audioEffects_(audioEffects) {
+  if (profile && profile->isOffTheRecord()) {
+    privateArtworkDirectory_ = std::make_unique<QTemporaryDir>();
+  }
   setObjectName(QStringLiteral("local-media-player-page"));
   auto *layout = new QVBoxLayout(this);
   layout->setContentsMargins(0, 0, 0, 0);
@@ -136,6 +140,13 @@ LocalMediaPlayerPage::LocalMediaPlayerPage(const LocalMediaOpenRequest &request,
   loadMedia(request);
 }
 
+LocalMediaPlayerPage::~LocalMediaPlayerPage() {
+  ++artworkGeneration_;
+  if (artworkReply_) artworkReply_->abort();
+  if (artworkProcess_ && artworkProcess_->state() != QProcess::NotRunning) artworkProcess_->kill();
+  if (audioEffects_ && view_) audioEffects_->unregisterWebView(view_);
+}
+
 void LocalMediaPlayerPage::loadMedia(const LocalMediaOpenRequest &request) {
   const QString canonicalPath = QFileInfo(request.path).canonicalFilePath();
   if (canonicalPath.isEmpty() || request.playerKind == LocalMediaPlayerKind::External) return;
@@ -175,8 +186,10 @@ void LocalMediaPlayerPage::requestArtwork(const LocalMediaOpenRequest &request) 
       media.canonicalFilePath().toUtf8() + '|' + QByteArray::number(media.size()) + '|'
           + QByteArray::number(media.lastModified().toMSecsSinceEpoch()),
       QCryptographicHash::Sha256).toHex();
-  const QString cacheDirectory = QDir(QStandardPaths::writableLocation(QStandardPaths::CacheLocation))
-      .filePath(QStringLiteral("media-artwork"));
+  const QString cacheDirectory = privateArtworkDirectory_ && privateArtworkDirectory_->isValid()
+      ? privateArtworkDirectory_->path()
+      : QDir(QStandardPaths::writableLocation(QStandardPaths::CacheLocation))
+            .filePath(QStringLiteral("media-artwork"));
   QDir().mkpath(cacheDirectory);
   const QString cachePath = QDir(cacheDirectory).filePath(QString::fromLatin1(cacheKey) + QStringLiteral(".png"));
   QFile cached(cachePath);

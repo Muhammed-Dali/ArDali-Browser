@@ -36,7 +36,7 @@ int main(int argc, char *argv[]) {
   // 2. Verify TabManager Audible State
   TabManager tabManager;
   QObject owner;
-  QWebEngineProfile profile(QStringLiteral("ardali-audible-test"), &app);
+  QWebEngineProfile profile(&app);
   QWebEngineView webView;
   webView.setPage(new QWebEnginePage(&profile, &webView));
 
@@ -144,14 +144,16 @@ int main(int argc, char *argv[]) {
   }
 
   // Verify measureMemory error handling with invalid/null page
-  const TabMemoryInfo invalidMem = TabHoverCard::measureMemory(nullptr, {});
+  const TabMemoryInfo invalidMem =
+      TabHoverCard::measureMemory(nullptr, QVector<QWebEngineView *>{});
   if (invalidMem.valid) {
     std::cerr << "measureMemory on null page must return valid=false\n";
     return 1;
   }
 
   // Verify measureMemory on test webView
-  const TabMemoryInfo nonRunningMem = TabHoverCard::measureMemory(webView.page(), {&webView});
+  const TabMemoryInfo nonRunningMem =
+      TabHoverCard::measureMemory(webView.page(), QVector<QWebEngineView *>{&webView});
   if (nonRunningMem.valid && nonRunningMem.bytes > 0) {
     std::cerr << "measureMemory on unrendered page must return valid=false\n";
     return 1;

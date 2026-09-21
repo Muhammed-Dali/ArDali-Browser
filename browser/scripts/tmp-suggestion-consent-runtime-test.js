@@ -1,3 +1,5 @@
+// Manual DevTools-protocol smoke test for the current native new-tab
+// suggestion bridge. This attaches to a developer-launched debug endpoint.
 const endpoint = process.argv[2];
 if (!endpoint) throw new Error('websocket endpoint required');
 
@@ -26,28 +28,31 @@ const evaluate = async expression => {
 socket.onopen = async () => {
   try {
     await call('Runtime.enable');
-    await evaluate(`new Promise((resolve,reject)=>{const started=Date.now();const check=()=>{if(document.getElementById('ardali-native-suggestions'))resolve(true);else if(Date.now()-started>5000)reject(new Error('suggestion UI missing'));else setTimeout(check,50)};check()})`);
-    const before = await evaluate(`new Promise(resolve=>{
-      localStorage.removeItem('ardali.searchSuggestions');
-      window.dispatchEvent(new Event('ardali-settings-search-suggestions'));
-      window.ardaliRemoteSuggestions=[];
-      const input=document.getElementById('query');input.value='eba';input.dispatchEvent(new FocusEvent('focus'));input.dispatchEvent(new Event('input',{bubbles:true}));
-      setTimeout(()=>resolve({consent:localStorage.getItem('ardali.searchSuggestions'),prompt:!!document.querySelector('.ardali-consent'),titles:[...document.querySelectorAll('.ardali-suggestion-title')].map(x=>x.textContent),icons:document.querySelectorAll('.ardali-suggestion-icon').length}),250);
+    await evaluate(`new Promise((resolve,reject)=>{const started=Date.now();const check=()=>{if(document.getElementById('search-suggestions')&&typeof window.ardaliShowSuggestions==='function')resolve(true);else if(Date.now()-started>5000)reject(new Error('current suggestion UI missing'));else setTimeout(check,50)};check()})`);
+    const result = await evaluate(`new Promise(resolve=>{
+      const input=document.getElementById('query');
+      const list=document.getElementById('search-suggestions');
+      input.focus();
+      input.value='ardali';
+      input.dispatchEvent(new Event('input',{bubbles:true}));
+      const rows=[
+        {type:'history',text:'ArDali History',url:'https://history.example/'},
+        {type:'remote',text:'ArDali Remote',url:'https://search.example/?q=ardali'}
+      ];
+      // The matching generation is accepted; stale generations must be ignored.
+      for(let id=0;id<32;id++)window.ardaliShowSuggestions(id,'ardali',rows);
+      const shown={hidden:list.hidden,count:list.querySelectorAll('.suggestion-row').length,expanded:input.getAttribute('aria-expanded')};
+      input.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true,cancelable:true}));
+      const escaped={hidden:list.hidden,expanded:input.getAttribute('aria-expanded')};
+      input.focus();input.dispatchEvent(new Event('input',{bubbles:true}));
+      for(let id=0;id<32;id++)window.ardaliShowSuggestions(id,'ardali',rows);
+      input.dispatchEvent(new FocusEvent('blur'));
+      setTimeout(()=>resolve({shown,escaped,blurred:{hidden:list.hidden,expanded:input.getAttribute('aria-expanded')}}),20);
     })`);
-    const after = await evaluate(`new Promise(resolve=>{
-      document.querySelector('.ardali-consent-enable').click();
-      setTimeout(()=>resolve({consent:localStorage.getItem('ardali.searchSuggestions'),prompt:!!document.querySelector('.ardali-consent'),titles:[...document.querySelectorAll('.ardali-suggestion-title')].map(x=>x.textContent),icons:[...document.querySelectorAll('.ardali-suggestion-icon')].map(x=>({src:x.src,complete:x.complete,width:x.naturalWidth}))}),1800);
-    })`);
-    const disabled = await evaluate(`new Promise(resolve=>{
-      localStorage.setItem('ardali.searchSuggestions','disabled');window.dispatchEvent(new Event('ardali-settings-search-suggestions'));
-      setTimeout(()=>resolve({consent:localStorage.getItem('ardali.searchSuggestions'),titles:[...document.querySelectorAll('.ardali-suggestion-title')].map(x=>x.textContent),icons:document.querySelectorAll('.ardali-suggestion-icon').length}),350);
-    })`);
-    console.log(JSON.stringify({ before, after, disabled }, null, 2));
-    const hasEbay = after.titles.some(title => title.toLocaleLowerCase('tr-TR') === 'ebay');
-    const hasEbayIcon = after.icons.some(icon => icon.src.includes('ebay.com') && icon.complete && icon.width > 0);
-    const ok = before.prompt && before.consent === null && before.titles.length === 1 && before.icons === 0
-      && !after.prompt && after.consent === 'enabled' && hasEbay && hasEbayIcon
-      && disabled.consent === 'disabled' && disabled.titles.length === 1 && disabled.icons === 0;
+    console.log(JSON.stringify(result, null, 2));
+    const ok = !result.shown.hidden && result.shown.count === 2 && result.shown.expanded === 'true'
+      && result.escaped.hidden && result.escaped.expanded === 'false'
+      && result.blurred.hidden && result.blurred.expanded === 'false';
     process.exit(ok ? 0 : 2);
   } catch (error) {
     console.error(error.stack || error.message);

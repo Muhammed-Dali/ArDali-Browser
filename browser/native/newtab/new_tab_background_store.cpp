@@ -58,12 +58,48 @@ NewTabBackgroundStore::ImportResult NewTabBackgroundStore::importImage(const QSt
 
   const QImage thumbnail = image.scaled(kThumbnailWidth, kThumbnailHeight, Qt::KeepAspectRatio, Qt::SmoothTransformation);
   QDir().mkpath(directory_);
-  if (!writeImageAtomically(managedImagePath(), image, "PNG")
-      || !writeImageAtomically(thumbnailPath(), thumbnail, "JPEG", 84)) {
-    QFile::remove(managedImagePath());
-    QFile::remove(thumbnailPath());
+  const QString pendingImage = managedImagePath() + QStringLiteral(".pending");
+  const QString pendingThumbnail = thumbnailPath() + QStringLiteral(".pending");
+  QFile::remove(pendingImage);
+  QFile::remove(pendingThumbnail);
+  if (!writeImageAtomically(pendingImage, image, "PNG")
+      || !writeImageAtomically(pendingThumbnail, thumbnail, "JPEG", 84)) {
+    QFile::remove(pendingImage);
+    QFile::remove(pendingThumbnail);
     return {ImportError::StorageFailure, QStringLiteral("Yönetilen arka plan kopyası kaydedilemedi.")};
   }
+
+  const QString imageBackup = managedImagePath() + QStringLiteral(".backup");
+  const QString thumbnailBackup = thumbnailPath() + QStringLiteral(".backup");
+  QFile::remove(imageBackup);
+  QFile::remove(thumbnailBackup);
+  const bool hadImage = QFileInfo::exists(managedImagePath());
+  const bool hadThumbnail = QFileInfo::exists(thumbnailPath());
+  const bool backedUpImage = !hadImage || QFile::rename(managedImagePath(), imageBackup);
+  const bool backedUpThumbnail = !hadThumbnail || QFile::rename(thumbnailPath(), thumbnailBackup);
+  if (!backedUpImage || !backedUpThumbnail) {
+    if (backedUpImage && hadImage && QFileInfo::exists(imageBackup))
+      QFile::rename(imageBackup, managedImagePath());
+    if (backedUpThumbnail && hadThumbnail && QFileInfo::exists(thumbnailBackup))
+      QFile::rename(thumbnailBackup, thumbnailPath());
+    QFile::remove(pendingImage);
+    QFile::remove(pendingThumbnail);
+    return {ImportError::StorageFailure, QStringLiteral("Yönetilen arka plan kopyası kaydedilemedi.")};
+  }
+  const bool installedImage = QFile::rename(pendingImage, managedImagePath());
+  const bool installedThumbnail = installedImage
+      && QFile::rename(pendingThumbnail, thumbnailPath());
+  if (!installedThumbnail) {
+    if (installedImage) QFile::remove(managedImagePath());
+    if (installedThumbnail) QFile::remove(thumbnailPath());
+    if (hadImage && QFileInfo::exists(imageBackup)) QFile::rename(imageBackup, managedImagePath());
+    if (hadThumbnail && QFileInfo::exists(thumbnailBackup)) QFile::rename(thumbnailBackup, thumbnailPath());
+    QFile::remove(pendingImage);
+    QFile::remove(pendingThumbnail);
+    return {ImportError::StorageFailure, QStringLiteral("Yönetilen arka plan kopyası kaydedilemedi.")};
+  }
+  QFile::remove(imageBackup);
+  QFile::remove(thumbnailBackup);
   return {};
 }
 
@@ -75,10 +111,14 @@ bool NewTabBackgroundStore::removeManagedImage() {
 
 bool NewTabBackgroundStore::hasValidManagedImage() const {
   QImageReader reader(managedImagePath());
+  QImageReader thumbnailReader(thumbnailPath());
   const QSize size = reader.size();
-  return QFileInfo::exists(managedImagePath()) && isSupportedFormat(reader.format()) && size.isValid()
+  return QFileInfo::exists(managedImagePath()) && QFileInfo::exists(thumbnailPath())
+      && isSupportedFormat(reader.format()) && thumbnailReader.format().toLower() == "jpeg"
+      && size.isValid()
       && size.width() <= kMaximumDimension && size.height() <= kMaximumDimension
-      && static_cast<qint64>(size.width()) * size.height() <= kMaximumPixels && reader.canRead();
+      && static_cast<qint64>(size.width()) * size.height() <= kMaximumPixels
+      && reader.canRead() && thumbnailReader.canRead();
 }
 
 QString NewTabBackgroundStore::managedImagePath() const {

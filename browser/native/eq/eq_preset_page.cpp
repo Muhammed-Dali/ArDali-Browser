@@ -206,7 +206,9 @@ void EqPresetPage::commit() {
   for (const EqPreset &preset : repository_.presets()) {
     if (preset.id != selectedId_) continue;
     controller_->commitEqualizerBands(preset.bands);
-    QSettings().setValue(QStringLiteral("audioEffects/web/equalizer/presetId"), selectedId_);
+    if (controller_->persistenceEnabled()) {
+      QSettings().setValue(QStringLiteral("audioEffects/web/equalizer/presetId"), selectedId_);
+    }
     // Kaydet, sayfayı kapatmaz. Bundan sonraki önizlemeler kapatılırsa bu
     // son kaydedilen ayara geri dönülür.
     originalBands_ = preset.bands;

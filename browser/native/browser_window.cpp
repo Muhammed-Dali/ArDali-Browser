@@ -1,5 +1,8 @@
 #include <QEventLoopLocker>
+#include <QDir>
+#include <QDateTime>
 #include <QFileInfo>
+#include <QStandardPaths>
 #include <QTemporaryDir>
 #include <QCompleter>
 #include <QStandardItemModel>
@@ -7,6 +10,7 @@
 #include "core/search_suggestion_service.h"
 #include "core/search_engine_definition.h"
 #include "browser_window.h"
+#include "browser_window_internal.h"
 #include "i18n/i18n.h"
 #include "i18n/language_manager.h"
 
@@ -73,6 +77,7 @@ using ardali::i18n::I18n;
 #include "core/bookmark_candidate_provider.h"
 #include "core/frequent_sites_candidate_provider.h"
 #include "newtab/new_tab_html.h"
+#include "newtab/new_tab_background_store.h"
 #include "newtab/new_tab_scheme.h"
 #include "blocker/ardali_blocker_service.h"
 #include "passwords/credential_vault_manager.h"
@@ -87,19 +92,16 @@ using ardali::i18n::I18n;
 #include <QPrinter>
 #include <QPrintDialog>
 #include <QFileDialog>
+#include <QPushButton>
+#include <QTextBrowser>
+#include <QVBoxLayout>
 #include <QWebEngineFindTextResult>
 
 namespace {
 static std::atomic<uint64_t> s_tabIdSequence{1};
 
-bool isNewTabUrl(const QUrl &url) {
-  const QString scheme = url.scheme().toLower();
-  const QString host = url.host().toLower();
-  return scheme == QLatin1String("ardali") &&
-      (host == QLatin1String("newtab") || host == QLatin1String("incognito")) &&
-      (url.path().isEmpty() || url.path() == QLatin1String("/")) &&
-      !url.hasQuery() && !url.hasFragment() && url.userInfo().isEmpty() && url.port() == -1;
-}
+// NOTE: isNewTabUrl is defined inline in browser_window_internal.h
+
 
 QString navigationUrlKey(const QUrl &url) {
   if (!url.isValid()) return {};
@@ -121,9 +123,6 @@ bool isInternalOrNonWebUrl(const QUrl &url) {
   return isNewTabUrl(url);
 }
 
-QUrl searchUrlForEngine(const QString &engine, const QString &queryText) {
-  return ardali::core::AddressInputResolver::searchUrlForEngine(engine, queryText);
-}
 
 QString bookmarkDisplayName(const QUrl &url) {
   const QString host = url.host().toLower();
@@ -307,6 +306,7 @@ class BrowserWebPage final : public QWebEnginePage {
  public:
   BrowserWebPage(QWebEngineProfile *profile, BrowserWindow *window, QObject *parent = nullptr)
       : QWebEnginePage(profile, parent), window_(window) {
+    setBackgroundColor(QColor(7, 17, 31));
     installMediaCaptureHook();
     scripts().insert(CredentialAutofillController::candidateCaptureScript());
   }
@@ -382,6 +382,24 @@ class BrowserWebPage final : public QWebEnginePage {
         if (ok && id >= 0 && text.size() <= 256 &&
             (view->hasFocus() || view->isAncestorOf(QApplication::focusWidget())))
           window->requestNewTabSuggestions(this, text, id);
+      } else if (command == QLatin1String("activate")) {
+        const QString text = params.queryItemValue(QStringLiteral("q"), QUrl::FullyDecoded).simplified().left(256);
+        const QPointer<QWebEngineView> guardedView(view);
+        if (!text.isEmpty()) {
+          QMetaObject::invokeMethod(view, [guardedView, text] {
+            if (!guardedView || !isNewTabUrl(guardedView->url())) return;
+            if (auto *owner = qobject_cast<BrowserWindow *>(guardedView->window());
+                owner && owner->currentView() == guardedView)
+              owner->navigateFromUserInput(text);
+          }, Qt::QueuedConnection);
+        }
+      } else if (command == QLatin1String("delete-history") && service && !profile()->isOffTheRecord()) {
+        bool ok = false;
+        const int id = params.queryItemValue(QStringLiteral("id")).toInt(&ok);
+        const QString text = params.queryItemValue(QStringLiteral("q"), QUrl::FullyDecoded).simplified().left(256);
+        const QString input = params.queryItemValue(QStringLiteral("input"), QUrl::FullyDecoded).left(256);
+        if (ok && id >= 0 && !text.isEmpty() && service->removeSearchHistory(text))
+          window->requestNewTabSuggestions(this, input, id);
       }
       return false;
     }
@@ -396,6 +414,54 @@ class BrowserWebPage final : public QWebEnginePage {
         QMetaObject::invokeMethod(view, [view, engine] {
           if (!view || !isNewTabUrl(view->url())) return;
           if (auto *window = qobject_cast<BrowserWindow *>(view->window())) window->setSearchEngine(engine);
+        }, Qt::QueuedConnection);
+      }
+      return false;
+    }
+    if (url.scheme() == QLatin1String("ardali") && url.host() == QLatin1String("card-settings")) {
+      const QUrlQuery q(url);
+      const bool downloads = q.queryItemValue(QStringLiteral("downloads")) == QLatin1String("1");
+      const bool blocked = q.queryItemValue(QStringLiteral("blocked")) == QLatin1String("1");
+      QString mode = q.queryItemValue(QStringLiteral("mode"));
+      if (mode != QLatin1String("session") && mode != QLatin1String("all_time")) mode = QStringLiteral("all_time");
+
+      const QPointer<QWebEngineView> view(qobject_cast<QWebEngineView *>(parent()));
+      const QString capability = property("ardali-suggest-capability").toString();
+      if (isMainFrame && isNewTabUrl(this->url()) && view && !capability.isEmpty() &&
+          q.queryItemValue(QStringLiteral("cap")) == capability) {
+        QMetaObject::invokeMethod(view, [view, downloads, blocked, mode] {
+          if (!view || !isNewTabUrl(view->url())) return;
+          QSettings settings;
+          settings.setValue(QStringLiteral("browser/showDownloadsCard"), downloads);
+          settings.setValue(QStringLiteral("browser/showBlockedCard"), blocked);
+          settings.setValue(QStringLiteral("browser/blockedCounterMode"), mode);
+          settings.setValue(QStringLiteral("browser/cards"), downloads || blocked);
+          settings.sync();
+          if (auto *window = qobject_cast<BrowserWindow *>(view->window())) {
+            window->syncNewTabViews();
+          }
+        }, Qt::QueuedConnection);
+      }
+      return false;
+    }
+    if (url.scheme() == QLatin1String("ardali") && url.host() == QLatin1String("newtab-background")) {
+      const QUrlQuery query(url);
+      const QString command = query.queryItemValue(QStringLiteral("op"));
+      const QString capability = property("ardali-suggest-capability").toString();
+      auto *view = qobject_cast<QWebEngineView *>(parent());
+      auto *window = view ? qobject_cast<BrowserWindow *>(view->window()) : nullptr;
+      if (isMainFrame && isNewTabUrl(this->url()) && view && window &&
+          window->currentView() == view && profile() == window->services().profile &&
+          !profile()->isOffTheRecord() && !capability.isEmpty() &&
+          query.queryItemValue(QStringLiteral("cap")) == capability &&
+          (command == QLatin1String("pick") || command == QLatin1String("remove")) &&
+          url.toString().size() <= 1024) {
+        const QPointer<QWebEnginePage> guardedPage(this);
+        QMetaObject::invokeMethod(view, [guardedPage, command, capability] {
+          if (!guardedPage) return;
+          auto *guardedView = qobject_cast<QWebEngineView *>(guardedPage->parent());
+          auto *owner = guardedView ? qobject_cast<BrowserWindow *>(guardedView->window()) : nullptr;
+          if (owner) owner->handleNewTabBackgroundCommand(guardedPage, command, capability);
         }, Qt::QueuedConnection);
       }
       return false;
@@ -450,10 +516,14 @@ class BrowserWebPage final : public QWebEnginePage {
       }
       return false;
     }
-    if (isMainFrame && (url.scheme() == QLatin1String("http") || url.scheme() == QLatin1String("https"))) {
+    if (isMainFrame) {
       if (auto *view = qobject_cast<QWebEngineView *>(parent())) {
-        if (auto *window = qobject_cast<BrowserWindow *>(view->window())) {
-          if (profile() == window->services().profile) window->prepareAdBlockScripts(this, url);
+        if (auto *window = window_ ? window_.data() : qobject_cast<BrowserWindow *>(view->window())) {
+          if ((url.scheme() == QLatin1String("http") || url.scheme() == QLatin1String("https")) &&
+              profile() == window->services().profile) {
+            window->prepareAdBlockScripts(this, url);
+          }
+          window->notifyNavigationStarted(view, url);
         }
       }
     }
@@ -547,7 +617,14 @@ class BrowserWebPage final : public QWebEnginePage {
 class BrowserWebView final : public QWebEngineView {
  public:
   explicit BrowserWebView(BrowserWindow *window, QWidget *parent = nullptr)
-      : QWebEngineView(parent), window_(window) {}
+      : QWebEngineView(parent), window_(window) {
+    setStyleSheet(QStringLiteral("background-color: #07111f;"));
+    QPalette pal = palette();
+    pal.setColor(QPalette::Window, QColor(7, 17, 31));
+    pal.setColor(QPalette::Base, QColor(7, 17, 31));
+    setPalette(pal);
+    setAutoFillBackground(true);
+  }
 
  protected:
   void contextMenuEvent(QContextMenuEvent *event) override {
@@ -731,6 +808,26 @@ class BrowserWebView final : public QWebEngineView {
       if (window_) window_->printCurrentPage();
     });
 
+    QAction *captureAct = menu.addAction(I18n::text(QStringLiteral("context.capture_page"), QStringLiteral("Görünür alanın ekran görüntüsünü al...")));
+    QObject::connect(captureAct, &QAction::triggered, [this] {
+      if (window_) window_->captureVisiblePage();
+    });
+
+    QAction *readerAct = menu.addAction(I18n::text(QStringLiteral("context.reader_mode"), QStringLiteral("Okuyucu Modunda Aç")));
+    const QUrl pageUrl = url();
+    readerAct->setEnabled(pageUrl.scheme() == QLatin1String("http") || pageUrl.scheme() == QLatin1String("https"));
+    QObject::connect(readerAct, &QAction::triggered, [this] {
+      if (window_) window_->showReaderMode();
+    });
+
+    QAction *translateAct = menu.addAction(BrowserIcons::icon(BrowserIcon::Language),
+        I18n::text(QStringLiteral("context.translate_page"), QStringLiteral("Sayfayı Çevir")));
+    translateAct->setObjectName(QStringLiteral("contextTranslatePageAction"));
+    translateAct->setEnabled(pageUrl.scheme() == QLatin1String("http") || pageUrl.scheme() == QLatin1String("https"));
+    QObject::connect(translateAct, &QAction::triggered, [this] {
+      if (window_) window_->showTranslatePopup();
+    });
+
     menu.addSeparator();
 
     QAction *viewSourceAct = menu.addAction(I18n::text(QStringLiteral("context.view_source"), QStringLiteral("Sayfa kaynağını görüntüle")));
@@ -814,10 +911,13 @@ BrowserWindow::BrowserWindow(const BrowserServices &services, bool isCaptureShel
       syncNewTabViews();
       if (omnibox_->hasFocus()) updateOmniboxSuggestions(omnibox_->text());
     });
+    connect(services_.profileService, &BrowserProfileService::downloadsChanged,
+            this, &BrowserWindow::syncNewTabViews);
     if (auto *blocker = services_.profileService->blockerService()) {
       connect(blocker, &ArDaliBlockerService::globalStatsChanged, this,
-              [this](quint64, quint64 totalBlocked) {
-        const QString script = newTabProtectionStatsUpdateScript(totalBlocked);
+              [this](quint64 sessionBlocked, quint64 totalBlocked) {
+        const QString script = newTabProtectionStatsUpdateScript(
+            totalBlocked, services_.profileService->recentDownloadCount(), sessionBlocked);
         for (const BrowserTabInfo &tab : std::as_const(tabs_)) {
           if (tab.view && isNewTabUrl(tab.view->url())) tab.view->page()->runJavaScript(script);
         }
@@ -946,6 +1046,16 @@ void BrowserWindow::setupUi() {
     addNewTab(QUrl(QStringLiteral("ardali://newtab/")));
   });
 
+  auto *newWindowShortcut = new QShortcut(QKeySequence(Qt::CTRL | Qt::Key_N), this);
+  connect(newWindowShortcut, &QShortcut::activated, this, [this] {
+    openNewWindow();
+  });
+
+  auto *incognitoWindowShortcut = new QShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_N), this);
+  connect(incognitoWindowShortcut, &QShortcut::activated, this, [this] {
+    openIncognitoWindow();
+  });
+
   auto *closeTabShortcut = new QShortcut(QKeySequence(Qt::CTRL | Qt::Key_W), this);
   connect(closeTabShortcut, &QShortcut::activated, this, [this] {
     if (tabStrip_ && tabStrip_->currentIndex() >= 0 && tabStrip_->currentIndex() < tabs_.size()) {
@@ -982,6 +1092,32 @@ void BrowserWindow::setupUi() {
   connect(historyShortcut, &QShortcut::activated, this, [this] {
     showSettings(SettingsPage::Category::History);
   });
+
+  auto *focusLocationShortcut = new QShortcut(QKeySequence(Qt::CTRL | Qt::Key_L), this);
+  connect(focusLocationShortcut, &QShortcut::activated, this, [this] {
+    omnibox_->setFocus();
+    omnibox_->selectAll();
+  });
+  auto *reloadShortcut = new QShortcut(QKeySequence(Qt::CTRL | Qt::Key_R), this);
+  connect(reloadShortcut, &QShortcut::activated, this, &BrowserWindow::onReloadOrStopClicked);
+  auto *reloadF5Shortcut = new QShortcut(QKeySequence(Qt::Key_F5), this);
+  connect(reloadF5Shortcut, &QShortcut::activated, this, &BrowserWindow::onReloadOrStopClicked);
+  auto *backShortcut = new QShortcut(QKeySequence(Qt::ALT | Qt::Key_Left), this);
+  connect(backShortcut, &QShortcut::activated, this, &BrowserWindow::onBackClicked);
+  auto *forwardShortcut = new QShortcut(QKeySequence(Qt::ALT | Qt::Key_Right), this);
+  connect(forwardShortcut, &QShortcut::activated, this, &BrowserWindow::onForwardClicked);
+  auto *bookmarkShortcut = new QShortcut(QKeySequence(Qt::CTRL | Qt::Key_D), this);
+  connect(bookmarkShortcut, &QShortcut::activated, this, &BrowserWindow::toggleCurrentBookmark);
+  auto *nextTabShortcut = new QShortcut(QKeySequence(Qt::CTRL | Qt::Key_Tab), this);
+  connect(nextTabShortcut, &QShortcut::activated, this, [this] {
+    if (tabStrip_ && !tabs_.isEmpty()) switchTab((tabStrip_->currentIndex() + 1) % tabs_.size());
+  });
+  auto *previousTabShortcut = new QShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_Tab), this);
+  connect(previousTabShortcut, &QShortcut::activated, this, [this] {
+    if (tabStrip_ && !tabs_.isEmpty()) switchTab((tabStrip_->currentIndex() + tabs_.size() - 1) % tabs_.size());
+  });
+  auto *fullScreenShortcut = new QShortcut(QKeySequence(Qt::Key_F11), this);
+  connect(fullScreenShortcut, &QShortcut::activated, this, &BrowserWindow::toggleBrowserFullScreen);
 
   // Tab Strip (Chromium TabStripWidget)
   tabStrip_ = new ardali::desktop_tabs::TabStripWidget(topBar_);
@@ -1050,24 +1186,24 @@ void BrowserWindow::setupUi() {
 
   backBtn_ = new QToolButton(navBar_);
   backBtn_->setObjectName(QStringLiteral("backBtn"));
-  backBtn_->setText(QString::fromUtf8("←"));
-  backBtn_->setToolTip(QStringLiteral("Geri (Alt+Sol)"));
+  backBtn_->setIcon(BrowserIcons::backIcon());
+  backBtn_->setToolTip(I18n::text(QStringLiteral("toolbar.back"), QStringLiteral("Geri (Alt+Sol)")));
   backBtn_->setEnabled(false);
   configureNavigationButton(backBtn_);
   navLayout->addWidget(backBtn_);
 
   forwardBtn_ = new QToolButton(navBar_);
   forwardBtn_->setObjectName(QStringLiteral("forwardBtn"));
-  forwardBtn_->setText(QString::fromUtf8("→"));
-  forwardBtn_->setToolTip(QStringLiteral("İleri (Alt+Sağ)"));
+  forwardBtn_->setIcon(BrowserIcons::forwardIcon());
+  forwardBtn_->setToolTip(I18n::text(QStringLiteral("toolbar.forward"), QStringLiteral("İleri (Alt+Sağ)")));
   forwardBtn_->setEnabled(false);
   configureNavigationButton(forwardBtn_);
   navLayout->addWidget(forwardBtn_);
 
   reloadBtn_ = new QToolButton(navBar_);
   reloadBtn_->setObjectName(QStringLiteral("reloadBtn"));
-  reloadBtn_->setText(QString::fromUtf8("↻"));
-  reloadBtn_->setToolTip(QStringLiteral("Yenile (Ctrl+R)"));
+  reloadBtn_->setIcon(BrowserIcons::reloadIcon());
+  reloadBtn_->setToolTip(I18n::text(QStringLiteral("toolbar.reload"), QStringLiteral("Bu sayfayı yeniden yükleyin")));
   configureNavigationButton(reloadBtn_);
   navLayout->addWidget(reloadBtn_);
 
@@ -1166,14 +1302,8 @@ void BrowserWindow::setupUi() {
   });
   rootLayout->addWidget(bookmarkBar_);
 
-  // Seed default bookmarks if empty on startup
-  if (services_.profileService && services_.profileService->bookmarks().isEmpty()) {
-    services_.profileService->toggleBookmark(QUrl(QStringLiteral("https://github.com/")));
-    services_.profileService->toggleBookmark(QUrl(QStringLiteral("https://www.youtube.com/")));
-    services_.profileService->toggleBookmark(QUrl(QStringLiteral("https://www.facebook.com/")));
-    services_.profileService->toggleBookmark(QUrl(QStringLiteral("https://www.instagram.com/")));
-  }
   renderBookmarks();
+  bookmarkBar_->setVisible(false);
   updateBookmarkBarVisibility();
 
   // 3. Thin loading progress bar (Chrome blue accent)
@@ -1188,6 +1318,7 @@ void BrowserWindow::setupUi() {
   // 4. Page Content Stack
   pageStack_ = new QStackedWidget(central);
   pageStack_->setObjectName(QStringLiteral("pageStack"));
+  pageStack_->setStyleSheet(QStringLiteral("#pageStack { background-color: #07111f; }"));
   rootLayout->addWidget(pageStack_, 1);
 
   setCentralWidget(central);
@@ -1267,6 +1398,32 @@ void BrowserWindow::setupUi() {
   connect(pulseButton_, &PulseToolbarButton::openUrlRequested, this, [this](const QUrl &url) {
     addNewTab(url);
   });
+  if (services_.songRecognition) {
+    connect(services_.songRecognition, &SongRecognitionService::stateChanged, this,
+            [this](SongRecognitionService::State state, const QString &) {
+      if (state != SongRecognitionService::State::Listening) return;
+      QWidget *active = qApp ? qApp->activeWindow() : nullptr;
+      bool belongsToThisWindow = isActiveWindow();
+      for (QWidget *widget = active; widget && !belongsToThisWindow; widget = widget->parentWidget()) {
+        belongsToThisWindow = widget == this;
+      }
+      if (!belongsToThisWindow) return;
+      const int index = tabStrip_ ? tabStrip_->currentIndex() : -1;
+      if (index < 0 || index >= tabs_.size() || !tabs_[index].view) {
+        services_.songRecognition->clearWebContextMetadata();
+        return;
+      }
+      QString cleanTitle = tabs_[index].title.trimmed();
+      if (cleanTitle.endsWith(QStringLiteral(" - YouTube"), Qt::CaseInsensitive)) cleanTitle.chop(10);
+      const QStringList parts = cleanTitle.split(QStringLiteral(" - "));
+      if (parts.size() >= 2) {
+        services_.songRecognition->setWebContextMetadata(
+            parts.mid(1).join(QStringLiteral(" - ")).trimmed(), parts.first().trimmed());
+      } else {
+        services_.songRecognition->setWebContextMetadata(cleanTitle, QString());
+      }
+    });
+  }
 
   connect(mediaDownload_, &QToolButton::clicked, this, [this] {
     if (!downloadPopup_) return;
@@ -1304,6 +1461,7 @@ void BrowserWindow::setupStyle() {
       "#centralRoot { background-color: #1c1b22; }"
       "#topBar { background-color: #1c1b22; }"
       "#tabStrip { background-color: #1c1b22; }"
+      "#pageStack { background-color: #07111f; }"
       "#tabSearchBtn {"
       "  color: #c4c7c5;"
       "  background: transparent;"
@@ -1496,7 +1654,7 @@ void BrowserWindow::retranslateUi() {
     forwardBtn_->setToolTip(I18n::text(QStringLiteral("toolbar.forward"), QStringLiteral("İleri (Alt+Sağ)")));
   }
   if (reloadBtn_) {
-    reloadBtn_->setToolTip(I18n::text(QStringLiteral("toolbar.reload"), QStringLiteral("Yenile (Ctrl+R)")));
+    updateReloadStopButton(isCurrentTabLoading());
   }
   if (zoomButton_) {
     zoomButton_->setToolTip(I18n::text(QStringLiteral("toolbar.zoom"), QStringLiteral("Sayfa yakınlaştırma")));
@@ -1555,7 +1713,8 @@ void BrowserWindow::prepareAdBlockScripts(QWebEnginePage *page, const QUrl &url,
   }
 }
 
-int BrowserWindow::addNewTab(const QUrl &url, int insertIndex) {
+int BrowserWindow::addNewTab(const QUrl &url, int insertIndex, bool initiallyPinned,
+                             const QString &initialTitle) {
   QUrl targetUrl = url;
   if (targetUrl.isEmpty()) {
     targetUrl = QUrl(QStringLiteral("ardali://newtab/"));
@@ -1577,6 +1736,7 @@ int BrowserWindow::addNewTab(const QUrl &url, int insertIndex) {
 
   auto *view = new BrowserWebView(this, pageStack_);
   auto *page = new BrowserWebPage(services_.profile ? services_.profile : QWebEngineProfile::defaultProfile(), this, view);
+  page->setBackgroundColor(QColor(7, 17, 31));
   view->setPage(page);
 
   // Audio Effects registration
@@ -1631,10 +1791,13 @@ int BrowserWindow::addNewTab(const QUrl &url, int insertIndex) {
   const uint64_t tabId = s_tabIdSequence.fetch_add(1);
   BrowserTabInfo info;
   info.id = tabId;
-  info.title = isIncognito() ? QStringLiteral("Yeni Gizli Sekme") : QStringLiteral("Yeni Sekme");
+  info.title = initialTitle.trimmed().isEmpty()
+      ? (isIncognito() ? QStringLiteral("Yeni Gizli Sekme") : QStringLiteral("Yeni Sekme"))
+      : initialTitle.trimmed();
   info.url = targetUrl;
   info.view = view;
   info.isInternal = false;
+  info.isPinned = initiallyPinned;
   info.icon = isIncognito() ? BrowserIcons::incognitoIcon() : BrowserIcons::appIcon();
   info.uuid = services_.tabManager
       ? services_.tabManager->registerTab(view, this, false, info.title)
@@ -1708,8 +1871,10 @@ int BrowserWindow::addInternalTab(QWidget *page, const QString &title, const QIc
 }
 
 void BrowserWindow::closeTab(int index) {
+  if (translateBubble_ && translateBubble_->isVisible()) {
+    translateBubble_->close();
+  }
   dismissSiteControlsBubble();
-  dismissCredentialSaveBubble();
   if (hoverCard_) hoverCard_->hideCard();
   if (tabStrip_) tabStrip_->cancelHover();
   if (index < 0 || index >= tabs_.size()) return;
@@ -1763,6 +1928,10 @@ void BrowserWindow::closeTab(int index) {
     pageStack_->removeWidget(info.view);
     if (!beginForgetClosedView(info.view)) info.view->deleteLater();
   } else if (info.content) {
+    if (info.internalId == QLatin1String("song-finder")
+        && services_.songRecognition && services_.songRecognition->isListening()) {
+      services_.songRecognition->stopListening();
+    }
     pageStack_->removeWidget(info.content);
     info.content->deleteLater();
   }
@@ -1777,8 +1946,10 @@ void BrowserWindow::closeTab(int index) {
 }
 
 void BrowserWindow::switchTab(int index) {
+  if (translateBubble_ && translateBubble_->isVisible()) {
+    translateBubble_->close();
+  }
   dismissSiteControlsBubble();
-  dismissCredentialSaveBubble();
   if (suggestionCompleter_ && suggestionCompleter_->popup()) suggestionCompleter_->popup()->hide();
   if (hoverCard_) hoverCard_->hideCard();
   if (index < 0 || index >= tabs_.size()) return;
@@ -1790,6 +1961,7 @@ void BrowserWindow::switchTab(int index) {
     pageStack_->setCurrentWidget(info.view);
     updateOmniboxForCurrentTab();
     updateNavButtons();
+    updateReloadStopButton(TabThrobber::instance().isLoading(info.view));
     if (findBar_ && findBar_->isVisible()) {
       if (!findBar_->findText().isEmpty()) {
         handleFindRequest(findBar_->findText(), true, findBar_->isCaseSensitive());
@@ -1846,18 +2018,61 @@ void BrowserWindow::switchTab(int index) {
 
   updateBookmarkBarVisibility();
 
+  if (translateButton_) {
+    if (info.translator && (info.translator->state() == PageTranslator::State::Detected ||
+                            info.translator->state() == PageTranslator::State::Translated ||
+                            info.translator->state() == PageTranslator::State::Translating)) {
+      translateButton_->show();
+      if (!info.translationOffered && info.translator->state() == PageTranslator::State::Detected) {
+        info.translationOffered = true;
+        showTranslatePopup();
+      }
+    } else {
+      translateButton_->hide();
+    }
+  }
+
+  if (autofillController_ && autofillController_->activeSaveBubble()) {
+    auto *bubble = autofillController_->activeSaveBubble();
+    if (info.view && autofillController_->activeBubbleView() == info.view.data()) {
+      bubble->show();
+      updateSaveBubblePosition();
+    } else {
+      bubble->hide();
+    }
+  }
+
   if (services_.tabManager && !info.uuid.isNull()) {
     services_.tabManager->activate(info.uuid);
   }
 }
 
 void BrowserWindow::moveTab(int fromIndex, int toIndex) {
+  if (isMovingTab_) return;
   if (hoverCard_) hoverCard_->hideCard();
   if (fromIndex < 0 || fromIndex >= tabs_.size() ||
       toIndex < 0 || toIndex >= tabs_.size() || fromIndex == toIndex) {
     return;
   }
+
+  isMovingTab_ = true;
+
   tabs_.move(fromIndex, toIndex);
+
+  if (tabStrip_ && fromIndex < tabStrip_->count() && toIndex < tabStrip_->count()) {
+    if (tabStrip_->tabId(toIndex) != tabs_[toIndex].id) {
+      tabStrip_->moveTab(fromIndex, toIndex);
+    }
+  }
+
+  if (services_.tabManager) {
+    QVector<TabManager::TabId> orderedIds;
+    orderedIds.reserve(tabs_.size());
+    for (const auto &tab : std::as_const(tabs_)) orderedIds.push_back(tab.uuid);
+    services_.tabManager->reorder(this, orderedIds);
+  }
+
+  isMovingTab_ = false;
 }
 
 bool BrowserWindow::transferTabTo(uint64_t tabId, BrowserWindow *destination, int targetIndex) {
@@ -2037,6 +2252,7 @@ void BrowserWindow::wireViewSignals(QWebEngineView *view, uint64_t tabId) {
       tabStrip_->setTabLoading(idx, true);
     }
     if (idx == tabStrip_->currentIndex()) {
+      updateReloadStopButton(true);
       updateBookmarkBarVisibility();
     }
   });
@@ -2114,6 +2330,12 @@ void BrowserWindow::wireViewSignals(QWebEngineView *view, uint64_t tabId) {
         updateNavButtons();
         updateBlockerControls();
         updateBookmarkBarVisibility();
+        if (translateBubble_ && translateBubble_->isVisible()) {
+          translateBubble_->close();
+        }
+        if (translateButton_) {
+          translateButton_->hide();
+        }
         if (siteControlsBubble_ && siteControlsBubble_->isVisible()) {
           const auto &t = tabs_[idx];
           const QString canon = BrowserProfileService::canonicalOrigin(t.url);
@@ -2135,22 +2357,24 @@ void BrowserWindow::wireViewSignals(QWebEngineView *view, uint64_t tabId) {
       if (autofillController_) {
         autofillController_->onUrlChanged(view, url);
       }
+      tabs_[idx].translationOffered = false;
+      if (tabs_[idx].translator) {
+        tabs_[idx].translator->reset();
+      }
     }
   });
 
   connect(view, &QWebEngineView::loadProgress, this, [this, tabId](int progress) {
     const int idx = findIndexByTabId(tabId);
     if (idx == tabStrip_->currentIndex()) {
-      if (progress < 100) {
+      const bool loading = (progress < 100);
+      if (loading) {
         progressBar_->setValue(progress);
         progressBar_->show();
-        reloadBtn_->setText(QString::fromUtf8("✕"));
-        reloadBtn_->setToolTip(QStringLiteral("Durdur (Esc)"));
       } else {
         progressBar_->hide();
-        reloadBtn_->setText(QString::fromUtf8("⟳"));
-        reloadBtn_->setToolTip(QStringLiteral("Yenile (F5 / Ctrl+R)"));
       }
+      updateReloadStopButton(loading);
     }
   });
 
@@ -2227,6 +2451,22 @@ void BrowserWindow::wireViewSignals(QWebEngineView *view, uint64_t tabId) {
       if (autofillController_) {
         autofillController_->onPageLoadFinished(view, success);
       }
+      if (idx >= 0 && idx < tabs_.size() && !tabs_[idx].isInternal && !isNewTabUrl(view->url())) {
+        const QString scheme = view->url().scheme().toLower();
+        if (scheme == QLatin1String("http") || scheme == QLatin1String("https")) {
+          if (services_.profileService && services_.profileService->translateService() &&
+              services_.profileService->translateService()->isEnabled()) {
+            auto *translator = getOrCreatePageTranslator(idx);
+            if (translator) {
+              translator->detectLanguage();
+            }
+          }
+        }
+      }
+    }
+    // Always reset the button to Reload after load finishes (success or failure)
+    if (findIndexByTabId(tabId) == tabStrip_->currentIndex()) {
+      updateReloadStopButton(false);
     }
   });
 }
@@ -2237,14 +2477,88 @@ void BrowserWindow::syncNewTabViews() {
       collectNewTabFrequentSites(services_.profileService),
       collectNewTabBookmarks(services_.profileService));
   const QString protectionScript = newTabProtectionStatsUpdateScript(
-      services_.profileService->totalBlockedCount());
+      services_.profileService->totalBlockedCount(),
+      services_.profileService->recentDownloadCount(),
+      services_.profileService->sessionBlockedCount());
+
+  QSettings settings;
+  const bool legacyCards = settings.value(QStringLiteral("browser/cards"), true).toBool();
+  const bool showDownloads = settings.value(QStringLiteral("browser/showDownloadsCard"), legacyCards).toBool();
+  const bool showBlocked = settings.value(QStringLiteral("browser/showBlockedCard"), legacyCards).toBool();
+  const QString counterMode = settings.value(QStringLiteral("browser/blockedCounterMode"), QStringLiteral("all_time")).toString();
+  const QString cardSettingsScript = newTabCardSettingsUpdateScript(showDownloads, showBlocked, counterMode);
+  auto *backgroundStore = services_.profileService->newTabBackgroundStore();
+  const bool backgroundAvailable = backgroundStore && backgroundStore->hasValidManagedImage();
+  const QFileInfo backgroundInfo(backgroundStore ? backgroundStore->managedImagePath() : QString{});
+  const quint64 backgroundRevision = backgroundAvailable
+      ? static_cast<quint64>(backgroundInfo.lastModified().toMSecsSinceEpoch())
+          ^ static_cast<quint64>(backgroundInfo.size())
+      : 0;
+  const QString backgroundScript = newTabBackgroundStateUpdateScript(backgroundAvailable, backgroundRevision);
+
   for (const BrowserTabInfo &tab : std::as_const(tabs_)) {
     if (!tab.view || !isNewTabUrl(tab.view->url())) continue;
     tab.view->page()->runJavaScript(script);
     tab.view->page()->runJavaScript(protectionScript);
+    tab.view->page()->runJavaScript(cardSettingsScript);
+    tab.view->page()->runJavaScript(backgroundScript);
     const bool enabled = services_.profileService->searchSuggestions()->isEnabled() && !tab.view->page()->profile()->isOffTheRecord();
     tab.view->page()->runJavaScript(QStringLiteral("if(window.ardaliSuggestionConsent)window.ardaliSuggestionConsent(%1,%2);")
         .arg(enabled ? QStringLiteral("true") : QStringLiteral("false"), tab.view->page()->profile()->isOffTheRecord() ? QStringLiteral("false") : QStringLiteral("true")));
+  }
+}
+
+void BrowserWindow::handleNewTabBackgroundCommand(QWebEnginePage *sourcePage,
+                                                   const QString &command,
+                                                   const QString &capability) {
+  auto *sourceView = sourcePage ? qobject_cast<QWebEngineView *>(sourcePage->parent()) : nullptr;
+  if (!sourcePage || !sourceView || currentView() != sourceView ||
+      !isNewTabUrl(sourcePage->url()) || sourcePage->profile() != services_.profile ||
+      sourcePage->profile()->isOffTheRecord() || capability.isEmpty() ||
+      sourcePage->property("ardali-suggest-capability").toString() != capability ||
+      !services_.profileService) return;
+
+  auto *store = services_.profileService->newTabBackgroundStore();
+  if (!store) return;
+  bool ok = false;
+  bool selectCustom = false;
+  QString message;
+
+  if (command == QLatin1String("pick")) {
+    const QString selectedPath = QFileDialog::getOpenFileName(
+        this, tr("Yeni sekme arka planı seç"),
+        QStandardPaths::writableLocation(QStandardPaths::PicturesLocation),
+        tr("Görseller (*.png *.jpg *.jpeg *.webp)"));
+    if (selectedPath.isEmpty()) {
+      if (sourcePage && isNewTabUrl(sourcePage->url()))
+        sourcePage->runJavaScript(QStringLiteral("if(window.ardaliBackgroundCancelled)window.ardaliBackgroundCancelled();"));
+      return;
+    }
+    const auto result = store->importImage(selectedPath);
+    ok = result.ok();
+    selectCustom = ok;
+    message = ok ? tr("Özel arka plan uygulandı.") : result.message;
+  } else if (command == QLatin1String("remove")) {
+    ok = store->removeManagedImage();
+    message = ok ? tr("Özel arka plan kaldırıldı.") : tr("Özel arka plan kaldırılamadı.");
+  } else {
+    return;
+  }
+
+  const bool available = store->hasValidManagedImage();
+  const QFileInfo backgroundInfo(store->managedImagePath());
+  const quint64 revision = available
+      ? static_cast<quint64>(backgroundInfo.lastModified().toMSecsSinceEpoch())
+          ^ static_cast<quint64>(backgroundInfo.size())
+      : 0;
+  const QString resultScript = newTabBackgroundResultScript(ok, message, available, revision, selectCustom);
+
+  for (const auto &registered : ardali::desktop_tabs::TabWindowRegistry::instance().registeredWindows()) {
+    auto *window = registered.window ? qobject_cast<BrowserWindow *>(registered.window.data()) : nullptr;
+    if (!window || window->services().profileService != services_.profileService) continue;
+    for (const BrowserTabInfo &tab : window->allTabs()) {
+      if (tab.view && isNewTabUrl(tab.view->url())) tab.view->page()->runJavaScript(resultScript);
+    }
   }
 }
 
@@ -2280,19 +2594,31 @@ void BrowserWindow::navigateFromUserInput(const QString &rawInput, const QString
     if (host == QLatin1String("downloads")) { showMediaDownloads(); return; }
     if (host == QLatin1String("listen") || host == QLatin1String("pulse")) { showSongFinder(); return; }
     if (host == QLatin1String("listen-settings")) { showSongFinderSettings(); return; }
-    if (host == QLatin1String("newtab")) {
+    if (host == QLatin1String("newtab") || host == QLatin1String("incognito")) {
+      const QUrl newTabUrl(isIncognito() ? QStringLiteral("ardali://incognito/") : QStringLiteral("ardali://newtab/"));
       if (auto *view = currentView()) {
-        view->load(QUrl(QStringLiteral("ardali://newtab/")));
+        const int idx = tabStrip_ ? tabStrip_->currentIndex() : -1;
+        if (idx >= 0 && idx < tabs_.size() && tabs_[idx].view == view) {
+          tabs_[idx].url = newTabUrl;
+          updateBookmarkBarVisibility();
+        }
+        view->load(newTabUrl);
       } else {
-        addNewTab(QUrl(QStringLiteral("ardali://newtab/")));
+        addNewTab(newTabUrl);
       }
       return;
     }
   }
 
   const QString engine = searchEngine.isEmpty() ? currentSearchEngine() : searchEngine;
-  const auto resolution = ardali::core::AddressInputResolver::resolve(
+  auto resolution = ardali::core::AddressInputResolver::resolve(
       input, engine, QLocale::system(), candidateProvider_.get());
+  if (resolution.classification == ardali::core::AddressInputClassification::Search
+      && services_.profileService) {
+    const QUrl customUrl = services_.profileService->searchUrlForEngine(
+        engine, resolution.searchQuery.isEmpty() ? input : resolution.searchQuery);
+    if (customUrl.isValid()) resolution.url = customUrl;
+  }
   const QUrl url = resolution.url;
   if (!url.isValid() || url.isEmpty()) return;
 
@@ -2323,19 +2649,35 @@ void BrowserWindow::navigateFromUserInput(const QString &rawInput, const QString
 
 void BrowserWindow::onBackClicked() {
   if (auto *view = currentView()) {
+    if (view->history() && view->history()->canGoBack()) {
+      const QUrl backUrl = view->history()->backItem().url();
+      const int idx = tabStrip_ ? tabStrip_->currentIndex() : -1;
+      if (idx >= 0 && idx < tabs_.size() && tabs_[idx].view == view) {
+        tabs_[idx].url = backUrl;
+        updateBookmarkBarVisibility();
+      }
+    }
     view->back();
   }
 }
 
 void BrowserWindow::onForwardClicked() {
   if (auto *view = currentView()) {
+    if (view->history() && view->history()->canGoForward()) {
+      const QUrl forwardUrl = view->history()->forwardItem().url();
+      const int idx = tabStrip_ ? tabStrip_->currentIndex() : -1;
+      if (idx >= 0 && idx < tabs_.size() && tabs_[idx].view == view) {
+        tabs_[idx].url = forwardUrl;
+        updateBookmarkBarVisibility();
+      }
+    }
     view->forward();
   }
 }
 
 void BrowserWindow::onReloadOrStopClicked() {
   if (auto *view = currentView()) {
-    if (progressBar_->isVisible()) {
+    if (isCurrentTabLoading()) {
       view->stop();
     } else {
       view->reload();
@@ -2344,10 +2686,16 @@ void BrowserWindow::onReloadOrStopClicked() {
 }
 
 void BrowserWindow::onHomeClicked() {
+  const QUrl homeUrl(isIncognito() ? QStringLiteral("ardali://incognito/") : QStringLiteral("ardali://newtab/"));
   if (auto *view = currentView()) {
-    view->load(QUrl(QStringLiteral("ardali://newtab/")));
+    const int idx = tabStrip_ ? tabStrip_->currentIndex() : -1;
+    if (idx >= 0 && idx < tabs_.size() && tabs_[idx].view == view) {
+      tabs_[idx].url = homeUrl;
+      updateBookmarkBarVisibility();
+    }
+    view->load(homeUrl);
   } else {
-    addNewTab(QUrl(QStringLiteral("ardali://newtab/")));
+    addNewTab(homeUrl);
   }
 }
 
@@ -2383,6 +2731,24 @@ void BrowserWindow::updateNavButtons() {
   }
   updateBookmarkButtonState();
   updateBlockerControls();
+}
+
+bool BrowserWindow::isCurrentTabLoading() const {
+  if (auto *view = currentView()) {
+    return TabThrobber::instance().isLoading(view);
+  }
+  return false;
+}
+
+void BrowserWindow::updateReloadStopButton(bool isLoading) {
+  if (!reloadBtn_) return;
+  if (isLoading) {
+    reloadBtn_->setIcon(BrowserIcons::stopIcon());
+    reloadBtn_->setToolTip(I18n::text(QStringLiteral("toolbar.stop"), QStringLiteral("Durdur (Esc)")));
+  } else {
+    reloadBtn_->setIcon(BrowserIcons::reloadIcon());
+    reloadBtn_->setToolTip(I18n::text(QStringLiteral("toolbar.reload"), QStringLiteral("Bu sayfayı yeniden yükleyin (F5 / Ctrl+R)")));
+  }
 }
 
 void BrowserWindow::updateOmniboxForCurrentTab() {
@@ -2701,17 +3067,84 @@ void BrowserWindow::openLocalMedia(const LocalMediaOpenRequest &request) {
   addInternalTab(page, title.left(80), icon, id);
 }
 
+PageTranslator *BrowserWindow::getOrCreatePageTranslator(int tabIndex) {
+  if (tabIndex < 0 || tabIndex >= tabs_.size()) return nullptr;
+  auto &info = tabs_[tabIndex];
+  if (info.isInternal || !info.view) return nullptr;
+  if (!services_.profileService || !services_.profileService->translateService()) return nullptr;
+
+  if (!info.translator) {
+    info.translator = new PageTranslator(info.view.data(), services_.profileService->translateService(), info.view.data());
+
+    connect(info.translator, &PageTranslator::languageDetected, this, [this, tabId = info.id](const QString &sourceLang, const QString &targetLang) {
+      Q_UNUSED(targetLang);
+      const int idx = findIndexByTabId(tabId);
+      if (idx < 0) return;
+
+      if (idx == tabStrip_->currentIndex()) {
+        if (translateButton_) {
+          translateButton_->show();
+        }
+        if (!tabs_[idx].translationOffered) {
+          tabs_[idx].translationOffered = true;
+          showTranslatePopup();
+        }
+      }
+    });
+
+    connect(info.translator, &PageTranslator::stateChanged, this, [this, tabId = info.id](PageTranslator::State state) {
+      const int idx = findIndexByTabId(tabId);
+      if (idx < 0) return;
+      if (idx == tabStrip_->currentIndex() && translateButton_) {
+        if (state == PageTranslator::State::Detected || state == PageTranslator::State::Translated || state == PageTranslator::State::Translating) {
+          translateButton_->show();
+        } else if (state == PageTranslator::State::Idle) {
+          translateButton_->hide();
+        }
+      }
+    });
+  }
+
+  return info.translator.data();
+}
+
 void BrowserWindow::showTranslatePopup() {
   auto *view = currentView();
-  if (!view) return;
+  QUrl targetUrl = view ? view->url() : QUrl{};
+  const int currentTabIndex = tabStrip_ ? tabStrip_->currentIndex() : -1;
+  if ((targetUrl.isEmpty() || !targetUrl.isValid())
+      && currentTabIndex >= 0 && currentTabIndex < tabs_.size()) {
+    targetUrl = tabs_[currentTabIndex].url;
+  }
+  if (!view || currentTabIndex < 0 || currentTabIndex >= tabs_.size()) return;
+  if (tabs_[currentTabIndex].isInternal || isNewTabUrl(targetUrl)) return;
+  const QString scheme = targetUrl.scheme().toLower();
+  if (scheme != QLatin1String("http") && scheme != QLatin1String("https")) return;
+
   if (!translateBubble_) {
     translateBubble_ = new TranslateBubblePopup(this);
+    connect(translateBubble_, &TranslateBubblePopup::openSettingsRequested, this, [this] {
+      showSettings(SettingsPage::Category::Languages);
+    });
   }
-  if (!pageTranslator_ && services_.profileService) {
-    pageTranslator_ = new PageTranslator(view, services_.profileService->translateService(), this);
+
+  auto *translator = getOrCreatePageTranslator(currentTabIndex);
+  if (!translator) return;
+
+  pageTranslator_ = translator;
+  translateBubble_->setTranslator(translator);
+
+  if (translator->sourceLanguage().isEmpty() && translator->state() == PageTranslator::State::Idle) {
+    translator->detectLanguage();
   }
-  translateBubble_->setTranslator(pageTranslator_);
-  translateBubble_->showAtAnchor(translateButton_->mapToGlobal(QPoint(0, translateButton_->height())));
+
+  QToolButton *anchor = (translateButton_ && translateButton_->isVisible())
+      ? translateButton_ : mainMenuBtn_;
+  const int popupWidth = translateBubble_->width() > 0 ? translateBubble_->width() : 290;
+  const QPoint anchorPos = anchor
+      ? anchor->mapToGlobal(QPoint(anchor->width() - popupWidth, anchor->height() + 4))
+      : QCursor::pos();
+  translateBubble_->showAtAnchor(anchorPos);
 }
 
 void BrowserWindow::showZoomPopup() {
@@ -2742,15 +3175,23 @@ void BrowserWindow::saveSessionNow() {
 }
 
 void BrowserWindow::restoreSession(const QVector<SavedTab> &savedTabs) {
-  for (const auto &tab : savedTabs) {
-    const int idx = addNewTab(tab.url);
-    if (idx >= 0 && idx < tabs_.size() && tab.groupId.has_value() && !tab.groupId->isNull()) {
-      tabs_[idx].groupId = *tab.groupId;
-      if (groupModel_) {
-        if (!groupModel_->hasGroup(*tab.groupId)) {
-          groupModel_->addOrUpdateGroup({*tab.groupId, tab.groupName, tab.groupColor, tab.groupCollapsed});
+  uint64_t activeTabId = 0;
+  // TabLayoutModel reserves the first N slots for pinned-tab geometry. Restore
+  // pinned tabs first (stable within each class), and insert each item with its
+  // final presentation state so a normal tab is never placed in a pinned slot.
+  for (const bool restorePinned : {true, false}) {
+    for (const auto &tab : savedTabs) {
+      if (tab.pinned != restorePinned) continue;
+      const int idx = addNewTab(tab.url, -1, tab.pinned, tab.title);
+      if (idx >= 0 && idx < tabs_.size() && tab.active) activeTabId = tabs_[idx].id;
+      if (idx >= 0 && idx < tabs_.size() && tab.groupId.has_value() && !tab.groupId->isNull()) {
+        tabs_[idx].groupId = *tab.groupId;
+        if (groupModel_) {
+          if (!groupModel_->hasGroup(*tab.groupId)) {
+            groupModel_->addOrUpdateGroup({*tab.groupId, tab.groupName, tab.groupColor, tab.groupCollapsed});
+          }
+          groupModel_->setTabGroup(tabs_[idx].id, *tab.groupId);
         }
-        groupModel_->setTabGroup(tabs_[idx].id, *tab.groupId);
       }
     }
   }
@@ -2760,6 +3201,13 @@ void BrowserWindow::restoreSession(const QVector<SavedTab> &savedTabs) {
   if (tabStrip_) {
     tabStrip_->update();
   }
+  const int activeIndex = findIndexByTabId(activeTabId);
+  if (activeIndex >= 0) {
+    switchTab(activeIndex);
+  } else if (!tabs_.isEmpty()) {
+    switchTab(0);
+  }
+  updateBookmarkBarVisibility();
 }
 
 void BrowserWindow::ensureInitialTab() {
@@ -2777,6 +3225,12 @@ void BrowserWindow::openStartupUrl(const QUrl &url) {
 // -----------------------------------------------------------------
 void BrowserWindow::closeEvent(QCloseEvent *event) {
   if (hoverCard_) hoverCard_->hideCard();
+  if (services_.songRecognition && services_.songRecognition->isListening()) {
+    const bool ownsOpenPulsePage = std::any_of(tabs_.cbegin(), tabs_.cend(), [](const BrowserTabInfo &tab) {
+      return tab.isInternal && tab.internalId == QLatin1String("song-finder");
+    });
+    if (ownsOpenPulsePage) services_.songRecognition->stopListening();
+  }
   saveSessionNow();
   ardali::desktop_tabs::TabWindowRegistry::instance().unregisterWindow(this);
   QMainWindow::closeEvent(event);
@@ -2799,11 +3253,7 @@ void BrowserWindow::keyPressEvent(QKeyEvent *event) {
     isWebFullScreen_ = false;
     if (topBar_) topBar_->show();
     if (navBar_) navBar_->show();
-    const QString bmMode = QSettings().value(QStringLiteral("browser/bookmarkBarVisibility"), QStringLiteral("new_tab")).toString();
-    const bool barVisible = (bmMode == QLatin1String("always") || (bmMode == QLatin1String("new_tab") && isCurrentTabNewTab()));
-    if (bookmarkBar_ && barVisible) {
-      bookmarkBar_->show();
-    }
+    updateBookmarkBarVisibility();
     const Qt::WindowStates prevState = windowStateBeforeFullScreen_ & ~Qt::WindowFullScreen;
     if (prevState.testFlag(Qt::WindowMaximized)) {
       showMaximized();
@@ -2813,24 +3263,6 @@ void BrowserWindow::keyPressEvent(QKeyEvent *event) {
         setGeometry(geometryBeforeFullScreen_);
       }
     }
-    event->accept();
-    return;
-  }
-  if (event->modifiers() & Qt::ControlModifier) {
-    if (event->key() == Qt::Key_R) {
-      onReloadOrStopClicked();
-      event->accept();
-      return;
-    }
-    if (event->key() == Qt::Key_L) {
-      omnibox_->setFocus();
-      omnibox_->selectAll();
-      event->accept();
-      return;
-    }
-  }
-  if (event->key() == Qt::Key_F5) {
-    onReloadOrStopClicked();
     event->accept();
     return;
   }
@@ -2880,7 +3312,6 @@ void BrowserWindow::changeEvent(QEvent *event) {
     }
     if (hoverCard_) hoverCard_->hideCard();
     dismissSiteControlsBubble();
-    dismissCredentialSaveBubble();
   } else if (event->type() == QEvent::ActivationChange && !isActiveWindow()) {
     if (hasOverrideCursor_) {
       QGuiApplication::restoreOverrideCursor();
@@ -2893,9 +3324,13 @@ void BrowserWindow::changeEvent(QEvent *event) {
     }
     if (hoverCard_) hoverCard_->hideCard();
     dismissSiteControlsBubble();
-    dismissCredentialSaveBubble();
   }
   QMainWindow::changeEvent(event);
+}
+
+void BrowserWindow::showEvent(QShowEvent *event) {
+  QMainWindow::showEvent(event);
+  updateBookmarkBarVisibility();
 }
 
 void BrowserWindow::resizeEvent(QResizeEvent *event) {
@@ -3350,6 +3785,19 @@ void BrowserWindow::renderBookmarks() {
   }
 }
 
+void BrowserWindow::notifyNavigationStarted(QWebEngineView *view, const QUrl &url) {
+  if (!view) return;
+  for (int i = 0; i < tabs_.size(); ++i) {
+    if (tabs_[i].view == view) {
+      tabs_[i].url = url;
+      if (i == tabStrip_->currentIndex()) {
+        updateBookmarkBarVisibility();
+      }
+      break;
+    }
+  }
+}
+
 bool BrowserWindow::isCurrentTabNewTab() const {
   if (tabs_.isEmpty()) return false;
   const int idx = tabStrip_ ? tabStrip_->currentIndex() : -1;
@@ -3357,13 +3805,22 @@ bool BrowserWindow::isCurrentTabNewTab() const {
   const auto &info = tabs_[idx];
   if (info.isInternal) return false;
 
+  // If the target or pending tab URL is set and is NOT a new tab URL, it cannot be a new tab.
+  if (!info.url.isEmpty() && !isNewTabUrl(info.url)) {
+    return false;
+  }
+
+  // If the web view has loaded a URL and it is NOT a new tab URL, it cannot be a new tab.
   if (info.view) {
     const QUrl viewUrl = info.view->url();
     if (!viewUrl.isEmpty() && viewUrl.toString() != QLatin1String("about:blank")) {
-      return isNewTabUrl(viewUrl);
+      if (!isNewTabUrl(viewUrl)) {
+        return false;
+      }
     }
   }
-  return isNewTabUrl(info.url) || info.url.isEmpty();
+
+  return isNewTabUrl(info.url);
 }
 
 void BrowserWindow::updateBookmarkBarVisibility() {
@@ -3373,18 +3830,11 @@ void BrowserWindow::updateBookmarkBarVisibility() {
       QStringLiteral("browser/bookmarkBarVisibility"),
       QStringLiteral("new_tab")).toString();
 
-  bool shouldBeVisible = false;
-  if (mode == QLatin1String("always")) {
-    shouldBeVisible = true;
-  } else if (mode == QLatin1String("never")) {
-    shouldBeVisible = false;
-  } else { // "new_tab" (default, Brave style)
-    shouldBeVisible = isCurrentTabNewTab();
-  }
+  // Show the bookmark bar ONLY while the active tab is the ArDali New Tab page.
+  // Hide it on every normal website, search results page, internal non-New-Tab page, and local page.
+  const bool shouldBeVisible = (mode != QLatin1String("never")) && isCurrentTabNewTab();
 
-  if (bookmarkBar_->isVisible() != shouldBeVisible) {
-    bookmarkBar_->setVisible(shouldBeVisible);
-  }
+  bookmarkBar_->setVisible(shouldBeVisible);
 }
 
 void BrowserWindow::toggleBookmarkBar() {
@@ -3393,217 +3843,18 @@ void BrowserWindow::toggleBookmarkBar() {
       QStringLiteral("browser/bookmarkBarVisibility"),
       QStringLiteral("new_tab")).toString();
 
-  QString newMode;
-  if (currentMode == QLatin1String("always")) {
-    newMode = QStringLiteral("new_tab");
-  } else {
-    newMode = QStringLiteral("always");
-  }
+  const QString newMode = (currentMode == QLatin1String("never"))
+      ? QStringLiteral("new_tab")
+      : QStringLiteral("never");
 
   settings.setValue(QStringLiteral("browser/bookmarkBarVisibility"), newMode);
   settings.sync();
   updateBookmarkBarVisibility();
 }
 
-void BrowserWindow::showMainMenu() {
-  QMenu menu(this);
-  menu.setStyleSheet(QStringLiteral("QMenu{background:#1b232d;color:#e8eef5;border:1px solid #3a4857;border-radius:9px;padding:6px;} QMenu::item{min-height:25px;padding:5px 30px 5px 30px;border-radius:6px;} QMenu::item:selected{background:#2b3947;} QMenu::item:disabled{color:#6f7b87;} QMenu::separator{height:1px;background:#33404d;margin:6px 8px;} QMenu::icon{padding-left:7px;}"));
 
-  QAction *newTab = menu.addAction(BrowserIcons::icon(BrowserIcon::NewTab), I18n::text(QStringLiteral("menu.new_tab"), QStringLiteral("Yeni sekme")));
-  newTab->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_T));
-  QAction *newWindow = menu.addAction(BrowserIcons::icon(BrowserIcon::Window), I18n::text(QStringLiteral("menu.new_window"), QStringLiteral("Yeni pencere")));
-  newWindow->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_N));
-  QAction *incognito = menu.addAction(BrowserIcons::icon(BrowserIcon::Incognito), I18n::text(QStringLiteral("menu.new_incognito_window"), QStringLiteral("Yeni gizli pencere")));
-  incognito->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_N));
-  incognito->setToolTip(I18n::text(QStringLiteral("menu.new_incognito_tooltip"), QStringLiteral("Yeni gizli pencere aç (Ctrl+Shift+N)")));
+// Menus extracted to browser_window_menus.cpp
 
-  menu.addSeparator();
-  QAction *passwords = menu.addAction(BrowserIcons::icon(BrowserIcon::Password), I18n::text(QStringLiteral("menu.passwords"), QStringLiteral("Şifreler ve otomatik doldurma")));
-  QAction *fillPassword = menu.addAction(BrowserIcons::icon(BrowserIcon::Password), I18n::text(QStringLiteral("menu.fill_password"), QStringLiteral("Bu sayfayı kayıtlı girişle doldur")));
-  fillPassword->setEnabled(currentView() != nullptr && services_.profileService && services_.profileService->credentialVault() && !services_.profileService->credentialVault()->isLocked());
-  QAction *history = menu.addAction(BrowserIcons::icon(BrowserIcon::History), I18n::text(QStringLiteral("menu.history"), QStringLiteral("Geçmiş")));
-  history->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_H));
-
-  QMenu *bookmarksMenu = menu.addMenu(BrowserIcons::icon(BrowserIcon::Bookmark), I18n::text(QStringLiteral("menu.bookmarks"), QStringLiteral("Yer işaretleri")));
-  QAction *toggleBar = bookmarksMenu->addAction(I18n::text(QStringLiteral("menu.bookmarks_bar"), QStringLiteral("Yer işaretleri çubuğunu göster")));
-  toggleBar->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_B));
-  toggleBar->setCheckable(true);
-  const QString bmMode = QSettings().value(QStringLiteral("browser/bookmarkBarVisibility"), QStringLiteral("new_tab")).toString();
-  toggleBar->setChecked(bmMode == QLatin1String("always") || (bmMode == QLatin1String("new_tab") && isCurrentTabNewTab()));
-  connect(toggleBar, &QAction::triggered, this, &BrowserWindow::toggleBookmarkBar);
-
-  QAction *bookmarks = bookmarksMenu->addAction(BrowserIcons::icon(BrowserIcon::Bookmark), I18n::text(QStringLiteral("menu.bookmarks_manager"), QStringLiteral("Yer işaretleri yöneticisi")));
-  bookmarks->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_O));
-
-  bookmarksMenu->addSeparator();
-  QAction *importBookmarksAct = bookmarksMenu->addAction(I18n::text(QStringLiteral("menu.import_bookmarks"), QStringLiteral("Yer işaretlerini içe aktar...")));
-  connect(importBookmarksAct, &QAction::triggered, this, [this] {
-    if (!services_.profileService) return;
-    const QString filePath = QFileDialog::getOpenFileName(this,
-        I18n::text(QStringLiteral("bookmarks.import_title"), QStringLiteral("Yer İşaretlerini İçe Aktar")),
-        QDir::homePath(),
-        QStringLiteral("HTML Dosyaları (*.html *.htm)"));
-    if (filePath.isEmpty()) return;
-    QFile file(filePath);
-    if (file.open(QIODevice::ReadOnly | QIODevice::Text)) {
-      const QString content = QString::fromUtf8(file.readAll());
-      const int count = services_.profileService->importBookmarksFromHtml(content);
-      QMessageBox::information(this,
-          I18n::text(QStringLiteral("bookmarks.import_title"), QStringLiteral("Yer İşaretleri")),
-          I18n::text(QStringLiteral("bookmarks.imported_count"), QStringLiteral("%1 yer işareti başarıyla içe aktarıldı.")).arg(count));
-    }
-  });
-
-  QAction *exportBookmarksAct = bookmarksMenu->addAction(I18n::text(QStringLiteral("menu.export_bookmarks"), QStringLiteral("Yer işaretlerini dışa aktar...")));
-  connect(exportBookmarksAct, &QAction::triggered, this, [this] {
-    if (!services_.profileService) return;
-    const QString filePath = QFileDialog::getSaveFileName(this,
-        I18n::text(QStringLiteral("bookmarks.export_title"), QStringLiteral("Yer İşaretlerini Dışa Aktar")),
-        QDir::homePath() + QStringLiteral("/bookmarks.html"),
-        QStringLiteral("HTML Dosyaları (*.html *.htm)"));
-    if (filePath.isEmpty()) return;
-    QFile file(filePath);
-    if (file.open(QIODevice::WriteOnly | QIODevice::Text)) {
-      const QString html = services_.profileService->exportBookmarksToHtml();
-      file.write(html.toUtf8());
-      QMessageBox::information(this,
-          I18n::text(QStringLiteral("bookmarks.export_title"), QStringLiteral("Yer İşaretleri")),
-          I18n::text(QStringLiteral("bookmarks.exported_success"), QStringLiteral("Yer işaretleri başarıyla dışa aktarıldı.")));
-    }
-  });
-
-  QAction *downloads = menu.addAction(BrowserIcons::icon(BrowserIcon::Download), I18n::text(QStringLiteral("menu.downloads"), QStringLiteral("İndirilenler")));
-  downloads->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_J));
-
-  menu.addSeparator();
-  QMenu *zoom = menu.addMenu(BrowserIcons::icon(BrowserIcon::Zoom), I18n::text(QStringLiteral("menu.zoom"), QStringLiteral("Yakınlaştır")));
-  QAction *zoomOut = zoom->addAction(QStringLiteral("−"));
-  QAction *zoomReset = zoom->addAction(QStringLiteral("%%%1").arg(currentView() ? qRound(currentView()->zoomFactor() * 100.0) : 100));
-  QAction *zoomIn = zoom->addAction(QStringLiteral("+"));
-  const bool hasWebContent = currentView() != nullptr;
-  zoomOut->setEnabled(hasWebContent);
-  zoomReset->setEnabled(hasWebContent);
-  zoomIn->setEnabled(hasWebContent);
-
-  menu.addSeparator();
-  QAction *print = menu.addAction(BrowserIcons::icon(BrowserIcon::Print), I18n::text(QStringLiteral("menu.print"), QStringLiteral("Yazdır...")));
-  print->setShortcut(QKeySequence::Print);
-  print->setEnabled(hasWebContent);
-  connect(print, &QAction::triggered, this, &BrowserWindow::printCurrentPage);
-
-  QAction *printPdf = menu.addAction(I18n::text(QStringLiteral("menu.print_pdf"), QStringLiteral("PDF Olarak Kaydet...")));
-  printPdf->setEnabled(hasWebContent);
-  connect(printPdf, &QAction::triggered, this, &BrowserWindow::printCurrentPageToPdf);
-
-  QAction *find = menu.addAction(BrowserIcons::icon(BrowserIcon::Search), I18n::text(QStringLiteral("menu.find"), QStringLiteral("Sayfada Bul...")));
-  find->setShortcut(QKeySequence::Find);
-  find->setEnabled(hasWebContent);
-  connect(find, &QAction::triggered, this, &BrowserWindow::showFindBar);
-
-  QAction *save = menu.addAction(BrowserIcons::icon(BrowserIcon::Save), I18n::text(QStringLiteral("menu.save"), QStringLiteral("Sayfayı Farklı Kaydet...")));
-  save->setShortcut(QKeySequence::Save);
-  save->setEnabled(hasWebContent);
-  connect(save, &QAction::triggered, this, [this] {
-    if (auto *view = currentView()) {
-      if (view->page()) view->page()->triggerAction(QWebEnginePage::SavePage);
-    }
-  });
-
-  QAction *tools = menu.addAction(BrowserIcons::icon(BrowserIcon::Tools), I18n::text(QStringLiteral("menu.other_tools"), QStringLiteral("Diğer araçlar"))); tools->setEnabled(false);
-
-  menu.addSeparator();
-  QAction *help = menu.addAction(BrowserIcons::icon(BrowserIcon::Help), I18n::text(QStringLiteral("menu.help"), QStringLiteral("Yardım"))); help->setEnabled(false);
-  QAction *audioEffectsAction = menu.addAction(QIcon(QStringLiteral(":/side-widget-icons/sound-effects.svg")), I18n::text(QStringLiteral("menu.audio_effects"), QStringLiteral("Ses Efektleri")));
-  QAction *eqPresetsAction = menu.addAction(QIcon(QStringLiteral(":/side-widget-icons/eq-presets.svg")), I18n::text(QStringLiteral("menu.eq_presets"), QStringLiteral("Hazır Ses Efektleri")));
-  QAction *settings = menu.addAction(BrowserIcons::icon(BrowserIcon::Settings), I18n::text(QStringLiteral("menu.settings"), QStringLiteral("Ayarlar")));
-  QAction *quit = menu.addAction(BrowserIcons::icon(BrowserIcon::Exit), I18n::text(QStringLiteral("menu.exit"), QStringLiteral("Çıkış")));
-
-  connect(newTab, &QAction::triggered, this, [this] { addNewTab(); });
-  connect(newWindow, &QAction::triggered, this, [this] {
-    auto *window = new BrowserWindow(services_);
-    window->ensureInitialTab();
-    window->show();
-  });
-  connect(incognito, &QAction::triggered, this, [this] {
-    openIncognitoWindow();
-  });
-  connect(passwords, &QAction::triggered, this, &BrowserWindow::showPasswords);
-  connect(fillPassword, &QAction::triggered, this, &BrowserWindow::fillCurrentPageFromVault);
-  connect(history, &QAction::triggered, this, [this] { showSettings(SettingsPage::Category::History); });
-  connect(bookmarks, &QAction::triggered, this, [this] { showSettings(SettingsPage::Category::Bookmarks); });
-  connect(downloads, &QAction::triggered, this, [this] { showDownloadsMenu(); });
-  connect(zoomOut, &QAction::triggered, this, [this] { changeCurrentZoom(-0.1); });
-  connect(zoomReset, &QAction::triggered, this, [this] { setCurrentZoom(1.0); });
-  connect(zoomIn, &QAction::triggered, this, [this] { changeCurrentZoom(0.1); });
-  connect(audioEffectsAction, &QAction::triggered, this, &BrowserWindow::showAudioEffects);
-  connect(eqPresetsAction, &QAction::triggered, this, &BrowserWindow::showEqPresetBrowser);
-  connect(settings, &QAction::triggered, this, [this] { showSettings(); });
-  connect(quit, &QAction::triggered, qApp, &QCoreApplication::quit);
-
-  const QPoint execPos = mainMenuBtn_ ? mainMenuBtn_->mapToGlobal(QPoint(0, mainMenuBtn_->height())) : QCursor::pos();
-  menu.exec(execPos);
-}
-
-void BrowserWindow::showHistoryMenu() {
-  if (!services_.profileService) return;
-  QMenu menu(this);
-  menu.setStyleSheet(QStringLiteral("QMenu{background:#1b232d;color:#e8eef5;border:1px solid #3a4857;border-radius:9px;padding:6px;} QMenu::item{min-height:25px;padding:5px 30px 5px 30px;border-radius:6px;} QMenu::item:disabled{color:#6f7b87;}"));
-
-  QAction *openAllHistory = menu.addAction(BrowserIcons::icon(BrowserIcon::History),
-      I18n::text(QStringLiteral("menu.show_full_history"), QStringLiteral("Tüm geçmişi yönet...")) + QStringLiteral("\tCtrl+H"));
-  connect(openAllHistory, &QAction::triggered, this, [this] {
-    showSettings(SettingsPage::Category::History);
-  });
-  menu.addSeparator();
-
-  if (!isIncognito() && services_.profileService->hasClosedTabs()) {
-    QAction *restoreTab = menu.addAction(BrowserIcons::icon(BrowserIcon::History),
-        I18n::text(QStringLiteral("menu.reopen_closed_tab"), QStringLiteral("Son kapatılan sekmeyi yeniden aç")) + QStringLiteral("\tCtrl+Shift+T"));
-    connect(restoreTab, &QAction::triggered, this, &BrowserWindow::restoreLastClosedTab);
-    menu.addSeparator();
-  }
-
-  const auto entries = services_.profileService->recentHistory();
-  if (entries.isEmpty()) {
-    QAction *empty = menu.addAction(I18n::text(QStringLiteral("menu.history_empty"), QStringLiteral("Geçmiş henüz boş")));
-    empty->setEnabled(false);
-  } else {
-    for (const auto &entry : entries.mid(0, std::min<qsizetype>(30, entries.size()))) {
-      const QString label = entry.title.isEmpty() ? entry.url.host() : entry.title;
-      QMenu *itemMenu = menu.addMenu(label.left(90));
-      itemMenu->setStyleSheet(menu.styleSheet());
-      QAction *openAct = itemMenu->addAction(I18n::text(QStringLiteral("menu.open"), QStringLiteral("Aç")));
-      openAct->setToolTip(QStringLiteral("%1\n%2").arg(entry.url.toDisplayString(), entry.visitedAt.toLocalTime().toString(QStringLiteral("dd.MM.yyyy HH:mm"))));
-      connect(openAct, &QAction::triggered, this, [this, url = entry.url] {
-        if (auto *view = currentView()) {
-          view->load(url);
-        } else {
-          addNewTab(url);
-        }
-      });
-      QAction *openNewTabAct = itemMenu->addAction(I18n::text(QStringLiteral("menu.open_in_new_tab"), QStringLiteral("Yeni sekmede aç")));
-      connect(openNewTabAct, &QAction::triggered, this, [this, url = entry.url] {
-        addNewTab(url);
-      });
-      QAction *deleteAct = itemMenu->addAction(BrowserIcons::icon(BrowserIcon::Close), I18n::text(QStringLiteral("menu.delete_from_history"), QStringLiteral("Geçmişten kaldır")));
-      connect(deleteAct, &QAction::triggered, this, [this, url = entry.url, visitedAt = entry.visitedAt] {
-        if (services_.profileService) {
-          services_.profileService->removeHistoryEntry(url, visitedAt);
-        }
-      });
-    }
-    menu.addSeparator();
-    QAction *clear = menu.addAction(I18n::text(QStringLiteral("menu.clear_history"), QStringLiteral("Geçmişi temizle")));
-    connect(clear, &QAction::triggered, this, [this] {
-      if (services_.profileService) services_.profileService->clearHistory();
-    });
-  }
-  menu.exec(QCursor::pos());
-}
-
-void BrowserWindow::showDownloadsMenu() {
-  showMediaDownloads();
-}
 
 void BrowserWindow::fillCurrentPageFromVault() {
   if (autofillController_ && currentView()) {
@@ -3872,24 +4123,6 @@ bool BrowserWindow::eventFilter(QObject *watched, QEvent *event) {
     }
   }
 
-  if (autofillController_ && autofillController_->activeSaveBubble() && autofillController_->activeSaveBubble()->isVisible()) {
-    if (event->type() == QEvent::MouseButtonPress) {
-      auto *mouseEvent = static_cast<QMouseEvent *>(event);
-      const QPoint globalPos = mouseEvent->globalPosition().toPoint();
-      auto *widget = qobject_cast<QWidget *>(watched);
-      auto *bubble = autofillController_->activeSaveBubble();
-      if (widget != bubble && !bubble->isAncestorOf(widget)) {
-        const QRect bubbleGlobalRect(bubble->mapToGlobal(QPoint(0, 0)), bubble->size());
-        if (!bubbleGlobalRect.contains(globalPos)) {
-          dismissCredentialSaveBubble();
-        }
-      }
-    } else if (event->type() == QEvent::WindowDeactivate) {
-      if (watched == this) {
-        dismissCredentialSaveBubble();
-      }
-    }
-  }
 
   if (watched == this && event->type() == QEvent::WindowDeactivate) {
     if (hasOverrideCursor_) {
@@ -3968,6 +4201,15 @@ bool BrowserWindow::eventFilter(QObject *watched, QEvent *event) {
   return QMainWindow::eventFilter(watched, event);
 }
 
+// ============================================================================
+// INVARIANT (Credential Save Bubble Lifetime & Isolation):
+// - Once a valid credential save decision is pending, post-login navigation or
+//   redirects MUST NOT dismiss the bubble before explicit user resolution
+//   (Save / Not Now / close button).
+// - Switching tabs hides and re-shows the bubble appropriately based on the active view.
+// - Verified origin remains bound to the candidate throughout decision lifetime.
+// - Tab destruction safely cleans pending decision without leaks.
+// ============================================================================
 void BrowserWindow::dismissCredentialSaveBubble() {
   if (autofillController_) {
     if (auto *bubble = autofillController_->activeSaveBubble()) {
@@ -3981,6 +4223,10 @@ void BrowserWindow::dismissCredentialSaveBubble() {
 void BrowserWindow::updateSaveBubblePosition() {
   if (!autofillController_ || !autofillController_->activeSaveBubble() || !omnibox_) return;
   auto *bubble = autofillController_->activeSaveBubble();
+  if (currentView() != autofillController_->activeBubbleView()) {
+    bubble->hide();
+    return;
+  }
   if (!bubble->isVisible()) return;
   QPoint omniLocal = omnibox_->mapTo(this, QPoint(0, omnibox_->height() + 4));
   omniLocal.setX(std::max(10, (width() - bubble->width()) / 2));
@@ -4300,7 +4546,7 @@ void BrowserWindow::onThrobberTick() {
 
     if (throbber.isThrobberVisible(view)) {
       const bool isActive = (i == activeIndex);
-      const QIcon throbberIcon = TabThrobber::renderThrobberIcon(throbber.frameStep(), pal, isActive, dpr);
+      const QIcon throbberIcon = TabThrobber::renderThrobberIcon(throbber.frameStep(), pal, isActive, dpr, 16);
       tabStrip_->setTabIcon(i, throbberIcon);
     }
   }
@@ -4324,7 +4570,10 @@ QJsonArray BrowserWindow::searchRows(const QString &query, const QStringList &re
     rows.append(row);
   };
   const auto search = [&](const QString &text, const QString &type) {
-    append(text, ardali::core::AddressInputResolver::searchUrlForEngine(currentSearchEngine(), text), type);
+    const QUrl url = services_.profileService
+        ? services_.profileService->searchUrlForEngine(currentSearchEngine(), text)
+        : ardali::core::AddressInputResolver::searchUrlForEngine(currentSearchEngine(), text);
+    append(text, url, type);
   };
   if (!cleanQuery.isEmpty()) search(cleanQuery, QStringLiteral("search"));
   // Local data is available only to its owning regular profile.
@@ -4371,6 +4620,11 @@ void BrowserWindow::activateSuggestion(const QUrl &url, const QString &text, con
 }
 
 void BrowserWindow::updateOmniboxSuggestions(const QString &query) {
+  if (!services_.profileService || !services_.profileService->searchSuggestions()->isEnabled()) {
+    if (suggestionModel_) suggestionModel_->clear();
+    if (suggestionCompleter_ && suggestionCompleter_->popup()) suggestionCompleter_->popup()->hide();
+    return;
+  }
   const QPointer<BrowserWindow> guard(this);
   const QString engine = currentSearchEngine();
   auto render = [guard, query, engine](const QStringList &remote) {
@@ -4409,7 +4663,8 @@ void BrowserWindow::updateOmniboxSuggestions(const QString &query) {
 }
 
 void BrowserWindow::requestNewTabSuggestions(QWebEnginePage *page, const QString &query, int requestId) {
-  if (!page || !services_.profileService || !currentView() || currentView()->page() != page || !isNewTabUrl(page->url())) return;
+  if (!page || !services_.profileService || !services_.profileService->searchSuggestions()->isEnabled()
+      || !currentView() || currentView()->page() != page || !isNewTabUrl(page->url())) return;
   const QPointer<QWebEnginePage> target(page);
   const QPointer<BrowserWindow> guard(this);
   const QString capability = page->property("ardali-suggest-capability").toString();
@@ -4902,6 +5157,17 @@ void BrowserWindow::dismissActivePermissionPrompt(bool cancelRequest) {
 }
 #endif
 
+BrowserWindow *BrowserWindow::openNewWindow(const QUrl &url) {
+  auto *window = new BrowserWindow(services_);
+  if (url.isValid() && !url.isEmpty()) {
+    window->addNewTab(url);
+  } else {
+    window->ensureInitialTab();
+  }
+  window->show();
+  return window;
+}
+
 BrowserWindow *BrowserWindow::openIncognitoWindow(const QUrl &url) {
   auto incognitoServices = services_;
   const auto directory = std::make_shared<QTemporaryDir>();
@@ -4914,6 +5180,17 @@ BrowserWindow *BrowserWindow::openIncognitoWindow(const QUrl &url) {
   incognitoServices.profileService = privateService;
   incognitoServices.profile = privateService->profile();
   incognitoServices.sessionStore = nullptr;
+  incognitoServices.audioEffects = new WebAudioEffectsController(privateService, false);
+  incognitoServices.songFinderSettings = new SongFinderSettings(privateService, false);
+  incognitoServices.songRecognition = new SongRecognitionService(
+      incognitoServices.songFinderSettings, privateService, false);
+  const QString privateMediaHistory = QDir(directory->path()).filePath(
+      QStringLiteral("media-download-history.json"));
+  const QString downloadDirectory = services_.mediaDownload
+      ? services_.mediaDownload->defaultDownloadDirectory()
+      : privateService->profile()->downloadPath();
+  incognitoServices.mediaDownload = new MediaDownloadService(
+      downloadDirectory, privateService, {}, {}, privateMediaHistory);
   auto *window = new BrowserWindow(incognitoServices);
 
   window->setAttribute(Qt::WA_DeleteOnClose);
@@ -4994,439 +5271,9 @@ void BrowserWindow::closeTabsToRight(int index) {
   }
 }
 
-void BrowserWindow::onTabContextMenuRequested(int index, const QPoint &globalPos) {
-  if (index < 0 || index >= tabs_.size()) return;
-  const auto &tab = tabs_[index];
-  const uint64_t tabId = tab.id;
 
-  QMenu menu(this);
-  menu.setStyleSheet(QStringLiteral(
-      "QMenu { background-color: #1b232d; color: #e8eef5; border: 1px solid #3a4857; border-radius: 9px; padding: 6px 4px; font-size: 13px; }"
-      "QMenu::item { min-height: 25px; padding: 4px 26px 4px 12px; border-radius: 6px; margin: 1px 3px; }"
-      "QMenu::item:selected { background-color: #2b3947; color: #ffffff; }"
-      "QMenu::item:disabled { color: #6f7b87; background-color: transparent; }"
-      "QMenu::separator { height: 1px; background-color: #33404d; margin: 5px 8px; }"
-      "QMenu::icon { padding-left: 6px; }"
-  ));
+// Context menus extracted to browser_window_menus.cpp
 
-  // 1. Sağa yeni sekme
-  QAction *newTabRight = menu.addAction(BrowserIcons::icon(BrowserIcon::NewTab), I18n::text(QStringLiteral("tab.context.new_tab_right"), QStringLiteral("Sağa yeni sekme")));
-  connect(newTabRight, &QAction::triggered, this, [this, index] {
-    addNewTab(QUrl(QStringLiteral("ardali://newtab/")), index + 1);
-  });
-
-  // 2. Mevcut sekmeyle yeni bölünmüş görünüm
-  QAction *splitViewAction = menu.addAction(BrowserIcons::icon(BrowserIcon::Cards), I18n::text(QStringLiteral("tab.context.split_view"), QStringLiteral("Mevcut sekmeyle yeni bölünmüş görünüm")));
-  splitViewAction->setEnabled(false);
-
-  // 3. Sekmeyi yeni gruba ekle / Sekmeyi gruptan çıkar / Gruplar alt menüsü
-  if (tab.groupId.has_value() && groupModel_ && groupModel_->hasGroup(*tab.groupId)) {
-    QAction *ungroup = menu.addAction(BrowserIcons::icon(BrowserIcon::Grid), I18n::text(QStringLiteral("tab.context.ungroup"), QStringLiteral("Sekmeyi gruptan çıkar")));
-    connect(ungroup, &QAction::triggered, this, [this, tabId] {
-      if (groupModel_) {
-        const int idx = findIndexByTabId(tabId);
-        if (idx >= 0 && tabs_[idx].groupId.has_value()) {
-          const QUuid gid = *tabs_[idx].groupId;
-          groupModel_->removeTabFromGroup(tabId);
-          tabs_[idx].groupId = std::nullopt;
-          if (groupModel_->groupTabCount(gid) == 0) {
-            groupModel_->removeGroup(gid);
-          }
-          tabStrip_->update();
-        }
-      }
-    });
-  } else {
-    const auto groups = groupModel_ ? groupModel_->allGroups() : QList<ardali::desktop_tabs::TabGroup>{};
-    if (groups.isEmpty()) {
-      QAction *newGroup = menu.addAction(BrowserIcons::icon(BrowserIcon::Grid), I18n::text(QStringLiteral("tab.context.add_to_new_group"), QStringLiteral("Sekmeyi yeni gruba ekle")));
-      connect(newGroup, &QAction::triggered, this, [this, tabId] {
-        createGroupFromExistingTab(tabId);
-      });
-    } else {
-      QMenu *groupSub = menu.addMenu(BrowserIcons::icon(BrowserIcon::Grid), I18n::text(QStringLiteral("tab.context.add_to_group"), QStringLiteral("Sekmeyi gruba ekle")));
-      groupSub->setStyleSheet(menu.styleSheet());
-      QAction *createGroupAct = groupSub->addAction(I18n::text(QStringLiteral("tab.context.new_group"), QStringLiteral("Yeni grup")));
-      connect(createGroupAct, &QAction::triggered, this, [this, tabId] {
-        createGroupFromExistingTab(tabId);
-      });
-      groupSub->addSeparator();
-      for (const auto &g : groups) {
-        QString title = g.name.trimmed().isEmpty() ? I18n::text(QStringLiteral("tab.context.new_group"), QStringLiteral("Grup")) : g.name;
-        QAction *gAct = groupSub->addAction(title);
-        const QUuid gid = g.id;
-        connect(gAct, &QAction::triggered, this, [this, tabId, gid] {
-          if (groupModel_) {
-            const int idx = findIndexByTabId(tabId);
-            if (idx >= 0) {
-              tabs_[idx].groupId = gid;
-              groupModel_->setTabGroup(tabId, gid);
-              tabStrip_->update();
-            }
-          }
-        });
-      }
-    }
-  }
-
-  // 4. Sekmeyi yeni pencereye taşı
-  QAction *moveWindow = menu.addAction(BrowserIcons::icon(BrowserIcon::Window), I18n::text(QStringLiteral("tab.context.move_to_new_window"), QStringLiteral("Sekmeyi yeni pencereye taşı")));
-  moveWindow->setEnabled(tabs_.size() > 1);
-  connect(moveWindow, &QAction::triggered, this, [this, tabId] {
-    auto *newWin = new BrowserWindow(services_);
-    newWin->show();
-    transferTabTo(tabId, newWin, 0);
-  });
-
-  menu.addSeparator();
-
-  // 5. Yeniden Yükle
-  QAction *reloadAct = menu.addAction(I18n::text(QStringLiteral("tab.context.reload"), QStringLiteral("Yeniden Yükle")));
-  reloadAct->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_R));
-  connect(reloadAct, &QAction::triggered, this, [this, tabId] {
-    const int idx = findIndexByTabId(tabId);
-    if (idx >= 0 && tabs_[idx].view) {
-      tabs_[idx].view->reload();
-    }
-  });
-
-  // 6. Yinele
-  QAction *duplicateAct = menu.addAction(I18n::text(QStringLiteral("tab.context.duplicate"), QStringLiteral("Yinele")));
-  connect(duplicateAct, &QAction::triggered, this, [this, tabId] {
-    const int idx = findIndexByTabId(tabId);
-    if (idx >= 0) {
-      addNewTab(tabs_[idx].url, idx + 1);
-    }
-  });
-
-  // 7. Sabitle / Sabitlemeyi kaldır
-  const bool isPinned = tab.isPinned;
-  QAction *pinAct = menu.addAction(isPinned
-      ? I18n::text(QStringLiteral("tab.context.unpin"), QStringLiteral("Sabitlemeyi kaldır"))
-      : I18n::text(QStringLiteral("tab.context.pin"), QStringLiteral("Sabitle")));
-  connect(pinAct, &QAction::triggered, this, [this, tabId] {
-    const int idx = findIndexByTabId(tabId);
-    if (idx >= 0) {
-      toggleTabPin(idx);
-    }
-  });
-
-  // 8. Sitenin sesini kapat / Sitenin sesini aç
-  bool isMuted = tab.view && tab.view->page() && tab.view->page()->isAudioMuted();
-  QAction *muteAct = menu.addAction(BrowserIcons::icon(BrowserIcon::Audio),
-                                    isMuted
-                                        ? I18n::text(QStringLiteral("tab.context.unmute"), QStringLiteral("Sitenin sesini aç"))
-                                        : I18n::text(QStringLiteral("tab.context.mute"), QStringLiteral("Sitenin sesini kapat")));
-  connect(muteAct, &QAction::triggered, this, [this, tabId, isMuted] {
-    const int idx = findIndexByTabId(tabId);
-    if (idx >= 0 && tabs_[idx].view && tabs_[idx].view->page()) {
-      const bool newMuted = !isMuted;
-      tabs_[idx].view->page()->setAudioMuted(newMuted);
-      tabStrip_->setTabAudible(idx, !newMuted && tabs_[idx].view->page()->recentlyAudible());
-    }
-  });
-
-  menu.addSeparator();
-
-  // 9. Okuma listesine sekme ekle
-  QAction *readingListAct = menu.addAction(BrowserIcons::icon(BrowserIcon::Bookmark), I18n::text(QStringLiteral("tab.context.add_to_reading_list"), QStringLiteral("Okuma listesine sekme ekle")));
-  connect(readingListAct, &QAction::triggered, this, [this, tabId] {
-    const int idx = findIndexByTabId(tabId);
-    if (idx >= 0 && services_.profileService) {
-      services_.profileService->toggleBookmark(tabs_[idx].url);
-      updateBookmarkButtonState();
-      renderBookmarks();
-    }
-  });
-
-  // 10. Cihazıma gönder
-  QAction *sendDeviceAct = menu.addAction(I18n::text(QStringLiteral("tab.context.send_to_device"), QStringLiteral("Cihazıma gönder")));
-  sendDeviceAct->setEnabled(false);
-
-  menu.addSeparator();
-
-  // 11. Sekmeleri dikey olarak göster
-  QAction *verticalTabsAct = menu.addAction(I18n::text(QStringLiteral("tab.context.vertical_tabs"), QStringLiteral("Sekmeleri dikey olarak göster")));
-  verticalTabsAct->setEnabled(false);
-
-  menu.addSeparator();
-
-  // 12. Kapat
-  QAction *closeAct = menu.addAction(BrowserIcons::icon(BrowserIcon::Close),
-      I18n::text(QStringLiteral("tab.context.close"), QStringLiteral("Kapat")) + QStringLiteral("\tCtrl+W"));
-  connect(closeAct, &QAction::triggered, this, [this, tabId] {
-    const int idx = findIndexByTabId(tabId);
-    if (idx >= 0) {
-      closeTab(idx);
-    }
-  });
-
-  // Kapatılan sekmeyi yeniden aç
-  QAction *reopenClosedAct = menu.addAction(BrowserIcons::icon(BrowserIcon::History),
-      I18n::text(QStringLiteral("tab.context.reopen_closed"), QStringLiteral("Kapatılan sekmeyi yeniden aç")) + QStringLiteral("\tCtrl+Shift+T"));
-  reopenClosedAct->setEnabled(!isIncognito() && services_.profileService && services_.profileService->hasClosedTabs());
-  connect(reopenClosedAct, &QAction::triggered, this, &BrowserWindow::restoreLastClosedTab);
-
-  // 13. Diğer sekmeleri kapat
-  QAction *closeOthersAct = menu.addAction(I18n::text(QStringLiteral("tab.context.close_others"), QStringLiteral("Diğer sekmeleri kapat")));
-  closeOthersAct->setEnabled(tabs_.size() > 1);
-  connect(closeOthersAct, &QAction::triggered, this, [this, tabId] {
-    const int idx = findIndexByTabId(tabId);
-    if (idx >= 0) {
-      closeOtherTabs(idx);
-    }
-  });
-
-  // 14. Sağdaki sekmeleri kapat
-  QAction *closeRightAct = menu.addAction(I18n::text(QStringLiteral("tab.context.close_right"), QStringLiteral("Sağdaki sekmeleri kapat")));
-  closeRightAct->setEnabled(index < tabs_.size() - 1);
-  connect(closeRightAct, &QAction::triggered, this, [this, tabId] {
-    const int idx = findIndexByTabId(tabId);
-    if (idx >= 0) {
-      closeTabsToRight(idx);
-    }
-  });
-
-  menu.exec(globalPos);
-}
-
-void BrowserWindow::showBookmarkContextMenu(const QUrl &url, const QString &title, const QPoint &globalPos) {
-  Q_UNUSED(title);
-  QMenu menu(this);
-  menu.setStyleSheet(QStringLiteral(
-      "QMenu { background-color: #1b232d; color: #e8eef5; border: 1px solid #3a4857; border-radius: 9px; padding: 6px 4px; font-size: 13px; }"
-      "QMenu::item { min-height: 25px; padding: 4px 26px 4px 12px; border-radius: 6px; margin: 1px 3px; }"
-      "QMenu::item:selected { background-color: #2b3947; color: #ffffff; }"
-      "QMenu::item:disabled { color: #6f7b87; background-color: transparent; }"
-      "QMenu::separator { height: 1px; background-color: #33404d; margin: 5px 8px; }"
-  ));
-
-  const bool hasUrl = url.isValid() && !url.isEmpty();
-
-  if (hasUrl) {
-    // 1. Yeni sekmede aç
-    QAction *newTabAct = menu.addAction(I18n::text(QStringLiteral("bookmark.open_tab"), QStringLiteral("Yeni sekmede aç")));
-    connect(newTabAct, &QAction::triggered, this, [this, url] {
-      addNewTab(url);
-    });
-
-    // 2. Yeni pencerede aç
-    QAction *newWinAct = menu.addAction(I18n::text(QStringLiteral("bookmark.open_window"), QStringLiteral("Yeni pencerede aç")));
-    connect(newWinAct, &QAction::triggered, this, [this, url] {
-      auto *newWin = new BrowserWindow(services_);
-      newWin->addNewTab(url);
-      newWin->show();
-    });
-
-    // 3. Bölünmüş görünümde aç
-    QAction *splitAct = menu.addAction(I18n::text(QStringLiteral("bookmark.open_split"), QStringLiteral("Bölünmüş görünümde aç")));
-    splitAct->setEnabled(false);
-
-    // 4. Gizli pencerede aç
-    QAction *incognitoAct = menu.addAction(I18n::text(QStringLiteral("bookmark.open_incognito"), QStringLiteral("Gizli pencerede aç")));
-    connect(incognitoAct, &QAction::triggered, this, [this, url] {
-      openIncognitoWindow(url);
-    });
-
-    menu.addSeparator();
-
-    // 5. Düzenle...
-    QAction *editAct = menu.addAction(I18n::text(QStringLiteral("bookmark.edit"), QStringLiteral("Düzenle...")));
-    connect(editAct, &QAction::triggered, this, [this, url] {
-      QInputDialog dlg(this);
-      dlg.setWindowTitle(I18n::text(QStringLiteral("bookmark.edit_dialog_title"), QStringLiteral("Yer işaretini düzenle")));
-      dlg.setLabelText(I18n::text(QStringLiteral("bookmark.url_label"), QStringLiteral("URL:")));
-      dlg.setTextValue(url.toString());
-      dlg.setStyleSheet(QStringLiteral(
-          "QDialog { background-color: #1b232d; color: #e8eef5; border: 1px solid #3a4857; border-radius: 8px; }"
-          "QLabel { color: #e8eef5; font-size: 13px; }"
-          "QLineEdit { background: #121820; color: #ffffff; border: 1px solid #3a4857; border-radius: 6px; padding: 6px; font-size: 13px; }"
-          "QPushButton { background: #263342; color: #ffffff; border: 1px solid #3a4857; border-radius: 6px; padding: 6px 14px; font-size: 13px; }"
-          "QPushButton:hover { background: #324458; }"
-      ));
-      if (dlg.exec() == QDialog::Accepted) {
-        const QString newText = dlg.textValue().trimmed();
-        if (!newText.isEmpty()) {
-          const QUrl newUrl = QUrl::fromUserInput(newText);
-          if (newUrl.isValid() && services_.profileService) {
-            services_.profileService->toggleBookmark(url);
-            services_.profileService->toggleBookmark(newUrl);
-            updateBookmarkButtonState();
-            renderBookmarks();
-          }
-        }
-      }
-    });
-
-    menu.addSeparator();
-
-    // 6. Kes
-    QAction *cutAct = menu.addAction(I18n::text(QStringLiteral("bookmark.cut"), QStringLiteral("Kes")));
-    connect(cutAct, &QAction::triggered, this, [this, url] {
-      QGuiApplication::clipboard()->setText(url.toString());
-      if (services_.profileService) {
-        services_.profileService->toggleBookmark(url);
-        updateBookmarkButtonState();
-        renderBookmarks();
-      }
-    });
-
-    // 7. Kopyala
-    QAction *copyAct = menu.addAction(I18n::text(QStringLiteral("bookmark.copy"), QStringLiteral("Kopyala")));
-    connect(copyAct, &QAction::triggered, this, [url] {
-      QGuiApplication::clipboard()->setText(url.toString());
-    });
-  }
-
-  // 8. Yapıştır
-  const QString clipText = QGuiApplication::clipboard()->text().trimmed();
-  const QUrl clipUrl = QUrl::fromUserInput(clipText);
-  const bool canPaste = !clipText.isEmpty() && clipUrl.isValid() &&
-                        (clipUrl.scheme() == QLatin1String("http") || clipUrl.scheme() == QLatin1String("https"));
-  QAction *pasteAct = menu.addAction(I18n::text(QStringLiteral("bookmark.paste"), QStringLiteral("Yapıştır")));
-  pasteAct->setEnabled(canPaste);
-  connect(pasteAct, &QAction::triggered, this, [this, clipUrl] {
-    if (services_.profileService && !services_.profileService->isBookmarked(clipUrl)) {
-      services_.profileService->toggleBookmark(clipUrl);
-      updateBookmarkButtonState();
-      renderBookmarks();
-    }
-  });
-
-  if (hasUrl) {
-    menu.addSeparator();
-
-    // 9. Sil
-    QAction *deleteAct = menu.addAction(I18n::text(QStringLiteral("bookmark.delete"), QStringLiteral("Sil")));
-    connect(deleteAct, &QAction::triggered, this, [this, url] {
-      if (services_.profileService) {
-        services_.profileService->toggleBookmark(url);
-        updateBookmarkButtonState();
-        renderBookmarks();
-      }
-    });
-
-    // 9b. Klasöre taşı...
-    QAction *moveToFolderAct = menu.addAction(QStringLiteral("Klasöre taşı..."));
-    connect(moveToFolderAct, &QAction::triggered, this, [this, url] {
-      if (!services_.profileService) return;
-      QStringList folderOptions = services_.profileService->bookmarkFolders();
-      folderOptions.prepend(QStringLiteral("(Ana Dizin / Kök)"));
-      folderOptions.append(QStringLiteral("+ Yeni Klasör Oluştur..."));
-      bool ok = false;
-      const QString choice = QInputDialog::getItem(
-          this, QStringLiteral("Klasöre Taşı"), QStringLiteral("Hedef klasörü seçin:"), folderOptions, 0, false, &ok);
-      if (ok) {
-        QString targetFolder;
-        if (choice == QStringLiteral("+ Yeni Klasör Oluştur...")) {
-          const QString newF = QInputDialog::getText(
-              this, QStringLiteral("Yeni Klasör"), QStringLiteral("Klasör adı:"), QLineEdit::Normal, QString(), &ok);
-          if (ok && !newF.trimmed().isEmpty()) {
-            targetFolder = newF.trimmed();
-          } else {
-            return;
-          }
-        } else if (choice != QStringLiteral("(Ana Dizin / Kök)")) {
-          targetFolder = choice;
-        }
-        services_.profileService->moveBookmarkToFolder(url, targetFolder);
-        renderBookmarks();
-      }
-    });
-  }
-
-  menu.addSeparator();
-
-  // 10. Sayfa ekle...
-  QAction *addPageAct = menu.addAction(I18n::text(QStringLiteral("bookmark.add_page"), QStringLiteral("Sayfa ekle...")));
-  connect(addPageAct, &QAction::triggered, this, [this] {
-    QInputDialog dlg(this);
-    dlg.setWindowTitle(I18n::text(QStringLiteral("bookmark.add_page_title"), QStringLiteral("Sayfa ekle")));
-    dlg.setLabelText(I18n::text(QStringLiteral("bookmark.url_label"), QStringLiteral("URL:")));
-    const QUrl cur = currentView() ? currentView()->url() : QUrl{};
-    dlg.setTextValue(cur.isValid() && !isNewTabUrl(cur) ? cur.toString() : QStringLiteral("https://"));
-    dlg.setStyleSheet(QStringLiteral(
-        "QDialog { background-color: #1b232d; color: #e8eef5; border: 1px solid #3a4857; border-radius: 8px; }"
-        "QLabel { color: #e8eef5; font-size: 13px; }"
-        "QLineEdit { background: #121820; color: #ffffff; border: 1px solid #3a4857; border-radius: 6px; padding: 6px; font-size: 13px; }"
-        "QPushButton { background: #263342; color: #ffffff; border: 1px solid #3a4857; border-radius: 6px; padding: 6px 14px; font-size: 13px; }"
-        "QPushButton:hover { background: #324458; }"
-    ));
-    if (dlg.exec() == QDialog::Accepted) {
-      const QString newText = dlg.textValue().trimmed();
-      if (!newText.isEmpty()) {
-        const QUrl newUrl = QUrl::fromUserInput(newText);
-        if (newUrl.isValid() && (newUrl.scheme() == QLatin1String("http") || newUrl.scheme() == QLatin1String("https"))) {
-          if (services_.profileService && !services_.profileService->isBookmarked(newUrl)) {
-            services_.profileService->toggleBookmark(newUrl);
-            updateBookmarkButtonState();
-            renderBookmarks();
-          }
-        }
-      }
-    }
-  });
-
-  // 11. Klasör ekle...
-  QAction *addFolderAct = menu.addAction(I18n::text(QStringLiteral("bookmark.add_folder"), QStringLiteral("Klasör ekle...")));
-  connect(addFolderAct, &QAction::triggered, this, [this] {
-    bool ok = false;
-    const QString folderName = QInputDialog::getText(
-        this,
-        I18n::text(QStringLiteral("bookmark.add_folder_title"), QStringLiteral("Yeni Klasör")),
-        I18n::text(QStringLiteral("bookmark.folder_name_prompt"), QStringLiteral("Klasör adı:")),
-        QLineEdit::Normal,
-        QString(),
-        &ok);
-    if (ok && !folderName.trimmed().isEmpty() && services_.profileService) {
-      services_.profileService->createBookmarkFolder(folderName.trimmed());
-      renderBookmarks();
-    }
-  });
-
-  menu.addSeparator();
-
-  // 12. Yer işareti yöneticisini aç
-  QAction *managerAct = menu.addAction(I18n::text(QStringLiteral("bookmark.open_manager"), QStringLiteral("Yer işareti yöneticisini aç")));
-  connect(managerAct, &QAction::triggered, this, [this] {
-    showSettings(SettingsPage::Category::Bookmarks);
-  });
-
-  // 13. Uygulamalar kısayolunu göster
-  QAction *appsShortcutAct = menu.addAction(I18n::text(QStringLiteral("bookmark.show_apps_shortcut"), QStringLiteral("Uygulamalar kısayolunu göster")));
-  appsShortcutAct->setCheckable(true);
-  const bool showApps = QSettings().value(QStringLiteral("browser/showAppsShortcut"), false).toBool();
-  appsShortcutAct->setChecked(showApps);
-  connect(appsShortcutAct, &QAction::toggled, this, [](bool checked) {
-    QSettings settings;
-    settings.setValue(QStringLiteral("browser/showAppsShortcut"), checked);
-    settings.sync();
-  });
-
-  // 14. Sekme gruplarını göster
-  QAction *tabGroupsAct = menu.addAction(I18n::text(QStringLiteral("bookmark.show_tab_groups"), QStringLiteral("Sekme gruplarını göster")));
-  tabGroupsAct->setCheckable(true);
-  const bool showGroups = QSettings().value(QStringLiteral("browser/showTabGroupsOnBookmarkBar"), true).toBool();
-  tabGroupsAct->setChecked(showGroups);
-  connect(tabGroupsAct, &QAction::toggled, this, [this](bool checked) {
-    QSettings settings;
-    settings.setValue(QStringLiteral("browser/showTabGroupsOnBookmarkBar"), checked);
-    settings.sync();
-    if (appsBtn_) {
-      appsBtn_->setVisible(checked);
-    }
-  });
-
-  // 15. Yer işaretleri çubuğunu göster
-  QAction *toggleBarAct = menu.addAction(I18n::text(QStringLiteral("bookmark.show_bar"), QStringLiteral("Yer işaretleri çubuğunu göster")));
-  toggleBarAct->setCheckable(true);
-  const QString bmMode = QSettings().value(QStringLiteral("browser/bookmarkBarVisibility"), QStringLiteral("new_tab")).toString();
-  const bool barVisible = (bmMode == QLatin1String("always") || (bmMode == QLatin1String("new_tab") && isCurrentTabNewTab()));
-  toggleBarAct->setChecked(barVisible);
-  connect(toggleBarAct, &QAction::triggered, this, &BrowserWindow::toggleBookmarkBar);
-
-  menu.exec(globalPos);
-}
 
 void BrowserWindow::restoreLastClosedTab() {
   if (isIncognito() || !services_.profileService) return;
@@ -5435,147 +5282,5 @@ void BrowserWindow::restoreLastClosedTab() {
   addNewTab(closed->url);
 }
 
-void BrowserWindow::showFindBar() {
-  if (!findBar_) {
-    findBar_ = new ardali::desktop_tabs::FindBarWidget(this);
-    connect(findBar_, &ardali::desktop_tabs::FindBarWidget::findRequested,
-            this, &BrowserWindow::handleFindRequest);
-    connect(findBar_, &ardali::desktop_tabs::FindBarWidget::clearFindRequested,
-            this, &BrowserWindow::handleClearFind);
-    connect(findBar_, &ardali::desktop_tabs::FindBarWidget::closeRequested,
-            this, &BrowserWindow::hideFindBar);
-  }
-  updateFindBarPosition();
-  findBar_->show();
-  findBar_->raise();
 
-  if (auto *view = currentView()) {
-    const QString selected = view->selectedText().trimmed();
-    if (!selected.isEmpty() && !selected.contains(QLatin1Char('\n'))) {
-      findBar_->setFindText(selected);
-      handleFindRequest(selected, true, findBar_->isCaseSensitive());
-    }
-  }
-  findBar_->focusAndSelectAll();
-}
-
-void BrowserWindow::hideFindBar() {
-  if (findBar_) {
-    findBar_->hide();
-  }
-  handleClearFind();
-  if (auto *view = currentView()) {
-    view->setFocus();
-  }
-}
-
-void BrowserWindow::updateFindBarPosition() {
-  if (!findBar_) return;
-  const int w = findBar_->width();
-  const int h = findBar_->height();
-  const int top = (navBar_ ? navBar_->geometry().bottom() : 80) + 6;
-  const int right = width() - w - 24;
-  findBar_->setGeometry(std::max(10, right), top, w, h);
-}
-
-void BrowserWindow::handleFindRequest(const QString &text, bool forward, bool caseSensitive) {
-  auto *view = currentView();
-  if (!view || !view->page()) return;
-
-  if (text.isEmpty()) {
-    handleClearFind();
-    return;
-  }
-
-  QWebEnginePage::FindFlags flags;
-  if (!forward) flags |= QWebEnginePage::FindBackward;
-  if (caseSensitive) flags |= QWebEnginePage::FindCaseSensitively;
-
-  view->page()->findText(text, flags, [this](const QWebEngineFindTextResult &result) {
-    if (findBar_) {
-      findBar_->setMatchCount(result.activeMatch(), result.numberOfMatches());
-    }
-  });
-}
-
-void BrowserWindow::handleClearFind() {
-  if (auto *view = currentView()) {
-    if (view->page()) {
-      view->page()->findText(QString());
-    }
-  }
-  if (findBar_) {
-    findBar_->clearMatchCount();
-  }
-}
-
-void BrowserWindow::printCurrentPage() {
-  auto *view = currentView();
-  if (!view || !view->page()) return;
-  auto printer = std::make_shared<QPrinter>(QPrinter::HighResolution);
-  QPrintDialog dialog(printer.get(), this);
-  dialog.setWindowTitle(I18n::text(QStringLiteral("print.dialog_title"), QStringLiteral("Yazdır")));
-  if (dialog.exec() == QDialog::Accepted) {
-    auto conn = std::make_shared<QMetaObject::Connection>();
-    *conn = connect(view, &QWebEngineView::printFinished, view, [printer, conn](bool success) {
-      Q_UNUSED(success);
-      QObject::disconnect(*conn);
-    });
-    view->print(printer.get());
-  }
-}
-
-void BrowserWindow::printCurrentPageToPdf() {
-  auto *view = currentView();
-  if (!view || !view->page()) return;
-  QString title = view->title().trimmed();
-  if (title.isEmpty()) title = QStringLiteral("sayfa");
-  title.replace(QRegularExpression(QStringLiteral("[/\\\\?%*:|\"<>]")), QStringLiteral("_"));
-  const QString defaultPath = QDir::homePath() + QLatin1Char('/') + title + QStringLiteral(".pdf");
-  const QString filePath = QFileDialog::getSaveFileName(this,
-      I18n::text(QStringLiteral("print.pdf_save_title"), QStringLiteral("PDF Olarak Kaydet")),
-      defaultPath,
-      QStringLiteral("PDF Dosyaları (*.pdf)"));
-  if (!filePath.isEmpty()) {
-    view->page()->printToPdf(filePath);
-  }
-}
-
-void BrowserWindow::handleFullScreenRequest(QWebEngineView *view, const QWebEngineFullScreenRequest &request) {
-  Q_UNUSED(view);
-  auto req = const_cast<QWebEngineFullScreenRequest &>(request);
-  req.accept();
-
-  if (req.toggleOn()) {
-    if (!isWebFullScreen_) {
-      windowStateBeforeFullScreen_ = windowState();
-      geometryBeforeFullScreen_ = geometry();
-      isWebFullScreen_ = true;
-      if (topBar_) topBar_->hide();
-      if (navBar_) navBar_->hide();
-      if (bookmarkBar_) bookmarkBar_->hide();
-      showFullScreen();
-    }
-  } else {
-    if (isWebFullScreen_) {
-      isWebFullScreen_ = false;
-      if (topBar_) topBar_->show();
-      if (navBar_) navBar_->show();
-      const QString bmMode = QSettings().value(QStringLiteral("browser/bookmarkBarVisibility"), QStringLiteral("new_tab")).toString();
-      const bool barVisible = (bmMode == QLatin1String("always") || (bmMode == QLatin1String("new_tab") && isCurrentTabNewTab()));
-      if (bookmarkBar_ && barVisible) {
-        bookmarkBar_->show();
-      }
-      const Qt::WindowStates prevState = windowStateBeforeFullScreen_ & ~Qt::WindowFullScreen;
-      if (prevState.testFlag(Qt::WindowMaximized)) {
-        showMaximized();
-      } else {
-        showNormal();
-        if (!geometryBeforeFullScreen_.isNull()) {
-          setGeometry(geometryBeforeFullScreen_);
-        }
-      }
-    }
-  }
-}
-
+// Page actions (FindBar, Print, PDF, Capture, Reader Mode, Fullscreen) extracted to browser_window_page_actions.cpp

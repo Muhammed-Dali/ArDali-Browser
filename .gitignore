@@ -58,3 +58,10 @@ Testing/
 
 /build-*.log
 /build-step2-*.log
+
+# Runtime artifacts created in the source tree during browser execution
+# (Chromium/Qt WebEngine may write temporary/info files relative to CWD)
+/info:
+
+# Internal development notes — never publish to repository
+AR-DALI-DEVELOPMENT-PLAN.md

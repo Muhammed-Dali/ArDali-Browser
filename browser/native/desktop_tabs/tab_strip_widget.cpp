@@ -63,7 +63,7 @@ TabStripWidget::~TabStripWidget() {
 void TabStripWidget::loadSettings() {
   const QString styleValue = QSettings().value(
       QStringLiteral("browser/tabStyle"),
-      tabStylePreferenceValue(TabStyle::ChromeCurved)).toString();
+      tabStylePreferenceValue(TabStyle::ArDaliConnected)).toString();
   setTabStyle(tabStyleFromPreference(styleValue));
 }
 
@@ -633,7 +633,15 @@ void TabStripWidget::paintEvent(QPaintEvent *) {
       painter.setPen(Qt::NoPen);
       painter.setBrush(QColor(0, 0, 0, 110));
       painter.translate(0, 3);
-      painter.drawPath(tabSurfacePath(r, height(), tabStyle_, true));
+      if (tabStyle_ == TabStyle::ArDaliConnected) {
+        const QRectF surface = tabSurfaceRect(r, tabStyle_, true);
+        QPainterPath body;
+        body.addRoundedRect(surface, appearance.hoverCornerRadius,
+                            appearance.hoverCornerRadius);
+        painter.drawPath(body);
+      } else {
+        painter.drawPath(tabSurfacePath(r, height(), tabStyle_, true));
+      }
       painter.restore();
     }
 
@@ -654,11 +662,49 @@ void TabStripWidget::paintEvent(QPaintEvent *) {
       }
     } else {
       painter.save();
-      painter.setPen(appearance.outline.alpha() > 0
-                         ? QPen(appearance.outline, 1.0)
-                         : QPen(Qt::NoPen));
+      QPen outlinePen(appearance.outline,
+                      tabStyle_ == TabStyle::ArDaliConnected ? 2.4 : 1.0);
+      outlinePen.setCapStyle(Qt::RoundCap);
+      outlinePen.setJoinStyle(Qt::RoundJoin);
+      painter.setPen(appearance.outline.alpha() > 0 ? outlinePen : QPen(Qt::NoPen));
       painter.setBrush(appearance.activeFill);
-      painter.drawPath(tabSurfacePath(r, height(), tabStyle_, true));
+      if (tabStyle_ == TabStyle::ArDaliConnected) {
+        const QRectF surface = tabSurfaceRect(r, tabStyle_, true);
+        QPainterPath body;
+        body.addRoundedRect(surface, appearance.hoverCornerRadius,
+                            appearance.hoverCornerRadius);
+        painter.fillPath(body, appearance.activeFill);
+        painter.strokePath(body, outlinePen);
+
+        // Connector smoothly transitions from the active capsule's accent outline
+        // through the bend into the exact theme separator color at the lower surface
+        const qreal right = surface.right();
+        const qreal centerY = surface.center().y();
+        const qreal stripBottom = qreal(height());
+        const qreal connectorX = right + 8.2;
+
+        QPainterPath connector;
+        connector.moveTo(right, centerY - 1.0);
+        connector.lineTo(right, centerY);
+        connector.lineTo(right + 5.2, centerY);
+        connector.cubicTo(right + 6.8, centerY,
+                          connectorX, centerY + 0.8,
+                          connectorX, centerY + 2.8);
+        connector.lineTo(connectorX, stripBottom);
+
+        QLinearGradient connectorGrad(right, centerY, connectorX, centerY + 3.6);
+        connectorGrad.setColorAt(0.0, appearance.outline);
+        connectorGrad.setColorAt(0.25, appearance.outline);
+        connectorGrad.setColorAt(0.9, appearance.separator);
+        connectorGrad.setColorAt(1.0, appearance.separator);
+
+        QPen connectorPen(QBrush(connectorGrad), 2.4);
+        connectorPen.setCapStyle(Qt::RoundCap);
+        connectorPen.setJoinStyle(Qt::RoundJoin);
+        painter.strokePath(connector, connectorPen);
+      } else {
+        painter.drawPath(tabSurfacePath(r, height(), tabStyle_, true));
+      }
       painter.restore();
 
       if (appearance.paintsSignatureAccent) {

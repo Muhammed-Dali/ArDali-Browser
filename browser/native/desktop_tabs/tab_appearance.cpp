@@ -85,10 +85,39 @@ TabAppearance floatingPillAppearance() {
   return result;
 }
 
+TabAppearance ardaliConnectedAppearance() {
+  TabAppearance result = floatingPillAppearance();
+  result.layout.preferredTabWidth = 236;
+  result.surfaceTopInset = 4;
+  result.surfaceSideInset = 4;
+  result.surfaceBottomInset = 4;
+  result.separatorTopInset = 12;
+  result.separatorBottomInset = 11;
+  result.topCornerRadius = 10.0;
+  result.bottomCornerRadius = 10.0;
+  result.hoverCornerRadius = 10.0;
+  result.hoverMaximumOpacity = 1.0;
+  result.activeFill = QColor(QStringLiteral("#393842"));
+  result.hoverFill = QColor(255, 255, 255, 28);
+  result.outline = QColor(138, 180, 248, 190);
+  result.separator = QColor(165, 172, 180, 150);
+  result.activeText = QColor(QStringLiteral("#f1f3f4"));
+  result.inactiveText = QColor(QStringLiteral("#c7cbd1"));
+  result.hoverText = QColor(QStringLiteral("#f0f2f4"));
+  result.connectsToToolbar = false;
+  return result;
+}
+
 } // namespace
 
 TabStyle tabStyleFromPreference(const QString &value) {
   const QString normalized = value.trimmed().toLower();
+  if (normalized == QLatin1String("chrome_curved") ||
+      normalized == QLatin1String("chrome") ||
+      normalized == QLatin1String("standart") ||
+      normalized == QLatin1String("standard")) {
+    return TabStyle::ChromeCurved;
+  }
   if (normalized == QLatin1String("ardali_signature")) {
     return TabStyle::ArDaliSignature;
   }
@@ -96,7 +125,12 @@ TabStyle tabStyleFromPreference(const QString &value) {
       normalized == QLatin1String("modern_pill")) {
     return TabStyle::FloatingPill;
   }
-  return TabStyle::ChromeCurved;
+  if (normalized == QLatin1String("ardali_connected") ||
+      normalized == QLatin1String("connected") ||
+      normalized == QLatin1String("ardali_baglantili")) {
+    return TabStyle::ArDaliConnected;
+  }
+  return TabStyle::ArDaliConnected;
 }
 
 QString tabStylePreferenceValue(TabStyle style) {
@@ -105,6 +139,8 @@ QString tabStylePreferenceValue(TabStyle style) {
     return QStringLiteral("ardali_signature");
   case TabStyle::FloatingPill:
     return QStringLiteral("floating_pill");
+  case TabStyle::ArDaliConnected:
+    return QStringLiteral("ardali_connected");
   case TabStyle::ChromeCurved:
     return QStringLiteral("chrome_curved");
   }
@@ -115,11 +151,14 @@ const TabAppearance &tabAppearance(TabStyle style) {
   static const TabAppearance chrome = chromeAppearance();
   static const TabAppearance ardali = ardaliAppearance();
   static const TabAppearance floatingPill = floatingPillAppearance();
+  static const TabAppearance ardaliConnected = ardaliConnectedAppearance();
   switch (style) {
   case TabStyle::ArDaliSignature:
     return ardali;
   case TabStyle::FloatingPill:
     return floatingPill;
+  case TabStyle::ArDaliConnected:
+    return ardaliConnected;
   case TabStyle::ChromeCurved:
     return chrome;
   }
@@ -142,6 +181,36 @@ QPainterPath tabSurfacePath(const QRectF &logicalRect, int stripHeight,
   const TabAppearance &appearance = tabAppearance(style);
   const QRectF surface = tabSurfaceRect(logicalRect, style, activeOrDragged);
   QPainterPath path;
+
+  if (style == TabStyle::ArDaliConnected) {
+    // 1. Clean capsule-like tab body on all tabs
+    path.addRoundedRect(surface, appearance.hoverCornerRadius,
+                        appearance.hoverCornerRadius);
+
+    if (!activeOrDragged) {
+      return path;
+    }
+
+    // 2. Signature active tab connector on the RIGHT side only:
+    // Starts at roughly 50% vertical center of the capsule's right edge,
+    // smoothly transitions outward and curves down to meet the toolbar boundary.
+    const qreal right = surface.right();
+    const qreal centerY = surface.center().y();
+    const qreal stripBottom = qreal(stripHeight);
+    const qreal connectorX = right + 8.2;
+
+    // Visually emerges from the right border at vertical center with an extended neck
+    path.moveTo(right, centerY - 1.0);
+    path.lineTo(right, centerY);
+    path.lineTo(right + 5.2, centerY);
+    // Smooth rounded transition from horizontal emergence to vertical connector
+    path.cubicTo(right + 6.8, centerY,
+                 connectorX, centerY + 0.8,
+                 connectorX, centerY + 2.8);
+    // Vertical connector continuing straight downward to the browser/toolbar separator
+    path.lineTo(connectorX, stripBottom);
+    return path;
+  }
 
   if (!activeOrDragged || !appearance.connectsToToolbar) {
     path.addRoundedRect(surface, appearance.hoverCornerRadius,

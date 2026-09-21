@@ -52,10 +52,29 @@ void GoogleCloudProvider::translateBatch(
 
   QJsonObject payload;
   payload.insert(QStringLiteral("q"), QJsonArray::fromStringList(texts));
-  if (!sourceLang.isEmpty() && sourceLang != QLatin1String("auto")) {
-    payload.insert(QStringLiteral("source"), sourceLang);
+  if (!sourceLang.isEmpty() && sourceLang.compare(QLatin1String("auto"), Qt::CaseInsensitive) != 0) {
+    QString srcNorm = sourceLang.trimmed();
+    if (srcNorm.toLower() == QLatin1String("en-us") || srcNorm.toLower() == QLatin1String("en-gb")) {
+      srcNorm = QStringLiteral("en");
+    } else {
+      const int dash = srcNorm.indexOf(QLatin1Char('-'));
+      if (dash > 0 && !srcNorm.toLower().startsWith(QLatin1String("zh"))) srcNorm = srcNorm.left(dash);
+    }
+    payload.insert(QStringLiteral("source"), srcNorm);
   }
-  payload.insert(QStringLiteral("target"), targetLang.isEmpty() ? QStringLiteral("tr") : targetLang);
+  QString effectiveTarget = targetLang.isEmpty() ? QStringLiteral("tr") : targetLang.trimmed();
+  const QString targetLower = effectiveTarget.toLower();
+  if (targetLower == QLatin1String("en-us") || targetLower == QLatin1String("en-gb")) {
+    effectiveTarget = QStringLiteral("en");
+  } else if (targetLower.startsWith(QLatin1String("zh-")) || targetLower == QLatin1String("zh")) {
+    effectiveTarget = QStringLiteral("zh-CN");
+  } else if (targetLower == QLatin1String("pt-br")) {
+    effectiveTarget = QStringLiteral("pt");
+  } else {
+    const int dash = effectiveTarget.indexOf(QLatin1Char('-'));
+    if (dash > 0) effectiveTarget = effectiveTarget.left(dash);
+  }
+  payload.insert(QStringLiteral("target"), effectiveTarget);
   payload.insert(QStringLiteral("format"), QStringLiteral("text"));
 
   QNetworkRequest request(url);
